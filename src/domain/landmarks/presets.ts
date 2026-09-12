@@ -69,6 +69,9 @@ export function createLandmarkProject(): LandmarkProject {
       updatedAt: Date.now(),
     },
     lockedViews: [],
+    centerlineOrder: landmarks
+      .filter((l) => l.type === "CENTERLINE")
+      .map((l) => l.id),
     landmarks,
     views: ensureObliqueViews(views),
   };

@@ -2263,3 +2263,11 @@ i:not([class]) {
   font-size: 12px;
   pointer-events: none;
 }
+
+.landmark-group h3 { font-size: 12px; color: var(--muted, #899ba3); margin: 14px 8px 8px; display: flex; justify-content: space-between; }
+.landmark-group h3 small { font-weight: normal; }
+.landmark-group button { width: 100%; }
+.point-list button[draggable="true"] { cursor: grab; }
+.order-grip { opacity: .5; }
+.point-list button.drop-before { box-shadow: inset 0 2px #ffc879; }
+.point-list button.drop-after { box-shadow: inset 0 -2px #ffc879; }

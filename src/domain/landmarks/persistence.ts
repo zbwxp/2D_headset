@@ -1,3 +1,4 @@
+import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
 import type { LandmarkProject } from "./model";
 import { mirror, activateDriver } from "./model";
@@ -130,6 +131,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
     version: "landmarks-0.2",
+    centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),
     lockedViews:
       p.lockedViews ??
       p.views

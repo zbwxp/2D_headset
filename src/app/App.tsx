@@ -1,3 +1,4 @@
+import LandmarkList from "../ui/edit2d/LandmarkList";
 import LandmarkActions from "../ui/edit2d/LandmarkActions";
 import { useEffect, useRef } from "react";
 import {
@@ -13,7 +14,6 @@ import {
 import { useEditor } from "./store";
 import {
   allowedBasis,
-  driverLocks,
   motionState,
   editingBasis,
   modelStateCode,
@@ -133,33 +133,7 @@ export default function App() {
             语义点 <span>{s.project.landmarks.length}</span>
           </div>
           <LandmarkActions />
-          <div className="point-list">
-            {s.project.landmarks.map((x) => (
-              <button
-                key={x.id}
-                aria-label={x.name}
-                className={x.id === l?.id ? "active" : ""}
-                onClick={() => s.selectLandmark(x.id)}
-              >
-                <span
-                  style={{
-                    color:
-                      x.type === "CENTERLINE"
-                        ? "#ffc879"
-                        : x.type === "LEFT"
-                          ? "#b9eb9f"
-                          : "#8fc6e1",
-                  }}
-                >
-                  ●
-                </span>
-                {x.name}
-                {Object.keys(driverLocks(s.project, x.id)).length > 0 && (
-                  <LockKeyhole size={12} />
-                )}
-              </button>
-            ))}
-          </div>
+          <LandmarkList />
           <div className="point-side-note">
             共享 3D 坐标
             <br />

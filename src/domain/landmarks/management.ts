@@ -43,7 +43,16 @@ export function duplicateLandmark(
       )
     : [driver];
   return {
-    project: { ...p, landmarks: [...p.landmarks, ...added] },
+    project: {
+      ...p,
+      landmarks: [...p.landmarks, ...added],
+      centerlineOrder:
+        source.type === "CENTERLINE"
+          ? p.centerlineOrder.flatMap((id) =>
+              id === source.id ? [id, driver.id] : [id],
+            )
+          : p.centerlineOrder,
+    },
     selectedId: driver.id,
   };
 }
@@ -77,6 +86,9 @@ export function deleteLandmark(
   if (!source) return p;
   return {
     ...p,
+    centerlineOrder: p.centerlineOrder.filter(
+      (x) => x !== id && x !== source.mirrorPartnerId,
+    ),
     landmarks: p.landmarks.filter(
       (l) => l.id !== id && l.id !== source.mirrorPartnerId,
     ),

@@ -18,6 +18,7 @@ export interface LandmarkProject {
   version: "landmarks-0.1" | "landmarks-0.2";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
+  centerlineOrder: string[];
   landmarks: SemanticLandmark[];
   views: LandmarkView[];
 }
@@ -126,9 +127,8 @@ export function motionState(p: LandmarkProject, id: string, v: LandmarkView) {
 
 // Read-only render guide: connects existing centerline landmarks, never creates geometry state.
 export function centerlineGuide(p: LandmarkProject): Vec3[] {
-  return p.landmarks
-    .filter((l) => l.type === "CENTERLINE")
-    .map((l) => l.position);
+  const points = new Map(p.landmarks.map((l) => [l.id, l]));
+  return p.centerlineOrder.map((id) => points.get(id)!.position);
 }
 
 export const viewIsLocked = (p: LandmarkProject, viewId: string) =>
@@ -225,6 +225,7 @@ export function setGlobalViewLock(
 /** Compare model/camera/lock state across browser-local saves, independently of layout and canvas zoom. */
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
+    centerlineOrder: p.centerlineOrder,
     lockedViews: p.lockedViews,
     landmarks: p.landmarks,
     views: p.views.map((v) => ({ id: v.id, camera: v.camera })),

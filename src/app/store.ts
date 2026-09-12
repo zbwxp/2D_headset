@@ -3,6 +3,7 @@ import {
   renameLandmark,
   deleteLandmark,
 } from "../domain/landmarks/management";
+import { reorderCenterline } from "../domain/landmarks/order";
 import { create } from "zustand";
 import type { ReferenceImage, Vec2 } from "../domain/project/types";
 import type { LandmarkProject } from "../domain/landmarks/model";
@@ -24,8 +25,15 @@ let initial = createLandmarkProject(),
 try {
   const saved =
     localStorage.getItem(KEY) ?? localStorage.getItem("contour.landmarks.v01");
-  if (saved) initial = parseLandmarks(saved);
-  else {
+  if (saved) {
+    initial = parseLandmarks(saved);
+    // Persist migration/repair immediately, before any user interaction.
+    try {
+      localStorage.setItem(KEY, JSON.stringify(initial));
+    } catch {
+      message = "迁移已完成，但本机存储已满，请下载 JSON 保存。";
+    }
+  } else {
     const old = localStorage.getItem("contour.project.v1");
     if (old) {
       const legacy = JSON.parse(old);
@@ -73,6 +81,7 @@ interface State {
   duplicateSelected: (name: string) => void;
   renameSelected: (name: string) => void;
   deleteSelected: () => void;
+  reorderCenterline: (id: string, targetId: string, after: boolean) => void;
 }
 function persist(p: LandmarkProject) {
   try {
@@ -232,6 +241,13 @@ export const useEditor = create<State>((set, get) => {
       const s = get();
       if (!s.selectedId) return;
       const p = renameLandmark(s.project, s.selectedId, name);
+      s.beginEdit();
+      commit(p);
+    },
+    reorderCenterline: (id, targetId, after) => {
+      const s = get(),
+        p = reorderCenterline(s.project, id, targetId, after);
+      if (p === s.project) return;
       s.beginEdit();
       commit(p);
     },
