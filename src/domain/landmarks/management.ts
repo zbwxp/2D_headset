@@ -89,6 +89,9 @@ export function deleteLandmark(
   return {
     ...p,
     curves: p.curves.filter((c) => !incident.has(c.id)),
+    smoothJunctions: p.smoothJunctions.filter(
+      (j) => !incident.has(j.sideA.curveId) && !incident.has(j.sideB.curveId),
+    ),
     centerlineOrder: p.centerlineOrder.filter(
       (x) => x !== id && x !== source.mirrorPartnerId,
     ),

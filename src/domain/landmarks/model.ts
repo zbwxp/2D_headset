@@ -1,3 +1,4 @@
+import type { SmoothJunction } from "../junctions/model";
 import type { CurveEdge } from "../curves/model";
 import type { Vec3, Vec2, ViewState } from "../project/types";
 import { basis, dot, add, scale, sub } from "../geometry/core";
@@ -16,10 +17,15 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
-  version: "landmarks-0.1" | "landmarks-0.2" | "landmarks-0.3";
+  version:
+    | "landmarks-0.1"
+    | "landmarks-0.2"
+    | "landmarks-0.3"
+    | "landmarks-0.3.5";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
   curves: CurveEdge[];
+  smoothJunctions: SmoothJunction[];
   centerlineOrder: string[];
   landmarks: SemanticLandmark[];
   views: LandmarkView[];
@@ -228,6 +234,7 @@ export function setGlobalViewLock(
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
     curves: p.curves,
+    smoothJunctions: p.smoothJunctions,
     centerlineOrder: p.centerlineOrder,
     lockedViews: p.lockedViews,
     landmarks: p.landmarks,

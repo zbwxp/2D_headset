@@ -6,7 +6,7 @@ test("centerline drag order persists without geometry changes, supports history 
   await page.getByRole("button", { name: "新建", exact: true }).click();
   const state = () =>
     page.evaluate(() =>
-      JSON.parse(localStorage.getItem("contour.landmarks.v03")!),
+      JSON.parse(localStorage.getItem("contour.landmarks.v035")!),
     );
   await page.getByLabel("锁定此视图全部点").check();
   const before = await state();
@@ -57,7 +57,7 @@ test("centerline drag order persists without geometry changes, supports history 
   // Startup migration is persisted even with no interaction.
   await page.evaluate((p) => {
     delete p.centerlineOrder;
-    localStorage.setItem("contour.landmarks.v03", JSON.stringify(p));
+    localStorage.setItem("contour.landmarks.v035", JSON.stringify(p));
   }, before);
   await page.reload();
   expect((await state()).centerlineOrder).toEqual(before.centerlineOrder);

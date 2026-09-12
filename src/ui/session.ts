@@ -12,6 +12,8 @@ export function activeSelection(): Entity | null {
     : null;
 }
 export const useUI = create<{
+  junctionLandmarkId: string | null;
+  hoverJunctionId: string | null;
   landmarkCollapsed: boolean;
   curveCollapsed: boolean;
   duplicateId: string | null;
@@ -20,6 +22,8 @@ export const useUI = create<{
   menu: { target: Entity; x: number; y: number } | null;
   positions: Record<string, { x: number; y: number }>;
 }>(() => ({
+  junctionLandmarkId: null,
+  hoverJunctionId: null,
   landmarkCollapsed: false,
   curveCollapsed: false,
   duplicateId: null,

@@ -1,3 +1,4 @@
+import { parseJunctions } from "../junctions/persistence";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
@@ -16,7 +17,12 @@ export function parseLandmarks(text: string): LandmarkProject {
       throw new Error("文件不是有效的语义点项目；旧曲面项目请保留备份。");
   };
   check(
-    ["landmarks-0.1", "landmarks-0.2", "landmarks-0.3"].includes(p?.version) &&
+    [
+      "landmarks-0.1",
+      "landmarks-0.2",
+      "landmarks-0.3",
+      "landmarks-0.3.5",
+    ].includes(p?.version) &&
       p.meta &&
       typeof p.meta.name === "string" &&
       finite(p.meta.createdAt) &&
@@ -131,7 +137,8 @@ export function parseLandmarks(text: string): LandmarkProject {
   }
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
-    version: "landmarks-0.3",
+    version: "landmarks-0.3.5",
+    smoothJunctions: [],
     curves: [],
     centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),
     lockedViews:
@@ -172,5 +179,6 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result);
+  result.smoothJunctions = parseJunctions(p.smoothJunctions, result);
   return result;
 }

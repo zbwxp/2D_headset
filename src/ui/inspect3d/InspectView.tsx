@@ -1,4 +1,6 @@
-import { sampleCurve } from "../../domain/curves/geometry";
+import { bezier } from "../../domain/curves/geometry";
+import { resolveNetwork } from "../../domain/junctions/resolve";
+import { useUI } from "../session";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -75,14 +77,44 @@ export default function InspectView() {
     const curveMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
     const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
     scene.add(curveLines);
+    const hoverGeometry = new THREE.BufferGeometry(),
+      hoverMaterial = new THREE.PointsMaterial({ color: 0xffd17b, size: 0.1 });
+    scene.add(new THREE.Points(hoverGeometry, hoverMaterial));
     const update = () => {
       const s = useEditor.getState();
       const vertices: number[] = [],
         colors: number[] = [];
-      for (const c of s.project.curves) {
-        const samples = sampleCurve(s.project, c),
+      const network = resolveNetwork(s.project),
+        hovered = useUI.getState().hoverJunctionId;
+      const rows = network.junctions.filter((j) => j.sourceId === hovered),
+        highlighted = new Set(
+          rows.flatMap((j) => [j.sideA.curveId, j.sideB.curveId]),
+        );
+      hoverGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(
+          rows
+            .flatMap((j) => [
+              s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
+              ...(j.blendA && j.blendB ? [j.blendA[0], j.blendB[3]] : []),
+            ])
+            .flat(),
+          3,
+        ),
+      );
+      hoverGeometry.computeBoundingSphere();
+      for (const span of network.spans) {
+        const samples = Array.from({ length: 65 }, (_, i) =>
+            bezier(span.controls, i / 64),
+          ),
           color = new THREE.Color(
-            c.id === s.selectedCurveId ? 0xf0d8ff : 0xab9fdd,
+            highlighted.has(span.curveId)
+              ? 0xffd17b
+              : span.kind === "blend"
+                ? 0xa4d6c2
+                : span.curveId === s.selectedCurveId
+                  ? 0xf0d8ff
+                  : 0xab9fdd,
           ).toArray();
         for (let i = 1; i < samples.length; i++) {
           vertices.push(...samples[i - 1], ...samples[i]);
@@ -141,6 +173,7 @@ export default function InspectView() {
     };
     update();
     const unsub = useEditor.subscribe(update);
+    const unsubUI = useUI.subscribe(update);
     const resize = new ResizeObserver(() => {
       const w = element.clientWidth,
         h = element.clientHeight;
@@ -160,6 +193,9 @@ export default function InspectView() {
     return () => {
       cancelAnimationFrame(frame);
       unsub();
+      unsubUI();
+      hoverGeometry.dispose();
+      hoverMaterial.dispose();
       resize.disconnect();
       controls.dispose();
       guideGeometry.dispose();

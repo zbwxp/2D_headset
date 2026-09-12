@@ -1,3 +1,4 @@
+import { useUI } from "../session";
 import CurveLayer from "../curves/CurveLayer";
 import { useRef } from "react";
 import { useEditor } from "../../app/store";
@@ -15,6 +16,12 @@ export default function EditView() {
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     { zoom, pan } = v.canvas,
     ref = v.reference;
+  const lastPointDown = useRef<{
+    id: string;
+    time: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const svg = useRef<SVGSVGElement>(null),
     drag = useRef<{
       kind: "point" | "pan" | "reference";
@@ -221,12 +228,50 @@ export default function EditView() {
                   strokeWidth={selected ? 2.5 : 1.5}
                   vectorEffect="non-scaling-stroke"
                   style={{ cursor: "grab" }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    s.selectLandmark(x.id);
+                    useUI.setState({ junctionLandmarkId: x.id });
+                  }}
+                  onDoubleClick={(e) => {
+                    if (s.curveCreation) return;
+                    e.stopPropagation();
+                    s.selectLandmark(x.id);
+                    useUI.setState({ junctionLandmarkId: x.id });
+                  }}
                   onFocus={() => {
                     if (!s.curveCreation) s.selectLandmark(x.id);
                   }}
                   onPointerDown={(e) => {
+                    if (e.button === 2) {
+                      e.stopPropagation();
+                      return;
+                    }
                     if (e.shiftKey || e.button !== 0) return;
                     e.stopPropagation();
+                    const previous = lastPointDown.current;
+                    if (
+                      !s.curveCreation &&
+                      previous?.id === x.id &&
+                      e.timeStamp - previous.time < 400 &&
+                      Math.hypot(
+                        e.clientX - previous.x,
+                        e.clientY - previous.y,
+                      ) < 5
+                    ) {
+                      lastPointDown.current = null;
+                      e.preventDefault();
+                      s.selectLandmark(x.id);
+                      useUI.setState({ junctionLandmarkId: x.id });
+                      return;
+                    }
+                    lastPointDown.current = {
+                      id: x.id,
+                      time: e.timeStamp,
+                      x: e.clientX,
+                      y: e.clientY,
+                    };
                     if (s.curveCreation) {
                       e.preventDefault();
                       s.pickCurveEndpoint(x.id);

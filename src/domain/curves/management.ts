@@ -89,6 +89,12 @@ export function deleteCurve(p: LandmarkProject, id: string): LandmarkProject {
     curves: p.curves.filter(
       (x) => x.id !== id && x.id !== c?.mirrorPartnerCurveId,
     ),
+    smoothJunctions: p.smoothJunctions.filter(
+      (j) =>
+        ![j.sideA.curveId, j.sideB.curveId].some(
+          (x) => x === id || x === c?.mirrorPartnerCurveId,
+        ),
+    ),
   };
 }
 export function incidentCurveIds(

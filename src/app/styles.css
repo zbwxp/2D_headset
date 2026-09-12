@@ -2314,3 +2314,9 @@ i:not([class]) {
 .entity-menu { position:fixed; z-index:10000; width:180px; padding:5px; background:#2b353b; border:1px solid #58696e; border-radius:6px; }
 .entity-menu button { width:100%; justify-content:space-between; padding:8px; }
 .entity-menu small { color:#92a6af; }
+.junction-pair { padding:10px 0; border-bottom:1px solid #4a555b; font-size:12px; }
+.junction-pair input { width:100%; accent-color:#a4d6c2; }
+.junction-pair output { float:right; }
+.floating-content .junction-invalid { color:#ffb98d; }
+.junction-pairing { display:grid; gap:8px; }
+.junction-pairing select { max-width:100%; background:#202a30; color:#d6e0e2; padding:6px; }

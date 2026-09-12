@@ -1,3 +1,6 @@
+import { resolveNetwork } from "../../domain/junctions/resolve";
+import type { ResolvedSpan } from "../../domain/junctions/model";
+import { useUI } from "../session";
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
@@ -32,6 +35,7 @@ export default function CurveLayer({
   view: LandmarkView;
   readonly?: boolean;
 }) {
+  const hovered = useUI((s) => s.hoverJunctionId);
   const s = useEditor(),
     group = useRef<SVGGElement>(null);
   const drag = useRef<{
@@ -51,7 +55,12 @@ export default function CurveLayer({
     );
     return [q.x / 160, -q.y / 160];
   };
-  const start = (e: ReactPointerEvent, c: CurveEdge, index: 0 | 1 | 2) => {
+  const start = (
+    e: ReactPointerEvent,
+    c: CurveEdge,
+    index: 0 | 1 | 2,
+    span?: ResolvedSpan,
+  ) => {
     if (
       readonly ||
       s.referenceMoving ||
@@ -72,7 +81,16 @@ export default function CurveLayer({
       );
       return;
     }
-    const t = nearestParameter(controls(s.project, c), view, q);
+    const localT = nearestParameter(
+      span?.controls ?? controls(s.project, c),
+      view,
+      q,
+    );
+    const sourceT = span?.sourceRange
+      ? span.sourceRange[0] +
+        localT * (span.sourceRange[1] - span.sourceRange[0])
+      : localT;
+    const t = Math.max(0.05, Math.min(0.95, sourceT));
     drag.current = {
       project: s.project,
       curve: c,
@@ -87,6 +105,16 @@ export default function CurveLayer({
       view,
     };
     group.current!.setPointerCapture(e.pointerId);
+  };
+  const resolved = resolveNetwork(s.project);
+  const highlighted = new Set(
+    resolved.junctions
+      .filter((j) => j.sourceId === hovered)
+      .flatMap((j) => [j.sideA.curveId, j.sideB.curveId]),
+  );
+  const openBlend = (span: ResolvedSpan) => {
+    s.selectLandmark(span.landmarkId!);
+    useUI.setState({ junctionLandmarkId: span.landmarkId! });
   };
   return (
     <g
@@ -127,20 +155,70 @@ export default function CurveLayer({
         drag.current = null;
       }}
     >
+      {resolved.spans
+        .filter((span) => span.kind === "blend")
+        .map((span, i) => (
+          <g key={`${span.junctionId}:${span.curveId}:${i}`}>
+            <path
+              data-testid={`blend-${span.junctionId}-${span.curveId}`}
+              d={curvePath(span.controls, view)}
+              fill="none"
+              stroke={hovered === span.junctionId ? "#ffd17b" : "#a4d6c2"}
+              strokeWidth={hovered === span.junctionId ? 3 : 2}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+            {!readonly && (
+              <path
+                data-testid={`blend-hit-${span.junctionId}-${span.curveId}`}
+                d={curvePath(span.controls, view)}
+                fill="none"
+                stroke="transparent"
+                strokeWidth="12"
+                vectorEffect="non-scaling-stroke"
+                style={{ cursor: "pointer" }}
+                onPointerDown={(e) => {
+                  if (e.shiftKey) return;
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (e.button === 0) openBlend(span);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openBlend(span);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  openBlend(span);
+                }}
+              />
+            )}
+          </g>
+        ))}
       {[
         ...s.project.curves.filter((c) => c.id !== s.selectedCurveId),
         ...s.project.curves.filter((c) => c.id === s.selectedCurveId),
       ].map((c) => {
         const selected = c.id === s.selectedCurveId,
           cp = controls(s.project, c),
-          path = curvePath(cp, view);
+          span = resolved.spans.find(
+            (x) => x.kind === "outer" && x.curveId === c.id,
+          )!,
+          path = curvePath(span.controls, view);
         return (
           <g key={c.id}>
             <path
               data-testid={`curve-${c.id}`}
               d={path}
               fill="none"
-              stroke={selected ? "#f0d8ff" : "#ab9fdd"}
+              stroke={
+                highlighted.has(c.id)
+                  ? "#ffd17b"
+                  : selected
+                    ? "#f0d8ff"
+                    : "#ab9fdd"
+              }
               strokeWidth={selected ? 2.5 : 1.5}
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
@@ -155,7 +233,7 @@ export default function CurveLayer({
                 vectorEffect="non-scaling-stroke"
                 style={{ cursor: "grab" }}
                 pointerEvents={s.curveCreation ? "none" : "stroke"}
-                onPointerDown={(e) => start(e, c, 0)}
+                onPointerDown={(e) => start(e, c, 0, span)}
               />
             )}
             {selected && !readonly && (
@@ -198,6 +276,27 @@ export default function CurveLayer({
           </g>
         );
       })}
+      {!readonly &&
+        resolved.junctions
+          .filter((j) => j.sourceId === hovered)
+          .flatMap((j) => [
+            s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
+            ...(j.blendA && j.blendB ? [j.blendA[0], j.blendB[3]] : []),
+          ])
+          .map((p, i) => {
+            const q = project(p, view);
+            return (
+              <circle
+                key={i}
+                cx={q[0] * 160}
+                cy={-q[1] * 160}
+                r={5 / view.canvas.zoom}
+                fill="#ffd17b"
+                pointerEvents="none"
+                data-testid="junction-hover-marker"
+              />
+            );
+          })}
     </g>
   );
 }
