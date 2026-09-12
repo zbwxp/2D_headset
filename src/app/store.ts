@@ -3,6 +3,13 @@ import {
   renameLandmark,
   deleteLandmark,
 } from "../domain/landmarks/management";
+import {
+  createCurve,
+  renameCurve,
+  deleteCurve,
+} from "../domain/curves/management";
+import { followEndpoints } from "../domain/curves/geometry";
+import type { PlanarShape } from "../domain/curves/model";
 import { reorderCenterline } from "../domain/landmarks/order";
 import { create } from "zustand";
 import type { ReferenceImage, Vec2 } from "../domain/project/types";
@@ -19,12 +26,14 @@ import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
 import { project } from "../domain/geometry/core";
 export const HISTORY_LIMIT = 100;
-const KEY = "contour.landmarks.v02";
+const KEY = "contour.landmarks.v03";
 let initial = createLandmarkProject(),
   message = "";
 try {
   const saved =
-    localStorage.getItem(KEY) ?? localStorage.getItem("contour.landmarks.v01");
+    localStorage.getItem(KEY) ??
+    localStorage.getItem("contour.landmarks.v02") ??
+    localStorage.getItem("contour.landmarks.v01");
   if (saved) {
     initial = parseLandmarks(saved);
     // Persist migration/repair immediately, before any user interaction.
@@ -57,6 +66,15 @@ try {
 }
 interface State {
   project: LandmarkProject;
+  selectedCurveId: string | null;
+  curveCreation: { startId: string | null } | null;
+  startCurve: () => void;
+  cancelCurve: () => void;
+  pickCurveEndpoint: (id: string) => void;
+  selectCurve: (id: string) => void;
+  setCurveShape: (canonicalId: string, shape: PlanarShape) => void;
+  renameCurve: (id: string, name: string) => void;
+  deleteCurve: (id: string) => void;
   viewId: string;
   selectedId: string | null;
   past: LandmarkProject[];
@@ -97,6 +115,74 @@ export const useEditor = create<State>((set, get) => {
   };
   return {
     project: initial,
+    selectedCurveId: null,
+    curveCreation: null,
+    startCurve: () =>
+      set({
+        curveCreation: { startId: null },
+        selectedCurveId: null,
+        message: "请选择起点 A，再选择终点 B。",
+      }),
+    cancelCurve: () => set({ curveCreation: null, message: "" }),
+    pickCurveEndpoint: (id) => {
+      const s = get();
+      if (!s.curveCreation) return;
+      if (!s.curveCreation.startId) {
+        set({
+          curveCreation: { startId: id },
+          message: "已选起点 A，请选择终点 B。",
+        });
+        return;
+      }
+      try {
+        const result = createCurve(
+          s.project,
+          s.curveCreation.startId,
+          id,
+          s.project.views.find((v) => v.id === s.viewId)!,
+          `结构线 ${s.project.curves.length + 1}`,
+        );
+        s.beginEdit();
+        commit(result.project);
+        set({
+          selectedCurveId: result.selectedId,
+          curveCreation: null,
+          message: "已创建直线。拖动曲线弯曲，或调整两个控制柄。",
+        });
+      } catch (e) {
+        set({ message: (e as Error).message });
+      }
+    },
+    selectCurve: (id) =>
+      set({ selectedCurveId: id, curveCreation: null, message: "" }),
+    setCurveShape: (id, shape) => {
+      if (
+        ![
+          ...shape.planeNormal,
+          shape.startHandle.along,
+          shape.startHandle.offset,
+          shape.endHandle.along,
+          shape.endHandle.offset,
+        ].every(Number.isFinite)
+      )
+        return;
+      commit({
+        ...get().project,
+        curves: get().project.curves.map((c) =>
+          c.id === id && c.role === "canonical" ? { ...c, shape } : c,
+        ),
+      });
+    },
+    renameCurve: (id, name) => {
+      const p = renameCurve(get().project, id, name);
+      get().beginEdit();
+      commit(p);
+    },
+    deleteCurve: (id) => {
+      get().beginEdit();
+      commit(deleteCurve(get().project, id));
+      set({ selectedCurveId: null });
+    },
     viewId: initial.views[0].id,
     selectedId: initial.landmarks[0]?.id ?? null,
     past: [],
@@ -110,6 +196,11 @@ export const useEditor = create<State>((set, get) => {
       })),
     selectView: (id) => set({ viewId: id, referenceMoving: false }),
     selectLandmark: (id) => {
+      if (get().curveCreation) {
+        get().pickCurveEndpoint(id);
+        return;
+      }
+      set({ selectedCurveId: null });
       if (!get().project.landmarks.some((l) => l.id === id)) return;
       const p = activateDriver(get().project, id);
       set({ project: p, selectedId: id, message: "" });
@@ -151,16 +242,18 @@ export const useEditor = create<State>((set, get) => {
           target[1] - old[1],
         ]);
       if (!position.every(Number.isFinite)) return;
-      commit({
-        ...s.project,
-        landmarks: s.project.landmarks.map((x) =>
-          x.id === id
-            ? { ...x, position }
-            : x.id === l.mirrorPartnerId
-              ? { ...x, position: mirror(position) }
-              : x,
-        ),
-      });
+      commit(
+        followEndpoints(s.project, {
+          ...s.project,
+          landmarks: s.project.landmarks.map((x) =>
+            x.id === id
+              ? { ...x, position }
+              : x.id === l.mirrorPartnerId
+                ? { ...x, position: mirror(position) }
+                : x,
+          ),
+        }),
+      );
     },
     lockView: () => {
       const s = get();
@@ -184,6 +277,8 @@ export const useEditor = create<State>((set, get) => {
       if (!p) return;
       set({
         project: p,
+        selectedCurveId: null,
+        curveCreation: null,
         past: s.past.slice(0, -1),
         future: [s.project, ...s.future],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
@@ -202,6 +297,8 @@ export const useEditor = create<State>((set, get) => {
       if (!p) return;
       set({
         project: p,
+        selectedCurveId: null,
+        curveCreation: null,
         future: s.future.slice(1),
         past: [...s.past, s.project],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
@@ -218,6 +315,8 @@ export const useEditor = create<State>((set, get) => {
       get().beginEdit();
       set({
         project: p,
+        selectedCurveId: null,
+        curveCreation: null,
         viewId: p.views[0].id,
         selectedId: p.landmarks[0]?.id ?? null,
         referenceMoving: false,
@@ -258,6 +357,8 @@ export const useEditor = create<State>((set, get) => {
       s.beginEdit();
       set({
         project: p,
+        selectedCurveId: null,
+        curveCreation: null,
         selectedId: p.landmarks[0]?.id ?? null,
         message: p.landmarks.length
           ? "已删除，可撤销恢复。"

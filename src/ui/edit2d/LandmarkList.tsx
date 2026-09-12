@@ -20,7 +20,7 @@ export default function LandmarkList() {
         data-landmark-id={x.id}
         draggable={center}
         className={[
-          x.id === s.selectedId ? "active" : "",
+          !s.selectedCurveId && x.id === s.selectedId ? "active" : "",
           drop?.id === x.id ? (drop.after ? "drop-after" : "drop-before") : "",
         ].join(" ")}
         title={center ? "拖动调整中心线顺序；Alt + 上下方向键也可排序" : x.name}

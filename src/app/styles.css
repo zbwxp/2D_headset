@@ -2271,3 +2271,15 @@ i:not([class]) {
 .order-grip { opacity: .5; }
 .point-list button.drop-before { box-shadow: inset 0 2px #ffc879; }
 .point-list button.drop-after { box-shadow: inset 0 -2px #ffc879; }
+
+.curve-panel { border-top: 1px solid #354148; padding: 10px; max-height: 42%; overflow: auto; flex-shrink: 0; }
+.curve-panel h3 { font-size: 13px; display: flex; justify-content: space-between; margin: 4px 0 10px; }
+.curve-panel button { font-size: 12px; padding: 7px; }
+.curve-panel p, .curve-create-note { font-size: 11px; line-height: 1.6; color: #9daeb6; }
+.curve-list { display: grid; gap: 3px; margin: 8px 0; }
+.curve-list button { justify-content: flex-start; }
+.curve-list button.active { background: #41364f; color: #f0d8ff; }
+.curve-actions { display: flex; gap: 4px; }
+.curve-plane { display: block; font-size: 12px; padding-top: 12px; }
+.curve-plane input { width: 100%; accent-color: #b9a2d3; }
+.curve-plane output { float: right; }

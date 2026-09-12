@@ -1,3 +1,4 @@
+import { sampleCurve } from "../../domain/curves/geometry";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -70,8 +71,33 @@ export default function InspectView() {
     });
     const guide = new THREE.Line(guideGeometry, guideMaterial);
     scene.add(guide);
+    const curveGeometry = new THREE.BufferGeometry();
+    const curveMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
+    const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
+    scene.add(curveLines);
     const update = () => {
       const s = useEditor.getState();
+      const vertices: number[] = [],
+        colors: number[] = [];
+      for (const c of s.project.curves) {
+        const samples = sampleCurve(s.project, c),
+          color = new THREE.Color(
+            c.id === s.selectedCurveId ? 0xf0d8ff : 0xab9fdd,
+          ).toArray();
+        for (let i = 1; i < samples.length; i++) {
+          vertices.push(...samples[i - 1], ...samples[i]);
+          colors.push(...color, ...color);
+        }
+      }
+      curveGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(vertices, 3),
+      );
+      curveGeometry.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(colors, 3),
+      );
+      curveGeometry.computeBoundingSphere();
       guideGeometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(centerlineGuide(s.project).flat(), 3),
@@ -104,8 +130,10 @@ export default function InspectView() {
       selectedGeometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(
-          s.project.landmarks.find((l) => l.id === s.selectedId)?.position ??
-            [],
+          s.selectedCurveId
+            ? []
+            : (s.project.landmarks.find((l) => l.id === s.selectedId)
+                ?.position ?? []),
           3,
         ),
       );
@@ -154,7 +182,7 @@ export default function InspectView() {
   return (
     <div className="point-inspect">
       <div ref={host} className="point-three" data-testid="point-inspect" />
-      <span className="point-view-label">PERSPECTIVE · 语义点检查</span>
+      <span className="point-view-label">PERSPECTIVE · 语义点与结构线</span>
       <button className="point-reset" onClick={() => reset.current()}>
         居中视图 ↗
       </button>

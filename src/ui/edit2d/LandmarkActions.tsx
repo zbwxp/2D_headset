@@ -1,3 +1,4 @@
+import { incidentCurveIds } from "../../domain/curves/management";
 import { useState } from "react";
 import { useEditor } from "../../app/store";
 import { landmarkBaseName } from "../../domain/landmarks/management";
@@ -24,7 +25,11 @@ export default function LandmarkActions() {
     <>
       <div className="landmark-actions">
         {(["duplicate", "rename", "delete"] as const).map((m, i) => (
-          <button key={m} disabled={!l} onClick={() => open(m)}>
+          <button
+            key={m}
+            disabled={!l || !!s.selectedCurveId || !!s.curveCreation}
+            onClick={() => open(m)}
+          >
             {["复制", "重命名", "删除"][i]}
           </button>
         ))}
@@ -73,6 +78,8 @@ export default function LandmarkActions() {
                 {l.mirrorPartnerId
                   ? "将同时删除左右两个点及其投影锚点。"
                   : "将删除此点及其投影锚点。"}
+                {incidentCurveIds(s.project, l.id).size > 0 &&
+                  ` 将同时删除 ${incidentCurveIds(s.project, l.id).size} 条相连结构线（含镜像侧）。`}
                 可通过撤销恢复。
               </p>
             ) : (

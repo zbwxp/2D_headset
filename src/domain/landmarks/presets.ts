@@ -62,7 +62,8 @@ export function createLandmarkProject(): LandmarkProject {
     canvas: { zoom: 1, pan: [0, 0] },
   }));
   return {
-    version: "landmarks-0.2",
+    version: "landmarks-0.3",
+    curves: [],
     meta: {
       name: "语义点头部研究",
       createdAt: Date.now(),

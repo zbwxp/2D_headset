@@ -1,3 +1,4 @@
+import CurveLayer from "../curves/CurveLayer";
 import { useRef } from "react";
 import { useEditor } from "../../app/store";
 import { project } from "../../domain/geometry/core";
@@ -178,7 +179,8 @@ export default function EditView() {
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
           />
-          {track && Math.hypot(...track) > 1e-8 && (
+          <CurveLayer view={v} />
+          {!s.selectedCurveId && track && Math.hypot(...track) > 1e-8 && (
             <line
               data-testid="allowed-track"
               x1={q[0] * 160 - track[0] * 2000}
@@ -197,7 +199,7 @@ export default function EditView() {
             ...(l ? [l] : []),
           ].map((x) => {
             const p = project(x.position, v),
-              selected = x.id === l?.id;
+              selected = !s.selectedCurveId && x.id === l?.id;
             return (
               <g key={x.id}>
                 <circle
@@ -219,10 +221,17 @@ export default function EditView() {
                   strokeWidth={selected ? 2.5 : 1.5}
                   vectorEffect="non-scaling-stroke"
                   style={{ cursor: "grab" }}
-                  onFocus={() => s.selectLandmark(x.id)}
+                  onFocus={() => {
+                    if (!s.curveCreation) s.selectLandmark(x.id);
+                  }}
                   onPointerDown={(e) => {
                     if (e.shiftKey || e.button !== 0) return;
                     e.stopPropagation();
+                    if (s.curveCreation) {
+                      e.preventDefault();
+                      s.pickCurveEndpoint(x.id);
+                      return;
+                    }
                     s.selectLandmark(x.id);
                     e.preventDefault();
                     e.currentTarget.focus({ preventScroll: true });
@@ -237,6 +246,13 @@ export default function EditView() {
                       s.notify("此点已固定，请解除上方列出的视图锁。");
                   }}
                   onKeyDown={(e) => {
+                    if (s.curveCreation) {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        s.pickCurveEndpoint(x.id);
+                      }
+                      return;
+                    }
                     const d: Record<string, Vec2> = {
                       ArrowLeft: [-1, 0],
                       ArrowRight: [1, 0],
@@ -300,6 +316,10 @@ export default function EditView() {
           <button onClick={() => s.setReferenceMoving(false)}>
             完成图片平移
           </button>
+        ) : s.curveCreation ? (
+          "选择两个语义点创建结构线 · Esc 取消"
+        ) : s.selectedCurveId ? (
+          "拖线弯曲 · 控制柄精调 · Shift 拖动平移"
         ) : (
           "拖动语义点 · 空白处 / Shift 拖动平移 · 滚轮缩放"
         )}
@@ -329,6 +349,7 @@ export function MiniPreview({ viewId }: { viewId: string }) {
           strokeDasharray="4 6"
         />
 
+        <CurveLayer view={v} readonly />
         {s.project.landmarks.map((l) => {
           const p = project(l.position, v);
           return (

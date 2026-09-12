@@ -1,3 +1,4 @@
+import CurvePanel from "../ui/curves/CurvePanel";
 import LandmarkList from "../ui/edit2d/LandmarkList";
 import LandmarkActions from "../ui/edit2d/LandmarkActions";
 import { useEffect, useRef } from "react";
@@ -25,6 +26,7 @@ import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
   const s = useEditor(),
     file = useRef<HTMLInputElement>(null),
+    curve = s.project.curves.find((c) => c.id === s.selectedCurveId),
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     free = l ? allowedBasis(s.project, l.id) : [],
     motion = l
@@ -40,6 +42,7 @@ export default function App() {
     partner = s.project.landmarks.find((x) => x.id === l?.mirrorPartnerId);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") useEditor.getState().cancelCurve();
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
       if (t.closest('[role="dialog"]')) return;
@@ -72,7 +75,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.2 · 语义点</span>
+          contour<span className="point-version">V0.3 · 平面结构线</span>
         </div>
         <input
           className="point-name"
@@ -134,6 +137,7 @@ export default function App() {
           </div>
           <LandmarkActions />
           <LandmarkList />
+          <CurvePanel />
           <div className="point-side-note">
             共享 3D 坐标
             <br />
@@ -190,11 +194,13 @@ export default function App() {
           </div>
           <div className="point-edit-basis" data-testid="edit-basis">
             <span>
-              {lockedViews.length
-                ? `移动基准：${lockedViews.map((v) => v.label).join("、")}锁约束`
-                : `移动基准：${activeView.label}相机平面（深度不变）`}
+              {curve
+                ? "曲线编辑：固定平面内弯曲；视图锁仅约束语义点"
+                : lockedViews.length
+                  ? `移动基准：${lockedViews.map((v) => v.label).join("、")}锁约束`
+                  : `移动基准：${activeView.label}相机平面（深度不变）`}
             </span>
-            {editAxes.length === 1 && (
+            {!curve && editAxes.length === 1 && (
               <code>
                 方向 X {editAxes[0][0].toFixed(2)} / Y{" "}
                 {editAxes[0][1].toFixed(2)} / Z {editAxes[0][2].toFixed(2)}
@@ -203,24 +209,31 @@ export default function App() {
           </div>
           <EditView />
           <div className="point-detail">
-            <strong>{l?.name ?? "未选中语义点"}</strong>
-            <span data-testid="dof">{free.length} DOF</span>
+            <strong>{curve?.name ?? l?.name ?? "未选中语义点"}</strong>
+            <span data-testid="dof">
+              {curve ? "Planar Bézier" : `${free.length} DOF`}
+            </span>
             <span data-testid="motion-status">
-              {!l
-                ? "空项目 · 撤销或打开项目恢复"
-                : motion.spatialDof === 0
-                  ? "已固定 · 解除视图锁以继续"
-                  : motion.screenDof === 0
-                    ? "仅剩视线方向移动 · 请换视图"
-                    : motion.screenDof === 1
-                      ? "当前视图：沿虚线移动"
-                      : "当前视图：平面内自由移动"}
+              {curve
+                ? "拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转"
+                : !l
+                  ? "空项目 · 撤销或打开项目恢复"
+                  : motion.spatialDof === 0
+                    ? "已固定 · 解除视图锁以继续"
+                    : motion.screenDof === 0
+                      ? "仅剩视线方向移动 · 请换视图"
+                      : motion.screenDof === 1
+                        ? "当前视图：沿虚线移动"
+                        : "当前视图：平面内自由移动"}
             </span>
           </div>
         </section>
         <section className="point-inspect-column">
           <div className="point-panel-title">
-            3D · 空间检查<span>{s.project.landmarks.length} 个语义点</span>
+            3D · 空间检查
+            <span>
+              {s.project.landmarks.length} 点 · {s.project.curves.length} 线
+            </span>
           </div>
           <InspectView />
           <div className="point-minis">
@@ -234,17 +247,23 @@ export default function App() {
       </main>
       <footer className="point-footer">
         <div>
-          <b>{l?.name ?? "空项目"}</b>
+          <b>{curve?.name ?? l?.name ?? "空项目"}</b>
           <code data-testid="position">
-            {l?.position.map((n) => n.toFixed(4)).join(" / ")}
+            {curve
+              ? "固定端点 · 平面内形状"
+              : l?.position.map((n) => n.toFixed(4)).join(" / ")}
           </code>
         </div>
         <span>
-          {partner
-            ? `Driver：${l?.name} → Follower：${partner.name}`
-            : l
-              ? "正中矢状面 x = 0"
-              : "无语义点"}
+          {curve
+            ? curve.mirrorPartnerCurveId
+              ? "左右镜像 · 一套独立形状"
+              : "正中矢状面曲线"
+            : partner
+              ? `Driver：${l?.name} → Follower：${partner.name}`
+              : l
+                ? "正中矢状面 x = 0"
+                : "无语义点"}
         </span>
         <span>
           显式视图锁：
