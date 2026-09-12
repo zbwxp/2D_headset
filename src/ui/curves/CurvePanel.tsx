@@ -1,3 +1,5 @@
+import InlineName from "../shared/InlineName";
+import { useUI } from "../session";
 import { useRef, useState } from "react";
 import { useEditor } from "../../app/store";
 import {
@@ -9,119 +11,84 @@ import {
 } from "../../domain/curves/geometry";
 export default function CurvePanel() {
   const s = useEditor(),
+    ui = useUI(),
     c = s.project.curves.find((c) => c.id === s.selectedCurveId);
-  const [mode, setMode] = useState<"rename" | "delete" | null>(null),
-    [name, setName] = useState(""),
-    [error, setError] = useState("");
   return (
-    <section className="curve-panel" aria-label="结构线">
-      <h3>
-        结构线 <span>{s.project.curves.length}</span>
-      </h3>
-      <button disabled={s.project.landmarks.length < 2} onClick={s.startCurve}>
-        创建曲线
+    <section
+      className={`sidebar-section curve-panel ${ui.curveCollapsed ? "collapsed" : ""}`}
+      aria-label="结构线"
+    >
+      <button
+        className="section-heading"
+        aria-expanded={!ui.curveCollapsed}
+        onClick={() => useUI.setState({ curveCollapsed: !ui.curveCollapsed })}
+      >
+        <span>{ui.curveCollapsed ? "▶" : "▼"} 结构线</span>
+        <span>{s.project.curves.length}</span>
       </button>
-      {s.curveCreation && (
-        <div className="curve-create-note">
-          {s.curveCreation.startId
-            ? `起点：${s.project.landmarks.find((l) => l.id === s.curveCreation!.startId)?.name}；请选择终点 B`
-            : "请选择起点 A"}
-          <button onClick={s.cancelCurve}>取消创建</button>
-        </div>
-      )}
-      <div className="curve-list">
-        {s.project.curves.map((x) => (
+      <div className="section-body" hidden={ui.curveCollapsed}>
+        {c && (
+          <div className="curve-current" data-testid="curve-current">
+            <strong>当前：{c.name}</strong>
+            <PlaneControl key={c.id} id={c.id} />
+          </div>
+        )}
+        <div className="curve-create">
           <button
-            key={x.id}
-            className={x.id === c?.id ? "active" : ""}
-            onClick={() => s.selectCurve(x.id)}
-            aria-label={x.name}
+            disabled={s.project.landmarks.length < 2}
+            onClick={s.startCurve}
           >
-            {x.name}
+            创建曲线
           </button>
-        ))}
-      </div>
-      {c && (
-        <>
-          <div className="curve-actions">
-            <button
-              onClick={() => {
-                setName(
-                  c.mirrorPartnerCurveId
-                    ? c.name.replace(/^[左右]/, "")
-                    : c.name,
-                );
-                setError("");
-                setMode("rename");
+          {s.curveCreation && (
+            <div className="curve-create-note">
+              {s.curveCreation.startId
+                ? `起点：${s.project.landmarks.find((l) => l.id === s.curveCreation!.startId)?.name}；请选择终点 B`
+                : "请选择起点 A"}
+              <button onClick={s.cancelCurve}>取消创建</button>
+            </div>
+          )}
+        </div>
+        <div className="curve-list">
+          {s.project.curves.map((x) => (
+            <div
+              role="button"
+              tabIndex={0}
+              key={x.id}
+              aria-label={x.name}
+              className={x.id === c?.id ? "active" : ""}
+              onClick={() => s.selectCurve(x.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  s.selectCurve(x.id);
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                s.selectCurve(x.id);
+                useUI.setState({
+                  menu: {
+                    target: { kind: "curve", id: x.id },
+                    x: e.clientX,
+                    y: e.clientY,
+                  },
+                });
               }}
             >
-              重命名结构线
-            </button>
-            <button onClick={() => setMode("delete")}>删除结构线</button>
-          </div>
-          <PlaneControl key={c.id} id={c.id} />
-          <p>
-            拖线改变弯曲 · 控制柄精调
-            <br />
-            视图锁仅约束端点
-          </p>
-        </>
-      )}
-      {mode && c && (
-        <div className="landmark-modal-backdrop">
-          <form
-            role="dialog"
-            aria-modal="true"
-            aria-label={mode === "delete" ? "删除结构线" : "重命名结构线"}
-            className="landmark-modal"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setMode(null);
-            }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              try {
-                if (mode === "delete") s.deleteCurve(c.id);
-                else s.renameCurve(c.id, name);
-                setMode(null);
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-          >
-            <strong>
-              {mode === "delete" ? "删除" : "重命名"}「{c.name}」
-            </strong>
-            {mode === "delete" ? (
-              <p>
-                {c.mirrorPartnerCurveId
-                  ? "将同时删除左右两条结构线。"
-                  : "将删除此结构线。"}
-                语义点保留，可撤销恢复。
-              </p>
-            ) : (
-              <label>
-                基础名称
-                <input
-                  aria-label="结构线名称"
-                  autoFocus
-                  value={name}
-                  maxLength={80}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
-            )}
-            {error && <p role="alert">{error}</p>}
-            <div>
-              <button type="button" onClick={() => setMode(null)}>
-                取消
-              </button>
-              <button type="submit">
-                {mode === "delete" ? "确认删除" : "确定"}
-              </button>
+              <InlineName
+                target={{ kind: "curve", id: x.id }}
+                name={x.name}
+                baseName={
+                  x.mirrorPartnerCurveId
+                    ? x.name.replace(/^[左右]/, "")
+                    : x.name
+                }
+              />
             </div>
-          </form>
+          ))}
         </div>
-      )}
+      </div>
     </section>
   );
 }

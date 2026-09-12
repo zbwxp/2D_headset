@@ -1,6 +1,7 @@
 import CurvePanel from "../ui/curves/CurvePanel";
 import LandmarkList from "../ui/edit2d/LandmarkList";
-import LandmarkActions from "../ui/edit2d/LandmarkActions";
+import EditorActions from "../ui/EditorActions";
+import { useUI } from "../ui/session";
 import { useEffect, useRef } from "react";
 import {
   Undo2,
@@ -24,6 +25,7 @@ import { parseLandmarks } from "../domain/landmarks/persistence";
 import EditView, { MiniPreview } from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
+  const ui = useUI();
   const s = useEditor(),
     file = useRef<HTMLInputElement>(null),
     curve = s.project.curves.find((c) => c.id === s.selectedCurveId),
@@ -45,7 +47,12 @@ export default function App() {
       if (e.key === "Escape") useEditor.getState().cancelCurve();
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
-      if (t.closest('[role="dialog"]')) return;
+      if (
+        t.closest(
+          '[role="dialog"],[data-ui-keyboard],[contenteditable]:not([contenteditable="false"])',
+        )
+      )
+        return;
       if (
         t instanceof HTMLTextAreaElement ||
         (t instanceof HTMLInputElement && ["text", "number"].includes(t.type))
@@ -75,7 +82,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.3 · 平面结构线</span>
+          contour<span className="point-version">V0.3.1 · 平面结构线</span>
         </div>
         <input
           className="point-name"
@@ -130,13 +137,39 @@ export default function App() {
           }}
         />
       </header>
-      <main className="point-workspace">
+      <main
+        className="point-workspace"
+        tabIndex={-1}
+        onPointerDownCapture={(e) => {
+          const t = e.target as HTMLElement;
+          if (
+            e.currentTarget.contains(t) &&
+            !t.closest(
+              'input,textarea,button,[contenteditable],[role="button"]',
+            )
+          )
+            e.currentTarget.focus({ preventScroll: true });
+        }}
+      >
         <aside className="point-sidebar">
-          <div className="point-side-heading">
-            语义点 <span>{s.project.landmarks.length}</span>
-          </div>
-          <LandmarkActions />
-          <LandmarkList />
+          <section
+            className={`sidebar-section landmark-section ${ui.landmarkCollapsed ? "collapsed" : ""}`}
+            aria-label="语义点"
+          >
+            <button
+              className="section-heading"
+              aria-expanded={!ui.landmarkCollapsed}
+              onClick={() =>
+                useUI.setState({ landmarkCollapsed: !ui.landmarkCollapsed })
+              }
+            >
+              <span>{ui.landmarkCollapsed ? "▶" : "▼"} 语义点</span>
+              <span>{s.project.landmarks.length}</span>
+            </button>
+            <div className="section-body" hidden={ui.landmarkCollapsed}>
+              <LandmarkList />
+            </div>
+          </section>
           <CurvePanel />
           <div className="point-side-note">
             共享 3D 坐标
@@ -281,6 +314,7 @@ export default function App() {
         </span>
         <span>撤销 {s.past.length} / 100</span>
       </footer>
+      <EditorActions />
       {s.message && (
         <div
           role="status"

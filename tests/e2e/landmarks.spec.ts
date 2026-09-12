@@ -129,10 +129,9 @@ test("reference transforms preserve point locks; history and save/load roundtrip
   await page.mouse.move(b!.x + 60, b!.y + 180);
   await page.mouse.up();
   await page.getByRole("button", { name: "完成图片平移" }).click();
-  await page.getByRole("button", { name: "参考图设置" }).click();
   await page.getByRole("button", { name: "锁定参考图", exact: true }).click();
   await expect(page.getByLabel("图片缩放", { exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "关闭参考图设置" }).click();
+  await page.getByRole("button", { name: "关闭参考照片设置" }).click();
   await page.getByTestId("point-editor").hover();
   await page.mouse.wheel(0, -200);
   await page.setViewportSize({ width: 1280, height: 900 });

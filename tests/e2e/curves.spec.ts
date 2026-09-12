@@ -146,19 +146,17 @@ test("endpoint transport, duplicate and cascade history; multiple edges and pair
     .locator(".curve-list")
     .getByRole("button", { name: selected.name, exact: true })
     .click();
-  await page.getByRole("button", { name: "重命名结构线", exact: true }).click();
+  await page.locator(".curve-list .active .entity-name").dblclick();
   await page.getByLabel("结构线名称").fill("上眼睑线");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "确定", exact: true })
-    .click();
+  await page.getByLabel("结构线名称").press("Enter");
   expect(
     (await state(page)).curves
       .slice(-2)
       .map((c: any) => c.name)
       .sort(),
   ).toEqual(["右上眼睑线", "左上眼睑线"].sort());
-  await page.getByRole("button", { name: "删除结构线", exact: true }).click();
+  await page.locator(".point-workspace").focus();
+  await page.keyboard.press("Delete");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "确认删除", exact: true })
@@ -167,10 +165,7 @@ test("endpoint transport, duplicate and cascade history; multiple edges and pair
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   const cascade = await state(page);
   await pick(page, "右眉头点");
-  await page
-    .locator(".landmark-actions")
-    .getByRole("button", { name: "删除", exact: true })
-    .click();
+  await page.keyboard.press("Delete");
   await expect(page.getByRole("dialog")).toContainText("4 条相连结构线");
   await page
     .getByRole("dialog")
@@ -234,12 +229,6 @@ test("V0.2 autosave migration preserves original data and compact layout support
   ).toEqual(legacy);
   await create(page, "右眉头点", "右眉尾点");
   expect((await state(page)).curves.length).toBe(2);
-  await expect(
-    page.getByRole("button", { name: "删除结构线", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator(".landmark-actions")
-      .getByRole("button", { name: "删除", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByTestId("curve-current")).toBeVisible();
+  await expect(page.locator(".landmark-actions")).toHaveCount(0);
 });

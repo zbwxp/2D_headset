@@ -96,9 +96,9 @@ interface State {
   load: (p: LandmarkProject) => void;
   reset: () => void;
   rename: (n: string) => void;
-  duplicateSelected: (name: string) => void;
-  renameSelected: (name: string) => void;
-  deleteSelected: () => void;
+  duplicateSelected: (name: string, sourceId?: string) => void;
+  renameSelected: (name: string, sourceId?: string) => void;
+  deleteSelected: (sourceId?: string) => void;
   reorderCenterline: (id: string, targetId: string, after: boolean) => void;
 }
 function persist(p: LandmarkProject) {
@@ -324,20 +324,21 @@ export const useEditor = create<State>((set, get) => {
       });
       persist(p);
     },
-    duplicateSelected: (name) => {
-      const s = get();
+    duplicateSelected: (name, sourceId) => {
+      const s = { ...get(), selectedId: sourceId ?? get().selectedId };
       if (!s.selectedId) return;
       const result = duplicateLandmark(s.project, s.selectedId, name);
       s.beginEdit();
       set({
         project: result.project,
         selectedId: result.selectedId,
+        selectedCurveId: null,
         message: "已复制；新点立即遵循当前视图锁。",
       });
       persist(result.project);
     },
-    renameSelected: (name) => {
-      const s = get();
+    renameSelected: (name, sourceId) => {
+      const s = { ...get(), selectedId: sourceId ?? get().selectedId };
       if (!s.selectedId) return;
       const p = renameLandmark(s.project, s.selectedId, name);
       s.beginEdit();
@@ -350,8 +351,8 @@ export const useEditor = create<State>((set, get) => {
       s.beginEdit();
       commit(p);
     },
-    deleteSelected: () => {
-      const s = get();
+    deleteSelected: (sourceId) => {
+      const s = { ...get(), selectedId: sourceId ?? get().selectedId };
       if (!s.selectedId) return;
       const p = deleteLandmark(s.project, s.selectedId);
       s.beginEdit();

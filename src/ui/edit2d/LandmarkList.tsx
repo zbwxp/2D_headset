@@ -1,3 +1,6 @@
+import InlineName from "../shared/InlineName";
+import { useUI } from "../session";
+import { landmarkBaseName } from "../../domain/landmarks/management";
 import { useState } from "react";
 import { LockKeyhole } from "lucide-react";
 import { useEditor } from "../../app/store";
@@ -14,19 +17,36 @@ export default function LandmarkList() {
   const renderPoint = (x: SemanticLandmark) => {
     const center = x.type === "CENTERLINE";
     return (
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         key={x.id}
         aria-label={x.name}
         data-landmark-id={x.id}
-        draggable={center}
+        draggable={center && useUI.getState().renameTarget?.id !== x.id}
         className={[
           !s.selectedCurveId && x.id === s.selectedId ? "active" : "",
           drop?.id === x.id ? (drop.after ? "drop-after" : "drop-before") : "",
         ].join(" ")}
         title={center ? "拖动调整中心线顺序；Alt + 上下方向键也可排序" : x.name}
         onClick={() => s.selectLandmark(x.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          s.selectLandmark(x.id);
+          useUI.setState({
+            menu: {
+              target: { kind: "landmark", id: x.id },
+              x: e.clientX,
+              y: e.clientY,
+            },
+          });
+        }}
         onDragStart={(e) => {
           if (!center) return;
+          if (useUI.getState().renameTarget?.id === x.id) {
+            e.preventDefault();
+            return;
+          }
           setDragging(x.id);
           e.dataTransfer.setData("text/plain", x.id);
           e.dataTransfer.effectAllowed = "move";
@@ -55,6 +75,11 @@ export default function LandmarkList() {
           setDrop(null);
         }}
         onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            s.selectLandmark(x.id);
+            return;
+          }
           if (!center || !e.altKey || !["ArrowUp", "ArrowDown"].includes(e.key))
             return;
           e.preventDefault();
@@ -82,11 +107,15 @@ export default function LandmarkList() {
         >
           ●
         </span>
-        {x.name}
+        <InlineName
+          target={{ kind: "landmark", id: x.id }}
+          name={x.name}
+          baseName={landmarkBaseName(x)}
+        />
         {Object.keys(driverLocks(s.project, x.id)).length > 0 && (
           <LockKeyhole size={12} />
         )}
-      </button>
+      </div>
     );
   };
   return (

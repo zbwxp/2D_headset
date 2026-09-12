@@ -8,18 +8,25 @@ async function choose(p: Page, n: string) {
     .click();
 }
 async function action(p: Page, label: string, name?: string) {
-  await p
-    .locator(".landmark-actions")
-    .getByRole("button", { name: label, exact: true })
-    .click();
-  if (name !== undefined) await p.getByLabel("语义点名称").fill(name);
-  await p
-    .getByRole("dialog")
-    .getByRole("button", {
-      name: label === "删除" ? "确认删除" : "确定",
-      exact: true,
-    })
-    .click();
+  if (label === "重命名") {
+    await p.locator(".point-list .active .entity-name").dblclick();
+    await p.getByLabel("语义点名称").fill(name!);
+    await p.getByLabel("语义点名称").press("Enter");
+  } else {
+    await p.locator(".point-workspace").focus();
+    await p.keyboard.press(label === "复制" ? "Control+c" : "Delete");
+    if (label === "复制") {
+      await p.getByLabel("语义点名称").fill(name!);
+      await p
+        .getByRole("region", { name: "复制语义点", exact: true })
+        .getByRole("button", { name: "复制", exact: true })
+        .click();
+    } else
+      await p
+        .getByRole("dialog")
+        .getByRole("button", { name: "确认删除", exact: true })
+        .click();
+  }
 }
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -124,21 +131,21 @@ test("empty project remains legal, preserves locks, Undo restores, JSON load sup
   page.on("pageerror", (e) => errors.push(e.message));
   await page.getByLabel("锁定此视图全部点").check();
   for (let i = 0; i < 13; i++) await action(page, "删除");
-  await expect(page.locator(".point-list button")).toHaveCount(0);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(0);
+  await page.locator(".point-workspace").focus();
+  await page.keyboard.press("Control+c");
   await expect(
-    page
-      .locator(".landmark-actions")
-      .getByRole("button", { name: "复制", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("region", { name: "复制语义点", exact: true }),
+  ).toHaveCount(0);
   const empty = await state(page);
   expect(empty.lockedViews).toEqual(["front"]);
   await expect(page.getByLabel("锁定此视图全部点")).toBeChecked();
   await page.keyboard.press("Control+z");
-  await expect(page.locator(".point-list button")).toHaveCount(2);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(2);
   await page.keyboard.press("Control+Shift+z");
-  await expect(page.locator(".point-list button")).toHaveCount(0);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(0);
   await page.reload();
-  await expect(page.locator(".point-list button")).toHaveCount(0);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(0);
   await expect(page.getByLabel("锁定此视图全部点")).toBeChecked();
   await page
     .locator('input[type=file][accept=".json,application/json"]')
@@ -147,7 +154,7 @@ test("empty project remains legal, preserves locks, Undo restores, JSON load sup
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(empty)),
     });
-  await expect(page.locator(".point-list button")).toHaveCount(0);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(0);
   await page.getByLabel("锁定此视图全部点").uncheck();
   expect((await state(page)).lockedViews).toEqual([]);
   await page.keyboard.press("Control+z");

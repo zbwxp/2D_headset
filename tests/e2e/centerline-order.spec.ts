@@ -49,7 +49,7 @@ test("centerline drag order persists without geometry changes, supports history 
     .toEqual(after.centerlineOrder);
   expect(
     await group
-      .locator("button")
+      .locator("[data-landmark-id]")
       .evaluateAll((nodes) =>
         nodes.map((n) => n.getAttribute("data-landmark-id")),
       ),

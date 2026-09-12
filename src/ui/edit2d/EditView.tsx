@@ -41,7 +41,7 @@ export default function EditView() {
   };
   return (
     <div className="point-stage">
-      <ReferenceControls key={v.id} viewId={v.id} />
+      <ReferenceControls viewId={v.id} />
       <span className="point-view-label">{v.label} · 正交投影</span>
       <svg
         ref={svg}
