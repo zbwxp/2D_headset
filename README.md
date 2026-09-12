@@ -1,15 +1,17 @@
-# Contour — Semantic Point Editor V0.1
+# Contour — Semantic Landmark Management V0.2
 
-当前版本只编辑 20 个共享三维语义点。视图锁约束 driver，镜像伙伴作为 dependent follower 跟随，不额外消耗自由度；中心线点保持 x=0。二维视图使用正交投影；3D 视口仅检查点的位置。
+共享三维语义点支持复制、重命名、删除。初始点与新增点完全平等。视图锁约束 driver，镜像伙伴作为 dependent follower 跟随；投影、受限拖动和对称数学沿用 V0.1。
 
 ```sh
 npm ci
 npm run dev -- --port 5173
 ```
 
-打开 http://127.0.0.1:5173/。参考图可加载、平移、缩放、旋转、调整透明度和锁定。支持 JSON 保存 / 载入、本机自动保存、100 步会话撤销。
+打开 http://127.0.0.1:5173/。支持参考图、100 步 Undo/Redo、JSON 和本机自动保存、空项目。
 
-完整实现说明、文件列表、手工验收及已知限制见 [V0.1 文档](docs/semantic-points-v01.md)。
+[V0.2 使用与实现说明](docs/semantic-points-v02.md)
+
+Git 基线：`v0.1-landmark-editor` (`7a40cd0`)；开发分支：`v0.2-landmark-management`。旧 surface/solver 及历史测试保留。
 
 ```sh
 npm run build
@@ -17,4 +19,4 @@ npm test
 npm run test:e2e
 ```
 
-旧曲面 solver 已从应用调用路径移除，其源文件和测试仅保留供历史参考。未实现 Curve、Surface 或 V0.2。
+本版本不实现 Curve、Bézier、Surface 或 Patch。

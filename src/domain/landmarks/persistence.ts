@@ -11,10 +11,10 @@ export function parseLandmarks(text: string): LandmarkProject {
   const p = JSON.parse(text) as LandmarkProject;
   const check = (ok: unknown) => {
     if (!ok)
-      throw new Error("文件不是有效的 V0.1 语义点项目；旧曲面项目请保留备份。");
+      throw new Error("文件不是有效的语义点项目；旧曲面项目请保留备份。");
   };
   check(
-    p?.version === "landmarks-0.1" &&
+    (p?.version === "landmarks-0.1" || p?.version === "landmarks-0.2") &&
       p.meta &&
       typeof p.meta.name === "string" &&
       finite(p.meta.createdAt) &&
@@ -24,9 +24,7 @@ export function parseLandmarks(text: string): LandmarkProject {
     Array.isArray(p.views) &&
       p.views.length > 0 &&
       p.views.length <= 30 &&
-      Array.isArray(p.landmarks) &&
-      p.landmarks.length > 0 &&
-      p.landmarks.length <= 1000,
+      Array.isArray(p.landmarks),
   );
   const viewIds = new Set<string>();
   for (const v of p.views) {
@@ -71,6 +69,12 @@ export function parseLandmarks(text: string): LandmarkProject {
       );
     }
   }
+  if (p.lockedViews !== undefined)
+    check(
+      Array.isArray(p.lockedViews) &&
+        new Set(p.lockedViews).size === p.lockedViews.length &&
+        p.lockedViews.every((id) => viewIds.has(id)),
+    );
   const ids = new Set<string>();
   for (const l of p.landmarks) {
     check(
@@ -125,7 +129,12 @@ export function parseLandmarks(text: string): LandmarkProject {
   }
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
-    version: p.version,
+    version: "landmarks-0.2",
+    lockedViews:
+      p.lockedViews ??
+      p.views
+        .filter((v) => p.landmarks.some((l) => l.viewLocks[v.id]))
+        .map((v) => v.id),
     meta: p.meta,
     views: ensureObliqueViews(
       p.views.map((v) => ({

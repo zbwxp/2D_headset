@@ -62,12 +62,13 @@ export function createLandmarkProject(): LandmarkProject {
     canvas: { zoom: 1, pan: [0, 0] },
   }));
   return {
-    version: "landmarks-0.1",
+    version: "landmarks-0.2",
     meta: {
       name: "语义点头部研究",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     },
+    lockedViews: [],
     landmarks,
     views: ensureObliqueViews(views),
   };

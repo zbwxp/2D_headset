@@ -1,3 +1,8 @@
+import {
+  duplicateLandmark,
+  renameLandmark,
+  deleteLandmark,
+} from "../domain/landmarks/management";
 import { create } from "zustand";
 import type { ReferenceImage, Vec2 } from "../domain/project/types";
 import type { LandmarkProject } from "../domain/landmarks/model";
@@ -13,11 +18,12 @@ import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
 import { project } from "../domain/geometry/core";
 export const HISTORY_LIMIT = 100;
-const KEY = "contour.landmarks.v01";
+const KEY = "contour.landmarks.v02";
 let initial = createLandmarkProject(),
   message = "";
 try {
-  const saved = localStorage.getItem(KEY);
+  const saved =
+    localStorage.getItem(KEY) ?? localStorage.getItem("contour.landmarks.v01");
   if (saved) initial = parseLandmarks(saved);
   else {
     const old = localStorage.getItem("contour.project.v1");
@@ -44,7 +50,7 @@ try {
 interface State {
   project: LandmarkProject;
   viewId: string;
-  selectedId: string;
+  selectedId: string | null;
   past: LandmarkProject[];
   future: LandmarkProject[];
   message: string;
@@ -64,6 +70,9 @@ interface State {
   load: (p: LandmarkProject) => void;
   reset: () => void;
   rename: (n: string) => void;
+  duplicateSelected: (name: string) => void;
+  renameSelected: (name: string) => void;
+  deleteSelected: () => void;
 }
 function persist(p: LandmarkProject) {
   try {
@@ -80,7 +89,7 @@ export const useEditor = create<State>((set, get) => {
   return {
     project: initial,
     viewId: initial.views[0].id,
-    selectedId: initial.landmarks[0].id,
+    selectedId: initial.landmarks[0]?.id ?? null,
     past: [],
     future: [],
     message,
@@ -92,6 +101,7 @@ export const useEditor = create<State>((set, get) => {
       })),
     selectView: (id) => set({ viewId: id, referenceMoving: false }),
     selectLandmark: (id) => {
+      if (!get().project.landmarks.some((l) => l.id === id)) return;
       const p = activateDriver(get().project, id);
       set({ project: p, selectedId: id, message: "" });
       persist(p);
@@ -120,6 +130,7 @@ export const useEditor = create<State>((set, get) => {
       const current = get(),
         s = { ...current, project: activateDriver(current.project, id) },
         l = s.project.landmarks.find((l) => l.id === id)!;
+      if (!l) return;
       if (!allowedBasis(s.project, id).length) {
         set({ message: "此点被硬约束固定，请解除上方列出的视图锁。" });
         return;
@@ -151,7 +162,9 @@ export const useEditor = create<State>((set, get) => {
         v = s.project.views.find((v) => v.id === viewId);
       if (!v || viewIsLocked(s.project, viewId) === locked) return;
       s.beginEdit();
-      commit(setGlobalViewLock(s.project, viewId, locked, s.selectedId));
+      commit(
+        setGlobalViewLock(s.project, viewId, locked, s.selectedId ?? undefined),
+      );
       set({
         message: `${v.label}：${locked ? "已启用视图锁；成对点仅约束 driver" : "已解除该视图锁"}`,
       });
@@ -166,7 +179,7 @@ export const useEditor = create<State>((set, get) => {
         future: [s.project, ...s.future],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
           ? s.selectedId
-          : p.landmarks[0].id,
+          : (p.landmarks[0]?.id ?? null),
         viewId: p.views.some((v) => v.id === s.viewId)
           ? s.viewId
           : p.views[0].id,
@@ -184,7 +197,7 @@ export const useEditor = create<State>((set, get) => {
         past: [...s.past, s.project],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
           ? s.selectedId
-          : p.landmarks[0].id,
+          : (p.landmarks[0]?.id ?? null),
         viewId: p.views.some((v) => v.id === s.viewId)
           ? s.viewId
           : p.views[0].id,
@@ -197,9 +210,42 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         viewId: p.views[0].id,
-        selectedId: p.landmarks[0].id,
+        selectedId: p.landmarks[0]?.id ?? null,
         referenceMoving: false,
         message: "已载入语义点项目",
+      });
+      persist(p);
+    },
+    duplicateSelected: (name) => {
+      const s = get();
+      if (!s.selectedId) return;
+      const result = duplicateLandmark(s.project, s.selectedId, name);
+      s.beginEdit();
+      set({
+        project: result.project,
+        selectedId: result.selectedId,
+        message: "已复制；新点立即遵循当前视图锁。",
+      });
+      persist(result.project);
+    },
+    renameSelected: (name) => {
+      const s = get();
+      if (!s.selectedId) return;
+      const p = renameLandmark(s.project, s.selectedId, name);
+      s.beginEdit();
+      commit(p);
+    },
+    deleteSelected: () => {
+      const s = get();
+      if (!s.selectedId) return;
+      const p = deleteLandmark(s.project, s.selectedId);
+      s.beginEdit();
+      set({
+        project: p,
+        selectedId: p.landmarks[0]?.id ?? null,
+        message: p.landmarks.length
+          ? "已删除，可撤销恢复。"
+          : "所有点已删除，可通过撤销或打开项目恢复。",
       });
       persist(p);
     },

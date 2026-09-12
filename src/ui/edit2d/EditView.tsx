@@ -11,7 +11,7 @@ import ReferenceControls from "./ReferenceControls";
 export default function EditView() {
   const s = useEditor(),
     v = s.project.views.find((v) => v.id === s.viewId)!,
-    l = s.project.landmarks.find((l) => l.id === s.selectedId)!,
+    l = s.project.landmarks.find((l) => l.id === s.selectedId),
     { zoom, pan } = v.canvas,
     ref = v.reference;
   const svg = useRef<SVGSVGElement>(null),
@@ -32,8 +32,8 @@ export default function EditView() {
     (p[0] - pan[0]) / zoom / 160,
     -(p[1] - pan[1]) / zoom / 160,
   ];
-  const motion = motionState(s.project, l.id, v),
-    q = project(l.position, v);
+  const motion = l ? motionState(s.project, l.id, v) : { track: null },
+    q = l ? project(l.position, v) : [0, 0];
   const track = motion.track ? [motion.track[0], -motion.track[1]] : null;
   const end = () => {
     drag.current = null;
@@ -192,9 +192,12 @@ export default function EditView() {
               pointerEvents="none"
             />
           )}
-          {[...s.project.landmarks.filter((x) => x.id !== l.id), l].map((x) => {
+          {[
+            ...s.project.landmarks.filter((x) => x.id !== l?.id),
+            ...(l ? [l] : []),
+          ].map((x) => {
             const p = project(x.position, v),
-              selected = x.id === l.id;
+              selected = x.id === l?.id;
             return (
               <g key={x.id}>
                 <circle
@@ -269,6 +272,9 @@ export default function EditView() {
           })}
         </g>
       </svg>
+      {!l && (
+        <div className="landmark-empty">没有语义点。可撤销删除或打开项目。</div>
+      )}
       <div className="point-canvas-tools">
         <button
           onClick={() =>

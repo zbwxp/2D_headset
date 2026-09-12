@@ -104,10 +104,8 @@ export default function InspectView() {
       selectedGeometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(
-          (
-            s.project.landmarks.find((l) => l.id === s.selectedId) ??
-            s.project.landmarks[0]
-          ).position,
+          s.project.landmarks.find((l) => l.id === s.selectedId)?.position ??
+            [],
           3,
         ),
       );

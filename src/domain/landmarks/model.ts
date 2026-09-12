@@ -15,8 +15,9 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
-  version: "landmarks-0.1";
+  version: "landmarks-0.1" | "landmarks-0.2";
   meta: { name: string; createdAt: number; updatedAt: number };
+  lockedViews?: string[];
   landmarks: SemanticLandmark[];
   views: LandmarkView[];
 }
@@ -131,7 +132,9 @@ export function centerlineGuide(p: LandmarkProject): Vec3[] {
 }
 
 export const viewIsLocked = (p: LandmarkProject, viewId: string) =>
-  p.landmarks.some((l) => Boolean(l.viewLocks[viewId]));
+  p.lockedViews
+    ? p.lockedViews.includes(viewId)
+    : p.landmarks.some((l) => Boolean(l.viewLocks[viewId]));
 
 /** Locks belong to the pair's driver. Reading from the other side previews a role swap. */
 export function driverLocks(
@@ -206,6 +209,9 @@ export function setGlobalViewLock(
   }
   return {
     ...result,
+    lockedViews: result.views
+      .filter((v) => (v.id === viewId ? locked : viewIsLocked(result, v.id)))
+      .map((v) => v.id),
     landmarks: result.landmarks.map((l) => {
       const viewLocks = { ...l.viewLocks };
       if (locked && drivers.has(l.id))
@@ -219,6 +225,7 @@ export function setGlobalViewLock(
 /** Compare model/camera/lock state across browser-local saves, independently of layout and canvas zoom. */
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
+    lockedViews: p.lockedViews,
     landmarks: p.landmarks,
     views: p.views.map((v) => ({ id: v.id, camera: v.camera })),
   });

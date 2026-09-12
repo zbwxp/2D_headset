@@ -1,3 +1,4 @@
+import LandmarkActions from "../ui/edit2d/LandmarkActions";
 import { useEffect, useRef } from "react";
 import {
   Undo2,
@@ -24,21 +25,24 @@ import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
   const s = useEditor(),
     file = useRef<HTMLInputElement>(null),
-    l = s.project.landmarks.find((l) => l.id === s.selectedId)!,
-    free = allowedBasis(s.project, l.id),
-    motion = motionState(
-      s.project,
-      l.id,
-      s.project.views.find((v) => v.id === s.viewId)!,
-    ),
+    l = s.project.landmarks.find((l) => l.id === s.selectedId),
+    free = l ? allowedBasis(s.project, l.id) : [],
+    motion = l
+      ? motionState(
+          s.project,
+          l.id,
+          s.project.views.find((v) => v.id === s.viewId)!,
+        )
+      : { spatialDof: 0, screenDof: 0, track: null },
     activeView = s.project.views.find((v) => v.id === s.viewId)!,
-    editAxes = editingBasis(s.project, l.id, activeView),
+    editAxes = l ? editingBasis(s.project, l.id, activeView) : [],
     lockedViews = s.project.views.filter((v) => viewIsLocked(s.project, v.id)),
-    partner = s.project.landmarks.find((x) => x.id === l.mirrorPartnerId);
+    partner = s.project.landmarks.find((x) => x.id === l?.mirrorPartnerId);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
+      if (t.closest('[role="dialog"]')) return;
       if (
         t instanceof HTMLTextAreaElement ||
         (t instanceof HTMLInputElement && ["text", "number"].includes(t.type))
@@ -68,7 +72,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.1.3 · 语义点</span>
+          contour<span className="point-version">V0.2 · 语义点</span>
         </div>
         <input
           className="point-name"
@@ -93,7 +97,7 @@ export default function App() {
           >
             <Redo2 size={17} />
           </button>
-          <button onClick={s.reset}>
+          <button disabled={!s.project.landmarks.length} onClick={s.reset}>
             <Plus size={16} />
             新建
           </button>
@@ -128,12 +132,13 @@ export default function App() {
           <div className="point-side-heading">
             语义点 <span>{s.project.landmarks.length}</span>
           </div>
+          <LandmarkActions />
           <div className="point-list">
             {s.project.landmarks.map((x) => (
               <button
                 key={x.id}
                 aria-label={x.name}
-                className={x.id === l.id ? "active" : ""}
+                className={x.id === l?.id ? "active" : ""}
                 onClick={() => s.selectLandmark(x.id)}
               >
                 <span
@@ -224,22 +229,24 @@ export default function App() {
           </div>
           <EditView />
           <div className="point-detail">
-            <strong>{l.name}</strong>
+            <strong>{l?.name ?? "未选中语义点"}</strong>
             <span data-testid="dof">{free.length} DOF</span>
             <span data-testid="motion-status">
-              {motion.spatialDof === 0
-                ? "已固定 · 解除视图锁以继续"
-                : motion.screenDof === 0
-                  ? "仅剩视线方向移动 · 请换视图"
-                  : motion.screenDof === 1
-                    ? "当前视图：沿虚线移动"
-                    : "当前视图：平面内自由移动"}
+              {!l
+                ? "空项目 · 撤销或打开项目恢复"
+                : motion.spatialDof === 0
+                  ? "已固定 · 解除视图锁以继续"
+                  : motion.screenDof === 0
+                    ? "仅剩视线方向移动 · 请换视图"
+                    : motion.screenDof === 1
+                      ? "当前视图：沿虚线移动"
+                      : "当前视图：平面内自由移动"}
             </span>
           </div>
         </section>
         <section className="point-inspect-column">
           <div className="point-panel-title">
-            3D · 空间检查<span>20 个初始语义点</span>
+            3D · 空间检查<span>{s.project.landmarks.length} 个语义点</span>
           </div>
           <InspectView />
           <div className="point-minis">
@@ -253,15 +260,17 @@ export default function App() {
       </main>
       <footer className="point-footer">
         <div>
-          <b>{l.name}</b>
+          <b>{l?.name ?? "空项目"}</b>
           <code data-testid="position">
-            {l.position.map((n) => n.toFixed(4)).join(" / ")}
+            {l?.position.map((n) => n.toFixed(4)).join(" / ")}
           </code>
         </div>
         <span>
           {partner
-            ? `Driver：${l.name} → Follower：${partner.name}`
-            : "正中矢状面 x = 0"}
+            ? `Driver：${l?.name} → Follower：${partner.name}`
+            : l
+              ? "正中矢状面 x = 0"
+              : "无语义点"}
         </span>
         <span>
           显式视图锁：
