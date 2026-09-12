@@ -1,0 +1,7 @@
+{
+  "purpose": "Optional external VLM screenshot review; no service is called automatically.",
+  "screenshots": ["tests/e2e/visual.spec.ts-snapshots/front-edit-darwin.png", "tests/e2e/visual.spec.ts-snapshots/side-edit-darwin.png", "tests/e2e/visual.spec.ts-snapshots/diagonal-edit-darwin.png", "tests/e2e/visual.spec.ts-snapshots/clay-inspect-darwin.png", "tests/e2e/visual.spec.ts-snapshots/wire-inspect-darwin.png", "tests/e2e/visual.spec.ts-snapshots/conflict-errors-darwin.png"],
+  "questions": ["Does the 3D viewport contain a visible ellipsoid/head surface?", "Are target and current projection curves distinguishable?", "Are labels or controls overlapping?", "Are semantic rings attached to the visible surface?", "Are obvious holes, spikes, or broken triangles visible?"],
+  "responseShape": {"visibleMesh": "boolean", "curveAlignment": "pass|fail|uncertain", "uiOverlap": "none|describe", "surfaceArtifacts": "string[]", "confidence": "0..1"},
+  "limitations": "Visual checks cannot establish solver optimality, hidden-constraint feasibility, or production topology quality. Numerical tests remain required."
+}
