@@ -1,3 +1,6 @@
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import {pickCurve, type CurveSegment} from "./picking";
 import {tessellate} from "../../domain/patches/geometry";
 import {defaultDisplay} from "../../domain/patches/model";
@@ -79,6 +82,13 @@ export default function InspectView() {
     const curveMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
     const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
     scene.add(curveLines);
+    // WebGL native linewidth is often fixed at one pixel; use screen-space wide lines.
+    let boundaryGeometry = new LineSegmentsGeometry();
+    const boundaryMaterial = new LineMaterial({color:0xffcf70,linewidth:4,worldUnits:false,depthTest:false,depthWrite:false,transparent:true});
+    const boundaryHighlight = new LineSegments2(boundaryGeometry,boundaryMaterial);
+    boundaryHighlight.renderOrder=9;
+    boundaryHighlight.visible=false;
+    scene.add(boundaryHighlight);
     const patchGeometry=new THREE.BufferGeometry();
     const patchMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false});
     const patchMesh=new THREE.Mesh(patchGeometry,patchMaterial);scene.add(patchMesh);
@@ -127,6 +137,7 @@ export default function InspectView() {
       patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
       patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();
       patchMaterial.opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;patchMesh.visible=patchMaterial.opacity>0;
+      const boundaryVertices: number[] = [];
       const vertices: number[] = [],
         colors: number[] = [];
       for (const c of s.project.curves) {
@@ -144,10 +155,16 @@ export default function InspectView() {
           ).toArray();
         for (let i = 1; i < samples.length; i++) {
           curveSegments.push({id:c.id,a:new THREE.Vector3(...samples[i-1]),b:new THREE.Vector3(...samples[i])});
+          if(s.patchCreation?.includes(c.id)) boundaryVertices.push(...samples[i-1],...samples[i]);
           vertices.push(...samples[i - 1], ...samples[i]);
           colors.push(...color, ...color);
         }
       }
+      boundaryGeometry.dispose();
+      boundaryGeometry=new LineSegmentsGeometry();
+      boundaryHighlight.geometry=boundaryGeometry;
+      boundaryHighlight.visible=boundaryVertices.length>0;
+      if(boundaryVertices.length) boundaryGeometry.setPositions(boundaryVertices);
       curveGeometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(vertices, 3),
@@ -205,6 +222,7 @@ export default function InspectView() {
         h = element.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h);
+      boundaryMaterial.resolution.set(w,h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     });
@@ -243,6 +261,7 @@ export default function InspectView() {
           Array.isArray(m) ? m.forEach((x) => x.dispose()) : m.dispose();
         }
       });
+      boundaryGeometry.dispose();boundaryMaterial.dispose();
       patchGeometry.dispose();patchMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();

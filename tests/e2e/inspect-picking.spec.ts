@@ -26,3 +26,14 @@ test('3D picks curve and nearest patch, respects orbit gestures and sorted trian
  await page.getByRole('slider',{name:'3D Patch 不透明度',exact:true}).fill('0');await page.getByRole('button',{name:c.name,exact:true}).click();await page.mouse.click(position.x,position.y);await expect(page.getByTestId('curve-current')).toContainText(c.name);
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));expect(saved.landmarks).toEqual(project.landmarks);expect(saved.curves).toEqual(project.curves);expect(saved.patches).toEqual(project.patches);await expect(page.locator('.point-footer')).toContainText('撤销 1 / 100');
 });
+test('patch creation highlights selected 3D boundaries and clears on deselect',async({page})=>{
+ await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'highlight.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(base))});
+ await page.getByRole('button',{name:'绘制面',exact:true}).click();
+ const view=page.getByTestId('point-inspect');
+ const before=await view.screenshot();
+ await page.getByRole('button',{name:names[0],exact:true}).click();
+ const selected=await view.screenshot({path:'test-results/3d-selected-boundary.png'});
+ expect(selected.equals(before)).toBeFalsy();
+ await page.getByRole('button',{name:names[0],exact:true}).click();
+ const cleared=await view.screenshot();expect(cleared.equals(before)).toBeTruthy();
+});
