@@ -1,0 +1,41 @@
+{
+  "shearedPlane": {
+    "milliseconds": 5.520291999999998,
+    "error": null,
+    "before": 3.2297397080004555e-16,
+    "after": 3.2297397080004555e-16,
+    "maxDisplacement": 0,
+    "averageDisplacement": 0,
+    "iterations": 0,
+    "relativeResidual": 1,
+    "variables": 231,
+    "seamSamples": 11,
+    "warnings": []
+  },
+  "crease": {
+    "milliseconds": 3.599249999999998,
+    "error": null,
+    "before": 1.089976701190829,
+    "after": 0.0003592077867730182,
+    "maxDisplacement": 0.04597512398964722,
+    "averageDisplacement": 0.0037710981619111803,
+    "iterations": 20,
+    "relativeResidual": 4.317227088769763e-9,
+    "variables": 231,
+    "seamSamples": 11,
+    "warnings": []
+  },
+  "realCheek": {
+    "milliseconds": 17.548499999999997,
+    "error": null,
+    "before": 0.30339493959840647,
+    "after": 0.000013200188001453473,
+    "maxDisplacement": 0.005647643102946141,
+    "averageDisplacement": 0.0005657744623360543,
+    "iterations": 342,
+    "relativeResidual": 8.29834141813743e-9,
+    "variables": 417,
+    "seamSamples": 44,
+    "warnings": []
+  }
+}

@@ -1,3 +1,4 @@
+import {parseSmooth} from "../smooth/model";
 import {parsePatches,defaultDisplay,patchQualityLevels} from "../patches/model";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
@@ -27,6 +28,7 @@ export function parseLandmarks(text: string): LandmarkProject {
       "landmarks-0.3.9",
       "landmarks-0.4.0",
       "landmarks-0.4.1",
+      "landmarks-0.4.2",
     ].includes(p?.version) &&
       p.meta &&
       typeof p.meta.name === "string" &&
@@ -183,12 +185,13 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result);
-  if(p.patches !== undefined || p.version === "landmarks-0.4.0" || p.version === "landmarks-0.4.1") { result.patches = parsePatches(p.patches, result); result.version=p.version==="landmarks-0.4.1"?"landmarks-0.4.1":"landmarks-0.4.0"; }
+  if(p.patches !== undefined || p.version === "landmarks-0.4.0" || p.version === "landmarks-0.4.1" || p.version === "landmarks-0.4.2") { result.patches = parsePatches(p.patches, result); result.version=p.version==="landmarks-0.4.2"?"landmarks-0.4.2":p.version==="landmarks-0.4.1"?"landmarks-0.4.1":"landmarks-0.4.0"; }
   if(p.patchDisplay !== undefined) {
     check(p.patchDisplay && [p.patchDisplay.opacity2d,p.patchDisplay.opacity3d].every(x=>finite(x)&&x>=0&&x<=1));
     check(p.patchDisplay.visible===undefined || typeof p.patchDisplay.visible==='boolean');
     check(p.patchDisplay.quality===undefined || p.patchDisplay.quality==='ultra' || Object.hasOwn(patchQualityLevels,p.patchDisplay.quality));
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
+  if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
   return result;
 }

@@ -1,3 +1,5 @@
+import {ensureSmooth} from "../domain/smooth/service";
+import {subscribeSmooth,smoothVersion} from "../domain/smooth/evaluation";
 import ContourPanel from "../ui/windows/ContourPanel";
 import MainPanels from "../ui/windows/MainPanels";
 import PatchPanel from "../ui/patches/PatchPanel";
@@ -5,7 +7,7 @@ import CurvePanel from "../ui/curves/CurvePanel";
 import LandmarkList from "../ui/edit2d/LandmarkList";
 import EditorActions from "../ui/EditorActions";
 import { useUI } from "../ui/session";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Undo2,
   Redo2,
@@ -28,6 +30,7 @@ import { parseLandmarks } from "../domain/landmarks/persistence";
 import EditView, { MiniPreview } from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
+  useSyncExternalStore(subscribeSmooth,smoothVersion);
   const ui = useUI();
   const s = useEditor(),
     file = useRef<HTMLInputElement>(null),
@@ -46,6 +49,7 @@ export default function App() {
     editAxes = l ? editingBasis(s.project, l.id, activeView) : [],
     lockedViews = s.project.views.filter((v) => viewIsLocked(s.project, v.id)),
     partner = s.project.landmarks.find((x) => x.id === l?.mirrorPartnerId);
+  useEffect(()=>ensureSmooth(s.project),[s.project]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { useEditor.getState().cancelCurve(); useEditor.getState().cancelPatch(); }
@@ -86,7 +90,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.15 · Contour Preview</span>
+          contour<span className="point-version">V0.4.2 · Surface Smooth</span>
         </div>
         <input
           className="point-name"

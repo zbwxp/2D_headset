@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import {subscribeSmooth,smoothVersion,evaluationToken} from "../../domain/smooth/evaluation";
+import { useMemo, useSyncExternalStore } from 'react';
 import { useEditor } from '../../app/store';
 import { tessellate } from '../../domain/patches/geometry';
 import { defaultDisplay, patchSampling } from '../../domain/patches/model';
@@ -13,6 +14,7 @@ export default function PatchLayer({view}:{view:LandmarkView}){
 function VisiblePatchLayer({ view }: {
     view: LandmarkView;
 }) {
+    useSyncExternalStore(subscribeSmooth,smoothVersion);
     const s = useEditor(), p = s.project, opacity = p.patchDisplay?.opacity2d ?? defaultDisplay.opacity2d;
     const sampling=patchSampling(p.patchDisplay);
     const data = useMemo(() => {
@@ -33,7 +35,7 @@ function VisiblePatchLayer({ view }: {
         // Camera basis forward points toward the camera: far to near alpha compositing.
         triangles.sort((a, b) => a.depth - b.depth);
         return { triangles, lines };
-    }, [p.landmarks, p.curves, p.patches, view.camera, sampling]);
+    }, [p.landmarks, p.curves, p.patches, view.camera, sampling, evaluationToken(p)]);
     if (!p.patches?.length)
         return null;
     return <g pointerEvents="none" data-testid="patch-layer">

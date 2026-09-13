@@ -1,3 +1,4 @@
+import {SmoothEdgeControl} from "../smooth/SmoothControls";
 import InlineName from "../shared/InlineName";
 import { useUI } from "../session";
 import { useRef, useState } from "react";
@@ -31,6 +32,7 @@ export default function CurvePanel() {
           <div className="curve-current" data-testid="curve-current">
             <strong>当前：{c.name}</strong>
             <PlaneControl key={c.id} id={c.id} />
+            <SmoothEdgeControl key={"smooth-"+c.id} id={c.id}/>
           </div>
         )}
         <div className="curve-create">

@@ -16,6 +16,7 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  surfaceSmooth?: import("../smooth/model").SurfaceSmoothSettings;
   patches?: import("../patches/model").SurfacePatch[];
   patchDisplay?: import("../patches/model").PatchDisplay;
   version:
@@ -27,7 +28,8 @@ export interface LandmarkProject {
     | "landmarks-0.3.8"
     | "landmarks-0.3.9"
     | "landmarks-0.4.0"
-    | "landmarks-0.4.1";
+    | "landmarks-0.4.1"
+    | "landmarks-0.4.2";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
   curves: CurveEdge[];

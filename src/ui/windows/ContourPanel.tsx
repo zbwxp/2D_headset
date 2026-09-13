@@ -1,3 +1,4 @@
+import {getSmoothResult,subscribeSmooth} from "../../domain/smooth/evaluation";
 import {useEffect,useState} from 'react';
 import {useEditor} from '../../app/store';
 import type {ContourSource} from '../../domain/contour/source';
@@ -25,7 +26,7 @@ export default function ContourPanel(){
  };
  const sourceChanged=()=>{
  const p=useEditor.getState().project;
- const next={landmarks:p.landmarks,curves:p.curves,patches:p.patches??[]};
+ const next={landmarks:p.landmarks,curves:p.curves,patches:p.patches??[],surfaceSmooth:p.surfaceSmooth,smoothResult:p.surfaceSmooth?.enabled&&p.surfaceSmooth.strength>0?getSmoothResult(p):undefined};
  const key=JSON.stringify(next);
  if(key===signature)return;signature=key;source=next;revision++;schedule();
  };
@@ -42,10 +43,11 @@ export default function ContourPanel(){
  worker.onerror=e=>{if(active){inflight=false;setBusy(false);setFailure(e.message||'轮廓计算失败');}};
  sourceChanged();cameraChanged();
  const unsubscribeSource=useEditor.subscribe((s,previous)=>{
- if(s.project.landmarks!==previous.project.landmarks||s.project.curves!==previous.project.curves||s.project.patches!==previous.project.patches)sourceChanged();
+ if(s.project.landmarks!==previous.project.landmarks||s.project.curves!==previous.project.curves||s.project.patches!==previous.project.patches||s.project.surfaceSmooth!==previous.project.surfaceSmooth)sourceChanged();
  });
+ const unsubscribeSmooth=subscribeSmooth(sourceChanged);
  const unsubscribeCamera=useInspectionCamera.subscribe(cameraChanged);
- return()=>{active=false;cancelAnimationFrame(frame);unsubscribeSource();unsubscribeCamera();worker.terminate();};
+ return()=>{active=false;cancelAnimationFrame(frame);unsubscribeSource();unsubscribeCamera();unsubscribeSmooth();worker.terminate();};
  },[]);
  const delta=camera.target.map((x,i)=>x-camera.position[i]),length=Math.hypot(...delta),direction=delta.map(x=>x/length);
  const paths=result?.paths??[],empty=!paths.length;

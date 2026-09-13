@@ -1,3 +1,4 @@
+import {subscribeSmooth,evaluationToken} from "../../domain/smooth/evaluation";
 import {useInspectionCamera} from "../windows/state";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
@@ -139,6 +140,7 @@ export default function InspectView() {
     let lastRenderState: ReturnType<typeof useEditor.getState> | undefined;
     let sortDirty=true;
     const sortCamera=new THREE.Matrix4();
+    let smoothToken="";
     const update = () => {
       const s = useEditor.getState();
       const opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;
@@ -149,9 +151,10 @@ export default function InspectView() {
       patchMesh.visible=opacity>0 && s.project.patchDisplay?.visible!==false;
       const old=lastRenderState;lastRenderState=s;
       // Display-only changes must not rebuild source samples or GPU geometry.
-      if(old&&old.project.patchDisplay?.quality===s.project.patchDisplay?.quality&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
+      if(old&&smoothToken===evaluationToken(s.project)&&old.project.patchDisplay?.quality===s.project.patchDisplay?.quality&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
       sortDirty=true;
       const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
+      smoothToken=evaluationToken(s.project);
       for(const p of s.project.patchDisplay?.visible===false?[]:s.project.patches??[]){const m=tessellate(s.project,p,patchSampling(s.project.patchDisplay).subdivisions);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
       sortedPatchIds=[...trianglePatchIds];
       patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
@@ -237,6 +240,7 @@ export default function InspectView() {
     };
     update();
     const unsub = useEditor.subscribe(update);
+    const unsubSmooth=subscribeSmooth(update);
     const resize = new ResizeObserver(() => {
       const w = element.clientWidth,
         h = element.clientHeight;
@@ -264,6 +268,7 @@ export default function InspectView() {
     return () => {
       cancelAnimationFrame(frame);
       unsub();
+      unsubSmooth();
       resize.disconnect();
       renderer.domElement.removeEventListener('pointerdown',onDown);
       renderer.domElement.removeEventListener('pointermove',onMove);

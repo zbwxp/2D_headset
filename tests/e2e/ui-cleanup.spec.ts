@@ -226,6 +226,8 @@ test("rename keeps workspace focus; cancelled or unchanged edits add no history"
     footer = await page.locator(".point-footer").innerText();
   await page.locator(".point-list .active .entity-name").dblclick();
   await page.getByLabel("语义点名称").press("Enter");
+  // Inline rename restores row focus on the next animation frame.
+  await expect(page.locator(".point-list .active[role=button]")).toBeFocused();
   expect(await page.locator(".point-footer").innerText()).toBe(footer);
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("dialog")).toBeVisible();

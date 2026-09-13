@@ -1,3 +1,4 @@
+import {defaultSmooth} from "../domain/smooth/model";
 import {addPatch,prunePatches,defaultDisplay,patchQualityLevels,type PatchQuality} from "../domain/patches/model";
 import {
   duplicateLandmark,
@@ -77,6 +78,9 @@ interface State {
   cancelPatch: () => void;
   pickPatchEdge: (id:string) => void;
   deletePatch: (id:string) => void;
+  setSmoothEnabled:(value:boolean)=>void;
+  setSmoothStrength:(value:number)=>void;
+  setSmoothInfluence:(id:string,value:number)=>void;
   setFullness: (id:string,value:number) => void;
   setPatchQuality: (quality:PatchQuality) => void;
   setPatchVisible: (visible:boolean) => void;
@@ -127,6 +131,7 @@ function persist(p: LandmarkProject) {
 export const useEditor = create<State>((set, get) => {
   const commit = (p: LandmarkProject) => {
     p=prunePatches(p);
+    if(p.surfaceSmooth){const overrides=p.surfaceSmooth.edgeInfluenceOverrides;const entries=Object.entries(overrides).filter(([id])=>p.curves.some(c=>c.id===id&&c.role==='canonical'));if(entries.length!==Object.keys(overrides).length)p={...p,surfaceSmooth:{...p.surfaceSmooth,edgeInfluenceOverrides:Object.fromEntries(entries)}};}
     set({ project: p });
     persist(p);
   };
@@ -145,7 +150,10 @@ export const useEditor = create<State>((set, get) => {
       catch(e){set({message:ids.length===3&&(e as Error).message.includes('未组成')?'三条尚未闭合，可继续选择第四条。':(e as Error).message});}
     },
     deletePatch:(id)=>{const s=get(),x=s.project.patches?.find(x=>x.id===id);if(!x)return;s.beginEdit();commit({...s.project,patches:s.project.patches!.filter(y=>y.id!==id&&y.id!==x.mirrorPartnerId)});set({selectedPatchId:null});},
-    setFullness:(id,value)=>{const p=get().project,x=p.patches?.find(x=>x.id===id);if(!x||!Number.isFinite(value))return;const owner=x.canonicalId??x.id;commit({...p,version:'landmarks-0.4.1',patches:p.patches!.map(x=>x.id===owner?{...x,fullness:Math.max(-1,Math.min(1,value))}:x)});},
+    setSmoothEnabled:(enabled)=>{const s=get(),settings={...defaultSmooth,...s.project.surfaceSmooth};if(settings.enabled===enabled)return;s.beginEdit();commit({...s.project,version:'landmarks-0.4.2',surfaceSmooth:{...settings,enabled}});},
+    setSmoothStrength:(value)=>{if(!Number.isFinite(value))return;const p=get().project;commit({...p,version:'landmarks-0.4.2',surfaceSmooth:{...defaultSmooth,...p.surfaceSmooth,strength:Math.max(0,Math.min(1,value))}});},
+    setSmoothInfluence:(id,value)=>{if(!Number.isFinite(value))return;const p=get().project,c=p.curves.find(c=>c.id===id);if(!c)return;const owner=c.role==='mirror'?c.canonicalCurveId:c.id,settings={...defaultSmooth,...p.surfaceSmooth},overrides={...settings.edgeInfluenceOverrides};if(value===1)delete overrides[owner];else overrides[owner]=Math.max(0,Math.min(1,value));commit({...p,version:'landmarks-0.4.2',surfaceSmooth:{...settings,edgeInfluenceOverrides:overrides}});},
+    setFullness:(id,value)=>{const p=get().project,x=p.patches?.find(x=>x.id===id);if(!x||!Number.isFinite(value))return;const owner=x.canonicalId??x.id;commit({...p,version:p.surfaceSmooth?'landmarks-0.4.2':'landmarks-0.4.1',patches:p.patches!.map(x=>x.id===owner?{...x,fullness:Math.max(-1,Math.min(1,value))}:x)});},
     setPatchQuality:(quality)=>{if(!Object.hasOwn(patchQualityLevels,quality))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,quality}});},
     setPatchVisible:(visible)=>commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,visible}}),
     setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},

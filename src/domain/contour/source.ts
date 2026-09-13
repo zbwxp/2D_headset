@@ -1,9 +1,13 @@
+import {installSmoothResult} from "../smooth/evaluation";
+import type {SmoothResult} from "../smooth/field";
 import type {LandmarkProject} from '../landmarks/model';
 import {tessellate} from '../patches/geometry';
 import {CONTOUR_SUBDIVISIONS,type ContourMesh} from './silhouette';
-export type ContourSource=Pick<LandmarkProject,'landmarks'|'curves'|'patches'>;
+export type ContourSource=Pick<LandmarkProject,'landmarks'|'curves'|'patches'|'surfaceSmooth'> & {smoothResult?:SmoothResult};
 export function contourSource(source:ContourSource){
- const project:LandmarkProject={...source,version:'landmarks-0.4.1',meta:{name:'contour',createdAt:0,updatedAt:0},views:[],centerlineOrder:[]};
+ const {smoothResult,...data}=source;
+ const project:LandmarkProject={...data,version:'landmarks-0.4.1',meta:{name:'contour',createdAt:0,updatedAt:0},views:[],centerlineOrder:[]};
+ if(smoothResult)installSmoothResult(project,smoothResult);
  const mesh:ContourMesh={vertices:[],triangles:[]},invalid:string[]=[];
  for(const patch of source.patches??[]){
  const m=tessellate(project,patch,CONTOUR_SUBDIVISIONS);

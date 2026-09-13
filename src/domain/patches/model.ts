@@ -71,7 +71,7 @@ export function addPatch(p: LandmarkProject, ids: string[]): LandmarkProject {
         a.mirrorPartnerId = b.id;
         added.push(b);
     }
-    return { ...p, version: 'landmarks-0.4.1', patches: [...patches, ...added] };
+    return { ...p, version: p.surfaceSmooth?'landmarks-0.4.2':'landmarks-0.4.1', patches: [...patches, ...added] };
 }
 export function prunePatches(p: LandmarkProject): LandmarkProject {
     if (!p.patches)
