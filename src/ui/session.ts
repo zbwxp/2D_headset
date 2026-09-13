@@ -14,6 +14,7 @@ export function activeSelection(): Entity | null {
 export const useUI = create<{
   landmarkCollapsed: boolean;
   curveCollapsed: boolean;
+  patchCollapsed: boolean;
   duplicateId: string | null;
   deleteTarget: Entity | null;
   renameTarget: Entity | null;
@@ -22,6 +23,7 @@ export const useUI = create<{
 }>(() => ({
   landmarkCollapsed: false,
   curveCollapsed: false,
+  patchCollapsed: false,
   duplicateId: null,
   deleteTarget: null,
   renameTarget: null,
