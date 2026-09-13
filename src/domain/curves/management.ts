@@ -1,4 +1,3 @@
-import { cleanConfigs } from "../surfaceSmooth/config";
 import type { LandmarkProject, LandmarkView } from "../landmarks/model";
 import { normalize, sub } from "../geometry/core";
 import { defaultNormal, CURVE_EPS } from "./geometry";
@@ -85,12 +84,12 @@ export function renameCurve(
 }
 export function deleteCurve(p: LandmarkProject, id: string): LandmarkProject {
   const c = p.curves.find((c) => c.id === id);
-  return cleanConfigs({
+  return {
     ...p,
     curves: p.curves.filter(
       (x) => x.id !== id && x.id !== c?.mirrorPartnerCurveId,
     ),
-  });
+  };
 }
 export function incidentCurveIds(
   p: LandmarkProject,

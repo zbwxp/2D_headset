@@ -3,14 +3,16 @@ import type { LandmarkView } from "./model";
 /** Add missing presets without replacing authored cameras, photos, or canvas settings. */
 export function ensureObliqueViews(views: LandmarkView[]): LandmarkView[] {
   const result = [...views];
-  for (const degrees of [15, 30]) {
-    const id = `right${degrees}`;
+  for (const degrees of [-30, 15, 30]) {
+    const side = degrees < 0 ? "left" : "right",
+      label = degrees < 0 ? "左" : "右";
+    const id = `${side}${Math.abs(degrees)}`;
     if (result.some((v) => v.id === id)) continue;
     const angle = (degrees * Math.PI) / 180;
     const view: LandmarkView = {
       id,
-      label: `右 ${degrees}°`,
-      shortLabel: `右 ${degrees}°`,
+      label: `${label} ${Math.abs(degrees)}°`,
+      shortLabel: `${label} ${Math.abs(degrees)}°`,
       camera: {
         projection: "orthographic",
         position: [4 * Math.sin(angle), 0, 4 * Math.cos(angle)],
@@ -20,7 +22,7 @@ export function ensureObliqueViews(views: LandmarkView[]): LandmarkView[] {
       },
       canvas: { zoom: 1, pan: [0, 0] },
     };
-    const index = result.findIndex((v) => v.id === "right45");
+    const index = result.findIndex((v) => v.id === `${side}45`);
     result.splice(index < 0 ? result.length : index, 0, view);
   }
   if (!result.some((v) => v.id === "top")) {

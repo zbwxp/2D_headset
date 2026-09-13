@@ -1,7 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 const state = (p: Page) =>
-  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v038")!));
+  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
 const pick = (p: Page, n: string) =>
   p
     .locator(".point-list")
@@ -215,7 +215,7 @@ test("V0.2 autosave migration preserves original data and compact layout support
   legacy.version = "landmarks-0.2";
   await page.evaluate((p) => {
     localStorage.setItem("contour.landmarks.v02", JSON.stringify(p));
-    localStorage.removeItem("contour.landmarks.v038");
+    localStorage.removeItem("contour.landmarks.v039");
   }, legacy);
   await page.setViewportSize({ width: 780, height: 1050 });
   await page.reload();

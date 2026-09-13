@@ -1,4 +1,3 @@
-import { cleanConfigs } from "../surfaceSmooth/config";
 import { incidentCurveIds } from "../curves/management";
 import type { LandmarkProject, SemanticLandmark } from "./model";
 import { captureLock, viewIsLocked } from "./model";
@@ -87,7 +86,7 @@ export function deleteLandmark(
   const source = p.landmarks.find((l) => l.id === id);
   if (!source) return p;
   const incident = incidentCurveIds(p, id);
-  return cleanConfigs({
+  return {
     ...p,
     curves: p.curves.filter((c) => !incident.has(c.id)),
     centerlineOrder: p.centerlineOrder.filter(
@@ -96,5 +95,5 @@ export function deleteLandmark(
     landmarks: p.landmarks.filter(
       (l) => l.id !== id && l.id !== source.mirrorPartnerId,
     ),
-  });
+  };
 }

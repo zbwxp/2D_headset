@@ -62,9 +62,7 @@ export function createLandmarkProject(): LandmarkProject {
     canvas: { zoom: 1, pan: [0, 0] },
   }));
   return {
-    version: "landmarks-0.3.8",
-    surfaceSmoothDefaults: { enabled: true, extent: 0.15 },
-    surfaceSmoothNodes: {},
+    version: "landmarks-0.3.9",
     curves: [],
     meta: {
       name: "语义点头部研究",

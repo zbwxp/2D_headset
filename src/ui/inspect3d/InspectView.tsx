@@ -1,6 +1,5 @@
-import { flatten, norm } from "../../domain/junctions/spatial";
-import { resolveNetwork } from "../../domain/surfaceSmooth/solver";
-import { useUI } from "../session";
+import { flatten, norm } from "../../domain/geometry/bezier";
+import { controls as curveControls } from "../../domain/curves/geometry";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -77,53 +76,22 @@ export default function InspectView() {
     const curveMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
     const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
     scene.add(curveLines);
-    const hoverGeometry = new THREE.BufferGeometry(),
-      hoverMaterial = new THREE.PointsMaterial({ color: 0xffd17b, size: 0.1 });
-    scene.add(new THREE.Points(hoverGeometry, hoverMaterial));
     const update = () => {
       const s = useEditor.getState();
       const vertices: number[] = [],
         colors: number[] = [];
-      const network = resolveNetwork(s.project),
-        hovered = useUI.getState().hoverJunctionId;
-      const rows = network.nodes.filter((j) => j.landmarkId === hovered),
-        highlighted = new Set(
-          rows.flatMap((j) => j.participants.map((h) => h.curveId)),
-        );
-      hoverGeometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(
-          rows
-            .flatMap((j) => [
-              s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
-              ...j.halves.map((h) => h.trimPoint),
-            ])
-            .flat(),
-          3,
-        ),
-      );
-      hoverGeometry.computeBoundingSphere();
-      for (const span of network.spans) {
-        const samples = flatten(
-            span.controls,
+      for (const c of s.project.curves) {
+        const cp = curveControls(s.project, c),
+          samples = flatten(
+            cp,
             Math.max(
-              ...span.controls.map((p) =>
-                norm([
-                  p[0] - span.controls[0][0],
-                  p[1] - span.controls[0][1],
-                  p[2] - span.controls[0][2],
-                ]),
+              ...cp.map((p) =>
+                norm([p[0] - cp[0][0], p[1] - cp[0][1], p[2] - cp[0][2]]),
               ),
             ) * 1e-4 || 1e-6,
           ),
           color = new THREE.Color(
-            highlighted.has(span.curveId)
-              ? 0xffd17b
-              : span.kind === "blend"
-                ? 0xa4d6c2
-                : span.curveId === s.selectedCurveId
-                  ? 0xf0d8ff
-                  : 0xab9fdd,
+            c.id === s.selectedCurveId ? 0xf0d8ff : 0xab9fdd,
           ).toArray();
         for (let i = 1; i < samples.length; i++) {
           vertices.push(...samples[i - 1], ...samples[i]);
@@ -182,7 +150,6 @@ export default function InspectView() {
     };
     update();
     const unsub = useEditor.subscribe(update);
-    const unsubUI = useUI.subscribe(update);
     const resize = new ResizeObserver(() => {
       const w = element.clientWidth,
         h = element.clientHeight;
@@ -202,9 +169,6 @@ export default function InspectView() {
     return () => {
       cancelAnimationFrame(frame);
       unsub();
-      unsubUI();
-      hoverGeometry.dispose();
-      hoverMaterial.dispose();
       resize.disconnect();
       controls.dispose();
       guideGeometry.dispose();

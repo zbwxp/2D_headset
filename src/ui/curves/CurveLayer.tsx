@@ -1,18 +1,7 @@
-import { flatten, type BezierPoints } from "../../domain/junctions/spatial";
-import { resolveNetwork } from "../../domain/surfaceSmooth/solver";
-import type { ResolvedSpan } from "../../domain/surfaceSmooth/model";
-import { useUI } from "../session";
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
-import {
-  project,
-  add,
-  sub,
-  cross,
-  normalize,
-  scale,
-} from "../../domain/geometry/core";
+import { project, add, sub } from "../../domain/geometry/core";
 import {
   controls,
   canonical,
@@ -29,16 +18,12 @@ import type {
 } from "../../domain/landmarks/model";
 import type { CurveEdge } from "../../domain/curves/model";
 import type { Vec2, Vec3 } from "../../domain/project/types";
-export function curvePath(cp: BezierPoints, v: LandmarkView): string {
-  const xy = (
-    cp.length === 4 ? cp : flatten(cp, 0.15 / (160 * v.canvas.zoom))
-  ).map((p) => {
+export function curvePath(cp: ControlPoints, v: LandmarkView): string {
+  const xy = cp.map((p) => {
     const q = project(p, v);
     return `${q[0] * 160},${-q[1] * 160}`;
   });
-  return cp.length === 4
-    ? `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`
-    : `M${xy.join(" L")}`;
+  return `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`;
 }
 export default function CurveLayer({
   view,
@@ -47,7 +32,6 @@ export default function CurveLayer({
   view: LandmarkView;
   readonly?: boolean;
 }) {
-  const hovered = useUI((s) => s.hoverJunctionId);
   const s = useEditor(),
     group = useRef<SVGGElement>(null);
   const drag = useRef<{
@@ -67,12 +51,7 @@ export default function CurveLayer({
     );
     return [q.x / 160, -q.y / 160];
   };
-  const start = (
-    e: ReactPointerEvent,
-    c: CurveEdge,
-    index: 0 | 1 | 2,
-    span?: ResolvedSpan,
-  ) => {
+  const start = (e: ReactPointerEvent, c: CurveEdge, index: 0 | 1 | 2) => {
     if (
       readonly ||
       s.referenceMoving ||
@@ -93,16 +72,10 @@ export default function CurveLayer({
       );
       return;
     }
-    const localT = nearestParameter(
-      (span?.controls ?? controls(s.project, c)) as ControlPoints,
-      view,
-      q,
+    const t = Math.max(
+      0.05,
+      Math.min(0.95, nearestParameter(controls(s.project, c), view, q)),
     );
-    const sourceT = span?.sourceRange
-      ? span.sourceRange[0] +
-        localT * (span.sourceRange[1] - span.sourceRange[0])
-      : localT;
-    const t = Math.max(0.05, Math.min(0.95, sourceT));
     drag.current = {
       project: s.project,
       curve: c,
@@ -118,17 +91,6 @@ export default function CurveLayer({
     };
     group.current!.setPointerCapture(e.pointerId);
   };
-  const resolved = resolveNetwork(s.project);
-  const highlighted = new Set(
-    resolved.nodes
-      .filter((n) => n.landmarkId === hovered)
-      .flatMap((n) => n.participants.map((h) => h.curveId)),
-  );
-  const debug = useUI((s) => s.smoothDebug),
-    nodeId = useUI((s) => s.junctionLandmarkId);
-  const debugNode = debug
-    ? resolved.nodes.find((n) => n.landmarkId === nodeId)
-    : undefined;
   return (
     <g
       ref={group}
@@ -168,76 +130,20 @@ export default function CurveLayer({
         drag.current = null;
       }}
     >
-      {resolved.spans
-        .filter((span) => span.kind === "blend")
-        .map((span, i) => (
-          <g key={`${span.junctionId}:${span.curveId}:${i}`}>
-            <path
-              data-testid={`blend-${span.junctionId}-${span.curveId}`}
-              d={curvePath(span.controls, view)}
-              fill="none"
-              stroke={hovered === span.junctionId ? "#ffd17b" : "#a4d6c2"}
-              strokeWidth={hovered === span.junctionId ? 3 : 2}
-              vectorEffect="non-scaling-stroke"
-              pointerEvents="none"
-            />
-            {!readonly && (
-              <path
-                data-testid={`blend-hit-${span.junctionId}-${span.curveId}`}
-                d={curvePath(span.controls, view)}
-                fill="none"
-                stroke="transparent"
-                strokeWidth="12"
-                vectorEffect="non-scaling-stroke"
-                style={{ cursor: "pointer" }}
-                onPointerDown={(e) => {
-                  if (e.shiftKey) return;
-                  e.stopPropagation();
-                  e.preventDefault();
-                  if (e.button === 0)
-                    start(
-                      e,
-                      s.project.curves.find((c) => c.id === span.curveId)!,
-                      0,
-                      span,
-                    );
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  s.selectCurve(span.curveId);
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  s.selectCurve(span.curveId);
-                }}
-              />
-            )}
-          </g>
-        ))}
       {[
         ...s.project.curves.filter((c) => c.id !== s.selectedCurveId),
         ...s.project.curves.filter((c) => c.id === s.selectedCurveId),
       ].map((c) => {
         const selected = c.id === s.selectedCurveId,
           cp = controls(s.project, c),
-          span = resolved.spans.find(
-            (x) => x.kind === "outer" && x.curveId === c.id,
-          )!,
-          path = curvePath(span.controls, view);
+          path = curvePath(cp, view);
         return (
           <g key={c.id}>
             <path
               data-testid={`curve-${c.id}`}
               d={path}
               fill="none"
-              stroke={
-                highlighted.has(c.id)
-                  ? "#ffd17b"
-                  : selected
-                    ? "#f0d8ff"
-                    : "#ab9fdd"
-              }
+              stroke={selected ? "#f0d8ff" : "#ab9fdd"}
               strokeWidth={selected ? 2.5 : 1.5}
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
@@ -252,7 +158,7 @@ export default function CurveLayer({
                 vectorEffect="non-scaling-stroke"
                 style={{ cursor: "grab" }}
                 pointerEvents={s.curveCreation ? "none" : "stroke"}
-                onPointerDown={(e) => start(e, c, 0, span)}
+                onPointerDown={(e) => start(e, c, 0)}
               />
             )}
             {selected && !readonly && (
@@ -295,56 +201,6 @@ export default function CurveLayer({
           </g>
         );
       })}
-      {!readonly && debugNode?.normal && (
-        <g data-testid="surface-debug-plane" pointerEvents="none">
-          {(() => {
-            const V = s.project.landmarks.find(
-                (l) => l.id === debugNode.landmarkId,
-              )!.position,
-              n = debugNode.normal!;
-            const axis =
-              Math.abs(n[0]) < 0.8
-                ? ([1, 0, 0] as const)
-                : ([0, 1, 0] as const);
-            const u = normalize(cross(n, [...axis])),
-              w = cross(n, u);
-            const corners = [
-              [-1, -1],
-              [1, -1],
-              [1, 1],
-              [-1, 1],
-            ].map(([a, b]) =>
-              project(
-                add(V, add(scale(u, a * 0.13), scale(w, b * 0.13))),
-                view,
-              ),
-            );
-            return (
-              <polygon
-                points={corners
-                  .map((q) => `${q[0] * 160},${-q[1] * 160}`)
-                  .join(" ")}
-                fill="#75c4ff"
-                fillOpacity=".18"
-                stroke="#75c4ff"
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-          })()}
-          {debugNode.halves.map((h) => {
-            const q = project(h.trimPoint, view);
-            return (
-              <circle
-                key={`${h.half.curveId}:${h.half.endpoint}`}
-                cx={q[0] * 160}
-                cy={-q[1] * 160}
-                r={3 / view.canvas.zoom}
-                fill="#ffd17b"
-              />
-            );
-          })}
-        </g>
-      )}
     </g>
   );
 }

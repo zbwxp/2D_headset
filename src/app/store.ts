@@ -12,8 +12,6 @@ import { followEndpoints } from "../domain/curves/geometry";
 import type { PlanarShape } from "../domain/curves/model";
 import { reorderCenterline } from "../domain/landmarks/order";
 import { create } from "zustand";
-import { setConfig } from "../domain/surfaceSmooth/config";
-import type { SurfaceSmoothNodeOverride } from "../domain/surfaceSmooth/model";
 import type { ReferenceImage, Vec2 } from "../domain/project/types";
 import type { LandmarkProject } from "../domain/landmarks/model";
 import {
@@ -28,12 +26,13 @@ import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
 import { project } from "../domain/geometry/core";
 export const HISTORY_LIMIT = 100;
-const KEY = "contour.landmarks.v038";
+const KEY = "contour.landmarks.v039";
 let initial = createLandmarkProject(),
   message = "";
 try {
   const saved =
     localStorage.getItem(KEY) ??
+    localStorage.getItem("contour.landmarks.v038") ??
     localStorage.getItem("contour.landmarks.v036") ??
     localStorage.getItem("contour.landmarks.v035") ??
     localStorage.getItem("contour.landmarks.v03") ??
@@ -71,11 +70,6 @@ try {
 }
 interface State {
   project: LandmarkProject;
-  setSurfaceNode: (
-    id: string,
-    patch: SurfaceSmoothNodeOverride,
-    begin?: boolean,
-  ) => boolean;
   selectedCurveId: string | null;
   curveCreation: { startId: string | null } | null;
   startCurve: () => void;
@@ -125,13 +119,6 @@ export const useEditor = create<State>((set, get) => {
   };
   return {
     project: initial,
-    setSurfaceNode: (id, patch, begin = true) => {
-      const p = setConfig(get().project, id, patch);
-      if (p === get().project) return false;
-      if (begin) get().beginEdit();
-      commit(p);
-      return true;
-    },
     selectedCurveId: null,
     curveCreation: null,
     startCurve: () =>
