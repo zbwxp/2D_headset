@@ -2322,3 +2322,36 @@ i:not([class]) {
 .patch-panel .patch-heading {padding:0;text-align:left;font-weight:600}
 .patch-panel-content {display:flex;flex-direction:column;gap:8px}
 .patch-panel.collapsed {overflow:visible;flex:0 0 auto}
+
+/* V0.4.15: independently visible main windows, no geometry state. */
+.point-workspace {grid-template-columns:205px minmax(0,1fr)}
+.main-view-modules {display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.window-controls {display:flex;gap:16px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+.window-controls label {display:flex;align-items:center;gap:5px}
+.window-controls details {position:relative;margin-left:auto}
+.window-controls summary {cursor:pointer}
+.window-controls details>div {position:absolute;right:0;top:24px;z-index:30;background:#1a2126;border:1px solid var(--border);padding:12px;min-width:210px}
+.window-controls details label {display:flex;flex-direction:column;align-items:stretch;margin:8px 0}
+.main-panels {display:flex;flex:1;min-height:0;min-width:0}
+.main-view-panel {display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border-right:1px solid var(--border)}
+.main-view-panel:last-child {border-right:0}
+.window-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.window-heading button {font-size:11px;color:#8ea3ac}
+.main-view-panel>.point-edit-column,.main-view-panel>.point-inspect-column {flex:1;min-height:0;height:auto;grid-column:auto;border-right:0}
+.contour-empty {flex:1;background:white;color:#666;display:grid;place-items:center;font-size:12px}
+.main-panels[data-panel-count="3"] .point-minis {height:110px;padding:6px;gap:4px}
+@media(max-width:1150px){.point-workspace{grid-template-columns:170px minmax(0,1fr)}}
+@media(max-width:850px){
+ .point-workspace{grid-template-columns:155px minmax(0,1fr)}
+ .point-sidebar{grid-row:auto}
+ .main-panels{flex-direction:column}
+ .main-view-panel{flex:none!important;min-height:450px;border-right:0;border-bottom:1px solid var(--border)}
+ .main-view-panel>.point-edit-column{min-height:500px}
+ .main-view-modules{overflow:visible}
+ .main-panels[data-panel-count="1"] .main-view-panel{min-height:850px}
+}
+.contour-preview {display:flex;flex-direction:column;flex:1;min-height:0;background:#fff;color:#111}
+.contour-view-info {padding:10px 12px;font-size:11px;color:#666}
+.contour-empty {text-align:center;padding:18px}
+.contour-empty strong {color:#111}
+.contour-empty p {margin:8px 0}

@@ -1,3 +1,5 @@
+import ContourPanel from "../ui/windows/ContourPanel";
+import MainPanels from "../ui/windows/MainPanels";
 import PatchPanel from "../ui/patches/PatchPanel";
 import CurvePanel from "../ui/curves/CurvePanel";
 import LandmarkList from "../ui/edit2d/LandmarkList";
@@ -84,7 +86,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.1 · Patch Fullness</span>
+          contour<span className="point-version">V0.4.15 · View Windows</span>
         </div>
         <input
           className="point-name"
@@ -181,7 +183,7 @@ export default function App() {
             <br />左 / 右按角色自身方向
           </div>
         </aside>
-        <section className="point-edit-column">
+        <MainPanels viewport={<section className="point-edit-column">
           <nav className="point-view-tabs">
             {s.project.views.map((v) => (
               <button
@@ -264,7 +266,7 @@ export default function App() {
             </span>
           </div>
         </section>
-        <section className="point-inspect-column">
+        } threeD={<section className="point-inspect-column">
           <div className="point-panel-title">
             3D · 空间检查
             <span>
@@ -279,7 +281,7 @@ export default function App() {
                 <MiniPreview key={id} viewId={id} />
               ))}
           </div>
-        </section>
+        </section>} contour={<ContourPanel/>} />
       </main>
       <footer className="point-footer">
         <div>

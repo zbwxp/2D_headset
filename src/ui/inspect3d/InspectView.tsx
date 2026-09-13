@@ -1,3 +1,4 @@
+import {useInspectionCamera} from "../windows/state";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -33,8 +34,14 @@ export default function InspectView() {
     element.appendChild(renderer.domElement);
     const scene = new THREE.Scene(),
       camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
-    camera.position.set(3, 1.25, 4.6);
+    const pose=useInspectionCamera.getState();
+    camera.position.fromArray(pose.position);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.fromArray(pose.target);
+    controls.update();
+    const publishCamera=()=>useInspectionCamera.setState({position:camera.position.toArray(),target:controls.target.toArray(),quaternion:camera.quaternion.toArray()});
+    publishCamera();
+    controls.addEventListener("change",publishCamera);
     controls.enableDamping = true;
     controls.minDistance = 2.3;
     controls.maxDistance = 12;
@@ -263,6 +270,8 @@ export default function InspectView() {
       renderer.domElement.removeEventListener('pointerup',onUp);
       renderer.domElement.removeEventListener('pointercancel',onCancel);
       renderer.domElement.removeEventListener('lostpointercapture',onCancel);
+      publishCamera();
+      controls.removeEventListener("change",publishCamera);
       controls.dispose();
       guideGeometry.dispose();
       guideMaterial.dispose();
