@@ -22,7 +22,7 @@ export default function PatchPanel() {
     {!collapsed && <div id="patch-panel-content" className="patch-panel-content">
     <label><span><input type="checkbox" aria-label="显示 Patch" checked={d.visible!==false} onChange={e=>s.setPatchVisible(e.target.checked)}/> 显示 Patch</span></label>
     <label>显示精度<select aria-label="Patch 显示精度" value={d.quality==='ultra'?'high':d.quality??'high'} onChange={e=>s.setPatchQuality(e.target.value as PatchQuality)}>{Object.entries(patchQualityLevels).map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
-    {d.visible===false && <small>已暂停曲面计算，调整点线后开启即可查看。</small>}
+    {d.visible===false && <small>已隐藏 2D/3D 曲面，Contour 由窗口开关独立控制。</small>}
     <button onClick={s.patchCreation ? s.cancelPatch : s.startPatch}>{s.patchCreation ? '退出绘制面（Esc）' : '绘制面'}</button>
     {s.patchCreation && <div>已选 {s.patchCreation.length} / 4 条边{s.patchCreation.map(id => <button key={id} onClick={() => s.pickPatchEdge(id)}>{s.project.curves.find(c => c.id === id)?.name} ×</button>)}</div>}
     {(['opacity2d', 'opacity3d'] as const).map((key, i) => <label key={key}>{i ? '3D Patch 不透明度' : '2D Patch 不透明度'} · {Math.round(d[key] * 100)}%<input aria-label={i ? '3D Patch 不透明度' : '2D Patch 不透明度'} type="range" min="0" max="100" value={d[key] * 100} onChange={e => s.setPatchDisplay(key, +e.target.value / 100)}/></label>)}

@@ -86,7 +86,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.15 · View Windows</span>
+          contour<span className="point-version">V0.4.15 · Contour Preview</span>
         </div>
         <input
           className="point-name"

@@ -1,3 +1,4 @@
+import {Matrix4,Quaternion,Vector3} from "three";
 import {create} from 'zustand';
 import type {Vec3} from '../../domain/project/types';
 export type PanelId='viewport'|'contour'|'threeD';
@@ -17,5 +18,5 @@ export const useWindows=create<Layout & {toggle:(id:PanelId)=>void;ratio:(id:Pan
 function save(){const {visible,ratios}=useWindows.getState();try{localStorage.setItem(key,JSON.stringify({visible,ratios}));}catch{}}
 // Camera pose is display-only, survives hiding/remounting 3D, and never enters geometry history.
 export const useInspectionCamera=create<{position:Vec3;target:Vec3;quaternion:[number,number,number,number]}>(()=>({
- position:[3,1.25,4.6],target:[0,0,0],quaternion:[0,0,0,1]
+ position:[3,1.25,4.6],target:[0,0,0],quaternion:new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(new Vector3(3,1.25,4.6),new Vector3(),new Vector3(0,1,0))).toArray()
 }));
