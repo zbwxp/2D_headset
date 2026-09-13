@@ -1,0 +1,13 @@
+{
+  "roundTrip": "PASS",
+  "landmarks": 43,
+  "curves": 54,
+  "mirrorAndCenterline": "PASS",
+  "referencesAndCurveEndpoints": "PASS",
+  "centerlineOrder": "PASS",
+  "maxPlaneResidual": 1.942890293094024e-16,
+  "neckRing": "4 edges, 4 vertices, degree 2",
+  "junctionSourceRecords": 5,
+  "resolvedJunctions": 9,
+  "allJunctionsValid": true
+}

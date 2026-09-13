@@ -1,0 +1,12 @@
+{
+  "sameLandmarkUUIDs": true,
+  "sameCurveUUIDsAndEndpoints": true,
+  "landmarks": 43,
+  "curves": 54,
+  "mirrorExact": true,
+  "centerlineOrderUnchanged": true,
+  "maxPlaneError": 2.220446049250313e-16,
+  "jsonRoundtrip": true,
+  "junctions": 9,
+  "junctionsAllValid": true
+}
