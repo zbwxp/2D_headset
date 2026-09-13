@@ -28,7 +28,7 @@ export function createJunction(
     throw new Error(
       "该结构线端点已被平滑配对占用；请先取消原平滑（包括当前无效的配对）。",
     );
-  const next = { ...p, smoothJunctions: [...p.smoothJunctions, j] },
+  const next = { ...p, smoothJunctions: [...(p.smoothJunctions ?? []), j] },
     network = resolveNetwork(next),
     invalid = network.junctions.find(
       (x) => x.sourceId === j.id && x.state === "INVALID",
@@ -54,11 +54,11 @@ export function changeExtent(
 ): LandmarkProject {
   if (!Number.isFinite(extent) || extent < 0.01 || extent > 0.45)
     throw new Error("平滑范围必须在 1%–45% 之间。");
-  const source = p.smoothJunctions.find((j) => j.id === id);
+  const source = (p.smoothJunctions ?? []).find((j) => j.id === id);
   if (!source || source.extent === extent) return p;
   const next = {
     ...p,
-    smoothJunctions: p.smoothJunctions.map((j) =>
+    smoothJunctions: (p.smoothJunctions ?? []).map((j) =>
       j.id === id ? { ...j, extent } : j,
     ),
   };
@@ -78,5 +78,5 @@ export const removeJunction = (
   id: string,
 ): LandmarkProject => ({
   ...p,
-  smoothJunctions: p.smoothJunctions.filter((j) => j.id !== id),
+  smoothJunctions: (p.smoothJunctions ?? []).filter((j) => j.id !== id),
 });

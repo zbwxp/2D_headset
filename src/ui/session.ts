@@ -14,6 +14,7 @@ export function activeSelection(): Entity | null {
 export const useUI = create<{
   junctionLandmarkId: string | null;
   hoverJunctionId: string | null;
+  smoothDebug: boolean;
   landmarkCollapsed: boolean;
   curveCollapsed: boolean;
   duplicateId: string | null;
@@ -24,6 +25,7 @@ export const useUI = create<{
 }>(() => ({
   junctionLandmarkId: null,
   hoverJunctionId: null,
+  smoothDebug: false,
   landmarkCollapsed: false,
   curveCollapsed: false,
   duplicateId: null,

@@ -43,7 +43,7 @@ export function junctionInstances(p: LandmarkProject, j: SmoothJunction) {
 }
 export function occupiedHalves(p: LandmarkProject): Set<string> {
   return new Set(
-    p.smoothJunctions.flatMap((j) =>
+    (p.smoothJunctions ?? []).flatMap((j) =>
       junctionInstances(p, j).flatMap((i) => [
         halfKey(i.sideA),
         halfKey(i.sideB),
@@ -100,7 +100,7 @@ export function pruneJunctions(p: LandmarkProject): LandmarkProject {
     points = new Set(p.landmarks.map((l) => l.id));
   return {
     ...p,
-    smoothJunctions: p.smoothJunctions.filter(
+    smoothJunctions: (p.smoothJunctions ?? []).filter(
       (j) =>
         points.has(j.landmarkId) &&
         ids.has(j.sideA.curveId) &&

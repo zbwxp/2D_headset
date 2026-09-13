@@ -1,11 +1,18 @@
 import { flatten, type BezierPoints } from "../../domain/junctions/spatial";
-import { resolveNetwork } from "../../domain/junctions/resolve";
-import type { ResolvedSpan } from "../../domain/junctions/model";
+import { resolveNetwork } from "../../domain/surfaceSmooth/solver";
+import type { ResolvedSpan } from "../../domain/surfaceSmooth/model";
 import { useUI } from "../session";
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
-import { project, add, sub } from "../../domain/geometry/core";
+import {
+  project,
+  add,
+  sub,
+  cross,
+  normalize,
+  scale,
+} from "../../domain/geometry/core";
 import {
   controls,
   canonical,
@@ -113,14 +120,15 @@ export default function CurveLayer({
   };
   const resolved = resolveNetwork(s.project);
   const highlighted = new Set(
-    resolved.junctions
-      .filter((j) => j.sourceId === hovered)
-      .flatMap((j) => [j.sideA.curveId, j.sideB.curveId]),
+    resolved.nodes
+      .filter((n) => n.landmarkId === hovered)
+      .flatMap((n) => n.participants.map((h) => h.curveId)),
   );
-  const openBlend = (span: ResolvedSpan) => {
-    s.selectLandmark(span.landmarkId!);
-    useUI.setState({ junctionLandmarkId: span.landmarkId! });
-  };
+  const debug = useUI((s) => s.smoothDebug),
+    nodeId = useUI((s) => s.junctionLandmarkId);
+  const debugNode = debug
+    ? resolved.nodes.find((n) => n.landmarkId === nodeId)
+    : undefined;
   return (
     <g
       ref={group}
@@ -186,16 +194,22 @@ export default function CurveLayer({
                   if (e.shiftKey) return;
                   e.stopPropagation();
                   e.preventDefault();
-                  if (e.button === 0) openBlend(span);
+                  if (e.button === 0)
+                    start(
+                      e,
+                      s.project.curves.find((c) => c.id === span.curveId)!,
+                      0,
+                      span,
+                    );
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  openBlend(span);
+                  s.selectCurve(span.curveId);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  openBlend(span);
+                  s.selectCurve(span.curveId);
                 }}
               />
             )}
@@ -281,27 +295,56 @@ export default function CurveLayer({
           </g>
         );
       })}
-      {!readonly &&
-        resolved.junctions
-          .filter((j) => j.sourceId === hovered)
-          .flatMap((j) => [
-            s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
-            ...(j.transition ? [j.transition[0], j.transition.at(-1)!] : []),
-          ])
-          .map((p, i) => {
-            const q = project(p, view);
+      {!readonly && debugNode?.normal && (
+        <g data-testid="surface-debug-plane" pointerEvents="none">
+          {(() => {
+            const V = s.project.landmarks.find(
+                (l) => l.id === debugNode.landmarkId,
+              )!.position,
+              n = debugNode.normal!;
+            const axis =
+              Math.abs(n[0]) < 0.8
+                ? ([1, 0, 0] as const)
+                : ([0, 1, 0] as const);
+            const u = normalize(cross(n, [...axis])),
+              w = cross(n, u);
+            const corners = [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1],
+            ].map(([a, b]) =>
+              project(
+                add(V, add(scale(u, a * 0.13), scale(w, b * 0.13))),
+                view,
+              ),
+            );
+            return (
+              <polygon
+                points={corners
+                  .map((q) => `${q[0] * 160},${-q[1] * 160}`)
+                  .join(" ")}
+                fill="#75c4ff"
+                fillOpacity=".18"
+                stroke="#75c4ff"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })()}
+          {debugNode.halves.map((h) => {
+            const q = project(h.trimPoint, view);
             return (
               <circle
-                key={i}
+                key={`${h.half.curveId}:${h.half.endpoint}`}
                 cx={q[0] * 160}
                 cy={-q[1] * 160}
-                r={5 / view.canvas.zoom}
+                r={3 / view.canvas.zoom}
                 fill="#ffd17b"
-                pointerEvents="none"
-                data-testid="junction-hover-marker"
               />
             );
           })}
+        </g>
+      )}
     </g>
   );
 }

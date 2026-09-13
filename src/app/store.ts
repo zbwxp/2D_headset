@@ -12,12 +12,8 @@ import { followEndpoints } from "../domain/curves/geometry";
 import type { PlanarShape } from "../domain/curves/model";
 import { reorderCenterline } from "../domain/landmarks/order";
 import { create } from "zustand";
-import {
-  createJunction,
-  changeExtent,
-  removeJunction,
-} from "../domain/junctions/management";
-import type { CurveHalfEdgeRef } from "../domain/junctions/model";
+import { setConfig } from "../domain/surfaceSmooth/config";
+import type { SurfaceSmoothNodeOverride } from "../domain/surfaceSmooth/model";
 import type { ReferenceImage, Vec2 } from "../domain/project/types";
 import type { LandmarkProject } from "../domain/landmarks/model";
 import {
@@ -32,12 +28,13 @@ import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
 import { project } from "../domain/geometry/core";
 export const HISTORY_LIMIT = 100;
-const KEY = "contour.landmarks.v036";
+const KEY = "contour.landmarks.v038";
 let initial = createLandmarkProject(),
   message = "";
 try {
   const saved =
     localStorage.getItem(KEY) ??
+    localStorage.getItem("contour.landmarks.v036") ??
     localStorage.getItem("contour.landmarks.v035") ??
     localStorage.getItem("contour.landmarks.v03") ??
     localStorage.getItem("contour.landmarks.v02") ??
@@ -74,13 +71,11 @@ try {
 }
 interface State {
   project: LandmarkProject;
-  createJunction: (
-    landmarkId: string,
-    a: CurveHalfEdgeRef,
-    b: CurveHalfEdgeRef,
-  ) => void;
-  removeJunction: (id: string) => void;
-  setJunctionExtent: (id: string, value: number, begin?: boolean) => boolean;
+  setSurfaceNode: (
+    id: string,
+    patch: SurfaceSmoothNodeOverride,
+    begin?: boolean,
+  ) => boolean;
   selectedCurveId: string | null;
   curveCreation: { startId: string | null } | null;
   startCurve: () => void;
@@ -130,17 +125,8 @@ export const useEditor = create<State>((set, get) => {
   };
   return {
     project: initial,
-    createJunction: (id, a, b) => {
-      const p = createJunction(get().project, id, a, b);
-      get().beginEdit();
-      commit(p);
-    },
-    removeJunction: (id) => {
-      get().beginEdit();
-      commit(removeJunction(get().project, id));
-    },
-    setJunctionExtent: (id, value, begin = false) => {
-      const p = changeExtent(get().project, id, value);
+    setSurfaceNode: (id, patch, begin = true) => {
+      const p = setConfig(get().project, id, patch);
       if (p === get().project) return false;
       if (begin) get().beginEdit();
       commit(p);

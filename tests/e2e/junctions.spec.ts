@@ -1,17 +1,21 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { test, expect, Page } from "@playwright/test";
 import { createLandmarkProject } from "../../src/domain/landmarks/presets";
 import { createCurve } from "../../src/domain/curves/management";
-import { createJunction } from "../../src/domain/junctions/management";
-import { resolveNetwork } from "../../src/domain/junctions/resolve";
-import { controls, bezier } from "../../src/domain/curves/geometry";
-import { project } from "../../src/domain/geometry/core";
-import { mirror } from "../../src/domain/landmarks/model";
+import { resolveNetwork } from "../../src/domain/surfaceSmooth/solver";
+import { config } from "../../src/domain/surfaceSmooth/config";
 import type { Vec3 } from "../../src/domain/project/types";
 const state = (p: Page) =>
-  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v036")!));
+  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v038")!));
+async function load(page: Page, p: any) {
+  await page
+    .locator('input[type=file][accept=".json,application/json"]')
+    .setInputFiles({
+      name: "node.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(p)),
+    });
+}
 function fixture() {
   let p = createLandmarkProject();
   const ids = p.centerlineOrder,
@@ -33,276 +37,186 @@ function fixture() {
   p = createCurve(p, ids[1], ids[2], p.views[0], "鼻底线").project;
   return { p, ids };
 }
-async function load(page: Page, p: any) {
+const panel = (p: Page) =>
+  p.getByRole("region", { name: "Surface Smooth Node 检查器", exact: true });
+async function open(page: Page) {
   await page
-    .locator('input[type=file][accept=".json,application/json"]')
-    .setInputFiles({
-      name: "junction-fixture.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(p)),
-    });
-}
-const chooseView = (p: Page, name: string) =>
-  p
     .locator(".point-view-tabs")
-    .getByRole("button", { name, exact: true })
+    .getByRole("button", { name: "侧面", exact: true })
     .click();
-async function movePanel(p: Page) {
-  const b = await p.getByTestId("junction-header").boundingBox();
-  await p.mouse.move(b!.x + 50, b!.y + 10);
-  await p.mouse.down();
-  await p.mouse.move(1170, 220, { steps: 8 });
-  await p.mouse.up();
+  await page.getByTestId("landmark-山根点").click({ button: "right" });
+  const b = await page.getByTestId("junction-header").boundingBox();
+  await page.mouse.move(b!.x + 50, b!.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(1160, 220, { steps: 8 });
+  await page.mouse.up();
 }
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
-test("inspector creates spatial G2, resolved picking, hover, extent one history step and lossless remove", async ({
+test("node inspector default-on, exact valence2, exclusions, OFF, slider history and debug", async ({
   page,
 }, info) => {
   const { p, ids } = fixture();
   await load(page, p);
-  await chooseView(page, "侧面");
-  await page.getByTestId("landmark-山根点").click({ button: "right" });
-  const panel = page.getByRole("region", { name: "交点检查器", exact: true });
-  await expect(panel).toContainText("Corner");
-  await movePanel(page);
+  await open(page);
+  const ui = panel(page);
+  await expect(ui.getByLabel("Surface Smooth", { exact: true })).toBeChecked();
+  await expect(ui).toContainText("平滑稳定");
   const before = await state(page);
-  await panel.getByRole("button", { name: "设为平滑", exact: true }).click();
-  let q = await state(page);
-  expect(q.smoothJunctions.length).toBe(1);
-  expect(q.curves).toEqual(before.curves);
-  expect(q.landmarks).toEqual(before.landmarks);
-  const j = q.smoothJunctions[0];
-  await expect(page.locator(`[data-testid^="blend-${j.id}-"]`)).toHaveCount(4);
-  const original = controls(q, q.curves[0]),
-    v = q.views.find((v: any) => v.id === "side")!;
-  const outerPath = await page
-    .getByTestId(`curve-hit-${q.curves[0].id}`)
-    .getAttribute("d");
-  const range = resolveNetwork(q).spans.find(
-    (s) => s.kind === "outer" && s.curveId === q.curves[0].id,
-  )!.sourceRange!;
-  expect(range[1] - range[0]).toBeLessThan(1);
-  expect(outerPath).not.toContain("NaN");
-  await panel.locator(".junction-pair").hover();
-  await expect(page.getByTestId("junction-hover-marker")).toHaveCount(3);
-  const slider = panel.getByRole("slider", { name: "平滑范围" }),
-    box = await slider.boundingBox();
-  await page.mouse.move(box!.x + box!.width * 0.35, box!.y + box!.height / 2);
+  expect(resolveNetwork(before).spans.every((s) => s.kind === "outer")).toBe(
+    true,
+  );
+  await ui.getByLabel("鼻梁线 · 终点", { exact: true }).uncheck();
+  await expect(ui).toContainText("参与结构线不足 2 条");
+  await ui.getByLabel("Surface Smooth", { exact: true }).uncheck();
+  expect(config(await state(page), ids[1]).excludedHalfEdges.length).toBe(1);
+  await ui.getByLabel("Surface Smooth", { exact: true }).check();
+  await ui.getByLabel("鼻梁线 · 终点", { exact: true }).check();
+  const prior = await state(page);
+  const slider = ui.getByRole("slider", { name: "平滑范围" }),
+    b = await slider.boundingBox();
+  await page.mouse.move(b!.x + b!.width * 0.25, b!.y + b!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.6, box!.y + box!.height / 2, {
-    steps: 12,
+  await page.mouse.move(b!.x + b!.width * 0.7, b!.y + b!.height / 2, {
+    steps: 10,
   });
   await page.mouse.up();
   const changed = await state(page);
-  expect(changed.smoothJunctions[0].extent).not.toBe(
-    q.smoothJunctions[0].extent,
-  );
+  expect(config(changed, ids[1]).extent).not.toBe(config(prior, ids[1]).extent);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
-  expect((await state(page)).smoothJunctions).toEqual(q.smoothJunctions);
+  expect((await state(page)).surfaceSmoothNodes).toEqual(
+    prior.surfaceSmoothNodes,
+  );
   await page.getByRole("button", { name: "重做", exact: true }).click();
-  expect((await state(page)).smoothJunctions).toEqual(changed.smoothJunctions);
-  await chooseView(page, "右 30°");
-  await expect(panel).toBeVisible();
-  await chooseView(page, "侧面");
-  // A derived blend opens its junction and cannot be dragged into a new source shape.
-  await panel
-    .getByRole("button", { name: "关闭交点检查器", exact: true })
-    .click();
-  const hit = page.getByTestId(`blend-hit-${j.id}-${j.sideA.curveId}`);
-  const pt = await hit.evaluate((node) => {
-    const p = node as SVGPathElement,
-      q = p.getPointAtLength(p.getTotalLength() / 2),
-      w = new DOMPoint(q.x, q.y).matrixTransform(p.getScreenCTM()!);
-    return { x: w.x, y: w.y };
+  expect((await state(page)).surfaceSmoothNodes).toEqual(
+    changed.surfaceSmoothNodes,
+  );
+  await ui.getByLabel("显示平滑调试").check();
+  await expect(page.getByTestId("surface-debug-plane")).toHaveCount(1);
+  expect((await state(page)).landmarks).toEqual(before.landmarks);
+  expect((await state(page)).curves).toEqual(before.curves);
+  await page.screenshot({
+    path: info.outputPath("surface-node-inspector.png"),
   });
-  const prior = await state(page);
-  await page.mouse.move(pt.x, pt.y);
-  await page.mouse.down();
-  await page.mouse.move(pt.x + 20, pt.y + 20, { steps: 5 });
-  await page.mouse.up();
-  await expect(panel).toBeVisible();
-  expect((await state(page)).curves).toEqual(prior.curves);
-  await page.screenshot({ path: info.outputPath("smooth-junction.png") });
-  await panel.getByRole("button", { name: "取消平滑", exact: true }).click();
-  q = await state(page);
-  expect(q.smoothJunctions).toEqual([]);
-  expect(q.curves).toEqual(p.curves);
 });
-test("invalid record remains occupied and editable, recovers after source Undo; cascade and save/load", async ({
+test("invalid source retains node config, slider editable and source undo recovers", async ({
   page,
 }) => {
-  const f = fixture();
-  let p = createJunction(
-    f.p,
-    f.ids[1],
-    { curveId: f.p.curves[0].id, endpoint: "end" },
-    { curveId: f.p.curves[1].id, endpoint: "start" },
-  );
+  const { p, ids } = fixture();
   await load(page, p);
-  await chooseView(page, "侧面");
-  await page.getByTestId("landmark-山根点").dblclick();
-  await movePanel(page);
-  // Load an invalid source shape without persisting any derived status.
+  await open(page);
   const bad = {
     ...p,
     landmarks: p.landmarks.map((l) =>
-      l.id === f.ids[2] ? { ...l, position: [0, 1.3, 0] as Vec3 } : l,
+      l.id === ids[0] ? { ...l, position: [0, 0, 0] } : l,
     ),
   };
   await load(page, bad);
-  const panel = page.getByRole("region", { name: "交点检查器", exact: true });
-  await expect(panel).toContainText("当前平滑连接无效");
-  await expect(
-    panel.getByRole("button", { name: "设为平滑", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    panel.getByRole("button", { name: "＋ 添加平滑配对", exact: true }),
-  ).toBeDisabled();
-  await panel.getByRole("slider", { name: "平滑范围" }).focus();
+  await expect(panel(page)).toContainText("当前平滑无效");
+  const slider = panel(page).getByRole("slider", { name: "平滑范围" });
+  await slider.focus();
   await page.keyboard.press("ArrowRight");
-  expect((await state(page)).smoothJunctions[0].extent).toBe(0.16);
-  await expect(panel).toContainText("当前平滑连接无效");
+  expect(config(await state(page), ids[1]).extent).toBe(0.16);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.getByRole("button", { name: "撤销", exact: true }).click();
-  await expect(panel).toContainText("Smooth · 空间 G2");
-  expect((await state(page)).smoothJunctions).toEqual(p.smoothJunctions);
-  const saved = await state(page);
-  await page.reload();
-  expect((await state(page)).smoothJunctions).toEqual(saved.smoothJunctions);
-  expect(resolveNetwork(await state(page))).toEqual(resolveNetwork(saved));
-  await page
-    .locator(".curve-list")
-    .getByRole("button", { name: "鼻梁线", exact: true })
-    .click();
-  await page.keyboard.press("Delete");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "确认删除", exact: true })
-    .click();
-  expect((await state(page)).smoothJunctions).toEqual([]);
-  await page.getByRole("button", { name: "撤销", exact: true }).click();
-  expect((await state(page)).smoothJunctions).toEqual(saved.smoothJunctions);
+  await expect(panel(page)).toContainText("平滑稳定");
 });
-test("high valence pairing uses free endpoint slots and mirror inspector edits one extent", async ({
-  page,
-}) => {
-  let p = createLandmarkProject();
-  const rs = p.landmarks.filter((l) => l.type === "RIGHT").slice(0, 5),
-    coords: Vec3[] = [
-      [-0.6, 0.6, 0],
-      [-0.6, 0, 0],
-      [-0.2, -0.3, 0],
-      [-1, -0.3, 0],
-      [-0.6, -0.7, 0],
-    ];
-  p = {
-    ...p,
-    landmarks: p.landmarks.map((l) => {
-      const i = rs.findIndex(
-        (r) => r.id === l.id || r.mirrorPartnerId === l.id,
-      );
-      return i < 0
-        ? l
-        : {
-            ...l,
-            position: l.type === "RIGHT" ? coords[i] : mirror(coords[i]),
-          };
-    }),
-  };
-  for (const i of [0, 2, 3, 4])
-    p = createCurve(p, rs[1].id, rs[i].id, p.views[0], `线${i}`).project;
-  await load(page, p);
-  await page.getByTestId(`landmark-${rs[1].name}`).click({ button: "right" });
-  await movePanel(page);
-  const panel = page.getByRole("region", { name: "交点检查器", exact: true });
-  await panel
-    .getByRole("button", { name: "＋ 添加平滑配对", exact: true })
-    .click();
-  await panel
-    .getByLabel("第一条结构线")
-    .selectOption(`${p.curves[0].id}:start`);
-  await panel
-    .getByLabel("第二条结构线")
-    .selectOption(`${p.curves[2].id}:start`);
-  await panel.getByRole("button", { name: "建立平滑", exact: true }).click();
-  let q = await state(page);
-  expect(q.smoothJunctions.length).toBe(1);
-  expect(resolveNetwork(q).junctions.length).toBe(2);
-  const left = p.landmarks.find((l) => l.id === rs[1].mirrorPartnerId)!;
-  await page.getByTestId(`landmark-${left.name}`).click({ button: "right" });
-  await panel.getByRole("slider", { name: "平滑范围" }).focus();
-  await page.keyboard.press("ArrowRight");
-  q = await state(page);
-  expect(q.smoothJunctions.length).toBe(1);
-  expect(q.smoothJunctions[0].extent).toBe(0.16);
-  expect(resolveNetwork(q).junctions.every((j) => j.state === "VALID")).toBe(
-    true,
-  );
-});
-
-test("actual ear and eye migrate, display exact-degree transitions, preserve source and export source only", async ({
+test("actual ear/eye migrate, no displaced V, export source only and reload", async ({
   page,
 }, info) => {
-  const data = JSON.parse(
-    readFileSync(resolve("src/tests/fixtures/ear-eye.json"), "utf8"),
+  const raw = JSON.parse(
+    readFileSync("src/tests/fixtures/ear-eye.json", "utf8"),
   );
-  await load(page, data);
-  await chooseView(page, "右 30°");
+  await load(page, raw);
   const saved = await state(page);
-  expect(saved.smoothJunctions.every((j: any) => j.mode === "spatial-G2")).toBe(
-    true,
+  expect(saved.smoothJunctions).toBeUndefined();
+  expect(saved.version).toBe("landmarks-0.3.8");
+  expect(saved.landmarks.map((l: any) => l.position)).toEqual(
+    raw.landmarks.map((l: any) => l.position),
   );
-  const n = resolveNetwork(saved);
-  expect(n.junctions.every((j) => j.state === "VALID")).toBe(true);
-  await expect(page.locator('[data-testid^="blend-hit-"]')).toHaveCount(4);
-  for (const hit of await page.locator('[data-testid^="blend-hit-"]').all()) {
-    const d = await hit.getAttribute("d");
-    expect(d).toContain(" L");
-    expect(d).not.toContain(" C");
-    expect(d).not.toContain("NaN");
-  }
-  await page.screenshot({
-    path: info.outputPath("actual-spatial-ear-eye.png"),
-  });
+  expect(saved.curves).toEqual(raw.curves);
+  const net = resolveNetwork(saved);
+  for (const span of net.spans)
+    expect(span.controls.flat().every(Number.isFinite)).toBe(true);
+  await page
+    .locator(".point-view-tabs")
+    .getByRole("button", { name: "右 30°", exact: true })
+    .click();
+  await page.screenshot({ path: info.outputPath("surface-node-ear-eye.png") });
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "保存 JSON", exact: true }).click();
-  const download = await downloadPromise;
-  const stream = await download.createReadStream();
+  const stream = await (await downloadPromise).createReadStream();
   let text = "";
   for await (const chunk of stream!) text += chunk.toString();
   const exported = JSON.parse(text);
-  expect(exported.smoothJunctions).toEqual(saved.smoothJunctions);
-  expect(JSON.stringify(exported.smoothJunctions)).not.toMatch(
-    /transition|quality|warning|hA|tA/,
+  expect(exported.surfaceSmoothNodes).toEqual(saved.surfaceSmoothNodes);
+  expect(exported.smoothJunctions).toBeUndefined();
+  expect(JSON.stringify(exported.surfaceSmoothNodes)).not.toMatch(
+    /normal|trimPoint|stress|INVALID/,
   );
-  const ear = saved.smoothJunctions[0];
-  const hit = page.getByTestId(`blend-hit-${ear.id}-${ear.sideA.curveId}`);
-  const at = await hit.evaluate((node) => {
-    const p = node as SVGPathElement;
-    for (let i = 2; i < 19; i++) {
-      const q = p.getPointAtLength((p.getTotalLength() * i) / 20),
-        w = new DOMPoint(q.x, q.y).matrixTransform(p.getScreenCTM()!);
-      if (document.elementFromPoint(w.x, w.y) === node)
-        return { x: w.x, y: w.y };
-    }
-    throw new Error("No exposed transition pick location");
-  });
-  await page.mouse.click(at.x, at.y);
-  await page
-    .getByRole("region", { name: "交点检查器", exact: true })
-    .getByRole("button", { name: "取消平滑", exact: true })
-    .click();
-  expect((await state(page)).curves).toEqual(saved.curves);
-  expect((await state(page)).landmarks).toEqual(saved.landmarks);
-  await page.getByRole("button", { name: "撤销", exact: true }).click();
-  expect((await state(page)).smoothJunctions).toEqual(saved.smoothJunctions);
-  await page.goto(
-    pathToFileURL(resolve("docs/qa/spatial-smooth/comparison.html")).href,
+  await load(page, exported);
+  expect((await state(page)).surfaceSmoothNodes).toEqual(
+    saved.surfaceSmoothNodes,
   );
+  await page.reload();
+  expect(resolveNetwork(await state(page))).toEqual(net);
+});
+test("resolved fairing picking edits original source curve and undo restores it", async ({
+  page,
+}, info) => {
+  const raw = JSON.parse(
+    readFileSync("artifacts/head-neck-refinement/refined.json", "utf8"),
+  );
+  await load(page, raw);
+  const before = await state(page);
+  const { basis, dot } = await import("../../src/domain/geometry/core");
+  const { canonical } = await import("../../src/domain/curves/geometry");
+  const v = before.views.find((x: any) => x.id === "front");
+  const candidates = resolveNetwork(before).spans.filter(
+    (s) =>
+      s.kind === "blend" &&
+      Math.abs(
+        dot(
+          canonical(
+            before,
+            before.curves.find((c: any) => c.id === s.curveId),
+          ).shape.planeNormal,
+          basis(v).forward,
+        ),
+      ) > 0.25,
+  );
+  let picked: string | undefined;
+  for (const span of candidates) {
+    const hit = page.getByTestId(
+      `blend-hit-${span.landmarkId}-${span.curveId}`,
+    );
+    const pt = await hit.evaluate((node) => {
+      const p = node as SVGPathElement;
+      for (let i = 5; i < 16; i++) {
+        const q = p.getPointAtLength((p.getTotalLength() * i) / 20),
+          w = new DOMPoint(q.x, q.y).matrixTransform(p.getScreenCTM()!);
+        if (document.elementFromPoint(w.x, w.y) === node)
+          return { x: w.x, y: w.y };
+      }
+      return null;
+    });
+    if (!pt) continue;
+    await page.mouse.move(pt.x, pt.y);
+    await page.mouse.down();
+    await page.mouse.move(pt.x + 8, pt.y + 5, { steps: 5 });
+    await page.mouse.up();
+    picked = span.curveId;
+    break;
+  }
+  expect(picked).toBeTruthy();
+  const after = await state(page);
+  expect(after.curves).not.toEqual(before.curves);
+  expect(after.landmarks).toEqual(before.landmarks);
+  expect(after.surfaceSmoothNodes).toEqual(before.surfaceSmoothNodes);
   await page.screenshot({
-    path: info.outputPath("comparison.png"),
-    fullPage: true,
+    path: info.outputPath("refined-head-resolved-edit.png"),
   });
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect((await state(page)).curves).toEqual(before.curves);
 });

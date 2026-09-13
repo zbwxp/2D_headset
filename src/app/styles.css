@@ -2320,3 +2320,27 @@ i:not([class]) {
 .floating-content .junction-invalid { color:#ffb98d; }
 .junction-pairing { display:grid; gap:8px; }
 .junction-pairing select { max-width:100%; background:#202a30; color:#d6e0e2; padding:6px; }
+
+
+.surface-node-controls > label {
+  display: block;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.surface-node-controls input[type="checkbox"] {
+  margin-right: 7px;
+}
+.surface-node-controls input[type="range"] {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+.surface-node-controls output {
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+.surface-node-controls [role="status"] {
+  padding: 9px;
+  background: #192228;
+  border-radius: 5px;
+}

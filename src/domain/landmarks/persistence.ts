@@ -1,4 +1,4 @@
-import { parseJunctions } from "../junctions/persistence";
+import { migrate } from "../surfaceSmooth/config";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
@@ -23,6 +23,7 @@ export function parseLandmarks(text: string): LandmarkProject {
       "landmarks-0.3",
       "landmarks-0.3.5",
       "landmarks-0.3.6",
+      "landmarks-0.3.8",
     ].includes(p?.version) &&
       p.meta &&
       typeof p.meta.name === "string" &&
@@ -138,8 +139,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   }
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
-    version: "landmarks-0.3.6",
-    smoothJunctions: [],
+    version: "landmarks-0.3.8",
     curves: [],
     centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),
     lockedViews:
@@ -180,6 +180,5 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result);
-  result.smoothJunctions = parseJunctions(p.smoothJunctions, result);
-  return result;
+  return migrate(result, p);
 }

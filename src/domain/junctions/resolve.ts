@@ -148,7 +148,7 @@ export function resolveNetwork(p: LandmarkProject): ResolvedNetwork {
   if (cached) return cached;
   const tables = new Map(p.curves.map((c) => [c.id, arcTable(controls(p, c))]));
   const junctions: ResolvedJunction[] = [];
-  for (const j of p.smoothJunctions) {
+  for (const j of (p.smoothJunctions ?? [])) {
     const result = resolveOne(p, j, tables);
     junctions.push(result);
     const other = junctionInstances(p, j)[1];
@@ -219,7 +219,7 @@ export function resolveNetwork(p: LandmarkProject): ResolvedNetwork {
   let spans = assemble();
   // Validate transitions against the actual retained network, including other curves.
   // If reverting one junction exposes a source span, recheck until the network stabilizes.
-  for (let pass = 0; pass <= p.smoothJunctions.length; pass++) {
+  for (let pass = 0; pass <= (p.smoothJunctions ?? []).length; pass++) {
     const bad = new Set<string>();
     for (let i = 0; i < spans.length; i++)
       if (spans[i].kind === "blend")

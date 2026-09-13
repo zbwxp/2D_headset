@@ -22,11 +22,18 @@ export interface LandmarkProject {
     | "landmarks-0.2"
     | "landmarks-0.3"
     | "landmarks-0.3.5"
-    | "landmarks-0.3.6";
+    | "landmarks-0.3.6"
+    | "landmarks-0.3.8";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
   curves: CurveEdge[];
-  smoothJunctions: SmoothJunction[];
+  /** Legacy input only; never emitted by V0.3.8. */
+  smoothJunctions?: SmoothJunction[];
+  surfaceSmoothDefaults?: import("../surfaceSmooth/model").SurfaceSmoothDefaults;
+  surfaceSmoothNodes?: Record<
+    string,
+    import("../surfaceSmooth/model").SurfaceSmoothNodeOverride
+  >;
   centerlineOrder: string[];
   landmarks: SemanticLandmark[];
   views: LandmarkView[];
@@ -235,7 +242,8 @@ export function setGlobalViewLock(
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
     curves: p.curves,
-    smoothJunctions: p.smoothJunctions,
+    surfaceSmoothDefaults: p.surfaceSmoothDefaults,
+    surfaceSmoothNodes: p.surfaceSmoothNodes,
     centerlineOrder: p.centerlineOrder,
     lockedViews: p.lockedViews,
     landmarks: p.landmarks,

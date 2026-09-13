@@ -1,6 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 const state = (p: Page) =>
-  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v036")!));
+  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v038")!));
 async function choose(p: Page, n: string) {
   await p
     .locator(".point-list")

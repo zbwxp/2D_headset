@@ -1,5 +1,5 @@
 import { flatten, norm } from "../../domain/junctions/spatial";
-import { resolveNetwork } from "../../domain/junctions/resolve";
+import { resolveNetwork } from "../../domain/surfaceSmooth/solver";
 import { useUI } from "../session";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -86,9 +86,9 @@ export default function InspectView() {
         colors: number[] = [];
       const network = resolveNetwork(s.project),
         hovered = useUI.getState().hoverJunctionId;
-      const rows = network.junctions.filter((j) => j.sourceId === hovered),
+      const rows = network.nodes.filter((j) => j.landmarkId === hovered),
         highlighted = new Set(
-          rows.flatMap((j) => [j.sideA.curveId, j.sideB.curveId]),
+          rows.flatMap((j) => j.participants.map((h) => h.curveId)),
         );
       hoverGeometry.setAttribute(
         "position",
@@ -96,7 +96,7 @@ export default function InspectView() {
           rows
             .flatMap((j) => [
               s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
-              ...(j.transition ? [j.transition[0], j.transition.at(-1)!] : []),
+              ...j.halves.map((h) => h.trimPoint),
             ])
             .flat(),
           3,

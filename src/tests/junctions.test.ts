@@ -1,411 +1,577 @@
-import { describe, it, expect } from "vitest";
-import data from "./fixtures/ear-eye.json";
-import { createLandmarkProject } from "../domain/landmarks/presets";
-import { mirror, type LandmarkProject } from "../domain/landmarks/model";
-import { createCurve, deleteCurve } from "../domain/curves/management";
-import {
-  controls,
-  followEndpoints,
-  type ControlPoints,
-} from "../domain/curves/geometry";
-import { parseLandmarks } from "../domain/landmarks/persistence";
-import {
-  createJunction,
-  changeExtent,
-  removeJunction,
-} from "../domain/junctions/management";
+import { it, expect, describe } from "vitest";
 import {
   resolveNetwork,
-  junctionPath,
-  subCubic,
-} from "../domain/junctions/resolve";
+  plane,
+  eigen,
+  exact,
+  targetTangent,
+} from "../domain/surfaceSmooth/solver";
 import {
-  evaluate,
-  derivative,
-  curvature,
-  norm,
-  sphereExit,
-  roots01,
-  flatten,
-  regular,
-  selfCrossing,
-  spansCross,
-  chooseTransition,
-} from "../domain/junctions/spatial";
-import { sub, scale, normalize } from "../domain/geometry/core";
-import { occupiedHalves, halfKey } from "../domain/junctions/topology";
+  config,
+  setConfig,
+  incident,
+  key,
+} from "../domain/surfaceSmooth/config";
+import { createLandmarkProject } from "../domain/landmarks/presets";
+import { parseLandmarks } from "../domain/landmarks/persistence";
+import { controls, type ControlPoints } from "../domain/curves/geometry";
+import {
+  createCurve,
+  deleteCurve,
+  renameCurve,
+} from "../domain/curves/management";
 import {
   deleteLandmark,
   duplicateLandmark,
-  renameLandmark,
 } from "../domain/landmarks/management";
+import {
+  add,
+  scale,
+  sub,
+  cross,
+  normalize,
+  dot,
+} from "../domain/geometry/core";
+import { evaluate, derivative, norm } from "../domain/junctions/spatial";
+import { mirror, type LandmarkProject } from "../domain/landmarks/model";
 import type { Vec3 } from "../domain/project/types";
-const near = (a: Vec3, b: Vec3, tol = 1e-8) =>
-  expect(norm(sub(a, b))).toBeLessThan(tol);
-function fixture(ra = false, rb = false) {
-  let p = createLandmarkProject();
-  const ids = p.centerlineOrder,
-    ps: Vec3[] = [
+import data from "./fixtures/ear-eye.json";
+function fixture(
+  tangents: Vec3[] = [
+    [1, 0, 0.2],
+    [0, 1, 0],
+    [-1, 0, 0],
+    [0, -1, 0.3],
+  ],
+  reverse = false,
+): LandmarkProject {
+  const p = createLandmarkProject();
+  p.landmarks = [
+    { id: "v", name: "v", type: "FREE", position: [0, 0, 0], viewLocks: {} },
+  ];
+  p.curves = [];
+  p.centerlineOrder = [];
+  tangents.forEach((t, i) => {
+    const u = normalize(t),
+      end = add(scale(u, 1.2), [0, 0, 0.15]),
+      id = `p${i}`;
+    p.landmarks.push({
+      id,
+      name: id,
+      type: "FREE",
+      position: end,
+      viewLocks: {},
+    });
+    const a: ControlPoints = reverse
+      ? [end, scale(end, 0.7), scale(u, 0.4), [0, 0, 0]]
+      : [[0, 0, 0], scale(u, 0.4), scale(end, 0.7), end];
+    const A = a[0],
+      B = a[3],
+      d = normalize(sub(B, A)),
+      n = normalize(cross(u, end)),
+      b = normalize(cross(n, d)),
+      L = norm(sub(B, A));
+    p.curves.push({
+      id: `c${i}`,
+      name: `c${i}`,
+      role: "canonical",
+      startLandmarkId: reverse ? id : "v",
+      endLandmarkId: reverse ? "v" : id,
+      shape: {
+        planeNormal: n,
+        startHandle: {
+          along: dot(sub(a[1], A), d) / L,
+          offset: dot(sub(a[1], A), b) / L,
+        },
+        endHandle: {
+          along: -dot(sub(a[2], B), d) / L,
+          offset: dot(sub(a[2], B), b) / L,
+        },
+      },
+    });
+  });
+  return p;
+}
+const at = (p: LandmarkProject) =>
+  resolveNetwork(p).nodes.find((n) => n.landmarkId === "v")!;
+const near = (a: Vec3, b: Vec3, e = 1e-8) =>
+  expect(norm(sub(a, b))).toBeLessThan(e);
+it("Jacobi eigenvectors satisfy symmetric matrix eigenproblem", () => {
+  const M = [
+    [2, 0.3, 0.4],
+    [0.3, 1, -0.2],
+    [0.4, -0.2, 3],
+  ];
+  for (const e of eigen(M))
+    near(
+      M.map((r) => dot(r as Vec3, e.vector)) as Vec3,
+      scale(e.vector, e.value),
+    );
+});
+it.each([0, 1])("valence %s is no-op", (n) => {
+  const p = fixture(([[1, 0, 0]] as Vec3[]).slice(0, n));
+  expect(at(p).state).toBe("NO_OP");
+  for (const s of resolveNetwork(p).spans)
+    expect(s.controls).toEqual(
+      controls(p, p.curves.find((c) => c.id === s.curveId)!),
+    );
+});
+it.each([false, true])(
+  "two nonparallel tangents are exact source, reversed=%s",
+  (r) => {
+    const p = fixture(
+      [
+        [1, 0, 0],
+        [0, 1, 0],
+      ],
+      r,
+    );
+    expect(at(p).state).toBe("VALID");
+    expect(at(p).halves.every((h) => !h.fairing)).toBe(true);
+    expect(resolveNetwork(p).spans.length).toBe(2);
+  },
+);
+it("already coplanar high valence preserves source exactly", () => {
+  const p = fixture([
+    [1, 0, 0],
+    [0, 1, 0],
+    [-1, 0, 0],
+    [0, -1, 0],
+  ]);
+  expect(at(p).state).toBe("VALID");
+  expect(at(p).halves.every((h) => !h.fairing)).toBe(true);
+});
+it.each([false, true])(
+  "noncoplanar node stays anchored, planar and G1; end=%s",
+  (r) => {
+    const p = fixture(undefined, r),
+      n = at(p);
+    expect(n.state).toBe("VALID");
+    expect(n.halves.some((h) => h.fairing)).toBe(true);
+    for (const h of n.halves) {
+      expect(Math.abs(dot(n.normal!, h.target))).toBeLessThan(1e-8);
+      if (!h.fairing) continue;
+      const cp = h.fairing,
+        c = p.curves.find((c) => c.id === h.half.curveId)!;
+      near(cp[r ? 3 : 0], [0, 0, 0]);
+      for (const q of cp)
+        expect(
+          Math.abs(
+            dot(
+              sub(q, cp[0]),
+              c.role === "canonical" ? c.shape.planeNormal : [0, 0, 0],
+            ),
+          ),
+        ).toBeLessThan(1e-8);
+      const i = r ? 0 : 1;
+      near(
+        normalize(derivative(cp, i)),
+        normalize(derivative(controls(p, c), h.trimT)),
+      );
+      const outer = resolveNetwork(p).spans.find(
+        (s) => s.curveId === c.id && s.kind === "outer",
+      )!;
+      near(
+        evaluate(outer.controls, 0.37),
+        evaluate(
+          controls(p, c),
+          outer.sourceRange[0] +
+            0.37 * (outer.sourceRange[1] - outer.sourceRange[0]),
+        ),
+      );
+    }
+  },
+);
+it("OFF retains exclusions and restores source at the node", () => {
+  const p = fixture(),
+    h = incident(p, "v")[0],
+    off = setConfig(setConfig(p, "v", { excludedHalfEdges: [h] }), "v", {
+      enabled: false,
+    });
+  expect(at(off).state).toBe("OFF");
+  expect(config(off, "v").excludedHalfEdges).toEqual([h]);
+  expect(resolveNetwork(off).spans.every((s) => s.kind === "outer")).toBe(true);
+  expect(at(setConfig(off, "v", { enabled: true })).participants.length).toBe(
+    3,
+  );
+});
+it("exclusion removes observation and leaves exact source to V", () => {
+  const p = fixture(),
+    h = incident(p, "v")[0],
+    q = setConfig(p, "v", { excludedHalfEdges: [h] });
+  expect(at(q).participants.map(key)).not.toContain(key(h));
+  expect(
+    resolveNetwork(q).spans.find((s) => s.curveId === h.curveId)!.controls,
+  ).toEqual(controls(q, q.curves[0]));
+});
+it("one remaining participant is not an error", () => {
+  const p = fixture();
+  expect(
+    at(setConfig(p, "v", { excludedHalfEdges: incident(p, "v").slice(1) }))
+      .state,
+  ).toBe("NO_OP");
+});
+it("new curve participates automatically", () => {
+  const p = fixture([
+      [1, 0, 0],
       [0, 1, 0],
-      [0, 0, 0],
-      [0, 0, 1],
-      [0, -1, 1],
-      [0, -1, 0],
-      [0, 0, -1],
-    ];
-  p = {
-    ...p,
-    landmarks: p.landmarks.map((l) =>
-      ids.includes(l.id) ? { ...l, position: ps[ids.indexOf(l.id)] } : l,
-    ),
-  };
-  p = createCurve(p, ids[ra ? 1 : 0], ids[ra ? 0 : 1], p.views[0], "A").project;
-  p = createCurve(p, ids[rb ? 2 : 1], ids[rb ? 1 : 2], p.views[0], "B").project;
-  const a = {
-      curveId: p.curves[0].id,
-      endpoint: ra ? ("start" as const) : ("end" as const),
-    },
-    b = {
-      curveId: p.curves[1].id,
-      endpoint: rb ? ("end" as const) : ("start" as const),
+    ]),
+    q = setConfig(p, "v", { excludedHalfEdges: [incident(p, "v")[0]] }),
+    extra = fixture().curves[2];
+  q.curves = [...q.curves, extra];
+  q.landmarks = [...q.landmarks, fixture().landmarks[3]];
+  expect(at(q).participants.length).toBe(2);
+});
+it("ordering does not affect node plane or fairing", () => {
+  const p = fixture(),
+    q = {
+      ...p,
+      curves: [...p.curves].reverse(),
+      landmarks: [...p.landmarks].reverse(),
     };
-  return { p, ids, a, b };
-}
-function check(p: LandmarkProject) {
-  for (const j of resolveNetwork(p).junctions) {
-    expect(j.state, j.reason).toBe("VALID");
-    const cp = j.transition!,
-      r = j.distance!;
-    for (const [h, t, end] of [
-      [j.sideA, j.tA!, 0],
-      [j.sideB, j.tB!, 1],
-    ] as const) {
-      const src = controls(p, p.curves.find((c) => c.id === h.curveId)!);
-      near(evaluate(cp, end), evaluate(src, t), r * 1e-8);
-      near(
-        normalize(derivative(cp, end)),
-        scale(
-          normalize(derivative(src, t)),
-          h.endpoint === (end === 0 ? "end" : "start") ? 1 : -1,
-        ),
-      );
-      near(scale(curvature(cp, end), r), scale(curvature(src, t), r), 1e-7);
-      const v = p.landmarks.find((l) => l.id === j.landmarkId)!.position;
-      expect(norm(sub(evaluate(cp, end), v)) / r).toBeCloseTo(1, 8);
-    }
+  expect(at(q)).toEqual(at(p));
+});
+it("normal sign reversal does not change result geometry", () => {
+  const p = fixture(),
+    q = {
+      ...p,
+      curves: p.curves.map((c) =>
+        c.role === "canonical"
+          ? {
+              ...c,
+              shape: {
+                ...c.shape,
+                planeNormal: scale(c.shape.planeNormal, -1),
+                startHandle: {
+                  ...c.shape.startHandle,
+                  offset: -c.shape.startHandle.offset,
+                },
+                endHandle: {
+                  ...c.shape.endHandle,
+                  offset: -c.shape.endHandle.offset,
+                },
+              },
+            }
+          : c,
+      ),
+    };
+  const a = at(p),
+    b = at(q);
+  expect(b.state).toBe(a.state);
+  b.halves.forEach((h, i) => near(h.target, a.halves[i].target));
+});
+it("repeated eigenvalues on centerline choose invariant plane", () => {
+  for (const ts of [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [1, 0, 0],
+      [-1, 0, 0],
+    ],
+  ] as Vec3[][]) {
+    const n = plane(ts, ts, true);
+    expect(Math.abs(n[0]) < 1e-12 || Math.hypot(n[1], n[2]) < 1e-12).toBe(true);
+    expect(plane(ts, ts, true)).toEqual(n);
   }
-}
-describe("spatial curvature-matched junctions", () => {
-  it.each([
-    [false, false],
-    [true, false],
-    [false, true],
-    [true, true],
-  ])("matches geometric 2-jets for endpoint directions %s/%s", (ra, rb) => {
-    const f = fixture(ra, rb),
-      p = createJunction(f.p, f.ids[1], f.a, f.b);
-    check(p);
-    expect(resolveNetwork(p).spans.length).toBe(3);
-    const path = junctionPath(p, resolveNetwork(p).junctions[0])!.spans;
-    for (let i = 1; i < path.length; i++) {
-      near(path[i - 1].at(-1)!, path[i][0]);
-      near(
-        normalize(derivative(path[i - 1], 1)),
-        normalize(derivative(path[i], 0)),
-      );
-      near(curvature(path[i - 1], 1), curvature(path[i], 0));
-    }
-    for (const s of resolveNetwork(p).spans.filter((s) => s.kind === "outer")) {
-      const cp = controls(p, p.curves.find((c) => c.id === s.curveId)!);
-      for (let t = 0; t <= 1; t += 0.125)
-        near(
-          evaluate(s.controls, t),
-          evaluate(
-            cp,
-            s.sourceRange![0] + t * (s.sourceRange![1] - s.sourceRange![0]),
-          ),
-        );
-    }
-    expect(removeJunction(p, p.smoothJunctions[0].id).curves).toBe(f.p.curves);
-  });
-  it("sphere root isolation handles tangency, multiple exits, no exit and reversed traversal", () => {
-    expect(roots01([0.16, -1, 1])).toEqual(
-      expect.arrayContaining([expect.closeTo(0.2, 8), expect.closeTo(0.8, 8)]),
+});
+it("collinear fallback uses source normals, is camera independent", () => {
+  near(
+    plane(
+      [
+        [1, 0, 0],
+        [-1, 0, 0],
+      ],
+      [
+        [0, 0, 1],
+        [0, 0, -1],
+      ],
+      false,
+    ),
+    [0, 0, 1],
+  );
+});
+it("zero-length source is INVALID and config remains, then recovers", () => {
+  const p = fixture(),
+    q = setConfig(p, "v", { extent: 0.21 }),
+    bad = {
+      ...q,
+      landmarks: q.landmarks.map((l) =>
+        l.id === "p0" ? { ...l, position: [0, 0, 0] as Vec3 } : l,
+      ),
+    };
+  expect(at(bad).state).toBe("INVALID");
+  expect(bad.surfaceSmoothNodes).toEqual(q.surfaceSmoothNodes);
+  expect(at(q).state).toBe("VALID");
+  expect(at(bad).halves).toEqual([]);
+});
+it("invalid node falls back all participants, no NaN", () => {
+  const p = fixture(),
+    q = {
+      ...p,
+      curves: p.curves.map((c) =>
+        c.id === "c0" && c.role === "canonical"
+          ? { ...c, shape: { ...c.shape, planeNormal: [NaN, 0, 0] as Vec3 } }
+          : c,
+      ),
+    };
+  expect(at(q).state).toBe("INVALID");
+  expect(at(q).halves.length).toBe(0);
+});
+it("old actual ear/eye migration preserves V and minimum extent without pair exclusions", () => {
+  const raw = structuredClone(data),
+    p = parseLandmarks(JSON.stringify(raw));
+  expect(p.version).toBe("landmarks-0.3.8");
+  expect(p.smoothJunctions).toBeUndefined();
+  for (const l of p.landmarks)
+    expect(l.position).toEqual(
+      raw.landmarks.find((x) => x.id === l.id)!.position,
     );
-    expect(roots01([0.25, -1, 1])).toEqual([0.5]);
-    const cp: ControlPoints = [
-      [0, 0, 0],
-      [3, 0, 0],
-      [-3, 0, 0],
-      [0, 0, 0],
-    ];
-    const t = sphereExit(cp, cp[0], 0.5, "start");
-    expect(t).toBeLessThan(0.2);
-    expect(norm(evaluate(cp, t))).toBeCloseTo(0.5, 8);
-    expect(sphereExit([...cp].reverse(), cp[0], 0.5, "end")).toBeCloseTo(
-      1 - t,
-      8,
-    );
-    const touch: ControlPoints = [
-      [0, 0, 0],
-      [4 / 3, 0, 0],
-      [4 / 3, 0, 0],
-      [0, 0, 0],
-    ];
-    expect(() => sphereExit(touch, touch[0], 1, "start")).toThrow(/相切/);
-    expect(() => sphereExit(touch, touch[0], 2, "start")).toThrow(/未离开/);
+  expect(JSON.stringify(p)).not.toContain("smoothJunctions");
+  for (const o of Object.values(p.surfaceSmoothNodes!))
+    expect(o.excludedHalfEdges ?? []).toEqual([]);
+});
+it("new save/load roundtrip only stores source overrides", () => {
+  let p = parseLandmarks(JSON.stringify(data));
+  const l = p.landmarks.find((l) => incident(p, l.id).length > 1)!;
+  p = setConfig(p, l.id, {
+    extent: 0.23,
+    enabled: false,
+    excludedHalfEdges: [incident(p, l.id)[0]],
   });
-  it("actual ear and eye keep exact jets, mirror, no new crossings and improve peak curvature", () => {
-    const p = parseLandmarks(JSON.stringify(data));
-    check(p);
-    const js = resolveNetwork(p).junctions;
-    for (let i = 0; i < js.length; i += 2)
-      expect(js[i + 1].transition).toEqual(js[i].transition!.map(mirror));
-    const ear = js[0],
-      eye = js[2];
-    expect(ear.quality!.peakCurvature / ear.distance!).toBeLessThan(8); // prior ear V peak 16.66
-    expect(eye.quality!.peakCurvature / eye.distance!).toBeLessThan(9); // prior eye V peak 11.36
-    for (const j of [ear, eye]) {
-      expect(j.warning).toBeUndefined();
-      expect(
-        regular(
-          j.transition!.map((p) =>
-            scale(sub(p, j.transition![0]), 1 / j.distance!),
-          ),
+  const q = parseLandmarks(JSON.stringify(p));
+  expect(q).toEqual(p);
+  expect(resolveNetwork(q)).toEqual(resolveNetwork(p));
+  expect(JSON.stringify(p.surfaceSmoothNodes)).not.toMatch(
+    /normal|trimPoint|INVALID|stress/,
+  );
+});
+it("mirror config/exclusion shared; center mirror checkbox expands", () => {
+  const p = parseLandmarks(JSON.stringify(data)),
+    r = p.landmarks.find(
+      (l) => l.type === "RIGHT" && incident(p, l.id).length >= 2,
+    )!,
+    q = setConfig(p, r.id, {
+      extent: 0.22,
+      excludedHalfEdges: [incident(p, r.id)[0]],
+    });
+  expect(config(q, r.mirrorPartnerId!).extent).toBe(0.22);
+  expect(config(q, r.mirrorPartnerId!).excludedHalfEdges.length).toBe(1);
+  const c = p.landmarks.find(
+      (l) =>
+        l.type === "CENTERLINE" &&
+        incident(p, l.id).some(
+          (h) => p.curves.find((c) => c.id === h.curveId)?.mirrorPartnerCurveId,
         ),
-      ).toBe(true);
-    }
-  });
-  it("actual extent sweep is deterministic and does not jump between shapes", () => {
-    const base = parseLandmarks(JSON.stringify(data));
-    let prev: LandmarkProject | null = null;
-    for (let i = 1; i <= 45; i++) {
-      const p = {
-        ...base,
-        smoothJunctions: base.smoothJunctions.map((j) => ({
-          ...j,
-          extent: i / 100,
-        })),
-      };
-      check(p);
-      if (prev) {
-        const old = resolveNetwork(prev).junctions;
-        for (const [k, j] of resolveNetwork(p).junctions.entries())
-          for (let t = 0; t <= 1; t += 0.1)
-            expect(
-              norm(
-                sub(
-                  evaluate(j.transition!, t),
-                  evaluate(old[k].transition!, t),
-                ),
-              ) / j.distance!,
-            ).toBeLessThan(Math.max(0.25, 2 / i));
-      }
-      prev = p;
-    }
-    expect(resolveNetwork(parseLandmarks(JSON.stringify(base)))).toEqual(
-      resolveNetwork(base),
+    )!,
+    h = incident(p, c.id).find(
+      (h) => p.curves.find((c) => c.id === h.curveId)?.mirrorPartnerCurveId,
+    )!;
+  expect(
+    config(setConfig(p, c.id, { excludedHalfEdges: [h] }), c.id)
+      .excludedHalfEdges.length,
+  ).toBe(2);
+});
+it("delete cleans UUID refs and duplicate does not inherit override", () => {
+  let p = parseLandmarks(JSON.stringify(data));
+  const l = p.landmarks.find((l) => incident(p, l.id).length > 1)!;
+  p = setConfig(p, l.id, { excludedHalfEdges: [incident(p, l.id)[0]] });
+  const h = incident(p, l.id)[0],
+    q = deleteCurve(p, h.curveId);
+  expect(config(q, l.id).excludedHalfEdges).toEqual([]);
+  const d = duplicateLandmark(p, l.id, "copy");
+  expect(config(d.project, d.selectedId).excludedHalfEdges).toEqual([]);
+  expect(config(d.project, d.selectedId).extent).toBe(0.15);
+  const gone = deleteLandmark(p, l.id);
+  expect(
+    Object.keys(gone.surfaceSmoothNodes!).every((id) =>
+      gone.landmarks.some((l) => l.id === id),
+    ),
+  ).toBe(true);
+  expect(renameCurve(p, h.curveId, "renamed").surfaceSmoothNodes).toBe(
+    p.surfaceSmoothNodes,
+  );
+});
+it("both endpoint fairings retain exact middle on actual network", () => {
+  const p = parseLandmarks(JSON.stringify(data)),
+    net = resolveNetwork(p);
+  for (const c of p.curves) {
+    const spans = net.spans.filter((s) => s.curveId === c.id),
+      middle = spans.find((s) => s.kind === "outer")!;
+    expect(middle.sourceRange[0]).toBeLessThan(middle.sourceRange[1]);
+    near(
+      evaluate(middle.controls, 0.3),
+      evaluate(
+        controls(p, c),
+        middle.sourceRange[0] +
+          0.3 * (middle.sourceRange[1] - middle.sourceRange[0]),
+      ),
     );
-  }, 20000);
-  it.each([1e-4, 1e4])(
-    "shape selection and continuity tolerances are scale invariant: %s",
-    (factor) => {
-      const p = parseLandmarks(JSON.stringify(data));
-      const scaled = {
+  }
+});
+it("large corrections remain valid HIGH_STRESS rather than solver failure", () => {
+  const p = fixture([
+      [-0.5146872718, 0.6410618327, -0.0808512205],
+      [-0.4057097635, 0.4280075058, -0.3342155446],
+      [0.3427109579, -0.5707280817, -0.6881292593],
+      [0.1168438732, 0.02012303, -0.2412550314],
+    ]),
+    n = at(p);
+  expect(n.state).toBe("VALID");
+  expect(n.stress).toBe("HIGH_STRESS");
+  expect(n.halves.some((h) => h.angle > Math.PI / 3 && h.fairing)).toBe(true);
+});
+it.each([0.001, 1000])(
+  "uniform scaling preserves node decisions and normalized fairings (%s)",
+  (factor) => {
+    const p = fixture(),
+      q = {
         ...p,
         landmarks: p.landmarks.map((l) => ({
           ...l,
           position: scale(l.position, factor),
         })),
-      };
-      check(scaled);
-      for (const [i, j] of resolveNetwork(p).junctions.entries()) {
-        const scaledJ = resolveNetwork(scaled).junctions[i];
-        for (let t = 0; t <= 1; t += 0.1)
-          near(
-            evaluate(j.transition!, t),
-            scale(evaluate(scaledJ.transition!, t), 1 / factor),
-            2e-6,
-          );
-      }
-    },
+      },
+      a = at(p),
+      b = at(q);
+    expect(b.state).toBe(a.state);
+    b.halves.forEach((h, i) => {
+      near(h.target, a.halves[i].target);
+      if (h.fairing)
+        h.fairing.forEach((x, j) =>
+          near(scale(x, 1 / factor), a.halves[i].fairing![j]),
+        );
+    });
+  },
+);
+it("two genuinely corrected ends compose with exact middle and no order dependency", () => {
+  let p = fixture();
+  const other = fixture(),
+    V = p.landmarks[1].position;
+  p = {
+    ...p,
+    landmarks: [
+      ...p.landmarks,
+      ...other.landmarks
+        .slice(1)
+        .map((l) => ({ ...l, id: "b" + l.id, position: add(l.position, V) })),
+    ],
+    curves: [
+      ...p.curves,
+      ...other.curves.map((c) => ({
+        ...c,
+        id: "b" + c.id,
+        startLandmarkId: "p0",
+        endLandmarkId: "b" + c.endLandmarkId,
+      })),
+    ],
+  };
+  const a = resolveNetwork(p),
+    spans = a.spans.filter((s) => s.curveId === "c0");
+  expect(spans.map((s) => s.kind)).toEqual(["blend", "outer", "blend"]);
+  const mid = spans[1];
+  expect(mid.sourceRange[0]).toBeLessThan(mid.sourceRange[1]);
+  near(
+    evaluate(mid.controls, 0.42),
+    evaluate(
+      controls(p, p.curves[0]),
+      mid.sourceRange[0] + 0.42 * (mid.sourceRange[1] - mid.sourceRange[0]),
+    ),
   );
-  it("invalid source stays occupied, range editable and restores without deleting intent", () => {
-    const f = fixture(),
-      p = createJunction(f.p, f.ids[1], f.a, f.b);
-    const invalid = followEndpoints(p, {
+  const b = resolveNetwork({ ...p, curves: [...p.curves].reverse() });
+  expect(b.nodes).toEqual(a.nodes);
+  expect(b.spans.filter((s) => s.curveId === "c0")).toEqual(spans);
+});
+it("actual canonical final resolved spans mirror exactly, independent of selection driver", () => {
+  const p = parseLandmarks(JSON.stringify(data)),
+    net = resolveNetwork(p);
+  for (const c of p.curves.filter((c) => c.role === "mirror")) {
+    if (c.role !== "mirror") continue;
+    const a = net.spans.filter((s) => s.curveId === c.canonicalCurveId),
+      b = net.spans.filter((s) => s.curveId === c.id);
+    expect(b.length).toBe(a.length);
+    b.forEach((s, i) =>
+      s.controls.forEach((v, j) => near(v, mirror(a[i].controls[j]))),
+    );
+  }
+});
+it("migration picks minimum per node and strips derived fields even on half-edge refs", () => {
+  const raw: any = structuredClone(data),
+    j = raw.smoothJunctions[0];
+  raw.smoothJunctions.push({ ...j, id: "extra", extent: 0.04 });
+  const p = parseLandmarks(JSON.stringify(raw));
+  expect(config(p, j.landmarkId).extent).toBe(0.04);
+  const id = p.landmarks.find((l) => incident(p, l.id).length > 1)!.id,
+    h = incident(p, id)[0];
+  const q = parseLandmarks(
+    JSON.stringify({
       ...p,
-      landmarks: p.landmarks.map((l) =>
-        l.id === f.ids[2] ? { ...l, position: [0, 1, 0] as Vec3 } : l,
+      surfaceSmoothNodes: {
+        [id]: {
+          extent: 0.2,
+          normal: [0, 0, 1],
+          excludedHalfEdges: [
+            { ...h, trimPoint: [1, 2, 3] },
+            h,
+            { curveId: "missing", endpoint: "start" },
+          ],
+        },
+      },
+    }),
+  );
+  expect(JSON.stringify(q.surfaceSmoothNodes)).not.toMatch(
+    /normal|trimPoint|missing/,
+  );
+  expect(config(q, id).excludedHalfEdges.length).toBeGreaterThan(0);
+});
+
+it("distinct exact-plane / unstable intersection / orientation degeneracy branches", () => {
+  expect(targetTangent([1, 0, 0], [0, 0, 1], [0, 0, -1])).toEqual([1, 0, 0]);
+  expect(() =>
+    targetTangent([1, 0, 0], [0, 0, 1], normalize([1e-9, 0, 1])),
+  ).toThrow("交线数值不稳定");
+  expect(() => targetTangent([1, 0, 0], [0, 0, 1], [1, 0, 0])).toThrow(
+    "方向选择不稳定",
+  );
+  near(targetTangent([0, 1, 0], [0, 0, 1], normalize([1e-5, 0, 1])), [0, 1, 0]);
+});
+it("refined head network resolves deterministically with all semantic endpoints retained", async () => {
+  const { readFileSync } = await import("node:fs");
+  const p = parseLandmarks(
+      readFileSync("artifacts/head-neck-refinement/refined.json", "utf8"),
+    ),
+    n = resolveNetwork(p);
+  for (const c of p.curves) {
+    const spans = n.spans.filter((s) => s.curveId === c.id);
+    near(
+      spans[0].controls[0],
+      p.landmarks.find((l) => l.id === c.startLandmarkId)!.position,
+    );
+    near(
+      spans.at(-1)!.controls[3],
+      p.landmarks.find((l) => l.id === c.endLandmarkId)!.position,
+    );
+    expect(spans.every((s) => s.controls.flat().every(Number.isFinite))).toBe(
+      true,
+    );
+  }
+  console.log(
+    "HEAD_NODE_REPORT",
+    JSON.stringify({
+      counts: n.nodes.reduce(
+        (r, x) => ({ ...r, [x.state]: (r[x.state] ?? 0) + 1 }),
+        {} as Record<string, number>,
       ),
-    });
-    expect(resolveNetwork(invalid).junctions[0].state).toBe("INVALID");
-    expect(occupiedHalves(invalid).has(halfKey(f.a))).toBe(true);
-    expect(() => createJunction(invalid, f.ids[1], f.a, f.b)).toThrow(/占用/);
-    const adjusted = changeExtent(invalid, p.smoothJunctions[0].id, 0.2);
-    expect(adjusted.smoothJunctions.length).toBe(1);
-    const restored = followEndpoints(adjusted, {
-      ...adjusted,
-      landmarks: p.landmarks,
-    });
-    check(restored);
-    expect(restored.smoothJunctions[0].id).toBe(p.smoothJunctions[0].id);
-  });
-  it("self-symmetric spatial curve has one shape without plane-intersection restriction", () => {
-    let p = createLandmarkProject();
-    const v = p.landmarks[0],
-      r = p.landmarks.find((l) => l.type === "RIGHT")!;
-    p = {
-      ...p,
-      landmarks: p.landmarks.map((l) =>
-        l.id === v.id
-          ? { ...l, position: [0, 0, 0] as Vec3 }
-          : l.id === r.id
-            ? { ...l, position: [-1, 1, 1] as Vec3 }
-            : l.id === r.mirrorPartnerId
-              ? { ...l, position: [1, 1, 1] as Vec3 }
-              : l,
-      ),
-    };
-    p = createCurve(p, v.id, r.id, p.views[0], "self").project;
-    p = createJunction(
-      p,
-      v.id,
-      { curveId: p.curves[0].id, endpoint: "start" },
-      { curveId: p.curves[1].id, endpoint: "start" },
-    );
-    check(p);
-    const cp = resolveNetwork(p).junctions[0].transition!;
-    expect(cp).toEqual([...cp].reverse().map(mirror));
-  });
-  it("both ends compare actual trim parameters, not arc-length assumptions", () => {
-    let { p, ids, a, b } = fixture();
-    p = createCurve(p, ids[2], ids[3], p.views[0], "C").project;
-    p = createJunction(p, ids[1], a, b);
-    p = createJunction(
-      p,
-      ids[2],
-      { curveId: b.curveId, endpoint: "end" },
-      { curveId: p.curves[2].id, endpoint: "start" },
-    );
-    check(p);
-    const overlap = {
-      ...p,
-      smoothJunctions: p.smoothJunctions.map((j) => ({ ...j, extent: 0.6 })),
-    };
-    expect(
-      resolveNetwork(overlap).junctions.every((j) => j.state === "INVALID"),
-    ).toBe(true);
-  });
-  it("closed ear test boundary keeps its closure and has no transition crossings", () => {
-    let p = parseLandmarks(JSON.stringify(data));
-    const lower = p.landmarks.find((l) => l.name === "右下耳根点")!,
-      upper = p.landmarks.find((l) => l.name === "右上耳根点")!;
-    p = createCurve(p, lower.id, upper.id, p.views[0], "测试闭合耳根").project;
-    check(p);
-    const n = resolveNetwork(p),
-      blend = n.spans.find((s) => s.junctionId === p.smoothJunctions[0].id)!;
-    for (const s of n.spans)
-      if (s !== blend)
-        expect(spansCross(blend.controls, s.controls)).toBe(false);
-    expect(p.curves.at(-2)!.startLandmarkId).toBe(lower.id);
-    expect(p.curves.at(-2)!.endLandmarkId).toBe(upper.id);
-  });
-  it("poor quality is a warning rather than a geometry failure", () => {
-    const c = chooseTransition(
-      [-1, 0, 0],
-      [1, 0, 0],
-      [1, 0, 0],
-      [1, 0, 0],
-      [0, 40, 0],
-      [0, 40, 0],
-      [
-        [-1, 0, 0],
-        [0, 0, 0],
-        [1, 0, 0],
-      ],
-      false,
-    );
-    expect(c.warning).toBeTruthy();
-    expect(c.cp.length).toBe(6);
-  });
-  it("delete/rename/duplicate, source-only persistence, old-mode migration and exclusivity", () => {
-    const f = fixture(),
-      p = createJunction(f.p, f.ids[1], f.a, f.b),
-      j = p.smoothJunctions[0];
-    expect(deleteCurve(p, f.a.curveId).smoothJunctions).toEqual([]);
-    expect(deleteLandmark(p, f.ids[1]).smoothJunctions).toEqual([]);
-    expect(renameLandmark(p, f.ids[1], "name").smoothJunctions).toBe(
-      p.smoothJunctions,
-    );
-    expect(duplicateLandmark(p, f.ids[1], "copy").project.smoothJunctions).toBe(
-      p.smoothJunctions,
-    );
-    const loaded = parseLandmarks(
-      JSON.stringify({
-        ...p,
-        smoothJunctions: [
-          { ...j, mode: "G1", transition: [], warning: "stale" },
-        ],
-      }),
-    );
-    expect(loaded.smoothJunctions[0]).toEqual(j);
-    expect(JSON.stringify(loaded.smoothJunctions)).not.toMatch(
-      /transition|warning|quality|INVALID/,
-    );
-    expect(() =>
-      parseLandmarks(
-        JSON.stringify({
-          ...p,
-          smoothJunctions: [j, { ...j, id: crypto.randomUUID() }],
-        }),
-      ),
-    ).toThrow();
-  });
-  it("bounded tessellation, zero derivative and crossing checks include entire spans", () => {
-    const cp: ControlPoints = [
-      [0, 0, 0],
-      [1, 2, 0],
-      [2, -2, 0],
-      [3, 0, 0],
-    ];
-    expect(flatten(cp, 1e-4).length).toBeGreaterThan(10);
-    expect(
-      regular([
-        [0, 0, 0],
-        [0, 0, 0],
-      ]),
-    ).toBe(false);
-    expect(
-      spansCross(
-        [
-          [0, 0, 0],
-          [1, 1, 0],
-        ],
-        [
-          [0, 1, 0],
-          [1, 0, 0],
-        ],
-      ),
-    ).toBe(true);
-    expect(
-      spansCross(
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-        ],
-        [
-          [1, 0, 0],
-          [2, 0, 0],
-        ],
-      ),
-    ).toBe(false);
-    expect(
-      selfCrossing([
-        [0, 0, 0],
-        [1, 0, 0],
-      ]),
-    ).toBe(false);
-    near(evaluate(subCubic(cp, 0.2, 0.8), 0.5), evaluate(cp, 0.5));
-  });
+      stress: n.nodes.filter((x) => x.stress === "HIGH_STRESS").length,
+      invalid: n.nodes
+        .filter((x) => x.state === "INVALID")
+        .map((x) => ({
+          name: p.landmarks.find((l) => l.id === x.landmarkId)!.name,
+          reason: x.reason,
+        })),
+      fairings: n.spans.filter((x) => x.kind === "blend").length,
+    }),
+  );
 });
