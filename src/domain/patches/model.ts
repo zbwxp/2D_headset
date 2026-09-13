@@ -7,15 +7,15 @@ export interface SurfacePatch {
     canonicalId?: string;
 }
 export const patchQualityLevels = {
+    veryLow: { label: '极低', subdivisions: 4, curveSegments: 16 },
     low: { label: '低', subdivisions: 6, curveSegments: 24 },
     medium: { label: '中', subdivisions: 12, curveSegments: 48 },
-    high: { label: '高', subdivisions: 18, curveSegments: 72 },
-    ultra: { label: '极高', subdivisions: 24, curveSegments: 96 },
+    high: { label: '高', subdivisions: 24, curveSegments: 96 },
 } as const;
 export type PatchQuality = keyof typeof patchQualityLevels;
-export const patchSampling = (display?: PatchDisplay) => patchQualityLevels[display?.quality ?? 'ultra'];
+export const patchSampling = (display?: PatchDisplay) => patchQualityLevels[display?.quality === 'ultra' ? 'high' : display?.quality ?? 'high'];
 export interface PatchDisplay {
-    quality?: PatchQuality;
+    quality?: PatchQuality | 'ultra'; // Read-only compatibility with older saves.
     visible?: boolean;
     opacity2d: number;
     opacity3d: number;

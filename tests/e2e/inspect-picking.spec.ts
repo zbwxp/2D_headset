@@ -39,8 +39,22 @@ test('patch creation highlights selected 3D boundaries and clears on deselect',a
 });
 test('display quality changes tessellation without changing geometry or history',async({page})=>{
  await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'quality.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
- const select=page.getByRole('combobox',{name:'Patch 显示精度',exact:true});await expect(select).toHaveValue('ultra');
- for(const [quality,n] of [['low',6],['medium',12],['high',18],['ultra',24]] as const){await select.selectOption(quality);await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(4*n*n);}
+ const select=page.getByRole('combobox',{name:'Patch 显示精度',exact:true});await expect(select).toHaveValue('high');
+ for(const [quality,n] of [['veryLow',4],['low',6],['medium',12],['high',24]] as const){await select.selectOption(quality);await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(4*n*n);}
  await select.selectOption('low');const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));expect(saved.curves).toEqual(project.curves);expect(saved.landmarks).toEqual(project.landmarks);expect(saved.patches).toEqual(project.patches);await expect(page.locator('.point-footer')).toContainText('撤销 1 / 100');
  await page.getByRole('button',{name:'删除 Patch 1',exact:true}).click();await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(select).toHaveValue('low');await page.reload();await expect(select).toHaveValue('low');await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(144);
+});
+test('3D geometry follows handle edits after reducing quality',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.text().includes('GL_INVALID'))errors.push(m.text())});
+ await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'quality-edit.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+ await page.getByRole('button',{name:names[0],exact:true}).click();
+ for(const opacity of ['77','100']){
+ await page.getByRole('slider',{name:'3D Patch 不透明度',exact:true}).fill(opacity);
+ for(const quality of ['high','veryLow','medium','low']){
+ await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption(quality);
+ const view=page.getByTestId('point-inspect');const before=await view.screenshot();const h=await page.getByTestId('curve-handle-1').boundingBox();if(!h)throw Error('handle');
+ await page.mouse.move(h.x+h.width/2,h.y+h.height/2);await page.mouse.down();await page.mouse.move(h.x+50,h.y+15,{steps:6});await page.mouse.up();
+ expect((await view.screenshot()).equals(before),`${opacity}/${quality} must update 3D`).toBeFalsy();
+ }
+ }expect(errors).toEqual([]);
 });
