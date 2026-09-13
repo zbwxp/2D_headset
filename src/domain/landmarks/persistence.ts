@@ -22,6 +22,7 @@ export function parseLandmarks(text: string): LandmarkProject {
       "landmarks-0.2",
       "landmarks-0.3",
       "landmarks-0.3.5",
+      "landmarks-0.3.6",
     ].includes(p?.version) &&
       p.meta &&
       typeof p.meta.name === "string" &&
@@ -137,7 +138,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   }
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
-    version: "landmarks-0.3.5",
+    version: "landmarks-0.3.6",
     smoothJunctions: [],
     curves: [],
     centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),

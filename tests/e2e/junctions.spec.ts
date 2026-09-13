@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test, expect, Page } from "@playwright/test";
 import { createLandmarkProject } from "../../src/domain/landmarks/presets";
 import { createCurve } from "../../src/domain/curves/management";
@@ -8,7 +11,7 @@ import { project } from "../../src/domain/geometry/core";
 import { mirror } from "../../src/domain/landmarks/model";
 import type { Vec3 } from "../../src/domain/project/types";
 const state = (p: Page) =>
-  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v035")!));
+  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v036")!));
 function fixture() {
   let p = createLandmarkProject();
   const ids = p.centerlineOrder,
@@ -54,7 +57,7 @@ async function movePanel(p: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
-test("inspector creates G1, resolved picking, hover, extent one history step and lossless remove", async ({
+test("inspector creates spatial G2, resolved picking, hover, extent one history step and lossless remove", async ({
   page,
 }, info) => {
   const { p, ids } = fixture();
@@ -71,7 +74,7 @@ test("inspector creates G1, resolved picking, hover, extent one history step and
   expect(q.curves).toEqual(before.curves);
   expect(q.landmarks).toEqual(before.landmarks);
   const j = q.smoothJunctions[0];
-  await expect(page.locator(`[data-testid^="blend-${j.id}-"]`)).toHaveCount(8);
+  await expect(page.locator(`[data-testid^="blend-${j.id}-"]`)).toHaveCount(4);
   const original = controls(q, q.curves[0]),
     v = q.views.find((v: any) => v.id === "side")!;
   const outerPath = await page
@@ -163,7 +166,7 @@ test("invalid record remains occupied and editable, recovers after source Undo; 
   await expect(panel).toContainText("当前平滑连接无效");
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.getByRole("button", { name: "撤销", exact: true }).click();
-  await expect(panel).toContainText("Smooth · G1");
+  await expect(panel).toContainText("Smooth · 空间 G2");
   expect((await state(page)).smoothJunctions).toEqual(p.smoothJunctions);
   const saved = await state(page);
   await page.reload();
@@ -237,4 +240,69 @@ test("high valence pairing uses free endpoint slots and mirror inspector edits o
   expect(resolveNetwork(q).junctions.every((j) => j.state === "VALID")).toBe(
     true,
   );
+});
+
+test("actual ear and eye migrate, display exact-degree transitions, preserve source and export source only", async ({
+  page,
+}, info) => {
+  const data = JSON.parse(
+    readFileSync(resolve("src/tests/fixtures/ear-eye.json"), "utf8"),
+  );
+  await load(page, data);
+  await chooseView(page, "右 30°");
+  const saved = await state(page);
+  expect(saved.smoothJunctions.every((j: any) => j.mode === "spatial-G2")).toBe(
+    true,
+  );
+  const n = resolveNetwork(saved);
+  expect(n.junctions.every((j) => j.state === "VALID")).toBe(true);
+  await expect(page.locator('[data-testid^="blend-hit-"]')).toHaveCount(4);
+  for (const hit of await page.locator('[data-testid^="blend-hit-"]').all()) {
+    const d = await hit.getAttribute("d");
+    expect(d).toContain(" L");
+    expect(d).not.toContain(" C");
+    expect(d).not.toContain("NaN");
+  }
+  await page.screenshot({
+    path: info.outputPath("actual-spatial-ear-eye.png"),
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "保存 JSON", exact: true }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  let text = "";
+  for await (const chunk of stream!) text += chunk.toString();
+  const exported = JSON.parse(text);
+  expect(exported.smoothJunctions).toEqual(saved.smoothJunctions);
+  expect(JSON.stringify(exported.smoothJunctions)).not.toMatch(
+    /transition|quality|warning|hA|tA/,
+  );
+  const ear = saved.smoothJunctions[0];
+  const hit = page.getByTestId(`blend-hit-${ear.id}-${ear.sideA.curveId}`);
+  const at = await hit.evaluate((node) => {
+    const p = node as SVGPathElement;
+    for (let i = 2; i < 19; i++) {
+      const q = p.getPointAtLength((p.getTotalLength() * i) / 20),
+        w = new DOMPoint(q.x, q.y).matrixTransform(p.getScreenCTM()!);
+      if (document.elementFromPoint(w.x, w.y) === node)
+        return { x: w.x, y: w.y };
+    }
+    throw new Error("No exposed transition pick location");
+  });
+  await page.mouse.click(at.x, at.y);
+  await page
+    .getByRole("region", { name: "交点检查器", exact: true })
+    .getByRole("button", { name: "取消平滑", exact: true })
+    .click();
+  expect((await state(page)).curves).toEqual(saved.curves);
+  expect((await state(page)).landmarks).toEqual(saved.landmarks);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect((await state(page)).smoothJunctions).toEqual(saved.smoothJunctions);
+  await page.goto(
+    pathToFileURL(resolve("docs/qa/spatial-smooth/comparison.html")).href,
+  );
+  await page.screenshot({
+    path: info.outputPath("comparison.png"),
+    fullPage: true,
+  });
 });

@@ -83,7 +83,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.3.5 · 局部平滑</span>
+          contour<span className="point-version">V0.3.6 · 空间平滑</span>
         </div>
         <input
           className="point-name"

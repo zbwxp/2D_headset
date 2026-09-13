@@ -62,7 +62,7 @@ export function createLandmarkProject(): LandmarkProject {
     canvas: { zoom: 1, pan: [0, 0] },
   }));
   return {
-    version: "landmarks-0.3.5",
+    version: "landmarks-0.3.6",
     smoothJunctions: [],
     curves: [],
     meta: {

@@ -1,3 +1,4 @@
+import { flatten, type BezierPoints } from "../../domain/junctions/spatial";
 import { resolveNetwork } from "../../domain/junctions/resolve";
 import type { ResolvedSpan } from "../../domain/junctions/model";
 import { useUI } from "../session";
@@ -21,12 +22,16 @@ import type {
 } from "../../domain/landmarks/model";
 import type { CurveEdge } from "../../domain/curves/model";
 import type { Vec2, Vec3 } from "../../domain/project/types";
-export function curvePath(cp: ControlPoints, v: LandmarkView): string {
-  const xy = cp.map((p) => {
+export function curvePath(cp: BezierPoints, v: LandmarkView): string {
+  const xy = (
+    cp.length === 4 ? cp : flatten(cp, 0.15 / (160 * v.canvas.zoom))
+  ).map((p) => {
     const q = project(p, v);
     return `${q[0] * 160},${-q[1] * 160}`;
   });
-  return `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`;
+  return cp.length === 4
+    ? `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`
+    : `M${xy.join(" L")}`;
 }
 export default function CurveLayer({
   view,
@@ -82,7 +87,7 @@ export default function CurveLayer({
       return;
     }
     const localT = nearestParameter(
-      span?.controls ?? controls(s.project, c),
+      (span?.controls ?? controls(s.project, c)) as ControlPoints,
       view,
       q,
     );
@@ -281,7 +286,7 @@ export default function CurveLayer({
           .filter((j) => j.sourceId === hovered)
           .flatMap((j) => [
             s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
-            ...(j.blendA && j.blendB ? [j.blendA[0], j.blendB[3]] : []),
+            ...(j.transition ? [j.transition[0], j.transition.at(-1)!] : []),
           ])
           .map((p, i) => {
             const q = project(p, view);

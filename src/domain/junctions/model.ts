@@ -1,4 +1,4 @@
-import type { ControlPoints } from "../curves/geometry";
+import type { BezierPoints, Quality } from "./spatial";
 export interface CurveHalfEdgeRef {
   curveId: string;
   endpoint: "start" | "end";
@@ -9,13 +9,13 @@ export interface SmoothJunction {
   sideA: CurveHalfEdgeRef;
   sideB: CurveHalfEdgeRef;
   extent: number;
-  mode: "G1";
+  mode: "G1" | "spatial-G2";
   symmetry: "paired" | "self";
 }
 export interface ResolvedSpan {
   kind: "outer" | "blend";
   curveId: string;
-  controls: ControlPoints;
+  controls: BezierPoints;
   sourceRange?: [number, number];
   junctionId?: string;
   landmarkId?: string;
@@ -28,8 +28,9 @@ export interface ResolvedJunction {
   mirrored: boolean;
   state: "VALID" | "INVALID";
   reason?: string;
-  blendA?: ControlPoints;
-  blendB?: ControlPoints;
+  transition?: BezierPoints;
+  quality?: Quality;
+  warning?: string;
   tA?: number;
   tB?: number;
   distance?: number;

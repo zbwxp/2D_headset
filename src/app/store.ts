@@ -32,12 +32,13 @@ import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
 import { project } from "../domain/geometry/core";
 export const HISTORY_LIMIT = 100;
-const KEY = "contour.landmarks.v035";
+const KEY = "contour.landmarks.v036";
 let initial = createLandmarkProject(),
   message = "";
 try {
   const saved =
     localStorage.getItem(KEY) ??
+    localStorage.getItem("contour.landmarks.v035") ??
     localStorage.getItem("contour.landmarks.v03") ??
     localStorage.getItem("contour.landmarks.v02") ??
     localStorage.getItem("contour.landmarks.v01");

@@ -20,7 +20,7 @@ export function parseJunctions(
       typeof j.id !== "string" ||
       !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(j.id) ||
       ids.has(j.id) ||
-      j.mode !== "G1" ||
+      (j.mode !== "G1" && j.mode !== "spatial-G2") ||
       !Number.isFinite(j.extent) ||
       j.extent < 0.01 ||
       j.extent > 0.45
@@ -50,7 +50,7 @@ export function parseJunctions(
       id: j.id,
       ...pair,
       extent: j.extent,
-      mode: "G1",
+      mode: "spatial-G2",
     };
     for (const i of junctionInstances(p, clean))
       for (const h of [i.sideA, i.sideB]) {

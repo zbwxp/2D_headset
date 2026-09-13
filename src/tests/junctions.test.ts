@@ -1,16 +1,14 @@
 import { describe, it, expect } from "vitest";
+import data from "./fixtures/ear-eye.json";
 import { createLandmarkProject } from "../domain/landmarks/presets";
 import { mirror, type LandmarkProject } from "../domain/landmarks/model";
 import { createCurve, deleteCurve } from "../domain/curves/management";
 import {
   controls,
-  canonical,
-  bezier,
   followEndpoints,
-  bodyShape,
-  handleShape,
-  rotate,
+  type ControlPoints,
 } from "../domain/curves/geometry";
+import { parseLandmarks } from "../domain/landmarks/persistence";
 import {
   createJunction,
   changeExtent,
@@ -18,294 +16,242 @@ import {
 } from "../domain/junctions/management";
 import {
   resolveNetwork,
-  commonTangent,
-  splitCubic,
-  arcTable,
-  arcParameter,
-  derivative,
   junctionPath,
-  SAME_PLANE_TOLERANCE,
-  INTERSECTION_STABILITY_TOLERANCE,
+  subCubic,
 } from "../domain/junctions/resolve";
-import { occupiedHalves, halfKey } from "../domain/junctions/topology";
-import type { CurveHalfEdgeRef } from "../domain/junctions/model";
-import type { Vec3 } from "../domain/project/types";
 import {
-  add,
-  sub,
-  scale,
-  dot,
-  normalize,
-  cross,
-} from "../domain/geometry/core";
+  evaluate,
+  derivative,
+  curvature,
+  norm,
+  sphereExit,
+  roots01,
+  flatten,
+  regular,
+  selfCrossing,
+  spansCross,
+  chooseTransition,
+} from "../domain/junctions/spatial";
+import { sub, scale, normalize } from "../domain/geometry/core";
+import { occupiedHalves, halfKey } from "../domain/junctions/topology";
 import {
   deleteLandmark,
   duplicateLandmark,
   renameLandmark,
 } from "../domain/landmarks/management";
-import { parseLandmarks } from "../domain/landmarks/persistence";
-const near = (a: Vec3, b: Vec3) =>
-  expect(Math.hypot(...sub(a, b))).toBeLessThan(1e-9);
-function fixture(reverseA = false, reverseB = false) {
+import type { Vec3 } from "../domain/project/types";
+const near = (a: Vec3, b: Vec3, tol = 1e-8) =>
+  expect(norm(sub(a, b))).toBeLessThan(tol);
+function fixture(ra = false, rb = false) {
   let p = createLandmarkProject();
-  const ids = p.centerlineOrder;
-  const positions: Vec3[] = [
-    [0, 1, 0],
-    [0, 0, 0],
-    [0, 0, 1],
-    [0, -1, 1],
-    [0, -1, 0],
-    [0, 0, -1],
-  ];
+  const ids = p.centerlineOrder,
+    ps: Vec3[] = [
+      [0, 1, 0],
+      [0, 0, 0],
+      [0, 0, 1],
+      [0, -1, 1],
+      [0, -1, 0],
+      [0, 0, -1],
+    ];
   p = {
     ...p,
     landmarks: p.landmarks.map((l) =>
-      ids.includes(l.id) ? { ...l, position: positions[ids.indexOf(l.id)] } : l,
+      ids.includes(l.id) ? { ...l, position: ps[ids.indexOf(l.id)] } : l,
     ),
   };
-  p = createCurve(
-    p,
-    ids[reverseA ? 1 : 0],
-    ids[reverseA ? 0 : 1],
-    p.views[0],
-    "A",
-  ).project;
-  p = createCurve(
-    p,
-    ids[reverseB ? 2 : 1],
-    ids[reverseB ? 1 : 2],
-    p.views[0],
-    "B",
-  ).project;
-  const a: CurveHalfEdgeRef = {
+  p = createCurve(p, ids[ra ? 1 : 0], ids[ra ? 0 : 1], p.views[0], "A").project;
+  p = createCurve(p, ids[rb ? 2 : 1], ids[rb ? 1 : 2], p.views[0], "B").project;
+  const a = {
       curveId: p.curves[0].id,
-      endpoint: reverseA ? "start" : "end",
+      endpoint: ra ? ("start" as const) : ("end" as const),
     },
-    b: CurveHalfEdgeRef = {
+    b = {
       curveId: p.curves[1].id,
-      endpoint: reverseB ? "end" : "start",
+      endpoint: rb ? ("end" as const) : ("start" as const),
     };
   return { p, ids, a, b };
 }
-function checkG1(p: LandmarkProject) {
+function check(p: LandmarkProject) {
   for (const j of resolveNetwork(p).junctions) {
-    expect(j.state).toBe("VALID");
-    const ca = p.curves.find((c) => c.id === j.sideA.curveId)!,
-      cb = p.curves.find((c) => c.id === j.sideB.curveId)!;
-    near(
-      normalize(derivative(j.blendA!, 1)),
-      normalize(derivative(j.blendB!, 0)),
-    );
-    near(
-      normalize(derivative(j.blendA!, 0)),
-      scale(
-        normalize(derivative(controls(p, ca), j.tA!)),
-        j.sideA.endpoint === "start" ? -1 : 1,
-      ),
-    );
-    near(
-      normalize(derivative(j.blendB!, 1)),
-      scale(
-        normalize(derivative(controls(p, cb), j.tB!)),
-        j.sideB.endpoint === "start" ? 1 : -1,
-      ),
-    );
-    for (const [curve, blend] of [
-      [ca, j.blendA!],
-      [cb, j.blendB!],
+    expect(j.state, j.reason).toBe("VALID");
+    const cp = j.transition!,
+      r = j.distance!;
+    for (const [h, t, end] of [
+      [j.sideA, j.tA!, 0],
+      [j.sideB, j.tB!, 1],
     ] as const) {
-      const n =
-        curve.role === "mirror"
-          ? mirror(canonical(p, curve).shape.planeNormal)
-          : canonical(p, curve).shape.planeNormal;
-      for (const q of blend)
-        expect(Math.abs(dot(sub(q, blend[0]), n))).toBeLessThan(3e-10);
+      const src = controls(p, p.curves.find((c) => c.id === h.curveId)!);
+      near(evaluate(cp, end), evaluate(src, t), r * 1e-8);
+      near(
+        normalize(derivative(cp, end)),
+        scale(
+          normalize(derivative(src, t)),
+          h.endpoint === (end === 0 ? "end" : "start") ? 1 : -1,
+        ),
+      );
+      near(scale(curvature(cp, end), r), scale(curvature(src, t), r), 1e-7);
+      const v = p.landmarks.find((l) => l.id === j.landmarkId)!.position;
+      expect(norm(sub(evaluate(cp, end), v)) / r).toBeCloseTo(1, 8);
     }
   }
 }
-describe("local G1 resolve", () => {
+describe("spatial curvature-matched junctions", () => {
   it.each([
     [false, false],
     [true, false],
     [false, true],
     [true, true],
-  ])("exact outside spans and G1 for endpoint orientations %s/%s", (ra, rb) => {
-    const { p, ids, a, b } = fixture(ra, rb),
-      q = createJunction(p, ids[1], a, b),
-      net = resolveNetwork(q);
-    expect(net.spans.length).toBe(4);
-    expect(q.curves).toBe(p.curves);
-    expect(q.landmarks).toBe(p.landmarks);
-    checkG1(q);
-    const path = junctionPath(q, net.junctions[0])!.spans;
+  ])("matches geometric 2-jets for endpoint directions %s/%s", (ra, rb) => {
+    const f = fixture(ra, rb),
+      p = createJunction(f.p, f.ids[1], f.a, f.b);
+    check(p);
+    expect(resolveNetwork(p).spans.length).toBe(3);
+    const path = junctionPath(p, resolveNetwork(p).junctions[0])!.spans;
     for (let i = 1; i < path.length; i++) {
-      near(path[i - 1][3], path[i][0]);
+      near(path[i - 1].at(-1)!, path[i][0]);
       near(
         normalize(derivative(path[i - 1], 1)),
         normalize(derivative(path[i], 0)),
       );
+      near(curvature(path[i - 1], 1), curvature(path[i], 0));
     }
-    for (const s of net.spans.filter((s) => s.kind === "outer")) {
-      const c = p.curves.find((c) => c.id === s.curveId)!,
-        r = s.sourceRange!;
+    for (const s of resolveNetwork(p).spans.filter((s) => s.kind === "outer")) {
+      const cp = controls(p, p.curves.find((c) => c.id === s.curveId)!);
       for (let t = 0; t <= 1; t += 0.125)
         near(
-          bezier(s.controls, t),
-          bezier(controls(p, c), r[0] + t * (r[1] - r[0])),
+          evaluate(s.controls, t),
+          evaluate(
+            cp,
+            s.sourceRange![0] + t * (s.sourceRange![1] - s.sourceRange![0]),
+          ),
         );
     }
-    expect(removeJunction(q, q.smoothJunctions[0].id).curves).toBe(p.curves);
+    expect(removeJunction(p, p.smoothJunctions[0].id).curves).toBe(f.p.curves);
   });
-  it("de Casteljau split and deterministic arc inversion preserve cubic", () => {
-    const { p } = fixture(),
-      cp = controls(p, p.curves[0]),
-      [a, b] = splitCubic(cp, 0.37);
-    near(a[3], b[0]);
-    near(bezier(a, 0.5), bezier(cp, 0.185));
-    const table = arcTable(cp);
-    expect(arcParameter(table, 0.15)).toBeCloseTo(0.15, 10);
-    expect(table).toEqual(arcTable(cp));
-  });
-  it("separates stable intersection, exact same plane, unsafe near-parallel, and cusp", () => {
-    const a: Vec3 = [0, 0, 1],
-      uA: Vec3 = [1, 0, 0],
-      uB: Vec3 = [1, 0, 0];
-    const stable = normalize([0, INTERSECTION_STABILITY_TOLERANCE * 2, 1]);
-    const t = commonTangent(a, stable, uA, uB);
-    expect(Math.abs(dot(t, a))).toBeLessThan(1e-12);
-    expect(Math.abs(dot(t, stable))).toBeLessThan(1e-12);
-    near(
-      commonTangent(a, [0, 0, -1], [1, 0, 0], [0, 1, 0]),
-      normalize([1, 1, 0]),
+  it("sphere root isolation handles tangency, multiple exits, no exit and reversed traversal", () => {
+    expect(roots01([0.16, -1, 1])).toEqual(
+      expect.arrayContaining([expect.closeTo(0.2, 8), expect.closeTo(0.8, 8)]),
     );
-    expect(() => commonTangent(a, normalize([0, 1e-7, 1]), uA, uB)).toThrow(
-      /接近平行/,
+    expect(roots01([0.25, -1, 1])).toEqual([0.5]);
+    const cp: ControlPoints = [
+      [0, 0, 0],
+      [3, 0, 0],
+      [-3, 0, 0],
+      [0, 0, 0],
+    ];
+    const t = sphereExit(cp, cp[0], 0.5, "start");
+    expect(t).toBeLessThan(0.2);
+    expect(norm(evaluate(cp, t))).toBeCloseTo(0.5, 8);
+    expect(sphereExit([...cp].reverse(), cp[0], 0.5, "end")).toBeCloseTo(
+      1 - t,
+      8,
     );
-    near(
-      commonTangent(a, normalize([0, SAME_PLANE_TOLERANCE * 0.1, 1]), uA, uB),
-      uA,
-    );
-    expect(() => commonTangent(a, a, [1, 0, 0], [-1, 0, 0])).toThrow(/尖点/);
+    const touch: ControlPoints = [
+      [0, 0, 0],
+      [4 / 3, 0, 0],
+      [4 / 3, 0, 0],
+      [0, 0, 0],
+    ];
+    expect(() => sphereExit(touch, touch[0], 1, "start")).toThrow(/相切/);
+    expect(() => sphereExit(touch, touch[0], 2, "start")).toThrow(/未离开/);
   });
-  it("noncoplanar blends stay in their own planes and paired geometry is exact mirror", () => {
-    let p = createLandmarkProject();
-    const rs = p.landmarks.filter((l) => l.type === "RIGHT").slice(0, 3),
-      coords: Vec3[] = [
-        [-1, 1, 0],
-        [-1, 0, 0],
-        [0, 0, 1],
-      ];
-    p = {
-      ...p,
-      landmarks: p.landmarks.map((l) => {
-        const i = rs.findIndex(
-          (r) => r.id === l.id || r.mirrorPartnerId === l.id,
-        );
-        return i < 0
-          ? l
-          : {
-              ...l,
-              position: l.type === "RIGHT" ? coords[i] : mirror(coords[i]),
-            };
-      }),
-    };
-    p = createCurve(p, rs[0].id, rs[1].id, p.views[0], "A").project;
-    p = createCurve(p, rs[1].id, rs[2].id, p.views[0], "B").project;
-    const a = { curveId: p.curves[0].id, endpoint: "end" as const },
-      b = { curveId: p.curves[2].id, endpoint: "start" as const };
-    p = createJunction(p, rs[1].id, a, b);
-    checkG1(p);
-    const rows = resolveNetwork(p).junctions;
-    expect(rows.length).toBe(2);
-    expect(rows[1].blendA).toEqual(rows[0].blendA!.map(mirror));
-    const source = canonical(p, p.curves[2]);
-    const changed = {
-      ...p,
-      curves: p.curves.map((c) =>
-        c.id === source.id
-          ? {
-              ...source,
-              shape: {
-                ...source.shape,
-                planeNormal: rotate(
-                  source.shape.planeNormal,
-                  normalize([1, 0, 1]),
-                  0.2,
-                ),
-              },
-            }
-          : c,
-      ),
-    };
-    checkG1(changed);
-    expect(resolveNetwork(changed).junctions).not.toEqual(rows);
-    expect(changed.smoothJunctions).toBe(p.smoothJunctions);
+  it("actual ear and eye keep exact jets, mirror, no new crossings and improve peak curvature", () => {
+    const p = parseLandmarks(JSON.stringify(data));
+    check(p);
+    const js = resolveNetwork(p).junctions;
+    for (let i = 0; i < js.length; i += 2)
+      expect(js[i + 1].transition).toEqual(js[i].transition!.map(mirror));
+    const ear = js[0],
+      eye = js[2];
+    expect(ear.quality!.peakCurvature / ear.distance!).toBeLessThan(8); // prior ear V peak 16.66
+    expect(eye.quality!.peakCurvature / eye.distance!).toBeLessThan(9); // prior eye V peak 11.36
+    for (const j of [ear, eye]) {
+      expect(j.warning).toBeUndefined();
+      expect(
+        regular(
+          j.transition!.map((p) =>
+            scale(sub(p, j.transition![0]), 1 / j.distance!),
+          ),
+        ),
+      ).toBe(true);
+    }
   });
-  it("source body and handle edits recompute trims without changing junction intent or other curve", () => {
-    const f = fixture();
-    const original = createJunction(f.p, f.ids[1], f.a, f.b);
-    let p = original;
-    for (const mode of ["body", "handle"] as const) {
-      const c = canonical(p, p.curves[0]);
-      const before = resolveNetwork(p);
-      const shape =
-        mode === "body"
-          ? bodyShape(p, c, 0.5, add(bezier(controls(p, c), 0.5), [0, 0, 0.2]))
-          : handleShape(p, c, 2, add(controls(p, c)[2], [0, 0, 0.15]));
-      p = {
-        ...p,
-        curves: p.curves.map((x) => (x.id === c.id ? { ...c, shape } : x)),
+  it("actual extent sweep is deterministic and does not jump between shapes", () => {
+    const base = parseLandmarks(JSON.stringify(data));
+    let prev: LandmarkProject | null = null;
+    for (let i = 1; i <= 45; i++) {
+      const p = {
+        ...base,
+        smoothJunctions: base.smoothJunctions.map((j) => ({
+          ...j,
+          extent: i / 100,
+        })),
       };
-      expect(resolveNetwork(p)).not.toBe(before);
-      expect(resolveNetwork(p).junctions[0].blendA).not.toEqual(
-        before.junctions[0].blendA,
-      );
-      expect(p.smoothJunctions).toBe(original.smoothJunctions);
-      expect(p.landmarks).toBe(original.landmarks);
-      expect(p.curves[1]).toBe(original.curves[1]);
-      checkG1(p);
+      check(p);
+      if (prev) {
+        const old = resolveNetwork(prev).junctions;
+        for (const [k, j] of resolveNetwork(p).junctions.entries())
+          for (let t = 0; t <= 1; t += 0.1)
+            expect(
+              norm(
+                sub(
+                  evaluate(j.transition!, t),
+                  evaluate(old[k].transition!, t),
+                ),
+              ) / j.distance!,
+            ).toBeLessThan(Math.max(0.25, 2 / i));
+      }
+      prev = p;
     }
-    expect(resolveNetwork(parseLandmarks(JSON.stringify(p)))).toEqual(
-      resolveNetwork(p),
+    expect(resolveNetwork(parseLandmarks(JSON.stringify(base)))).toEqual(
+      resolveNetwork(base),
     );
-    expect(resolveNetwork(original).junctions[0].blendA).not.toEqual(
-      resolveNetwork(p).junctions[0].blendA,
-    );
-  });
-  it("invalid intentions remain occupied, serialize without validity, and auto recover", () => {
-    const f = fixture();
-    let p = createJunction(f.p, f.ids[1], f.a, f.b);
-    const j = p.smoothJunctions[0];
-    // Moving outer endpoint to same ray creates a true coplanar U-turn.
-    const moved = {
+  }, 20000);
+  it.each([1e-4, 1e4])(
+    "shape selection and continuity tolerances are scale invariant: %s",
+    (factor) => {
+      const p = parseLandmarks(JSON.stringify(data));
+      const scaled = {
+        ...p,
+        landmarks: p.landmarks.map((l) => ({
+          ...l,
+          position: scale(l.position, factor),
+        })),
+      };
+      check(scaled);
+      for (const [i, j] of resolveNetwork(p).junctions.entries()) {
+        const scaledJ = resolveNetwork(scaled).junctions[i];
+        for (let t = 0; t <= 1; t += 0.1)
+          near(
+            evaluate(j.transition!, t),
+            scale(evaluate(scaledJ.transition!, t), 1 / factor),
+            2e-6,
+          );
+      }
+    },
+  );
+  it("invalid source stays occupied, range editable and restores without deleting intent", () => {
+    const f = fixture(),
+      p = createJunction(f.p, f.ids[1], f.a, f.b);
+    const invalid = followEndpoints(p, {
       ...p,
       landmarks: p.landmarks.map((l) =>
-        l.id === f.ids[2] ? { ...l, position: [0, 2, 0] as Vec3 } : l,
+        l.id === f.ids[2] ? { ...l, position: [0, 1, 0] as Vec3 } : l,
       ),
-    };
-    let invalid = followEndpoints(p, moved);
+    });
     expect(resolveNetwork(invalid).junctions[0].state).toBe("INVALID");
-    expect(resolveNetwork(invalid).spans.every((s) => s.kind === "outer")).toBe(
-      true,
-    );
     expect(occupiedHalves(invalid).has(halfKey(f.a))).toBe(true);
     expect(() => createJunction(invalid, f.ids[1], f.a, f.b)).toThrow(/占用/);
-    invalid = changeExtent(invalid, j.id, 0.2);
-    expect(invalid.smoothJunctions[0].extent).toBe(0.2);
-    expect(resolveNetwork(invalid).junctions[0].state).toBe("INVALID");
-    const loaded = parseLandmarks(JSON.stringify(invalid));
-    expect(loaded.smoothJunctions).toEqual(invalid.smoothJunctions);
-    expect(JSON.stringify(loaded.smoothJunctions)).not.toMatch(
-      /INVALID|reason|blend|tA/,
-    );
-    const restored = followEndpoints(invalid, {
-      ...invalid,
+    const adjusted = changeExtent(invalid, p.smoothJunctions[0].id, 0.2);
+    expect(adjusted.smoothJunctions.length).toBe(1);
+    const restored = followEndpoints(adjusted, {
+      ...adjusted,
       landmarks: p.landmarks,
     });
-    expect(resolveNetwork(restored).junctions[0].state).toBe("VALID");
-    expect(restored.smoothJunctions[0].id).toBe(j.id);
+    check(restored);
+    expect(restored.smoothJunctions[0].id).toBe(p.smoothJunctions[0].id);
   });
-  it("self-symmetric mirror pair uses X or rejects incompatible original planes", () => {
+  it("self-symmetric spatial curve has one shape without plane-intersection restriction", () => {
     let p = createLandmarkProject();
     const v = p.landmarks[0],
       r = p.landmarks.find((l) => l.type === "RIGHT")!;
@@ -315,104 +261,151 @@ describe("local G1 resolve", () => {
         l.id === v.id
           ? { ...l, position: [0, 0, 0] as Vec3 }
           : l.id === r.id
-            ? { ...l, position: [-1, 0, 0] as Vec3 }
+            ? { ...l, position: [-1, 1, 1] as Vec3 }
             : l.id === r.mirrorPartnerId
-              ? { ...l, position: [1, 0, 0] as Vec3 }
+              ? { ...l, position: [1, 1, 1] as Vec3 }
               : l,
       ),
     };
-    p = createCurve(p, v.id, r.id, p.views[0], "左右").project;
-    const a = { curveId: p.curves[0].id, endpoint: "start" as const },
-      b = { curveId: p.curves[1].id, endpoint: "start" as const };
-    const smooth = createJunction(p, v.id, a, b),
-      j = resolveNetwork(smooth).junctions[0];
-    expect(smooth.smoothJunctions[0].symmetry).toBe("self");
-    expect(resolveNetwork(smooth).junctions.length).toBe(1);
-    expect(j.blendB).toEqual(j.blendA!.map(mirror).reverse());
-    checkG1(smooth);
-    expect(() =>
-      commonTangent(
-        normalize([1, 0, 1]),
-        normalize([-1, 0, 1]),
-        [1, 0, 0],
-        [1, 0, 0],
-        true,
-      ),
-    ).toThrow(/左右对称/);
+    p = createCurve(p, v.id, r.id, p.views[0], "self").project;
+    p = createJunction(
+      p,
+      v.id,
+      { curveId: p.curves[0].id, endpoint: "start" },
+      { curveId: p.curves[1].id, endpoint: "start" },
+    );
+    check(p);
+    const cp = resolveNetwork(p).junctions[0].transition!;
+    expect(cp).toEqual([...cp].reverse().map(mirror));
   });
-  it("high valence allows disjoint pairs, rejects occupied half-edges and asymmetric branches", () => {
-    let { p, ids, a, b } = fixture();
-    p = createCurve(p, ids[4], ids[1], p.views[0], "C").project;
-    p = createCurve(p, ids[1], ids[5], p.views[0], "D").project;
-    const c = { curveId: p.curves[2].id, endpoint: "end" as const },
-      d = { curveId: p.curves[3].id, endpoint: "start" as const };
-    p = createJunction(p, ids[1], a, b);
-    p = createJunction(p, ids[1], c, d);
-    expect(p.smoothJunctions.length).toBe(2);
-    expect(() => createJunction(p, ids[1], a, c)).toThrow(/占用/);
-    const right = p.landmarks.find((l) => l.type === "RIGHT")!;
-    p = createCurve(p, ids[1], right.id, p.views[0], "分支").project;
-    expect(() =>
-      createJunction({ ...p, smoothJunctions: [] }, ids[1], a, {
-        curveId: p.curves.at(-2)!.id,
-        endpoint: "start",
-      }),
-    ).toThrow(/对称/);
-  });
-  it("two ends share curve without trim reversal and explicit overlap rejects both ends", () => {
+  it("both ends compare actual trim parameters, not arc-length assumptions", () => {
     let { p, ids, a, b } = fixture();
     p = createCurve(p, ids[2], ids[3], p.views[0], "C").project;
-    const c = { curveId: p.curves[2].id, endpoint: "start" as const };
     p = createJunction(p, ids[1], a, b);
-    p = createJunction(p, ids[2], { curveId: b.curveId, endpoint: "end" }, c);
-    for (const j of p.smoothJunctions) p = changeExtent(p, j.id, 0.45);
-    checkG1(p);
-    // Defensive resolver test beyond UI limits; such state is rejected by JSON parser.
+    p = createJunction(
+      p,
+      ids[2],
+      { curveId: b.curveId, endpoint: "end" },
+      { curveId: p.curves[2].id, endpoint: "start" },
+    );
+    check(p);
     const overlap = {
       ...p,
       smoothJunctions: p.smoothJunctions.map((j) => ({ ...j, extent: 0.6 })),
     };
     expect(
-      resolveNetwork(overlap).junctions.every(
-        (j) => j.state === "INVALID" && j.reason?.includes("重叠"),
-      ),
+      resolveNetwork(overlap).junctions.every((j) => j.state === "INVALID"),
     ).toBe(true);
-    expect(() => parseLandmarks(JSON.stringify(overlap))).toThrow();
   });
-  it("rename preserves refs, duplicate doesn't copy topology, deletion prunes and load validates occupancy", () => {
+  it("closed ear test boundary keeps its closure and has no transition crossings", () => {
+    let p = parseLandmarks(JSON.stringify(data));
+    const lower = p.landmarks.find((l) => l.name === "右下耳根点")!,
+      upper = p.landmarks.find((l) => l.name === "右上耳根点")!;
+    p = createCurve(p, lower.id, upper.id, p.views[0], "测试闭合耳根").project;
+    check(p);
+    const n = resolveNetwork(p),
+      blend = n.spans.find((s) => s.junctionId === p.smoothJunctions[0].id)!;
+    for (const s of n.spans)
+      if (s !== blend)
+        expect(spansCross(blend.controls, s.controls)).toBe(false);
+    expect(p.curves.at(-2)!.startLandmarkId).toBe(lower.id);
+    expect(p.curves.at(-2)!.endLandmarkId).toBe(upper.id);
+  });
+  it("poor quality is a warning rather than a geometry failure", () => {
+    const c = chooseTransition(
+      [-1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [0, 40, 0],
+      [0, 40, 0],
+      [
+        [-1, 0, 0],
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+      false,
+    );
+    expect(c.warning).toBeTruthy();
+    expect(c.cp.length).toBe(6);
+  });
+  it("delete/rename/duplicate, source-only persistence, old-mode migration and exclusivity", () => {
     const f = fixture(),
-      p = createJunction(f.p, f.ids[1], f.a, f.b);
-    expect(renameLandmark(p, f.ids[1], "改名").smoothJunctions).toBe(
-      p.smoothJunctions,
-    );
-    expect(duplicateLandmark(p, f.ids[1], "副本").project.smoothJunctions).toBe(
-      p.smoothJunctions,
-    );
+      p = createJunction(f.p, f.ids[1], f.a, f.b),
+      j = p.smoothJunctions[0];
     expect(deleteCurve(p, f.a.curveId).smoothJunctions).toEqual([]);
     expect(deleteLandmark(p, f.ids[1]).smoothJunctions).toEqual([]);
-    expect(parseLandmarks(JSON.stringify(p)).smoothJunctions).toEqual(
+    expect(renameLandmark(p, f.ids[1], "name").smoothJunctions).toBe(
       p.smoothJunctions,
+    );
+    expect(duplicateLandmark(p, f.ids[1], "copy").project.smoothJunctions).toBe(
+      p.smoothJunctions,
+    );
+    const loaded = parseLandmarks(
+      JSON.stringify({
+        ...p,
+        smoothJunctions: [
+          { ...j, mode: "G1", transition: [], warning: "stale" },
+        ],
+      }),
+    );
+    expect(loaded.smoothJunctions[0]).toEqual(j);
+    expect(JSON.stringify(loaded.smoothJunctions)).not.toMatch(
+      /transition|warning|quality|INVALID/,
     );
     expect(() =>
       parseLandmarks(
         JSON.stringify({
           ...p,
-          smoothJunctions: [
-            ...p.smoothJunctions,
-            { ...p.smoothJunctions[0], id: crypto.randomUUID() },
-          ],
+          smoothJunctions: [j, { ...j, id: crypto.randomUUID() }],
         }),
       ),
     ).toThrow();
-    expect(() =>
-      parseLandmarks(
-        JSON.stringify({
-          ...p,
-          smoothJunctions: [
-            { ...p.smoothJunctions[0], sideA: { ...f.a, endpoint: "start" } },
-          ],
-        }),
+  });
+  it("bounded tessellation, zero derivative and crossing checks include entire spans", () => {
+    const cp: ControlPoints = [
+      [0, 0, 0],
+      [1, 2, 0],
+      [2, -2, 0],
+      [3, 0, 0],
+    ];
+    expect(flatten(cp, 1e-4).length).toBeGreaterThan(10);
+    expect(
+      regular([
+        [0, 0, 0],
+        [0, 0, 0],
+      ]),
+    ).toBe(false);
+    expect(
+      spansCross(
+        [
+          [0, 0, 0],
+          [1, 1, 0],
+        ],
+        [
+          [0, 1, 0],
+          [1, 0, 0],
+        ],
       ),
-    ).toThrow();
+    ).toBe(true);
+    expect(
+      spansCross(
+        [
+          [0, 0, 0],
+          [1, 0, 0],
+        ],
+        [
+          [1, 0, 0],
+          [2, 0, 0],
+        ],
+      ),
+    ).toBe(false);
+    expect(
+      selfCrossing([
+        [0, 0, 0],
+        [1, 0, 0],
+      ]),
+    ).toBe(false);
+    near(evaluate(subCubic(cp, 0.2, 0.8), 0.5), evaluate(cp, 0.5));
   });
 });

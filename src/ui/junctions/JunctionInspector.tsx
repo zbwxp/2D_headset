@@ -147,7 +147,9 @@ function InspectorContent({ id }: { id: string }) {
               {error}
             </p>
           )}
-          <p>平滑范围控制局部接管长度；原语义点、控制柄和平面保持不变。</p>
+          <p>
+            平滑范围控制局部接管长度；原语义点、控制柄和平面保持不变；过渡不必经过交点。
+          </p>
         </>
       )}
     </FloatingPanel>
@@ -174,9 +176,12 @@ function Pair({
       <strong>{label}</strong>
       <p className={j.state === "INVALID" ? "junction-invalid" : ""}>
         {j.state === "VALID"
-          ? "● Smooth · G1"
+          ? "● Smooth · 空间 G2"
           : `⚠ 当前平滑连接无效：${j.reason}`}
       </p>
+      {j.warning && (
+        <p className="junction-invalid">⚠ 质量提示：{j.warning}</p>
+      )}
       <label>
         平滑范围 <output>{Math.round(source.extent * 100)}%</output>
         <input

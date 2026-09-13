@@ -17,7 +17,7 @@ export function createJunction(
     id: crypto.randomUUID(),
     ...normalizePair(p, landmarkId, a, b),
     extent: 0.15,
-    mode: "G1",
+    mode: "spatial-G2",
   };
   const occupied = occupiedHalves(p);
   if (

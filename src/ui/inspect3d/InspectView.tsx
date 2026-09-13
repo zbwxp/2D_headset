@@ -1,4 +1,4 @@
-import { bezier } from "../../domain/curves/geometry";
+import { flatten, norm } from "../../domain/junctions/spatial";
 import { resolveNetwork } from "../../domain/junctions/resolve";
 import { useUI } from "../session";
 import { useEffect, useRef, useState } from "react";
@@ -96,7 +96,7 @@ export default function InspectView() {
           rows
             .flatMap((j) => [
               s.project.landmarks.find((l) => l.id === j.landmarkId)!.position,
-              ...(j.blendA && j.blendB ? [j.blendA[0], j.blendB[3]] : []),
+              ...(j.transition ? [j.transition[0], j.transition.at(-1)!] : []),
             ])
             .flat(),
           3,
@@ -104,8 +104,17 @@ export default function InspectView() {
       );
       hoverGeometry.computeBoundingSphere();
       for (const span of network.spans) {
-        const samples = Array.from({ length: 65 }, (_, i) =>
-            bezier(span.controls, i / 64),
+        const samples = flatten(
+            span.controls,
+            Math.max(
+              ...span.controls.map((p) =>
+                norm([
+                  p[0] - span.controls[0][0],
+                  p[1] - span.controls[0][1],
+                  p[2] - span.controls[0][2],
+                ]),
+              ),
+            ) * 1e-4 || 1e-6,
           ),
           color = new THREE.Color(
             highlighted.has(span.curveId)

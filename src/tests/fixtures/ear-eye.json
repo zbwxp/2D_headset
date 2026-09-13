@@ -1,0 +1,1152 @@
+{
+  "version": "landmarks-0.3.5",
+  "smoothJunctions": [
+    {
+      "id": "fa795067-c1ed-4263-92a6-37d540b75727",
+      "landmarkId": "e867015f-7f4e-4a25-8e46-b5284ab6b116",
+      "sideA": {
+        "curveId": "44ab829c-d59d-41eb-af79-cf1789d6f35e",
+        "endpoint": "end"
+      },
+      "sideB": {
+        "curveId": "f296d6c7-e241-4646-bfc6-378bdf4cbbe7",
+        "endpoint": "start"
+      },
+      "symmetry": "paired",
+      "extent": 0.44,
+      "mode": "G1"
+    },
+    {
+      "id": "c9566647-066f-40a1-8d0a-cd1483c5d06f",
+      "landmarkId": "785ba116-8a30-4453-8427-0e004c54c8b4",
+      "sideA": {
+        "curveId": "052f0797-93f3-45e5-8046-ebf96c599a6d",
+        "endpoint": "end"
+      },
+      "sideB": {
+        "curveId": "99697142-95c8-4918-be82-982275eecd9b",
+        "endpoint": "end"
+      },
+      "symmetry": "paired",
+      "extent": 0.38,
+      "mode": "G1"
+    }
+  ],
+  "curves": [
+    {
+      "id": "ed022c37-9ce6-4f39-9ec4-c16cbcda9098",
+      "name": "左眉毛",
+      "startLandmarkId": "964c2201-e896-40a4-9b88-bd819ba902d0",
+      "endLandmarkId": "4e882213-796b-4c03-a5fb-cd023d1cd39d",
+      "mirrorPartnerCurveId": "f4afc9ec-8c79-4f4b-9162-a1ef812f9ab3",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.3301342667064409,
+          -0.05353790384807104,
+          0.9424144835462557
+        ],
+        "startHandle": {
+          "along": 0.361395616582771,
+          "offset": 0.11964352860355831
+        },
+        "endHandle": {
+          "along": 0.28957667053702113,
+          "offset": 0.16912527581070821
+        }
+      }
+    },
+    {
+      "id": "f4afc9ec-8c79-4f4b-9162-a1ef812f9ab3",
+      "name": "右眉毛",
+      "startLandmarkId": "9204218e-aaac-45b5-b6c9-617736336e1e",
+      "endLandmarkId": "2c7b4266-9f66-42b2-8edb-1415553fd5ba",
+      "mirrorPartnerCurveId": "ed022c37-9ce6-4f39-9ec4-c16cbcda9098",
+      "role": "mirror",
+      "canonicalCurveId": "ed022c37-9ce6-4f39-9ec4-c16cbcda9098"
+    },
+    {
+      "id": "1e835d01-82a2-42c9-9f26-305bbe44eda5",
+      "name": "左上眼睑",
+      "startLandmarkId": "6c76cc9d-a035-4ae2-9f83-3182c742be27",
+      "endLandmarkId": "4a5f0c75-3757-4c62-b8ee-a66b2f9d2078",
+      "mirrorPartnerCurveId": "052f0797-93f3-45e5-8046-ebf96c599a6d",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.3474283614630106,
+          0.006790989963783393,
+          0.9376819376027455
+        ],
+        "startHandle": {
+          "along": 0.23898294272467926,
+          "offset": 0.4543452519851628
+        },
+        "endHandle": {
+          "along": 0.28790325848745824,
+          "offset": 0.353635575600856
+        }
+      }
+    },
+    {
+      "id": "052f0797-93f3-45e5-8046-ebf96c599a6d",
+      "name": "右上眼睑",
+      "startLandmarkId": "6c409a75-c572-43a9-8496-bea79d3d9bc3",
+      "endLandmarkId": "785ba116-8a30-4453-8427-0e004c54c8b4",
+      "mirrorPartnerCurveId": "1e835d01-82a2-42c9-9f26-305bbe44eda5",
+      "role": "mirror",
+      "canonicalCurveId": "1e835d01-82a2-42c9-9f26-305bbe44eda5"
+    },
+    {
+      "id": "ce31afce-4262-47ef-a507-6c2422271452",
+      "name": "左下眼睑",
+      "startLandmarkId": "6c76cc9d-a035-4ae2-9f83-3182c742be27",
+      "endLandmarkId": "4a5f0c75-3757-4c62-b8ee-a66b2f9d2078",
+      "mirrorPartnerCurveId": "99697142-95c8-4918-be82-982275eecd9b",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.3474283614630106,
+          0.006790989963783393,
+          0.9376819376027455
+        ],
+        "startHandle": {
+          "along": 0.08840607798952173,
+          "offset": -0.3903420669412736
+        },
+        "endHandle": {
+          "along": 0.3308692114860122,
+          "offset": -0.45833410535694313
+        }
+      }
+    },
+    {
+      "id": "99697142-95c8-4918-be82-982275eecd9b",
+      "name": "右下眼睑",
+      "startLandmarkId": "6c409a75-c572-43a9-8496-bea79d3d9bc3",
+      "endLandmarkId": "785ba116-8a30-4453-8427-0e004c54c8b4",
+      "mirrorPartnerCurveId": "ce31afce-4262-47ef-a507-6c2422271452",
+      "role": "mirror",
+      "canonicalCurveId": "ce31afce-4262-47ef-a507-6c2422271452"
+    },
+    {
+      "id": "a51b84f6-ebb6-49c8-8f37-37d62514df2d",
+      "name": "左嘴",
+      "startLandmarkId": "9017d8c4-5a3a-4479-979c-fa5cd3c14d34",
+      "endLandmarkId": "43cc64c5-d367-4b83-9035-efcb04d10613",
+      "mirrorPartnerCurveId": "9786387c-89c0-4afc-a07d-93c3d6c79b2e",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.4430621087905586,
+          0.04869876893922073,
+          0.8951672456350644
+        ],
+        "startHandle": {
+          "along": 0.2980579865165998,
+          "offset": 0.03410773446842762
+        },
+        "endHandle": {
+          "along": 0.3759100941941417,
+          "offset": 0.07862648591529009
+        }
+      }
+    },
+    {
+      "id": "9786387c-89c0-4afc-a07d-93c3d6c79b2e",
+      "name": "右嘴",
+      "startLandmarkId": "15efb5c6-9434-4286-9130-ea8907835cf3",
+      "endLandmarkId": "43cc64c5-d367-4b83-9035-efcb04d10613",
+      "mirrorPartnerCurveId": "a51b84f6-ebb6-49c8-8f37-37d62514df2d",
+      "role": "mirror",
+      "canonicalCurveId": "a51b84f6-ebb6-49c8-8f37-37d62514df2d"
+    },
+    {
+      "id": "274ac7b0-2800-4b5b-bafe-12d2ec8f6377",
+      "name": "左上耳廓",
+      "startLandmarkId": "9db3d2c8-a612-40c6-9aa8-3e1d4c551efd",
+      "endLandmarkId": "6104da97-0c50-4067-a08a-5e0be2cc86e1",
+      "mirrorPartnerCurveId": "638f9b97-7121-4e81-9064-dd93933b06b9",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.33616466846932025,
+          0.24514882824202203,
+          0.9093378732267097
+        ],
+        "startHandle": {
+          "along": 0.3612579485485756,
+          "offset": 0.16743579151074076
+        },
+        "endHandle": {
+          "along": 0.22421749102329094,
+          "offset": 0.21414206066565142
+        }
+      }
+    },
+    {
+      "id": "638f9b97-7121-4e81-9064-dd93933b06b9",
+      "name": "右上耳廓",
+      "startLandmarkId": "e203ab2c-69a5-4598-8cf9-635c77fdbb35",
+      "endLandmarkId": "cf12f532-31f1-401b-b96f-e55942a82ef7",
+      "mirrorPartnerCurveId": "274ac7b0-2800-4b5b-bafe-12d2ec8f6377",
+      "role": "mirror",
+      "canonicalCurveId": "274ac7b0-2800-4b5b-bafe-12d2ec8f6377"
+    },
+    {
+      "id": "72ae995a-f81d-4bc1-8ad9-2f2372abccbb",
+      "name": "左上外耳廓",
+      "startLandmarkId": "6104da97-0c50-4067-a08a-5e0be2cc86e1",
+      "endLandmarkId": "46f6bf2b-55bf-40b7-88f9-6b1b9e1cef57",
+      "mirrorPartnerCurveId": "44ab829c-d59d-41eb-af79-cf1789d6f35e",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.7216098903491722,
+          -0.16850316395627246,
+          0.6714803421448664
+        ],
+        "startHandle": {
+          "along": 0.18954816915973344,
+          "offset": 0.18168862225996843
+        },
+        "endHandle": {
+          "along": 0.27773056712150224,
+          "offset": 0.2693421755504337
+        }
+      }
+    },
+    {
+      "id": "44ab829c-d59d-41eb-af79-cf1789d6f35e",
+      "name": "右上外耳廓",
+      "startLandmarkId": "cf12f532-31f1-401b-b96f-e55942a82ef7",
+      "endLandmarkId": "e867015f-7f4e-4a25-8e46-b5284ab6b116",
+      "mirrorPartnerCurveId": "72ae995a-f81d-4bc1-8ad9-2f2372abccbb",
+      "role": "mirror",
+      "canonicalCurveId": "72ae995a-f81d-4bc1-8ad9-2f2372abccbb"
+    },
+    {
+      "id": "81dcf786-4f05-462e-851b-080dd3acbe0e",
+      "name": "左结构线 13",
+      "startLandmarkId": "46f6bf2b-55bf-40b7-88f9-6b1b9e1cef57",
+      "endLandmarkId": "07bfdfa2-2745-498b-a820-babc5f2f4275",
+      "mirrorPartnerCurveId": "f296d6c7-e241-4646-bfc6-378bdf4cbbe7",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.6008683022503102,
+          0.0838738392170048,
+          0.7949355083563885
+        ],
+        "startHandle": {
+          "along": 0.3670033240588805,
+          "offset": 0.17336843329850687
+        },
+        "endHandle": {
+          "along": 0.2815108137027596,
+          "offset": 0.16171944487785914
+        }
+      }
+    },
+    {
+      "id": "f296d6c7-e241-4646-bfc6-378bdf4cbbe7",
+      "name": "右结构线 13",
+      "startLandmarkId": "e867015f-7f4e-4a25-8e46-b5284ab6b116",
+      "endLandmarkId": "0760452f-3f1c-4d40-aa8f-ddbc44293315",
+      "mirrorPartnerCurveId": "81dcf786-4f05-462e-851b-080dd3acbe0e",
+      "role": "mirror",
+      "canonicalCurveId": "81dcf786-4f05-462e-851b-080dd3acbe0e"
+    },
+    {
+      "id": "fd9434a3-e7ac-4dca-8c80-6a3bc96f2990",
+      "name": "左颅顶",
+      "startLandmarkId": "2105eb0b-ecb3-45c1-be3f-d70bda6b6686",
+      "endLandmarkId": "b0f433d7-43ad-42ad-b568-8fb944da6020",
+      "mirrorPartnerCurveId": "ef735504-e59a-4cbf-9a32-0f64e8ad0309",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          -0.417445009955944,
+          0.1640853848888964,
+          0.8937648740741294
+        ],
+        "startHandle": {
+          "along": 0.2587393189104181,
+          "offset": -0.35408738133788215
+        },
+        "endHandle": {
+          "along": 0.24501105833032535,
+          "offset": -0.3313735126315838
+        }
+      }
+    },
+    {
+      "id": "ef735504-e59a-4cbf-9a32-0f64e8ad0309",
+      "name": "右颅顶",
+      "startLandmarkId": "7defc5f4-7bd1-42ca-9f79-19e012a5da53",
+      "endLandmarkId": "b0f433d7-43ad-42ad-b568-8fb944da6020",
+      "mirrorPartnerCurveId": "fd9434a3-e7ac-4dca-8c80-6a3bc96f2990",
+      "role": "mirror",
+      "canonicalCurveId": "fd9434a3-e7ac-4dca-8c80-6a3bc96f2990"
+    },
+    {
+      "id": "e234de58-20b8-41b5-822b-506a764329b3",
+      "name": "左结构线 19",
+      "startLandmarkId": "2105eb0b-ecb3-45c1-be3f-d70bda6b6686",
+      "endLandmarkId": "c72513a5-3dee-4121-ba4f-766e6d8a60a9",
+      "mirrorPartnerCurveId": "2c0c38ab-ef53-453d-b04f-e8c85e98222f",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.07289967948285841,
+          0.12747594057847772,
+          0.9891589969792163
+        ],
+        "startHandle": {
+          "along": 0.3333333333333333,
+          "offset": 0
+        },
+        "endHandle": {
+          "along": 0.3333333333333333,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "id": "2c0c38ab-ef53-453d-b04f-e8c85e98222f",
+      "name": "右结构线 19",
+      "startLandmarkId": "7defc5f4-7bd1-42ca-9f79-19e012a5da53",
+      "endLandmarkId": "1cc8f08c-c0a2-415d-b59d-5a6ec6e66715",
+      "mirrorPartnerCurveId": "e234de58-20b8-41b5-822b-506a764329b3",
+      "role": "mirror",
+      "canonicalCurveId": "e234de58-20b8-41b5-822b-506a764329b3"
+    },
+    {
+      "id": "5ed72c43-78b3-4a09-90a7-8f7e5b8948f2",
+      "name": "左结构线 21",
+      "startLandmarkId": "c72513a5-3dee-4121-ba4f-766e6d8a60a9",
+      "endLandmarkId": "c745ec0b-b4ff-4da8-9476-59ec3aae20af",
+      "mirrorPartnerCurveId": "9d8f01c6-8bfb-4854-ad6b-2e914dc1394e",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          -0.7824142173073956,
+          0.30009466817089947,
+          0.5456841418720695
+        ],
+        "startHandle": {
+          "along": 0.2798416755705895,
+          "offset": 0.21727891169497385
+        },
+        "endHandle": {
+          "along": 0.381266851881653,
+          "offset": 0.21595957320210712
+        }
+      }
+    },
+    {
+      "id": "9d8f01c6-8bfb-4854-ad6b-2e914dc1394e",
+      "name": "右结构线 21",
+      "startLandmarkId": "1cc8f08c-c0a2-415d-b59d-5a6ec6e66715",
+      "endLandmarkId": "da17c716-babd-48fd-9c84-39d12457c711",
+      "mirrorPartnerCurveId": "5ed72c43-78b3-4a09-90a7-8f7e5b8948f2",
+      "role": "mirror",
+      "canonicalCurveId": "5ed72c43-78b3-4a09-90a7-8f7e5b8948f2"
+    },
+    {
+      "id": "fa48be52-d04f-4b03-8afd-a36c84f05ffa",
+      "name": "左结构线 23",
+      "startLandmarkId": "c745ec0b-b4ff-4da8-9476-59ec3aae20af",
+      "endLandmarkId": "07bfdfa2-2745-498b-a820-babc5f2f4275",
+      "mirrorPartnerCurveId": "bdfeff79-a82d-40c8-9ac1-dfce294a2846",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.8135708154292643,
+          0.30607000422194175,
+          0.49439223375508495
+        ],
+        "startHandle": {
+          "along": 0.35333633666027575,
+          "offset": -0.12961080959508917
+        },
+        "endHandle": {
+          "along": 0.32515085789930365,
+          "offset": -0.11252162809041698
+        }
+      }
+    },
+    {
+      "id": "bdfeff79-a82d-40c8-9ac1-dfce294a2846",
+      "name": "右结构线 23",
+      "startLandmarkId": "da17c716-babd-48fd-9c84-39d12457c711",
+      "endLandmarkId": "0760452f-3f1c-4d40-aa8f-ddbc44293315",
+      "mirrorPartnerCurveId": "fa48be52-d04f-4b03-8afd-a36c84f05ffa",
+      "role": "mirror",
+      "canonicalCurveId": "fa48be52-d04f-4b03-8afd-a36c84f05ffa"
+    },
+    {
+      "id": "8a48d628-88da-4249-b151-da213f2fd370",
+      "name": "结构线 25",
+      "startLandmarkId": "b0f433d7-43ad-42ad-b568-8fb944da6020",
+      "endLandmarkId": "98d632c9-48ae-4807-9808-f7b131115dd2",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          1,
+          0,
+          0
+        ],
+        "startHandle": {
+          "along": 0.3364005161655673,
+          "offset": -0.38117036614613886
+        },
+        "endHandle": {
+          "along": 0.2562850054191042,
+          "offset": -0.2923266413935363
+        }
+      }
+    },
+    {
+      "id": "4d2387cc-b0b9-48da-9199-88343af5cedb",
+      "name": "左结构线 24",
+      "startLandmarkId": "c745ec0b-b4ff-4da8-9476-59ec3aae20af",
+      "endLandmarkId": "b4d42290-b5e6-4a5b-bb5f-2663581e3268",
+      "mirrorPartnerCurveId": "3f7a7c53-4821-473a-af57-dc014342d23d",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          0.09258484266611731,
+          0.03653490175502162,
+          0.9950342948171391
+        ],
+        "startHandle": {
+          "along": 0.35916304507852076,
+          "offset": 0.10655554098846573
+        },
+        "endHandle": {
+          "along": 0.3333333333333333,
+          "offset": 0.06690043285680869
+        }
+      }
+    },
+    {
+      "id": "3f7a7c53-4821-473a-af57-dc014342d23d",
+      "name": "右结构线 24",
+      "startLandmarkId": "da17c716-babd-48fd-9c84-39d12457c711",
+      "endLandmarkId": "b4d42290-b5e6-4a5b-bb5f-2663581e3268",
+      "mirrorPartnerCurveId": "4d2387cc-b0b9-48da-9199-88343af5cedb",
+      "role": "mirror",
+      "canonicalCurveId": "4d2387cc-b0b9-48da-9199-88343af5cedb"
+    },
+    {
+      "id": "d4a0873e-d5cd-40a1-b648-b1f070e5d109",
+      "name": "结构线 26",
+      "startLandmarkId": "b0f433d7-43ad-42ad-b568-8fb944da6020",
+      "endLandmarkId": "d3c38b7c-072a-45c8-86f8-0d79b97cf47b",
+      "role": "canonical",
+      "shape": {
+        "planeNormal": [
+          1,
+          0,
+          0
+        ],
+        "startHandle": {
+          "along": 0.20344259933919717,
+          "offset": 0.218172522978746
+        },
+        "endHandle": {
+          "along": 0.3499309629567505,
+          "offset": 0.3634968680751689
+        }
+      }
+    }
+  ],
+  "centerlineOrder": [
+    "d3c38b7c-072a-45c8-86f8-0d79b97cf47b",
+    "b0f433d7-43ad-42ad-b568-8fb944da6020",
+    "98d632c9-48ae-4807-9808-f7b131115dd2",
+    "09a0c142-4b7e-40a0-9ed4-9ebacec79443",
+    "43586d58-1e78-46bb-bcdd-c0410d7dfc76",
+    "def822b7-38d8-4040-a235-8b6a6b8629bf",
+    "fff50df1-c14a-4e96-8be8-05a216483349",
+    "43cc64c5-d367-4b83-9035-efcb04d10613",
+    "b4d42290-b5e6-4a5b-bb5f-2663581e3268"
+  ],
+  "lockedViews": [],
+  "meta": {
+    "name": "语义点头部研究",
+    "createdAt": 1789179026454,
+    "updatedAt": 1789179026454
+  },
+  "views": [
+    {
+      "id": "front",
+      "label": "正面",
+      "shortLabel": "正面",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          0,
+          0,
+          4
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 0.6525775858105117,
+        "pan": [
+          -15.17588106547305,
+          -8.987148786024761
+        ]
+      }
+    },
+    {
+      "id": "left45",
+      "label": "左 45°",
+      "shortLabel": "左 45°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          -3,
+          0,
+          3
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1,
+        "pan": [
+          -3.416432584269728,
+          -66.92152387640442
+        ]
+      }
+    },
+    {
+      "id": "right15",
+      "label": "右 15°",
+      "shortLabel": "右 15°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          1.035276180410083,
+          0,
+          3.8637033051562732
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1,
+        "pan": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "right30",
+      "label": "右 30°",
+      "shortLabel": "右 30°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          1.9999999999999998,
+          0,
+          3.464101615137755
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1.1483284555706925,
+        "pan": [
+          3.2480529889558625,
+          -36.479682353744124
+        ]
+      }
+    },
+    {
+      "id": "right45",
+      "label": "右 45°",
+      "shortLabel": "右 45°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          3,
+          0,
+          3
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1.0335505392413076,
+        "pan": [
+          -37.66879001225493,
+          -44.463295814763796
+        ]
+      }
+    },
+    {
+      "id": "side",
+      "label": "侧面",
+      "shortLabel": "侧面",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          4,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 0.9181560696667651,
+        "pan": [
+          55.33123145677092,
+          -63.91539050226925
+        ]
+      }
+    },
+    {
+      "id": "high45",
+      "label": "俯 45°",
+      "shortLabel": "俯 45°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          0,
+          3,
+          3
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 0.8737345742449221,
+        "pan": [
+          -109.97736898700839,
+          -88.16088730029844
+        ]
+      }
+    },
+    {
+      "id": "top",
+      "label": "纯俯视",
+      "shortLabel": "俯视",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          0,
+          4,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          -1
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1,
+        "pan": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "low45",
+      "label": "仰 45°",
+      "shortLabel": "仰 45°",
+      "camera": {
+        "projection": "orthographic",
+        "position": [
+          0,
+          -3,
+          3
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          1,
+          0
+        ],
+        "zoom": 1
+      },
+      "canvas": {
+        "zoom": 1,
+        "pan": [
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "b0f433d7-43ad-42ad-b568-8fb944da6020",
+      "name": "颅顶点",
+      "position": [
+        0,
+        1.2582938700724906,
+        -0.08707603613224957
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "09a0c142-4b7e-40a0-9ed4-9ebacec79443",
+      "name": "山根点",
+      "position": [
+        0,
+        -0.15842642700438622,
+        0.8285837859780594
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "43586d58-1e78-46bb-bcdd-c0410d7dfc76",
+      "name": "鼻尖点",
+      "position": [
+        0,
+        -0.4441201244152902,
+        0.9918310033714277
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "def822b7-38d8-4040-a235-8b6a6b8629bf",
+      "name": "鼻下点",
+      "position": [
+        0,
+        -0.5031052276441588,
+        0.87
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "fff50df1-c14a-4e96-8be8-05a216483349",
+      "name": "人中点",
+      "position": [
+        0,
+        -0.5858905847293816,
+        0.83
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "b4d42290-b5e6-4a5b-bb5f-2663581e3268",
+      "name": "下巴尖点",
+      "position": [
+        0,
+        -1.05,
+        0.676560702302741
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "964c2201-e896-40a4-9b88-bd819ba902d0",
+      "name": "左眉头点",
+      "position": [
+        0.21546345853287663,
+        0.24677077203271486,
+        0.8350494771223984
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "9204218e-aaac-45b5-b6c9-617736336e1e",
+      "viewLocks": {}
+    },
+    {
+      "id": "9204218e-aaac-45b5-b6c9-617736336e1e",
+      "name": "右眉头点",
+      "position": [
+        -0.21546345853287663,
+        0.24677077203271486,
+        0.8350494771223984
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "964c2201-e896-40a4-9b88-bd819ba902d0",
+      "viewLocks": {}
+    },
+    {
+      "id": "4e882213-796b-4c03-a5fb-cd023d1cd39d",
+      "name": "左眉尾点",
+      "position": [
+        0.6572879473642077,
+        0.1911158557028502,
+        0.6771136072996646
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "2c7b4266-9f66-42b2-8edb-1415553fd5ba",
+      "viewLocks": {}
+    },
+    {
+      "id": "2c7b4266-9f66-42b2-8edb-1415553fd5ba",
+      "name": "右眉尾点",
+      "position": [
+        -0.6572879473642077,
+        0.1911158557028502,
+        0.6771136072996646
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "4e882213-796b-4c03-a5fb-cd023d1cd39d",
+      "viewLocks": {}
+    },
+    {
+      "id": "6c76cc9d-a035-4ae2-9f83-3182c742be27",
+      "name": "左内眼角点",
+      "position": [
+        0.20279095521907223,
+        -0.18676727609536115,
+        0.82
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "6c409a75-c572-43a9-8496-bea79d3d9bc3",
+      "viewLocks": {}
+    },
+    {
+      "id": "6c409a75-c572-43a9-8496-bea79d3d9bc3",
+      "name": "右内眼角点",
+      "position": [
+        -0.20279095521907223,
+        -0.18676727609536115,
+        0.82
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "6c76cc9d-a035-4ae2-9f83-3182c742be27",
+      "viewLocks": {}
+    },
+    {
+      "id": "4a5f0c75-3757-4c62-b8ee-a66b2f9d2078",
+      "name": "左外眼角点",
+      "position": [
+        0.7304050989504112,
+        -0.17645429433491508,
+        0.6244345897653308
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "785ba116-8a30-4453-8427-0e004c54c8b4",
+      "viewLocks": {}
+    },
+    {
+      "id": "785ba116-8a30-4453-8427-0e004c54c8b4",
+      "name": "右外眼角点",
+      "position": [
+        -0.7304050989504112,
+        -0.17645429433491508,
+        0.6244345897653308
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "4a5f0c75-3757-4c62-b8ee-a66b2f9d2078",
+      "viewLocks": {}
+    },
+    {
+      "id": "9017d8c4-5a3a-4479-979c-fa5cd3c14d34",
+      "name": "左嘴角点",
+      "position": [
+        0.17966635792525742,
+        -0.6856916478737111,
+        0.74
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "15efb5c6-9434-4286-9130-ea8907835cf3",
+      "viewLocks": {}
+    },
+    {
+      "id": "15efb5c6-9434-4286-9130-ea8907835cf3",
+      "name": "右嘴角点",
+      "position": [
+        -0.17966635792525742,
+        -0.6856916478737111,
+        0.74
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "9017d8c4-5a3a-4479-979c-fa5cd3c14d34",
+      "viewLocks": {}
+    },
+    {
+      "id": "9db3d2c8-a612-40c6-9aa8-3e1d4c551efd",
+      "name": "左上耳根点",
+      "position": [
+        0.7488369932746886,
+        -0.29982243494923194,
+        0.2033241036869386
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "e203ab2c-69a5-4598-8cf9-635c77fdbb35",
+      "viewLocks": {}
+    },
+    {
+      "id": "e203ab2c-69a5-4598-8cf9-635c77fdbb35",
+      "name": "右上耳根点",
+      "position": [
+        -0.7488369932746886,
+        -0.29982243494923194,
+        0.2033241036869386
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "9db3d2c8-a612-40c6-9aa8-3e1d4c551efd",
+      "viewLocks": {}
+    },
+    {
+      "id": "07bfdfa2-2745-498b-a820-babc5f2f4275",
+      "name": "左下耳根点",
+      "position": [
+        0.6663969398916079,
+        -0.6245433311855666,
+        0.23058463323084138
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "0760452f-3f1c-4d40-aa8f-ddbc44293315",
+      "viewLocks": {}
+    },
+    {
+      "id": "0760452f-3f1c-4d40-aa8f-ddbc44293315",
+      "name": "右下耳根点",
+      "position": [
+        -0.6663969398916079,
+        -0.6245433311855666,
+        0.23058463323084138
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "07bfdfa2-2745-498b-a820-babc5f2f4275",
+      "viewLocks": {}
+    },
+    {
+      "id": "98d632c9-48ae-4807-9808-f7b131115dd2",
+      "name": "眉心",
+      "position": [
+        0,
+        0.22308234956480652,
+        0.8409190251540366
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "43cc64c5-d367-4b83-9035-efcb04d10613",
+      "name": "嘴中",
+      "position": [
+        0,
+        -0.705439512286304,
+        0.83
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    },
+    {
+      "id": "6104da97-0c50-4067-a08a-5e0be2cc86e1",
+      "name": "左耳尖",
+      "position": [
+        0.9966192566306127,
+        -0.038146855200495815,
+        0.041178537655052326
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "cf12f532-31f1-401b-b96f-e55942a82ef7",
+      "viewLocks": {}
+    },
+    {
+      "id": "cf12f532-31f1-401b-b96f-e55942a82ef7",
+      "name": "右耳尖",
+      "position": [
+        -0.9966192566306127,
+        -0.038146855200495815,
+        0.041178537655052326
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "6104da97-0c50-4067-a08a-5e0be2cc86e1",
+      "viewLocks": {}
+    },
+    {
+      "id": "46f6bf2b-55bf-40b7-88f9-6b1b9e1cef57",
+      "name": "左外耳廓",
+      "position": [
+        1.0149998148754005,
+        -0.3641662419830175,
+        -0.06038644723441333
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "e867015f-7f4e-4a25-8e46-b5284ab6b116",
+      "viewLocks": {}
+    },
+    {
+      "id": "e867015f-7f4e-4a25-8e46-b5284ab6b116",
+      "name": "右外耳廓",
+      "position": [
+        -1.0149998148754005,
+        -0.3641662419830175,
+        -0.06038644723441333
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "46f6bf2b-55bf-40b7-88f9-6b1b9e1cef57",
+      "viewLocks": {}
+    },
+    {
+      "id": "2105eb0b-ecb3-45c1-be3f-d70bda6b6686",
+      "name": "左太阳穴",
+      "position": [
+        0.879707223939676,
+        0.014169940781700932,
+        0.5522106053738579
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "7defc5f4-7bd1-42ca-9f79-19e012a5da53",
+      "viewLocks": {}
+    },
+    {
+      "id": "7defc5f4-7bd1-42ca-9f79-19e012a5da53",
+      "name": "右太阳穴",
+      "position": [
+        -0.879707223939676,
+        0.014169940781700932,
+        0.5522106053738579
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "2105eb0b-ecb3-45c1-be3f-d70bda6b6686",
+      "viewLocks": {}
+    },
+    {
+      "id": "c745ec0b-b4ff-4da8-9476-59ec3aae20af",
+      "name": "左下颌",
+      "position": [
+        0.5128252708397567,
+        -0.8476340365432239,
+        0.6214135903939543
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "da17c716-babd-48fd-9c84-39d12457c711",
+      "viewLocks": {}
+    },
+    {
+      "id": "da17c716-babd-48fd-9c84-39d12457c711",
+      "name": "右下颌",
+      "position": [
+        -0.5128252708397567,
+        -0.8476340365432239,
+        0.6214135903939543
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "c745ec0b-b4ff-4da8-9476-59ec3aae20af",
+      "viewLocks": {}
+    },
+    {
+      "id": "c72513a5-3dee-4121-ba4f-766e6d8a60a9",
+      "name": "左颧骨",
+      "position": [
+        0.6728734089452834,
+        -0.4382547637341735,
+        0.6257593308978473
+      ],
+      "type": "LEFT",
+      "mirrorPartnerId": "1cc8f08c-c0a2-415d-b59d-5a6ec6e66715",
+      "viewLocks": {}
+    },
+    {
+      "id": "1cc8f08c-c0a2-415d-b59d-5a6ec6e66715",
+      "name": "右颧骨",
+      "position": [
+        -0.6728734089452834,
+        -0.4382547637341735,
+        0.6257593308978473
+      ],
+      "type": "RIGHT",
+      "mirrorPartnerId": "c72513a5-3dee-4121-ba4f-766e6d8a60a9",
+      "viewLocks": {}
+    },
+    {
+      "id": "d3c38b7c-072a-45c8-86f8-0d79b97cf47b",
+      "name": "枕骨",
+      "position": [
+        0,
+        0.22308234956480652,
+        -1.014447431117964
+      ],
+      "type": "CENTERLINE",
+      "viewLocks": {}
+    }
+  ]
+}
