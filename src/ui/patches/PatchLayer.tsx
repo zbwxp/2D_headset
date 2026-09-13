@@ -28,7 +28,7 @@ export default function PatchLayer({ view }: {
         // Camera basis forward points toward the camera: far to near alpha compositing.
         triangles.sort((a, b) => a.depth - b.depth);
         return { triangles, lines };
-    }, [p, view]);
+    }, [p.landmarks, p.curves, p.patches, view.camera]);
     if (!p.patches?.length)
         return null;
     return <g pointerEvents="none" data-testid="patch-layer">

@@ -90,7 +90,7 @@ export default function InspectView() {
     boundaryHighlight.visible=false;
     scene.add(boundaryHighlight);
     const patchGeometry=new THREE.BufferGeometry();
-    const patchMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false});
+    const patchMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false,forceSinglePass:true,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
     const patchMesh=new THREE.Mesh(patchGeometry,patchMaterial);scene.add(patchMesh);
     scene.add(new THREE.HemisphereLight(0xffffff,0x48545d,2));
     const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(2,4,5);scene.add(light);
@@ -129,8 +129,21 @@ export default function InspectView() {
     material.depthTest=false;selectedMaterial.depthTest=false;material.transparent=true;selectedMaterial.transparent=true;
     points.renderOrder=10;
     scene.children.filter(o=>o instanceof THREE.Points).forEach(o=>o.renderOrder=10);
+    let lastRenderState: ReturnType<typeof useEditor.getState> | undefined;
+    let sortDirty=true;
+    const sortCamera=new THREE.Matrix4();
     const update = () => {
       const s = useEditor.getState();
+      const opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;
+      const transparent=opacity<1;
+      if(patchMaterial.transparent!==transparent){patchMaterial.transparent=transparent;patchMaterial.needsUpdate=true;sortDirty=true;}
+      patchMaterial.opacity=opacity;
+      patchMaterial.depthWrite=!transparent;
+      patchMesh.visible=opacity>0;
+      const old=lastRenderState;lastRenderState=s;
+      // Display-only changes must not rebuild source samples or GPU geometry.
+      if(old&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
+      sortDirty=true;
       const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
       for(const p of s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
       sortedPatchIds=[...trianglePatchIds];
@@ -231,9 +244,12 @@ export default function InspectView() {
     const draw = () => {
       controls.update();
       camera.updateMatrixWorld();
+      if(patchMaterial.transparent && (sortDirty || !sortCamera.equals(camera.matrixWorldInverse))){
       const order=patchCenters.map((c,i)=>({i,z:c.clone().applyMatrix4(camera.matrixWorldInverse).z})).sort((a,b)=>a.z-b.z);
       sortedPatchIds=order.map(x=>trianglePatchIds[x.i]);
       patchGeometry.setIndex(order.flatMap(x=>patchTriangles[x.i]));
+      sortCamera.copy(camera.matrixWorldInverse);sortDirty=false;
+      }
       renderer.render(scene, camera);
       frame = requestAnimationFrame(draw);
     };
