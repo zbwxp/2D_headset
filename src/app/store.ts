@@ -77,7 +77,8 @@ interface State {
   cancelPatch: () => void;
   pickPatchEdge: (id:string) => void;
   deletePatch: (id:string) => void;
-  setPatchDisplay: (key:keyof PatchDisplay,value:number) => void;
+  setPatchVisible: (visible:boolean) => void;
+  setPatchDisplay: (key:"opacity2d"|"opacity3d",value:number) => void;
   project: LandmarkProject;
   selectedCurveId: string | null;
   curveCreation: { startId: string | null } | null;
@@ -142,6 +143,7 @@ export const useEditor = create<State>((set, get) => {
       catch(e){set({message:ids.length===3&&(e as Error).message.includes('未组成')?'三条尚未闭合，可继续选择第四条。':(e as Error).message});}
     },
     deletePatch:(id)=>{const s=get(),x=s.project.patches?.find(x=>x.id===id);if(!x)return;s.beginEdit();commit({...s.project,patches:s.project.patches!.filter(y=>y.id!==id&&y.id!==x.mirrorPartnerId)});set({selectedPatchId:null});},
+    setPatchVisible:(visible)=>commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,visible}}),
     setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},
     project: initial,
     selectedCurveId: null,

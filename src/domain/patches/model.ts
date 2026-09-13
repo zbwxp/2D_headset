@@ -7,6 +7,7 @@ export interface SurfacePatch {
     canonicalId?: string;
 }
 export interface PatchDisplay {
+    visible?: boolean;
     opacity2d: number;
     opacity3d: number;
 }

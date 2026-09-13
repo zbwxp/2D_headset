@@ -139,17 +139,17 @@ export default function InspectView() {
       if(patchMaterial.transparent!==transparent){patchMaterial.transparent=transparent;patchMaterial.needsUpdate=true;sortDirty=true;}
       patchMaterial.opacity=opacity;
       patchMaterial.depthWrite=!transparent;
-      patchMesh.visible=opacity>0;
+      patchMesh.visible=opacity>0 && s.project.patchDisplay?.visible!==false;
       const old=lastRenderState;lastRenderState=s;
       // Display-only changes must not rebuild source samples or GPU geometry.
-      if(old&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
+      if(old&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
       sortDirty=true;
       const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
-      for(const p of s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
+      for(const p of s.project.patchDisplay?.visible===false?[]:s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
       sortedPatchIds=[...trianglePatchIds];
       patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
       patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();
-      patchMaterial.opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;patchMesh.visible=patchMaterial.opacity>0;
+
       const boundaryVertices: number[] = [];
       const vertices: number[] = [],
         colors: number[] = [];
@@ -244,7 +244,7 @@ export default function InspectView() {
     const draw = () => {
       controls.update();
       camera.updateMatrixWorld();
-      if(patchMaterial.transparent && (sortDirty || !sortCamera.equals(camera.matrixWorldInverse))){
+      if(patchMesh.visible && patchMaterial.transparent && (sortDirty || !sortCamera.equals(camera.matrixWorldInverse))){
       const order=patchCenters.map((c,i)=>({i,z:c.clone().applyMatrix4(camera.matrixWorldInverse).z})).sort((a,b)=>a.z-b.z);
       sortedPatchIds=order.map(x=>trianglePatchIds[x.i]);
       patchGeometry.setIndex(order.flatMap(x=>patchTriangles[x.i]));

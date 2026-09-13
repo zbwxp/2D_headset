@@ -6,7 +6,11 @@ import { project, basis, dot, sub, cross } from '../../domain/geometry/core';
 import { controls, bezier } from '../../domain/curves/geometry';
 import type { LandmarkView } from '../../domain/landmarks/model';
 import type { Vec3 } from '../../domain/project/types';
-export default function PatchLayer({ view }: {
+export default function PatchLayer({view}:{view:LandmarkView}){
+    const visible=useEditor(s=>s.project.patchDisplay?.visible!==false);
+    return visible ? <VisiblePatchLayer view={view}/> : null;
+}
+function VisiblePatchLayer({ view }: {
     view: LandmarkView;
 }) {
     const s = useEditor(), p = s.project, opacity = p.patchDisplay?.opacity2d ?? defaultDisplay.opacity2d;

@@ -148,7 +148,7 @@ export default function CurveLayer({
               strokeWidth={selected ? 2.5 : 1.5}
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
-              opacity={(s.project.patches?.length??0)>0 ? 0 : 1}
+              opacity={s.project.patchDisplay?.visible!==false && (s.project.patches?.length??0)>0 ? 0 : 1}
             />
             {!readonly && (
               <path
