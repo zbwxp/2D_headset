@@ -37,3 +37,10 @@ test('patch creation highlights selected 3D boundaries and clears on deselect',a
  await page.getByRole('button',{name:names[0],exact:true}).click();
  const cleared=await view.screenshot();expect(cleared.equals(before)).toBeTruthy();
 });
+test('display quality changes tessellation without changing geometry or history',async({page})=>{
+ await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'quality.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+ const select=page.getByRole('combobox',{name:'Patch 显示精度',exact:true});await expect(select).toHaveValue('ultra');
+ for(const [quality,n] of [['low',6],['medium',12],['high',18],['ultra',24]] as const){await select.selectOption(quality);await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(4*n*n);}
+ await select.selectOption('low');const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));expect(saved.curves).toEqual(project.curves);expect(saved.landmarks).toEqual(project.landmarks);expect(saved.patches).toEqual(project.patches);await expect(page.locator('.point-footer')).toContainText('撤销 1 / 100');
+ await page.getByRole('button',{name:'删除 Patch 1',exact:true}).click();await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(select).toHaveValue('low');await page.reload();await expect(select).toHaveValue('low');await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(144);
+});

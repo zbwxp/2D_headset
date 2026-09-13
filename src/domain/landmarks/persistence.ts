@@ -1,4 +1,4 @@
-import {parsePatches,defaultDisplay} from "../patches/model";
+import {parsePatches,defaultDisplay,patchQualityLevels} from "../patches/model";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
@@ -186,7 +186,8 @@ export function parseLandmarks(text: string): LandmarkProject {
   if(p.patchDisplay !== undefined) {
     check(p.patchDisplay && [p.patchDisplay.opacity2d,p.patchDisplay.opacity3d].every(x=>finite(x)&&x>=0&&x<=1));
     check(p.patchDisplay.visible===undefined || typeof p.patchDisplay.visible==='boolean');
-    result.patchDisplay={...defaultDisplay,...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
+    check(p.patchDisplay.quality===undefined || Object.hasOwn(patchQualityLevels,p.patchDisplay.quality));
+    result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   return result;
 }

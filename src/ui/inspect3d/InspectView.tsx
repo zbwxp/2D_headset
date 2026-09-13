@@ -3,7 +3,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import {pickCurve, type CurveSegment} from "./picking";
 import {tessellate} from "../../domain/patches/geometry";
-import {defaultDisplay} from "../../domain/patches/model";
+import {defaultDisplay,patchSampling} from "../../domain/patches/model";
 import { flatten, norm } from "../../domain/geometry/bezier";
 import { controls as curveControls } from "../../domain/curves/geometry";
 import { useEffect, useRef, useState } from "react";
@@ -142,10 +142,10 @@ export default function InspectView() {
       patchMesh.visible=opacity>0 && s.project.patchDisplay?.visible!==false;
       const old=lastRenderState;lastRenderState=s;
       // Display-only changes must not rebuild source samples or GPU geometry.
-      if(old&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
+      if(old&&old.project.patchDisplay?.quality===s.project.patchDisplay?.quality&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
       sortDirty=true;
       const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
-      for(const p of s.project.patchDisplay?.visible===false?[]:s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
+      for(const p of s.project.patchDisplay?.visible===false?[]:s.project.patches??[]){const m=tessellate(s.project,p,patchSampling(s.project.patchDisplay).subdivisions);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
       sortedPatchIds=[...trianglePatchIds];
       patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
       patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();

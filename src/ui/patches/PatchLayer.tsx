@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useEditor } from '../../app/store';
 import { tessellate } from '../../domain/patches/geometry';
-import { defaultDisplay } from '../../domain/patches/model';
+import { defaultDisplay, patchSampling } from '../../domain/patches/model';
 import { project, basis, dot, sub, cross } from '../../domain/geometry/core';
 import { controls, bezier } from '../../domain/curves/geometry';
 import type { LandmarkView } from '../../domain/landmarks/model';
@@ -14,10 +14,11 @@ function VisiblePatchLayer({ view }: {
     view: LandmarkView;
 }) {
     const s = useEditor(), p = s.project, opacity = p.patchDisplay?.opacity2d ?? defaultDisplay.opacity2d;
+    const sampling=patchSampling(p.patchDisplay);
     const data = useMemo(() => {
         const { forward } = basis(view), screen = (v: Vec3) => { const q = project(v, view); return [q[0] * 160, -q[1] * 160, dot(v, forward)]; };
-        const triangles = (p.patches ?? []).flatMap(patch => { const mesh = tessellate(p, patch, 24); return mesh.triangles.map(ids => { const pts = ids.map(i => screen(mesh.vertices[i])); const n = cross(sub(mesh.vertices[ids[1]], mesh.vertices[ids[0]]), sub(mesh.vertices[ids[2]], mesh.vertices[ids[0]])); const shade = .72 + .28 * Math.abs(dot(n, forward)) / (Math.hypot(...n) || 1); return { patch: patch.id, pts, shade, depth: pts.reduce((a, x) => a + x[2], 0) / 3, minX: Math.min(...pts.map(x => x[0])), maxX: Math.max(...pts.map(x => x[0])), minY: Math.min(...pts.map(x => x[1])), maxY: Math.max(...pts.map(x => x[1])) }; }); });
-        const lines = p.curves.map(c => { const cp = controls(p, c); const samples = Array.from({ length: 97 }, (_, i) => screen(bezier(cp, i / 96))); const segments = samples.slice(1).map((b, i) => { const a = samples[i], x = (a[0] + b[0]) / 2, y = (a[1] + b[1]) / 2, z = (a[2] + b[2]) / 2, front = new Set<string>(); for (const tr of triangles) {
+        const triangles = (p.patches ?? []).flatMap(patch => { const mesh = tessellate(p, patch, sampling.subdivisions); return mesh.triangles.map(ids => { const pts = ids.map(i => screen(mesh.vertices[i])); const n = cross(sub(mesh.vertices[ids[1]], mesh.vertices[ids[0]]), sub(mesh.vertices[ids[2]], mesh.vertices[ids[0]])); const shade = .72 + .28 * Math.abs(dot(n, forward)) / (Math.hypot(...n) || 1); return { patch: patch.id, pts, shade, depth: pts.reduce((a, x) => a + x[2], 0) / 3, minX: Math.min(...pts.map(x => x[0])), maxX: Math.max(...pts.map(x => x[0])), minY: Math.min(...pts.map(x => x[1])), maxY: Math.max(...pts.map(x => x[1])) }; }); });
+        const lines = p.curves.map(c => { const cp = controls(p, c); const samples = Array.from({ length: sampling.curveSegments+1 }, (_, i) => screen(bezier(cp, i / sampling.curveSegments))); const segments = samples.slice(1).map((b, i) => { const a = samples[i], x = (a[0] + b[0]) / 2, y = (a[1] + b[1]) / 2, z = (a[2] + b[2]) / 2, front = new Set<string>(); for (const tr of triangles) {
             if (x < tr.minX || x > tr.maxX || y < tr.minY || y > tr.maxY)
                 continue;
             const [a, b, c] = tr.pts;
@@ -32,7 +33,7 @@ function VisiblePatchLayer({ view }: {
         // Camera basis forward points toward the camera: far to near alpha compositing.
         triangles.sort((a, b) => a.depth - b.depth);
         return { triangles, lines };
-    }, [p.landmarks, p.curves, p.patches, view.camera]);
+    }, [p.landmarks, p.curves, p.patches, view.camera, sampling]);
     if (!p.patches?.length)
         return null;
     return <g pointerEvents="none" data-testid="patch-layer">
