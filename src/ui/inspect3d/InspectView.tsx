@@ -1,3 +1,4 @@
+import {pickCurve, type CurveSegment} from "./picking";
 import {tessellate} from "../../domain/patches/geometry";
 import {defaultDisplay} from "../../domain/patches/model";
 import { flatten, norm } from "../../domain/geometry/bezier";
@@ -79,18 +80,51 @@ export default function InspectView() {
     const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
     scene.add(curveLines);
     const patchGeometry=new THREE.BufferGeometry();
-    const patchMaterial=new THREE.MeshStandardMaterial({color:0xbecdcf,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false});
+    const patchMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false});
     const patchMesh=new THREE.Mesh(patchGeometry,patchMaterial);scene.add(patchMesh);
     scene.add(new THREE.HemisphereLight(0xffffff,0x48545d,2));
     const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(2,4,5);scene.add(light);
     let patchTriangles:number[][]=[],patchCenters:THREE.Vector3[]=[];
+    let trianglePatchIds:string[]=[],sortedPatchIds:string[]=[],curveSegments:CurveSegment[]=[];
+    const raycaster=new THREE.Raycaster();
+    let press:{id:number;x:number;y:number;moved:boolean}|null=null;
+    const onDown=(e:PointerEvent)=>{
+      if(press){press.moved=true;return;}
+      if(e.button===0&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!e.altKey)press={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
+    };
+    const onMove=(e:PointerEvent)=>{if(press&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>4)press.moved=true;};
+    const onCancel=()=>{press=null;};
+    const onUp=(e:PointerEvent)=>{
+      const down=press;press=null;
+      if(!down||down.id!==e.pointerId||down.moved||e.button!==0||Math.hypot(e.clientX-down.x,e.clientY-down.y)>4)return;
+      const rect=renderer.domElement.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
+      if(x<0||y<0||x>rect.width||y>rect.height)return;
+      camera.updateMatrixWorld();
+      const curve=pickCurve(curveSegments,camera,rect.width,rect.height,x,y);
+      const s=useEditor.getState();
+      // Wireframe remains editable even through a translucent patch.
+      if(curve){s.selectCurve(curve);return;}
+      if(s.patchCreation)return;
+      raycaster.setFromCamera(new THREE.Vector2(x/rect.width*2-1,1-y/rect.height*2),camera);
+      patchMesh.updateMatrixWorld();
+      const hit=patchMesh.visible?raycaster.intersectObject(patchMesh,false)[0]:undefined;
+      const id=hit?.faceIndex!=null?sortedPatchIds[hit.faceIndex]:undefined;
+      if(id)s.selectPatch(id);
+    };
+    renderer.domElement.addEventListener('pointerdown',onDown);
+    renderer.domElement.addEventListener('pointermove',onMove);
+    renderer.domElement.addEventListener('pointerup',onUp);
+    renderer.domElement.addEventListener('pointercancel',onCancel);
+    renderer.domElement.addEventListener('lostpointercapture',onCancel);
     material.depthTest=false;selectedMaterial.depthTest=false;material.transparent=true;selectedMaterial.transparent=true;
     points.renderOrder=10;
     scene.children.filter(o=>o instanceof THREE.Points).forEach(o=>o.renderOrder=10);
     const update = () => {
       const s = useEditor.getState();
-      const pv:number[]=[];patchTriangles=[];patchCenters=[];
-      for(const p of s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());for(const t of m.triangles){patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
+      const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
+      for(const p of s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
+      sortedPatchIds=[...trianglePatchIds];
+      patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
       patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();
       patchMaterial.opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;patchMesh.visible=patchMaterial.opacity>0;
       const vertices: number[] = [],
@@ -109,6 +143,7 @@ export default function InspectView() {
             c.id === s.selectedCurveId ? 0xf0d8ff : 0xab9fdd,
           ).toArray();
         for (let i = 1; i < samples.length; i++) {
+          curveSegments.push({id:c.id,a:new THREE.Vector3(...samples[i-1]),b:new THREE.Vector3(...samples[i])});
           vertices.push(...samples[i - 1], ...samples[i]);
           colors.push(...color, ...color);
         }
@@ -179,6 +214,7 @@ export default function InspectView() {
       controls.update();
       camera.updateMatrixWorld();
       const order=patchCenters.map((c,i)=>({i,z:c.clone().applyMatrix4(camera.matrixWorldInverse).z})).sort((a,b)=>a.z-b.z);
+      sortedPatchIds=order.map(x=>trianglePatchIds[x.i]);
       patchGeometry.setIndex(order.flatMap(x=>patchTriangles[x.i]));
       renderer.render(scene, camera);
       frame = requestAnimationFrame(draw);
@@ -188,6 +224,11 @@ export default function InspectView() {
       cancelAnimationFrame(frame);
       unsub();
       resize.disconnect();
+      renderer.domElement.removeEventListener('pointerdown',onDown);
+      renderer.domElement.removeEventListener('pointermove',onMove);
+      renderer.domElement.removeEventListener('pointerup',onUp);
+      renderer.domElement.removeEventListener('pointercancel',onCancel);
+      renderer.domElement.removeEventListener('lostpointercapture',onCancel);
       controls.dispose();
       guideGeometry.dispose();
       guideMaterial.dispose();
@@ -215,7 +256,7 @@ export default function InspectView() {
         居中视图 ↗
       </button>
       <div className="point-stage-hint">
-        {error || "拖动旋转 · 右键平移 · 滚轮缩放"}
+        {error || "点击选线 / 面 · 拖动旋转 · 右键平移 · 滚轮缩放"}
       </div>
     </div>
   );

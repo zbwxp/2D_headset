@@ -72,6 +72,7 @@ try {
 interface State {
   patchCreation: string[] | null;
   selectedPatchId: string | null;
+  selectPatch: (id:string) => void;
   startPatch: () => void;
   cancelPatch: () => void;
   pickPatchEdge: (id:string) => void;
@@ -128,6 +129,7 @@ export const useEditor = create<State>((set, get) => {
   };
   return {
     patchCreation:null, selectedPatchId:null,
+    selectPatch:(id)=>{if(get().patchCreation || !get().project.patches?.some(p=>p.id===id))return;set({selectedPatchId:id,selectedCurveId:null,selectedId:null,curveCreation:null,message:""});},
     startPatch:()=>set({patchCreation:[],curveCreation:null,selectedCurveId:null,message:'选择 3 / 4 条边形成闭环；再次点击取消选择，Esc 退出。'}),
     cancelPatch:()=>set({patchCreation:null,message:''}),
     pickPatchEdge:(id)=>{
