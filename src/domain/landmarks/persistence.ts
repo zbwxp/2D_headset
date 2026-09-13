@@ -1,3 +1,4 @@
+import {parsePatches,defaultDisplay} from "../patches/model";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
@@ -24,6 +25,7 @@ export function parseLandmarks(text: string): LandmarkProject {
       "landmarks-0.3.6",
       "landmarks-0.3.8",
       "landmarks-0.3.9",
+      "landmarks-0.4.0",
     ].includes(p?.version) &&
       p.meta &&
       typeof p.meta.name === "string" &&
@@ -180,5 +182,10 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result);
+  if(p.patches !== undefined || p.version === "landmarks-0.4.0") { result.patches = parsePatches(p.patches, result); result.version="landmarks-0.4.0"; }
+  if(p.patchDisplay !== undefined) {
+    check(p.patchDisplay && [p.patchDisplay.opacity2d,p.patchDisplay.opacity3d].every(x=>finite(x)&&x>=0&&x<=1));
+    result.patchDisplay={...defaultDisplay,opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
+  }
   return result;
 }

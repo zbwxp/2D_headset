@@ -143,8 +143,8 @@ export default function EditorActions() {
                 {target.kind === "curve"
                   ? "mirrorPartnerCurveId" in object &&
                     object.mirrorPartnerCurveId
-                    ? "将同时删除左右两条结构线，语义点保留。"
-                    : "将删除此结构线，语义点保留。"
+                    ? "将同时删除左右两条结构线及其依赖 Patch，语义点保留。"
+                    : "将删除此结构线及其依赖 Patch，语义点保留。"
                   : "mirrorPartnerId" in object && object.mirrorPartnerId
                     ? "将同时删除左右两个点及其投影锚点。"
                     : "将删除此点及其投影锚点。"}

@@ -1,3 +1,4 @@
+import {addPatch,prunePatches,defaultDisplay,type PatchDisplay} from "../domain/patches/model";
 import {
   duplicateLandmark,
   renameLandmark,
@@ -69,6 +70,13 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  patchCreation: string[] | null;
+  selectedPatchId: string | null;
+  startPatch: () => void;
+  cancelPatch: () => void;
+  pickPatchEdge: (id:string) => void;
+  deletePatch: (id:string) => void;
+  setPatchDisplay: (key:keyof PatchDisplay,value:number) => void;
   project: LandmarkProject;
   selectedCurveId: string | null;
   curveCreation: { startId: string | null } | null;
@@ -114,15 +122,31 @@ function persist(p: LandmarkProject) {
 }
 export const useEditor = create<State>((set, get) => {
   const commit = (p: LandmarkProject) => {
+    p=prunePatches(p);
     set({ project: p });
     persist(p);
   };
   return {
+    patchCreation:null, selectedPatchId:null,
+    startPatch:()=>set({patchCreation:[],curveCreation:null,selectedCurveId:null,message:'选择 3 / 4 条边形成闭环；再次点击取消选择，Esc 退出。'}),
+    cancelPatch:()=>set({patchCreation:null,message:''}),
+    pickPatchEdge:(id)=>{
+      const s=get();if(!s.patchCreation)return;
+      let ids=s.patchCreation.includes(id)?s.patchCreation.filter(x=>x!==id):[...s.patchCreation,id];
+      if(ids.length>4){set({message:'最多四条边，请先取消一条。'});return;}
+      set({patchCreation:ids});
+      if(ids.length<3)return;
+      try{const p=addPatch(s.project,ids);s.beginEdit();commit(p);set({patchCreation:[],selectedPatchId:p.patches!.at(-1)!.id,message:'已创建 Patch，可继续选择下一组边。'});}
+      catch(e){set({message:ids.length===3&&(e as Error).message.includes('未组成')?'三条尚未闭合，可继续选择第四条。':(e as Error).message});}
+    },
+    deletePatch:(id)=>{const s=get(),x=s.project.patches?.find(x=>x.id===id);if(!x)return;s.beginEdit();commit({...s.project,patches:s.project.patches!.filter(y=>y.id!==id&&y.id!==x.mirrorPartnerId)});set({selectedPatchId:null});},
+    setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},
     project: initial,
     selectedCurveId: null,
     curveCreation: null,
     startCurve: () =>
       set({
+        patchCreation:null,
         curveCreation: { startId: null },
         selectedCurveId: null,
         message: "请选择起点 A，再选择终点 B。",
@@ -157,8 +181,7 @@ export const useEditor = create<State>((set, get) => {
         set({ message: (e as Error).message });
       }
     },
-    selectCurve: (id) =>
-      set({ selectedCurveId: id, curveCreation: null, message: "" }),
+    selectCurve: (id) => { if(get().patchCreation){get().pickPatchEdge(id);return;} set({selectedPatchId:null, selectedCurveId: id, curveCreation: null, message: "" }); },
     setCurveShape: (id, shape) => {
       if (
         ![
@@ -185,7 +208,7 @@ export const useEditor = create<State>((set, get) => {
     deleteCurve: (id) => {
       get().beginEdit();
       commit(deleteCurve(get().project, id));
-      set({ selectedCurveId: null });
+      set({ selectedCurveId: null, selectedPatchId:null });
     },
     viewId: initial.views[0].id,
     selectedId: initial.landmarks[0]?.id ?? null,
@@ -204,7 +227,7 @@ export const useEditor = create<State>((set, get) => {
         get().pickCurveEndpoint(id);
         return;
       }
-      set({ selectedCurveId: null });
+      set({ selectedCurveId: null, selectedPatchId:null });
       if (!get().project.landmarks.some((l) => l.id === id)) return;
       const p = activateDriver(get().project, id);
       set({ project: p, selectedId: id, message: "" });
@@ -282,7 +305,7 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         selectedCurveId: null,
-        curveCreation: null,
+        curveCreation: null, patchCreation:null,selectedPatchId:null,
         past: s.past.slice(0, -1),
         future: [s.project, ...s.future],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
@@ -293,7 +316,7 @@ export const useEditor = create<State>((set, get) => {
           : p.views[0].id,
         referenceMoving: false,
       });
-      commit(p);
+      commit({...p,patchDisplay:s.project.patchDisplay});
     },
     redo: () => {
       const s = get(),
@@ -302,7 +325,7 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         selectedCurveId: null,
-        curveCreation: null,
+        curveCreation: null, patchCreation:null,selectedPatchId:null,
         future: s.future.slice(1),
         past: [...s.past, s.project],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
@@ -313,14 +336,14 @@ export const useEditor = create<State>((set, get) => {
           : p.views[0].id,
         referenceMoving: false,
       });
-      commit(p);
+      commit({...p,patchDisplay:s.project.patchDisplay});
     },
     load: (p) => {
       get().beginEdit();
       set({
         project: p,
         selectedCurveId: null,
-        curveCreation: null,
+        curveCreation: null, patchCreation:null,selectedPatchId:null,
         viewId: p.views[0].id,
         selectedId: p.landmarks[0]?.id ?? null,
         referenceMoving: false,
@@ -358,7 +381,7 @@ export const useEditor = create<State>((set, get) => {
     deleteSelected: (sourceId) => {
       const s = { ...get(), selectedId: sourceId ?? get().selectedId };
       if (!s.selectedId) return;
-      const p = deleteLandmark(s.project, s.selectedId);
+      const p = prunePatches(deleteLandmark(s.project, s.selectedId));
       s.beginEdit();
       set({
         project: p,

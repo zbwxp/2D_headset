@@ -1,3 +1,4 @@
+import PatchPanel from "../ui/patches/PatchPanel";
 import CurvePanel from "../ui/curves/CurvePanel";
 import LandmarkList from "../ui/edit2d/LandmarkList";
 import EditorActions from "../ui/EditorActions";
@@ -28,6 +29,7 @@ export default function App() {
   const ui = useUI();
   const s = useEditor(),
     file = useRef<HTMLInputElement>(null),
+    patch = s.project.patches?.find(p=>p.id===s.selectedPatchId),
     curve = s.project.curves.find((c) => c.id === s.selectedCurveId),
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     free = l ? allowedBasis(s.project, l.id) : [],
@@ -44,7 +46,7 @@ export default function App() {
     partner = s.project.landmarks.find((x) => x.id === l?.mirrorPartnerId);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") useEditor.getState().cancelCurve();
+      if (e.key === "Escape") { useEditor.getState().cancelCurve(); useEditor.getState().cancelPatch(); }
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
       if (
@@ -82,7 +84,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.3.9 · Patch 准备</span>
+          contour<span className="point-version">V0.4.0 · Basic Surface Patch</span>
         </div>
         <input
           className="point-name"
@@ -171,6 +173,7 @@ export default function App() {
             </div>
           </section>
           <CurvePanel />
+            <PatchPanel />
           <div className="point-side-note">
             共享 3D 坐标
             <br />
@@ -265,7 +268,7 @@ export default function App() {
           <div className="point-panel-title">
             3D · 空间检查
             <span>
-              {s.project.landmarks.length} 点 · {s.project.curves.length} 线
+              {s.project.landmarks.length} 点 · {s.project.curves.length} 线 · {s.project.patches?.length??0} 面
             </span>
           </div>
           <InspectView />
@@ -280,7 +283,7 @@ export default function App() {
       </main>
       <footer className="point-footer">
         <div>
-          <b>{curve?.name ?? l?.name ?? "空项目"}</b>
+          <b>{patch ? `${patch.type==='tri'?'三边面':'四边面'} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
           <code data-testid="position">
             {curve
               ? "固定端点 · 平面内形状"

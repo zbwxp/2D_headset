@@ -16,6 +16,8 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  patches?: import("../patches/model").SurfacePatch[];
+  patchDisplay?: import("../patches/model").PatchDisplay;
   version:
     | "landmarks-0.1"
     | "landmarks-0.2"
@@ -23,7 +25,8 @@ export interface LandmarkProject {
     | "landmarks-0.3.5"
     | "landmarks-0.3.6"
     | "landmarks-0.3.8"
-    | "landmarks-0.3.9";
+    | "landmarks-0.3.9"
+    | "landmarks-0.4.0";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
   curves: CurveEdge[];
@@ -235,6 +238,7 @@ export function setGlobalViewLock(
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
     curves: p.curves,
+    ...(p.patches?.length ? {patches:p.patches} : {}),
     centerlineOrder: p.centerlineOrder,
     lockedViews: p.lockedViews,
     landmarks: p.landmarks,

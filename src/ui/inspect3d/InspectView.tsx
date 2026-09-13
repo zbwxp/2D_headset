@@ -1,3 +1,5 @@
+import {tessellate} from "../../domain/patches/geometry";
+import {defaultDisplay} from "../../domain/patches/model";
 import { flatten, norm } from "../../domain/geometry/bezier";
 import { controls as curveControls } from "../../domain/curves/geometry";
 import { useEffect, useRef, useState } from "react";
@@ -76,8 +78,21 @@ export default function InspectView() {
     const curveMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
     const curveLines = new THREE.LineSegments(curveGeometry, curveMaterial);
     scene.add(curveLines);
+    const patchGeometry=new THREE.BufferGeometry();
+    const patchMaterial=new THREE.MeshStandardMaterial({color:0xbecdcf,roughness:.85,side:THREE.DoubleSide,transparent:true,depthWrite:false});
+    const patchMesh=new THREE.Mesh(patchGeometry,patchMaterial);scene.add(patchMesh);
+    scene.add(new THREE.HemisphereLight(0xffffff,0x48545d,2));
+    const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(2,4,5);scene.add(light);
+    let patchTriangles:number[][]=[],patchCenters:THREE.Vector3[]=[];
+    material.depthTest=false;selectedMaterial.depthTest=false;material.transparent=true;selectedMaterial.transparent=true;
+    points.renderOrder=10;
+    scene.children.filter(o=>o instanceof THREE.Points).forEach(o=>o.renderOrder=10);
     const update = () => {
       const s = useEditor.getState();
+      const pv:number[]=[];patchTriangles=[];patchCenters=[];
+      for(const p of s.project.patches??[]){const m=tessellate(s.project,p);const offset=pv.length/3;pv.push(...m.vertices.flat());for(const t of m.triangles){patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
+      patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();
+      patchMaterial.opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;patchMesh.visible=patchMaterial.opacity>0;
       const vertices: number[] = [],
         colors: number[] = [];
       for (const c of s.project.curves) {
@@ -162,6 +177,9 @@ export default function InspectView() {
     let frame = 0;
     const draw = () => {
       controls.update();
+      camera.updateMatrixWorld();
+      const order=patchCenters.map((c,i)=>({i,z:c.clone().applyMatrix4(camera.matrixWorldInverse).z})).sort((a,b)=>a.z-b.z);
+      patchGeometry.setIndex(order.flatMap(x=>patchTriangles[x.i]));
       renderer.render(scene, camera);
       frame = requestAnimationFrame(draw);
     };
@@ -184,6 +202,7 @@ export default function InspectView() {
           Array.isArray(m) ? m.forEach((x) => x.dispose()) : m.dispose();
         }
       });
+      patchGeometry.dispose();patchMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };

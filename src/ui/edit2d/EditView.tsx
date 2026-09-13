@@ -1,3 +1,4 @@
+import PatchLayer from "../patches/PatchLayer";
 import CurveLayer from "../curves/CurveLayer";
 import { useRef } from "react";
 import { useEditor } from "../../app/store";
@@ -179,6 +180,7 @@ export default function EditView() {
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
           />
+          <PatchLayer view={v} />
           <CurveLayer view={v} />
           {!s.selectedCurveId && track && Math.hypot(...track) > 1e-8 && (
             <line
@@ -363,7 +365,8 @@ export function MiniPreview({ viewId }: { viewId: string }) {
           strokeDasharray="4 6"
         />
 
-        <CurveLayer view={v} readonly />
+        <PatchLayer view={v} />
+          <CurveLayer view={v} readonly />
         {s.project.landmarks.map((l) => {
           const p = project(l.position, v);
           return (

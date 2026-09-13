@@ -2314,3 +2314,7 @@ i:not([class]) {
 .entity-menu { position:fixed; z-index:10000; width:180px; padding:5px; background:#2b353b; border:1px solid #58696e; border-radius:6px; }
 .entity-menu button { width:100%; justify-content:space-between; padding:8px; }
 .entity-menu small { color:#92a6af; }
+.patch-panel {padding:12px;border-top:1px solid #394449;display:flex;flex-direction:column;gap:8px}
+.patch-panel h3 {font-size:14px;margin:0}.patch-panel label{font-size:12px;display:flex;flex-direction:column}.patch-panel small{display:block;color:#ffc879}.patch-panel button[aria-pressed=true]{outline:1px solid #b9eb9f}
+
+.patch-panel {max-height:34%;overflow:auto;flex-shrink:0}.patch-panel > button{flex-shrink:0}

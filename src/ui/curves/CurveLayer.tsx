@@ -63,6 +63,7 @@ export default function CurveLayer({
     e.preventDefault();
     e.stopPropagation();
     s.selectCurve(c.id);
+    if(s.patchCreation) return;
     const q = local(e),
       target = planeTarget(s.project, c, view, q),
       base = canonical(s.project, c);
@@ -134,7 +135,7 @@ export default function CurveLayer({
         ...s.project.curves.filter((c) => c.id !== s.selectedCurveId),
         ...s.project.curves.filter((c) => c.id === s.selectedCurveId),
       ].map((c) => {
-        const selected = c.id === s.selectedCurveId,
+        const selected = c.id === s.selectedCurveId || !!s.patchCreation?.includes(c.id),
           cp = controls(s.project, c),
           path = curvePath(cp, view);
         return (
@@ -147,6 +148,7 @@ export default function CurveLayer({
               strokeWidth={selected ? 2.5 : 1.5}
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
+              opacity={(s.project.patches?.length??0)>0 ? 0 : 1}
             />
             {!readonly && (
               <path
