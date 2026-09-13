@@ -84,7 +84,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.0 · Basic Surface Patch</span>
+          contour<span className="point-version">V0.4.1 · Patch Fullness</span>
         </div>
         <input
           className="point-name"

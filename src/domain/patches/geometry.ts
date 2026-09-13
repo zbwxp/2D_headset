@@ -1,12 +1,13 @@
+import {prepareFullness} from "./fullness";
 import type { LandmarkProject } from '../landmarks/model';
 import { mirror } from '../landmarks/model';
 import type { Vec3 } from '../project/types';
 import { add, sub, scale, cross, dot } from '../geometry/core';
 import { controls, bezier } from '../curves/geometry';
 import { loop, type SurfacePatch } from './model';
-export function evaluator(p: LandmarkProject, patch: SurfacePatch): (u: number, v: number) => Vec3 {
+export function baseEvaluator(p: LandmarkProject, patch: SurfacePatch): (u: number, v: number) => Vec3 {
     if (patch.canonicalId) {
-        const f = evaluator(p, p.patches!.find(x => x.id === patch.canonicalId)!);
+        const f = baseEvaluator(p, p.patches!.find(x => x.id === patch.canonicalId)!);
         return (u, v) => mirror(f(u, v));
     }
     const ring = loop(p, patch.boundaryEdgeIds), cp = ring.map(r => { const c = controls(p, p.curves.find(c => c.id === r.id)!); return r.reverse ? [...c].reverse() as typeof c : c; });
@@ -40,6 +41,14 @@ export function evaluator(p: LandmarkProject, patch: SurfacePatch): (u: number, 
             return scale(add(f(u, v), mirror(f(a, b))), .5);
         };
     return f;
+}
+const prepared = new WeakMap<LandmarkProject, Map<string, (u:number,v:number)=>Vec3>>();
+export function evaluator(p:LandmarkProject,patch:SurfacePatch):(u:number,v:number)=>Vec3 {
+ let map=prepared.get(p);if(!map){map=new Map();prepared.set(p,map);}const cached=map.get(patch.id);if(cached)return cached;
+ let f:(u:number,v:number)=>Vec3;
+ if(patch.canonicalId){const canonical=evaluator(p,p.patches!.find(x=>x.id===patch.canonicalId)!);f=(u,v)=>mirror(canonical(u,v));}
+ else {const base=baseEvaluator(p,patch);f=(patch.fullness??0)===0?base:prepareFullness(p,patch,base);}
+ map.set(patch.id,f);return f;
 }
 export interface PatchMesh {
     vertices: Vec3[];

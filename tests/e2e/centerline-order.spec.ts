@@ -9,6 +9,8 @@ test("centerline drag order persists without geometry changes, supports history 
       JSON.parse(localStorage.getItem("contour.landmarks.v039")!),
     );
   await page.getByLabel("锁定此视图全部点").check();
+  // Keep both drag endpoints visible; the Patch inspector otherwise clips this list.
+  await page.locator('[aria-controls="patch-panel-content"]').click();
   const before = await state();
   const group = page.getByRole("region", { name: "中心线点", exact: true });
   await group

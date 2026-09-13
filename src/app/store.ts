@@ -77,6 +77,7 @@ interface State {
   cancelPatch: () => void;
   pickPatchEdge: (id:string) => void;
   deletePatch: (id:string) => void;
+  setFullness: (id:string,value:number) => void;
   setPatchQuality: (quality:PatchQuality) => void;
   setPatchVisible: (visible:boolean) => void;
   setPatchDisplay: (key:"opacity2d"|"opacity3d",value:number) => void;
@@ -144,6 +145,7 @@ export const useEditor = create<State>((set, get) => {
       catch(e){set({message:ids.length===3&&(e as Error).message.includes('未组成')?'三条尚未闭合，可继续选择第四条。':(e as Error).message});}
     },
     deletePatch:(id)=>{const s=get(),x=s.project.patches?.find(x=>x.id===id);if(!x)return;s.beginEdit();commit({...s.project,patches:s.project.patches!.filter(y=>y.id!==id&&y.id!==x.mirrorPartnerId)});set({selectedPatchId:null});},
+    setFullness:(id,value)=>{const p=get().project,x=p.patches?.find(x=>x.id===id);if(!x||!Number.isFinite(value))return;const owner=x.canonicalId??x.id;commit({...p,version:'landmarks-0.4.1',patches:p.patches!.map(x=>x.id===owner?{...x,fullness:Math.max(-1,Math.min(1,value))}:x)});},
     setPatchQuality:(quality)=>{if(!Object.hasOwn(patchQualityLevels,quality))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,quality}});},
     setPatchVisible:(visible)=>commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,visible}}),
     setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},
@@ -311,7 +313,7 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         selectedCurveId: null,
-        curveCreation: null, patchCreation:null,selectedPatchId:null,
+        curveCreation: null, patchCreation:null,selectedPatchId:p.patches?.some(x=>x.id===s.selectedPatchId)?s.selectedPatchId:null,
         past: s.past.slice(0, -1),
         future: [s.project, ...s.future],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)
@@ -331,7 +333,7 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         selectedCurveId: null,
-        curveCreation: null, patchCreation:null,selectedPatchId:null,
+        curveCreation: null, patchCreation:null,selectedPatchId:p.patches?.some(x=>x.id===s.selectedPatchId)?s.selectedPatchId:null,
         future: s.future.slice(1),
         past: [...s.past, s.project],
         selectedId: p.landmarks.some((l) => l.id === s.selectedId)

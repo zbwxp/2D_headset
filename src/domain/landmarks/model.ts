@@ -26,7 +26,8 @@ export interface LandmarkProject {
     | "landmarks-0.3.6"
     | "landmarks-0.3.8"
     | "landmarks-0.3.9"
-    | "landmarks-0.4.0";
+    | "landmarks-0.4.0"
+    | "landmarks-0.4.1";
   meta: { name: string; createdAt: number; updatedAt: number };
   lockedViews?: string[];
   curves: CurveEdge[];

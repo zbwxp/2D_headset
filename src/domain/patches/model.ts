@@ -5,6 +5,7 @@ export interface SurfacePatch {
     boundaryEdgeIds: string[];
     mirrorPartnerId?: string;
     canonicalId?: string;
+    fullness?: number; // Only canonical/self-symmetric records own this value.
 }
 export const patchQualityLevels = {
     veryLow: { label: '极低', subdivisions: 4, curveSegments: 16 },
@@ -59,7 +60,7 @@ export function addPatch(p: LandmarkProject, ids: string[]): LandmarkProject {
     if (patches.some(x => key(x.boundaryEdgeIds) === key(ids)))
         throw Error('该闭环已有 Patch');
     const mirrored = ids.map(id => { const c = p.curves.find(c => c.id === id)!; return c.mirrorPartnerCurveId ?? ([c.startLandmarkId, c.endLandmarkId].every(id => p.landmarks.find(l => l.id === id)?.type === 'CENTERLINE') ? c.id : null); });
-    const a: SurfacePatch = { id: crypto.randomUUID(), type: ids.length === 3 ? 'tri' : 'quad', boundaryEdgeIds: [...ids] };
+    const a: SurfacePatch = { fullness:0, id: crypto.randomUUID(), type: ids.length === 3 ? 'tri' : 'quad', boundaryEdgeIds: [...ids] };
     const added = [a];
     if (mirrored.every(Boolean) && key(mirrored as string[]) !== key(ids)) {
         const m = mirrored as string[];
@@ -70,7 +71,7 @@ export function addPatch(p: LandmarkProject, ids: string[]): LandmarkProject {
         a.mirrorPartnerId = b.id;
         added.push(b);
     }
-    return { ...p, version: 'landmarks-0.4.0', patches: [...patches, ...added] };
+    return { ...p, version: 'landmarks-0.4.1', patches: [...patches, ...added] };
 }
 export function prunePatches(p: LandmarkProject): LandmarkProject {
     if (!p.patches)
@@ -87,7 +88,7 @@ export function parsePatches(value: unknown, p: LandmarkProject): SurfacePatch[]
     const ids = new Set<string>(), keys = new Set<string>();
     const result = value.map(x => { if (!x || typeof x.id !== 'string' || ids.has(x.id) || !Array.isArray(x.boundaryEdgeIds))
         throw Error('Patch 数据无效'); loop(p, x.boundaryEdgeIds); if (x.type !== (x.boundaryEdgeIds.length === 3 ? 'tri' : 'quad') || keys.has(key(x.boundaryEdgeIds)))
-        throw Error('Patch 类型或重复边界无效'); ids.add(x.id); keys.add(key(x.boundaryEdgeIds)); return { id: x.id, type: x.type, boundaryEdgeIds: [...x.boundaryEdgeIds], ...(x.mirrorPartnerId ? { mirrorPartnerId: x.mirrorPartnerId } : {}), ...(x.canonicalId ? { canonicalId: x.canonicalId } : {}) } as SurfacePatch; });
+        throw Error('Patch 类型或重复边界无效'); if(x.fullness!==undefined && (x.canonicalId || !Number.isFinite(x.fullness) || x.fullness < -1 || x.fullness > 1)) throw Error('Fullness 数据无效：只允许 canonical 保存 -1 到 1'); ids.add(x.id); keys.add(key(x.boundaryEdgeIds)); return { ...(x.fullness===undefined?{}:{fullness:x.fullness}), id: x.id, type: x.type, boundaryEdgeIds: [...x.boundaryEdgeIds], ...(x.mirrorPartnerId ? { mirrorPartnerId: x.mirrorPartnerId } : {}), ...(x.canonicalId ? { canonicalId: x.canonicalId } : {}) } as SurfacePatch; });
     for (const x of result) {
         if (x.mirrorPartnerId) {
             const m = result.find(y => y.id === x.mirrorPartnerId);
