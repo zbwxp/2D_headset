@@ -153,3 +153,9 @@ it('self-symmetric quad has hard reflected variables including centerplane sampl
  expect(y[0]).toBeCloseTo(-x[0],12);expect(y[1]).toBeCloseTo(x[1],12);expect(y[2]).toBeCloseTo(x[2],12);
  }
 });
+it('30-patch user head converges beyond the old 1000 iteration cap without source changes',()=>{
+ const p=parseLandmarks(readFileSync('artifacts/surface-smooth/full-head-regression.json','utf8')),before=JSON.stringify(p),r=solveSmooth(p);
+ expect(p.patches).toHaveLength(30);expect(r.error).toBeUndefined();expect(r.diagnostics.variables).toBe(3892);
+ expect(r.diagnostics.iterations).toBeGreaterThan(1000);expect(r.diagnostics.relativeResidual).toBeLessThan(1e-8);
+ expect(r.diagnostics.after).toBeLessThan(r.diagnostics.before*.01);expect(JSON.stringify(p)).toBe(before);
+});

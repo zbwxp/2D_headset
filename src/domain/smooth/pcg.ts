@@ -3,7 +3,10 @@ export interface Row {
     coefficients: number[];
     target: number;
 }
-export function pcg(rows: Row[], size: number, maxIterations = 1000) {
+// A fixed 1000-step cap truncated larger valid SPD head networks. Budget by
+// unknown count (allowing finite-precision loss of conjugacy), with a safety cap.
+// Keep the same residual tolerance; never accept an unconverged field.
+export function pcg(rows: Row[], size: number, maxIterations = Math.max(1000, Math.min(20000, size * 4))) {
     const b = new Float64Array(size), diagonal = new Float64Array(size);
     for (const row of rows)
         row.indices.forEach((i, k) => { const c = row.coefficients[k]; b[i] += c * row.target; diagonal[i] += c * c; });
@@ -48,6 +51,6 @@ export function pcg(rows: Row[], size: number, maxIterations = 1000) {
     const actual = apply(x);
     residual = Math.sqrt(actual.reduce((sum, v, i) => sum + (v - b[i]) ** 2, 0));
     if (residual > threshold * 5)
-        throw Error('Smooth PCG 未收敛');
+        throw Error(`Smooth PCG 未收敛：${iterations} 次迭代，相对残差 ${(residual / (bnorm || 1)).toExponential(2)}`);
     return { x, iterations, relativeResidual: bnorm ? residual / bnorm : 0 };
 }

@@ -84,3 +84,9 @@ Seam 使用真实 Source Bézier derivative 构造 `Q=I−ττᵀ`。同一个 t
 - `src/tests/smooth-fixture.ts` / `smooth.test.ts`、`tests/e2e/smooth.spec.ts`、`tests/e2e/ui-cleanup.spec.ts`：新增验证和焦点等待。
 
 基线 `c2a51d4` 保留；实现位于 `v0.4.2-surface-smooth` 分支。
+
+## 2026-09-14 完整头壳收敛修复
+
+用户实际 51 点 / 77 曲线 / 30 Patch 网络复现了固定 1000 次 PCG 上限截断。系统有 3892 个自由标量变量；不是矩阵非正定或几何无解。保持原始 energy、Jacobi 预条件与 `1e-8` 相对残差标准，按变量规模提供迭代预算（至少 1000、4×变量数、最多 20000），1781 次正常收敛，相对残差 7.76e-9。平均 seam residual 0.288626 → 0.00003197，最大位移 0.03569。
+
+新增 `full-head-regression.json`（移除参考图图像数据，保留原几何）和单元回归。失败消息现在包含迭代数和实际相对残差。117 项单测与 build 通过。不存在 Apply 步骤：完成联合求解后自动应用，失败仍整体回退，不接受未收敛结果。
