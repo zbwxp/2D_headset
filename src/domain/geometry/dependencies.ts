@@ -22,3 +22,17 @@ export function deleteClosure(p:LandmarkProject,seeds:DependencyKey[]):LandmarkP
  ...(p.patches?{patches:p.patches.filter(x=>!badPatches.has(x.id))}:{}),
  ...(p.surfaceSmooth?{surfaceSmooth:{...p.surfaceSmooth,edgeInfluenceOverrides:Object.fromEntries(Object.entries(p.surfaceSmooth.edgeInfluenceOverrides).filter(([id])=>curveIds.has(id)))}}:{})};
 }
+
+/** Compare source geometry only, then walk descendants. Selection/name/locks do not dirty geometry. */
+export function dirtyDescendants(old:LandmarkProject,next:LandmarkProject){
+ const graph=dependencyGraph(next),dirty=new Set<DependencyKey>();
+ const oldPoints=new Map(old.landmarks.map(l=>[l.id,l])),oldCurves=new Map(old.curves.map(c=>[c.id,c]));
+ for(const l of next.landmarks)if(JSON.stringify(l.placement)!==JSON.stringify(oldPoints.get(l.id)?.placement))dirty.add(`point:${l.id}`);
+ const curveInput=(c:LandmarkProject['curves'][number]|undefined)=>c&&[c.startLandmarkId,c.endLandmarkId,c.role,c.role==='canonical'?c.shape:c.canonicalCurveId];
+ for(const c of next.curves)if(JSON.stringify(curveInput(c))!==JSON.stringify(curveInput(oldCurves.get(c.id))))dirty.add(`curve:${c.id}`);
+ for(const key of graph.order)if(graph.dependencies.get(key)!.some(d=>dirty.has(d)))dirty.add(key);
+ const points=new Set([...dirty].filter(k=>k.startsWith('point:')).map(k=>k.slice(6))),curves=new Set([...dirty].filter(k=>k.startsWith('curve:')).map(k=>k.slice(6)));
+ const before=new Map((old.patches??[]).map(p=>[p.id,p]));const patches=new Set((next.patches??[]).filter(p=>p.boundaryEdgeIds.some(id=>curves.has(id))||JSON.stringify([p.boundaryEdgeIds,p.fullness,p.canonicalId])!==JSON.stringify(before.has(p.id)?[before.get(p.id)!.boundaryEdgeIds,before.get(p.id)!.fullness,before.get(p.id)!.canonicalId]:null)).map(p=>p.id));
+ for(const p of next.patches??[])if(p.canonicalId&&patches.has(p.canonicalId))patches.add(p.id);
+ return {points,curves,patches,order:graph.order.filter(k=>dirty.has(k))};
+}

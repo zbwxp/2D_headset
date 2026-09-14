@@ -95,7 +95,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.5 · ON_CURVE Point</span>
+          contour<span className="point-version">V0.4.6 · Incremental Geometry</span>
         </div>
         <input
           className="point-name"

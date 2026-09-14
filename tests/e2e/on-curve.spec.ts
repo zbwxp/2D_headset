@@ -1,3 +1,4 @@
+import {savedProject} from '../helpers/persistence';
 import {addOnCurvePoint} from '../../src/domain/landmarks/placement';
 import {addPatch} from '../../src/domain/patches/model';
 import {defaultSmooth} from '../../src/domain/smooth/model';
@@ -7,7 +8,7 @@ import {createCurve} from '../../src/domain/curves/management';
 import {parseLandmarks} from '../../src/domain/landmarks/persistence';
 import {pointPosition} from '../../src/domain/geometry/evaluation';
 import {selectSidebar,pairRow} from '../helpers/sidebar';
-const state=(page:Page)=>page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));
+const state=savedProject;
 const seed=()=>{const p=createLandmarkProject(),id=(n:string)=>p.landmarks.find(l=>l.name===n)!.id;return createCurve(p,id('右眉头点'),id('右眉尾点'),p.views[0],'测试宿主').project;};
 async function load(page:Page,p:any){await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'locator.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});}
 async function create(page:Page){const p=seed();await load(page,p);const host=p.curves.find(c=>p.landmarks.find(l=>l.id===c.startLandmarkId)?.type==='RIGHT')!;await selectSidebar(page,'curve',host.id);await page.getByRole('button',{name:'添加结构线定位点',exact:true}).click();const q=await state(page),point=q.landmarks.find((l:any)=>l.placement.kind==='ON_CURVE'&&l.type==='RIGHT');return {p,host,point};}

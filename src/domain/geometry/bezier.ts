@@ -1,3 +1,5 @@
+import {InputCache} from './cache';
+import {count} from './diagnostics';
 import type { Vec3 } from "../project/types";
 import { add, sub, scale, dot } from "./core";
 export type BezierPoints = Vec3[];
@@ -64,8 +66,11 @@ export function flatten(
   return out;
 }
 
+const arcTables=new InputCache<number[]>(1024);
 /** Deterministic chord-length table for general Bezier utilities. */
 export function arcLengthLUT(cp: BezierPoints, segments = 512): number[] {
+ const key=JSON.stringify([segments,cp]);const hit=arcTables.get(key);if(hit)return hit;
+ count('arcLengthLUTBuilds');
   const distances = [0];
   let previous = cp[0];
   for (let i = 1; i <= segments; i++) {
@@ -73,7 +78,7 @@ export function arcLengthLUT(cp: BezierPoints, segments = 512): number[] {
     distances.push(distances[i - 1] + norm(sub(p, previous)));
     previous = p;
   }
-  return distances;
+  arcTables.set(key,distances);return distances;
 }
 
 /** Invert cumulative chord lengths; s is normalized arc length, never raw t. */

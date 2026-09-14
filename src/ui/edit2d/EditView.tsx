@@ -1,3 +1,4 @@
+import {useShallow} from 'zustand/react/shallow';
 import {pointPosition} from "../../domain/geometry/evaluation";
 import PatchLayer from "../patches/PatchLayer";
 import CurveLayer from "../curves/CurveLayer";
@@ -12,7 +13,7 @@ import {
 import type { Vec2 } from "../../domain/project/types";
 import ReferenceControls from "./ReferenceControls";
 export default function EditView() {
-  const s = useEditor(),
+  const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectView:s.selectView,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
     v = s.project.views.find((v) => v.id === s.viewId)!,
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     { zoom, pan } = v.canvas,
@@ -64,7 +65,7 @@ export default function EditView() {
         onPointerDown={(e) => {
           const start = local(e.clientX, e.clientY);
           if (s.referenceMoving && ref?.visible && !ref.locked) {
-            s.beginEdit();
+            s.beginEdit(true);
             drag.current = {
               kind: "reference",
               start,
@@ -88,7 +89,7 @@ export default function EditView() {
                 );
                 return;
               }
-              s.beginEdit();
+              s.beginEdit(true);
               d.recorded = true;
             }
             const startWorld = world(d.start),
@@ -281,7 +282,7 @@ export default function EditView() {
                     };
                     if (d[e.key]) {
                       e.preventDefault();
-                      s.beginEdit();
+                      s.beginEdit(true);
                       s.movePoint(x.id, [
                         p[0] + d[e.key][0] * (e.shiftKey ? 0.025 : 0.00625),
                         p[1] + d[e.key][1] * (e.shiftKey ? 0.025 : 0.00625),
@@ -348,7 +349,7 @@ export default function EditView() {
   );
 }
 export function MiniPreview({ viewId }: { viewId: string }) {
-  const s = useEditor(),
+  const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectView:s.selectView,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
     v = s.project.views.find((v) => v.id === viewId)!;
   return (
     <button

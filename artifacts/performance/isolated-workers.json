@@ -1,0 +1,17 @@
+{
+  "counters": {
+    "pointEvaluations": 2,
+    "sourceUpdates": 1,
+    "dirtyPoints": 2,
+    "dirtyCurves": 0,
+    "dirtyPatches": 0,
+    "autosaveSerializations": 1,
+    "autosaveWrites": 1
+  },
+  "timings": {
+    "geometryEvaluationInclusive": 15.000000044703484,
+    "dependencyPropagation": 0.5999999977648258,
+    "threeGeometryUpdate": 0.6000000014901161,
+    "persistence": 0.6000000014901161
+  }
+}

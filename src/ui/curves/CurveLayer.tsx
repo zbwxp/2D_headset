@@ -1,3 +1,4 @@
+import {useShallow} from 'zustand/react/shallow';
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
@@ -32,7 +33,7 @@ export default function CurveLayer({
   view: LandmarkView;
   readonly?: boolean;
 }) {
-  const s = useEditor(),
+  const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,notify:s.notify,patchCreation:s.patchCreation,project:s.project,referenceMoving:s.referenceMoving,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape}))),
     group = useRef<SVGGElement>(null);
   const drag = useRef<{
     project: LandmarkProject;
@@ -108,7 +109,7 @@ export default function CurveLayer({
         const q = planeTarget(d.project, d.curve, d.view, local(e));
         if (!q) return;
         if (!d.recorded) {
-          s.beginEdit();
+          s.beginEdit(true);
           d.recorded = true;
         }
         const target = add(d.point, sub(q, d.startTarget)),

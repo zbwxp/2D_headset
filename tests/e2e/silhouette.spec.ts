@@ -1,4 +1,4 @@
-import {selectSidebar,pairRow} from "../helpers/sidebar";
+import {selectSidebar,pairRow,openPatch} from "../helpers/sidebar";
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {addPatch} from '../../src/domain/patches/model';
@@ -16,7 +16,7 @@ test('real contour follows orientation, ignores zoom/display quality, survives h
  const paths=()=>svg.locator('path').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('d')));
  await settled();expect((await paths()).length).toBeGreaterThan(0);
  const initial=await paths();
- await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption('veryLow');
+ await openPatch(page);await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption('veryLow');
  await page.getByRole('slider',{name:'3D Patch 不透明度',exact:true}).fill('0');
  await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).uncheck();
  await settled();expect(await paths()).toEqual(initial);

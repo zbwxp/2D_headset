@@ -1,9 +1,10 @@
+import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
 import {landmarkRows} from "../shared/pairRows";
 import InlineName from "../shared/InlineName";
 import { useUI } from "../session";
 import { landmarkBaseName } from "../../domain/landmarks/management";
-import { useState } from "react";
+import { useState,memo } from "react";
 import { LockKeyhole } from "lucide-react";
 import { useEditor } from "../../app/store";
 import {
@@ -11,8 +12,9 @@ import {
   type SemanticLandmark,
 } from "../../domain/landmarks/model";
 
-export default function LandmarkList() {
-  const s = useEditor();
+function LandmarkList() {
+  const selection = useEditor(useShallow(s=>({landmarks:s.project.landmarks,centerlineOrder:s.project.centerlineOrder,reorderCenterline:s.reorderCenterline,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,selectedPatchId:s.selectedPatchId})));
+  const s={...selection,project:useEditor.getState().project};
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const points = new Map(s.project.landmarks.map((l) => [l.id, l]));
@@ -132,3 +134,5 @@ export default function LandmarkList() {
     </div>
   );
 }
+
+export default memo(LandmarkList);

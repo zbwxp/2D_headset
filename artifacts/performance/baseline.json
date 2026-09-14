@@ -1,0 +1,90 @@
+{
+  "isolated": {
+    "counters": {
+      "pointEvaluations": 3100,
+      "curveEvaluations": 1640,
+      "arcLengthLUTBuilds": 19,
+      "sourceUpdates": 1,
+      "patchTessellations": 4,
+      "patchEvaluations": 4,
+      "threeBufferRebuilds": 1,
+      "autosaveSerializations": 1,
+      "autosaveWrites": 1,
+      "occlusionCandidateTests": 1824768,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 0.7000000029802322,
+      "patchTessellation": 0.20000000298023224,
+      "persistence": 0.6999999992549419,
+      "projectionOcclusion": 28.200000006705523
+    }
+  },
+  "downstream": {
+    "counters": {
+      "pointEvaluations": 3210,
+      "curveEvaluations": 1727,
+      "arcLengthLUTBuilds": 55,
+      "sourceUpdates": 1,
+      "patchTessellations": 4,
+      "patchEvaluations": 4,
+      "threeBufferRebuilds": 1,
+      "autosaveSerializations": 1,
+      "autosaveWrites": 1,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 1,
+      "patchTessellation": 0.10000000149011612,
+      "persistence": 0.7000000029802322,
+      "projectionOcclusion": 29.49999999627471
+    }
+  },
+  "curveHandle": {
+    "counters": {
+      "pointEvaluations": 3210,
+      "curveEvaluations": 1727,
+      "arcLengthLUTBuilds": 55,
+      "sourceUpdates": 1,
+      "patchTessellations": 4,
+      "patchEvaluations": 4,
+      "threeBufferRebuilds": 1,
+      "autosaveSerializations": 1,
+      "autosaveWrites": 1,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 0.6999999992549419,
+      "patchTessellation": 0.19999999925494194,
+      "persistence": 0.5999999977648258,
+      "projectionOcclusion": 23.799999997019768
+    }
+  },
+  "fullness": {
+    "counters": {
+      "sourceUpdates": 1,
+      "patchTessellations": 4,
+      "patchEvaluations": 4,
+      "curveEvaluations": 1730,
+      "pointEvaluations": 3014,
+      "arcLengthLUTBuilds": 55,
+      "threeBufferRebuilds": 1,
+      "autosaveSerializations": 1,
+      "autosaveWrites": 1,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "patchTessellation": 0.9000000022351742,
+      "persistence": 0.30000000074505806,
+      "projectionOcclusion": 23.399999991059303
+    }
+  },
+  "debug": {
+    "enabled": true,
+    "message": "已载入语义点项目",
+    "patches": 4
+  }
+}

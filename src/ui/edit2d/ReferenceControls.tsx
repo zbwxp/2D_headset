@@ -206,7 +206,7 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                   key: "rotation",
                 },
               ].map((r) => (
-                <NumericSlider className="reference-slider" key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={s.beginEdit} onChange={value=>{
+                <NumericSlider className="reference-slider" key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={value=>{
                       update(
                         r.key === "x"
                           ? { offset: [value, ref.offset[1]] }

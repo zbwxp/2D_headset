@@ -10,7 +10,7 @@ export function SmoothControls() {
     const state = !settings.enabled ? 'off' : settings.strength === 0 ? 'zero' : !result ? 'pending' : result.error ? 'failed' : 'ready';
     return <div className="smooth-controls" data-ui-keyboard data-testid="smooth-controls" data-state={state}>
  <label><span><input type="checkbox" aria-label="Surface Smooth" checked={settings.enabled} onChange={e => s.setSmoothEnabled(e.target.checked)}/> Surface Smooth</span></label>
- <NumericSlider label="Smooth Strength" min={0} max={100} value={settings.strength*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={s.beginEdit} onChange={v=>s.setSmoothStrength(v/100)}/>
+ <NumericSlider label="Smooth Strength" min={0} max={100} value={settings.strength*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setSmoothStrength(v/100)}/>
  {state === 'pending' && <small>求解中 · 暂时显示源曲面</small>}
  {state === 'failed' && <small>⚠ Smooth 已回退：{result?.error}</small>}
  {state === 'ready' && result && <details><summary>求解诊断 · 完整解</summary><div data-testid="smooth-diagnostics">
@@ -31,5 +31,5 @@ export function SmoothEdgeControl({ id }: {
     if (count !== 2)
         return null;
     const value = influence(s.project, id);
-    return <div className="smooth-controls" data-ui-keyboard><NumericSlider label="Smooth Influence" min={0} max={100} value={value*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={s.beginEdit} onChange={v=>s.setSmoothInfluence(id,v/100)}/>{value === 0 && <small>Hard / Crease · 边界保持 Source</small>}</div>;
+    return <div className="smooth-controls" data-ui-keyboard><NumericSlider label="Smooth Influence" min={0} max={100} value={value*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setSmoothInfluence(id,v/100)}/>{value === 0 && <small>Hard / Crease · 边界保持 Source</small>}</div>;
 }

@@ -1,3 +1,4 @@
+import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
 import {curveRows,curveBaseName} from "../shared/pairRows";
 import NumericSlider from '../shared/NumericSlider';
@@ -15,7 +16,7 @@ import {
   CURVE_EPS,
 } from "../../domain/curves/geometry";
 export default function CurvePanel() {
-  const s = useEditor(),
+  const s = useEditor(useShallow(s=>({addOnCurvePoint:s.addOnCurvePoint,beginEdit:s.beginEdit,cancelCurve:s.cancelCurve,curveCreation:s.curveCreation,endEdit:s.endEdit,project:s.project,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape,startCurve:s.startCurve}))),
     ui = useUI(),
     c = s.project.curves.find((c) => c.id === s.selectedCurveId);
   return (
@@ -72,14 +73,14 @@ export default function CurvePanel() {
   );
 }
 function PlaneControl({ id }: { id: string }) {
-  const s = useEditor(),
+  const s = useEditor(useShallow(s=>({addOnCurvePoint:s.addOnCurvePoint,beginEdit:s.beginEdit,cancelCurve:s.cancelCurve,curveCreation:s.curveCreation,endEdit:s.endEdit,project:s.project,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape,startCurve:s.startCurve}))),
     c = s.project.curves.find((c) => c.id === id)!,
     base = canonical(s.project, c),
     f = frame(s.project, base);
   const [angle, setAngle] = useState(0);
   if (isCenterCurve(s.project, c)) return <p>固定于中线平面 · 无旋转自由度</p>;
   return (
-    <NumericSlider className="curve-plane" label="调整曲线平面" min={-180} max={180} value={angle} formatValue={v=>formatNumeric(v)+'°'} disabled={f.length<CURVE_EPS} onEditStart={s.beginEdit} onEditEnd={s.endEdit} onChange={a=>{
+    <NumericSlider className="curve-plane" label="调整曲线平面" min={-180} max={180} value={angle} formatValue={v=>formatNumeric(v)+'°'} disabled={f.length<CURVE_EPS} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={a=>{
           s.setCurveShape(base.id, {
             ...base.shape,
             planeNormal: rotate(

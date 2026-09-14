@@ -1,0 +1,69 @@
+{
+  "isolated": {
+    "counters": {
+      "pointEvaluations": 2,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 0,
+      "dirtyPatches": 0
+    },
+    "timings": {
+      "dependencyPropagation": 1.699999999254942
+    }
+  },
+  "downstream": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 2,
+      "dirtyPatches": 0,
+      "curveEvaluations": 2,
+      "occlusionCandidateTests": 13692,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 1.199999999254942,
+      "projectionOcclusion": 17.099999997764826
+    }
+  },
+  "curveHandle": {
+    "counters": {
+      "curveEvaluations": 4,
+      "pointEvaluations": 2,
+      "arcLengthLUTBuilds": 1,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 4,
+      "dirtyPatches": 0,
+      "occlusionCandidateTests": 13692,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 1.3999999985098839,
+      "projectionOcclusion": 14.00000000372529
+    }
+  },
+  "fullness": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 0,
+      "dirtyCurves": 0,
+      "dirtyPatches": 2,
+      "patchTessellations": 2,
+      "patchEvaluations": 2,
+      "arcLengthLUTBuilds": 3,
+      "threeBufferRebuilds": 2,
+      "occlusionCandidateTests": 13800,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "patchTessellation": 2.900000002235174,
+      "projectionOcclusion": 13.200000002980232
+    }
+  },
+  "debug": {
+    "enabled": true,
+    "message": "已载入语义点项目",
+    "patches": 4
+  }
+}

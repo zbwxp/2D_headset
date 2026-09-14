@@ -1,5 +1,5 @@
-import {dependencyGraph} from "../geometry/dependencies";
-import {GeometryEvaluationContext,pointPosition} from "../geometry/evaluation";
+import {dirtyDescendants} from "../geometry/dependencies";
+import {evaluationContext,pointPosition} from "../geometry/evaluation";
 import {
   add,
   sub,
@@ -65,7 +65,7 @@ export function frame(p: LandmarkProject, c: CanonicalCurve) {
     b = normalize(cross(n, d));
   return { a, z, d, n, b, length };
 }
-export function controls(p:LandmarkProject,c:CurveEdge,context=new GeometryEvaluationContext(p)):ControlPoints {
+export function controls(p:LandmarkProject,c:CurveEdge,context=evaluationContext(p)):ControlPoints {
   return context.curveControls(c.id);
 }
 export function bezier(c: ControlPoints, t: number): Vec3 {
@@ -107,7 +107,7 @@ export function followEndpoints(
   next: LandmarkProject,
 ): LandmarkProject {
   let result=next;
-  for(const key of dependencyGraph(next).order){
+  for(const key of dirtyDescendants(old,next).order){
     if(!key.startsWith('curve:'))continue;
     const id=key.slice(6),c=result.curves.find(c=>c.id===id)!;
     if(c.role!=='canonical')continue;
@@ -119,6 +119,7 @@ export function followEndpoints(
       if(isCenterCurve(result,c))n=[1,0,0];
       else if(Math.hypot(...newChord)>0)n=Math.hypot(...oldChord)>0?transportNormal(n,normalize(oldChord),normalize(newChord)):perpendicular(normalize(newChord),[n]);
     }
+    if(!moved)continue;
     result={...result,curves:result.curves.map(x=>x.id===id?{...c,shape:{...c.shape,planeNormal:n}}:x)};
   }
   return result;

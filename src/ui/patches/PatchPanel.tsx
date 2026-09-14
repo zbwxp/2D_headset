@@ -1,3 +1,4 @@
+import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
 import InlineName from "../shared/InlineName";
 import {patchRows} from "../shared/pairRows";
@@ -9,13 +10,13 @@ import { useEditor } from '../../app/store';
 import { defaultDisplay, patchSampling, patchQualityLevels, type PatchQuality } from '../../domain/patches/model';
 import { tessellate } from '../../domain/patches/geometry';
 function FullnessControl({id}:{id:string}) {
- const s=useEditor(),patch=s.project.patches?.find(p=>p.id===id),value=patch?.fullness??0;
- return <div data-testid="fullness-control"><NumericSlider label="面凸度 Fullness" min={-100} max={100} value={value*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={s.beginEdit} onChange={v=>s.setFullness(id,v/100)}/>
+ const s=useEditor(useShallow(s=>({beginEdit:s.beginEdit,beginDisplayEdit:s.beginDisplayEdit,cancelPatch:s.cancelPatch,deletePatch:s.deletePatch,endEdit:s.endEdit,patchCreation:s.patchCreation,pickPatchEdge:s.pickPatchEdge,project:s.project,selectPatch:s.selectPatch,selectedPatchId:s.selectedPatchId,setFullness:s.setFullness,setPatchDisplay:s.setPatchDisplay,setPatchQuality:s.setPatchQuality,setPatchVisible:s.setPatchVisible,startPatch:s.startPatch}))),patch=s.project.patches?.find(p=>p.id===id),value=patch?.fullness??0;
+ return <div data-testid="fullness-control"><NumericSlider label="面凸度 Fullness" min={-100} max={100} value={value*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setFullness(id,v/100)}/>
  <button disabled={value===0} onClick={()=>{s.beginEdit();s.setFullness(id,0);}}>凸度归零</button></div>;
 }
 export default function PatchPanel() {
     const collapsed = useUI(s=>s.patchCollapsed);
-    const s = useEditor(), d = { ...defaultDisplay, ...s.project.patchDisplay };
+    const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,beginDisplayEdit:s.beginDisplayEdit,cancelPatch:s.cancelPatch,deletePatch:s.deletePatch,endEdit:s.endEdit,patchCreation:s.patchCreation,pickPatchEdge:s.pickPatchEdge,project:s.project,selectPatch:s.selectPatch,selectedPatchId:s.selectedPatchId,setFullness:s.setFullness,setPatchDisplay:s.setPatchDisplay,setPatchQuality:s.setPatchQuality,setPatchVisible:s.setPatchVisible,startPatch:s.startPatch}))), d = { ...defaultDisplay, ...s.project.patchDisplay };
     return <section className={`patch-panel ${collapsed ? "collapsed" : ""}`} aria-label="曲面 Patch" data-ui-keyboard>
     <button className="section-heading patch-heading" aria-expanded={!collapsed} aria-controls="patch-panel-content" onClick={()=>useUI.setState({patchCollapsed:!collapsed})}><span>{collapsed ? "▶" : "▼"} 曲面 Patch</span><span>{patchRows(s.project).length} 行</span></button>
     {!collapsed && <>
@@ -41,7 +42,7 @@ export default function PatchPanel() {
     <label>显示精度<select aria-label="Patch 显示精度" value={d.quality==='ultra'?'high':d.quality??'high'} onChange={e=>s.setPatchQuality(e.target.value as PatchQuality)}>{Object.entries(patchQualityLevels).map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
     {d.visible===false && <small>已隐藏 2D/3D 曲面，Contour 由窗口开关独立控制。</small>}
     <SmoothControls/>
-    {(['opacity2d','opacity3d'] as const).map((key,i)=><NumericSlider key={key} label={i?'3D Patch 不透明度':'2D Patch 不透明度'} min={0} max={100} value={d[key]*100} formatValue={v=>formatNumeric(v)+'%'} onChange={v=>s.setPatchDisplay(key,v/100)}/>)}
+    {(['opacity2d','opacity3d'] as const).map((key,i)=><NumericSlider key={key} label={i?'3D Patch 不透明度':'2D Patch 不透明度'} min={0} max={100} value={d[key]*100} formatValue={v=>formatNumeric(v)+'%'} onEditStart={s.beginDisplayEdit} onEditEnd={s.endEdit} onChange={v=>s.setPatchDisplay(key,v/100)}/>)}
     </div>
     </div></>}
     </section>;

@@ -117,7 +117,7 @@ it('real mirror surfaces share canonical correction exactly; source edits invali
  const node=g.nodes[chart.ids[j][i]];if(node.key.startsWith('E:'+seam.id+':'))expect(r.fields[chart.id].values[j][i]).toEqual([0,0,0]);
  }
  for(const edit of [
- {...p,landmarks:p.landmarks.map((l,i)=>i?l:{...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1]+.01,world(l).position[2]] as [number,number,number]}})},
+ {...p,landmarks:p.landmarks.map((l)=>l.id!==seam.startLandmarkId?l:{...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1]+.01,world(l).position[2]] as [number,number,number]}})},
  {...p,curves:p.curves.map(c=>c.role==='canonical'?{...c,shape:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
  {...p,patches:p.patches!.map(c=>c.canonicalId?c:{...c,fullness:.2})}
  ])expect(solveKey(edit)).not.toBe(solveKey(p));

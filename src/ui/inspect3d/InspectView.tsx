@@ -1,3 +1,6 @@
+import {curveInputKey} from '../../domain/geometry/revisions';
+import type {PatchMesh} from '../../domain/patches/geometry';
+import {count,timed} from '../../domain/geometry/diagnostics';
 import {pointPosition} from "../../domain/geometry/evaluation";
 import {subscribeSmooth,evaluationToken} from "../../domain/smooth/evaluation";
 import {useInspectionCamera} from "../windows/state";
@@ -141,7 +144,13 @@ export default function InspectView() {
     let lastRenderState: ReturnType<typeof useEditor.getState> | undefined;
     let sortDirty=true;
     const sortCamera=new THREE.Matrix4();
-    let smoothToken="";
+    let smoothToken="",lastCurveKey="";
+    let patchLayout="",curveLayout="";
+    const curveInputs=new Map<string,ReturnType<typeof curveControls>>();
+    const curveSamples=new WeakMap<ReturnType<typeof curveControls>,ReturnType<typeof flatten>>();
+    const patchInputs=new Map<string,PatchMesh>();
+    const typedMeshes=new WeakMap<PatchMesh,{positions:Float32Array;normals:Float32Array}>();
+    const arrays=(m:PatchMesh)=>{let a=typedMeshes.get(m);if(a)return a;const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(m.vertices.flat(),3));g.setIndex(m.triangles.flat());g.computeVertexNormals();a={positions:g.getAttribute('position').array as Float32Array,normals:g.getAttribute('normal').array as Float32Array};typedMeshes.set(m,a);g.dispose();return a;};
     const update = () => {
       const s = useEditor.getState();
       const opacity=s.project.patchDisplay?.opacity3d??defaultDisplay.opacity3d;
@@ -153,51 +162,34 @@ export default function InspectView() {
       const old=lastRenderState;lastRenderState=s;
       // Display-only changes must not rebuild source samples or GPU geometry.
       if(old&&smoothToken===evaluationToken(s.project)&&old.project.patchDisplay?.quality===s.project.patchDisplay?.quality&&old.project.patchDisplay?.visible===s.project.patchDisplay?.visible&&old.project.landmarks===s.project.landmarks&&old.project.curves===s.project.curves&&old.project.patches===s.project.patches&&old.project.centerlineOrder===s.project.centerlineOrder&&old.selectedId===s.selectedId&&old.selectedCurveId===s.selectedCurveId&&old.selectedPatchId===s.selectedPatchId&&old.patchCreation===s.patchCreation)return;
-      sortDirty=true;
-      const pv:number[]=[],pc:number[]=[];patchTriangles=[];patchCenters=[];trianglePatchIds=[];curveSegments=[];
+      const endUpdate=timed('threeGeometryUpdate');
       smoothToken=evaluationToken(s.project);
-      for(const p of s.project.patchDisplay?.visible===false?[]:s.project.patches??[]){const m=tessellate(s.project,p,patchSampling(s.project.patchDisplay).subdivisions);const offset=pv.length/3;pv.push(...m.vertices.flat());const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray();m.vertices.forEach(()=>pc.push(...color));for(const t of m.triangles){trianglePatchIds.push(p.id);patchTriangles.push(t.map(i=>i+offset));patchCenters.push(new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3));}}
-      sortedPatchIds=[...trianglePatchIds];
-      patchGeometry.setAttribute('color',new THREE.Float32BufferAttribute(pc,3));
-      patchGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pv,3));patchGeometry.setIndex(patchTriangles.flat());patchGeometry.deleteAttribute('normal');patchGeometry.computeVertexNormals();patchGeometry.computeBoundingSphere();
-
-      const boundaryVertices: number[] = [];
-      const vertices: number[] = [],
-        colors: number[] = [];
-      for (const c of s.project.curves) {
-        const cp = curveControls(s.project, c),
-          samples = flatten(
-            cp,
-            Math.max(
-              ...cp.map((p) =>
-                norm([p[0] - cp[0][0], p[1] - cp[0][1], p[2] - cp[0][2]]),
-              ),
-            ) * 1e-4 || 1e-6,
-          ),
-          color = new THREE.Color(
-            c.id === s.selectedCurveId ? 0xf0d8ff : 0xab9fdd,
-          ).toArray();
-        for (let i = 1; i < samples.length; i++) {
-          curveSegments.push({id:c.id,a:new THREE.Vector3(...samples[i-1]),b:new THREE.Vector3(...samples[i])});
-          if(s.patchCreation?.includes(c.id)) boundaryVertices.push(...samples[i-1],...samples[i]);
-          vertices.push(...samples[i - 1], ...samples[i]);
-          colors.push(...color, ...color);
-        }
+      const patches=(s.project.patchDisplay?.visible===false?[]:s.project.patches??[]).map(p=>({p,m:tessellate(s.project,p,patchSampling(s.project.patchDisplay).subdivisions)}));
+      const layout=patches.map(({p,m})=>p.id+':'+m.vertices.length+':'+m.triangles.length).join('|');
+      const rebuild=layout!==patchLayout||!patchGeometry.getAttribute('position');
+      if(rebuild){patchLayout=layout;patchInputs.clear();const size=patches.reduce((n,{m})=>n+m.vertices.length*3,0);for(const key of ['position','normal','color'])patchGeometry.setAttribute(key,new THREE.BufferAttribute(new Float32Array(size),3));patchTriangles=[];patchCenters=[];trianglePatchIds=[];}
+      let vertexOffset=0,triangleOffset=0,changed=false;
+      for(const {p,m} of patches){
+        if(rebuild||patchInputs.get(p.id)!==m){const a=arrays(m);for(const key of ['position','normal'] as const){const attr=patchGeometry.getAttribute(key) as THREE.BufferAttribute;(attr.array as Float32Array).set(key==='position'?a.positions:a.normals,vertexOffset*3);attr.addUpdateRange(vertexOffset*3,m.vertices.length*3);attr.needsUpdate=true;}for(let j=0;j<m.triangles.length;j++){const t=m.triangles[j],at=triangleOffset+j;patchTriangles[at]=t.map(i=>i+vertexOffset);trianglePatchIds[at]=p.id;patchCenters[at]=new THREE.Vector3(...m.vertices[t[0]]).add(new THREE.Vector3(...m.vertices[t[1]])).add(new THREE.Vector3(...m.vertices[t[2]])).multiplyScalar(1/3);}patchInputs.set(p.id,m);count('threeBufferRebuilds');changed=true;}
+        if(rebuild||old?.selectedPatchId!==s.selectedPatchId){const color=new THREE.Color(p.id===s.selectedPatchId?0xe3bcf4:0xbecdcf).toArray(),attr=patchGeometry.getAttribute('color') as THREE.BufferAttribute;for(let i=0;i<m.vertices.length;i++)(attr.array as Float32Array).set(color,(vertexOffset+i)*3);attr.addUpdateRange(vertexOffset*3,m.vertices.length*3);attr.needsUpdate=true;}
+        vertexOffset+=m.vertices.length;triangleOffset+=m.triangles.length;
       }
-      boundaryGeometry.dispose();
-      boundaryGeometry=new LineSegmentsGeometry();
-      boundaryHighlight.geometry=boundaryGeometry;
-      boundaryHighlight.visible=boundaryVertices.length>0;
-      if(boundaryVertices.length) boundaryGeometry.setPositions(boundaryVertices);
-      curveGeometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(vertices, 3),
-      );
-      curveGeometry.setAttribute(
-        "color",
-        new THREE.Float32BufferAttribute(colors, 3),
-      );
-      curveGeometry.computeBoundingSphere();
+      if(changed||rebuild){sortedPatchIds=[...trianglePatchIds];patchGeometry.setIndex(patchTriangles.flat());patchGeometry.computeBoundingSphere();sortDirty=true;}
+      const nextCurveKey=curveInputKey(s.project);
+      if(nextCurveKey!==lastCurveKey||old?.selectedCurveId!==s.selectedCurveId||old?.patchCreation!==s.patchCreation){lastCurveKey=nextCurveKey;curveSegments=[];
+
+      const boundaryVertices:number[]=[];
+      const lines=s.project.curves.map(c=>{const cp=curveControls(s.project,c);let samples=curveSamples.get(cp);if(!samples){samples=flatten(cp,Math.max(...cp.map(p=>norm([p[0]-cp[0][0],p[1]-cp[0][1],p[2]-cp[0][2]])))*1e-4||1e-6);curveSamples.set(cp,samples);}return {c,cp,samples};});
+      const layout=lines.map(({c,samples})=>c.id+':'+samples.length).join('|'),rebuild=layout!==curveLayout||!curveGeometry.getAttribute('position');
+      if(rebuild){curveLayout=layout;const size=lines.reduce((n,{samples})=>n+(samples.length-1)*6,0);curveGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(size),3));curveGeometry.setAttribute('color',new THREE.BufferAttribute(new Float32Array(size),3));curveInputs.clear();}
+      let offset=0,changed=false;
+      for(const {c,cp,samples} of lines){const dirty=rebuild||curveInputs.get(c.id)!==cp,positions=curveGeometry.getAttribute('position') as THREE.BufferAttribute,colors=curveGeometry.getAttribute('color') as THREE.BufferAttribute,color=new THREE.Color(c.id===s.selectedCurveId?0xf0d8ff:0xab9fdd).toArray();
+       for(let i=1;i<samples.length;i++){curveSegments.push({id:c.id,a:new THREE.Vector3(...samples[i-1]),b:new THREE.Vector3(...samples[i])});if(s.patchCreation?.includes(c.id))boundaryVertices.push(...samples[i-1],...samples[i]);const at=offset+(i-1)*6;if(dirty){(positions.array as Float32Array).set(samples[i-1],at);(positions.array as Float32Array).set(samples[i],at+3);}if(rebuild||old?.selectedCurveId!==s.selectedCurveId){(colors.array as Float32Array).set(color,at);(colors.array as Float32Array).set(color,at+3);}}
+       const length=(samples.length-1)*6;if(dirty){positions.addUpdateRange(offset,length);positions.needsUpdate=true;count('threeCurveBufferRebuilds');curveInputs.set(c.id,cp);changed=true;}if(rebuild||old?.selectedCurveId!==s.selectedCurveId){colors.addUpdateRange(offset,length);colors.needsUpdate=true;}offset+=length;
+      }
+      if(changed)curveGeometry.computeBoundingSphere();
+      boundaryGeometry.dispose();boundaryGeometry=new LineSegmentsGeometry();boundaryHighlight.geometry=boundaryGeometry;boundaryHighlight.visible=boundaryVertices.length>0;if(boundaryVertices.length)boundaryGeometry.setPositions(boundaryVertices);
+      }
       guideGeometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(centerlineGuide(s.project).flat(), 3),
@@ -236,11 +228,12 @@ export default function InspectView() {
           3,
         ),
       );
-      selectedGeometry.computeBoundingSphere();
+      selectedGeometry.computeBoundingSphere();endUpdate();
     };
     update();
-    const unsub = useEditor.subscribe(update);
-    const unsubSmooth=subscribeSmooth(update);
+    let updatePending=false;const schedule=()=>{updatePending=true;};
+    const unsub = useEditor.subscribe(schedule);
+    const unsubSmooth=subscribeSmooth(schedule);
     const resize = new ResizeObserver(() => {
       const w = element.clientWidth,
         h = element.clientHeight;
@@ -253,6 +246,7 @@ export default function InspectView() {
     resize.observe(element);
     let frame = 0;
     const draw = () => {
+      if(updatePending){updatePending=false;update();}
       controls.update();
       camera.updateMatrixWorld();
       if(patchMesh.visible && patchMaterial.transparent && (sortDirty || !sortCamera.equals(camera.matrixWorldInverse))){

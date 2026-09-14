@@ -1,0 +1,79 @@
+{
+  "isolated": {
+    "counters": {
+      "pointEvaluations": 2,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 0,
+      "dirtyPatches": 0
+    },
+    "timings": {
+      "geometryEvaluationInclusive": 20.100000012665987,
+      "dependencyPropagation": 1.3999999985098839,
+      "threeGeometryUpdate": 1
+    }
+  },
+  "downstream": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 2,
+      "dirtyPatches": 0,
+      "curveEvaluations": 2,
+      "threeCurveBufferRebuilds": 2,
+      "occlusionCandidateTests": 13692,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "geometryEvaluationInclusive": 29.80000003054738,
+      "dependencyPropagation": 1.300000000745058,
+      "threeGeometryUpdate": 2.100000001490116,
+      "projectionOcclusion": 16.299999997019768
+    }
+  },
+  "curveHandle": {
+    "counters": {
+      "curveEvaluations": 4,
+      "pointEvaluations": 2,
+      "arcLengthLUTBuilds": 1,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 4,
+      "dirtyPatches": 0,
+      "threeCurveBufferRebuilds": 68,
+      "occlusionCandidateTests": 13692,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "geometryEvaluationInclusive": 24.099999994039536,
+      "dependencyPropagation": 1.300000000745058,
+      "threeGeometryUpdate": 4.800000000745058,
+      "projectionOcclusion": 13.200000002980232
+    }
+  },
+  "fullness": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 0,
+      "dirtyCurves": 0,
+      "dirtyPatches": 2,
+      "patchTessellations": 2,
+      "patchEvaluations": 2,
+      "arcLengthLUTBuilds": 3,
+      "threeBufferRebuilds": 2,
+      "occlusionCandidateTests": 13800,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "geometryEvaluationInclusive": 22.69999999552965,
+      "patchTessellation": 2.5,
+      "threeGeometryUpdate": 3.400000002235174,
+      "projectionOcclusion": 13.899999998509884
+    }
+  },
+  "debug": {
+    "enabled": true,
+    "message": "已载入语义点项目",
+    "patches": 4
+  }
+}

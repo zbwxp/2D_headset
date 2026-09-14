@@ -1,3 +1,6 @@
+import {InputCache} from '../geometry/cache';
+import {patchInputKey} from '../geometry/revisions';
+import {count,timed} from '../geometry/diagnostics';
 import type {LandmarkProject} from '../landmarks/model';
 import type {Vec3} from '../project/types';
 import {mirror} from '../landmarks/model';
@@ -21,16 +24,11 @@ export interface PatchMesh {
     warning?: string;
     invalid?: string;
 }
-const cache = new WeakMap<LandmarkProject, Map<string, PatchMesh>>();
+const cache = new InputCache<PatchMesh>(512);
 export function tessellate(p: LandmarkProject, patch: SurfacePatch, n = 24): PatchMesh {
-    let map = cache.get(p);
-    if (!map) {
-        map = new Map();
-        cache.set(p, map);
-    }
-    const key = patch.id + ':' + n + ':' + evaluationToken(p);
-    if (map.has(key))
-        return map.get(key)!;
+    const key = patchInputKey(p,patch) + ':' + n + ':' + evaluationToken(p);
+    const hit=cache.get(key);if(hit)return hit;
+    count('patchTessellations');const endTiming=timed('patchTessellation');
     const mesh: PatchMesh = { vertices: [], triangles: [] };
     try {
         const f = evaluator(p, patch);
@@ -65,6 +63,6 @@ export function tessellate(p: LandmarkProject, patch: SurfacePatch, n = 24): Pat
         mesh.invalid = (e as Error).message;
         mesh.triangles = [];
     }
-    map.set(key, mesh);
+    endTiming();cache.set(key, mesh);
     return mesh;
 }

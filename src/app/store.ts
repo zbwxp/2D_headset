@@ -1,3 +1,6 @@
+import {createAutosave,writeAutosave} from './autosave';
+import {dirtyDescendants} from '../domain/geometry/dependencies';
+import {count,timed} from '../domain/geometry/diagnostics';
 import {addOnCurvePoint,setOnCurveS} from "../domain/landmarks/placement";
 import {GeometryEvaluationContext,pointPosition} from "../domain/geometry/evaluation";
 import {defaultSmooth} from "../domain/smooth/model";
@@ -76,6 +79,7 @@ interface State {
   addOnCurvePoint:(id:string)=>void;
   setOnCurveS:(id:string,s:number)=>void;
   endEdit:()=>void;
+  beginDisplayEdit:()=>void;
   selectionTick:number;
   patchCreation: string[] | null;
   selectedPatchId: string | null;
@@ -108,7 +112,7 @@ interface State {
   future: LandmarkProject[];
   message: string;
   referenceMoving: boolean;
-  beginEdit: () => void;
+  beginEdit: (continuous?:boolean) => void;
   selectView: (id: string) => void;
   selectLandmark: (id: string) => void;
   movePoint: (id: string, target: Vec2) => void;
@@ -128,29 +132,28 @@ interface State {
   deleteSelected: (sourceId?: string) => void;
   reorderCenterline: (id: string, targetId: string, after: boolean) => void;
 }
-function persist(p: LandmarkProject) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(p));
-  } catch {
-    useEditor.setState({ message: "本机存储已满，请下载 JSON 保存。" });
-  }
-}
+const autosave=createAutosave(p=>{try{writeAutosave(KEY,p);}catch{useEditor.setState({message:'本机存储已满，请下载 JSON 保存。'});}});
+const persist=(p:LandmarkProject)=>autosave.request(p);
+if(typeof window!=='undefined'){window.addEventListener('pagehide',()=>autosave.flush());document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosave.flush();});}
 export const useEditor = create<State>((set, get) => {
   let editBase:LandmarkProject|null=null;
   const propagate=(next:LandmarkProject,directCurve?:string)=>{
-    const base=editBase??get().project;
-    const curves=next.curves.map(c=>{const old=base.curves.find(x=>x.id===c.id);return c.role==='canonical'&&c.id!==directCurve&&old?.role==='canonical'?{...c,shape:{...c.shape,planeNormal:old.shape.planeNormal}}:c;});
-    const result=followEndpoints(base,{...next,curves}),ctx=new GeometryEvaluationContext(result);
-    result.landmarks.forEach(l=>ctx.pointPosition(l.id));return result;
+    const end=timed('dependencyPropagation');const base=editBase??get().project;
+    const affected=dirtyDescendants(base,next).curves;
+    const curves=next.curves.map(c=>{const old=base.curves.find(x=>x.id===c.id);return affected.has(c.id)&&c.id!==directCurve&&c.role==='canonical'&&old?.role==='canonical'&&c.shape.planeNormal!==old.shape.planeNormal?{...c,shape:{...c.shape,planeNormal:old.shape.planeNormal}}:c;});
+    const prepared=curves.some((c,i)=>c!==next.curves[i])?{...next,curves}:next;
+    const result=followEndpoints(base,prepared),ctx=new GeometryEvaluationContext(result);
+    for(const id of dirtyDescendants(base,result).points)ctx.pointPosition(id);end();return result;
   };
-  const commit = (p: LandmarkProject) => {
+  const commit = (p: LandmarkProject) => {count('sourceUpdates');const dirty=dirtyDescendants(get().project,p);count('dirtyPoints',dirty.points.size);count('dirtyCurves',dirty.curves.size);count('dirtyPatches',dirty.patches.size);
     p={...prunePatches(p),version:"landmarks-0.4.5"};
     if(p.surfaceSmooth){const overrides=p.surfaceSmooth.edgeInfluenceOverrides;const entries=Object.entries(overrides).filter(([id])=>p.curves.some(c=>c.id===id&&c.role==='canonical'));if(entries.length!==Object.keys(overrides).length)p={...p,surfaceSmooth:{...p.surfaceSmooth,edgeInfluenceOverrides:Object.fromEntries(entries)}};}
     set({ project: p,selectedId:p.landmarks.some(l=>l.id===get().selectedId)?get().selectedId:null,selectedCurveId:p.curves.some(c=>c.id===get().selectedCurveId)?get().selectedCurveId:null,selectedPatchId:p.patches?.some(x=>x.id===get().selectedPatchId)?get().selectedPatchId:null });
     persist(p);
   };
   return {
-    endEdit:()=>{editBase=null;},
+    beginDisplayEdit:()=>autosave.begin(),
+    endEdit:()=>{editBase=null;autosave.end();},
     addOnCurvePoint:(id)=>{try{const result=addOnCurvePoint(get().project,id);get().beginEdit();commit(result.project);editBase=null;set({selectedId:result.selectedId,selectedCurveId:null,selectedPatchId:null,selectionTick:get().selectionTick+1,message:'已添加结构线定位点，使用在线位置调整。'});}catch(e){set({message:(e as Error).message});}},
     setOnCurveS:(id,value)=>{try{commit(propagate(setOnCurveS(get().project,id,value)));}catch(e){set({message:(e as Error).message});}},
     selectionTick:0, patchCreation:null, selectedPatchId:null,
@@ -250,7 +253,7 @@ export const useEditor = create<State>((set, get) => {
     future: [],
     message,
     referenceMoving: false,
-    beginEdit: () => {editBase=get().project;
+    beginEdit: (continuous=false) => {if(continuous)autosave.begin();editBase=get().project;
       set((s) => ({
         past: [...s.past.slice(-(HISTORY_LIMIT - 1)), s.project],
         future: [],
@@ -332,7 +335,7 @@ export const useEditor = create<State>((set, get) => {
         message: `${v.label}：${locked ? "已启用视图锁；成对点仅约束 driver" : "已解除该视图锁"}`,
       });
     },
-    undo: () => {editBase=null;
+    undo: () => {editBase=null;autosave.end();
       const s = get(),
         p = s.past.at(-1);
       if (!p) return;
@@ -352,7 +355,7 @@ export const useEditor = create<State>((set, get) => {
       });
       commit({...p,patchDisplay:s.project.patchDisplay});
     },
-    redo: () => {editBase=null;
+    redo: () => {editBase=null;autosave.end();
       const s = get(),
         p = s.future[0];
       if (!p) return;
@@ -372,7 +375,7 @@ export const useEditor = create<State>((set, get) => {
       });
       commit({...p,patchDisplay:s.project.patchDisplay});
     },
-    load: (p) => {editBase=null;
+    load: (p) => {editBase=null;autosave.cancel();
       get().beginEdit();
       set({
         project: p,
@@ -437,3 +440,5 @@ export const useEditor = create<State>((set, get) => {
     },
   };
 });
+
+if(import.meta.env.DEV)(globalThis as typeof globalThis & {__editorPerfStore?:typeof useEditor}).__editorPerfStore=useEditor;

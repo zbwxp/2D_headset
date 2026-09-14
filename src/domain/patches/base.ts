@@ -1,3 +1,6 @@
+import {InputCache} from '../geometry/cache';
+import {patchInputKey} from '../geometry/revisions';
+import {count} from '../geometry/diagnostics';
 import {prepareFullness} from "./fullness";
 import type { LandmarkProject } from '../landmarks/model';
 import { mirror } from '../landmarks/model';
@@ -42,11 +45,11 @@ export function baseEvaluator(p: LandmarkProject, patch: SurfacePatch): (u: numb
         };
     return f;
 }
-const prepared = new WeakMap<LandmarkProject, Map<string, (u:number,v:number)=>Vec3>>();
+const prepared = new InputCache<(u:number,v:number)=>Vec3>(512);
 export function fullnessEvaluator(p:LandmarkProject,patch:SurfacePatch):(u:number,v:number)=>Vec3 {
- let map=prepared.get(p);if(!map){map=new Map();prepared.set(p,map);}const cached=map.get(patch.id);if(cached)return cached;
- let f:(u:number,v:number)=>Vec3;
+ const key=patchInputKey(p,patch);const cached=prepared.get(key);if(cached)return cached;
+ count('patchEvaluations');let f:(u:number,v:number)=>Vec3;
  if(patch.canonicalId){const canonical=fullnessEvaluator(p,p.patches!.find(x=>x.id===patch.canonicalId)!);f=(u,v)=>mirror(canonical(u,v));}
  else {const base=baseEvaluator(p,patch);f=(patch.fullness??0)===0?base:prepareFullness(p,patch,base);}
- map.set(patch.id,f);return f;
+ prepared.set(key,f);return f;
 }

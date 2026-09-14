@@ -1,3 +1,6 @@
+import {surfaceInputKey} from '../../domain/geometry/revisions';
+import {evaluationToken} from '../../domain/smooth/evaluation';
+import {count} from '../../domain/geometry/diagnostics';
 import {getSmoothResult,subscribeSmooth} from "../../domain/smooth/evaluation";
 import {useEffect,useState} from 'react';
 import {useEditor} from '../../app/store';
@@ -21,13 +24,13 @@ export default function ContourPanel(){
  frame=0;if(!active||!pending)return;pending=false;inflight=true;
  const request:ContourRequest={id:++requestId,revision:String(revision),orientation};
  if(lastSent!==request.revision){request.source=source;lastSent=request.revision;}
- worker.postMessage(request);
+ count('contourDispatches');worker.postMessage(request);
  });
  };
  const sourceChanged=()=>{
  const p=useEditor.getState().project;
  const next={landmarks:p.landmarks,curves:p.curves,patches:p.patches??[],surfaceSmooth:p.surfaceSmooth,smoothResult:p.surfaceSmooth?.enabled&&p.surfaceSmooth.strength>0?getSmoothResult(p):undefined};
- const key=JSON.stringify(next);
+ const key=surfaceInputKey(p)+evaluationToken(p);
  if(key===signature)return;signature=key;source=next;revision++;schedule();
  };
  const cameraChanged=()=>{
@@ -37,7 +40,7 @@ export default function ContourPanel(){
  };
  worker.onmessage=(event:MessageEvent<Result>)=>{
  if(!active)return;inflight=false;
- if(event.data.revision===String(revision)){setResult(event.data);setFailure(event.data.error??'');}
+ if(!pending&&event.data.id===requestId&&event.data.revision===String(revision)){setResult(event.data);setFailure(event.data.error??'');}
  if(pending)schedule();else setBusy(false);
  };
  worker.onerror=e=>{if(active){inflight=false;setBusy(false);setFailure(e.message||'轮廓计算失败');}};

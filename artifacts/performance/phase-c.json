@@ -1,0 +1,72 @@
+{
+  "isolated": {
+    "counters": {
+      "pointEvaluations": 2,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 0,
+      "dirtyPatches": 0,
+      "threeBufferRebuilds": 1
+    },
+    "timings": {
+      "dependencyPropagation": 2.099999997764826
+    }
+  },
+  "downstream": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 2,
+      "dirtyPatches": 0,
+      "threeBufferRebuilds": 1,
+      "curveEvaluations": 2,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 1.300000000745058,
+      "projectionOcclusion": 50.69999999552965
+    }
+  },
+  "curveHandle": {
+    "counters": {
+      "curveEvaluations": 4,
+      "pointEvaluations": 2,
+      "arcLengthLUTBuilds": 1,
+      "sourceUpdates": 1,
+      "dirtyPoints": 2,
+      "dirtyCurves": 4,
+      "dirtyPatches": 0,
+      "threeBufferRebuilds": 1,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "dependencyPropagation": 1.6000000014901161,
+      "projectionOcclusion": 50.19999999552965
+    }
+  },
+  "fullness": {
+    "counters": {
+      "sourceUpdates": 1,
+      "dirtyPoints": 0,
+      "dirtyCurves": 0,
+      "dirtyPatches": 2,
+      "patchTessellations": 2,
+      "patchEvaluations": 2,
+      "arcLengthLUTBuilds": 3,
+      "threeBufferRebuilds": 1,
+      "occlusionCandidateTests": 1880064,
+      "projectedTriangles": 1152
+    },
+    "timings": {
+      "patchTessellation": 2.3000000044703484,
+      "projectionOcclusion": 57.00000000372529
+    }
+  },
+  "debug": {
+    "enabled": true,
+    "message": "已载入语义点项目",
+    "patches": 4
+  }
+}
