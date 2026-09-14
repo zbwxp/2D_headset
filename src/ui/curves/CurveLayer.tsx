@@ -123,12 +123,15 @@ export default function CurveLayer({
       onPointerUp={(e) => {
         if (drag.current) e.stopPropagation();
         drag.current = null;
+        s.endEdit();
       }}
       onPointerCancel={() => {
         drag.current = null;
+        s.endEdit();
       }}
       onLostPointerCapture={() => {
         drag.current = null;
+        s.endEdit();
       }}
     >
       {[

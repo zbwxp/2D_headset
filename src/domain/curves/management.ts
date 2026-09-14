@@ -1,3 +1,5 @@
+import {dependencyGraph,deleteClosure} from "../geometry/dependencies";
+import {pointPosition} from "../geometry/evaluation";
 import type { LandmarkProject, LandmarkView } from "../landmarks/model";
 import { normalize, sub } from "../geometry/core";
 import { defaultNormal, CURVE_EPS } from "./geometry";
@@ -24,7 +26,7 @@ export function createCurve(
     (a.type === "RIGHT" && b.type === "LEFT")
   )
     throw new Error("跨中线结构请增加 CENTERLINE 点，再分成两条曲线。");
-  const chord = sub(b.position, a.position);
+  const chord = sub(pointPosition(p,b.id), pointPosition(p,a.id));
   if (Math.hypot(...chord) < CURVE_EPS)
     throw new Error("两个点位置重合，请先分开端点再创建曲线。");
   const center = a.type === "CENTERLINE" && b.type === "CENTERLINE",
@@ -56,7 +58,8 @@ export function createCurve(
       role: "mirror",
       canonicalCurveId: id,
     });
-  return { project: { ...p, curves }, selectedId: id };
+  const next={...p,curves};dependencyGraph(next);
+  return { project: next, selectedId: id };
 }
 export function renameCurve(
   p: LandmarkProject,
@@ -83,14 +86,9 @@ export function renameCurve(
   };
 }
 export function deleteCurve(p: LandmarkProject, id: string): LandmarkProject {
-  const c = p.curves.find((c) => c.id === id);
-  return {
-    ...p,
-    curves: p.curves.filter(
-      (x) => x.id !== id && x.id !== c?.mirrorPartnerCurveId,
-    ),
-  };
+  return deleteClosure(p,[`curve:${id}`]);
 }
+
 export function incidentCurveIds(
   p: LandmarkProject,
   landmarkId: string,

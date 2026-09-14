@@ -1,3 +1,5 @@
+import {dependencyGraph} from "../geometry/dependencies";
+import {GeometryEvaluationContext,pointPosition} from "../geometry/evaluation";
 import {
   add,
   sub,
@@ -45,8 +47,8 @@ export function canonical(p: LandmarkProject, c: CurveEdge): CanonicalCurve {
 }
 export function endpoints(p: LandmarkProject, c: CurveEdge): [Vec3, Vec3] {
   return [
-    p.landmarks.find((l) => l.id === c.startLandmarkId)!.position,
-    p.landmarks.find((l) => l.id === c.endLandmarkId)!.position,
+    pointPosition(p,c.startLandmarkId),
+    pointPosition(p,c.endLandmarkId),
   ];
 }
 export function isCenterCurve(p: LandmarkProject, c: CurveEdge): boolean {
@@ -63,17 +65,8 @@ export function frame(p: LandmarkProject, c: CanonicalCurve) {
     b = normalize(cross(n, d));
   return { a, z, d, n, b, length };
 }
-export function controls(p: LandmarkProject, c: CurveEdge): ControlPoints {
-  if (c.role === "mirror")
-    return controls(p, canonical(p, c)).map(mirror) as ControlPoints;
-  const { a, z, d, b, length: L } = frame(p, c),
-    { startHandle: s, endHandle: e } = c.shape;
-  return [
-    a,
-    add(a, scale(add(scale(d, s.along), scale(b, s.offset)), L)),
-    add(z, scale(add(scale(d, -e.along), scale(b, e.offset)), L)),
-    z,
-  ];
+export function controls(p:LandmarkProject,c:CurveEdge,context=new GeometryEvaluationContext(p)):ControlPoints {
+  return context.curveControls(c.id);
 }
 export function bezier(c: ControlPoints, t: number): Vec3 {
   const u = 1 - t;
@@ -113,28 +106,22 @@ export function followEndpoints(
   old: LandmarkProject,
   next: LandmarkProject,
 ): LandmarkProject {
-  return {
-    ...next,
-    curves: next.curves.map((c) => {
-      if (c.role !== "canonical") return c;
-      const oldCurve = old.curves.find((x) => x.id === c.id);
-      if (!oldCurve) return c;
-      const [a, b] = endpoints(old, oldCurve),
-        [an, bn] = endpoints(next, c);
-      if (a.every((x, i) => x === an[i]) && b.every((x, i) => x === bn[i]))
-        return c;
-      const oldChord = sub(b, a),
-        newChord = sub(bn, an);
-      let n = c.shape.planeNormal;
-      if (isCenterCurve(next, c)) n = [1, 0, 0];
-      else if (Math.hypot(...newChord) > 0)
-        n =
-          Math.hypot(...oldChord) > 0
-            ? transportNormal(n, normalize(oldChord), normalize(newChord))
-            : perpendicular(normalize(newChord), [n]);
-      return { ...c, shape: { ...c.shape, planeNormal: n } };
-    }),
-  };
+  let result=next;
+  for(const key of dependencyGraph(next).order){
+    if(!key.startsWith('curve:'))continue;
+    const id=key.slice(6),c=result.curves.find(c=>c.id===id)!;
+    if(c.role!=='canonical')continue;
+    const oldCurve=old.curves.find(x=>x.id===id);if(!oldCurve||oldCurve.role!=='canonical')continue;
+    const [a,b]=endpoints(old,oldCurve),[an,bn]=endpoints(result,c),oldChord=sub(b,a),newChord=sub(bn,an);
+    const moved=!a.every((v,i)=>v===an[i])||!b.every((v,i)=>v===bn[i]);
+    let n=c.shape.planeNormal;
+    if(moved){n=oldCurve.shape.planeNormal;
+      if(isCenterCurve(result,c))n=[1,0,0];
+      else if(Math.hypot(...newChord)>0)n=Math.hypot(...oldChord)>0?transportNormal(n,normalize(oldChord),normalize(newChord)):perpendicular(normalize(newChord),[n]);
+    }
+    result={...result,curves:result.curves.map(x=>x.id===id?{...c,shape:{...c.shape,planeNormal:n}}:x)};
+  }
+  return result;
 }
 export function nearestParameter(
   cp: ControlPoints,

@@ -146,14 +146,14 @@ export default function EditorActions() {
                 {target.kind === "patch" ? "将删除此曲面及镜像曲面，保留所有语义点与结构线。" : target.kind === "curve"
                   ? "mirrorPartnerCurveId" in object &&
                     object.mirrorPartnerCurveId
-                    ? "将同时删除左右两条结构线及其依赖 Patch，语义点保留。"
-                    : "将删除此结构线及其依赖 Patch，语义点保留。"
+                    ? "将删除左右结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。"
+                    : "将删除此结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。"
                   : "mirrorPartnerId" in object && object.mirrorPartnerId
                     ? "将同时删除左右两个点及其投影锚点。"
                     : "将删除此点及其投影锚点。"}
                 {target.kind === "landmark" &&
                   incidentCurveIds(s.project, target.id).size > 0 &&
-                  ` 将同时删除 ${incidentCurveIds(s.project, target.id).size} 条相连结构线（含镜像侧）。`}
+                  ` 将同时删除 ${incidentCurveIds(s.project, target.id).size} 条相连结构线（含镜像侧）及其下游依赖。`}
                 可通过撤销恢复。
               </p>
               <div>

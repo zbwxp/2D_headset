@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import { it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
 import {
@@ -28,8 +29,8 @@ it("A: copies a centerline point with independent UUID and position storage", ()
   expect(copy.id).not.toBe(source.id);
   expect(copy.name).toBe("测试中心点");
   expect(copy.type).toBe("CENTERLINE");
-  expect(copy.position).toEqual(source.position);
-  expect(copy.position).not.toBe(source.position);
+  expect(world(copy).position).toEqual(world(source).position);
+  expect(world(copy).position).not.toBe(world(source).position);
   expect(p).toEqual(before);
   expect(dragPosition(q, copy.id, p.views[0], [0.2, 0.2])[0]).toBe(0);
 });
@@ -48,13 +49,13 @@ it.each(["LEFT", "RIGHT"])(
       partner = q.landmarks.find((x) => x.id === l.mirrorPartnerId)!;
     expect(q.landmarks).toHaveLength(22);
     expect(l.type).toBe(type);
-    expect(l.position).toEqual(source.position);
-    expect(partner.position).toEqual(sourcePair.position);
+    expect(world(l).position).toEqual(world(source).position);
+    expect(world(partner).position).toEqual(world(sourcePair).position);
     expect(partner.mirrorPartnerId).toBe(l.id);
     expect(l.id).not.toBe(source.id);
     expect(partner.id).not.toBe(sourcePair.id);
     expect(q.landmarks.slice(0, 20)).toEqual(p.landmarks);
-    expect(partner.position).toEqual(mirror(l.position));
+    expect(world(partner).position).toEqual(mirror(world(l).position));
   },
 );
 it("C/D: original points are renameable/deletable, rename changes only names, pair deletion is atomic", () => {

@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import { describe, it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
 import { parseLandmarks } from "../domain/landmarks/persistence";
@@ -46,7 +47,7 @@ describe("explicit centerline sequence", () => {
     expect(q.lockedViews).toBe(p.lockedViews);
     expect(centerlineGuide(q)).toEqual(
       q.centerlineOrder.map(
-        (id) => p.landmarks.find((l) => l.id === id)!.position,
+        (id) => world(p.landmarks.find((l) => l.id === id)!).position,
       ),
     );
     expect(centerlineGuide(q)).toHaveLength(p.centerlineOrder.length);

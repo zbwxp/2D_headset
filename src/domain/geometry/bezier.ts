@@ -75,3 +75,17 @@ export function arcLengthLUT(cp: BezierPoints, segments = 512): number[] {
   }
   return distances;
 }
+
+/** Invert cumulative chord lengths; s is normalized arc length, never raw t. */
+export function normalizedArcLengthToT(lut:number[],s:number):number {
+ const total=lut.at(-1)!;if(!Number.isFinite(total)||total<=1e-12)throw Error('宿主结构线长度退化，无法定位。');
+ s=Math.max(0,Math.min(1,s));if(s===0||s===1)return s;
+ const target=s*total;let lo=0,hi=lut.length-1;
+ while(hi-lo>1){const mid=(lo+hi)>>1;if(lut[mid]<=target)lo=mid;else hi=mid;}
+ const span=lut[hi]-lut[lo];return (lo+(span>0?(target-lut[lo])/span:0))/(lut.length-1);
+}
+export function tToNormalizedArcLength(lut:number[],t:number):number {
+ const total=lut.at(-1)!;if(!Number.isFinite(total)||total<=1e-12)throw Error('宿主结构线长度退化，无法定位。');
+ const q=Math.max(0,Math.min(1,t))*(lut.length-1),i=Math.min(lut.length-2,Math.floor(q));
+ return (lut[i]+(lut[i+1]-lut[i])*(q-i))/total;
+}

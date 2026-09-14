@@ -1,3 +1,4 @@
+import {pointPosition} from "../../domain/geometry/evaluation";
 import {subscribeSmooth,evaluationToken} from "../../domain/smooth/evaluation";
 import {useInspectionCamera} from "../windows/state";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
@@ -206,7 +207,7 @@ export default function InspectView() {
       geometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(
-          s.project.landmarks.flatMap((l) => l.position),
+          s.project.landmarks.flatMap((l) => pointPosition(s.project,l.id)),
           3,
         ),
       );
@@ -231,8 +232,7 @@ export default function InspectView() {
         new THREE.Float32BufferAttribute(
           s.selectedCurveId
             ? []
-            : (s.project.landmarks.find((l) => l.id === s.selectedId)
-                ?.position ?? []),
+            : (s.selectedId ? pointPosition(s.project,s.selectedId) : []),
           3,
         ),
       );

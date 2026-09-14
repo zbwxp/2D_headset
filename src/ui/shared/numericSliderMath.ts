@@ -9,3 +9,9 @@ export const snapTowardZero=(previous:number,next:number,min:number,max:number)=
  if(range<=0||min>=0||max<=0||Math.abs(min+max)>range*1e-10)return next;
  return previous!==0&&Math.abs(next)<=range*.01&&(Math.abs(next)<Math.abs(previous)||previous*next<0)?0:next;
 };
+
+export const snapTowardTargets=(previous:number,next:number,min:number,max:number,targets?:number[])=>{
+ if(!targets)return snapTowardZero(previous,next,min,max);
+ const target=targets.filter(t=>t>=min&&t<=max&&previous!==t&&Math.abs(next-t)<=(max-min)*.01&&(Math.abs(next-t)<Math.abs(previous-t)||(previous-t)*(next-t)<0)).sort((a,b)=>Math.abs(next-a)-Math.abs(next-b)||a-b)[0];
+ return target??next;
+};

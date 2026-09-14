@@ -5,6 +5,7 @@ const state = (p: Page) =>
   p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
 const pick = (p: Page,n:string)=>selectSidebar(p,"landmark",n);
 async function create(p: Page, a: string, b: string) {
+  const h=p.locator(".curve-panel .section-heading");if(await h.getAttribute("aria-expanded")==="false")await h.click();
   await p.getByRole("button", { name: "创建曲线", exact: true }).click();
   await pick(p, a);
   await pick(p, b);
@@ -167,6 +168,7 @@ test("endpoint transport, duplicate and cascade history; multiple edges and pair
 test("sagittal curve, shared center pair, lock does not constrain shape; creation in canvas", async ({
   page,
 }) => {
+  await page.locator(".curve-panel .section-heading").click();
   await page.getByRole("button", { name: "创建曲线", exact: true }).click();
   await page.getByTestId("landmark-山根点").click();
   await page.getByTestId("landmark-鼻尖点").click();

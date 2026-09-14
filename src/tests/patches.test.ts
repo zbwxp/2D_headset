@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseLandmarks } from '../domain/landmarks/persistence';
@@ -26,19 +27,19 @@ describe('BasePatch', () => {
             expect(p.curves).toEqual(base.curves);
             expect(tessellate(p, patch).invalid).toBeUndefined();
         });
-    it('updates from node and handle source edits', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0], before = evaluator(p, patch)(.3, .3); const ring = loop(p, patch.boundaryEdgeIds); const q = { ...p, landmarks: p.landmarks.map(l => l.id === ring[0].vertex ? { ...l, position: [l.position[0], l.position[1], l.position[2] + .2] as [
+    it('updates from node and handle source edits', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0], before = evaluator(p, patch)(.3, .3); const ring = loop(p, patch.boundaryEdgeIds); const q = { ...p, landmarks: p.landmarks.map(l => l.id === ring[0].vertex ? { ...l, placement: {kind:'WORLD' as const,position:[world(l).position[0], world(l).position[1], world(l).position[2] + .2] as [
                 number,
                 number,
                 number
-            ] } : l) }; expect(evaluator(q, patch)(.3, .3)).not.toEqual(before); const edge = p.curves.find(c => c.id === ring[0].id)!; if (edge.role !== 'canonical')
+            ]} } : l) }; expect(evaluator(q, patch)(.3, .3)).not.toEqual(before); const edge = p.curves.find(c => c.id === ring[0].id)!; if (edge.role !== 'canonical')
         throw Error('fixture'); const r = { ...p, curves: p.curves.map(c => c.id === edge.id ? { ...edge, shape: { ...edge.shape, startHandle: { ...edge.shape.startHandle, offset: .4 } } } : c) }; expect(evaluator(r, patch)(.3, .3)).not.toEqual(before); });
     it('preserves source through JSON, allows shared edges, prunes dependent pairs', () => { let p = source(); p = addPatch(p, tri(p)); p = addPatch(p, quad(p)); const loaded = parseLandmarks(JSON.stringify(p)); expect(loaded.patches).toEqual(p.patches); expect(loaded.landmarks).toEqual(p.landmarks); expect(loaded.curves).toEqual(p.curves); const removed = prunePatches({ ...p, curves: p.curves.filter(c => c.id !== tri(p)[0]) }); expect(removed.patches).toHaveLength(2); });
     it('rejects duplicate, disconnected, repeated and broken loops', () => { const p = source(), ids = tri(p); expect(() => loop(p, [ids[0], ids[0], ids[1]])).toThrow(); expect(() => loop(p, p.curves.slice(0, 3).map(c => c.id))).toThrow(); expect(() => addPatch(addPatch(p, ids), ids)).toThrow(); expect(() => parsePatches([{ id: 'bad', type: 'tri', boundaryEdgeIds: ['absent', ...ids.slice(1)] }], p)).toThrow(); });
-    it('numerical degeneration keeps record and recovers on restoring source', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0]; const flat = { ...p, landmarks: p.landmarks.map(l => ({ ...l, position: [0, 0, 0] as [
+    it('numerical degeneration keeps record and recovers on restoring source', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0]; const flat = { ...p, landmarks: p.landmarks.map(l => ({ ...l, placement: {kind:'WORLD' as const,position:[0, 0, 0] as [
                 number,
                 number,
                 number
-            ] })) }; expect(tessellate(flat, patch).invalid).toBeTruthy(); expect(flat.patches).toEqual(p.patches); expect(tessellate(p, patch).invalid).toBeUndefined(); });
+            ]} })) }; expect(tessellate(flat, patch).invalid).toBeTruthy(); expect(flat.patches).toEqual(p.patches); expect(tessellate(p, patch).invalid).toBeUndefined(); });
 });
 it('self-symmetric quad creates once and preserves exact reflected geometry', () => {
     const base = source();

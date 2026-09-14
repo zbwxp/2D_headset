@@ -13,7 +13,7 @@ export const notifySmooth = () => { version++; listeners.forEach(fn => fn()); };
 export function solveKey(p: LandmarkProject) {
     let key = keys.get(p);
     if (!key) {
-        key = JSON.stringify({ landmarks: p.landmarks.map(l => [l.id, l.type, l.position, l.mirrorPartnerId]), curves: p.curves, patches: p.patches ?? [], overrides: p.surfaceSmooth?.edgeInfluenceOverrides ?? {} });
+        key = JSON.stringify({ landmarks: p.landmarks.map(l => [l.id, l.type, l.placement, l.mirrorPartnerId]), curves: p.curves, patches: p.patches ?? [], overrides: p.surfaceSmooth?.edgeInfluenceOverrides ?? {} });
         keys.set(p, key);
     }
     return key;

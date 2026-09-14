@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import {it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {parseLandmarks} from '../domain/landmarks/persistence';
@@ -62,9 +63,9 @@ it('mirror is exact final world geometry, self symmetry retained',()=>{
 });
 it('source movement recomputes fullness and invalid geometry recovers',()=>{
  const p=fixture('tri',.8),patch=p.patches[0],vertex=loop(p,patch.boundaryEdgeIds)[0].vertex;
- const q={...p,landmarks:p.landmarks.map(l=>l.id===vertex?{...l,position:[l.position[0],l.position[1],l.position[2]+.1] as [number,number,number]}:l)};
+ const q={...p,landmarks:p.landmarks.map(l=>l.id===vertex?{...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1],world(l).position[2]+.1] as [number,number,number]}}:l)};
  expect(evaluator(q,patch)(.3,.3)).not.toEqual(evaluator(p,patch)(.3,.3));
- const flat={...p,landmarks:p.landmarks.map(l=>({...l,position:[0,0,0] as [number,number,number]}))};
+ const flat={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:[0,0,0] as [number,number,number]}}))};
  expect(tessellate(flat,patch).invalid).toBeTruthy();expect(flat.patches).toEqual(p.patches);
  expect(tessellate(p,patch).invalid).toBeUndefined();
 });
@@ -81,7 +82,7 @@ it('squared bubbles have zero boundary values and gradients',()=>{
 it('Fullness is invariant under uniform source scaling',()=>{
  const p=fixture('quad',.75),patch=p.patches[0],f=evaluator(p,patch);
  for(const k of [.01,10,100]){
- const q={...p,landmarks:p.landmarks.map(l=>({...l,position:l.position.map(x=>x*k) as [number,number,number]}))};
+ const q={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:world(l).position.map(x=>x*k) as [number,number,number]}}))};
  expect(distance(evaluator(q,patch)(.3,.4),f(.3,.4).map(x=>x*k))).toBeLessThan(1e-9*k);
  }
 });
@@ -93,7 +94,7 @@ it('curvature and plane edits reevaluate Base plus Fullness',()=>{
 });
 it('ambiguous radial outward retains source and zero remains exact',()=>{
  const p=fixture('quad',.8);
- const flat={...p,landmarks:p.landmarks.map(l=>({...l,position:[l.position[0],l.position[1],0] as [number,number,number]})),
+ const flat={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1],0] as [number,number,number]}})),
  curves:p.curves.map(c=>c.role==='canonical'?{...c,shape:{planeNormal:[0,0,1] as [number,number,number],startHandle:{along:1/3,offset:0},endHandle:{along:1/3,offset:0}}}:c)};
  expect(tessellate(flat,flat.patches[0]).invalid).toContain('Head Origin');
  const zero={...flat,patches:flat.patches.map((x,i)=>i?x:{...x,fullness:0})};

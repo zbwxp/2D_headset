@@ -1,8 +1,10 @@
+import type {Vec3} from "../project/types";
+import {pointPosition} from "../geometry/evaluation";
 import type { LandmarkProject } from "../landmarks/model";
 import type { CurveEdge } from "./model";
 import { dot, sub } from "../geometry/core";
 import { CURVE_EPS } from "./geometry";
-export function parseCurves(input: unknown, p: LandmarkProject): CurveEdge[] {
+export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=true): CurveEdge[] {
   if (input === undefined) return [];
   const fail = () => {
     throw new Error("结构线数据无效：请检查端点、平面或镜像关系。");
@@ -66,7 +68,7 @@ export function parseCurves(input: unknown, p: LandmarkProject): CurveEdge[] {
     )
       return fail();
     const normal = n as [number, number, number],
-      chord = sub(b.position, a.position),
+      chord = geometryCheck?sub(pointPosition(p,b.id), pointPosition(p,a.id)):[0,0,0] as Vec3,
       L = Math.hypot(...chord);
     if (
       Math.abs(Math.hypot(...normal) - 1) > 1e-7 ||

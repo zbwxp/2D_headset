@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import { describe, it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
 import {
@@ -166,12 +167,12 @@ describe("planar curve kernel", () => {
       ...p,
       landmarks: p.landmarks.map((l) =>
         l.id === c.endLandmarkId
-          ? { ...l, position: add(l.position, [0.05, 0.13, -0.2]) }
+          ? { ...l, placement: {kind:'WORLD' as const,position:add(world(l).position, [0.05, 0.13, -0.2])} }
           : l.id ===
               p.landmarks.find((l) => l.id === c.endLandmarkId)!.mirrorPartnerId
             ? {
                 ...l,
-                position: mirror(add(mirror(l.position), [0.05, 0.13, -0.2])),
+                placement: {kind:'WORLD' as const,position:mirror(add(mirror(world(l).position), [0.05, 0.13, -0.2]))},
               }
             : l,
       ),
@@ -199,11 +200,11 @@ describe("planar curve kernel", () => {
     const n: [number, number, number] = [0, 1, 0];
     expect(transportNormal(n, d, [0, 0, -1])).toEqual(n);
     const { p: q, c } = setup();
-    const a = q.landmarks.find((l) => l.id === c.startLandmarkId)!.position;
+    const a = world(q.landmarks.find((l) => l.id === c.startLandmarkId)!).position;
     const collapsed = followEndpoints(q, {
       ...q,
       landmarks: q.landmarks.map((l) =>
-        l.id === c.endLandmarkId ? { ...l, position: a } : l,
+        l.id === c.endLandmarkId ? { ...l, placement: {kind:'WORLD' as const,position:a} } : l,
       ),
     });
     expect(
@@ -306,12 +307,12 @@ describe("planar curve kernel", () => {
 
 it("tiny nonzero chords remain planar and collapsed chords recover deterministically", () => {
   const { p, c } = setup(),
-    a = p.landmarks.find((l) => l.id === c.startLandmarkId)!.position;
+    a = world(p.landmarks.find((l) => l.id === c.startLandmarkId)!).position;
   const move = (old: LandmarkProject, position: [number, number, number]) =>
     followEndpoints(old, {
       ...old,
       landmarks: old.landmarks.map((l) =>
-        l.id === c.endLandmarkId ? { ...l, position } : l,
+        l.id === c.endLandmarkId ? { ...l, placement: {kind:'WORLD' as const,position:position} } : l,
       ),
     });
   const tiny = move(p, add(a, [1e-10, 2e-10, -3e-10]));

@@ -1,24 +1,28 @@
+import {validatePlacements} from "./placement";
+import {pointPosition} from "../geometry/evaluation";
 import {parseSmooth} from "../smooth/model";
 import {parsePatches,defaultDisplay,patchQualityLevels} from "../patches/model";
 import { parseCurves } from "../curves/persistence";
 import { repairCenterlineOrder } from "./order";
 import { ensureObliqueViews } from "./views";
 import type { LandmarkProject } from "./model";
-import { mirror, activateDriver } from "./model";
+import { activateDriver } from "./model";
 import { dot, cross, sub } from "../geometry/core";
-import type { Vec3 } from "../project/types";
 const finite = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n);
 const vec = (a: unknown, n: number): a is number[] =>
   Array.isArray(a) && a.length === n && a.every(finite);
 export function parseLandmarks(text: string): LandmarkProject {
-  const p = JSON.parse(text) as LandmarkProject;
+  const raw=JSON.parse(text);
+  if(Array.isArray(raw?.landmarks))raw.landmarks=raw.landmarks.map((l:any)=>l&&typeof l==='object'?{...l,placement:l.placement??{kind:'WORLD',position:l.position}}:l);
+  const p = raw as LandmarkProject;
   const check = (ok: unknown) => {
     if (!ok)
       throw new Error("文件不是有效的语义点项目；旧曲面项目请保留备份。");
   };
   check(
     [
+      "landmarks-0.4.5",
       "landmarks-0.1",
       "landmarks-0.2",
       "landmarks-0.3",
@@ -102,13 +106,18 @@ export function parseLandmarks(text: string): LandmarkProject {
     ids.add(l.id);
     check(
       typeof l.name === "string" &&
-        vec(l.position, 3) &&
+        l.placement && ["WORLD","ON_CURVE"].includes(l.placement.kind) &&
         ["CENTERLINE", "LEFT", "RIGHT", "FREE"].includes(l.type) &&
         l.viewLocks &&
         typeof l.viewLocks === "object" &&
         !Array.isArray(l.viewLocks),
     );
-    check(l.type !== "CENTERLINE" || Math.abs(l.position[0]) < 1e-9);
+    const q=l.placement;
+    if(q.kind==='WORLD')check(vec(q.position,3));
+    else {check(typeof q.hostCurveId==='string'&&['canonical','mirror'].includes(q.role)&&Object.keys(l.viewLocks).length===0);
+     if(q.role==='canonical')check(finite(q.s)&&q.s>=0&&q.s<=1&&!('canonicalPointId' in q));else check(typeof q.canonicalPointId==='string'&&!('s' in q));
+     check(!('position' in q)&&!('position' in l));
+    }
     for (const [id, k] of Object.entries(l.viewLocks)) {
       check(
         viewIds.has(id) &&
@@ -123,8 +132,8 @@ export function parseLandmarks(text: string): LandmarkProject {
           Math.abs(dot(k.up, k.up) - 1) < 1e-8,
       );
       check(
-        Math.abs(dot(l.position, k.right) - k.coordinates[0]) < 1e-8 &&
-          Math.abs(dot(l.position, k.up) - k.coordinates[1]) < 1e-8,
+        Math.abs(dot(pointPosition(p,l.id), k.right) - k.coordinates[0]) < 1e-8 &&
+          Math.abs(dot(pointPosition(p,l.id), k.up) - k.coordinates[1]) < 1e-8,
       );
     }
   }
@@ -139,7 +148,7 @@ export function parseLandmarks(text: string): LandmarkProject {
           ((l.type === "LEFT" && r.type === "RIGHT") ||
             (l.type === "RIGHT" && r.type === "LEFT")),
       );
-      check(Math.hypot(...sub(mirror(l.position), r!.position as Vec3)) < 1e-8);
+
     }
   }
   // Whitelist source data; never import legacy geometry or derived render objects.
@@ -166,7 +175,7 @@ export function parseLandmarks(text: string): LandmarkProject {
     landmarks: p.landmarks.map((l) => ({
       id: l.id,
       name: l.name,
-      position: l.position,
+      placement: l.placement.kind==='WORLD'?{kind:'WORLD' as const,position:l.placement.position}:l.placement.role==='canonical'?{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:l.placement.hostCurveId,s:l.placement.s}:{kind:'ON_CURVE' as const,role:'mirror' as const,hostCurveId:l.placement.hostCurveId,canonicalPointId:l.placement.canonicalPointId},
       type: l.type,
       mirrorPartnerId: l.mirrorPartnerId,
       viewLocks: l.viewLocks,
@@ -184,7 +193,9 @@ export function parseLandmarks(text: string): LandmarkProject {
       )
         result = activateDriver(result, l.id);
     }
-  result.curves = parseCurves(p.curves, result);
+  result.curves = parseCurves(p.curves, result, false);
+  validatePlacements(result);
+  result.curves = parseCurves(result.curves, result);
   if(p.patches !== undefined || p.version === "landmarks-0.4.0" || p.version === "landmarks-0.4.1" || p.version === "landmarks-0.4.2") { result.patches = parsePatches(p.patches, result); result.version=p.version==="landmarks-0.4.2"?"landmarks-0.4.2":p.version==="landmarks-0.4.1"?"landmarks-0.4.1":"landmarks-0.4.0"; }
   if(p.patchDisplay !== undefined) {
     check(p.patchDisplay && [p.patchDisplay.opacity2d,p.patchDisplay.opacity3d].every(x=>finite(x)&&x>=0&&x<=1));
@@ -193,5 +204,5 @@ export function parseLandmarks(text: string): LandmarkProject {
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
-  return result;
+  return {...result,version:"landmarks-0.4.5"};
 }

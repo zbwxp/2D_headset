@@ -1,4 +1,4 @@
-import { incidentCurveIds } from "../curves/management";
+import {deleteClosure} from "../geometry/dependencies";
 import type { LandmarkProject, SemanticLandmark } from "./model";
 import { captureLock, viewIsLocked } from "./model";
 
@@ -25,7 +25,7 @@ export function duplicateLandmark(
   const copy = (l: SemanticLandmark): SemanticLandmark => ({
     id: crypto.randomUUID(),
     name: partner ? (l.type === "LEFT" ? "左" : "右") + name : name,
-    position: [...l.position],
+    placement: structuredClone(l.placement),
     type: l.type,
     viewLocks: {},
   });
@@ -35,9 +35,13 @@ export function duplicateLandmark(
     driver.mirrorPartnerId = follower.id;
     follower.mirrorPartnerId = driver.id;
   }
+  if(follower&&driver.placement.kind==="ON_CURVE"&&follower.placement.kind==="ON_CURVE"){
+    if(driver.placement.role==="mirror")driver.placement.canonicalPointId=follower.id;
+    if(follower.placement.role==="mirror")follower.placement.canonicalPointId=driver.id;
+  }
   for (const v of p.views)
-    if (viewIsLocked(p, v.id))
-      driver.viewLocks[v.id] = captureLock(driver.position, v);
+    if (driver.placement.kind==="WORLD" && viewIsLocked(p, v.id))
+      driver.viewLocks[v.id] = captureLock(driver.placement.position, v);
   const added = follower
     ? [driver, follower].sort((a, b) =>
         a.type === "LEFT" ? -1 : b.type === "LEFT" ? 1 : 0,
@@ -48,7 +52,7 @@ export function duplicateLandmark(
       ...p,
       landmarks: [...p.landmarks, ...added],
       centerlineOrder:
-        source.type === "CENTERLINE"
+        source.type === "CENTERLINE" && source.placement.kind==="WORLD"
           ? p.centerlineOrder.flatMap((id) =>
               id === source.id ? [id, driver.id] : [id],
             )
@@ -83,17 +87,5 @@ export function deleteLandmark(
   p: LandmarkProject,
   id: string,
 ): LandmarkProject {
-  const source = p.landmarks.find((l) => l.id === id);
-  if (!source) return p;
-  const incident = incidentCurveIds(p, id);
-  return {
-    ...p,
-    curves: p.curves.filter((c) => !incident.has(c.id)),
-    centerlineOrder: p.centerlineOrder.filter(
-      (x) => x !== id && x !== source.mirrorPartnerId,
-    ),
-    landmarks: p.landmarks.filter(
-      (l) => l.id !== id && l.id !== source.mirrorPartnerId,
-    ),
-  };
+  return deleteClosure(p,[`point:${id}`]);
 }

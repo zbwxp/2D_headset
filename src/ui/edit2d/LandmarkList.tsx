@@ -18,7 +18,7 @@ export default function LandmarkList() {
   const points = new Map(s.project.landmarks.map((l) => [l.id, l]));
   const renderPoint = (primary: SemanticLandmark, partner?: SemanticLandmark) => {
     const x = [primary,partner].find(p=>p?.id===(!s.selectedCurveId&&!s.selectedPatchId?s.selectedId:null)) ?? primary;
-    const center = x.type === "CENTERLINE";
+    const center = x.type === "CENTERLINE" && x.placement.kind === "WORLD";
     return (
       <SymmetricPairListItem
         primaryId={primary.id} mirrorId={partner?.id} selectedId={s.selectedCurveId||s.selectedPatchId?null:s.selectedId}
@@ -95,7 +95,7 @@ export default function LandmarkList() {
         )}
         <span
           style={{
-            color: center
+            color: x.type === "CENTERLINE"
               ? "#ffc879"
               : x.type === "LEFT"
                 ? "#b9eb9f"
@@ -124,6 +124,7 @@ export default function LandmarkList() {
         </h3>
         {s.project.centerlineOrder.map((id) => renderPoint(points.get(id)!))}
       </section>
+      {s.project.landmarks.some(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE")&&<section aria-label="中线结构线定位点" className="landmark-group"><h3>中线结构线定位点</h3>{s.project.landmarks.filter(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE").map(l=>renderPoint(l))}</section>}
       <section aria-label="左右对称点" className="landmark-group">
         <h3>左右对称点</h3>
         {landmarkRows(s.project).filter(r=>r.primary.type!=="CENTERLINE").map(r=>renderPoint(r.primary,r.mirror))}

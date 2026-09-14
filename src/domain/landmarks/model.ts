@@ -1,3 +1,4 @@
+import {pointPosition} from "../geometry/evaluation";
 import type { CurveEdge } from "../curves/model";
 import type { Vec3, Vec2, ViewState } from "../project/types";
 import { basis, dot, add, scale, sub } from "../geometry/core";
@@ -7,10 +8,14 @@ export interface ViewLock {
   up: Vec3;
   coordinates: Vec2;
 }
+export type PointPlacement =
+ | {kind:"WORLD";position:Vec3}
+ | {kind:"ON_CURVE";role:"canonical";hostCurveId:string;s:number}
+ | {kind:"ON_CURVE";role:"mirror";hostCurveId:string;canonicalPointId:string};
 export interface SemanticLandmark {
   id: string;
   name: string;
-  position: Vec3;
+  placement: PointPlacement;
   type: "CENTERLINE" | "LEFT" | "RIGHT" | "FREE";
   mirrorPartnerId?: string;
   viewLocks: Record<string, ViewLock>;
@@ -20,6 +25,7 @@ export interface LandmarkProject {
   patches?: import("../patches/model").SurfacePatch[];
   patchDisplay?: import("../patches/model").PatchDisplay;
   version:
+    | "landmarks-0.4.5"
     | "landmarks-0.1"
     | "landmarks-0.2"
     | "landmarks-0.3"
@@ -48,6 +54,7 @@ export function allowedBasis(
   extraRows: Vec3[] = [],
 ): Vec3[] {
   const l = p.landmarks.find((l) => l.id === id)!;
+  if(l.placement.kind!=="WORLD")return [];
   const rows: Vec3[] = [...extraRows];
   if (l.type === "CENTERLINE") rows.push([1, 0, 0]);
   // A symmetric pair has one observation per explicit view. The selected side
@@ -82,6 +89,7 @@ export function editingBasis(
   v: LandmarkView,
 ): Vec3[] {
   const l = p.landmarks.find((x) => x.id === id)!;
+  if(l.placement.kind!=="WORLD")return [];
   const partner = p.landmarks.find((x) => x.id === l.mirrorPartnerId);
   const hasLocks =
     Object.keys(l.viewLocks).length > 0 ||
@@ -95,6 +103,7 @@ export function dragPosition(
   delta: Vec2,
 ): Vec3 {
   const l = p.landmarks.find((l) => l.id === id)!;
+  if(l.placement.kind!=="WORLD")throw Error("结构线定位点只能调整在线位置。");
   const free = editingBasis(p, id, v),
     { right, up } = basis(v);
   const projected = (a: Vec3) =>
@@ -106,7 +115,7 @@ export function dragPosition(
     c = dot(u, u),
     det = a * c - b * b,
     trace = a + c;
-  if (trace < 1e-12) return l.position;
+  if (trace < 1e-12) return pointPosition(p,l.id);
   let x: number, y: number;
   if (det > 1e-10) {
     x = (c * delta[0] - b * delta[1]) / det;
@@ -115,11 +124,12 @@ export function dragPosition(
     x = (a * delta[0] + b * delta[1]) / (trace * trace);
     y = (b * delta[0] + c * delta[1]) / (trace * trace);
   }
-  return add(l.position, add(scale(r, x), scale(u, y)));
+  return add(pointPosition(p,l.id), add(scale(r, x), scale(u, y)));
 }
 
 /** Inspect the same feasible space used by dragging, including invisible depth motion. */
 export function motionState(p: LandmarkProject, id: string, v: LandmarkView) {
+  if(p.landmarks.find(l=>l.id===id)?.placement.kind==="ON_CURVE")return {spatialDof:1,screenDof:0,track:null};
   const spatial = allowedBasis(p, id);
   const editable = editingBasis(p, id, v);
   const { right, up } = basis(v);
@@ -142,8 +152,7 @@ export function motionState(p: LandmarkProject, id: string, v: LandmarkView) {
 
 // Read-only render guide: connects existing centerline landmarks, never creates geometry state.
 export function centerlineGuide(p: LandmarkProject): Vec3[] {
-  const points = new Map(p.landmarks.map((l) => [l.id, l]));
-  return p.centerlineOrder.map((id) => points.get(id)!.position);
+  return p.centerlineOrder.map((id) => pointPosition(p,id));
 }
 
 export const viewIsLocked = (p: LandmarkProject, viewId: string) =>
@@ -158,7 +167,7 @@ export function driverLocks(
 ): Record<string, ViewLock> {
   const l = p.landmarks.find((l) => l.id === id)!;
   const partner = p.landmarks.find((x) => x.id === l.mirrorPartnerId);
-  return { ...partner?.viewLocks, ...l.viewLocks };
+  return l.placement.kind==="WORLD"?{ ...partner?.viewLocks, ...l.viewLocks }:{};
 }
 
 /** Exchange driver/follower at the current positions, retaining explicit camera frames.
@@ -170,14 +179,14 @@ export function activateDriver(
 ): LandmarkProject {
   const l = p.landmarks.find((l) => l.id === id);
   const partner = p.landmarks.find((x) => x.id === l?.mirrorPartnerId);
-  if (!l || !partner || !Object.keys(partner.viewLocks).length) return p;
+  if (!l || l.placement.kind!=="WORLD" || !partner || !Object.keys(partner.viewLocks).length) return p;
   const viewLocks = Object.fromEntries(
     Object.entries(driverLocks(p, id)).map(([viewId, k]) => [
       viewId,
       {
         right: [...k.right] as Vec3,
         up: [...k.up] as Vec3,
-        coordinates: [dot(l.position, k.right), dot(l.position, k.up)] as Vec2,
+        coordinates: [dot(pointPosition(p,l.id), k.right), dot(pointPosition(p,l.id), k.up)] as Vec2,
       },
     ]),
   );
@@ -205,6 +214,7 @@ export function setGlobalViewLock(
   let result = selectedId ? activateDriver(p, selectedId) : p;
   const drivers = new Set<string>();
   for (const l of result.landmarks) {
+    if(l.placement.kind!=="WORLD")continue;
     const partner = result.landmarks.find((x) => x.id === l.mirrorPartnerId);
     if (!partner) {
       drivers.add(l.id);
@@ -230,7 +240,7 @@ export function setGlobalViewLock(
     landmarks: result.landmarks.map((l) => {
       const viewLocks = { ...l.viewLocks };
       if (locked && drivers.has(l.id))
-        viewLocks[viewId] = captureLock(l.position, v);
+        viewLocks[viewId] = captureLock(pointPosition(result,l.id), v);
       else delete viewLocks[viewId];
       return { ...l, viewLocks };
     }),

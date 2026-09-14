@@ -1,3 +1,4 @@
+import {world} from './world-fixture';
 import {it,expect} from 'vitest';
 import {solveSmooth} from '../domain/smooth/solver';
 import {buildLattice} from '../domain/smooth/lattice';
@@ -116,7 +117,7 @@ it('real mirror surfaces share canonical correction exactly; source edits invali
  const node=g.nodes[chart.ids[j][i]];if(node.key.startsWith('E:'+seam.id+':'))expect(r.fields[chart.id].values[j][i]).toEqual([0,0,0]);
  }
  for(const edit of [
- {...p,landmarks:p.landmarks.map((l,i)=>i?l:{...l,position:[l.position[0],l.position[1]+.01,l.position[2]] as [number,number,number]})},
+ {...p,landmarks:p.landmarks.map((l,i)=>i?l:{...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1]+.01,world(l).position[2]] as [number,number,number]}})},
  {...p,curves:p.curves.map(c=>c.role==='canonical'?{...c,shape:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
  {...p,patches:p.patches!.map(c=>c.canonicalId?c:{...c,fullness:.2})}
  ])expect(solveKey(edit)).not.toBe(solveKey(p));
@@ -125,7 +126,7 @@ it('real mirror surfaces share canonical correction exactly; source edits invali
 it('normalized solve is scale-independent',()=>{
  const p=smoothFixture(.6),r=solveSmooth(p);
  for(const scale of [.01,10]){
- const scaled={...p,landmarks:p.landmarks.map(l=>({...l,position:l.position.map(x=>x*scale) as [number,number,number]}))},s=solveSmooth(scaled);
+ const scaled={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:world(l).position.map(x=>x*scale) as [number,number,number]}}))},s=solveSmooth(scaled);
  expect(s.error).toBeUndefined();expect(s.diagnostics.after).toBeCloseTo(r.diagnostics.after,9);
  for(const id in r.fields)r.fields[id].values.forEach((row,j)=>row.forEach((v,i)=>v.forEach((x,k)=>expect(s.fields[id].values[j][i][k]/scale).toBeCloseTo(x,9))));
  }
@@ -134,7 +135,7 @@ it('self-symmetric quad has hard reflected variables including centerplane sampl
  const p=smoothFixture();p.landmarks=[];p.curves=[];p.patches=[];
  const positions:Record<string,[number,number,number]>={b:[0,0,1],t:[0,1,1],l:[-1,.5,1],r:[1,.5,1],o:[-1,1.5,2],q:[1,1.5,2]};
  const partner:Record<string,string>={l:'r',r:'l',o:'q',q:'o',b:'b',t:'t'};
- for(const [id,position] of Object.entries(positions))p.landmarks.push({id,name:id,position,type:['t','b'].includes(id)?'CENTERLINE':id==='l'||id==='o'?'LEFT':'RIGHT',...(['t','b'].includes(id)?{}:{mirrorPartnerId:partner[id]}),viewLocks:{}});
+ for(const [id,position] of Object.entries(positions))p.landmarks.push({id,name:id,placement: {kind:'WORLD' as const,position:position},type:['t','b'].includes(id)?'CENTERLINE':id==='l'||id==='o'?'LEFT':'RIGHT',...(['t','b'].includes(id)?{}:{mirrorPartnerId:partner[id]}),viewLocks:{}});
  for(const [id,a,b] of [['tl','t','l'],['lb','l','b'],['lo','l','o'],['ot','o','t']]){
  p.curves.push({id,name:id,startLandmarkId:a,endLandmarkId:b,role:'canonical',mirrorPartnerCurveId:id+'m',shape:{planeNormal:[0,0,1],startHandle:{along:1/3,offset:0},endHandle:{along:1/3,offset:0}}});
  p.curves.push({id:id+'m',name:id+'m',role:'mirror',canonicalCurveId:id,mirrorPartnerCurveId:id,startLandmarkId:partner[a],endLandmarkId:partner[b]});

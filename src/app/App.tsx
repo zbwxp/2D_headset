@@ -1,3 +1,5 @@
+import OnCurveInspector from "../ui/edit2d/OnCurveInspector";
+import {pointPosition} from "../domain/geometry/evaluation";
 import useSidebarSelection from "../ui/shared/useSidebarSelection";
 import {landmarkRows} from "../ui/shared/pairRows";
 import {ensureSmooth} from "../domain/smooth/service";
@@ -93,7 +95,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.4 · Sidebar Pairs</span>
+          contour<span className="point-version">V0.4.5 · ON_CURVE Point</span>
         </div>
         <input
           className="point-name"
@@ -178,7 +180,7 @@ export default function App() {
               <span>{landmarkRows(s.project).length} 行</span>
             </button>
             <div className="section-body" hidden={ui.landmarkCollapsed}>
-              <LandmarkList />
+              <OnCurveInspector /><LandmarkList />
             </div>
           </section>
           <CurvePanel />
@@ -241,7 +243,7 @@ export default function App() {
             <span>
               {curve
                 ? "曲线编辑：固定平面内弯曲；视图锁仅约束语义点"
-                : lockedViews.length
+                : l?.placement.kind==="ON_CURVE" ? "结构线定位：使用在线位置调整；不受视图锁约束" : lockedViews.length
                   ? `移动基准：${lockedViews.map((v) => v.label).join("、")}锁约束`
                   : `移动基准：${activeView.label}相机平面（深度不变）`}
             </span>
@@ -256,14 +258,14 @@ export default function App() {
           <div className="point-detail">
             <strong>{curve?.name ?? l?.name ?? "未选中语义点"}</strong>
             <span data-testid="dof">
-              {curve ? "Planar Bézier" : `${free.length} DOF`}
+              {curve ? "Planar Bézier" : `${l?.placement.kind==="ON_CURVE"?1:free.length} DOF`}
             </span>
             <span data-testid="motion-status">
               {curve
                 ? "拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转"
                 : !l
                   ? "空项目 · 撤销或打开项目恢复"
-                  : motion.spatialDof === 0
+                  : l.placement.kind==="ON_CURVE" ? "结构线定位 · 使用在线位置调整" : motion.spatialDof === 0
                     ? "已固定 · 解除视图锁以继续"
                     : motion.screenDof === 0
                       ? "仅剩视线方向移动 · 请换视图"
@@ -296,7 +298,7 @@ export default function App() {
           <code data-testid="position">
             {curve
               ? "固定端点 · 平面内形状"
-              : l?.position.map((n) => n.toFixed(4)).join(" / ")}
+              : (l ? pointPosition(s.project,l.id).map((n) => n.toFixed(4)).join(" / ") : undefined)}
           </code>
         </div>
         <span>
@@ -304,7 +306,7 @@ export default function App() {
             ? curve.mirrorPartnerCurveId
               ? "左右镜像 · 一套独立形状"
               : "正中矢状面曲线"
-            : partner
+            : l?.placement.kind==="ON_CURVE" ? "结构线定位 · 在线位置共享" : partner
               ? `Driver：${l?.name} → Follower：${partner.name}`
               : l
                 ? "正中矢状面 x = 0"

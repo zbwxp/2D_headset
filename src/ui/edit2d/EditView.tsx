@@ -1,3 +1,4 @@
+import {pointPosition} from "../../domain/geometry/evaluation";
 import PatchLayer from "../patches/PatchLayer";
 import CurveLayer from "../curves/CurveLayer";
 import { useRef } from "react";
@@ -35,10 +36,11 @@ export default function EditView() {
     -(p[1] - pan[1]) / zoom / 160,
   ];
   const motion = l ? motionState(s.project, l.id, v) : { track: null },
-    q = l ? project(l.position, v) : [0, 0];
+    q = l ? project(pointPosition(s.project,l.id), v) : [0, 0];
   const track = motion.track ? [motion.track[0], -motion.track[1]] : null;
   const end = () => {
     drag.current = null;
+    s.endEdit();
   };
   return (
     <div className="point-stage">
@@ -200,7 +202,7 @@ export default function EditView() {
             ...s.project.landmarks.filter((x) => x.id !== l?.id),
             ...(l ? [l] : []),
           ].map((x) => {
-            const p = project(x.position, v),
+            const p = project(pointPosition(s.project,x.id), v),
               selected = !s.selectedCurveId && x.id === l?.id;
             return (
               <g key={x.id}>
@@ -251,6 +253,7 @@ export default function EditView() {
                     s.selectLandmark(x.id);
                     e.preventDefault();
                     e.currentTarget.focus({ preventScroll: true });
+                    if(x.placement.kind==="ON_CURVE")return;
                     drag.current = {
                       kind: "point",
                       id: x.id,
@@ -269,6 +272,7 @@ export default function EditView() {
                       }
                       return;
                     }
+                    if(x.placement.kind==="ON_CURVE")return;
                     const d: Record<string, Vec2> = {
                       ArrowLeft: [-1, 0],
                       ArrowRight: [1, 0],
@@ -368,7 +372,7 @@ export function MiniPreview({ viewId }: { viewId: string }) {
         <PatchLayer view={v} />
           <CurveLayer view={v} readonly />
         {s.project.landmarks.map((l) => {
-          const p = project(l.position, v);
+          const p = project(pointPosition(s.project,l.id), v);
           return (
             <circle
               key={l.id}

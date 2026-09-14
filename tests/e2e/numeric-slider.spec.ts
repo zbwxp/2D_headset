@@ -55,7 +55,7 @@ test('blur, visibility, disabled, unmount and pointer cancellation close session
  await page.getByRole('textbox',{name:'Text',exact:true}).press('ArrowLeft');await expect(page.getByTestId('counts')).toHaveText('1,1');
 });
 test('geometry keyboard hold is one Undo; float settings persist and display sliders do not add history',async({page})=>{
- await page.goto('/');await page.clock.install();const s=page.getByRole('slider',{name:'Smooth Strength',exact:true});await s.fill('42.35');await s.blur();
+ await page.goto('/');await page.locator('.patch-panel .section-heading').click();await page.clock.install();const s=page.getByRole('slider',{name:'Smooth Strength',exact:true});await s.fill('42.35');await s.blur();
  const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));
  expect((await state()).surfaceSmooth.strength).toBe(.4235);await expect(page.locator('.point-footer')).toContainText('撤销 1 / 100');
  await s.focus();await page.keyboard.down('ArrowRight');await page.clock.runFor(1400);await page.keyboard.up('ArrowRight');const changed=(await state()).surfaceSmooth.strength;

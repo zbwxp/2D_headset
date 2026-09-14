@@ -7,7 +7,7 @@ export function repairCenterlineOrder(
   input: unknown,
 ): string[] {
   const remaining = new Set(
-    landmarks.filter((l) => l.type === "CENTERLINE").map((l) => l.id),
+    landmarks.filter((l) => l.type === "CENTERLINE" && l.placement.kind === "WORLD").map((l) => l.id),
   );
   const order: string[] = [];
   for (const id of Array.isArray(input) ? input : []) {

@@ -35,6 +35,7 @@ export default function CurvePanel() {
         {c && (
           <div className="curve-current" data-testid="curve-current">
             <strong>当前：{c.name}</strong>
+            <button onClick={()=>s.addOnCurvePoint(c.id)}>添加结构线定位点</button>
             <PlaneControl key={c.id} id={c.id} />
             <SmoothEdgeControl key={"smooth-"+c.id} id={c.id}/>
           </div>
@@ -78,7 +79,7 @@ function PlaneControl({ id }: { id: string }) {
   const [angle, setAngle] = useState(0);
   if (isCenterCurve(s.project, c)) return <p>固定于中线平面 · 无旋转自由度</p>;
   return (
-    <NumericSlider className="curve-plane" label="调整曲线平面" min={-180} max={180} value={angle} formatValue={v=>formatNumeric(v)+'°'} disabled={f.length<CURVE_EPS} onEditStart={s.beginEdit} onChange={a=>{
+    <NumericSlider className="curve-plane" label="调整曲线平面" min={-180} max={180} value={angle} formatValue={v=>formatNumeric(v)+'°'} disabled={f.length<CURVE_EPS} onEditStart={s.beginEdit} onEditEnd={s.endEdit} onChange={a=>{
           s.setCurveShape(base.id, {
             ...base.shape,
             planeNormal: rotate(

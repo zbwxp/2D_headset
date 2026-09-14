@@ -38,18 +38,18 @@ test("cross-view same point, whole-view locks, mirror hard constraints, DOF and 
   let p = await state(page);
   const find = (p: any, n: string) =>
     p.landmarks.find((x: any) => x.name === n);
-  expect(find(p, "左外眼角点").position[2]).toBe(
-    find(old, "左外眼角点").position[2],
+  expect(find(p, "左外眼角点").placement.position[2]).toBe(
+    find(old, "左外眼角点").placement.position[2],
   );
-  expect(find(p, "左外眼角点").position[0]).not.toBe(
-    find(old, "左外眼角点").position[0],
+  expect(find(p, "左外眼角点").placement.position[0]).not.toBe(
+    find(old, "左外眼角点").placement.position[0],
   );
   for (const l of old.landmarks)
     if (!["左外眼角点", "右外眼角点"].includes(l.name))
       expect(find(p, l.name)).toEqual(l);
-  expect(find(p, "右外眼角点").position).toEqual([
-    -find(p, "左外眼角点").position[0],
-    ...find(p, "左外眼角点").position.slice(1),
+  expect(find(p, "右外眼角点").placement.position).toEqual([
+    -find(p, "左外眼角点").placement.position[0],
+    ...find(p, "左外眼角点").placement.position.slice(1),
   ]);
   await page.getByLabel("锁定此视图全部点").check();
   await choose(page, "左眉尾点");
@@ -58,9 +58,9 @@ test("cross-view same point, whole-view locks, mirror hard constraints, DOF and 
   await expect(page.getByLabel("锁定此视图全部点")).toBeChecked();
   await view(page, "侧面");
   await expect(page.getByTestId("allowed-track")).toHaveCount(1);
-  const before = find(await state(page), "左外眼角点").position;
+  const before = find(await state(page), "左外眼角点").placement.position;
   await drag(page, "左外眼角点", 40, 30);
-  const after = find(await state(page), "左外眼角点").position;
+  const after = find(await state(page), "左外眼角点").placement.position;
   expect(after[0]).toBe(before[0]);
   expect(after[1]).toBe(before[1]);
   expect(after[2]).not.toBe(before[2]);
@@ -68,7 +68,7 @@ test("cross-view same point, whole-view locks, mirror hard constraints, DOF and 
   await view(page, "右 45°");
   await expect(page.getByTestId("dof")).toHaveText("0 DOF");
   await drag(page, "左外眼角点", 30, 30);
-  expect(find(await state(page), "左外眼角点").position).toEqual(after);
+  expect(find(await state(page), "左外眼角点").placement.position).toEqual(after);
   await expect(page.getByRole("status")).toContainText("解除");
   await view(page, "正面");
   await page.getByLabel("锁定此视图全部点").uncheck();
@@ -170,8 +170,8 @@ test("front global lock survives selecting every point in right45; clicking neve
   for (const l of before.landmarks) {
     await choose(page, l.name);
     await page.getByTestId(`landmark-${l.name}`).click();
-    expect((await state(page)).landmarks.map((l: any) => l.position)).toEqual(
-      before.landmarks.map((l: any) => l.position),
+    expect((await state(page)).landmarks.map((l: any) => l.placement.position)).toEqual(
+      before.landmarks.map((l: any) => l.placement.position),
     );
     await expect(
       page.getByRole("button", { name: "解锁正面全部点" }),
@@ -191,8 +191,8 @@ test("front global lock survives selecting every point in right45; clicking neve
     (await state(page)).landmarks.every((l: any) => !l.viewLocks.front),
   ).toBe(true);
   await page.keyboard.press("Control+z");
-  expect((await state(page)).landmarks.map((l: any) => l.position)).toEqual(
-    before.landmarks.map((l: any) => l.position),
+  expect((await state(page)).landmarks.map((l: any) => l.placement.position)).toEqual(
+    before.landmarks.map((l: any) => l.placement.position),
   );
 });
 test("both 45 degree edits keep world mirror and every globally locked front projection", async ({
@@ -207,14 +207,14 @@ test("both 45 degree edits keep world mirror and every globally locked front pro
     const p = await state(page),
       l = p.landmarks.find((l: any) => l.name === "左外眼角点");
     const partner = p.landmarks.find((x: any) => x.id === l.mirrorPartnerId);
-    expect(partner.position).toEqual([
-      -l.position[0],
-      l.position[1],
-      l.position[2],
+    expect(partner.placement.position).toEqual([
+      -l.placement.position[0],
+      l.placement.position[1],
+      l.placement.position[2],
     ]);
     for (let i = 0; i < p.landmarks.length; i++)
-      expect(p.landmarks[i].position.slice(0, 2)).toEqual(
-        before.landmarks[i].position.slice(0, 2),
+      expect(p.landmarks[i].placement.position.slice(0, 2)).toEqual(
+        before.landmarks[i].placement.position.slice(0, 2),
       );
   }
 });
@@ -233,18 +233,18 @@ test("right eye driver: yaw45 -> top diagonal, follower moves, handoff, undo and
     get = (p: any, n: string) => p.landmarks.find((l: any) => l.name === n);
   await drag(page, "右外眼角点", 30, 30);
   const after = await state(page),
-    a = get(before, "右外眼角点").position,
-    b = get(after, "右外眼角点").position;
+    a = get(before, "右外眼角点").placement.position,
+    b = get(after, "右外眼角点").placement.position;
   expect(b[0] - a[0]).toBeCloseTo(b[2] - a[2], 9);
   expect(Math.abs(b[0] - a[0])).toBeGreaterThan(0.02);
   expect(b[1]).toBe(a[1]);
-  expect(get(after, "左外眼角点").position).toEqual([-b[0], b[1], b[2]]);
+  expect(get(after, "左外眼角点").placement.position).toEqual([-b[0], b[1], b[2]]);
   expect(get(after, "左外眼角点").viewLocks).toEqual({});
   await page.screenshot({ path: info.outputPath("driver-top-diagonal.png") });
   await page.keyboard.press("Control+z");
-  expect(get(await state(page), "右外眼角点").position).toEqual(a);
+  expect(get(await state(page), "右外眼角点").placement.position).toEqual(a);
   await page.keyboard.press("Control+Shift+z");
-  expect(get(await state(page), "右外眼角点").position).toEqual(b);
+  expect(get(await state(page), "右外眼角点").placement.position).toEqual(b);
   await choose(page, "左外眼角点");
   await expect(page.getByTestId("dof")).toHaveText("1 DOF");
   const swapped = await state(page);

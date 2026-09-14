@@ -1,3 +1,5 @@
+import {addOnCurvePoint,setOnCurveS} from "../domain/landmarks/placement";
+import {GeometryEvaluationContext,pointPosition} from "../domain/geometry/evaluation";
 import {defaultSmooth} from "../domain/smooth/model";
 import {renamePatch,addPatch,prunePatches,defaultDisplay,patchQualityLevels,type PatchQuality} from "../domain/patches/model";
 import {
@@ -71,6 +73,9 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  addOnCurvePoint:(id:string)=>void;
+  setOnCurveS:(id:string,s:number)=>void;
+  endEdit:()=>void;
   selectionTick:number;
   patchCreation: string[] | null;
   selectedPatchId: string | null;
@@ -131,13 +136,23 @@ function persist(p: LandmarkProject) {
   }
 }
 export const useEditor = create<State>((set, get) => {
+  let editBase:LandmarkProject|null=null;
+  const propagate=(next:LandmarkProject,directCurve?:string)=>{
+    const base=editBase??get().project;
+    const curves=next.curves.map(c=>{const old=base.curves.find(x=>x.id===c.id);return c.role==='canonical'&&c.id!==directCurve&&old?.role==='canonical'?{...c,shape:{...c.shape,planeNormal:old.shape.planeNormal}}:c;});
+    const result=followEndpoints(base,{...next,curves}),ctx=new GeometryEvaluationContext(result);
+    result.landmarks.forEach(l=>ctx.pointPosition(l.id));return result;
+  };
   const commit = (p: LandmarkProject) => {
-    p=prunePatches(p);
+    p={...prunePatches(p),version:"landmarks-0.4.5"};
     if(p.surfaceSmooth){const overrides=p.surfaceSmooth.edgeInfluenceOverrides;const entries=Object.entries(overrides).filter(([id])=>p.curves.some(c=>c.id===id&&c.role==='canonical'));if(entries.length!==Object.keys(overrides).length)p={...p,surfaceSmooth:{...p.surfaceSmooth,edgeInfluenceOverrides:Object.fromEntries(entries)}};}
-    set({ project: p });
+    set({ project: p,selectedId:p.landmarks.some(l=>l.id===get().selectedId)?get().selectedId:null,selectedCurveId:p.curves.some(c=>c.id===get().selectedCurveId)?get().selectedCurveId:null,selectedPatchId:p.patches?.some(x=>x.id===get().selectedPatchId)?get().selectedPatchId:null });
     persist(p);
   };
   return {
+    endEdit:()=>{editBase=null;},
+    addOnCurvePoint:(id)=>{try{const result=addOnCurvePoint(get().project,id);get().beginEdit();commit(result.project);editBase=null;set({selectedId:result.selectedId,selectedCurveId:null,selectedPatchId:null,selectionTick:get().selectionTick+1,message:'已添加结构线定位点，使用在线位置调整。'});}catch(e){set({message:(e as Error).message});}},
+    setOnCurveS:(id,value)=>{try{commit(propagate(setOnCurveS(get().project,id,value)));}catch(e){set({message:(e as Error).message});}},
     selectionTick:0, patchCreation:null, selectedPatchId:null,
     selectPatch:(id)=>{if(get().patchCreation || !get().project.patches?.some(p=>p.id===id))return;set({selectionTick:get().selectionTick+1,selectedPatchId:id,selectedCurveId:null,selectedId:null,curveCreation:null,message:""});},
     startPatch:()=>set({patchCreation:[],curveCreation:null,selectedCurveId:null,message:'选择 3 / 4 条边形成闭环；再次点击取消选择，Esc 退出。'}),
@@ -212,12 +227,12 @@ export const useEditor = create<State>((set, get) => {
         ].every(Number.isFinite)
       )
         return;
-      commit({
+      try{commit(propagate({
         ...get().project,
         curves: get().project.curves.map((c) =>
           c.id === id && c.role === "canonical" ? { ...c, shape } : c,
         ),
-      });
+      },id));}catch(e){set({message:(e as Error).message});}
     },
     renameCurve: (id, name) => {
       const p = renameCurve(get().project, id, name);
@@ -235,11 +250,11 @@ export const useEditor = create<State>((set, get) => {
     future: [],
     message,
     referenceMoving: false,
-    beginEdit: () =>
+    beginEdit: () => {editBase=get().project;
       set((s) => ({
         past: [...s.past.slice(-(HISTORY_LIMIT - 1)), s.project],
         future: [],
-      })),
+      }));},
     selectView: (id) => set({ viewId: id, referenceMoving: false }),
     selectLandmark: (id) => {
       if (get().curveCreation) {
@@ -276,30 +291,30 @@ export const useEditor = create<State>((set, get) => {
       const current = get(),
         s = { ...current, project: activateDriver(current.project, id) },
         l = s.project.landmarks.find((l) => l.id === id)!;
-      if (!l) return;
+      if (!l || l.placement.kind!=="WORLD") return;
       if (!allowedBasis(s.project, id).length) {
         set({ message: "此点被硬约束固定，请解除上方列出的视图锁。" });
         return;
       }
       const v = s.project.views.find((v) => v.id === s.viewId)!,
-        old = project(l.position, v),
+        old = project(pointPosition(s.project,l.id), v),
         position = dragPosition(s.project, id, v, [
           target[0] - old[0],
           target[1] - old[1],
         ]);
       if (!position.every(Number.isFinite)) return;
-      commit(
-        followEndpoints(s.project, {
+      try{commit(
+        propagate({
           ...s.project,
           landmarks: s.project.landmarks.map((x) =>
             x.id === id
-              ? { ...x, position }
+              ? { ...x, placement:{kind:"WORLD",position} }
               : x.id === l.mirrorPartnerId
-                ? { ...x, position: mirror(position) }
+                ? { ...x, placement:{kind:"WORLD",position: mirror(position)} }
                 : x,
           ),
         }),
-      );
+      );}catch(e){set({message:(e as Error).message});}
     },
     lockView: () => {
       const s = get();
@@ -317,7 +332,7 @@ export const useEditor = create<State>((set, get) => {
         message: `${v.label}：${locked ? "已启用视图锁；成对点仅约束 driver" : "已解除该视图锁"}`,
       });
     },
-    undo: () => {
+    undo: () => {editBase=null;
       const s = get(),
         p = s.past.at(-1);
       if (!p) return;
@@ -337,7 +352,7 @@ export const useEditor = create<State>((set, get) => {
       });
       commit({...p,patchDisplay:s.project.patchDisplay});
     },
-    redo: () => {
+    redo: () => {editBase=null;
       const s = get(),
         p = s.future[0];
       if (!p) return;
@@ -357,7 +372,7 @@ export const useEditor = create<State>((set, get) => {
       });
       commit({...p,patchDisplay:s.project.patchDisplay});
     },
-    load: (p) => {
+    load: (p) => {editBase=null;
       get().beginEdit();
       set({
         project: p,
@@ -379,7 +394,8 @@ export const useEditor = create<State>((set, get) => {
         project: result.project,
         selectedId: result.selectedId,
         selectedCurveId: null,
-        message: "已复制；新点立即遵循当前视图锁。",
+        message: "已复制语义点。",
+        selectedPatchId:null,
       });
       persist(result.project);
     },
@@ -405,6 +421,7 @@ export const useEditor = create<State>((set, get) => {
       set({
         project: p,
         selectedCurveId: null,
+        selectedPatchId:null,
         curveCreation: null,
         selectedId: p.landmarks[0]?.id ?? null,
         message: p.landmarks.length

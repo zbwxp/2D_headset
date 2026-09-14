@@ -11,7 +11,7 @@ export function createLandmarkProject(): LandmarkProject {
   ): SemanticLandmark => ({
     id: crypto.randomUUID(),
     name,
-    position,
+    placement:{kind:"WORLD",position},
     type,
     viewLocks: {},
   });
@@ -62,7 +62,7 @@ export function createLandmarkProject(): LandmarkProject {
     canvas: { zoom: 1, pan: [0, 0] },
   }));
   return {
-    version: "landmarks-0.3.9",
+    version: "landmarks-0.4.5",
     curves: [],
     meta: {
       name: "语义点头部研究",
