@@ -1,5 +1,17 @@
 import{test,expect}from'@playwright/test';
 test.beforeEach(async({page})=>{await page.goto('/tests/fixtures/numeric-slider.html');});
+test('zero detent accepts fine departure and snaps inward with stable pointer capture',async({page})=>{
+ const s=page.getByRole('slider',{name:'Angle',exact:true});
+ await s.press('Alt+ArrowRight');await expect(s).toHaveValue('0.18');
+ await s.press('Alt+ArrowLeft');await expect(s).toHaveValue('0');
+ await s.fill('10');await s.press('ArrowLeft');await expect(s).toHaveValue('9.1');
+ const r=(await s.boundingBox())!,y=r.y+r.height/2;
+ await page.mouse.move(r.x+r.width*.53,y);await page.mouse.down();
+ await page.mouse.move(r.x+r.width*.505,y);await expect(s).toHaveValue('0');
+ await page.mouse.move(r.x+r.width*.504,y);await expect(s).toHaveValue('0');
+ await page.mouse.move(r.x+r.width*.48,y);expect(+(await s.inputValue())).toBeLessThan(-3.6);
+ await page.mouse.up();
+});
 test('fine taps, modifiers, normalized ranges, Home/End and float values',async({page})=>{
  const s=page.getByRole('slider',{name:'Test',exact:true});
  await s.press('ArrowRight');await expect(s).toHaveValue('50.25');

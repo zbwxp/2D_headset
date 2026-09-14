@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef} from 'react';
-import {SLIDER,formatNumeric,modifierScale,holdMultiplier,trackValue} from './numericSliderMath';
+import {SLIDER,formatNumeric,modifierScale,holdMultiplier,trackValue,snapTowardZero} from './numericSliderMath';
 export interface NumericSliderProps {
  label:string; value:number; min:number; max:number;
  onChange:(value:number)=>void; onEditStart?:()=>void; onEditEnd?:()=>void;
@@ -10,22 +10,30 @@ export interface NumericSliderProps {
 export default function NumericSlider(props:NumericSliderProps){
  const latest=useRef(props);latest.current=props;
  const input=useRef<HTMLInputElement>(null),editing=useRef(false),pointer=useRef<number|null>(null);
+ const pointerAtNeutral=useRef(false);
  const hold=useRef<{key:string;direction:number;start:number;last:number;alt:boolean;shift:boolean}|null>(null),raf=useRef(0);
  const end=useCallback(()=>{
-  cancelAnimationFrame(raf.current);hold.current=null;
+  cancelAnimationFrame(raf.current);hold.current=null;pointerAtNeutral.current=false;
   const id=pointer.current;pointer.current=null;
   if(id!==null&&input.current?.hasPointerCapture(id))input.current.releasePointerCapture(id);
   if(editing.current){editing.current=false;latest.current.onEditEnd?.();}
  },[]);
  const change=useCallback((value:number)=>{
   const p=latest.current;if(p.disabled||!Number.isFinite(value))return;
-  value=Math.max(p.min,Math.min(p.max,value));if(value===p.value)return;
+  value=snapTowardZero(p.value,Math.max(p.min,Math.min(p.max,value)),p.min,p.max);if(value===p.value)return;
   if(!editing.current){editing.current=true;p.onEditStart?.();}
   latest.current={...p,value};p.onChange(value);
  },[]);
  useEffect(()=>{const stop=()=>end(),visibility=()=>{if(document.hidden)end();};window.addEventListener('blur',stop);document.addEventListener('visibilitychange',visibility);return()=>{window.removeEventListener('blur',stop);document.removeEventListener('visibilitychange',visibility);end();};},[end]);
  useEffect(()=>{if(props.disabled)end();},[props.disabled,end]);
- const move=(x:number)=>{const r=input.current!.getBoundingClientRect(),p=latest.current;change(trackValue(x,r.left,r.width,p.min,p.max));};
+ const move=(x:number)=>{
+  const r=input.current!.getBoundingClientRect(),p=latest.current,raw=trackValue(x,r.left,r.width,p.min,p.max);
+  if(pointerAtNeutral.current&&Math.abs(raw)<=(p.max-p.min)*.01)return;
+  pointerAtNeutral.current=false;
+  const snapped=snapTowardZero(p.value,raw,p.min,p.max);
+  if(snapped===0&&raw!==0)pointerAtNeutral.current=true;
+  change(snapped);
+ };
  const tick=()=>{
   const h=hold.current;if(!h)return;const now=performance.now(),p=latest.current;
   const dt=Math.min(50,Math.max(0,now-Math.max(h.last,h.start+SLIDER.delay)));h.last=now;
