@@ -1,3 +1,4 @@
+import useSidebarSelection from "../ui/shared/useSidebarSelection";
 import {landmarkRows} from "../ui/shared/pairRows";
 import {ensureSmooth} from "../domain/smooth/service";
 import {subscribeSmooth,smoothVersion} from "../domain/smooth/evaluation";
@@ -31,6 +32,7 @@ import { parseLandmarks } from "../domain/landmarks/persistence";
 import EditView, { MiniPreview } from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
+  useSidebarSelection();
   useSyncExternalStore(subscribeSmooth,smoothVersion);
   const ui = useUI();
   const s = useEditor(),

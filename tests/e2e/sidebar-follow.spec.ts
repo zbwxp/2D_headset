@@ -1,0 +1,28 @@
+import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {parseLandmarks} from '../../src/domain/landmarks/persistence';
+import {addPatch} from '../../src/domain/patches/model';
+const base=parseLandmarks(readFileSync('artifacts/basic-patch/adjusted-source.json','utf8'));
+const names=['左面壳前边界·颧颊至下颊','左颊部体积线·颧颊至颊峰','左颊部体积线·颊峰至下颊'];
+const project=addPatch(base,names.map(n=>base.curves.find(c=>c.name===n)!.id));
+test('selection expands only its section, reveals member row, reselects and keeps creation tools',async({page})=>{
+ await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'follow.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+ const heading=(name:string)=>page.getByRole('region',{name,exact:true}).locator('.section-heading');
+ const row=(id:string)=>page.locator(`[data-pair-primary="${id}"], [data-pair-mirror="${id}"]`);
+ const visible=async(id:string)=>expect.poll(()=>row(id).evaluate(node=>{const r=node.getBoundingClientRect();for(let p=node.parentElement;p;p=p.parentElement){if(/auto|scroll/.test(getComputedStyle(p).overflowY)){const b=p.getBoundingClientRect();if(r.top<b.top-1||r.bottom>b.bottom+1)return false;}if(p.matches('.point-sidebar'))break;}return r.height>0;})).toBe(true);
+ const point=project.landmarks.at(-1)!;
+ await page.getByTestId(`landmark-${point.name}`).click({force:true});
+ await expect(heading('语义点')).toHaveAttribute('aria-expanded','true');await expect(heading('结构线')).toHaveAttribute('aria-expanded','false');await expect(heading('曲面 Patch')).toHaveAttribute('aria-expanded','false');await visible(point.id);
+ await heading('语义点').click();await page.getByTestId(`landmark-${point.name}`).click({force:true});await expect(heading('语义点')).toHaveAttribute('aria-expanded','true');await visible(point.id);
+ const curve=project.curves.at(-1)!;await page.getByTestId(`curve-hit-${curve.id}`).dispatchEvent('pointerdown',{button:0,pointerId:1,clientX:600,clientY:400});
+ await expect(heading('结构线')).toHaveAttribute('aria-expanded','true');await expect(heading('语义点')).toHaveAttribute('aria-expanded','false');await visible(curve.id);
+ await heading('曲面 Patch').click();await row(project.patches![0].id).click();await expect(heading('结构线')).toHaveAttribute('aria-expanded','false');await expect(heading('曲面 Patch')).toHaveAttribute('aria-expanded','true');await visible(project.patches![0].id);
+ const fullness=page.getByTestId('fullness-control');await expect(fullness).toBeVisible();
+ const bounds=await fullness.boundingBox(),scroll=await page.locator('#patch-panel-content').boundingBox();expect(bounds!.y).toBeGreaterThanOrEqual(scroll!.y);expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(scroll!.y+scroll!.height+1);
+ const header=await heading('曲面 Patch').boundingBox();await page.locator('#patch-panel-content').evaluate(el=>el.scrollTop=el.scrollHeight);
+ expect(await heading('曲面 Patch').boundingBox()).toEqual(header);await expect(page.getByRole('checkbox',{name:'显示 Patch',exact:true})).toBeVisible();
+ expect(await page.locator('.patch-global-settings').evaluate(el=>!!el.previousElementSibling?.matches('[data-patch-card]'))).toBe(true);
+ await expect(page.locator('.point-footer')).toContainText('撤销 1 / 100');
+ await heading('结构线').click();await page.getByRole('button',{name:'创建曲线',exact:true}).click();await page.getByTestId(`landmark-${point.name}`).click({force:true});await expect(heading('结构线')).toHaveAttribute('aria-expanded','true');await expect(page.getByText('取消创建',{exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');if(await heading('曲面 Patch').getAttribute('aria-expanded')==='false')await heading('曲面 Patch').click();await page.getByRole('button',{name:'绘制面',exact:true}).click();await page.getByTestId(`curve-hit-${curve.id}`).dispatchEvent('pointerdown',{button:0,pointerId:1,clientX:600,clientY:400});await expect(heading('曲面 Patch')).toHaveAttribute('aria-expanded','true');await expect(page.getByRole('button',{name:'退出绘制面（Esc）'})).toBeVisible();
+});

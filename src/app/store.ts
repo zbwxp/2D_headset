@@ -71,6 +71,7 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  selectionTick:number;
   patchCreation: string[] | null;
   selectedPatchId: string | null;
   selectPatch: (id:string) => void;
@@ -137,8 +138,8 @@ export const useEditor = create<State>((set, get) => {
     persist(p);
   };
   return {
-    patchCreation:null, selectedPatchId:null,
-    selectPatch:(id)=>{if(get().patchCreation || !get().project.patches?.some(p=>p.id===id))return;set({selectedPatchId:id,selectedCurveId:null,selectedId:null,curveCreation:null,message:""});},
+    selectionTick:0, patchCreation:null, selectedPatchId:null,
+    selectPatch:(id)=>{if(get().patchCreation || !get().project.patches?.some(p=>p.id===id))return;set({selectionTick:get().selectionTick+1,selectedPatchId:id,selectedCurveId:null,selectedId:null,curveCreation:null,message:""});},
     startPatch:()=>set({patchCreation:[],curveCreation:null,selectedCurveId:null,message:'选择 3 / 4 条边形成闭环；再次点击取消选择，Esc 退出。'}),
     cancelPatch:()=>set({patchCreation:null,message:''}),
     pickPatchEdge:(id)=>{
@@ -199,7 +200,7 @@ export const useEditor = create<State>((set, get) => {
         set({ message: (e as Error).message });
       }
     },
-    selectCurve: (id) => { if(get().patchCreation){get().pickPatchEdge(id);return;} set({selectedPatchId:null, selectedCurveId: id, curveCreation: null, message: "" }); },
+    selectCurve: (id) => { if(get().patchCreation){get().pickPatchEdge(id);return;} set({selectionTick:get().selectionTick+1,selectedPatchId:null, selectedCurveId: id, curveCreation: null, message: "" }); },
     setCurveShape: (id, shape) => {
       if (
         ![
@@ -248,7 +249,7 @@ export const useEditor = create<State>((set, get) => {
       set({ selectedCurveId: null, selectedPatchId:null });
       if (!get().project.landmarks.some((l) => l.id === id)) return;
       const p = activateDriver(get().project, id);
-      set({ project: p, selectedId: id, message: "" });
+      set({ selectionTick:get().selectionTick+1, project: p, selectedId: id, message: "" });
       persist(p);
     },
     notify: (message) => set({ message }),

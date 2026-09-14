@@ -2375,3 +2375,12 @@ i:not([class]) {
 .patch-panel .symmetric-pair-row { padding:9px 8px; border-radius:5px; }
 .patch-panel .symmetric-pair-row.active { background:#2d3a32; }
 .symmetric-pair-row:focus-visible { outline:1px solid #b9eb9f; outline-offset:-1px; }
+/* When the Patch section is focused, use the space released by the other lists. */
+.point-sidebar > .patch-panel:not(.collapsed) {flex:1 1 0;min-height:0;max-height:none}
+/* Patch heading/visibility stay outside the scrolling list. */
+.point-sidebar > .patch-panel {overflow:hidden}
+.patch-panel > .patch-heading, .patch-visibility {flex:0 0 auto}
+.patch-panel-content {overflow-y:auto;min-height:0;flex:1 1 auto}
+.patch-panel-content > * {flex-shrink:0}
+.patch-card [data-testid="fullness-control"] {padding:8px 10px 12px;background:#252f2a;border-radius:0 0 5px 5px}
+.patch-global-settings {display:flex;flex-direction:column;gap:12px;border-top:1px solid #394449;margin-top:12px;padding-top:12px}
