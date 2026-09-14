@@ -33,6 +33,7 @@ export default function InlineName({
     try {
       if (save && value.trim() !== baseName) {
         if (target.kind === "landmark") s.renameSelected(value, target.id);
+        else if(target.kind==="patch")s.renamePatch(target.id,value);
         else s.renameCurve(target.id, value);
       }
     } catch (e) {
@@ -47,7 +48,7 @@ export default function InlineName({
       <input
         ref={input}
         className="inline-name-input"
-        aria-label={target.kind === "landmark" ? "语义点名称" : "结构线名称"}
+        aria-label={target.kind === "landmark" ? "语义点名称" : target.kind==="patch"?"曲面名称":"结构线名称"}
         value={value}
         maxLength={80}
         onChange={(e) => setValue(e.target.value)}
@@ -65,15 +66,5 @@ export default function InlineName({
         }}
       />
     );
-  return (
-    <span
-      className="entity-name"
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        useUI.setState({ renameTarget: target });
-      }}
-    >
-      {name}
-    </span>
-  );
+  return <span className="entity-name">{name}</span>;
 }

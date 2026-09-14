@@ -1,3 +1,5 @@
+import SymmetricPairListItem from "../shared/SymmetricPairListItem";
+import {landmarkRows} from "../shared/pairRows";
 import InlineName from "../shared/InlineName";
 import { useUI } from "../session";
 import { landmarkBaseName } from "../../domain/landmarks/management";
@@ -14,22 +16,22 @@ export default function LandmarkList() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const points = new Map(s.project.landmarks.map((l) => [l.id, l]));
-  const renderPoint = (x: SemanticLandmark) => {
+  const renderPoint = (primary: SemanticLandmark, partner?: SemanticLandmark) => {
+    const x = [primary,partner].find(p=>p?.id===(!s.selectedCurveId&&!s.selectedPatchId?s.selectedId:null)) ?? primary;
     const center = x.type === "CENTERLINE";
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        key={x.id}
-        aria-label={x.name}
+      <SymmetricPairListItem
+        primaryId={primary.id} mirrorId={partner?.id} selectedId={s.selectedCurveId||s.selectedPatchId?null:s.selectedId}
+        displayName={partner?landmarkBaseName(primary):primary.name}
+        onSelect={s.selectLandmark}
+        onRename={id=>useUI.setState({renameTarget:{kind:"landmark",id}})}
+        key={primary.id}
         data-landmark-id={x.id}
         draggable={center && useUI.getState().renameTarget?.id !== x.id}
         className={[
-          !s.selectedCurveId && x.id === s.selectedId ? "active" : "",
           drop?.id === x.id ? (drop.after ? "drop-after" : "drop-before") : "",
         ].join(" ")}
         title={center ? "拖动调整中心线顺序；Alt + 上下方向键也可排序" : x.name}
-        onClick={() => s.selectLandmark(x.id)}
         onContextMenu={(e) => {
           e.preventDefault();
           s.selectLandmark(x.id);
@@ -75,11 +77,6 @@ export default function LandmarkList() {
           setDrop(null);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            s.selectLandmark(x.id);
-            return;
-          }
           if (!center || !e.altKey || !["ArrowUp", "ArrowDown"].includes(e.key))
             return;
           e.preventDefault();
@@ -91,7 +88,7 @@ export default function LandmarkList() {
           if (target) s.reorderCenterline(x.id, target, down);
         }}
       >
-        {center && (
+        {()=> <>{center && (
           <span className="order-grip" aria-hidden="true">
             ⠿
           </span>
@@ -109,13 +106,14 @@ export default function LandmarkList() {
         </span>
         <InlineName
           target={{ kind: "landmark", id: x.id }}
-          name={x.name}
+          name={partner?landmarkBaseName(primary):x.name}
           baseName={landmarkBaseName(x)}
         />
         {Object.keys(driverLocks(s.project, x.id)).length > 0 && (
           <LockKeyhole size={12} />
         )}
-      </div>
+        </>}
+      </SymmetricPairListItem>
     );
   };
   return (
@@ -128,9 +126,7 @@ export default function LandmarkList() {
       </section>
       <section aria-label="左右对称点" className="landmark-group">
         <h3>左右对称点</h3>
-        {s.project.landmarks
-          .filter((l) => l.type !== "CENTERLINE")
-          .map(renderPoint)}
+        {landmarkRows(s.project).filter(r=>r.primary.type!=="CENTERLINE").map(r=>renderPoint(r.primary,r.mirror))}
       </section>
     </div>
   );

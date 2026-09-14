@@ -1,5 +1,5 @@
 import {defaultSmooth} from "../domain/smooth/model";
-import {addPatch,prunePatches,defaultDisplay,patchQualityLevels,type PatchQuality} from "../domain/patches/model";
+import {renamePatch,addPatch,prunePatches,defaultDisplay,patchQualityLevels,type PatchQuality} from "../domain/patches/model";
 import {
   duplicateLandmark,
   renameLandmark,
@@ -78,6 +78,7 @@ interface State {
   cancelPatch: () => void;
   pickPatchEdge: (id:string) => void;
   deletePatch: (id:string) => void;
+  renamePatch: (id:string,name:string) => void;
   setSmoothEnabled:(value:boolean)=>void;
   setSmoothStrength:(value:number)=>void;
   setSmoothInfluence:(id:string,value:number)=>void;
@@ -149,6 +150,7 @@ export const useEditor = create<State>((set, get) => {
       try{const p=addPatch(s.project,ids);s.beginEdit();commit(p);set({patchCreation:[],selectedPatchId:p.patches!.at(-1)!.id,message:'已创建 Patch，可继续选择下一组边。'});}
       catch(e){set({message:ids.length===3&&(e as Error).message.includes('未组成')?'三条尚未闭合，可继续选择第四条。':(e as Error).message});}
     },
+    renamePatch:(id,name)=>{const s=get(),p=renamePatch(s.project,id,name);s.beginEdit();commit(p);},
     deletePatch:(id)=>{const s=get(),x=s.project.patches?.find(x=>x.id===id);if(!x)return;s.beginEdit();commit({...s.project,patches:s.project.patches!.filter(y=>y.id!==id&&y.id!==x.mirrorPartnerId)});set({selectedPatchId:null});},
     setSmoothEnabled:(enabled)=>{const s=get(),settings={...defaultSmooth,...s.project.surfaceSmooth};if(settings.enabled===enabled)return;s.beginEdit();commit({...s.project,version:'landmarks-0.4.2',surfaceSmooth:{...settings,enabled}});},
     setSmoothStrength:(value)=>{if(!Number.isFinite(value))return;const p=get().project;commit({...p,version:'landmarks-0.4.2',surfaceSmooth:{...defaultSmooth,...p.surfaceSmooth,strength:Math.max(0,Math.min(1,value))}});},

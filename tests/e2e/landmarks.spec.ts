@@ -1,13 +1,11 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 const state = (page: Page) =>
   page.evaluate(() =>
     JSON.parse(localStorage.getItem("contour.landmarks.v039")!),
   );
 async function choose(page: Page, name: string) {
-  await page
-    .locator(".point-list")
-    .getByRole("button", { name, exact: true })
-    .click();
+  await selectSidebar(page,"landmark",name);
 }
 async function view(page: Page, name: string) {
   await page

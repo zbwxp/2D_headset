@@ -1,3 +1,4 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 const data = JSON.parse(readFileSync('artifacts/basic-patch/adjusted-source.json', 'utf8'));
@@ -10,7 +11,7 @@ test('create mirror patches, opacity outside undo, edit curve, save/load, delete
     await page.getByRole('button', { name: '绘制面', exact: true }).click();
     // Sidebar uses the same selection dispatch as viewport curve hit paths.
     for (const name of names)
-        await page.getByRole('button', { name, exact: true }).click();
+        await selectSidebar(page,'curve',name);
     expect((await state(page)).patches).toHaveLength(2);
     await expect(page.getByRole('button', { name: '退出绘制面（Esc）' })).toBeVisible();
     await expect(page.getByTestId('patch-layer')).toHaveCount(4);
@@ -21,7 +22,7 @@ test('create mirror patches, opacity outside undo, edit curve, save/load, delete
     await page.getByRole('button', { name: '重做', exact: true }).click();
     expect((await state(page)).patches).toHaveLength(2);
     expect((await state(page)).patchDisplay.opacity2d).toBe(.7);
-    await page.getByRole('button', { name: names[1], exact: true }).click();
+    await selectSidebar(page,'curve',names[1]);
     const before = await page.getByTestId('patch-layer').first().innerHTML();
     const handle = page.getByTestId('curve-handle-1');
     const b = await handle.boundingBox();
@@ -92,7 +93,7 @@ test('quad viewport creation, continuous attenuation, node update and edge casca
     const malformed = { ...created, curves: created.curves.filter((c: any) => c.id !== created.patches[0].boundaryEdgeIds[0]) };
     await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(malformed)) });
     expect((await state(page)).patches).toHaveLength(2);
-    await page.getByRole('button', { name: ns[0], exact: true }).click();
+    await selectSidebar(page,'curve',ns[0]);
     await page.locator('.point-workspace').focus();
     await page.keyboard.press('Delete');
     await page.getByRole('dialog').getByRole('button', { name: '确认删除', exact: true }).click();
@@ -102,9 +103,9 @@ test('quad viewport creation, continuous attenuation, node update and edge casca
 });
 test('patch switch skips surfaces, preserves edits and display choice through history/load',async({page})=>{
  await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'adjusted.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
- await page.getByRole('button',{name:'绘制面',exact:true}).click();for(const name of names)await page.getByRole('button',{name,exact:true}).click();await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'绘制面',exact:true}).click();for(const name of names)await selectSidebar(page,'curve',name);await page.keyboard.press('Escape');
  const before=await state(page);await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).uncheck();await expect(page.getByTestId('patch-layer')).toHaveCount(0);await expect(page.getByTestId(`curve-${ids[0]}`).first()).toHaveAttribute('opacity','1');
- await page.getByRole('button',{name:names[1],exact:true}).click();const h=await page.getByTestId('curve-handle-1').boundingBox();if(!h)throw Error('handle');await page.mouse.move(h.x+h.width/2,h.y+h.height/2);await page.mouse.down();await page.mouse.move(h.x+30,h.y+20,{steps:5});await page.mouse.up();const edited=await state(page);expect(edited.curves).not.toEqual(before.curves);expect(edited.patches).toEqual(before.patches);
+ await selectSidebar(page,'curve',names[1]);const h=await page.getByTestId('curve-handle-1').boundingBox();if(!h)throw Error('handle');await page.mouse.move(h.x+h.width/2,h.y+h.height/2);await page.mouse.down();await page.mouse.move(h.x+30,h.y+20,{steps:5});await page.mouse.up();const edited=await state(page);expect(edited.curves).not.toEqual(before.curves);expect(edited.patches).toEqual(before.patches);
  await page.getByRole('button',{name:'撤销',exact:true}).click();expect((await state(page)).patchDisplay.visible).toBe(false);expect((await state(page)).curves).toEqual(before.curves);await page.getByRole('button',{name:'重做',exact:true}).click();
  await page.reload();await expect(page.getByRole('checkbox',{name:'显示 Patch',exact:true})).not.toBeChecked();await expect(page.getByTestId('patch-layer')).toHaveCount(0);await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).check();await expect(page.getByTestId('patch-layer')).toHaveCount(4);expect((await state(page)).curves).toEqual(edited.curves);
 });

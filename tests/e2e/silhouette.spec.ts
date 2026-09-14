@@ -1,3 +1,4 @@
+import {selectSidebar,pairRow} from "../helpers/sidebar";
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {addPatch} from '../../src/domain/patches/model';
@@ -26,12 +27,12 @@ test('real contour follows orientation, ignores zoom/display quality, survives h
  await page.getByRole('checkbox',{name:'显示 3D · 空间检查 窗口',exact:true}).uncheck();await settled();
  await expect(preview).toContainText('保持 3D 最后朝向');
  const frozen=await paths();await page.waitForTimeout(300);expect(await paths()).toEqual(frozen);
- await page.getByRole('button',{name:names[0],exact:true}).click();
+ await selectSidebar(page,'curve',names[0]);
  const handle=await page.getByTestId('curve-handle-1').boundingBox();if(!handle)throw Error('handle');
  await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();await page.mouse.move(handle.x+40,handle.y+20,{steps:5});await page.mouse.up();await settled();
  expect(await paths()).not.toEqual(frozen);
  await page.getByRole('button',{name:'撤销',exact:true}).click();await settled();expect(await paths()).toEqual(frozen);
- await page.getByTestId('patch-row-'+project.patches![0].id).getByRole('button').first().click();
+ await selectSidebar(page,'patch',project.patches![0].id);
  await page.getByRole('slider',{name:'面凸度 Fullness',exact:true}).fill('100');await settled();
  await page.getByRole('checkbox',{name:'显示 Contour 窗口',exact:true}).uncheck();await expect(preview).toHaveCount(0);
  await page.getByRole('slider',{name:'面凸度 Fullness',exact:true}).fill('-100');

@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { useEditor } from "../app/store";
-export type Entity = { kind: "landmark" | "curve"; id: string };
+export type Entity = { kind: "landmark" | "curve" | "patch"; id: string };
 export function activeSelection(): Entity | null {
   const s = useEditor.getState();
+  if(s.selectedPatchId)return s.project.patches?.some(p=>p.id===s.selectedPatchId)?{kind:"patch",id:s.selectedPatchId}:null;
   if (s.selectedCurveId)
     return s.project.curves.some((c) => c.id === s.selectedCurveId)
       ? { kind: "curve", id: s.selectedCurveId }

@@ -1,11 +1,8 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 const state = (p: Page) =>
   p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
-const pick = (p: Page, n: string) =>
-  p
-    .locator(".point-list")
-    .getByRole("button", { name: n, exact: true })
-    .click();
+const pick = (p: Page,n:string)=>selectSidebar(p,"landmark",n);
 const view = (p: Page, n: string) =>
   p
     .locator(".point-view-tabs")
@@ -204,10 +201,7 @@ test("long curve list scroll leaves plane controls fixed and visible", async ({
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(p)),
     });
-  await page
-    .locator(".curve-list")
-    .getByRole("button", { name: "右线0", exact: true })
-    .click();
+  await selectSidebar(page,"curve","右线0");
   const box = await page.getByTestId("curve-current").boundingBox();
   await page.locator(".curve-list").hover();
   await page.mouse.wheel(0, 1500);

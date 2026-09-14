@@ -60,7 +60,9 @@ export default function EditorActions() {
   };
   const target = ui.deleteTarget,
     object =
-      target?.kind === "curve"
+      target?.kind === "patch"
+        ? s.project.patches?.find(p=>p.id===target.id)
+        : target?.kind === "curve"
         ? s.project.curves.find((c) => c.id === target.id)
         : s.project.landmarks.find((l) => l.id === target?.id);
   return (
@@ -121,7 +123,7 @@ export default function EditorActions() {
             <form
               role="dialog"
               aria-modal="true"
-              aria-label={target.kind === "curve" ? "删除结构线" : "删除语义点"}
+              aria-label={target.kind === "patch"?"删除曲面":target.kind === "curve" ? "删除结构线" : "删除语义点"}
               className="landmark-modal"
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -132,15 +134,16 @@ export default function EditorActions() {
               }}
               onSubmit={(e) => {
                 e.preventDefault();
-                if (target.kind === "curve") s.deleteCurve(target.id);
+                if(target.kind==="patch")s.deletePatch(target.id);
+                else if (target.kind === "curve") s.deleteCurve(target.id);
                 else s.deleteSelected(target.id);
                 useUI.setState({ deleteTarget: null });
                 focusWorkspace();
               }}
             >
-              <strong>确认删除「{object.name}」？</strong>
+              <strong>确认删除「{object.name??"曲面"}」？</strong>
               <p>
-                {target.kind === "curve"
+                {target.kind === "patch" ? "将删除此曲面及镜像曲面，保留所有语义点与结构线。" : target.kind === "curve"
                   ? "mirrorPartnerCurveId" in object &&
                     object.mirrorPartnerCurveId
                     ? "将同时删除左右两条结构线及其依赖 Patch，语义点保留。"

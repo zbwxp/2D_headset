@@ -1,3 +1,4 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { controls } from "../../src/domain/curves/geometry";
@@ -76,10 +77,7 @@ test("cheek is editable with ordinary mirror and history; inspect all requested 
   page,
 }, info) => {
   await load(page, prepared);
-  await page
-    .getByRole("region", { name: "左右对称点", exact: true })
-    .getByRole("button", { name: "左颊峰点", exact: true })
-    .click();
+  await selectSidebar(page,"landmark","左颊峰点");
   const before = await state(page);
   const b = await page.getByTestId("landmark-左颊峰点").boundingBox();
   await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2);

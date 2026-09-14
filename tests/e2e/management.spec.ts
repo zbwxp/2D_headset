@@ -1,11 +1,9 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 const state = (p: Page) =>
   p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
 async function choose(p: Page, n: string) {
-  await p
-    .locator(".point-list")
-    .getByRole("button", { name: n, exact: true })
-    .click();
+  await selectSidebar(p,"landmark",n);
 }
 async function action(p: Page, label: string, name?: string) {
   if (label === "重命名") {
@@ -141,7 +139,7 @@ test("empty project remains legal, preserves locks, Undo restores, JSON load sup
   expect(empty.lockedViews).toEqual(["front"]);
   await expect(page.getByLabel("锁定此视图全部点")).toBeChecked();
   await page.keyboard.press("Control+z");
-  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(2);
+  await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(1);
   await page.keyboard.press("Control+Shift+z");
   await expect(page.locator(".point-list [data-landmark-id]")).toHaveCount(0);
   await page.reload();

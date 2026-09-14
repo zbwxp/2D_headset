@@ -1,12 +1,9 @@
+import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 const state = (p: Page) =>
   p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
-const pick = (p: Page, n: string) =>
-  p
-    .locator(".point-list")
-    .getByRole("button", { name: n, exact: true })
-    .click();
+const pick = (p: Page,n:string)=>selectSidebar(p,"landmark",n);
 async function create(p: Page, a: string, b: string) {
   await p.getByRole("button", { name: "创建曲线", exact: true }).click();
   await pick(p, a);
@@ -59,19 +56,13 @@ test("body C, handles S, mirror edit, plane rotation, all views and actual JSON 
   expect((await state(page)).curves).toEqual(initial.curves);
   await page.getByRole("button", { name: "重做", exact: true }).click();
   expect((await state(page)).curves).toEqual(curved.curves);
-  await page
-    .locator(".curve-list")
-    .getByRole("button", { name: c.name, exact: true })
-    .click();
+  await selectSidebar(page,"curve",c.name);
   await dragHandle(page, 2, 0, 100);
   p = await state(page);
   expect(
     owner(p).shape.startHandle.offset * owner(p).shape.endHandle.offset,
   ).toBeLessThan(0);
-  await page
-    .locator(".curve-list")
-    .getByRole("button", { name: follower.name, exact: true })
-    .click();
+  await selectSidebar(page,"curve",follower.name);
   const beforeMirror = await state(page);
   await dragHandle(page, 1, 0, -10);
   p = await state(page);
@@ -142,10 +133,7 @@ test("endpoint transport, duplicate and cascade history; multiple edges and pair
   await create(page, "右眉头点", "右眉尾点");
   expect((await state(page)).curves.length).toBe(4);
   const selected = (await state(page)).curves.at(-1);
-  await page
-    .locator(".curve-list")
-    .getByRole("button", { name: selected.name, exact: true })
-    .click();
+  await selectSidebar(page,"curve",selected.name);
   await page.locator(".curve-list .active .entity-name").dblclick();
   await page.getByLabel("结构线名称").fill("上眼睑线");
   await page.getByLabel("结构线名称").press("Enter");

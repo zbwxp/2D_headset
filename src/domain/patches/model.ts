@@ -1,6 +1,7 @@
 import type { LandmarkProject } from '../landmarks/model';
 export interface SurfacePatch {
     id: string;
+    name?: string; // Optional pair-wide display name; old projects keep automatic labels.
     type: 'tri' | 'quad';
     boundaryEdgeIds: string[];
     mirrorPartnerId?: string;
@@ -88,7 +89,7 @@ export function parsePatches(value: unknown, p: LandmarkProject): SurfacePatch[]
     const ids = new Set<string>(), keys = new Set<string>();
     const result = value.map(x => { if (!x || typeof x.id !== 'string' || ids.has(x.id) || !Array.isArray(x.boundaryEdgeIds))
         throw Error('Patch 数据无效'); loop(p, x.boundaryEdgeIds); if (x.type !== (x.boundaryEdgeIds.length === 3 ? 'tri' : 'quad') || keys.has(key(x.boundaryEdgeIds)))
-        throw Error('Patch 类型或重复边界无效'); if(x.fullness!==undefined && (x.canonicalId || !Number.isFinite(x.fullness) || x.fullness < -1 || x.fullness > 1)) throw Error('Fullness 数据无效：只允许 canonical 保存 -1 到 1'); ids.add(x.id); keys.add(key(x.boundaryEdgeIds)); return { ...(x.fullness===undefined?{}:{fullness:x.fullness}), id: x.id, type: x.type, boundaryEdgeIds: [...x.boundaryEdgeIds], ...(x.mirrorPartnerId ? { mirrorPartnerId: x.mirrorPartnerId } : {}), ...(x.canonicalId ? { canonicalId: x.canonicalId } : {}) } as SurfacePatch; });
+        throw Error('Patch 类型或重复边界无效'); if(x.name!==undefined && (typeof x.name!=='string'||!x.name.trim()||x.name.length>80)) throw Error('Patch 名称无效'); if(x.fullness!==undefined && (x.canonicalId || !Number.isFinite(x.fullness) || x.fullness < -1 || x.fullness > 1)) throw Error('Fullness 数据无效：只允许 canonical 保存 -1 到 1'); ids.add(x.id); keys.add(key(x.boundaryEdgeIds)); return { ...(x.name===undefined?{}:{name:x.name}), ...(x.fullness===undefined?{}:{fullness:x.fullness}), id: x.id, type: x.type, boundaryEdgeIds: [...x.boundaryEdgeIds], ...(x.mirrorPartnerId ? { mirrorPartnerId: x.mirrorPartnerId } : {}), ...(x.canonicalId ? { canonicalId: x.canonicalId } : {}) } as SurfacePatch; });
     for (const x of result) {
         if (x.mirrorPartnerId) {
             const m = result.find(y => y.id === x.mirrorPartnerId);
@@ -102,4 +103,10 @@ export function parsePatches(value: unknown, p: LandmarkProject): SurfacePatch[]
             throw Error('Patch canonical 无效');
     }
     return result;
+}
+
+export function renamePatch(p:LandmarkProject,id:string,value:string):LandmarkProject {
+ const name=value.trim();if(!name||name.length>80)throw Error('曲面名称需为 1–80 个字符。');
+ const source=p.patches?.find(x=>x.id===id);if(!source)return p;
+ return {...p,patches:p.patches!.map(x=>x.id===id||x.id===source.mirrorPartnerId?{...x,name}:x)};
 }

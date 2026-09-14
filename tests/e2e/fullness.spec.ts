@@ -1,3 +1,4 @@
+import {selectSidebar,pairRow} from "../helpers/sidebar";
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {addPatch} from '../../src/domain/patches/model';
@@ -10,7 +11,7 @@ test('fullness gestures, mirror editing, reset, history, persistence and final r
  await page.goto('/');
  await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'fullness.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
  await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption('low');
- await page.getByTestId('patch-row-'+project.patches![0].id).getByRole('button').first().click();
+ await selectSidebar(page,'patch',project.patches![0].id);
  const slider=page.getByRole('slider',{name:'面凸度 Fullness',exact:true});
  await expect(slider).toHaveValue('0');
  const canvas=page.getByTestId('point-inspect').locator('canvas'),before=await canvas.screenshot();
@@ -25,13 +26,13 @@ test('fullness gestures, mirror editing, reset, history, persistence and final r
  await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(slider).toHaveValue('0');
  await expect(page.getByRole('slider',{name:'2D Patch 不透明度',exact:true})).toHaveValue('50');
  await page.getByRole('button',{name:'重做',exact:true}).click();await expect(slider).toHaveValue(value);
- await page.getByTestId('patch-row-'+project.patches![1].id).getByRole('button').first().click();await expect(slider).toHaveValue(value);
+ await selectSidebar(page,'patch',project.patches![1].id);await expect(slider).toHaveValue(value);
  await page.getByRole('button',{name:'凸度归零',exact:true}).click();await expect(slider).toHaveValue('0');
  await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(slider).toHaveValue(value);
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('contour.landmarks.v039')!));
  expect(saved.landmarks).toEqual(project.landmarks);expect(saved.curves).toEqual(project.curves);
  expect(saved.patches[0].fullness).toBeCloseTo(+value/100);expect(saved.patches[1].fullness).toBeUndefined();
- await page.reload();await page.getByTestId('patch-row-'+project.patches![0].id).getByRole('button').first().click();await expect(slider).toHaveValue(value);
+ await page.reload();await selectSidebar(page,'patch',project.patches![0].id);await expect(slider).toHaveValue(value);
  await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).uncheck();
  await slider.focus();await page.keyboard.press('ArrowLeft');await expect.poll(async()=>+(await slider.inputValue())).toBeCloseTo(+value-.5,10);
  await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).check();

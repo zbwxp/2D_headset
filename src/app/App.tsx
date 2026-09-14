@@ -1,3 +1,4 @@
+import {landmarkRows} from "../ui/shared/pairRows";
 import {ensureSmooth} from "../domain/smooth/service";
 import {subscribeSmooth,smoothVersion} from "../domain/smooth/evaluation";
 import ContourPanel from "../ui/windows/ContourPanel";
@@ -90,7 +91,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.3 · Numeric Slider</span>
+          contour<span className="point-version">V0.4.4 · Sidebar Pairs</span>
         </div>
         <input
           className="point-name"
@@ -172,7 +173,7 @@ export default function App() {
               }
             >
               <span>{ui.landmarkCollapsed ? "▶" : "▼"} 语义点</span>
-              <span>{s.project.landmarks.length}</span>
+              <span>{landmarkRows(s.project).length} 行</span>
             </button>
             <div className="section-body" hidden={ui.landmarkCollapsed}>
               <LandmarkList />
@@ -289,7 +290,7 @@ export default function App() {
       </main>
       <footer className="point-footer">
         <div>
-          <b>{patch ? `${patch.type==='tri'?'三边面':'四边面'} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
+          <b>{patch ? `${patch.name??(patch.type==='tri'?'三边面':'四边面')} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
           <code data-testid="position">
             {curve
               ? "固定端点 · 平面内形状"

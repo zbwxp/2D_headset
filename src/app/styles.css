@@ -2367,3 +2367,11 @@ i:not([class]) {
 .numeric-slider input[type="range"] { width:100%; margin:5px 0; touch-action:none; }
 .numeric-slider input:focus-visible { outline:1px solid #b4dca0; outline-offset:3px; border-radius:4px; }
 .numeric-slider-value { font-variant-numeric:tabular-nums; }
+
+.symmetric-pair-row { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.symmetric-pair-row .entity-name { flex:1; min-width:0; }
+.pair-side { margin-left:auto; min-width:1.4em; text-align:center; color:var(--muted,#83989d); font-size:11px; }
+.symmetric-pair-row.active .pair-side { color:#b9eb9f; }
+.patch-panel .symmetric-pair-row { padding:9px 8px; border-radius:5px; }
+.patch-panel .symmetric-pair-row.active { background:#2d3a32; }
+.symmetric-pair-row:focus-visible { outline:1px solid #b9eb9f; outline-offset:-1px; }

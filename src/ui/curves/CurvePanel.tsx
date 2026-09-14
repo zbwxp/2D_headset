@@ -1,3 +1,5 @@
+import SymmetricPairListItem from "../shared/SymmetricPairListItem";
+import {curveRows,curveBaseName} from "../shared/pairRows";
 import NumericSlider from '../shared/NumericSlider';
 import {formatNumeric} from '../shared/numericSliderMath';
 import {SmoothEdgeControl} from "../smooth/SmoothControls";
@@ -27,7 +29,7 @@ export default function CurvePanel() {
         onClick={() => useUI.setState({ curveCollapsed: !ui.curveCollapsed })}
       >
         <span>{ui.curveCollapsed ? "▶" : "▼"} 结构线</span>
-        <span>{s.project.curves.length}</span>
+        <span>{curveRows(s.project).length} 行</span>
       </button>
       <div className="section-body" hidden={ui.curveCollapsed}>
         {c && (
@@ -54,43 +56,15 @@ export default function CurvePanel() {
           )}
         </div>
         <div className="curve-list">
-          {s.project.curves.map((x) => (
-            <div
-              role="button"
-              tabIndex={0}
-              key={x.id}
-              aria-label={x.name}
-              className={x.id === c?.id ? "active" : ""}
-              onClick={() => s.selectCurve(x.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  s.selectCurve(x.id);
-                }
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                s.selectCurve(x.id);
-                useUI.setState({
-                  menu: {
-                    target: { kind: "curve", id: x.id },
-                    x: e.clientX,
-                    y: e.clientY,
-                  },
-                });
-              }}
-            >
-              <InlineName
-                target={{ kind: "curve", id: x.id }}
-                name={x.name}
-                baseName={
-                  x.mirrorPartnerCurveId
-                    ? x.name.replace(/^[左右]/, "")
-                    : x.name
-                }
-              />
-            </div>
-          ))}
+          {curveRows(s.project).map(({primary,mirror}) => {
+            const x=[primary,mirror].find(x=>x?.id===s.selectedCurveId)??primary;
+            return <SymmetricPairListItem key={primary.id} primaryId={primary.id} mirrorId={mirror?.id}
+              selectedId={s.selectedCurveId} displayName={curveBaseName(primary,!!mirror)} onSelect={s.selectCurve}
+              onRename={id=>useUI.setState({renameTarget:{kind:"curve",id}})}
+              onContextMenu={e=>{e.preventDefault();s.selectCurve(x.id);useUI.setState({menu:{target:{kind:"curve",id:x.id},x:e.clientX,y:e.clientY}});}}>
+              {()=> <InlineName target={{kind:"curve",id:x.id}} name={curveBaseName(primary,!!mirror)} baseName={curveBaseName(x,!!mirror)}/>}
+            </SymmetricPairListItem>;
+          })}
         </div>
       </div>
     </section>
