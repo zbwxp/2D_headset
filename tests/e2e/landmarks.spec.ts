@@ -116,11 +116,11 @@ test("reference transforms preserve point locks; history and save/load roundtrip
   }
   await expect(page.getByTestId("reference-image")).toHaveAttribute(
     "opacity",
-    "0.5",
+    "0.4525",
   );
   await expect(page.getByTestId("reference-image")).toHaveAttribute(
     "transform",
-    /rotate\(1\) scale\(1.05\)/,
+    /rotate\(0.9\) scale\(1.01225\)/,
   );
   await page.getByRole("button", { name: "平移图片", exact: true }).click();
   const b = await page.getByTestId("point-editor").boundingBox();

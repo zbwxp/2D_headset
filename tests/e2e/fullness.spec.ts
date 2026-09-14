@@ -33,7 +33,7 @@ test('fullness gestures, mirror editing, reset, history, persistence and final r
  expect(saved.patches[0].fullness).toBeCloseTo(+value/100);expect(saved.patches[1].fullness).toBeUndefined();
  await page.reload();await page.getByTestId('patch-row-'+project.patches![0].id).getByRole('button').first().click();await expect(slider).toHaveValue(value);
  await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).uncheck();
- await slider.focus();await page.keyboard.press('ArrowLeft');await expect(slider).toHaveValue(String(+value-1));
+ await slider.focus();await page.keyboard.press('ArrowLeft');await expect.poll(async()=>+(await slider.inputValue())).toBeCloseTo(+value-.5,10);
  await page.getByRole('checkbox',{name:'显示 Patch',exact:true}).check();
  await expect(page.getByTestId('patch-layer').first().locator('path[fill-opacity]')).toHaveCount(144);
  await page.screenshot({path:'test-results/fullness-ui.png'});

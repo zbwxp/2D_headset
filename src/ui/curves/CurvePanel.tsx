@@ -1,7 +1,9 @@
+import NumericSlider from '../shared/NumericSlider';
+import {formatNumeric} from '../shared/numericSliderMath';
 import {SmoothEdgeControl} from "../smooth/SmoothControls";
 import InlineName from "../shared/InlineName";
 import { useUI } from "../session";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useEditor } from "../../app/store";
 import {
   canonical,
@@ -99,42 +101,10 @@ function PlaneControl({ id }: { id: string }) {
     c = s.project.curves.find((c) => c.id === id)!,
     base = canonical(s.project, c),
     f = frame(s.project, base);
-  const [angle, setAngle] = useState(0),
-    gesture = useRef(false);
+  const [angle, setAngle] = useState(0);
   if (isCenterCurve(s.project, c)) return <p>固定于中线平面 · 无旋转自由度</p>;
   return (
-    <label className="curve-plane">
-      调整曲线平面 <output>{angle}°</output>
-      <input
-        aria-label="调整曲线平面"
-        type="range"
-        min="-180"
-        max="180"
-        step="1"
-        value={angle}
-        disabled={f.length < CURVE_EPS}
-        onPointerDown={() => {
-          gesture.current = false;
-        }}
-        onPointerUp={() => {
-          gesture.current = false;
-        }}
-        onPointerCancel={() => {
-          gesture.current = false;
-        }}
-        onBlur={() => {
-          gesture.current = false;
-        }}
-        onKeyUp={() => {
-          gesture.current = false;
-        }}
-        onChange={(e) => {
-          const a = Number(e.target.value);
-          if (a === angle) return;
-          if (!gesture.current) {
-            s.beginEdit();
-            gesture.current = true;
-          }
+    <NumericSlider className="curve-plane" label="调整曲线平面" min={-180} max={180} value={angle} formatValue={v=>formatNumeric(v)+'°'} disabled={f.length<CURVE_EPS} onEditStart={s.beginEdit} onChange={a=>{
           s.setCurveShape(base.id, {
             ...base.shape,
             planeNormal: rotate(
@@ -146,6 +116,5 @@ function PlaneControl({ id }: { id: string }) {
           setAngle(a);
         }}
       />
-    </label>
   );
 }

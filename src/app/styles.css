@@ -2362,3 +2362,8 @@ i:not([class]) {
 .smooth-controls label {display:flex;flex-direction:column;gap:4px}
 .smooth-controls summary {cursor:pointer;color:#9bada4}
 .smooth-controls details>div {font-size:10px;line-height:1.7;padding-top:6px;overflow-wrap:anywhere}
+.numeric-slider { display:block; min-width:0; }
+.numeric-slider-caption { display:flex; justify-content:space-between; gap:8px; cursor:default; }
+.numeric-slider input[type="range"] { width:100%; margin:5px 0; touch-action:none; }
+.numeric-slider input:focus-visible { outline:1px solid #b4dca0; outline-offset:3px; border-radius:4px; }
+.numeric-slider-value { font-variant-numeric:tabular-nums; }

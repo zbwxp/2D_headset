@@ -168,7 +168,7 @@ test("reference inspector stays open and stationary across views without transfo
   await page
     .getByRole("slider", { name: "透明度", exact: true })
     .press("ArrowRight");
-  expect((await state(page)).views[0].reference.opacity).toBe(0.5);
+  expect((await state(page)).views[0].reference.opacity).toBe(0.4525);
   await heading(page, "语义点").click();
   await expect(panel).toBeVisible();
   await page.screenshot({ path: info.outputPath("reference-ui.png") });

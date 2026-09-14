@@ -1,3 +1,5 @@
+import NumericSlider from '../shared/NumericSlider';
+import {formatNumeric} from '../shared/numericSliderMath';
 import FloatingPanel from "../shared/FloatingPanel";
 import { useRef, useState } from "react";
 import {
@@ -172,75 +174,39 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                   label: "透明度",
                   min: 0,
                   max: 1,
-                  step: 0.05,
                   value: ref.opacity,
                   key: "opacity",
-                  display: Math.round(ref.opacity * 100) + "%",
                 },
                 {
                   label: "图片缩放",
                   min: 0.1,
                   max: 5,
-                  step: 0.05,
                   value: ref.scale,
                   key: "scale",
-                  display: Math.round(ref.scale * 100) + "%",
                 },
                 {
                   label: "水平位置",
                   min: -2,
                   max: 2,
-                  step: 0.01,
                   value: ref.offset[0],
                   key: "x",
-                  display: ref.offset[0].toFixed(2),
                 },
                 {
                   label: "垂直位置",
                   min: -2,
                   max: 2,
-                  step: 0.01,
                   value: ref.offset[1],
                   key: "y",
-                  display: ref.offset[1].toFixed(2),
                 },
                 {
                   label: "旋转",
                   min: -180,
                   max: 180,
-                  step: 1,
                   value: ref.rotation,
                   key: "rotation",
-                  display: ref.rotation + "°",
                 },
               ].map((r) => (
-                <label className="reference-slider" key={r.key}>
-                  {r.label}
-                  <output>{r.display}</output>
-                  <input
-                    disabled={ref.locked}
-                    aria-label={r.label}
-                    type="range"
-                    min={r.min}
-                    max={r.max}
-                    step={r.step}
-                    value={r.value}
-                    onPointerDown={() => s.beginEdit()}
-                    onKeyDown={(e) => {
-                      if (
-                        [
-                          "ArrowLeft",
-                          "ArrowRight",
-                          "ArrowUp",
-                          "ArrowDown",
-                          "Home",
-                          "End",
-                        ].includes(e.key)
-                      )
-                        s.beginEdit();
-                    }}
-                    onChange={(e) => {
-                      const value = Number(e.target.value);
+                <NumericSlider className="reference-slider" key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={s.beginEdit} onChange={value=>{
                       update(
                         r.key === "x"
                           ? { offset: [value, ref.offset[1]] }
@@ -250,7 +216,6 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                       );
                     }}
                   />
-                </label>
               ))}
               <div className="reference-actions">
                 <button
