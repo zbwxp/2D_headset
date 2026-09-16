@@ -1,5 +1,13 @@
+import {ensureScaffold,roles} from '../head/scaffold';
+import {parseInspectionBackground} from '../head/inspectionBackground';
+import {loomisObjects,lockPair} from '../head/locks';
+import {offsetFields} from '../head/offset';
+import {parseCaps} from '../head/caps';
+import {parseRegions} from '../head/regions';
+import {migrateHeadFrame} from '../head/frame';
 import {validatePlacements} from "./placement";
 import {pointPosition} from "../geometry/evaluation";
+import {migrateContinuity} from "../continuity/model";
 import {parseSmooth} from "../smooth/model";
 import {parsePatches,defaultDisplay,patchQualityLevels} from "../patches/model";
 import { parseCurves } from "../curves/persistence";
@@ -22,6 +30,11 @@ export function parseLandmarks(text: string): LandmarkProject {
   };
   check(
     [
+      "landmarks-0.5",
+      "landmarks-0.5.1",
+      "landmarks-0.5.2", "landmarks-0.5.5","landmarks-0.5.4","landmarks-0.5.3",
+      "landmarks-0.4.9.1",
+      "landmarks-0.4.9",
       "landmarks-0.4.5",
       "landmarks-0.1",
       "landmarks-0.2",
@@ -94,6 +107,7 @@ export function parseLandmarks(text: string): LandmarkProject {
         new Set(p.lockedViews).size === p.lockedViews.length &&
         p.lockedViews.every((id) => viewIds.has(id)),
     );
+  if(p.headFrame){const f=p.headFrame;check(vec(f.center,3)&&vec(f.orientation,4)&&Math.abs(Math.hypot(...f.orientation)-1)<1e-8&&[f.radiusX,f.radiusY,f.radiusZ].every(x=>finite(x)&&x>1e-6));}
   const ids = new Set<string>();
   for (const l of p.landmarks) {
     check(
@@ -106,14 +120,17 @@ export function parseLandmarks(text: string): LandmarkProject {
     ids.add(l.id);
     check(
       typeof l.name === "string" &&
-        l.placement && ["WORLD","ON_CURVE"].includes(l.placement.kind) &&
+        l.placement && ["LOOMIS_SCAFFOLD","WORLD","FRAME_RELATIVE","ON_CURVE","ON_LOOMIS_SURFACE","ON_SECTION_CAP"].includes(l.placement.kind) &&
         ["CENTERLINE", "LEFT", "RIGHT", "FREE"].includes(l.type) &&
         l.viewLocks &&
         typeof l.viewLocks === "object" &&
         !Array.isArray(l.viewLocks),
     );
     const q=l.placement;
-    if(q.kind==='WORLD')check(vec(q.position,3));
+    if(q.kind==='LOOMIS_SCAFFOLD'){check(roles.includes(q.role)&&l.systemRole===q.role&&Object.keys(l.viewLocks).length===0);}
+    else if(q.kind==='ON_SECTION_CAP'){check(typeof q.hostSurfaceId==='string'&&finite(q.u)&&finite(q.v)&&q.u*q.u+q.v*q.v<=1+1e-8&&Object.keys(l.viewLocks).length===0);check(Object.keys(q).every(k=>['kind','hostSurfaceId','u','v','offsetX','offsetY','offsetZ'].includes(k)));}
+    else if(q.kind==='ON_LOOMIS_SURFACE'){check(p.headFrame&&q.hostFrameId==='head'&&vec(q.direction,3)&&Math.abs(Math.hypot(...q.direction)-1)<1e-8&&Object.keys(l.viewLocks).length===0);check(Object.keys(q).every(k=>['kind','hostFrameId','direction','offsetX','offsetY','offsetZ'].includes(k)));}
+    else if(q.kind!=='ON_CURVE'){check(vec(q.position,3));if(q.kind==='FRAME_RELATIVE')check(p.headFrame);}
     else {check(typeof q.hostCurveId==='string'&&['canonical','mirror'].includes(q.role)&&Object.keys(l.viewLocks).length===0);
      if(q.role==='canonical')check(finite(q.s)&&q.s>=0&&q.s<=1&&!('canonicalPointId' in q));else check(typeof q.canonicalPointId==='string'&&!('s' in q));
      check(!('position' in q)&&!('position' in l));
@@ -154,6 +171,8 @@ export function parseLandmarks(text: string): LandmarkProject {
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
     version: "landmarks-0.3.9",
+    headFrame:p.headFrame,loomisScaffold:p.loomisScaffold,
+    inspectionBackground:parseInspectionBackground(p.inspectionBackground),
     curves: [],
     centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),
     lockedViews:
@@ -174,8 +193,8 @@ export function parseLandmarks(text: string): LandmarkProject {
     ),
     landmarks: p.landmarks.map((l) => ({
       id: l.id,
-      name: l.name,
-      placement: l.placement.kind==='WORLD'?{kind:'WORLD' as const,position:l.placement.position}:l.placement.role==='canonical'?{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:l.placement.hostCurveId,s:l.placement.s}:{kind:'ON_CURVE' as const,role:'mirror' as const,hostCurveId:l.placement.hostCurveId,canonicalPointId:l.placement.canonicalPointId},
+      name: l.name,systemRole:l.systemRole,
+      placement: {...offsetFields(l.placement),... (l.placement.kind==='LOOMIS_SCAFFOLD'?{kind:'LOOMIS_SCAFFOLD' as const,role:l.placement.role}:l.placement.kind==='ON_SECTION_CAP'?{kind:'ON_SECTION_CAP' as const,hostSurfaceId:l.placement.hostSurfaceId,u:l.placement.u,v:l.placement.v}:l.placement.kind==='ON_LOOMIS_SURFACE'?{kind:'ON_LOOMIS_SURFACE' as const,hostFrameId:'head' as const,direction:l.placement.direction}:l.placement.kind!=='ON_CURVE'?(l.placement.kind==='WORLD'?{kind:'WORLD' as const,position:l.placement.position}:{kind:'FRAME_RELATIVE' as const,position:l.placement.position}):l.placement.role==='canonical'?{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:l.placement.hostCurveId,s:l.placement.s,...(l.placement.ringEndpoint?{ringEndpoint:true as const}:{})}:{kind:'ON_CURVE' as const,role:'mirror' as const,hostCurveId:l.placement.hostCurveId,canonicalPointId:l.placement.canonicalPointId})},
       type: l.type,
       mirrorPartnerId: l.mirrorPartnerId,
       viewLocks: l.viewLocks,
@@ -194,6 +213,10 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result, false);
+  if(p.loomisRegions!==undefined)result.loomisRegions=parseRegions(p.loomisRegions,result);
+  if(p.loomisCaps!==undefined)result.loomisCaps=parseCaps(p.loomisCaps,result);
+  if(p.loomisLocks!==undefined){check(Array.isArray(p.loomisLocks)&&p.loomisLocks.every((id:unknown)=>typeof id==='string'));result.loomisLocks=[...new Set(p.loomisLocks.filter((id:string)=>loomisObjects(result).has(id)).flatMap((id:string)=>lockPair(result,id)))];}
+  if(result.loomisScaffold)result=ensureScaffold(result);
   validatePlacements(result);
   result.curves = parseCurves(result.curves, result);
   if(p.patches !== undefined || p.version === "landmarks-0.4.0" || p.version === "landmarks-0.4.1" || p.version === "landmarks-0.4.2") { result.patches = parsePatches(p.patches, result); result.version=p.version==="landmarks-0.4.2"?"landmarks-0.4.2":p.version==="landmarks-0.4.1"?"landmarks-0.4.1":"landmarks-0.4.0"; }
@@ -204,5 +227,5 @@ export function parseLandmarks(text: string): LandmarkProject {
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
-  return {...result,version:"landmarks-0.4.5"};
+  return migrateHeadFrame(migrateContinuity(result,p.surfaceContinuity));
 }

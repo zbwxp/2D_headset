@@ -1,9 +1,13 @@
+import AddView from '../ui/windows/AddView';
+import {useLoomisUI} from '../ui/head/loomisUI';
+import {isAnalytic} from '../domain/curves/model';
+import HeadFramePanel from '../ui/head/HeadFramePanel';
 import OnCurveInspector from "../ui/edit2d/OnCurveInspector";
 import {pointPosition} from "../domain/geometry/evaluation";
 import useSidebarSelection from "../ui/shared/useSidebarSelection";
 import {landmarkRows} from "../ui/shared/pairRows";
-import {ensureSmooth} from "../domain/smooth/service";
-import {subscribeSmooth,smoothVersion} from "../domain/smooth/evaluation";
+import {ensureSmooth} from "../domain/continuity/service";
+import {subscribeSmooth,smoothVersion} from "../domain/continuity/evaluation";
 import ContourPanel from "../ui/windows/ContourPanel";
 import MainPanels from "../ui/windows/MainPanels";
 import PatchPanel from "../ui/patches/PatchPanel";
@@ -31,7 +35,7 @@ import {
   viewIsLocked,
 } from "../domain/landmarks/model";
 import { parseLandmarks } from "../domain/landmarks/persistence";
-import EditView, { MiniPreview } from "../ui/edit2d/EditView";
+import EditView from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
   useSidebarSelection();
@@ -95,7 +99,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.4.6 · Incremental Geometry</span>
+          contour<span className="point-version">V0.5.5.1 · Loomis Default Scaffold</span>
         </div>
         <input
           className="point-name"
@@ -165,6 +169,7 @@ export default function App() {
         }}
       >
         <aside className="point-sidebar">
+          <HeadFramePanel />
           <section
             className={`sidebar-section landmark-section ${ui.landmarkCollapsed ? "collapsed" : ""}`}
             aria-label="语义点"
@@ -173,13 +178,14 @@ export default function App() {
               className="section-heading"
               aria-expanded={!ui.landmarkCollapsed}
               onClick={() =>
-                useUI.setState({ landmarkCollapsed: !ui.landmarkCollapsed })
+                (useLoomisUI.setState({open:false}), useUI.setState({ landmarkCollapsed: !ui.landmarkCollapsed }))
               }
             >
               <span>{ui.landmarkCollapsed ? "▶" : "▼"} 语义点</span>
-              <span>{landmarkRows(s.project).length} 行</span>
+              <span>{landmarkRows(s.project).filter(r=>r.primary.placement.kind!=="ON_LOOMIS_SURFACE"&&r.primary.placement.kind!=="ON_SECTION_CAP"&&r.primary.placement.kind!=="LOOMIS_SCAFFOLD"&&(r.primary.placement.kind!=="ON_CURVE"||!s.project.curves.some(c=>isAnalytic(c)&&c.id===(r.primary.placement.kind==="ON_CURVE"?r.primary.placement.hostCurveId:"")))).length} 行</span>
             </button>
             <div className="section-body" hidden={ui.landmarkCollapsed}>
+              <div className="default-point-actions"><button onClick={()=>useEditor.getState().addDefaultPoint(true)}>+ 默认中线点</button><button onClick={()=>useEditor.getState().addDefaultPoint(false)}>+ 默认对称点</button></div>
               <OnCurveInspector /><LandmarkList />
             </div>
           </section>
@@ -204,6 +210,7 @@ export default function App() {
                 {viewIsLocked(s.project, v.id) && <LockKeyhole size={12} />}
               </button>
             ))}
+            <AddView/>
             <label
               className="point-lock"
               title="统一开关视图锁；每对镜像点仅约束 driver，follower 通过镜像跟随"
@@ -242,8 +249,8 @@ export default function App() {
           <div className="point-edit-basis" data-testid="edit-basis">
             <span>
               {curve
-                ? "曲线编辑：固定平面内弯曲；视图锁仅约束语义点"
-                : l?.placement.kind==="ON_CURVE" ? "结构线定位：使用在线位置调整；不受视图锁约束" : lockedViews.length
+                ? (isAnalytic(curve)?"解析 Section：在侧栏调整平面；视图中可选择":"曲线编辑：固定平面内弯曲；视图锁仅约束语义点")
+                : l?.placement.kind==="LOOMIS_SCAFFOLD" ? "系统派生定位点：调整宿主参数；不可独立拖离" : (l?.placement.kind==="ON_LOOMIS_SURFACE"||l?.placement.kind==="ON_SECTION_CAP") ? "Loomis 面定位：在 3D 贴面拖动，或在行内调整；不受视图锁约束" : l?.placement.kind==="ON_CURVE" ? "结构线定位：使用在线位置调整；不受视图锁约束" : lockedViews.length
                   ? `移动基准：${lockedViews.map((v) => v.label).join("、")}锁约束`
                   : `移动基准：${activeView.label}相机平面（深度不变）`}
             </span>
@@ -258,14 +265,14 @@ export default function App() {
           <div className="point-detail">
             <strong>{curve?.name ?? l?.name ?? "未选中语义点"}</strong>
             <span data-testid="dof">
-              {curve ? "Planar Bézier" : `${l?.placement.kind==="ON_CURVE"?1:free.length} DOF`}
+              {curve ? (isAnalytic(curve)?"Analytic Curve":"Planar Bézier") : `${l?.placement.kind==="LOOMIS_SCAFFOLD"?0:l?.placement.kind==="ON_SECTION_CAP"?2:l?.placement.kind==="ON_CURVE"?1:l?.placement.kind==="ON_LOOMIS_SURFACE"?(l.type==="CENTERLINE"?1:2):free.length} DOF`}
             </span>
             <span data-testid="motion-status">
               {curve
-                ? "拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转"
+                ? (isAnalytic(curve)?"解析结构线 · 侧栏调整参数 · 可添加在线定位点":"拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转")
                 : !l
                   ? "空项目 · 撤销或打开项目恢复"
-                  : l.placement.kind==="ON_CURVE" ? "结构线定位 · 使用在线位置调整" : motion.spatialDof === 0
+                  : l.placement.kind==="LOOMIS_SCAFFOLD" ? "系统定位点 · 由宿主解析派生" : (l.placement.kind==="ON_LOOMIS_SURFACE"||l.placement.kind==="ON_SECTION_CAP") ? "Loomis Surface · 3D 贴面拖动" : l.placement.kind==="ON_CURVE" ? "结构线定位 · 使用在线位置调整" : motion.spatialDof === 0
                     ? "已固定 · 解除视图锁以继续"
                     : motion.screenDof === 0
                       ? "仅剩视线方向移动 · 请换视图"
@@ -279,25 +286,18 @@ export default function App() {
           <div className="point-panel-title">
             3D · 空间检查
             <span>
-              {s.project.landmarks.length} 点 · {s.project.curves.length} 线 · {s.project.patches?.length??0} 面
+              {s.project.landmarks.length} 点 · {s.project.curves.length} 线 · {s.project.patches?.length??0} 面{s.project.loomisRegions?.length?` · ${s.project.loomisRegions.length} 球面区域`:""}
             </span>
           </div>
           <InspectView />
-          <div className="point-minis">
-            {["front", "left45", "side"]
-              .filter((id) => s.project.views.some((v) => v.id === id))
-              .map((id) => (
-                <MiniPreview key={id} viewId={id} />
-              ))}
-          </div>
         </section>} contour={<ContourPanel/>} />
       </main>
       <footer className="point-footer">
         <div>
-          <b>{patch ? `${patch.name??(patch.type==='tri'?'三边面':'四边面')} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
+          <b>{patch ? `${patch.name??(patch.type==='lens'?'两边面':patch.type==='loop'?'环形面':patch.type==='tri'?'三边面':'四边面')} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
           <code data-testid="position">
             {curve
-              ? "固定端点 · 平面内形状"
+              ? (isAnalytic(curve)?"Loomis Frame + Section Plane":"固定端点 · 平面内形状")
               : (l ? pointPosition(s.project,l.id).map((n) => n.toFixed(4)).join(" / ") : undefined)}
           </code>
         </div>

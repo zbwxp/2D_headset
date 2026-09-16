@@ -1,0 +1,7 @@
+import type {LandmarkProject} from '../landmarks/model';
+import {isSection,type SectionCurve} from '../curves/model';
+export function duplicateRing(p:LandmarkProject,id:string){const selected=p.curves.find(c=>c.id===id);if(!selected||!isSection(selected))throw Error('请选择 Ring');const c=selected.role==='canonical'?selected:p.curves.find(c=>c.id===selected.canonicalCurveId)!;if(!isSection(c)||c.role!=='canonical')throw Error('缺少 canonical Ring');const a=crypto.randomUUID(),b=crypto.randomUUID(),name=c.name.replace(/^[左右]/,'')+' 副本';
+ const ends:[string,string]=[crypto.randomUUID(),crypto.randomUUID()];
+ const composite=c.logicalRing==='COMPOSITE';
+ const owner:SectionCurve={id:a,name:composite?name:'右'+name,geometryType:'LOOMIS_SECTION',side:composite?'CENTERLINE':'RIGHT',role:'canonical',section:structuredClone(c.section),...(composite?{logicalRing:'COMPOSITE' as const,logicalEndpoints:ends}:{mirrorPartnerCurveId:b})};
+ const added:SectionCurve[]=[owner];if(!composite)added.push({id:b,name:'左'+name,geometryType:'LOOMIS_SECTION',side:'LEFT',role:'mirror',canonicalCurveId:a,mirrorPartnerCurveId:a});const landmarks=composite?ends.map((id,i)=>({id,name:name+(i?' 后中点':' 前中点'),type:'CENTERLINE' as const,placement:{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:a,s:i*.5,ringEndpoint:true as const},viewLocks:{}})):[];return {project:{...p,landmarks:[...p.landmarks,...landmarks],curves:[...p.curves,...added]},selectedId:a};}

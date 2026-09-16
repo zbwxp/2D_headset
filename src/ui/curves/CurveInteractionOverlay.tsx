@@ -1,8 +1,12 @@
+import {isAnalytic} from '../../domain/curves/model';
+import {evaluationContext} from '../../domain/geometry/evaluation';
+import {curvePolyline,type CurveProvider} from '../../domain/geometry/curveProvider';
+import {worldToPlane,worldToSvg,screenToPlane,EDIT_VIEWBOX,type OrthographicViewState} from '../../rendering/orthographic';
 import {useShallow} from 'zustand/react/shallow';
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
-import { project, add, sub } from "../../domain/geometry/core";
+import { add, sub } from "../../domain/geometry/core";
 import {
   controls,
   canonical,
@@ -19,20 +23,17 @@ import type {
 } from "../../domain/landmarks/model";
 import type { CurveEdge } from "../../domain/curves/model";
 import type { Vec2, Vec3 } from "../../domain/project/types";
-export function curvePath(cp: ControlPoints, v: LandmarkView): string {
+const UNIT=EDIT_VIEWBOX.unitsPerWorld;
+export function curvePath(cp: ControlPoints, v: OrthographicViewState): string {
   const xy = cp.map((p) => {
-    const q = project(p, v);
-    return `${q[0] * 160},${-q[1] * 160}`;
+    const q = worldToSvg(p,v);
+    return `${q[0]},${q[1]}`;
   });
   return `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`;
 }
-export default function CurveLayer({
-  view,
-  readonly = false,
-}: {
-  view: LandmarkView;
-  readonly?: boolean;
-}) {
+export function providerPath(g:CurveProvider,v:OrthographicViewState){return g.controls?curvePath(g.controls,v):curvePolyline(g).map((p,i)=>(i?'L':'M')+worldToSvg(p,v).slice(0,2).join(',')).join(' ');}
+export default function CurveInteractionOverlay({view,projection}:{view:LandmarkView;projection:OrthographicViewState}) {
+  const project=(p:readonly number[],_view:LandmarkView)=>worldToPlane(p,projection).slice(0,2) as Vec2;
   const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,notify:s.notify,patchCreation:s.patchCreation,project:s.project,referenceMoving:s.referenceMoving,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape}))),
     group = useRef<SVGGElement>(null);
   const drag = useRef<{
@@ -47,14 +48,11 @@ export default function CurveLayer({
     view: LandmarkView;
   } | null>(null);
   const local = (e: ReactPointerEvent): Vec2 => {
-    const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(
-      group.current!.getScreenCTM()!.inverse(),
-    );
-    return [q.x / 160, -q.y / 160];
+    const rect=group.current!.ownerSVGElement!.getBoundingClientRect();
+    return screenToPlane([e.clientX-rect.left,e.clientY-rect.top],projection);
   };
   const start = (e: ReactPointerEvent, c: CurveEdge, index: 0 | 1 | 2) => {
     if (
-      readonly ||
       s.referenceMoving ||
       s.curveCreation ||
       e.shiftKey ||
@@ -64,7 +62,7 @@ export default function CurveLayer({
     e.preventDefault();
     e.stopPropagation();
     s.selectCurve(c.id);
-    if(s.patchCreation) return;
+    if(s.patchCreation||isAnalytic(c)) return;
     const q = local(e),
       target = planeTarget(s.project, c, view, q),
       base = canonical(s.project, c);
@@ -139,22 +137,23 @@ export default function CurveLayer({
         ...s.project.curves.filter((c) => c.id !== s.selectedCurveId),
         ...s.project.curves.filter((c) => c.id === s.selectedCurveId),
       ].map((c) => {
-        const selected = c.id === s.selectedCurveId || !!s.patchCreation?.includes(c.id),
-          cp = controls(s.project, c),
-          path = curvePath(cp, view);
+        const selected = c.id === s.selectedCurveId || s.patchCreation?.host===c.id,
+          g = evaluationContext(s.project).curve(c.id), cp=g.controls,
+          path = providerPath(g, projection);
         return (
           <g key={c.id}>
             <path
               data-testid={`curve-${c.id}`}
+              strokeDasharray={"systemRole" in c&&c.systemRole?.startsWith("MAIN_")?"5 4":undefined}
               d={path}
               fill="none"
               stroke={selected ? "#f0d8ff" : "#ab9fdd"}
               strokeWidth={selected ? 2.5 : 1.5}
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
-              opacity={s.project.patchDisplay?.visible!==false && (s.project.patches?.length??0)>0 ? 0 : 1}
+              opacity={selected ? 1 : 0}
             />
-            {!readonly && (
+            {(
               <path
                 data-testid={`curve-hit-${c.id}`}
                 d={path}
@@ -167,17 +166,17 @@ export default function CurveLayer({
                 onPointerDown={(e) => start(e, c, 0)}
               />
             )}
-            {selected && !readonly && (
+            {selected && cp && (
               <>
                 <path
                   d={`M${project(cp[0], view)
-                    .map((x, i) => x * (i ? -160 : 160))
+                    .map((x, i) => x * (i ? -UNIT : UNIT))
                     .join(",")} L${project(cp[1], view)
-                    .map((x, i) => x * (i ? -160 : 160))
+                    .map((x, i) => x * (i ? -UNIT : UNIT))
                     .join(",")} M${project(cp[3], view)
-                    .map((x, i) => x * (i ? -160 : 160))
+                    .map((x, i) => x * (i ? -UNIT : UNIT))
                     .join(",")} L${project(cp[2], view)
-                    .map((x, i) => x * (i ? -160 : 160))
+                    .map((x, i) => x * (i ? -UNIT : UNIT))
                     .join(",")}`}
                   stroke="#ab9fdd"
                   strokeWidth="1"
@@ -191,8 +190,8 @@ export default function CurveLayer({
                       key={index}
                       data-testid={`curve-handle-${index}`}
                       aria-label={`控制柄 ${index}`}
-                      cx={q[0] * 160}
-                      cy={-q[1] * 160}
+                      cx={q[0] * UNIT}
+                      cy={-q[1] * UNIT}
                       r={5 / view.canvas.zoom}
                       fill="#342d45"
                       stroke="#f0d8ff"

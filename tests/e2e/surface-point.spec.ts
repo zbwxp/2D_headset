@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+test('analytic surface creation, 3D drag, one undo, Inspector and reload',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');
+ await page.evaluate(async()=>{const {createLandmarkProject}=await import('/src/domain/landmarks/presets.ts' as string),{migrateHeadFrame}=await import('/src/domain/head/frame.ts' as string);let p=migrateHeadFrame(createLandmarkProject());p={...p,landmarks:[],curves:[],patches:[],centerlineOrder:[]};(window as any).__editorPerfStore.getState().load(p);});
+ await page.getByText('Loomis Set',{exact:true}).click();await page.getByRole('button',{name:'+ 球面定位点',exact:true}).click();
+ const canvas=page.getByTestId('point-inspect').locator('canvas'),box=(await canvas.boundingBox())!;
+ const projectPoint=async(id?:string)=>page.evaluate(async({id,w,h})=>{const three=await import('/node_modules/.vite/deps/three.js' as string),{useInspectionCamera}=await import('/src/ui/windows/state.ts' as string),{pointPosition}=await import('/src/domain/geometry/evaluation.ts' as string),s=(window as any).__editorPerfStore.getState(),pose=useInspectionCamera.getState(),camera=new three.PerspectiveCamera(34,w/h,.1,100);camera.position.fromArray(pose.position);camera.quaternion.fromArray(pose.quaternion);camera.updateMatrixWorld();const v=new three.Vector3(...(id?pointPosition(s.project,id):s.project.headFrame.center)).project(camera);return [(v.x+1)*w/2,(1-v.y)*h/2];},{id,w:box.width,h:box.height});
+ const xy=await projectPoint();await page.mouse.click(box.x+xy[0],box.y+xy[1]);
+ const id=await page.evaluate(()=>(window as any).__editorPerfStore.getState().selectedId);expect(id).toBeTruthy();
+ const before=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return {points:s.project.landmarks,past:s.past.length};});expect(before.points).toHaveLength(2);expect(before.points[0].placement.kind).toBe('ON_LOOMIS_SURFACE');
+ await page.keyboard.press('Escape');
+ await page.getByRole('slider',{name:'球面 Vertical',exact:true}).focus();
+ const q=await projectPoint(id);await page.mouse.move(box.x+q[0],box.y+q[1]);await page.mouse.down();await page.mouse.move(box.x+q[0]+35,box.y+q[1]+22,{steps:10});await page.mouse.up();
+ await expect(page.locator('.point-workspace')).toBeFocused();
+ const after=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return {points:s.project.landmarks,past:s.past.length};});expect(after.past).toBe(before.past+1);expect(after.points).not.toEqual(before.points);for(const l of after.points)expect(Math.hypot(...l.placement.direction)).toBeCloseTo(1,12);
+ await page.getByRole('button',{name:'撤销',exact:true}).click();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks)).toEqual(before.points);
+ await page.getByRole('button',{name:'重做',exact:true}).click();await page.evaluate(id=>(window as any).__editorPerfStore.getState().selectLandmark(id),id);
+ const panel=page.locator('.head-frame-panel');await panel.getByRole('slider',{name:'球面 Horizontal',exact:true}).fill('35');await panel.getByRole('slider',{name:'球面 Vertical',exact:true}).fill('0.25');
+ await page.waitForTimeout(600);const saved=await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks);await page.reload();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks)).toEqual(saved);
+ await page.evaluate(id=>(window as any).__editorPerfStore.getState().selectLandmark(id),id);await page.screenshot({path:'artifacts/section-axes/surface-point.png'});await panel.getByRole('slider',{name:'球面 Vertical',exact:true}).focus();const clickPoint=await projectPoint(id);await page.mouse.click(box.x+clickPoint[0],box.y+clickPoint[1]);await page.keyboard.press('Delete');await page.getByRole('dialog').getByRole('button',{name:'确认删除',exact:true}).click();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks.length)).toBe(0);await page.getByRole('button',{name:'撤销',exact:true}).click();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks)).toEqual(saved);expect(errors).toEqual([]);
+});

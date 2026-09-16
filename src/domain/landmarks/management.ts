@@ -1,3 +1,5 @@
+import {spatialPlacement} from '../head/frame';
+import {pointPosition} from '../geometry/evaluation';
 import {deleteClosure} from "../geometry/dependencies";
 import type { LandmarkProject, SemanticLandmark } from "./model";
 import { captureLock, viewIsLocked } from "./model";
@@ -25,7 +27,7 @@ export function duplicateLandmark(
   const copy = (l: SemanticLandmark): SemanticLandmark => ({
     id: crypto.randomUUID(),
     name: partner ? (l.type === "LEFT" ? "左" : "右") + name : name,
-    placement: structuredClone(l.placement),
+    placement: (l.placement.kind==='LOOMIS_SCAFFOLD'||(l.placement.kind==='ON_CURVE'&&l.placement.role==='canonical'&&l.placement.ringEndpoint))?spatialPlacement(p,pointPosition(p,l.id)):structuredClone(l.placement),
     type: l.type,
     viewLocks: {},
   });
@@ -40,8 +42,8 @@ export function duplicateLandmark(
     if(follower.placement.role==="mirror")follower.placement.canonicalPointId=driver.id;
   }
   for (const v of p.views)
-    if (driver.placement.kind==="WORLD" && viewIsLocked(p, v.id))
-      driver.viewLocks[v.id] = captureLock(driver.placement.position, v);
+    if (driver.placement.kind!=="ON_CURVE" && driver.placement.kind!=="ON_LOOMIS_SURFACE"&&driver.placement.kind!=="ON_SECTION_CAP"&&driver.placement.kind!=="LOOMIS_SCAFFOLD" && viewIsLocked(p, v.id))
+      driver.viewLocks[v.id] = captureLock(pointPosition(p,source.id), v);
   const added = follower
     ? [driver, follower].sort((a, b) =>
         a.type === "LEFT" ? -1 : b.type === "LEFT" ? 1 : 0,
@@ -52,7 +54,7 @@ export function duplicateLandmark(
       ...p,
       landmarks: [...p.landmarks, ...added],
       centerlineOrder:
-        source.type === "CENTERLINE" && source.placement.kind==="WORLD"
+        source.type === "CENTERLINE" && source.placement.kind!=="ON_CURVE"
           ? p.centerlineOrder.flatMap((id) =>
               id === source.id ? [id, driver.id] : [id],
             )
@@ -88,4 +90,20 @@ export function deleteLandmark(
   id: string,
 ): LandmarkProject {
   return deleteClosure(p,[`point:${id}`]);
+}
+
+/** Create ordinary editable points without requiring a duplicate source. */
+export function addDefaultLandmark(p:LandmarkProject,centerline:boolean):{project:LandmarkProject;selectedId:string}{
+ const base=centerline?'默认中线点':'默认对称点';let n=1;
+ while(p.landmarks.some(l=>landmarkBaseName(l)===base+' '+n))n++;
+ const id=crypto.randomUUID(),partnerId=crypto.randomUUID();
+ const make=(id:string,x:number,type:SemanticLandmark['type']):SemanticLandmark=>({
+  id,name:(centerline?'':type==='RIGHT'?'右':'左')+base+' '+n,type,
+  placement:{kind:p.headFrame?'FRAME_RELATIVE':'WORLD',position:[x,0,centerline?.85:.75]},viewLocks:{},
+ });
+ const driver=make(id,centerline?0:.45,centerline?'CENTERLINE':'RIGHT');
+ const added=[driver];if(!centerline){const partner=make(partnerId,-.45,'LEFT');driver.mirrorPartnerId=partnerId;partner.mirrorPartnerId=id;added.push(partner);}
+ const project={...p,landmarks:[...p.landmarks,...added],centerlineOrder:centerline?[...p.centerlineOrder,id]:p.centerlineOrder};
+ for(const v of p.views)if(viewIsLocked(p,v.id))driver.viewLocks[v.id]=captureLock(pointPosition(project,id),v);
+ return {project,selectedId:id};
 }

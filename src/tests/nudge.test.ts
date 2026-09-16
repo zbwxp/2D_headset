@@ -1,0 +1,10 @@
+import {test,expect} from 'vitest';
+import {arrowAxis,nudgePoint} from '../domain/landmarks/nudge';
+import {createLandmarkProject} from '../domain/landmarks/presets';
+import {setGlobalViewLock} from '../domain/landmarks/model';
+import {pointPosition} from '../domain/geometry/evaluation';
+import {ensureScaffold} from '../domain/head/scaffold';
+import {migrateHeadFrame} from '../domain/head/frame';
+test('view arrows follow screen axes except explicit oblique Z',()=>{expect(arrowAxis('front','ArrowRight')).toEqual({axis:0,sign:1});expect(arrowAxis('side','ArrowRight')).toEqual({axis:2,sign:-1});expect(arrowAxis('top','ArrowUp')).toEqual({axis:2,sign:-1});expect(arrowAxis('right30','ArrowUp')).toEqual({axis:2,sign:1});expect(arrowAxis('left45','ArrowLeft')).toBeNull();});
+test('free axis nudge mirrors and respects hard locks without off-axis projection',()=>{let p=createLandmarkProject();const l=p.landmarks.find(l=>l.type==='RIGHT')!,old=pointPosition(p,l.id);const next=nudgePoint(p,l.id,0,.01);expect(pointPosition(next,l.id)[0]).toBeCloseTo(old[0]+.01);expect(pointPosition(next,l.mirrorPartnerId!)[0]).toBeCloseTo(-old[0]-.01);p=setGlobalViewLock(p,'front',true,l.id);expect(()=>nudgePoint(p,l.id,0,.01)).toThrow();expect(()=>nudgePoint(p,l.id,2,.01)).not.toThrow();expect(()=>nudgePoint(p,p.landmarks[0].id,0,.01)).toThrow();});
+test('Upper Anchor uses offset, system intersections stay fixed',()=>{const p=ensureScaffold(migrateHeadFrame(createLandmarkProject())),l=p.landmarks.find(l=>l.systemRole==='APEX_R')!;const q=nudgePoint(p,l.id,2,.01);expect(q.landmarks.find(x=>x.id===l.id)!.placement.offsetZ).toBe(.01);expect(q.loomisScaffold).toEqual(p.loomisScaffold);expect(()=>nudgePoint(p,p.landmarks.find(l=>l.systemRole==='BROW')!.id,1,.01)).toThrow();});

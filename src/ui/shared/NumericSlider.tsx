@@ -1,13 +1,17 @@
-import {useCallback,useEffect,useRef} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {SLIDER,formatNumeric,modifierScale,holdMultiplier,trackValue,snapTowardTargets} from './numericSliderMath';
 export interface NumericSliderProps {
  label:string; value:number; min:number; max:number;
  onChange:(value:number)=>void; onEditStart?:()=>void; onEditEnd?:()=>void;
+ onUndo?:()=>void; onRedo?:()=>void;
  snapTargets?:number[]; step?:number; fineScale?:number; coarseScale?:number;
- formatValue?:(value:number)=>string; disabled?:boolean; className?:string;
+ /** Display units per stored unit, e.g. 100 for normalized percentages. */
+ inputScale?:number; formatValue?:(value:number)=>string; disabled?:boolean; className?:string;
 }
 /** Owns input sessions only. History and parameter meaning belong to the caller. */
 export default function NumericSlider(props:NumericSliderProps){
+ const [draft,setDraft]=useState<string|null>(null),[invalid,setInvalid]=useState(false);
+ const draftActive=useRef(false);
  const latest=useRef(props);latest.current=props;
  const input=useRef<HTMLInputElement>(null),editing=useRef(false),pointer=useRef<number|null>(null);
  const pointerAtNeutral=useRef<number|null>(null);
@@ -18,14 +22,14 @@ export default function NumericSlider(props:NumericSliderProps){
   if(id!==null&&input.current?.hasPointerCapture(id))input.current.releasePointerCapture(id);
   if(editing.current){editing.current=false;latest.current.onEditEnd?.();}
  },[]);
- const change=useCallback((value:number)=>{
+ const change=useCallback((value:number,snap=true)=>{
   const p=latest.current;if(p.disabled||!Number.isFinite(value))return;
-  value=snapTowardTargets(p.value,Math.max(p.min,Math.min(p.max,value)),p.min,p.max,p.snapTargets);if(value===p.value)return;
+  value=Math.max(p.min,Math.min(p.max,value));if(snap)value=snapTowardTargets(p.value,value,p.min,p.max,p.snapTargets);if(value===p.value)return;
   if(!editing.current){editing.current=true;p.onEditStart?.();}
   latest.current={...p,value};p.onChange(value);
  },[]);
  useEffect(()=>{const stop=()=>end(),visibility=()=>{if(document.hidden)end();};window.addEventListener('blur',stop);document.addEventListener('visibilitychange',visibility);return()=>{window.removeEventListener('blur',stop);document.removeEventListener('visibilitychange',visibility);end();};},[end]);
- useEffect(()=>{if(props.disabled)end();},[props.disabled,end]);
+ useEffect(()=>{if(props.disabled){end();draftActive.current=false;setDraft(null);setInvalid(false);}},[props.disabled,end]);
  const move=(x:number)=>{
   const r=input.current!.getBoundingClientRect(),p=latest.current,raw=trackValue(x,r.left,r.width,p.min,p.max);
   if(pointerAtNeutral.current!==null&&Math.abs(raw-pointerAtNeutral.current)<=(p.max-p.min)*.01)return;
@@ -40,13 +44,32 @@ export default function NumericSlider(props:NumericSliderProps){
   if(dt)change(p.value+h.direction*(p.step??(p.max-p.min)*SLIDER.normalizedStep)*modifierScale(h.alt,h.shift,p.fineScale,p.coarseScale)*SLIDER.stepsPerSecond*holdMultiplier(now-h.start)*dt/1000);
   if(hold.current)raf.current=requestAnimationFrame(tick);
  };
- return <label className={'numeric-slider '+(props.className??'')} data-ui-keyboard>
- <span className="numeric-slider-caption" onClick={()=>input.current?.focus()}>{props.label}<span className="numeric-slider-value">{(props.formatValue??formatNumeric)(props.value)}</span></span>
+ const finishDraft=(commit:boolean)=>{
+  if(!draftActive.current)return;
+  const text=(draft??'').trim().replace(/[%°]$/, '').trim();
+  const value=text===''?NaN:Number(text)/(latest.current.inputScale??1);
+  if(commit&&!Number.isFinite(value)){setInvalid(true);return;}
+  draftActive.current=false;setDraft(null);setInvalid(false);
+  if(commit){change(value,false);end();}
+ };
+ return <div className={'numeric-slider '+(props.className??'')} data-ui-keyboard>
+ <span className="numeric-slider-caption" onClick={()=>input.current?.focus()}>{props.label}{draft===null?<span className="numeric-slider-value" title="双击输入数值" onDoubleClick={e=>{
+  e.preventDefault();e.stopPropagation();if(props.disabled)return;end();draftActive.current=true;setInvalid(false);setDraft(String(props.value*(props.inputScale??1)));
+ }}>{(props.formatValue??formatNumeric)(props.value)}</span>:<input className="numeric-slider-entry" aria-label={props.label+' 数值'} aria-invalid={invalid} title={invalid?'请输入有效数字':'Enter 确认，Esc 取消'} type="text" inputMode="decimal" value={draft} disabled={props.disabled}
+ ref={el=>{if(el&&document.activeElement!==el){el.focus();el.select();}}}
+ onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}
+ onChange={e=>{setDraft(e.target.value);setInvalid(false);}} onBlur={()=>finishDraft(true)}
+ onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finishDraft(true);}if(e.key==='Escape'){e.preventDefault();finishDraft(false);input.current?.focus();}}}/>}</span>
  <input ref={input} aria-label={props.label} aria-valuetext={(props.formatValue??formatNumeric)(props.value)} type="range" min={props.min} max={props.max} step="any" value={props.value} disabled={props.disabled}
  onPointerDown={e=>{if(e.button!==0||props.disabled)return;e.preventDefault();end();e.currentTarget.focus();pointer.current=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);move(e.clientX);}}
  onPointerMove={e=>{if(pointer.current===e.pointerId)move(e.clientX);}}
  onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end}
  onKeyDown={e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){
+   const action=e.shiftKey?latest.current.onRedo:latest.current.onUndo;
+   if(action){e.preventDefault();e.stopPropagation();end();action();}
+   return;
+  }
   if(hold.current){hold.current.alt=e.altKey;hold.current.shift=e.shiftKey;}
   if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key))return;
   e.preventDefault();e.stopPropagation();if(e.repeat||hold.current?.key===e.key)return;
@@ -58,5 +81,5 @@ export default function NumericSlider(props:NumericSliderProps){
  }}
  onKeyUp={e=>{if(hold.current){hold.current.alt=e.altKey;hold.current.shift=e.shiftKey;}if(e.key===hold.current?.key||e.key==='Home'||e.key==='End'){e.preventDefault();end();}}}
  onChange={e=>{change(+e.target.value);if(pointer.current===null&&!hold.current)end();}}/>
- </label>;
+ </div>;
 }

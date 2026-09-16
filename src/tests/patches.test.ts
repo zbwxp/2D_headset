@@ -1,3 +1,4 @@
+import {isAnalytic} from '../domain/curves/model';
 import {world} from './world-fixture';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -27,11 +28,11 @@ describe('BasePatch', () => {
             expect(p.curves).toEqual(base.curves);
             expect(tessellate(p, patch).invalid).toBeUndefined();
         });
-    it('updates from node and handle source edits', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0], before = evaluator(p, patch)(.3, .3); const ring = loop(p, patch.boundaryEdgeIds); const q = { ...p, landmarks: p.landmarks.map(l => l.id === ring[0].vertex ? { ...l, placement: {kind:'WORLD' as const,position:[world(l).position[0], world(l).position[1], world(l).position[2] + .2] as [
+    it('updates from node and handle source edits', () => { let p = source(); p = addPatch(p, tri(p)); const patch = p.patches![0], before = evaluator(p, patch)(.3, .3); const ring = loop(p, patch.boundaryUses); const q = { ...p, landmarks: p.landmarks.map(l => l.id === ring[0].vertex ? { ...l, placement: {kind:'WORLD' as const,position:[world(l,p).position[0], world(l,p).position[1], world(l,p).position[2] + .2] as [
                 number,
                 number,
                 number
-            ]} } : l) }; expect(evaluator(q, patch)(.3, .3)).not.toEqual(before); const edge = p.curves.find(c => c.id === ring[0].id)!; if (edge.role !== 'canonical')
+            ]} } : l) }; expect(evaluator(q, patch)(.3, .3)).not.toEqual(before); const edge = p.curves.find(c => c.id === ring[0].id)!; if ((edge.role!=='canonical'||isAnalytic(edge)))
         throw Error('fixture'); const r = { ...p, curves: p.curves.map(c => c.id === edge.id ? { ...edge, shape: { ...edge.shape, startHandle: { ...edge.shape.startHandle, offset: .4 } } } : c) }; expect(evaluator(r, patch)(.3, .3)).not.toEqual(before); });
     it('preserves source through JSON, allows shared edges, prunes dependent pairs', () => { let p = source(); p = addPatch(p, tri(p)); p = addPatch(p, quad(p)); const loaded = parseLandmarks(JSON.stringify(p)); expect(loaded.patches).toEqual(p.patches); expect(loaded.landmarks).toEqual(p.landmarks); expect(loaded.curves).toEqual(p.curves); const removed = prunePatches({ ...p, curves: p.curves.filter(c => c.id !== tri(p)[0]) }); expect(removed.patches).toHaveLength(2); });
     it('rejects duplicate, disconnected, repeated and broken loops', () => { const p = source(), ids = tri(p); expect(() => loop(p, [ids[0], ids[0], ids[1]])).toThrow(); expect(() => loop(p, p.curves.slice(0, 3).map(c => c.id))).toThrow(); expect(() => addPatch(addPatch(p, ids), ids)).toThrow(); expect(() => parsePatches([{ id: 'bad', type: 'tri', boundaryEdgeIds: ['absent', ...ids.slice(1)] }], p)).toThrow(); });
@@ -69,6 +70,6 @@ it('adjacent patches share source edge and cascade without deleting independent 
     const ids = ['左面壳前边界·颧颊至下颊', '左斜面带横向桥·颧颊层', '左面壳后边界·颧弓至下颌角', '左斜面带横向桥·下颊层'].map(n => p.curves.find(c => c.name === n)!.id);
     p = addPatch(p, ids);
     expect(p.patches).toHaveLength(6);
-    expect(p.patches!.filter(x => x.boundaryEdgeIds.includes(ids[0]))).toHaveLength(2);
+    expect(p.patches!.filter(x => x.boundaryUses.some(b=>b.curveId===ids[0]))).toHaveLength(2);
     expect(prunePatches({ ...p, curves: p.curves.filter(c => c.id !== ids[0]) }).patches).toHaveLength(2);
 });

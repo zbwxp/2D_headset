@@ -1,3 +1,6 @@
+import {isSection} from './model';
+import {validateSection} from './section';
+import {symmetryNormal} from '../head/frame';
 import type {Vec3} from "../project/types";
 import {pointPosition} from "../geometry/evaluation";
 import type { LandmarkProject } from "../landmarks/model";
@@ -23,6 +26,24 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
     )
       return fail();
     ids.add(c.id);
+    if(c.geometryType==='LOOMIS_SECTION'){
+      if(!p.headFrame||!['LEFT','RIGHT','CENTERLINE'].includes(c.side)||c.startLandmarkId!==undefined||c.endLandmarkId!==undefined||c.shape!==undefined)return fail();
+      const common={id:c.id,name:c.name,geometryType:'LOOMIS_SECTION' as const,side:c.side,mirrorPartnerCurveId:c.mirrorPartnerCurveId,systemRole:c.systemRole,logicalRing:c.logicalRing,logicalEndpoints:c.logicalEndpoints};
+      if(c.role==='mirror'){if(typeof c.canonicalCurveId!=='string'||c.section!==undefined)return fail();return {...common,role:'mirror',canonicalCurveId:c.canonicalCurveId};}
+      if(c.role!=='canonical')return fail();validateSection(c.section);
+      if(c.logicalRing&&(!Array.isArray(c.logicalEndpoints)||c.logicalEndpoints.length!==2||c.logicalEndpoints[0]===c.logicalEndpoints[1]||c.logicalEndpoints.some((id:string)=>!p.landmarks.some(l=>l.id===id&&l.type==='CENTERLINE'))))return fail();
+      if(c.logicalRing&&!['COMPOSITE','SYMMETRIC'].includes(c.logicalRing))return fail();
+      if(c.logicalRing&&(c.role!=='canonical'||c.mirrorPartnerCurveId||Math.abs(c.section.planeNormal[0])>1e-10||Math.abs(c.section.reference[0])>1e-10))return fail();
+      if(c.logicalRing==='COMPOSITE'&&(Math.abs(c.section.planeNormal[1]-1)>1e-10||Math.abs(c.section.reference[2]-1)>1e-10))return fail();
+      if(!c.logicalRing&&c.side==='CENTERLINE'&&(c.mirrorPartnerCurveId||c.section.planeOffset!==0||Math.abs(c.section.planeNormal[0])!==1))return fail();
+      if(c.side!=='CENTERLINE'&&typeof c.mirrorPartnerCurveId!=='string')return fail();
+      return {...common,role:'canonical',section:{hostFrameId:'head',planeNormal:[...c.section.planeNormal],planeOffset:c.section.planeOffset,reference:[...c.section.reference]}} as CurveEdge;
+    }
+    if(c.geometryType==='HELMET_RIM'){
+      if(!p.headFrame||!['RIM_R','RIM_L'].includes(c.systemRole)||!p.landmarks.some(l=>l.id===c.startLandmarkId)||!p.landmarks.some(l=>l.id===c.endLandmarkId)||c.startLandmarkId===c.endLandmarkId||!c.mirrorPartnerCurveId)return fail();
+      if(c.role!=='canonical'&&c.role!=='mirror')return fail();
+      return {id:c.id,name:c.name,geometryType:'HELMET_RIM',systemRole:c.systemRole,startLandmarkId:c.startLandmarkId,endLandmarkId:c.endLandmarkId,mirrorPartnerCurveId:c.mirrorPartnerCurveId,role:c.role,...(c.role==='mirror'?{canonicalCurveId:c.canonicalCurveId}:{})} as CurveEdge;
+    }
     const a = p.landmarks.find((l) => l.id === c.startLandmarkId),
       b = p.landmarks.find((l) => l.id === c.endLandmarkId);
     if (
@@ -73,7 +94,7 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
     if (
       Math.abs(Math.hypot(...normal) - 1) > 1e-7 ||
       (L > CURVE_EPS && Math.abs(dot(normal, chord) / L) > 1e-7) ||
-      (center && Math.hypot(normal[0] - 1, normal[1], normal[2]) > 1e-7)
+      (center && Math.hypot(...sub(normal,symmetryNormal(p))) > 1e-7)
     )
       return fail();
     for (const h of [s.startHandle, s.endHandle])
@@ -112,6 +133,7 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
     const owner = c.role === "canonical" ? c : other;
     if (follower.role !== "mirror" || follower.canonicalCurveId !== owner.id)
       return fail();
+    if(isSection(c)||isSection(other)){if(!isSection(c)||!isSection(other)||c.side===other.side||c.side==='CENTERLINE'||other.side==='CENTERLINE')return fail();continue;}
     for (const key of ["startLandmarkId", "endLandmarkId"] as const) {
       const l = p.landmarks.find((l) => l.id === c[key])!;
       if (other[key] !== (l.mirrorPartnerId ?? l.id)) return fail();

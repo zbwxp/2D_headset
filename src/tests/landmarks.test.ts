@@ -1,3 +1,5 @@
+import {migrateHeadFrame} from '../domain/head/frame';
+import {pointPosition} from '../domain/geometry/evaluation';
 import {world} from './world-fixture';
 import { it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
@@ -25,7 +27,7 @@ it("20 stable UUID landmarks, six centers, seven mirror pairs; no surface geomet
   expect(p.landmarks.filter((l) => l.type === "CENTERLINE")).toHaveLength(6);
   expect(new Set(p.landmarks.map((l) => l.id)).size).toBe(20);
   expect(p).not.toHaveProperty("surface");
-  expect(parseLandmarks(JSON.stringify(p))).toEqual(p);
+  expect(parseLandmarks(JSON.stringify(p))).toEqual(migrateHeadFrame(p));
 });
 it("unlocked drag preserves camera depth and changes only selected position", () => {
   const { p, l, yaw } = setup();
@@ -140,9 +142,7 @@ it("single driver observations survive load without adding follower constraints"
   l.viewLocks.front = captureLock(world(l).position, front);
   const upgraded = parseLandmarks(JSON.stringify(p));
   expect(upgraded.landmarks.filter((l) => !!l.viewLocks.front)).toHaveLength(1);
-  expect(upgraded.landmarks.map((l) => world(l).position)).toEqual(
-    p.landmarks.map((l) => world(l).position),
-  );
+  upgraded.landmarks.forEach(l=>pointPosition(upgraded,l.id).forEach((v,i)=>expect(v).toBeCloseTo(world(p.landmarks.find(x=>x.id===l.id)!).position[i],12)));
   expect(upgraded.landmarks.find((x) => x.id === l.id)!.viewLocks).toEqual(
     l.viewLocks,
   );
@@ -310,10 +310,10 @@ it("driver handoff reanchors at current coordinates and follower remains unconst
   };
   expect(p.landmarks.find((l) => l.id === left.id)!.viewLocks).toEqual({});
   const saved = parseLandmarks(JSON.stringify(p));
-  expect(saved).toEqual(JSON.parse(JSON.stringify(p)));
+  expect(saved).toEqual(JSON.parse(JSON.stringify(migrateHeadFrame(p))));
   const switched = activateDriver(saved, left.id);
-  expect(switched.landmarks.map((l) => world(l).position)).toEqual(
-    saved.landmarks.map((l) => world(l).position),
+  expect(switched.landmarks.map((l) => pointPosition(switched,l.id))).toEqual(
+    saved.landmarks.map((l) => pointPosition(saved,l.id)),
   );
   expect(switched.landmarks.find((l) => l.id === right.id)!.viewLocks).toEqual(
     {},
@@ -333,7 +333,5 @@ it("legacy double observations migrate to one driver without losing the explicit
   expect(migrated.landmarks.find((l) => l.id === left.id)!.viewLocks).toEqual(
     {},
   );
-  expect(migrated.landmarks.map((l) => world(l).position)).toEqual(
-    p.landmarks.map((l) => world(l).position),
-  );
+  migrated.landmarks.forEach(l=>pointPosition(migrated,l.id).forEach((v,i)=>expect(v).toBeCloseTo(world(p.landmarks.find(x=>x.id===l.id)!).position[i],12)));
 });

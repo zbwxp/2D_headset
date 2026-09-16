@@ -1,3 +1,5 @@
+import {evaluationContext} from '../geometry/evaluation';
+import {boundaryKey,canonicalBoundary,mirrorBoundary,curveLocationOfLandmark} from '../patches/boundary';
 import type { LandmarkProject } from '../landmarks/model';
 import type { Vec3 } from '../project/types';
 import { loop } from '../patches/model';
@@ -21,14 +23,23 @@ export interface Chart {
     ids: number[][];
 }
 export function buildLattice(p: LandmarkProject) {
+    if(p.patches?.some(x=>(x.type==='loop'||x.type==='lens')))throw Error('Legacy Smooth 不支持环形面；请使用 Surface Continuity');
     const nodes: Node[] = [], byKey = new Map<string, number>(), charts = new Map<string, Chart>(), adjacency = surfaceAdjacency(p), warnings: string[] = [];
+    const ctx=evaluationContext(p),uses=(p.patches??[]).flatMap(patch=>patch.boundaryUses.map(use=>({patch:patch.id,use,key:boundaryKey(p,use)})));
+    const overlaps=new Set<string>();
+    for(let i=0;i<uses.length;i++)for(let j=i+1;j<uses.length;j++){
+        const a=uses[i],b=uses[j];if(a.patch===b.patch||a.use.curveId!==b.use.curveId||a.key===b.key)continue;
+        const interval=(u:typeof a)=>[curveLocationOfLandmark(u.use.curveId,u.use.startLandmarkId!,ctx),curveLocationOfLandmark(u.use.curveId,u.use.endLandmarkId!,ctx)].sort((x,y)=>x-y);
+        const x=interval(a),y=interval(b);if(Math.min(x[1],y[1])-Math.max(x[0],y[0])>1e-10)overlaps.add(a.use.curveId);
+    }
+    for(const id of overlaps)warnings.push('宿主 '+id+' 存在不同端点 UUID 的重叠区间；不焊接、不跨区间 Smooth');
     const landmarkMirror = (id: string) => { const l = p.landmarks.find(l => l.id === id)!; return l.mirrorPartnerId ?? (l.type === 'CENTERLINE' ? id : undefined); };
     // A follower uses its canonical chart orientation, not an independently sorted loop.
     const chartRing = (id: string): ReturnType<typeof loop> => {
         const patch = p.patches!.find(x => x.id === id)!;
         if (!patch.canonicalId)
-            return loop(p, patch.boundaryEdgeIds);
-        return chartRing(patch.canonicalId).map(r => ({ id: p.curves.find(c => c.id === r.id)!.mirrorPartnerCurveId ?? r.id, reverse: r.reverse, vertex: landmarkMirror(r.vertex)! }));
+            return loop(p, patch.boundaryUses);
+        return chartRing(patch.canonicalId).map(r => {const use=mirrorBoundary(p,r.use),c=canonicalBoundary(p,use);return {id:boundaryKey(p,use),curveId:use.curveId,use,reverse:c.startLandmarkId!==use.startLandmarkId,vertex:use.startLandmarkId!};});
     };
     const boundary = (type: 'tri' | 'quad', i: number, j: number) => {
         if (j === 0)
@@ -50,6 +61,7 @@ export function buildLattice(p: LandmarkProject) {
         return null;
     };
     for (const patch of [...(p.patches ?? [])].sort((a, b) => a.id.localeCompare(b.id))) {
+        if(patch.type==='loop'||patch.type==='lens')continue;
         const ring = chartRing(patch.id), f = fullnessEvaluator(p, patch), ids: number[][] = [];
         for (let j = 0; j <= N; j++) {
             const row: number[] = [];
@@ -71,10 +83,11 @@ export function buildLattice(p: LandmarkProject) {
                         const k = r.reverse ? N - b.k : b.k;
                         key = 'E:' + r.id + ':' + k;
                         const count = adjacency.get(r.id)!.length;
-                        fixed = count !== 2 || influence(p, r.id) === 0;
-                        const c = p.curves.find(c => c.id === r.id)!, m = c.mirrorPartnerCurveId ?? (landmarkMirror(c.startLandmarkId) === c.startLandmarkId && landmarkMirror(c.endLandmarkId) === c.endLandmarkId ? c.id : undefined);
-                        if (m)
-                            mirrorKey = 'E:' + m + ':' + k;
+                        fixed = count !== 2 || influence(p, r.curveId) === 0;
+                        try {const use=canonicalBoundary(p,r.use),m=mirrorBoundary(p,use),canonicalMirror=canonicalBoundary(p,m);
+                            const mk=canonicalMirror.startLandmarkId===m.startLandmarkId?k:N-k;
+                            mirrorKey='E:'+boundaryKey(p,m)+':'+mk;
+                        } catch { /* Unpaired boundaries have no reflection orbit. */ }
                     }
                 }
                 else if (patch.mirrorPartnerId)
@@ -125,7 +138,7 @@ export function buildLattice(p: LandmarkProject) {
     for (const [edge, patches] of adjacency) {
         if (patches.length > 2)
             warnings.push('Non-manifold Edge：' + edge + '（已固定）');
-        if (patches.length !== 2 || influence(p, edge) === 0)
+        if (patches.length !== 2 || influence(p, [...charts.values()].flatMap(c=>c.ring).find(r=>r.id===edge)!.curveId) === 0)
             continue;
         for (let k = 1; k < N; k++) {
             const id = byKey.get('E:' + edge + ':' + k);

@@ -1,3 +1,4 @@
+import {migrateHeadFrame} from '../domain/head/frame';
 import {world} from './world-fixture';
 import { it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
@@ -130,7 +131,7 @@ it("H: mixed management operations roundtrip UUIDs, custom names, positions, mir
   p = renameLandmark(p, center.id, "新颅顶");
   p = deleteLandmark(p, right.id);
   expect(parseLandmarks(JSON.stringify(p))).toEqual(
-    JSON.parse(JSON.stringify(p)),
+    JSON.parse(JSON.stringify(migrateHeadFrame(p))),
   );
 });
 it("all landmarks can be deleted, explicit locks survive empty save/load and can be unlocked", () => {

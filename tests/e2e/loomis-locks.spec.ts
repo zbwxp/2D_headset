@@ -1,0 +1,9 @@
+import {test,expect} from '@playwright/test';
+test('inline Section lock: disabled editing, deletion guarded, hosted creation, reload and unlock',async({page})=>{
+ await page.goto('/');await page.evaluate(async()=>{const {createLandmarkProject}=await import('/src/domain/landmarks/presets.ts' as string),{migrateHeadFrame}=await import('/src/domain/head/frame.ts' as string);const p=migrateHeadFrame(createLandmarkProject());Object.assign(p,{landmarks:[],curves:[],patches:[],centerlineOrder:[],loomisRegions:[],loomisCaps:[]});(window as any).__editorPerfStore.getState().load(p);});
+ await page.getByText('Loomis Set',{exact:true}).click();await page.getByRole('button',{name:'+ 侧面剖面对',exact:true}).click();const card=page.getByRole('region',{name:'SECTIONS'}).locator('article');await card.getByRole('button',{name:'锁定 Loomis 对象',exact:true}).click();await expect(card.locator('input[type=range]').first()).toBeDisabled();
+ await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.deleteCurve(s.selectedCurveId);});expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.curves.length)).toBe(2);
+ await card.getByRole('button',{name:'+ 添加在线定位点',exact:true}).click();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks.length)).toBe(2);
+ await page.waitForTimeout(600);await page.reload();await page.waitForFunction(()=>!!(window as any).__editorPerfStore);expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().project.loomisLocks.length)).toBe(2);
+ await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.selectCurve(s.project.curves[0].id);});await card.getByRole('button',{name:'解锁 Loomis 对象',exact:true}).click();await expect(card.locator('input[type=range]').first()).toBeEnabled();
+});

@@ -15,3 +15,10 @@ export function pickCurve(segments: CurveSegment[], camera: Camera, width: numbe
   }
   return best?.id ?? null;
 }
+
+/** Tool-only candidate hit test: pixels first, depth tie-break; no geometry selection. */
+export function pickAnchor(candidates:{id:string;position:Vector3}[],camera:Camera,width:number,height:number,x:number,y:number,tolerance=13){
+ let best:{id:string;distance:number;depth:number}|undefined;
+ for(const c of candidates){const q=c.position.clone().project(camera);if(q.z< -1||q.z>1)continue;const distance=Math.hypot((q.x+1)*width/2-x,(1-q.y)*height/2-y);if(distance<=tolerance&&(!best||distance<best.distance-.25||Math.abs(distance-best.distance)<=.25&&q.z<best.depth))best={id:c.id,distance,depth:q.z};}
+ return best?.id??null;
+}

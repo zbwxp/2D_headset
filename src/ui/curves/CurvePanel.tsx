@@ -1,3 +1,7 @@
+import {useLoomisUI} from '../head/loomisUI';
+import {isSection,isAnalytic} from '../../domain/curves/model';
+import {sectionFromAngles,sectionAngles} from '../../domain/curves/section';
+import {count} from '../../domain/geometry/diagnostics';
 import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
 import {curveRows,curveBaseName} from "../shared/pairRows";
@@ -15,39 +19,42 @@ import {
   rotate,
   CURVE_EPS,
 } from "../../domain/curves/geometry";
-export default function CurvePanel() {
+export default function CurvePanel({loomis=false}:{loomis?:boolean}) {
+ count('renderCurvePanel');
   const s = useEditor(useShallow(s=>({addOnCurvePoint:s.addOnCurvePoint,beginEdit:s.beginEdit,cancelCurve:s.cancelCurve,curveCreation:s.curveCreation,endEdit:s.endEdit,project:s.project,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape,startCurve:s.startCurve}))),
     ui = useUI(),
-    c = s.project.curves.find((c) => c.id === s.selectedCurveId);
+    c = s.project.curves.find((c) => c.id === s.selectedCurveId && isAnalytic(c)===loomis);
   return (
     <section
-      className={`sidebar-section curve-panel ${ui.curveCollapsed ? "collapsed" : ""}`}
-      aria-label="结构线"
+      className={`sidebar-section curve-panel ${(ui.curveCollapsed&&!loomis) ? "collapsed" : ""}`}
+      aria-label={loomis?"Loomis 剖面线":"结构线"}
     >
       <button
         className="section-heading"
-        aria-expanded={!ui.curveCollapsed}
-        onClick={() => useUI.setState({ curveCollapsed: !ui.curveCollapsed })}
+        aria-expanded={!(ui.curveCollapsed&&!loomis)}
+        onClick={() => {if(!loomis){useLoomisUI.setState({open:false});useUI.setState({ curveCollapsed: !ui.curveCollapsed });}}}
       >
-        <span>{ui.curveCollapsed ? "▶" : "▼"} 结构线</span>
-        <span>{curveRows(s.project).length} 行</span>
+        <span>{(ui.curveCollapsed&&!loomis) ? "▶" : "▼"} {loomis?"Loomis 剖面线":"结构线"}</span>
+        <span>{curveRows(s.project).filter(r=>isAnalytic(r.primary)===loomis).length} 行</span>
       </button>
-      <div className="section-body" hidden={ui.curveCollapsed}>
+      <div className="section-body" hidden={(ui.curveCollapsed&&!loomis)}>
         {c && (
           <div className="curve-current" data-testid="curve-current">
             <strong>当前：{c.name}</strong>
             <button onClick={()=>s.addOnCurvePoint(c.id)}>添加结构线定位点</button>
-            <PlaneControl key={c.id} id={c.id} />
+            {isSection(c)?<SectionControl id={c.id}/>:<PlaneControl key={c.id} id={c.id} />}
             <SmoothEdgeControl key={"smooth-"+c.id} id={c.id}/>
           </div>
         )}
         <div className="curve-create">
-          <button
+          {loomis&&<><button onClick={()=>useEditor.getState().createLoomisSection()}>创建 Loomis Section</button>
+          <button onClick={()=>useEditor.getState().createLoomisSection(true)}>创建 Loomis 中线剖面</button></>}
+          {!loomis&&<button
             disabled={s.project.landmarks.length < 2}
             onClick={s.startCurve}
           >
             创建曲线
-          </button>
+          </button>}
           {s.curveCreation && (
             <div className="curve-create-note">
               {s.curveCreation.startId
@@ -58,7 +65,7 @@ export default function CurvePanel() {
           )}
         </div>
         <div className="curve-list">
-          {curveRows(s.project).map(({primary,mirror}) => {
+          {curveRows(s.project).filter(r=>isAnalytic(r.primary)===loomis).map(({primary,mirror}) => {
             const x=[primary,mirror].find(x=>x?.id===s.selectedCurveId)??primary;
             return <SymmetricPairListItem key={primary.id} primaryId={primary.id} mirrorId={mirror?.id}
               selectedId={s.selectedCurveId} displayName={curveBaseName(primary,!!mirror)} onSelect={s.selectCurve}
@@ -93,4 +100,26 @@ function PlaneControl({ id }: { id: string }) {
         }}
       />
   );
+}
+
+export function SectionControl({id,compact=false}:{id:string;compact?:boolean}){
+ const s=useEditor(),selected=s.project.curves.find(c=>c.id===id)!;
+ const c=selected.role==='canonical'?selected:s.project.curves.find(c=>c.id===selected.canonicalCurveId)!;
+ if(!isSection(c)||c.role!=='canonical')return null;
+ if(c.systemRole?.startsWith('MAIN_'))return <small>系统主环 · 固定于 HeadFrame 主轴平面</small>;
+ if(c.systemRole?.startsWith('SIDE_'))return <NumericSlider label="Side Ring Position" min={.1} max={.95} value={s.project.loomisScaffold!.sidePosition} formatValue={formatNumeric} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setScaffold('sidePosition',v)}/>;
+ if(c.logicalRing==='COMPOSITE')return <NumericSlider label="Ring Offset" min={-.95} max={.95} value={c.section.planeOffset} formatValue={formatNumeric} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setSection(c.id,{...c.section,planeOffset:v})}/>;
+ if(c.side==='CENTERLINE')return <small>解析闭合中线剖面 · 固定于 Loomis 对称平面</small>;
+ const a=sectionAngles(c.section);
+ const restoreSelection=(action:()=>void)=>{action();const next=useEditor.getState();if(next.project.curves.some(c=>c.id===id))next.selectCurve(id);};
+ const session={onEditStart:()=>s.beginEdit(true),onEditEnd:s.endEdit,onUndo:()=>restoreSelection(s.undo),onRedo:()=>restoreSelection(s.redo)};
+ const change=(x:number,y:number,d:number)=>s.setSection(c.id,sectionFromAngles(x,y,d));
+ return <div data-testid="section-inspector"><small>解析 Section · 调整唯一 canonical 平面；镜像侧同步</small>
+ {compact&&<NumericSlider label="Section Offset" min={-.999} max={.999} value={c.section.planeOffset} formatValue={v=>formatNumeric(v)} {...session} onChange={v=>s.setSection(c.id,{...c.section,planeOffset:v})}/>}
+ <details open={!compact}><summary>{compact?'高级':'剖面方向'}</summary>
+ <NumericSlider label="Section Tilt X" min={-90} max={90} value={a.x} formatValue={v=>formatNumeric(v)+'°'} {...session} onChange={v=>change(v,a.y,c.section.planeOffset)}/>
+ <NumericSlider label="Section Tilt Y" min={-180} max={180} value={a.y} formatValue={v=>formatNumeric(v)+'°'} {...session} onChange={v=>change(a.x,v,c.section.planeOffset)}/>
+ </details>
+ {!compact&&<NumericSlider label="Section Offset" min={-.999} max={.999} value={c.section.planeOffset} formatValue={v=>formatNumeric(v)} {...session} onChange={v=>s.setSection(c.id,{...c.section,planeOffset:v})}/>}
+ <small>纯 Loomis 球面请在下方选择区域；与自由曲线混合的 Patch 仍使用绘制面的区间模式。</small></div>;
 }

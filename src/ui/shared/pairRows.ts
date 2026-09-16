@@ -1,3 +1,4 @@
+import {isSection} from '../../domain/curves/model';
 import type {LandmarkProject} from '../../domain/landmarks/model';
 import type {CurveEdge} from '../../domain/curves/model';
 export type Side = 'LEFT' | 'RIGHT';
@@ -13,6 +14,7 @@ export function pairRows<T extends {id:string}>(items:T[], partner:(x:T)=>string
 }
 export const pointSide=(x:{type:string}):Side|undefined=>x.type==='LEFT'||x.type==='RIGHT'?x.type:undefined;
 export function curveSide(p:LandmarkProject,c:CurveEdge):Side|undefined {
+ if(isSection(c))return c.side==='CENTERLINE'?undefined:c.side;
  const sides=[c.startLandmarkId,c.endLandmarkId].map(id=>p.landmarks.find(l=>l.id===id)).filter(Boolean).map(l=>pointSide(l!)).filter(Boolean);
  return sides.length&&sides.every(s=>s===sides[0])?sides[0]:undefined;
 }
@@ -22,7 +24,7 @@ export const patchRows=(p:LandmarkProject)=>pairRows(p.patches??[],x=>x.mirrorPa
  const partner=p.patches?.find(y=>y.id===x.mirrorPartnerId);
  // For a loop crossing the center, identify side from a deterministic exclusive
  // mirrored boundary pair. Common boundaries cannot define which member is R.
- const edges=x.boundaryEdgeIds.filter(id=>!partner?.boundaryEdgeIds.includes(id))
+ const edges=x.boundaryUses.map(b=>b.curveId).filter(id=>!partner?.boundaryUses.some(b=>b.curveId===id))
   .map(id=>p.curves.find(c=>c.id===id)).filter((c):c is CurveEdge=>!!c)
   .sort((a,b)=>[a.id,a.mirrorPartnerCurveId??a.id].sort()[0].localeCompare([b.id,b.mirrorPartnerCurveId??b.id].sort()[0]));
  return edges.map(c=>curveSide(p,c)).find(Boolean);

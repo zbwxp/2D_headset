@@ -1,3 +1,4 @@
+import {isAnalytic} from '../domain/curves/model';
 import {world} from './world-fixture';
 import { expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -28,7 +29,7 @@ it.each([null, "broken", { arbitrary: true }])(
         surfaceSmoothDefaults: junk,
       }),
     );
-    expect(p.version).toBe("landmarks-0.4.5");
+    expect(p.version).toBe("landmarks-0.5");
     expect(JSON.stringify(p)).not.toMatch(
       /smoothJunctions|surfaceSmoothNodes|surfaceSmoothDefaults/,
     );
@@ -44,7 +45,7 @@ it("adds exactly two ordinary landmarks and four curves; original objects and AC
   expect(prepared.curves.slice(0, 62)).toEqual(source.curves);
   const added = prepared.landmarks.slice(47);
   expect(added.map((l) => l.name)).toEqual(["左颊峰点", "右颊峰点"]);
-  expect(world(added[1]).position).toEqual(mirror(world(added[0]).position));
+  expect(world(added[1],prepared).position).toEqual(mirror(world(added[0],prepared).position));
   expect(Object.keys(added[0]).sort()).toEqual(
     Object.keys(source.landmarks.find((l) => l.type === "LEFT")!).sort(),
   );
@@ -54,7 +55,7 @@ it("B is inside AC in front and forward of the corresponding AC boundary height"
       (c) => c.name === "左面壳前边界·颧颊至下颊",
     )!,
     cp = controls(prepared, edge),
-    B = world(prepared.landmarks.find((l) => l.name === "左颊峰点")!).position;
+    B = world(prepared.landmarks.find((l) => l.name === "左颊峰点")!,prepared).position;
   let lo = 0,
     hi = 1;
   for (let i = 0; i < 50; i++) {
@@ -76,12 +77,12 @@ it("new curves are normal planar mirrored cubics with exact endpoints and defaul
   for (const c of prepared.curves.slice(62)) {
     const cp = controls(prepared, c);
     expect(cp[0]).toEqual(
-      world(prepared.landmarks.find((l) => l.id === c.startLandmarkId)!).position,
+      world(prepared.landmarks.find((l) => l.id === c.startLandmarkId)!,prepared).position,
     );
     expect(cp[3]).toEqual(
-      world(prepared.landmarks.find((l) => l.id === c.endLandmarkId)!).position,
+      world(prepared.landmarks.find((l) => l.id === c.endLandmarkId)!,prepared).position,
     );
-    if (c.role === "canonical") {
+    if ((c.role==='canonical'&&!isAnalytic(c))) {
       for (const p of cp)
         expect(Math.abs(dot(sub(p, cp[0]), c.shape.planeNormal))).toBeLessThan(
           1e-10,
@@ -98,7 +99,7 @@ it("new curves are normal planar mirrored cubics with exact endpoints and defaul
 });
 it("prepared source save/load is stable and preserves centerline and locks", () => {
   expect(parseLandmarks(JSON.stringify(prepared))).toEqual(prepared);
-  expect(modelStateCode(prepared)).toBe("A3B207F5");
+  expect(modelStateCode(prepared)).toBe("1380E486");
   expect(prepared.centerlineOrder).toEqual(old.centerlineOrder);
   expect(prepared.lockedViews).toEqual(old.lockedViews);
 });

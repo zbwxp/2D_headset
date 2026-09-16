@@ -166,10 +166,10 @@ describe("planar curve kernel", () => {
     const next = {
       ...p,
       landmarks: p.landmarks.map((l) =>
-        l.id === c.endLandmarkId
+        l.id === c.endLandmarkId!
           ? { ...l, placement: {kind:'WORLD' as const,position:add(world(l).position, [0.05, 0.13, -0.2])} }
           : l.id ===
-              p.landmarks.find((l) => l.id === c.endLandmarkId)!.mirrorPartnerId
+              p.landmarks.find((l) => l.id === c.endLandmarkId!)!.mirrorPartnerId
             ? {
                 ...l,
                 placement: {kind:'WORLD' as const,position:mirror(add(mirror(world(l).position), [0.05, 0.13, -0.2]))},
@@ -200,11 +200,11 @@ describe("planar curve kernel", () => {
     const n: [number, number, number] = [0, 1, 0];
     expect(transportNormal(n, d, [0, 0, -1])).toEqual(n);
     const { p: q, c } = setup();
-    const a = world(q.landmarks.find((l) => l.id === c.startLandmarkId)!).position;
+    const a = world(q.landmarks.find((l) => l.id === c.startLandmarkId!)!).position;
     const collapsed = followEndpoints(q, {
       ...q,
       landmarks: q.landmarks.map((l) =>
-        l.id === c.endLandmarkId ? { ...l, placement: {kind:'WORLD' as const,position:a} } : l,
+        l.id === c.endLandmarkId! ? { ...l, placement: {kind:'WORLD' as const,position:a} } : l,
       ),
     });
     expect(
@@ -220,8 +220,8 @@ describe("planar curve kernel", () => {
     const { p, c } = setup(),
       next = createCurve(
         p,
-        c.startLandmarkId,
-        c.endLandmarkId,
+        c.startLandmarkId!,
+        c.endLandmarkId!,
         p.views[0],
         "下缘",
       ).project;
@@ -235,10 +235,10 @@ describe("planar curve kernel", () => {
         .sort(),
     ).toEqual(["右上缘", "左上缘"].sort());
     expect(deleteCurve(next, next.curves[1].id).curves.length).toBe(2);
-    expect(incidentCurveIds(next, c.startLandmarkId).size).toBe(4);
-    expect(deleteLandmark(next, c.startLandmarkId).curves).toEqual([]);
+    expect(incidentCurveIds(next, c.startLandmarkId!).size).toBe(4);
+    expect(deleteLandmark(next, c.startLandmarkId!).curves).toEqual([]);
     expect(
-      duplicateLandmark(next, c.startLandmarkId, "复制").project.curves,
+      duplicateLandmark(next, c.startLandmarkId!, "复制").project.curves,
     ).toBe(next.curves);
     expect(next.centerlineOrder).toBe(p.centerlineOrder);
   });
@@ -307,12 +307,12 @@ describe("planar curve kernel", () => {
 
 it("tiny nonzero chords remain planar and collapsed chords recover deterministically", () => {
   const { p, c } = setup(),
-    a = world(p.landmarks.find((l) => l.id === c.startLandmarkId)!).position;
+    a = world(p.landmarks.find((l) => l.id === c.startLandmarkId!)!).position;
   const move = (old: LandmarkProject, position: [number, number, number]) =>
     followEndpoints(old, {
       ...old,
       landmarks: old.landmarks.map((l) =>
-        l.id === c.endLandmarkId ? { ...l, placement: {kind:'WORLD' as const,position:position} } : l,
+        l.id === c.endLandmarkId! ? { ...l, placement: {kind:'WORLD' as const,position:position} } : l,
       ),
     });
   const tiny = move(p, add(a, [1e-10, 2e-10, -3e-10]));

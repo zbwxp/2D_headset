@@ -1,3 +1,5 @@
+import {isSection} from './model';
+import {symmetryNormal} from '../head/frame';
 import {dependencyGraph,deleteClosure} from "../geometry/dependencies";
 import {pointPosition} from "../geometry/evaluation";
 import type { LandmarkProject, LandmarkView } from "../landmarks/model";
@@ -42,7 +44,7 @@ export function createCurve(
     mirrorPartnerCurveId: otherId,
     role: "canonical",
     shape: {
-      planeNormal: center ? [1, 0, 0] : defaultNormal(normalize(chord), v),
+      planeNormal: center ? symmetryNormal(p) : defaultNormal(normalize(chord), v),
       startHandle: { along: 1 / 3, offset: 0 },
       endHandle: { along: 1 / 3, offset: 0 },
     },
@@ -73,7 +75,7 @@ export function renameCurve(
     ...p,
     curves: p.curves.map((x) => {
       if (x.id !== id && x.id !== c.mirrorPartnerCurveId) return x;
-      const side = [x.startLandmarkId, x.endLandmarkId]
+      const side = isSection(x)?x.side:[x.startLandmarkId, x.endLandmarkId]
         .map((id) => p.landmarks.find((l) => l.id === id)!)
         .find((l) => l.type !== "CENTERLINE")?.type;
       return {

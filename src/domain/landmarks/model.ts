@@ -1,3 +1,4 @@
+import {symmetryNormal} from '../head/frame';
 import {pointPosition} from "../geometry/evaluation";
 import type { CurveEdge } from "../curves/model";
 import type { Vec3, Vec2, ViewState } from "../project/types";
@@ -8,11 +9,17 @@ export interface ViewLock {
   up: Vec3;
   coordinates: Vec2;
 }
-export type PointPlacement =
+export interface LoomisOffset { offsetX?:number; offsetY?:number; offsetZ?:number }
+export type PointPlacement = LoomisOffset & (
+ | {kind:"LOOMIS_SCAFFOLD";role:import("../head/scaffold").ScaffoldPointRole}
+ | {kind:"ON_SECTION_CAP";hostSurfaceId:string;u:number;v:number}
+ | {kind:"ON_LOOMIS_SURFACE";hostFrameId:"head";direction:Vec3}
  | {kind:"WORLD";position:Vec3}
- | {kind:"ON_CURVE";role:"canonical";hostCurveId:string;s:number}
- | {kind:"ON_CURVE";role:"mirror";hostCurveId:string;canonicalPointId:string};
+ | {kind:"FRAME_RELATIVE";position:Vec3}
+ | {kind:"ON_CURVE";role:"canonical";hostCurveId:string;s:number;ringEndpoint?:true}
+ | {kind:"ON_CURVE";role:"mirror";hostCurveId:string;canonicalPointId:string});
 export interface SemanticLandmark {
+  systemRole?: import("../head/scaffold").ScaffoldPointRole;
   id: string;
   name: string;
   placement: PointPlacement;
@@ -21,10 +28,25 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  loomisScaffold?: import("../head/scaffold").LoomisScaffold;
+  inspectionBackground?: import("../head/inspectionBackground").InspectionBackground;
+  loomisLocks?: string[];
+  loomisCaps?: import("../head/caps").LoomisSectionCap[];
+  loomisRegions?: import("../head/regions").LoomisRegion[];
+  headFrame?: import("../head/frame").HeadFrame;
+  surfaceContinuity?: import("../continuity/model").ContinuitySettings;
   surfaceSmooth?: import("../smooth/model").SurfaceSmoothSettings;
   patches?: import("../patches/model").SurfacePatch[];
   patchDisplay?: import("../patches/model").PatchDisplay;
   version:
+    | "landmarks-0.5.5"
+    | "landmarks-0.5.4"
+    | "landmarks-0.5.3"
+    | "landmarks-0.5.2"
+    | "landmarks-0.5"
+    | "landmarks-0.5.1"
+    | "landmarks-0.4.9.1"
+    | "landmarks-0.4.9"
     | "landmarks-0.4.5"
     | "landmarks-0.1"
     | "landmarks-0.2"
@@ -54,9 +76,9 @@ export function allowedBasis(
   extraRows: Vec3[] = [],
 ): Vec3[] {
   const l = p.landmarks.find((l) => l.id === id)!;
-  if(l.placement.kind!=="WORLD")return [];
+  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))return [];
   const rows: Vec3[] = [...extraRows];
-  if (l.type === "CENTERLINE") rows.push([1, 0, 0]);
+  if (l.type === "CENTERLINE") rows.push(symmetryNormal(p));
   // A symmetric pair has one observation per explicit view. The selected side
   // interprets those camera directions as driver; the partner adds no rows.
   for (const lock of Object.values(driverLocks(p, id)))
@@ -89,7 +111,7 @@ export function editingBasis(
   v: LandmarkView,
 ): Vec3[] {
   const l = p.landmarks.find((x) => x.id === id)!;
-  if(l.placement.kind!=="WORLD")return [];
+  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))return [];
   const partner = p.landmarks.find((x) => x.id === l.mirrorPartnerId);
   const hasLocks =
     Object.keys(l.viewLocks).length > 0 ||
@@ -103,7 +125,7 @@ export function dragPosition(
   delta: Vec2,
 ): Vec3 {
   const l = p.landmarks.find((l) => l.id === id)!;
-  if(l.placement.kind!=="WORLD")throw Error("结构线定位点只能调整在线位置。");
+  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))throw Error("结构线定位点只能调整在线位置。");
   const free = editingBasis(p, id, v),
     { right, up } = basis(v);
   const projected = (a: Vec3) =>
@@ -129,6 +151,8 @@ export function dragPosition(
 
 /** Inspect the same feasible space used by dragging, including invisible depth motion. */
 export function motionState(p: LandmarkProject, id: string, v: LandmarkView) {
+  if(p.landmarks.find(l=>l.id===id)?.placement.kind==="ON_SECTION_CAP")return {spatialDof:2,screenDof:0,track:null};
+  if(p.landmarks.find(l=>l.id===id)?.placement.kind==="ON_LOOMIS_SURFACE")return {spatialDof:p.landmarks.find(l=>l.id===id)?.type==="CENTERLINE"?1:2,screenDof:0,track:null};
   if(p.landmarks.find(l=>l.id===id)?.placement.kind==="ON_CURVE")return {spatialDof:1,screenDof:0,track:null};
   const spatial = allowedBasis(p, id);
   const editable = editingBasis(p, id, v);
@@ -167,7 +191,7 @@ export function driverLocks(
 ): Record<string, ViewLock> {
   const l = p.landmarks.find((l) => l.id === id)!;
   const partner = p.landmarks.find((x) => x.id === l.mirrorPartnerId);
-  return l.placement.kind==="WORLD"?{ ...partner?.viewLocks, ...l.viewLocks }:{};
+  return (l.placement.kind!=="ON_CURVE"&&l.placement.kind!=="ON_LOOMIS_SURFACE"&&l.placement.kind!=="ON_SECTION_CAP")?{ ...partner?.viewLocks, ...l.viewLocks }:{};
 }
 
 /** Exchange driver/follower at the current positions, retaining explicit camera frames.
@@ -179,7 +203,7 @@ export function activateDriver(
 ): LandmarkProject {
   const l = p.landmarks.find((l) => l.id === id);
   const partner = p.landmarks.find((x) => x.id === l?.mirrorPartnerId);
-  if (!l || l.placement.kind!=="WORLD" || !partner || !Object.keys(partner.viewLocks).length) return p;
+  if (!l || (l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP"))) || !partner || !Object.keys(partner.viewLocks).length) return p;
   const viewLocks = Object.fromEntries(
     Object.entries(driverLocks(p, id)).map(([viewId, k]) => [
       viewId,
@@ -214,7 +238,7 @@ export function setGlobalViewLock(
   let result = selectedId ? activateDriver(p, selectedId) : p;
   const drivers = new Set<string>();
   for (const l of result.landmarks) {
-    if(l.placement.kind!=="WORLD")continue;
+    if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))continue;
     const partner = result.landmarks.find((x) => x.id === l.mirrorPartnerId);
     if (!partner) {
       drivers.add(l.id);
@@ -250,6 +274,8 @@ export function setGlobalViewLock(
 /** Compare model/camera/lock state across browser-local saves, independently of layout and canvas zoom. */
 export function modelStateCode(p: LandmarkProject): string {
   const data = JSON.stringify({
+    headFrame: p.headFrame,
+    loomisRegions:p.loomisRegions,loomisCaps:p.loomisCaps,
     curves: p.curves,
     ...(p.patches?.length ? {patches:p.patches} : {}),
     centerlineOrder: p.centerlineOrder,

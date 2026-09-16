@@ -5,13 +5,21 @@
     "dirtyPoints": 2,
     "dirtyCurves": 0,
     "dirtyPatches": 0,
+    "renderOnCurveInspector": 2,
+    "renderLandmarkList": 2,
+    "renderCurvePanel": 2,
+    "renderPatchPanel": 2,
+    "renderEditView": 2,
+    "gpuFrames": 1,
     "autosaveSerializations": 1,
     "autosaveWrites": 1
   },
   "timings": {
-    "geometryEvaluationInclusive": 15.000000044703484,
-    "dependencyPropagation": 0.5999999977648258,
-    "threeGeometryUpdate": 0.6000000014901161,
-    "persistence": 0.6000000014901161
+    "geometryEvaluationInclusive": 5.499999985098839,
+    "dependencyPropagation": 0.3999999985098839,
+    "threeGeometryUpdate": 1.1000000014901161,
+    "gpuResourcePreparation": 0,
+    "gpuDrawSubmission": 0.19999999552965164,
+    "persistence": 0.7999999970197678
   }
 }

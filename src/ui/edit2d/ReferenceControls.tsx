@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEditor } from "../../app/store";
 import type { ReferenceImage } from "../../domain/project/types";
-async function readPhoto(file: File): Promise<ReferenceImage> {
+export async function readPhoto(file: File): Promise<ReferenceImage> {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
     throw new Error("请选择 JPG、PNG 或 WebP 图片。");
   if (file.size > 20_000_000) throw new Error("参考照片请小于 20 MB。");
@@ -206,7 +206,7 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                   key: "rotation",
                 },
               ].map((r) => (
-                <NumericSlider className="reference-slider" key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={value=>{
+                <NumericSlider className="reference-slider" inputScale={r.key==='opacity'||r.key==='scale'?100:1} key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={value=>{
                       update(
                         r.key === "x"
                           ? { offset: [value, ref.offset[1]] }

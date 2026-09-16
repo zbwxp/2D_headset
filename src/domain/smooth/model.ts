@@ -1,3 +1,4 @@
+import {boundaryKey} from '../patches/boundary';
 import type { LandmarkProject } from '../landmarks/model';
 export interface SurfaceSmoothSettings {
     enabled: boolean;
@@ -11,7 +12,8 @@ export const SMOOTH_WEIGHTS = { source: 1, edge: 12, fair: .5, seam: 4 } as cons
 export function surfaceAdjacency(p: LandmarkProject) {
     const result = new Map<string, string[]>();
     for (const patch of p.patches ?? [])
-        for (const id of patch.boundaryEdgeIds) {
+        for (const use of patch.boundaryUses) {
+            const id=boundaryKey(p,use);
             const list = result.get(id) ?? [];
             list.push(patch.id);
             result.set(id, list);

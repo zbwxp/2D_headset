@@ -1,10 +1,16 @@
+import {isAnalytic} from '../../domain/curves/model';
+import {frameWire} from '../../domain/head/frame';
+import BoundaryAuthoringOverlay from '../patches/BoundaryAuthoringOverlay';
+import {count} from '../../domain/geometry/diagnostics';
 import {useShallow} from 'zustand/react/shallow';
 import {pointPosition} from "../../domain/geometry/evaluation";
-import PatchLayer from "../patches/PatchLayer";
-import CurveLayer from "../curves/CurveLayer";
-import { useRef } from "react";
+import DerivedRenderLayer from "./DerivedRenderLayer";
+import InteractionOverlay from "./InteractionOverlay";
+import {useOrthographicView} from "./useOrthographicView";
+import CurveInteractionOverlay from "../curves/CurveInteractionOverlay";
+import { useRef,useState } from "react";
 import { useEditor } from "../../app/store";
-import { project } from "../../domain/geometry/core";
+import {worldToPlane,screenToSvg,EDIT_VIEWBOX} from "../../rendering/orthographic";
 import {
   allowedBasis,
   motionState,
@@ -12,8 +18,10 @@ import {
 } from "../../domain/landmarks/model";
 import type { Vec2 } from "../../domain/project/types";
 import ReferenceControls from "./ReferenceControls";
+const UNIT=EDIT_VIEWBOX.unitsPerWorld;
 export default function EditView() {
-  const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectView:s.selectView,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
+ count('renderEditView');
+  const s = useEditor(useShallow(s=>({patchCreation:s.patchCreation,pickPatchAnchor:s.pickPatchAnchor,beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
     v = s.project.views.find((v) => v.id === s.viewId)!,
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     { zoom, pan } = v.canvas,
@@ -26,15 +34,16 @@ export default function EditView() {
       origin: Vec2;
       recorded?: boolean;
     } | null>(null);
-  const local = (x: number, y: number): Vec2 => {
-    const p = new DOMPoint(x, y).matrixTransform(
-      svg.current!.getScreenCTM()!.inverse(),
-    );
-    return [p.x, p.y];
+  const [gpuHost,setGpuHost]=useState<HTMLDivElement|null>(null);
+  const projection=useOrthographicView(svg,v);
+  const project=(p:readonly number[],_view:typeof v)=>worldToPlane(p,projection).slice(0,2) as Vec2;
+  const local = (x:number,y:number):Vec2 => {
+    const rect=svg.current!.getBoundingClientRect();
+    return screenToSvg([x-rect.left,y-rect.top],projection);
   };
   const world = (p: Vec2): Vec2 => [
-    (p[0] - pan[0]) / zoom / 160,
-    -(p[1] - pan[1]) / zoom / 160,
+    (p[0] - pan[0]) / zoom / UNIT,
+    -(p[1] - pan[1]) / zoom / UNIT,
   ];
   const motion = l ? motionState(s.project, l.id, v) : { track: null },
     q = l ? project(pointPosition(s.project,l.id), v) : [0, 0];
@@ -44,13 +53,58 @@ export default function EditView() {
     s.endEdit();
   };
   return (
-    <div className="point-stage">
+    <div className="point-stage" data-testid="edit-viewport">
+      <svg className="edit-background" viewBox={`${-EDIT_VIEWBOX.width/2} ${-EDIT_VIEWBOX.height/2} ${EDIT_VIEWBOX.width} ${EDIT_VIEWBOX.height}`} aria-hidden="true">
+        <defs>
+          <pattern
+            id="point-grid"
+            width="20"
+            height="20"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M20 0H0V20"
+              fill="none"
+              stroke="#ffffff"
+              strokeOpacity=".05"
+              strokeWidth=".6"
+            />
+          </pattern>
+        </defs>
+        <g
+          transform={`translate(${pan.join(" ")}) scale(${zoom})`}
+          pointerEvents="none"
+        >
+          {ref?.visible && (
+            <image
+              data-testid="reference-image"
+              href={ref.dataUrl}
+              x={(-ref.width / Math.max(ref.width, ref.height)) * 208}
+              y={(-ref.height / Math.max(ref.width, ref.height)) * 208}
+              width={(ref.width / Math.max(ref.width, ref.height)) * 416}
+              height={(ref.height / Math.max(ref.width, ref.height)) * 416}
+              opacity={ref.opacity}
+              transform={`translate(${ref.offset[0] * UNIT} ${-ref.offset[1] * UNIT}) rotate(${ref.rotation}) scale(${ref.scale})`}
+              pointerEvents="none"
+            />
+          )}
+          <rect
+            x="-3000"
+            y="-3000"
+            width="6000"
+            height="6000"
+            fill="url(#point-grid)"
+            pointerEvents="none"
+          />
+        </g>
+      </svg>
+      <div ref={setGpuHost} className="edit-gpu-host" />
       <ReferenceControls viewId={v.id} />
       <span className="point-view-label">{v.label} · 正交投影</span>
       <svg
         ref={svg}
         data-testid="point-editor"
-        viewBox="-300 -280 600 560"
+        viewBox={`${-EDIT_VIEWBOX.width/2} ${-EDIT_VIEWBOX.height/2} ${EDIT_VIEWBOX.width} ${EDIT_VIEWBOX.height}`}
         style={{ width: "100%", height: "100%", touchAction: "none" }}
         onWheel={(e) =>
           s.setCanvas({
@@ -110,8 +164,8 @@ export default function EditView() {
             s.setReference(v.id, {
               ...ref,
               offset: [
-                d.origin[0] + (p[0] - d.start[0]) / zoom / 160,
-                d.origin[1] - (p[1] - d.start[1]) / zoom / 160,
+                d.origin[0] + (p[0] - d.start[0]) / zoom / UNIT,
+                d.origin[1] - (p[1] - d.start[1]) / zoom / UNIT,
               ],
             });
         }}
@@ -119,47 +173,10 @@ export default function EditView() {
         onPointerCancel={end}
         onLostPointerCapture={end}
       >
-        <defs>
-          <pattern
-            id="point-grid"
-            width="20"
-            height="20"
-            patternUnits="userSpaceOnUse"
-          >
-            <path
-              d="M20 0H0V20"
-              fill="none"
-              stroke="#ffffff"
-              strokeOpacity=".05"
-              strokeWidth=".6"
-            />
-          </pattern>
-        </defs>
-        <g
-          transform={`translate(${pan.join(" ")}) scale(${zoom})`}
-          pointerEvents={s.referenceMoving ? "none" : undefined}
-        >
-          {ref?.visible && (
-            <image
-              data-testid="reference-image"
-              href={ref.dataUrl}
-              x={(-ref.width / Math.max(ref.width, ref.height)) * 208}
-              y={(-ref.height / Math.max(ref.width, ref.height)) * 208}
-              width={(ref.width / Math.max(ref.width, ref.height)) * 416}
-              height={(ref.height / Math.max(ref.width, ref.height)) * 416}
-              opacity={ref.opacity}
-              transform={`translate(${ref.offset[0] * 160} ${-ref.offset[1] * 160}) rotate(${ref.rotation}) scale(${ref.scale})`}
-              pointerEvents="none"
-            />
-          )}
-          <rect
-            x="-3000"
-            y="-3000"
-            width="6000"
-            height="6000"
-            fill="url(#point-grid)"
-            pointerEvents="none"
-          />
+        <g transform={`translate(${pan.join(" ")}) scale(${zoom})`} pointerEvents={s.referenceMoving ? "none" : undefined}>
+          <DerivedRenderLayer view={projection} gpuHost={gpuHost} />
+          <InteractionOverlay>
+          {frameWire(s.project).map((line,i)=><polyline key={'loomis'+i} data-testid="loomis-wire" points={line.map(p=>{const q=project(p,v);return `${q[0]*UNIT},${-q[1]*UNIT}`;}).join(' ')} fill="none" stroke="#83b5c1" strokeOpacity=".5" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" pointerEvents="none"/>)}
           <path
             d="M-3000 0H3000 M0 -3000V3000"
             stroke="#a0afba"
@@ -172,7 +189,7 @@ export default function EditView() {
             points={centerlineGuide(s.project)
               .map((p) => {
                 const q = project(p, v);
-                return `${q[0] * 160},${-q[1] * 160}`;
+                return `${q[0] * UNIT},${-q[1] * UNIT}`;
               })
               .join(" ")}
             fill="none"
@@ -183,15 +200,14 @@ export default function EditView() {
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
           />
-          <PatchLayer view={v} />
-          <CurveLayer view={v} />
+          <CurveInteractionOverlay view={v} projection={projection} />
           {!s.selectedCurveId && track && Math.hypot(...track) > 1e-8 && (
             <line
               data-testid="allowed-track"
-              x1={q[0] * 160 - track[0] * 2000}
-              y1={-q[1] * 160 - track[1] * 2000}
-              x2={q[0] * 160 + track[0] * 2000}
-              y2={-q[1] * 160 + track[1] * 2000}
+              x1={q[0] * UNIT - track[0] * 2000}
+              y1={-q[1] * UNIT - track[1] * 2000}
+              x2={q[0] * UNIT + track[0] * 2000}
+              y2={-q[1] * UNIT + track[1] * 2000}
               stroke="#ffc879"
               strokeWidth="1.5"
               strokeDasharray="6 5"
@@ -212,8 +228,8 @@ export default function EditView() {
                   aria-label={x.name}
                   role="button"
                   tabIndex={0}
-                  cx={p[0] * 160}
-                  cy={-p[1] * 160}
+                  cx={p[0] * UNIT}
+                  cy={-p[1] * UNIT}
                   r={(selected ? 6 : 4) / zoom}
                   fill={selected ? "#b9eb9f" : "#1b2328"}
                   stroke={
@@ -237,7 +253,7 @@ export default function EditView() {
                     s.selectLandmark(x.id);
                   }}
                   onFocus={() => {
-                    if (!s.curveCreation) s.selectLandmark(x.id);
+                    if (!s.curveCreation&&!s.patchCreation) s.selectLandmark(x.id);
                   }}
                   onPointerDown={(e) => {
                     if (e.button === 2) {
@@ -251,10 +267,11 @@ export default function EditView() {
                       s.pickCurveEndpoint(x.id);
                       return;
                     }
+                    if(s.patchCreation){e.preventDefault();s.pickPatchAnchor(x.id);return;}
                     s.selectLandmark(x.id);
                     e.preventDefault();
                     e.currentTarget.focus({ preventScroll: true });
-                    if(x.placement.kind==="ON_CURVE")return;
+                    if(x.placement.kind==="ON_CURVE"||(x.placement.kind==="ON_LOOMIS_SURFACE"||(x.placement.kind==="LOOMIS_SCAFFOLD"||x.placement.kind==="ON_SECTION_CAP")))return;
                     drag.current = {
                       kind: "point",
                       id: x.id,
@@ -266,6 +283,7 @@ export default function EditView() {
                       s.notify("此点已固定，请解除上方列出的视图锁。");
                   }}
                   onKeyDown={(e) => {
+                    if(s.patchCreation)return;
                     if (s.curveCreation) {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -273,7 +291,7 @@ export default function EditView() {
                       }
                       return;
                     }
-                    if(x.placement.kind==="ON_CURVE")return;
+                    if(x.placement.kind==="ON_CURVE"||(x.placement.kind==="ON_LOOMIS_SURFACE"||(x.placement.kind==="LOOMIS_SCAFFOLD"||x.placement.kind==="ON_SECTION_CAP")))return;
                     const d: Record<string, Vec2> = {
                       ArrowLeft: [-1, 0],
                       ArrowRight: [1, 0],
@@ -292,8 +310,8 @@ export default function EditView() {
                 />
                 {selected && (
                   <text
-                    x={p[0] * 160 + 11 / zoom}
-                    y={-p[1] * 160 - 10 / zoom}
+                    x={p[0] * UNIT + 11 / zoom}
+                    y={-p[1] * UNIT - 10 / zoom}
                     fill="#e5efdf"
                     fontSize={12 / zoom}
                     paintOrder="stroke"
@@ -307,9 +325,11 @@ export default function EditView() {
               </g>
             );
           })}
+          <BoundaryAuthoringOverlay view={projection} zoom={zoom}/>
+          </InteractionOverlay>
         </g>
       </svg>
-      {!l && (
+      {!s.project.landmarks.length && !s.project.curves.length && !s.project.loomisRegions?.length && (
         <div className="landmark-empty">没有语义点。可撤销删除或打开项目。</div>
       )}
       <div className="point-canvas-tools">
@@ -340,52 +360,11 @@ export default function EditView() {
         ) : s.curveCreation ? (
           "选择两个语义点创建结构线 · Esc 取消"
         ) : s.selectedCurveId ? (
-          "拖线弯曲 · 控制柄精调 · Shift 拖动平移"
+          (s.project.curves.some(c=>c.id===s.selectedCurveId&&isAnalytic(c))?'解析结构线 · 在侧栏调整参数 · Shift 拖动平移':'拖线弯曲 · 控制柄精调 · Shift 拖动平移')
         ) : (
           "拖动语义点 · 空白处 / Shift 拖动平移 · 滚轮缩放"
         )}
       </div>
     </div>
-  );
-}
-export function MiniPreview({ viewId }: { viewId: string }) {
-  const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectView:s.selectView,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
-    v = s.project.views.find((v) => v.id === viewId)!;
-  return (
-    <button
-      className={`point-mini ${s.viewId === viewId ? "active" : ""}`}
-      onClick={() => s.selectView(viewId)}
-    >
-      <svg viewBox="-180 -220 360 440">
-        <polyline
-          points={centerlineGuide(s.project)
-            .map((p) => {
-              const q = project(p, v);
-              return `${q[0] * 160},${-q[1] * 160}`;
-            })
-            .join(" ")}
-          fill="none"
-          stroke="#ffc879"
-          strokeWidth="1"
-          strokeDasharray="4 6"
-        />
-
-        <PatchLayer view={v} />
-          <CurveLayer view={v} readonly />
-        {s.project.landmarks.map((l) => {
-          const p = project(pointPosition(s.project,l.id), v);
-          return (
-            <circle
-              key={l.id}
-              cx={p[0] * 160}
-              cy={-p[1] * 160}
-              r={l.id === s.selectedId ? 7 : 4}
-              fill={l.id === s.selectedId ? "#b9eb9f" : "#83989d"}
-            />
-          );
-        })}
-      </svg>
-      <span>{v.label}</span>
-    </button>
   );
 }

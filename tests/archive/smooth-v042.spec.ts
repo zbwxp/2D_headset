@@ -9,7 +9,7 @@ const seam='左面壳前边界·颧颊至下颊';
 let project=addPatch(base,[seam,'左颊部体积线·颧颊至颊峰','左颊部体积线·颊峰至下颊'].map(n=>base.curves.find(c=>c.name===n)!.id));
 project=addPatch(project,[seam,'左斜面带横向桥·颧颊层','左面壳后边界·颧弓至下颌角','左斜面带横向桥·下颊层'].map(n=>base.curves.find(c=>c.name===n)!.id));
 test('Smooth worker, shared render field, source preservation, mirror controls and history',async({page})=>{
- const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/?renderer=cpu');
  await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'smooth.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
  await openPatch(page);await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption('low');
  await page.getByRole('checkbox',{name:'显示 Contour 窗口',exact:true}).check();
@@ -44,7 +44,7 @@ test('Smooth worker, shared render field, source preservation, mirror controls a
  await page.screenshot({path:'test-results/smooth-ui.png'});expect(errors).toEqual([]);
 });
 test('source handle, plane and landmark edits re-solve; display precision does not change contour',async({page})=>{
- await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'smooth.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...project,surfaceSmooth:{enabled:true,strength:1,edgeInfluenceOverrides:{}}}))});
+ await page.goto('/?renderer=cpu');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles({name:'smooth.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...project,surfaceSmooth:{enabled:true,strength:1,edgeInfluenceOverrides:{}}}))});
  await openPatch(page);await page.getByRole('combobox',{name:'Patch 显示精度',exact:true}).selectOption('low');
  const panel=page.getByTestId('smooth-controls');await openPatch(page);await expect(panel).toHaveAttribute('data-state','ready');await panel.getByText('求解诊断 · 完整解').click();
  const diagnostic=page.getByTestId('smooth-diagnostics');let before=await diagnostic.innerText();

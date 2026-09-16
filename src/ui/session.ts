@@ -13,6 +13,7 @@ export function activeSelection(): Entity | null {
     : null;
 }
 export const useUI = create<{
+  continuityHover: import("../domain/patches/boundary").PatchBoundaryUse | null;
   landmarkCollapsed: boolean;
   curveCollapsed: boolean;
   patchCollapsed: boolean;
@@ -22,6 +23,7 @@ export const useUI = create<{
   menu: { target: Entity; x: number; y: number } | null;
   positions: Record<string, { x: number; y: number }>;
 }>(() => ({
+  continuityHover: null,
   landmarkCollapsed: false,
   curveCollapsed: false,
   patchCollapsed: false,

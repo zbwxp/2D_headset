@@ -33,7 +33,7 @@ test('performance workload scenarios',async({page})=>{
  if(process.env.PERF_STAGE!=='baseline')for(const key of ['patchEvaluations','patchTessellations','arcLengthLUTBuilds','threeBufferRebuilds','occlusionCandidateTests'])expect((results.isolated as any).counters[key]??0,key).toBe(0);
  await page.evaluate(()=>{const w=window as any,warm=w.__perfFixture;w.__editorPerfStore.getState().load({...warm.p,surfaceSmooth:{enabled:true,strength:1,edgeInfluenceOverrides:{}}});});
  await page.locator('.patch-panel .section-heading').click();
- await expect(page.getByTestId('smooth-controls')).toHaveAttribute('data-state','ready');
+ await expect(page.getByTestId('continuity-status')).toHaveAttribute('data-state',/ready|natural|warning/);
  await page.getByRole('checkbox',{name:'显示 Contour 窗口',exact:true}).check();await expect(page.getByTestId('contour-preview')).toHaveAttribute('aria-busy','false');
  await page.waitForTimeout(600);
  await page.evaluate(()=>{const w=window as any;w.__geometryPerformance.reset();const s=w.__editorPerfStore.getState();s.beginEdit(true);s.setOnCurveS(w.__perfFixture.pointId,.731);s.endEdit();});

@@ -1,3 +1,4 @@
+import {canonicalBoundary,boundaryParameters} from '../patches/boundary';
 import type { LandmarkProject } from '../landmarks/model';
 import type { Vec3 } from '../project/types';
 import { controls } from '../curves/geometry';
@@ -55,15 +56,17 @@ export function solveSmooth(p: LandmarkProject): SmoothResult {
         }[]): Vec3 => [0, 1, 2].map(k => weights.reduce((s, w) => s + w.weight * nodes[w.id].p[k] / L, 0)) as Vec3;
         // Build Q and transverse lengths once from pre-smooth geometry.
         for (const [edge, patches] of [...g.adjacency].sort(([a], [b]) => a.localeCompare(b))) {
-            const alpha = influence(p, edge);
+            const use=canonicalBoundary(p,g.charts.get(patches[0])!.ring.find(r=>r.id===edge)!.use);
+            const alpha = influence(p, use.curveId);
             if (patches.length !== 2 || alpha === 0)
                 continue;
-            const cp = controls(p, p.curves.find(c => c.id === edge)!);
+            const cp = controls(p, p.curves.find(c => c.id === use.curveId)!);
+            const {t0,t1}=boundaryParameters(p,use);
             let skipped = 0;
             for (let k = 1; k < N; k++) {
                 const t = k / N, e = g.byKey.get('E:' + edge + ':' + k)!;
                 const a = stencil(g.charts.get(patches[0])!, ...interiorUV(g.charts.get(patches[0])!, edge, t)), b = stencil(g.charts.get(patches[1])!, ...interiorUV(g.charts.get(patches[1])!, edge, t));
-                const tangent = derivative(cp, t), norm = Math.hypot(...tangent);
+                const tangent = derivative(cp, t0+(t1-t0)*t), norm = Math.hypot(...tangent);
                 if (!Number.isFinite(norm) || norm < 1e-10 * L) {
                     skipped++;
                     continue;
@@ -99,7 +102,7 @@ export function solveSmooth(p: LandmarkProject): SmoothResult {
         }
         const fields: SmoothResult['fields'] = {};
         for (const patch of p.patches ?? []) {
-            if (patch.canonicalId)
+            if (patch.canonicalId||(patch.type==='loop'||patch.type==='lens'))
                 continue;
             const chart = g.charts.get(patch.id)!;
             fields[patch.id] = { type: patch.type, n: N, values: chart.ids.map(row => row.map(id => values[id].map(x => x * L) as Vec3)) };

@@ -5,6 +5,7 @@ function Harness(){const[value,setValue]=useState(50),[starts,start]=useState(0)
  {visible&&<NumericSlider label="Test" min={0} max={100} value={value} disabled={disabled} onChange={setValue} onEditStart={()=>start(x=>x+1)} onEditEnd={()=>end(x=>x+1)}/>}
  <NumericSlider label="Angle" min={-180} max={180} value={angle} onChange={setAngle}/>
  <NumericSlider label="Stepped" min={0} max={100} step={.7} value={stepped} onChange={setStepped}/>
+ <NumericSlider label="Percent" min={0} max={1} value={angle} inputScale={100} formatValue={v=>`${v*100}%`} onChange={setAngle}/>
  <output data-testid="counts">{starts},{ends}</output><output data-testid="value">{value}</output>
  <button onClick={()=>disable(x=>!x)}>Disable</button><button onClick={()=>show(x=>!x)}>Unmount</button>
  <button onClick={()=>{setValue(50);start(0);end(0);}}>Reset</button><input aria-label="Text" defaultValue="test"/>

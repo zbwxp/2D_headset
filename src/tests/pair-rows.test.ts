@@ -9,7 +9,7 @@ it('groups reciprocal pairs right-first without guessing names; singles remain',
  expect(pairRows(items,x=>x.id==='l'?undefined:x.other,x=>x.side)).toHaveLength(3);
 });
 it('patch rename only changes names of both members',()=>{
- const p={patches:[{id:'a',mirrorPartnerId:'b',type:'tri',boundaryEdgeIds:['1','2','3']},{id:'b',mirrorPartnerId:'a',type:'tri',boundaryEdgeIds:['4','5','6']}]} as LandmarkProject;
+ const p={patches:[{id:'a',mirrorPartnerId:'b',type:'tri',boundaryUses:['1','2','3'].map(curveId=>({curveId,startLandmarkId:'a',endLandmarkId:'b'}))},{id:'b',mirrorPartnerId:'a',type:'tri',boundaryUses:['4','5','6'].map(curveId=>({curveId,startLandmarkId:'c',endLandmarkId:'d'}))}]} as LandmarkProject;
  const next=renamePatch(p,'b','  颊部  ');expect(next.patches?.map(x=>x.name)).toEqual(['颊部','颊部']);
  expect(next.patches?.map(({name,...rest})=>rest)).toEqual(p.patches);expect(()=>renamePatch(p,'a',' ')).toThrow();
 });

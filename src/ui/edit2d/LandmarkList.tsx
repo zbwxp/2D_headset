@@ -1,3 +1,5 @@
+import {isAnalytic} from '../../domain/curves/model';
+import {count} from '../../domain/geometry/diagnostics';
 import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
 import {landmarkRows} from "../shared/pairRows";
@@ -12,15 +14,18 @@ import {
   type SemanticLandmark,
 } from "../../domain/landmarks/model";
 
-function LandmarkList() {
+function LandmarkList({loomis=false}:{loomis?:boolean}) {
+ count('renderLandmarkList');
   const selection = useEditor(useShallow(s=>({landmarks:s.project.landmarks,centerlineOrder:s.project.centerlineOrder,reorderCenterline:s.reorderCenterline,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,selectedPatchId:s.selectedPatchId})));
   const s={...selection,project:useEditor.getState().project};
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const points = new Map(s.project.landmarks.map((l) => [l.id, l]));
+  const included=(l:SemanticLandmark)=>!!((l.placement.kind==='ON_LOOMIS_SURFACE'||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==='ON_SECTION_CAP'))||l.placement.kind==='ON_CURVE'&&s.project.curves.some(c=>c.id===(l.placement.kind==='ON_CURVE'?l.placement.hostCurveId:'')&&isAnalytic(c)))===loomis;
   const renderPoint = (primary: SemanticLandmark, partner?: SemanticLandmark) => {
+    if(!included(primary))return null;
     const x = [primary,partner].find(p=>p?.id===(!s.selectedCurveId&&!s.selectedPatchId?s.selectedId:null)) ?? primary;
-    const center = x.type === "CENTERLINE" && x.placement.kind === "WORLD";
+    const center = x.type === "CENTERLINE" && x.placement.kind !== "ON_CURVE";
     return (
       <SymmetricPairListItem
         primaryId={primary.id} mirrorId={partner?.id} selectedId={s.selectedCurveId||s.selectedPatchId?null:s.selectedId}
@@ -118,6 +123,7 @@ function LandmarkList() {
       </SymmetricPairListItem>
     );
   };
+  if(loomis)return <div className="point-list">{landmarkRows(s.project).filter(r=>included(r.primary)).map(r=>renderPoint(r.primary,r.mirror))}</div>;
   return (
     <div className="point-list">
       <section aria-label="中心线点" className="landmark-group">

@@ -5,12 +5,20 @@
       "sourceUpdates": 1,
       "dirtyPoints": 2,
       "dirtyCurves": 0,
-      "dirtyPatches": 0
+      "dirtyPatches": 0,
+      "renderOnCurveInspector": 2,
+      "renderLandmarkList": 2,
+      "renderCurvePanel": 2,
+      "renderPatchPanel": 2,
+      "renderEditView": 2,
+      "gpuFrames": 1
     },
     "timings": {
-      "geometryEvaluationInclusive": 17.099999997764826,
-      "dependencyPropagation": 1.199999999254942,
-      "threeGeometryUpdate": 0.7000000029802322
+      "geometryEvaluationInclusive": 5.999999970197678,
+      "dependencyPropagation": 0.6999999955296516,
+      "threeGeometryUpdate": 1.2000000029802322,
+      "gpuResourcePreparation": 0,
+      "gpuDrawSubmission": 0.3999999985098839
     }
   },
   "downstream": {
@@ -19,16 +27,24 @@
       "dirtyPoints": 2,
       "dirtyCurves": 2,
       "dirtyPatches": 0,
+      "renderOnCurveInspector": 2,
+      "renderLandmarkList": 2,
+      "renderCurvePanel": 2,
+      "renderPatchPanel": 2,
+      "renderEditView": 2,
       "curveEvaluations": 2,
       "threeCurveBufferRebuilds": 2,
-      "occlusionCandidateTests": 13692,
-      "projectedTriangles": 1152
+      "curveRenderBufferBuilds": 2,
+      "gpuCurveUploads": 2,
+      "gpuUploadBytes": 1152,
+      "gpuFrames": 1
     },
     "timings": {
-      "geometryEvaluationInclusive": 20.30000004172325,
-      "dependencyPropagation": 1.0999999977648258,
-      "threeGeometryUpdate": 1.800000000745058,
-      "projectionOcclusion": 14.800000000745058
+      "geometryEvaluationInclusive": 9.500000029802322,
+      "dependencyPropagation": 1.3999999985098839,
+      "threeGeometryUpdate": 3.2000000029802322,
+      "gpuResourcePreparation": 0.10000000149011612,
+      "gpuDrawSubmission": 0.5
     }
   },
   "curveHandle": {
@@ -40,15 +56,22 @@
       "dirtyPoints": 2,
       "dirtyCurves": 4,
       "dirtyPatches": 0,
+      "renderOnCurveInspector": 2,
+      "renderCurvePanel": 2,
+      "renderPatchPanel": 2,
+      "renderEditView": 2,
       "threeCurveBufferRebuilds": 68,
-      "occlusionCandidateTests": 13692,
-      "projectedTriangles": 1152
+      "curveRenderBufferBuilds": 4,
+      "gpuCurveUploads": 4,
+      "gpuUploadBytes": 2304,
+      "gpuFrames": 1
     },
     "timings": {
-      "geometryEvaluationInclusive": 22.00000001862645,
-      "dependencyPropagation": 1,
-      "threeGeometryUpdate": 2.7999999970197678,
-      "projectionOcclusion": 13.50000000372529
+      "geometryEvaluationInclusive": 6.499999977648258,
+      "dependencyPropagation": 0.7999999970197678,
+      "threeGeometryUpdate": 3,
+      "gpuResourcePreparation": 0,
+      "gpuDrawSubmission": 0.29999999701976776
     }
   },
   "fullness": {
@@ -57,18 +80,24 @@
       "dirtyPoints": 0,
       "dirtyCurves": 0,
       "dirtyPatches": 2,
+      "renderOnCurveInspector": 2,
+      "renderCurvePanel": 2,
+      "renderPatchPanel": 2,
+      "renderEditView": 2,
       "patchTessellations": 2,
-      "patchEvaluations": 2,
       "arcLengthLUTBuilds": 3,
       "threeBufferRebuilds": 2,
-      "occlusionCandidateTests": 13800,
-      "projectedTriangles": 1152
+      "surfaceRenderBufferBuilds": 2,
+      "gpuSurfaceUploads": 2,
+      "gpuUploadBytes": 2208,
+      "gpuFrames": 1
     },
     "timings": {
-      "geometryEvaluationInclusive": 21.400000024586916,
-      "patchTessellation": 2.100000001490116,
-      "threeGeometryUpdate": 3,
-      "projectionOcclusion": 12.699999995529652
+      "geometryEvaluationInclusive": 6.799999982118607,
+      "patchTessellation": 3.7999999970197678,
+      "threeGeometryUpdate": 5.5,
+      "gpuResourcePreparation": 0.10000000149011612,
+      "gpuDrawSubmission": 0.29999999701976776
     }
   },
   "debug": {

@@ -24,10 +24,11 @@ it('isolated locator: no host LUT, Patch, or surface revision work after warmup'
  q.patches!.forEach((x,i)=>expect(tessellate(q,x,6)).toBe(meshes[i]));for(const name of ['arcLengthLUTBuilds','patchEvaluations','patchTessellations'])expect(counts()[name]??0).toBe(0);
 });
 it('local endpoint dependency rebuilds only the two mirror patches; exact Undo cache reuse',()=>{
- let {p,a}=fixture();const side=p.landmarks.find(x=>x.id===a)!.type;const ids=p.landmarks.filter(l=>l.type===side&&l.placement.kind==='WORLD').slice(2,4).map(l=>l.id);const edges:string[]=[];
+ let {p,a}=fixture();const side=p.landmarks.find(x=>x.id===a)!.type;const ids=p.landmarks.filter(l=>l.type===side&&l.placement.kind!=='ON_CURVE').slice(2,4).map(l=>l.id);const edges:string[]=[];
  for(const [x,y] of [[a,ids[0]],[ids[0],ids[1]],[ids[1],a]]){const r=createCurve(p,x,y,p.views[0],'local');p=r.project;edges.push(r.selectedId);}p=addPatch(p,edges);pointPosition(p,a);const before=p.patches!.map(x=>tessellate(p,x,6));diagnostics.reset();const q=followEndpoints(p,setOnCurveS(p,a,.673));const dirty=dirtyDescendants(p,q);expect(dirty.patches.size).toBe(2);
  for(let i=0;i<q.patches!.length;i++){const x=q.patches![i],m=tessellate(q,x,6);if(dirty.patches.has(x.id))expect(m).not.toBe(before[i]);else expect(m).toBe(before[i]);}
- expect(counts().patchEvaluations).toBe(2);expect(counts().patchTessellations).toBe(2);expect(counts().arcLengthLUTBuilds??0).toBe(0);p.patches!.forEach((x,i)=>expect(tessellate(p,x,6)).toBe(before[i]));
+ expect(counts().patchEvaluations).toBe(1); // Canonical evaluator is reused by the mirror.
+expect(counts().patchTessellations).toBe(2);expect(counts().arcLengthLUTBuilds??0).toBe(0);p.patches!.forEach((x,i)=>expect(tessellate(p,x,6)).toBe(before[i]));
 });
 it('100 s values share the unchanged host arc-length table',()=>{const {p,a}=fixture();diagnostics.reset();pointPosition(p,a);const initial=counts().arcLengthLUTBuilds??0;for(let i=0;i<100;i++)pointPosition(setOnCurveS(p,a,(i+1)/101),a);expect(counts().arcLengthLUTBuilds??0).toBe(initial);});
 it('one continuous session produces exactly one autosave, regardless of duration; stable views serialize once',()=>{vi.useFakeTimers();const {p,a}=fixture(),write=vi.fn(),save=createAutosave(write);save.begin();for(let i=0;i<100;i++){save.request(setOnCurveS(p,a,i/100));vi.advanceTimersByTime(100);}expect(write).not.toHaveBeenCalled();save.end();vi.advanceTimersByTime(500);expect(write).toHaveBeenCalledTimes(1);expect(JSON.parse(serializeProject(p))).toEqual(JSON.parse(JSON.stringify(p)));save.cancel();vi.useRealTimers();});

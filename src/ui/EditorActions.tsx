@@ -1,3 +1,6 @@
+import {usePointArrowKeys} from './shared/usePointArrowKeys';
+import {systemOwned} from '../domain/head/scaffold';
+import {isSection} from '../domain/curves/model';
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useEditor } from "../app/store";
@@ -6,6 +9,7 @@ import { landmarkBaseName } from "../domain/landmarks/management";
 import { incidentCurveIds } from "../domain/curves/management";
 import FloatingPanel from "./shared/FloatingPanel";
 export default function EditorActions() {
+  usePointArrowKeys();
   const ui = useUI(),
     s = useEditor(),
     source = s.project.landmarks.find((l) => l.id === ui.duplicateId);
@@ -37,6 +41,7 @@ export default function EditorActions() {
       const entity = activeSelection();
       if (!entity) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        if(entity.kind==="curve"&&useEditor.getState().project.curves.some(c=>c.id===entity.id&&isSection(c))){e.preventDefault();useEditor.getState().duplicateRing(entity.id);}
         if (entity.kind === "landmark") {
           e.preventDefault();
           useUI.setState({ duplicateId: entity.id });
@@ -48,6 +53,7 @@ export default function EditorActions() {
         (e.key === "Delete" || e.key === "Backspace")
       ) {
         e.preventDefault();
+        if(systemOwned(useEditor.getState().project,entity.id)){useEditor.getState().notify("系统 Default 对象不可删除，可复制为用户对象。");return;}
         useUI.setState({ deleteTarget: entity });
       }
     };
@@ -223,6 +229,7 @@ function ContextMenu() {
       </button>
       <button
         role="menuitem"
+        disabled={systemOwned(useEditor.getState().project,menu.target.id)}
         onClick={() =>
           useUI.setState({ deleteTarget: menu.target, menu: null })
         }

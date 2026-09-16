@@ -1,8 +1,8 @@
+import {savedProject} from '../helpers/persistence';
 import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-const state = (p: Page) =>
-  p.evaluate(() => JSON.parse(localStorage.getItem("contour.landmarks.v039")!));
+const state = savedProject;
 const pick = (p: Page,n:string)=>selectSidebar(p,"landmark",n);
 async function create(p: Page, a: string, b: string) {
   const h=p.locator(".curve-panel .section-heading");if(await h.getAttribute("aria-expanded")==="false")await h.click();
@@ -86,7 +86,7 @@ test("body C, handles S, mirror edit, plane rotation, all views and actual JSON 
       .locator(".point-view-tabs")
       .getByRole("button", { name, exact: true })
       .click();
-    await expect(page.locator(`[data-testid="curve-${c.id}"]`)).toHaveCount(4);
+    await expect(page.locator(`[data-testid="curve-${c.id}"]`)).toHaveCount(1);
     expect((await state(page)).curves).toEqual(p.curves);
   }
   await page.screenshot({ path: info.outputPath("planar-curves.png") });
@@ -120,7 +120,8 @@ test("endpoint transport, duplicate and cascade history; multiple edges and pair
   await pick(page, "右眉尾点");
   await page.getByTestId("landmark-右眉尾点").focus();
   await page.keyboard.press("ArrowUp");
-  const moved = await state(page);
+  // Geometry assertion during a keyboard edit reads live state, not deferred autosave.
+  const moved = await page.evaluate(()=>(window as any).__editorPerfStore.getState().project);
   expect(owner(moved).shape.startHandle).toEqual(
     owner(before).shape.startHandle,
   );

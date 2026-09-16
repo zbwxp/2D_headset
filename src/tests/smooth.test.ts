@@ -1,3 +1,4 @@
+import {isAnalytic} from '../domain/curves/model';
 import {world} from './world-fixture';
 import {it,expect} from 'vitest';
 import {solveSmooth} from '../domain/smooth/solver';
@@ -38,8 +39,8 @@ it('deterministic shared Tri/Quad and mirrored real fixture solves without sourc
 });
 
 import {installSmoothResult,getSmoothResult,solveKey} from '../domain/smooth/evaluation';
-import {evaluator,fullnessEvaluator,tessellate} from '../domain/patches/geometry';
-import {contourSource} from '../domain/contour/source';
+import {evaluator,fullnessEvaluator,tessellate} from './legacy-smooth-runtime';
+import {contourSource} from './legacy-smooth-runtime';
 import {latticeWeights} from '../domain/smooth/field';
 import {parseSmooth,defaultSmooth} from '../domain/smooth/model';
 it('OFF and strength zero are exact base even after solve; strength reuses the full solution',()=>{
@@ -81,7 +82,7 @@ it('displacement interpolation is linear along every Tri edge',()=>{
  for(const [u,v] of [[.133,0],[0,.74],[.27,.73],[.11,.43]]){const q=displacement({type:'tri',n:12,values},u,v);expect(q[0]).toBeCloseTo(u,12);expect(q[1]).toBeCloseTo(v,12);expect(latticeWeights('tri',12,u,v).reduce((s,w)=>s+w.weight,0)).toBeCloseTo(1,12);}
 });
 it('corrupted topology falls back; isolated bad tangent samples warn instead of failing',()=>{
- const p=smoothFixture(.6);const c=p.curves.find(c=>c.id==='seam')!;if(c.role!=='canonical')throw Error('fixture');
+ const p=smoothFixture(.6);const c=p.curves.find(c=>c.id==='seam')!;if((c.role!=='canonical'||isAnalytic(c)))throw Error('fixture');
  c.shape.startHandle.along=1;c.shape.endHandle.along=1;
  const r=solveSmooth(p);expect(r.error).toBeUndefined();expect(r.diagnostics.warnings.some(x=>x.includes('退化'))).toBe(true);
  const broken={...p,curves:p.curves.filter(c=>c.id!=='seam')};expect(solveSmooth(broken).error).toBeTruthy();
@@ -117,16 +118,16 @@ it('real mirror surfaces share canonical correction exactly; source edits invali
  const node=g.nodes[chart.ids[j][i]];if(node.key.startsWith('E:'+seam.id+':'))expect(r.fields[chart.id].values[j][i]).toEqual([0,0,0]);
  }
  for(const edit of [
- {...p,landmarks:p.landmarks.map((l)=>l.id!==seam.startLandmarkId?l:{...l,placement: {kind:'WORLD' as const,position:[world(l).position[0],world(l).position[1]+.01,world(l).position[2]] as [number,number,number]}})},
- {...p,curves:p.curves.map(c=>c.role==='canonical'?{...c,shape:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
+ {...p,landmarks:p.landmarks.map((l)=>l.id!==seam.startLandmarkId?l:{...l,placement: {kind:'WORLD' as const,position:[world(l,p).position[0],world(l,p).position[1]+.01,world(l,p).position[2]] as [number,number,number]}})},
+ {...p,curves:p.curves.map(c=>(c.role==='canonical'&&!isAnalytic(c))?{...c,shape:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
  {...p,patches:p.patches!.map(c=>c.canonicalId?c:{...c,fullness:.2})}
  ])expect(solveKey(edit)).not.toBe(solveKey(p));
- expect(parseLandmarks(JSON.stringify(p)).surfaceSmooth).toEqual(p.surfaceSmooth);
+ expect(parseLandmarks(JSON.stringify(p)).surfaceSmooth).toBeUndefined();
 });
 it('normalized solve is scale-independent',()=>{
  const p=smoothFixture(.6),r=solveSmooth(p);
  for(const scale of [.01,10]){
- const scaled={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:world(l).position.map(x=>x*scale) as [number,number,number]}}))},s=solveSmooth(scaled);
+ const scaled={...p,landmarks:p.landmarks.map(l=>({...l,placement: {kind:'WORLD' as const,position:world(l,p).position.map(x=>x*scale) as [number,number,number]}}))},s=solveSmooth(scaled);
  expect(s.error).toBeUndefined();expect(s.diagnostics.after).toBeCloseTo(r.diagnostics.after,9);
  for(const id in r.fields)r.fields[id].values.forEach((row,j)=>row.forEach((v,i)=>v.forEach((x,k)=>expect(s.fields[id].values[j][i][k]/scale).toBeCloseTo(x,9))));
  }

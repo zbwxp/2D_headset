@@ -1,9 +1,7 @@
+import {savedProject} from '../helpers/persistence';
 import {selectSidebar} from "../helpers/sidebar";
 import { test, expect, Page } from "@playwright/test";
-const state = (page: Page) =>
-  page.evaluate(() =>
-    JSON.parse(localStorage.getItem("contour.landmarks.v039")!),
-  );
+const state = savedProject;
 async function choose(page: Page, name: string) {
   await selectSidebar(page,"landmark",name);
 }

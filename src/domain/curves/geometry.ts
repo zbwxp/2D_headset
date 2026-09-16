@@ -1,3 +1,5 @@
+import {isAnalytic,isSection} from './model';
+import {symmetryNormal,mirrorPoint,mirrorVector} from '../head/frame';
 import {dirtyDescendants} from "../geometry/dependencies";
 import {evaluationContext,pointPosition} from "../geometry/evaluation";
 import {
@@ -39,6 +41,7 @@ export function defaultNormal(d: Vec3, v: LandmarkView): Vec3 {
   return perpendicular(d, [forward, up, right]);
 }
 export function canonical(p: LandmarkProject, c: CurveEdge): CanonicalCurve {
+  if(isAnalytic(c))throw Error('Section 不使用 Bézier shape');
   return (
     c.role === "canonical"
       ? c
@@ -46,6 +49,7 @@ export function canonical(p: LandmarkProject, c: CurveEdge): CanonicalCurve {
   ) as CanonicalCurve;
 }
 export function endpoints(p: LandmarkProject, c: CurveEdge): [Vec3, Vec3] {
+  if(isSection(c))throw Error('闭合 Section 没有端点');
   return [
     pointPosition(p,c.startLandmarkId),
     pointPosition(p,c.endLandmarkId),
@@ -80,10 +84,7 @@ export function sampleCurve(
   c: CurveEdge,
   segments = 64,
 ): Vec3[] {
-  const cp = controls(p, c);
-  return Array.from({ length: segments + 1 }, (_, i) =>
-    bezier(cp, i / segments),
-  );
+  return evaluationContext(p).curve(c.id).sample(segments);
 }
 export function rotate(v: Vec3, axis: Vec3, angle: number): Vec3 {
   return add(
@@ -110,13 +111,13 @@ export function followEndpoints(
   for(const key of dirtyDescendants(old,next).order){
     if(!key.startsWith('curve:'))continue;
     const id=key.slice(6),c=result.curves.find(c=>c.id===id)!;
-    if(c.role!=='canonical')continue;
-    const oldCurve=old.curves.find(x=>x.id===id);if(!oldCurve||oldCurve.role!=='canonical')continue;
+    if(c.role!=='canonical'||isAnalytic(c))continue;
+    const oldCurve=old.curves.find(x=>x.id===id);if(!oldCurve||oldCurve.role!=='canonical'||isAnalytic(oldCurve))continue;
     const [a,b]=endpoints(old,oldCurve),[an,bn]=endpoints(result,c),oldChord=sub(b,a),newChord=sub(bn,an);
     const moved=!a.every((v,i)=>v===an[i])||!b.every((v,i)=>v===bn[i]);
     let n=c.shape.planeNormal;
     if(moved){n=oldCurve.shape.planeNormal;
-      if(isCenterCurve(result,c))n=[1,0,0];
+      if(isCenterCurve(result,c))n=symmetryNormal(result);
       else if(Math.hypot(...newChord)>0)n=Math.hypot(...oldChord)>0?transportNormal(n,normalize(oldChord),normalize(newChord)):perpendicular(normalize(newChord),[n]);
     }
     if(!moved)continue;
@@ -154,8 +155,8 @@ export function planeTarget(
   const base = canonical(p, c),
     f = frame(p, base);
   if (f.length < CURVE_EPS) return null;
-  const a = c.role === "mirror" ? mirror(f.a) : f.a,
-    n = c.role === "mirror" ? mirror(f.n) : f.n;
+  const a = c.role === "mirror" ? mirrorPoint(p,f.a) : f.a,
+    n = c.role === "mirror" ? mirrorVector(p,f.n) : f.n;
   const { right, up, forward } = basis(v),
     denominator = dot(forward, n);
   if (Math.abs(denominator) < 1e-5) return null;
@@ -164,7 +165,7 @@ export function planeTarget(
     origin,
     scale(forward, dot(sub(a, origin), n) / denominator),
   );
-  return c.role === "mirror" ? mirror(target) : target;
+  return c.role === "mirror" ? mirrorPoint(p,target) : target;
 }
 export function bodyShape(
   p: LandmarkProject,
