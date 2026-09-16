@@ -99,7 +99,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Box size={25} />
-          contour<span className="point-version">V0.5.5.1 · Loomis Default Scaffold</span>
+          contour<span className="point-version">V0.5.5.2 · Contour Chains</span>
         </div>
         <input
           className="point-name"

@@ -1,4 +1,4 @@
-import {projection,depthSteps,tangentLines,visibilitySteps} from '../../domain/contour/visible';
+import {projection,depthSteps,tangentChains,visibilitySteps} from '../../domain/contour/visible';
 import {contourSource,type ContourSource} from '../../domain/contour/source';
 import {rasterSteps,traceSteps,CONTOUR_RESOLUTION,type Orientation} from '../../domain/contour/silhouette';
 import {LatestJob} from '../../domain/contour/jobs';
@@ -35,7 +35,7 @@ const jobs=new LatestJob<ContourCameraRequest>(async(request,stale)=>{
   let openPaths;
   if(depth&&!cancelled()){
    const lines=mesh.mesh.boundaries??[],flat=projection(mesh.mesh,request.orientation,CONTOUR_RESOLUTION,lines.flat()).points;let at=0;const boundary=lines.map(line=>{const q=flat.slice(at,at+line.length);at+=line.length;return q;});
-   openPaths=await consume(visibilitySteps([...tangentLines(mesh.mesh,points),...boundary],depth,projected.epsilon),'trace');
+   openPaths=await consume(visibilitySteps([...tangentChains(mesh.mesh,points),...boundary],depth,projected.epsilon),'trace');
   }
   // Drain incoming camera updates before publishing, including those arriving during trace.
   await yieldTask();
