@@ -1,3 +1,4 @@
+import {uiText} from "./i18n";
 import {usePointArrowKeys} from './shared/usePointArrowKeys';
 import {systemOwned} from '../domain/head/scaffold';
 import {isSection} from '../domain/curves/model';
@@ -73,8 +74,8 @@ export default function EditorActions() {
         : s.project.landmarks.find((l) => l.id === target?.id);
   return (
     <>
-      {ui.duplicateId && (
-        <FloatingPanel id="duplicate" title="复制语义点" onClose={close}>
+      {uiText(ui.duplicateId && (
+        <FloatingPanel id="duplicate" title={uiText("复制语义点")} onClose={close}>
           <form
             onKeyDown={(e) => {
               if (e.key === "Escape" && !e.nativeEvent.isComposing) {
@@ -94,31 +95,25 @@ export default function EditorActions() {
             }}
           >
             <p>
-              {source
+              {uiText(source
                 ? `源点：${source.name}`
-                : "源语义点已删除，请关闭后重新选择。"}
+                : "源语义点已删除，请关闭后重新选择。")}
             </p>
-            <label>
-              新名称
-              <input
+            <label>{uiText("新名称")}<input
                 ref={input}
-                aria-label="语义点名称"
+                aria-label={uiText("语义点名称")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={80}
               />
             </label>
             <div className="floating-actions">
-              <button type="button" onClick={close}>
-                取消
-              </button>
-              <button type="submit" disabled={!source}>
-                复制
-              </button>
+              <button type="button" onClick={close}>{uiText("取消")}</button>
+              <button type="submit" disabled={!source}>{uiText("复制")}</button>
             </div>
           </form>
         </FloatingPanel>
-      )}
+      ))}
       {target &&
         object &&
         createPortal(
@@ -129,7 +124,7 @@ export default function EditorActions() {
             <form
               role="dialog"
               aria-modal="true"
-              aria-label={target.kind === "patch"?"删除曲面":target.kind === "curve" ? "删除结构线" : "删除语义点"}
+              aria-label={uiText(target.kind === "patch"?"删除曲面":target.kind === "curve" ? "删除结构线" : "删除语义点")}
               className="landmark-modal"
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -147,21 +142,19 @@ export default function EditorActions() {
                 focusWorkspace();
               }}
             >
-              <strong>确认删除「{object.name??"曲面"}」？</strong>
+              <strong>{uiText("确认删除「")}{uiText(object.name??"曲面")}」？</strong>
               <p>
-                {target.kind === "patch" ? "将删除此曲面及镜像曲面，保留所有语义点与结构线。" : target.kind === "curve"
+                {uiText(target.kind === "patch" ? "将删除此曲面及镜像曲面，保留所有语义点与结构线。" : target.kind === "curve"
                   ? "mirrorPartnerCurveId" in object &&
                     object.mirrorPartnerCurveId
                     ? "将删除左右结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。"
                     : "将删除此结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。"
                   : "mirrorPartnerId" in object && object.mirrorPartnerId
                     ? "将同时删除左右两个点及其投影锚点。"
-                    : "将删除此点及其投影锚点。"}
-                {target.kind === "landmark" &&
+                    : "将删除此点及其投影锚点。")}
+                {uiText(target.kind === "landmark" &&
                   incidentCurveIds(s.project, target.id).size > 0 &&
-                  ` 将同时删除 ${incidentCurveIds(s.project, target.id).size} 条相连结构线（含镜像侧）及其下游依赖。`}
-                可通过撤销恢复。
-              </p>
+                  ` 将同时删除 ${incidentCurveIds(s.project, target.id).size} 条相连结构线（含镜像侧）及其下游依赖。`)}{uiText("可通过撤销恢复。")}</p>
               <div>
                 <button
                   type="button"
@@ -169,12 +162,8 @@ export default function EditorActions() {
                     useUI.setState({ deleteTarget: null });
                     focusWorkspace();
                   }}
-                >
-                  取消
-                </button>
-                <button autoFocus type="submit">
-                  确认删除
-                </button>
+                >{uiText("取消")}</button>
+                <button autoFocus type="submit">{uiText("确认删除")}</button>
               </div>
             </form>
           </div>,
@@ -215,8 +204,7 @@ function ContextMenu() {
           onClick={() =>
             useUI.setState({ duplicateId: menu.target.id, menu: null })
           }
-        >
-          复制 <small>Ctrl/Cmd C</small>
+        >{uiText("复制")}<small>{uiText("Ctrl/Cmd C")}</small>
         </button>
       )}
       <button
@@ -224,17 +212,14 @@ function ContextMenu() {
         onClick={() =>
           useUI.setState({ renameTarget: menu.target, menu: null })
         }
-      >
-        重命名
-      </button>
+      >{uiText("重命名")}</button>
       <button
         role="menuitem"
         disabled={systemOwned(useEditor.getState().project,menu.target.id)}
         onClick={() =>
           useUI.setState({ deleteTarget: menu.target, menu: null })
         }
-      >
-        删除 <small>Delete</small>
+      >{uiText("删除")}<small>{uiText("Delete")}</small>
       </button>
     </div>,
     document.body,

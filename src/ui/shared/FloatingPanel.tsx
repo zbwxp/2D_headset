@@ -1,3 +1,4 @@
+import {uiText} from "../i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../session";
@@ -57,7 +58,7 @@ export default function FloatingPanel({
       ref={host}
       tabIndex={-1}
       role="region"
-      aria-label={label ?? title}
+      aria-label={uiText(label ?? title)}
       data-floating-panel={id}
       data-ui-keyboard
       className="floating-panel"
@@ -114,8 +115,8 @@ export default function FloatingPanel({
           drag.current = null;
         }}
       >
-        <strong title={title}>⠿ {title}</strong>
-        <button aria-label={`关闭${label ?? title}`} onClick={onClose}>
+        <strong title={uiText(title)}>⠿ {uiText(title)}</strong>
+        <button aria-label={uiText(`关闭${label ?? title}`)} onClick={onClose}>
           ×
         </button>
       </div>

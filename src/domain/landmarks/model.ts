@@ -11,7 +11,10 @@ export interface ViewLock {
 }
 export interface LoomisOffset { offsetX?:number; offsetY?:number; offsetZ?:number }
 export type PointPlacement = LoomisOffset & (
+ | {kind:"CHIN_SURFACE";direction:Vec3}
  | {kind:"LOOMIS_SCAFFOLD";role:import("../head/scaffold").ScaffoldPointRole}
+ | {kind:"EYE_LOCAL";side:"left"|"right";local:Vec3}
+ | {kind:"ON_PATCH";hostPatchId:string;u:number;v:number}
  | {kind:"ON_SECTION_CAP";hostSurfaceId:string;u:number;v:number}
  | {kind:"ON_LOOMIS_SURFACE";hostFrameId:"head";direction:Vec3}
  | {kind:"WORLD";position:Vec3}
@@ -19,7 +22,7 @@ export type PointPlacement = LoomisOffset & (
  | {kind:"ON_CURVE";role:"canonical";hostCurveId:string;s:number;ringEndpoint?:true}
  | {kind:"ON_CURVE";role:"mirror";hostCurveId:string;canonicalPointId:string});
 export interface SemanticLandmark {
-  systemRole?: import("../head/scaffold").ScaffoldPointRole;
+  systemRole?: import("../head/scaffold").ScaffoldPointRole | import("../chin/model").ChinPointRole;
   id: string;
   name: string;
   placement: PointPlacement;
@@ -28,17 +31,32 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  /** Authored view list; skip legacy preset insertion when loading. */
+  viewsCustomized?: boolean;
+  gazeEyeball?:import("../eyes/gaze").GazeEyeball;
+  eyeScaffold?:import("../eyes/scaffold").EyeScaffold;
+  geometryModules?:Record<string,import("../modules/ownership").GeometryModule>;
+  recording?: import("../recording/model").Recording;
+  drawing?: import("../drawing/model").DrawingDocument;
+  curveSmoothJoins?: import("../curves/smoothJoin/model").CurveSmoothJoin[];
   loomisScaffold?: import("../head/scaffold").LoomisScaffold;
   inspectionBackground?: import("../head/inspectionBackground").InspectionBackground;
   loomisLocks?: string[];
   loomisCaps?: import("../head/caps").LoomisSectionCap[];
   loomisRegions?: import("../head/regions").LoomisRegion[];
+  chinScaffold?: import("../chin/model").ChinScaffold;
+  headPerspective?: import("../head/perspective").HeadPerspective;
   headFrame?: import("../head/frame").HeadFrame;
   surfaceContinuity?: import("../continuity/model").ContinuitySettings;
   surfaceSmooth?: import("../smooth/model").SurfaceSmoothSettings;
   patches?: import("../patches/model").SurfacePatch[];
   patchDisplay?: import("../patches/model").PatchDisplay;
   version:
+    | "landmarks-0.9.7"
+    | "landmarks-0.9.5"
+    | "landmarks-0.9.3"
+    | "landmarks-0.9.2"
+    | "landmarks-0.6.3"
     | "landmarks-0.5.5"
     | "landmarks-0.5.4"
     | "landmarks-0.5.3"
@@ -76,7 +94,7 @@ export function allowedBasis(
   extraRows: Vec3[] = [],
 ): Vec3[] {
   const l = p.landmarks.find((l) => l.id === id)!;
-  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))return [];
+  if(l.placement.kind==="CHIN_SURFACE"||l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||(l.placement.kind==="ON_SECTION_CAP"||l.placement.kind==="ON_PATCH"))))return [];
   const rows: Vec3[] = [...extraRows];
   if (l.type === "CENTERLINE") rows.push(symmetryNormal(p));
   // A symmetric pair has one observation per explicit view. The selected side
@@ -111,7 +129,7 @@ export function editingBasis(
   v: LandmarkView,
 ): Vec3[] {
   const l = p.landmarks.find((x) => x.id === id)!;
-  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))return [];
+  if(l.placement.kind==="CHIN_SURFACE"||l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||(l.placement.kind==="ON_SECTION_CAP"||l.placement.kind==="ON_PATCH"))))return [];
   const partner = p.landmarks.find((x) => x.id === l.mirrorPartnerId);
   const hasLocks =
     Object.keys(l.viewLocks).length > 0 ||
@@ -125,7 +143,7 @@ export function dragPosition(
   delta: Vec2,
 ): Vec3 {
   const l = p.landmarks.find((l) => l.id === id)!;
-  if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))throw Error("结构线定位点只能调整在线位置。");
+  if(l.placement.kind==="CHIN_SURFACE"||l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||(l.placement.kind==="ON_SECTION_CAP"||l.placement.kind==="ON_PATCH"))))throw Error("结构线定位点只能调整在线位置。");
   const free = editingBasis(p, id, v),
     { right, up } = basis(v);
   const projected = (a: Vec3) =>
@@ -203,7 +221,7 @@ export function activateDriver(
 ): LandmarkProject {
   const l = p.landmarks.find((l) => l.id === id);
   const partner = p.landmarks.find((x) => x.id === l?.mirrorPartnerId);
-  if (!l || (l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP"))) || !partner || !Object.keys(partner.viewLocks).length) return p;
+  if (!l || (l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||(l.placement.kind==="ON_SECTION_CAP"||l.placement.kind==="ON_PATCH")))) || !partner || !Object.keys(partner.viewLocks).length) return p;
   const viewLocks = Object.fromEntries(
     Object.entries(driverLocks(p, id)).map(([viewId, k]) => [
       viewId,
@@ -238,7 +256,7 @@ export function setGlobalViewLock(
   let result = selectedId ? activateDriver(p, selectedId) : p;
   const drivers = new Set<string>();
   for (const l of result.landmarks) {
-    if(l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==="ON_SECTION_CAP")))continue;
+    if(l.placement.kind==="EYE_LOCAL"||l.placement.kind==="ON_CURVE"||(l.placement.kind==="ON_LOOMIS_SURFACE"||(l.placement.kind==="LOOMIS_SCAFFOLD"||(l.placement.kind==="ON_SECTION_CAP"||l.placement.kind==="ON_PATCH"))))continue;
     const partner = result.landmarks.find((x) => x.id === l.mirrorPartnerId);
     if (!partner) {
       drivers.add(l.id);
@@ -277,6 +295,7 @@ export function modelStateCode(p: LandmarkProject): string {
     headFrame: p.headFrame,
     loomisRegions:p.loomisRegions,loomisCaps:p.loomisCaps,
     curves: p.curves,
+    ...(p.curveSmoothJoins?.length?{curveSmoothJoins:p.curveSmoothJoins}:{}),
     ...(p.patches?.length ? {patches:p.patches} : {}),
     centerlineOrder: p.centerlineOrder,
     lockedViews: p.lockedViews,

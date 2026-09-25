@@ -1,3 +1,6 @@
+import {useObjectVisibility,moduleHidden} from '../authoring/visibility';
+import {uiText} from "../i18n";
+import {evaluationContext} from '../../domain/geometry/evaluation';
 import {surfaceInputKey} from '../../domain/geometry/revisions';
 import {evaluationToken} from '../../domain/continuity/evaluation';
 import {count} from '../../domain/geometry/diagnostics';
@@ -11,13 +14,15 @@ import {contourProfile as metrics,type JobTiming} from './contourProfile';
 import {useInspectionCamera,useWindows} from './state';
 type Result=Silhouette & {orientation?:Orientation;type:string;timing:JobTiming;id:number;revision:string;invalid:string[];triangleCount:number;error?:string};
 export default function ContourPanel(){
- const threeDVisible=useWindows(s=>s.visible.threeD);
+ const perspective=useInspectionCamera(s=>s.contourPerspective);
+ const threeDVisible=useWindows(s=>Object.keys(s.visible).some(id=>s.visible[id as keyof typeof s.visible]&&s.contents[id as keyof typeof s.contents]==='threeD'));
  const [result,setResult]=useState<Result|null>(null),[busy,setBusy]=useState(true),[failure,setFailure]=useState('');
  useEffect(()=>{
  let worker:Worker;
  try{worker=new Worker(new URL('./contour.worker.ts',import.meta.url),{type:'module'});}catch(e){setFailure((e as Error).message);setBusy(false);return;}
  let active=true,frame=0,requestId=0,revision=0,lastSent='',signature='';
  let source:ContourSource,orientation:Orientation=[0,0,0,1],orientationKey='';
+ let perspectiveInput:import('../../domain/contour/visible').PerspectiveProjection|undefined;
  let dispatchedAt=0,requestBudgetMs=32;
  const post=(request:ContourRequest)=>{
  const start=performance.now();worker.postMessage(request);
@@ -34,20 +39,24 @@ export default function ContourPanel(){
  if(performance.now()-dispatchedAt<requestBudgetMs){schedule();return;}
  const start=performance.now();
  if(lastSent!==String(revision)){post({type:'SET_SURFACE',revision:String(revision),source});lastSent=String(revision);}
- const request:ContourRequest={type:'RENDER',id:++requestId,revision:String(revision),orientation};
+ const request:ContourRequest={type:'RENDER',id:++requestId,revision:String(revision),orientation,...(perspectiveInput?{perspective:perspectiveInput}:{})};
  if(metrics)metrics.prepMs+=performance.now()-start;
  dispatchedAt=performance.now();count('contourDispatches');post(request);
  });
  };
  const sourceChanged=()=>{
  const p=useEditor.getState().project;
- const next={loomisScaffold:p.loomisScaffold,loomisCaps:p.loomisCaps,loomisRegions:p.loomisRegions,headFrame:p.headFrame,landmarks:p.landmarks,curves:p.curves,patches:p.patches??[],surfaceContinuity:p.surfaceContinuity,smoothResult:getSmoothResult(p)};
- const key=surfaceInputKey(p)+evaluationToken(p);
+ const hiddenModules=(['HEADSET','EYES'] as const).filter(moduleHidden);
+ const next={chinScaffold:p.chinScaffold,headPerspective:p.headPerspective,hiddenModules,geometryModules:p.geometryModules,gazeEyeball:p.gazeEyeball,eyeScaffold:p.eyeScaffold,curveSmoothJoins:p.curveSmoothJoins,loomisScaffold:p.loomisScaffold,loomisCaps:p.loomisCaps,loomisRegions:p.loomisRegions,headFrame:p.headFrame,landmarks:p.landmarks,curves:p.curves,patches:p.patches??[],surfaceContinuity:p.surfaceContinuity,smoothResult:getSmoothResult(p)};
+ const key=JSON.stringify([hiddenModules,p.headPerspective,p.gazeEyeball,p.eyeScaffold])+surfaceInputKey(p)+evaluationToken(p)+JSON.stringify(p.curves.filter(c=>c.contourRole==='OPEN_EDGE').map(c=>[c.id,evaluationContext(p).curve(c.id).key]));
  if(key===signature)return;signature=key;source=next;revision++;schedule();
  };
  const cameraChanged=()=>{
  // Round sub-numerical OrbitControls noise so dolly does not trigger new silhouettes.
- const q=useInspectionCamera.getState().quaternion.map(x=>+x.toFixed(10)) as Orientation,key=q.join(',');
+ const pose=useInspectionCamera.getState();
+ const q=pose.quaternion.map(x=>+x.toFixed(10)) as Orientation;
+ perspectiveInput=pose.contourPerspective?{position:pose.position,fov:pose.fov}:undefined;
+ const key=q.join(',')+(perspectiveInput?JSON.stringify(perspectiveInput):'');
  if(key===orientationKey)return;if(metrics)metrics.camera++;orientationKey=key;orientation=q;schedule();
  };
  worker.onmessage=(event:MessageEvent<Result>)=>{
@@ -69,25 +78,26 @@ export default function ContourPanel(){
  worker.onerror=e=>{if(active){setBusy(false);setFailure(e.message||'轮廓计算失败');}};
  sourceChanged();cameraChanged();
  const unsubscribeSource=useEditor.subscribe((s,previous)=>{
- if(s.project.loomisScaffold!==previous.project.loomisScaffold||s.project.loomisCaps!==previous.project.loomisCaps||s.project.loomisRegions!==previous.project.loomisRegions||s.project.headFrame!==previous.project.headFrame||s.project.landmarks!==previous.project.landmarks||s.project.curves!==previous.project.curves||s.project.patches!==previous.project.patches||s.project.surfaceContinuity!==previous.project.surfaceContinuity)sourceChanged();
+ if(s.project.chinScaffold!==previous.project.chinScaffold||s.project.headPerspective!==previous.project.headPerspective||s.project.gazeEyeball!==previous.project.gazeEyeball||s.project.eyeScaffold!==previous.project.eyeScaffold||s.project.loomisScaffold!==previous.project.loomisScaffold||s.project.loomisCaps!==previous.project.loomisCaps||s.project.loomisRegions!==previous.project.loomisRegions||s.project.headFrame!==previous.project.headFrame||s.project.landmarks!==previous.project.landmarks||s.project.curves!==previous.project.curves||s.project.patches!==previous.project.patches||s.project.surfaceContinuity!==previous.project.surfaceContinuity)sourceChanged();
  });
+ const unsubscribeVisibility=useObjectVisibility.subscribe(sourceChanged);
  const unsubscribeSmooth=subscribeSmooth(sourceChanged);
  const unsubscribeCamera=useInspectionCamera.subscribe(cameraChanged);
- return()=>{active=false;cancelAnimationFrame(frame);unsubscribeSource();unsubscribeCamera();unsubscribeSmooth();worker.terminate();};
+ return()=>{active=false;cancelAnimationFrame(frame);unsubscribeSource();unsubscribeVisibility();unsubscribeCamera();unsubscribeSmooth();worker.terminate();};
  },[]);
  const camera=useInspectionCamera.getState();
  const delta=camera.target.map((x,i)=>x-camera.position[i]),length=Math.hypot(...delta),direction=delta.map(x=>x/length);
  const paths=result?.paths??[],openPaths=result?.openPaths??[],empty=!paths.length&&!openPaths.length;
  return <div className="contour-preview" data-testid="contour-preview" data-direction={direction.join(',')} aria-busy={busy||!failure&&result?.orientation?.join(',')!==camera.quaternion.map(x=>+x.toFixed(10)).join(',')}>
- <div className="contour-view-info">正交投影 · {threeDVisible?'跟随 3D 朝向':'保持 3D 最后朝向'}{busy?' · 更新中':''}</div>
+ <div className="contour-view-info">{uiText(perspective?'透视投影':'正交投影')} <button aria-label={uiText("切换 Contour 投影")} onClick={()=>useInspectionCamera.setState({contourPerspective:!perspective})}>{uiText(perspective?'切换正交':'切换透视')}</button> · {uiText(threeDVisible?'跟随 3D 朝向':'保持 3D 最后朝向')}{uiText(busy?' · 更新中':'')}</div>
  <div className="contour-drawing">
- <svg data-testid="contour-silhouette" aria-label="只读外轮廓" viewBox={'0 0 '+(result?.resolution??768)+' '+(result?.resolution??768)} role="img">
+ <svg data-testid="contour-silhouette" aria-label={uiText("只读外轮廓")} viewBox={'0 0 '+(result?.resolution??768)+' '+(result?.resolution??768)} role="img">
  {paths.map((path,i)=><path key={i} d={'M'+path.map(p=>p.join(',')).join('L')+'Z'} fill="none" stroke="#000" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
  {openPaths.map((path,i)=><path key={'open'+i} data-contour-open d={'M'+path.map(p=>p.join(',')).join('L')} fill="none" stroke="#000" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>)}
  </svg>
- {(failure||empty&&!busy)&&<div className="contour-placeholder">{failure?'无法生成轮廓：'+failure:result?.triangleCount?'当前方向没有可见曲面覆盖':'尚无可求值曲面，请先绘制 Patch。'}</div>}
+ {uiText((failure||empty&&!busy)&&<div className="contour-placeholder">{uiText(failure?'无法生成轮廓：'+failure:result?.triangleCount?'当前方向没有可见曲面覆盖':'尚无可求值曲面，请先绘制 Patch。')}</div>)}
  </div>
- {result && result.invalid?.length>0&&<div className="contour-view-info" title={result.invalid.join('\n')}>⚠ {result.invalid.length} 个无效 Patch 未参与轮廓</div>}
- <div className="contour-view-info">只读 · 可见几何轮廓 · 固定精度</div>
+ {result && result.invalid?.length>0&&<div className="contour-view-info" title={uiText(result.invalid.join('\n'))}>⚠ {result.invalid.length}{uiText("个无效 Patch 未参与轮廓")}</div>}
+ <div className="contour-view-info">{uiText("只读 · 可见几何轮廓 · 固定精度")}</div>
  </div>;
 }

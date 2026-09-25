@@ -1,5 +1,5 @@
 import {test,expect} from 'vitest';
-import {isAnalytic} from '../domain/curves/model';
+import {isDerived} from '../domain/curves/model';
 import {depthSteps,visibilitySteps,localEdges,tangentLines,projection,type ScreenPoint} from '../domain/contour/visible';
 import {silhouette,type ContourMesh} from '../domain/contour/silhouette';
 import {contourSource} from '../domain/contour/source';
@@ -48,7 +48,7 @@ test('closed head plus ordinary auxiliary Quad: exposed front boundary, buried p
 test('shared ON_CURVE span is excluded by semantic identity',()=>{
  const p=smoothFixture(0,0);
  p.landmarks.push({id:'v6',name:'host start',type:'FREE',placement:{kind:'WORLD',position:[0,-1,1]},viewLocks:{}},{id:'v7',name:'host end',type:'FREE',placement:{kind:'WORLD',position:[0,1,1]},viewLocks:{}});
- p.curves=p.curves.map(c=>c.id==='seam'&&c.role==='canonical'&&!isAnalytic(c)?{...c,startLandmarkId:'v6',endLandmarkId:'v7'}:c);
+ p.curves=p.curves.map(c=>c.id==='seam'&&c.role==='canonical'&&!isDerived(c)?{...c,startLandmarkId:'v6',endLandmarkId:'v7'}:c);
  p.landmarks=p.landmarks.map(l=>l.id==='v0'||l.id==='v1'?{...l,placement:{kind:'ON_CURVE',role:'canonical',hostCurveId:'seam',s:l.id==='v0'?.25:.75}}:l);
  const m=contourSource(p).mesh;expect(m.boundaries).toHaveLength(6);
  expect(m.boundaries!.some(line=>line.every(v=>Math.abs(v[0])<1e-10))).toBe(false);
@@ -81,4 +81,12 @@ test('Region soup recovery emits only actual Section cut perimeter, no triangula
  const m=contourSource(p).mesh;expect(m.boundaries!.length).toBeGreaterThan(0);
  // Default frame may be anisotropic. These center-passing cuts remain axis planes.
  for(const line of m.boundaries!)expect([0,1,2].some(k=>line.every(v=>Math.abs(toRelative(p,v)[k])<1e-9))).toBe(true);
+});
+test('pixel-center winner cannot occlude outside its triangle; subpixel occluders still count',()=>{
+ const pts:ScreenPoint[]=[[10,10,1],[11,10,1],[10,11,1],[10.7,10.7,.5],[10.95,10.7,.5],[10.7,10.95,.5]];
+ const m:ContourMesh={vertices:pts,triangles:[{indices:[0,1,2],patchId:'a',triangleId:0},{indices:[3,4,5],patchId:'b',triangleId:1}]};
+ const d=finish(depthSteps(pts,m,32));
+ const line:ScreenPoint[]=[[10.75,10.75,.6],[10.8,10.75,.6]];
+ expect(finish(visibilitySteps([line],d,1e-5))).toHaveLength(1);
+ expect(finish(visibilitySteps([line.map(p=>[p[0],p[1],.4] as ScreenPoint)],d,1e-5))).toHaveLength(0);
 });

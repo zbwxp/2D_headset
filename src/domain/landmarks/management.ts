@@ -27,7 +27,7 @@ export function duplicateLandmark(
   const copy = (l: SemanticLandmark): SemanticLandmark => ({
     id: crypto.randomUUID(),
     name: partner ? (l.type === "LEFT" ? "左" : "右") + name : name,
-    placement: (l.placement.kind==='LOOMIS_SCAFFOLD'||(l.placement.kind==='ON_CURVE'&&l.placement.role==='canonical'&&l.placement.ringEndpoint))?spatialPlacement(p,pointPosition(p,l.id)):structuredClone(l.placement),
+    placement: (l.placement.kind==='CHIN_SURFACE'||l.placement.kind==='LOOMIS_SCAFFOLD'||(l.placement.kind==='ON_CURVE'&&l.placement.role==='canonical'&&l.placement.ringEndpoint))?spatialPlacement(p,pointPosition(p,l.id)):structuredClone(l.placement),
     type: l.type,
     viewLocks: {},
   });

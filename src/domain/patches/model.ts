@@ -1,3 +1,5 @@
+import {dependencyGraph} from '../geometry/dependencies';
+import {completeChinBoundary} from '../chin/junction';
 import {wholeBoundary,validateBoundary,boundaryKey,canonicalBoundary,mirrorBoundary,boundaryGeometry,reverseBoundary,type SpanBoundaryUse,type PatchBoundaryUse} from './boundary';
 export type {PatchBoundaryUse} from './boundary';
 import type { LandmarkProject } from '../landmarks/model';
@@ -42,7 +44,7 @@ export function loop(p:LandmarkProject, input:(string|PatchBoundaryUse)[]) {
 }
 const key=(p:LandmarkProject,bs:PatchBoundaryUse[])=>JSON.stringify(bs.map(b=>boundaryKey(p,b)).sort());
 export function addPatch(p:LandmarkProject,input:(string|PatchBoundaryUse)[]):LandmarkProject {
- const bs=input.map(b=>typeof b==='string'?wholeBoundary(p,b):{...b});loop(p,bs);bs.forEach(b=>boundaryGeometry(p,b));const patches=p.patches??[];
+ const bs=completeChinBoundary(p,input.map(b=>typeof b==='string'?wholeBoundary(p,b):{...b}));loop(p,bs);bs.forEach(b=>boundaryGeometry(p,b));const patches=p.patches??[];
  if(patches.some(x=>key(p,x.boundaryUses)===key(p,bs)))throw Error('该闭环已有 Patch');
  const a:SurfacePatch={id:crypto.randomUUID(),type:bs.length===2?'lens':bs.length===3?'tri':'quad',boundaryUses:bs,fullness:0},added=[a];
  let mirrored:PatchBoundaryUse[]|undefined;try{mirrored=bs.map(b=>mirrorBoundary(p,b));}catch{/* Unpaired topology remains a single patch. */}
@@ -50,25 +52,25 @@ export function addPatch(p:LandmarkProject,input:(string|PatchBoundaryUse)[]):La
  loop(p,mirrored);if(patches.some(x=>key(p,x.boundaryUses)===key(p,mirrored!)))throw Error('镜像闭环已有 Patch');
  const b:SurfacePatch={id:crypto.randomUUID(),type:a.type,boundaryUses:mirrored,canonicalId:a.id,mirrorPartnerId:a.id};a.mirrorPartnerId=b.id;added.push(b);
  }
- return {...p,version:'landmarks-0.4.9',patches:[...patches,...added]};
+ const next:LandmarkProject={...p,version:'landmarks-0.4.9',patches:[...patches,...added]};dependencyGraph(next);return next;
 }
 export function prunePatches(p:LandmarkProject):LandmarkProject {
  if(!p.patches)return p;const bad=new Set<string|undefined>();for(const x of p.patches)try{x.boundaryUses.forEach(b=>validateBoundary(p,b));}catch{bad.add(x.id);bad.add(x.mirrorPartnerId);}
  return {...p,patches:p.patches.filter(x=>!bad.has(x.id))};
 }
-export function parsePatches(value:unknown,p:LandmarkProject):SurfacePatch[]{
+export function parsePatches(value:unknown,p:LandmarkProject,geometryCheck=true):SurfacePatch[]{
  if(value===undefined)return [];if(!Array.isArray(value))throw Error('Patch 数据无效');const ids=new Set<string>(),keys=new Set<string>();
  const result=value.map(x=>{
  if(!x||typeof x.id!=='string'||ids.has(x.id))throw Error('Patch 数据无效');
- const input=x.boundaryUses??x.boundaryEdgeIds;if(!Array.isArray(input))throw Error('Patch 边界无效');if(x.boundaryUses!==undefined)input.forEach(b=>validateBoundary(p,b));
+ const input=x.boundaryUses??x.boundaryEdgeIds;if(!Array.isArray(input))throw Error('Patch 边界无效');if(geometryCheck&&x.boundaryUses!==undefined)input.forEach(b=>validateBoundary(p,b));
  // Preserve legacy loop's smallest vertex + curve UUID tie-break exactly.
- const ordered=x.type==='loop'?validateLoopUses(p,input):loop(p,input).map(r=>r.use),bs:PatchBoundaryUse[]=x.type==='loop'?ordered.map(b=>({kind:'closed',curveId:b.curveId,...(b.reversed!==undefined?{reversed:b.reversed}:{})})):x.boundaryUses?x.boundaryUses.map((b:PatchBoundaryUse)=>({...b})):ordered,k=key(p,bs);
+ const ordered=!geometryCheck?input.map(b=>typeof b==='string'?wholeBoundary(p,b):b):x.type==='loop'?validateLoopUses(p,input):loop(p,input).map(r=>r.use),bs:PatchBoundaryUse[]=x.type==='loop'?ordered.map(b=>({kind:'closed',curveId:b.curveId,...(b.reversed!==undefined?{reversed:b.reversed}:{})})):x.boundaryUses?x.boundaryUses.map((b:PatchBoundaryUse)=>({...b})):ordered,k=key(p,bs);
  if(x.type!==(bs.length===2?(bs.every(b=>b.kind==='closed')?'loop':'lens'):bs.length===3?'tri':'quad')||keys.has(k))throw Error('Patch 类型或重复边界无效');
  if(x.name!==undefined&&(typeof x.name!=='string'||!x.name.trim()||x.name.length>80))throw Error('Patch 名称无效');
  if(x.fullness!==undefined&&(x.canonicalId||!Number.isFinite(x.fullness)||x.fullness< -1||x.fullness>1))throw Error('Fullness 数据无效');
  ids.add(x.id);keys.add(k);return {id:x.id,type:x.type,boundaryUses:bs,...(x.name===undefined?{}:{name:x.name}),...(x.fullness===undefined?{}:{fullness:x.fullness}),...(x.mirrorPartnerId?{mirrorPartnerId:x.mirrorPartnerId}:{}),...(x.canonicalId?{canonicalId:x.canonicalId}:{})} as SurfacePatch;
  });
- for(const x of result){if(x.mirrorPartnerId){const m=result.find(y=>y.id===x.mirrorPartnerId);if(!m||m.mirrorPartnerId!==x.id||m.id===x.id||!!m.canonicalId===!!x.canonicalId||(x.canonicalId&&x.canonicalId!==m.id))throw Error('Patch 镜像关系无效');if(key(p,x.boundaryUses.map(b=>mirrorBoundary(p,b)))!==key(p,m.boundaryUses))throw Error('Patch 镜像边界不匹配');}else if(x.canonicalId)throw Error('Patch canonical 无效');}
+ for(const x of result){if(x.mirrorPartnerId){const m=result.find(y=>y.id===x.mirrorPartnerId);if(!m||m.mirrorPartnerId!==x.id||m.id===x.id||!!m.canonicalId===!!x.canonicalId||(x.canonicalId&&x.canonicalId!==m.id))throw Error('Patch 镜像关系无效');if(geometryCheck&&key(p,x.boundaryUses.map(b=>mirrorBoundary(p,b)))!==key(p,m.boundaryUses))throw Error('Patch 镜像边界不匹配');}else if(x.canonicalId)throw Error('Patch canonical 无效');}
  return result;
 }
 
@@ -97,5 +99,5 @@ export function addLoopPatch(p:LandmarkProject,bs:PatchBoundaryUse[]):LandmarkPr
  if(patches.some(x=>key(p,x.boundaryUses)===key(p,mb!)))throw Error('镜像闭环已有 Patch');
  const b:SurfacePatch={id:crypto.randomUUID(),type:'loop',boundaryUses:mb,canonicalId:a.id,mirrorPartnerId:a.id};a.mirrorPartnerId=b.id;added.push(b);
  }
- return {...p,patches:[...patches,...added]};
+ const next={...p,patches:[...patches,...added]};dependencyGraph(next);return next;
 }

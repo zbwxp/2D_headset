@@ -29,7 +29,7 @@ it('frame-only host, stable direction, strict symmetry and no Section/Region dep
 it('surface endpoints preserve curve handles and serialize without mesh/region coordinates',()=>{
  const a=addSurfacePoint(base(),[.3,.4,.5]),b=addSurfacePoint(a.project,[.6,-.4,.5]),r=createCurve(b.project,a.selectedId,b.selectedId,b.project.views[0],'球面连接'),p=r.project,c=p.curves.find(x=>x.id===r.selectedId)!;
  const changed=followEndpoints(p,setSurfaceDirection(p,a.selectedId,[.2,.5,.3]));const after=changed.curves.find(x=>x.id===r.selectedId)!;
- if(c.role==='canonical'&&after.role==='canonical'&&'shape' in c&&'shape' in after){expect(after.shape!.startHandle).toEqual(c.shape!.startHandle);expect(after.shape!.endHandle).toEqual(c.shape!.endHandle);}
+ if(c.role==='canonical'&&after.role==='canonical'&&'shape' in c&&'shape' in after){expect(after.shape).toEqual(c.shape);}
  expect(controls(changed,after)[0]).toEqual(pointPosition(changed,a.selectedId));expect(dirtyDescendants(p,changed).curves.has(c.id)).toBe(true);
  const loaded=parseLandmarks(JSON.stringify(changed));expect(loaded.landmarks.find(x=>x.id===a.selectedId)!.placement).toEqual(changed.landmarks.find(x=>x.id===a.selectedId)!.placement);
  const l=loaded.landmarks.find(x=>x.id===a.selectedId)!;expect(Object.keys(l.placement).sort()).toEqual(['direction','hostFrameId','kind']);

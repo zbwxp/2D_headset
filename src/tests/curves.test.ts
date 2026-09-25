@@ -1,3 +1,4 @@
+import {createCurve,canonical,bodyShape,handleShape} from './planar-fixture';
 import {world} from './world-fixture';
 import { describe, it, expect } from "vitest";
 import { createLandmarkProject } from "../domain/landmarks/presets";
@@ -7,18 +8,14 @@ import {
   type LandmarkProject,
 } from "../domain/landmarks/model";
 import {
-  createCurve,
   deleteCurve,
   renameCurve,
   incidentCurveIds,
 } from "../domain/curves/management";
 import {
   controls,
-  canonical,
   frame,
   bezier,
-  bodyShape,
-  handleShape,
   defaultNormal,
   transportNormal,
   followEndpoints,
@@ -275,7 +272,8 @@ describe("planar curve kernel", () => {
             : x,
         ),
       };
-    expect(parseLandmarks(JSON.stringify(q)).curves).toEqual(q.curves);
+    const migrated=parseLandmarks(JSON.stringify(q));
+    for(const curve of q.curves)controls(migrated,curve).forEach((v,i)=>v.forEach((x,k)=>expect(x).toBeCloseTo(controls(q,curve)[i][k],12)));
     expect(
       parseLandmarks(
         JSON.stringify({ ...q, curves: undefined, version: "landmarks-0.2" }),

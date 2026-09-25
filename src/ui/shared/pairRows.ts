@@ -1,4 +1,5 @@
-import {isSection} from '../../domain/curves/model';
+import {eyeSide} from '../../domain/eyes/scaffold';
+import {isClosedSource} from '../../domain/curves/model';
 import type {LandmarkProject} from '../../domain/landmarks/model';
 import type {CurveEdge} from '../../domain/curves/model';
 export type Side = 'LEFT' | 'RIGHT';
@@ -14,7 +15,8 @@ export function pairRows<T extends {id:string}>(items:T[], partner:(x:T)=>string
 }
 export const pointSide=(x:{type:string}):Side|undefined=>x.type==='LEFT'||x.type==='RIGHT'?x.type:undefined;
 export function curveSide(p:LandmarkProject,c:CurveEdge):Side|undefined {
- if(isSection(c))return c.side==='CENTERLINE'?undefined:c.side;
+ const eye=eyeSide(p,c.id);if(eye)return eye==='left'?'LEFT':'RIGHT';
+ if(isClosedSource(c))return c.side==='CENTERLINE'?undefined:c.side;
  const sides=[c.startLandmarkId,c.endLandmarkId].map(id=>p.landmarks.find(l=>l.id===id)).filter(Boolean).map(l=>pointSide(l!)).filter(Boolean);
  return sides.length&&sides.every(s=>s===sides[0])?sides[0]:undefined;
 }

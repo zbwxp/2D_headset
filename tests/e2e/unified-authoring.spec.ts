@@ -1,0 +1,55 @@
+import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+const fixture=JSON.parse(readFileSync('tests/fixtures/continuity-overlap-head.json','utf8'));
+test('V0.6 unified objects, pure selection, tools and inspector screenshots',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await page.evaluate(p=>(window as any).__editorPerfStore.getState().load(p),fixture);
+ await expect(page.getByTestId('creation-shelf')).toBeVisible();
+ const ids=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState(),p=s.project;return {point:p.landmarks.find((x:any)=>!x.systemRole).id,curve:p.curves.find((x:any)=>x.role==='canonical'&&!x.systemRole&&!x.kind).id,patch:p.patches[0].id};});
+ for(const kind of ['point','curve','surface'] as const){await page.evaluate(({kind,ids})=>(window as any).__editorPerfStore.getState().selectObject(kind==='surface'?{kind,source:'PATCH',id:ids.patch}:{kind,id:ids[kind]}),{kind,ids});await expect(page.getByTestId('inline-inspector')).toBeVisible();await page.screenshot({path:`artifacts/v06/${kind}-inspector.png`});}
+ await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.startPatch();});
+ const before=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return JSON.stringify({project:s.project,pending:s.tool});});
+ await page.evaluate(id=>(window as any).__editorPerfStore.getState().selectCurve(id),ids.curve);
+ expect(await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return JSON.stringify({project:s.project,pending:s.tool});})).toBe(before);
+ await expect(page.getByTestId('active-tool-bar')).toBeVisible();await page.screenshot({path:'artifacts/v06/active-tool.png'});
+ await page.getByRole('button',{name:'取消 Esc'}).click();
+ await expect(page.getByTestId('active-tool-bar')).toHaveCount(0);
+ expect(errors).toEqual([]);
+});
+test('creation shelf, pair switching, relations, draft cancel and atomic history',async({page})=>{
+ await page.goto('/');await page.evaluate(p=>(window as any).__editorPerfStore.getState().load(p),fixture);
+ const count=()=>page.evaluate(()=>(window as any).__editorPerfStore.getState().project.landmarks.length),before=await count();
+ await page.locator('.creation-shelf summary').filter({hasText:'点'}).click();await page.getByRole('button',{name:'普通点 · 对称',exact:true}).click();await expect.poll(count).toBe(before+2);
+ const ref=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return {id:s.selectedId,mirror:s.project.landmarks.find((p:any)=>p.id===s.selectedId).mirrorPartnerId,past:s.past.length};});
+ const row=page.locator(`[data-pair-primary="${ref.id}"]`);await expect(row).toHaveAttribute('data-active-id',ref.id);
+ await row.click();await expect(row).toHaveAttribute('data-active-id',ref.mirror);await row.click();await expect(row).toHaveAttribute('data-active-id',ref.id);
+ expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().past.length)).toBe(ref.past);
+ await row.dblclick();await expect(row).toHaveAttribute('data-active-id',ref.id);await expect(row.locator('input')).toBeVisible();await row.locator('input').fill('Unified Pair');await row.locator('input').press('Enter');
+ await expect(row).toContainText('Unified Pair');await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(row).not.toContainText('Unified Pair');
+ await page.getByRole('button',{name:'撤销',exact:true}).click();await expect.poll(count).toBe(before);await page.getByRole('button',{name:'重做',exact:true}).click();await expect.poll(count).toBe(before+2);
+ await page.locator('.creation-shelf summary').filter({hasText:'曲线'}).click();await expect(page.getByRole('button',{name:'贴面曲线',exact:true})).toBeEnabled();await page.getByRole('button',{name:'自由曲线',exact:true}).click();
+ await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.pickCurveEndpoint(s.project.landmarks[0].id);});await page.getByRole('button',{name:'撤销一步'}).click();expect(await page.evaluate(()=>(window as any).__editorPerfStore.getState().curveCreation.startId)).toBeNull();await page.getByRole('button',{name:'取消 Esc'}).click();
+ const draftResult=await page.evaluate(async()=>{const s=(window as any).__editorPerfStore.getState(),{createToolDraft,stageToolDraft}=await import('/src/ui/authoring/draft.ts' as string),{addDefaultLandmark}=await import('/src/domain/landmarks/management.ts' as string);const p=s.project,r=addDefaultLandmark(p,false),points=r.project.landmarks.filter((l:any)=>!p.landmarks.some((x:any)=>x.id===l.id)),draft=stageToolDraft(createToolDraft(p),{points}),n=s.past.length;s.setTool({kind:'curve',pending:{startId:null},draft});s.cancelTool();const cancelled=(window as any).__editorPerfStore.getState().project===p;s.setTool({kind:'curve',pending:{startId:null},draft});s.commitToolDraft();const current=(window as any).__editorPerfStore.getState(),atomic=current.past.length===n+1&&current.project.landmarks.length===p.landmarks.length+2;s.undo();return {cancelled,atomic,restored:(window as any).__editorPerfStore.getState().project.landmarks.length===p.landmarks.length};});
+ expect(draftResult).toEqual({cancelled:true,atomic:true,restored:true});
+ await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.selectPatch(s.project.patches[0].id);});await page.getByRole('button',{name:/^边界 右/}).first().click();await expect(page.getByTestId('inline-inspector')).toContainText('安全帽下缘');
+});
+test('2D free-curve tool and Section/Cap source controls remain usable',async({page})=>{
+ await page.goto('/');await page.evaluate(p=>(window as any).__editorPerfStore.getState().load(p),fixture);
+ const initial=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();s.addDefaultPoint(true);const a=s.project;return (window as any).__editorPerfStore.getState().project.curves.length;});
+ const start=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return s.project.landmarks.find((l:any)=>l.id===s.selectedId).name;});
+ await page.evaluate(()=>(window as any).__editorPerfStore.getState().addDefaultPoint(false));
+ const end=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return s.project.landmarks.find((l:any)=>l.id===s.selectedId).name;});
+ await page.locator('.creation-shelf summary').filter({hasText:'曲线'}).click();await page.getByRole('button',{name:'自由曲线',exact:true}).click();
+ for(const name of [start,end])await page.getByTestId(`landmark-${name}`).dispatchEvent('pointerdown',{button:0,pointerId:1});
+ await expect.poll(()=>page.evaluate(()=>(window as any).__editorPerfStore.getState().project.curves.length)).toBe(initial+2);
+ const handle=page.getByTestId('curve-handle-1'),box=await handle.boundingBox();expect(box).toBeTruthy();await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2);await page.mouse.down();await page.mouse.move(box!.x+30,box!.y-20,{steps:5});await page.mouse.up();
+ await page.getByRole('button',{name:'添加曲线定位点',exact:true}).click();await expect(page.getByRole('slider',{name:'在线位置',exact:true})).toBeVisible();await page.getByRole('slider',{name:'在线位置',exact:true}).fill('0.42');
+ await page.locator('.creation-shelf summary').filter({hasText:'曲线'}).click();await page.getByRole('button',{name:'卢米斯剖面',exact:true}).click();
+ await expect(page.getByRole('slider',{name:'剖面偏移',exact:true})).toBeVisible();await page.getByRole('slider',{name:'剖面偏移',exact:true}).fill('0.25');
+ await page.getByRole('button',{name:'封闭为 Loomis 面',exact:true}).click();
+ const cap=await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return s.project.loomisCaps.find((c:any)=>c.hostSectionCurveId===s.selectedCurveId).id;});
+ await page.evaluate(id=>(window as any).__editorPerfStore.getState().selectObject({kind:'surface',source:'CAP',id}),cap);await expect(page.getByTestId('inline-inspector')).toContainText('严格平面');
+ await page.evaluate(id=>(window as any).__editorPerfStore.getState().createCapPoint(id,.2,.3),cap);await expect(page.getByRole('slider',{name:'平面 U',exact:true})).toBeVisible();await page.getByRole('slider',{name:'平面 U',exact:true}).fill('0.35');
+ await page.evaluate(()=>(window as any).__editorPerfStore.getState().createSurfacePoint([.5,.5,Math.sqrt(.5)]));await expect(page.getByRole('slider',{name:'球面 Horizontal',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>{const s=(window as any).__editorPerfStore.getState();return s.tool.kind;})).toBe('select');
+});

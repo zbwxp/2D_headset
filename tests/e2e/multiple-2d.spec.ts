@@ -1,0 +1,20 @@
+import {test,expect} from '@playwright/test';
+test('three editable 2D windows retain independent views and update together',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>localStorage.setItem('contour.ui-language','en'));await page.goto('/');
+ await page.evaluate(async()=>{const path='/src/domain/landmarks/presets.ts',s=(window as any).__editorPerfStore.getState();s.load((await import(path)).createLandmarkProject());});
+ await page.getByRole('checkbox',{name:'Show Contour panel',exact:true}).check();
+ const first=page.getByTestId('main-panel-viewport'),second=page.getByTestId('main-panel-contour'),third=page.getByTestId('main-panel-threeD');
+ await second.getByRole('combobox',{name:'Window content'}).selectOption('viewport');await third.getByRole('combobox',{name:'Window content'}).selectOption('viewport');
+ await expect(page.getByTestId('point-editor')).toHaveCount(3);
+ await first.getByRole('button',{name:'Front view',exact:true}).click();await second.getByRole('button',{name:'Side view',exact:true}).click();await third.getByRole('button',{name:'Left 45°',exact:true}).click();
+ const ids=await page.locator('.point-edit-column').evaluateAll(els=>els.map(el=>el.getAttribute('data-view-id')));expect(new Set(ids).size).toBe(3);
+ const point=first.getByTestId('landmark-下巴尖点');await expect(point).toBeVisible();
+ const coords=async()=>page.getByTestId('landmark-下巴尖点').evaluateAll(els=>els.map(el=>[el.getAttribute('cx'),el.getAttribute('cy')]));
+ const before=await coords(),box=(await point.boundingBox())!;
+ await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2-25,{steps:8});await page.mouse.up();
+ await expect.poll(coords).not.toEqual(before);const after=await coords();for(let i=0;i<3;i++)expect(after[i]).not.toEqual(before[i]);
+ await page.evaluate(()=>(window as any).__editorPerfStore.getState().undo());await expect.poll(coords).toEqual(before);
+ await second.getByRole('button',{name:'＋',exact:true}).click();expect(await page.locator('.point-edit-column').evaluateAll(els=>els.map(el=>el.getAttribute('data-view-id')))).toEqual(ids);
+ await page.reload();await expect(page.getByTestId('point-editor')).toHaveCount(3);expect(await page.locator('.point-edit-column').evaluateAll(els=>els.map(el=>el.getAttribute('data-view-id')))).toEqual(ids);
+ await page.screenshot({path:'artifacts/multiple-2d.png'});expect(errors).toEqual([]);
+});

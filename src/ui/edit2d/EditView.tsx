@@ -1,4 +1,21 @@
-import {isAnalytic} from '../../domain/curves/model';
+import {CHIN} from '../../domain/chin/model';
+import {displayPoint,rawDisplayPlane} from '../../rendering/moduleDisplay';
+import GazeOverlay2D from '../head/GazeOverlay2D';
+import {eyeSide} from '../../domain/eyes/scaffold';
+import {modulePickable} from '../authoring/moduleAccess';
+import {SelectionCycle} from '../authoring/selectionCycle';
+import {editSurfacePicker} from '../../rendering/edit2d/picking';
+import {HELMET} from '../../domain/head/scaffold';
+import {surfaceRef} from '../authoring/state';
+import {useVisibility} from '../authoring/visibility';
+import {uiText} from "../i18n";
+import {pickOnPatch} from '../authoring/onPatchTool';
+import {isLoomisLocked} from '../../domain/head/locks';
+import {dispatch2D,placementCapability,fineHit2D,fineHits2D} from '../authoring/InteractionDispatcher2D';
+import {beginConstrainedDrag,constrainedValue,type ConstrainedDrag} from '../authoring/constrainedDrag';
+import {surfaceHit,previewSurfacePoint,commitRegion} from '../authoring/surfaceHit';
+import AuthoringPreview2D from '../authoring/AuthoringPreview2D';
+import {isDerived,isOnPatch} from '../../domain/curves/model';
 import {frameWire} from '../../domain/head/frame';
 import BoundaryAuthoringOverlay from '../patches/BoundaryAuthoringOverlay';
 import {count} from '../../domain/geometry/diagnostics';
@@ -8,7 +25,7 @@ import DerivedRenderLayer from "./DerivedRenderLayer";
 import InteractionOverlay from "./InteractionOverlay";
 import {useOrthographicView} from "./useOrthographicView";
 import CurveInteractionOverlay from "../curves/CurveInteractionOverlay";
-import { useRef,useState } from "react";
+import { useRef,useState,useEffect,type PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
 import {worldToPlane,screenToSvg,EDIT_VIEWBOX} from "../../rendering/orthographic";
 import {
@@ -19,23 +36,29 @@ import {
 import type { Vec2 } from "../../domain/project/types";
 import ReferenceControls from "./ReferenceControls";
 const UNIT=EDIT_VIEWBOX.unitsPerWorld;
-export default function EditView() {
+export default function EditView({viewId}:{viewId?:string}) {
+ const selectionCycle=useRef(new SelectionCycle(true));
+ const pendingSelection=useRef<{hits:{kind:string;id:string}[];x:number;y:number;project:ReturnType<typeof useEditor.getState>['project']}|null>(null);
  count('renderEditView');
-  const s = useEditor(useShallow(s=>({patchCreation:s.patchCreation,pickPatchAnchor:s.pickPatchAnchor,beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
-    v = s.project.views.find((v) => v.id === s.viewId)!,
+  const hidden=useVisibility();
+  const s = useEditor(useShallow(s=>({patchCreation:s.patchCreation,pickPatchAnchor:s.pickPatchAnchor,beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,movePoint:s.movePoint,notify:s.notify,pickCurveEndpoint:s.pickCurveEndpoint,pickMergePoint:s.pickMergePoint,project:s.project,referenceMoving:s.referenceMoving,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,setCanvas:s.setCanvas,setReference:s.setReference,setReferenceMoving:s.setReferenceMoving,viewId:s.viewId}))),
+    v = s.project.views.find((v) => v.id === (viewId??s.viewId))!,
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
     { zoom, pan } = v.canvas,
     ref = v.reference;
+  const setCanvas=(canvas:{zoom:number;pan:Vec2})=>s.setCanvas(canvas,v.id);
+  const curveController=useRef<((e:ReactPointerEvent,id:string,index:0|1|2)=>void)|null>(null);
   const svg = useRef<SVGSVGElement>(null),
     drag = useRef<{
-      kind: "point" | "pan" | "reference";
+      kind: "point" | "constrained" | "pan" | "reference";
       id?: string;
       start: Vec2;
       origin: Vec2;
-      recorded?: boolean;
+      recorded?: boolean; constrained?:ConstrainedDrag;
     } | null>(null);
   const [gpuHost,setGpuHost]=useState<HTMLDivElement|null>(null);
   const projection=useOrthographicView(svg,v);
+  useEffect(()=>selectionCycle.current.reset(),[projection.orientationToken,projection.zoom,projection.pan[0],projection.pan[1]]);
   const project=(p:readonly number[],_view:typeof v)=>worldToPlane(p,projection).slice(0,2) as Vec2;
   const local = (x:number,y:number):Vec2 => {
     const rect=svg.current!.getBoundingClientRect();
@@ -46,12 +69,44 @@ export default function EditView() {
     -(p[1] - pan[1]) / zoom / UNIT,
   ];
   const motion = l ? motionState(s.project, l.id, v) : { track: null },
-    q = l ? project(pointPosition(s.project,l.id), v) : [0, 0];
+    q = l ? project(displayPoint(s.project,l.id,pointPosition(s.project,l.id),projection.forward), v) : [0, 0];
   const track = motion.track ? [motion.track[0], -motion.track[1]] : null;
   const end = () => {
     drag.current = null;
     s.endEdit();
   };
+  const startPoint=(e:ReactPointerEvent,id:string)=>{if(!modulePickable(id))return;const x=s.project.landmarks.find(x=>x.id===id)!;const p=project(pointPosition(s.project,id),v);
+                    if (e.button === 2) {
+                      e.stopPropagation();
+                      return;
+                    }
+                    if (e.shiftKey || e.button !== 0) return;
+                    e.stopPropagation();
+                    const action=dispatch2D(useEditor.getState().tool,'point');
+                    e.preventDefault();
+                    if(action==='mergePoint'){s.pickMergePoint(x.id);return;}
+                    if(action==='curveEndpoint'){s.pickCurveEndpoint(x.id);return;}
+                    if(action==='patchAnchor'){s.pickPatchAnchor(x.id);return;}
+                    if(action!=='point')return;
+                    s.selectLandmark(x.id);
+                    const capability=placementCapability(x);
+                    if(eyeSide(s.project,x.id)||capability==='select'||isLoomisLocked(s.project,x.id))return;
+                    if(capability!=='spatial'){
+                      drag.current={kind:'constrained',id:x.id,start:local(e.clientX,e.clientY),origin:p,constrained:beginConstrainedDrag(s.project,x.id,projection)};
+                      svg.current!.setPointerCapture(e.pointerId);return;
+                    }
+                    drag.current = {
+                      kind: "point",
+                      id: x.id,
+                      start: local(e.clientX, e.clientY),
+                      origin: p,
+                    };
+                    svg.current!.setPointerCapture(e.pointerId);
+                    if (!allowedBasis(s.project, x.id).length)
+                      s.notify("此点已固定，请解除上方列出的视图锁。");
+
+  };
+  useEffect(()=>{const stop=()=>{if(drag.current?.recorded||drag.current?.kind==='reference')useEditor.getState().endEdit();drag.current=null;};const visibility=()=>{if(document.hidden)stop();};window.addEventListener('blur',stop);document.addEventListener('visibilitychange',visibility);return()=>{stop();window.removeEventListener('blur',stop);document.removeEventListener('visibilitychange',visibility);};},[]);
   return (
     <div className="point-stage" data-testid="edit-viewport">
       <svg className="edit-background" viewBox={`${-EDIT_VIEWBOX.width/2} ${-EDIT_VIEWBOX.height/2} ${EDIT_VIEWBOX.width} ${EDIT_VIEWBOX.height}`} aria-hidden="true">
@@ -100,14 +155,47 @@ export default function EditView() {
       </svg>
       <div ref={setGpuHost} className="edit-gpu-host" />
       <ReferenceControls viewId={v.id} />
-      <span className="point-view-label">{v.label} · 正交投影</span>
+      <span className="point-view-label">{uiText(v.label)}{uiText("· 正交投影")}</span>
       <svg
         ref={svg}
-        data-testid="point-editor"
+        data-testid="point-editor" data-authoring-focus="2d" tabIndex={0}
         viewBox={`${-EDIT_VIEWBOX.width/2} ${-EDIT_VIEWBOX.height/2} ${EDIT_VIEWBOX.width} ${EDIT_VIEWBOX.height}`}
         style={{ width: "100%", height: "100%", touchAction: "none" }}
+        onPointerDownCapture={e=>{
+          pendingSelection.current=null;
+          if(e.button!==0||e.shiftKey)return; e.currentTarget.focus({preventScroll:true});
+          const r=e.currentTarget.getBoundingClientRect(),xy:Vec2=[e.clientX-r.left,e.clientY-r.top],target=e.target as Element;
+          if(target.closest('[data-testid="on-patch-handles"], [data-testid="control-point-handles"]'))return;
+          if(s.referenceMoving||(target.closest('[data-testid="gaze-overlay-2d"]')&&useEditor.getState().tool.kind==='select'))return;
+          const curve=target.closest('[data-curve-id]'),point=target.closest('[data-point-id]');let hit:{kind:string;id:string}|null=fineHit2D(s.project,projection,xy,curve?.getAttribute('data-curve-id')??undefined,point?.getAttribute('data-point-id')??undefined,id=>hidden(id)||!modulePickable(id));
+          const tool=useEditor.getState().tool;
+          if(tool.kind==='mergePoint'){e.preventDefault();e.stopPropagation();if(hit?.kind==='point')s.pickMergePoint(hit.id);return;}
+          if(tool.kind==='select'&&!target.closest('[data-handle-index]')){
+            const hits:{kind:string;id:string}[]=fineHits2D(s.project,projection,xy,id=>hidden(id)||!modulePickable(id));
+            if(hit){const i=hits.findIndex(h=>h.kind===hit!.kind&&h.id===hit!.id);if(i>=0)hits.splice(i,1);hits.unshift(hit);}
+            const ids=new Set([...(s.project.patches??[]).map(p=>p.id),...(s.project.loomisCaps??[]).map(p=>p.id),...(s.project.loomisRegions??[]).map(p=>p.id),HELMET,CHIN].filter(id=>!hidden(id)&&modulePickable(id)));
+            while(ids.size){const h=editSurfacePicker.current?.pick(xy,ids);if(!h)break;hits.push({kind:'surface',id:h.id});ids.delete(h.id);}
+            pendingSelection.current={hits,x:e.clientX,y:e.clientY,project:s.project};
+            // Drag the selected nearby object; only a completed click advances the cycle.
+            const selected=useEditor.getState().selection;
+            hit=hits.find(h=>h.kind===hits[0]?.kind&&h.kind===selected?.kind&&h.id===selected.id)??hits[0]??null;
+            if(hit?.kind==='surface'){e.stopPropagation();useEditor.getState().selectObject(surfaceRef(s.project,hit.id));return;}
+          }else selectionCycle.current.reset();
+          const action=dispatch2D(tool,(hit?.kind??'empty') as 'point'|'curve'|'surface'|'empty');
+          if(action==='onPatch'){e.preventDefault();e.stopPropagation();pickOnPatch(xy,projection,hit?.kind==='point'?hit.id:undefined);return;}
+          if(action==='surfacePoint'||action==='region'){e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect(),xy:Vec2=[e.clientX-r.left,e.clientY-r.top];if(action==='surfacePoint')previewSurfacePoint(xy,projection);else commitRegion(xy,projection);return;}
+          if(hit?.kind==='point'){e.stopPropagation();startPoint(e,hit.id);return;}
+          if(hit?.kind==='curve'){e.stopPropagation();curveController.current?.(e,hit.id,Number(curve?.getAttribute('data-curve-id')===hit.id?curve?.getAttribute('data-handle-index')??0:0) as 0|1|2);return;}
+        }}
+        onPointerMoveCapture={e=>{const p=pendingSelection.current;if(p&&Math.hypot(e.clientX-p.x,e.clientY-p.y)>4){pendingSelection.current=null;selectionCycle.current.reset();}}}
+        onPointerCancelCapture={()=>{pendingSelection.current=null;selectionCycle.current.reset();}}
+        onPointerUpCapture={e=>{
+          const p=pendingSelection.current;pendingSelection.current=null;if(!p||e.button!==0)return;
+          const h=selectionCycle.current.next(p.hits,e.clientX,e.clientY,p.project),state=useEditor.getState();if(!h)return;
+          if(h.kind==='point')state.selectLandmark(h.id);else if(h.kind==='curve')state.selectCurve(h.id);else state.selectObject(surfaceRef(state.project,h.id));
+        }}
         onWheel={(e) =>
-          s.setCanvas({
+          setCanvas({
             ...v.canvas,
             zoom: Math.min(
               5,
@@ -117,6 +205,11 @@ export default function EditView() {
         }
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={(e) => {
+          const r=e.currentTarget.getBoundingClientRect(),xy:Vec2=[e.clientX-r.left,e.clientY-r.top];
+          const hit=e.button===0&&!e.shiftKey&&!s.referenceMoving?surfaceHit(s.project,xy,projection):null;
+          const action=dispatch2D(useEditor.getState().tool,hit?'surface':'empty',e.shiftKey||e.button!==0);
+          if(action==='surface'&&hit){useEditor.getState().selectObject(hit.ref);return;}
+          if(action!=='pan'&&!s.referenceMoving)return;
           const start = local(e.clientX, e.clientY);
           if (s.referenceMoving && ref?.visible && !ref.locked) {
             s.beginEdit(true);
@@ -128,11 +221,18 @@ export default function EditView() {
           } else drag.current = { kind: "pan", start, origin: [...pan] };
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
+        onPointerLeave={()=>selectionCycle.current.reset()}
         onPointerMove={(e) => {
+          selectionCycle.current.move(e.clientX,e.clientY);
           const d = drag.current;
           if (!d) return;
           const p = local(e.clientX, e.clientY);
-          if (d.kind === "point") {
+          if(d.kind==='constrained'){
+            if(!d.recorded&&Math.hypot(p[0]-d.start[0],p[1]-d.start[1])<2)return;
+            const r=e.currentTarget.getBoundingClientRect(),value=constrainedValue(useEditor.getState().project,d.constrained!,[e.clientX-r.left,e.clientY-r.top],projection);
+            if(!value)return;if(!d.recorded){s.beginEdit(true);d.recorded=true;}
+            const editor=useEditor.getState();if(value.kind==='curve')editor.setOnCurveS(d.id!,value.s);else if(value.kind==='ellipsoid')editor.setSurfacePoint(d.id!,value.direction);else if(value.kind==='patch')editor.setPatchPoint(d.id!,value.u,value.v);else editor.setCapPoint(d.id!,value.u,value.v);
+          } else if (d.kind === "point") {
             if (!d.recorded) {
               if (Math.hypot(p[0] - d.start[0], p[1] - d.start[1]) < 2) return;
               if (!motionState(s.project, d.id!, v).screenDof) {
@@ -146,14 +246,14 @@ export default function EditView() {
               s.beginEdit(true);
               d.recorded = true;
             }
-            const startWorld = world(d.start),
-              currentWorld = world(p);
+            const startWorld = rawDisplayPlane(s.project,d.id!,world(d.start),projection),
+              currentWorld = rawDisplayPlane(s.project,d.id!,world(p),projection);
             s.movePoint(d.id!, [
               d.origin[0] + currentWorld[0] - startWorld[0],
               d.origin[1] + currentWorld[1] - startWorld[1],
             ]);
           } else if (d.kind === "pan")
-            s.setCanvas({
+            setCanvas({
               zoom,
               pan: [
                 d.origin[0] + p[0] - d.start[0],
@@ -176,7 +276,7 @@ export default function EditView() {
         <g transform={`translate(${pan.join(" ")}) scale(${zoom})`} pointerEvents={s.referenceMoving ? "none" : undefined}>
           <DerivedRenderLayer view={projection} gpuHost={gpuHost} />
           <InteractionOverlay>
-          {frameWire(s.project).map((line,i)=><polyline key={'loomis'+i} data-testid="loomis-wire" points={line.map(p=>{const q=project(p,v);return `${q[0]*UNIT},${-q[1]*UNIT}`;}).join(' ')} fill="none" stroke="#83b5c1" strokeOpacity=".5" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" pointerEvents="none"/>)}
+          {frameWire(s.project).map((line,i)=><polyline key={'loomis'+i} data-testid="loomis-wire" points={line.map(p=>{const q=project(displayPoint(s.project,"head",p,projection.forward),v);return `${q[0]*UNIT},${-q[1]*UNIT}`;}).join(' ')} fill="none" stroke="#83b5c1" strokeOpacity=".5" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" pointerEvents="none"/>)}
           <path
             d="M-3000 0H3000 M0 -3000V3000"
             stroke="#a0afba"
@@ -188,7 +288,7 @@ export default function EditView() {
             data-testid="centerline-guide"
             points={centerlineGuide(s.project)
               .map((p) => {
-                const q = project(p, v);
+                const q = project(displayPoint(s.project,"head",p,projection.forward), v);
                 return `${q[0] * UNIT},${-q[1] * UNIT}`;
               })
               .join(" ")}
@@ -200,7 +300,7 @@ export default function EditView() {
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
           />
-          <CurveInteractionOverlay view={v} projection={projection} />
+          <CurveInteractionOverlay controller={curveController} view={v} projection={projection} />
           {!s.selectedCurveId && track && Math.hypot(...track) > 1e-8 && (
             <line
               data-testid="allowed-track"
@@ -218,13 +318,13 @@ export default function EditView() {
           {[
             ...s.project.landmarks.filter((x) => x.id !== l?.id),
             ...(l ? [l] : []),
-          ].map((x) => {
-            const p = project(pointPosition(s.project,x.id), v),
+          ].filter(x=>!hidden(x.id)).map((x) => {
+            const p = project(displayPoint(s.project,x.id,pointPosition(s.project,x.id),projection.forward), v),
               selected = !s.selectedCurveId && x.id === l?.id;
             return (
               <g key={x.id}>
                 <circle
-                  data-testid={`landmark-${x.name}`}
+                  data-testid={`landmark-${x.name}`} data-point-id={x.id}
                   aria-label={x.name}
                   role="button"
                   tabIndex={0}
@@ -255,33 +355,7 @@ export default function EditView() {
                   onFocus={() => {
                     if (!s.curveCreation&&!s.patchCreation) s.selectLandmark(x.id);
                   }}
-                  onPointerDown={(e) => {
-                    if (e.button === 2) {
-                      e.stopPropagation();
-                      return;
-                    }
-                    if (e.shiftKey || e.button !== 0) return;
-                    e.stopPropagation();
-                    if (s.curveCreation) {
-                      e.preventDefault();
-                      s.pickCurveEndpoint(x.id);
-                      return;
-                    }
-                    if(s.patchCreation){e.preventDefault();s.pickPatchAnchor(x.id);return;}
-                    s.selectLandmark(x.id);
-                    e.preventDefault();
-                    e.currentTarget.focus({ preventScroll: true });
-                    if(x.placement.kind==="ON_CURVE"||(x.placement.kind==="ON_LOOMIS_SURFACE"||(x.placement.kind==="LOOMIS_SCAFFOLD"||x.placement.kind==="ON_SECTION_CAP")))return;
-                    drag.current = {
-                      kind: "point",
-                      id: x.id,
-                      start: local(e.clientX, e.clientY),
-                      origin: p,
-                    };
-                    svg.current!.setPointerCapture(e.pointerId);
-                    if (!allowedBasis(s.project, x.id).length)
-                      s.notify("此点已固定，请解除上方列出的视图锁。");
-                  }}
+                  onPointerDown={e=>startPoint(e,x.id)}
                   onKeyDown={(e) => {
                     if(s.patchCreation)return;
                     if (s.curveCreation) {
@@ -290,21 +364,6 @@ export default function EditView() {
                         s.pickCurveEndpoint(x.id);
                       }
                       return;
-                    }
-                    if(x.placement.kind==="ON_CURVE"||(x.placement.kind==="ON_LOOMIS_SURFACE"||(x.placement.kind==="LOOMIS_SCAFFOLD"||x.placement.kind==="ON_SECTION_CAP")))return;
-                    const d: Record<string, Vec2> = {
-                      ArrowLeft: [-1, 0],
-                      ArrowRight: [1, 0],
-                      ArrowUp: [0, 1],
-                      ArrowDown: [0, -1],
-                    };
-                    if (d[e.key]) {
-                      e.preventDefault();
-                      s.beginEdit(true);
-                      s.movePoint(x.id, [
-                        p[0] + d[e.key][0] * (e.shiftKey ? 0.025 : 0.00625),
-                        p[1] + d[e.key][1] * (e.shiftKey ? 0.025 : 0.00625),
-                      ]);
                     }
                   }}
                 />
@@ -325,17 +384,19 @@ export default function EditView() {
               </g>
             );
           })}
+          <GazeOverlay2D view={projection}/>
+          <AuthoringPreview2D view={projection}/>
           <BoundaryAuthoringOverlay view={projection} zoom={zoom}/>
           </InteractionOverlay>
         </g>
       </svg>
       {!s.project.landmarks.length && !s.project.curves.length && !s.project.loomisRegions?.length && (
-        <div className="landmark-empty">没有语义点。可撤销删除或打开项目。</div>
+        <div className="landmark-empty">{uiText("没有语义点。可撤销删除或打开项目。")}</div>
       )}
       <div className="point-canvas-tools">
         <button
           onClick={() =>
-            s.setCanvas({ ...v.canvas, zoom: Math.max(0.35, zoom / 1.1) })
+            setCanvas({ ...v.canvas, zoom: Math.max(0.35, zoom / 1.1) })
           }
         >
           −
@@ -343,27 +404,23 @@ export default function EditView() {
         <span>{Math.round(zoom * 100)}%</span>
         <button
           onClick={() =>
-            s.setCanvas({ ...v.canvas, zoom: Math.min(5, zoom * 1.1) })
+            setCanvas({ ...v.canvas, zoom: Math.min(5, zoom * 1.1) })
           }
         >
           ＋
         </button>
-        <button onClick={() => s.setCanvas({ zoom: 1, pan: [0, 0] })}>
-          居中
-        </button>
+        <button onClick={() => setCanvas({ zoom: 1, pan: [0, 0] })}>{uiText("居中")}</button>
       </div>
       <div className="point-stage-hint">
-        {s.referenceMoving ? (
-          <button onClick={() => s.setReferenceMoving(false)}>
-            完成图片平移
-          </button>
+        {uiText(s.referenceMoving ? (
+          <button onClick={() => s.setReferenceMoving(false)}>{uiText("完成图片平移")}</button>
         ) : s.curveCreation ? (
           "选择两个语义点创建结构线 · Esc 取消"
         ) : s.selectedCurveId ? (
-          (s.project.curves.some(c=>c.id===s.selectedCurveId&&isAnalytic(c))?'解析结构线 · 在侧栏调整参数 · Shift 拖动平移':'拖线弯曲 · 控制柄精调 · Shift 拖动平移')
+          (s.project.curves.some(c=>c.id===s.selectedCurveId&&'controlPointIds' in c)?'眼睑 Bézier · 拖动眼角和控制柄 · Shift 拖动平移':s.project.curves.some(c=>c.id===s.selectedCurveId&&isOnPatch(c))?'贴面派生线 · 移动端点或修改 Host Surface · Shift 拖动平移':s.project.curves.some(c=>c.id===s.selectedCurveId&&isDerived(c))?'解析结构线 · 在侧栏调整参数 · Shift 拖动平移':'拖线弯曲 · 控制柄精调 · Shift 拖动平移')
         ) : (
           "拖动语义点 · 空白处 / Shift 拖动平移 · 滚轮缩放"
-        )}
+        ))}
       </div>
     </div>
   );

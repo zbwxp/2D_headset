@@ -2,7 +2,7 @@ import {HELMET} from '../../domain/head/scaffold';
 import {useSurfaceTool} from '../head/surfaceTool';
 import {useRegionTool} from '../head/regionTool';
 import {useLoomisUI} from '../head/loomisUI';
-import {isAnalytic} from '../../domain/curves/model';
+import {isDerived} from '../../domain/curves/model';
 import {useEffect} from 'react';
 import {useEditor} from '../../app/store';
 import {useUI} from '../session';
@@ -19,13 +19,13 @@ function reveal(row:HTMLElement,sidebar:HTMLElement){
 }
 export default function useSidebarSelection(){
  const surfaceCreating=useSurfaceTool(s=>s.creating),regionCreating=useRegionTool(s=>s.active);
- const regionId=useLoomisUI(s=>s.regionId);
+ const regionId=useEditor(s=>s.selection?.kind==='surface'&&s.selection.source==='REGION'?s.selection.id:null);
  const s=useEditor(),kind=regionId?'region':s.patchCreation?'patch':s.curveCreation?'curve':s.selectedPatchId?'patch':s.selectedCurveId?'curve':s.selectedId?'landmark':null;
  const id=kind==='region'?regionId:kind==='patch'?s.selectedPatchId:kind==='curve'?s.selectedCurveId:s.selectedId;
  const creating=!!s.patchCreation||!!s.curveCreation;
  useEffect(()=>{
   if(!kind)return;
-  const point=s.project.landmarks.find(l=>l.id===id),loomis=id===HELMET||!!regionId||(point?.placement.kind==='ON_LOOMIS_SURFACE'||(point?.placement.kind==="LOOMIS_SCAFFOLD"||point?.placement.kind==='ON_SECTION_CAP'))||!!s.project.curves.find(c=>isAnalytic(c)&&(c.id===id||(point?.placement.kind==='ON_CURVE'&&point.placement.hostCurveId===c.id)));
+  const point=s.project.landmarks.find(l=>l.id===id),loomis=id===HELMET||!!regionId||(point?.placement.kind==='ON_LOOMIS_SURFACE'||(point?.placement.kind==="LOOMIS_SCAFFOLD"||point?.placement.kind==='ON_SECTION_CAP'))||!!s.project.curves.find(c=>isDerived(c)&&(c.id===id||(point?.placement.kind==='ON_CURVE'&&point.placement.hostCurveId===c.id)));
   useUI.setState({landmarkCollapsed:loomis||kind!=='landmark',curveCollapsed:loomis||kind!=='curve',patchCollapsed:loomis||kind!=='patch'});
   let second=0;
   const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{

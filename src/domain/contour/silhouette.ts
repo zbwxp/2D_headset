@@ -4,7 +4,7 @@ export const CONTOUR_SUBDIVISIONS=24;
 export type Orientation=[number,number,number,number];
 export type Point=[number,number];
 export interface ContourTriangle {indices:[number,number,number];patchId:string;triangleId:number}
-export interface ContourMesh {vertices:Vec3[];triangles:ContourTriangle[];edges?:{a:number;b:number;faces:number[]}[];boundaries?:Vec3[][]}
+export interface ContourMesh {vertices:Vec3[];triangles:ContourTriangle[];edges?:{a:number;b:number;faces:number[]}[];boundaries?:Vec3[][];alwaysLines?:Vec3[][]}
 export interface Silhouette {openPaths?:Point[][];paths:Point[][];resolution:number;coveredPixels:number}
 function rotate(v:Vec3,q:Orientation):Vec3 {
  const length=Math.hypot(...q);const [x,y,z,w]=q.map(v=>v/length);

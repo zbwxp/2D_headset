@@ -1,3 +1,6 @@
+import {slots,seamId} from '../chin/model';
+import {eyeSide} from '../eyes/scaffold';
+import {HELMET_LOOP,RING_Y,RIM_R,RIM_L,systemId} from '../head/scaffold';
 import {isSection} from './model';
 import {validateSection} from './section';
 import {symmetryNormal} from '../head/frame';
@@ -26,6 +29,29 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
     )
       return fail();
     ids.add(c.id);
+    if(c.contourRole!==undefined&&!['NONE','OPEN_EDGE'].includes(c.contourRole))return fail();
+    if(c.geometryType==='CHIN_SEAM'){
+     if(!p.chinScaffold||!slots.includes(c.slot)||!['canonical','mirror'].includes(c.role)||c.id!==seamId(c.slot,c.role==='mirror')||c.shape!==undefined||!p.landmarks.some(l=>l.id===c.startLandmarkId)||!p.landmarks.some(l=>l.id===c.endLandmarkId))return fail();
+     return {id:c.id,name:c.name,contourRole:c.contourRole,geometryType:'CHIN_SEAM',systemRole:'CHIN_'+c.slot,slot:c.slot,role:c.role,startLandmarkId:c.startLandmarkId,endLandmarkId:c.endLandmarkId,mirrorPartnerCurveId:c.mirrorPartnerCurveId,...(c.role==='mirror'?{canonicalCurveId:c.canonicalCurveId}:{})} as CurveEdge;
+    }
+    if(c.geometryType==='CONTROL_POINTS'){
+     if(c.role!=='canonical'||c.shape!==undefined||!Array.isArray(c.controlPointIds)||c.controlPointIds.length!==2||new Set([c.startLandmarkId,c.endLandmarkId,...c.controlPointIds]).size!==4||![c.startLandmarkId,c.endLandmarkId,...c.controlPointIds].every(id=>p.landmarks.some(l=>l.id===id)))return fail();
+     return {id:c.id,name:c.name,geometryType:'CONTROL_POINTS',role:'canonical',startLandmarkId:c.startLandmarkId,endLandmarkId:c.endLandmarkId,controlPointIds:[...c.controlPointIds],mirrorPartnerCurveId:c.mirrorPartnerCurveId,contourRole:c.contourRole} as CurveEdge;
+    }
+    if(c.geometryType==='ON_PATCH'){
+     if(!['canonical','mirror'].includes(c.role)||typeof c.hostPatchId!=='string'||!p.landmarks.some(l=>l.id===c.startLandmarkId)||!p.landmarks.some(l=>l.id===c.endLandmarkId)||c.startLandmarkId===c.endLandmarkId||c.shape!==undefined)return fail();
+     if(c.role==='canonical'&&(!c.path||![c.path.startBoundary,c.path.endBoundary,c.path.winding].every(Number.isInteger)||Math.min(c.path.startBoundary,c.path.endBoundary)<-1||Math.abs(c.path.winding)>8))return fail();
+     if(c.path?.handleOffsets!==undefined&&(!Array.isArray(c.path.handleOffsets)||c.path.handleOffsets.length!==2||!c.path.handleOffsets.every((q:unknown)=>Array.isArray(q)&&q.length===2&&q.every(Number.isFinite))))return fail();
+     if(c.path?.referenceU!==undefined&&(!Array.isArray(c.path.referenceU)||c.path.referenceU.length!==2||!c.path.referenceU.every(Number.isFinite)))return fail();
+     if(c.role==='mirror'&&(typeof c.canonicalCurveId!=='string'||c.path!==undefined))return fail();
+     return {id:c.id,name:c.name,geometryType:'ON_PATCH',hostPatchId:c.hostPatchId,startLandmarkId:c.startLandmarkId,endLandmarkId:c.endLandmarkId,mirrorPartnerCurveId:c.mirrorPartnerCurveId,role:c.role,contourRole:c.contourRole,...(c.role==='canonical'?{path:{...c.path}}:{canonicalCurveId:c.canonicalCurveId})} as CurveEdge;
+    }
+    if(c.geometryType==='HELMET_LOOP'){
+      if(!p.headFrame||!p.loomisScaffold||c.id!==HELMET_LOOP||c.systemRole!=='HELMET_LOOP'||c.role!=='canonical'||c.side!=='CENTERLINE'||c.logicalRing!=='SYMMETRIC'||c.startLandmarkId!==undefined||c.endLandmarkId!==undefined||c.shape!==undefined||c.mirrorPartnerCurveId!==undefined||c.canonicalCurveId!==undefined)return fail();
+      if(JSON.stringify(c.sourceCurveIds)!==JSON.stringify([RING_Y,RIM_R,RIM_L])||JSON.stringify(c.logicalEndpoints)!==JSON.stringify([systemId(100),systemId(101)]))return fail();
+      if(c.sourceCurveIds.some((id:string)=>!input.some(x=>x.id===id))||c.logicalEndpoints.some((id:string)=>!p.landmarks.some(l=>l.id===id&&l.type==='CENTERLINE')))return fail();
+      return {id:c.id,name:c.name,geometryType:'HELMET_LOOP',systemRole:'HELMET_LOOP',role:'canonical',side:'CENTERLINE',logicalRing:'SYMMETRIC',logicalEndpoints:[...c.logicalEndpoints],sourceCurveIds:[...c.sourceCurveIds]} as CurveEdge;
+    }
     if(c.geometryType==='LOOMIS_SECTION'){
       if(!p.headFrame||!['LEFT','RIGHT','CENTERLINE'].includes(c.side)||c.startLandmarkId!==undefined||c.endLandmarkId!==undefined||c.shape!==undefined)return fail();
       const common={id:c.id,name:c.name,geometryType:'LOOMIS_SECTION' as const,side:c.side,mirrorPartnerCurveId:c.mirrorPartnerCurveId,systemRole:c.systemRole,logicalRing:c.logicalRing,logicalEndpoints:c.logicalEndpoints};
@@ -44,20 +70,22 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
       if(c.role!=='canonical'&&c.role!=='mirror')return fail();
       return {id:c.id,name:c.name,geometryType:'HELMET_RIM',systemRole:c.systemRole,startLandmarkId:c.startLandmarkId,endLandmarkId:c.endLandmarkId,mirrorPartnerCurveId:c.mirrorPartnerCurveId,role:c.role,...(c.role==='mirror'?{canonicalCurveId:c.canonicalCurveId}:{})} as CurveEdge;
     }
+    const eye=eyeSide(p,c.id);
+    if(eye&&(eyeSide(p,c.startLandmarkId)!==eye||eyeSide(p,c.endLandmarkId)!==eye))return fail();
     const a = p.landmarks.find((l) => l.id === c.startLandmarkId),
       b = p.landmarks.find((l) => l.id === c.endLandmarkId);
     if (
       !a ||
       !b ||
       a.id === b.id ||
-      a.type === "FREE" ||
-      b.type === "FREE" ||
+      (a.type === "FREE"&&!eye) ||
+      (b.type === "FREE"&&!eye) ||
       (a.type !== "CENTERLINE" && b.type !== "CENTERLINE" && a.type !== b.type)
     )
       return fail();
     const center = a.type === "CENTERLINE" && b.type === "CENTERLINE";
     if (
-      center
+      (center||eye)
         ? c.role !== "canonical" || c.mirrorPartnerCurveId !== undefined
         : typeof c.mirrorPartnerCurveId !== "string"
     )
@@ -80,8 +108,15 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
     }
     if (c.role !== "canonical" || c.canonicalCurveId !== undefined)
       return fail();
-    const s = c.shape,
-      n = s?.planeNormal;
+    const s = c.shape;
+    if(s?.kind==='FREE_3D'){
+      if(![s.startHandleOffset,s.endHandleOffset].every(v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite)))return fail();
+      if(center&&(Math.abs(s.startHandleOffset[0])>1e-10||Math.abs(s.endHandleOffset[0])>1e-10))return fail();
+      if(Object.keys(s).some(k=>!['kind','startHandleOffset','endHandleOffset'].includes(k)))return fail();
+      return {...common,role:'canonical',shape:{kind:'FREE_3D',startHandleOffset:[...s.startHandleOffset],endHandleOffset:[...s.endHandleOffset]}} as CurveEdge;
+    }
+    if(s?.kind!==undefined)return fail();
+    const n = s?.planeNormal;
     if (
       !Array.isArray(n) ||
       n.length !== 3 ||
@@ -122,6 +157,11 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
   for (const c of curves) {
     if (!c.mirrorPartnerCurveId) continue;
     const other = curves.find((x) => x.id === c.mirrorPartnerCurveId);
+    if('geometryType' in c&&c.geometryType==='CONTROL_POINTS'){
+     if(!other||!('geometryType' in other)||other.geometryType!=='CONTROL_POINTS'||other.mirrorPartnerCurveId!==c.id)return fail();
+     const a=[c.startLandmarkId,...c.controlPointIds,c.endLandmarkId],b=[other.startLandmarkId,...other.controlPointIds,other.endLandmarkId];
+     if(a.some((id,i)=>p.landmarks.find(l=>l.id===id)?.mirrorPartnerId!==b[i]))return fail();continue;
+    }
     if (
       !other ||
       other.id === c.id ||
@@ -139,5 +179,5 @@ export function parseCurves(input: unknown, p: LandmarkProject, geometryCheck=tr
       if (other[key] !== (l.mirrorPartnerId ?? l.id)) return fail();
     }
   }
-  return curves;
+  return curves.map(c=>{const raw=input.find(x=>x.id===c.id);return raw.contourRole===undefined?c:{...c,contourRole:raw.contourRole};});
 }

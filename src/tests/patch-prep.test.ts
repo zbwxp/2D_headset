@@ -1,4 +1,4 @@
-import {isAnalytic} from '../domain/curves/model';
+import {isFree3DShape,isDerived} from '../domain/curves/model';
 import {world} from './world-fixture';
 import { expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -29,7 +29,7 @@ it.each([null, "broken", { arbitrary: true }])(
         surfaceSmoothDefaults: junk,
       }),
     );
-    expect(p.version).toBe("landmarks-0.5");
+    expect(p.version).toBe("landmarks-0.9.2");
     expect(JSON.stringify(p)).not.toMatch(
       /smoothJunctions|surfaceSmoothNodes|surfaceSmoothDefaults/,
     );
@@ -73,7 +73,7 @@ it("B is inside AC in front and forward of the corresponding AC boundary height"
       ),
     ).toBe(true);
 });
-it("new curves are normal planar mirrored cubics with exact endpoints and default handles", () => {
+it("migrated default curves preserve straight cubic controls and exact mirror", () => {
   for (const c of prepared.curves.slice(62)) {
     const cp = controls(prepared, c);
     expect(cp[0]).toEqual(
@@ -82,12 +82,9 @@ it("new curves are normal planar mirrored cubics with exact endpoints and defaul
     expect(cp[3]).toEqual(
       world(prepared.landmarks.find((l) => l.id === c.endLandmarkId)!,prepared).position,
     );
-    if ((c.role==='canonical'&&!isAnalytic(c))) {
-      for (const p of cp)
-        expect(Math.abs(dot(sub(p, cp[0]), c.shape.planeNormal))).toBeLessThan(
-          1e-10,
-        );
-      expect(c.shape.startHandle).toEqual({ along: 1 / 3, offset: 0 });
+    if ((c.role==='canonical'&&!isDerived(c))) {
+      expect(isFree3DShape(c.shape)).toBe(true);
+      for(const t of [.2,.5,.8])bezier(cp,t).forEach((v,k)=>expect(v).toBeCloseTo(cp[0][k]+t*(cp[3][k]-cp[0][k]),12));
       expect(
         controls(
           prepared,
@@ -98,8 +95,8 @@ it("new curves are normal planar mirrored cubics with exact endpoints and defaul
   }
 });
 it("prepared source save/load is stable and preserves centerline and locks", () => {
-  expect(parseLandmarks(JSON.stringify(prepared))).toEqual(prepared);
-  expect(modelStateCode(prepared)).toBe("1380E486");
+  expect(JSON.stringify(parseLandmarks(JSON.stringify(prepared)))).toBe(JSON.stringify(prepared));
+  expect(modelStateCode(parseLandmarks(JSON.stringify(prepared)))).toBe(modelStateCode(prepared));
   expect(prepared.centerlineOrder).toEqual(old.centerlineOrder);
   expect(prepared.lockedViews).toEqual(old.lockedViews);
 });

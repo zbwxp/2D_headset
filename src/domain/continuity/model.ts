@@ -1,5 +1,9 @@
+import {dependencyGraph} from '../geometry/dependencies';
+import {InputCache} from '../geometry/cache';
+import {isClosedSource} from '../curves/model';
+import {evaluationContext} from '../geometry/evaluation';
 import type { LandmarkProject } from '../landmarks/model';
-import { boundaryKey, canonicalBoundary, mirrorBoundary, type PatchBoundaryUse } from '../patches/boundary';
+import { boundaryKey, curveLocationOfLandmark, canonicalBoundary, mirrorBoundary, type PatchBoundaryUse } from '../patches/boundary';
 export type Relationship = {
     mode: 'crease';
 } | {
@@ -14,6 +18,7 @@ export interface ContinuitySettings {
 }
 export interface BoundaryRelation {
     key: string;
+    sources?: Record<string,PatchBoundaryUse>;
     use: PatchBoundaryUse;
     patchIds: string[];
     mode: 'natural' | 'auto' | 'crease' | 'manual';
@@ -22,22 +27,38 @@ export interface BoundaryRelation {
         string
     ];
 }
-/** Exact topology only: no geometry evaluation, including during collapsed spans. */
+/** Split overlapping uses on open hosts at semantic anchors, never by world proximity. */
+const relationCache=new InputCache<BoundaryRelation[]>(32);
 export function relations(p: LandmarkProject): BoundaryRelation[] {
+    const cacheKey=JSON.stringify([p.patches,p.landmarks,p.curves,p.headFrame,p.loomisScaffold,p.surfaceContinuity]);
+    const cached=relationCache.get(cacheKey);if(cached)return cached;
     const map = new Map<string, BoundaryRelation>();
-    for (const patch of p.patches ?? [])
-        for (const use of patch.boundaryUses) {
-            const key = boundaryKey(p, use);
-            let r = map.get(key);
-            if (!r) {
-                r = { key, use: canonicalBoundary(p, use), patchIds: [], mode: 'natural' };
-                map.set(key, r);
+    const uses=(p.patches??[]).flatMap(patch=>patch.boundaryUses.map(use=>({id:patch.id,use})));
+    const ctx=evaluationContext(p);
+    for (const {id,use} of uses) {
+        let pieces=[use];
+        const host=p.curves.find(c=>c.id===use.curveId);
+        if(host&&!isClosedSource(host)&&use.kind!=='closed')try{
+            const start=curveLocationOfLandmark(use.curveId,use.startLandmarkId,ctx),end=curveLocationOfLandmark(use.curveId,use.endLandmarkId,ctx),lo=Math.min(start,end),hi=Math.max(start,end);
+            const cuts=new Map<number,string>();
+            for(const other of uses)if(other.use.curveId===use.curveId&&other.use.kind!=='closed')for(const point of [other.use.startLandmarkId,other.use.endLandmarkId]){
+                const t=curveLocationOfLandmark(use.curveId,point,ctx);if(t>=lo&&t<=hi&&(!cuts.has(t)||point<cuts.get(t)!))cuts.set(t,point);
             }
-            r.patchIds.push(patch.id);
+            const sorted=[...cuts].sort((a,b)=>a[0]-b[0]);
+            // Preserve collapsed topology for recovery; do not drop authored intent.
+            if(hi-lo>1e-10&&sorted.length>2)pieces=sorted.slice(1).flatMap(([t,id],i)=>t-sorted[i][0]>1e-10?[{curveId:use.curveId,startLandmarkId:sorted[i][1],endLandmarkId:id}]:[]);
+        }catch{ /* Keep exact authored relation for temporarily invalid geometry. */ }
+        for(const piece of pieces){
+            const key=boundaryKey(p,piece);let r=map.get(key);
+            if(!r){r={key,use:canonicalBoundary(p,piece),patchIds:[],sources:{},mode:'natural'};map.set(key,r);}
+            if(!r.patchIds.includes(id))r.patchIds.push(id);r.sources![id]=use;
         }
+    }
     for (const r of map.values()) {
         r.patchIds.sort();
-        const override = p.surfaceContinuity?.overrides[r.key];
+        const settings=p.surfaceContinuity?.overrides;
+        const inherited=Object.values(r.sources??{}).map(b=>settings?.[boundaryKey(p,b)]).filter(Boolean);
+        const override = settings?.[r.key]??inherited.find(v=>v?.mode==='crease')??inherited.find(v=>v?.mode==='manual'&&v.patchIds.every(id=>r.patchIds.includes(id)));
         if (override?.mode === 'crease')
             r.mode = 'crease';
         else if (override?.mode === 'manual' && override.patchIds[0] !== override.patchIds[1] && override.patchIds.every(id => r.patchIds.includes(id))) {
@@ -52,12 +73,14 @@ export function relations(p: LandmarkProject): BoundaryRelation[] {
             ];
         }
     }
-    return [...map.values()];
+    return relationCache.set(cacheKey,[...map.values()]);
 }
 export function setRelationship(p: LandmarkProject, key: string, value: Relationship | undefined): LandmarkProject {
     const r = relations(p).find(r => r.key === key);
-    if (!r)
-        return p;
+    if (!r) {
+        const children=relations(p).filter(r=>Object.values(r.sources??{}).some(b=>boundaryKey(p,b)===key));
+        return children.reduce((next,r)=>setRelationship(next,r.key,value),p);
+    }
     if (value?.mode === 'manual' && (value.patchIds[0] === value.patchIds[1] || !value.patchIds.every(id => r.patchIds.includes(id))))
         throw Error('请选择这条边界上的两个不同曲面');
     if (value?.mode === 'manual') {
@@ -72,7 +95,9 @@ export function setRelationship(p: LandmarkProject, key: string, value: Relation
                 throw Error('中轴对称边界只能选择镜像不变的一组曲面；当前选择需要两组关系。');
         }
     }
-    const overrides = { ...p.surfaceContinuity?.overrides };
+    const overrides:Record<string,Relationship>={};
+    // Materialize inherited intent before editing one child span independently.
+    for(const rel of relations(p))if(rel.mode==='crease')overrides[rel.key]={mode:'crease'};else if(rel.mode==='manual'&&rel.pair)overrides[rel.key]={mode:'manual',patchIds:rel.pair};
     const put = (key: string, v: Relationship | undefined) => { if (v)
         overrides[key] = v;
     else
@@ -90,18 +115,14 @@ export function setRelationship(p: LandmarkProject, key: string, value: Relation
             put(mk, mv);
     }
     catch { /* Unpaired boundary. */ }
-    return { ...p, surfaceContinuity: { overrides } };
+    const next={ ...p, surfaceContinuity: { overrides } };dependencyGraph(next);return next;
 }
 /** Topology repair never consults surface shape. Invalid geometry retains intent. */
 export function repairContinuity(p: LandmarkProject): LandmarkProject {
-    const attached = new Map(relations(p).map(r => [r.key, r.patchIds]));
     const overrides: Record<string, Relationship> = {};
-    for (const [key, r] of Object.entries(p.surfaceContinuity?.overrides ?? {})) {
-        const ids = attached.get(key);
-        if (!ids)
-            continue;
-        if (r.mode === 'crease' || r.mode === 'manual' && r.patchIds[0] !== r.patchIds[1] && r.patchIds.every(id => ids.includes(id)))
-            overrides[key] = r;
+    for(const r of relations(p)){
+        if(r.mode==='crease')overrides[r.key]={mode:'crease'};
+        else if(r.mode==='manual'&&r.pair)overrides[r.key]={mode:'manual',patchIds:r.pair};
     }
     if (JSON.stringify(overrides) === JSON.stringify(p.surfaceContinuity?.overrides ?? {}))
         return p;

@@ -1,17 +1,27 @@
 import type {LandmarkProject} from '../landmarks/model';
 import {boundaryParameters,type PatchBoundaryUse} from '../patches/boundary';
 import {evaluationContext} from '../geometry/evaluation';
-import {HELMET,RING_Y,RIM_R,RIM_L} from '../head/scaffold';
+import {sideHorizontalIntersection,HELMET,RING_Y,RIM_R,RIM_L} from '../head/scaffold';
+import {isHelmetLoop} from '../curves/model';
+import {helmetLoopParts} from '../head/helmetLoop';
 export interface BoundaryInterval {owner:string;curveId:string;lo:number;hi:number}
 /** Native host parameters, not endpoint UUIDs: whole edges and subspans share one domain. */
 export function boundaryIntervals(p:LandmarkProject,owner:string,b:PatchBoundaryUse):BoundaryInterval[]{
- const g=evaluationContext(p).curve(b.curveId),out=(lo:number,hi:number)=>({owner,curveId:b.curveId,lo,hi});
- if(b.kind==='closed')return [out(0,1)];
+ const g=evaluationContext(p).curve(b.curveId),host=p.curves.find(c=>c.id===b.curveId)!;
+ const out=(lo:number,hi:number):BoundaryInterval[]=>{
+  if(!isHelmetLoop(host))return [{owner,curveId:b.curveId,lo,hi}];
+  return helmetLoopParts(p,host).flatMap(part=>{
+   const a=Math.max(lo,part.lo),z=Math.min(hi,part.hi);if(z-a<1e-12)return [];
+   const at=(t:number)=>part.t0+(t-part.lo)/(part.hi-part.lo)*(part.t1-part.t0),start=at(a),end=at(z);
+   return [{owner,curveId:part.curveId,lo:Math.min(start,end),hi:Math.max(start,end)}];
+  });
+ };
+ if(b.kind==='closed')return out(0,1);
  let {t0,t1}=boundaryParameters(p,b);
- if(!g.closed)return [out(Math.min(t0,t1),Math.max(t0,t1))];
+ if(!g.closed)return out(Math.min(t0,t1),Math.max(t0,t1));
  if(b.reversed){if(t1>=t0)t1-=1;}else if(t1<=t0)t1+=1;
  let lo=Math.min(t0,t1),hi=Math.max(t0,t1);const shift=Math.floor(lo);lo-=shift;hi-=shift;
- return hi<=1?[out(lo,hi)]:[out(lo,1),out(0,hi-1)];
+ return hi<=1?out(lo,hi):[...out(lo,1),...out(0,hi-1)];
 }
 /** Helmet's exact open rim: front/back equatorial arcs plus the two side rims.
  * These reference the same system hosts as Patch BoundaryUses, never mesh proximity.
@@ -21,7 +31,7 @@ export function helmetBoundaryIntervals(p:LandmarkProject):BoundaryInterval[]{
  const result:BoundaryInterval[]=[],has=(id:string)=>p.curves.some(c=>c.id===id);
  if(has(RING_Y)){
   // MAIN_Y reference is +Z, normal +Y. Side intersections are |sin(2πt)|=c.
-  const a=Math.asin(p.loomisScaffold.sidePosition)/(2*Math.PI);
+  const a=Math.asin(sideHorizontalIntersection(p.loomisScaffold).x/Math.sqrt(1-(p.loomisScaffold.horizontalOffset??0)**2))/(2*Math.PI);
   for(const [lo,hi] of [[0,a],[.5-a,.5+a],[1-a,1]])result.push({owner:HELMET,curveId:RING_Y,lo,hi});
  }
  for(const curveId of [RIM_R,RIM_L])if(has(curveId))result.push({owner:HELMET,curveId,lo:0,hi:1});

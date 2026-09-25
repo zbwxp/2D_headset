@@ -1,0 +1,9 @@
+import {test,expect} from '@playwright/test';
+test('Curve 47 subspan Crease opens and toggles independently with undo and redo',async({page})=>{
+ test.setTimeout(60000);await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles('tests/fixtures/continuity-overlap-head.json');
+ await page.evaluate(()=>{const s=window.__editorPerfStore.getState();s.selectCurve(s.project.curves.find(c=>c.name==='左结构线 47')!.id);});
+ const rows=page.locator('[data-testid=surface-continuity] .continuity-boundary');await expect(rows).toHaveCount(2);await expect(rows.first()).toContainText('2 surfaces · Auto');await expect(rows.nth(1)).toContainText('2 surfaces · Auto');
+ await rows.first().getByRole('button').first().click();await rows.first().getByRole('button',{name:'Crease',exact:true}).click();await expect(rows.first()).toContainText('2 surfaces · Crease');await expect(rows.nth(1)).toContainText('2 surfaces · Auto');
+ await page.evaluate(()=>{const s=window.__editorPerfStore.getState();s.undo();window.__editorPerfStore.getState().selectCurve(s.project.curves.find(c=>c.name==='左结构线 47')!.id);});await expect(rows.first()).toContainText('2 surfaces · Auto');await page.evaluate(()=>{const s=window.__editorPerfStore.getState();s.redo();window.__editorPerfStore.getState().selectCurve(s.project.curves.find(c=>c.name==='左结构线 47')!.id);});await expect(rows.first()).toContainText('2 surfaces · Crease');
+ if(await rows.first().locator('.continuity-boundary-title').getAttribute('aria-expanded')!=='true')await rows.first().locator('.continuity-boundary-title').click();await rows.first().getByRole('button',{name:'Restore Auto',exact:true}).click();await expect(rows.first()).toContainText('2 surfaces · Auto');await page.screenshot({path:'artifacts/side-chin/continuity-overlap.png'});
+});

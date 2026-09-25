@@ -2,14 +2,14 @@ import {rimHeight} from './rim';
 import type {LandmarkProject} from '../landmarks/model';
 import type {Vec3} from '../project/types';
 import type {PatchMesh} from '../patches/geometry';
-import {HELMET,helmetRelative,type LoomisScaffold} from './scaffold';
+import {HELMET,sideBasis,helmetRelative,type LoomisScaffold} from './scaffold';
 import {toHead} from './frame';
 import {sphereTriangles} from './regions';
 import {InputCache} from '../geometry/cache';
 const cache=new InputCache<PatchMesh>(64);
-export const helmetKey=(p:LandmarkProject)=>JSON.stringify([p.headFrame,p.loomisScaffold?.sidePosition,p.loomisScaffold?.roundness,p.loomisScaffold?.rimSag,p.loomisScaffold?.visible]);
+export const helmetKey=(p:LandmarkProject)=>JSON.stringify([p.headFrame,p.loomisScaffold?.horizontalOffset,p.loomisScaffold?.sideTilt,p.loomisScaffold?.sidePosition,p.loomisScaffold?.roundness,p.loomisScaffold?.rimSag,p.loomisScaffold?.visible]);
 /** Upper cranium union side-cap region above its analytic Rim. */
-export function helmetDomain(s:LoomisScaffold,v:Vec3){return Math.max(v[1],Math.min(Math.abs(v[0])-s.sidePosition,v[1]-rimHeight(s,v[2])));}
+export function helmetDomain(s:LoomisScaffold,v:Vec3){const {c,sn}=sideBasis(s),cap=c*Math.abs(v[0])+sn*v[1]-s.sidePosition,y=helmetRelative(s,v)[1];return Math.max(y-(s.horizontalOffset??0),Math.min(cap,y-rimHeight(s,v[2])));}
 export function helmetMesh(p:LandmarkProject):PatchMesh{
  if(!p.loomisScaffold)return {vertices:[],triangles:[]};const key=helmetKey(p),hit=cache.get(key);if(hit)return hit;
  const s=p.loomisScaffold,vertices:Vec3[]=[],triangles:number[][]=[],lookup=new Map<string,number>();

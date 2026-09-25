@@ -1,3 +1,4 @@
+import {chinSurfaces} from '../domain/chin/geometry';
 import {helmetSurfaces} from '../domain/head/helmet';
 import {capMesh} from '../domain/head/caps';
 import {regionMesh} from '../domain/head/regions';
@@ -15,7 +16,7 @@ let revision=0;
 const packedSurfaces=new WeakMap<PatchMesh,SurfaceRenderData>();
 const packedCurves=new WeakMap<CurveProvider,Map<number,CurveRenderData>>();
 export function finalSurfaceRenderData(p:LandmarkProject,subdivisions:number):SurfaceRenderData[]{
- return [...helmetSurfaces(p),...(p.patches??[]).map(patch=>({id:patch.id,mesh:tessellate(p,patch,subdivisions)})),...(p.loomisRegions??[]).map(r=>({id:r.id,mesh:regionMesh(p,r)})),...(p.loomisCaps??[]).map(c=>({id:c.id,mesh:capMesh(p,c)}))].map(({id,mesh})=>{
+ return [...chinSurfaces(p),...helmetSurfaces(p),...(p.patches??[]).map(patch=>({id:patch.id,mesh:tessellate(p,patch,subdivisions)})),...(p.loomisRegions??[]).map(r=>({id:r.id,mesh:regionMesh(p,r)})),...(p.loomisCaps??[]).map(c=>({id:c.id,mesh:capMesh(p,c)}))].map(({id,mesh})=>{
  let data=packedSurfaces.get(mesh);
   if(!data){count('surfaceRenderBufferBuilds');const positions=new Float32Array(mesh.vertices.flat()),indices=new Uint32Array(mesh.triangles.flat());data={id,positions,indices,normals:surfaceNormals(positions,indices),geometryToken:'surface:'+ ++revision,warning:mesh.warning,invalid:mesh.invalid};packedSurfaces.set(mesh,data);}
   return data;

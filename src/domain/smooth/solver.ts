@@ -1,3 +1,4 @@
+import {evaluationContext} from '../geometry/evaluation';
 import {canonicalBoundary,boundaryParameters} from '../patches/boundary';
 import type { LandmarkProject } from '../landmarks/model';
 import type { Vec3 } from '../project/types';
@@ -60,13 +61,13 @@ export function solveSmooth(p: LandmarkProject): SmoothResult {
             const alpha = influence(p, use.curveId);
             if (patches.length !== 2 || alpha === 0)
                 continue;
-            const cp = controls(p, p.curves.find(c => c.id === use.curveId)!);
+            const finalCurve = evaluationContext(p).curve(use.curveId);
             const {t0,t1}=boundaryParameters(p,use);
             let skipped = 0;
             for (let k = 1; k < N; k++) {
                 const t = k / N, e = g.byKey.get('E:' + edge + ':' + k)!;
                 const a = stencil(g.charts.get(patches[0])!, ...interiorUV(g.charts.get(patches[0])!, edge, t)), b = stencil(g.charts.get(patches[1])!, ...interiorUV(g.charts.get(patches[1])!, edge, t));
-                const tangent = derivative(cp, t0+(t1-t0)*t), norm = Math.hypot(...tangent);
+                const tangent = finalCurve.derivative(t0+(t1-t0)*t), norm = Math.hypot(...tangent);
                 if (!Number.isFinite(norm) || norm < 1e-10 * L) {
                     skipped++;
                     continue;

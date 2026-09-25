@@ -7,7 +7,7 @@ export function usePointArrowKeys(){useEffect(()=>{
  const end=()=>{clearTimeout(timer);clearInterval(interval);if(held){held='';useEditor.getState().endEdit();}};
  const down=(e:KeyboardEvent)=>{
   const t=e.target as HTMLElement,s=useEditor.getState();
-  if(e.defaultPrevented||e.isComposing||e.ctrlKey||e.metaKey||!t.closest('.point-workspace')||t.closest('input,textarea,button,select,[role="slider"],[contenteditable]:not([contenteditable="false"]),[data-ui-keyboard],[role="dialog"]')||document.querySelector('[aria-modal="true"]')||s.curveCreation||s.patchCreation)return;
+  if(e.defaultPrevented||e.isComposing||e.ctrlKey||e.metaKey||!t.closest('[data-authoring-focus="2d"]')||t.closest('input,textarea,button,select,[role="slider"],[contenteditable]:not([contenteditable="false"]),[data-ui-keyboard],[role="dialog"]')||document.querySelector('[aria-modal="true"]')||s.tool.kind!=='select')return;
   const entity=activeSelection(),a=arrowAxis(s.viewId,e.key);if(entity?.kind!=='landmark'||!a)return;
   e.preventDefault();mod=e.altKey?.2:e.shiftKey?5:1;if(held===e.key)return;end();held=e.key;s.beginEdit(true);
   const id=entity.id,view=s.viewId,move=()=>{const current=useEditor.getState();if(current.selectedId!==id||current.viewId!==view){end();return;}current.nudgePoint(id,a.axis,a.sign*.005*mod);};move();timer=setTimeout(()=>{if(held)interval=setInterval(move,60);},300);

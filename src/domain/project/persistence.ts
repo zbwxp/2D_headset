@@ -112,7 +112,7 @@ export function parseProject(text: string): HeadProject {
         !r.offset.every((n) => Number.isFinite(n) && Math.abs(n) < 100) ||
         !Number.isFinite(r.scale) ||
         r.scale < 0.1 ||
-        r.scale > 5 ||
+        r.scale > 10 ||
         !Number.isFinite(r.rotation) ||
         Math.abs(r.rotation) > 180
       )

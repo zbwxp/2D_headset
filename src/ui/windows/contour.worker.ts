@@ -1,10 +1,14 @@
-import {projection,depthSteps,tangentChains,visibilitySteps} from '../../domain/contour/visible';
+import {contourDisplay} from '../../rendering/contourDisplay';
+import {gazeFacing} from '../../domain/eyes/tracking';
+import {clipPerspective} from '../../domain/contour/perspective';
+import {type PerspectiveProjection,projection,depthSteps,tangentChains,visibilitySteps} from '../../domain/contour/visible';
 import {contourSource,type ContourSource} from '../../domain/contour/source';
 import {rasterSteps,traceSteps,CONTOUR_RESOLUTION,type Orientation} from '../../domain/contour/silhouette';
 import {LatestJob} from '../../domain/contour/jobs';
 import type {JobTiming} from './contourProfile';
-export type ContourCameraRequest={type:'RENDER';id:number;revision:string;orientation:Orientation};
+export type ContourCameraRequest={type:'RENDER';id:number;revision:string;orientation:Orientation;perspective?:PerspectiveProjection};
 export type ContourRequest=ContourCameraRequest|{type:'SET_SURFACE';revision:string;source:ContourSource};
+let eyeSource:ContourSource|undefined;
 let revision='',geometry:ReturnType<typeof contourSource>|undefined;
 // MessageChannel yields to incoming camera messages without nested timer throttling.
 const channel=new MessageChannel();let resume:(()=>void)|undefined;
@@ -27,16 +31,19 @@ const jobs=new LatestJob<ContourCameraRequest>(async(request,stale)=>{
  };
  try{
   if(!mesh||request.revision!==revision)throw Error('轮廓源未准备');
-  const t=performance.now(),projected=projection(mesh.mesh,request.orientation),points=projected.points;timing.projection=performance.now()-t;
+  const posed=contourDisplay(mesh,gazeFacing(request.orientation),eyeSource?.hiddenModules?.includes('EYES'));
+  const surface=request.perspective?clipPerspective(posed,request.orientation,request.perspective):posed;
+  const t=performance.now(),projected=projection(surface,request.orientation,CONTOUR_RESOLUTION,surface.vertices,request.perspective),points=projected.points;timing.projection=performance.now()-t;
   await yieldTask();
-  const mask=cancelled()?undefined:await consume(rasterSteps(points.map(p=>[p[0],p[1]]),mesh.mesh.triangles),'raster');
+  const mask=cancelled()?undefined:await consume(rasterSteps(points.map(p=>[p[0],p[1]]),surface.triangles),'raster');
   const paths=mask&&!cancelled()?await consume(traceSteps(mask,CONTOUR_RESOLUTION),'trace'):undefined;
-  const depth=paths&&!cancelled()?await consume(depthSteps(points,mesh.mesh),'raster'):undefined;
+  const depth=paths&&!cancelled()?await consume(depthSteps(points,surface),'raster'):undefined;
   let openPaths;
   if(depth&&!cancelled()){
-   const lines=mesh.mesh.boundaries??[],flat=projection(mesh.mesh,request.orientation,CONTOUR_RESOLUTION,lines.flat()).points;let at=0;const boundary=lines.map(line=>{const q=flat.slice(at,at+line.length);at+=line.length;return q;});
-   openPaths=await consume(visibilitySteps([...tangentChains(mesh.mesh,points),...boundary],depth,projected.epsilon),'trace');
+   const lines=surface.boundaries??[],flat=projection(surface,request.orientation,CONTOUR_RESOLUTION,lines.flat(),request.perspective).points;let at=0;const boundary=lines.map(line=>{const q=flat.slice(at,at+line.length);at+=line.length;return q;});
+   openPaths=await consume(visibilitySteps([...tangentChains(surface,points),...boundary],depth,projected.epsilon),'trace');
   }
+  if(openPaths){for(const line of surface.alwaysLines??[]){const points=projection(surface,request.orientation,CONTOUR_RESOLUTION,line,request.perspective).points;openPaths.push(points.map(p=>[p[0],p[1]]));}}
   // Drain incoming camera updates before publishing, including those arriving during trace.
   await yieldTask();
   if(!paths||!openPaths||cancelled()){
@@ -53,6 +60,6 @@ self.onmessage=(event:MessageEvent<ContourRequest>)=>{
  if(request.type==='SET_SURFACE'){
   if(revision===request.revision)return;
   jobs.invalidate();revision=request.revision;
-  try{geometry=contourSource(request.source);}catch(e){geometry=undefined;self.postMessage({type:'SURFACE_ERROR',revision,error:(e as Error).message});}
+  try{geometry=contourSource(request.source);eyeSource=request.source;}catch(e){geometry=undefined;self.postMessage({type:'SURFACE_ERROR',revision,error:(e as Error).message});}
  }else jobs.submit(request);
 };

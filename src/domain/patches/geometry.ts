@@ -1,4 +1,6 @@
+import {refineChin} from '../chin/refine';
 import {mirrorPoint} from '../head/frame';
+import {chinSurfaceEvaluator} from '../chin/surface';
 import {InputCache} from '../geometry/cache';
 import {patchInputKey} from '../geometry/revisions';
 import {count,timed} from '../geometry/diagnostics';
@@ -13,12 +15,19 @@ import {fairDifferential} from '../continuity/solver';
 import {prepareFullness} from './fullness';
 export {baseEvaluator,fullnessEvaluator} from './base';
 const evaluators=new InputCache<(u:number,v:number)=>Vec3>(512);
-export function evaluator(p:LandmarkProject,patch:SurfacePatch):(u:number,v:number)=>Vec3{
- const key=patchInputKey(p,patch)+evaluationToken(p,patch),hit=evaluators.get(key);if(hit)return hit;
+export function preChinEvaluator(p:LandmarkProject,patch:SurfacePatch):(u:number,v:number)=>Vec3{
+ const key='pre:'+patchInputKey(p,patch)+evaluationToken(p,patch),hit=evaluators.get(key);if(hit)return hit;
  let f:(u:number,v:number)=>Vec3;
- if(patch.canonicalId){const canonical=evaluator(p,p.patches!.find(x=>x.id===patch.canonicalId)!);f=(u,v)=>mirrorPoint(p,canonical(u,v));}
+ if(patch.canonicalId){const canonical=preChinEvaluator(p,p.patches!.find(x=>x.id===patch.canonicalId)!);f=(u,v)=>mirrorPoint(p,canonical(u,v));}
  else {const solution=getPatchSolution(p,patch);if(!solution?.field)f=fullnessEvaluator(p,patch);
  else {const d=fairDifferential(p,patch,{patches:{[patch.id]:solution},diagnostics:{warnings:[],angles:{}}}),base=(u:number,v:number)=>d(u,v).position;f=(patch.fullness??0)===0?base:prepareFullness(p,patch,base,d);}}
+ evaluators.set(key,f);return f;
+}
+export function evaluator(p:LandmarkProject,patch:SurfacePatch):(u:number,v:number)=>Vec3{
+ const key='final:'+patchInputKey(p,patch)+evaluationToken(p,patch),hit=evaluators.get(key);if(hit)return hit;
+ let f:(u:number,v:number)=>Vec3;
+ if(patch.canonicalId){const g=evaluator(p,p.patches!.find(x=>x.id===patch.canonicalId)!);f=(u,v)=>mirrorPoint(p,g(u,v));}
+ else f=chinSurfaceEvaluator(p,patch,preChinEvaluator(p,patch));
  evaluators.set(key,f);return f;
 }
 export interface PatchMesh {
@@ -35,7 +44,7 @@ export function tessellate(p: LandmarkProject, patch: SurfacePatch, n = 24): Pat
     const mesh: PatchMesh = { vertices: [], triangles: [] };
     try {
         const f = evaluator(p, patch);
-        const rows: number[][] = [];
+        const rows: number[][] = [],uv:[number,number][]=[];
         // A full revolution gets four quarter-arc budgets at the selected display quality.
         const around=patch.type==='loop'?4*n:n;
         for (let j = 0; j <= n; j++) {
@@ -43,7 +52,7 @@ export function tessellate(p: LandmarkProject, patch: SurfacePatch, n = 24): Pat
             for (let i = 0; i <= (patch.type === 'tri' ? n - j : patch.type==='loop'?around-1:n); i++) {
                 if(patch.type==='lens'&&j>0&&(i===0||i===n)){row.push(rows[0][i]);continue;}
                 row.push(mesh.vertices.length);
-                mesh.vertices.push(f(i / around, j / n));
+                mesh.vertices.push(f(i / around, j / n));uv.push([i/around,j/n]);
             }
             rows.push(row);
         }
@@ -56,6 +65,7 @@ export function tessellate(p: LandmarkProject, patch: SurfacePatch, n = 24): Pat
                     mesh.triangles.push([rows[j][i + 1], rows[j + 1][i + 1], rows[j + 1][i]]);
             }
         if(patch.type==='lens')mesh.triangles=mesh.triangles.filter(t=>new Set(t).size===3);
+        refineChin(p,patch,mesh,uv,f);
         if (mesh.vertices.some(v => !v.every(Number.isFinite)))
             throw Error('曲面求值产生非有限数值');
         const normals = mesh.triangles.map(([a, b, c]) => cross(sub(mesh.vertices[b], mesh.vertices[a]), sub(mesh.vertices[c], mesh.vertices[a])));

@@ -1,0 +1,20 @@
+import {useEffect,useRef,useState} from 'react';
+import {useEditor} from '../../app/store';
+import {eyeSide,type EyeParameters} from '../../domain/eyes/scaffold';
+import NumericSlider from '../shared/NumericSlider';
+import {uiText as t} from '../i18n';
+const fields:{key:keyof EyeParameters;label:string;min:number;max:number}[]=[
+ {key:'x',label:'眼球 X（左右）',min:0,max:2},{key:'y',label:'眼球 Y（上下）',min:-2,max:2},{key:'z',label:'眼球 Z（前后）',min:-2,max:2},
+ {key:'ballX',label:'眼球半径 X',min:.01,max:1},{key:'ballY',label:'眼球半径 Y',min:.01,max:1},{key:'ballZ',label:'眼球半径 Z',min:.01,max:1}];
+export function EyeControls({side}:{side:'left'|'right'}){
+ const s=useEditor(),e=s.project.eyeScaffold;if(!e)return null;
+ const editing={disabled:s.activeModule!=='EYES',onEditStart:()=>s.beginEdit(true),onEditEnd:s.endEdit};
+ return <div data-testid="eye-controls"><small>{t('左右严格对称联动 · 尺寸与位置以 R 为单位')}</small><h4>{t('眼球 · 独立编辑')}</h4>{fields.map(f=><NumericSlider key={f.key} label={t(f.label)} min={f.min} max={f.max} value={e.parameters[f.key]} {...editing} onChange={v=>s.setEyeParameter(side,f.key,v)}/>)}{e.coord&&<>{(['X','Y','Z'] as const).map((axis,i)=><NumericSlider key={'ball'+axis} label={t('眼球绕 '+axis+' 旋转')} min={-90} max={90} value={(e.ballOrientation??e.coord!.orientation)[i]} {...editing} onChange={v=>{const a=[...(e.ballOrientation??e.coord!.orientation)] as [number,number,number];a[i]=v;s.setEyeOrientation(a);}}/>)}<h4>{t('眼裂 / 眼睑 · 独立编辑')}</h4>{(['X','Y','Z'] as const).map((axis,i)=><NumericSlider key={'lid'+axis} label={t(['眼裂 X（左右）','眼裂 Y（上下）','眼裂 Z（前后）'][i])} min={i===0?0:-2} max={2} value={(e.coord!.position??[e.parameters.x,e.parameters.y,e.parameters.z])[i]} {...editing} onChange={v=>{const a=[...(e.coord!.position??[e.parameters.x,e.parameters.y,e.parameters.z])] as [number,number,number];a[i]=v;s.setEyeCoord('position',a);}}/>)}{(['width','height','tilt'] as const).map((key,i)=><NumericSlider key={key} label={t(['Eye Width','Eye Height','Eye Tilt'][i])} min={key==='tilt'?-90:.01} max={key==='tilt'?90:2} value={e.coord![key]} {...editing} onChange={v=>s.setEyeCoord(key,v)}/>)}{(['X','Y','Z'] as const).map((axis,i)=><NumericSlider key={axis} label={t('眼裂绕 '+axis+' 旋转')} min={-90} max={90} value={e.coord!.orientation[i]} {...editing} onChange={v=>{const a=[...e.coord!.orientation] as [number,number,number];a[i]=v;s.setEyeCoord('orientation',a);}}/>)}</>}</div>;
+}
+export default function EyeConstruction(){
+ const panel=useRef<HTMLElement>(null),[expanded,setExpanded]=useState(true);
+ const s=useEditor(),[side,setSide]=useState<'left'|'right'|null>(null),selected=s.selection?eyeSide(s.project,s.selection.id):undefined;
+ useEffect(()=>{if(selected){setExpanded(true);setSide(selected);if(panel.current)panel.current.scrollTop=0;}else if(s.selection?.kind==='surface'&&s.selection.source==='IRIS')setSide(null);},[selected,s.selectionTick]);
+ if(s.activeModule!=='EYES')return null;
+ return <section ref={panel} className="construction-panel eye-construction" data-testid="eye-construction"><h4><button className="section-heading" aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}><span aria-hidden="true">{expanded?'▾':'▸'} </span>{t('Default Eye Scaffold')}</button></h4>{expanded&&(!s.project.eyeScaffold?<button onClick={s.createEyes}>{t('创建默认眼部辅助骨架')}</button>:<>{!s.project.eyeScaffold.coord&&<button onClick={s.upgradeEyes}>{t('转换为 EyeCoord（删除圆柱及依赖）')}</button>}<section data-testid="eye-perspective"><h4>{t('二次元透视')}</h4>{(['x','y'] as const).map(axis=><NumericSlider key={axis} label={t(axis==='x'?'X 方向透视强度':'Y 方向透视强度')} min={0} max={1} value={s.project.eyeScaffold!.perspective?.[axis]??0} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setEyePerspective(axis,v)}/>)}</section>{(['left','right'] as const).map(value=><div key={value}><button className="section-heading" aria-expanded={side===value} onClick={()=>{if(side===value)setSide(null);else{setSide(value);s.selectObject({kind:'point',id:s.project.eyeScaffold![value].pointIds[20]});}}}>{t(value==='left'?'Left Eye':'Right Eye')}</button>{side===value&&<EyeControls side={value}/>}</div>)}</>)}</section>;
+}

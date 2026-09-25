@@ -1,4 +1,7 @@
-import {isAnalytic,isSection} from './model';
+import {handleToLocal} from './free3d';
+import {isFree3DShape,type CurveShape} from './model';
+import {eyeSide} from '../eyes/scaffold';
+import {isDerived,isSection,isClosedSource} from './model';
 import {symmetryNormal,mirrorPoint,mirrorVector} from '../head/frame';
 import {dirtyDescendants} from "../geometry/dependencies";
 import {evaluationContext,pointPosition} from "../geometry/evaluation";
@@ -41,7 +44,7 @@ export function defaultNormal(d: Vec3, v: LandmarkView): Vec3 {
   return perpendicular(d, [forward, up, right]);
 }
 export function canonical(p: LandmarkProject, c: CurveEdge): CanonicalCurve {
-  if(isAnalytic(c))throw Error('Section 不使用 Bézier shape');
+  if(isDerived(c))throw Error('Section 不使用 Bézier shape');
   return (
     c.role === "canonical"
       ? c
@@ -49,7 +52,7 @@ export function canonical(p: LandmarkProject, c: CurveEdge): CanonicalCurve {
   ) as CanonicalCurve;
 }
 export function endpoints(p: LandmarkProject, c: CurveEdge): [Vec3, Vec3] {
-  if(isSection(c))throw Error('闭合 Section 没有端点');
+  if(isClosedSource(c))throw Error('闭合曲线没有独立端点');
   return [
     pointPosition(p,c.startLandmarkId),
     pointPosition(p,c.endLandmarkId),
@@ -61,6 +64,7 @@ export function isCenterCurve(p: LandmarkProject, c: CurveEdge): boolean {
   );
 }
 export function frame(p: LandmarkProject, c: CanonicalCurve) {
+  if(isFree3DShape(c.shape))throw Error("Free 3D curves have no plane");
   const [a, z] = endpoints(p, c),
     chord = sub(z, a),
     length = Math.hypot(...chord);
@@ -69,9 +73,11 @@ export function frame(p: LandmarkProject, c: CanonicalCurve) {
     b = normalize(cross(n, d));
   return { a, z, d, n, b, length };
 }
-export function controls(p:LandmarkProject,c:CurveEdge,context=evaluationContext(p)):ControlPoints {
-  return context.curveControls(c.id);
+export function sourceControls(p:LandmarkProject,c:CurveEdge,context=evaluationContext(p)):ControlPoints {
+  return context.sourceCurveControls(c.id);
 }
+/** Legacy alias for Source controls; Final geometry is evaluationContext(p).curve(id). */
+export const controls=sourceControls;
 export function bezier(c: ControlPoints, t: number): Vec3 {
   const u = 1 - t;
   return add(
@@ -109,10 +115,11 @@ export function followEndpoints(
 ): LandmarkProject {
   let result=next;
   for(const key of dirtyDescendants(old,next).order){
-    if(!key.startsWith('curve:'))continue;
-    const id=key.slice(6),c=result.curves.find(c=>c.id===id)!;
-    if(c.role!=='canonical'||isAnalytic(c))continue;
-    const oldCurve=old.curves.find(x=>x.id===id);if(!oldCurve||oldCurve.role!=='canonical'||isAnalytic(oldCurve))continue;
+    if(!key.startsWith('curve:')&&!key.startsWith('curveSource:'))continue;
+    if(key.startsWith('curve:')&&next.curveSmoothJoins?.length)continue;
+    const id=key.slice(key.indexOf(':')+1),c=result.curves.find(c=>c.id===id)!;
+    if(c.role!=='canonical'||isDerived(c)||isFree3DShape(c.shape)||eyeSide(next,c.id))continue;
+    const oldCurve=old.curves.find(x=>x.id===id);if(!oldCurve||oldCurve.role!=='canonical'||isDerived(oldCurve)||isFree3DShape(oldCurve.shape))continue;
     const [a,b]=endpoints(old,oldCurve),[an,bn]=endpoints(result,c),oldChord=sub(b,a),newChord=sub(bn,an);
     const moved=!a.every((v,i)=>v===an[i])||!b.every((v,i)=>v===bn[i]);
     let n=c.shape.planeNormal;
@@ -146,6 +153,11 @@ export function nearestParameter(
   }
   return Math.max(0.05, Math.min(0.95, (lo + hi) / 2));
 }
+export function viewPlaneTarget(p:LandmarkProject,c:CurveEdge,v:LandmarkView,q:Vec2):Vec3|null {
+  if(!isFree3DShape(canonical(p,c).shape))return planeTarget(p,c,v,q);
+  const {right,up}=basis(v),target=add(v.camera.target,add(scale(right,q[0]),scale(up,q[1])));
+  return c.role==='mirror'?mirrorPoint(p,target):target;
+}
 export function planeTarget(
   p: LandmarkProject,
   c: CurveEdge,
@@ -172,11 +184,18 @@ export function bodyShape(
   c: CanonicalCurve,
   t: number,
   target: Vec3,
-): PlanarShape {
+): CurveShape {
+  if(isFree3DShape(c.shape)){
+    t=Math.max(.05,Math.min(.95,t));
+    const delta=handleToLocal(p,sub(target,bezier(sourceControls(p,c),t)));
+    if(isCenterCurve(p,c))delta[0]=0;
+    const w1=3*(1-t)**2*t,w2=3*(1-t)*t*t,den=w1*w1+w2*w2;
+    return {...c.shape,startHandleOffset:add(c.shape.startHandleOffset,scale(delta,w1/den)),endHandleOffset:add(c.shape.endHandleOffset,scale(delta,w2/den))};
+  }
   const f = frame(p, c);
   if (f.length < CURVE_EPS) return c.shape;
   t = Math.max(0.05, Math.min(0.95, t));
-  const delta = dot(sub(target, bezier(controls(p, c), t)), f.b) / f.length;
+  const delta = dot(sub(target, bezier(sourceControls(p, c), t)), f.b) / f.length;
   const w1 = 3 * (1 - t) ** 2 * t,
     w2 = 3 * (1 - t) * t * t,
     den = w1 * w1 + w2 * w2;
@@ -197,7 +216,12 @@ export function handleShape(
   c: CanonicalCurve,
   index: 1 | 2,
   target: Vec3,
-): PlanarShape {
+): CurveShape {
+  if(isFree3DShape(c.shape)){
+    const anchor=endpoints(p,c)[index===1?0:1],offset=handleToLocal(p,sub(target,anchor));
+    if(isCenterCurve(p,c))offset[0]=0;
+    return {...c.shape,[index===1?'startHandleOffset':'endHandleOffset']:offset};
+  }
   const { a, z, d, b, length: L } = frame(p, c);
   if (L < CURVE_EPS) return c.shape;
   const along = dot(index === 1 ? sub(target, a) : sub(z, target), d) / L,

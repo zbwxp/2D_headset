@@ -1,0 +1,7 @@
+# V0.12.16 · Drawing Groups
+
+Drawing Room can organize independent strokes in a same-layer group. Shift-click toggles selection on the canvas and in the layer list. Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups. V selects/transforms a whole group; A and expanded member rows edit individual curves. The group folder can be renamed, folded, hidden, locked, reordered or dragged between layers. Group visibility/locking is inherited without overwriting member flags; owned fills inherit it too.
+
+Groups are optional `DrawingDocument.groups` metadata (`id`, `name`, `curveIds`, `visible`, `locked`). Geometry, joins, stroke names/profiles and individual paint objects remain unchanged. Membership covers complete continuous strokes. The flat layer paint order stays authoritative; grouping gathers members at the foremost member. V1 groups are flat: grouping existing groups combines their members. Split/connect/delete/transfer reconcile membership. Duplicating a complete group copies the group and owned fills. Save/load validates single-layer ownership and complete strokes; legacy documents need no migration. All document changes use existing Undo transactions; folding is UI-only.
+
+Validation: Drawing domain tests, group browser tests (Shift selection, shortcuts, dragging, direct editing, visibility, locking, fill, Undo/Redo, save/load), existing stroke/layer browser regressions and production build.

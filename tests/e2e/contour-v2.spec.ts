@@ -3,7 +3,7 @@ import {mkdirSync} from 'node:fs';
 test('Contour V2 renders open segments without closing them',async({page})=>{
  await page.goto('/');
  await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles('artifacts/surface-smooth/full-head-regression.json');
- await page.getByRole('checkbox',{name:'显示 Contour 窗口',exact:true}).check();
+ await page.getByRole('checkbox',{name:'显示 轮廓 窗口',exact:true}).check();
  const p=page.getByTestId('contour-preview');await expect(p.locator('[data-contour-open]').first()).toBeVisible({timeout:20000});
  await expect(p).toHaveAttribute('aria-busy','false');
  const paths=await p.locator('[data-contour-open]').evaluateAll(es=>es.map(e=>e.getAttribute('d')!));
@@ -13,7 +13,7 @@ test('Contour V2 renders open segments without closing them',async({page})=>{
 test('saved span head renders repaired boundaries across camera orientations',async({page})=>{
  await page.goto('/');
  await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles('tests/fixtures/contour-span-head.json');
- await page.getByRole('checkbox',{name:'显示 Contour 窗口',exact:true}).check();
+ await page.getByRole('checkbox',{name:'显示 轮廓 窗口',exact:true}).check();
  const preview=page.getByTestId('contour-preview');
  await expect(preview.locator('svg path').first()).toBeVisible({timeout:20000});
  for(const [name,q] of [['front',[0,0,0,1]],['oblique',[.12,.3,0,Math.sqrt(1-.12*.12-.3*.3)]]] as const){

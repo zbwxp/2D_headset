@@ -1,0 +1,444 @@
+﻿对象类型,稳定ID,字段,原名称,整理后名称
+layer,67a35d34-fa49-45b3-acdb-1bce3797cde2,name,正刘海,中央刘海
+layer,825a51ee-1d9b-4d1d-be2d-0f0250918ffe,name,鼻,鼻部
+layer,425026d8-6158-427c-b3cb-3babb9af05ee,name,嘴,嘴部
+layer,f10cc558-ccad-4e04-ba18-9c7d5b15590d,name,右眼,右眼睑
+layer,8943fe7b-1e12-46e5-8f8f-d4edb885a1bb,name,右虹膜,右眼内结构
+layer,c27a1394-2548-4de5-be1c-02347c48ecc2,name,左眼,左眼睑
+layer,a93f87c9-1afa-4e37-83cb-c93d24dc4b79,name,左虹膜,左眼内结构
+layer,c21f6cd9-1a44-481d-a7e3-0ce69879acea,name,脸,面部底形
+layer,7c70ee70-7dfe-48aa-93eb-bb739c5e0e05,name,左侧发,左侧后发
+layer,2433d942-9476-495a-bd3e-db8c1a172cc6,name,右侧发,右侧后发
+layer,4e4b5f32-c8b6-430a-b953-58b4c883db5d,name,脖颈,颈部与衣领
+curve,2fb9f09b-3672-4c99-9294-f69a20ab0275,name,曲线94,头顶呆毛轮廓 · 段01
+stroke,2fb9f09b-3672-4c99-9294-f69a20ab0275,strokeName,,头顶呆毛轮廓
+curve,643a4059-217f-4bea-9f95-a45cddb6a3d0,name,曲线95,头顶呆毛轮廓 · 段02
+stroke,643a4059-217f-4bea-9f95-a45cddb6a3d0,strokeName,,头顶呆毛轮廓
+curve,9104f698-c050-46ef-97c5-fcc4b4db10c0,name,曲线96,头顶呆毛轮廓 · 段03
+stroke,9104f698-c050-46ef-97c5-fcc4b4db10c0,strokeName,,头顶呆毛轮廓
+curve,d15b9036-fccb-4a91-84ef-c8ed9cef4079,name,曲线97,头顶呆毛轮廓 · 段04
+stroke,d15b9036-fccb-4a91-84ef-c8ed9cef4079,strokeName,,头顶呆毛轮廓
+curve,aed52292-1f6b-41f8-8673-712bf2563173,name,曲线98,头顶呆毛轮廓 · 段05
+stroke,aed52292-1f6b-41f8-8673-712bf2563173,strokeName,,头顶呆毛轮廓
+curve,c1dab6b7-8b12-4337-95b2-2ed3993ddd91,name,曲线99,头顶呆毛轮廓 · 段06
+stroke,c1dab6b7-8b12-4337-95b2-2ed3993ddd91,strokeName,,头顶呆毛轮廓
+curve,4f888289-9cbc-47b7-95b4-02c340a6b626,name,曲线11,中央发纹 01 · 段01
+stroke,4f888289-9cbc-47b7-95b4-02c340a6b626,strokeName,,中央发纹 01
+curve,11b4591a-19c8-49b1-86f6-fb0bc08cce13,name,曲线12,中央发纹 01 · 段02
+stroke,11b4591a-19c8-49b1-86f6-fb0bc08cce13,strokeName,,中央发纹 01
+curve,ff94f431-dd13-4096-839a-8e12e47ab9d6,name,曲线1,中央刘海轮廓 · 段01
+stroke,ff94f431-dd13-4096-839a-8e12e47ab9d6,strokeName,,中央刘海轮廓
+curve,c175f838-4571-4efa-8d92-97988e00384c,name,曲线2,中央刘海轮廓 · 段02
+stroke,c175f838-4571-4efa-8d92-97988e00384c,strokeName,,中央刘海轮廓
+curve,be1c6cd0-ea74-4e23-8296-2cf1e4a1206c,name,曲线3,中央刘海轮廓 · 段03
+stroke,be1c6cd0-ea74-4e23-8296-2cf1e4a1206c,strokeName,,中央刘海轮廓
+curve,608229c6-25d5-4e03-a245-72667f5c8ba4,name,曲线4,中央刘海轮廓 · 段04
+stroke,608229c6-25d5-4e03-a245-72667f5c8ba4,strokeName,,中央刘海轮廓
+curve,290613ca-4694-4be3-8f4b-f8d0f3d4b536,name,曲线5,中央刘海轮廓 · 段05
+stroke,290613ca-4694-4be3-8f4b-f8d0f3d4b536,strokeName,,中央刘海轮廓
+curve,aa6f4282-a254-48b3-a11f-cc031a36be4f,name,曲线6,中央刘海轮廓 · 段06
+stroke,aa6f4282-a254-48b3-a11f-cc031a36be4f,strokeName,,中央刘海轮廓
+curve,2fa3584f-338a-4fbb-a7a1-c6701478071c,name,曲线7,中央刘海轮廓 · 段07
+stroke,2fa3584f-338a-4fbb-a7a1-c6701478071c,strokeName,,中央刘海轮廓
+curve,a004849a-a55a-4486-a5c6-89972f6fe965,name,曲线8,中央刘海轮廓 · 段08
+stroke,a004849a-a55a-4486-a5c6-89972f6fe965,strokeName,,中央刘海轮廓
+curve,f77b82a3-4d35-416d-86d6-a086140f001f,name,曲线9,中央刘海轮廓 · 段09
+stroke,f77b82a3-4d35-416d-86d6-a086140f001f,strokeName,,中央刘海轮廓
+curve,a9270b3f-9e4a-463a-b438-b370aec4cf46,name,曲线10,中央刘海轮廓 · 段10
+stroke,a9270b3f-9e4a-463a-b438-b370aec4cf46,strokeName,,中央刘海轮廓
+curve,aa5f139f-6d0c-449b-bdaf-2f38b6c5a16f,name,曲线69,右发纹 01
+curve,11e3ef4a-d957-4631-a579-05720bc4bd96,name,曲线68,右发纹 02
+curve,df602e79-3e0d-4b3b-a9e8-7a4bae661b83,name,曲线66,右发纹 03 · 段01
+stroke,df602e79-3e0d-4b3b-a9e8-7a4bae661b83,strokeName,,右发纹 03
+curve,654bebc7-9e4a-4e70-8902-1f010e5094fd,name,曲线67,右发纹 03 · 段02
+stroke,654bebc7-9e4a-4e70-8902-1f010e5094fd,strokeName,,右发纹 03
+curve,c96b2485-e5be-42ec-8b09-be5353b97b52,name,曲线56,右刘海轮廓 · 段01
+stroke,c96b2485-e5be-42ec-8b09-be5353b97b52,strokeName,,右刘海轮廓
+curve,49e15856-09f3-425c-a272-466887a0912e,name,曲线57,右刘海轮廓 · 段02
+stroke,49e15856-09f3-425c-a272-466887a0912e,strokeName,,右刘海轮廓
+curve,a20591e9-75ac-4cfc-8a14-f1c57f7bd85c,name,曲线58,右刘海轮廓 · 段03
+stroke,a20591e9-75ac-4cfc-8a14-f1c57f7bd85c,strokeName,,右刘海轮廓
+curve,d6d53ba4-e226-4efd-85be-e2f436e43f06,name,曲线59,右刘海轮廓 · 段04
+stroke,d6d53ba4-e226-4efd-85be-e2f436e43f06,strokeName,,右刘海轮廓
+curve,3fc98f40-f6df-40c8-abcf-3ae067420fff,name,曲线60,右刘海轮廓 · 段05
+stroke,3fc98f40-f6df-40c8-abcf-3ae067420fff,strokeName,,右刘海轮廓
+curve,f1fd5430-04fc-4241-8983-a5a6f3f8a04c,name,曲线61,右刘海轮廓 · 段06
+stroke,f1fd5430-04fc-4241-8983-a5a6f3f8a04c,strokeName,,右刘海轮廓
+curve,13a1a552-29a8-48ec-b084-27ffdef07a0a,name,曲线62,右刘海轮廓 · 段07
+stroke,13a1a552-29a8-48ec-b084-27ffdef07a0a,strokeName,,右刘海轮廓
+curve,e3935e91-9a0a-46ba-8fe9-fe138a5358ee,name,曲线63,右刘海轮廓 · 段08
+stroke,e3935e91-9a0a-46ba-8fe9-fe138a5358ee,strokeName,,右刘海轮廓
+curve,7a16d232-de8f-4bf3-8d21-8c27a2e0afc0,name,曲线64,右刘海轮廓 · 段09
+stroke,7a16d232-de8f-4bf3-8d21-8c27a2e0afc0,strokeName,,右刘海轮廓
+curve,8db0a6f3-4069-4c13-b322-aad028be50e2,name,曲线65,右刘海轮廓 · 段10
+stroke,8db0a6f3-4069-4c13-b322-aad028be50e2,strokeName,,右刘海轮廓
+curve,84b654f8-f033-4ed8-8075-724e7d48d718,name,曲线54,左发纹 01 · 段01
+stroke,84b654f8-f033-4ed8-8075-724e7d48d718,strokeName,,左发纹 01
+curve,5d6add57-8433-41b4-bd3e-823a90b23cc1,name,曲线55,左发纹 01 · 段02
+stroke,5d6add57-8433-41b4-bd3e-823a90b23cc1,strokeName,,左发纹 01
+curve,e77ff5ee-195b-4bf0-9974-c83eaac18173,name,曲线52,左发纹 02 · 段01
+stroke,e77ff5ee-195b-4bf0-9974-c83eaac18173,strokeName,,左发纹 02
+curve,8130617b-ebdd-4395-ac9e-90b1740de4c5,name,曲线53,左发纹 02 · 段02
+stroke,8130617b-ebdd-4395-ac9e-90b1740de4c5,strokeName,,左发纹 02
+curve,e4148b60-d75f-4efc-adf4-c6d8da26004c,name,曲线51,左发纹 03
+curve,ca306230-d17b-45e0-82b4-cbcb737b4cc0,name,曲线43,左刘海轮廓 · 段01
+stroke,ca306230-d17b-45e0-82b4-cbcb737b4cc0,strokeName,,左刘海轮廓
+curve,a6875560-2bc7-4f47-98cd-894826847bc4,name,曲线44,左刘海轮廓 · 段02
+stroke,a6875560-2bc7-4f47-98cd-894826847bc4,strokeName,,左刘海轮廓
+curve,9f7ea54d-fc5f-48b4-933a-cef47374157a,name,曲线45,左刘海轮廓 · 段03
+stroke,9f7ea54d-fc5f-48b4-933a-cef47374157a,strokeName,,左刘海轮廓
+curve,f9e513af-8c6a-4b74-8d04-d784b16efd7f,name,曲线46,左刘海轮廓 · 段04
+stroke,f9e513af-8c6a-4b74-8d04-d784b16efd7f,strokeName,,左刘海轮廓
+curve,90ffc707-9a09-4f04-b7b1-bdf492974c8f,name,曲线47,左刘海轮廓 · 段05
+stroke,90ffc707-9a09-4f04-b7b1-bdf492974c8f,strokeName,,左刘海轮廓
+curve,017b6cd0-7e32-4ec5-8da1-7f30bb263fd4,name,曲线48,左刘海轮廓 · 段06
+stroke,017b6cd0-7e32-4ec5-8da1-7f30bb263fd4,strokeName,,左刘海轮廓
+curve,c45e167a-ca50-4a84-9251-21b0a2738bb3,name,曲线49,左刘海轮廓 · 段07
+stroke,c45e167a-ca50-4a84-9251-21b0a2738bb3,strokeName,,左刘海轮廓
+curve,cb75aa18-a2e8-4ab0-97a1-405771b219e7,name,曲线50,左刘海轮廓 · 段08
+stroke,cb75aa18-a2e8-4ab0-97a1-405771b219e7,strokeName,,左刘海轮廓
+curve,bb01fe95-1923-4af6-8703-01f52a4aa2b9,name,曲线26,鼻尖短线
+curve,61994863-fafd-4c74-857c-82adc0e9ef36,name,曲线14,嘴线 · 段01
+stroke,61994863-fafd-4c74-857c-82adc0e9ef36,strokeName,,嘴线
+curve,823d4140-276a-40a6-b633-f700d90b4b48,name,曲线25,嘴线 · 段02
+stroke,823d4140-276a-40a6-b633-f700d90b4b48,strokeName,,嘴线
+curve,b6406b72-6b1e-48a8-929b-a6201a276876,name,眼窝,右上睑褶线
+curve,8095e80f-7e8e-489b-b386-ae74a3f18af5,name,曲线17,右上睑墨形 · 段01
+stroke,8095e80f-7e8e-489b-b386-ae74a3f18af5,strokeName,上眼睑,右上睑墨形
+curve,38d8fae5-0c24-4832-ab31-7c40fbc4da39,name,曲线18,右上睑墨形 · 段02
+stroke,38d8fae5-0c24-4832-ab31-7c40fbc4da39,strokeName,上眼睑,右上睑墨形
+curve,5310bc0a-65ed-4754-878a-1c044790d3ad,name,曲线19,右上睑墨形 · 段03
+stroke,5310bc0a-65ed-4754-878a-1c044790d3ad,strokeName,上眼睑,右上睑墨形
+curve,516c6b44-2ec8-4297-b6c0-3204c76dd20f,name,曲线20,右上睑墨形 · 段04
+stroke,516c6b44-2ec8-4297-b6c0-3204c76dd20f,strokeName,上眼睑,右上睑墨形
+curve,90380fbd-d17a-41a2-8419-084ed509737c,name,曲线21,右上睑墨形 · 段05
+stroke,90380fbd-d17a-41a2-8419-084ed509737c,strokeName,上眼睑,右上睑墨形
+curve,c108324f-c915-443d-89b3-6fe4a3ebd7a7,name,曲线22,右上睑墨形 · 段06
+stroke,c108324f-c915-443d-89b3-6fe4a3ebd7a7,strokeName,上眼睑,右上睑墨形
+curve,571691a4-7630-4984-8640-49990094d79f,name,曲线23,右上睑墨形 · 段07
+stroke,571691a4-7630-4984-8640-49990094d79f,strokeName,上眼睑,右上睑墨形
+curve,0f168ed1-ae77-4665-b051-48356ca18837,name,曲线24,右上睑墨形 · 段08
+stroke,0f168ed1-ae77-4665-b051-48356ca18837,strokeName,上眼睑,右上睑墨形
+curve,93e02b99-dd5e-4418-9fb9-65ff92832a32,name,曲线16 · 1,右下睑线 · 段01
+stroke,93e02b99-dd5e-4418-9fb9-65ff92832a32,strokeName,下眼睑,右下睑线
+curve,78e12262-5608-4a3b-857f-dbcb732122dd,name,曲线15 · 1,右下睑线 · 段02
+stroke,78e12262-5608-4a3b-857f-dbcb732122dd,strokeName,下眼睑,右下睑线
+curve,a3f62123-c980-4cba-8e22-24a6bc1d4b0e,name,曲线13 · 1,右下睑线 · 段03
+stroke,a3f62123-c980-4cba-8e22-24a6bc1d4b0e,strokeName,下眼睑,右下睑线
+curve,d860aec1-af8b-4408-9d94-24708eabad8f,name,椭圆13 · 1,右高光 02 · 段01
+stroke,d860aec1-af8b-4408-9d94-24708eabad8f,strokeName,高光2,右高光 02
+curve,44f2fff2-e52b-4ff6-81e7-0a4639c77f39,name,椭圆14 · 1,右高光 02 · 段02
+stroke,44f2fff2-e52b-4ff6-81e7-0a4639c77f39,strokeName,高光2,右高光 02
+curve,a16bf106-f222-416f-908f-5f4018658fba,name,椭圆15 · 1,右高光 02 · 段03
+stroke,a16bf106-f222-416f-908f-5f4018658fba,strokeName,高光2,右高光 02
+curve,92db7ccb-db10-4cce-9f79-d3c2af8d74ad,name,椭圆16 · 1,右高光 02 · 段04
+stroke,92db7ccb-db10-4cce-9f79-d3c2af8d74ad,strokeName,高光2,右高光 02
+curve,cf1c4b7e-8c67-4585-a493-a106dd0a6654,name,椭圆9 · 1,右高光 01 · 段01
+stroke,cf1c4b7e-8c67-4585-a493-a106dd0a6654,strokeName,高光1,右高光 01
+curve,ac5a4ab5-89ab-4094-8dde-df6e0905de20,name,椭圆10 · 1,右高光 01 · 段02
+stroke,ac5a4ab5-89ab-4094-8dde-df6e0905de20,strokeName,高光1,右高光 01
+curve,aa6ab9fc-7465-49d4-96b0-61e26c8c69bd,name,椭圆11 · 1,右高光 01 · 段03
+stroke,aa6ab9fc-7465-49d4-96b0-61e26c8c69bd,strokeName,高光1,右高光 01
+curve,ac692835-bbe1-4607-965c-f740d3c8e638,name,椭圆12 · 1,右高光 01 · 段04
+stroke,ac692835-bbe1-4607-965c-f740d3c8e638,strokeName,高光1,右高光 01
+curve,b699f787-e558-405e-ac9a-8b7202f8b690,name,椭圆5 · 1,右瞳孔 · 段01
+stroke,b699f787-e558-405e-ac9a-8b7202f8b690,strokeName,瞳孔,右瞳孔
+curve,195e8edf-9b8e-4098-90e5-46f802a30834,name,椭圆6 · 1,右瞳孔 · 段02
+stroke,195e8edf-9b8e-4098-90e5-46f802a30834,strokeName,瞳孔,右瞳孔
+curve,e71f443a-3905-4615-941e-719bf126df68,name,椭圆7 · 1,右瞳孔 · 段03
+stroke,e71f443a-3905-4615-941e-719bf126df68,strokeName,瞳孔,右瞳孔
+curve,da8a3c28-74c5-43a7-bf3c-0f8f60632851,name,椭圆8 · 1,右瞳孔 · 段04
+stroke,da8a3c28-74c5-43a7-bf3c-0f8f60632851,strokeName,瞳孔,右瞳孔
+curve,5dea428f-d4c9-4970-a12d-ee79c6be7580,name,椭圆25 · 1,右虹膜下缘柔光 · 段01
+stroke,5dea428f-d4c9-4970-a12d-ee79c6be7580,strokeName,下半高光,右虹膜下缘柔光
+curve,203b901d-169a-473f-a939-5b216891d5f6,name,椭圆26 · 1,右虹膜下缘柔光 · 段02
+stroke,203b901d-169a-473f-a939-5b216891d5f6,strokeName,下半高光,右虹膜下缘柔光
+curve,f7118c48-2b5c-432f-9359-d8f03e7ae6cf,name,椭圆27 · 1,右虹膜下缘柔光 · 段03
+stroke,f7118c48-2b5c-432f-9359-d8f03e7ae6cf,strokeName,下半高光,右虹膜下缘柔光
+curve,4923883b-f12f-4279-ab7d-fb2ff5d1cd1a,name,椭圆28 · 1,右虹膜下缘柔光 · 段04
+stroke,4923883b-f12f-4279-ab7d-fb2ff5d1cd1a,strokeName,下半高光,右虹膜下缘柔光
+curve,7a419794-1ae6-4776-bd46-cf2c73eca2a9,name,椭圆1 · 1,右虹膜轮廓 · 段01
+stroke,7a419794-1ae6-4776-bd46-cf2c73eca2a9,strokeName,瞳仁,右虹膜轮廓
+curve,01ffdba4-5eb6-43e3-ac43-c112a77fde85,name,椭圆2 · 1,右虹膜轮廓 · 段02
+stroke,01ffdba4-5eb6-43e3-ac43-c112a77fde85,strokeName,瞳仁,右虹膜轮廓
+curve,07b8a55c-74e3-4f39-be20-65c211e99d12,name,椭圆3 · 1,右虹膜轮廓 · 段03
+stroke,07b8a55c-74e3-4f39-be20-65c211e99d12,strokeName,瞳仁,右虹膜轮廓
+curve,cf9bc2ab-4cef-4462-be33-cb5222fa8df4,name,椭圆4 · 1,右虹膜轮廓 · 段04
+stroke,cf9bc2ab-4cef-4462-be33-cb5222fa8df4,strokeName,瞳仁,右虹膜轮廓
+curve,acc04da6-3ccf-433d-9ca8-a055df7826b4,name,眼窝,左上睑褶线
+curve,77cdb95a-3d29-4851-8eb9-3411e8c2319a,name,曲线13,左下睑线 · 段01
+stroke,77cdb95a-3d29-4851-8eb9-3411e8c2319a,strokeName,下眼睑,左下睑线
+curve,a18fd54a-c9af-4895-b6b0-a2a5cde8be3b,name,曲线15,左下睑线 · 段02
+stroke,a18fd54a-c9af-4895-b6b0-a2a5cde8be3b,strokeName,下眼睑,左下睑线
+curve,d57b2bd2-1601-4f67-98e3-112788cb46c5,name,曲线16,左下睑线 · 段03
+stroke,d57b2bd2-1601-4f67-98e3-112788cb46c5,strokeName,下眼睑,左下睑线
+curve,98f220c7-d3c4-4bc8-9228-74faf26a2b7a,name,曲线17 · 1,左上睑墨形 · 段01
+stroke,98f220c7-d3c4-4bc8-9228-74faf26a2b7a,strokeName,上眼睑,左上睑墨形
+curve,ce6d6b79-61bf-4a5b-88a6-7a6f67f7e948,name,曲线18 · 1,左上睑墨形 · 段02
+stroke,ce6d6b79-61bf-4a5b-88a6-7a6f67f7e948,strokeName,上眼睑,左上睑墨形
+curve,5e6e48bf-1ec5-4d2c-a721-40d7736eae06,name,曲线19 · 1,左上睑墨形 · 段03
+stroke,5e6e48bf-1ec5-4d2c-a721-40d7736eae06,strokeName,上眼睑,左上睑墨形
+curve,beede7ed-7e46-4b54-bcc0-1ea5cf6e6ee9,name,曲线20 · 1,左上睑墨形 · 段04
+stroke,beede7ed-7e46-4b54-bcc0-1ea5cf6e6ee9,strokeName,上眼睑,左上睑墨形
+curve,72053ade-b4e8-4535-a1cb-f9a2e15c7cf1,name,曲线21 · 1,左上睑墨形 · 段05
+stroke,72053ade-b4e8-4535-a1cb-f9a2e15c7cf1,strokeName,上眼睑,左上睑墨形
+curve,ed4b5d6f-9302-4736-bdcf-7df5480eaf5f,name,曲线22 · 1,左上睑墨形 · 段06
+stroke,ed4b5d6f-9302-4736-bdcf-7df5480eaf5f,strokeName,上眼睑,左上睑墨形
+curve,3c3e47d6-442e-4bae-836e-d13db4eaf06f,name,曲线23 · 1,左上睑墨形 · 段07
+stroke,3c3e47d6-442e-4bae-836e-d13db4eaf06f,strokeName,上眼睑,左上睑墨形
+curve,60e43857-5413-4ddc-b41d-33f827d74937,name,曲线24 · 1,左上睑墨形 · 段08
+stroke,60e43857-5413-4ddc-b41d-33f827d74937,strokeName,上眼睑,左上睑墨形
+curve,24f1a0d7-7625-4974-9379-d46d82dc4699,name,椭圆13,左高光 02 · 段01
+stroke,24f1a0d7-7625-4974-9379-d46d82dc4699,strokeName,高光2,左高光 02
+curve,0e3c25b8-e8a0-4491-80db-7700b1617662,name,椭圆14,左高光 02 · 段02
+stroke,0e3c25b8-e8a0-4491-80db-7700b1617662,strokeName,高光2,左高光 02
+curve,47df30cc-b862-4750-a848-0fc735fff930,name,椭圆15,左高光 02 · 段03
+stroke,47df30cc-b862-4750-a848-0fc735fff930,strokeName,高光2,左高光 02
+curve,c0ac7279-2b81-4636-a1cb-9faca4eff26d,name,椭圆16,左高光 02 · 段04
+stroke,c0ac7279-2b81-4636-a1cb-9faca4eff26d,strokeName,高光2,左高光 02
+curve,d3db8dad-ef08-4658-82c0-0ec2cd67e6b6,name,椭圆9,左高光 01 · 段01
+stroke,d3db8dad-ef08-4658-82c0-0ec2cd67e6b6,strokeName,高光1,左高光 01
+curve,d2dcbd8a-e8e0-41be-9197-d77ed86ed67f,name,椭圆10,左高光 01 · 段02
+stroke,d2dcbd8a-e8e0-41be-9197-d77ed86ed67f,strokeName,高光1,左高光 01
+curve,5aea1341-6a15-4e61-9961-753a08444030,name,椭圆11,左高光 01 · 段03
+stroke,5aea1341-6a15-4e61-9961-753a08444030,strokeName,高光1,左高光 01
+curve,42e6b4bc-308c-4430-b6c0-13cfc33c5cee,name,椭圆12,左高光 01 · 段04
+stroke,42e6b4bc-308c-4430-b6c0-13cfc33c5cee,strokeName,高光1,左高光 01
+curve,c1010d51-ea86-45f6-9bf0-5b376c6f8fc1,name,椭圆5,左瞳孔 · 段01
+stroke,c1010d51-ea86-45f6-9bf0-5b376c6f8fc1,strokeName,瞳孔,左瞳孔
+curve,b2d0ef42-390a-4d10-b732-52abd2433fa7,name,椭圆6,左瞳孔 · 段02
+stroke,b2d0ef42-390a-4d10-b732-52abd2433fa7,strokeName,瞳孔,左瞳孔
+curve,4fcce017-6520-4dfe-b7ad-be2bbafcb74e,name,椭圆7,左瞳孔 · 段03
+stroke,4fcce017-6520-4dfe-b7ad-be2bbafcb74e,strokeName,瞳孔,左瞳孔
+curve,6d5da2e1-9617-4f0d-8932-3790df1b0abc,name,椭圆8,左瞳孔 · 段04
+stroke,6d5da2e1-9617-4f0d-8932-3790df1b0abc,strokeName,瞳孔,左瞳孔
+curve,71ab0431-ff28-4c8e-ad84-daf7db55ccf6,name,椭圆25,左虹膜下缘柔光 · 段01
+stroke,71ab0431-ff28-4c8e-ad84-daf7db55ccf6,strokeName,下半高光,左虹膜下缘柔光
+curve,4e68a081-3a82-40f2-9fee-8f0038ed16cf,name,椭圆26,左虹膜下缘柔光 · 段02
+stroke,4e68a081-3a82-40f2-9fee-8f0038ed16cf,strokeName,下半高光,左虹膜下缘柔光
+curve,a70f0c3a-5108-4d24-913e-f0ada77c757b,name,椭圆27,左虹膜下缘柔光 · 段03
+stroke,a70f0c3a-5108-4d24-913e-f0ada77c757b,strokeName,下半高光,左虹膜下缘柔光
+curve,044ff68e-7590-427c-9715-1d56116b65f3,name,椭圆28,左虹膜下缘柔光 · 段04
+stroke,044ff68e-7590-427c-9715-1d56116b65f3,strokeName,下半高光,左虹膜下缘柔光
+curve,a3039949-b6fb-43a4-aad2-3ab5e04fffd6,name,椭圆1,左虹膜轮廓 · 段01
+stroke,a3039949-b6fb-43a4-aad2-3ab5e04fffd6,strokeName,瞳仁,左虹膜轮廓
+curve,f37604a5-d23b-40d9-a033-4e342c74a9cd,name,椭圆2,左虹膜轮廓 · 段02
+stroke,f37604a5-d23b-40d9-a033-4e342c74a9cd,strokeName,瞳仁,左虹膜轮廓
+curve,6eb5f6db-aeac-4272-ae99-5e68a29c8168,name,椭圆3,左虹膜轮廓 · 段03
+stroke,6eb5f6db-aeac-4272-ae99-5e68a29c8168,strokeName,瞳仁,左虹膜轮廓
+curve,ea41f364-0af8-4d8f-9136-93ac541b914f,name,椭圆4,左虹膜轮廓 · 段04
+stroke,ea41f364-0af8-4d8f-9136-93ac541b914f,strokeName,瞳仁,左虹膜轮廓
+curve,4046b878-3792-4eaf-b7e3-b6a2992b4efc,name,眉毛,右眉线
+curve,4ab6a699-0360-4b6e-a409-1f81d63fbb70,name,眉毛,左眉线
+curve,756680c4-6769-464a-817b-9b1d51d820fd,name,右下颌,右下颌线
+stroke,756680c4-6769-464a-817b-9b1d51d820fd,strokeName,下颌,面部外轮廓
+curve,7975121e-99f1-4e15-85c1-d31f3a39dc7d,name,左下颌,左下颌线
+stroke,7975121e-99f1-4e15-85c1-d31f3a39dc7d,strokeName,下颌,面部外轮廓
+curve,7e663549-07a0-4010-9e8a-193a13127c4f,name,曲线92,左面部上缘封口
+stroke,7e663549-07a0-4010-9e8a-193a13127c4f,strokeName,下颌,面部外轮廓
+curve,5b7e02f8-617f-43c1-a3d4-24c7e6179984,name,曲线93,右面部上缘封口
+stroke,5b7e02f8-617f-43c1-a3d4-24c7e6179984,strokeName,下颌,面部外轮廓
+curve,d4ce1b15-dcbe-459d-b23f-b99f4dd0be41,name,曲线42,右耳内短纹
+curve,8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18,name,曲线40,右耳内分叉线 · 段01
+stroke,8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18,strokeName,,右耳内分叉线
+curve,e91b869a-f32b-412b-8ee5-6e2160c9e23e,name,曲线41,右耳内分叉线 · 段02
+stroke,e91b869a-f32b-412b-8ee5-6e2160c9e23e,strokeName,,右耳内分叉线
+curve,b829dd27-2fb5-4fe0-b719-da60e7acadca,name,曲线35,右耳内腔线 · 段01
+stroke,b829dd27-2fb5-4fe0-b719-da60e7acadca,strokeName,耳孔,右耳内腔线
+curve,3f1355cb-f97d-4f3d-b408-65ff400d13c3,name,曲线36,右耳内腔线 · 段02
+stroke,3f1355cb-f97d-4f3d-b408-65ff400d13c3,strokeName,耳孔,右耳内腔线
+curve,1d95088b-0001-4441-94ea-5f2b71848655,name,曲线37,右耳内腔线 · 段03
+stroke,1d95088b-0001-4441-94ea-5f2b71848655,strokeName,耳孔,右耳内腔线
+curve,8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde,name,曲线38,右耳内腔线 · 段04
+stroke,8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde,strokeName,耳孔,右耳内腔线
+curve,2f401004-d1ed-48dc-893c-d7fe924099f3,name,曲线39,右耳内腔线 · 段05
+stroke,2f401004-d1ed-48dc-893c-d7fe924099f3,strokeName,耳孔,右耳内腔线
+curve,59441d33-2b4f-41cf-b6bb-4889e54f756d,name,曲线33,右耳廓内缘 · 段01
+stroke,59441d33-2b4f-41cf-b6bb-4889e54f756d,strokeName,,右耳廓内缘
+curve,9c46b63f-cda7-4503-ad0f-d6464617b8ba,name,内耳廓,右耳廓内缘 · 段02
+stroke,9c46b63f-cda7-4503-ad0f-d6464617b8ba,strokeName,,右耳廓内缘
+curve,7d61752b-f9cf-41e5-a56e-056c05e95ca0,name,曲线34,右耳廓内缘 · 段03
+stroke,7d61752b-f9cf-41e5-a56e-056c05e95ca0,strokeName,,右耳廓内缘
+curve,3ec62e9e-fd99-425e-ae0e-52d523c346e1,name,曲线28,右耳廓外轮廓 · 段01
+stroke,3ec62e9e-fd99-425e-ae0e-52d523c346e1,strokeName,外耳廓,右耳廓外轮廓
+curve,d44ae8ae-75e5-4f21-934c-eb9a05912d98,name,曲线29,右耳廓外轮廓 · 段02
+stroke,d44ae8ae-75e5-4f21-934c-eb9a05912d98,strokeName,外耳廓,右耳廓外轮廓
+curve,242a5199-a6bb-45bf-8a2b-138e76f1c8db,name,曲线30,右耳廓外轮廓 · 段03
+stroke,242a5199-a6bb-45bf-8a2b-138e76f1c8db,strokeName,外耳廓,右耳廓外轮廓
+curve,a6a8cf5e-8332-407a-8b03-3ae7a654c01d,name,曲线31,右耳廓外轮廓 · 段04
+stroke,a6a8cf5e-8332-407a-8b03-3ae7a654c01d,strokeName,外耳廓,右耳廓外轮廓
+curve,db327891-3894-4e7a-bb73-9c252e031e4d,name,曲线32,右耳廓外轮廓 · 段05
+stroke,db327891-3894-4e7a-bb73-9c252e031e4d,strokeName,外耳廓,右耳廓外轮廓
+curve,1b6c176b-d7a8-4176-a9b4-d370a166bdba,name,曲线42 · 1,左耳内短纹
+curve,e127d4d4-8b18-4241-b4f9-2b01aad6dc56,name,曲线41 · 1,左耳内分叉线 · 段01
+stroke,e127d4d4-8b18-4241-b4f9-2b01aad6dc56,strokeName,,左耳内分叉线
+curve,2b389dfe-b366-4560-ba32-99d4637f22c6,name,曲线40 · 1,左耳内分叉线 · 段02
+stroke,2b389dfe-b366-4560-ba32-99d4637f22c6,strokeName,,左耳内分叉线
+curve,fe480e83-07a6-4990-82ca-14d2f18e748b,name,曲线39 · 1,左耳内腔线 · 段01
+stroke,fe480e83-07a6-4990-82ca-14d2f18e748b,strokeName,耳孔,左耳内腔线
+curve,99a842eb-0cff-43c0-bbf9-caac1bff0d46,name,曲线38 · 1,左耳内腔线 · 段02
+stroke,99a842eb-0cff-43c0-bbf9-caac1bff0d46,strokeName,耳孔,左耳内腔线
+curve,be9f9758-19be-4037-b284-f3d1fda9559e,name,曲线37 · 1,左耳内腔线 · 段03
+stroke,be9f9758-19be-4037-b284-f3d1fda9559e,strokeName,耳孔,左耳内腔线
+curve,f3aa95fd-1574-429d-9072-15dcdbbd50d8,name,曲线36 · 1,左耳内腔线 · 段04
+stroke,f3aa95fd-1574-429d-9072-15dcdbbd50d8,strokeName,耳孔,左耳内腔线
+curve,5bdee359-753d-4bb2-a613-2d3166e28387,name,曲线35 · 1,左耳内腔线 · 段05
+stroke,5bdee359-753d-4bb2-a613-2d3166e28387,strokeName,耳孔,左耳内腔线
+curve,ab2453a2-fd34-4ee0-9c52-0362078dacc3,name,曲线34 · 1,左耳廓内缘 · 段01
+stroke,ab2453a2-fd34-4ee0-9c52-0362078dacc3,strokeName,,左耳廓内缘
+curve,3adc1286-cde0-4376-9c03-21e9949773f8,name,内耳廓 · 1,左耳廓内缘 · 段02
+stroke,3adc1286-cde0-4376-9c03-21e9949773f8,strokeName,,左耳廓内缘
+curve,5fcda962-8c84-4049-b1a6-eb27beef1215,name,曲线33 · 1,左耳廓内缘 · 段03
+stroke,5fcda962-8c84-4049-b1a6-eb27beef1215,strokeName,,左耳廓内缘
+curve,b2484d98-16b8-4c2a-bc4d-c35168c784d5,name,曲线28 · 1,左耳廓外轮廓 · 段01
+stroke,b2484d98-16b8-4c2a-bc4d-c35168c784d5,strokeName,外耳廓,左耳廓外轮廓
+curve,c2d4047f-2117-40d0-8f5d-ac7930d24459,name,曲线29 · 1,左耳廓外轮廓 · 段02
+stroke,c2d4047f-2117-40d0-8f5d-ac7930d24459,strokeName,外耳廓,左耳廓外轮廓
+curve,e6bc33aa-5f6d-4795-89f5-408f16678bec,name,曲线30 · 1,左耳廓外轮廓 · 段03
+stroke,e6bc33aa-5f6d-4795-89f5-408f16678bec,strokeName,外耳廓,左耳廓外轮廓
+curve,6c984572-7700-4598-ac60-4ba46c8c3623,name,曲线31 · 1,左耳廓外轮廓 · 段04
+stroke,6c984572-7700-4598-ac60-4ba46c8c3623,strokeName,外耳廓,左耳廓外轮廓
+curve,12d1c413-e688-4d32-90b3-49e4c27872c4,name,曲线32 · 1,左耳廓外轮廓 · 段05
+stroke,12d1c413-e688-4d32-90b3-49e4c27872c4,strokeName,外耳廓,左耳廓外轮廓
+curve,2ea1ff04-f31b-42fe-9a68-542a0a450d11,name,曲线70 · 1,左侧后发轮廓 · 段01
+stroke,2ea1ff04-f31b-42fe-9a68-542a0a450d11,strokeName,,左侧后发轮廓
+curve,4b9604ed-315d-4120-adbd-4d18fce49098,name,曲线71 · 1,左侧后发轮廓 · 段02
+stroke,4b9604ed-315d-4120-adbd-4d18fce49098,strokeName,,左侧后发轮廓
+curve,cbdb04f6-0916-41c3-adba-e4026c8df266,name,曲线72 · 1,左侧后发轮廓 · 段03
+stroke,cbdb04f6-0916-41c3-adba-e4026c8df266,strokeName,,左侧后发轮廓
+curve,5dd4ac86-6822-466b-9b72-78d5ff8575b7,name,曲线73 · 1,左侧后发轮廓 · 段04
+stroke,5dd4ac86-6822-466b-9b72-78d5ff8575b7,strokeName,,左侧后发轮廓
+curve,37263ad5-808c-4296-b4a7-eeb29fd8eb6a,name,曲线74 · 1,左侧后发轮廓 · 段05
+stroke,37263ad5-808c-4296-b4a7-eeb29fd8eb6a,strokeName,,左侧后发轮廓
+curve,5b467ca8-3013-41cb-940e-bd010b8e80c4,name,曲线75 · 1,左侧后发轮廓 · 段06
+stroke,5b467ca8-3013-41cb-940e-bd010b8e80c4,strokeName,,左侧后发轮廓
+curve,94824302-4a8b-456a-9705-2f2bc3910eb4,name,曲线76 · 1,左侧后发轮廓 · 段07
+stroke,94824302-4a8b-456a-9705-2f2bc3910eb4,strokeName,,左侧后发轮廓
+curve,9039c0de-a500-4b97-b0d5-ac5e669f1d4b,name,曲线77 · 1,左侧后发轮廓 · 段08
+stroke,9039c0de-a500-4b97-b0d5-ac5e669f1d4b,strokeName,,左侧后发轮廓
+curve,fd253822-36c2-4eb3-842e-89f5f6b8745f,name,曲线78 · 1,左侧后发轮廓 · 段09
+stroke,fd253822-36c2-4eb3-842e-89f5f6b8745f,strokeName,,左侧后发轮廓
+curve,5def38cc-1805-44b5-87d2-847218b735ec,name,曲线79 · 1,左侧后发轮廓 · 段10
+stroke,5def38cc-1805-44b5-87d2-847218b735ec,strokeName,,左侧后发轮廓
+curve,15620e2d-56ca-4b09-ada5-f03c5c6b1077,name,曲线80 · 1,左侧后发轮廓 · 段11
+stroke,15620e2d-56ca-4b09-ada5-f03c5c6b1077,strokeName,,左侧后发轮廓
+curve,acd87445-fb72-417c-8cca-40ea3697f3d3,name,曲线81 · 1,左侧后发轮廓 · 段12
+stroke,acd87445-fb72-417c-8cca-40ea3697f3d3,strokeName,,左侧后发轮廓
+curve,c90d04e8-3e3f-4d93-9a41-02ebcb52259f,name,曲线82 · 1,左侧后发轮廓 · 段13
+stroke,c90d04e8-3e3f-4d93-9a41-02ebcb52259f,strokeName,,左侧后发轮廓
+curve,b0efa317-75da-41a2-80f9-51b26aec308a,name,曲线83 · 1,左侧后发轮廓 · 段14
+stroke,b0efa317-75da-41a2-80f9-51b26aec308a,strokeName,,左侧后发轮廓
+curve,c7d9e769-b8a9-4cc0-ab9a-7dfbd82a5c67,name,曲线84 · 1,左侧后发轮廓 · 段15
+stroke,c7d9e769-b8a9-4cc0-ab9a-7dfbd82a5c67,strokeName,,左侧后发轮廓
+curve,06e62b81-26d9-4d6e-bbdd-8f050357f533,name,曲线85 · 1,左侧后发轮廓 · 段16
+stroke,06e62b81-26d9-4d6e-bbdd-8f050357f533,strokeName,,左侧后发轮廓
+curve,1fa7363c-872c-478c-a9e7-2cc104fd0dc2,name,曲线86 · 1,左侧后发轮廓 · 段17
+stroke,1fa7363c-872c-478c-a9e7-2cc104fd0dc2,strokeName,,左侧后发轮廓
+curve,5b793ce8-ba6f-4d22-aa4f-1323872b761b,name,曲线87 · 1,左侧后发轮廓 · 段18
+stroke,5b793ce8-ba6f-4d22-aa4f-1323872b761b,strokeName,,左侧后发轮廓
+curve,6218fdba-6818-400b-b524-5e5b8bbf7b3e,name,曲线88 · 1,左侧后发轮廓 · 段19
+stroke,6218fdba-6818-400b-b524-5e5b8bbf7b3e,strokeName,,左侧后发轮廓
+curve,d3c9b480-72aa-4098-906a-4ba53f68fda5,name,曲线89 · 1,左侧后发轮廓 · 段20
+stroke,d3c9b480-72aa-4098-906a-4ba53f68fda5,strokeName,,左侧后发轮廓
+curve,42a2aa7e-89ef-4763-a685-2d362c47dd48,name,曲线90 · 1,左侧后发轮廓 · 段21
+stroke,42a2aa7e-89ef-4763-a685-2d362c47dd48,strokeName,,左侧后发轮廓
+curve,0078390a-d8e1-4878-af8f-b72fa85bb178,name,曲线91 · 1,左侧后发轮廓 · 段22
+stroke,0078390a-d8e1-4878-af8f-b72fa85bb178,strokeName,,左侧后发轮廓
+curve,79e3bbf8-7d08-47d1-8893-4170006b4e98,name,曲线70,右侧后发轮廓 · 段01
+stroke,79e3bbf8-7d08-47d1-8893-4170006b4e98,strokeName,,右侧后发轮廓
+curve,8277c580-71ab-4d38-ac8a-8887dfde6b78,name,曲线71,右侧后发轮廓 · 段02
+stroke,8277c580-71ab-4d38-ac8a-8887dfde6b78,strokeName,,右侧后发轮廓
+curve,4238db88-b7fb-4adb-a5f5-68e4751f22ef,name,曲线72,右侧后发轮廓 · 段03
+stroke,4238db88-b7fb-4adb-a5f5-68e4751f22ef,strokeName,,右侧后发轮廓
+curve,d4c3601f-9bd2-4a4a-b2a8-5610a4a81c92,name,曲线73,右侧后发轮廓 · 段04
+stroke,d4c3601f-9bd2-4a4a-b2a8-5610a4a81c92,strokeName,,右侧后发轮廓
+curve,373f95be-3e07-44b2-8328-99c3794bc3da,name,曲线74,右侧后发轮廓 · 段05
+stroke,373f95be-3e07-44b2-8328-99c3794bc3da,strokeName,,右侧后发轮廓
+curve,167be2cf-9402-48e4-9c59-d9b235adb665,name,曲线75,右侧后发轮廓 · 段06
+stroke,167be2cf-9402-48e4-9c59-d9b235adb665,strokeName,,右侧后发轮廓
+curve,c372fb23-f11c-4b8a-bc82-e9b307bcf0cf,name,曲线76,右侧后发轮廓 · 段07
+stroke,c372fb23-f11c-4b8a-bc82-e9b307bcf0cf,strokeName,,右侧后发轮廓
+curve,6d143398-8207-4f3f-bfdc-ef46dde8554c,name,曲线77,右侧后发轮廓 · 段08
+stroke,6d143398-8207-4f3f-bfdc-ef46dde8554c,strokeName,,右侧后发轮廓
+curve,774318fa-30cd-4e9d-acd2-72aac7fdd134,name,曲线78,右侧后发轮廓 · 段09
+stroke,774318fa-30cd-4e9d-acd2-72aac7fdd134,strokeName,,右侧后发轮廓
+curve,cc5cebea-878a-4257-b6a2-b1135cdc8a90,name,曲线79,右侧后发轮廓 · 段10
+stroke,cc5cebea-878a-4257-b6a2-b1135cdc8a90,strokeName,,右侧后发轮廓
+curve,617c5f34-12f9-450d-bdd7-da5558f7f95f,name,曲线80,右侧后发轮廓 · 段11
+stroke,617c5f34-12f9-450d-bdd7-da5558f7f95f,strokeName,,右侧后发轮廓
+curve,9e057ce3-5f5a-4bff-8edd-536cc4152fac,name,曲线81,右侧后发轮廓 · 段12
+stroke,9e057ce3-5f5a-4bff-8edd-536cc4152fac,strokeName,,右侧后发轮廓
+curve,76852072-9496-46d8-84ea-1fb471175db5,name,曲线82,右侧后发轮廓 · 段13
+stroke,76852072-9496-46d8-84ea-1fb471175db5,strokeName,,右侧后发轮廓
+curve,f1bbcc81-d2ff-42d7-bda8-d2115d58272b,name,曲线83,右侧后发轮廓 · 段14
+stroke,f1bbcc81-d2ff-42d7-bda8-d2115d58272b,strokeName,,右侧后发轮廓
+curve,b44e52fa-854e-4f5f-bd13-8e59300fffd8,name,曲线84,右侧后发轮廓 · 段15
+stroke,b44e52fa-854e-4f5f-bd13-8e59300fffd8,strokeName,,右侧后发轮廓
+curve,83cf88fe-4680-440e-a342-4f46ad5c0040,name,曲线85,右侧后发轮廓 · 段16
+stroke,83cf88fe-4680-440e-a342-4f46ad5c0040,strokeName,,右侧后发轮廓
+curve,5a5feb57-ee65-4dd6-a818-ea10c8247301,name,曲线86,右侧后发轮廓 · 段17
+stroke,5a5feb57-ee65-4dd6-a818-ea10c8247301,strokeName,,右侧后发轮廓
+curve,afd84f72-c1b2-44d1-8147-781a50450468,name,曲线87,右侧后发轮廓 · 段18
+stroke,afd84f72-c1b2-44d1-8147-781a50450468,strokeName,,右侧后发轮廓
+curve,f4664ae3-5279-4057-946e-e34d2e25af83,name,曲线88,右侧后发轮廓 · 段19
+stroke,f4664ae3-5279-4057-946e-e34d2e25af83,strokeName,,右侧后发轮廓
+curve,7cf07e46-4153-472d-844c-a4dc4aed60c6,name,曲线89,右侧后发轮廓 · 段20
+stroke,7cf07e46-4153-472d-844c-a4dc4aed60c6,strokeName,,右侧后发轮廓
+curve,6ab3642d-c625-408e-bd0e-f0788ab739fa,name,曲线90,右侧后发轮廓 · 段21
+stroke,6ab3642d-c625-408e-bd0e-f0788ab739fa,strokeName,,右侧后发轮廓
+curve,60b9ac01-9591-4446-9d6a-27a2c6ea4184,name,曲线91,右侧后发轮廓 · 段22
+stroke,60b9ac01-9591-4446-9d6a-27a2c6ea4184,strokeName,,右侧后发轮廓
+curve,3085f1f1-e1b2-4c7d-886e-91de9d7fa74a,name,曲线110,衣领与肩线 · 段01
+stroke,3085f1f1-e1b2-4c7d-886e-91de9d7fa74a,strokeName,前领,衣领与肩线
+curve,18a51194-a15a-49c0-abbb-1fd868337f95,name,曲线111,衣领与肩线 · 段02
+stroke,18a51194-a15a-49c0-abbb-1fd868337f95,strokeName,前领,衣领与肩线
+curve,6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec,name,曲线106,衣领与肩线 · 段03
+stroke,6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec,strokeName,前领,衣领与肩线
+curve,7c519032-167b-4c38-82ae-e7db4f79f98a,name,曲线107,衣领与肩线 · 段04
+stroke,7c519032-167b-4c38-82ae-e7db4f79f98a,strokeName,前领,衣领与肩线
+curve,69bdf567-c719-417f-b4fc-fe9781f1fe2b,name,曲线112,衣领与肩线 · 段05
+stroke,69bdf567-c719-417f-b4fc-fe9781f1fe2b,strokeName,前领,衣领与肩线
+curve,c07716dc-0d33-4caa-a50f-4d2a126e932d,name,曲线109,衣领与肩线 · 段06
+stroke,c07716dc-0d33-4caa-a50f-4d2a126e932d,strokeName,前领,衣领与肩线
+curve,3d61acb4-449b-4680-b987-e32cb2eaaf1a,name,曲线27,衣领后缘
+stroke,3d61acb4-449b-4680-b987-e32cb2eaaf1a,strokeName,前领,衣领与肩线
+curve,7392bc41-ead9-4d2a-9f06-8e243c12565f,name,曲线108,衣领与肩线 · 段08
+stroke,7392bc41-ead9-4d2a-9f06-8e243c12565f,strokeName,前领,衣领与肩线
+curve,207852b5-242a-4de1-ad11-36e6dc0abecd,name,曲线100,右颈线
+stroke,207852b5-242a-4de1-ad11-36e6dc0abecd,strokeName,肩颈,颈部底形
+curve,b5b02813-9a6f-42c1-ba26-37d65b9dd874,name,曲线101,颈部底形 · 段02
+stroke,b5b02813-9a6f-42c1-ba26-37d65b9dd874,strokeName,肩颈,颈部底形
+curve,5f579187-f29e-4824-b9b8-575b7e3accb0,name,曲线102,颈部底形 · 段03
+stroke,5f579187-f29e-4824-b9b8-575b7e3accb0,strokeName,肩颈,颈部底形
+curve,ef495977-5008-4ef8-88c0-b71624056573,name,曲线103,颈部底形 · 段04
+stroke,ef495977-5008-4ef8-88c0-b71624056573,strokeName,肩颈,颈部底形
+curve,249627ed-d4e0-49d8-bdfd-09e52891d4b0,name,曲线104,左颈线
+stroke,249627ed-d4e0-49d8-bdfd-09e52891d4b0,strokeName,肩颈,颈部底形
+curve,46a424a0-46ee-4fe1-b83e-ec9bc373cca9,name,曲线105,颈部上缘封口
+stroke,46a424a0-46ee-4fe1-b83e-ec9bc373cca9,strokeName,肩颈,颈部底形
+fill,60849392-75d9-4a96-b6ab-9c117b7c46f2,name,白色填充 2,中央刘海轮廓 · 白底
+fill,a74bdb25-bad8-4950-8bd1-1173004792ee,name,黑色填充 2,右上睑墨形 · 黑色实填
+fill,1d0d97ba-0be7-4aa8-b676-77a2d0b4ae11,name,黑色填充 3,左上睑墨形 · 黑色实填
+fill,44c2090c-0112-4a4f-9201-050324bef1d4,name,黑色填充 4,左瞳孔 · 黑色实填
+fill,79bcd4a1-00ef-4977-969f-37b6ecdc80a9,name,白色填充 5,左高光 01 · 白底
+fill,65abdaf3-bb68-4e7f-b135-15dad1aeb043,name,白色填充 6,左高光 02 · 白底
+fill,d5e5e147-c289-40cc-9c10-c472edbcc6c5,name,黑色填充 4,右瞳孔 · 黑色实填
+fill,6baecc83-8771-4f45-9b2a-2038e4c22756,name,白色填充 5,右高光 01 · 白底
+fill,20ef4620-c435-4841-9114-4e0efbd8eed6,name,白色填充 6,右高光 02 · 白底
+fill,a9aba385-ca60-4342-af42-20a8ea265867,name,白色填充 10,左刘海轮廓 · 白底
+fill,bd8951b9-968f-4ff0-889d-5dbc31160724,name,白色填充 11,右刘海轮廓 · 白底
+fill,2744be81-5540-48c1-aa04-9b13fec77458,name,白色填充 12,左耳廓外轮廓 · 白底
+fill,edb27a1a-f02a-4512-aca1-212fb21c6314,name,白色填充 13,右耳廓外轮廓 · 白底
+fill,6761ba40-e4de-4b8b-bf12-4ccee7b5f67a,name,白色填充 14,面部外轮廓 · 白底
+fill,09ec66a9-0114-45ff-9ec3-2f64eb5081ce,name,白色填充 17,颈部底形 · 白底
+fill,35f2ba43-733b-44ff-b628-d7dbd21589f9,name,白色填充 18,衣领与肩线 · 白底
+fill,e4b7bf42-4053-4819-882c-5dfdeb262b30,name,白色填充 19,左侧后发轮廓 · 白底
+fill,d64ebec2-a534-4f7d-9032-67ad92169991,name,白色填充 20,右侧后发轮廓 · 白底
+fill,c8a6e278-44b8-4965-b202-140e59dd6f37,name,雾化填充 21,左虹膜轮廓 · 黑雾
+fill,ed8067d4-bf5d-4d83-aa50-b1e36b623935,name,雾化填充 22,左虹膜下缘柔光 · 白雾
+fill,8f6a6de2-a54f-43fa-a272-f1c766b07afd,name,雾化填充 23,右虹膜轮廓 · 黑雾
+fill,b82b0b99-f1c3-46e5-9046-12de4f2be326,name,雾化填充 24,右虹膜下缘柔光 · 白雾
+fill,117e58d8-69dd-4995-8ce0-c4499677d616,name,白色填充 25,头顶呆毛轮廓 · 白底
+group,75e3686a-c44e-4cbf-a640-551c08e01fb3,name,耳Y,右耳内分叉组
+group,c0dc47f5-1fba-46e6-a192-bc5389ca6910,name,耳Y · 1,左耳内分叉组
+project,project,name,语义点头部研究 — 下巴点版,基础脸模·正面·v1

@@ -1,0 +1,81 @@
+{
+  "sourceFile": "基础脸模·正面·v1.json",
+  "sourceSha256": "06b198eef869664d9b3e3c1a6d83c01fba9ac24e91812e4a5501870bee31da57",
+  "assetSha256": "78d1d5c677c3c9e7d9c9c934419bf3f71a46bce3b7f7cbc851c750898401dd72",
+  "changes": "display names only; geometry, topology, appearance, order, IDs and timestamps preserved",
+  "counts": {
+    "layers": 18,
+    "curves": 208,
+    "nodes": 230,
+    "fills": 23,
+    "joins": 135,
+    "groups": 2,
+    "displayIntervals": 17,
+    "endpointLinks": 4
+  },
+  "renamedFields": 443,
+  "browser": {
+    "title": "基础脸模·正面·v1",
+    "strokes": 46,
+    "invalidFills": [],
+    "depth": [
+      {
+        "name": "左虹膜轮廓 · 段01",
+        "value": 1,
+        "effective": 1,
+        "target": "左虹膜下缘柔光"
+      },
+      {
+        "name": "左虹膜轮廓 · 段02",
+        "value": 1,
+        "effective": 1,
+        "target": "左虹膜下缘柔光"
+      },
+      {
+        "name": "左虹膜轮廓 · 段03",
+        "value": 1,
+        "effective": 1,
+        "target": "左虹膜下缘柔光"
+      },
+      {
+        "name": "左虹膜轮廓 · 段04",
+        "value": 1,
+        "effective": 1,
+        "target": "左虹膜下缘柔光"
+      },
+      {
+        "name": "右虹膜轮廓 · 段01",
+        "value": 1,
+        "effective": 1,
+        "target": "右虹膜下缘柔光"
+      },
+      {
+        "name": "右虹膜轮廓 · 段02",
+        "value": 1,
+        "effective": 1,
+        "target": "右虹膜下缘柔光"
+      },
+      {
+        "name": "右虹膜轮廓 · 段03",
+        "value": 1,
+        "effective": 1,
+        "target": "右虹膜下缘柔光"
+      },
+      {
+        "name": "右虹膜轮廓 · 段04",
+        "value": 1,
+        "effective": 1,
+        "target": "右虹膜下缘柔光"
+      },
+      {
+        "name": "衣领后缘",
+        "value": -1,
+        "effective": -1,
+        "target": "颈部底形"
+      }
+    ],
+    "renamePixelsIdentical": true,
+    "saveLoadPixelsIdentical": true,
+    "errors": []
+  }
+}

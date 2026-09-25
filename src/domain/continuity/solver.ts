@@ -1,3 +1,5 @@
+import {isOnPatch} from '../curves/model';
+import {validateSmoothSurface, type SurfaceSmoothSafetyResult, type SmoothGroupSafety} from './safety';
 import {mirrorPoint,mirrorVector} from '../head/frame';
 import { InputCache } from '../geometry/cache';
 import type { LandmarkProject } from '../landmarks/model';
@@ -8,7 +10,7 @@ import { derivative } from '../geometry/bezier';
 import { patchInputKey } from '../geometry/revisions';
 import { baseDifferential } from '../patches/fullness';
 import { loop, type SurfacePatch } from '../patches/model';
-import { boundaryGeometry, boundaryKey, mirrorBoundary, canonicalBoundary, type PatchBoundaryUse } from '../patches/boundary';
+import { boundaryGeometry, boundaryParameters, boundaryKey, mirrorBoundary, canonicalBoundary, type PatchBoundaryUse } from '../patches/boundary';
 import { relations, type BoundaryRelation } from './model';
 import { FAIR_DEGREE, indices, weights, fieldDifferential, type FairField } from './basis';
 import { pcg, type Row } from '../smooth/pcg';
@@ -21,10 +23,12 @@ export interface PatchSolution {
     field?: FairField;
     iterations: number;
     error?: string;
+    shapeProtection?: SmoothGroupSafety['reason'];
 }
 export interface ContinuityResult {
     patches: Record<string, PatchSolution>;
     diagnostics: {
+        safety?: SmoothGroupSafety[];
         warnings: string[];
         angles: Record<string, {
             before: number;
@@ -51,9 +55,16 @@ function ring(p: LandmarkProject, x: SurfacePatch): PatchBoundaryUse[] { const k
     return hit; return ringCache.set(key, !x.canonicalId ? (x.type==='loop'?x.boundaryUses:loop(p, x.boundaryUses).map(r => r.use)) : ring(p, p.patches!.find(q => q.id === x.canonicalId)!).map(b => mirrorBoundary(p, b))); }
 /** Boundary coordinates and an inward transversal; both sides use the SAME exact span parameter. */
 export function edgeFrame(p: LandmarkProject, x: SurfacePatch, r: BoundaryRelation, t: number, e = 0) {
-    const bs = ring(p, x), i = bs.findIndex(b => boundaryKey(p, b) === r.key);
+    const bs = ring(p, x),source=r.sources?.[x.id]??r.use,i = bs.findIndex(b => boundaryKey(p, b) === boundaryKey(p,source));
     if (i < 0)
         throw Error('边界未附着到曲面');
+    if(boundaryKey(p,bs[i])!==r.key){
+        const a=boundaryParameters(p,r.use),b=boundaryParameters(p,bs[i]);
+        const local=(a.t0+(a.t1-a.t0)*t-b.t0)/(b.t1-b.t0);
+        if(!Number.isFinite(local)||local< -1e-8||local>1+1e-8)throw Error('共享区间未包含于曲面边界');
+        t=Math.max(0,Math.min(1,local));
+        r={...r,use:bs[i]};
+    }
     if(x.type==='loop'){const q=!!bs[i].reversed===!!r.use.reversed?t:1-t;return {uv:[q,i===0?e:1-e],inward:[0,i===0?1:-1]};}
     if(x.type==='lens'){const tAlong=bs[i].startLandmarkId===r.use.startLandmarkId?t:1-t;return {uv:[i===0?tAlong:1-tAlong,i===0?e:1-e],inward:[0,i===0?1:-1]};}
     const q = bs[i].startLandmarkId === r.use.startLandmarkId ? t : 1 - t;
@@ -88,7 +99,7 @@ export function patchFairKey(p: LandmarkProject, x: SurfacePatch) {
 }
 const solutionCache = new Map<string, PatchSolution>();
 export const fairStats = { solves: 0, cacheHits: 0 };
-function solvePatch(p: LandmarkProject, x: SurfacePatch): PatchSolution {
+export function solvePatch(p: LandmarkProject, x: SurfacePatch): PatchSolution {
     const key = patchFairKey(p, x), hit = solutionCache.get(key);
     if (hit) {
         fairStats.cacheHits++;
@@ -167,13 +178,70 @@ export function fairDifferential(p: LandmarkProject, x: SurfacePatch, result?: C
     return (u, v) => { const a = base(u, v), b = fieldDifferential(field, u, v); return { position: add(a.position, b.position), du: add(a.du, b.du), dv: add(a.dv, b.dv) }; };
 }
 export function seamAngle(p: LandmarkProject, r: BoundaryRelation, t: number, result?: ContinuityResult) { const normals = r.pair!.map(id => { const x = p.patches!.find(x => x.id === id)!, f = fairDifferential(p, x, result), { uv } = edgeFrame(p, x, r, t, 1e-5), d = f(uv[0], uv[1]); return unit(cross(d.du, d.dv)); }); return Math.acos(Math.min(1, Math.abs(dot(normals[0], normals[1])))) * 180 / Math.PI; }
+/** Union canonical owners: any mirrored occurrence shares the same acceptance decision. */
+export function smoothGroup(p: LandmarkProject, x: SurfacePatch): string[] {
+    const owner = (id: string) => p.patches!.find(q => q.id === id)?.canonicalId ?? id;
+    const ids = new Set([owner(x.id)]), pairs = relations(p).flatMap(r => r.pair ? [r.pair.map(owner)] : []);
+    let changed = true;
+    while (changed) { changed = false; for (const pair of pairs) if (pair.some(id => ids.has(id))) for (const id of pair) if (!ids.has(id)) { ids.add(id); changed = true; } }
+    return [...ids].sort();
+}
+// Project edits replace source arrays/settings. Avoid rebuilding all group signatures
+// on every surface evaluation; acceptance still depends on every member's candidate.
+// Candidate evaluation has its own immutable context. Hosted curves may read the
+// original candidate of an upstream group member, without re-entering acceptance.
+const candidateScopes=new WeakMap<LandmarkProject,Set<string>>();
+export const isCandidateScope=(p:LandmarkProject,x:SurfacePatch)=>candidateScopes.get(p)?.has(x.canonicalId??x.id)??false;
+const sourceKeys=new WeakMap<LandmarkProject,string>();
+export function continuitySourceKey(p:LandmarkProject){
+ let key=sourceKeys.get(p);if(!key){key=JSON.stringify([p.landmarks,p.curves,p.patches,p.headFrame,p.loomisScaffold,p.loomisCaps,p.curveSmoothJoins,p.surfaceContinuity,p.chinScaffold]);sourceKeys.set(p,key);}return key;
+}
+const acceptanceKeys=new WeakMap<LandmarkProject,{inputs:unknown[];keys:Map<string,string>}>();
+export function acceptanceKey(p: LandmarkProject, x: SurfacePatch) {
+    const inputs=[p.landmarks,p.curves,p.patches,p.surfaceContinuity,p.headFrame,p.loomisScaffold,p.curveSmoothJoins,p.chinScaffold,p.landmarks.length,p.curves.length,p.patches?.length];
+    let cached=acceptanceKeys.get(p);
+    if(!cached||inputs.some((v,i)=>v!==cached!.inputs[i])){cached={inputs,keys:new Map()};acceptanceKeys.set(p,cached);}
+    const id=x.canonicalId??x.id,hit=cached.keys.get(id);if(hit)return hit;
+    const ids=smoothGroup(p,x);
+    // Acceptance covers the whole group, whose downstream members may depend on
+    // this member's final surface. Never evaluate geometry to identify that group.
+    const key=p.curves.some(isOnPatch)?'hosted:'+ids.join(',')+'|'+continuitySourceKey(p):ids.map(id=>id+':'+patchFairKey(p,p.patches!.find(q=>q.id===id)!)).join('|');
+    for(const id of ids)cached.keys.set(id,key);return key;
+}
+const safetyCache = new Map<string, SurfaceSmoothSafetyResult>();
+const acceptedGroups = new Map<string, {patches:Record<string,PatchSolution>; safety?:SmoothGroupSafety}>();
+function solveSafeGroup(p:LandmarkProject,x:SurfacePatch) {
+    const key=acceptanceKey(p,x),hit=acceptedGroups.get(key);if(hit)return hit;
+    const ids=smoothGroup(p,x),patches:Record<string,PatchSolution>={},checks:Record<string,SurfaceSmoothSafetyResult>={};
+    const candidateProject=p.curves.some(isOnPatch)?{...p}:p;
+    if(candidateProject!==p)candidateScopes.set(candidateProject,new Set(ids));
+    for(const id of ids) patches[id]=solvePatch(candidateProject,p.patches!.find(q=>q.id===id)!);
+    let reason:SmoothGroupSafety['reason']=ids.some(id=>patches[id].error)?'candidate-solve-failed':undefined;
+    for(const id of ids){
+        const patch=p.patches!.find(q=>q.id===id)!,candidate=patches[id];if(!candidate.field)continue;
+        const k=patchFairKey(candidateProject,patch);let check=safetyCache.get(k);
+        if(!check){
+            let L=NaN;try{const lengths=patch.boundaryUses.map(b=>boundaryGeometry(candidateProject,b).arcLengthLUT().at(-1)!).sort((a,b)=>a-b),i=Math.floor(lengths.length/2);L=lengths.length%2?lengths[i]:(lengths[i-1]+lengths[i])/2;}catch{/* Invalid scale is rejected by validation. */}
+            check=validateSmoothSurface(patch.type,naturalDifferential(candidateProject,patch),fairDifferential(candidateProject,patch,{patches,diagnostics:{warnings:[],angles:{}}}),L);
+            safetyCache.set(k,check);if(safetyCache.size>512)safetyCache.delete(safetyCache.keys().next().value!);
+        }
+        checks[id]=check;if(!check.accepted&&!reason)reason=check.reason;
+    }
+    const safety:SmoothGroupSafety|undefined=Object.keys(checks).length||reason?{patchIds:ids,accepted:!reason,patches:checks,...(reason?{reason}:{})}:undefined;
+    if(reason)for(const id of ids){const c=patches[id];patches[id]={iterations:c.iterations,error:c.error??'自动平滑未应用：曲面形状保护',shapeProtection:reason};}
+    const result={patches,safety};acceptedGroups.set(key,result);if(acceptedGroups.size>128)acceptedGroups.delete(acceptedGroups.keys().next().value!);return result;
+}
+/** Synchronous ON_PATCH evaluation must not bypass group acceptance. */
+export function solveSafePatch(p:LandmarkProject,x:SurfacePatch):PatchSolution {return solveSafeGroup(p,x).patches[x.canonicalId??x.id];}
 export function solveContinuity(p: LandmarkProject): ContinuityResult {
     const result: ContinuityResult = { patches: {}, diagnostics: { warnings: [], angles: {} } };
+    result.diagnostics.safety=[];
     for (const x of p.patches ?? [])
-        if (!x.canonicalId) {
-            result.patches[x.id] = solvePatch(p, x);
-            if (result.patches[x.id].error)
-                result.diagnostics.warnings.push(`${x.name ?? x.id}: ${result.patches[x.id].error}`);
+        if (!x.canonicalId && !result.patches[x.id]) {
+            const group=solveSafeGroup(p,x);Object.assign(result.patches,group.patches);
+            if(group.safety)result.diagnostics.safety.push(group.safety);
+            for(const [id,solution]of Object.entries(group.patches))if(solution.error)
+                result.diagnostics.warnings.push(`${p.patches!.find(q=>q.id===id)?.name??id}: ${solution.error}`);
         }
     for (const r of relations(p))
         if (r.pair)

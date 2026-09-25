@@ -1,4 +1,4 @@
-import {isAnalytic} from '../domain/curves/model';
+import {isDerived} from '../domain/curves/model';
 import {describe,it,expect} from 'vitest';
 import {smoothFixture} from './smooth-fixture';
 import {solveContinuity,seamAngle,fairStats,patchFairKey,fairDifferential} from '../domain/continuity/solver';
@@ -42,16 +42,16 @@ it('ear-like third patch is untouched by manual head pair and deletion restores 
  const restored=repairContinuity({...p,patches:p.patches!.filter(x=>x.id!=='pa')});expect(restored.surfaceContinuity?.overrides.seam).toBeUndefined();expect(relations(restored).find(r=>r.key==='seam')!.pair).toEqual(['pb','pc']);
 });
 it('temporary zero tangent preserves Manual intent and recovers on source restoration',()=>{
- const p=setRelationship(addWing(smoothFixture(.53),true),'seam',{mode:'manual',patchIds:['pa','pb']});const q={...p,curves:p.curves.map(c=>c.id==='seam'&&(c.role==='canonical'&&!isAnalytic(c))?{...c,shape:{...c.shape,startHandle:{along:1,offset:0},endHandle:{along:1,offset:0}}}:c)};
+ const p=setRelationship(addWing(smoothFixture(.53),true),'seam',{mode:'manual',patchIds:['pa','pb']});const q={...p,curves:p.curves.map(c=>c.id==='seam'&&(c.role==='canonical'&&!isDerived(c))?{...c,shape:{...c.shape,startHandle:{along:1,offset:0},endHandle:{along:1,offset:0}}}:c)};
  expect(solveContinuity(q).patches.pa.error).toBeTruthy();expect(repairContinuity(q).surfaceContinuity).toEqual(p.surfaceContinuity);expect(solveContinuity(p).patches.pa.error).toBeUndefined();
 });
-it('exact reversed spans pair, partial spans do not; mirror Crease and roundtrip',()=>{
+it('exact and overlapping spans pair; mirror Crease and roundtrip',()=>{
  const f=spanFixture();let p=addPatch(f.p,[f.ac,f.bc,f.use]);const d=p.landmarks.find(l=>l.name==='右嘴角点')!.id;
  const ac=createCurve(p,f.a,d,p.views[0],'AD');p=ac.project;const bc=createCurve(p,f.b,d,p.views[0],'BD');p=bc.project;
  p=addPatch(p,[ac.selectedId,bc.selectedId,{...f.use,startLandmarkId:f.b,endLandmarkId:f.a}]);const key=boundaryKey(p,f.use),mk=boundaryKey(p,mirrorBoundary(p,f.use));expect(relations(p).find(r=>r.key===key)!.pair).toHaveLength(2);
  const before=JSON.stringify([p.landmarks,p.curves,p.patches]);p=setRelationship(p,key,{mode:'crease'});expect(p.surfaceContinuity!.overrides[mk]).toEqual({mode:'crease'});expect(JSON.stringify([p.landmarks,p.curves,p.patches])).toBe(before);
  expect(parseLandmarks(JSON.stringify(p)).surfaceContinuity).toEqual(p.surfaceContinuity);
- const other={...f.use,endLandmarkId:p.curves.find(c=>c.id===f.host)!.endLandmarkId!};const q={...p,patches:p.patches!.map((x,i)=>i===2?{...x,boundaryUses:x.boundaryUses.map(b=>boundaryKey(p,b)===key?other:b)}:x)};expect(relations(q).find(r=>r.key===key)!.patchIds).toHaveLength(1);
+ const other={...f.use,endLandmarkId:p.curves.find(c=>c.id===f.host)!.endLandmarkId!};const q={...p,patches:p.patches!.map((x,i)=>i===2?{...x,boundaryUses:x.boundaryUses.map(b=>boundaryKey(p,b)===key?other:b)}:x)};expect(relations(q).find(r=>r.key===key)!.patchIds).toHaveLength(2);
 });
 it('Fullness applied after Fair: exact boundary derivatives and scaled normal amplitude',()=>{
  const p=smoothFixture(.61),r=solveContinuity(p);installSmoothResult(p,r);const q={...p,patches:p.patches!.map(x=>({...x,fullness:.7}))},x=q.patches[0],base=evaluator(p,p.patches![0]),f=evaluator(q,x);

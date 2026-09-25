@@ -1,17 +1,24 @@
-import {isAnalytic} from '../../domain/curves/model';
+import ControlPointHandles from './ControlPointHandles';
+import OnPatchHandles from './OnPatchHandles';
+import {displayPoint,displayCurveSamples,displayTransform,rawDisplayPlane} from '../../rendering/moduleDisplay';
+import {eyeSide} from '../../domain/eyes/scaffold';
+import {modulePickable} from '../authoring/moduleAccess';
+import {useVisibility} from '../authoring/visibility';
+import {uiText} from "../i18n";
+import {dispatch2D} from '../authoring/InteractionDispatcher2D';
+import {isFree3DShape,isDerived} from '../../domain/curves/model';
 import {evaluationContext} from '../../domain/geometry/evaluation';
 import {curvePolyline,type CurveProvider} from '../../domain/geometry/curveProvider';
 import {worldToPlane,worldToSvg,screenToPlane,EDIT_VIEWBOX,type OrthographicViewState} from '../../rendering/orthographic';
 import {useShallow} from 'zustand/react/shallow';
-import { useRef } from "react";
+import { useRef,type RefObject } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "../../app/store";
 import { add, sub } from "../../domain/geometry/core";
 import {
-  controls,
+  sourceControls,
   canonical,
-  nearestParameter,
-  planeTarget,
+  viewPlaneTarget,
   bezier,
   bodyShape,
   handleShape,
@@ -32,8 +39,9 @@ export function curvePath(cp: ControlPoints, v: OrthographicViewState): string {
   return `M${xy[0]} C${xy[1]} ${xy[2]} ${xy[3]}`;
 }
 export function providerPath(g:CurveProvider,v:OrthographicViewState){return g.controls?curvePath(g.controls,v):curvePolyline(g).map((p,i)=>(i?'L':'M')+worldToSvg(p,v).slice(0,2).join(',')).join(' ');}
-export default function CurveInteractionOverlay({view,projection}:{view:LandmarkView;projection:OrthographicViewState}) {
+export default function CurveInteractionOverlay({view,projection,controller}:{view:LandmarkView;projection:OrthographicViewState;controller?:RefObject<((e:ReactPointerEvent,id:string,index:0|1|2)=>void)|null>}) {
   const project=(p:readonly number[],_view:LandmarkView)=>worldToPlane(p,projection).slice(0,2) as Vec2;
+  const hidden=useVisibility();
   const s = useEditor(useShallow(s=>({beginEdit:s.beginEdit,curveCreation:s.curveCreation,endEdit:s.endEdit,notify:s.notify,patchCreation:s.patchCreation,project:s.project,referenceMoving:s.referenceMoving,selectCurve:s.selectCurve,selectedCurveId:s.selectedCurveId,setCurveShape:s.setCurveShape}))),
     group = useRef<SVGGElement>(null);
   const drag = useRef<{
@@ -44,6 +52,7 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
     start: Vec2;
     startTarget: Vec3;
     point: Vec3;
+    displayAnchor: Vec3;
     recorded: boolean;
     view: LandmarkView;
   } | null>(null);
@@ -52,6 +61,7 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
     return screenToPlane([e.clientX-rect.left,e.clientY-rect.top],projection);
   };
   const start = (e: ReactPointerEvent, c: CurveEdge, index: 0 | 1 | 2) => {
+    if(!modulePickable(c.id))return;
     if (
       s.referenceMoving ||
       s.curveCreation ||
@@ -61,10 +71,18 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
       return;
     e.preventDefault();
     e.stopPropagation();
+    const action=dispatch2D(useEditor.getState().tool,'curve');
+    if(action==='patchEdge'){useEditor.getState().pickPatchEdge(c.id);return;}
+    if(action!=='curve')return;
     s.selectCurve(c.id);
-    if(s.patchCreation||isAnalytic(c)) return;
-    const q = local(e),
-      target = planeTarget(s.project, c, view, q),
+    if(s.patchCreation||isDerived(c)||eyeSide(s.project,c.id)) return;
+    const controls=sourceControls(s.project,c),xy=local(e),pose=displayTransform(s.project,c.id,projection.forward);
+    const cost=(t:number)=>{const p=worldToPlane(pose.display(bezier(controls,t)),projection);return (p[0]-xy[0])**2+(p[1]-xy[1])**2;};
+    let best=0;for(let i=1;i<=128;i++)if(cost(i/128)<cost(best))best=i/128;
+    let lo=Math.max(0,best-1/128),hi=Math.min(1,best+1/128);for(let i=0;i<18;i++){const a=lo+(hi-lo)/3,b=hi-(hi-lo)/3;if(cost(a)<cost(b))hi=b;else lo=a;}
+    const t=Math.max(.05,Math.min(.95,(lo+hi)/2)),displayAnchor=index?controls[index]:bezier(controls,t);
+    const q = rawDisplayPlane(s.project,c.id,xy,projection,displayAnchor),
+      target = viewPlaneTarget(s.project, c, view, q),
       base = canonical(s.project, c);
     if (!target) {
       s.notify(
@@ -72,25 +90,22 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
       );
       return;
     }
-    const t = Math.max(
-      0.05,
-      Math.min(0.95, nearestParameter(controls(s.project, c), view, q)),
-    );
     drag.current = {
       project: s.project,
       curve: c,
       index,
-      t,
+      t,displayAnchor,
       start: [e.clientX, e.clientY],
       startTarget: target,
       point: index
-        ? controls(s.project, base)[index]
-        : bezier(controls(s.project, base), t),
+        ? sourceControls(s.project, base)[index]
+        : bezier(sourceControls(s.project, base), t),
       recorded: false,
       view,
     };
     group.current!.setPointerCapture(e.pointerId);
   };
+  if(controller)controller.current=(e,id,index)=>{const c=s.project.curves.find(c=>c.id===id);if(c)start(e,c,index);};
   return (
     <g
       ref={group}
@@ -104,7 +119,7 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
           !d.recorded
         )
           return;
-        const q = planeTarget(d.project, d.curve, d.view, local(e));
+        const q = viewPlaneTarget(d.project, d.curve, d.view, rawDisplayPlane(d.project,d.curve.id,local(e),projection,d.displayAnchor));
         if (!q) return;
         if (!d.recorded) {
           s.beginEdit(true);
@@ -136,10 +151,10 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
       {[
         ...s.project.curves.filter((c) => c.id !== s.selectedCurveId),
         ...s.project.curves.filter((c) => c.id === s.selectedCurveId),
-      ].map((c) => {
+      ].filter(c=>!hidden(c.id)).map((c) => {
         const selected = c.id === s.selectedCurveId || s.patchCreation?.host===c.id,
-          g = evaluationContext(s.project).curve(c.id), cp=g.controls,
-          path = providerPath(g, projection);
+          g = evaluationContext(s.project).curve(c.id), cp=(!isDerived(c)&&isFree3DShape(canonical(s.project,c).shape)?sourceControls(s.project,c):g.controls)?.map(v=>displayPoint(s.project,c.id,v,projection.forward)) as ControlPoints|undefined,
+          path = g.controls&&!displayTransform(s.project,c.id,projection.forward).active?curvePath(g.controls.map(v=>displayPoint(s.project,c.id,v,projection.forward)) as ControlPoints,projection):displayCurveSamples(s.project,c.id,g,projection.forward).map((v,i)=>(i?'L':'M')+worldToSvg(v,projection).slice(0,2).join(',')).join(' ');
         return (
           <g key={c.id}>
             <path
@@ -155,7 +170,7 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
             />
             {(
               <path
-                data-testid={`curve-hit-${c.id}`}
+                data-testid={`curve-hit-${c.id}`} data-curve-id={c.id}
                 d={path}
                 fill="none"
                 stroke="transparent"
@@ -188,8 +203,8 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
                   return (
                     <circle
                       key={index}
-                      data-testid={`curve-handle-${index}`}
-                      aria-label={`控制柄 ${index}`}
+                      data-testid={`curve-handle-${index}`} data-curve-id={c.id} data-handle-index={index}
+                      aria-label={uiText(`控制柄 ${index}`)}
                       cx={q[0] * UNIT}
                       cy={-q[1] * UNIT}
                       r={5 / view.canvas.zoom}
@@ -206,6 +221,7 @@ export default function CurveInteractionOverlay({view,projection}:{view:Landmark
           </g>
         );
       })}
+      <OnPatchHandles view={projection}/><ControlPointHandles view={projection}/>
     </g>
   );
 }

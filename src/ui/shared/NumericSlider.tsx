@@ -1,3 +1,4 @@
+import {uiText} from "../i18n";
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {SLIDER,formatNumeric,modifierScale,holdMultiplier,trackValue,snapTowardTargets} from './numericSliderMath';
 export interface NumericSliderProps {
@@ -53,14 +54,14 @@ export default function NumericSlider(props:NumericSliderProps){
   if(commit){change(value,false);end();}
  };
  return <div className={'numeric-slider '+(props.className??'')} data-ui-keyboard>
- <span className="numeric-slider-caption" onClick={()=>input.current?.focus()}>{props.label}{draft===null?<span className="numeric-slider-value" title="双击输入数值" onDoubleClick={e=>{
+ <span className="numeric-slider-caption" onClick={()=>input.current?.focus({preventScroll:true})}>{uiText(props.label)}{draft===null?<span className="numeric-slider-value" title={uiText("双击输入数值")} onDoubleClick={e=>{
   e.preventDefault();e.stopPropagation();if(props.disabled)return;end();draftActive.current=true;setInvalid(false);setDraft(String(props.value*(props.inputScale??1)));
- }}>{(props.formatValue??formatNumeric)(props.value)}</span>:<input className="numeric-slider-entry" aria-label={props.label+' 数值'} aria-invalid={invalid} title={invalid?'请输入有效数字':'Enter 确认，Esc 取消'} type="text" inputMode="decimal" value={draft} disabled={props.disabled}
- ref={el=>{if(el&&document.activeElement!==el){el.focus();el.select();}}}
+ }}>{uiText((props.formatValue??formatNumeric)(props.value))}</span>:<input className="numeric-slider-entry" aria-label={uiText(props.label+' 数值')} aria-invalid={invalid} title={uiText(invalid?'请输入有效数字':'Enter 确认，Esc 取消')} type="text" inputMode="decimal" value={draft} disabled={props.disabled}
+ ref={el=>{if(el&&document.activeElement!==el){el.focus({preventScroll:true});el.select();}}}
  onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}
  onChange={e=>{setDraft(e.target.value);setInvalid(false);}} onBlur={()=>finishDraft(true)}
  onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finishDraft(true);}if(e.key==='Escape'){e.preventDefault();finishDraft(false);input.current?.focus();}}}/>}</span>
- <input ref={input} aria-label={props.label} aria-valuetext={(props.formatValue??formatNumeric)(props.value)} type="range" min={props.min} max={props.max} step="any" value={props.value} disabled={props.disabled}
+ <input ref={input} aria-label={uiText(props.label)} aria-valuetext={(props.formatValue??formatNumeric)(props.value)} type="range" min={props.min} max={props.max} step="any" value={props.value} disabled={props.disabled}
  onPointerDown={e=>{if(e.button!==0||props.disabled)return;e.preventDefault();end();e.currentTarget.focus();pointer.current=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);move(e.clientX);}}
  onPointerMove={e=>{if(pointer.current===e.pointerId)move(e.clientX);}}
  onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end}

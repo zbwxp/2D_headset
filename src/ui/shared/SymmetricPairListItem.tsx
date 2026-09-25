@@ -1,3 +1,4 @@
+import {uiText} from "../i18n";
 import {useEffect,useRef,type HTMLAttributes,type ReactNode} from 'react';
 export const PAIR_CLICK_DELAY=400;
 interface Props extends Omit<HTMLAttributes<HTMLDivElement>,'children'|'onSelect'> {
@@ -21,6 +22,6 @@ export default function SymmetricPairListItem({primaryId,mirrorId,selectedId,dis
  onDoubleClick={e=>{if((e.target as HTMLElement).closest('input,button'))return;e.preventDefault();e.stopPropagation();rename();}}
  onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='F2'||e.key==='Enter'){e.preventDefault();e.stopPropagation();rename();return;}if(e.key===' '){e.preventDefault();cancel();select();return;}onKeyDown?.(e);}}
  onContextMenu={e=>{cancel();onContextMenu?.(e);}} onDragStart={e=>{cancel();onDragStart?.(e);}}>
- {children(id)}{mirrorId&&<small className="pair-side" aria-label={active?(id===primaryId?'右侧':'左侧'):'默认右侧'}>{id===primaryId?'R':'L'}</small>}
+ {uiText(children(id))}{uiText(mirrorId&&<small className="pair-side" aria-label={uiText(active?(id===primaryId?'右侧':'左侧'):'默认右侧')}>{uiText(id===primaryId?'R':'L')}</small>)}
  </div>;
 }

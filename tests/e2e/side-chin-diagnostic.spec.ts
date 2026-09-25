@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+import {mkdirSync,writeFileSync} from 'node:fs';
+test('side chin diagnosis',async({page})=>{
+ test.setTimeout(180000);await page.goto('/');await page.locator('input[type=file][accept=".json,application/json"]').setInputFiles('/Users/bowen/Desktop/语义点头部研究 (6).json');await page.waitForTimeout(6000);
+ const data=await page.evaluate(async()=>{
+ const {contourSource}=await import('/src/domain/contour/source.ts');const {solveContinuity}=await import('/src/domain/continuity/solver.ts');const {installSmoothResult,getSmoothResult}=await import('/src/domain/continuity/evaluation.ts');const V=await import('/src/domain/contour/visible.ts');const S=await import('/src/domain/contour/silhouette.ts');
+ const p=window.__editorPerfStore.getState().project;installSmoothResult(p,solveContinuity(p));const {mesh}=contourSource({...p,smoothResult:getSmoothResult(p)});const consume=(g)=>{let n;do{n=g.next()}while(!n.done);return n.value};const out=[];
+ for(const degrees of [75,80,85,90]){const a=degrees*Math.PI/360,q=[0,Math.sin(a),0,Math.cos(a)];const {points,epsilon}=V.projection(mesh,q);const depth=consume(V.depthSteps(points,mesh));const chains=V.tangentChains(mesh,points);const paths=consume(S.traceSteps(consume(S.rasterSteps(points.map(p=>p.slice(0,2)),mesh.triangles)),768));
+ const rows=chains.map((c,idx)=>{const owner=mesh.triangles[c.localFaces[0][0]].patchId;const samples=[];
+ for(let i=1;i<c.points.length;i++){const a=c.points[i-1],b=c.points[i],n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*2));for(let j=0;j<n;j++){const t=j/n,r=a.map((v,k)=>v+(b[k]-v)*t);if(r[1]<440)continue;const at=Math.floor(r[1])*768+Math.floor(r[0]);const raster=V.visible(r,depth,epsilon);let z=-Infinity,face=-1;
+ for(let f=0;f<mesh.triangles.length;f++){const [a,b,c]=mesh.triangles[f].indices.map(i=>points[i]);if(r[0]<Math.min(a[0],b[0],c[0])-1e-7||r[0]>Math.max(a[0],b[0],c[0])+1e-7||r[1]<Math.min(a[1],b[1],c[1])-1e-7||r[1]>Math.max(a[1],b[1],c[1])+1e-7)continue;const det=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);if(Math.abs(det)<1e-12)continue;const u=((r[0]-a[0])*(c[1]-a[1])-(r[1]-a[1])*(c[0]-a[0]))/det,v=((b[0]-a[0])*(r[1]-a[1])-(b[1]-a[1])*(r[0]-a[0]))/det;if(u< -1e-7||v< -1e-7||u+v>1+1e-7)continue;const d=a[2]+u*(b[2]-a[2])+v*(c[2]-a[2]);if(d>z){z=d;face=f;}}
+ const wf=depth.face[at];let outside=false;if(wf>=0){const [a,b,c]=mesh.triangles[wf].indices.map(i=>points[i]);const det=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);const u=((r[0]-a[0])*(c[1]-a[1])-(r[1]-a[1])*(c[0]-a[0]))/det,v=((b[0]-a[0])*(r[1]-a[1])-(b[1]-a[1])*(r[0]-a[0]))/det;outside=u< -1e-7||v< -1e-7||u+v>1+1e-7;}
+ samples.push({p:r,raster,outside,rasterOwner:wf<0?null:mesh.triangles[wf].patchId,exact:r[2]>=z-epsilon,occluder:face<0?null:mesh.triangles[face].patchId,delta:z-r[2]});}}
+ return {idx,owner,points:c.points,shown:consume(V.visibilitySteps([c],depth,epsilon)),samples};}).filter(r=>r.samples.length);
+ const withoutLens={...mesh,triangles:mesh.triangles.filter(t=>!['be15af46-396f-48f4-b713-fd3a152129ac','30ef4369-d7cf-47af-a957-315a2ad36821'].includes(t.patchId))};
+ const otherDepth=consume(V.depthSteps(points,withoutLens));
+ const revealed=rows.filter(r=>['3dff163b-538b-40d5-bbef-b2965e2fbd16','201c202f-5101-478e-a420-6ca3b0c89675'].includes(r.owner)).flatMap(r=>consume(V.visibilitySteps([r.points],otherDepth,epsilon)));
+ out.push({degrees,q,paths,rows,epsilon,revealed});}
+ return {smooth:!!getSmoothResult(p),patches:p.patches.map(p=>({id:p.id,name:p.name})),out};});
+ mkdirSync('artifacts/side-chin',{recursive:true});writeFileSync('artifacts/side-chin/data.json',JSON.stringify(data));
+ for(const d of data.out){const path=(ps,color)=>ps.map(p=>`<polyline points="${p.map(p=>p.slice(0,2).join(',')).join(' ')}" fill="none" stroke="${color}" stroke-width="1.5"/>`).join('');const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="768" viewBox="0 0 1536 768"><rect width="1536" height="768" fill="white"/>${path(d.paths,'black')}${path(d.rows.flatMap(r=>r.shown),'black')}<g transform="translate(768 0)">${path(d.paths,'#ccc')}${path(d.rows.map(r=>r.points),'#aaa')}${d.rows.flatMap(r=>r.samples).map(s=>`<circle cx="${s.p[0]}" cy="${s.p[1]}" r="1" fill="${s.exact?(s.raster?'green':'red'):'blue'}"/>`).join('')}</g></svg>`;writeFileSync(`artifacts/side-chin/side-${d.degrees}.svg`,svg);const comparison=`<svg xmlns="http://www.w3.org/2000/svg" width="768" height="768"><rect width="768" height="768" fill="white"/>${path(d.paths,'#ccc')}${path(d.revealed,'red')}</svg>`;writeFileSync(`artifacts/side-chin/revealed-${d.degrees}.svg`,comparison);await page.setContent(svg);await page.screenshot({path:`artifacts/side-chin/side-${d.degrees}.png`,fullPage:true});}
+
+});

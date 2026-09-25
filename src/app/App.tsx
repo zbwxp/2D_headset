@@ -1,18 +1,21 @@
+import {isFree3DShape} from '../domain/curves/model';
+import {canonical as curveCanonical} from '../domain/curves/geometry';
+import ViewportPanel from '../ui/windows/ViewportPanel';
+import DrawingRoom from '../ui/drawing/DrawingRoom';
+import {useDrawing} from '../ui/drawing/session';
+import RecordingRoom from '../ui/recording/RecordingRoom';
+import {useRecording} from '../ui/recording/session';
+import {uiText,useLanguage} from "../ui/i18n";
+import CreationShelf from '../ui/authoring/CreationShelf';
+import ObjectSidebar from '../ui/authoring/ObjectSidebar';
+import {APP_VERSION} from './version';
 import AddView from '../ui/windows/AddView';
-import {useLoomisUI} from '../ui/head/loomisUI';
-import {isAnalytic} from '../domain/curves/model';
-import HeadFramePanel from '../ui/head/HeadFramePanel';
-import OnCurveInspector from "../ui/edit2d/OnCurveInspector";
+import {isDerived,isOnPatch,isHelmetLoop} from '../domain/curves/model';
 import {pointPosition} from "../domain/geometry/evaluation";
-import useSidebarSelection from "../ui/shared/useSidebarSelection";
-import {landmarkRows} from "../ui/shared/pairRows";
 import {ensureSmooth} from "../domain/continuity/service";
 import {subscribeSmooth,smoothVersion} from "../domain/continuity/evaluation";
 import ContourPanel from "../ui/windows/ContourPanel";
 import MainPanels from "../ui/windows/MainPanels";
-import PatchPanel from "../ui/patches/PatchPanel";
-import CurvePanel from "../ui/curves/CurvePanel";
-import LandmarkList from "../ui/edit2d/LandmarkList";
 import EditorActions from "../ui/EditorActions";
 import { useUI } from "../ui/session";
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -38,7 +41,10 @@ import { parseLandmarks } from "../domain/landmarks/persistence";
 import EditView from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
-  useSidebarSelection();
+  const {language,setLanguage}=useLanguage();
+  const room=useRecording(s=>s.room),drawingRoom=useDrawing(s=>s.room);
+  useEffect(()=>{document.documentElement.lang=language==='zh'?'zh-CN':'en';},[language]);
+
   useSyncExternalStore(subscribeSmooth,smoothVersion);
   const ui = useUI();
   const s = useEditor(),
@@ -61,7 +67,7 @@ export default function App() {
   useEffect(()=>ensureSmooth(s.project),[s.project]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { useEditor.getState().cancelCurve(); useEditor.getState().cancelPatch(); }
+      if (e.key === "Escape") { useEditor.getState().cancelTool(); }
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
       if (
@@ -98,44 +104,40 @@ export default function App() {
     <div className="point-app">
       <header className="topbar">
         <div className="brand">
-          <Box size={25} />
-          contour<span className="point-version">V0.5.5.2 · Contour Chains</span>
+          <Box size={25} />{uiText("contour")}<span className="point-version">{uiText(APP_VERSION)}</span>
         </div>
         <input
           className="point-name"
-          aria-label="项目名称"
+          aria-label={uiText("项目名称")}
           value={s.project.meta.name}
           onChange={(e) => s.rename(e.target.value)}
         />
         <div className="point-top-actions">
+          <button data-testid="drawing-room-toggle" onClick={()=>{s.cancelTool();useRecording.getState().set({room:false,first:null,tool:"edit"});useDrawing.getState().set({room:!drawingRoom});}}>{uiText(drawingRoom?"返回建模间":"进入绘制间")}</button>
+          <button data-testid="room-toggle" onClick={()=>{s.cancelTool();useDrawing.getState().set({room:false});useRecording.getState().set({room:!room,first:null,tool:"edit"});}}>{uiText(room?"返回建模间":"进入录制间")}</button>
+          <button data-testid="language-toggle" aria-label={language==='zh'?'Switch interface to English':'切换为中文界面'} title={language==='zh'?'切换为英文界面':'Switch interface to Chinese'} onClick={()=>setLanguage(language==='zh'?'en':'zh')}>{uiText(language==='zh'?'English':'中文')}</button>
           <button
-            title="撤销 Ctrl Z"
-            aria-label="撤销"
+            title={uiText("撤销 Ctrl Z")}
+            aria-label={uiText("撤销")}
             disabled={!s.past.length}
             onClick={s.undo}
           >
             <Undo2 size={17} />
           </button>
           <button
-            title="重做 Ctrl Shift Z"
-            aria-label="重做"
+            title={uiText("重做 Ctrl Shift Z")}
+            aria-label={uiText("重做")}
             disabled={!s.future.length}
             onClick={s.redo}
           >
             <Redo2 size={17} />
           </button>
           <button disabled={!s.project.landmarks.length} onClick={s.reset}>
-            <Plus size={16} />
-            新建
-          </button>
+            <Plus size={16} />{uiText("新建")}</button>
           <button onClick={() => file.current?.click()}>
-            <Upload size={16} />
-            打开
-          </button>
+            <Upload size={16} />{uiText("打开")}</button>
           <button onClick={save}>
-            <Download size={16} />
-            保存 JSON
-          </button>
+            <Download size={16} />{uiText("保存 JSON")}</button>
         </div>
         <input
           ref={file}
@@ -154,7 +156,7 @@ export default function App() {
           }}
         />
       </header>
-      <main
+      {drawingRoom?<DrawingRoom/>:room?<RecordingRoom/>:<main
         className="point-workspace"
         tabIndex={-1}
         onPointerDownCapture={(e) => {
@@ -168,141 +170,29 @@ export default function App() {
             e.currentTarget.focus({ preventScroll: true });
         }}
       >
-        <aside className="point-sidebar">
-          <HeadFramePanel />
-          <section
-            className={`sidebar-section landmark-section ${ui.landmarkCollapsed ? "collapsed" : ""}`}
-            aria-label="语义点"
-          >
-            <button
-              className="section-heading"
-              aria-expanded={!ui.landmarkCollapsed}
-              onClick={() =>
-                (useLoomisUI.setState({open:false}), useUI.setState({ landmarkCollapsed: !ui.landmarkCollapsed }))
-              }
-            >
-              <span>{ui.landmarkCollapsed ? "▶" : "▼"} 语义点</span>
-              <span>{landmarkRows(s.project).filter(r=>r.primary.placement.kind!=="ON_LOOMIS_SURFACE"&&r.primary.placement.kind!=="ON_SECTION_CAP"&&r.primary.placement.kind!=="LOOMIS_SCAFFOLD"&&(r.primary.placement.kind!=="ON_CURVE"||!s.project.curves.some(c=>isAnalytic(c)&&c.id===(r.primary.placement.kind==="ON_CURVE"?r.primary.placement.hostCurveId:"")))).length} 行</span>
-            </button>
-            <div className="section-body" hidden={ui.landmarkCollapsed}>
-              <div className="default-point-actions"><button onClick={()=>useEditor.getState().addDefaultPoint(true)}>+ 默认中线点</button><button onClick={()=>useEditor.getState().addDefaultPoint(false)}>+ 默认对称点</button></div>
-              <OnCurveInspector /><LandmarkList />
-            </div>
-          </section>
-          <CurvePanel />
-            <PatchPanel />
-          <div className="point-side-note">
-            共享 3D 坐标
-            <br />
-            左右镜像 · 中线硬约束
-            <br />左 / 右按角色自身方向
-          </div>
-        </aside>
-        <MainPanels viewport={<section className="point-edit-column">
-          <nav className="point-view-tabs">
-            {s.project.views.map((v) => (
-              <button
-                key={v.id}
-                className={v.id === s.viewId ? "active" : ""}
-                onClick={() => s.selectView(v.id)}
-              >
-                {v.label}
-                {viewIsLocked(s.project, v.id) && <LockKeyhole size={12} />}
-              </button>
-            ))}
-            <AddView/>
-            <label
-              className="point-lock"
-              title="统一开关视图锁；每对镜像点仅约束 driver，follower 通过镜像跟随"
-            >
-              <input
-                type="checkbox"
-                aria-label="锁定此视图全部点"
-                checked={viewIsLocked(s.project, s.viewId)}
-                onChange={(e) => s.setViewLock(s.viewId, e.target.checked)}
-              />
-              {viewIsLocked(s.project, s.viewId) ? (
-                <LockKeyhole size={15} />
-              ) : (
-                <Unlock size={15} />
-              )}
-              统一视图锁
-            </label>
-          </nav>
-          <div className="point-global-locks" aria-label="全部点的视图锁">
-            <span>显式视图锁：</span>
-            {s.project.views
-              .filter((v) => viewIsLocked(s.project, v.id))
-              .map((v) => (
-                <button
-                  key={v.id}
-                  aria-label={`解锁${v.label}全部点`}
-                  onClick={() => s.setViewLock(v.id, false)}
-                >
-                  {v.label} <Unlock size={12} />
-                </button>
-              ))}
-            {!s.project.views.some((v) => viewIsLocked(s.project, v.id)) && (
-              <span>无</span>
-            )}
-          </div>
-          <div className="point-edit-basis" data-testid="edit-basis">
-            <span>
-              {curve
-                ? (isAnalytic(curve)?"解析 Section：在侧栏调整平面；视图中可选择":"曲线编辑：固定平面内弯曲；视图锁仅约束语义点")
-                : l?.placement.kind==="LOOMIS_SCAFFOLD" ? "系统派生定位点：调整宿主参数；不可独立拖离" : (l?.placement.kind==="ON_LOOMIS_SURFACE"||l?.placement.kind==="ON_SECTION_CAP") ? "Loomis 面定位：在 3D 贴面拖动，或在行内调整；不受视图锁约束" : l?.placement.kind==="ON_CURVE" ? "结构线定位：使用在线位置调整；不受视图锁约束" : lockedViews.length
-                  ? `移动基准：${lockedViews.map((v) => v.label).join("、")}锁约束`
-                  : `移动基准：${activeView.label}相机平面（深度不变）`}
-            </span>
-            {!curve && editAxes.length === 1 && (
-              <code>
-                方向 X {editAxes[0][0].toFixed(2)} / Y{" "}
-                {editAxes[0][1].toFixed(2)} / Z {editAxes[0][2].toFixed(2)}
-              </code>
-            )}
-          </div>
-          <EditView />
-          <div className="point-detail">
-            <strong>{curve?.name ?? l?.name ?? "未选中语义点"}</strong>
-            <span data-testid="dof">
-              {curve ? (isAnalytic(curve)?"Analytic Curve":"Planar Bézier") : `${l?.placement.kind==="LOOMIS_SCAFFOLD"?0:l?.placement.kind==="ON_SECTION_CAP"?2:l?.placement.kind==="ON_CURVE"?1:l?.placement.kind==="ON_LOOMIS_SURFACE"?(l.type==="CENTERLINE"?1:2):free.length} DOF`}
-            </span>
-            <span data-testid="motion-status">
-              {curve
-                ? (isAnalytic(curve)?"解析结构线 · 侧栏调整参数 · 可添加在线定位点":"拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转")
-                : !l
-                  ? "空项目 · 撤销或打开项目恢复"
-                  : l.placement.kind==="LOOMIS_SCAFFOLD" ? "系统定位点 · 由宿主解析派生" : (l.placement.kind==="ON_LOOMIS_SURFACE"||l.placement.kind==="ON_SECTION_CAP") ? "Loomis Surface · 3D 贴面拖动" : l.placement.kind==="ON_CURVE" ? "结构线定位 · 使用在线位置调整" : motion.spatialDof === 0
-                    ? "已固定 · 解除视图锁以继续"
-                    : motion.screenDof === 0
-                      ? "仅剩视线方向移动 · 请换视图"
-                      : motion.screenDof === 1
-                        ? "当前视图：沿虚线移动"
-                        : "当前视图：平面内自由移动"}
-            </span>
-          </div>
-        </section>
+        <aside className="point-sidebar unified-sidebar"><ObjectSidebar/></aside>
+        <div className="authoring-workspace"><CreationShelf/>
+        <MainPanels viewport={<ViewportPanel panelId="viewport"/>
         } threeD={<section className="point-inspect-column">
-          <div className="point-panel-title">
-            3D · 空间检查
-            <span>
-              {s.project.landmarks.length} 点 · {s.project.curves.length} 线 · {s.project.patches?.length??0} 面{s.project.loomisRegions?.length?` · ${s.project.loomisRegions.length} 球面区域`:""}
+          <div className="point-panel-title">{uiText("3D · 空间检查")}<span>
+              {s.project.landmarks.length}{uiText("点 ·")}{s.project.curves.length}{uiText("线 ·")}{(s.project.patches?.length??0)+(s.project.chinScaffold?1:0)+(s.project.loomisScaffold?1:0)+(s.project.loomisCaps?.length??0)}{uiText("面")}{uiText(s.project.loomisRegions?.length?` · ${s.project.loomisRegions.length} 球面区域`:"")}
             </span>
           </div>
           <InspectView />
         </section>} contour={<ContourPanel/>} />
-      </main>
-      <footer className="point-footer">
+      </div>
+      </main>}
+      {!room&&!drawingRoom&&<footer className="point-footer">
         <div>
-          <b>{patch ? `${patch.name??(patch.type==='lens'?'两边面':patch.type==='loop'?'环形面':patch.type==='tri'?'三边面':'四边面')} · 边界派生` : curve?.name ?? l?.name ?? "未选择对象"}</b>
+          <b>{patch ? `${patch.name??uiText(patch.type==='lens'?'两边面':patch.type==='loop'?'环形面':patch.type==='tri'?'三边面':'四边面')} · ${uiText("边界派生")}` : curve?.name ?? l?.name ?? uiText("未选择对象")}</b>
           <code data-testid="position">
-            {curve
-              ? (isAnalytic(curve)?"Loomis Frame + Section Plane":"固定端点 · 平面内形状")
-              : (l ? pointPosition(s.project,l.id).map((n) => n.toFixed(4)).join(" / ") : undefined)}
+            {uiText(curve
+              ? ('controlPointIds' in curve?'眼睑 Bézier · 拖动眼角和控制柄 · Shift 拖动平移':isOnPatch(curve)?'On Surface Curve · 由 Host Patch Final Surface 派生':isHelmetLoop(curve)?"Rim 与水平环同高 · 衔接处切线连续":isDerived(curve)?"Loomis Frame + Section Plane":(isFree3DShape(curveCanonical(s.project,curve).shape)?"固定端点 · 自由三维控制柄":"固定端点 · 平面内形状"))
+              : (l ? pointPosition(s.project,l.id).map((n) => n.toFixed(4)).join(" / ") : undefined))}
           </code>
         </div>
         <span>
-          {curve
+          {uiText(curve
             ? curve.mirrorPartnerCurveId
               ? "左右镜像 · 一套独立形状"
               : "正中矢状面曲线"
@@ -310,35 +200,32 @@ export default function App() {
               ? `Driver：${l?.name} → Follower：${partner.name}`
               : l
                 ? "正中矢状面 x = 0"
-                : "无语义点"}
+                : "无语义点")}
         </span>
-        <span>
-          显式视图锁：
-          {s.project.views
+        <span>{uiText("显式视图锁：")}{uiText(s.project.views
             .filter((v) => viewIsLocked(s.project, v.id))
-            .map((v) => v.label)
-            .join("、") || "无"}
+            .map((v) => uiText(v.label))
+            .join("、") || "无")}
         </span>
         <span
           className="point-save-scope"
-          title="浏览器各自保存项目；要在另一浏览器使用同一状态，请保存 JSON 后在那里打开。画布布局和缩放不影响此状态码。"
-        >
-          本浏览器存档 · 模型状态{" "}
-          <code data-testid="model-state">{modelStateCode(s.project)}</code>
+          title={uiText("浏览器各自保存项目；要在另一浏览器使用同一状态，请保存 JSON 后在那里打开。画布布局和缩放不影响此状态码。")}
+        >{uiText("本浏览器存档 · 模型状态")}{uiText(" ")}
+          <code data-testid="model-state">{uiText(modelStateCode(s.project))}</code>
         </span>
-        <span>撤销 {s.past.length} / 100</span>
-      </footer>
-      <EditorActions />
-      {s.message && (
+        <span>{uiText("撤销")}{s.past.length} / 100</span>
+      </footer>}
+      {!room&&!drawingRoom&&<EditorActions />}
+      {uiText(s.message && (
         <div
           role="status"
           className="point-message"
           onClick={() => s.notify("")}
         >
-          {s.message}
-          <button aria-label="关闭提示">×</button>
+          {uiText(s.message)}
+          <button aria-label={uiText("关闭提示")}>×</button>
         </div>
-      )}
+      ))}
     </div>
   );
 }

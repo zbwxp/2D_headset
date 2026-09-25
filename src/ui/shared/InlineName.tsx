@@ -1,3 +1,4 @@
+import {uiText} from "../i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useUI, type Entity } from "../session";
 import { useEditor } from "../../app/store";
@@ -48,7 +49,7 @@ export default function InlineName({
       <input
         ref={input}
         className="inline-name-input"
-        aria-label={target.kind === "landmark" ? "语义点名称" : target.kind==="patch"?"曲面名称":"结构线名称"}
+        aria-label={uiText(target.kind === "landmark" ? "语义点名称" : target.kind==="patch"?"曲面名称":"结构线名称")}
         value={value}
         maxLength={80}
         onChange={(e) => setValue(e.target.value)}

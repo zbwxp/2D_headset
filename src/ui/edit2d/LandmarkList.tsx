@@ -1,4 +1,5 @@
-import {isAnalytic} from '../../domain/curves/model';
+import {uiText,useLanguage} from "../i18n";
+import {isDerived} from '../../domain/curves/model';
 import {count} from '../../domain/geometry/diagnostics';
 import {useShallow} from 'zustand/react/shallow';
 import SymmetricPairListItem from "../shared/SymmetricPairListItem";
@@ -15,13 +16,14 @@ import {
 } from "../../domain/landmarks/model";
 
 function LandmarkList({loomis=false}:{loomis?:boolean}) {
+  useLanguage(s=>s.language);
  count('renderLandmarkList');
   const selection = useEditor(useShallow(s=>({landmarks:s.project.landmarks,centerlineOrder:s.project.centerlineOrder,reorderCenterline:s.reorderCenterline,selectLandmark:s.selectLandmark,selectedCurveId:s.selectedCurveId,selectedId:s.selectedId,selectedPatchId:s.selectedPatchId})));
   const s={...selection,project:useEditor.getState().project};
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const points = new Map(s.project.landmarks.map((l) => [l.id, l]));
-  const included=(l:SemanticLandmark)=>!!((l.placement.kind==='ON_LOOMIS_SURFACE'||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==='ON_SECTION_CAP'))||l.placement.kind==='ON_CURVE'&&s.project.curves.some(c=>c.id===(l.placement.kind==='ON_CURVE'?l.placement.hostCurveId:'')&&isAnalytic(c)))===loomis;
+  const included=(l:SemanticLandmark)=>!!((l.placement.kind==='ON_LOOMIS_SURFACE'||(l.placement.kind==="LOOMIS_SCAFFOLD"||l.placement.kind==='ON_SECTION_CAP'))||l.placement.kind==='ON_CURVE'&&s.project.curves.some(c=>c.id===(l.placement.kind==='ON_CURVE'?l.placement.hostCurveId:'')&&isDerived(c)))===loomis;
   const renderPoint = (primary: SemanticLandmark, partner?: SemanticLandmark) => {
     if(!included(primary))return null;
     const x = [primary,partner].find(p=>p?.id===(!s.selectedCurveId&&!s.selectedPatchId?s.selectedId:null)) ?? primary;
@@ -126,15 +128,14 @@ function LandmarkList({loomis=false}:{loomis?:boolean}) {
   if(loomis)return <div className="point-list">{landmarkRows(s.project).filter(r=>included(r.primary)).map(r=>renderPoint(r.primary,r.mirror))}</div>;
   return (
     <div className="point-list">
-      <section aria-label="中心线点" className="landmark-group">
-        <h3>
-          中心线点 <small>拖动排序</small>
+      <section aria-label={uiText("中心线点")} className="landmark-group">
+        <h3>{uiText("中心线点")}<small>{uiText("拖动排序")}</small>
         </h3>
         {s.project.centerlineOrder.map((id) => renderPoint(points.get(id)!))}
       </section>
-      {s.project.landmarks.some(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE")&&<section aria-label="中线结构线定位点" className="landmark-group"><h3>中线结构线定位点</h3>{s.project.landmarks.filter(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE").map(l=>renderPoint(l))}</section>}
-      <section aria-label="左右对称点" className="landmark-group">
-        <h3>左右对称点</h3>
+      {s.project.landmarks.some(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE")&&<section aria-label={uiText("中线结构线定位点")} className="landmark-group"><h3>{uiText("中线结构线定位点")}</h3>{s.project.landmarks.filter(l=>l.type==="CENTERLINE"&&l.placement.kind==="ON_CURVE").map(l=>renderPoint(l))}</section>}
+      <section aria-label={uiText("左右对称点")} className="landmark-group">
+        <h3>{uiText("左右对称点")}</h3>
         {landmarkRows(s.project).filter(r=>r.primary.type!=="CENTERLINE").map(r=>renderPoint(r.primary,r.mirror))}
       </section>
     </div>

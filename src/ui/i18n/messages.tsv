@@ -1,0 +1,1408 @@
+取消	Cancel
+复制	Duplicate
+重命名	Rename
+删除	Delete
+确认删除	Delete permanently
+确认删除「	Delete “
+可通过撤销恢复。	You can undo this action.
+新名称	New name
+语义点名称	Point name
+曲面名称	Surface name
+结构线名称	Curve name
+复制语义点	Duplicate point
+删除曲面	Delete surface
+删除结构线	Delete curve
+删除语义点	Delete point
+源语义点已删除，请关闭后重新选择。	The source point was deleted. Close this dialog and select another point.
+系统 Default 对象不可删除，可复制为用户对象。	Default system objects cannot be deleted. Duplicate one to create a user object.
+将删除此曲面及镜像曲面，保留所有语义点与结构线。	Delete this surface and its mirror. Points and curves are preserved.
+将删除左右结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。	Delete both curves and their dependent points, curves and surfaces. Upstream points are preserved.
+将删除此结构线，并级联删除依附的定位点、下游结构线及曲面。普通上游语义点保留。	Delete this curve and its dependent points, curves and surfaces. Upstream points are preserved.
+将同时删除左右两个点及其投影锚点。	Delete both mirrored points and their projection anchors.
+将删除此点及其投影锚点。	Delete this point and its projection anchors.
+点	Point
+线	Curve
+面	Surface
+曲面	Surface
+语义点	Points
+结构线	Curves
+整线	Whole curve
+区间	Span
+环形	Loop
+行	rows
+已选	Selected
+条边	edges
+当前：	Selected:
+无	None
+锁定	Lock
+高级	Advanced
+系统	System
+已锁定	Locked
+默认右侧	Default: right
+右侧	Right
+左侧	Left
+对称点	Symmetric pair
+中线点	Centerline point
+中心线点	Centerline points
+左右对称点	Symmetric points
+中线结构线定位点	Centerline on-curve points
+拖动排序	Drag to reorder
+没有合法区域	No valid region
+生成两边面	Create lens surface
+翻转第二环方向	Reverse second loop
+创建环形面	Create loop surface
+确认创建	Confirm creation
+预览区域	Preview regions
+封闭为 Loomis 面	Cap as Loomis surface
+显示 Helmet	Show Helmet
+全局面显示	Global surface display
+显示 Surfaces	Show surfaces
+显示精度	Display quality
+2D 不透明度	2D opacity
+3D Patch 不透明度	3D surface opacity
+系统对象不可删除	System objects cannot be deleted
+对象已锁定	Object is locked
+请点击所选 Patch 的 boundary	Click the selected Patch boundary
+请选择不同的第二个 endpoint	Select a different second endpoint
+当前位置未命中 Construction Surface	No construction surface at this position
+On Surface Curve 只接受 Patch；请选择一个普通 Patch	On Surface Curve requires an ordinary Patch
+该 Point 不在 Host Patch boundary 上，或 Offset 已使它离开边界	This point is outside the Host Patch boundary, possibly due to its offset
+系统派生位置 · 通过宿主参数调整	System-derived position · Edit host parameters
+2D 拖动 / 方向键移动 · View Lock 约束	Drag in 2D / Use arrow keys · View Lock applies
+严格平面 · 随 Host Section 变化 · 无 Fullness	Strictly planar · Follows host section · No fullness
+解析 Loomis 区域 · 由 Source Sections 定义	Analytic Loomis region · Defined by source sections
+Loomis 剖面线	Loomis sections
+添加结构线定位点	Add on-curve point
+创建 Loomis Section	Create Loomis section
+创建 Loomis 中线剖面	Create centerline section
+创建曲线	Create curve
+请选择起点 A	Select start point A
+取消创建	Cancel creation
+固定于中线平面 · 无旋转自由度	Fixed to the symmetry plane · No rotation
+调整曲线平面	Curve plane angle
+系统主环 · 固定于 HeadFrame 主轴平面	System ring · Fixed to a HeadFrame principal plane
+解析闭合中线剖面 · 固定于 Loomis 对称平面	Analytic closed section · Fixed to the Loomis symmetry plane
+解析 Section · 调整唯一 canonical 平面；镜像侧同步	Analytic section · Edit the canonical plane; mirror follows
+剖面方向	Section orientation
+纯 Loomis 球面请在下方选择区域；与自由曲线混合的 Patch 仍使用绘制面的区间模式。	Select a region below for a Loomis surface. For mixed boundaries, use Patch span mode.
+曲线平面在此视图接近侧向，或端点重合；请换视图或分开端点后编辑。	The curve plane is edge-on or endpoints coincide. Change view or separate the endpoints.
+此点已固定，请解除上方列出的视图锁。	This point is fixed. Release the view locks listed above.
+此点被硬约束固定，请解除下方列出的视图锁。	This point is constrained. Release the view locks listed below.
+此点被硬约束固定，请解除上方列出的视图锁。	This point is constrained. Release the view locks listed above.
+此视图看不到允许的深度移动，请切换视图。	Allowed depth movement is invisible in this view. Switch views.
+没有语义点。可撤销删除或打开项目。	No points. Undo deletion or open a project.
+居中	Center
+完成图片平移	Finish image pan
+选择两个语义点创建结构线 · Esc 取消	Select two points to create a curve · Esc to cancel
+贴面派生线 · 移动端点或修改 Host Surface · Shift 拖动平移	Surface-derived curve · Edit endpoints or host · Shift-drag to pan
+解析结构线 · 在侧栏调整参数 · Shift 拖动平移	Analytic curve · Edit parameters in sidebar · Shift-drag to pan
+拖线弯曲 · 控制柄精调 · Shift 拖动平移	Drag curve to bend · Refine with handles · Shift-drag to pan
+拖动语义点 · 空白处 / Shift 拖动平移 · 滚轮缩放	Drag points · Drag empty space / Shift-drag to pan · Scroll to zoom
+拖动调整中心线顺序；Alt + 上下方向键也可排序	Drag to reorder centerline points, or use Alt + Up/Down
+逻辑 Ring 共享中线端点 · 随 Ring Offset 移动	Shared centerline endpoint of a logical ring · Follows ring offset
+定位方式：结构线定位	Placement: on curve
+宿主结构线：	Host curve:
+跳转宿主结构线	Select host curve
+在线位置	Position on curve
+请选择 JPG、PNG 或 WebP 图片。	Choose a JPG, PNG or WebP image.
+参考照片请小于 20 MB。	Reference images must be smaller than 20 MB.
+无法读取这张图片，请换用 JPG、PNG 或 WebP。	Cannot read this image. Try JPG, PNG or WebP.
+浏览器无法处理图片。	The browser cannot process this image.
+图片细节过多，请缩小后重新载入。	The image is too large. Resize it and try again.
+参考图设置	Reference image settings
+载入参考照片	Load reference image
+正在载入…	Loading…
+参考图	Reference
+参考照片设置	Reference image settings
+平移图片	Pan image
+解锁参考图	Unlock reference image
+锁定参考图	Lock reference image
+显示参考图	Show reference image
+透明度	Opacity
+图片缩放	Image scale
+水平位置	Horizontal position
+垂直位置	Vertical position
+旋转	Rotation
+替换照片	Replace image
+重置图片位置	Reset image position
+重置参考图位置	Reset reference image position
+移除照片	Remove image
+移除参考照片	Remove reference image
+仅用于描摹，不参与求解。随当前视角和项目保存。	Tracing reference only; excluded from geometry. Saved with this view and project.
+已锁定图片变换。	Image transforms are locked.
+当前视图没有参考图。	No reference image in this view.
+解锁 Loomis 对象	Unlock Loomis object
+锁定 Loomis 对象	Lock Loomis object
+已锁定：禁止修改和删除，仍可添加定位点	Locked: editing and deletion disabled; adding points is allowed
+锁定对象	Lock object
+SECTIONS · 剖面线	SECTIONS
+Loomis 面：已封闭	Loomis surface: capped
+删除封闭面	Delete cap
+复制 Ring	Duplicate ring
++ 添加在线定位点	+ Add on-curve point
+LANDMARKS · 定位点	LANDMARKS
+REGIONS · 球面区域	REGIONS
+Region 名称	Region name
+缺失 Section	Missing section
+锚点基位从最终 Helmet 派生	Anchor base is derived from the final Helmet
+真实解析交点 · 调整宿主改变位置	Exact analytic intersection · Edit hosts to move
+安全帽下缘 · 复用侧环前后交点	Helmet rim · Uses front/back side-ring intersections
+Y 高度相对椭球中心 · 横向固定	Y height relative to ellipsoid center · Lateral position fixed
+中线球面角度	Centerline surface angle
+球面 Horizontal	Surface horizontal
+球面 Vertical	Surface vertical
+无法启动 WebGL，二维编辑仍可使用。	WebGL could not start. 2D editing remains available.
+透视	Perspective
+正交	Orthographic
+· 语义点与结构线	· Points and curves
+切换 3D 投影	Toggle 3D projection
+切换正交	Orthographic
+切换透视	Perspective
+居中视图 ↗	Fit view ↗
+点击选点 / 线 / 面 · 拖动旋转 · 右键平移 · 滚轮缩放	Click to select point / curve / surface · Drag to orbit · Right-drag to pan · Scroll to zoom
+3D 背景图最多六张，请先删除一张。	Up to six 3D backgrounds. Remove one before adding another.
+3D 背景	3D background
+3D 背景图	3D background image
+载入中…	Loading…
+切换背景	Switch background
+删除背景	Delete background
+背景设置	Background settings
+无背景	No background
+3D 背景设置	3D background settings
+背景缩放	Background scale
+背景旋转	Background rotation
+背景水平位置	Background horizontal position
+背景垂直位置	Background vertical position
+背景不透明度	Background opacity
+重置背景变换	Reset background transform
+位置相对于窗口尺寸；仅调整背景，不移动 3D 相机。	Position is relative to the viewport. Only the background moves, not the 3D camera.
+请选择一张背景图。	Select a background image.
+面凸度 Fullness	Surface fullness
+凸度归零	Reset fullness
+曲面 Patch	Surface patches
+显示 Patch	Show patches
+退出绘制面（Esc）	Exit surface tool (Esc)
+绘制面	Create surface
+边界选择模式	Boundary selection mode
+环形 Patch	Loop patch
+选择第二个定位点（Esc 取消区间）	Select second anchor (Esc to cancel span)
+选择第一个定位点（Esc 取消宿主）	Select first anchor (Esc to clear host)
+选择结构线	Select curve
+完整闭环	Whole closed loop
+虚线为相同弧长 s 的对应位置。	Dashed lines connect equal normalized arc-length positions.
+翻转第二条环方向	Reverse second loop
+创建环形 Patch	Create loop patch
+两边面	Lens surface
+环形面	Loop surface
+三边面	Triangular surface
+四边面	Quad surface
+Patch 边界	Patch boundary
+曲面全局设置	Global surface settings
+Patch 显示精度	Patch display quality
+已隐藏 2D/3D 曲面，Contour 由窗口开关独立控制。	2D/3D surfaces are hidden. Contour visibility is controlled separately.
+2D Patch 不透明度	2D patch opacity
+双击输入数值	Double-click to enter a value
+数值	Value
+请输入有效数字	Enter a valid number
+Enter 确认，Esc 取消	Enter to confirm, Esc to cancel
+条配对边界	paired boundaries
+求解中 · 边界保持 Source	Solving · Boundaries stay on source
+连续性诊断	Continuity diagnostics
+数值 G1-like；端点允许衰减	Numerical G1-like continuity; endpoint fading allowed
+中段最大法向夹角	Maximum interior normal angle
+· 右	· Right
+· 左	· Left
+此区间仅有一个曲面，没有跨面 Smooth 可关闭。	This span has one surface. There is no cross-surface smoothing to disable.
+配对：	Pair:
+⚠ 配对暂时失效：	⚠ Pair temporarily invalid:
+未配对：	Unpaired:
+曲面 A	Surface A
+配对曲面 A	Pair surface A
+曲面 B	Surface B
+配对曲面 B	Pair surface B
+＋ 添加视角	+ Add view
+添加正交视角	Add orthographic view
+视角名称	View name
+可留空，按角度命名	Optional; otherwise named by angles
+水平偏转角	Yaw
+俯仰角	Pitch
+水平：负为左、正为右。俯仰：正为俯视、负为仰视。双击数值可直接输入。	Yaw: negative left, positive right. Pitch: positive down, negative up. Double-click values to type.
+添加并切换	Add and switch
+轮廓源未准备	Contour source is not ready
+轮廓计算失败	Contour computation failed
+透视投影	Perspective projection
+正交投影	Orthographic projection
+· 正交投影	· Orthographic projection
+切换 Contour 投影	Toggle contour projection
+跟随 3D 朝向	Following 3D orientation
+保持 3D 最后朝向	Keeping last 3D orientation
+· 更新中	· Updating
+只读外轮廓	Read-only contour
+无法生成轮廓：	Cannot generate contour:
+当前方向没有可见曲面覆盖	No visible surface in this direction
+尚无可求值曲面，请先绘制 Patch。	No surface to evaluate. Create a Patch first.
+个无效 Patch 未参与轮廓	invalid patches excluded from contour
+只读 · 可见几何轮廓 · 固定精度	Read-only · Visible geometric contours · Fixed quality
+主窗口	Main panels
+显示	Show
+窗口	panel
+窗口比例	Panel proportions
+隐藏	Hide
+收起	Collapse
+2D 视角	2D Viewport
+3D · 空间检查	3D Inspection
+项目名称	Project name
+撤销 Ctrl Z	Undo Ctrl Z
+撤销	Undo
+重做 Ctrl Shift Z	Redo Ctrl Shift Z
+重做	Redo
+新建	New
+打开	Open
+保存 JSON	Save JSON
+统一开关视图锁；每对镜像点仅约束 driver，follower 通过镜像跟随	Toggle view locks for all points; each pair constrains only its driver
+锁定此视图全部点	Lock all points in this view
+统一视图锁	Global view lock
+全部点的视图锁	View locks for all points
+显式视图锁：	Explicit view locks:
+On Surface Curve · 由 Host Patch Final Surface 派生	On Surface Curve · Derived from the Host Patch final surface
+解析 Section：在侧栏调整平面；视图中可选择	Analytic section: edit its plane in the sidebar; select in viewport
+曲线编辑：固定平面内弯曲；视图锁仅约束语义点	Curve editing: bend in its plane; view locks constrain points only
+系统派生定位点：调整宿主参数；不可独立拖离	System-derived point: edit its host; cannot detach by dragging
+Loomis 面定位：在 2D 贴面拖动，或在行内调整；不受视图锁约束	Loomis surface point: drag on surface in 2D or edit inline; ignores view locks
+结构线定位：2D 沿线拖动或使用在线位置调整；不受视图锁约束	On-curve point: drag along curve in 2D or edit its position; ignores view locks
+方向 X	Direction X
+未选中语义点	No point selected
+解析结构线 · 侧栏调整参数 · 可添加在线定位点	Analytic curve · Edit in sidebar · Supports on-curve points
+拖曲线弯曲 · 两个控制柄精调 · 平面绕端点连线旋转	Drag curve to bend · Refine two handles · Rotate plane around the chord
+空项目 · 撤销或打开项目恢复	Empty project · Undo or open a project to restore
+系统定位点 · 由宿主解析派生	System point · Analytically derived from host
+Loomis Surface · 2D 贴面拖动	Loomis surface · Drag on surface in 2D
+结构线定位 · 2D 沿线拖动	On-curve point · Drag along curve in 2D
+已固定 · 解除视图锁以继续	Fixed · Release view locks to continue
+仅剩视线方向移动 · 请换视图	Only depth movement remains · Switch views
+当前视图：沿虚线移动	Current view: move along the dashed line
+当前视图：平面内自由移动	Current view: move freely in the plane
+点 ·	points ·
+线 ·	curves ·
+未选择对象	No object selected
+固定端点 · 平面内形状	Fixed endpoints · Planar shape
+左右镜像 · 一套独立形状	Mirrored pair · One source shape
+正中矢状面曲线	Sagittal-plane curve
+结构线定位 · 在线位置共享	On-curve point · Shared normalized position
+正中矢状面 x = 0	Sagittal plane x = 0
+无语义点	No points
+浏览器各自保存项目；要在另一浏览器使用同一状态，请保存 JSON 后在那里打开。画布布局和缩放不影响此状态码。	Each browser stores its own project. Transfer using Save JSON and Open. Canvas layout and zoom do not affect this state code.
+本浏览器存档 · 模型状态	Browser project · Model state
+关闭提示	Dismiss message
+迁移已完成，但本机存储已满，请下载 JSON 保存。	Migration completed, but local storage is full. Download JSON to save.
+已保留旧参考图，初始化语义点；旧曲面自动保存仍保留在原存储中。	Reference image retained and points initialized. The old surface autosave is preserved.
+自动保存无法读取，已打开新语义点项目；原存储未删除。	Cannot read autosave. Opened a new project; original storage is preserved.
+本机存储已满，请下载 JSON 保存。	Local storage is full. Download JSON to save.
+该操作会修改或删除已锁定的 Loomis 对象，请先解锁。	This would modify or delete locked Loomis objects. Unlock them first.
+该球面区域已存在	This surface region already exists
+已建立 Loomis 球面区域	Loomis region created
+调整 Loomis 尺寸前请先 Unlock 视图锁。	Release view locks before resizing Loomis.
+已添加结构线定位点，使用在线位置调整。	On-curve point added. Adjust its position on the curve.
+选择 2 / 3 / 4 条边形成闭环；整线或区间均可。	Select 2, 3 or 4 boundaries forming a closed loop; whole curves or spans.
+已生成两边面，可继续绘制。	Lens surface created. Continue drawing.
+已创建环形 Patch，可继续选择两条闭合线。	Loop patch created. Select another pair of closed curves.
+请选择第二个定位点。	Select the second anchor.
+已选择两条闭环，请创建或先取消一条。	Two loops selected. Create the surface or deselect a loop.
+检查对应连线，可翻转第二条环方向，然后创建。	Check correspondence lines, reverse the second loop if needed, then create.
+请选择第二条闭合线。	Select the second closed curve.
+选择宿主上的两个合法定位点。	Select two valid anchors on the host.
+闭合曲线请切换到区间模式，选择两个定位点。	For a closed curve, switch to span mode and select two anchors.
+最多四条边界，请先取消一条。	At most four boundaries. Deselect one first.
+该边界已选中。	This boundary is already selected.
+已创建 Patch，可继续选择下一组边。	Patch created. Select the next boundaries.
+两条边尚未围合，可继续选择第三条。	Two boundaries do not close. Select a third.
+未组成	Not formed
+三条尚未闭合，可继续选择第四条。	Three boundaries do not close. Select a fourth.
+请选择起点 A，再选择终点 B。	Select start A, then end B.
+已选起点 A，请选择终点 B。	Start A selected. Select end B.
+已创建直线。拖动曲线弯曲，或调整两个控制柄。	Curve created. Drag it to bend, or adjust its two handles.
+系统 Default Ring 不可删除，可复制为用户 Ring。	Default system rings cannot be deleted. Duplicate a user ring instead.
+该操作会删除已锁定的 Loomis 对象，请先解锁。	This would delete locked Loomis objects. Unlock them first.
+已启用视图锁；成对点仅约束 driver	View lock enabled; mirrored pairs constrain only the driver
+已解除该视图锁	View lock released
+已载入语义点项目	Project loaded
+已复制语义点。	Point duplicated.
+系统定位点不可删除。	System points cannot be deleted.
+已删除，可撤销恢复。	Deleted. Undo to restore.
+所有点已删除，可通过撤销或打开项目恢复。	All points deleted. Undo or open a project to restore.
+＋ 点 ▾	＋ Point ▾
+曲线 ▾	Curve ▾
+曲面 ▾	Surface ▾
+普通点 · 中线	Regular Point · Centerline	Regular Point · 中线
+普通点 · 对称	Regular Point · Symmetric Pair	Regular Point · 对称
+中线剖面	Centerline Section	中线 Section
+自由曲线	Free Curve
+卢米斯剖面	Loomis Section
+贴面曲线	On Surface Curve
+曲线定位点	On Curve Point
+辅助面定位点	Construction Surface Point
+边界曲面	Boundary Surface
+环形曲面	Loop Surface
+剖面封闭面	Section Cap
+卢米斯区域	Loomis Region
+请先选择曲线	Select a Curve first
+请先选择剖面	Select a Section first
+需要头部框架	Requires HeadFrame
+步骤：选择宿主曲面	Step: Select Host Patch
+Step: Preview → 确认创建	Step: Preview → Confirm
+Step: 2D 点击 boundary endpoint A	Step: Click boundary endpoint A in 2D
+Step: 2D 点击 boundary endpoint B	Step: Click boundary endpoint B in 2D
+Step: 选择终点 B	Step: Select end B
+Step: 选择起点 A	Step: Select start A
+选择第二个定位点	Select second anchor
+选择第一个定位点	Select first anchor
+Step: 选择边界曲线	Step: Select boundary curves
+Step: 2D 点击候选区域	Step: Click a candidate region in 2D
+Step: 勾选参与区域的 Sections	Step: Select region sections
+Step: 2D 点击球面 / Cap → 预览 → 确认	Step: Click ellipsoid / cap in 2D → Preview → Confirm
+起点：	Start:
+分支：	Side:
+前侧	Front
+后侧	Back
+切换前侧 / 后侧	Switch Front / Back
+撤销一步	Undo Step
+取消 Esc	Cancel Esc
+确认创建 On Surface Curve	Confirm On Surface Curve
+路径：参数域直线 · 绕行数	Path: Parameter-domain Direct · canonical winding
+· 修改端点或 Host Surface，曲线本身不可塑形	· Edit endpoints or Host Surface; the curve has no shape controls
+身份	Identity
+来源	Source
+轮廓	Contour
+轮廓绘制	Contour Role
+无绘制	None
+开放边绘制	Open Edge
+关联	Relations
+操作	Operations
+重命名	Rename
+添加曲线定位点	Add On-Curve Point
+复制	Duplicate
+删除	Delete
+辅助构造	Construction
+头部框架 · 系统	HeadFrame · System
+宽度	Width
+高度	Height
+深度	Depth
+顶点高度	Apex Height
+宿主曲面	Host Surface
+宿主曲线	Host Curve
+宿主	Host
+框架	Frame
+镜像	Mirror
+起点	Start
+终点	End
+被引用于	Used by
+线上点	On curve
+边界	Boundary
+边界定位点	Boundary anchor
+曲线	Curves
+点	Points
+曲面	Surfaces
+自由	FREE
+曲线定位	ON_CURVE
+卢米斯面定位	ON_LOOMIS_SURFACE
+剖面定位	ON_SECTION_CAP
+框架相对	FRAME_RELATIVE
+世界坐标	WORLD
+系统骨架	LOOMIS_SCAFFOLD
+贴面曲线	ON_PATCH
+卢米斯剖面	LOOMIS_SECTION
+安全帽下缘	HELMET_RIM
+曲面片	PATCH
+封闭面	CAP
+球面区域	REGION
+安全帽	HELMET
+头部框架	HEAD_FRAME
+剖面倾角 X	Section Tilt X
+剖面倾角 Y	Section Tilt Y
+剖面偏移	Section Offset
+环偏移	Ring Offset
+下缘弯曲	Rim Sag
+侧环位置	Side Ring Position
+侧壳圆润度	Side Shell Roundness
+平面 U	Cap U
+平面 V	Cap V
+默认安全帽	Default Helmet
+高级	Advanced
+来源剖面	Source Sections
+宿主环 →	Host Ring →
+宿主：默认安全帽 →	Host: Default Helmet →
+宿主：	Host:
+曲面连续性 ·	Surface Continuity ·
+曲面连续性	Surface Continuity
+个曲面 ·	surfaces ·
+清除配对	Clear Pair
+恢复自动	Restore Auto
+折痕	Crease
+自然	Natural
+自动	Auto
+手动配对	Manual Pair
+设置配对	Set Pair
+修改配对	Change Pair
+解析曲线	Analytic Curve
+几何工具	Geometry Tools
+正面	Front view
+侧面	Side view
+纯俯视	Top view
+仰视	Bottom view
+极低	Very low
+低	Low
+中	Medium
+高	High
+极高	Very high
+固定	Fixed
+自由移动	Free movement
+平面内移动	Planar movement
+线性移动	Linear movement
+沿约束方向	Along constraint
+系统 ·	System ·
+
+左	Left
+右	Right
+俯视	Top view
+副本	Copy
+平滑	Smooth
+请选择这条边界上的两个不同曲面	Select two different surfaces on this boundary
+中轴对称边界只能选择镜像不变的一组曲面；当前选择需要两组关系。	A self-symmetric boundary requires a mirror-invariant pair. This selection needs two relationships.
+Surface Continuity 数据无效	Invalid surface continuity data
+Surface Continuity 关系无效	Invalid surface continuity relationship
+Smooth Worker 失败	Smoothing worker failed
+切线或跨边界方向退化	Degenerate tangent or cross-boundary direction
+边界未附着到曲面	Boundary is not attached to the surface
+共享区间未包含于曲面边界	Shared span is not contained in the surface boundary
+两侧方向无法稳定区分，未强制翻转曲面	Cannot reliably distinguish the two sides; surface orientation was preserved
+Section 不使用 Bézier shape	Sections do not use Bézier shape controls
+闭合 Section 没有端点	Closed sections have no endpoints
+结构线名称需为 1–80 个字符。	Curve names must contain 1–80 characters.
+请选择两个不同的语义点。	Select two different points.
+结构线仅支持中心线点与左右对称点。	Curves support centerline points and symmetric pairs only.
+跨中线结构请增加 CENTERLINE 点，再分成两条曲线。	For a cross-centerline structure, add a centerline point and create two curves.
+两个点位置重合，请先分开端点再创建曲线。	The endpoints coincide. Separate them before creating a curve.
+ON_PATCH Host Patch 不存在	The on-surface curve's host Patch is missing
+请选择 Host Patch boundary 上两个不同的 Point	Select two different points on the Host Patch boundary
+Endpoint 必须位于 Host Patch boundary 的合法区间，且不能被 Offset 移离边界	Endpoints must be on a valid Host Patch boundary span, with no offset away from it
+端点需在同一侧或中线上	Endpoints must be on the same side or on the centerline
+ON_PATCH path winding 无效	Invalid on-surface path winding
+ON_PATCH canonical 无效	Invalid canonical on-surface curve
+ON_PATCH mirror Host 不匹配	On-surface mirror host mismatch
+结构线数据无效：请检查端点、平面或镜像关系。	Invalid curve data: check endpoints, plane and mirror relationships.
+Section 平面必须满足 |Offset| < 1；相切或无交线不能创建。	Section planes require |Offset| < 1; tangential or non-intersecting planes are invalid.
+Section 平面方向或起点参考无效。	Invalid section plane direction or start reference.
+Section 起点参考必须位于平面内。	The section start reference must lie in its plane.
+截点切线退化。	Degenerate tangent at the split point.
+曲线采样未达到误差界限。	Curve sampling did not reach the error tolerance.
+宿主结构线长度退化，无法定位。	The host curve has degenerate length; position cannot be evaluated.
+系统 Default 对象不可删除；请复制后编辑用户对象。	Default system objects cannot be deleted; duplicate them to edit a user object.
+缺少 Loomis HeadFrame	Missing Loomis HeadFrame
+解析 Curve 没有 Bézier 控制点	Derived curves do not have Bézier control points
+封闭面宿主 Section 不存在	Cap host section is missing
+封闭面宿主无效	Invalid cap host
+请选择 Loomis Section	Select a Loomis section
+请选择封闭面定位点	Select a cap point
+中线点请点击中线 Section 封闭面；侧面请使用成对点	Use a centerline section cap for centerline points; use symmetric pairs on side caps
+定位点超出封闭面	Point is outside the cap
+封闭面数据无效	Invalid cap data
+封闭面数据或宿主无效	Invalid cap data or host
+封闭面镜像对不完整	Incomplete cap mirror pair
+请选择 Ring	Select a ring
+缺少 canonical Ring	Missing canonical ring
+3D 背景图数据无效	Invalid 3D background data
+3D 背景图变换无效	Invalid 3D background transform
+系统交点宿主丢失	System intersection host is missing
+Loomis Offset 无效或违反中线约束	Invalid Loomis offset or centerline constraint violation
+Loomis Offset 镜像不一致	Loomis offset mirror mismatch
+请选择 Loomis 定位点	Select a Loomis point
+球面区域只能使用 Loomis Section	Surface regions only support Loomis sections
+Section 缺少源平面	Section source plane is missing
+所选球面区域已退化	The selected surface region is degenerate
+Loomis 区域数据无效	Invalid Loomis region data
+Loomis 区域边界无效	Invalid Loomis region boundary
+缺少 Default Scaffold	Missing default scaffold
+缺少 HeadFrame	Missing HeadFrame
+Rim Sag 参数无效	Invalid rim sag
+Default Scaffold 参数无效	Invalid default scaffold parameters
+请选择 Loomis 面上点	Select a Loomis surface point
+名称请不超过 80 个字符。	Names must not exceed 80 characters.
+请先选择要复制的点。	Select a point to duplicate.
+请先选择要重命名的点。	Select a point to rename.
+结构线定位点只能调整在线位置。	On-curve points can only change their position along the curve.
+此点由宿主或系统交点定位，不能沿空间轴移动。	This point is derived from a host or system intersection and cannot move along spatial axes.
+该轴受中线或 View Lock 约束，请先 Unlock。	This axis is constrained by the centerline or a view lock. Unlock it first.
+文件不是有效的语义点项目；旧曲面项目请保留备份。	This is not a valid point project. Keep backups of legacy surface projects.
+封闭面定位点无效	Invalid cap point
+Loomis 面上点定位无效	Invalid Loomis surface point placement
+定位点宿主不存在。	Point host is missing.
+结构线定位点不能保存视图锁。	On-curve points cannot store view locks.
+定位点宿主或在线位置无效。	Invalid point host or curve position.
+逻辑 Ring endpoint 无效	Invalid logical ring endpoint
+中心线定位点的宿主必须位于中线平面。	A centerline point's host must lie in the symmetry plane.
+定位点必须属于中线或左右对称结构。	Points must belong to the centerline or a symmetric pair.
+定位点镜像宿主关系无效。	Invalid mirrored point host relationship.
+定位点类型与宿主左右侧不匹配。	Point side does not match its host.
+中心线点偏离中线平面。	Centerline point is outside the symmetry plane.
+镜像点定位方式不一致。	Mirrored point placements do not match.
+定位点必须由唯一一侧保存在线位置。	Only the canonical point may store the curve position.
+封闭面定位点镜像宿主关系无效	Invalid mirrored cap point host relationship
+镜像点坐标不一致。	Mirrored point coordinates do not match.
+请先选择结构线。	Select a curve first.
+在线位置必须是有限数值。	Curve position must be a finite number.
+请选择结构线定位点。	Select an on-curve point.
+水平角范围 -180～180°，俯仰角范围 -90～90°	Yaw must be -180 to 180°, pitch -90 to 90°
+视角名称最多 40 个字符	View names must not exceed 40 characters
+边界结构线不存在	Boundary curve is missing
+闭合曲线请使用区间模式选择两个定位点	For a closed curve, use span mode and select two anchors
+边界端点不属于宿主结构线	Boundary endpoint does not belong to the host curve
+区间镜像定位点无效	Invalid mirrored span anchor
+完整闭环不保存端点 UUID	Whole closed loops do not store endpoint UUIDs
+环形 Patch 需要完整闭合曲线	Loop patches require whole closed curves
+区间遍历方向无效	Invalid span traversal direction
+边界必须使用两个不同的端点 UUID	A boundary requires two different endpoint UUIDs
+宿主结构线不存在	Host curve is missing
+边界缺少镜像端点	Boundary mirror endpoint is missing
+边界缺少镜像宿主	Boundary mirror host is missing
+区间边界退化：两个定位点重合	Degenerate span boundary: anchors coincide
+区间边界退化：闭合宿主上的端点重合	Degenerate span boundary: endpoints coincide on the closed host
+ON_PATCH boundary occurrence 不存在	On-surface boundary occurrence is missing
+Point 不在该 Patch boundary 区间内	Point is outside this Patch boundary span
+Point 的 spatial Offset 使它离开 Host Patch boundary；请先归零 Offset	Spatial offset moves the point off the Host Patch boundary; reset the offset first
+Fullness：边界长度退化	Fullness: degenerate boundary length
+Fullness：BasePatch 法向退化	Fullness: degenerate base-patch normal
+Fullness：无法根据 Head Origin 稳定确定外侧方向	Fullness: cannot determine a stable outward direction from Head Origin
+曲面求值产生非有限数值	Surface evaluation produced a non-finite value
+曲面面积接近零	Surface area is nearly zero
+局部法向反转，可能存在折叠（仍显示）	Local normal reversal; possible fold (still displayed)
+完整闭环请使用环形 Patch	Use a loop patch for whole closed loops
+请选择 2、3 或 4 条不同的边界	Select 2, 3 or 4 different boundaries
+所选边未组成连续闭环	Selected boundaries do not form a continuous closed loop
+该闭环已有 Patch	A Patch already uses this loop
+镜像闭环已有 Patch	A Patch already uses the mirrored loop
+Patch 数据无效	Invalid Patch data
+Patch 边界无效	Invalid Patch boundary
+Patch 类型或重复边界无效	Invalid Patch type or duplicate boundaries
+Patch 名称无效	Invalid Patch name
+Fullness 数据无效	Invalid fullness data
+Patch 镜像关系无效	Invalid Patch mirror relationship
+Patch 镜像边界不匹配	Patch mirror boundaries do not match
+Patch canonical 无效	Invalid canonical Patch
+曲面名称需为 1–80 个字符。	Surface names must contain 1–80 characters.
+请选择两条不同的完整闭合曲线	Select two different whole closed curves
+两闭环之间已有 Patch	A Patch already connects these loops
+项目文件过大（上限 20 MB）。	Project file exceeds the 20 MB limit.
+项目格式无效或版本不兼容。请载入 Contour 导出的 JSON。	Invalid project format or incompatible version. Load JSON exported by Contour.
+曲面包含无效坐标，无法导出。	The surface contains invalid coordinates and cannot be exported.
+Legacy Smooth 不支持环形面；请使用 Surface Continuity	Legacy Smooth does not support loop patches; use Surface Continuity
+存在不同端点 UUID 的重叠区间；不焊接、不跨区间 Smooth	Overlapping spans have different endpoint UUIDs; no welding or smoothing across spans
+Smooth source sample 非有限值	Non-finite smoothing source sample
+共享边 source 位置不一致	Shared-boundary source positions do not match
+Smooth mirror sample 映射缺失	Missing smoothing mirror sample mapping
+Smooth source 尺度退化	Degenerate smoothing source scale
+Surface Smooth 设置无效	Invalid Surface Smooth settings
+Smooth Influence 无效	Invalid smoothing influence
+Smooth Influence 必须保存在 canonical Curve 上	Smoothing influence must be stored on the canonical curve
+Smooth 系统对角项非正，无法确认 SPD	Non-positive smoothing diagonal; cannot confirm SPD
+Smooth 系统出现非正定搜索方向	Non-positive search direction in the smoothing system
+Smooth PCG 出现非有限值	Non-finite value in smoothing PCG
+个退化 seam sample 已跳过	degenerate seam samples skipped
+；该 seam 无法可靠 Smooth	; this seam cannot be smoothed reliably
+求解未收敛，已保留上次有效曲面。	Solver did not converge. The last valid surface was retained.
+边界邻面	Boundary neighbor
+系统	System
+· 系统	· System
+平面贝塞尔	Planar Bézier
+卢米斯框架 + 剖面平面	Loomis Frame + Section Plane
+头部框架	HeadFrame
+V0.6.2 · 贴面曲线	V0.6.2 · On Surface Curve
+面凸度	Surface fullness	面凸度 Fullness
+步骤：预览 → 确认创建	Step: Preview → Confirm	Step: Preview → 确认创建
+步骤：在 2D 点击边界端点 A	Step: Click boundary endpoint A in 2D	Step: 2D 点击 boundary endpoint A
+步骤：在 2D 点击边界端点 B	Step: Click boundary endpoint B in 2D	Step: 2D 点击 boundary endpoint B
+步骤：选择终点 B	Step: Select end B	Step: 选择终点 B
+步骤：选择起点 A	Step: Select start A	Step: 选择起点 A
+步骤：选择边界曲线	Step: Select boundary curves	Step: 选择边界曲线
+步骤：在 2D 点击候选区域	Step: Click a candidate region in 2D	Step: 2D 点击候选区域
+步骤：勾选来源剖面	Step: Select region sections	Step: 勾选参与区域的 Sections
+步骤：在 2D 点击球面 / 封闭面 → 预览 → 确认	Step: Click ellipsoid / cap in 2D → Preview → Confirm	Step: 2D 点击球面 / Cap → 预览 → 确认
+确认创建贴面曲线	Confirm On Surface Curve	确认创建 On Surface Curve
+来源曲面	Host Surface
+边界派生	Boundary-derived
+安全帽下缘	Helmet Rim
+行	 rows
+点 ·	 points · 
+线 ·	 curves · 
+面	 surfaces
+条边	 edges
+条配对边界	 paired boundaries
+平滑连接	Smooth Joins
+平滑半径	Smooth Radius
+＋添加平滑连接	+ Add Smooth Join
+创建平滑连接	Create Smooth Join
+移除平滑连接	Remove Smooth Join
+曲线 A	Curve A
+曲线 B	Curve B
+配对曲线	Partner
+端点已被占用	Endpoint already joined
+此曲线端点已属于其他平滑连接	This curve endpoint already belongs to a Smooth Join
+两条向外切向几乎同向，无法平滑连接此尖返折	Outward tangents point in the same direction; this cusp cannot be smoothed
+半径跨过返折，请缩小半径或调整源曲线切向	Smooth Radius crosses a fold; reduce the radius or edit source tangents
+源曲线过短，无法平滑连接	Smooth Join source curve is too short
+端点切向退化，暂时恢复源曲线	Smooth Join endpoint tangent is degenerate
+半径处源曲线切向退化，暂时恢复源曲线	Smooth Join source tangent at the radius is degenerate
+局部连接弦长退化，暂时恢复源曲线	Smooth Join blend chord is degenerate
+局部连接会返折，请缩小半径	Smooth blend would fold back; reduce the radius
+V0.6.3 · 局部曲线平滑连接	V0.6.3 · Local Curve Smooth Join
+起点	START
+终点	END
+
+隐藏	Hide
+解除隐藏	Unhide
+已隐藏	Hidden
+
+自动平滑未应用：曲面形状保护	Auto Smooth not applied: shape protection
+法线变化过大	Normal change too large
+相对位移过大	Relative displacement too large
+局部曲面接近退化	Local surface conditioning worsened
+候选求解失败	Candidate solve failed
+候选曲面无效	Invalid candidate geometry
+
+显示在 Contour 中	Show in Contour
+进入录制间	Enter Recording Room
+返回建模间	Back to Modeling
+录制曲线	Recorded Curves
+新建录制曲线	New Recorded Curve
+录制曲线名称	Recorded curve name
+当前正式 Key	Exact View Key
+有效插值	Valid interpolation
+未覆盖 · 冻结参考	Outside coverage · frozen reference
+整体视角镜像	Whole-view symmetry
+复制当前帧	Duplicate Current Frame
+删除曲线	Delete Curve
+视角 Keys	View Keys
+删除 Key	Delete Key
+视角导航	View Navigation
+编辑曲线	Edit Curve
+镜像编辑	Mirror Edit
+端点合并	Endpoint Merge
+请选择目标曲线	Choose target curve
+请选择镜像源	Choose mirror source
+请选择镜像源点或曲线	Choose a source point or curve to mirror
+请选择目标语义点	Choose target recorded point
+请选择另一个未锁定语义点	Choose a different unlocked recorded point
+镜像源和目标需同为语义点或同为曲线	Mirror source and target must both be points or both be curves
+请选择要移动的端点	Choose moving endpoint
+请选择固定端点	Choose fixed endpoint
+冻结形状不能作为精确基准	Frozen shapes cannot be used as a precise source
+请选择另一条未锁定曲线	Choose a different unlocked curve
+拖动旋转 · 右键平移 · 滚轮缩放	Drag to orbit · right drag to pan · wheel to zoom
+拖动端点或控制柄 · 首次修改自动建 Key	Drag endpoints or handles · first edit auto-creates a Key
+最终录制预览	Final Recorded Preview
+视角地图 · 点击导航，不创建 Key	View Map · click to navigate, without creating a Key
+红线仅为未覆盖视角的编辑参考	Red curves are editing references outside coverage
+录制 Yaw	Recording Yaw
+录制 Pitch	Recording Pitch
+
+
+
+绑定端点	Bind Endpoint
+请选择跟随端点	Select follower endpoint
+请选择主端点	Select master endpoint
+已绑定到	Bound to
+无法操作：端点已绑定、视角未覆盖或关系形成循环	Cannot apply: endpoint already bound, view outside coverage, or cyclic relation
+
+拖动任一侧共同编辑，两侧同时建 Key	Drag either side to edit together and key both curves
+连接点	Junction
+恢复位置绑定	Use Position Bind
+启用圆滑连接	Enable Smooth Junction
+切线约束 · 保持 G1	Tangent constrained · G1 continuity
+圆滑范围	Smooth Radius Scale
+切线长度 A	Tension A
+切线长度 B	Tension B
+圆滑关键帧	Smooth Keys
+删除圆滑关键帧	Delete Smooth Key
+圆滑裁剪范围重叠	Smooth ranges overlap
+圆滑几何退化	Smooth geometry is degenerate
+圆滑切向退化	Smooth tangent is degenerate
+无法启用：端点已参与圆滑连接或当前视角未共同覆盖	Cannot enable: endpoint already smoothed or view outside common coverage
+点击选择 · Shift 点击连续范围 · Ctrl/⌘ 点击多选	Click to select · Shift-click range · Ctrl/⌘-click multiple
+删除所选帧	Delete Selected Keys
+曲线至少保留一个 Key	Keep at least one Key per curve
+当前视角：绑定	Current view: Bound
+当前视角：解绑	Current view: Unbound
+在此视角解绑	Unbind at This View
+在此视角绑定	Bind at This View
+解绑保留源曲线位置，圆滑过渡消失；状态以 0.5 为界切换。	Unbind preserves source positions and removes the smooth transition; state switches at 0.5.
+绑定状态帧	Binding State Keys
+绑定	Bound
+解绑	Unbound
+在当前视角隐藏曲线	Hide Curve at This View
+在当前帧隐藏/删除	Hide/Delete at This View
+在当前帧恢复显示	Restore at This View
+当前帧已隐藏	Hidden at this view
+仅记录视角显示状态，保留对象及全部关键帧。	Only view visibility changes; the element and all keys are kept.
+对象已全局隐藏，可在列表中开启显示。	This element is globally hidden. Enable visibility in the list to show it.
+在当前视角恢复曲线	Restore Curve at This View
+只记录视角显示状态，保留曲线及全部形状 Key。	Only view visibility changes; the curve and all shape keys are preserved.
+永久删除	Permanently Delete
+删除整条曲线及所有关键帧	Delete Entire Curve and All Keys
+HeadSet / 头壳	HeadSet
+Eyes / 眼睛	Eyes
+头壳保留为参考，仅 Default Scaffold 可选。	HeadSet remains visible as reference; only its Default Scaffold is selectable.
+HeadSet 参考对象 · 切回头壳模块编辑	HeadSet reference · Switch to HeadSet to edit
+其它模块的对象仅供参考，不能编辑。	Objects in other modules are reference-only and cannot be edited.
+默认眼部辅助骨架	Default Eye Scaffold	Default Eye Scaffold
+创建默认眼部辅助骨架	Create Default Eye Scaffold
+左眼	Left Eye	Left Eye
+右眼	Right Eye	Right Eye
+眼部中心 X	Eye Center X
+眼部中心 Y	Eye Center Y
+眼部中心 Z	Eye Center Z
+柱体横向半径	Cylinder Radius X
+柱体前后半径	Cylinder Radius Z
+柱体高度	Cylinder Height
+眼球半径 X	Eyeball Radius X
+眼球半径 Y	Eyeball Radius Y
+眼球半径 Z	Eyeball Radius Z
+尺寸与位置以头壳横向半径 R 为单位 · 头部局部坐标	Position and dimensions in head width radius R · Head-local coordinates
+
+眼部中心离中线距离	Eye Center Distance from Midline
+左右严格对称联动 · 尺寸与位置以 R 为单位	Linked mirror symmetry · dimensions and position in R
+
+整体位置 X（离中线）	Group Position X (from Midline)
+整体位置 Y	Group Position Y
+整体位置 Z	Group Position Z
+整体移动 · 柱体与眼球	Move Together · Cylinder and Eyeball
+柱体尺寸	Cylinder Size
+眼球尺寸	Eyeball Size
+
+智能模块	Smart Modules
+视线眼球	Gaze Eyeball
+添加 Gaze Eyeball	Add Gaze Eyeball
+左视线眼球	Left Gaze Eyeball
+右视线眼球	Right Gaze Eyeball
+虹膜比例	Iris Scale
+虹膜凹陷深度	Iris Recess Depth
+左右联动 · 跟随眼球局部坐标	Linked symmetry · attached to eyeball local frame
+凹陷深度以眼球前后半径为单位；虹膜边界始终贴合眼球。	Depth uses eyeball depth radius; the rim stays on the ellipsoid.
+
+眼球 X 偏移（负值向内）	Eyeball X Offset (negative inward)
+眼球位置与尺寸	Eyeball Position and Size
+
+视线追踪	Gaze Tracking
+目标：当前视角	Target: Current View
+
+俯仰	Pitch
+头部局部坐标；俯仰正值为俯视，负值为仰视	Head-local angles; positive pitch looks down, negative looks up
+
+设置俯仰角	Set Pitch
+俯仰角数值	Pitch Value
+
+编辑视角	Edit View
+删除视角	Delete View
+保存修改	Save Changes
+
+至少保留一个视角	Keep at least one view
+
+二次元透视	Stylized Perspective
+X 方向透视强度	X Perspective Strength
+Y 方向透视强度	Y Perspective Strength
+
+补齐圆柱前半周曲面	Add Missing Front Cylinder Patches
+Step: 2D 点击眼柱曲面 → 预览 → 确认	Step: Click eye cylinder surface in 2D → Preview → Confirm
+请点击眼部圆柱前面的曲面	Click the front surface of an eye cylinder
+眼柱前面	Eye Cylinder Front Surface
+眼柱面定位点	Eye Cylinder Surface Point
+曲面 U	Surface U
+曲面 V	Surface V
+Step: 2D 点击面上或边界端点 A	Step: Click surface or boundary endpoint A in 2D
+Step: 2D 点击面上或边界端点 B	Step: Click surface or boundary endpoint B in 2D
+该点未附着于所选面，也不在其合法边界上	This point is neither hosted on the selected surface nor on its boundary
+Path: Surface Bézier · canonical winding	Path: Surface Bézier · canonical winding
+· 拖动两个贴面控制柄调整弯曲；曲线始终附着宿主面	· Drag the two surface handles to bend the curve; it remains on its host surface
+
+眼裂宽度	Eye Width
+眼裂高度	Eye Height
+眼裂倾斜	Eye Tilt
+眼裂 / 眼睑	Eye Opening / Lids
+拖动眼角与控制点调整三维眼睑；不随视线旋转。	Drag corners and controls to shape the 3D lids; gaze does not rotate them.
+转换为 EyeCoord（删除圆柱及依赖）	Convert to EyeCoord (remove cylinders and dependents)
+CONTROL_POINTS	Control-point Bézier
+EYE_LOCAL	EyeCoord Local Point
+眼睑 Bézier · 拖动眼角和控制柄 · Shift 拖动平移	Lid Bézier · Drag corners and handles · Shift-drag to pan
+
+模型坐标：X 左右 / Y 上下 / Z 前后	Model axes: X horizontal / Y vertical / Z depth
+眼球 · 独立编辑	Eyeball · Independent
+眼裂 / 眼睑 · 独立编辑	Eye opening / lids · Independent
+眼球 X（左右）	Eyeball X (horizontal)
+眼球绕 X 旋转	Eyeball rotation about X
+眼球 Y（上下）	Eyeball Y (vertical)
+眼球绕 Y 旋转	Eyeball rotation about Y
+眼球 Z（前后）	Eyeball Z (depth)
+眼球绕 Z 旋转	Eyeball rotation about Z
+眼裂 X（左右）	Eye opening X (horizontal)
+眼裂绕 X 旋转	Eye opening rotation about X
+眼裂 Y（上下）	Eye opening Y (vertical)
+眼裂绕 Y 旋转	Eye opening rotation about Y
+眼裂 Z（前后）	Eye opening Z (depth)
+眼裂绕 Z 旋转	Eye opening rotation about Z
+
+沿当前视角方向看向远处；距离越大，双眼越接近平行。	Look far along the current view direction; greater distance makes the eyes more parallel.
+视距（头宽半径 R）	Viewing Distance (head radius R)
+
+视角跟随比例	View Follow Strength
+0% 看向模型正前方；50% 将偏转与俯仰减半；100% 完全跟随。	0% looks forward; 50% halves yaw and pitch; 100% follows fully.
+
+侧向跟随限于 ±45°，再乘跟随比例；俯仰正常跟随。	Yaw follows up to ±45°, then applies follow strength; pitch follows normally.
+
+水平环高度 Y	Horizontal Ring Height Y
+侧盖切割距离	Side Cut Distance
+侧盖倾斜（绕 Z）	Side Cap Tilt (about Z)
+切割距离以归一化球壳半径为单位；左右镜像。	Cut distance uses normalized shell radius; sides remain mirrored.
+
+隐藏整组	Hide Set
+显示整组	Show Set
+
+窗口内容	Window content
+
+自由 3D Bézier · 在不同 2D 视图拖动控制柄；保持当前视图深度	Free 3D Bézier · Edit handles in different 2D views; view depth stays fixed
+固定端点 · 自由三维控制柄	Fixed endpoints · Free 3D handles
+曲线编辑：当前视图内拖动控制柄；深度保持不变	Curve editing: drag handles in the current view; depth stays fixed
+Free 3D Bézier	Free 3D Bézier
+拖曲线弯曲 · 两个三维控制柄 · 换视图调整深度	Drag to bend · Two 3D handles · Change view to edit depth
+相对各自端点 · 模型 XYZ 轴 · 以头框各轴半径为单位	Relative to each endpoint · Model XYZ axes · Units of each HeadFrame axis radius
+起点控制柄	Start handle
+终点控制柄	End handle
+Helmet 闭合下缘	Helmet Boundary Loop	HELMET_LOOP
+Rim 与水平环同高 · 衔接处切线连续	Rim shares the horizontal ring height · Tangent-continuous joins
+选择 Helmet 闭合下缘	Select Helmet Boundary Loop
+水平环前段 + 右 Rim + 水平环后段 + 左 Rim · 一个闭环	Front ring arc + right rim + back ring arc + left rim · One closed loop
+用下缘区间建立 Patch	Create Patch from boundary span
+用整圈建立环形 Patch	Create annular Patch from whole loop
+
+闭合下缘：调整共同高度；可取点和作为建面边界	Closed lower boundary: adjust its shared height; add points or use it as a surface boundary
+来源曲线	Source Curve
+
+头壳透视	HeadSet Perspective
+下巴辅助壳	Chin Scaffold
+创建下巴辅助壳	Create Chin Scaffold
+显示下巴壳	Show Chin Shell
+左右严格对称 · 骨架线共同控制一个连续壳体	Strict symmetry · Seams shape one continuous shell
+下巴宽度	Chin Width
+下巴深度	Chin Depth
+下巴高度	Chin Height
+下巴位置 Y	Chin Position Y
+下巴位置 Z	Chin Position Z
+下巴圆润度	Chin Roundness
+前部鼓出	Front Bulge
+后部鼓出	Rear Bulge
+颈部收窄	Neck Taper
+骨架线约束	Seam Constraints
+选择源线修形；移除约束恢复模板。中央端点需在中线，交点需重合。	Choose source curves to shape the shell. Remove constraints to restore the template. Central endpoints must lie on the midline; shared intersections must coincide.
+下巴中线	Center Seam
+前横弧	Front Arc
+后横弧	Rear Arc
+侧连接弧	Side Arc
+前开口弧	Front Rim
+后开口弧	Rear Rim
+下巴中线约束	Center Seam Constraint
+前横弧约束	Front Arc Constraint
+后横弧约束	Rear Arc Constraint
+侧连接弧约束	Side Arc Constraint
+前开口弧约束	Front Rim Constraint
+后开口弧约束	Rear Rim Constraint
+默认形	Default Shape
+编辑控制线	Edit Control Curve
+创建控制线	Create Control Curve
+移除约束	Remove Constraint
+在下巴辅助壳中调整	Edit in Chin Scaffold
+CHIN	Chin Scaffold
+CHIN_SURFACE	On Chin Shell
+CHIN_SEAM	Chin Seam
+下巴辅助壳数据无效	Invalid Chin Scaffold data
+下巴辅助壳参数超出范围	Chin parameters out of range
+下巴曲线约束数据无效	Invalid chin curve constraint data
+下巴辅助壳需要 HeadFrame	Chin Scaffold requires a HeadFrame
+缺少下巴辅助壳	Missing Chin Scaffold
+请先创建下巴辅助壳	Create the Chin Scaffold first
+请选择独立的 HeadSet 开放曲线	Select an independent open HeadSet curve
+这条线依赖下巴壳，不能反过来约束宿主。请使用“创建控制线”生成独立源线。	This curve depends on the chin shell and cannot constrain its own host. Use Create Control Curve for an independent source.
+约束采样退化，请减少重叠约束	Degenerate constraints: reduce overlapping constraints
+骨架交点上的曲线约束不一致，请对齐端点或移除冲突约束	Conflicting seam intersections: align endpoints or remove the conflicting constraint
+中线约束必须位于模型中线	The center constraint must remain on the model midline
+右侧约束不能跨越中线	A right-side constraint must not cross the midline
+横弧的中央端点必须落在中线	The arc's central endpoint must lie on the midline
+约束导致下巴局部折返或塌缩；当前显示默认壳，请调整或移除约束	Constraints fold or collapse the chin locally. Showing the default shell; adjust or remove the constraint.
+下巴面命中无效	Invalid chin surface hit
+下巴定位点必须位于下半壳	Chin anchors must lie on the lower shell
+下巴面定位点无效	Invalid chin surface anchor
+下巴约束不能依赖下巴壳本身，请复制为独立控制线	Chin constraints cannot depend on the chin shell itself; create an independent control curve
+未创建	Not Created
+曲线约束中	Curve Constrained
+约束需调整	Adjust Constraints
+当前项目尚未创建下巴辅助壳。	This project does not have a Chin Scaffold yet.
+创建后新增一套下巴壳和骨架线。已有下巴曲线需要在“骨架线约束”中手动接入。	Creating adds a chin shell and its guide curves. Connect existing chin curves through Seam Constraints.
+已创建下巴辅助壳；参数和曲线约束保存在当前项目中。	Chin Scaffold created. Its parameters and curve constraints are saved in this project.
+
+合并曲线定位点	Merge On-Curve Points
+选择保留位置的点 · 再点击要并入的点	Select the point to keep, then the point to merge into it
+选择要并入的点 · 同一宿主、零 Offset	Select the point to merge · Same host, zero offset
+保留点：	Keep point:
+请选择曲线定位点。	Select an on-curve point.
+系统定位点不能合并。	System anchors cannot be merged.
+只能合并 XYZ Offset 全部为 0 的曲线定位点。	Only on-curve points with zero XYZ offset can be merged.
+请先解锁要合并的定位点。	Unlock the points before merging.
+请选择另一个曲线定位点。	Select a different on-curve point.
+两个定位点必须在同一条宿主曲线上。	Both points must share the same host curve.
+两个定位点必须具有相同的左右镜像关系。	Both points must have matching side and mirror relationships.
+不能合并不同模块的定位点。	Points from different modules cannot be merged.
+合并会使相连曲线的两个端点重合，请先处理这条曲线。	This merge would collapse a connected curve. Resolve that curve first.
+合并会塌缩现有 Patch 边界，请先处理该边界。	This merge would collapse an existing Patch boundary. Resolve that boundary first.
+定位点已合并，相连曲线已接到保留点；可撤销。	Points merged and connected curves reattached to the retained point. Undo is available.
+
+下巴俯仰	Chin Pitch
+尺寸参数 0.01R–0.1R · R 为头壳横向半径	Size parameters 0.01R–0.1R · R is the head's horizontal radius
+俯仰绕自身中心 · 正值抬头，负值低头	Pitch about the chin center · Positive tilts up, negative tilts down
+尺寸和俯仰调整默认核；已绑定源线仍保持原位	Size and pitch adjust the base shape; bound source curves keep their positions
+下巴连接点	Chin Junction
+创建下巴连接点	Create Chin Junction
+显示挂接点与辅助线	Show attachment guides
+显示下巴过渡面	Show chin transition surface
+线接到挂接点后自动平滑；下颌面自动接入，无需选择外框弧。	Curves smooth automatically at the attachments. Jaw surfaces connect without selecting a rim edge.
+已接入曲线	Attached curves
+平滑范围宽度	Blend Width
+平滑范围深度	Blend Depth
+平滑范围高度	Blend Height
+高级：覆盖默认过渡形状	Advanced: Override transition shape
+自动平滑连接	Automatic smooth junction
+待挂接	Ready for attachment
+创建一个带局部平滑范围的下巴语义点。	Create a semantic chin point with a local smooth region.
+侧脸线接前挂接点，下颌线接后挂接点；完成后可收起辅助显示。	Connect profile curves to the front attachments and jaw curves to the rear attachments. Collapse guides when finished.
+尺寸、俯仰和凹凸定义下巴附近的局部平滑形状。	Size, pitch and bulge define the local transition around the chin.
+下巴连接：局部自动平滑	Chin attachment: local automatic smooth
+调整下巴连接点	Edit Chin Junction
+
+上线影响范围	Upper Line Range
+下线影响范围	Lower Line Range
+上左右线影响范围	Upper Side Lines Range
+下左右线影响范围	Lower Side Lines Range
+所有接入线共用一个下巴点；局部平滑自动求解。	All incoming lines share one chin point; local smoothing is solved automatically.
+影响范围 0.01R–0.1R；左右联动，范围外保留原形。	Range 0.01R–0.1R; symmetric sides share a range. Geometry outside is preserved.
+未接入	Not connected
+下巴点位置	Chin Point Position
+至少连接两条线后求解局部平滑	Connect at least two lines to solve local smoothing.
+
+语义下巴点	Semantic Chin Point
+V0.9.7 · 下巴单点平滑	V0.9.7 · Chin Point Fairing
+
+连接信息与位置	Connections and Position
+
+录制间背景图数据无效	Invalid Recording Room background image
+插入背景图	Insert Background Image
+录制背景	Recording Background
+录制背景设置	Recording Background Settings
+背景状态	Background State
+保存背景状态	Save Background State
+保存为新背景状态	Save as New Background State
+背景状态名称	Background state name
+状态名称	State name
+点击状态切换；空位保存当前位置。名称可修改。	Click a state to switch; empty slots save the current position. Names are editable.
+已调整背景，尚未更新此状态	Background adjusted; state has not been updated
+当前背景与此状态一致	Background matches this state
+更新当前背景状态	Update Current Background State
+删除背景状态	Delete Background State
+录制间背景状态无效	Invalid Recording Room background states
+录制间共用背景，随项目保存，不进入最终预览。	Shared across Recording Room views, saved with the project, and excluded from Final Preview.
+位置范围 ±10（2D 的 5 倍）。放大九宫格后，平移图片对准需要的格子。	Position range ±10 (5× the 2D range). Enlarge the sheet, then pan to the cell you need.
+拖动平移背景 · 图片缩放在背景设置中调整	Drag to pan the background · Adjust image scale in Background Settings
+
+辅助线	Guide
+录制辅助线	Recorded Guide
+新建录制辅助线	New Recorded Guide
+
+拖动端点自动吸附曲线 · Alt 暂停吸附 · 首次修改自动建 Key	Drag endpoints to snap to curves · Alt bypasses snapping · First edit creates a Key
+已吸附端点	Snapped to endpoint
+已吸附曲线	Snapped to curve
+
+录制语义点	Recorded Points
+新建录制语义点	New Recorded Point
+方向键移动 · Shift 加快 · Alt 精细 · 拖动列表行排序	Arrow keys move · Shift faster · Alt finer · Drag list rows to reorder
+录制编辑画布	Recording edit canvas
+录制语义点名称	Recorded point name
+新建语义曲线	New Semantic Curve
+语义曲线	Semantic Curve
+拖动语义点录制位置；连接曲线自动跟随。隐藏只影响点标记。	Drag to record position; connected curves follow. Hiding affects only the point marker.
+语义点至少保留一个 Key	Keep at least one Key per point
+删除语义点及所有关键帧	Delete Point and All Keys
+此点仍被语义曲线引用，请先删除连接曲线。	This point is used by semantic curves. Remove those curves before deleting it.
+请先在当前视角录制此语义点的位置	Record this point at the current view first
+请选择另一个语义点	Choose a different recorded point
+点击画布放置录制语义点	Click the canvas to place a recorded point
+请选择第一个语义点	Choose the first recorded point
+请选择第二个语义点	Choose the second recorded point
+端点跟随语义点	Endpoints follow recorded points
+拖动端点会修改共享语义点；控制柄单独录制。	Dragging an endpoint edits its shared point; handles are recorded independently.
+
+此处解绑只关闭曲线连接，端点仍跟随同一个语义点。	Unbinding here disables the curve junction; endpoints still follow their shared recorded point.
+绘制区域	Drawing Regions
+只绘制区域内	Draw regions only
+仅影响最终预览；区域随曲线跨视角变形。关闭限制时整条绘制。	Final preview only. Regions follow the curve across views. Disable to draw the whole curve.
+新增绘制区域	Add Drawing Region
+取消添加区域	Cancel Adding Region
+尚无区域，最终预览不绘制此曲线。请在线上点选起止位置。	No regions: this curve is not drawn in the final preview. Click two positions on the curve.
+区域起点	Region start
+区域终点	Region end
+删除绘制区域	Delete drawing region
+百分比表示从曲线起点到终点的参数位置；重叠区域合并绘制。	Percentages are curve parameter positions from start to end. Overlapping regions are drawn once.
+在选中曲线上点击区域起点	Click the region start on the selected curve
+在选中曲线上点击区域终点	Click the region end on the selected curve
+请点击选中的曲线	Click the selected curve
+起点和终点需要分开	Start and end must be different positions
+
+进入绘制间	Drawing Room
+绘制画布	Drawing canvas
+图层	Layer
+图层名称	Layer name
+绘图图层	Drawing layers
+绘图属性	Drawing properties
+属性	Properties
+新建图层	New layer
+复制图层	Duplicate layer
+删除图层	Delete layer
+展开笔画	Expand stroke
+闭合笔画	Closed stroke
+连续笔画	Continuous stroke
+开始绘线	Start drawing
+选择整笔	Select stroke
+直接选择	Direct select
+选择整笔，拖动变换框调整整体。	Select a stroke; use its transform box to move, scale or rotate.
+选择单段、端点与控制柄。	Select a segment, endpoint or handle.
+钢笔	Pen
+钢笔默认设置	Pen defaults
+取消收尖	Disable taper
+内部端点笔触	Interior endpoint ink
+启用内部端点笔触	Enable interior endpoint ink
+选择一条具体曲线，再设置它的 P0 / P1 端点笔触。	Select an individual curve to style its P0 / P1 endpoints.
+默认等宽连接；只改变所选曲线这一端的墨线，不移动共享点或改变填充。	Interior joins are uniform by default. Only this curve's ink changes; the shared node and fill stay intact.
+收尖距离等于延伸距离时，延伸部分从原线宽收至尖端；圆弧接笔沿可见源线的切线延伸。	Matching taper and extension distances produces a tip from full width. Arc joins extend along the visible source tangent.
+剪切所选	Cut selection
+粘贴到当前图层	Paste into current layer
+已剪切；选择目标图层后按 Ctrl/Cmd+V 原位粘贴。	Cut complete. Select a target layer and press Ctrl/Cmd+V to paste in place.
+已原位粘贴到当前图层。	Pasted in place into the current layer.
+请先选择粘贴目标图层。	Select a target layer before pasting.
+剪切内容已改变，请重新剪切。	The cut objects have changed. Cut them again before pasting.
+关联端点已移动，请先撤销该移动再粘贴。	A linked endpoint has moved. Undo that move before pasting.
+应用	Apply
+默认收尖倍数	Default taper multiplier
+默认收尖倍数滑条	Default taper multiplier slider
+双击或右键设置默认收尖	Double-click or right-click to set default taper
+收尖距离 = 线宽 × 倍数；0 表示不收尖。	Taper distance = line width × multiplier; 0 disables taper.
+只影响之后新画笔画的首尾；内部接点默认等宽。已有笔画不变，设置会自动记住。	Applies to future stroke ends only. Interior joins stay uniform. Existing strokes are unchanged; this setting is remembered.
+请输入 0–200 之间的倍数。	Enter a multiplier from 0 to 200.
+落点，拖出控制柄，继续下一段。	Place an anchor, drag its handle, then continue.
+椭圆	Ellipse
+拖出椭圆，自动形成闭合笔画。	Drag an ellipse to create a closed stroke.
+分割曲线	Split curve
+点击曲线内部，精确分成两段。	Click a curve to split it into two exact segments.
+第一击源曲线，第二击目标曲线。	Click the source curve, then the target curve.
+合并位置	Merge position
+只移动一次，不建立绑定。	Move once without creating a bind.
+持续共享端点位置。	Maintain a shared endpoint position.
+平滑接笔	Smooth join
+两侧控制柄反向共线，连续成一笔。	Opposite collinear handles, drawn as one stroke.
+尖点接笔	Cusp join
+两侧控制柄同向共线，保留尖点。	Same-direction collinear handles, preserving a cusp.
+抓手	Hand
+拖动平移画布。	Drag to pan the canvas.
+点击放大，Alt 点击缩小。	Click to zoom in; Alt-click to zoom out.
+当前工具选项	Current tool options
+结束绘制	Finish drawing
+第一步：选择保留方向的一侧	First: choose the side whose direction stays fixed
+第二步：选择需要对齐的一侧	Second: choose the side to align
+第一步：选择固定端点	First: choose the fixed endpoint
+第二步：选择要移动的端点	Second: choose the endpoint to move
+请选择源曲线	Choose the source curve
+请点击曲线端点。	Click a curve endpoint.
+隐藏编辑辅助	Hide editing helpers
+收起右栏	Collapse sidebar
+展开右栏	Expand sidebar
+绘图工具	Drawing tools
+从一条线开始	Start with a line
+加载参考图，选择图层，用钢笔落点并拖出控制柄。	Add a reference, choose a layer, then place and drag anchors with the pen.
+本次操作会影响未选中的关联曲线。	This edit affects related curves outside the selection.
+选中所需关联曲线	Select required related curves
+已补齐选择，请重新执行变换。	Selection expanded. Repeat the transform to apply it.
+调整图层与属性高度	Resize layers and properties
+当前绘制层	Drawing layer
+未选择	None
+条曲线	curves
+拖动平移参考图	Drag to move the reference image
+落点并拖柄 · Enter 结束 · Esc 取消未完成段	Place and drag anchors · Enter finishes · Esc cancels the draft
+适配	Fit
+共享端点	Shared endpoint
+多选	Multiple selection
+参考图不参与线稿绘制。	The reference image is not part of the ink.
+图片透明度 %	Image opacity %
+图片缩放 %	Image scale %
+参考图 X	Reference X
+参考图 Y	Reference Y
+选择或绘制曲线，查看属性。	Select or draw a curve to see its properties.
+节点 X	Node X
+节点 Y	Node Y
+控制柄长度	Handle length
+旋转增量 °	Rotate by °
+缩放 %	Scale %
+水平镜像	Flip horizontally
+移动到图层	Move to layer
+置顶	Bring to front
+上移一层	Bring forward
+下移一层	Send backward
+置底	Send to back
+连接成员	Connected curves
+接笔关系	Tangent join
+仅绑定	Position only
+未绑定	Unbound
+改为尖点	Change to cusp
+改为平滑	Change to smooth
+解除此端点绑定	Unbind this endpoint
+P 连续绘线 · V 选择整笔 · A 编辑节点	P draws · V selects strokes · A edits nodes
+新建图层，开始绘制。	Create a layer to start drawing.
+关联对象已隐藏或锁定，无法修改。	A related object is hidden or locked. Edit rejected.
+请先选择可见且未锁定的绘制层。	Choose a visible, unlocked drawing layer first.
+图层已锁定。	This layer is locked.
+对象已锁定。	This object is locked.
+曲线坐标无效。	Invalid curve coordinates.
+变换数值无效。	Invalid transform values.
+变换会使连接柄退化。	This transform would collapse a joined handle.
+连接柄不能缩为零；请先解除方向约束。	A joined handle cannot have zero length. Remove its direction constraint first.
+移动端点已绑定，请先解除绑定。	The moving endpoint is bound. Unbind it first.
+连接仅支持同一图层。	Connections must be within the same layer.
+请选择另一个端点。	Choose a different endpoint.
+端点已与另一条曲线接笔，请先解除接笔。	This endpoint already has a tangent join. Remove that join first.
+请先拉出有效 handle，再建立方向约束。	Pull out a nonzero handle before adding a direction constraint.
+图层或内容已锁定。	The layer or its contents are locked.
+请在曲线内部选择分割位置。	Choose a split location inside the curve.
+该位置切向退化，请换一个分割位置。	The tangent is degenerate here. Choose another split location.
+请拖出有宽度和高度的椭圆。	Drag an ellipse with both width and height.
+线宽无效。	Invalid stroke width.
+绘制间数据无效	Invalid Drawing Room data
+
+线宽	Stroke width
+缩放	Zoom
+位置 X	Position X
+位置 Y	Position Y
+曲线名称	Curve name
+控制柄	Handle
+解锁	Unlock
+等宽	Uniform
+单端收尖	Taper End
+双端收尖	Taper Both
+眼睑笔触	Eyelid
+笔触	Stroke profile
+反转笔触方向	Reverse profile
+填充名称	Fill name
+偏移线名称	Offset name
+闭合边界有效	Closed boundary is valid
+持续跟随源笔画	Follows source stroke
+填充	Fill
+填充颜色	Fill color
+白色	White
+黑色	Black
+偏移距离 px	Offset distance px
+源线起点 %	Source start %
+源线终点 %	Source end %
+两端收拢 %	End convergence %
+正负距离切换偏移侧；线宽与距离随画布缩放。	Distance sign selects the side. Width and distance scale with the canvas.
+转为独立曲线	Convert to independent curves
+选择源边界	Select source geometry
+描边与填充	Stroke and Fill
+闭合笔画使用等宽，避免参数起点出现接缝。	Closed strokes use uniform width to avoid a taper seam.
+绘制所选段描边	Show ink on selected segments
+建立白色填充	Create white fill
+建立黑色填充	Create black fill
+创建偏移跟随	Create offset follower
+独立偏移副本	Independent offset copy
+继续接笔	Continue with
+显示填充	Show fills
+填充区域	Fill region
+偏移跟随	Offset follower
+偏移	Offset
+无效	Invalid
+边界源曲线已删除。	A source curve was deleted.
+边界未闭合或已断开。	The boundary is open or disconnected.
+源线长度退化，无法偏移。	The source has no usable length for an offset.
+偏移范围跨过尖点，请缩小范围或使用平滑源线。	The range crosses a sharp corner. Narrow the range or smooth the source.
+偏移近似未达到精度，请减小距离或调整源线。	The offset could not meet its tolerance. Reduce distance or adjust the source.
+请选择形成闭环的边界曲线。	Select curves forming a closed boundary.
+边界未闭合，或存在分支。请只选择一个闭环。	The boundary is open or branches. Select one closed loop.
+偏移参数无效：起点必须小于终点。	Invalid offset settings: start must be less than end.
+偏移线不存在。	The offset no longer exists.
+
+圆弧接笔	Arc join
+绑定端点，并按影响范围生成相切圆弧。	Bind endpoints and create tangent arcs within an adjustable range.
+镜像轴 X	Mirror axis X
+镜像轴归中	Center mirror axis
+镜像轴 · 可拖动	Mirror axis · drag to move
+改为圆弧	Change to arc
+圆弧范围	Arc range
+影响范围 px	Influence radius px
+圆弧	Arc
+圆弧无效	Invalid arc
+圆弧两侧重合，请调整控制柄方向或影响范围。	The arc endpoints coincide. Adjust the handles or influence range.
+圆弧发生折返，请调整控制柄或减小影响范围。	The arc would turn back. Adjust the handles or reduce the influence range.
+无法生成相切圆弧，请调整控制柄或影响范围。	Cannot create tangent arcs. Adjust the handles or influence range.
+源线长度退化，无法生成圆弧。	The source has no usable length for an arc.
+连接柄退化，无法生成圆弧。	A tangent is degenerate. Cannot create an arc.
+圆弧影响范围无效。	Invalid arc influence range.
+该位置属于圆弧过渡范围，请在保留的源曲线上分割。	This location is trimmed by an arc. Split the retained source curve instead.
+圆弧是派生过渡，请分割两侧源曲线。	This arc is a derived transition. Split its source curves instead.
+已按可用线长缩小范围，避免两端过渡重叠。	Range reduced to fit the source length and avoid overlapping transitions.
+两侧各截取这一长度，圆弧随切向夹角自动更新。	Trim this distance along each side. Arcs update with the tangent angle.
+分割会改变圆弧范围，请先减小影响范围再分割。	Splitting would change the arc range. Reduce the influence range before splitting.
+拖动已中断，已保留最后有效位置。	Drag interrupted. The last valid position was kept.
+
+两侧控制柄保持设定夹角，默认 0°。	Handles keep the chosen angle, initially 0°.
+点击放大，按住 Ctrl 点击缩小。	Click to zoom in; hold Ctrl and click to zoom out.
+尖点夹角	Cusp angle
+尖点夹角 °	Cusp angle °
+尖点夹角必须在 -90° 到 +90° 之间。	Cusp angle must be between -90° and +90°.
+0° 为同向尖点；正负角度控制张开方向，拖动任一侧柄会保持夹角。	0° aligns both handles in the same direction. Signed angles open the cusp; dragging either handle preserves the angle.
+镜像将保持绑定与接笔关系，上述关联曲线的共享端点或控制柄会一起调整。	Mirror will preserve bindings and joins. Shared endpoints or handles on the listed curves will move together.
+继续镜像	Continue mirror
+
+拖动镜像轴，靠近端点时吸附	Drag the mirror axis to snap to curve endpoints
+镜像轴 · 拖动吸附端点	Mirror axis · Drag to snap to endpoints
+已吸附端点	Snapped to endpoint
+
+按住鼠标向上拖动放大，向下拖动缩小。	Hold and drag upward to zoom in, downward to zoom out.
+已吸附镜像轴	Snapped to mirror axis
+笔触端点	Stroke endpoint
+笔触起点	Stroke start
+笔触终点	Stroke end
+端点收尖距离 px	Endpoint taper distance px
+笔触延伸距离 px	Stroke extension distance px
+收尖恢复预设	Reset taper to preset
+沿控制柄反方向延伸墨线，保持原曲线和绑定点不变。	Extend ink opposite the handle direction; preserve the original curve and bound nodes.
+笔触端点距离必须在 0 到 500 px 之间。	Stroke endpoint distances must be between 0 and 500 px.
+笔画名称	Stroke name
+
+隐藏整笔	Hide whole stroke
+显示整笔	Show whole stroke
+锁定整笔	Lock whole stroke
+解锁整笔	Unlock whole stroke
+部分显示	Partly visible
+部分锁定	Partly locked
+
+尖点只影响描边尖角，两侧控制柄独立编辑。	Cusp makes a sharp ink join; both handles remain independent.
+保持锐角描边尖端，两侧控制柄独立。	Keep acute ink corners sharp; edit either handle independently.
+所属边界已隐藏，填充随之隐藏。	The boundary is hidden, so its fill is hidden too.
+选择曲线控制点	Select curve control point
+短控制柄：拖动圆环，或在属性中选择控制柄。	Short handle: drag the ring, or select the handle in Properties.
+端点	Endpoint
+显示区间	Display intervals
+添加显示区间	Add display interval
+只绘制区间并集；拖动线上标记调整范围。	Only interval-covered ink is drawn. Drag the markers along the stroke.
+未设置区间，整笔显示。	No intervals: the entire stroke is visible.
+闭环从起点沿笔画方向到终点；起点大于终点时跨过闭环原点。	Closed loops run from start to end along the stroke; start greater than end wraps around the loop origin.
+区间	Interval
+区间起点	Interval start
+区间终点	Interval end
+区间起点 %	Interval start %
+区间终点 %	Interval end %
+删除显示区间	Delete display interval
+显示区间位置必须在 0% 到 100% 之间。	Display interval positions must be between 0% and 100%.
+端点联动	Link endpoints
+两端同步移动，保留各自笔画、线宽和图层。	Move endpoints together; keep strokes, widths and layers separate.
+合成同一笔画，两侧控制柄仍可独立调整。	Join into one stroke; keep both handles independent.
+合成同一笔画，两侧控制柄反向共线，平顺连接。	Join into one stroke; align opposite handles for a smooth connection.
+合成同一笔画，锐角处保持尖角，控制柄独立。	Join into one stroke; preserve sharp ink corners and independent handles.
+合成同一笔画，按可调影响范围生成圆弧过渡。	Join into one stroke with a rounded transition of adjustable size.
+右键或长按切换连接工具	Right-click or press and hold to switch connection tools
+连接工具	Connection tools
+只联动位置，保留各自笔画和图层。	Link positions only; keep strokes and layers separate.
+解除联动	Unlink endpoints
+联动另一个端点	Link another endpoint
+联动端点不能移动到不同位置。	Linked endpoints cannot move to different positions.
+联动端点所在曲线或图层已隐藏或锁定。	A linked endpoint belongs to a hidden or locked curve or layer.
+整笔或图层已隐藏，填充随之隐藏。	The whole stroke or layer is hidden, so its fill is hidden.
+收尖距离须为 0–5000 px，延伸距离须为 0–500 px。	Taper distance must be 0–5000 px; extension must be 0–500 px.
+区间起点笔触	Interval start ink
+区间终点笔触	Interval end ink
+区间收尖距离 px	Interval taper distance px
+区间延伸距离 px	Interval extension distance px
+只改变区间墨线；重叠部分只保留并集外缘的收尖与延伸。	Ink only; overlapping intervals taper and extend only at the union's outer ends.
+收尖随线宽变化；短笔画自动缩短收尖距离。	Taper follows line width; short strokes automatically shorten the taper.
+闭合笔画本体使用等宽；显示区间两端可单独收尖。	Closed strokes have uniform width; display interval ends can taper independently.
+
+组合	Group
+取消组合	Ungroup
+组合名称	Group name
+组合（Ctrl/Cmd+G）	Group (Ctrl/Cmd+G)
+取消组合（Ctrl/Cmd+Shift+G）	Ungroup (Ctrl/Cmd+Shift+G)
+请在同一图层选择至少两条独立笔画。	Select at least two independent strokes in the same layer.
+组合仅支持同一图层。	Groups must belong to a single layer.
+V 选择整组；A 单独编辑成员。列表 Shift 选范围，Ctrl/Cmd 增减选择。	V selects the group; A edits members. In the list, Shift selects a range; Ctrl/Cmd toggles.
+锁定整组	Lock group
+解锁整组	Unlock group
+
+组合不存在。	Group not found.
+组合转为图层	Convert group to layer
+新建图层；拖入组合可转为图层	New layer; drop a group here to convert it to a layer
+V 选择整笔或组合；A 编辑成员；Shift 复选。	V selects strokes or groups; A edits members; Shift multi-selects.
+选择组内单段、端点或控制柄；拖动即可编辑。	Select and drag a group member, endpoint or handle to edit it.
+
+批量设置当前成员，之后可单独调整	Set current members together; adjust each independently afterwards
+
+Shift 选范围 · Ctrl/Cmd 增减选择 · Delete 删除	Shift for range · Ctrl/Cmd to toggle · Delete to remove
+个对象已选择	objects selected
+删除所选	Delete selected
+
+偏移位置 X	Offset position X
+偏移位置 Y	Offset position Y
+方向键移动 · Shift 加速 · Alt 微调	Arrows to move · Shift for larger steps · Alt for finer steps
+镜像轴	Mirror axis
+全部收起	Collapse all
+上方在前 · 下方在后 · 拖动图层调整顺序	Top is front · Bottom is back · Drag layers to reorder
+显示全部图层	Show all layers
+隐藏全部图层	Hide all layers
+透明挖空	Transparent cutout
+建立透明填充	Create transparent fill
+挖空本图层内的黑白填充，露出下层；描边不受影响。	Cut out black and white fills in this layer to reveal layers below; strokes stay intact.
+
+轮廓雾化	Contour mist
+雾化宽度	Mist width
+雾化浓度	Mist density
+沿线添加不规则灰雾，近浓远淡；原线条保持清晰。	Add irregular gray mist along the line, fading outward; keep the original ink sharp.
+多种设置；调整将统一所选线条的对应参数。	Mixed values; editing applies this parameter to the selected lines.
+请选择曲线或偏移线。	Select curves or offset lines.
+雾化参数无效。	Invalid contour mist settings.
+
+连续灰阶柔边，轻微错位与深浅变化；无颗粒。	Continuous soft gray edges with subtle drift and shading; no particles.
+
+深度偏移	Depth offset
+基准	Reference
+深度基准	Depth reference
+所属笔画 / 直接父级	Stroke / direct parent
+所属图层	Layer
+向前 +1	Forward +1
+向后 −1	Backward −1
+已到达该级边界	Reached sibling boundary
+只改变此线的遮挡深度，列表位置与连接保持不变。切换基准会重置偏移。	Changes only this curve’s paint depth; list position and connections stay intact. Switching reference resets the offset.
+V0.12.36 · Curve Depth Offset	V0.12.36 · Curve Depth Offset
+
+雾化填充	Mist fill
+建立雾化填充	Create mist fill
+填充类型	Fill type
+实色填充	Solid fill
+扩散方向	Diffusion side
+填充扩散方向	Fill diffusion side
+向内	Inside
+向外	Outside
+双侧	Both sides
+填充雾化宽度	Fill mist width
+填充不透明度	Fill opacity
+沿闭合边界最浓，按高斯曲线逐渐透明；不改变描边。	Strongest at the closed boundary, fading to transparent with a Gaussian falloff; stroke stays unchanged.
+雾化填充参数无效。	Invalid mist fill settings.
+透明挖空不能同时使用雾化填充。	Transparent cutouts cannot also use mist fill.
+V0.12.37 · Gaussian Mist Fill	V0.12.37 · Gaussian Mist Fill

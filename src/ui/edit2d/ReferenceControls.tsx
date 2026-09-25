@@ -1,3 +1,4 @@
+import {uiText} from "../i18n";
 import NumericSlider from '../shared/NumericSlider';
 import {formatNumeric} from '../shared/numericSliderMath';
 import FloatingPanel from "../shared/FloatingPanel";
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 import { useEditor } from "../../app/store";
 import type { ReferenceImage } from "../../domain/project/types";
-export async function readPhoto(file: File): Promise<ReferenceImage> {
+export async function readPhoto(file: File, options = {maxDimension:1400,maxDataUrlLength:350_000}): Promise<ReferenceImage> {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
     throw new Error("请选择 JPG、PNG 或 WebP 图片。");
   if (file.size > 20_000_000) throw new Error("参考照片请小于 20 MB。");
@@ -29,7 +30,7 @@ export async function readPhoto(file: File): Promise<ReferenceImage> {
     });
     const ratio = Math.min(
       1,
-      1400 / Math.max(img.naturalWidth, img.naturalHeight),
+      options.maxDimension / Math.max(img.naturalWidth, img.naturalHeight),
     );
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(img.naturalWidth * ratio));
@@ -41,11 +42,11 @@ export async function readPhoto(file: File): Promise<ReferenceImage> {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     let quality = 0.85,
       dataUrl = canvas.toDataURL("image/jpeg", quality);
-    while (dataUrl.length > 350_000 && quality > 0.25) {
+    while (dataUrl.length > options.maxDataUrlLength && quality > 0.25) {
       quality -= 0.1;
       dataUrl = canvas.toDataURL("image/jpeg", quality);
     }
-    if (dataUrl.length > 350_000)
+    if (dataUrl.length > options.maxDataUrlLength)
       throw new Error("图片细节过多，请缩小后重新载入。");
     return {
       name: file.name.slice(0, 120),
@@ -115,17 +116,17 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
         className="reference-trigger"
         onClick={() => (open || ref ? setOpen(!open) : input.current?.click())}
         disabled={busy}
-        aria-label={ref ? "参考图设置" : "载入参考照片"}
+        aria-label={uiText(ref ? "参考图设置" : "载入参考照片")}
       >
         <ImagePlus size={14} />
-        {busy ? "正在载入…" : ref ? "参考图" : "载入参考照片"}
+        {uiText(busy ? "正在载入…" : ref ? "参考图" : "载入参考照片")}
         {ref && <SlidersHorizontal size={12} />}
       </button>
       {open && (
         <FloatingPanel
           id="reference"
           title={ref?.name ?? "参考图"}
-          label="参考照片设置"
+          label={uiText("参考照片设置")}
           onClose={() => setOpen(false)}
         >
           {ref ? (
@@ -139,11 +140,9 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                     s.setReferenceMoving(!s.referenceMoving);
                   }}
                 >
-                  <Move size={13} />
-                  平移图片
-                </button>
+                  <Move size={13} />{uiText("平移图片")}</button>
                 <button
-                  aria-label={ref.locked ? "解锁参考图" : "锁定参考图"}
+                  aria-label={uiText(ref.locked ? "解锁参考图" : "锁定参考图")}
                   onClick={() => {
                     s.beginEdit();
                     update({ locked: !ref.locked });
@@ -154,8 +153,8 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                     <LockKeyhole size={13} />
                   ) : (
                     <Unlock size={13} />
-                  )}{" "}
-                  {ref.locked ? "已锁定" : "锁定"}
+                  )}{uiText(" ")}
+                  {uiText(ref.locked ? "已锁定" : "锁定")}
                 </button>
               </div>
               <label className="reference-visible">
@@ -166,9 +165,7 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                     s.beginEdit();
                     update({ visible: e.target.checked });
                   }}
-                />
-                显示参考图
-              </label>
+                />{uiText("显示参考图")}</label>
               {[
                 {
                   label: "透明度",
@@ -180,7 +177,7 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                 {
                   label: "图片缩放",
                   min: 0.1,
-                  max: 5,
+                  max: 10,
                   value: ref.scale,
                   key: "scale",
                 },
@@ -206,7 +203,7 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                   key: "rotation",
                 },
               ].map((r) => (
-                <NumericSlider className="reference-slider" inputScale={r.key==='opacity'||r.key==='scale'?100:1} key={r.key} label={r.label} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={value=>{
+                <NumericSlider className="reference-slider" inputScale={r.key==='opacity'||r.key==='scale'?100:1} key={r.key} label={uiText(r.label)} min={r.min} max={r.max} value={r.value} disabled={ref.locked} formatValue={v=>r.key==='opacity'||r.key==='scale'?formatNumeric(v*100)+'%':formatNumeric(v)+(r.key==='rotation'?'°':'')} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={value=>{
                       update(
                         r.key === "x"
                           ? { offset: [value, ref.offset[1]] }
@@ -221,13 +218,11 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                 <button
                   disabled={ref.locked}
                   onClick={() => input.current?.click()}
-                >
-                  替换照片
-                </button>
+                >{uiText("替换照片")}</button>
                 <button
                   disabled={ref.locked}
-                  title="重置图片位置"
-                  aria-label="重置参考图位置"
+                  title={uiText("重置图片位置")}
+                  aria-label={uiText("重置参考图位置")}
                   onClick={() => {
                     s.beginEdit();
                     update({ offset: [0, 0], scale: 1, rotation: 0 });
@@ -237,8 +232,8 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                 </button>
                 <button
                   disabled={ref.locked}
-                  title="移除照片"
-                  aria-label="移除参考照片"
+                  title={uiText("移除照片")}
+                  aria-label={uiText("移除参考照片")}
                   onClick={() => {
                     request.current++;
                     s.beginEdit();
@@ -249,17 +244,13 @@ export default function ReferenceControls({ viewId }: { viewId: string }) {
                   <Trash2 size={14} />
                 </button>
               </div>
-              <p>
-                仅用于描摹，不参与求解。随当前视角和项目保存。
-                {ref.locked ? " 已锁定图片变换。" : ""}
+              <p>{uiText("仅用于描摹，不参与求解。随当前视角和项目保存。")}{uiText(ref.locked ? " 已锁定图片变换。" : "")}
               </p>
             </>
           ) : (
             <div className="reference-empty">
-              <p>当前视图没有参考图。</p>
-              <button disabled={busy} onClick={() => input.current?.click()}>
-                载入参考照片
-              </button>
+              <p>{uiText("当前视图没有参考图。")}</p>
+              <button disabled={busy} onClick={() => input.current?.click()}>{uiText("载入参考照片")}</button>
             </div>
           )}
         </FloatingPanel>

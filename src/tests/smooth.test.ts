@@ -1,4 +1,7 @@
-import {isAnalytic} from '../domain/curves/model';
+import {isFree3DShape} from '../domain/curves/model';
+import type {Vec3} from '../domain/project/types';
+import {planarShape} from './planar-fixture';
+import {isDerived} from '../domain/curves/model';
 import {world} from './world-fixture';
 import {it,expect} from 'vitest';
 import {solveSmooth} from '../domain/smooth/solver';
@@ -82,8 +85,8 @@ it('displacement interpolation is linear along every Tri edge',()=>{
  for(const [u,v] of [[.133,0],[0,.74],[.27,.73],[.11,.43]]){const q=displacement({type:'tri',n:12,values},u,v);expect(q[0]).toBeCloseTo(u,12);expect(q[1]).toBeCloseTo(v,12);expect(latticeWeights('tri',12,u,v).reduce((s,w)=>s+w.weight,0)).toBeCloseTo(1,12);}
 });
 it('corrupted topology falls back; isolated bad tangent samples warn instead of failing',()=>{
- const p=smoothFixture(.6);const c=p.curves.find(c=>c.id==='seam')!;if((c.role!=='canonical'||isAnalytic(c)))throw Error('fixture');
- c.shape.startHandle.along=1;c.shape.endHandle.along=1;
+ const p=smoothFixture(.6);const c=p.curves.find(c=>c.id==='seam')!;if((c.role!=='canonical'||isDerived(c)))throw Error('fixture');
+ planarShape(c.shape).startHandle.along=1;planarShape(c.shape).endHandle.along=1;
  const r=solveSmooth(p);expect(r.error).toBeUndefined();expect(r.diagnostics.warnings.some(x=>x.includes('退化'))).toBe(true);
  const broken={...p,curves:p.curves.filter(c=>c.id!=='seam')};expect(solveSmooth(broken).error).toBeTruthy();
 });
@@ -119,7 +122,7 @@ it('real mirror surfaces share canonical correction exactly; source edits invali
  }
  for(const edit of [
  {...p,landmarks:p.landmarks.map((l)=>l.id!==seam.startLandmarkId?l:{...l,placement: {kind:'WORLD' as const,position:[world(l,p).position[0],world(l,p).position[1]+.01,world(l,p).position[2]] as [number,number,number]}})},
- {...p,curves:p.curves.map(c=>(c.role==='canonical'&&!isAnalytic(c))?{...c,shape:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
+ {...p,curves:p.curves.map(c=>(c.role==='canonical'&&!isDerived(c))?{...c,shape:isFree3DShape(c.shape)?{...c.shape,startHandleOffset:c.shape.startHandleOffset.map((x,i)=>x+(i===1?.01:0)) as Vec3}:{...c.shape,startHandle:{...c.shape.startHandle,offset:c.shape.startHandle.offset+.01}}}:c)},
  {...p,patches:p.patches!.map(c=>c.canonicalId?c:{...c,fullness:.2})}
  ])expect(solveKey(edit)).not.toBe(solveKey(p));
  expect(parseLandmarks(JSON.stringify(p)).surfaceSmooth).toBeUndefined();

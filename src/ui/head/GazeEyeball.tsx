@@ -1,0 +1,11 @@
+import {useState} from 'react';
+import {useEditor} from '../../app/store';
+import {uiText as t} from '../i18n';
+import NumericSlider from '../shared/NumericSlider';
+import {gazeSide} from '../../domain/eyes/gaze';
+export default function GazeEyeball(){
+ const [expanded,setExpanded]=useState(true);
+ const s=useEditor(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES')return null;
+ const selected=s.selection?gazeSide(s.project,s.selection.id):undefined;
+ return <section className="construction-panel eye-construction" data-testid="gaze-eyeball"><h4><button className="section-heading" aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'▾':'▸'} {t('Smart Modules')}</button></h4>{expanded&&(!g?<button disabled={!s.project.eyeScaffold} onClick={s.createGaze}>{t('添加 Gaze Eyeball')}</button>:<><h4>{t('Gaze Eyeball')}</h4>{(['left','right'] as const).map(side=><button key={side} aria-pressed={selected===side} onClick={()=>s.selectObject({kind:'surface',source:'IRIS',id:side==='left'?g.leftId:g.rightId})}>{t(side==='left'?'Left Gaze Eyeball':'Right Gaze Eyeball')}</button>)}{selected&&<><label><input type="checkbox" checked={g.tracking!==false} onChange={e=>s.setGazeTracking(e.target.checked)}/>{t('Gaze Tracking')}</label><small>{t('沿当前视角方向看向远处；距离越大，双眼越接近平行。')}</small><NumericSlider label={t('视距（头宽半径 R）')} min={10} max={200} value={g.viewDistance??50} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setGazeParameter('viewDistance',v)}/><NumericSlider label={t('视角跟随比例')} min={0} max={100} value={(g.followStrength??1)*100} formatValue={v=>Math.round(v)+'%'} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setGazeParameter('followStrength',v/100)}/><small>{t('侧向跟随限于 ±45°，再乘跟随比例；俯仰正常跟随。')}</small><small>{t('左右联动 · 跟随眼球局部坐标')}</small><NumericSlider label={t('Iris Scale')} min={.05} max={.95} value={g.irisScale} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setGazeParameter('irisScale',v)}/><NumericSlider label={t('Iris Recess Depth')} min={0} max={.5} value={g.recessDepth} onEditStart={()=>s.beginEdit(true)} onEditEnd={s.endEdit} onChange={v=>s.setGazeParameter('recessDepth',v)}/><small>{t('凹陷深度以眼球前后半径为单位；虹膜边界始终贴合眼球。')}</small></>}</>)}</section>;
+}

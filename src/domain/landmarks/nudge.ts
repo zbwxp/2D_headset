@@ -1,3 +1,4 @@
+import {moveEyeLocal} from '../eyes/coord';
 import type {LandmarkProject} from './model';
 import {activateDriver,allowedBasis} from './model';
 import {pointPosition} from '../geometry/evaluation';
@@ -17,11 +18,12 @@ export function arrowAxis(view:string,key:string):{axis:0|1|2;sign:number}|null{
 export function nudgePoint(p:LandmarkProject,id:string,axis:0|1|2,amount:number):LandmarkProject{
  const l=p.landmarks.find(l=>l.id===id);if(!l)return p;
  if(hasLoomisOffset(p,l))return setLoomisOffset(p,id,axis,offsetVector(l.placement)[axis]+amount);
- if(l.placement.kind!=='WORLD'&&l.placement.kind!=='FRAME_RELATIVE')throw Error('此点由宿主或系统交点定位，不能沿空间轴移动。');
+ if(l.placement.kind!=='EYE_LOCAL'&&l.placement.kind!=='WORLD'&&l.placement.kind!=='FRAME_RELATIVE')throw Error('此点由宿主或系统交点定位，不能沿空间轴移动。');
  const active=activateDriver(p,id),origin=toHead(p,[0,0,0]),v:Vec3=[0,0,0];v[axis]=amount;
  const delta=toHead(p,v).map((x,i)=>x-origin[i]) as Vec3,basis=allowedBasis(active,id);
  const projected:Vec3=[0,0,0];for(const b of basis){const dot=b.reduce((s,x,i)=>s+x*delta[i],0);b.forEach((x,i)=>projected[i]+=x*dot);}
  if(Math.hypot(...delta.map((x,i)=>x-projected[i]))>1e-8)throw Error('该轴受中线或 View Lock 约束，请先 Unlock。');
  const position=pointPosition(active,id).map((x,i)=>x+delta[i]) as Vec3;
+ if(l.placement.kind==='EYE_LOCAL')return moveEyeLocal(active,id,position);
  return {...active,landmarks:active.landmarks.map(x=>x.id===id?{...x,placement:spatialPlacement(p,position)}:x.id===l.mirrorPartnerId?{...x,placement:spatialPlacement(p,mirrorPoint(p,position))}:x)};
 }

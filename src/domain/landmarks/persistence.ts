@@ -1,3 +1,19 @@
+import {migrateChinNode} from '../chin/migration';
+import type {Vec3} from '../project/types';
+import {parseChin,ensureChin,chinRoles} from '../chin/model';
+import {parseHeadPerspective} from '../head/perspective';
+import {migrateFree3D} from '../curves/free3d';
+import {followEndpoints} from '../curves/geometry';
+import {migrateEyeCoord} from '../eyes/coord';
+import {parseGaze} from '../eyes/gaze';
+import {parseEyeScaffold,rebuildEyeScaffold} from '../eyes/scaffold';
+import {assignModules} from '../modules/ownership';
+import {parseRecording} from '../recording/model';
+import {parseDrawing} from '../drawing/model';
+import {repairCurveNames} from '../curves/naming';
+import {parseJoins} from '../curves/smoothJoin/model';
+import {dependencyGraph} from '../geometry/dependencies';
+import {validateOnPatch} from '../curves/onPatch';
 import {ensureScaffold,roles} from '../head/scaffold';
 import {parseInspectionBackground} from '../head/inspectionBackground';
 import {loomisObjects,lockPair} from '../head/locks';
@@ -30,9 +46,14 @@ export function parseLandmarks(text: string): LandmarkProject {
   };
   check(
     [
+      "landmarks-0.9.7",
+      "landmarks-0.9.5",
+      "landmarks-0.9.3",
+      "landmarks-0.9.2",
       "landmarks-0.5",
       "landmarks-0.5.1",
-      "landmarks-0.5.2", "landmarks-0.5.5","landmarks-0.5.4","landmarks-0.5.3",
+      "landmarks-0.5.2", "landmarks-0.6.3",
+      "landmarks-0.5.5","landmarks-0.5.4","landmarks-0.5.3",
       "landmarks-0.4.9.1",
       "landmarks-0.4.9",
       "landmarks-0.4.5",
@@ -120,14 +141,17 @@ export function parseLandmarks(text: string): LandmarkProject {
     ids.add(l.id);
     check(
       typeof l.name === "string" &&
-        l.placement && ["LOOMIS_SCAFFOLD","WORLD","FRAME_RELATIVE","ON_CURVE","ON_LOOMIS_SURFACE","ON_SECTION_CAP"].includes(l.placement.kind) &&
+        l.placement && ["CHIN_SURFACE","EYE_LOCAL","LOOMIS_SCAFFOLD","WORLD","FRAME_RELATIVE","ON_CURVE","ON_LOOMIS_SURFACE","ON_SECTION_CAP","ON_PATCH"].includes(l.placement.kind) &&
         ["CENTERLINE", "LEFT", "RIGHT", "FREE"].includes(l.type) &&
         l.viewLocks &&
         typeof l.viewLocks === "object" &&
         !Array.isArray(l.viewLocks),
     );
     const q=l.placement;
-    if(q.kind==='LOOMIS_SCAFFOLD'){check(roles.includes(q.role)&&l.systemRole===q.role&&Object.keys(l.viewLocks).length===0);}
+    if(q.kind==='CHIN_SURFACE'){check(p.chinScaffold&&p.headFrame&&vec(q.direction,3)&&Math.abs(Math.hypot(...q.direction)-1)<1e-8&&q.direction[1]<=1e-8&&Object.keys(l.viewLocks).length===0);if(l.systemRole)check(chinRoles.includes(l.systemRole as any));}
+    else if(q.kind==='EYE_LOCAL'){check(p.eyeScaffold?.coord&&['left','right'].includes(q.side)&&vec(q.local,3)&&l.type===(q.side==='left'?'LEFT':'RIGHT')&&Object.keys(l.viewLocks).length===0);}
+    else if(q.kind==='LOOMIS_SCAFFOLD'){check(roles.includes(q.role)&&l.systemRole===q.role&&Object.keys(l.viewLocks).length===0);}
+    else if(q.kind==='ON_PATCH'){check(typeof q.hostPatchId==='string'&&finite(q.u)&&finite(q.v)&&q.u>=0&&q.u<=1&&q.v>=0&&q.v<=1&&Object.keys(l.viewLocks).length===0);check(Object.keys(q).every(k=>['kind','hostPatchId','u','v'].includes(k)));}
     else if(q.kind==='ON_SECTION_CAP'){check(typeof q.hostSurfaceId==='string'&&finite(q.u)&&finite(q.v)&&q.u*q.u+q.v*q.v<=1+1e-8&&Object.keys(l.viewLocks).length===0);check(Object.keys(q).every(k=>['kind','hostSurfaceId','u','v','offsetX','offsetY','offsetZ'].includes(k)));}
     else if(q.kind==='ON_LOOMIS_SURFACE'){check(p.headFrame&&q.hostFrameId==='head'&&vec(q.direction,3)&&Math.abs(Math.hypot(...q.direction)-1)<1e-8&&Object.keys(l.viewLocks).length===0);check(Object.keys(q).every(k=>['kind','hostFrameId','direction','offsetX','offsetY','offsetZ'].includes(k)));}
     else if(q.kind!=='ON_CURVE'){check(vec(q.position,3));if(q.kind==='FRAME_RELATIVE')check(p.headFrame);}
@@ -171,7 +195,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   // Whitelist source data; never import legacy geometry or derived render objects.
   let result: LandmarkProject = {
     version: "landmarks-0.3.9",
-    headFrame:p.headFrame,loomisScaffold:p.loomisScaffold,
+    chinScaffold:parseChin(p.chinScaffold,p.headFrame),headFrame:p.headFrame,loomisScaffold:p.loomisScaffold,headPerspective:parseHeadPerspective(p.headPerspective),
     inspectionBackground:parseInspectionBackground(p.inspectionBackground),
     curves: [],
     centerlineOrder: repairCenterlineOrder(p.landmarks, p.centerlineOrder),
@@ -181,7 +205,8 @@ export function parseLandmarks(text: string): LandmarkProject {
         .filter((v) => p.landmarks.some((l) => l.viewLocks[v.id]))
         .map((v) => v.id),
     meta: p.meta,
-    views: ensureObliqueViews(
+    viewsCustomized: p.viewsCustomized === true,
+    views: (p.viewsCustomized === true ? (views: LandmarkProject["views"])=>views : ensureObliqueViews)(
       p.views.map((v) => ({
         id: v.id,
         label: v.label,
@@ -194,12 +219,15 @@ export function parseLandmarks(text: string): LandmarkProject {
     landmarks: p.landmarks.map((l) => ({
       id: l.id,
       name: l.name,systemRole:l.systemRole,
-      placement: {...offsetFields(l.placement),... (l.placement.kind==='LOOMIS_SCAFFOLD'?{kind:'LOOMIS_SCAFFOLD' as const,role:l.placement.role}:l.placement.kind==='ON_SECTION_CAP'?{kind:'ON_SECTION_CAP' as const,hostSurfaceId:l.placement.hostSurfaceId,u:l.placement.u,v:l.placement.v}:l.placement.kind==='ON_LOOMIS_SURFACE'?{kind:'ON_LOOMIS_SURFACE' as const,hostFrameId:'head' as const,direction:l.placement.direction}:l.placement.kind!=='ON_CURVE'?(l.placement.kind==='WORLD'?{kind:'WORLD' as const,position:l.placement.position}:{kind:'FRAME_RELATIVE' as const,position:l.placement.position}):l.placement.role==='canonical'?{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:l.placement.hostCurveId,s:l.placement.s,...(l.placement.ringEndpoint?{ringEndpoint:true as const}:{})}:{kind:'ON_CURVE' as const,role:'mirror' as const,hostCurveId:l.placement.hostCurveId,canonicalPointId:l.placement.canonicalPointId})},
+      placement: {...offsetFields(l.placement),... (l.placement.kind==='CHIN_SURFACE'?{kind:'CHIN_SURFACE' as const,direction:[...l.placement.direction] as Vec3}:l.placement.kind==='EYE_LOCAL'?{kind:'EYE_LOCAL' as const,side:l.placement.side,local:l.placement.local}:l.placement.kind==='ON_PATCH'?{kind:'ON_PATCH' as const,hostPatchId:l.placement.hostPatchId,u:l.placement.u,v:l.placement.v}:l.placement.kind==='LOOMIS_SCAFFOLD'?{kind:'LOOMIS_SCAFFOLD' as const,role:l.placement.role}:l.placement.kind==='ON_SECTION_CAP'?{kind:'ON_SECTION_CAP' as const,hostSurfaceId:l.placement.hostSurfaceId,u:l.placement.u,v:l.placement.v}:l.placement.kind==='ON_LOOMIS_SURFACE'?{kind:'ON_LOOMIS_SURFACE' as const,hostFrameId:'head' as const,direction:l.placement.direction}:l.placement.kind!=='ON_CURVE'?(l.placement.kind==='WORLD'?{kind:'WORLD' as const,position:l.placement.position}:{kind:'FRAME_RELATIVE' as const,position:l.placement.position}):l.placement.role==='canonical'?{kind:'ON_CURVE' as const,role:'canonical' as const,hostCurveId:l.placement.hostCurveId,s:l.placement.s,...(l.placement.ringEndpoint?{ringEndpoint:true as const}:{})}:{kind:'ON_CURVE' as const,role:'mirror' as const,hostCurveId:l.placement.hostCurveId,canonicalPointId:l.placement.canonicalPointId})},
       type: l.type,
       mirrorPartnerId: l.mirrorPartnerId,
       viewLocks: l.viewLocks,
     })),
   };
+  if(p.gazeEyeball!==undefined){result.gazeEyeball=parseGaze(p.gazeEyeball);check(!!p.eyeScaffold);}
+  if(p.eyeScaffold!==undefined)result.eyeScaffold=parseEyeScaffold(p.eyeScaffold);
+  if(result.eyeScaffold)for(const side of ['left','right'] as const){const e=result.eyeScaffold[side];check((result.eyeScaffold.coord?e.pointIds.slice(8):e.pointIds).every(id=>result.landmarks.some(l=>l.id===id&&l.type==='FREE')));check((result.eyeScaffold.coord?e.curveIds.slice(12):e.curveIds).every(id=>p.curves.some(c=>c.id===id)));}
   // Old files may contain both observations. Migrate each pair to one driver;
   // never retain the reflected partner as a second independent constraint.
   for (const l of result.landmarks)
@@ -213,10 +241,19 @@ export function parseLandmarks(text: string): LandmarkProject {
         result = activateDriver(result, l.id);
     }
   result.curves = parseCurves(p.curves, result, false);
+  if(result.chinScaffold)result=ensureChin(result);
   if(p.loomisRegions!==undefined)result.loomisRegions=parseRegions(p.loomisRegions,result);
   if(p.loomisCaps!==undefined)result.loomisCaps=parseCaps(p.loomisCaps,result);
   if(p.loomisLocks!==undefined){check(Array.isArray(p.loomisLocks)&&p.loomisLocks.every((id:unknown)=>typeof id==='string'));result.loomisLocks=[...new Set(p.loomisLocks.filter((id:string)=>loomisObjects(result).has(id)).flatMap((id:string)=>lockPair(result,id)))];}
+  const beforeScaffold=result;
   if(result.loomisScaffold)result=ensureScaffold(result);
+  if(p.patches!==undefined)result.patches=parsePatches(p.patches,result,false);
+  if(p.surfaceContinuity!==undefined)result.surfaceContinuity=p.surfaceContinuity;
+  if(p.curveSmoothJoins!==undefined)result.curveSmoothJoins=parseJoins(p.curveSmoothJoins,result);
+  // Leveling an old sagged Rim moves hosted points. Transport legacy planar
+  // curves before geometry validation, through the normal dependency path.
+  if(beforeScaffold.loomisScaffold?.rimSag)result=followEndpoints({...result,curves:beforeScaffold.curves,landmarks:beforeScaffold.landmarks,loomisScaffold:beforeScaffold.loomisScaffold},result);
+  dependencyGraph(result);
   validatePlacements(result);
   result.curves = parseCurves(result.curves, result);
   if(p.patches !== undefined || p.version === "landmarks-0.4.0" || p.version === "landmarks-0.4.1" || p.version === "landmarks-0.4.2") { result.patches = parsePatches(p.patches, result); result.version=p.version==="landmarks-0.4.2"?"landmarks-0.4.2":p.version==="landmarks-0.4.1"?"landmarks-0.4.1":"landmarks-0.4.0"; }
@@ -227,5 +264,8 @@ export function parseLandmarks(text: string): LandmarkProject {
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
-  return migrateHeadFrame(migrateContinuity(result,p.surfaceContinuity));
+  if(p.recording!==undefined)result.recording=parseRecording(p.recording);
+  if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
+  if(p.geometryModules!==undefined){check(!!p.geometryModules&&typeof p.geometryModules==='object'&&!Array.isArray(p.geometryModules));check(Object.values(p.geometryModules).every(x=>x==='HEADSET'||x==='EYES'));result.geometryModules={...p.geometryModules};}
+  const final=migrateHeadFrame(migrateContinuity(result,p.surfaceContinuity));dependencyGraph(final);validateOnPatch(final);return migrateChinNode(migrateFree3D(assignModules(repairCurveNames(rebuildEyeScaffold(migrateEyeCoord(final))))));
 }

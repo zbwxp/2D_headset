@@ -1,3 +1,5 @@
+import {screenToWorld} from '../orthographic';
+import type {RenderSurfaceHit} from './picking';
 import * as THREE from 'three';
 import {Line2} from 'three/examples/jsm/lines/Line2.js';
 import {LineGeometry} from 'three/examples/jsm/lines/LineGeometry.js';
@@ -88,7 +90,25 @@ export class GpuScene {
   renderer.render(this.frontScene,this.camera);
   count('gpuFrames');done();
  }
- dispose(){
+ pick(renderer:THREE.WebGLRenderer,view:OrthographicViewState,x:number,y:number,ids?:ReadonlySet<string>):RenderSurfaceHit|null {
+  if(x<0||y<0||x>=view.viewportWidth||y>=view.viewportHeight)return null;
+  applyCamera(this.camera,view);
+  const size=new THREE.Vector2();renderer.getDrawingBufferSize(size);this.pickTarget.setSize(size.x,size.y);
+  const scene=new THREE.Scene(),mapping:string[]=[];
+  for(const [id,r] of this.surfaces){if(!r.depth.visible||ids&&!ids.has(id))continue;const index=mapping.push(id),m=new THREE.ShaderMaterial({uniforms:{idColor:{value:new THREE.Vector3((index&255)/255,((index>>8)&255)/255,((index>>16)&255)/255)}},vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'uniform vec3 idColor;void main(){gl_FragColor=vec4(idColor,1.0);}',side:THREE.DoubleSide,blending:THREE.NoBlending,depthTest:true,depthWrite:true});const mesh=new THREE.Mesh(r.geometry,m);mesh.frustumCulled=false;scene.add(mesh);}
+  const previous=renderer.getRenderTarget(),color=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha();
+  const pixel=new Uint8Array(4);
+  try{renderer.setRenderTarget(this.pickTarget);renderer.setClearColor(0,0);renderer.clear(true,true,true);renderer.render(scene,this.camera);renderer.readRenderTargetPixels(this.pickTarget,Math.min(size.x-1,Math.floor(x/view.viewportWidth*size.x)),Math.min(size.y-1,size.y-1-Math.floor(y/view.viewportHeight*size.y)),1,1,pixel);}
+  finally{renderer.setRenderTarget(previous);renderer.setClearColor(color,alpha);for(const m of scene.children)(m as THREE.Mesh).material instanceof THREE.Material&&((m as THREE.Mesh).material as THREE.Material).dispose();}
+  const id=mapping[(pixel[0]+(pixel[1]<<8)+(pixel[2]<<16))-1];if(!id)return null;
+  const origin=new THREE.Vector3(...screenToWorld([x,y],view,1000)),direction=new THREE.Vector3(...view.forward).negate(),ray=new THREE.Raycaster(origin,direction);
+  const mesh=new THREE.Mesh(this.surfaces.get(id)!.geometry,this.pickRayMaterial);mesh.updateMatrixWorld();const hit=ray.intersectObject(mesh)[0];if(!hit?.face)return null;
+  const pos=mesh.geometry.getAttribute('position'),face=hit.face,bary=THREE.Triangle.getBarycoord(hit.point,new THREE.Vector3().fromBufferAttribute(pos,face.a),new THREE.Vector3().fromBufferAttribute(pos,face.b),new THREE.Vector3().fromBufferAttribute(pos,face.c),new THREE.Vector3());
+  return {id,world:hit.point.toArray(),depth:1000-hit.distance,triangle:hit.faceIndex!,barycentric:bary?.toArray()??[1,0,0]};
+ }
+ readonly pickTarget=new THREE.WebGLRenderTarget(1,1,{depthBuffer:true,stencilBuffer:false,type:THREE.UnsignedByteType,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+ readonly pickRayMaterial=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
+ dispose(){this.pickTarget.dispose();this.pickRayMaterial.dispose();
   for(const r of this.surfaces.values())r.geometry.dispose();for(const r of this.curves.values())r.geometry.dispose();
   this.surfaces.clear();this.curves.clear();
   this.depthScene.clear();this.colorScene.clear();this.xrayScene.clear();this.frontScene.clear();

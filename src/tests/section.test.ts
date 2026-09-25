@@ -16,7 +16,7 @@ import {baseEvaluator} from '../domain/patches/base';
 import {baseDifferential} from '../domain/patches/fullness';
 import {tessellate} from '../domain/patches/geometry';
 import {editRenderSnapshot} from '../app/renderSnapshot';
-import {solveContinuity} from '../domain/continuity/solver';
+import {solveContinuity,solvePatch} from '../domain/continuity/solver';
 import type {Vec3} from '../domain/project/types';
 const near=(a:Vec3,b:Vec3,e=1e-9)=>expect(Math.hypot(...sub(a,b))).toBeLessThan(e);
 function fixture(){let {project:p,selectedId:host}=createSection(migrateHeadFrame(createLandmarkProject()));const a=addOnCurvePoint(p,host);p=setOnCurveS(a.project,a.selectedId,.8);const b=addOnCurvePoint(p,host);p=setOnCurveS(b.project,b.selectedId,.2);return {p,host,a:a.selectedId,b:b.selectedId,use:{curveId:host,startLandmarkId:a.selectedId,endLandmarkId:b.selectedId}};}
@@ -36,8 +36,14 @@ it('section edits dirty descendants but reuse unrelated providers; mirror follow
  const dirty=dirtyDescendants(before,q);expect(dirty.curves.has(f.host)).toBe(true);expect(dirty.points.has(f.a)).toBe(true);expect(dirty.curves.has(other.selectedId)).toBe(false);expect(evaluationContext(before).curve(other.selectedId)).toBe(evaluationContext(q).curve(other.selectedId));
  const host=q.curves.find(c=>c.id===f.host)!;for(const t of [0,.2,.8,1])near(mirrorPoint(q,evaluationContext(q).curve(f.host).evaluate(t)),evaluationContext(q).curve(host.mirrorPartnerCurveId!).evaluate(t));
 });
-it('two mixed patches sharing an analytic arc enter the existing continuity solver',()=>{
+it('mixed analytic-arc patches still solve, but unsafe candidates are rejected as a group',()=>{
  const f=fixture();let p=f.p;
  for(const name of ['右嘴角点','右眉头点']){const c=p.landmarks.find(l=>l.name===name)!.id,ac=createCurve(p,f.a,c,p.views[0],'AC');p=ac.project;const bc=createCurve(p,f.b,c,p.views[0],'BC');p=addPatch(bc.project,[f.use,ac.selectedId,bc.selectedId]);}
- const r=solveContinuity(p);const owners=p.patches!.filter(x=>!x.canonicalId);expect(owners).toHaveLength(2);for(const patch of owners){expect(r.patches[patch.id].error).toBeUndefined();expect(r.patches[patch.id].field).toBeDefined();}
+ const owners=p.patches!.filter(x=>!x.canonicalId);expect(owners).toHaveLength(2);
+ // This fixture's original candidates turn normals by about 90–98 degrees.
+ // Analytic-arc solver support remains intact; installing those candidates is now unsafe.
+ for(const patch of owners){const raw=solvePatch(p,patch);expect(raw.error).toBeUndefined();expect(raw.field).toBeDefined();}
+ const r=solveContinuity(p);
+ for(const patch of owners){expect(r.patches[patch.id].shapeProtection).toBe('normal-change');expect(r.patches[patch.id].field).toBeUndefined();}
+ expect(r.diagnostics.safety?.some(g=>!g.accepted&&owners.every(p=>g.patchIds.includes(p.id)))).toBe(true);
 });
