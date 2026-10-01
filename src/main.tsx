@@ -17,6 +17,9 @@ async function start() {
       getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value),
     });
     import.meta.hot?.dispose(()=>workspace.dispose());
+    const {registerVectorEditingApi}=await import('./app/vectorEditingApi');
+    const unregisterAI=registerVectorEditingApi();
+    import.meta.hot?.dispose(()=>unregisterAI());
     finishProjectStartup();
     root.render(<React.StrictMode><App/></React.StrictMode>);
   } catch {

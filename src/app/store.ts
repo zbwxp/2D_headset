@@ -1,3 +1,5 @@
+import {assertSourceEditable,canEditSource} from './workspaceMode';
+import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 import {syncPoseSnapshots} from '../domain/recording/poses';
 import {getStarterProject} from './starterProject';
 import {createEmptyProject} from './emptyProject';
@@ -119,6 +121,8 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  setVectorRecording:(recording:import("../domain/vectorRecording/model").VectorRecording)=>void;
+  commitVectorRecording:(recording:import("../domain/vectorRecording/model").VectorRecording)=>void;
   setAssembly:(assembly:import("../domain/assembly/model").AssemblyDocument)=>void;
   setHairstyle:(hairstyle:import("../domain/hairstyle/model").Hairstyle)=>void;
   setDrawing:(drawing:import("../domain/drawing/model").DrawingDocument)=>void;
@@ -255,11 +259,13 @@ export const useEditor = create<State>((rawSet, get, api) => {
     persist(p);
   };
   return normalizeEditorUpdate(undefined,{
+    setVectorRecording:(vectorRecording)=>{const p={...get().project,vectorRecording};set({project:p});persist(p);},
+    commitVectorRecording:(value)=>{const vectorRecording=parseVectorRecording(value);get().beginEdit();try{get().setVectorRecording(vectorRecording);}finally{get().endEdit();}},
     setPoseRecording:(poseRecording)=>{const {recording,...rest}=get().project;void recording;const p={...rest,poseRecording:syncPoseSnapshots(poseRecording,rest.drawingSnapshots)};set({project:p});persist(p);},
     setAssembly:(assembly)=>{const {hairstyle,...rest}=get().project;void hairstyle;const p={...rest,assembly};set({project:p});persist(p);},
     setHairstyle:(hairstyle)=>{const p={...get().project,hairstyle};set({project:p});persist(p);},
-    setDrawing:(drawing)=>{const p={...get().project,drawing};set({project:p});persist(p);},
-    setDrawingSnapshotState:({drawing,drawingSnapshots})=>{const current=get().project,p={...current,drawing,drawingSnapshots,...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})};set({project:p});persist(p);},
+    setDrawing:(drawing)=>{assertSourceEditable();const p={...get().project,drawing};set({project:p});persist(p);},
+    setDrawingSnapshotState:({drawing,drawingSnapshots})=>{assertSourceEditable();const current=get().project,newId=drawingSnapshots?.activeId,firstSave=!current.drawingSnapshots?.activeId&&newId&&!current.drawingSnapshots?.items.some(item=>item.id===newId),vectorRecording=firstSave&&current.vectorRecording?{...current.vectorRecording,rigs:current.vectorRecording.rigs.map(r=>r.artworkId==='$working'?{...r,artworkId:newId!}:r)}:current.vectorRecording,p={...current,drawing,drawingSnapshots,...(vectorRecording?{vectorRecording}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})};set({project:p});persist(p);},
     setGazeTracking:(tracking)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g)return;s.beginEdit();commit({...s.project,gazeEyeball:{...g,tracking}});s.endEdit();},
     createGaze:()=>{const s=get();if(s.activeModule!=='EYES'||!s.project.eyeScaffold||s.project.gazeEyeball)return;s.beginEdit();const g={version:1 as const,leftId:crypto.randomUUID(),rightId:crypto.randomUUID(),irisScale:.3,recessDepth:.12,tracking:false};commit({...s.project,gazeEyeball:g});s.endEdit();s.selectObject({kind:'surface',source:'IRIS',id:g.rightId});},
     setGazeParameter:(key,value)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g||!Number.isFinite(value))return;const [lo,hi]=key==='followStrength'?[0,1]:key==='viewDistance'?[10,200]:key==='irisScale'?[.05,.95]:[0,.5];commit({...s.project,gazeEyeball:{...g,[key]:Math.max(lo,Math.min(hi,value))}});},
@@ -541,10 +547,11 @@ export const useEditor = create<State>((rawSet, get, api) => {
         message: `${v.label}：${locked ? "已启用视图锁；成对点仅约束 driver" : "已解除该视图锁"}`,
       });
     },
-    undo: () => {editBase=null;autosave.end();
+    undo: () => {if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));editBase=null;autosave.end();
       const s = get(),
         p = s.past.at(-1);
       if (!p) return;
+      if(!canEditSource()&&(p.drawing!==s.project.drawing||p.drawingSnapshots!==s.project.drawingSnapshots)){s.notify('此历史步骤会修改源画稿，请返回绘制模式后撤销/重做。');return;}
       set({
         project: p, tool:{kind:"select"},
         selectedCurveId: null,
@@ -560,13 +567,14 @@ export const useEditor = create<State>((rawSet, get, api) => {
         referenceMoving: false,
       });
       // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||(p as any)[key]===(s.project as any)[key]))persist(p);
+      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
       else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
     },
-    redo: () => {editBase=null;autosave.end();
+    redo: () => {if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));editBase=null;autosave.end();
       const s = get(),
         p = s.future[0];
       if (!p) return;
+      if(!canEditSource()&&(p.drawing!==s.project.drawing||p.drawingSnapshots!==s.project.drawingSnapshots)){s.notify('此历史步骤会修改源画稿，请返回绘制模式后撤销/重做。');return;}
       set({
         project: p, tool:{kind:"select"},
         selectedCurveId: null,
@@ -582,7 +590,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
         referenceMoving: false,
       });
       // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||(p as any)[key]===(s.project as any)[key]))persist(p);
+      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
       else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
     },
     load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p)))));editBase=null;autosave.cancel();

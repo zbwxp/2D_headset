@@ -1852,3 +1852,20 @@ Yaw 轨迹	Yaw trajectories
 未微调 · 偏移 0	Uncorrected · Offset 0
 删除微调；此图层仍有姿态记录时偏移归零	Delete correction; offset becomes zero if this layer still has a pose key
 A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值。	A: drag endpoints or handles. New poses start with zero offset; offsets interpolate between poses.
+
+画稿库	Artwork library
+画稿	Artwork
+切换画稿	Switch artwork
+当前画布 · 尚未保存画稿	Current canvas · artwork not saved
+未存为画稿	Unsaved artwork
+保存为新画稿	Save new artwork
+用当前画布更新此画稿	Update this artwork from the canvas
+更新当前画稿	Update artwork
+重命名画稿	Rename artwork
+删除画稿	Delete artwork
+画稿名称	Artwork name
+保存独立矢量画稿、遮挡与参考图；角度关键形在录制模式单独保存。	Save an independent vector artwork, visibility and reference. Angle keyforms are saved separately in Recording.
+当前修改尚未存入画稿。可另存后切换，原画稿保持不变。	Changes are not saved in an artwork. Save a copy before switching to keep the original.
+只删除画稿，当前画布保留；可以撤销。	Delete the artwork only; keep the working canvas. You can undo this.
+
+从画稿导入图层	Import artwork layers

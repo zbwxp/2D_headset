@@ -1,0 +1,19 @@
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {useDrawingWorkspace} from './workspace';
+import {useLanguage} from '../i18n';
+import {planArtworkLayerImport,importArtworkLayers} from '../../domain/drawing/importArtworkLayers';
+import {emptyDrawing} from '../../domain/drawing/model';
+export default function ImportArtworkDialog({close}:{close:()=>void}){
+ const {editor:useEditor,commitDrawing,session}=useDrawingWorkspace(),project=useEditor(s=>s.project),library=project.drawingSnapshots;
+ const zh=useLanguage(s=>s.language)==='zh',t=(a:string,b:string)=>zh?a:b,[sourceId,setSourceId]=useState(library?.items.find(x=>x.id!==library.activeId)?.id??library?.items[0]?.id??''),[layerIds,setLayerIds]=useState<string[]>([]),[dependencies,setDependencies]=useState(false),[error,setError]=useState(''),dialog=useRef<HTMLDialogElement>(null),source=library?.items.find(x=>x.id===sourceId);
+ useEffect(()=>{const el=dialog.current!;el.showModal();return()=>el.close();},[]);
+ const plan=useMemo(()=>{if(!source||!layerIds.length)return null;try{return planArtworkLayerImport(source.drawing,layerIds);}catch(e){return {error:(e as Error).message};}},[source,layerIds]);
+ const extra=plan&&'additionalLayerIds'in plan?plan.additionalLayerIds:[];
+ return <dialog ref={dialog} role="dialog" className="drawing-pen-settings drawing-snapshot-dialog" aria-label={t('从画稿导入图层','Import artwork layers')} onCancel={e=>{e.preventDefault();close();}}><form onSubmit={e=>{e.preventDefault();try{const p=useEditor.getState().project,s=p.drawingSnapshots?.items.find(x=>x.id===sourceId);if(!s)throw Error(t('源画稿不存在','Source artwork not found'));const result=importArtworkLayers(p.drawing??emptyDrawing(),s.drawing,layerIds,{includeDependencies:dependencies});commitDrawing(result.document);session.getState().set({selection:{ids:result.importedCurveIds,layers:result.importedLayerIds},layerId:result.importedLayerIds[0]??null,tool:'select'});close();}catch(e){setError((e as Error).message);}}}>
+  <strong>{t('从画稿导入图层','Import artwork layers')}</strong><p>{t('将正面、侧面等画稿中的部件复制到当前构图。所有导入对象会分配新 ID；源画稿、当前背景与现有图层保持不变。一次操作可撤销。','Copy front, side or other artwork parts into this composition. Imported objects receive fresh IDs; source artwork, current reference and existing layers stay unchanged. Undo reverses the whole import.')}</p>
+  <label className="drawing-field">{t('源画稿','Source artwork')}<select aria-label={t('导入源画稿','Import source artwork')} value={sourceId} onChange={e=>{setSourceId(e.target.value);setLayerIds([]);setDependencies(false);setError('');}}>{!library?.items.length&&<option value="">{t('请先保存一份画稿','Save an artwork first')}</option>}{library?.items.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></label>
+  <div className="vr-import-layers">{source?.drawing.layers.map(l=><label className="drawing-check" key={l.id}><input type="checkbox" checked={layerIds.includes(l.id)} onChange={e=>setLayerIds(e.target.checked?[...layerIds,l.id]:layerIds.filter(id=>id!==l.id))}/>{l.name} · {l.items.length}</label>)}</div>
+  {!!extra.length&&<div className="vr-import-dependencies"><p>{t('关联填充、偏移或端点联动还需要这些图层：','Fill, offset or linked-endpoint dependencies require these layers:')} {extra.map(id=>source?.drawing.layers.find(l=>l.id===id)?.name).join('、')}</p><label className="drawing-check"><input type="checkbox" checked={dependencies} onChange={e=>setDependencies(e.target.checked)}/>{t('一并导入这些依赖图层','Also import these dependency layers')}</label></div>}
+  {(error||plan&&'error'in plan)&&<p role="alert">{error||plan&&'error'in plan&&plan.error}</p>}<footer><button type="button" onClick={close}>{t('取消','Cancel')}</button><button data-testid="import-artwork-layers-confirm" type="submit" disabled={!layerIds.length||!!extra.length&&!dependencies}>{t('复制图层到当前画稿','Copy layers into this artwork')}</button></footer>
+ </form></dialog>;
+}

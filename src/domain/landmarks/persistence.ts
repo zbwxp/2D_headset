@@ -1,3 +1,4 @@
+import {parseVectorRecording} from '../vectorRecording/persistence';
 import {parseAssembly} from '../assembly/model';
 import {migrateChinNode} from '../chin/migration';
 import type {Vec3} from '../project/types';
@@ -267,11 +268,16 @@ export function parseLandmarks(text: string): LandmarkProject {
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
+  // Old payloads are not executed, but remain recoverable in exported projects.
+  if(p.legacyWorkspaces&&typeof p.legacyWorkspaces==='object'&&!Array.isArray(p.legacyWorkspaces))result.legacyWorkspaces=structuredClone(p.legacyWorkspaces);
+  if(p.recording!==undefined||p.hairstyle!==undefined)result.legacyWorkspaces={...result.legacyWorkspaces,...(p.recording!==undefined?{recording:structuredClone(p.recording)}:{}),...(p.hairstyle!==undefined?{hairstyle:structuredClone(p.hairstyle)}:{})};
+  for(const key of ['poseRecording','assembly'] as const)if(p[key]!==undefined&&!Object.hasOwn(result.legacyWorkspaces??{},key))result.legacyWorkspaces={...result.legacyWorkspaces,[key]:structuredClone(p[key])};
+  if(p.vectorRecording!==undefined)result.vectorRecording=parseVectorRecording(p.vectorRecording);
   // Retire old point/curve recordings, including malformed legacy records.
   delete result.recording;
-  if(p.poseRecording!==undefined)result.poseRecording=parsePoseRecording(p.poseRecording);
+  if(p.poseRecording!==undefined){try{result.poseRecording=parsePoseRecording(p.poseRecording);}catch{delete result.poseRecording;}}
   delete result.hairstyle; // Retired workspace: never retain baked textures or duplicate hair documents.
-  if(p.assembly!==undefined)result.assembly=parseAssembly(p.assembly);
+  if(p.assembly!==undefined){try{result.assembly=parseAssembly(p.assembly);}catch{delete result.assembly;}}
   if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
   if(p.drawingSnapshots!==undefined)result.drawingSnapshots=parseDrawingSnapshots(p.drawingSnapshots);
   Object.assign(result,upgradeAppliedInferenceInk(result));

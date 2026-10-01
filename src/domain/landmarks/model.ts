@@ -31,6 +31,9 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  vectorRecording?: import("../vectorRecording/model").VectorRecording;
+  /** Read-only archive of retired workspace payloads, retained on round trip. */
+  legacyWorkspaces?: {recording?:unknown;hairstyle?:unknown;poseRecording?:unknown;assembly?:unknown};
   assembly?: import("../assembly/model").AssemblyDocument;
   hairstyle?: import("../hairstyle/model").Hairstyle;
   /** Authored view list; skip legacy preset insertion when loading. */
