@@ -143,17 +143,18 @@ export function deleteLayers(d:Doc,ids:readonly string[]):Doc{
  const n=deleteObjects(d,layers.flatMap(l=>l.items));
  return {...n,layers:n.layers.filter(l=>!ids.includes(l.id))};
 }
-export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.id,offset:Point2=[.04,-.04],copyGroupFills=true):{document:Doc;ids:string[]}{
+/** Standalone copies remain editable; whole-layer copies retain every member's state. */
+export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.id,offset:Point2=[.04,-.04],copyGroupFills=true,preserveMemberState=false):{document:Doc;ids:string[]}{
  if(!ids.length||!layerId)return {document:d,ids:[]};requireLayer(d,layerId);
  const n=copy(d),nodeMap=new Map<string,string>(),curveMap=new Map<string,string>();
  for(const id of ids){const c=curveById(d,id);for(const nodeId of c.nodes)if(!nodeMap.has(nodeId)){const newId=uid();nodeMap.set(nodeId,newId);n.nodes.push({id:newId,position:add(d.nodes.find(x=>x.id===nodeId)!.position,offset)});}
-  const newId=uid();curveMap.set(id,newId);n.curves.push({...c,id:newId,name:nextName(n.curves.map(c=>c.name),c.name+' · '),nodes:c.nodes.map(id=>nodeMap.get(id)!) as [string,string],handles:c.handles.map(p=>add(p,offset)) as [Point2,Point2],visible:true,locked:false});}
+  const newId=uid();curveMap.set(id,newId);n.curves.push({...c,id:newId,name:nextName(n.curves.map(c=>c.name),c.name+' · '),nodes:c.nodes.map(id=>nodeMap.get(id)!) as [string,string],handles:c.handles.map(p=>add(p,offset)) as [Point2,Point2],visible:preserveMemberState?c.visible:true,locked:preserveMemberState?c.locked:false});}
  for(const j of d.joins)if(curveMap.has(j.a.curveId)&&curveMap.has(j.b.curveId))n.joins.push({...j,id:uid(),a:{...j.a,curveId:curveMap.get(j.a.curveId)!},b:{...j.b,curveId:curveMap.get(j.b.curveId)!}});
  if(d.endpointLinks)n.endpointLinks=[...d.endpointLinks,...d.endpointLinks.filter(j=>curveMap.has(j.a.curveId)&&curveMap.has(j.b.curveId)).map(j=>({...j,id:uid(),a:{...j.a,curveId:curveMap.get(j.a.curveId)!},b:{...j.b,curveId:curveMap.get(j.b.curveId)!}}))];
  const created=ids.map(id=>curveMap.get(id)!);n.layers.find(l=>l.id===layerId)!.items.unshift(...created);
  if(d.groups)n.groups=[...d.groups,...d.groups.filter(g=>g.curveIds.every(id=>curveMap.has(id))).map(g=>({...g,id:uid(),name:nextName(d.groups!.map(g=>g.name),g.name+' · '),curveIds:g.curveIds.map(id=>curveMap.get(id)!),visible:true,locked:false}))];
  if(d.displayIntervals)n.displayIntervals=[...d.displayIntervals,...d.displayIntervals.filter(t=>curveMap.has(t.anchor.id)).map(t=>({...t,id:uid(),anchor:{...t.anchor,id:curveMap.get(t.anchor.id)!},ranges:t.ranges.map(r=>({...r,id:uid()}))}))];
- if(copyGroupFills){const objectMap=new Map(curveMap);for(const f of d.fills){const g=groupFor(d,f.id);if(!g||!g.curveIds.every(id=>curveMap.has(id)))continue;const id=uid();objectMap.set(f.id,id);n.fills.push({...f,id,boundary:f.boundary.map(x=>({...x,id:curveMap.get(x.id)!})),locked:false});}
+ if(copyGroupFills){const objectMap=new Map(curveMap);for(const f of d.fills){const g=groupFor(d,f.id);if(!g||!g.curveIds.every(id=>curveMap.has(id)))continue;const id=uid();objectMap.set(f.id,id);n.fills.push({...f,id,boundary:f.boundary.map(x=>({...x,id:curveMap.get(x.id)!})),locked:preserveMemberState?f.locked:false});}
   if(objectMap.size>curveMap.size){const layer=n.layers.find(l=>l.id===layerId)!,clones=new Set(objectMap.values());layer.items=[...d.layers.flatMap(l=>l.items).filter(id=>objectMap.has(id)).map(id=>objectMap.get(id)!),...layer.items.filter(id=>!clones.has(id))];}}
 
  // Cloning assigns new node IDs; preserve asymmetric ink direction if traversal reverses.
@@ -164,9 +165,9 @@ export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.i
  return {document:normalizeOrder(n),ids:created};
 }
 export function duplicateLayer(d:Doc,id:string):Doc{
- const l=d.layers.find(l=>l.id===id);if(!l)return d;let n=addLayer(d,nextName(d.layers.map(l=>l.name),l.name+' · '));const layer=n.layers[0].id,source=l.items.filter(id=>curveById(d,id)),result=duplicateCurves(n,source,layer,[0,0],false);n=result.document;
+ const l=d.layers.find(l=>l.id===id);if(!l)return d;let n=addLayer(d,nextName(d.layers.map(l=>l.name),l.name+' · '));const layer=n.layers[0].id,source=l.items.filter(id=>curveById(d,id)),result=duplicateCurves(n,source,layer,[0,0],false,true);n=result.document;
  const map=new Map(source.map((id,i)=>[id,result.ids[i]])),uses=(xs:import('./model').CurveUse[])=>xs.map(x=>({...x,id:map.get(x.id)??x.id}));
- for(const oid of l.items){const f=d.fills.find(x=>x.id===oid),o=d.offsets.find(x=>x.id===oid),newId=uid();if(f){map.set(oid,newId);n={...n,fills:[...n.fills,{...f,id:newId,boundary:uses(f.boundary),locked:false}]};}if(o){map.set(oid,newId);n={...n,offsets:[...n.offsets,{...o,id:newId,source:uses(o.source),locked:false}]};}}
+ for(const oid of l.items){const f=d.fills.find(x=>x.id===oid),o=d.offsets.find(x=>x.id===oid),newId=uid();if(f){map.set(oid,newId);n={...n,fills:[...n.fills,{...f,id:newId,boundary:uses(f.boundary)}]};}if(o){map.set(oid,newId);n={...n,offsets:[...n.offsets,{...o,id:newId,source:uses(o.source)}]};}}
  return {...n,layers:n.layers.map(l2=>l2.id===layer?{...l2,items:l.items.map(id=>map.get(id)!)}:l2)};
 }
 export function reorderLayers(d:Doc,id:string,target:string,after=false):Doc{
