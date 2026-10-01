@@ -120,3 +120,21 @@ test('one layer import uses one root undo transaction and saved artwork remains 
   useWorkspaceMode.getState().setMode('recording');expect(()=>useEditor.getState().setDrawing(r.document)).toThrow();
  }finally{vi.runAllTimers();useEditor.setState(old,true);useWorkspaceMode.getState().setMode(mode);vi.unstubAllGlobals();vi.useRealTimers();}
 });
+
+test('branched return paths with prefix-containing curve IDs retain directional profile after tie-break reversal',()=>{
+ let d=commands.addLayer(emptyDrawing(),'Branch');const layer=d.layers[0].id;
+ d=commands.createCurve(d,layer,[[1,0],[.8,.5],[.2,.5],[0,0]],.02,'First','a');
+ d=commands.createCurve(d,layer,[[0,0],[.2,-.5],[.8,-.5],[1,0]],.02,'Return','a:0');
+ d=commands.createCurve(d,layer,[[0,0],[-.2,0],[-.4,0],[-.6,0]],.02,'Tail','tail');
+ d=commands.connect(d,{curveId:'a',end:0},{curveId:'a:0',end:1},'SMOOTH');
+ d=commands.connect(d,{curveId:'a',end:1},{curveId:'a:0',end:0},'POSITION');
+ d=commands.connect(d,{curveId:'a',end:1},{curveId:'tail',end:0},'POSITION');
+ const nodeMap=new Map(d.nodes.map(n=>[n.id,n.position[0]===0?'0-root':n.position[0]===1?'9-far':'z-tail']));
+ d={...d,nodes:d.nodes.map(n=>({...n,id:nodeMap.get(n.id)!})),curves:d.curves.map(c=>({...c,nodes:c.nodes.map(id=>nodeMap.get(id)!) as [string,string]}))};
+ d=setInk(d,['a','a:0','tail'],{profile:'TAPER_END'});expect(()=>parseDrawing(d)).not.toThrow();
+ const oldPath=strokePaths(strokeFor(d,'a')).find(p=>p.segments.some(s=>s.id==='a'))!;
+ const r=importArtworkLayers(emptyDrawing(),d,[layer],{idFactory:generator()}),newPath=strokePaths(strokeFor(r.document,r.idMap.a)).find(p=>p.segments.some(s=>s.id===r.idMap.a))!;
+ expect(oldPath.segments[0]).toEqual({id:'a:0',reverse:false});expect(newPath.segments[0]).toEqual({id:r.idMap.a,reverse:true});
+ expect(r.document.curves.find(c=>c.id===r.idMap.a)!.profileReverse).toBe(true);expect(r.document.curves.find(c=>c.id===r.idMap['a:0'])!.profileReverse).toBe(true);
+ expect(r.document.curves.find(c=>c.id===r.idMap.tail)!.profileReverse).toBeUndefined();expect(()=>parseDrawing(r.document)).not.toThrow();
+});

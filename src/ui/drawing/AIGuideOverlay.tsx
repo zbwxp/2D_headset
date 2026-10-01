@@ -46,7 +46,7 @@ export default function AIGuideOverlay({d,curveIds,screen,unit,width,height,grid
    })}
   </g>;})}
   {errors.map(([id,g])=>{const join=d.joins.find(j=>j.id===id)!,p=screen(nodeAt(d,join.a).position);return <g key={id} data-ai-diagnostic-id={id}><circle cx={p[0]} cy={p[1]} r={10} fill="none" stroke="#d33242" strokeWidth={2}/><title>{`Join ${id}: ${g.error}`}</title></g>;})}
-  <rect x={8} y={8} width={Math.min(width-16,Math.max(190,title.length*7.5))} height={22} rx={4} fill="#eaf8fc" fillOpacity={.94} stroke="#79b6c4"/>
+  <rect x={8} y={8} width={Math.max(0,Math.min(width-16,Math.max(190,title.length*7.5)))} height={22} rx={4} fill="#eaf8fc" fillOpacity={.94} stroke="#79b6c4"/>
   <text x={15} y={23} fontSize={11} fill="#176379">{title}</text>
   {errors.length>0&&<text x={15} y={45} fontSize={11} fill="#bc2338">{`${errors.length} 个所选接点存在几何诊断；查看 SVG title 获取详情`}</text>}
  </g>;

@@ -1,3 +1,4 @@
+import {saveDurableProject} from './projectStorage';
 import {syncPoseSnapshots} from '../domain/recording/poses';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {count,timed} from '../domain/geometry/diagnostics';
@@ -17,4 +18,4 @@ export function createAutosave(write:(p:LandmarkProject)=>void,delay=500){
  const schedule=()=>{clearTimeout(timer);if(!editing&&pending)timer=setTimeout(flush,delay);};
  return {request(p:LandmarkProject){pending=p;schedule();},begin(){editing=true;clearTimeout(timer);},end(){editing=false;schedule();},flush,cancel(){clearTimeout(timer);pending=undefined;editing=false;}};
 }
-export function writeAutosave(key:string,p:LandmarkProject){const end=timed('persistence');try{count('autosaveSerializations');const json=serializeProject(p);localStorage.setItem(key,json);count('autosaveWrites');}finally{end();}}
+export async function writeAutosave(key:string,p:LandmarkProject){void key;const end=timed('persistence');try{count('autosaveSerializations');const json=serializeProject(p);await saveDurableProject(json);count('autosaveWrites');}finally{end();}}

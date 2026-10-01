@@ -1,3 +1,4 @@
+import {getInitialAutosave,getStorageStatus,markInitialAutosaveUnreadable} from './projectStorage';
 import {assertSourceEditable,canEditSource} from './workspaceMode';
 import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 import {syncPoseSnapshots} from '../domain/recording/poses';
@@ -81,7 +82,7 @@ let initial = getStarterProject() ?? freshHead(),
   message = "";
 try {
   const saved = getStarterProject() ? null : (
-    localStorage.getItem(KEY) ??
+    getInitialAutosave() ?? localStorage.getItem(KEY) ??
     localStorage.getItem("contour.landmarks.v038") ??
     localStorage.getItem("contour.landmarks.v036") ??
     localStorage.getItem("contour.landmarks.v035") ??
@@ -91,11 +92,7 @@ try {
   if (saved) {
     initial = ensureScaffold(parseLandmarks(saved));
     // Persist migration/repair immediately, before any user interaction.
-    try {
-      localStorage.setItem(KEY, JSON.stringify(initial));
-    } catch {
-      message = "迁移已完成，但本机存储已满，请下载 JSON 保存。";
-    }
+    void writeAutosave(KEY,initial).catch(()=>useEditor.getState().notify('自动保存失败；修改仍保留在本页，请保存 JSON 并保持页面打开。'));
   } else {
     const old = getStarterProject() ? null : localStorage.getItem("contour.project.v1");
     if (old) {
@@ -115,9 +112,10 @@ try {
         "已保留旧参考图，初始化语义点；旧曲面自动保存仍保留在原存储中。";
     }
     // Keep even an untouched new project identity stable across reloads.
-    writeAutosave(KEY,initial);
+    void writeAutosave(KEY,initial).catch(()=>useEditor.getState().notify('自动保存失败；修改仍保留在本页，请保存 JSON 并保持页面打开。'));
   }
 } catch {
+  if(getInitialAutosave()!==undefined)markInitialAutosaveUnreadable();
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
@@ -236,9 +234,9 @@ interface State {
   deleteSelected: (sourceId?: string) => void;
   reorderCenterline: (id: string, targetId: string, after: boolean) => void;
 }
-const autosave=createAutosave(p=>{try{writeAutosave(KEY,p);}catch{useEditor.setState({message:'本机存储已满，请下载 JSON 保存。'});}});
+const autosave=createAutosave(p=>{void writeAutosave(KEY,p).catch(()=>useEditor.setState({message:'自动保存失败；修改仍保留在本页，请保存 JSON 并保持页面打开。'}));});
 const persist=(p:LandmarkProject)=>autosave.request(p);
-if(typeof window!=='undefined'){window.addEventListener('pagehide',()=>autosave.flush());document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosave.flush();});}
+if(typeof window!=='undefined'){window.addEventListener('beforeunload',e=>{autosave.flush();const state=getStorageStatus().state;if(state==='saving'||state==='error'){e.preventDefault();e.returnValue='';}});window.addEventListener('pagehide',()=>autosave.flush());document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosave.flush();});}
 export const useEditor = create<State>((rawSet, get, api) => {
   const set:typeof rawSet=(update:any)=>rawSet(normalizeEditorUpdate(get(),typeof update==="function"?update(get()):update),true);
   api.setState=set;

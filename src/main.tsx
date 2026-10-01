@@ -1,3 +1,4 @@
+import {prepareProjectStorage,getInitialAutosave} from './app/projectStorage';
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {prepareStarterProject,finishProjectStartup} from './app/starterProject';
@@ -8,7 +9,8 @@ async function start() {
   try {
     // Finish the initial template download before importing the store: never
     // render/edit an empty project while a late response might replace it.
-    await prepareStarterProject();
+    await prepareProjectStorage();
+    await prepareStarterProject({getItem:key=>{if(key==='contour.landmarks.v039'&&getInitialAutosave()!==undefined)return getInitialAutosave()!;try{return localStorage.getItem(key);}catch{return null;}},setItem:(key,value)=>localStorage.setItem(key,value)});
     const [{default:App},{useEditor},{useDrawing},{useDrawing:useAssembly},{useRecording},{connectWorkspaceSession}] = await Promise.all([
       import('./app/App'), import('./app/store'), import('./ui/drawing/session'),
       import('./ui/assemblyDrawing/session'),import('./ui/recording/session'),import('./app/workspaceSession'),

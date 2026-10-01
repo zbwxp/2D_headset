@@ -1,3 +1,4 @@
+import AIGuideOverlay from './AIGuideOverlay';
 import {useDrawingWorkspace} from './workspace';
 import AutoHideBar from '../shared/AutoHideBar';
 import {usePanelOpen} from '../shared/panelPreferences';
@@ -43,7 +44,7 @@ interface Drag extends TrackedPointer {followStrength?:number;cage?:DeformCage;c
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
-export default function DrawingRoom({underlay,artworkPreview}:{underlay?:(view:DrawingUnderlay)=>ReactNode;artworkPreview?:DrawingArtworkPreview}={}){
+export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{underlay?:(view:DrawingUnderlay)=>ReactNode;artworkPreview?:DrawingArtworkPreview;aiGuides?:boolean}={}){
  const {editor:useEditor,session:useDrawing,commitDrawing,id:workspaceId}=useDrawingWorkspace();
  useLanguage(s=>s.language);
  const rawStored=useEditor(s=>s.project.drawing)??EMPTY,stored=useMemo(()=>rawStored.version===3?rawStored:parseDrawing(rawStored),[rawStored]),projectId=useEditor(s=>s.project.meta.createdAt),session=useDrawing();
@@ -354,6 +355,7 @@ export default function DrawingRoom({underlay,artworkPreview}:{underlay?:(view:D
  {/* The wide guide hit target sits behind geometry, so curve/point picking wins. */}
  {!preview&&!artworkPreview&&<line data-testid="drawing-mirror-drag" x1={screen([d.mirrorAxisX??0,0])[0]} x2={screen([d.mirrorAxisX??0,0])[0]} y1={0} y2={size.height} stroke="transparent" strokeWidth="8" pointerEvents={!referenceMoving&&['select','direct','mirror'].includes(tool)?'stroke':'none'} style={{cursor:'ew-resize'}} onPointerDown={axisDown}/>}
  {artworkPreview?artworkPreview.render({...size,unit,pan}):<PaintScene d={d} screen={screen} unit={unit} preview={preview} showFills={showFills} fillVisibility={fillVisibility} referenceMoving={referenceMoving} tool={tool} selectedPaint={selection.paint} selectedPaints={selection.paintIds} curveDown={curveDown} paintDown={paintDown} arcDown={arcDown}/>}
+ {aiGuides&&<AIGuideOverlay d={d} curveIds={[...selected,...(selection.handle?[selection.handle.curveId]:[])]} screen={screen} unit={unit} width={size.width} height={size.height}/>}
  {!preview&&!artworkPreview&&<g data-testid="drawing-mirror-guide">
   <line data-testid="drawing-mirror-axis" x1={screen([d.mirrorAxisX??0,0])[0]} x2={screen([d.mirrorAxisX??0,0])[0]} y1={0} y2={size.height} stroke={axisSnap?'#209978':selection.mirrorAxis?'#2589b0':'#d18d36'} strokeWidth="1.3" strokeDasharray="7 5" pointerEvents="none"/>
   <rect data-testid="drawing-mirror-grip" x={screen([d.mirrorAxisX??0,0])[0]-10} y={5} width={20} height={16} rx={3} fill={selection.mirrorAxis?'#d8f1fc':'#fff6df'} stroke="#d18d36" pointerEvents={!referenceMoving&&tool!=='hand'&&tool!=='zoom'&&tool!=='deform'?'all':'none'} style={{cursor:'ew-resize'}} onPointerDown={axisDown}><title>{t('拖动镜像轴，靠近端点时吸附')}</title></rect>

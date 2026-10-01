@@ -5,12 +5,14 @@ import {useEditor} from './store';
 import {canEditSource,useWorkspaceMode,type WorkspaceMode} from './workspaceMode';
 import {useDrawing} from '../ui/drawing/session';
 import PaintScene from '../ui/drawing/PaintScene';
+import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
 import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection} from '../domain/drawing/commands';
 import {deformDrawing,transportDeformedIntervals,type Quad,type DeformRect} from '../domain/drawing/deform';
 import {strokes,strokeName,strokeIds} from '../domain/drawing/strokes';
 import {linkedNodeIds} from '../domain/drawing/endpointLinks';
+import {displayField,displayPath} from '../domain/drawing/displayIntervals';
 import {fillGeometry,offsetGeometry} from '../domain/drawing/appearance';
 import {roundedJoins} from '../domain/drawing/roundedJoin';
 
@@ -31,7 +33,7 @@ export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
 export interface VectorViewport {width:number;height:number;center:Point2;pixelsPerUnit:number;origin?:Point2}
-export interface PreviewOptions {commands?:VectorCommand[];expectedRevision?:string;width?:number;height?:number;center?:Point2;pixelsPerUnit?:number;showFills?:boolean}
+export interface PreviewOptions {commands?:VectorCommand[];expectedRevision?:string;width?:number;height?:number;center?:Point2;pixelsPerUnit?:number;showFills?:boolean;annotations?:AIGuideOptions}
 export type CoordinateSpace='source'|'canvas'|'client'|'reference';
 export type VectorResult<T>={ok:true;revision:string;value:T}|{ok:false;revision:string;error:{code:string;message:string;commandIndex?:number;relatedCurveIds?:string[]}};
 export interface VectorEditingHost {
@@ -41,6 +43,7 @@ export interface VectorEditingHost {
  undo():void;redo():void;
  selectCurveIds?(ids:string[]):void;
  getSelection?():unknown;
+ getActiveLayerId?():string|null;
  getViewport?():VectorViewport|undefined;
 }
 class ApiError extends Error {
@@ -113,6 +116,16 @@ function diagnostics(d:DrawingDocument){
   ...d.offsets.flatMap(o=>{const g=offsetGeometry(d,o);return g.error?[{kind:'offset',id:o.id,message:g.error}]:[];}),
  ];
 }
+function intervalLocations(d:DrawingDocument,track:NonNullable<DrawingDocument['displayIntervals']>[number]){
+ const path=displayPath(d,track.anchor.id),field=displayField(d,path);
+ return {trackId:track.id,approximation:'existing arc-length table',ranges:track.ranges.map(range=>({rangeId:range.id,ends:([0,1] as const).map(end=>{
+  const normalizedArc=end===0?range.start:range.end,s=field.native(track,normalizedArc),distance=s*field.total;
+  let index=field.parts.findIndex(p=>distance<=p.start+p.length);if(index<0)index=field.parts.length-1;
+  const sample=field.at(s),piece=field.geometry.pieces[index],span=piece.sourceRange??[0,1],orientedT=span[0]+(span[1]-span[0])*sample.t;
+  const source=piece.joinId?{kind:'join' as const,joinId:piece.joinId,curveIds:piece.owners,derivedPiece:index,localT:sample.t}:{kind:'curve' as const,curveId:piece.owners[0],t:path.segments.find(u=>u.id===piece.owners[0])!.reverse?1-orientedT:orientedT};
+  return {end,normalizedArc,position:sample.p,source};
+ })}))};
+}
 function checkNewDiagnostics(before:DrawingDocument,after:DrawingDocument){
  const prior=new Set(diagnostics(before).map(x=>`${x.kind}:${x.id}:${x.message}`));
  const added=diagnostics(after).filter(x=>!prior.has(`${x.kind}:${x.id}:${x.message}`));
@@ -168,7 +181,7 @@ function defaultHost():VectorEditingHost{
   },
   undo:()=>useEditor.getState().undo(),redo:()=>useEditor.getState().redo(),
   selectCurveIds:ids=>useDrawing.getState().set({selection:{ids},tool:'direct'}),
-  getSelection:()=>useDrawing.getState().selection,
+  getSelection:()=>useDrawing.getState().selection,getActiveLayerId:()=>useDrawing.getState().layerId,
   getViewport(){
    if(typeof document==='undefined')return;
    const canvas=document.querySelector('[data-testid="drawing-canvas"]');if(!canvas)return;
@@ -220,14 +233,16 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    apiVersion:VECTOR_AI_VERSION,mode:host.getMode(),sourceEditable:host.getMode()==='drawing',
    sourceId:host.getState().project.drawingSnapshots?.activeId??'$working',coordinateSystem:{unit:'source',x:'right',y:'up',handles:'absolute',bounds:'exact cubic centerline; excludes width, mist, offsets and extensions'},
    layers:d.layers.filter(l=>l.items.some(id=>selectedIds.has(id))||!Object.keys(q).length),
-   strokes:chosenStrokes,curves:selected.map(c=>({...c,layerId:layerFor(d,c.id)!.id,strokeId:byCurve.get(c.id)!.id,shape:shapeOf(d,c.id),bounds:cubicBounds(shapeOf(d,c.id))})),
+   strokes:chosenStrokes,curves:selected.map(c=>({...c,layerId:layerFor(d,c.id)!.id,strokeId:byCurve.get(c.id)!.id,shape:shapeOf(d,c.id),controls:shapeOf(d,c.id).map((position,index)=>({targetKind:index===0||index===3?'node':'handle',role:['P0','H0','H1','P1'][index],curveId:c.id,...(index===0||index===3?{nodeId:c.nodes[index===0?0:1]}:{end:index===1?0:1}),position})),bounds:cubicBounds(shapeOf(d,c.id))})),
    nodes:d.nodes.filter(n=>nodeIds.has(n.id)).map(n=>({...n,endpoints:members(d,n.id),linkedNodeIds:[...linkedNodeIds(d,n.id)]})),
    fills:d.fills.filter(f=>f.boundary.some(u=>selectedIds.has(u.id))),offsets:d.offsets.filter(o=>o.source.some(u=>selectedIds.has(u.id))),groups:(d.groups??[]).filter(g=>g.curveIds.some(id=>selectedIds.has(id))),
    joins:d.joins.filter(j=>selectedIds.has(j.a.curveId)||selectedIds.has(j.b.curveId)),
    endpointLinks:(d.endpointLinks??[]).filter(l=>selectedIds.has(l.a.curveId)||selectedIds.has(l.b.curveId)),
    displayIntervals:(d.displayIntervals??[]).filter(t=>chosenStrokes.some(s=>s.segments.some(x=>x.id===t.anchor.id))),
+   displayIntervalLocations:(d.displayIntervals??[]).filter(t=>chosenStrokes.some(s=>s.segments.some(x=>x.id===t.anchor.id))).map(t=>intervalLocations(d,t)),
    bounds:combineBounds(selected.map(c=>cubicBounds(shapeOf(d,c.id)))),reference,
-   selection:host.getSelection?.()??null,viewport:host.getViewport?.()??null,
+   displayIntervalCoordinates:{unit:'normalized arc length, not Bezier t',scope:'CURVE means anchor-curve arc length; otherwise derived stroke arc length',direction:'anchor.reverse defines orientation; closed strokes may wrap start > end'},
+   selection:host.getSelection?.()??null,activeCreationLayerId:host.getActiveLayerId?.()??null,viewport:host.getViewport?.()??null,
    recording:(host.getState().project as LandmarkProject&{vectorRecording?:unknown}).vectorRecording??null,
    diagnostics:diagnostics(d),
   });
@@ -241,12 +256,12 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
  }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',commands:['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG uses the existing paint renderer, excludes editing overlays and reference image.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',commands:['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
   execute:(request:VectorBatch)=>run(()=>{
    const {before,next,changed,dryRun,approximations}=prepare(request),changes=changedIds(before,next);
    if(changed&&!dryRun)host.commitDrawing(next);
-   return {applied:changed&&!dryRun,dryRun,changed,...changes,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),diagnostics:diagnostics(next)};
+   return {applied:changed&&!dryRun,dryRun,changed,...changes,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter:changes.curveIds.map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}})),diagnostics:diagnostics(next)};
   }),
   select:(request:{curveIds:string[];expectedRevision?:string})=>run(()=>{
    const r=record(request);keys(r,['curveIds','expectedRevision']);expected(r.expectedRevision);const selected=ids(r.curveIds,'curveIds',true);selected.forEach(id=>curveExists(source(),id));
@@ -261,14 +276,21 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    return {mediaType:'application/json',document:d,json:JSON.stringify(d,null,2),includesReference:r.includeReference===true};
   }),
   preview:(options:PreviewOptions={})=>run(()=>{
-   const o=record(options);keys(o,['commands','expectedRevision','width','height','center','pixelsPerUnit','showFills']);expected(o.expectedRevision);bool(o.showFills,'showFills');
+   const o=record(options);keys(o,['commands','expectedRevision','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');
    const d=o.commands===undefined?source():prepare({commands:o.commands,expectedRevision:o.expectedRevision,dryRun:true}).next;
    const width=num(o.width??800,'width',1,4096),height=num(o.height??800,'height',1,4096),b=drawingBounds(d);
    const padding=Math.max(.1,...d.curves.map(c=>c.width*2+(c.mist?.enabled?c.mist.width:0)),...d.offsets.map(c=>Math.abs(c.distance)+c.width));
    const viewport:VectorViewport={width,height,center:o.center===undefined?(b?.center??[0,0]):point(o.center,'center'),pixelsPerUnit:num(o.pixelsPerUnit??Math.min(width/((b?b.max[0]-b.min[0]:2.8)+2*padding),height/((b?b.max[1]-b.min[1]:2.8)+2*padding)),'pixelsPerUnit',1e-6,1e6)};
    if(o.showFills!==false&&d.fills.some(f=>f.visible&&f.mist?.enabled)&&(typeof document==='undefined'||typeof Path2D==='undefined'))fail('BROWSER_REQUIRED','Mist-fill SVG export uses the existing Canvas renderer. Run preview in the local app browser, or use showFills:false for an explicit ink-only preview.');
-   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop})));
-   return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,diagnostics:diagnostics(d),sourceRevision:revision()};
+   let annotations:AIGuideOptions|undefined;
+   if(o.annotations!==undefined){
+    const a=record(o.annotations);keys(a,['curveIds','grid','labels','handles','diagnostics']);for(const flag of ['grid','labels','handles','diagnostics'])bool(a[flag],`annotations.${flag}`);
+    const curveIds=a.curveIds===undefined?[]:ids(a.curveIds,'annotations.curveIds',true);
+    if(curveIds.length>MAX_AI_GUIDE_CURVES)fail('INVALID_REQUEST',`Annotate at most ${MAX_AI_GUIDE_CURVES} selected curves; narrow the query first.`);
+    curveIds.forEach(id=>curveExists(d,id));annotations={...a,curveIds} as AIGuideOptions;
+   }
+   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
+   return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,annotated:!!annotations,diagnostics:diagnostics(d),sourceRevision:revision()};
   }),
   convertPoint:(request:{point:Point2;from:CoordinateSpace;to:CoordinateSpace;viewport?:VectorViewport})=>run(()=>{
    const r=record(request);keys(r,['point','from','to','viewport']);const spaces=['source','canvas','client','reference'];

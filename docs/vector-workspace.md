@@ -68,3 +68,14 @@ preview, clean SVG/source export and undo. The AI editing console is local-only.
 Optional visual guides default off and never enter source artwork or ordinary
 exports. Automatic matching from a pixel face is a future workflow, not implemented
 or claimed by this change.
+
+## Durable local saves
+
+Full project autosave uses IndexedDB, with a visible saving/saved/error indicator.
+Startup awaits the durable project before considering the starter face. Existing
+localStorage saves are read and migrated without deleting their original bytes.
+Retired payloads are serialized once in the archive, not duplicated as active rigs.
+Writes are ordered and considered saved only after transaction completion. When
+storage is blocked/full the app keeps edits in memory, reports failure and asks for
+JSON export; it does not quietly fall back to quota-limited full-project localStorage.
+Leaving while a write is pending or failed uses the browser's unsaved-change guard.

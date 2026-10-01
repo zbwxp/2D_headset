@@ -1,4 +1,5 @@
-import {parseDrawing,uid,type DrawingDocument,type CurveUse,type Endpoint} from './model';
+import {parseDrawing,uid,curveById,type DrawingDocument,type CurveUse,type Endpoint} from './model';
+import {strokes,strokePaths,strokeFor} from './strokes';
 
 export interface ArtworkLayerDependency {
  kind:'endpointLink'|'fill'|'offset'|'join';
@@ -132,6 +133,19 @@ export function importArtworkLayers(target:DrawingDocument,source:DrawingDocumen
   ...(incoming.groups.length?{groups:[...(current.groups??[]),...incoming.groups.map(g=>({...g,id:remap(g.id),curveIds:g.curveIds.map(remap)}))]}:{}),
   ...(incoming.displayIntervals.length?{displayIntervals:[...(current.displayIntervals??[]),...incoming.displayIntervals.map(t=>({...t,id:remap(t.id),anchor:use(t.anchor),ranges:t.ranges.map(r=>({...r,id:remap(r.id)}))}))]}:{}),
  };
+ // Unusual prefix-containing curve IDs can still change the endKey tie-break
+ // at a branched node. Match the existing duplicate-curve behavior: compensate
+ // the directional profile if the derived open path reverses, never its geometry.
+ for(const oldPath of incoming.layers.flatMap(l=>strokes(saved,l.id)).flatMap(strokePaths)){
+  if(oldPath.closed)continue;
+  const first=oldPath.segments[0],newPath=strokePaths(strokeFor(result,remap(first.id))).find(p=>p.segments.some(s=>s.id===remap(first.id)))!;
+  const actual=newPath.segments[0],expectedNode=remap(curveById(saved,first.id).nodes[first.reverse?1:0]);
+  if(curveById(result,actual.id).nodes[actual.reverse?1:0]!==expectedNode||
+   // A branch can produce an open path whose two endpoints share one node.
+   newPath.segments.length===oldPath.segments.length&&newPath.segments[0].id===remap(oldPath.segments.at(-1)!.id)&&newPath.segments[0].reverse!==oldPath.segments.at(-1)!.reverse){
+   for(const segment of newPath.segments){const c=curveById(result,segment.id);c.profileReverse=!c.profileReverse;}
+  }
+ }
  // Includes cross-layer link coincidence, smooth-tangent consistency, ownership,
  // duplicate IDs and every existing DrawingDocument structural invariant.
  const document=parseDrawing(result);

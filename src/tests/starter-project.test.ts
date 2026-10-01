@@ -4,8 +4,12 @@ import {createEmptyProject,isUntouchedEmptyProject} from '../app/emptyProject';
 import {parseLandmarks} from '../domain/landmarks/persistence';
 
 const source=readFileSync(new URL('../assets/base-face.json',import.meta.url),'utf8');
+let durableJSON:string|undefined;
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});
-async function startup(){vi.resetModules();return import('../app/starterProject');}
+async function startup(){vi.resetModules();durableJSON=undefined;
+ vi.doMock('../app/projectStorage',async importOriginal=>{const actual=await importOriginal<typeof import('../app/projectStorage')>();return {...actual,...actual.createProjectStorage({openDatabase:async()=>({read:async()=>durableJSON,write:async value=>{durableJSON=value;},close:()=>{}}),legacyStorage:()=>localStorage})};});
+ return import('../app/starterProject');}
+
 
 test('first visit opens the complete drawing, snapshots and recordings with no empty Undo state',async()=>{
  const boot=await startup(),values=new Map<string,string>();
@@ -19,7 +23,8 @@ test('first visit opens the complete drawing, snapshots and recordings with no e
  expect(p.drawingSnapshots!.items.map(s=>s.name)).toEqual(['正面','微侧13','稍侧12']);
  expect(p.drawingSnapshots!.activeId).toBe(original.drawingSnapshots.activeId);
  expect(p.poseRecording!.poses).toHaveLength(2);expect(useEditor.getState().past).toEqual([]);
- expect(JSON.parse(values.get('contour.landmarks.v039')!).drawing).toEqual(p.drawing);
+ await vi.waitFor(()=>expect(durableJSON).toBeDefined());expect(JSON.parse(durableJSON!).drawing).toEqual(p.drawing);
+ expect(values.has('contour.landmarks.v039')).toBe(false); // Full projects now use IndexedDB.
 });
 
 test('all existing storage versions, even invalid content, prevent starter replacement/download',async()=>{
@@ -39,6 +44,7 @@ test('a returning visitor keeps their edits instead of resetting to the template
  const {useEditor}=await import('../app/store');
  expect(useEditor.getState().project.meta.name).toBe('My edited face');
  expect(useEditor.getState().project.drawing!.nodes[0].position).toEqual([.123,.456]);
+ await vi.waitFor(()=>expect(durableJSON).toBeDefined());expect(values.get('contour.landmarks.v039')).toBe(saved);
 });
 
 test('download/validation failures leave startup uninitialized and can be retried',async()=>{
@@ -65,7 +71,7 @@ test('the old automatic blank upgrades once, keeps a backup and actually reaches
  expect(values.get(boot.EMPTY_BACKUP_KEY)).toBe(raw);
  const {useEditor}=await import('../app/store');
  expect(useEditor.getState().project.drawing!.curves).toHaveLength(210);
- expect(JSON.parse(values.get('contour.landmarks.v039')!).drawing.curves).toHaveLength(210);
+ await vi.waitFor(()=>expect(durableJSON&&JSON.parse(durableJSON).drawing?.curves.length).toBe(210));expect(values.get('contour.landmarks.v039')).toBe(raw);
  boot.finishProjectStartup(storage);
  // A deliberate later New command must remain blank on reload.
  storage.setItem('contour.landmarks.v039',raw);

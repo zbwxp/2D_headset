@@ -145,3 +145,38 @@ The dedicated tests execute this flow against the 210-curve packaged face in a d
 `npx vitest run src/tests/vector-editing-api.test.ts`
 
 Coverage: names and stable lookups, exact cubic bounds, linked/shared endpoints and smooth joins, one-undo batches, dry runs, stale revisions, finite inputs, unknown commands/fields, locks, related selection, failed batch isolation, Recording gates, selection feedback, interval transport, projective fit reporting, deterministic source/SVG export, reference/canvas conversion and canonical-face preservation.
+
+## Explicit AI helper view (transient)
+
+Normal UI, source JSON and ordinary previews stay free of AI annotations. The separate **AI 辅助视图** toggle is transient and off by default. The API only annotates when explicitly asked:
+
+```js
+api.preview({
+  width:800,height:800,
+  annotations:{curveIds:chosenCurveIds,grid:true,labels:true,handles:true,diagnostics:true}
+});
+```
+
+At most 32 curves can be annotated per API preview; filter by semantic layer/stroke/name first. `curveIds:[]` requests grid/context only. Guides identify endpoint P0/P1 versus handle H0/H1, source coordinates, shared/linked endpoints and selected join diagnostics. SVG titles retain full object IDs even when the visible label shortens them. The returned `annotated` flag distinguishes this inspection image from the clean preview. A subsequent ordinary `preview()` stays clean; these guides never enter saved artwork or change geometry.
+
+Inspection's `controls` now gives `targetKind`, `role`, `curveId`, `nodeId` or handle `end`, plus the absolute position. Each edit result's `beforeAfter` records affected curve IDs, owner layer IDs, names, controls and widths before/after, including constraint-propagated changes. `activeCreationLayerId` is reported separately from each selected curve's `layerId`; a creation-layer label is not evidence of selection ownership.
+
+Baseline hands-on QA found that numeric endpoint/handle edits and exact Undo already worked well. The friction was traversing the nested tree/collapsed property panels, generic “节点 X/Y” labels reused for different target types, and a creation-layer indicator that differed from selection ownership. The explicit roles and IDs address those ambiguities without replacing working numeric editing. Interval values remain normalized arc length in the track's orientation; CURVE-scoped tracks use the anchor curve's arc length, not Bézier t. Anchor IDs and reverse flags are retained in inspection. `displayIntervalLocations` also resolves each cut to its current source curve ID / cubic t, or a derived join piece ID, and source-space position using the existing arc-length table; this is labeled as an approximation.
+
+## Copy layers from a saved artwork
+
+`src/domain/drawing/importArtworkLayers.ts` provides the pure helpers used by the Drawing-only artwork import dialog:
+
+```ts
+planArtworkLayerImport(sourceDrawing, selectedLayerIds);
+importArtworkLayers(targetDrawing, sourceDrawing, selectedLayerIds, {
+  includeDependencies: false,
+  insertAt: 0
+});
+```
+
+The plan identifies dependency layers caused by cross-layer endpoint links or fill/offset source references. By default an incomplete selection throws `ArtworkLayerDependencyError` with an actionable plan. The UI can explicitly include the full closure; no authored link is silently detached and no reference binds to similarly named/identified geometry in the target.
+
+All imported layers, curves, nodes, joins, groups, fills, offsets, endpoint links, interval tracks and ranges get fresh IDs, returned in `idMap`. Geometry, names, source ordering, flags, styles, anchors and relationships are retained. Fresh ID assignment preserves source endpoint ordering because it affects derived open-stroke direction. For an unusual branched return path whose curve-ID tie-break still reverses traversal, the imported profileReverse bit is compensated, following the existing duplicate command; geometry and visible taper direction are retained. The source artwork and existing target content are untouched; reference image and mirror guide remain those of the target. Importing at the top is the default, and the caller performs one normal Drawing transaction for one Undo.
+
+Dedicated import verification: `npx vitest run src/tests/import-artwork-layers.test.ts`. Tests cover exact relationship remapping, source/target isolation, fresh-ID collision failures, explicit dependency closure, asymmetric profile direction, every dependency-closed layer in the default face, source serialization, and one root-store Undo/Redo.

@@ -1,3 +1,4 @@
+import AIGuideOverlay from '../drawing/AIGuideOverlay';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useEditor} from '../../app/store';
 import {useWorkspaceMode} from '../../app/workspaceMode';
@@ -13,18 +14,18 @@ import {useLanguage} from '../i18n';
 import './vectorRecording.css';
 const EMPTY=emptyDrawing(),noop=()=>{};
 type Drag={kind:'nodes'|'handle'|'box'|'pan';start:Point2;client:Point2;pose:VectorPose;indices:number[];handle?:'handleU'|'handleV';index?:number;pan?:Point2};
-export default function RecordingWorkspace(){
+export default function RecordingWorkspace({aiGuides=false}:{aiGuides?:boolean}={}){
  const zh=useLanguage(s=>s.language)==='zh',txt=(cn:string,en:string)=>zh?cn:en;
  const project=useEditor(s=>s.project),drawing=project.drawing??EMPTY,artworkId=sourceArtworkId(project.drawingSnapshots?.activeId);
  const recording=project.vectorRecording??emptyVectorRecording(),rig=recording.rigs.find(r=>r.artworkId===artworkId);
  useEffect(()=>{if(!rig){const s=useEditor.getState();s.setVectorRecording(ensureArtworkRig(s.project.vectorRecording??emptyVectorRecording(),artworkId,drawing));}},[rig,artworkId]);
  if(!rig)return <div className="vector-loading" role="status">{txt('准备矢量录制…','Preparing vector recording…')}</div>;
  if(rig.sourceSignature!==drawingSignature(drawing))return <section className="vr-source-review" role="alert"><h2>{txt('源画稿已经更新','Source artwork has changed')}</h2><p>{txt('线条、分段或图层可能已改变。原有 Warp 和角度关键形会保留；已删除图层的挂接会清理，新图层需要重新挂接。接受后请复查各角度的拟合与显隐。','Curves, segmentation or layers may have changed. Existing Warps and keyforms will be kept. Deleted-layer bindings are removed; new layers must be bound. Review fit and visibility after accepting.')}</p><button data-testid="vr-accept-source" onClick={()=>useEditor.getState().commitVectorRecording(replaceRig(recording,acceptArtworkSource(rig,drawing)))}>{txt('使用更新后的源画稿，保留关键形','Use updated source; keep keyforms')}</button><button onClick={()=>useWorkspaceMode.getState().setMode('drawing')}>{txt('返回绘制模式检查','Return to Drawing')}</button></section>;
- return <RigEditor key={rig.id} {...{recording,rig,drawing,zh,txt}} artworkName={project.drawingSnapshots?.items.find(a=>a.id===artworkId)?.name??txt('当前画稿','Current artwork')}/>;
+ return <RigEditor key={rig.id} {...{recording,rig,drawing,zh,txt,aiGuides}} artworkName={project.drawingSnapshots?.items.find(a=>a.id===artworkId)?.name??txt('当前画稿','Current artwork')}/>;
 }
-function RigEditor({recording,rig,drawing,zh,txt,artworkName}:{recording:VectorRecording;rig:ArtworkRig;drawing:typeof EMPTY;zh:boolean;txt:(cn:string,en:string)=>string;artworkName:string}){
+function RigEditor({recording,rig,drawing,zh,txt,artworkName,aiGuides}:{aiGuides:boolean;recording:VectorRecording;rig:ArtworkRig;drawing:typeof EMPTY;zh:boolean;txt:(cn:string,en:string)=>string;artworkName:string}){
  const [deformerId,setDeformerId]=useState(rig.deformers[0]?.id??''),[layerIds,setLayerIds]=useState<string[]>([]),[selection,setSelection]=useState<number[]>([]),[selectionMode,setSelectionMode]=useState<'node'|'row'|'column'>('node');
- const [parametersMoving,setParametersMoving]=useState(false),[localEdit,setLocalEdit]=useState(true),[showGrid,setShowGrid]=useState(true),[showHandles,setShowHandles]=useState(false),[rows,setRows]=useState(3),[columns,setColumns]=useState(3),[size,setSize]=useState({width:800,height:650}),[pan,setPan]=useState<Point2>([0,0]),[zoom,setZoom]=useState(1),[preview,setPreview]=useState<VectorPose|null>(null),[box,setBox]=useState<{a:Point2;b:Point2}|null>(null),[error,setError]=useState('');
+ const [parameterTick,setParameterTick]=useState(0),[parametersMoving,setParametersMoving]=useState(false),[localEdit,setLocalEdit]=useState(true),[showGrid,setShowGrid]=useState(true),[showHandles,setShowHandles]=useState(false),[rows,setRows]=useState(3),[columns,setColumns]=useState(3),[size,setSize]=useState({width:800,height:650}),[pan,setPan]=useState<Point2>([0,0]),[zoom,setZoom]=useState(1),[preview,setPreview]=useState<VectorPose|null>(null),[box,setBox]=useState<{a:Point2;b:Point2}|null>(null),[error,setError]=useState('');
  const host=useRef<HTMLDivElement>(null),svg=useRef<SVGSVGElement>(null),drag=useRef<Drag|null>(null),space=useRef(false),previewRef=useRef<VectorPose|null>(null),nudge=useRef<VectorPose|null>(null),nudgeKeys=useRef(new Set<string>());
  const storedPose=useMemo(()=>currentPose(rig),[rig]),pose=preview??storedPose,deformer=rig.deformers.find(d=>d.id===deformerId),grid=deformer&&(pose.grids[deformer.id]??deformer.grid);
  useEffect(()=>{if(!rig.deformers.some(d=>d.id===deformerId)){setDeformerId(rig.deformers[0]?.id??'');setSelection([]);}},[rig.deformers,deformerId]);
@@ -41,9 +42,9 @@ function RigEditor({recording,rig,drawing,zh,txt,artworkName}:{recording:VectorR
  function commit(next:ArtworkRig){useEditor.getState().commitVectorRecording(replaceRig(recording,next));setError('');}
  function safe(action:()=>void){try{action();}catch(e){setError((e as Error).message);}}
  function setPose(next:VectorPose){commit({...rig,draft:next});}
- function changeAngle(axis:'x'|'y',value:number){safe(()=>{const next=setRigAngle(rig,{...rig.angle,[axis]:value});setParametersMoving(true);useEditor.getState().setVectorRecording(replaceRig(recording,next));});}
- function chooseAngle(x:number,y:number){safe(()=>{const next=setRigAngle(rig,{x,y});setParametersMoving(true);useEditor.getState().setVectorRecording(replaceRig(recording,next));});}
- useEffect(()=>{const timer=setTimeout(()=>setParametersMoving(false),140);return()=>clearTimeout(timer);},[rig.angle.x,rig.angle.y]);
+ function changeAngle(axis:'x'|'y',value:number){safe(()=>{const next=setRigAngle(rig,{...rig.angle,[axis]:value});setParameterTick(n=>n+1);setParametersMoving(true);useEditor.getState().setVectorRecording(replaceRig(recording,next));});}
+ function chooseAngle(x:number,y:number){safe(()=>{const next=setRigAngle(rig,{x,y});setParameterTick(n=>n+1);setParametersMoving(true);useEditor.getState().setVectorRecording(replaceRig(recording,next));});}
+ useEffect(()=>{const timer=setTimeout(()=>setParametersMoving(false),140);return()=>clearTimeout(timer);},[parameterTick,rig.angle.x,rig.angle.y]);
  function withGrid(next:WarpGrid,base=storedPose):VectorPose{return {...base,grids:{...base.grids,[deformerId]:next}};}
  function begin(e:React.PointerEvent,index:number,handle?:'handleU'|'handleV'){
   if(!grid||!canManipulate||e.button!==0)return;e.stopPropagation();e.preventDefault();svg.current!.setPointerCapture(e.pointerId);
@@ -102,6 +103,7 @@ function RigEditor({recording,rig,drawing,zh,txt,artworkName}:{recording:VectorR
      {Array.from({length:grid.columns+1},(_,col)=>{const points=Array.from({length:grid.rows+1},(_,row)=>grid.nodes[row*(grid.columns+1)+col]);let d='';points.forEach((n,i)=>{const p=screen(n.position);if(!i)d=`M ${p}`;else{const before=points[i-1],a=screen(before.handleV),b=screen([2*n.position[0]-n.handleV[0],2*n.position[1]-n.handleV[1]]);d+=` C ${a} ${b} ${p}`;}});return <path key={`c${col}`} d={d}/>;})}
      {grid.nodes.map((n,i)=>{const p=screen(n.position),selected=selection.includes(i);return <g key={i}>{showHandles&&selected&&(['handleU','handleV'] as const).map(h=>{const a=screen(n[h]);return <g key={h}><line x1={p[0]} y1={p[1]} x2={a[0]} y2={a[1]}/><circle className="vr-handle" data-testid="vr-handle" data-node={i} data-handle={h} cx={a[0]} cy={a[1]} r="4" onPointerDown={e=>begin(e,i,h)}/></g>})}<circle data-testid="vr-node" data-index={i} data-selected={selected} className={selected?'selected':''} cx={p[0]} cy={p[1]} r={selected?5:4} onPointerDown={e=>begin(e,i)}/></g>;})}
     </g>}
+    {aiGuides&&<><AIGuideOverlay d={evaluated.drawing} curveIds={[...evaluated.warningCurveIds,...drawing.curves.filter(c=>layerIds.includes(layerFor(drawing,c.id)?.id??'')).map(c=>c.id)]} screen={screen} unit={unit} width={size.width} height={size.height}/>{evaluated.diagnostics.filter(d=>d.warning).slice(0,32).map(d=>{const p=screen(d.peakExpected);return <g key={d.sourceCurveId} pointerEvents="none" data-testid="ai-fit-location"><circle cx={p[0]} cy={p[1]} r="8" fill="none" stroke="#d12948"/><text x={p[0]+10} y={p[1]-9} fontSize="10" fill="#ab1634" paintOrder="stroke" stroke="white" strokeWidth="3">{d.sourceCurveId?.slice(0,8)} · {(d.maxError*250).toFixed(2)}px</text></g>;})}</>}
     {box&&<rect x={Math.min(box.a[0],box.b[0])} y={Math.min(box.a[1],box.b[1])} width={Math.abs(box.a[0]-box.b[0])} height={Math.abs(box.a[1]-box.b[1])} fill="#31a1e021" stroke="#338bc4" strokeDasharray="4 2" pointerEvents="none"/>}
    </svg><div className="vr-canvas-badge">{artworkName}{childLocal?txt(' · 子 Warp 局部坐标（父变形暂不显示）',' · Child Warp local space (ancestors excluded)'):''} · X {rig.angle.x}° / Y {rig.angle.y}°</div>{!rig.deformers.length&&<div className="vr-canvas-guide">{txt('先选择图层，再创建 Warp 网格','Select layers, then create a Warp grid')}</div>}</div>
    <footer className="vr-status"><span>{txt('源画稿锁定','Source locked')} · {drawing.curves.length} {txt('源段','source segments')}</span><span>{txt('Shift 多选 · 框选 · 空格平移 · 滚轮缩放 · Esc 取消拖动','Shift multi-select · Marquee · Space pan · Wheel zoom · Esc cancel drag')}</span><span>{Math.round(zoom*100)}%</span></footer>

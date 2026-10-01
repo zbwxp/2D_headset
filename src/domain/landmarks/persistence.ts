@@ -275,9 +275,11 @@ export function parseLandmarks(text: string): LandmarkProject {
   if(p.vectorRecording!==undefined)result.vectorRecording=parseVectorRecording(p.vectorRecording);
   // Retire old point/curve recordings, including malformed legacy records.
   delete result.recording;
-  if(p.poseRecording!==undefined){try{result.poseRecording=parsePoseRecording(p.poseRecording);}catch{delete result.poseRecording;}}
+  const legacyPose=p.poseRecording??p.legacyWorkspaces?.poseRecording;
+  if(legacyPose!==undefined){try{result.poseRecording=parsePoseRecording(legacyPose);}catch{delete result.poseRecording;}}
   delete result.hairstyle; // Retired workspace: never retain baked textures or duplicate hair documents.
-  if(p.assembly!==undefined){try{result.assembly=parseAssembly(p.assembly);}catch{delete result.assembly;}}
+  const legacyAssembly=p.assembly??p.legacyWorkspaces?.assembly;
+  if(legacyAssembly!==undefined){try{result.assembly=parseAssembly(legacyAssembly);}catch{delete result.assembly;}}
   if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
   if(p.drawingSnapshots!==undefined)result.drawingSnapshots=parseDrawingSnapshots(p.drawingSnapshots);
   Object.assign(result,upgradeAppliedInferenceInk(result));

@@ -220,3 +220,33 @@ test('mist-fill previews report the browser requirement rather than silently sub
  const p=JSON.parse(readFileSync(new URL('../assets/base-face.json',import.meta.url),'utf8')) as LandmarkProject,h=harness(parseDrawing(p.drawing));
  const before=JSON.stringify(h.state());error(h.api.preview({showFills:true}),'BROWSER_REQUIRED');expect(JSON.stringify(h.state())).toBe(before);
 });
+
+test('inspection names control roles and edit results expose before/after without relying on ambiguous UI labels',()=>{
+ const h=harness(),inspection=value(h.api.inspect({curveIds:['upper']})),c=inspection.curves[0];
+ expect(c.controls.map(c=>[c.targetKind,c.role])).toEqual([['node','P0'],['handle','H0'],['handle','H1'],['node','P1']]);
+ expect(c.controls[0]).toMatchObject({nodeId:c.nodes[0],curveId:'upper'});expect(c.controls[1]).toMatchObject({end:0,curveId:'upper'});
+ expect(inspection.displayIntervalCoordinates.unit).toContain('not Bezier t');
+ const r=value(h.api.execute({commands:[{op:'moveHandle',curveId:'upper',end:0,position:[-.6,.45]}]})),delta=r.beforeAfter.find(x=>x.curveId==='upper')!;
+ expect(delta.before.shape).toEqual(aShape);expect(delta.after.shape[1]).toEqual([-.6,.45]);expect(delta.layerId).toBe(c.layerId);
+ delta.after.shape[1][0]=123;expect(h.state().project.drawing.curves[0].handles[0][0]).toBe(-.6);
+});
+
+test('AI annotations are explicit, selection-scoped, transient and excluded from normal previews and source export',()=>{
+ const h=harness(),before=JSON.stringify(h.state()),clean=value(h.api.preview()),guide=value(h.api.preview({annotations:{curveIds:['upper'],grid:true,labels:true,handles:true}}));
+ expect(clean.annotated).toBe(false);expect(clean.svg).not.toContain('ai-guide-overlay');
+ expect(guide.annotated).toBe(true);expect(guide.svg).toContain('ai-guide-overlay');expect(guide.svg).toContain('ai-coordinate-grid');
+ expect(guide.svg).toContain('data-ai-control="P0"');expect(guide.svg).toContain('data-ai-control="H0"');expect(guide.svg).toContain('data-ai-control="H1"');expect(guide.svg).toContain('data-ai-control="P1"');
+ expect(guide.svg).toContain('data-ai-curve-id="upper"');expect(guide.svg).not.toContain('data-ai-curve-id="lower"');
+ expect(value(h.api.preview({annotations:{curveIds:['upper'],grid:true,labels:true,handles:true}})).svg).toBe(guide.svg);
+ expect(value(h.api.preview()).svg).toBe(clean.svg);expect(value(h.api.exportSource()).json).not.toContain('annotations');
+ expect(JSON.stringify(h.state())).toBe(before);
+ error(h.api.preview({annotations:{curveIds:['missing']}}),'NOT_FOUND');
+ const large=Array.from({length:33},(_,i)=>`id${i}`);error(h.api.preview({annotations:{curveIds:large}}),'INVALID_REQUEST');
+});
+
+test('interval inspection resolves material cut locations to explicit source pieces rather than treating percentages as cubic t',()=>{
+ const d=fixture();d.displayIntervals=[{id:'track',anchor:{id:'upper',reverse:true},ranges:[{id:'range',start:.2,end:.7,mode:'SHOW'}]}];
+ const inspected=value(harness(d).api.inspect({curveIds:['upper']})),locations=inspected.displayIntervalLocations[0];
+ expect(locations.trackId).toBe('track');expect(locations.approximation).toContain('arc-length');
+ for(const end of locations.ranges[0].ends){expect(end.source.kind).toBe('curve');if(end.source.kind==='curve'){expect(['upper','lower']).toContain(end.source.curveId);expect(end.source.t).toBeGreaterThanOrEqual(0);expect(end.source.t).toBeLessThanOrEqual(1);}expect(end.position.every(Number.isFinite)).toBe(true);}
+});
