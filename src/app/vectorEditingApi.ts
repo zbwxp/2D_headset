@@ -7,28 +7,29 @@ import {useDrawing} from '../ui/drawing/session';
 import PaintScene from '../ui/drawing/PaintScene';
 import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,objectById,validFillMist,type FillMist,type InkEndStyle,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
-import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,splitCurve,setMirrorAxis} from '../domain/drawing/commands';
+import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,nodeAt,objectById,validFillMist,type FillMist,type TerminusBrushStyle,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
+import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,splitCurve,setMirrorAxis,linkEndpoints,unlinkEndpoints,connect} from '../domain/drawing/commands';
 import {setObjectState,objectState} from '../domain/drawing/objectState';
 import {createFill,changePaint,reorderPaint,setInk,setInkEnd} from '../domain/drawing/paintCommands';
 import {setDepthOffset} from '../domain/drawing/depth';
 import {setFillMist} from '../domain/drawing/fillMist';
 import {planArtworkLayerImport} from '../domain/drawing/importArtworkLayers';
 import {deformDrawing,transportDeformedIntervals,type Quad,type DeformRect} from '../domain/drawing/deform';
-import {strokes,strokeName,strokeIds} from '../domain/drawing/strokes';
+import {strokes,strokeName,strokeIds,strokeFor} from '../domain/drawing/strokes';
 import {linkedNodeIds} from '../domain/drawing/endpointLinks';
 import {displayField,displayPath,addDisplayInterval,changeDisplayInterval,removeDisplayInterval,setDisplayIntervalEnd} from '../domain/drawing/displayIntervals';
 import {fillGeometry,offsetGeometry} from '../domain/drawing/appearance';
 import {roundedJoins} from '../domain/drawing/roundedJoin';
 import {ArtworkApiError,artworkOverview,prepareArtworkAction,type ArtworkRequest} from './vectorArtworkApi';
 import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
+import {applyElementCommand,elementCommandNames,ElementCommandError,type ElementCommand,type ElementCreation} from './vectorElementCommands';
 
-export const VECTOR_AI_VERSION='1.2';
-export const VECTOR_AI_LIMITS={coordinate:10000,batch:1000,dimension:4096,name:256} as const;
+export const VECTOR_AI_VERSION='1.3';
+export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimension:4096,name:256} as const);
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
 export type Affine=[number,number,number,number,number,number];
-export type VectorCommand=
+export type VectorCommand=ElementCommand|GeometryLinkCommand
  | {op:'moveNode';nodeId:string;position:Point2}
  | {op:'moveHandle';curveId:string;end:0|1;position:Point2}
  | {op:'transformCurves';curveIds:string[];matrix:Affine;allowRelated?:boolean}
@@ -52,14 +53,15 @@ export type VectorCommand=
  | {op:'splitCurve';curveId:string;t:number;ref?:string}
  | {op:'setMirrorAxis';x:number}
  | {op:'setInkVisibility';curveIds:string[];visible:boolean}
- | {op:'setCurveInkEnd';curveId:string;end:0|1;style:InkEndStyle}
+ | {op:'setCurveInkEnd';curveId:string;end:0|1;style:TerminusBrushStyle}
  | {op:'setDepth';curveId:string;offset:number;scope?:'PARENT'|'LAYER'}
  | {op:'addDisplayInterval';curveId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;ref?:string}
  | {op:'changeDisplayInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean}
  | {op:'removeDisplayInterval';rangeId:string}
- | {op:'setDisplayIntervalEnd';rangeId:string;end:0|1;style:InkEndStyle};
-export interface CreatedEntity {commandIndex:number;kind:'layer'|'fill'|'curve'|'displayRange';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd'];
+ | {op:'setDisplayIntervalEnd';rangeId:string;end:0|1;style:TerminusBrushStyle};
+export type GeometryLinkCommand={op:'linkEndpoints';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};ref?:string}|{op:'unlinkEndpoints';linkId:string}|{op:'connectGeometry';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};mode?:'POSITION'};
+export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink';id:string;ref?:string;idMap?:Record<string,string>}
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry',...elementCommandNames];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string;includeRecording?:boolean}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
@@ -124,12 +126,13 @@ function affineMap(matrix:unknown){
  return (p:Point2):Point2=>[a*p[0]+c*p[1]+e,b*p[0]+d*p[1]+f];
 }
 function end(value:unknown):0|1{if(value!==0&&value!==1)fail('INVALID_REQUEST','end must be 0 or 1.');return value as 0|1;}
+function geometryEndpoint(d:DrawingDocument,raw:unknown){const e=record(raw);keys(e,['curveId','end']);return {curveId:curveExists(d,e.curveId),end:end(e.end)};}
 function intervalChange(c:Record<string,unknown>){
  if(c.mode!==undefined&&c.mode!=='SHOW'&&c.mode!=='HIDE')fail('INVALID_REQUEST','mode must be SHOW or HIDE.');bool(c.enabled,'enabled');
  return {...(c.mode===undefined?{}:{mode:c.mode as DisplayIntervalMode}),...(c.enabled===undefined?{}:{enabled:c.enabled as boolean}),...(c.start===undefined?{}:{start:num(c.start,'start',0,1)}),...(c.end===undefined?{}:{end:num(c.end,'end',0,1)})};
 }
 function rangeExists(d:DrawingDocument,value:unknown){const id=string(value,'rangeId'),track=d.displayIntervals?.find(t=>t.ranges.some(r=>r.id===id));if(!track)fail('NOT_FOUND',`Unknown display range ID: ${id}.`);return {id,track:track!};}
-function inkEndStyle(value:unknown):InkEndStyle{
+function terminusBrushStyle(value:unknown):TerminusBrushStyle{
  const s=record(value);keys(s,['taper','extension','taperWidthScale','interior']);nonemptyChange(s);bool(s.interior,'interior');
  if(s.taper!==undefined&&s.taperWidthScale!==undefined)fail('INVALID_REQUEST','Choose taper or taperWidthScale, not both.');
  return {...(s.taper===undefined?{}:{taper:num(s.taper,'taper',0,20)}),...(s.extension===undefined?{}:{extension:num(s.extension,'extension',0,2)}),...(s.taperWidthScale===undefined?{}:{taperWidthScale:num(s.taperWidthScale,'taperWidthScale',0,200)}),...(s.interior===undefined?{}:{interior:s.interior as boolean})};
@@ -162,7 +165,7 @@ function changedIds(before:DrawingDocument,after:DrawingDocument){
  const changed=<T extends {id:string}>(a:T[],b:T[])=>b.filter(x=>JSON.stringify(x)!==JSON.stringify(a.find(y=>y.id===x.id))).map(x=>x.id);
  const nodes=changed(before.nodes,after.nodes),curves=after.curves.filter(c=>nodes.some(n=>c.nodes.includes(n))||JSON.stringify(c)!==JSON.stringify(before.curves.find(a=>a.id===c.id))).map(c=>c.id);
  const removed=<T extends {id:string}>(a:T[],b:T[])=>a.filter(x=>!b.some(y=>y.id===x.id)).map(x=>x.id);
- return {curveIds:curves,nodeIds:nodes,layerIds:changed(before.layers,after.layers),fillIds:changed(before.fills,after.fills),offsetIds:changed(before.offsets,after.offsets),displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id),removed:{curveIds:removed(before.curves,after.curves),nodeIds:removed(before.nodes,after.nodes),layerIds:removed(before.layers,after.layers),fillIds:removed(before.fills,after.fills),offsetIds:removed(before.offsets,after.offsets),displayTrackIds:removed(before.displayIntervals??[],after.displayIntervals??[])}};
+ return {curveIds:curves,nodeIds:nodes,layerIds:changed(before.layers,after.layers),fillIds:changed(before.fills,after.fills),offsetIds:changed(before.offsets,after.offsets),groupIds:changed(before.groups??[],after.groups??[]),joinIds:changed(before.joins,after.joins),endpointLinkIds:changed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id),removed:{curveIds:removed(before.curves,after.curves),nodeIds:removed(before.nodes,after.nodes),layerIds:removed(before.layers,after.layers),fillIds:removed(before.fills,after.fills),offsetIds:removed(before.offsets,after.offsets),groupIds:removed(before.groups??[],after.groups??[]),joinIds:removed(before.joins,after.joins),endpointLinkIds:removed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:removed(before.displayIntervals??[],after.displayIntervals??[])}};
 }
 function diagnostics(d:DrawingDocument){
  return [
@@ -261,7 +264,7 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   }
   case 'setMirrorAxis':keys(c,['op','x']);return setMirrorAxis(d,num(c.x,'x'));
   case 'setInkVisibility':keys(c,['op','curveIds','visible']);if(typeof c.visible!=='boolean')fail('INVALID_REQUEST','visible must be a boolean.');return setInk(d,curvesExist(d,c.curveIds),{inkVisible:c.visible as boolean});
-  case 'setCurveInkEnd':keys(c,['op','curveId','end','style']);return setInkEnd(d,curveExists(d,c.curveId),end(c.end),inkEndStyle(c.style));
+  case 'setCurveInkEnd':keys(c,['op','curveId','end','style']);return setInkEnd(d,curveExists(d,c.curveId),end(c.end),terminusBrushStyle(c.style));
   case 'setDepth':{
    keys(c,['op','curveId','offset','scope']);if(c.scope!==undefined&&c.scope!=='PARENT'&&c.scope!=='LAYER')fail('INVALID_REQUEST','scope must be PARENT or LAYER.');const offset=num(c.offset,'offset');if(!Number.isSafeInteger(offset))fail('INVALID_REQUEST','offset must be an integer.');return setDepthOffset(d,curveExists(d,c.curveId),offset,c.scope as 'PARENT'|'LAYER'|undefined);
   }
@@ -271,8 +274,26 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   }
   case 'changeDisplayInterval':keys(c,['op','rangeId','mode','start','end','enabled']);{const r=rangeExists(d,c.rangeId),change=intervalChange(c);nonemptyChange(change);return changeDisplayInterval(d,r.track.id,r.id,change);}
   case 'removeDisplayInterval':keys(c,['op','rangeId']);{const r=rangeExists(d,c.rangeId);return removeDisplayInterval(d,r.track.id,r.id);}
-  case 'setDisplayIntervalEnd':keys(c,['op','rangeId','end','style']);{const r=rangeExists(d,c.rangeId);return setDisplayIntervalEnd(d,r.track.id,r.id,end(c.end),inkEndStyle(c.style));}
-  default:return fail('UNKNOWN_COMMAND',`Unknown command: ${String(op)}.`);
+  case 'setDisplayIntervalEnd':keys(c,['op','rangeId','end','style']);{const r=rangeExists(d,c.rangeId);return setDisplayIntervalEnd(d,r.track.id,r.id,end(c.end),terminusBrushStyle(c.style));}
+  case 'linkEndpoints':{
+   keys(c,['op','a','b','ref']);const n=linkEndpoints(d,geometryEndpoint(d,c.a),geometryEndpoint(d,c.b),true),added=n.endpointLinks?.find(l=>!d.endpointLinks?.some(old=>old.id===l.id));
+   if(added)created('endpointLink',added.id,c.ref);else if(c.ref!==undefined)fail('ALREADY_CONNECTED','These geometry endpoints are already connected; no new link ID was created. Inspect the existing links or omit ref.');
+   return n;
+  }
+  case 'unlinkEndpoints':{
+   keys(c,['op','linkId']);const id=string(c.linkId,'linkId');if(!d.endpointLinks?.some(l=>l.id===id))fail('NOT_FOUND',`Unknown geometry endpoint link ID: ${id}.`);return unlinkEndpoints(d,id);
+  }
+  case 'connectGeometry':{
+   keys(c,['op','a','b','mode']);if(c.mode!==undefined&&c.mode!=='POSITION')fail('INVALID_REQUEST','connectGeometry currently supports POSITION only, with no implied joint brush.');
+   const a=geometryEndpoint(d,c.a),b=geometryEndpoint(d,c.b);if(a.curveId===b.curveId&&a.end===b.end)fail('INVALID_REQUEST','Choose two different geometry endpoints.');
+   if(layerFor(d,a.curveId)!.id!==layerFor(d,b.curveId)!.id)fail('INVALID_REQUEST','Geometry node merging requires one layer; use linkEndpoints for cross-layer position coupling.');
+   if(nodeAt(d,a).id===nodeAt(d,b).id)return d;
+   const source=d.curves.find(x=>x.id===a.curveId)!,scope=new Set([...strokeIds(strokeFor(d,a.curveId)),...strokeIds(strokeFor(d,b.curveId))]);
+   if(d.displayIntervals?.some(t=>t.scope!=='CURVE'&&scope.has(t.anchor.id)))fail('INTERVAL_TOPOLOGY_CONFLICT','Merging these strokes would change existing stroke-wide interval coordinates. Connect the source topology before authoring visibility ranges; no automatic range migration was applied.');
+   if(d.curves.some(x=>scope.has(x.id)&&(x.width!==source.width||x.profile!==source.profile||x.profileReverse!==source.profileReverse)))fail('STYLE_CONFLICT','Node merging would synchronize differing width/profile styles. Explicitly align those styles first.');
+   return connect(d,a,b,'POSITION',undefined,true);
+  }
+  default:{const result=applyElementCommand(d,c);if(!result)return fail('UNKNOWN_COMMAND',`Unknown command: ${String(op)}.`);for(const item of result.created??[])created(item.kind,item.id,item.ref,item.idMap);return result.document;}
  }
 }
 function validateViewport(raw:unknown):VectorViewport{
@@ -331,13 +352,16 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   for(const [index,c] of (r.commands as unknown[]).entries()){
    try{
     const previous=next;next=applyCommand(next,resolve(c),error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
-     const ref=rawRef===undefined?undefined:string(rawRef,'ref',80);if(ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]*$/.test(ref))fail('INVALID_REQUEST','ref must begin with a letter and contain only letters, digits, _ or -.');if(refs.has(ref))fail('DUPLICATE_REFERENCE',`Repeated batch reference: ${ref}.`);if(canonicalIdExists(`$${ref}`))fail('REFERENCE_COLLISION',`Reference $${ref} collides with an existing canonical ID. Choose another ref.`);refs.set(ref,id);}
+     const ref=rawRef===undefined?undefined:string(rawRef,'ref',80);if(ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]*$/.test(ref))fail('INVALID_REQUEST','ref must begin with a letter and contain only letters, digits, _ or -.');if(refs.has(ref))fail('DUPLICATE_REFERENCE',`Repeated batch reference: ${ref}.`);
+      for(const alias of [ref,...Object.keys(idMap??{}).map(old=>`${ref}/${old}`)])if(canonicalIdExists(`$${alias}`))fail('REFERENCE_COLLISION',`Reference $${alias} collides with an existing canonical ID. Choose another ref.`);
+      refs.set(ref,id);for(const [old,newId] of Object.entries(idMap??{}))refs.set(`${ref}/${old}`,newId);
+     }
      created.push({commandIndex:index,kind,id,...(ref===undefined?{}:{ref}),...(idMap?{idMap}:{})});
     });
     // Quad deformation already transports material cut positions; other geometry edits do so here.
-    if(['moveNode','moveHandle','transformCurves','transformLayers'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
+    if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
-   }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError?e.code:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
+   }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
   return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations,created};
  }
@@ -385,7 +409,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
  }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo'],commands:commandNames,artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo'],commands:[...commandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
   inspectArtworks:(request:{expectedRevision?:string}={})=>run(()=>{const r=record(request);keys(r,['expectedRevision']);expected(r.expectedRevision);return clone(artworkOverview(host.getState().project));}),
   artwork:(request:ArtworkRequest)=>run(()=>{

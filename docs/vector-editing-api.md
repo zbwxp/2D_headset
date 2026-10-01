@@ -268,3 +268,13 @@ Artwork reads work in either mode; writes require Drawing. Stale revisions, malf
 The visible console can route explicit whitelisted envelopes such as `{"method":"artwork","request":{"op":"save","name":"Front copy"}}` or `{"method":"inspectArtworks","request":{}}`. The API itself never executes arbitrary supplied code or replaces the raw project.
 
 Artwork regression coverage: `npx vitest run src/tests/vector-artwork-api.test.ts`. This verifies stable identity, first-save rig mapping, dirty-source protection, rig-bound deletion refusal, exact Undo/Redo, Recording restrictions, dry runs and opaque artwork IDs.
+
+## Source connections and remaining elements
+
+`connectGeometry` takes `a` and `b` geometric refs `{curveId,end:0|1}` and an optional `mode:"POSITION"`. It explicitly merges same-layer nodes. It rejects differing width/profile settings and existing whole-stroke display intervals rather than silently rescaling their coordinate frame. Build each closed source loop first, then add its visibility intervals.
+
+`linkEndpoints` takes the same refs, optionally `ref`, and couples positions across independent layers without merging nodes or strokes. `unlinkEndpoints` takes `linkId`. Both structured paths preserve authored 末端笔触; connected appearance remains a derived concern. These commands do not enable cross-layer display routing or an ARC brush. Dry runs, lock/dependency validation, mode restrictions and one-batch Undo apply as usual.
+
+A three-curve filled piece uses three `createCurve` calls, three `connectGeometry` calls connecting each end to the next start, then `createFill` with its three curve IDs. Mirrored pieces have independent nodes; link the intended visible jaw ports only. The executable two-piece recipe is in `src/tests/vector-source-connections.test.ts`.
+
+Additional source commands now include `duplicateObjects` (explicit dependency closure and fresh ID map), `reorderCurveMember`, `movePaint`, `createOffset`, `setOffset`, `detachOffset`, `createGroup`, `setGroup`, `ungroup`, `groupToLayer`, `setInkStyle`, and `setContourMist`. Names and numeric values are validated; no raw source replacement is exposed. Exact JSON fields are the `ElementCommand` union in `src/app/vectorElementCommands.ts`.

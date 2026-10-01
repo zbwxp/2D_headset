@@ -62,11 +62,14 @@ export function moveNode(d:Doc,nodeId:string,position:Point2,allowHidden=false):
  return n;
 }
 /** Two clicks: keep A, move B and its linked endpoints, then couple the positions. */
-export function linkEndpoints(d:Doc,a:Endpoint,b:Endpoint):Doc{
+export function linkEndpoints(d:Doc,a:Endpoint,b:Endpoint,preserveAuthoredBrush=false):Doc{
  if(sameEnd(a,b))throw Error('请选择另一个端点。');const na=nodeAt(d,a),nb=nodeAt(d,b);
  if(linkedNodeIds(d,na.id).has(nb.id))return d;
  check(d,[...linkedNodeIds(d,na.id),...linkedNodeIds(d,nb.id)].flatMap(id=>members(d,id).map(e=>e.curveId)));
- const n=moveNode(d,nb.id,na.position);return clearConnectedInk({...n,endpointLinks:[...(n.endpointLinks??[]),{id:uid(),a:{...a},b:{...b}}]},new Set([...linkedNodeIds(d,na.id),...linkedNodeIds(d,nb.id)]));
+ const moved=moveNode(d,nb.id,na.position),n={...moved,endpointLinks:[...(moved.endpointLinks??[]),{id:uid(),a:{...a},b:{...b}}]};
+ // New structured authoring preserves authored 末端笔触. Any connected-line
+ // suppression belongs to derived rendering; legacy UI behavior stays opt-in here.
+ return preserveAuthoredBrush?n:clearConnectedInk(n,new Set([...linkedNodeIds(d,na.id),...linkedNodeIds(d,nb.id)]));
 }
 /** Joining geometry creates a plain connection. Ink can be explicitly added afterwards. */
 function clearConnectedInk(d:Doc,nodes:Set<string>):Doc{return {...d,curves:d.curves.map(c=>c.nodes.some(n=>nodes.has(n))?{...c,inkEnds:([0,1] as const).map(end=>nodes.has(c.nodes[end])?{taper:0,extension:0}:c.inkEnds?.[end]??{}) as import('./model').InkEnds}:c)};}
@@ -89,16 +92,16 @@ export function merge(d:Doc,a:Endpoint,b:Endpoint):Doc{
  if(layerFor(d,a.curveId)?.id!==layerFor(d,b.curveId)?.id)throw Error('连接仅支持同一图层。');
  return moveNode(d,nodeAt(d,b).id,nodeAt(d,a).position);
 }
-export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CUSP'|'ARC',radius?:number):Doc{
+export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CUSP'|'ARC',radius?:number,preserveAuthoredBrush=false):Doc{
  if(sameEnd(a,b))throw Error('请选择另一个端点。');
  if(layerFor(d,a.curveId)?.id!==layerFor(d,b.curveId)?.id)throw Error('连接仅支持同一图层。');
- const na=nodeAt(d,a),nb=nodeAt(d,b),affected=[...members(d,na.id),...members(d,nb.id)].map(e=>e.curveId);check(d,affected);
+ const na=nodeAt(d,a),nb=nodeAt(d,b),linked=new Set([...linkedNodeIds(d,na.id),...linkedNodeIds(d,nb.id)]),affected=[...linked].flatMap(id=>members(d,id).map(e=>e.curveId));check(d,affected);
  const priorA=joinAt(d,a),priorB=joinAt(d,b),existing=priorA&&priorB?.id===priorA.id?priorA:null;
  if(mode!=='POSITION'&&((priorA&&!existing)||(priorB&&!existing)))throw Error('端点已与另一条曲线接笔，请先解除接笔。');
  if((mode==='SMOOTH'||mode==='ARC')&&[a,b].some(e=>length(sub(curveById(d,e.curveId).handles[e.end],nodeAt(d,e).position))<1e-7))throw Error('请先拉出有效 handle，再建立方向约束。');
  let n=copy(moveNode(d,nb.id,na.position));
  if(na.id!==nb.id){for(const c of n.curves)for(const e of [0,1] as const)if(c.nodes[e]===nb.id)c.nodes[e]=na.id;n.nodes=n.nodes.filter(x=>x.id!==nb.id);}n=cleanEndpointLinks(n);
- if(na.id!==nb.id)n=clearConnectedInk(n,linkedNodeIds(n,na.id));
+ if(na.id!==nb.id&&!preserveAuthoredBrush)n=clearConnectedInk(n,linkedNodeIds(n,na.id));
  if(existing)n.joins=n.joins.filter(j=>j.id!==existing.id);
 
  const firstStroke=strokeFor(d,a.curveId),secondStroke=strokeFor(d,b.curveId),first=strokeIds(firstStroke),other=strokeIds(secondStroke).filter(id=>!first.includes(id));

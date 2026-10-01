@@ -124,3 +124,24 @@ test('fill-only layers expose their owned paints and effective member state with
  let d=fixture();d=addLayer(d,'Fill only');const layer=d.layers[0].id;d=movePaint(d,d.fills[0].id,layer);d.fills[0]={...d.fills[0],visible:false,locked:true};const h=harness(d),r=value(h.api.inspect({layerIds:[layer],includeRecording:false}));
  expect(r.curves).toEqual([]);expect(r.fills).toHaveLength(1);expect(r.fills[0]).toMatchObject({id:d.fills[0].id,layerId:layer,selectionRelation:'owned'});expect(r.layers[0].effectiveState).toMatchObject({count:1,anyVisible:false,allVisible:false,anyLocked:true,allLocked:true});expect(r.recording).toBeNull();expect(r.recordingIncluded).toBe(false);
 });
+
+test('element copy aliases map each original object and keep one Undo for copy plus edits',()=>{
+ const d=fixture(),h=harness(d),id=d.curves[0].id,fill=d.fills[0].id;
+ error(h.api.execute({commands:[{op:'duplicateObjects',objectIds:[id]}]}),'OBJECT_DEPENDENCIES');expect(h.state().commits).toBe(0);
+ const commands:VectorCommand[]=[{op:'duplicateObjects',objectIds:[id],includeDependencies:true,ref:'copy'},{op:'renameCurve',curveId:`$copy/${id}`,name:'Copied curve'},{op:'setFill',fillId:`$copy/${fill}`,name:'Copied skin',visible:false}];
+ const result=value(h.api.execute({commands})),map=result.created[0].idMap!,next=h.state().project.drawing!;expect(next.curves.find(c=>c.id===map[id])).toMatchObject({name:'Copied curve',visible:false});expect(next.fills.find(f=>f.id===map[fill])).toMatchObject({name:'Copied skin',visible:false});expect(next.fills[0]).toEqual(d.fills[0]);expect(h.state().commits).toBe(1);value(h.api.undo());expect(h.state().project.drawing).toBe(d);
+});
+
+test('new group, offset and member-order commands use atomic source transactions and strict validation',()=>{
+ const h=harness(emptyDrawing()),commands:VectorCommand[]=[{op:'createLayer',name:'Details',ref:'layer'},{op:'createCurve',layerId:'$layer',shape:[[0,0],[.2,.1],[.4,.1],[.6,0]],ref:'a'},{op:'createCurve',layerId:'$layer',shape:[[0,.5],[.2,.6],[.4,.6],[.6,.5]],ref:'b'},{op:'createGroup',curveIds:['$a','$b'],name:'Paired',ref:'group'},{op:'setGroup',groupId:'$group',name:'Features'},{op:'createOffset',curveId:'$a',ref:'offset'},{op:'setOffset',offsetId:'$offset',distance:.02,visible:false}];
+ const result=value(h.api.execute({commands})),offset=result.created.find(x=>x.ref==='offset')!.id;expect(h.state().commits).toBe(1);expect(h.state().project.drawing!.groups![0].name).toBe('Features');expect(h.state().project.drawing!.offsets[0]).toMatchObject({id:offset,distance:.02,visible:false});
+ const before=h.state().project;error(h.api.execute({commands:[{op:'createLayer',name:'Temporary'},{op:'setOffset',offsetId:offset,start:.9,end:.1}]}),'CONSTRAINT_VIOLATION');expect(h.state().project).toBe(before);
+ const detached=value(h.api.execute({commands:[{op:'detachOffset',offsetId:offset,ref:'curve'}]}));expect(detached.removed.offsetIds).toEqual([offset]);expect(detached.addedCurves.length).toBeGreaterThan(0);expect(detached.addedCurves.every(c=>!h.state().project.drawing!.curves.find(x=>x.id===c.curveId)!.visible)).toBe(true);
+});
+
+test('copy-map alias collisions and late element errors cannot partially commit',()=>{
+ let d=addLayer(emptyDrawing(),'Opaque');const layer=d.layers[0].id;d=createCurve(d,layer,[[0,0],[.2,0],[.4,0],[.6,0]],.01,'A','a');d=createCurve(d,layer,[[0,1],[.2,1],[.4,1],[.6,1]],.01,'Literal','$copy/a');const h=harness(d),before=h.state().project;
+ error(h.api.execute({commands:[{op:'duplicateObjects',objectIds:['a'],ref:'copy'}]}),'REFERENCE_COLLISION');expect(h.state().project).toBe(before);
+ error(h.api.execute({commands:[{op:'duplicateObjects',objectIds:['a'],ref:'other'},{op:'setInkStyle',curveIds:['$other/a'],profile:'bad'} as unknown as VectorCommand]}),'INVALID_REQUEST');expect(h.state().project).toBe(before);expect(h.state().commits).toBe(0);
+ const help=h.api.help();help.commands.length=0;expect(h.api.help().commands).toContain('duplicateObjects');expect(Object.isFrozen(help.limits)).toBe(true);
+});
