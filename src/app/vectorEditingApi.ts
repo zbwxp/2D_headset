@@ -33,7 +33,7 @@ import type {VectorRecording} from '../domain/vectorRecording/model';
 import {getWorkspaceView,prepareWorkspaceView,replaceWorkspaceView,type WorkspaceView,type WorkspaceViewCommand} from './workspaceView';
 import {snapWorkspacePoint} from './workspaceViewSnap';
 
-export const VECTOR_AI_VERSION='1.6';
+export const VECTOR_AI_VERSION='1.7';
 export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimension:4096,name:256} as const);
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
@@ -78,6 +78,7 @@ export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:
 export interface VectorViewport {width:number;height:number;center:Point2;pixelsPerUnit:number;origin?:Point2}
 export interface PreviewOptions {commands?:VectorCommand[];expectedRevision?:string;width?:number;height?:number;center?:Point2;pixelsPerUnit?:number;showFills?:boolean;annotations?:AIGuideOptions}
 export interface RecordingPreviewOptions extends Omit<PreviewOptions,'commands'> {commands?:RecordingCommand[];angle?:{x:number;y:number};useDraft?:boolean}
+export interface RecordingFramesOptions extends Omit<PreviewOptions,'commands'|'annotations'> {angles?:Array<{x:number;y:number}>}
 export type CoordinateSpace='source'|'canvas'|'client'|'reference';
 export type VectorResult<T>={ok:true;revision:string;value:T}|{ok:false;revision:string;error:{code:string;message:string;commandIndex?:number;relatedCurveIds?:string[]}};
 export interface VectorEditingHost {
@@ -435,10 +436,14 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   if(host.getMode()==='recording'&&(target.drawing!==state.project.drawing||target.drawingSnapshots!==state.project.drawingSnapshots))fail('MODE_RESTRICTED','This history step changes source artwork. Return to Drawing mode to undo or redo it.');
   host[direction]();return {changed:host.getState().project!==state.project,mode:host.getMode()};
  }
- function renderPreview(d:DrawingDocument,o:Record<string,unknown>){
+ function previewCamera(d:DrawingDocument,o:Record<string,unknown>){
    const width=num(o.width??800,'width',1,4096),height=num(o.height??800,'height',1,4096),b=drawingBounds(d);
    const padding=Math.max(.1,...d.curves.map(c=>c.width*2+(c.mist?.enabled?c.mist.width:0)),...d.offsets.map(c=>Math.abs(c.distance)+c.width));
    const viewport:VectorViewport={width,height,center:o.center===undefined?(b?.center??[0,0]):point(o.center,'center'),pixelsPerUnit:num(o.pixelsPerUnit??Math.min(width/((b?b.max[0]-b.min[0]:2.8)+2*padding),height/((b?b.max[1]-b.min[1]:2.8)+2*padding)),'pixelsPerUnit',1e-6,1e6)};
+   return {width,height,b,viewport};
+ }
+ function renderPreview(d:DrawingDocument,o:Record<string,unknown>){
+   const {width,height,b,viewport}=previewCamera(d,o);
    if(o.showFills!==false&&d.fills.some(f=>f.visible&&f.mist?.enabled)&&(typeof document==='undefined'||typeof Path2D==='undefined'))fail('BROWSER_REQUIRED','Mist-fill SVG export uses the existing Canvas renderer. Run preview in the local app browser, or use showFills:false for an explicit ink-only preview.');
    let annotations:AIGuideOptions|undefined;
    if(o.annotations!==undefined){
@@ -450,9 +455,13 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
    return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,annotated:!!annotations,diagnostics:diagnostics(d),sourceRevision:revision()};
  }
+ function renderRecording(project:LandmarkProject,o:Record<string,unknown>){
+   const evaluated=evaluateRecording(project,{...(o.angle===undefined?{}:{angle:o.angle as {x:number;y:number}}),...(o.useDraft===undefined?{}:{useDraft:o.useDraft as boolean})});
+   return {...renderPreview(evaluated.drawing,o),artworkId:evaluated.artworkId,rigId:evaluated.rigId,angle:evaluated.angle,usedDraft:evaluated.usedDraft,hasUnappliedDraft:evaluated.hasUnappliedDraft,sourceReadOnly:true,fitDiagnostics:evaluated.diagnostics,diagnosticStage:evaluated.diagnosticStage,maxError:evaluated.maxError,maxErrorPixels:evaluated.maxError*250,warningCurveIds:evaluated.warningCurveIds,conflictingNodeIds:evaluated.conflictingNodeIds,intervalTransportErrors:evaluated.intervalTransportErrors,routeDiagnostics:evaluated.routeDiagnostics};
+ }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording','inspectView','view','snapView'],viewCommands:['setReference','addGuide','changeGuide','deleteGuides','setGuideOptions','resetView'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording','previewRecordingFrames','inspectView','view','snapView'],viewCommands:['setReference','addGuide','changeGuide','deleteGuides','setGuideOptions','resetView'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
   inspectView:(request:Record<string,never>={})=>runView(()=>{const r=record(request);keys(r,[]);if(!host.getView)fail('UNAVAILABLE','This host does not expose transient workspace view.');return {view:clone(host.getView!()),transient:true,sourceReadOnly:true};}),
   snapView:(request:{point:Point2;unitsPerPixel:number;thresholdPx?:number;excludeCurveIds?:string[];targetSpace?:'source'})=>runView(()=>{
@@ -469,13 +478,18 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   recording:(request:RecordingBatch)=>run(()=>{
    const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode and never mutate source artwork.');
    const plan=prepareRecordingBatch(host.getState().project,r);if(plan.changed&&!plan.dryRun){if(!host.commitRecording)fail('UNAVAILABLE','This host does not support Recording transactions.');host.commitRecording!(plan.next);}
-   const rig=plan.next.rigs.find(x=>x.artworkId===plan.sourceId);return {applied:plan.changed&&!plan.dryRun,changed:plan.changed,dryRun:plan.dryRun,sourceId:plan.sourceId,created:plan.created,rigId:rig?.id??null,angle:rig?.angle??null,hasDraft:!!rig?.draft,sourceReadOnly:true};
+   const rig=plan.next.rigs.find(x=>x.artworkId===plan.sourceId);return {applied:plan.changed&&!plan.dryRun,changed:plan.changed,dryRun:plan.dryRun,sourceId:plan.sourceId,created:plan.created,pinResults:plan.pinResults,rigId:rig?.id??null,angle:rig?.angle??null,hasDraft:!!rig?.draft,sourceReadOnly:true};
   }),
   previewRecording:(options:RecordingPreviewOptions={})=>run(()=>{
    const o=record(options);keys(o,['commands','expectedRevision','angle','useDraft','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');bool(o.useDraft,'useDraft');
    let project=host.getState().project;if(o.commands!==undefined){const plan=prepareRecordingBatch(project,{commands:o.commands,dryRun:true});project={...project,vectorRecording:plan.next};}
-   const evaluated=evaluateRecording(project,{...(o.angle===undefined?{}:{angle:o.angle as {x:number;y:number}}),...(o.useDraft===undefined?{}:{useDraft:o.useDraft as boolean})});
-   return {...renderPreview(evaluated.drawing,o),artworkId:evaluated.artworkId,rigId:evaluated.rigId,angle:evaluated.angle,usedDraft:evaluated.usedDraft,hasUnappliedDraft:evaluated.hasUnappliedDraft,sourceReadOnly:true,fitDiagnostics:evaluated.diagnostics,diagnosticStage:evaluated.diagnosticStage,maxError:evaluated.maxError,maxErrorPixels:evaluated.maxError*250,warningCurveIds:evaluated.warningCurveIds,conflictingNodeIds:evaluated.conflictingNodeIds,intervalTransportErrors:evaluated.intervalTransportErrors,routeDiagnostics:evaluated.routeDiagnostics};
+   return renderRecording(project,o);
+  }),
+  previewRecordingFrames:(options:RecordingFramesOptions={})=>run(()=>{
+   const o=record(options);keys(o,['angles','expectedRevision','width','height','center','pixelsPerUnit','showFills']);expected(o.expectedRevision);bool(o.showFills,'showFills');const rawAngles=o.angles??[0,15,30,45,60,75,90].map(x=>({x,y:0}));if(!Array.isArray(rawAngles)||!rawAngles.length||rawAngles.length>31)fail('INVALID_REQUEST','angles must contain 1–31 parameter positions.');
+   const angles=(rawAngles as unknown[]).map(raw=>{const a=record(raw);keys(a,['x','y']);return {x:num(a.x,'angle.x',-90,90),y:num(a.y,'angle.y',-90,90)};}),project=host.getState().project,camera=previewCamera(source(),o).viewport;
+   const frames=angles.map((angle,index)=>({index,filename:`frame-${String(index).padStart(3,'0')}.svg`,...renderRecording(project,{...o,width:camera.width,height:camera.height,center:camera.center,pixelsPerUnit:camera.pixelsPerUnit,angle,useDraft:false})}));
+   return {frames,allFramesIdentical:frames.every(f=>f.svg===frames[0].svg),viewport:camera,artworkId:frames[0].artworkId,rigId:frames[0].rigId,savedKeyformsOnly:true,hasUnappliedDraft:frames.some(f=>f.hasUnappliedDraft),sourceReadOnly:true,sourceRevision:revision(),maxErrorPixels:Math.max(...frames.map(f=>f.maxErrorPixels)),warningFrameIndices:frames.filter(f=>f.warningCurveIds.length||f.intervalTransportErrors.length||f.routeDiagnostics.length||f.diagnostics.length).map(f=>f.index)};
   }),
   inspectArtworks:(request:{expectedRevision?:string}={})=>run(()=>{const r=record(request);keys(r,['expectedRevision']);expected(r.expectedRevision);return clone(artworkOverview(host.getState().project));}),
   artwork:(request:ArtworkRequest)=>run(()=>{

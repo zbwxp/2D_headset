@@ -46,6 +46,7 @@ API 1.5 已实现并有测试；使用前通过 `help()` 和当前应用确认�
 | `bindLayers {layerIds,deformerId}` | 替换所列层绑定；deformerId:null 解除 |
 | `setAngle {angle:{x,y}}` | 设 −90…90° 参数；有未保存草稿时拒绝 |
 | `editGridNodes {deformerId,edits,moveHandles?}` | 编辑当前角度的姿态草稿；每条 edit 必有唯一 index 和至少一个控制字段 |
+| `pinGridPoint {deformerId,sourcePoint,targetPoint}` | API 1.7：一次性把该网格的指定输入点前向定位到目标，只改当前草稿并返回诊断 |
 | `saveKeyform {name?,ref?}` | 保存当前草稿/插值；同角度更新原 ID，不同角度建立新键 |
 | `loadKeyform {keyformId}` | 按 ID 切到保存键；有草稿时拒绝 |
 | `renameKeyform / deleteKeyform` | 改名或删除中间键；五个基础锚点不能删除 |
@@ -87,6 +88,21 @@ API 1.5 已实现并有测试；使用前通过 `help()` 和当前应用确认�
 
 真实人脸应逐个角度做小批次：查当前控制 → 预演多个节点/柄 → 预览 → 检查拟合、显隐和轮廓 → 保存该角度。还要查看 15/45/75 等中间角度，必要时在该角度增加中间修正键；不要只检查四张静态图片。细分源线属于 Drawing 操作，要另行回到源稿处理并重新接受源版本。
 
+## 一次性网格点定位（API 1.7）
+
+`pinGridPoint` 可在制作当前角度的网格后，把相同下巴输入点定位到指定共同目标，再保存关键形。它只调用现有前向网格场，调整当前单元最多四个角节点，并等量平移它们的 U/V 柄，保留局部柄向量、twist、网格拓扑和 rest bounds。
+
+<!-- recording-tested: pin-current -->
+```json
+{"method":"recording","request":{"commands":[{"op":"pinGridPoint","deformerId":"DEFORMER_ID","sourcePoint":[0.37,0.08],"targetPoint":[0.4,0.09]}],"dryRun":true}}
+```
+
+以上点坐标仍只属于前述测试曲线。sourcePoint 是该网格的固定输入/rest 坐标；targetPoint 是该网格**紧邻父级的输入空间**，不是经过所有父级后的屏幕坐标。根网格的父空间为 drawing root。接口从真实 rig 派生父 ID 与父 rest bounds；源点超出本网格或目标超出已存在父网格范围会拒绝。它不做逆向求解，也不通过外推凑出答案。
+
+结果 `pinResults` 按 commandIndex/angle 返回 beforePoint、afterPoint、残差、withinTolerance、受影响节点及位移和最大控制改变量；不回写持久约束对象。诊断描述这一条命令执行时的结果。后续编辑或另一次 pin 可以破坏之前的定位，必须再次检查；它不是多约束求解器，也不保证没有折叠。不要只看到命令成功就忽略 residual/withinTolerance。
+
+对两片分别使用同一实际输入点和共同父空间目标，可以避免“不同场请求不同下巴位置、最后只靠联动平均”的情况。父级不同或目标坐标框架不一致时不能只抄相同两个数字。相同 rest 点在对应键使用相同目标时，归一化线性网格插值保持这个 pin；共同父级再随后作用。请用 previewRecording 检查保存键和中间角度的真实端点冲突与轮廓。
+
 ## 预览究竟显示了什么
 
 <!-- recording-tested: preview-saved -->
@@ -105,6 +121,17 @@ API 1.5 已实现并有测试；使用前通过 `help()` 和当前应用确认�
 输出使用真实的姿态显隐 → 子/父 Warp 链 → 每源段一条 cubic 拟合 → PaintScene SVG 绘制。普通 SVG 不含控制网格；辅助注释必须显式打开 annotations。返回拟合诊断、最大误差、端点场冲突、区间传递错误与路由错误。源 JSON 和保存关键形不会因预览改变。
 
 超差不等于可以忽略：一般拟合误差可回源稿人工分段；互相矛盾的端点场请求需要协调控制/父级，分段不能消除冲突。折叠或退化导致的区间传递警告必须单独检查。SVG 与数值检查通过仍需按参考图做实际视觉验收。
+
+## 批量保存键 SVG 帧（API 1.7）
+
+<!-- recording-tested: preview-frames -->
+```json
+{"method":"previewRecordingFrames","request":{"angles":[{"x":0,"y":0},{"x":15,"y":0},{"x":30,"y":0},{"x":45,"y":0},{"x":60,"y":0},{"x":75,"y":0},{"x":90,"y":0}],"width":600,"height":600,"center":[0.5,0.1],"pixelsPerUnit":250,"showFills":true}}
+```
+
+这里的相机仍对应测试曲线；人脸需换成合适的固定相机。省略 angles 时正是这七个角度；最多 31 帧。省略相机时只从源稿计算一次，不随角度自动缩放。输出 frames 含 filename、SVG、角度和完整逐帧诊断，并给出 warningFrameIndices、allFramesIdentical。
+
+此方法固定使用保存关键形，明确拒绝 useDraft 和 commands；未采用的草稿通过 hasUnappliedDraft 提示。它只读同一 artworkId/rigId，不切换源参考图。完整步骤与提取 SVG 工具见 [作者检查清单](recording-author-checklist.md)。有雾化填充时必须在浏览器渲染；BROWSER_REQUIRED 不允许被静默简化成无填充导出。
 
 ## 测试与当前边界
 

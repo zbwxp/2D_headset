@@ -5,6 +5,7 @@ import {changeDisplayInterval,setDisplayIntervalEnd} from '../domain/drawing/dis
 import {displayRouteDiagnostics} from '../domain/drawing/displayRouteInk';
 import {moveWarpNode,validateWarpGrid} from '../domain/vectorWarp/model';
 import {deformDrawing} from '../domain/vectorWarp/evaluation';
+import {pinWarpPoint,WarpPinError,type WarpPointPinResult} from '../domain/vectorWarp/constraints';
 import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 import {applyIntervalOverrides} from '../domain/vectorRecording/intervals';
 import {sameAngle,type Angle} from '../domain/vectorRecording/interpolation';
@@ -18,14 +19,16 @@ export type RecordingCommand=
  | {op:'deleteDeformer';deformerId:string}
  | {op:'bindLayers';layerIds:string[];deformerId:string|null}
  | {op:'editGridNodes';deformerId:string;edits:Array<{index:number;position?:Point2;handleU?:Point2;handleV?:Point2;twist?:Point2}>;moveHandles?:boolean}
+ | {op:'pinGridPoint';deformerId:string;sourcePoint:Point2;targetPoint:Point2}
  | {op:'saveKeyform';name?:string;ref?:string}|{op:'loadKeyform';keyformId:string}|{op:'renameKeyform';keyformId:string;name:string}|{op:'deleteKeyform';keyformId:string}
  | {op:'discardDraft'}|{op:'resetGrids';deformerIds?:string[]}|{op:'setTolerance';pixels:number}
  | {op:'setVisibility';objectIds?:string[];layerIds?:string[];visible:boolean}|{op:'setPoseIntervalEnabled';rangeIds:string[];enabled:boolean}
  | {op:'changePoseInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;fullLoop?:boolean}
  | {op:'setPoseIntervalEnd';rangeId:string;end:0|1;style:TerminusBrushStyle}|{op:'resetPoseIntervals'};
-export const recordingCommandNames=['ensureRig','acceptSource','setAngle','createDeformer','setDeformer','deleteDeformer','bindLayers','editGridNodes','saveKeyform','loadKeyform','renameKeyform','deleteKeyform','discardDraft','resetGrids','setTolerance','setVisibility','setPoseIntervalEnabled','changePoseInterval','setPoseIntervalEnd','resetPoseIntervals'];
+export const recordingCommandNames=['ensureRig','acceptSource','setAngle','createDeformer','setDeformer','deleteDeformer','bindLayers','editGridNodes','pinGridPoint','saveKeyform','loadKeyform','renameKeyform','deleteKeyform','discardDraft','resetGrids','setTolerance','setVisibility','setPoseIntervalEnabled','changePoseInterval','setPoseIntervalEnd','resetPoseIntervals'];
 export interface RecordingBatch {commands:RecordingCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface RecordingQuery {deformerIds?:string[];deformerNames?:string[];includeKeyGrids?:boolean;angle?:Angle;expectedRevision?:string}
+export interface RecordingPinReport extends Omit<WarpPointPinResult,'grid'> {commandIndex:number;deformerId:string;angle:Angle;sourcePoint:Point2;targetPoint:Point2;targetParentId:string|null}
 export interface RecordingCreation {commandIndex:number;kind:'rig'|'deformer'|'keyform';id:string;ref?:string;created:boolean}
 export class RecordingApiError extends Error {constructor(readonly code:string,message:string,readonly commandIndex?:number){super(message);}}
 const fail=(code:string,message:string):never=>{throw new RecordingApiError(code,message);};
@@ -62,7 +65,7 @@ export function recordingOverview(project:LandmarkProject,raw:unknown={}){
 
 export function prepareRecordingBatch(project:LandmarkProject,raw:unknown){
  const request=object(raw);keys(request,['commands','expectedRevision','dryRun']);if(request.dryRun!==undefined)bool(request.dryRun,'dryRun');if(!Array.isArray(request.commands)||request.commands.length>1000)fail('INVALID_REQUEST','commands must be an array of at most 1000 commands.');
- const source=drawing(project),artworkId=active(project),before=project.vectorRecording??emptyVectorRecording(),refs=new Map<string,string>(),created:RecordingCreation[]=[];let next=structuredClone(before);
+ const source=drawing(project),artworkId=active(project),before=project.vectorRecording??emptyVectorRecording(),refs=new Map<string,string>(),created:RecordingCreation[]=[],pinResults:RecordingPinReport[]=[];let next=structuredClone(before);
  const canonical=(key:string)=>[...next.rigs.flatMap(r=>[r,...r.deformers,...r.keys]),...source.layers,...source.curves,...source.nodes,...source.fills,...source.offsets].some(x=>x.id===key);
  const resolve=(v:unknown,key=''):unknown=>{if(typeof v==='string'&&/Id$|Ids$/.test(key)&&v.startsWith('$')){if(canonical(v))return v;const mapped=refs.get(v.slice(1));if(!mapped)fail('UNKNOWN_REFERENCE',`Unknown recording reference: ${v}.`);return mapped;}if(Array.isArray(v))return v.map(x=>resolve(x,key));if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,resolve(x,k)]));return v;};
  for(const [commandIndex,input] of (request.commands as unknown[]).entries())try{
@@ -90,6 +93,11 @@ export function prepareRecordingBatch(project:LandmarkProject,raw:unknown){
     for(const raw of c.edits as unknown[]){const e=object(raw);keys(e,['index','position','handleU','handleV','twist']);const i=number(e.index,'index',0,grid.nodes.length-1);if(!Number.isInteger(i)||seen.has(i))fail('INVALID_REQUEST','Node indices must be unique integers.');seen.add(i);if(!['position','handleU','handleV','twist'].some(k=>e[k]!==undefined))fail('INVALID_REQUEST','Each node edit needs a position, handle or twist.');if(e.position!==undefined)grid=moveWarpNode(grid,i,point(e.position,'position'),follow);else grid=structuredClone(grid);for(const k of ['handleU','handleV','twist'] as const)if(e[k]!==undefined)grid.nodes[i][k]=point(e[k],k);}
     validateWarpGrid(grid);setPose({...p,grids:{...p.grids,[d.id]:grid}});break;
    }
+   case 'pinGridPoint':{
+    keys(c,['op','deformerId','sourcePoint','targetPoint']);const d=deformer(rig,c.deformerId),p=pose(),grid=p.grids[d.id]??d.grid,sourcePoint=point(c.sourcePoint,'sourcePoint'),targetPoint=point(c.targetPoint,'targetPoint'),parentId=d.parentId??null,parent=parentId?deformer(rig,parentId):undefined;
+    const result=pinWarpPoint(grid,{sourcePoint,targetPoint,gridParentId:parentId,targetParentId:parentId,...(parent?{parentBounds:parent.grid.bounds}:{})});const {grid:pinned,...diagnostics}=result;
+    setPose({...p,grids:{...p.grids,[d.id]:pinned}});pinResults.push({commandIndex,deformerId:d.id,angle:{...rig.angle},sourcePoint,targetPoint,targetParentId:parentId,...diagnostics});break;
+   }
    case 'saveKeyform':{keys(c,['op','name','ref']);const old=rig.keys.find(k=>sameAngle(k.angle,rig.angle));rig=saveKeyform(rig,c.name===undefined?undefined:name(c.name),source);report('keyform',rig.keys.find(k=>sameAngle(k.angle,rig.angle))!.id,c.ref,!old);break;}
    case 'loadKeyform':{keys(c,['op','keyformId']);const k=keyform(rig,c.keyformId);if(rig.draft)fail('DIRTY_DRAFT','Save or explicitly discard the current draft before loading a keyform.');rig=setRigAngle(rig,k.angle);break;}
    case 'renameKeyform':{keys(c,['op','keyformId','name']);const k=keyform(rig,c.keyformId),n=name(c.name);rig={...rig,keys:rig.keys.map(x=>x.id===k.id?{...x,name:n}:x)};break;}
@@ -109,8 +117,8 @@ export function prepareRecordingBatch(project:LandmarkProject,raw:unknown){
    default:fail('UNKNOWN_COMMAND',`Unknown Recording command: ${String(op)}.`);
   }
   next=replaceRig(next,rig);next=parseVectorRecording(next);
- }catch(error){const e=error as Error;throw new RecordingApiError(e instanceof RecordingApiError?e.code:'CONSTRAINT_VIOLATION',e.message,commandIndex);}
- next=parseVectorRecording(next);return {before,next,sourceId:artworkId,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:request.dryRun===true,created};
+ }catch(error){const e=error as Error;throw new RecordingApiError(e instanceof RecordingApiError?e.code:e instanceof WarpPinError?`WARP_PIN_${e.code}`:'CONSTRAINT_VIOLATION',e.message,commandIndex);}
+ next=parseVectorRecording(next);return {before,next,sourceId:artworkId,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:request.dryRun===true,created,pinResults};
 }
 
 /** Same full evaluation pipeline as the Recording UI, without child-local isolation. */

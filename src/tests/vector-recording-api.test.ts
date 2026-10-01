@@ -88,10 +88,10 @@ test('default Recording adapter uses one existing store transaction and preserve
 });
 
 const guide=readFileSync(new URL('../../docs/vector-recording-api.md',import.meta.url),'utf8'),examples=[...guide.matchAll(/<!-- recording-tested: ([a-z-]+) -->\s*```json\s*([\s\S]*?)```/g)].map(m=>({name:m[1],request:JSON.parse(m[2])}));
-test('recording guide declares the expected executable JSON examples',()=>expect(examples.map(e=>e.name)).toEqual(['inspect','turn-scaffold','preview-saved']));
+test('recording guide declares the expected executable JSON examples',()=>expect(examples.map(e=>e.name)).toEqual(['inspect','turn-scaffold','pin-current','preview-saved','preview-frames']));
 for(const e of examples)test(`recording guide example ${e.name} uses the actual facade`,()=>{
- const h=apiHarness(),before=h.state(),layer=h.state().drawing!.layers[0].id,replace=(v:unknown):unknown=>v==='SOURCE_LAYER_ID'?layer:Array.isArray(v)?v.map(replace):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,replace(x)])):v,r=replace(e.request) as {method:string;request:any};
- const result=r.method==='inspectRecording'?h.api.inspectRecording(r.request):r.method==='recording'?h.api.recording(r.request):h.api.previewRecording(r.request);expect(result.ok,JSON.stringify(result)).toBe(true);expect(h.state()).toBe(before);
+ const h=apiHarness(),before=h.state(),layer=h.state().drawing!.layers[0].id,replace=(v:unknown):unknown=>v==='SOURCE_LAYER_ID'?layer:v==='DEFORMER_ID'?rig(h.state()).deformers[0].id:Array.isArray(v)?v.map(replace):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,replace(x)])):v,r=replace(e.request) as {method:string;request:any};
+ const result=r.method==='inspectRecording'?h.api.inspectRecording(r.request):r.method==='recording'?h.api.recording(r.request):r.method==='previewRecordingFrames'?h.api.previewRecordingFrames(r.request):h.api.previewRecording(r.request);expect(result.ok,JSON.stringify(result)).toBe(true);expect(h.state()).toBe(before);
 });
 
 
