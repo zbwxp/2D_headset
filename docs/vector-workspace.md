@@ -97,3 +97,14 @@ dilution. If both axes changed the same track, their appearances use positive
 |X|:|Y| blending; author a 2D corrective key when a specific combined result is
 needed. Explicit 2D keys take precedence. Source edits still require the existing
 source-review step; pose overrides keep the source geometry and ownership intact.
+
+## Bundled authored stage
+
+“导入无发五官阶段稿” explicitly imports “无发·五官对称·脸片待建” as a new
+artwork. This is the actual hands-on authored stage: 12 layers, 119 curves and
+19 fills, without a reference image. Features have been mirrored; the unchanged
+face contour and overlapping left/right face pieces still need authoring, and
+some ears remain occluded by that existing face. It is not a completed symmetric
+face. The loader never replaces startup data or an existing saved artwork. Any
+unsaved working artwork is saved as a separate copy first; the whole import is
+one undo step and the current working rig keeps its original artwork ownership.

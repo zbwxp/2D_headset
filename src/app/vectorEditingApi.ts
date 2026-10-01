@@ -7,8 +7,11 @@ import {useDrawing} from '../ui/drawing/session';
 import PaintScene from '../ui/drawing/PaintScene';
 import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
-import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection} from '../domain/drawing/commands';
+import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,objectById,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
+import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer} from '../domain/drawing/commands';
+import {setObjectState} from '../domain/drawing/objectState';
+import {createFill,changePaint,reorderPaint} from '../domain/drawing/paintCommands';
+import {planArtworkLayerImport} from '../domain/drawing/importArtworkLayers';
 import {deformDrawing,transportDeformedIntervals,type Quad,type DeformRect} from '../domain/drawing/deform';
 import {strokes,strokeName,strokeIds} from '../domain/drawing/strokes';
 import {linkedNodeIds} from '../domain/drawing/endpointLinks';
@@ -16,7 +19,7 @@ import {displayField,displayPath} from '../domain/drawing/displayIntervals';
 import {fillGeometry,offsetGeometry} from '../domain/drawing/appearance';
 import {roundedJoins} from '../domain/drawing/roundedJoin';
 
-export const VECTOR_AI_VERSION='1.0';
+export const VECTOR_AI_VERSION='1.1';
 export const VECTOR_AI_LIMITS={coordinate:10000,batch:1000,dimension:4096,name:256} as const;
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
@@ -28,7 +31,21 @@ export type VectorCommand=
  | {op:'deformCurves';curveIds:string[];bounds:DeformRect;quad:Quad;allowRelated?:boolean}
  | {op:'renameCurve';curveId:string;name:string}
  | {op:'renameStroke';curveId:string;name:string}
- | {op:'setCurveWidth';curveIds:string[];width:number};
+ | {op:'setCurveWidth';curveIds:string[];width:number}
+ | {op:'createLayer';name:string;ref?:string}
+ | {op:'duplicateLayer';layerId:string;ref?:string}
+ | {op:'deleteLayers';layerIds:string[]}
+ | {op:'reorderLayer';layerId:string;targetLayerId:string;after?:boolean}
+ | {op:'setLayer';layerId:string;name?:string;visible?:boolean;locked?:boolean}
+ | {op:'setObjectState';objectIds:string[];visible?:boolean;locked?:boolean}
+ | {op:'deleteObjects';objectIds:string[]}
+ | {op:'moveToLayer';curveIds:string[];layerId:string}
+ | {op:'createFill';curveIds:string[];color:'white'|'black'|'transparent';kind?:'SOLID'|'MIST';ref?:string}
+ | {op:'setFill';fillId:string;name?:string;color?:'white'|'black'|'transparent';visible?:boolean;locked?:boolean}
+ | {op:'reorderObject';objectId:string;targetObjectId:string;after?:boolean}
+ | {op:'transformLayers';layerIds:string[];matrix:Affine;allowRelated?:boolean};
+export interface CreatedEntity {commandIndex:number;kind:'layer'|'fill';id:string;ref?:string;idMap?:Record<string,string>}
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers'];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
@@ -80,6 +97,17 @@ function ids(value:unknown,label:string,empty=false):string[]{
 }
 function curveExists(d:DrawingDocument,id:unknown){const key=string(id,'curveId');if(!d.curves.some(c=>c.id===key))fail('NOT_FOUND',`Unknown curve ID: ${key}.`);return key;}
 function curvesExist(d:DrawingDocument,value:unknown){return ids(value,'curveIds').map(id=>curveExists(d,id));}
+function layerExists(d:DrawingDocument,value:unknown){const id=string(value,'layerId');if(!d.layers.some(l=>l.id===id))fail('NOT_FOUND',`Unknown layer ID: ${id}.`);return id;}
+function objectExists(d:DrawingDocument,value:unknown){const id=string(value,'objectId');if(!objectById(d,id))fail('NOT_FOUND',`Unknown object ID: ${id}.`);return id;}
+function color(value:unknown):'white'|'black'|'transparent'{if(value!=='white'&&value!=='black'&&value!=='transparent')fail('INVALID_REQUEST','color must be white, black or transparent.');return value as 'white'|'black'|'transparent';}
+function stateChange(c:Record<string,unknown>){bool(c.visible,'visible');bool(c.locked,'locked');return {...(c.visible===undefined?{}:{visible:c.visible as boolean}),...(c.locked===undefined?{}:{locked:c.locked as boolean})};}
+function nonemptyChange(c:object){if(!Object.keys(c).length)fail('INVALID_REQUEST','Provide at least one property to change.');return c;}
+function affineMap(matrix:unknown){
+ if(!Array.isArray(matrix)||matrix.length!==6)fail('INVALID_REQUEST','matrix must contain [a,b,c,d,e,f].');
+ const [a,b,c,d,e,f]=(matrix as unknown[]).map((v,i)=>num(v,`matrix[${i}]`));
+ if(Math.abs(a*d-b*c)<1e-12)fail('INVALID_REQUEST','The affine transform must be nonsingular.');
+ return (p:Point2):Point2=>[a*p[0]+c*p[1]+e,b*p[0]+d*p[1]+f];
+}
 function validateBounds(d:DrawingDocument){
  for(const n of d.nodes)point(n.position,`node ${n.id}`);
  for(const c of d.curves)c.handles.forEach((p,i)=>point(p,`curve ${c.id} handle ${i}`));
@@ -107,7 +135,8 @@ const drawingBounds=(d:DrawingDocument)=>combineBounds(d.curves.map(c=>cubicBoun
 function changedIds(before:DrawingDocument,after:DrawingDocument){
  const changed=<T extends {id:string}>(a:T[],b:T[])=>b.filter(x=>JSON.stringify(x)!==JSON.stringify(a.find(y=>y.id===x.id))).map(x=>x.id);
  const nodes=changed(before.nodes,after.nodes),curves=after.curves.filter(c=>nodes.some(n=>c.nodes.includes(n))||JSON.stringify(c)!==JSON.stringify(before.curves.find(a=>a.id===c.id))).map(c=>c.id);
- return {curveIds:curves,nodeIds:nodes,displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id)};
+ const removed=<T extends {id:string}>(a:T[],b:T[])=>a.filter(x=>!b.some(y=>y.id===x.id)).map(x=>x.id);
+ return {curveIds:curves,nodeIds:nodes,layerIds:changed(before.layers,after.layers),fillIds:changed(before.fills,after.fills),offsetIds:changed(before.offsets,after.offsets),displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id),removed:{curveIds:removed(before.curves,after.curves),nodeIds:removed(before.nodes,after.nodes),layerIds:removed(before.layers,after.layers),fillIds:removed(before.fills,after.fills),offsetIds:removed(before.offsets,after.offsets),displayTrackIds:removed(before.displayIntervals??[],after.displayIntervals??[])}};
 }
 function diagnostics(d:DrawingDocument){
  return [
@@ -131,7 +160,7 @@ function checkNewDiagnostics(before:DrawingDocument,after:DrawingDocument){
  const added=diagnostics(after).filter(x=>!prior.has(`${x.kind}:${x.id}:${x.message}`));
  if(added.length)fail('GEOMETRY_INVALID',`Edit would introduce invalid derived geometry: ${added.map(x=>`${x.kind} ${x.id}: ${x.message}`).join('; ')}`);
 }
-function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void):DrawingDocument{
+function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void):DrawingDocument{
  const c=record(raw),op=c.op;
  switch(op){
   case 'moveNode':{
@@ -146,10 +175,7 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   }
   case 'transformCurves':{
    keys(c,['op','curveIds','matrix','allowRelated']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
-   if(!Array.isArray(c.matrix)||c.matrix.length!==6)fail('INVALID_REQUEST','matrix must contain [a,b,c,d,e,f].');
-   const [a,b,cc,dd,e,f]=(c.matrix as unknown[]).map((v,i)=>num(v,`matrix[${i}]`));
-   if(Math.abs(a*dd-b*cc)<1e-12)fail('INVALID_REQUEST','The affine transform must be nonsingular.');
-   return transform(d,selected,p=>[a*p[0]+cc*p[1]+e,b*p[0]+dd*p[1]+f],c.allowRelated===true);
+   return transform(d,selected,affineMap(c.matrix),c.allowRelated===true);
   }
   case 'deformCurves':{
    keys(c,['op','curveIds','bounds','quad','allowRelated']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
@@ -162,6 +188,42 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   case 'renameCurve':keys(c,['op','curveId','name']);return curveChange(d,curveExists(d,c.curveId),{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()});
   case 'renameStroke':keys(c,['op','curveId','name']);return renameStroke(d,curveExists(d,c.curveId),string(c.name,'name',VECTOR_AI_LIMITS.name).trim());
   case 'setCurveWidth':keys(c,['op','curveIds','width']);return widthChange(d,curvesExist(d,c.curveIds),num(c.width,'width',1e-8,1));
+  case 'createLayer':{
+   keys(c,['op','name','ref']);const n=addLayer(d,string(c.name,'name',VECTOR_AI_LIMITS.name).trim());created('layer',n.layers[0].id,c.ref);return n;
+  }
+  case 'duplicateLayer':{
+   keys(c,['op','layerId','ref']);const id=layerExists(d,c.layerId),plan=planArtworkLayerImport(d,[id]);
+   if(plan.additionalLayerIds.length)fail('DEPENDENCY_REQUIRED',`Layer has cross-layer dependencies: ${plan.additionalLayerIds.join(', ')}. Import dependency-closed artwork layers instead.`);
+   const n=duplicateLayer(d,id),source=d.layers.find(l=>l.id===id)!,target=n.layers[0],idMap:Record<string,string>={[id]:target.id};
+   source.items.forEach((id,i)=>{idMap[id]=target.items[i];});
+   for(const old of d.curves.filter(x=>Object.hasOwn(idMap,x.id))){const copy=n.curves.find(x=>x.id===idMap[old.id])!;old.nodes.forEach((id,i)=>{idMap[id]=copy.nodes[i];});}
+   created('layer',target.id,c.ref,idMap);return n;
+  }
+  case 'deleteLayers':keys(c,['op','layerIds']);return deleteLayers(d,ids(c.layerIds,'layerIds').map(id=>layerExists(d,id)));
+  case 'reorderLayer':keys(c,['op','layerId','targetLayerId','after']);bool(c.after,'after');return reorderLayers(d,layerExists(d,c.layerId),layerExists(d,c.targetLayerId),c.after===true);
+  case 'setLayer':{
+   keys(c,['op','layerId','name','visible','locked']);const change={...stateChange(c),...(c.name===undefined?{}:{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()})};nonemptyChange(change);return layerChange(d,layerExists(d,c.layerId),change);
+  }
+  case 'setObjectState':{
+   keys(c,['op','objectIds','visible','locked']);const change=stateChange(c);nonemptyChange(change);return setObjectState(d,ids(c.objectIds,'objectIds').map(id=>objectExists(d,id)),change);
+  }
+  case 'deleteObjects':keys(c,['op','objectIds']);return deleteObjects(d,ids(c.objectIds,'objectIds').map(id=>objectExists(d,id)));
+  case 'moveToLayer':keys(c,['op','curveIds','layerId']);return moveToLayer(d,curvesExist(d,c.curveIds),layerExists(d,c.layerId));
+  case 'createFill':{
+   keys(c,['op','curveIds','color','kind','ref']);if(c.kind!==undefined&&c.kind!=='SOLID'&&c.kind!=='MIST')fail('INVALID_REQUEST','kind must be SOLID or MIST.');
+   const n=createFill(d,curvesExist(d,c.curveIds),color(c.color),c.kind as 'SOLID'|'MIST'|undefined);created('fill',n.fills.at(-1)!.id,c.ref);return n;
+  }
+  case 'setFill':{
+   keys(c,['op','fillId','name','color','visible','locked']);const id=string(c.fillId,'fillId');if(!d.fills.some(f=>f.id===id))fail('NOT_FOUND',`Unknown fill ID: ${id}.`);
+   const change={...stateChange(c),...(c.name===undefined?{}:{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()}),...(c.color===undefined?{}:{color:color(c.color)})};nonemptyChange(change);return changePaint(d,id,change);
+  }
+  case 'reorderObject':{
+   keys(c,['op','objectId','targetObjectId','after']);bool(c.after,'after');const id=objectExists(d,c.objectId),target=objectExists(d,c.targetObjectId);
+   if(layerFor(d,id)?.id!==layerFor(d,target)?.id)fail('INVALID_REQUEST','Reordering requires objects in the same layer; move first.');return reorderPaint(d,id,target,c.after===true);
+  }
+  case 'transformLayers':{
+   keys(c,['op','layerIds','matrix','allowRelated']);bool(c.allowRelated,'allowRelated');const layers=ids(c.layerIds,'layerIds').map(id=>layerExists(d,id)),selected=d.curves.filter(c=>layers.includes(layerFor(d,c.id)!.id)).map(c=>c.id);return transform(d,selected,affineMap(c.matrix),c.allowRelated===true);
+  }
   default:return fail('UNKNOWN_COMMAND',`Unknown command: ${String(op)}.`);
  }
 }
@@ -206,16 +268,25 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(input);keys(r,['commands','expectedRevision','dryRun']);expected(r.expectedRevision);bool(r.dryRun,'dryRun');
   if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Source edits require Drawing mode. Recording does not change source geometry or topology.');
   if(!Array.isArray(r.commands)||r.commands.length>VECTOR_AI_LIMITS.batch)fail('INVALID_REQUEST',`commands must be an array of at most ${VECTOR_AI_LIMITS.batch} commands.`);
-  const before=source(),approximations:{commandIndex:number;sampledMaxError:number}[]=[];let next=clone(before);
+  const before=source(),approximations:{commandIndex:number;sampledMaxError:number}[]=[],created:CreatedEntity[]=[],refs=new Map<string,string>();let next=clone(before);
+  const resolve=(value:unknown,key=''):unknown=>{
+   if(typeof value==='string'&&(/Id$|Ids$/.test(key))&&value.startsWith('$')){const id=refs.get(value.slice(1));if(!id)fail('UNKNOWN_REFERENCE',`Unknown batch reference: ${value}. References must be created earlier in this batch.`);return id;}
+   if(Array.isArray(value))return value.map(v=>resolve(v,key));
+   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,resolve(v,k)]));
+   return value;
+  };
   for(const [index,c] of (r.commands as unknown[]).entries()){
    try{
-    const previous=next;next=applyCommand(next,c,error=>approximations.push({commandIndex:index,sampledMaxError:error}));
+    const previous=next;next=applyCommand(next,resolve(c),error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
+     const ref=rawRef===undefined?undefined:string(rawRef,'ref',80);if(ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]*$/.test(ref))fail('INVALID_REQUEST','ref must begin with a letter and contain only letters, digits, _ or -.');if(refs.has(ref))fail('DUPLICATE_REFERENCE',`Repeated batch reference: ${ref}.`);refs.set(ref,id);}
+     created.push({commandIndex:index,kind,id,...(ref===undefined?{}:{ref}),...(idMap?{idMap}:{})});
+    });
     // Quad deformation already transports material cut positions; other geometry edits do so here.
-    if((c as VectorCommand).op!=='deformCurves')next=transportDeformedIntervals(previous,next);
+    if(['moveNode','moveHandle','transformCurves','transformLayers'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError?e.code:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
-  return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations};
+  return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations,created};
  }
  function inspectQuery(raw:unknown){
   const q=record(raw);keys(q,['layerIds','layerNames','curveIds','curveNames','strokeNames','nameIncludes']);
@@ -231,8 +302,8 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const reference=d.reference?(({dataUrl,...r})=>({...r,pixelsIncluded:false}))(d.reference):null;
   return clone({
    apiVersion:VECTOR_AI_VERSION,mode:host.getMode(),sourceEditable:host.getMode()==='drawing',
-   sourceId:host.getState().project.drawingSnapshots?.activeId??'$working',coordinateSystem:{unit:'source',x:'right',y:'up',handles:'absolute',bounds:'exact cubic centerline; excludes width, mist, offsets and extensions'},
-   layers:d.layers.filter(l=>l.items.some(id=>selectedIds.has(id))||!Object.keys(q).length),
+   sourceId:host.getState().project.drawingSnapshots?.activeId??'$working',mirrorAxisX:d.mirrorAxisX??0,coordinateSystem:{unit:'source',x:'right',y:'up',handles:'absolute',bounds:'exact cubic centerline; excludes width, mist, offsets and extensions'},
+   layers:d.layers.filter(l=>l.items.some(id=>selectedIds.has(id))||(!['curveIds','curveNames','strokeNames','nameIncludes'].some(k=>q[k]!==undefined)&&match('layerIds',l.id)&&match('layerNames',l.name))),
    strokes:chosenStrokes,curves:selected.map(c=>({...c,layerId:layerFor(d,c.id)!.id,strokeId:byCurve.get(c.id)!.id,shape:shapeOf(d,c.id),controls:shapeOf(d,c.id).map((position,index)=>({targetKind:index===0||index===3?'node':'handle',role:['P0','H0','H1','P1'][index],curveId:c.id,...(index===0||index===3?{nodeId:c.nodes[index===0?0:1]}:{end:index===1?0:1}),position})),bounds:cubicBounds(shapeOf(d,c.id))})),
    nodes:d.nodes.filter(n=>nodeIds.has(n.id)).map(n=>({...n,endpoints:members(d,n.id),linkedNodeIds:[...linkedNodeIds(d,n.id)]})),
    fills:d.fills.filter(f=>f.boundary.some(u=>selectedIds.has(u.id))),offsets:d.offsets.filter(o=>o.source.some(u=>selectedIds.has(u.id))),groups:(d.groups??[]).filter(g=>g.curveIds.some(id=>selectedIds.has(id))),
@@ -256,12 +327,15 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
  }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',commands:['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',commands:commandNames,limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
   execute:(request:VectorBatch)=>run(()=>{
-   const {before,next,changed,dryRun,approximations}=prepare(request),changes=changedIds(before,next);
+   const {before,next,changed,dryRun,approximations,created}=prepare(request),changes=changedIds(before,next);
+   const beforeAfter=changes.curveIds.filter(id=>before.curves.some(c=>c.id===id)).map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}}));
+   const addedCurves=next.curves.filter(c=>!before.curves.some(x=>x.id===c.id)).map(c=>({curveId:c.id,layerId:layerFor(next,c.id)!.id,name:c.name,shape:clone(shapeOf(next,c.id))}));
+   const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
    if(changed&&!dryRun)host.commitDrawing(next);
-   return {applied:changed&&!dryRun,dryRun,changed,...changes,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter:changes.curveIds.map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}})),diagnostics:diagnostics(next)};
+   return result;
   }),
   select:(request:{curveIds:string[];expectedRevision?:string})=>run(()=>{
    const r=record(request);keys(r,['curveIds','expectedRevision']);expected(r.expectedRevision);const selected=ids(r.curveIds,'curveIds',true);selected.forEach(id=>curveExists(source(),id));

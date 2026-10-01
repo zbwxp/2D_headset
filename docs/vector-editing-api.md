@@ -21,7 +21,7 @@ Every operation except `help()` returns one of:
 - Inspection and source export remain available in Recording. `inspect().value.recording` exposes a detached copy of the current vector rig, when present. Source SVG preview is explicitly a source-artwork preview, not recording evaluation
 - Commands are sequential within a private draft. All commands, coordinates, source constraints and new derived-geometry diagnostics are checked before the single store transaction. A failed command, dry run, no-op or speculative preview creates no undo entry
 - `undo()` / `redo()` use normal project history. In Recording, a history step that changes source artwork or saved source artworks is rejected. These operations are not a separate API-private history
-- Canonical curve, node, layer, join and endpoint-link IDs are preserved by all current commands. Stroke IDs are derived anchors of connected components, not a second persistent topology
+- Existing IDs are retained by ordinary edits; explicit creation/duplication returns fresh IDs and deletion reports removed IDs. Stroke IDs are derived anchors of connected components, not a second persistent topology
 - Locks, hidden-member rules, linked endpoints and smooth tangent constraints use the same drawing commands as manual editing. A node move also moves its adjacent handles and linked nodes. A smooth handle move can move its partner handle. Changed IDs include those effects
 - `allowRelated:true` explicitly permits related-curve effects for affine/four-corner transforms; it never overrides locks. Otherwise a partial connected selection can return `CONSTRAINT_VIOLATION` with `relatedCurveIds`
 - Geometry edits transport display interval material positions using the existing drawing transport logic. Track/range IDs, direction and appearance are retained. Angle-specific visibility stays in recording data and is not a source command
@@ -47,6 +47,7 @@ Query filters are ANDed. Names return all matches; the API never guesses between
 Inspection includes:
 
 - Current mode, source capability, artwork ID, revision, selection, available canvas viewport
+- Exact source `mirrorAxisX` (use reflection matrix `[-1,0,0,1,2*mirrorAxisX,0]`)
 - Canonical absolute controls, node IDs, exact centerline bounds, layer and derived stroke membership
 - Shared-node endpoint membership, linked-node IDs, touching joins and endpoint links
 - Associated fills, offset-source relations, organizational groups and display intervals for selected strokes
@@ -180,3 +181,35 @@ The plan identifies dependency layers caused by cross-layer endpoint links or fi
 All imported layers, curves, nodes, joins, groups, fills, offsets, endpoint links, interval tracks and ranges get fresh IDs, returned in `idMap`. Geometry, names, source ordering, flags, styles, anchors and relationships are retained. Fresh ID assignment preserves source endpoint ordering because it affects derived open-stroke direction. For an unusual branched return path whose curve-ID tie-break still reverses traversal, the imported profileReverse bit is compensated, following the existing duplicate command; geometry and visible taper direction are retained. The source artwork and existing target content are untouched; reference image and mirror guide remain those of the target. Importing at the top is the default, and the caller performs one normal Drawing transaction for one Undo.
 
 Dedicated import verification: `npx vitest run src/tests/import-artwork-layers.test.ts`. Tests cover exact relationship remapping, source/target isolation, fresh-ID collision failures, explicit dependency closure, asymmetric profile direction, every dependency-closed layer in the default face, source serialization, and one root-store Undo/Redo.
+
+## Source CRUD commands (API 1.1)
+
+The following commands run through the same private-draft validation, expected-revision check, Drawing-only gate and one-Undo transaction as geometry edits:
+
+- `createLayer {name, ref?}`; `duplicateLayer {layerId, ref?}`; `deleteLayers {layerIds}`
+- `setLayer {layerId, name?, visible?, locked?}`; `reorderLayer {layerId, targetLayerId, after?}`
+- `transformLayers {layerIds, matrix, allowRelated?}` selects every source curve, including hidden members, in those layers
+- `setObjectState {objectIds, visible?, locked?}` and `deleteObjects {objectIds}` accept curves, fills and offsets
+- `moveToLayer {curveIds, layerId}` preserves whole-stroke constraints and moves completely owned fills with their boundaries
+- `createFill {curveIds, color, kind?, ref?}` requires one closed boundary; color is `white`, `black` or `transparent`, kind defaults to `SOLID` (`MIST` is also supported)
+- `setFill {fillId, name?, color?, visible?, locked?}` edits fill appearance/state; delete a fill explicitly with `deleteObjects`
+- `reorderObject {objectId, targetObjectId, after?}` requires the same layer and follows the UI's stroke/group paint ordering
+
+Layer visibility changes all current members, including fills. To hide a closure line while retaining its fill, target only its curve IDs with `setObjectState`. Whole-layer duplication preserves each member's visible/locked/ink state, fill/offset state and paint order. Individual Ctrl+D copying retains its existing separate UI behavior. API layer duplication rejects external dependency closure rather than silently dropping a cross-layer endpoint relation. Use the explicit dependency-aware artwork import workflow for that case.
+
+A creation command may declare `ref:"copy"`; later ID fields within the **same batch** may use `$copy`. Ref names must begin with an ASCII letter and contain only letters, digits, `_` or `-`. Forward/repeated references fail before any mutation. Dry-run IDs are provisional and must not be reused in a real execution; use the same aliases instead.
+
+```json
+{"expectedRevision":"LATEST_TOKEN","commands":[
+  {"op":"duplicateLayer","layerId":"SOURCE_LAYER_ID","ref":"otherEye"},
+  {"op":"transformLayers","layerIds":["$otherEye"],"matrix":[-1,0,0,1,-0.6589609028577848,0]},
+  {"op":"setLayer","layerId":"$otherEye","name":"左眼内结构"},
+  {"op":"reorderLayer","layerId":"$otherEye","targetLayerId":"SOURCE_LAYER_ID","after":true}
+]}
+```
+
+The numeric matrix above reflects around the bundled front artwork's axis. Always inspect the current artwork's own axis rather than assuming that value for another drawing.
+
+Results include `created` entries (`commandIndex`, `kind`, `id`, optional `ref`; a duplicated layer also supplies source-to-copy `idMap` for layers/objects/nodes), `addedCurves`, changed layer/fill/offset IDs, and a `removed` ID collection. Existing-curve `beforeAfter` remains available. All result data is assembled before the host commit. Deleting a fill boundary without its dependent fill is rejected if it would introduce invalid geometry; explicitly include both objects in the deletion.
+
+Regression commands: `npx vitest run src/tests/vector-editing-api.test.ts src/tests/vector-editing-crud.test.ts src/tests/drawing-layer-duplication.test.ts`. This increment covers source layers and paint; artwork-library CRUD and new endpoint-binding semantics are not implied by these commands.
