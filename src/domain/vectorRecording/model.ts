@@ -1,3 +1,4 @@
+import {displayPath} from '../drawing/displayIntervals';
 import {applyIntervalOverrides,blendIntervalOverrides,missingCornerIntervals} from './intervals';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {uid,type DrawingDocument,type Point2,type StrokeDisplayIntervals} from '../drawing/model';
@@ -8,7 +9,7 @@ export interface VectorDeformer {id:string;name:string;parentId?:string;grid:War
 export interface VectorPose {grids:Record<string,WarpGrid>;visibility:Record<string,boolean>;intervals:Record<string,boolean>;intervalOverrides?:StrokeDisplayIntervals[]}
 export interface VectorKeyform extends VectorPose {id:string;name:string;angle:Angle}
 export interface ArtworkRig {
- id:string;artworkId:string;sourceSignature?:string;deformers:VectorDeformer[];bindings:Record<string,string>;
+ id:string;artworkId:string;sourceSignature?:string;sourceIntervalFrames?:Record<string,{signature:string;curveIds:string[];rangeIds:string[]}>;deformers:VectorDeformer[];bindings:Record<string,string>;
  keys:VectorKeyform[];angle:Angle;draft?:VectorPose;
  /** Reserved driver contract; future tracking/physics can supply bounded parameters. */
  driver?:{kind:'manual'|'external';parameterX:string;parameterY:string};
@@ -23,14 +24,23 @@ export function drawingSignature(d:DrawingDocument):string{
  const cached=signatures.get(d);if(cached)return cached;const {reference,...geometry}=d;void reference;
  const json=JSON.stringify(geometry);let a=2166136261,b=2246822519;for(let i=0;i<json.length;i++){a=Math.imul(a^json.charCodeAt(i),16777619);b=Math.imul(b^json.charCodeAt(i),3266489917);}const signature=`${json.length}:${(a>>>0).toString(16)}:${(b>>>0).toString(16)}`;signatures.set(d,signature);return signature;
 }
+export function sourceIntervalFrames(drawing:DrawingDocument):NonNullable<ArtworkRig['sourceIntervalFrames']>{return Object.fromEntries((drawing.displayIntervals??[]).map(t=>[t.id,{signature:JSON.stringify([t.anchor,t.scope??null,t.displayRoute??null]),curveIds:displayPath(drawing,t.anchor.id).segments.map(u=>u.id),rangeIds:t.ranges.map(r=>r.id)}]));}
+/** Route-frame changes invalidate only the affected angle appearance channels.
+ * Their old per-loop SHOW meaning cannot be carried into global SHOW union. */
+export function changedIntervalTracks(rig:ArtworkRig,drawing:DrawingDocument):Set<string>{
+ const next=sourceIntervalFrames(drawing),old=rig.sourceIntervalFrames,changed=new Set<string>();
+ if(old){const touched=new Set(Object.entries(old).flatMap(([id,frame])=>next[id]?.signature===frame.signature?[]:frame.curveIds));for(const [id,frame] of Object.entries(next))if(old[id]?old[id].signature!==frame.signature:frame.curveIds.some(cid=>touched.has(cid)))changed.add(id);}
+ else{for(const t of drawing.displayIntervals??[])if(t.displayRoute)changed.add(t.id);for(const pose of [...rig.keys,...(rig.draft?[rig.draft]:[])])for(const t of pose.intervalOverrides??[]){const current=drawing.displayIntervals?.find(x=>x.id===t.id);if(current&&JSON.stringify(current.displayRoute)!==JSON.stringify(t.displayRoute))changed.add(t.id);}}
+ return changed;
+}
 export function acceptArtworkSource(rig:ArtworkRig,drawing:DrawingDocument):ArtworkRig{
- const layers=new Set(drawing.layers.map(l=>l.id)),items=new Set(drawing.layers.flatMap(l=>l.items)),intervals=new Set((drawing.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));
- const clean=(p:VectorPose):VectorPose=>({...p,visibility:Object.fromEntries(Object.entries(p.visibility).filter(([id])=>items.has(id))),intervals:Object.fromEntries(Object.entries(p.intervals).filter(([id])=>intervals.has(id))),...(p.intervalOverrides?{intervalOverrides:p.intervalOverrides.flatMap(track=>{const base=drawing.displayIntervals?.find(base=>base.id===track.id&&base.anchor.id===track.anchor.id&&base.anchor.reverse===track.anchor.reverse&&base.scope===track.scope);return base?[{...base,ranges:track.ranges}]:[];})}:{})});
- return {...rig,sourceSignature:drawingSignature(drawing),bindings:Object.fromEntries(Object.entries(rig.bindings).filter(([id])=>layers.has(id))),keys:rig.keys.map(k=>({...k,...clean(k)})),...(rig.draft?{draft:clean(rig.draft)}:{})};
+ const changed=changedIntervalTracks(rig,drawing),layers=new Set(drawing.layers.map(l=>l.id)),items=new Set(drawing.layers.flatMap(l=>l.items)),intervals=new Set((drawing.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));
+ const clean=(p:VectorPose):VectorPose=>({...p,visibility:Object.fromEntries(Object.entries(p.visibility).filter(([id])=>items.has(id))),intervals:Object.fromEntries((drawing.displayIntervals??[]).filter(t=>!changed.has(t.id)).flatMap(t=>t.ranges).flatMap(r=>{const flag=p.intervals[r.id]??(r.originId?p.intervals[r.originId]:undefined);return flag===undefined?[]:[[r.id,flag]]})),...(p.intervalOverrides?{intervalOverrides:p.intervalOverrides.flatMap(track=>{const base=drawing.displayIntervals?.find(base=>base.id===track.id&&base.anchor.id===track.anchor.id&&base.anchor.reverse===track.anchor.reverse&&base.scope===track.scope&&JSON.stringify(base.displayRoute)===JSON.stringify(track.displayRoute));return base&&!changed.has(base.id)?[{...base,ranges:track.ranges}]:[];})}:{})});
+ return {...rig,sourceSignature:drawingSignature(drawing),sourceIntervalFrames:sourceIntervalFrames(drawing),bindings:Object.fromEntries(Object.entries(rig.bindings).filter(([id])=>layers.has(id))),keys:rig.keys.map(k=>({...k,...clean(k)})),...(rig.draft?{draft:clean(rig.draft)}:{})};
 }
 export function createArtworkRig(artworkId:string,drawing?:DrawingDocument):ArtworkRig {
  const keys:VectorKeyform[]=[['正面',0,0],['左',-90,0],['右',90,0],['上',0,90],['下',0,-90]].map(([name,x,y])=>({id:uid(),name:String(name),angle:{x:Number(x),y:Number(y)},...emptyPose()}));
- return {id:uid(),artworkId,...(drawing?{sourceSignature:drawingSignature(drawing)}:{}),deformers:[],bindings:{},keys,angle:{x:0,y:0},driver:{kind:'manual',parameterX:'Angle X',parameterY:'Angle Y'}};
+ return {id:uid(),artworkId,...(drawing?{sourceSignature:drawingSignature(drawing),sourceIntervalFrames:sourceIntervalFrames(drawing)}:{}),deformers:[],bindings:{},keys,angle:{x:0,y:0},driver:{kind:'manual',parameterX:'Angle X',parameterY:'Angle Y'}};
 }
 export function ensureArtworkRig(recording:VectorRecording,artworkId:string,drawing?:DrawingDocument){return recording.rigs.some(r=>r.artworkId===artworkId)?recording:{...recording,rigs:[...recording.rigs,createArtworkRig(artworkId,drawing)]};}
 export function replaceRig(recording:VectorRecording,rig:ArtworkRig):VectorRecording{return {...recording,rigs:recording.rigs.map(r=>r.id===rig.id?rig:r)};}

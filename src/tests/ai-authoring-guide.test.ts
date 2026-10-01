@@ -1,0 +1,38 @@
+import {expect,test} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {createVectorEditingApi,type VectorEditingHost,type VectorCommand} from '../app/vectorEditingApi';
+import {createEmptyProject} from '../app/emptyProject';
+import {addLayer,createCurve,ellipse} from '../domain/drawing/commands';
+import {createFill} from '../domain/drawing/paintCommands';
+import {emptyDrawing,parseDrawing} from '../domain/drawing/model';
+import {strokes} from '../domain/drawing/strokes';
+import type {LandmarkProject} from '../domain/landmarks/model';
+
+const guide=readFileSync(new URL('../../docs/ai-authoring-guide.md',import.meta.url),'utf8');
+const examples=[...guide.matchAll(/<!-- tested: ([a-z-]+) -->\s*```json\s*([\s\S]*?)```/g)].map(m=>({name:m[1],request:JSON.parse(m[2])}));
+
+function harness(){
+ let drawing=addLayer(emptyDrawing(),'右眼内结构');const sourceLayer=drawing.layers[0].id,e=ellipse(drawing,sourceLayer,[-.9,-.2],[-.5,.2],.008);drawing=createFill(e.document,e.ids,'white');drawing.curves[0].visible=false;
+ drawing=addLayer(drawing,'鼻部');drawing=createCurve(drawing,drawing.layers[0].id,[[-.329,0],[-.329,.03],[-.329,.06],[-.329,.09]],.008,'鼻尖短线','nose');
+ drawing=addLayer(drawing,'右下颌');drawing=createCurve(drawing,drawing.layers[0].id,[[-.7,0],[-.7,-.2],[-.5,-.6],[-.329,-.7]],.008,'右下颌','right-jaw');
+ drawing=addLayer(drawing,'左下颌');drawing=createCurve(drawing,drawing.layers[0].id,[[.042,0],[.042,-.2],[-.158,-.6],[-.329,-.7]],.008,'左下颌','left-jaw');drawing.mirrorAxisX=-.3294804514288924;
+ let project:LandmarkProject={...createEmptyProject(),drawing},past:LandmarkProject[]=[],future:LandmarkProject[]=[];
+ const host:VectorEditingHost={getState:()=>({project,past,future}),getMode:()=> 'drawing',commitDrawing(drawing){past.push(project);future=[];project={...project,drawing};},commitArtwork(state){past.push(project);future=[];project={...project,...state};},undo(){const p=past.pop();if(p){future.unshift(project);project=p;}},redo(){const p=future.shift();if(p){past.push(project);project=p;}}};
+ return {api:createVectorEditingApi(host),sourceLayer,state:()=>project};
+}
+
+test('every declared guide JSON example is syntactically valid and uniquely named',()=>{
+ expect(examples.map(x=>x.name)).toEqual(['inspect-nose','create-layer','mirror-layer','closed-piece','link-ports','hide-range','save-copy','list-artworks','preview']);expect(new Set(examples.map(x=>x.name)).size).toBe(examples.length);
+});
+
+for(const example of examples)test(`guide example ${example.name} executes through the actual fixed API`,()=>{
+ const h=harness(),replacements:Record<string,string>={SOURCE_LAYER_ID:h.sourceLayer,RIGHT_JAW_ID:'right-jaw',LEFT_JAW_ID:'left-jaw',PATH_CURVE_ID:'nose',LATEST_REVISION:h.api.inspect().revision};
+ const replace=(x:unknown):unknown=>typeof x==='string'?(Object.hasOwn(replacements,x)?replacements[x]:x):Array.isArray(x)?x.map(replace):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).map(([k,v])=>[k,replace(v)])):x;
+ const request=replace(example.request) as {method?:string;request?:any;commands?:VectorCommand[]};const before=h.state();
+ const result=request.method==='inspect'?h.api.inspect(request.request):request.method==='preview'?h.api.preview(request.request):request.method==='artwork'?h.api.artwork(request.request):request.method==='inspectArtworks'?h.api.inspectArtworks(request.request):h.api.execute(request as {commands:VectorCommand[]});
+ expect(result.ok,result.ok?'':JSON.stringify(result.error)).toBe(true);expect(()=>parseDrawing(h.state().drawing)).not.toThrow();
+ if(example.name==='inspect-nose'){const inspected=h.api.inspect({layerNames:['鼻部'],includeRecording:false});expect(inspected.ok&&inspected.value.curves.length).toBe(1);}
+ if(example.name==='create-layer')expect(h.state()).toBe(before);
+ if(example.name==='closed-piece'){const d=h.state().drawing!,layer=d.layers.find(l=>l.name==='闭合脸片示例')!;expect(strokes(d,layer.id)[0].closed).toBe(true);expect(new Set(d.curves.filter(c=>layer.items.includes(c.id)).flatMap(c=>c.nodes)).size).toBe(3);}
+ if(example.name==='preview'){expect(result.ok&&'svg'in result.value&&result.value.svg).toContain('<svg');expect(h.state()).toBe(before);}
+});

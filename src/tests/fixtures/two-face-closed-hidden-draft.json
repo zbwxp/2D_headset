@@ -1,0 +1,6443 @@
+{
+  "version": 3,
+  "fills": [
+    {
+      "id": "a74bdb25-bad8-4950-8bd1-1173004792ee",
+      "name": "右上睑墨形 · 黑色实填",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "8095e80f-7e8e-489b-b386-ae74a3f18af5",
+          "reverse": false
+        },
+        {
+          "id": "38d8fae5-0c24-4832-ab31-7c40fbc4da39",
+          "reverse": false
+        },
+        {
+          "id": "5310bc0a-65ed-4754-878a-1c044790d3ad",
+          "reverse": false
+        },
+        {
+          "id": "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+          "reverse": false
+        },
+        {
+          "id": "90380fbd-d17a-41a2-8419-084ed509737c",
+          "reverse": false
+        },
+        {
+          "id": "c108324f-c915-443d-89b3-6fe4a3ebd7a7",
+          "reverse": false
+        },
+        {
+          "id": "571691a4-7630-4984-8640-49990094d79f",
+          "reverse": false
+        },
+        {
+          "id": "0f168ed1-ae77-4665-b051-48356ca18837",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "d5e5e147-c289-40cc-9c10-c472edbcc6c5",
+      "name": "右瞳孔 · 黑色实填",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "b699f787-e558-405e-ac9a-8b7202f8b690",
+          "reverse": false
+        },
+        {
+          "id": "195e8edf-9b8e-4098-90e5-46f802a30834",
+          "reverse": false
+        },
+        {
+          "id": "e71f443a-3905-4615-941e-719bf126df68",
+          "reverse": false
+        },
+        {
+          "id": "da8a3c28-74c5-43a7-bf3c-0f8f60632851",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "6baecc83-8771-4f45-9b2a-2038e4c22756",
+      "name": "右高光 01 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "cf1c4b7e-8c67-4585-a493-a106dd0a6654",
+          "reverse": false
+        },
+        {
+          "id": "ac5a4ab5-89ab-4094-8dde-df6e0905de20",
+          "reverse": false
+        },
+        {
+          "id": "aa6ab9fc-7465-49d4-96b0-61e26c8c69bd",
+          "reverse": false
+        },
+        {
+          "id": "ac692835-bbe1-4607-965c-f740d3c8e638",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "20ef4620-c435-4841-9114-4e0efbd8eed6",
+      "name": "右高光 02 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "d860aec1-af8b-4408-9d94-24708eabad8f",
+          "reverse": false
+        },
+        {
+          "id": "44f2fff2-e52b-4ff6-81e7-0a4639c77f39",
+          "reverse": false
+        },
+        {
+          "id": "a16bf106-f222-416f-908f-5f4018658fba",
+          "reverse": false
+        },
+        {
+          "id": "92db7ccb-db10-4cce-9f79-d3c2af8d74ad",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "edb27a1a-f02a-4512-aca1-212fb21c6314",
+      "name": "右耳廓外轮廓 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "3ec62e9e-fd99-425e-ae0e-52d523c346e1",
+          "reverse": false
+        },
+        {
+          "id": "d44ae8ae-75e5-4f21-934c-eb9a05912d98",
+          "reverse": false
+        },
+        {
+          "id": "242a5199-a6bb-45bf-8a2b-138e76f1c8db",
+          "reverse": false
+        },
+        {
+          "id": "a6a8cf5e-8332-407a-8b03-3ae7a654c01d",
+          "reverse": false
+        },
+        {
+          "id": "db327891-3894-4e7a-bb73-9c252e031e4d",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "09ec66a9-0114-45ff-9ec3-2f64eb5081ce",
+      "name": "颈部底形 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+          "reverse": false
+        },
+        {
+          "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+          "reverse": false
+        },
+        {
+          "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+          "reverse": false
+        },
+        {
+          "id": "ef495977-5008-4ef8-88c0-b71624056573",
+          "reverse": false
+        },
+        {
+          "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+          "reverse": false
+        },
+        {
+          "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+      "name": "衣领与肩线 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+          "reverse": false
+        },
+        {
+          "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+          "reverse": true
+        },
+        {
+          "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+          "reverse": true
+        },
+        {
+          "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+          "reverse": true
+        },
+        {
+          "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+          "reverse": true
+        },
+        {
+          "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+          "reverse": true
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "8f6a6de2-a54f-43fa-a272-f1c766b07afd",
+      "name": "右虹膜轮廓 · 黑雾",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "7a419794-1ae6-4776-bd46-cf2c73eca2a9",
+          "reverse": false
+        },
+        {
+          "id": "01ffdba4-5eb6-43e3-ac43-c112a77fde85",
+          "reverse": false
+        },
+        {
+          "id": "07b8a55c-74e3-4f39-be20-65c211e99d12",
+          "reverse": false
+        },
+        {
+          "id": "cf9bc2ab-4cef-4462-be33-cb5222fa8df4",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "mist": {
+        "enabled": true,
+        "side": "INSIDE",
+        "width": 0.23567594380917273,
+        "opacity": 0.8324667650784305
+      }
+    },
+    {
+      "id": "b82b0b99-f1c3-46e5-9046-12de4f2be326",
+      "name": "右虹膜下缘柔光 · 白雾",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+          "reverse": false
+        },
+        {
+          "id": "203b901d-169a-473f-a939-5b216891d5f6",
+          "reverse": false
+        },
+        {
+          "id": "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+          "reverse": false
+        },
+        {
+          "id": "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "mist": {
+        "enabled": true,
+        "side": "BOTH",
+        "width": 0.04472020186622582,
+        "opacity": 0.9657057372289087
+      }
+    },
+    {
+      "id": "b22e6a50-5621-4c6b-84c7-d1029945040c",
+      "name": "白色填充 24",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+          "reverse": false
+        },
+        {
+          "id": "203b901d-169a-473f-a939-5b216891d5f6",
+          "reverse": false
+        },
+        {
+          "id": "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+          "reverse": false
+        },
+        {
+          "id": "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "de72c2b7-aa85-4727-b846-ae4285695365",
+      "name": "右上睑墨形 · 黑色实填",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "cab9de17-c372-4522-bf83-10b0ac63a9f1",
+          "reverse": false
+        },
+        {
+          "id": "68c9fbb5-45ce-4aac-9f7a-03f75552ddc0",
+          "reverse": false
+        },
+        {
+          "id": "006afa02-cc0f-4240-a78d-511bcc5a229f",
+          "reverse": false
+        },
+        {
+          "id": "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+          "reverse": false
+        },
+        {
+          "id": "3b82ab53-bc0d-4b30-979f-ca041e8466c6",
+          "reverse": false
+        },
+        {
+          "id": "dae9a0ab-b60f-444b-8aca-f8646264699a",
+          "reverse": false
+        },
+        {
+          "id": "e82d68be-7540-49bd-af1f-4cb11f64e154",
+          "reverse": false
+        },
+        {
+          "id": "cdc604fe-4096-48e8-88b6-101886cef0a1",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "7e98e628-28f6-4896-a4d1-31b8655abd04",
+      "name": "右高光 02 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "cbd1da4c-2736-4235-90da-10bac95bc57f",
+          "reverse": false
+        },
+        {
+          "id": "c0b97d95-b91f-4204-a886-8f0f8e371d05",
+          "reverse": false
+        },
+        {
+          "id": "1b77c766-487b-4b6d-9f6c-28415be5e7da",
+          "reverse": false
+        },
+        {
+          "id": "8267442e-f3f5-4a83-bb13-4f9c5cc85e20",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "571d0558-f5f7-46fd-959d-2bc035551a09",
+      "name": "右高光 01 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "6a63aeee-5d3c-48fb-a49a-9e61bd8c38a6",
+          "reverse": false
+        },
+        {
+          "id": "c9b16896-99ba-41bd-b6cc-ca5e94a27c4c",
+          "reverse": false
+        },
+        {
+          "id": "76b6f2d3-db40-4e0b-baa7-85987ef61133",
+          "reverse": false
+        },
+        {
+          "id": "69a9d829-28ab-4e71-99b8-bc02f4ab6718",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "6825cb8b-123d-4041-a293-55a5e15cf767",
+      "name": "右瞳孔 · 黑色实填",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "ec7dffc5-41d9-4444-b1d3-7b1d41295dc7",
+          "reverse": false
+        },
+        {
+          "id": "2e287310-2acb-40fc-bf3b-7d153882462b",
+          "reverse": false
+        },
+        {
+          "id": "23f7ef69-cfda-4a5f-9053-e6a1f8c2e458",
+          "reverse": false
+        },
+        {
+          "id": "516c9bd1-ed7b-484c-80a5-d4efca4b9a00",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "db996a6a-6115-49d9-b1cc-421a75209fd2",
+      "name": "白色填充 24",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+          "reverse": false
+        },
+        {
+          "id": "17c8144a-e188-4300-819c-9e8d195d89a2",
+          "reverse": false
+        },
+        {
+          "id": "12aad141-6900-44b4-8fdb-6274c3277f81",
+          "reverse": false
+        },
+        {
+          "id": "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "04d7513e-e13d-4f08-8d17-d779388d3db0",
+      "name": "右虹膜下缘柔光 · 白雾",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+          "reverse": false
+        },
+        {
+          "id": "17c8144a-e188-4300-819c-9e8d195d89a2",
+          "reverse": false
+        },
+        {
+          "id": "12aad141-6900-44b4-8fdb-6274c3277f81",
+          "reverse": false
+        },
+        {
+          "id": "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "mist": {
+        "enabled": true,
+        "side": "BOTH",
+        "width": 0.04472020186622582,
+        "opacity": 0.9657057372289087
+      }
+    },
+    {
+      "id": "bbe8d494-16ee-4fdf-9e0b-1d9fb98f570d",
+      "name": "右虹膜轮廓 · 黑雾",
+      "color": "black",
+      "boundary": [
+        {
+          "id": "668756f0-fe23-45e0-af5d-8e0eebcb44e7",
+          "reverse": false
+        },
+        {
+          "id": "7476ccfc-02b4-477f-93b9-457650002cd4",
+          "reverse": false
+        },
+        {
+          "id": "dbcbe537-3e91-4f65-a11d-8afa12bdc980",
+          "reverse": false
+        },
+        {
+          "id": "97571798-c8a4-48f3-8d54-6797987f28cc",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "mist": {
+        "enabled": true,
+        "side": "INSIDE",
+        "width": 0.23567594380917273,
+        "opacity": 0.8324667650784305
+      }
+    },
+    {
+      "id": "2251ecf3-a9f5-4615-9da0-8c1ac9bd550f",
+      "name": "右耳廓外轮廓 · 白底",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "20dffc78-c22b-4a04-8299-529b51a98928",
+          "reverse": false
+        },
+        {
+          "id": "c5e60e4d-2ee6-49ee-84aa-d0365a3fa6a8",
+          "reverse": false
+        },
+        {
+          "id": "9e2a41b7-570c-4aff-b3e8-68662db52e49",
+          "reverse": false
+        },
+        {
+          "id": "12fe0071-0307-4e41-a6f0-3d6189e33060",
+          "reverse": false
+        },
+        {
+          "id": "a7197ec5-4e15-4dcc-922a-a80c832b4b48",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "4b61b3d4-912d-4f72-be51-099d53f2ee16",
+      "name": "白色填充 20",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+          "reverse": false
+        },
+        {
+          "id": "65450d8d-7c62-4d87-b421-616dfbcab097",
+          "reverse": false
+        },
+        {
+          "id": "52b399a3-a55d-4f08-9fbb-abe711ab4f9a",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "210fc078-5bf1-4352-99a3-5e3a8fdd3c3b",
+      "name": "白色填充 21",
+      "color": "white",
+      "boundary": [
+        {
+          "id": "685e3343-6754-43e6-aace-c15e510725a3",
+          "reverse": false
+        },
+        {
+          "id": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+          "reverse": false
+        },
+        {
+          "id": "35dd05a4-bbc8-4bd7-bfd3-9b8d000acf04",
+          "reverse": false
+        }
+      ],
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "offsets": [],
+  "layers": [
+    {
+      "id": "825a51ee-1d9b-4d1d-be2d-0f0250918ffe",
+      "name": "鼻部",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "bb01fe95-1923-4af6-8703-01f52a4aa2b9"
+      ]
+    },
+    {
+      "id": "425026d8-6158-427c-b3cb-3babb9af05ee",
+      "name": "嘴部",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "61994863-fafd-4c74-857c-82adc0e9ef36",
+        "823d4140-276a-40a6-b633-f700d90b4b48"
+      ]
+    },
+    {
+      "id": "37189010-cd33-453a-a1bd-c321e9437ec0",
+      "name": "左眼睑",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "c4af0b2e-e88c-4252-b3d2-ba578ceb7f35",
+        "cab9de17-c372-4522-bf83-10b0ac63a9f1",
+        "68c9fbb5-45ce-4aac-9f7a-03f75552ddc0",
+        "006afa02-cc0f-4240-a78d-511bcc5a229f",
+        "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+        "3b82ab53-bc0d-4b30-979f-ca041e8466c6",
+        "dae9a0ab-b60f-444b-8aca-f8646264699a",
+        "e82d68be-7540-49bd-af1f-4cb11f64e154",
+        "cdc604fe-4096-48e8-88b6-101886cef0a1",
+        "de72c2b7-aa85-4727-b846-ae4285695365",
+        "098869fc-e9c9-4903-baba-e2e60312e49f",
+        "3ad128bc-6463-4a44-a5ca-c6e034bfe745",
+        "03c59f01-dc3f-48ca-a12a-cfd875f05fc7"
+      ]
+    },
+    {
+      "id": "f10cc558-ccad-4e04-ba18-9c7d5b15590d",
+      "name": "右眼睑",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "b6406b72-6b1e-48a8-929b-a6201a276876",
+        "8095e80f-7e8e-489b-b386-ae74a3f18af5",
+        "38d8fae5-0c24-4832-ab31-7c40fbc4da39",
+        "5310bc0a-65ed-4754-878a-1c044790d3ad",
+        "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+        "90380fbd-d17a-41a2-8419-084ed509737c",
+        "c108324f-c915-443d-89b3-6fe4a3ebd7a7",
+        "571691a4-7630-4984-8640-49990094d79f",
+        "0f168ed1-ae77-4665-b051-48356ca18837",
+        "a74bdb25-bad8-4950-8bd1-1173004792ee",
+        "a3f62123-c980-4cba-8e22-24a6bc1d4b0e",
+        "78e12262-5608-4a3b-857f-dbcb732122dd",
+        "93e02b99-dd5e-4418-9fb9-65ff92832a32"
+      ]
+    },
+    {
+      "id": "1a58f1b0-37d4-4236-abb1-9506f4e11dea",
+      "name": "左眼内结构",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "cbd1da4c-2736-4235-90da-10bac95bc57f",
+        "c0b97d95-b91f-4204-a886-8f0f8e371d05",
+        "1b77c766-487b-4b6d-9f6c-28415be5e7da",
+        "8267442e-f3f5-4a83-bb13-4f9c5cc85e20",
+        "7e98e628-28f6-4896-a4d1-31b8655abd04",
+        "6a63aeee-5d3c-48fb-a49a-9e61bd8c38a6",
+        "c9b16896-99ba-41bd-b6cc-ca5e94a27c4c",
+        "76b6f2d3-db40-4e0b-baa7-85987ef61133",
+        "69a9d829-28ab-4e71-99b8-bc02f4ab6718",
+        "571d0558-f5f7-46fd-959d-2bc035551a09",
+        "ec7dffc5-41d9-4444-b1d3-7b1d41295dc7",
+        "2e287310-2acb-40fc-bf3b-7d153882462b",
+        "23f7ef69-cfda-4a5f-9053-e6a1f8c2e458",
+        "516c9bd1-ed7b-484c-80a5-d4efca4b9a00",
+        "6825cb8b-123d-4041-a293-55a5e15cf767",
+        "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+        "17c8144a-e188-4300-819c-9e8d195d89a2",
+        "12aad141-6900-44b4-8fdb-6274c3277f81",
+        "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+        "db996a6a-6115-49d9-b1cc-421a75209fd2",
+        "04d7513e-e13d-4f08-8d17-d779388d3db0",
+        "668756f0-fe23-45e0-af5d-8e0eebcb44e7",
+        "7476ccfc-02b4-477f-93b9-457650002cd4",
+        "dbcbe537-3e91-4f65-a11d-8afa12bdc980",
+        "97571798-c8a4-48f3-8d54-6797987f28cc",
+        "bbe8d494-16ee-4fdf-9e0b-1d9fb98f570d"
+      ]
+    },
+    {
+      "id": "8943fe7b-1e12-46e5-8f8f-d4edb885a1bb",
+      "name": "右眼内结构",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "d860aec1-af8b-4408-9d94-24708eabad8f",
+        "44f2fff2-e52b-4ff6-81e7-0a4639c77f39",
+        "a16bf106-f222-416f-908f-5f4018658fba",
+        "92db7ccb-db10-4cce-9f79-d3c2af8d74ad",
+        "20ef4620-c435-4841-9114-4e0efbd8eed6",
+        "cf1c4b7e-8c67-4585-a493-a106dd0a6654",
+        "ac5a4ab5-89ab-4094-8dde-df6e0905de20",
+        "aa6ab9fc-7465-49d4-96b0-61e26c8c69bd",
+        "ac692835-bbe1-4607-965c-f740d3c8e638",
+        "6baecc83-8771-4f45-9b2a-2038e4c22756",
+        "b699f787-e558-405e-ac9a-8b7202f8b690",
+        "195e8edf-9b8e-4098-90e5-46f802a30834",
+        "e71f443a-3905-4615-941e-719bf126df68",
+        "da8a3c28-74c5-43a7-bf3c-0f8f60632851",
+        "d5e5e147-c289-40cc-9c10-c472edbcc6c5",
+        "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+        "203b901d-169a-473f-a939-5b216891d5f6",
+        "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+        "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+        "b22e6a50-5621-4c6b-84c7-d1029945040c",
+        "b82b0b99-f1c3-46e5-9046-12de4f2be326",
+        "7a419794-1ae6-4776-bd46-cf2c73eca2a9",
+        "01ffdba4-5eb6-43e3-ac43-c112a77fde85",
+        "07b8a55c-74e3-4f39-be20-65c211e99d12",
+        "cf9bc2ab-4cef-4462-be33-cb5222fa8df4",
+        "8f6a6de2-a54f-43fa-a272-f1c766b07afd"
+      ]
+    },
+    {
+      "id": "54ccfb79-0aa7-48e5-a487-162705c24049",
+      "name": "左眉",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "217e9f9e-9a31-44c3-9d69-6e69bddcc79c"
+      ]
+    },
+    {
+      "id": "4b447aed-a80b-4fa9-ab21-737488f2a0d3",
+      "name": "右眉",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "4046b878-3792-4eaf-b7e3-b6a2992b4efc"
+      ]
+    },
+    {
+      "id": "5b7519c8-b451-442d-8ebb-deec4091ef2b",
+      "name": "面部·右片",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "1ebb7283-3694-46b6-8002-47ec50d0057a",
+        "65450d8d-7c62-4d87-b421-616dfbcab097",
+        "52b399a3-a55d-4f08-9fbb-abe711ab4f9a",
+        "4b61b3d4-912d-4f72-be51-099d53f2ee16"
+      ]
+    },
+    {
+      "id": "909c9a51-f5f1-4e3a-9da9-6b4544ad0d9c",
+      "name": "面部·左片",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "685e3343-6754-43e6-aace-c15e510725a3",
+        "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+        "35dd05a4-bbc8-4bd7-bfd3-9b8d000acf04",
+        "210fc078-5bf1-4352-99a3-5e3a8fdd3c3b"
+      ]
+    },
+    {
+      "id": "8d926cee-af24-4571-891c-836f596a37f4",
+      "name": "左耳",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "9a578781-5b6c-40f3-9d86-3b655236a0ac",
+        "84677dce-8b2a-4b33-bc56-b72aec881d05",
+        "0b2fd63e-b97c-4071-901e-56ee859f49f4",
+        "0f325156-80e7-486c-bd40-6615e6e9cd28",
+        "a3c8e6d5-3968-4197-b83e-f48e1f3f7ee9",
+        "bfb58eeb-85bc-44b3-9fec-babc11345589",
+        "1e4ae211-0937-440a-83ea-97b4a63d82be",
+        "bdd88835-8834-4f5e-bc5b-87a55326412f",
+        "f56d5019-bc9c-4c5b-a29b-cedbea0cbc06",
+        "9c5253cf-692f-4afb-947a-5edbb89b1d4b",
+        "db94a98c-87cb-4c35-852c-ff298442172e",
+        "20dffc78-c22b-4a04-8299-529b51a98928",
+        "c5e60e4d-2ee6-49ee-84aa-d0365a3fa6a8",
+        "9e2a41b7-570c-4aff-b3e8-68662db52e49",
+        "12fe0071-0307-4e41-a6f0-3d6189e33060",
+        "a7197ec5-4e15-4dcc-922a-a80c832b4b48",
+        "2251ecf3-a9f5-4615-9da0-8c1ac9bd550f"
+      ]
+    },
+    {
+      "id": "f68354a3-8a87-41e9-ab8e-bf48444565d7",
+      "name": "右耳",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "d4ce1b15-dcbe-459d-b23f-b99f4dd0be41",
+        "8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18",
+        "e91b869a-f32b-412b-8ee5-6e2160c9e23e",
+        "b829dd27-2fb5-4fe0-b719-da60e7acadca",
+        "3f1355cb-f97d-4f3d-b408-65ff400d13c3",
+        "1d95088b-0001-4441-94ea-5f2b71848655",
+        "8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde",
+        "2f401004-d1ed-48dc-893c-d7fe924099f3",
+        "9c46b63f-cda7-4503-ad0f-d6464617b8ba",
+        "7d61752b-f9cf-41e5-a56e-056c05e95ca0",
+        "59441d33-2b4f-41cf-b6bb-4889e54f756d",
+        "3ec62e9e-fd99-425e-ae0e-52d523c346e1",
+        "d44ae8ae-75e5-4f21-934c-eb9a05912d98",
+        "242a5199-a6bb-45bf-8a2b-138e76f1c8db",
+        "a6a8cf5e-8332-407a-8b03-3ae7a654c01d",
+        "db327891-3894-4e7a-bb73-9c252e031e4d",
+        "edb27a1a-f02a-4512-aca1-212fb21c6314"
+      ]
+    },
+    {
+      "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+      "name": "颈部与衣领",
+      "visible": true,
+      "locked": false,
+      "items": [
+        "18a51194-a15a-49c0-abbb-1fd868337f95",
+        "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+        "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+        "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+        "7c519032-167b-4c38-82ae-e7db4f79f98a",
+        "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+        "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+        "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+        "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+        "207852b5-242a-4de1-ad11-36e6dc0abecd",
+        "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+        "5f579187-f29e-4824-b9b8-575b7e3accb0",
+        "ef495977-5008-4ef8-88c0-b71624056573",
+        "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+        "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+        "09ec66a9-0114-45ff-9ec3-2f64eb5081ce"
+      ]
+    }
+  ],
+  "curves": [
+    {
+      "id": "8095e80f-7e8e-489b-b386-ae74a3f18af5",
+      "name": "右上睑墨形 · 段01",
+      "nodes": [
+        "6c30801d-d803-4370-a5b9-d5f8e76151d7",
+        "ba992989-3567-41df-9f6a-88ad012c66c6"
+      ],
+      "handles": [
+        [
+          -0.47269984320248337,
+          0.2539492588419944
+        ],
+        [
+          -0.478955528811776,
+          0.26965353836101
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "38d8fae5-0c24-4832-ab31-7c40fbc4da39",
+      "name": "右上睑墨形 · 段02",
+      "nodes": [
+        "ba992989-3567-41df-9f6a-88ad012c66c6",
+        "495f763d-7f50-4c2c-984c-cc3dc9a68b7a"
+      ],
+      "handles": [
+        [
+          -0.5327318376464271,
+          0.29894370662519043
+        ],
+        [
+          -0.5587189908263822,
+          0.3071126604341424
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "5310bc0a-65ed-4754-878a-1c044790d3ad",
+      "name": "右上睑墨形 · 段03",
+      "nodes": [
+        "495f763d-7f50-4c2c-984c-cc3dc9a68b7a",
+        "cec92beb-446d-4e2e-9e34-d7b4a2522b96"
+      ],
+      "handles": [
+        [
+          -0.6819749606108062,
+          0.28393174356973133
+        ],
+        [
+          -0.7145481584579205,
+          0.2365125601845148
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+      "name": "右上睑墨形 · 段04",
+      "nodes": [
+        "cec92beb-446d-4e2e-9e34-d7b4a2522b96",
+        "1f8789f9-c454-4480-9882-778c9b4aff03"
+      ],
+      "handles": [
+        [
+          -0.7187006062505789,
+          0.2294649324981139
+        ],
+        [
+          -0.7013556505166593,
+          0.1908773726148274
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "90380fbd-d17a-41a2-8419-084ed509737c",
+      "name": "右上睑墨形 · 段05",
+      "nodes": [
+        "1f8789f9-c454-4480-9882-778c9b4aff03",
+        "d51f2a1a-bea7-4e75-a0be-c77310618233"
+      ],
+      "handles": [
+        [
+          -0.6953999224565222,
+          0.19516316885322918
+        ],
+        [
+          -0.6966872522609971,
+          0.20085422011591952
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "c108324f-c915-443d-89b3-6fe4a3ebd7a7",
+      "name": "右上睑墨形 · 段06",
+      "nodes": [
+        "d51f2a1a-bea7-4e75-a0be-c77310618233",
+        "6af6e143-ee5e-4501-a174-1993942340f2"
+      ],
+      "handles": [
+        [
+          -0.6934426168878028,
+          0.23791238771406983
+        ],
+        [
+          -0.6703437745498778,
+          0.26008508630170624
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "571691a4-7630-4984-8640-49990094d79f",
+      "name": "右上睑墨形 · 段07",
+      "nodes": [
+        "6af6e143-ee5e-4501-a174-1993942340f2",
+        "a631bd3f-29db-48e0-bd3f-4b7475582238"
+      ],
+      "handles": [
+        [
+          -0.6178134124858861,
+          0.29015717276155883
+        ],
+        [
+          -0.5384284155242618,
+          0.27857628497381137
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "0f168ed1-ae77-4665-b051-48356ca18837",
+      "name": "右上睑墨形 · 段08",
+      "nodes": [
+        "a631bd3f-29db-48e0-bd3f-4b7475582238",
+        "6c30801d-d803-4370-a5b9-d5f8e76151d7"
+      ],
+      "handles": [
+        [
+          -0.4943359810055342,
+          0.2616025073502898
+        ],
+        [
+          -0.4845413870764993,
+          0.256562980056424
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "61994863-fafd-4c74-857c-82adc0e9ef36",
+      "name": "嘴线 · 段01",
+      "nodes": [
+        "9d7c067f-8d1e-4ef3-af85-ade1b7e98da9",
+        "b23ed767-f22c-495e-9b39-f4d41d103d17"
+      ],
+      "handles": [
+        [
+          -0.3730506675781025,
+          -0.11135384553923611
+        ],
+        [
+          -0.3494658371808035,
+          -0.11165935452399306
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "嘴线"
+    },
+    {
+      "id": "823d4140-276a-40a6-b633-f700d90b4b48",
+      "name": "嘴线 · 段02",
+      "nodes": [
+        "b23ed767-f22c-495e-9b39-f4d41d103d17",
+        "fad3c405-61c4-4f78-83ba-179d97f785c7"
+      ],
+      "handles": [
+        [
+          -0.30949506567698126,
+          -0.11165935452399306
+        ],
+        [
+          -0.28591023527968223,
+          -0.11135384553923611
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "嘴线"
+    },
+    {
+      "id": "3ec62e9e-fd99-425e-ae0e-52d523c346e1",
+      "name": "右耳廓外轮廓 · 段01",
+      "nodes": [
+        "3358f4a8-ff67-4c57-a3df-964115e7bf69",
+        "513c2fac-ed54-48f7-91fb-bbf02c8a3d10"
+      ],
+      "handles": [
+        [
+          -0.7785800367484903,
+          0.15209514853697748
+        ],
+        [
+          -0.814399929463137,
+          0.21445710157987544
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "d44ae8ae-75e5-4f21-934c-eb9a05912d98",
+      "name": "右耳廓外轮廓 · 段02",
+      "nodes": [
+        "513c2fac-ed54-48f7-91fb-bbf02c8a3d10",
+        "3583e2fd-6ad3-474a-864f-c6051be325ae"
+      ],
+      "handles": [
+        [
+          -0.8962107927494624,
+          0.1764680508190284
+        ],
+        [
+          -0.9047210958125596,
+          0.10486735981781022
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "242a5199-a6bb-45bf-8a2b-138e76f1c8db",
+      "name": "右耳廓外轮廓 · 段03",
+      "nodes": [
+        "3583e2fd-6ad3-474a-864f-c6051be325ae",
+        "23118482-828f-41a1-96da-289776b1f4fe"
+      ],
+      "handles": [
+        [
+          -0.8812314614669567,
+          -0.0126986114444122
+        ],
+        [
+          -0.8445382757463269,
+          -0.04728111451462058
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "a6a8cf5e-8332-407a-8b03-3ae7a654c01d",
+      "name": "右耳廓外轮廓 · 段04",
+      "nodes": [
+        "23118482-828f-41a1-96da-289776b1f4fe",
+        "82c346db-ba98-475e-8373-0f561e671aaa"
+      ],
+      "handles": [
+        [
+          -0.7789469757629097,
+          -0.09522828957033447
+        ],
+        [
+          -0.7454280517186029,
+          -0.12583097267704924
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "db327891-3894-4e7a-bb73-9c252e031e4d",
+      "name": "右耳廓外轮廓 · 段05",
+      "nodes": [
+        "82c346db-ba98-475e-8373-0f561e671aaa",
+        "3358f4a8-ff67-4c57-a3df-964115e7bf69"
+      ],
+      "handles": [
+        [
+          -0.7253672121486389,
+          -0.036150303116323945
+        ],
+        [
+          -0.7367678615455195,
+          0.02761661435434501
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "9c46b63f-cda7-4503-ad0f-d6464617b8ba",
+      "name": "右耳廓内缘 · 段02",
+      "nodes": [
+        "17f9705a-3919-430c-981f-25c50e386791",
+        "7e4dc368-1a85-4521-ad0f-ce41d5bafbcf"
+      ],
+      "handles": [
+        [
+          -0.7973872505417979,
+          0.1380096339810013
+        ],
+        [
+          -0.8156875527022747,
+          0.16858885836236542
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "profile": "UNIFORM",
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "7d61752b-f9cf-41e5-a56e-056c05e95ca0",
+      "name": "右耳廓内缘 · 段03",
+      "nodes": [
+        "7e4dc368-1a85-4521-ad0f-ce41d5bafbcf",
+        "c2019e02-78b7-4c07-bd68-d81f82b78cb7"
+      ],
+      "handles": [
+        [
+          -0.9197692381209617,
+          0.11846933468943152
+        ],
+        [
+          -0.8500032918163496,
+          -0.028367331965943876
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "profile": "UNIFORM",
+      "inkEnds": [
+        {},
+        {
+          "taper": 0.08
+        }
+      ],
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "a3f62123-c980-4cba-8e22-24a6bc1d4b0e",
+      "name": "右下睑线 · 段03",
+      "nodes": [
+        "ec749ba5-06da-4b7a-9b90-8bd1a93586f3",
+        "f1b3165f-e7a7-44ca-9d63-cbb8f419e654"
+      ],
+      "handles": [
+        [
+          -0.4674561712047618,
+          0.20351210023720223
+        ],
+        [
+          -0.4568458960617207,
+          0.14093493911595928
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": true,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "78e12262-5608-4a3b-857f-dbcb732122dd",
+      "name": "右下睑线 · 段02",
+      "nodes": [
+        "f1b3165f-e7a7-44ca-9d63-cbb8f419e654",
+        "3a0ddc3f-6eb4-419a-868d-ee9b3db41739"
+      ],
+      "handles": [
+        [
+          -0.5444268997969611,
+          0.1024485355769212
+        ],
+        [
+          -0.5697714977876593,
+          0.10286407975710066
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": true,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "93e02b99-dd5e-4418-9fb9-65ff92832a32",
+      "name": "右下睑线 · 段01",
+      "nodes": [
+        "3a0ddc3f-6eb4-419a-868d-ee9b3db41739",
+        "cc4b0841-42d8-4849-abda-a1bfbe83a371"
+      ],
+      "handles": [
+        [
+          -0.6303583564080333,
+          0.11900468674723944
+        ],
+        [
+          -0.6698505065504406,
+          0.15430006588803083
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": true,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "cf1c4b7e-8c67-4585-a493-a106dd0a6654",
+      "name": "右高光 01 · 段01",
+      "nodes": [
+        "c30f96ad-f0d2-4895-aad1-c52155da3a01",
+        "992c3da4-d26d-406e-b827-913a93bf577e"
+      ],
+      "handles": [
+        [
+          -0.6019764310506569,
+          0.2539422879221317
+        ],
+        [
+          -0.5952857483220796,
+          0.2590091843203699
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "ac5a4ab5-89ab-4094-8dde-df6e0905de20",
+      "name": "右高光 01 · 段02",
+      "nodes": [
+        "992c3da4-d26d-406e-b827-913a93bf577e",
+        "0d4834b2-bb0b-4855-ad39-f322433f48d6"
+      ],
+      "handles": [
+        [
+          -0.5851474361083199,
+          0.25507954296356156
+        ],
+        [
+          -0.5836193929161331,
+          0.24682704282798004
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "aa6ab9fc-7465-49d4-96b0-61e26c8c69bd",
+      "name": "右高光 01 · 段03",
+      "nodes": [
+        "0d4834b2-bb0b-4855-ad39-f322433f48d6",
+        "f6293474-fd85-429d-a1ff-f42ef9cf9490"
+      ],
+      "handles": [
+        [
+          -0.5899878315247006,
+          0.23039673454654971
+        ],
+        [
+          -0.5966785142532779,
+          0.22532983814831153
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "ac692835-bbe1-4607-965c-f740d3c8e638",
+      "name": "右高光 01 · 段04",
+      "nodes": [
+        "f6293474-fd85-429d-a1ff-f42ef9cf9490",
+        "c30f96ad-f0d2-4895-aad1-c52155da3a01"
+      ],
+      "handles": [
+        [
+          -0.6068168264670376,
+          0.22925947950511982
+        ],
+        [
+          -0.6083448696592244,
+          0.23751197964070137
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "d860aec1-af8b-4408-9d94-24708eabad8f",
+      "name": "右高光 02 · 段01",
+      "nodes": [
+        "1d9668c0-75f4-4a71-b28c-7842c10f326c",
+        "f266cbc8-9f7a-4f4b-a67e-1145ed6a5c78"
+      ],
+      "handles": [
+        [
+          -0.5327975366625505,
+          0.2505095342442317
+        ],
+        [
+          -0.5268617122677643,
+          0.25610010999694954
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "44f2fff2-e52b-4ff6-81e7-0a4639c77f39",
+      "name": "右高光 02 · 段02",
+      "nodes": [
+        "f266cbc8-9f7a-4f4b-a67e-1145ed6a5c78",
+        "b5173f84-e9c6-42de-abb6-79a3b8d32634"
+      ],
+      "handles": [
+        [
+          -0.513549242838932,
+          0.25516795051183205
+        ],
+        [
+          -0.5086931784797275,
+          0.24882171019078292
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "a16bf106-f222-416f-908f-5f4018658fba",
+      "name": "右高光 02 · 段03",
+      "nodes": [
+        "b5173f84-e9c6-42de-abb6-79a3b8d32634",
+        "cdfb185b-55b1-4d68-839d-fa2b3f0a194e"
+      ],
+      "handles": [
+        [
+          -0.5100251299844017,
+          0.23409690133831476
+        ],
+        [
+          -0.5159609543791879,
+          0.22850632558559705
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "92db7ccb-db10-4cce-9f79-d3c2af8d74ad",
+      "name": "右高光 02 · 段04",
+      "nodes": [
+        "cdfb185b-55b1-4d68-839d-fa2b3f0a194e",
+        "1d9668c0-75f4-4a71-b28c-7842c10f326c"
+      ],
+      "handles": [
+        [
+          -0.5292734238080202,
+          0.22943848507071443
+        ],
+        [
+          -0.5341294881672247,
+          0.2357847253917636
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "b699f787-e558-405e-ac9a-8b7202f8b690",
+      "name": "右瞳孔 · 段01",
+      "nodes": [
+        "96b7a435-892b-44e9-b8e7-29bdaf848c86",
+        "8b926816-3cc3-4313-be18-fbcf0dff49bc"
+      ],
+      "handles": [
+        [
+          -0.5680611618007605,
+          0.21822603688050207
+        ],
+        [
+          -0.5617574717992841,
+          0.23386367890385237
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "195e8edf-9b8e-4098-90e5-46f802a30834",
+      "name": "右瞳孔 · 段02",
+      "nodes": [
+        "8b926816-3cc3-4313-be18-fbcf0dff49bc",
+        "bc440f67-20fe-4b15-81ae-c1264e407310"
+      ],
+      "handles": [
+        [
+          -0.5462054804201187,
+          0.23386367890385237
+        ],
+        [
+          -0.5399017904186425,
+          0.21822603688050207
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "e71f443a-3905-4615-941e-719bf126df68",
+      "name": "右瞳孔 · 段03",
+      "nodes": [
+        "bc440f67-20fe-4b15-81ae-c1264e407310",
+        "e96eb40c-4d8d-44ff-9d50-94daf3a87df7"
+      ],
+      "handles": [
+        [
+          -0.5399017904186425,
+          0.17964601884651488
+        ],
+        [
+          -0.5462054804201187,
+          0.16400837682316458
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "da8a3c28-74c5-43a7-bf3c-0f8f60632851",
+      "name": "右瞳孔 · 段04",
+      "nodes": [
+        "e96eb40c-4d8d-44ff-9d50-94daf3a87df7",
+        "96b7a435-892b-44e9-b8e7-29bdaf848c86"
+      ],
+      "handles": [
+        [
+          -0.5617574717992841,
+          0.16400837682316458
+        ],
+        [
+          -0.5680611618007605,
+          0.17964601884651488
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "7a419794-1ae6-4776-bd46-cf2c73eca2a9",
+      "name": "右虹膜轮廓 · 段01",
+      "nodes": [
+        "727eb62f-8ada-4250-9c7e-4d55b174cd47",
+        "3958301c-c833-4736-b711-fd81b9e20972"
+      ],
+      "handles": [
+        [
+          -0.6135906991971047,
+          0.23362554385126058
+        ],
+        [
+          -0.6079750583259413,
+          0.2820716237140216
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "01ffdba4-5eb6-43e3-ac43-c112a77fde85",
+      "name": "右虹膜轮廓 · 段02",
+      "nodes": [
+        "3958301c-c833-4736-b711-fd81b9e20972",
+        "3c6763bd-8a56-48a6-a167-4ccf9dac7656"
+      ],
+      "handles": [
+        [
+          -0.515907654694082,
+          0.28122388983712854
+        ],
+        [
+          -0.48350342085573,
+          0.24212376843477654
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "07b8a55c-74e3-4f39-be20-65c211e99d12",
+      "name": "右虹膜轮廓 · 段03",
+      "nodes": [
+        "3c6763bd-8a56-48a6-a167-4ccf9dac7656",
+        "fed357c4-06fa-49c7-af38-f935f279be22"
+      ],
+      "handles": [
+        [
+          -0.5012548171333927,
+          0.13948212807466584
+        ],
+        [
+          -0.5209573268335297,
+          0.10508511782584859
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "cf9bc2ab-4cef-4462-be33-cb5222fa8df4",
+      "name": "右虹膜轮廓 · 段04",
+      "nodes": [
+        "fed357c4-06fa-49c7-af38-f935f279be22",
+        "727eb62f-8ada-4250-9c7e-4d55b174cd47"
+      ],
+      "handles": [
+        [
+          -0.5834357814107248,
+          0.10508511782584859
+        ],
+        [
+          -0.6135906991971047,
+          0.13878850330095444
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "59441d33-2b4f-41cf-b6bb-4889e54f756d",
+      "name": "右耳廓内缘 · 段01",
+      "nodes": [
+        "17f9705a-3919-430c-981f-25c50e386791",
+        "1a7c8b31-0218-47b4-9403-d685d315950c"
+      ],
+      "handles": [
+        [
+          -0.7699891793123588,
+          0.08976868029010436
+        ],
+        [
+          -0.7693362332658399,
+          0.06646113720180291
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "profile": "UNIFORM",
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "b829dd27-2fb5-4fe0-b719-da60e7acadca",
+      "name": "右耳内腔线 · 段01",
+      "nodes": [
+        "7751203a-1711-4b09-960b-2aa5455109ef",
+        "689213ad-bfca-48e3-942c-067652ed8cf1"
+      ],
+      "handles": [
+        [
+          -0.7650753216407995,
+          0.042992522221925095
+        ],
+        [
+          -0.770704311171915,
+          0.049156763722117885
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.02
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      }
+    },
+    {
+      "id": "3f1355cb-f97d-4f3d-b408-65ff400d13c3",
+      "name": "右耳内腔线 · 段02",
+      "nodes": [
+        "689213ad-bfca-48e3-942c-067652ed8cf1",
+        "d26710de-89ca-4fcb-bbdf-e0ca40167213"
+      ],
+      "handles": [
+        [
+          -0.7755418279976704,
+          -0.006511419277782288
+        ],
+        [
+          -0.7429701796984265,
+          0.018507447670306792
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      }
+    },
+    {
+      "id": "1d95088b-0001-4441-94ea-5f2b71848655",
+      "name": "右耳内腔线 · 段03",
+      "nodes": [
+        "d26710de-89ca-4fcb-bbdf-e0ca40167213",
+        "e658cbd5-6bba-4ac3-a2ed-679eccdaa76a"
+      ],
+      "handles": [
+        [
+          -0.7602611617816729,
+          -0.0328740313431059
+        ],
+        [
+          -0.7567817377498719,
+          -0.02222514371134013
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      }
+    },
+    {
+      "id": "8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde",
+      "name": "右耳内腔线 · 段04",
+      "nodes": [
+        "e658cbd5-6bba-4ac3-a2ed-679eccdaa76a",
+        "33c00cc5-3f3a-402a-93ba-703886421303"
+      ],
+      "handles": [
+        [
+          -0.8065878951573818,
+          -0.01671971400174413
+        ],
+        [
+          -0.8234956015324467,
+          -0.0006903821643327313
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      }
+    },
+    {
+      "id": "2f401004-d1ed-48dc-893c-d7fe924099f3",
+      "name": "右耳内腔线 · 段05",
+      "nodes": [
+        "33c00cc5-3f3a-402a-93ba-703886421303",
+        "c035fe1e-f775-47c2-b0ef-e192be21cd9d"
+      ],
+      "handles": [
+        [
+          -0.8322932253091782,
+          0.06272849378826392
+        ],
+        [
+          -0.8013287119735087,
+          0.10196856908154207
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taper": 0.008
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      }
+    },
+    {
+      "id": "8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18",
+      "name": "右耳内分叉线 · 段01",
+      "nodes": [
+        "6c44f1c6-4477-4790-b939-836e60ba3594",
+        "9839426f-aa13-4357-b779-bd05073656f4"
+      ],
+      "handles": [
+        [
+          -0.799959500950895,
+          0.11318580754258133
+        ],
+        [
+          -0.8225224526244039,
+          0.09694828471569558
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.008
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "profileReverse": true,
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      },
+      "strokeName": "右耳内分叉线"
+    },
+    {
+      "id": "e91b869a-f32b-412b-8ee5-6e2160c9e23e",
+      "name": "右耳内分叉线 · 段02",
+      "nodes": [
+        "9839426f-aa13-4357-b779-bd05073656f4",
+        "b712accc-b210-4588-9d16-a08cef3f2642"
+      ],
+      "handles": [
+        [
+          -0.8348243571752135,
+          0.12483628442222526
+        ],
+        [
+          -0.8311269012049524,
+          0.13947826280791584
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taper": 0.008
+        }
+      ],
+      "profileReverse": true,
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      },
+      "strokeName": "右耳内分叉线"
+    },
+    {
+      "id": "d4ce1b15-dcbe-459d-b23f-b99f4dd0be41",
+      "name": "右耳内短纹",
+      "nodes": [
+        "b216643f-ef07-45e0-a2c4-fafbdb6602c3",
+        "b3bb363e-af0c-4857-b4ce-761adcbbca4e"
+      ],
+      "handles": [
+        [
+          -0.8763569093272465,
+          0.09201452631720161
+        ],
+        [
+          -0.8700194817931513,
+          0.05662838451451044
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.012
+        },
+        {
+          "taper": 0.012
+        }
+      ],
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      }
+    },
+    {
+      "id": "b6406b72-6b1e-48a8-929b-a6201a276876",
+      "name": "右上睑褶线",
+      "nodes": [
+        "c02d901a-81a7-4d09-9faa-90f207e33946",
+        "152b2435-44cc-47ad-898a-14409a6d4cdd"
+      ],
+      "handles": [
+        [
+          -0.48411316407057176,
+          0.3208003904896686
+        ],
+        [
+          -0.523573058861343,
+          0.32715283505504034
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0.02
+        },
+        {
+          "taper": 0.04
+        }
+      ]
+    },
+    {
+      "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+      "name": "右颈线",
+      "nodes": [
+        "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+        "83a392df-4528-46ca-8cb3-e51c7685c54a"
+      ],
+      "handles": [
+        [
+          -0.5499656426189893,
+          -0.23351506051719922
+        ],
+        [
+          -0.543491738010124,
+          -0.34789110432091536
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "interior": true,
+          "taper": 0.04,
+          "extension": 0.06
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+      "name": "颈部底形 · 段02",
+      "nodes": [
+        "83a392df-4528-46ca-8cb3-e51c7685c54a",
+        "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7"
+      ],
+      "handles": [
+        [
+          -0.5802663589312135,
+          -0.4455135948550628
+        ],
+        [
+          -0.7065437828307817,
+          -0.5068974431783377
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+      "name": "颈部底形 · 段03",
+      "nodes": [
+        "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+        "0dd0260e-4f0d-4f2d-84df-c19926218f8a"
+      ],
+      "handles": [
+        [
+          -0.6429247520304416,
+          -0.7447079655018327
+        ],
+        [
+          -0.05504824432946134,
+          -0.8022083943371702
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "ef495977-5008-4ef8-88c0-b71624056573",
+      "name": "颈部底形 · 段04",
+      "nodes": [
+        "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+        "b5468782-e774-486a-b52e-b3aed29cd2ee"
+      ],
+      "handles": [
+        [
+          0.09747187091438358,
+          -0.5115606491844286
+        ],
+        [
+          -0.03307267209569062,
+          -0.43360778941848555
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+      "name": "左颈线",
+      "nodes": [
+        "b5468782-e774-486a-b52e-b3aed29cd2ee",
+        "5d6a3417-2c9f-4602-8333-c43cfa37b07e"
+      ],
+      "handles": [
+        [
+          -0.062023039127672666,
+          -0.36278148525040127
+        ],
+        [
+          -0.05493179885669387,
+          -0.24313893801726008
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "interior": true,
+          "taper": 0.04,
+          "extension": 0.06
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+      "name": "颈部上缘封口",
+      "nodes": [
+        "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+        "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6"
+      ],
+      "handles": [
+        [
+          -0.21814745537368493,
+          -0.15433283978060564
+        ],
+        [
+          -0.39028310102459085,
+          -0.15333121809412475
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "颈部底形"
+    },
+    {
+      "id": "bb01fe95-1923-4af6-8703-01f52a4aa2b9",
+      "name": "鼻尖短线",
+      "nodes": [
+        "b479ce9b-441e-47d6-a045-482d0f272a38",
+        "a6aea162-abae-435f-adac-5fbe2b8c5600"
+      ],
+      "handles": [
+        [
+          -0.3294804514288924,
+          0.046469350974832596
+        ],
+        [
+          -0.3294804514288924,
+          0.038779220628219715
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.016,
+      "inkEnds": [
+        {
+          "taperWidthScale": 10
+        },
+        {
+          "taperWidthScale": 10
+        }
+      ]
+    },
+    {
+      "id": "4046b878-3792-4eaf-b7e3-b6a2992b4efc",
+      "name": "右眉线",
+      "nodes": [
+        "8a07ba2e-8ac1-4b12-82d1-1d576308d06b",
+        "de5ff552-ca99-4614-bc8d-d9b8c94e09c1"
+      ],
+      "handles": [
+        [
+          -0.5238686189866129,
+          0.44119306694552163
+        ],
+        [
+          -0.6354320798339859,
+          0.417716608250709
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.012,
+      "inkEnds": [
+        {
+          "taperWidthScale": 10
+        },
+        {
+          "taperWidthScale": 10
+        }
+      ],
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 0.7236287587180057
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+      "name": "衣领后缘",
+      "nodes": [
+        "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+        "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+      ],
+      "handles": [
+        [
+          -0.42649943259257267,
+          -0.4591572703423138
+        ],
+        [
+          -0.16704598798314513,
+          -0.4648731935650934
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0
+        },
+        {
+          "taper": 0
+        }
+      ],
+      "strokeName": "衣领与肩线",
+      "depthOffset": -1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+      "name": "衣领与肩线 · 段03",
+      "nodes": [
+        "114dcc78-e409-4972-9d8b-2f17c935d433",
+        "ca85a82e-2eef-4083-be96-b23fbd69b75f"
+      ],
+      "handles": [
+        [
+          -1.0162897683458798,
+          -0.6188648801137268
+        ],
+        [
+          -0.8875373573073284,
+          -0.5536582796849666
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 10
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+      "name": "衣领与肩线 · 段04",
+      "nodes": [
+        "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+        "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+      ],
+      "handles": [
+        [
+          -0.7205028744811542,
+          -0.4654663856836138
+        ],
+        [
+          -0.6936064626033541,
+          -0.4503066365759459
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+      "name": "衣领与肩线 · 段08",
+      "nodes": [
+        "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+        "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+      ],
+      "handles": [
+        [
+          -0.6356638119372162,
+          -0.7432990598874936
+        ],
+        [
+          -0.00568845000458848,
+          -0.7383521387819072
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0
+        },
+        {
+          "taper": 0
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+      "name": "衣领与肩线 · 段06",
+      "nodes": [
+        "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+        "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+      ],
+      "handles": [
+        [
+          0.10926290082364674,
+          -0.46269282373319864
+        ],
+        [
+          0.1373986226106519,
+          -0.47301811878862904
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0
+        },
+        {
+          "taper": 0
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+      "name": "衣领与肩线 · 段01",
+      "nodes": [
+        "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+        "bacf078e-7da6-426e-9cb2-09475e5656a0"
+      ],
+      "handles": [
+        [
+          0.27786320842176704,
+          -0.5481392478619922
+        ],
+        [
+          0.3851996313125521,
+          -0.604709188277332
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0
+        },
+        {
+          "taperWidthScale": 10
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+      "name": "衣领与肩线 · 段02",
+      "nodes": [
+        "114dcc78-e409-4972-9d8b-2f17c935d433",
+        "bacf078e-7da6-426e-9cb2-09475e5656a0"
+      ],
+      "handles": [
+        [
+          -1.2190679642762303,
+          -0.8390461429612606
+        ],
+        [
+          0.5323421335573807,
+          -0.8700643884136684
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taperWidthScale": 10
+        },
+        {
+          "taperWidthScale": 10
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+      "name": "衣领与肩线 · 段05",
+      "nodes": [
+        "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+        "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+      ],
+      "handles": [
+        [
+          -0.7830557312772957,
+          -0.7940702407972379
+        ],
+        [
+          0.09525711483326343,
+          -0.8253039394514298
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taperWidthScale": 0
+        }
+      ],
+      "strokeName": "衣领与肩线"
+    },
+    {
+      "id": "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+      "name": "右虹膜下缘柔光 · 段01",
+      "nodes": [
+        "38b68205-c4f6-4feb-9eff-e22852b7e260",
+        "ecb62089-9ae8-419a-a40c-43289a4d515e"
+      ],
+      "handles": [
+        [
+          -0.5326353931473223,
+          0.13629282686933453
+        ],
+        [
+          -0.5434097858131435,
+          0.14673024120518127
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "203b901d-169a-473f-a939-5b216891d5f6",
+      "name": "右虹膜下缘柔光 · 段02",
+      "nodes": [
+        "ecb62089-9ae8-419a-a40c-43289a4d515e",
+        "396b6bdf-eea4-427d-9452-40af31fffcd2"
+      ],
+      "handles": [
+        [
+          -0.5699915596337709,
+          0.14673024120518127
+        ],
+        [
+          -0.5807659522995919,
+          0.13629282686933453
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+      "name": "右虹膜下缘柔光 · 段03",
+      "nodes": [
+        "396b6bdf-eea4-427d-9452-40af31fffcd2",
+        "614f89a8-0294-4ee6-a691-6ec488ad4e5f"
+      ],
+      "handles": [
+        [
+          -0.5807659522995919,
+          0.11054242072089591
+        ],
+        [
+          -0.5699915596337709,
+          0.10010500638504921
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+      "name": "右虹膜下缘柔光 · 段04",
+      "nodes": [
+        "614f89a8-0294-4ee6-a691-6ec488ad4e5f",
+        "38b68205-c4f6-4feb-9eff-e22852b7e260"
+      ],
+      "handles": [
+        [
+          -0.5434097858131435,
+          0.10010500638504921
+        ],
+        [
+          -0.5326353931473223,
+          0.11054242072089591
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "217e9f9e-9a31-44c3-9d69-6e69bddcc79c",
+      "name": "右眉线 · 1",
+      "nodes": [
+        "e0d04b71-68a9-4bb0-b521-5e5eff0d6c21",
+        "5e8bb10a-1573-4d97-b74e-a8021f8acbb5"
+      ],
+      "handles": [
+        [
+          -0.1350922838711719,
+          0.44119306694552163
+        ],
+        [
+          -0.023528823023798884,
+          0.417716608250709
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.012,
+      "inkEnds": [
+        {
+          "taperWidthScale": 10
+        },
+        {
+          "taperWidthScale": 10
+        }
+      ],
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 0.7236287587180057
+      },
+      "profileReverse": false
+    },
+    {
+      "id": "c4af0b2e-e88c-4252-b3d2-ba578ceb7f35",
+      "name": "右上睑褶线 · 1",
+      "nodes": [
+        "a8118928-097a-4080-bf83-1b615bf3a2b0",
+        "b5c9e937-c843-4bda-88c8-f6272da42a43"
+      ],
+      "handles": [
+        [
+          -0.174847738787213,
+          0.3208003904896686
+        ],
+        [
+          -0.13538784399644177,
+          0.32715283505504034
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0.02
+        },
+        {
+          "taper": 0.04
+        }
+      ],
+      "profileReverse": true
+    },
+    {
+      "id": "cab9de17-c372-4522-bf83-10b0ac63a9f1",
+      "name": "右上睑墨形 · 段01 · 1",
+      "nodes": [
+        "0544c668-a77c-480a-b8be-e05ed26ad231",
+        "a60f176d-5e05-4f82-9354-879e0905b7c0"
+      ],
+      "handles": [
+        [
+          -0.18626105965530138,
+          0.2539492588419944
+        ],
+        [
+          -0.18000537404600875,
+          0.26965353836101
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "68c9fbb5-45ce-4aac-9f7a-03f75552ddc0",
+      "name": "右上睑墨形 · 段02 · 1",
+      "nodes": [
+        "a60f176d-5e05-4f82-9354-879e0905b7c0",
+        "96ee8c07-1aa8-453b-85b4-b3f53a1a9328"
+      ],
+      "handles": [
+        [
+          -0.12622906521135768,
+          0.29894370662519043
+        ],
+        [
+          -0.10024191203140254,
+          0.3071126604341424
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "006afa02-cc0f-4240-a78d-511bcc5a229f",
+      "name": "右上睑墨形 · 段03 · 1",
+      "nodes": [
+        "96ee8c07-1aa8-453b-85b4-b3f53a1a9328",
+        "57e833d3-50be-4e8e-aab8-ecf5afaa7c0a"
+      ],
+      "handles": [
+        [
+          0.023014057753021455,
+          0.28393174356973133
+        ],
+        [
+          0.055587255600135776,
+          0.2365125601845148
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+      "name": "右上睑墨形 · 段04 · 1",
+      "nodes": [
+        "57e833d3-50be-4e8e-aab8-ecf5afaa7c0a",
+        "3724aa4a-3daa-4160-8254-af2aec3e1fe8"
+      ],
+      "handles": [
+        [
+          0.05973970339279411,
+          0.2294649324981139
+        ],
+        [
+          0.04239474765887452,
+          0.1908773726148274
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "3b82ab53-bc0d-4b30-979f-ca041e8466c6",
+      "name": "右上睑墨形 · 段05 · 1",
+      "nodes": [
+        "3724aa4a-3daa-4160-8254-af2aec3e1fe8",
+        "9b7a7014-91ce-48e1-abbd-9ab45a6ef9a6"
+      ],
+      "handles": [
+        [
+          0.03643901959873741,
+          0.19516316885322918
+        ],
+        [
+          0.0377263494032124,
+          0.20085422011591952
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "dae9a0ab-b60f-444b-8aca-f8646264699a",
+      "name": "右上睑墨形 · 段06 · 1",
+      "nodes": [
+        "9b7a7014-91ce-48e1-abbd-9ab45a6ef9a6",
+        "68d044ca-444b-4114-9818-6d2918f19713"
+      ],
+      "handles": [
+        [
+          0.034481714030018096,
+          0.23791238771406983
+        ],
+        [
+          0.011382871692093066,
+          0.26008508630170624
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "e82d68be-7540-49bd-af1f-4cb11f64e154",
+      "name": "右上睑墨形 · 段07 · 1",
+      "nodes": [
+        "68d044ca-444b-4114-9818-6d2918f19713",
+        "deee6dae-1c5f-43f8-a7b6-41f76b47ac9d"
+      ],
+      "handles": [
+        [
+          -0.04114749037189869,
+          0.29015717276155883
+        ],
+        [
+          -0.12053248733352295,
+          0.27857628497381137
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "cdc604fe-4096-48e8-88b6-101886cef0a1",
+      "name": "右上睑墨形 · 段08 · 1",
+      "nodes": [
+        "deee6dae-1c5f-43f8-a7b6-41f76b47ac9d",
+        "0544c668-a77c-480a-b8be-e05ed26ad231"
+      ],
+      "handles": [
+        [
+          -0.16462492185225053,
+          0.2616025073502898
+        ],
+        [
+          -0.17441951578128545,
+          0.256562980056424
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右上睑墨形",
+      "mist": {
+        "enabled": true,
+        "width": 0.052197856284848826,
+        "density": 1.7636695749349582
+      }
+    },
+    {
+      "id": "098869fc-e9c9-4903-baba-e2e60312e49f",
+      "name": "右下睑线 · 段03 · 1",
+      "nodes": [
+        "220ee247-b28b-4975-ab4c-e6a935a6029c",
+        "bc22e305-5528-44a8-b647-bbb0b417a32f"
+      ],
+      "handles": [
+        [
+          -0.19150473165302295,
+          0.20351210023720223
+        ],
+        [
+          -0.20211500679606403,
+          0.14093493911595928
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": false,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "3ad128bc-6463-4a44-a5ca-c6e034bfe745",
+      "name": "右下睑线 · 段02 · 1",
+      "nodes": [
+        "bc22e305-5528-44a8-b647-bbb0b417a32f",
+        "f1851b50-07c9-4543-827a-f1ef1d87cfd6"
+      ],
+      "handles": [
+        [
+          -0.11453400306082362,
+          0.1024485355769212
+        ],
+        [
+          -0.0891894050701254,
+          0.10286407975710066
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": false,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "03c59f01-dc3f-48ca-a12a-cfd875f05fc7",
+      "name": "右下睑线 · 段01 · 1",
+      "nodes": [
+        "f1851b50-07c9-4543-827a-f1ef1d87cfd6",
+        "a02439af-b873-48ca-84f0-615839356c50"
+      ],
+      "handles": [
+        [
+          -0.028602546449751465,
+          0.11900468674723944
+        ],
+        [
+          0.010889603692655903,
+          0.15430006588803083
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右下睑线",
+      "profileReverse": false,
+      "profile": "UNIFORM"
+    },
+    {
+      "id": "cbd1da4c-2736-4235-90da-10bac95bc57f",
+      "name": "右高光 02 · 段01 · 1",
+      "nodes": [
+        "60717a39-a29d-41e4-9eea-db8772b83788",
+        "1e5769ee-dbe8-4876-9f7c-2cd850f5ec0d"
+      ],
+      "handles": [
+        [
+          -0.12616336619523427,
+          0.2505095342442317
+        ],
+        [
+          -0.1320991905900204,
+          0.25610010999694954
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "c0b97d95-b91f-4204-a886-8f0f8e371d05",
+      "name": "右高光 02 · 段02 · 1",
+      "nodes": [
+        "1e5769ee-dbe8-4876-9f7c-2cd850f5ec0d",
+        "8d9d29a8-af5f-406b-adb1-ca39e1a27e01"
+      ],
+      "handles": [
+        [
+          -0.14541166001885275,
+          0.25516795051183205
+        ],
+        [
+          -0.15026772437805724,
+          0.24882171019078292
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "1b77c766-487b-4b6d-9f6c-28415be5e7da",
+      "name": "右高光 02 · 段03 · 1",
+      "nodes": [
+        "8d9d29a8-af5f-406b-adb1-ca39e1a27e01",
+        "bead0e9f-03dd-45ca-8f46-608299dcf72e"
+      ],
+      "handles": [
+        [
+          -0.148935772873383,
+          0.23409690133831476
+        ],
+        [
+          -0.14299994847859687,
+          0.22850632558559705
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "8267442e-f3f5-4a83-bb13-4f9c5cc85e20",
+      "name": "右高光 02 · 段04 · 1",
+      "nodes": [
+        "bead0e9f-03dd-45ca-8f46-608299dcf72e",
+        "60717a39-a29d-41e4-9eea-db8772b83788"
+      ],
+      "handles": [
+        [
+          -0.12968747904976452,
+          0.22943848507071443
+        ],
+        [
+          -0.12483141469056003,
+          0.2357847253917636
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 02"
+    },
+    {
+      "id": "6a63aeee-5d3c-48fb-a49a-9e61bd8c38a6",
+      "name": "右高光 01 · 段01 · 1",
+      "nodes": [
+        "a733d871-90a9-4c67-a3f6-d47141659086",
+        "6a83498a-5d21-4bb2-9921-b9e2cad2a8da"
+      ],
+      "handles": [
+        [
+          -0.056984471807127846,
+          0.2539422879221317
+        ],
+        [
+          -0.06367515453570516,
+          0.2590091843203699
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "c9b16896-99ba-41bd-b6cc-ca5e94a27c4c",
+      "name": "右高光 01 · 段02 · 1",
+      "nodes": [
+        "6a83498a-5d21-4bb2-9921-b9e2cad2a8da",
+        "b8b373cb-a1b6-45af-a4d9-e53a939ce4a2"
+      ],
+      "handles": [
+        [
+          -0.07381346674946487,
+          0.25507954296356156
+        ],
+        [
+          -0.07534150994165167,
+          0.24682704282798004
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "76b6f2d3-db40-4e0b-baa7-85987ef61133",
+      "name": "右高光 01 · 段03 · 1",
+      "nodes": [
+        "b8b373cb-a1b6-45af-a4d9-e53a939ce4a2",
+        "d3a21185-01b1-43a5-b4ed-f784defb1063"
+      ],
+      "handles": [
+        [
+          -0.06897307133308417,
+          0.23039673454654971
+        ],
+        [
+          -0.062282388604506855,
+          0.22532983814831153
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "69a9d829-28ab-4e71-99b8-bc02f4ab6718",
+      "name": "右高光 01 · 段04 · 1",
+      "nodes": [
+        "d3a21185-01b1-43a5-b4ed-f784defb1063",
+        "a733d871-90a9-4c67-a3f6-d47141659086"
+      ],
+      "handles": [
+        [
+          -0.05214407639074714,
+          0.22925947950511982
+        ],
+        [
+          -0.05061603319856034,
+          0.23751197964070137
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.004,
+      "strokeName": "右高光 01"
+    },
+    {
+      "id": "ec7dffc5-41d9-4444-b1d3-7b1d41295dc7",
+      "name": "右瞳孔 · 段01 · 1",
+      "nodes": [
+        "f862ff63-3576-48e1-816b-a2a83ac9a70e",
+        "0cd60bd2-ca4a-4685-871e-a88d31b503da"
+      ],
+      "handles": [
+        [
+          -0.09089974105702425,
+          0.21822603688050207
+        ],
+        [
+          -0.0972034310585006,
+          0.23386367890385237
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "2e287310-2acb-40fc-bf3b-7d153882462b",
+      "name": "右瞳孔 · 段02 · 1",
+      "nodes": [
+        "0cd60bd2-ca4a-4685-871e-a88d31b503da",
+        "46f2a0e8-9281-4aa0-816b-7b9bf8221d4a"
+      ],
+      "handles": [
+        [
+          -0.11275542243766601,
+          0.23386367890385237
+        ],
+        [
+          -0.11905911243914225,
+          0.21822603688050207
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "23f7ef69-cfda-4a5f-9053-e6a1f8c2e458",
+      "name": "右瞳孔 · 段03 · 1",
+      "nodes": [
+        "46f2a0e8-9281-4aa0-816b-7b9bf8221d4a",
+        "345b84d9-301b-4f4e-877e-3fc604c06af0"
+      ],
+      "handles": [
+        [
+          -0.11905911243914225,
+          0.17964601884651488
+        ],
+        [
+          -0.11275542243766601,
+          0.16400837682316458
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "516c9bd1-ed7b-484c-80a5-d4efca4b9a00",
+      "name": "右瞳孔 · 段04 · 1",
+      "nodes": [
+        "345b84d9-301b-4f4e-877e-3fc604c06af0",
+        "f862ff63-3576-48e1-816b-a2a83ac9a70e"
+      ],
+      "handles": [
+        [
+          -0.0972034310585006,
+          0.16400837682316458
+        ],
+        [
+          -0.09089974105702425,
+          0.17964601884651488
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右瞳孔"
+    },
+    {
+      "id": "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+      "name": "右虹膜下缘柔光 · 段01 · 1",
+      "nodes": [
+        "fc8831b1-ad7c-404e-9f4d-64048d41e935",
+        "ff8032c2-934c-419c-b8d9-6fac1e77fd4c"
+      ],
+      "handles": [
+        [
+          -0.1263255097104624,
+          0.13629282686933453
+        ],
+        [
+          -0.11555111704464127,
+          0.14673024120518127
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "17c8144a-e188-4300-819c-9e8d195d89a2",
+      "name": "右虹膜下缘柔光 · 段02 · 1",
+      "nodes": [
+        "ff8032c2-934c-419c-b8d9-6fac1e77fd4c",
+        "7f52e809-5f83-4c93-a695-629480cb6d08"
+      ],
+      "handles": [
+        [
+          -0.08896934322401384,
+          0.14673024120518127
+        ],
+        [
+          -0.07819495055819281,
+          0.13629282686933453
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "12aad141-6900-44b4-8fdb-6274c3277f81",
+      "name": "右虹膜下缘柔光 · 段03 · 1",
+      "nodes": [
+        "7f52e809-5f83-4c93-a695-629480cb6d08",
+        "9a775034-67b1-434b-8b1b-542d37158130"
+      ],
+      "handles": [
+        [
+          -0.07819495055819281,
+          0.11054242072089591
+        ],
+        [
+          -0.08896934322401384,
+          0.10010500638504921
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+      "name": "右虹膜下缘柔光 · 段04 · 1",
+      "nodes": [
+        "9a775034-67b1-434b-8b1b-542d37158130",
+        "fc8831b1-ad7c-404e-9f4d-64048d41e935"
+      ],
+      "handles": [
+        [
+          -0.11555111704464127,
+          0.10010500638504921
+        ],
+        [
+          -0.1263255097104624,
+          0.11054242072089591
+        ]
+      ],
+      "visible": false,
+      "locked": false,
+      "width": 0.008,
+      "inkEnds": [
+        {
+          "taper": 0,
+          "extension": 0
+        },
+        {
+          "taper": 0,
+          "extension": 0
+        }
+      ],
+      "strokeName": "右虹膜下缘柔光"
+    },
+    {
+      "id": "668756f0-fe23-45e0-af5d-8e0eebcb44e7",
+      "name": "右虹膜轮廓 · 段01 · 1",
+      "nodes": [
+        "b363f207-c2e1-4eb0-95a6-6a10e56930ed",
+        "5f0e51a1-2724-41e6-badf-636afa2b8347"
+      ],
+      "handles": [
+        [
+          -0.04537020366068001,
+          0.23362554385126058
+        ],
+        [
+          -0.050985844531843405,
+          0.2820716237140216
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "7476ccfc-02b4-477f-93b9-457650002cd4",
+      "name": "右虹膜轮廓 · 段02 · 1",
+      "nodes": [
+        "5f0e51a1-2724-41e6-badf-636afa2b8347",
+        "7609a154-1272-4f8b-905f-68271ee138f8"
+      ],
+      "handles": [
+        [
+          -0.1430532481637028,
+          0.28122388983712854
+        ],
+        [
+          -0.17545748200205474,
+          0.24212376843477654
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "dbcbe537-3e91-4f65-a11d-8afa12bdc980",
+      "name": "右虹膜轮廓 · 段03 · 1",
+      "nodes": [
+        "7609a154-1272-4f8b-905f-68271ee138f8",
+        "11f33678-30db-4da0-9722-d328e2b05d82"
+      ],
+      "handles": [
+        [
+          -0.15770608572439204,
+          0.13948212807466584
+        ],
+        [
+          -0.13800357602425506,
+          0.10508511782584859
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "97571798-c8a4-48f3-8d54-6797987f28cc",
+      "name": "右虹膜轮廓 · 段04 · 1",
+      "nodes": [
+        "11f33678-30db-4da0-9722-d328e2b05d82",
+        "b363f207-c2e1-4eb0-95a6-6a10e56930ed"
+      ],
+      "handles": [
+        [
+          -0.07552512144705992,
+          0.10508511782584859
+        ],
+        [
+          -0.04537020366068001,
+          0.13878850330095444
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右虹膜轮廓",
+      "depthOffset": 1,
+      "depthScope": "PARENT"
+    },
+    {
+      "id": "9a578781-5b6c-40f3-9d86-3b655236a0ac",
+      "name": "右耳内短纹 · 1",
+      "nodes": [
+        "5cbf9966-2fff-4e38-87aa-267ce4124b2b",
+        "29be8347-778b-4b92-bd7d-2125220bb0c4"
+      ],
+      "handles": [
+        [
+          0.21739600646946178,
+          0.09201452631720161
+        ],
+        [
+          0.2110585789353665,
+          0.05662838451451044
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.012
+        },
+        {
+          "taper": 0.012
+        }
+      ],
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "84677dce-8b2a-4b33-bc56-b72aec881d05",
+      "name": "右耳内分叉线 · 段01 · 1",
+      "nodes": [
+        "3a32e676-39eb-46d2-850e-6f3e9d6dbf37",
+        "c5c6e007-b2da-4cdb-9a6b-65a85d630748"
+      ],
+      "handles": [
+        [
+          0.14099859809311022,
+          0.11318580754258133
+        ],
+        [
+          0.16356154976661919,
+          0.09694828471569558
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.008
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "profileReverse": true,
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      },
+      "strokeName": "右耳内分叉线"
+    },
+    {
+      "id": "0b2fd63e-b97c-4071-901e-56ee859f49f4",
+      "name": "右耳内分叉线 · 段02 · 1",
+      "nodes": [
+        "c5c6e007-b2da-4cdb-9a6b-65a85d630748",
+        "8a96af99-b09e-4bf1-9674-883e626132c8"
+      ],
+      "handles": [
+        [
+          0.17586345431742878,
+          0.12483628442222526
+        ],
+        [
+          0.17216599834716761,
+          0.13947826280791584
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taper": 0.008
+        }
+      ],
+      "profileReverse": true,
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1.1659585186869477
+      },
+      "strokeName": "右耳内分叉线"
+    },
+    {
+      "id": "0f325156-80e7-486c-bd40-6615e6e9cd28",
+      "name": "右耳内腔线 · 段01 · 1",
+      "nodes": [
+        "e819aab1-781e-42fb-b8a7-091c589f88c9",
+        "6abf0f78-642d-413d-9698-124649d9f0b6"
+      ],
+      "handles": [
+        [
+          0.10611441878301475,
+          0.042992522221925095
+        ],
+        [
+          0.11174340831413021,
+          0.049156763722117885
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taper": 0.02
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "a3c8e6d5-3968-4197-b83e-f48e1f3f7ee9",
+      "name": "右耳内腔线 · 段02 · 1",
+      "nodes": [
+        "6abf0f78-642d-413d-9698-124649d9f0b6",
+        "60b8ceaf-4b33-49ad-90c2-53aab055ffbf"
+      ],
+      "handles": [
+        [
+          0.1165809251398856,
+          -0.006511419277782288
+        ],
+        [
+          0.08400927684064174,
+          0.018507447670306792
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "bfb58eeb-85bc-44b3-9fec-babc11345589",
+      "name": "右耳内腔线 · 段03 · 1",
+      "nodes": [
+        "60b8ceaf-4b33-49ad-90c2-53aab055ffbf",
+        "dd10e2b7-1e12-483e-ac18-c012747e6b21"
+      ],
+      "handles": [
+        [
+          0.10130025892388816,
+          -0.0328740313431059
+        ],
+        [
+          0.09782083489208715,
+          -0.02222514371134013
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "1e4ae211-0937-440a-83ea-97b4a63d82be",
+      "name": "右耳内腔线 · 段04 · 1",
+      "nodes": [
+        "dd10e2b7-1e12-483e-ac18-c012747e6b21",
+        "7d23180d-2db7-40ba-801b-3342988f87c9"
+      ],
+      "handles": [
+        [
+          0.14762699229959708,
+          -0.01671971400174413
+        ],
+        [
+          0.16453469867466197,
+          -0.0006903821643327313
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "bdd88835-8834-4f5e-bc5b-87a55326412f",
+      "name": "右耳内腔线 · 段05 · 1",
+      "nodes": [
+        "7d23180d-2db7-40ba-801b-3342988f87c9",
+        "00a6d654-0087-4f59-a888-0178a23c90dd"
+      ],
+      "handles": [
+        [
+          0.1733323224513934,
+          0.06272849378826392
+        ],
+        [
+          0.142367809115724,
+          0.10196856908154207
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taper": 0.008
+        }
+      ],
+      "strokeName": "右耳内腔线",
+      "mist": {
+        "enabled": true,
+        "width": 0.024,
+        "density": 1
+      },
+      "profileReverse": true
+    },
+    {
+      "id": "f56d5019-bc9c-4c5b-a29b-cedbea0cbc06",
+      "name": "右耳廓内缘 · 段02 · 1",
+      "nodes": [
+        "af6b707c-05b5-429e-b400-143306cd76f4",
+        "add4fc3a-33d2-4daa-bd64-88d9f62e7c09"
+      ],
+      "handles": [
+        [
+          0.13842634768401318,
+          0.1380096339810013
+        ],
+        [
+          0.15672664984448992,
+          0.16858885836236542
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "profile": "UNIFORM",
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "9c5253cf-692f-4afb-947a-5edbb89b1d4b",
+      "name": "右耳廓内缘 · 段03 · 1",
+      "nodes": [
+        "add4fc3a-33d2-4daa-bd64-88d9f62e7c09",
+        "9dbf2bbd-893e-434d-adc5-32cc694cd438"
+      ],
+      "handles": [
+        [
+          0.2608083352631769,
+          0.11846933468943152
+        ],
+        [
+          0.19104238895856485,
+          -0.028367331965943876
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "profile": "UNIFORM",
+      "inkEnds": [
+        {},
+        {
+          "taper": 0.08
+        }
+      ],
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "db94a98c-87cb-4c35-852c-ff298442172e",
+      "name": "右耳廓内缘 · 段01 · 1",
+      "nodes": [
+        "af6b707c-05b5-429e-b400-143306cd76f4",
+        "4a228da1-e51c-405e-aeb3-9d8cdcca24b3"
+      ],
+      "handles": [
+        [
+          0.11102827645457403,
+          0.08976868029010436
+        ],
+        [
+          0.11037533040805514,
+          0.06646113720180291
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.004,
+      "inkEnds": [
+        {
+          "taperWidthScale": 20
+        },
+        {
+          "taperWidthScale": 20
+        }
+      ],
+      "profile": "UNIFORM",
+      "strokeName": "右耳廓内缘"
+    },
+    {
+      "id": "20dffc78-c22b-4a04-8299-529b51a98928",
+      "name": "右耳廓外轮廓 · 段01 · 1",
+      "nodes": [
+        "ac759984-8eb0-4b3f-a389-d4631df19938",
+        "fa99654a-b9c3-4bda-9e4b-dc7a7c5b10a1"
+      ],
+      "handles": [
+        [
+          0.11961913389070555,
+          0.15209514853697748
+        ],
+        [
+          0.15543902660535225,
+          0.21445710157987544
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "c5e60e4d-2ee6-49ee-84aa-d0365a3fa6a8",
+      "name": "右耳廓外轮廓 · 段02 · 1",
+      "nodes": [
+        "fa99654a-b9c3-4bda-9e4b-dc7a7c5b10a1",
+        "baefa15d-818f-4ff4-bdaf-47b84d31dd61"
+      ],
+      "handles": [
+        [
+          0.2372498898916776,
+          0.1764680508190284
+        ],
+        [
+          0.2457601929547748,
+          0.10486735981781022
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "9e2a41b7-570c-4aff-b3e8-68662db52e49",
+      "name": "右耳廓外轮廓 · 段03 · 1",
+      "nodes": [
+        "baefa15d-818f-4ff4-bdaf-47b84d31dd61",
+        "ad123300-09be-486b-bcbe-0fc0d660908e"
+      ],
+      "handles": [
+        [
+          0.222270558609172,
+          -0.0126986114444122
+        ],
+        [
+          0.18557737288854215,
+          -0.04728111451462058
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "12fe0071-0307-4e41-a6f0-3d6189e33060",
+      "name": "右耳廓外轮廓 · 段04 · 1",
+      "nodes": [
+        "ad123300-09be-486b-bcbe-0fc0d660908e",
+        "12f06774-5c62-409a-aa27-38b83a030181"
+      ],
+      "handles": [
+        [
+          0.11998607290512497,
+          -0.09522828957033447
+        ],
+        [
+          0.08646714886081819,
+          -0.12583097267704924
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "a7197ec5-4e15-4dcc-922a-a80c832b4b48",
+      "name": "右耳廓外轮廓 · 段05 · 1",
+      "nodes": [
+        "12f06774-5c62-409a-aa27-38b83a030181",
+        "ac759984-8eb0-4b3f-a389-d4631df19938"
+      ],
+      "handles": [
+        [
+          0.06640630929085412,
+          -0.036150303116323945
+        ],
+        [
+          0.0778069586877348,
+          0.02761661435434501
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008,
+      "strokeName": "右耳廓外轮廓"
+    },
+    {
+      "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+      "name": "右片·颅顶外缘",
+      "nodes": [
+        "14c42797-fe60-4f8a-b291-c8367f62332e",
+        "496fb7fb-32de-42e4-8c92-7425eb485c3e"
+      ],
+      "handles": [
+        [
+          -0.7813403690585616,
+          0.82
+        ],
+        [
+          -0.9113750498030301,
+          0.5130906820331453
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    },
+    {
+      "id": "65450d8d-7c62-4d87-b421-616dfbcab097",
+      "name": "右片·外侧下颌",
+      "nodes": [
+        "496fb7fb-32de-42e4-8c92-7425eb485c3e",
+        "3b549fd7-f52f-4bbb-8f26-5062596bc381"
+      ],
+      "handles": [
+        [
+          -0.7225171883662357,
+          -0.209242826591701
+        ],
+        [
+          -0.49127512420371144,
+          -0.2898634914425202
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    },
+    {
+      "id": "52b399a3-a55d-4f08-9fbb-abe711ab4f9a",
+      "name": "右片·内部闭合线",
+      "nodes": [
+        "3b549fd7-f52f-4bbb-8f26-5062596bc381",
+        "14c42797-fe60-4f8a-b291-c8367f62332e"
+      ],
+      "handles": [
+        [
+          -0.22948045142889237,
+          -0.16047937039627502
+        ],
+        [
+          -0.22948045142889237,
+          0.6199999999999999
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    },
+    {
+      "id": "685e3343-6754-43e6-aace-c15e510725a3",
+      "name": "左片·颅顶外缘",
+      "nodes": [
+        "8fe4beed-f673-48d5-84f8-097489e9e4ff",
+        "f9e258c7-4fc4-43b0-a1c0-f7438ff14cdd"
+      ],
+      "handles": [
+        [
+          0.12237946620077689,
+          0.82
+        ],
+        [
+          0.25241414694524533,
+          0.5130906820331453
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    },
+    {
+      "id": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+      "name": "左片·外侧下颌",
+      "nodes": [
+        "f9e258c7-4fc4-43b0-a1c0-f7438ff14cdd",
+        "d0578cff-499d-4009-8be5-877ae3b75c79"
+      ],
+      "handles": [
+        [
+          0.06355628550845094,
+          -0.209242826591701
+        ],
+        [
+          -0.1676857786540733,
+          -0.2898634914425202
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    },
+    {
+      "id": "35dd05a4-bbc8-4bd7-bfd3-9b8d000acf04",
+      "name": "左片·内部闭合线",
+      "nodes": [
+        "d0578cff-499d-4009-8be5-877ae3b75c79",
+        "8fe4beed-f673-48d5-84f8-097489e9e4ff"
+      ],
+      "handles": [
+        [
+          -0.42948045142889235,
+          -0.16047937039627502
+        ],
+        [
+          -0.42948045142889235,
+          0.6199999999999999
+        ]
+      ],
+      "visible": true,
+      "locked": false,
+      "width": 0.008
+    }
+  ],
+  "nodes": [
+    {
+      "id": "6c30801d-d803-4370-a5b9-d5f8e76151d7",
+      "position": [
+        -0.4711474458500227,
+        0.23840637968724473
+      ]
+    },
+    {
+      "id": "ba992989-3567-41df-9f6a-88ad012c66c6",
+      "position": [
+        -0.49098527871531805,
+        0.2829021294294014
+      ]
+    },
+    {
+      "id": "495f763d-7f50-4c2c-984c-cc3dc9a68b7a",
+      "position": [
+        -0.659715949332319,
+        0.30028445810836557
+      ]
+    },
+    {
+      "id": "cec92beb-446d-4e2e-9e34-d7b4a2522b96",
+      "position": [
+        -0.7272157428116155,
+        0.23249337966882055
+      ]
+    },
+    {
+      "id": "1f8789f9-c454-4480-9882-778c9b4aff03",
+      "position": [
+        -0.6853696943368455,
+        0.17046530950582123
+      ]
+    },
+    {
+      "id": "d51f2a1a-bea7-4e75-a0be-c77310618233",
+      "position": [
+        -0.6952978218648077,
+        0.21672341297294664
+      ]
+    },
+    {
+      "id": "6af6e143-ee5e-4501-a174-1993942340f2",
+      "position": [
+        -0.6462806961335409,
+        0.2738604905858949
+      ]
+    },
+    {
+      "id": "a631bd3f-29db-48e0-bd3f-4b7475582238",
+      "position": [
+        -0.5022690924026751,
+        0.26688355273719255
+      ]
+    },
+    {
+      "id": "9d7c067f-8d1e-4ef3-af85-ade1b7e98da9",
+      "position": [
+        -0.3905777208607617,
+        -0.1201058882054121
+      ]
+    },
+    {
+      "id": "b23ed767-f22c-495e-9b39-f4d41d103d17",
+      "position": [
+        -0.3294804514288924,
+        -0.11165935452399306
+      ]
+    },
+    {
+      "id": "fad3c405-61c4-4f78-83ba-179d97f785c7",
+      "position": [
+        -0.26838318199702305,
+        -0.1201058882054121
+      ]
+    },
+    {
+      "id": "3358f4a8-ff67-4c57-a3df-964115e7bf69",
+      "position": [
+        -0.7481685109424003,
+        0.09138353182501395
+      ]
+    },
+    {
+      "id": "513c2fac-ed54-48f7-91fb-bbf02c8a3d10",
+      "position": [
+        -0.8530485411398814,
+        0.20569878554457574
+      ]
+    },
+    {
+      "id": "3583e2fd-6ad3-474a-864f-c6051be325ae",
+      "position": [
+        -0.8913810676847099,
+        0.054451646954427474
+      ]
+    },
+    {
+      "id": "23118482-828f-41a1-96da-289776b1f4fe",
+      "position": [
+        -0.8114371822684855,
+        -0.06474485567075972
+      ]
+    },
+    {
+      "id": "82c346db-ba98-475e-8373-0f561e671aaa",
+      "position": [
+        -0.7139665627517582,
+        -0.09991722058699287
+      ]
+    },
+    {
+      "id": "17f9705a-3919-430c-981f-25c50e386791",
+      "position": [
+        -0.7818661388335238,
+        0.11310360079714114
+      ]
+    },
+    {
+      "id": "7e4dc368-1a85-4521-ad0f-ce41d5bafbcf",
+      "position": [
+        -0.8441264640570687,
+        0.17309419041512725
+      ]
+    },
+    {
+      "id": "c2019e02-78b7-4c07-bd68-d81f82b78cb7",
+      "position": [
+        -0.8145920967473342,
+        -0.037659794390379864
+      ]
+    },
+    {
+      "id": "ec749ba5-06da-4b7a-9b90-8bd1a93586f3",
+      "position": [
+        -0.4711474458500227,
+        0.23840637968724473
+      ]
+    },
+    {
+      "id": "f1b3165f-e7a7-44ca-9d63-cbb8f419e654",
+      "position": [
+        -0.5079848142282738,
+        0.11249530871976275
+      ]
+    },
+    {
+      "id": "3a0ddc3f-6eb4-419a-868d-ee9b3db41739",
+      "position": [
+        -0.599681417787662,
+        0.10909519414138591
+      ]
+    },
+    {
+      "id": "cc4b0841-42d8-4849-abda-a1bfbe83a371",
+      "position": [
+        -0.6853696943368455,
+        0.17046530950582123
+      ]
+    },
+    {
+      "id": "c30f96ad-f0d2-4895-aad1-c52155da3a01",
+      "position": [
+        -0.6051606503549406,
+        0.24572713378141656
+      ]
+    },
+    {
+      "id": "992c3da4-d26d-406e-b827-913a93bf577e",
+      "position": [
+        -0.5902165922151997,
+        0.25704436364196576
+      ]
+    },
+    {
+      "id": "0d4834b2-bb0b-4855-ad39-f322433f48d6",
+      "position": [
+        -0.5868036122204169,
+        0.23861188868726488
+      ]
+    },
+    {
+      "id": "f6293474-fd85-429d-a1ff-f42ef9cf9490",
+      "position": [
+        -0.6017476703601577,
+        0.22729465882671568
+      ]
+    },
+    {
+      "id": "1d9668c0-75f4-4a71-b28c-7842c10f326c",
+      "position": [
+        -0.5334635124148878,
+        0.24314712981799771
+      ]
+    },
+    {
+      "id": "f266cbc8-9f7a-4f4b-a67e-1145ed6a5c78",
+      "position": [
+        -0.5202054775533483,
+        0.2556340302543908
+      ]
+    },
+    {
+      "id": "b5173f84-e9c6-42de-abb6-79a3b8d32634",
+      "position": [
+        -0.5093591542320645,
+        0.24145930576454883
+      ]
+    },
+    {
+      "id": "cdfb185b-55b1-4d68-839d-fa2b3f0a194e",
+      "position": [
+        -0.5226171890936041,
+        0.22897240532815577
+      ]
+    },
+    {
+      "id": "96b7a435-892b-44e9-b8e7-29bdaf848c86",
+      "position": [
+        -0.5680611618007605,
+        0.19893602786350847
+      ]
+    },
+    {
+      "id": "8b926816-3cc3-4313-be18-fbcf0dff49bc",
+      "position": [
+        -0.5539814761097015,
+        0.23386367890385237
+      ]
+    },
+    {
+      "id": "bc440f67-20fe-4b15-81ae-c1264e407310",
+      "position": [
+        -0.5399017904186425,
+        0.19893602786350847
+      ]
+    },
+    {
+      "id": "e96eb40c-4d8d-44ff-9d50-94daf3a87df7",
+      "position": [
+        -0.5539814761097015,
+        0.16400837682316458
+      ]
+    },
+    {
+      "id": "727eb62f-8ada-4250-9c7e-4d55b174cd47",
+      "position": [
+        -0.6135906991971047,
+        0.18620702357610752
+      ]
+    },
+    {
+      "id": "3958301c-c833-4736-b711-fd81b9e20972",
+      "position": [
+        -0.5583376516110816,
+        0.28161457475235474
+      ]
+    },
+    {
+      "id": "3c6763bd-8a56-48a6-a167-4ccf9dac7656",
+      "position": [
+        -0.49317396288000714,
+        0.18620702357610752
+      ]
+    },
+    {
+      "id": "fed357c4-06fa-49c7-af38-f935f279be22",
+      "position": [
+        -0.5521965541221272,
+        0.10508511782584859
+      ]
+    },
+    {
+      "id": "1a7c8b31-0218-47b4-9403-d685d315950c",
+      "position": [
+        -0.7789029385657394,
+        0.056642412339308335
+      ]
+    },
+    {
+      "id": "7751203a-1711-4b09-960b-2aa5455109ef",
+      "position": [
+        -0.768123486652542,
+        0.06206855824961088
+      ]
+    },
+    {
+      "id": "689213ad-bfca-48e3-942c-067652ed8cf1",
+      "position": [
+        -0.7718926996676087,
+        0.0354812705639273
+      ]
+    },
+    {
+      "id": "d26710de-89ca-4fcb-bbdf-e0ca40167213",
+      "position": [
+        -0.7477604226132933,
+        -0.03243885719617973
+      ]
+    },
+    {
+      "id": "e658cbd5-6bba-4ac3-a2ed-679eccdaa76a",
+      "position": [
+        -0.7823744648938117,
+        -0.019396197097069023
+      ]
+    },
+    {
+      "id": "33c00cc5-3f3a-402a-93ba-703886421303",
+      "position": [
+        -0.8277246477556394,
+        0.02979527676277477
+      ]
+    },
+    {
+      "id": "c035fe1e-f775-47c2-b0ef-e192be21cd9d",
+      "position": [
+        -0.7749942275909287,
+        0.08577246605386105
+      ]
+    },
+    {
+      "id": "6c44f1c6-4477-4790-b939-836e60ba3594",
+      "position": [
+        -0.7877174418871954,
+        0.11959373573835147
+      ]
+    },
+    {
+      "id": "9839426f-aa13-4357-b779-bd05073656f4",
+      "position": [
+        -0.8292187136486906,
+        0.1121284809778967
+      ]
+    },
+    {
+      "id": "b712accc-b210-4588-9d16-a08cef3f2642",
+      "position": [
+        -0.8147430670323865,
+        0.1515927619904142
+      ]
+    },
+    {
+      "id": "b216643f-ef07-45e0-a2c4-fafbdb6602c3",
+      "position": [
+        -0.8507209030054721,
+        0.15718419164613484
+      ]
+    },
+    {
+      "id": "b3bb363e-af0c-4857-b4ce-761adcbbca4e",
+      "position": [
+        -0.8577548577142926,
+        0.02185640740331346
+      ]
+    },
+    {
+      "id": "c02d901a-81a7-4d09-9faa-90f207e33946",
+      "position": [
+        -0.47042250255859036,
+        0.2982511811426212
+      ]
+    },
+    {
+      "id": "152b2435-44cc-47ad-898a-14409a6d4cdd",
+      "position": [
+        -0.5555855014446001,
+        0.32867050505154255
+      ]
+    },
+    {
+      "id": "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+      "position": [
+        -0.5513575092278413,
+        -0.14751407485843387
+      ]
+    },
+    {
+      "id": "83a392df-4528-46ca-8cb3-e51c7685c54a",
+      "position": [
+        -0.5400826387550588,
+        -0.4103037224176142
+      ]
+    },
+    {
+      "id": "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+      "position": [
+        -0.7479847115582179,
+        -0.5306942268392871
+      ]
+    },
+    {
+      "id": "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+      "position": [
+        0.13677867778147423,
+        -0.5327950211732511
+      ]
+    },
+    {
+      "id": "b5468782-e774-486a-b52e-b3aed29cd2ee",
+      "position": [
+        -0.06264458761575363,
+        -0.40577587047731506
+      ]
+    },
+    {
+      "id": "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+      "position": [
+        -0.057073047170434474,
+        -0.16014998301629652
+      ]
+    },
+    {
+      "id": "b479ce9b-441e-47d6-a045-482d0f272a38",
+      "position": [
+        -0.3294804514288924,
+        0.05679049377863449
+      ]
+    },
+    {
+      "id": "a6aea162-abae-435f-adac-5fbe2b8c5600",
+      "position": [
+        -0.3294804514288924,
+        0.02845807782441783
+      ]
+    },
+    {
+      "id": "8a07ba2e-8ac1-4b12-82d1-1d576308d06b",
+      "position": [
+        -0.4190786985556034,
+        0.40530971128478216
+      ]
+    },
+    {
+      "id": "de5ff552-ca99-4614-bc8d-d9b8c94e09c1",
+      "position": [
+        -0.7437180046052148,
+        0.3888940785236961
+      ]
+    },
+    {
+      "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+      "position": [
+        0.17052678553098197,
+        -0.4915693074466524
+      ]
+    },
+    {
+      "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+      "position": [
+        0.4925360542033371,
+        -0.6612791286926718
+      ]
+    },
+    {
+      "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+      "position": [
+        -1.156427839294254,
+        -0.6918970250074116
+      ]
+    },
+    {
+      "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+      "position": [
+        -0.666710050725554,
+        -0.43514688746827795
+      ]
+    },
+    {
+      "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+      "position": [
+        0.07613473790331667,
+        -0.4441416350751753
+      ]
+    },
+    {
+      "id": "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+      "position": [
+        -0.7473992863589544,
+        -0.48062613479128174
+      ]
+    },
+    {
+      "id": "38b68205-c4f6-4feb-9eff-e22852b7e260",
+      "position": [
+        -0.5326353931473223,
+        0.12341762379511524
+      ]
+    },
+    {
+      "id": "ecb62089-9ae8-419a-a40c-43289a4d515e",
+      "position": [
+        -0.5567006727234572,
+        0.14673024120518127
+      ]
+    },
+    {
+      "id": "396b6bdf-eea4-427d-9452-40af31fffcd2",
+      "position": [
+        -0.5807659522995919,
+        0.12341762379511524
+      ]
+    },
+    {
+      "id": "614f89a8-0294-4ee6-a691-6ec488ad4e5f",
+      "position": [
+        -0.5567006727234572,
+        0.10010500638504921
+      ]
+    },
+    {
+      "id": "e0d04b71-68a9-4bb0-b521-5e5eff0d6c21",
+      "position": [
+        -0.23988220430218132,
+        0.40530971128478216
+      ]
+    },
+    {
+      "id": "5e8bb10a-1573-4d97-b74e-a8021f8acbb5",
+      "position": [
+        0.08475710174743001,
+        0.3888940785236961
+      ]
+    },
+    {
+      "id": "a8118928-097a-4080-bf83-1b615bf3a2b0",
+      "position": [
+        -0.1885384002991944,
+        0.2982511811426212
+      ]
+    },
+    {
+      "id": "b5c9e937-c843-4bda-88c8-f6272da42a43",
+      "position": [
+        -0.10337540141318469,
+        0.32867050505154255
+      ]
+    },
+    {
+      "id": "0544c668-a77c-480a-b8be-e05ed26ad231",
+      "position": [
+        -0.18781345700776203,
+        0.23840637968724473
+      ]
+    },
+    {
+      "id": "a60f176d-5e05-4f82-9354-879e0905b7c0",
+      "position": [
+        -0.1679756241424667,
+        0.2829021294294014
+      ]
+    },
+    {
+      "id": "96ee8c07-1aa8-453b-85b4-b3f53a1a9328",
+      "position": [
+        0.0007550464745342822,
+        0.30028445810836557
+      ]
+    },
+    {
+      "id": "57e833d3-50be-4e8e-aab8-ecf5afaa7c0a",
+      "position": [
+        0.06825483995383075,
+        0.23249337966882055
+      ]
+    },
+    {
+      "id": "3724aa4a-3daa-4160-8254-af2aec3e1fe8",
+      "position": [
+        0.026408791479060723,
+        0.17046530950582123
+      ]
+    },
+    {
+      "id": "9b7a7014-91ce-48e1-abbd-9ab45a6ef9a6",
+      "position": [
+        0.03633691900702296,
+        0.21672341297294664
+      ]
+    },
+    {
+      "id": "68d044ca-444b-4114-9818-6d2918f19713",
+      "position": [
+        -0.012680206724243859,
+        0.2738604905858949
+      ]
+    },
+    {
+      "id": "deee6dae-1c5f-43f8-a7b6-41f76b47ac9d",
+      "position": [
+        -0.1566918104551096,
+        0.26688355273719255
+      ]
+    },
+    {
+      "id": "220ee247-b28b-4975-ab4c-e6a935a6029c",
+      "position": [
+        -0.18781345700776203,
+        0.23840637968724473
+      ]
+    },
+    {
+      "id": "bc22e305-5528-44a8-b647-bbb0b417a32f",
+      "position": [
+        -0.15097608862951095,
+        0.11249530871976275
+      ]
+    },
+    {
+      "id": "f1851b50-07c9-4543-827a-f1ef1d87cfd6",
+      "position": [
+        -0.059279485070122706,
+        0.10909519414138591
+      ]
+    },
+    {
+      "id": "a02439af-b873-48ca-84f0-615839356c50",
+      "position": [
+        0.026408791479060723,
+        0.17046530950582123
+      ]
+    },
+    {
+      "id": "60717a39-a29d-41e4-9eea-db8772b83788",
+      "position": [
+        -0.12549739044289698,
+        0.24314712981799771
+      ]
+    },
+    {
+      "id": "1e5769ee-dbe8-4876-9f7c-2cd850f5ec0d",
+      "position": [
+        -0.1387554253044364,
+        0.2556340302543908
+      ]
+    },
+    {
+      "id": "8d9d29a8-af5f-406b-adb1-ca39e1a27e01",
+      "position": [
+        -0.1496017486257203,
+        0.24145930576454883
+      ]
+    },
+    {
+      "id": "bead0e9f-03dd-45ca-8f46-608299dcf72e",
+      "position": [
+        -0.13634371376418064,
+        0.22897240532815577
+      ]
+    },
+    {
+      "id": "a733d871-90a9-4c67-a3f6-d47141659086",
+      "position": [
+        -0.05380025250284415,
+        0.24572713378141656
+      ]
+    },
+    {
+      "id": "6a83498a-5d21-4bb2-9921-b9e2cad2a8da",
+      "position": [
+        -0.06874431064258502,
+        0.25704436364196576
+      ]
+    },
+    {
+      "id": "b8b373cb-a1b6-45af-a4d9-e53a939ce4a2",
+      "position": [
+        -0.07215729063736787,
+        0.23861188868726488
+      ]
+    },
+    {
+      "id": "d3a21185-01b1-43a5-b4ed-f784defb1063",
+      "position": [
+        -0.057213232497627,
+        0.22729465882671568
+      ]
+    },
+    {
+      "id": "f862ff63-3576-48e1-816b-a2a83ac9a70e",
+      "position": [
+        -0.09089974105702425,
+        0.19893602786350847
+      ]
+    },
+    {
+      "id": "0cd60bd2-ca4a-4685-871e-a88d31b503da",
+      "position": [
+        -0.10497942674808325,
+        0.23386367890385237
+      ]
+    },
+    {
+      "id": "46f2a0e8-9281-4aa0-816b-7b9bf8221d4a",
+      "position": [
+        -0.11905911243914225,
+        0.19893602786350847
+      ]
+    },
+    {
+      "id": "345b84d9-301b-4f4e-877e-3fc604c06af0",
+      "position": [
+        -0.10497942674808325,
+        0.16400837682316458
+      ]
+    },
+    {
+      "id": "fc8831b1-ad7c-404e-9f4d-64048d41e935",
+      "position": [
+        -0.1263255097104624,
+        0.12341762379511524
+      ]
+    },
+    {
+      "id": "ff8032c2-934c-419c-b8d9-6fac1e77fd4c",
+      "position": [
+        -0.1022602301343275,
+        0.14673024120518127
+      ]
+    },
+    {
+      "id": "7f52e809-5f83-4c93-a695-629480cb6d08",
+      "position": [
+        -0.07819495055819281,
+        0.12341762379511524
+      ]
+    },
+    {
+      "id": "9a775034-67b1-434b-8b1b-542d37158130",
+      "position": [
+        -0.1022602301343275,
+        0.10010500638504921
+      ]
+    },
+    {
+      "id": "b363f207-c2e1-4eb0-95a6-6a10e56930ed",
+      "position": [
+        -0.04537020366068001,
+        0.18620702357610752
+      ]
+    },
+    {
+      "id": "5f0e51a1-2724-41e6-badf-636afa2b8347",
+      "position": [
+        -0.10062325124670313,
+        0.28161457475235474
+      ]
+    },
+    {
+      "id": "7609a154-1272-4f8b-905f-68271ee138f8",
+      "position": [
+        -0.1657869399777776,
+        0.18620702357610752
+      ]
+    },
+    {
+      "id": "11f33678-30db-4da0-9722-d328e2b05d82",
+      "position": [
+        -0.10676434873565754,
+        0.10508511782584859
+      ]
+    },
+    {
+      "id": "5cbf9966-2fff-4e38-87aa-267ce4124b2b",
+      "position": [
+        0.19176000014768735,
+        0.15718419164613484
+      ]
+    },
+    {
+      "id": "29be8347-778b-4b92-bd7d-2125220bb0c4",
+      "position": [
+        0.19879395485650786,
+        0.02185640740331346
+      ]
+    },
+    {
+      "id": "3a32e676-39eb-46d2-850e-6f3e9d6dbf37",
+      "position": [
+        0.12875653902941064,
+        0.11959373573835147
+      ]
+    },
+    {
+      "id": "c5c6e007-b2da-4cdb-9a6b-65a85d630748",
+      "position": [
+        0.17025781079090585,
+        0.1121284809778967
+      ]
+    },
+    {
+      "id": "8a96af99-b09e-4bf1-9674-883e626132c8",
+      "position": [
+        0.15578216417460178,
+        0.1515927619904142
+      ]
+    },
+    {
+      "id": "e819aab1-781e-42fb-b8a7-091c589f88c9",
+      "position": [
+        0.1091625837947573,
+        0.06206855824961088
+      ]
+    },
+    {
+      "id": "6abf0f78-642d-413d-9698-124649d9f0b6",
+      "position": [
+        0.1129317968098239,
+        0.0354812705639273
+      ]
+    },
+    {
+      "id": "60b8ceaf-4b33-49ad-90c2-53aab055ffbf",
+      "position": [
+        0.0887995197555086,
+        -0.03243885719617973
+      ]
+    },
+    {
+      "id": "dd10e2b7-1e12-483e-ac18-c012747e6b21",
+      "position": [
+        0.12341356203602694,
+        -0.019396197097069023
+      ]
+    },
+    {
+      "id": "7d23180d-2db7-40ba-801b-3342988f87c9",
+      "position": [
+        0.16876374489785462,
+        0.02979527676277477
+      ]
+    },
+    {
+      "id": "00a6d654-0087-4f59-a888-0178a23c90dd",
+      "position": [
+        0.11603332473314398,
+        0.08577246605386105
+      ]
+    },
+    {
+      "id": "af6b707c-05b5-429e-b400-143306cd76f4",
+      "position": [
+        0.1229052359757391,
+        0.11310360079714114
+      ]
+    },
+    {
+      "id": "add4fc3a-33d2-4daa-bd64-88d9f62e7c09",
+      "position": [
+        0.18516556119928396,
+        0.17309419041512725
+      ]
+    },
+    {
+      "id": "9dbf2bbd-893e-434d-adc5-32cc694cd438",
+      "position": [
+        0.1556311938895495,
+        -0.037659794390379864
+      ]
+    },
+    {
+      "id": "4a228da1-e51c-405e-aeb3-9d8cdcca24b3",
+      "position": [
+        0.1199420357079547,
+        0.056642412339308335
+      ]
+    },
+    {
+      "id": "ac759984-8eb0-4b3f-a389-d4631df19938",
+      "position": [
+        0.08920760808461559,
+        0.09138353182501395
+      ]
+    },
+    {
+      "id": "fa99654a-b9c3-4bda-9e4b-dc7a7c5b10a1",
+      "position": [
+        0.19408763828209663,
+        0.20569878554457574
+      ]
+    },
+    {
+      "id": "baefa15d-818f-4ff4-bdaf-47b84d31dd61",
+      "position": [
+        0.23242016482692518,
+        0.054451646954427474
+      ]
+    },
+    {
+      "id": "ad123300-09be-486b-bcbe-0fc0d660908e",
+      "position": [
+        0.15247627941070074,
+        -0.06474485567075972
+      ]
+    },
+    {
+      "id": "12f06774-5c62-409a-aa27-38b83a030181",
+      "position": [
+        0.055005659893973435,
+        -0.09991722058699287
+      ]
+    },
+    {
+      "id": "496fb7fb-32de-42e4-8c92-7425eb485c3e",
+      "position": [
+        -0.7657886639037134,
+        0.09792762502142666
+      ]
+    },
+    {
+      "id": "3b549fd7-f52f-4bbb-8f26-5062596bc381",
+      "position": [
+        -0.3294804514288924,
+        -0.36047937039627503
+      ]
+    },
+    {
+      "id": "14c42797-fe60-4f8a-b291-c8367f62332e",
+      "position": [
+        -0.3294804514288924,
+        0.82
+      ]
+    },
+    {
+      "id": "f9e258c7-4fc4-43b0-a1c0-f7438ff14cdd",
+      "position": [
+        0.10682776104592862,
+        0.09792762502142666
+      ]
+    },
+    {
+      "id": "d0578cff-499d-4009-8be5-877ae3b75c79",
+      "position": [
+        -0.3294804514288924,
+        -0.36047937039627503
+      ]
+    },
+    {
+      "id": "8fe4beed-f673-48d5-84f8-097489e9e4ff",
+      "position": [
+        -0.3294804514288924,
+        0.82
+      ]
+    }
+  ],
+  "joins": [
+    {
+      "id": "0db93485-8386-459e-8e98-6ef62cc00d97",
+      "a": {
+        "curveId": "c108324f-c915-443d-89b3-6fe4a3ebd7a7",
+        "end": 1,
+        "p": [
+          -0.6422768898327489,
+          0.26803673674907935
+        ],
+        "distance": 4.028904318929248
+      },
+      "b": {
+        "curveId": "571691a4-7630-4984-8640-49990094d79f",
+        "end": 0,
+        "p": [
+          -0.6422768898327489,
+          0.26803673674907935
+        ],
+        "distance": 2.0052822846652405
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "5cff4c1b-bccf-4e8e-a42e-e39e47c7d195",
+      "a": {
+        "curveId": "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+        "end": 1,
+        "p": [
+          -0.6808092709356389,
+          0.16154450545341353
+        ],
+        "distance": 2.1177296032778785
+      },
+      "b": {
+        "curveId": "90380fbd-d17a-41a2-8419-084ed509737c",
+        "end": 0,
+        "p": [
+          -0.6808092709356389,
+          0.16154450545341353
+        ],
+        "distance": 2.0085773849255832
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "a2b2345a-f7a2-4604-b903-192664714b68",
+      "a": {
+        "curveId": "5310bc0a-65ed-4754-878a-1c044790d3ad",
+        "end": 1,
+        "p": [
+          -0.7272157428116155,
+          0.23249337966882055
+        ],
+        "distance": 1.3672603472069456
+      },
+      "b": {
+        "curveId": "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+        "end": 0,
+        "p": [
+          -0.7272157428116155,
+          0.23249337966882055
+        ],
+        "distance": 1.3672603472069456
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "6428794f-e8cf-4824-80db-3ec07df547cb",
+      "a": {
+        "curveId": "90380fbd-d17a-41a2-8419-084ed509737c",
+        "end": 1,
+        "p": [
+          -0.6952978218648077,
+          0.21672341297294664
+        ],
+        "distance": 0.7346102392424569
+      },
+      "b": {
+        "curveId": "c108324f-c915-443d-89b3-6fe4a3ebd7a7",
+        "end": 0,
+        "p": [
+          -0.6952978218648077,
+          0.21672341297294664
+        ],
+        "distance": 0.7346102392424569
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "a49cfaf7-c523-4790-9928-33fc5347975c",
+      "a": {
+        "curveId": "38d8fae5-0c24-4832-ab31-7c40fbc4da39",
+        "end": 1,
+        "p": [
+          -0.659715949332319,
+          0.30028445810836557
+        ],
+        "distance": 0.39616948923868694
+      },
+      "b": {
+        "curveId": "5310bc0a-65ed-4754-878a-1c044790d3ad",
+        "end": 0,
+        "p": [
+          -0.659715949332319,
+          0.30028445810836557
+        ],
+        "distance": 0.39616948923868694
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "6dd33277-7208-47e4-8f33-87f15c693a48",
+      "a": {
+        "curveId": "8095e80f-7e8e-489b-b386-ae74a3f18af5",
+        "end": 0,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 1.2290512408382894
+      },
+      "b": {
+        "curveId": "0f168ed1-ae77-4665-b051-48356ca18837",
+        "end": 1,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 1.2290512408382894
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "d56e60fd-fd67-4318-836f-178666a4a569",
+      "a": {
+        "curveId": "7a419794-1ae6-4776-bd46-cf2c73eca2a9",
+        "end": 1
+      },
+      "b": {
+        "curveId": "01ffdba4-5eb6-43e3-ac43-c112a77fde85",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "ed161cb7-688a-4d1d-8f88-d1b790f0dabe",
+      "a": {
+        "curveId": "01ffdba4-5eb6-43e3-ac43-c112a77fde85",
+        "end": 1
+      },
+      "b": {
+        "curveId": "07b8a55c-74e3-4f39-be20-65c211e99d12",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "febeea3b-9ac6-49f4-ac29-46a9f6fac0d4",
+      "a": {
+        "curveId": "07b8a55c-74e3-4f39-be20-65c211e99d12",
+        "end": 1
+      },
+      "b": {
+        "curveId": "cf9bc2ab-4cef-4462-be33-cb5222fa8df4",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "84979abb-2bb5-442e-bae7-3b817d1723ac",
+      "a": {
+        "curveId": "cf9bc2ab-4cef-4462-be33-cb5222fa8df4",
+        "end": 1
+      },
+      "b": {
+        "curveId": "7a419794-1ae6-4776-bd46-cf2c73eca2a9",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "552f55c8-da04-44cf-88bf-0b7bbf514510",
+      "a": {
+        "curveId": "b699f787-e558-405e-ac9a-8b7202f8b690",
+        "end": 1
+      },
+      "b": {
+        "curveId": "195e8edf-9b8e-4098-90e5-46f802a30834",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "6fc469c6-c5b2-4c03-97cc-0c536d81f526",
+      "a": {
+        "curveId": "195e8edf-9b8e-4098-90e5-46f802a30834",
+        "end": 1
+      },
+      "b": {
+        "curveId": "e71f443a-3905-4615-941e-719bf126df68",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "5694f472-336b-43e7-8c43-1ffb1c501a39",
+      "a": {
+        "curveId": "e71f443a-3905-4615-941e-719bf126df68",
+        "end": 1
+      },
+      "b": {
+        "curveId": "da8a3c28-74c5-43a7-bf3c-0f8f60632851",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "913ef5fd-4f1e-4abc-a9f0-a0c3432d62d6",
+      "a": {
+        "curveId": "da8a3c28-74c5-43a7-bf3c-0f8f60632851",
+        "end": 1
+      },
+      "b": {
+        "curveId": "b699f787-e558-405e-ac9a-8b7202f8b690",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "09f1c415-a9b2-4fd5-9dcf-81b803c69576",
+      "a": {
+        "curveId": "cf1c4b7e-8c67-4585-a493-a106dd0a6654",
+        "end": 1
+      },
+      "b": {
+        "curveId": "ac5a4ab5-89ab-4094-8dde-df6e0905de20",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "538fdb85-3b9a-4957-ae61-802fb068a710",
+      "a": {
+        "curveId": "ac5a4ab5-89ab-4094-8dde-df6e0905de20",
+        "end": 1
+      },
+      "b": {
+        "curveId": "aa6ab9fc-7465-49d4-96b0-61e26c8c69bd",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "5c9280dd-d625-45a4-9aeb-65c1f4722fc5",
+      "a": {
+        "curveId": "aa6ab9fc-7465-49d4-96b0-61e26c8c69bd",
+        "end": 1
+      },
+      "b": {
+        "curveId": "ac692835-bbe1-4607-965c-f740d3c8e638",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "f8caf29d-2351-47d0-96f4-fd5f9ca36953",
+      "a": {
+        "curveId": "ac692835-bbe1-4607-965c-f740d3c8e638",
+        "end": 1
+      },
+      "b": {
+        "curveId": "cf1c4b7e-8c67-4585-a493-a106dd0a6654",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "8ed02c88-6d19-4e00-8c19-2a1b8181dc5d",
+      "a": {
+        "curveId": "d860aec1-af8b-4408-9d94-24708eabad8f",
+        "end": 1
+      },
+      "b": {
+        "curveId": "44f2fff2-e52b-4ff6-81e7-0a4639c77f39",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "84cf909e-be46-400f-a7ce-a2b16c9f3c26",
+      "a": {
+        "curveId": "44f2fff2-e52b-4ff6-81e7-0a4639c77f39",
+        "end": 1
+      },
+      "b": {
+        "curveId": "a16bf106-f222-416f-908f-5f4018658fba",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "3b6e5b52-d535-4f4a-b87f-f0b94bb3ab01",
+      "a": {
+        "curveId": "a16bf106-f222-416f-908f-5f4018658fba",
+        "end": 1
+      },
+      "b": {
+        "curveId": "92db7ccb-db10-4cce-9f79-d3c2af8d74ad",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "38300e7d-a056-467e-a515-6cccdb0f86eb",
+      "a": {
+        "curveId": "92db7ccb-db10-4cce-9f79-d3c2af8d74ad",
+        "end": 1
+      },
+      "b": {
+        "curveId": "d860aec1-af8b-4408-9d94-24708eabad8f",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "ed222e9a-5ec0-42e0-bd8f-561a7140316d",
+      "a": {
+        "curveId": "1d95088b-0001-4441-94ea-5f2b71848655",
+        "end": 1,
+        "p": [
+          0.2044886142823705,
+          -0.015203192708627102
+        ],
+        "distance": 1.108609494507801
+      },
+      "b": {
+        "curveId": "8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde",
+        "end": 0,
+        "p": [
+          0.2044886142823705,
+          -0.015203192708627102
+        ],
+        "distance": 1.108609494507801
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "105efd6e-0610-4e85-81f9-9d273d26ad88",
+      "a": {
+        "curveId": "8bfbcd11-f84d-4b3b-aa6d-26a6f23c7bde",
+        "end": 1,
+        "p": [
+          0.2368835331735854,
+          0.06460309506457279
+        ],
+        "distance": 2.5361264641774253
+      },
+      "b": {
+        "curveId": "2f401004-d1ed-48dc-893c-d7fe924099f3",
+        "end": 0,
+        "p": [
+          0.2368835331735854,
+          0.06460309506457279
+        ],
+        "distance": 2.4815925906364256
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "8868c4a1-ce5e-4471-a027-a3cacef5f4c8",
+      "a": {
+        "curveId": "8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18",
+        "end": 1,
+        "p": [
+          0.23460799254973638,
+          0.11722731522830698
+        ],
+        "distance": 3.8315800084793397
+      },
+      "b": {
+        "curveId": "e91b869a-f32b-412b-8ee5-6e2160c9e23e",
+        "end": 0,
+        "p": [
+          0.23460799254973638,
+          0.11722731522830698
+        ],
+        "distance": 3.8315800084793397
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "bc1e1632-5bb0-44e8-a686-bd9adefc4663",
+      "a": {
+        "curveId": "b829dd27-2fb5-4fe0-b719-da60e7acadca",
+        "end": 1,
+        "p": [
+          0.1672050152067755,
+          0.03556834127845479
+        ],
+        "distance": 3.039597720109321
+      },
+      "b": {
+        "curveId": "3f1355cb-f97d-4f3d-b408-65ff400d13c3",
+        "end": 0,
+        "p": [
+          0.1672050152067755,
+          0.03556834127845479
+        ],
+        "distance": 3.039597720109321
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "93f95046-d3c9-46c5-b94a-9242fe5a0c93",
+      "a": {
+        "curveId": "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+        "end": 1
+      },
+      "b": {
+        "curveId": "203b901d-169a-473f-a939-5b216891d5f6",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "5c47ca94-1536-43c4-b703-11716ebf21f3",
+      "a": {
+        "curveId": "203b901d-169a-473f-a939-5b216891d5f6",
+        "end": 1
+      },
+      "b": {
+        "curveId": "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "28a57644-b8d3-413c-a70a-964d5178e329",
+      "a": {
+        "curveId": "f7118c48-2b5c-432f-9359-d8f03e7ae6cf",
+        "end": 1
+      },
+      "b": {
+        "curveId": "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "76ed88fe-3acf-4f46-b1f8-a5e042a1c941",
+      "a": {
+        "curveId": "4923883b-f12f-4279-ab7d-fb2ff5d1cd1a",
+        "end": 1
+      },
+      "b": {
+        "curveId": "5dea428f-d4c9-4970-a12d-ee79c6be7580",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "d974ad50-94fa-4e44-8b1f-064ba88a5d8d",
+      "a": {
+        "curveId": "dae9a0ab-b60f-444b-8aca-f8646264699a",
+        "end": 1,
+        "p": [
+          -0.6422768898327489,
+          0.26803673674907935
+        ],
+        "distance": 4.028904318929248
+      },
+      "b": {
+        "curveId": "e82d68be-7540-49bd-af1f-4cb11f64e154",
+        "end": 0,
+        "p": [
+          -0.6422768898327489,
+          0.26803673674907935
+        ],
+        "distance": 2.0052822846652405
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "579f1a1e-4797-4ff0-a729-672784d616a5",
+      "a": {
+        "curveId": "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+        "end": 1,
+        "p": [
+          -0.6808092709356389,
+          0.16154450545341353
+        ],
+        "distance": 2.1177296032778785
+      },
+      "b": {
+        "curveId": "3b82ab53-bc0d-4b30-979f-ca041e8466c6",
+        "end": 0,
+        "p": [
+          -0.6808092709356389,
+          0.16154450545341353
+        ],
+        "distance": 2.0085773849255832
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "98a832d9-891f-445b-a4b5-7b944021d57a",
+      "a": {
+        "curveId": "006afa02-cc0f-4240-a78d-511bcc5a229f",
+        "end": 1,
+        "p": [
+          -0.7272157428116155,
+          0.23249337966882055
+        ],
+        "distance": 1.3672603472069456
+      },
+      "b": {
+        "curveId": "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+        "end": 0,
+        "p": [
+          -0.7272157428116155,
+          0.23249337966882055
+        ],
+        "distance": 1.3672603472069456
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "e6f82949-e699-4a8f-a586-963ecd583353",
+      "a": {
+        "curveId": "3b82ab53-bc0d-4b30-979f-ca041e8466c6",
+        "end": 1,
+        "p": [
+          -0.6952978218648077,
+          0.21672341297294664
+        ],
+        "distance": 0.7346102392424569
+      },
+      "b": {
+        "curveId": "dae9a0ab-b60f-444b-8aca-f8646264699a",
+        "end": 0,
+        "p": [
+          -0.6952978218648077,
+          0.21672341297294664
+        ],
+        "distance": 0.7346102392424569
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "74204799-9e31-4fb4-a001-00e1d38317b0",
+      "a": {
+        "curveId": "68c9fbb5-45ce-4aac-9f7a-03f75552ddc0",
+        "end": 1,
+        "p": [
+          -0.659715949332319,
+          0.30028445810836557
+        ],
+        "distance": 0.39616948923868694
+      },
+      "b": {
+        "curveId": "006afa02-cc0f-4240-a78d-511bcc5a229f",
+        "end": 0,
+        "p": [
+          -0.659715949332319,
+          0.30028445810836557
+        ],
+        "distance": 0.39616948923868694
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "657064ba-b8dd-4196-acda-81ae606f1329",
+      "a": {
+        "curveId": "cab9de17-c372-4522-bf83-10b0ac63a9f1",
+        "end": 0,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 1.2290512408382894
+      },
+      "b": {
+        "curveId": "cdc604fe-4096-48e8-88b6-101886cef0a1",
+        "end": 1,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 1.2290512408382894
+      },
+      "mode": "CUSP"
+    },
+    {
+      "id": "d09b669d-5868-4657-8ed7-86f1619dc0f9",
+      "a": {
+        "curveId": "668756f0-fe23-45e0-af5d-8e0eebcb44e7",
+        "end": 1
+      },
+      "b": {
+        "curveId": "7476ccfc-02b4-477f-93b9-457650002cd4",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "dc1072ef-46e3-458c-bf55-cc230c680f0f",
+      "a": {
+        "curveId": "7476ccfc-02b4-477f-93b9-457650002cd4",
+        "end": 1
+      },
+      "b": {
+        "curveId": "dbcbe537-3e91-4f65-a11d-8afa12bdc980",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "4439a90c-fd65-4136-92d6-fbd85fa71c35",
+      "a": {
+        "curveId": "dbcbe537-3e91-4f65-a11d-8afa12bdc980",
+        "end": 1
+      },
+      "b": {
+        "curveId": "97571798-c8a4-48f3-8d54-6797987f28cc",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "adc80f97-0e17-4cb5-8a65-f7e8c65f9f34",
+      "a": {
+        "curveId": "97571798-c8a4-48f3-8d54-6797987f28cc",
+        "end": 1
+      },
+      "b": {
+        "curveId": "668756f0-fe23-45e0-af5d-8e0eebcb44e7",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "9c630ea0-9d8e-4662-82de-e15169bcc1c3",
+      "a": {
+        "curveId": "ec7dffc5-41d9-4444-b1d3-7b1d41295dc7",
+        "end": 1
+      },
+      "b": {
+        "curveId": "2e287310-2acb-40fc-bf3b-7d153882462b",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "2a10253c-606e-41c6-8142-b380322e744c",
+      "a": {
+        "curveId": "2e287310-2acb-40fc-bf3b-7d153882462b",
+        "end": 1
+      },
+      "b": {
+        "curveId": "23f7ef69-cfda-4a5f-9053-e6a1f8c2e458",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "8b55e2f9-31ae-4810-81c0-464903bd5a5d",
+      "a": {
+        "curveId": "23f7ef69-cfda-4a5f-9053-e6a1f8c2e458",
+        "end": 1
+      },
+      "b": {
+        "curveId": "516c9bd1-ed7b-484c-80a5-d4efca4b9a00",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "cc36d694-1eb0-454d-b867-216de81e5b5b",
+      "a": {
+        "curveId": "516c9bd1-ed7b-484c-80a5-d4efca4b9a00",
+        "end": 1
+      },
+      "b": {
+        "curveId": "ec7dffc5-41d9-4444-b1d3-7b1d41295dc7",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "29beefcf-2a16-4c35-82b5-eff90a8a55fa",
+      "a": {
+        "curveId": "6a63aeee-5d3c-48fb-a49a-9e61bd8c38a6",
+        "end": 1
+      },
+      "b": {
+        "curveId": "c9b16896-99ba-41bd-b6cc-ca5e94a27c4c",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "d233e512-b620-4e07-bd71-6624c20849e3",
+      "a": {
+        "curveId": "c9b16896-99ba-41bd-b6cc-ca5e94a27c4c",
+        "end": 1
+      },
+      "b": {
+        "curveId": "76b6f2d3-db40-4e0b-baa7-85987ef61133",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "916dab99-1ff2-470e-b4e5-4ecc5fc9d5fc",
+      "a": {
+        "curveId": "76b6f2d3-db40-4e0b-baa7-85987ef61133",
+        "end": 1
+      },
+      "b": {
+        "curveId": "69a9d829-28ab-4e71-99b8-bc02f4ab6718",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "8aa7c33f-5fd4-4fbf-b983-3f4e95e434c6",
+      "a": {
+        "curveId": "69a9d829-28ab-4e71-99b8-bc02f4ab6718",
+        "end": 1
+      },
+      "b": {
+        "curveId": "6a63aeee-5d3c-48fb-a49a-9e61bd8c38a6",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "88fb660f-ddc7-485e-8d92-3bc39e1ac2f8",
+      "a": {
+        "curveId": "cbd1da4c-2736-4235-90da-10bac95bc57f",
+        "end": 1
+      },
+      "b": {
+        "curveId": "c0b97d95-b91f-4204-a886-8f0f8e371d05",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "6b51eab2-a97b-43dc-ac1d-1a34e1f6f84f",
+      "a": {
+        "curveId": "c0b97d95-b91f-4204-a886-8f0f8e371d05",
+        "end": 1
+      },
+      "b": {
+        "curveId": "1b77c766-487b-4b6d-9f6c-28415be5e7da",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "939248dc-a14f-4a9a-9676-5086df03e589",
+      "a": {
+        "curveId": "1b77c766-487b-4b6d-9f6c-28415be5e7da",
+        "end": 1
+      },
+      "b": {
+        "curveId": "8267442e-f3f5-4a83-bb13-4f9c5cc85e20",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "dfcd6fa7-534e-4f13-a171-0a5896237945",
+      "a": {
+        "curveId": "8267442e-f3f5-4a83-bb13-4f9c5cc85e20",
+        "end": 1
+      },
+      "b": {
+        "curveId": "cbd1da4c-2736-4235-90da-10bac95bc57f",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "ef154a4e-740e-4832-a8df-2fb839c31294",
+      "a": {
+        "curveId": "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+        "end": 1
+      },
+      "b": {
+        "curveId": "17c8144a-e188-4300-819c-9e8d195d89a2",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "447fa357-23e1-455f-90b8-cd912c4b8d49",
+      "a": {
+        "curveId": "17c8144a-e188-4300-819c-9e8d195d89a2",
+        "end": 1
+      },
+      "b": {
+        "curveId": "12aad141-6900-44b4-8fdb-6274c3277f81",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "da9d304d-9faf-4c72-a760-243986ce0a8e",
+      "a": {
+        "curveId": "12aad141-6900-44b4-8fdb-6274c3277f81",
+        "end": 1
+      },
+      "b": {
+        "curveId": "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "2868559c-d3fa-4d53-9bba-a4a286a8931a",
+      "a": {
+        "curveId": "35d7e02e-6961-48db-bf18-01ce8bd18f2f",
+        "end": 1
+      },
+      "b": {
+        "curveId": "a5a2c501-c2e4-4f3e-bdac-b1ff68560570",
+        "end": 0
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "f70c8771-6273-4eea-b34b-895611f51bb9",
+      "a": {
+        "curveId": "bfb58eeb-85bc-44b3-9fec-babc11345589",
+        "end": 1,
+        "p": [
+          0.2044886142823705,
+          -0.015203192708627102
+        ],
+        "distance": 1.108609494507801
+      },
+      "b": {
+        "curveId": "1e4ae211-0937-440a-83ea-97b4a63d82be",
+        "end": 0,
+        "p": [
+          0.2044886142823705,
+          -0.015203192708627102
+        ],
+        "distance": 1.108609494507801
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "9b83080c-6598-45fc-9e30-dcc0e6bd99c9",
+      "a": {
+        "curveId": "1e4ae211-0937-440a-83ea-97b4a63d82be",
+        "end": 1,
+        "p": [
+          0.2368835331735854,
+          0.06460309506457279
+        ],
+        "distance": 2.5361264641774253
+      },
+      "b": {
+        "curveId": "bdd88835-8834-4f5e-bc5b-87a55326412f",
+        "end": 0,
+        "p": [
+          0.2368835331735854,
+          0.06460309506457279
+        ],
+        "distance": 2.4815925906364256
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "8ad92262-7327-47db-b599-d64ed6d8edaf",
+      "a": {
+        "curveId": "84677dce-8b2a-4b33-bc56-b72aec881d05",
+        "end": 1,
+        "p": [
+          0.23460799254973638,
+          0.11722731522830698
+        ],
+        "distance": 3.8315800084793397
+      },
+      "b": {
+        "curveId": "0b2fd63e-b97c-4071-901e-56ee859f49f4",
+        "end": 0,
+        "p": [
+          0.23460799254973638,
+          0.11722731522830698
+        ],
+        "distance": 3.8315800084793397
+      },
+      "mode": "SMOOTH"
+    },
+    {
+      "id": "4cc42edd-6f17-4a08-a71e-c363a6d83dfa",
+      "a": {
+        "curveId": "0f325156-80e7-486c-bd40-6615e6e9cd28",
+        "end": 1,
+        "p": [
+          0.1672050152067755,
+          0.03556834127845479
+        ],
+        "distance": 3.039597720109321
+      },
+      "b": {
+        "curveId": "a3c8e6d5-3968-4197-b83e-f48e1f3f7ee9",
+        "end": 0,
+        "p": [
+          0.1672050152067755,
+          0.03556834127845479
+        ],
+        "distance": 3.039597720109321
+      },
+      "mode": "SMOOTH"
+    }
+  ],
+  "mirrorAxisX": -0.3294804514288924,
+  "displayIntervals": [
+    {
+      "id": "0b84096b-b863-4c55-a28b-1b8b30dcfe48",
+      "anchor": {
+        "id": "3ec62e9e-fd99-425e-ae0e-52d523c346e1",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "9df10de6-5c17-45f5-a39d-919edb39c5fe",
+          "start": 0.010491684781375632,
+          "end": 0.7775367218130844,
+          "inkEnds": [
+            {
+              "taper": 0.02
+            },
+            {
+              "taper": 0.02
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "399cd618-9f97-43b1-b708-99792d12d495",
+      "anchor": {
+        "id": "a3f62123-c980-4cba-8e22-24a6bc1d4b0e",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "eed90aab-18ce-4fa1-9a71-ae076db6187d",
+          "start": 0.41478292100801517,
+          "end": 0.7371577808159345,
+          "inkEnds": [
+            {
+              "taper": 0.016
+            },
+            {
+              "taper": 0.012
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "46e0216c-538e-43b7-8d92-6ddf6c87f487",
+      "anchor": {
+        "id": "b829dd27-2fb5-4fe0-b719-da60e7acadca",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "7f8a543a-d71d-4a71-9e8b-3e713bf23012",
+          "start": 0.023020242859678092,
+          "end": 0.637715594220087,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "0089e36b-df80-4cfc-b3f7-bad57c174a69",
+          "start": 1,
+          "end": 0.6915353362883445,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c2db409c-2c7e-4b63-a582-22105be5f628",
+      "anchor": {
+        "id": "8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "0a9f270a-a56c-4f0a-9163-f15406c005b8",
+          "start": 0.058334776287091036,
+          "end": 0.43608052127757363,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "24bf1240-5f91-4370-83f2-db653996ae62",
+          "start": 0.623624624295553,
+          "end": 1,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+      "anchor": {
+        "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+        "reverse": true
+      },
+      "ranges": [
+        {
+          "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+          "start": 0.7968142828971485,
+          "end": 1,
+          "inkEnds": [
+            {
+              "taper": 0.08
+            },
+            {
+              "taper": 0
+            }
+          ]
+        },
+        {
+          "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+          "start": 0.002034832407311142,
+          "end": 0.24573485274715504,
+          "inkEnds": [
+            {
+              "taper": 0
+            },
+            {
+              "taper": 0.08
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "211c5bf8-37d1-45ce-94b2-e0a26d0cf23a",
+      "anchor": {
+        "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "9902e499-76d3-4f8d-aa37-10a2855adad6",
+          "mode": "HIDE",
+          "start": 0.12781089094049503,
+          "end": 0.8311554104773593,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ead9f973-ff41-42d7-9f66-7604a7ad91a0",
+      "anchor": {
+        "id": "098869fc-e9c9-4903-baba-e2e60312e49f",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "08328c38-d7c8-4e08-a008-10dc524ee4a2",
+          "start": 0.4147829210080153,
+          "end": 0.7371577808159349,
+          "inkEnds": [
+            {
+              "taper": 0.016
+            },
+            {
+              "taper": 0.012
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "38b031b3-d6f5-4d48-96e3-8615e88b0b39",
+      "anchor": {
+        "id": "20dffc78-c22b-4a04-8299-529b51a98928",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "23c7cab0-2cd8-47f5-b13f-e88a8b091423",
+          "start": 0.010491684781375632,
+          "end": 0.7775367218130844,
+          "inkEnds": [
+            {
+              "taper": 0.02
+            },
+            {
+              "taper": 0.02
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "8145758a-7d0b-4932-b381-c6a5e7cef02e",
+      "anchor": {
+        "id": "0f325156-80e7-486c-bd40-6615e6e9cd28",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "0bd0d957-8ef1-478d-a663-229b3cfbcf1e",
+          "start": 0.023020242859677964,
+          "end": 0.6377155942200866,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "254c2013-3ebd-48c8-84df-b02a1a635de6",
+          "start": 1,
+          "end": 0.6915353362883443,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "754756ad-9ac3-4175-b10b-680a32f1c024",
+      "anchor": {
+        "id": "84677dce-8b2a-4b33-bc56-b72aec881d05",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "21fcace5-c6c5-40dc-8a9c-15b458db1623",
+          "start": 0.05833477628709077,
+          "end": 0.4360805212775742,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "fbe69513-576e-479a-9cf7-34ef81753470",
+          "start": 0.6236246242955532,
+          "end": 1,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "841ef5a3-46a6-4a12-822b-e4bfb6601bdf",
+      "anchor": {
+        "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "395ebef8-81c0-4a2d-ae61-34096a9c38a8",
+          "mode": "HIDE",
+          "start": 0,
+          "end": 0.35870166107613266,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "3ae55588-19ed-45f6-a369-65e5555b19ac",
+          "mode": "HIDE",
+          "start": 0.5889569240999535,
+          "end": 1,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "e4f01d10-3dec-493d-9877-d577b2be20cc",
+      "anchor": {
+        "id": "685e3343-6754-43e6-aace-c15e510725a3",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "4926bc01-1e07-45ce-9481-47dec58d3209",
+          "mode": "HIDE",
+          "start": 0,
+          "end": 0.3587016610761327,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "813bd1e3-6f45-4db9-b336-e9c7342660d2",
+          "mode": "HIDE",
+          "start": 0.5889569240999535,
+          "end": 1,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "endpointLinks": [
+    {
+      "id": "00329a80-a4e2-4d19-b490-7c22bfce181d",
+      "a": {
+        "curveId": "8095e80f-7e8e-489b-b386-ae74a3f18af5",
+        "end": 0,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 2.8767939319820144
+      },
+      "b": {
+        "curveId": "a3f62123-c980-4cba-8e22-24a6bc1d4b0e",
+        "end": 0,
+        "p": [
+          -0.4573948132437157,
+          0.22895968737008482
+        ],
+        "distance": 0.35461900010501524
+      }
+    },
+    {
+      "id": "22cbc1db-0050-4f3e-90a6-4028ef998432",
+      "a": {
+        "curveId": "516c6b44-2ec8-4297-b6c0-3204c76dd20f",
+        "end": 1,
+        "p": [
+          -0.6853696943368455,
+          0.17046530950582123
+        ],
+        "distance": 2.4320772929969765
+      },
+      "b": {
+        "curveId": "93e02b99-dd5e-4418-9fb9-65ff92832a32",
+        "end": 1,
+        "p": [
+          -0.6785917012981397,
+          0.14636975173603856
+        ],
+        "distance": 2.987853221337194
+      }
+    },
+    {
+      "id": "848df097-3b9e-4bd9-be4b-a7a6d13389c4",
+      "a": {
+        "curveId": "cab9de17-c372-4522-bf83-10b0ac63a9f1",
+        "end": 0,
+        "p": [
+          -0.4711474458500227,
+          0.23840637968724473
+        ],
+        "distance": 2.8767939319820144
+      },
+      "b": {
+        "curveId": "098869fc-e9c9-4903-baba-e2e60312e49f",
+        "end": 0,
+        "p": [
+          -0.4573948132437157,
+          0.22895968737008482
+        ],
+        "distance": 0.35461900010501524
+      }
+    },
+    {
+      "id": "668511dd-e312-45d7-91c6-9f33e6210b7d",
+      "a": {
+        "curveId": "1e60105c-bda8-46be-8670-d8e248a0a8b6",
+        "end": 1,
+        "p": [
+          -0.6853696943368455,
+          0.17046530950582123
+        ],
+        "distance": 2.4320772929969765
+      },
+      "b": {
+        "curveId": "03c59f01-dc3f-48ca-a12a-cfd875f05fc7",
+        "end": 1,
+        "p": [
+          -0.6785917012981397,
+          0.14636975173603856
+        ],
+        "distance": 2.987853221337194
+      }
+    },
+    {
+      "id": "ed1131ae-74c5-4534-9b6b-6395e37b1a58",
+      "a": {
+        "curveId": "65450d8d-7c62-4d87-b421-616dfbcab097",
+        "end": 1
+      },
+      "b": {
+        "curveId": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+        "end": 1
+      }
+    }
+  ],
+  "groups": [
+    {
+      "id": "75e3686a-c44e-4cbf-a640-551c08e01fb3",
+      "name": "右耳内分叉组",
+      "curveIds": [
+        "d4ce1b15-dcbe-459d-b23f-b99f4dd0be41",
+        "8fe34df5-aa23-43e8-b6e9-9cf9a41d8a18",
+        "e91b869a-f32b-412b-8ee5-6e2160c9e23e"
+      ],
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "0a003883-dae0-4a60-8401-bc1482714117",
+      "name": "右耳内分叉组 · 1",
+      "curveIds": [
+        "9a578781-5b6c-40f3-9d86-3b655236a0ac",
+        "84677dce-8b2a-4b33-bc56-b72aec881d05",
+        "0b2fd63e-b97c-4071-901e-56ee859f49f4"
+      ],
+      "visible": true,
+      "locked": false
+    }
+  ]
+}

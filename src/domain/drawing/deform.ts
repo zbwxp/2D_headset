@@ -98,7 +98,7 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
  return {...after,displayIntervals:before.displayIntervals.map(track=>{
   const path=displayPath(before,track.anchor.id),key=path.segments.map(s=>s.id).join('|');
   const ids=new Set(path.segments.map(s=>s.id)),joins=(d:Doc)=>d.joins.filter(j=>ids.has(j.a.curveId)||ids.has(j.b.curveId));
-  if(path.segments.every(s=>JSON.stringify(shapeOf(before,s.id))===JSON.stringify(shapeOf(after,s.id)))&&JSON.stringify(joins(before))===JSON.stringify(joins(after)))return track;
+  if(path.segments.every(s=>JSON.stringify(shapeOf(before,s.id))===JSON.stringify(shapeOf(after,s.id)))&&JSON.stringify(joins(before))===JSON.stringify(joins(after))&&JSON.stringify(before.endpointLinks)===JSON.stringify(after.endpointLinks))return track;
   let pair=fields.get(key);if(!pair){pair=[displayField(before,path),displayField(after,displayPath(after,track.anchor.id))];fields.set(key,pair);}
   const [old,next]=pair;if(old.total<1e-10||next.total<1e-10)throw Error('显示区间所在曲线退化，无法变形。');
   const move=(s:number)=>{

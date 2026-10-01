@@ -134,7 +134,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  }
  function connectAt(e:Endpoint){
   if(!first){setFirst(e);session.set({selection:{ids:[e.curveId],node:nodeAt(d,e).id}});setHint('');return;}
-  try{const n=tool==='link'?cmd.linkEndpoints(stored,first,e):tool==='merge'?cmd.merge(stored,first,e):cmd.connect(stored,first,e,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION');commit(n);setFirst(null);setDraft(null);choose({ids:[e.curveId],node:nodeAt(n,e).id},tool);}catch(ex){error(ex);}
+  try{const n=tool==='link'?cmd.linkEndpoints(stored,first,e,true):tool==='merge'?cmd.merge(stored,first,e):cmd.connect(stored,first,e,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION');commit(n);setFirst(null);setDraft(null);choose({ids:[e.curveId],node:nodeAt(n,e).id},tool);}catch(ex){error(ex);}
  }
  function penCandidate(base:Doc,from:Pen,to:Point2,handle:Point2):{document:Doc;next:Pen;closed:boolean;shape:Cubic}{
   if(!activeLayer)throw Error('请先新建绘制层。');
@@ -191,7 +191,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const p=local(e);const g=drag.current;
   if(g){if(e.pointerId!==g.pointerId)return;g.last={clientX:e.clientX,clientY:e.clientY};}
   if(!g){if(artworkPreview)return;if(tool==='pen'&&pen){const chord=sub(p,pen.position);setPenPreview([pen.position,add(pen.position,(!pen.last||penJoin==='SMOOTH')&&length(pen.out)>1e-7?pen.out:mul(chord,1/3)),sub(p,mul(chord,1/3)),p]);}
-   if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(tool==='link'?cmd.linkEndpoints(stored,first,target):cmd.connect(stored,first,target,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION'));}catch{setDraft(null);}else setDraft(null);}return;}
+   if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(tool==='link'?cmd.linkEndpoints(stored,first,target,true):cmd.connect(stored,first,target,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION'));}catch{setDraft(null);}else setDraft(null);}return;}
   if(g.kind==='zoom'){
    const dy=g.client[1]-e.clientY;if(!g.zoomMoved&&Math.abs(dy)<2)return;g.zoomMoved=true;
    const z=Math.max(.1,Math.min(12,g.zoom!*Math.exp(dy*.008))),r=svg.current!.getBoundingClientRect(),u=Math.min(size.width,size.height)/2.8*z;

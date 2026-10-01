@@ -18,13 +18,14 @@ export function validateIntervalOverrides(value:unknown,source?:DrawingDocument)
  const tracks=new Map((source?.displayIntervals??[]).map(t=>[t.id,t])),seen=new Set<string>();
  const claim=(s:unknown)=>{if(!id(s)||seen.has(s))fail();seen.add(s);};
  for(const raw of value as unknown[]){
-  if(!object(raw)||!allowed(raw,['id','anchor','ranges','scope','revealFrom','inferenceInkVersion']))fail();
+  if(!object(raw)||!allowed(raw,['id','anchor','ranges','scope','revealFrom','inferenceInkVersion','displayRoute']))fail();
   claim(raw.id);
   if(!object(raw.anchor)||!allowed(raw.anchor,['id','reverse'])||!id(raw.anchor.id)||typeof raw.anchor.reverse!=='boolean'||!Array.isArray(raw.ranges)||!raw.ranges.length||raw.ranges.length>4096)fail();
   if(raw.scope!==undefined&&raw.scope!=='CURVE'||raw.revealFrom!==undefined&&(raw.scope!=='CURVE'||![0,1].includes(raw.revealFrom as number))||raw.inferenceInkVersion!==undefined&&raw.inferenceInkVersion!==1)fail();
-  if(source){const base=tracks.get(raw.id as string);if(!base||base.anchor.id!==raw.anchor.id||base.anchor.reverse!==raw.anchor.reverse||base.scope!==raw.scope||base.revealFrom!==raw.revealFrom||base.inferenceInkVersion!==raw.inferenceInkVersion)fail();}
+  if(raw.displayRoute!==undefined){const route=raw.displayRoute;if(!object(route)||!allowed(route,['seed','throughLinkIds'])||!object(route.seed)||!allowed(route.seed,['segments','closed'])||typeof route.seed.closed!=='boolean'||!Array.isArray(route.seed.segments)||!route.seed.segments.length||route.seed.segments.length>16384||route.seed.segments.some(u=>!object(u)||!allowed(u,['id','reverse'])||!id(u.id)||typeof u.reverse!=='boolean')||!Array.isArray(route.throughLinkIds)||!route.throughLinkIds.length||route.throughLinkIds.length>4096||route.throughLinkIds.some(x=>!id(x))||new Set(route.throughLinkIds).size!==route.throughLinkIds.length||raw.scope==='CURVE')fail();}
+  if(source){const base=tracks.get(raw.id as string);if(!base||base.anchor.id!==raw.anchor.id||base.anchor.reverse!==raw.anchor.reverse||base.scope!==raw.scope||base.revealFrom!==raw.revealFrom||base.inferenceInkVersion!==raw.inferenceInkVersion||JSON.stringify(base.displayRoute)!==JSON.stringify(raw.displayRoute))fail();}
   for(const range of raw.ranges as unknown[]){
-   if(!object(range)||!allowed(range,['id','start','end','mode','enabled','inkEnds']))fail();claim(range.id);
+   if(!object(range)||!allowed(range,['id','start','end','mode','enabled','inkEnds','originId','name']))fail();claim(range.id);if(range.originId!==undefined&&!id(range.originId)||range.name!==undefined&&(typeof range.name!=='string'||range.name.length>256))fail();
    if(![range.start,range.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||range.mode!==undefined&&!['SHOW','HIDE'].includes(range.mode as string)||range.enabled!==undefined&&typeof range.enabled!=='boolean'||!validInkEnds(range.inkEnds))fail();
   }
  }

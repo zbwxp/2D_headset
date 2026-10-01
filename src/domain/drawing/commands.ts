@@ -3,7 +3,7 @@ import {setObjectState} from './objectState';
 import {groupFor,DEFAULT_PEN_TAPER_SCALE,MAX_PEN_TAPER_SCALE} from './model';
 import {linkedNodeIds,followLinkedNodes,cleanEndpointLinks} from './endpointLinks';
 import {roundedJoins} from './roundedJoin';
-import {retainDisplayIntervals,splitDisplayIntervals} from './displayIntervals';
+import {retainDisplayIntervals,splitDisplayIntervals,displayRouteFor} from './displayIntervals';
 import {split} from '../geometry/bezier';
 import {add,sub,mul,length,finitePoint,uid,objectById,nodeAt,curveById,shapeOf,layerFor,members,joinAt,sameEnd,editable,type DrawingDocument as Doc,type DrawingCurve,type DrawingLayer,type Endpoint,type Point2,type Cubic,type TangentJoin} from './model';
 import {normalizeOrder,strokeFor,strokeIds,strokeObjectIds,strokes,strokePaths} from './strokes';
@@ -74,6 +74,7 @@ export function linkEndpoints(d:Doc,a:Endpoint,b:Endpoint,preserveAuthoredBrush=
 /** Joining geometry creates a plain connection. Ink can be explicitly added afterwards. */
 function clearConnectedInk(d:Doc,nodes:Set<string>):Doc{return {...d,curves:d.curves.map(c=>c.nodes.some(n=>nodes.has(n))?{...c,inkEnds:([0,1] as const).map(end=>nodes.has(c.nodes[end])?{taper:0,extension:0}:c.inkEnds?.[end]??{}) as import('./model').InkEnds}:c)};}
 export function unlinkEndpoints(d:Doc,id:string):Doc{
+ if(d.displayIntervals?.some(t=>t.displayRoute?.throughLinkIds.includes(id)))throw Error('此联动正用于贯通显示路径，请先解除显示贯通。');
  const link=d.endpointLinks?.find(x=>x.id===id);if(!link)return d;check(d,[link.a.curveId,link.b.curveId]);return {...d,endpointLinks:d.endpointLinks!.filter(x=>x.id!==id)};
 }
 
@@ -93,6 +94,7 @@ export function merge(d:Doc,a:Endpoint,b:Endpoint):Doc{
  return moveNode(d,nodeAt(d,b).id,nodeAt(d,a).position);
 }
 export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CUSP'|'ARC',radius?:number,preserveAuthoredBrush=false):Doc{
+ if(displayRouteFor(d,a.curveId)||displayRouteFor(d,b.curveId))throw Error('请先解除显示贯通，再更改源节点连接。');
  if(sameEnd(a,b))throw Error('请选择另一个端点。');
  if(layerFor(d,a.curveId)?.id!==layerFor(d,b.curveId)?.id)throw Error('连接仅支持同一图层。');
  const na=nodeAt(d,a),nb=nodeAt(d,b),linked=new Set([...linkedNodeIds(d,na.id),...linkedNodeIds(d,nb.id)]),affected=[...linked].flatMap(id=>members(d,id).map(e=>e.curveId));check(d,affected);
@@ -118,6 +120,7 @@ export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CU
 }
 export function removeJoin(d:Doc,id:string):Doc{const j=d.joins.find(j=>j.id===id);if(!j)return d;check(d,[j.a.curveId,j.b.curveId]);return {...d,joins:d.joins.filter(j=>j.id!==id)};}
 export function unbind(d:Doc,e:Endpoint):Doc{
+ if(displayRouteFor(d,e.curveId))throw Error('请先解除显示贯通，再拆开源节点。');
  const partner=joinAt(d,e);check(d,[e.curveId,...(partner?[partner.a.curveId,partner.b.curveId]:[])]);const node=nodeAt(d,e);if(members(d,node.id).length===1)return d;
  const n=copy(d),id=uid();curveById(n,e.curveId).nodes[e.end]=id;n.nodes.push({id,position:[...node.position]});n.joins=n.joins.filter(j=>!sameEnd(j.a,e)&&!sameEnd(j.b,e));return clean(n);
 }
@@ -132,6 +135,7 @@ export function deleteCurves(d:Doc,ids:string[]):Doc{
 /** List deletion is allowed for hidden objects; locks still protect objects and join partners. */
 export function deleteObjects(d:Doc,ids:string[]):Doc{
  const selected=new Set(ids.filter(id=>objectById(d,id)));if(!selected.size)return d;
+ if([...selected].some(id=>curveById(d,id)&&displayRouteFor(d,id)))throw Error('请先解除显示贯通，再删除其源曲线。');
  // Deleting a member also removes its relations. Honor the same partner locks
  // as an explicit unlink, including links whose other member is in another layer.
  const related=[...d.joins,...(d.endpointLinks??[])].filter(j=>selected.has(j.a.curveId)||selected.has(j.b.curveId)).flatMap(j=>[j.a.curveId,j.b.curveId]);
@@ -150,6 +154,7 @@ export function deleteLayers(d:Doc,ids:readonly string[]):Doc{
 /** Standalone copies remain editable; whole-layer copies retain every member's state. */
 export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.id,offset:Point2=[.04,-.04],copyGroupFills=true,preserveMemberState=false):{document:Doc;ids:string[]}{
  if(!ids.length||!layerId)return {document:d,ids:[]};requireLayer(d,layerId);
+ if(ids.some(id=>displayRouteFor(d,id)))throw Error('贯通画稿请使用画稿图层导入，以完整复制跨层依赖。');
  const n=copy(d),nodeMap=new Map<string,string>(),curveMap=new Map<string,string>();
  for(const id of ids){const c=curveById(d,id);for(const nodeId of c.nodes)if(!nodeMap.has(nodeId)){const newId=uid();nodeMap.set(nodeId,newId);n.nodes.push({id:newId,position:add(d.nodes.find(x=>x.id===nodeId)!.position,offset)});}
   const newId=uid();curveMap.set(id,newId);n.curves.push({...c,id:newId,name:nextName(n.curves.map(c=>c.name),c.name+' · '),nodes:c.nodes.map(id=>nodeMap.get(id)!) as [string,string],handles:c.handles.map(p=>add(p,offset)) as [Point2,Point2],visible:preserveMemberState?c.visible:true,locked:preserveMemberState?c.locked:false});}

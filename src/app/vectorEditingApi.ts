@@ -1,3 +1,5 @@
+import {adoptDisplayRoute,detachDisplayRoute} from '../domain/drawing/displayRouteAuthoring';
+import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
 /** Local, JSON-oriented vector authoring. No network, evaluation of code, or mode switching. */
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -7,7 +9,7 @@ import {useDrawing} from '../ui/drawing/session';
 import PaintScene from '../ui/drawing/PaintScene';
 import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,nodeAt,objectById,validFillMist,type FillMist,type TerminusBrushStyle,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
+import {emptyDrawing,parseDrawing,shapeOf,curveById,layerFor,members,nodeAt,objectById,validFillMist,type FillMist,type TerminusBrushStyle,type TerminusJoinBrush,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
 import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,splitCurve,setMirrorAxis,linkEndpoints,unlinkEndpoints,connect} from '../domain/drawing/commands';
 import {setObjectState,objectState} from '../domain/drawing/objectState';
 import {createFill,changePaint,reorderPaint,setInk,setInkEnd} from '../domain/drawing/paintCommands';
@@ -29,7 +31,7 @@ export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimensi
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
 export type Affine=[number,number,number,number,number,number];
-export type VectorCommand=ElementCommand|GeometryLinkCommand
+export type VectorCommand=DisplayRouteCommand|ElementCommand|GeometryLinkCommand
  | {op:'moveNode';nodeId:string;position:Point2}
  | {op:'moveHandle';curveId:string;end:0|1;position:Point2}
  | {op:'transformCurves';curveIds:string[];matrix:Affine;allowRelated?:boolean}
@@ -60,8 +62,9 @@ export type VectorCommand=ElementCommand|GeometryLinkCommand
  | {op:'removeDisplayInterval';rangeId:string}
  | {op:'setDisplayIntervalEnd';rangeId:string;end:0|1;style:TerminusBrushStyle};
 export type GeometryLinkCommand={op:'linkEndpoints';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};ref?:string}|{op:'unlinkEndpoints';linkId:string}|{op:'connectGeometry';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};mode?:'POSITION'};
+export type DisplayRouteCommand={op:'adoptDisplayRoute';trackId:string;linkId:string}|{op:'setLinkJoinBrush';linkId:string;brush:TerminusJoinBrush}|{op:'detachDisplayRoute';trackId:string};
 export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry',...elementCommandNames];
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string;includeRecording?:boolean}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
@@ -275,6 +278,13 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   case 'changeDisplayInterval':keys(c,['op','rangeId','mode','start','end','enabled']);{const r=rangeExists(d,c.rangeId),change=intervalChange(c);nonemptyChange(change);return changeDisplayInterval(d,r.track.id,r.id,change);}
   case 'removeDisplayInterval':keys(c,['op','rangeId']);{const r=rangeExists(d,c.rangeId);return removeDisplayInterval(d,r.track.id,r.id);}
   case 'setDisplayIntervalEnd':keys(c,['op','rangeId','end','style']);{const r=rangeExists(d,c.rangeId);return setDisplayIntervalEnd(d,r.track.id,r.id,end(c.end),terminusBrushStyle(c.style));}
+  case 'adoptDisplayRoute':{
+   keys(c,['op','trackId','linkId']);const result=adoptDisplayRoute(d,string(c.trackId,'trackId'),string(c.linkId,'linkId'));for(const id of result.generatedRangeIds)created('displayRange',id,undefined);return result.document;
+  }
+  case 'detachDisplayRoute':{keys(c,['op','trackId']);return detachDisplayRoute(d,string(c.trackId,'trackId')).document;}
+  case 'setLinkJoinBrush':{
+   keys(c,['op','linkId','brush']);const id=string(c.linkId,'linkId'),link=d.endpointLinks?.find(l=>l.id===id);if(!link)fail('NOT_FOUND',`Unknown geometry link ID: ${id}.`);if([link!.a,link!.b].some(e=>curveById(d,e.curveId).locked))fail('CONSTRAINT_VIOLATION','A linked curve is locked.');const b=record(c.brush);keys(b,b.kind==='ARC'?['kind','trimDistance']:['kind']);if(!['SHARP','SMOOTH','ARC'].includes(b.kind as string))fail('INVALID_REQUEST','Unknown terminus join brush.');const brush:TerminusJoinBrush=b.kind==='ARC'?{kind:'ARC',trimDistance:num(b.trimDistance,'trimDistance',1e-7,2)}:{kind:b.kind as 'SHARP'|'SMOOTH'},next={...d,endpointLinks:d.endpointLinks!.map(l=>l.id===id?{...l,joinBrush:brush}:l)};assertDisplayRouteSupport(next);return transportDeformedIntervals(d,next);
+  }
   case 'linkEndpoints':{
    keys(c,['op','a','b','ref']);const n=linkEndpoints(d,geometryEndpoint(d,c.a),geometryEndpoint(d,c.b),true),added=n.endpointLinks?.find(l=>!d.endpointLinks?.some(old=>old.id===l.id));
    if(added)created('endpointLink',added.id,c.ref);else if(c.ref!==undefined)fail('ALREADY_CONNECTED','These geometry endpoints are already connected; no new link ID was created. Inspect the existing links or omit ref.');
@@ -360,7 +370,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     });
     // Quad deformation already transports material cut positions; other geometry edits do so here.
     if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
-    validateBounds(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
+    validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
   return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations,created};

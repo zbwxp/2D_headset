@@ -1,3 +1,5 @@
+import {displayRouteFor} from '../../domain/drawing/displayIntervals';
+import {displayRouteInk,type DisplayRouteInkPlan} from '../../domain/drawing/displayRouteInk';
 import {useId,type ReactNode} from 'react';
 import {objectById,visible,curveById,type DrawingDocument as Doc,type Point2,type InkEnds} from '../../domain/drawing/model';
 import {strokeWidth,strokePaths} from '../../domain/drawing/strokes';
@@ -17,7 +19,7 @@ export default function PaintScene({pixelsPerUnit,interactiveEffects=false,opaci
  const pick=!preview&&!referenceMoving,select=pick&&['select','direct'].includes(tool);
  const inkDocument=d.curves.some(c=>!visible(d,c.id))?{...d,curves:d.curves.map(c=>visible(d,c.id)?c:{...c,inkVisible:false})}:d;
  const batches=depthPaintBatches(d),positions=new Map(batches.filter(b=>b.owner).map(b=>[b.owner!,b.position]));
- const partitionCache=new Map<string,ReturnType<typeof memberInk>>();
+ const partitionCache=new Map<string,ReturnType<typeof memberInk>>(),routeCache=new Map<string,DisplayRouteInkPlan>();
  const groups:{layerId:string;batches:typeof batches}[]=[];
  for(const b of batches.slice().reverse()){if(groups.at(-1)?.layerId===b.layerId)groups.at(-1)!.batches.push(b);else groups.push({layerId:b.layerId,batches:[b]});}
  return <>{groups.map((batchGroup,layerIndex)=>{const l=d.layers.find(l=>l.id===batchGroup.layerId)!;
@@ -36,6 +38,8 @@ export default function PaintScene({pixelsPerUnit,interactiveEffects=false,opaci
   {batchGroup.batches.map(({item,owner})=>{
   if(item.stroke)return strokePaths(item.stroke).map((path,pathIndex)=>{const s={...path,id:item.id},enabled=s.segments.map(x=>visible(d,x.id));if(!enabled.some(Boolean)||owner&&!s.segments.some(x=>x.id===owner))return null;
    if(owner){
+    const route=displayRouteFor(d,owner);
+    if(route){const routeKey=JSON.stringify(route);let plan=routeCache.get(routeKey);if(!plan){plan=displayRouteInk(inkDocument,route,positions,sampling);routeCache.set(routeKey,plan);}if(!plan.pieces.length)return <g key={'route-error:'+owner} data-testid="drawing-route-error" data-id={owner} data-message={plan.diagnostics.join(' ')}><title>{plan.diagnostics.join(' ')}</title></g>;if(plan.pieces.length){const c=curveById(d,owner);return <g key={'route:'+owner} data-testid="drawing-route-ink" data-id={owner} data-depth={c.depthOffset??0} opacity={opacity?.get(owner)}>{plan.diagnostics.length>0&&<title>{plan.diagnostics.join(' ')}</title>}<MistInk runs={plan.runs.get(owner)??[]} mist={c.mist} screen={screen} unit={unit} width={c.width} owner={owner}/>{pick&&plan.pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))).map((p,i)=><path key={i} data-testid="drawing-hit" data-id={owner} d={curvePath(p.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','split','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,owner)}/>)}</g>;}}
     const key=`${item.id}:${pathIndex}`;let divided=partitionCache.get(key);if(!divided){divided=memberInk(inkDocument,s,positions,sampling);partitionCache.set(key,divided);}
     const runs=divided.get(owner)??[],pieces=partitionedUses(d,s.segments,s.closed).pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))),c=curveById(d,owner);
     return <g key={`${key}:${owner}`} data-testid="drawing-depth-ink" data-id={owner} data-depth={c.depthOffset??0} opacity={opacity?.get(owner)}>

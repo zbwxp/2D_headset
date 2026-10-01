@@ -278,3 +278,13 @@ Artwork regression coverage: `npx vitest run src/tests/vector-artwork-api.test.t
 A three-curve filled piece uses three `createCurve` calls, three `connectGeometry` calls connecting each end to the next start, then `createFill` with its three curve IDs. Mirrored pieces have independent nodes; link the intended visible jaw ports only. The executable two-piece recipe is in `src/tests/vector-source-connections.test.ts`.
 
 Additional source commands now include `duplicateObjects` (explicit dependency closure and fresh ID map), `reorderCurveMember`, `movePaint`, `createOffset`, `setOffset`, `detachOffset`, `createGroup`, `setGroup`, `ungroup`, `groupToLayer`, `setInkStyle`, and `setContourMist`. Names and numeric values are validated; no raw source replacement is exposed. Exact JSON fields are the `ElementCommand` union in `src/app/vectorElementCommands.ts`.
+
+## Display-route commands (Drawing only)
+
+`setLinkJoinBrush` accepts `{linkId,brush:{kind:"SHARP"|"SMOOTH"}}` or
+`{linkId,brush:{kind:"ARC",trimDistance}}`. The distance uses source units.
+`adoptDisplayRoute` accepts `{trackId,linkId}`; `detachDisplayRoute` accepts
+`{trackId}`. Use a single batch to configure the brush and adopt the route.
+No source cubic, layer or fill geometry is rewritten. Unsupported styles or
+unmappable material cuts reject atomically. These source commands trigger the
+existing explicit source review before reusing an older Recording rig.

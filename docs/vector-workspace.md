@@ -122,3 +122,36 @@ panel, while “保存 JSON” exports a reloadable full project.
 
 See [geometry-coverage-termini.md](geometry-coverage-termini.md) for the typed
 separation of geometric endpoints, display coverage and visible termini.
+
+## Explicit through-display paths and cross-layer join brushes
+
+In Drawing, create closed pieces and their visibility intervals first, then link
+the intended geometric endpoint ports. Select an interval and use “贯通这条显示路径”.
+The chosen track and all involved non-curve-local tracks share a captured route;
+local stroke/layer/fill topology is unchanged. Every previous material range is
+mapped, not just its two cuts. Split ranges retain their original ID on the first
+fragment and originId on the rest. If another component was implicitly fully
+visible, an ordinary editable SHOW named “保留原可见范围” preserves that base.
+HIDE still subtracts after the SHOW union. Disabled ranges remain authored.
+
+The “末端接笔” selector offers SHARP, already-aligned SMOOTH and ARC. ARC reuses
+the existing rounded-join evaluator with a per-side influence distance; it does
+not merge source nodes or change closed white fills. Link/brush source data is
+retained independently. The first slice requires uniform equal-width routed ink;
+unsupported combinations are rejected explicitly, never restyled silently.
+Fragments paint at their original layer/member/depth slots. Invalid evaluated
+routes show diagnostics and suppress invalid routed ink rather than falling back
+to local-stroke percentages. Interval cuts through a valid ARC use interval
+末端笔触; hiding a source owner does not delete the geometric link.
+
+“解除显示贯通” releases the whole shared route and maps material ranges back to
+local paths. Geometry links remain. If a cut lives on a new cross-layer ARC with
+no original local material target, release rejects the operation rather than
+losing it; choose a plain join first or Undo. Cross-artwork layer copying of active
+routed material is temporarily blocked pending complete fresh-ID remapping.
+
+A route changes the meaning of global SHOW union. Existing angle interval keys
+on affected paths are marked for re-authoring. Explicit source acceptance resets
+only those interval appearance/enable keys and preserves unrelated keyforms.
+The source-review warning says “贯通改变显隐路径，相关区间角度键需重新录制”.
+New two-face artwork without prior interval keys is unaffected by this migration.

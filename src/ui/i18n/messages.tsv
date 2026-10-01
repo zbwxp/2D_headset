@@ -1888,3 +1888,15 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 区间终界 %	Interval end boundary %	区间终点 %
 起侧可见末端笔触	Visible start terminus brush	区间起点笔触
 终侧可见末端笔触	Visible end terminus brush	区间终点笔触
+
+贯通显示路径	Through display path
+区间沿明确联动贯通；源笔画、图层与填充边界各自保留。	Intervals follow explicit links; source strokes, layers and fill boundaries stay independent.
+末端接笔	Terminus join brush
+已对齐平滑	Aligned smooth
+接笔影响距离 px	Join influence px
+先建立显示区间，再选择真实端点联动。贯通会保留原可见范围，可整步撤销。	Create intervals first, then choose a geometric link. Adoption preserves existing visibility and is one undo step.
+选择端点联动	Choose geometric link
+贯通这条显示路径	Extend this display path
+当前路径没有端点联动；请先用“端点联动”连接需要续接的两条曲线。	Create a geometric endpoint link between the two intended continuation curves first.
+保留原可见范围	Preserved original visibility
+解除显示贯通	Release display route

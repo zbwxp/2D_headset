@@ -1,3 +1,4 @@
+import {resolveDisplayRoute,type DisplayRoute} from './displayRoutes';
 import {tagCurve} from './curveProvenance';
 import type {Point2,Cubic} from '../recording/model';
 import type {ReferenceImage} from '../project/types';
@@ -10,7 +11,7 @@ export interface GeometryEndpoint {curveId:string;end:End}
 /** Compatibility name. This NEVER refers to a display cut or rendered ink terminus. */
 export type Endpoint=GeometryEndpoint;
 /** Position coupling only. Nodes, strokes, ink styles and layer ownership stay separate. */
-export interface GeometryEndpointLink {id:string;a:GeometryEndpoint;b:GeometryEndpoint}
+export interface GeometryEndpointLink {id:string;a:GeometryEndpoint;b:GeometryEndpoint;/** Explicit display-only routing opt-in. Legacy links remain position-only. */throughDisplay?:boolean;joinBrush?:TerminusJoinBrush}
 /** Serialized a/b shape is retained; no dataset migration is needed. */
 export type EndpointLink=GeometryEndpointLink;
 export interface DrawingNode {id:string;position:Point2}
@@ -44,9 +45,9 @@ export const MAX_PEN_TAPER_SCALE=200;
 export interface CurveUse {id:string;reverse:boolean}
 export type DisplayIntervalMode='SHOW'|'HIDE';
 /** Missing mode is the legacy SHOW interval. HIDE subtracts ink, never fill. */
-export interface DisplayInterval {id:string;start:number;end:number;inkEnds?:InkEnds;mode?:DisplayIntervalMode;/** Omitted in legacy files means enabled. Explicit values can be held by angle keys. */enabled?:boolean}
+export interface DisplayInterval {id:string;/** Original authored range when routing splits its coverage. */originId?:string;/** Optional author-facing range label. */name?:string;start:number;end:number;inkEnds?:InkEnds;mode?:DisplayIntervalMode;/** Omitted in legacy files means enabled. Explicit values can be held by angle keys. */enabled?:boolean}
 /** Appearance attached to a derived continuous path; the anchor stabilizes direction/origin. */
-export interface StrokeDisplayIntervals {id:string;anchor:CurveUse;ranges:DisplayInterval[];/** Local arc length on just the anchor curve, independent of the surrounding stroke. */scope?:'CURVE';/** Physical end from which missing-view ink is revealed; chosen once. */revealFrom?:End;/** Inferred cuts copied source endpoint ink; prevents reapplying the legacy fix. */inferenceInkVersion?:1}
+export interface StrokeDisplayIntervals {id:string;anchor:CurveUse;ranges:DisplayInterval[];/** Explicit captured display traversal; never changes local strokes or fills. */displayRoute?:DisplayRoute;/** Local arc length on just the anchor curve, independent of the surrounding stroke. */scope?:'CURVE';/** Physical end from which missing-view ink is revealed; chosen once. */revealFrom?:End;/** Inferred cuts copied source endpoint ink; prevents reapplying the legacy fix. */inferenceInkVersion?:1}
 /** A boundary-following Gaussian band, not a blur of the solid interior. */
 export interface FillMist {enabled:boolean;side:'INSIDE'|'OUTSIDE'|'BOTH';width:number;opacity:number}
 export const DEFAULT_FILL_MIST:FillMist={enabled:true,side:'INSIDE',width:12/250,opacity:.65};
@@ -126,6 +127,8 @@ export function parseDrawing(value:unknown):DrawingDocument{
  if(d.endpointLinks!==undefined){
   if(!Array.isArray(d.endpointLinks))return fail();const pairs=new Set<string>();
   for(const link of d.endpointLinks){if(!link)return fail();id(link.id);
+   if(link.throughDisplay!==undefined&&typeof link.throughDisplay!=='boolean')return fail();
+   if(link.joinBrush!==undefined){const b=link.joinBrush;if(!b||!['SHARP','SMOOTH','ARC'].includes(b.kind)||b.kind==='ARC'&&(!Number.isFinite(b.trimDistance)||b.trimDistance<=0||b.trimDistance>2))return fail();}
    for(const e of [link.a,link.b])if(!e||!curveById(d,e.curveId)||![0,1].includes(e.end))return fail();
    const a=nodeAt(d,link.a),b=nodeAt(d,link.b),key=[a.id,b.id].sort().join(':');
    if(a.id===b.id||pairs.has(key)||length(sub(a.position,b.position))>1e-7)return fail();pairs.add(key);
@@ -135,8 +138,10 @@ export function parseDrawing(value:unknown):DrawingDocument{
   if(!Array.isArray(d.displayIntervals))return fail();
   for(const track of d.displayIntervals){if(!track)return fail();id(track.id);if(!track.anchor||!curveById(d,track.anchor.id)||typeof track.anchor.reverse!=='boolean'||!Array.isArray(track.ranges)||!track.ranges.length)return fail();
    if(track.scope!==undefined&&track.scope!=='CURVE'||track.revealFrom!==undefined&&(track.scope!=='CURVE'||![0,1].includes(track.revealFrom)))return fail();
+   if(track.displayRoute!==undefined){const r=track.displayRoute;if(track.scope==='CURVE'||!r||!r.seed||typeof r.seed.closed!=='boolean'||!Array.isArray(r.seed.segments)||!r.seed.segments.length||r.seed.segments.some(u=>!u||!curveById(d,u.id)||typeof u.reverse!=='boolean')||new Set(r.seed.segments.map(u=>u.id)).size!==r.seed.segments.length||!Array.isArray(r.throughLinkIds)||!r.throughLinkIds.length||r.throughLinkIds.some(id=>!d.endpointLinks?.some(l=>l.id===id&&l.throughDisplay===true))||new Set(r.throughLinkIds).size!==r.throughLinkIds.length)return fail();}
+   if(track.displayRoute){const resolved=resolveDisplayRoute(d,track.displayRoute);if(resolved.diagnostics.length)return fail();const curves=resolved.path.segments.map(u=>curveById(d,u.id));if(curves.some(c=>Math.abs(c.width-curves[0].width)>1e-10||(c.profile??'UNIFORM')!=='UNIFORM'||c.inkEnds?.some(e=>e.interior)))return fail();}
    if(track.inferenceInkVersion!==undefined&&(track.inferenceInkVersion!==1||track.scope!=='CURVE'))return fail();
-   for(const r of track.ranges){if(!r)return fail();id(r.id);if(r.mode!==undefined&&!['SHOW','HIDE'].includes(r.mode)||r.enabled!==undefined&&typeof r.enabled!=='boolean')return fail();if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
+   for(const r of track.ranges){if(!r)return fail();id(r.id);if(r.originId!==undefined&&(typeof r.originId!=='string'||!r.originId)||r.name!==undefined&&(typeof r.name!=='string'||r.name.length>256))return fail();if(r.mode!==undefined&&!['SHOW','HIDE'].includes(r.mode)||r.enabled!==undefined&&typeof r.enabled!=='boolean')return fail();if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
   }
  }
  validateRecordingReference(d.reference);

@@ -1,3 +1,4 @@
+import {resolveDisplayRoute,createDisplayRouteField,splitDisplayRoute,type DisplayRoute} from './displayRoutes';
 import {curveById,editable,uid,sub,length,validInkEnds,inkTaperDistance,type InkEnds,type InkEndStyle,type DrawingDocument as Doc,type StrokeDisplayIntervals,type DisplayInterval,type DisplayIntervalMode,type Point2,type Cubic} from './model';
 import {strokeFor,strokePaths,type StrokePath} from './strokes';
 import {derivedUses} from './roundedJoin';
@@ -42,15 +43,25 @@ export function subtractInkSpans(base:InkSpan[],gaps:InkSpan[],closed=false):Ink
 export const intervalMode=(r:DisplayInterval):DisplayIntervalMode=>r.mode??'SHOW';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 const wrap=(x:number)=>((x%1)+1)%1;
-export const displayPath=(d:Doc,id:string)=>strokePaths(strokeFor(d,id)).find(p=>p.segments.some(x=>x.id===id))!;
+export const localDisplayPath=(d:Doc,id:string)=>strokePaths(strokeFor(d,id)).find(p=>p.segments.some(x=>x.id===id))!;
+/** Explicit routes are display-only; strokeFor/layer ownership remain local. */
+export function displayRouteFor(d:Doc,id:string):DisplayRoute|undefined {
+ for(const track of d.displayIntervals??[])if(track.displayRoute){const resolved=resolveDisplayRoute(d,track.displayRoute);if(!resolved.diagnostics.length&&resolved.path.segments.some(u=>u.id===id))return track.displayRoute;}
+ return undefined;
+}
+export const displayPath=(d:Doc,id:string)=>{const route=displayRouteFor(d,id);return route?resolveDisplayRoute(d,route).path:localDisplayPath(d,id);};
 export const pathTracks=(d:Doc,path:StrokePath)=>(d.displayIntervals??[]).filter(t=>path.segments.some(x=>x.id===t.anchor.id));
 export function unionSpans(spans:Span[]):Span[]{
  const out:Span[]=[];for(const [a,b] of spans.filter(([a,b])=>b-a>1e-10).sort((a,b)=>a[0]-b[0])){const last=out.at(-1);if(last&&a<=last[1]+1e-10)last[1]=Math.max(last[1],b);else out.push([a,b]);}return out;
 }
 /** The saved anchor is only a stable coordinate frame; the interval grips are free arc positions. */
 export function displayField(d:Doc,path:StrokePath){
- const geometry=derivedUses(d,path.segments,path.closed),field=arcField(geometry.shapes),tracks=pathTracks(d,path);
+ const route=path.segments.length?displayRouteFor(d,path.segments[0].id):undefined;
+ const routed=route&&resolveDisplayRoute(d,route).path.segments.length===path.segments.length?createDisplayRouteField(d,route):undefined;
+ const geometry=routed?.geometry??derivedUses(d,path.segments,path.closed),field=routed??arcField(geometry.shapes),tracks=pathTracks(d,path);
+
  function frame(track:StrokeDisplayIntervals){
+  if(track.displayRoute)return {direction:1,origin:0,scale:1};
   const use=path.segments.find(x=>x.id===track.anchor.id)!,direction=use.reverse===track.anchor.reverse?1:-1;
   if(track.scope==='CURVE'){
    const i=geometry.pieces.findIndex(p=>!p.joinId&&p.owners[0]===use.id),part=field.parts[i];
@@ -106,7 +117,8 @@ export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:strin
  const field=scoped?displayField(after,displayPath(after,id)):undefined;
  const size=(curve:string)=>field!.parts.reduce((sum,p,i)=>sum+(!field!.geometry.pieces[i].joinId&&field!.geometry.pieces[i].owners[0]===curve?p.length:0),0);
  const a=scoped?size(id):0,b=scoped?size(newId):0,cut=a/(a+b||1);
- return {...after,displayIntervals:before.displayIntervals.flatMap(track=>{
+ return {...after,displayIntervals:before.displayIntervals.flatMap(originalTrack=>{
+  const track=originalTrack.displayRoute?{...originalTrack,displayRoute:splitDisplayRoute(originalTrack.displayRoute,id,newId)}:originalTrack;
   if(track.anchor.id!==id)return [track];
   if(track.scope!=='CURVE')return [{...track,anchor:track.anchor.reverse?{id:newId,reverse:true}:track.anchor}];
   return ([{id,lo:0,hi:cut},{id:newId,lo:cut,hi:1}]).map((child,index)=>{
