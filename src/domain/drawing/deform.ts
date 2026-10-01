@@ -91,6 +91,14 @@ function distanceAt(part:Field['parts'][number],t:number){
  const i=Math.max(1,part.pts.findIndex(p=>p.t>=t)),lo=part.pts[i-1].t,hi=part.pts[i].t;
  return part.start+part.dist[i-1]+(part.dist[i]-part.dist[i-1])*clamp((t-lo)/(hi-lo||1));
 }
+/** Invert only this selected piece's arc table. A second whole-field lookup can
+ * choose the adjacent piece at a floating-point seam and pair its t with the
+ * previous source ID, moving a cut by an entire cubic. */
+function parameterAt(part:Field['parts'][number],distance:number){
+ const local=Math.max(0,Math.min(part.length,distance-part.start));let lo=0,hi=part.dist.length-1;
+ while(hi-lo>1){const mid=(lo+hi)>>1;if(part.dist[mid]<=local)lo=mid;else hi=mid;}
+ return part.pts[lo].t+(part.pts[hi].t-part.pts[lo].t)*(local-part.dist[lo])/(part.dist[hi]-part.dist[lo]||1);
+}
 /** Transport material positions, rather than retaining arc percentages after nonuniform deformation. */
 export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new Map<string,CurveParameterMap>()):Doc{
  if(!before.displayIntervals?.length)return after;
@@ -110,7 +118,7 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
     const start=old.parts[indices[0]].start,total=indices.reduce((n,i)=>n+old.parts[i].length,0),endTotal=targets.reduce((n,i)=>n+next.parts[i].length,0);
     dest=next.parts[targets[0]].start+clamp((absolute-start)/(total||1))*endTotal;
    }else{
-    const sample=old.at(absolute/old.total),range=piece.sourceRange??[0,1],sourceT=range[0]+(range[1]-range[0])*sample.t;
+    const range=piece.sourceRange??[0,1],sourceT=range[0]+(range[1]-range[0])*parameterAt(part,absolute);
     const reversed=path.segments.find(u=>u.id===piece.owners[0])!.reverse,parameterMap=parameters.get(piece.owners[0]),native=reversed?1-mappedParameter(1-sourceT,parameterMap):mappedParameter(sourceT,parameterMap);
     const j=next.geometry.pieces.findIndex(p=>!p.joinId&&p.owners[0]===piece.owners[0]),r=next.geometry.pieces[j].sourceRange??[0,1];
     dest=distanceAt(next.parts[j],clamp((native-r[0])/(r[1]-r[0]||1)));
