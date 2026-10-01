@@ -1,0 +1,298 @@
+{
+  "status": "OFFLINE_DELIVERABLE_BROWSER_QA_PENDING",
+  "projectFile": "artifacts/turning-demo/yaw-final-rig-project.json",
+  "projectSha256": "c6aba9f1e8783a09274192b6039a43b2e9dbc4fde7d02efdaa2691ca3c7f9fc6",
+  "apiVersion": "1.7",
+  "artworkId": "38970066-9230-4777-bef8-e3929764c1d0",
+  "rigId": "fdcba59f-838a-4eec-ab41-f1ea3ac3f72e",
+  "sourceReviewRequired": false,
+  "activeArtworkDirty": false,
+  "sourceCurveCount": 134,
+  "deformerCount": 13,
+  "savedAngles": [
+    {
+      "x": 0,
+      "y": 0
+    },
+    {
+      "x": -90,
+      "y": 0
+    },
+    {
+      "x": 90,
+      "y": 0
+    },
+    {
+      "x": 0,
+      "y": 90
+    },
+    {
+      "x": 0,
+      "y": -90
+    },
+    {
+      "x": 15,
+      "y": 0
+    },
+    {
+      "x": 30,
+      "y": 0
+    },
+    {
+      "x": 45,
+      "y": 0
+    },
+    {
+      "x": 48,
+      "y": 0
+    },
+    {
+      "x": 50,
+      "y": 0
+    },
+    {
+      "x": 55,
+      "y": 0
+    },
+    {
+      "x": 60,
+      "y": 0
+    }
+  ],
+  "fixedCamera": {
+    "width": 800,
+    "height": 800,
+    "center": [
+      -0.3294804514288924,
+      -0.05
+    ],
+    "pixelsPerUnit": 300
+  },
+  "savedKeyformsOnly": true,
+  "allFramesIdentical": false,
+  "hasUnappliedDraft": false,
+  "fullFrameChecks": [
+    {
+      "x": 0,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 15,
+      "fullSvgExact": null,
+      "maxErrorPixels": 0.12270173450201782,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 30,
+      "fullSvgExact": null,
+      "maxErrorPixels": 0.25743735708127435,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 45,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.4041121086984707,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 60,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.5616651653956011,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 75,
+      "fullSvgExact": null,
+      "maxErrorPixels": 0.7277582728107185,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 90,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.8986524871536599,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    }
+  ],
+  "handoffFrameChecks": [
+    {
+      "x": 45,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.4041121086984707,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 46,
+      "fullSvgExact": null,
+      "maxErrorPixels": 0.41429567673211376,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 47,
+      "fullSvgExact": null,
+      "maxErrorPixels": 0.4245275755477823,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 48,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.43480728187769874,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 49,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.4451342459216018,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 50,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.45550789101199324,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    },
+    {
+      "x": 55,
+      "fullSvgExact": true,
+      "maxErrorPixels": 0.5080542307424356,
+      "conflicts": 0,
+      "intervalErrors": 0,
+      "routeErrors": 0,
+      "paintErrors": 0
+    }
+  ],
+  "unAuthoredAxes": [
+    {
+      "angle": {
+        "x": -90,
+        "y": 0
+      },
+      "neutralSvgExact": true,
+      "neutralPixelsExact": true
+    },
+    {
+      "angle": {
+        "x": 0,
+        "y": 90
+      },
+      "neutralSvgExact": true,
+      "neutralPixelsExact": true
+    },
+    {
+      "angle": {
+        "x": 0,
+        "y": -90
+      },
+      "neutralSvgExact": true,
+      "neutralPixelsExact": true
+    }
+  ],
+  "originalReferences": [
+    {
+      "id": "25fd485b-4ea2-45fa-b2c9-a9c0edcac62c",
+      "name": "正面参考·镜像",
+      "unchangedFromPrior": true
+    },
+    {
+      "id": "d4c80298-d622-478f-8f83-8e72251f2cca",
+      "name": "右侧90°参考",
+      "unchangedFromPrior": true
+    }
+  ],
+  "readOnlyPreview": true,
+  "dryRunAtomic": true,
+  "recordingCommitOneUndo": true,
+  "undoRedoExact": true,
+  "savedKeyIdStable": true,
+  "dirtyAngleRejected": true,
+  "sourceWritesBlocked": true,
+  "sourceLibraryUnchanged": true,
+  "parseReloadExact": true,
+  "renderer": "Production PaintScene with real @napi-rs/canvas; not browser interaction QA",
+  "generatedFramesDirectory": "artifacts/turning-demo/docs-qa/c6aba9f1e878",
+  "artifactFreezeConfirmed": true,
+  "knownVisualLimitations": [
+    "The 0-degree Q white notch and the large 48-degree coverage gap were corrected; 46–49 degrees still briefly show a connected branch or narrow double contour during handoff.",
+    "Only positive yaw to +90 degrees is authored; negative yaw and pitch remain neutral. Hair and physics are not implemented in this example.",
+    "The 0-degree result is not pixel-identical to the immutable front reference; small edge-intensity differences remain."
+  ],
+  "frontZeroComparison": {
+    "renderer": "Production PaintScene + Skia Canvas, offline, not browser QA",
+    "asset": "src/assets/hairless-symmetric-two-face-mirror.json",
+    "assetSha256": "0c7222a979fef40d49c3792c2ad524a25885cf3b83a715da7045256ff46dc1a0",
+    "viewport": {
+      "width": 800,
+      "height": 800,
+      "center": [
+        -0.3294804514288924,
+        -0.05
+      ],
+      "pixelsPerUnit": 300,
+      "showFills": true
+    },
+    "changedPixels": 856,
+    "maxChannelDifference": 57,
+    "totalChannelDifference": 23218,
+    "differenceBounds": [
+      261,
+      332,
+      530,
+      525
+    ],
+    "sourceDiagnostics": [],
+    "poseDiagnostics": [],
+    "sourceAndProjectUnchanged": true,
+    "assetUnchanged": true,
+    "threshold128InkMismatchPixels": 20,
+    "rmsRGBChannelDifference": 0.4577116996538323,
+    "pixelsWithChannelDifferenceOver128": 0,
+    "identicalToPriorArtZero": true,
+    "visualObservation": "Q notch removed; original slight edge intensity differences remain; no new facial outline or fill clipping at zero."
+  },
+  "browserVerification": {
+    "currentRigImported": false,
+    "uploadAwaitingUserApproval": true,
+    "stateReadTimedOutAfterRecovery": true,
+    "scope": "Offline real Canvas plus production PaintScene only; current-rig live import, gestures and browser reload are not verified."
+  }
+}

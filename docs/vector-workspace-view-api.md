@@ -1,6 +1,6 @@
 # AI 临时参考与辅助线接口
 
-API 1.6：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。使用前确认应用已部署此方法。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
+API 1.6：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。已在 v12 实际浏览器验证，v13 保持同一接口。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
 
 这组方法不接受 expectedRevision，也不返回工程 revision。源稿/录制批次仍使用各自原有的 revision 和撤销规则。视图命令在 Drawing 与 Recording 都可执行。
 
@@ -49,3 +49,6 @@ REFERENCE_ARTWORK_ID 必须换成 inspectArtworks 返回的真实 ID。先预演
 结果 value.candidate 为候选或 null，包含建议 point、kind、guideIds，以及有曲线目标时的 target.source（artwork/reference）、target.curveId/curveIds。t 是裁切后候选 cubic 的参数；普通源段另返回 target.sourceT，才是原源曲线的 Bézier t；派生 ARC 返回 target.joinId，不能拿它冒充某条原线的 t。候选按 SHOW/HIDE 裁切，包含派生 ARC，但不计算填充遮挡、末端收尖轮廓或延伸。参考的 scale/offset 在查询前实际应用。辅助线隐藏、吸附关闭或没有辅助线时返回 null。现有几何端点/节点吸附仍是独立行为。Recording 指针目前会传入其评估后的显示几何（子级局部视图可能省略父级），因此不能声称本源空间查询与 Recording 的 posed/child-local 吸附完全等同。
 
 此方法只查询，不移动节点、不更新辅助线，也不加入 source revision/Undo。AI 可以检查候选后，把其 point 作为明确的 `moveNode` 输入，由正常源编辑事务处理锁定、镜像和区间材料。不要将吸附建议当成已经提交的几何编辑。
+
+
+v12 实际记录确认：临时参考与辅助线操作后，源 JSON 与源 revision 均不变，普通 SVG 与操作前字节一致；对参考拖动没有选择源曲线。该次 smoke 未覆盖按住拖动同时按 Delete/Arrow/Esc 或 Alt 的所有组合，不把一次基础测试视为所有手势都已覆盖。

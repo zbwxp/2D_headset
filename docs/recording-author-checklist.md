@@ -17,7 +17,7 @@ API 1.7 的 previewRecordingFrames 默认输出 X=0/15/30/45/60/75/90、Y=0。�
 
 检查输出：artworkId/rigId 全帧相同，savedKeyformsOnly:true，usedDraft:false。hasUnappliedDraft 会提示未采用的草稿；allFramesIdentical:true 说明尚未展示转头变化。warningFrameIndices 和各帧诊断不能忽略。
 
-当前头像带雾化填充，需要在应用浏览器中产生完整 SVG。若出现 BROWSER_REQUIRED，应返回浏览器渲染；不能关闭雾化/填充来冒充完整验收图。普通输出不带临时参考、标尺、控制网格或辅助线。
+当前头像带雾化填充，需要真实 Canvas/Path2D 产生完整 SVG。应用浏览器直接支持；已核验的离线 Skia Canvas 适配器可以使用同一 PaintScene/雾化算法作艺术预览，但不能代替浏览器交互检查。裸 Node 出现 BROWSER_REQUIRED 时不能关闭雾化/填充来冒充完整验收图。普通输出不带临时参考、标尺、控制网格或辅助线。
 
 把整个 API 结果保存为 JSON 后，用附带的 [提取工具](tools/extract-recording-frames.mjs) 输出帧文件：
 
@@ -26,3 +26,10 @@ node docs/tools/extract-recording-frames.mjs recording-frames-result.json NEW_fr
 ```
 
 工具只接受同一来源/rig/相机的保存键帧，先验证，再写入一个全新目录；不会覆盖旧目录或修改应用。输出 frame-000.svg … 与 manifest.json，后者保留逐帧角度和诊断。随后可用现有 Inkscape 逐帧转换为 PNG，再用 ffmpeg 按编号合成视频；源 SVG 与 manifest 一并留存作验收证据。不要用混剪不同参考稿替代实际连续参数评估。
+
+
+## 当前交付边界
+
+当前冻结工程为 yaw-final-rig-project.json，精确哈希和技术结果见 [冻结工程核验](examples/yaw-final-rig-api-validation.json)。仅正向 yaw 到 +90° 已制作；负向 yaw/pitch 维持中立，头发和物理未制作，原前/侧参考保留。完整填充与雾化由真实 Canvas+PaintScene 离线输出，46–49°仍有短暂连接分支/窄双线。
+
+当前工程上传仍待确认，恢复后的浏览器状态读取也超时；在线导入、真实手势、浏览器重载没有通过核验。这个文档包可先用于离线交付，但不能删掉“浏览器待验”标记。

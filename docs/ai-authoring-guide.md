@@ -1,6 +1,6 @@
 # Contour AI 矢量创作操作手册
 
-实测基线：2026-10-01 已实际操作的 v11，浏览器查询记录 `contourAI` 版本 1.5。API 1.6 的视图与 API 1.7 的一次性网格定位另在对应章节注明，使用前确认部署。源连接自 v7 提供，v8 已部署显式显示路由与跨层末端接笔笔触。本文面向操作现有矢量画稿的 AI，也可供开发者实现固定 JSON 接入。
+当前部署基线：2026-10-01 v13，`main 02e97da`，`contourAI` 1.7。v11 的镜像/区间与 v12 的视图已有实际浏览器记录；v13 pin/批量帧已上线，最终转头例稿已完成离线视觉复核，当前工程的浏览器验收仍待完成。源连接自 v7 提供，v8 已部署显式显示路由与跨层末端接笔笔触。本文面向操作现有矢量画稿的 AI，也可供开发者实现固定 JSON 接入。
 
 优先使用应用已经提供的结构化接口：查询真实 ID，预演，执行一个小而完整的事务，检查结果。不要用截图重建用户的原画，不要猜 ID，不要用任意 JavaScript、原始工程替换或默认资产文件覆盖来绕过接口。
 
@@ -13,11 +13,11 @@
 打开应用的「AI 编辑」界面。文本框接受两种固定 JSON 形态：
 
 - 普通批次：包含 `commands` 数组，可附 `expectedRevision` 与 `dryRun` 字段
-- 固定方法：包含 `method` 与 `request`；源稿 method 为 `inspect`、`preview`、`artwork`、`inspectArtworks`
+- 固定方法：包含 `method` 与 `request`；源稿 method 为 `inspect`、`preview`、`artwork`、`inspectArtworks`、`select`
 
-点击「预演命令」只检查；点击「执行（可撤销）」提交。界面的「检查源稿」和「导出源稿 JSON」是独立按钮。输出可从 `data-testid="ai-api-result"` 读取；预览成功时会显示「源稿预览」图像。不要解析整个对话框的文字，也不要向文本框发送函数、脚本或未知 method。
+点击「预演命令」只检查；点击「执行（可撤销）」提交。界面的「检查源稿」和「导出源稿 JSON」是独立按钮。有效方法的 JSON 输出可从 `data-testid="ai-api-result"` 读取；信封语法错误或未知 method 在 v13 的界面层可能仍显示纯文本错误，先检查而不要把它当成成功 JSON；预览成功时会显示「源稿预览」图像。不要解析整个对话框的文字，也不要向文本框发送函数、脚本或未知 method。
 
-程序接入使用固定的 `window.contourAI` 方法：`help / inspect / execute / preview / select / exportSource / inspectArtworks / artwork / undo / redo / convertPoint`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。API 1.5 另提供 `inspectRecording / recording / previewRecording`；API 1.6 提供 `inspectView / view`。新方法需确认对应应用部署，不能凭源码中的方法列表推断当前界面已经可调用。
+程序接入使用固定的 `window.contourAI` 方法：`help / inspect / execute / preview / select / exportSource / inspectArtworks / artwork / undo / redo / convertPoint`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。API 1.5 提供 `inspectRecording / recording / previewRecording`；API 1.6 提供 `inspectView / view / snapView`；API 1.7 增加 `previewRecordingFrames`。v13 的固定信封已支持这些方法。`help / exportSource / undo / redo / convertPoint` 仍不能仅凭程序方法存在就当成可发送的 method；导出源稿使用界面独立按钮。
 
 <!-- tested: inspect-nose -->
 ```json
@@ -197,7 +197,7 @@
 {"method":"preview","request":{"width":600,"height":600,"showFills":true,"expectedRevision":"LATEST_REVISION"}}
 ```
 
-临时参考画稿、辅助线和标尺使用独立的 [视图接口](vector-workspace-view-api.md)，不写源稿或 Undo。普通预览和导出干净，不包含 AI 辅助线。需要机器辅助时，显式传 `annotations:{curveIds:[...],grid:true,labels:true,handles:true,diagnostics:true}`，最多 32 曲线。辅助视图是临时状态，不写进画稿。对比前后图时固定 center、pixelsPerUnit 和输出尺寸，避免自动适配造成伪位移。浏览器外带雾化填充的预览可能返回 `BROWSER_REQUIRED`，不能偷偷换成简化外观。
+临时参考画稿、辅助线和标尺使用独立的 [视图接口](vector-workspace-view-api.md)，不写源稿或 Undo。普通预览和导出干净，不包含 AI 辅助线。需要机器辅助时，显式传 `annotations:{curveIds:[...],grid:true,labels:true,handles:true,diagnostics:true}`，最多 32 曲线。辅助视图是临时状态，不写进画稿。对比前后图时固定 center、pixelsPerUnit 和输出尺寸，避免自动适配造成伪位移。雾化填充需要真实 Canvas/Path2D；裸 Node 可能返回 `BROWSER_REQUIRED`，不能偷偷换成简化外观。经验证的真实 Canvas 离线适配器可走同一 PaintScene/雾化算法，但不替代浏览器交互验收。
 
 ## 10 本次实际操作记录
 
@@ -265,3 +265,20 @@ npx vitest run src/tests/ai-authoring-guide.test.ts src/tests/vector-source-conn
 ```
 
 截至本页版本：源/画稿 CRUD、固定 JSON 操作、显式显示路由与跨层 ink ARC 已在实际浏览器完成操作与保存核验。后续新增能力仍应先确认实际部署，不要仅凭源码中的模块名称推断线上可用。
+
+
+## 12 可交付的 +90° 转头示例（浏览器验收待完成）
+
+当前冻结工程为 `yaw-final-rig-project.json`，SHA-256 为 `c6aba9f1e8783a09274192b6039a43b2e9dbc4fde7d02efdaa2691ca3c7f9fc6`。它是实际 rig 工程，和右侧源参考稿不同：一份 134 曲线源稿、13 个 deformer，正向作者键为 X=0/15/30/45/48/50/55/60/90。原正面和侧面参考保持原样；当前源稿与已存画稿一致，没有未保存源修改。
+
+本轮只制作正向 yaw 到 +90°，不包含头发或物理。负向 yaw 与 pitch 保持中立；-90° 与 Y±90° 锚点的完整 SVG/像素核验均与0°一致，不应把这些基础锚点当成其他方向的完成稿。
+
+同一 artworkId/rigId、800×800 相机、center=[-0.3294804514288924,-0.05]、pixelsPerUnit=300 的实际 API 用真实 Canvas 与生产 PaintScene 输出完整填充/雾化 SVG。标准七帧 0/15/30/45/60/75/90 与交接细查 45/46/47/48/49/50/55 均无端点、区间传递、路由或填充错误；最大观测拟合误差约0.899 nominal px。有对应复核文件的0/45/48/49/50/55/60/90° SVG 均字节一致；其他帧也重新生成并检查，七张标准帧并非相同静图。
+
+离线视觉复核确认：0°新增的 Q 白缺口与原48°的大白缝已修正，48/49°主轮廓连续，50°为单线。但46–49°仍短暂存在相连分支/窄双线，是当前已知的轮廓交接妥协。0°与不可变正面参考仍有少量边缘像素差，不宣称逐像素完全保持。数值诊断通过不能掩盖这些可见限制。
+
+分离副本还验证了 inspect→dryRun→apply→Undo/Redo→保存键 ID 保持→解析重载，源稿和画稿库未变；未保存草稿切角度、Recording 写源稿均被拒绝。结果绑定上述精确文件哈希，见 [技术核验记录](examples/yaw-final-rig-api-validation.json)。
+
+本次交付的仓库还集成了显式「0–90° 转头工作稿」载入操作，详见 [例稿继续编辑与复现](yaw-authoring-example.md)。它新增独立的正面参考、侧面参考和转头源稿/录制；先保存当前未存源稿，再按步骤建立新画稿，最后向当前录制追加新 rig。全部属于一次 Undo。画稿、rig、Warp 和关键形获得新 ID；源对象 ID 保持画稿内部作用域。现有录制容差和其他 rig 保留。载入器保留示例的已存角度与草稿，不静默归零或丢弃草稿。当前操作会留在 Drawing，便于立即撤销；要查看转头需主动切到 Recording。本文所列已部署基线仍是 v13，新增菜单实际可用性以本次发布状态为准。
+
+**浏览器待验**：当前工程上传尚未获得所需确认，恢复后的浏览器状态读取仍超时，因此没有完成这份冻结工程的在线导入、手势和重载核验。包内成果可用于离线查看和继续制作，但必须保留这项边界；真实 Canvas 离线渲染不等于已通过浏览器验收。

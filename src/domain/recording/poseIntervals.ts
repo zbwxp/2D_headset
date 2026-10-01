@@ -8,6 +8,14 @@ export const wrapUnit=(x:number)=>((x%1)+1)%1;
 const delta=(x:number)=>x-Math.floor(x+.5);
 const span=(r:DisplayInterval,closed:boolean)=>closed?closedIntervalLength(r):r.end-r.start;
 const withoutFullLoop=(r:DisplayInterval):DisplayInterval=>{const {fullLoop:_,...rest}=r;return rest;};
+const unitRoundoff=16*Number.EPSILON;
+/** Only repair arithmetic roundoff from a convex blend of validated unit bounds.
+ * Authored out-of-domain values and extrapolation must remain invalid. */
+function blendedUnitBoundary(value:number,samples:{range:DisplayInterval;weight:number}[]):number {
+ if(value>=0&&value<=1||!Number.isFinite(value)||value < -unitRoundoff||value > 1+unitRoundoff)return value;
+ if(samples.some(s=>!Number.isFinite(s.weight)||s.weight<0||![s.range.start,s.range.end].every(n=>Number.isFinite(n)&&n>=0&&n<=1))||Math.abs(samples.reduce((n,s)=>n+s.weight,0)-1)>unitRoundoff)return value;
+ return value<0?0:1;
+}
 /** One circular start plus a length preserves both full loops and empty intervals. */
 export function blendInterval(samples:{range:DisplayInterval;weight:number;width:number}[],closed:boolean):DisplayInterval {
  const base=samples.reduce((a,b)=>a.weight>=b.weight?a:b).range;
@@ -26,7 +34,7 @@ export function blendInterval(samples:{range:DisplayInterval;weight:number;width
  const active=samples.filter(s=>s.weight>0),full=closed&&active.length>0&&active.every(s=>closedIntervalLength(s.range)===1),explicitFull=full&&active.some(s=>s.range.fullLoop===true);
  // Do not inherit a full-turn flag from the strongest sample into a partial
  // interpolation. Exact full loops retain their meaningful arbitrary anchor.
- return {...withoutFullLoop(base),start:closed?(full&&!explicitFull?0:wrapUnit(start)):start,end:closed?(full?explicitFull?wrapUnit(start):1:wrapUnit(start+length)):start+length,...(explicitFull?{fullLoop:true}:{}),inkEnds:ends};
+ return {...withoutFullLoop(base),start:closed?(full&&!explicitFull?0:wrapUnit(start)):blendedUnitBoundary(start,samples),end:closed?(full?explicitFull?wrapUnit(start):1:wrapUnit(start+length)):blendedUnitBoundary(start+length,samples),...(explicitFull?{fullLoop:true}:{}),inkEnds:ends};
 }
 /** A missing track means full ink, not absence. Divide full ink at gap midpoints:
  * the next pose opens those gaps instead of making the whole line pop away. */

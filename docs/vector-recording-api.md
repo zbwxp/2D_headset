@@ -1,10 +1,10 @@
 # AI 录制接口与转头关键形流程
 
-API 1.5 已实现并有测试；使用前通过 `help()` 和当前应用确认部署。源编辑指南见 [AI 创作手册](ai-authoring-guide.md)。这份接口只写现有录制 rig、Warp、姿态草稿和关键形，不接受原始工程替换，也不回写拟合出的源节点。
+录制方法自 API 1.5 提供；当前 v13 / main 02e97da 已部署 API 1.7（含 pin 与批量帧），最终转头例稿已完成离线视觉复核，当前工程的浏览器验收仍待完成。源编辑指南见 [AI 创作手册](ai-authoring-guide.md)。这份接口只写现有录制 rig、Warp、姿态草稿和关键形，不接受原始工程替换，也不回写拟合出的源节点。
 
 ## 入口与模式
 
-固定 JSON 界面提供 `inspectRecording`、`recording`、`previewRecording` 三个 method。程序入口为同名 `contourAI` 方法。
+固定 JSON 界面提供 `inspectRecording`、`recording`、`previewRecording`、`previewRecordingFrames` 四个 method。程序入口为同名 `contourAI` 方法。
 
 - `inspectRecording`、`previewRecording` 只读，可在两种模式查看
 - `recording` 只能在 Recording；不会自动切换模式
@@ -131,10 +131,10 @@ API 1.5 已实现并有测试；使用前通过 `help()` 和当前应用确认�
 
 这里的相机仍对应测试曲线；人脸需换成合适的固定相机。省略 angles 时正是这七个角度；最多 31 帧。省略相机时只从源稿计算一次，不随角度自动缩放。输出 frames 含 filename、SVG、角度和完整逐帧诊断，并给出 warningFrameIndices、allFramesIdentical。
 
-此方法固定使用保存关键形，明确拒绝 useDraft 和 commands；未采用的草稿通过 hasUnappliedDraft 提示。它只读同一 artworkId/rigId，不切换源参考图。完整步骤与提取 SVG 工具见 [作者检查清单](recording-author-checklist.md)。有雾化填充时必须在浏览器渲染；BROWSER_REQUIRED 不允许被静默简化成无填充导出。
+此方法固定使用保存关键形，明确拒绝 useDraft 和 commands；未采用的草稿通过 hasUnappliedDraft 提示。它只读同一 artworkId/rigId，不切换源参考图。完整步骤与提取 SVG 工具见 [作者检查清单](recording-author-checklist.md)。有雾化填充时需要真实 Canvas/Path2D。应用浏览器可直接提供；经过核验的真实 Canvas 离线适配器也可使用同一 PaintScene/雾化算法，但不算浏览器交互 QA。裸 Node 的 BROWSER_REQUIRED 不允许被静默简化成无填充导出。
 
 ## 测试与当前边界
 
 `src/tests/vector-recording-api.test.ts` 从本文件原文提取 JSON 示例测试，并覆盖 0/30/60/90 的保存、45° 插值、真实 SVG 输出、源只读、草稿拒绝、refs、错误索引、层绑定与父级、显隐和区间覆盖、原子 Undo、序列化和 stale revision。
 
-本接口是可重复的录制控制面，不是自动把像素参考转换成完整头像的图像匹配求解器。转头外观仍由实际网格/显隐设计和浏览器画面验收决定。部署前不要把本地测试结果称为已在线实际完成。
+本接口是可重复的录制控制面，不是自动把像素参考转换成完整头像的图像匹配求解器。转头外观仍由实际网格/显隐设计和浏览器画面验收决定。即使 API 已部署，也不要把本地测试或离线渲染称为当前 rig 已通过在线交互/视觉验收。

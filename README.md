@@ -2,7 +2,7 @@
 
 以矢量线稿为底层的双模式工作区：绘制模式保留完整钢笔与图层，录制模式用嵌套 Bézier Warp 与 Angle X / Y 关键形驱动画稿。旧录制/组装入口已退出主界面，旧数据安全保留在存档中。
 
-[新工作区与录制操作](docs/vector-workspace.md) · [AI 结构化编辑接口](docs/vector-editing-api.md) · [AI 矢量创作操作手册](docs/ai-authoring-guide.md)
+[新工作区与录制操作](docs/vector-workspace.md) · [AI 结构化编辑接口](docs/vector-editing-api.md) · [AI 矢量创作操作手册](docs/ai-authoring-guide.md) · [0–90° 转头例稿与可复现配方](docs/yaw-authoring-example.md)
 
 画稿库与角度关键形独立保存。录制模式锁定源线条，每段只拟合为一条 Bézier，超差会标红；全工程使用 IndexedDB 自动保存，并保留 JSON 导出。AI 辅助视图默认关闭。
 

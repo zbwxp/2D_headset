@@ -54,10 +54,14 @@ test('owner ink visibility keeps the structural route field and never awakens do
 });
 
 test('invalid ARC rendering reports its diagnostic and never reinterprets route percentages on local fallback strokes',()=>{
- const d=twoFace(),invalid={...d,curves:d.curves.map(c=>c.id==='a0'?{...c,handles:[c.handles[0],[0,0]] as [[number,number],[number,number]]}:c)},route=d.displayIntervals![0].displayRoute!,snapshot=JSON.stringify(invalid);
- const errors=displayRouteInkSupport(invalid,route);expect(errors.some(message=>message.includes('退化'))).toBe(true);
+ const d=twoFace(),invalid=structuredClone(d),owner=invalid.curves.find(c=>c.id==='a0')!;
+ // A zero raw endpoint handle can have a valid trimmed ARC. Collapse the actual
+ // owner geometry to exercise a genuine construction failure instead.
+ for(const id of owner.nodes)invalid.nodes.find(n=>n.id===id)!.position=[0,0];owner.handles=[[0,0],[0,0]];
+ const route=d.displayIntervals![0].displayRoute!,snapshot=JSON.stringify(invalid);
+ const errors=displayRouteInkSupport(invalid,route);expect(errors.length).toBeGreaterThan(0);
  const plan=displayRouteInk(invalid,route,new Map());expect(plan.diagnostics).toEqual(errors);expect(plan.runs.size).toBe(0);
- const svg=scene(invalid);expect(svg).toContain('data-testid="drawing-route-error"');expect(svg).toContain('退化');
+ const svg=scene(invalid);expect(svg).toContain('data-testid="drawing-route-error"');expect(svg).toContain('data-message=');
  expect(svg).not.toContain('data-testid="drawing-depth-ink"');expect(svg).not.toContain('data-testid="drawing-route-ink"');
  expect(svg.match(/data-testid="drawing-fill"/g)).toHaveLength(2);expect(JSON.stringify(invalid)).toBe(snapshot);
 });

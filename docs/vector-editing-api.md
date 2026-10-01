@@ -6,7 +6,7 @@ Module: `src/app/vectorEditingApi.ts`. Integration calls `registerVectorEditingA
 
 ## Contract
 
-Every operation except `help()` returns one of:
+Project/source/Recording operations except `help()` return one of the forms below. Transient `inspectView / view / snapView` intentionally omit project revision, as described in their separate contract:
 
 ```json
 {"ok":true,"revision":"opaque-session-token:1","value":{}}
