@@ -34,7 +34,10 @@ deleted-layer bindings are removed and new layers start unbound.
    autosaved separately from authored keys. Save or discard before changing an
    angle. Intermediate/corrective keys can be created, named, removed or reset.
 5. Layer visibility and existing interval enabled states can be recorded by pose.
-   Edit interval boundaries in Drawing. Review every intended fold's visibility.
+   In Recording, expand an interval track to key its SHOW/HIDE mode, start/end
+   percentages and tip tapers for this angle. These are pose appearance overrides:
+   canonical Drawing intervals, nodes and curves are unchanged. Create/remove base
+   tracks and edit their defaults in Drawing. Review every intended fold's visibility.
 
 Child deformers edit in an explicit local-space view, with ancestor transforms
 excluded and unrelated layers hidden. This keeps the control cage and artwork
@@ -79,3 +82,18 @@ Writes are ordered and considered saved only after transaction completion. When
 storage is blocked/full the app keeps edits in memory, reports failure and asks for
 JSON export; it does not quietly fall back to quota-limited full-project localStorage.
 Leaving while a write is pending or failed uses the browser's unsaved-change guard.
+
+## Angle interval overrides
+
+Interval appearance is evaluated in source-path arc coordinates before Warp. The
+legacy interval interpolator supplies circular start-plus-length/wrap behavior,
+SHOW/HIDE coverage and tip transitions. Its result is transported materially
+through the new Warp exactly once. Interval enabled switches remain distinct
+from smoothly interpolated boundaries. White fills retain their existing
+inter-layer occlusion role, including when a closure edge's ink is hidden.
+
+At a missing X/Y corner, a track edited on only one axis follows that axis without
+dilution. If both axes changed the same track, their appearances use positive
+|X|:|Y| blending; author a 2D corrective key when a specific combined result is
+needed. Explicit 2D keys take precedence. Source edits still require the existing
+source-review step; pose overrides keep the source geometry and ownership intact.

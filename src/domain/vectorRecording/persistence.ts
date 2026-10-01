@@ -1,3 +1,4 @@
+import {validateIntervalOverrides} from './intervals';
 import {finitePoint} from '../drawing/model';
 import {validateWarpGrid,type WarpGrid} from '../vectorWarp/model';
 import type {VectorRecording,VectorPose} from './model';
@@ -13,6 +14,7 @@ function grid(v:WarpGrid){
 function pose(p:VectorPose,ids:Set<string>,base:Map<string,WarpGrid>){
  if(!object(p)||!object(p.grids)||!object(p.visibility)||!object(p.intervals))fail();
  for(const [id,g] of Object.entries(p.grids)){if(!ids.has(id))fail();grid(g);const b=base.get(id)!;if(g.rows!==b.rows||g.columns!==b.columns||JSON.stringify(g.bounds)!==JSON.stringify(b.bounds))fail();}
+ if(p.intervalOverrides!==undefined)validateIntervalOverrides(p.intervalOverrides);
  for(const flags of [p.visibility,p.intervals])if(Object.entries(flags).some(([id,value])=>!id||typeof value!=='boolean'))fail();
 }
 export function parseVectorRecording(value:unknown):VectorRecording{

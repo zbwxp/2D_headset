@@ -1,9 +1,11 @@
-import {uid,type DrawingDocument,type Point2} from '../drawing/model';
+import {applyIntervalOverrides,blendIntervalOverrides,missingCornerIntervals} from './intervals';
+import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
+import {uid,type DrawingDocument,type Point2,type StrokeDisplayIntervals} from '../drawing/model';
 import {blendWarpGrids,createWarpGrid,type WarpGrid} from '../vectorWarp/model';
 import {bracket,clampAngle,latticeWeights,sameAngle,type Angle} from './interpolation';
 
 export interface VectorDeformer {id:string;name:string;parentId?:string;grid:WarpGrid}
-export interface VectorPose {grids:Record<string,WarpGrid>;visibility:Record<string,boolean>;intervals:Record<string,boolean>}
+export interface VectorPose {grids:Record<string,WarpGrid>;visibility:Record<string,boolean>;intervals:Record<string,boolean>;intervalOverrides?:StrokeDisplayIntervals[]}
 export interface VectorKeyform extends VectorPose {id:string;name:string;angle:Angle}
 export interface ArtworkRig {
  id:string;artworkId:string;sourceSignature?:string;deformers:VectorDeformer[];bindings:Record<string,string>;
@@ -23,7 +25,7 @@ export function drawingSignature(d:DrawingDocument):string{
 }
 export function acceptArtworkSource(rig:ArtworkRig,drawing:DrawingDocument):ArtworkRig{
  const layers=new Set(drawing.layers.map(l=>l.id)),items=new Set(drawing.layers.flatMap(l=>l.items)),intervals=new Set((drawing.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));
- const clean=(p:VectorPose):VectorPose=>({...p,visibility:Object.fromEntries(Object.entries(p.visibility).filter(([id])=>items.has(id))),intervals:Object.fromEntries(Object.entries(p.intervals).filter(([id])=>intervals.has(id)))});
+ const clean=(p:VectorPose):VectorPose=>({...p,visibility:Object.fromEntries(Object.entries(p.visibility).filter(([id])=>items.has(id))),intervals:Object.fromEntries(Object.entries(p.intervals).filter(([id])=>intervals.has(id))),...(p.intervalOverrides?{intervalOverrides:p.intervalOverrides.flatMap(track=>{const base=drawing.displayIntervals?.find(base=>base.id===track.id&&base.anchor.id===track.anchor.id&&base.anchor.reverse===track.anchor.reverse&&base.scope===track.scope);return base?[{...base,ranges:track.ranges}]:[];})}:{})});
  return {...rig,sourceSignature:drawingSignature(drawing),bindings:Object.fromEntries(Object.entries(rig.bindings).filter(([id])=>layers.has(id))),keys:rig.keys.map(k=>({...k,...clean(k)})),...(rig.draft?{draft:clean(rig.draft)}:{})};
 }
 export function createArtworkRig(artworkId:string,drawing?:DrawingDocument):ArtworkRig {
@@ -64,30 +66,31 @@ export function deformerChain(rig:ArtworkRig,layerId:string,pose:VectorPose,stop
  return chain;
 }
 function gridAt(rig:ArtworkRig,pose:VectorPose,id:string){return pose.grids[id]??rig.deformers.find(d=>d.id===id)!.grid;}
-function mixPose(rig:ArtworkRig,weighted:{pose:VectorPose;weight:number}[]):VectorPose{
+function mixPose(rig:ArtworkRig,weighted:{pose:VectorPose;weight:number}[],drawing?:DrawingDocument):VectorPose{
  const strongest=weighted.reduce((a,b)=>b.weight>a.weight?b:a,weighted[0]);
- return {grids:Object.fromEntries(rig.deformers.map(d=>[d.id,blendWarpGrids(weighted.map(w=>({grid:gridAt(rig,w.pose,d.id),weight:w.weight})))])),visibility:{...strongest.pose.visibility},intervals:{...strongest.pose.intervals}};
+ return {grids:Object.fromEntries(rig.deformers.map(d=>[d.id,blendWarpGrids(weighted.map(w=>({grid:gridAt(rig,w.pose,d.id),weight:w.weight})))])),visibility:{...strongest.pose.visibility},intervals:{...strongest.pose.intervals},...(drawing?{intervalOverrides:blendIntervalOverrides(drawing,weighted.map(w=>({overrides:w.pose.intervalOverrides,weight:w.weight})))}:strongest.pose.intervalOverrides?{intervalOverrides:strongest.pose.intervalOverrides}:{})};
 }
-function axisPose(rig:ArtworkRig,axis:'x'|'y',value:number,neutral:VectorPose):VectorPose{
+function axisPose(rig:ArtworkRig,axis:'x'|'y',value:number,neutral:VectorPose,drawing?:DrawingDocument):VectorPose{
  const keys=rig.keys.filter(k=>k.angle[axis==='x'?'y':'x']===0);
  const [lo,hi,t]=bracket(keys.map(k=>k.angle[axis]),value);
  const a=keys.find(k=>k.angle[axis]===lo)??neutral,b=keys.find(k=>k.angle[axis]===hi)??neutral;
- return mixPose(rig,[{pose:a,weight:1-t},{pose:b,weight:t}]);
+ return mixPose(rig,[{pose:a,weight:1-t},{pose:b,weight:t}],drawing);
 }
-export function evaluatePose(rig:ArtworkRig,angle:Angle=rig.angle):VectorPose{
- const exact=rig.keys.find(k=>sameAngle(k.angle,angle));if(exact)return {grids:exact.grids,visibility:exact.visibility,intervals:exact.intervals};
+export function evaluatePose(rig:ArtworkRig,angle:Angle=rig.angle,drawing?:DrawingDocument):VectorPose{
+ const exact=rig.keys.find(k=>sameAngle(k.angle,angle));if(exact)return {grids:exact.grids,visibility:exact.visibility,intervals:exact.intervals,...(exact.intervalOverrides?{intervalOverrides:exact.intervalOverrides}:{})};
+ if(!drawing&&rig.keys.some(k=>k.intervalOverrides?.length))throw Error('Interpolating interval overrides requires the source artwork.');
  const neutral=rig.keys.find(k=>sameAngle(k.angle,{x:0,y:0}))??emptyPose();
  const sample=(a:Angle):VectorPose=>{
   const exact=rig.keys.find(k=>sameAngle(k.angle,a));if(exact)return exact;
-  const x=axisPose(rig,'x',a.x,neutral),y=axisPose(rig,'y',a.y,neutral);
+  const x=axisPose(rig,'x',a.x,neutral,drawing),y=axisPose(rig,'y',a.y,neutral,drawing);
   const grids=Object.fromEntries(rig.deformers.map(d=>[d.id,blendWarpGrids([{grid:gridAt(rig,x,d.id),weight:1},{grid:gridAt(rig,y,d.id),weight:1},{grid:gridAt(rig,neutral,d.id),weight:-1}])]));
-  return {grids,visibility:{...neutral.visibility,...x.visibility,...y.visibility},intervals:{...neutral.intervals,...x.intervals,...y.intervals}};
+  return {grids,visibility:{...neutral.visibility,...x.visibility,...y.visibility},intervals:{...neutral.intervals,...x.intervals,...y.intervals},...(drawing?{intervalOverrides:missingCornerIntervals(drawing,neutral.intervalOverrides,x.intervalOverrides,y.intervalOverrides,a)}:{})};
  };
- return mixPose(rig,latticeWeights(rig.keys.map(k=>k.angle),angle).map(w=>({pose:sample(w.angle),weight:w.weight})));
+ return mixPose(rig,latticeWeights(rig.keys.map(k=>k.angle),angle).map(w=>({pose:sample(w.angle),weight:w.weight})),drawing);
 }
-export const currentPose=(rig:ArtworkRig)=>rig.draft??evaluatePose(rig);
-export function saveKeyform(rig:ArtworkRig,name?:string):ArtworkRig{
- const old=rig.keys.find(k=>sameAngle(k.angle,rig.angle)),pose=currentPose(rig),key:VectorKeyform={...structuredClone(pose),id:old?.id??uid(),name:name?.trim()||old?.name||`X ${rig.angle.x}° / Y ${rig.angle.y}°`,angle:{...rig.angle}};
+export const currentPose=(rig:ArtworkRig,drawing?:DrawingDocument)=>rig.draft??evaluatePose(rig,rig.angle,drawing);
+export function saveKeyform(rig:ArtworkRig,name?:string,drawing?:DrawingDocument):ArtworkRig{
+ const old=rig.keys.find(k=>sameAngle(k.angle,rig.angle)),pose=currentPose(rig,drawing),key:VectorKeyform={...structuredClone(pose),id:old?.id??uid(),name:name?.trim()||old?.name||`X ${rig.angle.x}° / Y ${rig.angle.y}°`,angle:{...rig.angle}};
  const {draft,...rest}=rig;void draft;return {...rest,keys:old?rig.keys.map(k=>k.id===old.id?key:k):[...rig.keys,key]};
 }
 export function setRigAngle(rig:ArtworkRig,angle:Angle):ArtworkRig{
@@ -96,6 +99,7 @@ export function setRigAngle(rig:ArtworkRig,angle:Angle):ArtworkRig{
 }
 export function discardDraft(rig:ArtworkRig):ArtworkRig{const {draft,...rest}=rig;void draft;return rest;}
 export function applyVisibility(d:DrawingDocument,pose:VectorPose):DrawingDocument{
+ d=applyIntervalOverrides(d,pose.intervalOverrides);
  const flag=(id:string,base:boolean)=>pose.visibility[id]??base;
- return {...d,curves:d.curves.map(c=>({...c,visible:flag(c.id,c.visible)})),fills:d.fills.map(f=>({...f,visible:flag(f.id,f.visible)})),offsets:d.offsets.map(o=>({...o,visible:flag(o.id,o.visible)})),displayIntervals:d.displayIntervals?.map(t=>({...t,ranges:t.ranges.map(r=>({...r,enabled:pose.intervals[r.id]??r.enabled}))}))};
+ return {...d,curves:d.curves.map(c=>({...c,visible:flag(c.id,c.visible)})),fills:d.fills.map(f=>({...f,visible:flag(f.id,f.visible)})),offsets:d.offsets.map(o=>({...o,visible:flag(o.id,o.visible)})),displayIntervals:d.displayIntervals?.map(t=>({...t,ranges:t.ranges.map(r=>withIntervalPinch({...r,enabled:pose.intervals[r.id]??r.enabled},intervalPinch(r)))}))};
 }

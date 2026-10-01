@@ -1,6 +1,7 @@
 import {shapeOf,type Cubic,type Point2,type DrawingDocument} from '../drawing/model';
 import {transportDeformedIntervals} from '../drawing/deform';
 import {displayPath} from '../drawing/displayIntervals';
+import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {validateWarpGrid,isIdentityWarpGrid,type WarpGrid,type WarpChain,type WarpSource} from './model';
 
 export type Jacobian2 = [Point2,Point2]; // rows, d(output component)/d(input x,y)
@@ -248,7 +249,8 @@ export function deformDrawing(source:DrawingDocument,warps:WarpSource,options:Wa
   }
   // The existing transport helper may reuse unchanged tracks. Keep transient
   // output detached even when a track did not need any numeric transport.
-  output={...output,displayIntervals:structuredClone(output.displayIntervals)};
+  const strengths=new Map(source.displayIntervals.flatMap(t=>t.ranges.map(r=>[r.id,intervalPinch(r)] as const)));
+  output={...output,displayIntervals:structuredClone(output.displayIntervals)?.map(t=>({...t,ranges:t.ranges.map(r=>withIntervalPinch(r,strengths.get(r.id)??0))}))};
  }
  return {drawing:output,diagnostics,diagnosticStage:options.diagnostics??'full',intervalTransportErrors,maxError:diagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),warningCurveIds:diagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId!),conflictingNodeIds:drawing.nodes.filter(n=>conflicts.has(root(n.id))).map(n=>n.id)};
 }
