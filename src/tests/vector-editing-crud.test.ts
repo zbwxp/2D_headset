@@ -75,3 +75,36 @@ test('layer duplication rejects external endpoint dependencies instead of silent
  let d=addLayer(emptyDrawing(),'One');const one=d.layers[0].id;d=createCurve(d,one,[[0,0],[.2,0],[.4,0],[.6,0]],.02,'A','a');d=addLayer(d,'Two');d=createCurve(d,d.layers[0].id,[[0,0],[-.2,0],[-.4,0],[-.6,0]],.02,'B','b');d=linkEndpoints(d,{curveId:'a',end:0},{curveId:'b',end:0});const h=harness(d);
  error(h.api.execute({commands:[{op:'duplicateLayer',layerId:one}]}),'DEPENDENCY_REQUIRED');expect(h.state().project.drawing).toBe(d);expect(h.state().commits).toBe(0);
 });
+
+test('creates a closed filled piece and hides only its internal closure through an explicit interval',()=>{
+ const h=harness(emptyDrawing()),line=(a:[number,number],b:[number,number])=>[a,a.map((x,i)=>x+(b[i]-x)/3),a.map((x,i)=>x+2*(b[i]-x)/3),b];
+ const commands:VectorCommand[]=[{op:'createLayer',name:'Face piece',ref:'piece'},...[[[-1,-1],[.2,-1]],[[.2,-1],[.2,1]],[[.2,1],[-1,1]],[[-1,1],[-1,-1]]].map((ends,i)=>({op:'createCurve',layerId:'$piece',shape:line(ends[0] as [number,number],ends[1] as [number,number]),name:`Edge ${i}`,ref:`edge${i}`} as VectorCommand)),{op:'createFill',curveIds:['$edge0','$edge1','$edge2','$edge3'],color:'white',ref:'skin'},{op:'addDisplayInterval',curveId:'$edge1',mode:'HIDE',start:0,end:1,ref:'closure'},{op:'setDisplayIntervalEnd',rangeId:'$closure',end:0,style:{taper:0,extension:0}}];
+ const result=value(h.api.execute({commands})),d=h.state().project.drawing!;expect(h.state().commits).toBe(1);expect(d.curves).toHaveLength(4);expect(d.fills).toHaveLength(1);expect(d.joins).toHaveLength(0);expect(fillGeometry(d,d.fills[0]).error).toBeUndefined();
+ const range=result.created.find(x=>x.ref==='closure')!;expect(d.displayIntervals![0].ranges[0]).toMatchObject({id:range.id,mode:'HIDE',start:0,end:1,inkEnds:[{taper:0,extension:0},{taperWidthScale:20}]});
+ value(h.api.execute({commands:[{op:'changeDisplayInterval',rangeId:range.id,enabled:false,start:.2,end:.8}]}));expect(h.state().project.drawing!.displayIntervals![0].ranges[0]).toMatchObject({enabled:false,start:.2,end:.8});
+ value(h.api.execute({commands:[{op:'removeDisplayInterval',rangeId:range.id}]}));expect(h.state().project.drawing!.displayIntervals).toEqual([]);expect(h.state().project.drawing!.fills).toEqual(d.fills);
+});
+
+test('curve subdivision retains fills and authored outer tip styles and reports its new curve',()=>{
+ const d=fixture();d.curves.forEach(c=>{c.visible=true;});const id=d.curves[0].id;d.curves[0].inkEnds=[{taper:.12,extension:.01},{taper:.2}];const h=harness(d),before=fillGeometry(d,d.fills[0]);
+ const result=value(h.api.execute({commands:[{op:'splitCurve',curveId:id,t:.4,ref:'split'},{op:'renameCurve',curveId:'$split',name:'Second piece'}]})),next=h.state().project.drawing!,second=result.created[0].id;
+ expect(next.curves).toHaveLength(5);expect(next.fills[0].boundary).toHaveLength(5);expect(next.curves.find(c=>c.id===id)!.inkEnds).toEqual([{taper:.12,extension:.01},{}]);expect(next.curves.find(c=>c.id===second)!.inkEnds).toEqual([{}, {taper:.2}]);expect(fillGeometry(next,next.fills[0]).error).toBeUndefined();expect(before.error).toBeUndefined();expect(result.addedCurves[0].curveId).toBe(second);
+});
+
+test('explicit ink visibility, depth, mirror guide and mist changes keep fill boundaries and source geometry',()=>{
+ const d=fixture();d.curves.forEach(c=>{c.visible=true;});const h=harness(d),id=d.curves[0].id;
+ value(h.api.execute({commands:[{op:'setMirrorAxis',x:-.3},{op:'setInkVisibility',curveIds:[id],visible:false},{op:'setCurveInkEnd',curveId:id,end:0,style:{taper:.1}},{op:'setDepth',curveId:id,offset:1,scope:'LAYER'},{op:'setFill',fillId:d.fills[0].id,mist:{enabled:true,side:'INSIDE',width:.02,opacity:.4}}]}));
+ const next=h.state().project.drawing!;expect(next.mirrorAxisX).toBe(-.3);expect(next.curves[0]).toMatchObject({inkVisible:false,depthOffset:1,depthScope:'LAYER',inkEnds:[{taper:.1},{}]});expect(next.fills[0].boundary).toEqual(d.fills[0].boundary);expect(next.fills[0].mist?.opacity).toBe(.4);expect(shapeOf(next,id)).toEqual(shapeOf(d,id));
+});
+
+test('malformed topology and interval commands roll back the entire private draft',()=>{
+ const h=harness(),d=h.state().project.drawing!,id=d.curves.find(c=>c.visible)!.id,before=h.state().project;
+ for(const command of [
+  {op:'createCurve',layerId:d.layers[0].id,shape:[[0,0],[1,1],[2,2]]},
+  {op:'splitCurve',curveId:id,t:0},
+  {op:'addDisplayInterval',curveId:id,start:1.01},
+  {op:'setDepth',curveId:id,offset:.5},
+  {op:'setCurveInkEnd',curveId:id,end:0,style:{taper:.1,taperWidthScale:2}},
+  {op:'setDisplayIntervalEnd',rangeId:'missing',end:0,style:{taper:0}},
+ ] as VectorCommand[]){expect(h.api.execute({commands:[{op:'createLayer',name:'Temporary'},command]}).ok).toBe(false);expect(h.state().project).toBe(before);expect(h.state().commits).toBe(0);}
+});

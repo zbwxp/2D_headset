@@ -129,13 +129,14 @@ export function deleteCurves(d:Doc,ids:string[]):Doc{
 /** List deletion is allowed for hidden objects; locks still protect objects and join partners. */
 export function deleteObjects(d:Doc,ids:string[]):Doc{
  const selected=new Set(ids.filter(id=>objectById(d,id)));if(!selected.size)return d;
- const related=d.joins.filter(j=>selected.has(j.a.curveId)||selected.has(j.b.curveId)).flatMap(j=>[j.a.curveId,j.b.curveId]);
+ // Deleting a member also removes its relations. Honor the same partner locks
+ // as an explicit unlink, including links whose other member is in another layer.
+ const related=[...d.joins,...(d.endpointLinks??[])].filter(j=>selected.has(j.a.curveId)||selected.has(j.b.curveId)).flatMap(j=>[j.a.curveId,j.b.curveId]);
  if([...selected,...related].some(id=>objectById(d,id)?.locked))throw Error('对象已锁定。');
  return retainDisplayIntervals(d,clean({...d,curves:d.curves.filter(c=>!selected.has(c.id)),fills:d.fills.filter(f=>!selected.has(f.id)),offsets:d.offsets.filter(o=>!selected.has(o.id)),layers:d.layers.map(l=>({...l,items:l.items.filter(id=>!selected.has(id))}))}));
 }
 export function deleteLayer(d:Doc,id:string):Doc{
- const l=d.layers.find(l=>l.id===id);if(!l)return d;if(l.items.some(id=>objectById(d,id)?.locked))throw Error('图层或内容已锁定。');
- return retainDisplayIntervals(d,clean({...d,layers:d.layers.filter(l=>l.id!==id),curves:d.curves.filter(c=>!l.items.includes(c.id)),fills:d.fills.filter(c=>!l.items.includes(c.id)),offsets:d.offsets.filter(c=>!l.items.includes(c.id))}));
+ return deleteLayers(d,[id]);
 }
 /** Atomic multi-layer deletion, with the same lock protection as object deletion. */
 export function deleteLayers(d:Doc,ids:readonly string[]):Doc{

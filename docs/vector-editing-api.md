@@ -213,3 +213,25 @@ The numeric matrix above reflects around the bundled front artwork's axis. Alway
 Results include `created` entries (`commandIndex`, `kind`, `id`, optional `ref`; a duplicated layer also supplies source-to-copy `idMap` for layers/objects/nodes), `addedCurves`, changed layer/fill/offset IDs, and a `removed` ID collection. Existing-curve `beforeAfter` remains available. All result data is assembled before the host commit. Deleting a fill boundary without its dependent fill is rejected if it would introduce invalid geometry; explicitly include both objects in the deletion.
 
 Regression commands: `npx vitest run src/tests/vector-editing-api.test.ts src/tests/vector-editing-crud.test.ts src/tests/drawing-layer-duplication.test.ts`. This increment covers source layers and paint; artwork-library CRUD and new endpoint-binding semantics are not implied by these commands.
+
+### Curve and source-interval CRUD
+
+- `createCurve {layerId, shape:[P0,H0,H1,P1], width?, name?, ref?}` creates a canonical cubic and two fresh endpoint nodes. Width defaults to 0.008 source units. Coincident coordinates do not imply a shared-node binding
+- `splitCurve {curveId, t, ref?}` performs the existing exact cubic subdivision, retaining the original ID for the first piece and returning the second piece's new ID. Here `t` is Bézier t, strictly inside the curve; this differs from display-interval arc length. Fill/offset references and outer authored tip styles are retained by the domain operation
+- `setMirrorAxis {x}` sets the exact guide coordinate
+- `setInkVisibility {curveIds, visible}` changes only selected segment ink, retaining geometry and fills
+- `setCurveInkEnd {curveId, end:0|1, style}` explicitly edits an authored tip; style may contain `taper`, `extension`, `taperWidthScale`, `interior`. Distances use source units. Specify either absolute taper or width-multiple taper, not both
+- `setDepth {curveId, offset, scope?}` sets an integer relative paint offset; scope is `PARENT` or `LAYER`
+- `addDisplayInterval {curveId, mode?, start?, end?, enabled?, ref?}` adds to that curve's existing derived stroke track, defaulting to SHOW and the UI's default positions. Its created entity is `kind:"displayRange"`
+- `changeDisplayInterval {rangeId, mode?, start?, end?, enabled?}`, `removeDisplayInterval {rangeId}`, and `setDisplayIntervalEnd {rangeId, end:0|1, style}` resolve the owning track by stable range ID. `$refs` work for newly created ranges
+- `setFill` additionally accepts a full validated `mist:{enabled,side,width,opacity}` value, using the existing fill-mist command. Width is 0.001–0.8 source units; opacity is 0–1. Edit appearance before locking the fill
+
+Source intervals use normalized **arc length** 0–1; closed paths may wrap through the origin when start > end. HIDE subtracts ink without cutting away fill geometry. A pre-existing SHOW range still restricts the visible portion; disable/remove that SHOW range explicitly if the whole loop should otherwise be visible. Editing an interval never adds cross-piece binding or a logical contour. Existing connection/link commands are deliberately not exposed here: their authored-tip reset side effects need a separate explicit contract, and this increment does not implement the pending logical-contour design.
+
+Example closure mask in a newly created piece, inside one batch:
+
+```json
+{"op":"addDisplayInterval","curveId":"$internalClosure","mode":"HIDE","start":0,"end":1,"ref":"hiddenClosure"}
+```
+
+A later command may set `rangeId:"$hiddenClosure"`. `createCurve` plus `createFill` can construct exact closed source loops in a single atomic batch using aliases; doing so does not claim that two independent loops acquire shared endpoint/tangent constraints.

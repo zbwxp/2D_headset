@@ -7,15 +7,17 @@ import {useDrawing} from '../ui/drawing/session';
 import PaintScene from '../ui/drawing/PaintScene';
 import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,objectById,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
-import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer} from '../domain/drawing/commands';
+import {emptyDrawing,parseDrawing,shapeOf,layerFor,members,objectById,validFillMist,type FillMist,type InkEndStyle,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
+import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,splitCurve,setMirrorAxis} from '../domain/drawing/commands';
 import {setObjectState} from '../domain/drawing/objectState';
-import {createFill,changePaint,reorderPaint} from '../domain/drawing/paintCommands';
+import {createFill,changePaint,reorderPaint,setInk,setInkEnd} from '../domain/drawing/paintCommands';
+import {setDepthOffset} from '../domain/drawing/depth';
+import {setFillMist} from '../domain/drawing/fillMist';
 import {planArtworkLayerImport} from '../domain/drawing/importArtworkLayers';
 import {deformDrawing,transportDeformedIntervals,type Quad,type DeformRect} from '../domain/drawing/deform';
 import {strokes,strokeName,strokeIds} from '../domain/drawing/strokes';
 import {linkedNodeIds} from '../domain/drawing/endpointLinks';
-import {displayField,displayPath} from '../domain/drawing/displayIntervals';
+import {displayField,displayPath,addDisplayInterval,changeDisplayInterval,removeDisplayInterval,setDisplayIntervalEnd} from '../domain/drawing/displayIntervals';
 import {fillGeometry,offsetGeometry} from '../domain/drawing/appearance';
 import {roundedJoins} from '../domain/drawing/roundedJoin';
 
@@ -41,11 +43,21 @@ export type VectorCommand=
  | {op:'deleteObjects';objectIds:string[]}
  | {op:'moveToLayer';curveIds:string[];layerId:string}
  | {op:'createFill';curveIds:string[];color:'white'|'black'|'transparent';kind?:'SOLID'|'MIST';ref?:string}
- | {op:'setFill';fillId:string;name?:string;color?:'white'|'black'|'transparent';visible?:boolean;locked?:boolean}
+ | {op:'setFill';fillId:string;name?:string;color?:'white'|'black'|'transparent';visible?:boolean;locked?:boolean;mist?:FillMist}
  | {op:'reorderObject';objectId:string;targetObjectId:string;after?:boolean}
- | {op:'transformLayers';layerIds:string[];matrix:Affine;allowRelated?:boolean};
-export interface CreatedEntity {commandIndex:number;kind:'layer'|'fill';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers'];
+ | {op:'transformLayers';layerIds:string[];matrix:Affine;allowRelated?:boolean}
+ | {op:'createCurve';layerId:string;shape:Cubic;width?:number;name?:string;ref?:string}
+ | {op:'splitCurve';curveId:string;t:number;ref?:string}
+ | {op:'setMirrorAxis';x:number}
+ | {op:'setInkVisibility';curveIds:string[];visible:boolean}
+ | {op:'setCurveInkEnd';curveId:string;end:0|1;style:InkEndStyle}
+ | {op:'setDepth';curveId:string;offset:number;scope?:'PARENT'|'LAYER'}
+ | {op:'addDisplayInterval';curveId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;ref?:string}
+ | {op:'changeDisplayInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean}
+ | {op:'removeDisplayInterval';rangeId:string}
+ | {op:'setDisplayIntervalEnd';rangeId:string;end:0|1;style:InkEndStyle};
+export interface CreatedEntity {commandIndex:number;kind:'layer'|'fill'|'curve'|'displayRange';id:string;ref?:string;idMap?:Record<string,string>}
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd'];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
@@ -107,6 +119,17 @@ function affineMap(matrix:unknown){
  const [a,b,c,d,e,f]=(matrix as unknown[]).map((v,i)=>num(v,`matrix[${i}]`));
  if(Math.abs(a*d-b*c)<1e-12)fail('INVALID_REQUEST','The affine transform must be nonsingular.');
  return (p:Point2):Point2=>[a*p[0]+c*p[1]+e,b*p[0]+d*p[1]+f];
+}
+function end(value:unknown):0|1{if(value!==0&&value!==1)fail('INVALID_REQUEST','end must be 0 or 1.');return value as 0|1;}
+function intervalChange(c:Record<string,unknown>){
+ if(c.mode!==undefined&&c.mode!=='SHOW'&&c.mode!=='HIDE')fail('INVALID_REQUEST','mode must be SHOW or HIDE.');bool(c.enabled,'enabled');
+ return {...(c.mode===undefined?{}:{mode:c.mode as DisplayIntervalMode}),...(c.enabled===undefined?{}:{enabled:c.enabled as boolean}),...(c.start===undefined?{}:{start:num(c.start,'start',0,1)}),...(c.end===undefined?{}:{end:num(c.end,'end',0,1)})};
+}
+function rangeExists(d:DrawingDocument,value:unknown){const id=string(value,'rangeId'),track=d.displayIntervals?.find(t=>t.ranges.some(r=>r.id===id));if(!track)fail('NOT_FOUND',`Unknown display range ID: ${id}.`);return {id,track:track!};}
+function inkEndStyle(value:unknown):InkEndStyle{
+ const s=record(value);keys(s,['taper','extension','taperWidthScale','interior']);nonemptyChange(s);bool(s.interior,'interior');
+ if(s.taper!==undefined&&s.taperWidthScale!==undefined)fail('INVALID_REQUEST','Choose taper or taperWidthScale, not both.');
+ return {...(s.taper===undefined?{}:{taper:num(s.taper,'taper',0,20)}),...(s.extension===undefined?{}:{extension:num(s.extension,'extension',0,2)}),...(s.taperWidthScale===undefined?{}:{taperWidthScale:num(s.taperWidthScale,'taperWidthScale',0,200)}),...(s.interior===undefined?{}:{interior:s.interior as boolean})};
 }
 function validateBounds(d:DrawingDocument){
  for(const n of d.nodes)point(n.position,`node ${n.id}`);
@@ -214,8 +237,10 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
    const n=createFill(d,curvesExist(d,c.curveIds),color(c.color),c.kind as 'SOLID'|'MIST'|undefined);created('fill',n.fills.at(-1)!.id,c.ref);return n;
   }
   case 'setFill':{
-   keys(c,['op','fillId','name','color','visible','locked']);const id=string(c.fillId,'fillId');if(!d.fills.some(f=>f.id===id))fail('NOT_FOUND',`Unknown fill ID: ${id}.`);
-   const change={...stateChange(c),...(c.name===undefined?{}:{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()}),...(c.color===undefined?{}:{color:color(c.color)})};nonemptyChange(change);return changePaint(d,id,change);
+   keys(c,['op','fillId','name','color','visible','locked','mist']);const id=string(c.fillId,'fillId');if(!d.fills.some(f=>f.id===id))fail('NOT_FOUND',`Unknown fill ID: ${id}.`);
+   if(c.mist!==undefined){keys(record(c.mist),['enabled','side','width','opacity']);if(!validFillMist(c.mist))fail('INVALID_REQUEST','mist requires enabled, side (INSIDE/OUTSIDE/BOTH), width 0.001–0.8 and opacity 0–1.');}
+   const change={...stateChange(c),...(c.name===undefined?{}:{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()}),...(c.color===undefined?{}:{color:color(c.color)})};if(c.mist===undefined)nonemptyChange(change);
+   const n=changePaint(d,id,change);return c.mist===undefined?n:setFillMist(n,id,c.mist as FillMist);
   }
   case 'reorderObject':{
    keys(c,['op','objectId','targetObjectId','after']);bool(c.after,'after');const id=objectExists(d,c.objectId),target=objectExists(d,c.targetObjectId);
@@ -224,6 +249,26 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   case 'transformLayers':{
    keys(c,['op','layerIds','matrix','allowRelated']);bool(c.allowRelated,'allowRelated');const layers=ids(c.layerIds,'layerIds').map(id=>layerExists(d,id)),selected=d.curves.filter(c=>layers.includes(layerFor(d,c.id)!.id)).map(c=>c.id);return transform(d,selected,affineMap(c.matrix),c.allowRelated===true);
   }
+  case 'createCurve':{
+   keys(c,['op','layerId','shape','width','name','ref']);const layer=layerExists(d,c.layerId);if(!Array.isArray(c.shape)||c.shape.length!==4)fail('INVALID_REQUEST','shape must contain [P0,H0,H1,P1].');
+   const n=createCurve(d,layer,(c.shape as unknown[]).map((p,i)=>point(p,`shape[${i}]`)) as Cubic,c.width===undefined?undefined:num(c.width,'width',1e-8,1),c.name===undefined?undefined:string(c.name,'name',VECTOR_AI_LIMITS.name).trim());created('curve',n.curves.at(-1)!.id,c.ref);return n;
+  }
+  case 'splitCurve':{
+   keys(c,['op','curveId','t','ref']);const result=splitCurve(d,curveExists(d,c.curveId),num(c.t,'t',0,1));created('curve',result.ids[1],c.ref);return result.document;
+  }
+  case 'setMirrorAxis':keys(c,['op','x']);return setMirrorAxis(d,num(c.x,'x'));
+  case 'setInkVisibility':keys(c,['op','curveIds','visible']);if(typeof c.visible!=='boolean')fail('INVALID_REQUEST','visible must be a boolean.');return setInk(d,curvesExist(d,c.curveIds),{inkVisible:c.visible as boolean});
+  case 'setCurveInkEnd':keys(c,['op','curveId','end','style']);return setInkEnd(d,curveExists(d,c.curveId),end(c.end),inkEndStyle(c.style));
+  case 'setDepth':{
+   keys(c,['op','curveId','offset','scope']);if(c.scope!==undefined&&c.scope!=='PARENT'&&c.scope!=='LAYER')fail('INVALID_REQUEST','scope must be PARENT or LAYER.');const offset=num(c.offset,'offset');if(!Number.isSafeInteger(offset))fail('INVALID_REQUEST','offset must be an integer.');return setDepthOffset(d,curveExists(d,c.curveId),offset,c.scope as 'PARENT'|'LAYER'|undefined);
+  }
+  case 'addDisplayInterval':{
+   keys(c,['op','curveId','mode','start','end','enabled','ref']);const id=curveExists(d,c.curveId),change=intervalChange(c),prior=new Set((d.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));let n=addDisplayInterval(d,id,change.mode);
+   const track=n.displayIntervals!.find(t=>t.ranges.some(r=>!prior.has(r.id)))!,range=track.ranges.find(r=>!prior.has(r.id))!;n=changeDisplayInterval(n,track.id,range.id,change);created('displayRange',range.id,c.ref);return n;
+  }
+  case 'changeDisplayInterval':keys(c,['op','rangeId','mode','start','end','enabled']);{const r=rangeExists(d,c.rangeId),change=intervalChange(c);nonemptyChange(change);return changeDisplayInterval(d,r.track.id,r.id,change);}
+  case 'removeDisplayInterval':keys(c,['op','rangeId']);{const r=rangeExists(d,c.rangeId);return removeDisplayInterval(d,r.track.id,r.id);}
+  case 'setDisplayIntervalEnd':keys(c,['op','rangeId','end','style']);{const r=rangeExists(d,c.rangeId);return setDisplayIntervalEnd(d,r.track.id,r.id,end(c.end),inkEndStyle(c.style));}
   default:return fail('UNKNOWN_COMMAND',`Unknown command: ${String(op)}.`);
  }
 }
