@@ -1,3 +1,4 @@
+import {setDepthOffset,depthPaintBatches} from '../domain/drawing/depth';
 import {createVectorEditingApi} from '../app/vectorEditingApi';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {readFileSync} from 'node:fs';
@@ -32,3 +33,5 @@ test('accepting split-origin range metadata propagates old angle enable flags wi
 });
 
 test('actual visible-console two-command batch preserves source and adopts continuous ARC atomically',()=>{let project:LandmarkProject={...createEmptyProject(),drawing:source()},commits=0;const api=createVectorEditingApi({getState:()=>({project,past:[],future:[]}),getMode:()=>"drawing",commitDrawing:drawing=>{project={...project,drawing};commits++;},undo(){},redo(){}}),before=project;const commands=[{op:'setLinkJoinBrush' as const,linkId,brush:{kind:'ARC' as const,trimDistance:.05257222158088604}},{op:'adoptDisplayRoute' as const,trackId,linkId}];expect(api.execute({commands,dryRun:true})).toMatchObject({ok:true,value:{applied:false}});expect(project).toBe(before);const result=api.execute({commands});expect(result).toMatchObject({ok:true,value:{applied:true}});expect(commits).toBe(1);expect(project.drawing!.curves).toEqual(before.drawing!.curves);const plan=displayRouteInk(project.drawing!,project.drawing!.displayIntervals!.find(t=>t.id===trackId)!.displayRoute!,new Map());expect(plan.diagnostics).toEqual([]);});
+
+test('the back jaw can paint above the overlapping front white fill using its existing layer depth control',()=>{const d=adopted().document,id='1a723ec7-9bbe-4c56-8c0f-680d03741aa6',fill='4b61b3d4-912d-4f72-be51-099d53f2ee16',before=depthPaintBatches(d),next=setDepthOffset(d,id,1,'LAYER'),after=depthPaintBatches(next);expect(before.find(b=>b.owner===id)!.position).toBeGreaterThan(before.find(b=>b.item.id===fill)!.position);expect(after.find(b=>b.owner===id)!.position).toBeLessThan(after.find(b=>b.item.id===fill)!.position);expect(next.nodes).toEqual(d.nodes);expect(next.fills).toEqual(d.fills);expect(next.layers).toEqual(d.layers);expect(next.curves.map(c=>[c.id,c.nodes,c.handles])).toEqual(d.curves.map(c=>[c.id,c.nodes,c.handles]));});

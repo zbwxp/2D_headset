@@ -1,8 +1,9 @@
 import {parseDrawing,uid,curveById,type DrawingDocument,type CurveUse,type Endpoint} from './model';
 import {strokes,strokePaths,strokeFor} from './strokes';
+import {mapDisplayRouteReferences,resolveDisplayRoute} from './displayRoutes';
 
 export interface ArtworkLayerDependency {
- kind:'endpointLink'|'fill'|'offset'|'join';
+ kind:'endpointLink'|'fill'|'offset'|'join'|'displayRoute';
  objectId:string;
  fromLayerId:string;
  requiredLayerId:string;
@@ -73,6 +74,16 @@ function plan(source:DrawingDocument,layerIds:readonly string[]):ArtworkLayerImp
    if(selected.has(a))requireCurve(join.b.curveId,'join',join.id,a);
    if(selected.has(b))requireCurve(join.a.curveId,'join',join.id,b);
   }
+  // Routed coverage can affect several layers, even when its track's anchor is
+  // owned by another one. Retain the complete explicit traversal and its ports.
+  for(const track of source.displayIntervals??[]){
+   if(!track.displayRoute)continue;
+   const route=track.displayRoute,resolved=resolveDisplayRoute(source,route);
+   if(resolved.diagnostics.length)throw new ArtworkLayerImportError('MISSING_DEPENDENCY',`来源显示路径 ${track.id} 无效：${resolved.diagnostics[0].message}`);
+   const references=new Set([track.anchor.id,...route.seed.segments.map(u=>u.id),...resolved.path.segments.map(u=>u.id)]);
+   for(const id of route.throughLinkIds){const link=source.endpointLinks?.find(l=>l.id===id);if(!link)throw new ArtworkLayerImportError('MISSING_DEPENDENCY',`来源显示路径 ${track.id} 缺少端点联动 ${id}。`);references.add(link.a.curveId);references.add(link.b.curveId);}
+   const touching=[...references].find(id=>selected.has(owners.get(id)!));if(touching)for(const id of references)requireCurve(id,'displayRoute',track.id,owners.get(touching)!);
+  }
  }
  const ordered=(set:Set<string>)=>source.layers.filter(l=>set.has(l.id)).map(l=>l.id);
  return {requestedLayerIds:ordered(requested),layerIds:ordered(selected),additionalLayerIds:source.layers.filter(l=>selected.has(l.id)&&!requested.has(l.id)).map(l=>l.id),dependencies};
@@ -95,7 +106,6 @@ export function importArtworkLayers(target:DrawingDocument,source:DrawingDocumen
  if(p.additionalLayerIds.length&&!options.includeDependencies)throw new ArtworkLayerDependencyError(p,saved);
  if(!p.layerIds.length)return {document:target,sourceLayerIds:[],additionalLayerIds:[],importedLayerIds:[],importedCurveIds:[],idMap:{}};
  const layers=new Set(p.layerIds),items=new Set(saved.layers.filter(l=>layers.has(l.id)).flatMap(l=>l.items)),curves=saved.curves.filter(c=>items.has(c.id)),curveIds=new Set(curves.map(c=>c.id)),nodes=new Set(curves.flatMap(c=>c.nodes));
- if((saved.displayIntervals??[]).some(t=>t.displayRoute&&(curveIds.has(t.anchor.id)||t.displayRoute.seed.segments.some(u=>curveIds.has(u.id)))))throw new ArtworkLayerImportError('INVALID_OPTIONS','贯通显示路径的跨图层复制尚未启用；请先解除显示贯通或保存整个画稿副本。');
  const incoming={
   layers:saved.layers.filter(l=>layers.has(l.id)),curves,nodes:saved.nodes.filter(n=>nodes.has(n.id)),
   fills:saved.fills.filter(f=>items.has(f.id)),offsets:saved.offsets.filter(o=>items.has(o.id)),
@@ -132,7 +142,7 @@ export function importArtworkLayers(target:DrawingDocument,source:DrawingDocumen
   joins:[...current.joins,...incoming.joins.map(j=>({...j,id:remap(j.id),a:endpoint(j.a),b:endpoint(j.b)}))],
   ...(incoming.endpointLinks.length?{endpointLinks:[...(current.endpointLinks??[]),...incoming.endpointLinks.map(l=>({...l,id:remap(l.id),a:endpoint(l.a),b:endpoint(l.b)}))]}:{}),
   ...(incoming.groups.length?{groups:[...(current.groups??[]),...incoming.groups.map(g=>({...g,id:remap(g.id),curveIds:g.curveIds.map(remap)}))]}:{}),
-  ...(incoming.displayIntervals.length?{displayIntervals:[...(current.displayIntervals??[]),...incoming.displayIntervals.map(t=>({...t,id:remap(t.id),anchor:use(t.anchor),ranges:t.ranges.map(r=>({...r,id:remap(r.id)}))}))]}:{}),
+  ...(incoming.displayIntervals.length?{displayIntervals:[...(current.displayIntervals??[]),...incoming.displayIntervals.map(t=>({...t,id:remap(t.id),anchor:use(t.anchor),...(t.displayRoute?{displayRoute:mapDisplayRouteReferences(t.displayRoute,remap,remap)}:{}),ranges:t.ranges.map(r=>({...r,id:remap(r.id),...(r.originId===undefined?{}:{originId:map.get(r.originId)??r.originId})}))}))]}:{}),
  };
  // Unusual prefix-containing curve IDs can still change the endKey tie-break
  // at a branched node. Match the existing duplicate-curve behavior: compensate

@@ -177,6 +177,8 @@
 4. 实际发现闭环 HIDE 结束于 1 时，一侧末端笔触丢失。修复的是有效区间运算与 0/1 容差，没有靠移动几何或写不等笔触掩盖问题
 5. v7 实际执行了两个三曲线脸片的创建、六次 POSITION 合并与两个白色填充。每片都是独立的真实三节点闭合环。内部闭合线的两个 handle 向另一半偏移 0.10 源单位，形成重叠；该构建阶段仍保留旧脸片，随后按真实新路径测量遮盖范围
 
+完整的实际请求、返回的新 ID、两次预演/执行结果与保存结果见 [双脸片实际 API 配方](examples/two-face-executed-api-recipe.json)。文件内的 revision 和对象 ID 是那次会话记录，不能原样重放到别的工程；测试会依据本次新返回的 ID 重映射第二阶段。
+
 当前两片实测路径均按「上缘 → 下颌 → 内部闭合」正向。右片上缘终点弧长比例 `0.35870166107613266`，左片为 `0.3587016610761327`；两片下颌终点均为 `0.5889569240999535`。针对这份特定阶段稿，HIDE `[0,上缘终点]` 与 `[下颌终点,1]` 可只留下下颌墨线。上述比例不是通用面部常数；几何、顺序或路径变化后必须重新测量。
 
 两片阶段二已经实际通过固定 JSON 界面完成 dry-run、执行、保存与重新载入：四个 HIDE 范围、旧脸片移除、真实下巴跨层位置联动。结果为 121 曲线、13 图层、20 填充；每片 3 个真实共享节点，其他 115 曲线与既有非脸部填充保持原样。两片控制点精确镜像，内部闭合曲线最大越过中轴 0.075 源单位。**当前下巴的 authored 收尖仍保留，位置联动本身不会抹去缺口；跨层 ink ARC 仍未记为完成。**旧 ARC 的字段 `radius=0.05257222158088604` 保存在原稿/操作记录中，它代表既有两侧影响范围，不能被未经支持的新字段假装成已渲染的跨层圆弧。
@@ -185,7 +187,7 @@
 
 提交后至少检查：所属画稿 ID、图层数量、真实节点共享、closed stroke、填充诊断、显隐/锁定、位置联动、末端笔触、普通预览、Undo/Redo、重新载入后的保存状态。不要只看截图像不像。
 
-本页 JSON 示例由 `src/tests/ai-authoring-guide.test.ts` 从文档原文读取并验证，占位 ID/revision 由测试中的真实查询结果替换。源连接的两片配方还覆盖于 `vector-source-connections.test.ts`；依赖复制、源 CRUD、画稿事务、闭环笔触分别有独立回归。
+本页 JSON 示例由 `src/tests/ai-authoring-guide.test.ts` 从文档原文读取并验证，占位 ID/revision 由测试中的真实查询结果替换。实际双脸片 JSON 配方也由该测试在源示例上重放，依据真实新 ID 重映射后续步骤。源连接的两片配方还覆盖于 `vector-source-connections.test.ts`；依赖复制、源 CRUD、画稿事务、闭环笔触分别有独立回归。
 
 ```sh
 npx vitest run src/tests/ai-authoring-guide.test.ts src/tests/vector-source-connections.test.ts src/tests/vector-editing-api.test.ts src/tests/vector-editing-crud.test.ts src/tests/vector-artwork-api.test.ts

@@ -100,13 +100,16 @@ source-review step; pose overrides keep the source geometry and ownership intact
 
 ## Bundled authored example
 
-“载入示例” explicitly imports “无发·全脸对称·颅顶隐线” as a new artwork.
-This actual hands-on authored example has 12 layers, 119 curves and 19 fills,
-without a reference image. The single face and features are symmetric; a HIDE
-interval suppresses the upper skull outline to ear level while retaining its
-closed white fill. The original chin ARC and collar remain intact. Overlapping
-left/right face pieces are a later authoring step, not claimed by this example.
-The earlier features-only stage is retained in the repository.
+“载入示例” explicitly imports “无发·对称双脸片” as a new artwork.
+This actual hands-on authored example has 13 layers, 121 curves and 20 fills,
+without a reference image. The two independently closed, overlapping white face
+pieces retain their internal boundaries; HIDE intervals suppress closure/crown
+ink while their selected chin ports use an explicit cross-layer ARC route.
+The rear jaw has an authored +1 LAYER depth offset so the other white fill does
+not clip its half of the join. Source geometry and the collar stay intact.
+The static filled render was checked at 238% zoom; pose/deformation stability is
+being tested separately and is not implied by that visual check. Earlier
+single-face and features-only sources remain in the repository.
 
 The loader never replaces startup data or an existing saved artwork. Unsaved
 working artwork is saved as a separate copy first; the whole import is one undo
@@ -147,8 +150,9 @@ to local-stroke percentages. Interval cuts through a valid ARC use interval
 “解除显示贯通” releases the whole shared route and maps material ranges back to
 local paths. Geometry links remain. If a cut lives on a new cross-layer ARC with
 no original local material target, release rejects the operation rather than
-losing it; choose a plain join first or Undo. Cross-artwork layer copying of active
-routed material is temporarily blocked pending complete fresh-ID remapping.
+losing it; choose a plain join first or Undo. Cross-artwork layer copying follows explicit route dependencies and remaps every
+curve/link/range reference to fresh IDs; partial dependency selection is rejected
+unless the additional layers are explicitly included.
 
 A route changes the meaning of global SHOW union. Existing angle interval keys
 on affected paths are marked for re-authoring. Explicit source acceptance resets

@@ -36,3 +36,16 @@ for(const example of examples)test(`guide example ${example.name} executes throu
  if(example.name==='closed-piece'){const d=h.state().drawing!,layer=d.layers.find(l=>l.name==='闭合脸片示例')!;expect(strokes(d,layer.id)[0].closed).toBe(true);expect(new Set(d.curves.filter(c=>layer.items.includes(c.id)).flatMap(c=>c.nodes)).size).toBe(3);}
  if(example.name==='preview'){expect(result.ok&&'svg'in result.value&&result.value.svg).toContain('<svg');expect(h.state()).toBe(before);}
 });
+
+test('the recorded real two-face recipe replays using returned IDs instead of stale session IDs',()=>{
+ const recipe=JSON.parse(readFileSync(new URL('../../docs/examples/two-face-executed-api-recipe.json',import.meta.url),'utf8'));
+ const path=new URL('../assets/hairless-symmetric-skull-hide-interval.json',import.meta.url),raw=readFileSync(path,'utf8'),source=parseDrawing(JSON.parse(raw));let project:LandmarkProject={...createEmptyProject(),drawing:source};const past:LandmarkProject[]=[];
+ const api=createVectorEditingApi({getState:()=>({project,past,future:[]}),getMode:()=> 'drawing',commitDrawing(drawing){past.push(project);project={...project,drawing};},undo(){},redo(){}});
+ const first=api.execute({...recipe.phase1,expectedRevision:api.inspect().revision});expect(first.ok,first.ok?'':JSON.stringify(first.error)).toBe(true);if(!first.ok)throw Error(first.error.message);
+ const refs=new Map(first.value.created.filter(c=>c.ref).map(c=>[c.ref,c.id]));
+ const idMap=new Map<string,string>(recipe.phase1Result.value.created.filter((c:{ref?:string})=>c.ref).map((c:{id:string;ref:string})=>[c.id,refs.get(c.ref)!]));
+ const replace=(x:unknown):unknown=>typeof x==='string'?(idMap.get(x)??x):Array.isArray(x)?x.map(replace):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).map(([k,v])=>[k,replace(v)])):x;
+ const second=api.execute({commands:replace(recipe.phase2.commands) as VectorCommand[],expectedRevision:api.inspect().revision});expect(second.ok,second.ok?'':JSON.stringify(second.error)).toBe(true);
+ const d=project.drawing!;expect(d.curves).toHaveLength(121);expect(d.layers).toHaveLength(13);expect(d.fills).toHaveLength(20);for(const side of ['right','left']){const layer=refs.get(side)!;expect(strokes(d,layer)[0].closed).toBe(true);expect(new Set(d.curves.filter(c=>d.layers.find(l=>l.id===layer)!.items.includes(c.id)).flatMap(c=>c.nodes)).size).toBe(3);}
+ const oldFace=source.layers.find(l=>l.name==='面部底形')!;expect(source.curves.filter(c=>!oldFace.items.includes(c.id)).every(c=>JSON.stringify(c)===JSON.stringify(d.curves.find(x=>x.id===c.id)))).toBe(true);expect(past).toHaveLength(2);expect(readFileSync(path,'utf8')).toBe(raw);
+});
