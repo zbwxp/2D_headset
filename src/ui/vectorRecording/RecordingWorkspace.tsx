@@ -47,7 +47,7 @@ function RigEditor({recording,rig,drawing,zh,txt,artworkName,aiGuides}:{aiGuides
  useEffect(()=>{const timer=setTimeout(()=>setParametersMoving(false),140);return()=>clearTimeout(timer);},[parameterTick,rig.angle.x,rig.angle.y]);
  function withGrid(next:WarpGrid,base=storedPose):VectorPose{return {...base,grids:{...base.grids,[deformerId]:next}};}
  function begin(e:React.PointerEvent,index:number,handle?:'handleU'|'handleV'){
-  if(!grid||!canManipulate||e.button!==0)return;e.stopPropagation();e.preventDefault();svg.current!.setPointerCapture(e.pointerId);
+  if(!grid||!canManipulate||e.button!==0)return;e.stopPropagation();e.preventDefault();svg.current!.focus({preventScroll:true});svg.current!.setPointerCapture(e.pointerId);
   let indices=[index];if(!handle&&selectionMode==='row'){const row=Math.floor(index/(grid.columns+1));indices=grid.nodes.map((_,i)=>i).filter(i=>Math.floor(i/(grid.columns+1))===row);}else if(!handle&&selectionMode==='column'){const column=index%(grid.columns+1);indices=grid.nodes.map((_,i)=>i).filter(i=>i%(grid.columns+1)===column);}
   if(e.shiftKey)indices=[...new Set([...selection,...indices])];else if(!handle&&selection.includes(index)&&selectionMode==='node')indices=selection;
   setSelection(indices);drag.current={kind:handle?'handle':'nodes',start:world(at(e)),client:at(e),pose:storedPose,indices,handle,index};

@@ -118,7 +118,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
   <div draggable onDragStart={e=>drag(e,'layer',l.id)} onDragOver={e=>over(e,l.id,'layer')} onDrop={e=>dropped(e,'layer',l.id)} onDragEnd={endDrag} className={`drawing-layer-row ${active===l.id?'active':''} ${batch.selected.includes(l.id)?'selected':''}${dropClass(l.id)}`}>
    <button aria-label={t(closed.includes(l.id)?'展开':'收起')+' '+l.name} onClick={()=>toggle(l.id)}>{closed.includes(l.id)?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
    <button className="drawing-object-name" data-testid="drawing-layer-select" aria-pressed={batch.selected.includes(l.id)} title={t('Shift 连选图层 · Ctrl/Cmd 增减选择')} onClick={e=>pick(`layer:${l.id}`,e)}>{l.name}</button>
-   {restoreLayer&&<button data-testid="drawing-restore-layer" aria-label={t('从快照恢复图层')+' '+l.name} title={t('从快照恢复图层')} onClick={()=>restoreLayer(l.id)}><RotateCcw size={13}/></button>}
+   {restoreLayer&&<button data-testid="drawing-restore-layer" aria-label={t('从画稿恢复图层')+' '+l.name} title={t('从画稿恢复图层')} onClick={()=>restoreLayer(l.id)}><RotateCcw size={13}/></button>}
    {stateButtons(l.items,'layer',l.name,change=>batch.selected.includes(l.id)?setObjectState(d,allItems,change):layerChange(d,l.id,change))}
   </div>
   {!closed.includes(l.id)&&groupTree(d,l.id).map(entry=>entry.group?<div key={entry.id} className="drawing-object-group" data-testid="drawing-group-row" data-id={entry.id}>

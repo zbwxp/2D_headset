@@ -1869,3 +1869,8 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 只删除画稿，当前画布保留；可以撤销。	Delete the artwork only; keep the working canvas. You can undo this.
 
 从画稿导入图层	Import artwork layers
+
+从画稿恢复图层	Restore layer from artwork
+来源画稿	Source artwork
+没有包含此图层的画稿	No artwork contains this layer
+恢复后仍是当前画布的修改；更新画稿可保存源稿。录制关键形会保留，返回录制时需检查源稿变化。	This changes the working canvas. Update the artwork to save it. Recording keyforms stay intact; review the source changes when returning to Recording.

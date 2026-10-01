@@ -48,6 +48,11 @@ function readableProject(value: unknown): value is string {
     return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
   } catch { return false; }
 }
+function sameStoredValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
 
 /** IndexedDB adapter, also exported for request/transaction lifecycle tests. */
 export function openProjectDatabase(factory: IDBFactory | undefined, timeoutMs = 4000): Promise<ProjectStorageDatabase> {
@@ -148,6 +153,8 @@ export function createProjectStorage(options: ProjectStorageOptions = {}) {
   let rejectedInitialAutosave: string | undefined;
   let prepared: Promise<void> | undefined;
   let preservePrevious = false;
+  let hasObservedPrimary = false;
+  let observedPrimary: unknown;
   let tail: Promise<void> = Promise.resolve();
   let pending = 0;
   let status: ProjectStorageStatus = Object.freeze({state: 'idle', backend: 'none', pendingWrites: 0});
@@ -174,10 +181,18 @@ export function createProjectStorage(options: ProjectStorageOptions = {}) {
     }
     return undefined;
   };
-  const connect = async () => {
+  const connect = async (protectBaseline = false) => {
     const candidate = await open();
     try {
       const value = await candidate.read();
+      // A legacy fallback may be older than a temporarily inaccessible primary.
+      // Reconnection must not turn that fallback into a silent destructive save.
+      if (protectBaseline && (hasObservedPrimary
+        ? !sameStoredValue(value, observedPrimary)
+        : value !== undefined && value !== initialAutosave)) {
+        throw new Error('A different saved project was found after reconnecting. Export the current work and reopen the app before saving over it');
+      }
+      observedPrimary = value; hasObservedPrimary = true;
       database = candidate;
       preservePrevious = value !== undefined && (!readableProject(value) || value === rejectedInitialAutosave);
       if (preservePrevious) warn('An unreadable IndexedDB save will be retained in recovery storage before replacement.');
@@ -207,6 +222,7 @@ export function createProjectStorage(options: ProjectStorageOptions = {}) {
           publish({state: 'saving'});
           await database!.write(initialAutosave, preservePrevious);
           preservePrevious = false;
+          observedPrimary = initialAutosave;
           publish({state: pending ? 'saving' : 'saved', updatedAt: now()});
         } else publish({state: pending ? 'saving' : 'idle'});
       } catch (error) {
@@ -232,12 +248,13 @@ export function createProjectStorage(options: ProjectStorageOptions = {}) {
     const operation = tail.then(async () => {
       await prepareProjectStorage();
       try {
-        if (!database) await connect();
+        if (!database) await connect(true);
         publish({backend: 'indexeddb'});
         await database!.write(serialized, preservePrevious);
         preservePrevious = false;
         rejectedInitialAutosave = undefined;
         initialAutosave = serialized;
+        observedPrimary = serialized;
         pending--;
         publish({state: pending ? 'saving' : 'saved', error: undefined, updatedAt: now()});
       } catch (reason) {

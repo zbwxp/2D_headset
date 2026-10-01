@@ -71,6 +71,15 @@ describe('durable project storage service', () => {
     expect(h.db.write).not.toHaveBeenCalled(); expect(h.saved()).toBe(json('primary'));
   });
 
+  it('rejects a stale legacy-derived save when reconnect reveals a different primary', async () => {
+    const h = harness(json('newer primary'), {[LEGACY_PROJECT_KEYS[0]]: json('old fallback')});
+    h.open.mockRejectedValueOnce(new Error('temporarily blocked'));
+    await h.service.prepareProjectStorage();
+    expect(h.service.getInitialAutosave()).toBe(json('old fallback'));
+    await expect(h.service.saveDurableProject(json('edited fallback'))).rejects.toThrow('different saved project');
+    expect(h.db.write).not.toHaveBeenCalled(); expect(h.saved()).toBe(json('newer primary'));
+  });
+
   it('can save before explicit preload without manufacturing a legacy value', async () => {
     const h = harness();
     expect(h.service.getInitialAutosave()).toBeUndefined();
