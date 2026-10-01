@@ -1,13 +1,14 @@
+import {copyCurveSource,curveSamples,tagBridge} from './curveProvenance';
 import {split} from '../geometry/bezier';
 import {add,sub,mul,length,shapeOf,nodeAt,curveById,joinAt,sameEnd,type Point2,type Cubic,type Endpoint,type CurveUse,type TangentJoin,type DrawingDocument as Doc} from './model';
 import {arcField} from './sampling';
 const dot=(a:Point2,b:Point2)=>a[0]*b[0]+a[1]*b[1];
 const cross=(a:Point2,b:Point2)=>a[0]*b[1]-a[1]*b[0];
 const unit=(v:Point2)=>mul(v,1/(length(v)||1));
-const flip=(s:Cubic)=>[...s].reverse() as Cubic;
+const flip=(s:Cubic)=>copyCurveSource(s,[...s].reverse() as Cubic,1,0);
 const xyz=(s:Cubic)=>s.map(([x,y])=>[x,y,0] as [number,number,number]);
 const cut=(s:Cubic,t:number)=>split(xyz(s),t).map(s=>s.map(([x,y])=>[x,y]) as Cubic);
-export function subcurve(s:Cubic,lo:number,hi:number):Cubic{const left=hi<1?cut(s,hi)[0]:s;return lo>0?cut(left,lo/hi)[1]:left;}
+export function subcurve(s:Cubic,lo:number,hi:number):Cubic{const left=hi<1?cut(s,hi)[0]:s;return copyCurveSource(s,lo>0?cut(left,lo/hi)[1]:left,lo,hi);}
 const straight=(a:Point2,b:Point2):Cubic=>[a,add(a,mul(sub(b,a),1/3)),add(a,mul(sub(b,a),2/3)),b];
 /** Circular arc through a,b with prescribed initial tangent. Cubic pieces span <=90 degrees. */
 function circular(a:Point2,t:Point2,b:Point2):Cubic[]{
@@ -48,7 +49,7 @@ export function roundedJoins(d:Doc):Map<string,ArcJoinGeometry>{
  }
  cache.set(d,out);return out;
 }
-export interface DrawingPiece {inkOwner?:string;shape:Cubic;owners:string[];joinId?:string}
+export interface DrawingPiece {inkOwner?:string;shape:Cubic;owners:string[];joinId?:string;sourceRange?:[number,number]}
 export interface DerivedUses {shapes:Cubic[];pieces:DrawingPiece[];error?:string}
 /** All consumers use the same trimmed source + derived arcs. Raw authoring handles stay intact. */
 export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
@@ -64,7 +65,7 @@ export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
   const a=reversed?g.bT:g.aT,b=reversed?g.aT:g.bT;trims[i].hi=uses[i].reverse?1-a:a;trims[next].lo=uses[next].reverse?1-b:b;
   bridges.set(i,{geometry:g,join:j,reverse:reversed});
  }
- const pieces:DrawingPiece[]=[];uses.forEach((u,i)=>{pieces.push({shape:subcurve(shapes[i],trims[i].lo,trims[i].hi),owners:[u.id]});const b=bridges.get(i);if(b){const ss=b.reverse?[...b.geometry.shapes].reverse().map(flip):b.geometry.shapes;pieces.push(...ss.map(shape=>({shape,owners:[b.join.a.curveId,b.join.b.curveId],joinId:b.join.id})));}});
+ const pieces:DrawingPiece[]=[];uses.forEach((u,i)=>{pieces.push({shape:subcurve(shapes[i],trims[i].lo,trims[i].hi),owners:[u.id],sourceRange:[trims[i].lo,trims[i].hi]});const b=bridges.get(i);if(b){const ss=b.reverse?[...b.geometry.shapes].reverse().map(flip):b.geometry.shapes;const next=(i+1)%uses.length,a=curveSamples(shapes[i],trims[i].hi),z=curveSamples(shapes[next],trims[next].lo);pieces.push(...ss.map((shape,k)=>({shape:tagBridge([...shape] as Cubic,a,z,k/ss.length,(k+1)/ss.length),owners:[b.join.a.curveId,b.join.b.curveId],joinId:b.join.id})));}});
  return {pieces,shapes:pieces.map(p=>p.shape)};
 }
 

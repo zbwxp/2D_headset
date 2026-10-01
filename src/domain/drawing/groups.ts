@@ -1,9 +1,13 @@
 import {uid,curveById,objectById,layerFor,groupFor,editable,type DrawingDocument as Doc,type DrawingGroup} from './model';
-import {setObjectState,objectState} from './objectState';
+import {setObjectState} from './objectState';
 import {strokeIds,strokeFor,strokeObjectIds,layerTree} from './strokes';
 
-/** A visible container can move its hidden members; individually locked members still block edits. */
-export const transformable=(d:Doc,id:string,ids:string[])=>{if(editable(d,id))return true;const c=curveById(d,id),g=groupFor(d,id);return !!c&&!c.locked&&!!g&&objectState(d,g.curveIds).anyVisible&&g.curveIds.every(id=>ids.includes(id));};
+/** Complete containers include hidden geometry. Visibility never becomes an inherited edit lock. */
+export const transformable=(d:Doc,id:string,ids:string[])=>{
+ if(editable(d,id))return true;const c=curveById(d,id);if(!c||c.locked)return false;
+ const g=groupFor(d,id),layer=layerFor(d,id),members=layer?.items.filter(id=>curveById(d,id));
+ return !!g&&g.curveIds.every(id=>ids.includes(id))||!!members?.length&&members.every(id=>ids.includes(id));
+};
 /** V selection operates on a group, or on one continuous stroke when ungrouped. */
 export const selectionUnit=(d:Doc,id:string)=>groupFor(d,id)?.curveIds??strokeIds(strokeFor(d,id));
 export const expandGroups=(d:Doc,ids:string[])=>[...new Set(ids.flatMap(id=>selectionUnit(d,id)))];

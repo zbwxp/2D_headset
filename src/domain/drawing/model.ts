@@ -1,3 +1,4 @@
+import {tagCurve} from './curveProvenance';
 import type {Point2,Cubic} from '../recording/model';
 import type {ReferenceImage} from '../project/types';
 import {validateRecordingReference} from '../recording/reference';
@@ -10,13 +11,16 @@ export interface EndpointLink {id:string;a:Endpoint;b:Endpoint}
 export interface DrawingNode {id:string;position:Point2}
 export type Profile='UNIFORM'|'TAPER_END'|'TAPER_BOTH'|'EYELID';
 export interface InkStyle {profile?:Profile;profileReverse?:boolean}
-/** Additive soft raster edges around visible ink. Width uses the same logical units as ink. */
-/** Density is a gain: 0–1 keeps legacy opacity; 1–5 strengthens the soft edge. */
-export interface ContourMist {enabled:boolean;width:number;density:number}
-export const MAX_CONTOUR_MIST_DENSITY=5;
+/** Ink-edge appearance only. Untagged values are legacy additive mist settings. */
+export interface ContourMist {enabled:boolean;width:number;density:number;mode?:'INK_EDGE'}
+export const MAX_CONTOUR_MIST_DENSITY=1;
 export interface MistAppearance {mist?:ContourMist}
-export const DEFAULT_CONTOUR_MIST:ContourMist={enabled:false,width:6/250,density:.35};
-export const validContourMist=(v:unknown):boolean=>v===undefined||!!v&&typeof v==='object'&&!Array.isArray(v)&&typeof (v as ContourMist).enabled==='boolean'&&Number.isFinite((v as ContourMist).width)&&(v as ContourMist).width>=.25/250&&(v as ContourMist).width<=60/250&&Number.isFinite((v as ContourMist).density)&&(v as ContourMist).density>=0&&(v as ContourMist).density<=MAX_CONTOUR_MIST_DENSITY;
+export const DEFAULT_CONTOUR_MIST:ContourMist={mode:'INK_EDGE',enabled:false,width:1.25/250,density:.75};
+export const validContourMist=(v:unknown):boolean=>{
+ if(v===undefined)return true;if(!v||typeof v!=='object'||Array.isArray(v))return false;
+ const m=v as ContourMist;
+ return (m.mode===undefined||m.mode==='INK_EDGE')&&typeof m.enabled==='boolean'&&Number.isFinite(m.width)&&m.width>=.25/250&&m.width<=(m.mode?3:60)/250&&Number.isFinite(m.density)&&m.density>=0&&m.density<=(m.mode?1:5);
+};
 /** Ink only. Distances use the same logical units as curve width; absent taper uses the preset. */
 export interface InkEndStyle {taper?:number;taperWidthScale?:number;extension?:number;/** Explicit opt-in at an interior join; legacy outer-end defaults never activate it. */interior?:boolean}
 export const inkTaperDistance=(end:InkEndStyle,width:number,fallback=0)=>end.taper??(end.taperWidthScale!==undefined?end.taperWidthScale*width:fallback);
@@ -24,9 +28,11 @@ export type InkEnds=[InkEndStyle,InkEndStyle];
 export const DEFAULT_PEN_TAPER_SCALE=20;
 export const MAX_PEN_TAPER_SCALE=200;
 export interface CurveUse {id:string;reverse:boolean}
-export interface DisplayInterval {id:string;start:number;end:number;inkEnds?:InkEnds}
+export type DisplayIntervalMode='SHOW'|'HIDE';
+/** Missing mode is the legacy SHOW interval. HIDE subtracts ink, never fill. */
+export interface DisplayInterval {id:string;start:number;end:number;inkEnds?:InkEnds;mode?:DisplayIntervalMode;/** Omitted in legacy files means enabled. Explicit values can be held by angle keys. */enabled?:boolean}
 /** Appearance attached to a derived continuous path; the anchor stabilizes direction/origin. */
-export interface StrokeDisplayIntervals {id:string;anchor:CurveUse;ranges:DisplayInterval[]}
+export interface StrokeDisplayIntervals {id:string;anchor:CurveUse;ranges:DisplayInterval[];/** Local arc length on just the anchor curve, independent of the surrounding stroke. */scope?:'CURVE';/** Physical end from which missing-view ink is revealed; chosen once. */revealFrom?:End;/** Inferred cuts copied source endpoint ink; prevents reapplying the legacy fix. */inferenceInkVersion?:1}
 /** A boundary-following Gaussian band, not a blur of the solid interior. */
 export interface FillMist {enabled:boolean;side:'INSIDE'|'OUTSIDE'|'BOTH';width:number;opacity:number}
 export const DEFAULT_FILL_MIST:FillMist={enabled:true,side:'INSIDE',width:12/250,opacity:.65};
@@ -48,7 +54,7 @@ export const sameEnd=(a:Endpoint,b:Endpoint)=>a.curveId===b.curveId&&a.end===b.e
 export const curveById=(d:DrawingDocument,id:string)=>drawingItemById(d.curves,id)!;
 export const layerFor=(d:DrawingDocument,id:string)=>d.layers.find(l=>l.items.includes(id));
 export const nodeAt=(d:DrawingDocument,e:Endpoint)=>drawingItemById(d.nodes,curveById(d,e.curveId).nodes[e.end])!;
-export const shapeOf=(d:DrawingDocument,id:string):Cubic=>{const c=curveById(d,id);return [nodeAt(d,{curveId:id,end:0}).position,c.handles[0],c.handles[1],nodeAt(d,{curveId:id,end:1}).position];};
+export const shapeOf=(d:DrawingDocument,id:string):Cubic=>{const c=curveById(d,id);return tagCurve([nodeAt(d,{curveId:id,end:0}).position,c.handles[0],c.handles[1],nodeAt(d,{curveId:id,end:1}).position],id);};
 export const members=(d:DrawingDocument,nodeId:string):Endpoint[]=>d.curves.flatMap(c=>([0,1] as const).filter(e=>c.nodes[e]===nodeId).map(end=>({curveId:c.id,end})));
 /** A branch can be an evaluator path end without being an exposed physical end. */
 export const boundEndpoint=(d:DrawingDocument,e:Endpoint)=>{const id=nodeAt(d,e).id;return members(d,id).length>1||(d.endpointLinks??[]).some(l=>nodeAt(d,l.a).id===id||nodeAt(d,l.b).id===id);};
@@ -114,7 +120,9 @@ export function parseDrawing(value:unknown):DrawingDocument{
  if(d.displayIntervals!==undefined){
   if(!Array.isArray(d.displayIntervals))return fail();
   for(const track of d.displayIntervals){if(!track)return fail();id(track.id);if(!track.anchor||!curveById(d,track.anchor.id)||typeof track.anchor.reverse!=='boolean'||!Array.isArray(track.ranges)||!track.ranges.length)return fail();
-   for(const r of track.ranges){if(!r)return fail();id(r.id);if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
+   if(track.scope!==undefined&&track.scope!=='CURVE'||track.revealFrom!==undefined&&(track.scope!=='CURVE'||![0,1].includes(track.revealFrom)))return fail();
+   if(track.inferenceInkVersion!==undefined&&(track.inferenceInkVersion!==1||track.scope!=='CURVE'))return fail();
+   for(const r of track.ranges){if(!r)return fail();id(r.id);if(r.mode!==undefined&&!['SHOW','HIDE'].includes(r.mode)||r.enabled!==undefined&&typeof r.enabled!=='boolean')return fail();if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
   }
  }
  validateRecordingReference(d.reference);

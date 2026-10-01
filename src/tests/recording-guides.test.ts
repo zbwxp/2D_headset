@@ -10,7 +10,8 @@ test('guide classification is optional for legacy curves, validated and saved in
  let r=createRecorded(emptyRecording(),front,'normal','Ordinary');
  r=createRecorded(r,front,'guide','Guide',undefined,true);
  r=updateCurve(r,'guide',c=>({...c,name:'Renamed without a guide prefix'}));
- const saved=parseLandmarks(JSON.stringify({...createLandmarkProject(),recording:r})).recording!;
+ expect(parseLandmarks(JSON.stringify({...createLandmarkProject(),recording:r})).recording).toBeUndefined();
+ const saved=parseRecording(JSON.parse(JSON.stringify(r)));
  expect(saved).toEqual(r);
  expect(saved.curves[0].auxiliary).toBeUndefined();
  expect(saved.curves[1].auxiliary).toBe(true);

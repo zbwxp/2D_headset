@@ -1,7 +1,8 @@
+import {InputCache} from '../geometry/cache';
 import {curveById,layerFor,groupFor,objectById,type DrawingDocument as Doc} from './model';
 import {strokeFor,strokeIds,strokeObjectIds,strokeName,paintItems,layerTree,type PaintItem} from './strokes';
 import {groupTree,groupObjectIds} from './groups';
-import {strokeInk,strokeEnds,extendedInk,type InkRun} from './appearance';
+import {strokeInk,strokeEnds,extendedInk,type InkRun,type InkSampling} from './appearance';
 import type {InkEnds} from './model';
 import {partitionedUses} from './roundedJoin';
 import type {Stroke} from './strokes';
@@ -38,7 +39,12 @@ export function reorderCurveMember(d:Doc,id:string,target:string,after=false):Do
 }
 export interface PaintBatch {layerId:string;item:PaintItem;owner?:string;position:number}
 /** Position is a derived number, never a stored layer index. Top first. */
+const paintPlans=new InputCache<PaintBatch[]>(64);
 export function depthPaintBatches(d:Doc):PaintBatch[]{
+ // IDs/order/connectivity only: a new interpolated frame reuses this plan.
+ // Value keys also catch in-place command drafts; no document/history retained.
+ const key=JSON.stringify([d.layers.map(l=>[l.id,l.items]),d.curves.map(c=>[c.id,c.nodes,!!c.strokeName,c.depthOffset??0,c.depthScope??'PARENT',!!c.localPaintOrder]),d.joins.map(j=>[j.a,j.b]),d.fills.map(f=>[f.id,f.boundary]),d.offsets.map(o=>o.id),d.groups?.map(g=>[g.id,g.curveIds])]);
+ const cached=paintPlans.get(key);if(cached)return cached;
  let cursor=0;const base:PaintBatch[]=[],positions=new Map<string,number>(),layerSlots=new Map<string,number>();
  for(const layer of d.layers){layerSlots.set(layer.id,cursor);for(const item of paintItems(d,layer.id)){
   if(item.stroke){const ids=new Set(strokeIds(item.stroke));for(const id of layer.items.filter(id=>ids.has(id))){positions.set(id,cursor);base.push({layerId:layer.id,item,owner:id,position:cursor++});}}
@@ -53,16 +59,16 @@ export function depthPaintBatches(d:Doc):PaintBatch[]{
   const target=context.target.ids.map(id=>positions.get(id)).filter((x):x is number=>x!==undefined);
   out.push({...b,position:!target.length?(layerSlots.get(context.target.id)??b.position):offset>0?Math.min(...target)-.5:Math.max(...target)+.5});
  }
- return out.sort((a,b)=>a.position-b.position||(positions.get(a.owner??a.item.id)!-positions.get(b.owner??b.item.id)!));
+ return paintPlans.set(key,out.sort((a,b)=>a.position-b.position||(positions.get(a.owner??a.item.id)!-positions.get(b.owner??b.item.id)!)));
 }
 
 /** Measure/taper the entire path first, then assign its ink to source members.
  * A sharp join is painted once with the foreground side; an ARC is split at its
  * arc midpoint. Neither operation changes the source geometry or fill boundary. */
-export function memberInk(d:Doc,s:Stroke,positions:ReadonlyMap<string,number>):Map<string,InkRun[]>{
+export function memberInk(d:Doc,s:Stroke,positions:ReadonlyMap<string,number>,sampling?:InkSampling):Map<string,InkRun[]>{
  const pieces=partitionedUses(d,s.segments,s.closed).pieces,result=new Map<string,InkRun[]>();
  const owner=(index:number)=>pieces[index].inkOwner!;
- for(const run of strokeInk(d,s,undefined,true)){
+ for(const run of strokeInk(d,s,undefined,true,sampling)){
   const extensions=run.extensions??[];
   for(const f of run.fragments??[]){
    const a=owner(f.pieceIndex),b=f.jointWith===undefined?a:owner(f.jointWith),id=(positions.get(a)??0)<=(positions.get(b)??0)?a:b;

@@ -4,9 +4,10 @@ import {TOOLS,CONNECTION_TOOLS,type ConnectionTool} from './tools';
 import type {DrawingTool} from './session';
 import {uiText as t} from '../i18n';
 import PenSettings from './PenSettings';
+import DirectSettings from './DirectSettings';
 const grouped=(tool:string):tool is ConnectionTool=>(CONNECTION_TOOLS as readonly string[]).includes(tool);
 export default function ToolBar({tool,select}:{tool:DrawingTool;select:(tool:DrawingTool)=>void}){
- const [penSettings,setPenSettings]=useState(false);
+ const [settings,setSettings]=useState<'pen'|'direct'|null>(null);
  const [remembered,setRemembered]=useState<ConnectionTool>('bind'),[menu,setMenu]=useState<{left:number;top:number}|null>(null),button=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null),longOpened=useRef(false),held=useRef(false);
  const current=grouped(tool)?tool:remembered,definition=TOOLS.find(x=>x[0]===current)!,Icon=definition[4];
  const cancelTimer=()=>{if(timer.current)clearTimeout(timer.current);timer.current=null;};
@@ -25,15 +26,17 @@ export default function ToolBar({tool,select}:{tool:DrawingTool;select:(tool:Dra
    onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ContextMenu'||e.shiftKey&&e.key==='F10'){e.preventDefault();open(true);}}}>
    <Icon size={19}/><span>{t(definition[1])}</span><i className="drawing-tool-corner" aria-hidden="true"/>
   </button>;}
-  return <button key={value} data-testid={`drawing-tool-${value}`} aria-label={t(label)} title={`${t(label)}${key?' ('+key+')':''} — ${t(help)}${value==='pen'?' · '+t('双击或右键设置默认收尖'):''}`} aria-pressed={tool===value} aria-haspopup={value==='pen'?'dialog':undefined} className={`${tool===value?'active':''} ${['pen','split','hand'].includes(value)?'drawing-tool-break':''}`}
-   onDoubleClick={value==='pen'?()=>{setMenu(null);setPenSettings(true);}:undefined}
-   onContextMenu={value==='pen'?e=>{e.preventDefault();setMenu(null);setPenSettings(true);}:undefined}
-   onKeyDown={value==='pen'?e=>{if(e.key==='ContextMenu'||e.shiftKey&&e.key==='F10'){e.preventDefault();setMenu(null);setPenSettings(true);}}:undefined}
+  const configurable=value==='pen'||value==='direct';
+  return <button key={value} data-testid={`drawing-tool-${value}`} aria-label={t(label)} title={`${t(label)}${key?' ('+key+')':''} — ${t(help)}${value==='pen'?' · '+t('双击或右键设置默认收尖'):value==='direct'?' · '+t('双击或右键设置方向跟随'):''}`} aria-pressed={tool===value} aria-haspopup={configurable?'dialog':undefined} className={`${tool===value?'active':''} ${['pen','split','hand'].includes(value)?'drawing-tool-break':''}`}
+   onDoubleClick={configurable?()=>{setMenu(null);setSettings(value);}:undefined}
+   onContextMenu={configurable?e=>{e.preventDefault();setMenu(null);setSettings(value);}:undefined}
+   onKeyDown={configurable?e=>{if(e.key==='ContextMenu'||e.shiftKey&&e.key==='F10'){e.preventDefault();setMenu(null);setSettings(value);}}:undefined}
    onClick={()=>{setMenu(null);if(value!=='pen'||tool!=='pen')select(value);}}><ToolIcon size={19}/><span>{t(label)}</span>{key&&<kbd>{key}</kbd>}</button>;
  })}</nav>
  {menu&&createPortal(<div ref={panel} className="drawing-tool-menu" data-testid="drawing-connection-menu" role="menu" aria-label={t('连接工具')} style={{left:menu.left,top:menu.top}} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const items=[...panel.current!.querySelectorAll<HTMLButtonElement>('[role=menuitemradio]')],i=items.indexOf(document.activeElement as HTMLButtonElement);items[(i+(e.key==='ArrowDown'?1:-1)+items.length)%items.length].focus();}}}>
  {TOOLS.filter(x=>grouped(x[0])).map(([value,label,,help,ToolIcon])=><button key={value} role="menuitemradio" aria-checked={current===value} data-testid={`drawing-tool-choice-${value}`} onPointerUp={e=>{if(e.button===0&&held.current)choose(value as ConnectionTool);}} onClick={()=>choose(value as ConnectionTool)}><ToolIcon size={19}/><span><strong>{t(label)}</strong><small>{t(help)}</small></span></button>)}
  </div>,document.body)}
- {penSettings&&<PenSettings close={()=>setPenSettings(false)}/>}
+ {settings==='pen'&&<PenSettings close={()=>setSettings(null)}/>}
+ {settings==='direct'&&<DirectSettings close={()=>setSettings(null)}/>}
  </>;
 }

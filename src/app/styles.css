@@ -1791,6 +1791,25 @@ i:not([class]) {
 .point-top-actions button {
   padding: 9px;
 }
+.trial-help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px;
+  color: inherit;
+  border-radius: 6px;
+}
+.trial-help-link:hover { background: #344148; }
+.trial-help-link:focus-visible { outline: 2px solid #b7d99e; outline-offset: 2px; }
+.point-app.drawing-workspace-active{height:100dvh;min-height:0;padding:0 4px 4px;gap:0;overflow:hidden}
+.point-app.drawing-workspace-active>.drawing-room{flex:1;height:auto;min-height:0;border-radius:0 0 8px 8px}
+.point-app .app-menu-bar .topbar{height:auto;min-height:56px;padding:10px 12px;gap:10px;flex-wrap:wrap}
+.point-app .app-menu-bar .point-top-actions{flex-wrap:wrap;gap:4px}
+.point-app .app-menu-bar .point-version{display:inline;font-size:11px}
+.point-app .app-menu-bar .brand{flex-wrap:wrap}
+.point-app .app-menu-bar .point-top-actions button{white-space:nowrap;font-size:12px;padding:7px}
+.startup-screen { margin: 15vh auto; max-width: 600px; padding: 32px; color: #dce7e0; }
+.startup-screen p { margin: 16px 0; }
 .point-workspace {
   display: grid;
   grid-template-columns: 205px minmax(380px, 1.25fr) minmax(320px, 1fr);

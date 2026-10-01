@@ -1,0 +1,1185 @@
+{
+  "version": 1,
+  "referenceScale": 0.6,
+  "poses": [
+    {
+      "id": "008d9bf3-2481-43b8-be5f-5d58ad490103",
+      "name": "正面",
+      "sourceSnapshotId": "9c7fc5b1-bb99-44d7-bed8-e1671519a0c8",
+      "yaw": 0,
+      "pitch": 0,
+      "offset": [
+        0.3307,
+        -0.3547
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.42649943259257267,
+                -0.4591572703423138
+              ],
+              [
+                -0.16704598798314513,
+                -0.4648731935650934
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f"
+            ],
+            "handles": [
+              [
+                -1.0162897683458798,
+                -0.6188648801137268
+              ],
+              [
+                -0.8875373573073284,
+                -0.5536582796849666
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.7205028744811542,
+                -0.4654663856836138
+              ],
+              [
+                -0.6936064626033541,
+                -0.4503066365759459
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6356638119372162,
+                -0.7432990598874936
+              ],
+              [
+                -0.00568845000458848,
+                -0.7383521387819072
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.10926290082364674,
+                -0.46269282373319864
+              ],
+              [
+                0.1373986226106519,
+                -0.47301811878862904
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.27786320842176704,
+                -0.5481392478619922
+              ],
+              [
+                0.3851996313125521,
+                -0.604709188277332
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.2190679642762303,
+                -0.8390461429612606
+              ],
+              [
+                0.5323421335573807,
+                -0.8700643884136684
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.7830557312772957,
+                -0.7940702407972379
+              ],
+              [
+                0.09525711483326343,
+                -0.8253039394514298
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.17052678553098197,
+              -0.4915693074466524
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.4925360542033371,
+              -0.6612791286926718
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.156427839294254,
+              -0.6918970250074116
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.666710050725554,
+              -0.43514688746827795
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.07613473790331667,
+              -0.4441416350751753
+            ]
+          },
+          {
+            "id": "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+            "position": [
+              -0.7473992863589544,
+              -0.48062613479128174
+            ]
+          }
+        ],
+        "joins": [],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7968142828971485,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.24573485274715504,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "211c5bf8-37d1-45ce-94b2-e0a26d0cf23a",
+            "anchor": {
+              "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "9902e499-76d3-4f8d-aa37-10a2855adad6",
+                "mode": "HIDE",
+                "start": 0.12781089094049503,
+                "end": 0.8311554104773593,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    },
+    {
+      "id": "12aa8126-28eb-4a48-bcfd-d68e97d24486",
+      "name": "微侧13",
+      "sourceSnapshotId": "b153e894-d79f-46a3-9b3b-50458c607e07",
+      "yaw": 10,
+      "pitch": 0,
+      "offset": [
+        0.3259,
+        -0.3516
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.38968637936537576,
+                -0.4645463584866013
+              ],
+              [
+                -0.16119532948058607,
+                -0.4551936855910044
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c"
+            ],
+            "handles": [
+              [
+                -1.0035115624409605,
+                -0.6273178880979196
+              ],
+              [
+                -0.8871522244042112,
+                -0.5503815711070794
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.6943662947210827,
+                -0.4778160803080376
+              ],
+              [
+                -0.6575732818869418,
+                -0.45545143665881566
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6567061965143615,
+                -0.7567279425456714
+              ],
+              [
+                -0.06806034459632268,
+                -0.7233637861970679
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.11592029850808779,
+                -0.4529531349479421
+              ],
+              [
+                0.14118094217175448,
+                -0.46371526463615087
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.2993910506374758,
+                -0.5373751860133842
+              ],
+              [
+                0.4013163253202139,
+                -0.5947672178396655
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.1870397997839248,
+                -0.8578363034713589
+              ],
+              [
+                0.5359467884518067,
+                -0.8686012685039624
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.7463428551250689,
+                -0.8096174242395203
+              ],
+              [
+                0.025857187741093482,
+                -0.810698745755891
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+            "position": [
+              -0.7213412360642487,
+              -0.4933942565949167
+            ]
+          },
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.17440582940365856,
+              -0.48277848825504727
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.49602448727069637,
+              -0.6540532862823849
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.1242167844020083,
+              -0.7066256941358556
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.6305983405437756,
+              -0.4398732603719366
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.0826954112761837,
+              -0.4338899113290457
+            ]
+          }
+        ],
+        "joins": [],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7923173435698072,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.3010457498288993,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "baadcff2-3d08-483c-a69e-deae13bdbd36",
+            "anchor": {
+              "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "c2b8bf8f-39f2-45e2-b278-22103fd5eaec",
+                "mode": "HIDE",
+                "start": 0.8486046163743252,
+                "end": 0.18896609408058346,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    },
+    {
+      "id": "d0337776-d597-40c2-8456-df68982a0d09",
+      "name": "稍侧12",
+      "sourceSnapshotId": "a357b990-bf4f-4d4c-9e46-3d994d1759fb",
+      "yaw": 20,
+      "pitch": 0,
+      "offset": [
+        0.3159027188511091,
+        -0.37406179816135887
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.3190263697791884,
+                -0.4674308842007942
+              ],
+              [
+                -0.10375417806007757,
+                -0.42842380158357
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c"
+            ],
+            "handles": [
+              [
+                -0.974241046044946,
+                -0.6752546520445498
+              ],
+              [
+                -0.8192208340257867,
+                -0.5631543776207634
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.6313012738786441,
+                -0.4786046593571729
+              ],
+              [
+                -0.5869132723007544,
+                -0.45833596237300855
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6281828202832277,
+                -0.7938425916814377
+              ],
+              [
+                -0.033280134577424896,
+                -0.6891335898197125
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.17336144992859628,
+                -0.4261832509405077
+              ],
+              [
+                0.20216030311441702,
+                -0.44813059636728403
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.36037041158013833,
+                -0.5217905177445173
+              ],
+              [
+                0.42053258651237213,
+                -0.5817142611225696
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.1577692833879103,
+                -0.9057730674179891
+              ],
+              [
+                0.5551630496439649,
+                -0.8555483117868665
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.6945563604665531,
+                -0.8413885730241146
+              ],
+              [
+                0.01387303323232696,
+                -0.7755762272071993
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+            "position": [
+              -0.6582762152218101,
+              -0.49418283564405197
+            ]
+          },
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.2353851903463211,
+              -0.4671938199861804
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.5152407484628546,
+              -0.6410003295652891
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.0949462680059938,
+              -0.7545624580824859
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.5599383309575883,
+              -0.4427577860861295
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.1401365626966922,
+              -0.4071200273216113
+            ]
+          }
+        ],
+        "joins": [],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7923173435698072,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.3010457498288993,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "57a8c1c6-b667-411b-8ff6-0c6c16d8e56d",
+            "anchor": {
+              "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "abb916ec-adf9-408c-91f1-d3fb4a2eeef3",
+                "start": 0,
+                "end": 0.15175959507752687,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              },
+              {
+                "id": "10e94f9a-4764-4484-a775-7514c0952420",
+                "start": 0.8131963837730747,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    }
+  ]
+}

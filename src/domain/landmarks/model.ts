@@ -31,13 +31,18 @@ export interface SemanticLandmark {
   viewLocks: Record<string, ViewLock>;
 }
 export interface LandmarkProject {
+  assembly?: import("../assembly/model").AssemblyDocument;
+  hairstyle?: import("../hairstyle/model").Hairstyle;
   /** Authored view list; skip legacy preset insertion when loading. */
   viewsCustomized?: boolean;
   gazeEyeball?:import("../eyes/gaze").GazeEyeball;
   eyeScaffold?:import("../eyes/scaffold").EyeScaffold;
   geometryModules?:Record<string,import("../modules/ownership").GeometryModule>;
+  poseRecording?: import("../recording/poses").PoseRecording;
+  /** Retired authoring data; ignored on load/save. */
   recording?: import("../recording/model").Recording;
   drawing?: import("../drawing/model").DrawingDocument;
+  drawingSnapshots?: import("../drawing/snapshots").DrawingSnapshots;
   curveSmoothJoins?: import("../curves/smoothJoin/model").CurveSmoothJoin[];
   loomisScaffold?: import("../head/scaffold").LoomisScaffold;
   inspectionBackground?: import("../head/inspectionBackground").InspectionBackground;

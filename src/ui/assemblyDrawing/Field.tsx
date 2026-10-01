@@ -1,0 +1,6 @@
+import {uiText as t} from '../i18n';
+export function NumberField({label,value,onChange,min,max,disabled=false}:{label:string;value:number;onChange:(v:number)=>void;min?:number;max?:number;disabled?:boolean}){
+ const shown=+value.toFixed(5);
+ return <label className="assembly-drawing-field">{t(label)}<input key={shown} aria-label={t(label)} type="number" step="any" min={min} max={max} defaultValue={shown} disabled={disabled} onBlur={e=>{let v=e.target.valueAsNumber;if(Number.isFinite(v)&&v!==shown){v=Math.max(min??-Infinity,Math.min(max??Infinity,v));onChange(v);}e.target.value=String(shown);}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')e.currentTarget.value=String(shown);if(e.key==='Enter'||e.key==='Escape')e.currentTarget.blur();}}/></label>;
+}
+export function NameField({label,value,onChange,disabled=false}:{label:string;value:string;onChange:(s:string)=>void;disabled?:boolean}){return <input key={value} aria-label={t(label)} defaultValue={value} disabled={disabled} onBlur={e=>{const name=e.target.value.trim();if(name&&name!==value)onChange(name);else e.target.value=value;}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')e.currentTarget.value=value;if(e.key==='Enter'||e.key==='Escape')e.currentTarget.blur();}}/>;}

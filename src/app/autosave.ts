@@ -1,9 +1,15 @@
+import {syncPoseSnapshots} from '../domain/recording/poses';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {count,timed} from '../domain/geometry/diagnostics';
 const viewJSON=new WeakMap<LandmarkProject['views'],string>();
+const snapshotJSON=new WeakMap<NonNullable<LandmarkProject['drawingSnapshots']>,string>();
 export function serializeProject(p:LandmarkProject){
+ if(p.poseRecording){const recording=syncPoseSnapshots(p.poseRecording,p.drawingSnapshots);if(recording!==p.poseRecording)p={...p,poseRecording:recording};}
  let views=viewJSON.get(p.views);if(views===undefined){views=JSON.stringify(p.views);viewJSON.set(p.views,views);count('referenceSerializations');}
- return '{'+Object.entries(p).filter(([,v])=>v!==undefined).map(([k,v])=>JSON.stringify(k)+':'+(k==='views'?views:JSON.stringify(v))).join(',')+'}';
+ // Archived poses do not change during ordinary drags/edits; serialize them once.
+ let snapshots=p.drawingSnapshots&&snapshotJSON.get(p.drawingSnapshots);
+ if(p.drawingSnapshots&&snapshots===undefined){snapshots=JSON.stringify(p.drawingSnapshots);snapshotJSON.set(p.drawingSnapshots,snapshots);}
+ return '{'+Object.entries(p).filter(([k,v])=>v!==undefined&&k!=='recording'&&k!=='hairstyle').map(([k,v])=>JSON.stringify(k)+':'+(k==='views'?views:k==='drawingSnapshots'?snapshots:JSON.stringify(v))).join(',')+'}';
 }
 export function createAutosave(write:(p:LandmarkProject)=>void,delay=500){
  let pending:LandmarkProject|undefined,timer:ReturnType<typeof setTimeout>|undefined,editing=false;

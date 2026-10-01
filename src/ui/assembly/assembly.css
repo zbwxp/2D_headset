@@ -1,0 +1,54 @@
+.point-app.assembly-workspace-active{height:100dvh;min-height:0;padding:0 4px 4px;gap:0;overflow:hidden}
+.assembly-room{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;color:#dce6e8;background:#202b30}
+.assembly-header{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid #405258;flex-shrink:0;font-size:12px;flex-wrap:wrap}
+.assembly-header small{color:#91a7ae;margin-left:auto}.assembly-header label{display:flex;gap:6px;align-items:center}
+.assembly-body{display:flex;flex:1;min-height:0;min-width:0}
+.assembly-body>.assembly-drawing-room{flex:1;min-width:0;min-height:0;height:auto;border-radius:0;border-left:0}
+.assembly-controls{width:280px;flex-shrink:0;overflow:auto;border-right:1px solid #41535c;padding:0 12px 16px;font-size:12px;overscroll-behavior:contain}
+.assembly-room button{cursor:pointer}.assembly-header button,.assembly-controls button,.assembly-dialog button{padding:6px 9px;border:1px solid #52666d;border-radius:5px;background:#293d43;color:#dfeded;font:inherit}.assembly-room button:disabled{opacity:.4;cursor:default}
+.assembly-header .assembly-view-lock{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.assembly-header .assembly-view-lock[aria-pressed=true]{background:#38534b;border-color:#9cb68b;color:#dceecb}
+.assembly-controls input:not([type=range]),.assembly-controls select,.assembly-dialog select{width:100%;min-width:0;background:#18272e;color:#d2e0e5;padding:7px;border:1px solid #46606a;border-radius:4px;font:inherit}
+.assembly-controls details{border-top:1px solid #405258;margin-top:10px;padding-top:8px}.assembly-controls summary{cursor:pointer;margin-bottom:10px;color:#bfd1d5;font-weight:600}.assembly-controls details details{padding-left:8px}
+.assembly-controls .numeric-slider{margin:12px 0}.assembly-controls .numeric-slider-caption{display:flex;justify-content:space-between;gap:8px;color:#bacbd0}.assembly-controls .numeric-slider-value{cursor:text}.assembly-controls input[type=range]{width:100%;accent-color:#a4c48f;margin-top:7px}.assembly-row{display:flex;gap:5px;margin:9px 0}.assembly-row select{flex:1}.assembly-controls small{display:block;line-height:1.7;color:#8ea7b1}.assembly-controls p{line-height:1.7}.assembly-controls [role=alert]{color:#ffc09d}.assembly-controls .assembly-delete{margin:8px 5px 0 0;font-size:11px;background:transparent;color:#c6a6a6}
+.assembly-inspection svg{width:100%;display:block;touch-action:none;cursor:grab}.assembly-inspection>div{display:flex;align-items:center;justify-content:space-between;gap:3px;font-size:10px;color:#9ebdc7}.assembly-inspection button{font-size:11px}
+.assembly-dialog{max-width:440px;background:#23323b;border:1px solid #66878d;border-radius:8px;color:#dce9e9;padding:22px;font:13px/1.7 system-ui}.assembly-dialog::backdrop{background:#0007}.assembly-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+@media(max-width:1250px){.assembly-controls{width:236px}.assembly-header small{display:none}.assembly-drawing-room .assembly-drawing-tools{width:48px}.assembly-drawing-tools button span,.assembly-drawing-tools kbd{display:none}.assembly-drawing-room .assembly-drawing-sidebar{width:246px}}
+
+.assembly-attachments ul{list-style:none;padding:0;margin:0;display:grid;gap:5px}.assembly-attachments li{display:flex;gap:5px;min-width:0}.assembly-attachments .assembly-attached-name{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.assembly-attached-name[aria-pressed=true]{background:#38534b;border-color:#9cb68b}.assembly-attachments li>button:last-child{flex-shrink:0;font-size:11px}
+.assembly-inspection .assembly-view-shortcuts{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}.assembly-view-shortcuts button{flex:1;white-space:nowrap;padding:6px 4px}
+.assembly-trajectory-control{display:flex;align-items:center;gap:8px;margin:9px 0;font-size:11px}.assembly-trajectory-control select{flex:1}
+.assembly-view-slot-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}.assembly-view-slot-grid button{min-width:0;display:flex;flex-direction:column;gap:2px;min-height:43px;border-style:dashed}
+.assembly-view-slot-grid button[data-filled=true]{border-style:solid}.assembly-view-slot-grid button[aria-pressed=true]{background:#34544b;border-color:#9ebc89}
+.assembly-view-slot-grid button span{font-size:10px;color:#95aab3}.assembly-view-slot-grid button strong{width:100%;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assembly-view-slot-new{width:100%;margin-top:6px}.assembly-view-slot-name{display:grid;gap:5px;font-size:12px;margin-top:8px}
+
+.assembly-perspective-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 12px;border-bottom:1px solid #405258;flex-shrink:0;font-size:11px;min-height:32px}
+.assembly-perspective-bar button{padding:5px 8px;border:1px solid #52666d;border-radius:4px;background:#293d43;color:#dfeded;font:inherit}.assembly-perspective-bar button[aria-pressed=true]{background:#5b4831;border-color:#dba768}
+.assembly-perspective-bar label{display:flex;align-items:center;gap:4px}.assembly-perspective-bar>span{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.assembly-perspective-bar small{color:#9dafb1;margin-left:auto}.assembly-perspective-bar [role=alert]{color:#ffc09d;max-width:none;white-space:normal}
+
+.assembly-placement-angle{font-size:12px;font-variant-numeric:tabular-nums;color:#dce7d6}.assembly-placement [role=status]{margin:5px 0 9px;color:#c4d8a9}
+.assembly-placement-option{display:flex;align-items:center;gap:6px;margin:9px 0}.assembly-controls .assembly-placement-option input{width:auto;accent-color:#a4c48f}
+.assembly-placement-name{display:grid;gap:5px;margin-top:8px}.assembly-placement .assembly-row button{flex:1}
+.assembly-placement-count{margin:10px 0 5px;color:#8ea7b1}.assembly-placement-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:205px;overflow:auto}
+.assembly-placement-list li{display:flex;gap:4px;min-width:0}.assembly-placement-visit{flex:1;min-width:0;text-align:left;display:flex;flex-direction:column;gap:3px}
+.assembly-placement-visit strong{font-size:11px;max-width:100%;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;font-weight:500}.assembly-placement-visit span{font-size:10px;color:#9cb1b8}
+.assembly-placement-visit[aria-pressed=true]{background:#365248;border-color:#a4c48f}
+.assembly-deform-recording{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:6px 12px;background:#24353a;border-bottom:1px solid #405258;font-size:11px;flex-shrink:0}
+.assembly-deform-recording label{display:flex;align-items:center;gap:4px}.assembly-deform-recording input{accent-color:#a4c48f}
+.assembly-deform-recording button,.assembly-deform-recording select{background:#293d43;color:#dfeded;border:1px solid #52666d;border-radius:4px;padding:5px 8px;font:inherit}.assembly-deform-recording small{color:#afc3b1}.assembly-deform-recording select{max-width:215px}
+
+.assembly-perspective-bar[hidden]{display:none}
+.assembly-pose-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 10px;background:#25343a;border-bottom:1px solid #405258;font-size:12px;flex-shrink:0}
+.assembly-pose-bar button,.assembly-pose-bar select{background:#283e44;color:#dfeded;border:1px solid #51666e;border-radius:5px;padding:6px 9px;font:inherit;display:inline-flex;align-items:center;gap:5px}
+.assembly-stage-selector{display:flex;gap:0}.assembly-stage-selector button{border-radius:0}.assembly-stage-selector button:first-child{border-radius:5px 0 0 5px}.assembly-stage-selector button:last-child{border-radius:0 5px 5px 0}.assembly-stage-selector button+button{border-left:0}
+.assembly-stage-selector button[aria-pressed=true],.assembly-base-edit[aria-pressed=true]{background:#426352;border-color:#a8c890;color:#eef9dc}
+.assembly-apply-intervals{display:flex;align-items:center;gap:5px;white-space:nowrap}.assembly-pose-bar input{accent-color:#a4c48f}
+.assembly-pose-navigation{display:flex;align-items:center;gap:7px;margin-left:auto;flex-wrap:wrap}.assembly-pose-navigation select{max-width:245px;min-width:140px}.assembly-pose-navigation [role=status]{color:#a8bec3;font-size:11px}.assembly-pose-navigation [data-dirty=true]{color:#ffd392}.assembly-pose-bar .assembly-pose-save{background:#3e5b49;border-color:#90ae81;color:#e9f4db;white-space:nowrap}
+.assembly-pose-details summary span{float:right;font-size:10px;font-weight:400;color:#8fa5ac}.assembly-pose-angle{margin:0 0 8px;color:#9dbac5;font-size:11px}
+.assembly-layer-keys{display:grid;gap:8px}.assembly-layer-key{padding:8px;border:1px solid #40565c;border-radius:5px;background:#23343a;min-width:0}.assembly-layer-key>strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px}
+.assembly-channel-key{display:flex;align-items:center;gap:6px;font-size:11px;min-height:29px}.assembly-channel-key small{margin-left:auto;font-size:10px;white-space:nowrap}.assembly-channel-key[data-status=draft] small{color:#ffd392}.assembly-channel-key[data-status=key] small{color:#afcf96}.assembly-channel-key button,.assembly-shared-key button{padding:4px;display:flex;align-items:center;background:transparent;border:0}
+.assembly-controls .assembly-remove-layer-key{font-size:10px;padding:4px 0;color:#9eb2b9;background:transparent;border:0}.assembly-shared-key{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:4px 0}.assembly-legacy-snapshots{font-size:11px;padding:4px 10px;color:#9dafb1}.assembly-legacy-snapshots summary{cursor:pointer}.assembly-controls input[type=checkbox]{width:auto!important}
+@media(max-width:1400px){.assembly-pose-bar{gap:6px;font-size:11px}.assembly-pose-navigation select{max-width:185px}.assembly-pose-navigation [role=status]{max-width:120px}.assembly-header{padding:5px 10px}}
+.assembly-refine-label { color: #d4a3ec; }
+.assembly-stage-selector button[data-testid="assembly-stage-refine"][aria-pressed="true"] { background:#583f65; border-color:#bd84d7; }
+.assembly-perspective-bar:has(.assembly-refine-label) { border-bottom:1px solid #9667ae; background:#302b39; }

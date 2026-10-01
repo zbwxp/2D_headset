@@ -6,12 +6,12 @@ import {parseLandmarks} from '../domain/landmarks/persistence';
 import {createLandmarkProject} from '../domain/landmarks/presets';
 import type {ReferenceImage} from '../domain/project/types';
 const photo:ReferenceImage={name:'nine cells.png',dataUrl:'data:image/png;base64,AAAA',width:3000,height:3000,scale:10,offset:[-8,10],rotation:12,opacity:.5,locked:false,visible:true};
-test('room background persists independently of view keys and ordinary 2D references',()=>{
+test('retired room data is discarded without changing ordinary 2D references',()=>{
  const project=createLandmarkProject(),views=structuredClone(project.views),r={...emptyRecording(),reference:photo};
  const curve=createRecorded(r,{yaw:0,pitch:0},'a','A'),copied=duplicate(curve,'a',{yaw:45,pitch:10},'b',[0,0]);
  const loaded=parseLandmarks(JSON.stringify({...project,recording:copied}));
- expect(loaded.recording?.reference).toEqual(photo);expect(loaded.recording?.curves).toHaveLength(2);expect(loaded.views.map(v=>v.reference)).toEqual(views.map(v=>v.reference));
- expect(parseRecording(JSON.parse(JSON.stringify(loaded.recording)))).toEqual(copied);
+ expect(loaded.recording).toBeUndefined();expect(loaded.views.map(v=>v.reference)).toEqual(views.map(v=>v.reference));
+ expect(parseRecording(JSON.parse(JSON.stringify(copied)))).toEqual(copied);
  expect(parseRecording({version:1,curves:[]})).not.toHaveProperty('reference');
 });
 test('invalid background transforms and nonembedded image sources are rejected',()=>{

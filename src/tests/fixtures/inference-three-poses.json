@@ -1,0 +1,4911 @@
+{
+  "version": 1,
+  "referenceScale": 0.6,
+  "poses": [
+    {
+      "id": "008d9bf3-2481-43b8-be5f-5d58ad490103",
+      "name": "正面",
+      "sourceSnapshotId": "9c7fc5b1-bb99-44d7-bed8-e1671519a0c8",
+      "yaw": 0,
+      "pitch": 0,
+      "offset": [
+        0.3307,
+        -0.3547
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [
+          {
+            "id": "a9aba385-ca60-4342-af42-20a8ea265867",
+            "name": "左刘海轮廓 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+                "reverse": false
+              },
+              {
+                "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+                "reverse": false
+              },
+              {
+                "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+                "reverse": false
+              },
+              {
+                "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+                "reverse": false
+              },
+              {
+                "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+                "reverse": false
+              },
+              {
+                "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+                "reverse": false
+              },
+              {
+                "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+                "reverse": false
+              },
+              {
+                "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "09ec66a9-0114-45ff-9ec3-2f64eb5081ce",
+            "name": "颈部底形 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+                "reverse": false
+              },
+              {
+                "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+                "reverse": false
+              },
+              {
+                "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+                "reverse": false
+              },
+              {
+                "id": "ef495977-5008-4ef8-88c0-b71624056573",
+                "reverse": false
+              },
+              {
+                "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+                "reverse": false
+              },
+              {
+                "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+            "name": "衣领与肩线 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+                "reverse": false
+              },
+              {
+                "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+                "reverse": true
+              },
+              {
+                "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+                "reverse": true
+              },
+              {
+                "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+                "reverse": true
+              },
+              {
+                "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+                "reverse": true
+              },
+              {
+                "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+                "reverse": true
+              }
+            ],
+            "visible": true,
+            "locked": false
+          }
+        ],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e6c0ea0-fbe9-4184-9ce1-a20c86248b37",
+            "name": "左刘海",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+              "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "a9aba385-ca60-4342-af42-20a8ea265867"
+            ]
+          },
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+              "207852b5-242a-4de1-ad11-36e6dc0abecd",
+              "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+              "5f579187-f29e-4824-b9b8-575b7e3accb0",
+              "ef495977-5008-4ef8-88c0-b71624056573",
+              "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+              "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+              "09ec66a9-0114-45ff-9ec3-2f64eb5081ce"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+            "name": "左刘海轮廓 · 段01",
+            "nodes": [
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df"
+            ],
+            "handles": [
+              [
+                0.026949639546966442,
+                1.0391440451467344
+              ],
+              [
+                0.4677141725339465,
+                0.6788950113624004
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+            "name": "左刘海轮廓 · 段02",
+            "nodes": [
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88"
+            ],
+            "handles": [
+              [
+                0.19119476612267663,
+                0.17172466309032805
+              ],
+              [
+                0.1936785217247685,
+                0.22237262287422283
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+            "name": "左刘海轮廓 · 段03",
+            "nodes": [
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d"
+            ],
+            "handles": [
+              [
+                0.1689143916883718,
+                0.2597439600419052
+              ],
+              [
+                0.171655031434058,
+                0.19869257170982954
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+            "name": "左刘海轮廓 · 段04",
+            "nodes": [
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe"
+            ],
+            "handles": [
+              [
+                0.17004710110131552,
+                0.25509493354299034
+              ],
+              [
+                0.14392858229968827,
+                0.38341939783325757
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+            "name": "左刘海轮廓 · 段05",
+            "nodes": [
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388"
+            ],
+            "handles": [
+              [
+                0.12791096269324634,
+                0.3641133934065536
+              ],
+              [
+                0.1308680377856462,
+                0.3402779466587944
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+            "name": "左刘海轮廓 · 段06",
+            "nodes": [
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3"
+            ],
+            "handles": [
+              [
+                0.11245009393398965,
+                0.408670088828605
+              ],
+              [
+                0.08007935643822194,
+                0.42532128754865667
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+            "name": "左刘海轮廓 · 段07",
+            "nodes": [
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+              "72dd0186-d746-4ba8-931d-493238fcaf09"
+            ],
+            "handles": [
+              [
+                0.05288923952333929,
+                0.4313176894115941
+              ],
+              [
+                0.04107045954044269,
+                0.43885528702460597
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+            "name": "左刘海轮廓 · 段08",
+            "nodes": [
+              "72dd0186-d746-4ba8-931d-493238fcaf09",
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6"
+            ],
+            "handles": [
+              [
+                -0.024071985862837868,
+                0.6500916326685954
+              ],
+              [
+                -0.25005380589740067,
+                0.7470879825907294
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+            "name": "左发纹 03",
+            "nodes": [
+              "6395df9c-0221-4f96-9362-0f71261086ec",
+              "d4721348-8f06-4c55-a759-a9231835c7e3"
+            ],
+            "handles": [
+              [
+                -0.02216876902478478,
+                0.7461360732628801
+              ],
+              [
+                0.012328074245568463,
+                0.6789667897768965
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            }
+          },
+          {
+            "id": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+            "name": "左发纹 02 · 段01",
+            "nodes": [
+              "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+              "970d87ec-7e43-4ea7-8529-78e506153c19"
+            ],
+            "handles": [
+              [
+                0.06083160688280125,
+                0.86224271526311
+              ],
+              [
+                0.11541939276502525,
+                0.7873570316279362
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+            "name": "左发纹 02 · 段02",
+            "nodes": [
+              "970d87ec-7e43-4ea7-8529-78e506153c19",
+              "530d15c9-d115-47af-a096-2b1841d70a1e"
+            ],
+            "handles": [
+              [
+                0.10690513379040277,
+                0.7613590799010731
+              ],
+              [
+                0.07166005134072312,
+                0.8118523474201517
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "84b654f8-f033-4ed8-8075-724e7d48d718",
+            "name": "左发纹 01 · 段01",
+            "nodes": [
+              "1419818d-7612-4f19-aa02-1dc06ae61f02",
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c"
+            ],
+            "handles": [
+              [
+                0.21619888340004087,
+                0.57953979980398
+              ],
+              [
+                0.2440031896755272,
+                0.5366469100792831
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+            "name": "左发纹 01 · 段02",
+            "nodes": [
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+              "90b227e8-61ab-40d1-8230-f692acc8270b"
+            ],
+            "handles": [
+              [
+                0.26107186852788755,
+                0.5509347821343028
+              ],
+              [
+                0.25012801259304734,
+                0.6873576134680903
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+            "name": "右颈线",
+            "nodes": [
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+              "83a392df-4528-46ca-8cb3-e51c7685c54a"
+            ],
+            "handles": [
+              [
+                -0.5499656426189893,
+                -0.23351506051719922
+              ],
+              [
+                -0.543491738010124,
+                -0.34789110432091536
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "interior": true,
+                "taper": 0.04,
+                "extension": 0.06
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+            "name": "颈部底形 · 段02",
+            "nodes": [
+              "83a392df-4528-46ca-8cb3-e51c7685c54a",
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7"
+            ],
+            "handles": [
+              [
+                -0.5802663589312135,
+                -0.4455135948550628
+              ],
+              [
+                -0.7065437828307817,
+                -0.5068974431783377
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+            "name": "颈部底形 · 段03",
+            "nodes": [
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a"
+            ],
+            "handles": [
+              [
+                -0.6429247520304416,
+                -0.7447079655018327
+              ],
+              [
+                -0.05504824432946134,
+                -0.8022083943371702
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "ef495977-5008-4ef8-88c0-b71624056573",
+            "name": "颈部底形 · 段04",
+            "nodes": [
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+              "b5468782-e774-486a-b52e-b3aed29cd2ee"
+            ],
+            "handles": [
+              [
+                0.09747187091438358,
+                -0.5115606491844286
+              ],
+              [
+                -0.03307267209569062,
+                -0.43360778941848555
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+            "name": "左颈线",
+            "nodes": [
+              "b5468782-e774-486a-b52e-b3aed29cd2ee",
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e"
+            ],
+            "handles": [
+              [
+                -0.062023039127672666,
+                -0.36278148525040127
+              ],
+              [
+                -0.05493179885669387,
+                -0.24313893801726008
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "interior": true,
+                "taper": 0.04,
+                "extension": 0.06
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+            "name": "颈部上缘封口",
+            "nodes": [
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6"
+            ],
+            "handles": [
+              [
+                -0.21814745537368493,
+                -0.15433283978060564
+              ],
+              [
+                -0.39028310102459085,
+                -0.15333121809412475
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.42649943259257267,
+                -0.4591572703423138
+              ],
+              [
+                -0.16704598798314513,
+                -0.4648731935650934
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f"
+            ],
+            "handles": [
+              [
+                -1.0162897683458798,
+                -0.6188648801137268
+              ],
+              [
+                -0.8875373573073284,
+                -0.5536582796849666
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.7205028744811542,
+                -0.4654663856836138
+              ],
+              [
+                -0.6936064626033541,
+                -0.4503066365759459
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6356638119372162,
+                -0.7432990598874936
+              ],
+              [
+                -0.00568845000458848,
+                -0.7383521387819072
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.10926290082364674,
+                -0.46269282373319864
+              ],
+              [
+                0.1373986226106519,
+                -0.47301811878862904
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.27786320842176704,
+                -0.5481392478619922
+              ],
+              [
+                0.3851996313125521,
+                -0.604709188277332
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.2190679642762303,
+                -0.8390461429612606
+              ],
+              [
+                0.5323421335573807,
+                -0.8700643884136684
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.7830557312772957,
+                -0.7940702407972379
+              ],
+              [
+                0.09525711483326343,
+                -0.8253039394514298
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+            "position": [
+              -0.24144819867705664,
+              1.0084730394472992
+            ]
+          },
+          {
+            "id": "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+            "position": [
+              0.17115171250969322,
+              0.09229491774739014
+            ]
+          },
+          {
+            "id": "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+            "position": [
+              0.18452480928593815,
+              0.2983095910283451
+            ]
+          },
+          {
+            "id": "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+            "position": [
+              0.15604461383649165,
+              0.16012694072338965
+            ]
+          },
+          {
+            "id": "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+            "position": [
+              0.12822310532294126,
+              0.4354681065400695
+            ]
+          },
+          {
+            "id": "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+            "position": [
+              0.11512848600496269,
+              0.2746634934478302
+            ]
+          },
+          {
+            "id": "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+            "position": [
+              0.03234302076128919,
+              0.541891740347758
+            ]
+          },
+          {
+            "id": "72dd0186-d746-4ba8-931d-493238fcaf09",
+            "position": [
+              0.041881451470524175,
+              0.3606620993885616
+            ]
+          },
+          {
+            "id": "6395df9c-0221-4f96-9362-0f71261086ec",
+            "position": [
+              -0.07125048499579653,
+              0.8095435298694486
+            ]
+          },
+          {
+            "id": "d4721348-8f06-4c55-a759-a9231835c7e3",
+            "position": [
+              0.03223985348931486,
+              0.6183824910317188
+            ]
+          },
+          {
+            "id": "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+            "position": [
+              0.0005702413301654398,
+              0.9280944420194432
+            ]
+          },
+          {
+            "id": "970d87ec-7e43-4ea7-8529-78e506153c19",
+            "position": [
+              0.143619599522903,
+              0.6985597991356025
+            ]
+          },
+          {
+            "id": "530d15c9-d115-47af-a096-2b1841d70a1e",
+            "position": [
+              0.03125175118767908,
+              0.8475905099760859
+            ]
+          },
+          {
+            "id": "1419818d-7612-4f19-aa02-1dc06ae61f02",
+            "position": [
+              0.17568039388324214,
+              0.6428544385966075
+            ]
+          },
+          {
+            "id": "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+            "position": [
+              0.25561012815821804,
+              0.44401946190750907
+            ]
+          },
+          {
+            "id": "90b227e8-61ab-40d1-8230-f692acc8270b",
+            "position": [
+              0.19650652014546424,
+              0.760882765416135
+            ]
+          },
+          {
+            "id": "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+            "position": [
+              -0.5513575092278413,
+              -0.14751407485843387
+            ]
+          },
+          {
+            "id": "83a392df-4528-46ca-8cb3-e51c7685c54a",
+            "position": [
+              -0.5400826387550588,
+              -0.4103037224176142
+            ]
+          },
+          {
+            "id": "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+            "position": [
+              -0.7479847115582179,
+              -0.5306942268392871
+            ]
+          },
+          {
+            "id": "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+            "position": [
+              0.13677867778147423,
+              -0.5327950211732511
+            ]
+          },
+          {
+            "id": "b5468782-e774-486a-b52e-b3aed29cd2ee",
+            "position": [
+              -0.06264458761575363,
+              -0.40577587047731506
+            ]
+          },
+          {
+            "id": "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+            "position": [
+              -0.057073047170434474,
+              -0.16014998301629652
+            ]
+          },
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.17052678553098197,
+              -0.4915693074466524
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.4925360542033371,
+              -0.6612791286926718
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.156427839294254,
+              -0.6918970250074116
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.666710050725554,
+              -0.43514688746827795
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.07613473790331667,
+              -0.4441416350751753
+            ]
+          },
+          {
+            "id": "ca85a82e-2eef-4083-be96-b23fbd69b75f",
+            "position": [
+              -0.7473992863589544,
+              -0.48062613479128174
+            ]
+          }
+        ],
+        "joins": [
+          {
+            "id": "dec141a3-e57c-4689-b623-b6a2fd67d55d",
+            "a": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 1,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "b": {
+              "curveId": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "end": 0,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "a5beeaa4-74e1-4210-a8c1-6e9907f669a6",
+            "a": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 1,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "b": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 0,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "7c35b330-5aa6-419c-b3d8-31435885894b",
+            "a": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 1,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "b": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 0,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "c2583c8b-bde1-4c60-96a7-c3ff9d0283a8",
+            "a": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 1,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "b": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 0,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "da1fd774-3639-44d3-bd3f-e106086b24b0",
+            "a": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 1,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.8456848368435975
+            },
+            "b": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 0,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.9154911593782502
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "6cc423d9-9593-444e-a8c7-ee92347309f0",
+            "a": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 1,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "b": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 0,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "fbf41502-0340-4ed5-8585-983e6328c2bd",
+            "a": {
+              "curveId": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "end": 1,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "b": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 0,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "cb637e87-519a-4205-8430-7b10a0db90fa",
+            "a": {
+              "curveId": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "end": 1,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "b": {
+              "curveId": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "end": 0,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "07c2a972-3a2a-4158-97c2-ecd148ed6ebe",
+            "a": {
+              "curveId": "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "end": 1,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "b": {
+              "curveId": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "end": 0,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "mode": "CUSP"
+          }
+        ],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "cd91f68c-fc93-4e44-9a4f-a0d973188e89",
+            "anchor": {
+              "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "34f55fc1-f5b7-496b-8b26-01f93a9aba6c",
+                "start": 0.27454461057935675,
+                "end": 0.9318415469104822,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              },
+              {
+                "id": "120f6de6-f7bc-4ac2-ba58-e47e14fbea6a",
+                "start": 0.9939568967406129,
+                "end": 0.12599714784441152,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7968142828971485,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.24573485274715504,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "211c5bf8-37d1-45ce-94b2-e0a26d0cf23a",
+            "anchor": {
+              "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "9902e499-76d3-4f8d-aa37-10a2855adad6",
+                "mode": "HIDE",
+                "start": 0.12781089094049503,
+                "end": 0.8311554104773593,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    },
+    {
+      "id": "12aa8126-28eb-4a48-bcfd-d68e97d24486",
+      "name": "微侧13",
+      "sourceSnapshotId": "b153e894-d79f-46a3-9b3b-50458c607e07",
+      "yaw": 10,
+      "pitch": 0,
+      "offset": [
+        0.3259,
+        -0.3516
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [
+          {
+            "id": "a9aba385-ca60-4342-af42-20a8ea265867",
+            "name": "左刘海轮廓 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+                "reverse": false
+              },
+              {
+                "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+                "reverse": false
+              },
+              {
+                "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+                "reverse": false
+              },
+              {
+                "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+                "reverse": false
+              },
+              {
+                "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+                "reverse": false
+              },
+              {
+                "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+                "reverse": false
+              },
+              {
+                "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+                "reverse": false
+              },
+              {
+                "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "09ec66a9-0114-45ff-9ec3-2f64eb5081ce",
+            "name": "颈部底形 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+                "reverse": false
+              },
+              {
+                "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+                "reverse": false
+              },
+              {
+                "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+                "reverse": false
+              },
+              {
+                "id": "ef495977-5008-4ef8-88c0-b71624056573",
+                "reverse": false
+              },
+              {
+                "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+                "reverse": false
+              },
+              {
+                "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+            "name": "衣领与肩线 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+                "reverse": false
+              },
+              {
+                "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+                "reverse": true
+              },
+              {
+                "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+                "reverse": true
+              },
+              {
+                "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+                "reverse": true
+              },
+              {
+                "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+                "reverse": true
+              },
+              {
+                "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+                "reverse": true
+              }
+            ],
+            "visible": true,
+            "locked": false
+          }
+        ],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e6c0ea0-fbe9-4184-9ce1-a20c86248b37",
+            "name": "左刘海",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "dfe61aac-f7b3-4c78-b834-3e8e899ac584",
+              "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+              "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "a9aba385-ca60-4342-af42-20a8ea265867"
+            ]
+          },
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+              "207852b5-242a-4de1-ad11-36e6dc0abecd",
+              "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+              "5f579187-f29e-4824-b9b8-575b7e3accb0",
+              "ef495977-5008-4ef8-88c0-b71624056573",
+              "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+              "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+              "09ec66a9-0114-45ff-9ec3-2f64eb5081ce"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+            "name": "左刘海轮廓 · 段01",
+            "nodes": [
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df"
+            ],
+            "handles": [
+              [
+                -0.001452163662519608,
+                1.0717243375873964
+              ],
+              [
+                0.5506049833899854,
+                0.5898400244941877
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+            "name": "左刘海轮廓 · 段02",
+            "nodes": [
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88"
+            ],
+            "handles": [
+              [
+                0.10724114192960657,
+                0.17296943673216153
+              ],
+              [
+                0.1143393352973705,
+                0.22237262287422288
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+            "name": "左刘海轮廓 · 段03",
+            "nodes": [
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d"
+            ],
+            "handles": [
+              [
+                0.08931002708724967,
+                0.25974396004190514
+              ],
+              [
+                0.08620339529527582,
+                0.20827502970001616
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+            "name": "左刘海轮廓 · 段04",
+            "nodes": [
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe"
+            ],
+            "handles": [
+              [
+                0.08457824699329775,
+                0.264677391533177
+              ],
+              [
+                0.06429695493353368,
+                0.34881851824230586
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+            "name": "左刘海轮廓 · 段05",
+            "nodes": [
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388"
+            ],
+            "handles": [
+              [
+                0.05481399950653455,
+                0.3515848308228292
+              ],
+              [
+                0.05085626688234596,
+                0.3402779466587944
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+            "name": "左刘海轮廓 · 段06",
+            "nodes": [
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3"
+            ],
+            "handles": [
+              [
+                0.032241100810197154,
+                0.408670088828605
+              ],
+              [
+                -0.017726283735126754,
+                0.42849994061469027
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+            "name": "左刘海轮廓 · 段07",
+            "nodes": [
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+              "72dd0186-d746-4ba8-931d-493238fcaf09"
+            ],
+            "handles": [
+              [
+                -0.039695296581491,
+                0.44439671483527676
+              ],
+              [
+                -0.05110576151792731,
+                0.44015000309826896
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+            "name": "左刘海轮廓 · 段08",
+            "nodes": [
+              "72dd0186-d746-4ba8-931d-493238fcaf09",
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6"
+            ],
+            "handles": [
+              [
+                -0.1169457624048279,
+                0.6513863487422584
+              ],
+              [
+                -0.3002336815576749,
+                0.7590583688771916
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+            "name": "左发纹 03",
+            "nodes": [
+              "6395df9c-0221-4f96-9362-0f71261086ec",
+              "d4721348-8f06-4c55-a759-a9231835c7e3"
+            ],
+            "handles": [
+              [
+                -0.08381928196678848,
+                0.7301360732628801
+              ],
+              [
+                -0.04895304110870513,
+                0.6629667897768965
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            }
+          },
+          {
+            "id": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+            "name": "左发纹 02 · 段01",
+            "nodes": [
+              "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+              "970d87ec-7e43-4ea7-8529-78e506153c19"
+            ],
+            "handles": [
+              [
+                0.007913106738041228,
+                0.932033292736576
+              ],
+              [
+                0.06191358247701054,
+                0.7805767796985341
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+            "name": "左发纹 02 · 段02",
+            "nodes": [
+              "970d87ec-7e43-4ea7-8529-78e506153c19",
+              "530d15c9-d115-47af-a096-2b1841d70a1e"
+            ],
+            "handles": [
+              [
+                0.012939756956317633,
+                0.8423735582078108
+              ],
+              [
+                -0.0016771071518252509,
+                0.8474560946939116
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "84b654f8-f033-4ed8-8075-724e7d48d718",
+            "name": "左发纹 01 · 段01",
+            "nodes": [
+              "1419818d-7612-4f19-aa02-1dc06ae61f02",
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c"
+            ],
+            "handles": [
+              [
+                0.19710084852417648,
+                0.56353979980398
+              ],
+              [
+                0.22520288765557023,
+                0.5206469100792831
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+            "name": "左发纹 01 · 段02",
+            "nodes": [
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+              "90b227e8-61ab-40d1-8230-f692acc8270b"
+            ],
+            "handles": [
+              [
+                0.2424543405879932,
+                0.5349347821343028
+              ],
+              [
+                0.23139329613386983,
+                0.6713576134680903
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+            "name": "右颈线",
+            "nodes": [
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+              "83a392df-4528-46ca-8cb3-e51c7685c54a"
+            ],
+            "handles": [
+              [
+                -0.5499656426189893,
+                -0.23351506051719922
+              ],
+              [
+                -0.5201634007007933,
+                -0.35858662745115844
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "interior": true,
+                "taper": 0.04,
+                "extension": 0.06
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+            "name": "颈部底形 · 段02",
+            "nodes": [
+              "83a392df-4528-46ca-8cb3-e51c7685c54a",
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7"
+            ],
+            "handles": [
+              [
+                -0.5569380216218828,
+                -0.4562091179853059
+              ],
+              [
+                -0.7231429052242047,
+                -0.5287812956577811
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+            "name": "颈部底形 · 段03",
+            "nodes": [
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a"
+            ],
+            "handles": [
+              [
+                -0.6234801947309444,
+                -0.8707237797217868
+              ],
+              [
+                -0.0023276512507756086,
+                -0.8000188967690064
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "ef495977-5008-4ef8-88c0-b71624056573",
+            "name": "颈部底形 · 段04",
+            "nodes": [
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+              "b5468782-e774-486a-b52e-b3aed29cd2ee"
+            ],
+            "handles": [
+              [
+                0.15019246399306932,
+                -0.5093711516162648
+              ],
+              [
+                -0.001490515743599645,
+                -0.43919058908214803
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+            "name": "左颈线",
+            "nodes": [
+              "b5468782-e774-486a-b52e-b3aed29cd2ee",
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e"
+            ],
+            "handles": [
+              [
+                -0.04537789247009783,
+                -0.342685969633896
+              ],
+              [
+                -0.05902433123506035,
+                -0.232397551828694
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "interior": true,
+                "taper": 0.04,
+                "extension": 0.06
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+            "name": "颈部上缘封口",
+            "nodes": [
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6"
+            ],
+            "handles": [
+              [
+                -0.20901111502059397,
+                -0.13014479178573388
+              ],
+              [
+                -0.39028310102459085,
+                -0.15333121809412475
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.38968637936537576,
+                -0.4645463584866013
+              ],
+              [
+                -0.16119532948058607,
+                -0.4551936855910044
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c"
+            ],
+            "handles": [
+              [
+                -1.0035115624409605,
+                -0.6273178880979196
+              ],
+              [
+                -0.8871522244042112,
+                -0.5503815711070794
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.6943662947210827,
+                -0.4778160803080376
+              ],
+              [
+                -0.6575732818869418,
+                -0.45545143665881566
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6567061965143615,
+                -0.7567279425456714
+              ],
+              [
+                -0.06806034459632268,
+                -0.7233637861970679
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.11592029850808779,
+                -0.4529531349479421
+              ],
+              [
+                0.14118094217175448,
+                -0.46371526463615087
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.2993910506374758,
+                -0.5373751860133842
+              ],
+              [
+                0.4013163253202139,
+                -0.5947672178396655
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.1870397997839248,
+                -0.8578363034713589
+              ],
+              [
+                0.5359467884518067,
+                -0.8686012685039624
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.7463428551250689,
+                -0.8096174242395203
+              ],
+              [
+                0.025857187741093482,
+                -0.810698745755891
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "dfe61aac-f7b3-4c78-b834-3e8e899ac584",
+            "name": "曲线1",
+            "nodes": [
+              "95819b89-370a-4157-8a09-7d94edb5ac4a",
+              "4d7d0d17-d5f0-410b-a8b5-1213c436aaf9"
+            ],
+            "handles": [
+              [
+                0.15964781580738632,
+                0.5159071995839701
+              ],
+              [
+                0.16618668576879259,
+                0.4545759412724278
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ]
+          }
+        ],
+        "nodes": [
+          {
+            "id": "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+            "position": [
+              -0.32544679001329413,
+              1.0084730394472992
+            ]
+          },
+          {
+            "id": "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+            "position": [
+              0.08698346416688993,
+              0.09353969138922362
+            ]
+          },
+          {
+            "id": "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+            "position": [
+              0.10508760347551493,
+              0.2983095910283451
+            ]
+          },
+          {
+            "id": "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+            "position": [
+              0.0704258189070106,
+              0.1697093987135762
+            ]
+          },
+          {
+            "id": "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+            "position": [
+              0.05512948460827928,
+              0.42293954395634514
+            ]
+          },
+          {
+            "id": "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+            "position": [
+              0.03494817352195401,
+              0.27466349344783025
+            ]
+          },
+          {
+            "id": "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+            "position": [
+              -0.05272419387567702,
+              0.5549707657714407
+            ]
+          },
+          {
+            "id": "72dd0186-d746-4ba8-931d-493238fcaf09",
+            "position": [
+              -0.05028608535954435,
+              0.36195681546222463
+            ]
+          },
+          {
+            "id": "6395df9c-0221-4f96-9362-0f71261086ec",
+            "position": [
+              -0.13342657262123594,
+              0.7935435298694485
+            ]
+          },
+          {
+            "id": "d4721348-8f06-4c55-a759-a9231835c7e3",
+            "position": [
+              -0.02882804342168233,
+              0.6023824910317188
+            ]
+          },
+          {
+            "id": "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+            "position": [
+              -0.10213682024656125,
+              0.9706950558662698
+            ]
+          },
+          {
+            "id": "970d87ec-7e43-4ea7-8529-78e506153c19",
+            "position": [
+              0.09041576145501909,
+              0.6917795472062004
+            ]
+          },
+          {
+            "id": "530d15c9-d115-47af-a096-2b1841d70a1e",
+            "position": [
+              -0.042518105696540305,
+              0.8831942572498458
+            ]
+          },
+          {
+            "id": "1419818d-7612-4f19-aa02-1dc06ae61f02",
+            "position": [
+              0.15614848069078302,
+              0.6268544385966075
+            ]
+          },
+          {
+            "id": "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+            "position": [
+              0.23693411504907058,
+              0.42801946190750906
+            ]
+          },
+          {
+            "id": "90b227e8-61ab-40d1-8230-f692acc8270b",
+            "position": [
+              0.1771976163670183,
+              0.744882765416135
+            ]
+          },
+          {
+            "id": "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+            "position": [
+              -0.5513575092278413,
+              -0.14751407485843387
+            ]
+          },
+          {
+            "id": "83a392df-4528-46ca-8cb3-e51c7685c54a",
+            "position": [
+              -0.5167543014457281,
+              -0.4209992455478573
+            ]
+          },
+          {
+            "id": "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+            "position": [
+              -0.7645838339516409,
+              -0.5525780793187305
+            ]
+          },
+          {
+            "id": "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+            "position": [
+              0.18949927086015997,
+              -0.5306055236050873
+            ]
+          },
+          {
+            "id": "b5468782-e774-486a-b52e-b3aed29cd2ee",
+            "position": [
+              -0.045999440958178796,
+              -0.3856803548608098
+            ]
+          },
+          {
+            "id": "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+            "position": [
+              -0.047936706817343515,
+              -0.13596193502142476
+            ]
+          },
+          {
+            "id": "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+            "position": [
+              -0.7213412360642487,
+              -0.4933942565949167
+            ]
+          },
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.17440582940365856,
+              -0.48277848825504727
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.49602448727069637,
+              -0.6540532862823849
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.1242167844020083,
+              -0.7066256941358556
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.6305983405437756,
+              -0.4398732603719366
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.0826954112761837,
+              -0.4338899113290457
+            ]
+          },
+          {
+            "id": "95819b89-370a-4157-8a09-7d94edb5ac4a",
+            "position": [
+              0.14050309683961326,
+              0.5456105080513697
+            ]
+          },
+          {
+            "id": "4d7d0d17-d5f0-410b-a8b5-1213c436aaf9",
+            "position": [
+              0.16456726624531068,
+              0.42237792557279724
+            ]
+          }
+        ],
+        "joins": [
+          {
+            "id": "dec141a3-e57c-4689-b623-b6a2fd67d55d",
+            "a": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 1,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "b": {
+              "curveId": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "end": 0,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "a5beeaa4-74e1-4210-a8c1-6e9907f669a6",
+            "a": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 1,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "b": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 0,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "7c35b330-5aa6-419c-b3d8-31435885894b",
+            "a": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 1,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "b": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 0,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "c2583c8b-bde1-4c60-96a7-c3ff9d0283a8",
+            "a": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 1,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "b": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 0,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "da1fd774-3639-44d3-bd3f-e106086b24b0",
+            "a": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 1,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.8456848368435975
+            },
+            "b": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 0,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.9154911593782502
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "6cc423d9-9593-444e-a8c7-ee92347309f0",
+            "a": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 1,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "b": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 0,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "fbf41502-0340-4ed5-8585-983e6328c2bd",
+            "a": {
+              "curveId": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "end": 1,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "b": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 0,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "cb637e87-519a-4205-8430-7b10a0db90fa",
+            "a": {
+              "curveId": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "end": 1,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "b": {
+              "curveId": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "end": 0,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "07c2a972-3a2a-4158-97c2-ecd148ed6ebe",
+            "a": {
+              "curveId": "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "end": 1,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "b": {
+              "curveId": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "end": 0,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "mode": "CUSP"
+          }
+        ],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "cd91f68c-fc93-4e44-9a4f-a0d973188e89",
+            "anchor": {
+              "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "34f55fc1-f5b7-496b-8b26-01f93a9aba6c",
+                "start": 0.21825362642263735,
+                "end": 0.9318415469104822,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              },
+              {
+                "id": "120f6de6-f7bc-4ac2-ba58-e47e14fbea6a",
+                "start": 0.9939568967406129,
+                "end": 0.16868669616644816,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7923173435698072,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.3010457498288993,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "baadcff2-3d08-483c-a69e-deae13bdbd36",
+            "anchor": {
+              "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "c2b8bf8f-39f2-45e2-b278-22103fd5eaec",
+                "mode": "HIDE",
+                "start": 0.8486046163743252,
+                "end": 0.18896609408058346,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    },
+    {
+      "id": "d0337776-d597-40c2-8456-df68982a0d09",
+      "name": "稍侧12",
+      "sourceSnapshotId": "a357b990-bf4f-4d4c-9e46-3d994d1759fb",
+      "yaw": 20,
+      "pitch": 0,
+      "offset": [
+        0.3159027188511091,
+        -0.37406179816135887
+      ],
+      "drawing": {
+        "version": 3,
+        "fills": [
+          {
+            "id": "a9aba385-ca60-4342-af42-20a8ea265867",
+            "name": "左刘海轮廓 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+                "reverse": false
+              },
+              {
+                "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+                "reverse": false
+              },
+              {
+                "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+                "reverse": false
+              },
+              {
+                "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+                "reverse": false
+              },
+              {
+                "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+                "reverse": false
+              },
+              {
+                "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+                "reverse": false
+              },
+              {
+                "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+                "reverse": false
+              },
+              {
+                "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "09ec66a9-0114-45ff-9ec3-2f64eb5081ce",
+            "name": "颈部底形 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+                "reverse": false
+              },
+              {
+                "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+                "reverse": false
+              },
+              {
+                "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+                "reverse": false
+              },
+              {
+                "id": "ef495977-5008-4ef8-88c0-b71624056573",
+                "reverse": false
+              },
+              {
+                "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+                "reverse": false
+              },
+              {
+                "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+                "reverse": false
+              }
+            ],
+            "visible": true,
+            "locked": false
+          },
+          {
+            "id": "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+            "name": "衣领与肩线 · 白底",
+            "color": "white",
+            "boundary": [
+              {
+                "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+                "reverse": false
+              },
+              {
+                "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+                "reverse": true
+              },
+              {
+                "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+                "reverse": true
+              },
+              {
+                "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+                "reverse": true
+              },
+              {
+                "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+                "reverse": true
+              },
+              {
+                "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+                "reverse": true
+              }
+            ],
+            "visible": true,
+            "locked": false
+          }
+        ],
+        "offsets": [],
+        "layers": [
+          {
+            "id": "4e6c0ea0-fbe9-4184-9ce1-a20c86248b37",
+            "name": "左刘海",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "dfe61aac-f7b3-4c78-b834-3e8e899ac584",
+              "7ee706ca-8959-4079-bc6b-161714a977e7",
+              "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+              "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "a9aba385-ca60-4342-af42-20a8ea265867"
+            ]
+          },
+          {
+            "id": "4e4b5f32-c8b6-430a-b953-58b4c883db5d",
+            "name": "颈部与衣领",
+            "visible": true,
+            "locked": false,
+            "items": [
+              "20b69467-8d1a-4d2b-a139-268a80dc5405",
+              "18a51194-a15a-49c0-abbb-1fd868337f95",
+              "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+              "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+              "7c519032-167b-4c38-82ae-e7db4f79f98a",
+              "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+              "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+              "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "35f2ba43-733b-44ff-b628-d7dbd21589f9",
+              "207852b5-242a-4de1-ad11-36e6dc0abecd",
+              "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+              "5f579187-f29e-4824-b9b8-575b7e3accb0",
+              "ef495977-5008-4ef8-88c0-b71624056573",
+              "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+              "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+              "09ec66a9-0114-45ff-9ec3-2f64eb5081ce"
+            ]
+          }
+        ],
+        "curves": [
+          {
+            "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+            "name": "左刘海轮廓 · 段01",
+            "nodes": [
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df"
+            ],
+            "handles": [
+              [
+                0.04281624636229667,
+                1.0918283184122721
+              ],
+              [
+                0.4910552534008349,
+                0.508116448792127
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "a6875560-2bc7-4f47-98cd-894826847bc4",
+            "name": "左刘海轮廓 · 段02",
+            "nodes": [
+              "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88"
+            ],
+            "handles": [
+              [
+                0.06724114192960653,
+                0.17296943673216153
+              ],
+              [
+                0.07433933529737047,
+                0.22237262287422288
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+            "name": "左刘海轮廓 · 段03",
+            "nodes": [
+              "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d"
+            ],
+            "handles": [
+              [
+                0.04931002708724963,
+                0.25974396004190514
+              ],
+              [
+                0.046203395295275784,
+                0.20827502970001616
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+            "name": "左刘海轮廓 · 段04",
+            "nodes": [
+              "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe"
+            ],
+            "handles": [
+              [
+                0.04457824699329771,
+                0.264677391533177
+              ],
+              [
+                0.024296954933533656,
+                0.34881851824230586
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+            "name": "左刘海轮廓 · 段05",
+            "nodes": [
+              "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388"
+            ],
+            "handles": [
+              [
+                0.014813999506534534,
+                0.3515848308228292
+              ],
+              [
+                0.013606159976683387,
+                0.3449200414616154
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+            "name": "左刘海轮廓 · 段06",
+            "nodes": [
+              "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3"
+            ],
+            "handles": [
+              [
+                -0.014796105763495153,
+                0.4082708169084663
+              ],
+              [
+                -0.06695142974518463,
+                0.43555190808727867
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+            "name": "左刘海轮廓 · 段07",
+            "nodes": [
+              "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+              "72dd0186-d746-4ba8-931d-493238fcaf09"
+            ],
+            "handles": [
+              [
+                -0.0889204425915489,
+                0.45144868230786517
+              ],
+              [
+                -0.1001683297401443,
+                0.44094833903856195
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+            "name": "左刘海轮廓 · 段08",
+            "nodes": [
+              "72dd0186-d746-4ba8-931d-493238fcaf09",
+              "cf0bf18a-5574-44fd-8407-9eb666f7f3d6"
+            ],
+            "handles": [
+              [
+                -0.1660083306270449,
+                0.6521846846825514
+              ],
+              [
+                -0.3042673429732731,
+                0.7236210888775205
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.00599124671435173,
+              "density": 0.6597151012182184
+            },
+            "strokeName": "左刘海轮廓"
+          },
+          {
+            "id": "e4148b60-d75f-4efc-adf4-c6d8da26004c",
+            "name": "左发纹 03",
+            "nodes": [
+              "6395df9c-0221-4f96-9362-0f71261086ec",
+              "d4721348-8f06-4c55-a759-a9231835c7e3"
+            ],
+            "handles": [
+              [
+                -0.1178215624178822,
+                0.732501507310971
+              ],
+              [
+                -0.08716862264468905,
+                0.6565505284817642
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            }
+          },
+          {
+            "id": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+            "name": "左发纹 02 · 段01",
+            "nodes": [
+              "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+              "970d87ec-7e43-4ea7-8529-78e506153c19"
+            ],
+            "handles": [
+              [
+                0.021558622217502793,
+                0.8852123451382815
+              ],
+              [
+                0.06191358247701054,
+                0.7805767796985341
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+            "name": "左发纹 02 · 段02",
+            "nodes": [
+              "970d87ec-7e43-4ea7-8529-78e506153c19",
+              "530d15c9-d115-47af-a096-2b1841d70a1e"
+            ],
+            "handles": [
+              [
+                0.012939756956317633,
+                0.8423735582078108
+              ],
+              [
+                -0.020763365224377536,
+                0.8543897670753471
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": false,
+              "width": 0.024,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 02"
+          },
+          {
+            "id": "84b654f8-f033-4ed8-8075-724e7d48d718",
+            "name": "左发纹 01 · 段01",
+            "nodes": [
+              "c8095035-8c71-4325-90a7-e162b6797755",
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c"
+            ],
+            "handles": [
+              [
+                0.196993342439158,
+                0.5771993850114621
+              ],
+              [
+                0.256530088912631,
+                0.4818389476317031
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+            "name": "左发纹 01 · 段02",
+            "nodes": [
+              "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+              "90b227e8-61ab-40d1-8230-f692acc8270b"
+            ],
+            "handles": [
+              [
+                0.273781541845054,
+                0.4961268196867228
+              ],
+              [
+                0.22604153473412425,
+                0.7443757782321134
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "mist": {
+              "enabled": true,
+              "width": 0.010204832440254864,
+              "density": 0.32006319930366844
+            },
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "207852b5-242a-4de1-ad11-36e6dc0abecd",
+            "name": "右颈线",
+            "nodes": [
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+              "83a392df-4528-46ca-8cb3-e51c7685c54a"
+            ],
+            "handles": [
+              [
+                -0.49964234912704364,
+                -0.23412723248512354
+              ],
+              [
+                -0.46731875537814027,
+                -0.36121172240406674
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "interior": true,
+                "taper": 0.08,
+                "extension": 0.12
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "b5b02813-9a6f-42c1-ba26-37d65b9dd874",
+            "name": "颈部底形 · 段02",
+            "nodes": [
+              "83a392df-4528-46ca-8cb3-e51c7685c54a",
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7"
+            ],
+            "handles": [
+              [
+                -0.49821022202757936,
+                -0.45627134926747004
+              ],
+              [
+                -0.6866092759373896,
+                -0.5475305668884707
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "5f579187-f29e-4824-b9b8-575b7e3accb0",
+            "name": "颈部底形 · 段03",
+            "nodes": [
+              "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a"
+            ],
+            "handles": [
+              [
+                -0.5869465654441294,
+                -0.8894730509524764
+              ],
+              [
+                0.053494757275643345,
+                -0.7785510742284891
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "ef495977-5008-4ef8-88c0-b71624056573",
+            "name": "颈部底形 · 段04",
+            "nodes": [
+              "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+              "b5468782-e774-486a-b52e-b3aed29cd2ee"
+            ],
+            "handles": [
+              [
+                0.20740526381548424,
+                -0.46548095308172976
+              ],
+              [
+                0.09491223339329388,
+                -0.41895761611010734
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "249627ed-d4e0-49d8-bdfd-09e52891d4b0",
+            "name": "左颈线",
+            "nodes": [
+              "b5468782-e774-486a-b52e-b3aed29cd2ee",
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e"
+            ],
+            "handles": [
+              [
+                0.006439681351609071,
+                -0.3166943049545332
+              ],
+              [
+                0.0007929900096998004,
+                -0.11969421933280829
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "interior": true,
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "46a424a0-46ee-4fe1-b83e-ec9bc373cca9",
+            "name": "颈部上缘封口",
+            "nodes": [
+              "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+              "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6"
+            ],
+            "handles": [
+              [
+                -0.14058180142907406,
+                -0.01884221030690778
+              ],
+              [
+                -0.3399598075326452,
+                -0.15394339006204907
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ],
+            "strokeName": "颈部底形"
+          },
+          {
+            "id": "3d61acb4-449b-4680-b987-e32cb2eaaf1a",
+            "name": "衣领后缘",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.3190263697791884,
+                -0.4674308842007942
+              ],
+              [
+                -0.10375417806007757,
+                -0.42842380158357
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线",
+            "depthOffset": -1,
+            "depthScope": "PARENT"
+          },
+          {
+            "id": "6ec1f9ed-ce66-4811-bd9b-ddf9c10ffbec",
+            "name": "衣领与肩线 · 段03",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c"
+            ],
+            "handles": [
+              [
+                -0.974241046044946,
+                -0.6752546520445498
+              ],
+              [
+                -0.8192208340257867,
+                -0.5631543776207634
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7c519032-167b-4c38-82ae-e7db4f79f98a",
+            "name": "衣领与肩线 · 段04",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad"
+            ],
+            "handles": [
+              [
+                -0.6313012738786441,
+                -0.4786046593571729
+              ],
+              [
+                -0.5869132723007544,
+                -0.45833596237300855
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "7392bc41-ead9-4d2a-9f06-8e243c12565f",
+            "name": "衣领与肩线 · 段08",
+            "nodes": [
+              "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4"
+            ],
+            "handles": [
+              [
+                -0.6281828202832277,
+                -0.7938425916814377
+              ],
+              [
+                -0.033280134577424896,
+                -0.6891335898197125
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "c07716dc-0d33-4caa-a50f-4d2a126e932d",
+            "name": "衣领与肩线 · 段06",
+            "nodes": [
+              "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                0.17336144992859628,
+                -0.4261832509405077
+              ],
+              [
+                0.20216030311441702,
+                -0.44813059636728403
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taper": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+            "name": "衣领与肩线 · 段01",
+            "nodes": [
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                0.36037041158013833,
+                -0.5217905177445173
+              ],
+              [
+                0.42053258651237213,
+                -0.5817142611225696
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "18a51194-a15a-49c0-abbb-1fd868337f95",
+            "name": "衣领与肩线 · 段02",
+            "nodes": [
+              "114dcc78-e409-4972-9d8b-2f17c935d433",
+              "bacf078e-7da6-426e-9cb2-09475e5656a0"
+            ],
+            "handles": [
+              [
+                -1.1577692833879103,
+                -0.9057730674179891
+              ],
+              [
+                0.5551630496439649,
+                -0.8555483117868665
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 10
+              },
+              {
+                "taperWidthScale": 10
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+            "name": "衣领与肩线 · 段05",
+            "nodes": [
+              "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+              "67bcda2a-6183-40af-8cc4-8b13d90a2798"
+            ],
+            "handles": [
+              [
+                -0.6945563604665531,
+                -0.8413885730241146
+              ],
+              [
+                0.01387303323232696,
+                -0.7755762272071993
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taperWidthScale": 0
+              }
+            ],
+            "strokeName": "衣领与肩线"
+          },
+          {
+            "id": "dfe61aac-f7b3-4c78-b834-3e8e899ac584",
+            "name": "曲线1",
+            "nodes": [
+              "95819b89-370a-4157-8a09-7d94edb5ac4a",
+              "4d7d0d17-d5f0-410b-a8b5-1213c436aaf9"
+            ],
+            "handles": [
+              [
+                0.15395593003307842,
+                0.5345202772919112
+              ],
+              [
+                0.16618668576879259,
+                0.4545759412724278
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "左发纹 01"
+          },
+          {
+            "id": "20b69467-8d1a-4d2b-a139-268a80dc5405",
+            "name": "曲线2",
+            "nodes": [
+              "eaa52a67-0204-4812-b38c-774b0d9ab2d8",
+              "001fcbf7-90f9-4aa4-9805-c69cf523caa2"
+            ],
+            "handles": [
+              [
+                -0.21903848254320316,
+                -0.5311738930785357
+              ],
+              [
+                -0.24182753429824916,
+                -0.5683405110497786
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taperWidthScale": 20
+              },
+              {
+                "taperWidthScale": 20
+              }
+            ]
+          },
+          {
+            "id": "7ee706ca-8959-4079-bc6b-161714a977e7",
+            "name": "曲线3",
+            "nodes": [
+              "c8095035-8c71-4325-90a7-e162b6797755",
+              "4d7d0d17-d5f0-410b-a8b5-1213c436aaf9"
+            ],
+            "handles": [
+              [
+                0.1872845307690811,
+                0.5540769198936593
+              ],
+              [
+                0.18385546450276,
+                0.5009498612214578
+              ]
+            ],
+            "visible": true,
+            "locked": false,
+            "width": 0.008,
+            "inkEnds": [
+              {
+                "taper": 0,
+                "extension": 0
+              },
+              {
+                "taper": 0,
+                "extension": 0
+              }
+            ],
+            "strokeName": "左发纹 01"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "cf0bf18a-5574-44fd-8407-9eb666f7f3d6",
+            "position": [
+              -0.3294804514288924,
+              0.9730357594476281
+            ]
+          },
+          {
+            "id": "515e5bb2-90f7-4442-8487-f2c1b1c6d4df",
+            "position": [
+              0.04698346416688989,
+              0.09353969138922362
+            ]
+          },
+          {
+            "id": "b9c9b907-7f7b-48ed-b90e-b98c8813be88",
+            "position": [
+              0.0650876034755149,
+              0.2983095910283451
+            ]
+          },
+          {
+            "id": "b6d7400a-6383-45c5-b9c2-63850f60eb1d",
+            "position": [
+              0.030425818907010575,
+              0.1697093987135762
+            ]
+          },
+          {
+            "id": "dc12d1a4-35c4-49c1-8691-a7ef682cfabe",
+            "position": [
+              0.015129484608279262,
+              0.42293954395634514
+            ]
+          },
+          {
+            "id": "2aef4c5d-1c2d-46b1-9f47-9139f74b0388",
+            "position": [
+              -0.0023019333837085492,
+              0.27930558825065127
+            ]
+          },
+          {
+            "id": "26f13e11-d384-4c9d-ba82-5be73159e9f3",
+            "position": [
+              -0.10194933988573492,
+              0.5620227332440291
+            ]
+          },
+          {
+            "id": "72dd0186-d746-4ba8-931d-493238fcaf09",
+            "position": [
+              -0.09934865358176133,
+              0.36275515140251763
+            ]
+          },
+          {
+            "id": "6395df9c-0221-4f96-9362-0f71261086ec",
+            "position": [
+              -0.15261535548022065,
+              0.8024434683288285
+            ]
+          },
+          {
+            "id": "d4721348-8f06-4c55-a759-a9231835c7e3",
+            "position": [
+              -0.055024303156582806,
+              0.6044670002258199
+            ]
+          },
+          {
+            "id": "3e789494-7705-4ea4-a7e1-94bfcd2ff9c2",
+            "position": [
+              -0.08849130476709968,
+              0.9238741082679753
+            ]
+          },
+          {
+            "id": "970d87ec-7e43-4ea7-8529-78e506153c19",
+            "position": [
+              0.09041576145501909,
+              0.6917795472062004
+            ]
+          },
+          {
+            "id": "530d15c9-d115-47af-a096-2b1841d70a1e",
+            "position": [
+              -0.06160436376909259,
+              0.8901279296312813
+            ]
+          },
+          {
+            "id": "cfdc0022-ef31-4e5b-81e2-59ca0c2b477c",
+            "position": [
+              0.26826131630613137,
+              0.38921149945992906
+            ]
+          },
+          {
+            "id": "90b227e8-61ab-40d1-8230-f692acc8270b",
+            "position": [
+              0.13269787209512263,
+              0.821064700168542
+            ]
+          },
+          {
+            "id": "f4e155d2-ea23-4e90-bf8e-94c1b7ed19d6",
+            "position": [
+              -0.5010342157358957,
+              -0.1481262468263582
+            ]
+          },
+          {
+            "id": "83a392df-4528-46ca-8cb3-e51c7685c54a",
+            "position": [
+              -0.4580265018514247,
+              -0.42106147683002143
+            ]
+          },
+          {
+            "id": "8dc3a88c-c9d2-4a0a-b0e9-92b7181354e7",
+            "position": [
+              -0.7280502046648258,
+              -0.5713273505494201
+            ]
+          },
+          {
+            "id": "0dd0260e-4f0d-4f2d-84df-c19926218f8a",
+            "position": [
+              0.24532167938657892,
+              -0.50913770106457
+            ]
+          },
+          {
+            "id": "b5468782-e774-486a-b52e-b3aed29cd2ee",
+            "position": [
+              0.04557859639432997,
+              -0.36355892146811347
+            ]
+          },
+          {
+            "id": "5d6a3417-2c9f-4602-8333-c43cfa37b07e",
+            "position": [
+              0.020492606774176372,
+              -0.02465935354259866
+            ]
+          },
+          {
+            "id": "67ad63f6-6448-46c8-8c4b-54fbaae6467c",
+            "position": [
+              -0.6582762152218101,
+              -0.49418283564405197
+            ]
+          },
+          {
+            "id": "67bcda2a-6183-40af-8cc4-8b13d90a2798",
+            "position": [
+              0.2353851903463211,
+              -0.4671938199861804
+            ]
+          },
+          {
+            "id": "bacf078e-7da6-426e-9cb2-09475e5656a0",
+            "position": [
+              0.5152407484628546,
+              -0.6410003295652891
+            ]
+          },
+          {
+            "id": "114dcc78-e409-4972-9d8b-2f17c935d433",
+            "position": [
+              -1.0949462680059938,
+              -0.7545624580824859
+            ]
+          },
+          {
+            "id": "b47e2681-c8fe-4988-95a0-a3af0473b3ad",
+            "position": [
+              -0.5599383309575883,
+              -0.4427577860861295
+            ]
+          },
+          {
+            "id": "a075a072-cd97-4a97-9f65-ac8f170d79c4",
+            "position": [
+              0.1401365626966922,
+              -0.4071200273216113
+            ]
+          },
+          {
+            "id": "95819b89-370a-4157-8a09-7d94edb5ac4a",
+            "position": [
+              0.12316153543657635,
+              0.5759620346814005
+            ]
+          },
+          {
+            "id": "4d7d0d17-d5f0-410b-a8b5-1213c436aaf9",
+            "position": [
+              0.16456726624531068,
+              0.42237792557279724
+            ]
+          },
+          {
+            "id": "eaa52a67-0204-4812-b38c-774b0d9ab2d8",
+            "position": [
+              -0.1996735374670466,
+              -0.5023910617675232
+            ]
+          },
+          {
+            "id": "001fcbf7-90f9-4aa4-9805-c69cf523caa2",
+            "position": [
+              -0.2611924793744057,
+              -0.597123342360791
+            ]
+          },
+          {
+            "id": "c8095035-8c71-4325-90a7-e162b6797755",
+            "position": [
+              0.15604097460576455,
+              0.6405140238040896
+            ]
+          }
+        ],
+        "joins": [
+          {
+            "id": "dec141a3-e57c-4689-b623-b6a2fd67d55d",
+            "a": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 1,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "b": {
+              "curveId": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "end": 0,
+              "p": [
+                0.041881451470524175,
+                0.3606620993885616
+              ],
+              "distance": 1.8203673868643
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "a5beeaa4-74e1-4210-a8c1-6e9907f669a6",
+            "a": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 1,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "b": {
+              "curveId": "c45e167a-ca50-4a84-9251-21b0a2738bb3",
+              "end": 0,
+              "p": [
+                0.015781915550847105,
+                0.6001068414338541
+              ],
+              "distance": 2.6020415276040483
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "7c35b330-5aa6-419c-b3d8-31435885894b",
+            "a": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 1,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "b": {
+              "curveId": "017b6cd0-7e32-4ec5-8da1-7f30bb263fd4",
+              "end": 0,
+              "p": [
+                0.11906465106156776,
+                0.25693995397232783
+              ],
+              "distance": 0.3178823867526311
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "c2583c8b-bde1-4c60-96a7-c3ff9d0283a8",
+            "a": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 1,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "b": {
+              "curveId": "90ffc707-9a09-4f04-b7b1-bdf492974c8f",
+              "end": 0,
+              "p": [
+                0.14579163166299963,
+                0.4686845471699
+              ],
+              "distance": 2.6189331324406315
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "da1fd774-3639-44d3-bd3f-e106086b24b0",
+            "a": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 1,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.8456848368435975
+            },
+            "b": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 0,
+              "p": [
+                0.18452480928593815,
+                0.2983095910283451
+              ],
+              "distance": 0.9154911593782502
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "6cc423d9-9593-444e-a8c7-ee92347309f0",
+            "a": {
+              "curveId": "9f7ea54d-fc5f-48b4-933a-cef47374157a",
+              "end": 1,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "b": {
+              "curveId": "f9e513af-8c6a-4b74-8d04-d784b16efd7f",
+              "end": 0,
+              "p": [
+                0.1376935564932391,
+                0.1826126980690254
+              ],
+              "distance": 0.9769801951794435
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "fbf41502-0340-4ed5-8585-983e6328c2bd",
+            "a": {
+              "curveId": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "end": 1,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "b": {
+              "curveId": "a6875560-2bc7-4f47-98cd-894826847bc4",
+              "end": 0,
+              "p": [
+                0.1704941486465149,
+                0.061171916510567206
+              ],
+              "distance": 1.6941846353886818
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "cb637e87-519a-4205-8430-7b10a0db90fa",
+            "a": {
+              "curveId": "e77ff5ee-195b-4bf0-9974-c83eaac18173",
+              "end": 1,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "b": {
+              "curveId": "8130617b-ebdd-4395-ac9e-90b1740de4c5",
+              "end": 0,
+              "p": [
+                0.143619599522903,
+                0.6985597991356025
+              ],
+              "distance": 0.9065456858050167
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "07c2a972-3a2a-4158-97c2-ecd148ed6ebe",
+            "a": {
+              "curveId": "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "end": 1,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "b": {
+              "curveId": "5d6add57-8433-41b4-bd3e-823a90b23cc1",
+              "end": 0,
+              "p": [
+                0.26876656132898874,
+                0.42329843122497524
+              ],
+              "distance": 2.678086952366075
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "5505f222-fc4b-4a4e-9336-257f4e2bb6a6",
+            "a": {
+              "curveId": "dfe61aac-f7b3-4c78-b834-3e8e899ac584",
+              "end": 1,
+              "p": [
+                0.16456726624531068,
+                0.42237792557279724
+              ],
+              "distance": 1.307995710073615
+            },
+            "b": {
+              "curveId": "7ee706ca-8959-4079-bc6b-161714a977e7",
+              "end": 1,
+              "p": [
+                0.16456726624531068,
+                0.42237792557279724
+              ],
+              "distance": 1.307995710073615
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "360f473c-0b1d-4259-a341-07f9b9badbc1",
+            "a": {
+              "curveId": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "end": 0,
+              "p": [
+                -0.36544679001329416,
+                1.0084730394472992
+              ],
+              "distance": 1.7173106096531052
+            },
+            "b": {
+              "curveId": "cb75aa18-a2e8-4ab0-97a1-405771b219e7",
+              "end": 1,
+              "p": [
+                -0.36544679001329416,
+                1.0084730394472992
+              ],
+              "distance": 0.8887239922451309
+            },
+            "mode": "CUSP"
+          },
+          {
+            "id": "3159fb69-c7dd-429b-8c06-93c6c7db4e87",
+            "a": {
+              "curveId": "7ee706ca-8959-4079-bc6b-161714a977e7",
+              "end": 0,
+              "p": [
+                0.15604097460576455,
+                0.6405140238040896
+              ],
+              "distance": 4.61289594879132
+            },
+            "b": {
+              "curveId": "84b654f8-f033-4ed8-8075-724e7d48d718",
+              "end": 0,
+              "p": [
+                0.15604097460576455,
+                0.6405140238040896
+              ],
+              "distance": 4.61289594879132
+            },
+            "mode": "CUSP"
+          }
+        ],
+        "mirrorAxisX": -0.3294804514288924,
+        "displayIntervals": [
+          {
+            "id": "cd91f68c-fc93-4e44-9a4f-a0d973188e89",
+            "anchor": {
+              "id": "ca306230-d17b-45e0-82b4-cbcb737b4cc0",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "34f55fc1-f5b7-496b-8b26-01f93a9aba6c",
+                "start": 0.30128726013928864,
+                "end": 0.9318415469104822,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              },
+              {
+                "id": "120f6de6-f7bc-4ac2-ba58-e47e14fbea6a",
+                "start": 0.9939568967406129,
+                "end": 0.16868669616644816,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+            "anchor": {
+              "id": "69bdf567-c719-417f-b4fc-fe9781f1fe2b",
+              "reverse": true
+            },
+            "ranges": [
+              {
+                "id": "66b8c5a1-4374-4a9f-b580-3f82b0f693e4",
+                "start": 0.7923173435698072,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taper": 0.08
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              },
+              {
+                "id": "e78a40d0-25c5-456f-a532-289e27f2c9ef",
+                "start": 0.002034832407311142,
+                "end": 0.3010457498288993,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taper": 0.08
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "57a8c1c6-b667-411b-8ff6-0c6c16d8e56d",
+            "anchor": {
+              "id": "3085f1f1-e1b2-4c7d-886e-91de9d7fa74a",
+              "reverse": false
+            },
+            "ranges": [
+              {
+                "id": "abb916ec-adf9-408c-91f1-d3fb4a2eeef3",
+                "start": 0,
+                "end": 0.15175959507752687,
+                "inkEnds": [
+                  {
+                    "taper": 0
+                  },
+                  {
+                    "taperWidthScale": 20
+                  }
+                ]
+              },
+              {
+                "id": "10e94f9a-4764-4484-a775-7514c0952420",
+                "start": 0.8131963837730747,
+                "end": 1,
+                "inkEnds": [
+                  {
+                    "taperWidthScale": 20
+                  },
+                  {
+                    "taper": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "endpointLinks": [],
+        "groups": []
+      }
+    }
+  ]
+}

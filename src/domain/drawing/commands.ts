@@ -3,7 +3,7 @@ import {setObjectState} from './objectState';
 import {groupFor,DEFAULT_PEN_TAPER_SCALE,MAX_PEN_TAPER_SCALE} from './model';
 import {linkedNodeIds,followLinkedNodes,cleanEndpointLinks} from './endpointLinks';
 import {roundedJoins} from './roundedJoin';
-import {retainDisplayIntervals} from './displayIntervals';
+import {retainDisplayIntervals,splitDisplayIntervals} from './displayIntervals';
 import {split} from '../geometry/bezier';
 import {add,sub,mul,length,finitePoint,uid,objectById,nodeAt,curveById,shapeOf,layerFor,members,joinAt,sameEnd,editable,type DrawingDocument as Doc,type DrawingCurve,type DrawingLayer,type Endpoint,type Point2,type Cubic,type TangentJoin} from './model';
 import {normalizeOrder,strokeFor,strokeIds,strokeObjectIds,strokes,strokePaths} from './strokes';
@@ -137,6 +137,12 @@ export function deleteLayer(d:Doc,id:string):Doc{
  const l=d.layers.find(l=>l.id===id);if(!l)return d;if(l.items.some(id=>objectById(d,id)?.locked))throw Error('图层或内容已锁定。');
  return retainDisplayIntervals(d,clean({...d,layers:d.layers.filter(l=>l.id!==id),curves:d.curves.filter(c=>!l.items.includes(c.id)),fills:d.fills.filter(c=>!l.items.includes(c.id)),offsets:d.offsets.filter(c=>!l.items.includes(c.id))}));
 }
+/** Atomic multi-layer deletion, with the same lock protection as object deletion. */
+export function deleteLayers(d:Doc,ids:readonly string[]):Doc{
+ const layers=d.layers.filter(l=>ids.includes(l.id));if(!layers.length)return d;
+ const n=deleteObjects(d,layers.flatMap(l=>l.items));
+ return {...n,layers:n.layers.filter(l=>!ids.includes(l.id))};
+}
 export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.id,offset:Point2=[.04,-.04],copyGroupFills=true):{document:Doc;ids:string[]}{
  if(!ids.length||!layerId)return {document:d,ids:[]};requireLayer(d,layerId);
  const n=copy(d),nodeMap=new Map<string,string>(),curveMap=new Map<string,string>();
@@ -194,7 +200,6 @@ export function splitCurve(d:Doc,id:string,t:number):{document:Doc;ids:string[]}
  if(n.endpointLinks)n.endpointLinks=n.endpointLinks.map(j=>({...j,a:j.a.curveId===id&&j.a.end===1?{curveId:newId,end:1}:j.a,b:j.b.curveId===id&&j.b.end===1?{curveId:newId,end:1}:j.b}));
  n.joins.push({id:uid(),a:{curveId:id,end:1},b:{curveId:newId,end:0},mode:'SMOOTH'});
  const replace=(xs:import('./model').CurveUse[])=>xs.flatMap(x=>x.id!==id?[x]:x.reverse?[{id:newId,reverse:true},{id,reverse:true}]:[{id,reverse:false},{id:newId,reverse:false}]);n.fills=n.fills.map(f=>({...f,boundary:replace(f.boundary)}));n.offsets=n.offsets.map(o=>({...o,source:replace(o.source)}));
- if(n.displayIntervals)n.displayIntervals=n.displayIntervals.map(t=>t.anchor.id===id&&t.anchor.reverse?{...t,anchor:{id:newId,reverse:true}}:t);
  // Splitting shortens the source allocated to each endpoint. Do not silently
  // expand a previously clamped arc and violate the exact-split contract.
  const before=roundedJoins(d),after=roundedJoins(n);
@@ -202,7 +207,7 @@ export function splitCurve(d:Doc,id:string,t:number):{document:Doc;ids:string[]}
   const a=before.get(j.id)!,b=after.get(j.id)!;
   if(!a.error&&(b.error||Math.abs(a.distance-b.distance)>1e-5))throw Error('分割会改变圆弧范围，请先减小影响范围再分割。');
  }
- const l=layerFor(n,id)!;l.items.splice(l.items.indexOf(id)+1,0,newId);return {document:normalizeOrder(n),ids:[id,newId]};
+ const l=layerFor(n,id)!;l.items.splice(l.items.indexOf(id)+1,0,newId);return {document:normalizeOrder(splitDisplayIntervals(d,n,id,newId)),ids:[id,newId]};
 }
 export function ellipse(d:Doc,layerId:string,a:Point2,b:Point2,width:number):{document:Doc;ids:string[]}{
  const center=mul(add(a,b),.5),rx=Math.abs(b[0]-a[0])/2,ry=Math.abs(b[1]-a[1])/2,k=.5522847498307936;

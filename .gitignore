@@ -13,3 +13,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Isolated Sites publication checkout and archives
+.sites/

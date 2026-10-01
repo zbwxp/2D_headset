@@ -1,6 +1,6 @@
 {
   "name": "contour-head-studio",
-  "version": "0.12.37",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "site:prepare": "node scripts/prepare-sites.mjs",
+    "test:release": "vitest run src/tests/drawing src/tests/pose src/tests/starter-project src/tests/assembly"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

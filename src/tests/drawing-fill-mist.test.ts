@@ -29,6 +29,7 @@ test('Gaussian fades monotonically to exact transparent support and is independe
  expect(fillMistAlpha(10/3,10)).toBeCloseTo(.6021,3);expect(fillMistAlpha(2,10)).toBeCloseTo(fillMistAlpha(4,20),12);
  const {d}=fixture(),shapes=fillGeometry(d,d.fills[0]).shapes,a=fillMistLayout(shapes,DEFAULT_FILL_MIST)!,b=fillMistLayout(shapes,{...DEFAULT_FILL_MIST,side:'OUTSIDE'})!;
  expect(b.bounds[0]).toBeLessThan(a.bounds[0]);expect(b.nx*b.ny).toBeLessThanOrEqual(1_504_100);
+ const preview=fillMistLayout(shapes,DEFAULT_FILL_MIST,.5)!;expect(preview.nx*preview.ny).toBeLessThan(a.nx*a.ny/12);expect(preview.origin).toEqual(a.origin);expect(preview.relative).toEqual(a.relative);expect(preview.bounds[0]).toBe(a.bounds[0]);expect(preview.bounds[3]).toBe(a.bounds[3]);
 });
 test('linear distance transform agrees with brute-force nearest-boundary distances including seed-free rows',()=>{
  const nx=21,ny=17,seeds=new Uint8Array(nx*ny),positions=[[0,0],[3,9],[16,12],[20,16]];for(const [x,y] of positions)seeds[y*nx+x]=1;

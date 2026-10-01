@@ -1,255 +1,155 @@
-import {curveVisible,pointVisible,visibleAtView} from '../../domain/recording/visibility';
-import {recordingSnapTargets,recordingPointSnapTargets,snapRecordingEndpoint,type SnapTarget,type EndpointSnap} from '../../domain/recording/snapping';
-import {createRecordedPoint,createSemanticCurve,displayPoint,editRecordedPoint,evaluatePoint,pointCoverage} from '../../domain/recording/points';
-import PointPanel from './PointPanel';
-import SortableList from './SortableList';
-import FrameVisibility from './FrameVisibility';
-import DrawingRegions from './DrawingRegions';
-import {addDrawingRegion,cubicSpan,curveDrawingPieces,drawingIntervals,finalDrawingStrokes,pieceIntervals,pointOnDrawingCurve} from '../../domain/recording/drawingRegions';
-import {useRecordedPointArrowKeys} from './useRecordedPointArrowKeys';
-import KeyList from './KeyList';
-import {smoothGeometry,smoothCoverage,smoothStyle,editSmoothStyle,handleTension,smoothEditable} from '../../domain/recording/smooth';
-import JunctionInspector from './JunctionInspector';
-import {bindEndpoints,canEditEndpoint,deleteRecordedCurve,evaluateRecording} from '../../domain/recording/junctions';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {memo,useEffect,useId,useMemo,useRef,useState} from 'react';
+import {Camera,Trash2,Move,Orbit,Scan,Eye,EyeOff,ArrowLeft} from 'lucide-react';
 import {useEditor} from '../../app/store';
-import {VIEW_EPS,canonical,displayShape,emptyRecording,sameView,type Recording,type Cubic,type Point2,type View} from '../../domain/recording/model';
-import {coverage} from '../../domain/recording/evaluation';
-import {createRecorded,duplicate,editShape,editEndpoint,mergeEndpoint,mirrorEdit,updateCurve,reorderRecordedCurve} from '../../domain/recording/commands';
-import {defaultHeadFrame} from '../../domain/head/frame';
-import {recordingBasis} from '../../domain/recording/projection';
-import {useRecording,type RecordingTool} from './session';
+import {emptyPoseRecording,recordSnapshot,changePose,samePoseView,syncPoseSnapshots,type PoseRecording,type RecordedPose} from '../../domain/recording/poses';
+import {evaluatePoses,poseCoverage,type PoseEvaluation} from '../../domain/recording/poseEvaluation';
+import {shapeOf,type Point2} from '../../domain/drawing/model';
+import type {View} from '../../domain/recording/model';
+import PaintScene from '../drawing/PaintScene';
+import {curvePath} from '../drawing/geometry';
+import {useDrawing} from '../drawing/session';
+import {useRecording} from './session';
 import Reference from './Reference';
-import Background from './Background';
+import LiveNumberInput from './LiveNumberInput';
+import {frameNavigation} from './frameNavigation';
+import {deletePose} from '../../domain/recording/poseInference';
+import InferencePanel from './InferencePanel';
 import NumericSlider from '../shared/NumericSlider';
 import {uiText as t,useLanguage} from '../i18n';
 import './recording.css';
-const EMPTY=emptyRecording();
-const path=(s:Point2[])=>`M ${s[0]} C ${s[1]} ${s[2]} ${s[3]}`;
-const GUIDE_DASH='7 5';
-function commit(next:Recording){const e=useEditor.getState();if(next===e.project.recording)return;e.beginEdit();e.setRecording(next);e.endEdit();}
+import './poseRecording.css';
+
+const EMPTY=emptyPoseRecording(),noop=()=>{},logicalScreen=([x,y]:Point2):Point2=>[x*250,-y*250];
+export function commitPoseRecording(next:PoseRecording){const e=useEditor.getState();if(next===e.project.poseRecording)return;e.beginEdit();e.setPoseRecording(next);e.endEdit();}
+const Artwork=memo(function Artwork({result,interactive,pixelsPerUnit}:{result:PoseEvaluation;interactive:boolean;pixelsPerUnit:number}){
+ return <PaintScene d={result.drawing} pixelsPerUnit={pixelsPerUnit} interactiveEffects={interactive} opacity={result.opacity} screen={logicalScreen} unit={250} preview showFills referenceMoving={false} tool="select" curveDown={noop} paintDown={noop} arcDown={noop}/>;
+});
+const degrees=(v:number)=>`${+v.toFixed(2)}°`;
 export default function RecordingRoom(){
  useLanguage(s=>s.language);
- const project=useEditor(s=>s.project),stored=project.recording??EMPTY,session=useRecording();
- const {view,selected,tool,first,zoom,pan}=session;
- const [backgroundMoving,setBackgroundMoving]=useState(false);
- const [junctionId,setJunctionId]=useState<string|null>(null);
- const [draft,setDraft]=useState<Recording|null>(null),[hint,setHint]=useState('');
- const [snap,setSnap]=useState<EndpointSnap|null>(null);
- const [regionHover,setRegionHover]=useState<{t:number;point:Point2}|null>(null);
- const r=draft??stored,curve=r.curves.find(c=>c.id===selected),selectedPoint=r.points?.find(p=>p.id===selected);
- const editHost=useRef<HTMLDivElement>(null),[size,setSize]=useState({width:600,height:600});
- const drag=useRef<{id:string;index:number;base:Recording;shape:Cubic;start:Point2;pointer:number;next:Recording|null;point?:boolean;targets?:SnapTarget[];smooth?:{handle:0|1;tangent:Point2;baseLength:number;tension:number}}|null>(null);
- const cameraDrag=useRef<{start:Point2;view:View;pan:Point2;panMode:boolean}|null>(null);
- useRecordedPointArrowKeys(()=>backgroundMoving||!!drag.current||!!cameraDrag.current);
- const svg=useRef<SVGSVGElement>(null);
- const frame=project.headFrame??defaultHeadFrame(),basis=recordingBasis(frame,view);
- const scale=Math.min(size.width/(2.8*basis.halfWidth),size.height/(2.8*basis.halfHeight))*zoom;
- const sx=scale*basis.halfWidth,sy=scale*basis.halfHeight;
- const screen=(p:Point2):Point2=>[size.width/2+pan[0]+p[0]*sx,size.height/2+pan[1]-p[1]*sy];
- const local=(e:{clientX:number;clientY:number}):Point2=>{const box=svg.current!.getBoundingClientRect();return [(e.clientX-box.left-size.width/2-pan[0])/sx,-(e.clientY-box.top-size.height/2-pan[1])/sy];};
- const derived=useMemo(()=>evaluateRecording(r,view),[r,view]);
- const evaluated=curve?derived.get(curve.id):null;
- const pointItems=useMemo(()=>(r.points??[]).filter(p=>pointVisible(p,view)).map(p=>({p,e:evaluatePoint(p,view)})),[r.points,view]);
- const smooth=useMemo(()=>smoothGeometry(r,view,derived),[r,view,derived]);
- const guideIds=useMemo(()=>new Set(r.curves.filter(c=>c.auxiliary).map(c=>c.id)),[r.curves]);
- const transitionDash=(tr:{trims:{id:string}[]})=>tr.trims.every(p=>guideIds.has(p.id))?GUIDE_DASH:undefined;
- const junction=r.junctions?.find(j=>j.id===junctionId);
- const items=useMemo(()=>r.curves.filter(c=>curveVisible(c,view)).map(c=>({c,e:derived.get(c.id)!})),[r,derived,view]);
- const finalStrokes=useMemo(()=>finalDrawingStrokes(items.filter(x=>x.e.status!=='frozen').map(x=>x.c),smooth),[items,smooth]);
- const regionPieces=useMemo(()=>curve?curveDrawingPieces(curve.id,smooth):[],[curve,smooth]);
- const regionTargets=useMemo(()=>regionPieces.map((p,i)=>({id:String(i),name:curve!.name,auxiliary:false,shape:displayShape(cubicSpan(p.shape,p.render),view)})),[regionPieces,curve,view]);
- const regionHit=(event:{clientX:number;clientY:number})=>{
-  if(!curve||curve.locked||!curveVisible(curve,view))return null;
-  const hit=snapRecordingEndpoint(local(event),regionTargets,[sx,sy]);if(!hit)return null;
-  const [a,b]=regionPieces[+hit.target.id].source;return {t:Math.max(0,Math.min(1,a+(b-a)*hit.t)),point:hit.point};
- };
- const cancel=()=>{drag.current=null;cameraDrag.current=null;setDraft(null);setSnap(null);};
- useEffect(()=>{const el=editHost.current!;const observer=new ResizeObserver(([entry])=>setSize({width:entry.contentRect.width,height:entry.contentRect.height}));observer.observe(el);return()=>observer.disconnect();},[]);
- useEffect(()=>{drag.current=null;setDraft(null);setSnap(null);},[view]);
- useEffect(()=>{cancel();},[tool,stored]);
- useEffect(()=>{setRegionHover(null);},[tool,view,selected,stored]);
- useEffect(()=>{setBackgroundMoving(false);},[selected]);
- useEffect(()=>{useRecording.getState().set({first:null});},[stored]);
- useEffect(()=>{const blur=()=>cancel(),visibility=()=>{if(document.hidden)cancel();};window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);return()=>{window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);};},[]);
- useEffect(()=>{const key=(e:KeyboardEvent)=>{const el=e.target as HTMLElement;if(el.closest('input,textarea,[contenteditable="true"]'))return;
- if(e.key==='Escape'){cancel();const s=useRecording.getState();s.set(s.first?{first:null}:{tool:'edit',first:null});}
- if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&drag.current){e.preventDefault();e.stopImmediatePropagation();cancel();}
- };window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);},[]);
- function selectTool(next:RecordingTool){setBackgroundMoving(false);cancel();session.set({tool:next,first:null});setHint('');}
- function createCurve(auxiliary=false){
-  cancel();setBackgroundMoving(false);setHint('');
-  const id=crypto.randomUUID();
-  commit(createRecorded(r,view,id,t(auxiliary?'录制辅助线':'录制曲线')+' '+(r.curves.length+1),undefined,auxiliary));
-  setJunctionId(null);session.set({selected:id,tool:'edit',first:null});
+ const project=useEditor(s=>s.project),session=useRecording(),{view,zoom,pan}=session;
+ const viewQueue=useMemo(()=>frameNavigation(v=>useRecording.getState().navigate(v)),[]);
+ useEffect(()=>()=>viewQueue.cancel(),[viewQueue]);
+ const library=project.drawingSnapshots,stored=useMemo(()=>syncPoseSnapshots(project.poseRecording??EMPTY,library),[project.poseRecording,library]);
+ const [source,setSource]=useState(library?.activeId??library?.items[0]?.id??'');
+ const [selected,setSelected]=useState<string|null>(null),[mode,setMode]=useState<'move'|'view'>('move');
+ const [draft,setDraft]=useState<PoseRecording|null>(null),[error,setError]=useState('');
+ const [head,setHead]=useState(true),[headOpacity,setHeadOpacity]=useState(.28),[ghosts,setGhosts]=useState(true),[focusElement,setFocusElement]=useState<string>();
+ const [size,setSize]=useState({width:650,height:650});
+ const host=useRef<HTMLElement>(null),svg=useRef<SVGSVGElement>(null);
+ const drag=useRef<{pointer:number;start:Point2;kind:'move'|'view'|'pan';base:PoseRecording;pose?:RecordedPose;next?:PoseRecording;view:View;pan:Point2;unit:number}|null>(null);
+ const numberEdit=useRef<{base:PoseRecording;next?:PoseRecording}|null>(null);
+ const r=draft??stored,pose=r.poses.find(p=>p.id===selected),atPose=pose&&samePoseView(pose,view);
+ const exact=r.poses.find(p=>samePoseView(p,view));
+ const snapshot=library?.items.find(s=>s.id===source),sourceOfPose=library?.items.find(s=>s.id===pose?.sourceSnapshotId);
+ // Reference size is independent of the artwork: resizing it must not rebuild
+ // all derived strokes and fills, or invalidate their coverage cache.
+ const artworkRecording=useMemo(()=>({version:1 as const,poses:r.poses,inferences:r.inferences}),[r.poses,r.inferences]);
+ const artworkId=useId();
+ const [settled,setSettled]=useState({recording:artworkRecording,view});
+ const interactive=settled.recording!==artworkRecording||settled.view!==view;
+ // Navigation updates exact source geometry/intervals/occlusion every frame.
+ // Ink polygons use zoom-aware subpixel sampling; only soft-effect raster
+ // resolution changes while interacting versus after settling.
+ useEffect(()=>{const timer=setTimeout(()=>setSettled({recording:artworkRecording,view}),160);return()=>clearTimeout(timer);},[artworkRecording,view]);
+ const result=useMemo(()=>evaluatePoses(artworkRecording,view),[artworkRecording,view]);
+ const g=useMemo(()=>poseCoverage(artworkRecording,focusElement),[artworkRecording,focusElement]);
+ const unit=Math.min(size.width,size.height)/2.8*zoom;
+ const transform=`translate(${size.width/2+pan[0]} ${size.height/2+pan[1]}) scale(${unit/250})`;
+ const warnIds=[...result.status].filter(([,s])=>s==='frozen').map(([id])=>id);
+ const frozenObjects=[...result.drawing.curves,...result.drawing.fills,...result.drawing.offsets].filter(o=>warnIds.includes(o.id));
+ useEffect(()=>{const el=host.current!;const ob=new ResizeObserver(([entry])=>setSize({width:entry.contentRect.width,height:entry.contentRect.height}));ob.observe(el);return()=>ob.disconnect();},[]);
+ useEffect(()=>{if(project.recording)useEditor.getState().setPoseRecording(stored);},[project.recording,stored]);
+ useEffect(()=>{if(!library?.items.some(s=>s.id===source))setSource(library?.activeId??library?.items[0]?.id??'');},[library,source]);
+ const cancel=()=>{drag.current=null;numberEdit.current=null;viewQueue.cancel();setDraft(null);};
+ useEffect(()=>{cancel();if(selected&&!stored.poses.some(p=>p.id===selected))setSelected(null);},[stored]);
+ useEffect(()=>{const blur=()=>cancel(),visibility=()=>{if(document.hidden)cancel();},key=(e:KeyboardEvent)=>{
+  if(e.key==='Escape'){cancel();return;}
+  if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,[contenteditable="true"]'))return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&drag.current){e.preventDefault();e.stopImmediatePropagation();cancel();}
+ };window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);window.addEventListener('keydown',key,true);return()=>{window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('keydown',key,true);};},[]);
+ function navigate(v:View){viewQueue.cancel();setError('');setDraft(null);session.navigate(v);}
+ function previewView(v:View){setError('');setDraft(null);viewQueue.push(v);}
+ function choose(p:RecordedPose){cancel();setSelected(p.id);setFocusElement(undefined);navigate(p);}
+ function update(id:string,change:Parameters<typeof changePose>[2]){try{const next=changePose(stored,id,change);commitPoseRecording(next);setError('');if(change.yaw!==undefined||change.pitch!==undefined)session.navigate(next.poses.find(p=>p.id===id)!);}catch(e){setError((e as Error).message);}}
+ function previewOffset(i:0|1,value:number){const edit=numberEdit.current;if(!edit||!pose)return;const original=edit.base.poses.find(p=>p.id===pose.id);if(!original)return;const offset:Point2=[...original.offset];offset[i]=value;edit.next=offset[i]===original.offset[i]?edit.base:changePose(edit.base,pose.id,{offset});setDraft(edit.next);setError('');}
+ function finishNumber(commit:boolean){const edit=numberEdit.current;numberEdit.current=null;setDraft(null);if(commit&&edit?.next&&edit.next!==edit.base)commitPoseRecording(edit.next);}
+ function capture(replace?:RecordedPose){if(!snapshot)return;try{const next=recordSnapshot(stored,snapshot,view,replace?.id);commitPoseRecording(next);choose(next.poses.find(p=>samePoseView(p,view))!);}catch(e){setError((e as Error).message);}}
+ function pointerMove(e:React.PointerEvent){const d=drag.current;if(!d||d.pointer!==e.pointerId)return;
+  const dx=e.clientX-d.start[0],dy=e.clientY-d.start[1];
+  if(d.kind==='pan')session.set({pan:[d.pan[0]+dx,d.pan[1]+dy]});
+  else if(d.kind==='view')viewQueue.push({yaw:d.view.yaw-dx*.25,pitch:d.view.pitch+dy*.25});
+  else if(d.pose){d.next=changePose(d.base,d.pose.id,{offset:[d.pose.offset[0]+dx/d.unit,d.pose.offset[1]-dy/d.unit]});setDraft(d.next);}
  }
- function actMirror(id:string){
-  const point=r.points?.find(p=>p.id===id),item=point??r.curves.find(c=>c.id===id);if(!item)return;
-  if(!first){
-   const status=point?evaluatePoint(point,view).status:derived.get(id)?.status;
-   if(status==='frozen'){setHint(t('冻结形状不能作为精确基准'));return;}
-   session.set({first:{id}});setHint('');return;
-  }
-  if(!!point!==!!r.points?.some(p=>p.id===first.id)){setHint(t('镜像源和目标需同为语义点或同为曲线'));return;}
-  if(item.locked||id===first.id){setHint(t(point?'请选择另一个未锁定语义点':'请选择另一条未锁定曲线'));return;}
-  commit(mirrorEdit(r,first.id,id,view));setJunctionId(null);session.set({tool:'edit',first:null,selected:id});setHint('');
- }
- function actCurve(id:string){setJunctionId(null);
- if(tool==='point'||tool==='semantic')return;
- if(tool==='region'){selectTool('edit');session.set({selected:id});return;}
- if(tool==='mirror')actMirror(id);else session.set({selected:id});
- }
- function actEnd(id:string,end:0|3){const c=r.curves.find(c=>c.id===id)!;
- if(!first){if(derived.get(c.id)?.status==='frozen'){setHint(t('冻结形状不能作为精确基准'));return;}session.set({first:{id,end}});}
- else {if(c.locked||id===first.id){setHint(t('请选择另一条未锁定曲线'));return;}const next=tool==='bind'?bindEndpoints(r,{id:first.id,end:first.end!},{id,end},view,crypto.randomUUID()):mergeEndpoint(r,{id:first.id,end:first.end!},{id,end},view);if(next===r){setHint(t('无法操作：端点已绑定、视角未覆盖或关系形成循环'));return;}commit(next);session.set({tool:'edit',first:null,selected:id});setHint('');}
- }
- function actPoint(id:string){
-  if(tool==='region'){selectTool('edit');setJunctionId(null);session.set({selected:id});return;}
-  if(tool==='point')return;
-  if(tool==='mirror'){actMirror(id);return;}
-  if(tool==='semantic'){
-   const point=r.points?.find(p=>p.id===id);if(!point||evaluatePoint(point,view).status==='frozen'){setHint(t('请先在当前视角录制此语义点的位置'));return;}
-   if(!first){session.set({first:{id}});setHint('');return;}
-   if(first.id===id){setHint(t('请选择另一个语义点'));return;}
-   const curveId=crypto.randomUUID(),next=createSemanticCurve(r,view,curveId,t('语义曲线')+' '+(r.curves.length+1),first.id,id);
-   if(next===r)return;
-   commit(next);setJunctionId(null);session.set({selected:curveId,tool:'edit',first:null});setHint('');return;
-  }
-  if(tool==='edit'||tool==='view'){setJunctionId(null);session.set({selected:id});}
- }
- function startPoint(event:React.PointerEvent,id:string){
-  const point=r.points?.find(p=>p.id===id);if(tool!=='edit'||!point||point.locked||event.button!==0)return;
-  event.stopPropagation();event.preventDefault();setJunctionId(null);setSnap(null);session.set({selected:id});
-  svg.current!.focus({preventScroll:true});
-  const position=displayPoint(evaluatePoint(point,view).position,view);
-  svg.current!.setPointerCapture(event.pointerId);
-  drag.current={id,index:0,base:r,shape:Array.from({length:4},()=>[...position]) as Cubic,start:local(event),pointer:event.pointerId,next:null,point:true,targets:recordingPointSnapTargets(r,view,id)};
- }
- function startHandle(e:React.PointerEvent,id:string,index:number){
-  if(tool!=='edit'||r.curves.find(c=>c.id===id)?.locked||((index===0||index===3)&&!canEditEndpoint(r,{id,end:index},derived))||e.button!==0)return;
-  e.stopPropagation();e.preventDefault();setSnap(null);svg.current!.setPointerCapture(e.pointerId);
-  drag.current={id,index,base:r,shape:structuredClone(displayShape(derived.get(id)!.shape,view)),start:local(e),pointer:e.pointerId,next:null,
-   targets:index===0||index===3?recordingSnapTargets(r,view,{id,end:index}):undefined};
- }
- const status=tool==='region'?(first?'在选中曲线上点击区域终点':'在选中曲线上点击区域起点'):tool==='point'?'点击画布放置录制语义点':tool==='semantic'?(first?'请选择第二个语义点':'请选择第一个语义点'):tool==='mirror'?(first?(r.points?.some(p=>p.id===first.id)?'请选择目标语义点':'请选择目标曲线'):'请选择镜像源点或曲线'):tool==='bind'?(first?'请选择跟随端点':'请选择主端点'):tool==='merge'?(first?'请选择要移动的端点':'请选择固定端点'):tool==='view'?'拖动旋转 · 右键平移 · 滚轮缩放':'拖动端点自动吸附曲线 · Alt 暂停吸附 · 首次修改自动建 Key';
- const g=junction?.mode==='SMOOTH'?smoothCoverage(junction):junction?null:curve?coverage(curve):selectedPoint?pointCoverage(selectedPoint):null;
- function selectJunction(id:string){cancel();setJunctionId(id);session.set({selected:null,tool:'edit',first:null});}
- function startSmooth(event:React.PointerEvent,id:string,handle:0|1){const j=r.junctions?.find(j=>j.id===id),tr=smooth.transitions.find(x=>x.id===id);if(event.button!==0||!j||j.mode!=='SMOOTH'||!tr||!smoothEditable(r,j))return;event.stopPropagation();event.preventDefault();svg.current!.setPointerCapture(event.pointerId);const direction=handle===0?tr.ta:tr.tb.map(x=>-x) as Point2;const tangent=displayShape([direction,direction,direction,direction],view)[0];drag.current={id,index:handle+1,base:r,shape:tr.shape,start:local(event),pointer:event.pointerId,next:null,smooth:{handle,tangent,baseLength:tr.baseLength,tension:handle===0?smoothStyle(j,view).tensionA:smoothStyle(j,view).tensionB}};}
- return <main className="recording-room" data-testid="recording-room">
- <aside className="recording-sidebar">
- <div className="recording-create"><button className={tool==='point'?'active':''} onClick={()=>selectTool('point')}>{t('新建录制语义点')}</button><button className={tool==='semantic'?'active':''} disabled={(r.points?.length??0)<2} onClick={()=>selectTool('semantic')}>{t('新建语义曲线')}</button></div>
- <PointPanel recording={r} selected={selected} view={view} onSelect={actPoint} navigate={session.navigate} commit={commit}/>
- <h3>{t('录制曲线')}</h3>
- <div className="recording-create"><button onClick={()=>createCurve()}>{t('新建录制曲线')}</button><button onClick={()=>createCurve(true)}>{t('新建录制辅助线')}</button></div>
- <SortableList items={r.curves} selected={selected} kind="curve" onReorder={(id,target,after)=>commit(reorderRecordedCurve(r,id,target,after))}>{c=><>
- <button className="recording-name" data-recording-list-select onClick={()=>actCurve(c.id)}>{c.name}{c.semantic&&<span className="recording-point-badge">{t('语义曲线')}</span>}{c.auxiliary&&<span className="recording-guide-badge" data-testid="recording-guide-badge">{t('辅助线')}</span>}{!visibleAtView(c,view)&&<span className="recording-hidden-badge" data-testid="recording-frame-hidden">{t('当前帧已隐藏')}</span>}</button>
- <label title={t('显示')}><input type="checkbox" aria-label={t('显示')+' '+c.name} checked={c.visible} onChange={e=>commit(updateCurve(r,c.id,c=>({...c,visible:e.target.checked})))}/></label>
- <button aria-label={t('锁定')+' '+c.name} title={t(c.locked?'解锁':'锁定')} onClick={()=>commit(updateCurve(r,c.id,c=>({...c,locked:!c.locked})))}>{c.locked?'🔒':'🔓'}</button>
- </>}</SortableList>
- {(r.junctions??[]).map(j=><button key={j.id} data-testid="recording-junction-row" onClick={()=>selectJunction(j.id)}>{t('连接点')} · {r.curves.find(c=>c.id===j.masterCurveId)?.name} ↔ {r.curves.find(c=>c.id===j.followerCurveId)?.name}</button>)}
- {junction&&<JunctionInspector key={junction.id} recording={r} junction={junction} view={view} selectView={session.navigate} warning={smooth.warnings.get(junction.id)}/>}
- {curve&&<section className="recording-inspector" key={curve.id}>
- <input key={curve.name} aria-label={t('录制曲线名称')} defaultValue={curve.name} disabled={curve.locked} onBlur={e=>{const name=e.target.value.trim();if(name&&name!==curve.name)commit(updateCurve(r,curve.id,c=>({...c,name})));}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/>
- <small className="recording-id">{curve.id}</small>
- {curve.auxiliary&&<span className="recording-guide-badge">{t('辅助线')}</span>}
- {curve.semantic&&<p className="recording-semantic-anchors">{t('端点跟随语义点')}：{[curve.semantic.startPointId,curve.semantic.endPointId].map(id=><button key={id} onClick={()=>{selectTool('edit');session.set({selected:id});}}>{r.points?.find(p=>p.id===id)?.name}</button>)}<small>{t('拖动端点会修改共享语义点；控制柄单独录制。')}</small></p>}
- <p data-testid="recording-status">{t(evaluated?.status==='key'?'当前正式 Key':evaluated?.status==='interpolation'?'有效插值':'未覆盖 · 冻结参考')}</p>
- <p>{t('整体视角镜像')}</p>
- <button onClick={()=>{const id=crypto.randomUUID();commit(duplicate(r,curve.id,view,id,[8/sx,-8/sy]));session.set({selected:id,tool:'edit',first:null});}}>{t('复制当前帧')}</button>
- <FrameVisibility element={curve} recording={r} view={view} commit={commit}/>
- <DrawingRegions recording={r} curve={curve} adding={tool==='region'} onAdd={()=>selectTool(tool==='region'?'edit':'region')} commit={commit}/>
- <details><summary>{t('永久删除')}</summary><button disabled={curve.locked} onClick={()=>{commit(deleteRecordedCurve(r,curve.id));session.set({selected:null,first:null});}}>{t('删除整条曲线及所有关键帧')}</button></details>
- {(r.junctions??[]).filter(j=>j.followerCurveId===curve.id).map(j=><p key={j.id}>{j.followerEndpoint} · {t('已绑定到')} {r.curves.find(c=>c.id===j.masterCurveId)?.name} · {j.masterEndpoint} · {t('拖动任一侧共同编辑，两侧同时建 Key')}</p>)}
- <h4>{t('视角 Keys')}</h4>
- <KeyList key={curve.id} keys={curve.keys} disabled={curve.locked} navigate={session.navigate} onDelete={views=>commit(updateCurve(r,curve.id,c=>({...c,keys:c.keys.filter(k=>!views.some(v=>sameView(v,k)))})))}/>
- </section>}
- </aside>
- <div className="recording-work">
- <nav className="recording-toolbar">{(['view','edit','mirror','merge','bind'] as const).map((value,i)=><button key={value} className={tool===value?'active':''} onClick={()=>selectTool(value)}>{t(['视角导航','编辑曲线','镜像编辑','端点合并','绑定端点'][i])}</button>)}<button onClick={()=>session.set({zoom:1,pan:[0,0]})}>{t('居中')}</button><span>{t('正交投影')} · Yaw {+view.yaw.toFixed(2)}° · Pitch {+view.pitch.toFixed(2)}°</span></nav>
- <div className="recording-panels">
- <section className="recording-edit" ref={editHost}>
- <Background width={size.width} height={size.height} zoom={zoom} pan={pan} moving={backgroundMoving} setMoving={value=>{cancel();if(value)session.set({tool:"edit",first:null});setBackgroundMoving(value);}}/>
- <Reference project={project} view={view} width={size.width} height={size.height} zoom={zoom} pan={pan}/>
- <svg ref={svg} className="recording-overlay" width="100%" height="100%" tabIndex={0} aria-label={t('录制编辑画布')} data-testid="recording-canvas" onContextMenu={e=>e.preventDefault()}
- onClick={event=>{
- if(tool==='region'){
-  const hit=regionHit(event);if(!hit||!curve){setHint(t('请点击选中的曲线'));return;}
-  if(first?.id!==curve.id||first.t===undefined){session.set({first:{id:curve.id,t:hit.t}});setHint('');return;}
-  const next=addDrawingRegion(r,curve.id,crypto.randomUUID(),first.t,hit.t);
-  if(next===r){setHint(t('起点和终点需要分开'));return;}
-  commit(next);selectTool('edit');return;
- }
- if(tool==='point'){
-  const id=crypto.randomUUID();commit(createRecordedPoint(r,view,id,t('语义点')+' '+((r.points?.length??0)+1),local(event)));
-  setJunctionId(null);session.set({selected:id,tool:'edit',first:null});setHint('');return;
- }
- if(tool!=='merge'&&tool!=='bind')return;const box=svg.current!.getBoundingClientRect(),x=event.clientX-box.left,y=event.clientY-box.top;
- const hits=items.flatMap(({c,e})=>([0,3] as const).map(end=>{const p=screen(displayShape(e.shape,view)[end]);return {id:c.id,end,d:Math.hypot(p[0]-x,p[1]-y)};})).filter(h=>h.d<=13&&h.id!==first?.id).sort((a,b)=>a.d-b.d);
- if(hits[0])actEnd(hits[0].id,hits[0].end);}}
- onWheel={e=>{if(drag.current)return;session.set({zoom:Math.max(.2,Math.min(8,zoom*Math.exp(-e.deltaY*.001)))});}}
- onPointerDown={e=>{if(tool!=='view')return;e.preventDefault();svg.current!.setPointerCapture(e.pointerId);cameraDrag.current={start:[e.clientX,e.clientY],view,pan,panMode:e.button===2||e.shiftKey};}}
- onPointerLeave={()=>setRegionHover(null)}
- onPointerMove={e=>{if(tool==='region')setRegionHover(regionHit(e));const d=drag.current;if(d){
-  const p=local(e),delta:Point2=[p[0]-d.start[0],p[1]-d.start[1]];
-  if(!d.next&&Math.hypot(delta[0]*sx,delta[1]*sy)<.5)return;
-  if(d.smooth){const h=d.smooth,value=handleTension([delta[0]*sx,delta[1]*sy],h.tangent,h.baseLength,h.tension,[sx,sy]);d.next=editSmoothStyle(d.base,d.id,view,h.handle===0?{tensionA:value}:{tensionB:value});setDraft(d.next);return;}
-  const shape=structuredClone(d.shape);
-  shape[d.index]=[shape[d.index][0]+delta[0],shape[d.index][1]+delta[1]];
-  if(d.index===0||d.index===3){
-   const hit=e.altKey?null:snapRecordingEndpoint(shape[d.index],d.targets??[],[sx,sy]);
-   setSnap(hit);
-   if(hit)shape[d.index]=hit.point;
-   else if(!e.altKey&&canonical(view).yaw<=VIEW_EPS&&Math.abs(shape[d.index][0]*sx)<=6)shape[d.index][0]=0;
-   d.next=d.point?editRecordedPoint(d.base,d.id,view,shape[d.index]):editEndpoint(d.base,d.id,d.index,view,shape[d.index]);
-  }else d.next=editShape(d.base,d.id,view,()=>shape);
-  setDraft(d.next);return;
- }
- const c=cameraDrag.current;if(c){const dx=e.clientX-c.start[0],dy=e.clientY-c.start[1];if(c.panMode)session.set({pan:[c.pan[0]+dx,c.pan[1]+dy]});else {const yaw=((c.view.yaw-dx*.3+180)%360+360)%360-180;session.navigate({yaw,pitch:c.view.pitch+dy*.3});}}}}
- onPointerUp={e=>{const d=drag.current;if(d?.next)commit(d.next);drag.current=null;cameraDrag.current=null;setDraft(null);setSnap(null);if(svg.current!.hasPointerCapture(e.pointerId))svg.current!.releasePointerCapture(e.pointerId);}}
- onPointerCancel={cancel} onLostPointerCapture={()=>{if(drag.current||cameraDrag.current)cancel();}}>
- {canonical(view).yaw<=VIEW_EPS&&<line data-testid="recording-centerline" x1={screen([0,0])[0]} x2={screen([0,0])[0]} y1={0} y2={size.height} stroke="#81a6b5" strokeDasharray="5 5" pointerEvents="none"/>}
- {items.map(({c,e})=>{const pts=displayShape(e.shape,view).map(screen),visiblePts=displayShape(smooth.sources.get(c.id)!,view).map(screen),active=c.id===selected,chosen=first?.id===c.id;return <g key={c.id} data-curve={c.id} data-status={e.status}>
- <path data-testid="recorded-stroke" d={path(visiblePts)} fill="none" stroke={e.status==='frozen'?'#ff7278':chosen?'#ffd07d':active?'#c8f4a1':'#f1f3f5'} strokeWidth={active||chosen?2.8:2} strokeDasharray={c.auxiliary?GUIDE_DASH:undefined} pointerEvents="none"/>
- <path data-testid="recorded-hit" d={path(visiblePts)} fill="none" stroke="transparent" strokeWidth={14} style={{cursor:'pointer'}} pointerEvents={tool==='view'||tool==='merge'||tool==='bind'||tool==='region'?'none':'stroke'} onClick={()=>actCurve(c.id)}/>
-
- {(tool==='merge'||tool==='bind')&&([0,3] as const).map(end=><g key={end}><circle cx={pts[end][0]} cy={pts[end][1]} r={first?.id===c.id&&first.end===end?8:5} fill={first?.id===c.id&&first.end===end?'#ffd07d':'#c8f4a1'} pointerEvents="none"/><circle data-testid={`merge-end-${end}`} cx={pts[end][0]} cy={pts[end][1]} r={13} fill="transparent" style={{cursor:'crosshair'}} pointerEvents="none"/></g>)}
- </g>;})}
- {smooth.transitions.map(tr=>{const pts=displayShape(tr.shape,view).map(screen);return <g key={tr.id}><path data-testid="smooth-transition" strokeDasharray={transitionDash(tr)} d={path(pts)} fill="none" stroke={junctionId===tr.id?'#ffd479':'#f1f3f5'} strokeWidth="2.5" pointerEvents="none"/><path d={path(pts)} fill="none" stroke="transparent" strokeWidth="14" pointerEvents={tool==='edit'?'stroke':'none'} onClick={()=>selectJunction(tr.id)}/>{junctionId===tr.id&&tool==='edit'&&<><path d={`M ${pts[0]} L ${pts[1]} M ${pts[3]} L ${pts[2]}`} stroke="#ffd479" fill="none" pointerEvents="none"/>{([0,1] as const).map(h=><circle key={h} data-testid={`smooth-handle-${h}`} cx={pts[h+1][0]} cy={pts[h+1][1]} r="6" fill="#ffd479" onPointerDown={e=>startSmooth(e,tr.id,h)}/>)}</>}</g>;})}
- {/* Selected controls stay above every curve hit path after snapping. */}
- {tool==='edit'&&items.filter(({c})=>c.id===selected).map(({c,e})=>{const pts=displayShape(e.shape,view).map(screen);return <g key={c.id}><path d={`M ${pts[0]} L ${pts[1]} M ${pts[3]} L ${pts[2]}`} stroke="#98b99a" fill="none" pointerEvents="none"/>{pts.map((p,i)=><circle key={i} data-testid={`recorded-control-${i}`} cx={p[0]} cy={p[1]} r={i===0||i===3?6:5} fill={i===0||i===3?'#c8f4a1':'#1b2830'} stroke="#c8f4a1" strokeWidth="2" style={{cursor:c.locked||((i===0||i===3)&&!canEditEndpoint(r,{id:c.id,end:i},derived))?'not-allowed':'grab'}} onPointerDown={event=>startHandle(event,c.id,i)}/>)}</g>;})}
- {pointItems.map(({p,e})=>{const xy=screen(displayPoint(e.position,view)),active=p.id===selected,chosen=(tool==='semantic'||tool==='mirror')&&first?.id===p.id;
- return <g key={p.id} data-testid="recording-point" data-point={p.id} data-status={e.status}>
-  <circle cx={xy[0]} cy={xy[1]} r={active||chosen?7:5} fill={e.status==='frozen'?'#ff7278':chosen?'#ffd479':active?'#c8f4a1':'#83d9e5'} stroke="#16252c" strokeWidth="2" pointerEvents="none"/>
-  {(active||chosen)&&<text x={xy[0]+11} y={xy[1]-10} fill="#d4f5f6" fontSize="12" pointerEvents="none">{p.name}</text>}
-  <circle data-testid="recording-point-hit" cx={xy[0]} cy={xy[1]} r="10" fill="transparent" style={{cursor:tool==='semantic'||tool==='mirror'?'crosshair':p.locked?'pointer':'grab'}} pointerEvents={tool==='view'||tool==='merge'||tool==='bind'||tool==='region'?'none':'all'} onPointerDown={event=>startPoint(event,p.id)} onClick={event=>{if(tool==='point')return;event.stopPropagation();actPoint(p.id);}}><title>{p.name} · {t('点')}</title></circle>
- </g>;
- })}
- {curve&&curveVisible(curve,view)&&(curve.drawing?.enabled||tool==='region')&&<g data-testid="drawing-region-overlay" pointerEvents="none">
-  {curve.drawing?.enabled&&regionPieces.flatMap((p,i)=>pieceIntervals(p,drawingIntervals(curve)).map(([a,b])=><path key={`${i}:${a}`} d={path(displayShape(cubicSpan(p.shape,[a,b]),view).map(screen))} fill="none" stroke="#68d9ea" strokeWidth="4" strokeOpacity=".7" strokeDasharray={curve.auxiliary?GUIDE_DASH:undefined}/>))}
-  {curve.drawing?.enabled&&curve.drawing.regions.flatMap((region,i)=>([region.start,region.end]).map((value,end)=>{const p=pointOnDrawingCurve(regionPieces,value);if(!p)return null;const q=screen(displayPoint(p,view));return <g key={`${region.id}:${end}`}><circle cx={q[0]} cy={q[1]} r="4" fill="#68d9ea" stroke="#192328"/><text x={q[0]+7} y={q[1]-7} fill="#68d9ea" fontSize="11">{i+1}{end?'B':'A'}</text></g>;}))}
-  {tool==='region'&&first?.t!==undefined&&first.id===curve.id&&(()=>{const p=pointOnDrawingCurve(regionPieces,first.t);if(!p)return null;const q=screen(displayPoint(p,view));return <circle data-testid="drawing-region-first" cx={q[0]} cy={q[1]} r="6" fill="#ffd479"/>;})()}
-  {tool==='region'&&regionHover&&<circle cx={screen(regionHover.point)[0]} cy={screen(regionHover.point)[1]} r="8" fill="none" stroke="#ffd479" strokeWidth="2"/>}
-  {tool==='region'&&regionHover&&first?.t!==undefined&&regionPieces.flatMap((p,i)=>pieceIntervals(p,[[Math.min(first.t!,regionHover.t),Math.max(first.t!,regionHover.t)]]).map(([a,b])=><path key={`${i}:${a}`} d={path(displayShape(cubicSpan(p.shape,[a,b]),view).map(screen))} fill="none" stroke="#ffd479" strokeWidth="4"/>))}
- </g>}
- {snap&&<g data-testid="recording-snap" data-target={snap.target.id} pointerEvents="none">
-  <path d={path(snap.target.shape.map(screen))} fill="none" stroke="#ffd479" strokeWidth="4" strokeOpacity=".65" strokeDasharray={snap.target.auxiliary?GUIDE_DASH:undefined}/>
-  <circle cx={screen(snap.point)[0]} cy={screen(snap.point)[1]} r="9" fill="none" stroke="#ffd479" strokeWidth="2"/>
-  <circle cx={screen(snap.point)[0]} cy={screen(snap.point)[1]} r="2" fill="#ffd479"/>
- </g>}
- </svg>
- <div className="recording-hud">{t(backgroundMoving?"拖动平移背景 · 图片缩放在背景设置中调整":status)}{first&&<span> · {r.curves.find(c=>c.id===first.id)?.name??r.points?.find(p=>p.id===first.id)?.name}</span>}{snap&&<p>{t(snap.endpoint?'已吸附端点':'已吸附曲线')} · {snap.target.name}</p>}{hint&&<p role="status">{hint}</p>}</div>
- </section>
- <section className="recording-final"><span>{t('最终录制预览')}</span><svg width="100%" height="100%" viewBox={`0 0 ${size.width} ${size.height}`} data-testid="recording-final">{finalStrokes.map(stroke=><path key={`${stroke.kind}:${stroke.id}:${stroke.interval[0]}`} data-curve={stroke.kind==='source'?stroke.id:undefined} data-testid={stroke.kind==='transition'?'smooth-final':'recorded-final-stroke'} strokeDasharray={stroke.kind==='source'?(guideIds.has(stroke.id)?GUIDE_DASH:undefined):transitionDash(smooth.transitions.find(tr=>tr.id===stroke.id)!)} d={path(displayShape(stroke.shape,view).map(screen))} stroke="#000" strokeWidth="2" fill="none"/>)}</svg></section>
- </div>
- <div className="recording-navigation">
- <div><NumericSlider label="Recording Yaw" value={view.yaw} min={-180} max={180} step={.25} formatValue={v=>`${+v.toFixed(2)}°`} onChange={yaw=>session.navigate({...view,yaw})}/><NumericSlider label="Recording Pitch" value={view.pitch} min={-89} max={89} step={.25} formatValue={v=>`${+v.toFixed(2)}°`} onChange={pitch=>session.navigate({...view,pitch})}/></div>
- <svg className="recording-map" data-testid="recording-map" viewBox="-8 -97 196 194" onClick={e=>{const svg=e.currentTarget,p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM()!.inverse());session.navigate({yaw:Math.max(0,Math.min(180,q.x)),pitch:Math.max(-89,Math.min(89,-q.y))});}}>
- <rect x="0" y="-89" width="180" height="178" fill="#18232c" stroke="#71828a"/>
- <path d="M 0 0 H 180 M 90 -89 V 89" stroke="#394b55"/>
- <g fill="#b5c4cb" fontSize="5" pointerEvents="none"><text x="0" y="96">0°</text><text x="87" y="96">90°</text><text x="167" y="96">180°</text><text x="0" y="-92">Pitch +89°</text><text x="132" y="-92">Yaw →</text></g>
- {g&&<><polygon points={g.hull.map(i=>`${g.points[i][0]},${-g.points[i][1]}`).join(' ')} fill="#97c67d30" stroke="#88b76b"/>{g.triangles.map((tri,i)=><polygon key={i} points={tri.map(i=>`${g.points[i][0]},${-g.points[i][1]}`).join(' ')} fill="none" stroke="#789468" strokeWidth=".5"/>)}{g.points.map((p,i)=><circle data-testid="recording-key-marker" key={i} cx={p[0]} cy={-p[1]} r={3} fill="#bce293" onClick={e=>{e.stopPropagation();session.navigate({yaw:p[0],pitch:p[1]});}}/>)}</>}
- <circle cx={canonical(view).yaw} cy={-view.pitch} r={3} fill="#ffd479" stroke="#fff" strokeWidth=".7" pointerEvents="none"/>
- </svg><p>{t('视角地图 · 点击导航，不创建 Key')}<br/>{t('红线仅为未覆盖视角的编辑参考')}</p>
- </div>
- </div></main>;
+ function finish(e:React.PointerEvent){const d=drag.current;if(!d||d.pointer!==e.pointerId)return;pointerMove(e);if(d.kind==='view')viewQueue.flush();const next=d.next;drag.current=null;setDraft(null);if(next)commitPoseRecording(next);if(svg.current?.hasPointerCapture(e.pointerId))svg.current.releasePointerCapture(e.pointerId);}
+ const goDrawing=()=>{cancel();session.set({room:false});useDrawing.getState().set({room:true});};
+ return <main className="recording-room pose-room" data-testid="recording-room">
+  <aside className="pose-sidebar">
+   <div className="pose-sidebar-title"><Camera size={18}/><strong>{t('快照录制')}</strong></div>
+   <section className="pose-import">
+    <label>{t('绘制间快照')}<select aria-label={t('录制快照来源')} data-testid="pose-source" value={source} onChange={e=>setSource(e.target.value)}><option value="" disabled>{t('请先在绘制间保存快照')}</option>{library?.items.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+    <small>{t('录入到当前视角')} · {degrees(view.yaw)} / {degrees(view.pitch)}</small>
+    <button className="pose-primary" data-testid="pose-capture" disabled={!snapshot} onClick={()=>capture(exact)}><Camera size={15}/>{t(exact?'替换此视角':'录入此视角')}</button>
+    {exact&&<small>{t('将替换')}：{exact.name}</small>}
+    <button className="pose-drawing-link" onClick={goDrawing}><ArrowLeft size={14}/>{t('去绘制间编辑画面')}</button>
+   </section>
+   <div className="pose-section-label">{t('已录制姿态')} <span>{r.poses.length}</span></div>
+   <div className="pose-list" data-testid="pose-list">{[...r.poses].sort((a,b)=>a.yaw-b.yaw||a.pitch-b.pitch).map(p=><button key={p.id} data-testid="pose-row" className={p.id===selected?'selected':''} aria-pressed={p.id===selected} onClick={()=>choose(p)}><span>{p.name}</span><small>Yaw {degrees(p.yaw)} · Pitch {degrees(p.pitch)}</small></button>)}{!r.poses.length&&<p>{t('从上方选择快照，在合适角度录入第一帧。')}</p>}</div>
+   {pose&&<section className="pose-inspector" key={pose.id}>
+    <input aria-label={t('录制姿态名称')} key={pose.name} defaultValue={pose.name} onBlur={e=>{if(e.target.value!==pose.name)update(pose.id,{name:e.target.value});}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/>
+    <div className="pose-fields">{(['yaw','pitch'] as const).map(k=><label key={k}>{k==='yaw'?'Yaw':'Pitch'}<input aria-label={t(k==='yaw'?'姿态 Yaw':'姿态俯仰')} type="number" min={k==='yaw'?-180:-89} max={k==='yaw'?180:89} step=".25" key={pose[k]} defaultValue={+pose[k].toFixed(3)} onBlur={e=>{const value=+e.target.value;if(e.target.value.trim()&&value!==pose[k])update(pose.id,{[k]:value});}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/></label>)}</div>
+    <strong>{t('整体平移')}</strong>
+    {!atPose&&<button className="pose-return" onClick={()=>choose(pose)}>{t('返回此姿态以调整位置')}</button>}
+    <div className="pose-fields">{([0,1] as const).map(i=><label key={i}>{i?'Y':'X'}<LiveNumberInput label={t(i?'姿态平移 Y':'姿态平移 X')} value={pose.offset[i]} disabled={!atPose} onStart={()=>{numberEdit.current={base:stored};}} onPreview={v=>previewOffset(i,v)} onFinish={finishNumber}/></label>)}</div>
+    <button disabled={!atPose||pose.offset.every(x=>x===0)} onClick={()=>update(pose.id,{offset:[0,0]})}>{t('重置平移')}</button>
+    <small data-testid="pose-source-status">{sourceOfPose?<>{t('来源快照')}：{sourceOfPose.name}<br/>{t('快照更新自动同步，保留录制角度与平移。')}</>:t('原快照已删除，保留最后同步内容。')}</small>
+    <button data-testid="pose-delete" onClick={()=>{commitPoseRecording(deletePose(stored,pose.id));setSelected(null);}}><Trash2 size={14}/>{t('删除录制姿态')}</button>
+   </section>}
+   {!!frozenObjects.length&&<details className="pose-missing"><summary>{t('未覆盖元素')} · {frozenObjects.length}</summary><small>{t('点击名称查看该元素的视角覆盖。')}</small>{frozenObjects.map(o=><button key={o.id} className={focusElement===o.id?'selected':''} onClick={()=>setFocusElement(focusElement===o.id?undefined:o.id)}>{o.name}</button>)}</details>}
+   <InferencePanel recording={stored} curveId={focusElement} commit={commitPoseRecording} onError={setError} selectPose={(p,id)=>{choose(p);setFocusElement(id);}}/>
+  </aside>
+  <div className="recording-work">
+   <nav className="recording-toolbar pose-toolbar">
+    <button aria-pressed={mode==='move'} onClick={()=>{cancel();setMode('move');}}><Move size={15}/>{t('平移姿态')}</button>
+    <button aria-pressed={mode==='view'} onClick={()=>{cancel();setMode('view');}}><Orbit size={15}/>{t('旋转视角')}</button>
+    <button onClick={()=>session.set({zoom:1,pan:[0,0]})}><Scan size={15}/>{t('居中')}</button>
+    <button aria-pressed={head} data-testid="pose-toggle-head" onClick={()=>setHead(!head)}>{head?<Eye size={15}/>:<EyeOff size={15}/>} {t('头壳参考')}</button>
+    <NumericSlider className="pose-reference-scale" label="头壳大小" value={stored.referenceScale??1} min={.1} max={5} step={.01} snapTargets={[1]} inputScale={100} formatValue={v=>`${Math.round(v*100)}%`} disabled={!head}
+     onEditStart={()=>useEditor.getState().beginEdit(true)} onChange={referenceScale=>{const e=useEditor.getState();e.setPoseRecording({...e.project.poseRecording??EMPTY,referenceScale});}} onEditEnd={()=>useEditor.getState().endEdit()} onUndo={()=>useEditor.getState().undo()} onRedo={()=>useEditor.getState().redo()}/>
+    <label className="pose-reference-opacity">{t('参考透明度')}<input type="range" aria-label={t('头壳参考透明度')} min="0" max="1" step=".01" value={headOpacity} disabled={!head} onChange={e=>setHeadOpacity(+e.target.value)}/></label>
+    <button aria-pressed={ghosts} onClick={()=>setGhosts(!ghosts)}>{t('未覆盖参考')}</button>
+   </nav>
+   {error&&<div className="pose-error" role="alert">{t(error)}</div>}
+   {result.warnings.map(w=><div className="pose-warning" key={w}>{t(w)}</div>)}
+   <div className="recording-panels pose-panels">
+    <section className="recording-edit pose-stage" ref={host}>
+     <div className="pose-panel-title">{t('姿态定位')}<span>Yaw {degrees(view.yaw)} · Pitch {degrees(view.pitch)}</span></div>
+     {head&&<Reference project={project} view={view} width={size.width} height={size.height} zoom={zoom} pan={pan} unit={unit} referenceScale={stored.referenceScale??1} opacity={headOpacity}/>}
+     <svg ref={svg} className="recording-overlay" data-testid="recording-canvas" aria-label={t('录制姿态定位画布')} width="100%" height="100%" tabIndex={0} onContextMenu={e=>e.preventDefault()} onWheel={e=>{if(!drag.current)session.set({zoom:Math.max(.15,Math.min(10,zoom*Math.exp(-e.deltaY*.001)))});}}
+      onPointerDown={e=>{if(e.button!==0&&e.button!==2&&e.button!==1)return;const kind=e.button===2||e.button===1||e.shiftKey?'pan':mode;if(kind==='move'&&!atPose){setError(t('请先选择当前角度的录制姿态，再整体平移。'));return;}e.preventDefault();e.currentTarget.focus();e.currentTarget.setPointerCapture(e.pointerId);drag.current={pointer:e.pointerId,start:[e.clientX,e.clientY],kind,base:stored,pose,view,pan,unit};setError('');}}
+      onPointerMove={pointerMove} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel} style={{cursor:mode==='move'&&atPose?'move':mode==='view'?'grab':'default'}}>
+      <path d={`M ${size.width/2+pan[0]} 0 V ${size.height} M 0 ${size.height/2+pan[1]} H ${size.width}`} stroke="#d9e0e3" strokeDasharray="4 5" pointerEvents="none"/>
+      <g transform={transform}><g id={artworkId} data-testid="recording-artwork" data-quality={interactive?'interactive':'full'}><Artwork result={result} interactive={interactive} pixelsPerUnit={Math.max(250,unit)}/></g>{ghosts&&result.frozen.map(c=><g key={c.id}><path data-testid="pose-frozen" data-id={c.id} d={curvePath(shapeOf(result.drawing,c.id),logicalScreen)} fill="none" stroke={focusElement===c.id?'#ffad33':'#e5414e'} strokeWidth={Math.max(1.5,c.width*250)} opacity=".85" pointerEvents="none"/><path data-testid="pose-frozen-hit" data-id={c.id} d={curvePath(shapeOf(result.drawing,c.id),logicalScreen)} fill="none" stroke="transparent" strokeWidth={12*250/unit} style={{cursor:'pointer'}} onPointerDown={e=>{if(e.button!==0||e.shiftKey)return;e.stopPropagation();e.preventDefault();setFocusElement(c.id);setError('');}}/></g>)}{ghosts&&result.frozenPaints.map(o=><path key={o.id} data-testid="pose-frozen-paint" data-id={o.id} d={o.shapes.map(s=>curvePath(s,logicalScreen)).join(" ")} fill="none" stroke="#e5414e" strokeWidth="1.5" opacity=".65" pointerEvents="none"/>)}
+      {focusElement&&r.inferences?.some(i=>i.curve.id===focusElement&&samePoseView(r.poses.find(p=>p.id===i.targetPoseId)!,view))&&result.drawing.curves.some(c=>c.id===focusElement)&&<path data-testid="pose-inference-guide" d={curvePath(shapeOf(result.drawing,focusElement),logicalScreen)} fill="none" stroke="#239ca9" strokeWidth={1.5*250/unit} strokeDasharray={`${4*250/unit} ${3*250/unit}`} pointerEvents="none"/>}</g>
+     </svg>
+     <div className="recording-hud pose-hud">{t(mode==='view'?'拖动旋转头壳与视角；右键平移画布，滚轮缩放。':atPose?'拖动画面整体平移；右键平移画布，滚轮缩放。':'当前为插值预览；选择录制姿态后可整体平移。')}<br/>{!!frozenObjects.length&&<span>{t('红色为缺少视角支撑的冻结参考，最终预览不显示。')}</span>}</div>
+     {!r.poses.length&&<div className="pose-empty">{t('先定位头壳角度，再录入绘制快照。')}</div>}
+    </section>
+    <section className="recording-final pose-final"><div className="pose-panel-title">{t('最终录制预览')}<span>{t('仅显示有效覆盖内容')}</span></div><svg width="100%" height="100%" viewBox={`0 0 ${size.width} ${size.height}`} data-testid="recording-final"><g transform={transform}><use href={`#${artworkId}`} data-testid="recording-artwork-copy"/></g></svg></section>
+   </div>
+   <div className="recording-navigation pose-navigation">
+    <div className="pose-angle-bars"><NumericSlider label="Recording Yaw" value={view.yaw} min={-180} max={180} step={.25} formatValue={degrees} onChange={yaw=>previewView({...view,yaw})} onEditEnd={viewQueue.flush}/><NumericSlider label="Recording Pitch" value={view.pitch} min={-89} max={89} step={.25} formatValue={degrees} onChange={pitch=>previewView({...view,pitch})} onEditEnd={viewQueue.flush}/></div>
+    <svg className="recording-map pose-map" data-testid="recording-map" viewBox="-194 -103 388 211" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);mapNavigate(e);}} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))mapNavigate(e);}} onPointerUp={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;mapNavigate(e);viewQueue.flush();e.currentTarget.releasePointerCapture(e.pointerId);}} onPointerCancel={viewQueue.flush}>
+     <rect x="-180" y="-89" width="360" height="178" fill="#17232b" stroke="#657d88"/>
+     <path d="M -180 0 H 180 M 0 -89 V 89 M -90 -89 V 89 M 90 -89 V 89" stroke="#3b4d58"/>
+     {g&&<g pointerEvents="none"><polygon points={g.hull.map(i=>`${g.points[i][0]},${-g.points[i][1]}`).join(' ')} fill="#97c67d25" stroke="#88b76b"/>{g.triangles.map((tri,i)=><polygon key={i} points={tri.map(i=>`${g.points[i][0]},${-g.points[i][1]}`).join(' ')} fill="none" stroke="#789468" strokeWidth=".7"/>)}</g>}
+     {r.poses.map(p=><circle key={p.id} data-testid="recording-key-marker" cx={p.yaw} cy={-p.pitch} r="4" fill={p.id===selected?'#c5ed99':'#8fbd7d'} stroke="#fff" strokeWidth=".7" onPointerDown={e=>{e.stopPropagation();choose(p);}}><title>{p.name} · {degrees(p.yaw)} / {degrees(p.pitch)}</title></circle>)}
+     <circle cx={view.yaw} cy={-view.pitch} r="5.5" fill="none" stroke="#ffc467" strokeWidth="1.5" pointerEvents="none"/>
+     <g fontSize="9" fill="#aabcc4" pointerEvents="none"><text x="-180" y="102">−180°</text><text x="-4" y="102">0°</text><text x="155" y="102">180°</text><text x="-180" y="-94">Pitch +89°</text><text x="133" y="-94">Yaw →</text></g>
+    </svg>
+    <div className="pose-map-caption"><strong>{t(focusElement?'元素视角覆盖':'视角地图')}</strong>{focusElement&&<button onClick={()=>setFocusElement(undefined)}>{t('显示全部姿态')}</button>}<small>{t('点击或拖动导航；点击绿点选择姿态。')}</small><small>{t('左右视角分别录制，不自动镜像。')}</small></div>
+   </div>
+  </div>
+ </main>;
+ function mapNavigate(e:React.PointerEvent<SVGSVGElement>){const s=e.currentTarget,p=s.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(s.getScreenCTM()!.inverse());previewView({yaw:Math.max(-180,Math.min(180,q.x)),pitch:Math.max(-89,Math.min(89,-q.y))});}
 }

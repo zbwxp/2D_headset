@@ -26,8 +26,14 @@ test('interval ends taper and extend without moving geometry, markers, or the ot
  expect(d.nodes).toBe(b.nodes);expect(d.curves).toBe(b.curves);expect(d.joins).toBe(b.joins);expect(d.displayIntervals![0].ranges[0].start).toBe(.2);
  const flat=tip(d,0,{taper:0});expect(ink(flat)[0].outline[0][1]).toBeCloseTo(.05);expect(flat.displayIntervals![0].ranges[0].inkEnds![1]).toEqual({taper:.2,extension:.07});valid(d);
 });
-test('short interval tapers meet at full width instead of making the entire line disappear',()=>{
- const d=addDisplayInterval(base(),'a'),r=ink(d)[0];expect(Math.max(...r.outline.map(p=>p[1]))).toBeCloseTo(.05);expect(r.outline[0][1]).toBeCloseTo(0);expect(r.outline[r.outline.length/2-1][1]).toBeCloseTo(0);
+test('short interval tips retain their distance and overlap, thinning the fragment instead of fitting a full-width nub',()=>{
+ let d=tip(tip(addDisplayInterval(base(),'a'),0,{taper:.2}),1,{taper:.2});
+ const wide=ink(range(d,.2,.8))[0],short=ink(range(d,.4,.6))[0],tiny=ink(range(d,.49,.51))[0];
+ expect(Math.max(...wide.outline.map(p=>p[1]))).toBeCloseTo(.05);
+ expect(Math.max(...short.outline.map(p=>p[1]))).toBeCloseTo(.05*.25);
+ expect(Math.max(...tiny.outline.map(p=>p[1]))).toBeLessThan(.00001);
+ for(const r of [wide,short,tiny]){expect(r.outline[0][1]).toBeCloseTo(0);expect(r.outline[r.outline.length/2-1][1]).toBeCloseTo(0);expect(r.outline.every(p=>p.every(Number.isFinite))).toBe(true);}
+ expect(ink(range(d,.5,.5))).toEqual([]);
 });
 test('overlapping intervals union first: covered endpoint taper and extension cannot pinch or protrude',()=>{
  let d=range(addDisplayInterval(base(),'a'),.1,.6);d=tip(tip(d,0,{taper:.1,extension:.02}),1,{taper:20,extension:1});d=range(addDisplayInterval(d,'a'),.4,.9,1);d=tip(tip(d,0,{taper:20,extension:1},1),1,{taper:.1,extension:.03},1);

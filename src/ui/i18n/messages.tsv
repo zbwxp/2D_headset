@@ -1406,3 +1406,449 @@ V0.12.36 · Curve Depth Offset	V0.12.36 · Curve Depth Offset
 雾化填充参数无效。	Invalid mist fill settings.
 透明挖空不能同时使用雾化填充。	Transparent cutouts cannot also use mist fill.
 V0.12.37 · Gaussian Mist Fill	V0.12.37 · Gaussian Mist Fill
+
+四角变形	Quad deform
+先选图层或笔画，再拖动四角；隐藏成员一起变形，锁定成员受保护。	Select a layer or stroke, then drag its corners. Hidden members follow; locked members remain protected.
+采样拟合偏差	Sampled fit error
+重置变形框	Reset cage
+拖动四角变形	Drag corner to deform
+四角不能交叉或压扁；已保留最后有效位置。	Corners cannot cross or collapse. The last valid position is retained.
+变形会使圆弧接笔退化；已保留最后有效位置。	This deformation would invalidate an arc join. The last valid position is retained.
+显示区间所在曲线退化，无法变形。	The display interval curve is degenerate and cannot be deformed.
+圆弧过渡退化，无法保持显示区间。	The arc join is degenerate; its display intervals cannot be retained.
+所选曲线包含锁定成员，请先解锁。	The selection contains locked curves. Unlock them first.
+V0.12.38 · Quad Deform	V0.12.38 · Quad Deform
+
+视角快照	View snapshots
+快照	Snapshot
+切换快照	Switch snapshot
+当前画布 · 尚未保存快照	Current canvas · no snapshot yet
+有未保存修改	Unsaved changes
+未存为快照	Not captured
+保存为新快照	Save new snapshot
+更新当前快照	Update snapshot
+用当前画布更新此快照	Replace this snapshot with the current canvas
+重命名快照	Rename snapshot
+删除快照	Delete snapshot
+切换前保存修改	Save changes before switching
+快照名称	Snapshot name
+当前修改尚未存入快照。可另存后切换，原快照保持不变。	Current edits are not saved in a snapshot. Save a new one before switching to keep the original intact.
+切换到	Switch to
+保存完整矢量姿态、遮挡与背景位置；后续编辑不会自动覆盖快照。	Capture vector geometry, occlusion and background alignment. Later edits never overwrite snapshots automatically.
+只删除快照，当前画布保留；可以撤销。	Only the snapshot is deleted. The current canvas stays. Undo is available.
+不保存并切换	Switch without saving
+另存并切换	Save new and switch
+快照名称请输入 1–80 个字符。	Snapshot names must contain 1–80 characters.
+快照不存在。	Snapshot not found.
+快照背景图缺失。	Snapshot reference image is missing.
+绘制间快照数据无效	Invalid Drawing Room snapshot data
+V0.12.39 · Drawing Snapshots	V0.12.39 · Drawing Snapshots
+已保存	Saved
+保存	Save
+确定	OK
+
+隐藏全部填充	Hide all fills
+显示全部填充	Show all fills
+临时查看线稿，保留各填充自身的显示设置	Preview line art without changing individual fill visibility
+快照录制	Snapshot Recording
+绘制间快照	Drawing snapshots
+录制快照来源	Snapshot source
+请先在绘制间保存快照	Save a snapshot in Drawing Room first
+录入到当前视角	Record at current view
+替换此视角	Replace this view
+录入此视角	Record this view
+将替换	Will replace
+去绘制间编辑画面	Edit artwork in Drawing Room
+已录制姿态	Recorded poses
+从上方选择快照，在合适角度录入第一帧。	Choose a snapshot above and record the first pose at its viewing angle.
+录制姿态名称	Recorded pose name
+姿态 Yaw	Pose yaw
+姿态俯仰	Pose pitch
+整体平移	Placement
+返回此姿态以调整位置	Return to this pose to adjust placement
+姿态平移 X	Pose placement X
+姿态平移 Y	Pose placement Y
+重置平移	Reset placement
+从原快照更新	Refresh from source snapshot
+更新保留录制角度与平移。	Refresh keeps the recorded angle and placement.
+原快照已删除，已录制姿态仍可使用。	The source snapshot was deleted. This recorded pose remains available.
+删除录制姿态	Delete recorded pose
+未覆盖元素	Uncovered elements
+点击名称查看该元素的视角覆盖。	Click an element to inspect its view coverage.
+平移姿态	Move pose
+旋转视角	Orbit view
+头壳参考	Head reference
+参考透明度	Reference opacity
+头壳参考透明度	Head reference opacity
+未覆盖参考	Frozen references
+姿态定位	Pose placement
+录制姿态定位画布	Pose placement canvas
+请先选择当前角度的录制姿态，再整体平移。	Select the recorded pose at this angle before moving it.
+拖动旋转头壳与视角；右键平移画布，滚轮缩放。	Drag to orbit the head and view; right-drag to pan, scroll to zoom.
+拖动画面整体平移；右键平移画布，滚轮缩放。	Drag to move the whole pose; right-drag to pan, scroll to zoom.
+当前为插值预览；选择录制姿态后可整体平移。	Interpolation preview. Select a recorded pose to adjust its placement.
+红色为缺少视角支撑的冻结参考，最终预览不显示。	Red references lack view coverage and are excluded from the final preview.
+先定位头壳角度，再录入绘制快照。	Set the head angle, then record a Drawing snapshot.
+仅显示有效覆盖内容	Valid coverage only
+元素视角覆盖	Element coverage
+视角地图	View map
+显示全部姿态	Show all poses
+点击或拖动导航；点击绿点选择姿态。	Click or drag to navigate; click a green key to select a pose.
+左右视角分别录制，不自动镜像。	Left and right views are recorded separately, without automatic mirroring.
+姿态的端点连接关系不同；当前采用较近姿态的连接关系。	Endpoint connections differ between poses; using the nearer pose's connections.
+录制角度超出范围。	Recorded angle is out of range.
+此视角已有姿态，请选择替换此视角。	This view already has a pose. Use Replace this view.
+录制姿态不存在。	Recorded pose does not exist.
+录制角度或平移无效。	Invalid recorded angle or placement.
+请输入姿态名称。	Enter a pose name.
+此视角已有姿态，请选择其它角度。	This view already has a pose. Choose another angle.
+快照录制数据无效。	Invalid snapshot recording data.
+头壳大小	Head reference size
+头壳大小 数值	Head reference size value
+头壳参考大小无效。	Invalid head reference size.
+
+像素笔触	Raster ink edge
+软边宽度	Edge softness
+笔触强度	Ink edge strength
+仅柔化墨线边缘，保留实心与尖端；不产生雾圈或颗粒。	Softens ink edges while retaining solid strokes and tips; no halo or particles.
+像素笔触参数无效。	Invalid ink edge settings.
+
+来源快照	Source snapshot
+快照更新自动同步，保留录制角度与平移。	Snapshot updates sync automatically; recording angles and placement are preserved.
+原快照已删除，保留最后同步内容。	Source snapshot deleted; retaining the last synced content.
+从快照恢复图层	Restore layer from snapshot
+当前图层不存在。	The current layer no longer exists.
+此快照中没有该图层。	This snapshot does not contain this layer.
+快照中的部分对象已移至其他图层，请先移回再恢复。	Some snapshot objects have moved to other layers. Move them back before restoring.
+替换此图层的全部内容与属性，保留图层位置、其他图层及背景；可以撤销。	Replace this layer's contents and properties. Keep its stack position, other layers and background. This can be undone.
+没有包含此图层的快照	No snapshot contains this layer
+不含此图层	Layer not included
+恢复图层	Layer to restore
+恢复后仍是当前画布的修改；点击「更新当前快照」才会保存并同步录制间。	The restored layer is a working edit. Update the current snapshot to save it and sync Recording.
+不再重合的跨层端点联动将解除，其他图层不会移动。	Cross-layer endpoint links that no longer coincide will be removed. Other layers will not move.
+其他图层有填充或偏移依赖将被移除的曲线，恢复后会标为无效。	Fills or offsets in other layers reference curves being removed. They will be marked invalid.
+恢复此图层	Restore this layer
+显线区间	Visible interval
+断线区间	Gap interval
+新增区间类型	New interval type
+区间类型	Interval type
+区间类型无效。	Invalid interval type.
+显线区间内绘制，断线区间内隐藏；只有断线区间时，其余整笔显示。	Show ink inside visible intervals, then subtract gaps. With gaps only, the rest of the stroke stays visible.
+笔触作用于缺口两侧的线头；收尖朝向缺口，延伸会伸入缺口。	Tip styles apply to the surviving ends beside the gap. Tapers face the gap; extensions reach into it.
+
+菜单 · 文件与工作区	Menu · Files & workspaces
+快照 · 工具选项	Snapshots · Tool options
+移入展开，移开收起；点击也可开关	Hover to reveal, leave to hide; click to toggle
+取消固定工具栏	Unpin toolbar
+固定工具栏	Pin toolbar
+取消固定，恢复移入展开	Unpin and return to hover reveal
+固定在顶部，不自动收起	Pin at the top; keep expanded
+显示所选图层	Show selected layers
+隐藏所选图层	Hide selected layers
+隐藏所选图层填充	Hide fills in selected layers
+显示所选图层填充	Show fills in selected layers
+展开所选图层	Expand selected layers
+收起所选图层	Collapse selected layers
+全部展开	Expand all
+复制所选图层	Duplicate selected layers
+删除所选图层	Delete selected layers
+个图层已选择	layers selected
+清除图层选择	Clear layer selection
+清除选择，顶部按钮恢复作用于全部图层	Clear selection to apply the top controls to all layers
+Shift 连选图层 · Ctrl/Cmd 增减选择	Shift selects a layer range; Ctrl/Cmd toggles layers
+图层多选	Multiple layers
+选中图层的开关会批量应用于所选图层	Switches on selected layers apply to all selected layers
+
+双击或右键设置方向跟随	Double-click or right-click to set handle following
+直接选择设置	Direct Selection Settings
+方向跟随	Handle following
+方向跟随滑条	Handle following slider
+0% 保持原方向；数值越大，控制柄越随端点位置转动。	0% keeps the original direction. Higher values rotate handles more as you move an endpoint.
+只影响之后的端点拖动，保留柄长和平滑接笔。设置会自动记住。	Applies to future endpoint drags. Handle lengths and smooth joins are preserved. Your preference is remembered.
+请输入 0–100 之间的百分比。	Enter a percentage from 0 to 100.
+推断缺失姿态	Infer missing poses
+源录制姿态	Source recorded pose
+推断到以下姿态	Infer into these poses
+推断到	Infer into
+已有曲线	Curve exists
+已有草稿	Draft exists
+未覆盖	Not covered
+生成推断草稿	Generate inference drafts
+按同图层变形趋势补齐整条线，先用断线区间完全隐藏。	Infer the complete curve from its layer's deformation, initially hidden by a full break interval.
+推断草稿	Inference drafts
+姿态已删除	Pose deleted
+参考曲线	Reference curves
+尚未写入快照	Not applied to snapshot
+显现方向	Reveal direction
+草稿显现方向	Draft reveal direction
+从端点 A 显现	Reveal from endpoint A
+从端点 B 显现	Reveal from endpoint B
+应用到快照	Apply to snapshot
+删除推断草稿	Delete inference draft
+仅此曲段	This curve only
+已应用到快照	Applied to snapshot
+在绘制间切换到该快照即可精修。	Switch to this snapshot in Drawing Room to refine it.
+目标姿态缺少对应图层。	The target pose has no corresponding layer.
+同图层没有共同曲线，无法推断位置。	No matching curves in this layer to infer a transform.
+源姿态中没有这条曲线。	The source pose does not contain this curve.
+请选择至少一个目标姿态。	Select at least one target pose.
+目标姿态已有该曲线或推断草稿。	The target already contains this curve or an inference draft.
+目标姿态已有该曲线，请先删除推断草稿。	The target already contains this curve. Discard its inference draft.
+目标连接笔画同时含圆弧和显示区间，请先在绘制间整理连接。	The target stroke contains both arc joins and display intervals. Adjust its connections in Drawing Room first.
+连接端点分属不同组合，请先在绘制间整理组合。	Connected endpoints belong to different groups. Organize them in Drawing Room first.
+推断草稿不存在。	The inference draft no longer exists.
+目标绘制快照已删除，无法应用。	The target drawing snapshot was deleted; the draft cannot be applied.
+姿态推断草稿无效。	Invalid pose inference draft.
+
+平移参考图	Move reference
+解锁并平移参考图	Unlock and move reference
+烘焙贴壳	Baked on net
+组装 · 绘制与定位	Assembly · Drawing & placement
+载入绘制间快照	Import drawing snapshot
+展开 3D 定位	Show 3D rig
+收起 3D 定位	Hide 3D rig
+画布显示定位参考	Show rig on canvas
+图层跟随位置与远近缩放 · 遮挡由图层顺序决定	Layers follow position and uniform scale · Layer order controls occlusion
+主轴姿态	Main axis pose
+左右转头 Yaw	Turn Yaw
+歪头 Roll	Tilt Roll
+整体位置与透视	Position & perspective
+主轴 X	Main axis X
+主轴 Y	Main axis Y
+主轴 Z	Main axis Z
+相机距离	Camera distance
+定位平面与语义点	Planes & semantic locators
+定位平面	Locator plane
+添加定位面	Add plane
+定位面名称	Plane name
+平面轴向高度	Plane height on axis
+语义定位点	Semantic locator
+选择定位点	Select locator
+添加定位点	Add locator
+定位点名称	Locator name
+点 X · 平面左右	Point X · Across plane
+点 Z · 平面前后	Point Z · Along plane
+定位点随平面移动，始终留在平面内。	Locators follow their plane and remain in it.
+删除定位点	Delete locator
+删除定位面	Delete plane
+图层挂接	Layer attachment
+挂接图层	Attached layer
+先载入或绘制图层	Import or draw a layer first
+已挂接	Attached
+未挂接的图层保持原位。	Unattached layers stay in place.
+挂接到	Attach to
+先选择定位点	Select a locator first
+解除挂接 · 保持画面	Detach · Keep appearance
+当前等比缩放	Current uniform scale
+定位点深度	Locator depth
+图层偏移 X	Layer offset X
+图层偏移 Y	Layer offset Y
+偏移与当前主轴姿态一起保存到组装快照。	Offsets and the axis pose are saved in assembly snapshots.
+复制到组装间。替换这里的画布和挂接关系，可撤销。原绘制间保持不变。	Copy into Assembly. Replaces its canvas and attachments; Undo is available. The original Drawing Room is unchanged.
+来源快照	Source snapshot
+绘制间当前画布	Current Drawing Room canvas
+载入副本	Import copy
+恢复后仍是组装画布的修改；更新组装快照才会保存。	Restoring changes the assembly canvas. Update its snapshot to save.
+
+显示独立定位参考	Show independent rig reference
+显示定位参考	Show rig reference
+锁定主轴与视口	Lock rig to viewport
+主轴与视口 · 已锁定	Rig / viewport · Locked
+主轴与视口 · 未锁定	Rig / viewport · Unlocked
+已锁定：平移视口时主轴一起移动，保持当前对齐；点击解锁。	Locked: panning moves the rig with the artwork, preserving alignment. Click to unlock.
+未锁定：平移视口时主轴保持独立；点击锁定当前对齐。	Unlocked: the rig stays independent when panning. Click to lock the current alignment.
+主轴位置与透视	Axis position and perspective
+拖动平移画稿与背景；三维定位参考保持原位。	Pan artwork and background; the 3D reference stays in place.
+一个定位点可挂多个图层；右侧 Shift 连选，Ctrl/Cmd 增减选择。	One locator can drive multiple layers. Shift selects a range; Ctrl/Cmd toggles layers on the right.
+此定位点已挂接	Layers attached to this locator
+尚未挂接图层	No layers attached yet
+个图层	layers
+解除挂接	Detach
+参考图位置 Slot	Reference position slots
+点击空位保存；点击已存位置切换。	Click an empty slot to save; click a saved slot to restore it.
+切换参考图位置	Restore reference position
+保存当前位置到 Slot	Save current position to slot
+保存当前位置	Save current position
+保存为新 Slot	Save as new slot
+Slot 名称	Slot name
+用当前位置覆盖此 Slot	Overwrite slot with current position
+清空此 Slot	Clear slot
+空位	Empty
+位置	Position
+视角	View
+主轴视角 Slot	Axis view slots
+保存转头、俯仰和歪头角度。	Save yaw, pitch and roll angles.
+切换主轴视角	Restore axis view
+保存当前视角到 Slot	Save current view to slot
+保存当前视角	Save current view
+保存为新视角 Slot	Save as new view slot
+视角 Slot 名称	View slot name
+用当前角度覆盖	Overwrite with current angles
+当前角度已调整，尚未覆盖此 Slot。	Angles changed; this slot has not been updated.
+Slot 名称请输入 1–80 个字符。	Enter a slot name of 1–80 characters.
+主轴视角 Slot 数据无效	Invalid axis view slot data
+侧脸 −90°	Side −90°
+侧脸 +90°	Side +90°
+Yaw 轨迹	Yaw trajectories
+轨迹显示	Trajectory display
+所有定位点	All locators
+仅选中点	Selected locator
+隐藏轨迹	Hide trajectories
+轨迹只读：固定当前俯仰与歪头，预览 Yaw 转动。	Read-only paths: preview yaw with current pitch and roll held fixed.
+收起图层与属性栏	Collapse layers and properties
+展开图层与属性栏	Expand layers and properties
+
+轨迹只读：Yaw 绕当前主轴转动。	Read-only paths: yaw rotates around the current main axis.
+
+图层随主轴旋转	Rotate layers with the main axis
+以正脸为基准，让已挂接图层随主轴方向旋转。	Rotate attached layers with the main axis, using the front view as the reference.
+
+3D 卡片预览	3D card preview
+正脸为旋转基准 · 关闭随轴旋转后编辑曲线	Front view is the rotation reference · Turn off axis rotation to edit curves
+
+图层四角透视	Layer perspective
+图层透视	Layer perspective
+图层透视 · 3D 卡片	Layer perspective · 3D card
+重置透视	Reset perspective
+复制变形	Copy deformation
+套用变形	Apply deformation
+编辑原线稿	Edit source artwork
+查看变形	View deformation
+收起四角框	Hide corner controls
+拖动四角 · Esc 取消本次拖动	Drag corners · Esc cancels this drag
+保留原线稿 · 参数随快照保存	Preserves source artwork · Saved with snapshots
+拖四角调整透视；编辑端点请切换到原线稿	Drag corners for perspective; switch to source artwork to edit points
+接近侧立，请转回一些角度再调整	Nearly edge-on; turn back slightly to edit
+当前图层接近侧立，请转回一些角度再调整四角。	The layer is nearly edge-on. Turn back slightly to edit its corners.
+图层包含锁定对象，请先解锁再调整透视。	Unlock the layer's objects before adjusting perspective.
+这个图层还没有可变形的线稿。	This layer has no artwork to deform yet.
+透视超出有效范围。	Perspective is outside its valid range.
+
+定位姿态录制	Locator pose recording
+定位姿态名称	Locator pose name
+使用定位录制	Use recorded placement
+尚未录制	Not recorded yet
+基础构造模式	Base rig mode
+当前角度有未保存定位	Unsaved placement at this angle
+当前角度已录制	Placement recorded at this angle
+插值预览	Interpolated preview
+范围外：沿用最近定位	Outside coverage: using nearest placement
+更新此角度定位	Update placement at this angle
+保存当前角度定位	Save placement at this angle
+撤回定位草稿	Discard placement draft
+先保存正面定位，再转动角度并调整点 X/Z、面 Y。	Save front placement, then turn and adjust point X/Z and plane Y.
+修正当前角度后保存；切换角度会保留草稿。	Save after adjusting this angle. Drafts survive angle changes.
+已暂停录制预览。此时修改的是基础构造；已有关键帧保留。	Playback paused. Edits now change the base rig; existing keys remain.
+整圈循环插值	Loop interpolation around a full turn
+未开启循环时，未覆盖角度沿用最近定位，不补录关键帧。	Without looping, uncovered angles use the nearest placement without adding keys.
+已录制	Recorded
+待保存	Unsaved
+删除定位姿态	Delete locator pose
+从组装快照录入定位	Import placement from an assembly snapshot
+定位来源快照	Placement source snapshot
+只录入定位	Import placement only
+按快照角度更新定位，不替换画稿与透视。	Update placement at the snapshot angle, preserving artwork and perspective.
+修正只写入当前角度草稿；完成后保存定位。	Edits affect this angle's draft. Save placement when finished.
+轨迹显示已保存定位；草稿在保存后进入轨迹。	Paths show saved placement. Save drafts to update the paths.
+定位姿态名称请输入 1–80 个字符。	Use 1–80 characters for the locator pose name.
+此快照没有定位数据。	This snapshot has no locator data.
+快照与当前构造没有对应定位点。	The snapshot has no matching locators in the current rig.
+轨迹范围	Trajectory range
+显示范围	Display range
+已录制角度段	Recorded angle span
+全部插值范围	Full interpolation range
+检查定位点	Inspect locator
+空心点为已录制角度；选中点显示角度标签。	Hollow dots mark recorded angles; select a locator to see angle labels.
+轨迹俯仰	Trajectory pitch
+轨迹基准	Trajectory source
+转动主轴可从不同方向查看同一条轨迹	Turn the axis to inspect the same trajectory from different directions
+图层变形录制	Layer deformation recording
+使用变形录制	Use deformation recording
+保存当前图层变形	Record this layer's deformation
+更新当前角度变形	Update deformation at this angle
+撤回变形草稿	Discard deformation draft
+已录制变形角度	Recorded deformation angles
+选择录制角度	Choose a recorded angle
+删除当前变形帧	Delete this deformation key
+变形整圈循环	Loop deformation around a full turn
+当前图层有未保存变形	This layer has an unsaved deformation
+当前角度已录制变形	Deformation recorded at this angle
+变形插值预览	Interpolated deformation preview
+范围外：沿用最近变形	Outside range: nearest deformation
+当前图层尚未录制变形	This layer has no deformation recording yet
+变形录制已暂停	Deformation playback is paused
+首次从侧面录制会补一个未变形的正面基准。	Starting from a turned view also records an undeformed front reference.
+变形过于极端，请补充过渡关键帧。	Extreme deformation: add an intermediate key.
+先为当前图层创建四角变形。	Create a four-corner deformer for this layer first.
+请先开启变形录制预览。	Enable deformation playback first.
+图层变形录制数据无效	Invalid layer deformation recording
+组装间	Assembly Room
+载入原稿	Load base artwork
+变形阶段	Deformation stage
+原稿	Base
+定位	Placement
+基准原稿，不应用定位与透视	Base artwork without placement or perspective
+应用定位轨迹与远近缩放	Apply placement and depth scaling
+应用定位轨迹与四角透视	Apply placement and perspective
+编辑原稿	Edit base artwork
+完成原稿编辑	Finish base editing
+角度姿态	Angle poses
+原稿编辑 · 影响共用资产	Editing shared base artwork
+更新此姿态	Update pose
+保存此姿态	Save pose
+撤回姿态草稿	Discard pose draft
+撤回当前角度所有未保存修改	Discard unsaved changes at this angle
+图层定位偏移	Layer offset
+四角透视	Perspective
+已设关键帧	Keyed
+插值	Interpolated
+沿用最近记录	Nearest key
+基准值	Base value
+姿态记录	Pose records
+个角度	angles
+删除此角度记录，恢复插值	Remove this key and resume interpolation
+只在当前图层固定这一项的当前值	Key only this value on the current layer
+删除此图层当前角度记录	Remove this layer’s keys at this angle
+共享定位点与平面	Shared locators and planes
+这些定位记录会影响所有挂接图层。	These records affect every attached layer.
+删除此角度的共享定位记录	Remove this shared placement key
+删除定位记录	Remove placement key
+姿态管理	Manage pose
+姿态名称	Pose name
+删除当前角度的所有记录	Remove all keys at this angle
+原稿基准角度	Base artwork angle
+原稿可以从侧面开始绘制；在录制其他角度前设置。	Artwork may start at a side angle. Set this before recording other angles.
+以当前角度作为原稿基准	Use this angle as the base
+工具选项	Tool options
+历史完整快照 · 导入与恢复	Legacy artwork snapshots · Import and restore
+修改后在顶部更新姿态	Update the pose in the top bar after editing
+修正写入当前角度草稿；在顶部更新姿态。	Edits stay in this angle’s draft. Update the pose in the top bar.
+图层偏移保存到当前角度姿态。	Layer offsets are recorded at the current angle.
+选择图层，查看各项记录。未设关键帧的项目自动插值。	Select a layer to inspect its tracks. Unkeyed values are interpolated.
+未覆盖范围沿用最近记录；保存姿态只记录修改过的项目。	Outside coverage, use the nearest key. Saving records only edited items.
+编辑共用原稿；角度姿态中的定位、透视和区间记录保留	Edit shared artwork while keeping recorded placement, perspective and intervals
+弯曲	Bend
+四边弯曲	Curved boundaries
+应用定位、透视与四边弯曲	Apply placement, perspective and boundary bending
+启用弯曲	Enable bending
+重置曲边	Reset boundaries
+复制曲边	Copy boundaries
+套用曲边	Paste boundaries
+拖动控制柄调整曲边	Drag the handle to shape this edge
+拖动边中点整体弯曲	Drag the midpoint to bend this edge
+拖动边中点或控制柄 · Esc 取消	Drag edge midpoints or handles · Esc to cancel
+拖边中点或控制柄调整弯曲；修改后保存姿态	Shape the edges with midpoints or handles, then save the pose
+此角度曲边发生折叠，暂用最近有效记录	Curved boundaries fold at this angle; using a nearby valid key
+曲边发生折叠或压扁，已保留最后有效形状。	The region would fold or flatten. Keeping the last valid shape.
+曲边变形参数无效	Invalid curved-boundary parameters
+这里的弯曲过大，请靠近曲线调整区间。	Bending is too strong here. Move closer to the curve to adjust the interval.
+
+启用此区间	Enable this interval
+启停随当前角度保存；从基准角度向外，到下一记录角度才切换。	Saved with this pose. Hold the current state outwards from the base angle until the next keyed angle.
+关闭仅暂停此区间，保留位置与笔触。	Disabling pauses this interval while retaining its positions and tip styles.
+仅控制整体预览；区间随角度启停请在属性中设置。	Preview only. Set each interval’s angle-keyed switch in Properties.
+区间开关无效。	Invalid interval switch.
+
+未微调 · 偏移 0	Uncorrected · Offset 0
+删除微调；此图层仍有姿态记录时偏移归零	Delete correction; offset becomes zero if this layer still has a pose key
+A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值。	A: drag endpoints or handles. New poses start with zero offset; offsets interpolate between poses.

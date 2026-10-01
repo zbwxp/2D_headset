@@ -35,7 +35,7 @@ for(const tool of ['bind','smooth','cusp','arc','link','merge'])test(`${tool} st
 });
 
 test('global show/hide is a one-shot batch; layer overrides, ink masks, locks, history and saved states remain independent',async({page})=>{
- await expect(page.getByTestId('drawing-show-all')).toBeDisabled();await expect(page.getByTestId('drawing-hide-all')).toBeDisabled();
+ await expect(page.getByTestId('drawing-toggle-all')).toBeDisabled();
  const ids=await page.evaluate(async()=>{
   const c=await import('/src/domain/drawing/commands.ts' as string),m=await import('/src/domain/drawing/model.ts' as string),p=await import('/src/domain/drawing/paintCommands.ts' as string),g=await import('/src/domain/drawing/groups.ts' as string);
   let d=c.addLayer(m.emptyDrawing(),'Eye');const eye=d.layers[0].id,e=c.ellipse(d,eye,[-.4,-.3],[.4,.3],.02);
@@ -45,20 +45,20 @@ test('global show/hide is a one-shot batch; layer overrides, ink masks, locks, h
   (window as any).__editorPerfStore.getState().setDrawing(d);return {eye,hair};
  });
  const before=await data(page),h=await history(page),all=(d:any)=>[...d.curves,...d.fills,...d.offsets];
- await page.getByTestId('drawing-hide-all').click();const hidden=await data(page);
+ await page.getByTestId('drawing-toggle-all').click();const hidden=await data(page);
  expect(all(hidden).every(o=>!o.visible)).toBe(true);expect(await history(page)).toBe(h+1);
  await expect(page.getByTestId('drawing-ink')).toHaveCount(0);await expect(page.getByTestId('drawing-fill')).toHaveCount(0);await expect(page.getByTestId('drawing-offset')).toHaveCount(0);
  await page.locator(`[data-testid=drawing-layer][data-id="${ids.eye}"]`).getByTestId('drawing-layer-visibility').click();
  const onlyEye=await data(page);expect(onlyEye.curves.find((c:any)=>c.id==='hair').visible).toBe(false);expect(onlyEye.fills[0].visible).toBe(true);
  await expect(page.getByTestId('drawing-fill')).toHaveCount(1);await expect(page.getByTestId('drawing-ink')).toHaveCount(1);await expect(page.getByTestId('drawing-offset')).toHaveCount(1);
- await page.getByTestId('drawing-show-all').click();const shown=await data(page);expect(all(shown).every(o=>o.visible)).toBe(true);expect(shown).toEqual(before);expect(await history(page)).toBe(h+3);
+ await page.getByTestId('drawing-toggle-all').click();const shown=await data(page);expect(all(shown).every(o=>o.visible)).toBe(true);expect(shown).toEqual(before);expect(await history(page)).toBe(h+3);
  await page.getByRole('button',{name:'Undo',exact:true}).click();expect(await data(page)).toEqual(onlyEye);
  await page.getByRole('button',{name:'Redo',exact:true}).click();expect(await data(page)).toEqual(shown);
- await page.getByTestId('drawing-hide-all').click();
+ await page.getByTestId('drawing-toggle-all').click();
  await page.evaluate(async()=>{const c=await import('/src/domain/drawing/commands.ts' as string),s=(window as any).__editorPerfStore.getState(),d=s.project.drawing;s.setDrawing(c.createCurve(d,d.layers[0].id,[[0,-.8],[.1,-.8],[.2,-.8],[.3,-.8]],.02,'New','new'));});
  await expect(page.getByTestId('drawing-ink')).toHaveCount(1);expect((await data(page)).curves.find((c:any)=>c.id==='new').visible).toBe(true);
  const saved=await data(page),download=page.waitForEvent('download');await page.getByRole('button',{name:'Save JSON',exact:true}).click();await page.locator('header input[type=file]').setInputFiles((await (await download).path())!);await expect.poll(()=>data(page)).toEqual(saved);
- await page.getByTestId('language-toggle').click();await expect(page.getByRole('button',{name:'显示全部图层',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'隐藏全部图层',exact:true})).toBeVisible();
+ await page.getByTestId('language-toggle').click();await expect(page.getByTestId('drawing-toggle-all')).toHaveCount(1);await expect(page.getByRole('button',{name:'显示全部图层',exact:true})).toBeVisible();
  await page.setViewportSize({width:1100,height:900});
  const header=page.locator('.drawing-layers > header'),box=(await header.boundingBox())!;
  for(const button of await header.getByRole('button').all()){const b=(await button.boundingBox())!;expect(b.x).toBeGreaterThanOrEqual(box.x);expect(b.x+b.width).toBeLessThanOrEqual(box.x+box.width);}

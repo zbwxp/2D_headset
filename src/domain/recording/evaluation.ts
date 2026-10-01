@@ -41,10 +41,11 @@ export function coverage(c:RecordedCurve):Coverage {
  const result={points,order,triangles,hull};cache.set(c,result);return result;
 }
 export interface Evaluated { shape:Cubic; status:'key'|'interpolation'|'frozen'; at:View }
-export function evaluate(c:RecordedCurve,view:View):Evaluated {
- const v=canonical(view),exact=c.keys.find(k=>sameView(k,v));if(exact)return {shape:exact.shape,status:'key',at:v};
+export interface ViewWeights {weights:{index:number;weight:number}[];status:Evaluated['status'];at:View}
+export function evaluateWeights(c:RecordedCurve,view:View,canonicalView=true):ViewWeights {
+ const v=canonicalView?canonical(view):view,exact=c.keys.find(k=>sameView(k,v));if(exact)return {weights:[{index:c.keys.indexOf(exact),weight:1}],status:'key',at:v};
  const g=coverage(c),p:Point2=[v.yaw,v.pitch];
- const blend=(ids:number[],w:number[],at:Point2,status:Evaluated['status']):Evaluated=>({shape:[0,1,2,3].map(j=>[0,1].map(d=>ids.reduce((s,id,i)=>s+w[i]*c.keys[g.order[id]].shape[j][d],0))) as Cubic,status,at:{yaw:at[0],pitch:at[1]}});
+ const blend=(ids:number[],w:number[],at:Point2,status:Evaluated['status']):ViewWeights=>({weights:ids.map((id,i)=>({index:g.order[id],weight:w[i]})),status,at:{yaw:at[0],pitch:at[1]}});
  for(const t of g.triangles){const [a,b,d]=t.map(i=>g.points[i]),den=cross(a,b,d);const w=[cross(p,b,d)/den,cross(a,p,d)/den,cross(a,b,p)/den];if(w.every(x=>x>=-1e-10))return blend(t,w,p,'interpolation');}
  if(g.points.length===1)return blend([0],[1],g.points[0],'frozen');
  // Split hull edges at all collinear samples: frozen shapes must match the
@@ -60,4 +61,9 @@ export function evaluate(c:RecordedCurve,view:View):Evaluated {
  let best={distance:Infinity,ids:[0,0],t:0,q:g.points[0]};
  for(const [a,b] of edges){const x=g.points[a],y=g.points[b],dx=y[0]-x[0],dy=y[1]-x[1];const t=Math.max(0,Math.min(1,((p[0]-x[0])*dx+(p[1]-x[1])*dy)/(dx*dx+dy*dy)));const q:Point2=[x[0]+t*dx,x[1]+t*dy],distance=Math.hypot(q[0]-p[0],q[1]-p[1]);if(distance<best.distance)best={distance,ids:[a,b],t,q};}
  return blend(best.ids,[1-best.t,best.t],best.q,best.distance<=VIEW_EPS?'interpolation':'frozen');
+}
+
+export function evaluate(c:RecordedCurve,view:View):Evaluated {
+ const {weights,status,at}=evaluateWeights(c,view);
+ return {shape:[0,1,2,3].map(j=>[0,1].map(d=>weights.reduce((sum,w)=>sum+w.weight*c.keys[w.index].shape[j][d],0))) as Cubic,status,at};
 }

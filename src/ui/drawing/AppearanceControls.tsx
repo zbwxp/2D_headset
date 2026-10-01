@@ -1,3 +1,4 @@
+import PanelSection from '../shared/PanelSection';
 import {curveById,layerFor,type DrawingDocument as Doc,type FillRegion} from '../../domain/drawing/model';
 import {setInk,createFill,createOffset,changePaint,deletePaint,detachOffset,reorderPaint,movePaint} from '../../domain/drawing/paintCommands';
 import {fillGeometry,offsetGeometry,fillVisible} from '../../domain/drawing/appearance';
@@ -33,12 +34,12 @@ export default function AppearanceControls({d,selection,run,choose,preview}:{d:D
   </div>;
  }
  if(!c)return null;const disabled=ids.some(id=>curveById(d,id).locked||!curveById(d,id).visible);
- return <div className="drawing-appearance"><strong>{t('描边与填充')}</strong>
+ return <PanelSection id="drawing.appearance" title="描边与填充" className="drawing-appearance">
   <MistControls d={d} ids={ids} run={run} preview={preview}/>
   <InkEndControls d={d} id={c.id} selection={selection} run={run} choose={choose}/>
   <label className="drawing-check"><input type="checkbox" checked={ids.every(id=>curveById(d,id).inkVisible!==false)} disabled={disabled} onChange={e=>run(()=>setInk(d,ids,{inkVisible:e.target.checked}))}/>{t('绘制所选段描边')}</label>
   <div className="drawing-property-actions">{(['white','black','transparent'] as const).map(color=><button key={color} disabled={disabled} onClick={()=>run(()=>{const n=createFill(d,ids,color);choose({ids:[],paint:n.fills.at(-1)!.id});return n;})}>{t(color==='white'?'建立白色填充':color==='black'?'建立黑色填充':'建立透明填充')}</button>)}</div>
   <button data-testid="drawing-create-mist-fill" disabled={disabled} onClick={()=>run(()=>{const n=createFill(d,ids,'black','MIST');choose({ids:[],paint:n.fills.at(-1)!.id});return n;})}>{t('建立雾化填充')}</button>
   <div className="drawing-property-actions"><button disabled={disabled} onClick={()=>run(()=>{const n=createOffset(d,c.id);choose({ids:[],paint:n.offsets.at(-1)!.id});return n;})}>{t('创建偏移跟随')}</button><button disabled={disabled} onClick={()=>run(()=>{const n=createOffset(d,c.id),result=detachOffset(n,n.offsets.at(-1)!.id);choose({ids:result.ids});return result.document;})}>{t('独立偏移副本')}</button></div>
- </div>;
+ </PanelSection>;
 }

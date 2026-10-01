@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Contour · 使用帮助与反馈</title>
+  <link rel="icon" href="./favicon.svg">
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;color:#e4ece6;background:#141c20;line-height:1.7}
+    body{max-width:900px;margin:auto;padding:40px 24px 72px}a{color:#bce49a}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #344148;padding-bottom:18px;gap:20px}
+    .brand{font-size:24px;font-weight:700;letter-spacing:-.5px}h1{font-size:36px;line-height:1.3;margin:48px 0 12px}h2{font-size:21px;margin:0 0 12px}p{margin:12px 0}.lead{color:#a9b9bd;font-size:18px;max-width:720px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:30px 0}section{background:#202b30;border:1px solid #344148;border-radius:14px;padding:25px}ol,ul{padding-left:22px}li{margin:10px 0}kbd{border:1px solid #536468;border-radius:4px;padding:2px 5px;font-size:.85em}small{color:#9eb0b4}button{cursor:pointer;border:1px solid #829b73;background:#acc995;color:#18211c;border-radius:7px;padding:10px 16px;font:inherit;font-weight:600}button:focus-visible,a:focus-visible{outline:3px solid #d2edbd;outline-offset:4px}textarea{display:block;width:100%;box-sizing:border-box;min-height:230px;margin:18px 0;background:#141c20;color:#e4ece6;border:1px solid #52656b;border-radius:7px;padding:14px;font:inherit;resize:vertical}.status{padding-left:10px}details{margin-top:24px}summary{cursor:pointer}footer{color:#9eb0b4;margin-top:28px}@media(max-width:700px){.grid{grid-template-columns:1fr}h1{font-size:28px}body{padding:24px 18px}}
+  </style>
+</head>
+<body>
+  <header><span class="brand">◈ contour</span><a href="./">打开编辑器 ↗</a></header>
+  <h1>开始画，也帮我们把它变得更好。</h1>
+  <p class="lead">Contour 试用版 · 矢量线稿、视角快照与姿态录制。建议在电脑浏览器中使用鼠标和键盘操作。</p>
+  <div class="grid">
+    <section><h2>第一次使用</h2><ol><li>首次打开会载入基础脸模并进入绘制间，直接继续编辑。顶部「载入基础脸模」也可手动打开，撤销可返回原工程。已有浏览器存档会恢复自己的进度；也可点「打开」导入其它 JSON。</li><li><kbd>P</kbd> 钢笔画线，<kbd>V</kbd> 选择整笔，<kbd>A</kbd> 编辑端点与 handle；右侧管理图层和属性。</li><li><kbd>Ctrl / ⌘</kbd> + <kbd>Z</kbd> 撤销；画好一个姿态后保存为快照，再到录制间指定 yaw / pitch、对齐姿态。</li><li>用「保存 JSON」把完整工程存到自己的电脑。</li></ol></section>
+    <section><h2>作品保存在你这里</h2><p>自动存档保存在当前浏览器；网站没有云端作品同步。别人的操作不会改变你的画。</p><p>本机开发网址、线上网址、不同浏览器的存储各自独立。换地方继续画，请导出并打开 JSON。</p><p>清理浏览器数据或隐私模式可能丢失自动存档。重要作品请定期保存 JSON。</p><small>网站升级后先保存作品，再刷新页面。顶部会显示当前软件版本。</small></section>
+  </div>
+  <section><h2>发现问题时，发给邀请你试用的人</h2><p>复制下面的模板，补上复现步骤。截图或短录屏很有帮助；如果方便，再附上能复现问题的 JSON。</p>
+    <label for="feedback">问题反馈模板</label>
+    <textarea id="feedback" spellcheck="false">软件版本（编辑器左上角）：
+浏览器 / 操作系统：
+工作区（绘制 / 录制 / 建模）：
+复现步骤：
+1.
+2.
+预期结果：
+实际结果：
+截图 / 录屏 / 可分享的 JSON：</textarea>
+    <button id="copy" type="button">复制反馈模板</button><span id="status" class="status" role="status"></span>
+    <p><small>这里不会上传或发送反馈。复制后通过你们已有的联系方式发给邀请者即可。</small></p>
+  </section>
+  <details><summary>English quick guide</summary><p>Use a desktop browser with a mouse and keyboard. The first visit opens the starter face in Drawing Room. Later visits restore your own project; P draws curves, V selects a stroke and A edits nodes. Ctrl/Cmd+Z undoes. Save a pose snapshot, then place it in Recording Room and assign yaw/pitch.</p><p>Your projects stay in this browser; there is no cloud project sync. Export JSON regularly and before refreshing for an update. For feedback, send the inviter your app version, browser/OS, workspace, reproduction steps, expected/actual result, a screenshot and a shareable JSON if available.</p></details>
+  <footer>持续更新同一个网址 · 请以编辑器左上角的版本号为准。</footer>
+  <script>
+    document.getElementById('copy').addEventListener('click',async()=>{
+      const field=document.getElementById('feedback');
+      try{await navigator.clipboard.writeText(field.value);document.getElementById('status').textContent='已复制';}
+      catch{field.focus();field.select();document.getElementById('status').textContent='请按 Ctrl / ⌘ + C 复制';}
+    });
+  </script>
+</body>
+</html>

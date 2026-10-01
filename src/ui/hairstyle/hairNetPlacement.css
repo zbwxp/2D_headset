@@ -1,0 +1,6 @@
+.hair-net-placement{display:flex;align-items:center;gap:16px;flex-wrap:wrap;flex-shrink:0;padding:5px 10px;border-bottom:1px solid var(--border);background:#253239;font-size:11px;color:#bfcfd3}
+.hair-net-placement>span{white-space:nowrap}
+.hair-net-placement .numeric-slider{flex:1 1 140px;max-width:300px;margin:0}
+.hair-net-placement .numeric-slider-caption{font-size:11px}
+.hair-net-placement .numeric-slider input[type=range]{margin:3px 0 0;padding:0;accent-color:#a6c990}
+.hair-net-placement .numeric-slider-entry{width:65px}

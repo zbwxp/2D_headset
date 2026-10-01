@@ -14,12 +14,12 @@ export function fillMistAlpha(distance:number,width:number){
  if(distance>=width)return 0;const tail=Math.exp(-4.5),q=Math.max(0,distance)/width;
  return (Math.exp(-4.5*q*q)-tail)/(1-tail);
 }
-export function fillMistLayout(shapes:Cubic[],mist:FillMist){
+export function fillMistLayout(shapes:Cubic[],mist:FillMist,resolution=2){
  if(!shapes.length)return null;const origin=shapes[0][0];
  const relative=shapes.map(s=>s.map(p=>[+(p[0]-origin[0]).toFixed(10),+(p[1]-origin[1]).toFixed(10)])) as Cubic[];
  const pad=(mist.side==='INSIDE'?0:mist.width*250)+2;
  const b=relative.flat().reduce((b,p)=>[Math.min(b[0],p[0]*250),Math.min(b[1],p[1]*250),Math.max(b[2],p[0]*250),Math.max(b[3],p[1]*250)],[Infinity,Infinity,-Infinity,-Infinity]);
- const w=b[2]-b[0]+2*pad,h=b[3]-b[1]+2*pad,scale=Math.min(2,2048/Math.max(w,h),Math.sqrt(1_500_000/(w*h)));
+ const w=b[2]-b[0]+2*pad,h=b[3]-b[1]+2*pad,scale=Math.min(resolution,2048/Math.max(w,h),Math.sqrt(1_500_000/(w*h)));
  const nx=Math.max(1,Math.ceil(w*scale)),ny=Math.max(1,Math.ceil(h*scale)),x0=b[0]-pad,y1=b[3]+pad;
  return {relative,origin,nx,ny,scale,bounds:[x0,y1-ny/scale,x0+nx/scale,y1] as [number,number,number,number]};
 }

@@ -1,3 +1,4 @@
+import {parseAssembly} from '../assembly/model';
 import {migrateChinNode} from '../chin/migration';
 import type {Vec3} from '../project/types';
 import {parseChin,ensureChin,chinRoles} from '../chin/model';
@@ -8,8 +9,10 @@ import {migrateEyeCoord} from '../eyes/coord';
 import {parseGaze} from '../eyes/gaze';
 import {parseEyeScaffold,rebuildEyeScaffold} from '../eyes/scaffold';
 import {assignModules} from '../modules/ownership';
-import {parseRecording} from '../recording/model';
+import {parsePoseRecording,syncPoseSnapshots} from '../recording/poses';
+import {upgradeAppliedInferenceInk} from '../recording/poseInference';
 import {parseDrawing} from '../drawing/model';
+import {parseDrawingSnapshots} from '../drawing/snapshots';
 import {repairCurveNames} from '../curves/naming';
 import {parseJoins} from '../curves/smoothJoin/model';
 import {dependencyGraph} from '../geometry/dependencies';
@@ -264,8 +267,15 @@ export function parseLandmarks(text: string): LandmarkProject {
     result.patchDisplay={...defaultDisplay,...(p.patchDisplay.quality===undefined?{}:{quality:p.patchDisplay.quality==='ultra'?'high':p.patchDisplay.quality}),...(p.patchDisplay.visible===undefined?{}:{visible:p.patchDisplay.visible}),opacity2d:p.patchDisplay.opacity2d,opacity3d:p.patchDisplay.opacity3d};
   }
   if(p.surfaceSmooth!==undefined||p.version==="landmarks-0.4.2")result.surfaceSmooth=parseSmooth(p.surfaceSmooth,result);
-  if(p.recording!==undefined)result.recording=parseRecording(p.recording);
+  // Retire old point/curve recordings, including malformed legacy records.
+  delete result.recording;
+  if(p.poseRecording!==undefined)result.poseRecording=parsePoseRecording(p.poseRecording);
+  delete result.hairstyle; // Retired workspace: never retain baked textures or duplicate hair documents.
+  if(p.assembly!==undefined)result.assembly=parseAssembly(p.assembly);
   if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
+  if(p.drawingSnapshots!==undefined)result.drawingSnapshots=parseDrawingSnapshots(p.drawingSnapshots);
+  Object.assign(result,upgradeAppliedInferenceInk(result));
+  if(result.poseRecording)result.poseRecording=syncPoseSnapshots(result.poseRecording,result.drawingSnapshots);
   if(p.geometryModules!==undefined){check(!!p.geometryModules&&typeof p.geometryModules==='object'&&!Array.isArray(p.geometryModules));check(Object.values(p.geometryModules).every(x=>x==='HEADSET'||x==='EYES'));result.geometryModules={...p.geometryModules};}
   const final=migrateHeadFrame(migrateContinuity(result,p.surfaceContinuity));dependencyGraph(final);validateOnPatch(final);return migrateChinNode(migrateFree3D(assignModules(repairCurveNames(rebuildEyeScaffold(migrateEyeCoord(final))))));
 }

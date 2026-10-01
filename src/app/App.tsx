@@ -1,3 +1,8 @@
+import AssemblyRoom from '../ui/assembly/AssemblyRoom';
+import {useDrawing as useAssembly} from '../ui/assemblyDrawing/session';
+import {createAssembly} from '../domain/assembly/model';
+import {serializeProject} from './autosave';
+import AutoHideBar from '../ui/shared/AutoHideBar';
 import {isFree3DShape} from '../domain/curves/model';
 import {canonical as curveCanonical} from '../domain/curves/geometry';
 import ViewportPanel from '../ui/windows/ViewportPanel';
@@ -9,6 +14,7 @@ import {uiText,useLanguage} from "../ui/i18n";
 import CreationShelf from '../ui/authoring/CreationShelf';
 import ObjectSidebar from '../ui/authoring/ObjectSidebar';
 import {APP_VERSION} from './version';
+import {loadStarterProject,finishProjectStartup} from './starterProject';
 import AddView from '../ui/windows/AddView';
 import {isDerived,isOnPatch,isHelmetLoop} from '../domain/curves/model';
 import {pointPosition} from "../domain/geometry/evaluation";
@@ -18,7 +24,7 @@ import ContourPanel from "../ui/windows/ContourPanel";
 import MainPanels from "../ui/windows/MainPanels";
 import EditorActions from "../ui/EditorActions";
 import { useUI } from "../ui/session";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Undo2,
   Redo2,
@@ -28,12 +34,10 @@ import {
   LockKeyhole,
   Unlock,
   Box,
+  CircleHelp,
 } from "lucide-react";
 import { useEditor } from "./store";
 import {
-  allowedBasis,
-  motionState,
-  editingBasis,
   modelStateCode,
   viewIsLocked,
 } from "../domain/landmarks/model";
@@ -42,7 +46,8 @@ import EditView from "../ui/edit2d/EditView";
 import InspectView from "../ui/inspect3d/InspectView";
 export default function App() {
   const {language,setLanguage}=useLanguage();
-  const room=useRecording(s=>s.room),drawingRoom=useDrawing(s=>s.room);
+  const [loadingStarter,setLoadingStarter]=useState(false);
+  const room=useRecording(s=>s.room),drawingRoom=useDrawing(s=>s.room),assemblyRoom=useAssembly(s=>s.room);
   useEffect(()=>{document.documentElement.lang=language==='zh'?'zh-CN':'en';},[language]);
 
   useSyncExternalStore(subscribeSmooth,smoothVersion);
@@ -52,19 +57,11 @@ export default function App() {
     patch = s.project.patches?.find(p=>p.id===s.selectedPatchId),
     curve = s.project.curves.find((c) => c.id === s.selectedCurveId),
     l = s.project.landmarks.find((l) => l.id === s.selectedId),
-    free = l ? allowedBasis(s.project, l.id) : [],
-    motion = l
-      ? motionState(
-          s.project,
-          l.id,
-          s.project.views.find((v) => v.id === s.viewId)!,
-        )
-      : { spatialDof: 0, screenDof: 0, track: null },
-    activeView = s.project.views.find((v) => v.id === s.viewId)!,
-    editAxes = l ? editingBasis(s.project, l.id, activeView) : [],
-    lockedViews = s.project.views.filter((v) => viewIsLocked(s.project, v.id)),
     partner = s.project.landmarks.find((x) => x.id === l?.mirrorPartnerId);
-  useEffect(()=>ensureSmooth(s.project),[s.project]);
+  // Independent editors never change HeadSet geometry. Do not hash/solve it on
+  // every drawing/assembly pointer frame; refresh normally when returning to the model.
+  useEffect(()=>{if(assemblyRoom&&!s.project.assembly)useAssembly.getState().set({room:false});},[assemblyRoom,s.project.assembly]);
+  useEffect(()=>{if(!assemblyRoom&&!drawingRoom)ensureSmooth(s.project);},[s.project,assemblyRoom,drawingRoom]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { useEditor.getState().cancelTool(); }
@@ -88,9 +85,22 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
+  const openStarter=async()=>{
+    const before=useEditor.getState().project;
+    setLoadingStarter(true);
+    try {
+      const p=await loadStarterProject();
+      if(useEditor.getState().project!==before){s.notify(language==='zh'?'工程在加载期间已修改，请再次载入基础脸模。':'The project changed while loading. Please try again.');return;}
+      s.load(p);s.endEdit();finishProjectStartup();
+      useRecording.getState().set({room:false});useAssembly.getState().set({room:false});
+      useDrawing.getState().set({room:true,selection:{ids:[]},layerId:null,tool:'select',zoom:1,pan:[0,0]});
+      s.notify(language==='zh'?'已载入基础脸模，可撤销返回原工程。':'Starter face loaded. Undo returns to the previous project.');
+    } catch {s.notify(language==='zh'?'基础脸模加载失败，请检查网络后重试。':'Could not load the starter face. Please retry.');}
+    finally {setLoadingStarter(false);}
+  };
   const save = () => {
     const url = URL.createObjectURL(
-      new Blob([JSON.stringify(s.project, null, 2)], {
+      new Blob([serializeProject(s.project)], {
         type: "application/json",
       }),
     );
@@ -101,7 +111,8 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <div className="point-app">
+    <div className={`point-app ${drawingRoom?'drawing-workspace-active':assemblyRoom?'assembly-workspace-active':''}`}>
+      <AutoHideBar label="菜单 · 文件与工作区" className="app-menu-bar" disabled={!drawingRoom&&!assemblyRoom}>
       <header className="topbar">
         <div className="brand">
           <Box size={25} />{uiText("contour")}<span className="point-version">{uiText(APP_VERSION)}</span>
@@ -113,9 +124,11 @@ export default function App() {
           onChange={(e) => s.rename(e.target.value)}
         />
         <div className="point-top-actions">
-          <button data-testid="drawing-room-toggle" onClick={()=>{s.cancelTool();useRecording.getState().set({room:false,first:null,tool:"edit"});useDrawing.getState().set({room:!drawingRoom});}}>{uiText(drawingRoom?"返回建模间":"进入绘制间")}</button>
-          <button data-testid="room-toggle" onClick={()=>{s.cancelTool();useDrawing.getState().set({room:false});useRecording.getState().set({room:!room,first:null,tool:"edit"});}}>{uiText(room?"返回建模间":"进入录制间")}</button>
+          <button data-testid="drawing-room-toggle" onClick={()=>{s.cancelTool();useAssembly.getState().set({room:false});useRecording.getState().set({room:false});useDrawing.getState().set({room:!drawingRoom});}}>{uiText(drawingRoom?"返回建模间":"进入绘制间")}</button>
+          <button data-testid="room-toggle" onClick={()=>{s.cancelTool();useAssembly.getState().set({room:false});useDrawing.getState().set({room:false});useRecording.getState().set({room:!room});}}>{uiText(room?"返回建模间":"进入录制间")}</button>
+          <button data-testid="assembly-room-toggle" onClick={()=>{s.cancelTool();useDrawing.getState().set({room:false});useRecording.getState().set({room:false});if(!assemblyRoom&&!s.project.assembly){s.beginEdit();s.setAssembly(createAssembly());s.endEdit();}useAssembly.getState().set({room:!assemblyRoom});}}>{language==='zh'?(assemblyRoom?'返回建模间':'进入组装间'):(assemblyRoom?'Back to modeling':'Assembly Room')}</button>
           <button data-testid="language-toggle" aria-label={language==='zh'?'Switch interface to English':'切换为中文界面'} title={language==='zh'?'切换为英文界面':'Switch interface to Chinese'} onClick={()=>setLanguage(language==='zh'?'en':'zh')}>{uiText(language==='zh'?'English':'中文')}</button>
+          <a className="trial-help-link" href="./help.html" target="_blank" rel="noopener noreferrer" title={language==='zh'?'使用帮助与问题反馈':'Help & feedback'} aria-label={language==='zh'?'使用帮助与问题反馈':'Help & feedback'}><CircleHelp size={18}/></a>
           <button
             title={uiText("撤销 Ctrl Z")}
             aria-label={uiText("撤销")}
@@ -136,6 +149,7 @@ export default function App() {
             <Plus size={16} />{uiText("新建")}</button>
           <button onClick={() => file.current?.click()}>
             <Upload size={16} />{uiText("打开")}</button>
+          <button data-testid="load-starter" disabled={loadingStarter} onClick={()=>void openStarter()} title={language==='zh'?'载入网站基础脸模，可撤销返回原工程':'Load starter face; Undo returns to your project'}>{language==='zh'?(loadingStarter?'载入中…':'载入基础脸模'):(loadingStarter?'Loading…':'Starter face')}</button>
           <button onClick={save}>
             <Download size={16} />{uiText("保存 JSON")}</button>
         </div>
@@ -156,7 +170,8 @@ export default function App() {
           }}
         />
       </header>
-      {drawingRoom?<DrawingRoom/>:room?<RecordingRoom/>:<main
+      </AutoHideBar>
+      {assemblyRoom&&s.project.assembly?<AssemblyRoom/>:drawingRoom?<DrawingRoom/>:room?<RecordingRoom/>:<main
         className="point-workspace"
         tabIndex={-1}
         onPointerDownCapture={(e) => {
@@ -182,7 +197,7 @@ export default function App() {
         </section>} contour={<ContourPanel/>} />
       </div>
       </main>}
-      {!room&&!drawingRoom&&<footer className="point-footer">
+      {!room&&!drawingRoom&&!assemblyRoom&&<footer className="point-footer">
         <div>
           <b>{patch ? `${patch.name??uiText(patch.type==='lens'?'两边面':patch.type==='loop'?'环形面':patch.type==='tri'?'三边面':'四边面')} · ${uiText("边界派生")}` : curve?.name ?? l?.name ?? uiText("未选择对象")}</b>
           <code data-testid="position">
@@ -215,7 +230,7 @@ export default function App() {
         </span>
         <span>{uiText("撤销")}{s.past.length} / 100</span>
       </footer>}
-      {!room&&!drawingRoom&&<EditorActions />}
+      {!room&&!drawingRoom&&!assemblyRoom&&<EditorActions />}
       {uiText(s.message && (
         <div
           role="status"

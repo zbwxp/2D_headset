@@ -119,7 +119,7 @@ test('point deletion is guarded and save/load validates point references and leg
  const r=setup();expect(deleteRecordedPoint(r,'b')).toBe(r);
  const solo=createRecordedPoint(r,front,'solo','Standalone',[.1,.2]);
  expect(deleteRecordedPoint(solo,'solo').points).toHaveLength(3);
- const p=createLandmarkProject();expect(parseLandmarks(JSON.stringify({...p,recording:r})).recording).toEqual(r);
+ const p=createLandmarkProject();expect(parseLandmarks(JSON.stringify({...p,recording:r})).recording).toBeUndefined();
  expect(parseRecording({version:1,curves:[]})).toEqual(emptyRecording());
  for(const bad of [
   {...r,points:[{...r.points![0],keys:[]}]},

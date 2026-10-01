@@ -1,0 +1,14 @@
+.auto-hide-bar{position:relative;flex:0 0 20px;min-height:20px;z-index:25;background:#202a2f;border-bottom:1px solid #3b484d;color:#b9c9ce}
+.auto-hide-bar>.auto-hide-trigger{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:20px;min-height:20px;border:0;border-radius:0;padding:0 10px;background:transparent;color:inherit;font:12px/20px system-ui,sans-serif;cursor:pointer}
+.auto-hide-bar>.auto-hide-trigger:hover,.auto-hide-bar[data-open=true]>.auto-hide-trigger{background:#31423f;color:#d8e8d0}
+.auto-hide-trigger:focus-visible{outline:2px solid #a7c896;outline-offset:-2px}
+.auto-hide-content{position:absolute;top:100%;left:0;right:0;max-height:70dvh;overflow:auto;background:#20282d;border:1px solid #48585e;border-top:0;box-shadow:0 9px 24px #0005}
+.auto-hide-content[hidden]{display:none!important}
+.app-menu-bar{z-index:35}
+.drawing-context-bar{z-index:25}
+
+.auto-hide-bar>.auto-hide-pin{position:absolute;right:8px;top:0;display:flex;align-items:center;justify-content:center;width:28px;height:20px;min-height:20px;padding:0;border:0;border-radius:0;background:transparent;color:inherit;cursor:pointer}
+.auto-hide-bar>.auto-hide-pin:hover,.auto-hide-bar>.auto-hide-pin[aria-pressed=true]{background:#405845;color:#d8e8d0}
+.auto-hide-bar:has(>.auto-hide-pin)>.auto-hide-trigger{padding-right:40px}
+.auto-hide-bar[data-pinned=true]{flex-basis:auto}
+.auto-hide-bar[data-pinned=true]>.auto-hide-content{position:relative;top:auto;max-height:40dvh;box-shadow:none;border-left:0;border-right:0}

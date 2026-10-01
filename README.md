@@ -1,8 +1,12 @@
-# Contour — V0.12.37
+# Contour — V0.16.0
 
-头部构造、视角录制和二维线稿编辑器。当前包含 HeadSet / Eyes 建模、Recording Room 视角关键帧与语义点，以及独立的 Drawing Room。
+头部构造、视角录制和二维线稿编辑器。当前包含 HeadSet / Eyes 建模、Recording Room 快照姿态录制，以及独立的 Drawing Room。
 
-Drawing Room 支持 Bézier 钢笔、连续笔画、端点绑定与接笔、图层与组合、显示区间、端点笔触、深度偏移、轮廓雾化和闭合边界雾化填充。
+Drawing Room 支持命名视角快照、适配 Bézier 的四角透视变形、Bézier 钢笔、连续笔画、端点绑定与接笔、图层与组合、显示区间、端点笔触、深度偏移、轮廓雾化和闭合边界雾化填充。
+
+[视角快照使用说明](docs/v01239-drawing-snapshots.md)
+
+[Sites 发布与反馈更新流程](docs/sites-release.md) · 线上试用的帮助入口在顶部问号按钮。
 
 ## 基础脸模
 
@@ -23,12 +27,18 @@ npm run dev -- --port 5173
 
 ## 当前文档
 
+- [组装间：独立绘制、三维定位与旧发型存档瘦身](docs/v0160-assembly-room.md)
+
+- [四角变形与隐藏成员整体编辑](docs/v01238-quad-deform.md)
+
+- [AI Drawing Room 操作与资产语义手册](docs/ai-drawing-room-guide.md)
+- [正面到近正面左视：Live2D/Spine 研究与矢量实验](docs/front-near-left-experiment.md)
 - [V0.12.37 软件快照与验证结果](docs/v01237-checkpoint.md)
 - [Drawing Room 基础结构](docs/v0110-drawing-room.md)
 - [内部端点笔触](docs/v01235-interior-endpoint-ink.md)
 - [曲线深度偏移](docs/v01236-curve-depth-offset.md)
 - [雾化填充](docs/v01237-gaussian-mist-fill.md)
-- [Recording Room](docs/v070-recording-room.md)
+- [快照录制间](docs/v0130-snapshot-recording.md)
 - [模块隔离](docs/v080-geometry-modules.md)
 
 ## 历史文档
