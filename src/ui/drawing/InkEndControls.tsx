@@ -19,16 +19,16 @@ export default function InkEndControls({d,id,selection,run,choose}:{d:Doc;id:str
  const g=stroke?derivedUses(d,stroke.segments,stroke.closed):offsetGeometry(d,offset!),style=stroke?curveById(d,stroke.segments[0].id):offset!,index=selected?pathEnds.findIndex(e=>e.id===selected.id&&e.end===selected.end):-1;
  const lengths=defaultTaperDistances(style.profile??'UNIFORM',!!style.profileReverse,arcField(extendedInk(g.shapes,(pathEnds.length?pathEnds.map(e=>e.style):[{},{}]) as InkEnds).shapes).total);
  const obj=selected?(curveById(d,selected.id)??offset):undefined,disabled=!obj||obj.locked||!obj.visible||!!g.error;
- return <PanelSection id="drawing.ink-ends" title="笔触端点" className="drawing-ink-ends" testId="drawing-ink-ends">
- <div className="drawing-property-actions">{ends.map((e,i)=><button key={`${e.id}:${e.end}`} aria-pressed={e===selected} onClick={()=>choose(curve?{ids:[e.id],inkEnd:{id:e.id,end:e.end}}:{ids:[],paint:id,inkEnd:{id,end:e.end}})}>{i<outer.length?t(pathEnds.findIndex(x=>x.id===e.id&&x.end===e.end)===1?'笔触终点':'笔触起点'):`P${e.end} ${t('内部端点笔触')}`}</button>)}</div>
- {!!stroke?.closed&&!inner.length&&<p className="drawing-muted">{t('选择一条具体曲线，再设置它的 P0 / P1 端点笔触。')}</p>}
+ return <PanelSection id="drawing.ink-ends" title="末端笔触" className="drawing-ink-ends" testId="drawing-ink-ends">
+ <div className="drawing-property-actions">{ends.map((e,i)=><button key={`${e.id}:${e.end}`} aria-pressed={e===selected} onClick={()=>choose(curve?{ids:[e.id],inkEnd:{id:e.id,end:e.end}}:{ids:[],paint:id,inkEnd:{id,end:e.end}})}>{i<outer.length?t(pathEnds.findIndex(x=>x.id===e.id&&x.end===e.end)===1?'终侧可见末端':'起侧可见末端'):`P${e.end} ${t('内部末端笔触')}`}</button>)}</div>
+ {!!stroke?.closed&&!inner.length&&<p className="drawing-muted">{t('选择一条具体曲线，再设置它的 P0 / P1 几何端的末端笔触。')}</p>}
  {selected&&info?.interior&&<>
   <p className="drawing-muted">{curveById(d,selected.id).name} · P{selected.end}</p>
-  <label className="drawing-check"><input type="checkbox" aria-label={t('启用内部端点笔触')} checked={info.enabled} disabled={disabled} onChange={e=>run(()=>enableInteriorInkEnd(d,selected.id,selected.end,e.target.checked))}/>{t('启用内部端点笔触')}</label>
+  <label className="drawing-check"><input type="checkbox" aria-label={t('启用内部末端笔触')} checked={info.enabled} disabled={disabled} onChange={e=>run(()=>enableInteriorInkEnd(d,selected.id,selected.end,e.target.checked))}/>{t('启用内部末端笔触')}</label>
   <p className="drawing-muted">{t('默认等宽连接；只改变所选曲线这一端的墨线，不移动共享点或改变填充。')}</p>
  </>}
  {selected&&info?.enabled&&<>
- <NumberField label="端点收尖距离 px" value={inkTaperDistance(selected.style,style.width,index<0?0:lengths[index])*250} min={0} max={5000} disabled={disabled} onChange={v=>run(()=>setInkEnd(d,selected.id,selected.end,{taper:v/250}))}/>
+ <NumberField label="末端收尖距离 px" value={inkTaperDistance(selected.style,style.width,index<0?0:lengths[index])*250} min={0} max={5000} disabled={disabled} onChange={v=>run(()=>setInkEnd(d,selected.id,selected.end,{taper:v/250}))}/>
  {selected.style.taperWidthScale!==undefined&&<p className="drawing-muted">{t('收尖随线宽变化；短笔画自动缩短收尖距离。')}</p>}
  <NumberField label="笔触延伸距离 px" value={(selected.style.extension??0)*250} min={0} max={500} disabled={disabled} onChange={v=>run(()=>setInkEnd(d,selected.id,selected.end,{extension:v/250}))}/>
  <button disabled={disabled} onClick={()=>run(()=>setInkEnd(d,selected.id,selected.end,{taper:0}))}>{t('取消收尖')}</button>

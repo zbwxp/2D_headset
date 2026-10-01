@@ -18,15 +18,25 @@ export function unionInkSpans(spans:InkSpan[]):InkSpan[]{
 }
 /** Subtraction puts each gap marker's style on the adjacent surviving ink end.
  * Union gaps first so hidden/overlapping markers cannot create spurious tips. */
-export function subtractInkSpans(base:InkSpan[],gaps:InkSpan[]):InkSpan[]{
- let out=unionInkSpans(base);
- for(const gap of unionInkSpans(gaps))out=out.flatMap(s=>{
+export function subtractInkSpans(base:InkSpan[],gaps:InkSpan[],closed=false):InkSpan[]{
+ const original=unionInkSpans(base),hidden=unionInkSpans(gaps);let out=original;
+ for(const gap of hidden)out=out.flatMap(s=>{
   if(gap.end<=s.start+1e-10||gap.start>=s.end-1e-10)return [s];
   const parts:InkSpan[]=[];
   if(gap.start>s.start+1e-10)parts.push({start:s.start,end:gap.start,ends:[s.ends[0],gap.ends[0]]});
   if(gap.end<s.end-1e-10)parts.push({start:gap.end,end:s.end,ends:[gap.ends[1],s.ends[1]]});
   return parts;
  });
+ // 0 and 1 are the same material location on a closed path. Linear subtraction
+ // loses a gap's terminal brush at that seam, leaving one end blunt. Transfer
+ // only the effective cut brush when base ink really continued across the seam;
+ // an independently bounded SHOW range retains its existing brush precedence.
+ const epsilon=1e-10;
+ if(closed&&original.some(s=>s.start<=epsilon)&&original.some(s=>s.end>=1-epsilon)){
+  const atStart=out.some(s=>s.start<=epsilon),atEnd=out.some(s=>s.end>=1-epsilon);
+  if(atStart&&!atEnd){const brush=hidden.find(s=>s.end>=1-epsilon)?.ends[1];if(brush)out=out.map(s=>s.start<=epsilon?{...s,ends:[{...brush},s.ends[1]]}:s);}
+  if(atEnd&&!atStart){const brush=hidden.find(s=>s.start<=epsilon)?.ends[0];if(brush)out=out.map(s=>s.end>=1-epsilon?{...s,ends:[s.ends[0],{...brush}]}:s);}
+ }
  return out;
 }
 export const intervalMode=(r:DisplayInterval):DisplayIntervalMode=>r.mode??'SHOW';
@@ -57,7 +67,10 @@ export function displayField(d:Doc,path:StrokePath){
   if(!path.closed||track.scope==='CURVE'){const a=native(track,r.start),b=native(track,r.end);return [{start:Math.min(a,b),end:Math.max(a,b),ends:a<=b?ends:[ends[1],ends[0]]}];}
   if(Math.abs(r.end-r.start)>=1-1e-10)return [{start:0,end:1,ends:[{},{}]}];
   const distance=wrap(r.end-r.start);if(distance<1e-10)return [];
-  const forward=frame(track).direction===1,a=native(track,forward?r.start:r.end),b=a+distance,ordered:InkEnds=forward?ends:[ends[1],ends[0]];
+  const forward=frame(track).direction===1,rawA=native(track,forward?r.start:r.end),ordered:InkEnds=forward?ends:[ends[1],ends[0]];
+  // Use the same seam tolerance as union/subtraction. Otherwise floating-point
+  // wrap arithmetic can split a real brush into a tiny fragment that is discarded.
+  const a=rawA<1e-10||rawA>1-1e-10?0:rawA,rawB=a+distance,b=Math.abs(rawB-1)<1e-10?1:rawB;
   return b<=1?[{start:a,end:b,ends:ordered}]:[{start:a,end:1,ends:[ordered[0],{}]},{start:0,end:b-1,ends:[{},ordered[1]]}];
  }
  const ranges=tracks.flatMap(t=>t.ranges.filter(r=>r.enabled!==false).map(r=>({track:t,range:r}))),shown=ranges.filter(x=>x.track.scope!=='CURVE'&&intervalMode(x.range)==='SHOW'),hidden=ranges.filter(x=>intervalMode(x.range)==='HIDE');
@@ -65,7 +78,7 @@ export function displayField(d:Doc,path:StrokePath){
   const shown=t.ranges.filter(r=>r.enabled!==false&&intervalMode(r)==='SHOW');
   return shown.length?subtractInkSpans(span(t,{id:'scope',start:0,end:1}),shown.flatMap(r=>span(t,r))):[];
  });
- const inkSpans=ranges.length?subtractInkSpans(shown.length?shown.flatMap(x=>span(x.track,x.range)):[{start:0,end:1,ends:[{},{}]}],[...hidden.flatMap(x=>span(x.track,x.range)),...localGaps]):undefined;
+ const inkSpans=ranges.length?subtractInkSpans(shown.length?shown.flatMap(x=>span(x.track,x.range)):[{start:0,end:1,ends:[{},{}]}],[...hidden.flatMap(x=>span(x.track,x.range)),...localGaps],path.closed):undefined;
  const pinches:InkPinch[]=hidden.flatMap(({track,range})=>{
   const strength=intervalPinch(range),position=native(track,range.start);
   if(!strength||!inkSpans?.some(s=>position>=s.start-1e-10&&position<=s.end+1e-10))return [];

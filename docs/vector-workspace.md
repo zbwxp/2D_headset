@@ -98,13 +98,27 @@ dilution. If both axes changed the same track, their appearances use positive
 needed. Explicit 2D keys take precedence. Source edits still require the existing
 source-review step; pose overrides keep the source geometry and ownership intact.
 
-## Bundled authored stage
+## Bundled authored example
 
-“导入无发五官阶段稿” explicitly imports “无发·五官对称·脸片待建” as a new
-artwork. This is the actual hands-on authored stage: 12 layers, 119 curves and
-19 fills, without a reference image. Features have been mirrored; the unchanged
-face contour and overlapping left/right face pieces still need authoring, and
-some ears remain occluded by that existing face. It is not a completed symmetric
-face. The loader never replaces startup data or an existing saved artwork. Any
-unsaved working artwork is saved as a separate copy first; the whole import is
-one undo step and the current working rig keeps its original artwork ownership.
+“载入示例” explicitly imports “无发·全脸对称·颅顶隐线” as a new artwork.
+This actual hands-on authored example has 12 layers, 119 curves and 19 fills,
+without a reference image. The single face and features are symmetric; a HIDE
+interval suppresses the upper skull outline to ear level while retaining its
+closed white fill. The original chin ARC and collar remain intact. Overlapping
+left/right face pieces are a later authoring step, not claimed by this example.
+The earlier features-only stage is retained in the repository.
+
+The loader never replaces startup data or an existing saved artwork. Unsaved
+working artwork is saved as a separate copy first; the whole import is one undo
+step and the current working rig keeps its original artwork ownership.
+
+## Local AI console
+
+The modeless AI panel accepts validated command batches and explicit method
+envelopes for inspect, preview, artwork and inspectArtworks. Dry run applies to
+mutating requests. Read-only previews can be scoped to selected source IDs;
+annotations are opt-in. “导出源稿 JSON” displays the actual source document in the
+panel, while “保存 JSON” exports a reloadable full project.
+
+See [geometry-coverage-termini.md](geometry-coverage-termini.md) for the typed
+separation of geometric endpoints, display coverage and visible termini.

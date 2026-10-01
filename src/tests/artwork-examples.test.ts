@@ -7,8 +7,8 @@ import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
 import {createEmptyProject} from '../app/emptyProject';
 import {createArtworkRig,emptyVectorRecording} from '../domain/vectorRecording/model';
-const raw=readFileSync(new URL('../assets/hairless-symmetric-features.json',import.meta.url),'utf8');
-test('bundles the actual authored stage without reference pixels or changing the default face',async()=>{
+const raw=readFileSync(new URL('../assets/hairless-symmetric-skull-hide-interval.json',import.meta.url),'utf8');
+test('bundles the actual authored hidden-crown example without reference pixels or changing the default face',async()=>{
  const base=readFileSync(new URL('../assets/base-face.json',import.meta.url),'utf8'),d=await loadHairlessExample(async()=>raw);expect(d.layers).toHaveLength(12);expect(d.curves).toHaveLength(119);expect(d.fills).toHaveLength(19);expect(d.reference).toBeUndefined();expect(d.layers.some(l=>/刘海|头发|发型|后发/.test(l.name))).toBe(false);expect(d.joins.length).toBeGreaterThan(0);expect(JSON.parse(raw)).toEqual(d);expect(readFileSync(new URL('../assets/base-face.json',import.meta.url),'utf8')).toBe(base);
 });
 test('imports as a new artwork and preserves an unsaved working copy without overwriting saved artwork',async()=>{
@@ -19,3 +19,5 @@ test('imports as a new artwork and preserves an unsaved working copy without ove
 test('whole import is one undo and preserves unnamed rig ownership on its backup artwork',async()=>{
  const original=useEditor.getState(),mode=useWorkspaceMode.getState().mode;vi.useFakeTimers();try{useWorkspaceMode.getState().setMode('drawing');const source=emptyDrawing(),r=createArtworkRig('$working',source);useEditor.setState({project:{...createEmptyProject(),drawing:source,vectorRecording:{...emptyVectorRecording(),rigs:[r]}},past:[],future:[]});const before=useEditor.getState().project,art=await loadHairlessExample(async()=>raw),plan=planArtworkImport({drawing:sourceForExampleImport(before.drawing,true)},art,HAIRLESS_EXAMPLE_NAME),s=useEditor.getState();s.beginEdit();for(const state of plan.steps)s.setDrawingSnapshotState(state);s.endEdit();expect(useEditor.getState().past).toHaveLength(1);expect(useEditor.getState().project.vectorRecording!.rigs[0].artworkId).toBe(plan.preservedDraftId);expect(useEditor.getState().project.drawingSnapshots!.activeId).toBe(plan.artworkId);s.undo();expect(useEditor.getState().project).toBe(before);s.redo();expect(useEditor.getState().project.drawing!.curves).toHaveLength(119);}finally{vi.runAllTimers();useEditor.setState(original,true);useWorkspaceMode.getState().setMode(mode);vi.useRealTimers();}
 });
+
+test('the bundled skull outline is hidden by authored coverage while its geometry and fill remain',async()=>{const d=await loadHairlessExample(async()=>raw),ranges=d.displayIntervals!.flatMap(t=>t.ranges),hide=ranges.find(r=>r.id.startsWith('744fad4a'));expect(HAIRLESS_EXAMPLE_NAME).toBe('无发·全脸对称·颅顶隐线');expect(hide).toMatchObject({mode:'HIDE',start:.3899118358647087,end:1,inkEnds:[{taperWidthScale:20},{taperWidthScale:20}]});expect(d.joins.some(j=>j.mode==='ARC'&&j.radius===.05257222158088604)).toBe(true);});

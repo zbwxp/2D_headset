@@ -1,3 +1,4 @@
+import {effectiveTerminusBrush,renderTerminusBrush,geometryJoinBrush} from './terminusBrush';
 import {copyCurveSource,curveSamples,tagExtension} from './curveProvenance';
 import {boundEndpoint,objectVisible,add,sub,mul,length,curveById,nodeAt,inkTaperDistance,sameEnd,type Point2,type Cubic,type CurveUse,type DrawingDocument as Doc,type Profile,type OffsetRelation,type FillRegion,type InkEnds,type InkEndStyle,type Endpoint} from './model';
 import {strokeFor,strokePaths,type Stroke,type StrokePath} from './strokes';
@@ -35,7 +36,7 @@ export function outerTaperDistances(ends:InkEnds,width:number,total:number,profi
 }
 export function inkTips(shapes:Cubic[],ends:InkEnds=[{},{}]){
  if(!shapes.length)return [];
- return ([0,1] as const).map(end=>{const s=end?shapes.at(-1)!:shapes[0],base=s[end?3:0],candidates=end?[sub(s[3],s[2]),sub(s[3],s[1]),sub(s[3],s[0])]:[sub(s[0],s[1]),sub(s[0],s[2]),sub(s[0],s[3])],v=candidates.find(v=>length(v)>1e-10)??[0,0] as Point2,direction=mul(v,1/(length(v)||1));return {base,direction,point:add(base,mul(direction,ends[end].extension??0)),end};});
+ return ([0,1] as const).map(end=>{const tip=renderTerminusBrush(end?shapes.at(-1)!:shapes[0],end,ends[end]);return {base:tip.support,direction:tip.direction,point:tip.point,end};});
 }
 /** Straight tangent extensions belong to ink, never to raw boundary geometry. */
 export function extendedInk(shapes:Cubic[],ends:InkEnds=[{},{}]){
@@ -46,7 +47,7 @@ export function extendedInk(shapes:Cubic[],ends:InkEnds=[{},{}]){
 export function strokeEnds(d:Doc,s:StrokePath){
  if(s.closed||!s.segments.length)return [];
  const first=s.segments[0],last=s.segments.at(-1)!,endpoints:Endpoint[]=[{curveId:first.id,end:first.reverse?1:0},{curveId:last.id,end:last.reverse?0:1}];
- return endpoints.map(endpoint=>{const stored=curveById(d,endpoint.curveId).inkEnds?.[endpoint.end]??{};return {endpoint,style:boundEndpoint(d,endpoint)?{taper:0,extension:0}:stored};});
+ return endpoints.map(endpoint=>{const stored=curveById(d,endpoint.curveId).inkEnds?.[endpoint.end]??{};return {endpoint,style:effectiveTerminusBrush(stored,boundEndpoint(d,endpoint))};});
 }
 /** Shared by controls, picking and keyboard edits. ARC ends use the visible
  * trimmed source and its tangent rather than the hidden sharp control corner. */
@@ -226,7 +227,7 @@ export function strokeInk(d:Doc,s:Stroke,inkOwners?:ReadonlySet<string>,partitio
  }
  const c=curveById(d,path.segments[0].id),g=(partition?partitionedUses:derivedUses)(d,path.segments,path.closed),ends=strokeEnds(d,path).map(e=>replaced.has(`${e.endpoint.curveId}:${e.endpoint.end}`)?{...e,style:{taper:0,extension:0}}:e);
  const sharpAfter=g.pieces.flatMap((p,i)=>{const q=g.pieces[(i+1)%g.pieces.length];if(!path.closed&&i===g.pieces.length-1)return [];
-  return d.joins.some(j=>j.mode==='CUSP'&&((p.owners.includes(j.a.curveId)&&q.owners.includes(j.b.curveId))||(p.owners.includes(j.b.curveId)&&q.owners.includes(j.a.curveId)))&&length(sub(p.shape[3],nodeAt(d,j.a).position))<1e-7)?[i]:[];});
+  return d.joins.some(j=>geometryJoinBrush(j).kind==='SHARP'&&((p.owners.includes(j.a.curveId)&&q.owners.includes(j.b.curveId))||(p.owners.includes(j.b.curveId)&&q.owners.includes(j.a.curveId)))&&length(sub(p.shape[3],nodeAt(d,j.a).position))<1e-7)?[i]:[];});
  const display=tracks.length?displayField(d,path):undefined;
  const hasInterior=path.segments.some(u=>curveById(d,u.id).inkEnds?.some(e=>e.interior)),interiorEnds=hasInterior?g.pieces.map(p=>{
   if(p.joinId)return undefined;const id=p.owners[0],use=path.segments.find(u=>u.id===id)!,curve=curveById(d,id);

@@ -2,7 +2,7 @@ import {expect,test} from 'vitest';
 import {createVectorEditingApi,type VectorEditingHost,type VectorResult,type VectorCommand} from '../app/vectorEditingApi';
 import {createEmptyProject} from '../app/emptyProject';
 import {addLayer,ellipse,createCurve,linkEndpoints} from '../domain/drawing/commands';
-import {createFill} from '../domain/drawing/paintCommands';
+import {createFill,movePaint} from '../domain/drawing/paintCommands';
 import {emptyDrawing,shapeOf,type DrawingDocument} from '../domain/drawing/model';
 import {fillGeometry} from '../domain/drawing/appearance';
 import type {LandmarkProject} from '../domain/landmarks/model';
@@ -107,4 +107,20 @@ test('malformed topology and interval commands roll back the entire private draf
   {op:'setCurveInkEnd',curveId:id,end:0,style:{taper:.1,taperWidthScale:2}},
   {op:'setDisplayIntervalEnd',rangeId:'missing',end:0,style:{taper:0}},
  ] as VectorCommand[]){expect(h.api.execute({commands:[{op:'createLayer',name:'Temporary'},command]}).ok).toBe(false);expect(h.state().project).toBe(before);expect(h.state().commits).toBe(0);}
+});
+
+test('canonical IDs beginning with dollar signs are literal and alias collisions fail atomically',()=>{
+ let d=addLayer(emptyDrawing(),'Opaque');d=createCurve(d,d.layers[0].id,[[0,0],[.2,0],[.4,0],[.6,0]],.01,'Literal','$actual');const h=harness(d);
+ value(h.api.execute({commands:[{op:'renameCurve',curveId:'$actual',name:'Works'}]}));const before=h.state().project;
+ error(h.api.execute({commands:[{op:'createLayer',name:'Copy',ref:'actual'}]}),'REFERENCE_COLLISION');expect(h.state().project).toBe(before);
+});
+
+test('duplicate mapping safely includes prototype-like opaque IDs and their nodes',()=>{
+ let d=addLayer(emptyDrawing(),'Opaque');d=createCurve(d,d.layers[0].id,[[0,0],[.2,0],[.4,0],[.6,0]],.01,'Literal','__proto__');const h=harness(d),r=value(h.api.execute({commands:[{op:'duplicateLayer',layerId:d.layers[0].id}]})),map=r.created[0].idMap!;
+ expect(Object.hasOwn(map,'__proto__')).toBe(true);expect(typeof map.__proto__).toBe('string');for(const id of d.curves[0].nodes)expect(Object.hasOwn(map,id)).toBe(true);expect(JSON.parse(JSON.stringify(map)).__proto__).toBe(map.__proto__);
+});
+
+test('fill-only layers expose their owned paints and effective member state without unrelated rig data',()=>{
+ let d=fixture();d=addLayer(d,'Fill only');const layer=d.layers[0].id;d=movePaint(d,d.fills[0].id,layer);d.fills[0]={...d.fills[0],visible:false,locked:true};const h=harness(d),r=value(h.api.inspect({layerIds:[layer],includeRecording:false}));
+ expect(r.curves).toEqual([]);expect(r.fills).toHaveLength(1);expect(r.fills[0]).toMatchObject({id:d.fills[0].id,layerId:layer,selectionRelation:'owned'});expect(r.layers[0].effectiveState).toMatchObject({count:1,anyVisible:false,allVisible:false,anyLocked:true,allLocked:true});expect(r.recording).toBeNull();expect(r.recordingIncluded).toBe(false);
 });

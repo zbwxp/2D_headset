@@ -1874,3 +1874,17 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 来源画稿	Source artwork
 没有包含此图层的画稿	No artwork contains this layer
 恢复后仍是当前画布的修改；更新画稿可保存源稿。录制关键形会保留，返回录制时需检查源稿变化。	This changes the working canvas. Update the artwork to save it. Recording keyforms stay intact; review the source changes when returning to Recording.
+
+末端笔触	Terminus brush	笔触端点
+起侧可见末端	Visible start terminus	笔触起点
+终侧可见末端	Visible end terminus	笔触终点
+内部末端笔触	Interior terminus brush	内部端点笔触
+启用内部末端笔触	Enable interior terminus brush	启用内部端点笔触
+选择一条具体曲线，再设置它的 P0 / P1 几何端的末端笔触。	Select a curve to edit the terminus brush at its P0 / P1 geometry ends.	选择一条具体曲线，再设置它的 P0 / P1 端点笔触。
+末端收尖距离 px	Terminus taper distance px	端点收尖距离 px
+区间起界	Interval start boundary	区间起点
+区间终界	Interval end boundary	区间终点
+区间起界 %	Interval start boundary %	区间起点 %
+区间终界 %	Interval end boundary %	区间终点 %
+起侧可见末端笔触	Visible start terminus brush	区间起点笔触
+终侧可见末端笔触	Visible end terminus brush	区间终点笔触

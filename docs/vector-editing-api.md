@@ -235,3 +235,36 @@ Example closure mask in a newly created piece, inside one batch:
 ```
 
 A later command may set `rangeId:"$hiddenClosure"`. `createCurve` plus `createFill` can construct exact closed source loops in a single atomic batch using aliases; doing so does not claim that two independent loops acquire shared endpoint/tangent constraints.
+
+## Precise terminology and inspection
+
+- **端点 / geometry endpoint** means actual cubic P0/P1, with a canonical node ID
+- **区间 / visibility range** means the path's SHOW/HIDE interval and its start/end bounds
+- **末端 / visible ink terminus** means the visible line's end, which may lie inside a cubic at an interval cut. A range bound is not a new geometry node
+
+The shared brush concepts concern visible terminal/junction appearance. These APIs do not introduce a common endpoint object or the proposed cross-layer logical display contour. Source `setCurveInkEnd` and `setDisplayIntervalEnd` apply only explicitly requested authored style edits; no automatic binding-tip overwrite occurs because new binding commands are not exposed.
+
+`inspect({layerNames:["右眼内结构"],includeRecording:false})` gives a concise source query without rig payload. Layer records include `effectiveState` computed from current members; legacy `visible`/`locked` container fields are neutral and should not be interpreted as inherited gates. Fills and offsets include owner `layerId` and `selectionRelation` (`owned` versus a dependency of selected curves). A paint-only layer is inspectable even when its boundary/source curves live elsewhere. Canonical IDs are opaque: literal `$`-prefixed IDs remain usable, and a new alias that would collide with one is refused. Prototype-like ID strings are retained safely in duplicate mappings.
+
+## Artwork-library transactions (API 1.2)
+
+Artwork metadata and mutations are separate from source command batches:
+
+```js
+api.inspectArtworks({expectedRevision});
+api.artwork({op:"save",name:"Front copy",expectedRevision,dryRun:true});
+api.artwork({op:"save",name:"Front copy",expectedRevision});
+api.artwork({op:"rename",artworkId:"EXACT_ID",name:"Front",expectedRevision});
+api.artwork({op:"restore",artworkId:"EXACT_ID",expectedRevision});
+api.artwork({op:"delete",artworkId:"EXACT_ID",expectedRevision});
+```
+
+Each call accepts exactly one operation and uses one guarded root-store transaction. `save` with no `artworkId` creates a fresh ID, even if another artwork has the same name. `save` with an explicit `artworkId` updates that existing snapshot and retains its ID/rig association; an unknown ID fails instead of creating another artwork. `rename` changes only the label and never captures unsaved working geometry. Names may be trimmed; IDs never are.
+
+`restore` refuses when the working source is dirty or unsaved. Prefer saving a new artwork first. `discardUnsaved:true` explicitly permits restoring over those working changes; normal Undo still recovers the previous state. `delete` removes only the saved checkpoint and preserves the current working source. Deletion is rejected with `ARTWORK_HAS_RIG` whenever a recording rig references that artwork, preventing orphaned keyforms. There is no implicit rig migration/archive or permanent purge.
+
+Artwork reads work in either mode; writes require Drawing. Stale revisions, malformed fields, operation arrays, failed validation and dry runs create no history entry. A new ID returned by a save dry-run is provisional. The default host uses `beginEdit → setDrawingSnapshotState → endEdit`, preserving the store's existing first-save `$working` rig migration. Custom hosts may implement optional synchronous `commitArtwork(state)`; without it, mutation returns `UNAVAILABLE` while metadata reads and dry-run planning remain usable.
+
+The visible console can route explicit whitelisted envelopes such as `{"method":"artwork","request":{"op":"save","name":"Front copy"}}` or `{"method":"inspectArtworks","request":{}}`. The API itself never executes arbitrary supplied code or replaces the raw project.
+
+Artwork regression coverage: `npx vitest run src/tests/vector-artwork-api.test.ts`. This verifies stable identity, first-save rig mapping, dirty-source protection, rig-bound deletion refusal, exact Undo/Redo, Recording restrictions, dry runs and opaque artwork IDs.

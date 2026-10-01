@@ -5,9 +5,14 @@ import {validateRecordingReference} from '../recording/reference';
 import {drawingItemById} from './lookup';
 export type {Point2,Cubic};
 export type End=0|1;
-export interface Endpoint {curveId:string;end:End}
+/** A real, movable Bézier end attached to a canonical node and handle. */
+export interface GeometryEndpoint {curveId:string;end:End}
+/** Compatibility name. This NEVER refers to a display cut or rendered ink terminus. */
+export type Endpoint=GeometryEndpoint;
 /** Position coupling only. Nodes, strokes, ink styles and layer ownership stay separate. */
-export interface EndpointLink {id:string;a:Endpoint;b:Endpoint}
+export interface GeometryEndpointLink {id:string;a:GeometryEndpoint;b:GeometryEndpoint}
+/** Serialized a/b shape is retained; no dataset migration is needed. */
+export type EndpointLink=GeometryEndpointLink;
 export interface DrawingNode {id:string;position:Point2}
 export type Profile='UNIFORM'|'TAPER_END'|'TAPER_BOTH'|'EYELID';
 export interface InkStyle {profile?:Profile;profileReverse?:boolean}
@@ -22,9 +27,18 @@ export const validContourMist=(v:unknown):boolean=>{
  return (m.mode===undefined||m.mode==='INK_EDGE')&&typeof m.enabled==='boolean'&&Number.isFinite(m.width)&&m.width>=.25/250&&m.width<=(m.mode?3:60)/250&&Number.isFinite(m.density)&&m.density>=0&&m.density<=(m.mode?1:5);
 };
 /** Ink only. Distances use the same logical units as curve width; absent taper uses the preset. */
-export interface InkEndStyle {taper?:number;taperWidthScale?:number;extension?:number;/** Explicit opt-in at an interior join; legacy outer-end defaults never activate it. */interior?:boolean}
+export interface TerminusBrushStyle {taper?:number;taperWidthScale?:number;extension?:number;/** Explicit opt-in at an interior join; legacy outer-end defaults never activate it. */interior?:boolean}
+/** Compatibility type for the existing inkEnds JSON field. Appearance only. */
+export type InkEndStyle=TerminusBrushStyle;
 export const inkTaperDistance=(end:InkEndStyle,width:number,fallback=0)=>end.taper??(end.taperWidthScale!==undefined?end.taperWidthScale*width:fallback);
-export type InkEnds=[InkEndStyle,InkEndStyle];
+export type TerminusBrushPair=[TerminusBrushStyle,TerminusBrushStyle];
+export type InkEnds=TerminusBrushPair;
+/** A coverage boundary is an arc-location reference, never a movable geometry node. */
+export interface DisplayIntervalBoundary {trackId:string;rangeId:string;side:0|1}
+/** Read-only render output. No node, curve-end edit command or binding behavior. */
+export interface ResolvedVisibleTerminus {kind:'VISIBLE_TERMINUS';support:Point2;point:Point2;direction:Point2;brush:TerminusBrushStyle}
+/** ARC trimDistance is per-side trim influence, not a fixed circular radius. */
+export type TerminusJoinBrush={kind:'SHARP'}|{kind:'SMOOTH'}|{kind:'ARC';trimDistance:number};
 export const DEFAULT_PEN_TAPER_SCALE=20;
 export const MAX_PEN_TAPER_SCALE=200;
 export interface CurveUse {id:string;reverse:boolean}
