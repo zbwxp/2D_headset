@@ -6,6 +6,7 @@ import {addLayer,createCurve,ellipse} from '../domain/drawing/commands';
 import {createFill} from '../domain/drawing/paintCommands';
 import {emptyDrawing,parseDrawing,shapeOf} from '../domain/drawing/model';
 import {strokes} from '../domain/drawing/strokes';
+import {displayField,displayPath} from '../domain/drawing/displayIntervals';
 import type {LandmarkProject} from '../domain/landmarks/model';
 
 const guide=readFileSync(new URL('../../docs/ai-authoring-guide.md',import.meta.url),'utf8');
@@ -56,4 +57,10 @@ test('the recorded real two-face recipe replays using returned IDs instead of st
  const arc=JSON.parse(readFileSync(new URL('../../docs/examples/two-face-arc-depth-executed-api-recipe.json',import.meta.url),'utf8')),geometry=d.curves.map(c=>({id:c.id,shape:shapeOf(d,c.id)})),fills=structuredClone(d.fills);
  for(const step of [arc.arcBatch,arc.depthBatch]){const result=api.execute({commands:replace(step.commands) as VectorCommand[],expectedRevision:api.inspect().revision});expect(result.ok,result.ok?'':JSON.stringify(result.error)).toBe(true);}
  const final=project.drawing!;expect(final.curves.map(c=>({id:c.id,shape:shapeOf(final,c.id)}))).toEqual(geometry);expect(final.fills).toEqual(fills);expect(final.curves.find(c=>c.id===refs.get('left1'))).toMatchObject({depthOffset:1,depthScope:'LAYER'});expect(final.endpointLinks!.find(l=>l.id===newerRefs.get('chinLink'))).toMatchObject({throughDisplay:true,joinBrush:{kind:'ARC',trimDistance:.05257222158088604}});expect(final.displayIntervals!.filter(t=>t.displayRoute)).toHaveLength(2);expect(past).toHaveLength(4);
+});
+
+
+test('the chosen one-SHOW actual recipe preserves resolved coverage, brushes and every non-interval source field',()=>{
+ const seed=parseDrawing(JSON.parse(readFileSync(new URL('../assets/hairless-symmetric-two-face.json',import.meta.url),'utf8'))),record=JSON.parse(readFileSync(new URL('../../docs/examples/two-face-one-show-executed-api-recipe.json',import.meta.url),'utf8')),d=parseDrawing({...seed,displayIntervals:[...(seed.displayIntervals??[]).filter(t=>!t.displayRoute),...record.beforeRoutedIntervals]});let project:LandmarkProject={...createEmptyProject(),drawing:d};const past:LandmarkProject[]=[];const api=createVectorEditingApi({getState:()=>({project,past,future:[]}),getMode:()=> 'drawing',commitDrawing(drawing){past.push(project);project={...project,drawing};},undo(){const p=past.pop();if(p)project=p;},redo(){}}),owner=d.endpointLinks!.find(l=>l.throughDisplay)!.a.curveId,before=displayField(d,displayPath(d,owner)).inkSpans;
+ const request={...record.request,expectedRevision:api.inspect().revision};expect(api.execute({...request,dryRun:true}).ok).toBe(true);expect(project.drawing).toBe(d);const applied=api.execute(request);expect(applied.ok,JSON.stringify(applied)).toBe(true);expect(displayField(project.drawing!,displayPath(project.drawing!,owner)).inkSpans).toEqual(before);expect({...project.drawing,displayIntervals:undefined}).toEqual({...d,displayIntervals:undefined});expect(project.drawing!.displayIntervals!.filter(t=>t.displayRoute).flatMap(t=>t.ranges)).toHaveLength(1);expect(past).toHaveLength(1);expect(api.undo().ok).toBe(true);expect(project.drawing).toBe(d);
 });

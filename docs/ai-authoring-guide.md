@@ -13,11 +13,11 @@
 打开应用的「AI 编辑」界面。文本框接受两种固定 JSON 形态：
 
 - 普通批次：包含 `commands` 数组，可附 `expectedRevision` 与 `dryRun` 字段
-- 固定方法：包含 `method` 与 `request`；method 只允许 `inspect`、`preview`、`artwork`、`inspectArtworks`
+- 固定方法：包含 `method` 与 `request`；源稿 method 为 `inspect`、`preview`、`artwork`、`inspectArtworks`
 
 点击「预演命令」只检查；点击「执行（可撤销）」提交。界面的「检查源稿」和「导出源稿 JSON」是独立按钮。输出可从 `data-testid="ai-api-result"` 读取；预览成功时会显示「源稿预览」图像。不要解析整个对话框的文字，也不要向文本框发送函数、脚本或未知 method。
 
-程序接入使用固定的 `window.contourAI` 方法：`help / inspect / execute / preview / select / exportSource / inspectArtworks / artwork / undo / redo / convertPoint`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。当前可见 JSON 路由只接受上面四个 method，不能凭方法列表推断所有方法都可通过同一个界面信封调用。
+程序接入使用固定的 `window.contourAI` 方法：`help / inspect / execute / preview / select / exportSource / inspectArtworks / artwork / undo / redo / convertPoint`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。API 1.5 另提供 `inspectRecording / recording / previewRecording`；API 1.6 提供 `inspectView / view`。新方法需确认对应应用部署，不能凭源码中的方法列表推断当前界面已经可调用。
 
 <!-- tested: inspect-nose -->
 ```json
@@ -197,7 +197,7 @@
 {"method":"preview","request":{"width":600,"height":600,"showFills":true,"expectedRevision":"LATEST_REVISION"}}
 ```
 
-普通预览和导出干净，不包含 AI 辅助线。需要机器辅助时，显式传 `annotations:{curveIds:[...],grid:true,labels:true,handles:true,diagnostics:true}`，最多 32 曲线。辅助视图是临时状态，不写进画稿。对比前后图时固定 center、pixelsPerUnit 和输出尺寸，避免自动适配造成伪位移。浏览器外带雾化填充的预览可能返回 `BROWSER_REQUIRED`，不能偷偷换成简化外观。
+临时参考画稿、辅助线和标尺使用独立的 [视图接口](vector-workspace-view-api.md)，不写源稿或 Undo。普通预览和导出干净，不包含 AI 辅助线。需要机器辅助时，显式传 `annotations:{curveIds:[...],grid:true,labels:true,handles:true,diagnostics:true}`，最多 32 曲线。辅助视图是临时状态，不写进画稿。对比前后图时固定 center、pixelsPerUnit 和输出尺寸，避免自动适配造成伪位移。浏览器外带雾化填充的预览可能返回 `BROWSER_REQUIRED`，不能偷偷换成简化外观。
 
 ## 10 本次实际操作记录
 
@@ -225,6 +225,14 @@
 这不是所有画稿都要套用的常数。先检查几何位置与宽度，再检查 SHOW/HIDE 和有效笔触，最后检查填充与 depth/绘制顺序。本次修正保持所属图层、6 个脸片节点与两个填充不变，只调整一个元素的相对绘制层次。
 
 实际 ARC、深度修正、保存与视觉核验结果见 [双脸片 ARC 与层次 API 配方](examples/two-face-arc-depth-executed-api-recipe.json)。最终快照名为「无发·对称双脸片」，完整工程重新载入后源 JSON 一致。
+
+### 最终区间简化：一段跨下巴的 SHOW
+
+随后按用户对这张脸的明确选择，在保留原稿的副本中把四段 HIDE 简化为一段 SHOW：`[0.38526009094373365,0.6147399090562666]`，沿现有跨层路径只显示两侧下颌与下巴接笔，其余由 SHOW 规则隐藏。保留范围 ID `395ebef8-81c0-4a2d-ae61-34096a9c38a8`，移除另外三个范围，没有重画任何边界。
+
+这是已实际执行、Undo 核验并保存的「无发·对称双脸片·简化区间」。含填充的前后 SVG 字节完全一致；独立 API 检查中可见材料范围、两端收尖、几何和填充也一致。[实际请求和保存结果](examples/two-face-one-show-executed-api-recipe.json) 保留了这次记录。此前“四 HIDE”是构建步骤，不是最终所选区间配置；两段 HIDE 方案只作等价比较，没有作为最终稿执行。
+
+该等价关系只针对当时这份路径和笔触配置。后续修改 SHOW 边界仍应进行跨 0/1、空/整圈、小幅变形、Undo 与重载检查；不要把本次静态等价当作通用简化规则。右侧 90° 的第一轮参考源稿已另行制作，但参考画稿不是完成的转头 rig，也不代表各中间角度已视觉验收。
 
 ## 11 最后检查与测试来源
 

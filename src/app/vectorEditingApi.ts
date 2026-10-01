@@ -30,8 +30,10 @@ import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirror
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {RecordingApiError,prepareRecordingBatch,recordingOverview,evaluateRecording,recordingCommandNames,type RecordingBatch,type RecordingQuery,type RecordingCommand} from './vectorRecordingApi';
 import type {VectorRecording} from '../domain/vectorRecording/model';
+import {getWorkspaceView,prepareWorkspaceView,replaceWorkspaceView,type WorkspaceView,type WorkspaceViewCommand} from './workspaceView';
+import {snapWorkspacePoint} from './workspaceViewSnap';
 
-export const VECTOR_AI_VERSION='1.5';
+export const VECTOR_AI_VERSION='1.6';
 export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimension:4096,name:256} as const);
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
@@ -84,6 +86,8 @@ export interface VectorEditingHost {
  commitDrawing(drawing:DrawingDocument):void;
  commitArtwork?(state:DrawingSnapshotState):void;
  commitRecording?(recording:VectorRecording):void;
+ getView?():WorkspaceView;
+ replaceView?(view:WorkspaceView):void;
  undo():void;redo():void;
  selectCurveIds?(ids:string[]):void;
  getSelection?():unknown;
@@ -332,6 +336,7 @@ function defaultHost():VectorEditingHost{
    if(!canEditSource())fail('MODE_RESTRICTED','Artwork writes require Drawing mode. Change modes in the workspace first.');
    const e=useEditor.getState();e.beginEdit();try{e.setDrawingSnapshotState(state);}finally{e.endEdit();}
   },
+  getView:getWorkspaceView,replaceView:replaceWorkspaceView,
   commitRecording(recording){if(useWorkspaceMode.getState().mode!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode.');useEditor.getState().commitVectorRecording(recording);},
   undo:()=>useEditor.getState().undo(),redo:()=>useEditor.getState().redo(),
   selectCurveIds:ids=>useDrawing.getState().set({selection:{ids},tool:'direct'}),
@@ -354,6 +359,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   try{return {ok:true,value:action(),revision:revision()};}
   catch(error){const e=error as Error;return {ok:false,revision:revision(),error:{code:e instanceof ApiError||e instanceof ArtworkApiError||e instanceof RecordingApiError?e.code:'CONSTRAINT_VIOLATION',message:e.message??String(error),...((e instanceof ApiError||e instanceof RecordingApiError)&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{}),...(e instanceof ApiError&&e.relatedCurveIds?{relatedCurveIds:e.relatedCurveIds}:e instanceof RelatedSelection?{relatedCurveIds:e.ids}:{})}};}
  }
+ function runView<T>(action:()=>T):{ok:true;value:T}|{ok:false;error:{code:string;message:string;commandIndex?:number}}{try{return {ok:true,value:action()};}catch(error){const e=error as Error;return {ok:false,error:{code:e instanceof ApiError?e.code:'VIEW_INVALID',message:e.message,...(e instanceof ApiError&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{})}};}}
  function expected(value:unknown){if(value!==undefined&&string(value,'expectedRevision')!==revision())fail('STALE_REVISION','The project changed. Inspect again and recompute the edit.');}
  const source=()=>host.getState().project.drawing??emptyDrawing();
  function prepare(input:unknown){
@@ -446,8 +452,19 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
  }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording','inspectView','view','snapView'],viewCommands:['setReference','addGuide','changeGuide','deleteGuides','setGuideOptions','resetView'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
+  inspectView:(request:Record<string,never>={})=>runView(()=>{const r=record(request);keys(r,[]);if(!host.getView)fail('UNAVAILABLE','This host does not expose transient workspace view.');return {view:clone(host.getView!()),transient:true,sourceReadOnly:true};}),
+  snapView:(request:{point:Point2;unitsPerPixel:number;thresholdPx?:number;excludeCurveIds?:string[];targetSpace?:'source'})=>runView(()=>{
+   const r=record(request);keys(r,['point','unitsPerPixel','thresholdPx','excludeCurveIds','targetSpace']);if(r.targetSpace!==undefined&&r.targetSpace!=='source')fail('INVALID_REQUEST','snapView currently supports targetSpace: source only, not posed or child-local coordinates.');if(!host.getView)fail('UNAVAILABLE','This host does not expose transient workspace view.');const d=source(),p=point(r.point,'point'),scale=num(r.unitsPerPixel,'unitsPerPixel',1e-9,1e6),threshold=r.thresholdPx===undefined?8:num(r.thresholdPx,'thresholdPx',0,1000),excluded=r.excludeCurveIds===undefined?[]:ids(r.excludeCurveIds,'excludeCurveIds',true);excluded.forEach(id=>curveExists(d,id));
+   return {targetSpace:'source' as const,candidate:clone(snapWorkspacePoint(d,host.getState().project.drawingSnapshots,host.getView!(),p,scale,threshold,excluded)),transient:true,sourceReadOnly:true};
+  }),
+  view:(request:{commands:WorkspaceViewCommand[];dryRun?:boolean})=>runView(()=>{
+   const r=record(request);keys(r,['commands','dryRun']);bool(r.dryRun,'dryRun');if(!Array.isArray(r.commands)||r.commands.length>200)fail('INVALID_REQUEST','View commands must be an array of at most 200 commands.');if(!host.getView||!host.replaceView)fail('UNAVAILABLE','This host does not expose transient workspace view.');
+   const before=host.getView!();let next=clone(before);for(const [index,c] of (r.commands as WorkspaceViewCommand[]).entries())try{next=prepareWorkspaceView(next,[c],host.getState().project.drawingSnapshots);}catch(error){throw new ApiError('VIEW_INVALID',(error as Error).message,index);}
+   const changed=JSON.stringify(before)!==JSON.stringify(next),dryRun=r.dryRun===true;if(changed&&!dryRun)host.replaceView!(next);
+   return {view:clone(next),changed,dryRun,applied:changed&&!dryRun,transient:true,sourceReadOnly:true,createdGuideIds:next.guides.filter(g=>!before.guides.some(b=>b.id===g.id)).map(g=>g.id),removedGuideIds:before.guides.filter(g=>!next.guides.some(n=>n.id===g.id)).map(g=>g.id)};
+  }),
   inspectRecording:(query:RecordingQuery={})=>run(()=>{const q=record(query);expected(q.expectedRevision);return {mode:host.getMode(),recordingEditable:host.getMode()==='recording',...recordingOverview(host.getState().project,q)};}),
   recording:(request:RecordingBatch)=>run(()=>{
    const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode and never mutate source artwork.');

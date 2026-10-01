@@ -1,3 +1,7 @@
+import {getWorkspaceView,useWorkspaceView} from '../../app/workspaceView';
+import {snapWorkspacePoint} from '../../app/workspaceViewSnap';
+import ArtworkReference from '../workspaceView/ArtworkReference';
+import ViewGuidesOverlay from '../workspaceView/ViewGuidesOverlay';
 import {beginIntervalDrag,updateIntervalDrag,type IntervalDragState} from '../../domain/drawing/intervalDrag';
 import {setMirrorEditingEnabled} from '../../domain/drawing/mirrorCommands';
 import {mirrorWritesForCurves,type MirrorAuthoredWrites} from '../../domain/drawing/mirrorEditing';
@@ -51,12 +55,13 @@ export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode
 export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{underlay?:(view:DrawingUnderlay)=>ReactNode;artworkPreview?:DrawingArtworkPreview;aiGuides?:boolean}={}){
  const {editor:useEditor,session:useDrawing,commitDrawing,id:workspaceId}=useDrawingWorkspace();
  useLanguage(s=>s.language);
+ const rulerSpace=useWorkspaceView(s=>s.rulersVisible)?20:0;
  const rawStored=useEditor(s=>s.project.drawing)??EMPTY,stored=useMemo(()=>rawStored.version===3?rawStored:parseDrawing(rawStored),[rawStored]),projectId=useEditor(s=>s.project.meta.createdAt),session=useDrawing();
  const {tool,selection,layerId,zoom,pan,preview,sidebar,width,penJoin,showFills,fillVisibility}=session;
  const panelHeight=session.panelHeight,setPanelHeight=(value:number)=>session.set({panelHeight:value});
  const [draft,setDraft]=useState<Doc|null>(null),[hint,setHint]=useState(''),[first,setFirst]=useState<Endpoint|null>(null),[pen,setPen]=useState<Pen|null>(null),[penPreview,setPenPreview]=useState<Cubic|null>(null);
  const [pending,setPending]=useState<{ids:string[];scope:string[];mirror?:{source:string;target:string;base:Doc}}|null>(null),[referenceMoving,setReferenceMoving]=useState(false),[box,setBox]=useState<{a:Point2;b:Point2}|null>(null);
- const [zoomOut,setZoomOut]=useState(false),[axisSnap,setAxisSnap]=useState<Point2|null>(null),[nodeSnap,setNodeSnap]=useState<Point2|null>(null);
+ const [zoomOut,setZoomOut]=useState(false),[axisSnap,setAxisSnap]=useState<Point2|null>(null),[nodeSnap,setNodeSnap]=useState<Point2|null>(null),[guideSnap,setGuideSnap]=useState<{point:Point2;kind:string}|null>(null);
  const [deformCage,setDeformCage]=useState<DeformCage|null>(null);
  const [propertiesOpen,setPropertiesOpen]=usePanelOpen(workspaceId+'.properties',false);
  const [restoreLayerId,setRestoreLayerId]=useState<string|null>(null);
@@ -70,6 +75,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const d=draft??stored,unit=Math.min(size.width,size.height)/2.8*zoom;
  const screen=(p:Point2):Point2=>[size.width/2+pan[0]+p[0]*unit,size.height/2+pan[1]-p[1]*unit];
  const local=(e:{clientX:number;clientY:number}):Point2=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left-size.width/2-pan[0])/unit,-(e.clientY-r.top-size.height/2-pan[1])/unit];};
+ function guideCandidate(base:Doc,p:Point2,bypass:boolean,excluded:string[]=[]){return bypass?null:snapWorkspacePoint(base,useEditor.getState().project.drawingSnapshots,getWorkspaceView(),p,1/unit,8,excluded);}
  const selected=selection.ids.filter(id=>d.curves.some(c=>c.id===id)),activeLayer=d.layers.find(l=>l.id===layerId)??d.layers[0],bounds=useMemo(()=>selectionBounds(d,selected),[d,selection]);
  // Keep the same source geometry across successive corner drags: never accumulate fit errors.
  const cage=useMemo<DeformCage|null>(()=>{
@@ -90,7 +96,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
  const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection))=>{if(n===stored)return;n=finalizeGeometryEdit(stored,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==stored[k as keyof Doc]))artworkPreview.edit();own.current=n;commitDrawing(n);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
- const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
+ const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
  function run(fn:()=>Doc){try{const n=fn();commit(n);setHint('');}catch(e){error(e);}}
  function choose(next:DrawingSelection,mode?:DrawingTool){
@@ -186,14 +192,14 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(referenceMoving&&d.reference&&!d.reference.locked){startDrag(e,'reference');return;}
   if(preview||artworkPreview)return;
   if(endpointTools){const hit=pickEndpoint(local(e));if(hit)connectAt(hit);else setHint(t('请点击曲线端点。'));return;}
-  if(tool==='pen'){if(!activeLayer){setHint(t('请先新建绘制层。'));return;}startDrag(e,'pen',{pen,cursor:local(e)});return;}
+  if(tool==='pen'){if(!activeLayer){setHint(t('请先新建绘制层。'));return;}const hit=guideCandidate(stored,local(e),e.altKey),p=hit?.point??local(e);setGuideSnap(hit);startDrag(e,'pen',{pen,start:p,cursor:p,origin:local(e)});return;}
   if(tool==='ellipse'){startDrag(e,'ellipse');return;}
   if(tool==='select'||tool==='direct'){if(!e.shiftKey)choose({ids:[]},tool);startDrag(e,'box',{shift:e.shiftKey});}
  }
  function fit(){const b=selectionBounds(d,shownCurves);if(!b){session.set({zoom:1,pan:[0,0]});return;}const base=Math.min(size.width,size.height)/2.8,z=Math.max(.1,Math.min(8,Math.min((size.width-100)/Math.max(.1,b.max[0]-b.min[0]),(size.height-100)/Math.max(.1,b.max[1]-b.min[1]))/base));session.set({zoom:z,pan:[-b.center[0]*base*z,b.center[1]*base*z]});}
  function zoomAt(e:{clientX:number;clientY:number},value:number){const z=Math.max(.1,Math.min(12,value)),p=local(e),r=svg.current!.getBoundingClientRect(),u=unit*z/zoom;session.set({zoom:z,pan:[e.clientX-r.left-size.width/2-p[0]*u,e.clientY-r.top-size.height/2+p[1]*u]});}
  function move(e:React.PointerEvent|PointerEvent){
-  const p=local(e);const g=drag.current;
+  let p=local(e);const g=drag.current;if(!g&&tool==='pen'){const hit=guideCandidate(stored,p,e.altKey);setGuideSnap(hit);if(hit)p=hit.point;}
   if(g){if(e.pointerId!==g.pointerId)return;g.last={clientX:e.clientX,clientY:e.clientY};}
   if(!g){if(artworkPreview)return;if(tool==='pen'&&pen){const chord=sub(p,pen.position);setPenPreview([pen.position,add(pen.position,(!pen.last||penJoin==='SMOOTH')&&length(pen.out)>1e-7?pen.out:mul(chord,1/3)),sub(p,mul(chord,1/3)),p]);}
    if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(finalizeGeometryEdit(stored,tool==='link'?cmd.linkEndpoints(stored,first,target,true):cmd.connect(stored,first,target,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION')));}catch{setDraft(null);}else setDraft(null);}return;}
@@ -206,7 +212,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   try{
    if(g.kind==='pan'){session.set({pan:add(g.pan!,[e.clientX-g.client[0],e.clientY-g.client[1]])});return;}
    if(g.kind==='box'){setBox({a:g.start,b:p});return;}
-   if(g.kind==='pen'){g.cursor=p;if(g.pen&&length(sub(g.start,g.pen.position))*unit>2){const n=penCandidate(g.base,g.pen,g.start,p);g.next=n.document;setDraft(n.document);setPenPreview(null);}else setPenPreview(null);return;}
+   if(g.kind==='pen'){if(g.origin)p=add(g.start,sub(p,g.origin));g.cursor=p;if(g.pen&&length(sub(g.start,g.pen.position))*unit>2){const n=penCandidate(g.base,g.pen,g.start,p);g.next=n.document;setDraft(n.document);setPenPreview(null);}else setPenPreview(null);return;}
    if(g.kind==='ellipse'){const n=cmd.ellipse(g.base,activeLayer!.id,g.start,e.shiftKey?add(g.start,[Math.sign(delta[0])*Math.max(Math.abs(delta[0]),Math.abs(delta[1])),Math.sign(delta[1])*Math.max(Math.abs(delta[0]),Math.abs(delta[1]))]):p,width);g.next=n.document;}
    if(g.kind==='mirrorAxis'){
     const x=(g.base.mirrorAxisX??0)+delta[0],nodeIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
@@ -217,13 +223,13 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     let position=add(g.base.nodes.find(n=>n.id===g.node)!.position,delta);
     const visibleIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
     const coupled=linkedNodeIds(g.base,g.node!);const target=g.base.nodes.filter(n=>!coupled.has(n.id)&&visibleIds.has(n.id)).map(n=>({n,distance:length(sub(n.position,position))*unit})).filter(x=>x.distance<=9).sort((a,b)=>a.distance-b.distance)[0]?.n;
-    const axis=g.base.mirrorAxisX??0,snapped=target?.position??(Math.abs(position[0]-axis)*unit<=8?[axis,position[1]] as Point2:null);
-    if(snapped)position=[...snapped];g.next=dragNode(g.base,g.node!,position,g.followStrength??0);setNodeSnap(snapped);
+    const axis=g.base.mirrorAxisX??0,guide=guideCandidate(g.base,position,e.altKey,g.base.curves.filter(c=>c.nodes.some(n=>coupled.has(n))).map(c=>c.id)),snapped=e.altKey?null:guide?.point??target?.position??(Math.abs(position[0]-axis)*unit<=8?[axis,position[1]] as Point2:null);
+    if(snapped)position=[snapped[0],snapped[1]];g.next=dragNode(g.base,g.node!,position,g.followStrength??0);const actual=g.next.nodes.find(n=>n.id===g.node)!.position,kept=snapped&&Math.hypot(actual[0]-snapped[0],actual[1]-snapped[1])<1e-10;setNodeSnap(kept&&!guide?snapped:null);setGuideSnap(kept&&guide?guide:null);
    }
    if(g.kind==='displayInterval'){
     const grip=g.displayInterval!,result=updateIntervalDrag(g.intervalWalk!,p);g.intervalWalk=result.state;if(Object.keys(result.change).length)g.next=changeDisplayInterval(g.base,grip.track,grip.range,result.change);
    }
-   if(g.kind==='handle')g.next=cmd.moveHandle(g.base,g.endpoint!,add(curveById(g.base,g.endpoint!.curveId).handles[g.endpoint!.end],delta));
+   if(g.kind==='handle'){const target=add(curveById(g.base,g.endpoint!.curveId).handles[g.endpoint!.end],delta),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=cmd.moveHandle(g.base,g.endpoint!,hit?.point??target);setGuideSnap(hit);}
    if(g.kind==='deform'){
     const original=g.cage!,quad=original.quad.map(q=>[...q]) as Quad;quad[g.corner!]=add(quad[g.corner!],delta);
     const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current);g.next=result.document;
@@ -233,12 +239,12 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},!!approved.current);}
    if(g.kind==='scale'){const o=g.origin!,start=sub(g.start,o),now=sub(p,o),safe=(v:number)=>Math.abs(v)<.01?(v<0?-.01:.01):v;let sx=safe(Math.abs(start[0])<1e-9?1:now[0]/start[0]),sy=safe(Math.abs(start[1])<1e-9?1:now[1]/start[1]);if(e.shiftKey)sy=sx;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},!!approved.current);}
    if(g.kind==='reference'&&g.base.reference){const ref=g.base.reference;g.next={...g.base,reference:{...ref,offset:add(ref.offset,delta).map(clampReferenceOffset) as Point2}};}
-   if(g.next){const writes=g.kind==='node'?mirrorIntent(g.next,{ids:[],node:g.node}):g.kind==='handle'?mirrorIntent(g.next,{ids:[],handle:g.endpoint}):g.ids?mirrorWritesForCurves(g.next,g.ids):{};g.next=finalizeGeometryEdit(g.base,g.next,writes);setDraft(g.next);}
+   if(g.next){const writes=g.kind==='node'?mirrorIntent(g.next,{ids:[],node:g.node}):g.kind==='handle'?mirrorIntent(g.next,{ids:[],handle:g.endpoint}):g.ids?mirrorWritesForCurves(g.next,g.ids):{};g.next=finalizeGeometryEdit(g.base,g.next,writes);if(g.kind==='handle'){const actual=curveById(g.next,g.endpoint!.curveId).handles[g.endpoint!.end];setGuideSnap(hit=>hit&&Math.hypot(hit.point[0]-actual[0],hit.point[1]-actual[1])<1e-10?hit:null);}setDraft(g.next);}
   }catch(ex){if(ex instanceof cmd.RelatedSelection){cancelDraft();error(ex,g.ids);}else setHint(t((ex as Error).message));}
  }
  function up(e?:PointerEvent|MouseEvent,interrupted=false){
   const g=drag.current;if(!g)return;
-  drag.current=null;setAxisSnap(null);setNodeSnap(null);setDraft(null);setBox(null);
+  drag.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);
   release(g.pointerId);
   if((useEditor.getState().project.drawing??EMPTY)!==g.base){setPenPreview(null);return;}
   try{
@@ -355,6 +361,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  }}>{t(referenceMoving?'完成图片平移':ref?.locked?'解锁并平移参考图':'平移参考图')}</button></div>}
  <svg ref={svg} width="100%" height="100%" tabIndex={0} data-testid="drawing-canvas" aria-label={t('绘制画布')} onContextMenu={e=>e.preventDefault()} onPointerDown={down} onPointerEnter={e=>setZoomOut(e.ctrlKey||e.altKey)} onPointerMove={e=>{setZoomOut(e.ctrlKey||e.altKey);if(!drag.current)move(e);}} onWheel={e=>{if(!drag.current)zoomAt(e,zoom*Math.exp(-e.deltaY*.001));}}>
  {ref?.visible&&<image data-testid="drawing-reference" href={ref.dataUrl} width={refSize[0]} height={refSize[1]} x={-refSize[0]/2} y={-refSize[1]/2} opacity={ref.opacity} transform={`translate(${screen(ref.offset)}) rotate(${ref.rotation})`} pointerEvents="none"/>}
+ <ArtworkReference screen={screen} unit={unit}/>
  {underlay?.({...size,unit,pan})}
  {/* The wide guide hit target sits behind geometry, so curve/point picking wins. */}
  {!preview&&!artworkPreview&&<line data-testid="drawing-mirror-drag" x1={screen([d.mirrorAxisX??0,0])[0]} x2={screen([d.mirrorAxisX??0,0])[0]} y1={0} y2={size.height} stroke="transparent" strokeWidth="8" pointerEvents={!referenceMoving&&['select','direct','mirror'].includes(tool)?'stroke':'none'} style={{cursor:'ew-resize'}} onPointerDown={axisDown}/>}
@@ -362,9 +369,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {aiGuides&&<AIGuideOverlay d={d} curveIds={[...selected,...(selection.handle?[selection.handle.curveId]:[])]} screen={screen} unit={unit} width={size.width} height={size.height}/>}
  {!preview&&!artworkPreview&&<g data-testid="drawing-mirror-guide">
   <line data-testid="drawing-mirror-axis" x1={screen([d.mirrorAxisX??0,0])[0]} x2={screen([d.mirrorAxisX??0,0])[0]} y1={0} y2={size.height} stroke={axisSnap?'#209978':selection.mirrorAxis?'#2589b0':'#d18d36'} strokeWidth="1.3" strokeDasharray="7 5" pointerEvents="none"/>
-  <rect data-testid="drawing-mirror-grip" x={screen([d.mirrorAxisX??0,0])[0]-10} y={5} width={20} height={16} rx={3} fill={selection.mirrorAxis?'#d8f1fc':'#fff6df'} stroke="#d18d36" pointerEvents={!referenceMoving&&tool!=='hand'&&tool!=='zoom'&&tool!=='deform'?'all':'none'} style={{cursor:'ew-resize'}} onPointerDown={axisDown}><title>{t('拖动镜像轴，靠近端点时吸附')}</title></rect>
-  <path d={`M ${screen([d.mirrorAxisX??0,0])[0]-5} 10 v 6 M ${screen([d.mirrorAxisX??0,0])[0]} 10 v 6 M ${screen([d.mirrorAxisX??0,0])[0]+5} 10 v 6`} stroke="#b07e32" pointerEvents="none"/>
-  <text x={screen([d.mirrorAxisX??0,0])[0]+15} y={18} fill="#aa742d" fontSize="12" pointerEvents="none">{t('镜像轴 · 拖动吸附端点')}</text>
+  <rect data-testid="drawing-mirror-grip" x={screen([d.mirrorAxisX??0,0])[0]-10} y={5+rulerSpace} width={20} height={16} rx={3} fill={selection.mirrorAxis?'#d8f1fc':'#fff6df'} stroke="#d18d36" pointerEvents={!referenceMoving&&tool!=='hand'&&tool!=='zoom'&&tool!=='deform'?'all':'none'} style={{cursor:'ew-resize'}} onPointerDown={axisDown}><title>{t('拖动镜像轴，靠近端点时吸附')}</title></rect>
+  <path d={`M ${screen([d.mirrorAxisX??0,0])[0]-5} ${10+rulerSpace} v 6 M ${screen([d.mirrorAxisX??0,0])[0]} ${10+rulerSpace} v 6 M ${screen([d.mirrorAxisX??0,0])[0]+5} ${10+rulerSpace} v 6`} stroke="#b07e32" pointerEvents="none"/>
+  <text x={screen([d.mirrorAxisX??0,0])[0]+15} y={18+rulerSpace} fill="#aa742d" fontSize="12" pointerEvents="none">{t('镜像轴 · 拖动吸附端点')}</text>
   {axisSnap&&<g data-testid="drawing-mirror-snap" pointerEvents="none"><circle cx={screen(axisSnap)[0]} cy={screen(axisSnap)[1]} r={7} fill="#d7f5e9" stroke="#209978" strokeWidth="2"/><text x={screen(axisSnap)[0]+12} y={screen(axisSnap)[1]-10} fill="#168065" fontSize="12">{t('已吸附端点')}</text></g>}
  </g>}
  {!preview&&!artworkPreview&&!referenceMoving&&<>
@@ -393,6 +400,8 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {tool==='pen'&&visiblePen&&<g pointerEvents="none" data-testid="drawing-pen-anchor"><circle cx={screen(visiblePen.position)[0]} cy={screen(visiblePen.position)[1]} r="4" fill="#208bb4"/><line x1={screen(visiblePen.position)[0]} y1={screen(visiblePen.position)[1]} x2={screen(add(visiblePen.position,visiblePen.out))[0]} y2={screen(add(visiblePen.position,visiblePen.out))[1]} stroke="#208bb4"/><circle cx={screen(add(visiblePen.position,visiblePen.out))[0]} cy={screen(add(visiblePen.position,visiblePen.out))[1]} r="3" fill="white" stroke="#208bb4"/></g>}
  {box&&<rect x={Math.min(screen(box.a)[0],screen(box.b)[0])} y={Math.min(screen(box.a)[1],screen(box.b)[1])} width={Math.abs(screen(box.a)[0]-screen(box.b)[0])} height={Math.abs(screen(box.a)[1]-screen(box.b)[1])} fill="#238eb512" stroke="#238eb5" strokeDasharray="4 3" pointerEvents="none"/>}
  </>}
+ {guideSnap&&<g pointerEvents="none" data-testid="drawing-guide-snap"><circle cx={screen(guideSnap.point)[0]} cy={screen(guideSnap.point)[1]} r={8} fill="none" stroke="#148b96" strokeWidth={2}/><text x={screen(guideSnap.point)[0]+12} y={screen(guideSnap.point)[1]-10} fill="#148b96" fontSize={12}>{t(guideSnap.kind==='guide'?'辅助线吸附':'交点吸附')}</text></g>}
+ <ViewGuidesOverlay screen={screen} unit={unit} width={size.width} height={size.height}/>
  </svg>
  {!d.curves.length&&!d.reference&&tool==='select'&&<div className="drawing-welcome"><PenTool size={27}/><strong>{t('从一条线开始')}</strong><p>{t('加载参考图，选择图层，用钢笔落点并拖出控制柄。')}</p><button onClick={()=>file.current?.click()}>{t('插入背景图')}</button><button onClick={()=>{if(!activeLayer)run(()=>cmd.addLayer(stored,t('图层')+'1'));selectTool('pen');}}>{t('开始绘线')}</button></div>}
  {referenceMoving&&!artworkPreview&&<button className="drawing-reference-done" onClick={()=>setReferenceMoving(false)}>{t('完成图片平移')}</button>}

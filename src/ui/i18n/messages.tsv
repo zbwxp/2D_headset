@@ -1925,3 +1925,5 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 断线	HIDE
 全圈	Full loop
 空区间	Empty interval
+辅助线吸附	Guide snap
+交点吸附	Intersection snap

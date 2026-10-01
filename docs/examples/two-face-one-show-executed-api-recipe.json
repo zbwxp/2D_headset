@@ -1,0 +1,165 @@
+{
+  "request": {
+    "expectedRevision": "46d9261f-8d43-492e-983c-7d9cd8550a33:10",
+    "commands": [
+      {
+        "op": "changeDisplayInterval",
+        "rangeId": "395ebef8-81c0-4a2d-ae61-34096a9c38a8",
+        "mode": "SHOW",
+        "start": 0.38526009094373365,
+        "end": 0.6147399090562666
+      },
+      {
+        "op": "removeDisplayInterval",
+        "rangeId": "3ae55588-19ed-45f6-a369-65e5555b19ac"
+      },
+      {
+        "op": "removeDisplayInterval",
+        "rangeId": "4926bc01-1e07-45ce-9481-47dec58d3209"
+      },
+      {
+        "op": "removeDisplayInterval",
+        "rangeId": "813bd1e3-6f45-4db9-b336-e9c7342660d2"
+      }
+    ]
+  },
+  "exactPreviewSVG": true,
+  "noRig": true,
+  "oneUndoExact": true,
+  "saveResult": {
+    "ok": true,
+    "value": {
+      "op": "save",
+      "artworkId": "1814fb65-6b8e-4eff-b79c-600a8c5951b6",
+      "created": false,
+      "activeId": "1814fb65-6b8e-4eff-b79c-600a8c5951b6",
+      "name": "无发·对称双脸片·简化区间",
+      "workingSourcePreserved": true,
+      "changed": true,
+      "dryRun": false,
+      "applied": true
+    },
+    "revision": "46d9261f-8d43-492e-983c-7d9cd8550a33:14"
+  },
+  "beforeRoutedIntervals": [
+    {
+      "id": "841ef5a3-46a6-4a12-822b-e4bfb6601bdf",
+      "anchor": {
+        "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "395ebef8-81c0-4a2d-ae61-34096a9c38a8",
+          "mode": "HIDE",
+          "start": 0.20572858143224243,
+          "end": 0.38526009094373365,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "3ae55588-19ed-45f6-a369-65e5555b19ac",
+          "mode": "HIDE",
+          "start": 0,
+          "end": 0.2057285814322424,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ],
+      "displayRoute": {
+        "seed": {
+          "segments": [
+            {
+              "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+              "reverse": false
+            },
+            {
+              "id": "65450d8d-7c62-4d87-b421-616dfbcab097",
+              "reverse": false
+            },
+            {
+              "id": "52b399a3-a55d-4f08-9fbb-abe711ab4f9a",
+              "reverse": false
+            }
+          ],
+          "closed": true
+        },
+        "throughLinkIds": [
+          "ed1131ae-74c5-4534-9b6b-6395e37b1a58"
+        ]
+      }
+    },
+    {
+      "id": "e4f01d10-3dec-493d-9877-d577b2be20cc",
+      "anchor": {
+        "id": "685e3343-6754-43e6-aace-c15e510725a3",
+        "reverse": false
+      },
+      "ranges": [
+        {
+          "id": "4926bc01-1e07-45ce-9481-47dec58d3209",
+          "mode": "HIDE",
+          "start": 0.6147399090562666,
+          "end": 0.7942714185677577,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        },
+        {
+          "id": "813bd1e3-6f45-4db9-b336-e9c7342660d2",
+          "mode": "HIDE",
+          "start": 0.7942714185677576,
+          "end": 0.9999999999999999,
+          "inkEnds": [
+            {
+              "taperWidthScale": 20
+            },
+            {
+              "taperWidthScale": 20
+            }
+          ]
+        }
+      ],
+      "displayRoute": {
+        "seed": {
+          "segments": [
+            {
+              "id": "1ebb7283-3694-46b6-8002-47ec50d0057a",
+              "reverse": false
+            },
+            {
+              "id": "65450d8d-7c62-4d87-b421-616dfbcab097",
+              "reverse": false
+            },
+            {
+              "id": "52b399a3-a55d-4f08-9fbb-abe711ab4f9a",
+              "reverse": false
+            }
+          ],
+          "closed": true
+        },
+        "throughLinkIds": [
+          "ed1131ae-74c5-4534-9b6b-6395e37b1a58"
+        ]
+      }
+    }
+  ],
+  "beforeRoutedIntervalsSource": "Actual exported pre-simplification two-face source; retained for replay after the bundled example advances to the chosen one-SHOW state."
+}

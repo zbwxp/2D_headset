@@ -311,3 +311,10 @@ The executable specimen is [the two-face setup batch](examples/two-face-mirror-e
 ## Explicit full closed-loop interval flag (API 1.4)
 
 `addDisplayInterval` and `changeDisplayInterval` accept optional strict boolean `fullLoop`. For a closed display path, true means one complete turn and normalizes the end to the start. Equal bounds without true mean empty coverage; full SHOW reveals the whole loop and full HIDE hides all ink. Open paths and CURVE-scoped ranges reject true atomically. An explicit start/end edit clears the flag unless fullLoop is explicitly passed again; mode/enabled changes retain it. This flag is source interval metadata, not a new endpoint or source-geometry edit. See `vector-display-full-loop-api.test.ts` for executable requests, empty/full distinction, no-mutation failures and dry-run behavior.
+
+
+## Separate Recording and transient-view interfaces
+
+API 1.5 adds `inspectRecording / recording / previewRecording`, documented in [the Recording guide](vector-recording-api.md). Recording writes use their own mode-gated, atomic rig transaction; they never author Drawing source geometry.
+
+API 1.6 adds `inspectView / view`, documented in [the temporary view guide](vector-workspace-view-api.md). These wrappers use the transient WorkspaceView store only. They intentionally do not accept or return a project revision, do not add project history and do not auto-save. Failed or dry-run view batches do not apply any partial state.
