@@ -108,10 +108,26 @@ describe('honest brush capabilities and failure diagnostics',()=>{
   const {d,route}=fixture(),profile={...d,curves:d.curves.map(c=>c.id==='b'?{...c,profile:'EYELID' as const}:c)},out=compileDisplayRouteBrushes(profile,resolveDisplayRoute(profile,route));
   expect(out.diagnostics.some(x=>x.code==='PROFILE_VARIATION')).toBe(true);expect(out.inkDocument.curves).toBe(profile.curves);
  });
- test('degenerate tangents and failed U-turn arcs retain finite raw fallback and explicit errors',()=>{
-  const {d,route}=fixture(),degenerate={...d,curves:d.curves.map(c=>c.id==='a'?{...c,handles:[c.handles[0],[0,0]] as [Point2,Point2]}:c)},out=compileDisplayRouteBrushes(degenerate,resolveDisplayRoute(degenerate,route));
+ test('SMOOTH still rejects degenerate endpoint tangents',()=>{
+  const {d,route}=fixture({kind:'SMOOTH'}),degenerate={...d,curves:d.curves.map(c=>c.id==='a'?{...c,handles:[c.handles[0],[0,0]] as [Point2,Point2]}:c)},out=compileDisplayRouteBrushes(degenerate,resolveDisplayRoute(degenerate,route));
   expect(out.diagnostics[0].code).toBe('DEGENERATE_TANGENT');expect(out.links[0].suppressionEligible).toBe(false);
+ });
+ test('ARC accepts a zero raw handle when both actual trim tangents are valid',()=>{
+  const {d,route}=fixture(),degenerate={...d,curves:d.curves.map(c=>c.id==='a'?{...c,handles:[c.handles[0],[0,0]] as [Point2,Point2]}:c)},before=structuredClone(degenerate),field=createDisplayRouteField(degenerate,route);
+  expect(field.diagnostics).toEqual([]);expect(field.brushes.links[0]).toMatchObject({resolved:true,suppressionEligible:true});
+  expect(field.brushes.links[0].geometry?.error).toBeUndefined();expect(field.geometry.pieces.some(p=>p.joinId)).toBe(true);
+  for(let i=1;i<field.geometry.shapes.length;i++){near(field.geometry.shapes[i-1][3],field.geometry.shapes[i][0]);near(tangent(field.geometry.shapes[i-1],1),tangent(field.geometry.shapes[i],0));}
+  const coverage=captureRouteCoverage(field,[{start:.1,end:.9,ends:[{taper:.03},{taper:.04}]}]);expect(remapRouteCoverage(coverage,field).unmapped).toEqual([]);
+  expect(degenerate).toEqual(before);
+ });
+ test('failed U-turn arcs retain finite raw fallback and explicit errors',()=>{
   const fold=fixture(arc,[-1,0],[-1,0]),field=createDisplayRouteField(fold.d,fold.route);expect(field.brushes.diagnostics.some(x=>x.code==='ARC_FAILED')).toBe(true);expect(field.geometry.shapes.flat(2).every(Number.isFinite)).toBe(true);expect(field.brushes.links[0].suppressionEligible).toBe(false);
+ });
+ test('an actually collapsed ARC owner still reports failure rather than successful smoothing',()=>{
+  const {d,route}=fixture(),collapsed=structuredClone(d),owner=collapsed.curves.find(c=>c.id==='a')!;
+  for(const id of owner.nodes)collapsed.nodes.find(n=>n.id===id)!.position=[0,0];owner.handles=[[0,0],[0,0]];
+  const field=createDisplayRouteField(collapsed,route);expect(field.brushes.diagnostics.some(x=>x.code==='ARC_FAILED')).toBe(true);
+  expect(field.brushes.links[0]).toMatchObject({resolved:false,suppressionEligible:false});expect(field.geometry.shapes.flat(2).every(Number.isFinite)).toBe(true);
  });
  test.each([0,-1,NaN,3])('invalid ARC influence %s does not generate geometry',(trimDistance)=>{
   const {d,id,route}=fixture(),out=compileDisplayRouteBrushes(d,resolveDisplayRoute(d,route),{[id]:{kind:'ARC',trimDistance}});expect(out.diagnostics[0].code).toBe('INVALID_BRUSH');expect(out.links[0].resolved).toBe(false);expect(out.inkDocument.joins).toEqual([]);

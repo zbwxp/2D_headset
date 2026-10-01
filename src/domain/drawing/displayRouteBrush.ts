@@ -53,11 +53,14 @@ export function compileDisplayRouteBrushes(d:Doc,route:ResolvedDisplayRoute,over
   if((a.profile??'UNIFORM')!=='UNIFORM'||(b.profile??'UNIFORM')!=='UNIFORM')diagnostics.push({severity:'warning',code:'PROFILE_VARIATION',linkId,message:'两侧存在变化线宽轮廓；渲染须保留各自样式，不能假定接合处有效线宽相同。'});
   if(!ownersVisible)diagnostics.push({severity:'info',code:'HIDDEN_OWNER',linkId,message:'一侧墨线隐藏；保留结构弧长，不抑制外露的末端笔触。'});
   const va=sub(a.handles[link.a.end],pa),vb=sub(b.handles[link.b.end],pb),la=length(va),lb=length(vb);
-  if(brush.kind!=='SHARP'&&(la<1e-7||lb<1e-7)){error('DEGENERATE_TANGENT','接笔处的源控制柄退化，无法确定平滑方向。');continue;}
   if(brush.kind==='SMOOTH'){
+   if(la<1e-7||lb<1e-7){error('DEGENERATE_TANGENT','接笔处的源控制柄退化，无法确定平滑方向。');continue;}
    const cosine=(va[0]*vb[0]+va[1]*vb[1])/(la*lb);
    if(cosine>-1+1e-6){error('SMOOTH_REQUIRES_TANGENT_MATCH','平滑笔触要求当前两侧切线已连续；不会旋转源控制柄。可选择带影响距离的圆弧笔触。');continue;}
   }
+  // ARC removes the raw endpoint neighborhood. Its directions come from the
+  // actual trim points, where a cubic with a zero endpoint handle may still be
+  // regular. roundedJoins below validates those tangents and the whole biarc.
   const joinId=syntheticId(linkId),join:TangentJoin={id:joinId,a:{...link.a},b:{...link.b},mode:brush.kind==='SHARP'?'CUSP':brush.kind,...(brush.kind==='ARC'?{radius:brush.trimDistance}:{})};
   joins.push(join);item.joinId=joinId;item.resolved=true;item.suppressionEligible=ownersVisible;
  }
