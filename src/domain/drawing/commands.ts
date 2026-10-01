@@ -1,3 +1,4 @@
+import {assertMirrorTopologyEditable} from './mirrorCommands';
 import {reconcileGroups,transformable} from './groups';
 import {setObjectState} from './objectState';
 import {groupFor,DEFAULT_PEN_TAPER_SCALE,MAX_PEN_TAPER_SCALE} from './model';
@@ -94,6 +95,7 @@ export function merge(d:Doc,a:Endpoint,b:Endpoint):Doc{
  return moveNode(d,nodeAt(d,b).id,nodeAt(d,a).position);
 }
 export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CUSP'|'ARC',radius?:number,preserveAuthoredBrush=false):Doc{
+ assertMirrorTopologyEditable(d,[a.curveId,b.curveId]);
  if(displayRouteFor(d,a.curveId)||displayRouteFor(d,b.curveId))throw Error('请先解除显示贯通，再更改源节点连接。');
  if(sameEnd(a,b))throw Error('请选择另一个端点。');
  if(layerFor(d,a.curveId)?.id!==layerFor(d,b.curveId)?.id)throw Error('连接仅支持同一图层。');
@@ -120,6 +122,7 @@ export function connect(d:Doc,a:Endpoint,b:Endpoint,mode:'POSITION'|'SMOOTH'|'CU
 }
 export function removeJoin(d:Doc,id:string):Doc{const j=d.joins.find(j=>j.id===id);if(!j)return d;check(d,[j.a.curveId,j.b.curveId]);return {...d,joins:d.joins.filter(j=>j.id!==id)};}
 export function unbind(d:Doc,e:Endpoint):Doc{
+ assertMirrorTopologyEditable(d,[e.curveId]);
  if(displayRouteFor(d,e.curveId))throw Error('请先解除显示贯通，再拆开源节点。');
  const partner=joinAt(d,e);check(d,[e.curveId,...(partner?[partner.a.curveId,partner.b.curveId]:[])]);const node=nodeAt(d,e);if(members(d,node.id).length===1)return d;
  const n=copy(d),id=uid();curveById(n,e.curveId).nodes[e.end]=id;n.nodes.push({id,position:[...node.position]});n.joins=n.joins.filter(j=>!sameEnd(j.a,e)&&!sameEnd(j.b,e));return clean(n);
@@ -134,7 +137,7 @@ export function deleteCurves(d:Doc,ids:string[]):Doc{
 }
 /** List deletion is allowed for hidden objects; locks still protect objects and join partners. */
 export function deleteObjects(d:Doc,ids:string[]):Doc{
- const selected=new Set(ids.filter(id=>objectById(d,id)));if(!selected.size)return d;
+ const selected=new Set(ids.filter(id=>objectById(d,id)));if(!selected.size)return d;assertMirrorTopologyEditable(d,[...selected]);
  if([...selected].some(id=>curveById(d,id)&&displayRouteFor(d,id)))throw Error('请先解除显示贯通，再删除其源曲线。');
  // Deleting a member also removes its relations. Honor the same partner locks
  // as an explicit unlink, including links whose other member is in another layer.
@@ -153,7 +156,7 @@ export function deleteLayers(d:Doc,ids:readonly string[]):Doc{
 }
 /** Standalone copies remain editable; whole-layer copies retain every member's state. */
 export function duplicateCurves(d:Doc,ids:string[],layerId=layerFor(d,ids[0])?.id,offset:Point2=[.04,-.04],copyGroupFills=true,preserveMemberState=false):{document:Doc;ids:string[]}{
- if(!ids.length||!layerId)return {document:d,ids:[]};requireLayer(d,layerId);
+ if(!ids.length||!layerId)return {document:d,ids:[]};requireLayer(d,layerId);assertMirrorTopologyEditable(d,ids);
  if(ids.some(id=>displayRouteFor(d,id)))throw Error('贯通画稿请使用画稿图层导入，以完整复制跨层依赖。');
  const n=copy(d),nodeMap=new Map<string,string>(),curveMap=new Map<string,string>();
  for(const id of ids){const c=curveById(d,id);for(const nodeId of c.nodes)if(!nodeMap.has(nodeId)){const newId=uid();nodeMap.set(nodeId,newId);n.nodes.push({id:newId,position:add(d.nodes.find(x=>x.id===nodeId)!.position,offset)});}
@@ -199,6 +202,7 @@ export function moveToLayer(d:Doc,ids:string[],target:string):Doc{
  const n=copy(d);if(n.groups)n.groups=n.groups.map(g=>g.curveIds.every(id=>moving.has(id))?g:{...g,curveIds:g.curveIds.filter(id=>!moving.has(id))}).filter(g=>g.curveIds.length);for(const l of n.layers)l.items=l.items.filter(id=>!moving.has(id));n.layers.find(l=>l.id===target)!.items.unshift(...ordered);return normalizeOrder(n);
 }
 export function splitCurve(d:Doc,id:string,t:number):{document:Doc;ids:string[]}{
+ assertMirrorTopologyEditable(d,[id]);
  check(d,[id]);if(t<=1e-5||t>=1-1e-5)throw Error('请在曲线内部选择分割位置。');
  for(const j of d.joins){if(j.mode!=='ARC')continue;const g=roundedJoins(d).get(j.id)!;if(g.error)continue;for(const [e,at] of [[j.a,g.aT],[j.b,g.bT]] as const)if(e.curveId===id&&(e.end===0?t<=at:t>=at))throw Error('该位置属于圆弧过渡范围，请在保留的源曲线上分割。');}
  const shape=shapeOf(d,id),[left,right]=split(shape.map(([x,y])=>[x,y,0]),t).map(s=>s.map(([x,y])=>[x,y]) as Cubic);
@@ -233,7 +237,7 @@ export function mirrorEdit(d:Doc,source:string,target:string,allowRelated=false)
  const affected=changedShapes(d,n),shared=relatedIds(d,[target]);if(!allowRelated&&affected.some(id=>id!==target&&shared.includes(id)))throw new RelatedSelection([target,...affected.filter(id=>id!==target)]);return n;
 }
 
-export function setMirrorAxis(d:Doc,x:number):Doc{if(!Number.isFinite(x)||x===(d.mirrorAxisX??0))return d;return {...d,mirrorAxisX:x};}
+export function setMirrorAxis(d:Doc,x:number):Doc{if(d.mirrorEditing?.enabled&&x!==(d.mirrorAxisX??0))throw Error('请先关闭镜像编辑，再移动镜像轴。');if(!Number.isFinite(x)||x===(d.mirrorAxisX??0))return d;return {...d,mirrorAxisX:x};}
 export function setArcRadius(d:Doc,id:string,radius:number):Doc{const j=d.joins.find(j=>j.id===id);if(j?.mode!=='ARC')return d;check(d,[j.a.curveId,j.b.curveId]);if(!Number.isFinite(radius)||radius<=0||radius>2)throw Error('圆弧影响范围无效。');return radius===j.radius?d:{...d,joins:d.joins.map(x=>x===j?{...x,radius}:x)};}
 /** Store a label on existing members, never a second persistent Path topology. */
 export function renameStroke(d:Doc,id:string,name:string):Doc{

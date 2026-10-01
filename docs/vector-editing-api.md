@@ -226,7 +226,7 @@ Regression commands: `npx vitest run src/tests/vector-editing-api.test.ts src/te
 - `changeDisplayInterval {rangeId, mode?, start?, end?, enabled?}`, `removeDisplayInterval {rangeId}`, and `setDisplayIntervalEnd {rangeId, end:0|1, style}` resolve the owning track by stable range ID. `$refs` work for newly created ranges
 - `setFill` additionally accepts a full validated `mist:{enabled,side,width,opacity}` value, using the existing fill-mist command. Width is 0.001–0.8 source units; opacity is 0–1. Edit appearance before locking the fill
 
-Source intervals use normalized **arc length** 0–1; closed paths may wrap through the origin when start > end. HIDE subtracts ink without cutting away fill geometry. A pre-existing SHOW range still restricts the visible portion; disable/remove that SHOW range explicitly if the whole loop should otherwise be visible. Editing an interval never adds cross-piece binding or a logical contour. Existing connection/link commands are deliberately not exposed here: their authored-tip reset side effects need a separate explicit contract, and this increment does not implement the pending logical-contour design.
+Source intervals use normalized **arc length** 0–1; closed paths may wrap through the origin when start > end. HIDE subtracts ink without cutting away fill geometry. A pre-existing SHOW range still restricts the visible portion; disable/remove that SHOW range explicitly if the whole loop should otherwise be visible. Editing an interval never adds cross-piece binding or a logical contour. Current explicit `connectGeometry` and `linkEndpoints` commands preserve authored terminal brushes; their separate contracts are documented below. Display-route adoption is explicit and never implied by an interval edit.
 
 Example closure mask in a newly created piece, inside one batch:
 
@@ -242,7 +242,7 @@ A later command may set `rangeId:"$hiddenClosure"`. `createCurve` plus `createFi
 - **区间 / visibility range** means the path's SHOW/HIDE interval and its start/end bounds
 - **末端 / visible ink terminus** means the visible line's end, which may lie inside a cubic at an interval cut. A range bound is not a new geometry node
 
-The shared brush concepts concern visible terminal/junction appearance. These APIs do not introduce a common endpoint object or the proposed cross-layer logical display contour. Source `setCurveInkEnd` and `setDisplayIntervalEnd` apply only explicitly requested authored style edits; no automatic binding-tip overwrite occurs because new binding commands are not exposed.
+The shared brush concepts concern visible terminal/junction appearance. These APIs do not introduce a common endpoint object. Explicit display-route adoption retains its own traversal and coverage contract. Source `setCurveInkEnd` and `setDisplayIntervalEnd` apply only explicitly requested authored style edits; source connection APIs preserve authored brush data rather than automatically overwriting it.
 
 `inspect({layerNames:["右眼内结构"],includeRecording:false})` gives a concise source query without rig payload. Layer records include `effectiveState` computed from current members; legacy `visible`/`locked` container fields are neutral and should not be interpreted as inherited gates. Fills and offsets include owner `layerId` and `selectionRelation` (`owned` versus a dependency of selected curves). A paint-only layer is inspectable even when its boundary/source curves live elsewhere. Canonical IDs are opaque: literal `$`-prefixed IDs remain usable, and a new alias that would collide with one is refused. Prototype-like ID strings are retained safely in duplicate mappings.
 
@@ -288,3 +288,26 @@ Additional source commands now include `duplicateObjects` (explicit dependency c
 No source cubic, layer or fill geometry is rewritten. Unsupported styles or
 unmappable material cuts reject atomically. These source commands trigger the
 existing explicit source review before reusing an older Recording rig.
+
+
+## Persistent Drawing mirror editing (API 1.4)
+
+Deployment must be confirmed through `help().commands` before use. These commands edit the existing `drawing.mirrorEditing` metadata through the normal transaction. No raw document/configuration replacement is exposed.
+
+- `createMirrorPair {a,b,reverse?,ref?}` creates one stable pair ID; `a/b` are curve IDs and accept earlier `$refs`. `reverse` defaults false. A new configuration starts disabled; adding to an enabled configuration validates the existing geometry
+- `setMirrorPair {pairId,a?,b?,reverse?}` updates that same identity; `deleteMirrorPairs {pairIds}` removes explicit relations
+- `setMirrorAxisNodes {nodeIds}` replaces the explicit axis-node set; inferred self-mapped node components also remain on the axis
+- `setMirrorEditing {enabled}` validates rather than repairs when enabling. Disabled metadata preserves pair identities and permits asymmetry; axis movement requires the switch off
+
+`inspect()` includes a detached `mirrorEditing` plus `mirrorEditingState` with effective axis node IDs. Execute reports `mirrorEditingChanged`, `mirrorPairIds`, removed pair IDs, and `created.kind="mirrorPair"` with optional aliases. Configurations serialize with source artwork, but are not recording Warp/keyform commands.
+
+Only source nodes and handles follow reflection. Existing position links and smooth constraints must agree; locks on reflected followers cancel the whole batch, even when those members are hidden. Paint order, fills, visibility, width, brush metadata and authored display ranges are not copied to the counterpart. Material ranges are transported after final mirrored geometry. Topology changes/copies affecting paired curves or axis bindings require explicit removal of the affected relation first; there is no guessed split mapping.
+
+Batch intent records the last direct node value and direct handle vector relative to its node. Only explicitly selected curves contribute direct transform/deform targets; generated mirror/link/smooth followers do not become new authorship. Incompatible explicit edits to both sides return `MIRROR_AUTHORED_CONFLICT`, with no partial application/history entry. A later node translation rebases a prior handle intention. An actual metadata configuration change begins a new constraint-intent epoch after earlier commands have been validated; a no-op configuration command does not erase prior intentions. Errors originating from mirror math use `MIRROR_<domain code>`; malformed JSON retains normal `INVALID_REQUEST` handling.
+
+The executable specimen is [the two-face setup batch](examples/two-face-mirror-editing-api-batch.json). It is read directly by `src/tests/vector-mirror-editing-api.test.ts` and targets the known example IDs only; inspect current source identity before applying it to a saved copy.
+
+
+## Explicit full closed-loop interval flag (API 1.4)
+
+`addDisplayInterval` and `changeDisplayInterval` accept optional strict boolean `fullLoop`. For a closed display path, true means one complete turn and normalizes the end to the start. Equal bounds without true mean empty coverage; full SHOW reveals the whole loop and full HIDE hides all ink. Open paths and CURVE-scoped ranges reject true atomically. An explicit start/end edit clears the flag unless fullLoop is explicitly passed again; mode/enabled changes retain it. This flag is source interval metadata, not a new endpoint or source-geometry edit. See `vector-display-full-loop-api.test.ts` for executable requests, empty/full distinction, no-mutation failures and dry-run behavior.

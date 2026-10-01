@@ -1,0 +1,9 @@
+import {displayField,displayPath,intervalMode} from '../../domain/drawing/displayIntervals';
+import type {DrawingDocument as Doc} from '../../domain/drawing/model';
+import type {DrawingSelection} from './session';
+import {uiText as t} from '../i18n';
+/** Read-only composition view; authored ranges remain independent editable data. */
+export default function DisplayCoverageBar({d,id,selection,choose}:{d:Doc;id:string;selection:DrawingSelection;choose:(s:DrawingSelection)=>void}){
+ const path=displayPath(d,id),field=displayField(d,path),spans=field.inkSpans??[{start:0,end:1,ends:[{},{}]}],ranges=field.tracks.flatMap(track=>track.ranges.map(range=>({track,range}))),chosen=ranges.find(x=>x.range.id===selection.displayInterval?.range),highlight=chosen?field.span(chosen.track,chosen.range):[];
+ return <div className="drawing-coverage" data-testid="drawing-effective-coverage"><small>{t('整条路径的区间合成')} · {path.closed?t('闭合'):t('开放')} · {spans.length} {t('段可见')} / {ranges.length} {t('个作者区间')}</small><svg viewBox="0 0 240 20" role="img" aria-label={t('合成可见范围')}><rect x="0" y="4" width="240" height="12" rx="3" fill="#37464d"/>{spans.map((s,i)=><rect key={i} x={s.start*240} y="4" width={Math.max(0,(s.end-s.start)*240)} height="12" fill="#38a998"/>)}{highlight.map((s,i)=><rect key={'selected'+i} x={s.start*240} y="2" width={Math.max(.5,(s.end-s.start)*240)} height="16" stroke={chosen&&intervalMode(chosen.range)==='HIDE'?'#db945a':'#56bce6'} fill="none" strokeWidth="2"/>)}</svg><div className="drawing-coverage-labels"><small>0</small><small>{t('显线并集 − 断线并集')}</small><small>100%</small></div><div className="drawing-property-actions">{ranges.map(({track,range},i)=><button key={range.id} aria-pressed={chosen?.range.id===range.id} data-range-id={range.id} onClick={()=>choose({ids:[track.anchor.id],displayInterval:{track:track.id,range:range.id,end:0}})}>{i+1} · {t(intervalMode(range)==='HIDE'?'断线':'显线')}{range.enabled===false?' ○':''}</button>)}</div></div>;
+}

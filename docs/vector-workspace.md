@@ -173,3 +173,13 @@ The evaluator keeps those endpoints coincident and reports the field mismatch;
 source subdivision cannot reconcile those incompatible requests. Adjust the
 controls or use a shared parent deformer. This is distinct from a cubic fitting
 error that can legitimately motivate source segmentation.
+
+## 持续镜像与显示区间交互
+
+绘制模式可按显式曲线配对开启持续镜像，反向配对适用于方向相反的嘴线；轴上节点固定在镜像轴。开启只校验，不覆盖一侧；关闭后可独立编辑。仅节点和控制柄联动，线宽、末端笔触、显隐、填充、层级及元素偏移不复制。配对曲段分割、复制或删除前须解除相关配对。镜像设置不改变已录制关键形，源几何实际变化仍须录制模式确认。
+
+显示区间控制按整条已贯通路径统一排序；合成条显示 SHOW 并集减去 HIDE 并集。多选同一路径的左右成员仍显示同一组区间。区间拖动捕获当前路径并连续行走，开放路径即使首尾位置重合也不会从 100% 跳到 0%。闭合路径 start=end 默认空区间，显式 fullLoop 表示全圈，保留实际锚点；旧 [0,1] 存档保持兼容。新的分岔选路创作交互尚未实现，当前拖动使用已选定路径。
+
+## 角度约定
+
+正面为 X=0；+X 向画面右转到 90°，−X 向画面左转。Y 正值仰头、负值低头。参考表格的格编号并非角度：原始 21 视图表的 14 号为正面，8 号为侧面；作者以镜像后的 8 号作为本次向画面右转的侧稿基准。30°、60°关键形是真实参数插值断点。

@@ -1,11 +1,17 @@
+import {applyMirrorEditing,validateMirrorEditing,type MirrorAuthoredWrites} from './mirrorEditing';
 import {transportDeformedIntervals} from './deform';
 import type {DrawingDocument as Doc,Point2} from './model';
+const finalized=new WeakSet<Doc>();
+/** Internal provenance for a fully validated command batch; never serializable. */
+export function markFinalizedGeometry(d:Doc):Doc{finalized.add(d);return d;}
 const equalPoint=(a:Point2,b:Point2)=>a[0]===b[0]&&a[1]===b[1];
 /** Final source-geometry boundary for pointer drafts, numeric/property edits,
  * nudges and store commits. Explicit interval edits and already-transported
  * quad/API results own their new interval array and must never be transported
  * a second time. Topology-changing commands require their own exact remap. */
-export function finalizeGeometryEdit(before:Doc|undefined,after:Doc):Doc {
+export function finalizeGeometryEdit(before:Doc|undefined,after:Doc,writes:MirrorAuthoredWrites={}):Doc {
+ if(finalized.has(after))return after;
+ if(before){if(JSON.stringify(before.mirrorEditing)!==JSON.stringify(after.mirrorEditing))validateMirrorEditing(after);else after=applyMirrorEditing(before,after,writes);}
  if(!before||before===after||!before.displayIntervals?.length||before.displayIntervals!==after.displayIntervals)return after;
  if(before.curves.length!==after.curves.length||before.nodes.length!==after.nodes.length)return after;
  const curves=new Map(after.curves.map(c=>[c.id,c])),nodes=new Map(after.nodes.map(n=>[n.id,n]));

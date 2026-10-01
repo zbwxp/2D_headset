@@ -4,7 +4,7 @@ import {createVectorEditingApi,type VectorEditingHost,type VectorCommand} from '
 import {createEmptyProject} from '../app/emptyProject';
 import {addLayer,createCurve,ellipse} from '../domain/drawing/commands';
 import {createFill} from '../domain/drawing/paintCommands';
-import {emptyDrawing,parseDrawing} from '../domain/drawing/model';
+import {emptyDrawing,parseDrawing,shapeOf} from '../domain/drawing/model';
 import {strokes} from '../domain/drawing/strokes';
 import type {LandmarkProject} from '../domain/landmarks/model';
 
@@ -22,11 +22,12 @@ function harness(){
 }
 
 test('every declared guide JSON example is syntactically valid and uniquely named',()=>{
- expect(examples.map(x=>x.name)).toEqual(['inspect-nose','create-layer','mirror-layer','closed-piece','link-ports','hide-range','save-copy','list-artworks','preview']);expect(new Set(examples.map(x=>x.name)).size).toBe(examples.length);
+ expect(examples.map(x=>x.name)).toEqual(['inspect-nose','create-layer','mirror-layer','closed-piece','link-ports','route-arc','hide-range','save-copy','list-artworks','preview','depth-fix']);expect(new Set(examples.map(x=>x.name)).size).toBe(examples.length);
 });
 
 for(const example of examples)test(`guide example ${example.name} executes through the actual fixed API`,()=>{
  const h=harness(),replacements:Record<string,string>={SOURCE_LAYER_ID:h.sourceLayer,RIGHT_JAW_ID:'right-jaw',LEFT_JAW_ID:'left-jaw',PATH_CURVE_ID:'nose',LATEST_REVISION:h.api.inspect().revision};
+ if(example.name==='route-arc'){const r=h.api.execute({commands:[{op:'addDisplayInterval',curveId:'right-jaw',mode:'HIDE',start:.4,end:.6},{op:'linkEndpoints',a:{curveId:'right-jaw',end:1},b:{curveId:'left-jaw',end:1},ref:'link'}]});if(!r.ok)throw Error(r.error.message);replacements.CHIN_LINK_ID=r.value.created.find(c=>c.ref==='link')!.id;replacements.RIGHT_FACE_TRACK_ID=h.state().drawing!.displayIntervals![0].id;}
  const replace=(x:unknown):unknown=>typeof x==='string'?(Object.hasOwn(replacements,x)?replacements[x]:x):Array.isArray(x)?x.map(replace):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).map(([k,v])=>[k,replace(v)])):x;
  const request=replace(example.request) as {method?:string;request?:any;commands?:VectorCommand[]};const before=h.state();
  const result=request.method==='inspect'?h.api.inspect(request.request):request.method==='preview'?h.api.preview(request.request):request.method==='artwork'?h.api.artwork(request.request):request.method==='inspectArtworks'?h.api.inspectArtworks(request.request):h.api.execute(request as {commands:VectorCommand[]});
@@ -48,4 +49,11 @@ test('the recorded real two-face recipe replays using returned IDs instead of st
  const second=api.execute({commands:replace(recipe.phase2.commands) as VectorCommand[],expectedRevision:api.inspect().revision});expect(second.ok,second.ok?'':JSON.stringify(second.error)).toBe(true);
  const d=project.drawing!;expect(d.curves).toHaveLength(121);expect(d.layers).toHaveLength(13);expect(d.fills).toHaveLength(20);for(const side of ['right','left']){const layer=refs.get(side)!;expect(strokes(d,layer)[0].closed).toBe(true);expect(new Set(d.curves.filter(c=>d.layers.find(l=>l.id===layer)!.items.includes(c.id)).flatMap(c=>c.nodes)).size).toBe(3);}
  const oldFace=source.layers.find(l=>l.name==='面部底形')!;expect(source.curves.filter(c=>!oldFace.items.includes(c.id)).every(c=>JSON.stringify(c)===JSON.stringify(d.curves.find(x=>x.id===c.id)))).toBe(true);expect(past).toHaveLength(2);expect(readFileSync(path,'utf8')).toBe(raw);
+ if(!second.ok)throw Error(second.error.message);const newerRefs=new Map(second.value.created.filter(c=>c.ref).map(c=>[c.ref,c.id]));for(const c of recipe.phase2Result.value.created)if(c.ref)idMap.set(c.id,newerRefs.get(c.ref)!);
+ // Geometry transport may also report existing tracks after floating-point
+ // normalization; map only genuinely created tracks, never by a mixed list index.
+ const originalTracks=new Set(source.displayIntervals?.map(t=>t.id)),oldNewTracks=recipe.phase2Result.value.displayTrackIds.filter((id:string)=>!originalTracks.has(id)),newTracks=second.value.displayTrackIds.filter(id=>!originalTracks.has(id));expect(newTracks).toHaveLength(oldNewTracks.length);oldNewTracks.forEach((id:string,i:number)=>idMap.set(id,newTracks[i]));
+ const arc=JSON.parse(readFileSync(new URL('../../docs/examples/two-face-arc-depth-executed-api-recipe.json',import.meta.url),'utf8')),geometry=d.curves.map(c=>({id:c.id,shape:shapeOf(d,c.id)})),fills=structuredClone(d.fills);
+ for(const step of [arc.arcBatch,arc.depthBatch]){const result=api.execute({commands:replace(step.commands) as VectorCommand[],expectedRevision:api.inspect().revision});expect(result.ok,result.ok?'':JSON.stringify(result.error)).toBe(true);}
+ const final=project.drawing!;expect(final.curves.map(c=>({id:c.id,shape:shapeOf(final,c.id)}))).toEqual(geometry);expect(final.fills).toEqual(fills);expect(final.curves.find(c=>c.id===refs.get('left1'))).toMatchObject({depthOffset:1,depthScope:'LAYER'});expect(final.endpointLinks!.find(l=>l.id===newerRefs.get('chinLink'))).toMatchObject({throughDisplay:true,joinBrush:{kind:'ARC',trimDistance:.05257222158088604}});expect(final.displayIntervals!.filter(t=>t.displayRoute)).toHaveLength(2);expect(past).toHaveLength(4);
 });

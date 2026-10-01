@@ -1,0 +1,437 @@
+{
+  "status": "Executed in actual v8 cloud browser; saved new final artwork after 238 percent visual QA",
+  "arcBatch": {
+    "expectedRevision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:0",
+    "commands": [
+      {
+        "op": "setLinkJoinBrush",
+        "linkId": "ed1131ae-74c5-4534-9b6b-6395e37b1a58",
+        "brush": {
+          "kind": "ARC",
+          "trimDistance": 0.05257222158088604
+        }
+      },
+      {
+        "op": "adoptDisplayRoute",
+        "trackId": "841ef5a3-46a6-4a12-822b-e4bfb6601bdf",
+        "linkId": "ed1131ae-74c5-4534-9b6b-6395e37b1a58"
+      }
+    ]
+  },
+  "arcDryRun": {
+    "ok": true,
+    "value": {
+      "applied": false,
+      "dryRun": true,
+      "changed": true,
+      "curveIds": [],
+      "nodeIds": [],
+      "layerIds": [],
+      "fillIds": [],
+      "offsetIds": [],
+      "groupIds": [],
+      "joinIds": [],
+      "endpointLinkIds": [
+        "ed1131ae-74c5-4534-9b6b-6395e37b1a58"
+      ],
+      "displayTrackIds": [
+        "46e0216c-538e-43b7-8d92-6ddf6c87f487",
+        "c2db409c-2c7e-4b63-a582-22105be5f628",
+        "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+        "841ef5a3-46a6-4a12-822b-e4bfb6601bdf",
+        "e4f01d10-3dec-493d-9877-d577b2be20cc"
+      ],
+      "affectedFillIds": [],
+      "affectedOffsetIds": [],
+      "removed": {
+        "curveIds": [],
+        "nodeIds": [],
+        "layerIds": [],
+        "fillIds": [],
+        "offsetIds": [],
+        "groupIds": [],
+        "joinIds": [],
+        "endpointLinkIds": [],
+        "displayTrackIds": []
+      },
+      "created": [],
+      "addedCurves": [],
+      "approximations": [],
+      "beforeBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "afterBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "beforeAfter": [],
+      "diagnostics": []
+    },
+    "revision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:0"
+  },
+  "arcResult": {
+    "ok": true,
+    "value": {
+      "applied": true,
+      "dryRun": false,
+      "changed": true,
+      "curveIds": [],
+      "nodeIds": [],
+      "layerIds": [],
+      "fillIds": [],
+      "offsetIds": [],
+      "groupIds": [],
+      "joinIds": [],
+      "endpointLinkIds": [
+        "ed1131ae-74c5-4534-9b6b-6395e37b1a58"
+      ],
+      "displayTrackIds": [
+        "46e0216c-538e-43b7-8d92-6ddf6c87f487",
+        "c2db409c-2c7e-4b63-a582-22105be5f628",
+        "b43cb3e3-d647-4dc5-89d7-1eab020224e4",
+        "841ef5a3-46a6-4a12-822b-e4bfb6601bdf",
+        "e4f01d10-3dec-493d-9877-d577b2be20cc"
+      ],
+      "affectedFillIds": [],
+      "affectedOffsetIds": [],
+      "removed": {
+        "curveIds": [],
+        "nodeIds": [],
+        "layerIds": [],
+        "fillIds": [],
+        "offsetIds": [],
+        "groupIds": [],
+        "joinIds": [],
+        "endpointLinkIds": [],
+        "displayTrackIds": []
+      },
+      "created": [],
+      "addedCurves": [],
+      "approximations": [],
+      "beforeBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "afterBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "beforeAfter": [],
+      "diagnostics": []
+    },
+    "revision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:1"
+  },
+  "depthBatch": {
+    "expectedRevision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:2",
+    "commands": [
+      {
+        "op": "setDepth",
+        "curveId": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+        "offset": 1,
+        "scope": "LAYER"
+      }
+    ]
+  },
+  "depthDryRun": {
+    "ok": true,
+    "value": {
+      "applied": false,
+      "dryRun": true,
+      "changed": true,
+      "curveIds": [
+        "1a723ec7-9bbe-4c56-8c0f-680d03741aa6"
+      ],
+      "nodeIds": [],
+      "layerIds": [],
+      "fillIds": [],
+      "offsetIds": [],
+      "groupIds": [],
+      "joinIds": [],
+      "endpointLinkIds": [],
+      "displayTrackIds": [],
+      "affectedFillIds": [
+        "210fc078-5bf1-4352-99a3-5e3a8fdd3c3b"
+      ],
+      "affectedOffsetIds": [],
+      "removed": {
+        "curveIds": [],
+        "nodeIds": [],
+        "layerIds": [],
+        "fillIds": [],
+        "offsetIds": [],
+        "groupIds": [],
+        "joinIds": [],
+        "endpointLinkIds": [],
+        "displayTrackIds": []
+      },
+      "created": [],
+      "addedCurves": [],
+      "approximations": [],
+      "beforeBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "afterBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "beforeAfter": [
+        {
+          "curveId": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+          "layerId": "909c9a51-f5f1-4e3a-9da9-6b4544ad0d9c",
+          "before": {
+            "name": "左片·外侧下颌",
+            "shape": [
+              [
+                0.10682776104592862,
+                0.09792762502142666
+              ],
+              [
+                0.06355628550845094,
+                -0.209242826591701
+              ],
+              [
+                -0.1676857786540733,
+                -0.2898634914425202
+              ],
+              [
+                -0.3294804514288924,
+                -0.36047937039627503
+              ]
+            ],
+            "width": 0.008
+          },
+          "after": {
+            "name": "左片·外侧下颌",
+            "shape": [
+              [
+                0.10682776104592862,
+                0.09792762502142666
+              ],
+              [
+                0.06355628550845094,
+                -0.209242826591701
+              ],
+              [
+                -0.1676857786540733,
+                -0.2898634914425202
+              ],
+              [
+                -0.3294804514288924,
+                -0.36047937039627503
+              ]
+            ],
+            "width": 0.008
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    "revision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:2"
+  },
+  "depthResult": {
+    "ok": true,
+    "value": {
+      "applied": true,
+      "dryRun": false,
+      "changed": true,
+      "curveIds": [
+        "1a723ec7-9bbe-4c56-8c0f-680d03741aa6"
+      ],
+      "nodeIds": [],
+      "layerIds": [],
+      "fillIds": [],
+      "offsetIds": [],
+      "groupIds": [],
+      "joinIds": [],
+      "endpointLinkIds": [],
+      "displayTrackIds": [],
+      "affectedFillIds": [
+        "210fc078-5bf1-4352-99a3-5e3a8fdd3c3b"
+      ],
+      "affectedOffsetIds": [],
+      "removed": {
+        "curveIds": [],
+        "nodeIds": [],
+        "layerIds": [],
+        "fillIds": [],
+        "offsetIds": [],
+        "groupIds": [],
+        "joinIds": [],
+        "endpointLinkIds": [],
+        "displayTrackIds": []
+      },
+      "created": [],
+      "addedCurves": [],
+      "approximations": [],
+      "beforeBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "afterBounds": {
+        "min": [
+          -1.158069136494394,
+          -0.810063510691559
+        ],
+        "max": [
+          0.4932045409541739,
+          0.82
+        ],
+        "center": [
+          -0.3324322977701101,
+          0.004968244654220466
+        ]
+      },
+      "beforeAfter": [
+        {
+          "curveId": "1a723ec7-9bbe-4c56-8c0f-680d03741aa6",
+          "layerId": "909c9a51-f5f1-4e3a-9da9-6b4544ad0d9c",
+          "before": {
+            "name": "左片·外侧下颌",
+            "shape": [
+              [
+                0.10682776104592862,
+                0.09792762502142666
+              ],
+              [
+                0.06355628550845094,
+                -0.209242826591701
+              ],
+              [
+                -0.1676857786540733,
+                -0.2898634914425202
+              ],
+              [
+                -0.3294804514288924,
+                -0.36047937039627503
+              ]
+            ],
+            "width": 0.008
+          },
+          "after": {
+            "name": "左片·外侧下颌",
+            "shape": [
+              [
+                0.10682776104592862,
+                0.09792762502142666
+              ],
+              [
+                0.06355628550845094,
+                -0.209242826591701
+              ],
+              [
+                -0.1676857786540733,
+                -0.2898634914425202
+              ],
+              [
+                -0.3294804514288924,
+                -0.36047937039627503
+              ]
+            ],
+            "width": 0.008
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    "revision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:3"
+  },
+  "saveResult": {
+    "ok": true,
+    "value": {
+      "op": "save",
+      "artworkId": "e381704c-0df9-4c8a-92cc-c8a179c130ae",
+      "created": true,
+      "activeId": "e381704c-0df9-4c8a-92cc-c8a179c130ae",
+      "name": "无发·对称双脸片",
+      "workingSourcePreserved": true,
+      "changed": true,
+      "dryRun": false,
+      "applied": true
+    },
+    "revision": "ac691589-6fc1-4f06-b3a5-a1f130035f6b:4"
+  },
+  "visualVerification": {
+    "withFillsBeforeDepth": "small white gap at chin at 238 percent",
+    "allFillsHidden": "continuous chin",
+    "fillsRestoredAndBackJawLayerDepthPlusOne": "continuous chin at 238 percent"
+  },
+  "source": "two-face-symmetric-final-source.json",
+  "screenshots": [
+    "two-face-linked-arc-closeup.jpg",
+    "two-face-linked-arc-no-fill-closeup.jpg",
+    "two-face-linked-arc-depth-fixed-closeup.jpg",
+    "two-face-symmetric-final.jpg"
+  ]
+}

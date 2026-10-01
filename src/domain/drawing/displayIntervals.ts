@@ -43,6 +43,9 @@ export function subtractInkSpans(base:InkSpan[],gaps:InkSpan[],closed=false):Ink
 export const intervalMode=(r:DisplayInterval):DisplayIntervalMode=>r.mode??'SHOW';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 const wrap=(x:number)=>((x%1)+1)%1;
+/** A full revolution has explicit meaning even when its two grips coincide.
+ * Legacy 0/1 bounds remain full; equal bounds without the flag remain empty. */
+export const closedIntervalLength=(r:DisplayInterval)=>r.fullLoop===true||Math.abs(r.end-r.start)>=1-1e-10?1:wrap(r.end-r.start);
 export const localDisplayPath=(d:Doc,id:string)=>strokePaths(strokeFor(d,id)).find(p=>p.segments.some(x=>x.id===id))!;
 /** Explicit routes are display-only; strokeFor/layer ownership remain local. */
 export function displayRouteFor(d:Doc,id:string):DisplayRoute|undefined {
@@ -76,8 +79,8 @@ export function displayField(d:Doc,path:StrokePath){
  function span(track:StrokeDisplayIntervals,r:DisplayInterval):InkSpan[]{
   const ends:InkEnds=(r.inkEnds??[{},{}]).map(e=>e.taperWidthScale===undefined?e:{...e,taper:inkTaperDistance(e,curveById(d,path.segments[0].id).width)}) as InkEnds;
   if(!path.closed||track.scope==='CURVE'){const a=native(track,r.start),b=native(track,r.end);return [{start:Math.min(a,b),end:Math.max(a,b),ends:a<=b?ends:[ends[1],ends[0]]}];}
-  if(Math.abs(r.end-r.start)>=1-1e-10)return [{start:0,end:1,ends:[{},{}]}];
-  const distance=wrap(r.end-r.start);if(distance<1e-10)return [];
+  const distance=closedIntervalLength(r);if(distance===1)return [{start:0,end:1,ends:[{},{}]}];
+  if(distance<1e-10)return [];
   const forward=frame(track).direction===1,rawA=native(track,forward?r.start:r.end),ordered:InkEnds=forward?ends:[ends[1],ends[0]];
   // Use the same seam tolerance as union/subtraction. Otherwise floating-point
   // wrap arithmetic can split a real brush into a tiny fragment that is discarded.
@@ -96,7 +99,7 @@ export function displayField(d:Doc,path:StrokePath){
   const width=curveById(d,path.segments[0].id).width,ends=range.inkEnds??[{},{}],ordered=frame(track).direction===1?ends:[ends[1],ends[0]];
   return [{position,strength,tapers:ordered.map(e=>inkTaperDistance(e,width)) as [number,number]}];
  });
- return {...field,geometry,tracks,native,relative,inkSpans,pinches,mask:inkSpans?.map(s=>[s.start,s.end] as Span)};
+ return {...field,geometry,tracks,native,relative,span,inkSpans,pinches,mask:inkSpans?.map(s=>[s.start,s.end] as Span)};
 }
 /** Nearest arc-table point. A tiny continuity tie-break avoids jumping at crossings. */
 export function nearestDisplayPosition(field:ReturnType<typeof displayField>,track:StrokeDisplayIntervals,p:Point2,previous:number,project?:(p:Point2,s:Cubic,t:number)=>Point2){
@@ -146,12 +149,19 @@ export function setDisplayIntervalEnd(d:Doc,trackId:string,id:string,end:0|1,cha
  if(JSON.stringify(inkEnds)===JSON.stringify(ends))return d;
  return {...d,displayIntervals:d.displayIntervals!.map(t=>t===track?{...t,ranges:t.ranges.map(r=>r===range?{...r,inkEnds}:r)}:t)};
 }
-export function changeDisplayInterval(d:Doc,trackId:string,id:string,change:Partial<Pick<DisplayInterval,'start'|'end'|'mode'|'enabled'>>):Doc{
+export function changeDisplayInterval(d:Doc,trackId:string,id:string,change:Partial<Pick<DisplayInterval,'start'|'end'|'mode'|'enabled'|'fullLoop'>>):Doc{
  const track=d.displayIntervals?.find(t=>t.id===trackId);if(!track)return d;check(d,displayPath(d,track.anchor.id));
  if(change.mode!==undefined&&!['SHOW','HIDE'].includes(change.mode))throw Error('区间类型无效。');
  if(change.enabled!==undefined&&typeof change.enabled!=='boolean')throw Error('区间开关无效。');
+ if(change.fullLoop!==undefined&&typeof change.fullLoop!=='boolean')throw Error('全圈区间标志无效。');
+ if(change.fullLoop===true&&(!displayPath(d,track.anchor.id).closed||track.scope==='CURVE'))throw Error('只有闭合显示路径可以设置全圈区间。');
  if(!(['start','end'] as const).every(k=>change[k]===undefined||Number.isFinite(change[k])&&change[k]!>=0&&change[k]!<=1))throw Error('显示区间位置必须在 0% 到 100% 之间。');
- const ranges=track.ranges.map(r=>r.id===id?{...r,...change}:r);if(JSON.stringify(ranges)===JSON.stringify(track.ranges))return d;
+ const ranges=track.ranges.map(r=>{
+  if(r.id!==id)return r;const next={...r,...change};
+  if((change.start!==undefined||change.end!==undefined)&&change.fullLoop===undefined)delete next.fullLoop;
+  if(change.fullLoop===true)next.end=next.start;
+  return next;
+ });if(JSON.stringify(ranges)===JSON.stringify(track.ranges))return d;
  return {...d,displayIntervals:d.displayIntervals!.map(t=>t===track?{...t,ranges}:t)};
 }
 export function removeDisplayInterval(d:Doc,trackId:string,id:string):Doc{

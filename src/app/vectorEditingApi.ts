@@ -25,13 +25,18 @@ import {roundedJoins} from '../domain/drawing/roundedJoin';
 import {ArtworkApiError,artworkOverview,prepareArtworkAction,type ArtworkRequest} from './vectorArtworkApi';
 import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
 import {applyElementCommand,elementCommandNames,ElementCommandError,type ElementCommand,type ElementCreation} from './vectorElementCommands';
+import {applyMirrorCommand,mirrorCommandNames,MirrorApiError,MirrorBatchIntent,type MirrorEditingCommand} from './vectorMirrorEditingApi';
+import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirrorEditing';
+import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
+import {RecordingApiError,prepareRecordingBatch,recordingOverview,evaluateRecording,recordingCommandNames,type RecordingBatch,type RecordingQuery,type RecordingCommand} from './vectorRecordingApi';
+import type {VectorRecording} from '../domain/vectorRecording/model';
 
-export const VECTOR_AI_VERSION='1.3';
+export const VECTOR_AI_VERSION='1.5';
 export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimension:4096,name:256} as const);
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
 export type Affine=[number,number,number,number,number,number];
-export type VectorCommand=DisplayRouteCommand|ElementCommand|GeometryLinkCommand
+export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementCommand|GeometryLinkCommand
  | {op:'moveNode';nodeId:string;position:Point2}
  | {op:'moveHandle';curveId:string;end:0|1;position:Point2}
  | {op:'transformCurves';curveIds:string[];matrix:Affine;allowRelated?:boolean}
@@ -57,19 +62,20 @@ export type VectorCommand=DisplayRouteCommand|ElementCommand|GeometryLinkCommand
  | {op:'setInkVisibility';curveIds:string[];visible:boolean}
  | {op:'setCurveInkEnd';curveId:string;end:0|1;style:TerminusBrushStyle}
  | {op:'setDepth';curveId:string;offset:number;scope?:'PARENT'|'LAYER'}
- | {op:'addDisplayInterval';curveId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;ref?:string}
- | {op:'changeDisplayInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean}
+ | {op:'addDisplayInterval';curveId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;fullLoop?:boolean;ref?:string}
+ | {op:'changeDisplayInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;fullLoop?:boolean}
  | {op:'removeDisplayInterval';rangeId:string}
  | {op:'setDisplayIntervalEnd';rangeId:string;end:0|1;style:TerminusBrushStyle};
 export type GeometryLinkCommand={op:'linkEndpoints';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};ref?:string}|{op:'unlinkEndpoints';linkId:string}|{op:'connectGeometry';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};mode?:'POSITION'};
 export type DisplayRouteCommand={op:'adoptDisplayRoute';trackId:string;linkId:string}|{op:'setLinkJoinBrush';linkId:string;brush:TerminusJoinBrush}|{op:'detachDisplayRoute';trackId:string};
-export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames];
+export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink'|'mirrorPair';id:string;ref?:string;idMap?:Record<string,string>}
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames,...mirrorCommandNames];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string;includeRecording?:boolean}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
 export interface VectorViewport {width:number;height:number;center:Point2;pixelsPerUnit:number;origin?:Point2}
 export interface PreviewOptions {commands?:VectorCommand[];expectedRevision?:string;width?:number;height?:number;center?:Point2;pixelsPerUnit?:number;showFills?:boolean;annotations?:AIGuideOptions}
+export interface RecordingPreviewOptions extends Omit<PreviewOptions,'commands'> {commands?:RecordingCommand[];angle?:{x:number;y:number};useDraft?:boolean}
 export type CoordinateSpace='source'|'canvas'|'client'|'reference';
 export type VectorResult<T>={ok:true;revision:string;value:T}|{ok:false;revision:string;error:{code:string;message:string;commandIndex?:number;relatedCurveIds?:string[]}};
 export interface VectorEditingHost {
@@ -77,6 +83,7 @@ export interface VectorEditingHost {
  getMode():WorkspaceMode;
  commitDrawing(drawing:DrawingDocument):void;
  commitArtwork?(state:DrawingSnapshotState):void;
+ commitRecording?(recording:VectorRecording):void;
  undo():void;redo():void;
  selectCurveIds?(ids:string[]):void;
  getSelection?():unknown;
@@ -131,8 +138,8 @@ function affineMap(matrix:unknown){
 function end(value:unknown):0|1{if(value!==0&&value!==1)fail('INVALID_REQUEST','end must be 0 or 1.');return value as 0|1;}
 function geometryEndpoint(d:DrawingDocument,raw:unknown){const e=record(raw);keys(e,['curveId','end']);return {curveId:curveExists(d,e.curveId),end:end(e.end)};}
 function intervalChange(c:Record<string,unknown>){
- if(c.mode!==undefined&&c.mode!=='SHOW'&&c.mode!=='HIDE')fail('INVALID_REQUEST','mode must be SHOW or HIDE.');bool(c.enabled,'enabled');
- return {...(c.mode===undefined?{}:{mode:c.mode as DisplayIntervalMode}),...(c.enabled===undefined?{}:{enabled:c.enabled as boolean}),...(c.start===undefined?{}:{start:num(c.start,'start',0,1)}),...(c.end===undefined?{}:{end:num(c.end,'end',0,1)})};
+ if(c.mode!==undefined&&c.mode!=='SHOW'&&c.mode!=='HIDE')fail('INVALID_REQUEST','mode must be SHOW or HIDE.');bool(c.enabled,'enabled');bool(c.fullLoop,'fullLoop');
+ return {...(c.fullLoop===undefined?{}:{fullLoop:c.fullLoop as boolean}),...(c.mode===undefined?{}:{mode:c.mode as DisplayIntervalMode}),...(c.enabled===undefined?{}:{enabled:c.enabled as boolean}),...(c.start===undefined?{}:{start:num(c.start,'start',0,1)}),...(c.end===undefined?{}:{end:num(c.end,'end',0,1)})};
 }
 function rangeExists(d:DrawingDocument,value:unknown){const id=string(value,'rangeId'),track=d.displayIntervals?.find(t=>t.ranges.some(r=>r.id===id));if(!track)fail('NOT_FOUND',`Unknown display range ID: ${id}.`);return {id,track:track!};}
 function terminusBrushStyle(value:unknown):TerminusBrushStyle{
@@ -168,7 +175,7 @@ function changedIds(before:DrawingDocument,after:DrawingDocument){
  const changed=<T extends {id:string}>(a:T[],b:T[])=>b.filter(x=>JSON.stringify(x)!==JSON.stringify(a.find(y=>y.id===x.id))).map(x=>x.id);
  const nodes=changed(before.nodes,after.nodes),curves=after.curves.filter(c=>nodes.some(n=>c.nodes.includes(n))||JSON.stringify(c)!==JSON.stringify(before.curves.find(a=>a.id===c.id))).map(c=>c.id);
  const removed=<T extends {id:string}>(a:T[],b:T[])=>a.filter(x=>!b.some(y=>y.id===x.id)).map(x=>x.id);
- return {curveIds:curves,nodeIds:nodes,layerIds:changed(before.layers,after.layers),fillIds:changed(before.fills,after.fills),offsetIds:changed(before.offsets,after.offsets),groupIds:changed(before.groups??[],after.groups??[]),joinIds:changed(before.joins,after.joins),endpointLinkIds:changed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id),removed:{curveIds:removed(before.curves,after.curves),nodeIds:removed(before.nodes,after.nodes),layerIds:removed(before.layers,after.layers),fillIds:removed(before.fills,after.fills),offsetIds:removed(before.offsets,after.offsets),groupIds:removed(before.groups??[],after.groups??[]),joinIds:removed(before.joins,after.joins),endpointLinkIds:removed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:removed(before.displayIntervals??[],after.displayIntervals??[])}};
+ return {mirrorEditingChanged:JSON.stringify(before.mirrorEditing)!==JSON.stringify(after.mirrorEditing),mirrorPairIds:changed(before.mirrorEditing?.curvePairs??[],after.mirrorEditing?.curvePairs??[]),curveIds:curves,nodeIds:nodes,layerIds:changed(before.layers,after.layers),fillIds:changed(before.fills,after.fills),offsetIds:changed(before.offsets,after.offsets),groupIds:changed(before.groups??[],after.groups??[]),joinIds:changed(before.joins,after.joins),endpointLinkIds:changed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:changed(before.displayIntervals??[],after.displayIntervals??[]),affectedFillIds:after.fills.filter(f=>f.boundary.some(u=>curves.includes(u.id))).map(f=>f.id),affectedOffsetIds:after.offsets.filter(o=>o.source.some(u=>curves.includes(u.id))).map(o=>o.id),removed:{mirrorPairIds:removed(before.mirrorEditing?.curvePairs??[],after.mirrorEditing?.curvePairs??[]),curveIds:removed(before.curves,after.curves),nodeIds:removed(before.nodes,after.nodes),layerIds:removed(before.layers,after.layers),fillIds:removed(before.fills,after.fills),offsetIds:removed(before.offsets,after.offsets),groupIds:removed(before.groups??[],after.groups??[]),joinIds:removed(before.joins,after.joins),endpointLinkIds:removed(before.endpointLinks??[],after.endpointLinks??[]),displayTrackIds:removed(before.displayIntervals??[],after.displayIntervals??[])}};
 }
 function diagnostics(d:DrawingDocument){
  return [
@@ -194,6 +201,7 @@ function checkNewDiagnostics(before:DrawingDocument,after:DrawingDocument){
 }
 function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void):DrawingDocument{
  const c=record(raw),op=c.op;
+ if(mirrorCommandNames.includes(op as string))return applyMirrorCommand(d,c,(id,ref)=>created('mirrorPair',id,ref));
  switch(op){
   case 'moveNode':{
    keys(c,['op','nodeId','position']);const id=string(c.nodeId,'nodeId');
@@ -272,10 +280,10 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
    keys(c,['op','curveId','offset','scope']);if(c.scope!==undefined&&c.scope!=='PARENT'&&c.scope!=='LAYER')fail('INVALID_REQUEST','scope must be PARENT or LAYER.');const offset=num(c.offset,'offset');if(!Number.isSafeInteger(offset))fail('INVALID_REQUEST','offset must be an integer.');return setDepthOffset(d,curveExists(d,c.curveId),offset,c.scope as 'PARENT'|'LAYER'|undefined);
   }
   case 'addDisplayInterval':{
-   keys(c,['op','curveId','mode','start','end','enabled','ref']);const id=curveExists(d,c.curveId),change=intervalChange(c),prior=new Set((d.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));let n=addDisplayInterval(d,id,change.mode);
+   keys(c,['op','curveId','mode','start','end','enabled','fullLoop','ref']);const id=curveExists(d,c.curveId),change=intervalChange(c),prior=new Set((d.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));let n=addDisplayInterval(d,id,change.mode);
    const track=n.displayIntervals!.find(t=>t.ranges.some(r=>!prior.has(r.id)))!,range=track.ranges.find(r=>!prior.has(r.id))!;n=changeDisplayInterval(n,track.id,range.id,change);created('displayRange',range.id,c.ref);return n;
   }
-  case 'changeDisplayInterval':keys(c,['op','rangeId','mode','start','end','enabled']);{const r=rangeExists(d,c.rangeId),change=intervalChange(c);nonemptyChange(change);return changeDisplayInterval(d,r.track.id,r.id,change);}
+  case 'changeDisplayInterval':keys(c,['op','rangeId','mode','start','end','enabled','fullLoop']);{const r=rangeExists(d,c.rangeId),change=intervalChange(c);nonemptyChange(change);return changeDisplayInterval(d,r.track.id,r.id,change);}
   case 'removeDisplayInterval':keys(c,['op','rangeId']);{const r=rangeExists(d,c.rangeId);return removeDisplayInterval(d,r.track.id,r.id);}
   case 'setDisplayIntervalEnd':keys(c,['op','rangeId','end','style']);{const r=rangeExists(d,c.rangeId);return setDisplayIntervalEnd(d,r.track.id,r.id,end(c.end),terminusBrushStyle(c.style));}
   case 'adoptDisplayRoute':{
@@ -324,6 +332,7 @@ function defaultHost():VectorEditingHost{
    if(!canEditSource())fail('MODE_RESTRICTED','Artwork writes require Drawing mode. Change modes in the workspace first.');
    const e=useEditor.getState();e.beginEdit();try{e.setDrawingSnapshotState(state);}finally{e.endEdit();}
   },
+  commitRecording(recording){if(useWorkspaceMode.getState().mode!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode.');useEditor.getState().commitVectorRecording(recording);},
   undo:()=>useEditor.getState().undo(),redo:()=>useEditor.getState().redo(),
   selectCurveIds:ids=>useDrawing.getState().set({selection:{ids},tool:'direct'}),
   getSelection:()=>useDrawing.getState().selection,getActiveLayerId:()=>useDrawing.getState().layerId,
@@ -343,7 +352,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
  const revision=()=>{const next=host.getState().project;if(next!==current){current=next;serial++;}return `${instance}:${serial}`;};
  function run<T>(action:()=>T):VectorResult<T>{
   try{return {ok:true,value:action(),revision:revision()};}
-  catch(error){const e=error as Error;return {ok:false,revision:revision(),error:{code:e instanceof ApiError||e instanceof ArtworkApiError?e.code:'CONSTRAINT_VIOLATION',message:e.message??String(error),...(e instanceof ApiError&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{}),...(e instanceof ApiError&&e.relatedCurveIds?{relatedCurveIds:e.relatedCurveIds}:e instanceof RelatedSelection?{relatedCurveIds:e.ids}:{})}};}
+  catch(error){const e=error as Error;return {ok:false,revision:revision(),error:{code:e instanceof ApiError||e instanceof ArtworkApiError||e instanceof RecordingApiError?e.code:'CONSTRAINT_VIOLATION',message:e.message??String(error),...((e instanceof ApiError||e instanceof RecordingApiError)&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{}),...(e instanceof ApiError&&e.relatedCurveIds?{relatedCurveIds:e.relatedCurveIds}:e instanceof RelatedSelection?{relatedCurveIds:e.ids}:{})}};}
  }
  function expected(value:unknown){if(value!==undefined&&string(value,'expectedRevision')!==revision())fail('STALE_REVISION','The project changed. Inspect again and recompute the edit.');}
  const source=()=>host.getState().project.drawing??emptyDrawing();
@@ -351,27 +360,30 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(input);keys(r,['commands','expectedRevision','dryRun']);expected(r.expectedRevision);bool(r.dryRun,'dryRun');
   if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Source edits require Drawing mode. Recording does not change source geometry or topology.');
   if(!Array.isArray(r.commands)||r.commands.length>VECTOR_AI_LIMITS.batch)fail('INVALID_REQUEST',`commands must be an array of at most ${VECTOR_AI_LIMITS.batch} commands.`);
+  const mirrorIntent=new MirrorBatchIntent();
   const before=source(),approximations:{commandIndex:number;sampledMaxError:number}[]=[],created:CreatedEntity[]=[],refs=new Map<string,string>();let next=clone(before);
-  const canonicalIdExists=(id:string)=>[...next.layers,...next.curves,...next.nodes,...next.fills,...next.offsets,...next.joins,...(next.endpointLinks??[]),...(next.groups??[]),...(next.displayIntervals??[]),...(next.displayIntervals??[]).flatMap(t=>t.ranges)].some(x=>x.id===id);
-  const resolve=(value:unknown,key=''):unknown=>{
-   if(typeof value==='string'&&(/Id$|Ids$/.test(key))&&value.startsWith('$')){if(canonicalIdExists(value))return value;const id=refs.get(value.slice(1));if(!id)fail('UNKNOWN_REFERENCE',`Unknown batch reference: ${value}. References must be created earlier in this batch.`);return id;}
-   if(Array.isArray(value))return value.map(v=>resolve(v,key));
-   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,resolve(v,k)]));
+  const canonicalIdExists=(id:string)=>[...next.layers,...next.curves,...next.nodes,...next.fills,...next.offsets,...next.joins,...(next.endpointLinks??[]),...(next.groups??[]),...(next.displayIntervals??[]),...(next.displayIntervals??[]).flatMap(t=>t.ranges),...(next.mirrorEditing?.curvePairs??[])].some(x=>x.id===id);
+  const resolve=(value:unknown,key='',mirrorPair=false):unknown=>{
+   if(typeof value==='string'&&(/Id$|Ids$/.test(key)||mirrorPair&&['a','b'].includes(key))&&value.startsWith('$')){if(canonicalIdExists(value))return value;const id=refs.get(value.slice(1));if(!id)fail('UNKNOWN_REFERENCE',`Unknown batch reference: ${value}. References must be created earlier in this batch.`);return id;}
+   if(Array.isArray(value))return value.map(v=>resolve(v,key,mirrorPair));
+   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,resolve(v,k,mirrorPair)]));
    return value;
   };
   for(const [index,c] of (r.commands as unknown[]).entries()){
    try{
-    const previous=next;next=applyCommand(next,resolve(c),error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
+    const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair')),previous=next;next=applyCommand(next,resolved,error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
      const ref=rawRef===undefined?undefined:string(rawRef,'ref',80);if(ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]*$/.test(ref))fail('INVALID_REQUEST','ref must begin with a letter and contain only letters, digits, _ or -.');if(refs.has(ref))fail('DUPLICATE_REFERENCE',`Repeated batch reference: ${ref}.`);
       for(const alias of [ref,...Object.keys(idMap??{}).map(old=>`${ref}/${old}`)])if(canonicalIdExists(`$${alias}`))fail('REFERENCE_COLLISION',`Reference $${alias} collides with an existing canonical ID. Choose another ref.`);
       refs.set(ref,id);for(const [old,newId] of Object.entries(idMap??{}))refs.set(`${ref}/${old}`,newId);
      }
      created.push({commandIndex:index,kind,id,...(ref===undefined?{}:{ref}),...(idMap?{idMap}:{})});
     });
+    if(mirrorCommandNames.includes(resolved.op as string)){if(JSON.stringify(previous.mirrorEditing)!==JSON.stringify(next.mirrorEditing))mirrorIntent.clear();}
+    else {if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
     // Quad deformation already transports material cut positions; other geometry edits do so here.
     if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
-   }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
+   }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError||e instanceof MirrorApiError?e.code:e instanceof MirrorEditingError?`MIRROR_${e.code}`:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
   return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations,created};
  }
@@ -394,7 +406,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const reference=d.reference?(({dataUrl,...r})=>({...r,pixelsIncluded:false}))(d.reference):null;
   return clone({
    apiVersion:VECTOR_AI_VERSION,mode:host.getMode(),sourceEditable:host.getMode()==='drawing',
-   sourceId:host.getState().project.drawingSnapshots?.activeId??'$working',mirrorAxisX:d.mirrorAxisX??0,coordinateSystem:{unit:'source',x:'right',y:'up',handles:'absolute',bounds:'exact cubic centerline; excludes width, mist, offsets and extensions'},
+   sourceId:host.getState().project.drawingSnapshots?.activeId??'$working',mirrorAxisX:d.mirrorAxisX??0,mirrorEditing:d.mirrorEditing??null,mirrorEditingState:validateMirrorEditing(d),coordinateSystem:{unit:'source',x:'right',y:'up',handles:'absolute',bounds:'exact cubic centerline; excludes width, mist, offsets and extensions'},
    layers:d.layers.filter(l=>ownerLayers.has(l.id)||l.items.some(id=>selectedIds.has(id))||(!['curveIds','curveNames','strokeNames','nameIncludes'].some(k=>q[k]!==undefined)&&match('layerIds',l.id)&&match('layerNames',l.name))).map(l=>({...l,effectiveState:objectState(d,l.items)})),
    strokes:chosenStrokes,curves:selected.map(c=>({...c,layerId:layerFor(d,c.id)!.id,strokeId:byCurve.get(c.id)!.id,shape:shapeOf(d,c.id),controls:shapeOf(d,c.id).map((position,index)=>({targetKind:index===0||index===3?'node':'handle',role:['P0','H0','H1','P1'][index],curveId:c.id,...(index===0||index===3?{nodeId:c.nodes[index===0?0:1]}:{end:index===1?0:1}),position})),bounds:cubicBounds(shapeOf(d,c.id))})),
    nodes:d.nodes.filter(n=>nodeIds.has(n.id)).map(n=>({...n,endpoints:members(d,n.id),linkedNodeIds:[...linkedNodeIds(d,n.id)]})),
@@ -417,10 +429,37 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   if(host.getMode()==='recording'&&(target.drawing!==state.project.drawing||target.drawingSnapshots!==state.project.drawingSnapshots))fail('MODE_RESTRICTED','This history step changes source artwork. Return to Drawing mode to undo or redo it.');
   host[direction]();return {changed:host.getState().project!==state.project,mode:host.getMode()};
  }
+ function renderPreview(d:DrawingDocument,o:Record<string,unknown>){
+   const width=num(o.width??800,'width',1,4096),height=num(o.height??800,'height',1,4096),b=drawingBounds(d);
+   const padding=Math.max(.1,...d.curves.map(c=>c.width*2+(c.mist?.enabled?c.mist.width:0)),...d.offsets.map(c=>Math.abs(c.distance)+c.width));
+   const viewport:VectorViewport={width,height,center:o.center===undefined?(b?.center??[0,0]):point(o.center,'center'),pixelsPerUnit:num(o.pixelsPerUnit??Math.min(width/((b?b.max[0]-b.min[0]:2.8)+2*padding),height/((b?b.max[1]-b.min[1]:2.8)+2*padding)),'pixelsPerUnit',1e-6,1e6)};
+   if(o.showFills!==false&&d.fills.some(f=>f.visible&&f.mist?.enabled)&&(typeof document==='undefined'||typeof Path2D==='undefined'))fail('BROWSER_REQUIRED','Mist-fill SVG export uses the existing Canvas renderer. Run preview in the local app browser, or use showFills:false for an explicit ink-only preview.');
+   let annotations:AIGuideOptions|undefined;
+   if(o.annotations!==undefined){
+    const a=record(o.annotations);keys(a,['curveIds','grid','labels','handles','diagnostics']);for(const flag of ['grid','labels','handles','diagnostics'])bool(a[flag],`annotations.${flag}`);
+    const curveIds=a.curveIds===undefined?[]:ids(a.curveIds,'annotations.curveIds',true);
+    if(curveIds.length>MAX_AI_GUIDE_CURVES)fail('INVALID_REQUEST',`Annotate at most ${MAX_AI_GUIDE_CURVES} selected curves; narrow the query first.`);
+    curveIds.forEach(id=>curveExists(d,id));annotations={...a,curveIds} as AIGuideOptions;
+   }
+   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
+   return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,annotated:!!annotations,diagnostics:diagnostics(d),sourceRevision:revision()};
+ }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo'],commands:[...commandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
+  inspectRecording:(query:RecordingQuery={})=>run(()=>{const q=record(query);expected(q.expectedRevision);return {mode:host.getMode(),recordingEditable:host.getMode()==='recording',...recordingOverview(host.getState().project,q)};}),
+  recording:(request:RecordingBatch)=>run(()=>{
+   const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode and never mutate source artwork.');
+   const plan=prepareRecordingBatch(host.getState().project,r);if(plan.changed&&!plan.dryRun){if(!host.commitRecording)fail('UNAVAILABLE','This host does not support Recording transactions.');host.commitRecording!(plan.next);}
+   const rig=plan.next.rigs.find(x=>x.artworkId===plan.sourceId);return {applied:plan.changed&&!plan.dryRun,changed:plan.changed,dryRun:plan.dryRun,sourceId:plan.sourceId,created:plan.created,rigId:rig?.id??null,angle:rig?.angle??null,hasDraft:!!rig?.draft,sourceReadOnly:true};
+  }),
+  previewRecording:(options:RecordingPreviewOptions={})=>run(()=>{
+   const o=record(options);keys(o,['commands','expectedRevision','angle','useDraft','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');bool(o.useDraft,'useDraft');
+   let project=host.getState().project;if(o.commands!==undefined){const plan=prepareRecordingBatch(project,{commands:o.commands,dryRun:true});project={...project,vectorRecording:plan.next};}
+   const evaluated=evaluateRecording(project,{...(o.angle===undefined?{}:{angle:o.angle as {x:number;y:number}}),...(o.useDraft===undefined?{}:{useDraft:o.useDraft as boolean})});
+   return {...renderPreview(evaluated.drawing,o),artworkId:evaluated.artworkId,rigId:evaluated.rigId,angle:evaluated.angle,usedDraft:evaluated.usedDraft,hasUnappliedDraft:evaluated.hasUnappliedDraft,sourceReadOnly:true,fitDiagnostics:evaluated.diagnostics,diagnosticStage:evaluated.diagnosticStage,maxError:evaluated.maxError,maxErrorPixels:evaluated.maxError*250,warningCurveIds:evaluated.warningCurveIds,conflictingNodeIds:evaluated.conflictingNodeIds,intervalTransportErrors:evaluated.intervalTransportErrors,routeDiagnostics:evaluated.routeDiagnostics};
+  }),
   inspectArtworks:(request:{expectedRevision?:string}={})=>run(()=>{const r=record(request);keys(r,['expectedRevision']);expected(r.expectedRevision);return clone(artworkOverview(host.getState().project));}),
   artwork:(request:ArtworkRequest)=>run(()=>{
    const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Artwork writes require Drawing mode.');
@@ -433,7 +472,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    const beforeAfter=changes.curveIds.filter(id=>before.curves.some(c=>c.id===id)).map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}}));
    const addedCurves=next.curves.filter(c=>!before.curves.some(x=>x.id===c.id)).map(c=>({curveId:c.id,layerId:layerFor(next,c.id)!.id,name:c.name,shape:clone(shapeOf(next,c.id))}));
    const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
-   if(changed&&!dryRun)host.commitDrawing(next);
+   if(changed&&!dryRun)host.commitDrawing(markFinalizedGeometry(next));
    return result;
   }),
   select:(request:{curveIds:string[];expectedRevision?:string})=>run(()=>{
@@ -451,19 +490,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   preview:(options:PreviewOptions={})=>run(()=>{
    const o=record(options);keys(o,['commands','expectedRevision','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');
    const d=o.commands===undefined?source():prepare({commands:o.commands,expectedRevision:o.expectedRevision,dryRun:true}).next;
-   const width=num(o.width??800,'width',1,4096),height=num(o.height??800,'height',1,4096),b=drawingBounds(d);
-   const padding=Math.max(.1,...d.curves.map(c=>c.width*2+(c.mist?.enabled?c.mist.width:0)),...d.offsets.map(c=>Math.abs(c.distance)+c.width));
-   const viewport:VectorViewport={width,height,center:o.center===undefined?(b?.center??[0,0]):point(o.center,'center'),pixelsPerUnit:num(o.pixelsPerUnit??Math.min(width/((b?b.max[0]-b.min[0]:2.8)+2*padding),height/((b?b.max[1]-b.min[1]:2.8)+2*padding)),'pixelsPerUnit',1e-6,1e6)};
-   if(o.showFills!==false&&d.fills.some(f=>f.visible&&f.mist?.enabled)&&(typeof document==='undefined'||typeof Path2D==='undefined'))fail('BROWSER_REQUIRED','Mist-fill SVG export uses the existing Canvas renderer. Run preview in the local app browser, or use showFills:false for an explicit ink-only preview.');
-   let annotations:AIGuideOptions|undefined;
-   if(o.annotations!==undefined){
-    const a=record(o.annotations);keys(a,['curveIds','grid','labels','handles','diagnostics']);for(const flag of ['grid','labels','handles','diagnostics'])bool(a[flag],`annotations.${flag}`);
-    const curveIds=a.curveIds===undefined?[]:ids(a.curveIds,'annotations.curveIds',true);
-    if(curveIds.length>MAX_AI_GUIDE_CURVES)fail('INVALID_REQUEST',`Annotate at most ${MAX_AI_GUIDE_CURVES} selected curves; narrow the query first.`);
-    curveIds.forEach(id=>curveExists(d,id));annotations={...a,curveIds} as AIGuideOptions;
-   }
-   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
-   return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,annotated:!!annotations,diagnostics:diagnostics(d),sourceRevision:revision()};
+   return renderPreview(d,o);
   }),
   convertPoint:(request:{point:Point2;from:CoordinateSpace;to:CoordinateSpace;viewport?:VectorViewport})=>run(()=>{
    const r=record(request);keys(r,['point','from','to','viewport']);const spaces=['source','canvas','client','reference'];

@@ -1,9 +1,8 @@
-import {displayField,displayPath,intervalMode} from '../drawing/displayIntervals';
+import {displayField,displayPath,intervalMode,closedIntervalLength} from '../drawing/displayIntervals';
 import type {StrokePath} from '../drawing/strokes';
 import type {DrawingDocument as Doc,StrokeDisplayIntervals as Track,DisplayInterval as Range,InkEnds} from '../drawing/model';
 import {poseCoverageRanges} from './poseIntervalCoverage';
 
-const wrap=(x:number)=>((x%1)+1)%1;
 function pathKey(p:StrokePath){
  const order=(segments:StrokePath['segments'])=>{
   if(!p.closed)return JSON.stringify(segments.map(s=>[s.id,s.reverse]));
@@ -28,13 +27,14 @@ function rebase(d:Doc,path:StrokePath,track:Track,anchor:Track['anchor']):Range[
   const ends=r.inkEnds;
   const inkEnds=reverse&&ends?[ends[1],ends[0]] as InkEnds:ends;
   if(!closed)return {...r,start:Math.min(a,b),end:Math.max(a,b),inkEnds};
-  if(Math.abs(r.end-r.start)>=1-1e-9)return {...r,start:0,end:1,inkEnds};
+  if(r.fullLoop===true)return {...r,start:a,end:a,inkEnds};
+  if(closedIntervalLength(r)===1)return {...r,start:0,end:1,inkEnds};
   return {...r,start:reverse?b:a,end:reverse?a:b,inkEnds};
  });
 }
 function spans(r:Range,closed:boolean):[number,number][]{
  if(!closed)return [[r.start,r.end]];
- const size=Math.abs(r.end-r.start)>=1-1e-9?1:wrap(r.end-r.start),end=r.start+size;
+ const size=closedIntervalLength(r),end=r.start+size;
  return size>=1-1e-9?[[0,1]]:end<=1?[[r.start,end]]:[[r.start,1],[0,end-1]];
 }
 /** Overlap is a fallback only for recreated ranges. Stable IDs remain primary;
@@ -112,7 +112,8 @@ export function alignPoseIntervalDrawings(drawings:Doc[]):Doc[]{
   const samples=new Set(group.map(g=>g.sample));
   // Full ink becoming several SHOW runs creates new gaps too. Give these the
   // same pinch-before-break transition as an equivalent authored HIDE range.
-  const fullSource=ranges.some(rs=>!rs.length||rs.some(r=>intervalMode(r)==='SHOW'&&Math.abs(r.end-r.start)>=1-1e-9)&&!rs.some(r=>intervalMode(r)==='HIDE'&&Math.abs(r.end-r.start)>1e-9));
+  const size=(r:Range)=>closed?closedIntervalLength(r):Math.abs(r.end-r.start);
+  const fullSource=ranges.some(rs=>!rs.length||rs.some(r=>intervalMode(r)==='SHOW'&&size(r)>=1-1e-9)&&!rs.some(r=>intervalMode(r)==='HIDE'&&size(r)>1e-9));
   const opensGaps=fullSource&&ranges.some(rs=>rs.filter(r=>intervalMode(r)==='SHOW').length>1);
   // Explicit switches belong to authored ranges. Baking them into coverage
   // would discard their identity and turn a held switch into a growing gap.

@@ -1,3 +1,6 @@
+import {beginIntervalDrag,updateIntervalDrag,type IntervalDragState} from '../../domain/drawing/intervalDrag';
+import {setMirrorEditingEnabled} from '../../domain/drawing/mirrorCommands';
+import {mirrorWritesForCurves,type MirrorAuthoredWrites} from '../../domain/drawing/mirrorEditing';
 import {finalizeGeometryEdit} from '../../domain/drawing/geometryEdit';
 import AIGuideOverlay from './AIGuideOverlay';
 import {useDrawingWorkspace} from './workspace';
@@ -32,7 +35,7 @@ import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
 import PaintScene from './PaintScene';
 import InkEndOverlay from './InkEndOverlay';
 import DisplayIntervalOverlay from './DisplayIntervalOverlay';
-import {displayPath,displayField,nearestDisplayPosition,changeDisplayInterval,removeDisplayInterval} from '../../domain/drawing/displayIntervals';
+import {displayPath,displayField,changeDisplayInterval,removeDisplayInterval} from '../../domain/drawing/displayIntervals';
 import {NumberField} from './Field';
 import {usePointerDragTracking,type TrackedPointer} from '../shared/usePointerDragTracking';
 import {curvePath,selectionBounds,snapMirrorAxis} from './geometry';
@@ -41,7 +44,7 @@ const EMPTY=emptyDrawing();
 
 interface Pen {position:Point2;out:Point2;last?:string;first?:Endpoint}
 interface DeformCage {base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;maxError:number}
-interface Drag extends TrackedPointer {followStrength?:number;cage?:DeformCage;corner?:number;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -84,7 +87,8 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  // but picking still uses stored positions so the second click stays stable.
  const endpointCurveIds=(document:Doc)=>(document.layers.find(l=>l.id===activeLayer?.id)?.items??[]).filter(id=>editable(document,id));
  const connections=first?(tool==='smooth'?t('第二步：选择需要对齐的一侧'):t('第二步：选择要移动的端点')):(tool==='smooth'?t('第一步：选择保留方向的一侧'):t('第一步：选择固定端点'));
- const commit=(n:Doc)=>{if(n===stored)return;n=finalizeGeometryEdit(stored,n);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==stored[k as keyof Doc]))artworkPreview.edit();own.current=n;commitDrawing(n);};
+ function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
+ const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection))=>{if(n===stored)return;n=finalizeGeometryEdit(stored,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==stored[k as keyof Doc]))artworkPreview.edit();own.current=n;commitDrawing(n);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
  const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
@@ -109,7 +113,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const ids=scope(),b=selectionBounds(d,ids);if(!b)return;
   const center=b.center,angle=value*Math.PI/180;
   const map=(p:Point2):Point2=>kind==='moveX'?add(p,[value,0]):kind==='moveY'?add(p,[0,value]):kind==='mirror'?[2*center[0]-p[0],p[1]]:kind==='scale'?add(center,mul(sub(p,center),value)):(()=>{const [x,y]=sub(p,center);return add(center,[x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle)]);})();
-  try{commit(cmd.transform(d,ids,map,mayInclude()));setHint('');}catch(e){error(e,ids);}
+  try{const n=cmd.transform(d,ids,map,mayInclude());commit(n,mirrorWritesForCurves(n,ids));setHint('');}catch(e){error(e,ids);}
  }
  useEffect(()=>{const obs=new ResizeObserver(([e])=>setSize({width:e.contentRect.width,height:e.contentRect.height}));obs.observe(host.current!);return()=>obs.disconnect();},[]);
  useEffect(()=>{
@@ -153,7 +157,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
   if(drag.current||e.button!==0&&kind!=='pan'&&kind!=='zoom')return;e.preventDefault();e.stopPropagation();svg.current!.focus({preventScroll:true});
   const base=useEditor.getState().project.drawing??EMPTY;
-  drag.current={kind,start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};setHint('');
+  drag.current={kind,start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
   try{svg.current!.setPointerCapture(e.pointerId);}catch{/* Window tracking remains active if native capture is unavailable. */}
  }
  function axisDown(e:React.PointerEvent){
@@ -217,8 +221,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     if(snapped)position=[...snapped];g.next=dragNode(g.base,g.node!,position,g.followStrength??0);setNodeSnap(snapped);
    }
    if(g.kind==='displayInterval'){
-    const grip=g.displayInterval!,track=g.base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!,field=displayField(g.base,displayPath(g.base,track.anchor.id)),current=g.next?.displayIntervals?.find(t=>t.id===grip.track)?.ranges.find(r=>r.id===grip.range)??range,previous=grip.end?current.end:current.start;
-    const value=nearestDisplayPosition(field,track,p,previous);g.next=changeDisplayInterval(g.base,track.id,range.id,grip.end?{end:value}:{start:value});
+    const grip=g.displayInterval!,result=updateIntervalDrag(g.intervalWalk!,p);g.intervalWalk=result.state;if(Object.keys(result.change).length)g.next=changeDisplayInterval(g.base,grip.track,grip.range,result.change);
    }
    if(g.kind==='handle')g.next=cmd.moveHandle(g.base,g.endpoint!,add(curveById(g.base,g.endpoint!.curveId).handles[g.endpoint!.end],delta));
    if(g.kind==='deform'){
@@ -230,7 +233,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},!!approved.current);}
    if(g.kind==='scale'){const o=g.origin!,start=sub(g.start,o),now=sub(p,o),safe=(v:number)=>Math.abs(v)<.01?(v<0?-.01:.01):v;let sx=safe(Math.abs(start[0])<1e-9?1:now[0]/start[0]),sy=safe(Math.abs(start[1])<1e-9?1:now[1]/start[1]);if(e.shiftKey)sy=sx;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},!!approved.current);}
    if(g.kind==='reference'&&g.base.reference){const ref=g.base.reference;g.next={...g.base,reference:{...ref,offset:add(ref.offset,delta).map(clampReferenceOffset) as Point2}};}
-   if(g.next){g.next=finalizeGeometryEdit(g.base,g.next);setDraft(g.next);}
+   if(g.next){const writes=g.kind==='node'?mirrorIntent(g.next,{ids:[],node:g.node}):g.kind==='handle'?mirrorIntent(g.next,{ids:[],handle:g.endpoint}):g.ids?mirrorWritesForCurves(g.next,g.ids):{};g.next=finalizeGeometryEdit(g.base,g.next,writes);setDraft(g.next);}
   }catch(ex){if(ex instanceof cmd.RelatedSelection){cancelDraft();error(ex,g.ids);}else setHint(t((ex as Error).message));}
  }
  function up(e?:PointerEvent|MouseEvent,interrupted=false){
@@ -306,7 +309,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(e.key.startsWith('Arrow')&&hasNudgeTarget(s.selection)){
     e.preventDefault();e.stopImmediatePropagation();if(drag.current||e.ctrlKey||e.metaKey)return;
     const amount=.004*(e.shiftKey?5:e.altKey?0.2:1),delta:Point2=[e.key==='ArrowRight'?amount:e.key==='ArrowLeft'?-amount:0,e.key==='ArrowUp'?amount:e.key==='ArrowDown'?-amount:0],base=held.current?.next??s.d;
-    try{const n=finalizeGeometryEdit(base,nudgeSelection(base,s.selection,delta));if(n===base)return;if(!held.current)held.current={base,next:n};else held.current.next=n;setDraft(n);setHint('');}catch(ex){setHint(t((ex as Error).message));}return;
+    try{const raw=nudgeSelection(base,s.selection,delta),n=finalizeGeometryEdit(base,raw,mirrorIntent(raw,s.selection));if(n===base)return;if(!held.current)held.current={base,next:n};else held.current.next=n;setDraft(n);setHint('');}catch(ex){setHint(t((ex as Error).message));}return;
    }
    if(e.ctrlKey||e.metaKey||e.altKey)return;
    const toolMap:Record<string,DrawingTool>={v:'select',a:'direct',p:'pen',l:'ellipse',h:'hand',z:'zoom'};if(toolMap[e.key.toLowerCase()]){e.preventDefault();s.selectTool(toolMap[e.key.toLowerCase()]);}
@@ -338,7 +341,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {tool==='pen'&&<button onClick={()=>{cancelDraft();endPen();setPenPreview(null);}}><Check size={14}/>{t('结束绘制')}</button>}
  {(endpointTools||tool==='mirror')&&<><span className="drawing-step">{tool==='mirror'?t(first?'请选择目标曲线':'请选择源曲线'):connections}</span><button onClick={()=>{setFirst(null);setDraft(null);}}>{t('取消')}</button></>}
 
- <div className="drawing-options-right"><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
+ <div className="drawing-options-right"><button data-testid="drawing-mirror-toggle" aria-pressed={!!d.mirrorEditing?.enabled} title={t('只在绘制模式联动几何，录制姿态保持独立。')} onClick={()=>run(()=>setMirrorEditingEnabled(d,!d.mirrorEditing?.enabled))}>{t('持续镜像')} · {t(d.mirrorEditing?.enabled?'开':'关')}</button><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
  </nav>
  </AutoHideBar>
  <div className="drawing-body">

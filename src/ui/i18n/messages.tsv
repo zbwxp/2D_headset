@@ -1900,3 +1900,28 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 当前路径没有端点联动；请先用“端点联动”连接需要续接的两条曲线。	Create a geometric endpoint link between the two intended continuation curves first.
 保留原可见范围	Preserved original visibility
 解除显示贯通	Release display route
+持续镜像	Mirror editing
+镜像编辑开关	Mirror editing enabled
+组曲线配对	curve pairs
+几何约束	Geometry constraints
+节点与控制柄双向镜像；中心约束固定在轴上。关闭后可独立编辑，再开启只校验，不覆盖任意一侧。	Nodes and handles mirror both ways; axial constraints stay on the axis. Disable for independent edits; re-enabling validates without overwriting either side.
+配对方向	Pair orientation
+解除镜像配对	Remove mirror pair
+反向端点配对	Reverse geometric ends
+建立所选曲线镜像配对	Pair selected curves
+选择一对曲线可建立或检查配对。配对支持反向与轴上自对称曲线。	Select curves to inspect or create a pair. Reversed and self-symmetric pairs are supported.
+此节点固定镜像轴	Lock this node to axis
+只在绘制模式联动几何，录制姿态保持独立。	Geometry coupling is for Drawing; Recording poses remain independent.
+开	On
+关	Off
+整条路径的区间合成	Whole-path interval composition
+闭合	Closed
+开放	Open
+段可见	visible spans
+个作者区间	authored ranges
+合成可见范围	Effective visible coverage
+显线并集 − 断线并集	SHOW union minus HIDE union
+显线	SHOW
+断线	HIDE
+全圈	Full loop
+空区间	Empty interval

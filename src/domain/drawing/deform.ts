@@ -1,3 +1,4 @@
+import {applyMirrorEditing,mirrorWritesForCurves} from './mirrorEditing';
 import {add,sub,mul,length,shapeOf,curveById,type Point2,type Cubic,type DrawingDocument as Doc} from './model';
 import {transform} from './commands';
 // Hot fitting loop: evaluate the 2D cubic directly (no temporary 3D de Casteljau arrays).
@@ -125,7 +126,7 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
    }
    return next.relative(track,dest/next.total);
   };
-  return {...track,ranges:track.ranges.map(r=>path.closed&&Math.abs(r.end-r.start)>1-1e-10?r:{...r,start:move(r.start),end:move(r.end)})};
+  return {...track,ranges:track.ranges.map(r=>r.fullLoop?{...r,start:move(r.start),end:move(r.start)}:path.closed&&Math.abs(r.end-r.start)>1-1e-10?r:{...r,start:move(r.start),end:move(r.end)})};
  })};
 }
 
@@ -142,5 +143,7 @@ export function deformDrawing(d:Doc,ids:string[],rect:DeformRect,quad:Quad,allow
  for(const j of n.joins)if(j.mode!=='CUSP')for(const e of [j.a,j.b]){const s=shapeOf(n,e.curveId);if(length(sub(s[e.end?2:1],s[e.end?3:0]))<1e-7)throw Error('变换会使连接柄退化。');}
  const oldArcs=roundedJoins(d),newArcs=roundedJoins(n);
  for(const [id,g] of newArcs)if(g.error&&!oldArcs.get(id)?.error)throw Error('变形会使圆弧接笔退化；已保留最后有效位置。');
- return {document:transportDeformedIntervals(d,n,parameters),maxError,parameters};
+ const mirrored=applyMirrorEditing(d,n,mirrorWritesForCurves(n,ids));
+ if(d.mirrorEditing?.enabled)for(const pair of d.mirrorEditing.curvePairs){const a=parameters.get(pair.a),b=parameters.get(pair.b);if(!!a===!!b)continue;const from=a??b!,to=a?pair.b:pair.a;parameters.set(to,{values:pair.reverse?[...from.values].reverse().map(t=>1-t):[...from.values]});}
+ return {document:transportDeformedIntervals(d,mirrored,parameters),maxError,parameters};
 }

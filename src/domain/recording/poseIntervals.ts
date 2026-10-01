@@ -1,4 +1,4 @@
-import {displayField,displayPath,intervalMode} from '../drawing/displayIntervals';
+import {displayField,displayPath,intervalMode,closedIntervalLength} from '../drawing/displayIntervals';
 import {strokeEnds} from '../drawing/appearance';
 import {withIntervalPinch} from '../drawing/intervalPinch';
 import {curveById,inkTaperDistance,type DisplayInterval,type DrawingDocument,type InkEnds,type StrokeDisplayIntervals} from '../drawing/model';
@@ -6,7 +6,8 @@ import {alignPoseIntervalDrawings} from './poseIntervalCorrespondence';
 
 export const wrapUnit=(x:number)=>((x%1)+1)%1;
 const delta=(x:number)=>x-Math.floor(x+.5);
-const span=(r:DisplayInterval,closed:boolean)=>closed?Math.abs(r.end-r.start)>=1-1e-9?1:wrapUnit(r.end-r.start):r.end-r.start;
+const span=(r:DisplayInterval,closed:boolean)=>closed?closedIntervalLength(r):r.end-r.start;
+const withoutFullLoop=(r:DisplayInterval):DisplayInterval=>{const {fullLoop:_,...rest}=r;return rest;};
 /** One circular start plus a length preserves both full loops and empty intervals. */
 export function blendInterval(samples:{range:DisplayInterval;weight:number;width:number}[],closed:boolean):DisplayInterval {
  const base=samples.reduce((a,b)=>a.weight>=b.weight?a:b).range;
@@ -22,18 +23,21 @@ export function blendInterval(samples:{range:DisplayInterval;weight:number;width
    ...(styles.some(e=>e.extension!==undefined)?{extension:samples.reduce((sum,s,j)=>sum+s.weight*(styles[j].extension??0),0)}:{}),
   };
  }) as InkEnds;
- return {...base,start:closed?(length>=1-1e-9?0:wrapUnit(start)):start,end:closed?(length>=1-1e-9?1:wrapUnit(start+length)):start+length,inkEnds:ends};
+ const active=samples.filter(s=>s.weight>0),full=closed&&active.length>0&&active.every(s=>closedIntervalLength(s.range)===1),explicitFull=full&&active.some(s=>s.range.fullLoop===true);
+ // Do not inherit a full-turn flag from the strongest sample into a partial
+ // interpolation. Exact full loops retain their meaningful arbitrary anchor.
+ return {...withoutFullLoop(base),start:closed?(full&&!explicitFull?0:wrapUnit(start)):start,end:closed?(full?explicitFull?wrapUnit(start):1:wrapUnit(start+length)):start+length,...(explicitFull?{fullLoop:true}:{}),inkEnds:ends};
 }
 /** A missing track means full ink, not absence. Divide full ink at gap midpoints:
  * the next pose opens those gaps instead of making the whole line pop away. */
 function fullRanges(track:StrokeDisplayIntervals,closed:boolean,ends:InkEnds):DisplayInterval[] {
  const sorted=[...track.ranges].sort((a,b)=>a.start-b.start);
- if(sorted.length===1)return [{...sorted[0],start:0,end:1,inkEnds:closed?[{},{}]:ends}];
+ if(sorted.length===1)return [{...withoutFullLoop(sorted[0]),start:0,end:1,inkEnds:closed?[{},{}]:ends}];
  return sorted.map((r,i)=>{
   const prev=sorted[(i+sorted.length-1)%sorted.length],next=sorted[(i+1)%sorted.length];
   const start=closed?wrapUnit(r.start-wrapUnit(r.start-prev.end)/2):i?(prev.end+r.start)/2:0;
   const end=closed?wrapUnit(r.end+wrapUnit(next.start-r.end)/2):i<sorted.length-1?(r.end+next.start)/2:1;
-  return {...r,start,end,inkEnds:[!closed&&i===0?ends[0]:{},!closed&&i===sorted.length-1?ends[1]:{}]};
+  return {...withoutFullLoop(r),start,end,inkEnds:[!closed&&i===0?ends[0]:{},!closed&&i===sorted.length-1?ends[1]:{}]};
  });
 }
 export function blendPoseIntervals(doc:DrawingDocument,samples:{drawing:DrawingDocument;weight:number}[],stateSample?:number):StrokeDisplayIntervals[] {
@@ -69,7 +73,7 @@ export function blendPoseIntervals(doc:DrawingDocument,samples:{drawing:DrawingD
     delete inherited[end].taper;inherited[end].taperWidthScale=present.reduce((n,s)=>n+s.weight*s.range.inkEnds![end].taperWidthScale!,0)/presence;
    }
    const blended=blendInterval(tracks.map((s,i)=>{
-    const missing=mode==='HIDE'?{...r,start:mid,end:mid,inkEnds:inherited}:s.track?.ranges.some(x=>intervalMode(x)==='SHOW')?{...r,start:mid,end:mid}:full[i].get(r.id)!;
+    const missing=mode==='HIDE'?{...withoutFullLoop(r),start:mid,end:mid,inkEnds:inherited}:s.track?.ranges.some(x=>intervalMode(x)==='SHOW')?{...withoutFullLoop(r),start:mid,end:mid}:full[i].get(r.id)!;
     const source=exact[i];
     return {weight:s.weight,width:s.width,range:source?(mode==='HIDE'&&span(source,closed)<1e-10?{...source,inkEnds:inherited}:source):missing};
    }),closed);
@@ -87,6 +91,7 @@ export function blendPoseIntervals(doc:DrawingDocument,samples:{drawing:DrawingD
      const opening=Math.max(0,(presence-phase)/(1-phase)),size=targetLength*opening;
      const center=atStart?size/2:atEnd?1-size/2:blended.start+length/2;
      blended.start=closed?wrapUnit(center-size/2):center-size/2;blended.end=closed?wrapUnit(center+size/2):center+size/2;
+     delete blended.fullLoop;
      if(presence<=phase){const q=presence/phase;pinch=q*q*(3-2*q);}
      for(const tip of tips)if(tip.extension!==undefined)tip.extension*=opening;
     }

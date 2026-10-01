@@ -1,3 +1,5 @@
+import {displayRouteFor} from '../../domain/drawing/displayIntervals';
+import MirrorEditingControls from './MirrorEditingControls';
 import {ChevronDown,ChevronRight} from 'lucide-react';
 import PanelSection from '../shared/PanelSection';
 import {curveById,layerFor,nodeAt,members,joinAt,type DrawingDocument,type Endpoint,type Point2} from '../../domain/drawing/model';
@@ -25,6 +27,7 @@ export default function Properties({open,setOpen,document:d,selection:s,active,r
  const endpoint=s.handle??(s.node?members(d,s.node).find(e=>ids.includes(e.curveId)):undefined),node=s.node?d.nodes.find(n=>n.id===s.node):undefined,j=endpoint?joinAt(d,endpoint):undefined;
  const point=s.handle?curveById(d,s.handle.curveId).handles[s.handle.end]:node?.position,bounds=ids.length?selectionBounds(d,ids):null;
  const group=ids.length&&!s.layer?strokeFor(d,ids[0]):undefined,oneGroup=group&&ids.every(id=>group.segments.some(x=>x.id===id));
+ const route=ids.length?displayRouteFor(d,ids[0]):undefined,sharedRoute=!!route&&ids.every(id=>JSON.stringify(displayRouteFor(d,id))===JSON.stringify(route));
  const container=!s.node&&!s.handle&&!s.layer?selectedGroup(d,ids):undefined;
  const disabled=ids.some(id=>curveById(d,id).locked),ref=d.reference;
  function reorder(where:'up'|'down'|'top'|'bottom'){
@@ -33,6 +36,8 @@ export default function Properties({open,setOpen,document:d,selection:s,active,r
  }
  return <section className="drawing-properties" aria-label={t('绘图属性')}><header><button className="drawing-properties-toggle" aria-expanded={open} aria-controls="drawing-properties-body" onClick={()=>setOpen(!open)}>{open?<ChevronDown size={14}/>:<ChevronRight size={14}/>}<strong>{t('属性')}</strong><span>{t(s.mirrorAxis?'镜像轴':s.displayInterval?'显示区间':s.inkEnd?'笔触端点':s.paint?(d.fills.some(f=>f.id===s.paint)?'填充区域':'偏移跟随'):s.reference?'参考图':s.handle?'控制柄':s.node?'共享端点':multiLayer?'图层多选':layer?'图层':container?'组合':oneGroup&&ids.length>1?'连续笔画':ids.length>1?'多选':'曲线')}</span></button></header>
  <div id="drawing-properties-body" className="drawing-properties-content" hidden={!open}>
+ <MirrorEditingControls d={d} ids={ids} nodeId={s.node} run={run}/>
+ {sharedRoute&&!oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose}/>}
  {multiLayer?<>
  <p>{layerIds.length} {t('个图层已选择')}</p>
  <p className="drawing-muted">{d.layers.filter(l=>layerIds.includes(l.id)).map(l=>l.name).join(' · ')}</p>

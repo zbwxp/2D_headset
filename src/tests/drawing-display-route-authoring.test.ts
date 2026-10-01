@@ -74,6 +74,11 @@ describe('explicit adoption of per-stroke display ranges',()=>{
   const {d,id}=fixture(),source={...d,displayIntervals:[track('ta','a0',[range('full',0,1)]),track('tb','b0',[range('bhide',0,1,'HIDE')])]},out=adoptDisplayRoute(source,'ta',id);sameCoverage(source,out.document);
   expect(out.document.displayIntervals![0].ranges.find(r=>r.id==='full')!.inkEnds).toEqual([{taper:0,extension:0},{taper:0,extension:0}]);
  });
+ test.each(['SHOW','HIDE'] as const)('explicit fullLoop at an arbitrary anchor migrates and detaches complete %s material without carrying a whole-frame flag',mode=>{
+  const {d,id}=fixture(),source={...d,displayIntervals:[track('ta','a0',[{...range('full',.3,.3,mode),fullLoop:true}]),track('tb','b0',[range('bhide',.2,.6,'HIDE')])]},out=adoptDisplayRoute(source,'ta',id);
+  sameCoverage(source,out.document);expect(out.document.displayIntervals!.flatMap(t=>t.ranges).every(r=>r.fullLoop===undefined)).toBe(true);expect(parseDrawing(out.document)).toEqual(out.document);
+  const detached=detachDisplayRoute(out.document,'ta').document;sameLocalCoverage(source,detached);expect(detached.displayIntervals!.flatMap(t=>t.ranges).every(r=>r.fullLoop===undefined)).toBe(true);expect(parseDrawing(detached)).toEqual(detached);
+ });
  test('zero-length inactive markers preserve their source material position',()=>{
   const {d,id}=fixture(),source={...d,displayIntervals:[track('ta','a0',[range('empty',.1,.1,'HIDE',false)])]},out=adoptDisplayRoute(source,'ta',id),r=out.document.displayIntervals![0].ranges[0];
   sameCoverage(source,out.document);expect(r.start).toBe(r.end);expect(r.enabled).toBe(false);expect(r.id).toBe('empty');

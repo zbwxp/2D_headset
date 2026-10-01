@@ -96,3 +96,5 @@
 
 .drawing-display-range .drawing-field input[type=checkbox]{width:auto;accent-color:#a4c48f}
 .drawing-display-range[data-enabled=false]{border-style:dashed}
+
+.drawing-coverage{padding:8px;border:1px solid #40545e;border-radius:4px;margin:7px 0;background:#26343b}.drawing-coverage svg{display:block;width:100%;height:24px}.drawing-coverage-labels{display:flex;justify-content:space-between;gap:5px;color:#90aeb8}.drawing-coverage .drawing-property-actions{margin-top:5px;flex-wrap:wrap}.drawing-coverage button[aria-pressed=true]{background:#366274}

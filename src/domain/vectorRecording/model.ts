@@ -21,7 +21,7 @@ export const emptyPose=():VectorPose=>({grids:{},visibility:{},intervals:{}});
 const signatures=new WeakMap<DrawingDocument,string>();
 /** Change detector, not a security hash. Reference pixels do not alter a rig's source. */
 export function drawingSignature(d:DrawingDocument):string{
- const cached=signatures.get(d);if(cached)return cached;const {reference,...geometry}=d;void reference;
+ const cached=signatures.get(d);if(cached)return cached;const {reference,mirrorEditing,mirrorAxisX,...geometry}=d;void reference;void mirrorEditing;void mirrorAxisX;
  const json=JSON.stringify(geometry);let a=2166136261,b=2246822519;for(let i=0;i<json.length;i++){a=Math.imul(a^json.charCodeAt(i),16777619);b=Math.imul(b^json.charCodeAt(i),3266489917);}const signature=`${json.length}:${(a>>>0).toString(16)}:${(b>>>0).toString(16)}`;signatures.set(d,signature);return signature;
 }
 export function sourceIntervalFrames(drawing:DrawingDocument):NonNullable<ArtworkRig['sourceIntervalFrames']>{return Object.fromEntries((drawing.displayIntervals??[]).map(t=>[t.id,{signature:JSON.stringify([t.anchor,t.scope??null,t.displayRoute??null]),curveIds:displayPath(drawing,t.anchor.id).segments.map(u=>u.id),rangeIds:t.ranges.map(r=>r.id)}]));}

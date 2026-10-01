@@ -1,5 +1,5 @@
 import {curveById,uid,type CurveUse,type DisplayInterval,type DrawingDocument as Doc,type InkEnds,type InkEndStyle,type StrokeDisplayIntervals} from './model';
-import {localDisplayPath,intervalMode,type InkSpan} from './displayIntervals';
+import {localDisplayPath,intervalMode,closedIntervalLength,type InkSpan} from './displayIntervals';
 import type {StrokePath} from './strokes';
 import {createDisplayRouteField,resolveDisplayRoute,captureRouteCoverage,remapRouteCoverage,type DisplayRoute,type DisplayRouteField,type RouteMaterialSpan} from './displayRoutes';
 import {displayRouteInkSupport} from './displayRouteInk';
@@ -14,6 +14,9 @@ const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 const wrap=(x:number)=>((x%1)+1)%1;
 const pathKey=(p:StrokePath)=>JSON.stringify([p.closed,p.segments.map(u=>u.id).sort()]);
 const fail=(message:string):never=>{throw new Error(message);};
+// A full old loop can become one or several partial pieces in a larger route.
+// Re-express mapped coverage, never inherit the old whole-frame declaration.
+const withoutFullLoop=(r:DisplayInterval):DisplayInterval=>{const {fullLoop:_,...rest}=r;return rest;};
 function orientedSeed(path:StrokePath,anchor:CurveUse):StrokePath {
  let out=clonePath(path);if(out.segments.find(u=>u.id===anchor.id)?.reverse!==anchor.reverse)out=reverse(out);
  if(out.closed){const i=out.segments.findIndex(u=>u.id===anchor.id);out={...out,segments:[...out.segments.slice(i),...out.segments.slice(0,i)]};}
@@ -42,8 +45,8 @@ function rangeSpans(d:Doc,field:DisplayRouteField,track:StrokeDisplayIntervals,r
   if(!track.displayRoute){const outer=strokeEnds(d,field.path);if(start<1e-10)ordered[0]=inheritedBrush(outer[0]?.style??{},ordered[0]);if(end>1-1e-10)ordered[1]=inheritedBrush(outer[1]?.style??{},ordered[1]);}
   return [{start,end,ends:ordered}];
  }
- if(Math.abs(range.end-range.start)>=1-1e-10)return [{start:0,end:1,ends:[{},{}]}];
- const size=wrap(range.end-range.start);if(size<1e-10)return [];
+ const size=closedIntervalLength(range);if(size===1)return [{start:0,end:1,ends:[{},{}]}];
+ if(size<1e-10)return [];
  const forward=track.displayRoute?true:field.path.segments.find(u=>u.id===track.anchor.id)!.reverse===track.anchor.reverse;
  let start=nativePosition(field,track,forward?range.start:range.end);if(start<1e-10||start>1-1e-10)start=0;
  let end=start+size;if(Math.abs(end-1)<1e-10)end=1;
@@ -95,10 +98,10 @@ export function adoptDisplayRoute(d:Doc,trackId:string,linkId:string):AdoptDispl
    if(!spans.length||spans.every(s=>s.end-s.start<1e-12)){
     const material=field.materialAt(nativePosition(field,track,range.start)),at=material&&target.positionOf(material);
     if(at===undefined)return fail('空显示范围的材料位置已被接笔替换，无法无损迁移。');
-    ranges.push(withIntervalPinch({...range,start:at,end:at,inkEnds:range.inkEnds?[{...range.inkEnds[0]},{...range.inkEnds[1]}]:undefined},intervalPinch(range)));continue;
+    ranges.push(withIntervalPinch({...withoutFullLoop(range),start:at,end:at,inkEnds:range.inkEnds?[{...range.inkEnds[0]},{...range.inkEnds[1]}]:undefined},intervalPinch(range)));continue;
    }
    const mapped=mapSpans(field,target,spans);
-   mapped.forEach((span,i)=>ranges.push(withIntervalPinch({...range,id:i?fresh():range.id,...(i?{originId:range.originId??range.id}:{}),start:span.start,end:span.end,inkEnds:[{...span.ends[0]},{...span.ends[1]}]},intervalPinch(range))));
+   mapped.forEach((span,i)=>ranges.push(withIntervalPinch({...withoutFullLoop(range),id:i?fresh():range.id,...(i?{originId:range.originId??range.id}:{}),start:span.start,end:span.end,inkEnds:[{...span.ends[0]},{...span.ends[1]}]},intervalPinch(range))));
   }
   replacements.set(track.id,{...track,displayRoute:{seed:clonePath(route.seed),throughLinkIds:[...route.throughLinkIds]},ranges});
  }
@@ -155,7 +158,7 @@ export function detachDisplayRoute(d:Doc,trackId:string):DetachDisplayRouteResul
    if(!spans.length||spans.every(s=>s.end-s.start<1e-12)){
     const material=source.materialAt(nativePosition(source,track,range.start));if(!material)return noTarget();
     const key=order.find(key=>targets.get(key)!.positionOf(material)!==undefined);if(!key)return noTarget();const at=targets.get(key)!.positionOf(material)!;
-    const list=buckets.get(key)??[];list.push(withIntervalPinch({...range,start:at,end:at,inkEnds:range.inkEnds?[{...range.inkEnds[0]},{...range.inkEnds[1]}]:undefined},intervalPinch(range)));buckets.set(key,list);continue;
+    const list=buckets.get(key)??[];list.push(withIntervalPinch({...withoutFullLoop(range),start:at,end:at,inkEnds:range.inkEnds?[{...range.inkEnds[0]},{...range.inkEnds[1]}]:undefined},intervalPinch(range)));buckets.set(key,list);continue;
    }
    for(const part of captureRouteCoverage(source,spans)){
     const key=order.find(key=>targets.get(key)!.positionOf(part.from)!==undefined&&targets.get(key)!.positionOf(part.to)!==undefined);if(!key)return noTarget();
@@ -164,7 +167,7 @@ export function detachDisplayRoute(d:Doc,trackId:string):DetachDisplayRouteResul
    let first=true;
    for(const key of order){const material=parts.get(key);if(!material?.length)continue;const result=remapRouteCoverage(material,targets.get(key)!);if(result.unmapped.length)return noTarget();
     const list=buckets.get(key)??[];
-    for(const span of result.inkSpans){list.push(withIntervalPinch({...range,id:first?range.id:freshRange(),...(!first?{originId:range.originId??range.id}:{}),start:span.start,end:span.end,inkEnds:[{...span.ends[0]},{...span.ends[1]}]},intervalPinch(range)));first=false;}
+    for(const span of result.inkSpans){list.push(withIntervalPinch({...withoutFullLoop(range),id:first?range.id:freshRange(),...(!first?{originId:range.originId??range.id}:{}),start:span.start,end:span.end,inkEnds:[{...span.ends[0]},{...span.ends[1]}]},intervalPinch(range)));first=false;}
     buckets.set(key,list);
    }
   }

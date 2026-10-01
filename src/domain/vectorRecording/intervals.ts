@@ -25,7 +25,7 @@ export function validateIntervalOverrides(value:unknown,source?:DrawingDocument)
   if(raw.displayRoute!==undefined){const route=raw.displayRoute;if(!object(route)||!allowed(route,['seed','throughLinkIds'])||!object(route.seed)||!allowed(route.seed,['segments','closed'])||typeof route.seed.closed!=='boolean'||!Array.isArray(route.seed.segments)||!route.seed.segments.length||route.seed.segments.length>16384||route.seed.segments.some(u=>!object(u)||!allowed(u,['id','reverse'])||!id(u.id)||typeof u.reverse!=='boolean')||!Array.isArray(route.throughLinkIds)||!route.throughLinkIds.length||route.throughLinkIds.length>4096||route.throughLinkIds.some(x=>!id(x))||new Set(route.throughLinkIds).size!==route.throughLinkIds.length||raw.scope==='CURVE')fail();}
   if(source){const base=tracks.get(raw.id as string);if(!base||base.anchor.id!==raw.anchor.id||base.anchor.reverse!==raw.anchor.reverse||base.scope!==raw.scope||base.revealFrom!==raw.revealFrom||base.inferenceInkVersion!==raw.inferenceInkVersion||JSON.stringify(base.displayRoute)!==JSON.stringify(raw.displayRoute))fail();}
   for(const range of raw.ranges as unknown[]){
-   if(!object(range)||!allowed(range,['id','start','end','mode','enabled','inkEnds','originId','name']))fail();claim(range.id);if(range.originId!==undefined&&!id(range.originId)||range.name!==undefined&&(typeof range.name!=='string'||range.name.length>256))fail();
+   if(!object(range)||!allowed(range,['id','start','end','mode','enabled','inkEnds','originId','name','fullLoop']))fail();claim(range.id);if(range.fullLoop!==undefined&&typeof range.fullLoop!=='boolean'||range.fullLoop&&(raw.scope==='CURVE'||source&&!displayPath(source,raw.anchor.id as string).closed))fail();if(range.originId!==undefined&&!id(range.originId)||range.name!==undefined&&(typeof range.name!=='string'||range.name.length>256))fail();
    if(![range.start,range.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||range.mode!==undefined&&!['SHOW','HIDE'].includes(range.mode as string)||range.enabled!==undefined&&typeof range.enabled!=='boolean'||!validInkEnds(range.inkEnds))fail();
   }
  }
@@ -79,7 +79,7 @@ function appearanceKey(source:DrawingDocument,track:StrokeDisplayIntervals):stri
  const tip=(e:InkEndStyle={})=>[e.taper!==undefined||e.taperWidthScale!==undefined,number(inkTaperDistance(e,width)),e.extension===undefined?null:number(e.extension),e.interior??false];
  return JSON.stringify(track.ranges.map(r=>{
   const reverse=!closed&&r.start>r.end,ends=r.inkEnds??[{},{}];
-  const start=closed?Math.abs(r.end-r.start)>=1-1e-9?0:wrapUnit(r.start):Math.min(r.start,r.end),end=closed?Math.abs(r.end-r.start)>=1-1e-9?1:wrapUnit(r.end):Math.max(r.start,r.end);
+  const start=closed?r.fullLoop||Math.abs(r.end-r.start)>=1-1e-9?0:wrapUnit(r.start):Math.min(r.start,r.end),end=closed?r.fullLoop||Math.abs(r.end-r.start)>=1-1e-9?1:wrapUnit(r.end):Math.max(r.start,r.end);
   return [r.id,intervalMode(r),r.enabled!==false,number(start),number(end),tip(ends[reverse?1:0]),tip(ends[reverse?0:1]),number(intervalPinch(r))];
  }).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))||String(a[1]).localeCompare(String(b[1]))));
 }

@@ -106,6 +106,7 @@ export function importArtworkLayers(target:DrawingDocument,source:DrawingDocumen
  if(p.additionalLayerIds.length&&!options.includeDependencies)throw new ArtworkLayerDependencyError(p,saved);
  if(!p.layerIds.length)return {document:target,sourceLayerIds:[],additionalLayerIds:[],importedLayerIds:[],importedCurveIds:[],idMap:{}};
  const layers=new Set(p.layerIds),items=new Set(saved.layers.filter(l=>layers.has(l.id)).flatMap(l=>l.items)),curves=saved.curves.filter(c=>items.has(c.id)),curveIds=new Set(curves.map(c=>c.id)),nodes=new Set(curves.flatMap(c=>c.nodes));
+ if(saved.mirrorEditing?.curvePairs.some(p=>curveIds.has(p.a)||curveIds.has(p.b))||saved.mirrorEditing?.axisNodeIds?.some(id=>nodes.has(id)))throw new ArtworkLayerImportError('INVALID_OPTIONS','镜像配对的跨图层复制尚未启用；请先解除相关配对或保存整个画稿副本。');
  const incoming={
   layers:saved.layers.filter(l=>layers.has(l.id)),curves,nodes:saved.nodes.filter(n=>nodes.has(n.id)),
   fills:saved.fills.filter(f=>items.has(f.id)),offsets:saved.offsets.filter(o=>items.has(o.id)),

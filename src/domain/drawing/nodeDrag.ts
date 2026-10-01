@@ -1,3 +1,4 @@
+import {constrainMirrorNodePosition} from './mirrorEditing';
 import {moveNode} from './commands';
 import {linkedNodeIds} from './endpointLinks';
 import {add,sub,length,endKey,curveById,type DrawingDocument,type Point2} from './model';
@@ -17,6 +18,7 @@ function chordTurn(before:Point2,after:Point2):number{
  * strength is 0..1. Numeric moves, nudges and binding keep using moveNode.
  * The result is ordinary cubic geometry, with no persisted follow relation. */
 export function dragNode(base:DrawingDocument,nodeId:string,position:Point2,strength:number):DrawingDocument{
+ position=constrainMirrorNodePosition(base,nodeId,position);
  const next=moveNode(base,nodeId,position);
  if(next===base||!Number.isFinite(strength)||strength<=0)return next;
  const amount=Math.min(1,strength),moving=linkedNodeIds(base,nodeId);

@@ -1,3 +1,5 @@
+import {strokeFor,strokePaths} from './strokes';
+import {validateMirrorEditing,type MirrorEditingConfig} from './mirrorEditing';
 import {resolveDisplayRoute,type DisplayRoute} from './displayRoutes';
 import {tagCurve} from './curveProvenance';
 import type {Point2,Cubic} from '../recording/model';
@@ -45,7 +47,7 @@ export const MAX_PEN_TAPER_SCALE=200;
 export interface CurveUse {id:string;reverse:boolean}
 export type DisplayIntervalMode='SHOW'|'HIDE';
 /** Missing mode is the legacy SHOW interval. HIDE subtracts ink, never fill. */
-export interface DisplayInterval {id:string;/** Original authored range when routing splits its coverage. */originId?:string;/** Optional author-facing range label. */name?:string;start:number;end:number;inkEnds?:InkEnds;mode?:DisplayIntervalMode;/** Omitted in legacy files means enabled. Explicit values can be held by angle keys. */enabled?:boolean}
+export interface DisplayInterval {id:string;/** Original authored range when routing splits its coverage. */originId?:string;/** Optional author-facing range label. */name?:string;/** Explicit full closed turn; equal bounds without this flag remain empty. */fullLoop?:boolean;start:number;end:number;inkEnds?:InkEnds;mode?:DisplayIntervalMode;/** Omitted in legacy files means enabled. Explicit values can be held by angle keys. */enabled?:boolean}
 /** Appearance attached to a derived continuous path; the anchor stabilizes direction/origin. */
 export interface StrokeDisplayIntervals {id:string;anchor:CurveUse;ranges:DisplayInterval[];/** Explicit captured display traversal; never changes local strokes or fills. */displayRoute?:DisplayRoute;/** Local arc length on just the anchor curve, independent of the surrounding stroke. */scope?:'CURVE';/** Physical end from which missing-view ink is revealed; chosen once. */revealFrom?:End;/** Inferred cuts copied source endpoint ink; prevents reapplying the legacy fix. */inferenceInkVersion?:1}
 /** A boundary-following Gaussian band, not a blur of the solid interior. */
@@ -62,7 +64,7 @@ export interface DrawingGroup {id:string;name:string;visible:boolean;locked:bool
 /** ARC radius is the requested trim distance on each source, not a fixed circle radius. */
 export interface TangentJoin {id:string;a:Endpoint;b:Endpoint;mode:'SMOOTH'|'CUSP'|'ARC';radius?:number}
 /** V3: only member flags affect rendering/editing. Container flags are retired (neutral on save). */
-export interface DrawingDocument {version:3;fills:FillRegion[];offsets:OffsetRelation[];layers:DrawingLayer[];curves:DrawingCurve[];nodes:DrawingNode[];joins:TangentJoin[];reference?:ReferenceImage;mirrorAxisX?:number;displayIntervals?:StrokeDisplayIntervals[];endpointLinks?:EndpointLink[];groups?:DrawingGroup[]}
+export interface DrawingDocument {version:3;fills:FillRegion[];offsets:OffsetRelation[];layers:DrawingLayer[];curves:DrawingCurve[];nodes:DrawingNode[];joins:TangentJoin[];reference?:ReferenceImage;mirrorAxisX?:number;mirrorEditing?:MirrorEditingConfig;displayIntervals?:StrokeDisplayIntervals[];endpointLinks?:EndpointLink[];groups?:DrawingGroup[]}
 export const emptyDrawing=():DrawingDocument=>({version:3,fills:[],offsets:[],layers:[],curves:[],nodes:[],joins:[]});
 export const endKey=(e:Endpoint)=>`${e.curveId}:${e.end}`;
 export const sameEnd=(a:Endpoint,b:Endpoint)=>a.curveId===b.curveId&&a.end===b.end;
@@ -141,9 +143,10 @@ export function parseDrawing(value:unknown):DrawingDocument{
    if(track.displayRoute!==undefined){const r=track.displayRoute;if(track.scope==='CURVE'||!r||!r.seed||typeof r.seed.closed!=='boolean'||!Array.isArray(r.seed.segments)||!r.seed.segments.length||r.seed.segments.some(u=>!u||!curveById(d,u.id)||typeof u.reverse!=='boolean')||new Set(r.seed.segments.map(u=>u.id)).size!==r.seed.segments.length||!Array.isArray(r.throughLinkIds)||!r.throughLinkIds.length||r.throughLinkIds.some(id=>!d.endpointLinks?.some(l=>l.id===id&&l.throughDisplay===true))||new Set(r.throughLinkIds).size!==r.throughLinkIds.length)return fail();}
    if(track.displayRoute){const resolved=resolveDisplayRoute(d,track.displayRoute);if(resolved.diagnostics.length)return fail();const curves=resolved.path.segments.map(u=>curveById(d,u.id));if(curves.some(c=>Math.abs(c.width-curves[0].width)>1e-10||(c.profile??'UNIFORM')!=='UNIFORM'||c.inkEnds?.some(e=>e.interior)))return fail();}
    if(track.inferenceInkVersion!==undefined&&(track.inferenceInkVersion!==1||track.scope!=='CURVE'))return fail();
-   for(const r of track.ranges){if(!r)return fail();id(r.id);if(r.originId!==undefined&&(typeof r.originId!=='string'||!r.originId)||r.name!==undefined&&(typeof r.name!=='string'||r.name.length>256))return fail();if(r.mode!==undefined&&!['SHOW','HIDE'].includes(r.mode)||r.enabled!==undefined&&typeof r.enabled!=='boolean')return fail();if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
+   for(const r of track.ranges){if(!r)return fail();id(r.id);if(r.fullLoop!==undefined&&typeof r.fullLoop!=='boolean')return fail();if(r.fullLoop){const closed=track.scope!=='CURVE'&&(track.displayRoute?resolveDisplayRoute(d,track.displayRoute).path.closed:strokePaths(strokeFor(d,track.anchor.id)).find(p=>p.segments.some(u=>u.id===track.anchor.id))?.closed);if(!closed||!(Math.abs(r.end-r.start)<1e-10||Math.abs(r.end-r.start)>=1-1e-10))return fail();}if(r.originId!==undefined&&(typeof r.originId!=='string'||!r.originId)||r.name!==undefined&&(typeof r.name!=='string'||r.name.length>256))return fail();if(r.mode!==undefined&&!['SHOW','HIDE'].includes(r.mode)||r.enabled!==undefined&&typeof r.enabled!=='boolean')return fail();if(![r.start,r.end].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1)||!validInkEnds(r.inkEnds))return fail();}
   }
  }
+ if(d.mirrorEditing!==undefined){validateMirrorEditing(d);for(const pair of d.mirrorEditing.curvePairs)id(pair.id);}
  validateRecordingReference(d.reference);
  const result=structuredClone(d);
  // Flatten V1/V2 inherited states once, preserving the old visible/locked result.
