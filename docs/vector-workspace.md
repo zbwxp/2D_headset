@@ -159,3 +159,17 @@ on affected paths are marked for re-authoring. Explicit source acceptance resets
 only those interval appearance/enable keys and preserves unrelated keyforms.
 The source-review warning says “贯通改变显隐路径，相关区间角度键需重新录制”.
 New two-face artwork without prior interval keys is unaffected by this migration.
+
+## Material continuity checks
+
+Geometry previews and commits in Drawing use the same once-only interval material
+transport as structured edits. The arc-table inversion stays with the selected
+source piece even at floating-point boundaries, preventing a cut from jumping to
+a neighboring cubic. Tests cover the actual two-face artifact, source drags,
+handles, nudges, quad deformation, Undo/Redo, tiny changes and repeated moves.
+
+Independent Warp fields may request different positions for linked endpoints.
+The evaluator keeps those endpoints coincident and reports the field mismatch;
+source subdivision cannot reconcile those incompatible requests. Adjust the
+controls or use a shared parent deformer. This is distinct from a cubic fitting
+error that can legitimately motivate source segmentation.

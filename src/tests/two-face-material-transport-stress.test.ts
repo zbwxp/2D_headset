@@ -71,3 +71,28 @@ test.each(deltas)('actual admissible independent-piece Warp (%s,%s) preserves co
  const owner=new Map(faceLayers.flatMap((l,i)=>l.items.map(id=>[id,i] as const))),evaluated=deformDrawing(source,id=>owner.has(id)?[grids[owner.get(id)!]]:[],{diagnostics:'full'});
  expect(evaluated.intervalTransportErrors).toEqual([]);expect(evaluated.conflictingNodeIds).toEqual([]);expect(evaluated.warningCurveIds).toEqual([]);expect(distance(nodeAt(evaluated.drawing,link.a).position,chin.position)).toBeLessThan(1e-12);assertStable(evaluated.drawing);expect(JSON.stringify(source)).toBe(before);
 });
+
+const divergentDeltas:Point2[]=[[.01,0],[0,.01],[-.01,0],[0,-.01],[.03,0],[0,.03],[1e-8,0]];
+const divergentCases=owners.flatMap(movingOwner=>divergentDeltas.map(delta=>({movingOwner,delta})));
+test.each(divergentCases)('actual one-sided Warp $movingOwner/$delta preserves linked continuity and reports incompatible field requests',({movingOwner,delta})=>{
+ const before=JSON.stringify(source),movingLayer=faceLayers.find(l=>l.items.includes(movingOwner))!,movingIds=new Set(movingLayer.items);
+ const grid=moveWarpNode(identity,4,[identity.nodes[4].position[0]+delta[0],identity.nodes[4].position[1]+delta[1]]);
+ // Deliberately incompatible fields: one linked chin requests the full delta,
+ // while its partner requests no movement. Do not hide this boundary by fixing
+ // the shared chin in both cages or excluding the result as "inadmissible".
+ const evaluated=deformDrawing(source,id=>movingIds.has(id)?[grid]:[identity],{diagnostics:'full'});
+ const common=nodeAt(evaluated.drawing,link.a).position,expected:Point2=[chin.position[0]+delta[0]/2,chin.position[1]+delta[1]/2];
+ expect(distance(common,expected)).toBeLessThan(1e-12);expect(evaluated.drawing.endpointLinks).toEqual(source.endpointLinks);
+ expect(evaluated.intervalTransportErrors).toEqual([]);assertStable(evaluated.drawing);
+ const mismatch=Math.hypot(...delta)/2,incident=source.curves.filter(c=>c.nodes.includes(nodeAt(source,link.a).id)||c.nodes.includes(nodeAt(source,link.b).id)).map(c=>c.id).sort();
+ expect(evaluated.maxError).toBeCloseTo(mismatch,11);
+ if(mismatch>1e-8){
+  expect(evaluated.conflictingNodeIds.slice().sort()).toEqual([nodeAt(source,link.a).id,nodeAt(source,link.b).id].sort());
+  expect(evaluated.warningCurveIds.slice().sort()).toEqual(incident);
+  const diagnostics=evaluated.diagnostics.filter(d=>d.endpointConflict);expect(diagnostics.map(d=>d.sourceCurveId).sort()).toEqual(incident);
+  for(const diagnostic of diagnostics){expect(diagnostic.endpointMismatchError).toBeCloseTo(mismatch,11);expect(diagnostic.tangentStatus).toBe('endpoint-conflict');expect(diagnostic.exceedsTolerance).toBe(true);}
+ }else{
+  expect(evaluated.conflictingNodeIds).toEqual([]);expect(evaluated.warningCurveIds).toEqual([]);
+ }
+ expect(JSON.stringify(source)).toBe(before);
+});

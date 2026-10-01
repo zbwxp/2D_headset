@@ -1,3 +1,4 @@
+import {finalizeGeometryEdit} from '../../domain/drawing/geometryEdit';
 import {createContext,useContext,type ReactNode} from 'react';
 import {useEditor as rootEditor} from '../../app/store';
 import {useDrawing,createDrawingSession} from './session';
@@ -21,7 +22,7 @@ export function hairEditorState(s:State):State {
 const hairEditor:Editor=Object.assign(<T,>(selector:(s:State)=>T)=>rootEditor(s=>selector(hairEditorState(s))),{getState:()=>hairEditorState(rootEditor.getState())});
 export const hairDrawingSession=createDrawingSession();
 function workspace(id:'drawing'|'hairstyle'|'hair-studio',editor:Editor,session:typeof useDrawing){
- return {id,editor,session,commitDrawing(next:DrawingDocument){const e=editor.getState();if(next===e.project.drawing)return;e.beginEdit();try{e.setDrawing(next);}finally{e.endEdit();}},
+ return {id,editor,session,commitDrawing(next:DrawingDocument){const e=editor.getState();if(next===e.project.drawing)return;next=finalizeGeometryEdit(e.project.drawing,next);e.beginEdit();try{e.setDrawing(next);}finally{e.endEdit();}},
  commitDrawingSnapshot(change:(s:DrawingSnapshotState)=>DrawingSnapshotState){const e=editor.getState(),next=change({drawing:e.project.drawing,drawingSnapshots:e.project.drawingSnapshots});e.beginEdit();try{e.setDrawingSnapshotState(next);}finally{e.endEdit();}}};
 }
 const drawingWorkspace=workspace('drawing',rootEditor,useDrawing);

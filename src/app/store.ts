@@ -1,3 +1,4 @@
+import {finalizeGeometryEdit} from '../domain/drawing/geometryEdit';
 import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
 import {getInitialAutosave,getStorageStatus,markInitialAutosaveUnreadable} from './projectStorage';
 import {assertSourceEditable,canEditSource} from './workspaceMode';
@@ -263,7 +264,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     setPoseRecording:(poseRecording)=>{const {recording,...rest}=get().project;void recording;const p={...rest,poseRecording:syncPoseSnapshots(poseRecording,rest.drawingSnapshots)};set({project:p});persist(p);},
     setAssembly:(assembly)=>{const {hairstyle,...rest}=get().project;void hairstyle;const p={...rest,assembly};set({project:p});persist(p);},
     setHairstyle:(hairstyle)=>{const p={...get().project,hairstyle};set({project:p});persist(p);},
-    setDrawing:(drawing)=>{assertSourceEditable();assertDisplayRouteSupport(drawing);const p={...get().project,drawing};set({project:p});persist(p);},
+    setDrawing:(drawing)=>{assertSourceEditable();drawing=finalizeGeometryEdit(get().project.drawing,drawing);assertDisplayRouteSupport(drawing);const p={...get().project,drawing};set({project:p});persist(p);},
     setDrawingSnapshotState:({drawing,drawingSnapshots})=>{assertSourceEditable();if(drawing)assertDisplayRouteSupport(drawing);const current=get().project,newId=drawingSnapshots?.activeId,firstSave=!current.drawingSnapshots?.activeId&&newId&&!current.drawingSnapshots?.items.some(item=>item.id===newId),vectorRecording=firstSave&&current.vectorRecording?{...current.vectorRecording,rigs:current.vectorRecording.rigs.map(r=>r.artworkId==='$working'?{...r,artworkId:newId!}:r)}:current.vectorRecording,p={...current,drawing,drawingSnapshots,...(vectorRecording?{vectorRecording}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})};set({project:p});persist(p);},
     setGazeTracking:(tracking)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g)return;s.beginEdit();commit({...s.project,gazeEyeball:{...g,tracking}});s.endEdit();},
     createGaze:()=>{const s=get();if(s.activeModule!=='EYES'||!s.project.eyeScaffold||s.project.gazeEyeball)return;s.beginEdit();const g={version:1 as const,leftId:crypto.randomUUID(),rightId:crypto.randomUUID(),irisScale:.3,recessDepth:.12,tracking:false};commit({...s.project,gazeEyeball:g});s.endEdit();s.selectObject({kind:'surface',source:'IRIS',id:g.rightId});},
