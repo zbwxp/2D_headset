@@ -49,6 +49,10 @@ test('read-only view renders Drawing navigation tools and filtered selections wi
  expect(html).toContain('data-edit-enabled="false"');expect(html.match(/data-testid="vr-node"/g)).toHaveLength(9);expect(html.match(/data-testid="vr-selected-curve"/g)).toHaveLength(1);
  expect(html).not.toContain('data-testid="drawing-node"');expect(html).not.toContain('data-testid="drawing-handle"');expect(html).not.toContain('data-testid="drawing-tool-pen"');expect(JSON.stringify(d)).toBe(before);
 });
+test('without an active Warp, Recording tool labels stay Warp-specific and point users to the right panel',()=>{
+ const d=fixture(),html=renderToStaticMarkup(createElement(SceneWarpCanvas,{source:d,drawing:d,targetKey:'no-warp',label:'Fixture',zh:false,onPreview:()=>{},onCommit:()=>{}}));
+ expect(html).toContain('aria-label="Select Warp"');expect(html).toContain('aria-label="Warp grid selection"');expect(html).toContain('Select layers on the right to create a Warp');expect(html).not.toContain('V stroke');expect(html).not.toContain('A segment');
+});
 test('PaintScene receives both global and per-layer fill visibility from the shared Drawing session',()=>{
  const d=emptyDrawing(),points:Point2[]=[[0,0],[1,0],[1,1],[0,1]],layer=id('fills');d.layers=[{id:layer,name:'Fills',visible:true,locked:false,items:[]}];
  points.forEach((p,i)=>d.nodes.push({id:id(`n${i}`),position:p}));points.forEach((p,i)=>{const q=points[(i+1)%4],curve=id(`c${i}`);d.curves.push({id:curve,name:curve,nodes:[id(`n${i}`),id(`n${(i+1)%4}`)],handles:[[p[0]+(q[0]-p[0])/3,p[1]+(q[1]-p[1])/3],[p[0]+2*(q[0]-p[0])/3,p[1]+2*(q[1]-p[1])/3]],visible:false,locked:false,width:.01});d.layers[0].items.push(curve);});
