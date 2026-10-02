@@ -15,13 +15,21 @@ import {drawingListRows,selectListRows,selectLayerRows,layerBatchScope} from './
 import {reorderCurveMember} from '../../domain/drawing/depth';
 import {uiText as t,useLanguage} from '../i18n';
 export interface LayerPanelSection {id:string;name:string;layerIds:string[]}
-interface Props {layerSections?:LayerPanelSection[];poseMode?:boolean;structuralReadOnly?:boolean;editEnabled?:boolean;headerActions?:ReactNode;onVisibilityChange?:(ids:string[],visible:boolean)=>void;onLayerReorder?:(id:string,target:string,after:boolean)=>void;openProperties:()=>void;closeProperties:()=>void;document:DrawingDocument;active:string|null;selection:DrawingSelection;run:(fn:()=>DrawingDocument)=>void;choose:(selection:DrawingSelection,mode?:DrawingTool)=>void;setLayer:(id:string)=>void;upload:()=>void;deleteSelected:()=>void;cutSelected:()=>void;pasteSelected:()=>void;canPaste:boolean;restoreLayer?:(id:string)=>void}
-export default function LayerPanel({openProperties,closeProperties,document:d,active,selection,run,choose,setLayer,upload,deleteSelected,cutSelected,pasteSelected,canPaste,restoreLayer,layerSections,poseMode=false,structuralReadOnly=poseMode,editEnabled=true,headerActions,onVisibilityChange,onLayerReorder}:Props){
+export function groupedLayerSections(layers:DrawingDocument['layers'],sections:LayerPanelSection[]=[]){
+ const remaining=new Set(layers.map(layer=>layer.id));
+ const groups:{key:string;section?:LayerPanelSection;layers:DrawingDocument['layers']}[]=[];
+ for(const section of sections){const ids=new Set(section.layerIds),members=layers.filter(layer=>remaining.has(layer.id)&&ids.has(layer.id));if(!members.length)continue;members.forEach(layer=>remaining.delete(layer.id));groups.push({key:section.id,section,layers:members});}
+ const ungrouped=layers.filter(layer=>remaining.has(layer.id));if(ungrouped.length)groups.push({key:'ungrouped',layers:ungrouped});
+ return groups;
+}
+interface Props {layerSections?:LayerPanelSection[];layerOrder?:Record<string,number>;poseMode?:boolean;structuralReadOnly?:boolean;editEnabled?:boolean;headerActions?:ReactNode;onVisibilityChange?:(ids:string[],visible:boolean)=>void;onLayerReorder?:(id:string,target:string,after:boolean)=>void;openProperties:()=>void;closeProperties:()=>void;document:DrawingDocument;active:string|null;selection:DrawingSelection;run:(fn:()=>DrawingDocument)=>void;choose:(selection:DrawingSelection,mode?:DrawingTool)=>void;setLayer:(id:string)=>void;upload:()=>void;deleteSelected:()=>void;cutSelected:()=>void;pasteSelected:()=>void;canPaste:boolean;restoreLayer?:(id:string)=>void}
+export default function LayerPanel({openProperties,closeProperties,document:d,active,selection,run,choose,setLayer,upload,deleteSelected,cutSelected,pasteSelected,canPaste,restoreLayer,layerSections,layerOrder,poseMode=false,structuralReadOnly=poseMode,editEnabled=true,headerActions,onVisibilityChange,onLayerReorder}:Props){
  const {session:useDrawing}=useDrawingWorkspace();
  const zh=useLanguage(s=>s.language)==='zh',sourceOnlyHint=zh?'结构与锁定请在 Drawing 绘制中编辑；此处只记录显隐和图层排序。':'Edit structure and locks in Drawing; Recording changes visibility and layer order.',memberOrderHint=zh?'成员排序属于源结构，请在 Drawing 绘制中调整。':'Edit source member order in Drawing.';
  const [closedSections,setClosedSections]=useState<string[]>([]);
  const sectionFor=new Map((layerSections??[]).flatMap(section=>section.layerIds.map(id=>[id,section] as const)));
- const visibleLayers=d.layers.filter(layer=>!closedSections.includes(sectionFor.get(layer.id)?.id??''));
+ const sectionRuns=groupedLayerSections(d.layers,layerSections);
+ const visibleLayers=sectionRuns.flatMap(group=>closedSections.includes(group.section?.id??'')?[]:group.layers);
  const layerDragEnabled=editEnabled&&(!structuralReadOnly||!!onLayerReorder),memberDragEnabled=editEnabled&&!structuralReadOnly;
  const visibilityEnabled=editEnabled&&(!poseMode||!!onVisibilityChange);
  const changeVisibility=(ids:string[],visible:boolean,fallback:()=>DrawingDocument)=>{if(!visibilityEnabled)return;if(onVisibilityChange)onVisibilityChange(ids,visible);else run(fallback);};
@@ -30,7 +38,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
  const showFills=useDrawing(s=>s.showFills),fillVisibility=useDrawing(s=>s.fillVisibility),[lastVisibility,setLastVisibility]=useState<{scope:string;reveal:boolean}|null>(null);
  const dragging=useRef<{type:'layer'|'stroke'|'curve';id:string}|null>(null);
  const panel=useRef<HTMLElement>(null),anchor=useRef<string|null>(null),ownSelection=useRef<DrawingSelection|null>(null);
- const rows=drawingListRows(closedSections.length?{...d,layers:visibleLayers}:d,closed),objects=selectedObjects(selection);
+ const rows=drawingListRows({...d,layers:visibleLayers},closed),objects=selectedObjects(selection);
  const batch=layerBatchScope(d,selectedLayers(selection)),scoped=batch.selected.length>0;
  const allItems=batch.items,allState=objectState(d,allItems),scopeKey=scoped?batch.selected.join('|'):'*';
  // A partial state after hide-all can be restored in one click, per selection scope.
@@ -114,7 +122,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
  const renderLayer=(l:DrawingDocument['layers'][number])=><div className="drawing-layer" key={l.id} data-testid="drawing-layer" data-id={l.id}>
   <div draggable={layerDragEnabled} onDragStart={e=>drag(e,'layer',l.id)} onDragOver={e=>over(e,l.id,'layer')} onDrop={e=>dropped(e,'layer',l.id)} onDragEnd={endDrag} className={`drawing-layer-row ${active===l.id?'active':''} ${batch.selected.includes(l.id)?'selected':''}${dropClass(l.id)}`}>
    <button aria-label={t(closed.includes(l.id)?'展开':'收起')+' '+l.name} onClick={()=>toggle(l.id)}>{closed.includes(l.id)?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
-   <button className="drawing-object-name" data-testid="drawing-layer-select" aria-pressed={batch.selected.includes(l.id)} title={t('Shift 连选图层 · Ctrl/Cmd 增减选择')} onClick={e=>pick(`layer:${l.id}`,e)}>{l.name}</button>
+   <button className="drawing-object-name" data-testid="drawing-layer-select" aria-pressed={batch.selected.includes(l.id)} title={t('Shift 连选图层 · Ctrl/Cmd 增减选择')} onClick={e=>pick(`layer:${l.id}`,e)}>{l.name}</button>{layerOrder?.[l.id]!==undefined&&<small className="drawing-layer-global-order" data-testid="drawing-layer-global-order" title={zh?'场景图层顺序（跨快照）；列表按快照分组。':'Scene layer order across snapshots; this list is grouped by snapshot.'}>{zh?'层序':'Order'} {layerOrder[l.id]}</small>}
    {restoreLayer&&!structuralReadOnly&&<button data-testid="drawing-restore-layer" aria-label={t('从画稿恢复图层')+' '+l.name} title={t('从画稿恢复图层')} onClick={()=>restoreLayer(l.id)}><RotateCcw size={13}/></button>}
    {stateButtons(l.items,'layer',l.name,change=>batch.selected.includes(l.id)?setObjectState(d,allItems,change):layerChange(d,l.id,change),batch.selected.includes(l.id)?allItems:l.items)}
   </div>
@@ -127,8 +135,6 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
    {!closed.includes(entry.id)&&<div className="drawing-group-members">{entry.children.map(item=>renderItem(item,l))}</div>}
   </div>:renderItem(entry.item!,l))}
  </div>;
- const sectionRuns:{key:string;section?:LayerPanelSection;layers:DrawingDocument['layers']}[]=[];
- for(const layer of d.layers){const section=sectionFor.get(layer.id),last=sectionRuns.at(-1);if(last&&last.section?.id===section?.id)last.layers.push(layer);else sectionRuns.push({key:`${section?.id??'layers'}:${layer.id}`,section,layers:[layer]});}
  return <section ref={panel} className="drawing-layers" aria-label={t('绘图图层')}>
  <header><strong>{t('图层')}</strong>
  <button data-testid="drawing-toggle-all" aria-label={visibilityLabel} aria-pressed={allState.anyVisible&&!allState.allVisible?'mixed':allState.allVisible} title={visibilityLabel+' · '+t('批量设置当前成员，之后可单独调整')} disabled={!allState.count||!visibilityEnabled} onClick={()=>{changeVisibility(allItems,revealAll,()=>setObjectState(d,allItems,{visible:revealAll}));setLastVisibility({scope:scopeKey,reveal:revealAll});}}>{allState.anyVisible?<Eye size={16}/>:<EyeOff size={16}/>}</button>

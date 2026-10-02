@@ -12,7 +12,7 @@ import {saveDrawingSnapshot} from '../domain/drawing/snapshots';
 import {evaluateScene} from '../domain/recordingScene/evaluation';
 import {emptyRecordingScene,sceneLayerKey,type RecordingScene,type RecordingScenes} from '../domain/recordingScene/model';
 import type {SceneCommand} from '../domain/recordingScene/commands';
-import LayerPanel from '../ui/drawing/LayerPanel';
+import LayerPanel,{groupedLayerSections} from '../ui/drawing/LayerPanel';
 import {drawingListRows,selectLayerRows,selectListRows} from '../ui/drawing/listSelection';
 import {useDrawing} from '../ui/drawing/session';
 import SceneLayerPanel,{sceneLayerPanelDocument,sceneLayerVisibilityCommands,sceneLayerReorderCommands} from '../ui/vectorRecording/SceneLayerPanel';
@@ -101,4 +101,24 @@ test('view mode disables pose edits while Drawing defaults retain authoring cont
  expect(html).not.toContain('draggable="true"');
  const ignore=()=>{},drawing=renderToStaticMarkup(createElement(LayerPanel,{document:f.drawing,active:f.eye,selection:{ids:['brow']},run:ignore,choose:ignore,setLayer:ignore,openProperties:ignore,closeProperties:ignore,upload:ignore,deleteSelected:ignore,cutSelected:ignore,pasteSelected:ignore,canPaste:true}));
  expect(drawing).toContain('data-testid="drawing-new-layer"');expect(drawing).toContain('data-testid="drawing-cut-selection"');expect(drawing).toContain('draggable="true"');expect(drawing).not.toContain('drawing-pose-explanation');
+});
+
+
+test('interleaved paint layers remain one collapsible snapshot group without changing evaluated depth',()=>{
+ const f=fixture(),initial=f.evaluated.drawing.layers.map(layer=>layer.id);
+ f.run(sceneLayerReorderCommands(f.scene,f.evaluated,initial[2],initial[0],true));
+ const evaluated=f.evaluated,before=JSON.stringify(evaluated),sceneBefore=JSON.stringify(f.scene),sourceBefore=sourceState(f);
+ expect(evaluated.drawing.layers.map(layer=>layer.id)).toEqual([initial[0],initial[2],initial[1],initial[3]]);
+ const document=sceneLayerPanelDocument(evaluated),sections=f.scene.instances.map(instance=>({id:instance.id,name:instance.name,layerIds:evaluated.layers.filter(layer=>layer.instanceId===instance.id&&layer.included).map(layer=>layer.compiledLayerId)}));
+ const groups=groupedLayerSections(document.layers,sections);
+ expect(groups.map(group=>[group.section?.id,group.layers.map(layer=>layer.id)])).toEqual([['near',initial.slice(0,2)],['far',initial.slice(2)]]);
+ const listOrder=groups.flatMap(group=>group.layers),selection=selectLayerRows(listOrder,null,initial[1],[],{shift:false,toggle:false});
+ expect(selectLayerRows(listOrder,selection.anchor,initial[2],selection.ids,{shift:true,toggle:false}).ids).toEqual([initial[1],initial[2]]);
+ const html=renderToStaticMarkup(createElement(SceneLayerPanel,{scene:f.scene,evaluated,selection:{ids:[]},onSelection:()=>{},run:()=>{},editEnabled:true}));
+ expect((html.match(/data-testid="drawing-layer-section-toggle"/g)??[])).toHaveLength(2);
+ expect((html.match(/<strong>Near face<\/strong><small>2<\/small>/g)??[])).toHaveLength(1);
+ expect((html.match(/<strong>Far face<\/strong><small>2<\/small>/g)??[])).toHaveLength(1);
+ expect([...html.matchAll(/data-testid="drawing-layer" data-id="([^"]+)"/g)].map(match=>match[1])).toEqual(initial);
+ expect([...html.matchAll(/data-testid="drawing-layer-global-order"[^>]*>(?:层序|Order) (\d+)</g)].map(match=>Number(match[1]))).toEqual([1,3,2,4]);
+ expect(JSON.stringify(evaluated)).toBe(before);expect(JSON.stringify(f.scene)).toBe(sceneBefore);expect(sourceState(f)).toBe(sourceBefore);
 });

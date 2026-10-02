@@ -92,7 +92,7 @@ export default function SceneLayerPanel({scene,evaluated,selection,onSelection,r
  const commit=(commands:SceneCommand[])=>{if(editEnabled&&commands.length)run(commands);};
  return <div className="scene-layer-panel drawing-sidebar" data-testid="scene-layer-panel"><LayerPanel
   document={document} selection={selection} active={active} choose={onSelection} setLayer={ignore}
-  layerSections={sections} poseMode structuralReadOnly editEnabled={editEnabled} headerActions={headerActions}
+  layerSections={sections} layerOrder={Object.fromEntries(document.layers.map((layer,index)=>[layer.id,index+1]))} poseMode structuralReadOnly editEnabled={editEnabled} headerActions={headerActions}
   onVisibilityChange={(ids,visible)=>commit(sceneLayerVisibilityCommands(scene,evaluated,ids,visible))}
   onLayerReorder={(id,target,after)=>commit(sceneLayerReorderCommands(scene,evaluated,id,target,after))}
   run={ignore} openProperties={ignore} closeProperties={ignore} upload={ignore}
