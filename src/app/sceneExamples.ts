@@ -91,7 +91,7 @@ function validateSources(scene:RecordingScene,sources:Map<string,DrawingDocument
  * The bundled starter first reuses its existing source identities and authored
  * scene. A repeated menu action may return no steps and reused:true; callers
  * activate that scene instead of appending it again. */
-export function planSceneExampleImport(state:DrawingSnapshotState,exampleProject:LandmarkProject,existingScenes?:RecordingScenes,existingRecording?:VectorRecording){
+export function planSceneExampleImport(state:DrawingSnapshotState,exampleProject:LandmarkProject,existingScenes?:RecordingScenes,existingRecording?:VectorRecording,options:{reuseScene?:boolean;excludeSceneIds?:readonly string[]}={}){
  const example=parseLandmarks(JSON.stringify(exampleProject)),library=example.drawingSnapshots,container=example.recordingScenes;
  if(!library?.activeId||!example.drawing||!snapshotMatches(example.drawing,library,library.activeId))throw Error('示例必须具有已保存且未修改的活动源稿');
  if(!container||container.scenes.length!==1||container.scenes[0].legacy)throw Error('示例必须具有一个独立组装场景');
@@ -111,7 +111,7 @@ export function planSceneExampleImport(state:DrawingSnapshotState,exampleProject
    candidates.set(sourceId,(state.drawingSnapshots?.items??[]).filter(item=>currentSources[item.id]&&sourceLineage(currentSources[item.id])===lineage).map(item=>item.id));
   }
   const preferred=[...(existingScenes?.scenes??[])].reverse().sort((a,b)=>Number(b.id===existingScenes?.activeSceneId)-Number(a.id===existingScenes?.activeSceneId));
-  for(const scene of preferred){
+  for(const scene of options.reuseScene===false?[]:preferred.filter(scene=>!options.excludeSceneIds?.includes(scene.id))){
    const matched=matchStarterScene(scene,original,candidates);if(!matched)continue;
    return {steps:[] as DrawingSnapshotState[],state,scene,sourceArtworkIds:sourceIds.map(id=>matched.artworks.get(id)!),preservedDraftId:undefined,reused:true,reusedSources:true,
     idMaps:{artworks:Object.fromEntries(matched.artworks),scenes:{[original.id]:scene.id},instances:Object.fromEntries(matched.instances),warps:Object.fromEntries(matched.warps),tracks:{} as Record<string,string>,keys:{} as Record<string,string>}};
