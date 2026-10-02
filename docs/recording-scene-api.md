@@ -1,6 +1,6 @@
 # Recording 场景与独立对象轨道
 
-本页对应 2026-10-02 05:17:48 UTC 已发布的 v19（`1559770`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。首轮真实浏览器流程验收已通过，涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
+本页对应 2026-10-02 部署中的 v23（功能代码 `384c310`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。v18/v19 首轮真实浏览器验收涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。v22 已实测无 Warp 建立 90°并更新成员显隐、再建立 0°，新 Warp 的 0°/90°中性键、90°实际拖节点并更新、45°严格中值预览且禁止编辑，以及实拖滑杆回 90°恢复且无警告。A/V/Z/Space 全操作未扩测，来源分组补丁 `384c310` 正在部署；未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
 
 ## 开始前先查询
 
@@ -77,6 +77,8 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 `viewpoints` 是场景可选的轻量视角列表，每项为 `{id,name,angle}`。没有 Warp、实例或任何轨道也能建立视角。它记录查看和编辑的位置，不是全场景快照；对象仍有各自独立的键。
 
+UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Drawing 图层列表。每个有图层的来源实例只有一个可折叠组，层行标注跨实例的全局层序；分组只改变列表展示，不改变渲染顺序。未建立视角的角度只可预览插值；显隐、层序、网格编辑、建立 Warp 和所选对象保存/放弃须先建立当前视角。这个门槛仅在 UI：`scene` API 的 `setAngle`、草稿编辑、Warp 创建和 `saveSelected` 不要求已有对应视角，仍执行模式、绑定和对象草稿角度等原有校验。
+
 | 命令 | 规则 |
 |---|---|
 | `createViewpoint(name?,angle?,ref?)` | 在指定 angle（省略时为当前场景 angle）建立视角并移到该位置；省略名称使用 `Viewpoint N`。不采样或改动任何已有对象轨道。同角度重复建立返回 `VIEWPOINT_EXISTS` |
@@ -84,15 +86,15 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 | `renameViewpoint(viewpointId,name)` | 只改视角名称，键及轨道不变 |
 | `deleteViewpoint(viewpointId)` | 只删除视角书签，保留对象键、草稿和当前场景 angle |
 
-更新视角可以一起提交当前角度已改动的 Warp、成员显隐、区间和排序通道；没有改动的通道不会被补键，也不会为了保存一个成员而新建整层显隐通道。更新一个已经有键的通道会保留该键 ID 和名称。
+「更新此视角」不依赖当前选择，也不要求存在 Warp；它可以一起提交目标视角角度已改动的 Warp、成员显隐、区间和排序通道。没有改动的通道不会被补键，也不会为了保存一个成员而新建整层显隐通道。更新一个已经有键的通道会保留该键 ID 和名称。
 
 `createWarp/createChild/wrapParent` 在有显式视角的场景中新建 Warp 时，仅为这个新 Warp 在每个已建立视角写入 `restGrid` 中性键。例如先建立 30°、90°，再建 Warp 并只改 90°，30°仍保持 identity，45°为这两个键之间的 25% 插值。其他 Warp 和外观轨道不会增加键。之后建立新视角也不会给已有 Warp 自动补键。
 
-旧场景省略 `viewpoints` 时，UI 可以从已有键角度派生列表；普通解析和查询不持久化这个列表，旧场景创建 Warp 仍保持原有零键行为。首次 `createViewpoint` 建立显式列表；删除最后一个视角后保留 `viewpoints:[]`，因此不会重新启用旧键派生列表。独立轨道的插值和缺省 rest/source 逻辑不变。
+旧场景省略 `viewpoints` 时，UI 可以从已有键角度派生可编辑视角列表；普通解析和查询不持久化这个列表。UI 首次建立/更新视角或创建 Warp 时，会先将派生视角转成显式列表；因此经此 UI 流程创建的 Warp 也有这些视角的中性键。直接 API 创建 Warp 且场景仍省略 `viewpoints` 时，保持原有零键行为；直接 `createViewpoint` 只建立请求的视角，不自动复制旧键角度。删除最后一个视角后保留 `viewpoints:[]`，因此不会重新启用旧键派生列表。独立轨道的插值和缺省 rest/source 逻辑不变。
 
 ## 层外观和源只读
 
-`setVisibility {target,visible}` 支持 `true / false / null`。层级 false 关闭整层；true 打开容器并保留源成员隐藏状态；null 继承源。明确的成员目标 `sourceObjectId` 才能覆盖这个成员的显隐；层 false 仍压住它。普通眼睛开关恢复源状态，不能使内部闭合边重新出现。要“显示全部成员”，应先查询成员 ID，再逐成员明确发批次。`inkVisible` 和 SHOW/HIDE 不被显隐命令改写。
+`setVisibility {target,visible}` 支持 `true / false / null`。层级 false 关闭整层；true 打开容器并保留源成员隐藏状态；null 继承源。明确的成员目标 `sourceObjectId` 才能覆盖这个成员的显隐；层 false 仍压住它。API 要“显示全部成员”，应先查询成员 ID，再逐成员明确发批次。当前 Recording 图层列表的眼睛按钮就是对真实成员写显隐通道（层级按钮批量作用于成员），可以覆盖源成员的隐藏状态；画布工具栏的填充预览开关不写录制轨道。`inkVisible` 和 SHOW/HIDE 不被显隐命令改写。
 
 `changeInterval / setIntervalEnd / setIntervalEnabled` 使用 `instanceId + sourceTrackId + rangeId`。它们只改姿态外观，不能新建源轨道或改 anchor/route；`start/end` 是归一化弧长，`fullLoop` 与 Drawing 使用同一语义。`setLayerOrder {target,value}` 写当前层排序轨道草稿，保留源元素在其原实例内的深度偏移关系。
 
