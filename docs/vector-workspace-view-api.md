@@ -1,6 +1,6 @@
 # AI 临时参考与辅助线接口
 
-自 API 1.6 提供、API 2.0 保留：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。已在 v12 实际浏览器验证，v19 保留同一临时接口；本次场景工作流实测范围见[发布验证记录](recording-scene-release-validation.md)，不代表每项临时视图手势都已重新测试。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
+自 API 1.6 提供、API 2.0 保留：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。已在 v12 实际浏览器验证，v23 保留同一临时接口；本次场景工作流实测范围见[发布验证记录](recording-scene-release-validation.md)，不代表每项临时视图手势都已重新测试。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
 
 这组方法不接受 expectedRevision，也不返回工程 revision。源稿/录制批次仍使用各自原有的 revision 和撤销规则。视图命令在 Drawing 与 Recording 都可执行。
 

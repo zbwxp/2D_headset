@@ -1,13 +1,19 @@
 # 录制作者最短流程：独立场景 API 2.0
 
-本包对应 v19 / `1559770`，完整合同见 [场景接口](recording-scene-api.md)，数据所有权见 [架构说明](architecture/recording-scenes.md)。Drawing 保存配件源稿，Recording 引用它们组成场景。切换参考画稿不构成转头结果。
+本页对应 v24 / `917369c`（2026-10-02已发布），完整合同见 [场景接口](recording-scene-api.md)，数据所有权见 [架构说明](architecture/recording-scenes.md)。Drawing 保存配件源稿，Recording 引用它们组成场景。切换参考画稿不构成转头结果。
 
-1. **Inspect**：进入 Recording，用 `inspectScene` 查 scene/instance/layer/Warp/track/key ID 与 `revision`。检查当前角度、各对象草稿和有效源版本；同源多实例有不同实例 ID
-2. **Dry-run**：向 `scene` 发送 `dryRun:true` 与最新 `expectedRevision`。用真实 layer refs 创建共享 Warp；已有绑定应明确使用 `wrapParent / createChild / rebindLayers`，不要隐式替换
-3. **Apply**：重放同一批次的 `$ref` 结构，移除 dryRun 或设为 false。整批一次 Undo；不要使用预演生成的临时 ID。Recording 不改源节点、柄、拓扑或填充结构
-4. **Preview**：`previewScene` 省略 angle 可查看匹配当前角度的草稿；明确 angle 默认只用保存键。检查填充遮挡、轮廓、区间材料、拟合与端点冲突。数值无警告不等于美术通过
-5. **Save selected**：使用 `saveSelected {warpIds,layerRefs}` 只保存明确选择的 Warp/层对象。每对象独立键数，新增一对象的键不改其他对象。角度移动保留其他草稿；同对象在另一角度编辑前须保存或明确丢弃已有草稿
-6. **Reload**：正常导出并载入完整工程 JSON，核验库、`drawingWorkingCopies`、`recordingScenes`、实例 refs、每轨 keys/draft；从保存键再次预览并验证一次 Undo/Redo。源更新应同步所有引用实例
+1. **Inspect**：进入 Recording，用 `inspectScene` 查 scene/instance/layer/Warp/track/key ID、`viewpoints` 与 `revision`。检查当前角度、各对象草稿和有效源版本；同源多实例有不同实例 ID
+2. **建立视角**：推荐先 `createViewpoint {name,angle}`，也可在左侧调整角度后点击「建立视角」。没有 Warp 也能建立。UI 在未建立视角的角度只预览，不能编辑显隐、排序或网格；底层 API 仍能直接写轨道，这不是 API 强制门禁
+3. **Dry-run → Apply**：`scene` 带 `dryRun:true` 和最新 `expectedRevision`，再重放相同 `$ref` 结构正式执行。右侧与 Drawing 使用同一个多快照图层面板，每实例一个折叠组和一套眼睛/填充/折叠工具。工具只作用本实例内所选层；没有本实例选择时作用全部已载入层。跨实例混选不会扩大单份快照工具的范围；共享 Warp 创建在独立栏。可先做成员显隐，也可选真实层 refs 创建 Warp。已有绑定用明确的包父/建子/重挂接命令
+4. **更新此视角**：推荐 `updateViewpoint {viewpointId}`，保存该角度已改动的 Warp 和外观草稿；无 Warp 也可更新嘴段显隐。其他角度草稿和未修改通道不补键。建立新视角本身不采样现有轨道；新建 Warp 才在已有显式视角上写自己的 rest 中性键
+5. **Preview**：`previewScene` 省略 angle 可看匹配当前角度的草稿；明确 angle 默认只读保存键。检查关键角度与中间角度的填充、轮廓、区间材料、拟合和端点冲突。通过滑块查看未建立的中间角度，不应为看插值而自动建新视角
+6. **Reload / Undo**：正常导出、载入完整工程 JSON，核验库、working copies、viewpoints、实例 refs、每轨 keys/draft；再从保存键预览并验证一次 Undo/Redo。录制不能写源几何，源更新应同步全部引用实例
+
+`saveSelected {warpIds?,layerRefs?}` 仍保留作明确的底层对象保存；仅传真正选择的类型，避免空数组。它只写所选对象，而「更新此视角」按目标视角角度提交已有草稿，不依赖当前选择。两者都不等于采样全部场景。首次操作旧场景时，UI 可将原键角度转成显式视角；直接 API 的旧场景兼容行为见[场景合同](recording-scene-api.md#命名视角与更新)。
+
+## 图层操作的边界
+
+Drawing 只传入一份快照，Recording 可传入多份，Ctrl/Cmd、Shift、组/成员选择都沿用同一套逻辑。Drawing 原有锁定、结构工具和排序保留；Recording 通过命令适配器写姿态覆盖，不改源结构。眼睛和录制层序进入当前角度草稿；填充预览、列表展开/折叠始终是临时状态，不随「更新此视角」写键。未建立的预览角度不能改姿态，但可以看填充和折叠列表。
 
 ## 七帧验收导出
 
@@ -29,4 +35,4 @@ node docs/tools/extract-recording-frames.mjs scene-frames-result.json NEW_frames
 
 命名源稿切换前自动保留同 ID 工作副本；所有实例仍解析最新内容，优先顺序为 active Drawing → 同 ID working copy → checkpoint。同 ID 更新清除副本；另存新 ID 不改原实例来源。未命名稿仍需先命名或明确丢弃。旧 rig 原数据保留供兼容迁移，带 scene 的工程调用旧录制 API 返回 `LEGACY_RECORDING_RETIRED`。
 
-[旧单稿录制合同](vector-recording-api.md) 与 [旧 yaw 美术报告](yaw-authoring-example.md) 是历史资料。新 scene 完整浏览器验收仍在进行；首轮双实例/两个独立 Warp 与0/90键检查不代表全部父子编辑、切稿、重载和美术路径通过。
+[旧单稿录制合同](vector-recording-api.md) 与 [旧 yaw 美术报告](yaw-authoring-example.md) 是历史资料。v18/v19有限场景流程和v22视角用户主流程已实际检查；v23实例单组树状态见[验证记录](recording-scene-release-validation.md)。未测手势、姿态与完整转头美术不能由这些有限结果推定通过。

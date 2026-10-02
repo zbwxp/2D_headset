@@ -1,6 +1,6 @@
 # Local structured vector editing API
 
-Current release: v19 / `1559770`, API 2.0, published 2026-10-02 at 05:17:48 UTC. Recording uses the [independent scene API](recording-scene-api.md); the initial browser workflow acceptance passed within the scope recorded in [release validation](recording-scene-release-validation.md). Source commands retain the Drawing-only contract below.
+Current release: v23 / `384c310`, API 2.0, published 2026-10-02 at 06:27:29 UTC. Recording uses the [independent scene API](recording-scene-api.md); the initial browser workflow acceptance passed within the scope recorded in [release validation](recording-scene-release-validation.md). Source commands retain the Drawing-only contract below.
 
 `window.contourAI` exposes source-vector inspection and bounded JSON commands in the local app. The API does not connect to a service, accept credentials, execute supplied JavaScript, or switch workspace modes. It is an editing interface for a future image-guided assistant, **not an automatic image-to-vector matching solver**.
 
@@ -322,3 +322,8 @@ The executable specimen is [the two-face setup batch](examples/two-face-mirror-e
 API 2.0 uses `inspectScene / scene / previewScene / previewSceneFrames`, documented in [the scene guide](recording-scene-api.md). Scene writes use their own Recording-only atomic transaction and never author Drawing source geometry. The [legacy rig guide](vector-recording-api.md) remains historical; its four methods return `LEGACY_RECORDING_RETIRED` when the project has `recordingScenes`.
 
 API 1.6 adds `inspectView / view`, documented in [the temporary view guide](vector-workspace-view-api.md). These wrappers use the transient WorkspaceView store only. They intentionally do not accept or return a project revision, do not add project history and do not auto-save. Failed or dry-run view batches do not apply any partial state.
+
+
+## Explicit library organization (v20/v21)
+
+The top-level “整理画稿库” UI previews an explicit five-artwork arrangement, stores and verifies a complete recoverable project backup, then applies one Undo transaction. It retains the original front/slight-side/more-side artworks, the symmetric two-half front, and the complete 90-degree profile; the former independent red recording part becomes a hidden layer inside the profile. Source/scene remapping preserves the intended recorded use. v21 handles duplicate legacy-rig identities during source deduplication by archiving collisions in that verified backup, rather than producing invalid legacy storage. This is a dedicated UI operation, not a new `artwork` API command or `cleanupUnused` scene command. See [the organization and recovery guide](artwork-library-organization.md).

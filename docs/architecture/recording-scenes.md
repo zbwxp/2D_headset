@@ -1,6 +1,6 @@
 # Recording scenes and independent object tracks
 
-Status: v19 / `1559770` published on 2026-10-02 at 05:17:48 UTC. The initial browser workflow acceptance passed: cross-source assembly, independent selected-object keys, parent/child binding, source working copies, Undo/Redo, and reload. This does not certify untested gestures or finished turning artwork. See [release validation](../recording-scene-release-validation.md).
+Status: v23 / `384c310` published 2026-10-02 at 06:27:29 UTC. Viewpoint authoring was introduced in v22; v23 groups each instance once without changing scene paint order. Bounded browser evidence and remaining coverage are recorded in [release validation](../recording-scene-release-validation.md).
 
 Drawing is the reusable source artwork library. Recording assembles references to that library into independent scenes. Editing a source in Drawing updates its instances; Recording never writes source Bézier controls.
 
@@ -16,14 +16,16 @@ Drawing is the reusable source artwork library. Recording assembles references t
 
 ## Interaction
 
-1. Create or select a Recording scene.
-2. Add one or more saved Drawing artworks as instances. Expand each instance to select its source layers.
-3. Select unbound layers across instances and create one shared Warp.
-4. Select existing Warps to wrap them with a new parent. Add a child only through an explicit child operation. Rebinding is a separate, explicit action; creating a Warp does not silently replace an existing animation.
-5. Move Angle X/Y to an editing position. Each object evaluates its own track; another object's added key does not alter its interpolation.
-6. Edit a selected Warp or a layer's appearance. Save only the selected objects at the current angle. Other tracks and their key counts remain untouched.
-7. Object drafts retain their own angles. Angle navigation does not discard or implicitly save them. Editing the same object at a different angle requires resolving that object's prior draft.
-8. Removing an instance or a layer from a scene removes only the scene use, never the Drawing artwork.
+1. Create or select a Recording scene and add source artworks as instances. Each instance appears once as a collapsible group in the reused Drawing layer panel; the displayed grouping does not change paint order.
+2. Choose an angle and explicitly create a viewpoint. A viewpoint can exist with no Warp or tracks. Unestablished angles are preview-only in the UI, including appearance and grid controls.
+3. At an established viewpoint, change member appearance or select unbound layers across instances to create a shared Warp. Existing bindings use explicit parent, child, or rebind operations.
+4. A newly created Warp receives rest-grid keys at all existing explicit viewpoints. Existing objects are untouched. Creating another viewpoint later does not add keys to existing tracks.
+5. Update the viewpoint to commit only existing drafts at that angle, regardless of current selection. Unchanged channels and other-angle drafts retain their data. This is not a full-scene snapshot.
+6. Use the angle slider to preview interpolation; a preview position does not create a key or viewpoint. Each object still evaluates its own track.
+7. The low-level scene API retains direct track editing and saveSelected at angles without viewpoints. AI clients should normally create/update viewpoints to follow the UI workflow; the UI preview-only rule must not be described as an API write ban.
+8. Removing an instance or a layer from a scene removes only scene use, never the Drawing artwork. Source-library organization is a separate explicit, backed-up workflow.
+
+Viewpoints are `{id,name,angle}` entries, optional for compatibility. UI first edits materialize derived legacy key angles; ordinary parse/inspection does not. An explicit empty list stays empty. Renaming/deleting a viewpoint does not rename/delete object keys. Object drafts retain their own angles; editing an object at a different draft angle still requires resolving that object's prior draft.
 
 ## Interpolation
 
@@ -51,9 +53,9 @@ Source geometry changes retain grids and keys. Appearance material must be trans
 
 ## Visibility and editing feedback
 
-A scene layer's visibility track is a container gate. Hiding the layer suppresses its members; opening it preserves source-hidden members and authored member overrides. Source inheritance is distinct from an explicit member-level override. The UI shows mixed member visibility and explains when all source members are hidden. “Show every member” is an explicit batch on member tracks; the ordinary eye toggle never performs that batch.
+A scene layer's visibility track is a container gate. Hiding the layer suppresses its members; opening it preserves source-hidden members and authored member overrides. Source inheritance is distinct from an explicit member-level override. The low-level layer track remains a gate. The reused Drawing layer panel instead writes actual member visibility channels: an individual eye changes that member, and a layer eye explicitly batches its members, which can show source-hidden members. This UI operation must not be confused with setting the layer gate to true. Ink visibility and display intervals remain separate.
 
-Warp influence highlighting is not selection. Only explicitly selected Warps and checked layers are written by the save action, whose label names those targets. A parent Warp reports both directly bound and recursively affected layer counts.
+Warp influence highlighting is not selection. The low-level selected-object save writes only explicitly selected Warps and checked layers; viewpoint update writes matching-angle dirty channels independently of selection. A parent Warp reports both directly bound and recursively affected layer counts.
 
 Child Warp editing uses its parent-input coordinate frame and visibly excludes ancestors while editing. Global preview does not enable direct dragging of child controls in final screen coordinates. No nonlinear inverse mapper is implied. Newly wrapped parents enclose child rest domains and authored/evaluated output control hulls.
 

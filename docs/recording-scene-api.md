@@ -1,6 +1,6 @@
 # Recording 场景与独立对象轨道
 
-本页对应 2026-10-02 部署中的 v23（功能代码 `384c310`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。v18/v19 首轮真实浏览器验收涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。v22 已实测无 Warp 建立 90°并更新成员显隐、再建立 0°，新 Warp 的 0°/90°中性键、90°实际拖节点并更新、45°严格中值预览且禁止编辑，以及实拖滑杆回 90°恢复且无警告。A/V/Z/Space 全操作未扩测，来源分组补丁 `384c310` 正在部署；未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
+本页对应 2026-10-02 06:27:29 UTC已发布的 v23（功能代码 `384c310`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。v18/v19 首轮真实浏览器验收涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。v22 已实测无 Warp 建立 90°并更新成员显隐、再建立 0°，新 Warp 的 0°/90°中性键、90°实际拖节点并更新、45°严格中值预览且禁止编辑，以及实拖滑杆回 90°恢复且无警告。A/V/Z/Space 全操作未扩测，v23已单独通过唯一来源分组、整体折叠恢复与全局层序1/3/2保持的实际检查；未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
 
 ## 开始前先查询
 
