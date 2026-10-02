@@ -6,13 +6,14 @@ import type {SceneEvaluation} from '../../domain/recordingScene/evaluation';
 import type {SceneCommand} from '../../domain/recordingScene/commands';
 import {sceneLayerKey,type RecordingScene,type SceneLayerRef,type SceneObjectRef} from '../../domain/recordingScene/model';
 import {evaluateDepthTrack,evaluateVisibilityTrack} from '../../domain/recordingScene/tracks';
+import {useLanguage} from '../i18n';
 import '../drawing/drawing.css';
 import './SceneLayerPanel.css';
 
 export interface SceneLayerPanelProps {
  scene:RecordingScene;evaluated:SceneEvaluation;selection:DrawingSelection;
  onSelection:(selection:DrawingSelection)=>void;run:(commands:SceneCommand[])=>unknown;
- headerActions?:ReactNode;editEnabled:boolean;
+ headerActions?:ReactNode;editEnabled:boolean;onRemoveInstance?:(instanceId:string)=>void;
 }
 
 /** Excluded source slots remain in the evaluator for offset provenance, but
@@ -85,7 +86,8 @@ export function sceneLayerReorderCommands(scene:RecordingScene,evaluated:SceneEv
 }
 
 const ignore=()=>{};
-export default function SceneLayerPanel({scene,evaluated,selection,onSelection,run,headerActions,editEnabled}:SceneLayerPanelProps){
+export default function SceneLayerPanel({scene,evaluated,selection,onSelection,run,headerActions,editEnabled,onRemoveInstance}:SceneLayerPanelProps){
+ const zh=useLanguage(s=>s.language)==='zh';
  const document=useMemo(()=>sceneLayerPanelDocument(evaluated),[evaluated]);
  const sections=useMemo(()=>scene.instances.map(instance=>({id:instance.id,name:instance.name,layerIds:evaluated.layers.filter(layer=>layer.instanceId===instance.id&&layer.included).map(layer=>layer.compiledLayerId)})),[scene.instances,evaluated.layers]);
  const active=selectedLayers(selection).at(-1)??null;
@@ -93,6 +95,7 @@ export default function SceneLayerPanel({scene,evaluated,selection,onSelection,r
  return <div className="scene-layer-panel drawing-sidebar" data-testid="scene-layer-panel"><LayerPanel
   document={document} selection={selection} active={active} choose={onSelection} setLayer={ignore}
   layerSections={sections} layerOrder={Object.fromEntries(document.layers.map((layer,index)=>[layer.id,index+1]))} poseMode structuralReadOnly editEnabled={editEnabled} headerActions={headerActions}
+  sectionActions={onRemoveInstance?section=><button type="button" className="scene-instance-remove" data-testid="scene-remove-instance" data-instance-id={section.id} aria-label={`${zh?'移除快照实例':'Remove artwork instance'} ${section.name}`} title={zh?'只移除此场景实例，保留 Drawing 源稿与共享 Warp，可撤销':'Remove this scene instance only; keep the Drawing source and shared Warps. Undo is available.'} onClick={event=>{event.stopPropagation();onRemoveInstance(section.id);}}>{zh?'移除':'Remove'}</button>:undefined}
   onVisibilityChange={(ids,visible)=>commit(sceneLayerVisibilityCommands(scene,evaluated,ids,visible))}
   onLayerReorder={(id,target,after)=>commit(sceneLayerReorderCommands(scene,evaluated,id,target,after))}
   run={ignore} openProperties={ignore} closeProperties={ignore} upload={ignore}
