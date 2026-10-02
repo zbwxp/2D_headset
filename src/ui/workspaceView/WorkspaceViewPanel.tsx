@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import {useFloatingPanel} from '../shared/useFloatingPanel';
 import {useEditor} from '../../app/store';
 import {applyWorkspaceView,useWorkspaceView,type WorkspaceViewCommand} from '../../app/workspaceView';
 import {useLanguage} from '../i18n';
@@ -6,8 +7,9 @@ import './workspaceView.css';
 export default function WorkspaceViewPanel({close,embedded=false}:{close?:()=>void;embedded?:boolean}){
  const view=useWorkspaceView(),library=useEditor(s=>s.project.drawingSnapshots),zh=useLanguage(s=>s.language)==='zh',t=(c:string,e:string)=>zh?c:e,[error,setError]=useState('');
  function run(command:WorkspaceViewCommand){try{applyWorkspaceView([command],library);setError('');}catch(e){setError((e as Error).message);}}
+ const floating=useFloatingPanel({open:!embedded,storageKey:'contour-reference-panel-position-v1'});
  const ref=view.reference;
- return <aside className={"workspace-view-panel"+(embedded?" embedded":"")} aria-label={t('参考画稿与辅助线','Artwork reference and guides')} data-ui-keyboard><header><strong>{t('参考画稿 / 辅助线','Reference / Guides')}</strong>{close&&<button onClick={close}>×</button>}</header><p>{t('只影响工作视图。参考不可选中，不进入普通导出。','View only. Reference is not selectable and is excluded from normal exports.')}</p>
+ return <aside ref={embedded?undefined:floating.panelRef} style={embedded?undefined:floating.style} className={"workspace-view-panel"+(embedded?" embedded":"")} aria-label={t('参考画稿与辅助线','Artwork reference and guides')} data-ui-keyboard><header {...(embedded?{}:floating.headerProps)} data-testid={embedded?undefined:"workspace-reference-drag-handle"} className={embedded?undefined:"reference-panel-drag-handle"} title={embedded?undefined:t('拖动标题栏移动面板','Drag the title bar to move this panel')}><strong>{t('参考画稿 / 辅助线','Reference / Guides')}</strong>{close&&<button onClick={close}>×</button>}</header><p>{t('只影响工作视图。参考不可选中，不进入普通导出。','View only. Reference is not selectable and is excluded from normal exports.')}</p>
  <label>{t('参考画稿','Saved artwork')}<select aria-label="Reference artwork" value={ref?.artworkId??''} onChange={e=>run({op:'setReference',artworkId:e.target.value||null})}><option value="">{t('无','None')}</option>{library?.items.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
  {ref&&<><div className="view-buttons">{(['left','overlay','right'] as const).map(placement=><button key={placement} onClick={()=>run({op:'setReference',placement})}>{t(placement==='left'?'放左侧':placement==='right'?'放右侧':'原位叠放',placement)}</button>)}</div>
  <label>{t('显示参考','Show reference')}<input type="checkbox" checked={ref.visible} onChange={e=>run({op:'setReference',visible:e.target.checked})}/></label>

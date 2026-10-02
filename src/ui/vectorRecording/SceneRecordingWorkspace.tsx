@@ -21,6 +21,7 @@ import SceneAnglePad from './SceneAnglePad';
 import SceneOnionSkin,{SceneOnionControls,useSceneOnionFrames,DEFAULT_SCENE_ONION_SETTINGS} from './SceneOnionSkin';
 import {useRecordingReference} from './RecordingReferenceControls';
 import WorkspaceViewPanel from '../workspaceView/WorkspaceViewPanel';
+import {useFloatingPanel} from '../shared/useFloatingPanel';
 import {sceneSelectionPayload} from './sceneSelection';
 import {sceneLayerWarpSelection,sceneWarpAction,pruneRemovedSceneInstanceSelection,type SceneWarpAction} from './sceneWarpSelection';
 import './vectorRecording.css';
@@ -50,6 +51,7 @@ function SceneEditor({scene,zh,txt,aiGuides}:{scene:RecordingScene;zh:boolean;tx
  const instanceAnchor=useRef<string|null>(null);
  const [onion,setOnion]=useState(DEFAULT_SCENE_ONION_SETTINGS),[referenceOpen,setReferenceOpen]=useState(false);
  const referenceButton=useRef<HTMLButtonElement>(null);
+ const floatingReference=useFloatingPanel({open:referenceOpen,storageKey:'contour-reference-panel-position-v1'});
  const closeReference=()=>{setReferenceOpen(false);referenceButton.current?.focus({preventScroll:true});};
  const reference=useRecordingReference(`${project.meta.createdAt}/${scene.id}`,project.drawing?.reference);
  useEffect(()=>{if(reference.moving)setReferenceOpen(false);},[reference.moving]);
@@ -122,8 +124,8 @@ function SceneEditor({scene,zh,txt,aiGuides}:{scene:RecordingScene;zh:boolean;tx
    <details className="vr-section"><summary>{txt('检查','Diagnostics')} · {evaluated.warningCurveIds.length+otherDiagnostics.length}</summary>{localDiagnostics.length>0&&<p>{txt('局部编辑暂不显示父变形；外部联动只在全局预览生效。','Local editing excludes parent deformation; external links apply in global preview.')}</p>}{otherDiagnostics.map((d,i)=><p className="vr-error" key={i}>{d.message}</p>)}{!!evaluated.intervalTransportErrors.length&&<p className="vr-error">{evaluated.intervalTransportErrors.length} {txt('区间材料问题','interval material issues')}</p>}<label className="vr-field">{txt('拟合阈值 px','Fit tolerance px')}<input aria-label="Fit tolerance pixels" type="number" min=".1" max="20" step=".1" value={(scene.tolerance??1/250)*250} onChange={e=>run([{op:'setTolerance',pixels:Number(e.target.value)}])}/></label></details>
    {error&&<div className="vr-error" role="alert">{error}</div>}
   </aside>
-  <aside className="vr-reference-popover vr-section" id="recording-reference-panel" role="dialog" aria-label={txt('工作区参考 / 辅助线','Workspace reference / guides')} hidden={!referenceOpen} data-testid="scene-reference-popover" data-ui-keyboard onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeReference();}}}>
-   <header><strong>{txt('工作区参考 / 辅助线','Workspace reference / guides')}</strong><button aria-label={txt('关闭参考面板','Close reference panel')} onClick={closeReference}>×</button></header>
+  <aside ref={floatingReference.panelRef} style={floatingReference.style} className="vr-reference-popover vr-section" id="recording-reference-panel" role="dialog" aria-label={txt('工作区参考 / 辅助线','Workspace reference / guides')} hidden={!referenceOpen} data-testid="scene-reference-popover" data-ui-keyboard onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeReference();}}}>
+   <header {...floatingReference.headerProps} data-testid="workspace-reference-drag-handle" className="reference-panel-drag-handle" title={txt('拖动标题栏移动面板','Drag the title bar to move this panel')}><strong>{txt('工作区参考 / 辅助线','Workspace reference / guides')}</strong><button aria-label={txt('关闭参考面板','Close reference panel')} onClick={closeReference}>×</button></header>
    <section className="vr-reference-controls" data-testid="scene-reference-controls">{reference.controls}</section>
    <details className="vr-view-aids-controls"><summary>{txt('快照参考 / 辅助线','Artwork reference / guides')}</summary><WorkspaceViewPanel embedded/></details>
   </aside>
