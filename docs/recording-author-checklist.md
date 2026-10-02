@@ -35,4 +35,4 @@ node docs/tools/extract-recording-frames.mjs scene-frames-result.json NEW_frames
 
 命名源稿切换前自动保留同 ID 工作副本；所有实例仍解析最新内容，优先顺序为 active Drawing → 同 ID working copy → checkpoint。同 ID 更新清除副本；另存新 ID 不改原实例来源。未命名稿仍需先命名或明确丢弃。旧 rig 原数据保留供兼容迁移，带 scene 的工程调用旧录制 API 返回 `LEGACY_RECORDING_RETIRED`。
 
-[旧单稿录制合同](vector-recording-api.md) 与 [旧 yaw 美术报告](yaw-authoring-example.md) 是历史资料。v18/v19有限场景流程和v22视角用户主流程已实际检查；v23实例单组树状态见[验证记录](recording-scene-release-validation.md)。未测手势、姿态与完整转头美术不能由这些有限结果推定通过。
+[旧单稿录制合同](vector-recording-api.md) 与 [旧 yaw 美术报告](yaw-authoring-example.md) 是历史资料。v18/v19有限场景流程和v22视角用户主流程已实际检查；v23实例单组树与v24同源双13层批处理隔离状态见[验证记录](recording-scene-release-validation.md)。未测手势、姿态与完整转头美术不能由这些有限结果推定通过。
