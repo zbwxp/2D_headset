@@ -1,3 +1,7 @@
+import {recordingSceneSources} from './recordingSceneSources';
+import {ensureRecordingSnapshots,migrateRecordingScene,snapshotMigrationId} from '../domain/recordingSnapshot/migration';
+import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
+import {syncRecordingSnapshotSources,remapWorkingSnapshotSource} from '../domain/recordingSnapshot/sources';
 import {prepareDrawingWorkingCopyTransition} from './drawingWorkingCopies';
 import {parseDrawingSnapshots,parseDrawingWorkingCopies} from '../domain/drawing/snapshots';
 import {migrateLegacyRecordingScenes} from '../domain/recordingScene/migration';
@@ -90,11 +94,13 @@ const freshHead=createEmptyProject;
 /** Legacy data is an archive once scenes exist. Compatibility recovery feeds a
  * temporary migration copy; only the new scene becomes the active recording. */
 function prepareSceneProject(project:LandmarkProject):LandmarkProject{
- if(project.recordingScenes)return syncRecordingSceneSources(project);
+ if(project.recordingSnapshots)return syncRecordingSnapshotSources(project);
+ if(project.recordingScenes)return ensureRecordingSnapshots(syncRecordingSceneSources(project));
  const compatible=syncVectorRecordingSources(project),migrated=migrateLegacyRecordingScenes(compatible);
- return migrated.recordingScenes?{...migrated,vectorRecording:project.vectorRecording}:compatible;
+ return ensureRecordingSnapshots(migrated.recordingScenes?{...migrated,vectorRecording:project.vectorRecording}:compatible);
 }
 function synchronizeDrawingSources(project:LandmarkProject,before:LandmarkProject){
+ if(project.recordingSnapshots)return syncRecordingSnapshotSources(project);
  return syncRecordingSceneSources(project.recordingScenes?project:syncVectorRecordingSources(project,recordingSourceBaselines(before)),before);
 }
 
@@ -139,6 +145,8 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  setRecordingSnapshots:(value:import("../domain/recordingSnapshot/model").RecordingSnapshotWorkspace)=>void;
+  commitRecordingSnapshots:(value:import("../domain/recordingSnapshot/model").RecordingSnapshotWorkspace)=>void;
   setRecordingScenes:(value:import("../domain/recordingScene/model").RecordingScenes)=>void;
   commitRecordingScenes:(value:import("../domain/recordingScene/model").RecordingScenes)=>void;
   commitArtworkCleanup:(expected:LandmarkProject,next:LandmarkProject)=>void;
@@ -292,7 +300,11 @@ export const useEditor = create<State>((rawSet, get, api) => {
       if(next.vectorRecording)parseVectorRecording(next.vectorRecording);
       if(next===expected)return;get().beginEdit();try{set({project:next});persist(next);}finally{get().endEdit();}
     },
-    setRecordingScenes:(recordingScenes)=>{const before=get().project,next={...before,recordingScenes},p=recordingScenes.scenes.some(scene=>scene.instances.some(instance=>!instance.sourceSignature))?syncRecordingSceneSources(next,before):next;set({project:p});persist(p);},
+    setRecordingSnapshots:(recordingSnapshots)=>{const p={...get().project,recordingSnapshots};set({project:p});persist(p);},
+    commitRecordingSnapshots:(value)=>{const recordingSnapshots=parseRecordingSnapshots(value);get().beginEdit();try{get().setRecordingSnapshots(recordingSnapshots);}finally{get().endEdit();}},
+    setRecordingScenes:(recordingScenes)=>{const before=get().project,next={...before,recordingScenes};let p=recordingScenes.scenes.some(scene=>scene.instances.some(instance=>!instance.sourceSignature))?syncRecordingSceneSources(next,before):next;
+      if(before.recordingSnapshots){p=syncRecordingSnapshotSources(p);let snapshots=p.recordingSnapshots!;const sources=recordingSceneSources(p);for(const scene of recordingScenes.scenes){const id=snapshotMigrationId('recording',scene.id);if(snapshots.recordings.some(r=>r.id===id))continue;const migrated=migrateRecordingScene(snapshots,scene,sources);snapshots={...snapshots,recordings:[...snapshots.recordings,migrated.recording],snapshots:[...snapshots.snapshots,...migrated.snapshots]};}if(recordingScenes.activeSceneId)snapshots={...snapshots,activeRecordingId:snapshotMigrationId('recording',recordingScenes.activeSceneId)};p={...p,recordingSnapshots:snapshots};}
+      set({project:p});persist(p);},
     commitRecordingScenes:(value)=>{const recordingScenes=parseRecordingScenes(value);get().beginEdit();try{get().setRecordingScenes(recordingScenes);}finally{get().endEdit();}},
     setVectorRecording:(vectorRecording)=>{const p={...get().project,vectorRecording};set({project:p});persist(p);},
     commitVectorRecording:(value)=>{const vectorRecording=parseVectorRecording(value);get().beginEdit();try{get().setVectorRecording(vectorRecording);}finally{get().endEdit();}},
@@ -309,7 +321,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
       set({project:next});persist(next);return true;
     },
     setDrawingSnapshotState:(incoming)=>{assertSourceEditable();const current=get().project,prepared=prepareDrawingWorkingCopyTransition(current,incoming),{drawing,drawingSnapshots,drawingWorkingCopies}=prepared.state,promotion=prepared.promotedWorkingArtworkId;if(drawing){assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);}const vectorRecording=promotion&&current.vectorRecording?{...current.vectorRecording,rigs:current.vectorRecording.rigs.map(r=>r.artworkId==='$working'?{...r,artworkId:promotion}:r)}:current.vectorRecording;
-      const p=synchronizeDrawingSources({...current,drawing,drawingSnapshots,drawingWorkingCopies,...(vectorRecording?{vectorRecording}:{}),...(promotion&&current.recordingScenes?{recordingScenes:remapWorkingSceneSource(current.recordingScenes,promotion)}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})},current);set({project:p});persist(p);},
+      const p=synchronizeDrawingSources({...current,drawing,drawingSnapshots,drawingWorkingCopies,...(vectorRecording?{vectorRecording}:{}),...(promotion&&current.recordingScenes?{recordingScenes:remapWorkingSceneSource(current.recordingScenes,promotion)}:{}),...(promotion&&current.recordingSnapshots?{recordingSnapshots:remapWorkingSnapshotSource(current.recordingSnapshots,promotion)}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})},current);set({project:p});persist(p);},
     setGazeTracking:(tracking)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g)return;s.beginEdit();commit({...s.project,gazeEyeball:{...g,tracking}});s.endEdit();},
     createGaze:()=>{const s=get();if(s.activeModule!=='EYES'||!s.project.eyeScaffold||s.project.gazeEyeball)return;s.beginEdit();const g={version:1 as const,leftId:crypto.randomUUID(),rightId:crypto.randomUUID(),irisScale:.3,recessDepth:.12,tracking:false};commit({...s.project,gazeEyeball:g});s.endEdit();s.selectObject({kind:'surface',source:'IRIS',id:g.rightId});},
     setGazeParameter:(key,value)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g||!Number.isFinite(value))return;const [lo,hi]=key==='followStrength'?[0,1]:key==='viewDistance'?[10,200]:key==='irisScale'?[.05,.95]:[0,.5];commit({...s.project,gazeEyeball:{...g,[key]:Math.max(lo,Math.min(hi,value))}});},
@@ -611,7 +623,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
         referenceMoving: false,
       });
       // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
+      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='recordingSnapshots'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
       else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
     },
     redo: () => {if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));editBase=null;autosave.end();
@@ -634,7 +646,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
         referenceMoving: false,
       });
       // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
+      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='recordingSnapshots'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
       else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
     },
     load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=prepareSceneProject(migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p))))));editBase=null;autosave.cancel();

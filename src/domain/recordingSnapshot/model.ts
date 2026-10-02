@@ -1,0 +1,116 @@
+import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
+import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
+
+export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
+
+/** The sole stored original geometry. Canonical IDs include legacy asset scope. */
+export interface CanonicalElementStore {
+ nodes:Record<string,DrawingNode>;curves:Record<string,DrawingCurve>;
+ fills:Record<string,FillRegion>;offsets:Record<string,OffsetRelation>;
+}
+export interface CanonicalElementRef {assetId:string;sourceId:string}
+/** Original layers alone own membership. Referencing layers follow it live. */
+export interface OriginalSnapshotLayer extends DrawingLayer {kind:'original'}
+export interface ReferencedSnapshotLayer {
+ kind:'reference';id:string;name:string;
+ /** The parent is evaluated at its own saved state, never at the child's angle. */
+ baseSnapshotId:string;baseLayerId:string;
+}
+export type SnapshotLayer=OriginalSnapshotLayer|ReferencedSnapshotLayer;
+export interface SnapshotRelationCollection {
+ joins:TangentJoin[];endpointLinks:EndpointLink[];groups:DrawingGroup[];
+ displayIntervals:StrokeDisplayIntervals[];
+}
+/** Missing patch and empty arrays both mean no change. Deletion is explicit. */
+export interface SnapshotRelationPatch<T extends {id:string}> {
+ add?:T[];update?:T[];disable?:string[];
+}
+export interface SnapshotRelationOverrides {
+ joins?:SnapshotRelationPatch<TangentJoin>;
+ endpointLinks?:SnapshotRelationPatch<EndpointLink>;
+ groups?:SnapshotRelationPatch<DrawingGroup>;
+ displayIntervals?:SnapshotRelationPatch<StrokeDisplayIntervals>;
+}
+export interface SnapshotWarpState {id:string;name:string;parentId?:string;restGrid:WarpGrid;grid:WarpGrid}
+export interface SnapshotWarpBinding {layerId:string;warpId:string}
+/** Domain placement and Warp follow live layer membership. Direct shape offsets
+ * are ID-specific: an independent new curve has zero node/handle corrections. */
+export interface SnapshotLayerState {
+ placement?:ScenePlacementValue;shape?:SceneShapeValue;visibility?:Record<string,boolean|null>;
+ intervals?:Record<string,SceneIntervalValue>;depth?:number;
+}
+export interface SnapshotMaterialIssue {sourceSnapshotId:string;sourceSignature:string;message:string}
+export interface SnapshotRelationPositionState {sourceLinkIds:string[];offset:Point2}
+/** Only this node's residual deformation, applied after its saved parent state. */
+export interface SnapshotDeformationState {
+ warps:SnapshotWarpState[];bindings:SnapshotWarpBinding[];
+ layers:Record<string,SnapshotLayerState>;
+ relationPositions:Record<string,SnapshotRelationPositionState>;
+ /** Source interval ID to suspended inherited/static material channel. */
+ intervalMaterialIssues?:Record<string,SnapshotMaterialIssue>;
+}
+export type SnapshotPoseChannel='placement'|'shape'|'visibility'|'interval'|'depth'|'warp'|'relationPosition';
+/** Authorship is separate from inherited/evaluated state. Creating a view adds
+ * no marks and therefore cannot increase any target's authored key count. */
+export interface SnapshotAuthoredChannel {trackId:string;keyId:string}
+export interface SnapshotTrackBase<T> extends SceneTrack<T> {
+ id:string;targetId:string;elementId?:string;
+}
+export type SnapshotPoseTrack=
+ | (SnapshotTrackBase<ScenePlacementValue>&{channel:'placement'})
+ | (SnapshotTrackBase<SceneShapeValue>&{channel:'shape'})
+ | (SnapshotTrackBase<boolean|null>&{channel:'visibility'})
+ | (SnapshotTrackBase<SceneIntervalValue>&{channel:'interval';sourceTrackId:string;materialIssue?:SnapshotMaterialIssue})
+ | (SnapshotTrackBase<number>&{channel:'depth'})
+ | (SnapshotTrackBase<WarpGrid>&{channel:'warp'})
+ | (SnapshotTrackBase<Point2>&{channel:'relationPosition'});
+export interface SnapshotSourceMetadata {
+ artworkId:string;originIds:Record<string,string>;
+ reference?:DrawingDocument['reference'];mirrorAxisX?:number;mirrorEditing?:DrawingDocument['mirrorEditing'];
+}
+export interface RecordingSnapshot {
+ id:string;name:string;kind:'drawing'|'sculpt'|'view'|'assembly';
+ /** Saved evaluation coordinates, including static parents of another view. */
+ angle:Angle;
+ /** One ordered ownership list; there is no separate sorting container. */
+ layers:SnapshotLayer[];
+ relations:SnapshotRelationOverrides;
+ deformation:SnapshotDeformationState;
+ /** Captured residual fallback only, never original or baked geometry. */
+ inheritedState?:SnapshotDeformationState;
+ authored:SnapshotAuthoredChannel[];
+ source?:SnapshotSourceMetadata;
+ /** A draft belongs to this node's coordinate and remains outside the key index. */
+ draft?:{angle:Angle;deformation:SnapshotDeformationState;channels:SnapshotAuthoredChannel[]};
+}
+export interface SnapshotRecording {
+ id:string;name:string;angle:Angle;snapshotIds:string[];activeSnapshotId?:string;tolerance?:number;
+ /** Sole authority for authored sparse angle values; snapshots only refer to keys. */
+ tracks:SnapshotPoseTrack[];
+ /** Only genuinely unresolvable or conflicting migrations use this fallback. */
+ legacy?:{scene:RecordingScene;readOnly:true;reason:string};
+}
+export interface RecordingSnapshotWorkspace {
+ version:2;library:CanonicalElementStore;snapshots:RecordingSnapshot[];
+ recordings:SnapshotRecording[];activeRecordingId?:string;
+ /** Recovery evidence only; it is never another live geometry authority. */
+ legacyArchive?:{projectJSON:string;format:'landmark-project-json';migrationVersion:2};
+}
+/** Derived sparse index. Values stay in recording tracks; rebuilding an
+ * index never authors a key or fills in another layer's absent sample. */
+export interface SnapshotPoseKeyRef {snapshotId?:string;channelId:string;keyId:string;angle:Angle;name?:string}
+export interface SnapshotPoseTrackIndex {
+ channel:SnapshotPoseChannel;targetId:string;elementId?:string;
+ interpolation:'independent'|'legacy';keys:SnapshotPoseKeyRef[];
+}
+export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'POSE'|'ROUTE';
+export interface SnapshotDiagnostic {code:SnapshotDiagnosticCode;message:string;snapshotId?:string;layerId?:string;elementId?:string;channelId?:string}
+/** Path records distinguish equal geometry from conflicting parent states. */
+export interface SnapshotElementProvenance {elementId:string;sourceSnapshotId:string;path:string[]}
+export const emptyCanonicalElementStore=():CanonicalElementStore=>({nodes:{},curves:{},fills:{},offsets:{}});
+export const emptySnapshotDeformationState=():SnapshotDeformationState=>({warps:[],bindings:[],layers:{},relationPositions:{}});
+export const emptyRecordingSnapshot=(id:string,name='View',kind:RecordingSnapshot['kind']='view',angle:Angle={x:0,y:0}):RecordingSnapshot=>({id,name,kind,angle:{...angle},layers:[],relations:{},deformation:emptySnapshotDeformationState(),authored:[]});
+export const emptySnapshotRecording=(id:string,name='Recording'):SnapshotRecording=>({id,name,angle:{x:0,y:0},snapshotIds:[],tracks:[]});
+export const emptyRecordingSnapshotWorkspace=():RecordingSnapshotWorkspace=>({version:2,library:emptyCanonicalElementStore(),snapshots:[],recordings:[]});
+export const snapshotElementKey=(snapshotId:string,elementId:string):string=>JSON.stringify([snapshotId,elementId]);
+export const snapshotChannelKey=(channel:SnapshotPoseChannel,targetId:string,elementId?:string):string=>JSON.stringify([channel,targetId,elementId??null]);

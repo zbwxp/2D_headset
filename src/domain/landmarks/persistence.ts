@@ -1,5 +1,6 @@
 import {parseVectorRecording} from '../vectorRecording/persistence';
 import {parseRecordingScenes} from '../recordingScene/persistence';
+import {parseRecordingSnapshots} from '../recordingSnapshot/persistence';
 import {parseAssembly} from '../assembly/model';
 import {migrateChinNode} from '../chin/migration';
 import type {Vec3} from '../project/types';
@@ -275,6 +276,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   for(const key of ['poseRecording','assembly'] as const)if(p[key]!==undefined&&!Object.hasOwn(result.legacyWorkspaces??{},key))result.legacyWorkspaces={...result.legacyWorkspaces,[key]:structuredClone(p[key])};
   if(p.vectorRecording!==undefined)result.vectorRecording=parseVectorRecording(p.vectorRecording);
   if(p.recordingScenes!==undefined)result.recordingScenes=parseRecordingScenes(p.recordingScenes);
+  if(p.recordingSnapshots!==undefined)result.recordingSnapshots=parseRecordingSnapshots(p.recordingSnapshots);
   // Retire old point/curve recordings, including malformed legacy records.
   delete result.recording;
   const legacyPose=p.poseRecording??p.legacyWorkspaces?.poseRecording;

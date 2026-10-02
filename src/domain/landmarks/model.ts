@@ -33,6 +33,7 @@ export interface SemanticLandmark {
 export interface LandmarkProject {
   drawingWorkingCopies?: Record<string,import("../drawing/model").DrawingDocument>;
   recordingScenes?: import("../recordingScene/model").RecordingScenes;
+  recordingSnapshots?: import("../recordingSnapshot/model").RecordingSnapshotWorkspace;
   vectorRecording?: import("../vectorRecording/model").VectorRecording;
   /** Read-only archive of retired workspace payloads, retained on round trip. */
   legacyWorkspaces?: {recording?:unknown;hairstyle?:unknown;poseRecording?:unknown;assembly?:unknown};

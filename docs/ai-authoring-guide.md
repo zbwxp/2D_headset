@@ -1,3 +1,5 @@
+> Native snapshot v2 candidate: see [the snapshot model, workflow and API](recording-snapshot-v2.md). Current v2 projects use `inspectSnapshots` / `snapshot` / `previewSnapshot`; older scene instructions below remain migration history. Live onion previews now include the current unsaved pose through temporary evaluation keys.
+
 # Contour AI 矢量创作操作手册
 
 当前 Recording 使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)，最短操作顺序见 [录制作者流程](recording-author-checklist.md)。本页的源编辑合同仍适用；明确标注的旧单画稿 rig 记录只作历史参考。

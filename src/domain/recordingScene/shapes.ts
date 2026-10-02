@@ -38,6 +38,12 @@ function projectSmooth(d:DrawingDocument,component:SmoothComponent,driver=compon
  }
  for(const {endpoint,sign} of component.ends.values()){const curve=curveById(d,endpoint.curveId),node=nodeAt(d,endpoint).position,extent=length(sub(curve.handles[endpoint.end],node));curve.handles[endpoint.end]=add(node,mul(vector,extent/size*sign/driverSign));}
 }
+/** Native layer editing uses the same explicit, cross-layer SMOOTH graph as
+ * legacy scene editing. The grabbed endpoint is the authoring direction driver. */
+export function projectSceneSmoothHandle(drawing:DrawingDocument,endpoint:Endpoint):DrawingDocument {
+ const component=smoothComponents(drawing).find(c=>c.ends.has(endpointKey(endpoint)));if(!component)return drawing;
+ const result=structuredClone(drawing);projectSmooth(result,component,endpoint,true);return result;
+}
 const cubicAt=(shape:Cubic,t:number):Point2=>{const u=1-t,weights=[u*u*u,3*u*u*t,3*u*t*t,t*t*t];return shape.reduce<Point2>((p,q,i)=>add(p,mul(q,weights[i])),[0,0]);};
 
 /** Apply all instance channels coherently to one transient, post-Warp document.

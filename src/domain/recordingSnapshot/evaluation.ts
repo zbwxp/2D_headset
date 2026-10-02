@@ -1,0 +1,168 @@
+import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
+import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
+import {registerEvaluatedAffine,type EvaluatedAffine} from '../drawing/evaluatedAffine';
+import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
+import {resolveDisplayRoute} from '../drawing/displayRoutes';
+import {paintItems} from '../drawing/strokes';
+import {drawingSignature} from '../vectorRecording/model';
+import {emptyRecordingScene,identityScenePlacement,identitySceneShape,instanceObjectId,type ScenePlacementValue,type SceneShapeValue} from '../recordingScene/model';
+import {evaluateScene,type SceneEvaluation,type SceneEvaluationOptions} from '../recordingScene/evaluation';
+import {applyScenePlacement,scenePlacementScales,scenePlacementMaxScale,isScenePlacementSimilarity} from '../recordingScene/tracks';
+import {materializeOriginalSnapshot,remapDrawingIdentities} from './sources';
+import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
+import {validateSnapshotGraph} from './validation';
+import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording} from './model';
+
+export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string}
+export interface SnapshotEvaluation {
+ snapshotId:string;source:DrawingDocument;baseDrawing:DrawingDocument;drawing:DrawingDocument;preShapeDrawing:DrawingDocument;prePlacementDrawing:DrawingDocument;
+ angle:Angle;state:SnapshotDeformationState;provenance:Record<string,SnapshotElementProvenance>;
+ diagnostics:SnapshotDiagnostic[];warpGrids:Record<string,WarpGrid>;placements:Record<string,ScenePlacementValue>;
+ paintBatches:PaintBatch[];fitDiagnostics:SceneEvaluation['fitDiagnostics'];warningCurveIds:string[];
+ intervalTransportErrors:SceneEvaluation['intervalTransportErrors'];maxError:number;
+ diagnosticStage:'preview'|'full';conflictingNodeIds:string[];
+ /** Evaluation bookkeeping prevents one inherited angle channel applying twice. */
+ appliedTrackIds:string[];
+ placementsByLayer:Record<string,ScenePlacementValue>;
+ layerProvenance:Record<string,{layerId:string;baseSnapshotId:string;sourceLayerId:string}>;
+ authoredTracks:SnapshotPoseTrack[];
+}
+export class SnapshotResolutionError extends Error {
+ constructor(public diagnostic:SnapshotDiagnostic){super(diagnostic.message);this.name='SnapshotResolutionError';}
+}
+const relationNames=['joins','endpointLinks','groups','displayIntervals'] as const;
+const emptyRelations=():SnapshotRelationCollection=>({joins:[],endpointLinks:[],groups:[],displayIntervals:[]});
+const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+function applyPatch<T extends {id:string}>(values:T[],patch:SnapshotRelationPatch<T>|undefined,diagnostics:SnapshotDiagnostic[],snapshotId:string):T[]{
+ const result=new Map(values.map(value=>[value.id,structuredClone(value)]));
+ for(const value of patch?.add??[]){if(result.has(value.id)&&!same(result.get(value.id),value))throw new SnapshotResolutionError({code:'RELATION_CONFLICT',snapshotId,elementId:value.id,message:`Relation ${value.id} already exists with different state; use an explicit update.`});result.set(value.id,structuredClone(value));}
+ for(const value of patch?.update??[]){if(!result.has(value.id))diagnostics.push({code:'MISSING_RELATION',snapshotId,elementId:value.id,message:`Updated relation ${value.id} has no inherited original; the explicit update is retained.`});result.set(value.id,structuredClone(value));}
+ for(const id of patch?.disable??[])result.delete(id);
+ return [...result.values()];
+}
+function relationSubset(drawing:DrawingDocument,curves:Set<string>):SnapshotRelationCollection {
+ return {joins:drawing.joins.filter(j=>curves.has(j.a.curveId)&&curves.has(j.b.curveId)),endpointLinks:(drawing.endpointLinks??[]).filter(j=>curves.has(j.a.curveId)&&curves.has(j.b.curveId)),groups:(drawing.groups??[]).filter(g=>g.curveIds.some(id=>curves.has(id))).map(g=>({...g,curveIds:g.curveIds.filter(id=>curves.has(id))})),displayIntervals:(drawing.displayIntervals??[]).filter(t=>curves.has(t.anchor.id))};
+}
+function validRelationships(drawing:DrawingDocument,diagnostics:SnapshotDiagnostic[],snapshotId:string):DrawingDocument {
+ const curves=new Set(drawing.curves.map(c=>c.id));
+ const activePair=(r:{id:string;a:{curveId:string};b:{curveId:string}})=>{const active=curves.has(r.a.curveId)&&curves.has(r.b.curveId);if(!active)diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:r.id,message:`Relation ${r.id} references an element outside this snapshot and is inactive.`});return active;};
+ const result={...drawing,joins:drawing.joins.filter(activePair),endpointLinks:drawing.endpointLinks?.filter(activePair),groups:drawing.groups?.map(g=>({...g,curveIds:g.curveIds.filter(id=>curves.has(id))})).filter(g=>g.curveIds.length)};
+ result.displayIntervals=drawing.displayIntervals?.filter(t=>{if(!curves.has(t.anchor.id)){diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:t.id,message:`Display interval ${t.id} has no anchor in this snapshot.`});return false;}if(t.displayRoute){const route=resolveDisplayRoute(result,t.displayRoute);if(route.diagnostics.length){diagnostics.push({code:'ROUTE',snapshotId,elementId:t.id,message:`Display route ${t.id} is incomplete in this snapshot; its saved relationship remains available.`});return false;}}return true;});return result;
+}
+function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,parents:Map<string,SnapshotEvaluation>,diagnostics:SnapshotDiagnostic[]):{drawing:DrawingDocument;provenance:SnapshotEvaluation['provenance'];appliedTrackIds:Set<string>} {
+ const drawing=emptyDrawing(),provenance:SnapshotEvaluation['provenance']={},appliedTrackIds=new Set<string>();
+ const objects=new Map<string,unknown>(),nodeMap=new Map<string,DrawingDocument['nodes'][number]>(),inherited=emptyRelations();
+ const selectedByParent=new Map<string,Set<string>>();
+ for(const layer of snapshot.layers){
+  let source:DrawingDocument|undefined,sourceLayer:DrawingLayer|undefined,parent:SnapshotEvaluation|undefined;
+  if(layer.kind==='original'){
+   sourceLayer=layer;const curves=layer.items.map(id=>workspace.library.curves[id]).filter(Boolean),nodes=[...new Set(curves.flatMap(c=>c.nodes))].map(id=>workspace.library.nodes[id]).filter(Boolean);
+   source={version:3,layers:[layer],nodes,curves,fills:layer.items.map(id=>workspace.library.fills[id]).filter(Boolean),offsets:layer.items.map(id=>workspace.library.offsets[id]).filter(Boolean),joins:[]};
+  }else{
+   parent=parents.get(layer.baseSnapshotId);source=parent?.drawing;sourceLayer=source?.layers.find(l=>l.id===layer.baseLayerId);
+   if(!source){diagnostics.push({code:'MISSING_SNAPSHOT',snapshotId:snapshot.id,layerId:layer.id,message:`Base snapshot ${layer.baseSnapshotId} is missing; its reference is retained.`});continue;}
+   if(!sourceLayer){diagnostics.push({code:'MISSING_LAYER',snapshotId:snapshot.id,layerId:layer.id,message:`Base layer ${layer.baseLayerId} is missing; its reference is retained.`});continue;}
+   parent!.appliedTrackIds.forEach(id=>appliedTrackIds.add(id));
+  }
+  const items=new Set(sourceLayer.items),curves=source.curves.filter(c=>items.has(c.id)),nodes=new Set(curves.flatMap(c=>c.nodes));
+  const layerItems:string[]=[];
+  for(const entity of [...curves,...source.fills.filter(f=>items.has(f.id)),...source.offsets.filter(o=>items.has(o.id))]){
+   if(objects.has(entity.id))throw new SnapshotResolutionError({code:'BRANCH_CONFLICT',snapshotId:snapshot.id,layerId:layer.id,elementId:entity.id,message:`Canonical element ${entity.id} reaches this snapshot through more than one layer branch. Choose one parent state explicitly.`});
+   objects.set(entity.id,entity);layerItems.push(entity.id);
+   const prior=parent?.provenance[entity.id];provenance[entity.id]={elementId:entity.id,sourceSnapshotId:prior?.sourceSnapshotId??snapshot.id,path:[...(prior?.path??[]),snapshot.id]};
+  }
+  for(const id of sourceLayer.items)if(!objects.has(id))diagnostics.push({code:'MISSING_ELEMENT',snapshotId:snapshot.id,layerId:layer.id,elementId:id,message:`Canonical element ${id} is missing; its reference is retained.`});
+  drawing.layers.push({id:layer.id,name:layer.name,visible:true,locked:false,items:sourceLayer.items.filter(id=>layerItems.includes(id))});
+  drawing.curves.push(...structuredClone(curves));drawing.fills.push(...structuredClone(source.fills.filter(f=>items.has(f.id))));drawing.offsets.push(...structuredClone(source.offsets.filter(o=>items.has(o.id))));
+  for(const node of source.nodes.filter(n=>nodes.has(n.id))){const prior=nodeMap.get(node.id);if(prior&&!same(prior,node))throw new SnapshotResolutionError({code:'BRANCH_CONFLICT',snapshotId:snapshot.id,elementId:node.id,message:`Shared node ${node.id} has different parent states.`});nodeMap.set(node.id,structuredClone(node));const p=parent?.provenance[node.id];provenance[node.id]={elementId:node.id,sourceSnapshotId:p?.sourceSnapshotId??snapshot.id,path:[...(p?.path??[]),snapshot.id]};}
+  if(layer.kind==='reference'){const set=selectedByParent.get(layer.baseSnapshotId)??new Set<string>();curves.forEach(c=>set.add(c.id));selectedByParent.set(layer.baseSnapshotId,set);}
+ }
+ drawing.nodes=[...nodeMap.values()];
+ for(const [id,curves] of selectedByParent){const relations=relationSubset(parents.get(id)!.drawing,curves);for(const name of relationNames)(inherited[name] as {id:string}[]).push(...relations[name]);}
+ for(const name of relationNames){const distinct=new Map<string,{id:string}>();for(const relation of inherited[name]){const prior=distinct.get(relation.id);if(prior&&!same(prior,relation)&&!snapshot.relations[name]?.update?.some(r=>r.id===relation.id)&&!snapshot.relations[name]?.disable?.includes(relation.id))throw new SnapshotResolutionError({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:relation.id,message:`Parent snapshots disagree on relation ${relation.id}; choose an explicit update or disable.`});distinct.set(relation.id,relation);}let patch=snapshot.relations[name] as SnapshotRelationPatch<{id:string}>|undefined;if(name==='displayIntervals'&&patch){const issues={...snapshot.inheritedState?.intervalMaterialIssues,...snapshot.deformation.intervalMaterialIssues},active=(value:{id:string})=>{const issue=issues[value.id];if(!issue)return true;const original=materializeOriginalSnapshot(workspace,issue.sourceSnapshotId);return !!original&&drawingSignature(original)===issue.sourceSignature;};patch={...patch,...(patch.add?{add:patch.add.filter(active)}:{}),...(patch.update?{update:patch.update.filter(active)}:{})};}(drawing[name] as {id:string}[])=applyPatch([...distinct.values()],patch,diagnostics,snapshot.id);}
+ // Keep dependent paint objects only when their explicit curves are available.
+ const curveIds=new Set(drawing.curves.map(c=>c.id)),removed=new Set<string>();
+ drawing.fills=drawing.fills.filter(f=>{const ok=f.boundary.every(u=>curveIds.has(u.id));if(!ok)removed.add(f.id);return ok;});drawing.offsets=drawing.offsets.filter(o=>{const ok=o.source.every(u=>curveIds.has(u.id));if(!ok)removed.add(o.id);return ok;});
+ for(const id of removed)diagnostics.push({code:'MISSING_ELEMENT',snapshotId:snapshot.id,elementId:id,message:`Paint element ${id} has a missing curve dependency and is inactive.`});
+ for(const layer of drawing.layers)layer.items=layer.items.filter(id=>!removed.has(id));
+ return {drawing:validRelationships(drawing,diagnostics,snapshot.id),provenance,appliedTrackIds};
+}
+function shapeState(source:DrawingDocument,state:SnapshotDeformationState,diagnostics:SnapshotDiagnostic[],snapshotId:string):SceneShapeValue {
+ const result=identitySceneShape(),nodeLayers=new Map(source.curves.flatMap(c=>c.nodes.map(id=>[id,layerFor(source,c.id)?.id] as const)));
+ for(const [layerId,value] of Object.entries(state.layers))if(value.shape){for(const [id,delta] of Object.entries(value.shape.nodes))if(nodeLayers.get(id)===layerId)result.nodes[id]=delta;for(const [id,delta] of Object.entries(value.shape.handles))if(layerFor(source,id)?.id===layerId)result.handles[id]=delta;}
+ for(const [target,value] of Object.entries(state.relationPositions)){
+  const links=(source.endpointLinks??[]).filter(l=>value.sourceLinkIds.includes(l.id));if(links.length!==value.sourceLinkIds.length)diagnostics.push({code:'MISSING_RELATION',snapshotId,elementId:target,message:'A linked position target is missing one of its explicit endpoint links.'});
+  const nodes=new Set(links.flatMap(l=>[l.a,l.b].map(e=>source.curves.find(c=>c.id===e.curveId)?.nodes[e.end]).filter((id):id is string=>!!id)));
+  for(const id of nodes)result.nodes[id]=value.offset;
+ }
+ return result;
+}
+function placeLayers(before:DrawingDocument,placements:Record<string,ScenePlacementValue>):DrawingDocument {
+ const identity=identityScenePlacement(),owners=new Map(before.layers.flatMap(l=>l.items.map(id=>[id,l.id] as const)));
+ for(const curve of before.curves)for(const id of curve.nodes)owners.set(id,owners.get(curve.id)!);
+ const value=(id:string)=>placements[owners.get(id)!]??identity,active=(v:ScenePlacementValue)=>scenePlacementScales(v).some(s=>s!==1)||v.rotation!==0||v.translation.some(n=>n!==0);
+ if(!Object.values(placements).some(active))return before;
+ const drawing:DrawingDocument={...before,nodes:before.nodes.map(n=>active(value(n.id))?{...n,position:applyScenePlacement(value(n.id),n.position)}:n),curves:before.curves.map(c=>active(value(c.id))?{...c,handles:c.handles.map(p=>applyScenePlacement(value(c.id),p)) as [Point2,Point2]}:c),offsets:before.offsets.map(o=>o.translation&&active(value(o.id))?{...o,translation:applyScenePlacement({...value(o.id),translation:[0,0]},o.translation)}:o),joins:before.joins.map(j=>j.radius!==undefined&&active(value(j.a.curveId))&&isScenePlacementSimilarity(value(j.a.curveId))?{...j,radius:j.radius*scenePlacementMaxScale(value(j.a.curveId))}:j),endpointLinks:before.endpointLinks?.map(l=>l.joinBrush?.kind==='ARC'&&active(value(l.a.curveId))&&isScenePlacementSimilarity(value(l.a.curveId))?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,scenePlacementMaxScale(value(l.a.curveId)))}:l)};
+ const affines=new Map<string,EvaluatedAffine>();for(const [id,p] of Object.entries(placements))if(!isScenePlacementSimilarity(p))affines.set(id,{point:point=>applyScenePlacement(p,point),maxScale:scenePlacementMaxScale(p)});
+ if(affines.size)registerEvaluatedAffine(drawing,before,id=>affines.get(owners.get(id)!));return drawing;
+}
+/** Element offsets resolve against their source siblings before assembly ordering. */
+function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,drawing:DrawingDocument,provenance:SnapshotEvaluation['provenance']):PaintBatch[]{
+ const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
+ for(const batch of base){positions.set(batch.owner??batch.item.id,batch.position);if(!batch.owner)for(const use of batch.item.stroke?.segments??[])positions.set(use.id,batch.position);}
+ const originalLayer=(snapshotId:string,layerId:string):string|undefined=>{const owner=workspace.snapshots.find(s=>s.id===snapshotId),layer=owner?.layers.find(l=>l.id===layerId);return layer?.kind==='reference'?originalLayer(layer.baseSnapshotId,layer.baseLayerId):layer?.id;};
+ let cursor=0;for(const layer of drawing.layers){const original=originalLayer(snapshot.id,layer.id);if(original)slots.set(original,cursor);for(const item of paintItems(drawing,layer.id))cursor+=item.stroke?item.stroke.segments.length:1;cursor++;}
+ const sources=new Map<string,DrawingDocument|undefined>();
+ const result=base.map(batch=>{if(!batch.owner)return batch;const p=provenance[batch.owner];if(!p)return batch;if(!sources.has(p.sourceSnapshotId))sources.set(p.sourceSnapshotId,materializeOriginalSnapshot(workspace,p.sourceSnapshotId));const source=sources.get(p.sourceSnapshotId),curve=source?.curves.find(c=>c.id===p.elementId);if(!source||!curve?.depthOffset)return batch;const context=depthContext(source,curve.id);if(!context.effective)return batch;const targets=context.target.ids.map(id=>positions.get(id)).filter((n):n is number=>n!==undefined);return {...batch,position:targets.length?(curve.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):(slots.get(context.target.id)??batch.position)};});
+ const order=new Map(base.map((batch,index)=>[batch.owner??batch.item.id,index]));return result.sort((a,b)=>a.position-b.position||order.get(a.owner??a.item.id)!-order.get(b.owner??b.item.id)!);
+}
+function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:SnapshotDeformationState,options:SnapshotEvaluationOptions,diagnostics:SnapshotDiagnostic[]):Omit<SnapshotEvaluation,'snapshotId'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'> {
+ const angle=options.angle??snapshot.angle,scene=emptyRecordingScene('snapshot-evaluation'),instanceId='snapshot-evaluation',sourceId='snapshot-source';
+ scene.angle={...angle};scene.instances=[{id:instanceId,artworkId:sourceId,name:snapshot.name}];
+ scene.warps=state.warps.map(w=>({id:w.id,name:w.name,parentId:w.parentId,restGrid:w.restGrid,keys:[{id:`current:${w.id}`,angle,value:w.grid}]}));
+ scene.bindings=state.bindings.map(b=>({instanceId,sourceLayerId:b.layerId,warpId:b.warpId}));
+ for(const [layerId,value] of Object.entries(state.layers)){
+  for(const [id,visible] of Object.entries(value.visibility??{}))scene.visibilityTracks.push({id:`visibility:${layerId}:${id}`,target:{instanceId,sourceLayerId:layerId,...(id===layerId?{}:{sourceObjectId:id})},keys:[{id:'current',angle,value:visible}]});
+  for(const [id,interval] of Object.entries(value.intervals??{}))scene.intervalTracks.push({id:`interval:${id}`,instanceId,sourceTrackId:id,keys:[{id:'current',angle,value:interval}]});
+  if(value.depth!==undefined)scene.depthTracks!.push({id:`depth:${layerId}`,target:{instanceId,sourceLayerId:layerId},keys:[{id:'current',angle,value:value.depth}]});
+ }
+ const shape=shapeState(source,state,diagnostics,snapshot.id);if(Object.keys(shape.nodes).length||Object.keys(shape.handles).length)scene.shapeTracks=[{id:'snapshot-shape',instanceId,keys:[{id:'current',angle,value:shape}]}];
+ const evaluated=evaluateScene(scene,id=>id===sourceId?source:undefined,options),prefix=instanceObjectId(instanceId,''),raw=(id:string)=>id.startsWith(prefix)?id.slice(prefix.length):id;
+ const preShapeDrawing=remapDrawingIdentities(evaluated.preShapeDrawing,raw),prePlacementDrawing=remapDrawingIdentities(evaluated.prePlacementDrawing,raw),unplaced=remapDrawingIdentities(evaluated.drawing,raw);
+ const placements=Object.fromEntries(snapshot.layers.map(l=>[l.id,state.layers[l.id]?.placement??identityScenePlacement()]));
+ const drawing=options.omitPlacements?unplaced:placeLayers(unplaced,placements);
+ const placedNodes=new Map(drawing.nodes.map(n=>[n.id,n.position])),placedCurves=new Map(drawing.curves.map(c=>[c.id,c]));for(const link of drawing.endpointLinks??[]){const a=placedNodes.get(placedCurves.get(link.a.curveId)?.nodes[link.a.end]??''),b=placedNodes.get(placedCurves.get(link.b.curveId)?.nodes[link.b.end]??'');if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-8)diagnostics.push({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:link.id,message:'Layer placement separates linked endpoints. Connected layers need coherent placement values.'});}
+ for(const diagnostic of evaluated.diagnostics)diagnostics.push({code:diagnostic.code==='ROUTE'?'ROUTE':'POSE',snapshotId:snapshot.id,layerId:diagnostic.sourceLayerId,elementId:diagnostic.sourceObjectId,channelId:diagnostic.trackId,message:diagnostic.message});
+ const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const maximum=scenePlacementMaxScale(placement),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(p=>applyScenePlacement(placement,p)) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:applyScenePlacement(placement,d.peakExpected),peakActual:applyScenePlacement(placement,d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});
+ return {drawing,preShapeDrawing,prePlacementDrawing,angle:evaluated.angle,state,diagnostics,warpGrids:evaluated.warpGrids,placements,paintBatches:depthPaintBatches(drawing),fitDiagnostics,warningCurveIds:fitDiagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId),intervalTransportErrors:evaluated.intervalTransportErrors.map(e=>({...e,trackId:raw(e.trackId),sourceCurveIds:e.sourceCurveIds.map(raw)})),maxError:fitDiagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds.map(raw)};
+}
+function evaluateLegacySnapshot(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions):SnapshotEvaluation {
+ const scene=recording.legacy!.scene;
+ const evaluated=evaluateScene(scene,artworkId=>{const source=workspace.snapshots.find(s=>s.kind==='drawing'&&s.source?.artworkId===artworkId);if(!source)return undefined;const drawing=materializeOriginalSnapshot(workspace,source.id);if(!drawing)return undefined;const order=new Map(Object.keys(source.source!.originIds).map((id,index)=>[id,index]));for(const key of ['nodes','curves','fills','offsets'] as const)drawing[key].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));return remapDrawingIdentities(drawing,id=>source.source!.originIds[id]??id);},{...options,angle:options.angle??recording.angle});
+ const provenance:SnapshotEvaluation['provenance']={};for(const [id,p] of Object.entries(evaluated.provenance)){const source=workspace.snapshots.find(s=>s.source?.artworkId===p.artworkId),canonical=source&&Object.entries(source.source!.originIds).find(([,raw])=>raw===p.sourceId)?.[0];provenance[id]={elementId:canonical??p.sourceId,sourceSnapshotId:source?.id??p.artworkId,path:[source?.id??p.artworkId,snapshotId]};}
+ const diagnostics:SnapshotDiagnostic[]=[{code:'LEGACY_READ_ONLY',snapshotId,message:recording.legacy!.reason},...evaluated.diagnostics.map(d=>({code:'POSE' as const,snapshotId,layerId:d.sourceLayerId,elementId:d.sourceObjectId,channelId:d.trackId,message:d.message}))];
+ return {snapshotId,source:evaluated.source,baseDrawing:evaluated.source,drawing:evaluated.drawing,preShapeDrawing:evaluated.preShapeDrawing,prePlacementDrawing:evaluated.prePlacementDrawing,angle:evaluated.angle,state:emptySnapshotDeformationState(),provenance,diagnostics,warpGrids:evaluated.warpGrids,placements:evaluated.placements,placementsByLayer:evaluated.placements,paintBatches:evaluated.paintBatches,fitDiagnostics:evaluated.fitDiagnostics,warningCurveIds:evaluated.warningCurveIds,intervalTransportErrors:evaluated.intervalTransportErrors,maxError:evaluated.maxError,diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds,appliedTrackIds:[],layerProvenance:{},authoredTracks:recording.tracks};
+}
+export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ const fallback=recordingForSnapshot(workspace,snapshotId);if(fallback?.legacy)return evaluateLegacySnapshot(workspace,fallback,snapshotId,options);
+ validateSnapshotGraph(workspace);const cache=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>();
+ const resolve=(id:string,root=false):SnapshotEvaluation=>{
+  const cached=!root&&cache.get(id);if(cached)return cached;
+  const snapshot=workspace.snapshots.find(s=>s.id===id);if(!snapshot)throw new SnapshotResolutionError({code:'MISSING_SNAPSHOT',snapshotId:id,message:`Snapshot ${id} is missing.`});
+  if(visiting.has(id))throw new SnapshotResolutionError({code:'SNAPSHOT_CYCLE',snapshotId:id,message:`Snapshot ${id} contains a parent cycle.`});visiting.add(id);
+  const parents=new Map<string,SnapshotEvaluation>();for(const layer of snapshot.layers)if(layer.kind==='reference'&&workspace.snapshots.some(s=>s.id===layer.baseSnapshotId)&&!parents.has(layer.baseSnapshotId))parents.set(layer.baseSnapshotId,resolve(layer.baseSnapshotId));
+  const diagnostics:SnapshotDiagnostic[]=[...parents.values()].flatMap(p=>p.diagnostics),input=inputForSnapshot(workspace,snapshot,parents,diagnostics),recording=recordingForSnapshot(workspace,id),angle=root&&options.angle?options.angle:snapshot.angle,state=evaluateSnapshotState(snapshot,recording,input.drawing,angle,root?options.useDraft!==false:false,input.appliedTrackIds,{diagnostics,signature:sourceId=>{const original=materializeOriginalSnapshot(workspace,sourceId);return original?drawingSignature(original):undefined;}});
+  const appliedTrackIds=new Set(input.appliedTrackIds);for(const track of recording?.tracks??[])if(snapshot.layers.some(l=>l.id===track.targetId)||state.warps.some(w=>w.id===track.targetId)||state.relationPositions[track.targetId])appliedTrackIds.add(track.id);
+  const localOptions=root?{...options,angle}:{angle,useDraft:false,diagnostics:options.diagnostics,tolerance:options.tolerance};
+  const own=evaluateOwn(snapshot,input.drawing,state,localOptions,diagnostics);
+  const result:SnapshotEvaluation={snapshotId:id,source:input.drawing,baseDrawing:input.drawing,provenance:input.provenance,appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);cache.set(id,result);return result;
+ };return resolve(snapshotId,true);
+}
+export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ const recording=workspace.recordings.find(r=>r.id===recordingId);if(!recording){if(workspace.snapshots.some(s=>s.id===recordingId))return resolveSnapshot(workspace,recordingId,options);throw Error('Missing recording');}
+ const at=options.angle??recording.angle,ordered=recording.snapshotIds.map(id=>workspace.snapshots.find(s=>s.id===id)).filter((s):s is RecordingSnapshot=>!!s).sort((a,b)=>Math.hypot(a.angle.x-at.x,a.angle.y-at.y)-Math.hypot(b.angle.x-at.x,b.angle.y-at.y)||a.angle.y-b.angle.y||a.angle.x-b.angle.x||a.id.localeCompare(b.id));
+ const snapshotId=options.snapshotId??ordered[0]?.id;if(!snapshotId)throw Error('Recording has no view snapshot');
+ if(recording.legacy)return evaluateLegacySnapshot(workspace,recording,snapshotId,{...options,tolerance:options.tolerance??recording.tolerance});
+ const result=resolveSnapshot(workspace,snapshotId,{...options,angle:options.angle??recording.angle,tolerance:options.tolerance??recording.tolerance});
+ return result;
+}

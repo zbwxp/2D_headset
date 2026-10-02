@@ -1,0 +1,16 @@
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {expect,test,vi} from 'vitest';
+import {createEmptyProject} from '../app/emptyProject';
+import {useEditor} from '../app/store';
+import {prepareSnapshotBatch} from '../app/recordingSnapshotApi';
+import {emptyDrawing} from '../domain/drawing/model';
+import {addLayer,createCurve} from '../domain/drawing/commands';
+import {saveDrawingSnapshot} from '../domain/drawing/snapshots';
+import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
+import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
+import SnapshotRecordingWorkspace from '../ui/vectorRecording/SnapshotRecordingWorkspace';
+vi.mock('../app/store',async original=>{const m=await original<typeof import('../app/store')>();return {...m,useEditor:Object.assign((select?:(s:ReturnType<typeof m.useEditor.getState>)=>unknown)=>select?select(m.useEditor.getState()):m.useEditor.getState(),m.useEditor)};});
+function fixture(){let drawing=addLayer(emptyDrawing(),'Jaw');drawing=createCurve(drawing,drawing.layers[0].id,[[0,0],[.1,.2],[.4,.3],[.5,.1]],.01,'jaw');const project=ensureRecordingSnapshots({...createEmptyProject(),...saveDrawingSnapshot({drawing},'Source face')});return project;}
+test('native workspace starts with an empty view and persistent source list, without mutating geometry or tracks',()=>{const previous=useEditor.getState(),project=fixture();try{useEditor.setState({project,past:[],future:[]});const before=JSON.stringify(project),html=renderToStaticMarkup(createElement(SnapshotRecordingWorkspace));expect(html).toContain('recording-snapshot-v2');expect(html).toContain('snapshot-update-view');expect(html).toContain('Source face');expect(html).toContain('scene-angle-pad');expect(html).toContain('scene-onion-controls');expect(JSON.stringify(project)).toBe(before);const workspace=project.recordingSnapshots,recording=workspace.recordings[0];expect(evaluateRecordingSnapshot(workspace,recording.id).drawing.curves).toHaveLength(0);expect(recording.tracks).toHaveLength(0);}finally{useEditor.setState(previous,true);}});
+test('cut-paste into first view and inherited second view keep canonical curve identity and sparse keys',()=>{const project=fixture(),workspace=project.recordingSnapshots,source=workspace.snapshots.find(s=>s.kind==='drawing')!,sourceBytes=JSON.stringify(source),libraryBytes=JSON.stringify(workspace.library);const first=prepareSnapshotBatch(project,{commands:[{op:'moveLayers',sourceSnapshotId:source.id,layerIds:source.layers.map(l=>l.id)},{op:'setAngle',angle:{x:90,y:0}},{op:'createSnapshot',name:'Profile'}]}),next=first.recordingSnapshots,r=next.recordings[0];expect(r.snapshotIds).toHaveLength(2);expect(r.tracks).toHaveLength(0);expect(JSON.stringify(next.library)).toBe(libraryBytes);expect(JSON.stringify(next.snapshots.find(s=>s.id===source.id))).toBe(sourceBytes);const zero=evaluateRecordingSnapshot(next,r.id,{angle:{x:0,y:0}}),profile=evaluateRecordingSnapshot(next,r.id,{angle:{x:90,y:0}});expect(profile.drawing.curves.map(c=>c.id)).toEqual(zero.drawing.curves.map(c=>c.id));expect(profile.drawing.nodes).toEqual(zero.drawing.nodes);expect(profile.drawing.curves).toHaveLength(1);});

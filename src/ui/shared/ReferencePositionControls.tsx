@@ -32,11 +32,11 @@ function AxisControl({document:d,current,run,preview,axis}:{axis:0|1}&Props){
   <label>{t(label)}<input aria-label={t(label)} type="number" min={-10} max={10} step="0.001" disabled={reference.locked}
    value={text??+reference.offset[axis].toFixed(5)}
    onChange={e=>{setText(e.target.value);change(e.target.valueAsNumber);}}
-   onBlur={e=>finish(Number.isFinite(e.currentTarget.valueAsNumber))} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();finish(e.key==='Enter'&&Number.isFinite(e.currentTarget.valueAsNumber));e.currentTarget.blur();}}}/></label>
+   onBlur={e=>finish(Number.isFinite(e.currentTarget.valueAsNumber))} onKeyDown={e=>{e.stopPropagation();if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const step=(e.altKey?.1:e.shiftKey?10:1)*.001,n=Math.max(-10,Math.min(10,+(Number(text??reference.offset[axis])+(e.key==='ArrowUp'?step:-step)).toFixed(6)));setText(String(n));change(n);return;}if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();finish(e.key==='Enter'&&Number.isFinite(e.currentTarget.valueAsNumber));e.currentTarget.blur();}}} onKeyUp={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown')finish();}}/></label>
   <input type="range" aria-label={t(label)} min={-10} max={10} step="0.001" value={reference.offset[axis]} disabled={reference.locked}
    onPointerDown={e=>{if(e.button===0)e.currentTarget.setPointerCapture(e.pointerId);}}
    onChange={e=>change(e.target.valueAsNumber)} onPointerUp={()=>finish()} onPointerCancel={()=>finish(false)} onLostPointerCapture={()=>finish()}
-   onBlur={()=>finish()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();finish(false);}}}
+   onBlur={()=>finish()} onKeyDown={e=>{e.stopPropagation();if((e.shiftKey||e.altKey)&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const step=(e.altKey?.1:10)*.001,sign=e.key==='ArrowLeft'||e.key==='ArrowDown'?-1:1;change(reference.offset[axis]+step*sign);}if(e.key==='Escape'){e.preventDefault();finish(false);}}}
    onKeyUp={e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key))finish();}}/>
  </div>;
 }
