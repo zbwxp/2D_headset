@@ -2,14 +2,14 @@ import {isValidElement,type ReactElement} from 'react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {emptyDrawing} from '../domain/drawing/model';
 import {createWarpGrid,type WarpGrid} from '../domain/vectorWarp/model';
-import SceneWarpCanvas,{recordingWarpNudgeDelta} from '../ui/vectorRecording/SceneWarpCanvas';
+import SceneWarpCanvas,{recordingWarpNudgeDelta,type RecordingCanvasReference} from '../ui/vectorRecording/SceneWarpCanvas';
 
 // Exercise the real component's actions and keyboard handlers without a browser.
 const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0}));
 vi.mock('react',async importOriginal=>({...await importOriginal<typeof import('react')>(),
  useState:(initial:unknown)=>{const i=hooks.stateIndex++;if(!(i in hooks.states))hooks.states[i]=typeof initial==='function'?initial():initial;return [hooks.states[i],(next:unknown)=>{hooks.states[i]=typeof next==='function'?next(hooks.states[i]):next;}];},
  useRef:(initial:unknown)=>hooks.refs[hooks.refIndex++]??(hooks.refs[hooks.refIndex-1]={current:initial}),
- useMemo:(fn:()=>unknown)=>fn(),useEffect:(fn:()=>void)=>{hooks.effects.push(fn);},
+ useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),useEffect:(fn:()=>void)=>{hooks.effects.push(fn);},
 }));
 vi.mock('../ui/drawing/session',async importOriginal=>{const actual=await importOriginal<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
 class Target {constructor(readonly tag='svg'){}closest(selector:string){return selector.split(',').includes(this.tag)?this:null;}}
@@ -18,9 +18,9 @@ beforeEach(()=>{hooks.states=[];hooks.refs=[];listeners.clear();vi.stubGlobal('E
 afterEach(()=>vi.unstubAllGlobals());
 type ElementProps={children?:unknown;[key:string]:any};
 function elements(tree:unknown):ReactElement<ElementProps>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<ElementProps>(tree))return [];return [tree,...elements(tree.props.children)];}
-function harness(editEnabled=true){
+function harness(editEnabled=true,reference?:RecordingCanvasReference){
  const source=emptyDrawing(),grid=createWarpGrid({min:[-1,-1],max:[1,1]},2,2),preview=vi.fn(),commit=vi.fn(),focus=vi.fn(),selectSource=vi.fn(),selectWarp=vi.fn(),svg={focus,setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<ElementProps>[]=[];
- const render=()=>{hooks.stateIndex=0;hooks.refIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:source,grid,targetKey:'test',label:'Test',zh:false,editEnabled,onPreview:preview,onCommit:commit,onSelection:selectSource,onWarpSelection:selectWarp}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.at(-1)!();};render();
+ const render=()=>{hooks.stateIndex=0;hooks.refIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:source,grid,reference,targetKey:'test',label:'Test',zh:false,editEnabled,onPreview:preview,onCommit:commit,onSelection:selectSource,onWarpSelection:selectWarp}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.at(-1)!();};render();
  return {grid,source,preview,commit,focus,selectSource,selectWarp,render,button:(name:string)=>all.find(e=>e.type==='button'&&e.props.children===name)!,nodes:()=>all.filter(e=>e.props['data-testid']==='vr-node'),element:(testId:string)=>all.find(e=>e.props['data-testid']===testId)!,find:(predicate:(e:ReactElement<ElementProps>)=>boolean)=>all.find(predicate)!};
 }
 function key(name:string,target=new Target(),modifiers:Partial<KeyboardEvent>={}){return {key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target,preventDefault:vi.fn(),...modifiers};}
@@ -73,4 +73,20 @@ test('switching A to V promotes arrow nudges to the whole Warp; switching back t
 });
 test.each(['select','direct'])('unestablished view blocks %s pointer mutation while retaining grid selection',tool=>{
  const h=harness(false);h.element(`vr-tool-${tool}`).props.onClick();h.render();h.preview.mockClear();h.nodes()[4].props.onPointerDown(pointer());h.render();h.element('vr-scene-canvas').props.onPointerMove(pointer(440,310));h.element('vr-scene-canvas').props.onPointerUp(pointer(440,310));expect(h.nodes().some(n=>n.props['data-selected'])).toBe(true);expect(h.preview).not.toHaveBeenCalled();expect(h.commit).not.toHaveBeenCalled();expect(h.selectSource).not.toHaveBeenCalled();
+});
+
+
+test('moving a viewport image previews and commits only its reference adapter, never the Warp',()=>{
+ const photo={name:'Reference',dataUrl:'data:image/png;base64,AAAA',width:100,height:80,offset:[0,0] as [number,number],scale:1,rotation:20,opacity:.3,visible:true,locked:false};
+ const reference:RecordingCanvasReference={reference:photo,moving:true,current:()=>photo,preview:vi.fn(),change:vi.fn(),setMoving:vi.fn()},h=harness(true,reference),before=JSON.stringify(h.source);
+ expect(h.element('recording-image-reference').props.pointerEvents).toBe('none');expect(h.element('recording-image-reference').props.transform).toContain('rotate(20)');
+ h.element('vr-scene-canvas').props.onPointerDown(pointer());h.element('vr-scene-canvas').props.onPointerMove(pointer(420,315));h.element('vr-scene-canvas').props.onPointerUp(pointer(420,315));
+ expect(reference.change).toHaveBeenCalledTimes(1);expect((reference.change as ReturnType<typeof vi.fn>).mock.calls[0][0].offset[0]).toBeGreaterThan(0);expect(h.commit).not.toHaveBeenCalled();expect(h.preview).not.toHaveBeenCalled();expect(JSON.stringify(h.source)).toBe(before);
+ h.button('All nodes').props.onClick();h.render();listeners.get('keydown')!(key('ArrowRight'));listeners.get('keyup')!(key('ArrowRight'));expect(h.commit).not.toHaveBeenCalled();
+});
+test('reference cancel clears only its preview and a newer reference prevents a stale pointer commit',()=>{
+ const photo={name:'Reference',dataUrl:'data:image/png;base64,AAAA',width:100,height:80,offset:[0,0] as [number,number],scale:1,rotation:0,opacity:.3,visible:true,locked:false};let current=photo;
+ const reference:RecordingCanvasReference={reference:photo,moving:true,current:()=>current,preview:vi.fn(),change:vi.fn(),setMoving:vi.fn()},h=harness(true,reference);
+ h.element('vr-scene-canvas').props.onPointerDown(pointer());h.element('vr-scene-canvas').props.onPointerMove(pointer(420,315));h.element('vr-scene-canvas').props.onPointerCancel();expect(reference.preview).toHaveBeenLastCalledWith(null);expect(reference.change).not.toHaveBeenCalled();
+ h.element('vr-scene-canvas').props.onPointerDown(pointer());current={...photo,locked:true};h.element('vr-scene-canvas').props.onPointerUp(pointer(420,315));expect(reference.change).not.toHaveBeenCalled();expect(h.commit).not.toHaveBeenCalled();
 });

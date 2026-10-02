@@ -25,8 +25,9 @@ test('scene UI renders source instances and independent object key counts withou
   expect(html).toContain('data-testid="recording-scene"');expect(html).toContain('data-testid="vr-scene-canvas"');
   expect(html).toContain('Near mouth');expect(html).toContain('Far mouth');expect(html).toContain('Two-key Warp');expect(html).toContain('Four-key Warp');
   expect(html).toContain('2 键');expect(html).toContain('4 键');
-  const slider=html.match(/<input[^>]*aria-label="Angle X slider"[^>]*>/)?.[0];expect(slider).toBeTruthy();expect(slider).not.toContain('disabled');
+  const pad=html.match(/<div[^>]*data-testid="scene-angle-pad"[^>]*>/)?.[0];expect(pad).toBeTruthy();expect(pad).not.toContain('disabled');expect(html).not.toContain('aria-label="Angle X slider"');
   const number=html.match(/<input[^>]*aria-label="Angle X"[^>]*>/)?.[0];expect(number).toContain('type="text"');expect(number).toContain('inputMode="decimal"');
+  expect(html).toContain('data-testid="recording-reference-controls"');expect(html).toContain('data-testid="scene-onion-controls"');expect(html).toContain('aria-label="Active Warp"');
   expect(html).toContain('data-testid="scene-save-selected"');expect(JSON.stringify(project)).toBe(before);
  }finally{useEditor.setState(previous,true);}
 });

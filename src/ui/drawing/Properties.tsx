@@ -16,7 +16,7 @@ import {reorderPaint} from '../../domain/drawing/paintCommands';
 import {selectionBounds} from './geometry';
 import {selectedObjects,selectedLayers,type DrawingSelection} from './session';
 import {NumberField,NameField} from './Field';
-import ReferencePositionControls from '../shared/ReferencePositionControls';
+import DrawingReferenceControls from '../shared/DrawingReferenceControls';
 import {useDrawingWorkspace} from './workspace';
 import {uiText as t} from '../i18n';
 interface Props {open:boolean;setOpen:(open:boolean)=>void;document:DrawingDocument;selection:DrawingSelection;active:string|null;run:(fn:()=>DrawingDocument)=>void;choose:(s:DrawingSelection)=>void;tool:(t:'merge'|'link'|'bind'|'smooth'|'cusp'|'arc')=>void;transform:(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror',value:number)=>void;upload:()=>void;moveReference:()=>void;preview:(d:DrawingDocument|null)=>void}
@@ -43,14 +43,7 @@ export default function Properties({open,setOpen,document:d,selection:s,active,r
  <p>{layerIds.length} {t('个图层已选择')}</p>
  <p className="drawing-muted">{d.layers.filter(l=>layerIds.includes(l.id)).map(l=>l.name).join(' · ')}</p>
  {bounds&&<><div className="drawing-fields"><NumberField label="位置 X" value={bounds.center[0]} disabled={disabled} onChange={v=>transform('moveX',v-bounds.center[0])}/><NumberField label="位置 Y" value={bounds.center[1]} disabled={disabled} onChange={v=>transform('moveY',v-bounds.center[1])}/></div><div className="drawing-fields"><NumberField label="旋转增量 °" value={0} disabled={disabled} onChange={v=>transform('rotate',v)}/><NumberField label="缩放 %" value={100} min={1} max={1000} disabled={disabled} onChange={v=>transform('scale',v/100)}/></div></>}
- </>:s.mirrorAxis?<NumberField label="镜像轴 X" value={d.mirrorAxisX??0} onChange={x=>run(()=>setMirrorAxis(d,x))}/>:s.paint?<AppearanceControls d={d} selection={s} run={run} choose={choose} preview={preview}/>:s.reference&&ref?<>
-  <strong>{ref.name}</strong><p className="drawing-muted">{t('参考图不参与线稿绘制。')}</p>
-  <button onClick={upload} disabled={ref.locked}>{t('替换照片')}</button><button onClick={moveReference} disabled={ref.locked||!ref.visible}>{t('平移图片')}</button>
-  <NumberField label="图片透明度 %" value={ref.opacity*100} min={0} max={100} disabled={ref.locked} onChange={v=>run(()=>({...d,reference:{...ref,opacity:v/100}}))}/>
-  <NumberField label="图片缩放 %" value={ref.scale*100} min={10} max={1000} disabled={ref.locked} onChange={v=>run(()=>({...d,reference:{...ref,scale:v/100}}))}/>
-  <ReferencePositionControls document={d} current={()=>editor.getState().project.drawing} run={run} preview={preview}/>
-  <button disabled={ref.locked} onClick={()=>run(()=>({...d,reference:undefined}))}>{t('移除参考照片')}</button>
- </>:<>
+ </>:s.mirrorAxis?<NumberField label="镜像轴 X" value={d.mirrorAxisX??0} onChange={x=>run(()=>setMirrorAxis(d,x))}/>:s.paint?<AppearanceControls d={d} selection={s} run={run} choose={choose} preview={preview}/>:s.reference&&ref?<DrawingReferenceControls document={d} current={()=>editor.getState().project.drawing} run={run} preview={preview} upload={upload} moveReference={moveReference}/>:<>
  {container?<><NameField label="组合名称" value={container.name} disabled={disabled} onChange={name=>run(()=>changeGroup(d,container.id,{name}))}/><p className="drawing-muted">{t('V 选择整组；A 单独编辑成员。列表 Shift 选范围，Ctrl/Cmd 增减选择。')}</p><button data-testid="drawing-group-to-layer" disabled={disabled} onClick={()=>run(()=>{const n=groupToLayer(d,container.id);choose({ids:container.curveIds,layer:n.layerId});return n.document;})}>{t('组合转为图层')}</button></>:layer?<NameField label="图层名称" value={layer.name} onChange={name=>run(()=>layerChange(d,layer.id,{name}))}/>:c?<NameField label="曲线名称" value={c.name} disabled={disabled} onChange={name=>run(()=>curveChange(d,c.id,{name}))}/>:<p>{ids.length?`${ids.length} ${t('条曲线')}`:t('选择或绘制曲线，查看属性。')}</p>}
  {c&&<div className="drawing-control-select" aria-label={t('选择曲线控制点')}>{([0,1] as const).map(end=><div key={end} className="drawing-property-actions">
   <button aria-label={`P${end} ${t('端点')}`} aria-pressed={s.node===c.nodes[end]&&!s.handle} disabled={disabled} onClick={()=>choose({ids:[c.id],node:c.nodes[end]})}>P{end} {t('端点')}</button>

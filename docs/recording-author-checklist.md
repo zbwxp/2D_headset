@@ -6,7 +6,7 @@
 2. **建立视角**：推荐先 `createViewpoint {name,angle}`，也可在左侧调整角度后点击「建立视角」。没有 Warp 也能建立。UI 在未建立视角的角度只预览，不能编辑显隐、排序或网格；底层 API 仍能直接写轨道，这不是 API 强制门禁
 3. **Dry-run → Apply**：`scene` 带 `dryRun:true` 和最新 `expectedRevision`，再重放相同 `$ref` 结构正式执行。右侧与 Drawing 使用同一个多快照图层面板，每实例一个折叠组和一套眼睛/填充/折叠工具。工具只作用本实例内所选层；没有本实例选择时作用全部已载入层。跨实例混选不会扩大单份快照工具的范围；共享 Warp 创建在独立栏。可先做成员显隐，也可选真实层 refs 创建 Warp。已有绑定用明确的包父/建子/重挂接命令
 4. **更新此视角**：推荐 `updateViewpoint {viewpointId}`，保存该角度已改动的 Warp 和外观草稿；无 Warp 也可更新嘴段显隐。其他角度草稿和未修改通道不补键。建立新视角本身不采样现有轨道；新建 Warp 才在已有显式视角上写自己的 rest 中性键
-5. **Preview**：`previewScene` 省略 angle 可看匹配当前角度的草稿；明确 angle 默认只读保存键。检查关键角度与中间角度的填充、轮廓、区间材料、拟合和端点冲突。通过滑块查看未建立的中间角度，不应为看插值而自动建新视角
+5. **Preview**：`previewScene` 省略 angle 可看匹配当前角度的草稿；明确 angle 默认只读保存键。检查关键角度与中间角度的填充、轮廓、区间材料、拟合和端点冲突。通过 XY 坐标窗口或数值输入查看未建立的中间角度，不应为看插值而自动建新视角
 6. **Reload / Undo**：正常导出、载入完整工程 JSON，核验库、working copies、viewpoints、实例 refs、每轨 keys/draft；再从保存键预览并验证一次 Undo/Redo。录制不能写源几何，源更新应同步全部引用实例
 
 `saveSelected {warpIds?,layerRefs?}` 仍保留作明确的底层对象保存；仅传真正选择的类型，避免空数组。它只写所选对象，而「更新此视角」按目标视角角度提交已有草稿，不依赖当前选择。两者都不等于采样全部场景。首次操作旧场景时，UI 可将原键角度转成显式视角；直接 API 的旧场景兼容行为见[场景合同](recording-scene-api.md#命名视角与更新)。
@@ -44,3 +44,12 @@ node docs/tools/extract-recording-frames.mjs scene-frames-result.json NEW_frames
 命名源稿切换前自动保留同 ID 工作副本；所有实例仍解析最新内容，优先顺序为 active Drawing → 同 ID working copy → checkpoint。同 ID 更新清除副本；另存新 ID 不改原实例来源。未命名稿仍需先命名或明确丢弃。旧 rig 原数据保留供兼容迁移，带 scene 的工程调用旧录制 API 返回 `LEGACY_RECORDING_RETIRED`。
 
 [旧单稿录制合同](vector-recording-api.md) 与 [旧 yaw 美术报告](yaw-authoring-example.md) 是历史资料。v18/v19有限场景流程和v22视角用户主流程已实际检查；v23实例单组树与v24同源双13层批处理隔离状态见[验证记录](recording-scene-release-validation.md)。未测手势、姿态与完整转头美术不能由这些有限结果推定通过。
+
+## 检查视口的人类流程
+
+- 展开「背景参考图」，载入照片，解锁后调透明度／位置／缩放／旋转；完成平移后回到 Warp 工具
+- 从右侧加载两份画稿，在左侧90°建立视角，调整右侧成员显隐，复选层建立 Warp
+- 编辑 Warp 后「更新此视角」，通过 XY 坐标窗口预览；未建立角度保持只读
+- 开启洋葱皮，选 X 或 Y，检查5°／10°单轴范围；当前姿态突出，邻角只读、按保存的关键形求值。存在草稿时先更新
+- 背景参考独立本机保存；刷新恢复应核对图片与变换。工程 JSON 不携带此项，源稿参考图原有行为不变
+- 检查参考、洋葱皮操作前后源、关键形和普通 SVG 输出保持一致；实际浏览器流程由发布后的验收另行记录
