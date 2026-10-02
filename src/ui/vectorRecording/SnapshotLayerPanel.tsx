@@ -101,7 +101,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
  };
  return <div className="scene-layer-panel snapshot-layer-panel drawing-sidebar" data-testid="snapshot-layer-panel"><LayerPanel
   document={model.drawing} selection={presented} active={selectedLayers(presented).at(-1)??null} choose={choose} setLayer={ignore}
-  layerSections={model.sections} layerOrder={Object.fromEntries(currentSection.layerIds.map((id,index)=>[id,index+1]))}
+  layerSections={model.sections} defaultCollapsedSectionIds={model.sections.filter(section=>section.id!==model.currentSectionId).map(section=>section.id)} layerOrder={Object.fromEntries(currentSection.layerIds.map((id,index)=>[id,index+1]))}
   poseMode structuralReadOnly editEnabled={enabled} headerActions={headerActions} sectionActions={clipboard}
   canEditLayer={isCurrent} fillVisibilityKey={id=>isCurrent(id)?model.identities.get(id)!.id:id}
   sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(zh?'从下方快照剪切或复制图层，再粘贴到当前视图。':'Cut or copy layers from a snapshot below, then paste into this view.'):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}

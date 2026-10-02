@@ -33,8 +33,8 @@ test('current and source rows coexist with independent evaluated appearance and 
  expect(new Set(model.drawing.curves.map(c=>c.id)).size).toBe(model.drawing.curves.length);
  expect(JSON.stringify(f)).toBe(before);
  const html=render({current:f.current,sources:[f.source]});
- expect((html.match(/data-testid="drawing-group-row"/g)??[])).toHaveLength(2);
- expect((html.match(/data-testid="drawing-paint-row"/g)??[])).toHaveLength(4);
+ expect((html.match(/data-testid="drawing-group-row"/g)??[])).toHaveLength(1);
+ expect((html.match(/data-testid="drawing-paint-row"/g)??[])).toHaveLength(2);
 });
 
 test('one shared layer range crosses source sections, including empty layers and repeated canonical IDs',()=>{
@@ -78,7 +78,7 @@ test('editing requires an established view and source rows remain selectable wit
  expect(button(current,'drawing-layer-visibility')).toContain('disabled'); // First layer is empty.
  expect(button(current,'drawing-toggle-all')).not.toContain('disabled');
  expect(button(source,'drawing-toggle-all')).toContain('disabled');
- expect(source.match(/<button[^>]*data-testid="drawing-layer-select"[^>]*>/)?.[0]).not.toContain('disabled');
+ expect(source).not.toContain('data-testid="drawing-layer-select"');expect(source.match(/<button[^>]*data-testid="drawing-layer-section-toggle"[^>]*>/)?.[0]).toContain('aria-expanded="false"');
  expect(source).not.toContain('draggable="true"');expect(current).toContain('draggable="true"');
  for(const override of [{current:undefined},{editEnabled:false}]){
   const blocked=render(override);
@@ -91,3 +91,5 @@ test('source filtering and repeated current input preserve only requested visibl
  expect(model.sections).toHaveLength(2);expect(model.sections[1].layerIds).toEqual([snapshotPanelRowId(source.snapshotId,f.eye)]);
  expect(snapshotPanelClipboardSources(model,{ids:[]},model.sections[1])).toEqual([{snapshotId:source.snapshotId,layerIds:[f.eye]}]);
 });
+
+test('only the current view starts expanded; source sections remain named and available without rendering their member trees',()=>{const f=fixture(),html=render({current:f.current,sources:[f.source,{...f.source,snapshotId:'source:two',name:'Source two'}]});expect(section(html,'view')).toContain('data-testid="drawing-curve-row"');for(const id of [f.source.snapshotId,'source:two']){const source=section(html,id);expect(source).toContain('snapshot-cut-source');expect(source).toContain('aria-expanded="false"');expect(source).not.toContain('data-testid="drawing-curve-row"');}});
