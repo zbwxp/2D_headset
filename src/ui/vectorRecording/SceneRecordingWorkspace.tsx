@@ -13,6 +13,7 @@ import {planArtworkLayerImport} from '../../domain/drawing/importArtworkLayers';
 import {emptyDrawing,inkTaperDistance,type DrawingDocument} from '../../domain/drawing/model';
 import {useLanguage} from '../i18n';
 import SceneWarpCanvas from './SceneWarpCanvas';
+import {sceneSelectionPayload} from './sceneSelection';
 import './vectorRecording.css';
 const EMPTY=emptyDrawing();
 
@@ -46,7 +47,7 @@ function SceneEditor({scene,zh,txt,aiGuides}:{scene:RecordingScene;aiGuides:bool
  const onPreview=useCallback((g:WarpGrid|null)=>setPreviewGrid(g),[]);
  const onCommit=useCallback((g:WarpGrid)=>{if(!activeWarpId)return;run([{op:'editWarpNodes',warpId:activeWarpId,moveHandles:false,edits:g.nodes.map((n,index)=>({index,...n}))}]);},[activeWarpId,run]);
  const draftCount=[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])].filter(t=>t.draft).length;
- const selected={warpIds,layerRefs},canSave=!!warpIds.length||!!layerRefs.length;
+ const selected=sceneSelectionPayload(warpIds,layerRefs),canSave=!!warpIds.length||!!layerRefs.length;
  const saveLabel=warpIds.length&&!layerRefs.length?txt(warpIds.length===1?'保存此 Warp 关键形':`保存所选 ${warpIds.length} 个 Warp 关键形`,`Save ${warpIds.length} selected Warp keys`):layerRefs.length&&!warpIds.length?txt(`保存所选 ${layerRefs.length} 个图层状态`,`Save ${layerRefs.length} selected layer states`):txt(`保存 ${warpIds.length} 个 Warp / ${layerRefs.length} 个图层`,`Save ${warpIds.length} Warps / ${layerRefs.length} layers`);
  const trackName=(id:string)=>scene.warps.find(w=>w.id===id)?.name??(scene.intervalTracks.some(t=>t.id===id)?txt('显示区间','Display interval'):scene.depthTracks?.some(t=>t.id===id)?txt('图层排序','Layer order'):txt('图层 / 成员显隐','Layer / member visibility'));
  function selectWarp(id:string,multiple=false){setPreviewGrid(null);setActiveWarpId(id);setWarpIds(ids=>multiple?(ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]):[id]);if(!multiple)setLayerRefs([]);}

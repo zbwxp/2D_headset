@@ -3,7 +3,7 @@ import {saveDrawingSnapshot,stashDrawingWorkingCopy,restoreDrawingSnapshot,type 
 export const HAIRLESS_EXAMPLE_NAME='无发·对称双脸片·下颌显线';
 export const MIRROR_EXAMPLE_NAME='无发·对称双脸片·镜像编辑';
 export const SIDE_EXAMPLE_NAME='右侧90°参考画稿';
-export async function loadHairlessExample(load=async()=>{const response=await fetch(new URL('../assets/hairless-symmetric-two-face.json',import.meta.url),{signal:AbortSignal.timeout(30000)});if(!response.ok)throw Error('阶段画稿载入失败');return response.text();}):Promise<DrawingDocument>{return parseDrawing(JSON.parse(await load()));}
+
 function uniqueName(state:DrawingSnapshotState,requested:string){
  const names=new Set(state.drawingSnapshots?.items.map(x=>x.name)??[]),base=requested.trim().slice(0,70)||'画稿';let name=base,index=2;while(names.has(name))name=`${base} · ${index++}`;return name;
 }
