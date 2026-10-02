@@ -1,5 +1,7 @@
 # 转头录制作者的最短检查流程
 
+新版独立 Recording 场景正在集成，使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)。以下单画稿 rig 流程作为旧版说明保留；含 `recordingScenes` 的工程不会通过旧录制方法另写一套后台动画。
+
 使用当前画稿的同一 rig。右侧源参考稿只作对照，切换参考画稿不是转头结果。API 细节见 [录制接口](vector-recording-api.md)，临时参考/辅助线见 [视图接口](vector-workspace-view-api.md)。
 
 1. **Inspect**：进入 Recording，inspectRecording 查 artworkId/rigId、sourceReviewRequired、hasDraft、Warp/绑定/键 ID。记录源 JSON 与画稿库身份；处理源变化和已有草稿，不能默默丢弃

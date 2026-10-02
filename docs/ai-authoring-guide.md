@@ -1,5 +1,7 @@
 # Contour AI 矢量创作操作手册
 
+新版独立 Recording 场景正在集成，使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)。以下单画稿 rig 流程作为旧版说明保留；含 `recordingScenes` 的工程不会通过旧录制方法另写一套后台动画。
+
 当前部署基线：2026-10-01 v13，`main 02e97da`，`contourAI` 1.7。v11 的镜像/区间与 v12 的视图已有实际浏览器记录；v13 pin/批量帧已上线，最终转头例稿已完成离线视觉复核，当前工程的浏览器验收仍待完成。源连接自 v7 提供，v8 已部署显式显示路由与跨层末端接笔笔触。本文面向操作现有矢量画稿的 AI，也可供开发者实现固定 JSON 接入。
 
 优先使用应用已经提供的结构化接口：查询真实 ID，预演，执行一个小而完整的事务，检查结果。不要用截图重建用户的原画，不要猜 ID，不要用任意 JavaScript、原始工程替换或默认资产文件覆盖来绕过接口。

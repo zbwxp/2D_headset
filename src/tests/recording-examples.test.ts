@@ -44,11 +44,11 @@ test('all 134 evaluated source cubics and interval coverage are identical after 
  }
 },30000);
 
-test('dirty existing source is backed up without changing its saved original, settings or recording',()=>{
+test('dirty existing source keeps its same-ID working copy without changing its checkpoint, settings or recording',()=>{
  const p=example(),saved=saveDrawingSnapshot({drawing:emptyDrawing()},'My artwork'),dirty={...saved.drawing!,mirrorAxisX:.2},rig=createArtworkRig(saved.drawingSnapshots!.activeId!,saved.drawing),existing={...emptyVectorRecording(),tolerance:.012,rigs:[rig]},state={...saved,drawing:dirty},json=JSON.stringify({state,existing}),plan=planRecordingExampleImport(state,p,existing);
- expect(plan.steps).toHaveLength(4);expect(plan.preservedDraftId).toBeTruthy();expect(plan.state.drawingSnapshots!.items).toHaveLength(5);expect(plan.state.drawingSnapshots!.items[0]).toEqual(saved.drawingSnapshots!.items[0]);
- expect(plan.state.drawingSnapshots!.items.find(a=>a.id===plan.preservedDraftId)!.drawing).toEqual(dirty);
- expect(JSON.stringify({state,existing})).toBe(json);expect(Object.keys(plan.state).sort()).toEqual(['drawing','drawingSnapshots']);expect(plan).not.toHaveProperty('vectorRecording');
+ expect(plan.steps).toHaveLength(3);expect(plan.preservedDraftId).toBeUndefined();expect(plan.state.drawingSnapshots!.items).toHaveLength(4);expect(plan.state.drawingSnapshots!.items[0]).toEqual(saved.drawingSnapshots!.items[0]);
+ expect(plan.state.drawingWorkingCopies![saved.drawingSnapshots!.activeId!]).toEqual(dirty);
+ expect(JSON.stringify({state,existing})).toBe(json);expect(Object.keys(plan.state).sort()).toEqual(['drawing','drawingSnapshots','drawingWorkingCopies']);expect(plan).not.toHaveProperty('vectorRecording');
 });
 
 test('repeated imports create distinct artwork/rig/deformer/key IDs and unique names while leaving earlier copies unchanged',()=>{

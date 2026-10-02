@@ -30,10 +30,13 @@ import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirror
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {RecordingApiError,prepareRecordingBatch,recordingOverview,evaluateRecording,recordingCommandNames,type RecordingBatch,type RecordingQuery,type RecordingCommand} from './vectorRecordingApi';
 import type {VectorRecording} from '../domain/vectorRecording/model';
+import {SceneApiError,prepareSceneBatch,sceneOverview,evaluateRecordingScene,sceneCommandNames,type SceneBatch,type SceneQuery,type SceneCommand} from './recordingSceneApi';
+import type {RecordingScenes} from '../domain/recordingScene/model';
+import type {PaintBatch} from '../domain/drawing/depth';
 import {getWorkspaceView,prepareWorkspaceView,replaceWorkspaceView,type WorkspaceView,type WorkspaceViewCommand} from './workspaceView';
 import {snapWorkspacePoint} from './workspaceViewSnap';
 
-export const VECTOR_AI_VERSION='1.7';
+export const VECTOR_AI_VERSION='2.0';
 export const VECTOR_AI_LIMITS=Object.freeze({coordinate:10000,batch:1000,dimension:4096,name:256} as const);
 export interface Bounds {min:Point2;max:Point2;center:Point2}
 /** SVG affine convention: x'=a*x+c*y+e, y'=b*x+d*y+f. Source Y points up. */
@@ -87,6 +90,7 @@ export interface VectorEditingHost {
  commitDrawing(drawing:DrawingDocument):void;
  commitArtwork?(state:DrawingSnapshotState):void;
  commitRecording?(recording:VectorRecording):void;
+ commitRecordingScenes?(recording:RecordingScenes):void;
  getView?():WorkspaceView;
  replaceView?(view:WorkspaceView):void;
  undo():void;redo():void;
@@ -339,6 +343,7 @@ function defaultHost():VectorEditingHost{
   },
   getView:getWorkspaceView,replaceView:replaceWorkspaceView,
   commitRecording(recording){if(useWorkspaceMode.getState().mode!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode.');useEditor.getState().commitVectorRecording(recording);},
+  commitRecordingScenes(recording){if(useWorkspaceMode.getState().mode!=='recording')fail('MODE_RESTRICTED','Scene commands require Recording mode.');useEditor.getState().commitRecordingScenes(recording);},
   undo:()=>useEditor.getState().undo(),redo:()=>useEditor.getState().redo(),
   selectCurveIds:ids=>useDrawing.getState().set({selection:{ids},tool:'direct'}),
   getSelection:()=>useDrawing.getState().selection,getActiveLayerId:()=>useDrawing.getState().layerId,
@@ -354,15 +359,18 @@ function defaultHost():VectorEditingHost{
 
 /** Supply a host for headless tests/integrations. All writes still pass through its one store transaction. */
 export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
- const instance=crypto.randomUUID();let current=host.getState().project,serial=0;
- const revision=()=>{const next=host.getState().project;if(next!==current){current=next;serial++;}return `${instance}:${serial}`;};
+ const instance=crypto.randomUUID();let current=host.getState().project,currentDrawing=current.drawing,currentLibrary=current.drawingSnapshots,currentWorkingCopies=current.drawingWorkingCopies,currentScenes=current.recordingScenes,serial=0;
+ // Source/library identity participates even if an integration replaces a field
+ // on its project wrapper. Scene batches never key revisions to scene alone.
+ const revision=()=>{const next=host.getState().project;if(next!==current||next.drawing!==currentDrawing||next.drawingSnapshots!==currentLibrary||next.drawingWorkingCopies!==currentWorkingCopies||next.recordingScenes!==currentScenes){current=next;currentDrawing=next.drawing;currentLibrary=next.drawingSnapshots;currentWorkingCopies=next.drawingWorkingCopies;currentScenes=next.recordingScenes;serial++;}return `${instance}:${serial}`;};
  function run<T>(action:()=>T):VectorResult<T>{
   try{return {ok:true,value:action(),revision:revision()};}
-  catch(error){const e=error as Error;return {ok:false,revision:revision(),error:{code:e instanceof ApiError||e instanceof ArtworkApiError||e instanceof RecordingApiError?e.code:'CONSTRAINT_VIOLATION',message:e.message??String(error),...((e instanceof ApiError||e instanceof RecordingApiError)&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{}),...(e instanceof ApiError&&e.relatedCurveIds?{relatedCurveIds:e.relatedCurveIds}:e instanceof RelatedSelection?{relatedCurveIds:e.ids}:{})}};}
+  catch(error){const e=error as Error;return {ok:false,revision:revision(),error:{code:e instanceof ApiError||e instanceof ArtworkApiError||e instanceof RecordingApiError||e instanceof SceneApiError?e.code:'CONSTRAINT_VIOLATION',message:e.message??String(error),...((e instanceof ApiError||e instanceof RecordingApiError||e instanceof SceneApiError)&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{}),...(e instanceof ApiError&&e.relatedCurveIds?{relatedCurveIds:e.relatedCurveIds}:e instanceof RelatedSelection?{relatedCurveIds:e.ids}:{})}};}
  }
  function runView<T>(action:()=>T):{ok:true;value:T}|{ok:false;error:{code:string;message:string;commandIndex?:number}}{try{return {ok:true,value:action()};}catch(error){const e=error as Error;return {ok:false,error:{code:e instanceof ApiError?e.code:'VIEW_INVALID',message:e.message,...(e instanceof ApiError&&e.commandIndex!==undefined?{commandIndex:e.commandIndex}:{})}};}}
  function expected(value:unknown){if(value!==undefined&&string(value,'expectedRevision')!==revision())fail('STALE_REVISION','The project changed. Inspect again and recompute the edit.');}
  const source=()=>host.getState().project.drawing??emptyDrawing();
+ function legacyRecordingAvailable(){if(host.getState().project.recordingScenes!==undefined)fail('LEGACY_RECORDING_RETIRED','This project uses Recording scenes. Use inspectScene / scene / previewScene / previewSceneFrames, and saveSelected for explicit objects. Legacy rig data is retained for recovery, not edited behind the current UI.');}
  function prepare(input:unknown){
   const r=record(input);keys(r,['commands','expectedRevision','dryRun']);expected(r.expectedRevision);bool(r.dryRun,'dryRun');
   if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Source edits require Drawing mode. Recording does not change source geometry or topology.');
@@ -433,7 +441,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(raw);keys(r,['expectedRevision']);expected(r.expectedRevision);
   const state=host.getState(),target=direction==='undo'?state.past.at(-1):state.future[0];
   if(!target)return {changed:false,mode:host.getMode()};
-  if(host.getMode()==='recording'&&(target.drawing!==state.project.drawing||target.drawingSnapshots!==state.project.drawingSnapshots))fail('MODE_RESTRICTED','This history step changes source artwork. Return to Drawing mode to undo or redo it.');
+  if(host.getMode()==='recording'&&(target.drawing!==state.project.drawing||target.drawingSnapshots!==state.project.drawingSnapshots||target.drawingWorkingCopies!==state.project.drawingWorkingCopies))fail('MODE_RESTRICTED','This history step changes source artwork. Return to Drawing mode to undo or redo it.');
   host[direction]();return {changed:host.getState().project!==state.project,mode:host.getMode()};
  }
  function previewCamera(d:DrawingDocument,o:Record<string,unknown>){
@@ -442,7 +450,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    const viewport:VectorViewport={width,height,center:o.center===undefined?(b?.center??[0,0]):point(o.center,'center'),pixelsPerUnit:num(o.pixelsPerUnit??Math.min(width/((b?b.max[0]-b.min[0]:2.8)+2*padding),height/((b?b.max[1]-b.min[1]:2.8)+2*padding)),'pixelsPerUnit',1e-6,1e6)};
    return {width,height,b,viewport};
  }
- function renderPreview(d:DrawingDocument,o:Record<string,unknown>){
+ function renderPreview(d:DrawingDocument,o:Record<string,unknown>,paintBatches?:PaintBatch[]){
    const {width,height,b,viewport}=previewCamera(d,o);
    if(o.showFills!==false&&d.fills.some(f=>f.visible&&f.mist?.enabled)&&(typeof document==='undefined'||typeof Path2D==='undefined'))fail('BROWSER_REQUIRED','Mist-fill SVG export uses the existing Canvas renderer. Run preview in the local app browser, or use showFills:false for an explicit ink-only preview.');
    let annotations:AIGuideOptions|undefined;
@@ -452,16 +460,36 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     if(curveIds.length>MAX_AI_GUIDE_CURVES)fail('INVALID_REQUEST',`Annotate at most ${MAX_AI_GUIDE_CURVES} selected curves; narrow the query first.`);
     curveIds.forEach(id=>curveExists(d,id));annotations={...a,curveIds} as AIGuideOptions;
    }
-   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
+   const noop=()=>{},svg=renderToStaticMarkup(createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width,height,viewBox:`0 0 ${width} ${height}`},createElement(PaintScene,{d,screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,pixelsPerUnit:viewport.pixelsPerUnit,preview:true,showFills:o.showFills!==false,referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop,...(paintBatches?{paintBatches}:{})}),annotations?createElement(AIGuideOverlay,{...annotations,d,curveIds:annotations.curveIds??[],screen:(p:Point2)=>sourceToCanvas(p,viewport),unit:viewport.pixelsPerUnit,width,height}):null));
    return {mediaType:'image/svg+xml',svg,viewport,bounds:b,showFills:o.showFills!==false,annotated:!!annotations,diagnostics:diagnostics(d),sourceRevision:revision()};
  }
  function renderRecording(project:LandmarkProject,o:Record<string,unknown>){
    const evaluated=evaluateRecording(project,{...(o.angle===undefined?{}:{angle:o.angle as {x:number;y:number}}),...(o.useDraft===undefined?{}:{useDraft:o.useDraft as boolean})});
    return {...renderPreview(evaluated.drawing,o),artworkId:evaluated.artworkId,rigId:evaluated.rigId,angle:evaluated.angle,usedDraft:evaluated.usedDraft,hasUnappliedDraft:evaluated.hasUnappliedDraft,sourceReadOnly:true,fitDiagnostics:evaluated.diagnostics,diagnosticStage:evaluated.diagnosticStage,maxError:evaluated.maxError,maxErrorPixels:evaluated.maxError*250,warningCurveIds:evaluated.warningCurveIds,conflictingNodeIds:evaluated.conflictingNodeIds,intervalTransportErrors:evaluated.intervalTransportErrors,routeDiagnostics:evaluated.routeDiagnostics};
  }
+ function renderScene(project:LandmarkProject,o:Record<string,unknown>){
+   if(o.angle!==undefined){const a=record(o.angle);keys(a,['x','y']);num(a.x,'angle.x',-90,90);num(a.y,'angle.y',-90,90);}
+   const evaluated=evaluateRecordingScene(project,{...(o.sceneId===undefined?{}:{sceneId:string(o.sceneId,'sceneId')}),...(o.angle===undefined?{}:{angle:o.angle as {x:number;y:number}}),...(o.useDraft===undefined?{}:{useDraft:o.useDraft as boolean}),...(o.stopAtWarpId===undefined?{}:{stopAtWarpId:string(o.stopAtWarpId,'stopAtWarpId')})});
+   return {...renderPreview(evaluated.drawing,o,evaluated.paintBatches),sceneId:evaluated.sceneId,angle:evaluated.angle,usedDraft:evaluated.usedDraft,hasUnappliedDraft:evaluated.hasUnappliedDraft,sourceReadOnly:true,sceneDiagnostics:evaluated.diagnostics,fitDiagnostics:evaluated.fitDiagnostics,diagnosticStage:evaluated.diagnosticStage,maxError:evaluated.maxError,maxErrorPixels:evaluated.maxError*250,warningCurveIds:evaluated.warningCurveIds,conflictingNodeIds:evaluated.conflictingNodeIds,intervalTransportErrors:evaluated.intervalTransportErrors,provenance:evaluated.provenance,layerMap:evaluated.layerMap,objectMap:evaluated.objectMap};
+ }
  return Object.freeze({
   version:VECTOR_AI_VERSION,
-  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording','previewRecordingFrames','inspectView','view','snapView'],viewCommands:['setReference','addGuide','changeGuide','deleteGuides','setGuideOptions','resetView'],commands:[...commandNames],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Visibility tracks are transported with geometry; no angle-specific visibility commands.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
+  inspectScene:(query:SceneQuery={})=>run(()=>{const q=record(query);expected(q.expectedRevision);return {mode:host.getMode(),sceneEditable:host.getMode()==='recording',...sceneOverview(host.getState().project,q)};}),
+  scene:(request:SceneBatch)=>run(()=>{
+   const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Scene commands require Recording mode; source artwork stays read-only.');const plan=prepareSceneBatch(host.getState().project,r);
+   if(plan.changed&&!plan.dryRun){if(!host.commitRecordingScenes)fail('UNAVAILABLE','This host does not expose scene transactions.');host.commitRecordingScenes!(plan.recordingScenes);}
+   return {sceneId:plan.sceneId,applied:plan.changed&&!plan.dryRun,changed:plan.changed,dryRun:plan.dryRun,created:plan.created,removedIds:plan.removedIds,pinResults:plan.pinResults,sourceReadOnly:true};
+  }),
+  previewScene:(options:Omit<PreviewOptions,'commands'>&{sceneId?:string;angle?:{x:number;y:number};useDraft?:boolean;stopAtWarpId?:string;commands?:SceneCommand[]}={})=>run(()=>{
+   const o={...record(options)};keys(o,['sceneId','commands','expectedRevision','angle','useDraft','stopAtWarpId','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');bool(o.useDraft,'useDraft');let project=host.getState().project;
+   if(o.commands!==undefined){const plan=prepareSceneBatch(project,{commands:o.commands,sceneId:o.sceneId,dryRun:true});project={...project,recordingScenes:plan.recordingScenes};if(o.sceneId===undefined)o.sceneId=plan.sceneId;}
+   return renderScene(project,o);
+  }),
+  previewSceneFrames:(options:RecordingFramesOptions&{sceneId?:string}={})=>run(()=>{
+   const o=record(options);keys(o,['sceneId','angles','expectedRevision','width','height','center','pixelsPerUnit','showFills']);expected(o.expectedRevision);bool(o.showFills,'showFills');const raw=o.angles??[0,15,30,45,60,75,90].map(x=>({x,y:0}));if(!Array.isArray(raw)||!raw.length||raw.length>31)fail('INVALID_REQUEST','angles must contain 1–31 positions.');const angles=(raw as unknown[]).map(v=>{const a=record(v);keys(a,['x','y']);return {x:num(a.x,'angle.x',-90,90),y:num(a.y,'angle.y',-90,90)};}),project=host.getState().project,base=evaluateRecordingScene(project,{...(o.sceneId===undefined?{}:{sceneId:string(o.sceneId,'sceneId')}),useDraft:false}),camera=previewCamera(base.source,o).viewport;
+   const frames=angles.map((angle,index)=>({index,filename:`frame-${String(index).padStart(3,'0')}.svg`,...renderScene(project,{...o,width:camera.width,height:camera.height,center:camera.center,pixelsPerUnit:camera.pixelsPerUnit,angle,useDraft:false})}));return {frames,sceneId:base.sceneId,viewport:camera,sourceRevision:revision(),savedKeyformsOnly:true,allFramesIdentical:frames.every(f=>f.svg===frames[0].svg),hasUnappliedDraft:frames.some(f=>f.hasUnappliedDraft),sourceReadOnly:true,maxErrorPixels:Math.max(...frames.map(f=>f.maxErrorPixels)),warningFrameIndices:frames.filter(f=>f.sceneDiagnostics.length||f.warningCurveIds.length||f.intervalTransportErrors.length||f.diagnostics.length).map(f=>f.index)};
+  }),
+  help:()=>({version:VECTOR_AI_VERSION,localOnly:true,sourceWrites:'Drawing mode only; never switches mode',methods:['inspectScene','scene','previewScene','previewSceneFrames','inspect','execute','preview','select','exportSource','inspectArtworks','artwork','undo','redo','convertPoint','inspectRecording','recording','previewRecording','previewRecordingFrames','inspectView','view','snapView'],viewCommands:['setReference','addGuide','changeGuide','deleteGuides','setGuideOptions','resetView'],commands:[...commandNames],sceneSchema:{projectField:'recordingScenes',version:1},sceneCommands:[...sceneCommandNames],legacyRecordingMethods:['inspectRecording','recording','previewRecording','previewRecordingFrames'],recordingCommands:[...recordingCommandNames],artworkOperations:['save','restore','rename','delete'],limits:VECTOR_AI_LIMITS,coordinateSpaces:['source','canvas','client','reference'],notes:['Use inspect() revision as expectedRevision.','Batches are sequential; shared nodes, links, smooth joins and locks use existing drawing commands.','Creation may name a ref; use $ref in later ID fields in the same batch. Copy maps additionally support $ref/originalID. Dry-run IDs are provisional, not reserved.','Scene appearance is per-object; source writes and legacy recording methods remain separate.','Dry runs, previews and failed validation create no history entries.','Stroke IDs are derived anchors; curve/node/layer IDs are canonical.','SVG is clean by default; annotations explicitly enable transient selection-scoped AI guides. Reference images are excluded.']}),
   inspect:(query:VectorQuery={})=>run(()=>inspectQuery(query)),
   inspectView:(request:Record<string,never>={})=>runView(()=>{const r=record(request);keys(r,[]);if(!host.getView)fail('UNAVAILABLE','This host does not expose transient workspace view.');return {view:clone(host.getView!()),transient:true,sourceReadOnly:true};}),
   snapView:(request:{point:Point2;unitsPerPixel:number;thresholdPx?:number;excludeCurveIds?:string[];targetSpace?:'source'})=>runView(()=>{
@@ -474,19 +502,19 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    const changed=JSON.stringify(before)!==JSON.stringify(next),dryRun=r.dryRun===true;if(changed&&!dryRun)host.replaceView!(next);
    return {view:clone(next),changed,dryRun,applied:changed&&!dryRun,transient:true,sourceReadOnly:true,createdGuideIds:next.guides.filter(g=>!before.guides.some(b=>b.id===g.id)).map(g=>g.id),removedGuideIds:before.guides.filter(g=>!next.guides.some(n=>n.id===g.id)).map(g=>g.id)};
   }),
-  inspectRecording:(query:RecordingQuery={})=>run(()=>{const q=record(query);expected(q.expectedRevision);return {mode:host.getMode(),recordingEditable:host.getMode()==='recording',...recordingOverview(host.getState().project,q)};}),
+  inspectRecording:(query:RecordingQuery={})=>run(()=>{legacyRecordingAvailable();const q=record(query);expected(q.expectedRevision);return {mode:host.getMode(),recordingEditable:host.getMode()==='recording',...recordingOverview(host.getState().project,q)};}),
   recording:(request:RecordingBatch)=>run(()=>{
-   const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode and never mutate source artwork.');
+   legacyRecordingAvailable();const r=record(request);expected(r.expectedRevision);if(host.getMode()!=='recording')fail('MODE_RESTRICTED','Recording commands require Recording mode and never mutate source artwork.');
    const plan=prepareRecordingBatch(host.getState().project,r);if(plan.changed&&!plan.dryRun){if(!host.commitRecording)fail('UNAVAILABLE','This host does not support Recording transactions.');host.commitRecording!(plan.next);}
    const rig=plan.next.rigs.find(x=>x.artworkId===plan.sourceId);return {applied:plan.changed&&!plan.dryRun,changed:plan.changed,dryRun:plan.dryRun,sourceId:plan.sourceId,created:plan.created,pinResults:plan.pinResults,rigId:rig?.id??null,angle:rig?.angle??null,hasDraft:!!rig?.draft,sourceReadOnly:true};
   }),
   previewRecording:(options:RecordingPreviewOptions={})=>run(()=>{
-   const o=record(options);keys(o,['commands','expectedRevision','angle','useDraft','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');bool(o.useDraft,'useDraft');
+   legacyRecordingAvailable();const o=record(options);keys(o,['commands','expectedRevision','angle','useDraft','width','height','center','pixelsPerUnit','showFills','annotations']);expected(o.expectedRevision);bool(o.showFills,'showFills');bool(o.useDraft,'useDraft');
    let project=host.getState().project;if(o.commands!==undefined){const plan=prepareRecordingBatch(project,{commands:o.commands,dryRun:true});project={...project,vectorRecording:plan.next};}
    return renderRecording(project,o);
   }),
   previewRecordingFrames:(options:RecordingFramesOptions={})=>run(()=>{
-   const o=record(options);keys(o,['angles','expectedRevision','width','height','center','pixelsPerUnit','showFills']);expected(o.expectedRevision);bool(o.showFills,'showFills');const rawAngles=o.angles??[0,15,30,45,60,75,90].map(x=>({x,y:0}));if(!Array.isArray(rawAngles)||!rawAngles.length||rawAngles.length>31)fail('INVALID_REQUEST','angles must contain 1–31 parameter positions.');
+   legacyRecordingAvailable();const o=record(options);keys(o,['angles','expectedRevision','width','height','center','pixelsPerUnit','showFills']);expected(o.expectedRevision);bool(o.showFills,'showFills');const rawAngles=o.angles??[0,15,30,45,60,75,90].map(x=>({x,y:0}));if(!Array.isArray(rawAngles)||!rawAngles.length||rawAngles.length>31)fail('INVALID_REQUEST','angles must contain 1–31 parameter positions.');
    const angles=(rawAngles as unknown[]).map(raw=>{const a=record(raw);keys(a,['x','y']);return {x:num(a.x,'angle.x',-90,90),y:num(a.y,'angle.y',-90,90)};}),project=host.getState().project,camera=previewCamera(source(),o).viewport;
    const frames=angles.map((angle,index)=>({index,filename:`frame-${String(index).padStart(3,'0')}.svg`,...renderRecording(project,{...o,width:camera.width,height:camera.height,center:camera.center,pixelsPerUnit:camera.pixelsPerUnit,angle,useDraft:false})}));
    return {frames,allFramesIdentical:frames.every(f=>f.svg===frames[0].svg),viewport:camera,artworkId:frames[0].artworkId,rigId:frames[0].rigId,savedKeyformsOnly:true,hasUnappliedDraft:frames.some(f=>f.hasUnappliedDraft),sourceReadOnly:true,sourceRevision:revision(),maxErrorPixels:Math.max(...frames.map(f=>f.maxErrorPixels)),warningFrameIndices:frames.filter(f=>f.warningCurveIds.length||f.intervalTransportErrors.length||f.routeDiagnostics.length||f.diagnostics.length).map(f=>f.index)};

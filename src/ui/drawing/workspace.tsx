@@ -14,7 +14,7 @@ type Editor={<T>(selector:(s:State)=>T):T;getState:()=>State};
 const hairCache=new WeakMap<State,State>();
 export function hairEditorState(s:State):State {
  const cached=hairCache.get(s);if(cached)return cached;
- const next:State={...s,project:{...s.project,drawing:s.project.hairstyle?.drawing,drawingSnapshots:s.project.hairstyle?.drawingSnapshots},
+ const next:State={...s,project:{...s.project,drawing:s.project.hairstyle?.drawing,drawingSnapshots:s.project.hairstyle?.drawingSnapshots,drawingWorkingCopies:undefined},
   setDrawing(drawing){const e=rootEditor.getState(),h=e.project.hairstyle??defaultHairstyle();e.setHairstyle(h.strandSet?editHairDrawing(h,drawing):{...h,drawing});},
   setDrawingSnapshotState({drawing,drawingSnapshots}){const e=rootEditor.getState(),h=e.project.hairstyle??defaultHairstyle();e.setHairstyle({...h,drawing:drawing??h.drawing,drawingSnapshots});}};
  hairCache.set(s,next);return next;
@@ -23,7 +23,7 @@ const hairEditor:Editor=Object.assign(<T,>(selector:(s:State)=>T)=>rootEditor(s=
 export const hairDrawingSession=createDrawingSession();
 function workspace(id:'drawing'|'hairstyle'|'hair-studio',editor:Editor,session:typeof useDrawing){
  return {id,editor,session,commitDrawing(next:DrawingDocument){const e=editor.getState();if(next===e.project.drawing)return;next=finalizeGeometryEdit(e.project.drawing,next);e.beginEdit();try{e.setDrawing(next);}finally{e.endEdit();}},
- commitDrawingSnapshot(change:(s:DrawingSnapshotState)=>DrawingSnapshotState){const e=editor.getState(),next=change({drawing:e.project.drawing,drawingSnapshots:e.project.drawingSnapshots});e.beginEdit();try{e.setDrawingSnapshotState(next);}finally{e.endEdit();}}};
+ commitDrawingSnapshot(change:(s:DrawingSnapshotState)=>DrawingSnapshotState){const e=editor.getState(),next=change({drawing:e.project.drawing,drawingSnapshots:e.project.drawingSnapshots,...(id==='drawing'?{drawingWorkingCopies:e.project.drawingWorkingCopies}:{})});e.beginEdit();try{e.setDrawingSnapshotState(next);}finally{e.endEdit();}}};
 }
 const drawingWorkspace=workspace('drawing',rootEditor,useDrawing);
 export const hairWorkspace=workspace('hairstyle',hairEditor,hairDrawingSession);
@@ -34,7 +34,7 @@ export function HairDrawingProvider({children}:{children:ReactNode}){return <Con
 const studioCache=new WeakMap<State,State>();
 export function hairStudioEditorState(s:State):State {
  const cached=studioCache.get(s);if(cached)return cached;
- const next:State={...s,project:{...s.project,drawing:s.project.hairstyle?.studio?.drawing,drawingSnapshots:s.project.hairstyle?.studio?.drawingSnapshots},
+ const next:State={...s,project:{...s.project,drawing:s.project.hairstyle?.studio?.drawing,drawingSnapshots:s.project.hairstyle?.studio?.drawingSnapshots,drawingWorkingCopies:undefined},
   setDrawing(drawing){const e=rootEditor.getState(),h=e.project.hairstyle??defaultHairstyle(),studio=h.studio??createHairStudio(h.drawing);e.setHairstyle({...h,studio:{...studio,drawing}});},
   setDrawingSnapshotState({drawing,drawingSnapshots}){const e=rootEditor.getState(),h=e.project.hairstyle??defaultHairstyle(),studio=h.studio??createHairStudio(h.drawing);e.setHairstyle({...h,studio:{...studio,drawing:drawing??studio.drawing,drawingSnapshots}});}};
  studioCache.set(s,next);return next;

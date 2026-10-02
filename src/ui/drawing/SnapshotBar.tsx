@@ -10,7 +10,7 @@ const EMPTY=emptyDrawing();
 type Prompt={kind:'save'|'rename'|'switch'|'delete';target?:string};
 export default function SnapshotBar({prepare,switched}:{prepare:()=>void;switched:()=>void}){
  const {editor:useEditor,commitDrawingSnapshot}=useDrawingWorkspace();
- const drawing=useEditor(s=>s.project.drawing)??EMPTY,library=useEditor(s=>s.project.drawingSnapshots);
+ const drawing=useEditor(s=>s.project.drawing)??EMPTY,library=useEditor(s=>s.project.drawingSnapshots),workingCopies=useEditor(s=>s.project.drawingWorkingCopies);
  const current=library?.items.find(x=>x.id===library.activeId),[prompt,setPrompt]=useState<Prompt|null>(null),[name,setName]=useState(''),[error,setError]=useState('');
  const dirty=useMemo(()=>!current||!snapshotMatches(drawing,library!,current.id),[drawing,library,current]);
  const [importing,setImporting]=useState(false);
@@ -26,7 +26,7 @@ export default function SnapshotBar({prepare,switched}:{prepare:()=>void;switche
   if(!id)return;prepare();
   // Read after finishing any pending arrow-key edit.
   const p=useEditor.getState().project,s=p.drawingSnapshots!,doc=p.drawing??EMPTY;
-  if(!s.activeId||!snapshotMatches(doc,s,s.activeId))open('switch',id);
+  if(!s.activeId)open('switch',id);
   else apply(state=>restoreDrawingSnapshot(state,id),true);
  }
  const target=library?.items.find(x=>x.id===prompt?.target);
@@ -34,9 +34,9 @@ export default function SnapshotBar({prepare,switched}:{prepare:()=>void;switche
   <strong>{t('画稿')}</strong>
   <select aria-label={t('切换画稿')} value={current?.id??''} onChange={e=>select(e.target.value)}>
    <option value="" disabled>{t('当前画布 · 尚未保存画稿')}</option>
-   {library?.items.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+   {library?.items.map(x=><option key={x.id} value={x.id}>{x.name}{Object.hasOwn(workingCopies??{},x.id)?' · '+t('修改中'):''}</option>)}
   </select>
-  <span className={dirty?'drawing-snapshot-dirty':'drawing-muted'} data-testid="drawing-snapshot-status">{t(current?(dirty?'有未保存修改':'已保存'):'未存为画稿')}</span>
+  <span className={dirty?'drawing-snapshot-dirty':'drawing-muted'} data-testid="drawing-snapshot-status">{t(current?(dirty?'有未更新修改':'已保存'):'未存为画稿')}</span>
   <button onClick={()=>open('save')}><Camera size={14}/>{t('保存为新画稿')}</button>
   <button disabled={!current||!dirty} title={t('用当前画布更新此画稿')} onClick={()=>{prepare();apply(s=>saveDrawingSnapshot(s,current!.name,current!.id));}}><RefreshCw size={14}/>{t('更新当前画稿')}</button>
   <button disabled={!current} aria-label={t('重命名画稿')} title={t('重命名画稿')} onClick={()=>open('rename')}><Pencil size={14}/></button>

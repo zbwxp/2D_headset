@@ -6,14 +6,14 @@ import {curvePath} from './geometry';
 export const MAX_AI_GUIDE_CURVES=32;
 export interface AIGuideOptions {curveIds?:readonly string[];grid?:boolean;labels?:boolean;handles?:boolean;diagnostics?:boolean}
 export interface AIGuideOverlayProps extends Omit<AIGuideOptions,'curveIds'> {
- d:DrawingDocument;curveIds:readonly string[];screen:(p:Point2)=>Point2;unit:number;width:number;height:number;
+ d:DrawingDocument;curveIds:readonly string[];curveLabels?:Readonly<Record<string,string>>;screen:(p:Point2)=>Point2;unit:number;width:number;height:number;
 }
 const short=(id:string)=>id.length>10?`${id.slice(0,6)}…${id.slice(-3)}`:id;
 const number=(x:number)=>Math.abs(x)<.00005?'0':String(+x.toFixed(4));
 const coordinates=(p:Point2)=>`[${number(p[0])}, ${number(p[1])}]`;
 function gridStep(unit:number){const desired=60/unit,power=10**Math.floor(Math.log10(desired)),ratio=desired/power;return (ratio<=1?1:ratio<=2?2:ratio<=5?5:10)*power;}
 /** Transient inspection aid only. The caller explicitly mounts it; no state, events or persistence. */
-export default function AIGuideOverlay({d,curveIds,screen,unit,width,height,grid=true,labels=true,handles=true,diagnostics=true}:AIGuideOverlayProps){
+export default function AIGuideOverlay({d,curveIds,curveLabels,screen,unit,width,height,grid=true,labels=true,handles=true,diagnostics=true}:AIGuideOverlayProps){
  if(!Number.isFinite(unit)||unit<=0||width<=0||height<=0)return null;
  const requested=[...new Set(curveIds)],selected=d.curves.filter(c=>requested.includes(c.id)).slice(0,MAX_AI_GUIDE_CURVES),ids=new Set(selected.map(c=>c.id)),origin=screen([0,0]),step=gridStep(unit);
  const xs:number[]=[],ys:number[]=[];
@@ -41,7 +41,7 @@ export default function AIGuideOverlay({d,curveIds,screen,unit,width,height,grid
      <title>{detail}</title>
      {endpoint?<circle cx={p[0]} cy={p[1]} r={3.5} fill="#fff" stroke={coupled?'#ba4b95':'#008caf'} strokeWidth={1.5}/>:<rect x={p[0]-2.5} y={p[1]-2.5} width={5} height={5} fill="#fff" stroke="#9b57bc" strokeWidth={1.2}/>}
      {coupled&&<path d={`M ${p[0]-6} ${p[1]} h 12 M ${p[0]} ${p[1]-6} v 12`} stroke="#ba4b95" strokeWidth={.8} opacity={.75}/>}
-     {labels&&<text x={Math.max(4,Math.min(width-180,p[0]+8))} y={Math.max(36,Math.min(height-16,p[1]+(endpoint?-9:14)))} fill={endpoint?'#006c89':'#793b9a'} fontSize={10} paintOrder="stroke" stroke="#fff" strokeWidth={3} strokeLinejoin="round">{`${short(c.id)} ${role} ${coordinates(shape[i])}`}</text>}
+     {labels&&<text x={Math.max(4,Math.min(width-180,p[0]+8))} y={Math.max(36,Math.min(height-16,p[1]+(endpoint?-9:14)))} fill={endpoint?'#006c89':'#793b9a'} fontSize={10} paintOrder="stroke" stroke="#fff" strokeWidth={3} strokeLinejoin="round">{`${curveLabels?.[c.id]??short(c.id)} ${role} ${coordinates(shape[i])}`}</text>}
     </g>;
    })}
   </g>;})}

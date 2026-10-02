@@ -62,7 +62,7 @@ export function planRecordingExampleImport(state:DrawingSnapshotState,examplePro
  const reserved=new Set([...recordingIds(existingRecording),...recordingIds(example.vectorRecording),...(state.drawingSnapshots?.items.map(a=>a.id)??[]),...(state.drawingSnapshots?.images.map(a=>a.id)??[]),...library.items.map(a=>a.id),...library.images.map(a=>a.id)]);
  const freshId=()=>{for(let i=0;i<32;i++){const id=uid();if(!reserved.has(id)){reserved.add(id);return id;}}throw Error('无法生成无冲突的示例标识，请重试');};
  const steps:DrawingSnapshotState[]=[],artworkMap=new Map<string,string>();let preservedDraftId:string|undefined;
- let next:DrawingSnapshotState={drawing:sourceForExampleImport(state.drawing,!!existingRecording?.rigs.some(r=>r.artworkId==='$working')),drawingSnapshots:state.drawingSnapshots};
+ let next:DrawingSnapshotState={drawing:sourceForExampleImport(state.drawing,!!existingRecording?.rigs.some(r=>r.artworkId==='$working')),drawingSnapshots:state.drawingSnapshots,drawingWorkingCopies:state.drawingWorkingCopies};
  // planArtworkImport owns snapshot/reference-image allocation. Check all new
  // identities before accepting a plan, including collisions with rig IDs.
  const importArtwork=(oldId:string,name:string)=>{

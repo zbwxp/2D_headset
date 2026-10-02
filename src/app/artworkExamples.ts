@@ -1,5 +1,5 @@
 import {emptyDrawing,parseDrawing,type DrawingDocument} from '../domain/drawing/model';
-import {saveDrawingSnapshot,snapshotMatches,restoreDrawingSnapshot,type DrawingSnapshotState} from '../domain/drawing/snapshots';
+import {saveDrawingSnapshot,stashDrawingWorkingCopy,restoreDrawingSnapshot,type DrawingSnapshotState} from '../domain/drawing/snapshots';
 export const HAIRLESS_EXAMPLE_NAME='无发·对称双脸片·下颌显线';
 export const MIRROR_EXAMPLE_NAME='无发·对称双脸片·镜像编辑';
 export const SIDE_EXAMPLE_NAME='右侧90°参考画稿';
@@ -11,12 +11,14 @@ function uniqueName(state:DrawingSnapshotState,requested:string){
  * states so the store can migrate a $working rig to its preserved first save
  * before activating the imported artwork. The caller groups all steps in ONE undo. */
 export function planArtworkImport(state:DrawingSnapshotState,imported:DrawingDocument,name:string){
- const drawing=parseDrawing(imported),steps:DrawingSnapshotState[]=[];let next=state,preservedDraftId:string|undefined;
+ const drawing=parseDrawing(imported),steps:DrawingSnapshotState[]=[];let next=stashDrawingWorkingCopy(state),preservedDraftId:string|undefined;
  const active=state.drawingSnapshots?.items.find(x=>x.id===state.drawingSnapshots?.activeId);
- if(state.drawing&&(!active||!snapshotMatches(state.drawing,state.drawingSnapshots!,active.id))){
-  next=saveDrawingSnapshot(state,uniqueName(state,`${active?.name??'未命名画稿'} · 导入前草稿`));preservedDraftId=next.drawingSnapshots!.activeId;steps.push(next);
+ if(state.drawing&&!active){
+  next=saveDrawingSnapshot(state,uniqueName(state,'未命名画稿 · 导入前草稿'));preservedDraftId=next.drawingSnapshots!.activeId;steps.push(next);
  }
- next=saveDrawingSnapshot({...next,drawing},uniqueName(next,name));steps.push(next);
+ // Imported geometry is not an edit to the previously active asset. Its real
+ // working copy was stashed above; capture the import without that active ID.
+ next=saveDrawingSnapshot({...next,drawing,drawingSnapshots:next.drawingSnapshots?{...next.drawingSnapshots,activeId:undefined}:undefined},uniqueName(next,name));steps.push(next);
  return {steps,state:next,artworkId:next.drawingSnapshots!.activeId!,preservedDraftId};
 }
 /** Callers with an authored empty working rig should preserve its ownership too. */

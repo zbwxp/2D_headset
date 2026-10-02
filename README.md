@@ -52,3 +52,5 @@ npm run dev -- --port 5173
 [V0.3.6 空间平滑实验](docs/spatial-smooth-v036.md) · [V0.3.5 平滑实验](docs/smooth-junctions-v035.md) · [V0.3.1 UI](docs/editor-ui-v031.md) · [V0.3 Planar Curve](docs/planar-curves-v03.md) · [V0.2 Semantic Point](docs/semantic-points-v02.md)
 
 旧 Curve-only Smooth 实验不在当前 active geometry path。
+
+- [Recording 场景与独立对象轨道 API](docs/recording-scene-api.md)

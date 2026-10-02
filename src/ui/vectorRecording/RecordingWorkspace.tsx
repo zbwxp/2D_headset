@@ -1,3 +1,6 @@
+import SceneRecordingWorkspace from './SceneRecordingWorkspace';
+import {emptyRecordingScenes} from '../../domain/recordingScene/model';
+import {migrateLegacyRecordingScenes} from '../../domain/recordingScene/migration';
 import {getWorkspaceView} from '../../app/workspaceView';
 import {snapWorkspacePoint} from '../../app/workspaceViewSnap';
 import ArtworkReference from '../workspaceView/ArtworkReference';
@@ -21,6 +24,15 @@ import './vectorRecording.css';
 const EMPTY=emptyDrawing(),noop=()=>{};
 type Drag={kind:'nodes'|'handle'|'box'|'pan';start:Point2;client:Point2;pose:VectorPose;indices:number[];handle?:'handleU'|'handleV';index?:number;pan?:Point2};
 export default function RecordingWorkspace({aiGuides=false}:{aiGuides?:boolean}={}){
+ const project=useEditor(s=>s.project);
+ useEffect(()=>{const editor=useEditor.getState();if(!editor.project.recordingScenes)editor.setRecordingScenes(migrateLegacyRecordingScenes(editor.project).recordingScenes??emptyRecordingScenes());},[project.recordingScenes]);
+ if(project.recordingScenes)return <SceneRecordingWorkspace aiGuides={aiGuides}/>;
+ // Existing direct callers can render the legacy state while the store seeds
+ // its compatibility scene; all persisted new scenes use the scene workspace.
+ if(project.vectorRecording?.rigs.length)return <LegacyRecordingWorkspace aiGuides={aiGuides}/>;
+ return <div className="vector-loading" role="status">准备录制场景…</div>;
+}
+function LegacyRecordingWorkspace({aiGuides=false}:{aiGuides?:boolean}={}){
  const zh=useLanguage(s=>s.language)==='zh',txt=(cn:string,en:string)=>zh?cn:en;
  const project=useEditor(s=>s.project),drawing=project.drawing??EMPTY,artworkId=sourceArtworkId(project.drawingSnapshots?.activeId);
  const recording=project.vectorRecording??emptyVectorRecording(),rig=recording.rigs.find(r=>r.artworkId===artworkId);

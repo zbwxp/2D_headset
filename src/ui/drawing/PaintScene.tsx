@@ -9,16 +9,16 @@ import {curvePath} from './geometry';
 import {strokeInkPasses} from '../../domain/drawing/mist';
 import MistInk from './MistInk';
 import MistFill from './MistFill';
-import {depthPaintBatches,memberInk} from '../../domain/drawing/depth';
+import {depthPaintBatches,memberInk,type PaintBatch} from '../../domain/drawing/depth';
 import type {DrawingTool} from './session';
-interface Props {pixelsPerUnit?:number;interactiveEffects?:boolean;opacity?:ReadonlyMap<string,number>;d:Doc;screen:(p:Point2)=>Point2;unit:number;preview:boolean;showFills:boolean;fillVisibility?:Readonly<Record<string,boolean>>;referenceMoving:boolean;tool:DrawingTool;selectedPaint?:string;selectedPaints?:string[];curveDown:(e:React.PointerEvent,id:string)=>void;paintDown:(e:React.PointerEvent,id:string)=>void;arcDown:(e:React.PointerEvent,id:string)=>void}
-export default function PaintScene({pixelsPerUnit,interactiveEffects=false,opacity,d,screen:project,unit,preview,showFills,fillVisibility,referenceMoving,tool,selectedPaint,selectedPaints,curveDown,paintDown,arcDown}:Props){
+interface Props {paintBatches?:PaintBatch[];pixelsPerUnit?:number;interactiveEffects?:boolean;opacity?:ReadonlyMap<string,number>;d:Doc;screen:(p:Point2)=>Point2;unit:number;preview:boolean;showFills:boolean;fillVisibility?:Readonly<Record<string,boolean>>;referenceMoving:boolean;tool:DrawingTool;selectedPaint?:string;selectedPaints?:string[];curveDown:(e:React.PointerEvent,id:string)=>void;paintDown:(e:React.PointerEvent,id:string)=>void;arcDown:(e:React.PointerEvent,id:string)=>void}
+export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffects=false,opacity,d,screen:project,unit,preview,showFills,fillVisibility,referenceMoving,tool,selectedPaint,selectedPaints,curveDown,paintDown,arcDown}:Props){
  const clipPrefix=useId(),sampling=displayInkSampling(pixelsPerUnit??unit);
  // Only SVG display coordinates are rounded; authoring/interpolation remains exact.
  const screen=(p:Point2):Point2=>{const q=project(p);return [Math.round(q[0]*1000)/1000,Math.round(q[1]*1000)/1000];};
  const pick=!preview&&!referenceMoving,select=pick&&['select','direct'].includes(tool);
  const inkDocument=d.curves.some(c=>!visible(d,c.id))?{...d,curves:d.curves.map(c=>visible(d,c.id)?c:{...c,inkVisible:false})}:d;
- const batches=depthPaintBatches(d),positions=new Map(batches.filter(b=>b.owner).map(b=>[b.owner!,b.position]));
+ const batches=paintBatches??depthPaintBatches(d),positions=new Map(batches.filter(b=>b.owner).map(b=>[b.owner!,b.position]));
  const partitionCache=new Map<string,ReturnType<typeof memberInk>>(),routeCache=new Map<string,DisplayRouteInkPlan>();
  const groups:{layerId:string;batches:typeof batches}[]=[];
  for(const b of batches.slice().reverse()){if(groups.at(-1)?.layerId===b.layerId)groups.at(-1)!.batches.push(b);else groups.push({layerId:b.layerId,batches:[b]});}

@@ -25,9 +25,9 @@ test('rename only changes the label and never captures dirty working geometry',(
  const r=prepareArtworkAction(dirty,{op:'rename',artworkId:id,name:'Portrait'});expect(r.state.drawing).toBe(working);expect(r.state.drawingSnapshots!.items[0].drawing).toBe(originalSaved);expect(r.state.drawingSnapshots!.items[0].id).toBe(id);expect(artworkOverview({...dirty,...r.state}).dirty).toBe(true);
 });
 
-test('restore defaults to preserving dirty working source and requires explicit discard permission',()=>{
+test('named restore retains the same-ID working copy and explicit discard still restores the checkpoint',()=>{
  const p=saved(),id=p.drawingSnapshots!.activeId!,dirty={...p,drawing:{...p.drawing!,mirrorAxisX:.8}},before=structuredClone(dirty);
- code(()=>prepareArtworkAction(dirty,{op:'restore',artworkId:id}),'UNSAVED_SOURCE');expect(dirty).toEqual(before);
+ const kept=prepareArtworkAction(dirty,{op:'restore',artworkId:id});expect(kept.state.drawing?.mirrorAxisX).toBe(.8);expect(kept.state.drawingWorkingCopies![id].mirrorAxisX).toBe(.8);expect(kept.result.workingSourcePreserved).toBe(true);expect(dirty).toEqual(before);
  const r=prepareArtworkAction(dirty,{op:'restore',artworkId:id,discardUnsaved:true});expect(r.state.drawing?.mirrorAxisX).toBeUndefined();expect(r.result.workingSourcePreserved).toBe(false);expect(dirty).toEqual(before);
 });
 
@@ -56,6 +56,12 @@ test('artwork IDs are opaque and are never trimmed or confused with their labels
  const p=saved(),id=' front ',library={...p.drawingSnapshots!,activeId:id,items:p.drawingSnapshots!.items.map(x=>({...x,id}))},input={...p,drawingSnapshots:library};
  const r=prepareArtworkAction(input,{op:'rename',artworkId:id,name:'  A label  '});expect(r.result.artworkId).toBe(id);expect(r.result.name).toBe('A label');expect(r.state.drawingSnapshots!.activeId).toBe(id);
  code(()=>prepareArtworkAction(input,{op:'rename',artworkId:'front',name:'Wrong ID'}),'NOT_FOUND');
+});
+
+test('inactive opaque artwork IDs never resolve prototype properties as working copies',()=>{
+ const p=saved(),library={...p.drawingSnapshots!,activeId:undefined,items:p.drawingSnapshots!.items.map(item=>({...item,id:'__proto__'}))},input={...p,drawingSnapshots:library,drawingWorkingCopies:{}};
+ expect(artworkOverview(input).items[0]).toMatchObject({id:'__proto__',hasWorkingCopy:false,curveCount:1});
+ const copy={...p.drawing!,mirrorAxisX:.7};expect(artworkOverview({...input,drawingWorkingCopies:Object.fromEntries([['__proto__',copy]])}).items[0]).toMatchObject({hasWorkingCopy:true,curveCount:1});
 });
 
 test('artwork facade uses one root undo transaction, first-save rig mapping and Recording/stale gates',()=>{

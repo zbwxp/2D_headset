@@ -14,10 +14,10 @@ test('checkpoint retains absolute position and identity while later geometry/bac
  const second=save({...first,drawing:edited},'近正面左视'),left=second.drawingSnapshots!.activeId!;
  expect(second.drawingSnapshots!.items.map(s=>s.drawing.curves[0].id)).toEqual(['chin','chin']);
  expect(second.drawingSnapshots!.images).toHaveLength(1);
- expect(restore(second,id).drawing).toEqual(d);expect(restore(second,left).drawing).toEqual(edited);
+ expect(snapshotDrawing(second.drawingSnapshots!,id)).toEqual(d);expect(restore(second,id).drawing).toEqual(edited);expect(restore(second,left).drawing).toEqual(edited);
  expect(snapshotMatches(edited,second.drawingSnapshots!,left)).toBe(true);expect(snapshotMatches(edited,second.drawingSnapshots!,id)).toBe(false);
  const restored=restore(second,id);restored.drawing!.nodes[0].position[0]=99;
- expect(snapshotDrawing(second.drawingSnapshots!,id)).toEqual(d);expect(d.nodes[0].position[0]).toBe(2);
+ expect(snapshotDrawing(second.drawingSnapshots!,id)).toEqual(d);expect(second.drawingWorkingCopies![id]).toEqual(edited);expect(d.nodes[0].position[0]).toBe(2);
  expect(Object.keys(first.drawingSnapshots!.items[0]).sort()).toEqual(['drawing','id','name','reference']);
 });
 test('explicit overwrite, rename and deletion preserve other checkpoints and working data',()=>{
@@ -55,7 +55,7 @@ test('save, switch and overwrite are single Undo transactions, with drafts resto
   commitDrawingSnapshot(s=>save(s,'正面'));const first=editor().project,id=first.drawingSnapshots!.activeId!;expect(editor().past).toHaveLength(n+1);
   editor().undo();expect(editor().project).toBe(initial);editor().redo();expect(editor().project).toBe(first);
   commitDrawing({...first.drawing!,mirrorAxisX:.75});const draft=editor().project;
-  commitDrawingSnapshot(s=>restore(save(s,'侧脸'),id));const switched=editor().project;expect(switched.drawing).toEqual(first.drawing);expect(switched.drawingSnapshots!.items).toHaveLength(2);
+  commitDrawingSnapshot(s=>restore(save(s,'侧脸'),id));const switched=editor().project;expect(switched.drawing).toEqual(draft.drawing);expect(switched.drawingWorkingCopies![id]).toEqual(draft.drawing);expect(switched.drawingSnapshots!.items).toHaveLength(2);
   editor().undo();expect(editor().project).toBe(draft);editor().redo();expect(editor().project).toBe(switched);
   commitDrawingSnapshot(s=>save(s,'正面',id));editor().undo();expect(editor().project).toBe(switched);
  }finally{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();}

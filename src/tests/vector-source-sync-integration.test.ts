@@ -66,7 +66,7 @@ function legacyStale(){
 
 test('old stale example save/reload recovers from the exact bundled baseline without replacing edited source or keys',()=>{
  const stale=parseLandmarks(serializeProject(legacyStale())),oldRig=rigOf(stale),source=stale.drawing,library=stale.drawingSnapshots;
- useEditor.getState().load(stale);const after=useEditor.getState().project;ready(after);expect(after.drawing).toEqual(source);expect(after.drawingSnapshots).toEqual(library);unchangedRigArt(rigOf(after),oldRig);expect(rigOf(after).sourceStructureSignature).toBeTruthy();
+ useEditor.getState().load(stale);const after=useEditor.getState().project;ready(after);expect(after.drawing).toEqual(source);expect(after.drawingSnapshots).toEqual(library);unchangedRigArt(rigOf(after),oldRig);expect(after.vectorRecording).toEqual(stale.vectorRecording);const scene=after.recordingScenes!.scenes.find(s=>s.legacy?.rigId===oldRig.id)!;expect(scene.instances[0].sourceStructureSignature).toBeTruthy();expect(scene.instances[0].sourceSignature).not.toBe(oldRig.sourceSignature);
  const reloaded=parseLandmarks(serializeProject(after));ready(reloaded);expect(()=>evaluateRecording(reloaded,{angle:{x:90,y:0}})).not.toThrow();
 });
 

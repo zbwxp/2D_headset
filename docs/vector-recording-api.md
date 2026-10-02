@@ -1,5 +1,7 @@
 # AI 录制接口与转头关键形流程
 
+新版独立 Recording 场景正在集成，使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)。以下单画稿 rig 流程作为旧版说明保留；含 `recordingScenes` 的工程不会通过旧录制方法另写一套后台动画。
+
 录制方法自 API 1.5 提供；当前 v13 / main 02e97da 已部署 API 1.7（含 pin 与批量帧），最终转头例稿已完成离线视觉复核，当前工程的浏览器验收仍待完成。源编辑指南见 [AI 创作手册](ai-authoring-guide.md)。这份接口只写现有录制 rig、Warp、姿态草稿和关键形，不接受原始工程替换，也不回写拟合出的源节点。
 
 ## 入口与模式

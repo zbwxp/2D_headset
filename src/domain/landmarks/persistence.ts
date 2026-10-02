@@ -1,4 +1,5 @@
 import {parseVectorRecording} from '../vectorRecording/persistence';
+import {parseRecordingScenes} from '../recordingScene/persistence';
 import {parseAssembly} from '../assembly/model';
 import {migrateChinNode} from '../chin/migration';
 import type {Vec3} from '../project/types';
@@ -13,7 +14,7 @@ import {assignModules} from '../modules/ownership';
 import {parsePoseRecording,syncPoseSnapshots} from '../recording/poses';
 import {upgradeAppliedInferenceInk} from '../recording/poseInference';
 import {parseDrawing} from '../drawing/model';
-import {parseDrawingSnapshots} from '../drawing/snapshots';
+import {parseDrawingSnapshots,parseDrawingWorkingCopies} from '../drawing/snapshots';
 import {repairCurveNames} from '../curves/naming';
 import {parseJoins} from '../curves/smoothJoin/model';
 import {dependencyGraph} from '../geometry/dependencies';
@@ -273,6 +274,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   if(p.recording!==undefined||p.hairstyle!==undefined)result.legacyWorkspaces={...result.legacyWorkspaces,...(p.recording!==undefined?{recording:structuredClone(p.recording)}:{}),...(p.hairstyle!==undefined?{hairstyle:structuredClone(p.hairstyle)}:{})};
   for(const key of ['poseRecording','assembly'] as const)if(p[key]!==undefined&&!Object.hasOwn(result.legacyWorkspaces??{},key))result.legacyWorkspaces={...result.legacyWorkspaces,[key]:structuredClone(p[key])};
   if(p.vectorRecording!==undefined)result.vectorRecording=parseVectorRecording(p.vectorRecording);
+  if(p.recordingScenes!==undefined)result.recordingScenes=parseRecordingScenes(p.recordingScenes);
   // Retire old point/curve recordings, including malformed legacy records.
   delete result.recording;
   const legacyPose=p.poseRecording??p.legacyWorkspaces?.poseRecording;
@@ -282,6 +284,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   if(legacyAssembly!==undefined){try{result.assembly=parseAssembly(legacyAssembly);}catch{delete result.assembly;}}
   if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
   if(p.drawingSnapshots!==undefined)result.drawingSnapshots=parseDrawingSnapshots(p.drawingSnapshots);
+  if(p.drawingWorkingCopies!==undefined)result.drawingWorkingCopies=parseDrawingWorkingCopies(p.drawingWorkingCopies,result.drawingSnapshots);
   Object.assign(result,upgradeAppliedInferenceInk(result));
   if(result.poseRecording)result.poseRecording=syncPoseSnapshots(result.poseRecording,result.drawingSnapshots);
   if(p.geometryModules!==undefined){check(!!p.geometryModules&&typeof p.geometryModules==='object'&&!Array.isArray(p.geometryModules));check(Object.values(p.geometryModules).every(x=>x==='HEADSET'||x==='EYES'));result.geometryModules={...p.geometryModules};}

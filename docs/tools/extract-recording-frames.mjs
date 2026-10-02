@@ -1,4 +1,4 @@
-/** Extract the fixed previewRecordingFrames response. No app/project writes. */
+/** Extract fixed legacy or scene frame previews. No app/project writes. */
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 
@@ -7,9 +7,10 @@ if(!input||!destination){process.stderr.write('Usage: node extract-recording-fra
 try{
  const raw=JSON.parse(await readFile(input,'utf8'));if(raw.ok===false)throw Error(raw.error?.message??'API response failed');const value=raw.value??raw;
  if(value.savedKeyformsOnly!==true||!Array.isArray(value.frames)||!value.frames.length||value.frames.length>31)throw Error('Expected a saved-keyform previewRecordingFrames response');
- if(typeof value.artworkId!=='string'||typeof value.rigId!=='string'||!value.viewport)throw Error('Missing stable artwork/rig/camera identity');
+ const scene=typeof value.sceneId==='string';
+ if(!value.viewport||(!scene&&(typeof value.artworkId!=='string'||typeof value.rigId!=='string')))throw Error('Missing stable scene or artwork/rig/camera identity');
  const camera=JSON.stringify(value.viewport),frames=value.frames.map((frame,index)=>{
-  if(frame.index!==index||frame.artworkId!==value.artworkId||frame.rigId!==value.rigId||frame.usedDraft!==false||JSON.stringify(frame.viewport)!==camera)throw Error(`Frame ${index} changes source, rig, camera or uses an unsaved draft`);
+  if(frame.index!==index||(scene?frame.sceneId!==value.sceneId:frame.artworkId!==value.artworkId||frame.rigId!==value.rigId)||frame.usedDraft!==false||JSON.stringify(frame.viewport)!==camera)throw Error(`Frame ${index} changes source, rig, camera or uses an unsaved draft`);
   if(!frame.angle||![frame.angle.x,frame.angle.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=90))throw Error(`Frame ${index} has invalid parameters`);
   if(typeof frame.svg!=='string'||frame.svg.length>20_000_000||!/^\s*<svg\b/.test(frame.svg)||/<!DOCTYPE|<script\b/i.test(frame.svg))throw Error(`Frame ${index} is not a supported generated SVG`);
   return {...frame,filename:`frame-${String(index).padStart(3,'0')}.svg`};
