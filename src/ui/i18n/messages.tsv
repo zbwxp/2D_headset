@@ -1927,3 +1927,15 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 空区间	Empty interval
 辅助线吸附	Guide snap
 交点吸附	Intersection snap
+跨图层末端笔触	Cross-layer terminus brush
+关联末端笔触	Linked terminus brush
+未单独设置	Not separately specified
+裁切距离	Trim distance
+绘制单位	Drawing units
+此值是每侧沿曲线的裁切影响距离，不是精确圆半径。圆弧替代端点附近的可见墨线，几何端点位置不变。	This is the trim influence along each curve, not an exact circle radius. The arc replaces visible ink near the endpoints; geometric endpoint positions stay unchanged.
+已用于贯通显示路径	Used by a through display route
+未用于贯通显示路径；这里只显示已存设置	Not used by a through display route; showing stored settings only
+默认尖点接笔	Default sharp join
+几何端点联动只约束位置；下列末端笔触属于列出的实际轮廓。	Geometric endpoint links constrain positions. The terminus brushes below belong to the listed contours.
+本层连接	Local layer connection
+这里只描述本层共享端点的连接；关联末端笔触见上方端点联动。	This describes the local shared-node connection only. See Endpoint links above for linked terminus brushes.
