@@ -1,0 +1,17 @@
+.scene-layer-panel.drawing-sidebar{display:flex;width:auto;min-height:220px;max-height:55vh;border:0;background:transparent;flex-direction:column;--draw-accent:#8aa99a}
+.scene-layer-panel>.drawing-layers{min-height:0;flex:1}
+.scene-layer-panel .drawing-layers>header{display:flex;gap:3px;flex-wrap:wrap;padding:7px 8px}
+.scene-layer-panel .drawing-layers>header strong{flex:1}
+.scene-layer-panel .drawing-layers>header button{width:auto}
+.scene-layer-panel .drawing-layer-row>button,.scene-layer-panel .drawing-object-row>button,.scene-layer-panel .drawing-chain-row>button{width:auto;margin:0;flex-shrink:0}
+.scene-layer-panel .drawing-object-name{flex:1!important;min-width:0;display:block!important;overflow:hidden;text-overflow:ellipsis;text-align:left;white-space:nowrap}
+.scene-layer-panel .drawing-layer-row,.scene-layer-panel .drawing-object-row,.scene-layer-panel .drawing-chain-row{gap:0}
+.scene-layer-panel .drawing-pose-explanation{margin:0;padding:7px 10px;font-size:11px;line-height:1.5;color:#9babb2;border-bottom:1px solid #3c474d}
+.scene-layer-panel .drawing-layer-section-heading{display:flex;align-items:center;gap:5px;width:100%;margin:0;border:0;border-radius:0;padding:7px 9px;background:#202a30;text-align:left;color:#c2d1d5;min-height:32px}
+.scene-layer-panel .drawing-layer-section-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.scene-layer-panel .drawing-layer-section-heading small{font-size:10px;color:#8d9fa8}
+.scene-layer-panel .drawing-layer-section+.drawing-layer-section{border-top:1px solid #3c474d}
+.scene-layer-panel .drawing-layer-scope{display:flex;align-items:center;justify-content:space-between;padding:4px 9px}
+.scene-layer-panel .drawing-layer-scope button{width:auto}
+.scene-layer-panel button:disabled{opacity:.35;cursor:not-allowed}
+.scene-layer-panel button{font:inherit;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:4px;padding:5px 7px;background:transparent;color:inherit;min-height:28px;cursor:pointer;white-space:nowrap}.scene-layer-panel button:hover{background:#354148}.scene-layer-panel button:focus-visible{outline:2px solid var(--draw-accent);outline-offset:1px}.vr-view-workflow .scene-layer-panel{max-height:none;overflow:visible}.vr-view-workflow .scene-layer-panel .drawing-layers{overflow:visible}

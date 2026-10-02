@@ -17,8 +17,13 @@ function track<T>(t:SceneTrack<T>,value:(v:T)=>void){
 /** Validate format and the scene's own graph. Missing external source objects
  * remain orphan references for evaluation to report locally and reversibly. */
 export function validateScene(scene:RecordingScene):void {
- if(!scene||!id(scene.id)||typeof scene.name!=='string'||!angle(scene.angle)||![scene.instances,scene.warps,scene.bindings,scene.visibilityTracks,scene.intervalTracks,scene.depthTracks??[]].every(Array.isArray))fail('scene shape');
+ if(!scene||!id(scene.id)||typeof scene.name!=='string'||!angle(scene.angle)||![scene.instances,scene.warps,scene.bindings,scene.visibilityTracks,scene.intervalTracks,scene.depthTracks??[]].every(Array.isArray)||scene.viewpoints!==undefined&&!Array.isArray(scene.viewpoints))fail('scene shape');
  if(scene.tolerance!==undefined&&(!Number.isFinite(scene.tolerance)||scene.tolerance<=0))fail('tolerance');
+ if(scene.viewpoints){
+  if(scene.viewpoints.length>4096)fail('viewpoint limit');
+  unique(scene.viewpoints.map(v=>v?.id),'viewpoint');const coordinates:Angle[]=[];
+  for(const viewpoint of scene.viewpoints){if(typeof viewpoint.name!=='string'||!viewpoint.name.trim()||viewpoint.name.length>256||!angle(viewpoint.angle))fail('viewpoint');if(coordinates.some(a=>sameAngle(a,viewpoint.angle)))fail('duplicate viewpoint angle');coordinates.push(viewpoint.angle);}
+ }
  unique(scene.instances.map(i=>i.id),'instance');unique(scene.warps.map(w=>w.id),'warp');
  const instances=new Set(scene.instances.map(i=>i.id)),instanceRef=(instanceId:string)=>{if(!instances.has(instanceId))fail('missing scene instance');};
  unique([...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])].map(t=>t.id),'object track');

@@ -31,8 +31,12 @@ export interface SceneIntervalTrack extends SceneTrack<SceneIntervalValue> {
  materialIssue?:{sourceSignature:string;message:string};
 }
 export interface SceneDepthTrack extends SceneTrack<number> {id:string;target:SceneLayerRef}
+/** A named editing position, independent of the scene's object tracks. */
+export interface SceneViewpoint {id:string;name:string;angle:Angle}
 export interface RecordingScene {
  id:string;name:string;angle:Angle;instances:SceneInstance[];warps:SceneWarp[];
+ /** Absent on older scenes, whose UI may derive positions from track keys. */
+ viewpoints?:SceneViewpoint[];
  bindings:SceneLayerBinding[];visibilityTracks:SceneVisibilityTrack[];intervalTracks:SceneIntervalTrack[];depthTracks?:SceneDepthTrack[];
  tolerance?:number;
  legacy?:{rigId:string;appearancePending?:boolean};

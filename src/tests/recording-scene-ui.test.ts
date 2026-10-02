@@ -39,3 +39,27 @@ test('AI scene labels distinguish instances using the original source identity',
   expect(html).not.toContain('scene:1:a: P0');expect(html).not.toContain('scene:…');
  }finally{useEditor.setState(previous,true);}
 });
+
+test('viewpoint workflow places angle recording on the left and reused Drawing layers on the right',()=>{
+ const previous=useEditor.getState(),{project}=fixture();
+ try{
+  useEditor.setState({project,past:[],future:[]});const html=renderToStaticMarkup(createElement(RecordingWorkspace));
+  const left=html.indexOf('data-testid="scene-viewpoint-panel"'),canvas=html.indexOf('data-testid="vr-scene-canvas"'),right=html.indexOf('data-testid="scene-source-layer-panel"');
+  expect(left).toBeGreaterThan(0);expect(left).toBeLessThan(canvas);expect(canvas).toBeLessThan(right);
+  expect(html).toContain('data-testid="scene-layer-panel"');expect(html).toContain('data-testid="drawing-layer-select"');
+  expect(html).toContain('data-testid="drawing-curve-row"');expect(html).toContain('data-testid="drawing-toggle-fills"');
+  expect(html).toContain('data-testid="scene-update-viewpoint"');expect(html).toContain('data-testid="vr-tool-direct"');expect(html).toContain('data-testid="vr-tool-zoom"');
+ }finally{useEditor.setState(previous,true);}
+});
+
+test('a new unkeyed angle is preview-only, while viewpoints can exist without any Warp',()=>{
+ const previous=useEditor.getState(),{project,scene}=fixture();
+ try{
+  let current={...scene,angle:{x:45,y:0}};useEditor.setState({project:{...project,recordingScenes:{...project.recordingScenes,scenes:[current]}},past:[],future:[]});
+  let html=renderToStaticMarkup(createElement(RecordingWorkspace));expect(html).toContain('data-testid="scene-create-viewpoint"');expect(html).not.toContain('data-testid="scene-update-viewpoint"');expect(html).toContain('data-edit-enabled="false"');
+  current={...current,warps:[],bindings:[],viewpoints:[{id:'zero-view',name:'Front',angle:{x:0,y:0}},{id:'right-view',name:'Profile',angle:{x:90,y:0}}],angle:{x:90,y:0}};
+  useEditor.setState({project:{...project,recordingScenes:{...project.recordingScenes,scenes:[current]}}});html=renderToStaticMarkup(createElement(RecordingWorkspace));
+  expect(html).toContain('Profile');expect(html).toContain('data-testid="scene-update-viewpoint"');expect(html).not.toContain('data-testid="scene-create-viewpoint"');
+  const update=html.match(/<button[^>]*data-testid="scene-update-viewpoint"[^>]*>/)?.[0];expect(update).toBeTruthy();expect(update).not.toContain('disabled');
+ }finally{useEditor.setState(previous,true);}
+});

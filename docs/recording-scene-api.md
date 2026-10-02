@@ -11,7 +11,7 @@
 {"method":"inspectScene","request":{"includeKeyValues":false}}
 ```
 
-结果包含场景列表、当前场景、实例、实例图层、Warp 父子关系、叶子绑定和各轨道的独立键列表。`availableArtworks` 列出来源画稿、图层及成员 ID、当前有效源签名；`liveWorkingCopy` 标明是否解析到了当前未保存的 Drawing。`includeKeyValues:true` 才返回完整键值；默认仍提供当前 Warp 网格。
+结果包含场景列表、当前场景、`viewpoints` 命名视角、实例、实例图层、Warp 父子关系、叶子绑定和各轨道的独立键列表。`hasExplicitViewpoints` 区分显式视角列表与尚未建立视角的旧场景。`availableArtworks` 列出来源画稿、图层及成员 ID、当前有效源签名；`liveWorkingCopy` 标明是否解析到了当前未保存的 Drawing。`includeKeyValues:true` 才返回完整键值；默认仍提供当前 Warp 网格。
 
 名称仅用于查找，不能作为写入身份。`instanceIds / warpIds / nameIncludes` 可过滤检查结果。同一画稿可以加载多次，两个实例的变形和外观轨道独立。
 
@@ -73,6 +73,23 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 `renameKey/deleteKey` 必须带 `trackId` 和 `keyId`。删除一个轨道的键不删除其他对象同角度的键。新场景不要求每个对象都拥有旧系统的五个锚点。
 
+## 命名视角与更新
+
+`viewpoints` 是场景可选的轻量视角列表，每项为 `{id,name,angle}`。没有 Warp、实例或任何轨道也能建立视角。它记录查看和编辑的位置，不是全场景快照；对象仍有各自独立的键。
+
+| 命令 | 规则 |
+|---|---|
+| `createViewpoint(name?,angle?,ref?)` | 在指定 angle（省略时为当前场景 angle）建立视角并移到该位置；省略名称使用 `Viewpoint N`。不采样或改动任何已有对象轨道。同角度重复建立返回 `VIEWPOINT_EXISTS` |
+| `updateViewpoint(viewpointId)` | 移到这个视角，只提交 draft.angle 与视角匹配的已有草稿；其他角度草稿、没有草稿的对象及其键保持不变。没有草稿时仍保留视角，不制造键 |
+| `renameViewpoint(viewpointId,name)` | 只改视角名称，键及轨道不变 |
+| `deleteViewpoint(viewpointId)` | 只删除视角书签，保留对象键、草稿和当前场景 angle |
+
+更新视角可以一起提交当前角度已改动的 Warp、成员显隐、区间和排序通道；没有改动的通道不会被补键，也不会为了保存一个成员而新建整层显隐通道。更新一个已经有键的通道会保留该键 ID 和名称。
+
+`createWarp/createChild/wrapParent` 在有显式视角的场景中新建 Warp 时，仅为这个新 Warp 在每个已建立视角写入 `restGrid` 中性键。例如先建立 30°、90°，再建 Warp 并只改 90°，30°仍保持 identity，45°为这两个键之间的 25% 插值。其他 Warp 和外观轨道不会增加键。之后建立新视角也不会给已有 Warp 自动补键。
+
+旧场景省略 `viewpoints` 时，UI 可以从已有键角度派生列表；普通解析和查询不持久化这个列表，旧场景创建 Warp 仍保持原有零键行为。首次 `createViewpoint` 建立显式列表；删除最后一个视角后保留 `viewpoints:[]`，因此不会重新启用旧键派生列表。独立轨道的插值和缺省 rest/source 逻辑不变。
+
 ## 层外观和源只读
 
 `setVisibility {target,visible}` 支持 `true / false / null`。层级 false 关闭整层；true 打开容器并保留源成员隐藏状态；null 继承源。明确的成员目标 `sourceObjectId` 才能覆盖这个成员的显隐；层 false 仍压住它。普通眼睛开关恢复源状态，不能使内部闭合边重新出现。要“显示全部成员”，应先查询成员 ID，再逐成员明确发批次。`inkVisible` 和 SHOW/HIDE 不被显隐命令改写。
@@ -107,7 +124,7 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 帧预览只读取保存键，最多 31 帧，全程同一场景与固定相机。输出真实 Scene→Warp→单 cubic 拟合→PaintScene SVG，使用和 UI 相同的 `paintBatches`。检查 `sceneDiagnostics / fitDiagnostics / intervalTransportErrors / conflictingNodeIds`；没有诊断不等于美术已经验收。雾化仍需要真实 Canvas/Path2D，不能悄悄关闭填充来冒充完整图。
 
-通过正常界面导出/载入完整工程 JSON：它同时保存 Drawing 库和 `recordingScenes` 引用。没有允许写入任意原始项目的 scene 命令。schema 包含 scenes、instances、warps、bindings、visibilityTracks、intervalTracks、depthTracks；每条轨道的 keys 是 `{id,name?,angle,value}`，草稿是 `{angle,value}`。
+通过正常界面导出/载入完整工程 JSON：它同时保存 Drawing 库和 `recordingScenes` 引用。没有允许写入任意原始项目的 scene 命令。schema 包含 scenes、可选 viewpoints、instances、warps、bindings、visibilityTracks、intervalTracks、depthTracks；每条轨道的 keys 是 `{id,name?,angle,value}`，草稿是 `{angle,value}`。
 
 旧 `vectorRecording` 原数据保留。显式 store 初始化/载入时，只在缺少新字段的情况下，将每个旧 rig 迁移为单实例兼容场景。迁移保留完整旧 angle lattice，包括重复值；未知来源不猜配件。带有 `recordingScenes` 的工程调用旧 `inspectRecording/recording/previewRecording/previewRecordingFrames` 会返回 `LEGACY_RECORDING_RETIRED` 并指向新接口；不会编辑或显示后台另一套 rig。缺少新字段的离线旧工程和兼容纯函数测试仍可使用旧逻辑。普通 parse/inspect/preview 不持久化迁移。
 

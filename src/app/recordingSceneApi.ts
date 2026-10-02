@@ -16,7 +16,7 @@ const object=(v:unknown,allowed:readonly string[])=>{if(!v||typeof v!=='object'|
 const id=(v:unknown):string=>{if(typeof v!=='string'||!v||v.length>4096)return fail('INVALID_REQUEST','Expected an ID.');return v;};
 const bool=(v:unknown)=>{if(typeof v!=='boolean')fail('INVALID_REQUEST','Expected a boolean.');return v as boolean;};
 const list=(v:unknown)=>{if(!Array.isArray(v)||v.length>16384)return fail('INVALID_REQUEST','Expected an ID array.');return v.map(id);};
-const allSceneIds=(v:RecordingScenes)=>v.scenes.flatMap(s=>[s.id,...s.instances.map(i=>i.id),...[...s.warps,...s.visibilityTracks,...s.intervalTracks,...(s.depthTracks??[])].flatMap(t=>[t.id,...t.keys.map(k=>k.id)])]);
+const allSceneIds=(v:RecordingScenes)=>v.scenes.flatMap(s=>[s.id,...(s.viewpoints??[]).map(v=>v.id),...s.instances.map(i=>i.id),...[...s.warps,...s.visibilityTracks,...s.intervalTracks,...(s.depthTracks??[])].flatMap(t=>[t.id,...t.keys.map(k=>k.id)])]);
 
 /** UI and AI share this pure, detached, fully validated transaction plan. Mode
  * and expectedRevision are checked by the host/facade before this call. */
@@ -45,12 +45,12 @@ export function sceneOverview(project:LandmarkProject,raw:unknown={}){
  const recording=project.recordingScenes??emptyRecordingScenes(),sceneId=q.sceneId===undefined?recording.activeSceneId:id(q.sceneId),scene=recording.scenes.find(s=>s.id===sceneId),sources=recordingSceneSources(project);
  if(q.sceneId!==undefined&&!scene)fail('NOT_FOUND','Scene does not exist.');
  const availableArtworks=Object.entries(sources).map(([artworkId,d])=>({artworkId,name:project.drawingSnapshots?.items.find(a=>a.id===artworkId)?.name??'Current working artwork',sourceSignature:drawingSignature(d),liveWorkingCopy:(project.drawingSnapshots?.activeId??'$working')===artworkId&&!!project.drawing,hasWorkingCopy:Object.hasOwn(project.drawingWorkingCopies??{},artworkId),sourceOrigin:(project.drawingSnapshots?.activeId??'$working')===artworkId&&project.drawing?'activeDrawing':Object.hasOwn(project.drawingWorkingCopies??{},artworkId)?'workingCopy':'checkpoint',layers:d.layers.map(l=>({id:l.id,name:l.name,members:l.items.map(id=>{const item=[...d.curves,...d.fills,...d.offsets].find(x=>x.id===id);return {id,name:item?.name??id,kind:d.curves.some(c=>c.id===id)?'curve':d.fills.some(f=>f.id===id)?'fill':'offset',visible:item?.visible??false,...(d.curves.some(c=>c.id===id)?{inkVisible:d.curves.find(c=>c.id===id)!.inkVisible!==false}:{})};})}))}));
- const summary=recording.scenes.map(s=>({id:s.id,name:s.name,angle:s.angle,instanceCount:s.instances.length,warpCount:s.warps.length}));
+ const summary=recording.scenes.map(s=>({id:s.id,name:s.name,angle:s.angle,viewpointCount:s.viewpoints?.length??0,hasExplicitViewpoints:s.viewpoints!==undefined,instanceCount:s.instances.length,warpCount:s.warps.length}));
  if(!scene)return {exists:false,scenes:summary,availableArtworks,sourceReadOnly:true};
  const instanceIds=q.instanceIds===undefined?undefined:list(q.instanceIds),warpIds=q.warpIds===undefined?undefined:list(q.warpIds),matches=(name:string)=>q.nameIncludes===undefined||name.toLocaleLowerCase().includes(String(q.nameIncludes).toLocaleLowerCase());
  const evaluated=evaluateScene(scene,id=>Object.hasOwn(sources,id)?sources[id]:undefined,{diagnostics:'preview'});
  const track=<T extends {keys:unknown[];draft?:unknown}>(t:T)=>q.includeKeyValues?t:{...t,keys:(t.keys as {id:string;name?:string;angle:Angle}[]).map(k=>({id:k.id,name:k.name,angle:k.angle})),...(t.draft?{draft:{angle:(t.draft as {angle:Angle}).angle}}:{})};
- return structuredClone({exists:true,sceneId:scene.id,name:scene.name,angle:scene.angle,scenes:summary,availableArtworks,sourceReadOnly:true,
+ return structuredClone({exists:true,sceneId:scene.id,name:scene.name,angle:scene.angle,viewpoints:scene.viewpoints??[],hasExplicitViewpoints:scene.viewpoints!==undefined,scenes:summary,availableArtworks,sourceReadOnly:true,
   instances:scene.instances.filter(i=>(!instanceIds||instanceIds.includes(i.id))&&matches(i.name)).map(i=>({...i,layers:evaluated.layers.filter(l=>l.instanceId===i.id),sourceSignature:resolveSignature(i.artworkId),missingSource:!Object.hasOwn(sources,i.artworkId)})),
   warps:scene.warps.filter(w=>(!warpIds||warpIds.includes(w.id))&&matches(w.name)).map(w=>({...track(w),currentGrid:evaluated.warpGrids[w.id],boundLayers:scene.bindings.filter(b=>b.warpId===w.id)})),bindings:scene.bindings,visibilityTracks:scene.visibilityTracks.map(track),intervalTracks:scene.intervalTracks.map(track),depthTracks:(scene.depthTracks??[]).map(track),diagnostics:evaluated.diagnostics,hasDraft:[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])].some(t=>!!t.draft),tolerancePixels:(scene.tolerance??1/250)*250,
  });

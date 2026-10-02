@@ -33,7 +33,8 @@ function sourceFrames(value:unknown){
 export function parseRecordingScenes(value:unknown):RecordingScenes{
  const data=object(value,['version','activeSceneId','scenes']);optionalId(data.activeSceneId);
  for(const raw of array(data.scenes,500)){
-  const scene=object(raw,['id','name','angle','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','legacy','tolerance']);name(scene.name);angle(scene.angle);
+  const scene=object(raw,['id','name','angle','viewpoints','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','legacy','tolerance']);name(scene.name);angle(scene.angle);
+  if(scene.viewpoints!==undefined)for(const raw of array(scene.viewpoints,4096)){const viewpoint=object(raw,['id','name','angle']);id(viewpoint.id);name(viewpoint.name);angle(viewpoint.angle);}
   if(scene.legacy!==undefined){const legacy=object(scene.legacy,['rigId','appearancePending']);id(legacy.rigId);if(legacy.appearancePending!==undefined&&typeof legacy.appearancePending!=='boolean')fail('legacy appearance flag');}
   if(scene.tolerance!==undefined&&(typeof scene.tolerance!=='number'||!Number.isFinite(scene.tolerance)||scene.tolerance<.000001||scene.tolerance>1))fail('tolerance');
   for(const raw of array(scene.instances,1000)){

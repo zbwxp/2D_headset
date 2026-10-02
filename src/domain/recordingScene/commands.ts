@@ -19,6 +19,10 @@ export type SceneCommand=
  | {op:'selectScene';sceneId:string}
  | {op:'renameScene';sceneId:string;name:string}
  | {op:'deleteScene';sceneId:string}
+ | {op:'createViewpoint';name?:string;angle?:Angle;ref?:string}
+ | {op:'updateViewpoint';viewpointId:string}
+ | {op:'renameViewpoint';viewpointId:string;name:string}
+ | {op:'deleteViewpoint';viewpointId:string}
  | {op:'addInstance';artworkId:string;name?:string;sourceLayerIds?:string[];ref?:string}
  | {op:'renameInstance';instanceId:string;name:string}
  | {op:'removeInstance';instanceId:string}
@@ -44,7 +48,7 @@ export type SceneCommand=
  | {op:'setTolerance';pixels:number}
  | {op:'cleanupUnused';removeUnboundWarps?:boolean};
 
-export const sceneCommandNames:SceneCommand['op'][]=['createScene','selectScene','renameScene','deleteScene','addInstance','renameInstance','removeInstance','setInstanceLayers','createWarp','wrapParent','createChild','rebindLayers','setWarp','deleteWarp','editWarpNodes','pinWarpPoint','setAngle','saveSelected','discardSelected','renameKey','deleteKey','setVisibility','changeInterval','setIntervalEnd','setIntervalEnabled','setLayerOrder','setTolerance','cleanupUnused'];
+export const sceneCommandNames:SceneCommand['op'][]=['createScene','selectScene','renameScene','deleteScene','createViewpoint','updateViewpoint','renameViewpoint','deleteViewpoint','addInstance','renameInstance','removeInstance','setInstanceLayers','createWarp','wrapParent','createChild','rebindLayers','setWarp','deleteWarp','editWarpNodes','pinWarpPoint','setAngle','saveSelected','discardSelected','renameKey','deleteKey','setVisibility','changeInterval','setIntervalEnd','setIntervalEnabled','setLayerOrder','setTolerance','cleanupUnused'];
 
 export class SceneCommandError extends Error{constructor(readonly code:string,message:string){super(message);}}
 const fail=(code:string,message:string):never=>{throw new SceneCommandError(code,message);};
@@ -57,8 +61,8 @@ const bool=(v:unknown):boolean=>{if(typeof v!=='boolean')return fail('INVALID_RE
 const point=(v:unknown):Point2=>{if(!Array.isArray(v)||v.length!==2)return fail('INVALID_REQUEST','Expected [x,y].');return [number(v[0],'x'),number(v[1],'y')];};
 const ids=(v:unknown,empty=false):string[]=>{if(!Array.isArray(v)||v.length>16384||!empty&&!v.length)return fail('INVALID_REQUEST','Expected a nonempty ID array.');const out=v.map(x=>id(x));if(new Set(out).size!==out.length)fail('INVALID_REQUEST','IDs must be unique.');return out;};
 const angle=(v:unknown):Angle=>{const a=object(v,['x','y']);return {x:number(a.x,'angle.x',-90,90),y:number(a.y,'angle.y',-90,90)};};
-const fields:Record<SceneCommand['op'],string[]>={createScene:['name','ref'],selectScene:['sceneId'],renameScene:['sceneId','name'],deleteScene:['sceneId'],addInstance:['artworkId','name','sourceLayerIds','ref'],renameInstance:['instanceId','name'],removeInstance:['instanceId'],setInstanceLayers:['instanceId','sourceLayerIds'],createWarp:['layerRefs','name','rows','columns','ref'],wrapParent:['warpIds','name','rows','columns','ref'],createChild:['parentWarpId','layerRefs','name','rows','columns','ref'],rebindLayers:['layerRefs','warpId'],setWarp:['warpId','name','parentId'],deleteWarp:['warpId'],editWarpNodes:['warpId','edits','moveHandles'],pinWarpPoint:['warpId','sourcePoint','targetPoint'],setAngle:['angle'],saveSelected:['warpIds','layerRefs','name'],discardSelected:['warpIds','layerRefs'],renameKey:['trackId','keyId','name'],deleteKey:['trackId','keyId'],setVisibility:['target','visible','ref'],changeInterval:['instanceId','sourceTrackId','rangeId','mode','start','end','fullLoop','ref'],setIntervalEnd:['instanceId','sourceTrackId','rangeId','end','style','ref'],setIntervalEnabled:['instanceId','sourceTrackId','rangeId','enabled','ref'],setLayerOrder:['target','value','ref'],setTolerance:['pixels'],cleanupUnused:['removeUnboundWarps']};
-export interface SceneCreation{kind:'scene'|'instance'|'warp'|'visibilityTrack'|'intervalTrack'|'depthTrack'|'key';id:string;ref?:string;created:boolean}
+const fields:Record<SceneCommand['op'],string[]>={createScene:['name','ref'],selectScene:['sceneId'],renameScene:['sceneId','name'],deleteScene:['sceneId'],createViewpoint:['name','angle','ref'],updateViewpoint:['viewpointId'],renameViewpoint:['viewpointId','name'],deleteViewpoint:['viewpointId'],addInstance:['artworkId','name','sourceLayerIds','ref'],renameInstance:['instanceId','name'],removeInstance:['instanceId'],setInstanceLayers:['instanceId','sourceLayerIds'],createWarp:['layerRefs','name','rows','columns','ref'],wrapParent:['warpIds','name','rows','columns','ref'],createChild:['parentWarpId','layerRefs','name','rows','columns','ref'],rebindLayers:['layerRefs','warpId'],setWarp:['warpId','name','parentId'],deleteWarp:['warpId'],editWarpNodes:['warpId','edits','moveHandles'],pinWarpPoint:['warpId','sourcePoint','targetPoint'],setAngle:['angle'],saveSelected:['warpIds','layerRefs','name'],discardSelected:['warpIds','layerRefs'],renameKey:['trackId','keyId','name'],deleteKey:['trackId','keyId'],setVisibility:['target','visible','ref'],changeInterval:['instanceId','sourceTrackId','rangeId','mode','start','end','fullLoop','ref'],setIntervalEnd:['instanceId','sourceTrackId','rangeId','end','style','ref'],setIntervalEnabled:['instanceId','sourceTrackId','rangeId','enabled','ref'],setLayerOrder:['target','value','ref'],setTolerance:['pixels'],cleanupUnused:['removeUnboundWarps']};
+export interface SceneCreation{kind:'scene'|'viewpoint'|'instance'|'warp'|'visibilityTrack'|'intervalTrack'|'depthTrack'|'key';id:string;ref?:string;created:boolean}
 export interface SceneCommandEffects{created:SceneCreation[];removedIds:string[];pinResults:unknown[]}
 
 /** Mutate only a caller-owned detached draft. prepareSceneBatch is the pure
@@ -67,7 +71,7 @@ export function applySceneCommand(draft:RecordingScenes,raw:unknown,resolve:Scen
  const c=object(raw,['op',...new Set(Object.values(fields).flat())]),op=c.op as SceneCommand['op'];
  if(!Object.hasOwn(fields,op))fail('UNKNOWN_COMMAND',`Unknown scene command: ${String(op)}`);object(c,['op',...fields[op]]);
  const effects:SceneCommandEffects={created:[],removedIds:[],pinResults:[]};
- const occupied=new Set(draft.scenes.flatMap(s=>[s.id,...s.instances.map(i=>i.id),...[...s.warps,...s.visibilityTracks,...s.intervalTracks,...(s.depthTracks??[])].flatMap(t=>[t.id,...t.keys.map(k=>k.id)])]));
+ const occupied=new Set(draft.scenes.flatMap(s=>[s.id,...(s.viewpoints??[]).map(v=>v.id),...s.instances.map(i=>i.id),...[...s.warps,...s.visibilityTracks,...s.intervalTracks,...(s.depthTracks??[])].flatMap(t=>[t.id,...t.keys.map(k=>k.id)])]));
  const fresh=()=>{for(let i=0;i<32;i++){const value=uid();if(!occupied.has(value)){occupied.add(value);return value;}}return fail('ID_COLLISION','Unable to allocate a fresh scene ID.');};
  const created=(kind:SceneCreation['kind'],entityId:string,isNew=true)=>effects.created.push({kind,id:entityId,created:isNew,...(c.ref===undefined?{}:{ref:id(c.ref,'ref')})});
  const findScene=(value:unknown)=>draft.scenes.find(s=>s.id===id(value,'sceneId'))??fail('NOT_FOUND','Scene does not exist.');
@@ -76,6 +80,7 @@ export function applySceneCommand(draft:RecordingScenes,raw:unknown,resolve:Scen
  if(op==='renameScene'){findScene(c.sceneId).name=name(c.name);return effects;}
  if(op==='deleteScene'){const s=findScene(c.sceneId);draft.scenes=draft.scenes.filter(x=>x!==s);if(draft.activeSceneId===s.id)draft.activeSceneId=draft.scenes[0]?.id;effects.removedIds.push(s.id);return effects;}
  const scene=draft.scenes.find(s=>s.id===draft.activeSceneId)??fail('NO_SCENE','Create or select a Recording scene first.');
+ const viewpoint=(value:unknown)=>{const viewpointId=id(value,'viewpointId');return (scene.viewpoints??[]).find(v=>v.id===viewpointId)??fail('NOT_FOUND','Viewpoint does not exist.');};
  const instance=(value:unknown)=>scene.instances.find(i=>i.id===id(value,'instanceId'))??fail('NOT_FOUND','Instance does not exist.');
  const source=(value:unknown)=>{const i=instance(value),d=resolve(i.artworkId);if(!d)return fail('MISSING_SOURCE',`Missing source artwork: ${i.artworkId}`);return d;};
  const completeLayers=(d:DrawingDocument,selected:string[])=>{const plan=planArtworkLayerImport(d,selected);if(plan.additionalLayerIds.length)fail('LAYER_DEPENDENCIES',`Also select dependent source layers: ${plan.additionalLayerIds.map(id=>d.layers.find(l=>l.id===id)!.name).join(', ')}.`);return selected;};
@@ -84,7 +89,13 @@ export function applySceneCommand(draft:RecordingScenes,raw:unknown,resolve:Scen
  const refs=(value:unknown):SceneLayerRef[]=>{if(!Array.isArray(value)||!value.length||value.length>16384)return fail('INVALID_REQUEST','Provide nonempty layerRefs.');const out=value.map(r=>ref(r));if(new Set(out.map(sceneLayerKey)).size!==out.length)fail('INVALID_REQUEST','Layer references must be unique.');return out;};
  const bounds=(selected:SceneLayerRef[])=>{const points:Point2[]=[];for(const r of selected){const d=source(r.instanceId),layer=d.layers.find(l=>l.id===r.sourceLayerId)!;for(const curve of d.curves.filter(c=>layer.items.includes(c.id))){for(const nodeId of curve.nodes){const node=d.nodes.find(n=>n.id===nodeId);if(node)points.push(node.position);}points.push(...curve.handles);}}if(!points.length)return {min:[-1,-1] as Point2,max:[1,1] as Point2};const min:Point2=[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))],max:Point2=[Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))],pad=Math.max(max[0]-min[0],max[1]-min[1],.1)*.08;return {min:[min[0]-pad,min[1]-pad] as Point2,max:[max[0]+pad,max[1]+pad] as Point2};};
  const dimensions=()=>{const rows=c.rows===undefined?3:number(c.rows,'rows',1,16),columns=c.columns===undefined?3:number(c.columns,'columns',1,16);if(!Number.isInteger(rows)||!Number.isInteger(columns))fail('INVALID_REQUEST','Grid subdivisions must be integers.');return {rows,columns};};
- const newWarp=(b:WarpGrid['bounds'],parentId?:string)=>{const {rows,columns}=dimensions(),w:SceneWarp={id:fresh(),name:c.name===undefined?`Warp ${scene.warps.length+1}`:name(c.name),restGrid:createWarpGrid(b,rows,columns),keys:[],...(parentId?{parentId}:{})};scene.warps.push(w);created('warp',w.id);return w;};
+ const newWarp=(b:WarpGrid['bounds'],parentId?:string)=>{
+  const {rows,columns}=dimensions(),w:SceneWarp={id:fresh(),name:c.name===undefined?`Warp ${scene.warps.length+1}`:name(c.name),restGrid:createWarpGrid(b,rows,columns),keys:[],...(parentId?{parentId}:{})};scene.warps.push(w);created('warp',w.id);
+  // Existing views stay neutral for this new control, even at nonzero angles.
+  // Do not sample or add keys to any pre-existing object.
+  for(const v of scene.viewpoints??[]){const key={id:fresh(),angle:clone(v.angle),value:clone(w.restGrid)};w.keys.push(key);effects.created.push({kind:'key',id:key.id,created:true});}
+  return w;
+ };
  const writable=(t:{draft?:{angle:Angle}})=>{if(t.draft&&!sameAngle(t.draft.angle,scene.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','This object has a draft at another angle. Return to that angle or explicitly discard its draft.');};
  const setDraft=<T,>(t:SceneTrack<T>,value:T)=>{writable(t);t.draft={angle:clone(scene.angle),value:clone(value)};};
  const tracks=()=>[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])];
@@ -92,6 +103,18 @@ export function applySceneCommand(draft:RecordingScenes,raw:unknown,resolve:Scen
  const selectedTracks=()=>{const warps=c.warpIds===undefined?[]:ids(c.warpIds,true).map(id=>warp(id)),layers=c.layerRefs===undefined?[]:refs(c.layerRefs);if(!warps.length&&!layers.length)fail('INVALID_REQUEST','Select explicit warpIds and/or layerRefs.');const selected=new Set([...warps.map(w=>w.id),...layers.flatMap(r=>layerTrackIds(scene,r,resolve))]);return {items:tracks().filter(t=>selected.has(t.id)),layers};};
  const poseValue=(t:ReturnType<typeof tracks>[number]):unknown=>{if(scene.warps.includes(t as SceneWarp))return evaluateWarpTrack(t as SceneWarp,scene.angle);if(scene.visibilityTracks.includes(t as typeof scene.visibilityTracks[number]))return evaluateVisibilityTrack(t as typeof scene.visibilityTracks[number],scene.angle);if(scene.intervalTracks.includes(t as SceneIntervalTrack)){const it=t as SceneIntervalTrack,d=source(it.instanceId);if(it.materialIssue&&it.materialIssue.sourceSignature!==drawingSignature(d))fail('SOURCE_MATERIAL','This interval channel awaits a valid source-material mapping.');return evaluateIntervalTrack(it,d,scene.angle);}return evaluateDepthTrack(t as NonNullable<typeof scene.depthTracks>[number],scene.angle);};
  switch(op){
+  case 'createViewpoint':{const at=c.angle===undefined?clone(scene.angle):angle(c.angle),label=c.name===undefined?`Viewpoint ${(scene.viewpoints?.length??0)+1}`:name(c.name);if(scene.viewpoints?.some(v=>sameAngle(v.angle,at)))fail('VIEWPOINT_EXISTS','A viewpoint already exists at this angle.');const v={id:fresh(),name:label,angle:at};(scene.viewpoints??=[]).push(v);scene.angle=clone(at);created('viewpoint',v.id);break;}
+  case 'updateViewpoint':{
+   const v=viewpoint(c.viewpointId);scene.angle=clone(v.angle);
+   for(const raw of tracks()){
+    const t=raw as SceneTrack<unknown>&{id:string};if(!t.draft||!sameAngle(t.draft.angle,v.angle))continue;
+    const value=clone(poseValue(raw)),old=t.keys.find(k=>sameAngle(k.angle,v.angle)),key={id:old?.id??fresh(),angle:clone(v.angle),value,...(old?.name?{name:old.name}:{})};
+    t.keys=old?t.keys.map(k=>k===old?key:k):[...t.keys,key];delete t.draft;effects.created.push({kind:'key',id:key.id,created:!old});
+   }
+   break;
+  }
+  case 'renameViewpoint':viewpoint(c.viewpointId).name=name(c.name);break;
+  case 'deleteViewpoint':{const v=viewpoint(c.viewpointId);scene.viewpoints=scene.viewpoints!.filter(item=>item!==v);effects.removedIds.push(v.id);break;}
   case 'addInstance':{const artworkId=id(c.artworkId,'artworkId'),d=resolve(artworkId);if(!d)fail('MISSING_SOURCE','The source artwork does not exist.');const layerIds=c.sourceLayerIds===undefined?undefined:completeLayers(d!,ids(c.sourceLayerIds,true));const i={id:fresh(),artworkId,name:c.name===undefined?artworkId:name(c.name),...(layerIds?{layerIds}:{}),sourceSignature:drawingSignature(d!),sourceStructureSignature:sourceStructureSignature(d!),sourceIntervalFrames:sourceIntervalFrames(d!)};scene.instances.push(i);created('instance',i.id);break;}
   case 'renameInstance':instance(c.instanceId).name=name(c.name);break;
   case 'removeInstance':{const i=instance(c.instanceId);scene.instances=scene.instances.filter(x=>x!==i);scene.bindings=scene.bindings.filter(b=>b.instanceId!==i.id);scene.visibilityTracks=scene.visibilityTracks.filter(t=>t.target.instanceId!==i.id);scene.intervalTracks=scene.intervalTracks.filter(t=>t.instanceId!==i.id);scene.depthTracks=scene.depthTracks?.filter(t=>t.target.instanceId!==i.id);effects.removedIds.push(i.id);break;}
