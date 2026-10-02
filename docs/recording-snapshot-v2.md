@@ -31,4 +31,6 @@ Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setA
 
 Relations and membership are discrete view state: preview chooses the nearest saved view by angle distance, with deterministic Y/X/ID tie-breaking. Geometry pose channels interpolate independently. An explicit snapshot ID selects that snapshot's structure. Parent snapshots evaluate at their own saved state, not at the child's cursor angle.
 
+Endpoint inspection preferences (enabled state, selected snapshots, step and opacity) are saved locally per project and recording. Switching Drawing/Recording or reloading preserves them; deleted endpoints fall back to valid defaults. These preferences are excluded from project data and Undo history.
+
 Workspace reference images remain local viewport aids. They are excluded from project source geometry and ordinary SVG export. Legacy project restoration uses the archived JSON and remains a separate deliberate open operation.
