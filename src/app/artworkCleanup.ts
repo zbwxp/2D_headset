@@ -7,6 +7,7 @@ import {recordingSceneSources} from '../domain/recordingScene/sources';
 import {drawingSignature,sourceIntervalFrames} from '../domain/vectorRecording/model';
 import {sourceStructureSignature} from '../domain/vectorRecording/sourceCompatibility';
 import type {ArtworkRig,VectorPose} from '../domain/vectorRecording/model';
+import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 import frontTemplate from '../assets/hairless-symmetric-two-face-mirror.json';
 import sideTemplate from '../assets/right90-reference.json';
 import recordingSideTemplate from '../assets/recording-side-part.json';
@@ -145,7 +146,20 @@ export function planArtworkCleanup(project:LandmarkProject):ArtworkCleanupPlan{
   if(Object.hasOwn(copies,keptSide.id)||artworkCleanupDrawingIdentity(mergedSide)!==artworkCleanupDrawingIdentity(mergedSaved))copies[keptSide.id]=mergedSide;
  }
  const nextSources={...Object.fromEntries(keptSources),[keptSide.id]:mergedSide};
- const rigs=project.vectorRecording?.rigs??[],archivedRigIds=rigs.filter(rig=>!mapping.has(rig.artworkId)||redMappings.has(rig.artworkId)).map(rig=>rig.id),archivedRigSet=new Set(archivedRigIds);
+ const rigs=project.vectorRecording?.rigs??[],archivedRigSet=new Set(rigs.filter(rig=>!mapping.has(rig.artworkId)||redMappings.has(rig.artworkId)).map(rig=>rig.id));
+ // Several old reference copies may each own a rig. Source deduplication cannot
+ // put those rigs on one artwork: legacy storage permits exactly one per source.
+ // Keep the retained artwork's own rig preferentially; archive collisions with
+ // their compatibility scenes in the caller's verified full-project backup.
+ const rigByArtwork=new Map<string,ArtworkRig>();
+ for(const rig of rigs){
+  if(archivedRigSet.has(rig.id))continue;
+  const artworkId=mapping.get(rig.artworkId)!,prior=rigByArtwork.get(artworkId);
+  if(!prior){rigByArtwork.set(artworkId,rig);continue;}
+  if(rig.artworkId===artworkId&&prior.artworkId!==artworkId){archivedRigSet.add(prior.id);rigByArtwork.set(artworkId,rig);}
+  else archivedRigSet.add(rig.id);
+ }
+ const archivedRigIds=rigs.filter(rig=>archivedRigSet.has(rig.id)).map(rig=>rig.id);
  const retainedRigs=rigs.filter(rig=>!archivedRigSet.has(rig.id)).map(rig=>{const artworkId=mapping.get(rig.artworkId)!;return artworkId===rig.artworkId&&artworkId!==keptSide.id?rig:{...rig,artworkId,...evidence(nextSources[artworkId])};});
  const archivedScenes:ArtworkCleanupPlan['archivedScenes']=[];let visibilityChanges=0;
  const reservedSceneIds=new Set(sceneList.flatMap(scene=>[scene.id,...scene.instances.map(i=>i.id),...[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])].flatMap(track=>[track.id,...track.keys.map(key=>key.id)])]));
@@ -195,6 +209,7 @@ export function planArtworkCleanup(project:LandmarkProject):ArtworkCleanupPlan{
  const drawing=activeId===keptSide.id?mergedSide:activeId===oldActive&&project.drawing?project.drawing:copies[activeId]??nextSources[activeId];
  const next:LandmarkProject={...project,drawing,drawingSnapshots:{...library,activeId,items:keptItems,images:library.images.filter(image=>imageIds.has(image.id))},...(project.drawingWorkingCopies!==undefined||Object.keys(copies).length?{drawingWorkingCopies:copies}:{}),...(project.recordingScenes?{recordingScenes:{...project.recordingScenes,activeSceneId,scenes}}:{}),...(project.vectorRecording?{vectorRecording:{...project.vectorRecording,rigs:retainedRigs}}:{})};
  if(next.recordingScenes)parseRecordingScenes(next.recordingScenes);
+ if(next.vectorRecording)parseVectorRecording(next.vectorRecording);
  parseDrawing(next.drawing!);for(const item of keptItems)parseDrawing(snapshotDrawing(next.drawingSnapshots!,item.id));for(const copy of Object.values(copies))parseDrawing(copy);
  const changed=canonical(next)!==canonical(project);
  return {project:changed?next:project,kept:keptItems.map(({id,name},i)=>({id,name,reasons:[i<3?'保留原画稿':i===3?'保留对称两半正面':'保留完整90°侧稿']})),removed:library.items.filter(item=>!keptIds.has(item.id)).map(({id,name})=>({id,name,reason:'归档至整理前完整备份'})),archivedScenes,archivedRigIds,mappings,visibilityChanges,changed};
