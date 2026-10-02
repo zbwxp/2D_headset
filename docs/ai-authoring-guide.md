@@ -1,4 +1,4 @@
-> Native snapshot v2 candidate: see [the snapshot model, workflow and API](recording-snapshot-v2.md). Current v2 projects use `inspectSnapshots` / `snapshot` / `previewSnapshot`; older scene instructions below remain migration history. Live onion previews now include the current unsaved pose through temporary evaluation keys.
+> Native snapshot v2 candidate: see [the snapshot model, workflow and API](recording-snapshot-v2.md). Current v2 projects use `inspectSnapshots` / `snapshot` / `previewSnapshot`; older scene instructions below remain migration history. The “Endpoint interpolation” inspection blends two selected final Bézier snapshots and reuses the current endpoint draft; it does not sample intermediate runtime keys.
 
 # Contour AI 矢量创作操作手册
 
@@ -131,7 +131,7 @@ v27 的录制画布以当前 Warp 为编辑对象。V 选择整个 Warp，拖动
 
 左侧 XY 坐标窗口覆盖 X/Y 各 −90°…90°；+X 向画面右转，+Y 仰头。窗口显示当前光标和已建立视角，点击或拖动只预览角度，不建立关键形。精确数值、建立／更新视角位于同一区域；尚未建立的位置仍不能编辑姿态。
 
-洋葱皮沿 X 或 Y 单轴以5°／10°采样，另一轴固定当前值，可设范围和透明度。淡色轮廓来自实际已保存姿态及显示区间，当前角度单独突出，不重复参考图、网格或隐藏闭合线。未更新的草稿只影响自身角度，应先更新视角再检查连续形变。采样只读，使用缓存和分批准备，不写当前角度、关键形或历史；普通导出不包含此叠图。
+原生视角快照使用「两端快照插值」：选择起点／终点，默认 0° 与 −90°（Y=0），按 5°／10°线性混合两端最终 Bézier 控制点。当前端点草稿实时参与，另一端缓存；原有 30°／60°等中间关键帧不参与此检查，实际录制插值仍保持原规则。匹配的显隐区间按材料参数插值，布尔显隐取较近端点；缺失几何或区间结构不匹配明确提示。检查期间暂时隐藏填充，关闭后恢复，−30°／−60°用不同颜色突出。叠图不写源稿、关键形、当前角度或历史，也不进入普通导出。
 
 Recording 的「背景参考图」与 Drawing 共用照片载入、显隐、锁定、透明度、缩放、旋转和位置控件。Recording 通过独立视口适配器写入本机 IndexedDB，刷新同一工程／场景后恢复；不会改源稿或录制关键形，普通工程 JSON 和 SVG 不携带这项工作区参考。Drawing 源稿自带参考图的原有保存／导出行为保持。背景图平移期间不编辑 Warp；图片、快照参考和辅助线集中在 Recording 的同一个「参考 / 辅助线」弹层，独立滚动。XY、建立／更新和洋葱皮连续排列，打开参考不会顶走角度控件。
 
@@ -334,4 +334,4 @@ npx vitest run src/tests/ai-authoring-guide.test.ts src/tests/vector-source-conn
 
 已建立视角后，在右侧选中具体曲线，A 显示真实 Bézier 端点与控制柄；选中 Warp 时 A 仍编辑网格，V 快照整体变换保持原入口。拖动只生成实例形状草稿，通过“更新此视角”保存。视角之间可以预览，未建立视角的位置不会写入形状键。
 
-源稿保存 element 的原始状态，形状轨保存稳定节点、curve/end 控制柄的相对形变量。求值顺序为最新源稿 → Warp 与端点解算 → 曲线形状偏移 → 快照整体 placement。共享节点及真实端点联动一起移动，SMOOTH 维持联动方向；ARC 沿现有裁切与补弧路径重新派生。屏幕操作只逆快照的可逆 placement，不反求非线性 Warp。原稿更新不会重置形变量，洋葱皮使用已更新的关键形。此阶段提供端点/柄编辑；加线、删线、分段、合并等拓扑操作仍在 Drawing。
+源稿保存 element 的原始状态，形状轨保存稳定节点、curve/end 控制柄的相对形变量。求值顺序为最新源稿 → Warp 与端点解算 → 曲线形状偏移 → 快照整体 placement。共享节点及真实端点联动一起移动，SMOOTH 维持联动方向；ARC 沿现有裁切与补弧路径重新派生。屏幕操作只逆快照的可逆 placement，不反求非线性 Warp。原稿更新不会重置形变量，两端快照插值检查会实时使用当前端点草稿。此阶段提供端点/柄编辑；加线、删线、分段、合并等拓扑操作仍在 Drawing。

@@ -51,3 +51,9 @@ export function recordingReferenceStorage(sceneKey:string):RecordingReferenceSto
   },
  };
 }
+
+/** Prefer current workspace edits (including explicit image removal). Legacy
+ * storage is read only when no current record has ever been saved. */
+export function withRecordingReferenceFallback(primary:RecordingReferenceStorage,fallback:RecordingReferenceStorage):RecordingReferenceStorage{
+ return {save:reference=>primary.save(reference),load:async()=>{const current=await primary.load();return current===null?fallback.load():current;}};
+}

@@ -3,7 +3,7 @@ import {applySnapshotCommand,allSnapshotIds,SnapshotCommandError,snapshotCommand
 import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
 import {evaluateRecordingSnapshot as evaluateWorkspace,resolveSnapshot,type SnapshotEvaluationOptions} from '../domain/recordingSnapshot/evaluation';
-import {emptyRecordingSnapshotWorkspace,type Angle} from '../domain/recordingSnapshot/model';
+import {emptyRecordingSnapshotWorkspace,type RecordingSnapshotWorkspace,type RecordingSnapshot,type Angle} from '../domain/recordingSnapshot/model';
 import {recordingPoseTrackIndex} from '../domain/recordingSnapshot/tracks';
 import {sameAngle} from '../domain/vectorRecording/interpolation';
 
@@ -37,6 +37,33 @@ export function prepareSnapshotBatch(project:LandmarkProject,raw:unknown){
  for(const check of placementChecks.values()){if(!draft.snapshots.some(s=>s.id===check.snapshotId))continue;const result=resolveSnapshot(draft,check.snapshotId,{angle:check.angle,diagnostics:'preview'}),distances=linkDistances(result);for(const link of result.drawing.endpointLinks??[]){if((check.distances.get(link.id)??Infinity)>1e-8||(distances.get(link.id)??0)<=1e-8)continue;const owners=[link.a,link.b].map(end=>result.drawing.layers.find(layer=>layer.items.includes(end.curveId)));if(owners[0]?.id===owners[1]?.id)continue;throw new SnapshotApiError('LINKED_LAYER_PLACEMENT',`Placement separates linked layers ${owners.map(layer=>layer?.name??'missing layer').join(' and ')}. Include both linked layers in the same placement transform.`,check.commandIndex);}}
  let recordingSnapshots;try{recordingSnapshots=parseRecordingSnapshots(draft);const needsResolution=(request.commands as SnapshotCommand[]).some(c=>['pasteLayers','moveLayers','cloneLayers','createSnapshot','removeLayers','rebindLayers','setWarp','deleteWarp'].includes(c.op));if(needsResolution&&snapshotId&&!recording?.legacy)resolveSnapshot(draft,snapshotId,{useDraft:true,angle:recording?.angle,diagnostics:'preview'});}catch(error){throw new SnapshotApiError('CONSTRAINT_VIOLATION',(error as Error).message,(request.commands as unknown[]).length? (request.commands as unknown[]).length-1:undefined);}
  return {before,recordingSnapshots,recordingId,snapshotId,angle:recording?.angle,changed:JSON.stringify(before)!==JSON.stringify(recordingSnapshots),dryRun:request.dryRun===true,created,removedIds:[...new Set(removedIds)],idMaps};
+}
+
+export interface SnapshotPreviewRequest {recordingId?:string;commands:readonly SnapshotCommand[]}
+const localPreviewOps=new Set<SnapshotCommand['op']>(['setAngle','selectSnapshot','setLayerPlacement','moveShapeNode','moveShapeHandle','transformShapeElements','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','discardSelected','setTolerance']);
+/** Trusted native UI preview. Canonical geometry, saved keys, source snapshots
+ * and archive remain immutable shared inputs. External JSON requests always use
+ * prepareSnapshotBatch, including external dry runs. Structural UI commands
+ * take that same fully validated path rather than widening this fast boundary. */
+export function prepareSnapshotPreview(project:LandmarkProject,request:SnapshotPreviewRequest):SnapshotBatchPlan {
+ const q=object(request,['recordingId','commands']);if(!Array.isArray(q.commands)||q.commands.length>1000)fail('INVALID_REQUEST','commands must contain at most 1000 items.');
+ if(request.commands.some(command=>!localPreviewOps.has(command.op)))return prepareSnapshotBatch(project,{...request,dryRun:true});
+ const before=ensureRecordingSnapshots(project).recordingSnapshots,recordingId=request.recordingId===undefined?before.activeRecordingId:id(request.recordingId),original=before.recordings.find(r=>r.id===recordingId)??fail('NO_RECORDING','Create or select a Recording first.'),changesTracks=request.commands.some(command=>!['setAngle','selectSnapshot','setTolerance'].includes(command.op));
+ const recording={...original,tracks:changesTracks?[...original.tracks]:original.tracks};
+ const draft:RecordingSnapshotWorkspace={...before,recordings:before.recordings.map(r=>r===original?recording:r),snapshots:before.snapshots,activeRecordingId:recording.id},written=new Map<string,RecordingSnapshot>();
+ const snapshotForWrite=(snapshotId:string)=>{const known=written.get(snapshotId);if(known)return known;const index=draft.snapshots.findIndex(s=>s.id===snapshotId),source=draft.snapshots[index];if(!source)fail('NOT_FOUND','Snapshot does not exist.');const copy={...source,deformation:{...source.deformation,relationPositions:{...source.deformation.relationPositions}}};if(draft.snapshots===before.snapshots)draft.snapshots=[...before.snapshots];draft.snapshots[index]=copy;written.set(snapshotId,copy);return copy;};
+ const writableTracks=new Set<string>();const trackForWrite=(trackId:string)=>{const index=recording.tracks.findIndex(t=>t.id===trackId),track=recording.tracks[index];if(!track)fail('NOT_FOUND','Track does not exist.');if(writableTracks.has(trackId)||!original.tracks.includes(track))return track;const copy={...track};recording.tracks[index]=copy;writableTracks.add(trackId);return copy;};
+ const created:Array<SnapshotCreation&{commandIndex:number}>=[],removedIds:string[]=[],checks=new Map<string,{snapshotId:string;angle:Angle;distances:Map<string,number>;commandIndex:number}>();
+ const distances=(evaluation:ReturnType<typeof resolveSnapshot>)=>new Map((evaluation.drawing.endpointLinks??[]).map(link=>{const a=evaluation.drawing.curves.find(c=>c.id===link.a.curveId),b=evaluation.drawing.curves.find(c=>c.id===link.b.curveId),p=a&&evaluation.drawing.nodes.find(n=>n.id===a.nodes[link.a.end])?.position,q=b&&evaluation.drawing.nodes.find(n=>n.id===b.nodes[link.b.end])?.position;return [link.id,p&&q?Math.hypot(p[0]-q[0],p[1]-q[1]):Infinity] as const;}));
+ for(const [index,command] of request.commands.entries())try{
+  if(command.op==='setLayerPlacement'&&recording.activeSnapshotId){const key=JSON.stringify([recording.activeSnapshotId,recording.angle]);if(!checks.has(key))checks.set(key,{snapshotId:recording.activeSnapshotId,angle:{...recording.angle},distances:distances(resolveSnapshot(draft,recording.activeSnapshotId,{angle:recording.angle,diagnostics:'preview'})),commandIndex:index});}
+  const effects=applySnapshotCommand(draft,command,{snapshotForWrite,trackForWrite});created.push(...effects.created.map(item=>({...item,commandIndex:index})));removedIds.push(...effects.removedIds);
+ }catch(error){const e=error as Error;throw new SnapshotApiError(e instanceof SnapshotApiError||e instanceof SnapshotCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index);}
+ for(const check of checks.values()){const evaluation=resolveSnapshot(draft,check.snapshotId,{angle:check.angle,diagnostics:'preview'}),after=distances(evaluation);for(const link of evaluation.drawing.endpointLinks??[]){if((check.distances.get(link.id)??Infinity)>1e-8||(after.get(link.id)??0)<=1e-8)continue;const owners=[link.a,link.b].map(end=>evaluation.drawing.layers.find(layer=>layer.items.includes(end.curveId)));if(owners[0]?.id===owners[1]?.id)continue;throw new SnapshotApiError('LINKED_LAYER_PLACEMENT',`Placement separates linked layers ${owners.map(layer=>layer?.name??'missing layer').join(' and ')}. Include both linked layers in the same placement transform.`,check.commandIndex);}}
+ if(request.recordingId!==undefined)draft.activeRecordingId=before.activeRecordingId;
+ if(recording.tracks.length===original.tracks.length&&recording.tracks.every((track,index)=>track===original.tracks[index]))recording.tracks=original.tracks;
+ const changed=written.size>0||recording.angle.x!==original.angle.x||recording.angle.y!==original.angle.y||recording.activeSnapshotId!==original.activeSnapshotId||recording.tolerance!==original.tolerance||recording.tracks.length!==original.tracks.length||recording.tracks.some((track,index)=>track.draft!==original.tracks[index]?.draft&&JSON.stringify(track.draft)!==JSON.stringify(original.tracks[index]?.draft));
+ return {before,recordingSnapshots:changed?draft:before,recordingId:recording.id,snapshotId:recording.activeSnapshotId,angle:recording.angle,changed,dryRun:true,created,removedIds:[...new Set(removedIds)],idMaps:[]};
 }
 
 export function snapshotOverview(project:LandmarkProject,raw:unknown={}){

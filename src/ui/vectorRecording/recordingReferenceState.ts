@@ -1,7 +1,7 @@
 import {emptyDrawing,type DrawingDocument} from '../../domain/drawing/model';
 import type {ReferenceImage} from '../../domain/project/types';
 import {RECORDING_REFERENCE_IMAGE,validateRecordingReference} from '../../domain/recording/reference';
-import {recordingReferenceStorage,type RecordingReferenceStorage} from './recordingReferenceStorage';
+import {recordingReferenceStorage,withRecordingReferenceFallback,type RecordingReferenceStorage} from './recordingReferenceStorage';
 
 interface Snapshot {document:DrawingDocument;preview:DrawingDocument|null;moving:boolean;busy:boolean;error:string;hydrating:boolean;saving:boolean;persistenceError:string;persistenceFailure:'restore'|'save'|null}
 type ReadImage=(file:File,options:typeof RECORDING_REFERENCE_IMAGE)=>Promise<ReferenceImage>;
@@ -86,8 +86,8 @@ export type RecordingReferenceState=ReturnType<typeof createRecordingReferenceSt
 // View state survives scene switches; committed images also live in a dedicated
 // local IndexedDB store, never in project JSON, snapshots, history or keys.
 const sessions=new Map<string,RecordingReferenceState>();
-export function recordingReferenceSession(sceneKey:string,seed?:ReferenceImage){
+export function recordingReferenceSession(sceneKey:string,seed?:ReferenceImage,fallbackSceneKey?:string){
  let state=sessions.get(sceneKey);
- if(!state){state=createRecordingReferenceState(seed,recordingReferenceStorage(sceneKey));sessions.set(sceneKey,state);}
+ if(!state){state=createRecordingReferenceState(seed,fallbackSceneKey&&fallbackSceneKey!==sceneKey?withRecordingReferenceFallback(recordingReferenceStorage(sceneKey),recordingReferenceStorage(fallbackSceneKey)):recordingReferenceStorage(sceneKey));sessions.set(sceneKey,state);}
  return state;
 }

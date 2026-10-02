@@ -9,7 +9,7 @@ import {validateRecordingSnapshotWorkspace} from '../domain/recordingSnapshot/va
 import {emptyRecordingScene,instanceObjectId,type SceneShapeTrack} from '../domain/recordingScene/model';
 import {evaluateScene} from '../domain/recordingScene/evaluation';
 import SceneOnionSkin from '../ui/vectorRecording/SceneOnionSkin';
-import {DEFAULT_SCENE_ONION_SETTINGS,createSceneOnionSweepQueue,evaluateSceneOnionFrame,markSceneOnionHighlights,sampleSceneOnionAngles,sceneOnionInspectionSignature,sceneOnionRangeFromViews,sceneOnionSweepAnchor,snapshotOnionInspectionSignature,type SceneOnionFrame} from '../ui/vectorRecording/angleInspection';
+import {DEFAULT_SCENE_ONION_SETTINGS,createSceneOnionSweepQueue,createSnapshotOnionInspectionCache,evaluateSceneOnionFrame,markSceneOnionHighlights,prioritizeSceneOnionAngles,sampleSceneOnionAngles,sceneOnionInspectionSignature,sceneOnionRangeFromViews,sceneOnionSweepAnchor,snapshotOnionInspectionSignature,type SceneOnionFrame} from '../ui/vectorRecording/angleInspection';
 
 const at=(x:number,y=0)=>({x,y});
 function fixture(side=90){
@@ -88,8 +88,8 @@ test('5/10 degree single-axis sweeps select nearest guide samples and infer the 
 test('colored guides use the actual ink only, keep active pose separate, and never add picking or fill paths',()=>{
  const {workspace}=fixture(),{frames}=sweep(workspace),screen=([x,y]:Point2):Point2=>[x*100,y*100];
  const svg=renderToStaticMarkup(createElement('svg',null,createElement(SceneOnionSkin,{frames,angle:at(90),opacity:.16,screen,unit:100})));
- expect(svg).toContain('data-highlight-angle="30"');expect(svg).toContain('data-highlight-angle="60"');expect(svg).toContain('flood-color="#20b9b3"');expect(svg).toContain('flood-color="#ef9670"');
- expect(svg).toContain('operator="in"');expect(svg).toContain('data-testid="drawing-ink"');expect(svg).not.toContain('data-angle-x="90"');expect(svg).not.toMatch(/data-testid="drawing-(?:fill|hit|arc-hit|offset-hit|fill-hit)"/);
+ expect(svg).toMatch(/data-highlight-angle="30"[^>]*opacity="0.65"/);expect(svg).toMatch(/data-highlight-angle="60"[^>]*opacity="0.65"/);expect(svg).toContain('data-highlight-angle="30"');expect(svg).toContain('data-highlight-angle="60"');expect(svg).toContain('vr-onion-guide-30');expect(svg).toContain('vr-onion-guide-60');
+ expect(svg).not.toContain('<feFlood');expect(svg).toContain('data-testid="drawing-ink"');expect(svg).not.toContain('data-angle-x="90"');expect(svg).not.toMatch(/data-testid="drawing-(?:fill|hit|arc-hit|offset-hit|fill-hit)"/);
 });
 
 test('legacy canvas live inspection interpolates current edits while leaving saved-only evaluation available',()=>{
@@ -124,5 +124,39 @@ test('continuous drag input cannot starve sweeps, newest preview runs next, and 
   expect(published.at(-1)).toEqual({request:5,frames:[50,51,52,53]});
   queue.update(6);queue.cancel();vi.runAllTimers();expect(published).toHaveLength(2);
   queue.update(7);vi.runAllTimers();expect(published.at(-1)!.request).toBe(7);
+ }finally{vi.useRealTimers();}
+});
+
+
+test('interactive inspection cache reuses static sources and unchanged channels while invalidating live edits',()=>{
+ const {workspace,recording}=fixture(),cache=createSnapshotOnionInspectionCache(),first=cache.get(workspace,recording.id,recording.angle);
+ expect(cache.get({...workspace,recordings:[{...recording,activeSnapshotId:'zero'}]},recording.id,recording.angle)).toBe(first);
+ const shape=recording.tracks[0] as Extract<SnapshotPoseTrack,{channel:'shape'}>,nextTrack={...shape,draft:{angle:recording.angle,value:{nodes:{a:[4.5,0] as Point2},handles:{}}}};
+ const next={...workspace,recordings:[{...recording,tracks:[nextTrack]}]},live=cache.get(next,recording.id,recording.angle);
+ expect(live).not.toBe(first);expect(live.library).toBe(first.library);expect(live.snapshots).toBe(first.snapshots);
+ expect(evaluateRecordingSnapshot(live,recording.id,{angle:at(30),useDraft:false,diagnostics:'preview'}).drawing.nodes.find(n=>n.id==='a')!.position[0]).toBeCloseTo(1.5);
+ const sourceChanged={...next,library:{...next.library,nodes:{...next.library.nodes,a:{id:'a',position:[.2,0] as Point2}}}},changed=cache.get(sourceChanged,recording.id,recording.angle);
+ expect(changed.library).not.toBe(first.library);expect(changed.library.nodes.a.position).toEqual([.2,0]);expect(workspace.library.nodes.a.position).toEqual([0,0]);
+});
+
+test('onion preparation excludes unrelated snapshots, reference images and recovery archive',()=>{
+ const {workspace,recording}=fixture(),unused=emptyRecordingSnapshot('unused','Unused','drawing');unused.layers=[{kind:'original',id:'unused-layer',name:'Unused',items:['unused-curve'],visible:true,locked:false}];
+ workspace.snapshots.push(unused);workspace.library.curves['unused-curve']={...workspace.library.curves.curve,id:'unused-curve'};
+ workspace.legacyArchive={format:'landmark-project-json',migrationVersion:2,projectJSON:'unrelated archived document'};
+ workspace.snapshots[0].source={artworkId:'artwork',originIds:{},reference:{dataUrl:'data:image/png;base64,unrelated',opacity:1} as any};
+ const before=JSON.stringify(workspace),inspection=createSnapshotOnionInspectionCache().get(workspace,recording.id,recording.angle);
+ expect(inspection.snapshots.map(s=>s.id)).toEqual(['zero','side']);expect(inspection.library.curves['unused-curve']).toBeUndefined();expect(inspection.snapshots[0].source?.reference).toBeUndefined();expect(inspection.legacyArchive).toBeUndefined();
+ expect(JSON.stringify(workspace)).toBe(before);
+});
+
+
+test('guide poses publish before the entire expensive sweep finishes',()=>{
+ const settings={...DEFAULT_SCENE_ONION_SETTINGS,min:-90,max:0},angles=prioritizeSceneOnionAngles(sampleSceneOnionAngles(at(0),settings,true),settings);
+ expect(angles.slice(0,2)).toEqual([at(-30),at(-60)]);expect(angles).toHaveLength(10);
+ vi.useFakeTimers();try{
+  const progress:number[]=[],completed:number[]=[];
+  const queue=createSceneOnionSweepQueue<number,number>(()=>10,(_,index)=>index,()=>completed.push(1),12,(_,frame)=>progress.push(frame));
+  queue.update(1);vi.advanceTimersByTime(12);expect(progress).toEqual([0]);expect(completed).toEqual([]);
+  vi.runAllTimers();expect(progress).toHaveLength(10);expect(completed).toEqual([1]);
  }finally{vi.useRealTimers();}
 });

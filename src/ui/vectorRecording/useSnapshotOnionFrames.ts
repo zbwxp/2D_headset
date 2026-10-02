@@ -1,32 +1,26 @@
-import {useEffect,useMemo,useState} from 'react';
-import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {useMemo} from 'react';
+import type {SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
 import type {RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
 import type {Angle} from '../../domain/vectorRecording/interpolation';
-import {createSceneOnionSweepQueue,markSceneOnionHighlights,normalizeSceneOnionSettings,sampleSceneOnionAngles,sceneOnionSweepAnchor,snapshotOnionInspectionSignature,type SceneOnionFrame,type SceneOnionSettings} from './angleInspection';
+import type {SceneOnionFrame,SceneOnionSettings} from './angleInspection';
+import {createEndpointOnionCache,defaultSceneOnionEndpoints,interpolateEndpointOnion,type SceneOnionEndpoints} from './endpointOnion';
+export type {SceneOnionEndpoints} from './endpointOnion';
 
 const EMPTY_FRAMES:SceneOnionFrame[]=[];
-/** The workspace is the canvas's live preview workspace. Only current-angle
- * drafts become temporary interpolation keys in a detached evaluation copy. */
-export function useSnapshotOnionFrames(workspace:RecordingSnapshotWorkspace,recordingId:string,angle:Angle,settings:SceneOnionSettings,stopAtWarpId?:string){
- const signature=useMemo(()=>snapshotOnionInspectionSignature(workspace,recordingId,angle),[workspace,recordingId,angle.x,angle.y]);
- const inspection=useMemo(()=>JSON.parse(signature) as RecordingSnapshotWorkspace,[signature]);
- const {enabled,axis,step,min,max}=normalizeSceneOnionSettings(settings),fixed=sceneOnionSweepAnchor(angle,axis)[axis==='x'?'y':'x'];
- const scope=JSON.stringify([recordingId,stopAtWarpId,axis,step,min,max,fixed]);
- const request=useMemo(()=>({scope,workspace:inspection,recordingId,stopAtWarpId,settings:{enabled:true,axis,step,min,max,opacity:1},angles:sampleSceneOnionAngles(axis==='x'?{x:0,y:fixed}:{x:fixed,y:0},{enabled:true,axis,step,min,max,opacity:1},true)}),[scope,inspection,recordingId,stopAtWarpId,axis,step,min,max,fixed]);
- const [result,setResult]=useState<{request:typeof request;frames:SceneOnionFrame[];error?:string}|null>(null);
- const queue=useMemo(()=>createSceneOnionSweepQueue<typeof request,SceneOnionFrame>(
-  item=>item.angles.length,
-  (item,index)=>{
-   const evaluated=evaluateRecordingSnapshot(item.workspace,item.recordingId,{angle:item.angles[index],useDraft:false,diagnostics:'preview',...(item.stopAtWarpId?{stopAtWarpId:item.stopAtWarpId}:{})});
-   return {angle:evaluated.angle,drawing:evaluated.drawing,paintBatches:evaluated.paintBatches};
-  },
-  (item,frames,error)=>setResult({request:item,frames:markSceneOnionHighlights(frames,item.settings),error}),
- ),[scope]);
- // Finish a coherent sweep before taking the newest drag input. Repeated
- // pointer moves cannot indefinitely cancel all work. Changing the coordinate
- // space/range cancels the queue and immediately hides incompatible contours.
- useEffect(()=>{if(enabled)queue.update(request);else queue.cancel();},[queue,request,enabled]);
- useEffect(()=>()=>queue.cancel(),[queue]);
- const ready=enabled&&result?.request===request,compatible=enabled&&result?.request.scope===scope;
- return {frames:compatible?result.frames:EMPTY_FRAMES,preparing:enabled&&!ready,error:ready?result.error:undefined};
+/** Ghosts linearly blend two final endpoint Béziers. Intermediate Recording
+ * keys and the runtime interpolation solver never participate in this view. */
+export function useSnapshotOnionFrames(workspace:RecordingSnapshotWorkspace,recordingId:string,angle:Angle,settings:SceneOnionSettings,stopAtWarpId?:string,endpoints?:SceneOnionEndpoints,currentEvaluation?:SnapshotEvaluation){
+ const cache=useMemo(()=>createEndpointOnionCache(),[]);
+ const recording=workspace.recordings.find(value=>value.id===recordingId),views=recording?.snapshotIds.flatMap(id=>{const view=workspace.snapshots.find(value=>value.id===id);return view?[view]:[];})??[];
+ const selected=endpoints??defaultSceneOnionEndpoints(views);
+ const result=useMemo(()=>{
+  if(!settings.enabled)return {frames:EMPTY_FRAMES,diagnostics:[] as string[],error:undefined};
+  try{
+   if(!selected.startSnapshotId||selected.startSnapshotId===selected.endSnapshotId)throw Error('Choose two different endpoint snapshots.');
+   if(!recording?.snapshotIds.includes(selected.startSnapshotId)||!recording.snapshotIds.includes(selected.endSnapshotId))throw Error('Choose endpoint snapshots from this Recording.');
+   const start=cache.resolve(workspace,recordingId,selected.startSnapshotId,angle,stopAtWarpId,currentEvaluation),end=cache.resolve(workspace,recordingId,selected.endSnapshotId,angle,stopAtWarpId,currentEvaluation);
+   return {...interpolateEndpointOnion(start,end,settings.step),error:undefined};
+  }catch(error){return {frames:EMPTY_FRAMES,diagnostics:[] as string[],error:error instanceof Error?error.message:String(error)};}
+ },[cache,workspace,recordingId,angle.x,angle.y,settings.enabled,settings.step,stopAtWarpId,selected.startSnapshotId,selected.endSnapshotId,currentEvaluation]);
+ return {...result,preparing:false};
 }

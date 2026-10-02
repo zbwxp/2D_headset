@@ -2,8 +2,10 @@ import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
 import {registerEvaluatedAffine,type EvaluatedAffine} from '../drawing/evaluatedAffine';
 import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
-import {resolveDisplayRoute} from '../drawing/displayRoutes';
+import {createDisplayRouteField,resolveDisplayRoute} from '../drawing/displayRoutes';
 import {paintItems} from '../drawing/strokes';
+import {InputCache} from '../geometry/cache';
+import {applySceneShapes} from '../recordingScene/shapes';
 import {drawingSignature} from '../vectorRecording/model';
 import {emptyRecordingScene,identityScenePlacement,identitySceneShape,instanceObjectId,type ScenePlacementValue,type SceneShapeValue} from '../recordingScene/model';
 import {evaluateScene,type SceneEvaluation,type SceneEvaluationOptions} from '../recordingScene/evaluation';
@@ -13,7 +15,7 @@ import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording} from './model';
 
-export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string}
+export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean}
 export interface SnapshotEvaluation {
  snapshotId:string;source:DrawingDocument;baseDrawing:DrawingDocument;drawing:DrawingDocument;preShapeDrawing:DrawingDocument;prePlacementDrawing:DrawingDocument;
  angle:Angle;state:SnapshotDeformationState;provenance:Record<string,SnapshotElementProvenance>;
@@ -27,6 +29,30 @@ export interface SnapshotEvaluation {
  layerProvenance:Record<string,{layerId:string;baseSnapshotId:string;sourceLayerId:string}>;
  authoredTracks:SnapshotPoseTrack[];
 }
+interface SnapshotInput {drawing:DrawingDocument;provenance:SnapshotEvaluation['provenance'];appliedTrackIds:Set<string>}
+interface EvaluationCache {
+ fingerprint:string;parents:InputCache<SnapshotEvaluation>;frames:InputCache<SnapshotEvaluation>;
+ inputs:InputCache<{input:SnapshotInput;diagnostics:SnapshotDiagnostic[]}>;
+ originals:InputCache<DrawingDocument|undefined>;
+ baseStages:WeakMap<DrawingDocument,InputCache<SceneEvaluation>>;
+}
+/** Content guards also catch importer/test mutations in place. The archive is
+ * deliberately excluded: only live originals and reachable saved state matter. */
+const evaluationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],EvaluationCache>();
+const canonicalStageDrawings=new WeakMap<DrawingDocument,DrawingDocument>();
+const immutableIdentities=new WeakMap<object,number>();let nextImmutableIdentity=1;const immutableIdentity=(value:object|undefined)=>{if(!value)return 0;let id=immutableIdentities.get(value);if(id===undefined){id=nextImmutableIdentity++;immutableIdentities.set(value,id);}return id;};
+const immutableTrackStrings=new WeakMap<SnapshotRecording['tracks'],Map<boolean,string>>();
+const resultIdentities=new WeakMap<SnapshotEvaluation,number>();let nextResultIdentity=1;
+const resultIdentity=(result:SnapshotEvaluation)=>{let id=resultIdentities.get(result);if(id===undefined){id=nextResultIdentity++;resultIdentities.set(result,id);}return id;};
+function evaluationCache(workspace:RecordingSnapshotWorkspace,immutable=false):EvaluationCache {
+ const known=evaluationCaches.get(workspace.library);if(immutable&&known)return known;const fingerprint=JSON.stringify(workspace.library);if(known?.fingerprint===fingerprint)return known;
+ const cache:EvaluationCache={fingerprint,parents:new InputCache(24),frames:new InputCache(32),inputs:new InputCache(24),originals:new InputCache(16),baseStages:new WeakMap()};evaluationCaches.set(workspace.library,cache);return cache;
+}
+function cachedOriginal(workspace:RecordingSnapshotWorkspace,id:string):DrawingDocument|undefined {
+ const cache=evaluationCaches.get(workspace.library),snapshot=workspace.snapshots.find(s=>s.id===id);if(!cache||!snapshot)return materializeOriginalSnapshot(workspace,id);
+ const key=JSON.stringify(snapshot),known=cache.originals.get(key);if(known)return known;return cache.originals.set(key,materializeOriginalSnapshot(workspace,id));
+}
+const evaluationOptionsKey=(options:SnapshotEvaluationOptions)=>JSON.stringify([options.angle,options.useDraft!==false,options.stopAtWarpId??null,!!options.omitPlacements,!!options.omitShapes,options.tolerance??1/250,options.fitSamples??64,options.diagnostics??'full',options.validationSamples??1024]);
 export class SnapshotResolutionError extends Error {
  constructor(public diagnostic:SnapshotDiagnostic){super(diagnostic.message);this.name='SnapshotResolutionError';}
 }
@@ -79,7 +105,7 @@ function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:Recordin
  }
  drawing.nodes=[...nodeMap.values()];
  for(const [id,curves] of selectedByParent){const relations=relationSubset(parents.get(id)!.drawing,curves);for(const name of relationNames)(inherited[name] as {id:string}[]).push(...relations[name]);}
- for(const name of relationNames){const distinct=new Map<string,{id:string}>();for(const relation of inherited[name]){const prior=distinct.get(relation.id);if(prior&&!same(prior,relation)&&!snapshot.relations[name]?.update?.some(r=>r.id===relation.id)&&!snapshot.relations[name]?.disable?.includes(relation.id))throw new SnapshotResolutionError({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:relation.id,message:`Parent snapshots disagree on relation ${relation.id}; choose an explicit update or disable.`});distinct.set(relation.id,relation);}let patch=snapshot.relations[name] as SnapshotRelationPatch<{id:string}>|undefined;if(name==='displayIntervals'&&patch){const issues={...snapshot.inheritedState?.intervalMaterialIssues,...snapshot.deformation.intervalMaterialIssues},active=(value:{id:string})=>{const issue=issues[value.id];if(!issue)return true;const original=materializeOriginalSnapshot(workspace,issue.sourceSnapshotId);return !!original&&drawingSignature(original)===issue.sourceSignature;};patch={...patch,...(patch.add?{add:patch.add.filter(active)}:{}),...(patch.update?{update:patch.update.filter(active)}:{})};}(drawing[name] as {id:string}[])=applyPatch([...distinct.values()],patch,diagnostics,snapshot.id);}
+ for(const name of relationNames){const distinct=new Map<string,{id:string}>();for(const relation of inherited[name]){const prior=distinct.get(relation.id);if(prior&&!same(prior,relation)&&!snapshot.relations[name]?.update?.some(r=>r.id===relation.id)&&!snapshot.relations[name]?.disable?.includes(relation.id))throw new SnapshotResolutionError({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:relation.id,message:`Parent snapshots disagree on relation ${relation.id}; choose an explicit update or disable.`});distinct.set(relation.id,relation);}let patch=snapshot.relations[name] as SnapshotRelationPatch<{id:string}>|undefined;if(name==='displayIntervals'&&patch){const issues={...snapshot.inheritedState?.intervalMaterialIssues,...snapshot.deformation.intervalMaterialIssues},active=(value:{id:string})=>{const issue=issues[value.id];if(!issue)return true;const original=cachedOriginal(workspace,issue.sourceSnapshotId);return !!original&&drawingSignature(original)===issue.sourceSignature;};patch={...patch,...(patch.add?{add:patch.add.filter(active)}:{}),...(patch.update?{update:patch.update.filter(active)}:{})};}(drawing[name] as {id:string}[])=applyPatch([...distinct.values()],patch,diagnostics,snapshot.id);}
  // Keep dependent paint objects only when their explicit curves are available.
  const curveIds=new Set(drawing.curves.map(c=>c.id)),removed=new Set<string>();
  drawing.fills=drawing.fills.filter(f=>{const ok=f.boundary.every(u=>curveIds.has(u.id));if(!ok)removed.add(f.id);return ok;});drawing.offsets=drawing.offsets.filter(o=>{const ok=o.source.every(u=>curveIds.has(u.id));if(!ok)removed.add(o.id);return ok;});
@@ -113,11 +139,11 @@ function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:Reco
  const originalLayer=(snapshotId:string,layerId:string):string|undefined=>{const owner=workspace.snapshots.find(s=>s.id===snapshotId),layer=owner?.layers.find(l=>l.id===layerId);return layer?.kind==='reference'?originalLayer(layer.baseSnapshotId,layer.baseLayerId):layer?.id;};
  let cursor=0;for(const layer of drawing.layers){const original=originalLayer(snapshot.id,layer.id);if(original)slots.set(original,cursor);for(const item of paintItems(drawing,layer.id))cursor+=item.stroke?item.stroke.segments.length:1;cursor++;}
  const sources=new Map<string,DrawingDocument|undefined>();
- const result=base.map(batch=>{if(!batch.owner)return batch;const p=provenance[batch.owner];if(!p)return batch;if(!sources.has(p.sourceSnapshotId))sources.set(p.sourceSnapshotId,materializeOriginalSnapshot(workspace,p.sourceSnapshotId));const source=sources.get(p.sourceSnapshotId),curve=source?.curves.find(c=>c.id===p.elementId);if(!source||!curve?.depthOffset)return batch;const context=depthContext(source,curve.id);if(!context.effective)return batch;const targets=context.target.ids.map(id=>positions.get(id)).filter((n):n is number=>n!==undefined);return {...batch,position:targets.length?(curve.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):(slots.get(context.target.id)??batch.position)};});
+ const result=base.map(batch=>{if(!batch.owner)return batch;const p=provenance[batch.owner];if(!p)return batch;if(!sources.has(p.sourceSnapshotId))sources.set(p.sourceSnapshotId,cachedOriginal(workspace,p.sourceSnapshotId));const source=sources.get(p.sourceSnapshotId),curve=source?.curves.find(c=>c.id===p.elementId);if(!source||!curve?.depthOffset)return batch;const context=depthContext(source,curve.id);if(!context.effective)return batch;const targets=context.target.ids.map(id=>positions.get(id)).filter((n):n is number=>n!==undefined);return {...batch,position:targets.length?(curve.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):(slots.get(context.target.id)??batch.position)};});
  const order=new Map(base.map((batch,index)=>[batch.owner??batch.item.id,index]));return result.sort((a,b)=>a.position-b.position||order.get(a.owner??a.item.id)!-order.get(b.owner??b.item.id)!);
 }
-function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:SnapshotDeformationState,options:SnapshotEvaluationOptions,diagnostics:SnapshotDiagnostic[]):Omit<SnapshotEvaluation,'snapshotId'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'> {
- const angle=options.angle??snapshot.angle,scene=emptyRecordingScene('snapshot-evaluation'),instanceId='snapshot-evaluation',sourceId='snapshot-source';
+function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:SnapshotDeformationState,options:SnapshotEvaluationOptions,diagnostics:SnapshotDiagnostic[],cache?:EvaluationCache):Omit<SnapshotEvaluation,'snapshotId'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'> {
+ const angle=options.angle??snapshot.angle;if(![angle.x,angle.y].every(n=>Number.isFinite(n)&&n>=-90&&n<=90))throw Error('Snapshot angle must be finite and between -90 and 90.');const scene=emptyRecordingScene('snapshot-evaluation'),instanceId='snapshot-evaluation',sourceId='snapshot-source';
  scene.angle={...angle};scene.instances=[{id:instanceId,artworkId:sourceId,name:snapshot.name}];
  scene.warps=state.warps.map(w=>({id:w.id,name:w.name,parentId:w.parentId,restGrid:w.restGrid,keys:[{id:`current:${w.id}`,angle,value:w.grid}]}));
  scene.bindings=state.bindings.map(b=>({instanceId,sourceLayerId:b.layerId,warpId:b.warpId}));
@@ -127,8 +153,19 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
   if(value.depth!==undefined)scene.depthTracks!.push({id:`depth:${layerId}`,target:{instanceId,sourceLayerId:layerId},keys:[{id:'current',angle,value:value.depth}]});
  }
  const shape=shapeState(source,state,diagnostics,snapshot.id);if(Object.keys(shape.nodes).length||Object.keys(shape.handles).length)scene.shapeTracks=[{id:'snapshot-shape',instanceId,keys:[{id:'current',angle,value:shape}]}];
- const evaluated=evaluateScene(scene,id=>id===sourceId?source:undefined,options),prefix=instanceObjectId(instanceId,''),raw=(id:string)=>id.startsWith(prefix)?id.slice(prefix.length):id;
- const preShapeDrawing=remapDrawingIdentities(evaluated.preShapeDrawing,raw),prePlacementDrawing=remapDrawingIdentities(evaluated.prePlacementDrawing,raw),unplaced=remapDrawingIdentities(evaluated.drawing,raw);
+ // Shape/placement edits do not change the source+Warp stage. Cache that stage
+ // separately, retaining the existing shape constraints and material transport.
+ let stages=cache?.baseStages.get(source);if(cache&&!stages){stages=new InputCache(16);cache.baseStages.set(source,stages);}
+ const values=(tracks:typeof scene.visibilityTracks|typeof scene.intervalTracks|typeof scene.depthTracks)=>tracks?.map(({keys,...track})=>({...track,value:keys[0]?.value}));
+ const stageKey=JSON.stringify([scene.warps.map(({keys,...warp})=>({...warp,value:keys[0]?.value})),scene.bindings,values(scene.visibilityTracks),values(scene.intervalTracks),values(scene.depthTracks),evaluationOptionsKey({...options,angle:{x:0,y:0},useDraft:false,omitShapes:true,omitPlacements:true})]);
+ let base=stages?.get(stageKey);if(!base){base=evaluateScene({...scene,shapeTracks:[]},id=>id===sourceId?source:undefined,{...options,omitShapes:true,omitPlacements:true});stages?.set(stageKey,base);}
+ const stageDiagnostics=base.diagnostics.filter(d=>d.code!=='ROUTE'),deformed={drawing:base.drawing,diagnostics:base.fitDiagnostics,diagnosticStage:base.diagnosticStage,intervalTransportErrors:base.intervalTransportErrors,maxError:base.maxError,warningCurveIds:base.warningCurveIds,conflictingNodeIds:base.conflictingNodeIds};
+ const shaped=options.omitShapes?deformed:applySceneShapes(deformed,scene,angle,true,base.provenance,stageDiagnostics);
+ const routes=new Set<string>();for(const track of shaped.drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routes.has(key))continue;routes.add(key);for(const diagnostic of createDisplayRouteField(shaped.drawing,track.displayRoute).diagnostics){const p=base.provenance[track.id];stageDiagnostics.push({code:'ROUTE',instanceId:p?.instanceId,trackId:p?.sourceId,message:diagnostic.message});}}
+ const evaluated:SceneEvaluation={...base,angle:{...angle},drawing:shaped.drawing,preShapeDrawing:base.drawing,prePlacementDrawing:shaped.drawing,diagnostics:stageDiagnostics,fitDiagnostics:shaped.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:shaped.warningCurveIds,intervalTransportErrors:shaped.intervalTransportErrors,maxError:shaped.maxError};
+ const prefix=instanceObjectId(instanceId,''),raw=(id:string)=>id.startsWith(prefix)?id.slice(prefix.length):id;
+ const canonical=(drawing:DrawingDocument)=>{let result=canonicalStageDrawings.get(drawing);if(!result){result=remapDrawingIdentities(drawing,raw);canonicalStageDrawings.set(drawing,result);}return result;};
+ const preShapeDrawing=canonical(evaluated.preShapeDrawing),prePlacementDrawing=canonical(evaluated.prePlacementDrawing),unplaced=canonical(evaluated.drawing);
  const placements=Object.fromEntries(snapshot.layers.map(l=>[l.id,state.layers[l.id]?.placement??identityScenePlacement()]));
  const drawing=options.omitPlacements?unplaced:placeLayers(unplaced,placements);
  const placedNodes=new Map(drawing.nodes.map(n=>[n.id,n.position])),placedCurves=new Map(drawing.curves.map(c=>[c.id,c]));for(const link of drawing.endpointLinks??[]){const a=placedNodes.get(placedCurves.get(link.a.curveId)?.nodes[link.a.end]??''),b=placedNodes.get(placedCurves.get(link.b.curveId)?.nodes[link.b.end]??'');if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-8)diagnostics.push({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:link.id,message:'Layer placement separates linked endpoints. Connected layers need coherent placement values.'});}
@@ -143,19 +180,26 @@ function evaluateLegacySnapshot(workspace:RecordingSnapshotWorkspace,recording:S
  const diagnostics:SnapshotDiagnostic[]=[{code:'LEGACY_READ_ONLY',snapshotId,message:recording.legacy!.reason},...evaluated.diagnostics.map(d=>({code:'POSE' as const,snapshotId,layerId:d.sourceLayerId,elementId:d.sourceObjectId,channelId:d.trackId,message:d.message}))];
  return {snapshotId,source:evaluated.source,baseDrawing:evaluated.source,drawing:evaluated.drawing,preShapeDrawing:evaluated.preShapeDrawing,prePlacementDrawing:evaluated.prePlacementDrawing,angle:evaluated.angle,state:emptySnapshotDeformationState(),provenance,diagnostics,warpGrids:evaluated.warpGrids,placements:evaluated.placements,placementsByLayer:evaluated.placements,paintBatches:evaluated.paintBatches,fitDiagnostics:evaluated.fitDiagnostics,warningCurveIds:evaluated.warningCurveIds,intervalTransportErrors:evaluated.intervalTransportErrors,maxError:evaluated.maxError,diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds,appliedTrackIds:[],layerProvenance:{},authoredTracks:recording.tracks};
 }
+/** Returned evaluated documents are immutable runtime values, shared by the
+ * bounded cache until their live source, saved state, tracks, or options change. */
 export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
  const fallback=recordingForSnapshot(workspace,snapshotId);if(fallback?.legacy)return evaluateLegacySnapshot(workspace,fallback,snapshotId,options);
- validateSnapshotGraph(workspace);const cache=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>();
+ validateSnapshotGraph(workspace);const persistent=evaluationCache(workspace,options.immutableInputs),local=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>(),snapshotStrings=new Map<string,string>(),trackStrings=new Map<SnapshotRecording,Map<boolean,string>>();
  const resolve=(id:string,root=false):SnapshotEvaluation=>{
-  const cached=!root&&cache.get(id);if(cached)return cached;
+  const cached=!root&&local.get(id);if(cached)return cached;
   const snapshot=workspace.snapshots.find(s=>s.id===id);if(!snapshot)throw new SnapshotResolutionError({code:'MISSING_SNAPSHOT',snapshotId:id,message:`Snapshot ${id} is missing.`});
   if(visiting.has(id))throw new SnapshotResolutionError({code:'SNAPSHOT_CYCLE',snapshotId:id,message:`Snapshot ${id} contains a parent cycle.`});visiting.add(id);
   const parents=new Map<string,SnapshotEvaluation>();for(const layer of snapshot.layers)if(layer.kind==='reference'&&workspace.snapshots.some(s=>s.id===layer.baseSnapshotId)&&!parents.has(layer.baseSnapshotId))parents.set(layer.baseSnapshotId,resolve(layer.baseSnapshotId));
-  const diagnostics:SnapshotDiagnostic[]=[...parents.values()].flatMap(p=>p.diagnostics),input=inputForSnapshot(workspace,snapshot,parents,diagnostics),recording=recordingForSnapshot(workspace,id),angle=root&&options.angle?options.angle:snapshot.angle,state=evaluateSnapshotState(snapshot,recording,input.drawing,angle,root?options.useDraft!==false:false,input.appliedTrackIds,{diagnostics,signature:sourceId=>{const original=materializeOriginalSnapshot(workspace,sourceId);return original?drawingSignature(original):undefined;}});
+  const recording=recordingForSnapshot(workspace,id),angle=root&&options.angle?options.angle:snapshot.angle,localOptions:SnapshotEvaluationOptions=root?{...options,angle}:{angle,useDraft:false,diagnostics:options.diagnostics,tolerance:options.tolerance};
+  let snapshotString=snapshotStrings.get(id);if(snapshotString===undefined){snapshotString=options.immutableInputs?String(immutableIdentity(snapshot)):JSON.stringify(snapshot);snapshotStrings.set(id,snapshotString);}const drafts=localOptions.useDraft!==false;let trackString=recording&&trackStrings.get(recording)?.get(drafts);if(recording&&trackString===undefined){if(options.immutableInputs){const memo=immutableTrackStrings.get(recording.tracks)??new Map<boolean,string>();trackString=memo.get(drafts);if(trackString===undefined){trackString=JSON.stringify(recording.tracks.map(track=>[track.id,track.channel,track.targetId,track.elementId,track.channel==='interval'?track.sourceTrackId:undefined,track.interpolation,immutableIdentity(track.keys),drafts?immutableIdentity(track.draft):0,track.channel==='interval'?immutableIdentity(track.materialIssue):0]));memo.set(drafts,trackString);immutableTrackStrings.set(recording.tracks,memo);}}else trackString=JSON.stringify(drafts?recording.tracks:recording.tracks.map(({draft,...track})=>track));const strings=trackStrings.get(recording)??new Map<boolean,string>();strings.set(drafts,trackString);trackStrings.set(recording,strings);}
+  const parentIds=[...parents].map(([id,value])=>[id,resultIdentity(value)]),frameKey=JSON.stringify([snapshotString,trackString??'',parentIds,evaluationOptionsKey(localOptions)]),frames=root?persistent.frames:persistent.parents,existing=frames.get(frameKey);
+  if(existing){visiting.delete(id);local.set(id,existing);return root&&existing.authoredTracks!==recording?.tracks?{...existing,authoredTracks:recording?.tracks??[]}:existing;}
+  const inputKey=JSON.stringify(options.immutableInputs?[id,immutableIdentity(snapshot.layers),immutableIdentity(snapshot.relations),immutableIdentity(snapshot.inheritedState?.intervalMaterialIssues),immutableIdentity(snapshot.deformation.intervalMaterialIssues),parentIds]:[id,snapshot.layers,snapshot.relations,snapshot.inheritedState?.intervalMaterialIssues,snapshot.deformation.intervalMaterialIssues,parentIds]);
+  let cachedInput=persistent.inputs.get(inputKey);if(!cachedInput){const diagnostics:SnapshotDiagnostic[]=[...parents.values()].flatMap(p=>p.diagnostics),input=inputForSnapshot(workspace,snapshot,parents,diagnostics);cachedInput=persistent.inputs.set(inputKey,{input,diagnostics});}
+  const input=cachedInput.input,diagnostics=[...cachedInput.diagnostics],state=evaluateSnapshotState(snapshot,recording,input.drawing,angle,root?options.useDraft!==false:false,input.appliedTrackIds,{diagnostics,signature:sourceId=>{const original=cachedOriginal(workspace,sourceId);return original?drawingSignature(original):undefined;}});
   const appliedTrackIds=new Set(input.appliedTrackIds);for(const track of recording?.tracks??[])if(snapshot.layers.some(l=>l.id===track.targetId)||state.warps.some(w=>w.id===track.targetId)||state.relationPositions[track.targetId])appliedTrackIds.add(track.id);
-  const localOptions=root?{...options,angle}:{angle,useDraft:false,diagnostics:options.diagnostics,tolerance:options.tolerance};
-  const own=evaluateOwn(snapshot,input.drawing,state,localOptions,diagnostics);
-  const result:SnapshotEvaluation={snapshotId:id,source:input.drawing,baseDrawing:input.drawing,provenance:input.provenance,appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);cache.set(id,result);return result;
+  const own=evaluateOwn(snapshot,input.drawing,state,localOptions,diagnostics,persistent);
+  const result:SnapshotEvaluation={snapshotId:id,source:input.drawing,baseDrawing:input.drawing,provenance:input.provenance,appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);local.set(id,result);return frames.set(frameKey,result);
  };return resolve(snapshotId,true);
 }
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {

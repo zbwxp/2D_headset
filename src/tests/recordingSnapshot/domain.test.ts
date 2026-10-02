@@ -71,6 +71,13 @@ describe('native recording snapshot ownership',()=>{
   w.library.nodes.a.position=[0,0];result=evaluateRecordingSnapshot(w,recording.id,{angle:{x:90,y:0}});expect(result.drawing.displayIntervals![0].ranges[0].start).toBeCloseTo(.2);expect(result.diagnostics.some(d=>d.code==='SOURCE_MATERIAL')).toBe(false);
   recording.tracks=[];w.snapshots[1].relations.displayIntervals={update:[{...interval,ranges:[{id:'range',start:.3,end:.7}]}]};w.snapshots[1].deformation.intervalMaterialIssues={interval:{sourceSnapshotId:source.id,sourceSignature:signature,message:'Static patch migration suspended.'}};w.library.nodes.a.position=[.1,0];result=evaluateRecordingSnapshot(w,recording.id,{angle:{x:90,y:0}});expect(result.drawing.displayIntervals![0].ranges[0].start).toBeCloseTo(.1);w.library.nodes.a.position=[0,0];expect(evaluateRecordingSnapshot(w,recording.id,{angle:{x:90,y:0}}).drawing.displayIntervals![0].ranges[0].start).toBeCloseTo(.3);
  });
+ it('reuses immutable frames while invalidating live originals, authored keys, and current drafts',()=>{
+  const w=fixture(),r=w.recordings[0];r.tracks=[{id:'placement',channel:'placement',targetId:'layer',keys:[{id:'key',angle:{x:90,y:0},value:tx(1)}]}];const options={angle:{x:90,y:0},useDraft:false,immutableInputs:true};
+  const first=evaluateRecordingSnapshot(w,r.id,options);expect(evaluateRecordingSnapshot(w,r.id,options)).toBe(first);
+  const changed={...w,library:{...w.library,nodes:{...w.library.nodes,a:{...w.library.nodes.a,position:[.2,0] as [number,number]}}}};expect(evaluateRecordingSnapshot(changed,r.id,options).drawing.nodes.find(n=>n.id==='a')!.position[0]).toBeCloseTo(1.2);
+  const draft={...w,recordings:[{...r,tracks:r.tracks.map(track=>({...track,draft:{angle:{x:90,y:0},value:tx(3)}}))}]} as RecordingSnapshotWorkspace;expect(evaluateRecordingSnapshot(draft,r.id,options).drawing).toBe(first.drawing);expect(evaluateRecordingSnapshot(draft,r.id,{...options,useDraft:true}).drawing.nodes[0].position[0]).toBe(3);
+  const keyed={...w,recordings:[{...r,tracks:r.tracks.map(track=>({...track,keys:[{id:'key',angle:{x:90,y:0},value:tx(2)}]}))}]} as RecordingSnapshotWorkspace;expect(evaluateRecordingSnapshot(keyed,r.id,options).drawing.nodes[0].position[0]).toBe(2);
+ });
  it('keeps exact zero domain scale and restores from original geometry',()=>{
   const w=fixture();w.snapshots[1].deformation.layers.layer={placement:{...tx(2),scaleX:0}};let result=resolveSnapshot(w,'view');expect(result.drawing.nodes.map(n=>n.position[0])).toEqual([2,2]);
   w.snapshots[1].deformation.layers.layer.placement!.scaleX=1;result=resolveSnapshot(w,'view');expect(result.drawing.nodes.map(n=>n.position[0])).toEqual([2,3]);

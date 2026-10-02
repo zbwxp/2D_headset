@@ -5,9 +5,9 @@ import DrawingReferenceControls from '../shared/DrawingReferenceControls';
 import {uiText as t,useLanguage} from '../i18n';
 import {recordingReferenceSession,type RecordingReferenceState} from './recordingReferenceState';
 
-export function useRecordingReference(sceneKey:string,seedReference?:ReferenceImage){
+export function useRecordingReference(sceneKey:string,seedReference?:ReferenceImage,fallbackSceneKey?:string){
  // The initial scene seed is a detached copy; future source edits are ignored.
- const state=useMemo(()=>recordingReferenceSession(sceneKey,seedReference),[sceneKey]);
+ const state=useMemo(()=>recordingReferenceSession(sceneKey,seedReference,fallbackSceneKey),[sceneKey,fallbackSceneKey]);
  const snapshot=useSyncExternalStore(state.subscribe,state.getSnapshot,state.getSnapshot);
  useLayoutEffect(()=>{state.activate();return()=>state.deactivate();},[state]);
  return {reference:(snapshot.preview??snapshot.document).reference,moving:snapshot.moving,setMoving:state.setMoving,change:state.change,preview:state.preview,current:state.current,

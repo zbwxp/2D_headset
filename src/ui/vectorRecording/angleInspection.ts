@@ -1,8 +1,8 @@
-import type {Point2} from '../../domain/drawing/model';
+import type {Cubic,Point2} from '../../domain/drawing/model';
 import type {PaintBatch} from '../../domain/drawing/depth';
 import {evaluateScene} from '../../domain/recordingScene/evaluation';
 import type {RecordingScene,SceneSourceResolver,SceneTrack} from '../../domain/recordingScene/model';
-import type {RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
+import type {RecordingSnapshotWorkspace,RecordingSnapshot,SnapshotRecording,SnapshotPoseTrack} from '../../domain/recordingSnapshot/model';
 import {clampAngle,sameAngle,type Angle} from '../../domain/vectorRecording/interpolation';
 
 export interface SceneOnionSettings {
@@ -15,7 +15,7 @@ export interface SceneOnionSettings {
 }
 export const DEFAULT_SCENE_ONION_SETTINGS:SceneOnionSettings={enabled:false,axis:'x',step:10,min:-90,max:90,opacity:.16};
 export const MAX_SCENE_ONION_FRAMES=37;
-export interface SceneOnionFrame {angle:Angle;drawing:ReturnType<typeof evaluateScene>['drawing'];paintBatches:PaintBatch[];highlight?:'30'|'60';highlightAngle?:number}
+export interface SceneOnionFrame {angle:Angle;drawing:ReturnType<typeof evaluateScene>['drawing'];paintBatches:PaintBatch[];centerlines?:Array<{id:string;cubic:Cubic}>;highlight?:'30'|'60';highlightAngle?:number}
 
 export function normalizeSceneOnionSettings(settings:SceneOnionSettings):SceneOnionSettings {
  const a=clampAngle(settings.min),b=clampAngle(settings.max);
@@ -81,15 +81,72 @@ export function sceneOnionInspectionTrack<T extends SceneTrack<unknown>>(track:T
  return {...saved,keys:old?track.keys.map(value=>value===old?key:value):[...track.keys,key]} as T;
 }
 
-/** Cursor-only changes reuse a sweep; matching live draft values invalidate it. */
-export function snapshotOnionInspectionSignature(workspace:RecordingSnapshotWorkspace,recordingId:string,currentAngle:Angle):string {
- return JSON.stringify({...workspace,activeRecordingId:undefined,legacyArchive:undefined,
-  snapshots:workspace.snapshots.map(({draft,...snapshot})=>{void draft;return snapshot;}),
-  recordings:workspace.recordings.map(recording=>({...recording,angle:{x:0,y:0},activeSnapshotId:undefined,
-   tracks:recording.tracks.map(track=>sceneOnionInspectionTrack(track,recording.id===recordingId?currentAngle:undefined)),
-   ...(recording.legacy?{legacy:{...recording.legacy,scene:JSON.parse(recording.id===recordingId?sceneOnionInspectionSignature(recording.legacy.scene,currentAngle):sceneOnionSavedSignature(recording.legacy.scene))}}:{}),
-  })),
+/** Keep only the requested Recording and its actual parent snapshot graph.
+ * Reference images and recovery archives are unrelated to contour evaluation.
+ * Geometry can stay shared because the native evaluator never mutates inputs. */
+export function snapshotOnionReachableWorkspace(workspace:RecordingSnapshotWorkspace,recordingId:string):RecordingSnapshotWorkspace {
+ const recording=workspace.recordings.find(value=>value.id===recordingId);if(!recording)throw Error('Missing recording');
+ const byId=new Map(workspace.snapshots.map(snapshot=>[snapshot.id,snapshot])),reachable=new Set<string>();
+ const visit=(id:string)=>{if(reachable.has(id))return;reachable.add(id);const snapshot=byId.get(id);for(const layer of snapshot?.layers??[])if(layer.kind==='reference')visit(layer.baseSnapshotId);for(const issue of Object.values({...snapshot?.inheritedState?.intervalMaterialIssues,...snapshot?.deformation.intervalMaterialIssues}))visit(issue.sourceSnapshotId);};
+ recording.snapshotIds.forEach(visit);
+ let previousSize=-1;while(previousSize!==reachable.size){previousSize=reachable.size;for(const owner of workspace.recordings)if(owner.id===recordingId||owner.snapshotIds.some(id=>reachable.has(id))){
+  for(const track of owner.tracks)if(track.channel==='interval'&&track.materialIssue)visit(track.materialIssue.sourceSnapshotId);
+  if(owner.legacy)for(const source of workspace.snapshots)if(owner.legacy.scene.instances.some(instance=>instance.artworkId===source.source?.artworkId))visit(source.id);
+ }}
+ const snapshots:RecordingSnapshot[]=workspace.snapshots.filter(snapshot=>reachable.has(snapshot.id)).map(snapshot=>{
+  const {draft,source,...saved}=snapshot;void draft;
+  if(!source)return saved;const {reference,...metadata}=source;void reference;return {...saved,source:metadata};
  });
+ const library:RecordingSnapshotWorkspace['library']={nodes:{},curves:{},fills:{},offsets:{}};
+ for(const snapshot of snapshots)for(const layer of snapshot.layers)if(layer.kind==='original')for(const id of layer.items){
+  const curve=workspace.library.curves[id];if(curve){library.curves[id]=curve;for(const nodeId of curve.nodes)if(workspace.library.nodes[nodeId])library.nodes[nodeId]=workspace.library.nodes[nodeId];}
+  if(workspace.library.fills[id])library.fills[id]=workspace.library.fills[id];
+  if(workspace.library.offsets[id])library.offsets[id]=workspace.library.offsets[id];
+ }
+ const recordings=workspace.recordings.filter(value=>value.id===recordingId||value.snapshotIds.some(id=>reachable.has(id))).map(value=>({...value,angle:{x:0,y:0},activeSnapshotId:undefined,snapshotIds:value.snapshotIds.filter(id=>reachable.has(id))}));
+ return {version:2,library,snapshots,recordings};
+}
+
+/** A hook-local cache separates static source/graph data from live pose values.
+ * Unchanged immutable track values are fingerprinted once; dragging serializes
+ * only the changed channel. No full workspace stringify/parse sits on input. */
+export function createSnapshotOnionInspectionCache(){
+ let previousWorkspace:RecordingSnapshotWorkspace|undefined,previousRecordingId:string|undefined,base:RecordingSnapshotWorkspace|undefined,lastKey:string|undefined,lastResult:RecordingSnapshotWorkspace|undefined;
+ const recent=new Map<string,RecordingSnapshotWorkspace>();
+ const tracks=new WeakMap<SnapshotPoseTrack,{saved:SnapshotPoseTrack;savedKey:string;live?:SnapshotPoseTrack;liveKey?:string}>();
+ function trackValue(track:SnapshotPoseTrack,angle:Angle|undefined){
+  let cached=tracks.get(track);
+  if(!cached){const saved=sceneOnionInspectionTrack(track);cached={saved,savedKey:JSON.stringify(saved)};tracks.set(track,cached);}
+  if(angle&&track.draft&&sameAngle(track.draft.angle,angle)){
+   if(!cached.live){cached.live=sceneOnionInspectionTrack(track,angle);cached.liveKey=JSON.stringify(cached.live);}
+   return {track:cached.live,key:cached.liveKey!};
+  }
+  return {track:cached.saved,key:cached.savedKey};
+ }
+ return {get(workspace:RecordingSnapshotWorkspace,recordingId:string,currentAngle:Angle):RecordingSnapshotWorkspace{
+  const recording=workspace.recordings.find(value=>value.id===recordingId);if(!recording)throw Error('Missing recording');
+  const prior=previousWorkspace?.recordings.find(value=>value.id===recordingId);
+  if(!base||previousRecordingId!==recordingId||previousWorkspace?.library!==workspace.library||previousWorkspace?.snapshots!==workspace.snapshots||prior?.snapshotIds!==recording.snapshotIds||prior?.legacy!==recording.legacy){
+   base=snapshotOnionReachableWorkspace(workspace,recordingId);lastKey=undefined;lastResult=undefined;recent.clear();
+  }
+  previousWorkspace=workspace;previousRecordingId=recordingId;
+  const recordings:SnapshotRecording[]=[],keys:string[]=[];
+  for(const saved of base.recordings){
+   const actual=workspace.recordings.find(value=>value.id===saved.id)!;
+   const values=actual.tracks.map(track=>trackValue(track,actual.id===recordingId?currentAngle:undefined));
+   const legacy=actual.legacy?{...actual.legacy,scene:JSON.parse(actual.id===recordingId?sceneOnionInspectionSignature(actual.legacy.scene,currentAngle):sceneOnionSavedSignature(actual.legacy.scene))}:undefined;
+   keys.push(JSON.stringify([actual.id,actual.tolerance,legacy]),...values.map(value=>value.key));
+   recordings.push({...saved,tolerance:actual.tolerance,tracks:values.map(value=>value.track),...(legacy?{legacy}:{})});
+  }
+  const key=keys.join('\n');if(lastResult&&lastKey===key)return lastResult;
+  const cached=recent.get(key);if(cached){recent.delete(key);recent.set(key,cached);lastKey=key;lastResult=cached;return cached;}
+  lastKey=key;lastResult={...base,recordings};recent.set(key,lastResult);if(recent.size>4)recent.delete(recent.keys().next().value!);return lastResult;
+ }};
+}
+
+/** Standalone saved/live comparison helper. Interactive callers use the cache. */
+export function snapshotOnionInspectionSignature(workspace:RecordingSnapshotWorkspace,recordingId:string,currentAngle:Angle):string {
+ return JSON.stringify(createSnapshotOnionInspectionCache().get(workspace,recordingId,currentAngle));
 }
 
 export function sceneOnionInspectionSignature(scene:RecordingScene,currentAngle:Angle=scene.angle):string {
@@ -118,10 +175,22 @@ export function markSceneOnionHighlights(frames:readonly SceneOnionFrame[],setti
  return frames.map(frame=>{const {highlight:_,highlightAngle:__,...plain}=frame;return {...plain,...highlights.get(frame)};});
 }
 
+/** Evaluate the two guide poses first so the useful transition landmarks
+ * appear before the rest of a large preview sweep has finished. */
+export function prioritizeSceneOnionAngles(angles:readonly Angle[],settings:SceneOnionSettings):Angle[]{
+ const {axis,min,max}=normalizeSceneOnionSettings(settings),sign=max<=0&&min<0?-1:1,priority:number[]=[];
+ for(const target of [30*sign,60*sign]){
+  if(target<min||target>max)continue;
+  let nearest=-1;for(let index=0;index<angles.length;index++)if(!priority.includes(index)&&(nearest<0||Math.abs(angles[index][axis]-target)<Math.abs(angles[nearest][axis]-target)))nearest=index;
+  if(nearest>=0)priority.push(nearest);
+ }
+ return [...priority,...angles.map((_,index)=>index).filter(index=>!priority.includes(index))].map(index=>angles[index]);
+}
+
 /** Coalesce bursts without starving a continuous drag. Each completed sweep
  * uses one coherent preview copy; only the newest pending copy runs next.
  * A coordinate-space change or disable cancels every queued callback. */
-export function createSceneOnionSweepQueue<Request,Frame>(count:(request:Request)=>number,evaluate:(request:Request,index:number)=>Frame,publish:(request:Request,frames:Frame[],error?:string)=>void,delay=24){
+export function createSceneOnionSweepQueue<Request,Frame>(count:(request:Request)=>number,evaluate:(request:Request,index:number)=>Frame,publish:(request:Request,frames:Frame[],error?:string)=>void,delay=24,onFrame?:(request:Request,frame:Frame,index:number)=>void){
  let pending:Request|undefined,completed:Request|undefined,timer:ReturnType<typeof setTimeout>|undefined,running=false,generation=0;
  function start(){
   if(running||pending===undefined||pending===completed)return;
@@ -133,7 +202,7 @@ export function createSceneOnionSweepQueue<Request,Frame>(count:(request:Request
    function next(){
     if(token!==generation)return;
     if(index>=count(request)){finish();return;}
-    try{frames.push(evaluate(request,index++));}catch(error){finish(error instanceof Error?error.message:String(error));return;}
+    try{const frame=evaluate(request,index);frames.push(frame);onFrame?.(request,frame,index);index++;}catch(error){finish(error instanceof Error?error.message:String(error));return;}
     if(index<count(request))timer=setTimeout(next,0);else finish();
    }
    next();

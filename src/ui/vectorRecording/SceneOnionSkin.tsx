@@ -1,8 +1,10 @@
-import {memo,useEffect,useId,useMemo,useRef,useState} from 'react';
+import {memo,useEffect,useMemo,useRef,useState} from 'react';
 import type {Point2} from '../../domain/drawing/model';
 import type {RecordingScene,SceneSourceResolver} from '../../domain/recordingScene/model';
 import {clampAngle,sameAngle,type Angle} from '../../domain/vectorRecording/interpolation';
 import PaintScene from '../drawing/PaintScene';
+import {curvePath} from '../drawing/geometry';
+import type {EndpointOnionView,SceneOnionEndpoints} from './endpointOnion';
 import {createSceneOnionSweepQueue,evaluateSceneOnionFrame,markSceneOnionHighlights,normalizeSceneOnionSettings,sampleSceneOnionAngles,sceneOnionInspectionSignature,sceneOnionSweepAnchor,type SceneOnionFrame,type SceneOnionSettings} from './angleInspection';
 import './angleInspection.css';
 export {DEFAULT_SCENE_ONION_SETTINGS,type SceneOnionFrame,type SceneOnionSettings} from './angleInspection';
@@ -27,17 +29,20 @@ export function useSceneOnionFrames(scene:RecordingScene,resolve:SceneSourceReso
  return {frames:compatible?result.frames:EMPTY_FRAMES,preparing:enabled&&!ready,error:ready?result.error:undefined};
 }
 
-export function SceneOnionControls({settings,onChange,zh=false,preparing=false,error,frameCount}:{settings:SceneOnionSettings;onChange:(settings:SceneOnionSettings)=>void;zh?:boolean;preparing?:boolean;error?:string;frameCount?:number}){
+export function SceneOnionControls({settings,onChange,zh=false,preparing=false,error,frameCount,endpointViews,endpoints,onEndpointsChange,diagnostics=[]}:{settings:SceneOnionSettings;onChange:(settings:SceneOnionSettings)=>void;zh?:boolean;preparing?:boolean;error?:string;frameCount?:number;endpointViews?:readonly EndpointOnionView[];endpoints?:SceneOnionEndpoints;onEndpointsChange?:(value:SceneOnionEndpoints)=>void;diagnostics?:readonly string[]}){
  const txt=(cn:string,en:string)=>zh?cn:en,s=normalizeSceneOnionSettings(settings),patch=(change:Partial<SceneOnionSettings>)=>onChange(normalizeSceneOnionSettings({...s,...change}));
+ const ends=endpoints&&endpointViews?.filter(view=>view.id===endpoints.startSnapshotId||view.id===endpoints.endSnapshotId),axis=ends?.length===2&&Math.abs(ends[1].angle.y-ends[0].angle.y)>Math.abs(ends[1].angle.x-ends[0].angle.x)?'y':'x',negative=ends?.length===2?Math.max(...ends.map(view=>view.angle[axis]))<=0&&Math.min(...ends.map(view=>view.angle[axis]))<0:s.max<=0&&s.min<0;
  return <section className="vr-section vr-onion-controls" data-testid="scene-onion-controls">
-  <h2>{txt('连续形变检查','ONION SKIN')}<label className="vr-onion-toggle"><input type="checkbox" aria-label="Onion skin" data-testid="scene-onion-toggle" checked={s.enabled} onChange={e=>patch({enabled:e.target.checked})}/>{txt('开启','On')}</label></h2>
+  <h2>{endpoints?txt('两端快照插值','ENDPOINT INTERPOLATION'):txt('连续形变检查','ONION SKIN')}<label className="vr-onion-toggle"><input type="checkbox" aria-label="Onion skin" data-testid="scene-onion-toggle" checked={s.enabled} onChange={e=>patch({enabled:e.target.checked})}/>{txt('开启','On')}</label></h2>
   <fieldset disabled={!s.enabled} hidden={!s.enabled}>
-   <div className="vr-onion-row"><label>{txt('扫描轴','Sweep')}<select aria-label="Onion sweep axis" value={s.axis} onChange={e=>patch({axis:e.target.value as 'x'|'y'})}><option value="x">X · {txt('左右转向','Yaw')}</option><option value="y">Y · {txt('上下俯仰','Pitch')}</option></select></label><label>{txt('步长','Step')}<select aria-label="Onion step" value={s.step} onChange={e=>patch({step:Number(e.target.value) as 5|10})}><option value="5">5°</option><option value="10">10°</option></select></label></div>
-   <div className="vr-onion-row"><label>{txt('从','From')}<OnionRangeInput label="Onion minimum angle" value={s.min} commit={min=>patch({min,max:Math.max(min,s.max)})}/></label><label>{txt('到','To')}<OnionRangeInput label="Onion maximum angle" value={s.max} commit={max=>patch({max,min:Math.min(max,s.min)})}/></label></div>
+   {endpoints&&endpointViews&&<div className="vr-onion-endpoints">{(['startSnapshotId','endSnapshotId'] as const).map((key,index)=><label key={key}>{index===0?txt('起点快照','Start snapshot'):txt('终点快照','End snapshot')}<select aria-label={index===0?'Onion start snapshot':'Onion end snapshot'} value={endpoints[key]} onChange={event=>onEndpointsChange?.({...endpoints,[key]:event.target.value})}>{endpointViews.map(view=><option key={view.id} value={view.id}>{view.name} · X {view.angle.x}° / Y {view.angle.y}°</option>)}</select></label>)}</div>}
+   <div className="vr-onion-row">{!endpoints&&<label>{txt('扫描轴','Sweep')}<select aria-label="Onion sweep axis" value={s.axis} onChange={e=>patch({axis:e.target.value as 'x'|'y'})}><option value="x">X · {txt('左右转向','Yaw')}</option><option value="y">Y · {txt('上下俯仰','Pitch')}</option></select></label>}<label>{txt('步长','Step')}<select aria-label="Onion step" value={s.step} onChange={e=>patch({step:Number(e.target.value) as 5|10})}><option value="5">5°</option><option value="10">10°</option></select></label></div>
+   {!endpoints&&<div className="vr-onion-row"><label>{txt('从','From')}<OnionRangeInput label="Onion minimum angle" value={s.min} commit={min=>patch({min,max:Math.max(min,s.max)})}/></label><label>{txt('到','To')}<OnionRangeInput label="Onion maximum angle" value={s.max} commit={max=>patch({max,min:Math.min(max,s.min)})}/></label></div>}
    <label className="vr-onion-opacity">{txt('透明度','Opacity')}<output>{Math.round(s.opacity*100)}%</output><input aria-label="Onion opacity" type="range" min="0" max=".5" step=".01" value={s.opacity} onChange={e=>patch({opacity:Number(e.target.value)})}/></label>
   </fieldset>
-  <small>{s.axis==='x'?txt('固定 Y = 0，沿 X 预览当前修改的连续形变','Hold Y = 0; preview live pose edits along X'):txt('固定 X，沿 Y 预览当前修改的连续形变','Hold X; preview live pose edits along Y')}</small>
-  {s.enabled&&<div className="vr-onion-legend" aria-label="Onion guide colors"><span className="vr-onion-guide-30">{s.max<=0&&s.min<0?'-30°':'30°'}</span><span className="vr-onion-guide-60">{s.max<=0&&s.min<0?'-60°':'60°'}</span></div>}
+  <small>{txt('检查时暂时隐藏当前填充，关闭后恢复。','Current fills are hidden temporarily and restored when inspection closes.')}</small><small>{endpoints?txt('仅线性混合两端最终 Bézier 与同 ID 区间。显隐取较近端点；中点按较低角度端点。区间结构不一致时取较近端并提示。中间关键帧不参与，拖动当前端点时实时更新。','Blend final endpoint Béziers and matching interval IDs. Visibility follows the nearer endpoint; midpoint ties use the lower-angle endpoint. Mismatched interval structures use the nearer endpoint with a diagnostic. Intermediate keys are ignored; current endpoint edits update live.'):s.axis==='x'?txt('固定 Y = 0，沿 X 预览当前修改的连续形变','Hold Y = 0; preview live pose edits along X'):txt('固定 X，沿 Y 预览当前修改的连续形变','Hold X; preview live pose edits along Y')}</small>
+  {s.enabled&&<div className="vr-onion-legend" aria-label="Onion guide colors"><span className="vr-onion-guide-30">{negative?'-30°':'30°'}</span><span className="vr-onion-guide-60">{negative?'-60°':'60°'}</span></div>}
+  {s.enabled&&diagnostics.length>0&&<details className="vr-onion-diagnostics"><summary>{txt(`${diagnostics.length} 条插值提示`,`${diagnostics.length} interpolation notes`)}</summary>{diagnostics.map((message,index)=><p key={index}>{message}</p>)}</details>}
   {s.enabled&&<p role="status" aria-live="polite" className={error?'vr-error':'vr-onion-status'} data-testid="scene-onion-status">{error?txt(`检查未就绪：${error}`,`Inspection unavailable: ${error}`):preparing?txt('正在准备轮廓…','Preparing contours…'):txt(`${frameCount??0} 个轮廓 · 当前角度单独显示`,`${frameCount??0} contours · current angle shown separately`)}</p>}
  </section>;
 }
@@ -51,17 +56,16 @@ function OnionRangeInput({label,value,commit}:{label:string;value:number;commit:
 
 const noPick=()=>{};
 const OnionPaint=memo(PaintScene);
+const OnionCenterlines=memo(({lines,screen}:{lines:NonNullable<SceneOnionFrame['centerlines']>;screen:(p:Point2)=>Point2})=><path data-testid="scene-onion-centerline" data-primitive-count={lines.length} d={lines.map(line=>curvePath(line.cubic,screen)).join(' ')} fill="none" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round"/>);
 /** Insert behind the active PaintScene inside the same SVG and camera. */
 function SceneOnionSkin({frames,angle,opacity,screen,unit}:{frames:readonly SceneOnionFrame[];angle:Angle;opacity:number;screen:(p:Point2)=>Point2;unit:number}){
  // The Recording canvas uses an affine camera. Keep its function identity stable
  // across opacity/cursor changes so cached poses do not rebuild their ink paths.
- const filterPrefix=useId();
  const origin=screen([0,0]),x=screen([1,0]),y=screen([0,1]);
  const stableScreen=useMemo(()=>screen,[origin[0],origin[1],x[0],x[1],y[0],y[1]]);
  const visible=frames.filter(frame=>!sameAngle(frame.angle,angle));
  return <g className="vr-onion-skin" data-testid="scene-onion-skin" data-frame-count={visible.length} pointerEvents="none" aria-hidden="true">
-  <defs>{(['base','30','60'] as const).map(tone=><filter key={tone} id={`${filterPrefix}-${tone}`} x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB"><feFlood floodColor={tone==='30'?'#20b9b3':tone==='60'?'#ef9670':'#88a7b9'}/><feComposite in2="SourceGraphic" operator="in"/></filter>)}</defs>
-  {visible.map(frame=><g className={`vr-onion-frame${frame.highlight?` vr-onion-guide-${frame.highlight}`:''}`} filter={`url(#${filterPrefix}-${frame.highlight??'base'})`} data-highlight-angle={frame.highlightAngle} key={`${frame.angle.x}:${frame.angle.y}`} data-testid="scene-onion-frame" data-angle-x={frame.angle.x} data-angle-y={frame.angle.y} opacity={Math.max(0,Math.min(1,opacity))} pointerEvents="none"><OnionPaint d={frame.drawing} paintBatches={frame.paintBatches} screen={stableScreen} unit={unit} pixelsPerUnit={unit} preview={true} showFills={false} referenceMoving={false} tool="select" curveDown={noPick} paintDown={noPick} arcDown={noPick}/></g>)}
+  {visible.map(frame=><g className={`vr-onion-frame${frame.highlight?` vr-onion-guide-${frame.highlight}`:''}`} data-highlight-angle={frame.highlightAngle} key={`${frame.angle.x}:${frame.angle.y}`} data-testid="scene-onion-frame" data-angle-x={frame.angle.x} data-angle-y={frame.angle.y} opacity={Math.max(0,Math.min(1,frame.highlight?(opacity>0?Math.max(.65,opacity):0):opacity))} pointerEvents="none">{frame.centerlines?<OnionCenterlines lines={frame.centerlines} screen={stableScreen}/>:<OnionPaint d={frame.drawing} paintBatches={frame.paintBatches} screen={stableScreen} unit={unit} pixelsPerUnit={unit} preview={true} showFills={false} referenceMoving={false} tool="select" curveDown={noPick} paintDown={noPick} arcDown={noPick}/>}</g>)}
  </g>;
 }
 export default memo(SceneOnionSkin);

@@ -4,6 +4,7 @@ import {emptyDrawing,type DrawingDocument,type Point2} from '../domain/drawing/m
 import {createWarpGrid} from '../domain/vectorWarp/model';
 import SceneWarpCanvas,{type RecordingCurveEdit} from '../ui/vectorRecording/SceneWarpCanvas';
 import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
+import {useDrawing} from '../ui/drawing/session';
 
 const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
@@ -23,11 +24,11 @@ function fixture():DrawingDocument{
  d.curves=[{id:'instance/curve-a',name:'A',nodes:['instance/node-a','instance/shared'],handles:[[-1,0],[-.4,0]],visible:true,locked:false,width:.01},{id:'instance/curve-b',name:'B',nodes:['instance/shared','instance/node-b'],handles:[[.4,0],[.75,0]],visible:true,locked:false,width:.01}];
  d.layers=[{id:'instance/layer',name:'Layer',visible:true,locked:false,items:d.curves.map(c=>c.id)}];d.joins=[{id:'instance/arc',a:{curveId:'instance/curve-a',end:1},b:{curveId:'instance/curve-b',end:0},mode:'ARC',radius:.1}];return d;
 }
-function harness(options:{editable?:boolean;grid?:boolean}={}){
+function harness(options:{editable?:boolean;grid?:boolean;inspectionHideFills?:boolean}={}){
  const source=fixture(),preview=vi.fn(),commit=vi.fn(),warpPreview=vi.fn(),warpCommit=vi.fn(),select=vi.fn();let drawing=source,targetKey='view-0',revealGridKey=0;
  const curveEdit={editable:options.editable??true,onPreview:preview,onCommit:commit},grid=options.grid?createWarpGrid({min:[-1,-1],max:[1,1]},2,2):undefined;
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
- const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing,grid,curveEdit,targetKey,revealGridKey,label:'Test',zh:false,selection:{ids:['instance/curve-a','instance/curve-b']},editEnabled:!!grid,onPreview:warpPreview,onCommit:warpCommit,onSelection:select}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++count>8)throw Error('Effects did not settle');}while(hooks.dirty);};render();preview.mockClear();warpPreview.mockClear();
+ const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing,grid,curveEdit,inspectionHideFills:options.inspectionHideFills,targetKey,revealGridKey,label:'Test',zh:false,selection:{ids:['instance/curve-a','instance/curve-b']},editEnabled:!!grid,onPreview:warpPreview,onCommit:warpCommit,onSelection:select}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++count>8)throw Error('Effects did not settle');}while(hooks.dirty);};render();preview.mockClear();warpPreview.mockClear();
  return {source,preview,commit,warpPreview,warpCommit,select,svg,render,setDrawing:(d:DrawingDocument)=>{drawing=d;render();},navigate:()=>{targetKey='view-1';render();},reveal:()=>{revealGridKey++;render();},readonly:()=>{curveEdit.editable=false;render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id),paint:()=>all.find(e=>!!e.props.curveDown)!};
 }
 const pointer=(clientX:number,clientY:number)=>({button:0,pointerId:1,clientX,clientY,shiftKey:false,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()});
@@ -66,3 +67,5 @@ test('held arrows use 1/10/.1 screen pixels and commit once, without taking cont
  for(const tag of ['input','select','textarea','button'])listeners.get('keydown')!(key('ArrowRight',tag));for(const modifiers of [{ctrlKey:true},{metaKey:true}])listeners.get('keydown')!(key('ArrowRight','svg',modifiers));expect(h.preview).not.toHaveBeenCalled();
  listeners.get('keydown')!(key('ArrowRight'));listeners.get('keydown')!(key('ArrowRight','svg',{shiftKey:true}));listeners.get('keydown')!(key('ArrowRight','svg',{altKey:true}));const next=h.preview.mock.calls.at(-1)![0] as RecordingCurveEdit;expect(next.position[0]).toBeCloseTo(-1+11.1/unit,10);expect(h.commit).not.toHaveBeenCalled();listeners.get('keyup')!(key('ArrowRight'));expect(h.commit).toHaveBeenCalledExactlyOnceWith(next);
 });
+
+test('onion inspection suppresses current fills and layer overrides without changing the saved preview toggles',()=>{const prior=useDrawing.getState();try{useDrawing.getState().set({showFills:true,fillVisibility:{'instance/layer':true}});const h=harness({inspectionHideFills:true});expect(h.paint().props.showFills).toBe(false);expect(h.paint().props.fillVisibility).toBeUndefined();expect(h.element('vr-show-fills').props.disabled).toBe(true);expect(useDrawing.getState().showFills).toBe(true);expect(useDrawing.getState().fillVisibility).toEqual({'instance/layer':true});}finally{useDrawing.setState(prior,true);}});
