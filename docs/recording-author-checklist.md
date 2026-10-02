@@ -1,6 +1,6 @@
 # 录制作者最短流程：独立场景 API 2.0
 
-本页对应 v24 / `917369c`（2026-10-02已发布），完整合同见 [场景接口](recording-scene-api.md)，数据所有权见 [架构说明](architecture/recording-scenes.md)。Drawing 保存配件源稿，Recording 引用它们组成场景。切换参考画稿不构成转头结果。
+本页对应 v27 / `6b72514`（2026-10-02已发布），完整合同见 [场景接口](recording-scene-api.md)，数据所有权见 [架构说明](architecture/recording-scenes.md)。Drawing 保存配件源稿，Recording 引用它们组成场景。切换参考画稿不构成转头结果。
 
 1. **Inspect**：进入 Recording，用 `inspectScene` 查 scene/instance/layer/Warp/track/key ID、`viewpoints` 与 `revision`。检查当前角度、各对象草稿和有效源版本；同源多实例有不同实例 ID
 2. **建立视角**：推荐先 `createViewpoint {name,angle}`，也可在左侧调整角度后点击「建立视角」。没有 Warp 也能建立。UI 在未建立视角的角度只预览，不能编辑显隐、排序或网格；底层 API 仍能直接写轨道，这不是 API 强制门禁
@@ -14,6 +14,14 @@
 ## 图层操作的边界
 
 Drawing 只传入一份快照，Recording 可传入多份，Ctrl/Cmd、Shift、组/成员选择都沿用同一套逻辑。Drawing 原有锁定、结构工具和排序保留；Recording 通过命令适配器写姿态覆盖，不改源结构。眼睛和录制层序进入当前角度草稿；填充预览、列表展开/折叠始终是临时状态，不随「更新此视角」写键。未建立的预览角度不能改姿态，但可以看填充和折叠列表。
+
+## 网格选择与移动
+
+- 右侧选已有 Warp，或重选绑定同一 Warp 的图层找回网格。「显示已有 Warp」只显示，不重复创建；点击空白也不丢失当前网格
+- V 整体平移当前 Warp；A 编辑节点、网格边的端点对和 Warp Bézier 柄。Shift 复选／框选，画布 Ctrl/Cmd+A 或「全选网格」选择全部节点；Z／空格只控制视口
+- 整行／整列只执行一次：有选点立即扩选，无选点等下一点；选好后拖已选成员保持多选，普通点未选成员恢复单选
+- 方向键按屏幕像素微调：普通1、Shift10、Alt/Option0.1。连按在释放键时提交一个草稿；输入控件与未建立视角都不写网格
+- 自动显示网格不扩大保存选择；实际网格手势才选定该 Warp。用「更新此视角」提交当前角度已有草稿，或明确使用所选对象保存。源线条仍只在 Drawing 修改
 
 ## 七帧验收导出
 
