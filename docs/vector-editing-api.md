@@ -1,5 +1,7 @@
 # Local structured vector editing API
 
+Current release: v19 / `1559770`, API 2.0, published 2026-10-02 at 05:17:48 UTC. Recording uses the [independent scene API](recording-scene-api.md); the initial browser workflow acceptance passed within the scope recorded in [release validation](recording-scene-release-validation.md). Source commands retain the Drawing-only contract below.
+
 `window.contourAI` exposes source-vector inspection and bounded JSON commands in the local app. The API does not connect to a service, accept credentials, execute supplied JavaScript, or switch workspace modes. It is an editing interface for a future image-guided assistant, **not an automatic image-to-vector matching solver**.
 
 Module: `src/app/vectorEditingApi.ts`. Integration calls `registerVectorEditingApi()` once; its return value unregisters that instance. Tests and local integrations can call `createVectorEditingApi(host)` without a browser. The host must commit through the application's normal drawing transaction. The default host uses one `beginEdit` → `setDrawing` → `endEdit` sequence.
@@ -16,11 +18,11 @@ Project/source/Recording operations except `help()` return one of the forms belo
 {"ok":false,"revision":"opaque-session-token:1","error":{"code":"NOT_FOUND","message":"Unknown curve ID: missing.","commandIndex":1}}
 ```
 
-- Treat revision as opaque. Send the latest inspection's revision as `expectedRevision` when editing, selecting, previewing, exporting, or undoing. Any observed project replacement, including UI editing, invalidates an older token. Tokens are local to this API instance, not saved in project JSON
+- Treat revision as opaque. Send the latest inspection's revision as `expectedRevision` when editing, selecting, previewing, exporting, or undoing. Any observed project/source/library replacement, including inactive artwork working copies and UI editing, invalidates an older token. Tokens are local to this API instance, not saved in project JSON
 - All source writes require **Drawing** mode. Recording-mode calls cannot alter nodes, handles, topology, layer contents or visibility. They return `MODE_RESTRICTED`; the API never changes modes to make a command succeed
-- Inspection and source export remain available in Recording. `inspect().value.recording` exposes a detached copy of the current vector rig, when present. Source SVG preview is explicitly a source-artwork preview, not recording evaluation
+- Inspection and source export remain available in Recording. `inspect().value.recording` may include a detached legacy rig archive, when present; use `inspectScene()` for the current recording state. Source SVG preview is explicitly a source-artwork preview, not recording evaluation
 - Commands are sequential within a private draft. All commands, coordinates, source constraints and new derived-geometry diagnostics are checked before the single store transaction. A failed command, dry run, no-op or speculative preview creates no undo entry
-- `undo()` / `redo()` use normal project history. In Recording, a history step that changes source artwork or saved source artworks is rejected. These operations are not a separate API-private history
+- `undo()` / `redo()` use normal project history. In Recording, a history step that changes source artwork, saved source artworks, or retained working copies is rejected. These operations are not a separate API-private history
 - Existing IDs are retained by ordinary edits; explicit creation/duplication returns fresh IDs and deletion reports removed IDs. Stroke IDs are derived anchors of connected components, not a second persistent topology
 - Locks, hidden-member rules, linked endpoints and smooth tangent constraints use the same drawing commands as manual editing. A node move also moves its adjacent handles and linked nodes. A smooth handle move can move its partner handle. Changed IDs include those effects
 - `allowRelated:true` explicitly permits related-curve effects for affine/four-corner transforms; it never overrides locks. Otherwise a partial connected selection can return `CONSTRAINT_VIOLATION` with `relatedCurveIds`
@@ -261,7 +263,9 @@ api.artwork({op:"delete",artworkId:"EXACT_ID",expectedRevision});
 
 Each call accepts exactly one operation and uses one guarded root-store transaction. `save` with no `artworkId` creates a fresh ID, even if another artwork has the same name. `save` with an explicit `artworkId` updates that existing snapshot and retains its ID/rig association; an unknown ID fails instead of creating another artwork. `rename` changes only the label and never captures unsaved working geometry. Names may be trimmed; IDs never are.
 
-`restore` refuses when the working source is dirty or unsaved. Prefer saving a new artwork first. `discardUnsaved:true` explicitly permits restoring over those working changes; normal Undo still recovers the previous state. `delete` removes only the saved checkpoint and preserves the current working source. Deletion is rejected with `ARTWORK_HAS_RIG` whenever a recording rig references that artwork, preventing orphaned keyforms. There is no implicit rig migration/archive or permanent purge.
+`restore` on a named artwork keeps its unsaved changes under the same ID in `drawingWorkingCopies`, then loads the target’s retained working copy before its checkpoint. Only an unnamed source still requires a saved identity first. `discardUnsaved:true` explicitly discards the current working copy; normal Undo recovers the previous state. Updating a checkpoint with the same ID clears that working copy; saving as a new ID preserves the old source’s working copy and does not retarget its scene instances. `inspectArtworks()` reports `hasWorkingCopy`. Scene source resolution is active Drawing → same-ID working copy → checkpoint, and API revision covers inactive working copies too.
+
+`delete` removes the saved checkpoint and that ID’s retained working copy, while preserving the current Drawing document. An archived legacy rig reference still triggers `ARTWORK_HAS_RIG`. Otherwise scene references and animation keys remain orphaned with local diagnostics until the source is restored; scene cleanup never deletes library artwork. There is no permanent purge.
 
 Artwork reads work in either mode; writes require Drawing. Stale revisions, malformed fields, operation arrays, failed validation and dry runs create no history entry. A new ID returned by a save dry-run is provisional. The default host uses `beginEdit → setDrawingSnapshotState → endEdit`, preserving the store's existing first-save `$working` rig migration. Custom hosts may implement optional synchronous `commitArtwork(state)`; without it, mutation returns `UNAVAILABLE` while metadata reads and dry-run planning remain usable.
 
@@ -315,6 +319,6 @@ The executable specimen is [the two-face setup batch](examples/two-face-mirror-e
 
 ## Separate Recording and transient-view interfaces
 
-API 1.5 adds `inspectRecording / recording / previewRecording`, documented in [the Recording guide](vector-recording-api.md). Recording writes use their own mode-gated, atomic rig transaction; they never author Drawing source geometry.
+API 2.0 uses `inspectScene / scene / previewScene / previewSceneFrames`, documented in [the scene guide](recording-scene-api.md). Scene writes use their own Recording-only atomic transaction and never author Drawing source geometry. The [legacy rig guide](vector-recording-api.md) remains historical; its four methods return `LEGACY_RECORDING_RETIRED` when the project has `recordingScenes`.
 
 API 1.6 adds `inspectView / view`, documented in [the temporary view guide](vector-workspace-view-api.md). These wrappers use the transient WorkspaceView store only. They intentionally do not accept or return a project revision, do not add project history and do not auto-save. Failed or dry-run view batches do not apply any partial state.

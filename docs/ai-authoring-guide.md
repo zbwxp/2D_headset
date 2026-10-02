@@ -1,8 +1,8 @@
 # Contour AI 矢量创作操作手册
 
-新版独立 Recording 场景正在集成，使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)。以下单画稿 rig 流程作为旧版说明保留；含 `recordingScenes` 的工程不会通过旧录制方法另写一套后台动画。
+当前 Recording 使用 API 2.0 的 `inspectScene / scene / previewScene / previewSceneFrames`，完整契约见 [场景接口](recording-scene-api.md)，最短操作顺序见 [录制作者流程](recording-author-checklist.md)。本页的源编辑合同仍适用；明确标注的旧单画稿 rig 记录只作历史参考。
 
-当前部署基线：2026-10-01 v13，`main 02e97da`，`contourAI` 1.7。v11 的镜像/区间与 v12 的视图已有实际浏览器记录；v13 pin/批量帧已上线，最终转头例稿已完成离线视觉复核，当前工程的浏览器验收仍待完成。源连接自 v7 提供，v8 已部署显式显示路由与跨层末端接笔笔触。本文面向操作现有矢量画稿的 AI，也可供开发者实现固定 JSON 接入。
+本文对应2026-10-02 05:17:48 UTC已发布的 v19，代码 `1559770`，`contourAI` 2.0。v18 于2026-10-02 05:04 UTC 发布，v19 修复单选 Warp 的保存请求携带空 layerRefs 的问题。新场景首轮真实浏览器流程验收已通过，具体范围见[发布验证记录](recording-scene-release-validation.md)。Drawing 是可复用源稿库，Recording 引用多个实例并按对象保存独立关键帧。源连接、显示路由、末端笔触、镜像和临时视图的旧版实测记录保留在下文，不能当作本次完整验收。
 
 优先使用应用已经提供的结构化接口：查询真实 ID，预演，执行一个小而完整的事务，检查结果。不要用截图重建用户的原画，不要猜 ID，不要用任意 JavaScript、原始工程替换或默认资产文件覆盖来绕过接口。
 
@@ -19,7 +19,7 @@
 
 点击「预演命令」只检查；点击「执行（可撤销）」提交。界面的「检查源稿」和「导出源稿 JSON」是独立按钮。有效方法的 JSON 输出可从 `data-testid="ai-api-result"` 读取；信封语法错误或未知 method 在 v13 的界面层可能仍显示纯文本错误，先检查而不要把它当成成功 JSON；预览成功时会显示「源稿预览」图像。不要解析整个对话框的文字，也不要向文本框发送函数、脚本或未知 method。
 
-程序接入使用固定的 `window.contourAI` 方法：`help / inspect / execute / preview / select / exportSource / inspectArtworks / artwork / undo / redo / convertPoint`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。API 1.5 提供 `inspectRecording / recording / previewRecording`；API 1.6 提供 `inspectView / view / snapView`；API 1.7 增加 `previewRecordingFrames`。v13 的固定信封已支持这些方法。`help / exportSource / undo / redo / convertPoint` 仍不能仅凭程序方法存在就当成可发送的 method；导出源稿使用界面独立按钮。
+程序接入使用固定的 `window.contourAI` 方法：源稿使用 `inspect / execute / preview / select / exportSource / inspectArtworks / artwork`，录制使用 `inspectScene / scene / previewScene / previewSceneFrames`，临时视图使用 `inspectView / view / snapView`。`help()` 返回版本、命令名与限额；它不是执行任意代码的入口。固定信封只接受界面列出的 method；导出源稿使用界面独立按钮。带 scene 的工程调用旧 `inspectRecording / recording / previewRecording / previewRecordingFrames` 返回 `LEGACY_RECORDING_RETIRED`，请改用对应 scene 方法；旧数据仍保留。
 
 <!-- tested: inspect-nose -->
 ```json
@@ -49,7 +49,7 @@
 - **绘制模式**：允许源几何、拓扑、图层、填充、区间与画稿库操作
 - **录制模式**：上述写入返回 `MODE_RESTRICTED`。接口不会自动切换模式
 - 源查询、源导出和画稿元数据可在录制模式读取；源修改的 Undo 也必须回到绘制模式
-- 录制 Warp、关键形与角度区间覆盖通过独立的 [Recording 接口](vector-recording-api.md) 编辑，不通过本源命令集写入。不能拿录制后的拟合控制点覆盖源稿
+- 录制 Warp、关键形与角度区间覆盖通过独立的 [Recording 场景接口](recording-scene-api.md) 编辑，不通过本源命令集写入。不能拿录制后的拟合控制点覆盖源稿
 
 ## 4 事务和失败处理
 
@@ -269,9 +269,9 @@ npx vitest run src/tests/ai-authoring-guide.test.ts src/tests/vector-source-conn
 截至本页版本：源/画稿 CRUD、固定 JSON 操作、显式显示路由与跨层 ink ARC 已在实际浏览器完成操作与保存核验。后续新增能力仍应先确认实际部署，不要仅凭源码中的模块名称推断线上可用。
 
 
-## 12 可交付的 +90° 转头示例（浏览器验收待完成）
+## 12 历史：旧单画稿 +90° 转头示例
 
-当前冻结工程为 `yaw-final-rig-project.json`，SHA-256 为 `c6aba9f1e8783a09274192b6039a43b2e9dbc4fde7d02efdaa2691ca3c7f9fc6`。它是实际 rig 工程，和右侧源参考稿不同：一份 134 曲线源稿、13 个 deformer，正向作者键为 X=0/15/30/45/48/50/55/60/90。原正面和侧面参考保持原样；当前源稿与已存画稿一致，没有未保存源修改。
+本节是旧单画稿 rig 的历史离线报告，不是 v18 scene 浏览器验收。当前录制请使用 [场景接口](recording-scene-api.md)。当时冻结工程为 `yaw-final-rig-project.json`，SHA-256 为 `c6aba9f1e8783a09274192b6039a43b2e9dbc4fde7d02efdaa2691ca3c7f9fc6`。它是实际 rig 工程，和右侧源参考稿不同：一份 134 曲线源稿、13 个 deformer，正向作者键为 X=0/15/30/45/48/50/55/60/90。原正面和侧面参考保持原样；当前源稿与已存画稿一致，没有未保存源修改。
 
 本轮只制作正向 yaw 到 +90°，不包含头发或物理。负向 yaw 与 pitch 保持中立；-90° 与 Y±90° 锚点的完整 SVG/像素核验均与0°一致，不应把这些基础锚点当成其他方向的完成稿。
 
@@ -281,6 +281,6 @@ npx vitest run src/tests/ai-authoring-guide.test.ts src/tests/vector-source-conn
 
 分离副本还验证了 inspect→dryRun→apply→Undo/Redo→保存键 ID 保持→解析重载，源稿和画稿库未变；未保存草稿切角度、Recording 写源稿均被拒绝。结果绑定上述精确文件哈希，见 [技术核验记录](examples/yaw-final-rig-api-validation.json)。
 
-本次交付的仓库还集成了显式「0–90° 转头工作稿」载入操作，详见 [例稿继续编辑与复现](yaw-authoring-example.md)。它新增独立的正面参考、侧面参考和转头源稿/录制；先保存当前未存源稿，再按步骤建立新画稿，最后向当前录制追加新 rig。全部属于一次 Undo。画稿、rig、Warp 和关键形获得新 ID；源对象 ID 保持画稿内部作用域。现有录制容差和其他 rig 保留。载入器保留示例的已存角度与草稿，不静默归零或丢弃草稿。当前操作会留在 Drawing，便于立即撤销；要查看转头需主动切到 Recording。本文所列已部署基线仍是 v13，新增菜单实际可用性以本次发布状态为准。
+旧版仓库曾集成显式「0–90° 转头工作稿」载入操作，详见 [例稿继续编辑与复现](yaw-authoring-example.md)。它新增独立的正面参考、侧面参考和转头源稿/录制；先保存当前未存源稿，再按步骤建立新画稿，最后向当前录制追加新 rig。全部属于一次 Undo。画稿、rig、Warp 和关键形获得新 ID；源对象 ID 保持画稿内部作用域。现有录制容差和其他 rig 保留。载入器保留示例的已存角度与草稿，不静默归零或丢弃草稿。当前操作会留在 Drawing，便于立即撤销；要查看转头需主动切到 Recording。本段描述旧版载入器，v18 通过显式迁移保存兼容结果；不得将旧全场 saveKeyform 步骤用于新场景。
 
-**浏览器待验**：当前工程上传尚未获得所需确认，恢复后的浏览器状态读取仍超时，因此没有完成这份冻结工程的在线导入、手势和重载核验。包内成果可用于离线查看和继续制作，但必须保留这项边界；真实 Canvas 离线渲染不等于已通过浏览器验收。
+**历史验证边界**：当时工程上传未获所需确认，恢复后的浏览器状态读取超时，因此没有完成这份旧冻结工程的在线导入、手势和重载核验。包内成果可用于离线查看和继续制作，但必须保留这项边界；真实 Canvas 离线渲染不等于已通过浏览器验收。

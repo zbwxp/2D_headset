@@ -1,6 +1,6 @@
 # AI 临时参考与辅助线接口
 
-API 1.6：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。已在 v12 实际浏览器验证，v13 保持同一接口。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
+自 API 1.6 提供、API 2.0 保留：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`。已在 v12 实际浏览器验证，v19 保留同一临时接口；本次场景工作流实测范围见[发布验证记录](recording-scene-release-validation.md)，不代表每项临时视图手势都已重新测试。它们使用独立的临时视图状态，不写工程、源稿、录制关键形、自动保存或 Undo；重新载入后不承诺保留。
 
 这组方法不接受 expectedRevision，也不返回工程 revision。源稿/录制批次仍使用各自原有的 revision 和撤销规则。视图命令在 Drawing 与 Recording 都可执行。
 
@@ -37,7 +37,7 @@ API 1.6：`inspectView()`、`view({commands,dryRun?})` 与只读 `snapView(...)`
 
 REFERENCE_ARTWORK_ID 必须换成 inspectArtworks 返回的真实 ID。先预演，再用 dryRun:false 应用。返回 changed/applied 与 createdGuideIds/removedGuideIds，但不会新增工程撤销步骤。
 
-普通源稿/姿态 JSON 和 SVG 导出不包含这些对照和辅助线；AI 控制柄注释仍需在 preview/previewRecording 的 annotations 里显式请求。临时画布参考可以辅助人工/AI观察，不能把它误当成已经导入源稿的图层。
+普通源稿/姿态 JSON 和 SVG 导出不包含这些对照和辅助线；AI 控制柄注释仍需在 preview/previewScene 的 annotations 里显式请求。临时画布参考可以辅助人工/AI观察，不能把它误当成已经导入源稿的图层。
 
 `src/tests/vector-workspace-view-api.test.ts` 直接读取本文 JSON 示例，并验证双模式、无源/历史/revision 改动、预演、失败无部分应用与默认视图适配器。
 

@@ -1,6 +1,6 @@
 # Recording 场景与独立对象轨道
 
-本页对应正在集成的 `contourAI` 2.0、工程字段 `recordingScenes.version=1`。是否已经上线，以应用 `help()` 与发布版本为准。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
+本页对应 2026-10-02 05:17:48 UTC 已发布的 v19（`1559770`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。首轮真实浏览器流程验收已通过，涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 调用真实接口验证。
 
 ## 开始前先查询
 

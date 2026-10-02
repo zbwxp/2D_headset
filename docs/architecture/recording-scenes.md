@@ -1,6 +1,6 @@
 # Recording scenes and independent object tracks
 
-Status: implementation branch; browser acceptance pending, not deployed. Baseline `4225cd9` remains available.
+Status: v19 / `1559770` published on 2026-10-02 at 05:17:48 UTC. The initial browser workflow acceptance passed: cross-source assembly, independent selected-object keys, parent/child binding, source working copies, Undo/Redo, and reload. This does not certify untested gestures or finished turning artwork. See [release validation](../recording-scene-release-validation.md).
 
 Drawing is the reusable source artwork library. Recording assembles references to that library into independent scenes. Editing a source in Drawing updates its instances; Recording never writes source Bézier controls.
 
