@@ -47,6 +47,7 @@ test('viewpoint workflow places angle recording on the left and reused Drawing l
   useEditor.setState({project,past:[],future:[]});const html=renderToStaticMarkup(createElement(RecordingWorkspace));
   const left=html.indexOf('data-testid="scene-viewpoint-panel"'),canvas=html.indexOf('data-testid="vr-scene-canvas"'),right=html.indexOf('data-testid="scene-source-layer-panel"');
   expect(left).toBeGreaterThan(0);expect(left).toBeLessThan(canvas);expect(canvas).toBeLessThan(right);
+  const leftContent=html.slice(left,html.indexOf('</aside>',left));expect(leftContent.indexOf('scene-angle-pad')).toBeLessThan(leftContent.indexOf('scene-update-viewpoint'));expect(leftContent.indexOf('scene-update-viewpoint')).toBeLessThan(leftContent.indexOf('scene-onion-controls'));expect(leftContent.indexOf('scene-onion-controls')).toBeLessThan(leftContent.indexOf('scene-reference-toggle'));expect(leftContent).not.toContain('data-testid="recording-reference-controls"');expect(html).toContain('id="recording-reference-panel"');expect(html.match(/data-testid="scene-reference-toggle"/g)).toHaveLength(1);
   expect(html).toContain('data-testid="scene-layer-panel"');expect(html).toContain('data-testid="drawing-layer-select"');
   expect(html).toContain('data-testid="drawing-curve-row"');expect(html).toContain('data-testid="drawing-toggle-fills"');
   expect(html).toContain('data-testid="scene-update-viewpoint"');expect(html).toContain('data-testid="vr-tool-direct"');expect(html).toContain('data-testid="vr-tool-zoom"');
