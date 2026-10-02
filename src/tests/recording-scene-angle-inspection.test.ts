@@ -74,3 +74,12 @@ test('ghosts render the real SHOW/HIDE/ARC paint output with no fills or picking
  expect(actual).not.toContain('data-testid="drawing-fill"');expect(actual).not.toMatch(/data-testid="drawing-(?:hit|arc-hit|offset-hit|fill-hit)"/);expect(actual).toContain('pointer-events="none"');expect(actual).not.toContain('data-angle-x="30"');
  const controls=renderToStaticMarkup(createElement(SceneOnionControls,{settings:{...settings,enabled:false},onChange:()=>{throw Error('Controls must not author scene data');}}));expect(controls).toContain('disabled=""');expect(controls).toContain('hidden=""');
 });
+
+
+test('saved placement changes invalidate onion cache while current placement drafts do not',()=>{
+ const {scene,resolve}=fixture();scene.placementTracks=[{id:'placement',instanceId:'instance',keys:[{id:'place-zero',angle:{x:0,y:0},value:{translation:[0,0],rotation:0,scale:1}},{id:'place-side',angle:{x:90,y:0},value:{translation:[1,0],rotation:90,scale:2}}]}];
+ const signature=sceneOnionSavedSignature(scene),frame=evaluateSceneOnionFrame(scene,resolve,{x:30,y:0});
+ scene.placementTracks[0].draft={angle:{x:30,y:0},value:{translation:[12,0],rotation:100,scale:3}};
+ expect(sceneOnionSavedSignature(scene)).toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0})).toEqual(frame);
+ scene.placementTracks[0].keys[1].value.translation=[2,0];expect(sceneOnionSavedSignature(scene)).not.toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0}).drawing).not.toEqual(frame.drawing);
+});

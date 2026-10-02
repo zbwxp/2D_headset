@@ -1,8 +1,8 @@
 import {blendWarpGrids} from '../vectorWarp/model';
 import {bracket,clampAngle,latticeWeights,sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {blendIntervalOverrides,missingCornerIntervals} from '../vectorRecording/intervals';
-import type {DrawingDocument,StrokeDisplayIntervals} from '../drawing/model';
-import type {SceneTrack,SceneWarp,SceneVisibilityTrack,SceneDepthTrack,SceneIntervalTrack,SceneIntervalValue} from './model';
+import type {DrawingDocument,StrokeDisplayIntervals,Point2} from '../drawing/model';
+import {identityScenePlacement,type SceneTrack,type SceneWarp,type SceneVisibilityTrack,type SceneDepthTrack,type SceneIntervalTrack,type SceneIntervalValue,type ScenePlacementTrack,type ScenePlacementValue} from './model';
 
 interface Sample<T> {value:T;weight:number}
 const strongest=<T>(samples:Sample<T>[]):T=>samples.reduce((a,b)=>b.weight>a.weight?b:a).value;
@@ -40,6 +40,30 @@ export function evaluateVisibilityTrack(track:SceneVisibilityTrack,angle:Angle,u
 }
 export function evaluateDepthTrack(track:SceneDepthTrack,angle:Angle,useDraft=true):number {
  return evaluate(track,angle,0,s=>s.reduce((n,x)=>n+x.weight*x.value,0),(n,x,y)=>x+y-n,useDraft);
+}
+/** Scalar channels retain authored turns (0→360 really makes one revolution).
+ * Positive scale interpolates linearly. Missing XY scale corrections multiply
+ * relative to neutral, so two reductions cannot introduce a singular corner. */
+export function evaluatePlacementTrack(track:ScenePlacementTrack,angle:Angle,useDraft=true):ScenePlacementValue {
+ const mix=(samples:Sample<ScenePlacementValue>[]):ScenePlacementValue=>samples.reduce((v,s)=>({translation:[v.translation[0]+s.weight*s.value.translation[0],v.translation[1]+s.weight*s.value.translation[1]],rotation:v.rotation+s.weight*s.value.rotation,scale:v.scale+s.weight*s.value.scale}),{translation:[0,0],rotation:0,scale:0} as ScenePlacementValue);
+ return evaluate(track,angle,identityScenePlacement(),mix,(n,x,y)=>({translation:[x.translation[0]+y.translation[0]-n.translation[0],x.translation[1]+y.translation[1]-n.translation[1]],rotation:x.rotation+y.rotation-n.rotation,scale:Math.max(1e-6,Math.min(1e6,x.scale*y.scale/n.scale))}),useDraft);
+}
+/** SVG affine ordering: x'=a*x+c*y+e, y'=b*x+d*y+f. */
+export type ScenePlacementMatrix=[number,number,number,number,number,number];
+export function placementMatrix(value:ScenePlacementValue):ScenePlacementMatrix {
+ const a=value.rotation*Math.PI/180,c=Math.cos(a)*value.scale,s=Math.sin(a)*value.scale;
+ return [c,s,-s,c,value.translation[0],value.translation[1]];
+}
+export function applyScenePlacement(value:ScenePlacementValue,point:Point2):Point2 {
+ const [a,b,c,d,e,f]=placementMatrix(value);return [a*point[0]+c*point[1]+e,b*point[0]+d*point[1]+f];
+}
+export function inverseScenePlacement(value:ScenePlacementValue):ScenePlacementValue {
+ const inverse={translation:[0,0] as Point2,rotation:-value.rotation,scale:1/value.scale};
+ return {...inverse,translation:applyScenePlacement(inverse,[-value.translation[0],-value.translation[1]])};
+}
+/** Left-multiply a world-space gesture: the result maps p to delta(base(p)). */
+export function composePlacementSimilarity(base:ScenePlacementValue,delta:ScenePlacementValue):ScenePlacementValue {
+ return {translation:applyScenePlacement(delta,base.translation),rotation:base.rotation+delta.rotation,scale:base.scale*delta.scale};
 }
 export function evaluateIntervalTrack(track:SceneIntervalTrack,source:DrawingDocument,angle:Angle,useDraft=true):SceneIntervalValue {
  const base=source.displayIntervals?.find(t=>t.id===track.sourceTrackId);if(!base)throw Error('The source interval track is missing.');

@@ -33,7 +33,7 @@ export async function loadSceneExample(load=async()=>{
 
 function sourceEvidence(source:DrawingDocument){return {sourceSignature:drawingSignature(source),sourceStructureSignature:sourceStructureSignature(source),sourceIntervalFrames:sourceIntervalFrames(source)};}
 
-const sceneTracks=(scene:RecordingScene)=>[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])];
+const sceneTracks=(scene:RecordingScene)=>[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[]),...(scene.placementTracks??[])];
 const sceneIds=(recording:RecordingScenes|undefined)=>recording?.scenes.flatMap(scene=>[scene.id,...scene.instances.flatMap(i=>[i.id,i.artworkId]),...sceneTracks(scene).flatMap(t=>[t.id,...t.keys.map(k=>k.id)])])??[];
 const recordingIds=(recording:VectorRecording|undefined)=>recording?.rigs.flatMap(r=>[r.id,r.artworkId,...r.deformers.map(d=>d.id),...r.keys.map(k=>k.id)])??[];
 
@@ -137,7 +137,7 @@ export function planSceneExampleImport(state:DrawingSnapshotState,exampleProject
   if(!accepted)throw Error('无法生成无冲突的画稿标识，请重试');
  }
  const sceneId=freshId(),instanceMap=new Map(original.instances.map(i=>[i.id,freshId()])),warpMap=new Map(original.warps.map(w=>[w.id,freshId()]));
- const trackMap=new Map([...original.visibilityTracks,...original.intervalTracks,...(original.depthTracks??[])].map(t=>[t.id,freshId()]));
+ const trackMap=new Map([...original.visibilityTracks,...original.intervalTracks,...(original.depthTracks??[]),...(original.placementTracks??[])].map(t=>[t.id,freshId()]));
  // Key IDs need only be unique within each object in external scene JSON. The
  // composite lookup also handles projects that reuse a key ID across tracks.
  const keyMap=new Map(sceneTracks(original).flatMap(t=>t.keys.map(k=>[JSON.stringify([t.id,k.id]),freshId()] as const)));
@@ -149,6 +149,7 @@ export function planSceneExampleImport(state:DrawingSnapshotState,exampleProject
   bindings:original.bindings.map(b=>({...reference(b),warpId:warpMap.get(b.warpId)!})),
   visibilityTracks:original.visibilityTracks.map(t=>({...t,...track(t.id,t),id:trackMap.get(t.id)!,target:reference(t.target)})),
   intervalTracks:original.intervalTracks.map(t=>({...reference(t),...track(t.id,t),id:trackMap.get(t.id)!,instanceId:instanceMap.get(t.instanceId)!})),
+  ...(original.placementTracks?{placementTracks:original.placementTracks.map(t=>({...t,...track(t.id,t),id:trackMap.get(t.id)!,instanceId:instanceMap.get(t.instanceId)!}))}:{}),
   ...(original.depthTracks?{depthTracks:original.depthTracks.map(t=>({...t,...track(t.id,t),id:trackMap.get(t.id)!,target:reference(t.target)}))}:{}),
  };
  parseRecordingScenes({version:1,activeSceneId:scene.id,scenes:[...(existingScenes?.scenes??[]),scene]});

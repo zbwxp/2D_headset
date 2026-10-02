@@ -37,7 +37,7 @@ export function artworkCleanupSceneIdentity(scene:RecordingScene,sources:Record<
  const instances=new Map(scene.instances.map((instance,i)=>[instance.id,`instance:${i}`])),warps=new Map(scene.warps.map((warp,i)=>[warp.id,`warp:${i}`]));
  const ref=<T extends {instanceId:string}>(value:T)=>({...value,instanceId:mapped(instances,value.instanceId)});
  const track=<T,>(value:SceneTrack<T>&{id:string})=>({...omit(value,['id','name','keys']),keys:value.keys.map(k=>omit(k,['id','name']))});
- return canonical({...omit(scene,['id','name','angle','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','legacy']),
+ return canonical({...omit(scene,['id','name','angle','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','placementTracks','legacy']),
   instances:scene.instances.map(instance=>{
    const source=Object.hasOwn(sources,instance.artworkId)?sources[instance.artworkId]:undefined;
    return {...omit(instance,['id','name','artworkId']),source:source?artworkCleanupDrawingIdentity(source):{missing:instance.artworkId}};
@@ -47,6 +47,7 @@ export function artworkCleanupSceneIdentity(scene:RecordingScene,sources:Record<
   visibilityTracks:scene.visibilityTracks.map(t=>({...track(t),target:ref(t.target)})),
   intervalTracks:scene.intervalTracks.map(t=>({...track(t),instanceId:mapped(instances,t.instanceId)})),
   depthTracks:(scene.depthTracks??[]).map(t=>({...track(t),target:ref(t.target)})),
+  placementTracks:(scene.placementTracks??[]).map(t=>({...track(t),instanceId:mapped(instances,t.instanceId)})),
   ...(scene.legacy?{legacy:omit(scene.legacy,['rigId'])}:{})});
 }
 
@@ -162,7 +163,7 @@ export function planArtworkCleanup(project:LandmarkProject):ArtworkCleanupPlan{
  const archivedRigIds=rigs.filter(rig=>archivedRigSet.has(rig.id)).map(rig=>rig.id);
  const retainedRigs=rigs.filter(rig=>!archivedRigSet.has(rig.id)).map(rig=>{const artworkId=mapping.get(rig.artworkId)!;return artworkId===rig.artworkId&&artworkId!==keptSide.id?rig:{...rig,artworkId,...evidence(nextSources[artworkId])};});
  const archivedScenes:ArtworkCleanupPlan['archivedScenes']=[];let visibilityChanges=0;
- const reservedSceneIds=new Set(sceneList.flatMap(scene=>[scene.id,...scene.instances.map(i=>i.id),...[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[])].flatMap(track=>[track.id,...track.keys.map(key=>key.id)])]));
+ const reservedSceneIds=new Set(sceneList.flatMap(scene=>[scene.id,...scene.instances.map(i=>i.id),...[...scene.warps,...scene.visibilityTracks,...scene.intervalTracks,...(scene.depthTracks??[]),...(scene.placementTracks??[])].flatMap(track=>[track.id,...track.keys.map(key=>key.id)])]));
  const freshSceneId=(stem:string)=>{let id=stem,index=2;while(reservedSceneIds.has(id))id=`${stem}:${index++}`;reservedSceneIds.add(id);return id;};
  const scenes=sceneList.flatMap(scene=>{
   const redIndices=scene.instances.flatMap((instance,index)=>redMappings.has(instance.artworkId)?[index]:[]);

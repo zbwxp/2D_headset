@@ -1,4 +1,4 @@
-import {layerFor,type DrawingDocument,type StrokeDisplayIntervals} from '../drawing/model';
+import {layerFor,type DrawingDocument,type StrokeDisplayIntervals,type Point2} from '../drawing/model';
 import type {WarpGrid} from '../vectorWarp/model';
 import type {Angle} from '../vectorRecording/interpolation';
 import type {ArtworkRig} from '../vectorRecording/model';
@@ -31,6 +31,11 @@ export interface SceneIntervalTrack extends SceneTrack<SceneIntervalValue> {
  materialIssue?:{sourceSignature:string;message:string};
 }
 export interface SceneDepthTrack extends SceneTrack<number> {id:string;target:SceneLayerRef}
+/** Instance placement is a positive similarity AFTER its Warp chain. Rotation
+ * is authored in unwrapped degrees; ink widths retain Drawing's fixed units. */
+export interface ScenePlacementValue {translation:Point2;rotation:number;scale:number}
+export interface ScenePlacementTrack extends SceneTrack<ScenePlacementValue> {id:string;instanceId:string}
+export const identityScenePlacement=():ScenePlacementValue=>({translation:[0,0],rotation:0,scale:1});
 /** A named editing position, independent of the scene's object tracks. */
 export interface SceneViewpoint {id:string;name:string;angle:Angle}
 export interface RecordingScene {
@@ -38,6 +43,8 @@ export interface RecordingScene {
  /** Absent on older scenes, whose UI may derive positions from track keys. */
  viewpoints?:SceneViewpoint[];
  bindings:SceneLayerBinding[];visibilityTracks:SceneVisibilityTrack[];intervalTracks:SceneIntervalTrack[];depthTracks?:SceneDepthTrack[];
+ /** Omitted on existing scenes; every untracked instance has identity placement. */
+ placementTracks?:ScenePlacementTrack[];
  tolerance?:number;
  legacy?:{rigId:string;appearancePending?:boolean};
 }

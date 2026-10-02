@@ -109,3 +109,6 @@
 .drawing-layers .drawing-layer-section-tools{flex-wrap:wrap;min-height:36px;flex-shrink:0}.drawing-layers .drawing-layer-section-tools>button{padding-inline:5px;flex-shrink:0}.drawing-layers .drawing-layer-section-tools>.drawing-fill-toggle{gap:3px;font-size:11px}.drawing-layers .drawing-layer-section-tools>.drawing-fill-toggle[aria-pressed=true]{background:#3b4c3d;color:#c5e3b3}.drawing-layers .drawing-layer-section-tools>.drawing-fill-toggle span{font:inherit;color:inherit}
 
 .drawing-layers .drawing-layer-section-header{display:flex;align-items:center;background:#202a30}.drawing-layers .drawing-layer-section-header>.drawing-layer-section-heading{flex:1;min-width:0}
+
+.drawing-layer-section-heading.fold-only{flex:0 0 24px;padding-inline:4px}
+.drawing-layer-section-header.selected{background:#238eb522;outline:1px solid #238eb566;outline-offset:-1px}

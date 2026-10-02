@@ -22,7 +22,16 @@ export interface CompiledDisplayRouteBrushes {
 }
 export type DisplayLinkBrushOverrides=Readonly<Record<string,TerminusJoinBrush>>;
 type StyledLink=EndpointLink & {joinBrush?:TerminusJoinBrush};
-const validBrush=(brush:TerminusJoinBrush)=>brush&&(['SHARP','SMOOTH'].includes(brush.kind)||brush.kind==='ARC'&&Number.isFinite(brush.trimDistance)&&brush.trimDistance>0&&brush.trimDistance<=2);
+// Placement may scale a valid authored trim beyond the authoring limit. This
+// permission belongs only to the transient object, never JSON or raw overrides.
+const evaluatedBrushes=new WeakSet<TerminusJoinBrush>();
+const validBrush=(brush:TerminusJoinBrush)=>brush&&(['SHARP','SMOOTH'].includes(brush.kind)||brush.kind==='ARC'&&Number.isFinite(brush.trimDistance)&&brush.trimDistance>0&&(brush.trimDistance<=2||evaluatedBrushes.has(brush)));
+export function scaleEvaluatedDisplayRouteBrush(brush:TerminusJoinBrush,scale:number):TerminusJoinBrush {
+ if(!validBrush(brush)||!Number.isFinite(scale)||scale<=0)throw Error('Invalid evaluated display brush scale');
+ if(brush.kind!=='ARC')return brush;
+ const result={...brush,trimDistance:brush.trimDistance*scale};if(!Number.isFinite(result.trimDistance)||result.trimDistance<=0)throw Error('Invalid evaluated display brush scale');
+ evaluatedBrushes.add(result);return result;
+}
 
 /** Existing geometric endpoint coupling supplies positions. This helper shares
  * ONLY 末端接笔 appearance: no endpoint abstraction, source handles, node merge,

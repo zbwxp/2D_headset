@@ -1,5 +1,6 @@
-import {emptyDrawing,layerFor,type DrawingDocument,type CurveUse,type Endpoint} from '../drawing/model';
+import {emptyDrawing,layerFor,type DrawingDocument,type CurveUse,type Endpoint,type Cubic,type Point2} from '../drawing/model';
 import {mapDisplayRouteReferences,createDisplayRouteField,resolveDisplayRoute} from '../drawing/displayRoutes';
+import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
 import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
 import {paintItems} from '../drawing/strokes';
@@ -7,8 +8,8 @@ import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {cloneIntervalTracks,applyIntervalOverrides,applyIntervalEnableFlags} from '../vectorRecording/intervals';
 import {drawingSignature} from '../vectorRecording/model';
 import {deformDrawing,type DeformedDrawing,type WarpFitOptions,type WarpFitDiagnostic} from '../vectorWarp/evaluation';
-import {instanceObjectId,sceneObjectKey,sceneLayerKey,type RecordingScene,type SceneSourceResolver,type SceneInstance,type SceneLayerRef,type SceneDiagnostic,type SceneSourceObject,type WarpGrid,type Angle} from './model';
-import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack} from './tracks';
+import {identityScenePlacement,instanceObjectId,sceneObjectKey,sceneLayerKey,type RecordingScene,type SceneSourceResolver,type SceneInstance,type SceneLayerRef,type SceneDiagnostic,type SceneSourceObject,type WarpGrid,type Angle,type ScenePlacementValue} from './model';
+import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack,evaluatePlacementTrack,applyScenePlacement} from './tracks';
 import {validateScene} from './validation';
 import {clampAngle} from '../vectorRecording/interpolation';
 
@@ -17,10 +18,14 @@ export interface SceneEvaluationOptions extends Omit<WarpFitOptions,'endpoints'>
  /** Edit in this Warp's output space: all layers in its parent's input domain
   * omit that parent and its ancestors. Unrelated domains are isolated. */
  stopAtWarpId?:string;
+ /** Explicit common-space helper. Local Warp editing keeps placement by default. */
+ omitPlacements?:boolean;
 }
 export interface SceneLayerView extends SceneLayerRef {compiledLayerId:string;instanceName:string;name:string;included:boolean;inLocalDomain:boolean}
 export interface SceneEvaluation {
  source:DrawingDocument;drawing:DrawingDocument;angle:Angle;warpGrids:Record<string,WarpGrid>;
+ /** Authored evaluated placements, even when omitPlacements hides their effect. */
+ placements:Record<string,ScenePlacementValue>;
  layerMap:Record<string,string>;objectMap:Record<string,string>;provenance:Record<string,SceneSourceObject>;layers:SceneLayerView[];
  chains:Record<string,string[]>;diagnostics:SceneDiagnostic[];paintBatches:PaintBatch[];
  fitDiagnostics:Array<WarpFitDiagnostic&{sourceCurveId:string}>;warningCurveIds:string[];intervalTransportErrors:DeformedDrawing['intervalTransportErrors'];
@@ -63,6 +68,35 @@ function combine(drawings:DrawingDocument[]):DrawingDocument {
  const result=emptyDrawing();for(const d of drawings){result.nodes.push(...d.nodes);result.curves.push(...d.curves);result.layers.push(...d.layers);result.fills.push(...d.fills);result.offsets.push(...d.offsets);result.joins.push(...d.joins);(result.endpointLinks??=[]).push(...(d.endpointLinks??[]));(result.groups??=[]).push(...(d.groups??[]));(result.displayIntervals??=[]).push(...(d.displayIntervals??[]));}return result;
 }
 
+/** Apply an instance similarity to the already-deformed transient document.
+ * Unlike Drawing's editing transform this includes hidden/locked geometry and
+ * all geometry, without authoring clamps or source mutation. Ink width, mist,
+ * taper/extension and offset distance keep Drawing's fixed logical units. ARC
+ * construction is similarity-equivariant when its trim distance also scales;
+ * interval fractions/material positions therefore require no second transport.
+ * Nonuniform scale/reflection/shear are deliberately outside this contract. */
+function placeDrawing(result:DeformedDrawing,placements:Record<string,ScenePlacementValue>,provenance:Record<string,SceneSourceObject>):DeformedDrawing {
+ const identity=identityScenePlacement(),value=(id:string)=>placements[provenance[id]?.instanceId]??identity;
+ const active=(v:ScenePlacementValue)=>v.scale!==1||v.rotation!==0||v.translation[0]!==0||v.translation[1]!==0;
+ if(!Object.values(placements).some(active))return result;
+ const map=(id:string,p:Point2)=>{const v=value(id);return active(v)?applyScenePlacement(v,p):p;};
+ const drawing:DrawingDocument={...result.drawing,
+  nodes:result.drawing.nodes.map(n=>active(value(n.id))?{...n,position:map(n.id,n.position)}:n),
+  curves:result.drawing.curves.map(c=>active(value(c.id))?{...c,handles:c.handles.map(point=>map(c.id,point)) as [Point2,Point2]}:c),
+  // Derived offset distance stays fixed; its authored translation is a vector
+  // in instance space and therefore follows the placement's rotation/scale.
+  offsets:result.drawing.offsets.map(o=>{const p=value(o.id);return !active(p)||!o.translation?o:{...o,translation:applyScenePlacement({...p,translation:[0,0]},o.translation)};}),
+  joins:result.drawing.joins.map(j=>j.radius!==undefined&&active(value(j.a.curveId))?{...j,radius:j.radius*value(j.a.curveId).scale}:j),
+  ...(result.drawing.endpointLinks?{endpointLinks:result.drawing.endpointLinks.map(l=>l.joinBrush?.kind==='ARC'&&active(value(l.a.curveId))?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,value(l.a.curveId).scale)}:l)}:{}),
+ };
+ const diagnostics=result.diagnostics.map(d=>{
+  const p=value(d.sourceCurveId!);if(!active(p))return d;
+  const maxError=d.maxError*p.scale,endpointMismatchError=d.endpointMismatchError*p.scale,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8;
+  return {...d,cubic:d.cubic.map(point=>applyScenePlacement(p,point)) as Cubic,peakExpected:applyScenePlacement(p,d.peakExpected),peakActual:applyScenePlacement(p,d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,tangentStatus:endpointConflict?'endpoint-conflict' as const:d.tangentStatus,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};
+ });
+ return {...result,drawing,diagnostics,maxError:diagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),warningCurveIds:diagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId!)};
+}
+
 /** Paint positions resolve source offsets inside their original instance first.
  * The target neighbor side survives scene layer reordering and interleaving. */
 function scenePaintBatches(drawing:DrawingDocument,originals:Map<string,DrawingDocument>,provenance:Record<string,SceneSourceObject>):PaintBatch[]{
@@ -86,6 +120,7 @@ export function evaluateScene(scene:RecordingScene,resolve:SceneSourceResolver,o
  const localParentId=editingWarp?.parentId;
  const angle={x:clampAngle(requested.x),y:clampAngle(requested.y)},useDraft=options.useDraft!==false,diagnostics:SceneDiagnostic[]=[],layers:SceneLayerView[]=[],layerMap:Record<string,string>={},objectMap:Record<string,string>={},provenance:Record<string,SceneSourceObject>={},chains:Record<string,string[]>={};
  const warpGrids=Object.fromEntries(scene.warps.map(w=>[w.id,evaluateWarpTrack(w,angle,useDraft)])),sources:DrawingDocument[]=[],inputs:DrawingDocument[]=[],originals=new Map<string,DrawingDocument>(),resolvedSources=new Map<string,DrawingDocument|undefined>();
+ const placements=Object.fromEntries(scene.instances.map(instance=>{const track=scene.placementTracks?.find(t=>t.instanceId===instance.id);return [instance.id,track?evaluatePlacementTrack(track,angle,useDraft):identityScenePlacement()];}));
  if(scene.legacy?.appearancePending)diagnostics.push({code:'SOURCE_MATERIAL',message:'Legacy appearance is retained in the original rig and awaits its referenced source before migration.'});
  for(const instance of scene.instances){
   if(!resolvedSources.has(instance.artworkId))resolvedSources.set(instance.artworkId,resolve(instance.artworkId));
@@ -133,7 +168,8 @@ export function evaluateScene(scene:RecordingScene,resolve:SceneSourceResolver,o
  const source=combine(sources),input=combine(inputs),depths=new Map<string,number>();
  for(const track of scene.depthTracks??[]){const id=layerMap[sceneLayerKey(track.target)];if(!id){diagnostics.push({code:'MISSING_LAYER',...track.target,trackId:track.id,message:'The depth layer is missing; its keys are retained.'});continue;}depths.set(id,evaluateDepthTrack(track,angle,useDraft));}
  const originalIndices=new Map(input.layers.map((l,i)=>[l.id,i]));input.layers.sort((a,b)=>(originalIndices.get(a.id)!-(depths.get(a.id)??0))-(originalIndices.get(b.id)!-(depths.get(b.id)??0))||originalIndices.get(a.id)!-originalIndices.get(b.id)!);
- const result=deformDrawing(input,id=>{const p=provenance[id];return p?.sourceLayerId?(chains[sceneLayerKey({instanceId:p.instanceId,sourceLayerId:p.sourceLayerId})]??[]).map(id=>warpGrids[id]):[];},{...options,tolerance:options.tolerance??scene.tolerance??1/250});
+ const deformed=deformDrawing(input,id=>{const p=provenance[id];return p?.sourceLayerId?(chains[sceneLayerKey({instanceId:p.instanceId,sourceLayerId:p.sourceLayerId})]??[]).map(id=>warpGrids[id]):[];},{...options,tolerance:options.tolerance??scene.tolerance??1/250});
+ const result=options.omitPlacements?deformed:placeDrawing(deformed,placements,provenance);
  const routes=new Set<string>();for(const track of result.drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routes.has(key))continue;routes.add(key);for(const diagnostic of createDisplayRouteField(result.drawing,track.displayRoute).diagnostics){const p=provenance[track.id];diagnostics.push({code:'ROUTE',instanceId:p?.instanceId,trackId:p?.sourceId,message:diagnostic.message});}}
- return {source,drawing:result.drawing,angle,warpGrids,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
+ return {source,drawing:result.drawing,angle,warpGrids,placements,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
 }
