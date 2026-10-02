@@ -8,6 +8,7 @@ root = Path(__file__).resolve().parents[2]
 asset = root / 'src/assets'
 starter = json.loads((asset / 'three-piece-starting-example.json').read_text())
 front = json.loads((asset / 'hairless-symmetric-two-face-mirror.json').read_text())
+side = json.loads((asset / 'right90-reference.json').read_text())
 source = starter['drawing']
 rig = starter['vectorRecording']['rigs'][0]
 front_layers = ['5b7519c8-b451-442d-8ebb-deec4091ef2b', '909c9a51-f5f1-4e3a-9da9-6b4544ad0d9c']
@@ -28,15 +29,30 @@ red = {'version': 3, 'layers': red_layers, 'curves': curves,
 assert len(curves) == 8 and len(red['fills']) == 1
 assert all((link['a']['curveId'] in curve_ids) == (link['b']['curveId'] in curve_ids) for link in source.get('endpointLinks', []))
 assert all(set(use['id'] for use in fill['boundary']) <= curve_ids for fill in red['fills'])
+# Drawing keeps the complete side artwork. The recording-only red members are
+# hidden there and explicitly enabled by their scene appearance tracks.
+full_side = copy.deepcopy(side)
+full_side['layers'] = [{**copy.deepcopy(red_layers[0]), 'name': '录制用·独立侧前轮廓'}] + full_side['layers']
+for key in ['curves', 'nodes', 'fills', 'offsets', 'joins', 'endpointLinks', 'groups', 'displayIntervals']:
+    additions = copy.deepcopy(red[key])
+    if key in ['curves', 'fills', 'offsets']:
+        for member in additions:
+            member['visible'] = False
+    full_side[key] = full_side.get(key, []) + additions
 uid = lambda label: str(uuid5(NAMESPACE_URL, 'contour:three-piece-scene-example:' + label))
-front_id, red_id = uid('front-artwork'), uid('red-artwork')
+front_id, side_id = uid('front-artwork'), uid('full-side-artwork')
 front_instance, red_instance, scene_id = uid('front-instance'), uid('red-instance'), uid('scene')
 name = '三片脸 · 双源场景起步稿'
 scene = {'id': scene_id, 'name': name, 'angle': {'x': 90, 'y': 0},
          'instances': [{'id': front_instance, 'artworkId': front_id, 'name': '正面源稿 · 蓝绿两片', 'layerIds': front_layers},
-                       {'id': red_instance, 'artworkId': red_id, 'name': '独立红片源稿 · 0°收拢未完成', 'layerIds': [red_layer]}],
+                       {'id': red_instance, 'artworkId': side_id, 'name': '完整90°侧稿 · 独立红片 · 0°收拢未完成', 'layerIds': [red_layer]}],
          'warps': [], 'bindings': [], 'visibilityTracks': [], 'intervalTracks': [], 'depthTracks': [],
          'tolerance': starter['vectorRecording']['tolerance']}
+scene['visibilityTracks'] = [
+    {'id': uid('red-visible-' + member['id']),
+     'target': {'instanceId': red_instance, 'sourceLayerId': red_layer, 'sourceObjectId': member['id']},
+     'keys': [{'id': uid('red-neutral-' + member['id']), 'angle': {'x': 0, 'y': 0}, 'value': member['visible']}]}
+    for member in red['curves'] + red['fills'] + red['offsets']]
 for index, deformer in enumerate(rig['deformers']):
     warp_id = uid('warp-' + str(index))
     keys = []
@@ -62,9 +78,9 @@ scene['depthTracks'] = [{'id': uid('red-depth'), 'target': {'instanceId': red_in
 project = {key: copy.deepcopy(value) for key, value in starter.items()
            if key not in ['drawing', 'drawingSnapshots', 'vectorRecording', 'recordingScenes']}
 project['meta']['name'] = name + '（0°红片收拢与90°压缩未完成）'
-project['drawing'] = copy.deepcopy(red)
-project['drawingSnapshots'] = {'version': 1, 'activeId': red_id, 'items': [
+project['drawing'] = copy.deepcopy(full_side)
+project['drawingSnapshots'] = {'version': 1, 'activeId': side_id, 'items': [
     {'id': front_id, 'name': '正面源稿 · 完整镜像画稿', 'drawing': front},
-    {'id': red_id, 'name': '红前片源稿 · 独立八曲线', 'drawing': red}], 'images': []}
+    {'id': side_id, 'name': '90°完整侧稿', 'drawing': full_side}], 'images': []}
 project['recordingScenes'] = {'version': 1, 'activeSceneId': scene_id, 'scenes': [scene]}
 (asset / 'three-piece-scene-example.json').write_text(json.dumps(project, ensure_ascii=False, indent=2) + '\n')

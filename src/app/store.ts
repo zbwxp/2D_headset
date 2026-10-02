@@ -1,4 +1,5 @@
 import {prepareDrawingWorkingCopyTransition} from './drawingWorkingCopies';
+import {parseDrawingSnapshots,parseDrawingWorkingCopies} from '../domain/drawing/snapshots';
 import {migrateLegacyRecordingScenes} from '../domain/recordingScene/migration';
 import {parseRecordingScenes} from '../domain/recordingScene/persistence';
 import {syncRecordingSceneSources,remapWorkingSceneSource} from './recordingSceneSources';
@@ -140,6 +141,7 @@ try {
 interface State {
   setRecordingScenes:(value:import("../domain/recordingScene/model").RecordingScenes)=>void;
   commitRecordingScenes:(value:import("../domain/recordingScene/model").RecordingScenes)=>void;
+  commitArtworkCleanup:(expected:LandmarkProject,next:LandmarkProject)=>void;
   setVectorRecording:(recording:import("../domain/vectorRecording/model").VectorRecording)=>void;
   commitVectorRecording:(recording:import("../domain/vectorRecording/model").VectorRecording)=>void;
   setAssembly:(assembly:import("../domain/assembly/model").AssemblyDocument)=>void;
@@ -279,6 +281,17 @@ export const useEditor = create<State>((rawSet, get, api) => {
     persist(p);
   };
   return normalizeEditorUpdate(undefined,{
+    commitArtworkCleanup:(expected,next)=>{
+      assertSourceEditable();if(get().project!==expected)throw Error('工程在预览后已变更，请重新检查整理清单。');
+      const allowed=new Set(['drawing','drawingSnapshots','drawingWorkingCopies','recordingScenes','vectorRecording']);
+      if(Object.keys({...expected,...next}).some(key=>!allowed.has(key)&&(expected as any)[key]!== (next as any)[key]))throw Error('整理只能归档配件库和对应旧录制，不可修改画布。');
+      if(next.drawing){assertDisplayRouteSupport(next.drawing);validateMirrorEditing(next.drawing);}
+      if(next.drawingSnapshots)parseDrawingSnapshots(next.drawingSnapshots);
+      if(next.drawingWorkingCopies)parseDrawingWorkingCopies(next.drawingWorkingCopies,next.drawingSnapshots);
+      if(next.recordingScenes)parseRecordingScenes(next.recordingScenes);
+      if(next.vectorRecording)parseVectorRecording(next.vectorRecording);
+      if(next===expected)return;get().beginEdit();try{set({project:next});persist(next);}finally{get().endEdit();}
+    },
     setRecordingScenes:(recordingScenes)=>{const before=get().project,next={...before,recordingScenes},p=recordingScenes.scenes.some(scene=>scene.instances.some(instance=>!instance.sourceSignature))?syncRecordingSceneSources(next,before):next;set({project:p});persist(p);},
     commitRecordingScenes:(value)=>{const recordingScenes=parseRecordingScenes(value);get().beginEdit();try{get().setRecordingScenes(recordingScenes);}finally{get().endEdit();}},
     setVectorRecording:(vectorRecording)=>{const p={...get().project,vectorRecording};set({project:p});persist(p);},
