@@ -20,7 +20,9 @@
 
 查询返回 rig/artwork ID、角度、是否有草稿、源变化提示、参数范围、Warp ID/名称/父级、rest/current 网格、图层绑定与关键形 ID/名称/角度。`deformerIds / deformerNames` 可筛选网格；`includeKeyGrids:true` 才附每个保存关键形的网格。名称可重名，编辑使用 ID。
 
-`sourceReviewRequired:true` 时，先检查源稿变化。明确使用 `acceptSource` 才接受：保留 Warp/关键形，清理已删图层绑定；显示路径坐标系改变的区间角度覆盖会被清理，不能把旧百分比当成新路径的同一材料。不要自动接受来消除警告。若旧区间使当前插值无法计算，查询仍返回 rig/键/基础网格信息，并给出 poseEvaluationError 与 currentGrid:null；不要把基础网格误当成当前姿态。
+Drawing 中移动已有节点、控制柄或修改外观时，只要曲线拓扑、图层归属和显示路径未变，默认编辑 store 会自动同步到原 rig。Warp 基础网格、角度、关键形 ID、网格值与未保存录制草稿保留；已有角度区间覆盖按源材料位置迁移，不直接沿用变长路径上的百分比。更新当前画稿仍保留其 artwork ID，不需要重建 Warp。同步与源编辑属于同一次 Undo。
+
+旧版已过期的 rig 只有整稿 hash，不能据此猜测是否只改过几何。进入 Recording 时会用保留快照、Undo 历史或内置例稿的精确 hash 匹配原 source 后尝试同步；找不到基线，或拓扑、归属、路径变化时，仍会显示 `sourceReviewRequired:true`。这时先检查变化，明确使用 `acceptSource` 才接受：保留 Warp/关键形，清理已删图层绑定；显示路径坐标系改变的区间角度覆盖会被清理，不能把旧百分比当成新路径的同一材料。不要自动接受来消除警告。若旧区间使当前插值无法计算，查询仍返回 rig/键/基础网格信息，并给出 poseEvaluationError 与 currentGrid:null；不要把基础网格误当成当前姿态。
 
 ## 坐标与网格身份
 

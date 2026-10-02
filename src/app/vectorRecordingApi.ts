@@ -1,3 +1,4 @@
+import {syncVectorRecordingSources} from './vectorSourceSync';
 /** Fixed, source-read-only Recording commands. No raw project/pose replacement. */
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {emptyDrawing,layerFor,objectById,type DrawingDocument,type Point2,type TerminusBrushStyle,type DisplayIntervalMode} from '../domain/drawing/model';
@@ -54,6 +55,7 @@ function style(v:unknown):TerminusBrushStyle{const s=object(v);keys(s,['taper','
 const isAnchor=(a:Angle)=>a.x===0&&[-90,0,90].includes(a.y)||a.y===0&&[-90,0,90].includes(a.x);
 
 export function recordingOverview(project:LandmarkProject,raw:unknown={}){
+ project=syncVectorRecordingSources(project);
  const q=object(raw);keys(q,['deformerIds','deformerNames','includeKeyGrids','angle','expectedRevision']);if(q.includeKeyGrids!==undefined)bool(q.includeKeyGrids,'includeKeyGrids');
  const selectedIds=q.deformerIds===undefined?undefined:ids(q.deformerIds,'deformerIds',true),selectedNames=q.deformerNames===undefined?undefined:ids(q.deformerNames,'deformerNames',true),a=q.angle===undefined?undefined:angle(q.angle),d=drawing(project),recording=project.vectorRecording??emptyVectorRecording(),rig=existingRig(recording,active(project));
  if(!rig)return {artworkId:active(project),exists:false,sourceReadOnly:true,tolerancePixels:recording.tolerance*250};
@@ -64,6 +66,7 @@ export function recordingOverview(project:LandmarkProject,raw:unknown={}){
 }
 
 export function prepareRecordingBatch(project:LandmarkProject,raw:unknown){
+ project=syncVectorRecordingSources(project);
  const request=object(raw);keys(request,['commands','expectedRevision','dryRun']);if(request.dryRun!==undefined)bool(request.dryRun,'dryRun');if(!Array.isArray(request.commands)||request.commands.length>1000)fail('INVALID_REQUEST','commands must be an array of at most 1000 commands.');
  const source=drawing(project),artworkId=active(project),before=project.vectorRecording??emptyVectorRecording(),refs=new Map<string,string>(),created:RecordingCreation[]=[],pinResults:RecordingPinReport[]=[];let next=structuredClone(before);
  const canonical=(key:string)=>[...next.rigs.flatMap(r=>[r,...r.deformers,...r.keys]),...source.layers,...source.curves,...source.nodes,...source.fills,...source.offsets].some(x=>x.id===key);
@@ -123,6 +126,7 @@ export function prepareRecordingBatch(project:LandmarkProject,raw:unknown){
 
 /** Same full evaluation pipeline as the Recording UI, without child-local isolation. */
 export function evaluateRecording(project:LandmarkProject,request:{angle?:Angle;useDraft?:boolean}={}){
+ project=syncVectorRecordingSources(project);
  const d=drawing(project),recording=project.vectorRecording??emptyVectorRecording(),rig=needRig(recording,active(project));sourceReady(rig,d);if(request.useDraft!==undefined)bool(request.useDraft,'useDraft');const a=request.angle===undefined?rig.angle:angle(request.angle),wantsDraft=request.useDraft??request.angle===undefined;if(wantsDraft&&!sameAngle(a,rig.angle))fail('DRAFT_ANGLE_MISMATCH','A draft belongs only to the current stored angle.');const usedDraft=wantsDraft&&!!rig.draft,pose=wantsDraft?currentPose(rig,d):evaluatePose(rig,a,d),visible=applyVisibility(d,pose),evaluated=deformDrawing(visible,id=>deformerChain(rig,layerFor(d,id)?.id??'',pose),{tolerance:recording.tolerance,diagnostics:'full'});
  return {artworkId:rig.artworkId,rigId:rig.id,angle:a,usedDraft,hasUnappliedDraft:!!rig.draft&&!usedDraft,pose:structuredClone(pose),...evaluated,routeDiagnostics:displayRouteDiagnostics(evaluated.drawing)};
 }

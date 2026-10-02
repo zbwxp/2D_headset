@@ -24,7 +24,7 @@ export function parseVectorRecording(value:unknown):VectorRecording{
  for(const r of v.rigs){
   if(!object(r)||!name(r.id)||!name(r.artworkId)||rigIds.has(r.id)||artworkIds.has(r.artworkId)||!Array.isArray(r.deformers)||r.deformers.length>200||!object(r.bindings)||!Array.isArray(r.keys)||!r.keys.length||r.keys.length>500)fail();rigIds.add(r.id);artworkIds.add(r.artworkId);
   const angle=(a:unknown)=>object(a)&&finite(a.x)&&finite(a.y)&&Math.abs(a.x)<=90&&Math.abs(a.y)<=90;
-  if(!angle(r.angle)||r.sourceSignature!==undefined&&!name(r.sourceSignature))fail();
+  if(!angle(r.angle)||r.sourceSignature!==undefined&&!name(r.sourceSignature)||r.sourceStructureSignature!==undefined&&!name(r.sourceStructureSignature))fail();
   if(r.sourceIntervalFrames!==undefined){if(!object(r.sourceIntervalFrames)||Object.keys(r.sourceIntervalFrames).length>4096)fail();for(const [id,f] of Object.entries(r.sourceIntervalFrames)){if(!id||!object(f)||typeof f.signature!=='string'||f.signature.length>1000000||![f.curveIds,f.rangeIds].every(xs=>Array.isArray(xs)&&xs.length<=16384&&xs.every(x=>typeof x==='string'&&x.length>0&&x.length<=1024)))fail();}}
   const ids=new Set<string>();for(const d of r.deformers){if(!object(d)||!name(d.id)||!name(d.name)||ids.has(d.id))fail();ids.add(d.id);grid(d.grid);}
   for(const d of r.deformers){let next=d.parentId;const seen=new Set([d.id]);while(next){if(!ids.has(next)||seen.has(next))fail();seen.add(next);next=r.deformers.find(d=>d.id===next)!.parentId;}}

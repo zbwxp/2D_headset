@@ -1,3 +1,4 @@
+import {syncVectorRecordingSources,recordingSourceBaselines,loadKnownRecordingSourceBaselines} from './vectorSourceSync';
 import {validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {finalizeGeometryEdit} from '../domain/drawing/geometryEdit';
 import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
@@ -93,7 +94,7 @@ try {
     localStorage.getItem("contour.landmarks.v02") ??
     localStorage.getItem("contour.landmarks.v01"));
   if (saved) {
-    initial = ensureScaffold(parseLandmarks(saved));
+    initial = syncVectorRecordingSources(ensureScaffold(parseLandmarks(saved)));
     // Persist migration/repair immediately, before any user interaction.
     void writeAutosave(KEY,initial).catch(()=>useEditor.getState().notify('自动保存失败；修改仍保留在本页，请保存 JSON 并保持页面打开。'));
   } else {
@@ -127,6 +128,7 @@ interface State {
   setAssembly:(assembly:import("../domain/assembly/model").AssemblyDocument)=>void;
   setHairstyle:(hairstyle:import("../domain/hairstyle/model").Hairstyle)=>void;
   setDrawing:(drawing:import("../domain/drawing/model").DrawingDocument)=>void;
+  recoverVectorRecordingSource:(load?:()=>Promise<import("../domain/drawing/model").DrawingDocument[]>)=>Promise<boolean>;
   setDrawingSnapshotState:(state:import("../domain/drawing/snapshots").DrawingSnapshotState)=>void;
   setPoseRecording:(recording:import("../domain/recording/poses").PoseRecording)=>void;
   renameCap:(id:string,name:string)=>void;
@@ -265,8 +267,16 @@ export const useEditor = create<State>((rawSet, get, api) => {
     setPoseRecording:(poseRecording)=>{const {recording,...rest}=get().project;void recording;const p={...rest,poseRecording:syncPoseSnapshots(poseRecording,rest.drawingSnapshots)};set({project:p});persist(p);},
     setAssembly:(assembly)=>{const {hairstyle,...rest}=get().project;void hairstyle;const p={...rest,assembly};set({project:p});persist(p);},
     setHairstyle:(hairstyle)=>{const p={...get().project,hairstyle};set({project:p});persist(p);},
-    setDrawing:(drawing)=>{assertSourceEditable();drawing=finalizeGeometryEdit(get().project.drawing,drawing);assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);const p={...get().project,drawing};set({project:p});persist(p);},
-    setDrawingSnapshotState:({drawing,drawingSnapshots})=>{assertSourceEditable();if(drawing){assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);}const current=get().project,newId=drawingSnapshots?.activeId,firstSave=!current.drawingSnapshots?.activeId&&newId&&!current.drawingSnapshots?.items.some(item=>item.id===newId),vectorRecording=firstSave&&current.vectorRecording?{...current.vectorRecording,rigs:current.vectorRecording.rigs.map(r=>r.artworkId==='$working'?{...r,artworkId:newId!}:r)}:current.vectorRecording,p={...current,drawing,drawingSnapshots,...(vectorRecording?{vectorRecording}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})};set({project:p});persist(p);},
+    setDrawing:(drawing)=>{assertSourceEditable();const before=get().project;drawing=finalizeGeometryEdit(before.drawing,drawing);assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);const p=syncVectorRecordingSources({...before,drawing},recordingSourceBaselines(before));set({project:p});persist(p);},
+    recoverVectorRecordingSource:async(load=loadKnownRecordingSourceBaselines)=>{
+      const before=get().project,history=get().past.flatMap(recordingSourceBaselines),known=syncVectorRecordingSources(before,history);
+      if(known!==before){set({project:known});persist(known);return true;}
+      if(!before.vectorRecording)return false;
+      const sources=await load();if(get().project!==before)return false;
+      const next=syncVectorRecordingSources(before,sources);if(next===before)return false;
+      set({project:next});persist(next);return true;
+    },
+    setDrawingSnapshotState:({drawing,drawingSnapshots})=>{assertSourceEditable();if(drawing){assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);}const current=get().project,newId=drawingSnapshots?.activeId,firstSave=!current.drawingSnapshots?.activeId&&newId&&!current.drawingSnapshots?.items.some(item=>item.id===newId),vectorRecording=firstSave&&current.vectorRecording?{...current.vectorRecording,rigs:current.vectorRecording.rigs.map(r=>r.artworkId==='$working'?{...r,artworkId:newId!}:r)}:current.vectorRecording,p=syncVectorRecordingSources({...current,drawing,drawingSnapshots,...(vectorRecording?{vectorRecording}:{}),...(current.poseRecording?{poseRecording:syncPoseSnapshots(syncPoseSnapshots(current.poseRecording,current.drawingSnapshots),drawingSnapshots)}:{})},recordingSourceBaselines(current));set({project:p});persist(p);},
     setGazeTracking:(tracking)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g)return;s.beginEdit();commit({...s.project,gazeEyeball:{...g,tracking}});s.endEdit();},
     createGaze:()=>{const s=get();if(s.activeModule!=='EYES'||!s.project.eyeScaffold||s.project.gazeEyeball)return;s.beginEdit();const g={version:1 as const,leftId:crypto.randomUUID(),rightId:crypto.randomUUID(),irisScale:.3,recessDepth:.12,tracking:false};commit({...s.project,gazeEyeball:g});s.endEdit();s.selectObject({kind:'surface',source:'IRIS',id:g.rightId});},
     setGazeParameter:(key,value)=>{const s=get(),g=s.project.gazeEyeball;if(s.activeModule!=='EYES'||!g||!Number.isFinite(value))return;const [lo,hi]=key==='followStrength'?[0,1]:key==='viewDistance'?[10,200]:key==='irisScale'?[.05,.95]:[0,.5];commit({...s.project,gazeEyeball:{...g,[key]:Math.max(lo,Math.min(hi,value))}});},
@@ -382,7 +392,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     setPatchQuality:(quality)=>{if(!Object.hasOwn(patchQualityLevels,quality))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,quality}});},
     setPatchVisible:(visible)=>commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,visible}}),
     setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},
-    project: assignModules(initial),
+    project: syncVectorRecordingSources(assignModules(initial)),
     selectedCurveId: null,
     curveCreation: null,
     createLoomisSection:(centerline=false,sidePreset=false)=>{try{const r=createSection(get().project,centerline);if(sidePreset)r.project={...r.project,curves:r.project.curves.map(c=>c.id===r.selectedId&&isSection(c)&&c.role==='canonical'?{...c,section:sectionFromAngles(0,90,.25)}:c)};get().beginEdit();commit(r.project);set({selectedCurveId:r.selectedId,selectedPatchId:null,curveCreation:null,selectionTick:get().selectionTick+1});get().endEdit();}catch(e){set({message:(e as Error).message});}},
@@ -594,7 +604,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
       if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
       else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
     },
-    load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p)))));editBase=null;autosave.cancel();
+    load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=syncVectorRecordingSources(migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p))))));editBase=null;autosave.cancel();
       get().beginEdit();
       set({
         project: p, tool:{kind:"select"},
