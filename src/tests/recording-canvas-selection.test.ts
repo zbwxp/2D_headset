@@ -51,7 +51,7 @@ test('read-only view renders Drawing navigation tools and filtered selections wi
 });
 test('without an active Warp, Recording tool labels stay Warp-specific and point users to the right panel',()=>{
  const d=fixture(),html=renderToStaticMarkup(createElement(SceneWarpCanvas,{source:d,drawing:d,targetKey:'no-warp',label:'Fixture',zh:false,onPreview:()=>{},onCommit:()=>{}}));
- expect(html).toContain('aria-label="Select Warp"');expect(html).toContain('aria-label="Warp grid selection"');expect(html).toContain('Select layers on the right to create a Warp');expect(html).not.toContain('V stroke');expect(html).not.toContain('A segment');
+ expect(html).toContain('aria-label="Select Warp"');expect(html).toContain('aria-label="Warp grid selection"');expect(html).toContain('Select a snapshot title to move, rotate or scale; or select layers to create a Warp');expect(html).not.toContain('V stroke');expect(html).not.toContain('A segment');
 });
 test('PaintScene receives both global and per-layer fill visibility from the shared Drawing session',()=>{
  const d=emptyDrawing(),points:Point2[]=[[0,0],[1,0],[1,1],[0,1]],layer=id('fills');d.layers=[{id:layer,name:'Fills',visible:true,locked:false,items:[]}];

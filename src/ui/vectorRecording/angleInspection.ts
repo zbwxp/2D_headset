@@ -49,7 +49,7 @@ export function sceneOnionSavedSignature(scene:RecordingScene):string {
  const snapshot:RecordingScene={
   id:scene.id,name:scene.name,angle:{x:0,y:0},instances:scene.instances,bindings:scene.bindings,
   warps:scene.warps.map(saved),visibilityTracks:scene.visibilityTracks.map(saved),
-  intervalTracks:scene.intervalTracks.map(saved),depthTracks:scene.depthTracks?.map(saved),placementTracks:scene.placementTracks?.map(saved),
+  intervalTracks:scene.intervalTracks.map(saved),depthTracks:scene.depthTracks?.map(saved),placementTracks:scene.placementTracks?.map(saved),shapeTracks:scene.shapeTracks?.map(saved),
   tolerance:scene.tolerance,legacy:scene.legacy,
  };
  return JSON.stringify(snapshot);

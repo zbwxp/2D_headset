@@ -2,7 +2,7 @@ import {blendWarpGrids} from '../vectorWarp/model';
 import {bracket,clampAngle,latticeWeights,sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {blendIntervalOverrides,missingCornerIntervals} from '../vectorRecording/intervals';
 import type {DrawingDocument,StrokeDisplayIntervals,Point2} from '../drawing/model';
-import {identityScenePlacement,type SceneTrack,type SceneWarp,type SceneVisibilityTrack,type SceneDepthTrack,type SceneIntervalTrack,type SceneIntervalValue,type ScenePlacementTrack,type ScenePlacementValue} from './model';
+import {identityScenePlacement,identitySceneShape,type SceneShapeTrack,type SceneShapeValue,type SceneTrack,type SceneWarp,type SceneVisibilityTrack,type SceneDepthTrack,type SceneIntervalTrack,type SceneIntervalValue,type ScenePlacementTrack,type ScenePlacementValue} from './model';
 
 interface Sample<T> {value:T;weight:number}
 const strongest=<T>(samples:Sample<T>[]):T=>samples.reduce((a,b)=>b.weight>a.weight?b:a).value;
@@ -70,4 +70,15 @@ export function evaluateIntervalTrack(track:SceneIntervalTrack,source:DrawingDoc
  const sourceTrack={...source,displayIntervals:[base]},overrides=(v:SceneIntervalValue):StrokeDisplayIntervals[]|undefined=>v.appearance?[v.appearance]:undefined;
  const mix=(samples:Sample<SceneIntervalValue>[]):SceneIntervalValue=>({appearance:blendIntervalOverrides(sourceTrack,samples.map(s=>({overrides:overrides(s.value),weight:s.weight})))[0],enabled:strongest(samples).enabled});
  return evaluate(track,angle,{appearance:null,enabled:{}},mix,(n,x,y,a)=>({appearance:missingCornerIntervals(sourceTrack,overrides(n),overrides(x),overrides(y),a)[0],enabled:{...n.enabled,...x.enabled,...y.enabled}}),useDraft);
+}
+
+/** Sparse channels share one instance lattice; missing entries mean zero. */
+export function evaluateShapeTrack(track:SceneShapeTrack,angle:Angle,useDraft=true):SceneShapeValue {
+ const point=(record:Record<string,Point2>,id:string):Point2=>Object.hasOwn(record,id)?record[id]:[0,0];
+ const handle=(record:SceneShapeValue['handles'],id:string):[Point2,Point2]=>Object.hasOwn(record,id)?record[id]:[[0,0],[0,0]];
+ const mix=(samples:Sample<SceneShapeValue>[]):SceneShapeValue=>{
+  const nodes=[...new Set(samples.flatMap(s=>Object.keys(s.value.nodes)))],curves=[...new Set(samples.flatMap(s=>Object.keys(s.value.handles)))];
+  return {nodes:Object.fromEntries(nodes.map(id=>[id,samples.reduce<Point2>((v,s)=>{const p=point(s.value.nodes,id);return [v[0]+p[0]*s.weight,v[1]+p[1]*s.weight];},[0,0])])),handles:Object.fromEntries(curves.map(id=>[id,([0,1] as const).map(end=>samples.reduce<Point2>((v,s)=>{const p=handle(s.value.handles,id)[end];return [v[0]+p[0]*s.weight,v[1]+p[1]*s.weight];},[0,0]))])) as SceneShapeValue['handles']};
+ };
+ return evaluate(track,angle,identitySceneShape(),mix,(n,x,y)=>mix([{value:x,weight:1},{value:y,weight:1},{value:n,weight:-1}]),useDraft);
 }

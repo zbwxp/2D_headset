@@ -83,3 +83,13 @@ test('saved placement changes invalidate onion cache while current placement dra
  expect(sceneOnionSavedSignature(scene)).toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0})).toEqual(frame);
  scene.placementTracks[0].keys[1].value.translation=[2,0];expect(sceneOnionSavedSignature(scene)).not.toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0}).drawing).not.toEqual(frame.drawing);
 });
+
+
+test('saved native curve shapes invalidate onion frames while shape drafts stay private to the current pose',()=>{
+ const {scene,resolve,drawing}=fixture(),nodeId=drawing.curves.find(c=>c.id==='a')!.nodes[0];
+ scene.shapeTracks=[{id:'shape',instanceId:'instance',keys:[{id:'shape-zero',angle:{x:0,y:0},value:{nodes:{},handles:{}}},{id:'shape-side',angle:{x:90,y:0},value:{nodes:{[nodeId]:[.2,0]},handles:{}}}]}];
+ const before=JSON.stringify(drawing),signature=sceneOnionSavedSignature(scene),frame=evaluateSceneOnionFrame(scene,resolve,{x:30,y:0});
+ scene.shapeTracks[0].draft={angle:{x:30,y:0},value:{nodes:{[nodeId]:[2,0]},handles:{}}};
+ expect(sceneOnionSavedSignature(scene)).toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0})).toEqual(frame);
+ scene.shapeTracks[0].keys[1].value.nodes[nodeId]=[.4,0];expect(sceneOnionSavedSignature(scene)).not.toBe(signature);expect(evaluateSceneOnionFrame(scene,resolve,{x:30,y:0}).drawing).not.toEqual(frame.drawing);expect(JSON.stringify(drawing)).toBe(before);
+});

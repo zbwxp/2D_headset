@@ -1,6 +1,6 @@
 # Recording 场景与独立对象轨道
 
-本页对应 2026-10-02 06:27:29 UTC已发布的 v23（功能代码 `384c310`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。v18/v19 首轮真实浏览器验收涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。v22 已实测无 Warp 建立 90°并更新成员显隐、再建立 0°，新 Warp 的 0°/90°中性键、90°实际拖节点并更新、45°严格中值预览且禁止编辑，以及实拖滑杆回 90°恢复且无警告。A/V/Z/Space 全操作未扩测，v23已单独通过唯一来源分组、整体折叠恢复与全局层序1/3/2保持的实际检查；未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本文同时记录后续原生实例位置轨道的接口变更；该增补不代表已发布或浏览器验收。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 与 `recording-scene-placement-commands.test.ts` 调用真实接口验证。
+本页对应 2026-10-02 06:27:29 UTC已发布的 v23（功能代码 `384c310`）、`contourAI` 2.0、工程字段 `recordingScenes.version=1`。v18/v19 首轮真实浏览器验收涵盖跨来源组装、独立对象保存/放弃、父子 Warp、源工作副本同步、Undo/Redo 与重载；范围见[发布验证记录](recording-scene-release-validation.md)。v22 已实测无 Warp 建立 90°并更新成员显隐、再建立 0°，新 Warp 的 0°/90°中性键、90°实际拖节点并更新、45°严格中值预览且禁止编辑，以及实拖滑杆回 90°恢复且无警告。A/V/Z/Space 全操作未扩测，v23已单独通过唯一来源分组、整体折叠恢复与全局层序1/3/2保持的实际检查；未覆盖的手势、姿态与完整转头美术不由这些结果推定通过。本文同时记录后续原生实例位置与节点/控制柄姿态轨道的接口变更；该增补不代表已发布或浏览器验收。本次架构将 Drawing 作为配件库，Recording 作为引用配件的独立场景。本文的 JSON 示例由 `recording-scene-api.test.ts` 、`recording-scene-placement-commands.test.ts` 与 `recording-scene-shape-commands.test.ts` 调用真实接口验证。
 
 ## 开始前先查询
 
@@ -11,7 +11,7 @@
 {"method":"inspectScene","request":{"includeKeyValues":false}}
 ```
 
-结果包含场景列表、当前场景、`viewpoints` 命名视角、实例、实例图层、Warp 父子关系、叶子绑定和各轨道的独立键列表。`hasExplicitViewpoints` 区分显式视角列表与尚未建立视角的旧场景。`availableArtworks` 列出来源画稿、图层及成员 ID、当前有效源签名；`liveWorkingCopy` 标明是否解析到了当前未保存的 Drawing。`includeKeyValues:true` 才返回完整键值；默认仍提供当前 Warp 网格。每个实例还返回 `currentPlacement`、可选的 `placementTrackId` 与 `placementKeyCount`；场景摘要返回 `placementTrackCount`，顶层 `placementTracks` 提供各实例的位置轨道。没有位置轨道时，`currentPlacement` 是 identity，查询不会写入该默认值。
+结果包含场景列表、当前场景、`viewpoints` 命名视角、实例、实例图层、Warp 父子关系、叶子绑定和各轨道的独立键列表。`hasExplicitViewpoints` 区分显式视角列表与尚未建立视角的旧场景。`availableArtworks` 列出来源画稿、图层及成员 ID、当前有效源签名；`liveWorkingCopy` 标明是否解析到了当前未保存的 Drawing。`includeKeyValues:true` 才返回完整键值；默认仍提供当前 Warp 网格。每个实例还返回 `currentPlacement`、可选的 `placementTrackId` 与 `placementKeyCount`；场景摘要返回 `placementTrackCount`，顶层 `placementTracks` 提供各实例的位置轨道。没有位置轨道时，`currentPlacement` 是 identity，查询不会写入该默认值。形状姿态同样返回 `currentShape`、可选的 `shapeTrackId` 与 `shapeKeyCount`；摘要包含 `shapeTrackCount`，顶层 `shapeTracks` 列出轨道。没有形状轨道时 `currentShape` 为 `{nodes:{},handles:{}}`。
 
 名称仅用于查找，不能作为写入身份。`instanceIds / warpIds / nameIncludes` 可过滤检查结果。同一画稿可以加载多次，两个实例的位置、变形和外观轨道独立。
 
@@ -56,6 +56,21 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 一个实例最多有一条 `placementTracks` 轨道，键与草稿均使用上述完整 value。单轴角度使用该轨道自己的键对 translation、未折回 rotation 和正 scale 做线性插值；0°→360°会完整旋转一周。首次编辑位置或保存尚未拥有位置轨道的实例时，只为新轨道在已有显式视角建立 identity 键，其他对象保持不变。例如已有 30°、90° 时，首次移动 90° 不会改变已建立的 30°；随后新增视角不会给旧轨道补键。没有显式视角的旧场景仍可通过 API 直接写入当前角度，不自动推导或持久化视角。
 
+## 原生节点与控制柄姿态
+
+`moveShapeNode {instanceId,nodeId,position}` 和 `moveShapeHandle {instanceId,curveId,end,position}` 在当前角度修改实例形状草稿。`nodeId / curveId` 必须是真实来源 ID，`end` 只能是 0 或 1。`position:[x,y]` 是完成 Warp 求解、尚未应用实例 placement 的绝对坐标；画布拖动先逆变换实例 placement，再传入此坐标。两个坐标分量均须为有限数，在 −10000…10000 内。命令复用 Drawing 的现有节点联动与控制柄约束，保留共享端点/连接，不修改来源或创建 Warp。
+
+每个实例最多一条可选 `shapeTracks`，结构为 `{id,instanceId,keys,draft?}`。键和草稿的 value 是 `{nodes:{[sourceNodeId]:[dx,dy]},handles:{[sourceCurveId]:[[dx0,dy0],[dx1,dy1]]}}`。这是稀疏偏移：节点相对当下 Warp 输出位置；柄相对当下节点的基准向量偏移，所以节点移动时柄随节点移动。缺失项视为零，插值仍逐轨道完成。计算顺序为来源 → Warp → 形状姿态 → 实例 placement。
+
+首次编辑只为此实例建立形状轨道，并在已有显式视角建立 `{nodes:{},handles:{}}` 中性键。之后创建视角不修改已有轨道。形状轨道有自己的草稿角度保护，和同实例 placement、其他实例或图层外观各自独立。`updateViewpoint` 会保存匹配该视角的形状草稿；`saveSelected/discardSelected {instanceIds}` 同时处理这些实例现有的位置与形状轨道，未编辑形状的实例不会因此创建形状轨道。
+
+<!-- shape-tested -->
+```json
+{"method":"scene","request":{"dryRun":true,"commands":[{"op":"setAngle","angle":{"x":90,"y":0}},{"op":"moveShapeNode","instanceId":"INSTANCE_ID","nodeId":"SOURCE_NODE_ID","position":[0.2,0.1]},{"op":"moveShapeHandle","instanceId":"INSTANCE_ID","curveId":"SOURCE_CURVE_ID","end":0,"position":[0.5,0.2]},{"op":"saveSelected","instanceIds":["INSTANCE_ID"],"name":"节点与柄姿态"}]}}
+```
+
+来源节点/曲线暂时缺失时保留原偏移、键与草稿，诊断局部失效；恢复同一来源身份后可接回。`cleanupUnused` 不删除仍存在实例的形状轨道或其中失效的来源 ID。移除实例才移除其形状轨道。此接口只编辑已有节点和柄，不在 Recording 内增加、删除或改接来源拓扑。
+
 ## 明确的 Warp 操作
 
 | 命令 | 规则 |
@@ -73,11 +88,11 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 ## 每个对象独立保存
 
-场景 angle 只是编辑位置。实例位置、Warp、显隐通道、区间通道和排序通道各自拥有 keys；一个对象可以只有 2 键，另一个有 10 键。新增或保存一个对象不会给其他对象补键。
+场景 angle 只是编辑位置。实例位置、形状姿态、Warp、显隐通道、区间通道和排序通道各自拥有 keys；一个对象可以只有 2 键，另一个有 10 键。新增或保存一个对象不会给其他对象补键。
 
-`saveSelected {instanceIds?,warpIds?,layerRefs?,name?}` 只保存明确选中的对象。`instanceIds` 只选择这些实例的位置轨道，不连带保存它们的 Warp 或层外观。保存尚未编辑位置的实例会建立中性位置轨道；放弃尚无位置轨道的实例不创建轨道。选择层时，保存该层的成员显隐、排序和其拥有的区间通道；跨层显示路径的区间只属于 anchor 所在层，保存一次。没有任何外观轨道的层会建立一个继承源显隐的键。`discardSelected` 也只丢弃这些对象的草稿。
+`saveSelected {instanceIds?,warpIds?,layerRefs?,name?}` 只保存明确选中的对象。`instanceIds` 选择这些实例的位置轨道与已有形状轨道，不连带保存它们的 Warp 或层外观。保存尚未编辑位置的实例会建立中性位置轨道；放弃尚无位置轨道的实例不创建轨道。选择层时，保存该层的成员显隐、排序和其拥有的区间通道；跨层显示路径的区间只属于 anchor 所在层，保存一次。没有任何外观轨道的层会建立一个继承源显隐的键。`discardSelected` 也只丢弃这些对象的草稿。
 
-每个草稿带有自己的 angle。每个实例位置轨道单独检查自己的草稿角度，不锁住另一个实例、Warp 或层外观。同一图层的成员显隐、区间和排序属于同一层对象，编辑其中一个通道前会检查该层全部通道的草稿角度，避免同层产生无法一起保存的不同角度草稿。移动场景 angle 不会清空草稿，也不会被其他对象草稿锁住。只有试图在另一个角度修改或保存同一对象时，才返回 `OBJECT_DRAFT_AT_OTHER_ANGLE`；返回其草稿角度，或明确 discard 后继续。
+每个草稿带有自己的 angle。每个实例位置或形状轨道单独检查自己的草稿角度，不锁住另一个实例、Warp 或层外观。同一图层的成员显隐、区间和排序属于同一层对象，编辑其中一个通道前会检查该层全部通道的草稿角度，避免同层产生无法一起保存的不同角度草稿。移动场景 angle 不会清空草稿，也不会被其他对象草稿锁住。只有试图在另一个角度修改或保存同一对象时，才返回 `OBJECT_DRAFT_AT_OTHER_ANGLE`；返回其草稿角度，或明确 discard 后继续。
 
 <!-- scene-tested: selected-key -->
 ```json
@@ -90,7 +105,7 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 `viewpoints` 是场景可选的轻量视角列表，每项为 `{id,name,angle}`。没有 Warp、实例或任何轨道也能建立视角。它记录查看和编辑的位置，不是全场景快照；对象仍有各自独立的键。
 
-UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Drawing 图层列表。每个有图层的来源实例只有一个可折叠组，层行标注跨实例的全局层序；分组只改变列表展示，不改变渲染顺序。未建立视角的角度只可预览插值；实例位置、显隐、层序、网格编辑、建立 Warp 和所选对象保存/放弃须先建立当前视角。这个门槛仅在 UI：`scene` API 的 `setAngle`、草稿编辑、Warp 创建和 `saveSelected` 不要求已有对应视角，仍执行模式、绑定和对象草稿角度等原有校验。
+UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Drawing 图层列表。每个有图层的来源实例只有一个可折叠组，层行标注跨实例的全局层序；分组只改变列表展示，不改变渲染顺序。未建立视角的角度只可预览插值；实例位置、节点/控制柄姿态、显隐、层序、网格编辑、建立 Warp 和所选对象保存/放弃须先建立当前视角。这个门槛仅在 UI：`scene` API 的 `setAngle`、草稿编辑、Warp 创建和 `saveSelected` 不要求已有对应视角，仍执行模式、绑定和对象草稿角度等原有校验。
 
 | 命令 | 规则 |
 |---|---|
@@ -99,7 +114,7 @@ UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Draw
 | `renameViewpoint(viewpointId,name)` | 只改视角名称，键及轨道不变 |
 | `deleteViewpoint(viewpointId)` | 只删除视角书签，保留对象键、草稿和当前场景 angle |
 
-「更新此视角」不依赖当前选择，也不要求存在 Warp；它可以一起提交目标视角角度已改动的实例位置、Warp、成员显隐、区间和排序通道。没有改动的通道不会被补键，也不会为了保存一个成员而新建整层显隐通道。更新一个已经有键的通道会保留该键 ID 和名称。
+「更新此视角」不依赖当前选择，也不要求存在 Warp；它可以一起提交目标视角角度已改动的实例位置、形状姿态、Warp、成员显隐、区间和排序通道。没有改动的通道不会被补键，也不会为了保存一个成员而新建整层显隐通道。更新一个已经有键的通道会保留该键 ID 和名称。
 
 `createWarp/createChild/wrapParent` 在有显式视角的场景中新建 Warp 时，仅为这个新 Warp 在每个已建立视角写入 `restGrid` 中性键。例如先建立 30°、90°，再建 Warp 并只改 90°，30°仍保持 identity，45°为这两个键之间的 25% 插值。其他 Warp 和外观轨道不会增加键。之后建立新视角也不会给已有 Warp 自动补键。
 
@@ -111,7 +126,7 @@ UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Draw
 
 `changeInterval / setIntervalEnd / setIntervalEnabled` 使用 `instanceId + sourceTrackId + rangeId`。它们只改姿态外观，不能新建源轨道或改 anchor/route；`start/end` 是归一化弧长，`fullLoop` 与 Drawing 使用同一语义。`setLayerOrder {target,value}` 写当前层排序轨道草稿，保留源元素在其原实例内的深度偏移关系。
 
-源坐标、源控制柄、拓扑、填充结构只在 Drawing 修改。改名不改变实例引用；复制源稿的新 ID 不会替换旧实例。删除来源不会顺便删除场景动画；旧使用中保护若适用会拒绝删除，否则留下局部 `MISSING_SOURCE`，源 Undo 后可以接回。
+源坐标、源控制柄、拓扑、填充结构只在 Drawing 修改；Recording 的形状姿态是实例独有的偏移轨道。改名不改变实例引用；复制源稿的新 ID 不会替换旧实例。删除来源不会顺便删除场景动画；旧使用中保护若适用会拒绝删除，否则留下局部 `MISSING_SOURCE`，源 Undo 后可以接回。
 
 同 ID 更新 checkpoint 会清除该 ID 的工作副本；显式另存为新 ID 不会将原 A 实例改指新 B，A 的未更新内容仍保留在 A 的工作副本。删除来源清除该 ID 的副本，完整 Undo 可恢复。导出/解析保留工作副本，而普通切稿不制造多余备份画稿。`artwork.restore` 对已有 ID 默认切到最新工作副本；`discardUnsaved:true` 仍是明确丢弃当前副本并恢复 checkpoint 的请求。
 
@@ -119,9 +134,9 @@ UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Draw
 
 ## 场景与实例管理
 
-`createScene/selectScene/renameScene/deleteScene` 管理场景。`addInstance/renameInstance/removeInstance/setInstanceLayers` 管理场景引用；`sourceLayerIds:null` 恢复跟随来源全部图层，包括以后新加的层。移除实例会移除它自己的位置轨道、场景绑定和外观轨道，保留其他实例的位置轨道与 Drawing 配件库。没有自动删除其可能共用的 Warp。
+`createScene/selectScene/renameScene/deleteScene` 管理场景。`addInstance/renameInstance/removeInstance/setInstanceLayers` 管理场景引用；`sourceLayerIds:null` 恢复跟随来源全部图层，包括以后新加的层。移除实例会移除它自己的位置与形状轨道、场景绑定和外观轨道，保留其他实例的位置与形状轨道与 Drawing 配件库。没有自动删除其可能共用的 Warp。
 
-`cleanupUnused` 是明确的场景清理命令，处理已失效的场景引用；`removeUnboundWarps:true` 还会删除没有任何有效叶子使用的 Warp 及其轨道。先 dry-run 检查 `removedIds`。仍存在的实例即使缺少来源，其位置轨道也保留，以便来源恢复。清理不会删除源稿或原库图片。
+`cleanupUnused` 是明确的场景清理命令，处理已失效的场景引用；`removeUnboundWarps:true` 还会删除没有任何有效叶子使用的 Warp 及其轨道。先 dry-run 检查 `removedIds`。仍存在的实例即使缺少来源，其位置与形状轨道也保留，以便来源恢复。清理不会删除源稿或原库图片。
 
 ## 预览和完整工程保存
 
@@ -137,9 +152,9 @@ UI 左侧管理角度、建立和更新视角，右侧加载画稿并复用 Draw
 {"method":"previewSceneFrames","request":{"angles":[{"x":0,"y":0},{"x":15,"y":0},{"x":30,"y":0},{"x":45,"y":0},{"x":60,"y":0},{"x":75,"y":0},{"x":90,"y":0}],"width":800,"height":800,"showFills":true}}
 ```
 
-帧预览只读取保存键，最多 31 帧，全程同一场景与固定相机。输出真实 Scene→Warp→单 cubic 拟合→PaintScene SVG，使用和 UI 相同的 `paintBatches`。检查 `sceneDiagnostics / fitDiagnostics / intervalTransportErrors / conflictingNodeIds`；没有诊断不等于美术已经验收。雾化仍需要真实 Canvas/Path2D，不能悄悄关闭填充来冒充完整图。
+帧预览只读取保存键，最多 31 帧，全程同一场景与固定相机。输出真实 Scene→Warp→单 cubic 拟合→形状姿态→placement→PaintScene SVG，使用和 UI 相同的 `paintBatches`。检查 `sceneDiagnostics / fitDiagnostics / intervalTransportErrors / conflictingNodeIds`；没有诊断不等于美术已经验收。雾化仍需要真实 Canvas/Path2D，不能悄悄关闭填充来冒充完整图。
 
-通过正常界面导出/载入完整工程 JSON：它同时保存 Drawing 库和 `recordingScenes` 引用。没有允许写入任意原始项目的 scene 命令。schema 包含 scenes、可选 viewpoints、instances、warps、bindings、visibilityTracks、intervalTracks、depthTracks 和可选 placementTracks；缺少 placementTracks 的旧场景继续按 identity 计算；每条轨道的 keys 是 `{id,name?,angle,value}`，草稿是 `{angle,value}`。
+通过正常界面导出/载入完整工程 JSON：它同时保存 Drawing 库和 `recordingScenes` 引用。没有允许写入任意原始项目的 scene 命令。schema 包含 scenes、可选 viewpoints、instances、warps、bindings、visibilityTracks、intervalTracks、depthTracks 和可选 placementTracks / shapeTracks；缺少 placementTracks 的旧场景继续按 identity 计算，缺少 shapeTracks 时为零偏移；每条轨道的 keys 是 `{id,name?,angle,value}`，草稿是 `{angle,value}`。
 
 旧 `vectorRecording` 原数据保留。显式 store 初始化/载入时，只在缺少新字段的情况下，将每个旧 rig 迁移为单实例兼容场景。迁移保留完整旧 angle lattice，包括重复值；未知来源不猜配件。带有 `recordingScenes` 的工程调用旧 `inspectRecording/recording/previewRecording/previewRecordingFrames` 会返回 `LEGACY_RECORDING_RETIRED` 并指向新接口；不会编辑或显示后台另一套 rig。缺少新字段的离线旧工程和兼容纯函数测试仍可使用旧逻辑。普通 parse/inspect/preview 不持久化迁移。
 

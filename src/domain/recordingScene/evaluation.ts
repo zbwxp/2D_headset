@@ -11,6 +11,7 @@ import {deformDrawing,type DeformedDrawing,type WarpFitOptions,type WarpFitDiagn
 import {identityScenePlacement,instanceObjectId,sceneObjectKey,sceneLayerKey,type RecordingScene,type SceneSourceResolver,type SceneInstance,type SceneLayerRef,type SceneDiagnostic,type SceneSourceObject,type WarpGrid,type Angle,type ScenePlacementValue} from './model';
 import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack,evaluatePlacementTrack,applyScenePlacement} from './tracks';
 import {validateScene} from './validation';
+import {applySceneShapes} from './shapes';
 import {clampAngle} from '../vectorRecording/interpolation';
 
 export interface SceneEvaluationOptions extends Omit<WarpFitOptions,'endpoints'> {
@@ -20,10 +21,12 @@ export interface SceneEvaluationOptions extends Omit<WarpFitOptions,'endpoints'>
  stopAtWarpId?:string;
  /** Explicit common-space helper. Local Warp editing keeps placement by default. */
  omitPlacements?:boolean;
+ /** Omit direct Bezier pose offsets when inspecting the live Warp baseline. */
+ omitShapes?:boolean;
 }
 export interface SceneLayerView extends SceneLayerRef {compiledLayerId:string;instanceName:string;name:string;included:boolean;inLocalDomain:boolean}
 export interface SceneEvaluation {
- source:DrawingDocument;drawing:DrawingDocument;angle:Angle;warpGrids:Record<string,WarpGrid>;
+ source:DrawingDocument;drawing:DrawingDocument;preShapeDrawing:DrawingDocument;prePlacementDrawing:DrawingDocument;angle:Angle;warpGrids:Record<string,WarpGrid>;
  /** Authored evaluated placements, even when omitPlacements hides their effect. */
  placements:Record<string,ScenePlacementValue>;
  layerMap:Record<string,string>;objectMap:Record<string,string>;provenance:Record<string,SceneSourceObject>;layers:SceneLayerView[];
@@ -169,7 +172,8 @@ export function evaluateScene(scene:RecordingScene,resolve:SceneSourceResolver,o
  for(const track of scene.depthTracks??[]){const id=layerMap[sceneLayerKey(track.target)];if(!id){diagnostics.push({code:'MISSING_LAYER',...track.target,trackId:track.id,message:'The depth layer is missing; its keys are retained.'});continue;}depths.set(id,evaluateDepthTrack(track,angle,useDraft));}
  const originalIndices=new Map(input.layers.map((l,i)=>[l.id,i]));input.layers.sort((a,b)=>(originalIndices.get(a.id)!-(depths.get(a.id)??0))-(originalIndices.get(b.id)!-(depths.get(b.id)??0))||originalIndices.get(a.id)!-originalIndices.get(b.id)!);
  const deformed=deformDrawing(input,id=>{const p=provenance[id];return p?.sourceLayerId?(chains[sceneLayerKey({instanceId:p.instanceId,sourceLayerId:p.sourceLayerId})]??[]).map(id=>warpGrids[id]):[];},{...options,tolerance:options.tolerance??scene.tolerance??1/250});
- const result=options.omitPlacements?deformed:placeDrawing(deformed,placements,provenance);
+ const shaped=options.omitShapes?deformed:applySceneShapes(deformed,scene,angle,useDraft,provenance,diagnostics);
+ const result=options.omitPlacements?shaped:placeDrawing(shaped,placements,provenance);
  const routes=new Set<string>();for(const track of result.drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routes.has(key))continue;routes.add(key);for(const diagnostic of createDisplayRouteField(result.drawing,track.displayRoute).diagnostics){const p=provenance[track.id];diagnostics.push({code:'ROUTE',instanceId:p?.instanceId,trackId:p?.sourceId,message:diagnostic.message});}}
- return {source,drawing:result.drawing,angle,warpGrids,placements,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
+ return {source,drawing:result.drawing,preShapeDrawing:deformed.drawing,prePlacementDrawing:shaped.drawing,angle,warpGrids,placements,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
 }

@@ -35,6 +35,12 @@ export interface SceneDepthTrack extends SceneTrack<number> {id:string;target:Sc
  * is authored in unwrapped degrees; ink widths retain Drawing's fixed units. */
 export interface ScenePlacementValue {translation:Point2;rotation:number;scale:number}
 export interface ScenePlacementTrack extends SceneTrack<ScenePlacementValue> {id:string;instanceId:string}
+/** Shape offsets are source-ID keyed in the common post-Warp, pre-placement
+ * space. Handles store vector deltas relative to their endpoint, so moving a
+ * node carries every incident handle without double-counting its translation. */
+export interface SceneShapeValue {nodes:Record<string,Point2>;handles:Record<string,[Point2,Point2]>}
+export interface SceneShapeTrack extends SceneTrack<SceneShapeValue> {id:string;instanceId:string}
+export const identitySceneShape=():SceneShapeValue=>({nodes:{},handles:{}});
 export const identityScenePlacement=():ScenePlacementValue=>({translation:[0,0],rotation:0,scale:1});
 /** A named editing position, independent of the scene's object tracks. */
 export interface SceneViewpoint {id:string;name:string;angle:Angle}
@@ -45,13 +51,15 @@ export interface RecordingScene {
  bindings:SceneLayerBinding[];visibilityTracks:SceneVisibilityTrack[];intervalTracks:SceneIntervalTrack[];depthTracks?:SceneDepthTrack[];
  /** Omitted on existing scenes; every untracked instance has identity placement. */
  placementTracks?:ScenePlacementTrack[];
+ /** Omitted offsets are zero and continue to follow the live Drawing source. */
+ shapeTracks?:SceneShapeTrack[];
  tolerance?:number;
  legacy?:{rigId:string;appearancePending?:boolean};
 }
 export interface RecordingScenes {version:1;activeSceneId?:string;scenes:RecordingScene[]}
 export type SceneSourceResolver=(artworkId:string)=>DrawingDocument|undefined;
 export interface SceneDiagnostic {
- code:'MISSING_SOURCE'|'MISSING_LAYER'|'MISSING_OBJECT'|'MISSING_INTERVAL'|'INTERVAL_APPEARANCE'|'ROUTE'|'SOURCE_MATERIAL'|'PARTIAL_INSTANCE'|'LOCAL_SPACE';
+ code:'MISSING_SOURCE'|'MISSING_LAYER'|'MISSING_OBJECT'|'MISSING_INTERVAL'|'INTERVAL_APPEARANCE'|'ROUTE'|'SOURCE_MATERIAL'|'PARTIAL_INSTANCE'|'LOCAL_SPACE'|'SHAPE';
  message:string;instanceId?:string;sourceLayerId?:string;sourceObjectId?:string;trackId?:string;
 }
 export interface SceneSourceObject {instanceId:string;artworkId:string;sourceId:string;sourceLayerId?:string}

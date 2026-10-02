@@ -33,7 +33,7 @@ function sourceFrames(value:unknown){
 export function parseRecordingScenes(value:unknown):RecordingScenes{
  const data=object(value,['version','activeSceneId','scenes']);optionalId(data.activeSceneId);
  for(const raw of array(data.scenes,500)){
-  const scene=object(raw,['id','name','angle','viewpoints','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','placementTracks','legacy','tolerance']);name(scene.name);angle(scene.angle);
+  const scene=object(raw,['id','name','angle','viewpoints','instances','warps','bindings','visibilityTracks','intervalTracks','depthTracks','placementTracks','shapeTracks','legacy','tolerance']);name(scene.name);angle(scene.angle);
   if(scene.viewpoints!==undefined)for(const raw of array(scene.viewpoints,4096)){const viewpoint=object(raw,['id','name','angle']);id(viewpoint.id);name(viewpoint.name);angle(viewpoint.angle);}
   if(scene.legacy!==undefined){const legacy=object(scene.legacy,['rigId','appearancePending']);id(legacy.rigId);if(legacy.appearancePending!==undefined&&typeof legacy.appearancePending!=='boolean')fail('legacy appearance flag');}
   if(scene.tolerance!==undefined&&(typeof scene.tolerance!=='number'||!Number.isFinite(scene.tolerance)||scene.tolerance<.000001||scene.tolerance>1))fail('tolerance');
@@ -50,6 +50,7 @@ export function parseRecordingScenes(value:unknown):RecordingScenes{
    track(t,v=>{object(v,['appearance','enabled']);});
   }
   if(scene.depthTracks!==undefined)for(const raw of array(scene.depthTracks,16384)){const t=object(raw,['id','target',...trackFields]);reference(t.target);track(t,()=>{});}
+  if(scene.shapeTracks!==undefined)for(const raw of array(scene.shapeTracks,1000)){const t=object(raw,['id','instanceId',...trackFields]);id(t.instanceId);track(t,v=>{object(v,['nodes','handles']);});}
   if(scene.placementTracks!==undefined)for(const raw of array(scene.placementTracks,1000)){const t=object(raw,['id','instanceId',...trackFields]);id(t.instanceId);track(t,v=>{object(v,['translation','rotation','scale']);});}
  }
  validateRecordingScenes(value as RecordingScenes);
