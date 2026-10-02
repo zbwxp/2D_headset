@@ -9,6 +9,7 @@ import {drawingSignature,sourceIntervalFrames,type ArtworkRig,type VectorPose,ty
 import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 
 export const RECORDING_EXAMPLE_NAME='转头 · 0—90° 参数工作稿';
+export const THREE_PIECE_EXAMPLE_NAME='三片脸 · 90°下巴对齐（起步稿）';
 const FRONT_REFERENCE_NAME='正面参考·镜像';
 const SIDE_REFERENCE_NAME='右侧90°参考';
 
@@ -17,6 +18,13 @@ const SIDE_REFERENCE_NAME='右侧90°参考';
 export async function loadRecordingExample(load=async()=>{
  const response=await fetch(new URL('../assets/yaw-turning-example.json',import.meta.url),{signal:AbortSignal.timeout(30000)});
  if(!response.ok)throw Error('转头录制示例载入失败');
+ return response.text();
+}):Promise<LandmarkProject>{return parseLandmarks(await load());}
+
+/** Independent three-piece starter: +90 stores chin-alignment translation only. */
+export async function loadThreePieceExample(load=async()=>{
+ const response=await fetch(new URL('../assets/three-piece-starting-example.json',import.meta.url),{signal:AbortSignal.timeout(30000)});
+ if(!response.ok)throw Error('三片脸起步稿载入失败');
  return response.text();
 }):Promise<LandmarkProject>{return parseLandmarks(await load());}
 
@@ -39,7 +47,7 @@ function recordingIds(recording:VectorRecording|undefined){return recording?.rig
  * The first step can migrate a $working rig to the preserved unsaved artwork.
  * Existing tolerance, rigs and project settings belong to the caller and are
  * deliberately absent from the returned mutation payload. */
-export function planRecordingExampleImport(state:DrawingSnapshotState,exampleProject:LandmarkProject,existingRecording?:VectorRecording){
+export function planRecordingExampleImport(state:DrawingSnapshotState,exampleProject:LandmarkProject,existingRecording?:VectorRecording,options:{name?:string}={}){
  const example=parseLandmarks(JSON.stringify(exampleProject)),library=example.drawingSnapshots;
  if(!library?.activeId||!example.drawing||!snapshotMatches(example.drawing,library,library.activeId))throw Error('示例必须具有已保存且未修改的活动源稿');
  const reference=(name:string)=>{const found=library.items.filter(a=>a.name===name&&a.id!==library.activeId);if(found.length!==1)throw Error(`示例参考画稿缺失或不唯一：${name}`);return found[0];};
@@ -71,7 +79,7 @@ export function planRecordingExampleImport(state:DrawingSnapshotState,examplePro
   }
   throw Error('无法生成无冲突的画稿标识，请重试');
  };
- const frontArtworkId=importArtwork(front.id,FRONT_REFERENCE_NAME),sideArtworkId=importArtwork(side.id,SIDE_REFERENCE_NAME),artworkId=importArtwork(active.id,RECORDING_EXAMPLE_NAME);
+ const frontArtworkId=importArtwork(front.id,FRONT_REFERENCE_NAME),sideArtworkId=importArtwork(side.id,SIDE_REFERENCE_NAME),artworkId=importArtwork(active.id,options.name??RECORDING_EXAMPLE_NAME);
  const deformerMap=new Map(originalRig.deformers.map(d=>[d.id,freshId()])),keyMap=new Map(originalRig.keys.map(k=>[k.id,freshId()])),rigId=freshId();
  const pose=(p:VectorPose):VectorPose=>({...structuredClone(p),grids:Object.fromEntries(Object.entries(p.grids).map(([id,g])=>[deformerMap.get(id)!,structuredClone(g)]))});
  const rig:ArtworkRig={...structuredClone(originalRig),id:rigId,artworkId,
