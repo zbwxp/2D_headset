@@ -51,7 +51,7 @@ export function parseRecordingScenes(value:unknown):RecordingScenes{
   }
   if(scene.depthTracks!==undefined)for(const raw of array(scene.depthTracks,16384)){const t=object(raw,['id','target',...trackFields]);reference(t.target);track(t,()=>{});}
   if(scene.shapeTracks!==undefined)for(const raw of array(scene.shapeTracks,1000)){const t=object(raw,['id','instanceId',...trackFields]);id(t.instanceId);track(t,v=>{object(v,['nodes','handles']);});}
-  if(scene.placementTracks!==undefined)for(const raw of array(scene.placementTracks,1000)){const t=object(raw,['id','instanceId',...trackFields]);id(t.instanceId);track(t,v=>{object(v,['translation','rotation','scale']);});}
+  if(scene.placementTracks!==undefined)for(const raw of array(scene.placementTracks,1000)){const t=object(raw,['id','instanceId',...trackFields]);id(t.instanceId);track(t,v=>{object(v,['translation','rotation','scale','scaleX','scaleY']);});}
  }
  validateRecordingScenes(value as RecordingScenes);
  return structuredClone(value as RecordingScenes);

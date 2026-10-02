@@ -1,6 +1,7 @@
 import {emptyDrawing,layerFor,type DrawingDocument,type CurveUse,type Endpoint,type Cubic,type Point2} from '../drawing/model';
 import {mapDisplayRouteReferences,createDisplayRouteField,resolveDisplayRoute} from '../drawing/displayRoutes';
 import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
+import {registerEvaluatedAffine,type EvaluatedAffine} from '../drawing/evaluatedAffine';
 import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
 import {paintItems} from '../drawing/strokes';
@@ -9,7 +10,7 @@ import {cloneIntervalTracks,applyIntervalOverrides,applyIntervalEnableFlags} fro
 import {drawingSignature} from '../vectorRecording/model';
 import {deformDrawing,type DeformedDrawing,type WarpFitOptions,type WarpFitDiagnostic} from '../vectorWarp/evaluation';
 import {identityScenePlacement,instanceObjectId,sceneObjectKey,sceneLayerKey,type RecordingScene,type SceneSourceResolver,type SceneInstance,type SceneLayerRef,type SceneDiagnostic,type SceneSourceObject,type WarpGrid,type Angle,type ScenePlacementValue} from './model';
-import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack,evaluatePlacementTrack,applyScenePlacement} from './tracks';
+import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack,evaluatePlacementTrack,applyScenePlacement,isScenePlacementSimilarity,scenePlacementScales,scenePlacementMaxScale} from './tracks';
 import {validateScene} from './validation';
 import {applySceneShapes} from './shapes';
 import {clampAngle} from '../vectorRecording/interpolation';
@@ -31,7 +32,7 @@ export interface SceneEvaluation {
  placements:Record<string,ScenePlacementValue>;
  layerMap:Record<string,string>;objectMap:Record<string,string>;provenance:Record<string,SceneSourceObject>;layers:SceneLayerView[];
  chains:Record<string,string[]>;diagnostics:SceneDiagnostic[];paintBatches:PaintBatch[];
- fitDiagnostics:Array<WarpFitDiagnostic&{sourceCurveId:string}>;warningCurveIds:string[];intervalTransportErrors:DeformedDrawing['intervalTransportErrors'];
+ fitDiagnostics:Array<WarpFitDiagnostic&{sourceCurveId:string;/** Anisotropic placement uses a conservative norm bound, not a newly sampled maximum. */placementErrorBound?:true;placementPeakError?:number}>;warningCurveIds:string[];intervalTransportErrors:DeformedDrawing['intervalTransportErrors'];
  maxError:number;diagnosticStage:'preview'|'full';conflictingNodeIds:string[];
 }
 
@@ -71,16 +72,17 @@ function combine(drawings:DrawingDocument[]):DrawingDocument {
  const result=emptyDrawing();for(const d of drawings){result.nodes.push(...d.nodes);result.curves.push(...d.curves);result.layers.push(...d.layers);result.fills.push(...d.fills);result.offsets.push(...d.offsets);result.joins.push(...d.joins);(result.endpointLinks??=[]).push(...(d.endpointLinks??[]));(result.groups??=[]).push(...(d.groups??[]));(result.displayIntervals??=[]).push(...(d.displayIntervals??[]));}return result;
 }
 
-/** Apply an instance similarity to the already-deformed transient document.
+/** Apply instance placement to the already-deformed transient document.
  * Unlike Drawing's editing transform this includes hidden/locked geometry and
  * all geometry, without authoring clamps or source mutation. Ink width, mist,
  * taper/extension and offset distance keep Drawing's fixed logical units. ARC
  * construction is similarity-equivariant when its trim distance also scales;
  * interval fractions/material positions therefore require no second transport.
- * Nonuniform scale/reflection/shear are deliberately outside this contract. */
+ * Nonuniform/reflected/singular placement resolves derived ARC and material
+ * coordinates before the affine, then constructs fixed-width ink afterward. */
 function placeDrawing(result:DeformedDrawing,placements:Record<string,ScenePlacementValue>,provenance:Record<string,SceneSourceObject>):DeformedDrawing {
  const identity=identityScenePlacement(),value=(id:string)=>placements[provenance[id]?.instanceId]??identity;
- const active=(v:ScenePlacementValue)=>v.scale!==1||v.rotation!==0||v.translation[0]!==0||v.translation[1]!==0;
+ const active=(v:ScenePlacementValue)=>scenePlacementScales(v).some(s=>s!==1)||v.rotation!==0||v.translation[0]!==0||v.translation[1]!==0;
  if(!Object.values(placements).some(active))return result;
  const map=(id:string,p:Point2)=>{const v=value(id);return active(v)?applyScenePlacement(v,p):p;};
  const drawing:DrawingDocument={...result.drawing,
@@ -89,13 +91,16 @@ function placeDrawing(result:DeformedDrawing,placements:Record<string,ScenePlace
   // Derived offset distance stays fixed; its authored translation is a vector
   // in instance space and therefore follows the placement's rotation/scale.
   offsets:result.drawing.offsets.map(o=>{const p=value(o.id);return !active(p)||!o.translation?o:{...o,translation:applyScenePlacement({...p,translation:[0,0]},o.translation)};}),
-  joins:result.drawing.joins.map(j=>j.radius!==undefined&&active(value(j.a.curveId))?{...j,radius:j.radius*value(j.a.curveId).scale}:j),
-  ...(result.drawing.endpointLinks?{endpointLinks:result.drawing.endpointLinks.map(l=>l.joinBrush?.kind==='ARC'&&active(value(l.a.curveId))?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,value(l.a.curveId).scale)}:l)}:{}),
+  joins:result.drawing.joins.map(j=>j.radius!==undefined&&active(value(j.a.curveId))&&isScenePlacementSimilarity(value(j.a.curveId))?{...j,radius:j.radius*scenePlacementMaxScale(value(j.a.curveId))}:j),
+  ...(result.drawing.endpointLinks?{endpointLinks:result.drawing.endpointLinks.map(l=>l.joinBrush?.kind==='ARC'&&active(value(l.a.curveId))&&isScenePlacementSimilarity(value(l.a.curveId))?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,scenePlacementMaxScale(value(l.a.curveId)))}:l)}:{}),
  };
+ const affines=new Map<string,EvaluatedAffine>();for(const [id,p] of Object.entries(placements))if(!isScenePlacementSimilarity(p))affines.set(id,{point:point=>applyScenePlacement(p,point),maxScale:scenePlacementMaxScale(p)});
+ if(affines.size)registerEvaluatedAffine(drawing,result.drawing,id=>affines.get(provenance[id]?.instanceId));
  const diagnostics=result.diagnostics.map(d=>{
   const p=value(d.sourceCurveId!);if(!active(p))return d;
-  const maxError=d.maxError*p.scale,endpointMismatchError=d.endpointMismatchError*p.scale,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8;
-  return {...d,cubic:d.cubic.map(point=>applyScenePlacement(p,point)) as Cubic,peakExpected:applyScenePlacement(p,d.peakExpected),peakActual:applyScenePlacement(p,d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,tangentStatus:endpointConflict?'endpoint-conflict' as const:d.tangentStatus,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};
+  const maxError=d.maxError*scenePlacementMaxScale(p),endpointMismatchError=d.endpointMismatchError*scenePlacementMaxScale(p),exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8;
+  const cubic=d.cubic.map(point=>applyScenePlacement(p,point)) as Cubic,peakExpected=applyScenePlacement(p,d.peakExpected),peakActual=applyScenePlacement(p,d.peakActual),affine=!isScenePlacementSimilarity(p),degenerate=affine&&[0,1].some(end=>Math.hypot(cubic[end?3:0][0]-cubic[end?2:1][0],cubic[end?3:0][1]-cubic[end?2:1][1])<1e-12);
+  return {...d,cubic,peakExpected,peakActual,maxError,endpointMismatchError,exceedsTolerance,endpointConflict,tangentStatus:endpointConflict?'endpoint-conflict' as const:degenerate?'degenerate' as const:d.tangentStatus,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning,...(affine?{placementErrorBound:true as const,placementPeakError:Math.hypot(peakExpected[0]-peakActual[0],peakExpected[1]-peakActual[1])}:{})};
  });
  return {...result,drawing,diagnostics,maxError:diagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),warningCurveIds:diagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId!)};
 }

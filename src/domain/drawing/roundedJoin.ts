@@ -2,6 +2,7 @@ import {copyCurveSource,curveSamples,tagBridge} from './curveProvenance';
 import {split} from '../geometry/bezier';
 import {add,sub,mul,length,shapeOf,nodeAt,curveById,joinAt,sameEnd,type Point2,type Cubic,type Endpoint,type CurveUse,type TangentJoin,type DrawingDocument as Doc} from './model';
 import {arcField} from './sampling';
+import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineShape} from './evaluatedAffine';
 const dot=(a:Point2,b:Point2)=>a[0]*b[0]+a[1]*b[1];
 const cross=(a:Point2,b:Point2)=>a[0]*b[1]-a[1]*b[0];
 const unit=(v:Point2)=>mul(v,1/(length(v)||1));
@@ -36,6 +37,9 @@ export interface ArcJoinGeometry {joinId:string;shapes:Cubic[];aT:number;bT:numb
 const cache=new WeakMap<Doc,Map<string,ArcJoinGeometry>>();
 export function roundedJoins(d:Doc):Map<string,ArcJoinGeometry>{
  const found=cache.get(d);if(found)return found;
+ const source=evaluatedAffineSource(d);if(source){
+  const out=new Map([...roundedJoins(source)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id),affine=evaluatedAffine(d,join?.a.curveId);return [id,affine?{...g,shapes:g.shapes.map(s=>affineShape(s,affine))}:g] as const;}));cache.set(d,out);return out;
+ }
  const out=new Map<string,ArcJoinGeometry>(),fields=new Map<string,ReturnType<typeof arcField>>();
  const field=(id:string)=>{let f=fields.get(id);if(!f){f=arcField([shapeOf(d,id)]);fields.set(id,f);}return f;};
  const allowance=(e:Endpoint,radius:number)=>{const requests=([0,1] as const).map(end=>joinAt(d,{curveId:e.curveId,end})).reduce((sum,j)=>sum+(j?.mode==='ARC'?j.radius!:0),0);return Math.min(radius,field(e.curveId).total*(1-1e-5)*radius/requests);};
@@ -53,6 +57,7 @@ export interface DrawingPiece {inkOwner?:string;shape:Cubic;owners:string[];join
 export interface DerivedUses {shapes:Cubic[];pieces:DrawingPiece[];error?:string}
 /** All consumers use the same trimmed source + derived arcs. Raw authoring handles stay intact. */
 export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
+ const affine=evaluatedAffine(d,uses[0]?.id);if(affine)return affineGeometry(derivedUses(evaluatedAffineSource(d)!,uses,closed),affine);
  const fail=(error:string):DerivedUses=>({shapes:[],pieces:[],error});
  if(!uses.length||uses.some(u=>!curveById(d,u.id)))return fail('边界源曲线已删除。');
  const shapes=uses.map(u=>u.reverse?flip(shapeOf(d,u.id)):shapeOf(d,u.id)),starts=uses.map(u=>({curveId:u.id,end:(u.reverse?1:0) as 0|1})),ends=uses.map(u=>({curveId:u.id,end:(u.reverse?0:1) as 0|1}));
@@ -72,6 +77,7 @@ export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
 /** Split only derived ARC bridges at their arc midpoint for independent ink depth.
  * Geometry/continuity stay identical; visibility still checks both source owners. */
 export function partitionedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
+ const affine=evaluatedAffine(d,uses[0]?.id);if(affine)return affineGeometry(partitionedUses(evaluatedAffineSource(d)!,uses,closed),affine);
  const g=derivedUses(d,uses,closed),pieces:DrawingPiece[]=[];
  for(let i=0;i<g.pieces.length;){
   const p=g.pieces[i];if(!p.joinId){pieces.push({...p,inkOwner:p.owners[0]});i++;continue;}

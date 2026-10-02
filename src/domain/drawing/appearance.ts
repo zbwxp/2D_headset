@@ -8,6 +8,7 @@ import {displayField,pathTracks,type Span,type InkSpan} from './displayIntervals
 import {point,arcField,type ArcSampling} from './sampling';
 import {InputCache} from '../geometry/cache';
 import type {InkPinch} from './intervalPinch';
+import {evaluatedAffine,evaluatedAffineSource,affineShape,type EvaluatedAffine} from './evaluatedAffine';
 export {point,samples,arcField} from './sampling';
 const smooth=(x:number)=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);};
 export function profileAt(profile:Profile,s:number,reverse=false){
@@ -67,7 +68,7 @@ export function inkEndpointInfo(d:Doc,id:string,end:0|1){
 /** Width progress spans the whole chain, even where a segment's ink is disabled. */
 /** Display-only accuracy. Geometry operations keep their original arc tables. */
 export interface InkProjection {point:(p:Point2,shape?:Cubic,t?:number)=>Point2;shapes:(s:Cubic[])=>Cubic[]}
-export interface InkSampling extends ArcSampling {taperSteps:number;nativeUniform?:boolean;projection?:InkProjection}
+export interface InkSampling extends ArcSampling {taperSteps:number;nativeUniform?:boolean;projection?:InkProjection;materialAffine?:EvaluatedAffine}
 export function displayInkSampling(pixelsPerUnit:number):InkSampling{
  // Quantized zoom buckets reuse geometry while panning/zooming. At least the
  // nominal 250 px/unit is retained; larger views automatically refine sampling.
@@ -77,6 +78,22 @@ export function displayInkSampling(pixelsPerUnit:number):InkSampling{
 const inkCache=new InputCache<InkRun[]>(128);
 const projectedInkCaches=new WeakMap<InkProjection,InputCache<InkRun[]>>();
 export function inkRuns(shapes:Cubic[],width:number,profile:Profile,reverse=false,enabled=shapes.map(()=>true),closed=false,ends:InkEnds=[{},{}],sharpAfter:number[]=[],mask?:Span[],cuts?:InkSpan[],interiorEnds?:Array<InkEnds|undefined>,partition=false,sampling?:InkSampling,intervalPinches:InkPinch[]=[]):InkRun[]{
+ // Placement acts on derived centerlines, including ARC cubics, before ink is
+ // constructed. Transport cuts by their exact piece parameter, never by the new
+ // arc percentage. Width, taper and extension then keep fixed Drawing units.
+ if(sampling?.materialAffine&&shapes.length){
+  const {materialAffine,...quality}=sampling,placed=shapes.map(shape=>affineShape(shape,materialAffine)),before=arcField(shapes),after=arcField(placed);
+  if(after.total<1e-12)return [];
+  const material=(s:number)=>{
+   if(s<=0)return 0;if(s>=1)return 1;
+   const distance=s*before.total,index=before.parts.findIndex(part=>distance<=part.start+part.length),part=before.parts[Math.max(0,index)],target=after.parts[Math.max(0,index)];
+   let hi=1;while(hi<part.dist.length-1&&part.start+part.dist[hi]<distance)hi++;
+   const t=part.pts[hi-1].t+(part.pts[hi].t-part.pts[hi-1].t)*(distance-part.start-part.dist[hi-1])/(part.dist[hi]-part.dist[hi-1]||1);
+   let next=1;while(next<target.pts.length-1&&target.pts[next].t<t)next++;
+   return (target.start+target.dist[next-1]+(target.dist[next]-target.dist[next-1])*(t-target.pts[next-1].t)/(target.pts[next].t-target.pts[next-1].t||1))/after.total;
+  };
+  return inkRuns(placed,width,profile,reverse,enabled,closed,ends,sharpAfter,mask?.map(([a,b])=>[material(a),material(b)]),cuts?.map(c=>({...c,start:material(c.start),end:material(c.end)})),interiorEnds,partition,quality,intervalPinches.map(p=>({...p,position:material(p.position)})));
+ }
  // Pointer/selection changes and edits to another stroke must not resample this ink.
  // Include every geometric/appearance input, including interval endpoint styles.
  const key=JSON.stringify([shapes,width,profile,reverse,enabled,closed,ends,sharpAfter,mask,cuts,interiorEnds,partition,sampling,intervalPinches,sampling?.projection?shapes.map(s=>[curveSamples(s,0),curveSamples(s,1)]):undefined]);
@@ -216,7 +233,9 @@ function buildInkRuns(shapes:Cubic[],width:number,profile:Profile,reverse:boolea
  });
 }
 
-export function strokeInk(d:Doc,s:Stroke,inkOwners?:ReadonlySet<string>,partition=false,sampling?:InkSampling){return strokePaths(s).flatMap(path=>{
+export function strokeInk(d:Doc,s:Stroke,inkOwners?:ReadonlySet<string>,partition=false,sampling?:InkSampling):InkRun[]{
+ const affine=evaluatedAffine(d,s.segments[0]?.id);if(affine)return strokeInk(evaluatedAffineSource(d)!,s,inkOwners,partition,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialAffine:affine});
+ return strokePaths(s).flatMap(path=>{
  const tracks=pathTracks(d,path),replaced=new Set<string>();
  // The inferred moving ink end replaces its covered original endpoint. Leaving
  // both ramps active multiplies the same taper twice and visibly thins the line.

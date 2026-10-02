@@ -42,28 +42,69 @@ export function evaluateDepthTrack(track:SceneDepthTrack,angle:Angle,useDraft=tr
  return evaluate(track,angle,0,s=>s.reduce((n,x)=>n+x.weight*x.value,0),(n,x,y)=>x+y-n,useDraft);
 }
 /** Scalar channels retain authored turns (0→360 really makes one revolution).
- * Positive scale interpolates linearly. Missing XY scale corrections multiply
- * relative to neutral, so two reductions cannot introduce a singular corner. */
+ * Axis scales interpolate through exact zero. Legacy uniform values retain
+ * their original representation and interpolation. */
 export function evaluatePlacementTrack(track:ScenePlacementTrack,angle:Angle,useDraft=true):ScenePlacementValue {
- const mix=(samples:Sample<ScenePlacementValue>[]):ScenePlacementValue=>samples.reduce((v,s)=>({translation:[v.translation[0]+s.weight*s.value.translation[0],v.translation[1]+s.weight*s.value.translation[1]],rotation:v.rotation+s.weight*s.value.rotation,scale:v.scale+s.weight*s.value.scale}),{translation:[0,0],rotation:0,scale:0} as ScenePlacementValue);
- return evaluate(track,angle,identityScenePlacement(),mix,(n,x,y)=>({translation:[x.translation[0]+y.translation[0]-n.translation[0],x.translation[1]+y.translation[1]-n.translation[1]],rotation:x.rotation+y.rotation-n.rotation,scale:Math.max(1e-6,Math.min(1e6,x.scale*y.scale/n.scale))}),useDraft);
+ const mix=(samples:Sample<ScenePlacementValue>[]):ScenePlacementValue=>{
+  const value=samples.reduce<ScenePlacementValue>((v,s)=>({translation:[v.translation[0]+s.weight*s.value.translation[0],v.translation[1]+s.weight*s.value.translation[1]],rotation:v.rotation+s.weight*s.value.rotation,scale:v.scale+s.weight*s.value.scale}),{translation:[0,0],rotation:0,scale:0});
+  for(const axis of ['scaleX','scaleY'] as const)if(samples.some(s=>s.value[axis]!==undefined))value[axis]=samples.reduce((n,s)=>n+s.weight*(s.value[axis]??s.value.scale),0);
+  return value;
+ };
+ return evaluate(track,angle,identityScenePlacement(),mix,(n,x,y)=>{
+  const value:ScenePlacementValue={translation:[x.translation[0]+y.translation[0]-n.translation[0],x.translation[1]+y.translation[1]-n.translation[1]],rotation:x.rotation+y.rotation-n.rotation,scale:Math.max(1e-6,Math.min(1e6,x.scale*y.scale/n.scale))};
+  for(const axis of ['scaleX','scaleY'] as const)if([n,x,y].some(v=>v[axis]!==undefined)){
+   const nv=n[axis]??n.scale,xv=x[axis]??x.scale,yv=y[axis]??y.scale;
+   // A collapsed neutral axis has no multiplicative reference. Add authored
+   // corrections instead, so its saved neighbours can restore real geometry.
+   value[axis]=Math.max(0,Math.min(1e6,nv===0?xv+yv:xv*yv/nv));
+  }
+  return value;
+ },useDraft);
 }
 /** SVG affine ordering: x'=a*x+c*y+e, y'=b*x+d*y+f. */
 export type ScenePlacementMatrix=[number,number,number,number,number,number];
+export const scenePlacementScales=(value:ScenePlacementValue):Point2=>[value.scaleX??value.scale,value.scaleY??value.scale];
+/** Largest singular value, also valid when one or both axes are collapsed. */
+export const scenePlacementMaxScale=(value:ScenePlacementValue):number=>Math.max(...scenePlacementScales(value).map(Math.abs));
+export function isScenePlacementSimilarity(value:ScenePlacementValue):boolean {const [x,y]=scenePlacementScales(value);return x===y&&x>0;}
 export function placementMatrix(value:ScenePlacementValue):ScenePlacementMatrix {
- const a=value.rotation*Math.PI/180,c=Math.cos(a)*value.scale,s=Math.sin(a)*value.scale;
- return [c,s,-s,c,value.translation[0],value.translation[1]];
+ const a=value.rotation*Math.PI/180,c=Math.cos(a),s=Math.sin(a),[x,y]=scenePlacementScales(value);
+ return [c*x,s*x,-s*y,c*y,value.translation[0],value.translation[1]];
 }
+export function applyScenePlacementMatrix(matrix:ScenePlacementMatrix,point:Point2):Point2 {const [a,b,c,d,e,f]=matrix;return [a*point[0]+c*point[1]+e,b*point[0]+d*point[1]+f];}
 export function applyScenePlacement(value:ScenePlacementValue,point:Point2):Point2 {
- const [a,b,c,d,e,f]=placementMatrix(value);return [a*point[0]+c*point[1]+e,b*point[0]+d*point[1]+f];
+ return applyScenePlacementMatrix(placementMatrix(value),point);
 }
+/** Singular placements have no inverse. Returning null keeps editing code from
+ * turning a legitimate zero-width instance into NaN source coordinates. */
+export function tryInverseScenePlacement(value:ScenePlacementValue):ScenePlacementMatrix|null {
+ const [x,y]=scenePlacementScales(value);if(x===0||y===0)return null;
+ const angle=value.rotation*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),a=c/x,b=-s/y,d=c/y,e=s/x,[tx,ty]=value.translation;
+ const matrix:ScenePlacementMatrix=[a,b,e,d,-a*tx-e*ty,-b*tx-d*ty];
+ return matrix.every(Number.isFinite)?matrix:null;
+}
+/** Compatibility helper for legacy similarities. General editing should use
+ * the matrix inverse above because inverse anisotropy is not R·diag(X,Y). */
 export function inverseScenePlacement(value:ScenePlacementValue):ScenePlacementValue {
- const inverse={translation:[0,0] as Point2,rotation:-value.rotation,scale:1/value.scale};
+ if(!isScenePlacementSimilarity(value))throw Error('Only nonsingular similarity placements have a similarity inverse. Use tryInverseScenePlacement.');
+ const inverse={translation:[0,0] as Point2,rotation:-value.rotation,scale:1/scenePlacementScales(value)[0]};
+ if(!Number.isFinite(inverse.scale))throw Error('The placement inverse is not finite.');
  return {...inverse,translation:applyScenePlacement(inverse,[-value.translation[0],-value.translation[1]])};
 }
-/** Left-multiply a world-space gesture: the result maps p to delta(base(p)). */
+/** Left-multiply a world-space similarity, retaining the base's local axes.
+ * Independent axis gestures use setScenePlacementAxisScale in that local frame;
+ * arbitrary world-axis affine composition would require a shear component. */
 export function composePlacementSimilarity(base:ScenePlacementValue,delta:ScenePlacementValue):ScenePlacementValue {
- return {translation:applyScenePlacement(delta,base.translation),rotation:base.rotation+delta.rotation,scale:base.scale*delta.scale};
+ if(!isScenePlacementSimilarity(delta))throw Error('Placement gesture must be a positive similarity; edit local axes with setScenePlacementAxisScale.');
+ const scale=scenePlacementScales(delta)[0];
+ return {translation:applyScenePlacement(delta,base.translation),rotation:base.rotation+delta.rotation,scale:base.scale*scale,...(base.scaleX===undefined?{}:{scaleX:base.scaleX*scale}),...(base.scaleY===undefined?{}:{scaleY:base.scaleY*scale})};
+}
+/** Set an absolute local-axis scale, including restoring zero. An optional
+ * pre-placement anchor stays fixed in scene space; no inverse is needed. */
+export function setScenePlacementAxisScale(value:ScenePlacementValue,axis:'x'|'y',scale:number,anchor:Point2=[0,0]):ScenePlacementValue {
+ if(!Number.isFinite(scale)||scale<0||scale>1e6)throw Error('Instance axis scale must be finite and between 0 and 1000000.');
+ const next={...value,[axis==='x'?'scaleX':'scaleY']:scale},before=applyScenePlacement(value,anchor),after=applyScenePlacement(next,anchor);
+ return {...next,translation:[value.translation[0]+before[0]-after[0],value.translation[1]+before[1]-after[1]]};
 }
 export function evaluateIntervalTrack(track:SceneIntervalTrack,source:DrawingDocument,angle:Angle,useDraft=true):SceneIntervalValue {
  const base=source.displayIntervals?.find(t=>t.id===track.sourceTrackId);if(!base)throw Error('The source interval track is missing.');

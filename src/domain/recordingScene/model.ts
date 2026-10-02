@@ -31,9 +31,11 @@ export interface SceneIntervalTrack extends SceneTrack<SceneIntervalValue> {
  materialIssue?:{sourceSignature:string;message:string};
 }
 export interface SceneDepthTrack extends SceneTrack<number> {id:string;target:SceneLayerRef}
-/** Instance placement is a positive similarity AFTER its Warp chain. Rotation
- * is authored in unwrapped degrees; ink widths retain Drawing's fixed units. */
-export interface ScenePlacementValue {translation:Point2;rotation:number;scale:number}
+/** Instance placement follows its Warp chain. Local X/Y axes rotate with the
+ * instance. Optional axis scales override the legacy positive uniform scale;
+ * exact zero collapses an axis without changing source or shape coordinates.
+ * Rotation is authored in unwrapped degrees; ink widths keep fixed units. */
+export interface ScenePlacementValue {translation:Point2;rotation:number;scale:number;scaleX?:number;scaleY?:number}
 export interface ScenePlacementTrack extends SceneTrack<ScenePlacementValue> {id:string;instanceId:string}
 /** Shape offsets are source-ID keyed in the common post-Warp, pre-placement
  * space. Handles store vector deltas relative to their endpoint, so moving a

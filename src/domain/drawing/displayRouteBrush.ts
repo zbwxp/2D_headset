@@ -1,6 +1,7 @@
 import {curveById,nodeAt,sub,length,type DrawingDocument as Doc,type EndpointLink,type TangentJoin,type TerminusJoinBrush} from './model';
 import {roundedJoins,type ArcJoinGeometry} from './roundedJoin';
 import type {ResolvedDisplayRoute} from './displayRoutes';
+import {evaluatedAffine,evaluatedAffineSource,affineShape} from './evaluatedAffine';
 
 export interface DisplayRouteBrushDiagnostic {
  severity:'info'|'warning'|'error';
@@ -42,6 +43,10 @@ export function scaleEvaluatedDisplayRouteBrush(brush:TerminusJoinBrush,scale:nu
  * retained. Constant-width MVP requires matching base widths; varying profiles
  * are explicitly reported and must retain each owner's style in the renderer. */
 export function compileDisplayRouteBrushes(d:Doc,route:ResolvedDisplayRoute,overrides:DisplayLinkBrushOverrides={}):CompiledDisplayRouteBrushes {
+ const affine=evaluatedAffine(d,route.path.segments[0]?.id);if(affine){
+  const source=compileDisplayRouteBrushes(evaluatedAffineSource(d)!,route,overrides);
+  return {...source,inkDocument:{...d,joins:source.inkDocument.joins},links:source.links.map(link=>({...link,...(link.geometry?{geometry:{...link.geometry,shapes:link.geometry.shapes.map(shape=>affineShape(shape,affine))}}:{})}))};
+ }
  const diagnostics:DisplayRouteBrushDiagnostic[]=[],links:ResolvedDisplayLinkBrush[]=[];
  if(route.diagnostics.length)return {inkDocument:d,links,diagnostics:[{severity:'error',code:'INVALID_ROUTE',message:route.diagnostics[0].message}]};
  const displaced=new Set(route.displacedJoinIds),joins=d.joins.filter(j=>!displaced.has(j.id));

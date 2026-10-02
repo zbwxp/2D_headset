@@ -4,6 +4,7 @@ import {derivedUses,subcurve,type DerivedUses} from './roundedJoin';
 import {arcField} from './sampling';
 import type {InkSpan} from './displayIntervals';
 import {compileDisplayRouteBrushes,type CompiledDisplayRouteBrushes,type DisplayLinkBrushOverrides} from './displayRouteBrush';
+import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineMaterialField,affineShape} from './evaluatedAffine';
 
 /** Display traversal only. The captured seed preserves the path selected before
  * linking. Geometry endpoints/links and interval positioning remain separate. */
@@ -141,6 +142,10 @@ export interface DisplayRouteField extends ArcField {
 /** Measure route ink independently of local ownership/fills. Displaced local
  * ARC joins are omitted only in this transient ink geometry. */
 export function createDisplayRouteField(d:Doc,route:DisplayRoute|ResolvedDisplayRoute,brushOverrides:DisplayLinkBrushOverrides={}):DisplayRouteField {
+ const affine=evaluatedAffine(d,('seed' in route?route.seed:route.path).segments[0]?.id);if(affine){
+  const source=createDisplayRouteField(evaluatedAffineSource(d)!,route,brushOverrides);
+  return {...affineMaterialField(source,affine),geometry:affineGeometry(source.geometry,affine),brushes:{...source.brushes,links:source.brushes.links.map(link=>({...link,...(link.geometry?{geometry:{...link.geometry,shapes:link.geometry.shapes.map(shape=>affineShape(shape,affine))}}:{})}))}};
+ }
  const resolved='seed' in route?resolveDisplayRoute(d,route):route;
  const brushes=compileDisplayRouteBrushes(d,resolved,brushOverrides),geometryDoc=brushes.inkDocument;
  const geometry=resolved.path.segments.length?derivedUses(geometryDoc,resolved.path.segments,resolved.path.closed):{shapes:[],pieces:[],error:'显示路径为空。'};

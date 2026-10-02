@@ -10,6 +10,7 @@ const unique=(values:string[],what:string)=>{if(values.some(v=>!id(v))||new Set(
 const ref=(r:SceneLayerRef)=>{if(!r||!id(r.instanceId)||!id(r.sourceLayerId))fail('layer reference');};
 export function validateScenePlacement(value:ScenePlacementValue):void {
  if(!value||!Array.isArray(value.translation)||value.translation.length!==2||value.translation.some(n=>!Number.isFinite(n)||Math.abs(n)>1e6)||!Number.isFinite(value.rotation)||Math.abs(value.rotation)>1e9||!Number.isFinite(value.scale)||value.scale<1e-6||value.scale>1e6)fail('instance placement');
+ if([value.scaleX,value.scaleY].some(n=>n!==undefined&&(!Number.isFinite(n)||n<0||n>1e6)))fail('instance axis scale');
 }
 export function validateSceneShape(value:SceneShapeValue):void {
  const record=(r:unknown)=>!!r&&typeof r==='object'&&!Array.isArray(r)&&Object.keys(r).length<=16384&&Object.keys(r).every(id);

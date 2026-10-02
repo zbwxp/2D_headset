@@ -4,6 +4,7 @@ import {strokeFor,strokePaths,type StrokePath} from './strokes';
 import {derivedUses} from './roundedJoin';
 import {arcField} from './sampling';
 import {intervalPinch,type InkPinch} from './intervalPinch';
+import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineMaterialField} from './evaluatedAffine';
 export type Span=[number,number];
 export interface InkSpan {start:number;end:number;ends:InkEnds}
 const combineEnd=(a:InkEndStyle,b:InkEndStyle):InkEndStyle=>Object.fromEntries((['taper','extension'] as const).flatMap(k=>a[k]===undefined&&b[k]===undefined?[]:[[k,Math.max(a[k]??0,b[k]??0)]]));
@@ -59,6 +60,10 @@ export function unionSpans(spans:Span[]):Span[]{
 }
 /** The saved anchor is only a stable coordinate frame; the interval grips are free arc positions. */
 export function displayField(d:Doc,path:StrokePath){
+ const affine=evaluatedAffine(d,path.segments[0]?.id);if(affine){const source=buildDisplayField(evaluatedAffineSource(d)!,path);return {...affineMaterialField(source,affine),geometry:affineGeometry(source.geometry,affine)};}
+ return buildDisplayField(d,path);
+}
+function buildDisplayField(d:Doc,path:StrokePath){
  const route=path.segments.length?displayRouteFor(d,path.segments[0].id):undefined;
  const routed=route&&resolveDisplayRoute(d,route).path.segments.length===path.segments.length?createDisplayRouteField(d,route):undefined;
  const geometry=routed?.geometry??derivedUses(d,path.segments,path.closed),field=routed??arcField(geometry.shapes),tracks=pathTracks(d,path);

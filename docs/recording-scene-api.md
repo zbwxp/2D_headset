@@ -45,7 +45,7 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 
 ## 原生实例位置
 
-`setInstancePlacement {instanceId,value}` 设置整个画稿实例在当前角度的位置草稿。`value` 必须完整包含 `{translation:[x,y],rotation,scale}`，identity 为 `{translation:[0,0],rotation:0,scale:1}`。位置作用于该实例的所有已选来源层，在其 Warp 链输出之后统一平移、旋转和等比缩放；无需 Warp，也不创建隐含 Warp 或改动 Drawing 来源。缩放遵循 Drawing 的固定笔触语义：墨线宽度、雾化、端部 taper/extension 和派生偏移距离保留原单位；几何坐标及 ARC 的构造尺寸随实例缩放。
+`setInstancePlacement {instanceId,value}` 设置整个画稿实例在当前角度的位置草稿。`value` 必须包含兼容旧文件的 `{translation:[x,y],rotation,scale}`，可另设 `scaleX / scaleY` 覆盖各轴；它们是绝对缩放，缺省取 `scale`，允许精确的 0。identity 为 `{translation:[0,0],rotation:0,scale:1}`。位置作用于该实例的所有已选来源层，在其 Warp 与形状轨输出之后统一平移、旋转和横纵缩放；无需 Warp，也不创建隐含 Warp 或改动 Drawing 来源。缩放遵循 Drawing 的固定笔触语义：墨线宽度、雾化、端部 taper/extension 和派生偏移距离保留原单位；等比缩放沿用原派生路径；非等比缩放先在未放置空间解析 ARC 与材料范围，再仿射映射派生中心线并重建固定宽度墨线。此时拟合误差使用原误差乘最大轴尺度的保守上界，帧预览以 `maxErrorIsBound:true` 标明，单段诊断以 `placementErrorBound:true` 标明；不是重新采样得到的最大误差。
 
 `translation` 使用场景世界坐标；`rotation` 单位为度，以世界原点旋转，保留未折回的角度，例如 450°。`scale` 必须为正。UI 围绕选择中心的旋转、缩放会同时计算对应的 translation，因此此命令仍只有一个无歧义的原点变换。数值必须有限：translation 每项在 −1e6…1e6，rotation 在 −1e9…1e9，scale 在 1e-6…1e6；未知字段、缺少值、零和负缩放均拒绝。
 
@@ -54,7 +54,7 @@ Warp 的节点与绝对 U/V 柄处于本网格输出坐标，也就是紧邻父�
 {"method":"scene","request":{"dryRun":true,"commands":[{"op":"setAngle","angle":{"x":90,"y":0}},{"op":"setInstancePlacement","instanceId":"INSTANCE_ID","value":{"translation":[0.2,-0.1],"rotation":15,"scale":1.1}},{"op":"saveSelected","instanceIds":["INSTANCE_ID"],"name":"此实例的 90 度位置"}]}}
 ```
 
-一个实例最多有一条 `placementTracks` 轨道，键与草稿均使用上述完整 value。单轴角度使用该轨道自己的键对 translation、未折回 rotation 和正 scale 做线性插值；0°→360°会完整旋转一周。首次编辑位置或保存尚未拥有位置轨道的实例时，只为新轨道在已有显式视角建立 identity 键，其他对象保持不变。例如已有 30°、90° 时，首次移动 90° 不会改变已建立的 30°；随后新增视角不会给旧轨道补键。没有显式视角的旧场景仍可通过 API 直接写入当前角度，不自动推导或持久化视角。
+一个实例最多有一条 `placementTracks` 轨道，键与草稿均使用上述完整 value。单轴角度使用该轨道自己的键对 translation、未折回 rotation 和各轴缩放做线性插值；0°→360°会完整旋转一周。横纵轴保持快照局部轴，矩阵为 `T · R · diag(scaleX,scaleY)`；这不是世界轴任意剪切。0 宽到正常宽可以连续恢复，不删除原始曲线。奇异放置不能逆求屏幕编辑坐标，UI 会提示先恢复宽高；直接 API 的 shape 坐标仍是未放置空间。首次编辑位置或保存尚未拥有位置轨道的实例时，只为新轨道在已有显式视角建立 identity 键，其他对象保持不变。例如已有 30°、90° 时，首次移动 90° 不会改变已建立的 30°；随后新增视角不会给旧轨道补键。没有显式视角的旧场景仍可通过 API 直接写入当前角度，不自动推导或持久化视角。
 
 ## 原生节点与控制柄姿态
 

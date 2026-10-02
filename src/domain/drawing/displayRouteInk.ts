@@ -4,10 +4,12 @@ import {compileDisplayRouteBrushes} from './displayRouteBrush';
 import {partitionedUses} from './roundedJoin';
 import {inkRuns,strokeEnds,type InkRun,type InkSampling} from './appearance';
 import {displayField,localDisplayPath} from './displayIntervals';
+import {evaluatedAffine,evaluatedAffineSource,affineGeometry} from './evaluatedAffine';
 
 /** First authoring slice: uniform equal-width chains. Reject unsupported style
  * combinations rather than silently borrowing the first layer's appearance. */
 export function displayRouteInkSupport(d:Doc,route:DisplayRoute):string[] {
+ if(evaluatedAffine(d,route.seed.segments[0]?.id))return displayRouteInkSupport(evaluatedAffineSource(d)!,route);
  const resolved=resolveDisplayRoute(d,route);if(resolved.diagnostics.length)return resolved.diagnostics.map(x=>x.message);
  const curves=resolved.path.segments.map(u=>curveById(d,u.id));if(!curves.length)return ['显示路径为空。'];
  const problems:string[]=[];
@@ -20,6 +22,10 @@ export interface DisplayRouteInkPlan {runs:Map<string,InkRun[]>;pieces:ReturnTyp
 /** Compile ink once, partition only after measuring/tapering the complete route,
  * then paint fragments at their original member/layer/depth slots. */
 export function displayRouteInk(d:Doc,route:DisplayRoute,positions:ReadonlyMap<string,number>,sampling?:InkSampling):DisplayRouteInkPlan {
+ const affine=evaluatedAffine(d,route.seed.segments[0]?.id);if(affine){
+  const plan=displayRouteInk(evaluatedAffineSource(d)!,route,positions,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialAffine:affine});
+  return {...plan,pieces:affineGeometry({pieces:plan.pieces,shapes:plan.pieces.map(p=>p.shape)},affine).pieces};
+ }
  const diagnostics=displayRouteInkSupport(d,route),runs=new Map<string,InkRun[]>(),resolved=resolveDisplayRoute(d,route),curveIds=new Set(resolved.path.segments.map(u=>u.id));
  if(diagnostics.length)return {runs,pieces:[],curveIds,diagnostics};
  const compiled=compileDisplayRouteBrushes(d,resolved),g=partitionedUses(compiled.inkDocument,resolved.path.segments,resolved.path.closed),field=displayField(d,resolved.path);
