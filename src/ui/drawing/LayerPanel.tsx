@@ -18,38 +18,35 @@ export interface LayerPanelSection {id:string;name:string;layerIds:string[]}
 export function groupedLayerSections(layers:DrawingDocument['layers'],sections:LayerPanelSection[]=[]){
  const remaining=new Set(layers.map(layer=>layer.id));
  const groups:{key:string;section?:LayerPanelSection;layers:DrawingDocument['layers']}[]=[];
- for(const section of sections){const ids=new Set(section.layerIds),members=layers.filter(layer=>remaining.has(layer.id)&&ids.has(layer.id));if(!members.length)continue;members.forEach(layer=>remaining.delete(layer.id));groups.push({key:section.id,section,layers:members});}
+ for(const section of sections){const ids=new Set(section.layerIds),members=layers.filter(layer=>remaining.has(layer.id)&&ids.has(layer.id));members.forEach(layer=>remaining.delete(layer.id));groups.push({key:section.id,section,layers:members});}
  const ungrouped=layers.filter(layer=>remaining.has(layer.id));if(ungrouped.length)groups.push({key:'ungrouped',layers:ungrouped});
  return groups;
+}
+export function layerSectionBatchScope(document:DrawingDocument,section:LayerPanelSection){
+ const ids=new Set(section.layerIds);return layerBatchScope({...document,layers:document.layers.filter(layer=>ids.has(layer.id))},[]);
+}
+export function layerSectionSelectedBatchScope(document:DrawingDocument,section:LayerPanelSection,selectedLayerIds:string[]){
+ const ids=new Set(section.layerIds);return layerBatchScope({...document,layers:document.layers.filter(layer=>ids.has(layer.id))},selectedLayerIds.filter(id=>ids.has(id)));
 }
 interface Props {layerSections?:LayerPanelSection[];layerOrder?:Record<string,number>;poseMode?:boolean;structuralReadOnly?:boolean;editEnabled?:boolean;headerActions?:ReactNode;onVisibilityChange?:(ids:string[],visible:boolean)=>void;onLayerReorder?:(id:string,target:string,after:boolean)=>void;openProperties:()=>void;closeProperties:()=>void;document:DrawingDocument;active:string|null;selection:DrawingSelection;run:(fn:()=>DrawingDocument)=>void;choose:(selection:DrawingSelection,mode?:DrawingTool)=>void;setLayer:(id:string)=>void;upload:()=>void;deleteSelected:()=>void;cutSelected:()=>void;pasteSelected:()=>void;canPaste:boolean;restoreLayer?:(id:string)=>void}
 export default function LayerPanel({openProperties,closeProperties,document:d,active,selection,run,choose,setLayer,upload,deleteSelected,cutSelected,pasteSelected,canPaste,restoreLayer,layerSections,layerOrder,poseMode=false,structuralReadOnly=poseMode,editEnabled=true,headerActions,onVisibilityChange,onLayerReorder}:Props){
  const {session:useDrawing}=useDrawingWorkspace();
  const zh=useLanguage(s=>s.language)==='zh',sourceOnlyHint=zh?'结构与锁定请在 Drawing 绘制中编辑；此处只记录显隐和图层排序。':'Edit structure and locks in Drawing; Recording changes visibility and layer order.',memberOrderHint=zh?'成员排序属于源结构，请在 Drawing 绘制中调整。':'Edit source member order in Drawing.';
- const [closedSections,setClosedSections]=useState<string[]>([]);
- const sectionFor=new Map((layerSections??[]).flatMap(section=>section.layerIds.map(id=>[id,section] as const)));
- const sectionRuns=groupedLayerSections(d.layers,layerSections);
+ const [closedSections,setClosedSections]=useState<string[]>([]),[sectionVisibility,setSectionVisibility]=useState<Record<string,boolean>>({});
+ const sections=layerSections??[{id:'$drawing',name:t('图层'),layerIds:d.layers.map(layer=>layer.id)}];
+ const sectionFor=new Map(sections.flatMap(section=>section.layerIds.map(id=>[id,section] as const)));
+ const sectionRuns=groupedLayerSections(d.layers,sections);
  const visibleLayers=sectionRuns.flatMap(group=>closedSections.includes(group.section?.id??'')?[]:group.layers);
  const layerDragEnabled=editEnabled&&(!structuralReadOnly||!!onLayerReorder),memberDragEnabled=editEnabled&&!structuralReadOnly;
  const visibilityEnabled=editEnabled&&(!poseMode||!!onVisibilityChange);
  const changeVisibility=(ids:string[],visible:boolean,fallback:()=>DrawingDocument)=>{if(!visibilityEnabled)return;if(onVisibilityChange)onVisibilityChange(ids,visible);else run(fallback);};
  const closed=useDrawing(s=>s.closedLayers),setClosed=(value:string[]|((ids:string[])=>string[]))=>useDrawing.getState().set({closedLayers:typeof value==='function'?value(useDrawing.getState().closedLayers):value});
  const [drop,setDrop]=useState<{id:string;after:boolean;inside:boolean}|null>(null);
- const showFills=useDrawing(s=>s.showFills),fillVisibility=useDrawing(s=>s.fillVisibility),[lastVisibility,setLastVisibility]=useState<{scope:string;reveal:boolean}|null>(null);
+ const showFills=useDrawing(s=>s.showFills),fillVisibility=useDrawing(s=>s.fillVisibility);
  const dragging=useRef<{type:'layer'|'stroke'|'curve';id:string}|null>(null);
  const panel=useRef<HTMLElement>(null),anchor=useRef<string|null>(null),ownSelection=useRef<DrawingSelection|null>(null);
  const rows=drawingListRows({...d,layers:visibleLayers},closed),objects=selectedObjects(selection);
  const batch=layerBatchScope(d,selectedLayers(selection)),scoped=batch.selected.length>0;
- const allItems=batch.items,allState=objectState(d,allItems),scopeKey=scoped?batch.selected.join('|'):'*';
- // A partial state after hide-all can be restored in one click, per selection scope.
- const revealAll=!allState.anyVisible||!allState.allVisible&&lastVisibility?.scope===scopeKey&&!lastVisibility.reveal;
- const fillLayers=batch.layers.filter(l=>d.fills.some(f=>l.items.includes(f.id)));
- const allFills=fillLayers.every(l=>fillVisibility[l.id]??showFills),anyFills=fillLayers.some(l=>fillVisibility[l.id]??showFills);
- const allClosed=batch.layers.length>0&&batch.layers.every(l=>closed.includes(l.id));
- const visibilityLabel=t(scoped?(revealAll?'显示所选图层':'隐藏所选图层'):(revealAll?'显示全部图层':'隐藏全部图层'));
- const fillLabel=t(scoped?(allFills?'隐藏所选图层填充':'显示所选图层填充'):(allFills?'隐藏全部填充':'显示全部填充'));
- const foldLabel=t(scoped?(allClosed?'展开所选图层':'收起所选图层'):(allClosed?'全部展开':'全部收起'));
- const actionLayers=scoped?batch.selected:active?[active]:[];
  useEffect(()=>{if(selection!==ownSelection.current)anchor.current=null;},[selection]);
  useEffect(()=>{if(selection===ownSelection.current||selectedLayers(selection).length)return;const id=selection.paint??selection.ids[0];if(!id)return;const layer=layerFor(d,id);if(!layer)return;const chain=layerTree(d,layer.id).find(item=>item.stroke?.segments.some(x=>x.id===id)||item.fills.includes(id));const parent=groupFor(d,id);setClosedSections(ids=>ids.filter(id=>id!==sectionFor.get(layer.id)?.id));setClosed(c=>c.filter(id=>id!==layer.id&&id!==chain?.id&&(selection.group===parent?.id||id!==parent?.id)));const timer=setTimeout(()=>panel.current?.querySelector('.drawing-object-row.selected')?.scrollIntoView({block:'nearest'}),0);return()=>clearTimeout(timer);},[selection]);
  const pick=(key:string,e:React.MouseEvent)=>{
@@ -66,18 +63,14 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
   ownSelection.current=next;choose(next,!group&&ids.some(id=>!!groupFor(d,id))?'direct':undefined);
  };
  const toggle=(id:string)=>setClosed(a=>a.includes(id)?a.filter(x=>x!==id):[...a,id]);
- const foldBatch=()=>{
-  if(!allClosed)closeProperties();
-  setClosed(a=>allClosed?a.filter(id=>!batch.foldIds.includes(id)):[...new Set([...a,...batch.foldIds])]);
- };
- const duplicateBatch=()=>run(()=>{
+ const duplicateBatch=(actionLayers:string[])=>run(()=>{
   let n=d;const created:string[]=[];
   for(const id of actionLayers){n=duplicateLayer(n,id);const copy=n.layers[0].id;created.push(copy);n=reorderLayers(n,copy,id);}
   const items=n.layers.filter(l=>created.includes(l.id)).flatMap(l=>l.items);
   if(created.length){setLayer(created[0]);choose({layers:created,layer:created.length===1?created[0]:undefined,ids:items.filter(id=>!!curveById(n,id)),paintIds:items.filter(id=>!curveById(n,id))});}
   return n;
  });
- const deleteBatch=()=>run(()=>{const n=deleteLayers(d,actionLayers);choose({ids:[]});return n;});
+ const deleteBatch=(actionLayers:string[])=>run(()=>{const n=deleteLayers(d,actionLayers);choose({ids:[]});return n;});
  const drag=(e:React.DragEvent,type:'layer'|'stroke'|'curve',id:string)=>{e.stopPropagation();if(type==='layer'?!layerDragEnabled:!memberDragEnabled){e.preventDefault();return;}dragging.current={type,id};e.dataTransfer.setData('application/x-drawing',JSON.stringify({type,id}));e.dataTransfer.effectAllowed='move';};
  const endDrag=()=>{dragging.current=null;setDrop(null);};
  const over=(e:React.DragEvent,id:string,type:'layer'|'stroke'|'curve')=>{if(type==='layer'?!layerDragEnabled:!memberDragEnabled)return;if(!dragging.current||dragging.current.type==='layer'&&type!=='layer')return;if(dragging.current.type==='curve'&&(type!=='curve'||strokeFor(d,dragging.current.id)!==strokeFor(d,id)))return;if(type==='curve'&&dragging.current.type!=='curve')return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';const r=e.currentTarget.getBoundingClientRect();setDrop({id,after:e.clientY>r.top+r.height/2,inside:type==='layer'&&dragging.current.type==='stroke'});};
@@ -103,12 +96,12 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
   <button aria-label={t(o.visible?'隐藏':'显示')+' '+o.name} disabled={!visibilityEnabled} onClick={()=>changeVisibility([id],!o.visible,()=>changePaint(d,id,{visible:!o.visible}))}>{o.visible?<Eye size={13}/>:<EyeOff size={13}/>}</button>
   <button disabled={structuralReadOnly||!editEnabled} title={structuralReadOnly?sourceOnlyHint:undefined} aria-label={t(o.locked?'解锁':'锁定')+' '+o.name} onClick={()=>run(()=>changePaint(d,id,{locked:!o.locked}))}>{o.locked?<LockKeyhole size={13}/>:<Unlock size={13}/>}</button>
  </div>;};
- const stateButtons=(ids:string[],kind:'layer'|'group'|'chain',name:string,change:(state:{visible?:boolean;locked?:boolean})=>DrawingDocument,visibilityIds=ids)=>{
+ const stateButtons=(ids:string[],kind:'layer'|'group'|'chain',name:string,change:(state:{visible?:boolean;locked?:boolean})=>DrawingDocument,visibilityIds=ids,selectedScopeCount=batch.selected.length)=>{
   const state=objectState(d,ids),{anyVisible,allVisible,anyLocked,allLocked}=state;
   const visibility=t(kind==='group'?(anyVisible?'隐藏整组':'显示整组'):kind==='chain'?(anyVisible?'隐藏整笔':'显示整笔'):(anyVisible?'隐藏':'显示'));
   const locking=t(kind==='group'?(allLocked?'解锁整组':'锁定整组'):kind==='chain'?(allLocked?'解锁整笔':'锁定整笔'):(allLocked?'解锁':'锁定'));
   const suffix=kind==='group'?'':' '+name;
-  const scopeHint=kind==='layer'&&batch.selected.length>1?' · '+t('选中图层的开关会批量应用于所选图层'):'';
+  const scopeHint=kind==='layer'&&selectedScopeCount>1?' · '+(zh?'仅批量应用于此快照内所选图层':'Apply only to selected layers in this snapshot'):'';
   return <>
    <button data-testid={`drawing-${kind}-visibility`} disabled={!state.count||!visibilityEnabled} aria-label={visibility+suffix} aria-pressed={anyVisible&&!allVisible?'mixed':allVisible} title={(anyVisible&&!allVisible?t('部分显示')+' · ':'')+visibility+' · '+t('批量设置当前成员，之后可单独调整')+scopeHint} onClick={()=>changeVisibility(visibilityIds,!anyVisible,()=>change({visible:!anyVisible}))}>{anyVisible?<Eye size={13}/>:<EyeOff size={13}/>}</button>
    <button data-testid={`drawing-${kind}-lock`} disabled={!state.count||structuralReadOnly||!editEnabled} aria-label={locking+suffix} aria-pressed={anyLocked&&!allLocked?'mixed':allLocked} title={structuralReadOnly?sourceOnlyHint:(anyLocked&&!allLocked?t('部分锁定')+' · ':'')+locking+' · '+t('批量设置当前成员，之后可单独调整')+scopeHint} onClick={()=>run(()=>change({locked:!allLocked}))}>{allLocked?<LockKeyhole size={13}/>:<Unlock size={13}/>}</button>
@@ -119,12 +112,12 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
     {stateButtons([...strokeIds(s),...item.fills],'chain',name,change=>setStrokeState(d,s.id,change))}
    </div>{!closed.includes(s.id)&&<div className="drawing-segments">{l.items.filter(id=>s.segments.some(x=>x.id===id)).map(id=>curveRow(id,true))}{item.fills.map(paintRow)}</div>}</>}
   </div>;};
- const renderLayer=(l:DrawingDocument['layers'][number])=><div className="drawing-layer" key={l.id} data-testid="drawing-layer" data-id={l.id}>
+ const renderLayer=(l:DrawingDocument['layers'][number])=>{const section=sectionFor.get(l.id),localBatch=section?layerSectionSelectedBatchScope(d,section,selectedLayers(selection)):batch;return <div className="drawing-layer" key={l.id} data-testid="drawing-layer" data-id={l.id}>
   <div draggable={layerDragEnabled} onDragStart={e=>drag(e,'layer',l.id)} onDragOver={e=>over(e,l.id,'layer')} onDrop={e=>dropped(e,'layer',l.id)} onDragEnd={endDrag} className={`drawing-layer-row ${active===l.id?'active':''} ${batch.selected.includes(l.id)?'selected':''}${dropClass(l.id)}`}>
    <button aria-label={t(closed.includes(l.id)?'展开':'收起')+' '+l.name} onClick={()=>toggle(l.id)}>{closed.includes(l.id)?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
    <button className="drawing-object-name" data-testid="drawing-layer-select" aria-pressed={batch.selected.includes(l.id)} title={t('Shift 连选图层 · Ctrl/Cmd 增减选择')} onClick={e=>pick(`layer:${l.id}`,e)}>{l.name}</button>{layerOrder?.[l.id]!==undefined&&<small className="drawing-layer-global-order" data-testid="drawing-layer-global-order" title={zh?'场景图层顺序（跨快照）；列表按快照分组。':'Scene layer order across snapshots; this list is grouped by snapshot.'}>{zh?'层序':'Order'} {layerOrder[l.id]}</small>}
    {restoreLayer&&!structuralReadOnly&&<button data-testid="drawing-restore-layer" aria-label={t('从画稿恢复图层')+' '+l.name} title={t('从画稿恢复图层')} onClick={()=>restoreLayer(l.id)}><RotateCcw size={13}/></button>}
-   {stateButtons(l.items,'layer',l.name,change=>batch.selected.includes(l.id)?setObjectState(d,allItems,change):layerChange(d,l.id,change),batch.selected.includes(l.id)?allItems:l.items)}
+   {stateButtons(l.items,'layer',l.name,change=>localBatch.selected.includes(l.id)?setObjectState(d,localBatch.items,change):layerChange(d,l.id,change),localBatch.selected.includes(l.id)?localBatch.items:l.items,localBatch.selected.length)}
   </div>
   {!closed.includes(l.id)&&groupTree(d,l.id).map(entry=>entry.group?<div key={entry.id} className="drawing-object-group" data-testid="drawing-group-row" data-id={entry.id}>
    <div className={`drawing-chain-row ${selection.group===entry.id?'selected':''}${dropClass(entry.id)}`} title={structuralReadOnly?memberOrderHint:undefined} draggable={memberDragEnabled} onDragStart={e=>drag(e,'stroke',entry.id)} onDragOver={e=>over(e,entry.id,'stroke')} onDrop={e=>dropped(e,'stroke',entry.id)} onDragEnd={endDrag}>
@@ -134,23 +127,35 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
    </div>
    {!closed.includes(entry.id)&&<div className="drawing-group-members">{entry.children.map(item=>renderItem(item,l))}</div>}
   </div>:renderItem(entry.item!,l))}
- </div>;
+ </div>;};
+ const sectionTools=(section:LayerPanelSection)=>{
+  const scope=layerSectionSelectedBatchScope(d,section,selectedLayers(selection)),scoped=scope.selected.length>0,state=objectState(d,scope.items),key=`section:${section.id}:${scoped?scope.selected.join('|'):'*'}`;
+  const reveal=!state.anyVisible||!state.allVisible&&sectionVisibility[key]===false;
+  const fillLayers=scope.layers.filter(layer=>d.fills.some(fill=>layer.items.includes(fill.id))),all=fillLayers.every(layer=>fillVisibility[layer.id]??showFills),any=fillLayers.some(layer=>fillVisibility[layer.id]??showFills);
+  const folded=scope.layers.length>0&&scope.layers.every(layer=>closed.includes(layer.id));
+  const visibilityName=t(scoped?(reveal?'显示所选图层':'隐藏所选图层'):(reveal?'显示全部图层':'隐藏全部图层'));
+  const fillName=t(scoped?(all?'隐藏所选图层填充':'显示所选图层填充'):(all?'隐藏全部填充':'显示全部填充'));
+  const foldName=t(scoped?(folded?'展开所选图层':'收起所选图层'):(folded?'全部展开':'全部收起'));
+  const actionLayers=scoped?scope.selected:active&&section.layerIds.includes(active)?[active]:[];
+  return <header className="drawing-layer-section-tools" data-testid="drawing-layer-section-tools" data-section-id={section.id}>
+   <button data-testid="drawing-toggle-all" aria-label={visibilityName} aria-pressed={state.anyVisible&&!state.allVisible?'mixed':state.allVisible} title={section.name+' · '+visibilityName+' · '+t('批量设置当前成员，之后可单独调整')} disabled={!state.count||!visibilityEnabled} onClick={()=>{changeVisibility(scope.items,reveal,()=>setObjectState(d,scope.items,{visible:reveal}));setSectionVisibility(value=>({...value,[key]:reveal}));}}>{state.anyVisible?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+   <button data-testid="drawing-toggle-fills" className="drawing-fill-toggle" aria-label={fillName} aria-pressed={any&&!all?'mixed':all} title={section.name+' · '+fillName+' · '+t('临时查看线稿，保留各填充自身的显示设置')} disabled={!fillLayers.length} onClick={()=>useDrawing.getState().set(sections.length===1&&!scoped?{showFills:!all,fillVisibility:{}}:{fillVisibility:{...fillVisibility,...Object.fromEntries(scope.layers.map(layer=>[layer.id,!all]))}})}><PaintBucket size={14}/><span>{t('填充')}</span></button>
+   <button data-testid="drawing-collapse-all" aria-label={foldName} title={section.name+' · '+foldName} disabled={!scope.layers.length} onClick={()=>{if(!folded)closeProperties();else setClosedSections(ids=>ids.filter(id=>id!==section.id));setClosed(ids=>folded?ids.filter(id=>!scope.foldIds.includes(id)):[...new Set([...ids,...scope.foldIds])]);}}>{folded?<ChevronsUpDown size={16}/>:<ChevronsDownUp size={16}/>}</button>
+   {!structuralReadOnly&&<><button data-testid="drawing-new-layer" className={drop?.id==='new-layer'?'drawing-new-layer-drop':''} aria-label={t('新建图层')} title={t('新建图层；拖入组合可转为图层')} onDragOver={promoteOver} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDrop(null);}} onDrop={promoteDrop} onClick={()=>run(()=>{const n=addLayer(d,t('图层')+(d.layers.length+1)),id=n.layers[0].id;setLayer(id);choose({ids:[],layer:id,layers:[id]});return active?reorderLayers(n,id,active):n;})}><Plus size={16}/></button>
+   <button aria-label={t(scoped?'复制所选图层':'复制图层')} title={t(scoped?'复制所选图层':'复制图层')} disabled={!actionLayers.length} onClick={()=>duplicateBatch(actionLayers)}><Copy size={14}/></button>
+   <button aria-label={t(scoped?'删除所选图层':'删除图层')} title={t(scoped?'删除所选图层':'删除图层')} disabled={!actionLayers.length} onClick={()=>deleteBatch(actionLayers)}><Trash2 size={14}/></button></>}
+  </header>;
+ };
  return <section ref={panel} className="drawing-layers" aria-label={t('绘图图层')}>
- <header><strong>{t('图层')}</strong>
- <button data-testid="drawing-toggle-all" aria-label={visibilityLabel} aria-pressed={allState.anyVisible&&!allState.allVisible?'mixed':allState.allVisible} title={visibilityLabel+' · '+t('批量设置当前成员，之后可单独调整')} disabled={!allState.count||!visibilityEnabled} onClick={()=>{changeVisibility(allItems,revealAll,()=>setObjectState(d,allItems,{visible:revealAll}));setLastVisibility({scope:scopeKey,reveal:revealAll});}}>{allState.anyVisible?<Eye size={16}/>:<EyeOff size={16}/>}</button>
- <button data-testid="drawing-toggle-fills" className="drawing-fill-toggle" aria-label={fillLabel} aria-pressed={anyFills&&!allFills?'mixed':allFills} title={fillLabel+' · '+t('临时查看线稿，保留各填充自身的显示设置')} disabled={!fillLayers.length} onClick={()=>useDrawing.getState().set(scoped?{fillVisibility:{...fillVisibility,...Object.fromEntries(batch.selected.map(id=>[id,!allFills]))}}:{showFills:!allFills,fillVisibility:{}})}><PaintBucket size={14}/><span>{t('填充')}</span></button>
- <button data-testid="drawing-collapse-all" aria-label={foldLabel} title={foldLabel} disabled={!batch.layers.length} onClick={foldBatch}>{allClosed?<ChevronsUpDown size={16}/>:<ChevronsDownUp size={16}/>}</button>
- {!structuralReadOnly&&<><button data-testid="drawing-new-layer" className={drop?.id==='new-layer'?'drawing-new-layer-drop':''} aria-label={t('新建图层')} title={t('新建图层；拖入组合可转为图层')} onDragOver={promoteOver} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDrop(null);}} onDrop={promoteDrop} onClick={()=>run(()=>{const n=addLayer(d,t('图层')+(d.layers.length+1)),id=n.layers[0].id;setLayer(id);choose({ids:[],layer:id,layers:[id]});return active?reorderLayers(n,id,active):n;})}><Plus size={16}/></button>
- <button aria-label={t(scoped?'复制所选图层':'复制图层')} title={t(scoped?'复制所选图层':'复制图层')} disabled={!actionLayers.length} onClick={duplicateBatch}><Copy size={14}/></button>
- <button aria-label={t(scoped?'删除所选图层':'删除图层')} title={t(scoped?'删除所选图层':'删除图层')} disabled={!actionLayers.length} onClick={deleteBatch}><Trash2 size={14}/></button></>}{headerActions}</header>
+ {headerActions&&<div className="drawing-shared-actions" data-testid="drawing-shared-warp-actions"><strong>Warp</strong>{headerActions}</div>}
  {structuralReadOnly&&<p className="drawing-pose-explanation" data-testid="drawing-pose-explanation">{sourceOnlyHint}</p>}
- {scoped&&<div className="drawing-layer-scope" data-testid="drawing-layer-scope"><span>{batch.selected.length} {t('个图层已选择')}</span><button aria-label={t('清除图层选择')} title={t('清除选择，顶部按钮恢复作用于全部图层')} onClick={()=>choose({ids:[]})}><X size={12}/></button></div>}
+ {scoped&&<div className="drawing-layer-scope" data-testid="drawing-layer-scope"><span>{batch.selected.length} {t('个图层已选择')}</span><button aria-label={t('清除图层选择')} title={(zh?'清除选择，各快照工具恢复作用于本快照全部图层':'Clear selection so each snapshot toolbar applies to all of its layers')} onClick={()=>choose({ids:[]})}><X size={12}/></button></div>}
 
  <div className="drawing-layer-list">
  {sectionRuns.map(run=>run.section?<div className="drawing-layer-section" key={run.key} data-testid="drawing-layer-section" data-section-id={run.section.id}>
   <button className="drawing-layer-section-heading" data-testid="drawing-layer-section-toggle" aria-expanded={!closedSections.includes(run.section.id)} onClick={()=>setClosedSections(ids=>ids.includes(run.section!.id)?ids.filter(id=>id!==run.section!.id):[...ids,run.section!.id])}>
    {closedSections.includes(run.section.id)?<ChevronRight size={13}/>:<ChevronDown size={13}/>}<strong>{run.section.name}</strong><small>{run.layers.length}</small>
-  </button>{!closedSections.includes(run.section.id)&&run.layers.map(renderLayer)}
+  </button>{sectionTools(run.section)}{!closedSections.includes(run.section.id)&&run.layers.map(renderLayer)}
  </div>:run.layers.map(renderLayer))}
  {!d.layers.length&&<p className="drawing-empty">{t('新建图层，开始绘制。')}</p>}
  </div>
