@@ -133,3 +133,13 @@ test('correction frames disable native layer creation and deletion with the real
  const html=render({current:f.current,sources:[f.source],selection:{ids:[],layers:[f.eye]},structuralCommands});
  expect(button(section(html,'view'),'drawing-new-layer')).toContain('disabled');expect(html).toContain(structuralCommands.disabledReason);expect(capturedPanel.props!.structuralCommands!.canDeleteSelection).toBe(false);
 });
+
+
+test('Recording lock callback enables current controls and maps only current snapshot objects',()=>{
+ const f=fixture(),onLockChange=vi.fn(),html=render({onLockChange,collapseSourcesByDefault:false});
+ const current=section(html,'view'),source=section(html,f.source.snapshotId);
+ const locks=(value:string)=>value.match(/<button[^>]*data-testid="drawing-layer-lock"[^>]*>/g)??[];expect(locks(current).some(value=>!value.includes('disabled=""'))).toBe(true);expect(locks(source).every(value=>value.includes('disabled=""'))).toBe(true);
+ const callback=capturedPanel.props!.onLockChange!;callback([snapshotPanelRowId('view','brow')],true);expect(onLockChange).toHaveBeenLastCalledWith(['brow'],true);
+ callback([snapshotPanelRowId('view','brow')],false);expect(onLockChange).toHaveBeenLastCalledWith(['brow'],false);
+ callback([snapshotPanelRowId(f.source.snapshotId,'brow')],true);callback([snapshotPanelRowId('view','brow'),snapshotPanelRowId(f.source.snapshotId,'brow')],true);expect(onLockChange).toHaveBeenCalledTimes(2);
+});

@@ -1,3 +1,4 @@
+import {validateSnapshotObjectLocks} from './objectLocks';
 import {normalizeSnapshotNodeAliases} from './nodeAliases';
 import {validateSnapshotNodeForks} from './nodeForks';
 import {validateSnapshotCurveAppearance} from './curveAppearance';
@@ -71,6 +72,7 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
   if(typeof snapshot.name!=='string'||!['drawing','sculpt','view','assembly'].includes(snapshot.kind)||!angle(snapshot.angle)||!Array.isArray(snapshot.layers)||!record(snapshot.relations)||!Array.isArray(snapshot.authored))fail('snapshot');
   if(snapshot.inputMirror!==undefined){const mirror=snapshot.inputMirror;if(!snapshot.parentSnapshotId||!record(mirror)||Object.keys(mirror).some(key=>!['axisX','curvePairs','axisNodeIds'].includes(key))||!Number.isFinite(mirror.axisX)||!Array.isArray(mirror.curvePairs))fail('input mirror');unique(mirror.curvePairs.map(pair=>pair.id),'input mirror pair');const used=new Set<string>();for(const pair of mirror.curvePairs){if(!pair||!id(pair.a)||!id(pair.b)||typeof pair.reverse!=='boolean'||used.has(pair.a)||used.has(pair.b))fail('input mirror pair');used.add(pair.a);used.add(pair.b);}if(mirror.axisNodeIds!==undefined){if(!Array.isArray(mirror.axisNodeIds))fail('input mirror axis nodes');unique([...mirror.axisNodeIds],'input mirror axis node');}}
   if(snapshot.parentLayers!==undefined){const inherited=snapshot.parentLayers;if(!snapshot.parentSnapshotId||!record(inherited)||Object.keys(inherited).some(key=>key!=='excludedLayerIds'&&key!=='orderOverride')||inherited.orderOverride!==undefined&&typeof inherited.orderOverride!=='boolean')fail('parent layer inheritance');if(inherited.excludedLayerIds!==undefined){if(!Array.isArray(inherited.excludedLayerIds))fail('excluded parent layers');unique(inherited.excludedLayerIds,'excluded parent layer');}}
+  if(snapshot.objectLocks!==undefined)validateSnapshotObjectLocks(snapshot.objectLocks);
   if(snapshot.nodeForks!==undefined)validateSnapshotNodeForks(snapshot.nodeForks);
   if(snapshot.nodeAliases!==undefined)normalizeSnapshotNodeAliases(snapshot.nodeAliases);
   unique(snapshot.layers.map(l=>l.id),'snapshot layer');

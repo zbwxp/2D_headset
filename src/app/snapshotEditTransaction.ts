@@ -1,3 +1,4 @@
+import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
@@ -35,6 +36,7 @@ export function snapshotEditContext(project:LandmarkProject,canEditOriginals:boo
 }
 
 export type SnapshotEdit =
+ | {kind:'object-locks';snapshotId:string;changes:SnapshotObjectLocks}
  | ({kind:'recording-layer-domain'}&RecordingLayerDomainEdit)
  | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
@@ -110,6 +112,12 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+ if(edit.kind==='object-locks'){
+  const before=context.project,workspace=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,snapshot=workspace.snapshots.find(value=>value.id===edit.snapshotId);if(!snapshot)throw Error('The lock target Snapshot no longer exists.');
+  const next=snapshotWithObjectLocks(snapshot,resolveSnapshot(workspace,snapshot.id,{useDraft:true,diagnostics:'preview'}).drawing,edit.changes);
+  if(next===snapshot)return {before,project:before,changed:false};
+  return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:{...workspace,snapshots:workspace.snapshots.map(value=>value===snapshot?next:value)}});
+ }
  if(edit.kind==='recording-layer-domain')return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:prepareRecordingLayerDomainWorkspace(context.project,edit),validation:edit.validation});
  if(edit.kind==='layer-domain')return prepareDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;

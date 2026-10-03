@@ -1,3 +1,4 @@
+import type {SnapshotObjectLocks} from './objectLocks';
 import type {SnapshotVisibilityRecipeRegistry} from './visibilityRestriction';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
@@ -91,6 +92,8 @@ export interface SnapshotSourceMetadata {
  reference?:DrawingDocument['reference'];mirrorAxisX?:number;mirrorEditing?:DrawingDocument['mirrorEditing'];
 }
 export interface RecordingSnapshot {
+ /** Discrete per-object editor locks; absent IDs follow their live parent. */
+ objectLocks?:SnapshotObjectLocks;
  id:string;name:string;kind:'drawing'|'sculpt'|'view'|'assembly';
  /** The sole semantic parent. Layer source addresses remain provenance. */
  parentSnapshotId?:string;

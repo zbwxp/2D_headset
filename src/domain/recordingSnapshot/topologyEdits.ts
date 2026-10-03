@@ -1,3 +1,4 @@
+import {splitSnapshotObjectLocks} from './objectLocks';
 import {markSnapshotRouteMaterialInput,snapshotRouteMaterialSource} from './routeMaterialSource';
 import {remapSnapshotMaterialPathLineages} from './materialPathLineages';
 import {remapSnapshotMaterialPartitions} from './materialSplit';
@@ -191,7 +192,7 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   for(const plan of plans){const {intent}=plan;
    const layers=snapshot.layers.map(layer=>layer.kind==='reference'&&layer.membership?{...layer,membership:{...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);
    snapshot={...snapshot,layers};if(!basis||!hasCurve(basis,intent.curveId))continue;
-   snapshot={...snapshot,...(snapshot.nodeForks?{nodeForks:splitSnapshotNodeForks(snapshot.nodeForks,intent)}:{}),relations:remapRelations(snapshot.relations,basis,intent,snapshot.id===batch.sourceSnapshotId?snapshot:undefined),deformation:remapState(snapshot.deformation,basis,intent),...(snapshot.inheritedState?{inheritedState:remapState(snapshot.inheritedState,basis,intent)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:remapState(snapshot.draft.deformation,basis,intent)}}:{})};
+   snapshot={...snapshot,...(snapshot.objectLocks?{objectLocks:splitSnapshotObjectLocks(snapshot.objectLocks,intent)}:{}),...(snapshot.nodeForks?{nodeForks:splitSnapshotNodeForks(snapshot.nodeForks,intent)}:{}),relations:remapRelations(snapshot.relations,basis,intent,snapshot.id===batch.sourceSnapshotId?snapshot:undefined),deformation:remapState(snapshot.deformation,basis,intent),...(snapshot.inheritedState?{inheritedState:remapState(snapshot.inheritedState,basis,intent)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:remapState(snapshot.draft.deformation,basis,intent)}}:{})};
    basis=split(basis,intent);
   }
   return snapshot;
@@ -231,6 +232,7 @@ export function splitSnapshotLocalCurve(before:RecordingSnapshotWorkspace,snapsh
  workspace.library.nodes[intent.seamNodeId]=clone(material.nodes.find(node=>node.id===intent.seamNodeId)!);
  const slot=local.layers.find(value=>value.id===layer.id)!;if(slot.kind!=='reference')throw Error('Local split layer changed.');
  slot.membership={addElementIds:[...(slot.membership?.addElementIds??[]).filter(id=>id!==intent.curveId),...intent.childCurveIds],excludeElementIds:[...new Set([...(slot.membership?.excludeElementIds??[]),intent.curveId])]};
+ if(local.objectLocks)local.objectLocks=splitSnapshotObjectLocks(local.objectLocks,intent);
  if(local.nodeForks)local.nodeForks=splitSnapshotNodeForks(local.nodeForks,intent,true);
  local.relations=remapRelations(local.relations,saved.evaluation.source,intent);
  const inheritedRelations={joins:material.joins,endpointLinks:material.endpointLinks??[],groups:material.groups??[],displayIntervals:material.displayIntervals??[]};

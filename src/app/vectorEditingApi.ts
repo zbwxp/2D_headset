@@ -3,7 +3,7 @@ import {createLayerCageIntent} from '../domain/drawing/layerDomainIntent';
 import {adoptDisplayRoute,detachDisplayRoute} from '../domain/drawing/displayRouteAuthoring';
 import {setEndpointLinkBrush} from '../domain/drawing/endpointRelationAuthoring';
 import {createSnapshotRelationAuthoringIntent,snapshotRelationWriteOwner} from '../domain/recordingSnapshot/relationAuthoringIntent';
-import {prepareDrawingSnapshotEdit} from './drawingSnapshotEdit';
+import {prepareDrawingSnapshotEdit,prepareDrawingSnapshotObjectLocks} from './drawingSnapshotEdit';
 import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
 /** Local, JSON-oriented vector authoring. No network, evaluation of code, or mode switching. */
 import {createElement} from 'react';
@@ -96,6 +96,8 @@ const relationCommandNames=new Set(['linkEndpoints','unlinkEndpoints','adoptDisp
  * The app adapter then writes source originals or local state by actual owner. */
 function snapshotCommandView(project:LandmarkProject,command:Record<string,unknown>){
  const view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(!view)return undefined;
+ if(command.op==='setLayer')return typeof command.layerId==='string'&&view.layerOwners.get(command.layerId)?.kind==='snapshot-local'?view:undefined;
+ if(command.op==='setObjectState')return Array.isArray(command.objectIds)&&command.objectIds.some(id=>view.layerOwners.get(layerFor(view.drawing,String(id))?.id??'')?.kind==='snapshot-local')?view:undefined;
  if(command.op==='createCurve')return typeof command.layerId==='string'&&view.layerOwners.get(command.layerId)?.kind==='snapshot-local'?view:undefined;
  if(command.op==='moveHandle')return view.drawing.curves.some(curve=>curve.id===command.curveId)?view:undefined;
  if(command.op==='moveNode')return view.drawing.nodes.some(node=>node.id===command.nodeId)?view:undefined;
@@ -484,7 +486,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     // Quad deformation already transports material cut positions; other geometry edits do so here.
     if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
-    if(localView){const intent=relationCommandNames.has(String(resolved.op))?createSnapshotRelationAuthoringIntent(localView.snapshotId,previous,next):undefined,plan=prepareDrawingSnapshotEdit(candidateProject,markFinalizedGeometry(next),intent);candidateProject=plan.project;domainChanged=domainChanged||plan.changed;snapshotContextChanged=true;next=clone(candidateProject.drawing??emptyDrawing());pendingSource=false;}
+    if(localView){const intent=relationCommandNames.has(String(resolved.op))?createSnapshotRelationAuthoringIntent(localView.snapshotId,previous,next):undefined,plan=prepareDrawingSnapshotEdit(candidateProject,markFinalizedGeometry(next),intent);candidateProject=plan.project;domainChanged=domainChanged||plan.changed;if((resolved.op==='setObjectState'||resolved.op==='setLayer')&&resolved.locked!==undefined){const objectIds=resolved.op==='setObjectState'?resolved.objectIds as string[]:previous.layers.find(layer=>layer.id===resolved.layerId)!.items,locks=prepareDrawingSnapshotObjectLocks(candidateProject,objectIds,resolved.locked as boolean);candidateProject=locks.project;domainChanged=domainChanged||locks.changed;}snapshotContextChanged=true;next=clone(candidateProject.drawing??emptyDrawing());pendingSource=false;}
     else if(topologyIntent){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next),intent:topologyIntent}).project;pendingSource=false;}else pendingSource=true;
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError||e instanceof MirrorApiError?e.code:e instanceof MirrorEditingError?`MIRROR_${e.code}`:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }

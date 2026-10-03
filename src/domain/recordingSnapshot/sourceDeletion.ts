@@ -1,3 +1,4 @@
+import {pruneSnapshotObjectLocks} from './objectLocks';
 import {pruneSnapshotNodeAliases} from './nodeAliases';
 import {pruneSnapshotNodeForks} from './nodeForks';
 import {retireSnapshotMaterialPathLineages} from './materialPathLineages';
@@ -64,6 +65,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   const mirror=snapshot.inputMirror;
   return {...snapshot,layers:snapshot.layers.filter(layer=>!removedLayers.has(address(snapshot.id,layer.id))).map(layer=>layer.kind==='original'?{...layer,items:layer.items.filter(id=>!removed.has(id))}:{...layer,...(layer.membership?{membership:{...(layer.membership.addElementIds?{addElementIds:layer.membership.addElementIds.filter(id=>!removed.has(id))}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:layer.membership.excludeElementIds.filter(id=>!removed.has(id))}:{})}}:{})}),relations,
    deformation:state(snapshot.deformation,snapshot.id),...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,snapshot.id)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,snapshot.id)}}:{}),
+   ...(snapshot.objectLocks?{objectLocks:pruneSnapshotObjectLocks(snapshot.objectLocks,removed)}:{}),
    ...(snapshot.nodeForks?{nodeForks:pruneSnapshotNodeForks(snapshot.nodeForks,removed)}:{}),
    ...(snapshot.nodeAliases?{nodeAliases:pruneSnapshotNodeAliases(snapshot.nodeAliases,removed)}:{}),
    ...(snapshot.source?{source:{...snapshot.source,originIds:without(snapshot.source.originIds,removed)}}:{}),

@@ -20,6 +20,7 @@ export interface SnapshotLayerPanelProps {
  onCut:(sources:SnapshotLayerClipboardSource[])=>void;
  onCopy:(sources:SnapshotLayerClipboardSource[])=>void;onPaste:()=>void;
  onVisibilityChange?:(ids:string[],visible:boolean)=>void;
+ onLockChange?:(ids:string[],locked:boolean)=>void;
  onLayerReorder?:(id:string,target:string,after:boolean)=>void;
  onSelectSnapshot?:(snapshotId:string,mods:{shift:boolean;toggle:boolean})=>void;
  selectedSnapshotIds?:readonly string[];headerActions?:ReactNode;
@@ -81,7 +82,7 @@ export function snapshotPanelCachedPresentation(model:SnapshotLayerPanelModel,se
 }
 const ignore=()=>{};
 
-export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true,structuralCommands}:SnapshotLayerPanelProps){
+export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLockChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true,structuralCommands}:SnapshotLayerPanelProps){
  const zh=useLanguage(s=>s.language)==='zh';
  const model=useMemo(()=>snapshotLayerPanelModel(current,sources,zh?'当前视图':'Current view'),[current,sources,zh]);
  const recentSelection=useRef<SnapshotPanelSelectionCache|null>(null);
@@ -114,6 +115,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(structuralCommands?.editable?(zh?'新建图层后按 P 绘制，或从下方快照取图层引用。':'Create a layer and press P to draw, or take layer references from a source below.'):(zh?'从下方快照取图层引用，再粘贴到当前视图。':'Take layer references from a source below, then paste into this view.')):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
   onSectionSelect={onSelectSnapshot?(section,event)=>{const source=section.layerIds[0]&&model.identities.get(section.layerIds[0]);const snapshotId=source?source.snapshotId:section.id===model.currentSectionId?current?.snapshotId:model.sections.find(s=>s.id===section.id)?.id.slice('snapshot-section:'.length);if(snapshotId)onSelectSnapshot(snapshotId,{shift:event.shiftKey,toggle:event.ctrlKey||event.metaKey});}:undefined}
   selectedSectionIds={selectedSnapshotIds?.map(sectionId)}
+  onLockChange={onLockChange?(ids,locked)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onLockChange(canonical,locked);}}:undefined}
   onVisibilityChange={onVisibilityChange?(ids,visible)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onVisibilityChange(canonical,visible);}}:undefined}
   onLayerReorder={onLayerReorder?(id,target,after)=>{if(enabled&&isCurrent(id)&&isCurrent(target))onLayerReorder(model.identities.get(id)!.id,model.identities.get(target)!.id,after);}:undefined}
   run={ignore} openProperties={ignore} closeProperties={ignore} upload={ignore} deleteSelected={ignore} cutSelected={ignore} pasteSelected={ignore} canPaste={false}

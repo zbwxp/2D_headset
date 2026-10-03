@@ -144,6 +144,8 @@ export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWork
   return {...offset,translation:applyAffine2DVector(inverse,offset.translation)};
  });
  const remapped=remapDrawingIdentities(material,map);
+ const materialLocks=new Map([...material.curves,...material.fills,...material.offsets].map(value=>[value.id,value.locked])),lockChanges=Object.fromEntries([...wanted.curves,...wanted.fills,...wanted.offsets].filter(value=>materialLocks.get(value.id)!==value.locked).map(value=>[map(value.id),value.locked]));
+ if(Object.keys(lockChanges).length)copy.objectLocks=lockChanges;
  copy.layers=remapped.layers.map(layer=>({...layer,kind:'original'}));
  copy.relations={joins:{add:remapped.joins},endpointLinks:{add:remapped.endpointLinks??[]},groups:{add:remapped.groups??[]},displayIntervals:{add:remapped.displayIntervals??[]}};
  const library={...workspace.library};

@@ -1,3 +1,5 @@
+import {setObjectState} from '../domain/drawing/objectState';
+import {currentDrawingPresentation} from './drawingSnapshotPresentation';
 import {writeLayerDomainOperation} from './layerDomainOperation';
 import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
 import {captureLayerDomainControls} from '../domain/recordingSnapshot/layerDomainControlEdit';
@@ -25,7 +27,7 @@ import {resolveSnapshotRelationAuthoringScope,snapshotRelationCurveIds,snapshotR
 
 const same=(a:unknown,b:unknown)=>a===b||JSON.stringify(a)===JSON.stringify(b);
 const close=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])<1e-8;
-export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint binding and links, display routes, intervals, geometry and visibility. Width, profile and endpoint ink stay local; locks and unsupported topology still require the original source.';
+export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint binding and links, display routes, intervals, geometry and visibility. Width, profile, endpoint ink and object locks stay local; unsupported topology still requires the original source.';
 export class DrawingSnapshotEditCapabilityError extends Error {
  constructor(message=DRAWING_REFERENCE_EDIT_CAPABILITY){super(message);this.name='DrawingSnapshotEditCapabilityError';}
 }
@@ -119,6 +121,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
   const localAppearance=next.curves.some(curve=>localCurves.has(curve.id)&&snapshotCurveAppearanceDifference(before.curves.find(value=>value.id===curve.id)!,curve));
   if(localTopology||localRelation||localAppearance)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined,nodeUnbind);
  }
+ const objectLocks:Record<string,boolean>={};
  const changedLocalLayers=new Set<string>(),visibility=new Map<string,Record<string,boolean|null>>(),renames=new Map<string,string>(),removedLayers=new Set<string>(),exclusions=new Map<string,string[]>();
  const removedItems=new Set([...localItems].filter(id=>!next.layers.some(layer=>layer.items.includes(id)))),removedCurves=new Set([...localCurves].filter(id=>removedItems.has(id)));
  const geometryChanged=before.nodes.some(node=>!same(node.position,next.nodes.find(value=>value.id===node.id)?.position))||before.curves.some(curve=>!same(curve.handles,next.curves.find(value=>value.id===curve.id)?.handles));
@@ -135,8 +138,9 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
   if(layer.name!==after.name)renames.set(owner.layerId,after.name);if(layer.visible!==after.visible)localVisibility(owner.layerId,owner.layerId,after.visible);
  }
  for(const key of ['curves','fills','offsets'] as const)for(const item of before[key].filter(value=>localItems.has(value.id))){
-  const after=next[key].find(value=>value.id===item.id);if(!after&&removedItems.has(item.id))continue;if(!after||changedKeys(item,after).some(field=>field!=='visible'&&!(key==='curves'&&field==='handles')))throw new DrawingSnapshotEditCapabilityError();
+  const after=next[key].find(value=>value.id===item.id);if(!after&&removedItems.has(item.id))continue;if(!after||changedKeys(item,after).some(field=>field!=='visible'&&field!=='locked'&&!(key==='curves'&&field==='handles')))throw new DrawingSnapshotEditCapabilityError();
   const layerId=view.canonicalId(before.layers.find(layer=>layer.items.includes(item.id))!.id);
+  if(item.locked!==after.locked)objectLocks[view.canonicalId(item.id)]=after.locked;
   if(item.visible!==after.visible)localVisibility(layerId,view.canonicalId(item.id),after.visible);
   if(key==='curves'&&!same((item as Doc['curves'][number]).handles,(after as Doc['curves'][number]).handles))changedLocalLayers.add(layerId);
  }
@@ -195,6 +199,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
  const sourceChanged=!same(original,source);if(sourceChanged)parseDrawing(original);
  const sourcePlan=sourceChanged?prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing:retainFinalizedGeometry(original,next)}):{before:project,project,changed:false};
  let result=sourcePlan.project,localWorkspace:LandmarkProject['recordingSnapshots'];
+ if(Object.keys(objectLocks).length){const locked=prepareSnapshotEdit(snapshotEditContext(result,true),{kind:'object-locks',snapshotId:view.snapshotId,changes:objectLocks});result=locked.project;localWorkspace=result.recordingSnapshots;}
  const layerOrderChanged=!same(before.layers.map(layer=>layer.id),next.layers.map(layer=>layer.id));
  if(changedLocalLayers.size||renames.size||removedLayers.size||exclusions.size||layerOrderChanged){
   const updated=result.recordingSnapshots!,snapshot=drawingSnapshotForArtwork(updated,artworkId)!,deformation=structuredClone(snapshot.deformation);
@@ -228,6 +233,18 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
   for(const [layerId,values] of visibility)for(const [id,wanted] of Object.entries(values)){const item=id===layerId?replay.evaluation.drawing.layers.find(layer=>layer.id===id):[...replay.evaluation.drawing.curves,...replay.evaluation.drawing.fills,...replay.evaluation.drawing.offsets].find(item=>item.id===id);if(item&&item.visible!==wanted)throw new DrawingSnapshotEditCapabilityError('This visibility is controlled by a recording channel. Edit its owning snapshot before changing it here.');}
  }
  return {before:project,project:result,changed:result!==project,...(sourceChanged?{sourceDrawing:original}:{}),...(localWorkspace?{localWorkspace}:{})};
+}
+
+/** Container and API assignments retain their explicit object scope even when
+ * some members already have the requested inherited value. */
+export function prepareDrawingSnapshotObjectLocks(project:LandmarkProject,objectIds:readonly string[],locked:boolean):DrawingSnapshotEditPlan {
+ const drawing=currentDrawingPresentation(project),next=setObjectState(drawing,objectIds,{locked}),plan=prepareDrawingSnapshotEdit(project,next);
+ const workspace=plan.project.recordingSnapshots,view=workspace&&drawingSnapshotPresentation(workspace,plan.project.drawingSnapshots?.activeId??'$working');
+ if(!view)return plan;
+ const localIds=objectIds.filter(id=>view.layerOwners.get(drawing.layers.find(layer=>layer.items.includes(id))?.id??'')?.kind==='snapshot-local');
+ if(!localIds.length)return plan;
+ const local=prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'object-locks',snapshotId:view.snapshotId,changes:Object.fromEntries(localIds.map(id=>[view.canonicalId(id),locked]))});
+ return {...plan,project:local.project,changed:plan.changed||local.changed,localWorkspace:local.project.recordingSnapshots};
 }
 
 /** Partition ownership only. The existing original adapter still owns all
