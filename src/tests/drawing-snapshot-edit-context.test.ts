@@ -83,10 +83,11 @@ test('mixed original and reference geometry has one Undo and never ingests refer
  expect(after.drawing!.curves).toHaveLength(1);expect(shapeOf(after.drawing!,'curve')).toEqual(shapeOf(next,'curve'));expect(shapeOf(currentDrawingPresentation(after),bid('curve')).flat()).toEqual(shapeOf(next,bid('curve')).flat().map(value=>expect.closeTo(value,10)));expect(useEditor.getState().past).toEqual([f.project]);
 });
 
-test('unsupported reference base appearance fails before mutation or history',()=>{
- const f=fixture(),view=currentDrawingPresentation(f.project);vi.useFakeTimers();useWorkspaceMode.getState().setMode('drawing');useEditor.setState({project:f.project,past:[],future:[]});
- const unsupported=[widthChange(view,[bid('curve')],.04)];
- for(const next of unsupported){expect(()=>commitDrawingSnapshotEdit(useEditor.getState(),next)).toThrow(/Referenced layers/);expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);}
+test('referenced width stays in local appearance state, preserves its source, and undoes once',()=>{
+ const f=fixture(),before=f.project,view=currentDrawingPresentation(before),next=widthChange(view,[bid('curve')],.04),after=commit(before,next),snapshot=drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!;
+ expect(currentDrawingPresentation(after).curves.find(curve=>curve.id===bid('curve'))!.width).toBe(.04);expect(snapshot.deformation.layers[bid('layer')].curveAppearance).toEqual({[bid('curve')]:{width:.04}});
+ expect(after.drawing).toBe(before.drawing);expect(after.drawingSnapshots).toEqual(before.drawingSnapshots);expect(after.recordingSnapshots!.library).toEqual(before.recordingSnapshots!.library);expect(drawingSnapshotForArtwork(after.recordingSnapshots!,'B')).toEqual(drawingSnapshotForArtwork(before.recordingSnapshots!,'B'));
+ expect(useEditor.getState().past).toEqual([before]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(before);useEditor.getState().redo();expect(useEditor.getState().project).toBe(after);
 });
 
 test('local controls invert layer and stroke placement and preserve original reference-image state',()=>{
