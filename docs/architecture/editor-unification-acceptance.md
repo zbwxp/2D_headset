@@ -1,9 +1,10 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 21:50 UTC。当前线上 v67（`3ebd48d`）于 21:23:40 UTC 部署，Drawing 引用层持久曲边域、A 后修正、禁用/Undo、父源新增成员实时继承已完成限定浏览器验证。v66 的继承真绑定、跨层 SMOOTH 与内部插点显隐边界已通过。下方版本段落保留历史证据；当前状态以本节及“结束验收前必须关闭的缺口”为准。
+核对日期：2026 年 10 月 3 日 22:24 UTC。当前线上 v69（`cc26f95`）于 22:17:03 UTC 部署。v68 的共同 Recording 曲边框、非单位 placement 后 A 编辑与域内新线已实际验证；独立复制曾暴露原层材料重复变换，v69 已按同一真人流程修复并验收。v67、v66 的限定证据继续保留；后文旧版本段落只作为历史记录。
 
-下一冻结候选 `b04d5fa` **尚未部署**：包含 Recording A 世界坐标修复、继承节点解绑、当前快照自有曲边域内 P/绑定、原生曲边程序的独立副本，以及 Drawing/Recording 共用曲边控制器和叠加层。合并版类型检查、生产构建和 5 个交叉测试文件共 42 项通过；各独立阶段另有针对性测试。Recording 曲边框的真人验证须在发布后进行。
+v68（`b04d5fa`）包含继承节点解绑、自有曲边域内 P/绑定、原生曲边独立副本及 Drawing/Recording 共用 cage controller/overlay。合并类型检查、生产构建与 42 项交叉测试通过。实际在真实 0° 眉层设置宽度 150%，拖曲边、切 A 拖柄 (+15, −12) 像素，最终控制点精确同移；Update/Undo/Redo 通过。域内 P 新线以局部成员和 postShape 保存，原稿不变，Undo 一笔恢复。
 
+v68 同层复制曾使原对象的编辑 cubic 保持不变，但 derived material 再次应用 affine/cage。v69 在 `affineDrawing.ts` 从各组真正的变换前材料输入追加程序；offset-only 图层也保留其位移。41 项针对回归和构建通过，真实保存文件冷读重现由失败转为通过。v69 实际复测同一流程：新 ID 副本与原线完全重合；同视口 Undo/Redo 中原路径逐字不变；右移副本 1 像素只改变副本，Undo 恢复。实际 SaveJSON 显示副本为无语义父级的自有根，Drawing 来源全字段不变。7 笔正常 Undo 清理全部本轮准备，原 4 个录制与 5 份画稿保留。证据：[v68 报告与发现](../../artifacts/triangulated-recorder-qa/v68-browser-verification.json)、[v69 修复验收](../../artifacts/triangulated-recorder-qa/v69-browser-verification.json)、[保存数据核对](../../artifacts/triangulated-recorder-qa/v69-save-validation.json)。
 v67 实际流程使用内置完整正面与侧稿：引用两面片 6 条曲线，曲边手柄与 A 编辑后保存；父源新增一条 P 曲线后引用成为 7 条。同一域 ID、固定 rest、bend、已有 postShape 全字段保持一致，新线没有自己的点响应；精确发布代码回读显示新线与同一域的控制点误差为 0，材料诊断为空。禁用/Undo 与 A Undo/Redo 恢复原路径。7 笔普通 Undo 清理本轮操作后，原 5 稿及先前稍侧工作副本保留，Undo 灰色。证据：[v67 操作报告](../../artifacts/triangulated-recorder-qa/v67-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v67-domain-save-validation.json)。未上传私人归档，未测浏览器 FPS。
 ### 最新实现与证据
 
@@ -76,12 +77,13 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 当前剩余按实际调用链列出；v51～v67 的已验证阶段不再列为完全未做：
 
-1. 下一候选的 Recording 共用曲边框、继承解绑、own-domain P/绑定和原生曲边独立副本，需发布后的限定 UI 验证。代码已冻结、测试及构建通过，尚不是线上事实。
+1. Recording 共用曲边框、own-domain P 与原生非镜像曲边独立副本已于 v68/v69 完成上述限定 UI 验证。继承解绑有针对性自动化；不把这些证据扩成全部笔触与拓扑组合已验证。
 2. 父 source 拆分通过非线性拟合域时，须保留 `split(fit(parent))` 的参数 restriction、原材料 t 和后域修正。普通 source split、全路径区间与 Recorder 材质响应已在 v65 闭环；不能将那些结果扩称此非线性组合已完成。
 3. 已携带父级非线性程序的 topology 身份变化、共享 P/alias 输入，仍有精确 guard；当前自有域的 P/绑定/本地 fork 已在下一候选支持。后续应复用同一 lineage 和目标适配，不再写第二套钢笔。
 4. 镜像后的非线性程序尚缺可持久化的反射及端方向描述，独立副本仍原子拒绝该组合。普通镜像副本 v63 已实测；非镜像原生曲边副本在下一候选保留自己的材料输入、域与 postShape，不留下祖先快照。
-5. 局部 lock、其他独立属性作者入口与混合来源/引用曲边目标应按具体调用链核对。已支持的 width/profile/inkEnds、区间起止响应、继承节点绑定和源删除不重复列为缺失。独立布尔属性作者 UI 没有新增；真实插点保持原离散显隐边界已于 v66 实测。
-6. 跨模式 Undo 的旧 guard 去留和旧 channel runtime 退役仍待明确决定；原始文档/working-copy 兼容入口尚存在。已批准旧权重与房间退役已完成。源文件与归档不得随清理被默默丢弃。
+5. 局部 objectLocks 正在接共同 Snapshot 编辑状态与 Drawing/Recording/API；沿用源有效锁，false 为明确局部解锁，层按钮仍批量当前成员，不增加 layer gate 或响应轨道。其他独立属性作者入口与混合来源/引用曲边目标应按具体调用链核对。已支持的 width/profile/inkEnds、区间起止响应、继承节点绑定和源删除不重复列为缺失。独立布尔属性作者 UI 没有新增；真实插点保持原离散显隐边界已于 v66 实测。
+6. 不同程序 stage 的 A/V 目标分组正在接同一原子捕获/回放；中间修正角的曲边域是否对未来成员持续作用已询问，相关新持久字段暂未落地。不能用永久工具禁用代替真正可解的共同目标编辑。
+7. 跨模式 Undo 的旧 guard 去留和旧 channel runtime 退役仍待明确决定；原始文档/working-copy 兼容入口尚存在。已批准旧权重与房间退役已完成。源文件与归档不得随清理被默默丢弃。
 
 每一职责须有一个实际执行内核。当前 neutral SMOOTH component、shared cage controller、共同钢笔和 snapshot 事务已有明确消费者；不能由这些归口推断所有组合和所有历史工具都已完成。
 后续历史段落保留版本来源；若与本节当前状态冲突，以本节为准。
