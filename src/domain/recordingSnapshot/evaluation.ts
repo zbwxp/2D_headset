@@ -148,7 +148,6 @@ function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:Recordin
    const inherited=source??emptyDrawing(),existingNodes=new Set(inherited.nodes.map(node=>node.id));
    source={...inherited,curves:[...inherited.curves,...localCurves],nodes:[...inherited.nodes,...[...localNodes].filter(id=>!existingNodes.has(id)&&Object.hasOwn(workspace.library.nodes,id)).map(id=>workspace.library.nodes[id])],fills:[...inherited.fills,...membership.localElementIds.flatMap(id=>Object.hasOwn(workspace.library.fills,id)?[workspace.library.fills[id]]:[])],offsets:[...inherited.offsets,...membership.localElementIds.flatMap(id=>Object.hasOwn(workspace.library.offsets,id)?[workspace.library.offsets[id]]:[])]};
    sourceLayer={id:layer.id,name:layer.name,visible:true,locked:false,items:membership.elementIds};
-   if(!membership.elementIds.length&&!parent)continue;
   }
   const items=new Set(sourceLayer.items),curves=source.curves.filter(c=>items.has(c.id)),nodes=new Set(curves.flatMap(c=>c.nodes));
   const layerItems:string[]=[];

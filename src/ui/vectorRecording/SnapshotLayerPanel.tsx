@@ -1,7 +1,7 @@
 import {useMemo,useRef,type ReactNode} from 'react';
 import {Copy,Scissors,ClipboardPaste} from 'lucide-react';
 import LayerPanel,{type LayerPanelSection} from '../drawing/LayerPanel';
-import {selectedLayers,type DrawingSelection,type DrawingTool} from '../drawing/session';
+import {selectedLayers,selectedObjects,type DrawingSelection,type DrawingTool} from '../drawing/session';
 import {emptyDrawing,type DrawingDocument} from '../../domain/drawing/model';
 import {drawingIdentityIds,remapDrawingIdentities} from '../../domain/recordingSnapshot/sources';
 import {useLanguage} from '../i18n';
@@ -16,6 +16,7 @@ export interface SnapshotLayerPanelProps {
  selection:DrawingSelection;layerSelections?:readonly SnapshotLayerSelection[];
  onSelection:(selection:DrawingSelection,layerSelections?:SnapshotLayerSelection[],tool?:DrawingTool)=>void;
  editEnabled:boolean;canPaste:boolean;
+ structuralCommands?:{editable:boolean;disabledReason?:string;addLayer:()=>void;duplicateLayers:(ids:string[])=>void;deleteLayers:(ids:string[])=>void;deleteSelection:()=>void};
  onCut:(sources:SnapshotLayerClipboardSource[])=>void;
  onCopy:(sources:SnapshotLayerClipboardSource[])=>void;onPaste:()=>void;
  onVisibilityChange?:(ids:string[],visible:boolean)=>void;
@@ -80,7 +81,7 @@ export function snapshotPanelCachedPresentation(model:SnapshotLayerPanelModel,se
 }
 const ignore=()=>{};
 
-export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true}:SnapshotLayerPanelProps){
+export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true,structuralCommands}:SnapshotLayerPanelProps){
  const zh=useLanguage(s=>s.language)==='zh';
  const model=useMemo(()=>snapshotLayerPanelModel(current,sources,zh?'当前视图':'Current view'),[current,sources,zh]);
  const recentSelection=useRef<SnapshotPanelSelectionCache|null>(null);
@@ -92,6 +93,8 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
  const isCurrent=(id:string)=>!!current&&model.identities.get(id)?.snapshotId===current.snapshotId;
  const canonicalCurrent=(ids:readonly string[])=>unique(ids.flatMap(id=>{const ref=model.identities.get(id);return ref&&ref.snapshotId===current?.snapshotId?[ref.id]:[];}));
  const currentSection=model.sections.find(section=>section.id===model.currentSectionId)!;
+ const selectedRows=[...selectedObjects(presented),...selectedLayers(presented)],exactRows=recentSelection.current?.presentation===presented;
+ const canDelete=!!structuralCommands?.editable&&selectedRows.length>0&&(exactRows?selectedRows.every(isCurrent):selectedObjects(selection).every(id=>!!current?.drawing.layers.some(layer=>layer.items.includes(id)))&&(layerSelections??[]).every(ref=>ref.snapshotId===current?.snapshotId));
  const clipboard=(section:LayerPanelSection)=>{
   const isView=section.id===model.currentSectionId;
   const batches=isView&&selectedLayers(presented).length?snapshotPanelClipboardSources(model,presented):snapshotPanelClipboardSources(model,presented,section);
@@ -106,8 +109,9 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   document={model.drawing} selection={presented} active={selectedLayers(presented).at(-1)??null} choose={choose} setLayer={ignore}
   layerSections={model.sections} defaultCollapsedSectionIds={collapseSourcesByDefault?model.sections.filter(section=>section.id!==model.currentSectionId).map(section=>section.id):[]} layerOrder={Object.fromEntries(currentSection.layerIds.map((id,index)=>[id,index+1]))}
   poseMode structuralReadOnly editEnabled={enabled} headerActions={headerActions} sectionActions={clipboard}
+  structuralCommands={structuralCommands?{canEditSection:section=>structuralCommands.editable&&section.id===model.currentSectionId,addLayer:section=>{if(structuralCommands.editable&&section.id===model.currentSectionId)structuralCommands.addLayer();},duplicateLayers:ids=>{if(structuralCommands.editable&&ids.every(isCurrent))structuralCommands.duplicateLayers(canonicalCurrent(ids));},deleteLayers:ids=>{if(structuralCommands.editable&&ids.every(isCurrent))structuralCommands.deleteLayers(canonicalCurrent(ids));},deleteSelection:()=>{if(canDelete)structuralCommands.deleteSelection();},canDeleteSelection:canDelete,disabledReason:structuralCommands.disabledReason}:undefined}
   canEditLayer={isCurrent} fillVisibilityKey={id=>isCurrent(id)?model.identities.get(id)!.id:id}
-  sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(zh?'从下方快照取图层引用，再粘贴到当前视图。':'Take layer references from a source below, then paste into this view.'):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
+  sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(structuralCommands?.editable?(zh?'新建图层后按 P 绘制，或从下方快照取图层引用。':'Create a layer and press P to draw, or take layer references from a source below.'):(zh?'从下方快照取图层引用，再粘贴到当前视图。':'Take layer references from a source below, then paste into this view.')):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
   onSectionSelect={onSelectSnapshot?(section,event)=>{const source=section.layerIds[0]&&model.identities.get(section.layerIds[0]);const snapshotId=source?source.snapshotId:section.id===model.currentSectionId?current?.snapshotId:model.sections.find(s=>s.id===section.id)?.id.slice('snapshot-section:'.length);if(snapshotId)onSelectSnapshot(snapshotId,{shift:event.shiftKey,toggle:event.ctrlKey||event.metaKey});}:undefined}
   selectedSectionIds={selectedSnapshotIds?.map(sectionId)}
   onVisibilityChange={onVisibilityChange?(ids,visible)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onVisibilityChange(canonical,visible);}}:undefined}

@@ -43,17 +43,24 @@ export function excludeSnapshotLocalMembers(membership:SnapshotLocalMembership,e
 }
 
 export type SnapshotMembershipCommand=
+ | {op:'createLocalLayer';name?:string;ref?:string}
  | {op:'createLocalCurve';layerId:string;/** Layer-input controls, before this snapshot's local deformation. */shape:Cubic;width?:number;name?:string;ref?:string}
  | {op:'excludeElements'|'restoreElements';layerId:string;elementIds:string[]};
 
 /** Mutates only a caller-owned transaction draft. The explicit target lets
  * Drawing and Recording share this operation without changing active Recording.
  * Real-frame angle gating belongs to the room/facade that owns the cursor. */
-export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace,snapshotId:string,command:SnapshotMembershipCommand,fresh:()=>string):{createdCurveId?:string;createdNodeIds:string[];removedIds:string[]} {
+export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace,snapshotId:string,command:SnapshotMembershipCommand,fresh:()=>string):{createdLayerId?:string;createdCurveId?:string;createdNodeIds:string[];removedIds:string[]} {
  const snapshot=workspace.snapshots.find(value=>value.id===snapshotId);if(!snapshot)throw Error('Local membership target snapshot is missing.');
+ if(command.op==='createLocalLayer'){
+  const name=command.name??'Local layer';if(typeof name!=='string'||!name.trim()||name.length>256)throw Error('Local layer name is invalid.');
+  const layerId=fresh();if(!layerId||workspace.snapshots.some(value=>value.layers.some(layer=>layer.id===layerId))||Object.values(workspace.library).some(map=>Object.hasOwn(map,layerId)))throw Error('Local layer ID collides with an existing canonical identity.');
+  snapshot.layers.unshift({kind:'original',id:layerId,name:name.trim(),visible:true,locked:false,items:[]});
+  return {createdLayerId:layerId,createdNodeIds:[],removedIds:[]};
+ }
  const layer=snapshot.layers.find(value=>value.id===command.layerId);if(!layer)throw Error('Local membership target layer is missing.');
- if(layer.kind!=='reference')throw Error('Local membership edits require a referenced layer; edit owned originals through their source adapter.');
- const before=layer.membership??{};validateSnapshotLocalMembership(before);
+ if(layer.kind==='original'&&Object.hasOwn(snapshot.source?.originIds??{},layer.id))throw Error('Edit Drawing-owned originals through their source adapter.');
+ const before=layer.kind==='reference'?layer.membership??{}:{};validateSnapshotLocalMembership(before);
  if(command.op==='createLocalCurve'){
   const shape=command.shape,width=command.width??.01,name=command.name??'Local curve';
   if(!Array.isArray(shape)||shape.length!==4||shape.some(point=>!Array.isArray(point)||point.length!==2||point.some(value=>typeof value!=='number'||!Number.isFinite(value)||Math.abs(value)>1e6)))throw Error('Local curve shape must contain four finite layer-input points.');
@@ -62,9 +69,10 @@ export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace
   if(allocated.some(id=>Object.values(workspace.library).some(map=>Object.hasOwn(map,id))))throw Error('Local curve ID collides with an existing canonical element.');
   workspace.library.nodes[nodeIds[0]]={id:nodeIds[0],position:[...shape[0]]};workspace.library.nodes[nodeIds[1]]={id:nodeIds[1],position:[...shape[3]]};
   workspace.library.curves[curveId]={id:curveId,name:name.trim(),nodes:nodeIds,handles:[[...shape[1]],[...shape[2]]],width,visible:true,locked:false};
-  layer.membership={...before,addElementIds:[...(before.addElementIds??[]),curveId]};
+  if(layer.kind==='reference')layer.membership={...before,addElementIds:[...(before.addElementIds??[]),curveId]};else layer.items.unshift(curveId);
   return {createdCurveId:curveId,createdNodeIds:nodeIds,removedIds:[]};
  }
+ if(layer.kind!=='reference')throw Error('Use the Drawing topology transaction to delete locally owned originals.');
  uniqueIds(command.elementIds,'Membership edit IDs');if(!command.elementIds.length)throw Error('Select at least one member.');
  if(command.op==='excludeElements'){
   for(const id of command.elementIds)if(!Object.hasOwn(workspace.library.curves,id)&&!Object.hasOwn(workspace.library.fills,id)&&!Object.hasOwn(workspace.library.offsets,id))throw Error(`Canonical member ${id} does not exist.`);

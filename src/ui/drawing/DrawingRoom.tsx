@@ -40,6 +40,7 @@ import Properties from './Properties';
 import ToolBar from './ToolBar';
 import SnapshotBar from './SnapshotBar';
 import {usePenPreferences} from './penPreferences';
+import {beginPenGesture,movePenGesture,previewPenGesture,finishPenGesture,penHoverShape,penHistoryAction,type PenState as Pen,type PenGesture} from './penController';
 import {useDirectPreferences} from './directPreferences';
 import {TOOLS,isEndpointTool} from './tools';
 import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
@@ -53,9 +54,8 @@ import {curvePath,selectionBounds,snapMirrorAxis} from './geometry';
 import './drawing.css';
 const EMPTY=emptyDrawing();
 
-interface Pen {position:Point2;out:Point2;last?:string;first?:Endpoint}
 interface DeformCage {base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
-interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -161,23 +161,11 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(!first){setFirst(e);session.set({selection:{ids:[e.curveId],node:nodeAt(d,e).id}});setHint('');return;}
   try{const n=tool==='link'?cmd.linkEndpoints(stored,first,e,true):tool==='merge'?cmd.merge(stored,first,e):cmd.connect(stored,first,e,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION');commit(n);setFirst(null);setDraft(null);choose({ids:[e.curveId],node:nodeAt(n,e).id},tool);}catch(ex){error(ex);}
  }
- function penCandidate(base:Doc,from:Pen,to:Point2,handle:Point2):{document:Doc;next:Pen;closed:boolean;shape:Cubic}{
-  if(!activeLayer)throw Error('请先新建绘制层。');
-  let close=false,target=[...to] as Point2;
-  if(from.first&&length(sub(target,nodeAt(base,from.first).position))*unit<10){target=[...nodeAt(base,from.first).position];close=true;}
-  const chord=sub(target,from.position),delta=length(sub(handle,to))*unit>2?sub(handle,to):mul(chord,1/3),out=(!from.last||penJoin==='SMOOTH')&&length(from.out)>1e-7?from.out:mul(chord,1/3);
-  const shape:Cubic=[[...from.position],add(from.position,out),sub(target,delta),target],id=uid();
-  let n=cmd.createPenCurve(base,activeLayer.id,shape,width,id,usePenPreferences.getState().taperScale);
-  if(from.last)n=cmd.connect(n,{curveId:from.last,end:1},{curveId:id,end:0},penJoin);
-  const firstEnd=from.first??{curveId:id,end:0 as const};
-  if(close)n=cmd.connect(n,firstEnd,{curveId:id,end:1},penJoin);
-  const actual=shapeOf(n,id);
-  return {document:n,next:{position:target,out:penJoin==='SMOOTH'?sub(target,actual[2]):[0,0],last:id,first:firstEnd},closed:close,shape:actual};
- }
+ const penOptions=()=>({layerId:activeLayer?.id??null,unit,width,join:penJoin,taperScale:usePenPreferences.getState().taperScale});
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
   if(drag.current||e.button!==0&&kind!=='pan'&&kind!=='zoom')return;e.preventDefault();e.stopPropagation();svg.current!.focus({preventScroll:true});
   const base=currentDrawing();
-  drag.current={kind,start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
+  drag.current={kind,start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='pen'&&drag.current.penGesture)drag.current.penGesture={...drag.current.penGesture,base};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
   try{svg.current!.setPointerCapture(e.pointerId);}catch{/* Window tracking remains active if native capture is unavailable. */}
  }
  function axisDown(e:React.PointerEvent){
@@ -205,7 +193,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(referenceMoving&&d.reference&&!d.reference.locked){startDrag(e,'reference');return;}
   if(preview||artworkPreview)return;
   if(endpointTools){const hit=pickEndpoint(local(e));if(hit)connectAt(hit);else setHint(t('请点击曲线端点。'));return;}
-  if(tool==='pen'){if(!activeLayer){setHint(t('请先新建绘制层。'));return;}const hit=guideCandidate(stored,local(e),e.altKey),p=hit?.point??local(e);setGuideSnap(hit);startDrag(e,'pen',{pen,start:p,cursor:p,origin:local(e)});return;}
+  if(tool==='pen'){if(!activeLayer){setHint(t('请先新建绘制层。'));return;}const hit=guideCandidate(stored,local(e),e.altKey),p=hit?.point??local(e);setGuideSnap(hit);startDrag(e,'pen',{pen,start:p,cursor:p,origin:local(e),penGesture:beginPenGesture(stored,pen,p,local(e))});return;}
   if(tool==='ellipse'){startDrag(e,'ellipse');return;}
   if(tool==='select'||tool==='direct'){if(!e.shiftKey)choose({ids:[]},tool);startDrag(e,'box',{shift:e.shiftKey});}
  }
@@ -214,7 +202,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function move(e:React.PointerEvent|PointerEvent){
   let p=local(e);const g=drag.current;if(!g&&tool==='pen'){const hit=guideCandidate(stored,p,e.altKey);setGuideSnap(hit);if(hit)p=hit.point;}
   if(g){if(e.pointerId!==g.pointerId)return;g.last={clientX:e.clientX,clientY:e.clientY};}
-  if(!g){if(artworkPreview)return;if(tool==='pen'&&pen){const chord=sub(p,pen.position);setPenPreview([pen.position,add(pen.position,(!pen.last||penJoin==='SMOOTH')&&length(pen.out)>1e-7?pen.out:mul(chord,1/3)),sub(p,mul(chord,1/3)),p]);}
+  if(!g){if(artworkPreview)return;if(tool==='pen'&&pen)setPenPreview(penHoverShape(pen,p,penJoin));
    if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(finalizeGeometryEdit(stored,tool==='link'?cmd.linkEndpoints(stored,first,target,true):cmd.connect(stored,first,target,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION')));}catch{setDraft(null);}else setDraft(null);}return;}
   if(g.kind==='zoom'){
    const dy=g.client[1]-e.clientY;if(!g.zoomMoved&&Math.abs(dy)<2)return;g.zoomMoved=true;
@@ -225,7 +213,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   try{
    if(g.kind==='pan'){session.set({pan:add(g.pan!,[e.clientX-g.client[0],e.clientY-g.client[1]])});return;}
    if(g.kind==='box'){setBox({a:g.start,b:p});return;}
-   if(g.kind==='pen'){if(g.origin)p=add(g.start,sub(p,g.origin));g.cursor=p;if(g.pen&&length(sub(g.start,g.pen.position))*unit>2){const n=penCandidate(g.base,g.pen,g.start,p);g.next=n.document;setDraft(n.document);setPenPreview(null);}else setPenPreview(null);return;}
+   if(g.kind==='pen'){g.penGesture=movePenGesture(g.penGesture!,p);g.cursor=g.penGesture.cursor;const n=previewPenGesture(g.penGesture,penOptions());if(n){g.next=n.document;setDraft(n.document);}setPenPreview(null);return;}
    if(g.kind==='ellipse'){const n=cmd.ellipse(g.base,activeLayer!.id,g.start,e.shiftKey?add(g.start,[Math.sign(delta[0])*Math.max(Math.abs(delta[0]),Math.abs(delta[1])),Math.sign(delta[1])*Math.max(Math.abs(delta[0]),Math.abs(delta[1]))]):p,width);g.next=n.document;}
    if(g.kind==='mirrorAxis'){
     const x=(g.base.mirrorAxisX??0)+delta[0],nodeIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
@@ -265,8 +253,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   try{
    if(g.kind==='zoom'){if(!g.zoomMoved&&!interrupted&&e)zoomAt(e,g.zoom!*((e.ctrlKey||e.altKey)?1/1.3:1.3));return;}
    if(g.kind==='pen'){
-    if(!g.pen){const anchor={position:g.start,out:sub(g.cursor??g.start,g.start)};penHistory.current=new WeakMap([[g.base,anchor]]);setPen(anchor);}
-    else if(length(sub(g.start,g.pen.position))*unit>2){const n=penCandidate(g.base,g.pen,g.start,g.cursor??g.start);penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,n.closed?null:n.next);commit(n.document);setPen(n.closed?null:n.next);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
+    const result=finishPenGesture(g.penGesture!,penOptions()),n=result.candidate;
+    if(!g.pen){penHistory.current=new WeakMap([[g.base,result.state]]);setPen(result.state);}
+    else if(n){penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,result.state);commit(n.document);setPen(result.state);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
    }else if(g.kind==='box'){
     const ids=selectCurvesInBox(d,shownCurves,g.start,local(e??g.last),{grouped:tool==='select',previousIds:g.shift?selected:[]});choose({ids},tool);
    }else if(g.next){commit(g.next);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
@@ -316,9 +305,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   }
  }
  function history(redo=false){
-  if(drag.current||held.current){cancelDraft();return;}
-  // A first anchor is still a draft: remove it without undoing an unrelated document edit.
-  if(!redo&&tool==='pen'&&pen&&!pen.last){setPen(null);setPenPreview(null);return;}
+  const action=penHistoryAction(redo,!!(drag.current||held.current),tool==='pen'?pen:null);
+  if(action==='cancel-gesture'){cancelDraft();return;}
+  if(action==='cancel-anchor'){setPen(null);setPenPreview(null);return;}
   const editor=useEditor.getState();redo?editor.redo():editor.undo();
  }
  latest.current={d,selected,selection,tool,run,choose,selectTool,cancelDraft,commit,applyTransform,scope,mayInclude,groupSelection,deleteSelected,cutSelected,pasteSelected,clipboard:clipboard||(workspaceId==='drawing'&&layerReferenceClipboard),history};

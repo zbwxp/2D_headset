@@ -108,3 +108,28 @@ test('shared panel passes explicit selection tools through canonical aliases and
  capturedPanel.props!.choose({ids:[viewBrow],layers});const [canonical,paths,mode]=onSelection.mock.calls.at(-1)!;expect(paths).toEqual(refs);expect(canonical.layers).toEqual([f.eye]);expect(mode).toBeUndefined();expect(chooseDrawingSelection('zoom',canonical,mode).tool).toBe('select');
  capturedPanel.props!.choose({ids:[viewBrow]},'direct');expect(onSelection).toHaveBeenLastCalledWith({ids:['brow']},[],'direct');
 });
+
+test('real empty snapshots expose the native New layer control through the explicit command adapter',()=>{
+ const f=fixture(),addLayer=vi.fn(),duplicateLayers=vi.fn(),deleteLayers=vi.fn(),deleteSelection=vi.fn(),structuralCommands={editable:true,addLayer,duplicateLayers,deleteLayers,deleteSelection};
+ const html=render({current:{...f.current,drawing:emptyDrawing()},sources:[f.source],structuralCommands});
+ expect(button(section(html,'view'),'drawing-new-layer')).not.toContain('disabled');expect(button(section(html,f.source.snapshotId),'drawing-new-layer')).toContain('disabled');
+ expect(html).toContain('按 P 绘制');
+ const props=capturedPanel.props!,commands=props.structuralCommands!,current=props.layerSections![0],source=props.layerSections![1];
+ commands.addLayer(current);commands.addLayer(source);expect(addLayer).toHaveBeenCalledTimes(1);expect(commands.canEditSection(current)).toBe(true);expect(commands.canEditSection(source)).toBe(false);
+});
+
+test('native structural controls translate only current rows to canonical IDs and protect source row aliases',()=>{
+ const f=fixture(),duplicateLayers=vi.fn(),deleteLayers=vi.fn(),deleteSelection=vi.fn(),structuralCommands={editable:true,addLayer:vi.fn(),duplicateLayers,deleteLayers,deleteSelection};
+ render({current:f.current,sources:[f.source],selection:{ids:[],layers:[f.eye]},layerSelections:[{snapshotId:'view',layerId:f.eye}],structuralCommands});
+ const commands=capturedPanel.props!.structuralCommands!,current=snapshotPanelRowId('view',f.eye),source=snapshotPanelRowId(f.source.snapshotId,f.eye);
+ commands.duplicateLayers([current]);commands.duplicateLayers([source]);commands.deleteLayers([current]);commands.deleteLayers([current,source]);
+ expect(duplicateLayers).toHaveBeenCalledExactlyOnceWith([f.eye]);expect(deleteLayers).toHaveBeenCalledExactlyOnceWith([f.eye]);expect(commands.canDeleteSelection).toBe(true);
+ commands.deleteSelection();expect(deleteSelection).toHaveBeenCalledTimes(1);
+ render({current:f.current,sources:[f.source],selection:{ids:['brow']},layerSelections:[],structuralCommands});expect(capturedPanel.props!.structuralCommands!.canDeleteSelection).toBe(true);
+});
+
+test('correction frames disable native layer creation and deletion with the real snapshot hint',()=>{
+ const f=fixture(),structuralCommands={editable:false,disabledReason:'Create a real snapshot here to draw.',addLayer:vi.fn(),duplicateLayers:vi.fn(),deleteLayers:vi.fn(),deleteSelection:vi.fn()};
+ const html=render({current:f.current,sources:[f.source],selection:{ids:[],layers:[f.eye]},structuralCommands});
+ expect(button(section(html,'view'),'drawing-new-layer')).toContain('disabled');expect(html).toContain(structuralCommands.disabledReason);expect(capturedPanel.props!.structuralCommands!.canDeleteSelection).toBe(false);
+});

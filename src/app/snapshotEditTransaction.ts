@@ -1,9 +1,10 @@
+import {prepareSnapshotDrawingTopologyEdit,type SnapshotDrawingTopologyEdit} from '../domain/recordingSnapshot/drawingTopology';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
 import type {DrawingDocument} from '../domain/drawing/model';
 import {applyLayerEditIntent,curveSplitIntents,type LayerEditIntent,type CurveSplitIntent} from '../domain/drawing/layerEditIntent';
 import {transferSnapshotSplitResponses,pruneSnapshotResponseDependencies} from '../domain/recordingSnapshot/responseExpressionTransactions';
-import {canonicalSnapshotLayerEditIntent,prepareSnapshotCurveSplits,finishSnapshotCurveSplits,splitSnapshotLocalCurve,type SnapshotCurveSplitBatchPlan,type SnapshotTopologyDiagnostic} from '../domain/recordingSnapshot/topologyEdits';
+import {canonicalSnapshotLayerEditIntent,prepareSnapshotCurveSplits,finishSnapshotCurveSplits,splitSnapshotLocalCurve,type SnapshotCurveSplitBatchPlan} from '../domain/recordingSnapshot/topologyEdits';
 import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
 import type {RecordingSnapshot,RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
 import {finalizeGeometryEdit} from '../domain/drawing/geometryEdit';
@@ -32,13 +33,14 @@ export function snapshotEditContext(project:LandmarkProject,canEditOriginals:boo
 export type SnapshotEdit =
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
+ | ({kind:'local-drawing-topology'}&SnapshotDrawingTopologyEdit)
  | {kind:'local-curve-split';snapshotId:string;intent:CurveSplitIntent}
  | {kind:'snapshot-state';workspace:RecordingSnapshotWorkspace;validation?:'full'|'preview'};
 export interface SnapshotEditPlan {
  readonly before:LandmarkProject;
  readonly project:LandmarkProject;
  readonly changed:boolean;
- readonly diagnostics?:readonly SnapshotTopologyDiagnostic[];
+ readonly diagnostics?:readonly {code:string;message:string;snapshotId?:string}[];
 }
 const same=(before:unknown,after:unknown)=>before===after||JSON.stringify(before)===JSON.stringify(after);
 const sourceOnly=(snapshot:RecordingSnapshot)=>({
@@ -96,7 +98,12 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
- const before=context.project;let project:LandmarkProject;let diagnostics:readonly SnapshotTopologyDiagnostic[]|undefined;
+ const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
+ if(edit.kind==='local-drawing-topology'){
+  const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=prepareSnapshotDrawingTopologyEdit(original,edit);
+  assertOriginalsUnchanged(original,result.workspace);
+  return {before,project:result.workspace===original?before:{...before,recordingSnapshots:result.workspace},changed:result.workspace!==original,diagnostics:result.diagnostics};
+ }
  if(edit.kind==='local-curve-split'){
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=splitSnapshotLocalCurve(original,edit.snapshotId,edit.intent);
   assertOriginalsUnchanged(original,result.workspace);diagnostics=result.diagnostics;project={...before,recordingSnapshots:parseRecordingSnapshots(result.workspace)};

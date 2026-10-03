@@ -1,6 +1,6 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日。线上 v54 已完成区间独立响应、源删除、Drawing 反向引用及弹窗生命周期的限定浏览器验收。本文同时记录尚未部署的父曲线拆分／真实内部视图插入候选；自动化测试不代表已完成线上操作验收。
+核对日期：2026 年 10 月 3 日。线上 v54 已完成区间独立响应、源删除、Drawing 反向引用及弹窗生命周期的限定浏览器验收。v55 已于 16:47:27 UTC 上线；实际父眉线成对分割、0/±90 与中间角同步、单笔 Undo 通过。完整脸的真实 −60° 插入被区间材质保真门槛拒绝，仍是当前缺口。本文同时记录待部署的共同钢笔／真实快照拓扑阶段，自动化测试不代表浏览器验收。
 
 完成标准是全部已约定职责落实在代码中，并且每项职责只有一份实际执行的实现，由 Drawing、Recording、API 和预览共同消费。公共包装函数、相同按钮或共享面板不能代替功能去重。v50 的自动化、构建与列明的浏览器操作已验证；“已接入”仍不代表其他缺口已关闭。本次文档更新未重新运行代码测试。
 
@@ -24,7 +24,7 @@
 | 10 逐曲线红色只读投影 | [snapshotCoverage.ts](../../src/domain/recordingSnapshot/snapshotCoverage.ts) 当前负责逐曲线覆盖投影；源存活判断随级联清理接入 | 主求值和 `surfaceOnion.ts` 共用；`SnapshotRecordingWorkspace` 将 `outsideCurves` 画成无指针事件的红色覆盖层 | [snapshot-coverage](../../src/tests/recordingSnapshot/snapshot-coverage.test.ts)、[surface-workspace](../../src/tests/recordingSnapshot/surface-workspace.test.ts)；v50 仅有 0° 样本时，在 90° 得到 121 条红线，空视图粘贴同 ID 后恢复正常 | **预览及源删除已验证**：红回退只能表示存活资产缺样本；源资产被删除后不得继续红显。错误 ID 黑红并存与混合覆盖已有自动化，完整源删除交互已在 v51/v53 验收 |
 | 11 删除极值保留空洞 | `triangulation.ts` 的 `removeSnapshotVertex`；`angleGraph.ts` 的响应退役归档；快照删除命令 | 显式删除命令修改覆盖；普通加载只解析，不补点；共享事务承担 Undo | `triangulation`、`surface-command-api`、`automatic-snapshot-edits` 覆盖空洞、不自动连邻点、回读不再生和相关响应保留 | **已接入待验收**：验证 UI 删除、离开范围的逐线反馈、Undo／Redo 与保存重载；不能用重三角化补回用户删除的覆盖 |
 | 12 镜像与自动占位属于普通编辑 | [automaticSnapshotEdits.ts](../../src/domain/recordingSnapshot/automaticSnapshotEdits.ts) 负责明确创建和继承更新；[snapshotMirror.ts](../../src/domain/recordingSnapshot/snapshotMirror.ts) 负责语义镜像 | 创建命令调用 `seedAutomaticExtremeSnapshots`；普通事务调用 `propagateAutomaticSnapshotLayers`；父输入求值执行镜像 | [snapshot-mirror](../../src/tests/recordingSnapshot/snapshot-mirror.test.ts)、`automatic-snapshot-edits`；v50 实际得到九点，基准拖动后 +90° 镜像 210 条输出路径，反射误差小于 0.001 像素 | **核心流程已验证**：重载后九点与镜像仍可见。局部覆盖、已有视图不覆写及删点不再生保留自动化证据，未据此扩称所有浏览器组合已验收；不新增第四套几何系统 |
-| 13 父曲线拆分保留后代变形 | `drawing/layerEditIntent.ts` 一次分配身份并调用唯一 split 内核；`topologyEdits.ts` 冻结/重映射后代姿态；`responseExpressionSplit.ts` 保留 live basis 标量表达式 | Drawing 分割手势、shared store intent；Recording 真实快照分割走同一 local transaction；主画面及洋葱皮共用 value sampler | `drawing-layer-edit-intent`、`topology-edits`、`response-expression-split`、`response-expression-runtime` 和真实 store Undo；成对正/反向镜像、各端既有变形、材质、重复拆分、split→真实插点已自动化覆盖 | **候选待发布验收**：精确保留受支持轨迹；局部分割明确新 ID/中断对应。任意原有非线性 SMOOTH 投影、旧 live channel 拓扑转移及有依赖 fill/offset 的局部拆分仍有明确限制；不宣称所有原则完成 |
+| 13 父曲线拆分保留后代变形 | `drawing/layerEditIntent.ts` 一次分配身份并调用唯一 split 内核；`topologyEdits.ts` 冻结/重映射后代姿态；`responseExpressionSplit.ts` 保留 live basis 标量表达式 | Drawing 分割手势、shared store intent；Recording 真实快照分割走同一 local transaction；主画面及洋葱皮共用 value sampler | `drawing-layer-edit-intent`、`topology-edits`、`response-expression-split`、`response-expression-runtime` 和真实 store Undo；成对正/反向镜像、各端既有变形、材质、重复拆分、split→真实插点已自动化覆盖 | **v55 有界浏览器验证通过**：完整镜像脸的眉线 121→123 段、镜像 54→55 组，同步到各视角；Undo 恢复。精确保留受支持轨迹；局部分割明确新 ID/中断对应。任意原有非线性 SMOOTH 投影、旧 live channel 拓扑转移及有依赖 fill/offset 的局部拆分仍有明确限制；不宣称所有原则完成 |
 | 14 洋葱皮只是 Recorder 预览 | [surfaceOnion.ts](../../src/ui/vectorRecording/surfaceOnion.ts) 只选角度和组织帧，复用 `prepareSnapshotCoverage` → `createSnapshotSurfaceValueSampler` → `interpolateSnapshotSimplexGeometry`；[SceneOnionSkin.tsx](../../src/ui/vectorRecording/SceneOnionSkin.tsx) 共用渲染 | [useSnapshotOnionFrames.ts](../../src/ui/vectorRecording/useSnapshotOnionFrames.ts) 按模式派发；新模式使用完整曲线中心线分支 | `surface-workspace` 逐角度比较主求值且检查无写入；v50 真实浏览器记录十帧完整曲线洋葱皮 | **采样与基本显示已验证**：5°／10° 步长、30°／60° 高亮和完整曲线仅为预览设置，不建快照、不改图层。隐藏／闭合曲线组合及性能测量待补；旧 endpoint 分支当前仍存在，不能宣称已经移除 |
 | 15 安全迁移与明确退役范围 | [migration.ts](../../src/domain/recordingSnapshot/migration.ts) 保留原归档；`angleGraph.ts` 的 `createTriangulatedRecordingCopy` 创建副本并转换可表达的旧响应 | 显式复制迁移命令；当前仍保留旧模式分支；新模式禁止直接编辑保留的旧轨道 | `angle-graph` 覆盖键／草稿／ID 保留和不可表达时拒绝；[external-migration](../../src/tests/recordingSnapshot/external-migration.test.ts) 覆盖外部旧数据 | **部分且须按授权分开处理**：旧 v40 单调权重资产及旧 3D／Assembly／GPU 房间已获准退役，共享数学保留；旧 channel runtime 尚待决定。非线性细分未完成，不得静默烘焙或删除原件 |
 
@@ -75,3 +75,12 @@ v53 浏览器已验证引用层在 Drawing 编辑只产生本地残差；原始�
 父拆分候选不是保存旧中间几何副本：表达式只引用存活基础快照的节点/相对柄标量，保留原响应支持域，反解在既有残差之上求新的局部响应。真实内部视图插入限制旧场，现有修正帧不会变成三角顶点。候选尚待独立构建与线上鼠标检查。
 
 剩余工程入口仍需完成：完整 Recording 钢笔/新增/连接工具复用、局部拓扑的 paint 依赖新身份、一般非线性 SMOOTH 依赖组合、过程化整层域 intent、跨模式 Undo 的历史归属交互、未获明确退役决定的旧 channel 分支。不能把共同事务包装、按钮或当前单一成功样例等同于这些工作已经完成。
+
+
+## 共同钢笔／真实快照拓扑阶段（候选）
+
+`ui/drawing/penController.ts` 是 Drawing 与 Recording 的共同落点、拖柄、继续接笔、闭合及预览控制器；两边调用同一 Drawing 创建/连接命令。`drawingTopology.ts` 只负责所有权、最终坐标逆映射和快照关系适配，`local-drawing-topology` 通过既有共同事务提交。它不是另一份钢笔几何实现。
+
+候选支持真实角度快照上的空图层、P 新线/接笔、层复制/删除和本地成员删除；相同 LayerPanel 结构按钮通过显式 adapter 调用。新增线保持新的 canonical ID，缺父来源只发诊断；删除继承线成为局部排除，原稿不变。仅真实 Recorder 顶点可改拓扑，修正位置不默默创建几何。POSITION/SMOOTH/CUSP、平移/旋转/非等比 placement 下的目标坐标、闭合、Undo/Redo 和重载已有针对性测试。
+
+依然未完成：一般非线性域的精确逆映射、合并两个不同继承节点的源拓扑变更、全部独立材质/连接属性工具、过程化整层编辑 intent，以及默认完整稿的材质场内部插点。P 阶段不以禁止整个编辑器来掩盖具体不可表达操作，也不把这些诊断边界称作全部原则已完成。
