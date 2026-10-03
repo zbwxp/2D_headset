@@ -6,6 +6,7 @@ import {displayPath} from '../drawing/displayIntervals';
 import {transportDeformedIntervals} from '../drawing/deform';
 import {applyIntervalOverrides,validateIntervalOverrides} from '../vectorRecording/intervals';
 import {drawingSignature} from '../vectorRecording/model';
+import {removeDeletedSourceReferences} from './sourceDeletion';
 import {emptyRecordingSnapshot,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SceneIntervalValue,type SnapshotMaterialIssue,type SnapshotRelationPatch,type SnapshotRelationOverrides} from './model';
 
 /** Canonical IDs are scoped by the legacy artwork identity, never its current
@@ -81,6 +82,10 @@ export function materializeOriginalSnapshot(workspace:RecordingSnapshotWorkspace
 /** Ingest the full Drawing adapter document. IDs that already belong to this
  * source are reused, even after an unsaved source receives a library name. */
 export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artworkId:string,drawing:DrawingDocument,name='Drawing source'):RecordingSnapshotWorkspace{
+ // Legacy Drawing deletion retains invalid paint paths. They are not live
+ // originals and must not be re-imported on the next edit or reload.
+ const curves=new Set(drawing.curves.map(curve=>curve.id)),removedPaint=new Set([...drawing.fills.filter(fill=>fill.boundary.some(use=>!curves.has(use.id))),...drawing.offsets.filter(offset=>offset.source.some(use=>!curves.has(use.id)))].map(value=>value.id));
+ if(removedPaint.size)drawing={...drawing,fills:drawing.fills.filter(fill=>!removedPaint.has(fill.id)),offsets:drawing.offsets.filter(offset=>!removedPaint.has(offset.id)),layers:drawing.layers.map(layer=>({...layer,items:layer.items.filter(id=>!removedPaint.has(id))}))};
  const previous=drawingSnapshotForArtwork(workspace,artworkId),existing=new Map(Object.entries(previous?.source?.originIds??{}).map(([canonical,original])=>[original,canonical]));
  // The stable source snapshot retains its initial namespace after $working is
  // saved. New members must share that prefix so traversal ordering stays live.
@@ -88,7 +93,8 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
  // A promoted $working source still owns its initial namespace. A subsequent
  // unnamed document must allocate another namespace, never overwrite it.
  if(!previous){let suffix=2;const occupied=(scope:string)=>workspace.snapshots.some(snapshot=>snapshot.id===canonicalSourceId(scope))||Object.values(workspace.library).some(elements=>Object.keys(elements).some(id=>id.startsWith(canonicalElementId(scope,''))));while(occupied(identityScope))identityScope=`${artworkId}#${suffix++}`;}
- const id=(raw:string)=>existing.get(raw)??canonicalElementId(identityScope,raw),canonical=remapDrawingIdentities(drawing,id),originIds={...(previous?.source?.originIds??{}),...Object.fromEntries(drawingIdentityIds(drawing).map(raw=>[id(raw),raw]))};
+ const id=(raw:string)=>existing.get(raw)??canonicalElementId(identityScope,raw),canonical=remapDrawingIdentities(drawing,id),originIds=Object.fromEntries(drawingIdentityIds(drawing).map(raw=>[id(raw),raw]));
+ const deletedIds=new Set(Object.keys(previous?.source?.originIds??{}).filter(id=>!Object.hasOwn(originIds,id)));
  const originals=canonical.layers.map(layer=>({...layer,kind:'original' as const}));let nextOriginal=0;
  // Preserve local slots in order while refreshing the adapter's ordered slots.
  const layers=previous?previous.layers.flatMap(layer=>layer.kind==='original'&&drawingSourceOwns(previous,layer.id)?(nextOriginal<originals.length?[originals[nextOriginal++]]:[]):[layer]):[];
@@ -101,7 +107,8 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
   (library[kind] as Record<string,{id:string}>)=map;
  }
  if(!changed)return workspace;
- return {...workspace,library,snapshots:previous?workspace.snapshots.map(snapshot=>snapshot===previous?source:snapshot):[...workspace.snapshots,source]};
+ const refreshed={...workspace,library,snapshots:previous?workspace.snapshots.map(snapshot=>snapshot===previous?source:snapshot):[...workspace.snapshots,source]};
+ return removeDeletedSourceReferences(workspace,refreshed,source.id,deletedIds);
 }
 
 /** Saving the working Drawing changes the adapter identity, never canonical

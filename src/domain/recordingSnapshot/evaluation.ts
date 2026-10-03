@@ -3,6 +3,7 @@ import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
 import {resolveSnapshotLocalMembership} from './localMembership';
 import {prepareSnapshotCoverage,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
 import {transportSnapshotSimplexMaterial} from './simplexMaterial';
+import {createSnapshotPropertyResponseSampler,snapshotPropertyResponsesCacheKey} from './propertyResponses';
 import {createSnapshotSurfaceResponseSampler} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
@@ -316,7 +317,7 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  const basisKey=JSON.stringify([meshKey,bases.map(resultIdentity)]);let preparedCache=surfacePreparationCaches.get(workspace.library);if(!preparedCache){preparedCache=new InputCache(12);surfacePreparationCaches.set(workspace.library,preparedCache);}
  let prepared=preparedCache.get(basisKey);if(!prepared){prepared=prepareSnapshotCoverage(graph.mesh,baseRefs);preparedCache.set(basisKey,prepared);}
  const effectiveGraph=options.useDraft===false&&graph.correctionFrames?.some(frame=>frame.status==='draft')?{...graph,correctionFrames:graph.correctionFrames.filter(frame=>frame.status!=='draft')}:graph;
- const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['angle-surface',recording.id,basisKey,options.immutableInputs?[immutableIdentity(graph.edgeResponses),immutableIdentity(graph.triangleResponses),options.useDraft!==false?immutableIdentity(graph.correctionFrames):0]:[graph.edgeResponses,graph.triangleResponses,options.useDraft!==false?graph.correctionFrames:null],requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
+ const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['angle-surface',recording.id,basisKey,options.immutableInputs?[immutableIdentity(graph.edgeResponses),immutableIdentity(graph.triangleResponses),options.useDraft!==false?immutableIdentity(graph.correctionFrames):0]:[graph.edgeResponses,graph.triangleResponses,options.useDraft!==false?graph.correctionFrames:null],snapshotPropertyResponsesCacheKey(effectiveGraph),requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
  const responseSamplers=new Map<string,ReturnType<typeof createSnapshotSurfaceResponseSampler>>();
  const sampled=prepared.evaluate(requested,location=>{const locationKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=responseSamplers.get(locationKey);if(!sampler){sampler=createSnapshotSurfaceResponseSampler(effectiveGraph,location);responseSamplers.set(locationKey,sampler);}return sampler;});
  const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>bases.find(base=>base.snapshotId===id)!)??[];
@@ -326,7 +327,7 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  const diagnostics:SnapshotDiagnostic[]=[...active.flatMap(base=>base.diagnostics),...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
  if(role==='basis')return cache.frames.set(key,{...selected,angle:{...requested},angleSurface:surface,diagnostics});
  let drawing=normal?.drawing??emptyDrawing();
- if(normal){const material=transportSnapshotSimplexMaterial(active.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing})),drawing,normal.simplex.geometricWeights);drawing=material.drawing;diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));}
+ if(normal){const material=transportSnapshotSimplexMaterial(active.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing})),drawing,normal.simplex.geometricWeights,{response:createSnapshotPropertyResponseSampler(effectiveGraph,normal.simplex)});drawing=material.drawing;diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));}
  const snapshot=workspace.snapshots.find(s=>s.id===selected.snapshotId)!;
  const result:SnapshotEvaluation={...selected,angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(base=>base.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(base=>base.intervalTransportErrors)};
  result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);return cache.frames.set(key,result);

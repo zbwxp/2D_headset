@@ -1,6 +1,6 @@
 # Recording snapshots v2
 
-This is the native snapshot implementation candidate. Browser acceptance is reported separately from the code and migration checks.
+The published v50 default is the triangulated Recorder. Its UI/mirror acceptance is documented in `artifacts/triangulated-recorder-qa/v50-browser-verification.json`. The next candidate adds independent interval endpoint responses, clean source deletion, and Drawing reference editing; its browser acceptance is still pending. The agreed responsibility boundaries are in [editor, snapshot and recording principles](architecture/editor-snapshot-recording-principles.md).
 
 ## Data model
 
@@ -8,18 +8,33 @@ This is the native snapshot implementation candidate. Browser acceptance is repo
 
 A recording indexes view snapshots and independent sparse channel tracks. Creating a view inherits the current evaluated references and state without creating a key for every object. Updating a view saves only its current-angle drafts. Warp creation seeds that new Warp at existing views so established poses remain neutral. Snapshot ancestry has stable identities, cycle checks and explicit branch-conflict diagnostics; a face-variant editing UI is outside this release.
 
-Drawing remains the original-element editor. Its changes and canonical-library updates share one history transaction. Existing per-curve offsets remain relative to the updated originals. A new curve has zero direct offsets and follows any live layer Warp or domain placement. Cut/paste moves references; source Drawing snapshots remain available below the current view. Copy/paste creates new canonical identities and rewrites their internal references.
+Drawing remains the original-element editor. Its changes and canonical-library updates share one history transaction. Existing per-curve offsets remain relative to the updated originals. A new curve has zero direct offsets and follows any live layer Warp or domain placement. Take-reference/cut is non-destructive: paste adds the same live layer address to another snapshot, while explicit removal changes only the target snapshot membership. Copy/paste creates new canonical identities and rewrites their internal references.
 
 Legacy sources with identical raw IDs are isolated by original artwork identity, with a complete origin mapping. Valid v33 pose tracks migrate to editable layer channels, preserving every key, empty key, interpolation mode, draft and exact zero scale. Original project JSON is archived for recovery. Missing or conflicting dependencies retain explicit legacy fallback rather than guessing or deleting data.
 
-## Human workflow
+## Current triangulated workflow
 
-1. Enter Recording. A new recording starts with one empty 0° view.
-2. Use “Add source” to choose a source snapshot, select its layers, click Cut, then Paste in the highlighted current view. Only requested source lists are shown; the viewport renders each selected canonical element once.
-3. Set the desired angle and establish the next view. It inherits the evaluated references and state. Modify visibility, layer order or direct curve shape, then update the view. Existing Warp deformation remains supported by evaluation and the API; Warp creation and grid controls are hidden from this editing workspace.
-4. V-click a continuous stroke to select and transform it; Shift adds strokes. A edits its endpoints and handles. Layer selection applies a layer-domain transform; its edge handles allow exact zero width/height and recovery.
-5. Enable “Endpoint interpolation”, then select two view snapshots (default 0° and −90° at Y=0). Ghosts blend their final canonical Bézier controls at 5°/10° steps using the selected layer/curve interpolation weight asset; the default is linear. Editing the current endpoint updates this inspection live; the other endpoint is cached. Endpoint inspection blends the selected endpoint pair. Runtime uses the same scalar weight mapping on its sparse interpolation brackets and preserves every exact authored key, including intermediate views. Ghosts show complete Bézier source curves for the included references, including currently hidden curves and closure segments. They intentionally omit visibility clipping, ARC trimming, material intervals, fills and brush outlines; main rendering keeps those appearance rules. Missing endpoint geometry is reported. Current fills are hidden temporarily, and −30°/−60° guides have distinct colors. Inspection writes no source, keys or history.
-6. Delete a view with its × button. Sources remain, Undo restores it, and surviving saved view values are preserved. Deletion is refused if another snapshot explicitly depends on it.
+1. Create a Recording with `createTriangulatedRecording`. The 0/0 real snapshot starts empty; missing pitch ±90 placeholders initially inherit it without a pitch deformation.
+2. Take selected Drawing layer references and paste them into the current real snapshot. This does not remove the source layers, duplicate geometry, or add another semantic parent.
+3. Move the XY cursor to inspect. Geometry outside its own recorded support is a red read-only overlay. Creating an outside real snapshot starts empty; the overlay is not captured. Paste matching canonical layer references to establish normal support there. Creating −90/0 also creates missing +90 semantic mirror and extreme pitch placeholders. Existing real snapshots are never overwritten.
+4. At real vertices, A/V writes that snapshot's residual state. At normal intermediate coordinates, A/V inverse-edits Recorder node and relative-handle responses. Save correction commits the draft without creating a new mesh vertex. Creating an additional real snapshot inside existing coverage remains explicitly blocked until trajectory transfer is implemented.
+5. Onion preview uses the same Recorder geometry sampler on the selected angle path. Each ghost shows complete source cubics, including hidden construction curves. It skips interval clipping, ARC construction, fill and brush tessellation. Current fill is temporarily hidden; 30°/60° guides are highlighted. Sampling creates no snapshot, geometry key, or history entry.
+
+### Independent interval endpoint responses (next candidate)
+
+In a triangulated Recording, `changeInterval` with `start` and/or `end` at an intermediate covered angle edits a Recorder property response. It does not add a real snapshot, change geometry responses, or bake the current pose. Target identity is `{kind:'interval-endpoint', layerId, sourceTrackId, rangeId, end:'start'|'end'}`. The two endpoints are independent scalar properties, transported to the current material path before sampling.
+
+For example, if a HIDE range is collapsed at 0° and open at 90°, setting its end equal to its start at 30° pins that property response to zero. The 0–30 segment stays exactly collapsed; the gap opens after 30°. No epsilon gap or interval enable/disable key is introduced. Mode and full-loop structure are edited at real snapshots. Display eye switches remain separate properties.
+
+```js
+window.contourAI.snapshot({commands: [
+  {op:'setAngle', angle:{x:30,y:0}},
+  {op:'changeInterval', layerId:'layer-id', sourceTrackId:'interval-id', rangeId:'range-id', end:0.3},
+  {op:'updateEndpointCorrection'}
+]})
+```
+
+Here `0.3` is an example material position and must match the intended range start, not a universal value. `start/end` are normalized material-path positions, not Bézier t. An unavailable scalar span rejects the whole edit. Saved/draft properties share correction save/discard and selected-layer transactions with geometry; source elements, true vertices and old channels remain unchanged. Persistence stores these maps in `angleGraph.propertyResponses` and optional correction-frame `propertyResponses`, with the same oriented edges/triangles as geometry. Deleting support archives affected responses with the old mesh. Full-curve onion deliberately does not preview interval clipping.
 
 Snapshot relationships remain separate from mere layer ordering. A single-layer V action that newly separates a true cross-layer EndpointLink is rejected with the affected layer names; selecting the connected layers in one batch is supported. Ordinary A editing continues to move linked endpoints. Width-zero placement is rendered and serializable, but inverse-dependent curve edits require restoring that axis first.
 
@@ -29,7 +44,7 @@ Use `inspectSnapshots`, `snapshot`, `previewSnapshot` and `previewSnapshotFrames
 
 Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setAngle`, `updateSnapshot`, `deleteSnapshot`, `pasteLayers`, `moveLayers`, `cloneLayers`, `reorderLayers`, `setVisibility`, `setLayerPlacement`, `moveShapeNode`, `moveShapeHandle`, `transformShapeElements`, `createWarp`, `editWarpNodes`, and the retained interval/order/Warp-tree commands. Shape positions are in the post-Warp, pre-placement coordinate system. `transformShapeElements` uses a world-space transform and writes residual element deformation, never a hidden Warp.
 
-### Interpolation weight assets
+### Legacy v40 interpolation weight assets (scheduled for retirement)
 
 A weight curve belongs to a layer or one canonical curve within that layer, for an explicit pair of views in the same recording. It is stored in `recording.interpolationWeights`, not in transient viewport preferences or a pose key. Each asset has `{id, target: {layerId, curveId?}, startSnapshotId, endSnapshotId, points}`. Targets keep their canonical IDs; renaming a view or navigating to another angle does not change the relationship.
 
@@ -51,7 +66,7 @@ window.contourAI.snapshot({commands: [{
 }]})
 ```
 
-### Weight curve authoring and evaluation
+### Legacy weight curve authoring and evaluation
 
 Choose the two views with the endpoint selectors, select curves or layers in the current view, then edit **变形权重曲线 / Deformation weight curve**. The selectors also work with onion display off. The graph's horizontal axis is angle progress and its vertical axis is deformation weight. Click to add a point, drag to adjust, double-click or Delete to remove an interior point. Arrow keys adjust a focused point; Shift is a larger step and Alt/Option is a smaller step. The endpoints stay fixed. Multi-selection applies the same points to all selected targets in one Undo transaction. “Linear override” and “Inherit layer” are different actions.
 

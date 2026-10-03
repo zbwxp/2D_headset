@@ -1,6 +1,6 @@
 # Triangulated recording work plan
 
-Status: implementation in progress after the 2026-10-03 13:11–13:19 design confirmations. The published v49 still uses the existing keyed and two-endpoint recording modes. This document describes the new contract; it is not a release claim.
+Status: v50 published 2026-10-03 14:32 UTC with the triangulated Recorder, per-curve red coverage preview, automatic extreme/mirror snapshots, and Drawing-to-Recording layer references. Bounded human QA passed on the bundled full front. Independent property responses, source deletion consistency and reverse Drawing reference editing are the next candidate. Full topology editing, parent-split propagation and inside-coverage real-snapshot insertion remain unfinished. See the [acceptance matrix](editor-unification-acceptance.md) for implementation boundaries.
 
 ## Three editing responsibilities
 
@@ -70,3 +70,9 @@ Splitting a parent curve allocates descendant IDs once, records the original cur
 4. Parent-split lineage propagation and difficult migration diagnostics, then bounded human interaction QA on the deployed test Site.
 
 No GPU rewrite, unrelated tool expansion, private archive upload, or original Site publication is part of this work. Performance measurements must separate CPU sampling, material/paint work and actual browser response.
+
+## Recorder property responses
+
+Independent properties belong to the Recorder, not to additional geometry snapshots. An interval start/end constraint at 30° does not add a triangulation vertex or author positions/scale. Scalar properties reuse the geometry response module's shared simplex orientation and piecewise-linear edge field. A collapsed HIDE range remains exact zero length through a zero-response plateau. Main material evaluation applies the property field after geometry sampling; full-curve onions intentionally omit the clipping stage. Display booleans, domain transforms and interval endpoints are distinct typed properties; only interval endpoint integration is in the next candidate.
+
+Source-owned deletion removes the live canonical asset and dependent references so red coverage preview cannot resurrect it. Deleting curves retains their empty layer; deleting an owned layer removes its contents and referencing slots. Removing a reference or excluding inherited geometry remains local to that snapshot. Original upload/recovery evidence is not rewritten.

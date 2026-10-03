@@ -136,6 +136,10 @@ export function deleteCurves(d:Doc,ids:string[]):Doc{
 /** List deletion is allowed for hidden objects; locks still protect objects and join partners. */
 export function deleteObjects(d:Doc,ids:string[]):Doc{
  const selected=new Set(ids.filter(id=>objectById(d,id)));if(!selected.size)return d;
+ // Paint paths depend on their explicit source curves. Remove those dependents
+ // in this same source edit, keeping the layer slot when its last item leaves.
+ for(const fill of d.fills)if(fill.boundary.some(use=>selected.has(use.id)))selected.add(fill.id);
+ for(const offset of d.offsets)if(offset.source.some(use=>selected.has(use.id)))selected.add(offset.id);
  if([...selected].some(id=>curveById(d,id)&&displayRouteFor(d,id)))throw Error('请先解除显示贯通，再删除其源曲线。');
  // Deleting a member also removes its relations. Honor the same partner locks
  // as an explicit unlink, including links whose other member is in another layer.

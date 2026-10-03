@@ -41,10 +41,10 @@ test('Fill accepts several separate strokes in any selection order, stays indepe
  expect(()=>paint.createFill(n,['b0','b1'],'black')).toThrow(/闭合/);
 });
 
-test('Fill becomes visibly invalid on a break/delete, keeps its reference and never closes gaps',()=>{
+test('Fill reports a geometric break and is removed with a deleted source curve',()=>{
  const d=paint.createFill(loop(),['b0','b1','b2','b3'],'black'),moved=c.moveNode(d,nodeAt(d,{curveId:'b0',end:1}).id,[1.1,0]);
  expect(fillGeometry(moved,moved.fills[0]).error).toMatch(/断开/);expect(fillGeometry(moved,moved.fills[0]).shapes).toHaveLength(0);
- const gone=c.deleteCurves(d,['b0']);expect(gone.fills).toEqual(d.fills);expect(fillGeometry(gone,gone.fills[0]).error).toMatch(/删除/);valid(gone);
+ const gone=c.deleteCurves(d,['b0']);expect(gone.fills).toEqual([]);expect(gone.layers.flatMap(layer=>layer.items)).not.toContain(d.fills[0].id);valid(gone);
 });
 
 test('splitting geometry remaps forward and reverse Fill/Offset references',()=>{
@@ -75,16 +75,16 @@ test('detach preserves the visible cubics and asymmetric profile, creates indepe
  const moved=c.transform(n,['a'],p=>add(p,[1,1]));result.ids.forEach(id=>expect(shapeOf(moved,id)).toEqual(shapeOf(n,id)));
 });
 
-test('offset reports sharp joins and missing sources, never creates a silent bridge',()=>{
+test('offset reports sharp joins and is removed with a deleted source',()=>{
  let d=base();d=c.createCurve(d,d.layers[0].id,[[1,0],[1.1,0],[1.2,.3],[2,0]],.02,'Next','b');d=c.connect(d,{curveId:'a',end:1},{curveId:'b',end:0},'CUSP');d=paint.createOffset(d,'a');d=paint.changePaint(d,d.offsets[0].id,{start:0,end:1});
- expect(offsetGeometry(d,d.offsets[0]).error).toMatch(/尖点/);const missing=c.deleteCurves(d,['a']);expect(offsetGeometry(missing,missing.offsets[0]).error).toMatch(/删除/);valid(missing);
+ expect(offsetGeometry(d,d.offsets[0]).error).toMatch(/尖点/);const missing=c.deleteCurves(d,['a']);expect(missing.offsets).toEqual([]);expect(missing.layers.flatMap(layer=>layer.items)).not.toContain(d.offsets[0].id);valid(missing);
 });
 
 test('Fill, Stroke, Offset share one z order; source and dependent may live on different layers',()=>{
  let d=paint.createFill(loop(),['b0','b1','b2','b3'],'white');d=paint.createOffset(d,'b0');const f=d.fills[0].id,o=d.offsets[0].id,l=d.layers[0].id;
  expect(paintItems(d,l).map(x=>x.kind)).toEqual(['offset','stroke','stroke','stroke','stroke','fill']);
  d=paint.reorderPaint(d,f,o);expect(d.layers[0].items[0]).toBe(f);d=c.addLayer(d,'Hair');d=paint.movePaint(d,f,d.layers[0].id);expect(fillGeometry(d,d.fills[0]).error).toBeUndefined();valid(d);
- const gone=c.deleteLayer(d,l);expect(gone.fills).toHaveLength(1);expect(gone.offsets).toHaveLength(0);expect(fillGeometry(gone,gone.fills[0]).error).toBeDefined();valid(gone);
+ const gone=c.deleteLayer(d,l);expect(gone.fills).toHaveLength(0);expect(gone.offsets).toHaveLength(0);expect(gone.layers).toHaveLength(1);expect(gone.layers[0].items).toEqual([]);valid(gone);
 });
 
 test('duplicate layer remaps all internal source references and retains ordering',()=>{

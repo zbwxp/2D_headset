@@ -3,7 +3,8 @@ import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrection
 import {endpointPairNodeAuthorities} from './endpointPair';
 import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotSimplexBasis} from './simplexGeometry';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
-import {prepareTriangularResponse,solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights,type OrientedEdgeResponse,type PreparedTriangularResponse,type TriangleVertexIndex} from './triangularResponses';
+import {solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights} from './triangularResponses';
+import {describeSnapshotScalarResponseSupport,createSnapshotScalarResponseWeightSampler} from './scalarResponseSupport';
 
 const axes=['x','y'] as const;
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
@@ -32,50 +33,25 @@ export function effectiveSnapshotSurfaceResponses(graph:SnapshotAngleGraph):{edg
   triangleResponses:draft?.triangleResponses?{...graph.triangleResponses,...draft.triangleResponses}:graph.triangleResponses,...draft?{draft}:{}};
 }
 
-/** Resolve a simplex once. Stored responses use its persisted orientation;
- * public callbacks and basis drawings always use LOCATION order. */
-function surfaceDescriptor(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation){
- const count=location.kind==='vertex'?1:location.kind==='edge'?2:3;
- if(location.vertexIds.length!==count||location.snapshotIds.length!==count||location.geometricWeights.length!==count||new Set(location.vertexIds).size!==count||new Set(location.snapshotIds).size!==count||location.geometricWeights.some(w=>!Number.isFinite(w)||w<=0)||Math.abs(location.geometricWeights.reduce((sum,w)=>sum+w,0)-1)>64*Number.EPSILON)fail('SURFACE_INVALID_TARGET','A response surface needs the original positive geometric support of its active simplex.');
- const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex]));
- if(location.vertexIds.some((id,index)=>vertices.get(id)?.snapshotId!==location.snapshotIds[index]))fail('SURFACE_INVALID_TARGET','The active simplex references different saved snapshot bases.');
- const simplex=location.kind==='edge'?graph.mesh.edges.find(edge=>edge.id===location.simplexId):location.kind==='triangle'?graph.mesh.triangles.find(triangle=>triangle.id===location.simplexId):undefined;
- const ownerIds=location.kind==='vertex'?[location.simplexId]:simplex?.vertexIds;
- if(!ownerIds||ownerIds.length!==count||ownerIds.some(id=>!location.vertexIds.includes(id)))fail('SURFACE_INVALID_TARGET','The active simplex is no longer present in this recorder. Re-evaluate its angle before editing.');
- const ownerToLocation=ownerIds.map(id=>location.vertexIds.indexOf(id)),locationToOwner=location.vertexIds.map(id=>ownerIds.indexOf(id));
- const triangle=location.kind==='triangle'?graph.mesh.triangles.find(face=>face.id===location.simplexId)!:undefined;
- const edgeMap=new Map(graph.mesh.edges.map(edge=>[edge.id,edge]));
- const edges=location.kind==='edge'?[{id:location.simplexId,from:0 as TriangleVertexIndex,to:1 as TriangleVertexIndex}]:triangle?triangle.edgeIds.map(id=>{
-  const edge=edgeMap.get(id);if(!edge)fail('SURFACE_INVALID_TARGET',`Triangle ${triangle.id} is missing shared edge ${id}.`);
-  const from=ownerIds.indexOf(edge.vertexIds[0]),to=ownerIds.indexOf(edge.vertexIds[1]);
-  if(from<0||to<0)fail('SURFACE_INVALID_TARGET',`Triangle ${triangle.id} has an incompatible shared edge ${id}.`);
-  return {id,from:from as TriangleVertexIndex,to:to as TriangleVertexIndex};
- }):[];
- return {ownerToLocation,locationToOwner,edges};
-}
+/** Both geometry and attributes use the same persisted simplex orientation. */
+const surfaceDescriptor=(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation)=>describeSnapshotScalarResponseSupport(graph.mesh,location,message=>fail('SURFACE_INVALID_TARGET',message));
 
 /** Compile at most once per control/axis. Scalar responses change final control
  * geometry only; they never change membership or the original geometric λ. */
 export function createSnapshotSurfaceResponseSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation):SnapshotScalarWeights {
- const descriptor=surfaceDescriptor(graph,location),effective=effectiveSnapshotSurfaceResponses(graph),compiled=new Map<string,PreparedTriangularResponse|null>();
- return (target,axis,_coordinates,geometricWeights)=>{
-  if(location.kind==='vertex')return geometricWeights;
-  const key=targetKey(target,axis);let field=compiled.get(key);
-  if(field===undefined){
-   const edges:OrientedEdgeResponse[]=descriptor.edges.flatMap(edge=>{
-    const responses=own(effective.edgeResponses,edge.id),control=target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end],knots=control?.[axes[axis]];
-    return knots?.length?[{from:edge.from,to:edge.to,knots}]:[];
-   });
-   const responses=location.kind==='triangle'?own(effective.triangleResponses,location.simplexId):undefined;
-   const control=target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end],samples=control?.[axes[axis]];
-   field=edges.length||samples?.length?prepareTriangularResponse(edges,samples):null;compiled.set(key,field);
-  }
-  if(!field)return geometricWeights;
-  const original=descriptor.ownerToLocation.map(index=>geometricWeights[index]);
-  if(location.kind==='edge')original.push(0);
-  const weights=field(original as unknown as BarycentricWeights);
-  return descriptor.locationToOwner.map(index=>weights[index]);
- };
+ const descriptor=surfaceDescriptor(graph,location),effective=effectiveSnapshotSurfaceResponses(graph);
+ const sample=createSnapshotScalarResponseWeightSampler<{target:SnapshotScalarTarget;axis:0|1}>(descriptor,{
+  key:({target,axis})=>targetKey(target,axis),
+  edgeKnots:(edgeId,{target,axis})=>{
+   const responses=own(effective.edgeResponses,edgeId),control=target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end];
+   return control?.[axes[axis]];
+  },
+  triangleSamples:(triangleId,{target,axis})=>{
+   const responses=own(effective.triangleResponses,triangleId),control=target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end];
+   return control?.[axes[axis]];
+  },
+ });
+ return (target,axis,_coordinates,geometricWeights)=>sample({target,axis},geometricWeights);
 }
 
 export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string}

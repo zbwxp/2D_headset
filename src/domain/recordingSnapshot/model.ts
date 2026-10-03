@@ -1,7 +1,7 @@
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
 import type {SnapshotTriangulation} from './triangulation';
-import type {InteriorResponseSample} from './triangularResponses';
+import type {InteriorResponseSample,ScalarResponseKnot} from './triangularResponses';
 import type {SnapshotMirrorOptions} from './snapshotMirror';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
@@ -136,12 +136,35 @@ export interface SnapshotTriangleResponses {
  /** Each handle is relative to its resolved node, H-P. */
  handles:Record<string,[SnapshotTriangleControlResponse,SnapshotTriangleControlResponse]>;
 }
+/** A typed address into saved material, not a node, pose key or mesh vertex.
+ * Endpoint values come from the actual active snapshot bases in one material
+ * coordinate frame. Equal start/end values are a valid zero-length range. */
+export interface SnapshotIntervalEndpointTarget {
+ kind:'interval-endpoint';layerId:string;sourceTrackId:string;rangeId:string;end:'start'|'end';
+}
+/** Extend this union only when a channel has a real basis resolver and runtime
+ * adapter. Continuous placement components may use the same scalar field;
+ * discrete display channels need their own semantics and are not implemented. */
+export type SnapshotScalarPropertyTarget=SnapshotIntervalEndpointTarget;
+export interface SnapshotEdgePropertyResponse {
+ target:SnapshotScalarPropertyTarget;knots:ScalarResponseKnot[];
+}
+export interface SnapshotTrianglePropertyResponse {
+ target:SnapshotScalarPropertyTarget;samples:InteriorResponseSample[];
+}
+/** Each edge uses mesh.edges' sole orientation; each triangle uses its saved
+ * vertex order. Attribute responses never replace geometric barycentrics. */
+export interface SnapshotPropertyResponses {
+ edges:Record<string,SnapshotEdgePropertyResponse[]>;
+ triangles:Record<string,SnapshotTrianglePropertyResponse[]>;
+}
 /** Recorder-owned editing frame, never a snapshot or a geometric mesh vertex.
  * Draft collections replace the corresponding saved simplex response. */
 export interface SnapshotCorrectionFrame {
  id:string;angle:Angle;status:'saved'|'draft';
  edgeResponses?:Record<string,SnapshotEndpointResponses>;
  triangleResponses?:Record<string,SnapshotTriangleResponses>;
+ propertyResponses?:SnapshotPropertyResponses;
 }
 /** Keep the exact old coordinate frame with retired constraints. Recovery does
  * not silently attach them to an unrelated live edge or triangle. */
@@ -150,6 +173,7 @@ export interface SnapshotOrphanedResponses {
  mesh:SnapshotTriangulation;
  edgeResponses:Record<string,SnapshotEndpointResponses>;
  triangleResponses:Record<string,SnapshotTriangleResponses>;
+ propertyResponses?:SnapshotPropertyResponses;
  correctionFrames?:SnapshotCorrectionFrame[];
 }
 export interface SnapshotAngleGraph {
@@ -157,6 +181,7 @@ export interface SnapshotAngleGraph {
  /** Every shared edge has the sole orientation saved in mesh.edges. */
  edgeResponses:Record<string,SnapshotEndpointResponses>;
  triangleResponses:Record<string,SnapshotTriangleResponses>;
+ propertyResponses?:SnapshotPropertyResponses;
  correctionFrames?:SnapshotCorrectionFrame[];
  orphanedResponses?:SnapshotOrphanedResponses[];
  /** Recovery evidence. The original recording and real snapshots also remain
