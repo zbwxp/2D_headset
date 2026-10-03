@@ -1,3 +1,4 @@
+import {pruneSnapshotMaterialPropertyReferences} from './materialSourceDeletion';
 import {remapLayerDomains} from './layerDomains';
 import type {StrokeDisplayIntervals} from '../drawing/model';
 import type {RecordingSnapshotWorkspace,SnapshotDeformationState,SnapshotLayerState,SnapshotPoseTrack,SceneIntervalValue,SceneShapeValue,SnapshotEndpointResponses,SnapshotTriangleResponses,SnapshotRelationPatch,SnapshotPropertyResponses} from './model';
@@ -74,13 +75,14 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
    return [track];
   });
   const pair=recording.endpointPair,graph=recording.angleGraph;
+  const activePropertyTarget=(target:{layerId:string;sourceTrackId:string;rangeId:string})=>!deadLayers.has(target.layerId)&&!removed.has(target.sourceTrackId)&&!removed.has(target.rangeId);
   const propertyResponses=(values:SnapshotPropertyResponses):SnapshotPropertyResponses=>{
-   const active=(value:{target:{layerId:string;sourceTrackId:string;rangeId:string}})=>!deadLayers.has(value.target.layerId)&&!removed.has(value.target.sourceTrackId)&&!removed.has(value.target.rangeId);
+   const active=(value:{target:{layerId:string;sourceTrackId:string;rangeId:string}})=>activePropertyTarget(value.target);
    return {edges:Object.fromEntries(Object.entries(values.edges).map(([id,entries])=>[id,entries.filter(active)])),triangles:Object.fromEntries(Object.entries(values.triangles).map(([id,entries])=>[id,entries.filter(active)]))};
   };
   return {...recording,tracks,
    ...(pair?{endpointPair:{...pair,...(pair.responses?{responses:responses(pair.responses)}:{}),...(pair.draft?{draft:{...pair.draft,responses:responses(pair.draft.responses)}}:{})}}:{}),
-   ...(graph?{angleGraph:{...graph,...(graph.propertyResponses?{propertyResponses:propertyResponses(graph.propertyResponses)}:{}),edgeResponses:responseMap(graph.edgeResponses),triangleResponses:responseMap(graph.triangleResponses),...(graph.correctionFrames?{correctionFrames:graph.correctionFrames.map(frame=>({...frame,...(frame.propertyResponses?{propertyResponses:propertyResponses(frame.propertyResponses)}:{}),...(frame.edgeResponses?{edgeResponses:responseMap(frame.edgeResponses)}:{}),...(frame.triangleResponses?{triangleResponses:responseMap(frame.triangleResponses)}:{})}))}:{})}}:{}),
+   ...(graph?{angleGraph:{...pruneSnapshotMaterialPropertyReferences(graph,activePropertyTarget),...(graph.propertyResponses?{propertyResponses:propertyResponses(graph.propertyResponses)}:{}),edgeResponses:responseMap(graph.edgeResponses),triangleResponses:responseMap(graph.triangleResponses),...(graph.correctionFrames?{correctionFrames:graph.correctionFrames.map(frame=>({...frame,...(frame.propertyResponses?{propertyResponses:propertyResponses(frame.propertyResponses)}:{}),...(frame.edgeResponses?{edgeResponses:responseMap(frame.edgeResponses)}:{}),...(frame.triangleResponses?{triangleResponses:responseMap(frame.triangleResponses)}:{})}))}:{})}}:{}),
   };
  });
  return {...after,library:{nodes:without(after.library.nodes,removed),curves:without(after.library.curves,removed),fills:without(after.library.fills,removed),offsets:without(after.library.offsets,removed)},snapshots:snapshots.map(snapshot=>({...snapshot,authored:snapshot.authored.filter(ref=>!removedTrackIdsBySnapshot.get(snapshot.id)?.has(ref.trackId)),...(snapshot.draft?{draft:{...snapshot.draft,channels:snapshot.draft.channels.filter(ref=>!removedTrackIdsBySnapshot.get(snapshot.id)?.has(ref.trackId))}}:{})})),recordings};
