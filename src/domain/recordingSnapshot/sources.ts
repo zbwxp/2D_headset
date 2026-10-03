@@ -6,7 +6,7 @@ import {displayPath} from '../drawing/displayIntervals';
 import {transportDeformedIntervals} from '../drawing/deform';
 import {applyIntervalOverrides,validateIntervalOverrides} from '../vectorRecording/intervals';
 import {drawingSignature} from '../vectorRecording/model';
-import {emptyRecordingSnapshot,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SceneIntervalValue,type SnapshotMaterialIssue} from './model';
+import {emptyRecordingSnapshot,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SceneIntervalValue,type SnapshotMaterialIssue,type SnapshotRelationPatch,type SnapshotRelationOverrides} from './model';
 
 /** Canonical IDs are scoped by the legacy artwork identity, never its current
  * geometry. Two legacy artworks can reuse every raw ID and still be distinct. */
@@ -46,10 +46,27 @@ export function drawingSnapshotForArtwork(workspace:RecordingSnapshotWorkspace,a
  return workspace.snapshots.find(snapshot=>snapshot.kind==='drawing'&&snapshot.source?.artworkId===artworkId);
 }
 
-/** Reconstruct an adapter document from the one canonical geometry store. This
- * transient value is never serialized as a snapshot's geometry. */
+/** The Drawing compatibility adapter owns only identities in originIds. A
+ * source snapshot can also have its own references and residual local state. */
+export function drawingSourceOwns(snapshot:RecordingSnapshot,id:string):boolean{
+ return !!snapshot.source&&Object.hasOwn(snapshot.source.originIds,id);
+}
+
+function refreshSourceRelations(previous:RecordingSnapshot|undefined,canonical:DrawingDocument):SnapshotRelationOverrides{
+ const refresh=<T extends {id:string}>(patch:SnapshotRelationPatch<T>|undefined,originals:T[]):SnapshotRelationPatch<T>=>({
+  ...patch,add:[...originals,...(patch?.add??[]).filter(value=>!previous||!drawingSourceOwns(previous,value.id))],
+ });
+ return {joins:refresh(previous?.relations.joins,canonical.joins),endpointLinks:refresh(previous?.relations.endpointLinks,canonical.endpointLinks??[]),groups:refresh(previous?.relations.groups,canonical.groups??[]),displayIntervals:refresh(previous?.relations.displayIntervals,canonical.displayIntervals??[])};
+}
+
+/** Reconstruct original geometry from the canonical store. For a Drawing
+ * adapter this is only its owned originals, before local relation overrides,
+ * referenced layers and deformation. Material transport and legacy evaluation
+ * must use the same baseline. This transient document is never serialized. */
 export function materializeOriginalSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string):DrawingDocument|undefined{
- const snapshot=workspace.snapshots.find(s=>s.id===snapshotId);if(!snapshot||snapshot.layers.some(l=>l.kind!=='original'))return undefined;
+ const stored=workspace.snapshots.find(s=>s.id===snapshotId);if(!stored)return undefined;
+ const snapshot:RecordingSnapshot=stored.source?{...stored,layers:stored.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(stored,layer.id)),relations:Object.fromEntries(Object.entries(stored.relations).map(([kind,patch])=>[kind,{add:patch.add?.filter((value:{id:string})=>drawingSourceOwns(stored,value.id))??[]}]))}:stored;
+ if(snapshot.layers.some(layer=>layer.kind!=='original'))return undefined;
  const layers=snapshot.layers.map(layer=>{const {kind,...rest}=layer;void kind;return structuredClone(rest) as DrawingDocument['layers'][number];}),items=new Set(layers.flatMap(l=>l.items));
  const curves=[...items].flatMap(id=>Object.hasOwn(workspace.library.curves,id)?[structuredClone(workspace.library.curves[id])]:[]),nodeIds=new Set(curves.flatMap(c=>c.nodes));
  const relation=<T extends {id:string}>(patch:{add?:T[];update?:T[];disable?:string[]}|undefined):T[]=>{
@@ -68,8 +85,15 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
  // The stable source snapshot retains its initial namespace after $working is
  // saved. New members must share that prefix so traversal ordering stays live.
  let identityScope=artworkId;if(previous?.id.startsWith('source:')){try{const parts=JSON.parse(previous.id.slice('source:'.length));if(Array.isArray(parts)&&parts.length===1&&typeof parts[0]==='string')identityScope=parts[0];}catch{/* A user-created source ID uses its explicit artwork scope. */}}
+ // A promoted $working source still owns its initial namespace. A subsequent
+ // unnamed document must allocate another namespace, never overwrite it.
+ if(!previous){let suffix=2;const occupied=(scope:string)=>workspace.snapshots.some(snapshot=>snapshot.id===canonicalSourceId(scope))||Object.values(workspace.library).some(elements=>Object.keys(elements).some(id=>id.startsWith(canonicalElementId(scope,''))));while(occupied(identityScope))identityScope=`${artworkId}#${suffix++}`;}
  const id=(raw:string)=>existing.get(raw)??canonicalElementId(identityScope,raw),canonical=remapDrawingIdentities(drawing,id),originIds={...(previous?.source?.originIds??{}),...Object.fromEntries(drawingIdentityIds(drawing).map(raw=>[id(raw),raw]))};
- const source:RecordingSnapshot={...emptyRecordingSnapshot(previous?.id??canonicalSourceId(artworkId),name,'drawing'),layers:canonical.layers.map(layer=>({...layer,kind:'original' as const})),relations:{joins:{add:canonical.joins},endpointLinks:{add:canonical.endpointLinks??[]},groups:{add:canonical.groups??[]},displayIntervals:{add:canonical.displayIntervals??[]}},source:{artworkId,originIds,...(canonical.reference?{reference:canonical.reference}:{}),...(canonical.mirrorAxisX!==undefined?{mirrorAxisX:canonical.mirrorAxisX}:{}),...(canonical.mirrorEditing?{mirrorEditing:canonical.mirrorEditing}:{})}};
+ const originals=canonical.layers.map(layer=>({...layer,kind:'original' as const}));let nextOriginal=0;
+ // Preserve local slots in order while refreshing the adapter's ordered slots.
+ const layers=previous?previous.layers.flatMap(layer=>layer.kind==='original'&&drawingSourceOwns(previous,layer.id)?(nextOriginal<originals.length?[originals[nextOriginal++]]:[]):[layer]):[];
+ layers.push(...originals.slice(nextOriginal));
+ const source:RecordingSnapshot={...(previous??emptyRecordingSnapshot(canonicalSourceId(identityScope),name,'drawing')),name,layers,relations:refreshSourceRelations(previous,canonical),source:{artworkId,originIds,...(canonical.reference?{reference:canonical.reference}:{}),...(canonical.mirrorAxisX!==undefined?{mirrorAxisX:canonical.mirrorAxisX}:{}),...(canonical.mirrorEditing?{mirrorEditing:canonical.mirrorEditing}:{})}};
  const library={...workspace.library};let changed=JSON.stringify(previous)!==JSON.stringify(source);
  for(const kind of ['nodes','curves','fills','offsets'] as const){
   const entries=canonical[kind];let map=library[kind] as Record<string,{id:string}>;
@@ -139,9 +163,9 @@ export function transportSnapshotSourceIntervals(before:RecordingSnapshotWorkspa
   return {...rest,keys:track.keys.map((key,index)=>({...key,value:result.values[index]})),...(track.draft?{draft:{...track.draft,value:result.values[track.keys.length]}}:{}),...(result.issue?{materialIssue:result.issue}:{})};
  })}));
  const snapshots=after.snapshots.map(snapshot=>{
-  if(snapshot.kind==='drawing')return snapshot;const deformation=state(snapshot.deformation),issues={...deformation.intervalMaterialIssues},patch=snapshot.relations.displayIntervals;
-  const movePatch=(values:StrokeDisplayIntervals[]|undefined)=>values?.map(value=>{const result=process(value.id,[value],(value,move)=>move(value),issues[value.id]);if(result.issue)issues[value.id]=result.issue;else delete issues[value.id];return result.values[0];});
-  const relations={...snapshot.relations,...(patch?{displayIntervals:{...patch,...(patch.add?{add:movePatch(patch.add)}:{}),...(patch.update?{update:movePatch(patch.update)}:{})}}:{})};
+  const deformation=state(snapshot.deformation),issues={...deformation.intervalMaterialIssues},patch=snapshot.relations.displayIntervals;
+  const movePatch=(values:StrokeDisplayIntervals[]|undefined,originals=false)=>values?.map(value=>{if(originals&&drawingSourceOwns(snapshot,value.id))return value;const result=process(value.id,[value],(value,move)=>move(value),issues[value.id]);if(result.issue)issues[value.id]=result.issue;else delete issues[value.id];return result.values[0];});
+  const relations={...snapshot.relations,...(patch?{displayIntervals:{...patch,...(patch.add?{add:movePatch(patch.add,true)}:{}),...(patch.update?{update:movePatch(patch.update)}:{})}}:{})};
   if(Object.keys(issues).length)deformation.intervalMaterialIssues=issues;else delete deformation.intervalMaterialIssues;
   return {...snapshot,deformation,...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation)}}:{}),relations};
  });
