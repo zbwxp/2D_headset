@@ -20,13 +20,14 @@ import {cutDrawing,pasteDrawingCut,type DrawingCut} from '../../domain/drawing/c
 import {roundedJoins} from '../../domain/drawing/roundedJoin';
 import {pathOf} from '../../domain/drawing/appearance';
 import {strokeFor} from '../../domain/drawing/strokes';
-import {selectionUnit,selectedGroup,transformable,createGroup,ungroup,groupingIssue} from '../../domain/drawing/groups';
+import {selectedGroup,transformable,createGroup,ungroup,groupingIssue} from '../../domain/drawing/groups';
 import {snapRecordingEndpoint} from '../../domain/recording/snapping';
 import {readPhoto} from '../edit2d/ReferenceControls';
 import {RECORDING_REFERENCE_IMAGE,clampReferenceOffset} from '../../domain/recording/reference';
 import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';
 import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
+import {selectCurveAtPointer,selectCurvesInBox,drawingControlDragTarget} from './editGestures';
 import {hasNudgeTarget,nudgeSelection} from './nudge';
 import LayerPanel from './LayerPanel';
 import LayerSnapshotDialog from './LayerSnapshotDialog';
@@ -180,8 +181,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(tool==='split'){e.stopPropagation();const hit=snapRecordingEndpoint(local(e),[{id,name:'',shape:shapeOf(d,id),auxiliary:false}],[unit,unit]);if(hit)run(()=>{const n=cmd.splitCurve(stored,id,hit.t);choose({ids:n.ids},'direct');return n.document;});return;}
   if(tool==='mirror'){e.stopPropagation();if(!first){setFirst({curveId:id,end:0});setHint(t('请选择目标曲线'));}else try{const n=cmd.mirrorEdit(stored,first.curveId,id);commit(n);setFirst(null);choose({ids:[id]},'direct');}catch(ex){if(ex instanceof cmd.RelatedSelection)setPending({ids:ex.ids,scope:[id],mirror:{source:first.curveId,target:id,base:stored}});else error(ex,[id]);}return;}
   if(!editable(d,id))return;
-  let ids=(tool==='select'||tool==='deform')?selectionUnit(d,id):[id];if(e.shiftKey)ids=ids.every(x=>selected.includes(x))?selected.filter(x=>!ids.includes(x)):[...new Set([...selected,...ids])];
-  else if((tool==='select'||tool==='deform')&&selected.includes(id)&&ids.every(x=>selected.includes(x)))ids=selected;
+  const ids=selectCurveAtPointer(d,selected,id,{grouped:tool==='select'||tool==='deform',shift:e.shiftKey});
   if(!(ids.length===selected.length&&ids.every(id=>selected.includes(id)))){approved.current=null;session.set({selection:{ids,group:tool==='select'?selectedGroup(d,ids)?.id:undefined}});}setReferenceMoving(false);
   if(tool==='deform'){e.stopPropagation();return;}
   if(tool==='direct')session.set({selection:{ids}});startDrag(e,'move',{ids:approved.current?.scope??ids});
@@ -224,7 +224,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     const snapped=snapMirrorAxis(targets,x,p[1],unit);setAxisSnap(snapped?.position??null);g.next=cmd.setMirrorAxis(g.base,snapped?.position[0]??x);
    }
    if(g.kind==='node'){
-    let position=add(g.base.nodes.find(n=>n.id===g.node)!.position,delta);
+    let position=drawingControlDragTarget(g.base,{nodeId:g.node!},g.start,p);
     const visibleIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
     const coupled=linkedNodeIds(g.base,g.node!);const target=g.base.nodes.filter(n=>!coupled.has(n.id)&&visibleIds.has(n.id)).map(n=>({n,distance:length(sub(n.position,position))*unit})).filter(x=>x.distance<=9).sort((a,b)=>a.distance-b.distance)[0]?.n;
     const axis=g.base.mirrorAxisX??0,guide=guideCandidate(g.base,position,e.altKey,g.base.curves.filter(c=>c.nodes.some(n=>coupled.has(n))).map(c=>c.id)),snapped=e.altKey?null:guide?.point??target?.position??(Math.abs(position[0]-axis)*unit<=8?[axis,position[1]] as Point2:null);
@@ -233,7 +233,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(g.kind==='displayInterval'){
     const grip=g.displayInterval!,result=updateIntervalDrag(g.intervalWalk!,p);g.intervalWalk=result.state;if(Object.keys(result.change).length)g.next=changeDisplayInterval(g.base,grip.track,grip.range,result.change);
    }
-   if(g.kind==='handle'){const target=add(curveById(g.base,g.endpoint!.curveId).handles[g.endpoint!.end],delta),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=cmd.moveHandle(g.base,g.endpoint!,hit?.point??target);setGuideSnap(hit);}
+   if(g.kind==='handle'){const target=drawingControlDragTarget(g.base,{handle:g.endpoint!},g.start,p),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=cmd.moveHandle(g.base,g.endpoint!,hit?.point??target);setGuideSnap(hit);}
    if(g.kind==='deform'){
     const original=g.cage!,quad=original.quad.map(q=>[...q]) as Quad;quad[g.corner!]=add(quad[g.corner!],delta);
     const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current);g.next=result.document;
@@ -257,9 +257,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     if(!g.pen){const anchor={position:g.start,out:sub(g.cursor??g.start,g.start)};penHistory.current=new WeakMap([[g.base,anchor]]);setPen(anchor);}
     else if(length(sub(g.start,g.pen.position))*unit>2){const n=penCandidate(g.base,g.pen,g.start,g.cursor??g.start);penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,n.closed?null:n.next);commit(n.document);setPen(n.closed?null:n.next);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
    }else if(g.kind==='box'){
-    const p=local(e??g.last),lo:[number,number]=[Math.min(g.start[0],p[0]),Math.min(g.start[1],p[1])],hi:[number,number]=[Math.max(g.start[0],p[0]),Math.max(g.start[1],p[1])];
-    const hits=shownCurves.filter(id=>{if(!editable(d,id))return false;const b=selectionBounds(d,[id])!;return b.min[0]>=lo[0]&&b.min[1]>=lo[1]&&b.max[0]<=hi[0]&&b.max[1]<=hi[1];});
-    const ids=tool==='select'?hits.flatMap(id=>selectionUnit(d,id)):hits;choose({ids:[...new Set([...(g.shift?selected:[]),...ids])]},tool);
+    const ids=selectCurvesInBox(d,shownCurves,g.start,local(e??g.last),{grouped:tool==='select',previousIds:g.shift?selected:[]});choose({ids},tool);
    }else if(g.next){if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:g.next!}:c);commit(g.next);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
   }catch(ex){error(ex);}
   if(interrupted&&g.next)setHint(t('拖动已中断，已保留最后有效位置。'));

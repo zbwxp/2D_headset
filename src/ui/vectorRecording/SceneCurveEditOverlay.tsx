@@ -1,4 +1,5 @@
 import type {PointerEvent} from 'react';
+import {controlDragTarget} from '../drawing/editGestures';
 import {editable,type DrawingDocument,type Point2} from '../../domain/drawing/model';
 
 /** Compiled Drawing IDs and final displayed world coordinates. */
@@ -11,7 +12,7 @@ export function beginRecordingCurveGesture(edit:RecordingCurveEdit,start:Point2,
  return {edit:{...edit,position:[...edit.position]},start:[...start],editor};
 }
 export function recordingCurveGestureEdit(gesture:RecordingCurveGesture,point:Point2):RecordingCurveEdit{
- return {...gesture.edit,position:[gesture.edit.position[0]+point[0]-gesture.start[0],gesture.edit.position[1]+point[1]-gesture.start[1]]};
+ return {...gesture.edit,position:controlDragTarget(gesture.edit.position,gesture.start,point)};
 }
 export function recordingCurveControl(drawing:DrawingDocument,edit:RecordingCurveEdit):RecordingCurveEdit|null{
  if(edit.kind==='node'){const node=drawing.nodes.find(n=>n.id===edit.nodeId);return node?{...edit,position:node.position}:null;}
