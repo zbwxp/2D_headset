@@ -111,10 +111,11 @@ function transportMaterial(start:DrawingDocument,end:DrawingDocument,drawing:Dra
  return replaceEndpointPairMaterial(drawing,displayIntervals);
 }
 
-/** A single common sampler for runtime, inverse correction and onion display.
+/** Shared final-control sampler for runtime, inverse correction and ghosts.
  * Only endpoint final controls enter this path; Warp/placement are never run
- * for an intermediate. Derived ARC/ink is constructed by ordinary Drawing. */
-export function interpolateEndpointPairDrawing(start:DrawingDocument,end:DrawingDocument,progress:number,responses?:SnapshotEndpointResponses,options:{startWins?:boolean}={}):{drawing:DrawingDocument;diagnostics:string[]} {
+ * for an intermediate. Material routes, arclength and derived ARC/ink are not
+ * evaluated here. The runtime wrapper below transports its material afterward. */
+export function interpolateEndpointPairGeometry(start:DrawingDocument,end:DrawingDocument,progress:number,responses?:SnapshotEndpointResponses,options:{startWins?:boolean}={}):{drawing:DrawingDocument;diagnostics:string[]} {
  if(!Number.isFinite(progress))throw Error('Endpoint-pair progress must be finite.');const t=Math.max(0,Math.min(1,progress));
  if(t===0)return {drawing:start,diagnostics:[]};if(t===1)return {drawing:end,diagnostics:[]};
  const diagnostics=endpointPairCompatibility(start,end);if(diagnostics.length)throw Error(diagnostics.join('\n'));
@@ -127,7 +128,14 @@ export function interpolateEndpointPairDrawing(start:DrawingDocument,end:Drawing
  const lastJoins=new Map(end.joins.map(j=>[j.id,j])),lastLinks=new Map((end.endpointLinks??[]).map(l=>[l.id,l])),lastOffsets=new Map(end.offsets.map(o=>[o.id,o]));
  let drawing:DrawingDocument={...selected,nodes,curves,joins:start.joins.map(j=>j.mode==='ARC'?{...j,radius:blend(j.radius!,lastJoins.get(j.id)!.radius!,t)}:j),endpointLinks:start.endpointLinks?.map(l=>{const other=lastLinks.get(l.id)!;return l.joinBrush?.kind==='ARC'&&other.joinBrush?.kind==='ARC'?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,blend(l.joinBrush.trimDistance,other.joinBrush.trimDistance,t)/l.joinBrush.trimDistance)}:l;}),offsets:selected.offsets.map(o=>{const a=start.offsets.find(v=>v.id===o.id)!,b=lastOffsets.get(o.id)!;return {...o,...(a.translation||b.translation?{translation:point(a.translation??[0,0],b.translation??[0,0],undefined)}:{})};})};
  const smooth=applyEndpointPairSmoothConstraints(drawing);drawing=smooth.drawing;diagnostics.push(...smooth.diagnostics);
- drawing=transportMaterial(start,end,drawing,t,startWins,diagnostics);
+ return {drawing,diagnostics:[...new Set(diagnostics)]};
+}
+
+/** Main Drawing retains its ordinary material transport and derived ink. */
+export function interpolateEndpointPairDrawing(start:DrawingDocument,end:DrawingDocument,progress:number,responses?:SnapshotEndpointResponses,options:{startWins?:boolean}={}):{drawing:DrawingDocument;diagnostics:string[]} {
+ const sampled=interpolateEndpointPairGeometry(start,end,progress,responses,options),t=Math.max(0,Math.min(1,progress));
+ if(t===0||t===1)return sampled;
+ const diagnostics=[...sampled.diagnostics],drawing=transportMaterial(start,end,sampled.drawing,t,options.startWins??t<=.5,diagnostics);
  // Material transport already checked the exact derived geometry. Changed
  // numeric masks do not require another traversal or ARC construction here.
  return {drawing,diagnostics:[...new Set(diagnostics)]};

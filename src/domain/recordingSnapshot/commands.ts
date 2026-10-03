@@ -12,7 +12,7 @@ import {sameAngle} from '../vectorRecording/interpolation';
 import {identityScenePlacement,identitySceneShape,type SceneTrack,type ScenePlacementValue,type SceneShapeValue,type SceneIntervalValue} from '../recordingScene/model';
 import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotInterpolationWeight,type SnapshotControlResponse,type SnapshotEndpointResponses,type Angle} from './model';
 import {resolveSnapshot,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
-import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,interpolateEndpointPairDrawing,validateSnapshotControlResponse,validateSnapshotEndpointResponses} from './endpointPair';
+import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,interpolateEndpointPairGeometry,validateSnapshotControlResponse,validateSnapshotEndpointResponses} from './endpointPair';
 import {remapDrawingIdentities,remapIntervalIdentities} from './sources';
 import {validateSnapshotInterpolationWeight} from './weights';
 
@@ -159,7 +159,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   const responses=clone(pair!.draft?.responses??pair!.responses??{nodes:{},handles:{}});
   for(const update of updates){const control=responseControl(responses,update.id,update.end),knots=(control[update.axis]??[]).filter(point=>Math.abs(point[0]-t)>1e-10);knots.push([t,update.value]);knots.sort((a,b)=>a[0]-b[0]);control[update.axis]=knots;}
   try{validateSnapshotEndpointResponses(responses);}catch(error){fail('INVALID_REQUEST',(error as Error).message);}
-  const actual=index(interpolateEndpointPairDrawing(basis.start.drawing,basis.end.drawing,t,responses,{startWins:t<.5||t===.5&&basis.start.angle.x<basis.end.angle.x}).drawing);
+  const actual=index(interpolateEndpointPairGeometry(basis.start.drawing,basis.end.drawing,t,responses,{startWins:t<.5||t===.5&&basis.start.angle.x<basis.end.angle.x}).drawing);
   const verify=(label:string,position:Point2|undefined,target:Point2)=>{if(!position||length(sub(position,target))>1e-7)fail('ENDPOINT_CONSTRAINT_UNSOLVABLE',`${label}: this correction conflicts with a linked or smooth endpoint constraint. Edit the responsible basis control or its driver first.`);};
   for(const node of next.nodes)verify(`Node ${node.id}`,actual.nodes.get(node.id),node.position);
   for(const curve of next.curves)for(const handleEnd of [0,1] as const)verify(`Handle ${curve.id} end ${handleEnd}`,actual.curves.get(curve.id)?.handles[handleEnd],curve.handles[handleEnd]);

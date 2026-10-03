@@ -46,27 +46,24 @@ test('current canvas evaluation is reused with zero duplicate endpoint runtime c
 
 function geometric(cubic:Cubic,spans:Array<[number,number]>):EndpointOnionGeometry {
  const drawing:DrawingDocument={...emptyDrawing(),nodes:[{id:'a',position:cubic[0]},{id:'b',position:cubic[3]}],curves:[{id:'curve',name:'Curve',nodes:['a','b'],handles:[cubic[1],cubic[2]],width:.02,visible:true,locked:false}],layers:[{id:'layer',name:'Layer',items:['curve'],visible:true,locked:false}]};
- return {snapshotId:'pose',angle:at(0),drawing,ink:{curves:{curve:{cubic,visible:true,segments:spans.map(([start,end],index)=>({id:`range-${index}`,start,end,cubic})),masks:spans.map(([start,end],index)=>({id:`range-${index}`,trackId:'track',rangeId:`range-${index}`,mode:'SHOW' as const,enabled:true,scope:'PATH' as const,spans:[{start,end}]}))}},arcs:{},diagnostics:[]}};
+ drawing.displayIntervals=[{id:'track',anchor:{id:'curve',reverse:false},ranges:spans.map(([start,end],index)=>({id:`range-${index}`,start,end}))}];
+ return {snapshotId:'pose',angle:at(0),drawing};
 }
-test('matching material range endpoints interpolate and one-sided hidden geometry remains in the visible half',()=>{
+test('full source ghosts ignore endpoint material ranges and hidden geometry flags',()=>{
  const cubic:Cubic=[[0,0],[1/3,0],[2/3,0],[1,0]],start=geometric(cubic,[[.1,.4]]),end={...geometric(cubic,[[.5,.9]]),angle:at(-90)};
- const half=interpolateEndpointOnion(start,end,5).frames.find(frame=>frame.angle.x===-45)!;expect(half.centerlines).toHaveLength(1);
- expect(half.centerlines![0].cubic[0][0]).toBeCloseTo(.3);expect(half.centerlines![0].cubic[3][0]).toBeCloseTo(.65);
- const hidden={...end,ink:{...end.ink,curves:{curve:{...end.ink.curves.curve,visible:false}}}},result=interpolateEndpointOnion(start,hidden,5);
- expect(result.frames.find(frame=>frame.angle.x===-30)!.centerlines).toHaveLength(1);expect(result.frames.find(frame=>frame.angle.x===-45)!.centerlines).toHaveLength(0);expect(result.frames.find(frame=>frame.angle.x===-60)!.centerlines).toHaveLength(0);
- const bothHidden={...start,ink:{...start.ink,curves:{curve:{...start.ink.curves.curve,visible:false}}}};expect(interpolateEndpointOnion(bothHidden,hidden,10).frames.every(frame=>frame.centerlines!.length===0)).toBe(true);
+ end.drawing.curves[0].visible=false;start.drawing.curves[0].inkVisible=false;start.drawing.layers[0].visible=false;
+ const result=interpolateEndpointOnion(start,end,5);for(const frame of result.frames)expect(frame.centerlines).toEqual([{id:'curve:curve:0',cubic}]);
 });
 
-test('unmatched material range IDs produce a diagnostic and use the nearer endpoint without intersection',()=>{
- const cubic:Cubic=[[0,0],[1/3,0],[2/3,0],[1,0]],start=geometric(cubic,[[.1,.4]]),end={...geometric(cubic,[[.6,.9]]),angle:at(-90)};end.ink.curves.curve.masks![0].id='other-range';
- const result=interpolateEndpointOnion(start,end,10);expect(result.diagnostics.some(value=>value.includes('interval IDs or range structure differ'))).toBe(true);
- expect(result.frames.find(frame=>frame.angle.x===-30)!.centerlines![0].cubic[0][0]).toBeCloseTo(.1);expect(result.frames.find(frame=>frame.angle.x===-60)!.centerlines![0].cubic[0][0]).toBeCloseTo(.6);
+test('unmatched material ranges do not affect full source ghosts or produce material diagnostics',()=>{
+ const cubic:Cubic=[[0,0],[1/3,0],[2/3,0],[1,0]],start=geometric(cubic,[[.1,.4]]),end={...geometric(cubic,[[.6,.9]]),angle:at(-90)};end.drawing.displayIntervals![0].ranges[0].id='other-range';
+ const result=interpolateEndpointOnion(start,end,10);expect(result.diagnostics).toEqual([]);for(const frame of result.frames)expect(frame.centerlines).toEqual([{id:'curve:curve:0',cubic}]);
 });
 
 test('selected endpoints define the degree line and thin SVG controls declare the visibility policy',()=>{
  const {workspace}=fixture(),endpoints=defaultSceneOnionEndpoints(workspace.snapshots);expect(endpoints).toEqual({startSnapshotId:'zero',endSnapshotId:'side'});
  expect(sampleEndpointOnionAngles(at(0),at(-90),10)).toHaveLength(10);expect(sampleEndpointOnionAngles(at(0),at(-90),5)).toHaveLength(19);
- const controls=renderToStaticMarkup(createElement(SceneOnionControls,{settings:{...DEFAULT_SCENE_ONION_SETTINGS,enabled:true},onChange:()=>{},endpointViews:workspace.snapshots,endpoints,onEndpointsChange:()=>{},zh:true}));expect(controls).toContain('两端快照插值');expect(controls).toContain('Onion start snapshot');expect(controls).toContain('Onion end snapshot');expect(controls).toContain('显隐取较近端点');expect(controls).not.toContain('Onion sweep axis');
+ const controls=renderToStaticMarkup(createElement(SceneOnionControls,{settings:{...DEFAULT_SCENE_ONION_SETTINGS,enabled:true},onChange:()=>{},endpointViews:workspace.snapshots,endpoints,onEndpointsChange:()=>{},zh:true}));expect(controls).toContain('两端快照插值');expect(controls).toContain('Onion start snapshot');expect(controls).toContain('Onion end snapshot');expect(controls).toContain('不做显隐裁切或 ARC 修剪');expect(controls).not.toContain('Onion sweep axis');
  const cache=createEndpointOnionCache(),frames=interpolateEndpointOnion(cache.resolve(workspace,'recording','zero',at(-90)),cache.resolve(workspace,'recording','side',at(-90)),10).frames;
  const svg=renderToStaticMarkup(createElement(SceneOnionSkin,{frames,angle:at(-90),opacity:.16,screen:p=>p,unit:250}));expect(svg).toContain('scene-onion-centerline');expect(svg).toContain('stroke-width="1"');expect(svg).not.toContain('drawing-ink');expect(svg).not.toContain('drawing-fill');expect(svg).not.toContain('drawing-hit');
 });
@@ -75,6 +72,6 @@ test('real three-piece face endpoint blend preserves canonical half controls and
  const project=ensureRecordingSnapshots(parseLandmarks(readFileSync(new URL('../assets/three-piece-scene-example.json',import.meta.url),'utf8'))),workspace=project.recordingSnapshots,recording=workspace.recordings[0],views=recording.snapshotIds.map(id=>workspace.snapshots.find(snapshot=>snapshot.id===id)!),zero=views.find(view=>view.angle.x===0&&view.angle.y===0)!,side=views.find(view=>Math.abs(view.angle.x)===90&&view.angle.y===0)!,before=JSON.stringify(workspace),cache=createEndpointOnionCache();
  expect(zero).toBeTruthy();expect(side).toBeTruthy();const start=cache.resolve(workspace,recording.id,zero.id,zero.angle),end=cache.resolve(workspace,recording.id,side.id,zero.angle),frames=interpolateEndpointOnion(start,end,5).frames,half=frames.find(frame=>Math.abs(frame.angle.x)===45)!;
  for(const curve of half.drawing.curves){const a=start.drawing.curves.find(value=>value.id===curve.id)!,b=end.drawing.curves.find(value=>value.id===curve.id)!;for(const index of [0,1] as const)for(const axis of [0,1] as const)expect(curve.handles[index][axis]).toBeCloseTo((a.handles[index][axis]+b.handles[index][axis])/2,10);}
- const closures=start.drawing.curves.filter(curve=>curve.name?.includes('内部闭合线'));expect(closures.length).toBeGreaterThan(0);for(const curve of closures){expect(extractEndpointOnionInk(start.drawing).curves[curve.id]?.segments??[]).toEqual([]);expect(frames.every(frame=>frame.centerlines!.every(line=>!line.id.includes(curve.id)))).toBe(true);}
+ const closures=start.drawing.curves.filter(curve=>curve.name?.includes('内部闭合线'));expect(closures.length).toBeGreaterThan(0);for(const curve of closures){expect(extractEndpointOnionInk(start.drawing).curves[curve.id]?.segments??[]).toEqual([]);expect(frames.every(frame=>frame.centerlines!.some(line=>line.id===`curve:${curve.id}:0`))).toBe(true);}
  expect(JSON.stringify(workspace)).toBe(before);
 });

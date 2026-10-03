@@ -1,18 +1,22 @@
 import type {Cubic,DrawingDocument,Endpoint,Point2} from '../../domain/drawing/model';
-import {layerFor,visible} from '../../domain/drawing/model';
-import {subcurve} from '../../domain/drawing/roundedJoin';
+import {layerFor,shapeOf,visible} from '../../domain/drawing/model';
 import {evaluateRecordingSnapshot,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
-import {interpolateEndpointPairDrawing} from '../../domain/recordingSnapshot/endpointPair';
+import {applyEndpointPairSmoothConstraints,interpolateEndpointPairGeometry} from '../../domain/recordingSnapshot/endpointPair';
 import type {RecordingSnapshotWorkspace,SnapshotEndpointResponses,SnapshotRecording} from '../../domain/recordingSnapshot/model';
-import {resolveSnapshotInterpolationWeight,snapshotInterpolationWeight,snapshotWeightNodeOwners} from '../../domain/recordingSnapshot/weights';
+import {snapshotInterpolationWeight,snapshotWeightNodeOwners} from '../../domain/recordingSnapshot/weights';
 import {sameAngle,type Angle} from '../../domain/vectorRecording/interpolation';
 import {createSnapshotOnionInspectionCache,markSceneOnionHighlights,type SceneOnionFrame,type SceneOnionSettings} from './angleInspection';
-import {createEndpointPairOnionInkCache,extractEndpointOnionInk,type EndpointOnionInk} from './endpointOnionInk';
 
 export interface SceneOnionEndpoints {startSnapshotId:string;endSnapshotId:string}
 export interface EndpointOnionView {id:string;name:string;angle:Angle}
 export interface OnionCenterline {id:string;cubic:Cubic}
-export interface EndpointOnionGeometry {drawing:DrawingDocument;ink:EndpointOnionInk;angle:Angle;snapshotId:string}
+export interface EndpointOnionGeometry {drawing:DrawingDocument;angle:Angle;snapshotId:string}
+
+/** Evaluated snapshots contain only their included source geometry. */
+function sourceCenterlines(drawing:DrawingDocument):OnionCenterline[] {
+ const nodes=new Map(drawing.nodes.map(node=>[node.id,node.position]));
+ return drawing.curves.map(curve=>({id:`curve:${curve.id}:0`,cubic:[nodes.get(curve.nodes[0])!,...curve.handles,nodes.get(curve.nodes[1])!] as Cubic}));
+}
 
 export function defaultSceneOnionEndpoints(views:readonly EndpointOnionView[]):SceneOnionEndpoints {
  const start=views.find(view=>sameAngle(view.angle,{x:0,y:0}))??views[0];
@@ -39,108 +43,60 @@ export function sampleEndpointOnionAngles(start:Angle,end:Angle,step:5|10):Array
  result.push({t:1,angle:{...end}});return result;
 }
 
-export interface OnionMaterialMask {id:string;trackId:string;rangeId:string;mode:'SHOW'|'HIDE';enabled:boolean;scope:'PATH'|'CURVE';spans:Array<{start:number;end:number}>}
-interface MaterialGeometry {cubic:Cubic;visible:boolean;domain?:{start:number;end:number};masks?:OnionMaterialMask[]}
-const merged=(spans:Array<[number,number]>):Array<[number,number]>=>{
- const result:Array<[number,number]>=[];for(const [lo,hi] of spans.map(([a,b]):[number,number]=>[Math.max(0,a),Math.min(1,b)]).filter(([a,b])=>b-a>1e-10).sort((a,b)=>a[0]-b[0])){const last=result.at(-1);if(last&&lo<=last[1]+1e-10)last[1]=Math.max(last[1],hi);else result.push([lo,hi]);}return result;
-};
-const subtract=(base:Array<[number,number]>,gaps:Array<[number,number]>)=>{let result=base;for(const [lo,hi] of merged(gaps))result=result.flatMap(([a,b]):Array<[number,number]>=>hi<=a||lo>=b?[[a,b]]:[...(lo>a?[[a,lo] as [number,number]]:[]),...(hi<b?[[hi,b] as [number,number]]:[])]);return result;};
-function materialCoverage(masks:OnionMaterialMask[]):Array<[number,number]> {
- const enabled=masks.filter(mask=>mask.enabled),path=enabled.filter(mask=>mask.scope==='PATH'),shown=path.filter(mask=>mask.mode==='SHOW'),spans=(values:OnionMaterialMask[])=>values.flatMap(value=>value.spans.map(span=>[span.start,span.end] as [number,number]));
- let result=subtract(shown.length?merged(spans(shown)):[[0,1]],spans(path.filter(mask=>mask.mode==='HIDE')));
- const local=enabled.filter(mask=>mask.scope==='CURVE');for(const id of new Set(local.map(mask=>mask.trackId))){const group=local.filter(mask=>mask.trackId===id),shows=group.filter(mask=>mask.mode==='SHOW');if(shows.length){const coverage=merged(spans(shows));result=merged(result.flatMap(([a,b])=>coverage.map(([c,d])=>[Math.max(a,c),Math.min(b,d)] as [number,number])));}result=subtract(result,spans(group.filter(mask=>mask.mode==='HIDE')));}
- return result;
-}
 /** Greatest endpoint weight wins; a tie follows the runtime's lower-X/Y order. */
 export function nearerOnionEndpoint(start:Angle,end:Angle,t:number):'start'|'end' {
  return t<.5?'start':t>.5?'end':start.x<end.x||start.x===end.x&&start.y<=end.y?'start':'end';
 }
-function materialPair(id:string,a:MaterialGeometry,b:MaterialGeometry,diagnostics:Set<string>){
- const left=a.masks??[],right=b.masks??[],byId=new Map(right.map(mask=>[mask.id,mask]));
- const compatible=left.length===right.length&&left.every(mask=>byId.get(mask.id)?.spans.length===mask.spans.length);
- if(!compatible)diagnostics.add(`${id}: interval IDs or range structure differ; material follows the nearer endpoint without guessed matching.`);
- return (t:number,startWins:boolean):Array<[number,number]>=>{
-  if(!(startWins?a.visible:b.visible))return [];
-  const masks=!compatible?(startWins?left:right):left.map(mask=>{const other=byId.get(mask.id)!,discrete=startWins?mask:other;return {...discrete,spans:mask.spans.map((span,index)=>({start:span.start+(other.spans[index].start-span.start)*t,end:span.end+(other.spans[index].end-span.end)*t}))};});
-  const lo=(a.domain?.start??0)+((b.domain?.start??0)-(a.domain?.start??0))*t,hi=(a.domain?.end??1)+((b.domain?.end??1)-(a.domain?.end??1))*t;
-  return merged(materialCoverage(masks).map(([start,end])=>[Math.max(start,lo),Math.min(end,hi)]));
- };
-}
-
 type OnionWeightOwner={layerId:string;curveId?:string};
-interface OnionGeometryPair {id:string;a:Cubic;b:Cubic;owner?:OnionWeightOwner;nodes?:[string,string];relationCurves?:[string,string];anchors?:Array<{end:0|1;source:Endpoint}>;coverage:(t:number,startWins:boolean)=>Array<[number,number]>}
+interface OnionGeometryPair {id:string;curveId:string;a:Cubic;b:Cubic;owner?:OnionWeightOwner;nodes:[string,string]}
 
-/** Blend only final endpoint controls. Response assets map geometry progress;
- * stable material ranges and visibility retain their angle-based timing. */
+/** Full source centerlines from the two final endpoint bases. Curve/layer
+ * responses retain their shared-node authority; visibility and material never
+ * clip ghosts, and derived ARC geometry is not sampled. */
 export function interpolateEndpointOnion(start:EndpointOnionGeometry,end:EndpointOnionGeometry,step:5|10,recording?:SnapshotRecording):{frames:SceneOnionFrame[];diagnostics:string[]} {
- const diagnostics=new Set([...start.ink.diagnostics,...end.ink.diagnostics]),pairs:OnionGeometryPair[]=[];
- const startCurves=new Map(start.drawing.curves.map(curve=>[curve.id,curve])),endCurves=new Map(end.drawing.curves.map(curve=>[curve.id,curve]));
- const nodeOwners=snapshotWeightNodeOwners(start.drawing),curveOwners=new Map<string,OnionWeightOwner>();
+ const diagnostics=new Set<string>(),pairs:OnionGeometryPair[]=[],startNodes=new Map(start.drawing.nodes.map(node=>[node.id,node])),endNodes=new Map(end.drawing.nodes.map(node=>[node.id,node]));
+ const startCurves=new Map(start.drawing.curves.map(curve=>[curve.id,curve])),endCurves=new Map(end.drawing.curves.map(curve=>[curve.id,curve])),nodeOwners=snapshotWeightNodeOwners(start.drawing);
  const weight=(owner:OnionWeightOwner|undefined,t:number)=>recording&&owner?snapshotInterpolationWeight(recording,start.snapshotId,end.snapshotId,owner.layerId,t,owner.curveId):t;
  for(const id of new Set([...startCurves.keys(),...endCurves.keys()])){
-  const first=startCurves.get(id),last=endCurves.get(id),a=start.ink.curves[id],b=end.ink.curves[id];
-  if(!first||!last||!a||!b||first.nodes.some((node,index)=>node!==last.nodes[index])){diagnostics.add(`Curve ${id} is missing or has different canonical topology; omitted without guessed matching.`);continue;}
-  const left=a as typeof a&MaterialGeometry,right=b as typeof b&MaterialGeometry;
-  const layer=layerFor(start.drawing,id),owner=layer?{layerId:layer.id,curveId:id}:undefined;if(owner)curveOwners.set(id,owner);
-  pairs.push({id:`curve:${id}`,a:left.cubic,b:right.cubic,owner,nodes:first.nodes,coverage:materialPair(`Curve ${id}`,left,right,diagnostics)});
+  const first=startCurves.get(id),last=endCurves.get(id);
+  if(!first||!last||first.nodes.some((node,index)=>node!==last.nodes[index]||!startNodes.has(node)||!endNodes.has(node))){diagnostics.add(`Curve ${id} is missing or has different canonical topology; omitted without guessed matching.`);continue;}
+  const layer=layerFor(start.drawing,id),owner=layer?{layerId:layer.id,curveId:id}:undefined;
+  pairs.push({id:`curve:${id}:0`,curveId:id,a:shapeOf(start.drawing,id),b:shapeOf(end.drawing,id),owner,nodes:first.nodes});
  }
- const startArcs=start.ink.arcGeometry??{},endArcs=end.ink.arcGeometry??{};
- for(const id of new Set([...Object.keys(startArcs),...Object.keys(endArcs)])){
-  const a=startArcs[id],b=endArcs[id];
-  if(!a||!b||a.length!==b.length||start.ink.arcPieceCounts?.[id]!==end.ink.arcPieceCounts?.[id]){diagnostics.add(`ARC ${id} has different endpoint topology; omitted without guessed matching.`);continue;}
-  let owner:OnionWeightOwner|undefined,relationCurves:[string,string]|undefined,relationEnds:[Endpoint,Endpoint]|undefined;
-  try{const [kind,relationId]=JSON.parse(id),relation=kind==='link'?start.drawing.endpointLinks?.find(link=>link.id===relationId):kind==='join'?start.drawing.joins.find(join=>join.id===relationId):undefined;
-   if(relation){const nodeId=startCurves.get(relation.a.curveId)?.nodes[relation.a.end],nodeOwner=nodeId?nodeOwners.get(nodeId):undefined;owner=nodeOwner?{layerId:nodeOwner.layerId}:undefined;relationCurves=[relation.a.curveId,relation.b.curveId];relationEnds=[relation.a,relation.b];}
-  }catch{ /* Unrecognized relation IDs retain the legacy linear response. */ }
-  if(recording?.interpolationWeights?.length&&!owner)diagnostics.add(`ARC ${id} has no response owner; geometry uses the linear response.`);
-  a.forEach(left=>{const right=b.find(piece=>piece.pieceIndex===left.pieceIndex);if(!right){diagnostics.add(`ARC ${id} is missing piece ${left.pieceIndex}; omitted.`);return;}
-   const anchors:Array<{end:0|1;source:Endpoint}>=[];if(relationEnds){if(left.pieceIndex===0)anchors.push({end:0,source:relationEnds[0]});if(left.pieceIndex===a.length-1)anchors.push({end:1,source:relationEnds[1]});}
-   pairs.push({id:`arc:${id}:${left.pieceIndex}`,a:left.cubic,b:right.cubic,owner,relationCurves,anchors,coverage:materialPair(`ARC ${id}/${left.pieceIndex}`,left,right,diagnostics)});
+ const sharedNodes=start.drawing.nodes.filter(node=>endNodes.has(node.id)),curveIds=new Set(pairs.map(pair=>pair.curveId));
+ const sameEnds=(a:{a:Endpoint;b:Endpoint},b:{a:Endpoint;b:Endpoint}|undefined)=>!!b&&a.a.curveId===b.a.curveId&&a.a.end===b.a.end&&a.b.curveId===b.b.curveId&&a.b.end===b.b.end&&curveIds.has(a.a.curveId)&&curveIds.has(a.b.curveId);
+ const smoothJoins=start.drawing.joins.filter(join=>join.mode==='SMOOTH'&&sameEnds(join,end.drawing.joins.find(other=>other.id===join.id&&other.mode==='SMOOTH')));
+ const smoothLinks=(start.drawing.endpointLinks??[]).filter(link=>link.joinBrush?.kind==='SMOOTH'&&sameEnds(link,end.drawing.endpointLinks?.find(other=>other.id===link.id&&other.joinBrush?.kind==='SMOOTH')));
+ const frames=sampleEndpointOnionAngles(start.angle,end.angle,step).map(({angle,t}):SceneOnionFrame=>{
+  const startWins=nearerOnionEndpoint(start.angle,end.angle,t)==='start',nodeWeights=new Map(sharedNodes.map(node=>[node.id,weight(nodeOwners.get(node.id),t)]));
+  const centerlines=pairs.map(pair=>{
+   const curveWeight=weight(pair.owner,t),weights=pair.nodes.map(id=>nodeWeights.get(id)??t) as [number,number];
+   pair.nodes.forEach((id,index)=>{if(Math.abs(weights[index]-curveWeight)>1e-10)diagnostics.add(`Node ${id}: conflicting curve responses use the shared node or endpoint-link layer response to keep geometry connected.`);});
+   return {id:pair.id,cubic:lerpOwnedCubic(pair.a,pair.b,curveWeight,weights)};
   });
- }
- const endNodes=new Map(end.drawing.nodes.map(node=>[node.id,node])),sharedNodes=start.drawing.nodes.filter(node=>endNodes.has(node.id)),nodeIds=new Set(sharedNodes.map(node=>node.id));
- const sharedCurves=start.drawing.curves.filter(curve=>endCurves.has(curve.id)&&curve.nodes.every((id,index)=>nodeIds.has(id)&&id===endCurves.get(curve.id)!.nodes[index]));
- const samples=sampleEndpointOnionAngles(start.angle,end.angle,step),arcPairs=pairs.filter(pair=>pair.relationCurves);
- const curveOwner=(id:string)=>curveOwners.get(id);
- const nonlinear=(owner:OnionWeightOwner|undefined)=>!!owner&&!!resolveSnapshotInterpolationWeight(recording,start.snapshotId,end.snapshotId,owner.layerId,owner.curveId).asset?.points.some(([x,y])=>Math.abs(x-y)>1e-10);
- // Keep each adjacent curve's own response. Only the derived ARC boundaries
- // follow its weighted trims; ARC interior controls retain relation timing.
- const nonlinearArcs=new Set(arcPairs.filter(pair=>nonlinear(pair.owner)||pair.relationCurves!.some(id=>nonlinear(curveOwner(id))||(startCurves.get(id)?.nodes??[]).some(nodeId=>nonlinear(nodeOwners.get(nodeId))))));
- for(const pair of arcPairs)if(samples.some(({t})=>pair.relationCurves!.some(id=>Math.abs(weight(curveOwner(id),t)-weight(pair.owner,t))>1e-10)))diagnostics.add(`ARC-connected curves ${[...pair.relationCurves!].sort().join(', ')} retain individual responses; ARC boundaries follow their weighted trims while interior controls use the relation layer response.`);
- const startNodes=new Map(start.drawing.nodes.map(node=>[node.id,node]));
- const frames=samples.map(({angle,t}):SceneOnionFrame=>{
-  const startWins=nearerOnionEndpoint(start.angle,end.angle,t)==='start';
-  const nodeWeights=new Map(sharedNodes.map(node=>[node.id,weight(nodeOwners.get(node.id),t)]));
-  const ownedCubic=(a:Cubic,b:Cubic,owner:OnionWeightOwner|undefined,nodes:[string,string])=>lerpOwnedCubic(a,b,weight(owner,t),nodes.map(id=>nodeWeights.get(id)??t) as [number,number]);
-  const weightedCurves=new Map(pairs.filter(pair=>pair.nodes&&pair.owner?.curveId).map(pair=>[pair.owner!.curveId!,ownedCubic(pair.a,pair.b,curveOwner(pair.owner!.curveId!),pair.nodes!)]));
-  return {angle,paintBatches:[],centerlines:pairs.flatMap(pair=>{const owner=pair.owner?.curveId?curveOwner(pair.owner.curveId):pair.owner,curveWeight=weight(owner,t),cubic=pair.nodes?(pair.owner?.curveId?weightedCurves.get(pair.owner.curveId):undefined)??ownedCubic(pair.a,pair.b,owner,pair.nodes):lerpCubic(pair.a,pair.b,curveWeight);
-    if(pair.nodes)for(const nodeId of pair.nodes){const nodeWeight=nodeWeights.get(nodeId)??t;
-     if(Math.abs(nodeWeight-curveWeight)>1e-10)diagnostics.add(`Node ${nodeId}: conflicting curve responses use the shared node or endpoint-link layer response to keep geometry connected.`);
-    }
-    // Trim positions remain on the raw material timeline. A nonlinear ARC
-    // keeps those same boundary supports and its blended endpoint handle
-    // vectors; exact endpoints and the legacy linear path remain untouched.
-    if(t>0&&t<1&&nonlinearArcs.has(pair))for(const anchor of pair.anchors??[]){const id=anchor.source.curveId,source=weightedCurves.get(id),a=start.ink.curves[id]?.domain,b=end.ink.curves[id]?.domain;if(!source||!a||!b)continue;
-     const key=anchor.source.end===0?'start':'end',trim=a[key]+(b[key]-a[key])*t,point=subcurve(source,0,trim)[3],index=anchor.end===0?0:3,handle=anchor.end+1,delta:Point2=[point[0]-cubic[index][0],point[1]-cubic[index][1]];cubic[index]=point;cubic[handle]=[cubic[handle][0]+delta[0],cubic[handle][1]+delta[1]];
-    }
-    return pair.coverage(t,startWins).map(([lo,hi],index)=>({id:`${pair.id}:${index}`,cubic:subcurve(cubic,lo,hi)}));}),
-   drawing:{...start.drawing,nodes:sharedNodes.map(node=>({...node,position:lerpPoint(node.position,endNodes.get(node.id)!.position,nodeWeights.get(node.id)??t)})),curves:sharedCurves.map(curve=>{const last=endCurves.get(curve.id)!,a:Cubic=[startNodes.get(curve.nodes[0])!.position,...curve.handles,startNodes.get(curve.nodes[1])!.position],b:Cubic=[endNodes.get(curve.nodes[0])!.position,...last.handles,endNodes.get(curve.nodes[1])!.position],cubic=ownedCubic(a,b,curveOwner(curve.id),curve.nodes);return {...curve,handles:[cubic[1],cubic[2]] as [Point2,Point2],visible:startWins?visible(start.drawing,curve.id):visible(end.drawing,curve.id),inkVisible:startWins?curve.inkVisible:last.inkVisible};}),fills:[],offsets:[],joins:[],endpointLinks:[],displayIntervals:[]},
+  let drawing:DrawingDocument={...start.drawing,
+   nodes:sharedNodes.map(node=>({...node,position:lerpPoint(node.position,endNodes.get(node.id)!.position,nodeWeights.get(node.id)??t)})),
+   curves:pairs.map((pair,index)=>{const first=startCurves.get(pair.curveId)!,last=endCurves.get(pair.curveId)!,cubic=centerlines[index].cubic;return {...first,handles:[cubic[1],cubic[2]] as [Point2,Point2],visible:startWins?visible(start.drawing,pair.curveId):visible(end.drawing,pair.curveId),inkVisible:startWins?first.inkVisible:last.inkVisible};}),
+   fills:[],offsets:[],joins:smoothJoins,endpointLinks:smoothLinks,displayIntervals:[],
   };
+  if(t>0&&t<1&&(smoothJoins.length||smoothLinks.length)){
+   const smooth=applyEndpointPairSmoothConstraints(drawing);drawing=smooth.drawing;for(const message of smooth.diagnostics)diagnostics.add(message);
+   return {angle,paintBatches:[],drawing,centerlines:sourceCenterlines(drawing)};
+  }
+  return {angle,paintBatches:[],centerlines,drawing};
  });
  const axis=Math.abs(end.angle.x-start.angle.x)>=Math.abs(end.angle.y-start.angle.y)?'x':'y',settings:SceneOnionSettings={enabled:true,axis,step,min:Math.min(start.angle[axis],end.angle[axis]),max:Math.max(start.angle[axis],end.angle[axis]),opacity:1};
  return {frames:markSceneOnionHighlights(frames,settings),diagnostics:[...diagnostics]};
 }
 
-/** The explicit two-basis mode shares its final node/relative-handle sampler
- * with the canvas. Derived ARC and material use that same sampled drawing;
- * legacy onions above keep their original endpoint-ink interpolation. */
-export function interpolateEndpointPairOnion(start:Pick<EndpointOnionGeometry,'drawing'|'angle'>,end:Pick<EndpointOnionGeometry,'drawing'|'angle'>,step:5|10,responses?:SnapshotEndpointResponses,inkCache=createEndpointPairOnionInkCache()):{frames:SceneOnionFrame[];diagnostics:string[]} {
+/** Explicit pair ghosts share the canvas's final node/relative-handle and
+ * explicit SMOOTH algebra, then draw each complete source cubic. Visibility,
+ * interval clipping, ARC trims and ink generation belong to the main renderer. */
+export function interpolateEndpointPairOnion(start:Pick<EndpointOnionGeometry,'drawing'|'angle'>,end:Pick<EndpointOnionGeometry,'drawing'|'angle'>,step:5|10,responses?:SnapshotEndpointResponses):{frames:SceneOnionFrame[];diagnostics:string[]} {
  const diagnostics=new Set<string>(),frames=sampleEndpointOnionAngles(start.angle,end.angle,step).map(({angle,t}):SceneOnionFrame=>{
-  const sampled=interpolateEndpointPairDrawing(start.drawing,end.drawing,t,responses,{startWins:nearerOnionEndpoint(start.angle,end.angle,t)==='start'}),ink=inkCache.resolve(sampled.drawing);
-  for(const message of [...sampled.diagnostics,...ink.diagnostics])diagnostics.add(message);
-  const centerlines:OnionCenterline[]=[];
-  for(const [id,curve] of Object.entries(ink.curves))curve.segments.forEach((segment,index)=>centerlines.push({id:`curve:${id}:${index}`,cubic:subcurve(segment.cubic,segment.start,segment.end)}));
-  for(const [id,arcs] of Object.entries(ink.arcs))arcs.forEach((cubic,index)=>centerlines.push({id:`arc:${id}:${index}`,cubic}));
+  const sampled=interpolateEndpointPairGeometry(start.drawing,end.drawing,t,responses,{startWins:nearerOnionEndpoint(start.angle,end.angle,t)==='start'});
+  for(const message of sampled.diagnostics)diagnostics.add(message);
+  const centerlines=sourceCenterlines(sampled.drawing);
   return {angle,drawing:sampled.drawing,paintBatches:[],centerlines};
  });
  const settings:SceneOnionSettings={enabled:true,axis:'x',step,min:Math.min(start.angle.x,end.angle.x),max:Math.max(start.angle.x,end.angle.x),opacity:1};
@@ -152,7 +108,7 @@ export function interpolateEndpointPairOnion(start:Pick<EndpointOnionGeometry,'d
 export function createEndpointOnionCache(evaluate:typeof evaluateRecordingSnapshot=evaluateRecordingSnapshot){
  const inspection=createSnapshotOnionInspectionCache(),evaluations=new WeakMap<RecordingSnapshotWorkspace,Map<string,EndpointOnionGeometry>>();
  // A response preserves its pair's exact endpoints. Editing it must not
- // rebuild either endpoint's final ink on every graph pointer move. Other
+ // rebuild either endpoint's final geometry on every graph pointer move. Other
  // pairs can affect this endpoint, or a saved parent evaluated inside its own
  // pair; keep those dependencies in the inspection signature.
  function endpointWorkspace(workspace:RecordingSnapshotWorkspace,snapshotId:string):RecordingSnapshotWorkspace {
@@ -171,6 +127,6 @@ export function createEndpointOnionCache(evaluate:typeof evaluateRecordingSnapsh
   let saved=evaluations.get(prepared);if(!saved){saved=new Map();evaluations.set(prepared,saved);}
   const key=JSON.stringify([snapshotId,stopAtWarpId]);const cached=saved.get(key);if(cached)return cached;
   const evaluated=current&&currentEvaluation?.snapshotId===snapshotId&&sameAngle(currentEvaluation.angle,snapshot.angle)?currentEvaluation:evaluate(prepared,recordingId,{snapshotId,angle:snapshot.angle,useDraft:false,diagnostics:'preview',...(stopAtWarpId?{stopAtWarpId}:{})});
-  const result={snapshotId,angle:{...snapshot.angle},drawing:evaluated.drawing,ink:extractEndpointOnionInk(evaluated.drawing)};saved.set(key,result);return result;
+  const result={snapshotId,angle:{...snapshot.angle},drawing:evaluated.drawing};saved.set(key,result);return result;
  }};
 }

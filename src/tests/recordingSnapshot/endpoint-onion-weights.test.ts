@@ -4,7 +4,6 @@ import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluati
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type SnapshotRecording} from '../../domain/recordingSnapshot/model';
 import {createSnapshotOnionInspectionCache} from '../../ui/vectorRecording/angleInspection';
 import {createEndpointOnionCache,interpolateEndpointOnion,type EndpointOnionGeometry} from '../../ui/vectorRecording/endpointOnion';
-import {extractEndpointOnionInk} from '../../ui/vectorRecording/endpointOnionInk';
 
 const at=(x:number)=>({x,y:0});
 const point=(x:number,y=0):Point2=>[x,y];
@@ -14,7 +13,7 @@ function drawing(shared=false,linked=false):DrawingDocument {
 function translated(source:DrawingDocument,x=10):DrawingDocument {
  return {...source,nodes:source.nodes.map(node=>({...node,position:point(node.position[0]+x,node.position[1])})),curves:source.curves.map(curve=>({...curve,handles:curve.handles.map(p=>point(p[0]+x,p[1])) as [Point2,Point2]}))};
 }
-const endpoint=(drawing:DrawingDocument,id='start',x=0):EndpointOnionGeometry=>({drawing,snapshotId:id,angle:at(x),ink:extractEndpointOnionInk(drawing)});
+const endpoint=(drawing:DrawingDocument,id='start',x=0):EndpointOnionGeometry=>({drawing,snapshotId:id,angle:at(x)});
 function response(recording:SnapshotRecording,id:string,layerId:string,value:number,curveId?:string){
  (recording.interpolationWeights??=[]).push({id,target:{layerId,...(curveId?{curveId}:{})},startSnapshotId:'start',endSnapshotId:'end',points:[point(0),point(.5,value),point(1,1)]});
 }
@@ -34,8 +33,7 @@ test('endpoint geometry uses curve response before layer fallback, preserves end
 test.each(['shared','linked'] as const)('%s endpoints keep one position authority and response-specific handle vectors',mode=>{
  const source=drawing(mode==='shared',mode==='linked'),target=translated(source),start=endpoint(source),end=endpoint(target,'end',-90),recording=emptySnapshotRecording('recording'),layer=mode==='linked'?'alpha':'layer';
  target.curves[0].handles[1][1]=2;target.curves[1].handles[0][1]=4;
- // Re-extract after the endpoint handle edit; no intermediate solver participates.
- end.ink=extractEndpointOnionInk(target);response(recording,'layer',layer,.25);response(recording,'fast',layer,.8,'left');response(recording,'slow',mode==='linked'?'zeta':'layer',.1,'right');
+ response(recording,'layer',layer,.25);response(recording,'fast',layer,.8,'left');response(recording,'slow',mode==='linked'?'zeta':'layer',.1,'right');
  const result=interpolateEndpointOnion(start,end,5,recording),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=shapeOf(middle.drawing,'left'),right=shapeOf(middle.drawing,'right');
  expect(left[3]).toEqual(right[0]);expect(left[3][0]).toBeCloseTo(3.5);expect(left[2][0]).toBeCloseTo(3.5-1/3);expect(left[2][1]).toBeCloseTo(1.6);expect(right[1][1]).toBeCloseTo(.4);
  const leftInk=middle.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,rightInk=middle.centerlines!.find(line=>line.id==='curve:right:0')!.cubic;expect(leftInk[3]).toEqual(rightInk[0]);expect(leftInk).toEqual(left);expect(rightInk).toEqual(right);
@@ -48,20 +46,20 @@ test('reversing endpoint order produces the same weighted geometry at every angl
  for(const frame of forward.frames){const other=reverse.frames.find(value=>Math.abs(value.angle.x-frame.angle.x)<1e-8)!;for(const node of frame.drawing.nodes){const position=other.drawing.nodes.find(value=>value.id===node.id)!.position;expect(node.position[0]).toBeCloseTo(position[0],12);expect(node.position[1]).toBeCloseTo(position[1],12);}}
 });
 
-test('material span and boolean visibility timing remains angle based under slow geometry response',()=>{
+test('full source ghosts retain slow geometry response regardless of material and visibility',()=>{
  const source=drawing();source.displayIntervals=[{id:'mask',scope:'CURVE',anchor:{id:'left',reverse:false},ranges:[{id:'show',start:.1,end:.4}]}];
  const target=translated(source);target.displayIntervals=[{id:'mask',scope:'CURVE',anchor:{id:'left',reverse:false},ranges:[{id:'show',start:.5,end:.9}]}];
  const start=endpoint(source),end=endpoint(target,'end',-90),recording=emptySnapshotRecording('recording');response(recording,'slow','layer',.2);
- const middle=half(start,end,recording),line=middle.centerlines!.find(value=>value.id==='curve:left:0')!;expect(line.cubic[0][0]).toBeCloseTo(2.3);expect(line.cubic[3][0]).toBeCloseTo(2.65);
- target.curves[0].visible=false;const hidden=endpoint(target,'end',-90),result=interpolateEndpointOnion(start,hidden,5,recording);expect(result.frames.find(frame=>frame.angle.x===-30)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(true);expect(result.frames.find(frame=>frame.angle.x===-45)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(false);
+ const middle=half(start,end,recording),line=middle.centerlines!.find(value=>value.id==='curve:left:0')!;expect(line.cubic[0][0]).toBeCloseTo(2);expect(line.cubic[3][0]).toBeCloseTo(3);
+ target.curves[0].visible=false;const hidden=endpoint(target,'end',-90),result=interpolateEndpointOnion(start,hidden,5,recording);expect(result.frames.find(frame=>frame.angle.x===-30)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(true);expect(result.frames.find(frame=>frame.angle.x===-45)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(true);
 });
 
-test.each([false,true])('ARC-connected curves retain individual responses and preserve trims (endpoint link: %s)',linked=>{
+test.each([false,true])('ARC-connected source curves retain individual responses with full shared endpoints (endpoint link: %s)',linked=>{
  const source=drawing(!linked,linked);source.nodes.find(node=>node.id==='a')!.position=point(-1);source.nodes.find(node=>node.id==='b')!.position=point(0);if(linked)source.nodes.find(node=>node.id==='c')!.position=point(0);source.nodes.find(node=>node.id==='d')!.position=point(0,1);source.curves[0].handles=[point(-2/3),point(-1/3)];source.curves[1].handles=[point(0,1/3),point(0,2/3)];
  if(linked){source.endpointLinks![0].throughDisplay=true;source.endpointLinks![0].joinBrush={kind:'ARC',trimDistance:.2};source.displayIntervals=[{id:'route',anchor:{id:'left',reverse:false},ranges:[{id:'coverage',start:0,end:1}],displayRoute:{seed:{segments:[{id:'left',reverse:false}],closed:false},throughLinkIds:['link']}}];}else source.joins=[{id:'arc',a:{curveId:'left',end:1},b:{curveId:'right',end:0},mode:'ARC',radius:.2}];
  const start=endpoint(source),end=endpoint(translated(source),'end',-90),recording=emptySnapshotRecording('recording'),layer=linked?'alpha':'layer';response(recording,'relation',layer,.25);response(recording,'left',layer,.8,'left');response(recording,'right',linked?'zeta':'layer',.1,'right');
  const result=interpolateEndpointOnion(start,end,5,recording),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=middle.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,right=middle.centerlines!.find(line=>line.id==='curve:right:0')!.cubic,arcs=middle.centerlines!.filter(line=>line.id.startsWith('arc:'));
- expect(arcs.length).toBeGreaterThan(0);for(const [a,b] of [[left[3],arcs[0].cubic[0]],[right[0],arcs.at(-1)!.cubic[3]]]){expect(a[0]).toBeCloseTo(b[0],9);expect(a[1]).toBeCloseTo(b[1],9);}expect(shapeOf(middle.drawing,'left')[0][0]).toBeCloseTo(7);expect(result.diagnostics.some(message=>message.includes('ARC-connected curves left, right retain individual responses'))).toBe(true);
+ expect(arcs).toEqual([]);expect(left[3]).toEqual(right[0]);expect(left).toEqual(shapeOf(middle.drawing,'left'));expect(right).toEqual(shapeOf(middle.drawing,'right'));expect(shapeOf(middle.drawing,'left')[0][0]).toBeCloseTo(7);
 });
 
 test('endpoint onion evaluates only two saved states and response edits reuse fixed endpoint geometry',()=>{
@@ -87,17 +85,16 @@ test('response revisions invalidate an endpoint whose saved parent is inside ano
  expect(last).not.toBe(first);expect(evaluate).toHaveBeenCalledTimes(2);expect(first.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(2);expect(last.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(8);
 });
 
-test('nonlinear ARC anchors follow differing raw-t trims while exact endpoints and default linear paths stay unchanged',()=>{
+test('nonlinear responses preserve complete source curves and exact endpoints without ARC trims',()=>{
  const source=drawing(true);source.nodes=[{id:'a',position:point(-1)},{id:'b',position:point(0)},{id:'d',position:point(0,1)}];source.curves[0].handles=[point(-2/3),point(-1/3)];source.curves[1].handles=[point(0,1/3),point(0,2/3)];source.joins=[{id:'arc',a:{curveId:'left',end:1},b:{curveId:'right',end:0},mode:'ARC',radius:.2}];
  const target={...source,nodes:source.nodes.map(node=>({...node,position:point(node.position[0]*2+10,node.position[1]*2)})),curves:source.curves.map(curve=>({...curve,handles:curve.handles.map(p=>point(p[0]*2+10,p[1]*2)) as [Point2,Point2]}))},start=endpoint(source),end=endpoint(target,'end',-90),recording=emptySnapshotRecording('recording');response(recording,'weight','layer',.25);
- expect(start.ink.curves.left.domain!.end).not.toBeCloseTo(end.ink.curves.left.domain!.end);
  const result=interpolateEndpointOnion(start,end,5,recording),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=middle.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,right=middle.centerlines!.find(line=>line.id==='curve:right:0')!.cubic,arcs=middle.centerlines!.filter(line=>line.id.startsWith('arc:'));
- for(const [a,b] of [[left[3],arcs[0].cubic[0]],[right[0],arcs.at(-1)!.cubic[3]]]){expect(a[0]).toBeCloseTo(b[0],12);expect(a[1]).toBeCloseTo(b[1],12);}
- for(const [frame,geometry] of [[result.frames[0],start],[result.frames.at(-1)!,end]] as const)expect(frame.centerlines!.filter(line=>line.id.startsWith('arc:')).map(line=>line.cubic)).toEqual(geometry.ink.arcGeometry![JSON.stringify(['join','arc'])].map(piece=>piece.cubic));
+ expect(arcs).toEqual([]);expect(left[3]).toEqual(right[0]);
+ for(const [frame,geometry] of [[result.frames[0],start],[result.frames.at(-1)!,end]] as const)expect(frame.centerlines).toEqual(geometry.drawing.curves.map(curve=>({id:`curve:${curve.id}:0`,cubic:shapeOf(geometry.drawing,curve.id)})));
  const legacy=interpolateEndpointOnion(start,end,5);recording.interpolationWeights![0].points=[point(0),point(1,1)];expect(interpolateEndpointOnion(start,end,5,recording)).toEqual(legacy);
 });
 
-test('editing an ARC neighbor from 37% to 15% changes its ghosts without moving shared-node authority or opening trim joins',()=>{
+test('editing an ARC neighbor from 37% to 15% changes full ghosts without moving shared-node authority',()=>{
  const source=drawing(true);source.nodes=[{id:'a',position:point(-1)},{id:'b',position:point(0)},{id:'d',position:point(0,1)}];source.curves[0].handles=[point(-2/3),point(-1/3)];source.curves[1].handles=[point(0,1/3),point(0,2/3)];source.joins=[{id:'arc',a:{curveId:'left',end:1},b:{curveId:'right',end:0},mode:'ARC',radius:.2}];
  source.nodes.push({id:'u',position:point(-2,2)},{id:'v',position:point(-1,2)});source.curves.push({...source.curves[0],id:'unrelated',nodes:['u','v'],handles:[point(-1.7,2),point(-1.3,2)]});source.layers[0].items.push('unrelated');
  const target={...source,nodes:source.nodes.map(node=>({...node,position:point(node.position[0]*2+10,node.position[1]*2)})),curves:source.curves.map(curve=>({...curve,handles:curve.handles.map(p=>point(p[0]*2+10,p[1]*2)) as [Point2,Point2]}))},start=endpoint(source),end=endpoint(target,'end',-90),recording=emptySnapshotRecording('recording');response(recording,'jaw','layer',.37,'left');

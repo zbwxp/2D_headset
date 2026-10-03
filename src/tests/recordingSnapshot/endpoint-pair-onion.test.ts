@@ -2,7 +2,6 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,test,vi} from 'vitest';
 import {emptyDrawing,shapeOf,type DrawingDocument,type Point2} from '../../domain/drawing/model';
-import {subcurve} from '../../domain/drawing/roundedJoin';
 import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
 import * as evaluation from '../../domain/recordingSnapshot/evaluation';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type SnapshotEndpointResponses} from '../../domain/recordingSnapshot/model';
@@ -32,33 +31,35 @@ function fixture(side:number){
 }
 const responses:SnapshotEndpointResponses={nodes:{b:{x:[[.5,.2]],y:[[.5,.8]]}},handles:{left:[{x:[[.5,.1]],y:[[.5,.9]]},{}],right:[{x:[[.5,.7]],y:[[.5,.3]]},{}]}};
 
-test.each([-90,90])('two-basis ghosts and runtime share final controls, ARC and hidden material at yaw %s',side=>{
+test.each([-90,90])('two-basis ghosts share runtime controls and show full hidden source curves at yaw %s',side=>{
  const {workspace,recording}=fixture(side);recording.endpointPair!.responses=responses;
  const start=evaluateRecordingSnapshot(workspace,recording.id,{angle:at(0),diagnostics:'preview'}),end=evaluateRecordingSnapshot(workspace,recording.id,{angle:at(side),diagnostics:'preview'}),before=JSON.stringify(workspace);
  const result=interpolateEndpointPairOnion(start,end,5,responses);
  expect(result.frames).toHaveLength(19);
  expect(result.frames.find(frame=>frame.highlight==='30')?.angle).toEqual(at(Math.sign(side)*30));expect(result.frames.find(frame=>frame.highlight==='60')?.angle).toEqual(at(Math.sign(side)*60));
  for(const frame of result.frames){
-  const live=evaluateRecordingSnapshot(workspace,recording.id,{angle:frame.angle,diagnostics:'preview'}),ink=extractEndpointOnionInk(live.drawing);
+  const live=evaluateRecordingSnapshot(workspace,recording.id,{angle:frame.angle,diagnostics:'preview'});
   for(const curve of frame.drawing.curves)expect(shapeOf(frame.drawing,curve.id)).toEqual(shapeOf(live.drawing,curve.id));
-  expect(frame.centerlines?.some(line=>line.id.includes('closure'))).toBe(false);
-  expect(frame.centerlines?.filter(line=>line.id.startsWith('arc:')).map(line=>line.cubic)).toEqual(Object.values(ink.arcs).flat());
+  expect(frame.centerlines?.some(line=>line.id.includes('closure'))).toBe(true);
+  expect(frame.centerlines).toEqual(frame.drawing.curves.map(curve=>({id:`curve:${curve.id}:0`,cubic:shapeOf(live.drawing,curve.id)})));
+  expect(frame.centerlines?.filter(line=>line.id.startsWith('arc:'))).toEqual([]);
   expect(shapeOf(frame.drawing,'left')[3]).toEqual(shapeOf(frame.drawing,'right')[0]);
  }
  expect(JSON.stringify(workspace)).toBe(before);
 });
 
-test.each([-90,90])('material masks and one-sided visibility remain identical to runtime at yaw %s',side=>{
+test.each([-90,90])('full ghosts ignore material masks and one-sided visibility while runtime retains them at yaw %s',side=>{
  const {workspace,recording}=fixture(side);recording.endpointPair!.responses=responses;
  for(const [index,snapshot] of workspace.snapshots.entries())snapshot.relations.displayIntervals={add:[{id:'material',anchor:{id:'left',reverse:false},ranges:[{id:'show',start:index===1 ? .2 : .05,end:index===1 ? .9 : .7}]}]};
  workspace.snapshots[1].deformation.layers.layer.visibility={right:false};
  const start=evaluateRecordingSnapshot(workspace,recording.id,{angle:at(0),diagnostics:'preview'}),end=evaluateRecordingSnapshot(workspace,recording.id,{angle:at(side),diagnostics:'preview'}),result=interpolateEndpointPairOnion(start,end,5,responses);
  for(const frame of result.frames){
-  const runtime=evaluateRecordingSnapshot(workspace,recording.id,{angle:frame.angle,diagnostics:'preview'}),ink=extractEndpointOnionInk(runtime.drawing),centerlines=Object.entries(ink.curves).flatMap(([id,curve])=>curve.segments.map((segment,index)=>({id:`curve:${id}:${index}`,cubic:subcurve(segment.cubic,segment.start,segment.end)})));
-  for(const [id,arcs] of Object.entries(ink.arcs))arcs.forEach((cubic,index)=>centerlines.push({id:`arc:${id}:${index}`,cubic}));
-  expect(frame.centerlines).toEqual(centerlines);expect(centerlines.some(line=>line.id.includes('closure'))).toBe(false);
+  const runtime=evaluateRecordingSnapshot(workspace,recording.id,{angle:frame.angle,diagnostics:'preview'}),ink=extractEndpointOnionInk(runtime.drawing);
+  expect(frame.centerlines).toEqual(runtime.drawing.curves.map(curve=>({id:`curve:${curve.id}:0`,cubic:shapeOf(runtime.drawing,curve.id)})));
+  expect(frame.centerlines!.some(line=>line.id.includes('closure'))).toBe(true);expect(ink.curves.closure.segments).toEqual([]);
  }
- expect(result.frames.find(frame=>frame.angle.x===Math.sign(side)*60)!.centerlines!.some(line=>line.id.startsWith('curve:right:'))).toBe(false);
+ const last=result.frames.at(-1)!;expect(last.centerlines!.some(line=>line.id==='curve:right:0')).toBe(true);
+ expect(extractEndpointOnionInk(end.drawing).curves.right.segments).toEqual([]);
 });
 
 test('inspection switches scalar draft responses across the whole pair without making geometry keys',()=>{
