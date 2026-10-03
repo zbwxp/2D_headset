@@ -75,10 +75,6 @@ describe('Snapshot-local curve appearance through ordinary Drawing commands',()=
   const before=fixture(),drawing=currentDrawingPresentation(before),next=linkEndpoints(drawing,{curveId:'curve',end:1},fixed),view=drawingSnapshotPresentation(before.recordingSnapshots!,'A')!,intent=createSnapshotRelationAuthoringIntent(view.snapshotId,drawing,next),after=prepareDrawingSnapshotEdit(before,next,intent).project;
   expectDrawing(currentDrawingPresentation(after),next);expect(after.drawing).toBe(before.drawing);expect(after.recordingSnapshots!.library).toEqual(before.recordingSnapshots!.library);expect(drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!.deformation.layers[canonicalElementId('A','layer')].curveAppearance).toBeDefined();
  });
- it('rejects identifying two inherited nodes without changing their canonical sources',()=>{
-  const project=fixture(),w=project.recordingSnapshots!,parent=drawingSnapshotForArtwork(w,'A')!,child=emptyRecordingSnapshot('child');child.layers=[{kind:'reference',id:'child-layer',name:'Child',baseSnapshotId:parent.id,baseLayerId:bid('layer')}];w.snapshots.push(child);const before=resolveSnapshot(w,child.id).drawing,wanted=connect(before,fixed,moving,'POSITION'),saved=JSON.stringify(w);
-  expect(()=>prepareSnapshotLocalDrawingEdit(w,{snapshotId:child.id,state:'saved',beforeDrawing:before,drawing:wanted})).toThrow(/merge two distinct inherited nodes/);expect(JSON.stringify(w)).toBe(saved);
- });
  it('rejects malformed values and preserves explicit optional clears across state merge',()=>{
   for(const patch of [{curve:{width:null}},{curve:{width:2}},{curve:{nodes:['a','b']}},{curve:{inkEnds:{start:{taper:-1}}}},{curve:{inkEnds:{end:{unknown:1}}}}])expect(()=>validateSnapshotCurveAppearance(patch)).toThrow(/appearance override/);
   expect(mergeSnapshotCurveAppearance({curve:{width:.02,profile:'EYELID',inkEnds:{start:{taper:.04}}}},{curve:{profile:null,inkEnds:{end:{extension:0}}}})).toEqual({curve:{width:.02,profile:null,inkEnds:{start:{taper:.04},end:{extension:0}}}});

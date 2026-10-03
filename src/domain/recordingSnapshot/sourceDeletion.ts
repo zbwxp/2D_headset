@@ -1,3 +1,4 @@
+import {pruneSnapshotNodeAliases} from './nodeAliases';
 import {retireSnapshotMaterialPathLineages} from './materialPathLineages';
 import {pruneSnapshotMaterialPropertyReferences} from './materialSourceDeletion';
 import {retireSnapshotMaterialPartitions} from './materialSplit';
@@ -58,6 +59,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   const mirror=snapshot.inputMirror;
   return {...snapshot,layers:snapshot.layers.filter(layer=>!removedLayers.has(address(snapshot.id,layer.id))).map(layer=>layer.kind==='original'?{...layer,items:layer.items.filter(id=>!removed.has(id))}:{...layer,...(layer.membership?{membership:{...(layer.membership.addElementIds?{addElementIds:layer.membership.addElementIds.filter(id=>!removed.has(id))}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:layer.membership.excludeElementIds.filter(id=>!removed.has(id))}:{})}}:{})}),relations,
    deformation:state(snapshot.deformation,snapshot.id),...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,snapshot.id)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,snapshot.id)}}:{}),
+   ...(snapshot.nodeAliases?{nodeAliases:pruneSnapshotNodeAliases(snapshot.nodeAliases,removed)}:{}),
    ...(snapshot.source?{source:{...snapshot.source,originIds:without(snapshot.source.originIds,removed)}}:{}),
    ...(mirror?{inputMirror:{...mirror,curvePairs:mirror.curvePairs.filter(pair=>!removed.has(pair.id)&&!removed.has(pair.a)&&!removed.has(pair.b)),...(mirror.axisNodeIds?{axisNodeIds:mirror.axisNodeIds.filter(id=>!removed.has(id))}:{})}}:{}),
    ...(snapshot.parentLayers?.excludedLayerIds?{parentLayers:{...snapshot.parentLayers,excludedLayerIds:snapshot.parentLayers.excludedLayerIds.filter(id=>!removedLayers.has(address(snapshot.parentSnapshotId!,id)))}}:{}),

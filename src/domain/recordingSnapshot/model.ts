@@ -9,6 +9,7 @@ import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalVal
 import type {SnapshotTriangulation} from './triangulation';
 import type {InteriorResponseSample,ScalarResponseKnot} from './triangularResponses';
 import type {SnapshotMirrorOptions} from './snapshotMirror';
+import type {SnapshotNodeAliases} from './nodeAliases';
 import type {SnapshotCurveAppearanceMap} from './curveAppearance';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
@@ -102,6 +103,8 @@ export interface RecordingSnapshot {
  /** One ordered ownership list; there is no separate sorting container. */
  layers:SnapshotLayer[];
  relations:SnapshotRelationOverrides;
+ /** Snapshot-only shared-node authorities; original source topology stays live. */
+ nodeAliases?:SnapshotNodeAliases;
  deformation:SnapshotDeformationState;
  /** Captured residual fallback only, never original or baked geometry. */
  inheritedState?:SnapshotDeformationState;

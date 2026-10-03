@@ -15,6 +15,7 @@ import {snapshotIntervalMaterialSource} from './routeMaterialSource';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
 import {parseRecordingSnapshots} from './persistence';
 import {patchSnapshotRelations} from './relationAuthoringIntent';
+import {prepareSnapshotNodeMerge,snapshotNodeAuthority} from './nodeAliases';
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotDiagnostic,SnapshotRelationPatch,SnapshotDeformationState} from './model';
 
 /** Drawing already authored the geometry, connections and identities. This is
@@ -73,18 +74,6 @@ function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,poi
  if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
  return applyScenePlacementMatrix(inverse,point);
 }
-/** Keep existing canonical endpoint authorities when Drawing merged a new pen
- * node into one of them. Two inherited nodes cannot be silently identified. */
-function preserveInheritedNodes(before:DrawingDocument,target:DrawingDocument,owned:Set<string>):DrawingDocument {
- const authority=new Map<string,string>();
- for(const curve of before.curves){if(owned.has(curve.id))continue;const wanted=target.curves.find(value=>value.id===curve.id);if(!wanted)continue;
-  for(const end of [0,1] as const){const prior=authority.get(wanted.nodes[end]);if(prior&&prior!==curve.nodes[end])return fail('INHERITED_TOPOLOGY_CONFLICT','This connection would merge two distinct inherited nodes. Their source topology must be edited in Drawing.');authority.set(wanted.nodes[end],curve.nodes[end]);}
- }
- if([...authority].every(([id,value])=>id===value))return target;
- const map=(id:string)=>authority.get(id)??id;
- const nodes=new Map<string,DrawingDocument['nodes'][number]>();for(const node of target.nodes){const id=map(node.id),prior=nodes.get(id);if(prior&&!close(prior.position,node.position))return fail('INHERITED_TOPOLOGY_CONFLICT','Inherited node identity has conflicting requested positions.');nodes.set(id,{...node,id});}
- return {...target,nodes:[...nodes.values()],curves:target.curves.map(curve=>({...curve,nodes:curve.nodes.map(map) as [string,string]}))};
-}
 
 export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorkspace,edit:SnapshotDrawingTopologyEdit):{workspace:RecordingSnapshotWorkspace;diagnostics:SnapshotDiagnostic[]} {
  assertSnapshotTopologyVertex(before,edit.recordingId,edit.snapshotId,edit.angle);
@@ -99,7 +88,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  const content=(drawing:DrawingDocument)=>[drawing.nodes,drawing.curves,drawing.layers,drawing.fills,drawing.offsets,drawing.joins,drawing.endpointLinks??[],drawing.groups??[],drawing.displayIntervals??[]];
  if(!same(content(current),content(edit.beforeDrawing)))return fail('STALE_TOPOLOGY_TARGET','The snapshot changed during this Drawing gesture. Start the gesture again on its current frame.');
  const owned=new Set(current.curves.filter(curve=>evaluation.provenance[curve.id]?.sourceSnapshotId===snapshot.id&&!drawingSourceOwns(snapshot,curve.id)).map(curve=>curve.id));
- const target=preserveInheritedNodes(current,parseDrawing(edit.drawing),owned);
+ const merged=prepareSnapshotNodeMerge(current,parseDrawing(edit.drawing),owned,snapshot.nodeAliases),target=merged.drawing;
  if(same(content(current),content(target)))return {workspace:before,diagnostics:[]};
  const membershipBefore=captureSnapshotResponseMembership(before);
  const originalIds=new Set(drawingIdentityIds(current)),occupied=new Set([...Object.values(before.library).flatMap(map=>Object.keys(map)),...before.snapshots.flatMap(value=>[value.id,...value.layers.map(layer=>layer.id),...Object.keys(value.source?.originIds??{}),...[...value.relations.displayIntervals?.add??[],...value.relations.displayIntervals?.update??[]].flatMap(track=>track.ranges.map(range=>range.id)),...names.flatMap(name=>[...value.relations[name]?.add??[],...value.relations[name]?.update??[]].map(relation=>relation.id))])]);
@@ -107,12 +96,13 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  const appearances=new Map<string,SnapshotCurveAppearanceMap>();
  for(const curve of target.curves){const prior=current.curves.find(value=>value.id===curve.id);if(!prior)continue;
   if(layerFor(current,curve.id)?.id!==layerFor(target,curve.id)?.id)return fail('TOPOLOGY_MEMBERSHIP_CONFLICT','Moving existing elements between layers requires an explicit membership move.');
-  if(!owned.has(curve.id)&&!same(curve.nodes,prior.nodes))return fail('INHERITED_TOPOLOGY_CONFLICT','Inherited curve endpoint identities cannot be replaced locally.');
+  if(!owned.has(curve.id)&&!same(curve.nodes,prior.nodes.map(id=>snapshotNodeAuthority(merged.aliases,id))))return fail('INHERITED_TOPOLOGY_CONFLICT','Inherited curve endpoint identities require an explicit Snapshot node authority.');
   const unsupported=unsupportedSnapshotCurveAppearanceFields(prior,curve);if(unsupported.length)return fail('TOPOLOGY_STYLE_CONFLICT',`Curve ${curve.id} changes unsupported local fields: ${unsupported.join(', ')}. No geometry or appearance was changed.`);
   const appearance=snapshotCurveAppearanceDifference(prior,curve);if(appearance){const layerId=layerFor(target,curve.id)!.id;appearances.set(layerId,{...appearances.get(layerId),[curve.id]:appearance});}
  }
  for(const kind of ['fills','offsets'] as const)for(const value of target[kind]){const prior=current[kind].find(item=>item.id===value.id);if(prior&&!same(value,prior))return fail('TOPOLOGY_PAINT_CONFLICT','Existing paint properties must be edited through their own channels.');}
  let workspace=clone(before),local=workspace.snapshots.find(value=>value.id===snapshot.id)!;
+ if(merged.aliases)local.nodeAliases=merged.aliases;else delete local.nodeAliases;
  const wantedIds=new Set([...target.curves,...target.fills,...target.offsets].map(value=>value.id)),removed=current.layers.flatMap(layer=>layer.items).filter(id=>!wantedIds.has(id));
  const localOwned=new Set(removed.filter(id=>evaluation.provenance[id]?.sourceSnapshotId===snapshot.id&&!drawingSourceOwns(snapshot,id)));
  if(removed.some(id=>drawingSourceOwns(snapshot,id)))return fail('DRAWING_SOURCE_OWNERSHIP','Drawing-owned originals must be deleted through their original-source adapter.');
@@ -146,6 +136,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // Relation topology changes immediately, including when a shape draft exists.
  // Retire disabled link references in all local states, not just today's draft.
  const authorityStates=[local.deformation,...local.inheritedState?[local.inheritedState]:[],...local.draft?[local.draft.deformation]:[]],liveLinks=new Set((target.endpointLinks??[]).map(link=>link.id));
+ for(const state of authorityStates)for(const layer of Object.values(state.layers))if(layer.shape)for(const id of Object.keys(layer.shape.nodes))if(snapshotNodeAuthority(merged.aliases,id)!==id)delete layer.shape.nodes[id];
  for(const state of authorityStates)for(const [id,value] of Object.entries(state.relationPositions)){const sourceLinkIds=value.sourceLinkIds.filter(linkId=>liveLinks.has(linkId));if(!sourceLinkIds.length)delete state.relationPositions[id];else if(sourceLinkIds.length!==value.sourceLinkIds.length)state.relationPositions[id]={...value,sourceLinkIds};}
  // Appearance belongs to the same saved/draft state as the command's controls.
  const appearanceState=useDraft&&local.draft?local.draft.deformation:local.deformation;

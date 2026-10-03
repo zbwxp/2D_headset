@@ -22,7 +22,10 @@ export interface SnapshotCurveSplitPlan {
  readonly frozen:readonly FrozenSnapshot[];
 }
 const clone=<T,>(value:T):T=>structuredClone(value);
-const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>applyCurveSplitIntent(drawing,intent,{propagate:true,materialSource:(drawing,track)=>snapshotRouteMaterialSource(markSnapshotRouteMaterialInput(drawing),track)}).document;
+// Source intent is checked against the canonical library at transaction entry.
+// Referenced frames may expose a local shared-node authority for an outer end;
+// split that exact current topology with the same curve/seam/material IDs.
+const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>applyCurveSplitIntent(drawing,{...intent,sourceNodeIds:drawing.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds},{propagate:true,materialSource:(drawing,track)=>snapshotRouteMaterialSource(markSnapshotRouteMaterialInput(drawing),track)}).document;
 const replaceId=(ids:readonly string[],intent:CurveSplitIntent)=>[...new Set(ids.flatMap(id=>id===intent.curveId?[...intent.childCurveIds]:[id]))];
 const endpoint=(value:Endpoint,intent:CurveSplitIntent):Endpoint=>value.curveId===intent.curveId?{...value,curveId:intent.childCurveIds[value.end]}:value;
 const hasCurve=(drawing:DrawingDocument,id:string)=>drawing.curves.some(curve=>curve.id===id);
@@ -74,6 +77,7 @@ function preflightTracks(workspace:RecordingSnapshotWorkspace,frozen:readonly Fr
 export function prepareSnapshotCurveSplit(workspace:RecordingSnapshotWorkspace,sourceSnapshotId:string,intent:CurveSplitIntent,mirrorPairs:readonly SnapshotSplitMirrorReplacement[]=[]):SnapshotCurveSplitPlan {
  const owner=workspace.snapshots.find(snapshot=>snapshot.id===sourceSnapshotId);
  if(!owner||!drawingSourceOwns(owner,intent.curveId))throw Error('The split source does not own this canonical curve.');
+ const original=workspace.library.curves[intent.curveId];if(!original||original.nodes.some((id,end)=>id!==intent.sourceNodeIds[end]))throw Error('The split intent no longer matches the canonical source curve topology.');
  const fresh=[...intent.childCurveIds,intent.seamNodeId,intent.seamJoinId,...intent.intervals.flatMap(track=>[track.rightTrackId,...track.ranges.map(range=>range.rightRangeId)])];
  const occupied=new Set([...Object.values(workspace.library).flatMap(map=>Object.keys(map)),...workspace.snapshots.flatMap(snapshot=>[...snapshot.layers.map(layer=>layer.id),...Object.values(snapshot.relations).flatMap(patch=>[...(patch.add??[]).map((value:{id:string})=>value.id),...(patch.update??[]).map((value:{id:string})=>value.id)])])]);
  if(fresh.some(id=>occupied.has(id)))throw Error('A split identity already exists in the Snapshot workspace.');
