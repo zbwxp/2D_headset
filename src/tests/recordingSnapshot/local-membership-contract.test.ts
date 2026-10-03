@@ -40,12 +40,15 @@ describe('local Recording membership contract prototype',()=>{
   expect(patch).toEqual({excludeElementIds:['a']});
  });
  it('allows a local original without a parent and releases membership without deleting original geometry',()=>{
-  const {w}=workspace(),original=w.library.curves[cid('curve')],local={...original,id:'new-local'};
+  const sourceDrawing=drawing(),{w}=workspace(sourceDrawing),original=w.library.curves[cid('curve')],local={...original,id:'new-local'};
   w.library.curves[local.id]=local;const before=JSON.stringify(w.library),patch={addElementIds:[local.id]};
   expect(resolveSnapshotLocalMembership([],patch).localElementIds).toEqual([local.id]);
   expect(resolveSnapshotLocalMembership([],excludeSnapshotLocalMembers(patch,[local.id])).elementIds).toEqual([]);
   expect(JSON.stringify(w.library)).toBe(before);
-  const synced=upsertDrawingSource(w,'source',drawing());
+  // A normal source update keeps the same node identities. Generating a new
+  // drawing here would delete the referenced source nodes and correctly retire
+  // their dependent local curve under the source-deletion contract.
+  const synced=upsertDrawingSource(w,'source',sourceDrawing);
   expect(synced.library.curves[local.id]).toBe(local);expect(synced.snapshots[0].source?.originIds).not.toHaveProperty(local.id);
  });
  it('does not duplicate a live inherited ID and rejects contradictory membership',()=>{
