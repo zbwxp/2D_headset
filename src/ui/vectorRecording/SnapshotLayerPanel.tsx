@@ -74,17 +74,20 @@ export function snapshotPanelClipboardSources(model:SnapshotLayerPanelModel,sele
  return [...batches].map(([snapshotId,layerIds])=>({snapshotId,layerIds}));
 }
 const selectionKey=(selection:DrawingSelection)=>JSON.stringify([selection.ids,selection.paintIds??[],selectedLayers(selection),selection.paint??null,selection.group??null]);
+export interface SnapshotPanelSelectionCache {currentSnapshotId?:string;canonicalKey:string;layersKey:string;presentation:DrawingSelection}
+export function snapshotPanelCachedPresentation(model:SnapshotLayerPanelModel,selection:DrawingSelection,layerSelections:readonly SnapshotLayerSelection[]|undefined,recent:SnapshotPanelSelectionCache|null):DrawingSelection {
+ return recent?.currentSnapshotId===model.currentSnapshotId&&recent?.canonicalKey===selectionKey(selection)&&(!layerSelections||recent.layersKey===JSON.stringify(layerSelections))?recent.presentation:snapshotPanelPresentationSelection(model,selection,layerSelections);
+}
 const ignore=()=>{};
 
 export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true}:SnapshotLayerPanelProps){
  const zh=useLanguage(s=>s.language)==='zh';
  const model=useMemo(()=>snapshotLayerPanelModel(current,sources,zh?'当前视图':'Current view'),[current,sources,zh]);
- const recentSelection=useRef<{canonicalKey:string;layersKey:string;presentation:DrawingSelection}|null>(null);
- const canonicalKey=selectionKey(selection),layersKey=JSON.stringify(layerSelections??[]),recent=recentSelection.current;
+ const recentSelection=useRef<SnapshotPanelSelectionCache|null>(null);
  // Preserve the exact shared-panel selection object on our own round trip, so
  // its single Ctrl/Shift anchor survives canonical ID translation.
- const presented=recent?.canonicalKey===canonicalKey&&(!layerSelections||recent.layersKey===layersKey)?recent.presentation:snapshotPanelPresentationSelection(model,selection,layerSelections);
- const choose=(next:DrawingSelection)=>{const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections);};
+ const presented=snapshotPanelCachedPresentation(model,selection,layerSelections,recentSelection.current);
+ const choose=(next:DrawingSelection)=>{const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections);};
  const enabled=editEnabled&&!!current;
  const isCurrent=(id:string)=>!!current&&model.identities.get(id)?.snapshotId===current.snapshotId;
  const canonicalCurrent=(ids:readonly string[])=>unique(ids.flatMap(id=>{const ref=model.identities.get(id);return ref&&ref.snapshotId===current?.snapshotId?[ref.id]:[];}));

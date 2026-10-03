@@ -7,10 +7,11 @@ import {createGroup} from '../domain/drawing/groups';
 import {emptyDrawing} from '../domain/drawing/model';
 import {groupedLayerSections} from '../ui/drawing/LayerPanel';
 import {drawingListRows,selectLayerRows,selectListRows} from '../ui/drawing/listSelection';
-import SnapshotLayerPanel,{snapshotLayerPanelModel,snapshotPanelCanonicalSelection,snapshotPanelPresentationSelection,snapshotPanelClipboardSources,snapshotPanelRowId,type SnapshotPanelSource,type SnapshotLayerPanelProps} from '../ui/vectorRecording/SnapshotLayerPanel';
+import SnapshotLayerPanel,{snapshotLayerPanelModel,snapshotPanelCanonicalSelection,snapshotPanelPresentationSelection,snapshotPanelClipboardSources,snapshotPanelRowId,snapshotPanelCachedPresentation,type SnapshotPanelSource,type SnapshotLayerPanelProps} from '../ui/vectorRecording/SnapshotLayerPanel';
 
 vi.mock('../ui/drawing/workspace',async()=>{const {useDrawing}=await import('../ui/drawing/session');return {useDrawingWorkspace:()=>({session:useDrawing})};});
 const ignore=()=>{};
+test('a canonical curve stays highlighted when a different view needs a new presentation alias',()=>{const f=fixture(),first=snapshotLayerPanelModel(f.current,[]),second=snapshotLayerPanelModel({...f.current,snapshotId:'view-45'},[]),selection={ids:['brow']},presentation=snapshotPanelPresentationSelection(first,selection,[]),cache={currentSnapshotId:first.currentSnapshotId,canonicalKey:JSON.stringify([['brow'],[],[],null,null]),layersKey:'[]',presentation};expect(snapshotPanelCachedPresentation(first,selection,[],cache)).toBe(presentation);const next=snapshotPanelCachedPresentation(second,selection,[],cache);expect(next.ids).toEqual([snapshotPanelRowId('view-45','brow')]);expect(snapshotPanelCanonicalSelection(second,next).selection.ids).toEqual(['brow']);expect(snapshotPanelCachedPresentation(first,selection,[],cache)).toBe(presentation);});
 function fixture(){
  let drawing=addLayer(emptyDrawing(),'Eye');const eye=drawing.layers[0].id,e=ellipse(drawing,eye,[-.4,-.3],[.4,.3],.02);
  drawing=createFill(e.document,e.ids,'white');drawing=createCurve(drawing,eye,[[-.4,.5],[-.2,.7],[.2,.7],[.4,.5]],.01,'Brow','brow');drawing=createOffset(drawing,'brow');drawing=createGroup(drawing,[e.ids[0],'brow'],'Face');
