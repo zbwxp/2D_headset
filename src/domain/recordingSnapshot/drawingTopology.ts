@@ -7,6 +7,7 @@ import {excludeSnapshotLocalMembers} from './localMembership';
 import {drawingSourceOwns,drawingIdentityIds} from './sources';
 import {removeDeletedSourceReferences} from './sourceDeletion';
 import {propagateAutomaticSnapshotLayers} from './automaticSnapshotEdits';
+import {reconcileSnapshotEndpointRelationEdit} from './endpointRelationEdits';
 import {parseRecordingSnapshots} from './persistence';
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotDiagnostic,SnapshotRelationPatch,SnapshotDeformationState} from './model';
 
@@ -136,14 +137,19 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  }
  for(const kind of ['fills','offsets'] as const)for(const value of target[kind])if(!current[kind].some(prior=>prior.id===value.id))Object.defineProperty(workspace.library[kind],value.id,{value:clone(value),enumerable:true,writable:true,configurable:true});
  for(const name of names){const patch=patchRelations(local.relations[name] as SnapshotRelationPatch<{id:string}>|undefined,current[name]??[],target[name]??[]);if(patch)(local.relations as Record<string,unknown>)[name]=patch;else delete local.relations[name];}
+ // Relation topology changes immediately, including when a shape draft exists.
+ // Retire disabled link references in all local states, not just today's draft.
+ const authorityStates=[local.deformation,...local.inheritedState?[local.inheritedState]:[],...local.draft?[local.draft.deformation]:[]],liveLinks=new Set((target.endpointLinks??[]).map(link=>link.id));
+ for(const state of authorityStates)for(const [id,value] of Object.entries(state.relationPositions)){const sourceLinkIds=value.sourceLinkIds.filter(linkId=>liveLinks.has(linkId));if(!sourceLinkIds.length)delete state.relationPositions[id];else if(sourceLinkIds.length!==value.sourceLinkIds.length)state.relationPositions[id]={...value,sourceLinkIds};}
  // Existing controls are residuals over today's live post-Warp material. Only
  // changed IDs are authored; saved state and an unrelated draft remain intact.
  const intermediate=resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'});
  const state:SnapshotDeformationState=local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
- const shapeFor=(layerId:string)=>{let value=shapes.get(layerId);if(!value){value=clone(intermediate.state.layers[layerId]?.shape??{nodes:{},handles:{}});shapes.set(layerId,value);}return value;};
+ const relationNodes=reconcileSnapshotEndpointRelationEdit(current,target,intermediate,state,(layerId,curveId,point)=>unplace(intermediate,layerId,curveId,point),authorityStates);
+ const shapeFor=(layerId:string)=>{let value=shapes.get(layerId);if(!value){value=clone(state.layers[layerId]?.shape??intermediate.state.layers[layerId]?.shape??{nodes:{},handles:{}});shapes.set(layerId,value);}return value;};
  for(const curve of target.curves){if(newIds.has(curve.id))continue;const prior=current.curves.find(value=>value.id===curve.id)!,layerId=layerFor(target,curve.id)!.id;
   for(const end of [0,1] as const){const wantedNode=nodes.get(curve.nodes[end])!,priorNode=current.nodes.find(node=>node.id===prior.nodes[end])!,baseNode=intermediate.preShapeDrawing.nodes.find(node=>node.id===curve.nodes[end]);if(!baseNode)return fail('MISSING_TOPOLOGY_CONTROL','A shared Drawing node has no canonical input.');
-   if(!close(wantedNode.position,priorNode.position))shapeFor(layerId).nodes[wantedNode.id]=sub(unplace(intermediate,layerId,curve.id,wantedNode.position),baseNode.position);
+   if(!relationNodes.has(wantedNode.id)&&!close(wantedNode.position,priorNode.position))shapeFor(layerId).nodes[wantedNode.id]=sub(unplace(intermediate,layerId,curve.id,wantedNode.position),baseNode.position);
    if(!close(sub(curve.handles[end],wantedNode.position),sub(prior.handles[end],priorNode.position))){const baseCurve=intermediate.preShapeDrawing.curves.find(value=>value.id===curve.id)!;const shape=shapeFor(layerId),deltas=shape.handles[curve.id]??[[0,0],[0,0]];shape.handles[curve.id]=deltas;deltas[end]=sub(sub(unplace(intermediate,layerId,curve.id,curve.handles[end]),unplace(intermediate,layerId,curve.id,wantedNode.position)),sub(baseCurve.handles[end],baseNode.position));}
   }
  }
@@ -154,6 +160,8 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  if(localOwned.size){const remainingCurves=Object.values(workspace.library.curves).filter(curve=>!localOwned.has(curve.id)),usedNodes=new Set(remainingCurves.flatMap(curve=>curve.nodes));for(const curveId of [...localOwned])for(const nodeId of before.library.curves[curveId]?.nodes??[])if(!usedNodes.has(nodeId))localOwned.add(nodeId);workspace=removeDeletedSourceReferences(before,workspace,snapshot.id,localOwned);}
  workspace=propagateAutomaticSnapshotLayers(before,workspace).workspace;
  const actual=resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'});
+ for(const track of target.displayIntervals??[])if(track.displayRoute&&!actual.drawing.displayIntervals?.some(value=>value.id===track.id&&same(value.displayRoute,track.displayRoute)))return fail('TOPOLOGY_ROUTE_UNREPRESENTABLE','This local endpoint link cannot yet retain a through-display route over its source controls. No relation was changed.');
+ for(const link of target.endpointLinks??[]){const brush=link.joinBrush,got=actual.drawing.endpointLinks?.find(value=>value.id===link.id)?.joinBrush;if(brush?.kind==='ARC'&&(got?.kind!=='ARC'||!close([brush.trimDistance,0],[got.trimDistance,0])))return fail('TOPOLOGY_BRUSH_UNREPRESENTABLE','The requested ARC trim cannot be represented under the current layer or stroke placement. No relation was changed.');}
  for(const curve of target.curves){const got=actual.drawing.curves.find(value=>value.id===curve.id);if(!got||!same(got.nodes,curve.nodes))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} could not retain its requested shared-node topology.`);for(const end of [0,1] as const){const wanted=nodes.get(curve.nodes[end])!.position,gotNode=actual.drawing.nodes.find(node=>node.id===got.nodes[end])?.position;if(!gotNode||!close(gotNode,wanted)||!close(got.handles[end],curve.handles[end]))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} cannot reproduce the requested controls under its live layer domains and SMOOTH constraints. No geometry was changed.`);}}
  if(actual.drawing.curves.some(curve=>!wantedIds.has(curve.id)))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE','The local membership edit could not remove every requested curve.');
  return {workspace:parseRecordingSnapshots(workspace),diagnostics:actual.diagnostics.filter(issue=>issue.code==='LOCAL_ORIGINAL'||issue.code==='MISSING_SNAPSHOT'||issue.code==='MISSING_LAYER')};

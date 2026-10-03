@@ -48,7 +48,7 @@ function harness(options:{selected?:string[];editable?:boolean;tool?:'select'|'d
   apply({op:'createEndpointPairRecording',startSnapshotId:start,endSnapshotId:end},{op:'setAngle',angle:{x:60,y:0}});
  }
  past.length=0;
- let shown=project,targetKey='view-0',revealGridKey=0,editable=options.editable??true,chosen:DrawingSelection={ids:(options.selected??[]).map(id)},tool:'select'|'direct'|'hand'|'zoom'|'split'|'pen'=options.tool??'select';
+ let shown=project,targetKey='view-0',revealGridKey=0,editable=options.editable??true,chosen:DrawingSelection={ids:(options.selected??[]).map(id)},tool:'select'|'direct'|'hand'|'zoom'|'split'|'pen'|'link'=options.tool??'select';
  const preview=vi.fn((commands:SnapshotCommand[]|null)=>{shown=commands?{...project,recordingSnapshots:prepareSnapshotPreview(project,{commands}).recordingSnapshots}:project;}),commit=vi.fn((commands:SnapshotCommand[])=>{apply(...commands);shown=project;}),warpCommit=vi.fn(),curveCommit=vi.fn(),select=vi.fn();
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
  const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];const baseline=evaluateRecordingSnapshot(project),evaluation=evaluateRecordingSnapshot(shown),adapter=(ids:string[])=>snapshotStrokeSelectionTransform(evaluation,baseline,ids,editable,preview,commit);

@@ -30,10 +30,12 @@ import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';
 import {captureDrawingLayerReferences,prepareDrawingLayerReferencePaste,layerClipboardProjectId,useLayerReferenceClipboard} from './layerReferenceClipboard';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from './snapshotPresentation';
-import {commitDrawingSnapshotEdit,commitDrawingCurveSplit,DRAWING_REFERENCE_EDIT_CAPABILITY} from './snapshotEditContext';
+import {commitDrawingSnapshotEdit,commitDrawingCurveSplit,prepareDrawingLayerDomainEdit,DRAWING_REFERENCE_EDIT_CAPABILITY} from './snapshotEditContext';
 import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
 import {selectCurveAtPointer,selectCurvesInBox,drawingControlDragTarget} from './editGestures';
 import {hasNudgeTarget,nudgeSelection} from './nudge';
+import {layerSimilarityIntentForSelection} from './layerDomainGesture';
+import {layerSimilarityValue,type LayerDomainIntent} from '../../domain/drawing/layerDomainIntent';
 import LayerPanel from './LayerPanel';
 import LayerSnapshotDialog from './LayerSnapshotDialog';
 import Properties from './Properties';
@@ -43,6 +45,7 @@ import {usePenPreferences} from './penPreferences';
 import {beginPenGesture,movePenGesture,previewPenGesture,finishPenGesture,penHoverShape,penHistoryAction,type PenState as Pen,type PenGesture} from './penController';
 import {useDirectPreferences} from './directPreferences';
 import {TOOLS,isEndpointTool} from './tools';
+import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,type DrawingEndpointTool} from './endpointInteraction';
 import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
 import PaintScene from './PaintScene';
 import InkEndOverlay from './InkEndOverlay';
@@ -55,7 +58,7 @@ import './drawing.css';
 const EMPTY=emptyDrawing();
 
 interface DeformCage {base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
-interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -80,7 +83,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const [clipboard,setClipboard]=useState<DrawingCut|null>(null);
  const [busy,setBusy]=useState(false),[size,setSize]=useState({width:900,height:700});
  const penHistory=useRef(new WeakMap<Doc,Pen|null>());
- const drag=useRef<Drag|null>(null),held=useRef<{base:Doc;next:Doc}|null>(null),svg=useRef<SVGSVGElement>(null),host=useRef<HTMLDivElement>(null),file=useRef<HTMLInputElement>(null),own=useRef<Doc|null>(null),approved=useRef<{ids:string[];scope:string[]}|null>(null),space=useRef(false),request=useRef(0),latest=useRef<any>(null);
+ const drag=useRef<Drag|null>(null),held=useRef<{base:Doc;next:Doc;layerDomainIntent?:LayerDomainIntent}|null>(null),svg=useRef<SVGSVGElement>(null),host=useRef<HTMLDivElement>(null),file=useRef<HTMLInputElement>(null),own=useRef<Doc|null>(null),approved=useRef<{ids:string[];scope:string[]}|null>(null),space=useRef(false),request=useRef(0),latest=useRef<any>(null);
  // Migrate a live pre-V3 session without clearing it or creating an authoring Undo.
  useEffect(()=>{if(rawStored!==sourceStored)useEditor.getState().setDrawing(sourceStored);},[rawStored,sourceStored]);
  function endPen(){penHistory.current=new WeakMap();setPen(null);setPenPreview(null);}
@@ -103,10 +106,10 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const endpointTools=isEndpointTool(tool);
  // Display and hit testing share one scope. Draft previews may move endpoints,
  // but picking still uses stored positions so the second click stays stable.
- const endpointCurveIds=(document:Doc)=>(document.layers.find(l=>l.id===activeLayer?.id)?.items??[]).filter(id=>editable(document,id));
+ const endpointCurveIds=(document:Doc)=>drawingEndpointCurveIds(document,activeLayer?.id??null);
  const connections=first?(tool==='smooth'?t('第二步：选择需要对齐的一侧'):t('第二步：选择要移动的端点')):(tool==='smooth'?t('第一步：选择保留方向的一侧'):t('第一步：选择固定端点'));
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
- const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection))=>{const before=currentDrawing();if(n===before)return;n=finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing')commitDrawingSnapshotEdit(useEditor.getState(),n);else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
+ const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),layerDomainIntent?:LayerDomainIntent)=>{const before=currentDrawing();if(n===before)return;n=finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing')commitDrawingSnapshotEdit(useEditor.getState(),n,layerDomainIntent);else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
  const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
@@ -133,7 +136,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const ids=scope(),b=selectionBounds(d,ids);if(!b)return;
   const center=b.center,angle=value*Math.PI/180;
   const map=(p:Point2):Point2=>kind==='moveX'?add(p,[value,0]):kind==='moveY'?add(p,[0,value]):kind==='mirror'?[2*center[0]-p[0],p[1]]:kind==='mirrorAxis'?[2*(d.mirrorAxisX??0)-p[0],p[1]]:kind==='scale'?add(center,mul(sub(p,center),value)):(()=>{const [x,y]=sub(p,center);return add(center,[x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle)]);})();
-  try{const n=cmd.transform(d,ids,map,mayInclude());commit(n,mirrorWritesForCurves(n,ids));setHint('');}catch(e){error(e,ids);}
+  try{const placement=kind==='moveX'?layerSimilarityValue([value,0]):kind==='moveY'?layerSimilarityValue([0,value]):kind==='rotate'?layerSimilarityValue([0,0],value,1,center):kind==='scale'&&value>0?layerSimilarityValue([0,0],0,value,center):undefined;const intent=workspaceId==='drawing'&&placement?layerSimilarityIntentForSelection(d,selection,placement,ids):undefined;const n=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:cmd.transform(d,ids,map,mayInclude());commit(n,mirrorWritesForCurves(n,ids),intent);setHint('');}catch(e){error(e,ids);}
  }
  useEffect(()=>{const obs=new ResizeObserver(([e])=>setSize({width:e.contentRect.width,height:e.contentRect.height}));obs.observe(host.current!);return()=>obs.disconnect();},[]);
  useEffect(()=>{
@@ -153,13 +156,10 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  useEffect(()=>{const blur=()=>{finishHeld();space.current=false;setZoomOut(false);},pointer=()=>finishHeld();window.addEventListener('blur',blur);window.addEventListener('pointerdown',pointer,true);return()=>{request.current++;finishHeld();window.removeEventListener('blur',blur);window.removeEventListener('pointerdown',pointer,true);};},[]);
  usePointerDragTracking({active:()=>drag.current,move:e=>move(e),finish:(e,interrupted)=>up(e,interrupted)});
  async function upload(e:React.ChangeEvent<HTMLInputElement>){const photo=e.target.files?.[0];e.target.value='';if(!photo)return;const ticket=++request.current,origin=useEditor.getState().project;setBusy(true);try{const reference=await readPhoto(photo,RECORDING_REFERENCE_IMAGE);if(ticket!==request.current||origin.meta.createdAt!==useEditor.getState().project.meta.createdAt)return;commit({...currentDrawing(),reference:{...reference,locked:true}});choose({ids:[],reference:true});}catch(e){error(e);}finally{setBusy(false);}}
- function pickEndpoint(p:Point2):Endpoint|null{
-  const targets=endpointCurveIds(stored).flatMap(curveId=>([0,1] as const).map(end=>({curveId,end,p:nodeAt(stored,{curveId,end}).position})));
-  return targets.map(e=>({...e,distance:length(sub(p,e.p))*unit})).filter(e=>e.distance<=11&&!(first&&first.curveId===e.curveId&&first.end===e.end)).sort((a,b)=>a.distance-b.distance)[0]??null;
- }
+ function pickEndpoint(p:Point2):Endpoint|null{return pickDrawingEndpoint(stored,endpointCurveIds(stored),p,unit,first);}
  function connectAt(e:Endpoint){
-  if(!first){setFirst(e);session.set({selection:{ids:[e.curveId],node:nodeAt(d,e).id}});setHint('');return;}
-  try{const n=tool==='link'?cmd.linkEndpoints(stored,first,e,true):tool==='merge'?cmd.merge(stored,first,e):cmd.connect(stored,first,e,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION');commit(n);setFirst(null);setDraft(null);choose({ids:[e.curveId],node:nodeAt(n,e).id},tool);}catch(ex){error(ex);}
+  if(!first){setFirst(e);session.set({selection:drawingEndpointSelection(d,e)});setHint('');return;}
+  try{const n=applyDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,e);commit(n);setFirst(null);setDraft(null);choose(drawingEndpointSelection(n,e),tool);}catch(ex){error(ex);}
  }
  const penOptions=()=>({layerId:activeLayer?.id??null,unit,width,join:penJoin,taperScale:usePenPreferences.getState().taperScale});
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
@@ -203,7 +203,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   let p=local(e);const g=drag.current;if(!g&&tool==='pen'){const hit=guideCandidate(stored,p,e.altKey);setGuideSnap(hit);if(hit)p=hit.point;}
   if(g){if(e.pointerId!==g.pointerId)return;g.last={clientX:e.clientX,clientY:e.clientY};}
   if(!g){if(artworkPreview)return;if(tool==='pen'&&pen)setPenPreview(penHoverShape(pen,p,penJoin));
-   if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(finalizeGeometryEdit(stored,tool==='link'?cmd.linkEndpoints(stored,first,target,true):cmd.connect(stored,first,target,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION')));}catch{setDraft(null);}else setDraft(null);}return;}
+   if(first&&endpointTools&&tool!=='merge'){const target=pickEndpoint(p);if(target)try{setDraft(finalizeGeometryEdit(stored,applyDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,target)));}catch{setDraft(null);}else setDraft(null);}return;}
   if(g.kind==='zoom'){
    const dy=g.client[1]-e.clientY;if(!g.zoomMoved&&Math.abs(dy)<2)return;g.zoomMoved=true;
    const z=Math.max(.1,Math.min(12,g.zoom!*Math.exp(dy*.008))),r=svg.current!.getBoundingClientRect(),u=Math.min(size.width,size.height)/2.8*z;
@@ -238,9 +238,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current,bend);g.next=result.document;
     setDeformCage({...original,quad,bend,maxError:result.maxError});setHint('');
    }
-   if(g.kind==='move')g.next=cmd.transform(g.base,g.ids!,x=>add(x,delta),!!approved.current);
-   if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},!!approved.current);}
-   if(g.kind==='scale'){const o=g.origin!,start=sub(g.start,o),now=sub(p,o),safe=(v:number)=>Math.abs(v)<.01?(v<0?-.01:.01):v;let sx=safe(Math.abs(start[0])<1e-9?1:now[0]/start[0]),sy=safe(Math.abs(start[1])<1e-9?1:now[1]/start[1]);if(e.shiftKey)sy=sx;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},!!approved.current);}
+   if(g.kind==='move'){g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,selection,layerSimilarityValue(delta),g.ids):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:cmd.transform(g.base,g.ids!,x=>add(x,delta),!!approved.current);}
+   if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,selection,layerSimilarityValue([0,0],a*180/Math.PI,1,o),g.ids):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},!!approved.current);}
+   if(g.kind==='scale'){const o=g.origin!,start=sub(g.start,o),now=sub(p,o),safe=(v:number)=>Math.abs(v)<.01?(v<0?-.01:.01):v;let sx=safe(Math.abs(start[0])<1e-9?1:now[0]/start[0]),sy=safe(Math.abs(start[1])<1e-9?1:now[1]/start[1]);if(e.shiftKey)sy=sx;g.layerDomainIntent=workspaceId==='drawing'&&sx===sy&&sx>0?layerSimilarityIntentForSelection(g.base,selection,layerSimilarityValue([0,0],0,sx,o),g.ids):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},!!approved.current);}
    if(g.kind==='reference'&&g.base.reference){const ref=g.base.reference;g.next={...g.base,reference:{...ref,offset:add(ref.offset,delta).map(clampReferenceOffset) as Point2}};}
    if(g.next){const writes=g.kind==='node'?mirrorIntent(g.next,{ids:[],node:g.node}):g.kind==='handle'?mirrorIntent(g.next,{ids:[],handle:g.endpoint}):g.ids?mirrorWritesForCurves(g.next,g.ids):{};g.next=finalizeGeometryEdit(g.base,g.next,writes);if(g.kind==='handle'){const actual=curveById(g.next,g.endpoint!.curveId).handles[g.endpoint!.end];setGuideSnap(hit=>hit&&Math.hypot(hit.point[0]-actual[0],hit.point[1]-actual[1])<1e-10?hit:null);}setDraft(g.next);}
   }catch(ex){if(ex instanceof cmd.RelatedSelection){cancelDraft();error(ex,g.ids);}else setHint(t((ex as Error).message));}
@@ -258,7 +258,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     else if(n){penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,result.state);commit(n.document);setPen(result.state);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
    }else if(g.kind==='box'){
     const ids=selectCurvesInBox(d,shownCurves,g.start,local(e??g.last),{grouped:tool==='select',previousIds:g.shift?selected:[]});choose({ids},tool);
-   }else if(g.next){commit(g.next);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
+   }else if(g.next){commit(g.next,undefined,g.layerDomainIntent);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
   }catch(ex){error(ex);}
   if(interrupted&&g.next)setHint(t('拖动已中断，已保留最后有效位置。'));
  }
@@ -301,7 +301,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(useDrawing.getState().tool==='pen'&&prior?.last&&curveById(k.next,prior.last)){
     const next={...prior,position:nodeAt(k.next,{curveId:prior.last,end:1}).position};penHistory.current.set(k.next,next);setPen(next);setPenPreview(null);
    }
-   try{commit(k.next);}catch(ex){error(ex);}
+   try{commit(k.next,undefined,k.layerDomainIntent);}catch(ex){error(ex);}
   }
  }
  function history(redo=false){
@@ -330,7 +330,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(e.key.startsWith('Arrow')&&hasNudgeTarget(s.selection)){
     e.preventDefault();e.stopImmediatePropagation();if(drag.current||e.ctrlKey||e.metaKey)return;
     const amount=.004*(e.shiftKey?5:e.altKey?0.2:1),delta:Point2=[e.key==='ArrowRight'?amount:e.key==='ArrowLeft'?-amount:0,e.key==='ArrowUp'?amount:e.key==='ArrowDown'?-amount:0],base=held.current?.next??s.d;
-    try{const raw=nudgeSelection(base,s.selection,delta),n=finalizeGeometryEdit(base,raw,mirrorIntent(raw,s.selection));if(n===base)return;if(!held.current)held.current={base,next:n};else held.current.next=n;setDraft(n);setHint('');}catch(ex){setHint(t((ex as Error).message));}return;
+    try{const prior=held.current?.layerDomainIntent?.domain.value.translation??[0,0],intent=workspaceId==='drawing'?layerSimilarityIntentForSelection(held.current?.base??base,s.selection,layerSimilarityValue(add(prior,delta))):undefined,raw=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:nudgeSelection(base,s.selection,delta),n=finalizeGeometryEdit(base,raw,mirrorIntent(raw,s.selection));if(n===base)return;if(!held.current)held.current={base,next:n,layerDomainIntent:intent};else {held.current.next=n;held.current.layerDomainIntent=intent;}setDraft(n);setHint('');}catch(ex){setHint(t((ex as Error).message));}return;
    }
    if(e.ctrlKey||e.metaKey||e.altKey)return;
    const nextTool=drawingToolForShortcut(e);if(nextTool){e.preventDefault();s.selectTool(nextTool);}

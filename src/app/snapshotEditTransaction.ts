@@ -120,6 +120,7 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
   const state=edit.kind==='original-geometry'?{drawing:finalizeGeometryEdit(before.drawing,edit.drawing),drawingSnapshots:before.drawingSnapshots}:edit.state;
   let splitPlan:SnapshotCurveSplitBatchPlan|undefined;
   if(edit.intent){
+   if(edit.intent.kind==='layer-domain')throw Error('Resolve layer domain ownership through the Drawing Snapshot adapter before writing source geometry.');
    if(!context.workspace&&((before.recordingScenes?.scenes.length??0)>0||(before.vectorRecording?.rigs.length??0)>0))throw Error(`Cannot split source topology while legacy ${before.recordingScenes?.scenes.length?'scene':'vector'} Recording assets are live (${(before.recordingScenes?.scenes??before.vectorRecording?.rigs??[]).map(value=>value.id).join(', ')}). Migrate those assets to Snapshot recording before splitting; their original tracks and archive were not changed.`);
    if(!before.drawing||!state.drawing)throw Error('A split transaction requires the original Drawing document.');
    const expected=applyLayerEditIntent(before.drawing,edit.intent,{propagate:true}).document;

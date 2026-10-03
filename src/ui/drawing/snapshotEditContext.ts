@@ -2,13 +2,15 @@ import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from '../
 import type {LandmarkProject} from '../../domain/landmarks/model';
 import {add,sub,nodeAt,parseDrawing,type DrawingDocument as Doc,type Point2} from '../../domain/drawing/model';
 import {identityScenePlacement,identitySceneShape} from '../../domain/recordingScene/model';
-import {applyScenePlacementMatrix,tryInverseScenePlacement} from '../../domain/recordingScene/tracks';
+import {applyScenePlacement,applyScenePlacementMatrix,composePlacementSimilarity,tryInverseScenePlacement} from '../../domain/recordingScene/tracks';
 import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../../domain/recordingSnapshot/sources';
 import {applySnapshotMembershipEdit} from '../../domain/recordingSnapshot/localMembership';
 import {linkedNodeIds} from '../../domain/drawing/endpointLinks';
 import {drawingSnapshotPresentation,type DrawingSnapshotPresentation} from './snapshotPresentation';
 import {applyLayerEditIntent,createLayerCurveSplitIntent,createCurveSplitIntent,type LayerEditIntent} from '../../domain/drawing/layerEditIntent';
 import {resolveSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {applyLayerDomainIntent,assertLayerDomainIntent,createLayerDomainIntent,type LayerDomainIntent} from '../../domain/drawing/layerDomainIntent';
+import {markFinalizedGeometry} from '../../domain/drawing/geometryEdit';
 
 const same=(a:unknown,b:unknown)=>a===b||JSON.stringify(a)===JSON.stringify(b);
 const close=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])<1e-8;
@@ -28,6 +30,43 @@ export interface DrawingSnapshotEditPlan extends SnapshotEditPlan {
  sourceDrawing?:Doc;
  /** Snapshot state after the optional original transaction has synchronized. */
  localWorkspace?:NonNullable<LandmarkProject['recordingSnapshots']>;
+}
+
+/** A whole-layer domain retains authored parameters. Original owners still
+ * edit their source through the common Drawing command; references persist a
+ * local placement and consume the existing Warp/shape/placement evaluator.
+ * Resolving this plan also supplies the preview, including deferred ARC ink. */
+export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:LayerDomainIntent):DrawingSnapshotEditPlan&{drawing:Doc} {
+ assertLayerDomainIntent(intent);
+ const artworkId=project.drawingSnapshots?.activeId??'$working',workspace=project.recordingSnapshots,view=workspace&&drawingSnapshotPresentation(workspace,artworkId),before=view?.drawing??project.drawing;
+ if(!before)throw new DrawingSnapshotEditCapabilityError('The original Drawing document is unavailable.');
+ const targets=new Set(intent.scope.layerIds);
+ for(const id of targets){const layer=before.layers.find(layer=>layer.id===id);if(!layer)throw new DrawingSnapshotEditCapabilityError('A layer domain target no longer exists.');if(layer.locked||before.curves.some(curve=>layer.items.includes(curve.id)&&curve.locked))throw new DrawingSnapshotEditCapabilityError('Unlock the selected layer and its curves before transforming the whole layer.');}
+ const delta=intent.domain.value;
+ if(delta.translation.every(value=>value===0)&&delta.rotation===0&&(delta.scaleX??delta.scale)===1&&(delta.scaleY??delta.scale)===1)return {before:project,project,changed:false,drawing:markFinalizedGeometry(before)};
+ if(!view){const drawing=applyLayerDomainIntent(before,intent).document,plan=prepareDrawingSnapshotEdit(project,drawing);return {...plan,drawing:markFinalizedGeometry(drawing)};}
+ const localIds=[...targets].filter(id=>view.layerOwners.get(id)?.kind==='snapshot-local'),originalIds=[...targets].filter(id=>!localIds.includes(id)),local=new Set(localIds);
+ // A shared endpoint cannot acquire a second position authority. Coherent
+ // referenced layers may transform together; mixed source/reference links
+ // need a common domain owner rather than baking the relation into offsets.
+ const owner=(curveId:string)=>before.layers.find(layer=>layer.items.includes(curveId))?.id;
+ const checkRelation=(ids:(string|undefined)[])=>{if(!ids.some(id=>id&&local.has(id)))return;if(ids.some(id=>!id||!local.has(id)))throw new DrawingSnapshotEditCapabilityError('Select every linked referenced layer for this layer transform. A link to an original source needs a common snapshot domain.');};
+ for(const link of before.endpointLinks??[])checkRelation([owner(link.a.curveId),owner(link.b.curveId)]);
+ for(const node of before.nodes)checkRelation(before.curves.filter(curve=>curve.nodes.includes(node.id)).map(curve=>owner(curve.id)));
+ let plan:DrawingSnapshotEditPlan=originalIds.length?prepareDrawingSnapshotEdit(project,applyLayerDomainIntent(before,createLayerDomainIntent(originalIds,intent.domain.value)).document):{before:project,project,changed:false};
+ if(localIds.length){
+  const nextWorkspace=plan.project.recordingSnapshots!,snapshot=drawingSnapshotForArtwork(nextWorkspace,artworkId)!,layers={...snapshot.deformation.layers};
+  for(const id of localIds){const canonical=view.canonicalId(id),placement=composePlacementSimilarity(view.evaluation.placements[canonical]??identityScenePlacement(),intent.domain.value);layers[canonical]={...layers[canonical],placement};}
+  const next={...nextWorkspace,snapshots:nextWorkspace.snapshots.map(value=>value===snapshot?{...snapshot,deformation:{...snapshot.deformation,layers}}:value)};
+  const domainPlan=prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'snapshot-state',workspace:next});
+  plan={...plan,before:project,project:domainPlan.project,changed:plan.changed||domainPlan.changed,localWorkspace:domainPlan.project.recordingSnapshots};
+ }
+ const result=drawingSnapshotPresentation(plan.project.recordingSnapshots!,artworkId)!;
+ for(const id of localIds)for(const curve of before.curves.filter(curve=>before.layers.find(layer=>layer.id===id)!.items.includes(curve.id))){
+  const after=result.drawing.curves.find(value=>value.id===curve.id);
+  if(!after||curve.handles.some((point,end)=>!close(after.handles[end],applyScenePlacement(intent.domain.value,point)))||curve.nodes.some(nodeId=>!close(result.drawing.nodes.find(node=>node.id===nodeId)!.position,applyScenePlacement(intent.domain.value,before.nodes.find(node=>node.id===nodeId)!.position))))throw new DrawingSnapshotEditCapabilityError('This layer placement is controlled by a recording channel. Edit its owning snapshot before changing it here.');
+ }
+ return {...plan,drawing:markFinalizedGeometry(result.drawing)};
 }
 
 /** Adapt the result of the existing Drawing commands, not their gesture logic.
@@ -161,8 +200,10 @@ export function prepareDrawingSnapshotEdit(project:LandmarkProject,next:Doc):Dra
 /** Store actions already share prepareSnapshotEdit. Preflight both writes, then
  * apply them inside the same native Drawing Undo transaction. */
 type DrawingSnapshotEditor={project:LandmarkProject;beginEdit:()=>void;endEdit:()=>void;setDrawing:(drawing:Doc,intent?:LayerEditIntent)=>void;setRecordingSnapshots:(workspace:NonNullable<LandmarkProject['recordingSnapshots']>)=>void;commitPreparedSnapshotEdit?:(plan:SnapshotEditPlan)=>void};
-export function commitDrawingSnapshotEdit(editor:DrawingSnapshotEditor,next:Doc):DrawingSnapshotEditPlan {
- const plan=prepareDrawingSnapshotEdit(editor.project,next);if(!plan.changed)return plan;
+export function commitDrawingSnapshotEdit(editor:DrawingSnapshotEditor,next:Doc,intent?:LayerDomainIntent):DrawingSnapshotEditPlan {
+ const plan=intent?prepareDrawingLayerDomainEdit(editor.project,intent):prepareDrawingSnapshotEdit(editor.project,next);
+ if(intent&&!same(next,(plan as DrawingSnapshotEditPlan&{drawing:Doc}).drawing))throw new DrawingSnapshotEditCapabilityError('The layer domain intent and its preview no longer agree.');
+ if(!plan.changed)return plan;
  if(editor.commitPreparedSnapshotEdit){editor.commitPreparedSnapshotEdit(plan);return plan;}
  editor.beginEdit();try{if(plan.sourceDrawing)editor.setDrawing(plan.sourceDrawing);if(plan.localWorkspace)editor.setRecordingSnapshots(plan.localWorkspace);}finally{editor.endEdit();}return plan;
 }

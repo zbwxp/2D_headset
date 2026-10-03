@@ -1,6 +1,8 @@
 import {splitCurve} from './commands';
 import {curveById,layerFor,uid,type DrawingDocument} from './model';
 import type {MirrorCurvePair} from './mirrorEditing';
+import {applyLayerDomainIntent,mapLayerDomainIntent,type LayerDomainIntent} from './layerDomainIntent';
+export type {LayerDomainIntent} from './layerDomainIntent';
 
 /** A split is authored before parsing or synchronizing a Drawing document. Its
  * IDs travel beside the document through the transaction, never as document
@@ -30,7 +32,8 @@ export interface PairedCurveSplitIntent {
  readonly splits:readonly CurveSplitIntent[];
  readonly mirrorPairs:readonly {readonly oldPairId:string;readonly left:MirrorCurvePair;readonly right:MirrorCurvePair}[];
 }
-export type LayerEditIntent=CurveSplitIntent|PairedCurveSplitIntent;
+export type LayerTopologyEditIntent=CurveSplitIntent|PairedCurveSplitIntent;
+export type LayerEditIntent=LayerTopologyEditIntent|LayerDomainIntent;
 export interface CurveSplitProvenance {
  readonly sourceCurveId:string;
  readonly sourceNodeIds:readonly [string,string];
@@ -116,10 +119,10 @@ export function applyCurveSplitIntent(drawing:DrawingDocument,intent:CurveSplitI
  return {...result,intent,provenance:curveSplitProvenance(intent)};
 }
 
-export const curveSplitIntents=(intent:LayerEditIntent):readonly CurveSplitIntent[]=>intent.kind==='split-curves'?intent.splits:[intent];
+export const curveSplitIntents=(intent:LayerEditIntent):readonly CurveSplitIntent[]=>intent.kind==='layer-domain'?[]:intent.kind==='split-curves'?intent.splits:[intent];
 /** Mirror is an editing behavior: only enabled correspondence adds a second
  * target. With the toggle off the ordinary split only retires stale metadata. */
-export function createLayerCurveSplitIntent(drawing:DrawingDocument,curveId:string,t:number,options:CurveSplitIntentOptions={}):LayerEditIntent {
+export function createLayerCurveSplitIntent(drawing:DrawingDocument,curveId:string,t:number,options:CurveSplitIntentOptions={}):LayerTopologyEditIntent {
  const occupied=new Set([drawing,...(options.relatedDrawings??[])].flatMap(allIds)),allocate=options.allocateId??uid;
  const fresh=()=>{const id=allocate();if(!id||occupied.has(id))throw Error('The split identity allocator returned an existing or invalid ID.');occupied.add(id);return id;};
  const first=createCurveSplitIntent(drawing,curveId,t,{...options,allocateId:fresh}),pair=drawing.mirrorEditing?.enabled?drawing.mirrorEditing.curvePairs.find(value=>value.a===curveId||value.b===curveId):undefined;
@@ -132,11 +135,13 @@ export function createLayerCurveSplitIntent(drawing:DrawingDocument,curveId:stri
  return {kind:'split-curves',splits:first===second?[first]:[first,second],mirrorPairs:[{oldPairId:pair.id,left:{id:fresh(),a:a.childCurveIds[0],b:b.childCurveIds[pair.reverse?1:0],reverse:pair.reverse},right:{id:fresh(),a:a.childCurveIds[1],b:b.childCurveIds[pair.reverse?0:1],reverse:pair.reverse}}]};
 }
 export function mapLayerEditIntent(intent:LayerEditIntent,id:(id:string)=>string):LayerEditIntent {
+ if(intent.kind==='layer-domain')return mapLayerDomainIntent(intent,id);
  if(intent.kind==='split-curve')return mapCurveSplitIntent(intent,id);
  const pair=(value:MirrorCurvePair):MirrorCurvePair=>({...value,id:id(value.id),a:id(value.a),b:id(value.b)});
  return {...intent,splits:intent.splits.map(value=>mapCurveSplitIntent(value,id)),mirrorPairs:intent.mirrorPairs.map(value=>({oldPairId:id(value.oldPairId),left:pair(value.left),right:pair(value.right)}))};
 }
 export function applyLayerEditIntent(drawing:DrawingDocument,intent:LayerEditIntent,options:{propagate?:boolean}={}) {
+ if(intent.kind==='layer-domain')return applyLayerDomainIntent(drawing,intent);
  if(intent.kind==='split-curve')return applyCurveSplitIntent(drawing,intent,options);
  let document=drawing;for(const split of intent.splits)document=applyCurveSplitIntent(document,split,options).document;
  if(drawing.mirrorEditing){const replaced=new Set(intent.mirrorPairs.map(value=>value.oldPairId));document={...document,mirrorEditing:{...drawing.mirrorEditing,curvePairs:[...drawing.mirrorEditing.curvePairs.filter(pair=>!replaced.has(pair.id)&&document.curves.some(curve=>curve.id===pair.a)&&document.curves.some(curve=>curve.id===pair.b)),...intent.mirrorPairs.flatMap(value=>[value.left,value.right])]}};}
