@@ -56,12 +56,12 @@ test('material span and boolean visibility timing remains angle based under slow
  target.curves[0].visible=false;const hidden=endpoint(target,'end',-90),result=interpolateEndpointOnion(start,hidden,5,recording);expect(result.frames.find(frame=>frame.angle.x===-30)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(true);expect(result.frames.find(frame=>frame.angle.x===-45)!.centerlines!.some(line=>line.id.startsWith('curve:left:'))).toBe(false);
 });
 
-test.each([false,true])('ARC-connected curves share relation response and preserve trims (endpoint link: %s)',linked=>{
+test.each([false,true])('ARC-connected curves retain individual responses and preserve trims (endpoint link: %s)',linked=>{
  const source=drawing(!linked,linked);source.nodes.find(node=>node.id==='a')!.position=point(-1);source.nodes.find(node=>node.id==='b')!.position=point(0);if(linked)source.nodes.find(node=>node.id==='c')!.position=point(0);source.nodes.find(node=>node.id==='d')!.position=point(0,1);source.curves[0].handles=[point(-2/3),point(-1/3)];source.curves[1].handles=[point(0,1/3),point(0,2/3)];
  if(linked){source.endpointLinks![0].throughDisplay=true;source.endpointLinks![0].joinBrush={kind:'ARC',trimDistance:.2};source.displayIntervals=[{id:'route',anchor:{id:'left',reverse:false},ranges:[{id:'coverage',start:0,end:1}],displayRoute:{seed:{segments:[{id:'left',reverse:false}],closed:false},throughLinkIds:['link']}}];}else source.joins=[{id:'arc',a:{curveId:'left',end:1},b:{curveId:'right',end:0},mode:'ARC',radius:.2}];
  const start=endpoint(source),end=endpoint(translated(source),'end',-90),recording=emptySnapshotRecording('recording'),layer=linked?'alpha':'layer';response(recording,'relation',layer,.25);response(recording,'left',layer,.8,'left');response(recording,'right',linked?'zeta':'layer',.1,'right');
  const result=interpolateEndpointOnion(start,end,5,recording),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=middle.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,right=middle.centerlines!.find(line=>line.id==='curve:right:0')!.cubic,arcs=middle.centerlines!.filter(line=>line.id.startsWith('arc:'));
- expect(arcs.length).toBeGreaterThan(0);for(const [a,b] of [[left[3],arcs[0].cubic[0]],[right[0],arcs.at(-1)!.cubic[3]]]){expect(a[0]).toBeCloseTo(b[0],9);expect(a[1]).toBeCloseTo(b[1],9);}expect(shapeOf(middle.drawing,'left')[0][0]).toBeCloseTo(1.5);expect(result.diagnostics.some(message=>message.includes('ARC-connected curves left, right'))).toBe(true);
+ expect(arcs.length).toBeGreaterThan(0);for(const [a,b] of [[left[3],arcs[0].cubic[0]],[right[0],arcs.at(-1)!.cubic[3]]]){expect(a[0]).toBeCloseTo(b[0],9);expect(a[1]).toBeCloseTo(b[1],9);}expect(shapeOf(middle.drawing,'left')[0][0]).toBeCloseTo(7);expect(result.diagnostics.some(message=>message.includes('ARC-connected curves left, right retain individual responses'))).toBe(true);
 });
 
 test('endpoint onion evaluates only two saved states and response edits reuse fixed endpoint geometry',()=>{
@@ -95,4 +95,17 @@ test('nonlinear ARC anchors follow differing raw-t trims while exact endpoints a
  for(const [a,b] of [[left[3],arcs[0].cubic[0]],[right[0],arcs.at(-1)!.cubic[3]]]){expect(a[0]).toBeCloseTo(b[0],12);expect(a[1]).toBeCloseTo(b[1],12);}
  for(const [frame,geometry] of [[result.frames[0],start],[result.frames.at(-1)!,end]] as const)expect(frame.centerlines!.filter(line=>line.id.startsWith('arc:')).map(line=>line.cubic)).toEqual(geometry.ink.arcGeometry![JSON.stringify(['join','arc'])].map(piece=>piece.cubic));
  const legacy=interpolateEndpointOnion(start,end,5);recording.interpolationWeights![0].points=[point(0),point(1,1)];expect(interpolateEndpointOnion(start,end,5,recording)).toEqual(legacy);
+});
+
+test('editing an ARC neighbor from 37% to 15% changes its ghosts without moving shared-node authority or opening trim joins',()=>{
+ const source=drawing(true);source.nodes=[{id:'a',position:point(-1)},{id:'b',position:point(0)},{id:'d',position:point(0,1)}];source.curves[0].handles=[point(-2/3),point(-1/3)];source.curves[1].handles=[point(0,1/3),point(0,2/3)];source.joins=[{id:'arc',a:{curveId:'left',end:1},b:{curveId:'right',end:0},mode:'ARC',radius:.2}];
+ source.nodes.push({id:'u',position:point(-2,2)},{id:'v',position:point(-1,2)});source.curves.push({...source.curves[0],id:'unrelated',nodes:['u','v'],handles:[point(-1.7,2),point(-1.3,2)]});source.layers[0].items.push('unrelated');
+ const target={...source,nodes:source.nodes.map(node=>({...node,position:point(node.position[0]*2+10,node.position[1]*2)})),curves:source.curves.map(curve=>({...curve,handles:curve.handles.map(p=>point(p[0]*2+10,p[1]*2)) as [Point2,Point2]}))},start=endpoint(source),end=endpoint(target,'end',-90),recording=emptySnapshotRecording('recording');response(recording,'jaw','layer',.37,'left');
+ const first=interpolateEndpointOnion(start,end,10,recording);recording.interpolationWeights![0].points=[point(0),point(.5,.15),point(1,1)];const second=interpolateEndpointOnion(start,end,10,recording);
+ for(let index=0;index<first.frames.length;index++){
+  const before=first.frames[index],after=second.frames[index];expect(after.centerlines!.find(line=>line.id==='curve:unrelated:0')).toEqual(before.centerlines!.find(line=>line.id==='curve:unrelated:0'));expect(before.drawing.nodes.find(node=>node.id==='b')!.position).toEqual(after.drawing.nodes.find(node=>node.id==='b')!.position);
+  const beforeJaw=before.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,afterJaw=after.centerlines!.find(line=>line.id==='curve:left:0')!.cubic;
+  if(index===0||index===first.frames.length-1)expect(after.centerlines).toEqual(before.centerlines);else expect(afterJaw).not.toEqual(beforeJaw);
+  for(const frame of [before,after]){const left=frame.centerlines!.find(line=>line.id==='curve:left:0')!.cubic,right=frame.centerlines!.find(line=>line.id==='curve:right:0')!.cubic,arcs=frame.centerlines!.filter(line=>line.id.startsWith('arc:')).map(line=>line.cubic),pieces=[left,...arcs,right];for(let piece=0;piece<pieces.length-1;piece++)for(const axis of [0,1] as const)expect(pieces[piece][3][axis]).toBeCloseTo(pieces[piece+1][0][axis],10);}
+ }
 });

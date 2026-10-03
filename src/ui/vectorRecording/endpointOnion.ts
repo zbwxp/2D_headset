@@ -99,30 +99,17 @@ export function interpolateEndpointOnion(start:EndpointOnionGeometry,end:Endpoin
  }
  const endNodes=new Map(end.drawing.nodes.map(node=>[node.id,node])),sharedNodes=start.drawing.nodes.filter(node=>endNodes.has(node.id)),nodeIds=new Set(sharedNodes.map(node=>node.id));
  const sharedCurves=start.drawing.curves.filter(curve=>endCurves.has(curve.id)&&curve.nodes.every((id,index)=>nodeIds.has(id)&&id===endCurves.get(curve.id)!.nodes[index]));
- const samples=sampleEndpointOnionAngles(start.angle,end.angle,step),curveFallbacks=new Map<string,OnionWeightOwner>(),nodeFallbacks=new Map<OnionWeightOwner,OnionWeightOwner>();
- // An ARC is already final geometry at each endpoint. Its neighboring curves
- // must share its response: independently retiming them would create a gap at
- // the derived trim rather than at a canonical node. No ARC is re-solved here.
- const parents=new Map<string,string>(),arcPairs=pairs.filter(pair=>pair.relationCurves&&pair.owner);
- const root=(id:string):string=>{const parent=parents.get(id);if(!parent||parent===id)return id;const result=root(parent);parents.set(id,result);return result;};
- const unite=(a:string,b:string)=>{const left=root(a),right=root(b);if(left!==right)parents.set(left<right?right:left,left<right?left:right);};
- for(const pair of arcPairs){const [a,b]=pair.relationCurves!;if(!parents.has(a))parents.set(a,a);if(!parents.has(b))parents.set(b,b);unite(a,b);}
- const arcsByNodeOwner=new Map<OnionWeightOwner,string>();
- for(const id of parents.keys())for(const nodeId of startCurves.get(id)?.nodes??[]){const owner=nodeOwners.get(nodeId);if(!owner)continue;const other=arcsByNodeOwner.get(owner);if(other)unite(id,other);else arcsByNodeOwner.set(owner,id);}
- const groups=new Map<string,string[]>();for(const id of parents.keys()){const key=root(id),ids=groups.get(key)??[];ids.push(id);groups.set(key,ids);}
- for(const [key,ids] of groups){
-  const arcs=arcPairs.filter(pair=>root(pair.relationCurves![0])===key),owner=arcs.map(pair=>pair.owner!).sort((a,b)=>a.layerId.localeCompare(b.layerId))[0];
-  const conflict=samples.some(({t})=>ids.some(id=>Math.abs(weight(curveOwners.get(id),t)-weight(owner,t))>1e-10||(startCurves.get(id)?.nodes??[]).some(nodeId=>Math.abs(weight(nodeOwners.get(nodeId),t)-weight(owner,t))>1e-10)));
-  if(!conflict)continue;
-  for(const id of ids){curveFallbacks.set(id,owner);for(const nodeId of startCurves.get(id)?.nodes??[]){const nodeOwner=nodeOwners.get(nodeId);if(nodeOwner)nodeFallbacks.set(nodeOwner,owner);}}
-  for(const pair of arcs)pair.owner=owner;
-  diagnostics.add(`ARC-connected curves ${ids.sort().join(', ')} have conflicting responses; their geometry uses the shared relation layer ${owner.layerId} response to keep trimmed ends connected.`);
- }
- const curveOwner=(id:string)=>curveFallbacks.get(id)??curveOwners.get(id);
- const startNodes=new Map(start.drawing.nodes.map(node=>[node.id,node])),nonlinearArcs=new Set(arcPairs.filter(pair=>{const owner=pair.owner!;return resolveSnapshotInterpolationWeight(recording,start.snapshotId,end.snapshotId,owner.layerId,owner.curveId).asset?.points.some(([x,y])=>Math.abs(x-y)>1e-10);}));
+ const samples=sampleEndpointOnionAngles(start.angle,end.angle,step),arcPairs=pairs.filter(pair=>pair.relationCurves);
+ const curveOwner=(id:string)=>curveOwners.get(id);
+ const nonlinear=(owner:OnionWeightOwner|undefined)=>!!owner&&!!resolveSnapshotInterpolationWeight(recording,start.snapshotId,end.snapshotId,owner.layerId,owner.curveId).asset?.points.some(([x,y])=>Math.abs(x-y)>1e-10);
+ // Keep each adjacent curve's own response. Only the derived ARC boundaries
+ // follow its weighted trims; ARC interior controls retain relation timing.
+ const nonlinearArcs=new Set(arcPairs.filter(pair=>nonlinear(pair.owner)||pair.relationCurves!.some(id=>nonlinear(curveOwner(id))||(startCurves.get(id)?.nodes??[]).some(nodeId=>nonlinear(nodeOwners.get(nodeId))))));
+ for(const pair of arcPairs)if(samples.some(({t})=>pair.relationCurves!.some(id=>Math.abs(weight(curveOwner(id),t)-weight(pair.owner,t))>1e-10)))diagnostics.add(`ARC-connected curves ${[...pair.relationCurves!].sort().join(', ')} retain individual responses; ARC boundaries follow their weighted trims while interior controls use the relation layer response.`);
+ const startNodes=new Map(start.drawing.nodes.map(node=>[node.id,node]));
  const frames=samples.map(({angle,t}):SceneOnionFrame=>{
   const startWins=nearerOnionEndpoint(start.angle,end.angle,t)==='start';
-  const nodeWeights=new Map(sharedNodes.map(node=>{const owner=nodeOwners.get(node.id);return [node.id,weight(owner?nodeFallbacks.get(owner)??owner:undefined,t)];}));
+  const nodeWeights=new Map(sharedNodes.map(node=>[node.id,weight(nodeOwners.get(node.id),t)]));
   const ownedCubic=(a:Cubic,b:Cubic,owner:OnionWeightOwner|undefined,nodes:[string,string])=>lerpOwnedCubic(a,b,weight(owner,t),nodes.map(id=>nodeWeights.get(id)??t) as [number,number]);
   const weightedCurves=new Map(pairs.filter(pair=>pair.nodes&&pair.owner?.curveId).map(pair=>[pair.owner!.curveId!,ownedCubic(pair.a,pair.b,curveOwner(pair.owner!.curveId!),pair.nodes!)]));
   return {angle,paintBatches:[],centerlines:pairs.flatMap(pair=>{const owner=pair.owner?.curveId?curveOwner(pair.owner.curveId):pair.owner,curveWeight=weight(owner,t),cubic=pair.nodes?(pair.owner?.curveId?weightedCurves.get(pair.owner.curveId):undefined)??ownedCubic(pair.a,pair.b,owner,pair.nodes):lerpCubic(pair.a,pair.b,curveWeight);
