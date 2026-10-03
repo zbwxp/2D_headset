@@ -1,6 +1,6 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 20:09 UTC。当前线上 v64（`2daf9fd`）于 20:04:05 UTC 部署，并完成下述限定浏览器验证。v62 的 affine、v63 的引用层 P 和镜像当前形状独立复制、v64 的失败预览清理和明确位置联动均已有实际 UI 证据。真合笔所需的局部外观覆盖仍在实现。下方早期版本的“待完成／候选”说明是当时记录；现况以下表和本节最新边界为准。
+核对日期：2026 年 10 月 3 日 21:13 UTC。当前线上 v66（`de1accf`）于 20:55:44 UTC 部署，继承节点真绑定、Drawing 跨层 SMOOTH 与保留可见性边界的真实插点已完成限定浏览器验证。v65 已验证引用新线真合笔和带区间响应的父线拆分。下方早期版本段落是历史证据；当前状态以本节及最后的未关闭清单为准。
 
 ### 最新实现与证据
 
@@ -8,9 +8,9 @@
 | --- | --- | --- | --- |
 | 整层 affine 与动态成员 | `layerDomainIntent.ts`、`layerDomain.ts` 由 `drawingSnapshotEdit.ts` / 共同事务 / 明确图层 API 消费；现有 affine material projection 保持派生笔触 | v62 实际宽度真 0、恢复／Undo、150%×50% 非等比、−100% 反射；源 P 新增后引用层 2→3，保存文件全部控制点与同一有序域最大误差 0 | 持久 H∘Coons 域及后域直接点编辑的派生材料运输仍在实现 |
 | 新局部端点联动与贯通材料 | `endpointInteraction.ts`、`endpointRelationAuthoring.ts`、`routeMaterialSource.ts` 与 `DisplayRouteControls` 共同使用原 Drawing 几何及材料解析 | v61 重做 v60 实际失败路径成功；SMOOTH、ARC 10→15px、逐笔 Undo 到 SHARP 路径逐字相同；保存文件清理验证原稿数据保留 | 不把一次成功例子扩大成全部笔触／拓扑组合已验收 |
-| 非线性 SMOOTH 拆分与真实插点 | `responseExpressionProjection.ts` / restriction / shared smooth kernel | v58 父拆分、v60 一般非线性内部插点有针对性自动化；v55/v57 保留各自限定浏览器证据 | 带 unscoped / STROKE / route 区间响应的父拆分需要统一材料路径 lineage；CURVE-only 43 项基础测试不代表默认完整脸已全部覆盖 |
+| 非线性 SMOOTH 拆分与真实插点 | `responseExpressionProjection.ts` / restriction / shared smooth kernel | v58 父拆分、v60 一般非线性内部插点有针对性自动化；v55/v57 保留各自限定浏览器证据 | v65 已统一 CURVE / unscoped / STROKE / route 材料 lineage；实际父耳线分段的 7 个 yaw 材料世界端点误差 1.14e−16。非线性域下的 fit 参数 restriction 仍属后续组合 |
 | 局部移除与真正源删除 | response / material 依赖退役和 `sourceDeletion.ts` | v62 局部移除只停用失去支持的字段，其他曲线继续正常；恢复成员可恢复材料字段；真正源删除清相应属性目标，不产生红色幽灵 | 继续随新材料 lineage / 非线性域检查具体依赖，不设置全画面硬门槛 |
-| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63 实际引用层 P 成功；真合笔所需 width/profile/inkEnds 本地覆盖仍缺，失败预览与明确位置联动入口已在 v64 实测通过。lock 等局部能力仍有边界 |
+| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定、lock 等局部能力仍在收口 |
 | 独立当前形状复制 | `independentCopy.ts` 经现有 `cloneLayers` 和共同事务调用 | `e5b4273` 已冻结：新自有 ID、脱离旧父级、当前几何和颜色／填充／区间／ARC／偏移／层序检查，74 项通过、1 既有跳过 | v63 实际自动 +90° 镜像左眉复制：新 ID、同一视口 SVG 逐字相同、保存为无父级自有根；确实无法保持外观的异构 affine / 材料组合原子诊断 |
 | 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | 这是数学归口，不等于已有持久曲边层域或全部 Recorder 编辑器完成 |
 
@@ -184,3 +184,33 @@ Recording 的关系卡现在直接消费同一个 `DisplayRouteControls`：可�
 在同一 v63 复现场景，真合笔的外观 guard 仍然准确拒绝，但本次立即清掉临时预览，关系卡恢复“未绑定”，新线命中路径保持原值。随后从工具选项明确进入“端点联动”，实际两次点击建立关系；原嘴端点与新线端点保留不同节点 ID，屏幕坐标完全相同。保存 JSON 包含新的 Snapshot endpointLink，原五份源画稿逐字段不变。Undo 移除关系并恢复原新线，Redo 所选路径逐字恢复。四笔正常 Undo 清完测试准备，Undo 禁用。
 
 记录：[v64 实际浏览器报告](../../artifacts/triangulated-recorder-qa/v64-browser-verification.json)。此处位置联动保各自外观；真合笔的普通 Drawing 行为仍应通过局部外观覆盖继续完成，不能把 guard 当成永久功能限制。当前局部 width/profile/inkEnds 实现与持久 Coons、通用路径材料父拆分并行，尚未作为线上完成项。
+
+
+## v65 材料父拆分和局部笔触外观
+
+`curveAppearance.ts` 保存按曲线、末端及字段稀疏的局部外观覆盖；缺省继续读来源，null 明确清除该可选字段。普通 Drawing 真合笔的 connected ink／笔画名修改不再写回被引用原稿。v65 实際引用嘴线与本地 P 新线合笔后，保存文件显示同一 canonical node 和本地 curveAppearance；原五份画稿逐字段不变，Undo／Redo 路径复原。
+
+`pathMaterialSupport.ts`／`materialPathLineages.ts` 记录 live 曲线 ID 与 native t，Recorder 先求原材料响应再映射拆分后的路径。CURVE、未指定 scope、STROKE、反向、闭合和显式 route 走共同路径框架。默认完整脸 11 条及私人档案内存副本 9 条 source split 本地对照通过，原件 hash 未变。实际 UI 在独立完整脸来源先设置 −90° 区间终点，再于 −30° 保存区间响应，成对分割父耳线后 121→123 段；9 顶点和 propertyResponses 均保持，7 个 yaw 角的材料世界端点最大误差 1.14e−16。
+
+最初在原完整稿上的分割被既有旧 Warp 轨迹依赖原子拒绝，未删除旧轨或假称它已支持；该准备撤回后才使用普通“保存为新画稿”建立独立 QA 来源。两次邻近颅顶误命中均撤销且排除在证据外，放大后由子 cubic 和保存 lineage 确认正确耳线。测试结束 4／8／10 笔 Undo 分别清除真合笔、旧依赖失败准备、独立来源和录制，五份原稿与既有工作副本恢复。
+
+报告：[v65 UI](../../artifacts/triangulated-recorder-qa/v65-browser-verification.json)、[材料保存回读](../../artifacts/triangulated-recorder-qa/v65-material-save-validation.json)。显示百分比由 80 变为 80.000079 是分段后路径弧长归一化的坐标差，材料世界位置没有漂移。
+
+## v66 单一关系组件、继承节点与可见性插点
+
+`endpointRelations/smoothComponent.ts` 为 Drawing、目标变换与 Recorder 提供唯一带方向的关系遍历；作者和运行时保留各自明确投影策略，未改变原投影数值顺序。真实 Drawing 中关闭镜像，把跨层下颌贯通设为 SMOOTH，再拖一侧控制柄；另一层柄同步变化，统一 Snapshot presentation 回读的叉积为 0、方向相反，从柄长度完全保持。旧 raw Drawing 兼容字段不是局部关系覆盖后的最终画面，验证取实际 presentation。
+
+`nodeAliases.ts` 在当前 Snapshot 输入解析成员后建立局部共享节点权威，source canonical library 不变。真实引用嘴层两继承端点绑定后节点 3→2，闭合笔画保存为 canonical alias；Undo 回 3 节点、Redo 路径逐字相同。解除继承绑定的反向拓扑操作仍在实现，不以 POSITION link 代替真合笔。
+
+`visibilityRestriction.ts` 保留原几何支持域的离散选择器，与材料和几何共用 `simplexSupport.ts`。插入真实 −60° 不产生布尔 authored key，也不将原 −45° 切换搬到新边中点。实际两条嘴线中一条在 −90° 隐藏，插点前后 −30／−44.999 各两条，−45／−45.001／−60 各一条，五处输出路径逐字一致；Undo／Redo 顶点 10→9→10。私人112本地回归的 73 个可见性差异、2010项flag比较、重复插点和 split→insert→interval-edit 全链已通过，未上传该文件。
+
+报告：[v66 UI](../../artifacts/triangulated-recorder-qa/v66-browser-verification.json)、[跨层平滑回读](../../artifacts/triangulated-recorder-qa/v66-smooth-save-validation.json)。三组实际操作分别 3／3／7 笔正常 Undo 清理，窗口回 Drawing，Undo 禁用。API 与 Drawing 同目标相等有专门自动化；本轮鼠标执行的是 Drawing A。没有浏览器 FPS、私人档案浏览器验收或完整转头美术验收。
+
+### 21:13 未关闭清单
+
+- 有序 H∘Coons 域的完整持久、ARC/material provenance、后域 A、UI/API/save 实现正在最后冻结；Recording 尚无共用 quad/cage 作者工具栏入口，不能把 API 已能存算成录制 UI 已能操作
+- 后域 alias／bind、父 split 的 fit 参数 restriction、独立当前形状复制和局部 P 的共同作者目标适配仍需组合闭环。新父/source线默认无自身 delta；child 主动 P 创建的明确局部目标可以拥有本地 postShape，不能误扩大“零 delta”限制
+- 继承解绑的局部新节点身份、部分锁定／外观属性工具和实际能力提示需要继续完成
+- 测试专用 `resolveSnapshotSimplexPresence` 已移除，三条缺失合同改测实际 runtime；此清理 `9c57652` 与文案 `a7f9c8c` 尚未部署，不改变采样规则
+- 中间角独立布尔作者样本的切换语义尚未新增；当前已明确要求的连续区间端点与真实插点离散继承分别有实现，不悄悄增加布尔 UI
+- 跨模式全局 Undo 的守卫去除等待用户对明确问题的答复；旧 channel runtime 的退役仍未获得清楚决定。原归档不随任何清理被删除
