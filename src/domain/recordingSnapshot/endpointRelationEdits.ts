@@ -9,8 +9,11 @@ const close=(a:Point2,b:Point2)=>length(sub(a,b))<=1e-8*Math.max(1,length(a),len
  * canonical node or introducing a separate position authority per layer. */
 export function reconcileSnapshotEndpointRelationEdit(before:DrawingDocument,target:DrawingDocument,evaluation:SnapshotEvaluation,state:SnapshotDeformationState,unplace:(layerId:string,curveId:string,point:Point2)=>Point2,authorityStates:SnapshotDeformationState[]=[state]):Set<string> {
  const priorLinks=before.endpointLinks??[],links=target.endpointLinks??[];
- if(JSON.stringify(priorLinks)===JSON.stringify(links))return new Set();
- const changedIds=new Set([...priorLinks,...links].filter(link=>JSON.stringify(priorLinks.find(value=>value.id===link.id))!==JSON.stringify(links.find(value=>value.id===link.id))).map(link=>link.id));
+ const changedIds=new Set([...priorLinks,...links].filter(link=>{
+  const prior=priorLinks.find(value=>value.id===link.id),next=links.find(value=>value.id===link.id);
+  return JSON.stringify(prior)!==JSON.stringify(next)||!!prior&&!!next&&[prior.a,prior.b].some(endpoint=>!close(nodeAt(before,endpoint).position,nodeAt(target,endpoint).position));
+ }).map(link=>link.id));
+ if(!changedIds.size)return new Set();
  const affected=new Set<string>();
  for(const document of [before,target])for(const link of document.endpointLinks??[])if(changedIds.has(link.id))for(const endpoint of [link.a,link.b])for(const nodeId of linkedNodeIds(document,nodeAt(document,endpoint).id))affected.add(nodeId);
  const shapeFor=(layerId:string)=>{const layer=state.layers[layerId]??={};return layer.shape??=structuredClone(evaluation.state.layers[layerId]?.shape??{nodes:{},handles:{}});};

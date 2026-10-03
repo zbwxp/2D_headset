@@ -83,9 +83,9 @@ test('mixed original and reference geometry has one Undo and never ingests refer
  expect(after.drawing!.curves).toHaveLength(1);expect(shapeOf(after.drawing!,'curve')).toEqual(shapeOf(next,'curve'));expect(shapeOf(currentDrawingPresentation(after),bid('curve')).flat()).toEqual(shapeOf(next,bid('curve')).flat().map(value=>expect.closeTo(value,10)));expect(useEditor.getState().past).toEqual([f.project]);
 });
 
-test('reference topology and material fail before mutation or history, while original tools stay available',()=>{
+test('unsupported reference base appearance fails before mutation or history',()=>{
  const f=fixture(),view=currentDrawingPresentation(f.project);vi.useFakeTimers();useWorkspaceMode.getState().setMode('drawing');useEditor.setState({project:f.project,past:[],future:[]});
- const unsupported=[widthChange(view,[bid('curve')],.04),createCurve(view,bid('layer'),[[0,1],[.3,1],[.7,1],[1,1]],.02,'Invalid','new-curve')];
+ const unsupported=[widthChange(view,[bid('curve')],.04)];
  for(const next of unsupported){expect(()=>commitDrawingSnapshotEdit(useEditor.getState(),next)).toThrow(/Referenced layers/);expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);}
 });
 

@@ -13,12 +13,19 @@ import {reconcileSnapshotEndpointRelationEdit} from './endpointRelationEdits';
 import {snapshotIntervalMaterialSource} from './routeMaterialSource';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
 import {parseRecordingSnapshots} from './persistence';
+import {patchSnapshotRelations} from './relationAuthoringIntent';
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotDiagnostic,SnapshotRelationPatch,SnapshotDeformationState} from './model';
 
 /** Drawing already authored the geometry, connections and identities. This is
  * an ownership/coordinate adapter, never another pen or topology kernel. */
 export interface SnapshotDrawingTopologyEdit {
  recordingId:string;snapshotId:string;angle:Angle;
+ beforeDrawing:DrawingDocument;drawing:DrawingDocument;
+}
+/** Snapshot-local authorship has no dependency on a Recorder or its cursor.
+ * The host chooses the visible saved/draft state before entering this adapter. */
+export interface SnapshotLocalDrawingEdit {
+ snapshotId:string;state:'saved'|'active-draft';
  beforeDrawing:DrawingDocument;drawing:DrawingDocument;
 }
 export class SnapshotDrawingTopologyError extends Error {constructor(readonly code:string,message:string){super(message);}}
@@ -66,21 +73,6 @@ function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,poi
  if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
  return applyScenePlacementMatrix(inverse,point);
 }
-function patchRelations<T extends {id:string}>(patch:SnapshotRelationPatch<T>|undefined,before:readonly T[],after:readonly T[]):SnapshotRelationPatch<T>|undefined {
- const previous=new Map(before.map(value=>[value.id,value])),next=new Map(after.map(value=>[value.id,value])),result=clone(patch??{});
- for(const value of before)if(!next.has(value.id)){
-  const owned=result.add?.some(item=>item.id===value.id);result.add=result.add?.filter(item=>item.id!==value.id);result.update=result.update?.filter(item=>item.id!==value.id);
-  if(!owned)result.disable=[...new Set([...(result.disable??[]),value.id])];
- }
- for(const value of after)if(!same(previous.get(value.id),value)){
-  result.disable=result.disable?.filter(id=>id!==value.id);
-  const operation=result.add?.some(item=>item.id===value.id)||!previous.has(value.id)?'add':'update';
-  result[operation]=[...(result[operation]??[]).filter(item=>item.id!==value.id),clone(value)];
- }
- for(const operation of ['add','update','disable'] as const)if(!result[operation]?.length)delete result[operation];
- return Object.keys(result).length?result:undefined;
-}
-
 /** Keep existing canonical endpoint authorities when Drawing merged a new pen
  * node into one of them. Two inherited nodes cannot be silently identified. */
 function preserveInheritedNodes(before:DrawingDocument,target:DrawingDocument,owned:Set<string>):DrawingDocument {
@@ -95,8 +87,14 @@ function preserveInheritedNodes(before:DrawingDocument,target:DrawingDocument,ow
 }
 
 export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorkspace,edit:SnapshotDrawingTopologyEdit):{workspace:RecordingSnapshotWorkspace;diagnostics:SnapshotDiagnostic[]} {
- const snapshot=assertSnapshotTopologyVertex(before,edit.recordingId,edit.snapshotId,edit.angle);
- const evaluation=resolveSnapshot(before,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'}),current=evaluation.drawing;
+ assertSnapshotTopologyVertex(before,edit.recordingId,edit.snapshotId,edit.angle);
+ return prepareSnapshotLocalDrawingEdit(before,{snapshotId:edit.snapshotId,state:'active-draft',beforeDrawing:edit.beforeDrawing,drawing:edit.drawing});
+}
+export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspace,edit:SnapshotLocalDrawingEdit):{workspace:RecordingSnapshotWorkspace;diagnostics:SnapshotDiagnostic[]} {
+ const snapshot=before.snapshots.find(value=>value.id===edit.snapshotId)??fail('MISSING_SNAPSHOT','The local Drawing target Snapshot no longer exists.'),useDraft=edit.state==='active-draft';
+ const evaluate=(workspace:RecordingSnapshotWorkspace)=>resolveSnapshot(workspace,snapshot.id,{useDraft,angle:snapshot.angle,diagnostics:'preview'});
+ const evaluation=evaluate(before),current=evaluation.drawing;
+ const patchRelations=<T extends {id:string}>(patch:SnapshotRelationPatch<T>|undefined,prior:readonly T[],next:readonly T[])=>patchSnapshotRelations(patch,prior,next,id=>drawingSourceOwns(snapshot,id));
  // Metadata such as the artwork reference does not participate in geometry.
  const content=(drawing:DrawingDocument)=>[drawing.nodes,drawing.curves,drawing.layers,drawing.fills,drawing.offsets,drawing.joins,drawing.endpointLinks??[],drawing.groups??[],drawing.displayIntervals??[]];
  if(!same(content(current),content(edit.beforeDrawing)))return fail('STALE_TOPOLOGY_TARGET','The snapshot changed during this Drawing gesture. Start the gesture again on its current frame.');
@@ -149,8 +147,8 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  for(const state of authorityStates)for(const [id,value] of Object.entries(state.relationPositions)){const sourceLinkIds=value.sourceLinkIds.filter(linkId=>liveLinks.has(linkId));if(!sourceLinkIds.length)delete state.relationPositions[id];else if(sourceLinkIds.length!==value.sourceLinkIds.length)state.relationPositions[id]={...value,sourceLinkIds};}
  // Existing controls are residuals over today's live post-Warp material. Only
  // changed IDs are authored; saved state and an unrelated draft remain intact.
- const intermediate=resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'});
- const state:SnapshotDeformationState=local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
+ const intermediate=evaluate(workspace);
+ const state:SnapshotDeformationState=useDraft&&local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
  const relationNodes=reconcileSnapshotEndpointRelationEdit(current,target,intermediate,state,(layerId,curveId,point)=>unplace(intermediate,layerId,curveId,point),authorityStates);
  const shapeFor=(layerId:string)=>{let value=shapes.get(layerId);if(!value){value=clone(state.layers[layerId]?.shape??intermediate.state.layers[layerId]?.shape??{nodes:{},handles:{}});shapes.set(layerId,value);}return value;};
  for(const curve of target.curves){if(newIds.has(curve.id))continue;const prior=current.curves.find(value=>value.id===curve.id)!,layerId=layerFor(target,curve.id)!.id;
@@ -165,14 +163,14 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  for(const layer of snapshot.layers)if(layer.kind==='original'&&!target.layers.some(value=>value.id===layer.id))localOwned.add(layer.id);
  if(localOwned.size){const remainingCurves=Object.values(workspace.library.curves).filter(curve=>!localOwned.has(curve.id)),usedNodes=new Set(remainingCurves.flatMap(curve=>curve.nodes));for(const curveId of [...localOwned])for(const nodeId of before.library.curves[curveId]?.nodes??[])if(!usedNodes.has(nodeId))localOwned.add(nodeId);workspace=removeDeletedSourceReferences(before,workspace,snapshot.id,localOwned);}
  workspace=propagateAutomaticSnapshotLayers(before,workspace).workspace;
- let actual=resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'});
+ let actual=evaluate(workspace);
  // The editor's ranges describe the visible frame. A newly resolved local
  // route stores them in its live relationship material frame, using exactly
  // the same source-t/ARC-fraction transport as interpolation and numeric edits.
  const resolvedMaterials=new Set<string>(),materialTracks=(target.displayIntervals??[]).map(track=>{const material=snapshotIntervalMaterialSource(actual,track.id);if(material===actual.source)return track;resolvedMaterials.add(track.id);return transportEndpointPairMaterial(target,track,material,[]);});
  if(resolvedMaterials.size){const patch=patchRelations(local.relations.displayIntervals,current.displayIntervals??[],materialTracks);if(patch)local.relations.displayIntervals=patch;else delete local.relations.displayIntervals;
   for(const track of materialTracks)if(resolvedMaterials.has(track.id)){const layerId=layerFor(target,track.anchor.id)!.id,value=actual.state.layers[layerId]?.intervals?.[track.id];if(value?.appearance){const layer=state.layers[layerId]??={};layer.intervals={...layer.intervals,[track.id]:{...clone(value),appearance:clone(track)}};}}
-  actual=resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.angle,diagnostics:'preview'});
+  actual=evaluate(workspace);
  }
  for(const track of target.displayIntervals??[])if(track.displayRoute&&!actual.drawing.displayIntervals?.some(value=>value.id===track.id&&same(value.displayRoute,track.displayRoute)))return fail('TOPOLOGY_ROUTE_UNREPRESENTABLE','This local endpoint link cannot yet retain a through-display route over its source controls. No relation was changed.');
  for(const track of target.displayIntervals??[])if(resolvedMaterials.has(track.id)){const got=actual.drawing.displayIntervals!.find(value=>value.id===track.id)!;for(const range of track.ranges){const value=got.ranges.find(item=>item.id===range.id);if(!value||!close([range.start,range.end],[value.start,value.end]))return fail('TOPOLOGY_MATERIAL_UNREPRESENTABLE','The route edit cannot retain its requested material addresses. No relation was changed.');}}

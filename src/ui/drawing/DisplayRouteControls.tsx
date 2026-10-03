@@ -8,9 +8,11 @@ import {resolveDisplayRoute} from '../../domain/drawing/displayRoutes';
 import {setEndpointLinkBrush} from '../../domain/drawing/endpointRelationAuthoring';
 import {NumberField} from './Field';
 import {uiText as t} from '../i18n';
+import type {DrawingCommandRun} from './endpointInteraction';
 /** One selected interval track and one existing, explicitly chosen geometric link.
  * No branch guessing, global stroke merge or fill boundary change. */
-export default function DisplayRouteControls({d,track,disabled,run}:{d:Doc;track:StrokeDisplayIntervals;disabled:boolean;run:(f:()=>Doc)=>void}){
+export default function DisplayRouteControls({d,track,disabled,run:commit}:{d:Doc;track:StrokeDisplayIntervals;disabled:boolean;run:DrawingCommandRun}){
+ const run=(operation:()=>Doc)=>commit(operation,{kind:'relation-authoring'});
  const [chosen,setChosen]=useState(''),[kind,setKind]=useState<TerminusJoinBrush['kind']>('SHARP'),[distance,setDistance]=useState(.04);
  const path=displayPath(d,track.anchor.id),ids=new Set(path.segments.map(u=>u.id)),links=(d.endpointLinks??[]).filter(l=>ids.has(l.a.curveId)||ids.has(l.b.curveId)),available=links.filter(l=>!track.displayRoute?.throughLinkIds.includes(l.id)),link=available.find(l=>l.id===chosen)??available[0];
  const describe=(id:string)=>{const c=curveById(d,id);return `${layerFor(d,id)?.name??''} / ${c.name}`;};

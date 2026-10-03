@@ -4,6 +4,10 @@ import type {DrawingSelection} from './session';
 import type {ConnectionTool} from './tools';
 
 export type DrawingEndpointTool=ConnectionTool|'merge';
+/** Command cause travels separately from its geometry so source followers are
+ * never mistaken for directly authored original controls. */
+export interface DrawingCommandIntent {kind:'relation-authoring'}
+export type DrawingCommandRun=(operation:()=>DrawingDocument,intent?:DrawingCommandIntent)=>void;
 /** The endpoint overlay and picking always use the same editable layer scope.
  * Omit layerId only when a caller deliberately offers all visible layers. */
 export function drawingEndpointCurveIds(drawing:DrawingDocument,layerId?:string|null):string[]{

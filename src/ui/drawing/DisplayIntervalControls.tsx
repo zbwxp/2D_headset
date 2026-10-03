@@ -7,7 +7,9 @@ import {addDisplayInterval,changeDisplayInterval,removeDisplayInterval,setDispla
 import type {DrawingSelection} from './session';
 import {NumberField} from './Field';
 import {uiText as t} from '../i18n';
-export default function DisplayIntervalControls({d,id,selection,run,choose}:{d:Doc;id:string;selection:DrawingSelection;run:(f:()=>Doc)=>void;choose:(s:DrawingSelection)=>void}){
+import type {DrawingCommandRun} from './endpointInteraction';
+export default function DisplayIntervalControls({d,id,selection,run:commit,choose}:{d:Doc;id:string;selection:DrawingSelection;run:DrawingCommandRun;choose:(s:DrawingSelection)=>void}){
+ const run=(operation:()=>Doc)=>commit(operation,{kind:'relation-authoring'});
  const [newMode,setNewMode]=useState<DisplayIntervalMode>('SHOW');
  const path=displayPath(d,id),tracks=pathTracks(d,path),disabled=path.segments.some(x=>!editable(d,x.id)),indices=new Map(tracks.flatMap(t=>t.ranges).map((r,i)=>[r.id,i+1]));
  return <PanelSection id="drawing.intervals" title="显示区间" className="drawing-display-intervals" testId="drawing-display-intervals">

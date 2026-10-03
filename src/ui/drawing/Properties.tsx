@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import type {DrawingCommandRun} from './endpointInteraction';
 import {currentDrawingPresentation} from './snapshotPresentation';
 import EndpointLinkBrushInfo from './EndpointLinkBrushInfo';
 import {displayRouteFor} from '../../domain/drawing/displayIntervals';
@@ -21,7 +22,7 @@ import {NumberField,NameField} from './Field';
 import DrawingReferenceControls from '../shared/DrawingReferenceControls';
 import {useDrawingWorkspace} from './workspace';
 import {uiText as t} from '../i18n';
-interface Props {domainControls?:ReactNode;open:boolean;setOpen:(open:boolean)=>void;document:DrawingDocument;selection:DrawingSelection;active:string|null;run:(fn:()=>DrawingDocument)=>void;choose:(s:DrawingSelection)=>void;tool:(t:'merge'|'link'|'bind'|'smooth'|'cusp'|'arc')=>void;transform:(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror'|'mirrorAxis',value:number)=>void;upload:()=>void;moveReference:()=>void;preview:(d:DrawingDocument|null)=>void}
+interface Props {domainControls?:ReactNode;open:boolean;setOpen:(open:boolean)=>void;document:DrawingDocument;selection:DrawingSelection;active:string|null;run:DrawingCommandRun;choose:(s:DrawingSelection)=>void;tool:(t:'merge'|'link'|'bind'|'smooth'|'cusp'|'arc')=>void;transform:(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror'|'mirrorAxis',value:number)=>void;upload:()=>void;moveReference:()=>void;preview:(d:DrawingDocument|null)=>void}
 export default function Properties({domainControls,open,setOpen,document:d,selection:s,active,run,choose,tool,transform,upload,moveReference,preview}:Props){
  const {editor,id:workspaceId}=useDrawingWorkspace();
  s={...s,handle:s.handle&&d.curves.some(c=>c.id===s.handle!.curveId)?s.handle:undefined,node:s.node&&d.nodes.some(n=>n.id===s.node)?s.node:undefined};
@@ -70,7 +71,7 @@ export default function Properties({domainControls,open,setOpen,document:d,selec
  {node&&<PanelSection id="drawing.connection-members" title="连接成员" className="drawing-relations">{members(d,node.id).map(e=><button key={`${e.curveId}:${e.end}`} onClick={()=>choose({ids:[e.curveId],node:node.id})}>{curveById(d,e.curveId).name} · {e.end?'P1':'P0'}</button>)}</PanelSection>}
  {endpoint&&<PanelSection id="drawing.endpoint-links" title="端点联动" className="drawing-relations" testId="drawing-endpoint-link-properties">
  <p className="drawing-muted">{t('几何端点联动只约束位置；下列末端笔触属于列出的实际轮廓。')}</p>
- {linksAtNode(d,nodeAt(d,endpoint).id).map(link=>{const other=nodeAt(d,link.a).id===nodeAt(d,endpoint).id?link.b:link.a;return <div key={link.id} className="drawing-endpoint-link-card" data-testid="drawing-endpoint-link" data-link-id={link.id}><EndpointLinkBrushInfo d={d} link={link}/><div className="drawing-property-actions"><button onClick={()=>choose({ids:[other.curveId],node:nodeAt(d,other).id})}>{curveById(d,other.curveId).name} · P{other.end}</button><button disabled={[link.a,link.b].some(e=>curveById(d,e.curveId).locked)} onClick={()=>run(()=>unlinkEndpoints(d,link.id))}>{t('解除联动')}</button></div></div>;})}
+ {linksAtNode(d,nodeAt(d,endpoint).id).map(link=>{const other=nodeAt(d,link.a).id===nodeAt(d,endpoint).id?link.b:link.a;return <div key={link.id} className="drawing-endpoint-link-card" data-testid="drawing-endpoint-link" data-link-id={link.id}><EndpointLinkBrushInfo d={d} link={link}/><div className="drawing-property-actions"><button onClick={()=>choose({ids:[other.curveId],node:nodeAt(d,other).id})}>{curveById(d,other.curveId).name} · P{other.end}</button><button disabled={[link.a,link.b].some(e=>curveById(d,e.curveId).locked)} onClick={()=>run(()=>unlinkEndpoints(d,link.id),{kind:'relation-authoring'})}>{t('解除联动')}</button></div></div>;})}
  <button disabled={disabled} onClick={()=>tool('link')}>{t('联动另一个端点')}</button></PanelSection>}
  {endpoint&&<PanelSection id="drawing.joins" title="本层连接" className="drawing-relations"><span>{t(j?(j.mode==='ARC'?'圆弧接笔':j.mode==='SMOOTH'?'平滑接笔':'尖点接笔'):members(d,nodeAt(d,endpoint).id).length>1?'仅绑定':'未绑定')}</span>
  {linksAtNode(d,nodeAt(d,endpoint).id).length>0&&<p className="drawing-muted">{t('这里只描述本层共享端点的连接；关联末端笔触见上方端点联动。')}</p>}

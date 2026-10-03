@@ -7,6 +7,9 @@ import {transportDeformedIntervals} from '../drawing/deform';
 import {applyIntervalOverrides,validateIntervalOverrides} from '../vectorRecording/intervals';
 import {drawingSignature} from '../vectorRecording/model';
 import {removeDeletedSourceReferences} from './sourceDeletion';
+import {resolveSnapshot} from './evaluation';
+import {snapshotIntervalMaterialSource} from './routeMaterialSource';
+import {transportEndpointPairMaterial} from './endpointPairMaterial';
 import {emptyRecordingSnapshot,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SceneIntervalValue,type SnapshotMaterialIssue,type SnapshotRelationPatch,type SnapshotRelationOverrides} from './model';
 
 /** Canonical IDs are scoped by the legacy artwork identity, never its current
@@ -152,20 +155,41 @@ function moveSourceAppearance(appearance:StrokeDisplayIntervals,before:DrawingDo
  * bytes and allowing every other channel and the source edit to proceed. */
 export function transportSnapshotSourceIntervals(before:RecordingSnapshotWorkspace,after:RecordingSnapshotWorkspace):RecordingSnapshotWorkspace{
  const sources=new Map<string,{before:DrawingDocument;after:DrawingDocument;sourceSnapshotId:string;beforeSignature:string;afterSignature:string}>();
+ const changedSources:Array<{sourceSnapshotId:string;beforeSignature:string;afterSignature:string}>=[];
  for(const snapshot of after.snapshots.filter(s=>s.kind==='drawing')){
   const prior=materializeOriginalSnapshot(before,snapshot.id),next=materializeOriginalSnapshot(after,snapshot.id);if(!prior||!next)continue;const beforeSignature=drawingSignature(prior),afterSignature=drawingSignature(next);
+  if(beforeSignature!==afterSignature)changedSources.push({sourceSnapshotId:snapshot.id,beforeSignature,afterSignature});
   for(const track of prior.displayIntervals??[])sources.set(track.id,{before:prior,after:next,sourceSnapshotId:snapshot.id,beforeSignature,afterSignature});
  }
- if(!sources.size)return after;
+ if(!changedSources.length)return after;
+ type LocalContext={snapshotId:string;useDraft?:boolean};
+ const localFrames=new Map<string,{before:ReturnType<typeof resolveSnapshot>;after:ReturnType<typeof resolveSnapshot>}>();
+ const localFrame=(context:LocalContext)=>{
+  const key=JSON.stringify(context),known=localFrames.get(key);if(known)return known;
+  // Both inputs remain immutable throughout this pass. Never resolve a
+  // half-updated patch or a newly suspended interval into its own material base.
+  const value={before:resolveSnapshot(before,context.snapshotId,{useDraft:!!context.useDraft,diagnostics:'preview'}),after:resolveSnapshot(after,context.snapshotId,{useDraft:!!context.useDraft,diagnostics:'preview'})};localFrames.set(key,value);return value;
+ };
  const currentSignature=(issue:SnapshotMaterialIssue)=>{const current=materializeOriginalSnapshot(after,issue.sourceSnapshotId);return current&&drawingSignature(current);};
- const process=<T,>(trackId:string,values:T[],map:(value:T,move:(appearance:StrokeDisplayIntervals)=>StrokeDisplayIntervals)=>T,issue?:SnapshotMaterialIssue):{values:T[];issue?:SnapshotMaterialIssue}=>{
+ const process=<T,>(trackId:string,values:T[],map:(value:T,move:(appearance:StrokeDisplayIntervals)=>StrokeDisplayIntervals)=>T,issue?:SnapshotMaterialIssue,context?:LocalContext):{values:T[];issue?:SnapshotMaterialIssue}=>{
   if(issue){if(currentSignature(issue)===issue.sourceSignature)return {values};return {values,issue};}
-  const source=sources.get(trackId);if(!source||source.beforeSignature===source.afterSignature)return {values};
-  try{return {values:values.map(value=>map(value,appearance=>moveSourceAppearance(appearance,source.before,source.after)))};}catch(error){return {values,issue:{sourceSnapshotId:source.sourceSnapshotId,sourceSignature:source.beforeSignature,message:error instanceof Error?error.message:String(error)}};}
+  const source=sources.get(trackId);let failureSource=source??changedSources[0];
+  try{return {values:values.map(value=>map(value,appearance=>{
+   const sourceRoute=source?.before.displayIntervals?.find(track=>track.id===trackId)?.displayRoute;
+   if(context&&appearance.displayRoute&&JSON.stringify(appearance.displayRoute)!==JSON.stringify(sourceRoute)){
+    const frame=localFrame(context),prior=snapshotIntervalMaterialSource(frame.before,trackId),next=snapshotIntervalMaterialSource(frame.after,trackId),path=displayPath(prior,appearance.anchor.id);
+    failureSource=changedSources.find(changed=>path.segments.some(use=>frame.before.provenance[use.id]?.sourceSnapshotId===changed.sourceSnapshotId))??failureSource;
+    if(drawingSignature(prior)===drawingSignature(next))return appearance;
+    const messages:string[]=[],moved=transportEndpointPairMaterial(prior,appearance,next,messages),restored=transportEndpointPairMaterial(next,moved,prior,messages);
+    for(const range of appearance.ranges){const back=restored.ranges.find(value=>value.id===range.id);if(!back)throw Error(`Local route ${trackId} lost a material range.`);for(const end of ['start','end'] as const){const delta=Math.abs(range[end]-back[end]);if((path.closed?Math.min(delta,Math.abs(1-delta)):delta)>1e-8)throw Error(`Local route ${trackId} would lose a material cut in this source edit.`);}}
+    validateIntervalOverrides([moved],next);return moved;
+   }
+   return source&&source.beforeSignature!==source.afterSignature?moveSourceAppearance(appearance,source.before,source.after):appearance;
+  }))};}catch(error){return {values,issue:{sourceSnapshotId:failureSource.sourceSnapshotId,sourceSignature:failureSource.beforeSignature,message:error instanceof Error?error.message:String(error)}};}
  };
  const valueMap=(value:SceneIntervalValue,move:(appearance:StrokeDisplayIntervals)=>StrokeDisplayIntervals):SceneIntervalValue=>!value.appearance?value:{...value,appearance:move(value.appearance)};
- const state=(value:SnapshotDeformationState):SnapshotDeformationState=>{
-  const issues={...value.intervalMaterialIssues},layers=Object.fromEntries(Object.entries(value.layers).map(([id,layer])=>{if(!layer.intervals)return [id,layer];return [id,{...layer,intervals:Object.fromEntries(Object.entries(layer.intervals).map(([trackId,value])=>{const result=process(trackId,[value],valueMap,issues[trackId]);if(result.issue)issues[trackId]=result.issue;else delete issues[trackId];return [trackId,result.values[0]];}))}];}));
+ const state=(value:SnapshotDeformationState,context:LocalContext):SnapshotDeformationState=>{
+  const issues={...value.intervalMaterialIssues},layers=Object.fromEntries(Object.entries(value.layers).map(([id,layer])=>{if(!layer.intervals)return [id,layer];return [id,{...layer,intervals:Object.fromEntries(Object.entries(layer.intervals).map(([trackId,value])=>{const result=process(trackId,[value],valueMap,issues[trackId],context);if(result.issue)issues[trackId]=result.issue;else delete issues[trackId];return [trackId,result.values[0]];}))}];}));
   const {intervalMaterialIssues,...rest}=value;void intervalMaterialIssues;return {...rest,layers,...(Object.keys(issues).length?{intervalMaterialIssues:issues}:{})};
  };
  const recordings=after.recordings.map(recording=>({...recording,tracks:recording.tracks.map(track=>{
@@ -174,11 +198,11 @@ export function transportSnapshotSourceIntervals(before:RecordingSnapshotWorkspa
   return {...rest,keys:track.keys.map((key,index)=>({...key,value:result.values[index]})),...(track.draft?{draft:{...track.draft,value:result.values[track.keys.length]}}:{}),...(result.issue?{materialIssue:result.issue}:{})};
  })}));
  const snapshots=after.snapshots.map(snapshot=>{
-  const deformation=state(snapshot.deformation),issues={...deformation.intervalMaterialIssues},patch=snapshot.relations.displayIntervals;
-  const movePatch=(values:StrokeDisplayIntervals[]|undefined,originals=false)=>values?.map(value=>{if(originals&&drawingSourceOwns(snapshot,value.id))return value;const result=process(value.id,[value],(value,move)=>move(value),issues[value.id]);if(result.issue)issues[value.id]=result.issue;else delete issues[value.id];return result.values[0];});
+  const context={snapshotId:snapshot.id},deformation=state(snapshot.deformation,context),issues={...deformation.intervalMaterialIssues},patch=snapshot.relations.displayIntervals;
+  const movePatch=(values:StrokeDisplayIntervals[]|undefined,originals=false)=>values?.map(value=>{if(originals&&drawingSourceOwns(snapshot,value.id))return value;const result=process(value.id,[value],(value,move)=>move(value),issues[value.id],context);if(result.issue)issues[value.id]=result.issue;else delete issues[value.id];return result.values[0];});
   const relations={...snapshot.relations,...(patch?{displayIntervals:{...patch,...(patch.add?{add:movePatch(patch.add,true)}:{}),...(patch.update?{update:movePatch(patch.update)}:{})}}:{})};
   if(Object.keys(issues).length)deformation.intervalMaterialIssues=issues;else delete deformation.intervalMaterialIssues;
-  return {...snapshot,deformation,...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation)}}:{}),relations};
+  return {...snapshot,deformation,...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,context)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,{...context,useDraft:true})}}:{}),relations};
  });
  return {...after,recordings,snapshots};
 }

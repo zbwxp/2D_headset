@@ -1,4 +1,4 @@
-import {prepareSnapshotDrawingTopologyEdit,type SnapshotDrawingTopologyEdit} from '../domain/recordingSnapshot/drawingTopology';
+import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
 import {prepareDrawingLayerDomainEdit} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
@@ -36,6 +36,7 @@ export type SnapshotEdit =
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
  | ({kind:'local-drawing-topology'}&SnapshotDrawingTopologyEdit)
+ | ({kind:'snapshot-local-drawing'}&SnapshotLocalDrawingEdit)
  | {kind:'local-curve-split';snapshotId:string;intent:CurveSplitIntent}
  | {kind:'snapshot-state';workspace:RecordingSnapshotWorkspace;validation?:'full'|'preview'};
 export interface SnapshotEditPlan {
@@ -102,8 +103,8 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  if(edit.kind==='layer-domain')return prepareDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
- if(edit.kind==='local-drawing-topology'){
-  const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=prepareSnapshotDrawingTopologyEdit(original,edit);
+ if(edit.kind==='local-drawing-topology'||edit.kind==='snapshot-local-drawing'){
+  const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=edit.kind==='local-drawing-topology'?prepareSnapshotDrawingTopologyEdit(original,edit):prepareSnapshotLocalDrawingEdit(original,edit);
   assertOriginalsUnchanged(original,result.workspace);
   return {before,project:result.workspace===original?before:{...before,recordingSnapshots:result.workspace},changed:result.workspace!==original,diagnostics:result.diagnostics};
  }

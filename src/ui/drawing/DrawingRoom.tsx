@@ -47,7 +47,8 @@ import {usePenPreferences} from './penPreferences';
 import {beginPenGesture,movePenGesture,previewPenGesture,finishPenGesture,penHoverShape,penHistoryAction,type PenState as Pen,type PenGesture} from './penController';
 import {useDirectPreferences} from './directPreferences';
 import {TOOLS,isEndpointTool} from './tools';
-import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,type DrawingEndpointTool} from './endpointInteraction';
+import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,type DrawingEndpointTool,type DrawingCommandIntent} from './endpointInteraction';
+import {createSnapshotRelationAuthoringIntent} from '../../domain/recordingSnapshot/relationAuthoringIntent';
 import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
 import PaintScene from './PaintScene';
 import InkEndOverlay from './InkEndOverlay';
@@ -111,11 +112,11 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const endpointCurveIds=(document:Doc)=>drawingEndpointCurveIds(document,activeLayer?.id??null);
  const connections=first?(tool==='smooth'?t('第二步：选择需要对齐的一侧'):t('第二步：选择要移动的端点')):(tool==='smooth'?t('第一步：选择保留方向的一侧'):t('第一步：选择固定端点'));
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
- const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),layerDomainIntent?:LayerDomainIntent)=>{const before=currentDrawing();if(n===before)return;n=finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing')commitDrawingSnapshotEdit(useEditor.getState(),n,layerDomainIntent);else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
+ const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent)=>{const before=currentDrawing();if(n===before)return;n=finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
  const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
- function run(fn:()=>Doc){try{const n=fn();commit(n);setHint('');}catch(e){error(e);}}
+ function run(fn:()=>Doc,intent?:DrawingCommandIntent){try{const n=fn();commit(n,undefined,intent);setHint('');}catch(e){error(e);}}
  function choose(next:DrawingSelection,mode?:DrawingTool){
   if(artworkPreview&&!next.reference&&(next.ids.length||next.paint||next.paintIds?.length))artworkPreview.edit();
   const transition=chooseDrawingSelection(tool,next,mode),patch={selection:transition.selection,tool:transition.tool,...(transition.layerId?{layerId:transition.layerId}:{})};
@@ -164,7 +165,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function pickEndpoint(p:Point2):Endpoint|null{return pickDrawingEndpoint(stored,endpointCurveIds(stored),p,unit,first);}
  function connectAt(e:Endpoint){
   if(!first){setFirst(e);session.set({selection:drawingEndpointSelection(d,e)});setHint('');return;}
-  try{const n=applyDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,e);commit(n);setFirst(null);setDraft(null);choose(drawingEndpointSelection(n,e),tool);}catch(ex){error(ex);}
+  try{const n=applyDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,e);commit(n,undefined,tool==='link'?{kind:'relation-authoring'}:undefined);setFirst(null);setDraft(null);choose(drawingEndpointSelection(n,e),tool);}catch(ex){error(ex);}
  }
  const penOptions=()=>({layerId:activeLayer?.id??null,unit,width,join:penJoin,taperScale:usePenPreferences.getState().taperScale});
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
@@ -269,13 +270,13 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     else if(n){penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,result.state);commit(n.document);setPen(result.state);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
    }else if(g.kind==='box'){
     const ids=selectCurvesInBox(d,shownCurves,g.start,local(e??g.last),{grouped:tool==='select',previousIds:g.shift?selected:[]});choose({ids},tool);
-   }else if(g.next){commit(g.next,undefined,g.layerDomainIntent);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
+   }else if(g.next){commit(g.next,undefined,g.kind==='displayInterval'?{kind:'relation-authoring'}:g.layerDomainIntent);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=g.next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
   }catch(ex){error(ex);}
   if(interrupted&&g.next)setHint(t('拖动已中断，已保留最后有效位置。'));
  }
  function deleteSelected(){
   const layers=selectedLayers(selection);if(layers.length){run(()=>{const n=cmd.deleteLayers(d,layers);choose({ids:[]});return n;});return;}
-  if(selection.displayInterval){const r=selection.displayInterval;run(()=>{const n=removeDisplayInterval(d,r.track,r.range);choose({ids:selected});return n;});return;}
+  if(selection.displayInterval){const r=selection.displayInterval;run(()=>{const n=removeDisplayInterval(d,r.track,r.range);choose({ids:selected});return n;},{kind:'relation-authoring'});return;}
   const ids=selectedObjects(selection);if(!ids.length)return;
   run(()=>{const n=cmd.deleteObjects(d,ids);choose({ids:[]});return n;});
  }
@@ -428,7 +429,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {restoreLayerId&&<LayerSnapshotDialog key={projectId+restoreLayerId} layerId={restoreLayerId} close={()=>setRestoreLayerId(null)} restored={()=>{setClipboard(null);session.set({selection:{ids:[],layer:restoreLayerId},layerId:restoreLayerId,tool:'select'});setHint('');}}/>}
  <LayerPanel headerActions={workspaceId==='drawing'?<button data-testid="drawing-paste-layer-reference" disabled={!layerReferenceClipboard} onClick={pasteSelected}>{zh?'粘贴图层引用':'Paste layer reference'}</button>:undefined} layerSections={[{id:activeSnapshot?.id??'$working',name:activeSnapshot?.name??t('图层'),layerIds:d.layers.map(layer=>layer.id)}]} sectionActions={workspaceId==='drawing'?section=>{const selected=selectedLayers(selection).filter(id=>section.layerIds.includes(id)),ids=selected.length?selected:activeLayer&&section.layerIds.includes(activeLayer.id)?[activeLayer.id]:[],label=zh?'提取图层引用':'Take layer reference';return <button data-testid="drawing-take-layer-reference" aria-label={label} title={zh?'提取当前或所选图层的实时引用，保留原图层 · Ctrl/Cmd+X':'Take a live reference to the current or selected layers, keeping the originals · Ctrl/Cmd+X'} disabled={!ids.length} onClick={()=>takeLayerReference(ids)}><Scissors size={14}/>{label}</button>;}:undefined} openProperties={()=>setPropertiesOpen(true)} closeProperties={()=>setPropertiesOpen(false)} restoreLayer={id=>{prepareSnapshotChange();setRestoreLayerId(id);}} deleteSelected={deleteSelected} cutSelected={cutSelected} pasteSelected={pasteSelected} canPaste={!!clipboard&&!!activeLayer||workspaceId==='drawing'&&!!layerReferenceClipboard} document={d} active={activeLayer?.id??null} selection={selection} run={run} choose={choose} setLayer={id=>{endPen();setPenPreview(null);session.set({layerId:id});}} upload={()=>file.current?.click()}/>
  <div hidden={!propertiesOpen} role="separator" aria-label={t('调整图层与属性高度')} className="drawing-sidebar-split" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;const r=e.currentTarget.parentElement!.getBoundingClientRect();setPanelHeight(Math.max(20,Math.min(85,(e.clientY-r.top)/r.height*100)));}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}/>
- {presentation&&[...selected,...selectedObjects(selection)].some(id=>presentation.layerOwners.get(layerFor(d,id)?.id??'')?.kind==='snapshot-local')&&<p className="drawing-muted" data-testid="drawing-reference-capability">{zh?'引用图层支持节点、控制柄、几何变换与显隐；结构、材质、接笔和锁定请在源快照编辑。':DRAWING_REFERENCE_EDIT_CAPABILITY}</p>}
+ {presentation&&[...selected,...selectedObjects(selection)].some(id=>presentation.layerOwners.get(layerFor(d,id)?.id??'')?.kind==='snapshot-local')&&<p className="drawing-muted" data-testid="drawing-reference-capability">{zh?'引用图层支持局部新增、分段、端点联动、显示贯通、区间、几何与显隐；基础线宽、轮廓、端点笔触和锁定仍需编辑源。':DRAWING_REFERENCE_EDIT_CAPABILITY}</p>}
  <Properties domainControls={workspaceId==='drawing'&&selectedLayers(selection).some(id=>presentation?.layerOwners.get(id)?.kind==='snapshot-local')?<LayerDomainControls domains={(presentation?.evaluation.state.layerDomains??[]).filter(domain=>domain.layerIds.some(id=>selectedLayers(selection).includes(presentation!.presentationId(id))))} layerName={id=>presentation?.drawing.layers.find(layer=>layer.id===presentation.presentationId(id))?.name??id} onScale={(axis,value)=>applyTransform(axis==='x'?'scaleX':'scaleY',value)} onEnabled={setLayerDomainEnabled}/>:undefined} open={propertiesOpen} setOpen={setPropertiesOpen} preview={setDraft} document={d} selection={selection} active={activeLayer?.id??null} run={run} choose={choose} tool={selectTool} transform={applyTransform} upload={()=>file.current?.click()} moveReference={()=>{cancelDraft();setFirst(null);endPen();setReferenceMoving(true);}}/>
  </aside>}
  </div>

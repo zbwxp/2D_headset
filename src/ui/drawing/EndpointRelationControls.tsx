@@ -4,8 +4,10 @@ import {addDisplayInterval,displayPath} from '../../domain/drawing/displayInterv
 import DisplayRouteControls from './DisplayRouteControls';
 import EndpointLinkBrushInfo from './EndpointLinkBrushInfo';
 import {uiText as t} from '../i18n';
+import type {DrawingCommandRun} from './endpointInteraction';
 
-export default function EndpointRelationControls({drawing,link,editable:allowed,run}:{drawing:DrawingDocument;link:EndpointLink;editable:boolean;run:(operation:()=>DrawingDocument)=>void}){
+export default function EndpointRelationControls({drawing,link,editable:allowed,run:commit}:{drawing:DrawingDocument;link:EndpointLink;editable:boolean;run:DrawingCommandRun}){
+ const run=(operation:()=>DrawingDocument)=>commit(operation,{kind:'relation-authoring'});
  const tracks=(drawing.displayIntervals??[]).filter(track=>displayPath(drawing,track.anchor.id).segments.some(use=>use.id===link.a.curveId||use.id===link.b.curveId)),active=tracks.some(track=>track.displayRoute?.throughLinkIds.includes(link.id)),disabled=!allowed||[link.a,link.b].some(endpoint=>!editable(drawing,endpoint.curveId));
  return <section className="drawing-endpoint-link-card" data-testid="endpoint-relation-controls" data-link-id={link.id}>
   <EndpointLinkBrushInfo d={drawing} link={link}/>
