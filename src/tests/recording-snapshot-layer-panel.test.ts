@@ -1,4 +1,6 @@
-import {createElement} from 'react';
+import {createElement,type ComponentProps} from 'react';
+import LayerPanel from '../ui/drawing/LayerPanel';
+import {chooseDrawingSelection} from '../ui/drawing/interactionController';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,test,vi} from 'vitest';
 import {addLayer,createCurve,ellipse,curveChange} from '../domain/drawing/commands';
@@ -9,6 +11,8 @@ import {groupedLayerSections} from '../ui/drawing/LayerPanel';
 import {drawingListRows,selectLayerRows,selectListRows} from '../ui/drawing/listSelection';
 import SnapshotLayerPanel,{snapshotLayerPanelModel,snapshotPanelCanonicalSelection,snapshotPanelPresentationSelection,snapshotPanelClipboardSources,snapshotPanelRowId,snapshotPanelCachedPresentation,type SnapshotPanelSource,type SnapshotLayerPanelProps} from '../ui/vectorRecording/SnapshotLayerPanel';
 
+const capturedPanel=vi.hoisted(()=>({props:null as ComponentProps<typeof LayerPanel>|null}));
+vi.mock('../ui/drawing/LayerPanel',async original=>{const actual=await original<typeof import('../ui/drawing/LayerPanel')>();return {...actual,default:(props:ComponentProps<typeof LayerPanel>)=>{capturedPanel.props=props;return createElement(actual.default,props);}};});
 vi.mock('../ui/drawing/workspace',async()=>{const {useDrawing}=await import('../ui/drawing/session');return {useDrawingWorkspace:()=>({session:useDrawing})};});
 const ignore=()=>{};
 test('a canonical curve stays highlighted when a different view needs a new presentation alias',()=>{const f=fixture(),first=snapshotLayerPanelModel(f.current,[]),second=snapshotLayerPanelModel({...f.current,snapshotId:'view-45'},[]),selection={ids:['brow']},presentation=snapshotPanelPresentationSelection(first,selection,[]),cache={currentSnapshotId:first.currentSnapshotId,canonicalKey:JSON.stringify([['brow'],[],[],null,null]),layersKey:'[]',presentation};expect(snapshotPanelCachedPresentation(first,selection,[],cache)).toBe(presentation);const next=snapshotPanelCachedPresentation(second,selection,[],cache);expect(next.ids).toEqual([snapshotPanelRowId('view-45','brow')]);expect(snapshotPanelCanonicalSelection(second,next).selection.ids).toEqual(['brow']);expect(snapshotPanelCachedPresentation(first,selection,[],cache)).toBe(presentation);});
@@ -94,3 +98,13 @@ test('source filtering and repeated current input preserve only requested visibl
 });
 
 test('only the current view starts expanded; source sections remain named and available without rendering their member trees',()=>{const f=fixture(),html=render({current:f.current,sources:[f.source,{...f.source,snapshotId:'source:two',name:'Source two'}]});expect(section(html,'view')).toContain('data-testid="drawing-curve-row"');for(const id of [f.source.snapshotId,'source:two']){const source=section(html,id);expect(source).toContain('snapshot-cut-source');expect(source).toContain('aria-expanded="false"');expect(source).not.toContain('data-testid="drawing-curve-row"');}});
+
+
+test('shared panel passes explicit selection tools through canonical aliases and cross-snapshot layer paths',()=>{
+ const f=fixture(),onSelection=vi.fn();render({current:f.current,sources:[f.source],onSelection});
+ const viewBrow=snapshotPanelRowId('view','brow');
+ capturedPanel.props!.choose({ids:[viewBrow]},'select');expect(onSelection).toHaveBeenLastCalledWith({ids:['brow']},[],'select');
+ const refs=[{snapshotId:'view',layerId:f.eye},{snapshotId:f.source.snapshotId,layerId:f.eye}],layers=refs.map(r=>snapshotPanelRowId(r.snapshotId,r.layerId));
+ capturedPanel.props!.choose({ids:[viewBrow],layers});const [canonical,paths,mode]=onSelection.mock.calls.at(-1)!;expect(paths).toEqual(refs);expect(canonical.layers).toEqual([f.eye]);expect(mode).toBeUndefined();expect(chooseDrawingSelection('zoom',canonical,mode).tool).toBe('select');
+ capturedPanel.props!.choose({ids:[viewBrow]},'direct');expect(onSelection).toHaveBeenLastCalledWith({ids:['brow']},[],'direct');
+});

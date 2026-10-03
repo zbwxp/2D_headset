@@ -3,7 +3,7 @@ import {editable,type DrawingDocument,type Point2} from '../../domain/drawing/mo
 
 /** Compiled Drawing IDs and final displayed world coordinates. */
 export type RecordingCurveEdit={kind:'node';nodeId:string;position:Point2}|{kind:'handle';curveId:string;end:0|1;position:Point2};
-export type RecordingCurveEditor={revealTool?:'select'|'direct';editable:boolean;onPreview:(edit:RecordingCurveEdit|null)=>void;onCommit:(edit:RecordingCurveEdit)=>void;onSelect?:(edit:RecordingCurveEdit)=>void};
+export type RecordingCurveEditor={revealTool?:'select'|'direct';editable:boolean;onPreview:(edit:RecordingCurveEdit|null)=>void;onCommit:(edit:RecordingCurveEdit)=>void;onSelect?:(edit:RecordingCurveEdit|null)=>void};
 export type RecordingCurveGesture={edit:RecordingCurveEdit;start:Point2;editor:RecordingCurveEditor};
 
 /** Keep the grabbed point, including its pointer offset, fixed across pose previews. */

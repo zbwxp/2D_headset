@@ -26,6 +26,7 @@ import {readPhoto} from '../edit2d/ReferenceControls';
 import {RECORDING_REFERENCE_IMAGE,clampReferenceOffset} from '../../domain/recording/reference';
 import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';
+import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
 import {hasNudgeTarget,nudgeSelection} from './nudge';
 import LayerPanel from './LayerPanel';
 import LayerSnapshotDialog from './LayerSnapshotDialog';
@@ -102,17 +103,19 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function run(fn:()=>Doc){try{const n=fn();commit(n);setHint('');}catch(e){error(e);}}
  function choose(next:DrawingSelection,mode?:DrawingTool){
   if(artworkPreview&&!next.reference&&(next.ids.length||next.paint||next.paintIds?.length))artworkPreview.edit();
+  const transition=chooseDrawingSelection(tool,next,mode),patch={selection:transition.selection,tool:transition.tool,...(transition.layerId?{layerId:transition.layerId}:{})};
   // Switching the endpoint target layer keeps the tool. Only LINK supports a
   // cross-layer relation, so other tools restart their two-click selection.
-  if(endpointTools&&next.layer){finishHeld();cancelDraft();approved.current=null;setPending(null);endPen();if(tool!=='link')setFirst(null);session.set({layerId:next.layer,selection:{ids:[],layer:next.layer,layers:next.layers}});setHint('');return;}
-  finishHeld();setDeformCage(null);approved.current=null;setPending(null);setFirst(null);setReferenceMoving(false);endPen();setPenPreview(null);session.set({selection:next,...(next.layer?{layerId:next.layer}:{}),tool:tool==='deform'&&next.ids.length&&!next.node&&!next.handle?'deform':mode??(next.ids.length===1&&!next.layer&&!next.group?'direct':'select')});setHint('');
+  if(endpointTools&&next.layer){finishHeld();cancelDraft();approved.current=null;setPending(null);endPen();if(tool!=='link')setFirst(null);session.set(patch);setHint('');return;}
+  finishHeld();setDeformCage(null);approved.current=null;setPending(null);setFirst(null);setReferenceMoving(false);endPen();setPenPreview(null);session.set(patch);setHint('');
  }
  function prepareSnapshotChange(){artworkPreview?.edit();finishHeld();cancelDraft();setDeformCage(null);endPen();setFirst(null);setPending(null);setReferenceMoving(false);approved.current=null;}
  function groupSelection(remove=false){run(()=>{let i=1;while(d.groups?.some(g=>g.name===`${t('组合')} ${i}`))i++;const n=remove?ungroup(d,selected):createGroup(d,selected,`${t('组合')} ${i}`);const g=remove?undefined:n.groups!.at(-1);choose({ids:g?.curveIds??selected,group:g?.id},'select');return n;});}
  function selectTool(next:DrawingTool){finishHeld();setDeformCage(null);approved.current=null;cancelDraft();setFirst(null);endPen();setPending(null);setPenPreview(null);setReferenceMoving(false);setHint('');
   if(next!=='hand'&&next!=='zoom')artworkPreview?.edit();
   const owner=selected.length?layerFor(stored,selected[0])?.id:undefined;
-  session.set({tool:next,preview:false,...(isEndpointTool(next)&&owner&&selected.every(id=>layerFor(stored,id)?.id===owner)?{layerId:owner}:{}),...(next==='pen'?{penJoin:'POSITION' as const}:{})});
+  const transition=selectDrawingTool(next,selection);
+  session.set({tool:transition.tool,selection:transition.selection,preview:transition.preview,...(isEndpointTool(next)&&owner&&selected.every(id=>layerFor(stored,id)?.id===owner)?{layerId:owner}:{}),...(next==='pen'?{penJoin:'POSITION' as const}:{})});
  }
  const scope=()=>approved.current&&selected.length===approved.current.ids.length&&selected.every(id=>approved.current!.ids.includes(id))?approved.current.scope:selected;
  const mayInclude=()=>!!approved.current&&scope()===approved.current.scope;
@@ -300,7 +303,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
    setZoomOut(e.ctrlKey||e.altKey);
-   if((e.target as Element).closest('[data-hair-orbit],input,textarea,select,[contenteditable="true"],[role="dialog"]'))return;
+   if(isDrawingShortcutInput(e.target))return;
    // Menu navigation belongs to the tool group, never to selected geometry.
    if(document.querySelector('.drawing-tool-menu')||(e.key==='ArrowDown'&&(e.target as Element).closest('[data-tool-group="connections"]')))return;
    const s=latest.current;if(e.code==='Space'){e.preventDefault();space.current=true;return;}
@@ -319,7 +322,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     try{const raw=nudgeSelection(base,s.selection,delta),n=finalizeGeometryEdit(base,raw,mirrorIntent(raw,s.selection));if(n===base)return;if(!held.current)held.current={base,next:n};else held.current.next=n;setDraft(n);setHint('');}catch(ex){setHint(t((ex as Error).message));}return;
    }
    if(e.ctrlKey||e.metaKey||e.altKey)return;
-   const toolMap:Record<string,DrawingTool>={v:'select',a:'direct',p:'pen',l:'ellipse',h:'hand',z:'zoom'};if(toolMap[e.key.toLowerCase()]){e.preventDefault();s.selectTool(toolMap[e.key.toLowerCase()]);}
+   const nextTool=drawingToolForShortcut(e);if(nextTool){e.preventDefault();s.selectTool(nextTool);}
   };
   const release=(e:KeyboardEvent)=>{setZoomOut(e.ctrlKey||e.altKey);if(e.code==='Space')space.current=false;if(e.key.startsWith('Arrow'))finishHeld();};
   window.addEventListener('keydown',key,true);window.addEventListener('keyup',release,true);return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',release,true);};

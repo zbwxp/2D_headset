@@ -1,7 +1,7 @@
 import {useMemo,useRef,type ReactNode} from 'react';
 import {Copy,Scissors,ClipboardPaste} from 'lucide-react';
 import LayerPanel,{type LayerPanelSection} from '../drawing/LayerPanel';
-import {selectedLayers,type DrawingSelection} from '../drawing/session';
+import {selectedLayers,type DrawingSelection,type DrawingTool} from '../drawing/session';
 import {emptyDrawing,type DrawingDocument} from '../../domain/drawing/model';
 import {drawingIdentityIds,remapDrawingIdentities} from '../../domain/recordingSnapshot/sources';
 import {useLanguage} from '../i18n';
@@ -14,7 +14,7 @@ export interface SnapshotLayerClipboardSource {snapshotId:string;layerIds:string
 export interface SnapshotLayerPanelProps {
  current?:SnapshotPanelSource;sources:SnapshotPanelSource[];collapseSourcesByDefault?:boolean;
  selection:DrawingSelection;layerSelections?:readonly SnapshotLayerSelection[];
- onSelection:(selection:DrawingSelection,layerSelections?:SnapshotLayerSelection[])=>void;
+ onSelection:(selection:DrawingSelection,layerSelections?:SnapshotLayerSelection[],tool?:DrawingTool)=>void;
  editEnabled:boolean;canPaste:boolean;
  onCut:(sources:SnapshotLayerClipboardSource[])=>void;
  onCopy:(sources:SnapshotLayerClipboardSource[])=>void;onPaste:()=>void;
@@ -87,7 +87,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
  // Preserve the exact shared-panel selection object on our own round trip, so
  // its single Ctrl/Shift anchor survives canonical ID translation.
  const presented=snapshotPanelCachedPresentation(model,selection,layerSelections,recentSelection.current);
- const choose=(next:DrawingSelection)=>{const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections);};
+ const choose=(next:DrawingSelection,tool?:DrawingTool)=>{const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections,tool);};
  const enabled=editEnabled&&!!current;
  const isCurrent=(id:string)=>!!current&&model.identities.get(id)?.snapshotId===current.snapshotId;
  const canonicalCurrent=(ids:readonly string[])=>unique(ids.flatMap(id=>{const ref=model.identities.get(id);return ref&&ref.snapshotId===current?.snapshotId?[ref.id]:[];}));

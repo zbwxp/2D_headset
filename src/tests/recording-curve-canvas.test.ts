@@ -4,6 +4,10 @@ import {emptyDrawing,type DrawingDocument,type Point2} from '../domain/drawing/m
 import {createWarpGrid} from '../domain/vectorWarp/model';
 import SceneWarpCanvas,{type RecordingCurveEdit} from '../ui/vectorRecording/SceneWarpCanvas';
 import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
+import SceneInstanceTransformBox from '../ui/vectorRecording/SceneInstanceTransformBox';
+import {chooseDrawingSelection,selectDrawingTool} from '../ui/drawing/interactionController';
+import {selectionBounds} from '../ui/drawing/geometry';
+import type {DrawingSelection} from '../ui/drawing/session';
 import {useDrawing} from '../ui/drawing/session';
 
 const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
@@ -18,18 +22,19 @@ const listeners=new Map<string,(event:unknown)=>void>();
 beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(event:unknown)=>void)=>listeners.set(name,fn),removeEventListener:(name:string,fn:unknown)=>{if(listeners.get(name)===fn)listeners.delete(name);}});});
 afterEach(()=>vi.unstubAllGlobals());
 type Props={children?:unknown;[key:string]:any};
-function elements(tree:unknown):ReactElement<Props>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<Props>(tree))return [];if(tree.type===SceneCurveEditOverlay)return elements(SceneCurveEditOverlay(tree.props as ComponentProps<typeof SceneCurveEditOverlay>));return [tree,...elements(tree.props.children)];}
+function elements(tree:unknown):ReactElement<Props>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<Props>(tree))return [];if(tree.type===SceneInstanceTransformBox)return elements(SceneInstanceTransformBox(tree.props as ComponentProps<typeof SceneInstanceTransformBox>));if(tree.type===SceneCurveEditOverlay)return elements(SceneCurveEditOverlay(tree.props as ComponentProps<typeof SceneCurveEditOverlay>));return [tree,...elements(tree.props.children)];}
 function fixture():DrawingDocument{
  const d=emptyDrawing();d.nodes=[{id:'instance/node-a',position:[-1,0]},{id:'instance/shared',position:[0,0]},{id:'instance/node-b',position:[1,0]}];
  d.curves=[{id:'instance/curve-a',name:'A',nodes:['instance/node-a','instance/shared'],handles:[[-1,0],[-.4,0]],visible:true,locked:false,width:.01},{id:'instance/curve-b',name:'B',nodes:['instance/shared','instance/node-b'],handles:[[.4,0],[.75,0]],visible:true,locked:false,width:.01}];
  d.layers=[{id:'instance/layer',name:'Layer',visible:true,locked:false,items:d.curves.map(c=>c.id)}];d.joins=[{id:'instance/arc',a:{curveId:'instance/curve-a',end:1},b:{curveId:'instance/curve-b',end:0},mode:'ARC',radius:.1}];return d;
 }
-function harness(options:{editable?:boolean;grid?:boolean;inspectionHideFills?:boolean}={}){
+function harness(options:{editable?:boolean;grid?:boolean;inspectionHideFills?:boolean;controlledLayer?:boolean}={}){
  const source=fixture(),preview=vi.fn(),commit=vi.fn(),warpPreview=vi.fn(),warpCommit=vi.fn(),select=vi.fn();let drawing=source,targetKey='view-0',revealGridKey=0;
- const curveEdit={editable:options.editable??true,onPreview:preview,onCommit:commit},grid=options.grid?createWarpGrid({min:[-1,-1],max:[1,1]},2,2):undefined;
+ let chosen:DrawingSelection={ids:source.curves.map(c=>c.id),...(options.controlledLayer?{layer:'instance/layer',layers:['instance/layer']}: {})},chosenTool:'select'|'direct'|'hand'|'zoom'=options.controlledLayer?'select':'direct';const controlSelection=vi.fn();
+ const curveEdit={editable:options.editable??true,onPreview:preview,onCommit:commit,onSelect:controlSelection},grid=options.grid?createWarpGrid({min:[-1,-1],max:[1,1]},2,2):undefined;
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
- const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing,grid,curveEdit,inspectionHideFills:options.inspectionHideFills,targetKey,revealGridKey,label:'Test',zh:false,selection:{ids:['instance/curve-a','instance/curve-b']},editEnabled:!!grid,onPreview:warpPreview,onCommit:warpCommit,onSelection:select}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++count>8)throw Error('Effects did not settle');}while(hooks.dirty);};render();preview.mockClear();warpPreview.mockClear();
- return {source,preview,commit,warpPreview,warpCommit,select,svg,render,setDrawing:(d:DrawingDocument)=>{drawing=d;render();},navigate:()=>{targetKey='view-1';render();},reveal:()=>{revealGridKey++;render();},readonly:()=>{curveEdit.editable=false;render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id),paint:()=>all.find(e=>!!e.props.curveDown)!};
+ const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing,grid,curveEdit,...(options.controlledLayer?{interaction:{tool:chosenTool,onToolChange:(tool:typeof chosenTool)=>{const transition=selectDrawingTool(tool,chosen);chosenTool=tool;chosen=transition.selection;}},instanceTransform:{ids:['instance/layer'],label:'Selected layers',bounds:selectionBounds(drawing,chosen.ids)!,editable:options.editable??true,onPreview:warpPreview,onCommit:warpCommit}}:{}),inspectionHideFills:options.inspectionHideFills,targetKey,revealGridKey,label:'Test',zh:false,selection:chosen,editEnabled:!!grid,onPreview:warpPreview,onCommit:warpCommit,onSelection:select}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++count>8)throw Error('Effects did not settle');}while(hooks.dirty);};render();preview.mockClear();warpPreview.mockClear();
+ return {source,preview,commit,warpPreview,warpCommit,select,svg,render,controlSelection,getSelection:()=>chosen,chooseLayer:()=>{const transition=chooseDrawingSelection(chosenTool,{ids:source.curves.map(c=>c.id),layer:'instance/layer',layers:['instance/layer']});chosen=transition.selection;chosenTool=transition.tool as typeof chosenTool;revealGridKey++;render();},setDrawing:(d:DrawingDocument)=>{drawing=d;render();},navigate:()=>{targetKey='view-1';render();},reveal:()=>{revealGridKey++;render();},readonly:()=>{curveEdit.editable=false;render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id),paint:()=>all.find(e=>!!e.props.curveDown)!};
 }
 const pointer=(clientX:number,clientY:number)=>({button:0,pointerId:1,clientX,clientY,shiftKey:false,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const key=(name:string,tag='svg',modifiers:Partial<KeyboardEvent>={})=>({key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target:new Target(tag),preventDefault:vi.fn(),...modifiers});
@@ -69,3 +74,25 @@ test('held arrows use 1/10/.1 screen pixels and commit once, without taking cont
 });
 
 test('onion inspection suppresses current fills and layer overrides without changing the saved preview toggles',()=>{const prior=useDrawing.getState();try{useDrawing.getState().set({showFills:true,fillVisibility:{'instance/layer':true}});const h=harness({inspectionHideFills:true});expect(h.paint().props.showFills).toBe(false);expect(h.paint().props.fillVisibility).toBeUndefined();expect(h.element('vr-show-fills').props.disabled).toBe(true);expect(useDrawing.getState().showFills).toBe(true);expect(useDrawing.getState().fillVisibility).toEqual({'instance/layer':true});}finally{useDrawing.setState(prior,true);}});
+
+
+test('shared controlled layer selection keeps V union box, allows A controls and clears focus in Z without losing members',()=>{
+ const h=harness({controlledLayer:true}),before=JSON.stringify(h.source);
+ expect(h.element('vr-scene-canvas').props['data-tool']).toBe('select');expect(h.element('vr-instance-transform-box')).toBeDefined();expect(h.findAll('vr-curve-node')).toHaveLength(0);
+ h.element('vr-tool-direct').props.onClick();h.render();expect(h.element('vr-instance-transform-box')).toBeUndefined();expect(h.findAll('vr-curve-node')).toHaveLength(3);
+ const control=h.element('vr-curve-handle'),p=xy(control);control.props.onPointerDown(pointer(...p));release(h,p);h.render();expect(h.findAll('vr-curve-handle').some(e=>e.props['data-active'])).toBe(true);
+ listeners.get('keydown')!(key('z'));h.render();expect(h.element('vr-scene-canvas').props['data-tool']).toBe('zoom');expect(h.controlSelection).toHaveBeenLastCalledWith(null);expect(h.getSelection().ids).toEqual(h.source.curves.map(c=>c.id));expect(h.getSelection().layers).toEqual(['instance/layer']);
+ h.setDrawing({...h.source,nodes:[...h.source.nodes]});expect(h.element('vr-scene-canvas').props['data-tool']).toBe('zoom');
+ listeners.get('keydown')!(key('a'));h.render();expect(h.findAll('vr-curve-handle').some(e=>e.props['data-active'])).toBe(false);expect(h.findAll('vr-curve-node')).toHaveLength(3);
+ listeners.get('keydown')!(key('v'));h.render();expect(h.element('vr-instance-transform-box')).toBeDefined();expect(h.getSelection().ids).toEqual(h.source.curves.map(c=>c.id));
+ h.element('vr-tool-zoom').props.onClick();h.render();h.chooseLayer();expect(h.element('vr-scene-canvas').props['data-tool']).toBe('select');expect(h.element('vr-instance-transform-box')).toBeDefined();
+ expect(h.commit).not.toHaveBeenCalled();expect(h.warpCommit).not.toHaveBeenCalled();expect(JSON.stringify(h.source)).toBe(before);
+});
+
+test('controlled Recording shares keyboard/button tool transitions and ignores typing or graph focus',()=>{
+ const h=harness({controlledLayer:true});
+ for(const tag of ['input','select','textarea','[data-ui-keyboard]']){listeners.get('keydown')!(key('z',tag));h.render();expect(h.element('vr-scene-canvas').props['data-tool']).toBe('select');}
+ h.element('vr-tool-direct').props.onClick();h.render();const control=h.element('vr-curve-node'),p=xy(control);control.props.onPointerDown(pointer(...p));release(h,p);h.render();
+ h.element('vr-tool-hand').props.onClick();h.render();expect(h.controlSelection).toHaveBeenLastCalledWith(null);expect(h.findAll('vr-curve-node')).toHaveLength(0);
+ h.element('vr-tool-direct').props.onClick();h.render();expect(h.findAll('vr-curve-node').some(e=>e.props['data-active'])).toBe(false);
+});
