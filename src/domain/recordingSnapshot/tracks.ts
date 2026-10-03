@@ -17,7 +17,7 @@ export function snapshotAuthoredKeyCount(recording:SnapshotRecording,channel?:Sn
 export function mergeSnapshotDeformation(fallback:SnapshotDeformationState|undefined,own:SnapshotDeformationState):SnapshotDeformationState {
  if(!fallback)return structuredClone(own);
  const layers=structuredClone(fallback.layers);
- for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value)};
+ for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value),...(layers[id]?.elementPlacements||value.elementPlacements?{elementPlacements:{...layers[id]?.elementPlacements,...structuredClone(value.elementPlacements??{})}}:{})};
  return {warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,structuredClone(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,{...b}])).values()],layers,relationPositions:{...structuredClone(fallback.relationPositions),...structuredClone(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...structuredClone(fallback.intervalMaterialIssues??{}),...structuredClone(own.intervalMaterialIssues??{})}}:{})};
 }
 /** The old interpolation implementation is reused channel by channel. Its
@@ -60,7 +60,7 @@ export function evaluateSnapshotState(snapshot:RecordingSnapshot,recording:Snaps
   if(!layerIds.has(track.targetId))continue;
   const layer=state.layers[track.targetId]??(state.layers[track.targetId]={});
   switch(track.channel){
-   case 'placement':layer.placement=evaluatePlacementTrack({...track,instanceId:dummy},angle,useDraft,mapper(layerOwners?.get(track.targetId)??track.targetId));break;
+   case 'placement':{const value=evaluatePlacementTrack({...track,instanceId:dummy},angle,useDraft,mapper(track.elementId?track.targetId:layerOwners?.get(track.targetId)??track.targetId,track.elementId));if(track.elementId){if(curves.has(track.elementId))(layer.elementPlacements??={})[track.elementId]=value;}else layer.placement=value;break;}
    case 'shape':{
     const sampled=evaluateShapeTrack({...track,instanceId:dummy},angle,useDraft,mapper(track.targetId)),value=owners?{nodes:{...sampled.nodes},handles:{...sampled.handles}}:sampled;
     if(owners){

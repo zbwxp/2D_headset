@@ -18,7 +18,7 @@ const id=(v:unknown):string=>typeof v==='string'&&!!v&&v.length<=16384?v:fail('I
 const bool=(v:unknown):boolean=>typeof v==='boolean'?v:fail('INVALID_REQUEST','Expected a boolean.');
 const list=(v:unknown):string[]=>{if(!Array.isArray(v)||v.length>16384)fail('INVALID_REQUEST','Expected an ID array.');return (v as unknown[]).map(id);};
 
-const pairBasisMutationOps=new Set<SnapshotCommand['op']>(['pasteLayers','cloneLayers','moveLayers','removeLayers','reorderLayers','setLayerPlacement','transformShapeElements','moveShapeNode','moveShapeHandle','createWarp','createChild','wrapParent','rebindLayers','setWarp','deleteWarp','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','updateSnapshot','saveSelected','discardSelected']);
+const pairBasisMutationOps=new Set<SnapshotCommand['op']>(['pasteLayers','cloneLayers','moveLayers','removeLayers','reorderLayers','setLayerPlacement','setShapeElementPlacement','transformShapeElements','moveShapeNode','moveShapeHandle','createWarp','createChild','wrapParent','rebindLayers','setWarp','deleteWarp','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','updateSnapshot','saveSelected','discardSelected']);
 function checkPairBasis(workspace:RecordingSnapshotWorkspace,recordingId:string,commandIndex?:number):void {const recording=workspace.recordings.find(recording=>recording.id===recordingId);if(recording?.mode!=='endpoint-pair')return;try{evaluateWorkspace(workspace,recordingId,{angle:recording.angle,useDraft:true,diagnostics:'preview'});}catch(error){throw new SnapshotApiError('ENDPOINT_BASIS_INCOMPATIBLE',(error as Error).message,commandIndex);}}
 
 /** One pure, detached plan shared by the native UI and the JSON editing facade.
@@ -44,7 +44,7 @@ export function prepareSnapshotBatch(project:LandmarkProject,raw:unknown){
 }
 
 export interface SnapshotPreviewRequest {recordingId?:string;commands:readonly SnapshotCommand[]}
-const localPreviewOps=new Set<SnapshotCommand['op']>(['setAngle','selectSnapshot','setLayerPlacement','moveShapeNode','moveShapeHandle','transformShapeElements','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','discardSelected','setTolerance','setInterpolationWeight','resetInterpolationWeight','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','updateEndpointCorrection','discardEndpointCorrection']);
+const localPreviewOps=new Set<SnapshotCommand['op']>(['setAngle','selectSnapshot','setLayerPlacement','setShapeElementPlacement','moveShapeNode','moveShapeHandle','transformShapeElements','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','discardSelected','setTolerance','setInterpolationWeight','resetInterpolationWeight','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','updateEndpointCorrection','discardEndpointCorrection']);
 const interpolationSourceCache=new WeakMap<RecordingSnapshotWorkspace,Map<string,ReturnType<typeof resolveSnapshot>['source']>>();
 /** Trusted native UI preview. Canonical geometry, saved keys, source snapshots
  * and archive remain immutable shared inputs. External JSON requests always use

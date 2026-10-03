@@ -36,7 +36,10 @@ export interface SnapshotWarpBinding {layerId:string;warpId:string}
 /** Domain placement and Warp follow live layer membership. Direct shape offsets
  * are ID-specific: an independent new curve has zero node/handle corrections. */
 export interface SnapshotLayerState {
- placement?:ScenePlacementValue;shape?:SceneShapeValue;visibility?:Record<string,boolean|null>;
+ placement?:ScenePlacementValue;
+ /** Post-shape, pre-layer curve-owned placement. Material controls remain live at zero. */
+ elementPlacements?:Record<string,ScenePlacementValue>;
+ shape?:SceneShapeValue;visibility?:Record<string,boolean|null>;
  intervals?:Record<string,SceneIntervalValue>;depth?:number;
 }
 export interface SnapshotMaterialIssue {sourceSnapshotId:string;sourceSignature:string;message:string}
