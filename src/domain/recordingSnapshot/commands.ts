@@ -1,4 +1,5 @@
 import {elementPlacementConflicts} from './elementPlacement';
+import {projectSnapshotTransformTargets} from './transformTargets';
 import {uid,emptyDrawing,sub,length,nodeAt,curveById,type DrawingDocument,type Point2,type StrokeDisplayIntervals,type DisplayIntervalMode,type TerminusBrushStyle,validInkEnds} from '../drawing/model';
 import {moveNode,moveHandle,transform} from '../drawing/commands';
 import {linkedNodeIds} from '../drawing/endpointLinks';
@@ -11,7 +12,7 @@ import {sameAngle} from '../vectorRecording/interpolation';
 import {identityScenePlacement,identitySceneShape,type SceneTrack,type ScenePlacementValue,type SceneShapeValue,type SceneIntervalValue} from '../recordingScene/model';
 import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotInterpolationWeight,type SnapshotControlResponse,type SnapshotEndpointResponses,type Angle} from './model';
 import {resolveSnapshot,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
-import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,validateSnapshotControlResponse} from './endpointPair';
+import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,interpolateEndpointPairDrawing,validateSnapshotControlResponse,validateSnapshotEndpointResponses} from './endpointPair';
 import {remapDrawingIdentities,remapIntervalIdentities} from './sources';
 import {validateSnapshotInterpolationWeight} from './weights';
 
@@ -119,26 +120,66 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
  const pairViews=()=>{if(!pair)return fail('ENDPOINT_PAIR_REQUIRED','Select an endpoint-pair Recording first.');return [ownedSnapshot(pair.startSnapshotId),ownedSnapshot(pair.endSnapshotId)] as const;};
  const pairIntermediate=!!pair&&!pairViews().some(view=>sameAngle(view.angle,recording.angle));
  const pairGeometry=()=>{const views=pairViews(),drawings=views.map(view=>resolveSnapshot(workspace,view.id,{angle:view.angle,useDraft:false,diagnostics:'preview'}).drawing) as [DrawingDocument,DrawingDocument],issues=endpointPairCompatibility(...drawings);if(issues.length)fail('ENDPOINT_BASIS_INCOMPATIBLE',issues.join(' '));return {views,drawings,authorities:endpointPairNodeAuthorities(drawings[0])};};
- const ensurePairDraft=()=>{if(!pair)return fail('ENDPOINT_PAIR_REQUIRED','Select an endpoint-pair Recording first.');if(pair.draft&&!sameAngle(pair.draft.angle,recording.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','A correction draft exists at another angle. Save or discard it before editing a different angle.');if(!pair.draft)pair.draft={angle:clone(recording.angle),responses:clone(pair.responses??{nodes:{},handles:{}})};return pair.draft.responses;};
  const finishPairDraft=(save:boolean,selected?:string[])=>{if(!pair)return fail('ENDPOINT_PAIR_REQUIRED','Select an endpoint-pair Recording first.');if(!pair.draft)return;if(save&&!sameAngle(pair.draft.angle,recording.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','Return to the correction draft angle before saving it.');if(!selected){if(save)pair.responses=clone(pair.draft.responses);delete pair.draft;return;}const geometry=pairGeometry(),curves=geometry.drawings[0].curves.filter(curve=>geometry.drawings[0].layers.some(layer=>selected.includes(layer.id)&&layer.items.includes(curve.id))),nodeIds=new Set(curves.flatMap(curve=>curve.nodes.map(nodeId=>geometry.authorities.get(nodeId)??nodeId))),curveIds=new Set(curves.map(curve=>curve.id)),saved=clone(pair.responses??{nodes:{},handles:{}}),draft=clone(pair.draft.responses);for(const [kind,selectedIds] of [['nodes',nodeIds],['handles',curveIds]] as const)for(const key of new Set([...Object.keys(saved[kind]),...Object.keys(draft[kind])])){if(!selectedIds.has(key))continue;const from=save?draft:saved,to=save?saved:draft;if(!Object.hasOwn(from[kind],key))delete to[kind][key];else Object.defineProperty(to[kind],key,{value:clone(from[kind][key]),writable:true,enumerable:true,configurable:true});}pair.responses=saved;pair.draft={...pair.draft,responses:draft};if(JSON.stringify(saved)===JSON.stringify(draft))delete pair.draft;};
  if(pair){
   if(['createSnapshot','deleteSnapshot','deleteKey','setInterpolationWeight','resetInterpolationWeight'].includes(op))fail('ENDPOINT_PAIR_KEYS_ONLY','Endpoint-pair mode has exactly two genuine basis snapshots. Edit corrections between them; keep arbitrary keys in the original Recording.');
-  const always=['setAngle','selectSnapshot','setTolerance','createEndpointPairRecording','moveShapeNode','moveShapeHandle','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','saveSelected','discardSelected','updateSnapshot','updateEndpointCorrection','discardEndpointCorrection'];
-  if(pairIntermediate&&!always.includes(op))fail('ENDPOINT_CORRECTION_ONLY','At a correction angle, edit A nodes or handles. Edit placement, Warp, material and layer structure at a basis endpoint.');
+  const always=['setAngle','selectSnapshot','setTolerance','createEndpointPairRecording','moveShapeNode','moveShapeHandle','transformShapeElements','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','saveSelected','discardSelected','updateSnapshot','updateEndpointCorrection','discardEndpointCorrection'];
+  if(pairIntermediate&&!always.includes(op))fail('ENDPOINT_CORRECTION_ONLY','At a correction angle, edit controls or transform selected curves. Edit placement, Warp, material and layer structure at a basis endpoint.');
  }
  const controlTargets=(raw:unknown,geometry:ReturnType<typeof pairGeometry>):SnapshotControlTarget[]=>{if(!Array.isArray(raw)||!raw.length||raw.length>16384)fail('INVALID_REQUEST','Select 1…16384 control targets.');const seen=new Set<string>();return (raw as unknown[]).map(value=>{const target=object(value,['layerId','nodeId','curveId','end']),layerId=id(target.layerId,'layerId'),owner=geometry.drawings[0].layers.find(layer=>layer.id===layerId)??fail('MISSING_LAYER','Control target layer is missing.');let result:SnapshotControlTarget,key:string;if(target.nodeId!==undefined){if(target.curveId!==undefined||target.end!==undefined)fail('INVALID_REQUEST','A node target cannot also name a handle.');const nodeId=id(target.nodeId,'nodeId');if(!geometry.drawings[0].curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not owned by this layer.');result={layerId,nodeId:geometry.authorities.get(nodeId)??nodeId};key=JSON.stringify(['node',result.nodeId]);}else{const curveId=id(target.curveId,'curveId');if(target.end!==0&&target.end!==1)fail('INVALID_REQUEST','Handle end must be 0 or 1.');if(!owner.items.includes(curveId)||!geometry.drawings[0].curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Handle curve is not owned by this layer.');result={layerId,curveId,end:target.end as 0|1};key=JSON.stringify(['handle',curveId,target.end]);}if(seen.has(key))fail('INVALID_REQUEST','Control targets must be unique after linked-node authority resolution.');seen.add(key);return result;});};
+ /** A and V freeze one final frame, then share this inverse transaction. */
+ const pairCorrectionFrame=()=>{
+  const views=pairViews();if(!pairIntermediate)fail('ENDPOINT_CORRECTION_REQUIRES_INTERIOR','Inverse corrections belong strictly between the two saved basis endpoints. Edit the endpoint basis directly here.');
+  const t=(recording.angle.x-views[0].angle.x)/(views[1].angle.x-views[0].angle.x);if(recording.angle.y!==views[0].angle.y||!(t>0&&t<1))fail('ENDPOINT_PAIR_ANGLE','Choose an angle strictly inside this pair’s yaw interval.');
+  if(pair!.draft&&!sameAngle(pair!.draft.angle,recording.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','A correction draft exists at another angle. Save or discard it before editing a different angle.');
+  return evaluated();
+ };
+ const applyPairTargets=(evaluation:ReturnType<typeof evaluated>,next:DrawingDocument)=>{
+  const basis=evaluation.endpointPair!,current=evaluation.drawing,t=basis.progress;
+  const index=(drawing:DrawingDocument)=>({nodes:new Map(drawing.nodes.map(node=>[node.id,node.position])),curves:new Map(drawing.curves.map(curve=>[curve.id,curve]))});
+  const prior=index(current),wanted=index(next),start=index(basis.start.drawing),end=index(basis.end.drawing);
+  const updates:{id:string;end?:0|1;axis:'x'|'y';value:number}[]=[];
+  const solve=(targetKind:'Node'|'Handle',targetId:string,previous:Point2,target:Point2,first:Point2,last:Point2,handleEnd?:0|1)=>{
+   for(const [coordinate,axis] of ['x','y'].entries()){
+    if(Math.abs(target[coordinate]-previous[coordinate])<=64*Number.EPSILON*Math.max(1,Math.abs(target[coordinate]),Math.abs(previous[coordinate])))continue;
+    const solved=invertEndpointPairCoordinate(first[coordinate],last[coordinate],target[coordinate]);
+    if(!solved.available)return fail('ENDPOINT_AXIS_UNAVAILABLE',`${targetKind} ${targetId}${handleEnd===undefined?'':` end ${handleEnd}`} ${axis.toUpperCase()}: ${solved.reason} Edit that coordinate in a basis endpoint first.`);
+    updates.push({id:targetId,end:handleEnd,axis:axis as 'x'|'y',value:solved.value});
+   }
+  };
+  for(const node of next.nodes){
+   const authority=basis.nodeAuthorities[node.id]??node.id;
+   if(authority!==node.id){if(length(sub(node.position,wanted.nodes.get(authority)!))>1e-7)fail('ENDPOINT_CONSTRAINT_UNSOLVABLE',`Node ${node.id} conflicts with linked position authority ${authority}.`);continue;}
+   solve('Node',authority,prior.nodes.get(authority)!,node.position,start.nodes.get(authority)!,end.nodes.get(authority)!);
+  }
+  const vector=(drawing:ReturnType<typeof index>,curveId:string,handleEnd:0|1)=>{const curve=drawing.curves.get(curveId)!;return sub(curve.handles[handleEnd],drawing.nodes.get(curve.nodes[handleEnd])!);};
+  for(const curve of next.curves)for(const handleEnd of [0,1] as const)solve('Handle',curve.id,vector(prior,curve.id,handleEnd),vector(wanted,curve.id,handleEnd),vector(start,curve.id,handleEnd),vector(end,curve.id,handleEnd),handleEnd);
+  if(!updates.length)return;
+  // Build and replay the complete candidate before touching even the draft.
+  const responses=clone(pair!.draft?.responses??pair!.responses??{nodes:{},handles:{}});
+  for(const update of updates){const control=responseControl(responses,update.id,update.end),knots=(control[update.axis]??[]).filter(point=>Math.abs(point[0]-t)>1e-10);knots.push([t,update.value]);knots.sort((a,b)=>a[0]-b[0]);control[update.axis]=knots;}
+  try{validateSnapshotEndpointResponses(responses);}catch(error){fail('INVALID_REQUEST',(error as Error).message);}
+  const actual=index(interpolateEndpointPairDrawing(basis.start.drawing,basis.end.drawing,t,responses,{startWins:t<.5||t===.5&&basis.start.angle.x<basis.end.angle.x}).drawing);
+  const verify=(label:string,position:Point2|undefined,target:Point2)=>{if(!position||length(sub(position,target))>1e-7)fail('ENDPOINT_CONSTRAINT_UNSOLVABLE',`${label}: this correction conflicts with a linked or smooth endpoint constraint. Edit the responsible basis control or its driver first.`);};
+  for(const node of next.nodes)verify(`Node ${node.id}`,actual.nodes.get(node.id),node.position);
+  for(const curve of next.curves)for(const handleEnd of [0,1] as const)verify(`Handle ${curve.id} end ${handleEnd}`,actual.curves.get(curve.id)?.handles[handleEnd],curve.handles[handleEnd]);
+  pair!.draft={angle:clone(recording.angle),responses};
+ };
  const applyPairCorrection=(kind:'node'|'handle')=>{
-  const geometry=pairGeometry();if(!pairIntermediate)fail('ENDPOINT_CORRECTION_REQUIRES_INTERIOR','Inverse corrections belong strictly between the two saved basis endpoints. Edit the endpoint basis directly here.');
-  const t=(recording.angle.x-geometry.views[0].angle.x)/(geometry.views[1].angle.x-geometry.views[0].angle.x);if(recording.angle.y!==geometry.views[0].angle.y||!(t>0&&t<1))fail('ENDPOINT_PAIR_ANGLE','Choose an angle strictly inside this pair’s yaw interval.');
-  const e=evaluated(),current=e.drawing,owner=current.layers.find(value=>value.id===layer(c.layerId).id)??fail('MISSING_LAYER','Resolved layer is missing.'),position=point(c.position);let next:DrawingDocument;
+  const e=pairCorrectionFrame(),current=e.drawing,owner=current.layers.find(value=>value.id===layer(c.layerId).id)??fail('MISSING_LAYER','Resolved layer is missing.'),position=point(c.position);let next:DrawingDocument;
   if(kind==='node'){const nodeId=id(c.nodeId,'nodeId');if(!current.curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not owned by this layer.');next=moveNode(current,nodeId,position,true);}
   else{const curveId=id(c.curveId,'curveId');if(!owner.items.includes(curveId)||!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Curve is not owned by this layer.');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');next=projectSceneSmoothHandle(moveHandle(current,{curveId,end:c.end as 0|1},position,true),{curveId,end:c.end as 0|1});}
-  const updates:{kind:'nodes'|'handles';id:string;end?:0|1;axis:'x'|'y';value:number}[]=[];
-  const solve=(targetKind:'nodes'|'handles',targetId:string,prior:Point2,wanted:Point2,start:Point2,end:Point2,handleEnd?:0|1)=>{for(const [index,axis] of ['x','y'].entries()){if(Math.abs(wanted[index]-prior[index])<=64*Number.EPSILON*Math.max(1,Math.abs(wanted[index]),Math.abs(prior[index])))continue;const solved=invertEndpointPairCoordinate(start[index],end[index],wanted[index]);if(!solved.available)return fail('ENDPOINT_AXIS_UNAVAILABLE',`${targetKind==='nodes'?'Node':'Handle'} ${targetId}${handleEnd===undefined?'':` end ${handleEnd}`} ${axis.toUpperCase()}: ${solved.reason} Edit that coordinate in a basis endpoint first.`);updates.push({kind:targetKind,id:targetId,end:handleEnd,axis:axis as 'x'|'y',value:solved.value});}};
-  for(const node of next.nodes){const prior=current.nodes.find(value=>value.id===node.id)!,authority=geometry.authorities.get(node.id)??node.id;if(authority!==node.id)continue;const [start,end]=geometry.drawings.map(drawing=>drawing.nodes.find(value=>value.id===authority)?.position);if(!start||!end)fail('ENDPOINT_BASIS_INCOMPATIBLE','A corrected node is missing from a basis endpoint.');solve('nodes',authority,prior.position,node.position,start!,end!);}
-  for(const curve of next.curves){const prior=current.curves.find(value=>value.id===curve.id)!;for(const end of [0,1] as const){const vector=(drawing:DrawingDocument)=>{const value=drawing.curves.find(value=>value.id===curve.id)!;return sub(value.handles[end],nodeAt(drawing,{curveId:curve.id,end}).position);};solve('handles',curve.id,sub(prior.handles[end],nodeAt(current,{curveId:curve.id,end}).position),sub(curve.handles[end],nodeAt(next,{curveId:curve.id,end}).position),vector(geometry.drawings[0]),vector(geometry.drawings[1]),end);}}
-  if(!updates.length)return;const responses=ensurePairDraft();for(const update of updates){const control=responseControl(responses,update.id,update.end),knots=(control[update.axis]??[]).filter(point=>Math.abs(point[0]-t)>1e-10);knots.push([t,update.value]);knots.sort((a,b)=>a[0]-b[0]);control[update.axis]=knots;}
-  const actual=evaluated().drawing,actualPoint=kind==='node'?actual.nodes.find(node=>node.id===c.nodeId)?.position:actual.curves.find(curve=>curve.id===c.curveId)?.handles[c.end as 0|1];if(!actualPoint||length(sub(actualPoint,position))>1e-7)fail('ENDPOINT_CONSTRAINT_UNSOLVABLE','This correction conflicts with a linked or smooth endpoint constraint. Edit the responsible basis control or its driver first.');
+  applyPairTargets(e,next);
+ };
+ const applyPairTransform=()=>{
+  const curveIds=ids(c.curveIds),delta=placement(c.value),e=pairCorrectionFrame();
+  for(const curveId of curveIds)if(!e.drawing.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Selected curve does not exist.');
+  const transformed=transform(e.drawing,curveIds,p=>applyScenePlacement(delta,p),true,false),joins=new Map(e.drawing.joins.map(join=>[join.id,join])),links=new Map((e.drawing.endpointLinks??[]).map(link=>[link.id,link]));
+  // Responses represent final controls only, so never silently drop a requested
+  // ARC brush parameter change from the ordinary Drawing transform target.
+  for(const join of transformed.joins){const prior=joins.get(join.id);if(join.mode==='ARC'&&prior?.mode==='ARC'&&Math.abs(join.radius!-prior.radius!)>64*Number.EPSILON*Math.max(1,Math.abs(join.radius!),Math.abs(prior.radius!)))fail('ENDPOINT_ARC_BASIS_REQUIRED',`ARC ${join.id} radius changes in this transform. Endpoint corrections store node and handle responses only; edit the ARC brush in a basis endpoint first.`);}
+  for(const link of transformed.endpointLinks??[]){const prior=links.get(link.id);if((link.joinBrush?.kind==='ARC'||prior?.joinBrush?.kind==='ARC')&&JSON.stringify(link.joinBrush)!==JSON.stringify(prior?.joinBrush))fail('ENDPOINT_ARC_BASIS_REQUIRED',`ARC ${link.id} brush changes in this transform. Endpoint corrections store node and handle responses only; edit the ARC brush in a basis endpoint first.`);}
+  applyPairTargets(e,projectSnapshotTransformTargets(e.drawing,transformed));
  };
  const currentWarp=(value:unknown,current=state())=>current.warps.find(w=>w.id===id(value,'warpId'))??fail('NOT_FOUND','Warp does not exist.');
  const structuralState=()=>{const s=snapshot(),value=state();s.deformation=clone(value);delete s.inheritedState;return s.deformation;};
@@ -188,6 +229,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    for(const curveId of curveIds){const owner=e.drawing.layers.find(layer=>layer.items.includes(curveId))!;setDraft(ensureTrack('placement',owner.id,curveId),value);}break;
   }
   case 'correctShapeNode':case 'correctShapeHandle':case 'moveShapeNode':case 'moveShapeHandle':case 'transformShapeElements':{
+   if(pairIntermediate&&op==='transformShapeElements'){applyPairTransform();break;}
    if(op==='correctShapeNode'||op==='correctShapeHandle'||pairIntermediate){applyPairCorrection(op==='moveShapeNode'||op==='correctShapeNode'?'node':'handle');break;}
    const e=evaluated(),current=e.preElementPlacementDrawing,base=e.preShapeDrawing,relationNodes=new Set<string>();let next:DrawingDocument;
    if(op==='transformShapeElements'){

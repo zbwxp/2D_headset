@@ -7,6 +7,7 @@ import type {SnapshotEvaluation} from '../domain/recordingSnapshot/evaluation';
 import {identityScenePlacement,type ScenePlacementValue} from '../domain/recordingScene/model';
 import {applyScenePlacement,scenePlacementScales} from '../domain/recordingScene/tracks';
 import SceneInstanceTransformBox,{instanceAxisScaleValue} from '../ui/vectorRecording/SceneInstanceTransformBox';
+import {snapshotStrokeSelectionTransform} from '../ui/vectorRecording/SnapshotRecordingWorkspace';
 import {snapshotStrokeTransformFrame,snapshotStrokeDeltaCommands,snapshotStrokeValueCommands} from '../ui/vectorRecording/snapshotStrokeTransform';
 
 function fixture(value:ScenePlacementValue=identityScenePlacement()){
@@ -34,8 +35,24 @@ test('zero-width stroke retains its actual edited material and restores width wi
  expect(moved.op).toBe('setShapeElementPlacement');if(moved.op!=='setShapeElementPlacement')throw Error('wrong route');expect(scenePlacementScales(moved.value)).toEqual([0,.7]);
 });
 
-test('correction-position frame remains visibly read-only instead of enabling intermediate transforms',()=>{
+test('read-only frame keeps visible axis controls without enabling writes',()=>{
  const {evaluation,curve}=fixture(),frame=snapshotStrokeTransformFrame(evaluation,[curve.id])!;
  const html=renderToStaticMarkup(createElement(SceneInstanceTransformBox,{bounds:frame.bounds,materialBounds:frame.materialBounds,basePlacement:frame.placement,screen:(point:Point2)=>point,editable:false,label:'Stroke transform',onBegin(){},onBeginAxis(){}}));
  expect(html).toContain('data-editable="false"');expect(html).toContain('data-testid="vr-instance-scale-x"');
+});
+
+
+test('inverse selection frame uses final controls once and routes axis, rotation and movement into the same target command',()=>{
+ const {evaluation,curve}=fixture({translation:[5,2],rotation:30,scale:2});
+ evaluation.placements[evaluation.drawing.layers[0].id]={translation:[8,-3],rotation:25,scale:3};
+ evaluation.endpointPair={role:'correction'} as NonNullable<SnapshotEvaluation['endpointPair']>;
+ const previews:unknown[]=[];const commits:unknown[]=[];
+ const frame=snapshotStrokeSelectionTransform(evaluation,evaluation,[curve.id],true,c=>previews.push(c),c=>commits.push(c))!;
+ expect(frame.displayPlacement).toBeUndefined();expect(frame.basePlacement).toEqual(identityScenePlacement());expect(frame.materialBounds).toEqual(frame.bounds);expect(frame.editable).toBe(true);
+ const html=renderToStaticMarkup(createElement(SceneInstanceTransformBox,{...frame,screen:(point:Point2)=>point,onBegin(){},onBeginAxis(){}}));
+ expect(html.match(/data-testid="vr-instance-scale-x"/g)).toHaveLength(2);expect(html.match(/data-testid="vr-instance-scale-y"/g)).toHaveLength(2);
+ for(const value of [{...identityScenePlacement(),translation:[.04,0] as Point2},{...identityScenePlacement(),rotation:12},{...identityScenePlacement(),scale:1.2},{...identityScenePlacement(),scaleX:0,scaleY:.8}]){
+  frame.onPreview(value);frame.onCommit(value);frame.onValuePreview!(value);frame.onValueCommit!(value);
+  expect(previews.at(-1)).toEqual([{op:'transformShapeElements',curveIds:[curve.id],value}]);expect(commits.at(-1)).toEqual(previews.at(-1));
+ }
 });

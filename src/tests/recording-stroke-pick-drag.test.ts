@@ -33,14 +33,21 @@ const value=<T,>(result:VectorResult<T>):T=>{if(!result.ok)throw Error(JSON.stri
 const id=(raw:string)=>canonicalElementId('$working',raw);
 const pointer=(clientX:number,clientY:number,shiftKey=false)=>({button:0,pointerId:1,clientX,clientY,shiftKey,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const key=(name:string,modifiers={})=>({key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target:new Target(),preventDefault:vi.fn(),...modifiers});
-function harness(options:{selected?:string[];editable?:boolean;tool?:'select'|'direct';placement?:ScenePlacementValue;parent?:ScenePlacementValue}={}){
+function harness(options:{selected?:string[];editable?:boolean;tool?:'select'|'direct';placement?:ScenePlacementValue;parent?:ScenePlacementValue;endpointPair?:boolean}={}){
  let drawing=addLayer(emptyDrawing(),'Outline');for(const [i,raw] of ['a','b','c'].entries())drawing=createCurve(drawing,drawing.layers[0].id,[[i,0],[i+.2,.2],[i+.8,.8],[i+1,1]],.01,raw,raw);
  drawing.groups=[{id:'group',name:'Complete stroke',curveIds:['a','b'],visible:true,locked:false}];
  let project:LandmarkProject=ensureRecordingSnapshots({...createEmptyProject(),drawing});const past:LandmarkProject[]=[],future:LandmarkProject[]=[],sourceWrite=vi.fn(()=>{throw Error('source write');});
  const api=createVectorEditingApi({getState:()=>({project,past,future}),getMode:()=> 'recording',commitDrawing:sourceWrite,commitRecordingSnapshots(recordingSnapshots){past.push(project);future.length=0;project={...project,recordingSnapshots};},undo(){const old=past.pop();if(old){future.push(project);project=old;}},redo(){const old=future.pop();if(old){past.push(project);project=old;}}});
  const apply=(...commands:SnapshotCommand[])=>value(api.snapshot({commands}));apply({op:'createRecording'});apply({op:'pasteLayers',sourceSnapshotId:drawingSnapshotForArtwork(project.recordingSnapshots!,'$working')!.id});
  if(options.placement)apply({op:'setShapeElementPlacement',curveIds:[id('a'),id('b')],value:options.placement});
- if(options.parent)apply({op:'setLayerPlacement',layerId:evaluateRecordingSnapshot(project).drawing.layers[0].id,value:options.parent});past.length=0;
+ if(options.parent)apply({op:'setLayerPlacement',layerId:evaluateRecordingSnapshot(project).drawing.layers[0].id,value:options.parent});
+ if(options.endpointPair){
+  apply({op:'updateSnapshot'});const start=project.recordingSnapshots!.recordings.find(r=>r.id===project.recordingSnapshots!.activeRecordingId)!.activeSnapshotId!;
+  apply({op:'createSnapshot',angle:{x:90,y:0}});const end=project.recordingSnapshots!.recordings.find(r=>r.id===project.recordingSnapshots!.activeRecordingId)!.activeSnapshotId!;
+  apply({op:'setLayerPlacement',layerId:evaluateRecordingSnapshot(project).drawing.layers[0].id,value:{translation:[2,1],rotation:15,scale:1.5}},{op:'updateSnapshot'});
+  apply({op:'createEndpointPairRecording',startSnapshotId:start,endSnapshotId:end},{op:'setAngle',angle:{x:60,y:0}});
+ }
+ past.length=0;
  let shown=project,targetKey='view-0',revealGridKey=0,editable=options.editable??true,chosen:DrawingSelection={ids:(options.selected??[]).map(id)},tool:'select'|'direct'|'hand'|'zoom'=options.tool??'select';
  const preview=vi.fn((commands:SnapshotCommand[]|null)=>{shown=commands?{...project,recordingSnapshots:prepareSnapshotPreview(project,{commands}).recordingSnapshots}:project;}),commit=vi.fn((commands:SnapshotCommand[])=>{apply(...commands);shown=project;}),warpCommit=vi.fn(),curveCommit=vi.fn(),select=vi.fn();
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
@@ -77,9 +84,23 @@ test.each(['escape','cancel','lost','navigate','source','blur','tool','externalT
 
 test('A ink selection stays A and never enters the V transform adapter',()=>{const h=harness({tool:'direct'});h.paint().props.curveDown(pointer(200,300),id('a'));h.render();expect(h.selection().ids).toEqual([id('a')]);expect(h.element('vr-scene-canvas').props['data-tool']).toBe('direct');move(h,[230,280]);release(h,[230,280]);expect(h.commit).not.toHaveBeenCalled();expect(h.curveCommit).not.toHaveBeenCalled();});
 
-test('intermediate endpoint-pair V selection remains read-only',()=>{const h=harness({editable:false});h.paint().props.curveDown(pointer(200,300),id('a'));h.render();expect(h.selection().ids).toEqual([id('a'),id('b')]);expect(h.element('vr-instance-transform-box').props['data-editable']).toBe(false);move(h,[230,280]);release(h,[230,280]);expect(h.commit).not.toHaveBeenCalled();expect(h.preview.mock.calls.some(([commands])=>commands!==null)).toBe(false);});
+test('an explicitly disabled transform remains read-only',()=>{const h=harness({editable:false});h.paint().props.curveDown(pointer(200,300),id('a'));h.render();expect(h.selection().ids).toEqual([id('a'),id('b')]);expect(h.element('vr-instance-transform-box').props['data-editable']).toBe(false);move(h,[230,280]);release(h,[230,280]);expect(h.commit).not.toHaveBeenCalled();expect(h.preview.mock.calls.some(([commands])=>commands!==null)).toBe(false);});
 
 test.each([0,.4])('V pickup preserves nonuniform stroke axes, including exact zero %s, through a rotated nonuniform parent',scaleX=>{
  const h=harness({placement:{...identityScenePlacement(),scaleX,scaleY:2},parent:{translation:[2,1],rotation:31,scale:1,scaleX:2,scaleY:.6}}),before=evaluateRecordingSnapshot(h.project()),unit=h.paint().props.unit;
  h.paint().props.curveDown(pointer(203,302),id('a'));h.render();move(h,[223,292]);h.render();release(h,[223,292]);expect(h.commit).toHaveBeenCalledTimes(1);const after=evaluateRecordingSnapshot(h.project());expect(scenePlacementScales(after.elementPlacements[id('a')])).toEqual([scaleX,2]);shapeOf(after.drawing,id('a')).forEach((p,i)=>{const q=shapeOf(before.drawing,id('a'))[i];near(p,[q[0]+20/unit,q[1]+10/unit]);});expect(after.placements).toEqual(before.placements);
+});
+
+
+test('intermediate V pickup batch-inverts the frozen stroke once, keeps final-space frame and restores all state with Undo',()=>{
+ const h=harness({endpointPair:true}),original=h.project(),base=evaluateRecordingSnapshot(original),unit=h.paint().props.unit;
+ h.paint().props.curveDown(pointer(233,343),id('a'));h.render();expect(h.selection().ids).toEqual([id('a'),id('b')]);expect(h.element('vr-instance-transform-box').props['data-editable']).toBe(true);
+ expect(h.element('vr-instance-scale-x')).toBeDefined();expect(h.element('vr-instance-scale-y')).toBeDefined();
+ move(h,[253,343]);h.render();const preview=evaluateRecordingSnapshot(h.shown());
+ for(const raw of ['a','b'])shapeOf(preview.drawing,id(raw)).forEach((p,i)=>{const q=shapeOf(base.drawing,id(raw))[i];near(p,[q[0]+20/unit,q[1]]);});
+ expect(shapeOf(preview.drawing,id('c'))).toEqual(shapeOf(base.drawing,id('c')));
+ release(h,[253,343]);expect(h.commit).toHaveBeenCalledTimes(1);expect(h.commit.mock.calls[0][0]).toHaveLength(1);expect(h.commit.mock.calls[0][0][0].op).toBe('transformShapeElements');expect(h.past).toHaveLength(1);
+ const current=h.project().recordingSnapshots!,recording=current.recordings.find(r=>r.id===current.activeRecordingId)!;
+ expect(recording.angle).toEqual({x:60,y:0});expect(recording.snapshotIds).toHaveLength(2);expect(recording.tracks).toEqual(original.recordingSnapshots!.recordings.find(r=>r.id===current.activeRecordingId)!.tracks);expect(recording.endpointPair?.draft?.responses.handles).toEqual({});expect(current.library).toEqual(original.recordingSnapshots!.library);expect(h.sourceWrite).not.toHaveBeenCalled();
+ value(h.api.undo());expect(h.project()).toBe(original);
 });
