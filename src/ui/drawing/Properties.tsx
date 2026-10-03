@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import {currentDrawingPresentation} from './snapshotPresentation';
 import EndpointLinkBrushInfo from './EndpointLinkBrushInfo';
 import {displayRouteFor} from '../../domain/drawing/displayIntervals';
@@ -20,8 +21,8 @@ import {NumberField,NameField} from './Field';
 import DrawingReferenceControls from '../shared/DrawingReferenceControls';
 import {useDrawingWorkspace} from './workspace';
 import {uiText as t} from '../i18n';
-interface Props {open:boolean;setOpen:(open:boolean)=>void;document:DrawingDocument;selection:DrawingSelection;active:string|null;run:(fn:()=>DrawingDocument)=>void;choose:(s:DrawingSelection)=>void;tool:(t:'merge'|'link'|'bind'|'smooth'|'cusp'|'arc')=>void;transform:(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror'|'mirrorAxis',value:number)=>void;upload:()=>void;moveReference:()=>void;preview:(d:DrawingDocument|null)=>void}
-export default function Properties({open,setOpen,document:d,selection:s,active,run,choose,tool,transform,upload,moveReference,preview}:Props){
+interface Props {domainControls?:ReactNode;open:boolean;setOpen:(open:boolean)=>void;document:DrawingDocument;selection:DrawingSelection;active:string|null;run:(fn:()=>DrawingDocument)=>void;choose:(s:DrawingSelection)=>void;tool:(t:'merge'|'link'|'bind'|'smooth'|'cusp'|'arc')=>void;transform:(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror'|'mirrorAxis',value:number)=>void;upload:()=>void;moveReference:()=>void;preview:(d:DrawingDocument|null)=>void}
+export default function Properties({domainControls,open,setOpen,document:d,selection:s,active,run,choose,tool,transform,upload,moveReference,preview}:Props){
  const {editor,id:workspaceId}=useDrawingWorkspace();
  s={...s,handle:s.handle&&d.curves.some(c=>c.id===s.handle!.curveId)?s.handle:undefined,node:s.node&&d.nodes.some(n=>n.id===s.node)?s.node:undefined};
  const layerIds=selectedLayers(s),multiLayer=layerIds.length>1;
@@ -39,6 +40,7 @@ export default function Properties({open,setOpen,document:d,selection:s,active,r
  return <section className="drawing-properties" aria-label={t('绘图属性')}><header><button className="drawing-properties-toggle" aria-expanded={open} aria-controls="drawing-properties-body" onClick={()=>setOpen(!open)}>{open?<ChevronDown size={14}/>:<ChevronRight size={14}/>}<strong>{t('属性')}</strong><span>{t(s.mirrorAxis?'镜像轴':s.displayInterval?'显示区间':s.inkEnd?'笔触端点':s.paint?(d.fills.some(f=>f.id===s.paint)?'填充区域':'偏移跟随'):s.reference?'参考图':s.handle?'控制柄':s.node?'共享端点':multiLayer?'图层多选':layer?'图层':container?'组合':oneGroup&&ids.length>1?'连续笔画':ids.length>1?'多选':'曲线')}</span></button></header>
  <div id="drawing-properties-body" className="drawing-properties-content" hidden={!open}>
  <MirrorEditingControls d={d} ids={ids} nodeId={s.node} run={run}/>
+ {domainControls}
  {sharedRoute&&!oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose}/>}
  {multiLayer?<>
  <p>{layerIds.length} {t('个图层已选择')}</p>

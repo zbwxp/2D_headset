@@ -1,4 +1,5 @@
 import {validateSnapshotLocalMembership} from './localMembership';
+import {validateLayerDomains} from './layerDomains';
 import {validateSnapshotAngleGraph} from './angleGraph';
 import {sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {finitePoint} from '../drawing/model';
@@ -15,6 +16,7 @@ const unique=(values:string[],what:string)=>{if(values.some(v=>!id(v))||new Set(
 function materialIssue(issue:SnapshotMaterialIssue):void {if(!issue||!id(issue.sourceSnapshotId)||typeof issue.sourceSignature!=='string'||!issue.sourceSignature||typeof issue.message!=='string')fail('source material issue');}
 function deformation(state:SnapshotDeformationState):void {
  if(!state||!Array.isArray(state.warps)||!Array.isArray(state.bindings)||!record(state.layers)||!record(state.relationPositions))fail('deformation state');
+ if(state.layerDomains!==undefined)validateLayerDomains(state.layerDomains);
  unique(state.warps.map(w=>w.id),'Warp');const warps=new Map(state.warps.map(w=>[w.id,w]));
  for(const warp of state.warps){validateWarpGrid(warp.restGrid);validateWarpGrid(warp.grid);if(JSON.stringify([warp.grid.rows,warp.grid.columns,warp.grid.bounds])!==JSON.stringify([warp.restGrid.rows,warp.restGrid.columns,warp.restGrid.bounds]))fail('Warp rest domain changed');const visited=new Set<string>();let current:typeof warp|undefined=warp;while(current){if(visited.has(current.id))fail('Warp cycle');visited.add(current.id);if(current.parentId&&!warps.has(current.parentId))fail('missing Warp parent');current=current.parentId?warps.get(current.parentId):undefined;}}
  unique(state.bindings.map(b=>b.layerId),'bound layer');for(const binding of state.bindings)if(!id(binding.warpId)||!warps.has(binding.warpId))fail('missing bound Warp');

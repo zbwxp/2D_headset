@@ -1,3 +1,6 @@
+import {placeDrawingAffines,drawingLayerObjectOwners} from '../drawing/affineDrawing';
+import {layerDomainMatrices} from './layerDomains';
+import {applyAffine2D,affine2DMaxScale,identityAffine2D} from '../geometry/affine2d';
 import {intervalPinch} from '../drawing/intervalPinch';
 import {snapshotRouteMaterialSource,markSnapshotRouteMaterialInput} from './routeMaterialSource';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
@@ -14,7 +17,6 @@ import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
 import {registerEvaluatedAffine,evaluatedAffine,evaluatedAffineSource,type EvaluatedAffine} from '../drawing/evaluatedAffine';
-import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
 import {createDisplayRouteField,resolveDisplayRoute} from '../drawing/displayRoutes';
 import {paintItems} from '../drawing/strokes';
 import {InputCache} from '../geometry/cache';
@@ -22,7 +24,7 @@ import {applySceneShapes} from '../recordingScene/shapes';
 import {drawingSignature} from '../vectorRecording/model';
 import {emptyRecordingScene,identityScenePlacement,identitySceneShape,instanceObjectId,type ScenePlacementValue,type SceneShapeValue} from '../recordingScene/model';
 import {evaluateScene,type SceneEvaluation,type SceneEvaluationOptions} from '../recordingScene/evaluation';
-import {applyScenePlacement,scenePlacementScales,scenePlacementMaxScale,isScenePlacementSimilarity} from '../recordingScene/tracks';
+import {applyScenePlacement,placementMatrix,scenePlacementMaxScale} from '../recordingScene/tracks';
 import {materializeOriginalSnapshot,remapDrawingIdentities} from './sources';
 import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
@@ -189,13 +191,7 @@ function shapeState(source:DrawingDocument,state:SnapshotDeformationState,diagno
  return result;
 }
 function placeLayers(before:DrawingDocument,placements:Record<string,ScenePlacementValue>):DrawingDocument {
- const identity=identityScenePlacement(),owners=new Map(before.layers.flatMap(l=>l.items.map(id=>[id,l.id] as const)));
- for(const curve of before.curves)for(const id of curve.nodes)owners.set(id,owners.get(curve.id)!);
- const value=(id:string)=>placements[owners.get(id)!]??identity,active=(v:ScenePlacementValue)=>scenePlacementScales(v).some(s=>s!==1)||v.rotation!==0||v.translation.some(n=>n!==0);
- if(!Object.values(placements).some(active))return before;
- const drawing:DrawingDocument={...before,nodes:before.nodes.map(n=>active(value(n.id))?{...n,position:applyScenePlacement(value(n.id),n.position)}:n),curves:before.curves.map(c=>active(value(c.id))?{...c,handles:c.handles.map(p=>applyScenePlacement(value(c.id),p)) as [Point2,Point2]}:c),offsets:before.offsets.map(o=>o.translation&&active(value(o.id))?{...o,translation:applyScenePlacement({...value(o.id),translation:[0,0]},o.translation)}:o),joins:before.joins.map(j=>j.radius!==undefined&&active(value(j.a.curveId))&&isScenePlacementSimilarity(value(j.a.curveId))&&!evaluatedAffine(before,j.a.curveId)?{...j,radius:j.radius*scenePlacementMaxScale(value(j.a.curveId))}:j),endpointLinks:before.endpointLinks?.map(l=>l.joinBrush?.kind==='ARC'&&active(value(l.a.curveId))&&isScenePlacementSimilarity(value(l.a.curveId))&&!evaluatedAffine(before,l.a.curveId)?{...l,joinBrush:scaleEvaluatedDisplayRouteBrush(l.joinBrush,scenePlacementMaxScale(value(l.a.curveId)))}:l)};
- const affines=new Map<string,EvaluatedAffine>();for(const id of owners.keys()){const p=value(id),prior=evaluatedAffine(before,id);if(!isScenePlacementSimilarity(p)||prior)affines.set(id,{point:point=>applyScenePlacement(p,prior?prior.point(point):point),maxScale:scenePlacementMaxScale(p)*(prior?.maxScale??1)});}
- if(affines.size)registerEvaluatedAffine(drawing,evaluatedAffineSource(before)??before,id=>affines.get(id));return drawing;
+ const owners=drawingLayerObjectOwners(before);return placeDrawingAffines(before,Object.fromEntries(Object.entries(placements).map(([id,value])=>[id,placementMatrix(value)])),id=>owners.get(id));
 }
 /** Element offsets resolve against their source siblings before assembly ordering. */
 function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,drawing:DrawingDocument,provenance:SnapshotEvaluation['provenance']):PaintBatch[]{
@@ -238,7 +234,9 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
   for(const drawing of new Set([preShapeDrawing,preElementPlacementDrawing,unplaced]))if(sameGeometry(drawing))retainSnapshotAffines(drawing,[source]);}
  const placements=Object.fromEntries(snapshot.layers.map(l=>[l.id,state.layers[l.id]?.placement??identityScenePlacement()]));
  const elementPlacements=Object.assign({},...Object.values(state.layers).map(layer=>layer.elementPlacements??{})) as Record<string,ScenePlacementValue>,prePlacementDrawing=options.omitPlacements?unplaced:placeSnapshotElements(unplaced,elementPlacements);
+ const domainMatrices=layerDomainMatrices(state.layerDomains,snapshot.layers.map(layer=>layer.id));
  let drawing=options.omitPlacements?unplaced:placeLayers(prePlacementDrawing,placements);
+ if(!options.omitPlacements){const owners=drawingLayerObjectOwners(drawing);drawing=placeDrawingAffines(drawing,domainMatrices,id=>owners.get(id));}
  if(deferred.size){
   const tracks=(source.displayIntervals??[]).filter(track=>deferred.has(track.id)).map(track=>{const value=state.layers[layerFor(source,track.anchor.id)!.id]?.intervals?.[track.id];return applyIntervalEnableFlags([value?.appearance??track],value?.enabled??{})[0];});
   const target=retainSnapshotAffines({...drawing,displayIntervals:[...drawing.displayIntervals??[],...tracks]},[drawing]),transported:typeof tracks=[];
@@ -255,7 +253,7 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
 
  const placedNodes=new Map(drawing.nodes.map(n=>[n.id,n.position])),placedCurves=new Map(drawing.curves.map(c=>[c.id,c]));for(const link of drawing.endpointLinks??[]){const a=placedNodes.get(placedCurves.get(link.a.curveId)?.nodes[link.a.end]??''),b=placedNodes.get(placedCurves.get(link.b.curveId)?.nodes[link.b.end]??'');if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-8)diagnostics.push({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:link.id,message:'Layer placement separates linked endpoints. Connected layers need coherent placement values.'});}
  for(const diagnostic of evaluated.diagnostics)diagnostics.push({code:diagnostic.code==='ROUTE'?'ROUTE':'POSE',snapshotId:snapshot.id,layerId:diagnostic.sourceLayerId,elementId:diagnostic.sourceObjectId,channelId:diagnostic.trackId,message:diagnostic.message});
- const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const element=elementPlacements[sourceCurveId]??identityScenePlacement(),map=(p:Point2)=>applyScenePlacement(placement,applyScenePlacement(element,p)),maximum=scenePlacementMaxScale(placement)*scenePlacementMaxScale(element),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(map) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:map(d.peakExpected),peakActual:map(d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});
+ const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const element=elementPlacements[sourceCurveId]??identityScenePlacement(),domain=domainMatrices[layerFor(source,sourceCurveId)?.id??'']??identityAffine2D(),map=(p:Point2)=>applyAffine2D(domain,applyScenePlacement(placement,applyScenePlacement(element,p))),maximum=affine2DMaxScale(domain)*scenePlacementMaxScale(placement)*scenePlacementMaxScale(element),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(map) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:map(d.peakExpected),peakActual:map(d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});
  return {drawing,preShapeDrawing,prePlacementDrawing,preElementPlacementDrawing,elementPlacements,angle:evaluated.angle,state,diagnostics,warpGrids:evaluated.warpGrids,placements,paintBatches:depthPaintBatches(drawing),fitDiagnostics,warningCurveIds:fitDiagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId),intervalTransportErrors:evaluated.intervalTransportErrors.map(e=>({...e,trackId:raw(e.trackId),sourceCurveIds:e.sourceCurveIds.map(raw)})),maxError:fitDiagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds.map(raw)};
 }
 function evaluateLegacySnapshot(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions):SnapshotEvaluation {

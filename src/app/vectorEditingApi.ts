@@ -30,7 +30,7 @@ import {applyMirrorCommand,mirrorCommandNames,MirrorApiError,MirrorBatchIntent,t
 import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {createLayerCurveSplitIntent,applyLayerEditIntent,curveSplitIntents,type LayerEditIntent} from '../domain/drawing/layerEditIntent';
-import {createLayerDomainIntent,layerSimilarityFromMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
+import {createLayerDomainIntent,createLayerAffineIntent,layerSimilarityFromMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from './drawingSnapshotPresentation';
 import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
 import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../domain/recordingSnapshot/sources';
@@ -70,6 +70,7 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
  | {op:'setFill';fillId:string;name?:string;color?:'white'|'black'|'transparent';visible?:boolean;locked?:boolean;mist?:FillMist}
  | {op:'reorderObject';objectId:string;targetObjectId:string;after?:boolean}
  | {op:'transformLayers';layerIds:string[];matrix:Affine;allowRelated?:boolean}
+ | {op:'setLayerDomain';domainId:string;matrix?:Affine;enabled?:boolean}
  | {op:'createCurve';layerId:string;shape:Cubic;width?:number;name?:string;ref?:string}
  | {op:'splitCurve';curveId:string;t:number;ref?:string}
  | {op:'setMirrorAxis';x:number}
@@ -83,7 +84,7 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
 export type GeometryLinkCommand={op:'linkEndpoints';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};ref?:string}|{op:'unlinkEndpoints';linkId:string}|{op:'connectGeometry';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};mode?:'POSITION'};
 export type DisplayRouteCommand={op:'adoptDisplayRoute';trackId:string;linkId:string}|{op:'setLinkJoinBrush';linkId:string;brush:TerminusJoinBrush}|{op:'detachDisplayRoute';trackId:string};
 export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink'|'mirrorPair';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames,...mirrorCommandNames];
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','setLayerDomain','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames,...mirrorCommandNames];
 export interface VectorBatch {commands:VectorCommand[];expectedRevision?:string;dryRun?:boolean}
 export interface VectorQuery {layerIds?:string[];layerNames?:string[];curveIds?:string[];curveNames?:string[];strokeNames?:string[];nameIncludes?:string;includeRecording?:boolean}
 /** center is the source-space point at the middle of the output. origin is optional client-space offset. */
@@ -163,9 +164,12 @@ function objectExists(d:DrawingDocument,value:unknown){const id=string(value,'ob
 function color(value:unknown):'white'|'black'|'transparent'{if(value!=='white'&&value!=='black'&&value!=='transparent')fail('INVALID_REQUEST','color must be white, black or transparent.');return value as 'white'|'black'|'transparent';}
 function stateChange(c:Record<string,unknown>){bool(c.visible,'visible');bool(c.locked,'locked');return {...(c.visible===undefined?{}:{visible:c.visible as boolean}),...(c.locked===undefined?{}:{locked:c.locked as boolean})};}
 function nonemptyChange(c:object){if(!Object.keys(c).length)fail('INVALID_REQUEST','Provide at least one property to change.');return c;}
-function affineMap(matrix:unknown){
+function affineCoefficients(matrix:unknown):Affine {
  if(!Array.isArray(matrix)||matrix.length!==6)fail('INVALID_REQUEST','matrix must contain [a,b,c,d,e,f].');
- const [a,b,c,d,e,f]=(matrix as unknown[]).map((v,i)=>num(v,`matrix[${i}]`));
+ return (matrix as unknown[]).map((v,i)=>num(v,`matrix[${i}]`)) as Affine;
+}
+function affineMap(matrix:unknown){
+ const [a,b,c,d,e,f]=affineCoefficients(matrix);
  if(Math.abs(a*d-b*c)<1e-12)fail('INVALID_REQUEST','The affine transform must be nonsingular.');
  return (p:Point2):Point2=>[a*p[0]+c*p[1]+e,b*p[0]+d*p[1]+f];
 }
@@ -418,20 +422,19 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair')),previous=next;
     // Layer scope survives the API boundary. Resolve ownership against the
     // current candidate, after prior source edits, before expanding members.
-    if(resolved.op==='transformLayers'){
-     keys(resolved,['op','layerIds','matrix','allowRelated']);bool(resolved.allowRelated,'allowRelated');affineMap(resolved.matrix);
-     const requested=ids(resolved.layerIds,'layerIds'),value=layerSimilarityFromMatrix(resolved.matrix as Affine);
+    if(resolved.op==='transformLayers'||resolved.op==='setLayerDomain'){
+     const replacing=resolved.op==='setLayerDomain';keys(resolved,replacing?['op','domainId','matrix','enabled']:['op','layerIds','matrix','allowRelated']);bool(resolved.allowRelated,'allowRelated');bool(resolved.enabled,'enabled');
+     if(replacing&&resolved.matrix===undefined&&resolved.enabled===undefined)fail('INVALID_REQUEST','Provide a matrix or enabled state for the saved layer domain.');
      if(pendingSource){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}).project;pendingSource=false;}
-     const view=candidateProject.recordingSnapshots&&drawingSnapshotPresentation(candidateProject.recordingSnapshots,candidateProject.drawingSnapshots?.activeId??'$working'),presentation=view?.drawing??next;
+     const view=candidateProject.recordingSnapshots&&drawingSnapshotPresentation(candidateProject.recordingSnapshots,candidateProject.drawingSnapshots?.activeId??'$working'),presentation=view?.drawing??next,prior=replacing?view?.evaluation.state.layerDomains?.find(domain=>domain.id===string(resolved.domainId,'domainId')):undefined;
+     if(replacing&&!prior)fail('NOT_FOUND','The saved layer domain no longer exists.');
+     const requested=replacing?prior!.layerIds.map(view!.presentationId):ids(resolved.layerIds,'layerIds'),matrix=resolved.matrix===undefined?prior!.matrix:affineCoefficients(resolved.matrix),value=!replacing?layerSimilarityFromMatrix(matrix):undefined;
      requested.forEach(id=>layerExists(presentation,id));
-     if(value){
-      const intent=createLayerDomainIntent(requested,value),plan=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'layer-domain',intent,allowRelated:resolved.allowRelated===true}),sourceAfter=clone(plan.project.drawing??emptyDrawing());
-      if(previous.mirrorEditing?.enabled)mirrorIntent.capture(sourceAfter,resolved);
-      const mirrored=mirrorIntent.apply(previous,sourceAfter),candidate=JSON.stringify(mirrored)===JSON.stringify(sourceAfter)?plan.project:prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'original-geometry',drawing:markFinalizedGeometry(transportDeformedIntervals(sourceAfter,mirrored))}).project,wanted=currentDrawingPresentation(candidate);
-      validateBounds(wanted);assertDisplayRouteSupport(wanted);checkNewDiagnostics(presentation,wanted);
-      domainChanged=domainChanged||plan.changed||candidate!==plan.project;domainIntents.push(intent);candidateProject=candidate;next=clone(candidateProject.drawing??emptyDrawing());continue;
-     }
-     if(requested.some(id=>view?.layerOwners.get(id)?.kind==='snapshot-local'))fail('LAYER_DOMAIN_UNSUPPORTED','Referenced whole-layer transforms currently support translation, rotation and positive uniform scale. Nonuniform, zero-axis and reflected domain persistence is not available yet.');
+     const intent=value?createLayerDomainIntent(requested,value):createLayerAffineIntent(requested,matrix,{...(prior?{operationId:prior.id,replace:true,enabled:resolved.enabled===undefined?prior.enabled:resolved.enabled as boolean}:{})}),plan=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'layer-domain',intent,allowRelated:resolved.allowRelated===true}),sourceAfter=clone(plan.project.drawing??emptyDrawing());
+     if(previous.mirrorEditing?.enabled)mirrorIntent.capture(sourceAfter,resolved);
+     const mirrored=mirrorIntent.apply(previous,sourceAfter),candidate=JSON.stringify(mirrored)===JSON.stringify(sourceAfter)?plan.project:prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'original-geometry',drawing:markFinalizedGeometry(transportDeformedIntervals(sourceAfter,mirrored))}).project,wanted=currentDrawingPresentation(candidate);
+     validateBounds(wanted);assertDisplayRouteSupport(wanted);checkNewDiagnostics(presentation,wanted);
+     domainChanged=domainChanged||plan.changed||candidate!==plan.project;domainIntents.push(intent);candidateProject=candidate;next=clone(candidateProject.drawing??emptyDrawing());continue;
     }
     // Ordinary runs share one source synchronization. A split is the explicit
     // boundary: flush prior edits before freezing any real Snapshot controls.

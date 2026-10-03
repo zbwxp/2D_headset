@@ -1,3 +1,4 @@
+import {remapLayerDomains} from './layerDomains';
 import type {StrokeDisplayIntervals} from '../drawing/model';
 import type {RecordingSnapshotWorkspace,SnapshotDeformationState,SnapshotLayerState,SnapshotPoseTrack,SceneIntervalValue,SceneShapeValue,SnapshotEndpointResponses,SnapshotTriangleResponses,SnapshotRelationPatch,SnapshotPropertyResponses} from './model';
 
@@ -42,7 +43,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
  const state=(value:SnapshotDeformationState,snapshotId:string):SnapshotDeformationState=>{
   const relations=removedRelationsBySnapshot.get(snapshotId)??new Set<string>();removedRelationsBySnapshot.set(snapshotId,relations);
   const relationPositions=Object.fromEntries(Object.entries(value.relationPositions).flatMap(([id,relation])=>{const sourceLinkIds=relation.sourceLinkIds.filter(id=>!removed.has(id));if(removed.has(id)||!sourceLinkIds.length){relations.add(id);return [];}return [[id,{...relation,sourceLinkIds}]];}));
-  return {...value,bindings:value.bindings.filter(binding=>!removedLayers.has(address(snapshotId,binding.layerId))),layers:Object.fromEntries(Object.entries(value.layers).filter(([id])=>!removedLayers.has(address(snapshotId,id))).map(([id,layer])=>[id,layerState(layer)])),relationPositions,...(value.intervalMaterialIssues?{intervalMaterialIssues:without(value.intervalMaterialIssues,removed)}:{})};
+  return {...value,...(value.layerDomains?{layerDomains:remapLayerDomains(value.layerDomains,id=>id,id=>!removedLayers.has(address(snapshotId,id)))}:{}),bindings:value.bindings.filter(binding=>!removedLayers.has(address(snapshotId,binding.layerId))),layers:Object.fromEntries(Object.entries(value.layers).filter(([id])=>!removedLayers.has(address(snapshotId,id))).map(([id,layer])=>[id,layerState(layer)])),relationPositions,...(value.intervalMaterialIssues?{intervalMaterialIssues:without(value.intervalMaterialIssues,removed)}:{})};
  };
  const snapshots=after.snapshots.map(snapshot=>{
   const relations={...snapshot.relations};

@@ -1,4 +1,5 @@
 import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
+import type {SnapshotLayerAffineDomain} from './layerDomains';
 import type {SnapshotResponseExpression} from './responseExpressions';
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
@@ -55,6 +56,8 @@ export interface SnapshotRelationPositionState {sourceLinkIds:string[];offset:Po
 /** Only this node's residual deformation, applied after its saved parent state. */
 export interface SnapshotDeformationState {
  warps:SnapshotWarpState[];bindings:SnapshotWarpBinding[];
+ /** Authored order after curve/layer placement; scope follows current members. */
+ layerDomains?:SnapshotLayerAffineDomain[];
  layers:Record<string,SnapshotLayerState>;
  relationPositions:Record<string,SnapshotRelationPositionState>;
  /** Source interval ID to suspended inherited/static material channel. */

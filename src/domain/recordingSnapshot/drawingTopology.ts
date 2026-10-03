@@ -1,5 +1,6 @@
+import {trySnapshotControlInverse,snapshotControlBrushScale} from './controlSpace';
 import {parseDrawing,layerFor,sub,length,type DrawingDocument,type DrawingCurve,type Point2} from '../drawing/model';
-import {applyScenePlacementMatrix,tryInverseScenePlacement,isScenePlacementSimilarity,scenePlacementMaxScale} from '../recordingScene/tracks';
+import {applyScenePlacementMatrix} from '../recordingScene/tracks';
 import {identityScenePlacement} from '../recordingScene/model';
 import {type WarpGrid} from '../vectorWarp/model';
 import {resolveSnapshot,type SnapshotEvaluation} from './evaluation';
@@ -60,9 +61,9 @@ function layerWarpInverse(evaluation:SnapshotEvaluation,layerId:string):(point:P
  return point=>inverses.reduceRight((value,inverse)=>inverse(value),point);
 }
 function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,point:Point2):Point2 {
- const layer=tryInverseScenePlacement(evaluation.placements[layerId]??identityScenePlacement()),element=tryInverseScenePlacement(evaluation.elementPlacements[curveId]??identityScenePlacement());
- if(!layer||!element)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis. Restore that axis before authoring its controls.`);
- return applyScenePlacementMatrix(element,applyScenePlacementMatrix(layer,point));
+ const inverse=trySnapshotControlInverse(evaluation,layerId,curveId);
+ if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
+ return applyScenePlacementMatrix(inverse,point);
 }
 function patchRelations<T extends {id:string}>(patch:SnapshotRelationPatch<T>|undefined,before:readonly T[],after:readonly T[]):SnapshotRelationPatch<T>|undefined {
  const previous=new Map(before.map(value=>[value.id,value])),next=new Map(after.map(value=>[value.id,value])),result=clone(patch??{});
@@ -138,7 +139,7 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
   for(const nodeId of curve.nodes)if(!Object.hasOwn(workspace.library.nodes,nodeId))workspace.library.nodes[nodeId]={id:nodeId,position:map(unplace(evaluation,layerId,curve.id,nodes.get(nodeId)!.position))};
  }
  for(const kind of ['fills','offsets'] as const)for(const value of target[kind])if(!current[kind].some(prior=>prior.id===value.id))Object.defineProperty(workspace.library[kind],value.id,{value:clone(value),enumerable:true,writable:true,configurable:true});
- const localLinks=(drawing:DrawingDocument)=>(drawing.endpointLinks??[]).map(link=>{if(link.joinBrush?.kind!=='ARC')return link;const placements=[evaluation.placements[layerFor(current,link.a.curveId)?.id??''],evaluation.elementPlacements[link.a.curveId]],scale=placements.reduce((scale,value)=>scale*(value&&isScenePlacementSimilarity(value)?scenePlacementMaxScale(value):1),1);return scale===1?link:{...link,joinBrush:{...link.joinBrush,trimDistance:link.joinBrush.trimDistance/scale}};});
+ const localLinks=(drawing:DrawingDocument)=>(drawing.endpointLinks??[]).map(link=>{if(link.joinBrush?.kind!=='ARC')return link;const scale=snapshotControlBrushScale(evaluation,layerFor(current,link.a.curveId)?.id??'',link.a.curveId);return scale===1?link:{...link,joinBrush:{...link.joinBrush,trimDistance:link.joinBrush.trimDistance/scale}};});
  for(const name of names){const patch=patchRelations(local.relations[name] as SnapshotRelationPatch<{id:string}>|undefined,name==='endpointLinks'?localLinks(current):current[name]??[],name==='endpointLinks'?localLinks(target):target[name]??[]);if(patch)(local.relations as Record<string,unknown>)[name]=patch;else delete local.relations[name];}
  // Relation topology changes immediately, including when a shape draft exists.
  // Retire disabled link references in all local states, not just today's draft.

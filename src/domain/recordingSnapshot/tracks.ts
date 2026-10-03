@@ -1,3 +1,4 @@
+import {mergeLayerDomains} from './layerDomains';
 import type {DrawingDocument} from '../drawing/model';
 import {evaluateWarpTrack,evaluateVisibilityTrack,evaluateIntervalTrack,evaluateDepthTrack,evaluatePlacementTrack,evaluateShapeTrack} from '../recordingScene/tracks';
 import type {SceneShapeValue} from '../recordingScene/model';
@@ -17,7 +18,7 @@ export function mergeSnapshotDeformation(fallback:SnapshotDeformationState|undef
  if(!fallback)return structuredClone(own);
  const layers=structuredClone(fallback.layers);
  for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value),...(layers[id]?.visibility||value.visibility?{visibility:{...layers[id]?.visibility,...structuredClone(value.visibility??{})}}:{}),...(layers[id]?.intervals||value.intervals?{intervals:{...layers[id]?.intervals,...structuredClone(value.intervals??{})}}:{}),...(layers[id]?.elementPlacements||value.elementPlacements?{elementPlacements:{...layers[id]?.elementPlacements,...structuredClone(value.elementPlacements??{})}}:{})};
- return {warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,structuredClone(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,{...b}])).values()],layers,relationPositions:{...structuredClone(fallback.relationPositions),...structuredClone(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...structuredClone(fallback.intervalMaterialIssues??{}),...structuredClone(own.intervalMaterialIssues??{})}}:{})};
+ return {...(fallback.layerDomains||own.layerDomains?{layerDomains:mergeLayerDomains(fallback.layerDomains,own.layerDomains)}:{}),warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,structuredClone(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,{...b}])).values()],layers,relationPositions:{...structuredClone(fallback.relationPositions),...structuredClone(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...structuredClone(fallback.intervalMaterialIssues??{}),...structuredClone(own.intervalMaterialIssues??{})}}:{})};
 }
 /** The old interpolation implementation is reused channel by channel. Its
  * authored lattice, empty keys, drafts, and exact zero scales stay unchanged. */

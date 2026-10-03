@@ -1,4 +1,8 @@
 import {afterEach,expect,test,vi} from 'vitest';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import DrawingRoom from '../ui/drawing/DrawingRoom';
+import {useDrawing} from '../ui/drawing/session';
 import {createEmptyProject} from '../app/emptyProject';
 import {createVectorEditingApi,type VectorResult} from '../app/vectorEditingApi';
 import {prepareSnapshotEdit,snapshotEditContext} from '../app/snapshotEditTransaction';
@@ -6,7 +10,8 @@ import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
 import {emptyDrawing,shapeOf,type Cubic,type DrawingDocument,type Point2} from '../domain/drawing/model';
 import {createCurve,moveHandle,connect} from '../domain/drawing/commands';
-import {createLayerDomainIntent,layerSimilarityValue} from '../domain/drawing/layerDomainIntent';
+import {createLayerDomainIntent,createLayerAffineIntent,layerSimilarityValue} from '../domain/drawing/layerDomainIntent';
+import {applyAffine2D,composeAffine2D,type Affine2D} from '../domain/geometry/affine2d';
 import {applyLayerEditIntent,mapLayerEditIntent} from '../domain/drawing/layerEditIntent';
 import {derivedUses} from '../domain/drawing/roundedJoin';
 import {strokeFor} from '../domain/drawing/strokes';
@@ -22,8 +27,12 @@ import {prepareDrawingLayerReferencePaste} from '../ui/drawing/layerReferenceCli
 import {commitDrawingSnapshotEdit,prepareDrawingSnapshotEdit,prepareDrawingLayerDomainEdit} from '../ui/drawing/snapshotEditContext';
 import {layerSimilarityIntentForSelection} from '../ui/drawing/layerDomainGesture';
 
-const editor=useEditor.getState(),mode=useWorkspaceMode.getState().mode;
-afterEach(()=>{useEditor.setState(editor,true);useWorkspaceMode.getState().setMode(mode);vi.useRealTimers();});
+// Server rendering reads Zustand's initial snapshot; use the test's current state.
+vi.mock('../app/store',async importOriginal=>{const module=await importOriginal<typeof import('../app/store')>();return {...module,useEditor:Object.assign((selector?:(state:ReturnType<typeof module.useEditor.getState>)=>unknown)=>selector?selector(module.useEditor.getState()):module.useEditor.getState(),module.useEditor)};});
+vi.mock('../ui/drawing/session',async importOriginal=>{const module=await importOriginal<typeof import('../ui/drawing/session')>();return {...module,useDrawing:Object.assign((selector?:(state:ReturnType<typeof module.useDrawing.getState>)=>unknown)=>selector?selector(module.useDrawing.getState()):module.useDrawing.getState(),module.useDrawing)};});
+
+const editor=useEditor.getState(),mode=useWorkspaceMode.getState().mode,drawingSession=useDrawing.getState();
+afterEach(()=>{useEditor.setState(editor,true);useDrawing.setState(drawingSession,true);useWorkspaceMode.getState().setMode(mode);vi.useRealTimers();});
 const bid=(id:string)=>canonicalElementId('B',id);
 const near=(a:Point2,b:Point2)=>a.forEach((value,i)=>expect(value).toBeCloseTo(b[i],9));
 function fixture(other?:DrawingDocument){
@@ -125,7 +134,7 @@ test('UI, app transaction and explicit layer API use the same owner-resolving si
  const f=fixture(),similarity=layerSimilarityValue([.25,-.125],0,1.5),intent=createLayerDomainIntent([bid('layer')],similarity),ui=prepareDrawingLayerDomainEdit(f.project,intent),app=prepareSnapshotEdit(snapshotEditContext(f.project,true),{kind:'layer-domain',intent});
  expect(app.project).toEqual(ui.project);expect(app.changed).toBe(true);
  const api=apiEditor(f.project),result=value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:placementMatrix(similarity)}]})),after=useEditor.getState().project;
- expect(after).toEqual(ui.project);expect(result.domainIntents).toEqual([intent]);expect(result.beforeAfter.map(curve=>curve.curveId)).toEqual([bid('curve')]);expect(result.curveIds).toEqual([bid('curve')]);expect(after.drawing).toBe(f.project.drawing);expect(useEditor.getState().past).toEqual([f.project]);
+ expect(after).toEqual(ui.project);expect(result.domainIntents).toMatchObject([{kind:intent.kind,scope:intent.scope,domain:intent.domain}]);expect(result.beforeAfter.map(curve=>curve.curveId)).toEqual([bid('curve')]);expect(result.curveIds).toEqual([bid('curve')]);expect(after.drawing).toBe(f.project.drawing);expect(useEditor.getState().past).toEqual([f.project]);
  value(api.undo());expect(useEditor.getState().project).toBe(f.project);value(api.redo());expect(useEditor.getState().project).toBe(after);
 });
 
@@ -155,9 +164,28 @@ test('API domain dry-runs return visible changes without mutation and later fail
  expect(failed).toMatchObject({ok:false,error:{code:'NOT_FOUND',commandIndex:2}});expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
 });
 
-test.each(([[2,0,0,1,0,0],[-1,0,0,1,0,0],[0,0,0,1,0,0]] as [number,number,number,number,number,number][]).map(matrix=>({matrix})))('unsupported referenced API affine $matrix refuses atomically rather than writing existing-member offsets',({matrix})=>{
- const f=fixture(),api=apiEditor(f.project),result=api.execute({commands:[{op:'renameCurve',curveId:'curve',name:'Discard this'},{op:'transformLayers',layerIds:[bid('layer')],matrix}]});
- expect(result).toMatchObject({ok:false,error:{code:matrix[0]===0?'INVALID_REQUEST':'LAYER_DOMAIN_UNSUPPORTED',commandIndex:1}});expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
+test.each(([[2,0,0,1,0,0],[-1,0,0,1,0,0],[0,0,0,1,0,0],[0,0,0,0,.2,.3],[1,.3,.7,1,.2,.1]] as Affine2D[]).map(matrix=>({matrix})))('referenced API affine $matrix persists exact parameters and restores its retained input',({matrix})=>{
+ const f=fixture(),api=apiEditor(f.project),before=currentDrawingPresentation(f.project),result=value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix}]})),after=useEditor.getState().project,view=currentDrawingPresentation(after),domainId=result.domainIntents![0].operationId;
+ expect(after.drawing).toBe(f.project.drawing);expect(after.recordingSnapshots!.library).toEqual(f.project.recordingSnapshots!.library);expect(drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!.deformation.layerDomains).toEqual([{id:domainId,layerIds:[bid('layer')],matrix}]);
+ shapeOf(view,bid('curve')).forEach((point,i)=>near(point,applyAffine2D(matrix,shapeOf(before,bid('curve'))[i])));expect(useEditor.getState().past).toEqual([f.project]);
+ const shape:Cubic=[[0,1],[.3,1],[.7,1],[1,1]],live=syncRecordingSnapshotSources({...after,drawingWorkingCopies:{B:createCurve(f.other,'layer',shape,.01,'New','new')}});shapeOf(currentDrawingPresentation(live),bid('new')).forEach((point,i)=>near(point,applyAffine2D(matrix,shape[i])));
+ value(api.execute({commands:[{op:'setLayerDomain',domainId,enabled:false}]}));const restored=currentDrawingPresentation(useEditor.getState().project);shapeOf(restored,bid('curve')).forEach((point,i)=>near(point,shapeOf(before,bid('curve'))[i]));
+ value(api.execute({commands:[{op:'setLayerDomain',domainId,enabled:true,matrix:[1,0,0,1,.7,.3]}]}));const changed=useEditor.getState().project;expect(drawingSnapshotForArtwork(changed.recordingSnapshots!,'A')!.deformation.layerDomains).toHaveLength(1);shapeOf(currentDrawingPresentation(changed),bid('curve')).forEach((point,i)=>near(point,applyAffine2D([1,0,0,1,.7,.3],shapeOf(before,bid('curve'))[i])));
+});
+
+test('ordered affine and later similarity domains preserve composition, live source edits and JSON roundtrip',()=>{
+ const f=fixture(),api=apiEditor(f.project),a:Affine2D=[2,.3,.4,-1,.2,.1],b:Affine2D=[0,1,-1,0,.4,.2],c:Affine2D=[1,0,0,1,.3,.4];
+ value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:a},{op:'transformLayers',layerIds:[bid('layer')],matrix:b},{op:'transformLayers',layerIds:[bid('layer')],matrix:c}]}));const after=useEditor.getState().project,domains=drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!.deformation.layerDomains!;
+ expect(JSON.stringify(domains.map(domain=>domain.matrix))).toBe(JSON.stringify([a,b,c]));expect(new Set(domains.map(domain=>domain.id)).size).toBe(3);const matrix=composeAffine2D(c,composeAffine2D(b,a)),before=currentDrawingPresentation(f.project);
+ shapeOf(currentDrawingPresentation(after),bid('curve')).forEach((point,i)=>near(point,applyAffine2D(matrix,shapeOf(before,bid('curve'))[i])));
+ const reloaded={...after,recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(after.recordingSnapshots)))};expect(currentDrawingPresentation(reloaded).curves).toEqual(currentDrawingPresentation(after).curves);
+});
+
+test('Drawing control edits inverse-map the full affine chain and singular controls refuse until reset',()=>{
+ const f=fixture(),matrix:Affine2D=[1,.3,.5,-1,.2,.4],plan=prepareDrawingLayerDomainEdit(f.project,createLayerAffineIntent([bid('layer')],matrix)),wanted=moveHandle(plan.drawing,{curveId:bid('curve'),end:0},[.6,.8]),edited=prepareDrawingSnapshotEdit(plan.project,wanted).project;
+ near(currentDrawingPresentation(edited).curves.find(curve=>curve.id===bid('curve'))!.handles[0],[.6,.8]);expect(Object.keys(local(edited).shape!.handles)).toEqual([bid('curve')]);
+ const zero=prepareDrawingLayerDomainEdit(edited,createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0]));expect(()=>prepareDrawingSnapshotEdit(zero.project,moveHandle(zero.drawing,{curveId:bid('curve'),end:0},[.2,.8]))).toThrow(/Restore or disable/);
+ const id=drawingSnapshotForArtwork(zero.project.recordingSnapshots!,'A')!.deformation.layerDomains!.at(-1)!.id,restored=prepareDrawingLayerDomainEdit(zero.project,createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0],{operationId:id,replace:true,enabled:false}));near(restored.drawing.curves.find(curve=>curve.id===bid('curve'))!.handles[0],[.6,.8]);
 });
 
 test('common app domain entry enforces original ownership and a limited host cannot silently discard reference state',()=>{
@@ -178,4 +206,17 @@ test('a referenced layer domain does not erase preceding explicit mirror intenti
  const f=fixture(),drawing:DrawingDocument={...emptyDrawing(),nodes:[{id:'a',position:[-1,0]},{id:'b',position:[-.5,0]},{id:'c',position:[1,0]},{id:'d',position:[.5,0]}],curves:[{...f.drawing.curves[0],id:'left',nodes:['a','b'],handles:[[-.9,.2],[-.6,.2]]},{...f.drawing.curves[0],id:'right',nodes:['c','d'],handles:[[.9,.2],[.6,.2]]}],layers:[{id:'layer',name:'Pair',visible:true,locked:false,items:['left','right']}],mirrorEditing:{enabled:true,curvePairs:[{id:'pair',a:'left',b:'right',reverse:false}]}},project=syncRecordingSnapshotSources({...f.project,drawing}),api=apiEditor(project);
  value(api.execute({commands:[{op:'moveNode',nodeId:'a',position:[-1.3,.1]},{op:'transformLayers',layerIds:[bid('layer')],matrix:[1,0,0,1,.2,.3]},{op:'moveNode',nodeId:'c',position:[1.4,.1]}]}));
  const after=useEditor.getState().project.drawing!;near(after.nodes.find(node=>node.id==='a')!.position,[-1.3,.1]);near(after.nodes.find(node=>node.id==='c')!.position,[1.4,.1]);expect(useEditor.getState().past).toEqual([project]);
+});
+
+test('the actual Drawing property panel exposes zero-capable dimensions and reset/restore of the saved operation',()=>{
+ const f=fixture(),intent=createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0],{operationId:'zero'}),plan=prepareDrawingLayerDomainEdit(f.project,intent);
+ apiEditor(plan.project);useDrawing.setState({selection:{ids:[bid('curve')],layers:[bid('layer')],layer:bid('layer')},layerId:bid('layer'),tool:'select'});
+ const html=renderToStaticMarkup(createElement(DrawingRoom));expect(html).toContain('data-testid="drawing-layer-domain-controls"');expect(html).toContain('data-domain-id="zero"');expect(html).toContain('min="-1000"');expect(html).toContain('重置变换');
+ const restored=prepareDrawingLayerDomainEdit(plan.project,createLayerAffineIntent([bid('layer')],intent.domain.matrix,{operationId:'zero',replace:true,enabled:false}));useEditor.setState({project:restored.project});expect(renderToStaticMarkup(createElement(DrawingRoom))).toContain('恢复变换');
+});
+
+test('replacing an earlier domain refuses a newly separated true linked endpoint atomically',()=>{
+ const f=fixture(),other:DrawingDocument={...f.other,nodes:[...f.other.nodes,{id:'c',position:[1,0]},{id:'d',position:[2,0]}],curves:[...f.other.curves,{...f.other.curves[0],id:'second',nodes:['c','d'],handles:[[1.3,0],[1.7,0]]}],layers:[...f.other.layers,{id:'second-layer',name:'Second',visible:true,locked:false,items:['second']}],endpointLinks:[{id:'link',a:{curveId:'curve',end:1},b:{curveId:'second',end:0}}]},project=fixture(other).project,snapshot=drawingSnapshotForArtwork(project.recordingSnapshots!,'A')!;
+ snapshot.deformation.layerDomains=[{id:'first',layerIds:[bid('layer'),bid('second-layer')],matrix:[1,0,0,1,0,0]},{id:'later',layerIds:[bid('layer')],matrix:[2,0,0,1,-1,0]}];const before=JSON.stringify(project);
+ expect(()=>prepareDrawingLayerDomainEdit(project,createLayerAffineIntent([bid('layer'),bid('second-layer')],[1,0,0,1,.5,0],{operationId:'first',replace:true}))).toThrow(/linked|relation/i);expect(JSON.stringify(project)).toBe(before);
 });
