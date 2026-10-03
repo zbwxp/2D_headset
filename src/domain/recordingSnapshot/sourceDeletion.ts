@@ -39,6 +39,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
  const interval=(value:SceneIntervalValue):SceneIntervalValue=>({...value,appearance:value.appearance?appearance(value.appearance):null,enabled:without(value.enabled,removed)});
  const shape=(value:SceneShapeValue):SceneShapeValue=>({...value,nodes:without(value.nodes,removed),handles:without(value.handles,removed)});
  const layerState=(value:SnapshotLayerState):SnapshotLayerState=>({...value,
+  ...(value.curveAppearance?{curveAppearance:without(value.curveAppearance,removed)}:{}),
   ...(value.shape?{shape:shape(value.shape)}:{}),...(value.elementPlacements?{elementPlacements:without(value.elementPlacements,removed)}:{}),...(value.visibility?{visibility:without(value.visibility,removed)}:{}),
   ...(value.intervals?{intervals:Object.fromEntries(Object.entries(value.intervals).filter(([id,value])=>!removed.has(id)&&(!value.appearance||!intervalDepends(value.appearance))).map(([id,value])=>[id,interval(value)]))}:{}),
  });

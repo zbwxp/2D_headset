@@ -12,12 +12,13 @@ import {applyLayerEditIntent,createLayerCurveSplitIntent,createCurveSplitIntent,
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {applyLayerDomainIntent,assertLayerDomainIntent,layerDomainMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
+import {snapshotCurveAppearanceDifference,restoreSnapshotCurveAppearance} from '../domain/recordingSnapshot/curveAppearance';
 import {applyAffine2D,isIdentityAffine2D} from '../domain/geometry/affine2d';
 import {resolveSnapshotRelationAuthoringScope,snapshotRelationCurveIds,snapshotRelationWriteOwner,type SnapshotRelationAuthoringIntent,type SnapshotRelationAuthoringScope} from '../domain/recordingSnapshot/relationAuthoringIntent';
 
 const same=(a:unknown,b:unknown)=>a===b||JSON.stringify(a)===JSON.stringify(b);
 const close=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])<1e-8;
-export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint links, display routes, intervals, geometry and visibility. Base width, profile, endpoint ink and locks still require the original source.';
+export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint links, display routes, intervals, geometry and visibility. Width, profile and endpoint ink stay local; locks and unsupported topology still require the original source.';
 export class DrawingSnapshotEditCapabilityError extends Error {
  constructor(message=DRAWING_REFERENCE_EDIT_CAPABILITY){super(message);this.name='DrawingSnapshotEditCapabilityError';}
 }
@@ -109,7 +110,8 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
    return [evaluation.drawing,canonicalNext].some(drawing=>(drawing[kind]??[]).some(value=>ids.map(view.canonicalId).includes(value.id)&&snapshotRelationWriteOwner(snapshot,drawing,kind,value)==='snapshot-local'));
   });
   const localTopology=next.layers.some(layer=>localLayers.has(layer.id)&&layer.items.some(id=>!localItems.has(id)))||next.curves.some(curve=>localCurves.has(curve.id)&&!same(curve.nodes,before.curves.find(value=>value.id===curve.id)?.nodes));
-  if(localTopology||localRelation)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined);
+  const localAppearance=next.curves.some(curve=>localCurves.has(curve.id)&&snapshotCurveAppearanceDifference(before.curves.find(value=>value.id===curve.id)!,curve));
+  if(localTopology||localRelation||localAppearance)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined);
  }
  const changedLocalLayers=new Set<string>(),visibility=new Map<string,Record<string,boolean|null>>(),renames=new Map<string,string>(),removedLayers=new Set<string>(),exclusions=new Map<string,string[]>();
  const removedItems=new Set([...localItems].filter(id=>!next.layers.some(layer=>layer.items.includes(id)))),removedCurves=new Set([...localCurves].filter(id=>removedItems.has(id)));
@@ -227,7 +229,7 @@ function prepareDrawingSnapshotLocalTopology(project:LandmarkProject,next:Doc,vi
  const originalLayers=next.layers.filter(layer=>!localLayers.has(layer.id));let slot=0;
  const layers=[...before.layers.flatMap(layer=>localLayers.has(layer.id)?[layer]:slot<originalLayers.length?[originalLayers[slot++]]:[]),...originalLayers.slice(slot)];
  const sourceItems=new Set(originalLayers.flatMap(layer=>layer.items));
- const curves=preserveSourceOrder(before.curves,[...next.curves.filter(curve=>sourceItems.has(curve.id)).map(curve=>scope?.curveIds.has(curve.id)?{...curve,handles:before.curves.find(value=>value.id===curve.id)?.handles??curve.handles}:curve),...before.curves.filter(curve=>beforeLocalItems.has(curve.id))]);
+ const curves=preserveSourceOrder(before.curves,[...next.curves.filter(curve=>sourceItems.has(curve.id)).map(curve=>scope?.curveIds.has(curve.id)?{...restoreSnapshotCurveAppearance(curve,before.curves.find(value=>value.id===curve.id)??curve),handles:before.curves.find(value=>value.id===curve.id)?.handles??curve.handles}:curve),...before.curves.filter(curve=>beforeLocalItems.has(curve.id))]);
  const nodeIds=new Set(curves.flatMap(curve=>curve.nodes)),localNodeIds=new Set(before.curves.filter(curve=>beforeLocalItems.has(curve.id)).flatMap(curve=>curve.nodes));
  const nodes=preserveSourceOrder(before.nodes,[...next.nodes.filter(node=>nodeIds.has(node.id)&&!localNodeIds.has(node.id)).map(node=>scope?.nodeIds.has(node.id)?before.nodes.find(value=>value.id===node.id)??node:node),...before.nodes.filter(node=>localNodeIds.has(node.id))]);
  const sourceTarget:Doc={...next,layers,curves,nodes,fills:preserveSourceOrder(before.fills,[...next.fills.filter(value=>sourceItems.has(value.id)),...before.fills.filter(value=>beforeLocalItems.has(value.id))]),offsets:preserveSourceOrder(before.offsets,[...next.offsets.filter(value=>sourceItems.has(value.id)),...before.offsets.filter(value=>beforeLocalItems.has(value.id))])};

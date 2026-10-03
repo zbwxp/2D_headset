@@ -1,3 +1,4 @@
+import {validateSnapshotCurveAppearance} from './curveAppearance';
 import {validateSnapshotLocalMembership} from './localMembership';
 import {validateLayerDomains} from './layerDomains';
 import {validateSnapshotAngleGraph} from './angleGraph';
@@ -22,6 +23,7 @@ function deformation(state:SnapshotDeformationState):void {
  unique(state.bindings.map(b=>b.layerId),'bound layer');for(const binding of state.bindings)if(!id(binding.warpId)||!warps.has(binding.warpId))fail('missing bound Warp');
  for(const [layerId,layerState] of Object.entries(state.layers) as Array<[string,SnapshotLayerState]>){
   if(!id(layerId)||(!layerState||typeof layerState!=='object'||Array.isArray(layerState)))fail('layer state');if(layerState.placement)validateScenePlacement(layerState.placement);if(layerState.shape)validateSceneShape(layerState.shape);if(layerState.elementPlacements){if(!record(layerState.elementPlacements))fail('element placements');for(const [curveId,value] of Object.entries(layerState.elementPlacements)){if(!id(curveId))fail('element placement target');validateScenePlacement(value);}}
+  if(layerState.curveAppearance!==undefined)validateSnapshotCurveAppearance(layerState.curveAppearance);
   if(layerState.depth!==undefined&&(!Number.isFinite(layerState.depth)||Math.abs(layerState.depth)>10000))fail('depth');
   if(layerState.visibility&&(!record(layerState.visibility)||Object.entries(layerState.visibility).some(([key,value])=>!id(key)||value!==null&&typeof value!=='boolean')))fail('visibility');
   if(layerState.intervals)for(const value of Object.values(layerState.intervals))interval(value);

@@ -3,6 +3,7 @@ import {validateRecordingSnapshots} from './validation';
 import {parseRecordingScenes} from '../recordingScene/persistence';
 import {finitePoint,validInkEnds,validContourMist,validFillMist} from '../drawing/model';
 import {validateRecordingReference} from '../recording/reference';
+import {validateSnapshotCurveAppearance} from './curveAppearance';
 
 const fail=(message:string):never=>{throw Error(`Invalid recording snapshot JSON: ${message}`);};
 const object=(value:unknown,allowed:readonly string[]):Record<string,unknown>=>{if(!value||typeof value!=='object'||Array.isArray(value))return fail('expected object');const data=value as Record<string,unknown>,extra=Object.keys(data).filter(key=>!allowed.includes(key));if(extra.length)fail(`unknown field ${extra.join(', ')}`);return data;};
@@ -44,7 +45,7 @@ function deformation(value:unknown){
  if(data.intervalMaterialIssues!==undefined)for(const [trackId,issue] of Object.entries(map(data.intervalMaterialIssues))){id(trackId);materialIssue(issue);}
  for(const raw of list(data.warps,1000)){const warp=object(raw,['id','name','parentId','restGrid','grid']);id(warp.id);name(warp.name);if(warp.parentId!==undefined)id(warp.parentId);grid(warp.restGrid);grid(warp.grid);}
  for(const raw of list(data.bindings)){const binding=object(raw,['layerId','warpId']);id(binding.layerId);id(binding.warpId);}
- for(const [layerId,raw] of Object.entries(map(data.layers))){id(layerId);const layer=object(raw,['placement','elementPlacements','shape','visibility','intervals','depth']);if(layer.placement!==undefined)placement(layer.placement);if(layer.elementPlacements!==undefined)for(const [curveId,value] of Object.entries(map(layer.elementPlacements))){id(curveId);placement(value);}if(layer.shape!==undefined)shape(layer.shape);if(layer.visibility!==undefined)map(layer.visibility);if(layer.intervals!==undefined)Object.values(map(layer.intervals)).forEach(intervalValue);}
+ for(const [layerId,raw] of Object.entries(map(data.layers))){id(layerId);const layer=object(raw,['placement','elementPlacements','shape','visibility','curveAppearance','intervals','depth']);if(layer.placement!==undefined)placement(layer.placement);if(layer.elementPlacements!==undefined)for(const [curveId,value] of Object.entries(map(layer.elementPlacements))){id(curveId);placement(value);}if(layer.curveAppearance!==undefined)validateSnapshotCurveAppearance(layer.curveAppearance);if(layer.shape!==undefined)shape(layer.shape);if(layer.visibility!==undefined)map(layer.visibility);if(layer.intervals!==undefined)Object.values(map(layer.intervals)).forEach(intervalValue);}
  for(const [relationId,raw] of Object.entries(map(data.relationPositions))){id(relationId);const relation=object(raw,['sourceLinkIds','offset']);list(relation.sourceLinkIds).forEach(id);}
 }
 function materialIssue(value:unknown){const data=object(value,['sourceSnapshotId','sourceSignature','message']);id(data.sourceSnapshotId);id(data.sourceSignature);if(typeof data.message!=='string'||data.message.length>4096)fail('material issue message');}

@@ -1,0 +1,103 @@
+import type {DrawingCurve,DrawingDocument,InkEndStyle,Profile} from '../drawing/model';
+import {InputCache} from '../geometry/cache';
+import type {CurveSplitIntent} from '../drawing/layerEditIntent';
+import type {SnapshotDeformationState} from './model';
+import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
+
+/** Explicit null clears an optional source property; absence follows it live.
+ * Endpoint patches are fieldwise so joining one end never freezes the other. */
+export type SnapshotInkEndAppearance={[K in keyof InkEndStyle]?:InkEndStyle[K]|null};
+export interface SnapshotCurveAppearance {
+ width?:number;profile?:Profile|null;profileReverse?:boolean|null;strokeName?:string|null;
+ inkEnds?:{start?:SnapshotInkEndAppearance;end?:SnapshotInkEndAppearance}|null;
+}
+export type SnapshotCurveAppearanceMap=Record<string,SnapshotCurveAppearance>;
+export const snapshotCurveAppearanceFields=['width','profile','profileReverse','strokeName','inkEnds'] as const;
+const scalarFields=['width','profile','profileReverse','strokeName'] as const;
+const inkFields=['taper','extension','taperWidthScale','interior'] as const;
+const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+const clone=<T,>(value:T):T=>structuredClone(value);
+const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
+
+/** Shared parser and runtime validator. No geometry, visibility, locks or new
+ * interpolation/property registry can enter through an appearance patch. */
+export function validateSnapshotCurveAppearance(value:unknown):asserts value is SnapshotCurveAppearanceMap {
+ const fail=():never=>{throw Error('Invalid snapshot curve appearance override.');};
+ if(!record(value)||Object.keys(value).length>65536)fail();
+ for(const [id,patch] of Object.entries(value as Record<string,unknown>)){
+  if(!id||id.length>16384||!record(patch)||Object.keys(patch).some(key=>!snapshotCurveAppearanceFields.includes(key as typeof snapshotCurveAppearanceFields[number])))fail();
+  const p=patch as Record<string,unknown>;
+  if(p.width!==undefined&&(typeof p.width!=='number'||!Number.isFinite(p.width)||p.width<=0||p.width>1))fail();
+  if(p.profile!==undefined&&p.profile!==null&&!['UNIFORM','TAPER_END','TAPER_BOTH','EYELID'].includes(String(p.profile)))fail();
+  if(p.profileReverse!==undefined&&p.profileReverse!==null&&typeof p.profileReverse!=='boolean')fail();
+  if(p.strokeName!==undefined&&p.strokeName!==null&&(typeof p.strokeName!=='string'||!p.strokeName.trim()||p.strokeName.length>256))fail();
+  if(p.inkEnds!==undefined&&p.inkEnds!==null){
+   if(!record(p.inkEnds)||Object.keys(p.inkEnds).some(key=>key!=='start'&&key!=='end'))fail();
+   for(const end of Object.values(p.inkEnds as object)){
+    if(!record(end)||Object.keys(end).some(key=>!inkFields.includes(key as typeof inkFields[number])))fail();
+    for(const [key,v] of Object.entries(end)){if(v===null)continue;if(key==='interior'){if(typeof v!=='boolean')fail();}else if(typeof v!=='number'||!Number.isFinite(v)||v<0||v>({taper:20,extension:2,taperWidthScale:200} as Record<string,number>)[key])fail();}
+   }
+  }
+ }
+}
+export function snapshotCurveAppearanceDifference(before:DrawingCurve,after:DrawingCurve):SnapshotCurveAppearance|undefined {
+ const patch:SnapshotCurveAppearance={};
+ for(const key of scalarFields)if(!same(before[key],after[key]))Object.assign(patch,{[key]:after[key]??null});
+ if(!same(before.inkEnds,after.inkEnds)){
+  if(after.inkEnds===undefined)patch.inkEnds=null;
+  else {patch.inkEnds={};for(const [index,end] of (['start','end'] as const).entries()){
+   const change:SnapshotInkEndAppearance={};for(const key of inkFields)if(!same(before.inkEnds?.[index][key],after.inkEnds[index][key]))Object.assign(change,{[key]:after.inkEnds[index][key]??null});
+   if(Object.keys(change).length)patch.inkEnds[end]=change;
+  }}
+ }
+ return Object.keys(patch).length?patch:undefined;
+}
+export function unsupportedSnapshotCurveAppearanceFields(before:DrawingCurve,after:DrawingCurve):string[] {
+ return [...new Set([...Object.keys(before),...Object.keys(after)])].filter(key=>key!=='nodes'&&key!=='handles'&&!snapshotCurveAppearanceFields.includes(key as typeof snapshotCurveAppearanceFields[number])&&!same(before[key as keyof DrawingCurve],after[key as keyof DrawingCurve]));
+}
+export function restoreSnapshotCurveAppearance(curve:DrawingCurve,before:DrawingCurve):DrawingCurve {
+ const result={...curve};for(const key of snapshotCurveAppearanceFields){delete result[key];if(before[key]!==undefined)Object.assign(result,{[key]:before[key]});}return result;
+}
+function mergePatch(before:SnapshotCurveAppearance,after:SnapshotCurveAppearance):SnapshotCurveAppearance {
+ const merged={...clone(before),...clone(after)};
+ if(after.inkEnds&&before.inkEnds!==undefined){
+  const cleared:SnapshotInkEndAppearance={taper:null,extension:null,taperWidthScale:null,interior:null};
+  const prior=before.inkEnds??{start:cleared,end:cleared};
+  merged.inkEnds={...clone(prior),...clone(after.inkEnds)};
+  for(const end of ['start','end'] as const)if(after.inkEnds[end])merged.inkEnds[end]={...prior[end],...clone(after.inkEnds[end])};
+ }
+ return merged;
+}
+export function mergeSnapshotCurveAppearance(before:SnapshotCurveAppearanceMap|undefined,after:SnapshotCurveAppearanceMap|undefined):SnapshotCurveAppearanceMap {
+ const result=clone(before??{});for(const [id,patch] of Object.entries(after??{}))Object.defineProperty(result,id,{value:mergePatch(result[id]??{},patch),enumerable:true,writable:true,configurable:true});return result;
+}
+export function applySnapshotCurveAppearanceToCurve(curve:DrawingCurve,patch:SnapshotCurveAppearance):DrawingCurve {
+ const result={...curve};for(const key of scalarFields)if(patch[key]!==undefined){if(patch[key]===null)delete result[key];else Object.assign(result,{[key]:patch[key]});}
+ if(patch.inkEnds===null)delete result.inkEnds;
+ else if(patch.inkEnds!==undefined){
+  result.inkEnds=clone(curve.inkEnds??[{},{}]);
+  for(const [index,end] of (['start','end'] as const).entries())for(const key of inkFields){const v=patch.inkEnds[end]?.[key];if(v===null)delete result.inkEnds[index][key];else if(v!==undefined)Object.assign(result.inkEnds[index],{[key]:v});}
+ }
+ return result;
+}
+const applied=new WeakMap<DrawingDocument,InputCache<DrawingDocument>>();
+/** Ink is authored in the same fixed logical units as Drawing. Layer/curve
+ * placements only move geometry; width and endpoint-ink lengths do not scale. */
+export function applySnapshotCurveAppearance(source:DrawingDocument,state:SnapshotDeformationState):DrawingDocument {
+ const patches=new Map<string,SnapshotCurveAppearance>();for(const layer of source.layers)for(const [id,patch] of Object.entries(state.layers[layer.id]?.curveAppearance??{}))if(layer.items.includes(id))patches.set(id,patch);
+ if(!patches.size)return source;
+ let cache=applied.get(source);if(!cache){cache=new InputCache(16);applied.set(source,cache);}const key=JSON.stringify([...patches]),known=cache.get(key);if(known)return known;
+ // Retaining nodes keeps the inherited affine material adapter. Route input
+ // ownership is document keyed and must also survive this appearance-only clone.
+ return cache.set(key,retainSnapshotRouteMaterialInput({...source,curves:source.curves.map(curve=>patches.has(curve.id)?applySnapshotCurveAppearanceToCurve(curve,patches.get(curve.id)!):curve)},source));
+}
+/** Split preserves the outer ends. A new material seam inherits Drawing's
+ * neutral seam ink rather than duplicating the old outer endpoint patch. */
+export function splitSnapshotCurveAppearance(map:SnapshotCurveAppearanceMap,intent:CurveSplitIntent):SnapshotCurveAppearanceMap {
+ const prior=map[intent.curveId];if(!prior)return map;const result={...map};delete result[intent.curveId];
+ for(const [index,id] of intent.childCurveIds.entries()){
+  const value=clone(prior);if(prior.inkEnds){const end=index===0?'start':'end';value.inkEnds=prior.inkEnds[end]?{[end]:clone(prior.inkEnds[end])}:{};}
+  Object.defineProperty(result,id,{value,enumerable:true,writable:true,configurable:true});
+ }
+ return result;
+}

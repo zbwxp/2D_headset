@@ -5,6 +5,7 @@ import {applyCurveSplitIntent,mapLayerEditIntent,type LayerEditIntent,type Curve
 import {shapeOf,sub,layerFor,type DrawingDocument,type Point2,type Endpoint,type StrokeDisplayIntervals} from '../drawing/model';
 import {resolveSnapshot,type SnapshotEvaluation} from './evaluation';
 import {displayPath} from '../drawing/displayIntervals';
+import {splitSnapshotCurveAppearance} from './curveAppearance';
 import type {MirrorCurvePair} from '../drawing/mirrorEditing';
 import {canonicalElementId,drawingSourceOwns,drawingIdentityIds} from './sources';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotRelationOverrides,type SceneIntervalValue} from './model';
@@ -103,6 +104,7 @@ function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:
  const result=clone(state);
  for(const value of Object.values(result.layers)){
   for(const category of ['elementPlacements','visibility'] as const){const map=value[category];if(map&&Object.hasOwn(map,intent.curveId)){const prior=map[intent.curveId];delete map[intent.curveId];for(const id of intent.childCurveIds)Object.defineProperty(map,id,{value:clone(prior),enumerable:true,writable:true,configurable:true});}}
+  if(value.curveAppearance)value.curveAppearance=splitSnapshotCurveAppearance(value.curveAppearance,intent);
   if(value.shape)delete value.shape.handles[intent.curveId];
   if(value.intervals)value.intervals=remapIntervals(value.intervals,basis,intent);
  }

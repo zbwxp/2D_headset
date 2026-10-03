@@ -8,6 +8,7 @@ import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalVal
 import type {SnapshotTriangulation} from './triangulation';
 import type {InteriorResponseSample,ScalarResponseKnot} from './triangularResponses';
 import type {SnapshotMirrorOptions} from './snapshotMirror';
+import type {SnapshotCurveAppearanceMap} from './curveAppearance';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
 
@@ -51,6 +52,8 @@ export interface SnapshotLayerState {
  /** Post-shape, pre-layer curve-owned placement. Material controls remain live at zero. */
  elementPlacements?:Record<string,ScenePlacementValue>;
  shape?:SceneShapeValue;visibility?:Record<string,boolean|null>;
+ /** Sparse local ink/style fields; absent properties keep following the source. */
+ curveAppearance?:SnapshotCurveAppearanceMap;
  intervals?:Record<string,SceneIntervalValue>;depth?:number;
 }
 export interface SnapshotMaterialIssue {sourceSnapshotId:string;sourceSignature:string;message:string}

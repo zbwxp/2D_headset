@@ -55,13 +55,15 @@ test.each([false,true])('mixed Drawing EndpointLink keeps its source follower lo
  expect(nodeAt(actual,a).id).not.toBe(nodeAt(actual,b).id);expect(nodeAt(actual,a).position).toEqual(nodeAt(actual,b).position);
  useWorkspaceMode.setState({mode:'drawing'});useEditor.setState({project:before,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(useEditor.getState().past).toEqual([before]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(before);useEditor.getState().redo();expect(useEditor.getState().project).toBe(after);
 });
-test('reference Pen endpoint gestures clear a rejected bind preview and commit an explicit local link with one Undo',()=>{
+test('reference endpoint gestures clear an unsupported transaction preview and commit an explicit local link with one Undo',()=>{
  const seed=fixture(),project=prepareDrawingSnapshotEdit(seed,createPenCurve(currentDrawingPresentation(seed),bid('layer'),[[0,1],[.3,1],[.7,1],[1,1]],.01,'new-local-pen')).project,before=currentDrawingPresentation(project),fixed={curveId:bid('curve'),end:1 as const},moving={curveId:'new-local-pen',end:1 as const};
  useWorkspaceMode.setState({mode:'drawing'});useEditor.setState({project,past:[],future:[]});
  let draft:DrawingDocument|null=applyDrawingEndpointTool(before,'bind',fixed,moving),first:typeof fixed|null=fixed;
  const commit=(next:DrawingDocument,intent?:{kind:'relation-authoring'})=>commitDrawingSnapshotEdit(useEditor.getState(),next,intent?createSnapshotRelationAuthoringIntent(drawingSnapshotPresentation(project.recordingSnapshots!,'A')!.snapshotId,before,next):undefined),finish=()=>{draft=null;first=null;};
  expect(nodeAt(draft,moving).id).toBe(nodeAt(draft,fixed).id);
- expect(()=>commitDrawingEndpointTool(before,'bind',fixed,moving,commit,finish)).toThrow(/existing curve appearance/);
+ // Inject an unsupported property into the command result to exercise the
+ // same rejected-commit cleanup boundary now that ordinary bind is supported.
+ expect(()=>commitDrawingEndpointTool(before,'bind',fixed,moving,next=>commit({...next,curves:next.curves.map(curve=>curve.id===fixed.curveId?{...curve,locked:true}:curve)}),finish)).toThrow(/unsupported local fields: locked/);
  expect(draft).toBeNull();expect(first).toBeNull();expect(useEditor.getState().project).toBe(project);expect(useEditor.getState().past).toEqual([]);
  draft=applyDrawingEndpointTool(before,'link',fixed,moving);first=fixed;commitDrawingEndpointTool(before,'link',fixed,moving,commit,finish);
  const after=useEditor.getState().project,actual=currentDrawingPresentation(after),snapshot=drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!;
@@ -86,10 +88,10 @@ test('source interval baseline survives a local mixed route, brush edits and JSO
  const beforeMove=currentDrawingPresentation(loaded),beforeTrack=beforeMove.displayIntervals![0],material=createDisplayRouteField(beforeMove,beforeTrack.displayRoute!).materialAt(beforeTrack.ranges[0].start)!,moved=moveNode(beforeMove,'b',[.4,.3]),sourceEdited=prepareDrawingSnapshotEdit(loaded,moved).project,afterMove=currentDrawingPresentation(sourceEdited),afterTrack=afterMove.displayIntervals![0];sameGeometry(afterMove,moved);expect(sourceEdited.drawing!.displayIntervals?.[0].displayRoute).toBeUndefined();expect(afterTrack.displayRoute).toBeDefined();
  const actualMaterial=createDisplayRouteField(afterMove,afterTrack.displayRoute!).materialAt(afterTrack.ranges[0].start)!;expect(actualMaterial.kind).toBe(material.kind);if(actualMaterial.kind==='curve'&&material.kind==='curve'){expect(actualMaterial.curveId).toBe(material.curveId);expect(actualMaterial.t).toBeCloseTo(material.t,7);}
 });
-test('direct source node edits keep original-source behavior; unmarked local relations and unsupported base appearance still reject',()=>{
+test('direct source edits retain their owner; unmarked local relations reject and reference width stays local',()=>{
  const before=fixture(),view=currentDrawingPresentation(before),direct=moveNode(view,'b',[.3,.1]),after=prepareDrawingSnapshotEdit(before,direct).project;
  expect(after.drawing!.nodes.find(node=>node.id==='b')!.position).toEqual([.3,.1]);expect(after.recordingSnapshots!.library.curves[bid('curve')]).toEqual(before.recordingSnapshots!.library.curves[bid('curve')]);
- expect(()=>prepareDrawingSnapshotEdit(before,linkEndpoints(view,b,a,true))).toThrow();expect(()=>prepareDrawingSnapshotEdit(before,widthChange(view,[bid('curve')],.03))).toThrow(/Referenced layers/);
+ expect(()=>prepareDrawingSnapshotEdit(before,linkEndpoints(view,b,a,true))).toThrow();const widthPlan=prepareDrawingSnapshotEdit(before,widthChange(view,[bid('curve')],.03));expect(currentDrawingPresentation(widthPlan.project).curves.find(curve=>curve.id===bid('curve'))!.width).toBe(.03);expect(widthPlan.project.recordingSnapshots!.library).toEqual(before.recordingSnapshots!.library);
 });
 test('a later direct original edit preserves its mixed local EndpointLink and one position authority',()=>{
  const project=relation(fixture(),drawing=>linkEndpoints(drawing,b,a,true)).project,before=currentDrawingPresentation(project),target=moveNode(before,'b',[.4,.3]),sourceBefore=project.drawing!.nodes.find(node=>node.id==='b')!.position,saved=JSON.stringify(project);

@@ -30,6 +30,7 @@ import {materializeOriginalSnapshot,remapDrawingIdentities} from './sources';
 import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
 import {sameAngle} from '../vectorRecording/interpolation';
+import {applySnapshotCurveAppearance} from './curveAppearance';
 import {endpointPairCompatibility,endpointPairNodeAuthorities,interpolateEndpointPairDrawing,validateSnapshotEndpointPair} from './endpointPair';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
 
@@ -205,6 +206,7 @@ function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:Reco
  const order=new Map(base.map((batch,index)=>[batch.owner??batch.item.id,index]));return result.sort((a,b)=>a.position-b.position||order.get(a.owner??a.item.id)!-order.get(b.owner??b.item.id)!);
 }
 function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:SnapshotDeformationState,options:SnapshotEvaluationOptions,diagnostics:SnapshotDiagnostic[],cache?:EvaluationCache):Omit<SnapshotEvaluation,'snapshotId'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'> {
+ source=applySnapshotCurveAppearance(source,state);
  const deferred=new Map((source.displayIntervals??[]).flatMap(track=>{const material=snapshotRouteMaterialSource(source,track);return material===source?[]:[[track.id,material] as const];})),geometrySource=deferred.size?{...source,displayIntervals:source.displayIntervals?.filter(track=>!deferred.has(track.id))}:source;
  const angle=options.angle??snapshot.angle;if(![angle.x,angle.y].every(n=>Number.isFinite(n)&&n>=-90&&n<=90))throw Error('Snapshot angle must be finite and between -90 and 90.');const scene=emptyRecordingScene('snapshot-evaluation'),instanceId='snapshot-evaluation',sourceId='snapshot-source';
  scene.angle={...angle};scene.instances=[{id:instanceId,artworkId:sourceId,name:snapshot.name}];
