@@ -1,3 +1,4 @@
+import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
@@ -34,6 +35,7 @@ export function snapshotEditContext(project:LandmarkProject,canEditOriginals:boo
 }
 
 export type SnapshotEdit =
+ | ({kind:'recording-layer-domain'}&RecordingLayerDomainEdit)
  | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
@@ -108,6 +110,7 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+ if(edit.kind==='recording-layer-domain')return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:prepareRecordingLayerDomainWorkspace(context.project,edit),validation:edit.validation});
  if(edit.kind==='layer-domain')return prepareDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
  if(edit.kind==='local-drawing-topology'||edit.kind==='snapshot-local-drawing'){

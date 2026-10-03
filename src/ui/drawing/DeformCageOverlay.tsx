@@ -1,18 +1,11 @@
 import type {PointerEvent} from 'react';
-import {add,mul,type Point2} from '../../domain/drawing/model';
+import {type Point2} from '../../domain/drawing/model';
 import {drawingDeformProjection,quadProjection,type DeformRect,type Quad} from '../../domain/drawing/deform';
 import {bendEdges,type BendValue} from '../../domain/deformation/coons';
 import {point} from '../../domain/drawing/sampling';
-import {inverse3,map3} from '../../domain/deformation/homography';
 import {uiText as t} from '../i18n';
 
-/** Pointer deltas enter the normalized pre-homography boundary frame. */
-export function moveDeformBoundary(rect:DeformRect,quad:Quad,bend:BendValue,edge:number,handle:0|1|2,start:Point2,current:Point2):BendValue{
- const inverse=inverse3(quadProjection(rect,quad).matrix),a=map3(inverse,start),b=map3(inverse,current),delta:Point2=[(b[0]-a[0])/(rect.max[0]-rect.min[0]),(b[1]-a[1])/(rect.max[1]-rect.min[1])],next=structuredClone(bend);
- if(handle===2)for(const i of [0,1] as const)next.handles[edge][i]=add(next.handles[edge][i],mul(delta,4/3));
- else next.handles[edge][handle]=add(next.handles[edge][handle],delta);
- return next;
-}
+export {moveDeformBoundary} from './cageEditorController';
 
 /** The same editing cage can present source edits or snapshot-local targets.
  * All document writes and gesture lifetime stay with the editing context. */

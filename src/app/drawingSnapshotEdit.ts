@@ -1,6 +1,6 @@
+import {writeLayerDomainOperation} from './layerDomainOperation';
 import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
 import {captureLayerDomainControls} from '../domain/recordingSnapshot/layerDomainControlEdit';
-import {type SnapshotLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {fitDeformedCubic} from '../domain/deformation/cubicDeformation';
 import {drawingDeformProjection} from '../domain/deformation/cageField';
 import {shapeOf} from '../domain/drawing/model';
@@ -71,11 +71,7 @@ export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:Lay
   const canonicalIds=localIds.map(view.canonicalId),domains=view.evaluation.state.layerDomains??[],useDomain=intent.domain.kind!=='placement-similarity'||domains.some(domain=>domain.layerIds.some(id=>canonicalIds.includes(id)));
   let layerDomains=snapshot.deformation.layerDomains;
   if(useDomain){
-   const prior=domains.find(domain=>domain.id===intent.operationId);
-   if(intent.replace){if(!prior||prior.layerIds.length!==canonicalIds.length||prior.layerIds.some(id=>!canonicalIds.includes(id)))throw new DrawingSnapshotEditCapabilityError('The saved layer domain or its exact layer scope no longer exists.');}
-   else if(prior)throw new DrawingSnapshotEditCapabilityError('The layer domain operation ID is already in use.');
-   const operation:SnapshotLayerDomain=intent.domain.kind==='h-coons'?{...structuredClone(intent.domain),id:intent.operationId,layerIds:canonicalIds,...(prior?.postShape?{postShape:prior.postShape}:{})}:{id:intent.operationId,layerIds:canonicalIds,matrix:matrix!,...(intent.domain.kind==='affine'&&intent.domain.enabled!==undefined?{enabled:intent.domain.enabled}:{}),...(prior?.postShape?{postShape:prior.postShape}:{})};
-   layerDomains=layerDomains?.some(domain=>domain.id===operation.id)?layerDomains.map(domain=>domain.id===operation.id?operation:domain):[...layerDomains??[],operation];
+   try{layerDomains=writeLayerDomainOperation(layerDomains,domains,intent,canonicalIds);}catch(error){throw new DrawingSnapshotEditCapabilityError((error as Error).message);}
   }else if(intent.domain.kind==='placement-similarity')for(const id of canonicalIds){const placement=composePlacementSimilarity(view.evaluation.placements[id]??identityScenePlacement(),intent.domain.value);layers[id]={...layers[id],placement};}
   const next={...nextWorkspace,snapshots:nextWorkspace.snapshots.map(value=>value===snapshot?{...snapshot,deformation:{...snapshot.deformation,layers,...(layerDomains?{layerDomains}:{})}}:value)};
   const domainPlan=prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'snapshot-state',workspace:next});

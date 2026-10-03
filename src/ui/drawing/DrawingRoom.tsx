@@ -1,7 +1,6 @@
 import {prepareDrawingCageControlPreview} from '../../app/drawingSnapshotEdit';
 import {isLayerCageDomain} from '../../domain/recordingSnapshot/layerDomains';
 import {createLayerCageIntent} from '../../domain/drawing/layerDomainIntent';
-import {layerCageIntentForSelection} from './layerDomainGesture';
 import {getWorkspaceView,useWorkspaceView} from '../../app/workspaceView';
 import {snapWorkspacePoint} from '../../app/workspaceViewSnap';
 import ArtworkReference from '../workspaceView/ArtworkReference';
@@ -19,9 +18,10 @@ import {PenTool,PanelRightClose,PanelRightOpen,ImagePlus,Eye,Check,X,Scissors} f
 import {emptyDrawing,parseDrawing,groupFor,uid,add,sub,mul,length,curveById,shapeOf,nodeAt,members,joinAt,editable,visible,layerFor,objectById,type DrawingDocument as Doc,type Cubic,type Point2,type Endpoint} from '../../domain/drawing/model';
 import * as cmd from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
-import {deformDrawing,rectQuad,type Quad,type DeformRect} from '../../domain/drawing/deform';
-import {neutralBend,type BendValue} from '../../domain/deformation/coons';
-import DeformCageOverlay,{moveDeformBoundary} from './DeformCageOverlay';
+import {deformDrawing} from '../../domain/drawing/deform';
+import DeformCageOverlay from './DeformCageOverlay';
+import {resolveDrawingCage,beginDrawingCageGesture,updateDrawingCageGesture,type DrawingCage as DeformCage,type CageGesture} from './cageEditorController';
+import CageEditorControls from './CageEditorControls';
 import {cutDrawing,pasteDrawingCut,type DrawingCut} from '../../domain/drawing/clipboard';
 import {roundedJoins} from '../../domain/drawing/roundedJoin';
 import {pathOf} from '../../domain/drawing/appearance';
@@ -65,8 +65,7 @@ import {curvePath,selectionBounds,snapMirrorAxis} from './geometry';
 import './drawing.css';
 const EMPTY=emptyDrawing();
 
-interface DeformCage {domainOperationId?:string;base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
-interface Drag extends TrackedPointer {layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;cageGesture?:CageGesture;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -100,17 +99,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const local=(e:{clientX:number;clientY:number}):Point2=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left-size.width/2-pan[0])/unit,-(e.clientY-r.top-size.height/2-pan[1])/unit];};
  function guideCandidate(base:Doc,p:Point2,bypass:boolean,excluded:string[]=[]){return bypass?null:snapWorkspacePoint(base,useEditor.getState().project.drawingSnapshots,getWorkspaceView(),p,1/unit,8,excluded);}
  const selected=selection.ids.filter(id=>d.curves.some(c=>c.id===id)),activeLayer=d.layers.find(l=>l.id===layerId)??d.layers[0],bounds=useMemo(()=>selectionBounds(d,selected),[d,selection]);
- // Keep the same source geometry across successive corner drags: never accumulate fit errors.
- const cage=useMemo<DeformCage|null>(()=>{
-  if(tool!=='deform'||!selected.length)return null;
-  if(deformCage?.committed===stored&&deformCage.ids.length===selected.length&&selected.every(id=>deformCage.ids.includes(id)))return deformCage;
-  const layers=selectedLayers(selection).map(id=>presentation?.canonicalId(id)??id),last=[...presentation?.evaluation.state.layerDomains??[]].reverse().find(domain=>domain.layerIds.some(id=>layers.includes(id)));
-  if(last&&isLayerCageDomain(last)&&last.layerIds.length===layers.length&&last.layerIds.every(id=>layers.includes(id)))return {base:stored,committed:stored,ids:selected,rect:structuredClone(last.restRect),quad:structuredClone(last.quad),bend:structuredClone(last.bend??neutralBend()),domainOperationId:last.id,maxError:presentation?.evaluation.maxError??0};
-  const b=selectionBounds(stored,selected);if(!b)return null;
-  const pad=Math.max(.01,Math.max(b.max[0]-b.min[0],b.max[1]-b.min[1])*.05),rect:DeformRect={min:[...b.min],max:[...b.max]};
-  for(const k of [0,1] as const)if(rect.max[k]-rect.min[k]<pad){rect.min[k]-=pad;rect.max[k]+=pad;}
-  return {base:stored,committed:stored,ids:selected,rect,quad:rectQuad(rect),bend:neutralBend(),maxError:0};
- },[tool,stored,selection,deformCage]);
+ const cage=useMemo(()=>tool==='deform'?resolveDrawingCage(stored,selection,{cached:deformCage,domains:presentation?.evaluation.state.layerDomains,canonicalId:presentation?.canonicalId,maxError:presentation?.evaluation.maxError}):null,[tool,stored,selection,deformCage]);
  const shownCurves=d.layers.flatMap(l=>l.items).filter(id=>visible(d,id));
  const activeTool=TOOLS.find(x=>x[0]===tool)!;
  const endpointTools=isEndpointTool(tool);
@@ -246,10 +235,8 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    }
    if(g.kind==='handle'){const target=drawingControlDragTarget(g.base,{handle:g.endpoint!},g.start,p),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=cmd.moveHandle(g.base,g.endpoint!,hit?.point??target);setGuideSnap(hit);}
    if(g.kind==='deform'){
-    const original=g.cage!,quad=original.quad.map(q=>[...q]) as Quad;let bend=original.bend;
-    if(g.corner!==undefined)quad[g.corner]=add(quad[g.corner],delta);
-    else if(g.bendEdge!==undefined&&g.bendHandle!==undefined)bend=moveDeformBoundary(original.rect,original.quad,original.bend,g.bendEdge,g.bendHandle,g.start,p);
-    const explicit=workspaceId==='drawing'?layerCageIntentForSelection(g.base,selection,{kind:'h-coons',restRect:original.rect,quad,bend},original.ids,original.domainOperationId??g.layerDomainOperationId,!!original.domainOperationId):undefined;
+    const original=g.cage!,gesture=g.cageGesture??=beginDrawingCageGesture(original,selection,g.corner!==undefined?{corner:g.corner}:{edge:g.bendEdge!,handle:g.bendHandle!},g.start,g.layerDomainOperationId),update=updateDrawingCageGesture(gesture,p),{quad,bend}=update.cage;
+    const explicit=workspaceId==='drawing'?update.intent:undefined;
     const referenced=explicit?.scope.layerIds.filter(id=>presentation?.layerOwners.get(id)?.kind==='snapshot-local')??[];
     if(explicit&&referenced.length){if(referenced.length!==explicit.scope.layerIds.length)throw Error('Select referenced layers together for a retained cage; source-owned cages edit their original geometry.');g.layerDomainIntent=explicit;const plan=prepareDrawingLayerDomainEdit(useEditor.getState().project,explicit);g.next=plan.drawing;setDeformCage({...original,quad,bend,domainOperationId:explicit.operationId,maxError:drawingSnapshotPresentation(plan.project.recordingSnapshots!,plan.project.drawingSnapshots?.activeId??'$working')!.evaluation.maxError});}
     else{const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current,bend);g.next=result.document;setDeformCage({...original,quad,bend,maxError:result.maxError});}setHint('');
@@ -378,7 +365,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  <nav className="drawing-options" aria-label={t('当前工具选项')}><strong>{t(activeTool[1])}</strong><span className="drawing-tool-description" data-testid="drawing-tool-description">{t(activeTool[3])}</span>
  {['select','pen','ellipse'].includes(tool)&&<NumberField label="线宽" value={(selected.length?curveById(d,selected[0]).width:width)*250} min={.25} max={40} onChange={v=>{session.set({width:v/250});if(selected.length&&tool==='select')run(()=>cmd.widthChange(d,selected,v/250));}}/>}
  {['select','direct'].includes(tool)&&<><button data-testid="drawing-group" title={t(groupingIssue(d,selected)??'组合（Ctrl/Cmd+G）')} disabled={!!groupingIssue(d,selected)} onClick={()=>groupSelection()}>{t('组合')}</button><button data-testid="drawing-ungroup" title={t('取消组合（Ctrl/Cmd+Shift+G）')} disabled={!d.groups?.some(g=>g.curveIds.every(id=>selected.includes(id)))} onClick={()=>groupSelection(true)}>{t('取消组合')}</button></>}
- {tool==='deform'&&<><span data-testid="drawing-deform-error">{t('采样拟合偏差')} ≈ {((cage?.maxError??0)*250).toFixed(2)} px</span><button onClick={()=>{cancelDraft();setDeformCage(null);}}>{t('重置变形框')}</button><button onClick={()=>selectTool('select')}>{t('完成')}</button></>}
+ {tool==='deform'&&<CageEditorControls maxError={cage?.maxError??0} onResetFrame={()=>{cancelDraft();setDeformCage(null);}} onDone={()=>selectTool('select')}/>}
  {tool==='mirror'&&<><NumberField label="镜像轴 X" value={d.mirrorAxisX??0} onChange={x=>run(()=>cmd.setMirrorAxis(d,x))}/><button onClick={()=>run(()=>cmd.setMirrorAxis(d,0))}>{t('镜像轴归中')}</button></>}
  {tool==='pen'&&<label className="drawing-field">{t('继续接笔')}<select aria-label={t('继续接笔')} value={penJoin} onChange={e=>session.set({penJoin:e.target.value as 'POSITION'|'SMOOTH'|'CUSP'})}><option value="POSITION">{t('仅绑定')}</option><option value="SMOOTH">{t('平滑接笔')}</option><option value="CUSP">{t('尖点接笔')}</option></select></label>}
  {tool==='pen'&&<button onClick={()=>{cancelDraft();endPen();setPenPreview(null);}}><Check size={14}/>{t('结束绘制')}</button>}
