@@ -1,3 +1,5 @@
+import {placeDrawingAffines,drawingLayerObjectOwners} from '../../domain/drawing/affineDrawing';
+import {applyLayerCageDomain} from '../../domain/recordingSnapshot/layerCageEvaluation';
 import {describe,expect,it} from 'vitest';
 import {emptyDrawing,shapeOf,type DrawingDocument,type Point2,type Cubic} from '../../domain/drawing/model';
 import {neutralBend} from '../../domain/deformation/coons';
@@ -107,4 +109,28 @@ describe('independent owned Coons programs',()=>{
  it.each([{matrix:[0,0,0,0,.1,.2] as Affine2D},{matrix:[-1,0,.1,.9,.1,.2] as Affine2D}])('retains collapsed and reflected affine outputs after the nonlinear program: $matrix',({matrix})=>{
   const {w,view,target}=fixture();delete w.library.offsets.offset;const layer=w.snapshots[0].layers.find(layer=>layer.id==='route-left')!;if(layer.kind==='original')layer.items=layer.items.filter(id=>id!=='offset');view.deformation.layerDomains=[cage('cage',view.layers.map(layer=>layer.id)),{id:'affine',layerIds:view.layers.map(layer=>layer.id),matrix}];const before=resolveSnapshot(w,view.id).drawing,result=prepareSnapshotBatch({...createEmptyProject(),recordingSnapshots:w},{commands:[{op:'cloneLayers',sourceSnapshotId:view.id}]}),map=result.idMaps[0].idMap;appearance(before,resolveSnapshot(result.recordingSnapshots,target.id).drawing,map);
  });
+ it('self-copy preserves every original layer with two affine groups, an existing program, and an untouched plain layer',()=>{
+  const {w,source,view,recording}=fixture();recording.snapshotIds=[view.id];recording.activeSnapshotId=view.id;
+  w.library.nodes.unselected0={id:'unselected0',position:[-.2,.6]};w.library.nodes.unselected1={id:'unselected1',position:[.3,.7]};w.library.curves.unselected={id:'unselected',name:'Untouched',nodes:['unselected0','unselected1'],handles:[[0,.8],[.2,.5]],visible:true,locked:false,width:.024,inkEnds:[{taper:.025},{extension:.009}]};
+  source.layers.push({kind:'original',id:'unselected-layer',name:'Unselected',visible:true,locked:false,items:['unselected']});view.layers.push({kind:'reference',id:'unselected-slot',name:'Unselected',baseSnapshotId:source.id,baseLayerId:'unselected-layer'});
+  view.deformation.layers['slot:shape']={placement:{translation:[.03,-.01],rotation:0,scale:1,scaleX:1.5}};
+  for(const id of ['slot:route-left','slot:route-right'])view.deformation.layers[id]={placement:{translation:[-.02,.04],rotation:0,scale:1,scaleX:1.2,scaleY:.8}};
+  view.deformation.layerDomains=[{...cage('original-cage',['slot:shape']),postShape:{nodes:{},handles:{a:[[.015,.012],[0,0]]}}}];
+  const bytes=JSON.stringify(w),before=resolveSnapshot(w,view.id).drawing,layerIds=new Set(before.layers.map(layer=>layer.id)),curveIds=new Set(before.curves.map(curve=>curve.id)),nodeIds=new Set(before.nodes.map(node=>node.id)),identity=Object.fromEntries([...layerIds,...curveIds,...nodeIds,...before.fills.map(fill=>fill.id),...before.offsets.map(offset=>offset.id),...before.joins.map(join=>join.id),...before.endpointLinks!.map(link=>link.id),...before.groups!.map(group=>group.id),...before.displayIntervals!.flatMap(track=>[track.id,...track.ranges.map(range=>range.id)])].map(id=>[id,id]));
+  const originals=(drawing:DrawingDocument)=>retainSnapshotAffines({...drawing,layers:drawing.layers.filter(layer=>layerIds.has(layer.id)),curves:drawing.curves.filter(curve=>curveIds.has(curve.id)),nodes:drawing.nodes.filter(node=>nodeIds.has(node.id)),fills:drawing.fills.filter(fill=>Object.hasOwn(identity,fill.id)),offsets:drawing.offsets.filter(offset=>Object.hasOwn(identity,offset.id)),joins:drawing.joins.filter(join=>Object.hasOwn(identity,join.id)),endpointLinks:drawing.endpointLinks?.filter(link=>Object.hasOwn(identity,link.id)),groups:drawing.groups?.filter(group=>Object.hasOwn(identity,group.id)),displayIntervals:drawing.displayIntervals?.filter(track=>Object.hasOwn(identity,track.id))},[drawing]);
+  const h=harness(w),result=h.value(h.api.snapshot({commands:[{op:'cloneLayers',sourceSnapshotId:view.id,layerIds:['slot:shape']}]})),map=result.idMaps[0].idMap,current=h.project().recordingSnapshots!;
+  expect(JSON.stringify(w)).toBe(bytes);expect(current.snapshots.find(snapshot=>snapshot.id===view.id)!.deformation).toEqual(view.deformation);expect(current.snapshots.find(snapshot=>snapshot.id===source.id)).toEqual(source);
+  for(const kind of ['nodes','curves','fills','offsets'] as const)for(const [id,value] of Object.entries(w.library[kind]))expect(current.library[kind][id]).toEqual(value);
+  const sameObject=resolveSnapshot(current,view.id).drawing;appearance(before,originals(sameObject),identity);appearance(before,originals(resolveSnapshot(current,view.id).drawing),identity);appearance(before,resolveSnapshot(w,view.id).drawing,identity);
+  const cold=parseRecordingSnapshots(JSON.parse(JSON.stringify(current)));appearance(before,originals(resolveSnapshot(cold,view.id).drawing),identity);
+  const originalField=displayField(before,displayPath(before,'a')),copyField=displayField(sameObject,displayPath(sameObject,map.a));near(copyField.geometry.shapes,originalField.geometry.shapes);near(strokeInk(sameObject,strokeFor(sameObject,map.a)),strokeInk(before,strokeFor(before,'a')));
+  expect(h.past).toHaveLength(1);h.value(h.api.undo());expect(JSON.stringify(h.project().recordingSnapshots)).toBe(bytes);h.value(h.api.redo());appearance(before,originals(resolveSnapshot(h.project().recordingSnapshots!,view.id).drawing),identity);
+ });
+
+ it('retains affine translation on an offset-only layer beside retained cage material',()=>{
+  const {d}=fixture(),deformed=applyLayerCageDomain(d,cage('cage',d.layers.map(layer=>layer.id))),offset=deformed.offsets[0],input={...deformed,layers:[...deformed.layers.map(layer=>({...layer,items:layer.items.filter(id=>id!==offset.id)})),{id:'offset-only',name:'Offset only',visible:true,locked:false,items:[offset.id]}]},owners=drawingLayerObjectOwners(input),before=offsetGeometry(input,offset),after=placeDrawingAffines(input,{'offset-only':[2,0,.2,3,.1,-.1]},id=>owners.get(id));
+  expect(after).not.toBe(input);expect(after.nodes).toBe(input.nodes);expect(after.curves).toBe(input.curves);expect(after.offsets[0].translation).toEqual([.042,-.12]);expect(input.offsets[0].translation).toEqual([.025,-.04]);
+  const moved=offsetGeometry(after,after.offsets[0]);near(moved.shapes,before.shapes.map(shape=>shape.map(([x,y])=>[x+.017,y-.08])));near(displayField(after,displayPath(after,'a')).geometry.shapes,displayField(input,displayPath(input,'a')).geometry.shapes);
+ });
+
 });
