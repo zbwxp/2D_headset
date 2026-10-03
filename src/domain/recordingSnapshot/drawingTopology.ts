@@ -1,5 +1,6 @@
 import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
-import {layerUsesCage} from './layerDomainControlEdit';
+import {captureLayerDomainControls,layerUsesCage} from './layerDomainControlEdit';
+import {createNonlinearTopologyInput,nonlinearTopologyTargetLayers,nonlinearTopologyControlBase,retainOtherTopologyControls} from './nonlinearTopologyTargets';
 import {snapshotCurveAppearanceDifference,unsupportedSnapshotCurveAppearanceFields,mergeSnapshotCurveAppearance,type SnapshotCurveAppearanceMap} from './curveAppearance';
 import {trySnapshotControlInverse,snapshotControlBrushScale} from './controlSpace';
 import {parseDrawing,layerFor,sub,length,type DrawingDocument,type DrawingCurve,type Point2} from '../drawing/model';
@@ -73,7 +74,7 @@ function layerWarpInverse(evaluation:SnapshotEvaluation,layerId:string):(point:P
  return point=>inverses.reduceRight((value,inverse)=>inverse(value),point);
 }
 function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,point:Point2):Point2 {
- if(layerUsesCage(evaluation.state.layerDomains,layerId)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))return fail('NONLINEAR_TOPOLOGY_INVERSE','A fitted cage has no exact control-handle inverse. Disable or reset its cage before creating topology; existing points use post-domain sparse edits.');
+ if(layerUsesCage(evaluation.state.layerDomains,layerId)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))return fail('NONLINEAR_TOPOLOGY_INVERSE','Topology in this inherited fitted layer needs an explicit material/control lineage target. Its fitted handles cannot be inverse-mapped; edit the owning snapshot or disable the inherited cage first. No geometry was changed.');
  const inverse=trySnapshotControlInverse(evaluation,layerId,curveId);
  if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
  return applyScenePlacementMatrix(inverse,point);
@@ -123,11 +124,14 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
   const addElementIds=[...new Set([...(membership.addElementIds??[]),...added])],excludeElementIds=(membership.excludeElementIds??[]).filter(id=>!addElementIds.includes(id));
   return {...prior,name:layer.name,...(addElementIds.length||excludeElementIds.length?{membership:{...(addElementIds.length?{addElementIds}:{}),...(excludeElementIds.length?{excludeElementIds}:{})}}:{membership:undefined})};
  });
- // New material starts in this snapshot's input domain. Whole-layer Warp and
- // placement remain live; new IDs receive no private inverse correction keys.
+ // New material starts in this snapshot's input domain. Explicit child P in a
+ // nonlinear layer uses a fixed input draft plus an authored output target.
+ // New parent/source members still have no private child correction entries.
+ const nonlinearLayers=nonlinearTopologyTargetLayers(evaluation,target),nonlinearInputs=createNonlinearTopologyInput(evaluation,target,newIds,nonlinearLayers);
  const inverseByLayer=new Map<string,(point:Point2)=>Point2>(),nodes=new Map(target.nodes.map(node=>[node.id,node]));
  const inverse=(layerId:string)=>{let value=inverseByLayer.get(layerId);if(!value){value=layerWarpInverse(evaluation,layerId);inverseByLayer.set(layerId,value);}return value;};
  for(const curve of target.curves){if(!newIds.has(curve.id)){if(owned.has(curve.id)&&!forkCurves.has(curve.id)&&!same(curve.nodes,workspace.library.curves[curve.id].nodes))workspace.library.curves[curve.id].nodes=[...curve.nodes];continue;}
+  const input=nonlinearInputs.get(curve.id);if(input){workspace.library.curves[curve.id]=input.curve;for(const [id,position] of input.nodes)if(!Object.hasOwn(workspace.library.nodes,id)&&!Object.hasOwn(fork.forks??{},id))workspace.library.nodes[id]={id,position:[...position]};continue;}
   const layerId=layerFor(target,curve.id)!.id,map=inverse(layerId);
   const handles=curve.handles.map((point,end)=>{
    const nodeId=curve.nodes[end],post=evaluation.preElementPlacementDrawing.nodes.find(node=>node.id===nodeId),base=evaluation.preShapeDrawing.nodes.find(node=>node.id===nodeId),delta=post&&base?sub(post.position,base.position):[0,0] as Point2;
@@ -142,18 +146,27 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // Relation topology changes immediately, including when a shape draft exists.
  // Retire disabled link references in all local states, not just today's draft.
  const authorityStates=[local.deformation,...local.inheritedState?[local.inheritedState]:[],...local.draft?[local.draft.deformation]:[]],liveLinks=new Set((target.endpointLinks??[]).map(link=>link.id));
+ const liveNodes=new Set(target.curves.flatMap(curve=>curve.nodes)),retiredControlNodes=new Set(current.curves.filter(curve=>target.curves.some(value=>value.id===curve.id)).flatMap(curve=>curve.nodes.filter(id=>!liveNodes.has(id))));
  for(const state of authorityStates)for(const layer of Object.values(state.layers))if(layer.shape)for(const id of Object.keys(layer.shape.nodes))if(snapshotNodeAuthority(merged.aliases,id)!==id)delete layer.shape.nodes[id];
+ for(const state of authorityStates)for(const domain of state.layerDomains??[])if(domain.postShape)for(const id of Object.keys(domain.postShape.nodes))if(snapshotNodeAuthority(merged.aliases,id)!==id||retiredControlNodes.has(id))delete domain.postShape.nodes[id];
  for(const state of authorityStates)for(const [id,value] of Object.entries(state.relationPositions)){const sourceLinkIds=value.sourceLinkIds.filter(linkId=>liveLinks.has(linkId));if(!sourceLinkIds.length)delete state.relationPositions[id];else if(sourceLinkIds.length!==value.sourceLinkIds.length)state.relationPositions[id]={...value,sourceLinkIds};}
  // Appearance belongs to the same saved/draft state as the command's controls.
  const appearanceState=useDraft&&local.draft?local.draft.deformation:local.deformation;
  for(const [layerId,patch] of appearances){const layer=appearanceState.layers[layerId]??={};layer.curveAppearance=mergeSnapshotCurveAppearance(layer.curveAppearance,patch);}
  // Existing controls are residuals over today's live post-Warp material. Only
  // changed IDs are authored; saved state and an unrelated draft remain intact.
- const intermediate=evaluate(workspace);
  const state:SnapshotDeformationState=useDraft&&local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
- const relationNodes=reconcileSnapshotEndpointRelationEdit(current,target,intermediate,state,(layerId,curveId,point)=>unplace(intermediate,layerId,curveId,point),authorityStates);
+ const priorDomains=state.layerDomains;
+ if(nonlinearLayers.size)state.layerDomains=nonlinearTopologyControlBase(evaluation.state.layerDomains??[],state.layerDomains,nonlinearLayers);
+ const intermediate=evaluate(workspace);
+ const nonlinearCurves=new Set(target.curves.filter(curve=>nonlinearLayers.has(layerFor(target,curve.id)!.id)).map(curve=>curve.id));
+ const linearRelations=(drawing:DrawingDocument):DrawingDocument=>({...drawing,endpointLinks:drawing.endpointLinks?.filter(link=>!nonlinearCurves.has(link.a.curveId)&&!nonlinearCurves.has(link.b.curveId))});
+ const failedDomain=intermediate.diagnostics.find(issue=>issue.code==='LAYER_DOMAIN'&&intermediate.state.layerDomains?.some(domain=>domain.id===issue.channelId&&domain.layerIds.some(id=>nonlinearLayers.has(id))));
+ if(failedDomain)return fail('NONLINEAR_TOPOLOGY_INPUT',`The topology input cannot be evaluated by its retained domain: ${failedDomain.message} No geometry was changed.`);
+ const relationNodes=reconcileSnapshotEndpointRelationEdit(linearRelations(current),linearRelations(target),intermediate,state,(layerId,curveId,point)=>unplace(intermediate,layerId,curveId,point),authorityStates);
+ const post=captureLayerDomainControls(intermediate.drawing,target,intermediate.state.layerDomains??[],state.layerDomains,nonlinearLayers);if(post.handledLayers.size)state.layerDomains=retainOtherTopologyControls(post.domains,evaluation.state.layerDomains??[],priorDomains,target,nonlinearLayers,retiredControlNodes);
  const shapeFor=(layerId:string)=>{let value=shapes.get(layerId);if(!value){value=clone(state.layers[layerId]?.shape??intermediate.state.layers[layerId]?.shape??{nodes:{},handles:{}});shapes.set(layerId,value);}return value;};
- for(const curve of target.curves){if(newIds.has(curve.id))continue;const prior=current.curves.find(value=>value.id===curve.id)!,layerId=layerFor(target,curve.id)!.id;
+ for(const curve of target.curves){if(newIds.has(curve.id))continue;const prior=current.curves.find(value=>value.id===curve.id)!,layerId=layerFor(target,curve.id)!.id;if(nonlinearLayers.has(layerId))continue;
   for(const end of [0,1] as const){const wantedNode=nodes.get(curve.nodes[end])!,priorNode=current.nodes.find(node=>node.id===prior.nodes[end])!,baseNode=intermediate.preShapeDrawing.nodes.find(node=>node.id===curve.nodes[end]);if(!baseNode)return fail('MISSING_TOPOLOGY_CONTROL','A shared Drawing node has no canonical input.');
    if(!relationNodes.has(wantedNode.id)&&(curve.nodes[end]!==prior.nodes[end]||!close(wantedNode.position,priorNode.position)))shapeFor(layerId).nodes[wantedNode.id]=sub(unplace(intermediate,layerId,curve.id,wantedNode.position),baseNode.position);
    if(curve.nodes[end]!==prior.nodes[end]||!close(sub(curve.handles[end],wantedNode.position),sub(prior.handles[end],priorNode.position))){const baseCurve=intermediate.preShapeDrawing.curves.find(value=>value.id===curve.id)!;const shape=shapeFor(layerId),deltas=shape.handles[curve.id]??[[0,0],[0,0]];shape.handles[curve.id]=deltas;deltas[end]=sub(sub(unplace(intermediate,layerId,curve.id,curve.handles[end]),unplace(intermediate,layerId,curve.id,wantedNode.position)),sub(baseCurve.handles[end],baseNode.position));}
