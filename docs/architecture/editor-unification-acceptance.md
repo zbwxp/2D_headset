@@ -1,18 +1,21 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 21:13 UTC。当前线上 v66（`de1accf`）于 20:55:44 UTC 部署，继承节点真绑定、Drawing 跨层 SMOOTH 与保留可见性边界的真实插点已完成限定浏览器验证。v65 已验证引用新线真合笔和带区间响应的父线拆分。下方早期版本段落是历史证据；当前状态以本节及最后的未关闭清单为准。
+核对日期：2026 年 10 月 3 日 21:50 UTC。当前线上 v67（`3ebd48d`）于 21:23:40 UTC 部署，Drawing 引用层持久曲边域、A 后修正、禁用/Undo、父源新增成员实时继承已完成限定浏览器验证。v66 的继承真绑定、跨层 SMOOTH 与内部插点显隐边界已通过。下方版本段落保留历史证据；当前状态以本节及“结束验收前必须关闭的缺口”为准。
 
+下一冻结候选 `b04d5fa` **尚未部署**：包含 Recording A 世界坐标修复、继承节点解绑、当前快照自有曲边域内 P/绑定、原生曲边程序的独立副本，以及 Drawing/Recording 共用曲边控制器和叠加层。合并版类型检查、生产构建和 5 个交叉测试文件共 42 项通过；各独立阶段另有针对性测试。Recording 曲边框的真人验证须在发布后进行。
+
+v67 实际流程使用内置完整正面与侧稿：引用两面片 6 条曲线，曲边手柄与 A 编辑后保存；父源新增一条 P 曲线后引用成为 7 条。同一域 ID、固定 rest、bend、已有 postShape 全字段保持一致，新线没有自己的点响应；精确发布代码回读显示新线与同一域的控制点误差为 0，材料诊断为空。禁用/Undo 与 A Undo/Redo 恢复原路径。7 笔普通 Undo 清理本轮操作后，原 5 稿及先前稍侧工作副本保留，Undo 灰色。证据：[v67 操作报告](../../artifacts/triangulated-recorder-qa/v67-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v67-domain-save-validation.json)。未上传私人归档，未测浏览器 FPS。
 ### 最新实现与证据
 
 | 当前路径 | 唯一职责模块与消费者 | 已验证范围 | 当前剩余 |
 | --- | --- | --- | --- |
-| 整层 affine 与动态成员 | `layerDomainIntent.ts`、`layerDomain.ts` 由 `drawingSnapshotEdit.ts` / 共同事务 / 明确图层 API 消费；现有 affine material projection 保持派生笔触 | v62 实际宽度真 0、恢复／Undo、150%×50% 非等比、−100% 反射；源 P 新增后引用层 2→3，保存文件全部控制点与同一有序域最大误差 0 | 持久 H∘Coons 域及后域直接点编辑的派生材料运输仍在实现 |
+| 整层 affine 与动态成员 | `layerDomainIntent.ts`、`layerDomain.ts` 由 `drawingSnapshotEdit.ts` / 共同事务 / 明确图层 API 消费；现有 affine material projection 保持派生笔触 | v62 实际宽度真 0、恢复／Undo、150%×50% 非等比、−100% 反射；源 P 新增后引用层 2→3，保存文件全部控制点与同一有序域最大误差 0 | v67 已接持久 H∘Coons 与后域 A/派生材料；父拟合结果的拆分 restriction 与部分继承程序拓扑仍在实现 |
 | 新局部端点联动与贯通材料 | `endpointInteraction.ts`、`endpointRelationAuthoring.ts`、`routeMaterialSource.ts` 与 `DisplayRouteControls` 共同使用原 Drawing 几何及材料解析 | v61 重做 v60 实际失败路径成功；SMOOTH、ARC 10→15px、逐笔 Undo 到 SHARP 路径逐字相同；保存文件清理验证原稿数据保留 | 不把一次成功例子扩大成全部笔触／拓扑组合已验收 |
 | 非线性 SMOOTH 拆分与真实插点 | `responseExpressionProjection.ts` / restriction / shared smooth kernel | v58 父拆分、v60 一般非线性内部插点有针对性自动化；v55/v57 保留各自限定浏览器证据 | v65 已统一 CURVE / unscoped / STROKE / route 材料 lineage；实际父耳线分段的 7 个 yaw 材料世界端点误差 1.14e−16。非线性域下的 fit 参数 restriction 仍属后续组合 |
 | 局部移除与真正源删除 | response / material 依赖退役和 `sourceDeletion.ts` | v62 局部移除只停用失去支持的字段，其他曲线继续正常；恢复成员可恢复材料字段；真正源删除清相应属性目标，不产生红色幽灵 | 继续随新材料 lineage / 非线性域检查具体依赖，不设置全画面硬门槛 |
-| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定、lock 等局部能力仍在收口 |
+| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定已在下一候选 c9dd74b，通过 120 项相关测试；曲边程序组合仍有明确边界，lock 等局部能力仍需核对 |
 | 独立当前形状复制 | `independentCopy.ts` 经现有 `cloneLayers` 和共同事务调用 | `e5b4273` 已冻结：新自有 ID、脱离旧父级、当前几何和颜色／填充／区间／ARC／偏移／层序检查，74 项通过、1 既有跳过 | v63 实际自动 +90° 镜像左眉复制：新 ID、同一视口 SVG 逐字相同、保存为无父级自有根；确实无法保持外观的异构 affine / 材料组合原子诊断 |
-| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | 这是数学归口，不等于已有持久曲边层域或全部 Recorder 编辑器完成 |
+| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | v67 持久层域已消费同一数学；下一候选 b04d5fa 将实际 Drawing/Recording cage controller、overlay、controls 归为一份，尚待发布后 Recording UI 验证 |
 
 v62 浏览器证据：[操作报告](../../artifacts/triangulated-recorder-qa/v62-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v62-domain-save-validation.json)。9 笔准备与编辑已正常 Undo 到底，原 5 稿和先前稍侧工作副本恢复。本轮实际使用数字变换控件，没有宣称重新拖过全部框柄；文件以精确发布模块本地回读，没有重新导入浏览器。未上传私人归档，未测浏览器 FPS，也未作美术审美验收。
 
@@ -33,7 +36,7 @@ v62 浏览器证据：[操作报告](../../artifacts/triangulated-recorder-qa/v6
 | 6 补充 源删除与局部排除 | 目标归口为规范源资产与依赖引用的统一级联清理；现有 `sources.ts`、`localMembership.ts` 区分来源与成员 | `sourceDeletion.ts` 由原始源同步事务调用；本地排除保持独立，Recording 不可冒充源所有者删除 | `recording-snapshot-source-deletion` 与 `source-visibility-inheritance`；v51/v53 源层删除、引用清理、Undo、重载及无红线残影实测通过 | **已验证**：源曲线删除清规范资产与依赖引用，保留空层；源图层删除清全部层引用；源删除后无幽灵红线；局部子快照排除仅影响本地，并按一次事务支持 Undo |
 | 7 真实视图 修正帧 角度绑定分离 | [angleGraph.ts](../../src/domain/recordingSnapshot/angleGraph.ts) 保存顶点与响应；[commands.ts](../../src/domain/recordingSnapshot/commands.ts) 分流真实基准和修正 | `evaluateRecordingSnapshot`、绑定控件、修正保存／丢弃、创建空的范围外真实视图 | `surface-command-api` 和 `angle-graph` 覆盖改绑与草稿；v50 实际新建空 −90° 后粘贴，同一 −45° 反解／保存仍保持九个顶点 | **v57 完整脸插点已验证**：覆盖内真实视图采用引用和局部姿态，`responseExpressionTransactions.ts` 限制旧响应到新单形；材质由 `materialRestriction.ts` 保留原场。默认完整脸 −60° 插点、邻角、Undo/Redo 和真实 SaveJSON 回读通过。未保存修正草稿及任意非线性 SMOOTH 投影的精确保真插入仍需明确处理 |
 | 7 补充 独立属性角度键 | `propertyResponses.ts` 与 `scalarResponseSupport.ts` 共享标量响应和端点目标；材质应用在 `simplexMaterial.ts` | 中间角度的 `changeInterval` 独立记录区间 start/end；不建真实视图、不改变几何响应 | `surface-property-responses` 与 v53 浏览器覆盖精确 0..30 平台、60 部分展开、重载及几何键数量不变 | **区间已验证，其他属性待扩展**：0° 区间 start=end，30° 展开响应保持 0，90° 再展开；起止端点独立响应，精确零长度而非 epsilon 或显隐开关；只建属性键，不建真实顶点、不烘焙几何 |
-| 8 稳定二维网格与原始几何成员支持 | [triangulation.ts](../../src/domain/recordingSnapshot/triangulation.ts) 定位真实顶点、边和面；[simplexGeometry.ts](../../src/domain/recordingSnapshot/simplexGeometry.ts) 执行活动基准的成员交集 | 正常画面和逐曲线覆盖采样使用定位器与 simplex 几何；隐藏标记、修正权重不参与成员支持 | [triangulation](../../src/tests/recordingSnapshot/triangulation.test.ts)、[simplex-geometry](../../src/tests/recordingSnapshot/simplex-geometry.test.ts) 覆盖三点／两点／单点、极小非零权重、隐藏和有符号响应 | **部分**：运行时主链明确；`localMembership.ts` 的 `resolveSnapshotSimplexPresence` 目前仅测试调用。需决定统一归口或移除冗余合同辅助入口，不能拿未被消费的函数证明运行时去重完成 |
+| 8 稳定二维网格与原始几何成员支持 | [triangulation.ts](../../src/domain/recordingSnapshot/triangulation.ts) 定位真实顶点、边和面；[simplexGeometry.ts](../../src/domain/recordingSnapshot/simplexGeometry.ts) 执行活动基准的成员交集 | 正常画面和逐曲线覆盖采样使用定位器与 simplex 几何；隐藏标记、修正权重不参与成员支持 | [triangulation](../../src/tests/recordingSnapshot/triangulation.test.ts)、[simplex-geometry](../../src/tests/recordingSnapshot/simplex-geometry.test.ts) 覆盖三点／两点／单点、极小非零权重、隐藏和有符号响应 | **已归口**：未被生产消费的 `resolveSnapshotSimplexPresence` 已于 9c57652 删除；有用合同用例迁到实际 `simplexGeometry` / coverage 运行时测试，36 项通过。未新增第二个求值器 |
 | 9 共享边响应与按轴反解 | `surfaceTargets.ts` 统一编译响应与准备目标编辑；[triangularResponses.ts](../../src/domain/recordingSnapshot/triangularResponses.ts) 求最接近原始重心权重的解；`simplexGeometry.ts` 统一采样 | 主画面、反解重放和新洋葱皮共同消费；节点权威与 `H − P` 相对柄保持一致 | [triangular-responses](../../src/tests/recordingSnapshot/triangular-responses.test.ts) 和 `surface-targets` 覆盖连续性、退化诊断；v50 实际 −45° 整层反解后保存，Undo 恢复 SVG | **部分已验证**：节点／控制柄／变换已有代码与交互证据；其他目标工具仍须进同一链。退化目标和无法用控制响应表达的 ARC 参数变化继续明确拒绝，不新增隐藏几何键 |
 | 10 逐曲线红色只读投影 | [snapshotCoverage.ts](../../src/domain/recordingSnapshot/snapshotCoverage.ts) 当前负责逐曲线覆盖投影；源存活判断随级联清理接入 | 主求值和 `surfaceOnion.ts` 共用；`SnapshotRecordingWorkspace` 将 `outsideCurves` 画成无指针事件的红色覆盖层 | [snapshot-coverage](../../src/tests/recordingSnapshot/snapshot-coverage.test.ts)、[surface-workspace](../../src/tests/recordingSnapshot/surface-workspace.test.ts)；v50 仅有 0° 样本时，在 90° 得到 121 条红线，空视图粘贴同 ID 后恢复正常 | **预览及源删除已验证**：红回退只能表示存活资产缺样本；源资产被删除后不得继续红显。错误 ID 黑红并存与混合覆盖已有自动化，完整源删除交互已在 v51/v53 验收 |
 | 11 删除极值保留空洞 | `triangulation.ts` 的 `removeSnapshotVertex`；`angleGraph.ts` 的响应退役归档；快照删除命令 | 显式删除命令修改覆盖；普通加载只解析，不补点；共享事务承担 Undo | `triangulation`、`surface-command-api`、`automatic-snapshot-edits` 覆盖空洞、不自动连邻点、回读不再生和相关响应保留 | **已接入待验收**：验证 UI 删除、离开范围的逐线反馈、Undo／Redo 与保存重载；不能用重三角化补回用户删除的覆盖 |
@@ -71,15 +74,16 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 ## 结束验收前必须关闭的缺口
 
-当前剩余按职责和实际调用路径划分，已经闭环的 v51～v62 阶段不再重复列作完全未做：
+当前剩余按实际调用链列出；v51～v67 的已验证阶段不再列为完全未做：
 
-1. 将 H∘Coons 域接入 live 图层成员、保存数据和后域直接点编辑。曲线控制点、ARC／route／offset 派生几何必须共用同一拟合与 provenance 运输，不能从改后的控制柄重新生成一套圆 ARC 冒充原非线性像。
-2. 父拆分的通用材料路径 lineage。默认完整脸与用户耳部档案多数区间为 unscoped / route；CURVE-only 子范围映射不是该合同的完成。保留原材料 t、精确零长度、重复拆分、后续子线编辑及 Recorder 属性响应。
-3. 发布并实际检查已冻结的 Drawing 通用引用作者入口与独立当前形状复制。来源变化与局部覆盖职责分开；独立复制明确生成新自有 ID 和当前形状，引用粘贴保持 live。
-4. 逐项补齐仍缺 schema / 适配的本地 width、profile、inkEnds、lock 等属性，以及局部带 paint 依赖的拓扑身份变化。具体不可表达操作给对象级诊断，不能禁掉整个编辑器。
-5. 跨模式 Undo 仍有来源操作的交互限制；源稿／working-copy 兼容适配仍在。旧 channel runtime 的去留未明确，不能扩大已批准旧房间／权重资产的退役范围。
-6. 新采样与旧模式分支、未实际消费的合同 helper 仍需按活动调用链去重。完成判据是相同职责只有一个执行内核，不能以公共包装或相同按钮替代。每个阶段只声明实际执行过的自动化、UI、保存和性能证据。
+1. 下一候选的 Recording 共用曲边框、继承解绑、own-domain P/绑定和原生曲边独立副本，需发布后的限定 UI 验证。代码已冻结、测试及构建通过，尚不是线上事实。
+2. 父 source 拆分通过非线性拟合域时，须保留 `split(fit(parent))` 的参数 restriction、原材料 t 和后域修正。普通 source split、全路径区间与 Recorder 材质响应已在 v65 闭环；不能将那些结果扩称此非线性组合已完成。
+3. 已携带父级非线性程序的 topology 身份变化、共享 P/alias 输入，仍有精确 guard；当前自有域的 P/绑定/本地 fork 已在下一候选支持。后续应复用同一 lineage 和目标适配，不再写第二套钢笔。
+4. 镜像后的非线性程序尚缺可持久化的反射及端方向描述，独立副本仍原子拒绝该组合。普通镜像副本 v63 已实测；非镜像原生曲边副本在下一候选保留自己的材料输入、域与 postShape，不留下祖先快照。
+5. 局部 lock、其他独立属性作者入口与混合来源/引用曲边目标应按具体调用链核对。已支持的 width/profile/inkEnds、区间起止响应、继承节点绑定和源删除不重复列为缺失。独立布尔属性作者 UI 没有新增；真实插点保持原离散显隐边界已于 v66 实测。
+6. 跨模式 Undo 的旧 guard 去留和旧 channel runtime 退役仍待明确决定；原始文档/working-copy 兼容入口尚存在。已批准旧权重与房间退役已完成。源文件与归档不得随清理被默默丢弃。
 
+每一职责须有一个实际执行内核。当前 neutral SMOOTH component、shared cage controller、共同钢笔和 snapshot 事务已有明确消费者；不能由这些归口推断所有组合和所有历史工具都已完成。
 后续历史段落保留版本来源；若与本节当前状态冲突，以本节为准。
 
 ## v53/v54 与下一候选边界
