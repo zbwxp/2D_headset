@@ -1,14 +1,14 @@
-import {hasEvaluatedDeformationFor,evaluatedMaterialProgram} from '../drawing/evaluatedDeformation';
-import {isLayerCageDomain,type SnapshotLayerAffineDomain} from './layerDomains';
+import {evaluatedMaterialSource,evaluatedMaterialProgram,type EvaluatedMaterialStep} from '../drawing/evaluatedDeformation';
+import {isLayerCageDomain,type SnapshotLayerAffineDomain,type SnapshotLayerDomain} from './layerDomains';
 import {emptyDrawing,parseDrawing,type DrawingDocument,type Point2} from '../drawing/model';
 import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
-import {evaluatedAffine,evaluatedAffineSource} from '../drawing/evaluatedAffine';
+import {evaluatedAffine} from '../drawing/evaluatedAffine';
 import {displayField,displayPath} from '../drawing/displayIntervals';
 import {intervalPinch} from '../drawing/intervalPinch';
 import {fillGeometry,offsetGeometry} from '../drawing/appearance';
-import {identityAffine2D,inverseAffine2D,applyAffine2DVector,type Affine2D} from '../geometry/affine2d';
+import {identityAffine2D,inverseAffine2D,applyAffine2DVector,composeAffine2D,type Affine2D} from '../geometry/affine2d';
 import {placementMatrix} from '../recordingScene/tracks';
-import type {ScenePlacementValue} from '../recordingScene/model';
+import type {ScenePlacementValue,SceneShapeValue} from '../recordingScene/model';
 import {emptyRecordingSnapshot,type RecordingSnapshotWorkspace,type RecordingSnapshot} from './model';
 import {resolveSnapshot,type SnapshotEvaluation} from './evaluation';
 import {drawingIdentityIds,remapDrawingIdentities} from './sources';
@@ -45,11 +45,55 @@ function asPlacement(matrix:Affine2D):ScenePlacementValue|undefined {
  return equivalent(placementMatrix(value),matrix)?value:undefined;
 }
 
+const affineProduct=(program:readonly EvaluatedMaterialStep[])=>program.reduce<Affine2D>((matrix,step)=>step.kind==='affine'?composeAffine2D(step.matrix,matrix):matrix,identityAffine2D());
+/** A parent's domain scope uses its own layer addresses. Only the evaluated
+ * program belongs to the copy; replace those addresses with the new owners. */
+const programValue=(program:readonly EvaluatedMaterialStep[])=>program.map(step=>step.kind==='cage'?{...step,domain:{...step.domain,layerIds:[]}}:step);
+function copyMaterialPrograms(current:DrawingDocument,material:DrawingDocument,copy:RecordingSnapshot,programs:Map<string,EvaluatedMaterialStep[]>,map:(id:string)=>string,freshDomain:()=>string,fail:(id:string,message:string)=>never):Set<string> {
+ const copied=new Set<string>(),groups:{program:EvaluatedMaterialStep[];layers:string[]}[]=[];
+ for(const layer of material.layers){
+  const curves=material.curves.filter(curve=>layer.items.includes(curve.id));
+  if(!curves.some(curve=>programs.get(curve.id)!.some(step=>step.kind!=='affine')))continue;
+  const values=curves.map(curve=>{const program=programs.get(curve.id)!;let first=0;while(program[first]?.kind==='affine')first++;return {curve,prefix:affineProduct(program.slice(0,first)),suffix:program.slice(first)};});
+  const first=values[0];
+  for(const value of values)if(!equivalent(programValue(value.suffix),programValue(first.suffix)))fail(value.curve.id,`layer ${layer.id} contains different nonlinear material programs that cannot share one live layer domain.`);
+  let program=first.suffix;
+  if(values.every(value=>equivalent(value.prefix,first.prefix))){
+   if(!equivalent(first.prefix,identityAffine2D()))program=[{kind:'affine',matrix:first.prefix},...program];
+  }else{
+   const placements:Record<string,ScenePlacementValue>={};
+   for(const value of values){if(equivalent(value.prefix,identityAffine2D()))continue;const placement=asPlacement(value.prefix);if(!placement)fail(value.curve.id,`layer ${layer.id} contains different pre-cage material affines, including a shear or reflection that cannot be represented as native stroke placement.`);placements[map(value.curve.id)]=placement!;}
+   copy.deformation.layers[map(layer.id)]={elementPlacements:placements};
+  }
+  let group=groups.find(group=>equivalent(programValue(group.program),programValue(program)));
+  if(!group){group={program,layers:[]};groups.push(group);}group.layers.push(layer.id);copied.add(layer.id);
+ }
+ if(!groups.length)return copied;
+ const domains=copy.deformation.layerDomains??=[];
+ for(const group of groups){
+  const layerIds=group.layers.map(map),scope=new Set(current.layers.filter(layer=>group.layers.includes(layer.id)).flatMap(layer=>layer.items)),nodes=new Set(current.curves.filter(curve=>scope.has(curve.id)).flatMap(curve=>curve.nodes));
+  const shape=(value:SceneShapeValue):SceneShapeValue=>({nodes:Object.fromEntries(Object.entries(value.nodes).filter(([id])=>nodes.has(id)).map(([id,value])=>[map(id),structuredClone(value)])),handles:Object.fromEntries(Object.entries(value.handles).filter(([id])=>scope.has(id)).map(([id,value])=>[map(id),structuredClone(value)]))});
+  let previous:SnapshotLayerDomain|undefined;
+  for(const step of group.program){
+   if(step.kind==='post-shape'){
+    const postShape=shape(step.value);
+    if(!Object.keys(postShape.nodes).length&&!Object.keys(postShape.handles).length)continue;
+    if(previous&&!previous.postShape)previous.postShape=postShape;
+    else {previous={id:freshDomain(),layerIds:[...layerIds],matrix:identityAffine2D(),postShape};domains.push(previous);}
+   }else{
+    const preferred=step.kind==='cage'?map(step.domain.id):undefined,id=preferred&&!domains.some(domain=>domain.id===preferred)?preferred:freshDomain();
+    previous=step.kind==='cage'?{...structuredClone(step.domain),id,layerIds:[...layerIds]}:{id,layerIds:[...layerIds],matrix:[...step.matrix]};domains.push(previous);
+   }
+  }
+ }
+ return copied;
+}
+
 /** An explicit duplicate starts a new ownership root at the saved source's
  * current shape. It does not retain semantic parents, response recipes, Warp
- * residuals or source membership tombstones. Only deferred affine material
- * geometry remains procedural, so ARC, interval support and fixed widths are
- * unchanged even under shear/reflection/zero scale. */
+ * residuals or source membership tombstones. The selected material input and
+ * its minimal ordered domain program remain owned here, so ARC, interval
+ * support and fixed widths survive without baking deformed control points. */
 export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWorkspace,source:RecordingSnapshot,layerIds:readonly string[],fresh:()=>string):{snapshot:RecordingSnapshot;library:RecordingSnapshotWorkspace['library'];idMap:Record<string,string>} {
  const fail=(elementId:string,message:string,code='INDEPENDENT_COPY_UNSUPPORTED'):never=>{throw new SnapshotIndependentCopyError(code,source.id,elementId,message);};
  const selected=new Set(layerIds),evaluation=resolveSnapshot(workspace,source.id,{useDraft:false}),current=evaluation.drawing;
@@ -61,16 +105,20 @@ export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWork
  }
  for(const join of current.joins)if(join.mode==='ARC'&&current.layers.some(layer=>selected.has(layer.id)&&(layer.items.includes(join.a.curveId)||layer.items.includes(join.b.curveId)))&&(!join.radius||join.radius>2))fail(join.id,'evaluated ARC trim exceeds the independent relation range.');
  for(const link of current.endpointLinks??[])if(link.joinBrush?.kind==='ARC'&&current.layers.some(layer=>selected.has(layer.id)&&(layer.items.includes(link.a.curveId)||layer.items.includes(link.b.curveId)))&&link.joinBrush.trimDistance>2)fail(link.id,'evaluated display ARC trim exceeds the independent relation range.');
- if(current.layers.filter(layer=>selected.has(layer.id)).some(layer=>layer.items.some(id=>hasEvaluatedDeformationFor(current,id)&&(evaluatedMaterialProgram(current,id)?.some(step=>step.kind!=='affine')??true))))fail(source.id,'Retained cage copying requires its own material source and ordered domain program; this copy path does not yet support that representation.');
- const materialSource=evaluatedAffineSource(current)??current,plan=planArtworkLayerImport(materialSource,layerIds);
+ const materialSource=evaluatedMaterialSource(current),plan=planArtworkLayerImport(materialSource,layerIds);
  if(plan.additionalLayerIds.length)fail(plan.dependencies.find(dependency=>plan.additionalLayerIds.includes(dependency.requiredLayerId))?.objectId??source.id,`also select dependent layers: ${plan.additionalLayerIds.join(', ')}.`,'LAYER_DEPENDENCIES');
- const wanted=subset(current,selected),material=subset(materialSource,selected),matrices=new Map(material.curves.map(curve=>[curve.id,objectMatrix(current,curve.id)]));
+ const wanted=subset(current,selected),material=subset(materialSource,selected),programs=new Map<string,EvaluatedMaterialStep[]>();
+ for(const curve of material.curves){const program=evaluatedMaterialProgram(current,curve.id);if(!program)fail(curve.id,'its retained material program has no serializable descriptor. Mirrored nonlinear programs require an explicit reflection and endpoint-direction replay adapter.');programs.set(curve.id,program!);}
+ const matrices=new Map(material.curves.map(curve=>[curve.id,programs.get(curve.id)!.length?affineProduct(programs.get(curve.id)!):objectMatrix(current,curve.id)]));
  // Use one order-preserving namespace for every identity, including relations
  // and range IDs. Node ordering controls open-path material direction.
  const prefix=`copy:${fresh()}:`,mapping=new Map<string,string>(),occupied=new Set([...Object.values(workspace.library).flatMap(values=>Object.keys(values)),...workspace.snapshots.flatMap(snapshot=>[snapshot.id,...snapshot.layers.map(layer=>layer.id),...Object.values(snapshot.relations).flatMap(patch=>[...patch?.add??[],...patch?.update??[]].flatMap((value:{id:string;ranges?:{id:string}[]})=>[value.id,...value.ranges?.map(range=>range.id)??[]])),...snapshot.deformation.layerDomains?.map(domain=>domain.id)??[]])]);
  const map=(id:string)=>{let value=mapping.get(id);if(value)return value;value=prefix+id;if(value.length>16384||occupied.has(value))return fail(id,'a fresh bounded identity could not be allocated.','ID_COLLISION');mapping.set(id,value);occupied.add(value);return value;};
  const copy=emptyRecordingSnapshot(map(source.id),`${source.name.slice(0,230)} independent copy`,source.kind,source.angle);
+ const freshDomain=()=>{const id=`${prefix}stage:${fresh()}`;if(id.length>16384||occupied.has(id))return fail(source.id,'a fresh bounded domain identity could not be allocated.','ID_COLLISION');occupied.add(id);return id;};
+ const programLayers=copyMaterialPrograms(current,material,copy,programs,map,freshDomain,fail);
  for(const layer of material.layers){
+  if(programLayers.has(layer.id))continue;
   const curves=material.curves.filter(curve=>layer.items.includes(curve.id));if(!curves.length)continue;
   const matrix=matrices.get(curves[0].id)!;
   if(curves.every(curve=>equivalent(matrices.get(curve.id),matrix))){
