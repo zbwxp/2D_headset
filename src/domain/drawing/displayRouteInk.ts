@@ -1,3 +1,6 @@
+import {evaluatedDeformationSource,projectEvaluatedGeometry,projectEvaluatedMaterial} from './evaluatedDeformation';
+import {curveSamples} from './curveProvenance';
+import {arcField} from './sampling';
 import {curveById,visible,nodeAt,length,sub,type DrawingDocument as Doc} from './model';
 import {resolveDisplayRoute,type DisplayRoute} from './displayRoutes';
 import {compileDisplayRouteBrushes} from './displayRouteBrush';
@@ -9,6 +12,7 @@ import {evaluatedAffine,evaluatedAffineSource,affineGeometry} from './evaluatedA
 /** First authoring slice: uniform equal-width chains. Reject unsupported style
  * combinations rather than silently borrowing the first layer's appearance. */
 export function displayRouteInkSupport(d:Doc,route:DisplayRoute):string[] {
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource)return displayRouteInkSupport(deformationSource,route);
  if(evaluatedAffine(d,route.seed.segments[0]?.id))return displayRouteInkSupport(evaluatedAffineSource(d)!,route);
  const resolved=resolveDisplayRoute(d,route);if(resolved.diagnostics.length)return resolved.diagnostics.map(x=>x.message);
  const curves=resolved.path.segments.map(u=>curveById(d,u.id));if(!curves.length)return ['显示路径为空。'];
@@ -22,6 +26,10 @@ export interface DisplayRouteInkPlan {runs:Map<string,InkRun[]>;pieces:ReturnTyp
 /** Compile ink once, partition only after measuring/tapering the complete route,
  * then paint fragments at their original member/layer/depth slots. */
 export function displayRouteInk(d:Doc,route:DisplayRoute,positions:ReadonlyMap<string,number>,sampling?:InkSampling):DisplayRouteInkPlan {
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource){
+  const plan=displayRouteInk(deformationSource,route,positions,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialDeformation:shapes=>projectEvaluatedMaterial(d,{...arcField(shapes),geometry:{shapes,pieces:shapes.map(shape=>({shape,owners:[...new Set([0,.5,1].flatMap(t=>curveSamples(shape,t).map(sample=>sample.id)))]}))}})});
+  return {...plan,pieces:projectEvaluatedGeometry(d,{pieces:plan.pieces,shapes:plan.pieces.map(piece=>piece.shape)}).pieces};
+ }
  const affine=evaluatedAffine(d,route.seed.segments[0]?.id);if(affine){
   const plan=displayRouteInk(evaluatedAffineSource(d)!,route,positions,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialAffine:affine});
   return {...plan,pieces:affineGeometry({pieces:plan.pieces,shapes:plan.pieces.map(p=>p.shape)},affine).pieces};

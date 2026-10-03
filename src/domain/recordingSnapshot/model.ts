@@ -2,7 +2,7 @@ import type {SnapshotVisibilityRecipeRegistry} from './visibilityRestriction';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
 import type {SnapshotMaterialPartition} from './materialSplit';
-import type {SnapshotLayerAffineDomain} from './layerDomains';
+import type {SnapshotLayerDomain} from './layerDomains';
 import type {SnapshotResponseExpression} from './responseExpressions';
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
@@ -64,7 +64,7 @@ export interface SnapshotRelationPositionState {sourceLinkIds:string[];offset:Po
 export interface SnapshotDeformationState {
  warps:SnapshotWarpState[];bindings:SnapshotWarpBinding[];
  /** Authored order after curve/layer placement; scope follows current members. */
- layerDomains?:SnapshotLayerAffineDomain[];
+ layerDomains?:SnapshotLayerDomain[];
  layers:Record<string,SnapshotLayerState>;
  relationPositions:Record<string,SnapshotRelationPositionState>;
  /** Source interval ID to suspended inherited/static material channel. */
@@ -238,7 +238,7 @@ export interface SnapshotPoseTrackIndex {
  channel:SnapshotPoseChannel;targetId:string;elementId?:string;
  interpolation:'independent'|'legacy';keys:SnapshotPoseKeyRef[];
 }
-export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'LOCAL_ORIGINAL'|'POSE'|'ROUTE'|'INPUT_MIRROR';
+export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'LOCAL_ORIGINAL'|'POSE'|'ROUTE'|'INPUT_MIRROR'|'LAYER_DOMAIN';
 export interface SnapshotDiagnostic {code:SnapshotDiagnosticCode;message:string;snapshotId?:string;layerId?:string;elementId?:string;channelId?:string}
 /** Path records distinguish equal geometry from conflicting parent states. */
 export interface SnapshotElementProvenance {

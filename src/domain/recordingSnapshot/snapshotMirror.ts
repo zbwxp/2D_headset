@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,remapEvaluatedDeformations} from '../drawing/evaluatedDeformation';
 import type {CurveUse,DrawingDocument,Endpoint,End,Point2,StrokeDisplayIntervals} from '../drawing/model';
 import type {MirrorCurvePair} from '../drawing/mirrorEditing';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../drawing/evaluatedAffine';
@@ -192,6 +193,10 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // material document and conjugating A by R gives R(A(p)) exactly, including
  // nonuniform/singular affine images of ARC joins. Rebuilding a circle from
  // the already-placed controls would silently change that geometry.
+ const deformationMaterial=evaluatedDeformationSource(drawing);
+ if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options).drawing,id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??value;
+  remapEvaluatedDeformations(result,drawing,mirroredMaterial,id,id,{point:reflect,reverse:value=>curveMap[value]?.reverse??false,key:JSON.stringify(['mirror',options.axisX,curveMap])});
+ }
  const material=evaluatedAffineSource(drawing);
  if(material){
   const mirroredMaterial=mirrorSnapshotDrawing(material,options).drawing;

@@ -1,3 +1,9 @@
+import {displayField,displayPath} from '../drawing/displayIntervals';
+import {derivedUses} from '../drawing/roundedJoin';
+import {strokes,strokePaths} from '../drawing/strokes';
+import {appendEvaluatedDeformation,evaluatedControlParameter,evaluatedControlParameterSlope} from '../drawing/evaluatedDeformation';
+import {applyDrawingShapeValue} from '../drawing/sparseShape';
+import {createCubicCorrectionProjector} from '../drawing/cubicCorrection';
 import {createCageGeometryProjector,type CageFitDiagnostic} from '../drawing/cageGeometry';
 import {shapeOf,length,sub,type DrawingDocument,type Point2,type Cubic} from '../drawing/model';
 import {layerCageDomainProjection,type SnapshotLayerCageDomain} from './layerCageDomain';
@@ -27,8 +33,29 @@ export function evaluateLayerCageDomain(input:DrawingDocument,domain:SnapshotLay
   if(size<1e-14?oldSize>=1e-14:(a[0]*b[0]+a[1]*b[1])/size>-1+1e-6)throw Error(`Cage domain ${domain.id} cannot preserve SMOOTH relation ${join.id} in this scope.`);
  }
  const controlDrawing:DrawingDocument=fits.size?{...input,nodes:input.nodes.map(node=>positions.has(node.id)?{...node,position:positions.get(node.id)!}:node),curves:input.curves.map(curve=>{const result=fits.get(curve.id);return result?{...curve,handles:[result.shape[1],result.shape[2]]}:curve;})}:input;
- return {controlDrawing,curveIds:curves,fits,diagnostics,
+ return {controlDrawing,curveIds:curves,fits,diagnostics,projector,
   maxError:diagnostics.reduce((maximum,item)=>Math.max(maximum,item.maxError),0),
   projectGeometry:projector.projectGeometry,projectMaterialField:projector.projectMaterialField,
  };
+}
+
+/** Runtime consumer used by the ordered Snapshot domain pipeline. */
+export function applyLayerCageDomain(input:DrawingDocument,domain:SnapshotLayerCageDomain,postShape?:import('../recordingScene/model').SceneShapeValue,tolerance=.00004):DrawingDocument {
+ if(domain.enabled===false){layerCageDomainProjection(domain);return input;}
+ const evaluated=evaluateLayerCageDomain(input,domain,tolerance);
+ let drawing=appendEvaluatedDeformation(evaluated.controlDrawing,input,evaluated.curveIds,evaluated.projector,JSON.stringify(domain),new Map([...evaluated.fits].map(([id,fit])=>[id,fit.parameters])),{kind:'cage',domain});
+ if(postShape)drawing=applyLayerDomainPostShape(drawing,postShape,new Set(input.layers.filter(layer=>domain.layerIds.includes(layer.id)).flatMap(layer=>layer.items)),tolerance);
+ for(const layer of drawing.layers)for(const stroke of strokes(drawing,layer.id))for(const path of strokePaths(stroke))if(path.segments.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,path.segments,path.closed);if(geometry.error)throw Error(geometry.error);}
+ for(const fill of drawing.fills)if(fill.boundary.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,fill.boundary,true);if(geometry.error)throw Error(geometry.error);}
+ for(const track of drawing.displayIntervals??[]){const path=displayPath(drawing,track.anchor.id);if(path.segments.some(use=>evaluated.curveIds.has(use.id)))displayField(drawing,path);}
+ return drawing;
+}
+/** Same sparse-control engine as Scene, followed by the same derived fitter. */
+export function applyLayerDomainPostShape(input:DrawingDocument,value:import('../recordingScene/model').SceneShapeValue,scope:ReadonlySet<string>,tolerance=.00004):DrawingDocument {
+ const availableCurves=new Set(input.curves.filter(curve=>scope.has(curve.id)).map(curve=>curve.id)),availableNodes=new Set(input.curves.filter(curve=>availableCurves.has(curve.id)).flatMap(curve=>curve.nodes));
+ if(Object.keys(value.handles).some(id=>input.curves.some(curve=>curve.id===id)&&!availableCurves.has(id))||Object.keys(value.nodes).some(id=>input.nodes.some(node=>node.id===id)&&!availableNodes.has(id)))throw Error('A post-domain correction targets controls outside its live layer scope.');
+ const shaped=applyDrawingShapeValue(input,value);if(shaped.issues.length)throw Error(shaped.issues[0].message);if(!shaped.changed)return input;
+ const projector=createCubicCorrectionProjector(input,shaped.drawing,(id,t)=>evaluatedControlParameter(input,id,t),(id,t)=>evaluatedControlParameterSlope(input,id,t),tolerance);
+ const curves=new Set(input.curves.filter(curve=>scope.has(curve.id)||projector.curveIds.has(curve.id)).map(curve=>curve.id));
+ return appendEvaluatedDeformation(shaped.drawing,input,curves,projector,JSON.stringify(['post-shape',value]),new Map(),{kind:'post-shape',value});
 }

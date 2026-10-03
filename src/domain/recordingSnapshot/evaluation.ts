@@ -1,5 +1,10 @@
+import {applyLayerDomainPostShape} from './layerCageEvaluation';
 import {dominantSnapshotBasis} from './simplexSupport';
 import {applySnapshotVisibilityState,evaluateSnapshotVisibilityRecipe,snapshotVisibilityRecipeDependencies} from './visibilityRestriction';
+import {displayField,displayPath} from '../drawing/displayIntervals';
+import {derivedUses} from '../drawing/roundedJoin';
+import {applyLayerDomains} from './layerDomainEvaluation';
+import {hasEvaluatedDeformation,evaluatedDeformationDiagnostics,evaluatedMaterialSource,projectEvaluatedGeometry} from '../drawing/evaluatedDeformation';
 import {snapshotMaterialPartitionValue} from './materialSplit';
 import {placeDrawingAffines,drawingLayerObjectOwners} from '../drawing/affineDrawing';
 import {layerDomainMatrices} from './layerDomains';
@@ -17,11 +22,11 @@ import {transportSnapshotSimplexMaterial} from './simplexMaterial';
 import {blendSnapshotPropertyValues,createSnapshotPropertyResponseSampler,snapshotPropertyResponsesCacheKey} from './propertyResponses';
 import {createSnapshotSurfaceValueSampler} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
-import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
+import {emptyDrawing,layerFor,shapeOf,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
 import {registerEvaluatedAffine,evaluatedAffine,evaluatedAffineSource,type EvaluatedAffine} from '../drawing/evaluatedAffine';
 import {createDisplayRouteField,resolveDisplayRoute} from '../drawing/displayRoutes';
-import {paintItems} from '../drawing/strokes';
+import {paintItems,strokes,strokePaths} from '../drawing/strokes';
 import {InputCache} from '../geometry/cache';
 import {applySceneShapes} from '../recordingScene/shapes';
 import {drawingSignature} from '../vectorRecording/model';
@@ -234,16 +239,21 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
  const evaluated:SceneEvaluation={...base,angle:{...angle},drawing:shaped.drawing,preShapeDrawing:base.drawing,prePlacementDrawing:shaped.drawing,diagnostics:stageDiagnostics,fitDiagnostics:shaped.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:shaped.warningCurveIds,intervalTransportErrors:shaped.intervalTransportErrors,maxError:shaped.maxError};
  const prefix=instanceObjectId(instanceId,''),raw=(id:string)=>id.startsWith(prefix)?id.slice(prefix.length):id;
  const canonical=(drawing:DrawingDocument)=>{let result=canonicalStageDrawings.get(drawing);if(!result){result=remapDrawingIdentities(drawing,raw);canonicalStageDrawings.set(drawing,result);}return result;};
- const preShapeDrawing=canonical(evaluated.preShapeDrawing),preElementPlacementDrawing=canonical(evaluated.prePlacementDrawing),unplaced=canonical(evaluated.drawing);
+ const preShapeDrawing=canonical(evaluated.preShapeDrawing);let preElementPlacementDrawing=canonical(evaluated.prePlacementDrawing),unplaced=canonical(evaluated.drawing);
  // Namespacing and the identity scene stage copy arrays. If downstream geometry
  // is unchanged, its inherited ARC material projection remains the same.
- if(evaluatedAffineSource(source)){const nodes=new Map(source.nodes.map(node=>[node.id,node])),curves=new Map(source.curves.map(curve=>[curve.id,curve]));const sameGeometry=(drawing:DrawingDocument)=>drawing.nodes.length===source.nodes.length&&drawing.curves.length===source.curves.length&&drawing.nodes.every(node=>same(node.position,nodes.get(node.id)?.position))&&drawing.curves.every(curve=>same(curve.handles,curves.get(curve.id)?.handles));
+ if(evaluatedAffineSource(source)||hasEvaluatedDeformation(source)){const nodes=new Map(source.nodes.map(node=>[node.id,node])),curves=new Map(source.curves.map(curve=>[curve.id,curve]));const sameGeometry=(drawing:DrawingDocument)=>drawing.nodes.length===source.nodes.length&&drawing.curves.length===source.curves.length&&drawing.nodes.every(node=>same(node.position,nodes.get(node.id)?.position))&&drawing.curves.every(curve=>same(curve.handles,curves.get(curve.id)?.handles));
+  if(hasEvaluatedDeformation(source)){
+   if(!sameGeometry(preShapeDrawing))throw Error('A new Warp after an inherited retained cage needs an explicit derived-geometry program. Edit the owning cage input or disable the inherited cage first.');
+   retainSnapshotAffines(preShapeDrawing,[source]);
+   if(!options.omitShapes&&(Object.keys(shape.nodes).length||Object.keys(shape.handles).length)){preElementPlacementDrawing=applyLayerDomainPostShape(preShapeDrawing,shape,new Set(source.curves.map(curve=>curve.id)));unplaced=preElementPlacementDrawing;}
+  }
   for(const drawing of new Set([preShapeDrawing,preElementPlacementDrawing,unplaced]))if(sameGeometry(drawing))retainSnapshotAffines(drawing,[source]);}
  const placements=Object.fromEntries(snapshot.layers.map(l=>[l.id,state.layers[l.id]?.placement??identityScenePlacement()]));
  const elementPlacements=Object.assign({},...Object.values(state.layers).map(layer=>layer.elementPlacements??{})) as Record<string,ScenePlacementValue>,prePlacementDrawing=options.omitPlacements?unplaced:placeSnapshotElements(unplaced,elementPlacements);
  const domainMatrices=layerDomainMatrices(state.layerDomains,snapshot.layers.map(layer=>layer.id));
  let drawing=options.omitPlacements?unplaced:placeLayers(prePlacementDrawing,placements);
- if(!options.omitPlacements){const owners=drawingLayerObjectOwners(drawing);drawing=placeDrawingAffines(drawing,domainMatrices,id=>owners.get(id));}
+ if(!options.omitPlacements)drawing=applyLayerDomains(drawing,state.layerDomains,{tolerance:options.tolerance??1/250,onFailure:(domain,error)=>diagnostics.push({code:'LAYER_DOMAIN',snapshotId:snapshot.id,channelId:domain.id,message:`Layer domain ${domain.id} cannot evaluate its live members: ${(error as Error).message} Its input is shown so the authored domain can be repaired or disabled.`})});
  if(deferred.size){
   const tracks=(source.displayIntervals??[]).filter(track=>deferred.has(track.id)).map(track=>{const value=state.layers[layerFor(source,track.anchor.id)!.id]?.intervals?.[track.id];return applyIntervalEnableFlags([value?.appearance??track],value?.enabled??{})[0];});
   const target=retainSnapshotAffines({...drawing,displayIntervals:[...drawing.displayIntervals??[],...tracks]},[drawing]),transported:typeof tracks=[];
@@ -258,10 +268,17 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
   drawing=retainSnapshotAffines({...target,displayIntervals:[...drawing.displayIntervals??[],...transported]},[target]);
  }
 
+ if(hasEvaluatedDeformation(drawing)){
+  const material=evaluatedMaterialSource(drawing),shapes=material.curves.map(curve=>shapeOf(material,curve.id));
+  projectEvaluatedGeometry(drawing,{shapes,pieces:shapes.map((shape,i)=>({shape,owners:[material.curves[i].id]}))});
+  for(const layer of drawing.layers)for(const stroke of strokes(drawing,layer.id))for(const path of strokePaths(stroke))derivedUses(drawing,path.segments,path.closed);
+  for(const track of drawing.displayIntervals??[])displayField(drawing,displayPath(drawing,track.anchor.id));
+ }
+ const domainFits=evaluatedDeformationDiagnostics(drawing);for(const fit of domainFits)if(fit.exceedsTolerance)diagnostics.push({code:'POSE',snapshotId:snapshot.id,elementId:fit.owners[0],message:`Retained domain sampled fit error ${fit.maxError} exceeds ${fit.tolerance}${fit.joinId?` on ARC ${fit.joinId}`:''}.`});
  const placedNodes=new Map(drawing.nodes.map(n=>[n.id,n.position])),placedCurves=new Map(drawing.curves.map(c=>[c.id,c]));for(const link of drawing.endpointLinks??[]){const a=placedNodes.get(placedCurves.get(link.a.curveId)?.nodes[link.a.end]??''),b=placedNodes.get(placedCurves.get(link.b.curveId)?.nodes[link.b.end]??'');if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-8)diagnostics.push({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:link.id,message:'Layer placement separates linked endpoints. Connected layers need coherent placement values.'});}
  for(const diagnostic of evaluated.diagnostics)diagnostics.push({code:diagnostic.code==='ROUTE'?'ROUTE':'POSE',snapshotId:snapshot.id,layerId:diagnostic.sourceLayerId,elementId:diagnostic.sourceObjectId,channelId:diagnostic.trackId,message:diagnostic.message});
  const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const element=elementPlacements[sourceCurveId]??identityScenePlacement(),domain=domainMatrices[layerFor(source,sourceCurveId)?.id??'']??identityAffine2D(),map=(p:Point2)=>applyAffine2D(domain,applyScenePlacement(placement,applyScenePlacement(element,p))),maximum=affine2DMaxScale(domain)*scenePlacementMaxScale(placement)*scenePlacementMaxScale(element),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(map) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:map(d.peakExpected),peakActual:map(d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});
- return {drawing,preShapeDrawing,prePlacementDrawing,preElementPlacementDrawing,elementPlacements,angle:evaluated.angle,state,diagnostics,warpGrids:evaluated.warpGrids,placements,paintBatches:depthPaintBatches(drawing),fitDiagnostics,warningCurveIds:fitDiagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId),intervalTransportErrors:evaluated.intervalTransportErrors.map(e=>({...e,trackId:raw(e.trackId),sourceCurveIds:e.sourceCurveIds.map(raw)})),maxError:fitDiagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds.map(raw)};
+ return {drawing,preShapeDrawing,prePlacementDrawing,preElementPlacementDrawing,elementPlacements,angle:evaluated.angle,state,diagnostics,warpGrids:evaluated.warpGrids,placements,paintBatches:depthPaintBatches(drawing),fitDiagnostics,warningCurveIds:[...new Set([...fitDiagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId),...domainFits.filter(d=>d.exceedsTolerance).flatMap(d=>d.owners)])],intervalTransportErrors:evaluated.intervalTransportErrors.map(e=>({...e,trackId:raw(e.trackId),sourceCurveIds:e.sourceCurveIds.map(raw)})),maxError:Math.max(fitDiagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),...domainFits.map(d=>d.maxError)),diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds.map(raw)};
 }
 function evaluateLegacySnapshot(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions):SnapshotEvaluation {
  const scene=recording.legacy!.scene;

@@ -1,7 +1,6 @@
-import {add,sub,mul,length,finitePoint,nodeAt,curveById,shapeOf,type DrawingDocument,type Endpoint,type Point2,type Cubic} from '../drawing/model';
+import {add,sub,mul,length,finitePoint,nodeAt,curveById,shapeOf,type DrawingDocument,type Point2,type Cubic} from '../drawing/model';
 import {moveNode,moveHandle} from '../drawing/commands';
-import {linkedNodeIds} from '../drawing/endpointLinks';
-import {drawingSmoothComponents as smoothComponents,projectDrawingSmoothComponent as projectSmooth} from '../drawing/smoothHandleAuthoring';
+import {applyDrawingShapeValue} from '../drawing/sparseShape';
 export {projectDrawingSmoothHandle as projectSceneSmoothHandle} from '../drawing/smoothHandleAuthoring';
 import {transportDeformedIntervals} from '../drawing/deform';
 import {displayPath} from '../drawing/displayIntervals';
@@ -11,10 +10,7 @@ import {instanceObjectId,identitySceneShape,type RecordingScene,type SceneSource
 import {evaluateShapeTrack} from './tracks';
 import {evaluateScene} from './evaluation';
 
-const endpointKey=(e:Endpoint)=>JSON.stringify([e.curveId,e.end]);
 const zero=():Point2=>[0,0];
-const offset=(value:SceneShapeValue,id:string):Point2=>Object.hasOwn(value.nodes,id)?value.nodes[id]:zero();
-const handles=(value:SceneShapeValue,id:string):[Point2,Point2]=>Object.hasOwn(value.handles,id)?value.handles[id]:[zero(),zero()];
 const nonzero=(p:Point2)=>p[0]!==0||p[1]!==0;
 const cubicAt=(shape:Cubic,t:number):Point2=>{const u=1-t,weights=[u*u*u,3*u*u*t,3*u*t*t,t*t*t];return shape.reduce<Point2>((p,q,i)=>add(p,mul(q,weights[i])),[0,0]);};
 
@@ -28,16 +24,13 @@ export function applySceneShapes(result:DeformedDrawing,scene:RecordingScene,ang
   for(const id of Object.keys(value.nodes))if(!nodes.has(instanceObjectId(instanceId,id)))diagnostics.push({code:'SHAPE',instanceId,trackId:track.id,sourceObjectId:id,message:'The shape node is missing or outside this instance; its offset is retained.'});
   for(const id of Object.keys(value.handles))if(!curves.has(instanceObjectId(instanceId,id)))diagnostics.push({code:'SHAPE',instanceId,trackId:track.id,sourceObjectId:id,message:'The shape curve is missing or outside this instance; its handle offsets are retained.'});
  }
- const deltas=new Map<string,Point2>(),visited=new Set<string>();
- for(const node of before.nodes){if(visited.has(node.id))continue;const component=[...linkedNodeIds(before,node.id)].sort();component.forEach(id=>visited.add(id));
-  const requested=component.map(id=>{const p=provenance[id],v=p&&values.get(p.instanceId)?.value;return v?offset(v,p.sourceId):zero();}),first=requested[0];
-  if(requested.some(p=>length(sub(first,p))>1e-8)){const p=provenance[node.id];diagnostics.push({code:'SHAPE',instanceId:p?.instanceId,sourceObjectId:p?.sourceId,message:'Linked endpoint shape offsets conflict; this linked component keeps its Warp positions.'});component.forEach(id=>deltas.set(id,zero()));}
-  else component.forEach(id=>deltas.set(id,first));
- }
- const changedHandles=new Set<string>();
- const drawing:DrawingDocument={...before,nodes:before.nodes.map(n=>({...n,position:add(n.position,deltas.get(n.id)??zero())})),curves:before.curves.map(c=>{const p=provenance[c.id],value=p&&values.get(p.instanceId)?.value,delta=value?handles(value,p.sourceId):[zero(),zero()];return {...c,handles:([0,1] as const).map(end=>{if(nonzero(delta[end]))changedHandles.add(endpointKey({curveId:c.id,end}));return add(add(c.handles[end],deltas.get(c.nodes[end])??zero()),delta[end]);}) as [Point2,Point2]};})};
- const changed=drawing.nodes.some(n=>nonzero(deltas.get(n.id)??zero()))||changedHandles.size>0;if(!changed)return result;
- for(const component of smoothComponents(drawing))if([...component.ends.keys()].some(id=>changedHandles.has(id)))try{projectSmooth(drawing,component);}catch(error){const p=provenance[component.driver.curveId];diagnostics.push({code:'SHAPE',instanceId:p?.instanceId,sourceObjectId:p?.sourceId,message:error instanceof Error?error.message:String(error)});}
+ const canonical:SceneShapeValue={
+  nodes:Object.fromEntries(before.nodes.flatMap(node=>{const p=provenance[node.id],value=p&&values.get(p.instanceId)?.value;return value&&Object.hasOwn(value.nodes,p.sourceId)?[[node.id,value.nodes[p.sourceId]]]:[];})),
+  handles:Object.fromEntries(before.curves.flatMap(curve=>{const p=provenance[curve.id],value=p&&values.get(p.instanceId)?.value;return value&&Object.hasOwn(value.handles,p.sourceId)?[[curve.id,value.handles[p.sourceId]]]:[];})),
+ };
+ const {drawing,changed,issues}=applyDrawingShapeValue(before,canonical);
+ for(const issue of issues){const p=issue.targetId===undefined?undefined:provenance[issue.targetId];diagnostics.push({code:'SHAPE',instanceId:p?.instanceId,sourceObjectId:p?.sourceId,message:issue.message});}
+ if(!changed)return result;
  const intervalTransportErrors=[...result.intervalTransportErrors];
  if(before.displayIntervals?.length){
   drawing.displayIntervals=before.displayIntervals.map(track=>{

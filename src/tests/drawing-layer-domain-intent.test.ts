@@ -1,3 +1,8 @@
+import {prepareDrawingCageControlPreview} from '../app/drawingSnapshotEdit';
+import {createLayerCageIntent} from '../domain/drawing/layerDomainIntent';
+import {drawingDeformProjection} from '../domain/deformation/cageField';
+import {fitDeformedCubic} from '../domain/deformation/cubicDeformation';
+import {neutralBend} from '../domain/deformation/coons';
 import {afterEach,expect,test,vi} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -9,7 +14,7 @@ import {prepareSnapshotEdit,snapshotEditContext} from '../app/snapshotEditTransa
 import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
 import {emptyDrawing,shapeOf,type Cubic,type DrawingDocument,type Point2} from '../domain/drawing/model';
-import {createCurve,moveHandle,connect} from '../domain/drawing/commands';
+import {createCurve,moveHandle,moveNode,connect,linkEndpoints} from '../domain/drawing/commands';
 import {createLayerDomainIntent,createLayerAffineIntent,layerSimilarityValue} from '../domain/drawing/layerDomainIntent';
 import {applyAffine2D,composeAffine2D,type Affine2D} from '../domain/geometry/affine2d';
 import {applyLayerEditIntent,mapLayerEditIntent} from '../domain/drawing/layerEditIntent';
@@ -22,7 +27,7 @@ import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
 import {createWarpGrid} from '../domain/vectorWarp/model';
 import {identityScenePlacement} from '../domain/recordingScene/model';
 import {applyScenePlacement,composePlacementSimilarity,placementMatrix} from '../domain/recordingScene/tracks';
-import {currentDrawingPresentation} from '../ui/drawing/snapshotPresentation';
+import {currentDrawingPresentation,drawingSnapshotPresentation} from '../ui/drawing/snapshotPresentation';
 import {prepareDrawingLayerReferencePaste} from '../ui/drawing/layerReferenceClipboard';
 import {commitDrawingSnapshotEdit,prepareDrawingSnapshotEdit,prepareDrawingLayerDomainEdit} from '../ui/drawing/snapshotEditContext';
 import {layerSimilarityIntentForSelection} from '../ui/drawing/layerDomainGesture';
@@ -176,7 +181,7 @@ test.each(([[2,0,0,1,0,0],[-1,0,0,1,0,0],[0,0,0,1,0,0],[0,0,0,0,.2,.3],[1,.3,.7,
 test('ordered affine and later similarity domains preserve composition, live source edits and JSON roundtrip',()=>{
  const f=fixture(),api=apiEditor(f.project),a:Affine2D=[2,.3,.4,-1,.2,.1],b:Affine2D=[0,1,-1,0,.4,.2],c:Affine2D=[1,0,0,1,.3,.4];
  value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:a},{op:'transformLayers',layerIds:[bid('layer')],matrix:b},{op:'transformLayers',layerIds:[bid('layer')],matrix:c}]}));const after=useEditor.getState().project,domains=drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!.deformation.layerDomains!;
- expect(JSON.stringify(domains.map(domain=>domain.matrix))).toBe(JSON.stringify([a,b,c]));expect(new Set(domains.map(domain=>domain.id)).size).toBe(3);const matrix=composeAffine2D(c,composeAffine2D(b,a)),before=currentDrawingPresentation(f.project);
+ expect(JSON.stringify(domains.map(domain=>domain.kind==='h-coons'?undefined:domain.matrix))).toBe(JSON.stringify([a,b,c]));expect(new Set(domains.map(domain=>domain.id)).size).toBe(3);const matrix=composeAffine2D(c,composeAffine2D(b,a)),before=currentDrawingPresentation(f.project);
  shapeOf(currentDrawingPresentation(after),bid('curve')).forEach((point,i)=>near(point,applyAffine2D(matrix,shapeOf(before,bid('curve'))[i])));
  const reloaded={...after,recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(after.recordingSnapshots)))};expect(currentDrawingPresentation(reloaded).curves).toEqual(currentDrawingPresentation(after).curves);
 });
@@ -219,4 +224,53 @@ test('replacing an earlier domain refuses a newly separated true linked endpoint
  const f=fixture(),other:DrawingDocument={...f.other,nodes:[...f.other.nodes,{id:'c',position:[1,0]},{id:'d',position:[2,0]}],curves:[...f.other.curves,{...f.other.curves[0],id:'second',nodes:['c','d'],handles:[[1.3,0],[1.7,0]]}],layers:[...f.other.layers,{id:'second-layer',name:'Second',visible:true,locked:false,items:['second']}],endpointLinks:[{id:'link',a:{curveId:'curve',end:1},b:{curveId:'second',end:0}}]},project=fixture(other).project,snapshot=drawingSnapshotForArtwork(project.recordingSnapshots!,'A')!;
  snapshot.deformation.layerDomains=[{id:'first',layerIds:[bid('layer'),bid('second-layer')],matrix:[1,0,0,1,0,0]},{id:'later',layerIds:[bid('layer')],matrix:[2,0,0,1,-1,0]}];const before=JSON.stringify(project);
  expect(()=>prepareDrawingLayerDomainEdit(project,createLayerAffineIntent([bid('layer'),bid('second-layer')],[1,0,0,1,.5,0],{operationId:'first',replace:true}))).toThrow(/linked|relation/i);expect(JSON.stringify(project)).toBe(before);
+});
+
+
+test('referenced cage creation, live source member, sparse A edit and JSON retain the authored field',()=>{
+ const f=fixture(),bend=neutralBend();bend.handles[1][0][0]=bend.handles[1][1][0]=1.2;
+ const cage={kind:'h-coons' as const,restRect:{min:[-.2,-.2] as Point2,max:[1.2,1.2] as Point2},quad:[[-.2,-.2],[1.1,-.1],[1,1.2],[-.1,1]] as import('../domain/deformation/cageField').Quad,bend},intent=createLayerCageIntent([bid('layer')],cage),before=currentDrawingPresentation(f.project),plan=prepareDrawingLayerDomainEdit(f.project,intent);
+ expect(plan.project.drawing).toBe(f.project.drawing);expect(plan.project.recordingSnapshots!.library).toEqual(f.project.recordingSnapshots!.library);
+ expect(shapeOf(plan.drawing,bid('curve'))).toEqual(fitDeformedCubic(shapeOf(before,bid('curve')),drawingDeformProjection(cage.restRect,cage.quad,bend)).shape);
+ const target:Point2=[shapeOf(plan.drawing,bid('curve'))[1][0]+.05,shapeOf(plan.drawing,bid('curve'))[1][1]+.07],edited=prepareDrawingSnapshotEdit(plan.project,moveHandle(plan.drawing,{curveId:bid('curve'),end:0},target));
+ near(shapeOf(currentDrawingPresentation(edited.project),bid('curve'))[1],target);
+ const domain=drawingSnapshotForArtwork(edited.project.recordingSnapshots!,'A')!.deformation.layerDomains![0];expect(Object.keys(domain.postShape!.handles)).toEqual([bid('curve')]);expect(local(edited.project)?.shape).toBeUndefined();
+ const added:Cubic=[[0,.7],[.2,.8],[.7,.9],[1,.7]],live=syncRecordingSnapshotSources({...edited.project,drawingWorkingCopies:{B:createCurve(f.other,'layer',added,.01,'New','new')}}),view=currentDrawingPresentation(live);
+ expect(shapeOf(view,bid('new'))).toEqual(fitDeformedCubic(added,drawingDeformProjection(cage.restRect,cage.quad,bend)).shape);
+ expect(Object.keys(drawingSnapshotForArtwork(live.recordingSnapshots!,'A')!.deformation.layerDomains![0].postShape!.handles)).toEqual([bid('curve')]);
+ const loaded={...live,recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(live.recordingSnapshots)))};expect(currentDrawingPresentation(loaded).curves).toEqual(view.curves);
+});
+
+test('UI-style cage intent and layer API share creation, parameter replacement, disable and one Undo',()=>{
+ const f=fixture(),api=apiEditor(f.project),bounds={min:[-.2,-.2] as Point2,max:[1.2,1.2] as Point2},quad=[[-.2,-.2],[1.1,-.1],[1,1.2],[-.1,1]] as import('../domain/deformation/cageField').Quad,bend=neutralBend();bend.handles[2][0][1]+=.12;
+ const result=value(api.execute({commands:[{op:'deformLayers',layerIds:[bid('layer')],bounds,quad,bend}]})),created=useEditor.getState().project,id=result.domainIntents![0].operationId,ui=prepareDrawingLayerDomainEdit(f.project,createLayerCageIntent([bid('layer')],{kind:'h-coons',restRect:bounds,quad,bend},{operationId:id}));
+ expect(currentDrawingPresentation(created)).toEqual(ui.drawing);expect(useEditor.getState().past).toEqual([f.project]);
+ useEditor.getState().undo();expect(useEditor.getState().project).toBe(f.project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(created);
+ value(api.execute({commands:[{op:'setLayerDomain',domainId:id,enabled:false}]}));expect(shapeOf(currentDrawingPresentation(useEditor.getState().project),bid('curve'))).toEqual(shapeOf(currentDrawingPresentation(f.project),bid('curve')));
+ value(api.execute({commands:[{op:'setLayerDomain',domainId:id,enabled:true,quad:quad.map(([x,y])=>[x+.05,y]) as typeof quad}]}));expect(drawingSnapshotForArtwork(useEditor.getState().project.recordingSnapshots!,'A')!.deformation.layerDomains).toHaveLength(1);
+});
+
+test('a later source member beyond the cage horizon stays visible with a diagnostic and the saved cage can be reset',()=>{
+ const f=fixture(),cage={kind:'h-coons' as const,restRect:{min:[-1,-1] as Point2,max:[1,1] as Point2},quad:[[-1,-1],[1,-1],[.5,1],[-.5,1]] as import('../domain/deformation/cageField').Quad},intent=createLayerCageIntent([bid('layer')],cage),created=prepareDrawingLayerDomainEdit(f.project,intent).project,added:Cubic=[[0,-100],[.2,-100],[.2,-99],[0,-99]],live=syncRecordingSnapshotSources({...created,drawingWorkingCopies:{B:createCurve(f.other,'layer',added,.01,'Outside','outside')}});
+ const view=currentDrawingPresentation(live);expect(drawingSnapshotPresentation(live.recordingSnapshots!,'A')!.evaluation.diagnostics.some(value=>value.code==='LAYER_DOMAIN')).toBe(true);expect(shapeOf(view,bid('outside'))).toEqual(added);expect(drawingSnapshotForArtwork(live.recordingSnapshots!,'A')!.deformation.layerDomains![0]).toEqual({...cage,id:intent.operationId,layerIds:[bid('layer')]});
+ const reset=prepareDrawingLayerDomainEdit(live,createLayerCageIntent([bid('layer')],{...cage,enabled:false},{operationId:intent.operationId,replace:true}));expect(shapeOf(reset.drawing,bid('outside'))).toEqual(added);
+ const repaired=prepareDrawingLayerDomainEdit(live,createLayerCageIntent([bid('layer')],{...cage,quad:[[-1,-1],[1,-1],[1,1],[-1,1]]},{operationId:intent.operationId,replace:true}));shapeOf(repaired.drawing,bid('outside')).forEach((p,i)=>near(p,added[i]));
+});
+
+
+test('Drawing cage A preview replays the same retained ARC as commit without changing the project',()=>{
+ let other=fixture().other;other=createCurve(other,'layer',[[1,0],[1,.3],[1,.7],[1,1]],.01,'Next','next');other=connect(other,{curveId:'curve',end:1},{curveId:'next',end:0},'ARC',.1);
+ const f=fixture(other),cage={kind:'h-coons' as const,restRect:{min:[-.2,-.2] as Point2,max:[1.2,1.2] as Point2},quad:[[-.2,-.2],[1.1,-.1],[1,1.2],[-.1,1]] as import('../domain/deformation/cageField').Quad},created=prepareDrawingLayerDomainEdit(f.project,createLayerCageIntent([bid('layer')],cage)),before=JSON.stringify(created.project),p=shapeOf(created.drawing,bid('curve'))[2],wanted=moveHandle(created.drawing,{curveId:bid('curve'),end:1},[p[0]+.02,p[1]+.03]),preview=prepareDrawingCageControlPreview(created.project,created.drawing,wanted)!;
+ const committed=prepareDrawingSnapshotEdit(created.project,wanted),path=strokeFor(preview,bid('curve'));
+ expect(derivedUses(preview,path.segments).shapes).toEqual(derivedUses(currentDrawingPresentation(committed.project),path.segments).shapes);expect(JSON.stringify(created.project)).toBe(before);
+ const api=apiEditor(created.project);value(api.execute({commands:[{op:'moveHandle',curveId:bid('curve'),end:1,position:[p[0]+.02,p[1]+.03]}]}));expect(derivedUses(currentDrawingPresentation(useEditor.getState().project),path.segments).shapes).toEqual(derivedUses(preview,path.segments).shapes);expect(useEditor.getState().past).toEqual([created.project]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(created.project);
+ const node=created.drawing.curves.find(curve=>curve.id===bid('curve'))!.nodes[0],position=created.drawing.nodes.find(value=>value.id===node)!.position,nextPosition:Point2=[position[0]+.03,position[1]+.02],nodePreview=prepareDrawingCageControlPreview(created.project,created.drawing,moveNode(created.drawing,node,nextPosition))!;value(api.execute({commands:[{op:'moveNode',nodeId:node,position:nextPosition}]}));expect(derivedUses(currentDrawingPresentation(useEditor.getState().project),path.segments).shapes).toEqual(derivedUses(nodePreview,path.segments).shapes);expect(useEditor.getState().past).toEqual([created.project]);
+});
+
+
+test('source-original A API reads the resolved local SMOOTH overlay before routing source writes',()=>{
+ let drawing=createCurve(fixture().drawing,'layer',[[1,0],[1.2,.2],[1.6,.2],[2,0]],.01,'Next','next');drawing=linkEndpoints(drawing,{curveId:'curve',end:1},{curveId:'next',end:0},true);drawing={...drawing,endpointLinks:drawing.endpointLinks!.map(link=>({...link,joinBrush:{kind:'ARC' as const,trimDistance:.1}}))};
+ const project=ensureRecordingSnapshots({...createEmptyProject(),drawing}),snapshot=drawingSnapshotForArtwork(project.recordingSnapshots,'$working')!,canonical=drawingSnapshotPresentation(project.recordingSnapshots,'$working')!.evaluation.drawing.endpointLinks![0];snapshot.relations.endpointLinks={update:[{...canonical,joinBrush:{kind:'SMOOTH'}}]};project.recordingSnapshots=structuredClone(project.recordingSnapshots);
+ const before=currentDrawingPresentation(project),link=before.endpointLinks![0],position:Point2=[.75,.18],ui=prepareDrawingSnapshotEdit(project,moveHandle(before,link.a,position)).project;expect(project.drawing!.endpointLinks![0].joinBrush!.kind).toBe('ARC');expect(link.joinBrush!.kind).toBe('SMOOTH');
+ const api=apiEditor(project);value(api.execute({commands:[{op:'moveHandle',curveId:link.a.curveId,end:link.a.end,position}]}));const after=currentDrawingPresentation(useEditor.getState().project),expected=currentDrawingPresentation(ui);for(const end of [link.a,link.b])expect(after.curves.find(curve=>curve.id===end.curveId)!.handles[end.end]).toEqual(expected.curves.find(curve=>curve.id===end.curveId)!.handles[end.end]);expect(after.endpointLinks![0].joinBrush).toEqual({kind:'SMOOTH'});expect(useEditor.getState().past).toEqual([project]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);
 });

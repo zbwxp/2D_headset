@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,projectEvaluatedGeometry} from './evaluatedDeformation';
 import {copyCurveSource,curveSamples,tagBridge} from './curveProvenance';
 import {split} from '../geometry/bezier';
 import {add,sub,mul,length,shapeOf,nodeAt,curveById,joinAt,sameEnd,type Point2,type Cubic,type Endpoint,type CurveUse,type TangentJoin,type DrawingDocument as Doc} from './model';
@@ -37,6 +38,9 @@ export interface ArcJoinGeometry {joinId:string;shapes:Cubic[];aT:number;bT:numb
 const cache=new WeakMap<Doc,Map<string,ArcJoinGeometry>>();
 export function roundedJoins(d:Doc):Map<string,ArcJoinGeometry>{
  const found=cache.get(d);if(found)return found;
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource){
+  const out=new Map([...roundedJoins(deformationSource)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id);if(!join||g.error)return [id,g] as const;const geometry=projectEvaluatedGeometry(d,derivedUses(deformationSource,[{id:join.a.curveId,reverse:join.a.end===0},{id:join.b.curveId,reverse:join.b.end===1}]));return [id,{...g,shapes:geometry.pieces.filter(piece=>piece.joinId===id).map(piece=>piece.shape),...(geometry.error?{error:geometry.error}:{})}] as const;}));cache.set(d,out);return out;
+ }
  const source=evaluatedAffineSource(d);if(source){
   const out=new Map([...roundedJoins(source)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id),affine=evaluatedAffine(d,join?.a.curveId);return [id,affine?{...g,shapes:g.shapes.map(s=>affineShape(s,affine))}:g] as const;}));cache.set(d,out);return out;
  }
@@ -48,7 +52,8 @@ export function roundedJoins(d:Doc):Map<string,ArcJoinGeometry>{
    distance=Math.min(allowance(j.a,j.radius!),allowance(j.b,j.radius!));if(distance<1e-7)throw Error('源线长度退化，无法生成圆弧。');
    const at=(e:Endpoint)=>{const f=field(e.curveId),sample=f.at(e.end?1-distance/f.total:distance/f.total);return {...sample,outward:mul(sample.tangent,e.end?-1:1)};},a=at(j.a),b=at(j.b);
    if(length(a.outward)<.9||length(b.outward)<.9)throw Error('连接柄退化，无法生成圆弧。');
-   out.set(j.id,{joinId:j.id,shapes:biarc(a.p,mul(a.outward,-1),b.p,b.outward),aT:a.t,bT:b.t,distance,clamped:distance<j.radius!*(1-1e-6)});
+   const shapes=biarc(a.p,mul(a.outward,-1),b.p,b.outward),left=curveSamples(shapeOf(d,j.a.curveId),a.t),right=curveSamples(shapeOf(d,j.b.curveId),b.t);
+   out.set(j.id,{joinId:j.id,shapes:shapes.map((shape,i)=>tagBridge(shape,left,right,i/shapes.length,(i+1)/shapes.length)),aT:a.t,bT:b.t,distance,clamped:distance<j.radius!*(1-1e-6)});
   }catch(e){out.set(j.id,{joinId:j.id,shapes:[],aT:j.a.end,bT:j.b.end,distance,clamped:false,error:(e as Error).message});}
  }
  cache.set(d,out);return out;
@@ -57,6 +62,9 @@ export interface DrawingPiece {inkOwner?:string;shape:Cubic;owners:string[];join
 export interface DerivedUses {shapes:Cubic[];pieces:DrawingPiece[];error?:string}
 /** All consumers use the same trimmed source + derived arcs. Raw authoring handles stay intact. */
 export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource){const geometry=projectEvaluatedGeometry(d,derivedUses(deformationSource,uses,closed)),count=geometry.shapes.length;
+  if(geometry.shapes.some((shape,i)=>(closed||i<count-1)&&length(sub(shape[3],geometry.shapes[(i+1)%count][0]))>1e-7))return {shapes:[],pieces:[],error:'The deformed boundary is disconnected.'};return geometry;
+ }
  const affine=evaluatedAffine(d,uses[0]?.id);if(affine)return affineGeometry(derivedUses(evaluatedAffineSource(d)!,uses,closed),affine);
  const fail=(error:string):DerivedUses=>({shapes:[],pieces:[],error});
  if(!uses.length||uses.some(u=>!curveById(d,u.id)))return fail('边界源曲线已删除。');
@@ -77,6 +85,7 @@ export function derivedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
 /** Split only derived ARC bridges at their arc midpoint for independent ink depth.
  * Geometry/continuity stay identical; visibility still checks both source owners. */
 export function partitionedUses(d:Doc,uses:CurveUse[],closed=false):DerivedUses{
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource)return projectEvaluatedGeometry(d,partitionedUses(deformationSource,uses,closed));
  const affine=evaluatedAffine(d,uses[0]?.id);if(affine)return affineGeometry(partitionedUses(evaluatedAffineSource(d)!,uses,closed),affine);
  const g=derivedUses(d,uses,closed),pieces:DrawingPiece[]=[];
  for(let i=0;i<g.pieces.length;){

@@ -25,13 +25,13 @@ test('authored affine order preserves shear/reflection and exact singular matric
 });
 test('domain merge replaces by stable ID without reordering and disabling true zero restores retained input',()=>{
  const shift=stage('shift',[1,0,0,1,.3,.2]),zero=stage('zero',[0,0,0,2,0,0]),own=stage('rotate',[0,1,-1,0,0,0]);
- const merged=mergeLayerDomains([shift,zero],[{...zero,enabled:false},own]);expect(merged.map(domain=>domain.id)).toEqual(['shift','zero','rotate']);expect(merged[1].matrix).toEqual(zero.matrix);
+ const merged=mergeLayerDomains([shift,zero],[{...zero,enabled:false},own]);expect(merged.map(domain=>domain.id)).toEqual(['shift','zero','rotate']);expect((merged[1] as SnapshotLayerAffineDomain).matrix).toEqual(zero.matrix);
  near(layerDomainMatrices(merged).layer,composeAffine2D(own.matrix,shift.matrix));expect(layerDomainMatrices([shift,zero]).layer[0]).toBe(0);expect(zero.enabled).toBeUndefined();
  const fallback={...emptySnapshotDeformationState(),layerDomains:[shift,zero]},state=mergeSnapshotDeformation(fallback,{...emptySnapshotDeformationState(),layerDomains:[{...zero,enabled:false},own]});expect(state.layerDomains).toEqual(merged);
 });
 test('scope remaps layer and operation IDs, keeps ordered empty-layer domains, and removes only deleted layer scopes',()=>{
  const domains=[stage('one',[1,0,.2,1,0,0],['a','b']),stage('empty',[1,0,0,1,3,4],['empty-layer'])],copy=remapLayerDomains(domains,id=>'copy:'+id,id=>id!=='b');
- expect(copy.map(domain=>[domain.id,domain.layerIds])).toEqual([['copy:one',['copy:a']],['copy:empty',['copy:empty-layer']]]);expect(copy[0].matrix).toEqual(domains[0].matrix);expect(copy[0].matrix).not.toBe(domains[0].matrix);
+ expect(copy.map(domain=>[domain.id,domain.layerIds])).toEqual([['copy:one',['copy:a']],['copy:empty',['copy:empty-layer']]]);expect((copy[0] as SnapshotLayerAffineDomain).matrix).toEqual(domains[0].matrix);expect((copy[0] as SnapshotLayerAffineDomain).matrix).not.toBe(domains[0].matrix);
  expect(layerDomainMatrices(copy,['copy:empty-layer'])).toEqual({'copy:empty-layer':[1,0,0,1,3,4]});
 });
 test('persistence retains exact authored matrices and rejects malformed or duplicate domain operations',()=>{
@@ -60,7 +60,7 @@ test('new topology and real-basis direct controls invert the same full affine ch
  const beforeDrawing=resolveSnapshot(w,view.id).drawing,wanted:Cubic=[[0,1],[.3,1],[.7,1],[1,1]],drawing=createCurve(beforeDrawing,'slot',wanted,.02,'New','new'),edited=prepareSnapshotDrawingTopologyEdit(w,{recordingId:'recording',snapshotId:view.id,angle:{x:0,y:0},beforeDrawing,drawing}).workspace;
  shapeOf(resolveSnapshot(edited,view.id).drawing,'new').forEach((point,i)=>near(point,wanted[i]));expect(edited.library.curves.new.handles).not.toEqual(drawing.curves.find(curve=>curve.id==='new')!.handles);
  applySnapshotCommand(edited,{op:'moveShapeHandle',layerId:'slot',curveId:'new',end:0,position:[.2,.8]});near(resolveSnapshot(edited,view.id).drawing.curves.find(curve=>curve.id==='new')!.handles[0],[.2,.8]);
- const zero=structuredClone(w);zero.snapshots.find(snapshot=>snapshot.id===view.id)!.deformation.layerDomains![0].matrix=[0,0,0,1,0,0];const baseline=JSON.stringify(zero),base=resolveSnapshot(zero,view.id).drawing;
+ const zero=structuredClone(w);(zero.snapshots.find(snapshot=>snapshot.id===view.id)!.deformation.layerDomains![0] as SnapshotLayerAffineDomain).matrix=[0,0,0,1,0,0];const baseline=JSON.stringify(zero),base=resolveSnapshot(zero,view.id).drawing;
  expect(()=>prepareSnapshotDrawingTopologyEdit(zero,{recordingId:'recording',snapshotId:view.id,angle:{x:0,y:0},beforeDrawing:base,drawing:createCurve(base,'slot',wanted,.02,'Invalid','invalid')})).toThrow(/collapsed placement axis/);expect(JSON.stringify(zero)).toBe(baseline);
 });
 test('source removal retains empty-layer domains and removes the scope only when its source layer is deleted',()=>{

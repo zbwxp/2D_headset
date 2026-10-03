@@ -1,3 +1,5 @@
+import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
+import {layerUsesCage} from './layerDomainControlEdit';
 import {snapshotCurveAppearanceDifference,unsupportedSnapshotCurveAppearanceFields,mergeSnapshotCurveAppearance,type SnapshotCurveAppearanceMap} from './curveAppearance';
 import {trySnapshotControlInverse,snapshotControlBrushScale} from './controlSpace';
 import {parseDrawing,layerFor,sub,length,type DrawingDocument,type DrawingCurve,type Point2} from '../drawing/model';
@@ -70,6 +72,7 @@ function layerWarpInverse(evaluation:SnapshotEvaluation,layerId:string):(point:P
  return point=>inverses.reduceRight((value,inverse)=>inverse(value),point);
 }
 function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,point:Point2):Point2 {
+ if(layerUsesCage(evaluation.state.layerDomains,layerId)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))return fail('NONLINEAR_TOPOLOGY_INVERSE','A fitted cage has no exact control-handle inverse. Disable or reset its cage before creating topology; existing points use post-domain sparse edits.');
  const inverse=trySnapshotControlInverse(evaluation,layerId,curveId);
  if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
  return applyScenePlacementMatrix(inverse,point);

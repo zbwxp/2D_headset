@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,remapEvaluatedDeformations} from '../domain/drawing/evaluatedDeformation';
 import {emptyDrawing,parseDrawing,type DrawingDocument} from '../domain/drawing/model';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../domain/drawing/evaluatedAffine';
@@ -52,6 +53,7 @@ export function drawingSnapshotPresentation(workspace:RecordingSnapshotWorkspace
  // not carry these editor-only fields or original layer locking into its view.
  if(original){const metadata=remapDrawingIdentities(original,presentationId);for(const key of ['reference','mirrorAxisX','mirrorEditing'] as const)if(metadata[key]!==undefined)Object.assign(drawing,{[key]:metadata[key]});
   drawing.layers=drawing.layers.map(layer=>{const source=metadata.layers.find(value=>value.id===layer.id);return source?{...layer,visible:source.visible&&layer.visible,locked:source.locked||layer.locked}:layer;});}
+ const deformedMaterial=evaluatedDeformationSource(evaluation.drawing);if(deformedMaterial)remapEvaluatedDeformations(drawing,evaluation.drawing,remapDrawingIdentities(deformedMaterial,presentationId),presentationId,canonicalId);
  const material=evaluatedAffineSource(evaluation.drawing);if(material)registerEvaluatedAffine(drawing,remapDrawingIdentities(material,presentationId),id=>evaluatedAffine(evaluation.drawing,canonicalId(id)));
  const result={snapshotId:snapshot.id,drawing,evaluation,layerOwners,canonicalId,presentationId};
  const cache=presentations.get(workspace)??new Map();cache.set(artworkId,result);presentations.set(workspace,cache);return result;

@@ -1,3 +1,5 @@
+import {createLayerCageIntent,type LayerCageDomainIntent} from '../../domain/drawing/layerDomainIntent';
+import type {SnapshotLayerCageDomain} from '../../domain/recordingSnapshot/layerCageDomain';
 import {createLayerDomainIntent,createLayerAffineIntent,type LayerSimilarityDomainIntent,type LayerAffineDomainIntent} from '../../domain/drawing/layerDomainIntent';
 import type {Affine2D} from '../../domain/geometry/affine2d';
 import type {DrawingDocument} from '../../domain/drawing/model';
@@ -18,4 +20,9 @@ export function layerSimilarityIntentForSelection(drawing:DrawingDocument,select
 export function layerAffineIntentForSelection(drawing:DrawingDocument,selection:DrawingSelection,matrix:Affine2D,curveIds:readonly string[]=selection.ids,operationId?:string):LayerAffineDomainIntent|undefined {
  const selectionIntent=layerSimilarityIntentForSelection(drawing,selection,{translation:[0,0],rotation:0,scale:1},curveIds,operationId);
  return selectionIntent?createLayerAffineIntent(selectionIntent.scope.layerIds,matrix,{operationId:selectionIntent.operationId}):undefined;
+}
+
+export function layerCageIntentForSelection(drawing:DrawingDocument,selection:DrawingSelection,value:Omit<SnapshotLayerCageDomain,'id'|'layerIds'>,curveIds:readonly string[]=selection.ids,operationId?:string,replace=false):LayerCageDomainIntent|undefined {
+ const selected=layerSimilarityIntentForSelection(drawing,selection,{translation:[0,0],rotation:0,scale:1},curveIds,operationId);
+ return selected?createLayerCageIntent(selected.scope.layerIds,value,{operationId:selected.operationId,replace}):undefined;
 }

@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,projectEvaluatedMaterial} from './evaluatedDeformation';
 import {effectiveTerminusBrush,renderTerminusBrush,geometryJoinBrush} from './terminusBrush';
 import {copyCurveSource,curveSamples,tagExtension} from './curveProvenance';
 import {boundEndpoint,objectVisible,add,sub,mul,length,curveById,nodeAt,inkTaperDistance,sameEnd,type Point2,type Cubic,type CurveUse,type DrawingDocument as Doc,type Profile,type OffsetRelation,type FillRegion,type InkEnds,type InkEndStyle,type Endpoint} from './model';
@@ -68,7 +69,7 @@ export function inkEndpointInfo(d:Doc,id:string,end:0|1){
 /** Width progress spans the whole chain, even where a segment's ink is disabled. */
 /** Display-only accuracy. Geometry operations keep their original arc tables. */
 export interface InkProjection {point:(p:Point2,shape?:Cubic,t?:number)=>Point2;shapes:(s:Cubic[])=>Cubic[]}
-export interface InkSampling extends ArcSampling {taperSteps:number;nativeUniform?:boolean;projection?:InkProjection;materialAffine?:EvaluatedAffine}
+export interface InkSampling extends ArcSampling {taperSteps:number;nativeUniform?:boolean;projection?:InkProjection;materialAffine?:EvaluatedAffine;materialDeformation?:(shapes:Cubic[])=>ReturnType<typeof arcField>}
 export function displayInkSampling(pixelsPerUnit:number):InkSampling{
  // Quantized zoom buckets reuse geometry while panning/zooming. At least the
  // nominal 250 px/unit is retained; larger views automatically refine sampling.
@@ -81,8 +82,8 @@ export function inkRuns(shapes:Cubic[],width:number,profile:Profile,reverse=fals
  // Placement acts on derived centerlines, including ARC cubics, before ink is
  // constructed. Transport cuts by their exact piece parameter, never by the new
  // arc percentage. Width, taper and extension then keep fixed Drawing units.
- if(sampling?.materialAffine&&shapes.length){
-  const {materialAffine,...quality}=sampling,placed=shapes.map(shape=>affineShape(shape,materialAffine)),before=arcField(shapes),after=arcField(placed);
+ if((sampling?.materialAffine||sampling?.materialDeformation)&&shapes.length){
+  const {materialAffine,materialDeformation,...quality}=sampling,before=materialDeformation?materialDeformation(shapes):arcField(shapes),placed=materialDeformation?before.parts.map(part=>part.shape):shapes.map(shape=>affineShape(shape,materialAffine!)),after=arcField(placed);
   if(after.total<1e-12)return [];
   const material=(s:number)=>{
    if(s<=0)return 0;if(s>=1)return 1;
@@ -234,6 +235,7 @@ function buildInkRuns(shapes:Cubic[],width:number,profile:Profile,reverse:boolea
 }
 
 export function strokeInk(d:Doc,s:Stroke,inkOwners?:ReadonlySet<string>,partition=false,sampling?:InkSampling):InkRun[]{
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource)return strokeInk(deformationSource,s,inkOwners,partition,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialDeformation:shapes=>projectEvaluatedMaterial(d,{...arcField(shapes),geometry:{shapes,pieces:shapes.map(shape=>({shape,owners:[...new Set([0,.5,1].flatMap(t=>curveSamples(shape,t).map(sample=>sample.id)))]}))}})});
  const affine=evaluatedAffine(d,s.segments[0]?.id);if(affine)return strokeInk(evaluatedAffineSource(d)!,s,inkOwners,partition,{tolerance:.00004,maxStep:1/32,taperSteps:24,...sampling,materialAffine:affine});
  return strokePaths(s).flatMap(path=>{
  const tracks=pathTracks(d,path),replaced=new Set<string>();

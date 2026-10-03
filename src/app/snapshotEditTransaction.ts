@@ -1,3 +1,5 @@
+import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
+import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
 import {prepareDrawingLayerDomainEdit} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
@@ -114,7 +116,9 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
   return {before,project:result.workspace===original?before:{...before,recordingSnapshots:result.workspace},changed:result.workspace!==original,diagnostics:result.diagnostics};
  }
  if(edit.kind==='local-curve-split'){
-  const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=splitSnapshotLocalCurve(original,edit.snapshotId,edit.intent);
+  const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots;
+  assertCageSplitSupported(original,[edit.intent.curveId],edit.snapshotId);
+  const result=splitSnapshotLocalCurve(original,edit.snapshotId,edit.intent);
   assertOriginalsUnchanged(original,result.workspace);diagnostics=result.diagnostics;project={...before,recordingSnapshots:parseRecordingSnapshots(result.workspace)};
   return {before,project,changed:true,diagnostics};
  }
@@ -135,11 +139,18 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
    const expected=applyLayerEditIntent(before.drawing,edit.intent,{propagate:true}).document;
    if(!same(expected,state.drawing))throw Error('The explicit split intent and submitted Drawing document disagree.');
    if(state.drawingSnapshots?.activeId!==before.drawingSnapshots?.activeId)throw Error('A split transaction cannot switch its source artwork.');
-   if(context.workspace){const source=drawingSnapshotForArtwork(context.workspace,before.drawingSnapshots?.activeId??'$working');if(!source)throw Error('The split source adapter is missing.');const intent=canonicalSnapshotLayerEditIntent(source,edit.intent,context.workspace);splitPlan=prepareSnapshotCurveSplits(context.workspace,source.id,curveSplitIntents(intent),intent.kind==='split-curves'?intent.mirrorPairs:[]);}
+   if(context.workspace){const source=drawingSnapshotForArtwork(context.workspace,before.drawingSnapshots?.activeId??'$working');if(!source)throw Error('The split source adapter is missing.');const intent=canonicalSnapshotLayerEditIntent(source,edit.intent,context.workspace);assertCageSplitSupported(context.workspace,curveSplitIntents(intent).map(value=>value.curveId));splitPlan=prepareSnapshotCurveSplits(context.workspace,source.id,curveSplitIntents(intent),intent.kind==='split-curves'?intent.mirrorPairs:[]);}
   }
   project=prepareOriginalState(before,state,splitPlan);
   if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
  }
  if(project.recordingSnapshots&&edit.kind!=='snapshot-state'&&edit.intent)project={...project,recordingSnapshots:parseRecordingSnapshots(project.recordingSnapshots)};
  return {before,project,changed:project!==before,...(diagnostics?{diagnostics}:{})};
+}
+
+/** Splitting fitted controls is not equivalent to fitting split source cubics.
+ * Until an exact program restriction is stored, refuse this specific action. */
+function assertCageSplitSupported(workspace:NonNullable<LandmarkProject['recordingSnapshots']>,curveIds:readonly string[],snapshotId?:string){
+ if(!workspace.snapshots.some(snapshot=>[snapshot.deformation,snapshot.inheritedState,snapshot.draft?.deformation].some(state=>state?.layerDomains?.some(domain=>domain.kind==='h-coons'&&domain.enabled!==false))))return;
+ for(const snapshot of workspace.snapshots)if(!snapshotId||snapshot.id===snapshotId){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;if(curveIds.some(id=>hasNonlinearDeformationFor(drawing,id)))throw Error('Splitting a retained cage needs an exact fitted-program restriction. Disable or reset the affected cage before splitting its source.');}
 }

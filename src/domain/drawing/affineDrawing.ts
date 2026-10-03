@@ -1,4 +1,7 @@
-import type {DrawingDocument,Point2} from './model';
+import {hasEvaluatedDeformation,appendEvaluatedDeformation,retainEvaluatedDeformations} from './evaluatedDeformation';
+import {createFittedGeometryProjector} from './cageGeometry';
+import {copyCurveSource} from './curveProvenance';
+import type {DrawingDocument,Point2,Cubic} from './model';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine,type EvaluatedAffine} from './evaluatedAffine';
 import {scaleEvaluatedDisplayRouteBrush} from './displayRouteBrush';
 import {affine2DMaxScale,applyAffine2D,applyAffine2DVector,identityAffine2D,isIdentityAffine2D,type Affine2D} from '../geometry/affine2d';
@@ -10,7 +13,7 @@ export function placeDrawingAffines(before:DrawingDocument,matrices:Record<strin
  const identity=identityAffine2D(),value=(id:string)=>matrices[owner(id)??'']??identity,active=(id:string)=>!isIdentityAffine2D(value(id));
  if(!Object.values(matrices).some(matrix=>!isIdentityAffine2D(matrix)))return before;
  const point=(id:string,p:Point2):Point2=>{const result=applyAffine2D(value(id),p);if(!result.every(Number.isFinite))throw Error('The layer affine produces non-finite geometry.');return result;};
- const similarity=(id:string)=>{const [a,b,c,d]=value(id);return active(id)&&a===d&&b===-c&&Math.hypot(a,b)>0&&!evaluatedAffine(before,id);};
+ const similarity=(id:string)=>{const [a,b,c,d]=value(id);return active(id)&&a===d&&b===-c&&Math.hypot(a,b)>0&&!evaluatedAffine(before,id)&&!hasEvaluatedDeformation(before);};
  const drawing:DrawingDocument={...before,
   nodes:before.nodes.map(node=>active(node.id)?{...node,position:point(node.id,node.position)}:node),
   curves:before.curves.map(curve=>active(curve.id)?{...curve,handles:curve.handles.map(p=>point(curve.id,p)) as [Point2,Point2]}:curve),
@@ -18,6 +21,12 @@ export function placeDrawingAffines(before:DrawingDocument,matrices:Record<strin
   joins:before.joins.map(join=>join.radius!==undefined&&similarity(join.a.curveId)?{...join,radius:join.radius*affine2DMaxScale(value(join.a.curveId))}:join),
   endpointLinks:before.endpointLinks?.map(link=>link.joinBrush?.kind==='ARC'&&similarity(link.a.curveId)?{...link,joinBrush:scaleEvaluatedDisplayRouteBrush(link.joinBrush,affine2DMaxScale(value(link.a.curveId)))}:link),
  };
+ if(hasEvaluatedDeformation(before)){
+  retainEvaluatedDeformations(drawing,[before]);const groups=new Map<string,{matrix:Affine2D;ids:Set<string>}>();
+  for(const curve of before.curves)if(active(curve.id)){const matrix=value(curve.id),key=JSON.stringify(matrix);let group=groups.get(key);if(!group){group={matrix,ids:new Set()};groups.set(key,group);}group.ids.add(curve.id);}
+  for(const [key,{matrix,ids}] of groups){const fit=(shape:Cubic)=>({shape:copyCurveSource(shape,shape.map(p=>applyAffine2D(matrix,p)) as Cubic),parameters:{values:Array.from({length:129},(_,i)=>i/128)},maxError:0}),projector=createFittedGeometryProjector(piece=>fit(piece.shape),fit);appendEvaluatedDeformation(drawing,drawing,ids,projector,`affine:${key}`,new Map(),{kind:'affine',matrix});}
+  return drawing;
+ }
  const affines=new Map<string,EvaluatedAffine>();
  for(const object of [...before.nodes,...before.curves,...before.fills,...before.offsets]){
   const prior=evaluatedAffine(before,object.id),matrix=value(object.id);if(!prior&&(!active(object.id)||similarity(object.id)))continue;

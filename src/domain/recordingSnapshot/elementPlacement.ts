@@ -1,3 +1,5 @@
+import {hasEvaluatedDeformation,retainEvaluatedDeformations} from '../drawing/evaluatedDeformation';
+import {placeDrawingAffines} from '../drawing/affineDrawing';
 import {resolveDisplayRoute} from '../drawing/displayRoutes';
 import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
 import type {DrawingDocument,Point2} from '../drawing/model';
@@ -11,6 +13,7 @@ export function sameElementPlacement(a:ScenePlacementValue,b:ScenePlacementValue
 /** Snapshot references copy IDs and controls, not geometry ownership. Retain
  * their runtime material adapters across that identity-preserving copy. */
 export function retainSnapshotAffines(drawing:DrawingDocument,sources:DrawingDocument[]):DrawingDocument {
+ retainEvaluatedDeformations(drawing,sources);
  const affines=new Map<string,EvaluatedAffine>(),nodes=new Map<string,DrawingDocument['nodes'][number]>(),curves=new Map<string,DrawingDocument['curves'][number]>();
  const available=new Set([...drawing.nodes,...drawing.curves,...drawing.fills,...drawing.offsets].map(value=>value.id));
  for(const source of sources){const material=evaluatedAffineSource(source);if(!material)continue;for(const item of [...source.nodes,...source.curves,...source.fills,...source.offsets]){const affine=evaluatedAffine(source,item.id);if(available.has(item.id)&&affine)affines.set(item.id,affine);}for(const node of material.nodes)if(affines.has(node.id))nodes.set(node.id,node);for(const curve of material.curves)if(affines.has(curve.id))curves.set(curve.id,curve);}
@@ -36,6 +39,7 @@ export function placeSnapshotElements(before:DrawingDocument,placements:Record<s
  const identity=identityScenePlacement(),active=new Set(Object.entries(placements).filter(([,p])=>!sameElementPlacement(p,identity)).map(([id])=>id));if(!active.size)return before;
  const owners=new Map<string,string>();for(const curve of before.curves){owners.set(curve.id,curve.id);for(const id of curve.nodes)owners.set(id,curve.id);}
  for(const fill of before.fills)if(fill.boundary[0])owners.set(fill.id,fill.boundary[0].id);for(const offset of before.offsets)if(offset.source[0])owners.set(offset.id,offset.source[0].id);
+ if(hasEvaluatedDeformation(before))return placeDrawingAffines(before,Object.fromEntries(Object.entries(placements).map(([id,value])=>[id,placementMatrix(value)])),id=>owners.get(id));
  const value=(id:string)=>placements[owners.get(id)??id]??identity,similarity=(id:string)=>active.has(id)&&isScenePlacementSimilarity(value(id))&&!evaluatedAffine(before,id);
  const drawing:DrawingDocument={...before,joins:before.joins.map(j=>j.radius!==undefined&&similarity(j.a.curveId)?{...j,radius:j.radius*scenePlacementMaxScale(value(j.a.curveId))}:j),endpointLinks:before.endpointLinks?.map(link=>link.joinBrush?.kind==='ARC'&&similarity(link.a.curveId)?{...link,joinBrush:scaleEvaluatedDisplayRouteBrush(link.joinBrush,scenePlacementMaxScale(value(link.a.curveId)))}:link),nodes:before.nodes.map(n=>active.has(owners.get(n.id)??'')?{...n,position:applyScenePlacement(value(n.id),n.position)}:n),curves:before.curves.map(c=>active.has(c.id)?{...c,handles:c.handles.map(p=>applyScenePlacement(value(c.id),p)) as [Point2,Point2]}:c),offsets:before.offsets.map(o=>o.translation&&active.has(o.source[0]?.id)?{...o,translation:applyScenePlacement({...value(o.source[0].id),translation:[0,0]},o.translation)}:o)};
  const source=evaluatedAffineSource(before)??before,affines=new Map<string,EvaluatedAffine>();

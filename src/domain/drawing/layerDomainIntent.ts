@@ -1,3 +1,5 @@
+import {deformDrawing} from './deform';
+import {validateLayerCageDomain,type SnapshotLayerCageDomain} from '../recordingSnapshot/layerCageDomain';
 import {transform} from './commands';
 import {finalizeGeometryEdit} from './geometryEdit';
 import {mirrorWritesForCurves} from './mirrorEditing';
@@ -8,8 +10,8 @@ import {applyAffine2D,validAffine2D,type Affine2D} from '../geometry/affine2d';
 
 /** Explicit layer membership, never a frozen list of the current curves. A
  * domain is authored by a tool, not reconstructed from fitted controls.
- * The first exact domain is a positive similarity in evaluated/world space.
- * Quad/Coons domains can extend this discriminated union with their own data. */
+ * Similarity, affine and fixed H∘Coons tools carry their authored parameters.
+ * The Snapshot adapter owns persistence and ordered live membership evaluation. */
 interface LayerDomainIntentBase {
  readonly kind:'layer-domain';
  readonly operationId:string;
@@ -22,7 +24,9 @@ export interface LayerSimilarityDomainIntent extends LayerDomainIntentBase {
 export interface LayerAffineDomainIntent extends LayerDomainIntentBase {
  readonly domain:{readonly kind:'affine';readonly matrix:Affine2D;readonly enabled?:boolean};
 }
-export type LayerDomainIntent=LayerSimilarityDomainIntent|LayerAffineDomainIntent;
+export interface LayerCageDomainIntent extends LayerDomainIntentBase {readonly domain:Omit<SnapshotLayerCageDomain,'id'|'layerIds'>}
+export type LayerDomainIntent=LayerSimilarityDomainIntent|LayerAffineDomainIntent|LayerCageDomainIntent;
+export function createLayerCageIntent(layerIds:readonly string[],value:Omit<SnapshotLayerCageDomain,'id'|'layerIds'>,options:{operationId?:string;replace?:boolean}={}):LayerCageDomainIntent {const intent:LayerCageDomainIntent={kind:'layer-domain',operationId:options.operationId??uid(),scope:{kind:'layers',layerIds:[...layerIds]},...(options.replace?{replace:true}:{}),domain:structuredClone(value)};assertLayerDomainIntent(intent);return intent;}
 
 export function createLayerDomainIntent(layerIds:readonly string[],value:ScenePlacementValue,options:{operationId?:string}={}):LayerSimilarityDomainIntent {
  const intent:LayerSimilarityDomainIntent={kind:'layer-domain',operationId:options.operationId??uid(),scope:{kind:'layers',layerIds:[...layerIds]},domain:{kind:'placement-similarity',value:{...value,translation:[...value.translation]}}};
@@ -32,9 +36,10 @@ export function createLayerAffineIntent(layerIds:readonly string[],matrix:Affine
  const intent:LayerAffineDomainIntent={kind:'layer-domain',operationId:options.operationId??uid(),...(options.replace?{replace:true}:{}),scope:{kind:'layers',layerIds:[...layerIds]},domain:{kind:'affine',matrix:[...matrix],...(options.enabled===undefined?{}:{enabled:options.enabled})}};
  assertLayerDomainIntent(intent);return intent;
 }
-export const layerDomainMatrix=(intent:LayerDomainIntent):Affine2D=>intent.domain.kind==='affine'?[...intent.domain.matrix]:placementMatrix(intent.domain.value);
+export const layerDomainMatrix=(intent:LayerDomainIntent):Affine2D=>{if(intent.domain.kind==='h-coons')throw Error('A fitted cage has no affine control inverse.');return intent.domain.kind==='affine'?[...intent.domain.matrix]:placementMatrix(intent.domain.value);};
 export function assertLayerDomainIntent(intent:LayerDomainIntent):void {
  if(intent.kind!=='layer-domain'||!intent.operationId||intent.scope.kind!=='layers'||!intent.scope.layerIds.length||intent.scope.layerIds.some(id=>!id)||new Set(intent.scope.layerIds).size!==intent.scope.layerIds.length)throw Error('A layer domain requires an operation ID and explicit layers.');
+ if(intent.domain.kind==='h-coons'){validateLayerCageDomain({...intent.domain,id:intent.operationId,layerIds:[...intent.scope.layerIds]});return;}
  if(intent.domain.kind==='affine'){if(!validAffine2D(intent.domain.matrix)||intent.domain.enabled!==undefined&&typeof intent.domain.enabled!=='boolean')throw Error('A layer affine domain requires a finite matrix.');return;}
  const value=intent.domain.value;
  if(intent.domain.kind!=='placement-similarity'||!isScenePlacementSimilarity(value)||![...value.translation,value.rotation,value.scale,value.scaleX??1,value.scaleY??1].every(Number.isFinite)||value.scale<=0)throw Error('A layer domain requires a finite positive similarity.');
@@ -48,6 +53,7 @@ export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomai
  assertLayerDomainIntent(intent);
  const layers=intent.scope.layerIds.map(id=>{const layer=drawing.layers.find(layer=>layer.id===id);if(!layer)throw Error('A layer domain target no longer exists.');if(layer.locked)throw Error('对象已锁定。');return layer;});
  const items=new Set(layers.flatMap(layer=>layer.items)),ids=drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
+ if(intent.domain.kind==='h-coons'){const value=intent.domain;return {document:value.enabled===false?drawing:deformDrawing(drawing,ids,value.restRect,value.quad,options.allowRelated??false,value.bend).document,intent,ids};}
  const matrix=layerDomainMatrix(intent),raw=transform(drawing,ids,point=>applyAffine2D(matrix,point),options.allowRelated??false,true);
  return {document:finalizeGeometryEdit(drawing,raw,mirrorWritesForCurves(raw,ids)),intent,ids};
 }

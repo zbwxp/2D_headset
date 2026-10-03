@@ -4,7 +4,7 @@ import {curveMaterialParameterMap} from '../drawing/materialParameter';
 import {shapeOf,type DrawingDocument,type StrokeDisplayIntervals,type DisplayIntervalMode,type InkEnds,type Cubic} from '../drawing/model';
 import {arcField} from '../drawing/sampling';
 import {subcurve} from '../drawing/roundedJoin';
-import {evaluatedAffine,evaluatedAffineSource} from '../drawing/evaluatedAffine';
+import {evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
 import {displayPath} from '../drawing/displayIntervals';
 import type {CurveSplitIntent} from '../drawing/layerEditIntent';
 import {endpointPairDisplayField,transportEndpointPairMaterial} from './endpointPairMaterial';
@@ -49,7 +49,7 @@ const metrics=new WeakMap<DrawingDocument,WeakMap<SnapshotMaterialPartition,Part
  * Every recovered control is verified; no historical geometry is retained. */
 function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocument):PartitionMetric {
  let cache=metrics.get(drawing);if(!cache){cache=new WeakMap();metrics.set(drawing,cache);}const known=cache.get(partition);if(known)return known;
- const measure=evaluatedAffine(drawing,partition.parts[0].curveId)?evaluatedAffineSource(drawing)??drawing:drawing;
+ const measure=evaluatedMaterialSource(drawing);
  const children=partition.parts.map(part=>{if(!measure.curves.some(curve=>curve.id===part.curveId))fail(`parameter piece ${part.curveId} is missing from [${measure.curves.map(curve=>curve.id).join(', ')}].`);const shape=shapeOf(measure,part.curveId),path=displayPath(measure,part.curveId),field=endpointPairDisplayField(measure,path),index=field.geometry.pieces.findIndex(piece=>!piece.joinId&&piece.owners[0]===part.curveId);if(index<0)fail('a split material curve has no native material piece.');const raw=field.geometry.pieces[index].sourceRange??[0,1],range=path.segments.find(use=>use.id===part.curveId)!.reverse?[1-raw[1],1-raw[0]]:raw;return {shape,range,domain:part.parameterRange};});
  const globalRange=(child:typeof children[number])=>child.range.map(t=>t<=0?child.domain[0]:t>=1?child.domain[1]:child.domain[0]+t*(child.domain[1]-child.domain[0])) as [number,number];
  const recompose=(start:number,end:number):Cubic|undefined=>{

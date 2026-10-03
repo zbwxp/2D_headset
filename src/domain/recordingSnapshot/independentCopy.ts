@@ -1,3 +1,5 @@
+import {hasEvaluatedDeformationFor,evaluatedMaterialProgram} from '../drawing/evaluatedDeformation';
+import {isLayerCageDomain,type SnapshotLayerAffineDomain} from './layerDomains';
 import {emptyDrawing,parseDrawing,type DrawingDocument,type Point2} from '../drawing/model';
 import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
 import {evaluatedAffine,evaluatedAffineSource} from '../drawing/evaluatedAffine';
@@ -59,6 +61,7 @@ export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWork
  }
  for(const join of current.joins)if(join.mode==='ARC'&&current.layers.some(layer=>selected.has(layer.id)&&(layer.items.includes(join.a.curveId)||layer.items.includes(join.b.curveId)))&&(!join.radius||join.radius>2))fail(join.id,'evaluated ARC trim exceeds the independent relation range.');
  for(const link of current.endpointLinks??[])if(link.joinBrush?.kind==='ARC'&&current.layers.some(layer=>selected.has(layer.id)&&(layer.items.includes(link.a.curveId)||layer.items.includes(link.b.curveId)))&&link.joinBrush.trimDistance>2)fail(link.id,'evaluated display ARC trim exceeds the independent relation range.');
+ if(current.layers.filter(layer=>selected.has(layer.id)).some(layer=>layer.items.some(id=>hasEvaluatedDeformationFor(current,id)&&(evaluatedMaterialProgram(current,id)?.some(step=>step.kind!=='affine')??true))))fail(source.id,'Retained cage copying requires its own material source and ordered domain program; this copy path does not yet support that representation.');
  const materialSource=evaluatedAffineSource(current)??current,plan=planArtworkLayerImport(materialSource,layerIds);
  if(plan.additionalLayerIds.length)fail(plan.dependencies.find(dependency=>plan.additionalLayerIds.includes(dependency.requiredLayerId))?.objectId??source.id,`also select dependent layers: ${plan.additionalLayerIds.join(', ')}.`,'LAYER_DEPENDENCIES');
  const wanted=subset(current,selected),material=subset(materialSource,selected),matrices=new Map(material.curves.map(curve=>[curve.id,objectMatrix(current,curve.id)]));
@@ -74,7 +77,7 @@ export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWork
    if(!equivalent(matrix,identityAffine2D())){
     // Preserve an existing operation identity when the whole current material
     // affine is exactly that operation; otherwise this is a new local domain.
-    const previous=evaluation.state.layerDomains?.find(domain=>domain.enabled!==false&&domain.layerIds.includes(layer.id)&&equivalent(domain.matrix,matrix));
+    const previous=evaluation.state.layerDomains?.find((domain):domain is SnapshotLayerAffineDomain=>!isLayerCageDomain(domain)&&domain.enabled!==false&&domain.layerIds.includes(layer.id)&&equivalent(domain.matrix,matrix));
     const domains=copy.deformation.layerDomains??=[],domainId=previous?map(previous.id):fresh(),existing=domains.find(domain=>domain.id===domainId);
     if(existing)existing.layerIds.push(map(layer.id));else domains.push({id:domainId,layerIds:[map(layer.id)],matrix:previous?[...previous.matrix]:matrix});
    }

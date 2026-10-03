@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,projectEvaluatedMaterial} from './evaluatedDeformation';
 import {curveById,endKey,nodeAt,sameEnd,sub,length,type Cubic,type CurveUse,type DrawingDocument as Doc,type Endpoint,type InkEnds} from './model';
 import {strokes,strokePaths,type StrokePath} from './strokes';
 import {derivedUses,subcurve,type DerivedUses} from './roundedJoin';
@@ -142,6 +143,7 @@ export interface DisplayRouteField extends ArcField {
 /** Measure route ink independently of local ownership/fills. Displaced local
  * ARC joins are omitted only in this transient ink geometry. */
 export function createDisplayRouteField(d:Doc,route:DisplayRoute|ResolvedDisplayRoute,brushOverrides:DisplayLinkBrushOverrides={}):DisplayRouteField {
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource)return projectEvaluatedMaterial(d,createDisplayRouteField(deformationSource,route,brushOverrides));
  const affine=evaluatedAffine(d,('seed' in route?route.seed:route.path).segments[0]?.id);if(affine){
   const source=createDisplayRouteField(evaluatedAffineSource(d)!,route,brushOverrides);
   return {...affineMaterialField(source,affine),geometry:affineGeometry(source.geometry,affine),brushes:{...source.brushes,links:source.brushes.links.map(link=>({...link,...(link.geometry?{geometry:{...link.geometry,shapes:link.geometry.shapes.map(shape=>affineShape(shape,affine))}}:{})}))}};

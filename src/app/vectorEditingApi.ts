@@ -1,3 +1,5 @@
+import {isLayerCageDomain} from '../domain/recordingSnapshot/layerDomains';
+import {createLayerCageIntent} from '../domain/drawing/layerDomainIntent';
 import {adoptDisplayRoute,detachDisplayRoute} from '../domain/drawing/displayRouteAuthoring';
 import {setEndpointLinkBrush} from '../domain/drawing/endpointRelationAuthoring';
 import {createSnapshotRelationAuthoringIntent,snapshotRelationWriteOwner} from '../domain/recordingSnapshot/relationAuthoringIntent';
@@ -73,7 +75,8 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
  | {op:'setFill';fillId:string;name?:string;color?:'white'|'black'|'transparent';visible?:boolean;locked?:boolean;mist?:FillMist}
  | {op:'reorderObject';objectId:string;targetObjectId:string;after?:boolean}
  | {op:'transformLayers';layerIds:string[];matrix:Affine;allowRelated?:boolean}
- | {op:'setLayerDomain';domainId:string;matrix?:Affine;enabled?:boolean}
+ | {op:'deformLayers';layerIds:string[];bounds:DeformRect;quad:Quad;bend?:BendValue;allowRelated?:boolean}
+ | {op:'setLayerDomain';domainId:string;matrix?:Affine;enabled?:boolean;bounds?:DeformRect;quad?:Quad;bend?:BendValue}
  | {op:'createCurve';layerId:string;shape:Cubic;width?:number;name?:string;ref?:string}
  | {op:'splitCurve';curveId:string;t:number;ref?:string}
  | {op:'setMirrorAxis';x:number}
@@ -87,13 +90,15 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
 export type GeometryLinkCommand={op:'linkEndpoints';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};ref?:string}|{op:'unlinkEndpoints';linkId:string}|{op:'connectGeometry';a:{curveId:string;end:0|1};b:{curveId:string;end:0|1};mode?:'POSITION'};
 export type DisplayRouteCommand={op:'adoptDisplayRoute';trackId:string;linkId:string}|{op:'setLinkJoinBrush';linkId:string;brush:TerminusJoinBrush}|{op:'detachDisplayRoute';trackId:string};
 export interface CreatedEntity {commandIndex:number;kind:ElementCreation['kind']|'fill'|'displayRange'|'endpointLink'|'mirrorPair';id:string;ref?:string;idMap?:Record<string,string>}
-const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','setLayerDomain','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames,...mirrorCommandNames];
+const commandNames=['moveNode','moveHandle','transformCurves','deformCurves','renameCurve','renameStroke','setCurveWidth','createLayer','duplicateLayer','deleteLayers','reorderLayer','setLayer','setObjectState','deleteObjects','moveToLayer','createFill','setFill','reorderObject','transformLayers','deformLayers','setLayerDomain','createCurve','splitCurve','setMirrorAxis','setInkVisibility','setCurveInkEnd','setDepth','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd','linkEndpoints','unlinkEndpoints','connectGeometry','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush',...elementCommandNames,...mirrorCommandNames];
 const relationCommandNames=new Set(['linkEndpoints','unlinkEndpoints','adoptDisplayRoute','detachDisplayRoute','setLinkJoinBrush','addDisplayInterval','changeDisplayInterval','removeDisplayInterval','setDisplayIntervalEnd']);
-/** Existing original commands keep source coordinates. Only an explicit local
- * target resolves against the current candidate's Drawing Snapshot view. */
+/** Direct controls read the same resolved relation/geometry context as Drawing.
+ * The app adapter then writes source originals or local state by actual owner. */
 function snapshotCommandView(project:LandmarkProject,command:Record<string,unknown>){
  const view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(!view)return undefined;
  if(command.op==='createCurve')return typeof command.layerId==='string'&&view.layerOwners.get(command.layerId)?.kind==='snapshot-local'?view:undefined;
+ if(command.op==='moveHandle')return view.drawing.curves.some(curve=>curve.id===command.curveId)?view:undefined;
+ if(command.op==='moveNode')return view.drawing.nodes.some(node=>node.id===command.nodeId)?view:undefined;
  if(!relationCommandNames.has(String(command.op)))return undefined;
  const snapshot=project.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id===view.snapshotId)!,drawing=remapDrawingIdentities(view.drawing,view.canonicalId),id=(value:unknown)=>typeof value==='string'?view.canonicalId(value):'';
  const link=command.op==='linkEndpoints'?{id:'$new-relation',a:{curveId:id((command.a as {curveId?:unknown}|undefined)?.curveId),end:(command.a as {end?:0|1}|undefined)?.end??0},b:{curveId:id((command.b as {curveId?:unknown}|undefined)?.curveId),end:(command.b as {end?:0|1}|undefined)?.end??0}}:drawing.endpointLinks?.find(link=>link.id===id(command.linkId));
@@ -439,15 +444,17 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair'));let previous=next;
     // Layer scope survives the API boundary. Resolve ownership against the
     // current candidate, after prior source edits, before expanding members.
-    if(resolved.op==='transformLayers'||resolved.op==='setLayerDomain'){
-     const replacing=resolved.op==='setLayerDomain';keys(resolved,replacing?['op','domainId','matrix','enabled']:['op','layerIds','matrix','allowRelated']);bool(resolved.allowRelated,'allowRelated');bool(resolved.enabled,'enabled');
-     if(replacing&&resolved.matrix===undefined&&resolved.enabled===undefined)fail('INVALID_REQUEST','Provide a matrix or enabled state for the saved layer domain.');
+    if(resolved.op==='transformLayers'||resolved.op==='deformLayers'||resolved.op==='setLayerDomain'){
+     const replacing=resolved.op==='setLayerDomain';keys(resolved,replacing?['op','domainId','matrix','enabled','bounds','quad','bend']:resolved.op==='deformLayers'?['op','layerIds','bounds','quad','bend','allowRelated']:['op','layerIds','matrix','allowRelated']);bool(resolved.allowRelated,'allowRelated');bool(resolved.enabled,'enabled');
+     if(replacing&&resolved.matrix===undefined&&resolved.enabled===undefined&&resolved.bounds===undefined&&resolved.quad===undefined&&resolved.bend===undefined)fail('INVALID_REQUEST','Provide authored parameters or an enabled state for the saved layer domain.');
      if(pendingSource){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}).project;pendingSource=false;}
      const view=candidateProject.recordingSnapshots&&drawingSnapshotPresentation(candidateProject.recordingSnapshots,candidateProject.drawingSnapshots?.activeId??'$working'),presentation=view?.drawing??next,prior=replacing?view?.evaluation.state.layerDomains?.find(domain=>domain.id===string(resolved.domainId,'domainId')):undefined;
      if(replacing&&!prior)fail('NOT_FOUND','The saved layer domain no longer exists.');
-     const requested=replacing?prior!.layerIds.map(view!.presentationId):ids(resolved.layerIds,'layerIds'),matrix=resolved.matrix===undefined?prior!.matrix:affineCoefficients(resolved.matrix),value=!replacing?layerSimilarityFromMatrix(matrix):undefined;
+     const requested=replacing?prior!.layerIds.map(view!.presentationId):ids(resolved.layerIds,'layerIds'),cage=resolved.op==='deformLayers'||!!prior&&isLayerCageDomain(prior);
      requested.forEach(id=>layerExists(presentation,id));
-     const intent=value?createLayerDomainIntent(requested,value):createLayerAffineIntent(requested,matrix,{...(prior?{operationId:prior.id,replace:true,enabled:resolved.enabled===undefined?prior.enabled:resolved.enabled as boolean}:{})}),plan=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'layer-domain',intent,allowRelated:resolved.allowRelated===true}),sourceAfter=clone(plan.project.drawing??emptyDrawing());
+     if(cage&&resolved.matrix!==undefined||!cage&&[resolved.bounds,resolved.quad,resolved.bend].some(value=>value!==undefined))fail('INVALID_REQUEST','Replace a domain using its authored parameter kind.');
+     const previousCage=prior&&isLayerCageDomain(prior)?prior:undefined,matrix=cage?undefined:resolved.matrix===undefined&&prior&&!isLayerCageDomain(prior)?prior.matrix:affineCoefficients(resolved.matrix),value=!cage&&!replacing?layerSimilarityFromMatrix(matrix!):undefined;
+     const intent=cage?createLayerCageIntent(requested,{kind:'h-coons',restRect:(resolved.bounds??previousCage?.restRect) as DeformRect,quad:(resolved.quad??previousCage?.quad) as Quad,bend:(resolved.bend??previousCage?.bend) as BendValue|undefined,...(resolved.enabled===undefined?(prior?.enabled===undefined?{}:{enabled:prior.enabled}):{enabled:resolved.enabled as boolean})},prior?{operationId:prior.id,replace:true}:{}):value?createLayerDomainIntent(requested,value):createLayerAffineIntent(requested,matrix!,{...(prior?{operationId:prior.id,replace:true,enabled:resolved.enabled===undefined?prior.enabled:resolved.enabled as boolean}:{})}),plan=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'layer-domain',intent,allowRelated:resolved.allowRelated===true}),sourceAfter=clone(plan.project.drawing??emptyDrawing());
      if(previous.mirrorEditing?.enabled)mirrorIntent.capture(sourceAfter,resolved);
      const mirrored=mirrorIntent.apply(previous,sourceAfter),candidate=JSON.stringify(mirrored)===JSON.stringify(sourceAfter)?plan.project:prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'original-geometry',drawing:markFinalizedGeometry(transportDeformedIntervals(sourceAfter,mirrored))}).project,wanted=currentDrawingPresentation(candidate);
      validateBounds(wanted);assertDisplayRouteSupport(wanted);checkNewDiagnostics(presentation,wanted);
@@ -473,7 +480,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
      topologyIntent=createLayerCurveSplitIntent(drawing,curveId,t,{relatedDrawings});topologyIntents.push(topologyIntent);return applyLayerEditIntent(drawing,topologyIntent);
     });
     if(!localView&&mirrorCommandNames.includes(resolved.op as string)){if(JSON.stringify(previous.mirrorEditing)!==JSON.stringify(next.mirrorEditing))mirrorIntent.clear();}
-    else if(!localView){if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
+    else if(!localView||resolved.op==='moveNode'||resolved.op==='moveHandle'){if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
     // Quad deformation already transports material cut positions; other geometry edits do so here.
     if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);

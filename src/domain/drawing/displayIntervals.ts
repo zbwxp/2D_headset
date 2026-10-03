@@ -1,3 +1,4 @@
+import {evaluatedDeformationSource,projectEvaluatedMaterial} from './evaluatedDeformation';
 import {createDrawingPathMaterialFrame,resolveDrawingMaterialPath,type DrawingMaterialSourceResolver,type DrawingPathMaterialPoint} from './pathMaterialSupport';
 import {retainSplitMaterialAffine} from './splitMaterialAffine';
 import {curveMaterialParameterMap} from './materialParameter';
@@ -64,6 +65,7 @@ export function unionSpans(spans:Span[]):Span[]{
 }
 /** The saved anchor is only a stable coordinate frame; the interval grips are free arc positions. */
 export function displayField(d:Doc,path:StrokePath){
+ const deformationSource=evaluatedDeformationSource(d);if(deformationSource)return projectEvaluatedMaterial(d,buildDisplayField(deformationSource,path));
  const affine=evaluatedAffine(d,path.segments[0]?.id);if(affine){const source=buildDisplayField(evaluatedAffineSource(d)!,path);return {...affineMaterialField(source,affine),geometry:affineGeometry(source.geometry,affine)};}
  return buildDisplayField(d,path);
 }

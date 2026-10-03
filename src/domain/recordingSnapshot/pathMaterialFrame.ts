@@ -1,6 +1,6 @@
 import type {ResolvedDisplayRoute} from '../drawing/displayRoutes';
 import {createDrawingPathMaterialFrame,resolveDrawingMaterialPath,type DrawingPathMaterialPoint,type DrawingPathMaterialFrame} from '../drawing/pathMaterialSupport';
-import {evaluatedAffine,evaluatedAffineSource} from '../drawing/evaluatedAffine';
+import {evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
 import {shapeOf,type Cubic,type CurveUse,type DrawingDocument,type Endpoint,type Point2,type StrokeDisplayIntervals} from '../drawing/model';
 import {subcurve} from '../drawing/roundedJoin';
 import type {StrokePath} from '../drawing/strokes';
@@ -83,7 +83,7 @@ export function createSnapshotPathMaterialFrame(drawing:DrawingDocument,track:St
  const key=JSON.stringify([track.id,track.anchor,track.scope,track.displayRoute,logical?lineage:null]),cache=caches.get(drawing),known=cache?.get(key);if(known)return known;
  let source=snapshotRouteMaterialSource(drawing,track);if(!logical||!lineage)return createDrawingPathMaterialFrame(source,track);
  let resolved=resolveDrawingMaterialPath(source,track);
- if(evaluatedAffine(source,resolved.path.segments[0]?.id)){source=evaluatedAffineSource(source)??source;resolved=resolveDrawingMaterialPath(source,track);}
+ source=evaluatedMaterialSource(source);resolved=resolveDrawingMaterialPath(source,track);
  const originalPath=resolved.path,runs=lineageRuns(source,originalPath,lineage),contracted=contract(source,resolved,runs),actualCurveIds=new Set(originalPath.segments.map(use=>use.id)),runById=new Map(runs.map(run=>[run.id,run]));
  const virtualPoint=(point:SnapshotPathMaterialPoint)=>{
   if(point.kind==='join')return point;

@@ -14,11 +14,11 @@ export function mappedParameter(t:number,map?:CurveParameterMap){
 }
 /** Fit two positive handle lengths and monotonically refine point correspondence.
  * Endpoint positions and tangent rays remain exact throughout the geometric fit. */
-function fit(shape:Cubic,f:DeformProjection){
- const count=128,scale=Math.cbrt(f.denominator(shape[3])/f.denominator(shape[0]));
- const values=Array.from({length:count+1},(_,i)=>f.affine?i/count:deformParameter(i/count,scale));
- if(f.affine)return {shape:shape.map(f.map) as Cubic,parameters:{values}};
- const targets=values.map((_,i)=>f.map(point(shape,i/count))),a=targets[0],b=targets[count],va=mul(f.vector(shape[0],sub(shape[1],shape[0])),1/scale),vb=mul(f.vector(shape[3],sub(shape[2],shape[3])),scale);
+function fit(target:CubicFitTarget){
+ const count=128,scale=target.parameterScale??1;
+ const values=Array.from({length:count+1},(_,i)=>target.exactShape?i/count:deformParameter(i/count,scale));
+ if(target.exactShape)return {shape:target.exactShape,parameters:{values}};
+ const targets=values.map((_,i)=>target.point(i/count)),a=targets[0],b=targets[count],va=mul(target.handles[0],1/scale),vb=mul(target.handles[1],scale);
  const la=length(va),lb=length(vb),ta=mul(va,1/(la||1)),tb=mul(vb,1/(lb||1)),loA=la?la*.01:0,loB=lb?lb*.01:0,hiA=la*8,hiB=lb*8,bound=(x:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,x));
  let fitted:Cubic=[a,add(a,va),add(b,vb),b];
  for(let iteration=0;iteration<10;iteration++){
@@ -51,9 +51,9 @@ function fit(shape:Cubic,f:DeformProjection){
  * maxError is the existing 257-sample diagnostic, not a certified global bound. */
 export function fitDeformedCubic(shape:Cubic,field:DeformProjection){
  shape.forEach(field.map); // Also guard authored controls outside the fixed rest cage.
- const result=fit(shape,field);let maxError=0;
- for(let i=0;i<=256;i++)maxError=Math.max(maxError,length(sub(point(result.shape,mappedParameter(i/256,result.parameters)),field.map(point(shape,i/256)))));
- return {...result,maxError};
+ return fitCubicTarget({point:t=>field.map(point(shape,t)),parameterScale:Math.cbrt(field.denominator(shape[3])/field.denominator(shape[0])),
+  handles:field.affine?[[0,0],[0,0]]:[field.vector(shape[0],sub(shape[1],shape[0])),field.vector(shape[3],sub(shape[2],shape[3]))],
+  exactShape:field.affine?shape.map(field.map) as Cubic:undefined});
 }
 
 /** Inverse of the fitted cubic's strictly increasing source-t → fitted-t table.
@@ -63,4 +63,28 @@ export function sourceParameter(t:number,map?:CurveParameterMap):number {
  const value=clamp(t),values=map.values;let lo=0,hi=values.length-1;
  while(hi-lo>1){const mid=(lo+hi)>>1;if(values[mid]<=value)lo=mid;else hi=mid;}
  return (lo+(value-values[lo])/(values[hi]-values[lo]))/(values.length-1);
+}
+
+
+/** One fitting engine also serves material-addressed post-domain corrections.
+ * handles are directed endpoint derivatives divided by 3, inward at the end. */
+export interface CubicFitTarget {
+ point:(t:number)=>Point2;
+ handles:[Point2,Point2];
+ parameterScale?:number;
+ exactShape?:Cubic;
+}
+export function fitCubicTarget(target:CubicFitTarget){
+ const result=fit(target);let maxError=0;
+ for(let i=0;i<=256;i++)maxError=Math.max(maxError,length(sub(point(result.shape,mappedParameter(i/256,result.parameters)),target.point(i/256))));
+ if(!Number.isFinite(maxError)||!result.shape.flat().every(Number.isFinite))throw Error('Cubic fitting produced non-finite geometry.');
+ return {...result,maxError};
+}
+/** One-sided slope of the same piecewise-linear material correspondence. */
+export function mappedParameterSlope(t:number,map?:CurveParameterMap):number {
+ if(!map)return 1;const i=Math.min(map.values.length-2,Math.floor(clamp(t)*(map.values.length-1)));
+ return (map.values[i+1]-map.values[i])*(map.values.length-1);
+}
+export function sourceParameterSlope(t:number,map?:CurveParameterMap):number {
+ if(!map)return 1;return 1/mappedParameterSlope(sourceParameter(t,map),map);
 }

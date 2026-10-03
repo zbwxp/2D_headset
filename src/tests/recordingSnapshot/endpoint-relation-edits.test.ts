@@ -45,10 +45,13 @@ describe('Snapshot local EndpointLink authoring',()=>{
   const {w}=fixture(),linked=edit(w,d=>linkEndpoints(d,a,b,true)),view=linked.snapshots.find(snapshot=>snapshot.id==='view')!;view.draft={angle:{x:0,y:0},channels:[],deformation:{warps:[],bindings:[],layers:{left:{depth:2}},relationPositions:{}}};
   const before=resolveSnapshot(linked,'view').drawing,result=edit(linked,d=>unlinkEndpoints(d,d.endpointLinks![0].id)),actual=resolveSnapshot(result,'view');sameGeometry(actual.drawing,before);expect(actual.diagnostics.filter(issue=>issue.code==='MISSING_RELATION')).toEqual([]);expect(result.snapshots.find(snapshot=>snapshot.id==='view')!.draft!.deformation.layers.left.depth).toBe(2);
  });
- it('rejects correction frames, incompatible placements and inherited node merging atomically',()=>{
+ it('rejects correction frames, incompatible placements and implicit cross-layer membership moves atomically',()=>{
   const {w,view,recording}=fixture();view.deformation.layers.right={placement:{translation:[.2,.1],rotation:.2,scale:1}};const before=JSON.stringify(w);expect(()=>edit(w,d=>linkEndpoints(d,a,b,true))).toThrow(/incompatible.*placements/);expect(JSON.stringify(w)).toBe(before);
   view.deformation.layers={};recording.angle={x:45,y:0};expect(()=>edit(w,d=>linkEndpoints(d,a,b,true))).toThrow(/actual recorder vertex/);recording.angle={x:0,y:0};
-  view.layers[0].kind==='reference'&&(view.layers[0].membership={addElementIds:[]});const current=resolveSnapshot(w,'view').drawing,sameLayer={...current,layers:[{...current.layers[0],items:current.curves.map(curve=>curve.id)}]};expect(()=>edit(w,()=>connect(sameLayer,a,b,'POSITION'))).toThrow(/merge two distinct inherited nodes/);
+  view.layers[0].kind==='reference'&&(view.layers[0].membership={addElementIds:[]});const current=resolveSnapshot(w,'view').drawing,sameLayer={...current,layers:[{...current.layers[0],items:current.curves.map(curve=>curve.id)}]},project={...createEmptyProject(),recordingSnapshots:w},unchanged=JSON.stringify(w);
+  useWorkspaceMode.setState({mode:'recording'});useEditor.setState({project,past:[],future:[]});
+  expect(()=>useEditor.getState().commitPreparedSnapshotEdit(prepareSnapshotEdit(snapshotEditContext(project,false),{kind:'local-drawing-topology',recordingId:'recording',snapshotId:'view',angle:{x:0,y:0},beforeDrawing:current,drawing:connect(sameLayer,a,b,'POSITION')}))).toThrow(/Moving existing elements between layers requires an explicit membership move/);
+  expect(JSON.stringify(w)).toBe(unchanged);expect(useEditor.getState().project).toBe(project);expect(useEditor.getState().past).toEqual([]);expect(useEditor.getState().future).toEqual([]);
  });
  it('commits linking and unlinking in one Undo step apiece',()=>{
   const {w}=fixture(),project={...createEmptyProject(),recordingSnapshots:w},beforeDrawing=resolveSnapshot(w,'view').drawing;

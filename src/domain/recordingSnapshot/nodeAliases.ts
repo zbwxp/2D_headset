@@ -1,3 +1,4 @@
+import {hasEvaluatedDeformation,hasEvaluatedDeformationFor,retainEvaluatedDeformations} from '../drawing/evaluatedDeformation';
 import {add,sub,type DrawingDocument,type DrawingCurve,type Point2} from '../drawing/model';
 import {cleanEndpointLinks} from '../drawing/endpointLinks';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../drawing/evaluatedAffine';
@@ -48,7 +49,9 @@ export function applySnapshotNodeAliases(drawing:DrawingDocument,value:SnapshotN
   else diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:id,message:`Shared-node alias ${id} → ${authority} is inactive because one source node is outside this Snapshot's membership.`});
  }
  if(!Object.keys(aliases).length)return drawing;
+ if(hasEvaluatedDeformation(drawing)&&Object.entries(aliases).some(([id,authority])=>hasEvaluatedDeformationFor(drawing,id)||hasEvaluatedDeformationFor(drawing,authority)))return fail('NODE_ALIAS_MATERIAL_CONFLICT','Binding controls inside a retained cage needs a post-domain topology target. Disable or reset the affected cage first; no source or Snapshot was changed.');
  const result=cleanEndpointLinks(aliasDrawing(drawing,aliases)),material=evaluatedAffineSource(drawing);
+ retainEvaluatedDeformations(result,[drawing]);
  if(material){
   const mapped=cleanEndpointLinks(aliasDrawing(material,aliases)),mappedNodes=new Map(mapped.nodes.map(node=>[node.id,node])),mappedCurves=new Map(mapped.curves.map(curve=>[curve.id,curve]));
   const close=(a:Point2,b:Point2)=>a.every((v,i)=>Math.abs(v-b[i])<=1e-9*Math.max(1,Math.abs(v),Math.abs(b[i])));

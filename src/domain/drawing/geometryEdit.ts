@@ -4,6 +4,9 @@ import type {DrawingDocument as Doc,Point2} from './model';
 const finalized=new WeakSet<Doc>();
 /** Internal provenance for a fully validated command batch; never serializable. */
 export function markFinalizedGeometry(d:Doc):Doc{finalized.add(d);return d;}
+/** Owner extraction preserves a completed geometry boundary; rebuilding the
+ * source subset must not re-run mirror or material finalization. */
+export function retainFinalizedGeometry(d:Doc,from:Doc):Doc{return finalized.has(from)?markFinalizedGeometry(d):d;}
 const equalPoint=(a:Point2,b:Point2)=>a[0]===b[0]&&a[1]===b[1];
 /** Final source-geometry boundary for pointer drafts, numeric/property edits,
  * nudges and store commits. Explicit interval edits and already-transported
