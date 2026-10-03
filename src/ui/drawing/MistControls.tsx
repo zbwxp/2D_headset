@@ -1,3 +1,4 @@
+import {currentDrawingPresentation} from './snapshotPresentation';
 import {useDrawingWorkspace} from './workspace';
 import PanelSection from '../shared/PanelSection';
 import {useRef} from 'react';
@@ -6,13 +7,13 @@ import {setContourMist,inkEdgeStyle} from '../../domain/drawing/mist';
 import NumericSlider from '../shared/NumericSlider';
 import {uiText as t} from '../i18n';
 export default function MistControls({d,ids,run,preview}:{d:Doc;ids:string[];run:(f:()=>Doc)=>void;preview:(d:Doc|null)=>void}){
- const {editor:useEditor}=useDrawingWorkspace();
+ const {editor:useEditor,id:workspaceId}=useDrawingWorkspace();
  const base=useRef<Doc|null>(null),next=useRef<Doc|null>(null),objects=ids.map(id=>objectById(d,id)).filter(o=>o&&'width' in o);
  if(!objects.length)return null;
  const style=inkEdgeStyle(objects[0].mist),enabled=objects.every(o=>o.mist?.enabled),mixed=objects.some(o=>JSON.stringify(inkEdgeStyle(o.mist))!==JSON.stringify(style)),disabled=objects.some(o=>o.locked);
- const end=()=>{const n=next.current,b=base.current;next.current=null;base.current=null;preview(null);if(n&&useEditor.getState().project.drawing===b)run(()=>n);};
+ const end=()=>{const n=next.current,b=base.current;next.current=null;base.current=null;preview(null);if(n&&currentDrawingPresentation(useEditor.getState().project,workspaceId)===b)run(()=>n);};
  const change=(v:Partial<ContourMist>)=>{const n=setContourMist(base.current??d,ids,v);next.current=n;preview(n);};
- const edit={onEditStart:()=>{base.current=useEditor.getState().project.drawing!;next.current=null;},onEditEnd:end,onUndo:()=>useEditor.getState().undo(),onRedo:()=>useEditor.getState().redo()};
+ const edit={onEditStart:()=>{base.current=currentDrawingPresentation(useEditor.getState().project,workspaceId);next.current=null;},onEditEnd:end,onUndo:()=>useEditor.getState().undo(),onRedo:()=>useEditor.getState().redo()};
  return <PanelSection id="drawing.ink-edge" title="像素笔触" className="drawing-mist-controls" testId="drawing-mist-controls">
   <label className="drawing-check"><input aria-label={t('像素笔触')} type="checkbox" checked={enabled} ref={el=>{if(el)el.indeterminate=!enabled&&objects.some(o=>o.mist?.enabled);}} disabled={disabled} onChange={e=>run(()=>setContourMist(d,ids,{enabled:e.target.checked}))}/>{t('像素笔触')}</label>
   {objects.some(o=>o.mist?.enabled)&&<>

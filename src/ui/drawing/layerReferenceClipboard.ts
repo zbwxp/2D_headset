@@ -2,7 +2,9 @@ import {create} from 'zustand';
 import {useEditor} from '../../app/store';
 import type {LandmarkProject} from '../../domain/landmarks/model';
 import {ensureRecordingSnapshots} from '../../domain/recordingSnapshot/migration';
-import {captureDrawingLayerClipboard,captureSnapshotLayerClipboard,type SnapshotReferenceClipboard} from '../../domain/recordingSnapshot/referenceClipboard';
+import {captureDrawingLayerClipboard,captureSnapshotLayerClipboard,planSnapshotClipboardPaste,prepareSnapshotReferencePaste,type SnapshotReferenceClipboard} from '../../domain/recordingSnapshot/referenceClipboard';
+import {drawingSnapshotPresentation} from './snapshotPresentation';
+import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 
 interface LayerReferenceClipboardSession {
  projectId:string;
@@ -37,5 +39,21 @@ useEditor.subscribe((state,previous)=>{
  * migration. The deterministic source IDs match the later shared transaction. */
 export function captureDrawingLayerReferences(project:LandmarkProject,artworkId:string,layerIds:readonly string[],intent:SnapshotReferenceClipboard['intent']='reference',projectId=String(project.meta.createdAt)):SnapshotReferenceClipboard {
  const {recordingSnapshots}=ensureRecordingSnapshots(project);
+ const view=drawingSnapshotPresentation(recordingSnapshots,artworkId);
+ if(view){const ids=layerIds.map(id=>{const owner=view.layerOwners.get(id);if(!owner)throw Error(`Drawing layer ${id} is no longer available.`);return owner.layerId;});return captureSnapshotLayerClipboard(projectId,intent,[{snapshotId:view.snapshotId,layerIds:ids}]);}
  return captureDrawingLayerClipboard(recordingSnapshots,projectId,artworkId,layerIds,intent);
+}
+
+/** Explicit-target paste never switches Recording selection or creates an
+ * additional parent. Geometry and IDs stay owned by their captured snapshot. */
+export function prepareDrawingLayerReferencePaste(project:LandmarkProject,clipboard:SnapshotReferenceClipboard,projectId:string){
+ const {recordingSnapshots}=ensureRecordingSnapshots(project),artworkId=project.drawingSnapshots?.activeId??'$working',view=drawingSnapshotPresentation(recordingSnapshots,artworkId);
+ if(!view)throw Error('The current Drawing snapshot is unavailable.');
+ if(clipboard.intent!=='reference')throw Error('This clipboard requests an independent duplicate. Capture a layer reference to paste it into Drawing.');
+ const planned=planSnapshotClipboardPaste(recordingSnapshots,clipboard,projectId,view.snapshotId);let workspace=recordingSnapshots;const layerIds:string[]=[];
+ for(const command of planned.commands){const result=prepareSnapshotReferencePaste(workspace,{targetSnapshotId:view.snapshotId,sourceSnapshotId:command.sourceSnapshotId,layerIds:command.layerIds});if(result.blockedCode)throw Error(result.diagnostics.at(-1)?.message??result.blockedCode);workspace=result.workspace;layerIds.push(...result.created.map(layer=>layer.id),...result.reused.map(layer=>layer.id));}
+ // Validate identity mapping as well as the generic graph before committing.
+ drawingSnapshotPresentation(workspace,artworkId);
+ if(workspace===project.recordingSnapshots)return {before:project,project,changed:false,workspace,layerIds};
+ const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'snapshot-state',workspace});return {...plan,workspace:plan.project.recordingSnapshots!,layerIds};
 }
