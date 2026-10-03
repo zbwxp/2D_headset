@@ -84,37 +84,3 @@ export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace
  if(!layer.membership.addElementIds?.length&&!layer.membership.excludeElementIds?.length)delete layer.membership;
  return {createdNodeIds:[],removedIds:command.op==='excludeElements'?[...command.elementIds]:[]};
 }
-
-/** Resolved structural membership at real snapshots. Correction frames never
- * enter the triangulation and are not sources of membership. */
-export interface SnapshotPresenceMembership {
- snapshotId:string;
- elementIds:readonly string[];
-}
-
-/** Structural subset of locateSnapshotSimplex output. Weights are the ORIGINAL
- * geometric barycentric weights, before inverse/response correction. */
-export interface SnapshotPresenceSimplex {
- snapshotIds:readonly string[];
- geometricWeights:readonly number[];
-}
-
-/** Intersect only the located simplex's active vertices. No ID-dependent
- * triangulation, global nearest-ID search, epsilon threshold or response-weight
- * interpretation is allowed here. Exact geometric predicates belong to the
- * shared triangulation; its true boundary vertices carry exactly zero weight. */
-export function resolveSnapshotSimplexPresence(simplex:SnapshotPresenceSimplex|null,memberships:readonly SnapshotPresenceMembership[]):{
- kind:'outside'|'vertex'|'edge'|'triangle';activeSnapshotIds:string[];elementIds:string[];
-} {
- if(!simplex)return {kind:'outside',activeSnapshotIds:[],elementIds:[]};
- const {snapshotIds,geometricWeights}=simplex;
- if(!snapshotIds.length||snapshotIds.length>3||snapshotIds.length!==geometricWeights.length)throw Error('Presence simplex needs one to three matched geometric vertices.');
- uniqueIds(snapshotIds,'Simplex snapshots');uniqueIds(memberships.map(sample=>sample.snapshotId),'Membership snapshots');
- if(geometricWeights.some(weight=>!Number.isFinite(weight)||weight<0)||Math.abs(geometricWeights.reduce((sum,weight)=>sum+weight,0)-1)>64*Number.EPSILON)throw Error('Presence requires normalized nonnegative original geometric weights.');
- const activeSnapshotIds=snapshotIds.filter((_,index)=>geometricWeights[index]!==0);
- if(!activeSnapshotIds.length)throw Error('Presence simplex has no active geometric vertices.');
- const active=activeSnapshotIds.map(id=>memberships.find(sample=>sample.snapshotId===id)??(()=>{throw Error(`Missing real snapshot membership: ${id}`);})());
- for(const sample of active)uniqueIds(sample.elementIds,'Snapshot members');
- const others=active.slice(1).map(sample=>new Set(sample.elementIds));
- return {kind:active.length===1?'vertex':active.length===2?'edge':'triangle',activeSnapshotIds,elementIds:active[0].elementIds.filter(id=>others.every(members=>members.has(id)))};
-}

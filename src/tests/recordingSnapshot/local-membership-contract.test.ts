@@ -13,11 +13,10 @@ import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGrap
 import {canonicalElementId,upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
 import {applySnapshotCommand} from '../../domain/recordingSnapshot/commands';
 import {snapshotAuthoredKeyCount} from '../../domain/recordingSnapshot/tracks';
-import {resolveSnapshotLocalMembership,excludeSnapshotLocalMembers,resolveSnapshotSimplexPresence,applySnapshotMembershipEdit,type SnapshotPresenceMembership} from '../../domain/recordingSnapshot/localMembership';
+import {resolveSnapshotLocalMembership,excludeSnapshotLocalMembers,applySnapshotMembershipEdit} from '../../domain/recordingSnapshot/localMembership';
 import {captureSnapshotLayerClipboard,snapshotClipboardPasteCommands,captureDrawingLayerClipboard,planSnapshotClipboardPaste,prepareSnapshotReferencePaste} from '../../domain/recordingSnapshot/referenceClipboard';
 
 const line=(a:Point2,b:Point2):Cubic=>[a,[a[0]+(b[0]-a[0])/3,a[1]+(b[1]-a[1])/3],[a[0]+2*(b[0]-a[0])/3,a[1]+2*(b[1]-a[1])/3],b];
-const sample=(snapshotId:string,elementIds:string[]):SnapshotPresenceMembership=>({snapshotId,elementIds});
 function drawing(){let d=addLayer(emptyDrawing(),'Layer');return createCurve(d,d.layers[0].id,line([0,0],[1,0]),.02,'Curve','curve');}
 function workspace(d:DrawingDocument=drawing()){
  const w=upsertDrawingSource(emptyRecordingSnapshotWorkspace(),'source',d),source=w.snapshots[0],view=emptyRecordingSnapshot('view'),recording=emptySnapshotRecording('recording');
@@ -53,39 +52,6 @@ describe('local Recording membership contract prototype',()=>{
   expect(resolveSnapshotLocalMembership(['a'],{addElementIds:['a','local']}).elementIds).toEqual(['a','local']);
   expect(()=>resolveSnapshotLocalMembership(['a'],{addElementIds:['a'],excludeElementIds:['a']})).toThrow(/both added and excluded/);
   expect(()=>resolveSnapshotLocalMembership(['a'],{addElementIds:['local','local']})).toThrow(/distinct/);
- });
-});
-
-describe('active geometric simplex presence',()=>{
- const vertices=[sample('a',['all','ab','a-only']),sample('b',['all','ab','b-only']),sample('c',['all','c-only'])];
- it('uses three memberships in the interior, two on an edge and one at a vertex',()=>{
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','b','c'],geometricWeights:[.2,.3,.5]},vertices)).toEqual({kind:'triangle',activeSnapshotIds:['a','b','c'],elementIds:['all']});
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','b','c'],geometricWeights:[.5,.5,0]},vertices).elementIds).toEqual(['all','ab']);
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','b','c'],geometricWeights:[1,0,0]},vertices)).toMatchObject({kind:'vertex',elementIds:['all','ab','a-only']});
- });
- it('uses every nonzero original weight including subnormal values, with no epsilon halo',()=>{
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','b'],geometricWeights:[1,Number.MIN_VALUE]},vertices).elementIds).toEqual(['all','ab']);
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','c'],geometricWeights:[1,1e-15]},vertices).elementIds).toEqual(['all']);
- });
- it('does not bypass a real missing middle snapshot to find a remote matching ID',()=>{
-  const snapshots=[sample('front',['curve']),sample('middle',[]),sample('side',['curve'])];
-  for(const snapshotIds of [['front','middle'],['middle','side']])expect(resolveSnapshotSimplexPresence({snapshotIds,geometricWeights:[.5,.5]},snapshots).elementIds).toEqual([]);
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['middle'],geometricWeights:[1]},snapshots).elementIds).toEqual([]);
- });
- it('does not read corrected weights or correction-frame membership',()=>{
-  const simplex={snapshotIds:['a','b','c'],geometricWeights:[.2,.3,.5],correctedWeights:[1,0,0]},members=[...vertices,sample('correction-frame',['invented'])];
-  const before=JSON.stringify({simplex,members});expect(resolveSnapshotSimplexPresence(simplex,members).elementIds).toEqual(['all']);expect(JSON.stringify({simplex,members})).toBe(before);
- });
- it('keeps hidden structural geometry present and never authors keys',()=>{
-  const {recording}=workspace(),a=drawing(),b=structuredClone(a);a.curves[0].visible=false;b.curves[0].inkVisible=false;
-  const memberships=[sample('a',a.layers.flatMap(layer=>layer.items)),sample('b',b.layers.flatMap(layer=>layer.items))];
-  expect(resolveSnapshotSimplexPresence({snapshotIds:['a','b'],geometricWeights:[.5,.5]},memberships).elementIds).toEqual(['curve']);expect(snapshotAuthoredKeyCount(recording)).toBe(0);
- });
- it('returns no membership outside the mesh and rejects malformed or unresolved geometry inputs',()=>{
-  expect(resolveSnapshotSimplexPresence(null,vertices)).toMatchObject({kind:'outside',elementIds:[]});
-  expect(()=>resolveSnapshotSimplexPresence({snapshotIds:['a','b'],geometricWeights:[2,-1]},vertices)).toThrow(/geometric weights/);
-  expect(()=>resolveSnapshotSimplexPresence({snapshotIds:['a','b'],geometricWeights:[.2,.3]},vertices)).toThrow(/geometric weights/);
-  expect(()=>resolveSnapshotSimplexPresence({snapshotIds:['missing'],geometricWeights:[1]},vertices)).toThrow(/Missing real snapshot/);
  });
 });
 

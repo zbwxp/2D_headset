@@ -4,6 +4,7 @@ import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGrap
 import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
 import {rebindSnapshotVertex} from '../../domain/recordingSnapshot/triangulation';
 import {parseRecordingSnapshots} from '../../domain/recordingSnapshot/persistence';
+import {snapshotAuthoredKeyCount} from '../../domain/recordingSnapshot/tracks';
 
 function fixture(){
  const w=emptyRecordingSnapshotWorkspace();w.library.nodes={a:{id:'a',position:[0,0]},b:{id:'b',position:[1,0]}};w.library.curves={c:{id:'c',name:'Line',nodes:['a','b'],handles:[[.2,.1],[.8,.1]],visible:true,locked:false,width:.01}};
@@ -36,5 +37,32 @@ describe('triangulated recording runtime',()=>{
   const {w}=fixture();w.snapshots[2].layers[0]={kind:'original',id:'layer',name:'Layer',visible:true,locked:false,items:[]};
   let result=evaluateRecordingSnapshot(w,'r',{angle:{x:30,y:30}});expect(result.drawing.curves).toHaveLength(0);expect(result.angleSurface!.outsideCurves).toHaveLength(1);
   w.library.nodes.a={...w.library.nodes.a,position:[.2,0]};const reloaded=parseRecordingSnapshots(JSON.parse(JSON.stringify(w)));result=evaluateRecordingSnapshot(reloaded,'r',{angle:{x:0,y:0}});expect(result.drawing.nodes[0].position).toEqual([.2,0]);
+ });
+ it('changes membership exactly at vertices and edges without a positive or negative epsilon halo',()=>{
+  const {w,r,views}=fixture();views[1].angle={x:1,y:0};views[2].angle={x:0,y:1};
+  r.angleGraph=createSnapshotAngleGraph(views.map(view=>({snapshotId:view.id,angle:view.angle})));
+  w.library.curves.edge={...w.library.curves.c,id:'edge'};w.library.curves.vertex={...w.library.curves.c,id:'vertex'};
+  views[0].layers[0]={kind:'original',id:'layer',name:'Layer',visible:true,locked:false,items:['c','edge','vertex']};
+  views[1].layers[0]={kind:'original',id:'layer',name:'Layer',visible:true,locked:false,items:['c','edge']};
+  const before=JSON.stringify(w);
+  const vertex=evaluateRecordingSnapshot(w,'r',{angle:{x:0,y:0}}),nearVertex=evaluateRecordingSnapshot(w,'r',{angle:{x:Number.MIN_VALUE,y:0}});
+  expect(vertex.angleSurface!.simplex!.kind).toBe('vertex');expect(vertex.drawing.curves.map(curve=>curve.id)).toEqual(['c','edge','vertex']);
+  expect(nearVertex.angleSurface!.simplex!.kind).toBe('edge');expect(nearVertex.drawing.curves.map(curve=>curve.id)).toEqual(['c','edge']);
+  const edge=evaluateRecordingSnapshot(w,'r',{angle:{x:.25,y:0}}),inside=evaluateRecordingSnapshot(w,'r',{angle:{x:.25,y:Number.MIN_VALUE}}),outside=evaluateRecordingSnapshot(w,'r',{angle:{x:.25,y:-Number.MIN_VALUE}});
+  expect(edge.angleSurface!.simplex!.kind).toBe('edge');expect(edge.drawing.curves.map(curve=>curve.id)).toEqual(['c','edge']);
+  expect(inside.angleSurface!.simplex!.kind).toBe('triangle');expect(inside.drawing.curves.map(curve=>curve.id)).toEqual(['c']);
+  expect(outside.angleSurface!.role).toBe('outside');expect(outside.drawing.curves).toEqual([]);
+  expect(snapshotAuthoredKeyCount(r)).toBe(0);expect(JSON.stringify(w)).toBe(before);
+ });
+ it('does not bridge matching endpoint IDs across an empty real middle snapshot',()=>{
+  const {w,r,views}=fixture();views[2].angle={x:45,y:0};views[2].layers=[];
+  r.angleGraph=createSnapshotAngleGraph(views.map(view=>({snapshotId:view.id,angle:view.angle})));
+  const before=JSON.stringify(w);
+  for(const x of [0,90])expect(evaluateRecordingSnapshot(w,'r',{angle:{x,y:0}}).drawing.curves.map(curve=>curve.id)).toEqual(['c']);
+  for(const x of [22.5,45,67.5]){
+   const result=evaluateRecordingSnapshot(w,'r',{angle:{x,y:0}});
+   expect(result.angleSurface!.simplex!.snapshotIds).toContain('up');expect(result.drawing.curves).toEqual([]);
+  }
+  expect(JSON.stringify(w)).toBe(before);
  });
 });

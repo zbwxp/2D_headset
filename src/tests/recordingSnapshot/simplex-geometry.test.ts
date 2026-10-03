@@ -23,6 +23,17 @@ describe('active snapshot simplex geometry',()=>{
   expect(result.drawing.curves.map(c=>c.id)).toEqual(['c']);expect(result.drawing.curves[0].visible).toBe(false);
   expect(result.drawing.nodes[0].position).toEqual([2,2]);
  });
+ it('keeps every positive geometric basis active even when its response weight is zero',()=>{
+  const a=basis('a',[0,0],{hidden:true,extra:true}),b=basis('b',[2,0]);a.drawing.curves[0].inkVisible=false;
+  const before=JSON.stringify([a,b]);
+  for(const weight of [Number.MIN_VALUE,1e-15]){
+   const result=interpolateSnapshotSimplexGeometry([a,b],[1-weight,weight],()=>[1,0]);
+   expect(result.drawing.curves.map(curve=>curve.id)).toEqual(['c']);
+   expect(result.drawing.curves[0]).toMatchObject({visible:false,inkVisible:false});
+   expect(result.drawing.nodes[0].position).toEqual([0,0]);
+  }
+  expect(JSON.stringify([a,b])).toBe(before);
+ });
  it('keeps one linked-node authority and carries relative handles once',()=>{
   const bases=[basis('a',[0,0],{link:true}),basis('b',[2,0],{link:true}),basis('c',[0,2],{link:true})];
   const calls:string[]=[];const result=interpolateSnapshotSimplexGeometry(bases,[.2,.3,.5],(target,_axis,_positions,w)=>{if(target.kind==='node')calls.push(target.nodeId);return w;});
