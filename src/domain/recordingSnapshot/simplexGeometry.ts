@@ -1,3 +1,4 @@
+import {dominantSnapshotBasis} from './simplexSupport';
 import {emptyDrawing,type DrawingDocument,type Point2} from '../drawing/model';
 import {applyEndpointPairSmoothConstraints,endpointPairNodeAuthorities} from './endpointPair';
 
@@ -21,7 +22,7 @@ export function interpolateSnapshotSimplexGeometry(bases:readonly SnapshotSimple
  if(bases.length<1||bases.length>3||bases.length!==geometricWeights.length||new Set(bases.map(b=>b.snapshotId)).size!==bases.length)throw Error('A snapshot simplex needs one to three distinct active bases.');
  if(geometricWeights.some(w=>!Number.isFinite(w)||w<=0)||Math.abs(geometricWeights.reduce((a,b)=>a+b,0)-1)>1e-12)throw Error('Active geometric weights must be positive and sum to one.');
  if(bases.length===1)return {drawing:bases[0].drawing,diagnostics:[],nodeAuthorities:endpointPairNodeAuthorities(bases[0].drawing)};
- const diagnostics:string[]=[],dominant=bases.map((basis,index)=>({basis,index,weight:geometricWeights[index]})).sort((a,b)=>b.weight-a.weight||(a.basis.angle?.y??0)-(b.basis.angle?.y??0)||(a.basis.angle?.x??0)-(b.basis.angle?.x??0)||a.basis.snapshotId.localeCompare(b.basis.snapshotId))[0].index;
+ const diagnostics:string[]=[],dominant=dominantSnapshotBasis(bases,geometricWeights);
  const selected=bases[dominant].drawing,curveMaps=bases.map(b=>keys(b.drawing.curves)),nodeMaps=bases.map(b=>keys(b.drawing.nodes));
  const curves=selected.curves.filter(curve=>{
   if(!curveMaps.every(map=>map.has(curve.id)))return false;

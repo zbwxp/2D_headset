@@ -1,3 +1,4 @@
+import {captureSnapshotVisibilityRecipe,restrictSnapshotVisibilityRecipes} from './visibilityRestriction';
 import {snapshotMaterialPartitionInkEnds,type SnapshotMaterialPartition} from './materialSplit';
 import {captureSnapshotProjectedResponses,type SnapshotProjectionComponent} from './responseExpressionProjection';
 import {deriveSmoothComponents,smoothEndpointKey} from './smoothComponent';
@@ -22,7 +23,7 @@ const fail=(message:string):never=>{throw new SnapshotSurfaceInsertionError(mess
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const axes=['x','y'] as const;
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
-const shapeFree=(drawing:DrawingDocument,partitions?:readonly SnapshotMaterialPartition[])=>({...drawing,displayIntervals:drawing.displayIntervals?.map(track=>({...track,ranges:track.ranges.map(range=>{const inkEnds=snapshotMaterialPartitionInkEnds(partitions,drawing,track.id,range.id);return {...range,start:0,end:0,...inkEnds?{inkEnds}:{}};})})),nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,handles:[[0,0],[0,0]]})),reference:undefined,mirrorEditing:undefined});
+const shapeFree=(drawing:DrawingDocument,partitions?:readonly SnapshotMaterialPartition[])=>({...drawing,displayIntervals:drawing.displayIntervals?.map(track=>({...track,ranges:track.ranges.map(range=>{const inkEnds=snapshotMaterialPartitionInkEnds(partitions,drawing,track.id,range.id);return {...range,start:0,end:0,...inkEnds?{inkEnds}:{}};})})),nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,visible:true,handles:[[0,0],[0,0]]})),fills:drawing.fills.map(fill=>({...fill,visible:true})),offsets:drawing.offsets.map(offset=>({...offset,visible:true})),reference:undefined,mirrorEditing:undefined});
 
 /** Capture a genuine new real view as ordinary references + local residuals.
  * The canonical library and every old real pose stay intact. */
@@ -96,7 +97,7 @@ export function prepareSnapshotSurfaceInsertion(workspace:RecordingSnapshotWorks
   if(Object.keys(responses.nodes).length||Object.keys(responses.handles).length)Object.defineProperty(registry,simplex.id,{value:responses,enumerable:true});
  }
  const hasMaterial=!!captured.drawing.displayIntervals?.length;
- const result:SnapshotAngleGraph={...next,...hasMaterial?{materialRecipes:restrictSnapshotMaterialRecipes(graph!,mesh,view.id),materialBasisRecipes:{...graph!.materialBasisRecipes,[view.id]:captureSnapshotMaterialRecipe(graph!,captured.location)},propertyResponses:{edges:{},triangles:{}}}:{},...Object.keys(registry).length?{responseExpressions:registry}:{},...graph!.correctionFrames?{correctionFrames:graph!.correctionFrames.map(frame=>({id:frame.id,angle:frame.angle,status:frame.status}))}:{}};
+ const result:SnapshotAngleGraph={...next,visibilityRecipes:restrictSnapshotVisibilityRecipes(graph!,mesh,view.id),visibilityBasisRecipes:{...graph!.visibilityBasisRecipes,[view.id]:captureSnapshotVisibilityRecipe(graph!,captured.location)},...hasMaterial?{materialRecipes:restrictSnapshotMaterialRecipes(graph!,mesh,view.id),materialBasisRecipes:{...graph!.materialBasisRecipes,[view.id]:captureSnapshotMaterialRecipe(graph!,captured.location)},propertyResponses:{edges:{},triangles:{}}}:{},...Object.keys(registry).length?{responseExpressions:registry}:{},...graph!.correctionFrames?{correctionFrames:graph!.correctionFrames.map(frame=>({id:frame.id,angle:frame.angle,status:frame.status}))}:{}};
  if(hasMaterial){
   try{const replay=evaluateSnapshotMaterialRecipe(result.materialBasisRecipes![view.id],captured.bases,captured.drawing,view.angle,result.materialPartitions,result.materialPathLineages);
    for(const track of captured.drawing.displayIntervals??[])for(const range of track.ranges){const actual=replay.drawing.displayIntervals?.find(value=>value.id===track.id)?.ranges.find(value=>value.id===range.id);if(!actual||(['start','end'] as const).some(end=>Math.abs(actual[end]-range[end])>1e-10))fail(`New real view cannot exactly replay material ${track.id}/${range.id}.`);}

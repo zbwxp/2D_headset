@@ -1,3 +1,4 @@
+import {snapshotSupportWeights} from './simplexSupport';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import {resolveDisplayRoute} from '../drawing/displayRoutes';
 import {createSnapshotMaterialPartitionBasis,snapshotMaterialPartitionAddress,snapshotMaterialPartitionInkEnds,type SnapshotMaterialPartition} from './materialSplit';
@@ -72,12 +73,7 @@ export function validateSnapshotMaterialBasisRecipes(value:unknown,mesh:Snapshot
 export function validateSnapshotMaterialEditLeaves(graph:SnapshotAngleGraph):void {
  for(const recipe of [...Object.values(graph.materialRecipes??{}),...Object.values(graph.materialBasisRecipes??{})])for(const term of recipe.terms)for(const basis of term.bases)if(basis.coefficient!==0&&basis.kind==='edit'&&!Object.hasOwn(graph.materialBasisRecipes??{},basis.snapshotId))fail('an edit leaf needs its Recorder-owned inherited material basis recipe.');
 }
-function geometricWeights(field:SnapshotMaterialField,at:Angle):number[]{
- const [a,b,c]=field.angles;let result:number[];
- if(!c){const x=b.x-a.x,y=b.y-a.y,d=x*x+y*y;if(!d)fail('degenerate edge support.');const t=((at.x-a.x)*x+(at.y-a.y)*y)/d;result=[1-t,t];}
- else{const d=(b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y);if(!d)fail('degenerate triangle support.');const u=((b.y-c.y)*(at.x-c.x)+(c.x-b.x)*(at.y-c.y))/d,v=((c.y-a.y)*(at.x-c.x)+(a.x-c.x)*(at.y-c.y))/d;result=[u,v,1-u-v];}
- if(result.some(w=>w < -1e-10||w>1+1e-10))fail('child material support leaves its original field.');result=result.map(w=>Math.max(0,Math.min(1,w)));const sum=result.reduce((a,b)=>a+b,0);return result.map(w=>w/sum);
-}
+function geometricWeights(field:SnapshotMaterialField,at:Angle):number[]{return snapshotSupportWeights(field,at,fail);}
 function captureField(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation):SnapshotMaterialField {
  const effective=effectiveSnapshotPropertyResponses(graph,{useDraft:false}),targets=new Map([...Object.values(effective.edges),...Object.values(effective.triangles)].flat().map(value=>[snapshotScalarPropertyTargetKey(value.target),value.target]));
  const properties=[...targets.values()].flatMap(target=>{

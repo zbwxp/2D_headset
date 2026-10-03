@@ -1,3 +1,4 @@
+import type {SnapshotVisibilityRecipeRegistry} from './visibilityRestriction';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
 import type {SnapshotMaterialPartition} from './materialSplit';
@@ -181,6 +182,8 @@ export interface SnapshotOrphanedResponses {
  materialPartitions?:SnapshotMaterialPartition[];
  materialRecipes?:SnapshotMaterialRecipeRegistry;
  materialBasisRecipes?:SnapshotMaterialRecipeRegistry;
+ visibilityRecipes?:SnapshotVisibilityRecipeRegistry;
+ visibilityBasisRecipes?:SnapshotVisibilityRecipeRegistry;
  responseExpressions?:SnapshotResponseExpressionRegistry;
  id:string;reason:'deleted-view'|'mesh-change'|'unhandled-rebind';message:string;
  mesh:SnapshotTriangulation;
@@ -205,6 +208,8 @@ export interface SnapshotAngleGraph {
  /** Recorder-owned live material supports, independent of newly inserted geometry keys. */
  materialRecipes?:SnapshotMaterialRecipeRegistry;
  materialBasisRecipes?:SnapshotMaterialRecipeRegistry;
+ visibilityRecipes?:SnapshotVisibilityRecipeRegistry;
+ visibilityBasisRecipes?:SnapshotVisibilityRecipeRegistry;
  responseExpressions?:SnapshotResponseExpressionRegistry;
  version:1;mesh:SnapshotTriangulation;
  /** Every shared edge has the sole orientation saved in mesh.edges. */
