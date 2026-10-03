@@ -1,6 +1,6 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日。线上 v54 已完成区间独立响应、源删除、Drawing 反向引用及弹窗生命周期的限定浏览器验收。v55 已于 16:47:27 UTC 上线；实际父眉线成对分割、0/±90 与中间角同步、单笔 Undo 通过。完整脸的真实 −60° 插入被区间材质保真门槛拒绝，仍是当前缺口。v56 于 17:14:26 UTC 上线，共同钢笔／真实快照拓扑已完成下述浏览器验收。材质插点修复仍为待发布候选，自动化测试不代表浏览器验收。
+核对日期：2026 年 10 月 3 日。v57 于 17:36:00 UTC 上线。v55 的成对父拆分、v56 的共同钢笔／真实快照拓扑、v57 的完整脸内部真实 −60° 插入均已完成下述限定浏览器验收。v57 关闭了 v55 实际遇到的材质插点阻塞；一般非线性 SMOOTH、过程化整层域及共享关系工具仍是后续代码阶段，不能据此宣称全部原则完成。
 
 完成标准是全部已约定职责落实在代码中，并且每项职责只有一份实际执行的实现，由 Drawing、Recording、API 和预览共同消费。公共包装函数、相同按钮或共享面板不能代替功能去重。v50 的自动化、构建与列明的浏览器操作已验证；“已接入”仍不代表其他缺口已关闭。本次文档更新未重新运行代码测试。
 
@@ -17,7 +17,7 @@
 | 5 单一语义父快照 | `model.ts` 的 `parentSnapshotId`；[validation.ts](../../src/domain/recordingSnapshot/validation.ts) 与 [persistence.ts](../../src/domain/recordingSnapshot/persistence.ts)；`evaluation.ts` 的父输入解析 | 项目解析、普通快照求值和自动子快照更新；各层 `baseSnapshotId/baseLayerId` 仍只是来源地址 | `angle-graph` 覆盖一个语义父级与多个图层来源并存；`automatic-snapshot-edits` 覆盖局部覆盖 | **已接入待验收**：跨来源编辑与回读需随完整适配器验收。未来切换父快照不是本次当前 UI 的完成项 |
 | 6 非破坏引用与共用剪贴板 | [referenceClipboard.ts](../../src/domain/recordingSnapshot/referenceClipboard.ts) 负责地址和粘贴；[layerReferenceClipboard.ts](../../src/ui/drawing/layerReferenceClipboard.ts) 负责共享会话；`localMembership.ts` 负责本地排除 | Drawing 已接取引用；Recording 已接引用粘贴和独立复制；显式目标的纯粘贴函数能写入 Drawing 来源快照 | [drawing-layer-reference-clipboard](../../src/tests/drawing-layer-reference-clipboard.test.ts) 和 `local-membership-contract` 覆盖共享会话与身份；v50 实际完成 Drawing → Recording 的 13 层同 ID 引用粘贴 | **反向基础编辑已验证**：[snapshotPresentation.ts](../../src/ui/drawing/snapshotPresentation.ts) 和 `snapshotEditContext.ts` 已是 Drawing 活动入口。v53 已接 Drawing 完整显示、命中与按所有者写入；反向引用粘贴、数值平移、A 柄编辑和 Undo 实测通过。引用层新增／材质／连接等完整工具仍未全部接入；合成几何不回写为源原件 |
 | 6 补充 源删除与局部排除 | 目标归口为规范源资产与依赖引用的统一级联清理；现有 `sources.ts`、`localMembership.ts` 区分来源与成员 | `sourceDeletion.ts` 由原始源同步事务调用；本地排除保持独立，Recording 不可冒充源所有者删除 | `recording-snapshot-source-deletion` 与 `source-visibility-inheritance`；v51/v53 源层删除、引用清理、Undo、重载及无红线残影实测通过 | **已验证**：源曲线删除清规范资产与依赖引用，保留空层；源图层删除清全部层引用；源删除后无幽灵红线；局部子快照排除仅影响本地，并按一次事务支持 Undo |
-| 7 真实视图 修正帧 角度绑定分离 | [angleGraph.ts](../../src/domain/recordingSnapshot/angleGraph.ts) 保存顶点与响应；[commands.ts](../../src/domain/recordingSnapshot/commands.ts) 分流真实基准和修正 | `evaluateRecordingSnapshot`、绑定控件、修正保存／丢弃、创建空的范围外真实视图 | `surface-command-api` 和 `angle-graph` 覆盖改绑与草稿；v50 实际新建空 −90° 后粘贴，同一 −45° 反解／保存仍保持九个顶点 | **候选已接入、待浏览器**：覆盖内真实视图采用引用和局部姿态，`responseExpressionTransactions.ts` 限制旧响应到新单形；节点/柄响应的 edge/triangle、split→60→30 与重载已自动化通过。尚不支持所有材质属性场、未保存修正草稿或任意非线性 SMOOTH 投影的精确保真插入，操作前拒绝并保原数据 |
+| 7 真实视图 修正帧 角度绑定分离 | [angleGraph.ts](../../src/domain/recordingSnapshot/angleGraph.ts) 保存顶点与响应；[commands.ts](../../src/domain/recordingSnapshot/commands.ts) 分流真实基准和修正 | `evaluateRecordingSnapshot`、绑定控件、修正保存／丢弃、创建空的范围外真实视图 | `surface-command-api` 和 `angle-graph` 覆盖改绑与草稿；v50 实际新建空 −90° 后粘贴，同一 −45° 反解／保存仍保持九个顶点 | **v57 完整脸插点已验证**：覆盖内真实视图采用引用和局部姿态，`responseExpressionTransactions.ts` 限制旧响应到新单形；材质由 `materialRestriction.ts` 保留原场。默认完整脸 −60° 插点、邻角、Undo/Redo 和真实 SaveJSON 回读通过。未保存修正草稿及任意非线性 SMOOTH 投影的精确保真插入仍需明确处理 |
 | 7 补充 独立属性角度键 | `propertyResponses.ts` 与 `scalarResponseSupport.ts` 共享标量响应和端点目标；材质应用在 `simplexMaterial.ts` | 中间角度的 `changeInterval` 独立记录区间 start/end；不建真实视图、不改变几何响应 | `surface-property-responses` 与 v53 浏览器覆盖精确 0..30 平台、60 部分展开、重载及几何键数量不变 | **区间已验证，其他属性待扩展**：0° 区间 start=end，30° 展开响应保持 0，90° 再展开；起止端点独立响应，精确零长度而非 epsilon 或显隐开关；只建属性键，不建真实顶点、不烘焙几何 |
 | 8 稳定二维网格与原始几何成员支持 | [triangulation.ts](../../src/domain/recordingSnapshot/triangulation.ts) 定位真实顶点、边和面；[simplexGeometry.ts](../../src/domain/recordingSnapshot/simplexGeometry.ts) 执行活动基准的成员交集 | 正常画面和逐曲线覆盖采样使用定位器与 simplex 几何；隐藏标记、修正权重不参与成员支持 | [triangulation](../../src/tests/recordingSnapshot/triangulation.test.ts)、[simplex-geometry](../../src/tests/recordingSnapshot/simplex-geometry.test.ts) 覆盖三点／两点／单点、极小非零权重、隐藏和有符号响应 | **部分**：运行时主链明确；`localMembership.ts` 的 `resolveSnapshotSimplexPresence` 目前仅测试调用。需决定统一归口或移除冗余合同辅助入口，不能拿未被消费的函数证明运行时去重完成 |
 | 9 共享边响应与按轴反解 | `surfaceTargets.ts` 统一编译响应与准备目标编辑；[triangularResponses.ts](../../src/domain/recordingSnapshot/triangularResponses.ts) 求最接近原始重心权重的解；`simplexGeometry.ts` 统一采样 | 主画面、反解重放和新洋葱皮共同消费；节点权威与 `H − P` 相对柄保持一致 | [triangular-responses](../../src/tests/recordingSnapshot/triangular-responses.test.ts) 和 `surface-targets` 覆盖连续性、退化诊断；v50 实际 −45° 整层反解后保存，Undo 恢复 SVG | **部分已验证**：节点／控制柄／变换已有代码与交互证据；其他目标工具仍须进同一链。退化目标和无法用控制响应表达的 ARC 参数变化继续明确拒绝，不新增隐藏几何键 |
@@ -42,7 +42,7 @@
 
 ## 保留兼容与删除重复实现的边界
 
-旧功能没有默认永久兼容义务。已经明确批准退役旧 v40 单调权重资产，以及旧 3D、Assembly、GPU 房间；当前功能共用的数学代码保留。这是范围授权，不表示删除实现已经完成。旧 channel runtime 的去留仍未明确决定，不能扩大上述许可。`evaluateRecordingSnapshot` 和 `useSnapshotOnionFrames` 中按模式隔离的 legacy／endpoint 分支目前仍存在；这是当前事实，不是永久保留要求。新三角化模式不能回落到这些分支偷偷解释同一份新数据，原始归档和草稿也不能随代码清理被静默删除。
+旧功能没有默认永久兼容义务。已经明确批准退役旧 v40 单调权重资产，以及旧 3D、Assembly、GPU 房间；当前功能共用的数学代码保留。该批准范围的活动房间和旧权重编辑入口已于 v54 清理；共享数学仍由当前工具消费。旧 channel runtime 的去留仍未明确决定，不能扩大上述许可。`evaluateRecordingSnapshot` 和 `useSnapshotOnionFrames` 中按模式隔离的 legacy／endpoint 分支目前仍存在；这是当前事实，不是永久保留要求。新三角化模式不能回落到这些分支偷偷解释同一份新数据，原始归档和草稿也不能随代码清理被静默删除。
 
 Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app/drawingWorkingCopies.ts)、`sources.ts` 和共享事务适配。必须先接好合成视图的所有权写入，再移除同一功能的活动旁路。格式适配的支持范围、原件恢复方式和重复的新编辑规则，需要分别作出明确决定。
 
@@ -50,7 +50,7 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 | 旧能力或数据情况 | 当前处理 | 实际用户档案影响 |
 | --- | --- | --- |
-| 旧 v40 单调权重资产及旧 3D／Assembly／GPU 房间 | 已批准退役；保留当前共用数学；尚未以本页宣称清理完成 | 逐项核对影响，原始归档不得静默删除 |
+| 旧 v40 单调权重资产及旧 3D／Assembly／GPU 房间 | v54 已清理批准的活动房间和旧权重编辑入口；保留当前共用数学 | 逐项核对影响，原始归档不得静默删除 |
 | 旧 channel runtime 及旧 keyed／legacy 转换 | 旧运行时去留尚待明确决定；无法证明等价的转换继续诊断 | 待检查实际使用与对应录制，不能将房间或 v40 资产退役许可扩展为全部旧通道获准移除 |
 | 旧非线性端点响应需要在内部真实视图处分段 | 不把单条响应自动改解释为多条边；保真细分尚未完成 | 待列出实际响应、关键帧和草稿；不得默默丢弃或烘焙替代 |
 | 已有响应约束的角度改绑 | 未指定约束随网格还是保持绝对角度时，明确拒绝 | 待检查实际是否需要此操作；无约束改绑已支持，不能混为全部改绑均不支持 |
@@ -83,13 +83,39 @@ v53 浏览器已验证引用层在 Drawing 编辑只产生本地残差；原始�
 
 候选支持真实角度快照上的空图层、P 新线/接笔、层复制/删除和本地成员删除；相同 LayerPanel 结构按钮通过显式 adapter 调用。新增线保持新的 canonical ID，缺父来源只发诊断；删除继承线成为局部排除，原稿不变。仅真实 Recorder 顶点可改拓扑，修正位置不默默创建几何。POSITION/SMOOTH/CUSP、平移/旋转/非等比 placement 下的目标坐标、闭合、Undo/Redo 和重载已有针对性测试。
 
-依然未完成：一般非线性域的精确逆映射、合并两个不同继承节点的源拓扑变更、全部独立材质/连接属性工具、过程化整层编辑 intent，以及默认完整稿的材质场内部插点。P 阶段不以禁止整个编辑器来掩盖具体不可表达操作，也不把这些诊断边界称作全部原则已完成。
+依然未完成：一般非线性域的精确逆映射、合并两个不同继承节点的源拓扑变更、全部独立材质/连接属性工具、过程化整层编辑 intent，。默认完整稿的材质场内部插点随后在 v57 闭环。P 阶段不以禁止整个编辑器来掩盖具体不可表达操作，也不把这些诊断边界称作全部原则已完成。
 
 
 v56 实际鼠标验证：空真实 0° 新层、P 拖柄、3 段连续闭合；整笔 Delete 清曲线但保空层；Undo 保留全部原 ID，重复 Redo/Undo 路径逐字相同。自动子快照删除继承笔画只产生局部排除，父快照仍为 3 段；子视图显示 3 条只读红回退，符合逐线覆盖规则。修正位置 P／新层禁用，真实顶点数未变。5 笔准备事务随后全部正常 Undo，原 5 稿不变。
 
-## 材质场内部插点（下一候选）
+## v57 材质场内部插点
 
 `materialRestriction.ts` 把原材质支持域及属性响应保存在 Recorder 的 `materialRecipes`／`materialBasisRecipes`，每次先将 live real-basis 区间运输到当前最终曲线，再执行原有混合规律。真实 60° 插入不自动添加区间属性键；新真实快照以后明确修改区间时，以局部属性 delta 叠加。Snapshot 没有新增语义父级。该实现不进入完整曲线洋葱皮的采样路径。
 
-完整 121 线／13 层默认脸的 −60° 插入已通过自动化，0/−15/−30/−45/−60/−75/−90 区间轨迹误差小于 1e−10。已有 property field、多次插点、三角/shared-edge、精确 0 长度 HIDE 平台、后续属性修改、source 更新/删除及 JSON 已覆盖。尚待部署后复跑 v55 实际命中的完整脸场景；不得提前把这个现场阻塞标为已验收。
+完整 121 线／13 层默认脸的 −60° 插入已通过自动化，0/−15/−30/−45/−60/−75/−90 区间轨迹误差小于 1e−10。已有 property field、多次插点、三角/shared-edge、精确 0 长度 HIDE 平台、后续属性修改、source 更新/删除及 JSON 已覆盖。v57 已复跑 v55 实际命中的完整脸场景，具体浏览器证据如下。
+
+
+### v57 真实浏览器闭环
+
+使用内置完整正面 121 条曲线／13 层，同 ID 引用到 0° 与 −90°，对 −90° 作实际 V 拖动并 Update。插入真实 −60° 后顶点由 9 增至 10；−60° 的 99 条主画面命中路径逐字不变。对 −30°、−45°、−75° 分别记录，Undo 插点后再访问，三处各 99 条路径均逐字一致。Undo 恢复 9 点，Redo 恢复 10 点。
+
+实际点击保存 JSON 并下载后，以精确 v57 生产 parser/evaluator 本地回读，保留 10 顶点、29 材质支持 recipe 和 1 个基础材质 recipe；6 个 yaw 角各 121 条曲线、0 个 SOURCE_MATERIAL 警告。这项是保存文件的生产代码回读，不是浏览器重新导入，也不是所有既有镜像材质诊断归零。7 笔临时准备事务随后正常 Undo，QA 录制消失，Undo 禁用，原 5 份画稿保留。
+
+证据：[浏览器报告](../../artifacts/triangulated-recorder-qa/v57-browser-verification.json)、[保存回读报告](../../artifacts/triangulated-recorder-qa/v57-save-read-validation.json)。未上传私人画稿、未测浏览器 FPS。
+
+### 当前待关闭的实际边界
+
+- 一般非线性 SMOOTH 必须按原投影后 de Casteljau 的顺序组合，且后续反推保持同一约束；正在独立实现与回放验证
+- 明确整层操作需保留过程参数，使未来加入该层的成员继续继承。第一批平移、旋转、正等比缩放正在接入；非等比、反射和弯边域还需同一职责的扩展
+- 两模式应调用相同端点联动与笔触属性作者工具；真正跨层联动和合并节点身份必须分别明确
+- Drawing 引用层的全部拓扑／材质能力、局部 paint 依赖身份转移及跨模式 Undo 交互仍有明确缺口
+- 旧 channel runtime 的退役未获得清晰最终决定；已批准退役的旧权重／房间范围已完成，不重复作为待办
+
+
+## 一般 SMOOTH 父拆分组合候选
+
+`responseExpressionProjection.ts` 记录有界标量表达式及原稳定 driver／方向／长度尺度；`smoothComponent.ts` 为原投影提供唯一数学实现。父拆分按“原控制值求值 → 原 SMOOTH 投影 → de Casteljau”组合，不将拆后的子柄重新当成一套近似父约束。`surfaceTargets.ts` 对后续点／柄目标先反解该投影，再统一回放验证，任一不可表达轴整笔拒绝。
+
+自动化覆盖一般非线性边／三角、saved/draft、重复拆分、live source 柄长度变更、子线端点和柄独立编辑、短 driver 原阈值、JSON 校验及后续修正。最终 Recorder 测试 371 通过、4 跳过；专门投影 21 项与 TypeScript 通过。未进行此候选的浏览器操作。
+
+本候选关闭的是父拆分与后续修正的非线性投影组合；任意非线性 SMOOTH 场的内部真实视图插入仍保留明确门槛，不能用 v57 的材质插点结果替代它。

@@ -1,7 +1,7 @@
 import type {SnapshotResponseExpressionRegistry,SnapshotExpressionResponses} from './model';
 import type {SnapshotScalarTarget,SnapshotSimplexBasis} from './simplexGeometry';
 import type {SnapshotSimplexLocation,SnapshotTriangulation} from './triangulation';
-import {SnapshotResponseExpressionError,validateSnapshotResponseExpression,type SnapshotResponseBasisReference,type SnapshotResponseExpression,type SnapshotResponseExpressionField} from './responseExpressions';
+import {SnapshotResponseExpressionError,validateSnapshotResponseExpression,snapshotResponseExpressionTerms,type SnapshotResponseBasisReference,type SnapshotResponseExpression,type SnapshotResponseExpressionField} from './responseExpressions';
 
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
 export const snapshotResponseExpressionFor=(responses:SnapshotExpressionResponses|undefined,target:SnapshotScalarTarget,axis:0|1):SnapshotResponseExpression|undefined=>(target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end])?.[axis===0?'x':'y'];
@@ -15,10 +15,11 @@ function object(value:unknown,allowed?:readonly string[]):Record<string,unknown>
 /** Expressions may retain a removed triangle's field, but each of that field's
  * real vertices and every live basis snapshot must still exist in this mesh. */
 export function validateSnapshotResponseExpressionRegistry(value:unknown,mesh:SnapshotTriangulation):asserts value is SnapshotResponseExpressionRegistry {
- const vertices=new Set(mesh.vertices.map(vertex=>vertex.id)),snapshots=new Set(mesh.vertices.map(vertex=>vertex.snapshotId)),simplexes=new Set([...mesh.edges,...mesh.triangles].map(simplex=>simplex.id));
+ const vertices=new Set(mesh.vertices.map(vertex=>vertex.id)),snapshots=new Set(mesh.vertices.map(vertex=>vertex.snapshotId)),simplexes=new Set([...mesh.edges,...mesh.triangles].map(simplex=>simplex.id)),contracts=new Map<string,string>();
  const control=(raw:unknown)=>{const data=object(raw,['x','y']);for(const axis of ['x','y'])if(data[axis]!==undefined){validateSnapshotResponseExpression(data[axis]);const expression=data[axis] as SnapshotResponseExpression;
+  for(const contract of expression.smoothContracts??[]){const serialized=JSON.stringify(contract),prior=contracts.get(contract.id);if(prior&&prior!==serialized)invalid('The expression registry contains inconsistent original SMOOTH contracts.');contracts.set(contract.id,serialized);}
   if(expression.fields.some(field=>field.vertexIds.some(id=>!vertices.has(id))))invalid('Expression field references a missing real mesh vertex; archive it before deleting its source.');
-  if(expression.terms.some(term=>term.basis.some(value=>!snapshots.has(value.basis.snapshotId))))invalid('Expression references a missing real basis snapshot; archive it before deleting its source.');
+  if(snapshotResponseExpressionTerms(expression).some(term=>term.basis.some(value=>!snapshots.has(value.basis.snapshotId))))invalid('Expression references a missing real basis snapshot; archive it before deleting its source.');
  }};
  for(const [simplexId,raw] of Object.entries(object(value))){
   if(!simplexes.has(simplexId))invalid('Expression registry references a missing active simplex; archive it with its original frame.');
@@ -62,5 +63,5 @@ export function createSnapshotResponseFieldWeightMapper(mesh:SnapshotTriangulati
 
 export function snapshotResponseExpressionRegistryValidForMesh(responses:SnapshotExpressionResponses,mesh:SnapshotTriangulation):boolean {
  const vertices=new Set(mesh.vertices.map(vertex=>vertex.id)),snapshots=new Set(mesh.vertices.map(vertex=>vertex.snapshotId));
- return [...Object.values(responses.nodes),...Object.values(responses.handles).flat()].every(control=>(Object.values(control) as SnapshotResponseExpression[]).every(expression=>expression.fields.every(field=>field.vertexIds.every(id=>vertices.has(id)))&&expression.terms.every(term=>term.basis.every(value=>snapshots.has(value.basis.snapshotId)))));
+ return [...Object.values(responses.nodes),...Object.values(responses.handles).flat()].every(control=>(Object.values(control) as SnapshotResponseExpression[]).every(expression=>expression.fields.every(field=>field.vertexIds.every(id=>vertices.has(id)))&&snapshotResponseExpressionTerms(expression).every(term=>term.basis.every(value=>snapshots.has(value.basis.snapshotId)))));
 }

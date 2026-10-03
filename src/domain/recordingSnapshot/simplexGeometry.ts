@@ -6,7 +6,7 @@ export type SnapshotScalarTarget={kind:'node';nodeId:string}|{kind:'handle';curv
  * source IDs, relationships or discrete authoring values are present. */
 export type SnapshotScalarWeights=(target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>readonly number[];
 /** Value responses represent inherited motion even when all active basis values agree. */
-export type SnapshotScalarValue=(target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>number;
+export type SnapshotScalarValue=((target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>number)&{projectSmooth?:(drawing:DrawingDocument)=>{drawing:DrawingDocument;diagnostics:string[]};unprojectSmooth?:(drawing:DrawingDocument,available:(target:SnapshotScalarTarget,axis:0|1)=>boolean)=>DrawingDocument;rawScalar?:(target:SnapshotScalarTarget,axis:0|1)=>number|undefined};
 export type SnapshotScalarResponse=SnapshotScalarWeights|SnapshotScalarValue;
 export interface SnapshotSimplexBasis {snapshotId:string;drawing:DrawingDocument;/** Recorder binding, only for deterministic discrete ties. */angle?:{x:number;y:number}}
 export interface SnapshotSimplexGeometry {drawing:DrawingDocument;diagnostics:string[];nodeAuthorities:Map<string,string>}
@@ -71,6 +71,6 @@ export function interpolateSnapshotSimplexGeometry(bases:readonly SnapshotSimple
  drawing.joins=drawing.joins.map(join=>join.mode==='ARC'?{...join,radius:scalar(bases.map(b=>b.drawing.joins.find(j=>j.id===join.id)!.radius!))}:join);
  drawing.endpointLinks=drawing.endpointLinks?.map(link=>link.joinBrush?.kind==='ARC'?{...link,joinBrush:{...link.joinBrush,trimDistance:scalar(bases.map(b=>{const brush=b.drawing.endpointLinks!.find(l=>l.id===link.id)!.joinBrush!;return brush.kind==='ARC'?brush.trimDistance:0;}))}}:link);
  drawing.offsets=drawing.offsets.map(offset=>{const sources=bases.map(b=>b.drawing.offsets.find(o=>o.id===offset.id)!);return sources.some(o=>o.translation)?{...offset,translation:([0,1] as const).map(axis=>scalar(sources.map(o=>o.translation?.[axis]??0))) as Point2}:offset;});
- const smooth=applyEndpointPairSmoothConstraints(drawing);diagnostics.push(...smooth.diagnostics);
+ const smooth=response&&'projectSmooth' in response&&response.projectSmooth?response.projectSmooth(drawing):applyEndpointPairSmoothConstraints(drawing);diagnostics.push(...smooth.diagnostics);
  return {drawing:smooth.drawing,diagnostics:[...new Set(diagnostics)],nodeAuthorities:authorities};
 }

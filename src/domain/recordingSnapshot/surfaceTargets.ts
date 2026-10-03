@@ -1,3 +1,4 @@
+import {projectSnapshotResponseCorrections,unprojectSnapshotResponseTarget,snapshotProjectionScalarKey,type SnapshotProjectionScalarSample} from './responseExpressionProjection';
 import {finitePoint,sub,type DrawingDocument,type Point2} from '../drawing/model';
 import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotTriangleControlResponse,SnapshotTriangleResponses,SnapshotResponseExpressionRegistry} from './model';
 import {endpointPairNodeAuthorities} from './endpointPair';
@@ -61,11 +62,19 @@ export function createSnapshotSurfaceResponseSampler(graph:SnapshotAngleGraph,lo
 export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[]):SnapshotScalarValue {
  const native=createSnapshotSurfaceResponseSampler(graph,location),effective=effectiveSnapshotSurfaceResponses(graph),responses=own(effective.responseExpressions,location.simplexId);
  const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
- return (target,axis,coordinates,weights)=>{
+ const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
+ const sourceBaselines=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?.sourceBaseline?{version:1,fields:expression.fields,terms:expression.sourceBaseline}:undefined;},basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
+ const samples=new Map<string,SnapshotProjectionScalarSample>();
+ const sample:SnapshotScalarValue=(target,axis,coordinates,weights)=>{
   if(location.kind==='vertex')return coordinates[0];
   const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights);
-  return coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
+  if(!hasProjection)return coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
+  const hasSourceBaseline=!!snapshotResponseExpressionFor(responses,target,axis)?.sourceBaseline,geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
+  const baseline=geometric(weights)+residual,corrected=coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
+  const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>inherited(target,axis,coordinates.map(()=>0),weights));
+  samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
  };
+ sample.projectSmooth=drawing=>projectSnapshotResponseCorrections(drawing,responses,samples);sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
 }
 
 export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[]}
@@ -132,7 +141,16 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   if(!curve||!node)fail('SURFACE_INVALID_TARGET',`Handle ${curveId} end ${end} is missing from an active saved snapshot basis.`);
   return sub(curve.handles[end],node);
  };
- for(const curve of wantedDrawing.curves)for(const end of [0,1] as const)solve({kind:'handle',curveId:curve.id,end},vector(before,curve.id,end),vector(wanted,curve.id,end),basisIndices.map(basis=>vector(basis,curve.id,end)));
+ const owned=own(effective.responseExpressions,location.simplexId),hasProjectedInputs=Object.values(owned?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length))),sampler=hasProjectedInputs?createSnapshotSurfaceValueSampler(graph,location,options.allBases??orderedBases):undefined;
+ // Populate the shared raw component inputs without changing the user's graph.
+ if(sampler)interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler);
+ const available=(target:SnapshotScalarTarget,axis:0|1)=>{if(target.kind==='node')return true;const values=basisIndices.map(basis=>vector(basis,target.curveId,target.end)[axis]);return Math.max(...values)-Math.min(...values)>scalarTolerance(...values);};
+ let unprojected:DrawingDocument;try{unprojected=sampler?.unprojectSmooth?.(wantedDrawing,available)??wantedDrawing;}catch(error){return fail('SURFACE_CONSTRAINT_UNSOLVABLE',error instanceof Error?error.message:String(error));}
+ const rawWanted=index(unprojected);
+ for(const curve of wantedDrawing.curves)for(const end of [0,1] as const){const target:SnapshotScalarTarget={kind:'handle',curveId:curve.id,end},projected=!!owned?.handles[curve.id]?.[end].x?.smoothContracts?.some(contract=>contract.targets.some(value=>value.endpoint.curveId===curve.id&&value.endpoint.end===end))||!!owned?.handles[curve.id]?.[end].y?.smoothContracts?.some(contract=>contract.targets.some(value=>value.endpoint.curveId===curve.id&&value.endpoint.end===end));
+  const prior=vector(before,curve.id,end),raw=projected?([0,1] as const).map(axis=>sampler?.rawScalar?.(target,axis)??prior[axis]) as Point2:prior;
+  solve(target,raw,vector(rawWanted,curve.id,end),basisIndices.map(basis=>vector(basis,curve.id,end)));
+ }
  if(!updates.length)return {graph,changed:false};
 
  const frameId=draft?.id??options.frameId;

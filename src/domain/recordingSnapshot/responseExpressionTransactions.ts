@@ -1,3 +1,4 @@
+import {deriveSmoothComponents} from './smoothComponent';
 import {createSnapshotResponseBasisResolver} from './responseExpressionRegistry';
 import {unprovenSnapshotSmoothResponses} from './responseExpressionSmooth';
 import type {CurveSplitIntent} from '../drawing/layerEditIntent';
@@ -7,7 +8,7 @@ import {remapSnapshotSplitResponses} from './responseExpressionSplit';
 import {interpolateSnapshotSimplexGeometry} from './simplexGeometry';
 import {validateRecordingSnapshots} from './validation';
 import type {RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotExpressionControlResponse,SnapshotExpressionResponses,SnapshotResponseExpressionRegistry} from './model';
-import type {SnapshotResponseExpression,SnapshotResponseBasisReference} from './responseExpressions';
+import {snapshotResponseExpressionTerms,type SnapshotResponseExpression,type SnapshotResponseBasisReference} from './responseExpressions';
 
 /** Final step of the existing frozen-source topology transaction. Only the
  * algebra is persisted; old evaluated poses are ephemeral basis evidence. */
@@ -18,7 +19,7 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
   const bases=graph.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,drawing:resolveSnapshot(before,vertex.snapshotId,{useDraft:false,diagnostics:'preview'}).drawing,angle:vertex.angle}));
   if(!bases.some(basis=>basis.drawing.curves.some(curve=>curve.id===intent.curveId)))return recording;
   // A preexisting SMOOTH relation applies nonlinear length/direction projection
-  // after interpolation. Flat linear transfer must diagnose it before mutation.
+  // after interpolation. Capture its full original component when needed.
   const smooth=[...new Map(bases.flatMap(basis=>[...basis.drawing.joins.filter(join=>join.mode==='SMOOTH'),...(basis.drawing.endpointLinks??[]).filter(link=>link.joinBrush?.kind==='SMOOTH')]).map(relation=>[relation.id,relation])).values()],ends=new Set([JSON.stringify([intent.curveId,0]),JSON.stringify([intent.curveId,1])]),related=new Set<string>();
   for(let changed=true;changed;){changed=false;for(const relation of smooth){const a=JSON.stringify([relation.a.curveId,relation.a.end]),b=JSON.stringify([relation.b.curveId,relation.b.end]);if((ends.has(a)||ends.has(b))&&!related.has(relation.id)){related.add(relation.id);ends.add(a);ends.add(b);changed=true;}}}
   const proofBases=[...bases,...graph.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,drawing:resolveSnapshot(before,vertex.snapshotId,{useDraft:true,angle:before.snapshots.find(snapshot=>snapshot.id===vertex.snapshotId)!.angle,diagnostics:'preview'}).drawing,angle:vertex.angle}))],dependencies=smooth.filter(relation=>related.has(relation.id));
@@ -28,7 +29,7 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
    nonlinearDependencies.push(...unprovenSnapshotSmoothResponses(effective,proofBases,dependencies,`split-proof:${intent.curveId}:draft:${frame.id}`).map(message=>`Draft ${frame.id}, ${message}`));
   }
   const authorities=new Map<string,Map<string,string>>();
-  const next=remapSnapshotSplitResponses(graph,intent,{nonlinearDependencies,nodeAuthority:(nodeId,location)=>{
+  const next=remapSnapshotSplitResponses(graph,intent,{nonlinearDependencies,...nonlinearDependencies.length?{smoothComponents:(location:import('./triangulation').SnapshotSimplexLocation)=>{const active=location.snapshotIds.map(id=>bases.find(basis=>basis.snapshotId===id)!),drawing=interpolateSnapshotSimplexGeometry(active,location.geometricWeights).drawing,curves=new Map(drawing.curves.map(curve=>[curve.id,curve])),nodeAuthority=endpointPairNodeAuthorities(drawing),relations=[...drawing.joins.filter(join=>join.mode==='SMOOTH'),...(drawing.endpointLinks??[]).filter(link=>link.joinBrush?.kind==='SMOOTH')];return deriveSmoothComponents(relations).filter(component=>component.members.some(({endpoint})=>endpoint.curveId===intent.curveId)).map(component=>({component,nodeIds:component.members.map(({endpoint})=>{const node=curves.get(endpoint.curveId)!.nodes[endpoint.end];return nodeAuthority.get(node)??node;})}));}}:{},nodeAuthority:(nodeId,location)=>{
    let map=authorities.get(location.simplexId);if(!map){const active=location.snapshotIds.map(id=>bases.find(basis=>basis.snapshotId===id)!);map=endpointPairNodeAuthorities(interpolateSnapshotSimplexGeometry(active,location.geometricWeights).drawing);authorities.set(location.simplexId,map);}return map.get(nodeId)??nodeId;
   }});
   return {...recording,angleGraph:next};
@@ -39,7 +40,7 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
 function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,workspace:RecordingSnapshotWorkspace,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {
  const kept:SnapshotResponseExpressionRegistry={},retired:SnapshotResponseExpressionRegistry={};
  const targetAlive=(kind:'nodes'|'handles',id:string)=>Object.hasOwn(kind==='nodes'?workspace.library.nodes:workspace.library.curves,id);
- const valid=(expression:SnapshotResponseExpression)=>expression.terms.every(term=>term.basis.every(({basis})=>targetAlive(basis.target.kind==='node'?'nodes':'handles',basis.target.kind==='node'?basis.target.nodeId:basis.target.curveId)&&hasBasis(basis)));
+ const valid=(expression:SnapshotResponseExpression)=>(expression.smoothContracts??[]).every(contract=>contract.targets.every(({endpoint})=>targetAlive('handles',endpoint.curveId)))&&snapshotResponseExpressionTerms(expression).every(term=>term.basis.every(({basis})=>targetAlive(basis.target.kind==='node'?'nodes':'handles',basis.target.kind==='node'?basis.target.nodeId:basis.target.curveId)&&hasBasis(basis)));
  for(const [simplexId,responses] of Object.entries(registry??{})){
   const active:SnapshotExpressionResponses={nodes:{},handles:{}},archive:SnapshotExpressionResponses={nodes:{},handles:{}};
   const filter=(control:SnapshotExpressionControlResponse,alive:boolean)=>{const yes:SnapshotExpressionControlResponse={},no:SnapshotExpressionControlResponse={};for(const axis of ['x','y'] as const){const expression=control[axis];if(expression)(alive&&valid(expression)?yes:no)[axis]=expression;}return [yes,no] as const;};

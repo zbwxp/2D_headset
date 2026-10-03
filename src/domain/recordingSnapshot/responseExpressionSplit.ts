@@ -1,3 +1,5 @@
+import {captureSnapshotProjectedResponses,remapSnapshotSmoothContracts,type SnapshotProjectionComponent} from './responseExpressionProjection';
+import {smoothEndpointKey} from './smoothComponent';
 import type {CurveSplitIntent} from '../drawing/layerEditIntent';
 import type {Point2} from '../drawing/model';
 import type {SnapshotAngleGraph,SnapshotControlResponse,SnapshotExpressionControlResponse,SnapshotExpressionResponses,SnapshotResponseExpressionRegistry,SnapshotTriangleControlResponse} from './model';
@@ -6,7 +8,7 @@ import type {SnapshotSimplexLocation,SnapshotTriangulation} from './triangulatio
 import {
  captureSnapshotResponseField,combineSnapshotResponseExpressions,createSnapshotResponseResidual,emptySnapshotResponseExpression,
  splitSnapshotCubicResponseExpressions,substituteSnapshotResponseBases,snapshotResponseBasisKey,SnapshotResponseExpressionError,
- type SnapshotCubicResponseExpressions,type SnapshotResponseBasisReference,type SnapshotResponseExpression,
+ snapshotResponseExpressionHasValue,type SnapshotCubicResponseExpressions,type SnapshotResponseBasisReference,type SnapshotResponseExpression,type SnapshotResponseExpressionField,
 } from './responseExpressions';
 
 type Split=Pick<CurveSplitIntent,'curveId'|'sourceNodeIds'|'t'|'childCurveIds'|'seamNodeId'>;
@@ -73,6 +75,7 @@ export function certifySnapshotSmoothResponseIdentity(bases:readonly SnapshotSmo
  const coefficients=(expression:SnapshotResponseExpression|undefined)=>{
   const result=new Map<string,number>();if(!expression)return result;
   const canonical=combineSnapshotResponseExpressions([{coefficient:1,expression}]);
+  if(canonical.operations?.length)fail('A projected SMOOTH program requires its original component composition.');
   for(const field of canonical.fields){const serialized=JSON.stringify(field),prior=fields.get(field.id);if(prior&&prior!==serialized)fail(`SMOOTH proof field ${field.id} has incompatible retained support.`);fields.set(field.id,serialized);}
   for(const term of canonical.terms)for(const value of term.basis)result.set(JSON.stringify([term.fieldId,term.coordinate,term.weight,snapshotResponseBasisKey(value.basis)]),value.coefficient);
   return result;
@@ -114,6 +117,8 @@ export interface SnapshotSplitResponseOptions {
  /** The workspace compiler must inspect actual shared projection dependencies.
   * Supplying none asserts that this response transfer is linear. */
  nonlinearDependencies:readonly string[];
+ /** Exact original component contracts, shared by every active real basis. */
+ smoothComponents?:(location:SnapshotSimplexLocation)=>readonly SnapshotProjectionComponent[];
  /** Resolve the actual shared node authority in the ORIGINAL active simplex.
   * Default is appropriate only when each source endpoint is its own authority. */
  nodeAuthority?:(nodeId:string,location:SnapshotSimplexLocation)=>string;
@@ -126,7 +131,7 @@ export interface SnapshotSplitResponseOptions {
  * receive combined native + inherited residual expressions. */
 export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Split,options:SnapshotSplitResponseOptions):SnapshotAngleGraph {
  const empty=emptySnapshotResponseExpression();
- splitSnapshotCubicResponseExpressions([empty,empty,empty,empty],{...intent,nonlinearDependencies:options.nonlinearDependencies});
+ splitSnapshotCubicResponseExpressions([empty,empty,empty,empty],{...intent,nonlinearDependencies:options.smoothComponents?[]:options.nonlinearDependencies});
  if(!intent.seamNodeId||!Array.isArray(intent.sourceNodeIds)||intent.sourceNodeIds.length!==2||intent.sourceNodeIds.some(id=>typeof id!=='string'||!id)||intent.sourceNodeIds.includes(intent.seamNodeId))fail('A response split needs the original endpoint identities and a fresh seam node.');
  const snapshotByVertex=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.snapshotId]));
  const locations:SnapshotSimplexLocation[]=[...graph.mesh.edges.map(edge=>({kind:'edge' as const,simplexId:edge.id,vertexIds:[...edge.vertexIds],snapshotIds:edge.vertexIds.map(id=>snapshotByVertex.get(id)!),geometricWeights:[.5,.5]})),...graph.mesh.triangles.map(triangle=>({kind:'triangle' as const,simplexId:triangle.id,vertexIds:[...triangle.vertexIds],snapshotIds:triangle.vertexIds.map(id=>snapshotByVertex.get(id)!),geometricWeights:[1/3,1/3,1/3]}))];
@@ -134,12 +139,20 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
   if(basis.target.kind!=='handle'||basis.target.curveId!==intent.curveId)return undefined;
   const end=basis.target.end;return [{coefficient:1/(end===0?intent.t:1-intent.t),basis:{...basis,target:{kind:'handle' as const,curveId:intent.childCurveIds[end],end}}}];
  };
- const rewrite=(expression:SnapshotResponseExpression)=>substituteSnapshotResponseBases(expression,replacement);
+ const rewrite=(expression:SnapshotResponseExpression)=>remapSnapshotSmoothContracts(substituteSnapshotResponseBases(expression,replacement),intent);
  const rewriteControl=(value:SnapshotExpressionControlResponse):SnapshotExpressionControlResponse=>({...value,...value.x?{x:rewrite(value.x)}:{},...value.y?{y:rewrite(value.y)}:{}});
- const stripParent=<T extends {nodes:Record<string,unknown>;handles:Record<string,unknown>}>(map:Record<string,T>):Record<string,T>=>Object.fromEntries(Object.entries(map).map(([id,responses])=>[id,{...responses,handles:Object.fromEntries(Object.entries(responses.handles).filter(([curveId])=>curveId!==intent.curveId))}])) as Record<string,T>;
+
  const transfer=(source:Surface,scope:string):Surface=>{
   const registry:SnapshotResponseExpressionRegistry={};
   const capture=createSnapshotResponseExpressionCapture(graph.mesh,source,JSON.stringify(['split',scope,intent.curveId,intent.childCurveIds,intent.t]));
+  const components=new Map(locations.map(location=>[location.simplexId,options.smoothComponents?.(location)??[]]));
+  const projected=new Map(locations.map(location=>[location.simplexId,captureSnapshotProjectedResponses(graph.mesh,location,components.get(location.simplexId)!,capture,scope,(target,axis)=>expressionControl(own(source.responseExpressions,location.simplexId),target)?.[axes[axis]]??empty)]));
+  if(options.nonlinearDependencies.length&&![...components.values()].some(values=>values.length))throw new SnapshotResponseExpressionError('EXPRESSION_NONLINEAR_DEPENDENCY','No original SMOOTH component was supplied for this nonlinear split.');
+  const capturedNodes=new Set([...components.values()].flatMap(components=>components.flatMap(component=>[...component.nodeIds])));
+  const ownedEndpoints=new Map([...projected.values()].flatMap(values=>[...values]));
+  const captured=(location:SnapshotSimplexLocation,target:SnapshotScalarTarget,axis:0|1)=>target.kind==='handle'?projected.get(location.simplexId)?.get(smoothEndpointKey(target))?.response[axes[axis]]??capture(location,target,axis):capture(location,target,axis);
+  const stripOwned=<T extends SnapshotControlResponse|SnapshotTriangleControlResponse>(map:Record<string,{nodes:Record<string,T>;handles:Record<string,[T,T]>}>)=>Object.fromEntries(Object.entries(map).map(([id,responses])=>[id,{...responses,nodes:capturedNodes.size?Object.fromEntries(Object.entries(responses.nodes).filter(([nodeId])=>!capturedNodes.has(nodeId))):responses.nodes,handles:Object.fromEntries(Object.entries(responses.handles).filter(([curveId])=>curveId!==intent.curveId).map(([curveId,pair])=>[curveId,([0,1] as const).some(end=>ownedEndpoints.has(smoothEndpointKey({curveId,end})))?pair.map((value,end)=>ownedEndpoints.has(smoothEndpointKey({curveId,end:end as 0|1}))?{} as T:value) as [T,T]:pair]))}])) as typeof map;
+
   // References to this retired handle may occur in any surviving target after
   // previous splits, including a sibling curve outside the current split.
   for(const [simplexId,responses] of Object.entries(source.responseExpressions??{}))put(registry,simplexId,{
@@ -150,17 +163,29 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
    const existing=own(source.responseExpressions,location.simplexId);
    const native=location.kind==='edge'?own(source.edgeResponses,location.simplexId):own(source.triangleResponses,location.simplexId);
    if(intent.childCurveIds.some(id=>own(existing?.handles,id)||native&&Object.hasOwn(native.handles,id))||own(existing?.nodes,intent.seamNodeId)||native&&Object.hasOwn(native.nodes,intent.seamNodeId))fail(`Split response identity already exists in ${location.simplexId}.`);
+   for(const nodeId of capturedNodes){const prior=own(registry,location.simplexId)??{nodes:{},handles:{}};put(prior.nodes,nodeId,{x:rewrite(capture(location,{kind:'node',nodeId},0)),y:rewrite(capture(location,{kind:'node',nodeId},1))});put(registry,location.simplexId,prior);}
+   for(const {endpoint} of ownedEndpoints.values())if(endpoint.curveId!==intent.curveId){
+    const response:SnapshotExpressionControlResponse={x:rewrite(captured(location,{kind:'handle',...endpoint},0)),y:rewrite(captured(location,{kind:'handle',...endpoint},1))},prior=own(registry,location.simplexId)??{nodes:{},handles:{}},pair=own(prior.handles,endpoint.curveId)??[{},{}];
+    put(prior.handles,endpoint.curveId,endpoint.end===0?[response,pair[1]]:[pair[0],response]);put(registry,location.simplexId,prior);
+   }
    const targets:readonly SnapshotScalarTarget[]=[{kind:'node',nodeId:options.nodeAuthority?.(intent.sourceNodeIds[0],location)??intent.sourceNodeIds[0]},{kind:'handle',curveId:intent.curveId,end:0},{kind:'handle',curveId:intent.curveId,end:1},{kind:'node',nodeId:options.nodeAuthority?.(intent.sourceNodeIds[1],location)??intent.sourceNodeIds[1]}];
    const seam:SnapshotExpressionControlResponse={},left:[SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]=[{},{}],right:[SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]=[{},{}];
    for(const axis of [0,1] as const){
-    const expressions=targets.map(target=>capture(location,target,axis)) as unknown as SnapshotCubicResponseExpressions;
-    if(expressions.every(expression=>!expression.terms.length))continue;
-    const transformed=splitSnapshotCubicResponseExpressions(expressions,{...intent,nonlinearDependencies:options.nonlinearDependencies});
-    if(transformed.left[3].terms.length)seam[axes[axis]]=transformed.left[3];
+    const expressions=targets.map(target=>{const expression=captured(location,target,axis);if(!projected.get(location.simplexId)?.size&&!expression.smoothContracts?.length)return expression;
+     const field:SnapshotResponseExpressionField={id:JSON.stringify(['split-source-baseline',scope,location.simplexId,intent.childCurveIds]),vertexIds:[...location.vertexIds],edges:[],samples:[]};
+     return {...expression,fields:[...expression.fields.filter(value=>value.id!==field.id),field],sourceBaseline:location.snapshotIds.map((snapshotId,coordinate)=>({fieldId:field.id,coordinate:coordinate as 0|1|2,weight:'geometric' as const,basis:[{coefficient:1,basis:{snapshotId,target,axis}}]}))};
+    }) as unknown as SnapshotCubicResponseExpressions;
+    if(expressions.every(expression=>!snapshotResponseExpressionHasValue(expression)&&!expression.smoothOwned))continue;
+    const transformed=splitSnapshotCubicResponseExpressions(expressions,{...intent,nonlinearDependencies:options.smoothComponents?[]:options.nonlinearDependencies});
+    if(snapshotResponseExpressionHasValue(transformed.left[3])||transformed.left[3].smoothOwned)seam[axes[axis]]=remapSnapshotSmoothContracts(transformed.left[3],intent);
     for(const end of [0,1] as const){
-     if(transformed.left[end+1].terms.length)left[end][axes[axis]]=transformed.left[end+1];
-     if(transformed.right[end+1].terms.length)right[end][axes[axis]]=transformed.right[end+1];
+     if(snapshotResponseExpressionHasValue(transformed.left[end+1])||transformed.left[end+1].smoothOwned)left[end][axes[axis]]=remapSnapshotSmoothContracts(transformed.left[end+1],intent);
+     if(snapshotResponseExpressionHasValue(transformed.right[end+1])||transformed.right[end+1].smoothOwned)right[end][axes[axis]]=remapSnapshotSmoothContracts(transformed.right[end+1],intent);
     }
+   }
+   if(left.some(value=>value.x?.smoothOwned||value.y?.smoothOwned)||right.some(value=>value.x?.smoothOwned||value.y?.smoothOwned)){
+    const a={curveId:intent.childCurveIds[0],end:1 as const},b={curveId:intent.childCurveIds[1],end:0 as const},contract={id:JSON.stringify(['split-seam-contract',scope,location.simplexId,intent.childCurveIds]),component:{relationId:JSON.stringify(['split-seam',intent.childCurveIds]),members:[{endpoint:a,sign:1},{endpoint:b,sign:-1}],conflict:false},targets:[{endpoint:a,scale:1},{endpoint:b,scale:1}]};
+    for(const value of [left[1],right[0]])for(const axis of axes){const expression=value[axis]??empty;value[axis]={...expression,smoothOwned:true,smoothContracts:[...expression.smoothContracts??[],contract]};}
    }
    if(Object.keys(seam).length||left.some(value=>Object.keys(value).length)||right.some(value=>Object.keys(value).length)){
     const prior=own(registry,location.simplexId)??{nodes:{},handles:{}},nodes={...prior.nodes},handles={...prior.handles};
@@ -170,7 +195,7 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
     put(registry,location.simplexId,{nodes,handles});
    }
   }
-  return {edgeResponses:stripParent(source.edgeResponses),triangleResponses:stripParent(source.triangleResponses),...(Object.keys(registry).length?{responseExpressions:registry}:{})};
+  return {edgeResponses:stripOwned(source.edgeResponses),triangleResponses:stripOwned(source.triangleResponses),...(Object.keys(registry).length?{responseExpressions:registry}:{})};
  };
  const saved=transfer(graph,'saved');
  const frames=graph.correctionFrames?.map(frame=>{
@@ -180,7 +205,7 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
   const effective=transfer({edgeResponses:{...graph.edgeResponses,...frame.edgeResponses},triangleResponses:{...graph.triangleResponses,...frame.triangleResponses},responseExpressions:{...graph.responseExpressions,...frame.responseExpressions}},`frame:${frame.id}`);
   const overlays:SnapshotResponseExpressionRegistry={};
   for(const simplexId of changed){const after=own(effective.responseExpressions,simplexId),before=own(saved.responseExpressions,simplexId);if(after||before)put(overlays,simplexId,after??{nodes:{},handles:{}});}
-  return {...frame,...frame.edgeResponses?{edgeResponses:stripParent(frame.edgeResponses)}:{},...frame.triangleResponses?{triangleResponses:stripParent(frame.triangleResponses)}:{},...(Object.keys(overlays).length?{responseExpressions:overlays}:{})};
+  return {...frame,...frame.edgeResponses?{edgeResponses:Object.fromEntries(Object.keys(frame.edgeResponses).map(id=>[id,effective.edgeResponses[id]]))}:{},...frame.triangleResponses?{triangleResponses:Object.fromEntries(Object.keys(frame.triangleResponses).map(id=>[id,effective.triangleResponses[id]]))}:{},...(Object.keys(overlays).length?{responseExpressions:overlays}:{})};
  });
  // Delete a now-empty registry explicitly; spreading the old graph must not
  // retain retired parent-handle expression targets when none survive.

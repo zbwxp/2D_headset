@@ -118,12 +118,13 @@ it('preserves the real source split → real 60 → second insertion → child c
  const replay=evaluateRecordingSnapshot(parseRecordingSnapshots(JSON.parse(JSON.stringify(split))),'recording');expect(replay.drawing.nodes.find(node=>node.id===seam.id)!.position[0]).toBeCloseTo(seam.position[0]+.1,9);
 });
 
-it('rejects a nonlinear draft overlay even when the saved SMOOTH surface is linear',async()=>{
+it('captures a nonlinear draft overlay separately when the saved SMOOTH surface is linear',async()=>{
  const {transferSnapshotSplitResponses}=await import('../../domain/recordingSnapshot/responseExpressionTransactions');const {w,r,edge}=workspace();delete r.angleGraph!.responseExpressions;
  w.library.nodes.e={id:'e',position:[10,0]};w.library.curves.d={...w.library.curves.c,id:'d',nodes:['b','e'],handles:[[1,-1],[9,1]]};
  for(const snapshot of w.snapshots){if(snapshot.layers[0].kind==='original')snapshot.layers[0].items.push('d');snapshot.relations.joins={add:[{id:'smooth',mode:'SMOOTH',a:{curveId:'c',end:1},b:{curveId:'d',end:0}}]};}
  w.snapshots[1].deformation.layers.layer.shape!.handles={c:[[0,0],[-1,0]],d:[[1,0],[0,0]]};
  r.angleGraph!.correctionFrames=[{id:'nonlinear-draft',angle:{x:45,y:0},status:'draft',edgeResponses:{[edge.id]:{nodes:{},handles:{c:[{},{x:[[.5,.2]]}]}}}}];
  const before=JSON.stringify(w),intent={kind:'split-curve' as const,curveId:'c',sourceLayerId:'layer',sourceNodeIds:['a','b'] as const,t:.37,childCurveIds:['left','right'] as const,seamNodeId:'seam',seamJoinId:'seam-join',intervals:[]};
- expect(()=>transferSnapshotSplitResponses(w,w,intent)).toThrow(/Draft nonlinear-draft.*SMOOTH/);expect(JSON.stringify(w)).toBe(before);
+ const transferred=transferSnapshotSplitResponses(w,w,intent),graph=transferred.recordings[0].angleGraph!;
+ expect(graph.correctionFrames?.[0].responseExpressions).toBeDefined();expect(JSON.stringify(graph.correctionFrames?.[0].responseExpressions)).toContain('smooth');expect(JSON.stringify(graph.responseExpressions)).not.toBe(JSON.stringify(graph.correctionFrames?.[0].responseExpressions));expect(JSON.stringify(w)).toBe(before);
 });

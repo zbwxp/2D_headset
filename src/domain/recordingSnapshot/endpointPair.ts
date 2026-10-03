@@ -1,14 +1,14 @@
-import {add,sub,length,finitePoint,type DrawingDocument,type Point2,type Endpoint} from '../drawing/model';
+import {add,sub,length,finitePoint,type DrawingDocument,type Point2} from '../drawing/model';
 import {evaluatedAffine} from '../drawing/evaluatedAffine';
 import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {transportEndpointPairMaterial,replaceEndpointPairMaterial} from './endpointPairMaterial';
+import {deriveSmoothComponents,projectSmoothComponent,smoothEndpointKey,smoothNumericTolerance as numericTolerance} from './smoothComponent';
 import type {SnapshotControlResponse,SnapshotEndpointPair,SnapshotEndpointResponses} from './model';
 
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const blend=(a:number,b:number,t:number)=>a+(b-a)*t;
-const numericTolerance=(...values:number[])=>64*Number.EPSILON*Math.max(1,...values.map(Math.abs));
 
 /** No epsilon denominator: an unavailable coordinate has no inverse. */
 export function invertEndpointPairCoordinate(start:number,end:number,target:number):{available:true;value:number}|{available:false;reason:string} {
@@ -74,24 +74,18 @@ export function endpointPairCompatibility(start:DrawingDocument,end:DrawingDocum
  return [...new Set(diagnostics)];
 }
 
-interface SmoothMember {endpoint:Endpoint;sign:number}
 /** SMOOTH is an explicit existing relation, not an extra stored residual. The
  * stable driver supplies direction; each dependent retains its own length. */
-export function applyEndpointPairSmoothConstraints(drawing:DrawingDocument):{drawing:DrawingDocument;diagnostics:string[]} {
- const relations=[...drawing.joins.filter(j=>j.mode==='SMOOTH'),...(drawing.endpointLinks??[]).filter(l=>l.joinBrush?.kind==='SMOOTH')].sort((a,b)=>a.id.localeCompare(b.id));
- if(!relations.length)return {drawing,diagnostics:[]};
- const key=(e:Endpoint)=>JSON.stringify([e.curveId,e.end]),graph=new Map<string,Endpoint[]>(),done=new Set<string>(),diagnostics:string[]=[];
- for(const relation of relations)for(const [a,b] of [[relation.a,relation.b],[relation.b,relation.a]])graph.set(key(a),[...(graph.get(key(a))??[]),b]);
+export function applyEndpointPairSmoothConstraints(drawing:DrawingDocument,excludedEndpoints?:ReadonlySet<string>):{drawing:DrawingDocument;diagnostics:string[]} {
+ const components=deriveSmoothComponents([...drawing.joins.filter(j=>j.mode==='SMOOTH'),...(drawing.endpointLinks??[]).filter(l=>l.joinBrush?.kind==='SMOOTH')]);
+ if(!components.length)return {drawing,diagnostics:[]};
+ const diagnostics:string[]=[];
  const curves=new Map(drawing.curves.map(c=>[c.id,{...c,handles:c.handles.map(p=>[...p]) as [Point2,Point2]}])),nodes=new Map(drawing.nodes.map(n=>[n.id,n.position]));
- for(const relation of relations){if(done.has(key(relation.a)))continue;const queue:SmoothMember[]=[{endpoint:relation.a,sign:1}],members=new Map([[key(relation.a),queue[0]]]);let conflict=false;
-  for(const member of queue){done.add(key(member.endpoint));for(const other of graph.get(key(member.endpoint))??[]){const known=members.get(key(other));if(known){if(known.sign!==-member.sign)conflict=true;}else{const next={endpoint:other,sign:-member.sign};members.set(key(other),next);queue.push(next);}}}
-  const driver=curves.get(relation.a.curveId)!,vector=sub(driver.handles[relation.a.end],nodes.get(driver.nodes[relation.a.end])!),size=length(vector);
-  if(conflict||size<=numericTolerance(...vector)){diagnostics.push(`SMOOTH ${relation.id} has ${conflict?'conflicting tangent directions':'a zero-length driver'}; its constraint cannot be resolved.`);continue;}
-  let projected=false;
-  for(const {endpoint,sign} of queue){const curve=curves.get(endpoint.curveId)!,node=nodes.get(curve.nodes[endpoint.end])!,old=curve.handles[endpoint.end],extent=length(sub(old,node));if(extent<=numericTolerance(...old,...node)){diagnostics.push(`SMOOTH ${relation.id} handle ${endpoint.curveId}/${endpoint.end} has zero length.`);continue;}
-   const next=add(node,[vector[0]*extent/size*sign,vector[1]*extent/size*sign]);if(length(sub(next,old))>numericTolerance(...next,...old))projected=true;curve.handles[endpoint.end]=next;
-  }
-  if(projected)diagnostics.push(`SMOOTH ${relation.id}: dependent handles follow the stable driver direction and their interpolated lengths.`);
+ for(const component of components){
+  if(excludedEndpoints&&component.members.every(({endpoint})=>excludedEndpoints.has(smoothEndpointKey(endpoint))))continue;
+  const projected=projectSmoothComponent(component,component.members.map(({endpoint})=>{const curve=curves.get(endpoint.curveId)!;return {node:nodes.get(curve.nodes[endpoint.end])!,handle:curve.handles[endpoint.end]};}));
+  for(const {endpoint,handle} of projected.controls)curves.get(endpoint.curveId)!.handles[endpoint.end]=handle;
+  diagnostics.push(...projected.diagnostics);
  }
  return {drawing:{...drawing,curves:drawing.curves.map(c=>curves.get(c.id)!)},diagnostics};
 }
