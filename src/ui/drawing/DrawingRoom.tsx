@@ -116,10 +116,10 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  }
  const scope=()=>approved.current&&selected.length===approved.current.ids.length&&selected.every(id=>approved.current!.ids.includes(id))?approved.current.scope:selected;
  const mayInclude=()=>!!approved.current&&scope()===approved.current.scope;
- function applyTransform(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror',value:number){
+ function applyTransform(kind:'moveX'|'moveY'|'rotate'|'scale'|'mirror'|'mirrorAxis',value:number){
   const ids=scope(),b=selectionBounds(d,ids);if(!b)return;
   const center=b.center,angle=value*Math.PI/180;
-  const map=(p:Point2):Point2=>kind==='moveX'?add(p,[value,0]):kind==='moveY'?add(p,[0,value]):kind==='mirror'?[2*center[0]-p[0],p[1]]:kind==='scale'?add(center,mul(sub(p,center),value)):(()=>{const [x,y]=sub(p,center);return add(center,[x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle)]);})();
+  const map=(p:Point2):Point2=>kind==='moveX'?add(p,[value,0]):kind==='moveY'?add(p,[0,value]):kind==='mirror'?[2*center[0]-p[0],p[1]]:kind==='mirrorAxis'?[2*(d.mirrorAxisX??0)-p[0],p[1]]:kind==='scale'?add(center,mul(sub(p,center),value)):(()=>{const [x,y]=sub(p,center);return add(center,[x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle)]);})();
   try{const n=cmd.transform(d,ids,map,mayInclude());commit(n,mirrorWritesForCurves(n,ids));setHint('');}catch(e){error(e,ids);}
  }
  useEffect(()=>{const obs=new ResizeObserver(([e])=>setSize({width:e.contentRect.width,height:e.contentRect.height}));obs.observe(host.current!);return()=>obs.disconnect();},[]);
@@ -311,7 +311,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(e.key==='Enter'&&s.tool==='pen'){endPen();setPenPreview(null);return;}
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();const list=!!(e.target as Element).closest('.drawing-layers');s.choose({ids:s.d.curves.filter((c:DrawingCurveAlias)=>list||editable(s.d,c.id)).map((c:DrawingCurveAlias)=>c.id),...(list?{paintIds:[...s.d.fills,...s.d.offsets].map((o:{id:string})=>o.id)}:{})},'select');return;}
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='g'){e.preventDefault();s.groupSelection(e.shiftKey);return;}
-   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();s.run(()=>{const n=cmd.duplicateCurves(s.d,s.selected);s.choose({ids:n.ids,group:selectedGroup(n.document,n.ids)?.id},'select');return n.document;});return;}
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();s.run(()=>{const n=cmd.duplicateCurves(s.d,s.selected,undefined,[0,0]);s.choose({ids:n.ids,group:selectedGroup(n.document,n.ids)?.id},'select');return n.document;});return;}
    if(['Delete','Backspace'].includes(e.key)){e.preventDefault();s.deleteSelected();return;}
    if(e.key.startsWith('Arrow')&&hasNudgeTarget(s.selection)){
     e.preventDefault();e.stopImmediatePropagation();if(drag.current||e.ctrlKey||e.metaKey)return;
@@ -346,9 +346,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {tool==='mirror'&&<><NumberField label="镜像轴 X" value={d.mirrorAxisX??0} onChange={x=>run(()=>cmd.setMirrorAxis(d,x))}/><button onClick={()=>run(()=>cmd.setMirrorAxis(d,0))}>{t('镜像轴归中')}</button></>}
  {tool==='pen'&&<label className="drawing-field">{t('继续接笔')}<select aria-label={t('继续接笔')} value={penJoin} onChange={e=>session.set({penJoin:e.target.value as 'POSITION'|'SMOOTH'|'CUSP'})}><option value="POSITION">{t('仅绑定')}</option><option value="SMOOTH">{t('平滑接笔')}</option><option value="CUSP">{t('尖点接笔')}</option></select></label>}
  {tool==='pen'&&<button onClick={()=>{cancelDraft();endPen();setPenPreview(null);}}><Check size={14}/>{t('结束绘制')}</button>}
- {(endpointTools||tool==='mirror')&&<><span className="drawing-step">{tool==='mirror'?t(first?'请选择目标曲线':'请选择源曲线'):connections}</span><button onClick={()=>{setFirst(null);setDraft(null);}}>{t('取消')}</button></>}
+ {(endpointTools||tool==='mirror')&&<><span className="drawing-step">{tool==='mirror'?t(first?'选择目标：仅摆到镜像位置，不自动配对':'选择镜像摆放的源曲线'):connections}</span><button onClick={()=>{setFirst(null);setDraft(null);}}>{t('取消')}</button></>}
 
- <div className="drawing-options-right"><button data-testid="drawing-mirror-toggle" aria-pressed={!!d.mirrorEditing?.enabled} title={t('只在绘制模式联动几何，录制姿态保持独立。')} onClick={()=>run(()=>setMirrorEditingEnabled(d,!d.mirrorEditing?.enabled))}>{t('持续镜像')} · {t(d.mirrorEditing?.enabled?'开':'关')}</button><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
+ <div className="drawing-options-right"><button data-testid="drawing-mirror-toggle" aria-pressed={!!d.mirrorEditing?.enabled} title={t('开启后镜像传播本次编辑；关闭后自由编辑。不锁定已有形状。')} onClick={()=>run(()=>setMirrorEditingEnabled(d,!d.mirrorEditing?.enabled))}>{t('持续镜像')} · {t(d.mirrorEditing?.enabled?'开':'关')}</button><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
  </nav>
  </AutoHideBar>
  <div className="drawing-body">

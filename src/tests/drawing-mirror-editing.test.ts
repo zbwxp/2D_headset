@@ -3,7 +3,7 @@ import * as cmd from '../domain/drawing/commands';
 import {dragNode} from '../domain/drawing/nodeDrag';
 import {deformDrawing} from '../domain/drawing/deform';
 import {emptyDrawing,shapeOf,curveById,nodeAt,add,sub,length,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
-import {applyMirrorEditing,validateMirrorEditing,constrainMirrorNodePosition,mirrorWritesForCurves,MirrorEditingError,type MirrorDrawing,type MirrorEditingConfig} from '../domain/drawing/mirrorEditing';
+import {applyMirrorEditing,validateMirrorEditing,constrainMirrorNodePosition,mirrorWritesForCurves,type MirrorDrawing,type MirrorEditingConfig} from '../domain/drawing/mirrorEditing';
 
 const axis=-.3294804514288924;
 const reflect=([x,y]:Point2):Point2=>[2*axis-x,y];
@@ -24,7 +24,7 @@ test('legacy and disabled documents are exact pass-through; enabling validates w
  const d=fixture(),off={...d,mirrorEditing:{...d.mirrorEditing!,enabled:false}},next=cmd.moveHandle(off,{curveId:'left',end:0},[axis-1,.8]);
  expect(applyMirrorEditing(off,next,{handles:[{curveId:'left',end:0,position:[axis-1,.8]}]})).toBe(next);
  expect(validateMirrorEditing(next).enabled).toBe(false);
- const before=structuredClone(next);expect(()=>validateMirrorEditing(next,{...off.mirrorEditing!,enabled:true})).toThrow(/不对称/);expect(next).toEqual(before);
+ const before=structuredClone(next);expect(validateMirrorEditing(next,{...off.mirrorEditing!,enabled:true}).enabled).toBe(true);expect(next).toEqual(before);
  const legacy={...d};delete legacy.mirrorEditing;expect(applyMirrorEditing(legacy,next)).toBe(next);
 });
 
@@ -51,37 +51,37 @@ test('only geometry follows: distinct widths, depth, visible flags, brushes, fil
  for(const c of n.curves){const {handles:_,...appearance}=c,{handles:__,...old}=curveById(d,c.id);expect(appearance).toEqual(old);}
 });
 
-test('shared linked chin component constrains both actual nodes to the axis, without merging their IDs',()=>{
+test('linked chin nodes move freely together without projection or merging IDs',()=>{
  let d=fixture();d=cmd.linkEndpoints(d,{curveId:'left',end:1},{curveId:'right',end:1},true) as MirrorDrawing;
- const id=node(d,'left',1),other=node(d,'right',1),target=constrainMirrorNodePosition(d,id,[axis+.2,-.4]);expect(target).toEqual([axis,-.4]);
+ const id=node(d,'left',1),other=node(d,'right',1),target=constrainMirrorNodePosition(d,id,[axis+.2,-.4]);expect(target).toEqual([axis+.2,-.4]);
  const raw=dragNode(d,id,target,.65),n=applyMirrorEditing(d,raw,{nodes:[{nodeId:id,position:target}]});
- symmetric(n);expect(nodeAt(n,{curveId:'left',end:1}).position).toEqual(target);expect(nodeAt(n,{curveId:'right',end:1}).position).toEqual(target);expect(id).not.toBe(other);expect(n.endpointLinks).toBe(raw.endpointLinks);
+ expect(nodeAt(n,{curveId:'left',end:1}).position).toEqual(target);expect(nodeAt(n,{curveId:'right',end:1}).position).toEqual(target);expect(id).not.toBe(other);expect(n.endpointLinks).toBe(raw.endpointLinks);
 });
 
-test('finalizer projects axial nodes defensively, but consumers should project before optional handle following',()=>{
+test('true linked-node conflicting direct targets still fail atomically',()=>{
  let d=fixture();d=cmd.linkEndpoints(d,{curveId:'left',end:1},{curveId:'right',end:1},true) as MirrorDrawing;
- const id=node(d,'left',1),p:Point2=[axis+.2,-.4],n=applyMirrorEditing(d,cmd.moveNode(d,id,p),{nodes:[{nodeId:id,position:p}]});
- expect(nodeAt(n,{curveId:'left',end:1}).position).toEqual([axis,-.4]);symmetric(n);
+ const before=structuredClone(d),a=node(d,'left',1),b=node(d,'right',1);
+ expect(()=>applyMirrorEditing(d,d,{nodes:[{nodeId:a,position:[axis+.2,-.4]},{nodeId:b,position:[axis+.3,-.4]}]})).toThrow(/联动节点/);expect(d).toEqual(before);
 });
 
-test('an explicit axial node constrains its mirrored partner as well, even without a position link',()=>{
+test('legacy axis-node metadata never clamps either independent endpoint',()=>{
  const d=fixture();d.mirrorEditing!.axisNodeIds=[node(d,'left',1)];
  expect(validateMirrorEditing(d).axisNodeIds).toHaveLength(2);
- const id=node(d,'right',1),p=constrainMirrorNodePosition(d,id,[axis+.4,.5]),n=applyMirrorEditing(d,cmd.moveNode(d,id,p),{nodes:[{nodeId:id,position:p}]});symmetric(n);expect(p[0]).toBe(axis);
+ const id=node(d,'right',1),p=constrainMirrorNodePosition(d,id,[axis+.4,.5]),n=applyMirrorEditing(d,cmd.moveNode(d,id,p),{nodes:[{nodeId:id,position:p}]});symmetric(n);expect(p[0]).toBe(axis+.4);
 });
 
-test('self-paired axial curve keeps endpoints and handles on the axis',()=>{
+test('self-paired axial curve permits free endpoints and handles',()=>{
  let d=cmd.addLayer({...emptyDrawing(),mirrorAxisX:axis});d=cmd.createCurve(d,d.layers[0].id,[[axis,0],[axis,.1],[axis,.2],[axis,.3]],.01,'Nose','nose');
  const base:MirrorDrawing={...d,mirrorEditing:{enabled:true,curvePairs:[{id:'self',a:'nose',b:'nose',reverse:false}]}},h:Point2=[axis+.3,.12];
  const n=applyMirrorEditing(base,cmd.moveHandle(base,{curveId:'nose',end:0},h),{handles:[{curveId:'nose',end:0,position:h}]});
- expect(curveById(n,'nose').handles[0]).toEqual([axis,.12]);validateMirrorEditing(n);
+ expect(curveById(n,'nose').handles[0]).toEqual(h);validateMirrorEditing(n);
 });
 
 test('self-paired reversed cubic has opposite end and handle partners, not four axis constraints',()=>{
  let d=cmd.addLayer({...emptyDrawing(),mirrorAxisX:axis});d=cmd.createCurve(d,d.layers[0].id,[[axis-1,0],[axis-.3,.5],[axis+.3,.5],[axis+1,0]],.01,'Arch','arch');
  const base:MirrorDrawing={...d,mirrorEditing:{enabled:true,curvePairs:[{id:'self',a:'arch',b:'arch',reverse:true}]}},h:Point2=[axis-.6,.8];
  const n=applyMirrorEditing(base,cmd.moveHandle(base,{curveId:'arch',end:0},h),{handles:[{curveId:'arch',end:0,position:h}]});
- expect(curveById(n,'arch').handles[1]).toEqual(reflect(h));expect(validateMirrorEditing(n).axisNodeIds).toEqual([]);
+ near(curveById(n,'arch').handles[1],reflect(h));expect(validateMirrorEditing(n).axisNodeIds).toEqual([]);
 });
 
 test('whole-side affine transforms mirror final controls and preserve source metadata',()=>{
@@ -98,13 +98,12 @@ test('finalization mirrors the fitted projective handles, preserving one cubic p
  const n=applyMirrorEditing(d,raw,mirrorWritesForCurves(raw,['left']));symmetric(n);expect(shapeOf(n,'left')).toEqual(shapeOf(raw,'left'));expect(n.curves.map(c=>c.id)).toEqual(d.curves.map(c=>c.id));
 });
 
-test('two explicitly authored sides must agree even if sequential raw commands overwrote an earlier desired target',()=>{
- const d=fixture(),left=node(d,'left',0),right=node(d,'right',0),a:Point2=[axis-1.2,.3],bad:Point2=[axis+1.4,.3];
- const raw=cmd.moveNode(cmd.moveNode(d,left,a),right,reflect(a)),before=structuredClone(raw);
- expect(()=>applyMirrorEditing(d,raw,{nodes:[{nodeId:left,position:a},{nodeId:right,position:bad}]})).toThrow(/不符合镜像/);
- expect(raw).toEqual(before);const n=applyMirrorEditing(d,raw,{nodes:[{nodeId:left,position:a},{nodeId:right,position:reflect(a)}]});symmetric(n);
- const h:Point2=[axis-.6,.7],rawH=cmd.moveHandle(d,{curveId:'left',end:0},h);
- expect(()=>applyMirrorEditing(d,rawH,{handles:[{curveId:'left',end:0,position:h},{curveId:'right',end:0,position:[axis+.8,.7]}]})).toThrow(/约束冲突/);
+test('two explicitly authored sides preserve their distinct node and handle targets',()=>{
+ const d=fixture(),left=node(d,'left',0),right=node(d,'right',0),a:Point2=[axis-1.2,.3],b:Point2=[axis+1.4,.3];
+ const raw=cmd.moveNode(cmd.moveNode(d,left,a),right,reflect(a)),before=structuredClone(raw),n=applyMirrorEditing(d,raw,{nodes:[{nodeId:left,position:a},{nodeId:right,position:b}]});
+ expect(nodeAt(n,{curveId:'left',end:0}).position).toEqual(a);expect(nodeAt(n,{curveId:'right',end:0}).position).toEqual(b);expect(raw).toEqual(before);
+ const h:Point2=[axis-.6,.7],other:Point2=[axis+.8,.7],rawH=cmd.moveHandle(d,{curveId:'left',end:0},h),out=applyMirrorEditing(d,rawH,{handles:[{curveId:'left',end:0,position:h},{curveId:'right',end:0,position:other}]});
+ expect(curveById(out,'left').handles[0]).toEqual(h);expect(curveById(out,'right').handles[0]).toEqual(other);
 });
 
 test('the last authored value for the SAME control wins, without erasing the counterpart intent',()=>{
@@ -112,10 +111,10 @@ test('the last authored value for the SAME control wins, without erasing the cou
  symmetric(applyMirrorEditing(d,raw,{nodes:[{nodeId:id,position:a},{nodeId:id,position:b}]}));
 });
 
-test('a batch selecting both sides may transform symmetrically; a whole-face lateral move requires disabling or relocating the axis explicitly',()=>{
- const d=fixture(),ok=cmd.transform(d,['left','right'],([x,y])=>[axis+(x-axis)*1.2,y+.2]);symmetric(applyMirrorEditing(d,ok,mirrorWritesForCurves(ok,['left','right'])));
- const bad=cmd.transform(d,['left','right'],([x,y])=>[x+.2,y]);expect(()=>applyMirrorEditing(d,bad,mirrorWritesForCurves(bad,['left','right']))).toThrow(MirrorEditingError);
- expect(()=>applyMirrorEditing(d,{...d,mirrorAxisX:axis+.1})).toThrow(/关闭/);
+test('whole selections transform freely and moving the mirror guide preserves geometry',()=>{
+ const d=fixture(),raw=cmd.transform(d,['left','right'],([x,y])=>[x*1.2+.2,y*.8+.1]),n=applyMirrorEditing(d,raw,mirrorWritesForCurves(raw,['left','right']));
+ expect(n.nodes).toEqual(raw.nodes);expect(n.curves).toEqual(raw.curves);
+ const guide={...d,mirrorAxisX:axis+.1};expect(applyMirrorEditing(d,guide)).toBe(guide);
 });
 
 test('locked mirrored curves and linked followers reject the entire finalization atomically',()=>{
@@ -135,7 +134,7 @@ test('position-linked followers translate adjacent handles once while their far 
  symmetric(n);expect(shapeOf(n,'follower').slice(2)).toEqual(shapeOf(d,'follower').slice(2));near(sub(shapeOf(n,'follower')[1],shapeOf(n,'follower')[0]),sub(shapeOf(d,'follower')[1],shapeOf(d,'follower')[0]));
 });
 
-test('invalid identities, duplicate curve membership, contradictory shared-node mapping and malformed data reject',()=>{
+test('invalid identities and duplicate curve membership reject while shared-node routing is allowed',()=>{
  const d=fixture();const testConfig=(config:MirrorEditingConfig)=>()=>validateMirrorEditing(d,config);
  expect(testConfig({enabled:true,curvePairs:[{id:'x',a:'left',b:'missing',reverse:false}]})).toThrow(/不存在/);
  expect(testConfig({enabled:true,curvePairs:[...d.mirrorEditing!.curvePairs,{id:'another',a:'right',b:'right',reverse:true}]})).toThrow(/一个镜像配对/);
@@ -144,13 +143,12 @@ test('invalid identities, duplicate curve membership, contradictory shared-node 
  let source=cmd.createCurve(d,d.layers[1].id,[shapeOf(d,'left')[0],[axis-.7,-.2],[axis-.5,-.3],[axis-.2,-.4]],.01,'Left branch','branch') as MirrorDrawing;
  source=cmd.connect(withoutMirror(source),{curveId:'left',end:0},{curveId:'branch',end:0},'POSITION') as MirrorDrawing;
  source=cmd.createCurve(source,source.layers[0].id,shapeOf(source,'branch').map(reflect) as Cubic,.01,'Unshared counterpart','branchR') as MirrorDrawing;
- expect(()=>validateMirrorEditing(source,{enabled:true,curvePairs:[...d.mirrorEditing!.curvePairs,{id:'branchPair',a:'branch',b:'branchR',reverse:false}]})).toThrow(/配对不一致/);
+ expect(validateMirrorEditing(source,{enabled:true,curvePairs:[...d.mirrorEditing!.curvePairs,{id:'branchPair',a:'branch',b:'branchR',reverse:false}]}).pairCount).toBe(2);
 });
 
-test('paired topology cannot silently change, and coordinates must be finite',()=>{
- const d=fixture();expect(()=>cmd.splitCurve(d,'left',.4)).toThrow(/镜像/);
- const split=cmd.splitCurve(withoutMirror(d),'left',.4).document;
- expect(()=>applyMirrorEditing(d,split)).toThrow(/拓扑/);
+test('paired topology edits prune obsolete metadata and coordinates must remain finite',()=>{
+ const d=fixture(),split=cmd.splitCurve(d,'left',.4).document;
+ expect(split.mirrorEditing!.curvePairs).toEqual([]);expect(applyMirrorEditing(d,split)).toBe(split);
  expect(()=>applyMirrorEditing(d,d,{nodes:[{nodeId:node(d,'left',0),position:[NaN,0]}]})).toThrow();
  expect(()=>applyMirrorEditing(d,d,{handles:[{curveId:'missing',end:0,position:[0,0]}]})).toThrow();
 });
@@ -168,13 +166,13 @@ test('small valid control displacements are mirrored rather than swallowed by va
  expect(curveById(n,'right').handles[0]).toEqual(reflect(h));expect(n).not.toBe(raw);
 });
 
-test.each([1e-10,1e-8])('repeated tiny edits of %s preserve exact reflection and axis projection',amount=>{
+test.each([1e-10,1e-8])('repeated tiny edits of %s preserve reflection without legacy axis projection',amount=>{
  let d=fixture();for(let i=0;i<30;i++){
   const h=add(curveById(d,'left').handles[0],[0,amount]),raw=cmd.moveHandle(d,{curveId:'left',end:0},h);d=applyMirrorEditing(d,raw,{handles:[{curveId:'left',end:0,position:h}]}) as MirrorDrawing;
   expect(curveById(d,'right').handles[0]).toEqual(reflect(h));
  }
  d.mirrorEditing!.axisNodeIds=[node(d,'left',1)];const id=node(d,'left',1),p:Point2=[axis+amount,0];
- const n=applyMirrorEditing(d,cmd.moveNode(d,id,p),{nodes:[{nodeId:id,position:p}]});expect(nodeAt(n,{curveId:'left',end:1}).position[0]).toBe(axis);expect(nodeAt(n,{curveId:'right',end:1}).position[0]).toBe(axis);
+ const n=applyMirrorEditing(d,cmd.moveNode(d,id,p),{nodes:[{nodeId:id,position:p}]});expect(nodeAt(n,{curveId:'left',end:1}).position[0]).toBe(axis+amount);expect(nodeAt(n,{curveId:'right',end:1}).position[0]).toBeCloseTo(axis-amount,14);
 });
 
 test('unpaired creation and deletion do not invalidate unrelated persistent pairs',()=>{
@@ -190,11 +188,24 @@ test('a mirrored handle follows an existing smooth partner while preserving its 
  symmetric(n);const a=sub(curveById(n,'right').handles[0],p),b=sub(curveById(n,'follower').handles[0],p);near([a[0]/length(a),a[1]/length(a)],[-b[0]/length(b),-b[1]/length(b)]);expect(length(b)).toBeCloseTo(oldLength,12);
 });
 
-test('smooth plus axial mirror can impose a horizontal mouth tangent; incompatible requested direction rejects without a guessed fit',()=>{
+test('an existing smooth join governs its shared endpoint without adding a mirror angle constraint',()=>{
  let d=fixture(true);d=cmd.moveHandle(d,{curveId:'left',end:1},[axis-.4,-.1]) as MirrorDrawing;d=cmd.moveHandle(d,{curveId:'right',end:0},[axis+.4,-.1]) as MirrorDrawing;
  d=cmd.moveToLayer(d,['right'],d.layers[1].id) as MirrorDrawing;
- const config=d.mirrorEditing;d={...cmd.connect(withoutMirror(d),{curveId:'left',end:1},{curveId:'right',end:0},'SMOOTH'),mirrorEditing:config};validateMirrorEditing(d);
- const valid:Point2=[axis-.3,-.1],raw=cmd.moveHandle(d,{curveId:'left',end:1},valid);symmetric(applyMirrorEditing(d,raw,{handles:[{curveId:'left',end:1,position:valid}]}),true);
- const bad:Point2=[axis-.3,.1],next=cmd.moveHandle(d,{curveId:'left',end:1},bad),before=structuredClone(next);
- expect(()=>applyMirrorEditing(d,next,{handles:[{curveId:'left',end:1,position:bad}]})).toThrow(/约束冲突/);expect(next).toEqual(before);
+ const config=d.mirrorEditing;d={...cmd.connect(withoutMirror(d),{curveId:'left',end:1},{curveId:'right',end:0},'SMOOTH'),mirrorEditing:config};
+ const h:Point2=[axis-.3,.1],raw=cmd.moveHandle(d,{curveId:'left',end:1},h),n=applyMirrorEditing(d,raw,{handles:[{curveId:'left',end:1,position:h}]});
+ expect(n.curves).toEqual(raw.curves);expect(n.joins).toEqual(d.joins);
+ expect(()=>applyMirrorEditing(d,raw,{handles:[{curveId:'left',end:1,position:h},{curveId:'right',end:0,position:[axis+.3,.1]}]})).toThrow(/平滑接笔/);
+});
+
+
+test('re-enabled asymmetric geometry retains its offset through node and handle delta edits',()=>{
+ const base=fixture(),off={...base,mirrorEditing:{...base.mirrorEditing!,enabled:false}};
+ const free=cmd.moveHandle(cmd.moveNode(off,node(off,'right',0),[axis+1.2,.15]),{curveId:'right',end:0},[axis+.7,.8]);
+ const d={...free,mirrorEditing:{...free.mirrorEditing!,enabled:true}},snapshot=structuredClone(d);
+ expect(validateMirrorEditing(d).enabled).toBe(true);
+ const nodeId=node(d,'left',0),p=add(nodeAt(d,{curveId:'left',end:0}).position,[.1,.2]),raw=cmd.moveNode(d,nodeId,p),n=applyMirrorEditing(d,raw,{nodes:[{nodeId,position:p}]});
+ near(nodeAt(n,{curveId:'right',end:0}).position,add(nodeAt(d,{curveId:'right',end:0}).position,[-.1,.2]));
+ near(curveById(n,'right').handles[0],add(curveById(d,'right').handles[0],[-.1,.2]));
+ const h=add(curveById(n,'left').handles[0],[.07,.09]),out=applyMirrorEditing(n,cmd.moveHandle(n,{curveId:'left',end:0},h),{handles:[{curveId:'left',end:0,position:h}]});
+ near(curveById(out,'right').handles[0],add(curveById(n,'right').handles[0],[-.07,.09]));expect(d).toEqual(snapshot);
 });

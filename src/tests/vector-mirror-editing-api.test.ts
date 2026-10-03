@@ -34,9 +34,10 @@ test('mirror configuration is explicit, stable, detached, serializable and one u
  expect(parseDrawing(JSON.parse(JSON.stringify(h.d())))).toEqual(h.d());value(h.api.undo());expect(h.state().project).toBe(before);value(h.api.redo());expect(h.d().mirrorEditing!.enabled).toBe(true);
 });
 
-test('enabling never chooses or overwrites an asymmetric side; disabled relations retain IDs',()=>{
- const h=harness();const pair=enable(h);value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false},{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]}]}));const before=h.state().project;
- fail(h.api.execute({commands:[{op:'setMirrorEditing',enabled:true}]}),'MIRROR_ASYMMETRIC_SOURCE');expect(h.state().project).toBe(before);expect(h.d().mirrorEditing!.curvePairs[0].id).toBe(pair);expect(curveById(h.d(),'b').handles[0]).toEqual([1,-.4]);
+test('enabling preserves asymmetric source and later edit deltas retain its offset',()=>{
+ const h=harness();const pair=enable(h);value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false},{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]}]}));const before=h.d();
+ value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:true}]}));expect(h.d().curves).toEqual(before.curves);expect(h.d().nodes).toEqual(before.nodes);expect(h.d().mirrorEditing!.curvePairs[0].id).toBe(pair);
+ value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.3,-.35]}]}));expect(curveById(h.d(),'b').handles[0][0]).toBeCloseTo(1.1);expect(curveById(h.d(),'b').handles[0][1]).toBeCloseTo(-.35);
 });
 
 test('one-side node/handle edits mirror geometry while appearance remains independently authored',()=>{
@@ -45,21 +46,21 @@ test('one-side node/handle edits mirror geometry while appearance remains indepe
  value(h.api.execute({commands:[{op:'setInkVisibility',curveIds:['a'],visible:false},{op:'setDepth',curveId:'a',offset:1,scope:'LAYER'}]}));expect(curveById(h.d(),'b').inkVisible).toBeUndefined();expect(curveById(h.d(),'b').depthOffset).toBeUndefined();
 });
 
-test('linked central nodes stay on the axis and follow Y on both layers',()=>{
+test('linked central nodes move freely together on both layers',()=>{
  const h=harness();enable(h);const node=nodeAt(h.d(),{curveId:'a',end:1}).id;value(h.api.execute({commands:[{op:'moveNode',nodeId:node,position:[.2,-1.1]}]}));
- expect(nodeAt(h.d(),{curveId:'a',end:1}).position).toEqual([0,-1.1]);expect(nodeAt(h.d(),{curveId:'b',end:1}).position).toEqual([0,-1.1]);mirrored(h.d());
+ expect(nodeAt(h.d(),{curveId:'a',end:1}).position).toEqual([.2,-1.1]);expect(nodeAt(h.d(),{curveId:'b',end:1}).position).toEqual([.2,-1.1]);
 });
 
-test('inconsistent explicit dual-side nodes reject the whole batch despite sequential propagation',()=>{
+test('explicit dual-side nodes preserve separate targets and undo in one transaction',()=>{
  const h=harness();enable(h);const before=h.state().project,a=nodeAt(h.d(),{curveId:'a',end:0}).id,b=nodeAt(h.d(),{curveId:'b',end:0}).id;
- fail(h.api.execute({commands:[{op:'renameCurve',curveId:'a',name:'Must roll back'},{op:'moveNode',nodeId:a,position:[-1.2,.1]},{op:'moveNode',nodeId:b,position:[1.3,.1]}]}),'MIRROR_AUTHORED_CONFLICT');expect(h.state().project).toBe(before);
- value(h.api.execute({commands:[{op:'moveNode',nodeId:a,position:[-1.2,.1]},{op:'moveNode',nodeId:b,position:[1.2,.1]}]}));mirrored(h.d());
+ value(h.api.execute({commands:[{op:'moveNode',nodeId:a,position:[-1.2,.1]},{op:'moveNode',nodeId:b,position:[1.3,.1]}]}));
+ expect(nodeAt(h.d(),{curveId:'a',end:0}).position).toEqual([-1.2,.1]);expect(nodeAt(h.d(),{curveId:'b',end:0}).position).toEqual([1.3,.1]);value(h.api.undo());expect(h.state().project).toBe(before);
 });
 
-test('dual-side handle conflicts reject, but the last direct write to the same handle wins',()=>{
- const h=harness();enable(h);const before=h.state().project;
- fail(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]},{op:'moveHandle',curveId:'b',end:0,position:[1.3,-.4]}]}),'MIRROR_AUTHORED_CONFLICT');expect(h.state().project).toBe(before);
- value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]},{op:'moveHandle',curveId:'a',end:0,position:[-1.4,-.5]}]}));expect(curveById(h.d(),'b').handles[0]).toEqual([1.4,-.5]);
+test('dual-side handles preserve separate targets and the last direct write wins',()=>{
+ const h=harness();enable(h);
+ value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]},{op:'moveHandle',curveId:'b',end:0,position:[1.3,-.4]},{op:'moveHandle',curveId:'a',end:0,position:[-1.4,-.5]}]}));
+ expect(curveById(h.d(),'a').handles[0]).toEqual([-1.4,-.5]);expect(curveById(h.d(),'b').handles[0]).toEqual([1.3,-.4]);
 });
 
 test('earlier handle intention follows later node translation instead of becoming a stale absolute constraint',()=>{
@@ -67,10 +68,10 @@ test('earlier handle intention follows later node translation instead of becomin
  value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.5]},{op:'moveNode',nodeId:node,position:[-1.1,.2]}]}));mirrored(h.d());expect(curveById(h.d(),'a').handles[0][0]).toBeCloseTo(-1.3);expect(curveById(h.d(),'a').handles[0][1]).toBeCloseTo(-.3);
 });
 
-test('selected transforms record both-sided intent; X translation of both sides refuses while Y agrees',()=>{
- const h=harness();enable(h);const before=h.state().project;
- fail(h.api.execute({commands:[{op:'transformCurves',curveIds:['a','b'],matrix:[1,0,0,1,.1,0],allowRelated:true}]}),'MIRROR_AUTHORED_CONFLICT');expect(h.state().project).toBe(before);
- value(h.api.execute({commands:[{op:'transformCurves',curveIds:['a','b'],matrix:[1,0,0,1,0,.1],allowRelated:true}]}));mirrored(h.d());
+test('a both-sided selection accepts arbitrary affine translation and scaling',()=>{
+ const h=harness();enable(h);const before=h.d();
+ value(h.api.execute({commands:[{op:'transformCurves',curveIds:['a','b'],matrix:[1.2,0,0,.8,.1,.2],allowRelated:true}]}));
+ for(const id of ['a','b'])shapeOf(h.d(),id).forEach((p,i)=>{expect(p[0]).toBeCloseTo(shapeOf(before,id)[i][0]*1.2+.1,12);expect(p[1]).toBeCloseTo(shapeOf(before,id)[i][1]*.8+.2,12);});
 });
 
 test('hidden geometry mirrors and a locked counterpart rejects atomically',()=>{
@@ -78,10 +79,9 @@ test('hidden geometry mirrors and a locked counterpart rejects atomically',()=>{
  value(h.api.execute({commands:[{op:'setObjectState',objectIds:['b'],locked:true}]}));const before=h.state().project;fail(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.3,-.4]}]}),'MIRROR_LOCKED');expect(h.state().project).toBe(before);
 });
 
-test('paired topology is guarded even disabled; explicit pair removal permits the normal topology command',()=>{
- const h=harness(),pair=enable(h);value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false}]}));const before=h.state().project;
- expect(h.api.execute({commands:[{op:'splitCurve',curveId:'a',t:.5}]}).ok).toBe(false);expect(h.state().project).toBe(before);
- value(h.api.execute({commands:[{op:'deleteMirrorPairs',pairIds:[pair]},{op:'splitCurve',curveId:'a',t:.5}]}));expect(h.d().curves).toHaveLength(3);expect(h.d().mirrorEditing!.curvePairs).toHaveLength(0);
+test('paired topology edits work when disabled and remove obsolete pairing',()=>{
+ const h=harness();enable(h);value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false},{op:'splitCurve',curveId:'a',t:.5}]}));
+ expect(h.d().curves).toHaveLength(3);expect(h.d().mirrorEditing!.curvePairs).toHaveLength(0);expect(parseDrawing(h.d())).toEqual(h.d());
 });
 
 test('new-curve aliases and mirror-pair aliases resolve without treating names as IDs',()=>{
@@ -93,9 +93,9 @@ test('configuration and geometry obey stale revisions and Recording mode; unknow
  fail(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false}],expectedRevision:revision}),'STALE_REVISION');h.mode('recording');fail(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false}]}),'MODE_RESTRICTED');h.mode('drawing');fail(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false,repair:true} as unknown as VectorCommand]}),'INVALID_REQUEST');expect(h.state().project).toBe(before);
 });
 
-test('mirror axis movement requires disabled state and explicit axis nodes clamp only geometry',()=>{
- const h=harness();enable(h);const before=h.state().project;expect(h.api.execute({commands:[{op:'setMirrorAxis',x:.2}]}).ok).toBe(false);expect(h.state().project).toBe(before);
- value(h.api.execute({commands:[{op:'setMirrorEditing',enabled:false},{op:'setMirrorAxis',x:.2}]}));expect(h.d().mirrorAxisX).toBe(.2);
+test('mirror guide movement is independent from geometry even while enabled',()=>{
+ const h=harness();enable(h);const before=h.d();value(h.api.execute({commands:[{op:'setMirrorAxis',x:.2}]}));
+ expect(h.d().mirrorAxisX).toBe(.2);expect(h.d().nodes).toEqual(before.nodes);expect(h.d().curves).toEqual(before.curves);
 });
 
 test('the documented actual two-face pair setup enables without changing any source geometry or appearance',()=>{
@@ -104,8 +104,11 @@ test('the documented actual two-face pair setup enables without changing any sou
 });
 
 
-test('a source quad deformation is mirrored after fitting, with consistent batch intent',()=>{
- const h=harness();enable(h);value(h.api.execute({commands:[{op:'deformCurves',curveIds:['a'],bounds:{min:[-1,-1],max:[0,0]},quad:[[-1.05,-1],[-.05,-1],[-.05,0],[-1.05,0]],allowRelated:true}]}));mirrored(h.d());
+test('source quad deformation preserves the true linked chin and applies the other endpoint delta once',()=>{
+ const h=harness();enable(h);value(h.api.execute({commands:[{op:'deformCurves',curveIds:['a'],bounds:{min:[-1,-1],max:[0,0]},quad:[[-1.05,-1],[-.05,-1],[-.05,0],[-1.05,0]],allowRelated:true}]}));
+ expect(nodeAt(h.d(),{curveId:'a',end:0}).position[0]).toBeCloseTo(-1.05);expect(nodeAt(h.d(),{curveId:'b',end:0}).position[0]).toBeCloseTo(1.05);
+ expect(nodeAt(h.d(),{curveId:'a',end:1}).position[0]).toBeCloseTo(-.05);expect(nodeAt(h.d(),{curveId:'b',end:1}).position).toEqual(nodeAt(h.d(),{curveId:'a',end:1}).position);
+ expect(curveById(h.d(),'b').handles[0][0]).toBeCloseTo(1.05);expect(curveById(h.d(),'b').handles[1][0]).toBeCloseTo(.35);
 });
 
 test.each([[-.01,0],[.01,0],[0,-.01],[0,.01]])('actual two-face mirror edit (%s,%s) transports HIDE material after both sides settle',(dx,dy)=>{
@@ -128,7 +131,22 @@ test('default store adapter respects an explicit disable-and-edit epoch and one 
 });
 
 
-test('a no-op configuration command cannot erase contradictory batch intentions',()=>{
- const h=harness();enable(h);const before=h.state().project,a=nodeAt(h.d(),{curveId:'a',end:0}).id,b=nodeAt(h.d(),{curveId:'b',end:0}).id;
- fail(h.api.execute({commands:[{op:'moveNode',nodeId:a,position:[-1.2,.1]},{op:'setMirrorEditing',enabled:true},{op:'moveNode',nodeId:b,position:[1.3,.1]}]}),'MIRROR_AUTHORED_CONFLICT');expect(h.state().project).toBe(before);
+test('a no-op configuration command preserves both explicit batch intentions',()=>{
+ const h=harness();enable(h);const a=nodeAt(h.d(),{curveId:'a',end:0}).id,b=nodeAt(h.d(),{curveId:'b',end:0}).id;
+ value(h.api.execute({commands:[{op:'moveNode',nodeId:a,position:[-1.2,.1]},{op:'setMirrorEditing',enabled:true},{op:'moveNode',nodeId:b,position:[1.3,.1]}]}));
+ expect(nodeAt(h.d(),{curveId:'a',end:0}).position).toEqual([-1.2,.1]);expect(nodeAt(h.d(),{curveId:'b',end:0}).position).toEqual([1.3,.1]);
+});
+
+
+test('topology changes discard earlier batch intent before another geometry edit',()=>{
+ const h=harness();enable(h);
+ value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:1,position:[-.5,-1]},{op:'splitCurve',curveId:'a',t:.5},{op:'moveHandle',curveId:'b',end:0,position:[1.1,-.6]}]}));
+ expect(curveById(h.d(),'b').handles[0]).toEqual([1.1,-.6]);expect(h.d().mirrorEditing!.curvePairs).toEqual([]);expect(parseDrawing(h.d())).toEqual(h.d());
+});
+
+
+test('deleting an earlier edited curve clears its batch intent before the next edit',()=>{
+ const h=harness();enable(h);
+ value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:0,position:[-1.2,-.4]},{op:'deleteObjects',objectIds:['a']},{op:'moveHandle',curveId:'b',end:0,position:[1.1,-.6]}]}));
+ expect(h.d().curves.map(c=>c.id)).toEqual(['b']);expect(curveById(h.d(),'b').handles[0]).toEqual([1.1,-.6]);expect(parseDrawing(h.d())).toEqual(h.d());
 });

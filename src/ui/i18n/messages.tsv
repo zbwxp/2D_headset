@@ -1939,3 +1939,17 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 几何端点联动只约束位置；下列末端笔触属于列出的实际轮廓。	Geometric endpoint links constrain positions. The terminus brushes below belong to the listed contours.
 本层连接	Local layer connection
 这里只描述本层共享端点的连接；关联末端笔触见上方端点联动。	This describes the local shared-node connection only. See Endpoint links above for linked terminus brushes.
+原位复制	Duplicate in place
+复制新对象到原位，保留原镜像对应。	Duplicate as new objects in place; keep the original mirror pairs.
+原地水平翻转	Flip horizontally in place
+按镜像轴移到对侧	Place across mirror axis
+编辑对应	Edit correspondence
+开启后镜像传播本次编辑；关闭后自由编辑。不锁定已有形状。	Mirror each edit when enabled; edit freely when disabled. Existing shapes are not constrained.
+开：把本次节点和柄的改变量镜像到未选中的对应侧。关：自由编辑。两侧都选中时按各自操作，不固定轴上节点。	On: mirror node and handle changes to the unselected counterpart. Off: edit freely. Explicit edits on both sides take priority; axial nodes are not pinned.
+轴节点标记（不固定位置）	Axial node marker (position is not pinned)
+此操作替换所选曲线已有的镜像对应；不会改变曲线位置。	This replaces the selected curves' existing mirror correspondences without moving geometry.
+替换所选镜像对应	Replace selected mirror correspondences
+建立所选镜像对应	Pair selected mirror counterparts
+原位复制后按镜像轴移到对侧，再选源笔画与副本建立对应。多段笔画只按唯一精确镜像匹配。	Duplicate in place, place across the mirror axis, then select source and copy to pair them. Multi-segment strokes require unique exact reflected matches.
+选择目标：仅摆到镜像位置，不自动配对	Choose a target: place it at the reflected position without pairing
+选择镜像摆放的源曲线	Choose the source curve for mirror placement

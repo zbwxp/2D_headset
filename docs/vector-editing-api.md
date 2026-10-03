@@ -294,22 +294,20 @@ unmappable material cuts reject atomically. These source commands trigger the
 existing explicit source review before reusing an older Recording rig.
 
 
-## Persistent Drawing mirror editing (API 1.4)
+## Drawing mirror editing behavior (API 1.4)
 
-Deployment must be confirmed through `help().commands` before use. These commands edit the existing `drawing.mirrorEditing` metadata through the normal transaction. No raw document/configuration replacement is exposed.
+The existing commands edit `drawing.mirrorEditing` correspondence metadata in the normal atomic source transaction. Pairing is not a permanent symmetry constraint. Loading or enabling it never repairs, projects or overwrites existing geometry.
 
-- `createMirrorPair {a,b,reverse?,ref?}` creates one stable pair ID; `a/b` are curve IDs and accept earlier `$refs`. `reverse` defaults false. A new configuration starts disabled; adding to an enabled configuration validates the existing geometry
-- `setMirrorPair {pairId,a?,b?,reverse?}` updates that same identity; `deleteMirrorPairs {pairIds}` removes explicit relations
-- `setMirrorAxisNodes {nodeIds}` replaces the explicit axis-node set; inferred self-mapped node components also remain on the axis
-- `setMirrorEditing {enabled}` validates rather than repairs when enabling. Disabled metadata preserves pair identities and permits asymmetry; axis movement requires the switch off
+- `createMirrorPair {a,b,reverse?,ref?}` creates one stable pair between explicit curve IDs; `reverse` maps opposite endpoint indices
+- `setMirrorPair {pairId,a?,b?,reverse?}` and `deleteMirrorPairs {pairIds}` update/remove correspondence without changing coordinates
+- `setMirrorAxisNodes {nodeIds}` retains legacy axial identification only; those nodes are not pinned
+- `setMirrorEditing {enabled}` toggles propagation, including on an asymmetric document. Moving the guide axis is allowed in either mode
 
-`inspect()` includes a detached `mirrorEditing` plus `mirrorEditingState` with effective axis node IDs. Execute reports `mirrorEditingChanged`, `mirrorPairIds`, removed pair IDs, and `created.kind="mirrorPair"` with optional aliases. Configurations serialize with source artwork, but are not recording Warp/keyform commands.
+When enabled, one-sided node edits add the reflected displacement to the counterpart's current position. Handles add reflected node-relative vector changes, after node movement, avoiding double translation. Existing asymmetry is preserved. Explicit edits on both sides take priority independently; they are not rejected for failing absolute reflection. Self-corresponding controls remain freely editable. Genuine EndpointLink shared-position conflicts, SMOOTH tangent obligations and locks remain independently enforced.
 
-Only source nodes and handles follow reflection. Existing position links and smooth constraints must agree; locks on reflected followers cancel the whole batch, even when those members are hidden. Paint order, fills, visibility, width, brush metadata and authored display ranges are not copied to the counterpart. Material ranges are transported after final mirrored geometry. Topology changes/copies affecting paired curves or axis bindings require explicit removal of the affected relation first; there is no guessed split mapping.
+Mirror metadata no longer blocks copying or topology edits. Copy assigns independent new curve/node IDs and valid internal relationships while keeping original mirror pair IDs unchanged. Split/delete/rebinding prunes only obsolete correspondence. UI duplication is in place; the existing raw duplicate command's default offset is unchanged. Explicit one-shot placement across `mirrorAxisX`, in-place horizontal flip, and pairing are separate actions. UI replacement of an existing pair is clearly labeled; multi-curve pairing uses unique exact reflected matches within the explicit selection, not nearest-geometry guessing.
 
-Batch intent records the last direct node value and direct handle vector relative to its node. Only explicitly selected curves contribute direct transform/deform targets; generated mirror/link/smooth followers do not become new authorship. Incompatible explicit edits to both sides return `MIRROR_AUTHORED_CONFLICT`, with no partial application/history entry. A later node translation rebases a prior handle intention. An actual metadata configuration change begins a new constraint-intent epoch after earlier commands have been validated; a no-op configuration command does not erase prior intentions. Errors originating from mirror math use `MIRROR_<domain code>`; malformed JSON retains normal `INVALID_REQUEST` handling.
-
-The executable specimen is [the two-face setup batch](examples/two-face-mirror-editing-api-batch.json). It is read directly by `src/tests/vector-mirror-editing-api.test.ts` and targets the known example IDs only; inspect current source identity before applying it to a saved copy.
+`inspect()` still exposes detached `mirrorEditing` and `mirrorEditingState`; execute reports pair changes/removals and aliases. Configuration and source geometry serialize with the artwork, remain Drawing-only, and use the existing dryRun/revision/Undo contract. Material interval transport happens after geometry edits. The [two-face setup example](examples/two-face-mirror-editing-api-batch.json) targets only its known source IDs; inspect identity first.
 
 
 ## Explicit full closed-loop interval flag (API 1.4)

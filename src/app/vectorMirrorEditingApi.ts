@@ -17,7 +17,7 @@ const flag=(v:unknown,label:string):boolean=>{if(typeof v!=='boolean')fail(`${la
 const ids=(v:unknown,label:string):string[]=>{if(!Array.isArray(v)||v.length>10000)fail(`${label} must be an array of at most 10000 IDs.`);const out=(v as unknown[]).map(x=>id(x,label));if(new Set(out).size!==out.length)fail(`${label} contains duplicate IDs.`);return out;};
 function curve(d:DrawingDocument,v:unknown){const key=id(v,'curve ID');if(!curveById(d,key))throw new MirrorApiError('NOT_FOUND',`Unknown mirror curve ID: ${key}.`);return key;}
 
-/** Explicit metadata CRUD; enabling validates the source and never repairs it. */
+/** Explicit edit-routing metadata CRUD; enabling preserves all authored geometry. */
 export function applyMirrorCommand(d:DrawingDocument,c:Record<string,unknown>,created:(id:string,ref:unknown)=>void):DrawingDocument {
  const before=d.mirrorEditing??{enabled:false,curvePairs:[]};
  switch(c.op){
@@ -60,7 +60,11 @@ export class MirrorBatchIntent {
   for(const w of writes.handles??[]){const p=nodeAt(d,w).position;this.handles.set(JSON.stringify([w.curveId,w.end]),{curveId:w.curveId,end:w.end,vector:[w.position[0]-p[0],w.position[1]-p[1]]});}
  }
  apply(before:DrawingDocument,after:DrawingDocument):DrawingDocument {
+  if(JSON.stringify(before.mirrorEditing)!==JSON.stringify(after.mirrorEditing)||JSON.stringify(before.endpointLinks)!==JSON.stringify(after.endpointLinks)||before.curves.some(c=>{const next=curveById(after,c.id);return !next||c.nodes.some((id,i)=>id!==next.nodes[i]);})){this.clear();return after;}
   if(!(before as MirrorDrawing).mirrorEditing?.enabled)return after;
+  // Topology commands may remove controls already written earlier in this batch.
+  for(const id of this.nodes.keys())if(!after.nodes.some(n=>n.id===id))this.nodes.delete(id);
+  for(const [key,w] of this.handles)if(!curveById(after,w.curveId))this.handles.delete(key);
   const handles=[...this.handles.values()].map(w=>{const p=nodeAt(after,w).position;return {curveId:w.curveId,end:w.end,position:[p[0]+w.vector[0],p[1]+w.vector[1]] as Point2};});
   return applyMirrorEditing(before,after,{nodes:[...this.nodes].map(([nodeId,position])=>({nodeId,position})),handles});
  }

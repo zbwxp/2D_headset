@@ -18,5 +18,16 @@ export function proposeExactMirrorPairs(d:Doc,curveIds:readonly string[]=d.curve
  return {pairs,unmatched,ambiguous};
 }
 export function addExactMirrorPairs(d:Doc,curveIds?:readonly string[]){const proposal=proposeExactMirrorPairs(d,curveIds),c=config(d),next=update(d,{...c,curvePairs:[...c.curvePairs,...proposal.pairs.map(p=>({...p,id:uid()}))]});return {document:next,...proposal};}
-/** Until paired split/delete/copy has an explicit provenance map, reject it. */
-export function assertMirrorTopologyEditable(d:Doc,ids:readonly string[]):void{const selected=new Set(ids),c=d.mirrorEditing;if(!c)return;const nodes=new Set(ids.flatMap(id=>curveById(d,id)?.nodes??[]));if(c.curvePairs.some(p=>selected.has(p.a)||selected.has(p.b))||c.axisNodeIds?.some(id=>nodes.has(id)))throw Error('请先解除相关镜像配对或轴上约束，再修改拓扑或复制。');}
+/** Remove only routing metadata made obsolete by a topology operation. Copies
+ * retain original pairs; newly allocated curves/nodes are deliberately unpaired. */
+export function pruneMirrorEditingMetadata(before:Doc,after:Doc,changedCurveIds:readonly string[]=[]):Doc {
+ const c=after.mirrorEditing;if(!c)return after;
+ const changed=new Set(changedCurveIds);
+ for(const old of before.curves){const next=curveById(after,old.id);if(!next||old.nodes.some((id,i)=>next.nodes[i]!==id))changed.add(old.id);}
+ const curvePairs=c.curvePairs.filter(p=>curveById(after,p.a)&&curveById(after,p.b)&&!changed.has(p.a)&&!changed.has(p.b));
+ const obsoleteNodes=new Set(before.curves.filter(x=>changed.has(x.id)).flatMap(x=>x.nodes));
+ const activeNodes=new Set(after.curves.filter(x=>!changed.has(x.id)).flatMap(x=>x.nodes));
+ const axisNodeIds=c.axisNodeIds?.filter(id=>after.nodes.some(n=>n.id===id)&&(!obsoleteNodes.has(id)||activeNodes.has(id)));
+ if(curvePairs.length===c.curvePairs.length&&axisNodeIds?.length===c.axisNodeIds?.length)return after;
+ return {...after,mirrorEditing:{...c,curvePairs,...(axisNodeIds?{axisNodeIds}:{}),enabled:c.enabled&&(curvePairs.length>0||!!axisNodeIds?.length)}};
+}
