@@ -8,11 +8,13 @@ import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
 import {createWarpGrid,moveWarpNode,validateWarpGrid,type WarpGrid} from '../vectorWarp/model';
 import {sameAngle} from '../vectorRecording/interpolation';
 import {identityScenePlacement,identitySceneShape,type SceneTrack,type ScenePlacementValue,type SceneShapeValue,type SceneIntervalValue} from '../recordingScene/model';
-import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type Angle} from './model';
+import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotInterpolationWeight,type Angle} from './model';
 import {resolveSnapshot} from './evaluation';
 import {remapDrawingIdentities,remapIntervalIdentities} from './sources';
+import {validateSnapshotInterpolationWeight} from './weights';
 
 export interface SnapshotSelection {layerIds?:string[];warpIds?:string[]}
+export interface SnapshotInterpolationWeightSelection {startSnapshotId:string;endSnapshotId:string;targets:SnapshotInterpolationWeight['target'][]}
 export interface SnapshotWarpDimensions {name?:string;rows?:number;columns?:number;ref?:string}
 export type SnapshotCommand=
  | {op:'createRecording';name?:string;ref?:string}
@@ -47,8 +49,10 @@ export type SnapshotCommand=
  | ({op:'discardSelected'}&SnapshotSelection)
  | {op:'renameKey';trackId:string;keyId:string;name:string}
  | {op:'deleteKey';trackId:string;keyId:string}
+ | ({op:'setInterpolationWeight';points:Point2[]}&SnapshotInterpolationWeightSelection)
+ | ({op:'resetInterpolationWeight'}&SnapshotInterpolationWeightSelection)
  | {op:'setTolerance';pixels:number};
-const fields:Record<SnapshotCommand['op'],string[]>={createRecording:['name','ref'],selectRecording:['recordingId'],renameRecording:['recordingId','name'],deleteRecording:['recordingId'],setAngle:['angle'],createSnapshot:['name','kind','angle','ref'],selectSnapshot:['snapshotId'],updateSnapshot:['snapshotId','name'],deleteSnapshot:['snapshotId'],pasteLayers:['sourceSnapshotId','layerIds','ref'],cloneLayers:['sourceSnapshotId','layerIds','ref'],moveLayers:['sourceSnapshotId','layerIds'],removeLayers:['layerIds'],reorderLayers:['layerIds'],setLayerPlacement:['layerId','value'],transformShapeElements:['curveIds','value'],moveShapeNode:['layerId','nodeId','position'],moveShapeHandle:['layerId','curveId','end','position'],createWarp:['layerIds','name','rows','columns','ref'],createChild:['parentWarpId','layerIds','name','rows','columns','ref'],wrapParent:['warpIds','name','rows','columns','ref'],rebindLayers:['layerIds','warpId'],setWarp:['warpId','name','parentId'],deleteWarp:['warpId'],editWarpNodes:['warpId','edits','moveHandles'],setVisibility:['layerId','objectId','visible'],setLayerOrder:['layerId','value'],changeInterval:['layerId','sourceTrackId','rangeId','mode','start','end','fullLoop'],setIntervalEnd:['layerId','sourceTrackId','rangeId','end','style'],setIntervalEnabled:['layerId','sourceTrackId','rangeId','enabled'],saveSelected:['layerIds','warpIds','name'],discardSelected:['layerIds','warpIds'],renameKey:['trackId','keyId','name'],deleteKey:['trackId','keyId'],setTolerance:['pixels']};
+const fields:Record<SnapshotCommand['op'],string[]>={createRecording:['name','ref'],selectRecording:['recordingId'],renameRecording:['recordingId','name'],deleteRecording:['recordingId'],setAngle:['angle'],createSnapshot:['name','kind','angle','ref'],selectSnapshot:['snapshotId'],updateSnapshot:['snapshotId','name'],deleteSnapshot:['snapshotId'],pasteLayers:['sourceSnapshotId','layerIds','ref'],cloneLayers:['sourceSnapshotId','layerIds','ref'],moveLayers:['sourceSnapshotId','layerIds'],removeLayers:['layerIds'],reorderLayers:['layerIds'],setLayerPlacement:['layerId','value'],transformShapeElements:['curveIds','value'],moveShapeNode:['layerId','nodeId','position'],moveShapeHandle:['layerId','curveId','end','position'],createWarp:['layerIds','name','rows','columns','ref'],createChild:['parentWarpId','layerIds','name','rows','columns','ref'],wrapParent:['warpIds','name','rows','columns','ref'],rebindLayers:['layerIds','warpId'],setWarp:['warpId','name','parentId'],deleteWarp:['warpId'],editWarpNodes:['warpId','edits','moveHandles'],setVisibility:['layerId','objectId','visible'],setLayerOrder:['layerId','value'],changeInterval:['layerId','sourceTrackId','rangeId','mode','start','end','fullLoop'],setIntervalEnd:['layerId','sourceTrackId','rangeId','end','style'],setIntervalEnabled:['layerId','sourceTrackId','rangeId','enabled'],saveSelected:['layerIds','warpIds','name'],discardSelected:['layerIds','warpIds'],renameKey:['trackId','keyId','name'],deleteKey:['trackId','keyId'],setInterpolationWeight:['startSnapshotId','endSnapshotId','targets','points'],resetInterpolationWeight:['startSnapshotId','endSnapshotId','targets'],setTolerance:['pixels']};
 export const snapshotCommandNames=Object.keys(fields) as SnapshotCommand['op'][];
 export type RecordingSnapshotCommand=SnapshotCommand;
 export class SnapshotCommandError extends Error {constructor(readonly code:string,message:string){super(message);}}
@@ -63,9 +67,9 @@ const point=(value:unknown):Point2=>{if(!Array.isArray(value)||value.length!==2)
 const ids=(value:unknown,empty=false):string[]=>{if(!Array.isArray(value)||value.length>16384||!empty&&!value.length)fail('INVALID_REQUEST','Expected a nonempty ID array.');const out=(value as unknown[]).map(v=>id(v));if(new Set(out).size!==out.length)fail('INVALID_REQUEST','IDs must be unique.');return out;};
 const angle=(value:unknown):Angle=>{const a=object(value,['x','y']);return {x:number(a.x,'angle.x',-90,90),y:number(a.y,'angle.y',-90,90)};};
 const placement=(value:unknown):ScenePlacementValue=>{const p=object(value,['translation','rotation','scale','scaleX','scaleY']);return {translation:point(p.translation),rotation:number(p.rotation,'rotation',-1e9,1e9),scale:number(p.scale,'scale',1e-6,1e6),...(p.scaleX===undefined?{}:{scaleX:number(p.scaleX,'scaleX',0,1e6)}),...(p.scaleY===undefined?{}:{scaleY:number(p.scaleY,'scaleY',0,1e6)})};};
-export interface SnapshotCreation {kind:'recording'|'snapshot'|'layer'|'warp'|'track'|'key';id:string;ref?:string;created:boolean}
+export interface SnapshotCreation {kind:'recording'|'snapshot'|'layer'|'warp'|'track'|'key'|'interpolationWeight';id:string;ref?:string;created:boolean}
 export interface SnapshotCommandEffects {created:SnapshotCreation[];removedIds:string[];idMap?:Record<string,string>}
-export const allSnapshotIds=(workspace:RecordingSnapshotWorkspace):string[]=>[...Object.values(workspace.library).flatMap(map=>Object.keys(map)),...workspace.snapshots.flatMap(s=>[s.id,...s.layers.map(l=>l.id),...s.deformation.warps.map(w=>w.id),...(s.inheritedState?.warps??[]).map(w=>w.id)]),...workspace.recordings.flatMap(r=>[r.id,...r.tracks.flatMap(t=>[t.id,...t.keys.map(k=>k.id)])])];
+export const allSnapshotIds=(workspace:RecordingSnapshotWorkspace):string[]=>[...Object.values(workspace.library).flatMap(map=>Object.keys(map)),...workspace.snapshots.flatMap(s=>[s.id,...s.layers.map(l=>l.id),...s.deformation.warps.map(w=>w.id),...(s.inheritedState?.warps??[]).map(w=>w.id)]),...workspace.recordings.flatMap(r=>[r.id,...r.tracks.flatMap(t=>[t.id,...t.keys.map(k=>k.id)]),...(r.interpolationWeights??[]).map(weight=>weight.id)])];
 
 /** Commands mutate a detached transaction draft only. Validation of the complete
  * graph happens after the batch, so linked layer edits can be committed together. */
@@ -73,6 +77,8 @@ export interface SnapshotCommandOptions {
  /** Internal preview copy-on-write boundary, only used by nonstructural commands. */
  snapshotForWrite?:(snapshotId:string)=>RecordingSnapshot;
  trackForWrite?:(trackId:string)=>SnapshotPoseTrack;
+ /** Trusted preview may cache source membership against its immutable workspace. */
+ sourceForInterpolationWeight?:(snapshotId:string)=>DrawingDocument;
 }
 export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandOptions={}):SnapshotCommandEffects {
  const c=object(raw,['op',...new Set(Object.values(fields).flat())]),op=c.op as SnapshotCommand['op'];if(!Object.hasOwn(fields,op))fail('UNKNOWN_COMMAND',`Unknown snapshot command: ${String(op)}`);object(c,['op',...fields[op]]);
@@ -116,6 +122,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    // A view captures inherited state without keys. Removing its support sample
    // may therefore need a sparse key to preserve the surviving saved pose.
    for(let pass=0;pass<=survivors.length;pass++){let changed=false;for(const view of survivors){if(!affected.length)continue;const next=resolveSnapshot(workspace,view.id,{useDraft:false,diagnostics:'preview'}).state;for(const track of affected){const beforeValue=channelValue(prior.get(view.id)!,track),afterValue=channelValue(next,track);if(beforeValue===undefined||JSON.stringify(beforeValue)===JSON.stringify(afterValue))continue;const old=track.keys.find(k=>sameAngle(k.angle,view.angle)),key={id:old?.id??fresh(),angle:clone(view.angle),value:clone(beforeValue)};(track as SceneTrack<unknown>).keys=old?track.keys.map(k=>k===old?key:k):[...track.keys,key];view.authored=view.authored.filter(ref=>ref.trackId!==track.id);view.authored.push({trackId:track.id,keyId:key.id});created('key',key.id,!old);changed=true;}}if(!changed)break;}
+   if(recording.interpolationWeights){const weights=recording.interpolationWeights.filter(weight=>weight.startSnapshotId===target.id||weight.endSnapshotId===target.id);effects.removedIds.push(...weights.map(weight=>weight.id));recording.interpolationWeights=recording.interpolationWeights.filter(weight=>!weights.includes(weight));if(!recording.interpolationWeights.length)delete recording.interpolationWeights;}
    effects.removedIds.push(target.id,...removed);break;
   }
   case 'pasteLayers':case 'moveLayers':case 'cloneLayers':{
@@ -164,6 +171,20 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   case 'saveSelected':commit(selectedTracks(),snapshot(),c.name===undefined?undefined:name(c.name));break;
   case 'discardSelected':for(const track of selectedTracks())delete (options.trackForWrite?.(track.id)??track).draft;break;
   case 'renameKey':case 'deleteKey':{const track=recording.tracks.find(t=>t.id===id(c.trackId,'trackId'))??fail('NOT_FOUND','Track does not exist.'),key=track.keys.find(k=>k.id===id(c.keyId,'keyId'))??fail('NOT_FOUND','Key does not exist.');if(op==='renameKey')key.name=name(c.name);else{track.keys=track.keys.filter(k=>k!==key) as typeof track.keys;for(const s of workspace.snapshots)s.authored=s.authored.filter(ref=>ref.keyId!==key.id);effects.removedIds.push(key.id);}break;}
+  case 'setInterpolationWeight':case 'resetInterpolationWeight':{
+   const start=ownedSnapshot(c.startSnapshotId),end=ownedSnapshot(c.endSnapshotId);if(start.id===end.id)fail('INVALID_REQUEST','Interpolation endpoints must be two different snapshots.');
+   if(!Array.isArray(c.targets)||!c.targets.length||c.targets.length>16384)fail('INVALID_REQUEST','Select 1…16384 interpolation targets.');
+   const targets=(c.targets as unknown[]).map(raw=>{const target=object(raw,['layerId','curveId']);return {layerId:id(target.layerId,'layerId'),...(target.curveId===undefined?{}:{curveId:id(target.curveId,'curveId')})};});
+   const targetKey=(target:SnapshotInterpolationWeight['target'])=>JSON.stringify([target.layerId,target.curveId??null]);if(new Set(targets.map(targetKey)).size!==targets.length)fail('INVALID_REQUEST','Interpolation targets must be unique.');
+   const matches=(weight:SnapshotInterpolationWeight,target:SnapshotInterpolationWeight['target'])=>targetKey(weight.target)===targetKey(target)&&(weight.startSnapshotId===start.id&&weight.endSnapshotId===end.id||weight.startSnapshotId===end.id&&weight.endSnapshotId===start.id);
+   if(op==='resetInterpolationWeight'){const removed=(recording.interpolationWeights??[]).filter(weight=>targets.some(target=>matches(weight,target)));if(removed.length){recording.interpolationWeights=recording.interpolationWeights!.filter(weight=>!removed.includes(weight));if(!recording.interpolationWeights.length)delete recording.interpolationWeights;effects.removedIds.push(...removed.map(weight=>weight.id));}break;}
+   if(sameAngle(start.angle,end.angle)||start.angle.x!==end.angle.x&&start.angle.y!==end.angle.y)fail('UNSUPPORTED_INTERPOLATION_PAIR','Choose two views that differ along only one angle axis: the same Y for yaw, or the same X for pitch.');
+   if(!Array.isArray(c.points)||c.points.length<2||c.points.length>32)fail('INVALID_REQUEST','Interpolation points must contain 2…32 [input,weight] pairs.');
+   const points=(c.points as unknown[]).map(point),probe:SnapshotInterpolationWeight={id:'validation',target:targets[0],startSnapshotId:start.id,endSnapshotId:end.id,points};try{validateSnapshotInterpolationWeight(probe);}catch(error){fail('INVALID_REQUEST',(error as Error).message);}
+   const sources=[start,end].map(view=>options.sourceForInterpolationWeight?.(view.id)??resolveSnapshot(workspace,view.id,{useDraft:false,diagnostics:'preview'}).source);
+   for(const target of targets)for(const source of sources){const owner=source.layers.find(layer=>layer.id===target.layerId);if(!owner)fail('MISSING_LAYER','Interpolation target layer must exist in both endpoint snapshots.');if(target.curveId&&(!owner!.items.includes(target.curveId)||!source.curves.some(curve=>curve.id===target.curveId)))fail('MISSING_ELEMENT','Interpolation target curve must belong to this layer in both endpoint snapshots.');}
+   const weights=recording.interpolationWeights??=[];for(const target of targets){const existing=weights.find(weight=>matches(weight,target)),weight:SnapshotInterpolationWeight={id:existing?.id??fresh(),target:clone(target),startSnapshotId:start.id,endSnapshotId:end.id,points:clone(points)};if(existing)weights[weights.indexOf(existing)]=weight;else weights.push(weight);created('interpolationWeight',weight.id,!existing);}break;
+  }
   case 'setTolerance':recording.tolerance=number(c.pixels,'pixels',.1,20)/250;break;
  }
  return effects;

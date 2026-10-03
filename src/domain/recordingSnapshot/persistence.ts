@@ -1,5 +1,7 @@
 import type {RecordingSnapshotWorkspace} from './model';
 import {validateRecordingSnapshots} from './validation';
+import {validateSnapshotInterpolationWeight} from './weights';
+import type {SnapshotInterpolationWeight} from './model';
 import {parseRecordingScenes} from '../recordingScene/persistence';
 import {finitePoint,validInkEnds,validContourMist,validFillMist} from '../drawing/model';
 import {validateRecordingReference} from '../recording/reference';
@@ -69,7 +71,10 @@ export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspac
   if(snapshot.source!==undefined){const source=object(snapshot.source,['artworkId','originIds','reference','mirrorAxisX','mirrorEditing']);id(source.artworkId);for(const [canonical,original] of Object.entries(map(source.originIds))){id(canonical);id(original);}if(source.mirrorAxisX!==undefined)finite(source.mirrorAxisX);validateRecordingReference(source.reference as Parameters<typeof validateRecordingReference>[0]);}
  }
  for(const raw of list(root.recordings,1000)){
-  const recording=object(raw,['id','name','angle','snapshotIds','activeSnapshotId','tolerance','tracks','legacy']);id(recording.id);name(recording.name);angle(recording.angle);list(recording.snapshotIds).forEach(id);if(recording.activeSnapshotId!==undefined)id(recording.activeSnapshotId);
+  const recording=object(raw,['id','name','angle','snapshotIds','activeSnapshotId','tolerance','tracks','interpolationWeights','legacy']);id(recording.id);name(recording.name);angle(recording.angle);list(recording.snapshotIds).forEach(id);if(recording.activeSnapshotId!==undefined)id(recording.activeSnapshotId);
+  if(recording.interpolationWeights!==undefined)for(const raw of list(recording.interpolationWeights,65536)){
+   const weight=object(raw,['id','target','startSnapshotId','endSnapshotId','points']),target=object(weight.target,['layerId','curveId']);id(weight.id);id(weight.startSnapshotId);id(weight.endSnapshotId);id(target.layerId);if(target.curveId!==undefined)id(target.curveId);list(weight.points,32);validateSnapshotInterpolationWeight(weight as unknown as SnapshotInterpolationWeight);
+  }
   for(const raw of list(recording.tracks,65536)){
    const track=object(raw,['id','targetId','elementId','channel','sourceTrackId','keys','draft','interpolation','materialIssue']);id(track.id);id(track.targetId);if(track.elementId!==undefined)id(track.elementId);if(track.sourceTrackId!==undefined)id(track.sourceTrackId);if(track.materialIssue!==undefined){if(track.channel!=='interval')fail('material issue channel');materialIssue(track.materialIssue);}
    const check=(value:unknown)=>{if(track.channel==='placement')placement(value);if(track.channel==='shape')shape(value);if(track.channel==='warp')grid(value);if(track.channel==='interval')intervalValue(value);};

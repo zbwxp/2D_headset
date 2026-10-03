@@ -1,3 +1,4 @@
+import {validateSnapshotInterpolationWeight} from './weights';
 import {sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {finitePoint} from '../drawing/model';
 import {validateWarpGrid} from '../vectorWarp/model';
@@ -60,6 +61,10 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
  }
  for(const recording of workspace.recordings){
   if(typeof recording.name!=='string'||!angle(recording.angle)||!Array.isArray(recording.snapshotIds)||!Array.isArray(recording.tracks))fail('recording');unique(recording.snapshotIds,'recording snapshot');unique(recording.tracks.map(t=>t.id),'track');
+  if(recording.interpolationWeights!==undefined){
+   if(!Array.isArray(recording.interpolationWeights)||recording.interpolationWeights.length>65536)fail('interpolation weight assets');unique(recording.interpolationWeights.map(weight=>weight.id),'interpolation weight');const pairs=new Set<string>();
+   for(const weight of recording.interpolationWeights){validateSnapshotInterpolationWeight(weight);if(!recording.snapshotIds.includes(weight.startSnapshotId)||!recording.snapshotIds.includes(weight.endSnapshotId))fail('interpolation weight endpoint snapshot');const start=workspace.snapshots.find(snapshot=>snapshot.id===weight.startSnapshotId)!,end=workspace.snapshots.find(snapshot=>snapshot.id===weight.endSnapshotId)!;if(!start||!end||sameAngle(start.angle,end.angle)||start.angle.x!==end.angle.x&&start.angle.y!==end.angle.y)fail('interpolation weight endpoints must differ on one angle axis');const key=JSON.stringify([weight.target.layerId,weight.target.curveId??null,...[weight.startSnapshotId,weight.endSnapshotId].sort()]);if(pairs.has(key))fail('duplicate interpolation weight target and pair');pairs.add(key);}
+  }
   const targets=new Set<string>();for(const t of recording.tracks){track(t);const key=snapshotChannelKey(t.channel,t.targetId,t.channel==='interval'?t.sourceTrackId:t.elementId);if(targets.has(key))fail('duplicate channel target');targets.add(key);}
   if(recording.activeSnapshotId!==undefined&&!recording.snapshotIds.includes(recording.activeSnapshotId))fail('active snapshot');
   for(const snapshotId of recording.snapshotIds){const snapshot=workspace.snapshots.find(s=>s.id===snapshotId);if(!snapshot)fail('missing recording snapshot');for(const ref of snapshot!.authored){const authored=recording.tracks.find(t=>t.id===ref.trackId)?.keys.find(k=>k.id===ref.keyId);if(!authored)fail('missing authored key');if(authored!.angle.x!==snapshot!.angle.x||authored!.angle.y!==snapshot!.angle.y)fail('authored key coordinate');}}
