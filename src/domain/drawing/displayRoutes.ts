@@ -12,7 +12,7 @@ export interface DisplayRoute {seed:StrokePath;throughLinkIds:string[]}
 /** Copy/import uses its existing explicit ID map; missing dependencies are the
  * caller's validation error, never a reason to bind to nearby geometry. */
 export function mapDisplayRouteReferences(route:DisplayRoute,curveId:(id:string)=>string,linkId:(id:string)=>string):DisplayRoute {
- return {seed:{closed:route.seed.closed,segments:route.seed.segments.map(u=>({...u,id:curveId(u.id)}))},throughLinkIds:route.throughLinkIds.map(linkId)};
+ return {...route,seed:{...route.seed,segments:route.seed.segments.map(u=>({...u,id:curveId(u.id)}))},throughLinkIds:route.throughLinkIds.map(linkId)};
 }
 /** An explicit split may replace both curve IDs. Legacy Drawing keeps id on
  * the left. Link ports are remapped by the command; this is traversal only. */
@@ -28,7 +28,7 @@ const clonePath=(p:StrokePath):StrokePath=>({segments:p.segments.map(u=>({...u})
 
 /** Invalid routes retain their captured traversal and report why they cannot be
  * adopted. Never choose a different branch from coordinates or tangent angles. */
-export function resolveDisplayRoute(d:Doc,route:DisplayRoute):ResolvedDisplayRoute {
+export function resolveDisplayRoute(d:Doc,route:DisplayRoute,options:{deferEndpointPositions?:boolean}={}):ResolvedDisplayRoute {
  const diagnostics:DisplayRouteDiagnostic[]=[],usedLinkIds:string[]=[],displacedJoinIds:string[]=[];
  const result=(path:StrokePath=route.seed):ResolvedDisplayRoute=>({path:clonePath(path),usedLinkIds,displacedJoinIds,diagnostics});
  const seed=route.seed;
@@ -55,7 +55,7 @@ export function resolveDisplayRoute(d:Doc,route:DisplayRoute):ResolvedDisplayRou
   if(!link){diagnostics.push({code:'MISSING_LINK',message:'显示路径引用的端点联动已删除。',linkId:id});continue;}
   if((link as typeof link & {throughDisplay?:boolean}).throughDisplay!==true){diagnostics.push({code:'DISABLED_LINK',message:'此端点联动尚未启用显示贯通。',linkId:id});continue;}
   if([link.a,link.b].some(e=>selected.has(endKey(e)))){diagnostics.push({code:'PORT_CONFLICT',message:'同一个几何端点指定了多个显示续接；请保留一个明确续接。',linkId:id});continue;}
-  if(!curveById(d,link.a.curveId)||!curveById(d,link.b.curveId)||length(sub(nodeAt(d,link.a).position,nodeAt(d,link.b).position))>1e-7){diagnostics.push({code:'SEPARATED_LINK',message:'联动端点未重合，不能生成贯通显示路径。',linkId:id});continue;}
+  if(!curveById(d,link.a.curveId)||!curveById(d,link.b.curveId)||!options.deferEndpointPositions&&length(sub(nodeAt(d,link.a).position,nodeAt(d,link.b).position))>1e-7){diagnostics.push({code:'SEPARATED_LINK',message:'联动端点未重合，不能生成贯通显示路径。',linkId:id});continue;}
   for(const e of [link.a,link.b]){selected.add(endKey(e));linkAt.set(endKey(e),id);disconnect(e);}
   connect(link.a,link.b);
  }

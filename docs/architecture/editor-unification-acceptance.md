@@ -1,6 +1,6 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日。v57 于 17:36:00 UTC 上线。v55 的成对父拆分、v56 的共同钢笔／真实快照拓扑、v57 的完整脸内部真实 −60° 插入均已完成下述限定浏览器验收。v57 关闭了 v55 实际遇到的材质插点阻塞；一般非线性 SMOOTH、过程化整层域及共享关系工具仍是后续代码阶段，不能据此宣称全部原则完成。
+核对日期：2026 年 10 月 3 日。v59 于 18:04:50 UTC 上线，共同端点联动及引用层相似域的限定浏览器验证通过。v57 于 17:36:00 UTC 上线。v55 的成对父拆分、v56 的共同钢笔／真实快照拓扑、v57 的完整脸内部真实 −60° 插入均已完成下述限定浏览器验收。v57 关闭了 v55 实际遇到的材质插点阻塞；一般非线性 SMOOTH、过程化整层域及共享关系工具仍是后续代码阶段，不能据此宣称全部原则完成。
 
 完成标准是全部已约定职责落实在代码中，并且每项职责只有一份实际执行的实现，由 Drawing、Recording、API 和预览共同消费。公共包装函数、相同按钮或共享面板不能代替功能去重。v50 的自动化、构建与列明的浏览器操作已验证；“已接入”仍不代表其他缺口已关闭。本次文档更新未重新运行代码测试。
 
@@ -24,7 +24,7 @@
 | 10 逐曲线红色只读投影 | [snapshotCoverage.ts](../../src/domain/recordingSnapshot/snapshotCoverage.ts) 当前负责逐曲线覆盖投影；源存活判断随级联清理接入 | 主求值和 `surfaceOnion.ts` 共用；`SnapshotRecordingWorkspace` 将 `outsideCurves` 画成无指针事件的红色覆盖层 | [snapshot-coverage](../../src/tests/recordingSnapshot/snapshot-coverage.test.ts)、[surface-workspace](../../src/tests/recordingSnapshot/surface-workspace.test.ts)；v50 仅有 0° 样本时，在 90° 得到 121 条红线，空视图粘贴同 ID 后恢复正常 | **预览及源删除已验证**：红回退只能表示存活资产缺样本；源资产被删除后不得继续红显。错误 ID 黑红并存与混合覆盖已有自动化，完整源删除交互已在 v51/v53 验收 |
 | 11 删除极值保留空洞 | `triangulation.ts` 的 `removeSnapshotVertex`；`angleGraph.ts` 的响应退役归档；快照删除命令 | 显式删除命令修改覆盖；普通加载只解析，不补点；共享事务承担 Undo | `triangulation`、`surface-command-api`、`automatic-snapshot-edits` 覆盖空洞、不自动连邻点、回读不再生和相关响应保留 | **已接入待验收**：验证 UI 删除、离开范围的逐线反馈、Undo／Redo 与保存重载；不能用重三角化补回用户删除的覆盖 |
 | 12 镜像与自动占位属于普通编辑 | [automaticSnapshotEdits.ts](../../src/domain/recordingSnapshot/automaticSnapshotEdits.ts) 负责明确创建和继承更新；[snapshotMirror.ts](../../src/domain/recordingSnapshot/snapshotMirror.ts) 负责语义镜像 | 创建命令调用 `seedAutomaticExtremeSnapshots`；普通事务调用 `propagateAutomaticSnapshotLayers`；父输入求值执行镜像 | [snapshot-mirror](../../src/tests/recordingSnapshot/snapshot-mirror.test.ts)、`automatic-snapshot-edits`；v50 实际得到九点，基准拖动后 +90° 镜像 210 条输出路径，反射误差小于 0.001 像素 | **核心流程已验证**：重载后九点与镜像仍可见。局部覆盖、已有视图不覆写及删点不再生保留自动化证据，未据此扩称所有浏览器组合已验收；不新增第四套几何系统 |
-| 13 父曲线拆分保留后代变形 | `drawing/layerEditIntent.ts` 一次分配身份并调用唯一 split 内核；`topologyEdits.ts` 冻结/重映射后代姿态；`responseExpressionSplit.ts` 保留 live basis 标量表达式 | Drawing 分割手势、shared store intent；Recording 真实快照分割走同一 local transaction；主画面及洋葱皮共用 value sampler | `drawing-layer-edit-intent`、`topology-edits`、`response-expression-split`、`response-expression-runtime` 和真实 store Undo；成对正/反向镜像、各端既有变形、材质、重复拆分、split→真实插点已自动化覆盖 | **v55 有界浏览器验证通过**：完整镜像脸的眉线 121→123 段、镜像 54→55 组，同步到各视角；Undo 恢复。精确保留受支持轨迹；局部分割明确新 ID/中断对应。任意原有非线性 SMOOTH 投影、旧 live channel 拓扑转移及有依赖 fill/offset 的局部拆分仍有明确限制；不宣称所有原则完成 |
+| 13 父曲线拆分保留后代变形 | `drawing/layerEditIntent.ts` 一次分配身份并调用唯一 split 内核；`topologyEdits.ts` 冻结/重映射后代姿态；`responseExpressionSplit.ts` 保留 live basis 标量表达式 | Drawing 分割手势、shared store intent；Recording 真实快照分割走同一 local transaction；主画面及洋葱皮共用 value sampler | `drawing-layer-edit-intent`、`topology-edits`、`response-expression-split`、`response-expression-runtime` 和真实 store Undo；成对正/反向镜像、各端既有变形、材质、重复拆分、split→真实插点已自动化覆盖 | **v55 有界浏览器验证通过**：完整镜像脸的眉线 121→123 段、镜像 54→55 组，同步到各视角；Undo 恢复。精确保留受支持轨迹；局部分割明确新 ID/中断对应。一般非线性 SMOOTH 父拆分随后由 v58 的投影表达式组合覆盖；旧 live channel 拓扑转移及有依赖 fill/offset 的局部拆分仍有明确限制；不宣称所有原则完成 |
 | 14 洋葱皮只是 Recorder 预览 | [surfaceOnion.ts](../../src/ui/vectorRecording/surfaceOnion.ts) 只选角度和组织帧，复用 `prepareSnapshotCoverage` → `createSnapshotSurfaceValueSampler` → `interpolateSnapshotSimplexGeometry`；[SceneOnionSkin.tsx](../../src/ui/vectorRecording/SceneOnionSkin.tsx) 共用渲染 | [useSnapshotOnionFrames.ts](../../src/ui/vectorRecording/useSnapshotOnionFrames.ts) 按模式派发；新模式使用完整曲线中心线分支 | `surface-workspace` 逐角度比较主求值且检查无写入；v50 真实浏览器记录十帧完整曲线洋葱皮 | **采样与基本显示已验证**：5°／10° 步长、30°／60° 高亮和完整曲线仅为预览设置，不建快照、不改图层。隐藏／闭合曲线组合及性能测量待补；旧 endpoint 分支当前仍存在，不能宣称已经移除 |
 | 15 安全迁移与明确退役范围 | [migration.ts](../../src/domain/recordingSnapshot/migration.ts) 保留原归档；`angleGraph.ts` 的 `createTriangulatedRecordingCopy` 创建副本并转换可表达的旧响应 | 显式复制迁移命令；当前仍保留旧模式分支；新模式禁止直接编辑保留的旧轨道 | `angle-graph` 覆盖键／草稿／ID 保留和不可表达时拒绝；[external-migration](../../src/tests/recordingSnapshot/external-migration.test.ts) 覆盖外部旧数据 | **部分且须按授权分开处理**：旧 v40 单调权重资产及旧 3D／Assembly／GPU 房间已获准退役，共享数学保留；旧 channel runtime 尚待决定。非线性细分未完成，不得静默烘焙或删除原件 |
 
@@ -57,15 +57,16 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 ## 结束验收前必须关闭的缺口
 
-1. 完成正在接入的 Recording → Drawing 引用粘贴显示、命中和所有权写入，并验收源删除级联；源曲线删除保留空层，源图层删除清引用，子快照排除只作用于本地。
-2. 接通 Recording 真实基准的完整拓扑编辑工具，并把现有 Drawing／Recording 重复的目标、关系和手势处理收敛到共享实现。
-3. 完成父曲线拆分谱系，以及后代姿态、响应、材质区间和局部拆分警告。
-4. 完成覆盖内部创建真实 60° 的正常姿态捕获与响应保真细分；红色投影不进入捕获。
-5. 完成独立属性角度键及其 UI／保存接线，验证区间端点独立响应、精确零、0° 塌缩／30° 响应为零／90° 展开，且不增加几何顶点。
-6. 按已批准范围清理旧资产与房间，保留共享数学；单独补齐旧 channel runtime 的影响清单与决定，不擅自扩大清理范围。
-7. 对最终代码运行相关自动化，并补齐双向引用、源删除、拓扑、属性键、内部插点、迁移恢复等真实浏览器检查。v50 已通过的具体步骤保留为证据，不能替代新增功能验收。
+截至 v58，双向引用基础编辑、源删除级联、P 和本地增删、成对父拆分、默认完整脸材质插点、区间独立响应与已批准旧房间退役均已有列明的测试／限定浏览器证据。它们不再作为“完全未做”的工作重复列出。剩余按实际路径划分：
 
-第一个可运行候选只用于验证，不是全部原则完成的标志。每一项应当以实际调用链、保存后的数据及相应测试／交互证据关闭；发现仍在使用重复活动实现时，继续收敛后再验收。
+1. 一般非线性 SMOOTH 父拆分已经在 v58 自动化闭环；同类场的内部真实视图插入仍需限制原投影表达式并验证旧轨迹。
+2. Recording 真实基准的新端点联动与已有 route 笔触工具已形成候选；新局部联动建立贯通的材料基准和验证顺序仍需闭环。Drawing 引用层的全部拓扑／材质入口也仍有能力边界。
+3. 明确整层变换必须保过程域和 live membership，并让 UI／API 进入同一所有者解析入口。正相似域第一批候选已接；一般 affine／反射和 H∘Coons 要继续共用纯数学与材料参数运输，不能退化为冻结现有点的偏移。
+4. 局部带 paint 依赖的拆分身份转移、共用属性面板／工具能力与活动旁路还需按调用链逐项核对。拓扑创建不能写入修正帧或隐式改父源。
+5. 跨模式 Undo 仍有来源操作的交互限制；旧 channel runtime 的退役决定仍未明确。不得用清理旧房间的许可删除原始归档或未授权旧录制。
+6. 每个后续冻结提交需完成相关自动化与实际 UI 验证，证据只覆盖执行过的动作。既有 v50～v57 成功样例不自动证明新路径；未做浏览器 FPS 或美术审美验收。
+
+每项以实际执行模块、保存数据和针对证据关闭；共享事务包装或同款按钮不等于功能完成。
 
 
 ## v53/v54 与下一候选边界
@@ -112,11 +113,11 @@ v56 实际鼠标验证：空真实 0° 新层、P 拖柄、3 段连续闭合；�
 - 旧 channel runtime 的退役未获得清晰最终决定；已批准退役的旧权重／房间范围已完成，不重复作为待办
 
 
-## 一般 SMOOTH 父拆分组合候选
+## v58 一般 SMOOTH 父拆分组合
 
 `responseExpressionProjection.ts` 记录有界标量表达式及原稳定 driver／方向／长度尺度；`smoothComponent.ts` 为原投影提供唯一数学实现。父拆分按“原控制值求值 → 原 SMOOTH 投影 → de Casteljau”组合，不将拆后的子柄重新当成一套近似父约束。`surfaceTargets.ts` 对后续点／柄目标先反解该投影，再统一回放验证，任一不可表达轴整笔拒绝。
 
-自动化覆盖一般非线性边／三角、saved/draft、重复拆分、live source 柄长度变更、子线端点和柄独立编辑、短 driver 原阈值、JSON 校验及后续修正。最终 Recorder 测试 371 通过、4 跳过；专门投影 21 项与 TypeScript 通过。未进行此候选的浏览器操作。
+自动化覆盖一般非线性边／三角、saved/draft、重复拆分、live source 柄长度变更、子线端点和柄独立编辑、短 driver 原阈值、JSON 校验及后续修正。最终 Recorder 测试 371 通过、4 跳过；专门投影 21 项与 TypeScript 通过。v58 于 17:58:45 UTC 上线；该数学阶段没有另外重复整套浏览器父拆分操作，保留自动化与 v55 原路径证据各自边界。
 
 本候选关闭的是父拆分与后续修正的非线性投影组合；任意非线性 SMOOTH 场的内部真实视图插入仍保留明确门槛，不能用 v57 的材质插点结果替代它。
 
@@ -129,4 +130,28 @@ v56 实际鼠标验证：空真实 0° 新层、P 拖柄、3 段连续闭合；�
 
 `LayerDomainIntent` 明确保存整层目标和作者输入的平移／旋转／正等比参数。Drawing 明确选引用层时写本地 placement，未来新增成员继续继承，直接点或框选全体元素仍是稀疏元素编辑。原始自有层继续写源。现有 Warp、非等比／零轴 placement 和材质求值继续复用。非等比、反射、H∘Coons 的引用层过程域，及明确图层 API 的同入口接线仍待后续阶段，不能把现有几何工具存在等同于这些域参数已经保留。
 
-层域相关 93 项、端点相关 146 项及 TypeScript 通过；新路径丢失原子拒绝另由 8 项端点集成测试覆盖。候选待构建和实际 UI 验证。
+层域相关 93 项、端点相关 146 项及 TypeScript 通过；新路径丢失原子拒绝另由 8 项端点集成测试覆盖。v59 精确构建及下述实际 UI 验证通过。
+
+
+### v59 真实 UI 与保存数据
+
+在空真实快照用 P 实际绘制两条不同层的曲线，选择第一个端点、切层、再点第二个端点，成功建立局部位置联动。两端屏幕坐标完全相同；解除联动不移动所选曲线，Undo 恢复关系且路径逐字相同。无有效贯通时 SMOOTH/ARC 明确禁用。已记录“选整层后关系卡消失”的入口摩擦，下一候选补充层成员选择展开。
+
+Drawing 中确认粘贴出的引用鼻部层后，实际通过数字控件执行平移、20° 旋转和 120% 缩放；随后在来源鼻部层用 P 新增一条线，引用层从 2 条变为 3 条。真实保存 JSON 经精确 v59 生产模块回读，三个成员的全部控制点都等于同一 placement 的映射，最大误差 0；本地 shape 为空。此处验证了数字控件，不将其扩称为本轮已逐一鼠标拖过全部框柄。
+
+两组准备分别 6 和 14 笔正常 Undo 到底，原 5 画稿 ID 与原先的“稍侧12 修改中”状态恢复。早先一次切换画稿后立即粘贴观察到旧选择状态，未将那组源编辑计作域成功；它们也全部撤销。报告为 `artifacts/triangulated-recorder-qa/v59-browser-verification.json` 和 `v59-domain-save-validation.json`。这不是私人档案浏览器测试、文件重新导入或浏览器 FPS 测量。
+
+### 后续冻结候选
+
+- `bc1c4be`：所有者解析实际实现移至 `app/drawingSnapshotEdit.ts`／`drawingSnapshotPresentation.ts`，UI 只保留薄导出；`prepareSnapshotEdit` 与明确 `transformLayers` API 共用 layer-domain intent。150 项与 TypeScript、精确构建通过
+- `4a54cb7`：一般 SMOOTH 内部真实视图插入复用投影 DAG 和 sourceBaseline restriction；真实 60° 节点／柄编辑、45° 反推、再插 30°、邻角、JSON、Undo/Redo 通过。34 项针对性检查与此前 Recorder 377 通过／4 跳过；没有采样几何后备。待与 route 收口合并构建及发布
+- 仍需完成新局部贯通的材料基准接入；全 affine／H∘Coons 程序域、其余共享属性／拓扑能力与跨模式 Undo 等未因此完成
+
+
+## 局部新贯通路径材料与共享 UI 候选
+
+`routeMaterialSource.ts` 标记 raw Snapshot 输入，按现有真实联动解析器形成瞬时材料基准。`commands.ts` 的数值区间、`drawingTopology.ts` 的作者目标、`endpointPairMaterial.ts` 的运输和 `materialRestriction.ts` 的插点 recipe 共同取该基准。最终已求值基准不被自动吸附／重投影；失败不回贴旧百分比。既有 Drawing route 求解和参数运输仍是唯一数学实现。
+
+Recording 的关系卡现在直接消费同一个 `DisplayRouteControls`：可为新局部联动建立区间、贯通、解除和修改 SMOOTH／ARC。选中整层时展开成员找到关系卡。原始来源端点分离的新联动不再提前被当作坏 route 丢弃；后续 A 编辑仍按原 curve/t 材料位置运输。共同 2× placement 下修改 ARC trim 只逆映射一次。
+
+545 项相关检查通过／4 跳过，最后失败材料映射拒绝策略下再验证 24/24；新增路径、内部插点、后续数值、保存 JSON、Undo/Redo 均有针对性覆盖。此候选尚待合并精确构建与真实浏览器；v59 的无贯通限制是旧版事实，不能混为本候选已验收。

@@ -6,6 +6,9 @@ import {addDisplayInterval} from '../domain/drawing/displayIntervals';
 import {adoptDisplayRoute} from '../domain/drawing/displayRouteAuthoring';
 import {setEndpointLinkBrush} from '../domain/drawing/endpointRelationAuthoring';
 import {displayRouteInkSupport} from '../domain/drawing/displayRouteInk';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import EndpointRelationControls from '../ui/drawing/EndpointRelationControls';
 const a:Endpoint={curveId:'a',end:1},b:Endpoint={curveId:'b',end:0};
 function fixture(){let drawing=emptyDrawing();drawing.layers=[{id:'left',name:'Left',visible:true,locked:false,items:[]},{id:'right',name:'Right',visible:true,locked:false,items:[]}];drawing=createCurve(drawing,'left',[[-1,0],[-.7,0],[-.3,0],[0,0]],.01,'A','a');return createCurve(drawing,'right',[[.1,.1],[.4,.2],[.7,.1],[1,.1]],.02,'B','b');}
 test('Drawing endpoint scope and eleven-pixel picking share visibility, lock and layer semantics',()=>{
@@ -27,4 +30,8 @@ test('the shared brush command authors real SMOOTH handles, ARC trim and POSITIO
 });
 test('unsupported and locked brush edits fail without changing the document',()=>{
  const drawing=linkEndpoints(fixture(),a,b,true),saved=structuredClone(drawing),id=drawing.endpointLinks![0].id;expect(()=>setEndpointLinkBrush(drawing,id,{kind:'SMOOTH'})).toThrow(/显示贯通/);expect(()=>setEndpointLinkBrush(drawing,id,{kind:'ARC',trimDistance:.04})).toThrow(/显示贯通/);expect(drawing).toEqual(saved);drawing.curves[1].locked=true;expect(()=>setEndpointLinkBrush(drawing,id,{kind:'SHARP'})).toThrow(/锁定/);
+});
+test('the shared relation card exposes interval creation, Drawing route adoption, and active brush controls',()=>{
+ let drawing=fixture();drawing.curves[1].width=drawing.curves[0].width;drawing=linkEndpoints(drawing,a,b,true);const markup=(document:typeof drawing)=>renderToStaticMarkup(createElement(EndpointRelationControls,{drawing:document,link:document.endpointLinks![0],editable:true,run:()=>{}}));
+ expect(markup(drawing)).toContain('endpoint-create-display-interval');drawing=addDisplayInterval(drawing,'a');expect(markup(drawing)).toContain('adopt-display-route');drawing=adoptDisplayRoute(drawing,drawing.displayIntervals![0].id,drawing.endpointLinks![0].id).document;const active=markup(drawing);expect(active).toContain('detach-display-route');for(const mode of ['POSITION','SMOOTH','ARC'])expect(active).toContain(`value="${mode}"`);
 });

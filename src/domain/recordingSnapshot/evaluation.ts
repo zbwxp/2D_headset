@@ -1,4 +1,7 @@
 import {intervalPinch} from '../drawing/intervalPinch';
+import {snapshotRouteMaterialSource,markSnapshotRouteMaterialInput} from './routeMaterialSource';
+import {transportEndpointPairMaterial} from './endpointPairMaterial';
+import {applyIntervalEnableFlags} from '../vectorRecording/intervals';
 import {applySnapshotMaterialRecipe,evaluateSnapshotMaterialRecipe,snapshotMaterialRecipeDependencies} from './materialRestriction';
 import {placeSnapshotElements,retainSnapshotAffines} from './elementPlacement';
 import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
@@ -100,7 +103,7 @@ function validRelationships(drawing:DrawingDocument,diagnostics:SnapshotDiagnost
  const curves=new Set(drawing.curves.map(c=>c.id));
  const activePair=(r:{id:string;a:{curveId:string};b:{curveId:string}})=>{const active=curves.has(r.a.curveId)&&curves.has(r.b.curveId);if(!active)diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:r.id,message:`Relation ${r.id} references an element outside this snapshot and is inactive.`});return active;};
  const result={...drawing,joins:drawing.joins.filter(activePair),endpointLinks:drawing.endpointLinks?.filter(activePair),groups:drawing.groups?.map(g=>({...g,curveIds:g.curveIds.filter(id=>curves.has(id))})).filter(g=>g.curveIds.length)};
- result.displayIntervals=drawing.displayIntervals?.filter(t=>{if(!curves.has(t.anchor.id)){diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:t.id,message:`Display interval ${t.id} has no anchor in this snapshot.`});return false;}if(t.displayRoute){const route=resolveDisplayRoute(result,t.displayRoute);if(route.diagnostics.length){diagnostics.push({code:'ROUTE',snapshotId,elementId:t.id,message:`Display route ${t.id} is incomplete in this snapshot; its saved relationship remains available.`});return false;}}return true;});return result;
+ result.displayIntervals=drawing.displayIntervals?.filter(t=>{if(!curves.has(t.anchor.id)){diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:t.id,message:`Display interval ${t.id} has no anchor in this snapshot.`});return false;}if(t.displayRoute){const route=resolveDisplayRoute(result,t.displayRoute,{deferEndpointPositions:true});if(route.diagnostics.length){diagnostics.push({code:'ROUTE',snapshotId,elementId:t.id,message:`Display route ${t.id} is incomplete in this snapshot; its saved relationship remains available.`});return false;}}return true;});return result;
 }
 /** Parent-domain reflection is cached by the immutable evaluated parent and
  * exact semantic mapping. It precedes child membership and local deformation. */
@@ -173,7 +176,7 @@ function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:Recordin
  drawing.fills=drawing.fills.filter(f=>{const ok=f.boundary.every(u=>curveIds.has(u.id));if(!ok)removed.add(f.id);return ok;});drawing.offsets=drawing.offsets.filter(o=>{const ok=o.source.every(u=>curveIds.has(u.id));if(!ok)removed.add(o.id);return ok;});
  for(const id of removed)diagnostics.push({code:'MISSING_ELEMENT',snapshotId:snapshot.id,elementId:id,message:`Paint element ${id} has a missing curve dependency and is inactive.`});
  for(const layer of drawing.layers)layer.items=layer.items.filter(id=>!removed.has(id));
- return {drawing:retainSnapshotAffines(validRelationships(drawing,diagnostics,snapshot.id),[...parents.values()].map(parent=>parent.drawing)),provenance,appliedTrackIds};
+ return {drawing:markSnapshotRouteMaterialInput(retainSnapshotAffines(validRelationships(drawing,diagnostics,snapshot.id),[...parents.values()].map(parent=>parent.drawing))),provenance,appliedTrackIds};
 }
 function shapeState(source:DrawingDocument,state:SnapshotDeformationState,diagnostics:SnapshotDiagnostic[],snapshotId:string):SceneShapeValue {
  const result=identitySceneShape(),nodeLayers=new Map(source.curves.flatMap(c=>c.nodes.map(id=>[id,layerFor(source,c.id)?.id] as const)));
@@ -205,13 +208,14 @@ function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:Reco
  const order=new Map(base.map((batch,index)=>[batch.owner??batch.item.id,index]));return result.sort((a,b)=>a.position-b.position||order.get(a.owner??a.item.id)!-order.get(b.owner??b.item.id)!);
 }
 function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:SnapshotDeformationState,options:SnapshotEvaluationOptions,diagnostics:SnapshotDiagnostic[],cache?:EvaluationCache):Omit<SnapshotEvaluation,'snapshotId'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'> {
+ const deferred=new Map((source.displayIntervals??[]).flatMap(track=>{const material=snapshotRouteMaterialSource(source,track);return material===source?[]:[[track.id,material] as const];})),geometrySource=deferred.size?{...source,displayIntervals:source.displayIntervals?.filter(track=>!deferred.has(track.id))}:source;
  const angle=options.angle??snapshot.angle;if(![angle.x,angle.y].every(n=>Number.isFinite(n)&&n>=-90&&n<=90))throw Error('Snapshot angle must be finite and between -90 and 90.');const scene=emptyRecordingScene('snapshot-evaluation'),instanceId='snapshot-evaluation',sourceId='snapshot-source';
  scene.angle={...angle};scene.instances=[{id:instanceId,artworkId:sourceId,name:snapshot.name}];
  scene.warps=state.warps.map(w=>({id:w.id,name:w.name,parentId:w.parentId,restGrid:w.restGrid,keys:[{id:`current:${w.id}`,angle,value:w.grid}]}));
  scene.bindings=state.bindings.map(b=>({instanceId,sourceLayerId:b.layerId,warpId:b.warpId}));
  for(const [layerId,value] of Object.entries(state.layers)){
   for(const [id,visible] of Object.entries(value.visibility??{}))scene.visibilityTracks.push({id:`visibility:${layerId}:${id}`,target:{instanceId,sourceLayerId:layerId,...(id===layerId?{}:{sourceObjectId:id})},keys:[{id:'current',angle,value:visible}]});
-  for(const [id,interval] of Object.entries(value.intervals??{}))scene.intervalTracks.push({id:`interval:${id}`,instanceId,sourceTrackId:id,keys:[{id:'current',angle,value:interval}]});
+  for(const [id,interval] of Object.entries(value.intervals??{}))if(!deferred.has(id))scene.intervalTracks.push({id:`interval:${id}`,instanceId,sourceTrackId:id,keys:[{id:'current',angle,value:interval}]});
   if(value.depth!==undefined)scene.depthTracks!.push({id:`depth:${layerId}`,target:{instanceId,sourceLayerId:layerId},keys:[{id:'current',angle,value:value.depth}]});
  }
  const shape=shapeState(source,state,diagnostics,snapshot.id);if(Object.keys(shape.nodes).length||Object.keys(shape.handles).length)scene.shapeTracks=[{id:'snapshot-shape',instanceId,keys:[{id:'current',angle,value:shape}]}];
@@ -220,7 +224,7 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
  let stages=cache?.baseStages.get(source);if(cache&&!stages){stages=new InputCache(16);cache.baseStages.set(source,stages);}
  const values=(tracks:typeof scene.visibilityTracks|typeof scene.intervalTracks|typeof scene.depthTracks)=>tracks?.map(({keys,...track})=>({...track,value:keys[0]?.value}));
  const stageKey=JSON.stringify([scene.warps.map(({keys,...warp})=>({...warp,value:keys[0]?.value})),scene.bindings,values(scene.visibilityTracks),values(scene.intervalTracks),values(scene.depthTracks),evaluationOptionsKey({...options,angle:{x:0,y:0},useDraft:false,omitShapes:true,omitPlacements:true})]);
- let base=stages?.get(stageKey);if(!base){base=evaluateScene({...scene,shapeTracks:[]},id=>id===sourceId?source:undefined,{...options,omitShapes:true,omitPlacements:true});stages?.set(stageKey,base);}
+ let base=stages?.get(stageKey);if(!base){base=evaluateScene({...scene,shapeTracks:[]},id=>id===sourceId?geometrySource:undefined,{...options,omitShapes:true,omitPlacements:true});stages?.set(stageKey,base);}
  const stageDiagnostics=base.diagnostics.filter(d=>d.code!=='ROUTE'),deformed={drawing:base.drawing,diagnostics:base.fitDiagnostics,diagnosticStage:base.diagnosticStage,intervalTransportErrors:base.intervalTransportErrors,maxError:base.maxError,warningCurveIds:base.warningCurveIds,conflictingNodeIds:base.conflictingNodeIds};
  const shaped=options.omitShapes?deformed:applySceneShapes(deformed,scene,angle,true,base.provenance,stageDiagnostics);
  const routes=new Set<string>();for(const track of shaped.drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routes.has(key))continue;routes.add(key);for(const diagnostic of createDisplayRouteField(shaped.drawing,track.displayRoute).diagnostics){const p=base.provenance[track.id];stageDiagnostics.push({code:'ROUTE',instanceId:p?.instanceId,trackId:p?.sourceId,message:diagnostic.message});}}
@@ -234,7 +238,21 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
   for(const drawing of new Set([preShapeDrawing,preElementPlacementDrawing,unplaced]))if(sameGeometry(drawing))retainSnapshotAffines(drawing,[source]);}
  const placements=Object.fromEntries(snapshot.layers.map(l=>[l.id,state.layers[l.id]?.placement??identityScenePlacement()]));
  const elementPlacements=Object.assign({},...Object.values(state.layers).map(layer=>layer.elementPlacements??{})) as Record<string,ScenePlacementValue>,prePlacementDrawing=options.omitPlacements?unplaced:placeSnapshotElements(unplaced,elementPlacements);
- const drawing=options.omitPlacements?unplaced:placeLayers(prePlacementDrawing,placements);
+ let drawing=options.omitPlacements?unplaced:placeLayers(prePlacementDrawing,placements);
+ if(deferred.size){
+  const tracks=(source.displayIntervals??[]).filter(track=>deferred.has(track.id)).map(track=>{const value=state.layers[layerFor(source,track.anchor.id)!.id]?.intervals?.[track.id];return applyIntervalEnableFlags([value?.appearance??track],value?.enabled??{})[0];});
+  const target=retainSnapshotAffines({...drawing,displayIntervals:[...drawing.displayIntervals??[],...tracks]},[drawing]),transported:typeof tracks=[];
+  for(const track of tracks){const messages:string[]=[];try{
+   transported.push(transportEndpointPairMaterial(deferred.get(track.id)!,track,target,messages));
+   for(const message of messages)diagnostics.push({code:'SOURCE_MATERIAL',snapshotId:snapshot.id,elementId:track.id,message});
+  }catch(error){
+   // Retain the authored relationship in source/state, but never reinterpret
+   // its material-frame percentages as final-frame cuts after a failed map.
+   diagnostics.push({code:'SOURCE_MATERIAL',snapshotId:snapshot.id,elementId:track.id,message:(error as Error).message});
+  }}
+  drawing=retainSnapshotAffines({...target,displayIntervals:[...drawing.displayIntervals??[],...transported]},[target]);
+ }
+
  const placedNodes=new Map(drawing.nodes.map(n=>[n.id,n.position])),placedCurves=new Map(drawing.curves.map(c=>[c.id,c]));for(const link of drawing.endpointLinks??[]){const a=placedNodes.get(placedCurves.get(link.a.curveId)?.nodes[link.a.end]??''),b=placedNodes.get(placedCurves.get(link.b.curveId)?.nodes[link.b.end]??'');if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-8)diagnostics.push({code:'RELATION_CONFLICT',snapshotId:snapshot.id,elementId:link.id,message:'Layer placement separates linked endpoints. Connected layers need coherent placement values.'});}
  for(const diagnostic of evaluated.diagnostics)diagnostics.push({code:diagnostic.code==='ROUTE'?'ROUTE':'POSE',snapshotId:snapshot.id,layerId:diagnostic.sourceLayerId,elementId:diagnostic.sourceObjectId,channelId:diagnostic.trackId,message:diagnostic.message});
  const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const element=elementPlacements[sourceCurveId]??identityScenePlacement(),map=(p:Point2)=>applyScenePlacement(placement,applyScenePlacement(element,p)),maximum=scenePlacementMaxScale(placement)*scenePlacementMaxScale(element),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(map) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:map(d.peakExpected),peakActual:map(d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});

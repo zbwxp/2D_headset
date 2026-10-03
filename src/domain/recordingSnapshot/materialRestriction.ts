@@ -2,6 +2,7 @@ import type {DrawingDocument,StrokeDisplayIntervals} from '../drawing/model';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {retainSnapshotAffines} from './elementPlacement';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
+import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
 import {captureSnapshotResponseField,validateSnapshotResponseExpression} from './responseExpressions';
 import {blendSnapshotPropertyValues,effectiveSnapshotPropertyResponses,snapshotScalarPropertyTargetKey,validateSnapshotScalarPropertyTarget} from './propertyResponses';
 import {prepareTriangularResponse,type BarycentricWeights,type InteriorResponseSample,type OrientedEdgeResponse} from './triangularResponses';
@@ -100,7 +101,7 @@ export function restrictSnapshotMaterialRecipes(graph:SnapshotAngleGraph,mesh:Sn
  return registry;
 }
 const baselines=new WeakMap<DrawingDocument,DrawingDocument>();
-const copyMaterial=(drawing:DrawingDocument,displayIntervals:StrokeDisplayIntervals[])=>{const next={...drawing,displayIntervals};retainSnapshotAffines(next,[drawing]);return next;};
+const copyMaterial=(drawing:DrawingDocument,displayIntervals:StrokeDisplayIntervals[])=>{const next={...drawing,displayIntervals};retainSnapshotAffines(next,[drawing]);return retainSnapshotRouteMaterialInput(next,drawing);};
 /** Pure material evaluation. Every basis is already resolved; this never runs
  * an angle's geometry, Warp, SMOOTH, coverage, or onion pipeline. */
 export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle):{drawing:DrawingDocument;diagnostics:string[]} {

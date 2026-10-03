@@ -4,6 +4,8 @@ import type {StrokePath} from '../drawing/strokes';
 import {evaluatedAffine} from '../drawing/evaluatedAffine';
 import {intervalPinch} from '../drawing/intervalPinch';
 import {InputCache} from '../geometry/cache';
+import {snapshotRouteMaterialSource} from './routeMaterialSource';
+import {resolveDisplayRoute} from '../drawing/displayRoutes';
 
 type Field=ReturnType<typeof displayField>;
 type Support={kind:'curve';curveId:string;t:number}|{kind:'arc';joinId:string;s:number;pieceCount:number};
@@ -60,15 +62,17 @@ function resolveSupport(field:Field,path:StrokePath,track:StrokeDisplayIntervals
  return field.relative(track,distance/field.total);
 }
 interface PreparedTrack {path:StrokePath;supports:Map<string,{start:Support;end:Support;full:boolean}>}
-const prepared=new WeakMap<DrawingDocument,Map<string,PreparedTrack>>();
+const prepared=new WeakMap<DrawingDocument,Map<StrokeDisplayIntervals,PreparedTrack>>();
 function prepare(drawing:DrawingDocument,track:StrokeDisplayIntervals):PreparedTrack {
- let cache=prepared.get(drawing);if(!cache){cache=new Map();prepared.set(drawing,cache);}const known=cache.get(track.id);if(known)return known;
+ let cache=prepared.get(drawing);if(!cache){cache=new Map();prepared.set(drawing,cache);}const known=cache.get(track);if(known)return known;
  const path=displayPath(drawing,track.anchor.id),field=endpointPairDisplayField(drawing,path),supports=new Map(track.ranges.map(r=>[r.id,{start:supportAt(field,path,track,r.start),end:supportAt(field,path,track,r.fullLoop?r.start:r.end),full:!!(path.closed&&Math.abs(r.end-r.start)>1-1e-10)}]));
- const value={path,supports};cache.set(track.id,value);return value;
+ const value={path,supports};cache.set(track,value);return value;
 }
 /** Cache endpoint source-t/ARC addresses once. Only the target's derived field
  * changes per sample; no endpoint geometry or arc table is rebuilt. */
 export function transportEndpointPairMaterial(endpoint:DrawingDocument,track:StrokeDisplayIntervals,drawing:DrawingDocument,diagnostics:string[]):StrokeDisplayIntervals {
+ endpoint=snapshotRouteMaterialSource(endpoint,track);drawing=snapshotRouteMaterialSource(drawing,track);
+ if(track.displayRoute)for(const document of [endpoint,drawing]){const resolved=resolveDisplayRoute(document,track.displayRoute);if(resolved.diagnostics.length)throw Error(`Material route ${track.id}: ${resolved.diagnostics[0].message}`);}
  const basis=prepare(endpoint,track),path=basis.path,field=endpointPairDisplayField(drawing,path);
  if(field.geometry.error)diagnostics.push(`Material ${track.id}: ${field.geometry.error}`);
  return {...track,ranges:track.ranges.map(range=>{const support=basis.supports.get(range.id)!;if(support.full)return {...range};return {...range,start:resolveSupport(field,path,track,support.start,diagnostics),end:resolveSupport(field,path,track,support.end,diagnostics)};})};
