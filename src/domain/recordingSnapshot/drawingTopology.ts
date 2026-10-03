@@ -7,6 +7,7 @@ import {resolveSnapshot,type SnapshotEvaluation} from './evaluation';
 import {excludeSnapshotLocalMembers} from './localMembership';
 import {drawingSourceOwns,drawingIdentityIds} from './sources';
 import {removeDeletedSourceReferences} from './sourceDeletion';
+import {captureSnapshotResponseMembership,reconcileSnapshotMembershipResponses} from './membershipResponses';
 import {propagateAutomaticSnapshotLayers} from './automaticSnapshotEdits';
 import {reconcileSnapshotEndpointRelationEdit} from './endpointRelationEdits';
 import {snapshotIntervalMaterialSource} from './routeMaterialSource';
@@ -102,6 +103,7 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  const owned=new Set(current.curves.filter(curve=>evaluation.provenance[curve.id]?.sourceSnapshotId===snapshot.id&&!drawingSourceOwns(snapshot,curve.id)).map(curve=>curve.id));
  const target=preserveInheritedNodes(current,parseDrawing(edit.drawing),owned);
  if(same(content(current),content(target)))return {workspace:before,diagnostics:[]};
+ const membershipBefore=captureSnapshotResponseMembership(before);
  const originalIds=new Set(drawingIdentityIds(current)),occupied=new Set([...Object.values(before.library).flatMap(map=>Object.keys(map)),...before.snapshots.flatMap(value=>[value.id,...value.layers.map(layer=>layer.id),...Object.keys(value.source?.originIds??{}),...[...value.relations.displayIntervals?.add??[],...value.relations.displayIntervals?.update??[]].flatMap(track=>track.ranges.map(range=>range.id)),...names.flatMap(name=>[...value.relations[name]?.add??[],...value.relations[name]?.update??[]].map(relation=>relation.id))])]);
  for(const id of drawingIdentityIds(target))if(!originalIds.has(id)&&occupied.has(id))return fail('TOPOLOGY_ID_COLLISION',`New Drawing identity ${id} already belongs to another canonical element or layer.`);
  for(const curve of target.curves){const prior=current.curves.find(value=>value.id===curve.id);if(!prior)continue;
@@ -177,5 +179,6 @@ export function prepareSnapshotDrawingTopologyEdit(before:RecordingSnapshotWorks
  for(const link of target.endpointLinks??[]){const brush=link.joinBrush,got=actual.drawing.endpointLinks?.find(value=>value.id===link.id)?.joinBrush;if(brush?.kind==='ARC'&&(got?.kind!=='ARC'||!close([brush.trimDistance,0],[got.trimDistance,0])))return fail('TOPOLOGY_BRUSH_UNREPRESENTABLE','The requested ARC trim cannot be represented under the current layer or stroke placement. No relation was changed.');}
  for(const curve of target.curves){const got=actual.drawing.curves.find(value=>value.id===curve.id);if(!got||!same(got.nodes,curve.nodes))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} could not retain its requested shared-node topology.`);for(const end of [0,1] as const){const wanted=nodes.get(curve.nodes[end])!.position,gotNode=actual.drawing.nodes.find(node=>node.id===got.nodes[end])?.position;if(!gotNode||!close(gotNode,wanted)||!close(got.handles[end],curve.handles[end]))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} cannot reproduce the requested controls under its live layer domains and SMOOTH constraints. No geometry was changed.`);}}
  if(actual.drawing.curves.some(curve=>!wantedIds.has(curve.id)))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE','The local membership edit could not remove every requested curve.');
- return {workspace:parseRecordingSnapshots(workspace),diagnostics:actual.diagnostics.filter(issue=>issue.code==='LOCAL_ORIGINAL'||issue.code==='MISSING_SNAPSHOT'||issue.code==='MISSING_LAYER')};
+ const reconciled=reconcileSnapshotMembershipResponses(workspace,membershipBefore);
+ return {workspace:parseRecordingSnapshots(reconciled.workspace),diagnostics:[...actual.diagnostics.filter(issue=>issue.code==='LOCAL_ORIGINAL'||issue.code==='MISSING_SNAPSHOT'||issue.code==='MISSING_LAYER'),...reconciled.diagnostics.map(({message})=>({code:'POSE' as const,message}))]};
 }

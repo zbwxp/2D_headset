@@ -1,5 +1,6 @@
 import {trySnapshotControlInverse} from './controlSpace';
 import {remapLayerDomains} from './layerDomains';
+import {captureSnapshotResponseMembership,reconcileSnapshotMembershipResponses} from './membershipResponses';
 import {snapshotIntervalMaterialSource} from './routeMaterialSource';
 import {prepareSnapshotDrawingTopologyEdit,assertSnapshotTopologyVertex,type SnapshotDrawingTopologyEdit} from './drawingTopology';
 import {prepareSnapshotSurfaceInsertion,SnapshotSurfaceInsertionError} from './responseExpressionInsertion';
@@ -108,6 +109,7 @@ export interface SnapshotCommandOptions {
 }
 export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandOptions={}):SnapshotCommandEffects {
  const c=object(raw,['op',...new Set(Object.values(fields).flat())]),op=c.op as SnapshotCommand['op'];if(!Object.hasOwn(fields,op))fail('UNKNOWN_COMMAND',`Unknown snapshot command: ${String(op)}`);object(c,['op',...fields[op]]);
+ const membershipBefore=['removeLayers','excludeElements','moveLayers','applyDrawingTopology'].includes(op)?captureSnapshotResponseMembership(workspace):undefined;
  const effects:SnapshotCommandEffects={created:[],removedIds:[]};let occupied:Set<string>|undefined;
  const fresh=()=>{occupied??=new Set(allSnapshotIds(workspace));for(let i=0;i<100;i++){const value=uid();if(!occupied.has(value)){occupied.add(value);return value;}}return fail('ID_COLLISION','Unable to allocate a fresh ID.');};
  const created=(kind:SnapshotCreation['kind'],entityId:string,isNew=true,withRef=false)=>effects.created.push({kind,id:entityId,created:isNew,...(withRef&&c.ref!==undefined?{ref:id(c.ref,'ref')}:{})});
@@ -396,6 +398,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   }
   case 'setTolerance':recording.tolerance=number(c.pixels,'pixels',.1,20)/250;break;
  }
+ if(membershipBefore){const reconciled=reconcileSnapshotMembershipResponses(workspace,membershipBefore);workspace.recordings=reconciled.workspace.recordings;if(reconciled.diagnostics.length)(effects.diagnostics??=[]).push(...reconciled.diagnostics);}
  return effects;
 }
 
