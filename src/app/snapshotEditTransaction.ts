@@ -1,8 +1,9 @@
 import {prepareSnapshotDrawingTopologyEdit,type SnapshotDrawingTopologyEdit} from '../domain/recordingSnapshot/drawingTopology';
+import {prepareDrawingLayerDomainEdit} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
 import type {DrawingDocument} from '../domain/drawing/model';
-import {applyLayerEditIntent,curveSplitIntents,type LayerEditIntent,type CurveSplitIntent} from '../domain/drawing/layerEditIntent';
+import {applyLayerEditIntent,curveSplitIntents,type LayerEditIntent,type CurveSplitIntent,type LayerDomainIntent} from '../domain/drawing/layerEditIntent';
 import {transferSnapshotSplitResponses,pruneSnapshotResponseDependencies} from '../domain/recordingSnapshot/responseExpressionTransactions';
 import {canonicalSnapshotLayerEditIntent,prepareSnapshotCurveSplits,finishSnapshotCurveSplits,splitSnapshotLocalCurve,type SnapshotCurveSplitBatchPlan} from '../domain/recordingSnapshot/topologyEdits';
 import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
@@ -31,6 +32,7 @@ export function snapshotEditContext(project:LandmarkProject,canEditOriginals:boo
 }
 
 export type SnapshotEdit =
+ | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
  | ({kind:'local-drawing-topology'}&SnapshotDrawingTopologyEdit)
@@ -98,6 +100,7 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+ if(edit.kind==='layer-domain')return prepareDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
  if(edit.kind==='local-drawing-topology'){
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=prepareSnapshotDrawingTopologyEdit(original,edit);

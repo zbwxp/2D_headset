@@ -1,5 +1,7 @@
 import {afterEach,expect,test,vi} from 'vitest';
 import {createEmptyProject} from '../app/emptyProject';
+import {createVectorEditingApi,type VectorResult} from '../app/vectorEditingApi';
+import {prepareSnapshotEdit,snapshotEditContext} from '../app/snapshotEditTransaction';
 import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
 import {emptyDrawing,shapeOf,type Cubic,type DrawingDocument,type Point2} from '../domain/drawing/model';
@@ -14,7 +16,7 @@ import {captureSnapshotLayerClipboard} from '../domain/recordingSnapshot/referen
 import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
 import {createWarpGrid} from '../domain/vectorWarp/model';
 import {identityScenePlacement} from '../domain/recordingScene/model';
-import {applyScenePlacement,composePlacementSimilarity} from '../domain/recordingScene/tracks';
+import {applyScenePlacement,composePlacementSimilarity,placementMatrix} from '../domain/recordingScene/tracks';
 import {currentDrawingPresentation} from '../ui/drawing/snapshotPresentation';
 import {prepareDrawingLayerReferencePaste} from '../ui/drawing/layerReferenceClipboard';
 import {commitDrawingSnapshotEdit,prepareDrawingSnapshotEdit,prepareDrawingLayerDomainEdit} from '../ui/drawing/snapshotEditContext';
@@ -112,4 +114,68 @@ test('mismatched domain previews fail atomically before store history changes',(
  const f=fixture(),intent=createLayerDomainIntent([bid('layer')],layerSimilarityValue([.2,.3]));
  vi.useFakeTimers();useWorkspaceMode.getState().setMode('drawing');useEditor.setState({project:f.project,past:[],future:[]});
  expect(()=>commitDrawingSnapshotEdit(useEditor.getState(),currentDrawingPresentation(f.project),intent)).toThrow(/no longer agree/);expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
+});
+
+function value<T>(result:VectorResult<T>):T {expect(result.ok,result.ok?'':result.error.message).toBe(true);if(!result.ok)throw Error(result.error.message);return result.value;}
+function apiEditor(project:ReturnType<typeof fixture>['project']) {
+ vi.useFakeTimers();useWorkspaceMode.getState().setMode('drawing');useEditor.setState({project,past:[],future:[]});return createVectorEditingApi();
+}
+
+test('UI, app transaction and explicit layer API use the same owner-resolving similarity plan',()=>{
+ const f=fixture(),similarity=layerSimilarityValue([.25,-.125],0,1.5),intent=createLayerDomainIntent([bid('layer')],similarity),ui=prepareDrawingLayerDomainEdit(f.project,intent),app=prepareSnapshotEdit(snapshotEditContext(f.project,true),{kind:'layer-domain',intent});
+ expect(app.project).toEqual(ui.project);expect(app.changed).toBe(true);
+ const api=apiEditor(f.project),result=value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:placementMatrix(similarity)}]})),after=useEditor.getState().project;
+ expect(after).toEqual(ui.project);expect(result.domainIntents).toEqual([intent]);expect(result.beforeAfter.map(curve=>curve.curveId)).toEqual([bid('curve')]);expect(result.curveIds).toEqual([bid('curve')]);expect(after.drawing).toBe(f.project.drawing);expect(useEditor.getState().past).toEqual([f.project]);
+ value(api.undo());expect(useEditor.getState().project).toBe(f.project);value(api.redo());expect(useEditor.getState().project).toBe(after);
+});
+
+test('layer API preserves pending source commands and commands after domains in a single candidate and Undo',()=>{
+ const f=fixture(),api=apiEditor(f.project),result=value(api.execute({commands:[
+  {op:'renameCurve',curveId:'curve',name:'Renamed source'},
+  {op:'moveHandle',curveId:'curve',end:0,position:[.3,.8]},
+  {op:'transformLayers',layerIds:['layer',bid('layer')],matrix:[2,0,0,2,.2,.3]},
+  {op:'createCurve',layerId:'layer',shape:[[0,1],[.3,1],[.7,1],[1,1]],name:'Later curve',ref:'later'},
+  {op:'transformLayers',layerIds:[bid('layer')],matrix:[1,0,0,1,.1,-.1]},
+  {op:'renameCurve',curveId:'$later',name:'Still editable'},
+ ]})),after=useEditor.getState().project,view=currentDrawingPresentation(after),newCurve=after.drawing!.curves.find(curve=>curve.name==='Still editable')!;
+ expect(result.created).toHaveLength(1);expect(newCurve).toBeDefined();expect(after.drawing!.curves.find(curve=>curve.id==='curve')!.name).toBe('Renamed source');near(after.drawing!.curves.find(curve=>curve.id==='curve')!.handles[0],[.8,1.9]);
+ expect(after.drawing!.curves.some(curve=>curve.id===bid('curve'))).toBe(false);near(shapeOf(view,bid('curve'))[0],[.3,.2]);expect(local(after).shape).toBeUndefined();expect(useEditor.getState().past).toEqual([f.project]);
+});
+
+test('API layer domains remain live for later source members without creating new direct corrections',()=>{
+ const f=fixture(),view=currentDrawingPresentation(f.project),direct=prepareDrawingSnapshotEdit(f.project,moveHandle(view,{curveId:bid('curve'),end:0},[.3,.9])).project,api=apiEditor(direct),similarity=layerSimilarityValue([.2,.3],24,1.4);
+ value(api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:placementMatrix(similarity)}]}));const after=useEditor.getState().project,shape:Cubic=[[0,1],[.3,1],[.7,1],[1,1]],live=syncRecordingSnapshotSources({...after,drawingWorkingCopies:{B:createCurve(f.other,'layer',shape,.01,'New','new')}});
+ shapeOf(currentDrawingPresentation(live),bid('new')).forEach((point,i)=>near(point,applyScenePlacement(similarity,shape[i])));expect(local(live).shape).toEqual(local(direct).shape);
+});
+
+test('API domain dry-runs return visible changes without mutation and later failed commands roll back the whole batch',()=>{
+ const f=fixture(),api=apiEditor(f.project),command={op:'transformLayers' as const,layerIds:[bid('layer')],matrix:[1,0,0,1,.4,.2] as [number,number,number,number,number,number]},result=value(api.execute({commands:[command],dryRun:true}));
+ expect(result).toMatchObject({changed:true,applied:false,dryRun:true});expect(result.beforeAfter[0].curveId).toBe(bid('curve'));expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
+ const failed=api.execute({commands:[{op:'renameCurve',curveId:'curve',name:'Discard this'},command,{op:'moveHandle',curveId:'missing',end:0,position:[0,0]}]});
+ expect(failed).toMatchObject({ok:false,error:{code:'NOT_FOUND',commandIndex:2}});expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
+});
+
+test.each(([[2,0,0,1,0,0],[-1,0,0,1,0,0],[0,0,0,1,0,0]] as [number,number,number,number,number,number][]).map(matrix=>({matrix})))('unsupported referenced API affine $matrix refuses atomically rather than writing existing-member offsets',({matrix})=>{
+ const f=fixture(),api=apiEditor(f.project),result=api.execute({commands:[{op:'renameCurve',curveId:'curve',name:'Discard this'},{op:'transformLayers',layerIds:[bid('layer')],matrix}]});
+ expect(result).toMatchObject({ok:false,error:{code:matrix[0]===0?'INVALID_REQUEST':'LAYER_DOMAIN_UNSUPPORTED',commandIndex:1}});expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().past).toEqual([]);
+});
+
+test('common app domain entry enforces original ownership and a limited host cannot silently discard reference state',()=>{
+ const f=fixture(),similarity=layerSimilarityValue([.2,.3]),intent=createLayerDomainIntent([bid('layer')],similarity);
+ expect(prepareSnapshotEdit(snapshotEditContext(f.project,false),{kind:'layer-domain',intent}).project.drawing).toBe(f.project.drawing);
+ expect(()=>prepareSnapshotEdit(snapshotEditContext(f.project,false),{kind:'layer-domain',intent:createLayerDomainIntent(['layer'],similarity)})).toThrow(/Drawing-owned original/);
+ const commitDrawing=vi.fn(),api=createVectorEditingApi({getState:()=>({project:f.project,past:[],future:[]}),getMode:()=> 'drawing',commitDrawing,undo(){},redo(){}}),result=api.execute({commands:[{op:'transformLayers',layerIds:[bid('layer')],matrix:placementMatrix(similarity)}]});
+ expect(result).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(commitDrawing).not.toHaveBeenCalled();
+});
+
+test('source layer API retains normal endpoint-link behavior and only moves the linked boundary controls',()=>{
+ const f=fixture(),drawing:DrawingDocument={...f.drawing,nodes:[...f.drawing.nodes,{id:'c',position:[1,0]},{id:'d',position:[2,0]}],curves:[...f.drawing.curves,{...f.drawing.curves[0],id:'second',nodes:['c','d'],handles:[[1.3,0],[1.7,0]]}],layers:[...f.drawing.layers,{id:'second-layer',name:'Second',visible:true,locked:false,items:['second']}],endpointLinks:[{id:'link',a:{curveId:'curve',end:1},b:{curveId:'second',end:0}}]},project=syncRecordingSnapshotSources({...f.project,drawing}),api=apiEditor(project),command={op:'transformLayers' as const,layerIds:['layer'],matrix:[1,0,0,1,.2,.3] as [number,number,number,number,number,number]};
+ value(api.execute({commands:[command]}));const after=useEditor.getState().project.drawing!;
+ near(shapeOf(after,'second')[0],[1.2,.3]);near(shapeOf(after,'second')[1],[1.5,.3]);near(shapeOf(after,'second')[2],[1.7,0]);near(shapeOf(after,'second')[3],[2,0]);
+});
+
+test('a referenced layer domain does not erase preceding explicit mirror intentions in the same API batch',()=>{
+ const f=fixture(),drawing:DrawingDocument={...emptyDrawing(),nodes:[{id:'a',position:[-1,0]},{id:'b',position:[-.5,0]},{id:'c',position:[1,0]},{id:'d',position:[.5,0]}],curves:[{...f.drawing.curves[0],id:'left',nodes:['a','b'],handles:[[-.9,.2],[-.6,.2]]},{...f.drawing.curves[0],id:'right',nodes:['c','d'],handles:[[.9,.2],[.6,.2]]}],layers:[{id:'layer',name:'Pair',visible:true,locked:false,items:['left','right']}],mirrorEditing:{enabled:true,curvePairs:[{id:'pair',a:'left',b:'right',reverse:false}]}},project=syncRecordingSnapshotSources({...f.project,drawing}),api=apiEditor(project);
+ value(api.execute({commands:[{op:'moveNode',nodeId:'a',position:[-1.3,.1]},{op:'transformLayers',layerIds:[bid('layer')],matrix:[1,0,0,1,.2,.3]},{op:'moveNode',nodeId:'c',position:[1.4,.1]}]}));
+ const after=useEditor.getState().project.drawing!;near(after.nodes.find(node=>node.id==='a')!.position,[-1.3,.1]);near(after.nodes.find(node=>node.id==='c')!.position,[1.4,.1]);expect(useEditor.getState().past).toEqual([project]);
 });

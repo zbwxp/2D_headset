@@ -2,7 +2,7 @@ import {transform} from './commands';
 import {finalizeGeometryEdit} from './geometryEdit';
 import {mirrorWritesForCurves} from './mirrorEditing';
 import type {DrawingDocument,Point2} from './model';
-import {applyScenePlacement,isScenePlacementSimilarity} from '../recordingScene/tracks';
+import {applyScenePlacement,isScenePlacementSimilarity,type ScenePlacementMatrix} from '../recordingScene/tracks';
 import type {ScenePlacementValue} from '../recordingScene/model';
 
 /** Explicit layer membership, never a frozen list of the current curves. A
@@ -28,15 +28,24 @@ export function mapLayerDomainIntent(intent:LayerDomainIntent,id:(id:string)=>st
 }
 /** Shared Drawing transform kernel remains the sole source-original geometry
  * edit. Snapshot adapters persist referenced domains and own their evaluation. */
-export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomainIntent) {
+export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomainIntent,options:{allowRelated?:boolean}={}) {
  assertLayerDomainIntent(intent);
  const layers=intent.scope.layerIds.map(id=>{const layer=drawing.layers.find(layer=>layer.id===id);if(!layer)throw Error('A layer domain target no longer exists.');if(layer.locked)throw Error('对象已锁定。');return layer;});
  const items=new Set(layers.flatMap(layer=>layer.items)),ids=drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
- const raw=transform(drawing,ids,point=>applyScenePlacement(intent.domain.value,point),true,true);
+ const raw=transform(drawing,ids,point=>applyScenePlacement(intent.domain.value,point),options.allowRelated??false,true);
  return {document:finalizeGeometryEdit(drawing,raw,mirrorWritesForCurves(raw,ids)),intent,ids};
 }
 /** Convert tool parameters about an authored pivot, without fitting geometry. */
 export function layerSimilarityValue(translation:Point2=[0,0],rotation=0,scale=1,pivot:Point2=[0,0]):ScenePlacementValue {
  const value={translation:[0,0] as Point2,rotation,scale},mapped=applyScenePlacement(value,pivot);
  return {...value,translation:[translation[0]+pivot[0]-mapped[0],translation[1]+pivot[1]-mapped[1]]};
+}
+/** Interpret an explicitly authored API matrix, never changed control points.
+ * Exact coefficient relations distinguish a similarity from a small shear;
+ * unsupported affine maps remain available to their existing source editor. */
+export function layerSimilarityFromMatrix(matrix:ScenePlacementMatrix):ScenePlacementValue|undefined {
+ if(!matrix.every(Number.isFinite))throw Error('Layer transform matrix must be finite.');
+ const [a,b,c,d,e,f]=matrix,scale=Math.hypot(a,b);
+ if(a!==d||b!==-c||scale===0)return;
+ return {translation:[e,f],rotation:Math.atan2(b,a)*180/Math.PI,scale};
 }

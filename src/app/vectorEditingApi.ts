@@ -30,6 +30,8 @@ import {applyMirrorCommand,mirrorCommandNames,MirrorApiError,MirrorBatchIntent,t
 import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {createLayerCurveSplitIntent,applyLayerEditIntent,curveSplitIntents,type LayerEditIntent} from '../domain/drawing/layerEditIntent';
+import {createLayerDomainIntent,layerSimilarityFromMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
+import {currentDrawingPresentation,drawingSnapshotPresentation} from './drawingSnapshotPresentation';
 import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
 import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../domain/recordingSnapshot/sources';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
@@ -401,7 +403,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(input);keys(r,['commands','expectedRevision','dryRun']);expected(r.expectedRevision);bool(r.dryRun,'dryRun');
   if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Source edits require Drawing mode. Recording does not change source geometry or topology.');
   if(!Array.isArray(r.commands)||r.commands.length>VECTOR_AI_LIMITS.batch)fail('INVALID_REQUEST',`commands must be an array of at most ${VECTOR_AI_LIMITS.batch} commands.`);
-  const mirrorIntent=new MirrorBatchIntent(),beforeProject=host.getState().project;let candidateProject=beforeProject,pendingSource=false;const topologyIntents:LayerEditIntent[]=[];
+  const mirrorIntent=new MirrorBatchIntent(),beforeProject=host.getState().project;let candidateProject=beforeProject,pendingSource=false,domainChanged=false;const topologyIntents:LayerEditIntent[]=[],domainIntents:LayerDomainIntent[]=[];
   const before=source(),approximations:{commandIndex:number;sampledMaxError:number}[]=[],created:CreatedEntity[]=[],refs=new Map<string,string>();let next=clone(before);
   const canonicalIdExists=(id:string)=>[...next.layers,...next.curves,...next.nodes,...next.fills,...next.offsets,...next.joins,...(next.endpointLinks??[]),...(next.groups??[]),...(next.displayIntervals??[]),...(next.displayIntervals??[]).flatMap(t=>t.ranges),...(next.mirrorEditing?.curvePairs??[])].some(x=>x.id===id);
   const resolve=(value:unknown,key='',mirrorPair=false):unknown=>{
@@ -414,6 +416,23 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    try{
     let topologyIntent:LayerEditIntent|undefined;
     const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair')),previous=next;
+    // Layer scope survives the API boundary. Resolve ownership against the
+    // current candidate, after prior source edits, before expanding members.
+    if(resolved.op==='transformLayers'){
+     keys(resolved,['op','layerIds','matrix','allowRelated']);bool(resolved.allowRelated,'allowRelated');affineMap(resolved.matrix);
+     const requested=ids(resolved.layerIds,'layerIds'),value=layerSimilarityFromMatrix(resolved.matrix as Affine);
+     if(pendingSource){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}).project;pendingSource=false;}
+     const view=candidateProject.recordingSnapshots&&drawingSnapshotPresentation(candidateProject.recordingSnapshots,candidateProject.drawingSnapshots?.activeId??'$working'),presentation=view?.drawing??next;
+     requested.forEach(id=>layerExists(presentation,id));
+     if(value){
+      const intent=createLayerDomainIntent(requested,value),plan=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'layer-domain',intent,allowRelated:resolved.allowRelated===true}),sourceAfter=clone(plan.project.drawing??emptyDrawing());
+      if(previous.mirrorEditing?.enabled)mirrorIntent.capture(sourceAfter,resolved);
+      const mirrored=mirrorIntent.apply(previous,sourceAfter),candidate=JSON.stringify(mirrored)===JSON.stringify(sourceAfter)?plan.project:prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'original-geometry',drawing:markFinalizedGeometry(transportDeformedIntervals(sourceAfter,mirrored))}).project,wanted=currentDrawingPresentation(candidate);
+      validateBounds(wanted);assertDisplayRouteSupport(wanted);checkNewDiagnostics(presentation,wanted);
+      domainChanged=domainChanged||plan.changed||candidate!==plan.project;domainIntents.push(intent);candidateProject=candidate;next=clone(candidateProject.drawing??emptyDrawing());continue;
+     }
+     if(requested.some(id=>view?.layerOwners.get(id)?.kind==='snapshot-local'))fail('LAYER_DOMAIN_UNSUPPORTED','Referenced whole-layer transforms currently support translation, rotation and positive uniform scale. Nonuniform, zero-axis and reflected domain persistence is not available yet.');
+    }
     // Ordinary runs share one source synchronization. A split is the explicit
     // boundary: flush prior edits before freezing any real Snapshot controls.
     if(resolved.op==='splitCurve'&&pendingSource){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(previous)}).project;pendingSource=false;}
@@ -437,8 +456,8 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError||e instanceof MirrorApiError?e.code:e instanceof MirrorEditingError?`MIRROR_${e.code}`:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
   if(pendingSource)candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}).project;
-  const changed=JSON.stringify(before)!==JSON.stringify(next),snapshotPlan:SnapshotEditPlan={before:beforeProject,project:candidateProject,changed};
-  return {before,next,changed,dryRun:r.dryRun===true,approximations,created,topologyIntents,snapshotPlan};
+  const changed=domainChanged||JSON.stringify(before)!==JSON.stringify(next),snapshotPlan:SnapshotEditPlan={before:beforeProject,project:candidateProject,changed};
+  return {before:domainIntents.length?currentDrawingPresentation(beforeProject):before,next:domainIntents.length?currentDrawingPresentation(candidateProject):next,changed,dryRun:r.dryRun===true,approximations,created,topologyIntents,domainIntents,snapshotPlan};
  }
  function inspectQuery(raw:unknown){
   const q=record(raw);keys(q,['layerIds','layerNames','curveIds','curveNames','strokeNames','nameIncludes','includeRecording']);bool(q.includeRecording,'includeRecording');
@@ -584,13 +603,14 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    return {...plan.result,changed:plan.changed,dryRun:plan.dryRun,applied:plan.changed&&!plan.dryRun};
   }),
   execute:(request:VectorBatch)=>run(()=>{
-   const {before,next,changed,dryRun,approximations,created,topologyIntents,snapshotPlan}=prepare(request),changes=changedIds(before,next);
+   const {before,next,changed,dryRun,approximations,created,topologyIntents,domainIntents,snapshotPlan}=prepare(request),changes=changedIds(before,next);
    const beforeAfter=changes.curveIds.filter(id=>before.curves.some(c=>c.id===id)).map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}}));
    const addedCurves=next.curves.filter(c=>!before.curves.some(x=>x.id===c.id)).map(c=>({curveId:c.id,layerId:layerFor(next,c.id)!.id,name:c.name,shape:clone(shapeOf(next,c.id))}));
-   const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,...(topologyIntents.length?{topologyIntents}:{}),beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
+   const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,...(topologyIntents.length?{topologyIntents}:{}),...(domainIntents.length?{domainIntents}:{}),beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
    if(changed&&!dryRun){
     if(host.commitSnapshotEditPlan)host.commitSnapshotEditPlan(snapshotPlan);
     else if(topologyIntents.length&&snapshotPlan.before.recordingSnapshots)fail('UNAVAILABLE','This host must implement commitSnapshotEditPlan to atomically preserve Snapshot topology, poses and responses.');
+    else if(domainIntents.length&&snapshotPlan.project.recordingSnapshots)fail('UNAVAILABLE','This host must implement commitSnapshotEditPlan to atomically preserve source and referenced layer domains.');
     else host.commitDrawing(markFinalizedGeometry(next));
    }
    return result;
