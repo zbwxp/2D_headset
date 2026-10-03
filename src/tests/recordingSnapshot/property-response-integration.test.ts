@@ -39,6 +39,17 @@ describe('Recorder interval responses use independent material coordinates',()=>
   expect(h.workspace().recordings[0].tracks).toEqual([]);expect(h.workspace().recordings[0].angleGraph!.mesh.vertices).toHaveLength(2);
   expect(parseRecordingSnapshots(JSON.parse(JSON.stringify(h.workspace())))).toEqual(h.workspace());
  });
+ it('keeps a reversed negative-yaw zero plateau exact across serialized reload',()=>{
+  const h=fixture(),w=h.workspace(),r=w.recordings[0];
+  w.snapshots[0].id='zz-front';w.snapshots[1].id='aa-side';w.snapshots[1].angle={x:-90,y:0};
+  w.snapshots[0].relations.displayIntervals!.add![0].ranges[0]={id:'gap',mode:'HIDE',start:0,end:0};
+  w.snapshots[1].relations.displayIntervals!.add![0].ranges[0]={id:'gap',mode:'HIDE',start:0,end:.6};
+  r.snapshotIds=w.snapshots.map(s=>s.id);r.activeSnapshotId='zz-front';r.angle={x:-30,y:0};r.angleGraph=createSnapshotAngleGraph(w.snapshots.map(s=>({snapshotId:s.id,angle:s.angle})));
+  h.apply({...edit,end:0},{op:'updateEndpointCorrection'});
+  h.set({...h.project(),recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(h.workspace())))});
+  for(const x of [-1,-15,-29.99,-30]){expect(interval(h,x).end).toBe(0);expect(h.evaluate(x).diagnostics.filter(d=>d.code==='SOURCE_MATERIAL')).toEqual([]);}
+  expect(interval(h,-60).end).toBeCloseTo(.3,12);
+ });
  it('invalidates cached material after response-only edits and restores exact values on Undo-style project restoration',()=>{
   const h=fixture(),prior=interval(h,30).end,before=h.project();expect(prior).toBeCloseTo(.5,12);
   const preview=prepareSnapshotPreview(before,{commands:[edit]});expect(preview.recordingSnapshots.library).toBe(before.recordingSnapshots!.library);expect(preview.recordingSnapshots.snapshots).toBe(before.recordingSnapshots!.snapshots);

@@ -93,6 +93,17 @@ function edgeResponse(knots: readonly ScalarResponseKnot[] | undefined, t: numbe
 }
 
 function edgeExtendedWeights(original: BarycentricWeights, edges: readonly OrientedEdgeResponse[]): [number, number, number] {
+  // On a genuine edge there is one exact partition. Construct it directly:
+  // adding w-t to rounded barycentrics can turn a pinned zero into -1 ulp.
+  // This is algebraic endpoint preservation, not an epsilon support/clamp.
+  for (const {from, to, knots} of edges) {
+    const opposite = indices.find(i => i !== from && i !== to)!;
+    if (original[opposite] !== 0 || original[from] === 0 || original[to] === 0) continue;
+    const w = edgeResponse(knots, original[to] / (original[from] + original[to]));
+    const exact: [number, number, number] = [0, 0, 0];
+    exact[from] = 1 - w; exact[to] = w;
+    return exact;
+  }
   const result = copy(original);
   for (const {from, to, knots} of edges) {
     const s = original[from] + original[to];
