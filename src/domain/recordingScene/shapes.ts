@@ -63,7 +63,6 @@ export function deriveSceneShapeEdit(scene:RecordingScene,resolve:SceneSourceRes
  }else{
   const id=edit.curveId&&instanceObjectId(edit.instanceId,edit.curveId);if(!id||!current.curves.some(c=>c.id===id)||edit.end!==0&&edit.end!==1)throw Error('The source shape handle is missing from this instance.');const endpoint={curveId:id,end:edit.end};
   next=moveHandle(current,endpoint,edit.position,true);
-  const component=smoothComponents(next).find(c=>c.ends.has(endpointKey(endpoint)));if(component){next=structuredClone(next);projectSmooth(next,component,endpoint,true);}
  }
  const track=scene.shapeTracks?.find(t=>t.instanceId===edit.instanceId),prior=track?evaluateShapeTrack(track,scene.angle):identitySceneShape();
  const nodes=Object.fromEntries(Object.entries(prior.nodes)),handles=Object.fromEntries(Object.entries(prior.handles));

@@ -4,6 +4,7 @@ import {reconcileGroups,transformable} from './groups';
 import {setObjectState} from './objectState';
 import {groupFor,DEFAULT_PEN_TAPER_SCALE,MAX_PEN_TAPER_SCALE} from './model';
 import {linkedNodeIds,followLinkedNodes,cleanEndpointLinks} from './endpointLinks';
+import {drawingSmoothComponents,projectDrawingSmoothComponent} from './smoothHandleAuthoring';
 import {roundedJoins} from './roundedJoin';
 import {retainDisplayIntervals,splitDisplayIntervals,displayRouteFor} from './displayIntervals';
 import {split} from '../geometry/bezier';
@@ -82,13 +83,15 @@ export function unlinkEndpoints(d:Doc,id:string):Doc{
 }
 
 export function moveHandle(d:Doc,e:Endpoint,position:Point2,allowHidden=false):Doc{
- const j=joinAt(d,e),partner=j&&j.mode==='SMOOTH'?(sameEnd(j.a,e)?j.b:j.a):null;
+ const j=joinAt(d,e);
  if(!finitePoint(position))return d;const node=nodeAt(d,e).position,delta=sub(position,node),size=length(delta);
  if(j&&j.mode!=='CUSP'&&size<1e-7)throw Error('连接柄不能缩为零；请先解除方向约束。');
  if(length(sub(curveById(d,e.curveId).handles[e.end],position))<1e-12)return d;
  const n=copy(d);curveById(n,e.curveId).handles[e.end]=[...position];
- if(partner){const c=curveById(n,partner.curveId),sizeB=length(sub(c.handles[partner.end],node)),direction=mul(delta,-1);c.handles[partner.end]=add(node,mul(direction,sizeB/size));}
- check(d,changedShapes(d,n,[e.curveId,...(partner&&partner.curveId!==e.curveId?[partner.curveId]:[])]),allowHidden);return n;
+ const component=drawingSmoothComponents(n).find(component=>[...component.ends.values()].some(member=>sameEnd(member.endpoint,e)));
+ if(component)projectDrawingSmoothComponent(n,component,e,true);
+ const affected=component?[...new Set([...component.ends.values()].map(member=>member.endpoint.curveId))]:[e.curveId];
+ check(d,changedShapes(d,n,affected),allowHidden);return n;
 }
 /** Merge only: shared-node targets are not silently rebound/moved. */
 export function merge(d:Doc,a:Endpoint,b:Endpoint):Doc{

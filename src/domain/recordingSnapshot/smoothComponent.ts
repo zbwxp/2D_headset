@@ -1,27 +1,15 @@
 import {add,sub,length,type Endpoint,type Point2} from '../drawing/model';
+import type {SmoothComponent} from '../endpointRelations/smoothComponent';
+export {deriveSmoothComponents,smoothEndpointKey,type SmoothRelation,type SmoothMember,type SmoothComponent} from '../endpointRelations/smoothComponent';
 
-export interface SmoothRelation {id:string;a:Endpoint;b:Endpoint}
-export interface SmoothMember {endpoint:Endpoint;sign:number}
-export interface SmoothComponent {relationId:string;members:SmoothMember[];conflict:boolean}
 export type SmoothComponentInput={node:Point2;handle:Point2;vector?:never}|{node:Point2;vector:Point2;handle?:never};
 export interface SmoothComponentControl {endpoint:Endpoint;handle:Point2;vector:Point2}
 
-export const smoothEndpointKey=(endpoint:Endpoint):string=>JSON.stringify([endpoint.curveId,endpoint.end]);
 export const smoothNumericTolerance=(...values:number[]):number=>64*Number.EPSILON*Math.max(1,...values.map(Math.abs));
 
-/** Relation ID order chooses the stable driver; breadth-first graph order
- * preserves the existing signed member order, including direction conflicts. */
-export function deriveSmoothComponents(relations:readonly SmoothRelation[]):SmoothComponent[] {
- const ordered=[...relations].sort((a,b)=>a.id.localeCompare(b.id)),graph=new Map<string,Endpoint[]>(),done=new Set<string>(),components:SmoothComponent[]=[];
- for(const relation of ordered)for(const [a,b] of [[relation.a,relation.b],[relation.b,relation.a]])graph.set(smoothEndpointKey(a),[...(graph.get(smoothEndpointKey(a))??[]),b]);
- for(const relation of ordered){if(done.has(smoothEndpointKey(relation.a)))continue;const queue:SmoothMember[]=[{endpoint:relation.a,sign:1}],members=new Map([[smoothEndpointKey(relation.a),queue[0]]]);let conflict=false;
-  for(const member of queue){done.add(smoothEndpointKey(member.endpoint));for(const other of graph.get(smoothEndpointKey(member.endpoint))??[]){const known=members.get(smoothEndpointKey(other));if(known){if(known.sign!==-member.sign)conflict=true;}else{const next={endpoint:other,sign:-member.sign};members.set(smoothEndpointKey(other),next);queue.push(next);}}}
-  components.push({relationId:relation.id,members:queue,conflict});
- }
- return components;
-}
-
-/** Project ordered component controls with the exact endpoint-pair arithmetic.
+/** Runtime policy: the stable first member drives, locks do not suppress an
+ * authored pose, and degenerate controls report diagnostics. Project ordered
+ * component controls with the exact endpoint-pair arithmetic.
  * Vector inputs first reconstruct H=P+vector, then recover H-P. This preserves
  * the rounding and zero-length decisions of scalar-interpolated controls. */
 export function projectSmoothComponent(component:SmoothComponent,inputs:readonly SmoothComponentInput[]):{controls:SmoothComponentControl[];diagnostics:string[]} {
