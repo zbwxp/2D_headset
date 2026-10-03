@@ -18,7 +18,7 @@ import {resolveSnapshotRelationAuthoringScope,snapshotRelationCurveIds,snapshotR
 
 const same=(a:unknown,b:unknown)=>a===b||JSON.stringify(a)===JSON.stringify(b);
 const close=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])<1e-8;
-export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint links, display routes, intervals, geometry and visibility. Width, profile and endpoint ink stay local; locks and unsupported topology still require the original source.';
+export const DRAWING_REFERENCE_EDIT_CAPABILITY='Referenced layers support local Pen additions, splitting, endpoint binding and links, display routes, intervals, geometry and visibility. Width, profile and endpoint ink stay local; locks and unsupported topology still require the original source.';
 export class DrawingSnapshotEditCapabilityError extends Error {
  constructor(message=DRAWING_REFERENCE_EDIT_CAPABILITY){super(message);this.name='DrawingSnapshotEditCapabilityError';}
 }
