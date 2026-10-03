@@ -42,10 +42,10 @@ test('direct shape offsets move handles with nodes and new live curves have no i
  const d=structuredClone(h.project().drawing!);d.nodes.push({id:'new-a',position:[0,-1]},{id:'new-b',position:[1,-1]});d.curves.push({id:'new',name:'New',nodes:['new-a','new-b'],handles:[[.25,-1],[.75,-1]],visible:true,locked:false,width:.02});d.layers[0].items.push('new');h.replace(syncRecordingSnapshotSources({...h.project(),drawing:d}));const next=evaluateRecordingSnapshot(h.project());expect(next.drawing.nodes.find(n=>n.id===canonicalElementId('$working','new-a'))?.position).toEqual([0,-1]);expect(h.recording().tracks[0].keys).toHaveLength(1);
 });
 
-test('clone creates new canonical IDs and retains saved deformations without baking control points',()=>{
+test('clone creates a current-shape independent base with new canonical IDs',()=>{
  const h=harness(),[a]=paste(h);h.apply({op:'setLayerPlacement',layerId:a,value:{...identityScenePlacement(),translation:[3,2]}},{op:'updateSnapshot'});const source=h.current().id,oldCurve=canonicalElementId('$working','curve-a'),before=Object.keys(h.workspace().library.curves).length;
  const result=h.apply({op:'cloneLayers',sourceSnapshotId:source,layerIds:[a]}),map=result.idMaps[0].idMap;
- expect(Object.keys(h.workspace().library.curves)).toHaveLength(before+1);expect(map[oldCurve]).not.toBe(oldCurve);expect(h.workspace().library.curves[map[oldCurve]].handles).toEqual(h.workspace().library.curves[oldCurve].handles);const e=evaluateRecordingSnapshot(h.project());expect(e.drawing.nodes.find(n=>n.id===map[canonicalElementId('$working','a')])?.position).toEqual([3,2]);expect(e.drawing.curves.find(c=>c.id===map[oldCurve])?.nodes).toEqual([map[canonicalElementId('$working','a')],map[canonicalElementId('$working','b')]]);
+ expect(Object.keys(h.workspace().library.curves)).toHaveLength(before+1);expect(map[oldCurve]).not.toBe(oldCurve);expect(h.workspace().library.curves[map[oldCurve]].handles).toEqual([[3.25,2],[3.75,2]]);expect(h.workspace().library.curves[oldCurve].handles).toEqual([[.25,0],[.75,0]]);const e=evaluateRecordingSnapshot(h.project());expect(e.drawing.nodes.find(n=>n.id===map[canonicalElementId('$working','a')])?.position).toEqual([3,2]);expect(e.drawing.curves.find(c=>c.id===map[oldCurve])?.nodes).toEqual([map[canonicalElementId('$working','a')],map[canonicalElementId('$working','b')]]);
 });
 
 test('failed and dry-run batches leave the project and history unchanged; facade checks mode, revision and unknown fields',()=>{

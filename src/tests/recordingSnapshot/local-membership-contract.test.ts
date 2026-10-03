@@ -154,7 +154,7 @@ describe('session reference clipboard contract prototype',()=>{
 });
 
 describe('independent duplication of local members',()=>{
- it('clones local canonical geometry, residuals and relationships while preserving excluded source members',()=>{
+ it('copies current local geometry and relationships without retaining excluded source membership',()=>{
   const {w,source,view,layerId}=localFixture(),create=(shape:Cubic)=>applySnapshotCommand(w,{op:'createLocalCurve',layerId,shape}).created.find(item=>item.kind==='curve')!.id;
   const first=create(line([0,2],[1,2])),second=create(line([1,2],[2,2])),firstNode=w.library.curves[first].nodes[0];
   applySnapshotCommand(w,{op:'excludeElements',layerId,elementIds:[cid('curve')]});
@@ -164,9 +164,9 @@ describe('independent duplication of local members',()=>{
   view.relations.endpointLinks={add:[{id:'local-link',a:{curveId:first,end:1},b:{curveId:second,end:0}}]};
   view.relations.displayIntervals={add:[{id:'local-interval',anchor:{id:first,reverse:false},scope:'CURVE',ranges:[{id:'local-range',start:.2,end:.8}]}]};
   const before=resolveSnapshot(w,view.id),oldLibrary=JSON.stringify(w.library),oldSource=JSON.stringify(source),effects=applySnapshotCommand(w,{op:'cloneLayers',sourceSnapshotId:view.id,layerIds:[layerId]}),map=effects.idMap!;
-  expect(map[first]).toBeDefined();expect(map[second]).toBeDefined();expect(map[first]).not.toBe(first);expect(w.library.curves[map[first]].nodes).toEqual(w.library.curves[first].nodes.map(id=>map[id]));expect(w.library.curves[map[first]].handles).toEqual(w.library.curves[first].handles);
-  const copied=w.snapshots.find(snapshot=>snapshot.id===map[view.id])!,copiedLayer=copied.layers[0];if(copiedLayer.kind!=='reference')throw Error('Reference expected');
-  expect(copiedLayer.membership).toEqual({addElementIds:[map[first],map[second]],excludeElementIds:[map[cid('curve')],'missing-retained-tombstone']});
+  expect(map[first]).toBeDefined();expect(map[second]).toBeDefined();expect(map[first]).not.toBe(first);expect(w.library.curves[map[first]].nodes).toEqual(w.library.curves[first].nodes.map(id=>map[id]));expect(w.library.curves[map[first]].handles).toEqual(before.drawing.curves.find(curve=>curve.id===first)!.handles);
+  const copied=w.snapshots.find(snapshot=>snapshot.id===map[view.id])!,copiedLayer=copied.layers[0];expect(copiedLayer.kind).toBe('original');
+  expect(copiedLayer).toMatchObject({items:[map[first],map[second]]});expect(copiedLayer).not.toHaveProperty('membership');expect(copied).not.toHaveProperty('parentSnapshotId');expect(map[cid('curve')]).toBeUndefined();expect(copied.deformation.warps).toEqual([]);expect(copied.deformation.layers).toEqual({});
   const evaluated=resolveSnapshot(w,copied.id);expect(evaluated.drawing.curves.map(curve=>curve.id).sort()).toEqual([map[first],map[second]].sort());expect(evaluated.drawing.curves.some(curve=>curve.id===map[cid('curve')])).toBe(false);
   expect(evaluated.drawing.nodes.find(node=>node.id===map[firstNode])?.position).toEqual(before.drawing.nodes.find(node=>node.id===firstNode)?.position);
   expect(evaluated.drawing.endpointLinks).toEqual([{id:map['local-link'],a:{curveId:map[first],end:1},b:{curveId:map[second],end:0}}]);expect(evaluated.drawing.groups?.[0].curveIds).toEqual([map[first],map[second]]);expect(evaluated.drawing.displayIntervals?.[0]).toMatchObject({id:map['local-interval'],anchor:{id:map[first]},ranges:[{id:map['local-range']}]});

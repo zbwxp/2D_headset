@@ -101,7 +101,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   const disabled=!enabled||!batches.length;
   return <div className="drawing-clipboard-actions snapshot-layer-clipboard" data-testid="snapshot-layer-clipboard" data-section-id={section.id}>
    <button type="button" data-testid={isView?'snapshot-cut-selection':'snapshot-cut-source'} aria-label={zh?'取所选图层引用':'Take selected layer references'} title={zh?'取得同 ID 图层引用；来源仍保留':'Take same-ID layer references; keep the source'} disabled={disabled} onClick={()=>{if(!disabled)onCut(batches);}}><Scissors size={14}/></button>
-   <button type="button" data-testid={isView?'snapshot-copy-selection':'snapshot-copy-source'} aria-label={zh?'复制所选图层':'Copy selected layers'} title={zh?'复制为新的独立元素':'Copy as new independent elements'} disabled={disabled} onClick={()=>{if(!disabled)onCopy(batches);}}><Copy size={14}/></button>
+   <button type="button" data-testid={isView?'snapshot-copy-selection':'snapshot-copy-source'} aria-label={zh?'复制所选图层':'Copy selected layers'} title={zh?'按当前形状创建独立副本：新 ID，不再随来源变化':'Create a current-shape independent copy: new IDs, disconnected from the source'} disabled={disabled} onClick={()=>{if(!disabled)onCopy(batches);}}><Copy size={14}/></button>
    {isView&&<button type="button" data-testid="snapshot-paste-selection" aria-label={zh?'粘贴到当前视图':'Paste into current view'} disabled={!enabled||!canPaste} onClick={()=>{if(enabled&&canPaste)onPaste();}}><ClipboardPaste size={14}/></button>}
   </div>;
  };

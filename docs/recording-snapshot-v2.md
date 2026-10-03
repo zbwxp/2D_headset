@@ -44,6 +44,8 @@ Use `inspectSnapshots`, `snapshot`, `previewSnapshot` and `previewSnapshotFrames
 
 Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setAngle`, `updateSnapshot`, `deleteSnapshot`, `pasteLayers`, `moveLayers`, `cloneLayers`, `reorderLayers`, `setVisibility`, `setLayerPlacement`, `moveShapeNode`, `moveShapeHandle`, `transformShapeElements`, `createWarp`, `editWarpNodes`, and the retained interval/order/Warp-tree commands. Shape positions are in the post-Warp, pre-placement coordinate system. `transformShapeElements` uses a world-space transform and writes residual element deformation, never a hidden Warp.
 
+`cloneLayers` creates a [current-shape independent copy](current-shape-independent-copy.md) of the addressed snapshot’s saved evaluated layers with new IDs. Its current geometry and local material are preserved, old parents are disconnected, and only the affine material representation required for exact ARC is retained. Unsupported appearance rejects the whole batch with object diagnostics. `pasteLayers` stays a live reference.
+
 ### Retired v40 common weight assets
 
 The old common monotone layer/line weight editor, commands and runtime remapping have been removed. Import accepts and discards only the obsolete `recording.interpolationWeights` registry. Independent sparse channel tracks, all authored keys and drafts, canonical source IDs, and embedded recovery JSON strings remain intact. Older projects still open; endpoint node/handle responses and the interval `propertyResponses` maps keep their own supported behavior.

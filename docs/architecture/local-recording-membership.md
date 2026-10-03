@@ -546,11 +546,4 @@ and relation behavior. The runtime command adapter delegates only `pasteLayers`;
 `ALREADY_REFERENCED` diagnostics identify reused slots, and `blockedCode` means
 callers must retain the original workspace.
 
-The independent-duplication integration gap is now closed in the existing
-`cloneSnapshotLayers` path: selected reference-layer additions and their stored
-curve/node/paint dependencies enter the fresh ID map. Local addition lists are
-remapped. Exclusions map when their canonical object was cloned; unrelated or
-missing tombstone IDs retain their original meaning. A focused regression checks
-fresh local IDs, canonical controls rather than baked evaluated controls, saved
-residual deformation, groups/links/material references, excluded-source absence,
-JSON validity, and independence after editing the former local original.
+Explicit `cloneLayers` now creates a [current-shape independent copy](../current-shape-independent-copy.md): selected local additions and the currently evaluated inherited members receive fresh canonical IDs in one new ownership root. Excluded members and source tombstones are not part of that root. Current geometry, groups, links, paint and material are preserved; saved residuals and former parents are not replayed. The copy retains only the affine material representation needed to preserve exact ARC and interval appearance. JSON/evaluation verification rejects any unsupported case atomically with affected object diagnostics.
