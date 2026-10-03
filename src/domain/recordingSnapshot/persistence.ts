@@ -1,3 +1,5 @@
+import {validateSnapshotPaintAppearance} from './paintAppearance';
+import {validateSnapshotMirrorMetadata} from './mirrorMetadata';
 import {validateSnapshotObjectLocks} from './objectLocks';
 import {validateLayerDomains} from './layerDomains';
 import type {RecordingSnapshotWorkspace} from './model';
@@ -40,8 +42,9 @@ const relation=(kind:string,value:unknown)=>{
  if(kind==='endpointLinks'){if(data.throughDisplay!==undefined)boolean(data.throughDisplay);if(data.joinBrush!==undefined){const brush=object(data.joinBrush,['kind','trimDistance']);if(!['SHARP','SMOOTH','ARC'].includes(String(brush.kind)))fail('endpoint brush');if(brush.kind==='ARC')finite(brush.trimDistance,Number.MIN_VALUE,2);}}
 };
 function relations(value:unknown){
- const data=object(value,['joins','endpointLinks','groups','displayIntervals']);
- for(const [kind,raw] of Object.entries(data)){const patch=object(raw,['add','update','disable']);for(const op of ['add','update'])if(patch[op]!==undefined)list(patch[op]).forEach(v=>relation(kind,v));if(patch.disable!==undefined)list(patch.disable).forEach(id);}
+ const data=object(value,['joins','endpointLinks','groups','displayIntervals','mirrorEditing']);
+ if(data.mirrorEditing!==undefined)validateSnapshotMirrorMetadata(data.mirrorEditing);
+ for(const [kind,raw] of Object.entries(data)){if(kind==='mirrorEditing')continue;const patch=object(raw,['add','update','disable']);for(const op of ['add','update'])if(patch[op]!==undefined)list(patch[op]).forEach(v=>relation(kind,v));if(patch.disable!==undefined)list(patch.disable).forEach(id);}
 }
 function deformation(value:unknown){
  const data=object(value,['warps','bindings','layers','relationPositions','intervalMaterialIssues','layerDomains']);
@@ -49,7 +52,7 @@ function deformation(value:unknown){
  if(data.intervalMaterialIssues!==undefined)for(const [trackId,issue] of Object.entries(map(data.intervalMaterialIssues))){id(trackId);materialIssue(issue);}
  for(const raw of list(data.warps,1000)){const warp=object(raw,['id','name','parentId','restGrid','grid']);id(warp.id);name(warp.name);if(warp.parentId!==undefined)id(warp.parentId);grid(warp.restGrid);grid(warp.grid);}
  for(const raw of list(data.bindings)){const binding=object(raw,['layerId','warpId']);id(binding.layerId);id(binding.warpId);}
- for(const [layerId,raw] of Object.entries(map(data.layers))){id(layerId);const layer=object(raw,['placement','elementPlacements','shape','visibility','curveAppearance','intervals','depth']);if(layer.placement!==undefined)placement(layer.placement);if(layer.elementPlacements!==undefined)for(const [curveId,value] of Object.entries(map(layer.elementPlacements))){id(curveId);placement(value);}if(layer.curveAppearance!==undefined)validateSnapshotCurveAppearance(layer.curveAppearance);if(layer.shape!==undefined)shape(layer.shape);if(layer.visibility!==undefined)map(layer.visibility);if(layer.intervals!==undefined)Object.values(map(layer.intervals)).forEach(intervalValue);}
+ for(const [layerId,raw] of Object.entries(map(data.layers))){id(layerId);const layer=object(raw,['placement','elementPlacements','shape','visibility','curveAppearance','paintAppearance','intervals','depth']);if(layer.placement!==undefined)placement(layer.placement);if(layer.elementPlacements!==undefined)for(const [curveId,value] of Object.entries(map(layer.elementPlacements))){id(curveId);placement(value);}if(layer.curveAppearance!==undefined)validateSnapshotCurveAppearance(layer.curveAppearance);if(layer.paintAppearance!==undefined)validateSnapshotPaintAppearance(layer.paintAppearance);if(layer.shape!==undefined)shape(layer.shape);if(layer.visibility!==undefined)map(layer.visibility);if(layer.intervals!==undefined)Object.values(map(layer.intervals)).forEach(intervalValue);}
  for(const [relationId,raw] of Object.entries(map(data.relationPositions))){id(relationId);const relation=object(raw,['sourceLinkIds','offset']);list(relation.sourceLinkIds).forEach(id);}
 }
 function materialIssue(value:unknown){const data=object(value,['sourceSnapshotId','sourceSignature','message']);id(data.sourceSnapshotId);id(data.sourceSignature);if(typeof data.message!=='string'||data.message.length>4096)fail('material issue message');}

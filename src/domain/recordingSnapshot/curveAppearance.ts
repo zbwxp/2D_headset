@@ -1,4 +1,5 @@
-import type {DrawingCurve,DrawingDocument,InkEndStyle,Profile} from '../drawing/model';
+import {validContourMist,DEFAULT_CONTOUR_MIST,type ContourMist,type DrawingCurve,type DrawingDocument,type InkEndStyle,type Profile} from '../drawing/model';
+import {appearanceDifference,mergeAppearanceObject,applyAppearanceObject} from './appearancePatch';
 import {InputCache} from '../geometry/cache';
 import type {CurveSplitIntent} from '../drawing/layerEditIntent';
 import type {SnapshotDeformationState} from './model';
@@ -8,18 +9,25 @@ import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
  * Endpoint patches are fieldwise so joining one end never freezes the other. */
 export type SnapshotInkEndAppearance={[K in keyof InkEndStyle]?:InkEndStyle[K]|null};
 export interface SnapshotCurveAppearance {
- width?:number;profile?:Profile|null;profileReverse?:boolean|null;strokeName?:string|null;
+ name?:string;width?:number;profile?:Profile|null;profileReverse?:boolean|null;strokeName?:string|null;inkVisible?:boolean|null;
+ mist?:Partial<ContourMist>|null;
  inkEnds?:{start?:SnapshotInkEndAppearance;end?:SnapshotInkEndAppearance}|null;
 }
 export type SnapshotCurveAppearanceMap=Record<string,SnapshotCurveAppearance>;
-export const snapshotCurveAppearanceFields=['width','profile','profileReverse','strokeName','inkEnds'] as const;
-const scalarFields=['width','profile','profileReverse','strokeName'] as const;
+export const snapshotCurveAppearanceFields=['name','width','profile','profileReverse','strokeName','inkVisible','inkEnds','mist'] as const;
+const scalarFields=['name','width','profile','profileReverse','strokeName','inkVisible'] as const;
 const inkFields=['taper','extension','taperWidthScale','interior'] as const;
+export const contourMistFields=['enabled','width','density','mode'] as const;
+export function validateContourMistPatch(value:unknown):void {
+ if(!record(value)||Object.keys(value).some(key=>!contourMistFields.includes(key as typeof contourMistFields[number])))throw Error('Invalid snapshot ink-edge appearance.');
+ const patch=value as Record<string,unknown>;
+ if(patch.enabled!==undefined&&typeof patch.enabled!=='boolean'||patch.mode!==undefined&&patch.mode!==null&&patch.mode!=='INK_EDGE'||patch.width!==undefined&&(typeof patch.width!=='number'||!Number.isFinite(patch.width)||patch.width<.25/250||patch.width>60/250)||patch.density!==undefined&&(typeof patch.density!=='number'||!Number.isFinite(patch.density)||patch.density<0||patch.density>5))throw Error('Invalid snapshot ink-edge appearance.');
+}
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const clone=<T,>(value:T):T=>structuredClone(value);
 const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 
-/** Shared parser and runtime validator. No geometry, visibility, locks or new
+/** Shared parser and runtime validator. No geometry, object visibility, locks or new
  * interpolation/property registry can enter through an appearance patch. */
 export function validateSnapshotCurveAppearance(value:unknown):asserts value is SnapshotCurveAppearanceMap {
  const fail=():never=>{throw Error('Invalid snapshot curve appearance override.');};
@@ -27,6 +35,9 @@ export function validateSnapshotCurveAppearance(value:unknown):asserts value is 
  for(const [id,patch] of Object.entries(value as Record<string,unknown>)){
   if(!id||id.length>16384||!record(patch)||Object.keys(patch).some(key=>!snapshotCurveAppearanceFields.includes(key as typeof snapshotCurveAppearanceFields[number])))fail();
   const p=patch as Record<string,unknown>;
+  if(p.name!==undefined&&(typeof p.name!=='string'||!p.name.trim()||p.name.length>256))fail();
+  if(p.inkVisible!==undefined&&p.inkVisible!==null&&typeof p.inkVisible!=='boolean')fail();
+  if(p.mist!==undefined&&p.mist!==null)validateContourMistPatch(p.mist);
   if(p.width!==undefined&&(typeof p.width!=='number'||!Number.isFinite(p.width)||p.width<=0||p.width>1))fail();
   if(p.profile!==undefined&&p.profile!==null&&!['UNIFORM','TAPER_END','TAPER_BOTH','EYELID'].includes(String(p.profile)))fail();
   if(p.profileReverse!==undefined&&p.profileReverse!==null&&typeof p.profileReverse!=='boolean')fail();
@@ -40,8 +51,9 @@ export function validateSnapshotCurveAppearance(value:unknown):asserts value is 
   }
  }
 }
-export function snapshotCurveAppearanceDifference(before:DrawingCurve,after:DrawingCurve):SnapshotCurveAppearance|undefined {
+export function snapshotCurveAppearanceDifference(before:Pick<DrawingCurve,typeof snapshotCurveAppearanceFields[number]>,after:Pick<DrawingCurve,typeof snapshotCurveAppearanceFields[number]>):SnapshotCurveAppearance|undefined {
  const patch:SnapshotCurveAppearance={};
+ const mist=appearanceDifference(before.mist,after.mist,contourMistFields);if(mist!==undefined)patch.mist=mist as Partial<ContourMist>|null;
  for(const key of scalarFields)if(!same(before[key],after[key]))Object.assign(patch,{[key]:after[key]??null});
  if(!same(before.inkEnds,after.inkEnds)){
   if(after.inkEnds===undefined)patch.inkEnds=null;
@@ -56,10 +68,11 @@ export function unsupportedSnapshotCurveAppearanceFields(before:DrawingCurve,aft
  return [...new Set([...Object.keys(before),...Object.keys(after)])].filter(key=>key!=='nodes'&&key!=='handles'&&!snapshotCurveAppearanceFields.includes(key as typeof snapshotCurveAppearanceFields[number])&&!same(before[key as keyof DrawingCurve],after[key as keyof DrawingCurve]));
 }
 export function restoreSnapshotCurveAppearance(curve:DrawingCurve,before:DrawingCurve):DrawingCurve {
- const result={...curve};for(const key of snapshotCurveAppearanceFields){delete result[key];if(before[key]!==undefined)Object.assign(result,{[key]:before[key]});}return result;
+ const result={...curve};for(const key of snapshotCurveAppearanceFields){Reflect.deleteProperty(result,key);if(before[key]!==undefined)Object.assign(result,{[key]:before[key]});}return result;
 }
 function mergePatch(before:SnapshotCurveAppearance,after:SnapshotCurveAppearance):SnapshotCurveAppearance {
  const merged={...clone(before),...clone(after)};
+ if(after.mist!==undefined)merged.mist=mergeAppearanceObject(before.mist,after.mist,DEFAULT_CONTOUR_MIST);
  if(after.inkEnds&&before.inkEnds!==undefined){
   const cleared:SnapshotInkEndAppearance={taper:null,extension:null,taperWidthScale:null,interior:null};
   const prior=before.inkEnds??{start:cleared,end:cleared};
@@ -71,8 +84,10 @@ function mergePatch(before:SnapshotCurveAppearance,after:SnapshotCurveAppearance
 export function mergeSnapshotCurveAppearance(before:SnapshotCurveAppearanceMap|undefined,after:SnapshotCurveAppearanceMap|undefined):SnapshotCurveAppearanceMap {
  const result=clone(before??{});for(const [id,patch] of Object.entries(after??{}))Object.defineProperty(result,id,{value:mergePatch(result[id]??{},patch),enumerable:true,writable:true,configurable:true});return result;
 }
-export function applySnapshotCurveAppearanceToCurve(curve:DrawingCurve,patch:SnapshotCurveAppearance):DrawingCurve {
- const result={...curve};for(const key of scalarFields)if(patch[key]!==undefined){if(patch[key]===null)delete result[key];else Object.assign(result,{[key]:patch[key]});}
+export function applySnapshotCurveAppearanceToCurve<T extends Pick<DrawingCurve,typeof snapshotCurveAppearanceFields[number]>>(curve:T,patch:SnapshotCurveAppearance):T {
+ const result={...curve};
+ if(patch.mist!==undefined){const mist=applyAppearanceObject(curve.mist,patch.mist,DEFAULT_CONTOUR_MIST);if(mist===undefined)delete result.mist;else {if(!validContourMist(mist))throw Error('Snapshot ink-edge appearance is incompatible with its current source.');result.mist=mist;}}
+ for(const key of scalarFields)if(patch[key]!==undefined){if(patch[key]===null)Reflect.deleteProperty(result,key);else Object.assign(result,{[key]:patch[key]});}
  if(patch.inkEnds===null)delete result.inkEnds;
  else if(patch.inkEnds!==undefined){
   result.inkEnds=clone(curve.inkEnds??[{},{}]);

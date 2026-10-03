@@ -72,5 +72,5 @@ test('Undo discards an initial anchor, then restores continuation and closure ac
 test('correction frames expose disabled native P/split controls, a real-snapshot hint, and retain V/A/Z',()=>{
  const h=harness({editable:false});expect(h.element('vr-tool-pen').props.disabled).toBe(true);expect(h.element('vr-tool-pen').props.title).toContain('Create a real snapshot');h.key('p');expect(h.tool()).toBe('select');
  for(const [keyName,tool] of [['a','direct'],['z','zoom'],['v','select']]){h.key(keyName);expect(h.tool()).toBe(tool);}h.key('Delete');expect(h.remove).not.toHaveBeenCalled();
- expect(recordingCanvasToolForShortcut(key('p'),true)).toBe('pen');expect(recordingCanvasToolForShortcut(key('l'),true)).toBeNull();
+ expect(recordingCanvasToolForShortcut(key('p'),true)).toBe('pen');expect(recordingCanvasToolForShortcut(key('l'),true)).toBe('ellipse');
 });

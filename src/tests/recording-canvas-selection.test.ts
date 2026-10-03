@@ -52,7 +52,7 @@ test('read-only view renders Drawing navigation tools and filtered selections wi
 });
 test('without an active Warp, Recording labels describe curve selection and endpoint editing',()=>{
  const d=fixture(),html=renderToStaticMarkup(createElement(SceneWarpCanvas,{source:d,drawing:d,targetKey:'no-warp',label:'Fixture',zh:false,onPreview:()=>{},onCommit:()=>{}}));
- expect(html).toContain('aria-label="Select and transform strokes"');expect(html).toContain('aria-label="Curve endpoints and handles"');expect(html).toContain('V selects and transforms strokes; A edits endpoints/handles');expect(html).not.toContain('aria-label="Select Warp"');
+ expect(html).toContain('aria-label="Recording drawing canvas"');expect(html).toContain('drawing-tools recording-drawing-tools');expect(html).toContain('V selects strokes · A endpoints/handles');expect(html).not.toContain('select layers to create a Warp');
 });
 test('PaintScene receives both global and per-layer fill visibility from the shared Drawing session',()=>{
  const d=emptyDrawing(),points:Point2[]=[[0,0],[1,0],[1,1],[0,1]],layer=id('fills');d.layers=[{id:layer,name:'Fills',visible:true,locked:false,items:[]}];

@@ -308,7 +308,7 @@ When enabled, one-sided node edits add the reflected displacement to the counter
 
 Mirror metadata no longer blocks copying or topology edits. Copy assigns independent new curve/node IDs and valid internal relationships while keeping original mirror pair IDs unchanged. Split/delete/rebinding prunes only obsolete correspondence. UI duplication is in place; the existing raw duplicate command's default offset is unchanged. Explicit one-shot placement across `mirrorAxisX`, in-place horizontal flip, and pairing are separate actions. UI replacement of an existing pair is clearly labeled; multi-curve pairing uses unique exact reflected matches within the explicit selection, not nearest-geometry guessing.
 
-`inspect()` still exposes detached `mirrorEditing` and `mirrorEditingState`; execute reports pair changes/removals and aliases. Configuration and source geometry serialize with the artwork, remain Drawing-only, and use the existing dryRun/revision/Undo contract. Material interval transport happens after geometry edits. The [two-face setup example](examples/two-face-mirror-editing-api-batch.json) targets only its known source IDs; inspect identity first.
+`inspect()` still exposes detached `mirrorEditing` and `mirrorEditingState`; execute reports pair changes/removals and aliases. These source commands serialize configuration and source geometry with the artwork and use the existing dryRun/revision/Undo contract. Recording’s shared editor applies the same authoring behavior through local Snapshot mirror metadata; it does not call source commands to rewrite the original artwork. Material interval transport happens after geometry edits. The [two-face setup example](examples/two-face-mirror-editing-api-batch.json) targets only its known source IDs; inspect identity first.
 
 
 ## Explicit full closed-loop interval flag (API 1.4)
@@ -341,3 +341,12 @@ Split propagation preserves supported real poses, drafts, material intervals, mi
 
 
 Local Snapshot endpoint links preserve source node IDs. The shared Drawing through-display-route authoring can now operate on those locally linked ports: a transient relation-resolved material frame carries curve/t provenance before later shape/placement. Interval values, brush trim, source-live transport and real-view insertion use that same frame. No source geometry copy is persisted. Failed structural or material validation rejects the whole command batch rather than silently dropping its route.
+
+
+## Shared Drawing tool and property transactions
+
+The Drawing and Recording UI consume the same palette, ellipse/mirror/endpoint controllers, and property widgets. `prepareSnapshotDrawingToolEdit` is the host boundary for one `beforeDrawing → drawing` gesture: `geometry` captures final control targets and either writes a real Snapshot or solves its correction response; `topology` requires a real Snapshot; `mirror-metadata` changes only the exact current Snapshot’s correspondence and editing preferences. A stale gesture is rejected before committing, and successful gestures create one normal history transaction. This is an application adapter, not a second geometry command API.
+
+Mirror axis/enabled preferences at a correction angle stay in editor context. They neither create an angle key nor modify the nearby real basis. A one-shot mirror placement remains a geometry operation and follows the common target solver, including shared endpoint constraints and infeasible-axis diagnostics.
+
+`prepareSnapshotDrawingPropertyEdit` adapts the original property commands. Real Snapshot overrides include curve name, width/profile, terminal ink, ink visibility and mist; fill and offset appearance use their typed local patches. Omitted fields inherit source values; explicit false and zero are retained. Interval endpoint controls reuse their existing material-coordinate commands at both real and correction angles. Other appearance edits currently require a real Snapshot. Local patches serialize with the Snapshot, preserve original source data, and use normal Undo/redo. Member move/reorder and depth widgets remain a separate implementation stage; disabled capabilities are not a completed implementation.

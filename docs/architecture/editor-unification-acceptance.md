@@ -1,11 +1,13 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 23:22 UTC。当前线上 v71（`cee081a`）于 22:50:09 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
+核对日期：2026 年 10 月 3 日 23:34 UTC。当前线上 v71（`cee081a`）于 22:50:09 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
+
+本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。尚未发布或真人验证，不能将这些自动化称作 UI 验收。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
 
 当前真正开放的工程分为三组：
 
 1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
-2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；候选已在隔离树测试，需通用 `before → target` 事务 helper 和镜像元信息接齐后发布。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
+2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；共同 `before → target` 事务 helper、镜像元信息和 UI 已接主树，待发布后的有界真人验收。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
 3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前尚无完整通道，不能把临时 capability 禁用宣布为完成。
 
 待决定项独立列出：中间修正角曲边域对未来成员的程序语义、跨模式 Undo 旧 guard、旧 channel runtime 退役。单点/柄反推的零差轴、互相矛盾的真实连接目标、非有限透视映射是数值或约束边界；它们不等于上述未完成的工程适配。独立中间 Boolean 属性样本未新增；当前明确完成的中间属性是连续区间端点，其他 appearance 在真实 Snapshot 编辑。
@@ -26,9 +28,9 @@ v71（`cee081a`）真人验证：一条眉有 cage、一条普通，按曲线复
 | 新局部端点联动与贯通材料 | `endpointInteraction.ts`、`endpointRelationAuthoring.ts`、`routeMaterialSource.ts` 与 `DisplayRouteControls` 共同使用原 Drawing 几何及材料解析 | v61 重做 v60 实际失败路径成功；SMOOTH、ARC 10→15px、逐笔 Undo 到 SHARP 路径逐字相同；保存文件清理验证原稿数据保留 | 不把一次成功例子扩大成全部笔触／拓扑组合已验收 |
 | 非线性 SMOOTH 拆分与真实插点 | `responseExpressionProjection.ts` / restriction / shared smooth kernel | v58 父拆分、v60 一般非线性内部插点有针对性自动化；v55/v57 保留各自限定浏览器证据 | v65 已统一 CURVE / unscoped / STROKE / route 材料 lineage；实际父耳线分段的 7 个 yaw 材料世界端点误差 1.14e−16。非线性域下的 fit 参数 restriction 仍属后续组合 |
 | 局部移除与真正源删除 | response / material 依赖退役和 `sourceDeletion.ts` | v62 局部移除只停用失去支持的字段，其他曲线继续正常；恢复成员可恢复材料字段；真正源删除清相应属性目标，不产生红色幽灵 | 继续随新材料 lineage / 非线性域检查具体依赖，不设置全画面硬门槛 |
-| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定已在下一候选 c9dd74b，通过 120 项相关测试；曲边程序组合仍有明确边界，lock 等局部能力仍需核对 |
+| Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定已在 v68 接入；v70 实际验证源锁继承与局部 false 解锁。继承非线性程序的部分拓扑组合仍须收口 |
 | 独立当前形状复制 | `independentCopy.ts` 经现有 `cloneLayers` 和共同事务调用 | `e5b4273` 已冻结：新自有 ID、脱离旧父级、当前几何和颜色／填充／区间／ARC／偏移／层序检查，74 项通过、1 既有跳过 | v63 实际自动 +90° 镜像左眉复制：新 ID、同一视口 SVG 逐字相同、保存为无父级自有根；确实无法保持外观的异构 affine / 材料组合原子诊断 |
-| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | v67 持久层域已消费同一数学；下一候选 b04d5fa 将实际 Drawing/Recording cage controller、overlay、controls 归为一份，尚待发布后 Recording UI 验证 |
+| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | v67 持久层域已消费同一数学；v68 将实际 Drawing/Recording cage controller、overlay、controls 归为一份并完成所列 UI 验证；中间角程序 cage 的未来成员语义仍待用户决定 |
 
 v62 浏览器证据：[操作报告](../../artifacts/triangulated-recorder-qa/v62-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v62-domain-save-validation.json)。9 笔准备与编辑已正常 Undo 到底，原 5 稿和先前稍侧工作副本恢复。本轮实际使用数字变换控件，没有宣称重新拖过全部框柄；文件以精确发布模块本地回读，没有重新导入浏览器。未上传私人归档，未测浏览器 FPS，也未作美术审美验收。
 
@@ -87,18 +89,15 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 ## 结束验收前必须关闭的缺口
 
-当前剩余按实际调用链列出；v51～v67 的已验证阶段不再列为完全未做：
+当前清单只保留实际未完成项，后续历史段落按其版本日期阅读：
 
-1. Recording 共用曲边框、own-domain P 与原生非镜像曲边独立副本已于 v68/v69 完成上述限定 UI 验证。继承解绑有针对性自动化；不把这些证据扩成全部笔触与拓扑组合已验证。
-2. 父 source 拆分通过非线性拟合域时，须保留 `split(fit(parent))` 的参数 restriction、原材料 t 和后域修正。普通 source split、全路径区间与 Recorder 材质响应已在 v65 闭环；不能将那些结果扩称此非线性组合已完成。
-3. 已携带父级非线性程序的 topology 身份变化、共享 P/alias 输入，仍有精确 guard；当前自有域的 P/绑定/本地 fork 已在下一候选支持。后续应复用同一 lineage 和目标适配，不再写第二套钢笔。
-4. 镜像后的非线性程序尚缺可持久化的反射及端方向描述，独立副本仍原子拒绝该组合。普通镜像副本 v63 已实测；非镜像原生曲边副本在下一候选保留自己的材料输入、域与 postShape，不留下祖先快照。
-5. 局部 objectLocks 正在接共同 Snapshot 编辑状态与 Drawing/Recording/API；沿用源有效锁，false 为明确局部解锁，层按钮仍批量当前成员，不增加 layer gate 或响应轨道。其他独立属性作者入口与混合来源/引用曲边目标应按具体调用链核对。已支持的 width/profile/inkEnds、区间起止响应、继承节点绑定和源删除不重复列为缺失。独立布尔属性作者 UI 没有新增；真实插点保持原离散显隐边界已于 v66 实测。
-6. 不同程序 stage 的 A/V 目标分组正在接同一原子捕获/回放；中间修正角的曲边域是否对未来成员持续作用已询问，相关新持久字段暂未落地。不能用永久工具禁用代替真正可解的共同目标编辑。
-7. 跨模式 Undo 的旧 guard 去留和旧 channel runtime 退役仍待明确决定；原始文档/working-copy 兼容入口尚存在。已批准旧权重与房间退役已完成。源文件与归档不得随清理被默默丢弃。
+1. 非线性 source split 的精确角度场、材料参数与后域修正候选：真实 60° 插入后 11/31/59.99/60/60.01/77 处几何及材料端点已由实现者报告通过，仍在最终 JSON/source 更新与交叉构建。尚未合入当前主树或发布。
+2. 继承拟合程序的局部新增／绑定／分割，以及分段家族部分成员排除或源删除，需同一 lineage 与 live 目标适配。任何现存 guard 仍是工程缺口，不能归类为数学不可解。
+3. 本轮共同 Drawing 工具、属性和原子目标候选已构建，仍需发布后真人操作；成员移动、层内排序和深度编辑尚在独立候选中。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
+4. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑已按上文实际证据关闭，不重复列为待实现。
+5. 中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增；已有连续区间响应和真实快照局部 appearance 不受影响。
 
-每一职责须有一个实际执行内核。当前 neutral SMOOTH component、shared cage controller、共同钢笔和 snapshot 事务已有明确消费者；不能由这些归口推断所有组合和所有历史工具都已完成。
-后续历史段落保留版本来源；若与本节当前状态冲突，以本节为准。
+每一职责须有一个实际执行内核。当前 neutral SMOOTH component、shared cage controller、共同钢笔和 Snapshot 事务已有消费者；这些归口不等于全部工具组合已经验收。真正的退化轴、矛盾连接目标、非有限投影仍应原子拒绝；正常继承拓扑与成员移动不能借此关闭。
 
 ## v53/v54 与下一候选边界
 

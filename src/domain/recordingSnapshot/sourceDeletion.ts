@@ -1,3 +1,4 @@
+import {pruneSnapshotMirrorMetadata} from './mirrorMetadata';
 import {pruneSnapshotObjectLocks} from './objectLocks';
 import {pruneSnapshotNodeAliases} from './nodeAliases';
 import {pruneSnapshotNodeForks} from './nodeForks';
@@ -46,6 +47,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
  const interval=(value:SceneIntervalValue):SceneIntervalValue=>({...value,appearance:value.appearance?appearance(value.appearance):null,enabled:without(value.enabled,removed)});
  const shape=(value:SceneShapeValue):SceneShapeValue=>({...value,nodes:without(value.nodes,removed),handles:without(value.handles,removed)});
  const layerState=(value:SnapshotLayerState):SnapshotLayerState=>({...value,
+  ...(value.paintAppearance?{paintAppearance:without(value.paintAppearance,removed)}:{}),
   ...(value.curveAppearance?{curveAppearance:without(value.curveAppearance,removed)}:{}),
   ...(value.shape?{shape:shape(value.shape)}:{}),...(value.elementPlacements?{elementPlacements:without(value.elementPlacements,removed)}:{}),...(value.visibility?{visibility:without(value.visibility,removed)}:{}),
   ...(value.intervals?{intervals:Object.fromEntries(Object.entries(value.intervals).filter(([id,value])=>!removed.has(id)&&(!value.appearance||!intervalDepends(value.appearance))).map(([id,value])=>[id,interval(value)]))}:{}),
@@ -58,6 +60,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
  };
  const snapshots=after.snapshots.map(snapshot=>{
   const relations={...snapshot.relations};
+  if(relations.mirrorEditing)relations.mirrorEditing=pruneSnapshotMirrorMetadata(relations.mirrorEditing,removed);
   const cleanPair=<T extends {id:string;a:{curveId:string};b:{curveId:string}}>(patch:SnapshotRelationPatch<T>):SnapshotRelationPatch<T>=>({...patch,...(patch.add?{add:patch.add.filter(value=>!removed.has(value.id)&&!removed.has(value.a.curveId)&&!removed.has(value.b.curveId))}:{}),...(patch.update?{update:patch.update.filter(value=>!removed.has(value.id)&&!removed.has(value.a.curveId)&&!removed.has(value.b.curveId))}:{}),...(patch.disable?{disable:patch.disable.filter(id=>!removed.has(id))}:{})});
   if(relations.joins)relations.joins=cleanPair(relations.joins);if(relations.endpointLinks)relations.endpointLinks=cleanPair(relations.endpointLinks);
   const groups=relations.groups;if(groups){const clean=(values:NonNullable<typeof groups.add>)=>values.filter(value=>!removed.has(value.id)).map(value=>({...value,curveIds:value.curveIds.filter(id=>!removed.has(id))}));relations.groups={...groups,...(groups.add?{add:clean(groups.add)}:{}),...(groups.update?{update:clean(groups.update)}:{}),...(groups.disable?{disable:groups.disable.filter(id=>!removed.has(id))}:{})};}

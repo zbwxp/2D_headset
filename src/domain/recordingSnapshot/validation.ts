@@ -1,3 +1,5 @@
+import {validateSnapshotPaintAppearance} from './paintAppearance';
+import {validateSnapshotMirrorMetadata} from './mirrorMetadata';
 import {validateSnapshotObjectLocks} from './objectLocks';
 import {normalizeSnapshotNodeAliases} from './nodeAliases';
 import {validateSnapshotNodeForks} from './nodeForks';
@@ -27,6 +29,7 @@ function deformation(state:SnapshotDeformationState):void {
  for(const [layerId,layerState] of Object.entries(state.layers) as Array<[string,SnapshotLayerState]>){
   if(!id(layerId)||(!layerState||typeof layerState!=='object'||Array.isArray(layerState)))fail('layer state');if(layerState.placement)validateScenePlacement(layerState.placement);if(layerState.shape)validateSceneShape(layerState.shape);if(layerState.elementPlacements){if(!record(layerState.elementPlacements))fail('element placements');for(const [curveId,value] of Object.entries(layerState.elementPlacements)){if(!id(curveId))fail('element placement target');validateScenePlacement(value);}}
   if(layerState.curveAppearance!==undefined)validateSnapshotCurveAppearance(layerState.curveAppearance);
+  if(layerState.paintAppearance!==undefined)validateSnapshotPaintAppearance(layerState.paintAppearance);
   if(layerState.depth!==undefined&&(!Number.isFinite(layerState.depth)||Math.abs(layerState.depth)>10000))fail('depth');
   if(layerState.visibility&&(!record(layerState.visibility)||Object.entries(layerState.visibility).some(([key,value])=>!id(key)||value!==null&&typeof value!=='boolean')))fail('visibility');
   if(layerState.intervals)for(const value of Object.values(layerState.intervals))interval(value);
@@ -77,7 +80,8 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
   if(snapshot.nodeAliases!==undefined)normalizeSnapshotNodeAliases(snapshot.nodeAliases);
   unique(snapshot.layers.map(l=>l.id),'snapshot layer');
   for(const layer of snapshot.layers){if(typeof layer.name!=='string')fail('layer name');if(layer.kind==='original'){if(!Array.isArray(layer.items))fail('original layer');unique(layer.items,'original member');}else if(layer.kind==='reference'){if(!id(layer.baseSnapshotId)||!id(layer.baseLayerId))fail('base reference');if(layer.membership!==undefined){if(!record(layer.membership)||Object.keys(layer.membership).some(key=>key!=='addElementIds'&&key!=='excludeElementIds'))fail('local membership');for(const values of [layer.membership.addElementIds,layer.membership.excludeElementIds])if(values!==undefined&&(!Array.isArray(values)||values.length>16384||values.some(value=>!id(value))))fail('local membership IDs');validateSnapshotLocalMembership(layer.membership);}}else fail('layer kind');}
-  for(const patch of Object.values(snapshot.relations)){if(!record(patch))fail('relation patch');for(const operation of ['add','update','disable'] as const)if(patch[operation]!==undefined&&!Array.isArray(patch[operation]))fail('relation operation');for(const operation of ['add','update'] as const){const values=patch[operation] as {id:string}[]|undefined;if(values)unique(values.map(v=>v?.id),'relation');}if(patch.disable)unique(patch.disable as string[],'disabled relation');}
+  if(snapshot.relations.mirrorEditing!==undefined)validateSnapshotMirrorMetadata(snapshot.relations.mirrorEditing);
+  for(const [kind,patch] of Object.entries(snapshot.relations)){if(kind==='mirrorEditing')continue;if(!record(patch))fail('relation patch');for(const operation of ['add','update','disable'] as const)if(patch[operation]!==undefined&&!Array.isArray(patch[operation]))fail('relation operation');for(const operation of ['add','update'] as const){const values=patch[operation] as {id:string}[]|undefined;if(values)unique(values.map(v=>v?.id),'relation');}if(patch.disable)unique(patch.disable as string[],'disabled relation');}
   deformation(snapshot.deformation);if(snapshot.inheritedState)deformation(snapshot.inheritedState);
   for(const ref of snapshot.authored)if(!id(ref.trackId)||!id(ref.keyId))fail('authored reference');
   if(snapshot.draft){if(!angle(snapshot.draft.angle)||!Array.isArray(snapshot.draft.channels))fail('snapshot draft');deformation(snapshot.draft.deformation);}

@@ -1,3 +1,4 @@
+import {splitSnapshotMirrorMetadata} from './mirrorMetadata';
 import {splitSnapshotObjectLocks} from './objectLocks';
 import {markSnapshotRouteMaterialInput,snapshotRouteMaterialSource} from './routeMaterialSource';
 import {remapSnapshotMaterialPathLineages} from './materialPathLineages';
@@ -118,6 +119,7 @@ function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:
 }
 function remapRelations(relations:SnapshotRelationOverrides,basis:DrawingDocument,intent:CurveSplitIntent,source?:RecordingSnapshot):SnapshotRelationOverrides {
  const result=clone(relations);
+ if(result.mirrorEditing)result.mirrorEditing=splitSnapshotMirrorMetadata(result.mirrorEditing,intent);
  for(const category of ['joins','endpointLinks'] as const){const patch=result[category];for(const values of [patch?.add,patch?.update])for(const value of values??[]){value.a=endpoint(value.a,intent);value.b=endpoint(value.b,intent);}}
  for(const values of [result.groups?.add,result.groups?.update])for(const value of values??[])value.curveIds=replaceId(value.curveIds,intent);
  const patch=result.displayIntervals;
@@ -187,7 +189,9 @@ export function prepareSnapshotCurveSplits(workspace:RecordingSnapshotWorkspace,
 /** Apply only after every canonical source split was refreshed together. */
 export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,candidate:RecordingSnapshotWorkspace):RecordingSnapshotWorkspace {
  const {plans}=batch;let workspace={...candidate,library:{...candidate.library,curves:{...candidate.library.curves}},snapshots:candidate.snapshots.map(initial=>{
-  let snapshot=initial,basis=plans.flatMap(plan=>plan.frozen).find(value=>value.snapshotId===snapshot.id)?.saved.evaluation.source;
+  let snapshot=initial;
+  if(snapshot.relations.mirrorEditing)for(const plan of plans)snapshot={...snapshot,relations:{...snapshot.relations,mirrorEditing:splitSnapshotMirrorMetadata(snapshot.relations.mirrorEditing!,plan.intent,batch.mirrorPairs)}};
+  let basis=plans.flatMap(plan=>plan.frozen).find(value=>value.snapshotId===snapshot.id)?.saved.evaluation.source;
   if(snapshot.inputMirror){const mirror=snapshot.inputMirror;const curvePairs=mirror.curvePairs.flatMap(pair=>{const replacement=batch.mirrorPairs.find(value=>value.oldPairId===pair.id);return replacement?[replacement.left,replacement.right]:plans.some(plan=>pair.a===plan.intent.curveId||pair.b===plan.intent.curveId)?[]:[pair];});snapshot={...snapshot,inputMirror:{...mirror,curvePairs}};}
   for(const plan of plans){const {intent}=plan;
    const layers=snapshot.layers.map(layer=>layer.kind==='reference'&&layer.membership?{...layer,membership:{...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);

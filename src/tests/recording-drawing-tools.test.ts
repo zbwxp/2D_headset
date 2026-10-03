@@ -1,0 +1,79 @@
+import {isValidElement,type ComponentProps,type ReactElement} from 'react';
+import {afterEach,beforeEach,expect,test,vi} from 'vitest';
+import {dragNode} from '../domain/drawing/nodeDrag';
+import {createCurve} from '../domain/drawing/commands';
+import {emptyDrawing,nodeAt,shapeOf,type DrawingDocument,type Point2} from '../domain/drawing/model';
+import {useDrawing,type DrawingSelection,type DrawingTool} from '../ui/drawing/session';
+import SceneWarpCanvas from '../ui/vectorRecording/SceneWarpCanvas';
+import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
+import {DrawingMirrorToggle} from '../ui/drawing/mirrorController';
+import {useDirectPreferences} from '../ui/drawing/directPreferences';
+import type {DrawingCommandIntent} from '../ui/drawing/endpointInteraction';
+import {chooseDrawingSelection} from '../ui/drawing/interactionController';
+
+const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
+vi.mock('react',async original=>({...await original<typeof import('react')>(),
+ useState:(initial:unknown)=>{const i=hooks.stateIndex++;if(!(i in hooks.states))hooks.states[i]=typeof initial==='function'?initial():initial;return [hooks.states[i],(next:unknown)=>{const value=typeof next==='function'?next(hooks.states[i]):next;if(!Object.is(value,hooks.states[i])){hooks.states[i]=value;hooks.dirty=true;}}];},
+ useRef:(initial:unknown)=>hooks.refs[hooks.refIndex++]??(hooks.refs[hooks.refIndex-1]={current:initial}),useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),
+ useEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
+}));
+vi.mock('react-dom',async original=>({...await original<typeof import('react-dom')>(),createPortal:(children:unknown)=>children}));
+vi.mock('../ui/drawing/session',async original=>{const actual=await original<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
+class Target {closest(){return null;}}
+const listeners=new Map<string,(event:unknown)=>void>();
+beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('document',{body:{}});vi.stubGlobal('window',{innerWidth:1000,innerHeight:800,addEventListener:(name:string,fn:(event:unknown)=>void)=>listeners.set(name,fn),removeEventListener:(name:string,fn:unknown)=>{if(listeners.get(name)===fn)listeners.delete(name);}});});
+afterEach(()=>vi.unstubAllGlobals());
+type Props={children?:unknown;[key:string]:any};
+function elements(tree:unknown):ReactElement<Props>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<Props>(tree))return [];if(tree.type===SceneCurveEditOverlay)return elements(SceneCurveEditOverlay(tree.props as ComponentProps<typeof SceneCurveEditOverlay>));if(tree.type===DrawingMirrorToggle)return elements(DrawingMirrorToggle(tree.props as ComponentProps<typeof DrawingMirrorToggle>));return [tree,...elements(tree.props.children)];}
+function harness(options:{correction?:boolean;mirrored?:boolean;locked?:boolean}={}){
+ let source=emptyDrawing();source.layers=[{id:'layer',name:'Outline',visible:true,locked:false,items:[]}];source=createCurve(source,'layer',[[-1,0],[-.8,.2],[-.6,.3],[-.4,.1]],.02,'A','a');source=createCurve(source,'layer',[[.3,.3],[.5,.6],[.8,.6],[1,.3]],.03,'B','b');
+ if(options.mirrored)source.mirrorEditing={enabled:true,curvePairs:[{id:'pair',a:'a',b:'b',reverse:false}]};if(options.locked)source.curves[1].locked=true;
+ let drawing=source,shown=drawing,historyKey={},targetKey='view-0',tool:DrawingTool='select',selection:DrawingSelection={ids:[]},layerId='layer';
+ const error=vi.fn(),commit=vi.fn((before:DrawingDocument,next:DrawingDocument,_intent?:DrawingCommandIntent)=>{expect(before).toBe(drawing);drawing=next;shown=next;historyKey={};return historyKey;}),preview=vi.fn((before:DrawingDocument,next:DrawingDocument|null)=>{expect(before).toBe(drawing);shown=next??drawing;return true;}),curveCommit=vi.fn(),curvePreview=vi.fn(),svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
+ const render=()=>{let count=0;do{hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:shown,targetKey,label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,interaction:{tool,onToolChange:next=>{tool=next;}},curveEdit:{editable:true,onCommit:curveCommit,onPreview:curvePreview},topology:{editable:!options.correction,onSplit:vi.fn(),editor:{drawing,targetKey,historyKey,layerId,editable:true,topologyEditable:!options.correction,topologyDisabledReason:'Real snapshot required',onCommit:commit,onPreview:preview,onSelection:(next,mode)=>{selection=next;tool=mode??tool;},onError:error}}}));all.find(element=>element.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;for(const element of all)if(element.props['data-tool-group']==='connections')element.props.ref.current={getBoundingClientRect:()=>({right:300,top:50}),focus:vi.fn(),contains:()=>false};hooks.effects.forEach(fn=>fn());if(++count>10)throw Error('Effects did not settle');}while(hooks.dirty);};render();
+ const element=(testId:string)=>all.find(element=>element.props['data-testid']===testId)!,targets=()=>all.filter(element=>element.props['data-testid']==='recording-endpoint-target');
+ return {source,render,element,targets,error,commit,preview,curveCommit,curvePreview,drawing:()=>drawing,selection:()=>selection,tool:()=>tool,select:(next:DrawingTool)=>{tool=next;render();},selectCurves:(ids:string[])=>{selection={ids};render();},navigate:()=>{targetKey='view-1';render();},historyChange:()=>{historyKey={};render();},layerChange:()=>{layerId='other';render();},paint:()=>all.find(element=>element.props.curveDown)!,all:()=>all};
+}
+const pointer=(x:number,y:number,extra={})=>({button:0,pointerId:1,clientX:x,clientY:y,shiftKey:false,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn(),...extra});
+const key=(name:string,extra={})=>({key:name,code:name,target:new Target(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,preventDefault:vi.fn(),...extra});
+const xy=(element:ReactElement<Props>):Point2=>[element.props.x+4,element.props.y+4];
+function endpoint(h:ReturnType<typeof harness>,curve:string,end:number){return h.targets().find(element=>element.props['data-curve-id']===curve&&element.props['data-end']===end)!;}
+
+test('Recording consumes the actual grouped Drawing palette and connection menu',()=>{
+ const h=harness();for(const name of ['ellipse','mirror','merge','bind','select','direct','zoom'])expect(h.element(`vr-tool-${name}`)).toBeDefined();
+ h.element('vr-tool-bind').props.onContextMenu(pointer(0,0));h.render();for(const name of ['link','bind','smooth','cusp','arc'])expect(h.element(`vr-tool-choice-${name}`)).toBeDefined();h.element('vr-tool-choice-smooth').props.onClick();h.render();expect(h.tool()).toBe('smooth');expect(h.element('vr-tool-smooth').props['aria-pressed']).toBe(true);
+});
+test.each(['bind','smooth','cusp','arc','merge'] as const)('%s invokes the Drawing command and one owner transaction',tool=>{
+ const h=harness(),original=JSON.stringify(h.source);h.select(tool);let p=xy(endpoint(h,'a',1));h.element('vr-scene-canvas').props.onPointerDown(pointer(...p));h.render();p=xy(endpoint(h,'b',0));h.element('vr-scene-canvas').props.onPointerDown(pointer(...p));h.render();expect(h.error).not.toHaveBeenCalled();expect(h.commit).toHaveBeenCalledTimes(1);const a=nodeAt(h.drawing(),{curveId:'a',end:1}),b=nodeAt(h.drawing(),{curveId:'b',end:0});expect(a.position).toEqual(b.position);expect(a.id===b.id).toBe(tool!=='merge');expect(h.commit.mock.calls[0][2]).toEqual(tool==='merge'?{kind:'geometry-authoring'}:undefined);expect(JSON.stringify(h.source)).toBe(original);
+});
+test('a rejected bind retires its hover preview and first endpoint immediately',()=>{
+ const h=harness();h.select('bind');let p=xy(endpoint(h,'a',1));h.element('vr-scene-canvas').props.onPointerDown(pointer(...p));h.render();p=xy(endpoint(h,'b',0));h.element('vr-scene-canvas').props.onPointerMove(pointer(...p));h.render();expect(nodeAt(h.paint().props.d,{curveId:'b',end:0}).position).toEqual(nodeAt(h.source,{curveId:'a',end:1}).position);h.commit.mockImplementationOnce(()=>{throw Error('Cannot represent target');});h.element('vr-scene-canvas').props.onPointerDown(pointer(...p));h.render();expect(h.paint().props.d).toBe(h.source);expect(h.targets().some(element=>element.props['data-first'])).toBe(false);expect(h.error).toHaveBeenCalledWith('Cannot represent target');
+});
+test('L drag shares Drawing ellipse gesture, creates a closed circle and selects its new stroke',()=>{
+ const h=harness();h.element('vr-tool-ellipse').props.onClick();h.render();h.element('vr-scene-canvas').props.onPointerDown(pointer(420,350));h.element('vr-scene-canvas').props.onPointerMove(pointer(500,410,{shiftKey:true}));h.render();expect(h.paint().props.d.curves.length).toBe(6);expect(h.commit).not.toHaveBeenCalled();h.element('vr-scene-canvas').props.onPointerUp(pointer(500,410,{shiftKey:true}));h.render();expect(h.commit).toHaveBeenCalledTimes(1);expect(h.selection().ids).toHaveLength(4);expect(h.tool()).toBe('select');const curves=h.drawing().curves.filter(curve=>h.selection().ids.includes(curve.id)),nodes=new Set(curves.flatMap(curve=>curve.nodes));expect(nodes.size).toBe(4);expect(h.drawing().joins.filter(join=>curves.some(curve=>curve.id===join.a.curveId))).toHaveLength(4);const points=h.drawing().nodes.filter(node=>nodes.has(node.id)).map(node=>node.position),width=Math.max(...points.map(p=>p[0]))-Math.min(...points.map(p=>p[0])),height=Math.max(...points.map(p=>p[1]))-Math.min(...points.map(p=>p[1]));expect(width).toBeCloseTo(height,12);
+});
+test.each(['escape','navigate','history','layer','tool','cancel'])('%s discards an ellipse without a partial commit',action=>{
+ const h=harness();h.select('ellipse');h.element('vr-scene-canvas').props.onPointerDown(pointer(420,350));h.element('vr-scene-canvas').props.onPointerMove(pointer(500,410));h.render();if(action==='escape')listeners.get('keydown')!(key('Escape'));else if(action==='navigate')h.navigate();else if(action==='history')h.historyChange();else if(action==='layer')h.layerChange();else if(action==='tool')h.select('direct');else h.element('vr-scene-canvas').props.onPointerCancel();h.element('vr-scene-canvas').props.onPointerUp(pointer(500,410));h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.paint().props.d).toBe(h.source);
+});
+test('correction context exposes geometry tools but blocks all topology and leaves L on its current tool',()=>{
+ const h=harness({correction:true});expect(h.element('vr-tool-ellipse').props.disabled).toBe(true);expect(h.element('vr-tool-bind').props.disabled).toBe(true);expect(h.element('vr-tool-mirror').props.disabled).toBe(false);expect(h.element('vr-tool-merge').props.disabled).toBe(false);listeners.get('keydown')!(key('l'));expect(h.tool()).toBe('select');h.element('vr-tool-ellipse').props.onClick();expect(h.tool()).toBe('select');
+});
+test('one-shot mirror preserves source and pair metadata and is a geometry transaction',()=>{
+ const h=harness({mirrored:true}),original=JSON.stringify(h.source),source=shapeOf(h.source,'a');h.select('mirror');h.paint().props.curveDown(pointer(0,0),'a');h.render();expect(h.element('recording-mirror-preview')).toBeDefined();h.paint().props.curveDown(pointer(0,0),'b');h.render();expect(h.error).not.toHaveBeenCalled();expect(h.commit).toHaveBeenCalledTimes(1);expect(shapeOf(h.drawing(),'a')).toEqual(source);expect(shapeOf(h.drawing(),'b')).toEqual(source.map(([x,y])=>[-x,y]));expect(h.drawing().mirrorEditing).toEqual(h.source.mirrorEditing);expect(h.commit.mock.calls[0][2]).toEqual({kind:'geometry-authoring'});expect(JSON.stringify(h.source)).toBe(original);
+});
+test('mirror toggle and dragged axis are explicit metadata transactions without moving geometry',()=>{
+ const h=harness({mirrored:true}),original=shapeOf(h.source,'a');h.element('recording-mirror-toggle').props.onClick();h.render();expect(h.drawing().mirrorEditing?.enabled).toBe(false);expect(h.commit.mock.calls[0][2]).toEqual({kind:'mirror-authoring'});const grip=h.element('recording-mirror-grip'),x=grip.props.x+10;grip.props.onPointerDown(pointer(x,13));h.element('vr-scene-canvas').props.onPointerMove(pointer(x+30,13));h.element('vr-scene-canvas').props.onPointerUp(pointer(x+30,13));h.render();expect(h.drawing().mirrorAxisX).toBeGreaterThan(0);expect(shapeOf(h.drawing(),'a')).toEqual(original);expect(h.commit.mock.calls[1][2]).toEqual({kind:'mirror-authoring'});
+});
+test('A pointer edits use Drawing follow preference and one final target transaction',()=>{
+ const saved=useDirectPreferences.getState().followPercent;useDirectPreferences.getState().setFollowPercent(100);try{const h=harness();h.selectCurves(['a']);h.select('direct');const node=h.all().find(element=>element.props['data-testid']==='vr-curve-node')!,p=xy(node);node.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+20,p[1]-30));h.render();expect(h.preview).toHaveBeenCalled();expect(h.curvePreview).not.toHaveBeenCalled();h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+20,p[1]-30));h.render();expect(h.commit).toHaveBeenCalledTimes(1);expect(h.curveCommit).not.toHaveBeenCalled();expect(h.commit.mock.calls[0][2]).toEqual({kind:'geometry-authoring'});const moved=h.drawing().nodes.find(value=>value.id===node.props['data-node'])!;expect(shapeOf(h.drawing(),'a')).toEqual(shapeOf(dragNode(h.source,moved.id,moved.position,1),'a'));}finally{useDirectPreferences.getState().setFollowPercent(saved);}
+});
+test('Recording whole-layer cages retain layer selections while individual curve selection exits using shared rules',()=>{
+ const capabilities={deformRequiresLayers:true};expect(chooseDrawingSelection('deform',{ids:['a'],layer:'layer'},'select',capabilities).tool).toBe('deform');expect(chooseDrawingSelection('deform',{ids:['a']},'select',capabilities).tool).toBe('select');expect(chooseDrawingSelection('deform',{ids:['a']},'direct',capabilities).tool).toBe('direct');
+});
+
+test('locked mirror targets stay unchanged and cannot become endpoint targets',()=>{
+ const h=harness({locked:true});h.select('mirror');h.paint().props.curveDown(pointer(0,0),'a');h.render();h.paint().props.curveDown(pointer(0,0),'b');h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);h.select('bind');expect(h.targets().every(element=>element.props['data-curve-id']!=='b')).toBe(true);
+});
+test.each(['escape','navigate','history','tool'])('%s cancels a Drawing-controlled A preview without committing to a changed context',action=>{
+ const h=harness();h.selectCurves(['a']);h.select('direct');const node=h.all().find(element=>element.props['data-testid']==='vr-curve-node')!,p=xy(node);node.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+20,p[1]-10));h.render();if(action==='escape')listeners.get('keydown')!(key('Escape'));else if(action==='navigate')h.navigate();else if(action==='history')h.historyChange();else h.select('select');h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+20,p[1]-10));h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
+});

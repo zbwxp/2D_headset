@@ -1,5 +1,4 @@
-import {currentDrawingPresentation} from './snapshotPresentation';
-import {useDrawingWorkspace} from './workspace';
+import {useDrawingPropertySession} from './propertySession';
 import PanelSection from '../shared/PanelSection';
 import {useRef} from 'react';
 import {DEFAULT_FILL_MIST,type DrawingDocument as Doc,type FillRegion,type FillMist} from '../../domain/drawing/model';
@@ -7,11 +6,11 @@ import {setFillMist} from '../../domain/drawing/fillMist';
 import NumericSlider from '../shared/NumericSlider';
 import {uiText as t} from '../i18n';
 export default function FillMistControls({d,fill,run,preview}:{d:Doc;fill:FillRegion;run:(f:()=>Doc)=>void;preview:(d:Doc|null)=>void}){
- const {editor:useEditor,id:workspaceId}=useDrawingWorkspace();
- const base=useRef<Doc|null>(null),next=useRef<Doc|null>(null),style=fill.mist??DEFAULT_FILL_MIST,disabled=fill.locked;
- const end=()=>{const n=next.current,b=base.current;next.current=null;base.current=null;preview(null);if(n&&currentDrawingPresentation(useEditor.getState().project,workspaceId)===b)run(()=>n);};
+ const session=useDrawingPropertySession();
+ const token=useRef<unknown>(undefined),base=useRef<Doc|null>(null),next=useRef<Doc|null>(null),style=fill.mist??DEFAULT_FILL_MIST,disabled=fill.locked;
+ const end=()=>{const n=next.current,b=base.current;next.current=null;base.current=null;preview(null);if(n&&session.current()===b&&session.token?.()===token.current)run(()=>n);};
  const change=(v:Partial<FillMist>)=>{const n=setFillMist(base.current??d,fill.id,v);next.current=n;preview(n);};
- const edit={onEditStart:()=>{base.current=currentDrawingPresentation(useEditor.getState().project,workspaceId);next.current=null;},onEditEnd:end,onUndo:()=>useEditor.getState().undo(),onRedo:()=>useEditor.getState().redo()};
+ const edit={onEditStart:()=>{base.current=session.current();token.current=session.token?.();next.current=null;},onEditEnd:end,onUndo:session.undo,onRedo:session.redo};
  if(fill.color==='transparent')return null;
  return <PanelSection id="drawing.fill-mist" title="填充类型" className="drawing-fill-mist-controls" testId="drawing-fill-mist-controls">
   <label className="drawing-field">{t('填充类型')}<select aria-label={t('填充类型')} value={fill.mist?.enabled?'MIST':'SOLID'} disabled={disabled} onChange={e=>run(()=>setFillMist(d,fill.id,{enabled:e.target.value==='MIST'}))}><option value="SOLID">{t('实色填充')}</option><option value="MIST">{t('雾化填充')}</option></select></label>

@@ -115,3 +115,6 @@
 
 /* Keep each snapshot’s title and scoped batch tools together while its rows scroll. */
 .drawing-layer-section-chrome{position:sticky;top:0;z-index:10;background:#242d32;box-shadow:0 1px 0 #3c474d}
+
+/* Recording uses the same palette and menu in its compact canvas header. */
+.recording-drawing-tools{flex-direction:row;align-items:center;flex-wrap:wrap;gap:2px;width:auto;padding:0;overflow:visible;border:0}.recording-drawing-tools button{display:inline-flex;justify-content:center;min-height:30px;width:32px;padding:5px}.recording-drawing-tools button.drawing-tool-break{margin-top:0;margin-left:5px}.recording-drawing-tools button>span,.recording-drawing-tools kbd{display:none}.recording-drawing-tools button:disabled{opacity:.35;cursor:not-allowed}

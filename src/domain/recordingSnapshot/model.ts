@@ -1,3 +1,4 @@
+import type {SnapshotMirrorMetadata} from './mirrorMetadata';
 import type {SnapshotObjectLocks} from './objectLocks';
 import type {SnapshotVisibilityRecipeRegistry} from './visibilityRestriction';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
@@ -12,6 +13,7 @@ import type {InteriorResponseSample,ScalarResponseKnot} from './triangularRespon
 import type {SnapshotMirrorOptions} from './snapshotMirror';
 import type {SnapshotNodeAliases} from './nodeAliases';
 import type {SnapshotNodeForks} from './nodeForks';
+import type {SnapshotPaintAppearanceMap} from './paintAppearance';
 import type {SnapshotCurveAppearanceMap} from './curveAppearance';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
@@ -42,6 +44,7 @@ export interface SnapshotRelationPatch<T extends {id:string}> {
  add?:T[];update?:T[];disable?:string[];
 }
 export interface SnapshotRelationOverrides {
+ mirrorEditing?:SnapshotMirrorMetadata;
  joins?:SnapshotRelationPatch<TangentJoin>;
  endpointLinks?:SnapshotRelationPatch<EndpointLink>;
  groups?:SnapshotRelationPatch<DrawingGroup>;
@@ -58,6 +61,7 @@ export interface SnapshotLayerState {
  shape?:SceneShapeValue;visibility?:Record<string,boolean|null>;
  /** Sparse local ink/style fields; absent properties keep following the source. */
  curveAppearance?:SnapshotCurveAppearanceMap;
+ paintAppearance?:SnapshotPaintAppearanceMap;
  intervals?:Record<string,SceneIntervalValue>;depth?:number;
 }
 export interface SnapshotMaterialIssue {sourceSnapshotId:string;sourceSignature:string;message:string}

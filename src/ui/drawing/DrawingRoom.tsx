@@ -7,7 +7,7 @@ import {snapWorkspacePoint} from '../../app/workspaceViewSnap';
 import ArtworkReference from '../workspaceView/ArtworkReference';
 import ViewGuidesOverlay from '../workspaceView/ViewGuidesOverlay';
 import {beginIntervalDrag,updateIntervalDrag,type IntervalDragState} from '../../domain/drawing/intervalDrag';
-import {setMirrorEditingEnabled} from '../../domain/drawing/mirrorCommands';
+import {applyDrawingMirrorTool,DrawingMirrorAxisControls,DrawingMirrorToggle,drawingMirrorPreview,updateDrawingMirrorAxis} from './mirrorController';
 import {mirrorWritesForCurves,type MirrorAuthoredWrites} from '../../domain/drawing/mirrorEditing';
 import {finalizeGeometryEdit} from '../../domain/drawing/geometryEdit';
 import AIGuideOverlay from './AIGuideOverlay';
@@ -47,12 +47,13 @@ import LayerPanel from './LayerPanel';
 import LayerSnapshotDialog from './LayerSnapshotDialog';
 import Properties from './Properties';
 import ToolBar from './ToolBar';
+import {beginDrawingEllipseGesture,updateDrawingEllipseGesture,type DrawingEllipseGesture} from './ellipseController';
 import SnapshotBar from './SnapshotBar';
 import {usePenPreferences} from './penPreferences';
 import {beginPenGesture,movePenGesture,previewPenGesture,finishPenGesture,penHoverShape,penHistoryAction,type PenState as Pen,type PenGesture} from './penController';
 import {useDirectPreferences} from './directPreferences';
 import {TOOLS,isEndpointTool} from './tools';
-import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,commitDrawingEndpointTool,type DrawingEndpointTool,type DrawingCommandIntent} from './endpointInteraction';
+import {drawingEndpointInstruction,drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,commitDrawingEndpointTool,type DrawingEndpointTool,type DrawingCommandIntent} from './endpointInteraction';
 import {createSnapshotRelationAuthoringIntent} from '../../domain/recordingSnapshot/relationAuthoringIntent';
 import {createSnapshotNodeUnbindIntent} from '../../domain/recordingSnapshot/nodeForks';
 import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
@@ -62,11 +63,11 @@ import DisplayIntervalOverlay from './DisplayIntervalOverlay';
 import {displayPath,displayField,changeDisplayInterval,removeDisplayInterval} from '../../domain/drawing/displayIntervals';
 import {NumberField} from './Field';
 import {usePointerDragTracking,type TrackedPointer} from '../shared/usePointerDragTracking';
-import {curvePath,selectionBounds,snapMirrorAxis} from './geometry';
+import {curvePath,selectionBounds} from './geometry';
 import './drawing.css';
 const EMPTY=emptyDrawing();
 
-interface Drag extends TrackedPointer {layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;cageGesture?:CageGesture;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {ellipse?:DrawingEllipseGesture;layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;cageGesture?:CageGesture;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -108,9 +109,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  // Display and hit testing share one scope. Draft previews may move endpoints,
  // but picking still uses stored positions so the second click stays stable.
  const endpointCurveIds=(document:Doc)=>drawingEndpointCurveIds(document,activeLayer?.id??null);
- const connections=first?(tool==='smooth'?t('第二步：选择需要对齐的一侧'):t('第二步：选择要移动的端点')):(tool==='smooth'?t('第一步：选择保留方向的一侧'):t('第一步：选择固定端点'));
+ const connections=t(drawingEndpointInstruction(tool,!!first));
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
- const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent)=>{const before=currentDrawing();if(n===before)return;n=workspaceId==='drawing'&&!editIntent?prepareDrawingCageControlPreview(useEditor.getState().project,before,n)??finalizeGeometryEdit(before,n,writes):finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent?.kind==='node-unbind'?(view?createSnapshotNodeUnbindIntent(view.snapshotId,before,n,editIntent.endpoint):undefined):editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
+ const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent)=>{const before=currentDrawing();if(n===before)return;n=workspaceId==='drawing'&&!editIntent?prepareDrawingCageControlPreview(useEditor.getState().project,before,n)??finalizeGeometryEdit(before,n,writes):finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent?.kind==='node-unbind'?(view?createSnapshotNodeUnbindIntent(view.snapshotId,before,n,editIntent.endpoint):undefined):editIntent?.kind==='geometry-authoring'||editIntent?.kind==='mirror-authoring'?undefined:editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
  const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
@@ -180,7 +181,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(referenceMoving||space.current||e.button===1||e.button===2||tool==='hand')return;
   if(['pen','ellipse','zoom'].includes(tool)||endpointTools)return;
   if(tool==='split'){e.stopPropagation();const hit=snapRecordingEndpoint(local(e),[{id,name:'',shape:shapeOf(d,id),auxiliary:false}],[unit,unit]);if(hit)try{if(workspaceId==='drawing'){const plan=commitDrawingCurveSplit(useEditor.getState(),id,hit.t);own.current=currentDrawing();choose({ids:plan.ids},'direct');setHint([...(plan.diagnostics?.map(value=>value.message)??[]),...(plan.intent.kind==='split-curve'&&plan.intent.correspondenceNotice?[plan.intent.correspondenceNotice]:[])].join(' '));}else run(()=>{const n=cmd.splitCurve(stored,id,hit.t);choose({ids:n.ids},'direct');return n.document;});}catch(errorValue){error(errorValue);}return;}
-  if(tool==='mirror'){e.stopPropagation();if(!first){setFirst({curveId:id,end:0});setHint(t('请选择目标曲线'));}else try{const n=cmd.mirrorEdit(stored,first.curveId,id);commit(n);setFirst(null);choose({ids:[id]},'direct');}catch(ex){if(ex instanceof cmd.RelatedSelection)setPending({ids:ex.ids,scope:[id],mirror:{source:first.curveId,target:id,base:stored}});else error(ex,[id]);}return;}
+  if(tool==='mirror'){e.stopPropagation();if(!first){setFirst({curveId:id,end:0});setHint(t('请选择目标曲线'));}else try{const n=applyDrawingMirrorTool(stored,first.curveId,id);commit(n);setFirst(null);choose({ids:[id]},'direct');}catch(ex){if(ex instanceof cmd.RelatedSelection)setPending({ids:ex.ids,scope:[id],mirror:{source:first.curveId,target:id,base:stored}});else error(ex,[id]);}return;}
   if(!editable(d,id))return;
   const ids=selectCurveAtPointer(d,selected,id,{grouped:tool==='select'||tool==='deform',shift:e.shiftKey});
   if(!(ids.length===selected.length&&ids.every(id=>selected.includes(id)))){approved.current=null;session.set({selection:{ids,group:tool==='select'?selectedGroup(d,ids)?.id:undefined}});}setReferenceMoving(false);
@@ -198,7 +199,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(preview||artworkPreview)return;
   if(endpointTools){const hit=pickEndpoint(local(e));if(hit)connectAt(hit);else setHint(t('请点击曲线端点。'));return;}
   if(tool==='pen'){if(!activeLayer){setHint(t('请先新建绘制层。'));return;}const hit=guideCandidate(stored,local(e),e.altKey),p=hit?.point??local(e);setGuideSnap(hit);startDrag(e,'pen',{pen,start:p,cursor:p,origin:local(e),penGesture:beginPenGesture(stored,pen,p,local(e))});return;}
-  if(tool==='ellipse'){startDrag(e,'ellipse');return;}
+  if(tool==='ellipse'){try{startDrag(e,'ellipse',{ellipse:beginDrawingEllipseGesture(stored,activeLayer?.id??null,local(e),width)});}catch(ex){error(ex);}return;}
   if(tool==='select'||tool==='direct'){if(!e.shiftKey)choose({ids:[]},tool);startDrag(e,'box',{shift:e.shiftKey});}
  }
  function fit(){const b=selectionBounds(d,shownCurves);if(!b){session.set({zoom:1,pan:[0,0]});return;}const base=Math.min(size.width,size.height)/2.8,z=Math.max(.1,Math.min(8,Math.min((size.width-100)/Math.max(.1,b.max[0]-b.min[0]),(size.height-100)/Math.max(.1,b.max[1]-b.min[1]))/base));session.set({zoom:z,pan:[-b.center[0]*base*z,b.center[1]*base*z]});}
@@ -218,11 +219,11 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(g.kind==='pan'){session.set({pan:add(g.pan!,[e.clientX-g.client[0],e.clientY-g.client[1]])});return;}
    if(g.kind==='box'){setBox({a:g.start,b:p});return;}
    if(g.kind==='pen'){g.penGesture=movePenGesture(g.penGesture!,p);g.cursor=g.penGesture.cursor;const n=previewPenGesture(g.penGesture,penOptions());if(n){g.next=n.document;setDraft(n.document);}setPenPreview(null);return;}
-   if(g.kind==='ellipse'){const n=cmd.ellipse(g.base,activeLayer!.id,g.start,e.shiftKey?add(g.start,[Math.sign(delta[0])*Math.max(Math.abs(delta[0]),Math.abs(delta[1])),Math.sign(delta[1])*Math.max(Math.abs(delta[0]),Math.abs(delta[1]))]):p,width);g.next=n.document;}
+   if(g.kind==='ellipse'){const n=updateDrawingEllipseGesture(g.ellipse!,p,e.shiftKey);g.next=n.document;}
    if(g.kind==='mirrorAxis'){
-    const x=(g.base.mirrorAxisX??0)+delta[0],nodeIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
+    const nodeIds=new Set(g.base.curves.filter(c=>visible(g.base,c.id)).flatMap(c=>c.nodes));
     const targets=g.base.nodes.filter(n=>{if(!nodeIds.has(n.id))return false;const [x,y]=screen(n.position);return x>=0&&x<=size.width&&y>=0&&y<=size.height;});
-    const snapped=snapMirrorAxis(targets,x,p[1],unit);setAxisSnap(snapped?.position??null);g.next=cmd.setMirrorAxis(g.base,snapped?.position[0]??x);
+    const next=updateDrawingMirrorAxis(g.base,g.start,p,unit,targets);setAxisSnap(next.snap);g.next=next.drawing;
    }
    if(g.kind==='node'){
     let position=drawingControlDragTarget(g.base,{nodeId:g.node!},g.start,p);
@@ -367,13 +368,13 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {['select','pen','ellipse'].includes(tool)&&<NumberField label="线宽" value={(selected.length?curveById(d,selected[0]).width:width)*250} min={.25} max={40} onChange={v=>{session.set({width:v/250});if(selected.length&&tool==='select')run(()=>cmd.widthChange(d,selected,v/250));}}/>}
  {['select','direct'].includes(tool)&&<><button data-testid="drawing-group" title={t(groupingIssue(d,selected)??'组合（Ctrl/Cmd+G）')} disabled={!!groupingIssue(d,selected)} onClick={()=>groupSelection()}>{t('组合')}</button><button data-testid="drawing-ungroup" title={t('取消组合（Ctrl/Cmd+Shift+G）')} disabled={!d.groups?.some(g=>g.curveIds.every(id=>selected.includes(id)))} onClick={()=>groupSelection(true)}>{t('取消组合')}</button></>}
  {tool==='deform'&&<CageEditorControls maxError={cage?.maxError??0} onResetFrame={()=>{cancelDraft();setDeformCage(null);}} onDone={()=>selectTool('select')}/>}
- {tool==='mirror'&&<><NumberField label="镜像轴 X" value={d.mirrorAxisX??0} onChange={x=>run(()=>cmd.setMirrorAxis(d,x))}/><button onClick={()=>run(()=>cmd.setMirrorAxis(d,0))}>{t('镜像轴归中')}</button></>}
+ {tool==='mirror'&&<><DrawingMirrorAxisControls drawing={d} run={run}/></>}
  {tool==='pen'&&<label className="drawing-field">{t('继续接笔')}<select aria-label={t('继续接笔')} value={penJoin} onChange={e=>session.set({penJoin:e.target.value as 'POSITION'|'SMOOTH'|'CUSP'})}><option value="POSITION">{t('仅绑定')}</option><option value="SMOOTH">{t('平滑接笔')}</option><option value="CUSP">{t('尖点接笔')}</option></select></label>}
  {tool==='pen'&&<button onClick={()=>{cancelDraft();endPen();setPenPreview(null);}}><Check size={14}/>{t('结束绘制')}</button>}
  {(endpointTools||tool==='mirror')&&<><span className="drawing-step">{tool==='mirror'?t(first?'选择目标：仅摆到镜像位置，不自动配对':'选择镜像摆放的源曲线'):connections}</span><button onClick={()=>{setFirst(null);setDraft(null);}}>{t('取消')}</button></>}
  {endpointTools&&localEndpointLayer&&tool!=='link'&&<><span className="drawing-step">{t('引用层可用端点联动，保留各自节点和外观。')}</span><button data-testid="drawing-reference-endpoint-link" onClick={()=>selectTool('link')}>{t('端点联动')}</button></>}
 
- <div className="drawing-options-right"><button data-testid="drawing-mirror-toggle" aria-pressed={!!d.mirrorEditing?.enabled} title={t('开启后镜像传播本次编辑；关闭后自由编辑。不锁定已有形状。')} onClick={()=>run(()=>setMirrorEditingEnabled(d,!d.mirrorEditing?.enabled))}>{t('持续镜像')} · {t(d.mirrorEditing?.enabled?'开':'关')}</button><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
+ <div className="drawing-options-right"><DrawingMirrorToggle drawing={d} run={run}/><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
  </nav>
  </AutoHideBar>
  <div className="drawing-body">
@@ -401,7 +402,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   {axisSnap&&<g data-testid="drawing-mirror-snap" pointerEvents="none"><circle cx={screen(axisSnap)[0]} cy={screen(axisSnap)[1]} r={7} fill="#d7f5e9" stroke="#209978" strokeWidth="2"/><text x={screen(axisSnap)[0]+12} y={screen(axisSnap)[1]-10} fill="#168065" fontSize="12">{t('已吸附端点')}</text></g>}
  </g>}
  {!preview&&!artworkPreview&&!referenceMoving&&<>
- {tool==='mirror'&&first&&curveById(d,first.curveId)&&<path data-testid="drawing-mirror-preview" d={curvePath(shapeOf(d,first.curveId).map(([x,y])=>[2*(d.mirrorAxisX??0)-x,y]) as Cubic,screen)} fill="none" stroke="#d18d36" strokeWidth="1.7" strokeDasharray="5 4" pointerEvents="none"/>}
+ {tool==='mirror'&&first&&curveById(d,first.curveId)&&<path data-testid="drawing-mirror-preview" d={curvePath(drawingMirrorPreview(d,first.curveId),screen)} fill="none" stroke="#d18d36" strokeWidth="1.7" strokeDasharray="5 4" pointerEvents="none"/>}
  {(tool==='direct'||tool==='select')&&<InkEndOverlay d={d} selection={selection} screen={screen} pick={(e,id,end)=>{if(space.current||e.button!==0)return;e.stopPropagation();svg.current?.focus({preventScroll:true});choose(curveById(d,id)?{ids:[id],inkEnd:{id,end}}:{ids:[],paint:id,inkEnd:{id,end}},'direct');}}/>}
  {d.joins.filter(j=>j.mode==='ARC'&&[j.a,j.b].some(e=>selected.includes(e.curveId)&&visible(d,e.curveId))).map(j=>{const g=roundedJoins(d).get(j.id)!,p=screen(nodeAt(d,j.a).position);return <g key={j.id} pointerEvents="none" data-testid="drawing-arc-guide"><circle cx={p[0]} cy={p[1]} r={g.distance*unit} stroke="#c9a060" strokeWidth="1" strokeDasharray="3 4" fill="none"/><path d={pathOf(g.shapes,screen)} stroke="#228fbe" strokeWidth="1.5" fill="none"/></g>;})}
  {nodeSnap&&<g data-testid="drawing-node-snap" pointerEvents="none"><circle cx={screen(nodeSnap)[0]} cy={screen(nodeSnap)[1]} r={9} fill="none" stroke="#209978" strokeWidth="2"/><text x={screen(nodeSnap)[0]+13} y={screen(nodeSnap)[1]-12} fill="#168065" fontSize="12">{t(nodeSnap[0]===(d.mirrorAxisX??0)?'已吸附镜像轴':'已吸附端点')}</text></g>}
@@ -422,7 +423,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  </svg>
  {!d.curves.length&&!d.reference&&tool==='select'&&<div className="drawing-welcome"><PenTool size={27}/><strong>{t('从一条线开始')}</strong><p>{t('加载参考图，选择图层，用钢笔落点并拖出控制柄。')}</p><button onClick={()=>file.current?.click()}>{t('插入背景图')}</button><button onClick={()=>{if(!activeLayer)run(()=>cmd.addLayer(stored,t('图层')+'1'));selectTool('pen');}}>{t('开始绘线')}</button></div>}
  {referenceMoving&&!artworkPreview&&<button className="drawing-reference-done" onClick={()=>setReferenceMoving(false)}>{t('完成图片平移')}</button>}
- {pending&&<div className="drawing-selection-notice" role="dialog"><strong>{t('本次操作会影响未选中的关联曲线。')}</strong><p>{pending.ids.map(id=>curveById(stored,id)?.name).join('、')}</p>{pending.mirror?<><p>{t('镜像将保持绑定与接笔关系，上述关联曲线的共享端点或控制柄会一起调整。')}</p><button onClick={()=>{const m=pending.mirror!;setPending(null);if(currentDrawing()!==m.base)return;try{commit(cmd.mirrorEdit(m.base,m.source,m.target,true));choose({ids:[m.target]},'direct');}catch(ex){error(ex,[m.target]);}}}>{t('继续镜像')}</button></>:<button onClick={()=>{approved.current=pending;session.set({selection:{ids:pending.ids}});setPending(null);setHint(t('已补齐选择，请重新执行变换。'));}}>{t('选中所需关联曲线')}</button>}<button onClick={()=>setPending(null)}>{t('取消')}</button></div>}
+ {pending&&<div className="drawing-selection-notice" role="dialog"><strong>{t('本次操作会影响未选中的关联曲线。')}</strong><p>{pending.ids.map(id=>curveById(stored,id)?.name).join('、')}</p>{pending.mirror?<><p>{t('镜像将保持绑定与接笔关系，上述关联曲线的共享端点或控制柄会一起调整。')}</p><button onClick={()=>{const m=pending.mirror!;setPending(null);if(currentDrawing()!==m.base)return;try{commit(applyDrawingMirrorTool(m.base,m.source,m.target,true));choose({ids:[m.target]},'direct');}catch(ex){error(ex,[m.target]);}}}>{t('继续镜像')}</button></>:<button onClick={()=>{approved.current=pending;session.set({selection:{ids:pending.ids}});setPending(null);setHint(t('已补齐选择，请重新执行变换。'));}}>{t('选中所需关联曲线')}</button>}<button onClick={()=>setPending(null)}>{t('取消')}</button></div>}
  </div>
  {sidebar&&<aside className="drawing-sidebar" data-properties-open={propertiesOpen} style={{gridTemplateRows:propertiesOpen?`minmax(100px,${panelHeight}fr) 6px minmax(80px,${100-panelHeight}fr)`:'minmax(0,1fr) 0px 32px'}}>
  {restoreLayerId&&<LayerSnapshotDialog key={projectId+restoreLayerId} layerId={restoreLayerId} close={()=>setRestoreLayerId(null)} restored={()=>{setClipboard(null);session.set({selection:{ids:[],layer:restoreLayerId},layerId:restoreLayerId,tool:'select'});setHint('');}}/>}

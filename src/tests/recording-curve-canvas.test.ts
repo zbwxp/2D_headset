@@ -10,7 +10,7 @@ import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
 import SceneInstanceTransformBox from '../ui/vectorRecording/SceneInstanceTransformBox';
 import {chooseDrawingSelection,selectDrawingTool} from '../ui/drawing/interactionController';
 import {selectionBounds} from '../ui/drawing/geometry';
-import type {DrawingSelection} from '../ui/drawing/session';
+import type {DrawingSelection,DrawingTool} from '../ui/drawing/session';
 import {useDrawing} from '../ui/drawing/session';
 
 const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
@@ -33,7 +33,7 @@ function fixture():DrawingDocument{
 }
 function harness(options:{editable?:boolean;grid?:boolean;inspectionHideFills?:boolean;controlledLayer?:boolean;topology?:boolean;cage?:boolean}={}){
  const source=fixture(),preview=vi.fn(),commit=vi.fn(),warpPreview=vi.fn(),warpCommit=vi.fn(),select=vi.fn();let drawing=source,targetKey='view-0',revealGridKey=0;
- let chosen:DrawingSelection={ids:source.curves.map(c=>c.id),...(options.controlledLayer||options.cage?{layer:'instance/layer',layers:['instance/layer']}: {})},chosenTool:'select'|'direct'|'hand'|'zoom'|'split'|'pen'|'link'|'deform'=options.cage?'deform':options.controlledLayer?'select':'direct';const controlSelection=vi.fn();
+ let chosen:DrawingSelection={ids:source.curves.map(c=>c.id),...(options.controlledLayer||options.cage?{layer:'instance/layer',layers:['instance/layer']}: {})},chosenTool:DrawingTool=options.cage?'deform':options.controlledLayer?'select':'direct';const controlSelection=vi.fn();
  const cagePreview=vi.fn((intent:LayerCageDomainIntent|null)=>{drawing=intent?deformDrawing(source,chosen.ids,intent.domain.restRect,intent.domain.quad,false,intent.domain.bend).document:source;return true;}),cageCommit=vi.fn(),cageError=vi.fn(),cageAdapter={drawing:source,domains:[],targetKey:'basis/layer',historyKey:source,editable:true,maxError:0,onPreview:cagePreview,onCommit:cageCommit,onError:cageError};
  const splitCommit=vi.fn();const curveEdit={editable:options.editable??true,onPreview:preview,onCommit:commit,onSelect:controlSelection},grid=options.grid?createWarpGrid({min:[-1,-1],max:[1,1]},2,2):undefined;
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];

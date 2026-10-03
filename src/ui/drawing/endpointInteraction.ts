@@ -6,7 +6,7 @@ import type {ConnectionTool} from './tools';
 export type DrawingEndpointTool=ConnectionTool|'merge';
 /** Command cause travels separately from its geometry so source followers are
  * never mistaken for directly authored original controls. */
-export type DrawingCommandIntent={kind:'relation-authoring'}|{kind:'node-unbind';endpoint:Endpoint};
+export type DrawingCommandIntent={kind:'relation-authoring'}|{kind:'node-unbind';endpoint:Endpoint}|{kind:'geometry-authoring'}|{kind:'mirror-authoring'};
 export type DrawingCommandRun=(operation:()=>DrawingDocument,intent?:DrawingCommandIntent)=>void;
 /** The endpoint overlay and picking always use the same editable layer scope.
  * Omit layerId only when a caller deliberately offers all visible layers. */
@@ -28,4 +28,9 @@ export function applyDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEnd
  * Keep the explicit relation intent attached to the actual LINK command. */
 export function commitDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEndpointTool,first:Endpoint,second:Endpoint,commit:(next:DrawingDocument,intent?:Extract<DrawingCommandIntent,{kind:'relation-authoring'}>)=>void,finish:()=>void):DrawingDocument {
  try{const next=applyDrawingEndpointTool(drawing,tool,first,second);commit(next,tool==='link'?{kind:'relation-authoring'}:undefined);return next;}finally{finish();}
+}
+
+/** Shared two-click prompt; only LINK may retain its first endpoint across layers. */
+export function drawingEndpointInstruction(tool:string,hasFirst:boolean):string {
+ return hasFirst?(tool==='smooth'?'第二步：选择需要对齐的一侧':'第二步：选择要移动的端点'):(tool==='smooth'?'第一步：选择保留方向的一侧':'第一步：选择固定端点');
 }

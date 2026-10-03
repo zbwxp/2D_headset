@@ -1,3 +1,7 @@
+import {snapshotPaintAppearanceDifference,mergeSnapshotPaintAppearance,type SnapshotPaintAppearanceMap} from './paintAppearance';
+import {inverseAffine2D,applyAffine2DVector} from '../geometry/affine2d';
+import {snapshotControlMatrix} from './controlSpace';
+import {snapshotWithMirrorMetadata} from './mirrorMetadata';
 import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
 import {captureLayerDomainControls,layerUsesCage} from './layerDomainControlEdit';
 import {createNonlinearTopologyInput,nonlinearTopologyTargetLayers,nonlinearTopologyControlBase,retainOtherTopologyControls} from './nonlinearTopologyTargets';
@@ -99,14 +103,24 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  const membershipBefore=captureSnapshotResponseMembership(before);
  const originalIds=new Set(drawingIdentityIds(current)),occupied=new Set([...Object.values(before.library).flatMap(map=>Object.keys(map)),...before.snapshots.flatMap(value=>[value.id,...value.layers.map(layer=>layer.id),...Object.keys(value.source?.originIds??{}),...Object.keys(value.nodeForks??{}),...[...value.relations.displayIntervals?.add??[],...value.relations.displayIntervals?.update??[]].flatMap(track=>track.ranges.map(range=>range.id)),...names.flatMap(name=>[...value.relations[name]?.add??[],...value.relations[name]?.update??[]].map(relation=>relation.id))])]);
  for(const id of drawingIdentityIds(target))if(!originalIds.has(id)&&occupied.has(id))return fail('TOPOLOGY_ID_COLLISION',`New Drawing identity ${id} already belongs to another canonical element or layer.`);
- const appearances=new Map<string,SnapshotCurveAppearanceMap>();
+ const appearances=new Map<string,SnapshotCurveAppearanceMap>(),paintAppearances=new Map<string,SnapshotPaintAppearanceMap>();
  for(const curve of target.curves){const prior=current.curves.find(value=>value.id===curve.id);if(!prior)continue;
   if(layerFor(current,curve.id)?.id!==layerFor(target,curve.id)?.id)return fail('TOPOLOGY_MEMBERSHIP_CONFLICT','Moving existing elements between layers requires an explicit membership move.');
   if(!owned.has(curve.id)&&!same(curve.nodes,prior.nodes.map((id,end)=>snapshotNodeAuthority(merged.aliases,snapshotForkForEndpoint(fork.forks,{curveId:curve.id,end:end as 0|1})??id))))return fail('INHERITED_TOPOLOGY_CONFLICT','Inherited curve endpoint identities require an explicit Snapshot node authority.');
   const unsupported=unsupportedSnapshotCurveAppearanceFields(prior,curve);if(unsupported.length)return fail('TOPOLOGY_STYLE_CONFLICT',`Curve ${curve.id} changes unsupported local fields: ${unsupported.join(', ')}. No geometry or appearance was changed.`);
-  const appearance=snapshotCurveAppearanceDifference(prior,curve);if(appearance){const layerId=layerFor(target,curve.id)!.id;appearances.set(layerId,{...appearances.get(layerId),[curve.id]:appearance});}
+  const appearance=snapshotCurveAppearanceDifference(prior,curve);if(appearance){if(prior.locked)return fail('LOCKED_PROPERTY_TARGET','Unlock the curve before editing its properties.');const layerId=layerFor(target,curve.id)!.id;appearances.set(layerId,{...appearances.get(layerId),[curve.id]:appearance});}
  }
- for(const kind of ['fills','offsets'] as const)for(const value of target[kind]){const prior=current[kind].find(item=>item.id===value.id);if(prior&&!same(value,prior))return fail('TOPOLOGY_PAINT_CONFLICT','Existing paint properties must be edited through their own channels.');}
+ for(const kind of ['fills','offsets'] as const)for(const value of target[kind]){const prior=current[kind].find(item=>item.id===value.id);if(!prior)continue;
+  if(layerFor(current,value.id)?.id!==layerFor(target,value.id)?.id)return fail('TOPOLOGY_MEMBERSHIP_CONFLICT','Moving existing paint between layers requires an explicit membership move.');
+  const patch=snapshotPaintAppearanceDifference(prior,value);if(!patch)continue;
+  if(prior.locked)return fail('LOCKED_PROPERTY_TARGET','Unlock the paint object before editing its properties.');
+  const layerId=layerFor(target,value.id)!.id;
+  if(patch.kind==='offset'&&patch.translation){const sourceCurve='source' in value?value.source[0]?.id:undefined,inverse=inverseAffine2D(snapshotControlMatrix(evaluation,layerId,sourceCurve??''));
+   if(!inverse)return fail('SINGULAR_PAINT_PLACEMENT','Restore the collapsed layer or stroke axis before changing the offset translation. Other appearance properties remain editable.');
+   patch.translation=applyAffine2DVector(inverse,patch.translation);
+  }
+  paintAppearances.set(layerId,{...paintAppearances.get(layerId),[value.id]:patch});
+ }
  let workspace=clone(before),local=workspace.snapshots.find(value=>value.id===snapshot.id)!;
  if(merged.aliases)local.nodeAliases=merged.aliases;else delete local.nodeAliases;
  if(fork.forks)local.nodeForks=fork.forks;else delete local.nodeForks;
@@ -141,8 +155,10 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
   for(const nodeId of curve.nodes)if(!Object.hasOwn(workspace.library.nodes,nodeId)&&!Object.hasOwn(fork.forks??{},nodeId))workspace.library.nodes[nodeId]={id:nodeId,position:map(unplace(evaluation,layerId,curve.id,nodes.get(nodeId)!.position))};
  }
  for(const kind of ['fills','offsets'] as const)for(const value of target[kind])if(!current[kind].some(prior=>prior.id===value.id))Object.defineProperty(workspace.library[kind],value.id,{value:clone(value),enumerable:true,writable:true,configurable:true});
+ const localJoins=(drawing:DrawingDocument)=>drawing.joins.map(join=>{if(join.mode!=='ARC'||join.radius===undefined)return join;const scale=snapshotControlBrushScale(evaluation,layerFor(target,join.a.curveId)?.id??'',join.a.curveId);return scale===1?join:{...join,radius:join.radius/scale};});
  const localLinks=(drawing:DrawingDocument)=>(drawing.endpointLinks??[]).map(link=>{if(link.joinBrush?.kind!=='ARC')return link;const scale=snapshotControlBrushScale(evaluation,layerFor(current,link.a.curveId)?.id??'',link.a.curveId);return scale===1?link:{...link,joinBrush:{...link.joinBrush,trimDistance:link.joinBrush.trimDistance/scale}};});
- for(const name of names){const patch=patchRelations(local.relations[name] as SnapshotRelationPatch<{id:string}>|undefined,name==='endpointLinks'?localLinks(current):current[name]??[],name==='endpointLinks'?localLinks(target):target[name]??[]);if(patch)(local.relations as Record<string,unknown>)[name]=patch;else delete local.relations[name];}
+ for(const name of names){const patch=patchRelations(local.relations[name] as SnapshotRelationPatch<{id:string}>|undefined,name==='endpointLinks'?localLinks(current):name==='joins'?localJoins(current):current[name]??[],name==='endpointLinks'?localLinks(target):name==='joins'?localJoins(target):target[name]??[]);if(patch)(local.relations as Record<string,unknown>)[name]=patch;else delete local.relations[name];}
+ local.relations=snapshotWithMirrorMetadata(local,current,target).relations;
  // Relation topology changes immediately, including when a shape draft exists.
  // Retire disabled link references in all local states, not just today's draft.
  const authorityStates=[local.deformation,...local.inheritedState?[local.inheritedState]:[],...local.draft?[local.draft.deformation]:[]],liveLinks=new Set((target.endpointLinks??[]).map(link=>link.id));
@@ -153,6 +169,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // Appearance belongs to the same saved/draft state as the command's controls.
  const appearanceState=useDraft&&local.draft?local.draft.deformation:local.deformation;
  for(const [layerId,patch] of appearances){const layer=appearanceState.layers[layerId]??={};layer.curveAppearance=mergeSnapshotCurveAppearance(layer.curveAppearance,patch);}
+ for(const [layerId,patch] of paintAppearances){const layer=appearanceState.layers[layerId]??={};layer.paintAppearance=mergeSnapshotPaintAppearance(layer.paintAppearance,patch);}
  // Existing controls are residuals over today's live post-Warp material. Only
  // changed IDs are authored; saved state and an unrelated draft remain intact.
  const state:SnapshotDeformationState=useDraft&&local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
@@ -189,7 +206,12 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  }
  for(const track of target.displayIntervals??[])if(track.displayRoute&&!actual.drawing.displayIntervals?.some(value=>value.id===track.id&&same(value.displayRoute,track.displayRoute)))return fail('TOPOLOGY_ROUTE_UNREPRESENTABLE','This local endpoint link cannot yet retain a through-display route over its source controls. No relation was changed.');
  for(const track of target.displayIntervals??[])if(resolvedMaterials.has(track.id)){const got=actual.drawing.displayIntervals!.find(value=>value.id===track.id)!;for(const range of track.ranges){const value=got.ranges.find(item=>item.id===range.id);if(!value||!close([range.start,range.end],[value.start,value.end]))return fail('TOPOLOGY_MATERIAL_UNREPRESENTABLE','The route edit cannot retain its requested material addresses. No relation was changed.');}}
+ for(const join of target.joins)if(join.mode==='ARC'){const got=actual.drawing.joins.find(value=>value.id===join.id);if(got?.mode!=='ARC'||!close([got.radius??0,0],[join.radius??0,0]))return fail('TOPOLOGY_BRUSH_UNREPRESENTABLE','The requested ARC radius cannot be represented under the current layer or stroke placement. No relation was changed.');}
  for(const link of target.endpointLinks??[]){const brush=link.joinBrush,got=actual.drawing.endpointLinks?.find(value=>value.id===link.id)?.joinBrush;if(brush?.kind==='ARC'&&(got?.kind!=='ARC'||!close([brush.trimDistance,0],[got.trimDistance,0])))return fail('TOPOLOGY_BRUSH_UNREPRESENTABLE','The requested ARC trim cannot be represented under the current layer or stroke placement. No relation was changed.');}
+ for(const kind of ['fills','offsets'] as const)for(const value of target[kind]){const got=actual.drawing[kind].find(item=>item.id===value.id);if(!got)return fail('TOPOLOGY_APPEARANCE_UNREPRESENTABLE',`Paint ${value.id} could not retain its requested local appearance. No geometry or appearance was changed.`);
+  const difference=snapshotPaintAppearanceDifference(got,value);if(difference?.kind==='offset'&&difference.translation&&'translation' in got&&got.translation&&close(got.translation,difference.translation))delete difference.translation;
+  if(difference&&Object.keys(difference).length>1)return fail('TOPOLOGY_APPEARANCE_UNREPRESENTABLE',`Paint ${value.id} could not retain its requested local appearance. No geometry or appearance was changed.`);
+ }
  for(const curve of target.curves){const got=actual.drawing.curves.find(value=>value.id===curve.id);if(got&&snapshotCurveAppearanceDifference(got,curve))return fail('TOPOLOGY_APPEARANCE_UNREPRESENTABLE',`Curve ${curve.id} could not retain its requested local appearance. No geometry or appearance was changed.`);if(!got||!same(got.nodes,curve.nodes))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} could not retain its requested shared-node topology.`);for(const end of [0,1] as const){const wanted=nodes.get(curve.nodes[end])!.position,gotNode=actual.drawing.nodes.find(node=>node.id===got.nodes[end])?.position;if(!gotNode||!close(gotNode,wanted)||!close(got.handles[end],curve.handles[end]))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE',`Curve ${curve.id} cannot reproduce the requested controls under its live layer domains and SMOOTH constraints. No geometry was changed.`);}}
  if(actual.drawing.curves.some(curve=>!wantedIds.has(curve.id)))return fail('TOPOLOGY_TARGET_UNREPRESENTABLE','The local membership edit could not remove every requested curve.');
  const reconciled=reconcileSnapshotMembershipResponses(workspace,membershipBefore);

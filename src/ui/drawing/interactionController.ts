@@ -10,12 +10,12 @@ export interface DrawingInteractionTransition {
 }
 
 /** Drawing's selection rules, also used by Recording's layer and canvas picks. */
-export function chooseDrawingSelection(currentTool:DrawingTool,next:DrawingSelection,mode?:DrawingTool):DrawingInteractionTransition{
+export function chooseDrawingSelection(currentTool:DrawingTool,next:DrawingSelection,mode?:DrawingTool,capabilities:{deformRequiresLayers?:boolean}={}):DrawingInteractionTransition{
  // Structural endpoint tools keep their two-click workflow when its layer changes.
  if(isEndpointTool(currentTool)&&next.layer)return {
   tool:currentTool,selection:{ids:[],layer:next.layer,layers:next.layers},layerId:next.layer,clearActiveControl:true,
  };
- const tool=currentTool==='deform'&&next.ids.length&&!next.node&&!next.handle?'deform':mode??(
+ const tool=currentTool==='deform'&&next.ids.length&&!next.node&&!next.handle&&(!capabilities.deformRequiresLayers||!!next.layer||!!next.layers?.length)?'deform':mode??(
   next.ids.length===1&&!next.layer&&!next.layers?.length&&!next.group?'direct':'select'
  );
  return {tool,selection:next,...(next.layer?{layerId:next.layer}:{}),clearActiveControl:tool!=='direct'||!next.node&&!next.handle};

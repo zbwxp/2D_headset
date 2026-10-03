@@ -1,6 +1,7 @@
+import {applyMirrorEditing,mirrorWritesForCurves} from '../drawing/mirrorEditing';
 import {snapshotWithObjectLocks,assertSnapshotObjectsUnlocked} from './objectLocks';
 import {layerUsesCage} from './layerDomainControlEdit';
-import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay,snapshotUsesControlTargetStages,SnapshotControlTargetError} from './controlTargets';
+import {captureSnapshotDrawingControlTarget} from './drawingControlTargetEdit';
 import {snapshotPathMaterialValue} from './materialPathMapping';
 import {snapshotMaterialPartitionAddress,snapshotMaterialPartitionParentValue,snapshotMaterialPartitionValue,prepareSnapshotPartitionIntervalEdit} from './materialSplit';
 import {trySnapshotControlInverse} from './controlSpace';
@@ -13,7 +14,7 @@ import type {SnapshotAngleGraph} from './model';
 import {configuredSnapshotMirror,seedAutomaticExtremeSnapshots} from './automaticSnapshotEdits';
 import {createSnapshotAngleGraph,createTriangulatedRecordingCopy,reconcileSnapshotAngleGraphMesh} from './angleGraph';
 import {insertSnapshotVertex,removeSnapshotVertex,rebindSnapshotVertex,locateSnapshotSimplex} from './triangulation';
-import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses,SnapshotSurfaceTargetEditError} from './surfaceTargets';
+import {effectiveSnapshotSurfaceResponses} from './surfaceTargets';
 import {createSnapshotPropertyResponseSampler,prepareSnapshotPropertyTargetEdit,finishSnapshotPropertyDraft,SnapshotPropertyResponseError} from './propertyResponses';
 import {snapshotSimplexIntervalBasisValues} from './simplexMaterial';
 import {mergeSnapshotDeformation} from './tracks';
@@ -258,6 +259,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   if(save)writable.deformation=mergeSnapshotDeformation(writable.deformation,take);
   if(!left.layerDomains?.length&&!left.warps.length&&!left.bindings.length&&!Object.keys(left.layers).length&&!Object.keys(left.relationPositions).length)delete writable.draft;else writable.draft={...draft,deformation:left};
  };
+ const captureControlTarget=(e:ReturnType<typeof evaluated>,wanted:DrawingDocument)=>{try{const writes=op==='transformShapeElements'?mirrorWritesForCurves(wanted,ids(c.curveIds)):op==='moveShapeNode'||op==='correctShapeNode'?{nodes:[{nodeId:String(c.nodeId),position:wanted.nodes.find(node=>node.id===c.nodeId)!.position}]}:{handles:[{curveId:String(c.curveId),end:c.end as 0|1,position:wanted.curves.find(curve=>curve.id===c.curveId)!.handles[c.end as 0|1]}]};return captureSnapshotDrawingControlTarget(workspace,recording,e,applyMirrorEditing(e.drawing,wanted,writes),fresh);}catch(error){if(error&&typeof error==='object'&&'code' in error)fail(String(error.code),String('message' in error?error.message:error));throw error;}};
  const applySurfaceEdit=(e:ReturnType<typeof evaluated>)=>{
   const surface=e.angleSurface;if(!surface?.simplex||surface.role==='outside')fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
   const current=e.drawing;let wanted:DrawingDocument;
@@ -269,7 +271,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');if(!current.curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not present in normal snapshot coverage.');wanted=moveNode(current,nodeId,point(c.position),true);}
    else {const curveId=id(c.curveId,'curveId');if(!owner.items.includes(curveId)||!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Curve is not present in normal snapshot coverage.');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');wanted=moveHandle(current,{curveId,end:c.end as 0|1},point(c.position),true);}
   }
-  try{const result=prepareSnapshotSurfaceTargetEdit(recording.angleGraph!,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:boundAngle(findSnapshot(base.snapshotId))})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(recording.angleGraph!).draft?.id??fresh(),allBases:surface!.allBases});if(result.changed)recording.angleGraph=result.graph;}catch(error){if(error instanceof SnapshotSurfaceTargetEditError)fail(error.code,error.message);throw error;}
+  const result=captureControlTarget(e,wanted);if(result.graph)recording.angleGraph=result.graph;
  };
  const applySurfaceIntervalEdit=()=>{
   const e=evaluated(),surface=e.angleSurface;
@@ -367,16 +369,13 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    if(!graph&&(op==='correctShapeNode'||op==='correctShapeHandle'||pairIntermediate)){applyPairCorrection(op==='moveShapeNode'||op==='correctShapeNode'?'node':'handle');break;}
    const e=evaluated();
    const targetLayers=op==='transformShapeElements'?e.drawing.layers.filter(layer=>(c.curveIds as string[]).some(id=>layer.items.includes(id))).map(layer=>layer.id):[String(c.layerId)];
-   const targetCurves=op==='transformShapeElements'?c.curveIds as string[]:e.drawing.curves.filter(curve=>targetLayers.includes(e.drawing.layers.find(layer=>layer.items.includes(curve.id))?.id??'')&&(op==='moveShapeNode'||op==='correctShapeNode'?curve.nodes.includes(String(c.nodeId)):curve.id===c.curveId)).map(curve=>curve.id);
-   if(graph&&snapshotUsesControlTargetStages(e,targetCurves,true)||targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){
+   if(graph||targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){
     if(op!=='transformShapeElements'){const owner=layer(c.layerId),resolved=e.drawing.layers.find(value=>value.id===owner.id)!;if(op==='moveShapeNode'||op==='correctShapeNode'){if(!e.drawing.curves.some(curve=>resolved.items.includes(curve.id)&&curve.nodes.includes(String(c.nodeId))))fail('MISSING_ELEMENT','Node is not owned by this layer.');}else if(!resolved.items.includes(String(c.curveId)))fail('MISSING_ELEMENT','Curve is not owned by this layer.');}
     let world:DrawingDocument;
     if(op==='transformShapeElements'){const curveIds=ids(c.curveIds),delta=placement(c.value);world=transform(e.drawing,curveIds,p=>applyScenePlacement(delta,p),true,false);world=projectSnapshotTransformTargets(e.drawing,world);}
     else if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');world=moveNode(e.drawing,nodeId,point(c.position),true);}
     else{const curveId=id(c.curveId,'curveId');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');world=moveHandle(e.drawing,{curveId,end:c.end as 0|1},point(c.position),true);}
-    try{const owner=snapshot(),prior=owner.draft??{angle:clone(owner.angle),deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(e,world,prior.deformation,fresh);if(deformation===prior.deformation)break;const candidate={...owner,draft:{...prior,deformation}},next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'||recording.mode==='endpoint-pair'?evaluateWorkspace(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,diagnostics:'preview'});
-     assertSnapshotControlTargetReplay(replay.drawing,world);snapshotForWrite(owner).draft=candidate.draft;
-    }catch(error){if(error instanceof SnapshotControlTargetError)fail(error.code,error.message);throw error;}break;
+    const result=captureControlTarget(e,world);if(result.snapshot)snapshotForWrite(snapshot()).draft=result.snapshot.draft;break;
    }
    const current=e.preElementPlacementDrawing,base=e.preShapeDrawing,relationNodes=new Set<string>();let next:DrawingDocument;
    if(op==='transformShapeElements'){

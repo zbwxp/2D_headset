@@ -60,7 +60,7 @@ function refreshSourceRelations(previous:RecordingSnapshot|undefined,canonical:D
  const refresh=<T extends {id:string}>(patch:SnapshotRelationPatch<T>|undefined,originals:T[]):SnapshotRelationPatch<T>=>({
   ...patch,add:[...originals,...(patch?.add??[]).filter(value=>!previous||!drawingSourceOwns(previous,value.id))],
  });
- return {joins:refresh(previous?.relations.joins,canonical.joins),endpointLinks:refresh(previous?.relations.endpointLinks,canonical.endpointLinks??[]),groups:refresh(previous?.relations.groups,canonical.groups??[]),displayIntervals:refresh(previous?.relations.displayIntervals,canonical.displayIntervals??[])};
+ return {...(previous?.relations.mirrorEditing?{mirrorEditing:previous.relations.mirrorEditing}:{}),joins:refresh(previous?.relations.joins,canonical.joins),endpointLinks:refresh(previous?.relations.endpointLinks,canonical.endpointLinks??[]),groups:refresh(previous?.relations.groups,canonical.groups??[]),displayIntervals:refresh(previous?.relations.displayIntervals,canonical.displayIntervals??[])};
 }
 
 /** Reconstruct original geometry from the canonical store. For a Drawing
@@ -69,7 +69,7 @@ function refreshSourceRelations(previous:RecordingSnapshot|undefined,canonical:D
  * must use the same baseline. This transient document is never serialized. */
 export function materializeOriginalSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string):DrawingDocument|undefined{
  const stored=workspace.snapshots.find(s=>s.id===snapshotId);if(!stored)return undefined;
- const snapshot:RecordingSnapshot=stored.source?{...stored,layers:stored.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(stored,layer.id)),relations:Object.fromEntries(Object.entries(stored.relations).map(([kind,patch])=>[kind,{add:patch.add?.filter((value:{id:string})=>drawingSourceOwns(stored,value.id))??[]}]))}:stored;
+ const snapshot:RecordingSnapshot=stored.source?{...stored,layers:stored.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(stored,layer.id)),relations:Object.fromEntries(Object.entries(stored.relations).filter(([kind])=>kind!=='mirrorEditing').map(([kind,patch])=>[kind,{add:patch.add?.filter((value:{id:string})=>drawingSourceOwns(stored,value.id))??[]}]))}:stored;
  if(snapshot.layers.some(layer=>layer.kind!=='original'))return undefined;
  const layers=snapshot.layers.map(layer=>{const {kind,...rest}=layer;void kind;return structuredClone(rest) as DrawingDocument['layers'][number];}),items=new Set(layers.flatMap(l=>l.items));
  const curves=[...items].flatMap(id=>Object.hasOwn(workspace.library.curves,id)?[structuredClone(workspace.library.curves[id])]:[]),nodeIds=new Set(curves.flatMap(c=>c.nodes));
