@@ -12,7 +12,8 @@ import {captureSnapshotLayerClipboard} from '../domain/recordingSnapshot/referen
 import {identityScenePlacement} from '../domain/recordingScene/model';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from '../ui/drawing/snapshotPresentation';
 import {captureDrawingLayerReferences,prepareDrawingLayerReferencePaste} from '../ui/drawing/layerReferenceClipboard';
-import {commitDrawingSnapshotEdit,prepareDrawingSnapshotEdit} from '../ui/drawing/snapshotEditContext';
+import {commitDrawingSnapshotEdit,prepareDrawingSnapshotEdit,commitDrawingCurveSplit} from '../ui/drawing/snapshotEditContext';
+import {split} from '../domain/geometry/bezier';
 
 const editor=useEditor.getState(),mode=useWorkspaceMode.getState().mode;
 afterEach(()=>{useEditor.setState(editor,true);useWorkspaceMode.getState().setMode(mode);vi.useRealTimers();});
@@ -39,6 +40,17 @@ test('Recording clipboard pastes live into Drawing with stable IDs, no source co
  const again=prepareDrawingLayerReferencePaste(before,f.clip,'test');expect(again.changed).toBe(false);expect(again.project).toBe(before);
  const captured=captureDrawingLayerReferences(before,'A',[bid('layer')],'reference','test');expect(captured.sources).toEqual([{snapshotId:a.id,layerIds:[bid('layer')]}]);
  expect(currentDrawingPresentation(before)).toBe(view);
+});
+
+test.each(['original','reference'] as const)('Drawing split routes the explicit %s intent through one shared store transaction',kind=>{
+ const f=fixture(),before=f.project,id=kind==='original'?'curve':bid('curve'),view=currentDrawingPresentation(before),expected=split(shapeOf(view,id).map(([x,y])=>[x,y,0]),.4).map(curve=>curve.map(([x,y])=>[x,y]));
+ vi.useFakeTimers();useWorkspaceMode.getState().setMode('drawing');useEditor.setState({project:before,past:[],future:[]});
+ const plan=commitDrawingCurveSplit(useEditor.getState(),id,.4),after=useEditor.getState().project,actual=currentDrawingPresentation(after);
+ expect(plan.ids).toHaveLength(2);for(const [i,child] of plan.ids.entries())expect(shapeOf(actual,child).flat()).toEqual(expected[i].flat().map(value=>expect.closeTo(value,9)));
+ expect(useEditor.getState().past).toEqual([before]);expect(drawingSnapshotForArtwork(after.recordingSnapshots!,'B')).toEqual(drawingSnapshotForArtwork(before.recordingSnapshots!,'B'));
+ if(kind==='reference'){expect(after.drawing).toBe(before.drawing);expect(after.recordingSnapshots!.library.curves[id]).toEqual(before.recordingSnapshots!.library.curves[id]);expect(plan.diagnostics?.[0].code).toBe('LOCAL_SPLIT_CORRESPONDENCE');}
+ else {expect(after.drawing!.curves.map(curve=>curve.id)).toEqual(plan.ids);expect(shapeOf(actual,bid('curve'))).toEqual(shapeOf(view,bid('curve')));}
+ useEditor.getState().undo();expect(useEditor.getState().project).toBe(before);useEditor.getState().redo();expect(useEditor.getState().project).toBe(after);
 });
 
 test.each(['node','handle','affine'] as const)('Drawing %s gesture changes only referenced snapshot state, preserves IDs, and undoes once',kind=>{

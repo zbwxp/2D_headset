@@ -10,7 +10,7 @@ import PaintScene from '../ui/drawing/PaintScene';
 import AIGuideOverlay,{MAX_AI_GUIDE_CURVES,type AIGuideOptions} from '../ui/drawing/AIGuideOverlay';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {emptyDrawing,parseDrawing,shapeOf,curveById,layerFor,members,nodeAt,objectById,validFillMist,type FillMist,type TerminusBrushStyle,type TerminusJoinBrush,type DisplayIntervalMode,type DrawingDocument,type Point2,type Cubic} from '../domain/drawing/model';
-import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,splitCurve,setMirrorAxis,linkEndpoints,unlinkEndpoints,connect} from '../domain/drawing/commands';
+import {moveNode,moveHandle,transform,curveChange,renameStroke,widthChange,RelatedSelection,addLayer,duplicateLayer,deleteLayers,reorderLayers,layerChange,deleteObjects,moveToLayer,createCurve,setMirrorAxis,linkEndpoints,unlinkEndpoints,connect} from '../domain/drawing/commands';
 import {setObjectState,objectState} from '../domain/drawing/objectState';
 import {createFill,changePaint,reorderPaint,setInk,setInkEnd} from '../domain/drawing/paintCommands';
 import {setDepthOffset} from '../domain/drawing/depth';
@@ -29,6 +29,10 @@ import {applyElementCommand,elementCommandNames,ElementCommandError,type Element
 import {applyMirrorCommand,mirrorCommandNames,MirrorApiError,MirrorBatchIntent,type MirrorEditingCommand} from './vectorMirrorEditingApi';
 import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
+import {createLayerCurveSplitIntent,applyLayerEditIntent,curveSplitIntents,type LayerEditIntent} from '../domain/drawing/layerEditIntent';
+import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
+import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../domain/recordingSnapshot/sources';
+import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {RecordingApiError,prepareRecordingBatch,recordingOverview,evaluateRecording,recordingCommandNames,type RecordingBatch,type RecordingQuery,type RecordingCommand} from './vectorRecordingApi';
 import type {VectorRecording} from '../domain/vectorRecording/model';
 import {SceneApiError,prepareSceneBatch,sceneOverview,evaluateRecordingScene,sceneCommandNames,type SceneBatch,type SceneQuery,type SceneCommand} from './recordingSceneApi';
@@ -91,6 +95,8 @@ export interface VectorEditingHost {
  getState():{project:LandmarkProject;past:readonly LandmarkProject[];future:readonly LandmarkProject[]};
  getMode():WorkspaceMode;
  commitDrawing(drawing:DrawingDocument):void;
+ /** Atomically commit a fully preflighted source/Snapshot candidate in one Undo. */
+ commitSnapshotEditPlan?(plan:SnapshotEditPlan):void;
  commitArtwork?(state:DrawingSnapshotState):void;
  commitRecording?(recording:VectorRecording):void;
  commitRecordingScenes?(recording:RecordingScenes):void;
@@ -225,7 +231,7 @@ function checkNewDiagnostics(before:DrawingDocument,after:DrawingDocument){
  const added=diagnostics(after).filter(x=>!prior.has(`${x.kind}:${x.id}:${x.message}`));
  if(added.length)fail('GEOMETRY_INVALID',`Edit would introduce invalid derived geometry: ${added.map(x=>`${x.kind} ${x.id}: ${x.message}`).join('; ')}`);
 }
-function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void):DrawingDocument{
+function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void,prepareSplit:(drawing:DrawingDocument,curveId:string,t:number)=>ReturnType<typeof applyLayerEditIntent>):DrawingDocument{
  const c=record(raw),op=c.op;
  if(mirrorCommandNames.includes(op as string))return applyMirrorCommand(d,c,(id,ref)=>created('mirrorPair',id,ref));
  switch(op){
@@ -297,7 +303,7 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
    const n=createCurve(d,layer,(c.shape as unknown[]).map((p,i)=>point(p,`shape[${i}]`)) as Cubic,c.width===undefined?undefined:num(c.width,'width',1e-8,1),c.name===undefined?undefined:string(c.name,'name',VECTOR_AI_LIMITS.name).trim());created('curve',n.curves.at(-1)!.id,c.ref);return n;
   }
   case 'splitCurve':{
-   keys(c,['op','curveId','t','ref']);const result=splitCurve(d,curveExists(d,c.curveId),num(c.t,'t',0,1));created('curve',result.ids[1],c.ref);return result.document;
+   keys(c,['op','curveId','t','ref']);const curveId=curveExists(d,c.curveId),result=prepareSplit(d,curveId,num(c.t,'t',0,1));created('curve',result.ids[1],c.ref,Object.fromEntries(curveSplitIntents(result.intent).map(split=>[split.curveId,split.childCurveIds[0]])));for(const id of curveSplitIntents(result.intent).flatMap(split=>[...split.childCurveIds]))if(id!==result.ids[1])created('curve',id,undefined);return result.document;
   }
   case 'setMirrorAxis':keys(c,['op','x']);return setMirrorAxis(d,num(c.x,'x'));
   case 'setInkVisibility':keys(c,['op','curveIds','visible']);if(typeof c.visible!=='boolean')fail('INVALID_REQUEST','visible must be a boolean.');return setInk(d,curvesExist(d,c.curveIds),{inkVisible:c.visible as boolean});
@@ -350,6 +356,7 @@ const canvasToSource=(p:Point2,v:VectorViewport):Point2=>[v.center[0]+(p[0]-v.wi
 function defaultHost():VectorEditingHost{
  return {
   getState:useEditor.getState,getMode:()=>useWorkspaceMode.getState().mode,
+  commitSnapshotEditPlan(plan){if(!canEditSource())fail('MODE_RESTRICTED','Source edits require Drawing mode.');useEditor.getState().commitPreparedSnapshotEdit(plan);},
   commitDrawing(drawing){
    if(!canEditSource())fail('MODE_RESTRICTED','Source edits require Drawing mode. Change modes in the workspace first.');
    const e=useEditor.getState();e.beginEdit();try{e.setDrawing(drawing);}finally{e.endEdit();}
@@ -394,7 +401,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(input);keys(r,['commands','expectedRevision','dryRun']);expected(r.expectedRevision);bool(r.dryRun,'dryRun');
   if(host.getMode()!=='drawing')fail('MODE_RESTRICTED','Source edits require Drawing mode. Recording does not change source geometry or topology.');
   if(!Array.isArray(r.commands)||r.commands.length>VECTOR_AI_LIMITS.batch)fail('INVALID_REQUEST',`commands must be an array of at most ${VECTOR_AI_LIMITS.batch} commands.`);
-  const mirrorIntent=new MirrorBatchIntent();
+  const mirrorIntent=new MirrorBatchIntent(),beforeProject=host.getState().project;let candidateProject=beforeProject,pendingSource=false;const topologyIntents:LayerEditIntent[]=[];
   const before=source(),approximations:{commandIndex:number;sampledMaxError:number}[]=[],created:CreatedEntity[]=[],refs=new Map<string,string>();let next=clone(before);
   const canonicalIdExists=(id:string)=>[...next.layers,...next.curves,...next.nodes,...next.fills,...next.offsets,...next.joins,...(next.endpointLinks??[]),...(next.groups??[]),...(next.displayIntervals??[]),...(next.displayIntervals??[]).flatMap(t=>t.ranges),...(next.mirrorEditing?.curvePairs??[])].some(x=>x.id===id);
   const resolve=(value:unknown,key='',mirrorPair=false):unknown=>{
@@ -405,21 +412,33 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   };
   for(const [index,c] of (r.commands as unknown[]).entries()){
    try{
-    const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair')),previous=next;next=applyCommand(next,resolved,error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
+    let topologyIntent:LayerEditIntent|undefined;
+    const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair')),previous=next;
+    // Ordinary runs share one source synchronization. A split is the explicit
+    // boundary: flush prior edits before freezing any real Snapshot controls.
+    if(resolved.op==='splitCurve'&&pendingSource){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(previous)}).project;pendingSource=false;}
+    next=applyCommand(next,resolved,error=>approximations.push({commandIndex:index,sampledMaxError:error}),(kind,id,rawRef,idMap)=>{
      const ref=rawRef===undefined?undefined:string(rawRef,'ref',80);if(ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]*$/.test(ref))fail('INVALID_REQUEST','ref must begin with a letter and contain only letters, digits, _ or -.');if(refs.has(ref))fail('DUPLICATE_REFERENCE',`Repeated batch reference: ${ref}.`);
       for(const alias of [ref,...Object.keys(idMap??{}).map(old=>`${ref}/${old}`)])if(canonicalIdExists(`$${alias}`))fail('REFERENCE_COLLISION',`Reference $${alias} collides with an existing canonical ID. Choose another ref.`);
       refs.set(ref,id);for(const [old,newId] of Object.entries(idMap??{}))refs.set(`${ref}/${old}`,newId);
      }
      created.push({commandIndex:index,kind,id,...(ref===undefined?{}:{ref}),...(idMap?{idMap}:{})});
+    },(drawing,curveId,t)=>{
+     const workspace=candidateProject.recordingSnapshots,source=workspace&&drawingSnapshotForArtwork(workspace,candidateProject.drawingSnapshots?.activeId??'$working'),pair=drawing.mirrorEditing?.enabled?drawing.mirrorEditing.curvePairs.find(pair=>pair.a===curveId||pair.b===curveId):undefined,rawTargets=new Set([curveId,...(pair?[pair.a,pair.b]:[])]),canonicalTargets=new Set(Object.entries(source?.source?.originIds??{}).filter(([,raw])=>rawTargets.has(raw)).map(([id])=>id));
+     const relatedDrawings=workspace&&source?workspace.snapshots.flatMap(snapshot=>[resolveSnapshot(workspace,snapshot.id,{useDraft:false,diagnostics:'preview'}).drawing,...(snapshot.draft?[resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.draft.angle,diagnostics:'preview'}).drawing]:[])].filter(evaluated=>evaluated.curves.some(curve=>canonicalTargets.has(curve.id))).map(evaluated=>remapDrawingIdentities(evaluated,id=>source.source!.originIds[id]??id))):[];
+     topologyIntent=createLayerCurveSplitIntent(drawing,curveId,t,{relatedDrawings});topologyIntents.push(topologyIntent);return applyLayerEditIntent(drawing,topologyIntent);
     });
     if(mirrorCommandNames.includes(resolved.op as string)){if(JSON.stringify(previous.mirrorEditing)!==JSON.stringify(next.mirrorEditing))mirrorIntent.clear();}
     else {if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
     // Quad deformation already transports material cut positions; other geometry edits do so here.
     if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
     validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
+    if(topologyIntent){candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next),intent:topologyIntent}).project;pendingSource=false;}else pendingSource=true;
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError||e instanceof MirrorApiError?e.code:e instanceof MirrorEditingError?`MIRROR_${e.code}`:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
-  return {before,next,changed:JSON.stringify(before)!==JSON.stringify(next),dryRun:r.dryRun===true,approximations,created};
+  if(pendingSource)candidateProject=prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}).project;
+  const changed=JSON.stringify(before)!==JSON.stringify(next),snapshotPlan:SnapshotEditPlan={before:beforeProject,project:candidateProject,changed};
+  return {before,next,changed,dryRun:r.dryRun===true,approximations,created,topologyIntents,snapshotPlan};
  }
  function inspectQuery(raw:unknown){
   const q=record(raw);keys(q,['layerIds','layerNames','curveIds','curveNames','strokeNames','nameIncludes','includeRecording']);bool(q.includeRecording,'includeRecording');
@@ -565,11 +584,15 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
    return {...plan.result,changed:plan.changed,dryRun:plan.dryRun,applied:plan.changed&&!plan.dryRun};
   }),
   execute:(request:VectorBatch)=>run(()=>{
-   const {before,next,changed,dryRun,approximations,created}=prepare(request),changes=changedIds(before,next);
+   const {before,next,changed,dryRun,approximations,created,topologyIntents,snapshotPlan}=prepare(request),changes=changedIds(before,next);
    const beforeAfter=changes.curveIds.filter(id=>before.curves.some(c=>c.id===id)).map(id=>({curveId:id,layerId:layerFor(next,id)!.id,before:{name:before.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(before,id)),width:before.curves.find(c=>c.id===id)!.width},after:{name:next.curves.find(c=>c.id===id)!.name,shape:clone(shapeOf(next,id)),width:next.curves.find(c=>c.id===id)!.width}}));
    const addedCurves=next.curves.filter(c=>!before.curves.some(x=>x.id===c.id)).map(c=>({curveId:c.id,layerId:layerFor(next,c.id)!.id,name:c.name,shape:clone(shapeOf(next,c.id))}));
-   const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
-   if(changed&&!dryRun)host.commitDrawing(markFinalizedGeometry(next));
+   const result={applied:changed&&!dryRun,dryRun,changed,...changes,created,addedCurves,approximations,...(topologyIntents.length?{topologyIntents}:{}),beforeBounds:drawingBounds(before),afterBounds:drawingBounds(next),beforeAfter,diagnostics:diagnostics(next)};
+   if(changed&&!dryRun){
+    if(host.commitSnapshotEditPlan)host.commitSnapshotEditPlan(snapshotPlan);
+    else if(topologyIntents.length&&snapshotPlan.before.recordingSnapshots)fail('UNAVAILABLE','This host must implement commitSnapshotEditPlan to atomically preserve Snapshot topology, poses and responses.');
+    else host.commitDrawing(markFinalizedGeometry(next));
+   }
    return result;
   }),
   select:(request:{curveIds:string[];expectedRevision?:string})=>run(()=>{

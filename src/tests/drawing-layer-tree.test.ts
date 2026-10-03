@@ -3,14 +3,13 @@ import * as c from '../domain/drawing/commands';
 import * as p from '../domain/drawing/paintCommands';
 import {emptyDrawing,parseDrawing,layerFor,shapeOf} from '../domain/drawing/model';
 import {layerTree,strokeFor,strokeObjectIds} from '../domain/drawing/strokes';
-import {fillGeometry} from '../domain/drawing/appearance';
 function fixture(){
  let d=c.addLayer(emptyDrawing(),'Iris');const source=d.layers[0].id,e=c.ellipse(d,source,[-.5,-.4],[.5,.4],.02);d=p.createFill(e.document,e.ids,'black');d=p.createFill(d,e.ids,'white');d=p.createOffset(d,e.ids[0]);const offset=d.offsets[0].id;d=c.addLayer(d,'Hair');const target=d.layers[0].id;d=c.createCurve(d,target,[[0,0],[.3,0],[.6,0],[1,0]],.02,'Other','other');return {d,source,target,ids:e.ids,offset};
 }
-test('sidebar nests every owned fill, preserves paint order and leaves orphan diagnostics reachable',()=>{
+test('sidebar nests every owned fill, preserves paint order and removes paint whose source was deleted',()=>{
  const {d,source,ids}=fixture(),before=structuredClone(d),tree=layerTree(d,source),owner=tree.find(x=>x.stroke)!;
  expect(owner.fills).toHaveLength(2);expect(tree.map(x=>x.kind)).toEqual(['offset','stroke']);expect(d).toEqual(before);
- const partial=c.deleteCurves(d,[ids[0]]);expect(layerTree(partial,source).filter(x=>x.kind==='fill')).toHaveLength(2);expect(fillGeometry(partial,partial.fills[0]).error).toMatch(/删除/);
+ const partial=c.deleteCurves(d,[ids[0]]);expect(layerTree(partial,source).filter(x=>x.kind==='fill')).toHaveLength(0);expect(partial.fills).toEqual([]);expect(partial.offsets).toEqual([]);expect(partial.layers.some(layer=>layer.id===source)).toBe(true);
 });
 test('moving a complete hidden stroke carries fills in paint order, preserves geometry, joins and flags',()=>{
  let {d,source,target,ids,offset}=fixture();d=c.setStrokeState(d,ids[0],{visible:false});d=p.changePaint(d,d.fills[0].id,{visible:false});const before=structuredClone(d),contents=strokeObjectIds(d,strokeFor(d,ids[0]));

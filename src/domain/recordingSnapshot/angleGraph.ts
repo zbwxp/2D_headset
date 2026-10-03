@@ -1,3 +1,4 @@
+import {validateSnapshotResponseExpressionRegistry,snapshotResponseExpressionRegistryValidForMesh} from './responseExpressionRegistry';
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointPair,SnapshotEndpointResponses,SnapshotOrphanedResponses} from './model';
 import {createSnapshotTriangulation,validateSnapshotTriangulation,locateSnapshotSimplex,type SnapshotTriangulation} from './triangulation';
 import {validateInteriorResponseSamples,type InteriorResponseSample} from './triangularResponses';
@@ -62,26 +63,26 @@ function responseMaps(data:Record<string,unknown>,mesh:SnapshotTriangulation,opt
 function frames(value:unknown,mesh:SnapshotTriangulation):void {
  const ids=new Set<string>();
  for(const raw of list(value,10000)){
-  const frame=object(raw,['id','angle','status','edgeResponses','triangleResponses','propertyResponses']);id(frame.id);angle(frame.angle);
+  const frame=object(raw,['id','angle','status','edgeResponses','triangleResponses','propertyResponses','responseExpressions']);id(frame.id);angle(frame.angle);
   if(ids.has(frame.id as string))fail('duplicate correction frame');ids.add(frame.id as string);
   if(frame.status!=='saved'&&frame.status!=='draft')fail('correction frame status');
-  responseMaps(frame,mesh,true);if(frame.propertyResponses!==undefined)validateSnapshotPropertyResponses(frame.propertyResponses,mesh);
+  responseMaps(frame,mesh,true);if(frame.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(frame.responseExpressions,mesh);if(frame.propertyResponses!==undefined)validateSnapshotPropertyResponses(frame.propertyResponses,mesh);
  }
 }
 
 /** Strict persisted schema and values. Run at load/edit boundaries, never per
  * sample. Defaults remain absent in old recordings; opt-in graphs are explicit. */
 export function validateSnapshotAngleGraph(graph:SnapshotAngleGraph):void {
- const data=object(graph,['version','mesh','edgeResponses','triangleResponses','correctionFrames','orphanedResponses','migration','propertyResponses']);
- if(data.version!==1)fail('version');const mesh=meshShape(data.mesh);responseMaps(data,mesh);if(data.propertyResponses!==undefined)validateSnapshotPropertyResponses(data.propertyResponses,mesh);
+ const data=object(graph,['version','mesh','edgeResponses','triangleResponses','correctionFrames','orphanedResponses','migration','propertyResponses','responseExpressions']);
+ if(data.version!==1)fail('version');const mesh=meshShape(data.mesh);responseMaps(data,mesh);if(data.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(data.responseExpressions,mesh);if(data.propertyResponses!==undefined)validateSnapshotPropertyResponses(data.propertyResponses,mesh);
  if(data.correctionFrames!==undefined)frames(data.correctionFrames,mesh);
  if(data.orphanedResponses!==undefined){
   const ids=new Set<string>();
   for(const raw of list(data.orphanedResponses,10000)){
-   const archive=object(raw,['id','reason','message','mesh','edgeResponses','triangleResponses','correctionFrames','propertyResponses']);id(archive.id);
+   const archive=object(raw,['id','reason','message','mesh','edgeResponses','triangleResponses','correctionFrames','propertyResponses','responseExpressions']);id(archive.id);
    if(ids.has(archive.id as string))fail('duplicate response archive');ids.add(archive.id as string);
    if(!['deleted-view','mesh-change','unhandled-rebind'].includes(String(archive.reason))||typeof archive.message!=='string'||!archive.message||archive.message.length>4096)fail('response archive reason');
-   const oldMesh=meshShape(archive.mesh);responseMaps(archive,oldMesh);if(archive.propertyResponses!==undefined)validateSnapshotPropertyResponses(archive.propertyResponses,oldMesh);if(archive.correctionFrames!==undefined)frames(archive.correctionFrames,oldMesh);
+   const oldMesh=meshShape(archive.mesh);responseMaps(archive,oldMesh);if(archive.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(archive.responseExpressions,oldMesh);if(archive.propertyResponses!==undefined)validateSnapshotPropertyResponses(archive.propertyResponses,oldMesh);if(archive.correctionFrames!==undefined)frames(archive.correctionFrames,oldMesh);
   }
  }
  if(data.migration!==undefined){
@@ -205,19 +206,21 @@ export function reconcileSnapshotAngleGraphMesh(graph:SnapshotAngleGraph,mesh:Sn
   validateSnapshotAngleGraph(graph);meshShape(mesh);
   const oldVertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex]));
   const rebound=mesh.vertices.some(vertex=>{const old=oldVertices.get(vertex.id);return old&&(!same(old.angle,vertex.angle)||old.snapshotId!==vertex.snapshotId);});
-  const constrained=Object.keys(graph.edgeResponses).length||Object.keys(graph.triangleResponses).length||graph.correctionFrames?.length||Object.keys(graph.propertyResponses?.edges??{}).length||Object.keys(graph.propertyResponses?.triangles??{}).length;
+  const constrained=Object.keys(graph.responseExpressions??{}).length||Object.keys(graph.edgeResponses).length||Object.keys(graph.triangleResponses).length||graph.correctionFrames?.length||Object.keys(graph.propertyResponses?.edges??{}).length||Object.keys(graph.propertyResponses?.triangles??{}).length;
   if(rebound&&constrained)return {ok:false,diagnostics:[{code:'UNHANDLED_REBIND',message:'This angle rebind affects recorder-owned constraints. Choose and implement an explicit absolute-angle or follow-mesh rebind policy before changing it.'}]};
   const edges=new Map(mesh.edges.map(edge=>[edge.id,edge])),triangles=new Map(mesh.triangles.map(triangle=>[triangle.id,triangle]));
   for(const edge of graph.mesh.edges)if(edges.has(edge.id)&&!same(edge.vertexIds,edges.get(edge.id)!.vertexIds))fail('existing edge orientation cannot change under the same ID');
   for(const triangle of graph.mesh.triangles)if(triangles.has(triangle.id)&&(!same(triangle.vertexIds,triangles.get(triangle.id)!.vertexIds)||!same(triangle.edgeIds,triangles.get(triangle.id)!.edgeIds)))fail('existing triangle coordinates cannot change under the same ID');
+  const keepExpression=(id:string,responses:NonNullable<SnapshotAngleGraph['responseExpressions']>[string])=>(edges.has(id)||triangles.has(id))&&snapshotResponseExpressionRegistryValidForMesh(responses,mesh);
+  const retiredExpressions=Object.fromEntries(Object.entries(graph.responseExpressions??{}).filter(([id,responses])=>!keepExpression(id,responses)));
   const retiredEdges=Object.fromEntries(Object.entries(graph.edgeResponses).filter(([id])=>!edges.has(id))),retiredTriangles=Object.fromEntries(Object.entries(graph.triangleResponses).filter(([id])=>!triangles.has(id)));
   const retiredProperties={edges:Object.fromEntries(Object.entries(graph.propertyResponses?.edges??{}).filter(([id])=>!edges.has(id))),triangles:Object.fromEntries(Object.entries(graph.propertyResponses?.triangles??{}).filter(([id])=>!triangles.has(id)))};
-  const retiredFrames=(graph.correctionFrames??[]).filter(frame=>{const location=locateSnapshotSimplex(graph.mesh,frame.angle);return Object.keys(frame.propertyResponses?.edges??{}).some(id=>!edges.has(id))||Object.keys(frame.propertyResponses?.triangles??{}).some(id=>!triangles.has(id))||Object.keys(frame.edgeResponses??{}).some(id=>!edges.has(id))||Object.keys(frame.triangleResponses??{}).some(id=>!triangles.has(id))||location?.kind==='edge'&&!edges.has(location.simplexId)||location?.kind==='triangle'&&!triangles.has(location.simplexId);});
-  const retiredIds=new Set(retiredFrames.map(frame=>frame.id)),diagnostics:SnapshotAngleGraphDiagnostic[]=[...Object.keys(retiredProperties.edges).map(edgeId=>({code:'ORPHANED_RESPONSE' as const,edgeId,message:`Edge ${edgeId} property responses were archived with their original coordinate frame.`})),...Object.keys(retiredProperties.triangles).map(triangleId=>({code:'ORPHANED_RESPONSE' as const,triangleId,message:`Triangle ${triangleId} property responses were archived with their original coordinate frame.`})),...Object.keys(retiredEdges).map(edgeId=>({code:'ORPHANED_RESPONSE' as const,edgeId,message:`Edge ${edgeId} responses were archived with their original coordinate frame.`})),...Object.keys(retiredTriangles).map(triangleId=>({code:'ORPHANED_RESPONSE' as const,triangleId,message:`Triangle ${triangleId} responses were archived with their original coordinate frame.`})),...retiredFrames.map(frame=>({code:'ORPHANED_RESPONSE' as const,frameId:frame.id,message:`Correction frame ${frame.id} was archived because its simplex was removed.`}))];
-  const next:SnapshotAngleGraph={...graph,mesh:structuredClone(mesh),edgeResponses:Object.fromEntries(Object.entries(graph.edgeResponses).filter(([id])=>edges.has(id))),triangleResponses:Object.fromEntries(Object.entries(graph.triangleResponses).filter(([id])=>triangles.has(id))),
+  const retiredFrames=(graph.correctionFrames??[]).filter(frame=>{const location=locateSnapshotSimplex(graph.mesh,frame.angle);return Object.entries(frame.responseExpressions??{}).some(([id,responses])=>!keepExpression(id,responses))||Object.keys(frame.propertyResponses?.edges??{}).some(id=>!edges.has(id))||Object.keys(frame.propertyResponses?.triangles??{}).some(id=>!triangles.has(id))||Object.keys(frame.edgeResponses??{}).some(id=>!edges.has(id))||Object.keys(frame.triangleResponses??{}).some(id=>!triangles.has(id))||location?.kind==='edge'&&!edges.has(location.simplexId)||location?.kind==='triangle'&&!triangles.has(location.simplexId);});
+  const retiredIds=new Set(retiredFrames.map(frame=>frame.id)),diagnostics:SnapshotAngleGraphDiagnostic[]=[...Object.keys(retiredExpressions).map(simplexId=>({code:'ORPHANED_RESPONSE' as const,message:`Expression responses for ${simplexId} were archived because their simplex or live basis dependency was removed.`})),...Object.keys(retiredProperties.edges).map(edgeId=>({code:'ORPHANED_RESPONSE' as const,edgeId,message:`Edge ${edgeId} property responses were archived with their original coordinate frame.`})),...Object.keys(retiredProperties.triangles).map(triangleId=>({code:'ORPHANED_RESPONSE' as const,triangleId,message:`Triangle ${triangleId} property responses were archived with their original coordinate frame.`})),...Object.keys(retiredEdges).map(edgeId=>({code:'ORPHANED_RESPONSE' as const,edgeId,message:`Edge ${edgeId} responses were archived with their original coordinate frame.`})),...Object.keys(retiredTriangles).map(triangleId=>({code:'ORPHANED_RESPONSE' as const,triangleId,message:`Triangle ${triangleId} responses were archived with their original coordinate frame.`})),...retiredFrames.map(frame=>({code:'ORPHANED_RESPONSE' as const,frameId:frame.id,message:`Correction frame ${frame.id} was archived because its simplex was removed.`}))];
+  const next:SnapshotAngleGraph={...graph,mesh:structuredClone(mesh),...(graph.responseExpressions?{responseExpressions:Object.fromEntries(Object.entries(graph.responseExpressions).filter(([id,responses])=>keepExpression(id,responses)))}:{}),edgeResponses:Object.fromEntries(Object.entries(graph.edgeResponses).filter(([id])=>edges.has(id))),triangleResponses:Object.fromEntries(Object.entries(graph.triangleResponses).filter(([id])=>triangles.has(id))),
    ...(graph.propertyResponses?{propertyResponses:{edges:Object.fromEntries(Object.entries(graph.propertyResponses.edges).filter(([id])=>edges.has(id))),triangles:Object.fromEntries(Object.entries(graph.propertyResponses.triangles).filter(([id])=>triangles.has(id)))}}:{}),
    ...(graph.correctionFrames?{correctionFrames:graph.correctionFrames.filter(frame=>!retiredIds.has(frame.id))}:{})};
-  if(diagnostics.length)next.orphanedResponses=[...(graph.orphanedResponses??[]),{...archive,mesh:structuredClone(graph.mesh),edgeResponses:structuredClone(retiredEdges),triangleResponses:structuredClone(retiredTriangles),...(Object.keys(retiredProperties.edges).length||Object.keys(retiredProperties.triangles).length?{propertyResponses:structuredClone(retiredProperties)}:{}),...(retiredFrames.length?{correctionFrames:structuredClone(retiredFrames)}:{})}];
+  if(diagnostics.length)next.orphanedResponses=[...(graph.orphanedResponses??[]),{...archive,mesh:structuredClone(graph.mesh),...(Object.keys(retiredExpressions).length?{responseExpressions:structuredClone(retiredExpressions)}:{}),edgeResponses:structuredClone(retiredEdges),triangleResponses:structuredClone(retiredTriangles),...(Object.keys(retiredProperties.edges).length||Object.keys(retiredProperties.triangles).length?{propertyResponses:structuredClone(retiredProperties)}:{}),...(retiredFrames.length?{correctionFrames:structuredClone(retiredFrames)}:{})}];
   validateSnapshotAngleGraph(next);return {ok:true,graph:next,diagnostics};
  }catch(cause){return {ok:false,diagnostics:[{code:'INVALID_GRAPH',message:error(cause)}]};}
 }

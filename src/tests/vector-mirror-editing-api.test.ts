@@ -140,8 +140,8 @@ test('a no-op configuration command preserves both explicit batch intentions',()
 
 test('topology changes discard earlier batch intent before another geometry edit',()=>{
  const h=harness();enable(h);
- value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:1,position:[-.5,-1]},{op:'splitCurve',curveId:'a',t:.5},{op:'moveHandle',curveId:'b',end:0,position:[1.1,-.6]}]}));
- expect(curveById(h.d(),'b').handles[0]).toEqual([1.1,-.6]);expect(h.d().mirrorEditing!.curvePairs).toEqual([]);expect(parseDrawing(h.d())).toEqual(h.d());
+ const result=value(h.api.execute({commands:[{op:'moveHandle',curveId:'a',end:1,position:[-.5,-1]},{op:'splitCurve',curveId:'a',t:.5,ref:'split'},{op:'moveHandle',curveId:'$split/b',end:0,position:[1.1,-.6]}]}));
+ expect(curveById(h.d(),result.created[0].idMap!.b).handles[0]).toEqual([1.1,-.6]);expect(h.d().mirrorEditing!.curvePairs).toHaveLength(2);expect(parseDrawing(h.d())).toEqual(h.d());
 });
 
 

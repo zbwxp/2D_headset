@@ -4,7 +4,7 @@ import {resolveSnapshotLocalMembership} from './localMembership';
 import {prepareSnapshotCoverage,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
 import {transportSnapshotSimplexMaterial} from './simplexMaterial';
 import {createSnapshotPropertyResponseSampler,snapshotPropertyResponsesCacheKey} from './propertyResponses';
-import {createSnapshotSurfaceResponseSampler} from './surfaceTargets';
+import {createSnapshotSurfaceValueSampler} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
@@ -316,9 +316,9 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  const basisKey=JSON.stringify([meshKey,bases.map(resultIdentity)]);let preparedCache=surfacePreparationCaches.get(workspace.library);if(!preparedCache){preparedCache=new InputCache(12);surfacePreparationCaches.set(workspace.library,preparedCache);}
  let prepared=preparedCache.get(basisKey);if(!prepared){prepared=prepareSnapshotCoverage(graph.mesh,baseRefs);preparedCache.set(basisKey,prepared);}
  const effectiveGraph=options.useDraft===false&&graph.correctionFrames?.some(frame=>frame.status==='draft')?{...graph,correctionFrames:graph.correctionFrames.filter(frame=>frame.status!=='draft')}:graph;
- const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['angle-surface',recording.id,basisKey,options.immutableInputs?[immutableIdentity(graph.edgeResponses),immutableIdentity(graph.triangleResponses),options.useDraft!==false?immutableIdentity(graph.correctionFrames):0]:[graph.edgeResponses,graph.triangleResponses,options.useDraft!==false?graph.correctionFrames:null],snapshotPropertyResponsesCacheKey(effectiveGraph),requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
- const responseSamplers=new Map<string,ReturnType<typeof createSnapshotSurfaceResponseSampler>>();
- const sampled=prepared.evaluate(requested,location=>{const locationKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=responseSamplers.get(locationKey);if(!sampler){sampler=createSnapshotSurfaceResponseSampler(effectiveGraph,location);responseSamplers.set(locationKey,sampler);}return sampler;});
+ const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['angle-surface',recording.id,basisKey,options.immutableInputs?[immutableIdentity(graph.edgeResponses),immutableIdentity(graph.triangleResponses),immutableIdentity(graph.responseExpressions),options.useDraft!==false?immutableIdentity(graph.correctionFrames):0]:[graph.edgeResponses,graph.triangleResponses,graph.responseExpressions,options.useDraft!==false?graph.correctionFrames:null],snapshotPropertyResponsesCacheKey(effectiveGraph),requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
+ const responseSamplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>();
+ const sampled=prepared.evaluate(requested,location=>{const locationKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=responseSamplers.get(locationKey);if(!sampler){sampler=createSnapshotSurfaceValueSampler(effectiveGraph,location,baseRefs);responseSamplers.set(locationKey,sampler);}return sampler;});
  const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>bases.find(base=>base.snapshotId===id)!)??[];
  const selected=active.length?active.map((base,index)=>({base,weight:normal!.simplex.geometricWeights[index]})).sort((a,b)=>b.weight-a.weight||angleFor(a.base.snapshotId).y-angleFor(b.base.snapshotId).y||angleFor(a.base.snapshotId).x-angleFor(b.base.snapshotId).x||a.base.snapshotId.localeCompare(b.base.snapshotId))[0].base:bases.find(base=>base.snapshotId===recording.activeSnapshotId)??bases[0];
  const role:SnapshotAngleSurfaceEvaluation['role']=!normal?'outside':normal.simplex.kind==='vertex'?'basis':'correction';

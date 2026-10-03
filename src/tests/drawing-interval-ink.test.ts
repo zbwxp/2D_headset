@@ -18,7 +18,7 @@ test('all four ellipse sides may be hidden while fill geometry remains intact; e
  d=c.setStrokeState(d,e.ids[0],{visible:false});expect(fillVisible(d,d.fills[0])).toBe(false);valid(d);d=c.setStrokeState(d,e.ids[0],{visible:true});expect(fillVisible(d,d.fills[0])).toBe(true);
  d=p.changePaint(d,d.fills[0].id,{visible:false});d=c.setStrokeState(c.setStrokeState(d,e.ids[0],{visible:false}),e.ids[0],{visible:true});expect(fillVisible(d,d.fills[0])).toBe(true);
  d=p.changePaint(d,d.fills[0].id,{visible:true});expect(fillVisible(c.layerChange(d,d.layers[0].id,{visible:false}),d.fills[0])).toBe(false);
- d=c.deleteCurves(d,[e.ids[0]]);expect(fillGeometry(d,d.fills[0]).error).toBeTruthy();expect(fillVisible(d,d.fills[0])).toBe(false);
+ d=c.deleteCurves(d,[e.ids[0]]);expect(d.fills).toEqual([]);expect(d.layers).toHaveLength(1);valid(d);
 });
 test('interval ends taper and extend without moving geometry, markers, or the other endpoint settings',()=>{
  const b=base();let d=range(addDisplayInterval(b,'a'),.2,.8);d=tip(tip(d,0,{taper:.1,extension:.05}),1,{taper:.2,extension:.07});

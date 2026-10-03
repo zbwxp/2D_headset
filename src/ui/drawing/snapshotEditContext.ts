@@ -7,6 +7,8 @@ import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../../domain/rec
 import {applySnapshotMembershipEdit} from '../../domain/recordingSnapshot/localMembership';
 import {linkedNodeIds} from '../../domain/drawing/endpointLinks';
 import {drawingSnapshotPresentation,type DrawingSnapshotPresentation} from './snapshotPresentation';
+import {applyLayerEditIntent,createLayerCurveSplitIntent,createCurveSplitIntent,type LayerEditIntent} from '../../domain/drawing/layerEditIntent';
+import {resolveSnapshot} from '../../domain/recordingSnapshot/evaluation';
 
 const same=(a:unknown,b:unknown)=>a===b||JSON.stringify(a)===JSON.stringify(b);
 const close=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])<1e-8;
@@ -158,9 +160,41 @@ export function prepareDrawingSnapshotEdit(project:LandmarkProject,next:Doc):Dra
 
 /** Store actions already share prepareSnapshotEdit. Preflight both writes, then
  * apply them inside the same native Drawing Undo transaction. */
-export function commitDrawingSnapshotEdit(editor:{project:LandmarkProject;beginEdit:()=>void;endEdit:()=>void;setDrawing:(drawing:Doc)=>void;setRecordingSnapshots:(workspace:NonNullable<LandmarkProject['recordingSnapshots']>)=>void},next:Doc):DrawingSnapshotEditPlan {
+type DrawingSnapshotEditor={project:LandmarkProject;beginEdit:()=>void;endEdit:()=>void;setDrawing:(drawing:Doc,intent?:LayerEditIntent)=>void;setRecordingSnapshots:(workspace:NonNullable<LandmarkProject['recordingSnapshots']>)=>void;commitPreparedSnapshotEdit?:(plan:SnapshotEditPlan)=>void};
+export function commitDrawingSnapshotEdit(editor:DrawingSnapshotEditor,next:Doc):DrawingSnapshotEditPlan {
  const plan=prepareDrawingSnapshotEdit(editor.project,next);if(!plan.changed)return plan;
+ if(editor.commitPreparedSnapshotEdit){editor.commitPreparedSnapshotEdit(plan);return plan;}
  editor.beginEdit();try{if(plan.sourceDrawing)editor.setDrawing(plan.sourceDrawing);if(plan.localWorkspace)editor.setRecordingSnapshots(plan.localWorkspace);}finally{editor.endEdit();}return plan;
+}
+
+/** The split identity plan travels through the same Snapshot transaction as the
+ * document. Never infer lineage from a delete/add diff or mint IDs per child. */
+export function prepareDrawingCurveSplit(project:LandmarkProject,curveId:string,t:number):DrawingSnapshotEditPlan&{intent:LayerEditIntent;ids:string[]} {
+ const workspace=project.recordingSnapshots,artworkId=project.drawingSnapshots?.activeId??'$working',view=workspace&&drawingSnapshotPresentation(workspace,artworkId),source=workspace&&drawingSnapshotForArtwork(workspace,artworkId);
+ if(view&&source){
+  const curve=view.drawing.curves.find(value=>value.id===curveId),layer=curve&&view.drawing.layers.find(value=>value.items.includes(curve.id));
+  if(!curve||!layer)throw Error('The selected curve no longer exists.');
+  const owner=view.layerOwners.get(layer.id)!;
+  if(owner.kind==='snapshot-local'){
+   const intent=createCurveSplitIntent(view.evaluation.drawing,view.canonicalId(curveId),t),plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'local-curve-split',snapshotId:view.snapshotId,intent});
+   return {...plan,intent,ids:[...intent.childCurveIds],localWorkspace:plan.project.recordingSnapshots};
+  }
+ }
+ if(!project.drawing)throw Error('The original Drawing document is unavailable.');
+ const pair=project.drawing.mirrorEditing?.enabled?project.drawing.mirrorEditing.curvePairs.find(value=>value.a===curveId||value.b===curveId):undefined;
+ const relatedCurveIds=new Set([curveId,...(pair?[pair.a,pair.b]:[])].map(id=>view?.canonicalId(id)??id));
+ const relatedDrawings=workspace&&source?workspace.snapshots.flatMap(snapshot=>[false,...(snapshot.draft?[true]:[])].flatMap(useDraft=>{
+  const evaluated=resolveSnapshot(workspace,snapshot.id,{useDraft,...(useDraft?{angle:snapshot.draft!.angle}:{}),diagnostics:'preview'}).drawing;
+  return evaluated.curves.some(value=>relatedCurveIds.has(value.id))?[remapDrawingIdentities(evaluated,id=>source.source!.originIds[id]??id)]:[];
+ })):[];
+ const intent=createLayerCurveSplitIntent(project.drawing,curveId,t,{relatedDrawings}),applied=applyLayerEditIntent(project.drawing,intent),drawing=applied.document;
+ const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing,intent});
+ return {...plan,intent,ids:applied.ids,sourceDrawing:drawing};
+}
+export function commitDrawingCurveSplit(editor:DrawingSnapshotEditor,curveId:string,t:number){
+ const plan=prepareDrawingCurveSplit(editor.project,curveId,t);if(!plan.changed)return plan;
+ if(editor.commitPreparedSnapshotEdit){editor.commitPreparedSnapshotEdit(plan);return plan;}
+ editor.beginEdit();try{if(plan.sourceDrawing)editor.setDrawing(plan.sourceDrawing,plan.intent);else if(plan.localWorkspace)editor.setRecordingSnapshots(plan.localWorkspace);}finally{editor.endEdit();}return plan;
 }
 
 function assertLocalGeometry(before:DrawingSnapshotPresentation,wanted:Doc,after:DrawingSnapshotPresentation,curves:Set<string>,nodes:Set<string>){

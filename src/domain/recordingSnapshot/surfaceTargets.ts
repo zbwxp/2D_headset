@@ -1,9 +1,11 @@
 import {finitePoint,sub,type DrawingDocument,type Point2} from '../drawing/model';
-import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotTriangleControlResponse,SnapshotTriangleResponses} from './model';
+import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotTriangleControlResponse,SnapshotTriangleResponses,SnapshotResponseExpressionRegistry} from './model';
 import {endpointPairNodeAuthorities} from './endpointPair';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotSimplexBasis} from './simplexGeometry';
+import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotScalarValue,type SnapshotSimplexBasis} from './simplexGeometry';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights} from './triangularResponses';
+import {createSnapshotExpressionValueSampler} from './responseExpressions';
+import {createSnapshotResponseBasisResolver,createSnapshotResponseFieldWeightMapper,snapshotResponseExpressionFor} from './responseExpressionRegistry';
 import {describeSnapshotScalarResponseSupport,createSnapshotScalarResponseWeightSampler} from './scalarResponseSupport';
 
 const axes=['x','y'] as const;
@@ -25,12 +27,12 @@ function fail(code:SnapshotSurfaceTargetEditErrorCode,message:string):never {thr
 
 /** Saved maps are authoritative. A single draft replaces only the simplex maps
  * it contains, and is effective throughout that simplex, including ghosts. */
-export function effectiveSnapshotSurfaceResponses(graph:SnapshotAngleGraph):{edgeResponses:Record<string,SnapshotEndpointResponses>;triangleResponses:Record<string,SnapshotTriangleResponses>;draft?:SnapshotCorrectionFrame} {
+export function effectiveSnapshotSurfaceResponses(graph:SnapshotAngleGraph):{edgeResponses:Record<string,SnapshotEndpointResponses>;triangleResponses:Record<string,SnapshotTriangleResponses>;responseExpressions:SnapshotResponseExpressionRegistry;draft?:SnapshotCorrectionFrame} {
  const drafts=(graph.correctionFrames??[]).filter(frame=>frame.status==='draft');
  if(drafts.length>1)fail('SURFACE_INVALID_TARGET','This recorder contains multiple correction drafts. Save or discard them before editing its response surface.');
  const draft=drafts[0];
  return {edgeResponses:draft?.edgeResponses?{...graph.edgeResponses,...draft.edgeResponses}:graph.edgeResponses,
-  triangleResponses:draft?.triangleResponses?{...graph.triangleResponses,...draft.triangleResponses}:graph.triangleResponses,...draft?{draft}:{}};
+  triangleResponses:draft?.triangleResponses?{...graph.triangleResponses,...draft.triangleResponses}:graph.triangleResponses,responseExpressions:{...graph.responseExpressions,...draft?.responseExpressions},...draft?{draft}:{}};
 }
 
 /** Both geometry and attributes use the same persisted simplex orientation. */
@@ -54,7 +56,19 @@ export function createSnapshotSurfaceResponseSampler(graph:SnapshotAngleGraph,lo
  return (target,axis,_coordinates,geometricWeights)=>sample({target,axis},geometricWeights);
 }
 
-export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string}
+/** Shared final-control sampler for runtime, correction replay, and full-curve
+ * onion frames. Native corrections and inherited expressions add as values. */
+export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[]):SnapshotScalarValue {
+ const native=createSnapshotSurfaceResponseSampler(graph,location),effective=effectiveSnapshotSurfaceResponses(graph),responses=own(effective.responseExpressions,location.simplexId);
+ const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
+ return (target,axis,coordinates,weights)=>{
+  if(location.kind==='vertex')return coordinates[0];
+  const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights);
+  return coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
+ };
+}
+
+export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[]}
 export interface SnapshotSurfaceTargetEditResult {graph:SnapshotAngleGraph;changed:boolean}
 type TargetUpdate={target:SnapshotScalarTarget;axis:0|1;weights:BarycentricWeights};
 
@@ -93,13 +107,14 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   if(link.joinBrush?.kind!==prior.joinBrush?.kind)fail('SURFACE_INVALID_TARGET',`EndpointLink ${link.id} brush kind cannot change in a control response correction.`);
  }
  const authorities=endpointPairNodeAuthorities(currentDrawing),updates:TargetUpdate[]=[];
+ const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(own(effective.responseExpressions,location.simplexId),target,axis),basisScalar:createSnapshotResponseBasisResolver(options.allBases??orderedBases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const original=[...location.geometricWeights] as number[];if(original.length===2)original.push(0);
  const solve=(target:SnapshotScalarTarget,prior:Point2,desired:Point2,coordinates:Point2[])=>{
   if(!finitePoint(prior)||!finitePoint(desired)||coordinates.some(point=>!finitePoint(point)))fail('SURFACE_INVALID_TARGET',`${label(target)} must have finite current, target and saved basis coordinates.`);
   for(const axis of [0,1] as const){
    if(!changedScalar(prior[axis],desired[axis]))continue;
    const scalarCoordinates=coordinates.map(point=>point[axis]);if(scalarCoordinates.length===2)scalarCoordinates.push(0);
-   const result=solveClosestBarycentricWeights(original as unknown as BarycentricWeights,scalarCoordinates as unknown as BarycentricWeights,desired[axis]);
+   const result=solveClosestBarycentricWeights(original as unknown as BarycentricWeights,scalarCoordinates as unknown as BarycentricWeights,desired[axis]-inherited(target,axis,location.geometricWeights.map(()=>0),location.geometricWeights));
    if(!result.available)fail('SURFACE_AXIS_UNAVAILABLE',`${label(target)} ${axes[axis].toUpperCase()}: ${result.reason} Edit that coordinate in a saved snapshot basis first.`);
    updates.push({target,axis,weights:result.weights});
   }
@@ -146,7 +161,7 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   nextFrame={...draft,id:frameId,angle:{...options.angle},status:'draft',triangleResponses:{...draft?.triangleResponses,[location.simplexId]:responses}};
  }
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
- const replay=index(interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,createSnapshotSurfaceResponseSampler(candidate,location)).drawing);
+ const replay=index(interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases)).drawing);
  const verify=(name:string,position:Point2|undefined,target:Point2)=>{
   if(!position||position.some((value,axis)=>!Number.isFinite(value)||Math.abs(value-target[axis])>Math.max(1e-7,4*scalarTolerance(value,target[axis]))))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`${name}: the complete correction cannot reproduce the target after linked-node and SMOOTH constraints. Edit the responsible basis control or its SMOOTH driver first.`);
  };

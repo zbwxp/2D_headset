@@ -140,6 +140,7 @@ try {
   message = "自动保存无法读取，已打开新语义点项目；原存储未删除。";
 }
 interface State {
+  commitPreparedSnapshotEdit:(plan:import('./snapshotEditTransaction').SnapshotEditPlan)=>void;
   setRecordingSnapshots:(value:import("../domain/recordingSnapshot/model").RecordingSnapshotWorkspace)=>void;
   commitRecordingSnapshots:(value:import("../domain/recordingSnapshot/model").RecordingSnapshotWorkspace)=>void;
   setRecordingScenes:(value:import("../domain/recordingScene/model").RecordingScenes)=>void;
@@ -149,7 +150,7 @@ interface State {
   commitVectorRecording:(recording:import("../domain/vectorRecording/model").VectorRecording)=>void;
   setAssembly:(assembly:import("../domain/assembly/model").AssemblyDocument)=>void;
   setHairstyle:(hairstyle:import("../domain/hairstyle/model").Hairstyle)=>void;
-  setDrawing:(drawing:import("../domain/drawing/model").DrawingDocument)=>void;
+  setDrawing:(drawing:import("../domain/drawing/model").DrawingDocument,intent?:import("../domain/drawing/layerEditIntent").LayerEditIntent)=>void;
   recoverVectorRecordingSource:(load?:()=>Promise<import("../domain/drawing/model").DrawingDocument[]>)=>Promise<boolean>;
   setDrawingSnapshotState:(state:import("../domain/drawing/snapshots").DrawingSnapshotState)=>void;
   setPoseRecording:(recording:import("../domain/recording/poses").PoseRecording)=>void;
@@ -288,6 +289,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     persist(p);
   };
   return normalizeEditorUpdate(undefined,{
+    commitPreparedSnapshotEdit:(plan)=>{if(get().project!==plan.before)throw Error('Snapshot edit became stale before commit.');if(!plan.changed)return;get().beginEdit();try{applySnapshotEdit(plan);}finally{get().endEdit();}},
     commitArtworkCleanup:(expected,next)=>{
       assertSourceEditable();if(get().project!==expected)throw Error('工程在预览后已变更，请重新检查整理清单。');
       const allowed=new Set(['drawing','drawingSnapshots','drawingWorkingCopies','recordingScenes','vectorRecording']);
@@ -310,7 +312,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     setPoseRecording:(poseRecording)=>{const {recording,...rest}=get().project;void recording;const p={...rest,poseRecording:syncPoseSnapshots(poseRecording,rest.drawingSnapshots)};set({project:p});persist(p);},
     setAssembly:(assembly)=>{const {hairstyle,...rest}=get().project;void hairstyle;const p={...rest,assembly};set({project:p});persist(p);},
     setHairstyle:(hairstyle)=>{const p={...get().project,hairstyle};set({project:p});persist(p);},
-    setDrawing:(drawing)=>applySnapshotEdit(prepareSnapshotEdit(snapshotEditContext(get().project,canEditSource()),{kind:'original-geometry',drawing})),
+    setDrawing:(drawing,intent)=>applySnapshotEdit(prepareSnapshotEdit(snapshotEditContext(get().project,canEditSource()),{kind:'original-geometry',drawing,...(intent?{intent}:{})})),
     recoverVectorRecordingSource:async(load=loadKnownRecordingSourceBaselines)=>{
       const before=get().project;if(before.recordingScenes)return false;const history=get().past.flatMap(recordingSourceBaselines),known=syncVectorRecordingSources(before,history);
       if(known!==before){set({project:known});persist(known);return true;}

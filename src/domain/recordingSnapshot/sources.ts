@@ -81,7 +81,7 @@ export function materializeOriginalSnapshot(workspace:RecordingSnapshotWorkspace
 
 /** Ingest the full Drawing adapter document. IDs that already belong to this
  * source are reused, even after an unsaved source receives a library name. */
-export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artworkId:string,drawing:DrawingDocument,name='Drawing source'):RecordingSnapshotWorkspace{
+export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artworkId:string,drawing:DrawingDocument,name='Drawing source',options:{splitRetiredIds?:ReadonlySet<string>}={}):RecordingSnapshotWorkspace{
  // Legacy Drawing deletion retains invalid paint paths. They are not live
  // originals and must not be re-imported on the next edit or reload.
  const curves=new Set(drawing.curves.map(curve=>curve.id)),removedPaint=new Set([...drawing.fills.filter(fill=>fill.boundary.some(use=>!curves.has(use.id))),...drawing.offsets.filter(offset=>offset.source.some(use=>!curves.has(use.id)))].map(value=>value.id));
@@ -108,7 +108,10 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
  }
  if(!changed)return workspace;
  const refreshed={...workspace,library,snapshots:previous?workspace.snapshots.map(snapshot=>snapshot===previous?source:snapshot):[...workspace.snapshots,source]};
- return removeDeletedSourceReferences(workspace,refreshed,source.id,deletedIds);
+ // Split retirement is transferred by the topology transaction before cleanup.
+ // Other deletions remain ordinary destructive source edits.
+ const destructive=new Set([...deletedIds].filter(id=>!options.splitRetiredIds?.has(id)));
+ return removeDeletedSourceReferences(workspace,refreshed,source.id,destructive);
 }
 
 /** Saving the working Drawing changes the adapter identity, never canonical
@@ -120,13 +123,14 @@ export function remapWorkingSnapshotSource(workspace:RecordingSnapshotWorkspace|
 
 export type SnapshotSourceProject=DrawingSnapshotState&{recordingSnapshots?:RecordingSnapshotWorkspace};
 /** The host commits this with the Drawing edit in the same Undo transaction. */
-export function syncRecordingSnapshotSources<T extends SnapshotSourceProject>(project:T,_beforeProject?:SnapshotSourceProject):T{
+export interface SnapshotSourceSyncOptions {splitRetirements?:ReadonlyMap<string,ReadonlySet<string>>;deferMaterialTransport?:boolean}
+export function syncRecordingSnapshotSources<T extends SnapshotSourceProject>(project:T,_beforeProject?:SnapshotSourceProject,options:SnapshotSourceSyncOptions={}):T{
  if(!project.recordingSnapshots)return project;let workspace=project.recordingSnapshots;
  for(const [artworkId,drawing] of Object.entries(recordingSceneSources(project))){
-  const name=project.drawingSnapshots?.items.find(item=>item.id===artworkId)?.name??'Current drawing';workspace=upsertDrawingSource(workspace,artworkId,drawing,name);
+  const name=project.drawingSnapshots?.items.find(item=>item.id===artworkId)?.name??'Current drawing';workspace=upsertDrawingSource(workspace,artworkId,drawing,name,{splitRetiredIds:options.splitRetirements?.get(artworkId)});
  }
  if(workspace===project.recordingSnapshots)return project;
- workspace=transportSnapshotSourceIntervals(project.recordingSnapshots,workspace);
+ if(!options.deferMaterialTransport)workspace=transportSnapshotSourceIntervals(project.recordingSnapshots,workspace);
  return {...project,recordingSnapshots:workspace};
 }
 

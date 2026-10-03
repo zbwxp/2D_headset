@@ -5,6 +5,7 @@ import {derivedUses} from './roundedJoin';
 import {arcField} from './sampling';
 import {intervalPinch,type InkPinch} from './intervalPinch';
 import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineMaterialField} from './evaluatedAffine';
+import type {CurveSplitIntent} from './layerEditIntent';
 export type Span=[number,number];
 export interface InkSpan {start:number;end:number;ends:InkEnds}
 const combineEnd=(a:InkEndStyle,b:InkEndStyle):InkEndStyle=>Object.fromEntries((['taper','extension'] as const).flatMap(k=>a[k]===undefined&&b[k]===undefined?[]:[[k,Math.max(a[k]??0,b[k]??0)]]));
@@ -119,24 +120,32 @@ export function nearestDisplayPosition(field:ReturnType<typeof displayField>,tra
 }
 
 /** An exact cubic split must preserve a curve-local mask across both children. */
-export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:string):Doc{
+export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:string,intent?:CurveSplitIntent):Doc{
  if(!before.displayIntervals?.length)return after;
+ const leftId=intent?.childCurveIds[0]??id;
+ const routed=before.displayIntervals.map(track=>track.displayRoute?{...track,displayRoute:splitDisplayRoute(track.displayRoute,id,newId,leftId)}:track);
  const scoped=before.displayIntervals.some(t=>t.scope==='CURVE'&&t.anchor.id===id);
- const field=scoped?displayField(after,displayPath(after,id)):undefined;
+ const fieldDocument={...after,displayIntervals:routed.map(track=>track.anchor.id===id?{...track,anchor:{id:track.scope!=='CURVE'&&track.anchor.reverse?newId:leftId,reverse:track.anchor.reverse}}:track)};
+ const field=scoped?displayField(fieldDocument,displayPath(fieldDocument,leftId)):undefined;
  const size=(curve:string)=>field!.parts.reduce((sum,p,i)=>sum+(!field!.geometry.pieces[i].joinId&&field!.geometry.pieces[i].owners[0]===curve?p.length:0),0);
- const a=scoped?size(id):0,b=scoped?size(newId):0,cut=a/(a+b||1);
- return {...after,displayIntervals:before.displayIntervals.flatMap(originalTrack=>{
-  const track=originalTrack.displayRoute?{...originalTrack,displayRoute:splitDisplayRoute(originalTrack.displayRoute,id,newId)}:originalTrack;
+ const a=scoped?size(leftId):0,b=scoped?size(newId):0,cut=a/(a+b||1);
+ return {...after,displayIntervals:routed.flatMap(track=>{
   if(track.anchor.id!==id)return [track];
-  if(track.scope!=='CURVE')return [{...track,anchor:track.anchor.reverse?{id:newId,reverse:true}:track.anchor}];
-  return ([{id,lo:0,hi:cut},{id:newId,lo:cut,hi:1}]).map((child,index)=>{
+  if(track.scope!=='CURVE')return [{...track,anchor:{id:track.anchor.reverse?newId:leftId,reverse:track.anchor.reverse}}];
+  const planned=intent?.intervals.find(value=>value.trackId===track.id);
+  if(intent&&!planned)throw Error('The split intent is missing a curve-local interval track.');
+  return ([{id:leftId,lo:0,hi:cut},{id:newId,lo:cut,hi:1}]).map((child,index)=>{
    const ranges=track.ranges.flatMap(r=>{
     const x=track.anchor.reverse?1-r.start:r.start,y=track.anchor.reverse?1-r.end:r.end,ends=r.inkEnds??[{},{}],ordered:InkEnds=x<=y?ends:[ends[1],ends[0]];
-    const lo=Math.min(x,y),hi=Math.max(x,y),start=Math.max(lo,child.lo),end=Math.min(hi,child.hi),rangeId=index?uid():r.id;
-    if(end<=start+1e-10)return intervalMode(r)==='SHOW'?[{...r,id:rangeId,start:0,end:0,inkEnds:[{},{}] as InkEnds}]:[];
-    return [{...r,id:rangeId,start:(start-child.lo)/(child.hi-child.lo),end:(end-child.lo)/(child.hi-child.lo),inkEnds:[start===lo?ordered[0]:{},end===hi?ordered[1]:{}] as InkEnds}];
+    const rightRangeId=planned?.ranges.find(value=>value.rangeId===r.id)?.rightRangeId;
+    if(intent&&!rightRangeId)throw Error('The split intent is missing a curve-local interval range.');
+    const lo=Math.min(x,y),hi=Math.max(x,y),start=Math.max(lo,child.lo),end=Math.min(hi,child.hi),rangeId=index?(rightRangeId??uid()):r.id,provenance=intent&&index?{originId:r.originId??r.id}:{};
+    // Explicit plans retain empty ranges too: crossing a seam in another pose
+    // must not change material identity or drop that pose's enabled channel.
+    if(end<=start+1e-10)return intent||intervalMode(r)==='SHOW'?[{...r,...provenance,id:rangeId,start:0,end:0,inkEnds:[{},{}] as InkEnds}]:[];
+    return [{...r,...provenance,id:rangeId,start:(start-child.lo)/(child.hi-child.lo),end:(end-child.lo)/(child.hi-child.lo),inkEnds:[start===lo?ordered[0]:{},end===hi?ordered[1]:{}] as InkEnds}];
    });
-   return {...track,id:index?uid():track.id,anchor:{id:child.id,reverse:false},ranges};
+   return {...track,id:index?(planned?.rightTrackId??uid()):track.id,anchor:{id:child.id,reverse:false},ranges};
   }).filter(t=>t.ranges.length);
  })};
 }

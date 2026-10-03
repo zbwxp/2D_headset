@@ -70,7 +70,7 @@ describe('real surface snapshots and Recorder bindings',()=>{
  it('creates a genuinely empty zero view and new outside views without fallback capture',()=>{
   const h=fixture();h.apply({op:'createTriangulatedRecording',name:'Empty'});expect(h.current().mode).toBe('triangulated');expect(h.current().angleGraph!.mesh.vertices).toHaveLength(3);expect(h.drawing().curves).toHaveLength(0);expect(h.current().angle).toEqual({x:0,y:0});
   h.apply({op:'createSnapshot',angle:{x:90,y:0}});expect(h.current().snapshotIds).toHaveLength(6);expect(h.drawing().curves).toHaveLength(0);expect(h.current().tracks).toEqual([]);
-  const before=h.project();expect(h.api.snapshot({commands:[{op:'createSnapshot',angle:{x:45,y:0}}]})).toMatchObject({ok:false,error:{code:'SURFACE_INSERTION_REQUIRES_TRANSFER'}});expect(h.project()).toBe(before);
+  const before=h.project(),count=h.current().snapshotIds.length;h.apply({op:'createSnapshot',angle:{x:45,y:0}});expect(h.current().snapshotIds).toHaveLength(count+1);expect(h.project().recordingSnapshots!.library).toEqual(before.recordingSnapshots!.library);expect(h.drawing().curves).toHaveLength(0);
  });
  it('edits a rebound real vertex with world controls and snapshot-local drafts, retaining all old keys',()=>{
   const h=fixture(),r=h.current();r.angleGraph!.mesh=rebindSnapshotVertex(r.angleGraph!.mesh,'side',{x:80,y:10});

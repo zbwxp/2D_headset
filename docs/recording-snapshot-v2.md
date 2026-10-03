@@ -89,3 +89,12 @@ Control edits stage `endpointPair.draft`, never an intermediate pose key. While 
 ## Full-curve inspection cost boundary
 
 The onion ghost sampler shares the main endpoint-pair node, relative-handle and SMOOTH control algebra. It deliberately skips per-ghost material transport, display-route arclength, visibility clipping, ARC construction and ink tessellation. Each ghost is one joined SVG centerline path. In legacy endpoint inspection, line/layer weights still blend the selected two endpoint cubic geometries without reading intermediate keys. This inspection displays construction geometry, not the final painted appearance; toggle it off to judge actual hidden strokes, rounded joins and fill occlusion.
+
+
+## Explicit source split and real-view insertion
+
+The current split candidate passes a serializable `LayerEditIntent` beside the Drawing document through `prepareSnapshotEdit`. It allocates both child IDs, seam and curve-local material IDs once. With mirror editing enabled it also plans the paired curve, reversing `t` to `1-t` when the correspondence reverses traversal. Disabling mirror editing leaves the ordinary single-curve split available and retires only obsolete pairing metadata. Parent propagation replays the same identity plan on each already-deformed real pose, then derives its local residual against the updated live source. It does not reset Warp, placement or unrelated drafts.
+
+Drawing references and true Recording snapshots may split locally through `local-curve-split`; this creates local children and excludes the inherited old curve only in that snapshot. The UI reports the resulting correspondence break. Correction-only angles cannot change topology: create a genuine angle snapshot first. Local paint dependencies requiring additional object identities are diagnosed before mutation.
+
+Recorder `responseExpressions` retains bounded scalar recipes over live basis node/relative-handle values. Runtime, correction replay and full-curve onion use `createSnapshotSurfaceValueSampler`. Saved and draft expression overlays follow the same save/discard boundaries. A genuine interior view is ordinary referenced snapshot state; restricting the prior field preserves supported trajectories without introducing canonical geometry or copying hidden intermediate drawings. Nonlinear SMOOTH projection is currently accepted only where the symbolic identity certificate proves exact transfer. Unsupported material/property transfer and unsaved correction insertion are explicit atomic failures.

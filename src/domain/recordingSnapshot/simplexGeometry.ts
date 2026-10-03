@@ -5,6 +5,9 @@ export type SnapshotScalarTarget={kind:'node';nodeId:string}|{kind:'handle';curv
 /** Response evaluation changes geometry only. These weights never decide which
  * source IDs, relationships or discrete authoring values are present. */
 export type SnapshotScalarWeights=(target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>readonly number[];
+/** Value responses represent inherited motion even when all active basis values agree. */
+export type SnapshotScalarValue=(target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>number;
+export type SnapshotScalarResponse=SnapshotScalarWeights|SnapshotScalarValue;
 export interface SnapshotSimplexBasis {snapshotId:string;drawing:DrawingDocument;/** Recorder binding, only for deterministic discrete ties. */angle?:{x:number;y:number}}
 export interface SnapshotSimplexGeometry {drawing:DrawingDocument;diagnostics:string[];nodeAuthorities:Map<string,string>}
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
@@ -14,7 +17,7 @@ const keys=<T extends {id:string}>(items:readonly T[])=>new Map(items.map(item=>
  * The caller supplies only geometrically active vertices. No nearest-member
  * fill, hidden-line filtering, ink construction or material parsing occurs here.
  * This is deliberately independent of the recorder's response storage. */
-export function interpolateSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBasis[],geometricWeights:readonly number[],response?:SnapshotScalarWeights):SnapshotSimplexGeometry {
+export function interpolateSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBasis[],geometricWeights:readonly number[],response?:SnapshotScalarResponse):SnapshotSimplexGeometry {
  if(bases.length<1||bases.length>3||bases.length!==geometricWeights.length||new Set(bases.map(b=>b.snapshotId)).size!==bases.length)throw Error('A snapshot simplex needs one to three distinct active bases.');
  if(geometricWeights.some(w=>!Number.isFinite(w)||w<=0)||Math.abs(geometricWeights.reduce((a,b)=>a+b,0)-1)>1e-12)throw Error('Active geometric weights must be positive and sum to one.');
  if(bases.length===1)return {drawing:bases[0].drawing,diagnostics:[],nodeAuthorities:endpointPairNodeAuthorities(bases[0].drawing)};
@@ -50,7 +53,9 @@ export function interpolateSnapshotSimplexGeometry(bases:readonly SnapshotSimple
  drawing.displayIntervals=shared('Display interval',bases.map(b=>b.drawing.displayIntervals??[]),t=>[t.anchor,t.scope,t.displayRoute,t.ranges.map(r=>r.id)],t=>curveIds.has(t.anchor.id)&&(!t.displayRoute||t.displayRoute.seed.segments.every(u=>curveIds.has(u.id))&&t.displayRoute.throughLinkIds.every(id=>linkIds.has(id))));
  const authorities=endpointPairNodeAuthorities(drawing);
  const sample=(target:SnapshotScalarTarget,axis:0|1,coordinates:number[]):number=>{
-  const weights=response?.(target,axis,coordinates,geometricWeights)??geometricWeights;
+  const sampled=response?.(target,axis,coordinates,geometricWeights)??geometricWeights;
+  if(typeof sampled==='number'){if(!Number.isFinite(sampled))throw Error('A simplex response produced a non-finite coordinate.');return sampled;}
+  const weights=sampled;
   if(weights.length!==bases.length||weights.some(w=>!Number.isFinite(w))||Math.abs(weights.reduce((a,b)=>a+b,0)-1)>1e-9)throw Error('A scalar response must return finite sum-one weights for its active bases.');
   const result=coordinates.reduce((sum,p,index)=>sum+p*weights[index],0);if(!Number.isFinite(result))throw Error('A simplex response produced a non-finite coordinate.');return result;
  };

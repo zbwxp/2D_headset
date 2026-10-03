@@ -66,9 +66,9 @@ test('CRUD mutations preserve mode, stale revision, strict input and locking gat
  value(h.api.execute({commands:[{op:'setLayer',layerId:layer,locked:false},{op:'deleteLayers',layerIds:[layer]}]}));expect(h.state().project.drawing!.layers).toEqual([]);
 });
 
-test('deleting a used boundary is rejected unless its fill is explicitly removed too',()=>{
- const d=fixture(),h=harness(d);error(h.api.execute({commands:[{op:'deleteObjects',objectIds:[d.curves[0].id]}]}),'GEOMETRY_INVALID');expect(h.state().commits).toBe(0);
- const r=value(h.api.execute({commands:[{op:'deleteObjects',objectIds:[...d.curves.map(c=>c.id),d.fills[0].id]}]}));expect(r.removed.curveIds).toHaveLength(4);expect(r.removed.fillIds).toHaveLength(1);expect(h.state().project.drawing!.curves).toEqual([]);
+test('deleting a used source boundary removes its dependent fill in the same transaction',()=>{
+ const d=fixture(),h=harness(d),first=value(h.api.execute({commands:[{op:'deleteObjects',objectIds:[d.curves[0].id]}]}));expect(first.removed.fillIds).toEqual([d.fills[0].id]);expect(h.state().commits).toBe(1);
+ const r=value(h.api.execute({commands:[{op:'deleteObjects',objectIds:d.curves.slice(1).map(c=>c.id)}]}));expect(r.removed.curveIds).toHaveLength(3);expect(h.state().project.drawing!.curves).toEqual([]);expect(h.state().project.drawing!.layers).toHaveLength(d.layers.length);
 });
 
 test('layer duplication rejects external endpoint dependencies instead of silently dropping them',()=>{
@@ -88,7 +88,7 @@ test('creates a closed filled piece and hides only its internal closure through 
 test('curve subdivision retains fills and authored outer tip styles and reports its new curve',()=>{
  const d=fixture();d.curves.forEach(c=>{c.visible=true;});const id=d.curves[0].id;d.curves[0].inkEnds=[{taper:.12,extension:.01},{taper:.2}];const h=harness(d),before=fillGeometry(d,d.fills[0]);
  const result=value(h.api.execute({commands:[{op:'splitCurve',curveId:id,t:.4,ref:'split'},{op:'renameCurve',curveId:'$split',name:'Second piece'}]})),next=h.state().project.drawing!,second=result.created[0].id;
- expect(next.curves).toHaveLength(5);expect(next.fills[0].boundary).toHaveLength(5);expect(next.curves.find(c=>c.id===id)!.inkEnds).toEqual([{taper:.12,extension:.01},{}]);expect(next.curves.find(c=>c.id===second)!.inkEnds).toEqual([{}, {taper:.2}]);expect(fillGeometry(next,next.fills[0]).error).toBeUndefined();expect(before.error).toBeUndefined();expect(result.addedCurves[0].curveId).toBe(second);
+ expect(next.curves).toHaveLength(5);expect(next.fills[0].boundary).toHaveLength(5);expect(next.curves.find(c=>c.id===result.created[0].idMap![id])!.inkEnds).toEqual([{taper:.12,extension:.01},{}]);expect(next.curves.find(c=>c.id===second)!.inkEnds).toEqual([{}, {taper:.2}]);expect(fillGeometry(next,next.fills[0]).error).toBeUndefined();expect(before.error).toBeUndefined();expect(result.addedCurves.map(curve=>curve.curveId)).toContain(second);expect(next.curves.some(curve=>curve.id===id)).toBe(false);
 });
 
 test('explicit ink visibility, depth, mirror guide and mist changes keep fill boundaries and source geometry',()=>{

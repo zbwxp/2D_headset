@@ -30,7 +30,7 @@ import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';
 import {captureDrawingLayerReferences,prepareDrawingLayerReferencePaste,layerClipboardProjectId,useLayerReferenceClipboard} from './layerReferenceClipboard';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from './snapshotPresentation';
-import {commitDrawingSnapshotEdit,DRAWING_REFERENCE_EDIT_CAPABILITY} from './snapshotEditContext';
+import {commitDrawingSnapshotEdit,commitDrawingCurveSplit,DRAWING_REFERENCE_EDIT_CAPABILITY} from './snapshotEditContext';
 import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
 import {selectCurveAtPointer,selectCurvesInBox,drawingControlDragTarget} from './editGestures';
 import {hasNudgeTarget,nudgeSelection} from './nudge';
@@ -187,7 +187,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function curveDown(e:React.PointerEvent,id:string){
   if(referenceMoving||space.current||e.button===1||e.button===2||tool==='hand')return;
   if(['pen','ellipse','zoom'].includes(tool)||endpointTools)return;
-  if(tool==='split'){e.stopPropagation();const hit=snapRecordingEndpoint(local(e),[{id,name:'',shape:shapeOf(d,id),auxiliary:false}],[unit,unit]);if(hit)run(()=>{const n=cmd.splitCurve(stored,id,hit.t);choose({ids:n.ids},'direct');return n.document;});return;}
+  if(tool==='split'){e.stopPropagation();const hit=snapRecordingEndpoint(local(e),[{id,name:'',shape:shapeOf(d,id),auxiliary:false}],[unit,unit]);if(hit)try{if(workspaceId==='drawing'){const plan=commitDrawingCurveSplit(useEditor.getState(),id,hit.t);own.current=currentDrawing();choose({ids:plan.ids},'direct');setHint([...(plan.diagnostics?.map(value=>value.message)??[]),...(plan.intent.kind==='split-curve'&&plan.intent.correspondenceNotice?[plan.intent.correspondenceNotice]:[])].join(' '));}else run(()=>{const n=cmd.splitCurve(stored,id,hit.t);choose({ids:n.ids},'direct');return n.document;});}catch(errorValue){error(errorValue);}return;}
   if(tool==='mirror'){e.stopPropagation();if(!first){setFirst({curveId:id,end:0});setHint(t('请选择目标曲线'));}else try{const n=cmd.mirrorEdit(stored,first.curveId,id);commit(n);setFirst(null);choose({ids:[id]},'direct');}catch(ex){if(ex instanceof cmd.RelatedSelection)setPending({ids:ex.ids,scope:[id],mirror:{source:first.curveId,target:id,base:stored}});else error(ex,[id]);}return;}
   if(!editable(d,id))return;
   const ids=selectCurveAtPointer(d,selected,id,{grouped:tool==='select'||tool==='deform',shift:e.shiftKey});

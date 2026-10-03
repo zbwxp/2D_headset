@@ -6,6 +6,7 @@ import {linkedNodeIds,followLinkedNodes,cleanEndpointLinks} from './endpointLink
 import {roundedJoins} from './roundedJoin';
 import {retainDisplayIntervals,splitDisplayIntervals,displayRouteFor} from './displayIntervals';
 import {split} from '../geometry/bezier';
+import {assertCurveSplitIntent,type CurveSplitIntent} from './layerEditIntent';
 import {add,sub,mul,length,finitePoint,uid,objectById,nodeAt,curveById,shapeOf,layerFor,members,joinAt,sameEnd,editable,type DrawingDocument as Doc,type DrawingCurve,type DrawingLayer,type Endpoint,type Point2,type Cubic,type TangentJoin} from './model';
 import {normalizeOrder,strokeFor,strokeIds,strokeObjectIds,strokes,strokePaths} from './strokes';
 export class RelatedSelection extends Error {constructor(public ids:string[]){super('本次操作会影响未选中的关联曲线。');}}
@@ -203,18 +204,23 @@ export function moveToLayer(d:Doc,ids:string[],target:string):Doc{
  const ordered=d.layers.flatMap(l=>l.items).filter(id=>moving.has(id));unlocked(ordered);
  const n=copy(d);if(n.groups)n.groups=n.groups.map(g=>g.curveIds.every(id=>moving.has(id))?g:{...g,curveIds:g.curveIds.filter(id=>!moving.has(id))}).filter(g=>g.curveIds.length);for(const l of n.layers)l.items=l.items.filter(id=>!moving.has(id));n.layers.find(l=>l.id===target)!.items.unshift(...ordered);return normalizeOrder(n);
 }
-export function splitCurve(d:Doc,id:string,t:number):{document:Doc;ids:string[]}{
- check(d,[id]);if(t<=1e-5||t>=1-1e-5)throw Error('请在曲线内部选择分割位置。');
+export function splitCurve(d:Doc,id:string,t:number,options:{intent?:CurveSplitIntent;propagate?:boolean}={}):{document:Doc;ids:string[]}{
+ const intent=options.intent;if(intent){if(intent.curveId!==id||intent.t!==t)throw Error('The split command and explicit intent disagree.');assertCurveSplitIntent(d,intent);}
+ if(options.propagate&&!intent)throw Error('Propagating a split requires an explicit identity plan.');
+ if(!options.propagate)check(d,[id]);if(!Number.isFinite(t)||t<=1e-5||t>=1-1e-5)throw Error('请在曲线内部选择分割位置。');
  for(const j of d.joins){if(j.mode!=='ARC')continue;const g=roundedJoins(d).get(j.id)!;if(g.error)continue;for(const [e,at] of [[j.a,g.aT],[j.b,g.bT]] as const)if(e.curveId===id&&(e.end===0?t<=at:t>=at))throw Error('该位置属于圆弧过渡范围，请在保留的源曲线上分割。');}
  const shape=shapeOf(d,id),[left,right]=split(shape.map(([x,y])=>[x,y,0]),t).map(s=>s.map(([x,y])=>[x,y]) as Cubic);
  if(length(sub(left[2],left[3]))<1e-7||length(sub(right[1],right[0]))<1e-7)throw Error('该位置切向退化，请换一个分割位置。');
- const n=copy(d),old=curveById(n,id),newId=uid(),nodeId=uid(),oldEnd=old.nodes[1],inkEnds=old.inkEnds;
- n.nodes.push({id:nodeId,position:left[3]});old.nodes[1]=nodeId;old.handles=[left[1],left[2]];const base=old.name;old.name=nextName(n.curves.filter(c=>c.id!==id).map(c=>c.name),base+' · ');
+ const n=copy(d),old=curveById(n,id),leftId=intent?.childCurveIds[0]??id,newId=intent?.childCurveIds[1]??uid(),nodeId=intent?.seamNodeId??uid(),oldEnd=old.nodes[1],inkEnds=old.inkEnds;
+ n.nodes.push({id:nodeId,position:left[3]});old.id=leftId;old.nodes[1]=nodeId;old.handles=[left[1],left[2]];const base=old.name;old.name=nextName(n.curves.filter(c=>c.id!==leftId).map(c=>c.name),base+' · ');
  const created={...old,id:newId,name:nextName(n.curves.map(c=>c.name),base+' · '),nodes:[nodeId,oldEnd] as [string,string],handles:[right[1],right[2]] as [Point2,Point2]};if(inkEnds){old.inkEnds=[inkEnds[0],{}];created.inkEnds=[{},inkEnds[1]];}n.curves.push(created);
- for(const j of n.joins)for(const key of ['a','b'] as const)if(j[key].curveId===id&&j[key].end===1)j[key]={curveId:newId,end:1};
- if(n.endpointLinks)n.endpointLinks=n.endpointLinks.map(j=>({...j,a:j.a.curveId===id&&j.a.end===1?{curveId:newId,end:1}:j.a,b:j.b.curveId===id&&j.b.end===1?{curveId:newId,end:1}:j.b}));
- n.joins.push({id:uid(),a:{curveId:id,end:1},b:{curveId:newId,end:0},mode:'SMOOTH'});
- const replace=(xs:import('./model').CurveUse[])=>xs.flatMap(x=>x.id!==id?[x]:x.reverse?[{id:newId,reverse:true},{id,reverse:true}]:[{id,reverse:false},{id:newId,reverse:false}]);n.fills=n.fills.map(f=>({...f,boundary:replace(f.boundary)}));n.offsets=n.offsets.map(o=>({...o,source:replace(o.source)}));
+ const endpoint=(e:Endpoint):Endpoint=>e.curveId===id?{curveId:e.end===0?leftId:newId,end:e.end}:e;
+ for(const j of n.joins)for(const key of ['a','b'] as const)j[key]=endpoint(j[key]);
+ if(n.endpointLinks)n.endpointLinks=n.endpointLinks.map(j=>({...j,a:endpoint(j.a),b:endpoint(j.b)}));
+ n.joins.push({id:intent?.seamJoinId??uid(),a:{curveId:leftId,end:1},b:{curveId:newId,end:0},mode:'SMOOTH'});
+ const replace=(xs:import('./model').CurveUse[])=>xs.flatMap(x=>x.id!==id?[x]:x.reverse?[{id:newId,reverse:true},{id:leftId,reverse:true}]:[{id:leftId,reverse:false},{id:newId,reverse:false}]);n.fills=n.fills.map(f=>({...f,boundary:replace(f.boundary)}));n.offsets=n.offsets.map(o=>({...o,source:replace(o.source)}));
+ for(const layer of n.layers)layer.items=layer.items.flatMap(item=>item===id?[leftId,newId]:[item]);
+ if(n.groups)n.groups=n.groups.map(group=>({...group,curveIds:group.curveIds.flatMap(curve=>curve===id?[leftId,newId]:[curve])}));
  // Splitting shortens the source allocated to each endpoint. Do not silently
  // expand a previously clamped arc and violate the exact-split contract.
  const before=roundedJoins(d),after=roundedJoins(n);
@@ -222,7 +228,7 @@ export function splitCurve(d:Doc,id:string,t:number):{document:Doc;ids:string[]}
   const a=before.get(j.id)!,b=after.get(j.id)!;
   if(!a.error&&(b.error||Math.abs(a.distance-b.distance)>1e-5))throw Error('分割会改变圆弧范围，请先减小影响范围再分割。');
  }
- const l=layerFor(n,id)!;l.items.splice(l.items.indexOf(id)+1,0,newId);return {document:pruneMirrorEditingMetadata(d,normalizeOrder(splitDisplayIntervals(d,n,id,newId))),ids:[id,newId]};
+ return {document:pruneMirrorEditingMetadata(d,normalizeOrder(splitDisplayIntervals(d,n,id,newId,intent))),ids:[leftId,newId]};
 }
 export function ellipse(d:Doc,layerId:string,a:Point2,b:Point2,width:number):{document:Doc;ids:string[]}{
  const center=mul(add(a,b),.5),rx=Math.abs(b[0]-a[0])/2,ry=Math.abs(b[1]-a[1])/2,k=.5522847498307936;

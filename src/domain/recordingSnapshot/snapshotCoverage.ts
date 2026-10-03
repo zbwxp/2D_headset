@@ -1,5 +1,5 @@
 import {shapeOf,type Cubic,type DrawingDocument} from '../drawing/model';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarWeights,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
+import {interpolateSnapshotSimplexGeometry,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
 import {locateSnapshotSimplex,projectToSnapshotCoverage,restrictSnapshotCoverage,type SnapshotSimplexLocation,type SnapshotTriangulation,type SnapshotTriangulationAngle} from './triangulation';
 
 export interface SnapshotCoverageCurvePreview {
@@ -14,7 +14,7 @@ export interface SnapshotCoverageEvaluation {
  outsideCurves:SnapshotCoverageCurvePreview[];
  diagnostics:string[];
 }
-export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>SnapshotScalarWeights|undefined;
+export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>SnapshotScalarResponse|undefined;
 
 /** Prepare static membership/topology support once for a set of immutable basis
  * outputs. Curves can have different valid regions. Their red fallback cubics

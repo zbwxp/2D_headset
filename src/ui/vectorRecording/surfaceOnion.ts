@@ -2,7 +2,7 @@ import {emptyDrawing,shapeOf} from '../../domain/drawing/model';
 import type {SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
 import type {SnapshotRecording} from '../../domain/recordingSnapshot/model';
 import {prepareSnapshotCoverage} from '../../domain/recordingSnapshot/snapshotCoverage';
-import {createSnapshotSurfaceResponseSampler} from '../../domain/recordingSnapshot/surfaceTargets';
+import {createSnapshotSurfaceValueSampler} from '../../domain/recordingSnapshot/surfaceTargets';
 import {markSceneOnionHighlights,type SceneOnionFrame} from './angleInspection';
 import {sampleEndpointOnionAngles,type SceneOnionEndpoints} from './endpointOnion';
 
@@ -14,9 +14,9 @@ export function interpolateSnapshotSurfaceOnion(recording:SnapshotRecording,curr
  const first=graph.mesh.vertices.find(vertex=>vertex.snapshotId===endpoints.startSnapshotId),last=graph.mesh.vertices.find(vertex=>vertex.snapshotId===endpoints.endSnapshotId);
  if(!first||!last||first.id===last.id)throw Error('Choose two different real snapshot bindings.');
  const prepared=prepareSnapshotCoverage(graph.mesh,surface.allBases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle}))),diagnostics=new Set<string>();
- const samplers=new Map<string,ReturnType<typeof createSnapshotSurfaceResponseSampler>>();
+ const samplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>();
  const frames=sampleEndpointOnionAngles(first.angle,last.angle,step).map(({angle}):SceneOnionFrame=>{
-  const sampled=prepared.evaluate(angle,location=>{const key=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=samplers.get(key);if(!sampler){sampler=createSnapshotSurfaceResponseSampler(graph,location);samplers.set(key,sampler);}return sampler;});
+  const sampled=prepared.evaluate(angle,location=>{const key=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=samplers.get(key);if(!sampler){sampler=createSnapshotSurfaceValueSampler(graph,location,surface.allBases);samplers.set(key,sampler);}return sampler;});
   for(const message of sampled.diagnostics)diagnostics.add(message);
   const drawing=sampled.normal?.drawing??emptyDrawing(),centerlines=[...drawing.curves.map(curve=>({id:`curve:${curve.id}`,cubic:shapeOf(drawing,curve.id)})),...sampled.outsideCurves.map(curve=>({id:`outside:${curve.curveId}`,cubic:curve.cubic,outside:true}))];
   return {angle,drawing,paintBatches:[],centerlines};

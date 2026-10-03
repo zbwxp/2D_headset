@@ -1,3 +1,4 @@
+import type {SnapshotResponseExpression} from './responseExpressions';
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
 import type {SnapshotTriangulation} from './triangulation';
@@ -158,6 +159,7 @@ export interface SnapshotPropertyResponses {
 /** Recorder-owned editing frame, never a snapshot or a geometric mesh vertex.
  * Draft collections replace the corresponding saved simplex response. */
 export interface SnapshotCorrectionFrame {
+ responseExpressions?:SnapshotResponseExpressionRegistry;
  id:string;angle:Angle;status:'saved'|'draft';
  edgeResponses?:Record<string,SnapshotEndpointResponses>;
  triangleResponses?:Record<string,SnapshotTriangleResponses>;
@@ -166,6 +168,7 @@ export interface SnapshotCorrectionFrame {
 /** Keep the exact old coordinate frame with retired constraints. Recovery does
  * not silently attach them to an unrelated live edge or triangle. */
 export interface SnapshotOrphanedResponses {
+ responseExpressions?:SnapshotResponseExpressionRegistry;
  id:string;reason:'deleted-view'|'mesh-change'|'unhandled-rebind';message:string;
  mesh:SnapshotTriangulation;
  edgeResponses:Record<string,SnapshotEndpointResponses>;
@@ -173,7 +176,16 @@ export interface SnapshotOrphanedResponses {
  propertyResponses?:SnapshotPropertyResponses;
  correctionFrames?:SnapshotCorrectionFrame[];
 }
+/** Inherited scalar residuals are flat live-basis expressions. Native saved or
+ * draft responses add to these residuals; they never replace their provenance. */
+export interface SnapshotExpressionControlResponse {x?:SnapshotResponseExpression;y?:SnapshotResponseExpression}
+export interface SnapshotExpressionResponses {
+ nodes:Record<string,SnapshotExpressionControlResponse>;
+ handles:Record<string,readonly [SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]>;
+}
+export type SnapshotResponseExpressionRegistry=Record<string,SnapshotExpressionResponses>;
 export interface SnapshotAngleGraph {
+ responseExpressions?:SnapshotResponseExpressionRegistry;
  version:1;mesh:SnapshotTriangulation;
  /** Every shared edge has the sole orientation saved in mesh.edges. */
  edgeResponses:Record<string,SnapshotEndpointResponses>;

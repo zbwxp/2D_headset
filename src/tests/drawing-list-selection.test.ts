@@ -35,7 +35,7 @@ test('sidebar row keys distinguish stroke headers and segments; collapsed groups
 const valid=(d:Doc)=>expect(parseDrawing(JSON.parse(JSON.stringify(d)))).toEqual(d);
 test('batch deletion permits hidden selected segments and preserves unrelated geometry, locks and valid topology',()=>{
  const {d,ids}=fixture(),before=structuredClone(d),hidden=c.setStrokeState(d,ids[0],{visible:false}),removed=c.deleteObjects(hidden,[ids[0],ids[1]]);
- expect(removed.curves).toHaveLength(3);expect(shapeOf(removed,'brow')).toEqual(shapeOf(d,'brow'));expect(removed.fills).toEqual(hidden.fills);valid(removed);expect(d).toEqual(before);
+ expect(removed.curves).toHaveLength(3);expect(shapeOf(removed,'brow')).toEqual(shapeOf(d,'brow'));expect(removed.fills).toEqual([]);expect(removed.layers).toHaveLength(hidden.layers.length);valid(removed);expect(d).toEqual(before);
  const locked=c.curveChange(hidden,ids[0],{locked:true});expect(()=>c.deleteObjects(locked,[ids[0],ids[1]])).toThrow(/锁定/);expect(locked.curves).toHaveLength(d.curves.length);
 });
 test('mixed selection removes selected curve and fill in one immutable command; deleting a whole group removes its container',()=>{

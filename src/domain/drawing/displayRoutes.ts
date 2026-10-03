@@ -14,10 +14,10 @@ export interface DisplayRoute {seed:StrokePath;throughLinkIds:string[]}
 export function mapDisplayRouteReferences(route:DisplayRoute,curveId:(id:string)=>string,linkId:(id:string)=>string):DisplayRoute {
  return {seed:{closed:route.seed.closed,segments:route.seed.segments.map(u=>({...u,id:curveId(u.id)}))},throughLinkIds:route.throughLinkIds.map(linkId)};
 }
-/** Exact Drawing split keeps the original ID for [0,t] and uses newId for [t,1].
- * The split command also remaps link ports; this updates only display traversal. */
-export function splitDisplayRoute(route:DisplayRoute,id:string,newId:string):DisplayRoute {
- return {seed:{closed:route.seed.closed,segments:route.seed.segments.flatMap(u=>u.id!==id?[{...u}]:u.reverse?[{id:newId,reverse:true},{id,reverse:true}]:[{id,reverse:false},{id:newId,reverse:false}])},throughLinkIds:[...route.throughLinkIds]};
+/** An explicit split may replace both curve IDs. Legacy Drawing keeps id on
+ * the left. Link ports are remapped by the command; this is traversal only. */
+export function splitDisplayRoute(route:DisplayRoute,id:string,newId:string,leftId=id):DisplayRoute {
+ return {seed:{closed:route.seed.closed,segments:route.seed.segments.flatMap(u=>u.id!==id?[{...u}]:u.reverse?[{id:newId,reverse:true},{id:leftId,reverse:true}]:[{id:leftId,reverse:false},{id:newId,reverse:false}])},throughLinkIds:[...route.throughLinkIds]};
 }
 export interface DisplayRouteDiagnostic {code:'INVALID_SEED'|'MISSING_LINK'|'DISABLED_LINK'|'PORT_CONFLICT'|'DISCONNECTED_LINK'|'SEPARATED_LINK'|'INVALID_TRAVERSAL'|'GEOMETRY';message:string;linkId?:string}
 export interface ResolvedDisplayRoute {path:StrokePath;usedLinkIds:string[];displacedJoinIds:string[];diagnostics:DisplayRouteDiagnostic[]}
@@ -105,13 +105,13 @@ export function mapRouteCoverageReferences(material:readonly RouteMaterialSpan[]
 
 /** Exact source split transports coverage by the known parameter map. This is
  * an explicit editing operation, not automatic recovery from stale IDs. */
-export function splitRouteCoverage(material:readonly RouteMaterialSpan[],id:string,newId:string,at:number):RouteMaterialSpan[]{
- if(!Number.isFinite(at)||at<=0||at>=1||!id||!newId||id===newId)throw new Error('显示路径分割映射无效。');
+export function splitRouteCoverage(material:readonly RouteMaterialSpan[],id:string,newId:string,at:number,leftId=id):RouteMaterialSpan[]{
+ if(!Number.isFinite(at)||at<=0||at>=1||!id||!newId||!leftId||leftId===newId||id===newId)throw new Error('显示路径分割映射无效。');
  return material.flatMap(span=>{
   if(span.from.kind!=='curve'||span.to.kind!=='curve'||span.from.curveId!==id||span.to.curveId!==id)return [{...span,from:{...span.from},to:{...span.to},ends:cloneEnds(span.ends)}];
   const a=span.from.t,b=span.to.t,cut=at>Math.min(a,b)&&at<Math.max(a,b),points=cut?[a,at,b]:[a,b];
   return points.slice(1).map((end,i)=>{
-   const start=points[i],right=(start+end)/2>at,to=(t:number):RouteMaterialPoint=>({kind:'curve',curveId:right?newId:id,t:clamp(right?(t-at)/(1-at):t/at)}),ends=plainEnds();
+   const start=points[i],right=(start+end)/2>at,to=(t:number):RouteMaterialPoint=>({kind:'curve',curveId:right?newId:leftId,t:clamp(right?(t-at)/(1-at):t/at)}),ends=plainEnds();
    if(i===0)ends[0]={...span.ends[0]};if(i===points.length-2)ends[1]={...span.ends[1]};
    return {...span,from:to(start),to:to(end),ends,continuesBefore:span.continuesBefore||i>0,continuesAfter:span.continuesAfter||i<points.length-2};
   });
