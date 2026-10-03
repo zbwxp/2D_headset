@@ -195,7 +195,7 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // the already-placed controls would silently change that geometry.
  const deformationMaterial=evaluatedDeformationSource(drawing);
  if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options).drawing,id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??value;
-  remapEvaluatedDeformations(result,drawing,mirroredMaterial,id,id,{point:reflect,reverse:value=>curveMap[value]?.reverse??false,key:JSON.stringify(['mirror',options.axisX,curveMap])});
+  remapEvaluatedDeformations(result,drawing,mirroredMaterial,id,id,{point:reflect,reverse:value=>curveMap[value]?.reverse??false,key:JSON.stringify(['mirror',options.axisX,curveMap]),frame:{axisX:options.axisX,reverseCurveIds:drawing.curves.filter(curve=>curveMap[curve.id]?.reverse).map(curve=>curve.id)}});
  }
  const material=evaluatedAffineSource(drawing);
  if(material){

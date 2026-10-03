@@ -1,9 +1,9 @@
 import {nodeAt,sub,add,type Point2,type DrawingDocument} from '../drawing/model';
-import {isLayerCageDomain,type SnapshotLayerDomain} from './layerDomains';
+import {isNonlinearLayerDomain,type SnapshotLayerDomain} from './layerDomains';
 import type {SceneShapeValue} from '../recordingScene/model';
 const different=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])>1e-12;
 const clean=(p:Point2):Point2=>p.map(n=>Math.abs(n)<1e-12?0:n) as Point2;
-export function layerUsesCage(domains:readonly SnapshotLayerDomain[]|undefined,layerId:string):boolean {return !!domains?.some(domain=>isLayerCageDomain(domain)&&domain.enabled!==false&&domain.layerIds.includes(layerId));}
+export function layerUsesCage(domains:readonly SnapshotLayerDomain[]|undefined,layerId:string):boolean {return !!domains?.some(domain=>isNonlinearLayerDomain(domain)&&domain.enabled!==false&&domain.layerIds.includes(layerId));}
 /** Diff explicit Drawing targets in the LAST domain's output coordinates. No
  * spatial inverse is applied to a fitted handle; new members have no entries. */
 export function captureLayerDomainControls(before:DrawingDocument,wanted:DrawingDocument,evaluated:readonly SnapshotLayerDomain[],own:readonly SnapshotLayerDomain[]|undefined,layerIds:Iterable<string>){

@@ -45,7 +45,7 @@ function relations(value:unknown){
 }
 function deformation(value:unknown){
  const data=object(value,['warps','bindings','layers','relationPositions','intervalMaterialIssues','layerDomains']);
- if(data.layerDomains!==undefined){for(const raw of list(data.layerDomains,1000)){const domain=object(raw,(raw as {kind?:unknown})?.kind==='h-coons'?['kind','id','layerIds','restRect','quad','bend','enabled','postShape']:['kind','id','layerIds','matrix','enabled','postShape']);id(domain.id);list(domain.layerIds).forEach(id);if(domain.postShape!==undefined)shape(domain.postShape);}validateLayerDomains(data.layerDomains as Parameters<typeof validateLayerDomains>[0]);}
+ if(data.layerDomains!==undefined){for(const raw of list(data.layerDomains,1000)){const domain=object(raw,(raw as {kind?:unknown})?.kind==='h-coons'?['kind','id','layerIds','restRect','quad','bend','enabled','postShape']:['kind','id','layerIds','matrix','enabled','postShape','materialProgram']);id(domain.id);list(domain.layerIds).forEach(id);if(domain.postShape!==undefined)shape(domain.postShape);}validateLayerDomains(data.layerDomains as Parameters<typeof validateLayerDomains>[0]);}
  if(data.intervalMaterialIssues!==undefined)for(const [trackId,issue] of Object.entries(map(data.intervalMaterialIssues))){id(trackId);materialIssue(issue);}
  for(const raw of list(data.warps,1000)){const warp=object(raw,['id','name','parentId','restGrid','grid']);id(warp.id);name(warp.name);if(warp.parentId!==undefined)id(warp.parentId);grid(warp.restGrid);grid(warp.grid);}
  for(const raw of list(data.bindings)){const binding=object(raw,['layerId','warpId']);id(binding.layerId);id(binding.warpId);}

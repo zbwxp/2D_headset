@@ -1,3 +1,4 @@
+import {remapMaterialProgram} from '../drawing/materialProgram';
 import {evaluatedMaterialSource,evaluatedMaterialProgram,type EvaluatedMaterialStep} from '../drawing/evaluatedDeformation';
 import {isLayerCageDomain,type SnapshotLayerAffineDomain,type SnapshotLayerDomain} from './layerDomains';
 import {emptyDrawing,parseDrawing,type DrawingDocument,type Point2} from '../drawing/model';
@@ -45,10 +46,10 @@ function asPlacement(matrix:Affine2D):ScenePlacementValue|undefined {
  return equivalent(placementMatrix(value),matrix)?value:undefined;
 }
 
-const affineProduct=(program:readonly EvaluatedMaterialStep[])=>program.reduce<Affine2D>((matrix,step)=>step.kind==='affine'?composeAffine2D(step.matrix,matrix):matrix,identityAffine2D());
+function affineProduct(program:readonly EvaluatedMaterialStep[]):Affine2D {return program.reduce<Affine2D>((matrix,step)=>{if(step.kind==='affine')return composeAffine2D(step.matrix,matrix);if(step.kind==='reflected'){const reflection:Affine2D=[-1,0,0,1,2*step.axisX,0];return composeAffine2D(composeAffine2D(reflection,composeAffine2D(affineProduct(step.steps),reflection)),matrix);}return matrix;},identityAffine2D());}
 /** A parent's domain scope uses its own layer addresses. Only the evaluated
  * program belongs to the copy; replace those addresses with the new owners. */
-const programValue=(program:readonly EvaluatedMaterialStep[])=>program.map(step=>step.kind==='cage'?{...step,domain:{...step.domain,layerIds:[]}}:step);
+function programValue(program:readonly EvaluatedMaterialStep[]):unknown[] {return program.map(step=>step.kind==='cage'?{...step,domain:{...step.domain,layerIds:[]}}:step.kind==='reflected'?{...step,steps:programValue(step.steps)}:step);}
 function copyMaterialPrograms(current:DrawingDocument,material:DrawingDocument,copy:RecordingSnapshot,programs:Map<string,EvaluatedMaterialStep[]>,map:(id:string)=>string,freshDomain:()=>string,fail:(id:string,message:string)=>never):Set<string> {
  const copied=new Set<string>(),groups:{program:EvaluatedMaterialStep[];layers:string[]}[]=[];
  for(const layer of material.layers){
@@ -73,6 +74,7 @@ function copyMaterialPrograms(current:DrawingDocument,material:DrawingDocument,c
  for(const group of groups){
   const layerIds=group.layers.map(map),scope=new Set(current.layers.filter(layer=>group.layers.includes(layer.id)).flatMap(layer=>layer.items)),nodes=new Set(current.curves.filter(curve=>scope.has(curve.id)).flatMap(curve=>curve.nodes));
   const shape=(value:SceneShapeValue):SceneShapeValue=>({nodes:Object.fromEntries(Object.entries(value.nodes).filter(([id])=>nodes.has(id)).map(([id,value])=>[map(id),structuredClone(value)])),handles:Object.fromEntries(Object.entries(value.handles).filter(([id])=>scope.has(id)).map(([id,value])=>[map(id),structuredClone(value)]))});
+  if(group.program.some(step=>step.kind==='reflected')){domains.push({id:freshDomain(),layerIds,matrix:identityAffine2D(),materialProgram:remapMaterialProgram(group.program,map,{layerIds,keepObject:id=>scope.has(id)||nodes.has(id)})});continue;}
   let previous:SnapshotLayerDomain|undefined;
   for(const step of group.program){
    if(step.kind==='post-shape'){
@@ -80,7 +82,7 @@ function copyMaterialPrograms(current:DrawingDocument,material:DrawingDocument,c
     if(!Object.keys(postShape.nodes).length&&!Object.keys(postShape.handles).length)continue;
     if(previous&&!previous.postShape)previous.postShape=postShape;
     else {previous={id:freshDomain(),layerIds:[...layerIds],matrix:identityAffine2D(),postShape};domains.push(previous);}
-   }else{
+   }else if(step.kind!=='reflected'){
     const preferred=step.kind==='cage'?map(step.domain.id):undefined,id=preferred&&!domains.some(domain=>domain.id===preferred)?preferred:freshDomain();
     previous=step.kind==='cage'?{...structuredClone(step.domain),id,layerIds:[...layerIds]}:{id,layerIds:[...layerIds],matrix:[...step.matrix]};domains.push(previous);
    }
@@ -108,7 +110,7 @@ export function prepareIndependentSnapshotLayers(workspace:RecordingSnapshotWork
  const materialSource=evaluatedMaterialSource(current),plan=planArtworkLayerImport(materialSource,layerIds);
  if(plan.additionalLayerIds.length)fail(plan.dependencies.find(dependency=>plan.additionalLayerIds.includes(dependency.requiredLayerId))?.objectId??source.id,`also select dependent layers: ${plan.additionalLayerIds.join(', ')}.`,'LAYER_DEPENDENCIES');
  const wanted=subset(current,selected),material=subset(materialSource,selected),programs=new Map<string,EvaluatedMaterialStep[]>();
- for(const curve of material.curves){const program=evaluatedMaterialProgram(current,curve.id);if(!program)fail(curve.id,'its retained material program has no serializable descriptor. Mirrored nonlinear programs require an explicit reflection and endpoint-direction replay adapter.');programs.set(curve.id,program!);}
+ for(const curve of material.curves){const program=evaluatedMaterialProgram(current,curve.id);if(!program)fail(curve.id,'its retained material program has no serializable descriptor.');programs.set(curve.id,program!);}
  const matrices=new Map(material.curves.map(curve=>[curve.id,programs.get(curve.id)!.length?affineProduct(programs.get(curve.id)!):objectMatrix(current,curve.id)]));
  // Use one order-preserving namespace for every identity, including relations
  // and range IDs. Node ordering controls open-path material direction.

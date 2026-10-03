@@ -1,3 +1,4 @@
+import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
@@ -162,6 +163,6 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
 /** Splitting fitted controls is not equivalent to fitting split source cubics.
  * Until an exact program restriction is stored, refuse this specific action. */
 function assertCageSplitSupported(workspace:NonNullable<LandmarkProject['recordingSnapshots']>,curveIds:readonly string[],snapshotId?:string){
- if(!workspace.snapshots.some(snapshot=>[snapshot.deformation,snapshot.inheritedState,snapshot.draft?.deformation].some(state=>state?.layerDomains?.some(domain=>domain.kind==='h-coons'&&domain.enabled!==false))))return;
+ if(!workspace.snapshots.some(snapshot=>[snapshot.deformation,snapshot.inheritedState,snapshot.draft?.deformation].some(state=>state?.layerDomains?.some(domain=>isNonlinearLayerDomain(domain)&&domain.enabled!==false))))return;
  for(const snapshot of workspace.snapshots)if(!snapshotId||snapshot.id===snapshotId){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;if(curveIds.some(id=>hasNonlinearDeformationFor(drawing,id)))throw Error('Splitting a retained cage needs an exact fitted-program restriction. Disable or reset the affected cage before splitting its source.');}
 }

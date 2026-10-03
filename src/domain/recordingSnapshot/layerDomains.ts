@@ -1,3 +1,4 @@
+import {validateMaterialProgram,remapMaterialProgram,materialProgramIsNonlinear,type EvaluatedMaterialStep} from '../drawing/materialProgram';
 import {validateLayerCageDomain,type SnapshotLayerCageDomain} from './layerCageDomain';
 import {validateSceneShape} from '../recordingScene/validation';
 import type {SceneShapeValue} from '../recordingScene/model';
@@ -11,17 +12,21 @@ export interface SnapshotLayerAffineDomain {
  id:string;
  layerIds:string[];
  matrix:Affine2D;
+ /** Owned input procedure, replayed before this affine and its postShape. */
+ materialProgram?:EvaluatedMaterialStep[];
  enabled?:boolean;
  postShape?:SceneShapeValue;
 }
 export type SnapshotLayerDomain=SnapshotLayerAffineDomain|(SnapshotLayerCageDomain&{postShape?:SceneShapeValue});
 export const isLayerCageDomain=(domain:SnapshotLayerDomain):domain is SnapshotLayerCageDomain&{postShape?:SceneShapeValue}=>domain.kind==='h-coons';
+export const isNonlinearLayerDomain=(domain:SnapshotLayerDomain):boolean=>isLayerCageDomain(domain)||!!domain.materialProgram&&materialProgramIsNonlinear(domain.materialProgram);
 export function validateLayerDomains(domains:readonly SnapshotLayerDomain[]):void {
  const id=(value:unknown):value is string=>typeof value==='string'&&!!value&&value.length<=16384;
  if(!Array.isArray(domains)||domains.length>1000||new Set(domains.map(domain=>domain?.id)).size!==domains.length)throw Error('Invalid layer affine domain list.');
  for(const domain of domains){
   if(domain&&isLayerCageDomain(domain)){const {postShape,...cage}=domain;validateLayerCageDomain(cage);}
   else if(!domain||domain.kind!==undefined&&domain.kind!=='affine'||!id(domain.id)||!Array.isArray(domain.layerIds)||!domain.layerIds.length||domain.layerIds.some((layer:unknown)=>!id(layer))||new Set(domain.layerIds).size!==domain.layerIds.length||!validAffine2D(domain.matrix)||domain.enabled!==undefined&&typeof domain.enabled!=='boolean')throw Error('Invalid layer affine domain.');
+  if(!isLayerCageDomain(domain)&&domain.materialProgram!==undefined)validateMaterialProgram(domain.materialProgram);
   if(domain.postShape!==undefined)validateSceneShape(domain.postShape);
  }
 }
@@ -35,6 +40,7 @@ export function mergeLayerDomains(base:readonly SnapshotLayerDomain[]=[],own:rea
 export function remapLayerDomains(domains:readonly SnapshotLayerDomain[],id:(id:string)=>string,selected?:(layerId:string)=>boolean,keepObject?:(id:string)=>boolean):SnapshotLayerDomain[] {
  return domains.flatMap(domain=>{const layers=domain.layerIds.filter(layer=>!selected||selected(layer));if(!layers.length)return [];
   const copy=structuredClone(domain);if(copy.postShape)copy.postShape={nodes:Object.fromEntries(Object.entries(copy.postShape.nodes).filter(([key])=>!keepObject||keepObject(key)).map(([key,value])=>[id(key),value])),handles:Object.fromEntries(Object.entries(copy.postShape.handles).filter(([key])=>!keepObject||keepObject(key)).map(([key,value])=>[id(key),value]))};
+  if(!isLayerCageDomain(copy)&&copy.materialProgram)copy.materialProgram=remapMaterialProgram(copy.materialProgram,id,{layerIds:layers.map(id),keepObject});
   return [{...copy,id:id(domain.id),layerIds:layers.map(id)}];
  });
 }

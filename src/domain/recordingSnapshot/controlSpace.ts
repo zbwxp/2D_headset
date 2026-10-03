@@ -1,7 +1,7 @@
 import {hasEvaluatedDeformationFor} from '../drawing/evaluatedDeformation';
 import {layerUsesCage} from './layerDomainControlEdit';
 import type {SnapshotEvaluation} from './evaluation';
-import {layerDomainMatrices,isLayerCageDomain} from './layerDomains';
+import {layerDomainMatrices,isLayerCageDomain,isNonlinearLayerDomain} from './layerDomains';
 import {identityScenePlacement} from '../recordingScene/model';
 import {placementMatrix} from '../recordingScene/tracks';
 import {composeAffine2D,identityAffine2D,inverseAffine2D,type Affine2D} from '../geometry/affine2d';
@@ -27,7 +27,7 @@ export function trySnapshotControlInverse(evaluation:PlacementEvaluation,layerId
 export function snapshotControlBrushScale(evaluation:PlacementEvaluation&Pick<SnapshotEvaluation,'source'>,layerId:string,curveId:string):number {
  if(evaluatedAffine(evaluation.source,curveId)||hasEvaluatedDeformationFor(evaluation.source,curveId))return 1;
  let scale=1;
- const relevant=(evaluation.state.layerDomains??[]).filter(domain=>domain.layerIds.includes(layerId)&&domain.enabled!==false),firstCage=relevant.findIndex(isLayerCageDomain),domainMatrices=firstCage<0?[snapshotDomainMatrices(evaluation)[layerId]??identityAffine2D()]:relevant.slice(0,firstCage).flatMap(domain=>isLayerCageDomain(domain)?[]:[domain.matrix]);
+ const relevant=(evaluation.state.layerDomains??[]).filter(domain=>domain.layerIds.includes(layerId)&&domain.enabled!==false),firstCage=relevant.findIndex(isNonlinearLayerDomain),domainMatrices=firstCage<0?[snapshotDomainMatrices(evaluation)[layerId]??identityAffine2D()]:relevant.slice(0,firstCage).flatMap(domain=>isLayerCageDomain(domain)?[]:[domain.matrix]);
  for(const matrix of [placementMatrix(evaluation.elementPlacements[curveId]??identityScenePlacement()),placementMatrix(evaluation.placements[layerId]??identityScenePlacement()),...domainMatrices]){
   if(matrix[0]!==matrix[3]||matrix[1]!==-matrix[2]||Math.hypot(matrix[0],matrix[1])===0)break;
   scale*=affine2DMaxScale(matrix);

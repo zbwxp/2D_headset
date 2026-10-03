@@ -1,17 +1,16 @@
 import {remapCurveSource,transformCurveSource} from './curveProvenance';
 import type {Affine2D} from '../geometry/affine2d';
-import type {SnapshotLayerCageDomain} from '../recordingSnapshot/layerCageDomain';
-import type {SceneShapeValue} from '../recordingScene/model';
 import {createFittedGeometryProjector,type CageFitDiagnostic} from './cageGeometry';
 import {evaluatedAffine,evaluatedAffineSource,affineShape,type EvaluatedAffine} from './evaluatedAffine';
 import {mappedParameter,mappedParameterSlope,type CurveParameterMap} from '../deformation/cubicDeformation';
 import type {DrawingDocument,Cubic,Point2} from './model';
 import type {DrawingPiece} from './roundedJoin';
+import {remapMaterialProgram,materialProgramIsNonlinear,type MaterialReflectionFrame,type EvaluatedMaterialStep} from './materialProgram';
+export type {EvaluatedMaterialStep} from './materialProgram';
 
 type Projector=ReturnType<typeof createFittedGeometryProjector>;
 type Geometry={shapes:Cubic[];pieces:DrawingPiece[];error?:string};
 type Material=Parameters<Projector['projectMaterialField']>[0];
-export type EvaluatedMaterialStep={kind:'affine';matrix:Affine2D}|{kind:'cage';domain:SnapshotLayerCageDomain}|{kind:'post-shape';value:SceneShapeValue};
 interface Program {key:string;steps:Projector[];data?:EvaluatedMaterialStep[];parameter:(t:number)=>number;slope:(t:number)=>number}
 interface Evaluation {source:DrawingDocument;programs:Map<string,Program>;sources:WeakMap<DrawingDocument,DrawingDocument>;diagnostics:Map<string,CageFitDiagnostic>}
 const evaluations=new WeakMap<DrawingDocument['nodes'],Evaluation>();
@@ -29,7 +28,7 @@ function programsFor(drawing:DrawingDocument){
 }
 export const hasEvaluatedDeformation=(drawing:DrawingDocument)=>evaluations.has(drawing.nodes);
 export const hasEvaluatedDeformationFor=(drawing:DrawingDocument,id:string)=>evaluations.get(drawing.nodes)?.programs.has(id)??false;
-export const hasNonlinearDeformationFor=(drawing:DrawingDocument,id:string)=>{const program=evaluations.get(drawing.nodes)?.programs.get(id);return !!program&&(!program.data||program.data.some(step=>step.kind==='cage'));};
+export const hasNonlinearDeformationFor=(drawing:DrawingDocument,id:string)=>{const program=evaluations.get(drawing.nodes)?.programs.get(id);return !!program&&(!program.data||materialProgramIsNonlinear(program.data));};
 /** Original material controls with today's style/relations. Every retained
  * program starts here; it contains no sampled geometry or authored source copy. */
 export function evaluatedDeformationSource(drawing:DrawingDocument):DrawingDocument|undefined {
@@ -86,7 +85,7 @@ export function projectEvaluatedMaterial<F extends Material>(drawing:DrawingDocu
 function rememberDiagnostics(evaluation:Evaluation,program:string,index:number,diagnostics:CageFitDiagnostic[]){for(const value of diagnostics){const key=JSON.stringify([program,index,value.owners,value.joinId,value.pieceIndex]),prior=evaluation.diagnostics.get(key);if(!prior||value.maxError>prior.maxError)evaluation.diagnostics.set(key,value);}}
 export const evaluatedDeformationDiagnostics=(drawing:DrawingDocument)=>[...evaluations.get(drawing.nodes)?.diagnostics.values()??[]];
 
-/** Pure data for an eventual independent copy: own the material source, remap
+/** Pure data for an independent copy: own the material source, remap
  * these steps and replay them. No old Snapshot or recursive ancestor is needed.
  * Undefined means this runtime program has no proved serializable descriptor. */
 export function evaluatedMaterialProgram(drawing:DrawingDocument,curveId:string):EvaluatedMaterialStep[]|undefined {
@@ -95,7 +94,7 @@ export function evaluatedMaterialProgram(drawing:DrawingDocument,curveId:string)
 
 /** Presentation namespaces are adapters only. Wrap each existing projector's
  * IDs, preserving its numeric fit and material correspondence exactly. */
-export function remapEvaluatedDeformations(drawing:DrawingDocument,input:DrawingDocument,material:DrawingDocument,id:(id:string)=>string,originalId:(id:string)=>string,reflection?:{point:(p:Point2)=>Point2;reverse:(id:string)=>boolean;key:string}):DrawingDocument {
+export function remapEvaluatedDeformations(drawing:DrawingDocument,input:DrawingDocument,material:DrawingDocument,id:(id:string)=>string,originalId:(id:string)=>string,reflection?:{point:(p:Point2)=>Point2;reverse:(id:string)=>boolean;key:string;frame?:MaterialReflectionFrame}):DrawingDocument {
  const evaluation=evaluations.get(input.nodes);if(!evaluation)return drawing;
  const wrapped=new Map<Projector,Projector>(),mapShape=(shape:Cubic,map:(id:string)=>string)=>reflection?transformCurveSource(shape,shape.map(reflection.point) as Cubic,map,reflection.reverse):remapCurveSource(shape,shape.map(p=>[...p]) as Cubic,map);
  const project=(step:Projector)=>{let cached=wrapped.get(step);if(cached)return cached;
@@ -108,8 +107,10 @@ export function remapEvaluatedDeformations(drawing:DrawingDocument,input:Drawing
    return step.projectGeometry({...geometry,pieces,shapes:pieces.map(piece=>piece.shape)},piece=>selected.has(piece)).fits.map(result=>result?fitted(result):undefined);
   });wrapped.set(step,cached);return cached;
  };
- const remapShape=(value:SceneShapeValue):SceneShapeValue=>({nodes:Object.fromEntries(Object.entries(value.nodes).map(([key,value])=>[id(key),value])),handles:Object.fromEntries(Object.entries(value.handles).map(([key,value])=>[id(key),value]))});
- const data=(step:EvaluatedMaterialStep):EvaluatedMaterialStep=>step.kind==='cage'?{kind:'cage',domain:{...structuredClone(step.domain),id:id(step.domain.id),layerIds:step.domain.layerIds.map(id)}}:step.kind==='post-shape'?{kind:'post-shape',value:remapShape(step.value)}:structuredClone(step);
- const programs=new Map([...evaluation.programs].map(([key,program])=>[id(key),{...program,key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reflection?.reverse(key)?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reflection?.reverse(key)?(t:number)=>program.slope(1-t):program.slope,data:reflection?undefined:program.data?.map(data)}]));
+ const data=(steps:EvaluatedMaterialStep[]|undefined):EvaluatedMaterialStep[]|undefined=>{
+  if(!steps)return undefined;const mapped=remapMaterialProgram(steps,id);if(!reflection)return mapped;
+  return reflection.frame?[{kind:'reflected',axisX:reflection.frame.axisX,reverseCurveIds:reflection.frame.reverseCurveIds.map(id),steps:mapped}]:undefined;
+ };
+ const programs=new Map([...evaluation.programs].map(([key,program])=>[id(key),{...program,key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reflection?.reverse(key)?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reflection?.reverse(key)?(t:number)=>program.slope(1-t):program.slope,data:data(program.data)}]));
  evaluations.set(drawing.nodes,{source:material,programs,sources:new WeakMap(),diagnostics:new Map()});return drawing;
 }

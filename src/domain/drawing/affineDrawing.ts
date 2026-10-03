@@ -8,12 +8,13 @@ import {affine2DMaxScale,applyAffine2D,applyAffine2DVector,identityAffine2D,isId
 
 /** One affine application for evaluated Drawing geometry and derived material.
  * Actual point/handle coordinates are transient; nonuniform/reflected/singular
- * ARC geometry keeps its pre-affine material source. Ink widths stay fixed. */
-export function placeDrawingAffines(before:DrawingDocument,matrices:Record<string,Affine2D>,owner:(objectId:string)=>string|undefined):DrawingDocument {
+ * ARC geometry keeps its pre-affine material source. Ink widths stay fixed.
+ * Owned-program replay retains source material units even for a similarity. */
+export function placeDrawingAffines(before:DrawingDocument,matrices:Record<string,Affine2D>,owner:(objectId:string)=>string|undefined,options:{retainMaterial?:boolean}={}):DrawingDocument {
  const identity=identityAffine2D(),value=(id:string)=>matrices[owner(id)??'']??identity,active=(id:string)=>!isIdentityAffine2D(value(id));
  if(!Object.values(matrices).some(matrix=>!isIdentityAffine2D(matrix)))return before;
  const point=(id:string,p:Point2):Point2=>{const result=applyAffine2D(value(id),p);if(!result.every(Number.isFinite))throw Error('The layer affine produces non-finite geometry.');return result;};
- const similarity=(id:string)=>{const [a,b,c,d]=value(id);return active(id)&&a===d&&b===-c&&Math.hypot(a,b)>0&&!evaluatedAffine(before,id)&&!hasEvaluatedDeformation(before);};
+ const similarity=(id:string)=>{const [a,b,c,d]=value(id);return !options.retainMaterial&&active(id)&&a===d&&b===-c&&Math.hypot(a,b)>0&&!evaluatedAffine(before,id)&&!hasEvaluatedDeformation(before);};
  const drawing:DrawingDocument={...before,
   nodes:before.nodes.map(node=>active(node.id)?{...node,position:point(node.id,node.position)}:node),
   curves:before.curves.map(curve=>active(curve.id)?{...curve,handles:curve.handles.map(p=>point(curve.id,p)) as [Point2,Point2]}:curve),
@@ -21,7 +22,7 @@ export function placeDrawingAffines(before:DrawingDocument,matrices:Record<strin
   joins:before.joins.map(join=>join.radius!==undefined&&similarity(join.a.curveId)?{...join,radius:join.radius*affine2DMaxScale(value(join.a.curveId))}:join),
   endpointLinks:before.endpointLinks?.map(link=>link.joinBrush?.kind==='ARC'&&similarity(link.a.curveId)?{...link,joinBrush:scaleEvaluatedDisplayRouteBrush(link.joinBrush,affine2DMaxScale(value(link.a.curveId)))}:link),
  };
- if(hasEvaluatedDeformation(before)){
+ if(hasEvaluatedDeformation(before)||options.retainMaterial){
   const groups=new Map<string,{matrix:Affine2D;ids:Set<string>}>();
   for(const curve of before.curves)if(active(curve.id)){const matrix=value(curve.id),key=JSON.stringify(matrix);let group=groups.get(key);if(!group){group={matrix,ids:new Set()};groups.set(key,group);}group.ids.add(curve.id);}
   // Each new program must start from its own pre-affine controls. Another
