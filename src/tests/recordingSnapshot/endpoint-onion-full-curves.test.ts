@@ -53,9 +53,8 @@ test('geometry-only sampler shares runtime controls while the main sampler still
 test.each([false,true])('full ghosts preserve explicit SMOOTH and exact endpoints (endpoint pair: %s)',pair=>{
  const start=basis();start.joins=[{id:'smooth',a:{curveId:'left',end:1},b:{curveId:'far',end:0},mode:'SMOOTH'}];start.curves[1].handles[0]=[.4,0];
  const end=structuredClone(start);end.curves[0].handles[1]=[0,-1/3];end.curves[1].handles[0]=[0,.4];
- const recording=emptySnapshotRecording('recording');recording.interpolationWeights=[{id:'slow',target:{layerId:'layer',curveId:'far'},startSnapshotId:'0',endSnapshotId:'-90',points:[[0,0],[.5,.1],[1,1]]}];
- const result=pair?interpolateEndpointPairOnion(endpoint(start,0),endpoint(end,-90),5,{nodes:{},handles:{far:[{x:[[.5,.1]],y:[[.5,.8]]},{}]}}):interpolateEndpointOnion(endpoint(start,0),endpoint(end,-90),5,recording),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=shapeOf(middle.drawing,'left'),right=shapeOf(middle.drawing,'far'),a=sub(left[2],left[3]),b=sub(right[1],right[0]);
- expect(left[3]).toEqual(right[0]);expect(a[0]*b[1]-a[1]*b[0]).toBeCloseTo(0,12);expect(result.diagnostics.some(message=>message.includes('stable driver'))).toBe(true);
+ const result=pair?interpolateEndpointPairOnion(endpoint(start,0),endpoint(end,-90),5,{nodes:{},handles:{far:[{x:[[.5,.1]],y:[[.5,.8]]},{}]}}):interpolateEndpointOnion(endpoint(start,0),endpoint(end,-90),5),middle=result.frames.find(frame=>frame.angle.x===-45)!,left=shapeOf(middle.drawing,'left'),right=shapeOf(middle.drawing,'far'),a=sub(left[2],left[3]),b=sub(right[1],right[0]);
+ expect(left[3]).toEqual(right[0]);expect(a[0]*b[1]-a[1]*b[0]).toBeCloseTo(0,12);if(pair)expect(result.diagnostics.some(message=>message.includes('stable driver'))).toBe(true);
  for(const [frame,drawing] of [[result.frames[0],start],[result.frames.at(-1)!,end]] as const)for(const line of frame.centerlines!)expect(line.cubic).toEqual(shapeOf(drawing,line.id.slice(6,-2)));
 });
 

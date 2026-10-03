@@ -107,9 +107,6 @@ export interface SnapshotRecording {
  angleGraph?:SnapshotAngleGraph;
  /** Sole authority for authored sparse angle values; snapshots only refer to keys. */
  tracks:SnapshotPoseTrack[];
- /** A curve/layer-owned response between two saved views. This never authors
-  * pose keys; exact keys and shared deformation domains keep their authority. */
- interpolationWeights?:SnapshotInterpolationWeight[];
  /** Only genuinely unresolvable or conflicting migrations use this fallback. */
  legacy?:{scene:RecordingScene;readOnly:true;reason:string};
 }
@@ -187,12 +184,6 @@ export interface SnapshotAngleGraph {
  /** Recovery evidence. The original recording and real snapshots also remain
   * in the workspace, byte-for-byte unchanged by copy migration. */
  migration?:{sourceRecordingId:string;sourceMode:'endpoint-pair';sourceRecordingJSON:string;sourceSnapshotsJSON:string};
-}
-export interface SnapshotInterpolationWeight {
- id:string;target:{layerId:string;curveId?:string};startSnapshotId:string;endSnapshotId:string;
- /** Monotone control points in normalized progress/weight coordinates. The
-  * endpoints are fixed at [0,0] and [1,1]; absence of an asset means linear. */
- points:Point2[];
 }
 export interface RecordingSnapshotWorkspace {
  version:2;library:CanonicalElementStore;snapshots:RecordingSnapshot[];

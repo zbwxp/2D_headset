@@ -24,7 +24,7 @@ import {pathOf} from '../../domain/drawing/appearance';
 import {strokeFor} from '../../domain/drawing/strokes';
 import {selectedGroup,transformable,createGroup,ungroup,groupingIssue} from '../../domain/drawing/groups';
 import {snapRecordingEndpoint} from '../../domain/recording/snapping';
-import {readPhoto} from '../edit2d/ReferenceControls';
+import {readPhoto} from '../shared/readPhoto';
 import {RECORDING_REFERENCE_IMAGE,clampReferenceOffset} from '../../domain/recording/reference';
 import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';

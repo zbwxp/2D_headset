@@ -44,39 +44,9 @@ Use `inspectSnapshots`, `snapshot`, `previewSnapshot` and `previewSnapshotFrames
 
 Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setAngle`, `updateSnapshot`, `deleteSnapshot`, `pasteLayers`, `moveLayers`, `cloneLayers`, `reorderLayers`, `setVisibility`, `setLayerPlacement`, `moveShapeNode`, `moveShapeHandle`, `transformShapeElements`, `createWarp`, `editWarpNodes`, and the retained interval/order/Warp-tree commands. Shape positions are in the post-Warp, pre-placement coordinate system. `transformShapeElements` uses a world-space transform and writes residual element deformation, never a hidden Warp.
 
-### Legacy v40 interpolation weight assets (scheduled for retirement)
+### Retired v40 common weight assets
 
-A weight curve belongs to a layer or one canonical curve within that layer, for an explicit pair of views in the same recording. It is stored in `recording.interpolationWeights`, not in transient viewport preferences or a pose key. Each asset has `{id, target: {layerId, curveId?}, startSnapshotId, endSnapshotId, points}`. Targets keep their canonical IDs; renaming a view or navigating to another angle does not change the relationship.
-
-`setInterpolationWeight` accepts `{startSnapshotId, endSnapshotId, targets: [{layerId, curveId?}, ...], points}`. The targets array applies one curve to a selection in one transaction. A layer target sets the fallback for that layer; a curve target overrides that fallback for only that curve and pair. Targets must be present in both selected endpoint views. At least one target is required. The endpoint pair must consist of distinct snapshots belonging to the requested recording, with different angles along one axis only: shared Y for yaw, or shared X for pitch. Diagonal pairs are rejected explicitly. Source-only Drawing snapshots are not interpolation endpoints in this API.
-
-Points are normalized `[input, weight]` pairs, with 2–32 points including fixed `[0,0]` and `[1,1]` endpoints. Inputs increase strictly, weights never decrease, and all coordinates remain between 0 and 1. Smooth monotone cubic interpolation passes through the points without overshoot. No asset means linear. Explicit `[[0,0],[1,1]]` saves a linear override, which can intentionally override a curved layer fallback.
-
-`resetInterpolationWeight` accepts the same pair and targets, without points. It removes only those relationship assets: a reset curve inherits its layer asset, and a reset layer falls back to linear. Neither operation writes geometry, endpoint views, pose keys or angle drafts. All selected edits share one Undo step. Native graph drags use an immutable preview and commit once when released; API dry runs and failures leave project data and history unchanged.
-
-Reversing a pair refers to the same asset. Evaluation reverses its mapping as `1 - f(1 - t)`; setting the reversed pair keeps the asset ID and adopts the submitted orientation. `inspectSnapshots()` returns `interpolationWeights` and each recording's `interpolationWeightCount`. JSON export/import preserves them. Older v2 projects without this optional field remain linear. Removing an endpoint view removes its attached weight assets in the same Undo transaction; unavailable source geometry does not silently delete its saved assets.
-
-```js
-window.contourAI.snapshot({commands: [{
-  op: 'setInterpolationWeight',
-  startSnapshotId: 'front-view-id',
-  endSnapshotId: 'side-view-id',
-  targets: [{layerId: 'layer-slot-id', curveId: 'canonical-curve-id'}],
-  points: [[0, 0], [0.5, 0.2], [1, 1]]
-}]})
-```
-
-### Legacy weight curve authoring and evaluation
-
-Choose the two views with the endpoint selectors, select curves or layers in the current view, then edit **变形权重曲线 / Deformation weight curve**. The selectors also work with onion display off. The graph's horizontal axis is angle progress and its vertical axis is deformation weight. Click to add a point, drag to adjust, double-click or Delete to remove an interior point. Arrow keys adjust a focused point; Shift is a larger step and Alt/Option is a smaller step. The endpoints stay fixed. Multi-selection applies the same points to all selected targets in one Undo transaction. “Linear override” and “Inherit layer” are different actions.
-
-The editing view stays in place: for example, keep the -90° view active, display the -60° reference and highlighted onion guide, and adjust the far-side curve or response while watching that guide. The graph marks -30°/-60° (or positive 30°/60° for that pair) in the same colors as onion skin. No comparison panes or automatic intermediate views are created.
-
-Runtime uses the same monotone scalar response inside each existing sparse-track bracket contained in the selected view pair. If a pair spans intermediate authored keys, each adjacent bracket renormalizes the response between its own two boundaries, so every channel’s authored key remains exact. At an angle keyed only on a different layer/channel, an unkeyed channel still changes according to its response; there is no implicit whole-frame hold. A completely flat response across a bracket falls back to local linear timing. The graph labels authored intermediate positions; endpoint-only onion deliberately ignores those intermediate keys and mixes only its two chosen final endpoint shapes. Nonlinear placement/Warp evaluation also remains distinct from final-control-point blending. This feature does not replace normal animation with endpoint-only evaluation.
-
-Layer responses retime placement and direct shape deformation. A single-layer Warp may share its layer timing; an existing Warp shared by several layers keeps its one original domain timing. Curve overrides retime their own handle-vector deltas and exclusive node deltas. A shared node or EndpointLink component has one deterministic layer authority, and linked layer placements share that authority's timing; conflicting ownership is explained by diagnostics rather than splitting or averaging a junction. The layer domain is not duplicated for a curve override. Full-curve endpoint inspection uses the final source cubic controls and shared endpoint authority. It does not reconstruct the ARC or material-trimmed ink. Main runtime visibility, material interval positions and layer order retain their existing angle timing.
-
-Weight assets are bound to stable layer/curve IDs and their explicit view pair. Moving the same layer reference between presentation positions does not create new assets or replace source geometry. Source edits continue through the canonical library. An explicitly cloned curve is a new identity and does not silently inherit the original curve's response asset.
+The old common monotone layer/line weight editor, commands and runtime remapping have been removed. Import accepts and discards only the obsolete `recording.interpolationWeights` registry. Independent sparse channel tracks, all authored keys and drafts, canonical source IDs, and embedded recovery JSON strings remain intact. Older projects still open; endpoint node/handle responses and the interval `propertyResponses` maps keep their own supported behavior.
 
 Relations and membership are discrete view state: preview chooses the nearest saved view by angle distance, with deterministic Y/X/ID tie-breaking. Geometry pose channels interpolate independently. An explicit snapshot ID selects that snapshot's structure. Parent snapshots evaluate at their own saved state, not at the child's cursor angle.
 
@@ -100,7 +70,7 @@ The viewport stays single. A fixed endpoint can be edited while the onion shows 
 
 `createEndpointPairRecording` opts in by creating a separate recording from two selected saved snapshots. Supply `{startSnapshotId,endSnapshotId,name?,ref?}` from the current recording. The pair must have a fixed Y and distinct X coordinates; both 0→90 and 0→−90 are supported. The copy retains canonical element IDs and live source references, captures each selected endpoint's saved deformation, and preserves its evaluated basis geometry. The original recording, snapshots and every authored intermediate key remain unchanged. Existing 30°/60° geometry keys are deliberately left in the original; they are not imported as hidden pair state.
 
-A new pair stores `mode: "endpoint-pair"` and `endpointPair: {axis:"x",startSnapshotId,endSnapshotId,responses?,draft?}`. Exactly those two snapshots are genuine shape bases. Ordinary `createSnapshot`, endpoint deletion, key deletion and legacy `setInterpolationWeight` are refused in this mode. Placement, Warp, layer structure, visibility, intervals and order edits belong to the endpoints. Intermediate geometric edits share one target resolver: A control edits and V collective affine edits produce desired final controls, which are inverse-solved atomically into responses. They do not author a placement track at that angle. The cursor stays within the pair's X interval and fixed Y.
+A new pair stores `mode: "endpoint-pair"` and `endpointPair: {axis:"x",startSnapshotId,endSnapshotId,responses?,draft?}`. Exactly those two snapshots are genuine shape bases. Ordinary `createSnapshot`, endpoint deletion and key deletion are refused in this mode. Placement, Warp, layer structure, visibility, intervals and order edits belong to the endpoints. Intermediate geometric edits share one target resolver: A control edits and V collective affine edits produce desired final controls, which are inverse-solved atomically into responses. They do not author a placement track at that angle. The cursor stays within the pair's X interval and fixed Y.
 
 The response collection is `{nodes: {[canonicalAuthorityId]: {x?,y?}}, handles: {[curveId]: [{x?,y?},{x?,y?}]}}`. Each axis stores up to 256 strictly increasing interior `[progress,response]` knots. Endpoints `(0,0)` and `(1,1)` are implicit and immutable. Responses are finite, signed, may reverse direction, and may overshoot 0…1. Evaluation linearly connects the constraint samples. Missing axis assets mean linear progress. Handles interpolate endpoint-relative vectors `H−P`, and explicit linked nodes use one deterministic canonical authority.
 

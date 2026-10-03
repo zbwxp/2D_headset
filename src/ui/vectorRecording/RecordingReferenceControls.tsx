@@ -1,6 +1,6 @@
 import {useLayoutEffect,useMemo,useRef,useSyncExternalStore} from 'react';
 import type {ReferenceImage} from '../../domain/project/types';
-import {readPhoto} from '../edit2d/ReferenceControls';
+import {readPhoto} from '../shared/readPhoto';
 import DrawingReferenceControls from '../shared/DrawingReferenceControls';
 import {uiText as t,useLanguage} from '../i18n';
 import {recordingReferenceSession,type RecordingReferenceState} from './recordingReferenceState';

@@ -5,19 +5,15 @@ import type {DrawingDocument,StrokeDisplayIntervals,Point2} from '../drawing/mod
 import {identityScenePlacement,identitySceneShape,type SceneShapeTrack,type SceneShapeValue,type SceneTrack,type SceneWarp,type SceneVisibilityTrack,type SceneDepthTrack,type SceneIntervalTrack,type SceneIntervalValue,type ScenePlacementTrack,type ScenePlacementValue} from './model';
 
 interface Sample<T> {value:T;weight:number}
-/** Optional scalar response over one existing interpolation bracket. */
-export type SceneProgressMapper=(start:Angle,end:Angle,progress:number)=>number;
 const strongest=<T>(samples:Sample<T>[]):T=>samples.reduce((a,b)=>b.weight>a.weight?b:a).value;
 /** Independent tracks use only their own coordinate axes plus a neutral origin.
  * Legacy tracks preserve the original virtual -90/0/90 lattice explicitly. */
-function weights<T>(track:SceneTrack<T>,angle:Angle,mapProgress?:SceneProgressMapper){
- if(track.interpolation==='legacy'&&!mapProgress)return latticeWeights(track.keys.map(k=>k.angle),angle);
- const axes=track.interpolation==='legacy'?[-90,0,90]:[0];
- const [x0,x1,xt]=bracket([...axes,...track.keys.map(k=>k.angle.x)],clampAngle(angle.x)),[y0,y1,yt]=bracket([...axes,...track.keys.map(k=>k.angle.y)],clampAngle(angle.y));
- const x=mapProgress?mapProgress({x:x0,y:angle.y},{x:x1,y:angle.y},xt):xt,y=mapProgress?mapProgress({x:angle.x,y:y0},{x:angle.x,y:y1},yt):yt;
+function weights<T>(track:SceneTrack<T>,angle:Angle){
+ if(track.interpolation==='legacy')return latticeWeights(track.keys.map(k=>k.angle),angle);
+ const [x0,x1,x]=bracket([0,...track.keys.map(k=>k.angle.x)],clampAngle(angle.x)),[y0,y1,y]=bracket([0,...track.keys.map(k=>k.angle.y)],clampAngle(angle.y));
  return [{angle:{x:x0,y:y0},weight:(1-x)*(1-y)},{angle:{x:x1,y:y0},weight:x*(1-y)},{angle:{x:x0,y:y1},weight:(1-x)*y},{angle:{x:x1,y:y1},weight:x*y}].filter(s=>s.weight>0);
 }
-function evaluate<T>(track:SceneTrack<T>,angle:Angle,base:T,mix:(s:Sample<T>[])=>T,corner:(neutral:T,x:T,y:T,angle:Angle)=>T,useDraft=true,mapProgress?:SceneProgressMapper):T {
+function evaluate<T>(track:SceneTrack<T>,angle:Angle,base:T,mix:(s:Sample<T>[])=>T,corner:(neutral:T,x:T,y:T,angle:Angle)=>T,useDraft=true):T {
  const at={x:clampAngle(angle.x),y:clampAngle(angle.y)};
  if(useDraft&&track.draft&&sameAngle(track.draft.angle,at))return track.draft.value;
  const exact=track.keys.find(k=>sameAngle(k.angle,at));if(exact)return exact.value;
@@ -27,15 +23,15 @@ function evaluate<T>(track:SceneTrack<T>,angle:Angle,base:T,mix:(s:Sample<T>[])=
   const keys=track.keys.filter(k=>k.angle[axis==='x'?'y':'x']===0);
   if(!keys.length)return neutral;
   const coordinates=keys.map(k=>k.angle[axis]);if(track.interpolation!=='legacy')coordinates.push(0);
-  const [lo,hi,raw]=bracket(coordinates,value),start={x:0,y:0,...{[axis]:lo}},end={x:0,y:0,...{[axis]:hi}},t=mapProgress?mapProgress(start,end,raw):raw,ka=keys.find(k=>k.angle[axis]===lo),kb=keys.find(k=>k.angle[axis]===hi),a=ka?ka.value:neutral,b=kb?kb.value:neutral;
+  const [lo,hi,t]=bracket(coordinates,value),ka=keys.find(k=>k.angle[axis]===lo),kb=keys.find(k=>k.angle[axis]===hi),a=ka?ka.value:neutral,b=kb?kb.value:neutral;
   return mix([{value:a,weight:1-t},{value:b,weight:t}]);
  };
  const sample=(a:Angle)=>{const key=track.keys.find(k=>sameAngle(k.angle,a));return key?key.value:corner(neutral,axis('x',a.x),axis('y',a.y),a);};
- return mix(weights(track,at,mapProgress).map(s=>({value:sample(s.angle),weight:s.weight})));
+ return mix(weights(track,at).map(s=>({value:sample(s.angle),weight:s.weight})));
 }
-export function evaluateWarpTrack(track:SceneWarp,angle:Angle,useDraft=true,mapProgress?:SceneProgressMapper){
+export function evaluateWarpTrack(track:SceneWarp,angle:Angle,useDraft=true){
  const mix=(samples:Sample<SceneWarp['restGrid']>[])=>blendWarpGrids(samples.map(s=>({grid:s.value,weight:s.weight})));
- return evaluate(track,angle,track.restGrid,mix,(n,x,y)=>blendWarpGrids([{grid:x,weight:1},{grid:y,weight:1},{grid:n,weight:-1}]),useDraft,mapProgress);
+ return evaluate(track,angle,track.restGrid,mix,(n,x,y)=>blendWarpGrids([{grid:x,weight:1},{grid:y,weight:1},{grid:n,weight:-1}]),useDraft);
 }
 /** Null is source inheritance, not hidden. State uses the greatest corner weight;
  * ties follow the stable lower-X/lower-Y corner order. */
@@ -48,7 +44,7 @@ export function evaluateDepthTrack(track:SceneDepthTrack,angle:Angle,useDraft=tr
 /** Scalar channels retain authored turns (0→360 really makes one revolution).
  * Axis scales interpolate through exact zero. Legacy uniform values retain
  * their original representation and interpolation. */
-export function evaluatePlacementTrack(track:ScenePlacementTrack,angle:Angle,useDraft=true,mapProgress?:SceneProgressMapper):ScenePlacementValue {
+export function evaluatePlacementTrack(track:ScenePlacementTrack,angle:Angle,useDraft=true):ScenePlacementValue {
  const mix=(samples:Sample<ScenePlacementValue>[]):ScenePlacementValue=>{
   const value=samples.reduce<ScenePlacementValue>((v,s)=>({translation:[v.translation[0]+s.weight*s.value.translation[0],v.translation[1]+s.weight*s.value.translation[1]],rotation:v.rotation+s.weight*s.value.rotation,scale:v.scale+s.weight*s.value.scale}),{translation:[0,0],rotation:0,scale:0});
   for(const axis of ['scaleX','scaleY'] as const)if(samples.some(s=>s.value[axis]!==undefined))value[axis]=samples.reduce((n,s)=>n+s.weight*(s.value[axis]??s.value.scale),0);
@@ -63,7 +59,7 @@ export function evaluatePlacementTrack(track:ScenePlacementTrack,angle:Angle,use
    value[axis]=Math.max(0,Math.min(1e6,nv===0?xv+yv:xv*yv/nv));
   }
   return value;
- },useDraft,mapProgress);
+ },useDraft);
 }
 /** SVG affine ordering: x'=a*x+c*y+e, y'=b*x+d*y+f. */
 export type ScenePlacementMatrix=[number,number,number,number,number,number];
@@ -118,12 +114,12 @@ export function evaluateIntervalTrack(track:SceneIntervalTrack,source:DrawingDoc
 }
 
 /** Sparse channels share one instance lattice; missing entries mean zero. */
-export function evaluateShapeTrack(track:SceneShapeTrack,angle:Angle,useDraft=true,mapProgress?:SceneProgressMapper):SceneShapeValue {
+export function evaluateShapeTrack(track:SceneShapeTrack,angle:Angle,useDraft=true):SceneShapeValue {
  const point=(record:Record<string,Point2>,id:string):Point2=>Object.hasOwn(record,id)?record[id]:[0,0];
  const handle=(record:SceneShapeValue['handles'],id:string):[Point2,Point2]=>Object.hasOwn(record,id)?record[id]:[[0,0],[0,0]];
  const mix=(samples:Sample<SceneShapeValue>[]):SceneShapeValue=>{
   const nodes=[...new Set(samples.flatMap(s=>Object.keys(s.value.nodes)))],curves=[...new Set(samples.flatMap(s=>Object.keys(s.value.handles)))];
   return {nodes:Object.fromEntries(nodes.map(id=>[id,samples.reduce<Point2>((v,s)=>{const p=point(s.value.nodes,id);return [v[0]+p[0]*s.weight,v[1]+p[1]*s.weight];},[0,0])])),handles:Object.fromEntries(curves.map(id=>[id,([0,1] as const).map(end=>samples.reduce<Point2>((v,s)=>{const p=handle(s.value.handles,id)[end];return [v[0]+p[0]*s.weight,v[1]+p[1]*s.weight];},[0,0]))])) as SceneShapeValue['handles']};
  };
- return evaluate(track,angle,identitySceneShape(),mix,(n,x,y)=>mix([{value:x,weight:1},{value:y,weight:1},{value:n,weight:-1}]),useDraft,mapProgress);
+ return evaluate(track,angle,identitySceneShape(),mix,(n,x,y)=>mix([{value:x,weight:1},{value:y,weight:1},{value:n,weight:-1}]),useDraft);
 }

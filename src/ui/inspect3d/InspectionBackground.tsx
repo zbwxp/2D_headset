@@ -5,7 +5,7 @@ import {formatNumeric} from '../shared/numericSliderMath';
 import {backgroundTransform} from '../../domain/head/inspectionBackground';
 import {useRef,useState} from 'react';
 import {useEditor} from '../../app/store';
-import {readPhoto} from '../edit2d/ReferenceControls';
+import {readPhoto} from '../shared/readPhoto';
 export default function InspectionBackground(){
  const bg=useEditor(s=>s.project.inspectionBackground),set=useEditor(s=>s.setInspectionBackground),input=useRef<HTMLInputElement>(null),[busy,setBusy]=useState(false),[settings,setSettings]=useState(false);
  const images=bg?.images??[],active=images.find(x=>x.id===bg?.activeId);

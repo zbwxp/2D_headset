@@ -40,10 +40,10 @@ test('depth scale is calibrated to the binding pose and is independent of layer 
  const b={...a,pose:{...a.pose,position:[0,0,1] as [number,number,number]}};
  expect(layerTransform(b,a.drawing.layers[1].id).scale).toBeGreaterThan(1);expect(assemblyDrawing(b).layers).toBe(a.drawing.layers);expect(locatorProjection(b,'eye-r').depth-locatorProjection(a,'eye-r').depth).toBeCloseTo(1);
 });
-test('compact project persistence removes legacy hair even when malformed, retains assembly and main drawing',()=>{
+test('compact project persistence archives Assembly without activating it and retains the main drawing',()=>{
  const a=createAssembly(fixture()),p={...createLandmarkProject(),drawing:fixture(),assembly:a,hairstyle:{studio:{baked:'x'.repeat(100000)}}} as any;
  const serialized=serializeProject(p);expect(serialized).not.toContain('hairstyle');expect(serialized).not.toContain('baked');expect(serialized).not.toContain('\n');
- const loaded=parseLandmarks(serialized);expect(loaded.assembly).toEqual(a);expect(loaded.drawing).toEqual(p.drawing);
+ const loaded=parseLandmarks(serialized);expect(loaded.assembly).toBeUndefined();expect(loaded.legacyWorkspaces?.assembly).toEqual(a);expect(loaded.drawing).toEqual(p.drawing);
  expect(parseLandmarks(JSON.stringify(p)).hairstyle).toBeUndefined();expect(p.hairstyle).toBeDefined();
  const invalid=structuredClone(a);invalid.locators[0].planeId='missing';expect(()=>parseAssembly(invalid)).toThrow();
 });
@@ -62,7 +62,7 @@ test('snapshot save/restore captures pose and bindings as well as editable vecto
   useEditor.getState().undo();expect(useEditor.getState().project.assembly!.pose.yaw).toBe(60);useEditor.getState().redo();expect(useEditor.getState().project.assembly!.pose.yaw).toBe(0);
   ws.commitDrawingSnapshot(s=>restoreDrawingSnapshot(s,turn));near(ws.editor.getState().project.drawing!.nodes[0].position,turned.nodes[0].position);
   const p=useEditor.getState().project;expect(p.drawing).toBe(root.drawing);expect(p.drawingSnapshots).toBe(root.drawingSnapshots);
-  const loaded=parseLandmarks(serializeProject(p));expect(loaded.assembly!.pose.yaw).toBe(60);near(assemblyDrawing(loaded.assembly!).nodes[0].position,turned.nodes[0].position);
+  const loaded=parseLandmarks(serializeProject(p));expect(loaded.assembly).toBeUndefined();const archived=loaded.legacyWorkspaces!.assembly as typeof a;expect(archived.pose.yaw).toBe(60);near(assemblyDrawing(archived).nodes[0].position,turned.nodes[0].position);
  }finally{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();}
 });
 test('one locator drives multiple layers without merging them; independent detach, rebind and save preserve other attachments',()=>{

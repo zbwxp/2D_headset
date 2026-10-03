@@ -14,9 +14,10 @@ test('assembly reference slots survive project and snapshot round trips, sharing
  a.drawing={...a.drawing,reference:applyBackgroundState(a.drawing.reference,'slot-0')};
  const document={...a,drawingSnapshots:saved.drawingSnapshots,frames:{[saved.drawingSnapshots!.activeId!]:structuredClone(frameOf(a))}};
  const parsed=parseAssembly(JSON.parse(JSON.stringify(document)));
- const loaded=parseLandmarks(serializeProject({...createLandmarkProject(),assembly:document})).assembly!;
+ const project=parseLandmarks(serializeProject({...createLandmarkProject(),assembly:document}));
+ expect(project.assembly).toBeUndefined();const loaded=project.legacyWorkspaces!.assembly as typeof document;
  expect(loaded).toEqual(parsed);expect(loaded.drawing.reference).toEqual(a.drawing.reference);
- const restored=restoreDrawingSnapshot(loaded,loaded.drawingSnapshots!.activeId!).drawing!.reference as RecordingReferenceImage;
+ const restored=restoreDrawingSnapshot(loaded,loaded.drawingSnapshots!.activeId!,{discardCurrent:true}).drawing!.reference as RecordingReferenceImage;
  expect(restored.activeStateId).toBe('slot-11');expect(restored.states).toEqual(reference.states);
  expect(loaded.drawingSnapshots!.images).toHaveLength(1);expect(JSON.stringify(restored.states)).not.toContain('data:image');
  const locked=applyBackgroundState({...restored,locked:true},'slot-3');expect(locked.locked).toBe(true);expect(locked.offset).toEqual([1.5,-1]);

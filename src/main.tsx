@@ -11,11 +11,11 @@ async function start() {
     // render/edit an empty project while a late response might replace it.
     await prepareProjectStorage();
     await prepareStarterProject({getItem:key=>{if(key==='contour.landmarks.v039'&&getInitialAutosave()!==undefined)return getInitialAutosave()!;try{return localStorage.getItem(key);}catch{return null;}},setItem:(key,value)=>localStorage.setItem(key,value)});
-    const [{default:App},{useEditor},{useDrawing},{useDrawing:useAssembly},{useRecording},{connectWorkspaceSession}] = await Promise.all([
+    const [{default:App},{useEditor},{useDrawing},{useWorkspaceMode},{connectWorkspaceSession}] = await Promise.all([
       import('./app/App'), import('./app/store'), import('./ui/drawing/session'),
-      import('./ui/assemblyDrawing/session'),import('./ui/recording/session'),import('./app/workspaceSession'),
+      import('./app/workspaceMode'),import('./app/workspaceSession'),
     ]);
-    const workspace=connectWorkspaceSession(useEditor,{drawing:useDrawing,assembly:useAssembly,recording:useRecording},{
+    const workspace=connectWorkspaceSession(useEditor,{drawing:useDrawing,workspace:useWorkspaceMode},{
       getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value),
     });
     import.meta.hot?.dispose(()=>workspace.dispose());

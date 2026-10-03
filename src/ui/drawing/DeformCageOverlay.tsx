@@ -3,7 +3,7 @@ import {add,mul,type Point2} from '../../domain/drawing/model';
 import {drawingDeformProjection,quadProjection,type DeformRect,type Quad} from '../../domain/drawing/deform';
 import {bendEdges,type BendValue} from '../../domain/deformation/coons';
 import {point} from '../../domain/drawing/sampling';
-import {inverse3,map3} from '../../domain/assembly/perspective';
+import {inverse3,map3} from '../../domain/deformation/homography';
 import {uiText as t} from '../i18n';
 
 /** Pointer deltas enter the normalized pre-homography boundary frame. */

@@ -1,19 +1,14 @@
 import type {StoreApi} from 'zustand';
 import type {useDrawing as DrawingStore,DrawingSelection,DrawingTool} from '../ui/drawing/session';
-import type {useDrawing as AssemblyStore} from '../ui/assemblyDrawing/session';
-import type {useRecording as RecordingStore} from '../ui/recording/session';
+import type {useWorkspaceMode as WorkspaceStore,WorkspaceMode} from './workspaceMode';
 
 type Drawing=ReturnType<typeof DrawingStore.getState>;
-type Assembly=ReturnType<typeof AssemblyStore.getState>;
-type Recording=ReturnType<typeof RecordingStore.getState>;
-type Stores={drawing:StoreApi<Drawing>;assembly:StoreApi<Assembly>;recording:StoreApi<Recording>};
-type Room='modeling'|'drawing'|'assembly'|'recording';
-type Project={meta:{createdAt:number};drawing?:{curves:unknown[]};assembly?:unknown;views:{id:string}[]};
+type Mode=ReturnType<typeof WorkspaceStore.getState>;
+type Stores={drawing:StoreApi<Drawing>;workspace:StoreApi<Mode>};
+type Project={meta:{createdAt:number};views:{id:string}[]};
 type Editor={getState:()=>{project:Project;viewId:string};setState:(p:{viewId:string})=>void;subscribe:(listener:()=>void)=>()=>void};
 type DrawingView=Omit<Drawing,'set'|'room'>;
-type AssemblyView=Omit<Assembly,'set'|'room'>;
-type RecordingView=Pick<Recording,'view'|'zoom'|'pan'>;
-type Workspace={version:1;room:Room;drawing:DrawingView;assembly:AssemblyView;recording:RecordingView;viewId:string};
+type Workspace={version:2;mode:WorkspaceMode;drawing:DrawingView;viewId:string};
 const prefix='contour.workspace-session.v1.';
 export const workspaceSessionKey=(projectId:number)=>prefix+projectId;
 const tools:DrawingTool[]=['deform','select','direct','pen','ellipse','split','mirror','merge','link','bind','smooth','cusp','arc','hand','zoom'];
@@ -21,7 +16,6 @@ const object=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'&&
 const strings=(v:unknown):string[]|undefined=>Array.isArray(v)&&v.every(x=>typeof x==='string')?v:undefined;
 const number=(v:unknown,fallback:number,min=-Infinity,max=Infinity)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max?v:fallback;
 const bool=(v:unknown,fallback:boolean)=>typeof v==='boolean'?v:fallback;
-const text=(v:unknown,fallback:string)=>typeof v==='string'?v:fallback;
 const point=(v:unknown,fallback:[number,number]):[number,number]=>Array.isArray(v)&&v.length===2&&v.every(x=>typeof x==='number'&&Number.isFinite(x))?[v[0],v[1]]:fallback;
 const oneOf=<T extends string>(v:unknown,choices:readonly T[],fallback:T):T=>choices.includes(v as T)?v as T:fallback;
 function selection(value:unknown):DrawingSelection{
@@ -43,30 +37,15 @@ function drawingView(value:unknown,d:DrawingView):DrawingView{
   fillVisibility:Object.fromEntries(Object.entries(object(v.fillVisibility)).filter((x):x is [string,boolean]=>typeof x[1]==='boolean')),
   closedLayers:strings(v.closedLayers)??d.closedLayers,panelHeight:number(v.panelHeight,d.panelHeight,20,85)};
 }
-function assemblyView(value:unknown,d:AssemblyView):AssemblyView{
- const v=object(value),ui=object(v.viewOptions),u=d.viewOptions;
- return {...drawingView(value,d),rigPan:point(v.rigPan,d.rigPan),rigViewLocked:bool(v.rigViewLocked,d.rigViewLocked),viewOptions:{
-  locatorId:text(ui.locatorId,u.locatorId),planeId:text(ui.planeId,u.planeId),overlay:bool(ui.overlay,u.overlay),folded:bool(ui.folded,u.folded),
-  perspectiveEditing:bool(ui.perspectiveEditing,u.perspectiveEditing),trajectoryMode:oneOf(ui.trajectoryMode,['selected','all','off'],u.trajectoryMode),
-  trajectoryRequested:bool(ui.trajectoryRequested,u.trajectoryRequested),trajectoryPitch:typeof ui.trajectoryPitch==='number'?number(ui.trajectoryPitch,0,-90,90):null,
-  trajectoryScope:oneOf(ui.trajectoryScope,['recorded','full'],u.trajectoryScope)}};
-}
-function recordingView(value:unknown,d:RecordingView):RecordingView{
- const v=object(value),view=object(v.view);
- return {pan:point(v.pan,d.pan),zoom:number(v.zoom,d.zoom,.01,1000),view:{yaw:number(view.yaw,d.view.yaw,-180,180),pitch:number(view.pitch,d.view.pitch,-89,89)}};
-}
 function capture(s:Stores,viewId:string):Workspace{
- const {set:_d,room:dRoom,...drawing}=s.drawing.getState();
- const {set:_a,room:aRoom,...assembly}=s.assembly.getState();
- const {view,pan,zoom,room:rRoom}=s.recording.getState();
- return {version:1,room:aRoom?'assembly':dRoom?'drawing':rRoom?'recording':'modeling',drawing,assembly,recording:{view,pan,zoom},viewId};
+ const {set:_d,room:_room,...drawing}=s.drawing.getState();
+ return {version:2,mode:s.workspace.getState().mode,drawing,viewId};
 }
 
 // Small, project-scoped navigation state. Geometry/poses remain in the project
 // autosave; panning never serializes that large document or creates undo entries.
 export function connectWorkspaceSession(editor:Editor,stores:Stores,storage:Pick<Storage,'getItem'|'setItem'>){
- const initial:Stores={drawing:{...stores.drawing,getState:stores.drawing.getInitialState},assembly:{...stores.assembly,getState:stores.assembly.getInitialState},recording:{...stores.recording,getState:stores.recording.getInitialState}};
- const defaults=capture(initial,'');
+ const {set:_set,room:_room,...drawingDefaults}=stores.drawing.getInitialState();
  let project=editor.getState().project,key=workspaceSessionKey(project.meta.createdAt),restoring=false,dirty=false,timer:ReturnType<typeof setTimeout>|undefined;
  const flush=()=>{
   clearTimeout(timer);timer=undefined;
@@ -78,14 +57,12 @@ export function connectWorkspaceSession(editor:Editor,stores:Stores,storage:Pick
   restoring=true;
   try{
    let saved:Record<string,unknown>={};
-   try{const parsed=object(JSON.parse(storage.getItem(key)??'null'));if(parsed.version===1)saved=parsed;}catch{/* Invalid UI data must not block opening the project. */}
-   const fallback:Room=project.drawing?.curves.length?'drawing':'modeling';
-   let room=oneOf(saved.room,['modeling','drawing','assembly','recording'],fallback);
-   if(room==='assembly'&&!project.assembly)room=fallback;
-   // Apply absolute origins together, bypassing the pan gesture's lock delta.
-   stores.drawing.setState({...drawingView(saved.drawing,defaults.drawing),room:room==='drawing'});
-   stores.assembly.setState({...assemblyView(saved.assembly,defaults.assembly),room:room==='assembly'});
-   stores.recording.setState({...recordingView(saved.recording,defaults.recording),room:room==='recording'});
+   try{const parsed=object(JSON.parse(storage.getItem(key)??'null'));if(parsed.version===1||parsed.version===2)saved=parsed;}catch{/* Invalid UI data must not block opening the project. */}
+   // Read the old key for continuity, but never initialize its retired rooms or
+   // restore their private viewports. Only the current workspace mode survives.
+   const mode=oneOf(saved.version===1?saved.room:saved.mode,['drawing','recording'] as const,saved.version===1?'drawing':stores.workspace.getState().mode);
+   stores.drawing.setState({...drawingView(saved.drawing,drawingDefaults),room:mode==='drawing'});
+   if(stores.workspace.getState().mode!==mode)stores.workspace.getState().setMode(mode);
    if(typeof saved.viewId==='string'&&project.views.some(v=>v.id===saved.viewId))editor.setState({viewId:saved.viewId});
   }finally{restoring=false;}
  };

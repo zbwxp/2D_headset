@@ -1,6 +1,5 @@
 import {validateSnapshotLocalMembership} from './localMembership';
 import {validateSnapshotAngleGraph} from './angleGraph';
-import {validateSnapshotInterpolationWeight} from './weights';
 import {sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {finitePoint} from '../drawing/model';
 import {validateWarpGrid} from '../vectorWarp/model';
@@ -78,24 +77,20 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
   if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair'&&recording.mode!=='triangulated')fail('recording mode');
   if(recording.mode==='triangulated'){
    if(!recording.angleGraph)fail('triangulated recording requires an angle graph');
-   if(recording.legacy||recording.interpolationWeights?.length)fail('triangulated recording cannot carry active legacy interpolation assets');
+   if(recording.legacy)fail('triangulated recording cannot carry a legacy scene');
    validateSnapshotAngleGraph(recording.angleGraph!);
    const vertices=recording.angleGraph!.mesh.vertices;
    if(vertices.length!==recording.snapshotIds.length||vertices.some(vertex=>!recording.snapshotIds.includes(vertex.snapshotId)))fail('angle graph must bind every real recording snapshot exactly once');
   }else if(recording.angleGraph!==undefined)fail('angle graph requires explicit triangulated mode');
   if(recording.mode==='endpoint-pair'){
    const pair=recording.endpointPair;if(!pair||pair.axis!=='x'||!id(pair.startSnapshotId)||!id(pair.endSnapshotId)||pair.startSnapshotId===pair.endSnapshotId)fail('endpoint pair');
-   if(recording.legacy||recording.interpolationWeights?.length)fail('endpoint pair cannot carry legacy or old interpolation assets');
+   if(recording.legacy)fail('endpoint pair cannot carry a legacy scene');
    if(recording.snapshotIds.length!==2||!recording.snapshotIds.includes(pair!.startSnapshotId)||!recording.snapshotIds.includes(pair!.endSnapshotId))fail('endpoint pair must contain exactly its two genuine basis snapshots');
    const start=workspace.snapshots.find(value=>value.id===pair!.startSnapshotId),end=workspace.snapshots.find(value=>value.id===pair!.endSnapshotId);if(!start||!end||start.angle.y!==end.angle.y||start.angle.x===end.angle.x)fail('endpoint pair must differ only on yaw X');
    const interior=(at:Angle)=>at.y===start!.angle.y&&at.x>Math.min(start!.angle.x,end!.angle.x)&&at.x<Math.max(start!.angle.x,end!.angle.x),basis=(at:Angle)=>sameAngle(at,start!.angle)||sameAngle(at,end!.angle);
    if(!basis(recording.angle)&&!interior(recording.angle))fail('endpoint pair cursor angle');if(pair!.responses!==undefined)endpointResponses(pair!.responses);if(pair!.draft){if(!angle(pair!.draft.angle)||!interior(pair!.draft.angle))fail('endpoint correction draft angle');endpointResponses(pair!.draft.responses);}
    if(recording.tracks.some(track=>track.keys.some(key=>!basis(key.angle))||track.draft&&!basis(track.draft.angle)))fail('endpoint pair cannot contain intermediate pose keys or geometry drafts');
   }else if(recording.endpointPair!==undefined)fail('endpoint pair data requires explicit endpoint-pair mode');
-  if(recording.interpolationWeights!==undefined){
-   if(!Array.isArray(recording.interpolationWeights)||recording.interpolationWeights.length>65536)fail('interpolation weight assets');unique(recording.interpolationWeights.map(weight=>weight.id),'interpolation weight');const pairs=new Set<string>();
-   for(const weight of recording.interpolationWeights){validateSnapshotInterpolationWeight(weight);if(!recording.snapshotIds.includes(weight.startSnapshotId)||!recording.snapshotIds.includes(weight.endSnapshotId))fail('interpolation weight endpoint snapshot');const start=workspace.snapshots.find(snapshot=>snapshot.id===weight.startSnapshotId)!,end=workspace.snapshots.find(snapshot=>snapshot.id===weight.endSnapshotId)!;if(!start||!end||sameAngle(start.angle,end.angle)||start.angle.x!==end.angle.x&&start.angle.y!==end.angle.y)fail('interpolation weight endpoints must differ on one angle axis');const key=JSON.stringify([weight.target.layerId,weight.target.curveId??null,...[weight.startSnapshotId,weight.endSnapshotId].sort()]);if(pairs.has(key))fail('duplicate interpolation weight target and pair');pairs.add(key);}
-  }
   const targets=new Set<string>();for(const t of recording.tracks){track(t);const key=snapshotChannelKey(t.channel,t.targetId,t.channel==='interval'?t.sourceTrackId:t.elementId);if(targets.has(key))fail('duplicate channel target');targets.add(key);}
   if(recording.activeSnapshotId!==undefined&&!recording.snapshotIds.includes(recording.activeSnapshotId))fail('active snapshot');
   for(const snapshotId of recording.snapshotIds){const snapshot=workspace.snapshots.find(s=>s.id===snapshotId);if(!snapshot)fail('missing recording snapshot');for(const ref of snapshot!.authored){const authored=recording.tracks.find(t=>t.id===ref.trackId)?.keys.find(k=>k.id===ref.keyId);if(!authored)fail('missing authored key');if(authored!.angle.x!==snapshot!.angle.x||authored!.angle.y!==snapshot!.angle.y)fail('authored key coordinate');}}

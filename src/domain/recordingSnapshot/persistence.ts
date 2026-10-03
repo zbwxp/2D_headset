@@ -1,7 +1,5 @@
 import type {RecordingSnapshotWorkspace} from './model';
 import {validateRecordingSnapshots} from './validation';
-import {validateSnapshotInterpolationWeight} from './weights';
-import type {SnapshotInterpolationWeight} from './model';
 import {parseRecordingScenes} from '../recordingScene/persistence';
 import {finitePoint,validInkEnds,validContourMist,validFillMist} from '../drawing/model';
 import {validateRecordingReference} from '../recording/reference';
@@ -80,9 +78,6 @@ export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspac
   const recording=object(raw,['id','name','angle','snapshotIds','activeSnapshotId','tolerance','tracks','mode','endpointPair','angleGraph','interpolationWeights','legacy']);id(recording.id);name(recording.name);angle(recording.angle);list(recording.snapshotIds).forEach(id);if(recording.activeSnapshotId!==undefined)id(recording.activeSnapshotId);
   if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair'&&recording.mode!=='triangulated')fail('recording mode');
   if(recording.endpointPair!==undefined){const pair=object(recording.endpointPair,['axis','startSnapshotId','endSnapshotId','responses','draft']);if(pair.axis!=='x')fail('endpoint pair axis');id(pair.startSnapshotId);id(pair.endSnapshotId);if(pair.responses!==undefined)endpointResponses(pair.responses);if(pair.draft!==undefined){const draft=object(pair.draft,['angle','responses']);angle(draft.angle);endpointResponses(draft.responses);}}
-  if(recording.interpolationWeights!==undefined)for(const raw of list(recording.interpolationWeights,65536)){
-   const weight=object(raw,['id','target','startSnapshotId','endSnapshotId','points']),target=object(weight.target,['layerId','curveId']);id(weight.id);id(weight.startSnapshotId);id(weight.endSnapshotId);id(target.layerId);if(target.curveId!==undefined)id(target.curveId);list(weight.points,32);validateSnapshotInterpolationWeight(weight as unknown as SnapshotInterpolationWeight);
-  }
   for(const raw of list(recording.tracks,65536)){
    const track=object(raw,['id','targetId','elementId','channel','sourceTrackId','keys','draft','interpolation','materialIssue']);id(track.id);id(track.targetId);if(track.elementId!==undefined)id(track.elementId);if(track.sourceTrackId!==undefined)id(track.sourceTrackId);if(track.materialIssue!==undefined){if(track.channel!=='interval')fail('material issue channel');materialIssue(track.materialIssue);}
    const check=(value:unknown)=>{if(track.channel==='placement')placement(value);if(track.channel==='shape')shape(value);if(track.channel==='warp')grid(value);if(track.channel==='interval')intervalValue(value);};
@@ -92,6 +87,10 @@ export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspac
   if(recording.legacy!==undefined){const legacy=object(recording.legacy,['scene','readOnly','reason']);if(legacy.readOnly!==true||typeof legacy.reason!=='string'||!legacy.reason)fail('legacy fallback');parseRecordingScenes({version:1,scenes:[legacy.scene]});}
  }
  if(root.legacyArchive!==undefined){const archive=object(root.legacyArchive,['projectJSON','format','migrationVersion']);if(typeof archive.projectJSON!=='string'||archive.format!=='landmark-project-json'||archive.migrationVersion!==2)fail('legacy archive');try{const parsed=JSON.parse(archive.projectJSON as string);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))fail('legacy project');}catch{fail('legacy project JSON');}}
- validateRecordingSnapshots(value as RecordingSnapshotWorkspace);return structuredClone(value as RecordingSnapshotWorkspace);
+ // v40's common layer/curve weights are retired. This is the sole accepted
+ // obsolete registry field; all channel keys, drafts and archive strings survive.
+ const normalized=structuredClone(value as RecordingSnapshotWorkspace);
+ for(const recording of normalized.recordings)delete (recording as unknown as Record<string,unknown>).interpolationWeights;
+ validateRecordingSnapshots(normalized);return normalized;
 }
 export const parseRecordingSnapshotWorkspace=parseRecordingSnapshots;

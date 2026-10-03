@@ -77,7 +77,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
    const active=(value:{target:{layerId:string;sourceTrackId:string;rangeId:string}})=>!deadLayers.has(value.target.layerId)&&!removed.has(value.target.sourceTrackId)&&!removed.has(value.target.rangeId);
    return {edges:Object.fromEntries(Object.entries(values.edges).map(([id,entries])=>[id,entries.filter(active)])),triangles:Object.fromEntries(Object.entries(values.triangles).map(([id,entries])=>[id,entries.filter(active)]))};
   };
-  return {...recording,tracks,...(recording.interpolationWeights?{interpolationWeights:recording.interpolationWeights.filter(weight=>!deadLayers.has(weight.target.layerId)&&(!weight.target.curveId||!removed.has(weight.target.curveId)))}:{}),
+  return {...recording,tracks,
    ...(pair?{endpointPair:{...pair,...(pair.responses?{responses:responses(pair.responses)}:{}),...(pair.draft?{draft:{...pair.draft,responses:responses(pair.draft.responses)}}:{})}}:{}),
    ...(graph?{angleGraph:{...graph,...(graph.propertyResponses?{propertyResponses:propertyResponses(graph.propertyResponses)}:{}),edgeResponses:responseMap(graph.edgeResponses),triangleResponses:responseMap(graph.triangleResponses),...(graph.correctionFrames?{correctionFrames:graph.correctionFrames.map(frame=>({...frame,...(frame.propertyResponses?{propertyResponses:propertyResponses(frame.propertyResponses)}:{}),...(frame.edgeResponses?{edgeResponses:responseMap(frame.edgeResponses)}:{}),...(frame.triangleResponses?{triangleResponses:responseMap(frame.triangleResponses)}:{})}))}:{})}}:{}),
   };

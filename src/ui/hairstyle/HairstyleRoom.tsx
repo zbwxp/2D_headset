@@ -17,7 +17,7 @@ import {type HairEndpoint,type HairStrandRule} from '../../domain/hairstyle/stra
 import {HairDrawingProvider,hairDrawingSession} from '../drawing/workspace';
 import {selectedObjects,selectedLayers,type DrawingSelection} from '../drawing/session';
 import LayerPanel from '../drawing/LayerPanel';
-import {readPhoto} from '../edit2d/ReferenceControls';
+import {readPhoto} from '../shared/readPhoto';
 import {useHairstyle} from './session';
 import {useHairZoom,clampHairZoom} from './useHairZoom';
 import {useLanguage} from '../i18n';

@@ -39,7 +39,6 @@ function localState(f:ReturnType<typeof fixture>){
  const recording=f.workspace.recordings[0];recording.snapshotIds.push(source.id);source.authored=[{trackId:'local-placement',keyId:'local-key'}];
  recording.tracks.push({id:'local-placement',channel:'placement',targetId:cid('layer'),keys:[{id:'local-key',angle:{x:17,y:0},value:{...identityScenePlacement(),scaleX:0}}],draft:{angle:{x:17,y:0},value:identityScenePlacement()}});
  const side=emptyRecordingSnapshot('side','Side','view',{x:90,y:0});side.layers=structuredClone(f.view.layers);f.workspace.snapshots.push(side);recording.snapshotIds.push(side.id);
- recording.interpolationWeights=[{id:'weight',target:{layerId:'slot',curveId:cid('curve')},startSnapshotId:f.view.id,endSnapshotId:side.id,points:[[0,0],[.5,.2],[1,1]]}];
 }
 
 test('source adapter refresh preserves generic snapshot state, references, authored sparse values and old conflicting originals through reload',()=>{

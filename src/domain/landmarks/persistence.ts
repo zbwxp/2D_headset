@@ -1,7 +1,6 @@
 import {parseVectorRecording} from '../vectorRecording/persistence';
 import {parseRecordingScenes} from '../recordingScene/persistence';
 import {parseRecordingSnapshots} from '../recordingSnapshot/persistence';
-import {parseAssembly} from '../assembly/model';
 import {migrateChinNode} from '../chin/migration';
 import type {Vec3} from '../project/types';
 import {parseChin,ensureChin,chinRoles} from '../chin/model';
@@ -282,8 +281,7 @@ export function parseLandmarks(text: string): LandmarkProject {
   const legacyPose=p.poseRecording??p.legacyWorkspaces?.poseRecording;
   if(legacyPose!==undefined){try{result.poseRecording=parsePoseRecording(legacyPose);}catch{delete result.poseRecording;}}
   delete result.hairstyle; // Retired workspace: never retain baked textures or duplicate hair documents.
-  const legacyAssembly=p.assembly??p.legacyWorkspaces?.assembly;
-  if(legacyAssembly!==undefined){try{result.assembly=parseAssembly(legacyAssembly);}catch{delete result.assembly;}}
+  // Assembly remains raw archive data; loading never revives its retired runtime.
   if(p.drawing!==undefined)result.drawing=parseDrawing(p.drawing);
   if(p.drawingSnapshots!==undefined)result.drawingSnapshots=parseDrawingSnapshots(p.drawingSnapshots);
   if(p.drawingWorkingCopies!==undefined)result.drawingWorkingCopies=parseDrawingWorkingCopies(p.drawingWorkingCopies,result.drawingSnapshots);

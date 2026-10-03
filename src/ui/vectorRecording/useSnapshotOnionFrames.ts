@@ -31,8 +31,8 @@ export function useSnapshotOnionFrames(workspace:RecordingSnapshotWorkspace,reco
    if(!selected.startSnapshotId||selected.startSnapshotId===selected.endSnapshotId)throw Error('Choose two different endpoint snapshots.');
    if(!recording?.snapshotIds.includes(selected.startSnapshotId)||!recording.snapshotIds.includes(selected.endSnapshotId))throw Error('Choose endpoint snapshots from this Recording.');
    const start=cache.resolve(workspace,recordingId,selected.startSnapshotId,angle,stopAtWarpId,currentEvaluation),end=cache.resolve(workspace,recordingId,selected.endSnapshotId,angle,stopAtWarpId,currentEvaluation);
-   return {...interpolateEndpointOnion(start,end,settings.step,recording),error:undefined};
+   return {...interpolateEndpointOnion(start,end,settings.step),error:undefined};
   }catch(error){return {frames:EMPTY_FRAMES,diagnostics:[] as string[],error:error instanceof Error?error.message:String(error)};}
- },[cache,workspace,recordingId,recording?.interpolationWeights,recording?.mode,recording?.endpointPair,angle.x,angle.y,settings.enabled,settings.step,stopAtWarpId,selected.startSnapshotId,selected.endSnapshotId,currentEvaluation]);
+ },[cache,workspace,recordingId,recording?.mode,recording?.endpointPair,angle.x,angle.y,settings.enabled,settings.step,stopAtWarpId,selected.startSnapshotId,selected.endSnapshotId,currentEvaluation]);
  return {...result,preparing:false};
 }
