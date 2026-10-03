@@ -1,3 +1,4 @@
+import {resolveDisplayRoute} from '../drawing/displayRoutes';
 import type {DrawingDocument,StrokeDisplayIntervals} from '../drawing/model';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {retainSnapshotAffines} from './elementPlacement';
@@ -107,8 +108,19 @@ const copyMaterial=(drawing:DrawingDocument,displayIntervals:StrokeDisplayInterv
 export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle):{drawing:DrawingDocument;diagnostics:string[]} {
  const byId=new Map(bases.map(b=>[b.snapshotId,b.drawing])),diagnostics:string[]=[],transports=new Map<string,StrokeDisplayIntervals>();
  const transported=(snapshotId:string,trackId:string,baseline=false)=>{const key=JSON.stringify([snapshotId,trackId,baseline]);let result=transports.get(key);if(result)return result;const actual=byId.get(snapshotId);if(!actual)fail(`missing live material basis ${snapshotId}.`);const source=baseline?baselines.get(actual!):actual;if(!source)fail(`missing inherited material baseline ${snapshotId}.`);const track=source!.displayIntervals?.find(t=>t.id===trackId);if(!track)fail(`material ${trackId} is absent from live basis ${snapshotId}.`);result=transportEndpointPairMaterial(source!,track!,drawing,diagnostics);transports.set(key,result);return result;};
+ // Local membership loss suspends only the affected display relationship.
+ // Its Recorder field remains intact for restoration; never recreate a missing
+ // basis track or let another local path stand in for its explicit route.
+ const inactive=new Set<string>();
+ for(const track of drawing.displayIntervals??[]){
+  const required=[{id:track.id,ranges:track.ranges.map(range=>range.id)}];
+  let reason:string|undefined;
+  for(const term of recipe.terms)for(const basis of term.bases){if(!basis.coefficient||reason)continue;const actual=byId.get(basis.snapshotId),sources=basis.kind==='edit'?[actual,actual&&baselines.get(actual)]:[actual];for(const source of sources){if(!source){reason=`live basis ${basis.snapshotId} is unavailable`;break;}for(const item of required){const material=source.displayIntervals?.find(track=>track.id===item.id);if(!material||item.ranges.some(id=>!material.ranges.some(range=>range.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies material ${item.id}`;break;}if(material.displayRoute&&resolveDisplayRoute(source,material.displayRoute,{deferEndpointPositions:true}).diagnostics.length){reason=`live basis ${basis.snapshotId} no longer supplies the complete route ${item.id}`;break;}}if(reason)break;}}
+  if(!reason&&track.displayRoute&&resolveDisplayRoute(drawing,track.displayRoute,{deferEndpointPositions:true}).diagnostics.length)reason='its explicit route is outside the current membership';
+  if(reason){for(const item of required)inactive.add(item.id);diagnostics.push(`Material ${track.id} is inactive because ${reason}. Its retained field can resume when membership is restored.`);}
+ }
  const compiled=recipe.terms.map(term=>({term,geometric:geometricWeights(term.field,at),properties:new Map(term.field.properties.map(property=>[snapshotScalarPropertyTargetKey(property.target),prepareTriangularResponse(property.edges,property.samples)]))}));
- const intervals=(drawing.displayIntervals??[]).map(track=>({...track,ranges:track.ranges.map(range=>{
+ const intervals=(drawing.displayIntervals??[]).filter(track=>!inactive.has(track.id)).map(track=>({...track,ranges:track.ranges.map(range=>{
   const layerId=drawing.layers.find(layer=>layer.items.includes(track.anchor.id))?.id;
   const scalar=(end:'start'|'end'|'pinch')=>compiled.reduce((total,{term,geometric,properties})=>{
    const values=term.bases.map(basis=>{if(!basis.coefficient)return 0;const value=transported(basis.snapshotId,track.id).ranges.find(r=>r.id===range.id);if(!value)fail(`material range ${range.id} is absent from ${basis.snapshotId}.`);const read=(r:typeof value)=>end==='pinch'?intervalPinch(r!):r![end];let scalar=read(value);if(basis.kind==='edit'){const baseline=transported(basis.snapshotId,track.id,true).ranges.find(r=>r.id===range.id);if(!baseline)fail('edited material range has no inherited baseline.');scalar-=read(baseline);}return scalar*basis.coefficient;});
