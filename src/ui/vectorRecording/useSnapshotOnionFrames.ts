@@ -1,5 +1,6 @@
 import {useMemo} from 'react';
-import {resolveEndpointPairBasis,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
+import {evaluateRecordingSnapshot,resolveEndpointPairBasis,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
+import {interpolateSnapshotSurfaceOnion} from './surfaceOnion';
 import type {RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
 import {sameAngle,type Angle} from '../../domain/vectorRecording/interpolation';
 import type {SceneOnionFrame,SceneOnionSettings} from './angleInspection';
@@ -16,6 +17,10 @@ export function useSnapshotOnionFrames(workspace:RecordingSnapshotWorkspace,reco
  const result=useMemo(()=>{
   if(!settings.enabled)return {frames:EMPTY_FRAMES,diagnostics:[] as string[],error:undefined};
   try{
+   if(recording?.mode==='triangulated'){
+    const current=currentEvaluation?.angleSurface?currentEvaluation:evaluateRecordingSnapshot(workspace,recordingId,{angle,useDraft:true,immutableInputs:true,diagnostics:'preview'});
+    return {...interpolateSnapshotSurfaceOnion(recording,current,selected,settings.step),error:undefined};
+   }
    if(recording?.mode==='endpoint-pair'){
     const pair=recording.endpointPair;if(!pair)throw Error('Choose the two endpoint bases for this Recording.');
     const canvas=currentEvaluation?.endpointPair,reused=canvas&&sameAngle(currentEvaluation!.angle,angle)&&canvas.startSnapshotId===pair.startSnapshotId&&canvas.endSnapshotId===pair.endSnapshotId?canvas:undefined;

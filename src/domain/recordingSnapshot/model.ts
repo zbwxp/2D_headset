@@ -2,6 +2,7 @@ import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
 import type {SnapshotTriangulation} from './triangulation';
 import type {InteriorResponseSample} from './triangularResponses';
+import type {SnapshotMirrorOptions} from './snapshotMirror';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
 
@@ -80,6 +81,11 @@ export interface RecordingSnapshot {
  id:string;name:string;kind:'drawing'|'sculpt'|'view'|'assembly';
  /** The sole semantic parent. Layer source addresses remain provenance. */
  parentSnapshotId?:string;
+ /** Optional ordinary input-domain reflection of the sole semantic parent. */
+ inputMirror?:SnapshotMirrorOptions;
+ /** Presence opts this node into live whole-parent layer slots. Local deletions
+  * and ordering remain authored choices, never regenerated on load. */
+ parentLayers?:{excludedLayerIds?:string[];orderOverride?:boolean};
  /** Legacy evaluation adapter. A triangulated recorder owns its vertex angles. */
  angle:Angle;
  /** One ordered ownership list; there is no separate sorting container. */
@@ -176,10 +182,14 @@ export interface SnapshotPoseTrackIndex {
  channel:SnapshotPoseChannel;targetId:string;elementId?:string;
  interpolation:'independent'|'legacy';keys:SnapshotPoseKeyRef[];
 }
-export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'LOCAL_ORIGINAL'|'POSE'|'ROUTE';
+export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'LOCAL_ORIGINAL'|'POSE'|'ROUTE'|'INPUT_MIRROR';
 export interface SnapshotDiagnostic {code:SnapshotDiagnosticCode;message:string;snapshotId?:string;layerId?:string;elementId?:string;channelId?:string}
 /** Path records distinguish equal geometry from conflicting parent states. */
-export interface SnapshotElementProvenance {elementId:string;sourceSnapshotId:string;path:string[]}
+export interface SnapshotElementProvenance {
+ elementId:string;sourceSnapshotId:string;path:string[];
+ /** Runtime-only material address; never serialized with snapshot resources. */
+ materialContext?:{elementId:string;idMap:Record<string,string>};
+}
 export const emptyCanonicalElementStore=():CanonicalElementStore=>({nodes:{},curves:{},fills:{},offsets:{}});
 export const emptySnapshotDeformationState=():SnapshotDeformationState=>({warps:[],bindings:[],layers:{},relationPositions:{}});
 export const emptyRecordingSnapshot=(id:string,name='View',kind:RecordingSnapshot['kind']='view',angle:Angle={x:0,y:0}):RecordingSnapshot=>({id,name,kind,angle:{...angle},layers:[],relations:{},deformation:emptySnapshotDeformationState(),authored:[]});

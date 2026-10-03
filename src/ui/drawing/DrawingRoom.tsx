@@ -11,7 +11,7 @@ import {useDrawingWorkspace} from './workspace';
 import AutoHideBar from '../shared/AutoHideBar';
 import {usePanelOpen} from '../shared/panelPreferences';
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
-import {PenTool,PanelRightClose,PanelRightOpen,ImagePlus,Eye,Check,X} from 'lucide-react';
+import {PenTool,PanelRightClose,PanelRightOpen,ImagePlus,Eye,Check,X,Scissors} from 'lucide-react';
 import {emptyDrawing,parseDrawing,groupFor,uid,add,sub,mul,length,curveById,shapeOf,nodeAt,members,joinAt,editable,visible,layerFor,objectById,type DrawingDocument as Doc,type Cubic,type Point2,type Endpoint} from '../../domain/drawing/model';
 import * as cmd from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
@@ -28,6 +28,7 @@ import {readPhoto} from '../edit2d/ReferenceControls';
 import {RECORDING_REFERENCE_IMAGE,clampReferenceOffset} from '../../domain/recording/reference';
 import {uiText as t,useLanguage} from '../i18n';
 import {selectedObjects,selectedLayers,type DrawingTool,type DrawingSelection} from './session';
+import {captureDrawingLayerReferences,layerClipboardProjectId,useLayerReferenceClipboard} from './layerReferenceClipboard';
 import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
 import {selectCurveAtPointer,selectCurvesInBox,drawingControlDragTarget} from './editGestures';
 import {hasNudgeTarget,nudgeSelection} from './nudge';
@@ -58,7 +59,7 @@ export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Poi
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
 export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{underlay?:(view:DrawingUnderlay)=>ReactNode;artworkPreview?:DrawingArtworkPreview;aiGuides?:boolean}={}){
  const {editor:useEditor,session:useDrawing,commitDrawing,id:workspaceId}=useDrawingWorkspace();
- useLanguage(s=>s.language);
+ const zh=useLanguage(s=>s.language)==='zh';
  const rulerSpace=useWorkspaceView(s=>s.rulersVisible)?20:0;
  const rawStored=useEditor(s=>s.project.drawing)??EMPTY,stored=useMemo(()=>rawStored.version===3?rawStored:parseDrawing(rawStored),[rawStored]),projectId=useEditor(s=>s.project.meta.createdAt),session=useDrawing();
  const snapshots=useEditor(s=>s.project.drawingSnapshots),activeSnapshot=snapshots?.items.find(item=>item.id===snapshots.activeId);
@@ -274,8 +275,17 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  }
  function cutSelected(){
   if(drag.current)return;finishHeld();
+  if(workspaceId==='drawing'&&selectedLayers(selection).length){takeLayerReference(selectedLayers(selection));return;}
   try{const result=cutDrawing(useEditor.getState().project.drawing??EMPTY,selectedObjects(selection));if(!result)return;
    choose({ids:[]},'select');commit(result.document);setClipboard(result.clipboard);setHint(t('已剪切；选择目标图层后按 Ctrl/Cmd+V 原位粘贴。'));
+  }catch(ex){error(ex);}
+ }
+ function takeLayerReference(layerIds:readonly string[]){
+  if(workspaceId!=='drawing'||drag.current||!layerIds.length)return;finishHeld();
+  try{
+   const project=useEditor.getState().project,artworkId=project.drawingSnapshots?.activeId??'$working';
+   useLayerReferenceClipboard.getState().capture(captureDrawingLayerReferences(project,artworkId,layerIds,'reference',layerClipboardProjectId()));
+   setHint(zh?'已提取图层引用；原图层保留，粘贴时保持实时关联。':'Layer reference captured; the original stays in place and pasted layers stay live.');
   }catch(ex){error(ex);}
  }
  function pasteSelected(){
@@ -311,7 +321,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    const s=latest.current;if(e.code==='Space'){e.preventDefault();space.current=true;return;}
    if(e.key==='Escape'){e.preventDefault();s.cancelDraft();setFirst(null);endPen();setPenPreview(null);setPending(null);setReferenceMoving(false);return;}
    if((e.ctrlKey||e.metaKey)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();e.stopImmediatePropagation();s.history(e.shiftKey||e.key.toLowerCase()==='y');return;}
-   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='x'&&selectedObjects(s.selection).length){e.preventDefault();e.stopImmediatePropagation();s.cutSelected();return;}
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='x'&&(selectedObjects(s.selection).length||selectedLayers(s.selection).length)){e.preventDefault();e.stopImmediatePropagation();s.cutSelected();return;}
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&s.clipboard){e.preventDefault();e.stopImmediatePropagation();s.pasteSelected();return;}
    if(e.key==='Enter'&&s.tool==='pen'){endPen();setPenPreview(null);return;}
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();const list=!!(e.target as Element).closest('.drawing-layers');s.choose({ids:s.d.curves.filter((c:DrawingCurveAlias)=>list||editable(s.d,c.id)).map((c:DrawingCurveAlias)=>c.id),...(list?{paintIds:[...s.d.fills,...s.d.offsets].map((o:{id:string})=>o.id)}:{})},'select');return;}
@@ -406,7 +416,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  </div>
  {sidebar&&<aside className="drawing-sidebar" data-properties-open={propertiesOpen} style={{gridTemplateRows:propertiesOpen?`minmax(100px,${panelHeight}fr) 6px minmax(80px,${100-panelHeight}fr)`:'minmax(0,1fr) 0px 32px'}}>
  {restoreLayerId&&<LayerSnapshotDialog key={projectId+restoreLayerId} layerId={restoreLayerId} close={()=>setRestoreLayerId(null)} restored={()=>{setClipboard(null);session.set({selection:{ids:[],layer:restoreLayerId},layerId:restoreLayerId,tool:'select'});setHint('');}}/>}
- <LayerPanel layerSections={[{id:activeSnapshot?.id??'$working',name:activeSnapshot?.name??t('图层'),layerIds:d.layers.map(layer=>layer.id)}]} openProperties={()=>setPropertiesOpen(true)} closeProperties={()=>setPropertiesOpen(false)} restoreLayer={id=>{prepareSnapshotChange();setRestoreLayerId(id);}} deleteSelected={deleteSelected} cutSelected={cutSelected} pasteSelected={pasteSelected} canPaste={!!clipboard&&!!activeLayer} document={d} active={activeLayer?.id??null} selection={selection} run={run} choose={choose} setLayer={id=>{endPen();setPenPreview(null);session.set({layerId:id});}} upload={()=>file.current?.click()}/>
+ <LayerPanel layerSections={[{id:activeSnapshot?.id??'$working',name:activeSnapshot?.name??t('图层'),layerIds:d.layers.map(layer=>layer.id)}]} sectionActions={workspaceId==='drawing'?section=>{const selected=selectedLayers(selection).filter(id=>section.layerIds.includes(id)),ids=selected.length?selected:activeLayer&&section.layerIds.includes(activeLayer.id)?[activeLayer.id]:[],label=zh?'提取图层引用':'Take layer reference';return <button data-testid="drawing-take-layer-reference" aria-label={label} title={zh?'提取当前或所选图层的实时引用，保留原图层 · Ctrl/Cmd+X':'Take a live reference to the current or selected layers, keeping the originals · Ctrl/Cmd+X'} disabled={!ids.length} onClick={()=>takeLayerReference(ids)}><Scissors size={14}/>{label}</button>;}:undefined} openProperties={()=>setPropertiesOpen(true)} closeProperties={()=>setPropertiesOpen(false)} restoreLayer={id=>{prepareSnapshotChange();setRestoreLayerId(id);}} deleteSelected={deleteSelected} cutSelected={cutSelected} pasteSelected={pasteSelected} canPaste={!!clipboard&&!!activeLayer} document={d} active={activeLayer?.id??null} selection={selection} run={run} choose={choose} setLayer={id=>{endPen();setPenPreview(null);session.set({layerId:id});}} upload={()=>file.current?.click()}/>
  <div hidden={!propertiesOpen} role="separator" aria-label={t('调整图层与属性高度')} className="drawing-sidebar-split" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;const r=e.currentTarget.parentElement!.getBoundingClientRect();setPanelHeight(Math.max(20,Math.min(85,(e.clientY-r.top)/r.height*100)));}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}/>
  <Properties open={propertiesOpen} setOpen={setPropertiesOpen} preview={setDraft} document={d} selection={selection} active={activeLayer?.id??null} run={run} choose={choose} tool={selectTool} transform={applyTransform} upload={()=>file.current?.click()} moveReference={()=>{cancelDraft();setFirst(null);endPen();setReferenceMoving(true);}}/>
  </aside>}

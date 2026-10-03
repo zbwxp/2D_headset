@@ -1,8 +1,8 @@
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointPair,SnapshotEndpointResponses,SnapshotOrphanedResponses} from './model';
-import {createSnapshotTriangulation,validateSnapshotTriangulation,type SnapshotTriangulation} from './triangulation';
+import {createSnapshotTriangulation,validateSnapshotTriangulation,locateSnapshotSimplex,type SnapshotTriangulation} from './triangulation';
 import {validateInteriorResponseSamples,type InteriorResponseSample} from './triangularResponses';
 import {endpointPairCompatibility,validateSnapshotEndpointPair,validateSnapshotEndpointResponses} from './endpointPair';
-import {resolveEndpointPairBasis} from './evaluation';
+import {resolveEndpointPairBasis,resolveSnapshot} from './evaluation';
 import {validateRecordingSnapshots} from './validation';
 export type {SnapshotAngleGraph,SnapshotTriangleControlResponse,SnapshotTriangleResponses,SnapshotCorrectionFrame,SnapshotOrphanedResponses} from './model';
 
@@ -159,6 +159,16 @@ export function createTriangulatedRecordingCopy(workspace:RecordingSnapshotWorks
   const cloneIds=Object.values(snapshotIdMap);cloneIds.forEach(id);
   if(new Set(cloneIds).size!==cloneIds.length||cloneIds.some(id=>workspace.snapshots.some(snapshot=>snapshot.id===id)))return {ok:false,diagnostics:[{code:'ID_COLLISION',message:'Working-copy snapshot IDs must be new and distinct.'}]};
   const copiedSnapshots=sourceSnapshots.map(snapshot=>cloneSnapshot(snapshot,snapshotIdMap)),copied=structuredClone(source);
+  // Snapshot-local saved residuals own graph bases. Retained legacy tracks are
+  // recovery evidence, so materialize their exact saved channel values once at
+  // the original compatibility angle, never at a future Recorder binding.
+  copiedSnapshots.forEach((copy,index)=>{
+   const original=sourceSnapshots[index],saved=resolveSnapshot(workspace,original.id,{angle:original.angle,useDraft:false,diagnostics:'preview'});
+   copy.deformation=structuredClone(saved.state);delete copy.inheritedState;
+   const hasDraft=original.draft&&original.draft.angle.x===original.angle.x&&original.draft.angle.y===original.angle.y||source.tracks.some(track=>track.draft&&track.draft.angle.x===original.angle.x&&track.draft.angle.y===original.angle.y);
+   if(hasDraft)copy.draft={angle:{...original.angle},deformation:structuredClone(resolveSnapshot(workspace,original.id,{angle:original.angle,useDraft:true,diagnostics:'preview'}).state),channels:structuredClone(original.draft?.channels??[])};
+   for(const state of [copy.deformation,copy.draft?.deformation])if(state?.intervalMaterialIssues)for(const issue of Object.values(state.intervalMaterialIssues))issue.sourceSnapshotId=own(snapshotIdMap,issue.sourceSnapshotId)??issue.sourceSnapshotId;
+  });
   copied.id=options.id;copied.name=options.name??`${source.name.slice(0,241)} (working copy)`;copied.snapshotIds=source.snapshotIds.map(id=>snapshotIdMap[id]);
   if(source.activeSnapshotId)copied.activeSnapshotId=snapshotIdMap[source.activeSnapshotId];
   for(const track of copied.tracks)if(track.channel==='interval'&&track.materialIssue)track.materialIssue.sourceSnapshotId=own(snapshotIdMap,track.materialIssue.sourceSnapshotId)??track.materialIssue.sourceSnapshotId;
@@ -200,7 +210,7 @@ export function reconcileSnapshotAngleGraphMesh(graph:SnapshotAngleGraph,mesh:Sn
   for(const edge of graph.mesh.edges)if(edges.has(edge.id)&&!same(edge.vertexIds,edges.get(edge.id)!.vertexIds))fail('existing edge orientation cannot change under the same ID');
   for(const triangle of graph.mesh.triangles)if(triangles.has(triangle.id)&&(!same(triangle.vertexIds,triangles.get(triangle.id)!.vertexIds)||!same(triangle.edgeIds,triangles.get(triangle.id)!.edgeIds)))fail('existing triangle coordinates cannot change under the same ID');
   const retiredEdges=Object.fromEntries(Object.entries(graph.edgeResponses).filter(([id])=>!edges.has(id))),retiredTriangles=Object.fromEntries(Object.entries(graph.triangleResponses).filter(([id])=>!triangles.has(id)));
-  const retiredFrames=(graph.correctionFrames??[]).filter(frame=>Object.keys(frame.edgeResponses??{}).some(id=>!edges.has(id))||Object.keys(frame.triangleResponses??{}).some(id=>!triangles.has(id)));
+  const retiredFrames=(graph.correctionFrames??[]).filter(frame=>{const location=locateSnapshotSimplex(graph.mesh,frame.angle);return Object.keys(frame.edgeResponses??{}).some(id=>!edges.has(id))||Object.keys(frame.triangleResponses??{}).some(id=>!triangles.has(id))||location?.kind==='edge'&&!edges.has(location.simplexId)||location?.kind==='triangle'&&!triangles.has(location.simplexId);});
   const retiredIds=new Set(retiredFrames.map(frame=>frame.id)),diagnostics:SnapshotAngleGraphDiagnostic[]=[...Object.keys(retiredEdges).map(edgeId=>({code:'ORPHANED_RESPONSE' as const,edgeId,message:`Edge ${edgeId} responses were archived with their original coordinate frame.`})),...Object.keys(retiredTriangles).map(triangleId=>({code:'ORPHANED_RESPONSE' as const,triangleId,message:`Triangle ${triangleId} responses were archived with their original coordinate frame.`})),...retiredFrames.map(frame=>({code:'ORPHANED_RESPONSE' as const,frameId:frame.id,message:`Correction frame ${frame.id} was archived because its simplex was removed.`}))];
   const next:SnapshotAngleGraph={...graph,mesh:structuredClone(mesh),edgeResponses:Object.fromEntries(Object.entries(graph.edgeResponses).filter(([id])=>edges.has(id))),triangleResponses:Object.fromEntries(Object.entries(graph.triangleResponses).filter(([id])=>triangles.has(id))),
    ...(graph.correctionFrames?{correctionFrames:graph.correctionFrames.filter(frame=>!retiredIds.has(frame.id))}:{})};

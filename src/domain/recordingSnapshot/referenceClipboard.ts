@@ -2,7 +2,6 @@ import type {RecordingSnapshotWorkspace,SnapshotLayer,ReferencedSnapshotLayer,Sn
 import {drawingSnapshotForArtwork} from './sources';
 import {resolveSnapshot,SnapshotResolutionError} from './evaluation';
 import {planArtworkLayerImport} from '../drawing/importArtworkLayers';
-import {uid} from '../drawing/model';
 
 /** Session transport shared by Drawing and Recording. It carries addresses,
  * not baked geometry. A source switch must not clear it; a project switch must. */
@@ -74,8 +73,11 @@ export interface SnapshotReferencePasteResult {
 
 /** Pure explicit-target transaction for same-ID reference paste. The destination
  * may be a Drawing source, sculpt or Recording view and need not be active.
+ * Layer IDs are snapshot-scoped: a new reference preserves its captured layer
+ * ID. Legacy same-address slots retain their IDs. The optional allocator is
+ * retained for call compatibility and is never used for reference paste.
  * Duplicate intent still belongs to cloneLayers, never to this function. */
-export function prepareSnapshotReferencePaste(workspace:RecordingSnapshotWorkspace,request:SnapshotReferencePasteRequest,fresh:()=>string=uid):SnapshotReferencePasteResult {
+export function prepareSnapshotReferencePaste(workspace:RecordingSnapshotWorkspace,request:SnapshotReferencePasteRequest,_fresh?:()=>string):SnapshotReferencePasteResult {
  const {targetSnapshotId,sourceSnapshotId}=request,diagnostics:SnapshotReferencePasteDiagnostic[]=[],created:ReferencedSnapshotLayer[]=[],reused:ReferencedSnapshotLayer[]=[];
  const report=(code:string,message:string,extra:Partial<SnapshotReferencePasteDiagnostic>={})=>diagnostics.push({code,message,sourceSnapshotId,targetSnapshotId,...extra});
  const blocked=(code:string,message:string):SnapshotReferencePasteResult=>{report(code,message);return {workspace,changed:false,created:[],reused:[],diagnostics,blockedCode:code};};
@@ -88,6 +90,7 @@ export function prepareSnapshotReferencePaste(workspace:RecordingSnapshotWorkspa
  for(const layer of selected as SnapshotLayer[]){
   const existing=target.layers.find(candidate=>candidate.kind==='reference'&&candidate.baseSnapshotId===sourceSnapshotId&&candidate.baseLayerId===layer.id) as ReferencedSnapshotLayer|undefined;
   if(existing){reused.push(existing);report('ALREADY_REFERENCED','This exact source layer already has a live reference here; its local membership and edits are retained.',{sourceLayerId:layer.id,existingLayerId:existing.id});}
+  else if(target.layers.some(candidate=>candidate.id===layer.id))return blocked('LAYER_ID_CONFLICT',`Layer ${layer.id} already belongs to a different source or local state in this snapshot. Reference paste cannot replace it or create a new identity.`);
  }
  // A repeated paste is a true no-op, even if the retained source subsequently
  // becomes unavailable. It must not create a duplicate branch or repair data.
@@ -97,13 +100,9 @@ export function prepareSnapshotReferencePaste(workspace:RecordingSnapshotWorkspa
   const evaluated=resolveSnapshot(workspace,sourceSnapshotId,{useDraft:false,diagnostics:'preview'}),dependencyPlan=planArtworkLayerImport(evaluated.drawing,layerIds);
   if(dependencyPlan.additionalLayerIds.length)return blocked('LAYER_DEPENDENCIES',`Also select dependent layers: ${dependencyPlan.additionalLayerIds.join(', ')}.`);
   addDiagnostics(evaluated.diagnostics);
-  const occupied=new Set<string>();
-  const collect=(value:unknown):void=>{if(!value||typeof value!=='object')return;if(Array.isArray(value)){value.forEach(collect);return;}for(const [key,item] of Object.entries(value)){if(key==='id'&&typeof item==='string')occupied.add(item);else if(key!=='legacyArchive')collect(item);}};collect(workspace);
   for(const layer of selected as SnapshotLayer[]){
    if(reused.some(existing=>existing.baseLayerId===layer.id))continue;
-   let id:string|undefined;for(let attempt=0;attempt<100;attempt++){const candidate=fresh();if(typeof candidate==='string'&&candidate&&candidate.length<=16384&&!occupied.has(candidate)){id=candidate;occupied.add(candidate);break;}}
-   if(!id)return blocked('ID_COLLISION','Unable to allocate a fresh layer reference ID.');
-   created.push({kind:'reference',id,name:layer.name,baseSnapshotId:sourceSnapshotId,baseLayerId:layer.id});
+   created.push({kind:'reference',id:layer.id,name:layer.name,baseSnapshotId:sourceSnapshotId,baseLayerId:layer.id});
   }
   const next={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot===target?{...target,layers:[...target.layers,...created]}:snapshot)};
   const resolved=resolveSnapshot(next,targetSnapshotId,{useDraft:false,diagnostics:'preview'});addDiagnostics(resolved.diagnostics);

@@ -8,7 +8,8 @@ import {addLayer,createCurve,connect} from '../../domain/drawing/commands';
 import {createFill} from '../../domain/drawing/paintCommands';
 import {depthPaintBatches,setDepthOffset} from '../../domain/drawing/depth';
 import {emptyRecordingSnapshotWorkspace,emptyRecordingSnapshot,emptySnapshotRecording} from '../../domain/recordingSnapshot/model';
-import {resolveSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {resolveSnapshot,evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
 import {canonicalElementId,upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
 import {applySnapshotCommand} from '../../domain/recordingSnapshot/commands';
 import {snapshotAuthoredKeyCount} from '../../domain/recordingSnapshot/tracks';
@@ -175,6 +176,29 @@ describe('independent duplication of local members',()=>{
 });
 
 describe('pure explicit-target reference paste transactions',()=>{
+ it('preserves the captured layer ID across separately pasted real views and graph samples while keeping local state independent',()=>{
+  const {w,source,view,recording}=workspace(),end=emptyRecordingSnapshot('side','Side','view',{x:90,y:0});w.snapshots.push(end);recording.snapshotIds.push(end.id);const sourceLayerId=source.layers[0].id;
+  const first=prepareSnapshotReferencePaste(w,{sourceSnapshotId:source.id,targetSnapshotId:view.id},()=>{throw Error('Reference paste must not allocate identity');});
+  const second=prepareSnapshotReferencePaste(first.workspace,{sourceSnapshotId:source.id,targetSnapshotId:end.id},()=>{throw Error('Reference paste must not allocate identity');});
+  expect(first.created.map(layer=>layer.id)).toEqual([sourceLayerId]);expect(second.created.map(layer=>layer.id)).toEqual([sourceLayerId]);expect(second.workspace.library).toBe(w.library);
+  const current=structuredClone(second.workspace),front=current.snapshots.find(snapshot=>snapshot.id===view.id)!,side=current.snapshots.find(snapshot=>snapshot.id===end.id)!,r=current.recordings[0];
+  front.deformation.layers[sourceLayerId]={placement:{translation:[1,0],rotation:0,scale:1}};side.deformation.layers[sourceLayerId]={placement:{translation:[3,0],rotation:0,scale:1}};
+  r.mode='triangulated';r.angleGraph=createSnapshotAngleGraph([{snapshotId:front.id,angle:{x:0,y:0}},{snapshotId:side.id,angle:{x:90,y:0}}]);
+  expect(resolveSnapshot(current,front.id).drawing.nodes[0].position[0]).toBe(1);expect(resolveSnapshot(current,side.id).drawing.nodes[0].position[0]).toBe(3);
+  for(const x of [0,44.9,45,45.1,90])expect(evaluateRecordingSnapshot(current,r.id,{angle:{x,y:0}}).drawing.layers.map(layer=>layer.id)).toEqual([sourceLayerId]);
+  expect(evaluateRecordingSnapshot(current,r.id,{angle:{x:45,y:0}}).drawing.nodes[0].position[0]).toBeCloseTo(2);
+  front.deformation.layers[sourceLayerId].placement!.translation=[7,0];expect(side.deformation.layers[sourceLayerId].placement!.translation).toEqual([3,0]);expect(()=>parseRecordingSnapshots(current)).not.toThrow();
+ });
+ it('retains legacy same-address slot IDs and blocks same-ID different-provenance collisions without migration',()=>{
+  const {w,source,view}=workspace(),sourceLayerId=source.layers[0].id;
+  view.layers=[{kind:'reference',id:'legacy-random-slot',name:'Legacy',baseSnapshotId:source.id,baseLayerId:sourceLayerId,membership:{excludeElementIds:[cid('curve')]}}];view.deformation.layers['legacy-random-slot']={depth:4};
+  const before=JSON.stringify(w),repeat=prepareSnapshotReferencePaste(w,{sourceSnapshotId:source.id,targetSnapshotId:view.id});expect(repeat.changed).toBe(false);expect(repeat.reused.map(layer=>layer.id)).toEqual(['legacy-random-slot']);expect(JSON.stringify(w)).toBe(before);
+  const conflictWorkspace=structuredClone(w),target=conflictWorkspace.snapshots.find(snapshot=>snapshot.id===view.id)!;target.layers=[{kind:'original',id:sourceLayerId,name:'Another local layer',visible:true,locked:false,items:[]}];
+  const conflictBefore=JSON.stringify(conflictWorkspace),conflict=prepareSnapshotReferencePaste(conflictWorkspace,{sourceSnapshotId:source.id,targetSnapshotId:view.id});expect(conflict.blockedCode).toBe('LAYER_ID_CONFLICT');expect(conflict.changed).toBe(false);expect(conflict.workspace).toBe(conflictWorkspace);expect(conflict.created).toEqual([]);expect(JSON.stringify(conflictWorkspace)).toBe(conflictBefore);
+  const withOther=upsertDrawingSource(conflictWorkspace,'other-source',drawing()),other=withOther.snapshots.find(snapshot=>snapshot.source?.artworkId==='other-source')!,targetWithOther=withOther.snapshots.find(snapshot=>snapshot.id===view.id)!;
+  targetWithOther.layers=[{kind:'reference',id:sourceLayerId,name:'Different provenance',baseSnapshotId:other.id,baseLayerId:other.layers[0].id}];const otherBefore=JSON.stringify(withOther),otherConflict=prepareSnapshotReferencePaste(withOther,{sourceSnapshotId:source.id,targetSnapshotId:view.id});
+  expect(otherConflict.blockedCode).toBe('LAYER_ID_CONFLICT');expect(otherConflict.workspace).toBe(withOther);expect(JSON.stringify(withOther)).toBe(otherBefore);expect(resolveSnapshot(otherConflict.workspace,view.id).drawing.curves.map(curve=>curve.id)).toEqual([canonicalElementId('other-source','curve')]);
+ });
  it('pastes into a Drawing source snapshot through one shared transaction and serialized reload without baking',()=>{
   const origin=drawing(),targetDrawing=drawing(),initial=workspace(origin),w=upsertDrawingSource(initial.w,'target',targetDrawing,'Target drawing'),target=w.snapshots.find(snapshot=>snapshot.source?.artworkId==='target')!,before=JSON.stringify(w),active=structuredClone(w.recordings),originalCount=Object.keys(w.library.curves).length;
   const result=prepareSnapshotReferencePaste(w,{sourceSnapshotId:initial.source.id,targetSnapshotId:target.id,layerIds:[initial.source.layers[0].id]});
@@ -204,7 +228,7 @@ describe('pure explicit-target reference paste transactions',()=>{
  it('blocks conflicting paths and cycles atomically while leaving the current artwork renderable',()=>{
   const {w,source,view}=workspace(),first=prepareSnapshotReferencePaste(w,{sourceSnapshotId:source.id,targetSnapshotId:view.id}),other=emptyRecordingSnapshot('alternate');other.layers=[{kind:'reference',id:'alternate-layer',name:'Alternate',baseSnapshotId:source.id,baseLayerId:source.layers[0].id}];first.workspace.snapshots.push(other);const before=JSON.stringify(first.workspace);
   const conflict=prepareSnapshotReferencePaste(first.workspace,{sourceSnapshotId:other.id,targetSnapshotId:view.id});expect(conflict.blockedCode).toBe('BRANCH_CONFLICT');expect(conflict.workspace).toBe(first.workspace);expect(conflict.created).toEqual([]);expect(resolveSnapshot(conflict.workspace,view.id).drawing.curves).toHaveLength(1);
-  const cycle=prepareSnapshotReferencePaste(first.workspace,{sourceSnapshotId:view.id,targetSnapshotId:source.id});expect(cycle.blockedCode).toBe('SNAPSHOT_CYCLE');expect(JSON.stringify(first.workspace)).toBe(before);
+  const cycleWorkspace=structuredClone(first.workspace);cycleWorkspace.snapshots.find(snapshot=>snapshot.id===view.id)!.layers[0].id='legacy-cycle-slot';const cycle=prepareSnapshotReferencePaste(cycleWorkspace,{sourceSnapshotId:view.id,targetSnapshotId:source.id});expect(cycle.blockedCode).toBe('SNAPSHOT_CYCLE');expect(JSON.stringify(first.workspace)).toBe(before);
  });
 });
 

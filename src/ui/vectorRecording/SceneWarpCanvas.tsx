@@ -43,10 +43,10 @@ export function recordingWarpNudgeDelta(event:Pick<KeyboardEvent,'key'|'shiftKey
 }
 /** The scene owns data and transactions; this component owns only a cancellable
  * pointer preview. Geometry is committed once on release through the scene API. */
-export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,paintBatches,warnings=[],onPreview,onCommit,zh,localToggle,aiGuide,selection,onSelection,onSelectionTool,onWarpSelection,editEnabled=true,revealGridKey,reference,underlay,warpPicker,instanceTransform,gridPlacement,ghostGridPlacements=[],transformsForSelection,curveEdit,curveEditDisabledReason,inspectionHideFills=false,showWarpTools=true,interaction}:{
+export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,paintBatches,warnings=[],onPreview,onCommit,zh,localToggle,aiGuide,selection,onSelection,onSelectionTool,onWarpSelection,editEnabled=true,revealGridKey,reference,underlay,overlay,warpPicker,instanceTransform,gridPlacement,ghostGridPlacements=[],transformsForSelection,curveEdit,curveEditDisabledReason,inspectionHideFills=false,showWarpTools=true,interaction}:{
  source:DrawingDocument;drawing:DrawingDocument;paintBatches?:PaintBatch[];grid?:WarpGrid;targetKey:string;label:string;warnings?:Warning[];
  onPreview:(grid:WarpGrid|null)=>void;onCommit:(grid:WarpGrid)=>void;zh:boolean;aiGuide?:{curveIds:string[];labels:Record<string,string>};localToggle?:{local:boolean;change:()=>void};
- reference?:RecordingCanvasReference;underlay?:(screen:(point:Point2)=>Point2,unit:number)=>ReactNode;warpPicker?:{value:string;items:{id:string;name:string}[];onChange:(id:string)=>void};
+ reference?:RecordingCanvasReference;overlay?:(screen:(point:Point2)=>Point2,unit:number)=>ReactNode;underlay?:(screen:(point:Point2)=>Point2,unit:number)=>ReactNode;warpPicker?:{value:string;items:{id:string;name:string}[];onChange:(id:string)=>void};
  instanceTransform?:RecordingInstanceTransform;transformsForSelection?:(ids:string[])=>RecordingInstanceTransform|undefined;gridPlacement?:ScenePlacementValue;ghostGridPlacements?:{instanceId:string;name:string;value:ScenePlacementValue}[];
  interaction?:{tool:Tool;onToolChange:(tool:Tool)=>void};
  curveEdit?:RecordingCurveEditor;curveEditDisabledReason?:string;inspectionHideFills?:boolean;showWarpTools?:boolean;
@@ -183,6 +183,7 @@ export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,pai
    <rect width="100%" height="100%" fill="#f6f7f5"/>{image?.visible&&<image data-testid="recording-image-reference" href={image.dataUrl} width={imageSize[0]} height={imageSize[1]} x={-imageSize[0]/2} y={-imageSize[1]/2} opacity={image.opacity} transform={`translate(${screen(image.offset)}) rotate(${image.rotation})`} pointerEvents="none"/>}<ArtworkReference screen={screen} unit={unit}/>
    {underlay?.(screen,unit)}
    <PaintScene paintBatches={paintBatches} d={drawing} screen={screen} unit={unit} pixelsPerUnit={unit} preview={false} showFills={inspectionHideFills?false:showFills} fillVisibility={inspectionHideFills?undefined:fillVisibility} referenceMoving={reference?.moving??false} tool={tool} selectedPaint={drawingSelection.paint} selectedPaints={drawingSelection.paintIds} curveDown={curveDown} paintDown={paintDown} arcDown={arcDown}/>
+   {overlay?.(screen,unit)}
    <g pointerEvents="none">{selectedCurves.map(id=><path key={id} data-testid="vr-selected-curve" data-id={id} d={curvePath(shapeOf(drawing,id),screen)} fill="none" stroke="#2589b0" strokeWidth="1.5"/>)}</g>
    <g pointerEvents="none">{warnings.filter(d=>d.warning).map((d,i)=><path key={d.sourceCurveId??i} data-testid="vr-fit-warning" d={curvePath(d.cubic,screen)} fill="none" stroke="#db3948" strokeWidth="2.5"/>)}</g>
    {grid&&<path data-testid="vr-warp-hit" d={outline} fill="transparent" stroke={showGrid&&nodeSelection.length===grid.nodes.length?'#2589b0':'none'} strokeWidth="2" pointerEvents={tool==='select'&&!instanceSelect?'all':'none'} onPointerDown={e=>begin(e,0)}/>}

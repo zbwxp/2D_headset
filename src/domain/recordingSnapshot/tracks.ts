@@ -17,7 +17,7 @@ export function snapshotAuthoredKeyCount(recording:SnapshotRecording,channel?:Sn
 export function mergeSnapshotDeformation(fallback:SnapshotDeformationState|undefined,own:SnapshotDeformationState):SnapshotDeformationState {
  if(!fallback)return structuredClone(own);
  const layers=structuredClone(fallback.layers);
- for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value),...(layers[id]?.elementPlacements||value.elementPlacements?{elementPlacements:{...layers[id]?.elementPlacements,...structuredClone(value.elementPlacements??{})}}:{})};
+ for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value),...(layers[id]?.visibility||value.visibility?{visibility:{...layers[id]?.visibility,...structuredClone(value.visibility??{})}}:{}),...(layers[id]?.intervals||value.intervals?{intervals:{...layers[id]?.intervals,...structuredClone(value.intervals??{})}}:{}),...(layers[id]?.elementPlacements||value.elementPlacements?{elementPlacements:{...layers[id]?.elementPlacements,...structuredClone(value.elementPlacements??{})}}:{})};
  return {warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,structuredClone(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,{...b}])).values()],layers,relationPositions:{...structuredClone(fallback.relationPositions),...structuredClone(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...structuredClone(fallback.intervalMaterialIssues??{}),...structuredClone(own.intervalMaterialIssues??{})}}:{})};
 }
 /** The old interpolation implementation is reused channel by channel. Its
@@ -27,7 +27,10 @@ export function evaluateSnapshotState(snapshot:RecordingSnapshot,recording:Snaps
  if(useDraft&&snapshot.draft&&snapshot.draft.angle.x===angle.x&&snapshot.draft.angle.y===angle.y)state=mergeSnapshotDeformation(state,snapshot.draft.deformation);
  const suspended=(issue:SnapshotMaterialIssue|undefined,channelId:string)=>{if(!issue||!material||material.signature(issue.sourceSnapshotId)===issue.sourceSignature)return false;material.diagnostics.push({code:'SOURCE_MATERIAL',snapshotId:snapshot.id,channelId,message:issue.message});return true;};
  for(const [id,issue] of Object.entries(state.intervalMaterialIssues??{}))if(suspended(issue,id))for(const layer of Object.values(state.layers))if(layer.intervals)delete layer.intervals[id];
- if(!recording)return state;
+ // Graph snapshots own their saved residual channels. Copy migration resolves
+ // old keys once; keeping those keys is recovery evidence, not another live
+ // authority which could affect a later view or overwrite a local draft.
+ if(!recording||recording.mode==='triangulated')return state;
  const layerIds=new Set(snapshot.layers.map(l=>l.id)),dummy='snapshot';
  for(const asset of recording.interpolationWeights??[]){
   if(!layerIds.has(asset.target.layerId))continue;const start=snapshots.find(view=>view.id===asset.startSnapshotId),end=snapshots.find(view=>view.id===asset.endSnapshotId);

@@ -97,7 +97,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   const batches=isView&&selectedLayers(presented).length?snapshotPanelClipboardSources(model,presented):snapshotPanelClipboardSources(model,presented,section);
   const disabled=!enabled||!batches.length;
   return <div className="drawing-clipboard-actions snapshot-layer-clipboard" data-testid="snapshot-layer-clipboard" data-section-id={section.id}>
-   <button type="button" data-testid={isView?'snapshot-cut-selection':'snapshot-cut-source'} aria-label={zh?'剪切所选图层':'Cut selected layers'} title={zh?'转移图层引用；保留原始元素':'Move layer references; preserve original elements'} disabled={disabled} onClick={()=>{if(!disabled)onCut(batches);}}><Scissors size={14}/></button>
+   <button type="button" data-testid={isView?'snapshot-cut-selection':'snapshot-cut-source'} aria-label={zh?'取所选图层引用':'Take selected layer references'} title={zh?'取得同 ID 图层引用；来源仍保留':'Take same-ID layer references; keep the source'} disabled={disabled} onClick={()=>{if(!disabled)onCut(batches);}}><Scissors size={14}/></button>
    <button type="button" data-testid={isView?'snapshot-copy-selection':'snapshot-copy-source'} aria-label={zh?'复制所选图层':'Copy selected layers'} title={zh?'复制为新的独立元素':'Copy as new independent elements'} disabled={disabled} onClick={()=>{if(!disabled)onCopy(batches);}}><Copy size={14}/></button>
    {isView&&<button type="button" data-testid="snapshot-paste-selection" aria-label={zh?'粘贴到当前视图':'Paste into current view'} disabled={!enabled||!canPaste} onClick={()=>{if(enabled&&canPaste)onPaste();}}><ClipboardPaste size={14}/></button>}
   </div>;
@@ -107,7 +107,7 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   layerSections={model.sections} defaultCollapsedSectionIds={collapseSourcesByDefault?model.sections.filter(section=>section.id!==model.currentSectionId).map(section=>section.id):[]} layerOrder={Object.fromEntries(currentSection.layerIds.map((id,index)=>[id,index+1]))}
   poseMode structuralReadOnly editEnabled={enabled} headerActions={headerActions} sectionActions={clipboard}
   canEditLayer={isCurrent} fillVisibilityKey={id=>isCurrent(id)?model.identities.get(id)!.id:id}
-  sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(zh?'从下方快照剪切或复制图层，再粘贴到当前视图。':'Cut or copy layers from a snapshot below, then paste into this view.'):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
+  sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(zh?'从下方快照取图层引用，再粘贴到当前视图。':'Take layer references from a source below, then paste into this view.'):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
   onSectionSelect={onSelectSnapshot?(section,event)=>{const source=section.layerIds[0]&&model.identities.get(section.layerIds[0]);const snapshotId=source?source.snapshotId:section.id===model.currentSectionId?current?.snapshotId:model.sections.find(s=>s.id===section.id)?.id.slice('snapshot-section:'.length);if(snapshotId)onSelectSnapshot(snapshotId,{shift:event.shiftKey,toggle:event.ctrlKey||event.metaKey});}:undefined}
   selectedSectionIds={selectedSnapshotIds?.map(sectionId)}
   onVisibilityChange={onVisibilityChange?(ids,visible)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onVisibilityChange(canonical,visible);}}:undefined}

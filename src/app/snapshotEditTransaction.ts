@@ -1,4 +1,5 @@
 import type {LandmarkProject} from '../domain/landmarks/model';
+import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
 import type {DrawingDocument} from '../domain/drawing/model';
 import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
 import type {RecordingSnapshot,RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
@@ -88,12 +89,14 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
  if(edit.kind==='snapshot-state'){
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots;
   assertOriginalsUnchanged(original,edit.workspace);
-  const recordingSnapshots=edit.validation==='preview'?edit.workspace:parseRecordingSnapshots(edit.workspace);
+  const propagated=propagateAutomaticSnapshotLayers(original,edit.workspace).workspace;
+  const recordingSnapshots=edit.validation==='preview'?propagated:parseRecordingSnapshots(propagated);
   project=recordingSnapshots===context.workspace?before:{...before,recordingSnapshots};
  }else{
   if(!context.canEditOriginals)throw Error('录制模式不能修改源画稿。请先返回绘制模式。');
   const state=edit.kind==='original-geometry'?{drawing:finalizeGeometryEdit(before.drawing,edit.drawing),drawingSnapshots:before.drawingSnapshots}:edit.state;
   project=prepareOriginalState(before,state);
+  if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
  }
  return {before,project,changed:project!==before};
 }

@@ -15,7 +15,7 @@ export interface SceneOnionSettings {
 }
 export const DEFAULT_SCENE_ONION_SETTINGS:SceneOnionSettings={enabled:false,axis:'x',step:10,min:-90,max:90,opacity:.16};
 export const MAX_SCENE_ONION_FRAMES=37;
-export interface SceneOnionFrame {angle:Angle;drawing:ReturnType<typeof evaluateScene>['drawing'];paintBatches:PaintBatch[];centerlines?:Array<{id:string;cubic:Cubic}>;highlight?:'30'|'60';highlightAngle?:number}
+export interface SceneOnionFrame {angle:Angle;drawing:ReturnType<typeof evaluateScene>['drawing'];paintBatches:PaintBatch[];centerlines?:Array<{id:string;cubic:Cubic;outside?:boolean}>;highlight?:'30'|'60';highlightAngle?:number}
 
 export function normalizeSceneOnionSettings(settings:SceneOnionSettings):SceneOnionSettings {
  const a=clampAngle(settings.min),b=clampAngle(settings.max);

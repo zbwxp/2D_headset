@@ -203,6 +203,9 @@ interface State {
   setPatchVisible: (visible:boolean) => void;
   setPatchDisplay: (key:"opacity2d"|"opacity3d",value:number) => void;
   project: LandmarkProject;
+  /** Runtime project-open identity. Loading the same saved file starts a new
+   * session; Undo, source changes and room changes retain this identity. */
+  projectSessionId: number;
   selectedCurveId: string | null;
   curveCreation: { startId: string | null } | null;
   createLoomisSection:(centerline?:boolean,sidePreset?:boolean)=>void;
@@ -433,6 +436,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     setPatchVisible:(visible)=>commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,visible}}),
     setPatchDisplay:(key,value)=>{if(!Number.isFinite(value))return;commit({...get().project,patchDisplay:{...defaultDisplay,...get().project.patchDisplay,[key]:Math.max(0,Math.min(1,value))}});},
     project: prepareSceneProject(assignModules(initial)),
+    projectSessionId: 0,
     selectedCurveId: null,
     curveCreation: null,
     createLoomisSection:(centerline=false,sidePreset=false)=>{try{const r=createSection(get().project,centerline);if(sidePreset)r.project={...r.project,curves:r.project.curves.map(c=>c.id===r.selectedId&&isSection(c)&&c.role==='canonical'?{...c,section:sectionFromAngles(0,90,.25)}:c)};get().beginEdit();commit(r.project);set({selectedCurveId:r.selectedId,selectedPatchId:null,curveCreation:null,selectionTick:get().selectionTick+1});get().endEdit();}catch(e){set({message:(e as Error).message});}},
@@ -647,7 +651,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=prepareSceneProject(migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p))))));editBase=null;autosave.cancel();
       get().beginEdit();
       set({
-        project: p, tool:{kind:"select"},
+        project: p, projectSessionId:get().projectSessionId+1, tool:{kind:"select"},
         selectedCurveId: null,
         curveCreation: null, patchCreation:null,selectedPatchId:null,
         viewId: p.views[0].id,

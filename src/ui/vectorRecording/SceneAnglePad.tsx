@@ -9,10 +9,12 @@ export interface SceneAnglePadProps {
  views:readonly {id:string;name:string;angle:Angle}[];
  onChange:(angle:Angle)=>void;
  zh?:boolean;
+ connections?:readonly {id:string;from:Angle;to:Angle}[];
+ exactBindings?:boolean;
 }
 
 /** View navigation only. The parent owns its numeric inputs and transactions. */
-export default function SceneAnglePad({angle,views,onChange,zh=false}:SceneAnglePadProps){
+export default function SceneAnglePad({angle,views,onChange,zh=false,connections=[],exactBindings=false}:SceneAnglePadProps){
  const drag=useRef<{id:number;x:number;y:number;moved:boolean;view?:Angle}|null>(null),point=sceneAngleToPad(angle);
  function update(event:React.PointerEvent<HTMLDivElement>){const rect=event.currentTarget.getBoundingClientRect();if(rect.width&&rect.height)onChange(sceneAngleFromPad((event.clientX-rect.left)/rect.width,(event.clientY-rect.top)/rect.height));}
  function release(event:React.PointerEvent<HTMLDivElement>){if(drag.current?.id!==event.pointerId)return;drag.current=null;if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}
@@ -23,9 +25,10 @@ export default function SceneAnglePad({angle,views,onChange,zh=false}:SceneAngle
    onPointerUp={event=>{if(drag.current?.id===event.pointerId){if(drag.current.view&&!drag.current.moved)onChange(drag.current.view);else update(event);release(event);}}}
    onPointerCancel={release} onLostPointerCapture={()=>{drag.current=null;}}>
    <span className="vr-angle-pad-axis horizontal"/><span className="vr-angle-pad-axis vertical"/>
+   {connections.length>0&&<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" data-testid="scene-angle-mesh" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>{connections.map(edge=>{const from=sceneAngleToPad(edge.from),to=sceneAngleToPad(edge.to);return <line key={edge.id} x1={from[0]*100} y1={from[1]*100} x2={to[0]*100} y2={to[1]*100} stroke="currentColor" strokeOpacity=".25" strokeWidth=".6" vectorEffect="non-scaling-stroke"/>;})}</svg>}
    <span className="vr-angle-pad-label top">+Y 90°</span><span className="vr-angle-pad-label bottom">−Y 90°</span>
    <span className="vr-angle-pad-label left">−90°</span><span className="vr-angle-pad-label right">+X 90°</span>
-   {views.map(view=>{const p=sceneAngleToPad(view.angle);return <button type="button" key={view.id} aria-label={`${view.name} · X ${view.angle.x}° / Y ${view.angle.y}°`} onClick={event=>{event.stopPropagation();if(event.detail===0)onChange(view.angle);}} className={'vr-angle-pad-view'+(sameAngle(view.angle,angle)?' current':'')} data-testid="scene-angle-pad-view" data-view-id={view.id} title={`${view.name} · X ${view.angle.x}° / Y ${view.angle.y}°`} style={{left:`${p[0]*100}%`,top:`${p[1]*100}%`}}/>;})}
+   {views.map(view=>{const p=sceneAngleToPad(view.angle),current=exactBindings?view.angle.x===angle.x&&view.angle.y===angle.y:sameAngle(view.angle,angle);return <button type="button" key={view.id} aria-label={`${view.name} · X ${view.angle.x}° / Y ${view.angle.y}°`} onClick={event=>{event.stopPropagation();if(event.detail===0)onChange(view.angle);}} className={'vr-angle-pad-view'+(current?' current':'')} data-testid="scene-angle-pad-view" data-view-id={view.id} title={`${view.name} · X ${view.angle.x}° / Y ${view.angle.y}°`} style={{left:`${p[0]*100}%`,top:`${p[1]*100}%`}}/>;})}
    <span className="vr-angle-pad-cursor" data-testid="scene-angle-pad-cursor" data-angle-x={angle.x} data-angle-y={angle.y} style={{left:`${point[0]*100}%`,top:`${point[1]*100}%`}}/>
   </div>
   <div className="vr-angle-pad-caption"><span>{zh?'拖动检查 · 点标记跳转':'Drag to inspect · click marks to jump'}</span><span>X {angle.x}° / Y {angle.y}°</span></div>
