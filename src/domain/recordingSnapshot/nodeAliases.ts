@@ -67,14 +67,15 @@ export function applySnapshotNodeAliases(drawing:DrawingDocument,value:SnapshotN
  * authorities. A locally created node may yield to an inherited ID. Merging
  * two inherited IDs records an alias; splitting an inherited node still needs
  * an explicit topology operation and cannot masquerade as an identity swap. */
-export function prepareSnapshotNodeMerge(before:DrawingDocument,target:DrawingDocument,owned:ReadonlySet<string>,prior:SnapshotNodeAliases|undefined):{drawing:DrawingDocument;aliases:SnapshotNodeAliases|undefined} {
+export function prepareSnapshotNodeMerge(before:DrawingDocument,target:DrawingDocument,owned:ReadonlySet<string>,prior:SnapshotNodeAliases|undefined,forkNodeIds:ReadonlySet<string>=new Set()):{drawing:DrawingDocument;aliases:SnapshotNodeAliases|undefined} {
  const candidates=new Map<string,Set<string>>(),destinations=new Map<string,Set<string>>(),known=new Set(before.nodes.map(node=>node.id));
  for(const curve of before.curves){if(owned.has(curve.id))continue;const next=target.curves.find(value=>value.id===curve.id);if(!next)continue;
-  for(const end of [0,1] as const){const wanted=next.nodes[end],old=curve.nodes[end];const sources=candidates.get(wanted)??new Set<string>();sources.add(old);candidates.set(wanted,sources);const uses=destinations.get(old)??new Set<string>();uses.add(wanted);destinations.set(old,uses);}
+  for(const end of [0,1] as const){const wanted=next.nodes[end],old=curve.nodes[end];const sources=candidates.get(wanted)??new Set<string>();sources.add(old);candidates.set(wanted,sources);const uses=destinations.get(old)??new Set<string>();if(!forkNodeIds.has(wanted))uses.add(wanted);destinations.set(old,uses);}
  }
  for(const [id,uses] of destinations)if(uses.size>1)return fail('INHERITED_NODE_SPLIT_REQUIRED',`Inherited node ${id} would split into separate local nodes. Use an explicit local split/unbind topology operation; no source or Snapshot was changed.`);
  const identities=new Map<string,string>(),added:SnapshotNodeAliases={};
  for(const [wanted,sources] of candidates){
+  if(forkNodeIds.has(wanted)){identities.set(wanted,wanted);continue;}
   if(!known.has(wanted)&&!target.curves.some(curve=>!before.curves.some(value=>value.id===curve.id)&&curve.nodes.includes(wanted)))return fail('INHERITED_NODE_REPLACEMENT_REQUIRED',`Inherited node identity cannot be replaced by ${wanted} without an explicit local topology operation.`);
   const authority=sources.has(wanted)?wanted:[...sources][0];identities.set(wanted,authority);for(const id of sources)if(id!==authority)Object.defineProperty(added,id,{value:authority,enumerable:true});
  }

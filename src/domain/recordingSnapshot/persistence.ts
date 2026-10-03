@@ -5,6 +5,7 @@ import {parseRecordingScenes} from '../recordingScene/persistence';
 import {finitePoint,validInkEnds,validContourMist,validFillMist} from '../drawing/model';
 import {validateRecordingReference} from '../recording/reference';
 import {normalizeSnapshotNodeAliases,type SnapshotNodeAliases} from './nodeAliases';
+import {validateSnapshotNodeForks} from './nodeForks';
 import {validateSnapshotCurveAppearance} from './curveAppearance';
 
 const fail=(message:string):never=>{throw Error(`Invalid recording snapshot JSON: ${message}`);};
@@ -70,10 +71,11 @@ export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspac
   if(category==='offsets'){ink(item);uses(item.source);finite(item.distance,-2,2);finite(item.start,0,1);finite(item.end,0,1);if((item.end as number)<=(item.start as number))fail('offset interval');finite(item.taper,0,.5);finite(item.width,Number.MIN_VALUE,1);if(item.translation!==undefined&&!finitePoint(item.translation))fail('offset translation');}
  }
  for(const raw of list(root.snapshots,10000)){
-  const snapshot=object(raw,['id','name','kind','parentSnapshotId','inputMirror','parentLayers','angle','layers','relations','nodeAliases','deformation','inheritedState','authored','source','draft']);id(snapshot.id);name(snapshot.name);angle(snapshot.angle);if(snapshot.parentSnapshotId!==undefined)id(snapshot.parentSnapshotId);
+  const snapshot=object(raw,['id','name','kind','parentSnapshotId','inputMirror','parentLayers','angle','layers','relations','nodeAliases','nodeForks','deformation','inheritedState','authored','source','draft']);id(snapshot.id);name(snapshot.name);angle(snapshot.angle);if(snapshot.parentSnapshotId!==undefined)id(snapshot.parentSnapshotId);
   if(snapshot.inputMirror!==undefined){const mirror=object(snapshot.inputMirror,['axisX','curvePairs','axisNodeIds']);finite(mirror.axisX);for(const raw of list(mirror.curvePairs)){const pair=object(raw,['id','a','b','reverse']);id(pair.id);id(pair.a);id(pair.b);boolean(pair.reverse);}if(mirror.axisNodeIds!==undefined)list(mirror.axisNodeIds).forEach(id);}
   if(snapshot.parentLayers!==undefined){const inherited=object(snapshot.parentLayers,['excludedLayerIds','orderOverride']);if(inherited.excludedLayerIds!==undefined)list(inherited.excludedLayerIds).forEach(id);if(inherited.orderOverride!==undefined)boolean(inherited.orderOverride);}
   for(const raw of list(snapshot.layers)){const layer=raw as Record<string,unknown>;const data=object(raw,layer?.kind==='original'?['kind','id','name','visible','locked','items']:['kind','id','name','baseSnapshotId','baseLayerId','membership']);id(data.id);name(data.name);if(data.kind==='original')list(data.items).forEach(id);else{id(data.baseSnapshotId);id(data.baseLayerId);if(data.membership!==undefined){const membership=object(data.membership,['addElementIds','excludeElementIds']);for(const key of ['addElementIds','excludeElementIds'])if(membership[key]!==undefined)list(membership[key]).forEach(id);}}}
+  if(snapshot.nodeForks!==undefined)validateSnapshotNodeForks(snapshot.nodeForks);
   if(snapshot.nodeAliases!==undefined)normalizeSnapshotNodeAliases(snapshot.nodeAliases as SnapshotNodeAliases);
   relations(snapshot.relations);deformation(snapshot.deformation);if(snapshot.inheritedState!==undefined)deformation(snapshot.inheritedState);authored(snapshot.authored);
   if(snapshot.draft!==undefined){const draft=object(snapshot.draft,['angle','deformation','channels']);angle(draft.angle);deformation(draft.deformation);authored(draft.channels);}

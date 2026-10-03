@@ -77,7 +77,7 @@ export default function Properties({domainControls,open,setOpen,document:d,selec
  {linksAtNode(d,nodeAt(d,endpoint).id).length>0&&<p className="drawing-muted">{t('这里只描述本层共享端点的连接；关联末端笔触见上方端点联动。')}</p>}
  {j?.mode==='CUSP'&&<p className="drawing-muted">{t('尖点只影响描边尖角，两侧控制柄独立编辑。')}</p>}
  {j?<><button disabled={disabled} onClick={()=>run(()=>connect(d,j.a,j.b,j.mode==='SMOOTH'?'CUSP':'SMOOTH'))}>{t(j.mode==='SMOOTH'?'改为尖点':'改为平滑')}</button>{j.mode!=='ARC'&&<button disabled={disabled} onClick={()=>run(()=>connect(d,j.a,j.b,'ARC'))}>{t('改为圆弧')}</button>}<button disabled={disabled} onClick={()=>run(()=>removeJoin(d,j.id))}>{t('仅绑定')}</button></>:<div className="drawing-property-actions"><button onClick={()=>tool('smooth')}>{t('平滑接笔')}</button><button onClick={()=>tool('cusp')}>{t('尖点接笔')}</button><button onClick={()=>tool('arc')}>{t('圆弧接笔')}</button></div>}
- {members(d,nodeAt(d,endpoint).id).length>1&&<button disabled={disabled} onClick={()=>run(()=>unbind(d,endpoint))}>{t('解除此端点绑定')}</button>}
+ {members(d,nodeAt(d,endpoint).id).length>1&&<button disabled={disabled} onClick={()=>run(()=>unbind(d,endpoint),{kind:'node-unbind',endpoint})}>{t('解除此端点绑定')}</button>}
  </PanelSection>}
  {!ids.length&&!layer&&<><p>{t('当前绘制层')}：{d.layers.find(l=>l.id===active)?.name??'—'}</p><button onClick={upload}>{t('插入背景图')}</button><p className="drawing-muted">{t('P 连续绘线 · V 选择整笔 · A 编辑节点')}</p></>}
  </>}

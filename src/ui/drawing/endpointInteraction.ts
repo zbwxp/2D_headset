@@ -6,7 +6,7 @@ import type {ConnectionTool} from './tools';
 export type DrawingEndpointTool=ConnectionTool|'merge';
 /** Command cause travels separately from its geometry so source followers are
  * never mistaken for directly authored original controls. */
-export interface DrawingCommandIntent {kind:'relation-authoring'}
+export type DrawingCommandIntent={kind:'relation-authoring'}|{kind:'node-unbind';endpoint:Endpoint};
 export type DrawingCommandRun=(operation:()=>DrawingDocument,intent?:DrawingCommandIntent)=>void;
 /** The endpoint overlay and picking always use the same editable layer scope.
  * Omit layerId only when a caller deliberately offers all visible layers. */
@@ -26,6 +26,6 @@ export function applyDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEnd
 }
 /** A rejected commit must end the hover preview just like a successful commit.
  * Keep the explicit relation intent attached to the actual LINK command. */
-export function commitDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEndpointTool,first:Endpoint,second:Endpoint,commit:(next:DrawingDocument,intent?:DrawingCommandIntent)=>void,finish:()=>void):DrawingDocument {
+export function commitDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEndpointTool,first:Endpoint,second:Endpoint,commit:(next:DrawingDocument,intent?:Extract<DrawingCommandIntent,{kind:'relation-authoring'}>)=>void,finish:()=>void):DrawingDocument {
  try{const next=applyDrawingEndpointTool(drawing,tool,first,second);commit(next,tool==='link'?{kind:'relation-authoring'}:undefined);return next;}finally{finish();}
 }

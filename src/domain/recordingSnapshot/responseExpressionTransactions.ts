@@ -37,9 +37,8 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
  const result={...candidate,recordings};validateRecordingSnapshots(result);return result;
 }
 
-function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,workspace:RecordingSnapshotWorkspace,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {
+function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean,targetAlive:(kind:'nodes'|'handles',id:string)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {
  const kept:SnapshotResponseExpressionRegistry={},retired:SnapshotResponseExpressionRegistry={};
- const targetAlive=(kind:'nodes'|'handles',id:string)=>Object.hasOwn(kind==='nodes'?workspace.library.nodes:workspace.library.curves,id);
  const valid=(expression:SnapshotResponseExpression)=>(expression.smoothContracts??[]).every(contract=>contract.targets.every(({endpoint})=>targetAlive('handles',endpoint.curveId)))&&snapshotResponseExpressionTerms(expression).every(term=>term.basis.every(({basis})=>targetAlive(basis.target.kind==='node'?'nodes':'handles',basis.target.kind==='node'?basis.target.nodeId:basis.target.curveId)&&hasBasis(basis)));
  for(const [simplexId,responses] of Object.entries(registry??{})){
   const active:SnapshotExpressionResponses={nodes:{},handles:{}},archive:SnapshotExpressionResponses={nodes:{},handles:{}};
@@ -57,8 +56,10 @@ export function pruneSnapshotResponseDependencies(workspace:RecordingSnapshotWor
  let changed=false;
  const recordings=workspace.recordings.map(recording=>{
   const graph=recording.angleGraph;if(!graph||!graph.responseExpressions&&!graph.correctionFrames?.some(frame=>frame.responseExpressions))return recording;
-  const basis=createSnapshotResponseBasisResolver(graph.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,drawing:resolveSnapshot(workspace,vertex.snapshotId,{useDraft:false,diagnostics:'preview'}).drawing}))),hasBasis=(reference:SnapshotResponseBasisReference)=>basis(reference)!==undefined;
-  const saved=filterRegistry(graph.responseExpressions,workspace,hasBasis),frames=(graph.correctionFrames??[]).map(frame=>({frame,...filterRegistry(frame.responseExpressions,workspace,hasBasis)}));
+  const resolvedBases=graph.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,drawing:resolveSnapshot(workspace,vertex.snapshotId,{useDraft:false,diagnostics:'preview'}).drawing})),basis=createSnapshotResponseBasisResolver(resolvedBases),hasBasis=(reference:SnapshotResponseBasisReference)=>basis(reference)!==undefined;
+  // Local node identities use the already resolved bases, never library copies.
+  const alive={nodes:new Set(resolvedBases.flatMap(value=>value.drawing.nodes.map(node=>node.id))),handles:new Set(resolvedBases.flatMap(value=>value.drawing.curves.map(curve=>curve.id)))},targetAlive=(kind:'nodes'|'handles',id:string)=>alive[kind].has(id);
+  const saved=filterRegistry(graph.responseExpressions,hasBasis,targetAlive),frames=(graph.correctionFrames??[]).map(frame=>({frame,...filterRegistry(frame.responseExpressions,hasBasis,targetAlive)}));
   if(!Object.keys(saved.retired).length&&!frames.some(value=>Object.keys(value.retired).length))return recording;
   changed=true;const archives=graph.orphanedResponses??[],stem=`deleted-response-source:${recording.id}`;let id=stem,index=1;while(archives.some(archive=>archive.id===id))id=`${stem}:${index++}`;
   const next:SnapshotAngleGraph={...graph,...graph.responseExpressions?{responseExpressions:saved.kept}:{},...graph.correctionFrames?{correctionFrames:frames.map(value=>value.frame.responseExpressions?{...value.frame,responseExpressions:value.kept}:value.frame)}:{},orphanedResponses:[...archives,{id,reason:'mesh-change',message:'Inherited scalar responses were archived because their canonical target or live basis control was deleted.',mesh:structuredClone(graph.mesh),edgeResponses:{},triangleResponses:{},...Object.keys(saved.retired).length?{responseExpressions:saved.retired}:{},correctionFrames:frames.filter(value=>Object.keys(value.retired).length).map(value=>({id:value.frame.id,angle:value.frame.angle,status:value.frame.status,responseExpressions:value.retired}))}]};

@@ -1,4 +1,5 @@
 import {pruneSnapshotNodeAliases} from './nodeAliases';
+import {pruneSnapshotNodeForks} from './nodeForks';
 import {retireSnapshotMaterialPathLineages} from './materialPathLineages';
 import {pruneSnapshotMaterialPropertyReferences} from './materialSourceDeletion';
 import {retireSnapshotMaterialPartitions} from './materialSplit';
@@ -27,6 +28,10 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
  changed=true;
  while(changed){
   const count=removed.size;
+  for(const snapshot of after.snapshots)for(const [id,fork] of Object.entries(snapshot.nodeForks??{}))if(removed.has(fork.curveId)||removed.has((fork.source??fork).curveId))removed.add(id);
+  // Locally authored children may use a fork identity as an actual endpoint.
+  // Canonical source nodes and fork nodes are explicit dependencies, like fill curves.
+  for(const curve of Object.values(after.library.curves))if(curve.nodes.some(id=>removed.has(id)))removed.add(curve.id);
   for(const fill of Object.values(after.library.fills))if(fill.boundary.some(use=>removed.has(use.id)))removed.add(fill.id);
   for(const offset of Object.values(after.library.offsets))if(offset.source.some(use=>removed.has(use.id)))removed.add(offset.id);
   for(const snapshot of after.snapshots){
@@ -59,6 +64,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   const mirror=snapshot.inputMirror;
   return {...snapshot,layers:snapshot.layers.filter(layer=>!removedLayers.has(address(snapshot.id,layer.id))).map(layer=>layer.kind==='original'?{...layer,items:layer.items.filter(id=>!removed.has(id))}:{...layer,...(layer.membership?{membership:{...(layer.membership.addElementIds?{addElementIds:layer.membership.addElementIds.filter(id=>!removed.has(id))}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:layer.membership.excludeElementIds.filter(id=>!removed.has(id))}:{})}}:{})}),relations,
    deformation:state(snapshot.deformation,snapshot.id),...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,snapshot.id)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,snapshot.id)}}:{}),
+   ...(snapshot.nodeForks?{nodeForks:pruneSnapshotNodeForks(snapshot.nodeForks,removed)}:{}),
    ...(snapshot.nodeAliases?{nodeAliases:pruneSnapshotNodeAliases(snapshot.nodeAliases,removed)}:{}),
    ...(snapshot.source?{source:{...snapshot.source,originIds:without(snapshot.source.originIds,removed)}}:{}),
    ...(mirror?{inputMirror:{...mirror,curvePairs:mirror.curvePairs.filter(pair=>!removed.has(pair.id)&&!removed.has(pair.a)&&!removed.has(pair.b)),...(mirror.axisNodeIds?{axisNodeIds:mirror.axisNodeIds.filter(id=>!removed.has(id))}:{})}}:{}),

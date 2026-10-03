@@ -19,6 +19,7 @@ import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {applyLayerDomainIntent,assertLayerDomainIntent,layerDomainMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
 import {markFinalizedGeometry,retainFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {snapshotCurveAppearanceDifference,restoreSnapshotCurveAppearance} from '../domain/recordingSnapshot/curveAppearance';
+import {mapSnapshotNodeUnbindIntent,type SnapshotNodeUnbindIntent} from '../domain/recordingSnapshot/nodeForks';
 import {applyAffine2D,isIdentityAffine2D} from '../domain/geometry/affine2d';
 import {resolveSnapshotRelationAuthoringScope,snapshotRelationCurveIds,snapshotRelationWriteOwner,type SnapshotRelationAuthoringIntent,type SnapshotRelationAuthoringScope} from '../domain/recordingSnapshot/relationAuthoringIntent';
 
@@ -96,11 +97,11 @@ export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:Lay
  * Only changed source fields are transported back; untouched evaluated state
  * is never ingested into the original. References retain sparse local offsets.
  * All capability checks and both common transactions run before opening Undo. */
-export function prepareDrawingSnapshotEdit(project:LandmarkProject,next:Doc,intent?:SnapshotRelationAuthoringIntent):DrawingSnapshotEditPlan {
+export function prepareDrawingSnapshotEdit(project:LandmarkProject,next:Doc,intent?:SnapshotRelationAuthoringIntent|SnapshotNodeUnbindIntent):DrawingSnapshotEditPlan {
  return prepareDrawingSnapshotEditStage(project,next,'full',intent);
 }
 /** The source-only stage cannot re-enter local topology or synchronize twice. */
-function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:'full'|'source-only',intent?:SnapshotRelationAuthoringIntent):DrawingSnapshotEditPlan {
+function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:'full'|'source-only',intent?:SnapshotRelationAuthoringIntent|SnapshotNodeUnbindIntent):DrawingSnapshotEditPlan {
  const workspace=project.recordingSnapshots,artworkId=project.drawingSnapshots?.activeId??'$working';
  const view=workspace&&drawingSnapshotPresentation(workspace,artworkId);
  if(!view||!project.drawing){const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing:next});return {...plan,sourceDrawing:next};}
@@ -112,14 +113,15 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
  const canonicalNext=remapDrawingIdentities(next,view.canonicalId),evaluation=view.evaluation;
  if(stage==='full'){
   const snapshot=workspace!.snapshots.find(value=>value.id===view.snapshotId)!;
-  const scope=intent?resolveSnapshotRelationAuthoringScope(intent,view.snapshotId,before,next):undefined;
-  const localRelation=!!intent&&(['endpointLinks','displayIntervals'] as const).some(kind=>{
-   const ids=kind==='endpointLinks'?intent.endpointLinkIds:intent.displayIntervalIds;
+  const relation=intent?.kind==='snapshot-relation-authoring'?intent:undefined,nodeUnbind=intent?.kind==='snapshot-node-unbind'?intent:undefined;
+  const scope=relation?resolveSnapshotRelationAuthoringScope(relation,view.snapshotId,before,next):undefined;
+  const localRelation=!!relation&&(['endpointLinks','displayIntervals'] as const).some(kind=>{
+   const ids=kind==='endpointLinks'?relation.endpointLinkIds:relation.displayIntervalIds;
    return [evaluation.drawing,canonicalNext].some(drawing=>(drawing[kind]??[]).some(value=>ids.map(view.canonicalId).includes(value.id)&&snapshotRelationWriteOwner(snapshot,drawing,kind,value)==='snapshot-local'));
   });
   const localTopology=next.layers.some(layer=>localLayers.has(layer.id)&&layer.items.some(id=>!localItems.has(id)))||next.curves.some(curve=>localCurves.has(curve.id)&&!same(curve.nodes,before.curves.find(value=>value.id===curve.id)?.nodes));
   const localAppearance=next.curves.some(curve=>localCurves.has(curve.id)&&snapshotCurveAppearanceDifference(before.curves.find(value=>value.id===curve.id)!,curve));
-  if(localTopology||localRelation||localAppearance)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined);
+  if(localTopology||localRelation||localAppearance)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined,nodeUnbind);
  }
  const changedLocalLayers=new Set<string>(),visibility=new Map<string,Record<string,boolean|null>>(),renames=new Map<string,string>(),removedLayers=new Set<string>(),exclusions=new Map<string,string[]>();
  const removedItems=new Set([...localItems].filter(id=>!next.layers.some(layer=>layer.items.includes(id)))),removedCurves=new Set([...localCurves].filter(id=>removedItems.has(id)));
@@ -234,7 +236,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
 
 /** Partition ownership only. The existing original adapter still owns all
  * source coordinate math; the common Snapshot adapter owns every local write. */
-function prepareDrawingSnapshotLocalTopology(project:LandmarkProject,next:Doc,view:DrawingSnapshotPresentation,localLayers:Set<string>,scope?:SnapshotRelationAuthoringScope):DrawingSnapshotEditPlan {
+function prepareDrawingSnapshotLocalTopology(project:LandmarkProject,next:Doc,view:DrawingSnapshotPresentation,localLayers:Set<string>,scope?:SnapshotRelationAuthoringScope,nodeUnbind?:SnapshotNodeUnbindIntent):DrawingSnapshotEditPlan {
  const before=view.drawing,artworkId=project.drawingSnapshots?.activeId??'$working';
  const beforeLocalItems=new Set(before.layers.filter(layer=>localLayers.has(layer.id)).flatMap(layer=>layer.items)),nextLocalItems=new Set(next.layers.filter(layer=>localLayers.has(layer.id)).flatMap(layer=>layer.items));
  const localCurveIds=new Set([...before.curves.filter(curve=>beforeLocalItems.has(curve.id)),...next.curves.filter(curve=>nextLocalItems.has(curve.id))].map(curve=>curve.id));
@@ -258,15 +260,15 @@ function prepareDrawingSnapshotLocalTopology(project:LandmarkProject,next:Doc,vi
  // New source-owned Pen IDs only receive their canonical namespace after the
  // source transaction. New reference members keep the command's canonical IDs.
  const canonical=(id:string)=>{const mapped=refreshed.canonicalId(id);return mapped===id?view.canonicalId(id):mapped;};
- const target=remapDrawingIdentities(next,canonical),localPlan=prepareSnapshotEdit(snapshotEditContext(sourcePlan.project,true),{kind:'snapshot-local-drawing',snapshotId:refreshed.snapshotId,state:'saved',beforeDrawing:refreshed.evaluation.drawing,drawing:target});
+ const target=remapDrawingIdentities(next,canonical),localPlan=prepareSnapshotEdit(snapshotEditContext(sourcePlan.project,true),{kind:'snapshot-local-drawing',snapshotId:refreshed.snapshotId,state:'saved',beforeDrawing:refreshed.evaluation.drawing,drawing:target,...(nodeUnbind?{nodeUnbind:mapSnapshotNodeUnbindIntent(nodeUnbind,canonical)}:{})});
  return {...sourcePlan,before:project,project:localPlan.project,changed:sourcePlan.changed||localPlan.changed,localWorkspace:localPlan.project.recordingSnapshots,diagnostics:localPlan.diagnostics};
 }
 
 /** Store actions already share prepareSnapshotEdit. Preflight both writes, then
  * apply them inside the same native Drawing Undo transaction. */
 type DrawingSnapshotEditor={project:LandmarkProject;beginEdit:()=>void;endEdit:()=>void;setDrawing:(drawing:Doc,intent?:LayerEditIntent)=>void;setRecordingSnapshots:(workspace:NonNullable<LandmarkProject['recordingSnapshots']>)=>void;commitPreparedSnapshotEdit?:(plan:SnapshotEditPlan)=>void};
-export function commitDrawingSnapshotEdit(editor:DrawingSnapshotEditor,next:Doc,intent?:LayerDomainIntent|SnapshotRelationAuthoringIntent):DrawingSnapshotEditPlan {
- const domain=intent?.kind==='layer-domain'?intent:undefined,relation=intent?.kind==='snapshot-relation-authoring'?intent:undefined;
+export function commitDrawingSnapshotEdit(editor:DrawingSnapshotEditor,next:Doc,intent?:LayerDomainIntent|SnapshotRelationAuthoringIntent|SnapshotNodeUnbindIntent):DrawingSnapshotEditPlan {
+ const domain=intent?.kind==='layer-domain'?intent:undefined,relation=intent?.kind==='snapshot-relation-authoring'||intent?.kind==='snapshot-node-unbind'?intent:undefined;
  const plan=domain?prepareSnapshotEdit(snapshotEditContext(editor.project,true),{kind:'layer-domain',intent:domain}) as DrawingSnapshotEditPlan&{drawing:Doc}:prepareDrawingSnapshotEdit(editor.project,next,relation);
  if(domain&&!same(next,(plan as DrawingSnapshotEditPlan&{drawing:Doc}).drawing))throw new DrawingSnapshotEditCapabilityError('The layer domain intent and its preview no longer agree.');
  if(!plan.changed)return plan;
