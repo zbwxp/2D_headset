@@ -117,7 +117,7 @@ export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,pai
   const point=world(at(e));svg.current!.setPointerCapture(e.pointerId);drag.current={kind:'instance',instanceAxis:{axis,start:point,anchor,extent,placement:instanceTransform.basePlacement},instanceBounds:instanceTransform.bounds,instancePlacement:instanceTransform.basePlacement,instanceMaterialBounds:instanceTransform.materialBounds,pointerId:e.pointerId,start:point,client:at(e),indices:[]};
  }
  function beginCurve(e:React.PointerEvent,edit:RecordingCurveEdit){
-  if(!curveDirect||!curveEdit||reference?.moving||space.current||drag.current||e.button!==0)return;e.stopPropagation();e.preventDefault();svg.current!.focus({preventScroll:true});setCurveControl(edit);if(!curveEdit.editable)return;
+  if(!curveDirect||!curveEdit||reference?.moving||space.current||drag.current||e.button!==0)return;e.stopPropagation();e.preventDefault();svg.current!.focus({preventScroll:true});setCurveControl(edit);curveEdit.onSelect?.(edit);if(!curveEdit.editable)return;
   const point=world(at(e));svg.current!.setPointerCapture(e.pointerId);drag.current={kind:'curve',curve:beginRecordingCurveGesture(edit,point,curveEdit),pointerId:e.pointerId,start:point,client:at(e),indices:[]};
  }
  function move(e:React.PointerEvent){

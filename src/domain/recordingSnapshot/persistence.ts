@@ -49,6 +49,10 @@ function deformation(value:unknown){
  for(const [relationId,raw] of Object.entries(map(data.relationPositions))){id(relationId);const relation=object(raw,['sourceLinkIds','offset']);list(relation.sourceLinkIds).forEach(id);}
 }
 function materialIssue(value:unknown){const data=object(value,['sourceSnapshotId','sourceSignature','message']);id(data.sourceSnapshotId);id(data.sourceSignature);if(typeof data.message!=='string'||data.message.length>4096)fail('material issue message');}
+function endpointResponses(value:unknown){
+ const data=object(value,['nodes','handles']),control=(value:unknown)=>{const response=object(value,['x','y']);for(const axis of ['x','y'])if(response[axis]!==undefined){let previous=0;for(const raw of list(response[axis],256)){const p=list(raw,2);if(p.length!==2)fail('response knot');finite(p[0],0,1);finite(p[1]);if((p[0] as number)<=previous||(p[0] as number)>=1)fail('response progress must increase strictly inside (0,1)');previous=p[0] as number;}}};
+ for(const [key,value] of Object.entries(map(data.nodes))){id(key);control(value);}for(const [key,value] of Object.entries(map(data.handles))){id(key);const pair=list(value,2);if(pair.length!==2)fail('handle response pair');pair.forEach(control);}
+}
 const authored=(value:unknown)=>{for(const raw of list(value)){const ref=object(raw,['trackId','keyId']);id(ref.trackId);id(ref.keyId);}};
 
 /** External JSON is checked before graph/value validation. No runtime object or
@@ -71,7 +75,9 @@ export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspac
   if(snapshot.source!==undefined){const source=object(snapshot.source,['artworkId','originIds','reference','mirrorAxisX','mirrorEditing']);id(source.artworkId);for(const [canonical,original] of Object.entries(map(source.originIds))){id(canonical);id(original);}if(source.mirrorAxisX!==undefined)finite(source.mirrorAxisX);validateRecordingReference(source.reference as Parameters<typeof validateRecordingReference>[0]);}
  }
  for(const raw of list(root.recordings,1000)){
-  const recording=object(raw,['id','name','angle','snapshotIds','activeSnapshotId','tolerance','tracks','interpolationWeights','legacy']);id(recording.id);name(recording.name);angle(recording.angle);list(recording.snapshotIds).forEach(id);if(recording.activeSnapshotId!==undefined)id(recording.activeSnapshotId);
+  const recording=object(raw,['id','name','angle','snapshotIds','activeSnapshotId','tolerance','tracks','mode','endpointPair','interpolationWeights','legacy']);id(recording.id);name(recording.name);angle(recording.angle);list(recording.snapshotIds).forEach(id);if(recording.activeSnapshotId!==undefined)id(recording.activeSnapshotId);
+  if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair')fail('recording mode');
+  if(recording.endpointPair!==undefined){const pair=object(recording.endpointPair,['axis','startSnapshotId','endSnapshotId','responses','draft']);if(pair.axis!=='x')fail('endpoint pair axis');id(pair.startSnapshotId);id(pair.endSnapshotId);if(pair.responses!==undefined)endpointResponses(pair.responses);if(pair.draft!==undefined){const draft=object(pair.draft,['angle','responses']);angle(draft.angle);endpointResponses(draft.responses);}}
   if(recording.interpolationWeights!==undefined)for(const raw of list(recording.interpolationWeights,65536)){
    const weight=object(raw,['id','target','startSnapshotId','endSnapshotId','points']),target=object(weight.target,['layerId','curveId']);id(weight.id);id(weight.startSnapshotId);id(weight.endSnapshotId);id(target.layerId);if(target.curveId!==undefined)id(target.curveId);list(weight.points,32);validateSnapshotInterpolationWeight(weight as unknown as SnapshotInterpolationWeight);
   }

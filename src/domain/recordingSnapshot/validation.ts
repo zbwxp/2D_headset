@@ -4,7 +4,7 @@ import {finitePoint} from '../drawing/model';
 import {validateWarpGrid} from '../vectorWarp/model';
 import {validateScenePlacement,validateSceneShape} from '../recordingScene/validation';
 import {validateIntervalOverrides} from '../vectorRecording/intervals';
-import {snapshotChannelKey,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotLayerState,type SnapshotMaterialIssue} from './model';
+import {snapshotChannelKey,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotLayerState,type SnapshotMaterialIssue,type SnapshotEndpointResponses} from './model';
 
 const fail=(message:string):never=>{throw Error(`Invalid recording snapshot: ${message}`);};
 const id=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=16384;
@@ -38,6 +38,11 @@ function track(track:SnapshotPoseTrack):void {
  for(const key of track.keys){if(!angle(key.angle))fail('key angle');if(positions.some(at=>sameAngle(at,key.angle)))fail('duplicate key angle');positions.push(key.angle);value(key.value);}
  if(track.draft){if(!angle(track.draft.angle))fail('draft angle');value(track.draft.value);}
 }
+function endpointResponses(responses:SnapshotEndpointResponses):void {
+ if(!responses||!record(responses.nodes)||!record(responses.handles))fail('endpoint response maps');
+ const control=(value:unknown)=>{if(!record(value)||Object.keys(value).some(key=>key!=='x'&&key!=='y'))fail('control response');for(const key of ['x','y']){const points=(value as Record<string,unknown>)[key];if(points===undefined)continue;if(!Array.isArray(points)||points.length>256)fail('response knot limit');let previous=0;for(const point of points as unknown[]){if(!finitePoint(point)||point[0]<=previous||point[0]>=1)fail('response progress must increase strictly inside (0,1)');previous=(point as [number,number])[0];}}};
+ for(const [key,value] of Object.entries(responses.nodes)){if(!id(key))fail('response node ID');control(value);}for(const [key,value] of Object.entries(responses.handles)){if(!id(key)||!Array.isArray(value)||value.length!==2)fail('response handle ID/pair');value.forEach(control);}
+}
 export function validateSnapshotGraph(workspace:RecordingSnapshotWorkspace):void {
  const nodes=new Map(workspace.snapshots.map(s=>[s.id,s])),done=new Set<string>(),visiting=new Set<string>();
  const visit=(snapshot:RecordingSnapshot)=>{if(visiting.has(snapshot.id))fail(`snapshot cycle at ${snapshot.id}`);if(done.has(snapshot.id))return;visiting.add(snapshot.id);for(const layer of snapshot.layers)if(layer.kind==='reference'){const parent=nodes.get(layer.baseSnapshotId);if(parent)visit(parent);}visiting.delete(snapshot.id);done.add(snapshot.id);};
@@ -61,6 +66,16 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
  }
  for(const recording of workspace.recordings){
   if(typeof recording.name!=='string'||!angle(recording.angle)||!Array.isArray(recording.snapshotIds)||!Array.isArray(recording.tracks))fail('recording');unique(recording.snapshotIds,'recording snapshot');unique(recording.tracks.map(t=>t.id),'track');
+  if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair')fail('recording mode');
+  if(recording.mode==='endpoint-pair'){
+   const pair=recording.endpointPair;if(!pair||pair.axis!=='x'||!id(pair.startSnapshotId)||!id(pair.endSnapshotId)||pair.startSnapshotId===pair.endSnapshotId)fail('endpoint pair');
+   if(recording.legacy||recording.interpolationWeights?.length)fail('endpoint pair cannot carry legacy or old interpolation assets');
+   if(recording.snapshotIds.length!==2||!recording.snapshotIds.includes(pair!.startSnapshotId)||!recording.snapshotIds.includes(pair!.endSnapshotId))fail('endpoint pair must contain exactly its two genuine basis snapshots');
+   const start=workspace.snapshots.find(value=>value.id===pair!.startSnapshotId),end=workspace.snapshots.find(value=>value.id===pair!.endSnapshotId);if(!start||!end||start.angle.y!==end.angle.y||start.angle.x===end.angle.x)fail('endpoint pair must differ only on yaw X');
+   const interior=(at:Angle)=>at.y===start!.angle.y&&at.x>Math.min(start!.angle.x,end!.angle.x)&&at.x<Math.max(start!.angle.x,end!.angle.x),basis=(at:Angle)=>sameAngle(at,start!.angle)||sameAngle(at,end!.angle);
+   if(!basis(recording.angle)&&!interior(recording.angle))fail('endpoint pair cursor angle');if(pair!.responses!==undefined)endpointResponses(pair!.responses);if(pair!.draft){if(!angle(pair!.draft.angle)||!interior(pair!.draft.angle))fail('endpoint correction draft angle');endpointResponses(pair!.draft.responses);}
+   if(recording.tracks.some(track=>track.keys.some(key=>!basis(key.angle))||track.draft&&!basis(track.draft.angle)))fail('endpoint pair cannot contain intermediate pose keys or geometry drafts');
+  }else if(recording.endpointPair!==undefined)fail('endpoint pair data requires explicit endpoint-pair mode');
   if(recording.interpolationWeights!==undefined){
    if(!Array.isArray(recording.interpolationWeights)||recording.interpolationWeights.length>65536)fail('interpolation weight assets');unique(recording.interpolationWeights.map(weight=>weight.id),'interpolation weight');const pairs=new Set<string>();
    for(const weight of recording.interpolationWeights){validateSnapshotInterpolationWeight(weight);if(!recording.snapshotIds.includes(weight.startSnapshotId)||!recording.snapshotIds.includes(weight.endSnapshotId))fail('interpolation weight endpoint snapshot');const start=workspace.snapshots.find(snapshot=>snapshot.id===weight.startSnapshotId)!,end=workspace.snapshots.find(snapshot=>snapshot.id===weight.endSnapshotId)!;if(!start||!end||sameAngle(start.angle,end.angle)||start.angle.x!==end.angle.x&&start.angle.y!==end.angle.y)fail('interpolation weight endpoints must differ on one angle axis');const key=JSON.stringify([weight.target.layerId,weight.target.curveId??null,...[weight.startSnapshotId,weight.endSnapshotId].sort()]);if(pairs.has(key))fail('duplicate interpolation weight target and pair');pairs.add(key);}

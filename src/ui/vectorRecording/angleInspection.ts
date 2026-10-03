@@ -135,8 +135,11 @@ export function createSnapshotOnionInspectionCache(){
    const actual=workspace.recordings.find(value=>value.id===saved.id)!;
    const values=actual.tracks.map(track=>trackValue(track,actual.id===recordingId?currentAngle:undefined));
    const legacy=actual.legacy?{...actual.legacy,scene:JSON.parse(actual.id===recordingId?sceneOnionInspectionSignature(actual.legacy.scene,currentAngle):sceneOnionSavedSignature(actual.legacy.scene))}:undefined;
-   keys.push(JSON.stringify([actual.id,actual.tolerance,actual.interpolationWeights,legacy]),...values.map(value=>value.key));
-   recordings.push({...saved,tolerance:actual.tolerance,interpolationWeights:actual.interpolationWeights,tracks:values.map(value=>value.track),...(legacy?{legacy}:{})});
+   // An inverse-correction draft owns scalar responses for the whole segment.
+   // Its scalar constraints remain live when the cursor moves along the pair.
+   const {draft,...pair}=actual.endpointPair??{},endpointPair=actual.endpointPair?{...pair,...(actual.id===recordingId&&draft?{responses:draft.responses}:{})} as NonNullable<SnapshotRecording['endpointPair']>:undefined;
+   keys.push(JSON.stringify([actual.id,actual.tolerance,actual.interpolationWeights,actual.mode,endpointPair,legacy]),...values.map(value=>value.key));
+   recordings.push({...saved,mode:actual.mode,endpointPair,tolerance:actual.tolerance,interpolationWeights:actual.interpolationWeights,tracks:values.map(value=>value.track),...(legacy?{legacy}:{})});
   }
   const key=keys.join('\n');if(lastResult&&lastKey===key)return lastResult;
   const cached=recent.get(key);if(cached){recent.delete(key);recent.set(key,cached);lastKey=key;lastResult=cached;return cached;}

@@ -5,6 +5,7 @@ import type {CompiledDisplayRouteBrushes} from '../../domain/drawing/displayRout
 import {strokes,strokePaths,type StrokePath} from '../../domain/drawing/strokes';
 import {curveSamples} from '../../domain/drawing/curveProvenance';
 import {subcurve} from '../../domain/drawing/roundedJoin';
+import {endpointPairDisplayField} from '../../domain/recordingSnapshot/endpointPairMaterial';
 
 export interface EndpointOnionMask {
  id:string;trackId:string;rangeId:string;mode:'SHOW'|'HIDE';enabled:boolean;scope:'PATH'|'CURVE';
@@ -33,7 +34,7 @@ function parameterAt(part:Field['parts'][number],distance:number):number {
 /** Material is resolved only at the two endpoint states. Intermediate ghosts
  * blend these final controls and ID-matched scalar masks; no runtime solver or
  * outline tessellator participates. Hidden geometry stays available for pairing. */
-export function extractEndpointOnionInk(drawing:DrawingDocument):EndpointOnionInk {
+export function extractEndpointOnionInk(drawing:DrawingDocument,fieldFor:typeof displayField=displayField,includeMetadata=true):EndpointOnionInk {
  const result:EndpointOnionInk={curves:{},arcs:{},arcSegments:{},arcPieceCounts:{},arcGeometry:{},arcVisible:{},arcMasks:{},diagnostics:[]},curves=new Map(drawing.curves.map(c=>[c.id,c])),coverage=new Map<string,Array<[number,number]>>(),routed=new Set<string>(),routeKeys=new Set<string>(),ambiguousArcs=new Set<string>();
  const visible=(id:string)=>{const curve=curves.get(id);return !!curve?.visible&&curve.inkVisible!==false;};
  for(const curve of drawing.curves)result.curves[curve.id]={cubic:shapeOf(drawing,curve.id),visible:visible(curve.id),segments:[],masks:[]};
@@ -41,11 +42,12 @@ export function extractEndpointOnionInk(drawing:DrawingDocument):EndpointOnionIn
  for(const track of drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routeKeys.has(key))continue;routeKeys.add(key);const resolved=resolveDisplayRoute(drawing,track.displayRoute);if(resolved.diagnostics.length){result.diagnostics.push(...resolved.diagnostics.map(d=>d.message));continue;}resolved.path.segments.forEach(u=>routed.add(u.id));paths.push({path:resolved.path,route:true});}
  for(const layer of drawing.layers)for(const stroke of strokes(drawing,layer.id))for(const path of strokePaths(stroke))if(path.segments.some(u=>!routed.has(u.id)))paths.push({path,route:false});
  for(const {path,route} of paths)try{
-  const field=displayField(drawing,path),geometry=field.geometry;if(geometry.error){result.diagnostics.push(geometry.error);continue;}
+  const field=fieldFor(drawing,path),geometry=field.geometry;if(geometry.error){result.diagnostics.push(geometry.error);continue;}
   const brushes=(field as Field&{brushes?:CompiledDisplayRouteBrushes}).brushes,linkByJoin=new Map(brushes?.links.flatMap(link=>link.joinId?[[link.joinId,link.linkId] as const]:[])??[]),uses=new Map(path.segments.map(u=>[u.id,u]));
   type ArcGroup={reverse:boolean;indices:number[];visible:boolean;pieces:Array<{index:number;t:number;cubic:Cubic}>;segments:Array<{pieceIndex:number;start:number;end:number;cubic:Cubic}>;geometry:Map<number,Cubic>;masks:Record<number,EndpointOnionMask[]>};
   const arcParts=new Map<string,ArcGroup>();
   const masksFor=(index:number,map:(t:number)=>number,curveId?:string):EndpointOnionMask[]=>{
+   if(!includeMetadata)return [];
    const part=field.parts[index];return field.tracks.filter(track=>track.scope!=='CURVE'||track.anchor.id===curveId).flatMap(track=>track.ranges.map(range=>({id:JSON.stringify([track.id,range.id]),trackId:track.id,rangeId:range.id,mode:range.mode??'SHOW',enabled:range.enabled!==false,scope:track.scope==='CURVE'?'CURVE' as const:'PATH' as const,spans:field.span(track,range).map(span=>{const a=map(parameterAt(part,span.start*field.total-part.start)),b=map(parameterAt(part,span.end*field.total-part.start));return {start:Math.min(a,b),end:Math.max(a,b)};})})));
   };
   for(let index=0;index<geometry.pieces.length;index++){
@@ -68,6 +70,14 @@ export function extractEndpointOnionInk(drawing:DrawingDocument):EndpointOnionIn
   }
   for(const [key,group] of arcParts){if(ambiguousArcs.has(key))continue;let pieces=group.pieces.sort((a,b)=>a.index-b.index||a.t-b.t).map(p=>p.cubic);if(group.reverse)pieces=pieces.reverse().map(c=>[...c].reverse() as Cubic);const full=[...group.geometry].sort(([a],[b])=>a-b).map(([,c])=>c);if(result.arcGeometry![key]){if(JSON.stringify(result.arcGeometry![key].map(piece=>piece.cubic))!==JSON.stringify(full)){result.diagnostics.push(`ARC ${key} has ambiguous display geometry and was omitted.`);ambiguousArcs.add(key);for(const record of [result.arcs,result.arcSegments!,result.arcPieceCounts!,result.arcGeometry!,result.arcVisible!,result.arcMasks!])delete record[key];}continue;}result.arcs[key]=group.visible?pieces:[];result.arcGeometry![key]=full.map((cubic,pieceIndex)=>({pieceIndex,cubic,visible:group.visible,masks:group.masks[pieceIndex]}));result.arcVisible![key]=group.visible;result.arcMasks![key]=group.masks;result.arcSegments![key]=group.segments.sort((a,b)=>a.pieceIndex-b.pieceIndex||a.start-b.start);result.arcPieceCounts![key]=group.indices.length;}
  }catch(error){result.diagnostics.push(error instanceof Error?error.message:String(error));}
- for(const [id,entry] of Object.entries(result.curves)){if(entry.domain)(entry.masks??=[]).push({id:JSON.stringify(['geometry-domain',id]),trackId:JSON.stringify(['geometry-domain',id]),rangeId:'geometry-domain',mode:'SHOW',enabled:true,scope:'CURVE',spans:[entry.domain]});entry.segments=entry.visible?unionSpans(coverage.get(id)??[]).map(([start,end],index)=>({id:JSON.stringify(['coverage',id,index]),start,end,cubic:entry.cubic})):[];}
+ for(const [id,entry] of Object.entries(result.curves)){if(includeMetadata&&entry.domain)(entry.masks??=[]).push({id:JSON.stringify(['geometry-domain',id]),trackId:JSON.stringify(['geometry-domain',id]),rangeId:'geometry-domain',mode:'SHOW',enabled:true,scope:'CURVE',spans:[entry.domain]});entry.segments=entry.visible?unionSpans(coverage.get(id)??[]).map(([start,end],index)=>({id:JSON.stringify(['coverage',id,index]),start,end,cubic:entry.cubic})):[];}
  result.diagnostics=[...new Set(result.diagnostics)];return result;
+}
+
+/** A response drag usually changes one connected path. Retain the native
+ * material field of every unaffected path at each ghost angle, even though
+ * the common sampler returns a new Drawing for the edited response. */
+export function createEndpointPairOnionInkCache(fieldFor:typeof displayField=endpointPairDisplayField){
+ const drawings=new WeakMap<DrawingDocument,EndpointOnionInk>();
+ return {resolve(drawing:DrawingDocument):EndpointOnionInk {const known=drawings.get(drawing);if(known)return known;const ink=extractEndpointOnionInk(drawing,fieldFor,false);drawings.set(drawing,ink);return ink;}};
 }

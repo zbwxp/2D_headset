@@ -85,6 +85,9 @@ export interface RecordingSnapshot {
 }
 export interface SnapshotRecording {
  id:string;name:string;angle:Angle;snapshotIds:string[];activeSnapshotId?:string;tolerance?:number;
+ /** Explicit opt-in. Missing mode retains sparse pose-track evaluation. */
+ mode?:'tracks'|'endpoint-pair';
+ endpointPair?:SnapshotEndpointPair;
  /** Sole authority for authored sparse angle values; snapshots only refer to keys. */
  tracks:SnapshotPoseTrack[];
  /** A curve/layer-owned response between two saved views. This never authors
@@ -92,6 +95,22 @@ export interface SnapshotRecording {
  interpolationWeights?:SnapshotInterpolationWeight[];
  /** Only genuinely unresolvable or conflicting migrations use this fallback. */
  legacy?:{scene:RecordingScene;readOnly:true;reason:string};
+}
+/** Interior piecewise-linear [progress,response] constraints. Progress is in
+ * (0,1); responses may be signed, unbounded and nonmonotone. The two exact
+ * endpoint responses are always 0 and 1 and are never stored as constraints. */
+export interface SnapshotControlResponse {x?:Point2[];y?:Point2[]}
+export interface SnapshotEndpointResponses {
+ /** Minimum canonical node ID in a shared-node/EndpointLink component. */
+ nodes:Record<string,SnapshotControlResponse>;
+ /** Final endpoint-space handle vectors H-P, never absolute handle positions. */
+ handles:Record<string,[SnapshotControlResponse,SnapshotControlResponse]>;
+}
+export interface SnapshotEndpointPair {
+ axis:'x';startSnapshotId:string;endSnapshotId:string;
+ responses?:SnapshotEndpointResponses;
+ /** Editing constraints remain separate from saved scalar responses. */
+ draft?:{angle:Angle;responses:SnapshotEndpointResponses};
 }
 export interface SnapshotInterpolationWeight {
  id:string;target:{layerId:string;curveId?:string};startSnapshotId:string;endSnapshotId:string;

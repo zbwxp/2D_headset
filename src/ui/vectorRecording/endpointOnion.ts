@@ -2,11 +2,12 @@ import type {Cubic,DrawingDocument,Endpoint,Point2} from '../../domain/drawing/m
 import {layerFor,visible} from '../../domain/drawing/model';
 import {subcurve} from '../../domain/drawing/roundedJoin';
 import {evaluateRecordingSnapshot,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
-import type {RecordingSnapshotWorkspace,SnapshotRecording} from '../../domain/recordingSnapshot/model';
+import {interpolateEndpointPairDrawing} from '../../domain/recordingSnapshot/endpointPair';
+import type {RecordingSnapshotWorkspace,SnapshotEndpointResponses,SnapshotRecording} from '../../domain/recordingSnapshot/model';
 import {resolveSnapshotInterpolationWeight,snapshotInterpolationWeight,snapshotWeightNodeOwners} from '../../domain/recordingSnapshot/weights';
 import {sameAngle,type Angle} from '../../domain/vectorRecording/interpolation';
 import {createSnapshotOnionInspectionCache,markSceneOnionHighlights,type SceneOnionFrame,type SceneOnionSettings} from './angleInspection';
-import {extractEndpointOnionInk,type EndpointOnionInk} from './endpointOnionInk';
+import {createEndpointPairOnionInkCache,extractEndpointOnionInk,type EndpointOnionInk} from './endpointOnionInk';
 
 export interface SceneOnionEndpoints {startSnapshotId:string;endSnapshotId:string}
 export interface EndpointOnionView {id:string;name:string;angle:Angle}
@@ -127,6 +128,22 @@ export function interpolateEndpointOnion(start:EndpointOnionGeometry,end:Endpoin
   };
  });
  const axis=Math.abs(end.angle.x-start.angle.x)>=Math.abs(end.angle.y-start.angle.y)?'x':'y',settings:SceneOnionSettings={enabled:true,axis,step,min:Math.min(start.angle[axis],end.angle[axis]),max:Math.max(start.angle[axis],end.angle[axis]),opacity:1};
+ return {frames:markSceneOnionHighlights(frames,settings),diagnostics:[...diagnostics]};
+}
+
+/** The explicit two-basis mode shares its final node/relative-handle sampler
+ * with the canvas. Derived ARC and material use that same sampled drawing;
+ * legacy onions above keep their original endpoint-ink interpolation. */
+export function interpolateEndpointPairOnion(start:Pick<EndpointOnionGeometry,'drawing'|'angle'>,end:Pick<EndpointOnionGeometry,'drawing'|'angle'>,step:5|10,responses?:SnapshotEndpointResponses,inkCache=createEndpointPairOnionInkCache()):{frames:SceneOnionFrame[];diagnostics:string[]} {
+ const diagnostics=new Set<string>(),frames=sampleEndpointOnionAngles(start.angle,end.angle,step).map(({angle,t}):SceneOnionFrame=>{
+  const sampled=interpolateEndpointPairDrawing(start.drawing,end.drawing,t,responses,{startWins:nearerOnionEndpoint(start.angle,end.angle,t)==='start'}),ink=inkCache.resolve(sampled.drawing);
+  for(const message of [...sampled.diagnostics,...ink.diagnostics])diagnostics.add(message);
+  const centerlines:OnionCenterline[]=[];
+  for(const [id,curve] of Object.entries(ink.curves))curve.segments.forEach((segment,index)=>centerlines.push({id:`curve:${id}:${index}`,cubic:subcurve(segment.cubic,segment.start,segment.end)}));
+  for(const [id,arcs] of Object.entries(ink.arcs))arcs.forEach((cubic,index)=>centerlines.push({id:`arc:${id}:${index}`,cubic}));
+  return {angle,drawing:sampled.drawing,paintBatches:[],centerlines};
+ });
+ const settings:SceneOnionSettings={enabled:true,axis:'x',step,min:Math.min(start.angle.x,end.angle.x),max:Math.max(start.angle.x,end.angle.x),opacity:1};
  return {frames:markSceneOnionHighlights(frames,settings),diagnostics:[...diagnostics]};
 }
 

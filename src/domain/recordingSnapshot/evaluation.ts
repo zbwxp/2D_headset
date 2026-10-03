@@ -13,7 +13,9 @@ import {applyScenePlacement,scenePlacementScales,scenePlacementMaxScale,isSceneP
 import {materializeOriginalSnapshot,remapDrawingIdentities} from './sources';
 import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
-import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording} from './model';
+import {sameAngle} from '../vectorRecording/interpolation';
+import {endpointPairCompatibility,endpointPairNodeAuthorities,interpolateEndpointPairDrawing,validateSnapshotEndpointPair} from './endpointPair';
+import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
 
 export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean}
 export interface SnapshotEvaluation {
@@ -28,6 +30,14 @@ export interface SnapshotEvaluation {
  placementsByLayer:Record<string,ScenePlacementValue>;
  layerProvenance:Record<string,{layerId:string;baseSnapshotId:string;sourceLayerId:string}>;
  authoredTracks:SnapshotPoseTrack[];
+ /** Final-space controls, with the exact endpoint evaluations reused by onion
+  * display. These runtime values never enter the serialized recording. */
+ endpointPair?:SnapshotEndpointPairEvaluation;
+}
+export interface SnapshotEndpointPairBasis {start:SnapshotEvaluation;end:SnapshotEvaluation;startSnapshotId:string;endSnapshotId:string}
+export interface SnapshotEndpointPairEvaluation extends SnapshotEndpointPairBasis {
+ axis:'x';progress:number;role:'start'|'end'|'correction';coordinateSpace:'final';nodeAuthorities:Record<string,string>;
+ responses?:SnapshotEndpointResponses;
 }
 interface SnapshotInput {drawing:DrawingDocument;provenance:SnapshotEvaluation['provenance'];appliedTrackIds:Set<string>}
 interface EvaluationCache {
@@ -203,8 +213,38 @@ export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:
   const result:SnapshotEvaluation={snapshotId:id,source:input.drawing,baseDrawing:input.drawing,provenance:input.provenance,appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);local.set(id,result);return frames.set(frameKey,result);
  };return resolve(snapshotId,true);
 }
+/** Endpoint pipelines remain live, including source edits and only the current
+ * endpoint's unsaved draft. resolveSnapshot itself intentionally stays a raw
+ * saved-view evaluator, so parent references cannot recurse through the pair. */
+export function resolveEndpointPairBasis(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEndpointPairBasis {
+ const recording=workspace.recordings.find(r=>r.id===recordingId),pair=recording?.endpointPair;if(!recording||recording.mode!=='endpoint-pair'||!pair)throw Error('Recording is not an endpoint pair.');validateSnapshotEndpointPair(pair);
+ const first=workspace.snapshots.find(s=>s.id===pair.startSnapshotId),last=workspace.snapshots.find(s=>s.id===pair.endSnapshotId);if(!first||!last)throw Error('Endpoint pair references a missing basis snapshot.');
+ if(!recording.snapshotIds.includes(first.id)||!recording.snapshotIds.includes(last.id)||!Number.isFinite(first.angle.x)||!Number.isFinite(last.angle.x)||Math.abs(first.angle.x-last.angle.x)<1e-8||Math.abs(first.angle.y-last.angle.y)>1e-8)throw Error('Endpoint pair needs distinct yaw angles at the same pitch.');
+ const raw=(snapshot:RecordingSnapshot)=>resolveSnapshot(workspace,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,useDraft:options.useDraft!==false&&sameAngle(recording.angle,snapshot.angle),tolerance:options.tolerance??recording.tolerance});
+ return {start:raw(first),end:raw(last),startSnapshotId:first.id,endSnapshotId:last.id};
+}
+function evaluateEndpointPair(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,options:SnapshotEvaluationOptions):SnapshotEvaluation {
+ const pair=recording.endpointPair!,basis=resolveEndpointPairBasis(workspace,recording.id,options),requested=options.angle??recording.angle;
+ if(![requested.x,requested.y].every(Number.isFinite))throw Error('Endpoint pair angle must be finite.');
+ if(Math.abs(requested.y-basis.start.angle.y)>1e-8)throw Error('Endpoint pair supports one yaw axis at its saved pitch; 2D pitch interpolation is not enabled.');
+ const progress=Math.max(0,Math.min(1,(requested.x-basis.start.angle.x)/(basis.end.angle.x-basis.start.angle.x))),responses=options.useDraft!==false&&pair.draft?pair.draft.responses:pair.responses;
+ const compatibility=endpointPairCompatibility(basis.start.drawing,basis.end.drawing);if(compatibility.length)throw Error(compatibility.join('\n'));
+ const startWins=progress<.5||progress===.5&&basis.start.angle.x<basis.end.angle.x,selected=startWins?basis.start:basis.end;
+ const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['endpoint-pair',recording.id,resultIdentity(basis.start),resultIdentity(basis.end),responses??null,requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
+ const sampled=interpolateEndpointPairDrawing(basis.start.drawing,basis.end.drawing,progress,responses,{startWins});
+ const endpointPair:SnapshotEndpointPairEvaluation={...basis,axis:'x',progress,role:progress===0?'start':progress===1?'end':'correction',coordinateSpace:'final',nodeAuthorities:Object.fromEntries(endpointPairNodeAuthorities(basis.start.drawing)),responses};
+ const diagnostics=[...basis.start.diagnostics,...basis.end.diagnostics,...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
+ if(progress===0||progress===1){const exact=progress===0?basis.start:basis.end;return cache.frames.set(key,{...exact,angle:{...requested},endpointPair,diagnostics});}
+ const snapshot=workspace.snapshots.find(s=>s.id===selected.snapshotId)!;
+ const result:SnapshotEvaluation={...selected,angle:{...requested},drawing:sampled.drawing,preShapeDrawing:sampled.drawing,prePlacementDrawing:sampled.drawing,diagnostics,endpointPair,
+  // Endpoint fits are evidence about their endpoints only, never invented
+  // intermediate fit measurements. The final controls require no refitting.
+  fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(basis.start.maxError,basis.end.maxError),conflictingNodeIds:[...new Set([...basis.start.conflictingNodeIds,...basis.end.conflictingNodeIds])],intervalTransportErrors:[...basis.start.intervalTransportErrors,...basis.end.intervalTransportErrors]};
+ result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);return cache.frames.set(key,result);
+}
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
  const recording=workspace.recordings.find(r=>r.id===recordingId);if(!recording){if(workspace.snapshots.some(s=>s.id===recordingId))return resolveSnapshot(workspace,recordingId,options);throw Error('Missing recording');}
+ if(recording.mode==='endpoint-pair')return evaluateEndpointPair(workspace,recording,options);
  const at=options.angle??recording.angle,ordered=recording.snapshotIds.map(id=>workspace.snapshots.find(s=>s.id===id)).filter((s):s is RecordingSnapshot=>!!s).sort((a,b)=>Math.hypot(a.angle.x-at.x,a.angle.y-at.y)-Math.hypot(b.angle.x-at.x,b.angle.y-at.y)||a.angle.y-b.angle.y||a.angle.x-b.angle.x||a.id.localeCompare(b.id));
  const snapshotId=options.snapshotId??ordered[0]?.id;if(!snapshotId)throw Error('Recording has no view snapshot');
  if(recording.legacy)return evaluateLegacySnapshot(workspace,recording,snapshotId,{...options,tolerance:options.tolerance??recording.tolerance});
