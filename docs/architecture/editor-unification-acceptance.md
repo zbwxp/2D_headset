@@ -1,11 +1,23 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 22:24 UTC。当前线上 v69（`cc26f95`）于 22:17:03 UTC 部署。v68 的共同 Recording 曲边框、非单位 placement 后 A 编辑与域内新线已实际验证；独立复制曾暴露原层材料重复变换，v69 已按同一真人流程修复并验收。v67、v66 的限定证据继续保留；后文旧版本段落只作为历史记录。
+核对日期：2026 年 10 月 3 日 23:22 UTC。当前线上 v71（`cee081a`）于 22:50:09 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
 
+当前真正开放的工程分为三组：
+
+1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
+2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；候选已在隔离树测试，需通用 `before → target` 事务 helper 和镜像元信息接齐后发布。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
+3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前尚无完整通道，不能把临时 capability 禁用宣布为完成。
+
+待决定项独立列出：中间修正角曲边域对未来成员的程序语义、跨模式 Undo 旧 guard、旧 channel runtime 退役。单点/柄反推的零差轴、互相矛盾的真实连接目标、非有限透视映射是数值或约束边界；它们不等于上述未完成的工程适配。独立中间 Boolean 属性样本未新增；当前明确完成的中间属性是连续区间端点，其他 appearance 在真实 Snapshot 编辑。
 v68（`b04d5fa`）包含继承节点解绑、自有曲边域内 P/绑定、原生曲边独立副本及 Drawing/Recording 共用 cage controller/overlay。合并类型检查、生产构建与 42 项交叉测试通过。实际在真实 0° 眉层设置宽度 150%，拖曲边、切 A 拖柄 (+15, −12) 像素，最终控制点精确同移；Update/Undo/Redo 通过。域内 P 新线以局部成员和 postShape 保存，原稿不变，Undo 一笔恢复。
 
 v68 同层复制曾使原对象的编辑 cubic 保持不变，但 derived material 再次应用 affine/cage。v69 在 `affineDrawing.ts` 从各组真正的变换前材料输入追加程序；offset-only 图层也保留其位移。41 项针对回归和构建通过，真实保存文件冷读重现由失败转为通过。v69 实际复测同一流程：新 ID 副本与原线完全重合；同视口 Undo/Redo 中原路径逐字不变；右移副本 1 像素只改变副本，Undo 恢复。实际 SaveJSON 显示副本为无语义父级的自有根，Drawing 来源全字段不变。7 笔正常 Undo 清理全部本轮准备，原 4 个录制与 5 份画稿保留。证据：[v68 报告与发现](../../artifacts/triangulated-recorder-qa/v68-browser-verification.json)、[v69 修复验收](../../artifacts/triangulated-recorder-qa/v69-browser-verification.json)、[保存数据核对](../../artifacts/triangulated-recorder-qa/v69-save-validation.json)。
 v67 实际流程使用内置完整正面与侧稿：引用两面片 6 条曲线，曲边手柄与 A 编辑后保存；父源新增一条 P 曲线后引用成为 7 条。同一域 ID、固定 rest、bend、已有 postShape 全字段保持一致，新线没有自己的点响应；精确发布代码回读显示新线与同一域的控制点误差为 0，材料诊断为空。禁用/Undo 与 A Undo/Redo 恢复原路径。7 笔普通 Undo 清理本轮操作后，原 5 稿及先前稍侧工作副本保留，Undo 灰色。证据：[v67 操作报告](../../artifacts/triangulated-recorder-qa/v67-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v67-domain-save-validation.json)。未上传私人归档，未测浏览器 FPS。
+
+v70（`8d1ddbf`）真人验证：Drawing 锁左眉后引用到 Recording，A 显示 0 个可编辑柄；子快照局部解锁后显示 2 个柄，Update 计数仍为 0，返回 Drawing 父锁仍为 true。JSON 中是 Snapshot `objectLocks=false`，无 pose 草稿或轨。−90° 两眉曲边后，自动 +90° 镜像复制得到两个新 ID；两副本分别与原路径逐字重合，同视口 Undo/Redo 保原路径，副本为无父级 original 根＋纯 reflected program。9 笔录制 Undo＋1 笔 Drawing 源锁 Undo 清理本轮。证据：[v70 操作](../../artifacts/triangulated-recorder-qa/v70-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v70-save-validation.json)。
+
+v71（`cee081a`）真人验证：一条眉有 cage、一条普通，按曲线复选并用共同 V 中心拖 (+19,+6) 像素，两条曲线全部控制点精确同移；A 仅动普通线的一柄 (+12,−9)，其余三柄不变。Update/Undo/Redo、保存与 6 笔清理均通过；source Drawing 全字段不变，仍 3 个真实角度点，分别写 cage 后修正与普通 shape。共享 node/LINK/SMOOTH、可达零轴的覆盖来自针对自动化，未虚称为此轮真人覆盖。证据：[v71 操作](../../artifacts/triangulated-recorder-qa/v71-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v71-save-validation.json)。
+
 ### 最新实现与证据
 
 | 当前路径 | 唯一职责模块与消费者 | 已验证范围 | 当前剩余 |
