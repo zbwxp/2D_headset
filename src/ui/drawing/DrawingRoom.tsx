@@ -47,7 +47,7 @@ import {usePenPreferences} from './penPreferences';
 import {beginPenGesture,movePenGesture,previewPenGesture,finishPenGesture,penHoverShape,penHistoryAction,type PenState as Pen,type PenGesture} from './penController';
 import {useDirectPreferences} from './directPreferences';
 import {TOOLS,isEndpointTool} from './tools';
-import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,type DrawingEndpointTool,type DrawingCommandIntent} from './endpointInteraction';
+import {drawingEndpointCurveIds,pickDrawingEndpoint,drawingEndpointSelection,applyDrawingEndpointTool,commitDrawingEndpointTool,type DrawingEndpointTool,type DrawingCommandIntent} from './endpointInteraction';
 import {createSnapshotRelationAuthoringIntent} from '../../domain/recordingSnapshot/relationAuthoringIntent';
 import {linkedNodeIds,linksAtNode} from '../../domain/drawing/endpointLinks';
 import PaintScene from './PaintScene';
@@ -107,6 +107,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const shownCurves=d.layers.flatMap(l=>l.items).filter(id=>visible(d,id));
  const activeTool=TOOLS.find(x=>x[0]===tool)!;
  const endpointTools=isEndpointTool(tool);
+ const localEndpointLayer=presentation?.layerOwners.get(activeLayer?.id??'')?.kind==='snapshot-local';
  // Display and hit testing share one scope. Draft previews may move endpoints,
  // but picking still uses stored positions so the second click stays stable.
  const endpointCurveIds=(document:Doc)=>drawingEndpointCurveIds(document,activeLayer?.id??null);
@@ -165,7 +166,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function pickEndpoint(p:Point2):Endpoint|null{return pickDrawingEndpoint(stored,endpointCurveIds(stored),p,unit,first);}
  function connectAt(e:Endpoint){
   if(!first){setFirst(e);session.set({selection:drawingEndpointSelection(d,e)});setHint('');return;}
-  try{const n=applyDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,e);commit(n,undefined,tool==='link'?{kind:'relation-authoring'}:undefined);setFirst(null);setDraft(null);choose(drawingEndpointSelection(n,e),tool);}catch(ex){error(ex);}
+  try{const n=commitDrawingEndpointTool(stored,tool as DrawingEndpointTool,first,e,(next,intent)=>commit(next,undefined,intent),()=>{setFirst(null);setDraft(null);});choose(drawingEndpointSelection(n,e),tool);}catch(ex){error(ex);}
  }
  const penOptions=()=>({layerId:activeLayer?.id??null,unit,width,join:penJoin,taperScale:usePenPreferences.getState().taperScale});
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
@@ -373,6 +374,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {tool==='pen'&&<label className="drawing-field">{t('继续接笔')}<select aria-label={t('继续接笔')} value={penJoin} onChange={e=>session.set({penJoin:e.target.value as 'POSITION'|'SMOOTH'|'CUSP'})}><option value="POSITION">{t('仅绑定')}</option><option value="SMOOTH">{t('平滑接笔')}</option><option value="CUSP">{t('尖点接笔')}</option></select></label>}
  {tool==='pen'&&<button onClick={()=>{cancelDraft();endPen();setPenPreview(null);}}><Check size={14}/>{t('结束绘制')}</button>}
  {(endpointTools||tool==='mirror')&&<><span className="drawing-step">{tool==='mirror'?t(first?'选择目标：仅摆到镜像位置，不自动配对':'选择镜像摆放的源曲线'):connections}</span><button onClick={()=>{setFirst(null);setDraft(null);}}>{t('取消')}</button></>}
+ {endpointTools&&localEndpointLayer&&tool!=='link'&&<><span className="drawing-step">{t('引用层可用端点联动，保留各自节点和外观。')}</span><button data-testid="drawing-reference-endpoint-link" onClick={()=>selectTool('link')}>{t('端点联动')}</button></>}
 
  <div className="drawing-options-right"><button data-testid="drawing-mirror-toggle" aria-pressed={!!d.mirrorEditing?.enabled} title={t('开启后镜像传播本次编辑；关闭后自由编辑。不锁定已有形状。')} onClick={()=>run(()=>setMirrorEditingEnabled(d,!d.mirrorEditing?.enabled))}>{t('持续镜像')} · {t(d.mirrorEditing?.enabled?'开':'关')}</button><button disabled={busy} onClick={()=>file.current?.click()}><ImagePlus size={15}/>{t('参考图')}</button><button aria-pressed={preview} onClick={()=>{cancelDraft();setFirst(null);endPen();session.set({preview:!preview});}}><Eye size={15}/>{t('隐藏编辑辅助')}</button><button aria-label={t(sidebar?'收起右栏':'展开右栏')} onClick={()=>session.set({sidebar:!sidebar})}>{sidebar?<PanelRightClose size={16}/>:<PanelRightOpen size={16}/>}</button></div>
  </nav>

@@ -1,8 +1,8 @@
-import {afterEach,expect,test} from 'vitest';
+import {afterEach,expect,test,vi} from 'vitest';
 import {createEmptyProject} from '../app/emptyProject';
 import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
-import {prepareDrawingSnapshotEdit} from '../app/drawingSnapshotEdit';
+import {prepareDrawingSnapshotEdit,commitDrawingSnapshotEdit} from '../app/drawingSnapshotEdit';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from '../app/drawingSnapshotPresentation';
 import {prepareDrawingLayerReferencePaste} from '../ui/drawing/layerReferenceClipboard';
 import {emptyDrawing,shapeOf,nodeAt,type DrawingDocument} from '../domain/drawing/model';
@@ -17,8 +17,16 @@ import {captureSnapshotLayerClipboard} from '../domain/recordingSnapshot/referen
 import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
 import {createSnapshotRelationAuthoringIntent} from '../domain/recordingSnapshot/relationAuthoringIntent';
 import {createVectorEditingApi,type VectorCommand} from '../app/vectorEditingApi';
+import {applyDrawingEndpointTool,commitDrawingEndpointTool} from '../ui/drawing/endpointInteraction';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import DrawingRoom from '../ui/drawing/DrawingRoom';
+import {useDrawing} from '../ui/drawing/session';
+vi.mock('../app/store',async importOriginal=>{const module=await importOriginal<typeof import('../app/store')>();return {...module,useEditor:Object.assign((selector?:(state:ReturnType<typeof module.useEditor.getState>)=>unknown)=>selector?selector(module.useEditor.getState()):module.useEditor.getState(),module.useEditor)};});
+vi.mock('../ui/drawing/session',async importOriginal=>{const module=await importOriginal<typeof import('../ui/drawing/session')>();return {...module,useDrawing:Object.assign((selector?:(state:ReturnType<typeof module.useDrawing.getState>)=>unknown)=>selector?selector(module.useDrawing.getState()):module.useDrawing.getState(),module.useDrawing)};});
 const editor=useEditor.getState(),mode=useWorkspaceMode.getState().mode;
-afterEach(()=>{useEditor.setState(editor,true);useWorkspaceMode.getState().setMode(mode);});
+const drawingSession=useDrawing.getState();
+afterEach(()=>{useEditor.setState(editor,true);useWorkspaceMode.getState().setMode(mode);useDrawing.setState(drawingSession,true);});
 const bid=(id:string)=>canonicalElementId('B',id),a={curveId:'curve',end:1 as const},b={curveId:bid('curve'),end:0 as const};
 function fixture(){
  const drawing:DrawingDocument={...emptyDrawing(),nodes:[{id:'a',position:[-1,0]},{id:'b',position:[0,0]}],curves:[{id:'curve',name:'A',nodes:['a','b'],handles:[[-.7,0],[-.3,0]],visible:true,locked:false,width:.01}],layers:[{id:'layer',name:'Layer',visible:true,locked:false,items:['curve']}]};
@@ -46,6 +54,26 @@ test.each([false,true])('mixed Drawing EndpointLink keeps its source follower lo
  sameGeometry(actual,target);expect(after.drawing).toBe(before.drawing);expect(after.recordingSnapshots!.library).toEqual(before.recordingSnapshots!.library);expect(Object.values(snapshot.deformation.relationPositions)).toHaveLength(1);expect(snapshot.relations.endpointLinks?.add).toHaveLength(1);
  expect(nodeAt(actual,a).id).not.toBe(nodeAt(actual,b).id);expect(nodeAt(actual,a).position).toEqual(nodeAt(actual,b).position);
  useWorkspaceMode.setState({mode:'drawing'});useEditor.setState({project:before,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(useEditor.getState().past).toEqual([before]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(before);useEditor.getState().redo();expect(useEditor.getState().project).toBe(after);
+});
+test('reference Pen endpoint gestures clear a rejected bind preview and commit an explicit local link with one Undo',()=>{
+ const seed=fixture(),project=prepareDrawingSnapshotEdit(seed,createPenCurve(currentDrawingPresentation(seed),bid('layer'),[[0,1],[.3,1],[.7,1],[1,1]],.01,'new-local-pen')).project,before=currentDrawingPresentation(project),fixed={curveId:bid('curve'),end:1 as const},moving={curveId:'new-local-pen',end:1 as const};
+ useWorkspaceMode.setState({mode:'drawing'});useEditor.setState({project,past:[],future:[]});
+ let draft:DrawingDocument|null=applyDrawingEndpointTool(before,'bind',fixed,moving),first:typeof fixed|null=fixed;
+ const commit=(next:DrawingDocument,intent?:{kind:'relation-authoring'})=>commitDrawingSnapshotEdit(useEditor.getState(),next,intent?createSnapshotRelationAuthoringIntent(drawingSnapshotPresentation(project.recordingSnapshots!,'A')!.snapshotId,before,next):undefined),finish=()=>{draft=null;first=null;};
+ expect(nodeAt(draft,moving).id).toBe(nodeAt(draft,fixed).id);
+ expect(()=>commitDrawingEndpointTool(before,'bind',fixed,moving,commit,finish)).toThrow(/existing curve appearance/);
+ expect(draft).toBeNull();expect(first).toBeNull();expect(useEditor.getState().project).toBe(project);expect(useEditor.getState().past).toEqual([]);
+ draft=applyDrawingEndpointTool(before,'link',fixed,moving);first=fixed;commitDrawingEndpointTool(before,'link',fixed,moving,commit,finish);
+ const after=useEditor.getState().project,actual=currentDrawingPresentation(after),snapshot=drawingSnapshotForArtwork(after.recordingSnapshots!,'A')!;
+ expect(draft).toBeNull();expect(first).toBeNull();expect(nodeAt(actual,moving).id).toBe(nodeAt(before,moving).id);expect(nodeAt(actual,fixed).id).toBe(nodeAt(before,fixed).id);expect(nodeAt(actual,moving).position).toEqual(nodeAt(actual,fixed).position);
+ expect(after.drawingSnapshots).toEqual(project.drawingSnapshots);expect(after.drawing).toBe(project.drawing);expect(after.recordingSnapshots!.library).toEqual(project.recordingSnapshots!.library);expect(snapshot.relations.endpointLinks?.add).toHaveLength(1);expect(Object.keys(snapshot.deformation.relationPositions)).toHaveLength(1);expect(useEditor.getState().past).toEqual([project]);
+ expect(currentDrawingPresentation({...after,recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(after.recordingSnapshots)))}).endpointLinks).toEqual(actual.endpointLinks);
+ useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(after);
+});
+test('Drawing exposes an explicit endpoint-link entry beside reference-layer bind tools',()=>{
+ useEditor.setState({project:fixture()});useWorkspaceMode.setState({mode:'drawing'});useDrawing.setState({tool:'bind',layerId:bid('layer'),selection:{ids:[bid('curve')]}});
+ expect(renderToStaticMarkup(createElement(DrawingRoom))).toContain('data-testid="drawing-reference-endpoint-link"');
+ useDrawing.setState({layerId:'layer',selection:{ids:['curve']}});expect(renderToStaticMarkup(createElement(DrawingRoom))).not.toContain('data-testid="drawing-reference-endpoint-link"');
 });
 test('source interval baseline survives a local mixed route, brush edits and JSON reload',()=>{
  let project=fixture();project=relation(project,d=>addDisplayInterval(d,a.curveId)).project;

@@ -24,3 +24,8 @@ export const drawingEndpointSelection=(drawing:DrawingDocument,endpoint:Endpoint
 export function applyDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEndpointTool,first:Endpoint,second:Endpoint):DrawingDocument {
  return tool==='link'?linkEndpoints(drawing,first,second,true):tool==='merge'?merge(drawing,first,second):connect(drawing,first,second,tool==='smooth'?'SMOOTH':tool==='cusp'?'CUSP':tool==='arc'?'ARC':'POSITION');
 }
+/** A rejected commit must end the hover preview just like a successful commit.
+ * Keep the explicit relation intent attached to the actual LINK command. */
+export function commitDrawingEndpointTool(drawing:DrawingDocument,tool:DrawingEndpointTool,first:Endpoint,second:Endpoint,commit:(next:DrawingDocument,intent?:DrawingCommandIntent)=>void,finish:()=>void):DrawingDocument {
+ try{const next=applyDrawingEndpointTool(drawing,tool,first,second);commit(next,tool==='link'?{kind:'relation-authoring'}:undefined);return next;}finally{finish();}
+}
