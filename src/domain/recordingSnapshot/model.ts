@@ -1,4 +1,6 @@
+import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
+import type {SnapshotMaterialPartition} from './materialSplit';
 import type {SnapshotLayerAffineDomain} from './layerDomains';
 import type {SnapshotResponseExpression} from './responseExpressions';
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
@@ -172,6 +174,10 @@ export interface SnapshotCorrectionFrame {
 /** Keep the exact old coordinate frame with retired constraints. Recovery does
  * not silently attach them to an unrelated live edge or triangle. */
 export interface SnapshotOrphanedResponses {
+ materialPathLineages?:SnapshotMaterialPathLineage[];
+ materialPartitions?:SnapshotMaterialPartition[];
+ materialRecipes?:SnapshotMaterialRecipeRegistry;
+ materialBasisRecipes?:SnapshotMaterialRecipeRegistry;
  responseExpressions?:SnapshotResponseExpressionRegistry;
  id:string;reason:'deleted-view'|'mesh-change'|'unhandled-rebind';message:string;
  mesh:SnapshotTriangulation;
@@ -189,6 +195,10 @@ export interface SnapshotExpressionResponses {
 }
 export type SnapshotResponseExpressionRegistry=Record<string,SnapshotExpressionResponses>;
 export interface SnapshotAngleGraph {
+ /** Live curve/t measurement lineage for unscoped stroke and explicit-route fields. */
+ materialPathLineages?:SnapshotMaterialPathLineage[];
+ /** Recorder-owned material partitions retain split IDs and source fractions. */
+ materialPartitions?:SnapshotMaterialPartition[];
  /** Recorder-owned live material supports, independent of newly inserted geometry keys. */
  materialRecipes?:SnapshotMaterialRecipeRegistry;
  materialBasisRecipes?:SnapshotMaterialRecipeRegistry;

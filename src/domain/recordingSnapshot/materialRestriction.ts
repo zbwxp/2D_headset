@@ -1,4 +1,6 @@
+import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import {resolveDisplayRoute} from '../drawing/displayRoutes';
+import {createSnapshotMaterialPartitionBasis,snapshotMaterialPartitionAddress,snapshotMaterialPartitionInkEnds,type SnapshotMaterialPartition} from './materialSplit';
 import type {DrawingDocument,StrokeDisplayIntervals} from '../drawing/model';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {retainSnapshotAffines} from './elementPlacement';
@@ -105,40 +107,50 @@ const baselines=new WeakMap<DrawingDocument,DrawingDocument>();
 const copyMaterial=(drawing:DrawingDocument,displayIntervals:StrokeDisplayIntervals[])=>{const next={...drawing,displayIntervals};retainSnapshotAffines(next,[drawing]);return retainSnapshotRouteMaterialInput(next,drawing);};
 /** Pure material evaluation. Every basis is already resolved; this never runs
  * an angle's geometry, Warp, SMOOTH, coverage, or onion pipeline. */
-export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle):{drawing:DrawingDocument;diagnostics:string[]} {
+export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle,partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[]):{drawing:DrawingDocument;diagnostics:string[]} {
  const byId=new Map(bases.map(b=>[b.snapshotId,b.drawing])),diagnostics:string[]=[],transports=new Map<string,StrokeDisplayIntervals>();
  const transported=(snapshotId:string,trackId:string,baseline=false)=>{const key=JSON.stringify([snapshotId,trackId,baseline]);let result=transports.get(key);if(result)return result;const actual=byId.get(snapshotId);if(!actual)fail(`missing live material basis ${snapshotId}.`);const source=baseline?baselines.get(actual!):actual;if(!source)fail(`missing inherited material baseline ${snapshotId}.`);const track=source!.displayIntervals?.find(t=>t.id===trackId);if(!track)fail(`material ${trackId} is absent from live basis ${snapshotId}.`);result=transportEndpointPairMaterial(source!,track!,drawing,diagnostics);transports.set(key,result);return result;};
+ const partitionReaders=new Map<string,ReturnType<typeof createSnapshotMaterialPartitionBasis>>();
+ const partitionValue=(snapshotId:string,target:SnapshotScalarPropertyTarget,baseline=false)=>{const key=JSON.stringify([snapshotId,baseline]);let read=partitionReaders.get(key);if(!read){const actual=byId.get(snapshotId),source=baseline&&actual?baselines.get(actual):actual;if(!source)fail(`missing live material partition basis ${snapshotId}.`);read=createSnapshotMaterialPartitionBasis(partitions,[{snapshotId,drawing:source!}],drawing,diagnostics,lineages);partitionReaders.set(key,read);}return read(target).values[0];};
  // Local membership loss suspends only the affected display relationship.
  // Its Recorder field remains intact for restoration; never recreate a missing
  // basis track or let another local path stand in for its explicit route.
  const inactive=new Set<string>();
  for(const track of drawing.displayIntervals??[]){
-  const required=[{id:track.id,ranges:track.ranges.map(range=>range.id)}];
+  const partition=partitions?.find(partition=>partition.parts.some(part=>part.sourceTrackId===track.id)),required=partition?partition.parts.map(part=>({id:part.sourceTrackId,ranges:part.ranges.map(range=>range.sourceRangeId)})):[{id:track.id,ranges:track.ranges.map(range=>range.id)}];
+  const pathLineage=lineages?.find(lineage=>lineage.sourceTrackId===track.id),pathPieces=pathLineage?.curves.flatMap(curve=>curve.parts.map(part=>part.curveId))??[];
   let reason:string|undefined;
-  for(const term of recipe.terms)for(const basis of term.bases){if(!basis.coefficient||reason)continue;const actual=byId.get(basis.snapshotId),sources=basis.kind==='edit'?[actual,actual&&baselines.get(actual)]:[actual];for(const source of sources){if(!source){reason=`live basis ${basis.snapshotId} is unavailable`;break;}for(const item of required){const material=source.displayIntervals?.find(track=>track.id===item.id);if(!material||item.ranges.some(id=>!material.ranges.some(range=>range.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies material ${item.id}`;break;}if(material.displayRoute&&resolveDisplayRoute(source,material.displayRoute,{deferEndpointPositions:true}).diagnostics.length){reason=`live basis ${basis.snapshotId} no longer supplies the complete route ${item.id}`;break;}}if(reason)break;}}
+  for(const term of recipe.terms)for(const basis of term.bases){if(!basis.coefficient||reason)continue;const actual=byId.get(basis.snapshotId),sources=basis.kind==='edit'?[actual,actual&&baselines.get(actual)]:[actual];for(const source of sources){if(!source){reason=`live basis ${basis.snapshotId} is unavailable`;break;}if(pathPieces.some(id=>!source.curves.some(curve=>curve.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies the complete path measurement`;break;}for(const item of required){const material=source.displayIntervals?.find(track=>track.id===item.id);if(!material||item.ranges.some(id=>!material.ranges.some(range=>range.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies material ${item.id}`;break;}if(material.displayRoute&&resolveDisplayRoute(source,material.displayRoute,{deferEndpointPositions:true}).diagnostics.length){reason=`live basis ${basis.snapshotId} no longer supplies the complete route ${item.id}`;break;}}if(reason)break;}}
+  if(!reason&&pathPieces.some(id=>!drawing.curves.some(curve=>curve.id===id)))reason='a path measurement piece is outside the current membership';
   if(!reason&&track.displayRoute&&resolveDisplayRoute(drawing,track.displayRoute,{deferEndpointPositions:true}).diagnostics.length)reason='its explicit route is outside the current membership';
   if(reason){for(const item of required)inactive.add(item.id);diagnostics.push(`Material ${track.id} is inactive because ${reason}. Its retained field can resume when membership is restored.`);}
  }
+ const projectMaterial=createSnapshotMaterialPartitionBasis(partitions,[],drawing,diagnostics,lineages);
  const compiled=recipe.terms.map(term=>({term,geometric:geometricWeights(term.field,at),properties:new Map(term.field.properties.map(property=>[snapshotScalarPropertyTargetKey(property.target),prepareTriangularResponse(property.edges,property.samples)]))}));
  const intervals=(drawing.displayIntervals??[]).filter(track=>!inactive.has(track.id)).map(track=>({...track,ranges:track.ranges.map(range=>{
   const layerId=drawing.layers.find(layer=>layer.items.includes(track.anchor.id))?.id;
-  const scalar=(end:'start'|'end'|'pinch')=>compiled.reduce((total,{term,geometric,properties})=>{
-   const values=term.bases.map(basis=>{if(!basis.coefficient)return 0;const value=transported(basis.snapshotId,track.id).ranges.find(r=>r.id===range.id);if(!value)fail(`material range ${range.id} is absent from ${basis.snapshotId}.`);const read=(r:typeof value)=>end==='pinch'?intervalPinch(r!):r![end];let scalar=read(value);if(basis.kind==='edit'){const baseline=transported(basis.snapshotId,track.id,true).ranges.find(r=>r.id===range.id);if(!baseline)fail('edited material range has no inherited baseline.');scalar-=read(baseline);}return scalar*basis.coefficient;});
+  const logicalValues={start:range.start,end:range.end};let closedPath=false;
+  const scalar=(end:'start'|'end'|'pinch')=>{
+   const target=layerId&&end!=='pinch'?{kind:'interval-endpoint' as const,layerId,sourceTrackId:track.id,rangeId:range.id,end}:undefined,address=target?snapshotMaterialPartitionAddress(partitions,target):undefined,path=lineages?.find(lineage=>lineage.sourceTrackId===track.id),projection=target&&(address||path)?projectMaterial(target):undefined,logical=projection?.target??target;closedPath=!!projection?.closed;
+   const result=compiled.reduce((total,{term,geometric,properties})=>{
+   const values=term.bases.map(basis=>{if(!basis.coefficient)return 0;if((address||path)&&target){const value=partitionValue(basis.snapshotId,target),baseline=basis.kind==='edit'?partitionValue(basis.snapshotId,target,true):0;return (value-baseline)*basis.coefficient;}const value=transported(basis.snapshotId,track.id).ranges.find(r=>r.id===range.id);if(!value)fail(`material range ${range.id} is absent from ${basis.snapshotId}.`);const read=(r:typeof value)=>end==='pinch'?intervalPinch(r!):r![end];let scalar=read(value);if(basis.kind==='edit'){const baseline=transported(basis.snapshotId,track.id,true).ranges.find(r=>r.id===range.id);if(!baseline)fail('edited material range has no inherited baseline.');scalar-=read(baseline);}return scalar*basis.coefficient;});
    const blend=(weights:readonly number[])=>blendSnapshotPropertyValues(values,weights);
    const ordinary=blend(geometric);if(term.weight==='geometric'||end==='pinch')return total+(term.weight==='residual'?0:ordinary);
-   const field=layerId&&properties.get(snapshotScalarPropertyTargetKey({kind:'interval-endpoint',layerId,sourceTrackId:track.id,rangeId:range.id,end})),weights=field?field([geometric[0],geometric[1],geometric[2]??0] as BarycentricWeights):geometric;
+   const field=logical&&properties.get(snapshotScalarPropertyTargetKey(logical)),weights=field?field([geometric[0],geometric[1],geometric[2]??0] as BarycentricWeights):geometric;
    let value=blend(weights);if(!Number.isFinite(value)||term.weight==='response'&&(value<0||value>1)){diagnostics.push(`Material ${track.id} range ${range.id} ${end}: the response exceeds its valid 0…1 material range; ordinary interpolation is retained.`);value=ordinary;}
    const next=total+(term.weight==='residual'?value-ordinary:value);
    if(term.weight==='residual'&&(next<0||next>1)){diagnostics.push(`Material ${track.id} range ${range.id} ${end}: the response exceeds its valid 0…1 material range; inherited interpolation is retained.`);return total;}return next;
-  },0);
-  return withIntervalPinch({...range,start:scalar('start'),end:scalar('end')},scalar('pinch'));
+  },0);if(end!=='pinch')logicalValues[end]=result;return projection?projection.project(result):result;
+  };
+  let start=scalar('start'),end=scalar('end');if(closedPath&&Math.abs(logicalValues.end-logicalValues.start)>=1-1e-10){start=logicalValues.start;end=logicalValues.end;}const inkEnds=snapshotMaterialPartitionInkEnds(partitions,drawing,track.id,range.id,logicalValues);
+  return withIntervalPinch({...range,start,end,...inkEnds?{inkEnds}:{}},scalar('pinch'));
  })}));
  return {drawing:copyMaterial(drawing,intervals),diagnostics:[...new Set(diagnostics)]};
 }
 /** Apply the live inherited recipe first. Explicit local interval channels stay
  * authoritative. The inherited baseline is runtime-only and invalidates with
  * the already-resolved source basis identities. */
-export function applySnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,at:Angle,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,editedTrackIds:ReadonlySet<string>=new Set()):{drawing:DrawingDocument;diagnostics:string[]} {
- const sampled=evaluateSnapshotMaterialRecipe(recipe,bases,drawing,at),baseline=sampled.drawing;
+export function applySnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,at:Angle,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,editedTrackIds:ReadonlySet<string>=new Set(),partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[]):{drawing:DrawingDocument;diagnostics:string[]} {
+ const sampled=evaluateSnapshotMaterialRecipe(recipe,bases,drawing,at,partitions,lineages),baseline=sampled.drawing;
  const intervals=baseline.displayIntervals!.map(track=>editedTrackIds.has(track.id)?drawing.displayIntervals!.find(t=>t.id===track.id)??track:track),result=copyMaterial(drawing,intervals);baselines.set(result,baseline);return {...sampled,drawing:result};
 }

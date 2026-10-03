@@ -1,3 +1,4 @@
+import type {DrawingMaterialSourceResolver} from './pathMaterialSupport';
 import {pruneMirrorEditingMetadata} from './mirrorCommands';
 import {reconcileGroups,transformable} from './groups';
 import {setObjectState} from './objectState';
@@ -204,7 +205,7 @@ export function moveToLayer(d:Doc,ids:string[],target:string):Doc{
  const ordered=d.layers.flatMap(l=>l.items).filter(id=>moving.has(id));unlocked(ordered);
  const n=copy(d);if(n.groups)n.groups=n.groups.map(g=>g.curveIds.every(id=>moving.has(id))?g:{...g,curveIds:g.curveIds.filter(id=>!moving.has(id))}).filter(g=>g.curveIds.length);for(const l of n.layers)l.items=l.items.filter(id=>!moving.has(id));n.layers.find(l=>l.id===target)!.items.unshift(...ordered);return normalizeOrder(n);
 }
-export function splitCurve(d:Doc,id:string,t:number,options:{intent?:CurveSplitIntent;propagate?:boolean}={}):{document:Doc;ids:string[]}{
+export function splitCurve(d:Doc,id:string,t:number,options:{intent?:CurveSplitIntent;propagate?:boolean;materialSource?:DrawingMaterialSourceResolver}={}):{document:Doc;ids:string[]}{
  const intent=options.intent;if(intent){if(intent.curveId!==id||intent.t!==t)throw Error('The split command and explicit intent disagree.');assertCurveSplitIntent(d,intent);}
  if(options.propagate&&!intent)throw Error('Propagating a split requires an explicit identity plan.');
  if(!options.propagate)check(d,[id]);if(!Number.isFinite(t)||t<=1e-5||t>=1-1e-5)throw Error('请在曲线内部选择分割位置。');
@@ -228,7 +229,7 @@ export function splitCurve(d:Doc,id:string,t:number,options:{intent?:CurveSplitI
   const a=before.get(j.id)!,b=after.get(j.id)!;
   if(!a.error&&(b.error||Math.abs(a.distance-b.distance)>1e-5))throw Error('分割会改变圆弧范围，请先减小影响范围再分割。');
  }
- return {document:pruneMirrorEditingMetadata(d,normalizeOrder(splitDisplayIntervals(d,n,id,newId,intent))),ids:[leftId,newId]};
+ return {document:pruneMirrorEditingMetadata(d,normalizeOrder(splitDisplayIntervals(d,n,id,newId,intent,options.materialSource,t))),ids:[leftId,newId]};
 }
 export function ellipse(d:Doc,layerId:string,a:Point2,b:Point2,width:number):{document:Doc;ids:string[]}{
  const center=mul(add(a,b),.5),rx=Math.abs(b[0]-a[0])/2,ry=Math.abs(b[1]-a[1])/2,k=.5522847498307936;

@@ -1,3 +1,4 @@
+import type {DrawingMaterialSourceResolver} from './pathMaterialSupport';
 import {splitCurve} from './commands';
 import {curveById,layerFor,uid,type DrawingDocument} from './model';
 import type {MirrorCurvePair} from './mirrorEditing';
@@ -114,7 +115,7 @@ export function splitCurveParameter(intent:CurveSplitIntent,t:number,seamSide:0|
 /** Pure dry run/application. Propagation preserves hidden/locked reference
  * states; the initiating authoring command must have passed its normal guards.
  * This uses Drawing's sole split kernel and never allocates an identity. */
-export function applyCurveSplitIntent(drawing:DrawingDocument,intent:CurveSplitIntent,options:{propagate?:boolean}={}) {
+export function applyCurveSplitIntent(drawing:DrawingDocument,intent:CurveSplitIntent,options:{propagate?:boolean;materialSource?:DrawingMaterialSourceResolver}={}) {
  const result=splitCurve(drawing,intent.curveId,intent.t,{intent,...options});
  return {...result,intent,provenance:curveSplitProvenance(intent)};
 }
@@ -140,7 +141,7 @@ export function mapLayerEditIntent(intent:LayerEditIntent,id:(id:string)=>string
  const pair=(value:MirrorCurvePair):MirrorCurvePair=>({...value,id:id(value.id),a:id(value.a),b:id(value.b)});
  return {...intent,splits:intent.splits.map(value=>mapCurveSplitIntent(value,id)),mirrorPairs:intent.mirrorPairs.map(value=>({oldPairId:id(value.oldPairId),left:pair(value.left),right:pair(value.right)}))};
 }
-export function applyLayerEditIntent(drawing:DrawingDocument,intent:LayerEditIntent,options:{propagate?:boolean}={}) {
+export function applyLayerEditIntent(drawing:DrawingDocument,intent:LayerEditIntent,options:{propagate?:boolean;materialSource?:DrawingMaterialSourceResolver}={}) {
  if(intent.kind==='layer-domain')return applyLayerDomainIntent(drawing,intent);
  if(intent.kind==='split-curve')return applyCurveSplitIntent(drawing,intent,options);
  let document=drawing;for(const split of intent.splits)document=applyCurveSplitIntent(document,split,options).document;

@@ -1,3 +1,5 @@
+import {validateSnapshotMaterialPathLineages} from './materialPathLineages';
+import {validateSnapshotMaterialPartitions} from './materialSplit';
 import {validateSnapshotMaterialRecipeRegistry,validateSnapshotMaterialBasisRecipes,validateSnapshotMaterialEditLeaves} from './materialRestriction';
 import {validateSnapshotResponseExpressionRegistry,snapshotResponseExpressionRegistryValidForMesh} from './responseExpressionRegistry';
 import type {Angle,RecordingSnapshot,RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointPair,SnapshotEndpointResponses,SnapshotOrphanedResponses} from './model';
@@ -74,16 +76,16 @@ function frames(value:unknown,mesh:SnapshotTriangulation):void {
 /** Strict persisted schema and values. Run at load/edit boundaries, never per
  * sample. Defaults remain absent in old recordings; opt-in graphs are explicit. */
 export function validateSnapshotAngleGraph(graph:SnapshotAngleGraph):void {
- const data=object(graph,['version','mesh','edgeResponses','triangleResponses','correctionFrames','orphanedResponses','migration','propertyResponses','responseExpressions','materialRecipes','materialBasisRecipes']);
- if(data.version!==1)fail('version');const mesh=meshShape(data.mesh);if(data.materialRecipes!==undefined)validateSnapshotMaterialRecipeRegistry(data.materialRecipes,mesh);if(data.materialBasisRecipes!==undefined)validateSnapshotMaterialBasisRecipes(data.materialBasisRecipes,mesh);validateSnapshotMaterialEditLeaves(graph);responseMaps(data,mesh);if(data.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(data.responseExpressions,mesh);if(data.propertyResponses!==undefined)validateSnapshotPropertyResponses(data.propertyResponses,mesh);
+ const data=object(graph,['version','mesh','edgeResponses','triangleResponses','correctionFrames','orphanedResponses','migration','propertyResponses','responseExpressions','materialRecipes','materialBasisRecipes','materialPartitions','materialPathLineages']);
+ if(data.version!==1)fail('version');const mesh=meshShape(data.mesh);if(data.materialRecipes!==undefined)validateSnapshotMaterialRecipeRegistry(data.materialRecipes,mesh);if(data.materialBasisRecipes!==undefined)validateSnapshotMaterialBasisRecipes(data.materialBasisRecipes,mesh);validateSnapshotMaterialEditLeaves(graph);if(data.materialPartitions!==undefined)validateSnapshotMaterialPartitions(data.materialPartitions);if(data.materialPathLineages!==undefined)validateSnapshotMaterialPathLineages(data.materialPathLineages);responseMaps(data,mesh);if(data.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(data.responseExpressions,mesh);if(data.propertyResponses!==undefined)validateSnapshotPropertyResponses(data.propertyResponses,mesh);
  if(data.correctionFrames!==undefined)frames(data.correctionFrames,mesh);
  if(data.orphanedResponses!==undefined){
   const ids=new Set<string>();
   for(const raw of list(data.orphanedResponses,10000)){
-   const archive=object(raw,['id','reason','message','mesh','edgeResponses','triangleResponses','correctionFrames','propertyResponses','responseExpressions']);id(archive.id);
+   const archive=object(raw,['id','reason','message','mesh','edgeResponses','triangleResponses','correctionFrames','propertyResponses','responseExpressions','materialPartitions','materialRecipes','materialBasisRecipes','materialPathLineages']);id(archive.id);
    if(ids.has(archive.id as string))fail('duplicate response archive');ids.add(archive.id as string);
    if(!['deleted-view','mesh-change','unhandled-rebind'].includes(String(archive.reason))||typeof archive.message!=='string'||!archive.message||archive.message.length>4096)fail('response archive reason');
-   const oldMesh=meshShape(archive.mesh);responseMaps(archive,oldMesh);if(archive.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(archive.responseExpressions,oldMesh);if(archive.propertyResponses!==undefined)validateSnapshotPropertyResponses(archive.propertyResponses,oldMesh);if(archive.correctionFrames!==undefined)frames(archive.correctionFrames,oldMesh);
+   const oldMesh=meshShape(archive.mesh);if(archive.materialPathLineages!==undefined)validateSnapshotMaterialPathLineages(archive.materialPathLineages);if(archive.materialPartitions!==undefined)validateSnapshotMaterialPartitions(archive.materialPartitions);if(archive.materialRecipes!==undefined)validateSnapshotMaterialRecipeRegistry(archive.materialRecipes,oldMesh);if(archive.materialBasisRecipes!==undefined)validateSnapshotMaterialBasisRecipes(archive.materialBasisRecipes,oldMesh);responseMaps(archive,oldMesh);if(archive.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(archive.responseExpressions,oldMesh);if(archive.propertyResponses!==undefined)validateSnapshotPropertyResponses(archive.propertyResponses,oldMesh);if(archive.correctionFrames!==undefined)frames(archive.correctionFrames,oldMesh);
   }
  }
  if(data.migration!==undefined){

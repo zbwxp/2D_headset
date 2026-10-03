@@ -1,3 +1,6 @@
+import {markSnapshotRouteMaterialInput,snapshotRouteMaterialSource} from './routeMaterialSource';
+import {remapSnapshotMaterialPathLineages} from './materialPathLineages';
+import {remapSnapshotMaterialPartitions} from './materialSplit';
 import {applyCurveSplitIntent,mapLayerEditIntent,type LayerEditIntent,type CurveSplitIntent} from '../drawing/layerEditIntent';
 import {shapeOf,sub,layerFor,type DrawingDocument,type Point2,type Endpoint,type StrokeDisplayIntervals} from '../drawing/model';
 import {resolveSnapshot,type SnapshotEvaluation} from './evaluation';
@@ -18,7 +21,7 @@ export interface SnapshotCurveSplitPlan {
  readonly frozen:readonly FrozenSnapshot[];
 }
 const clone=<T,>(value:T):T=>structuredClone(value);
-const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>applyCurveSplitIntent(drawing,intent,{propagate:true}).document;
+const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>applyCurveSplitIntent(drawing,intent,{propagate:true,materialSource:(drawing,track)=>snapshotRouteMaterialSource(markSnapshotRouteMaterialInput(drawing),track)}).document;
 const replaceId=(ids:readonly string[],intent:CurveSplitIntent)=>[...new Set(ids.flatMap(id=>id===intent.curveId?[...intent.childCurveIds]:[id]))];
 const endpoint=(value:Endpoint,intent:CurveSplitIntent):Endpoint=>value.curveId===intent.curveId?{...value,curveId:intent.childCurveIds[value.end]}:value;
 const hasCurve=(drawing:DrawingDocument,id:string)=>drawing.curves.some(curve=>curve.id===id);
@@ -52,8 +55,8 @@ function preflightTracks(workspace:RecordingSnapshotWorkspace,frozen:readonly Fr
   }
   if(recording.mode==='triangulated'){
    if(localOnly)continue;
-   const materials=new Set(affected.flatMap(value=>(value.saved.evaluation.source.displayIntervals??[]).filter(track=>displayPath(value.saved.evaluation.source,track.anchor.id).segments.some(use=>use.id===intent.curveId)).map(track=>track.id)));
-   for(const response of [recording.angleGraph?.propertyResponses,...(recording.angleGraph?.correctionFrames??[]).map(frame=>frame.propertyResponses)])for(const entry of [...Object.values(response?.edges??{}).flat(),...Object.values(response?.triangles??{}).flat()])if(materials.has(entry.target.sourceTrackId))fail(affected[0].snapshotId,intent.curveId,`triangulated Recording ${recording.id}, interval response target ${entry.target.sourceTrackId}/${entry.target.rangeId}/${entry.target.end} requires an explicit material-response split map.`);
+   remapSnapshotMaterialPartitions(recording.angleGraph?.materialPartitions,intent,affected.flatMap(value=>value.saved.evaluation.source.displayIntervals??[]));
+   remapSnapshotMaterialPathLineages(recording.angleGraph?.materialPathLineages,intent,affected.map(value=>value.saved.evaluation.source));
    continue; // Old tracks in graph copies are recovery evidence only.
   }
   const layers=new Set(affected.flatMap(value=>[value.saved.evaluation,...(value.draft?[value.draft.evaluation]:[])].map(value=>layerFor(value.drawing,intent.curveId)?.id).filter((id):id is string=>!!id)));
@@ -186,6 +189,9 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   }
   return snapshot;
  })};
+ // Recorder material fields keep their logical targets. Each new piece is a
+ // render restriction using the same live material frame and stable split IDs.
+ workspace={...workspace,recordings:workspace.recordings.map(recording=>{if(recording.mode!=='triangulated'||!recording.angleGraph)return recording;let partitions=recording.angleGraph.materialPartitions,lineages=recording.angleGraph.materialPathLineages;for(const plan of plans){const affected=plan.frozen.filter(value=>recording.snapshotIds.includes(value.snapshotId));if(affected.length){partitions=remapSnapshotMaterialPartitions(partitions,plan.intent,affected.flatMap(value=>value.saved.evaluation.source.displayIntervals??[]));lineages=remapSnapshotMaterialPathLineages(lineages,plan.intent,affected.map(value=>value.saved.evaluation.source));}}return partitions?.length||lineages?.length?{...recording,angleGraph:{...recording.angleGraph,...partitions?.length?{materialPartitions:partitions}:{},...lineages?.length?{materialPathLineages:lineages}:{}}}:recording;})};
  const combined:SnapshotCurveSplitPlan={...plans[0],frozen:[...new Map(plans.flatMap(plan=>plan.frozen).map(value=>[value.snapshotId,value])).values()]};
  for(const ordered of orderedFrozen(combined)){
   let snapshot=workspace.snapshots.find(value=>value.id===ordered.snapshotId)!;

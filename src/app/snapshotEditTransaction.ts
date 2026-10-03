@@ -90,7 +90,12 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
   const source=splitPlan?.before.snapshots.find(value=>value.id===splitPlan.sourceSnapshotId);
   const synced=syncRecordingSnapshotSources(project,undefined,splitPlan?{splitRetirements:new Map([[source!.source!.artworkId,new Set([...splitPlan.plans.map(plan=>plan.intent.curveId),...splitPlan.mirrorPairs.map(pair=>pair.oldPairId)])]]),deferMaterialTransport:true}:{});
   let recordingSnapshots=splitPlan?finishSnapshotCurveSplits(splitPlan,synced.recordingSnapshots!):pruneSnapshotResponseDependencies(synced.recordingSnapshots!);
-  if(splitPlan)for(const plan of splitPlan.plans)recordingSnapshots=transferSnapshotSplitResponses({...splitPlan.before,recordings:recordingSnapshots.recordings},recordingSnapshots,plan.intent);
+  if(splitPlan)for(const plan of splitPlan.plans){
+   // Geometry responses accumulate across paired splits, while frozen old
+   // real drawings must still use their old material topology coordinate frame.
+   const recordings=recordingSnapshots.recordings.map(recording=>{if(!recording.angleGraph)return recording;const original=splitPlan!.before.recordings.find(value=>value.id===recording.id)?.angleGraph;return {...recording,angleGraph:{...recording.angleGraph,materialPartitions:original?.materialPartitions,materialPathLineages:original?.materialPathLineages}};});
+   recordingSnapshots=transferSnapshotSplitResponses({...splitPlan.before,recordings},recordingSnapshots,plan.intent);
+  }
   return recordingSnapshots===synced.recordingSnapshots?synced:{...synced,recordingSnapshots};
  }
  return syncRecordingSceneSources(project.recordingScenes?project:syncVectorRecordingSources(project,recordingSourceBaselines(before)),before);

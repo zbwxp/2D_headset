@@ -1,3 +1,6 @@
+import {createDrawingPathMaterialFrame,resolveDrawingMaterialPath,type DrawingMaterialSourceResolver,type DrawingPathMaterialPoint} from './pathMaterialSupport';
+import {retainSplitMaterialAffine} from './splitMaterialAffine';
+import {curveMaterialParameterMap} from './materialParameter';
 import {resolveDisplayRoute,createDisplayRouteField,splitDisplayRoute,type DisplayRoute} from './displayRoutes';
 import {curveById,editable,uid,sub,length,validInkEnds,inkTaperDistance,type InkEnds,type InkEndStyle,type DrawingDocument as Doc,type StrokeDisplayIntervals,type DisplayInterval,type DisplayIntervalMode,type Point2,type Cubic} from './model';
 import {strokeFor,strokePaths,type StrokePath} from './strokes';
@@ -120,7 +123,8 @@ export function nearestDisplayPosition(field:ReturnType<typeof displayField>,tra
 }
 
 /** An exact cubic split must preserve a curve-local mask across both children. */
-export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:string,intent?:CurveSplitIntent):Doc{
+export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:string,intent?:CurveSplitIntent,materialSource?:DrawingMaterialSourceResolver,splitParameter?:number):Doc{
+ retainSplitMaterialAffine(before,after,intent);
  if(!before.displayIntervals?.length)return after;
  const leftId=intent?.childCurveIds[0]??id;
  const routed=before.displayIntervals.map(track=>track.displayRoute?{...track,displayRoute:splitDisplayRoute(track.displayRoute,id,newId,leftId)}:track);
@@ -129,9 +133,18 @@ export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:strin
  const field=scoped?displayField(fieldDocument,displayPath(fieldDocument,leftId)):undefined;
  const size=(curve:string)=>field!.parts.reduce((sum,p,i)=>sum+(!field!.geometry.pieces[i].joinId&&field!.geometry.pieces[i].owners[0]===curve?p.length:0),0);
  const a=scoped?size(leftId):0,b=scoped?size(newId):0,cut=a/(a+b||1);
+ const beforePath=intent&&scoped?displayPath(before,id):undefined,beforeMap=beforePath?curveMaterialParameterMap(displayField(before,beforePath),beforePath,id):undefined;
+ const afterPath=intent&&scoped?displayPath(fieldDocument,leftId):undefined,childMaps=afterPath?intent!.childCurveIds.map(child=>curveMaterialParameterMap(field!,afterPath,child)):undefined;
  return {...after,displayIntervals:routed.flatMap(track=>{
+  if(track.scope!=='CURVE'){
+   const next=track.anchor.id===id?{...track,anchor:{id:track.anchor.reverse?newId:leftId,reverse:track.anchor.reverse}}:track,previous=before.displayIntervals!.find(value=>value.id===track.id)!,parameter=intent?.t??splitParameter;
+   if(parameter===undefined)return [next];
+   const priorDocument=materialSource?.(before,previous)??before,priorPath=resolveDrawingMaterialPath(priorDocument,previous);if(!priorPath.path.segments.some(use=>use.id===id))return [next];
+   const nextDocument=materialSource?.(fieldDocument,next)??fieldDocument,source=createDrawingPathMaterialFrame(priorDocument,previous),target=createDrawingPathMaterialFrame(nextDocument,next);
+   const mapped=(point:DrawingPathMaterialPoint):DrawingPathMaterialPoint=>{if(point.kind!=='curve'||point.curveId!==id)return point;const right=point.t>parameter;return {kind:'curve',curveId:right?newId:leftId,t:clamp(right?(point.t-parameter)/(1-parameter):point.t/parameter)};};
+   return [{...next,ranges:previous.ranges.map(range=>{if(source.closed&&Math.abs(range.end-range.start)>=1-1e-10)return {...range};const start=target.positionOf(mapped(source.materialAt(range.start))),end=range.fullLoop?start:target.positionOf(mapped(source.materialAt(range.end)));return {...range,start,end};})}];
+  }
   if(track.anchor.id!==id)return [track];
-  if(track.scope!=='CURVE')return [{...track,anchor:{id:track.anchor.reverse?newId:leftId,reverse:track.anchor.reverse}}];
   const planned=intent?.intervals.find(value=>value.trackId===track.id);
   if(intent&&!planned)throw Error('The split intent is missing a curve-local interval track.');
   return ([{id:leftId,lo:0,hi:cut},{id:newId,lo:cut,hi:1}]).map((child,index)=>{
@@ -140,6 +153,13 @@ export function splitDisplayIntervals(before:Doc,after:Doc,id:string,newId:strin
     const rightRangeId=planned?.ranges.find(value=>value.rangeId===r.id)?.rightRangeId;
     if(intent&&!rightRangeId)throw Error('The split intent is missing a curve-local interval range.');
     const lo=Math.min(x,y),hi=Math.max(x,y),start=Math.max(lo,child.lo),end=Math.min(hi,child.hi),rangeId=index?(rightRangeId??uid()):r.id,provenance=intent&&index?{originId:r.originId??r.id}:{};
+    if(intent){
+     // Each labeled endpoint retains its clamped material address, including
+     // empty pieces. Zero/zero would lose a collapsed parent's location and
+     // make its independently keyed response impossible to restrict exactly.
+     const domain=index?[intent.t,1]:[0,intent.t],a=beforeMap!.parameterAt(x),b=beforeMap!.parameterAt(y),coordinate=(t:number)=>childMaps![index].valueAt(clamp((t-domain[0])/(domain[1]-domain[0])));
+     return [{...r,...provenance,id:rangeId,start:coordinate(a),end:coordinate(b),inkEnds:[a>=domain[0]&&a<=domain[1]?ends[0]:{},b>=domain[0]&&b<=domain[1]?ends[1]:{}] as InkEnds}];
+    }
     // Explicit plans retain empty ranges too: crossing a seam in another pose
     // must not change material identity or drop that pose's enabled channel.
     if(end<=start+1e-10)return intent||intervalMode(r)==='SHOW'?[{...r,...provenance,id:rangeId,start:0,end:0,inkEnds:[{},{}] as InkEnds}]:[];

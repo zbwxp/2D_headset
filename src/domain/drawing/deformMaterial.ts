@@ -1,6 +1,7 @@
 import {shapeOf,type DrawingDocument as Doc} from './model';
 import {displayField,displayPath} from './displayIntervals';
 import {mappedParameter,type CurveParameterMap} from '../deformation/cubicDeformation';
+import {curveMaterialParameterMap} from './materialParameter';
 
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 
@@ -30,7 +31,12 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
   if(path.segments.every(s=>JSON.stringify(shapeOf(before,s.id))===JSON.stringify(shapeOf(after,s.id)))&&JSON.stringify(joins(before))===JSON.stringify(joins(after))&&JSON.stringify(before.endpointLinks)===JSON.stringify(after.endpointLinks))return track;
   let pair=fields.get(key);if(!pair){pair=[displayField(before,path),displayField(after,displayPath(after,track.anchor.id))];fields.set(key,pair);}
   const [old,next]=pair;if(old.total<1e-10||next.total<1e-10)throw Error('显示区间所在曲线退化，无法变形。');
+  const localSource=track.scope==='CURVE'?curveMaterialParameterMap(old,path,track.anchor.id):undefined,localTarget=localSource?curveMaterialParameterMap(next,displayPath(after,track.anchor.id),track.anchor.id):undefined;
   const move=(s:number)=>{
+   // Curve-local bounds never need a whole-path normalization roundtrip.
+   // That roundtrip can turn a literal clamped 1 into 1 minus one ULP and
+   // incorrectly move the logical endpoint to an earlier split child.
+   if(localSource){const sourceT=localSource.parameterAt(track.anchor.reverse?1-s:s),targetT=mappedParameter(sourceT,parameters.get(track.anchor.id)),value=localTarget!.valueAt(targetT);return track.anchor.reverse?1-value:value;}
    const absolute=old.native(track,s)*old.total,index=Math.max(0,old.parts.findIndex(p=>absolute<=p.start+p.length+1e-12)),part=old.parts[index],piece=old.geometry.pieces[index];
    let dest:number;
    if(piece.joinId){

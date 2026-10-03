@@ -1,3 +1,4 @@
+import {snapshotMaterialPartitionInkEnds,type SnapshotMaterialPartition} from './materialSplit';
 import {captureSnapshotProjectedResponses,type SnapshotProjectionComponent} from './responseExpressionProjection';
 import {deriveSmoothComponents,smoothEndpointKey} from './smoothComponent';
 import {endpointPairNodeAuthorities} from './endpointPair';
@@ -21,14 +22,14 @@ const fail=(message:string):never=>{throw new SnapshotSurfaceInsertionError(mess
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const axes=['x','y'] as const;
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
-const shapeFree=(drawing:DrawingDocument)=>({...drawing,displayIntervals:drawing.displayIntervals?.map(track=>({...track,ranges:track.ranges.map(range=>({...range,start:0,end:0}))})),nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,handles:[[0,0],[0,0]]})),reference:undefined,mirrorEditing:undefined});
+const shapeFree=(drawing:DrawingDocument,partitions?:readonly SnapshotMaterialPartition[])=>({...drawing,displayIntervals:drawing.displayIntervals?.map(track=>({...track,ranges:track.ranges.map(range=>{const inkEnds=snapshotMaterialPartitionInkEnds(partitions,drawing,track.id,range.id);return {...range,start:0,end:0,...inkEnds?{inkEnds}:{}};})})),nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,handles:[[0,0],[0,0]]})),reference:undefined,mirrorEditing:undefined});
 
 /** Capture a genuine new real view as ordinary references + local residuals.
  * The canonical library and every old real pose stay intact. */
 function captureRealView(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,view:RecordingSnapshot):{view:RecordingSnapshot;drawing:DrawingDocument;bases:{snapshotId:string;drawing:DrawingDocument}[];location:SnapshotSimplexLocation} {
  const evaluated=evaluateRecordingSnapshot(workspace,recording.id,{angle:view.angle,useDraft:false,diagnostics:'preview'}),surface=evaluated.angleSurface;
  if(!surface?.simplex||surface.role!=='correction')return fail('A real-view insertion requires an interior point of existing coverage.');
- if(surface.bases.some(base=>!same(shapeFree(base.drawing),shapeFree(surface.bases[0].drawing))))fail('This real-view insertion needs an explicit transfer for differing membership, appearance, or material between its real bases. The original surface is unchanged.');
+ if(surface.bases.some(base=>!same(shapeFree(base.drawing,recording.angleGraph?.materialPartitions),shapeFree(surface.bases[0].drawing,recording.angleGraph?.materialPartitions))))fail('This real-view insertion needs an explicit transfer for differing membership, appearance, or material between its real bases. The original surface is unchanged.');
  const parent=surface.bases.find(base=>base.snapshotId===evaluated.snapshotId)??surface.bases[0],next:RecordingSnapshot={...view,deformation:structuredClone(view.deformation),layers:evaluated.drawing.layers.map(layer=>({kind:'reference',id:layer.id,name:layer.name,baseSnapshotId:parent.snapshotId,baseLayerId:layer.id}))};
  const temporary={...workspace,snapshots:[...workspace.snapshots,next]},baseline=resolveSnapshot(temporary,next.id,{useDraft:false,diagnostics:'preview'}).drawing;
  for(const layer of evaluated.drawing.layers){const curves=evaluated.drawing.curves.filter(curve=>layer.items.includes(curve.id)),nodeIds=new Set(curves.flatMap(curve=>curve.nodes)),nodes:Record<string,[number,number]>={},handles:Record<string,[[number,number],[number,number]]>={};
@@ -97,7 +98,7 @@ export function prepareSnapshotSurfaceInsertion(workspace:RecordingSnapshotWorks
  const hasMaterial=!!captured.drawing.displayIntervals?.length;
  const result:SnapshotAngleGraph={...next,...hasMaterial?{materialRecipes:restrictSnapshotMaterialRecipes(graph!,mesh,view.id),materialBasisRecipes:{...graph!.materialBasisRecipes,[view.id]:captureSnapshotMaterialRecipe(graph!,captured.location)},propertyResponses:{edges:{},triangles:{}}}:{},...Object.keys(registry).length?{responseExpressions:registry}:{},...graph!.correctionFrames?{correctionFrames:graph!.correctionFrames.map(frame=>({id:frame.id,angle:frame.angle,status:frame.status}))}:{}};
  if(hasMaterial){
-  try{const replay=evaluateSnapshotMaterialRecipe(result.materialBasisRecipes![view.id],captured.bases,captured.drawing,view.angle);
+  try{const replay=evaluateSnapshotMaterialRecipe(result.materialBasisRecipes![view.id],captured.bases,captured.drawing,view.angle,result.materialPartitions,result.materialPathLineages);
    for(const track of captured.drawing.displayIntervals??[])for(const range of track.ranges){const actual=replay.drawing.displayIntervals?.find(value=>value.id===track.id)?.ranges.find(value=>value.id===range.id);if(!actual||(['start','end'] as const).some(end=>Math.abs(actual[end]-range[end])>1e-10))fail(`New real view cannot exactly replay material ${track.id}/${range.id}.`);}
   }catch(error){fail(error instanceof Error?error.message:String(error));}
  }
