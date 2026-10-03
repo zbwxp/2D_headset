@@ -1,13 +1,13 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 23:34 UTC。当前线上 v71（`cee081a`）于 22:50:09 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
+核对日期：2026 年 10 月 3 日 23:44 UTC。当前线上 v72（`76403fb`）于 23:38:33 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
 
-本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。尚未发布或真人验证，不能将这些自动化称作 UI 验收。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
+本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。v72 已完成下述有界真人验收，自动化覆盖与真人操作仍分别列明。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
 
 当前真正开放的工程分为三组：
 
 1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
-2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；共同 `before → target` 事务 helper、镜像元信息和 UI 已接主树，待发布后的有界真人验收。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
+2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；共同 `before → target` 事务 helper、镜像元信息和 UI 已发布，所列椭圆／属性／镜像／跨层 LINK 真人流程通过。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
 3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前尚无完整通道，不能把临时 capability 禁用宣布为完成。
 
 待决定项独立列出：中间修正角曲边域对未来成员的程序语义、跨模式 Undo 旧 guard、旧 channel runtime 退役。单点/柄反推的零差轴、互相矛盾的真实连接目标、非有限透视映射是数值或约束边界；它们不等于上述未完成的工程适配。独立中间 Boolean 属性样本未新增；当前明确完成的中间属性是连续区间端点，其他 appearance 在真实 Snapshot 编辑。
@@ -19,6 +19,8 @@ v67 实际流程使用内置完整正面与侧稿：引用两面片 6 条曲线�
 v70（`8d1ddbf`）真人验证：Drawing 锁左眉后引用到 Recording，A 显示 0 个可编辑柄；子快照局部解锁后显示 2 个柄，Update 计数仍为 0，返回 Drawing 父锁仍为 true。JSON 中是 Snapshot `objectLocks=false`，无 pose 草稿或轨。−90° 两眉曲边后，自动 +90° 镜像复制得到两个新 ID；两副本分别与原路径逐字重合，同视口 Undo/Redo 保原路径，副本为无父级 original 根＋纯 reflected program。9 笔录制 Undo＋1 笔 Drawing 源锁 Undo 清理本轮。证据：[v70 操作](../../artifacts/triangulated-recorder-qa/v70-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v70-save-validation.json)。
 
 v71（`cee081a`）真人验证：一条眉有 cage、一条普通，按曲线复选并用共同 V 中心拖 (+19,+6) 像素，两条曲线全部控制点精确同移；A 仅动普通线的一柄 (+12,−9)，其余三柄不变。Update/Undo/Redo、保存与 6 笔清理均通过；source Drawing 全字段不变，仍 3 个真实角度点，分别写 cage 后修正与普通 shape。共享 node/LINK/SMOOTH、可达零轴的覆盖来自针对自动化，未虚称为此轮真人覆盖。证据：[v71 操作](../../artifacts/triangulated-recorder-qa/v71-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v71-save-validation.json)。
+
+v72（`76403fb`）真人验证：在两眉引用层中使用共同 L 椭圆工具新增 4 段闭合笔画；原线宽控件 2→5、Undo→2、Redo→5。创建黑色填充并切为雾化后，透明度方向键 65→66%，一笔 Undo／Redo 恢复。按镜像轴放置只改变椭圆 4 段，原眉线不变，Undo／Redo 同视口 6 条命中路径逐字一致；切镜像开关不改变几何。共同连接菜单选择左眉端点后切到右层，第一端仍保留，第二击建立跨层 LINK；Undo／Redo 恢复。实际下载的 JSON 中 Drawing 五稿全字段不变，仍 3 个真实点、0 个旧轨，局部宽度、填充、镜像关系及 LINK 均归当前 Snapshot。11 笔正常 Undo 清理 QA，原 4 个录制保留、返回 Drawing 且 Undo 禁用。证据：[v72 操作](../../artifacts/triangulated-recorder-qa/v72-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v72-save-validation.json)。本轮没有浏览器重新导入、私人档案上传或 FPS 测量；全部端点模式仍不由这条有界路径代表。旧独立 LINK 属性区与新共享属性区存在重复显示，下一属性阶段将合并并保留显示区间入口。
 
 ### 最新实现与证据
 
@@ -93,7 +95,7 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 1. 非线性 source split 的精确角度场、材料参数与后域修正候选：真实 60° 插入后 11/31/59.99/60/60.01/77 处几何及材料端点已由实现者报告通过，仍在最终 JSON/source 更新与交叉构建。尚未合入当前主树或发布。
 2. 继承拟合程序的局部新增／绑定／分割，以及分段家族部分成员排除或源删除，需同一 lineage 与 live 目标适配。任何现存 guard 仍是工程缺口，不能归类为数学不可解。
-3. 本轮共同 Drawing 工具、属性和原子目标候选已构建，仍需发布后真人操作；成员移动、层内排序和深度编辑尚在独立候选中。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
+3. 本轮共同 Drawing 工具、属性和原子目标已完成上述 v72 有界真人操作；成员移动、层内排序和深度编辑尚在独立候选中。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
 4. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑已按上文实际证据关闭，不重复列为待实现。
 5. 中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增；已有连续区间响应和真实快照局部 appearance 不受影响。
 
