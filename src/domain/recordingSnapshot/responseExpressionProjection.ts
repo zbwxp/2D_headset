@@ -6,7 +6,7 @@ import type {SnapshotScalarTarget} from './simplexGeometry';
 import type {SnapshotSimplexLocation,SnapshotTriangulation} from './triangulation';
 import type {SmoothComponent} from './smoothComponent';
 import {smoothEndpointKey,projectSmoothComponentCorrection,projectSmoothComponent,smoothNumericTolerance} from './smoothComponent';
-import {combineSnapshotResponseExpressions,createSnapshotSmoothProjectionExpression,rebaseSnapshotResponseExpression,type SnapshotResponseExpression,type SnapshotResponseExpressionField,type SnapshotSmoothProjectionContract} from './responseExpressions';
+import {combineSnapshotResponseExpressions,snapshotResponseSourceBaseline,createSnapshotSmoothProjectionExpression,rebaseSnapshotResponseExpression,type SnapshotResponseExpression,type SnapshotResponseExpressionField,type SnapshotSmoothProjectionContract} from './responseExpressions';
 
 export interface SnapshotProjectionComponent {component:SmoothComponent;nodeIds:readonly string[]}
 /** Build the original whole component before taking any split combination.
@@ -23,7 +23,7 @@ export function captureSnapshotProjectedResponses(mesh:SnapshotTriangulation,loc
   const contract:SnapshotSmoothProjectionContract=existing??{id:JSON.stringify(['smooth-contract',scope,location.simplexId,component.relationId]),component,targets:component.members.map(({endpoint})=>({endpoint:{...endpoint},scale:1}))};
   const ordered=contract.targets.map(({endpoint})=>({endpoint,nodeId:nodeIds[component.members.findIndex(member=>smoothEndpointKey(member.endpoint)===smoothEndpointKey(endpoint))]}));
   const inputs=ordered.map(({endpoint,nodeId})=>({node:([0,1] as const).map(axis=>full({kind:'node',nodeId},axis)) as [SnapshotResponseExpression,SnapshotResponseExpression],vector:([0,1] as const).map(axis=>full({kind:'handle',...endpoint},axis)) as [SnapshotResponseExpression,SnapshotResponseExpression]}));
-  const baselineFull=(target:SnapshotScalarTarget,axis:0|1)=>{const expression=inherited?.(target,axis)??capture(location,target,axis),geometric=expression.sourceBaseline?{version:1 as const,fields:expression.fields,terms:expression.sourceBaseline}:baseline(target,axis);return combineSnapshotResponseExpressions([{coefficient:1,expression:geometric},{coefficient:1,expression}]);};
+  const baselineFull=(target:SnapshotScalarTarget,axis:0|1)=>{const expression=inherited?.(target,axis)??capture(location,target,axis),geometric=snapshotResponseSourceBaseline(expression)??baseline(target,axis);return combineSnapshotResponseExpressions([{coefficient:1,expression:geometric},{coefficient:1,expression}]);};
   const baselineInputs=existing?ordered.map(({endpoint,nodeId})=>({node:([0,1] as const).map(axis=>baselineFull({kind:'node',nodeId},axis)) as [SnapshotResponseExpression,SnapshotResponseExpression],vector:([0,1] as const).map(axis=>baselineFull({kind:'handle',...endpoint},axis)) as [SnapshotResponseExpression,SnapshotResponseExpression]})):undefined;
   for(const [{endpoint},member] of ordered.map((value,index)=>[value,index] as const)){
    const target:SnapshotScalarTarget={kind:'handle',...endpoint},response:SnapshotExpressionControlResponse={};

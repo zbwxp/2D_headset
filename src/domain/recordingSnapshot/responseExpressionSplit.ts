@@ -75,7 +75,7 @@ export function certifySnapshotSmoothResponseIdentity(bases:readonly SnapshotSmo
  const coefficients=(expression:SnapshotResponseExpression|undefined)=>{
   const result=new Map<string,number>();if(!expression)return result;
   const canonical=combineSnapshotResponseExpressions([{coefficient:1,expression}]);
-  if(canonical.operations?.length)fail('A projected SMOOTH program requires its original component composition.');
+  if(canonical.operations?.length||canonical.sourceBaselineOperations?.length||canonical.smoothContracts?.length)fail('A projected SMOOTH program requires its original component composition.');
   for(const field of canonical.fields){const serialized=JSON.stringify(field),prior=fields.get(field.id);if(prior&&prior!==serialized)fail(`SMOOTH proof field ${field.id} has incompatible retained support.`);fields.set(field.id,serialized);}
   for(const term of canonical.terms)for(const value of term.basis)result.set(JSON.stringify([term.fieldId,term.coordinate,term.weight,snapshotResponseBasisKey(value.basis)]),value.coefficient);
   return result;
@@ -173,7 +173,8 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
    for(const axis of [0,1] as const){
     const expressions=targets.map(target=>{const expression=captured(location,target,axis);if(!projected.get(location.simplexId)?.size&&!expression.smoothContracts?.length)return expression;
      const field:SnapshotResponseExpressionField={id:JSON.stringify(['split-source-baseline',scope,location.simplexId,intent.childCurveIds]),vertexIds:[...location.vertexIds],edges:[],samples:[]};
-     return {...expression,fields:[...expression.fields.filter(value=>value.id!==field.id),field],sourceBaseline:location.snapshotIds.map((snapshotId,coordinate)=>({fieldId:field.id,coordinate:coordinate as 0|1|2,weight:'geometric' as const,basis:[{coefficient:1,basis:{snapshotId,target,axis}}]}))};
+     const {sourceBaselineOperations:ignored,...withoutBaselineProgram}=expression;void ignored;
+     return {...withoutBaselineProgram,fields:[...expression.fields.filter(value=>value.id!==field.id),field],sourceBaseline:location.snapshotIds.map((snapshotId,coordinate)=>({fieldId:field.id,coordinate:coordinate as 0|1|2,weight:'geometric' as const,basis:[{coefficient:1,basis:{snapshotId,target,axis}}]}))};
     }) as unknown as SnapshotCubicResponseExpressions;
     if(expressions.every(expression=>!snapshotResponseExpressionHasValue(expression)&&!expression.smoothOwned))continue;
     const transformed=splitSnapshotCubicResponseExpressions(expressions,{...intent,nonlinearDependencies:options.smoothComponents?[]:options.nonlinearDependencies});

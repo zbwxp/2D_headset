@@ -5,7 +5,7 @@ import {endpointPairNodeAuthorities} from './endpointPair';
 import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotScalarValue,type SnapshotSimplexBasis} from './simplexGeometry';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights} from './triangularResponses';
-import {createSnapshotExpressionValueSampler} from './responseExpressions';
+import {createSnapshotExpressionValueSampler,snapshotResponseSourceBaseline} from './responseExpressions';
 import {createSnapshotResponseBasisResolver,createSnapshotResponseFieldWeightMapper,snapshotResponseExpressionFor} from './responseExpressionRegistry';
 import {describeSnapshotScalarResponseSupport,createSnapshotScalarResponseWeightSampler} from './scalarResponseSupport';
 
@@ -63,13 +63,13 @@ export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,locat
  const native=createSnapshotSurfaceResponseSampler(graph,location),effective=effectiveSnapshotSurfaceResponses(graph),responses=own(effective.responseExpressions,location.simplexId);
  const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
- const sourceBaselines=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?.sourceBaseline?{version:1,fields:expression.fields,terms:expression.sourceBaseline}:undefined;},basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
+ const sourceBaselines=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;},basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const samples=new Map<string,SnapshotProjectionScalarSample>();
  const sample:SnapshotScalarValue=(target,axis,coordinates,weights)=>{
   if(location.kind==='vertex')return coordinates[0];
   const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights);
   if(!hasProjection)return coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
-  const hasSourceBaseline=!!snapshotResponseExpressionFor(responses,target,axis)?.sourceBaseline,geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
+  const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
   const baseline=geometric(weights)+residual,corrected=coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
   const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>inherited(target,axis,coordinates.map(()=>0),weights));
   samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
