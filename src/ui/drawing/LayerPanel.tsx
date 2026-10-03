@@ -151,7 +151,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
   </header>;
  };
  return <section ref={panel} className="drawing-layers" aria-label={t('绘图图层')}>
- {headerActions&&<div className="drawing-shared-actions" data-testid="drawing-shared-warp-actions"><strong>Warp</strong>{headerActions}</div>}
+ {headerActions&&<div className="drawing-shared-actions" data-testid="drawing-shared-warp-actions"><strong>{t('图层')}</strong>{headerActions}</div>}
  {structuralReadOnly&&<p className="drawing-pose-explanation" data-testid="drawing-pose-explanation">{sourceOnlyHint}</p>}
  {scoped&&<div className="drawing-layer-scope" data-testid="drawing-layer-scope"><span>{batch.selected.length} {t('个图层已选择')}</span><button aria-label={t('清除图层选择')} title={(zh?'清除选择，各快照工具恢复作用于本快照全部图层':'Clear selection so each snapshot toolbar applies to all of its layers')} onClick={()=>choose({ids:[]})}><X size={12}/></button></div>}
 

@@ -1,13 +1,23 @@
-import {useId,useRef,useState,type ReactNode} from 'react';
+import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {ChevronDown,ChevronUp,Pin,PinOff} from 'lucide-react';
 import {usePanelOpen} from './panelPreferences';
 import {uiText as t} from '../i18n';
 import './autoHideBar.css';
 
+/** Dialogs can open after focus has already left a native select. Track the
+ * actual modal lifetime so that a collapsed ancestor never hides an open modal. */
+export function watchAutoHideDialogs(root:HTMLElement,changed:(open:boolean)=>void):()=>void {
+ const refresh=()=>changed(!!root.querySelector('dialog[open]'));
+ const observer=new MutationObserver(refresh);
+ observer.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['open']});
+ refresh();return ()=>observer.disconnect();
+}
+
 /** Overlay expansion keeps the canvas rectangle stable during hover and drawing. */
 export default function AutoHideBar({label,children,className='',disabled=false,pinId}:{label:string;children:ReactNode;className?:string;disabled?:boolean;pinId?:string}){
- const [open,setOpen]=useState(false),id=useId(),root=useRef<HTMLDivElement>(null),pointer=useRef('');
- const [savedPin,setPinned]=usePanelOpen(pinId??'unused.autohide-pin',false),pinned=!!pinId&&savedPin,expanded=pinned||open;
+ const [open,setOpen]=useState(false),[dialogOpen,setDialogOpen]=useState(false),id=useId(),root=useRef<HTMLDivElement>(null),pointer=useRef('');
+ const [savedPin,setPinned]=usePanelOpen(pinId??'unused.autohide-pin',false),pinned=!!pinId&&savedPin,expanded=pinned||open||dialogOpen;
+ useEffect(()=>root.current?watchAutoHideDialogs(root.current,setDialogOpen):undefined,[]);
  if(disabled)return <>{children}</>;
  return <div ref={root} className={`auto-hide-bar ${className}`} data-open={expanded} data-pinned={pinned}
   onPointerEnter={e=>{if(e.pointerType==='mouse'&&e.buttons===0)setOpen(true);}}
@@ -16,7 +26,7 @@ export default function AutoHideBar({label,children,className='',disabled=false,
    if(root.current?.querySelector('dialog[open],input:focus,select:focus,textarea:focus'))return;
    setOpen(false);
   }}
-  onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOpen(false);}}
+  onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget)&&!root.current?.querySelector('dialog[open]'))setOpen(false);}}
   onFocus={e=>{if(!e.target.classList.contains('auto-hide-trigger')&&e.target.matches(':focus-visible'))setOpen(true);}}
   onKeyDown={e=>{if(e.key==='Escape'&&!root.current?.querySelector('dialog[open]')){e.stopPropagation();root.current?.querySelector<HTMLButtonElement>('.auto-hide-trigger')?.focus();setOpen(false);}}}>
   <button className="auto-hide-trigger" aria-label={t(label)} aria-expanded={expanded} aria-controls={id}
