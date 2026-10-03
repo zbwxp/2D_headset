@@ -6,7 +6,8 @@ import {createVectorEditingApi,cubicBounds,registerVectorEditingApi,type VectorE
 import {createEmptyProject} from '../app/emptyProject';
 import {createCurve,addLayer,connect,linkEndpoints,moveHandle,transform} from '../domain/drawing/commands';
 import {emptyDrawing,parseDrawing,shapeOf,nodeAt,type DrawingDocument,type Cubic} from '../domain/drawing/model';
-import {transportDeformedIntervals} from '../domain/drawing/deform';
+import {deformDrawing,transportDeformedIntervals,type Quad} from '../domain/drawing/deform';
+import {neutralBend} from '../domain/deformation/coons';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import type {WorkspaceMode} from '../app/workspaceMode';
 
@@ -143,6 +144,17 @@ describe('structured vector authoring API',()=>{
   const r=value(h.api.execute({commands:[{op:'deformCurves',curveIds:['upper'],bounds:{min:[-1,-.1],max:[0,.4]},quad:[[-1,-.1],[.05,-.1],[.12,.4],[-.9,.4]]}]}));
   expect(r.approximations).toHaveLength(1);expect(r.approximations[0].sampledMaxError).toBeGreaterThanOrEqual(0);
   expect(h.state().project.drawing.curves.map(c=>c.id)).toEqual(['upper']);expect(()=>parseDrawing(h.state().project.drawing)).not.toThrow();
+ });
+
+ test('curved quad commands share Drawing evaluation, expose fit error and validate atomically',()=>{
+  let d=addLayer(emptyDrawing(),'Lid');d=createCurve(d,d.layers[0].id,aShape,.01,'Upper','upper');const h=harness(d),bend=neutralBend();bend.handles[1][0][0]=bend.handles[1][1][0]=1.2;
+  const bounds={min:[-1,-.1] as [number,number],max:[0,.4] as [number,number]},quad:Quad=[[-1,-.1],[.05,-.1],[.12,.4],[-.9,.4]],command:VectorCommand={op:'deformCurves',curveIds:['upper'],bounds,quad,bend};
+  const expected=deformDrawing(d,['upper'],bounds,quad,false,bend),r=value(h.api.execute({commands:[command]}));
+  expect(h.state().project.drawing).toEqual(expected.document);expect(r.approximations[0].sampledMaxError).toBe(expected.maxError);expect(h.state().commits).toBe(1);
+  const saved=structuredClone(h.state()),invalid=neutralBend();invalid.handles[0][0][0]=9;
+  error(h.api.execute({commands:[{...command,bend:invalid}]}),'INVALID_REQUEST');expect(h.state()).toEqual(saved);
+  const folded=neutralBend();folded.handles[1][0][0]=folded.handles[1][1][0]=-2;
+  error(h.api.execute({commands:[{...command,bend:folded}]}),'CONSTRAINT_VIOLATION');expect(h.state()).toEqual(saved);
  });
 
  test('centerline bounds evaluate cubic extrema rather than the control hull',()=>{

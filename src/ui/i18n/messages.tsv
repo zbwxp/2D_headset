@@ -1953,3 +1953,6 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 原位复制后按镜像轴移到对侧，再选源笔画与副本建立对应。多段笔画只按唯一精确镜像匹配。	Duplicate in place, place across the mirror axis, then select source and copy to pair them. Multi-segment strokes require unique exact reflected matches.
 选择目标：仅摆到镜像位置，不自动配对	Choose a target: place it at the reflected position without pairing
 选择镜像摆放的源曲线	Choose the source curve for mirror placement
+
+四角 / 曲边	Quad / curved edges
+先选图层或笔画；拖四角调整透视，拖边柄或菱形中点弯曲边界。隐藏成员一起变形，锁定成员受保护。	Select a layer or stroke. Drag corners for perspective; drag edge handles or diamond midpoints to bend boundaries. Hidden members follow; locked members are protected.

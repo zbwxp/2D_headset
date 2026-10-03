@@ -96,7 +96,7 @@ v27 的录制画布以当前 Warp 为编辑对象。V 选择整个 Warp，拖动
 
 | 类别 | 命令与主要参数 |
 |---|---|
-| 源点与形状 | `moveNode(nodeId,position)`；`moveHandle(curveId,end,position)`；`transformCurves(curveIds,matrix,allowRelated?)`；`deformCurves(curveIds,bounds,quad,allowRelated?)` |
+| 源点与形状 | `moveNode(nodeId,position)`；`moveHandle(curveId,end,position)`；`transformCurves(curveIds,matrix,allowRelated?)`；`deformCurves(curveIds,bounds,quad,allowRelated?,bend?)` |
 | 曲线创建与细分 | `createCurve(layerId,shape,width?,name?,ref?)`；`splitCurve(curveId,t,ref?)`；`renameCurve`；`renameStroke`；`setCurveWidth` |
 | 图层 | `createLayer`；`duplicateLayer`；`deleteLayers`；`setLayer`；`reorderLayer`；`transformLayers`；`moveToLayer` |
 | 对象显隐与删除 | `setObjectState(objectIds,visible?,locked?)`；`deleteObjects(objectIds)`；`setInkVisibility(curveIds,visible)` |

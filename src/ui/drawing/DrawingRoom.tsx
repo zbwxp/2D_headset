@@ -15,7 +15,9 @@ import {PenTool,PanelRightClose,PanelRightOpen,ImagePlus,Eye,Check,X} from 'luci
 import {emptyDrawing,parseDrawing,groupFor,uid,add,sub,mul,length,curveById,shapeOf,nodeAt,members,joinAt,editable,visible,layerFor,objectById,type DrawingDocument as Doc,type Cubic,type Point2,type Endpoint} from '../../domain/drawing/model';
 import * as cmd from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
-import {deformDrawing,rectQuad,quadProjection,type Quad,type DeformRect} from '../../domain/drawing/deform';
+import {deformDrawing,rectQuad,type Quad,type DeformRect} from '../../domain/drawing/deform';
+import {neutralBend,type BendValue} from '../../domain/deformation/coons';
+import DeformCageOverlay,{moveDeformBoundary} from './DeformCageOverlay';
 import {cutDrawing,pasteDrawingCut,type DrawingCut} from '../../domain/drawing/clipboard';
 import {roundedJoins} from '../../domain/drawing/roundedJoin';
 import {pathOf} from '../../domain/drawing/appearance';
@@ -49,8 +51,8 @@ import './drawing.css';
 const EMPTY=emptyDrawing();
 
 interface Pen {position:Point2;out:Point2;last?:string;first?:Endpoint}
-interface DeformCage {base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;maxError:number}
-interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface DeformCage {base:Doc;committed:Doc;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
+interface Drag extends TrackedPointer {intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;shift?:boolean;zoom?:number;zoomMoved?:boolean}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -87,7 +89,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const b=selectionBounds(stored,selected);if(!b)return null;
   const pad=Math.max(.01,Math.max(b.max[0]-b.min[0],b.max[1]-b.min[1])*.05),rect:DeformRect={min:[...b.min],max:[...b.max]};
   for(const k of [0,1] as const)if(rect.max[k]-rect.min[k]<pad){rect.min[k]-=pad;rect.max[k]+=pad;}
-  return {base:stored,committed:stored,ids:selected,rect,quad:rectQuad(rect),maxError:0};
+  return {base:stored,committed:stored,ids:selected,rect,quad:rectQuad(rect),bend:neutralBend(),maxError:0};
  },[tool,stored,selection,deformCage]);
  const shownCurves=d.layers.flatMap(l=>l.items).filter(id=>visible(d,id));
  const activeTool=TOOLS.find(x=>x[0]===tool)!;
@@ -235,9 +237,11 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    }
    if(g.kind==='handle'){const target=drawingControlDragTarget(g.base,{handle:g.endpoint!},g.start,p),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=cmd.moveHandle(g.base,g.endpoint!,hit?.point??target);setGuideSnap(hit);}
    if(g.kind==='deform'){
-    const original=g.cage!,quad=original.quad.map(q=>[...q]) as Quad;quad[g.corner!]=add(quad[g.corner!],delta);
-    const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current);g.next=result.document;
-    setDeformCage({...original,quad,maxError:result.maxError});setHint('');
+    const original=g.cage!,quad=original.quad.map(q=>[...q]) as Quad;let bend=original.bend;
+    if(g.corner!==undefined)quad[g.corner]=add(quad[g.corner],delta);
+    else if(g.bendEdge!==undefined&&g.bendHandle!==undefined)bend=moveDeformBoundary(original.rect,original.quad,original.bend,g.bendEdge,g.bendHandle,g.start,p);
+    const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current,bend);g.next=result.document;
+    setDeformCage({...original,quad,bend,maxError:result.maxError});setHint('');
    }
    if(g.kind==='move')g.next=cmd.transform(g.base,g.ids!,x=>add(x,delta),!!approved.current);
    if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.next=cmd.transform(g.base,g.ids!,x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},!!approved.current);}
@@ -387,16 +391,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  {nodes.filter(id=>members(d,id).some(e=>editable(d,e.curveId))).map(id=>{const node=d.nodes.find(n=>n.id===id)!,p=screen(node.position),member=members(d,id).find(e=>controls.includes(e.curveId))!;return <rect key={id} data-testid="drawing-node" data-node={id} x={p[0]-4} y={p[1]-4} width="8" height="8" fill={first&&curveById(d,first.curveId)&&nodeAt(d,first).id===id?'#dc9840':selection.node===id?'#248ec1':'#fff'} stroke="#248ec1" strokeWidth="1.4" pointerEvents={endpointTools?'none':'all'} onPointerDown={e=>{session.set({selection:{ids:[member.curveId],node:id}});startDrag(e,'node',{node:id});}}/>;})}
  {tool==='direct'&&activeHandle&&handleControl(activeHandle.curveId,activeHandle.end,true)}</g>}
  {tool==='select'&&bounds&&selected.length>0&&selected.every(id=>transformable(d,id,selected))&&(()=>{const topLeft=screen([bounds.min[0],bounds.max[1]]),bottomRight=screen([bounds.max[0],bounds.min[1]]),center=screen(bounds.center),rot:[number,number]=[center[0],topLeft[1]-25];return <g data-testid="drawing-transform-box"><rect x={topLeft[0]-5} y={topLeft[1]-5} width={Math.max(10,bottomRight[0]-topLeft[0]+10)} height={Math.max(10,bottomRight[1]-topLeft[1]+10)} stroke="#238eb5" strokeDasharray="4 3" fill="none" pointerEvents="none"/><line x1={center[0]} y1={topLeft[1]} x2={rot[0]} y2={rot[1]} stroke="#238eb5"/><circle data-testid="drawing-rotate" cx={rot[0]} cy={rot[1]} r="5" fill="#fff" stroke="#238eb5" onPointerDown={e=>startDrag(e,'rotate',{ids:scope(),origin:bounds.center})}/>{([bounds.min,[bounds.max[0],bounds.min[1]],[bounds.min[0],bounds.max[1]],bounds.max] as Point2[]).map((p,i)=>{const s=screen(p),origin:Point2=[p[0]===bounds.min[0]?bounds.max[0]:bounds.min[0],p[1]===bounds.min[1]?bounds.max[1]:bounds.min[1]];return <rect key={i} data-testid="drawing-scale" x={s[0]-4} y={s[1]-4} width="8" height="8" fill="#fff" stroke="#238eb5" onPointerDown={e=>startDrag(e,'scale',{ids:scope(),origin})}/>;})}</g>;})()}
- {tool==='deform'&&cage&&(()=>{
-  const projection=quadProjection(cage.rect,cage.quad),grid=[.25,.5,.75].flatMap(t=>{
-   const x=cage.rect.min[0]+(cage.rect.max[0]-cage.rect.min[0])*t,y=cage.rect.min[1]+(cage.rect.max[1]-cage.rect.min[1])*t;
-   return [[[x,cage.rect.min[1]],[x,cage.rect.max[1]]],[[cage.rect.min[0],y],[cage.rect.max[0],y]]] as [Point2,Point2][];
-  });
-  return <g data-testid="drawing-deform-cage"><polygon points={cage.quad.map(p=>screen(p).join(',')).join(' ')} fill="none" stroke="#a35ac0" strokeWidth="1.5" pointerEvents="none"/>
-   {grid.map(([a,b],i)=><path key={i} d={`M ${screen(projection.map(a))} L ${screen(projection.map(b))}`} fill="none" stroke="#a35ac0" strokeDasharray="4 4" opacity=".4" pointerEvents="none"/>)}
-   {cage.quad.map((p,i)=>{const q=screen(p);return <rect key={i} data-testid="drawing-deform-corner" data-corner={i} x={q[0]-6} y={q[1]-6} width="12" height="12" fill="white" stroke="#a35ac0" strokeWidth="2" style={{cursor:'move'}} onPointerDown={e=>{if(space.current||e.button!==0)return;startDrag(e,'deform',{cage,corner:i,ids:cage.ids});}}><title>{t('拖动四角变形')}</title></rect>;})}
-  </g>;
- })()}
+ {tool==='deform'&&cage&&<DeformCageOverlay rect={cage.rect} quad={cage.quad} bend={cage.bend} screen={screen} onCorner={(e,corner)=>{if(space.current||e.button!==0)return;startDrag(e,'deform',{cage,corner,ids:cage.ids});}} onBoundary={(e,bendEdge,bendHandle)=>{if(space.current||e.button!==0)return;startDrag(e,'deform',{cage,bendEdge,bendHandle,ids:cage.ids});}}/>}
  {(tool==='direct'||tool==='select')&&<DisplayIntervalOverlay d={d} selection={selection} screen={screen} pick={(e,track,range,end)=>{if(space.current||e.button!==0)return;const t=d.displayIntervals!.find(t=>t.id===track)!;session.set({selection:{ids:[t.anchor.id],displayInterval:{track,range,end}}});startDrag(e,'displayInterval',{displayInterval:{track,range,end}});}}/>}
  {penPreview&&<path data-testid="drawing-pen-preview" d={curvePath(penPreview,screen)} fill="none" stroke="#208bb4" strokeWidth="1.5" strokeDasharray="4 3" pointerEvents="none"/>}
  {tool==='pen'&&visiblePen&&<g pointerEvents="none" data-testid="drawing-pen-anchor"><circle cx={screen(visiblePen.position)[0]} cy={screen(visiblePen.position)[1]} r="4" fill="#208bb4"/><line x1={screen(visiblePen.position)[0]} y1={screen(visiblePen.position)[1]} x2={screen(add(visiblePen.position,visiblePen.out))[0]} y2={screen(add(visiblePen.position,visiblePen.out))[1]} stroke="#208bb4"/><circle cx={screen(add(visiblePen.position,visiblePen.out))[0]} cy={screen(add(visiblePen.position,visiblePen.out))[1]} r="3" fill="white" stroke="#208bb4"/></g>}

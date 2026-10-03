@@ -17,6 +17,7 @@ import {setDepthOffset} from '../domain/drawing/depth';
 import {setFillMist} from '../domain/drawing/fillMist';
 import {planArtworkLayerImport} from '../domain/drawing/importArtworkLayers';
 import {deformDrawing,transportDeformedIntervals,type Quad,type DeformRect} from '../domain/drawing/deform';
+import type {BendHandles,BendValue} from '../domain/deformation/coons';
 import {strokes,strokeName,strokeIds,strokeFor} from '../domain/drawing/strokes';
 import {linkedNodeIds} from '../domain/drawing/endpointLinks';
 import {displayField,displayPath,addDisplayInterval,changeDisplayInterval,removeDisplayInterval,setDisplayIntervalEnd} from '../domain/drawing/displayIntervals';
@@ -47,7 +48,7 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
  | {op:'moveNode';nodeId:string;position:Point2}
  | {op:'moveHandle';curveId:string;end:0|1;position:Point2}
  | {op:'transformCurves';curveIds:string[];matrix:Affine;allowRelated?:boolean}
- | {op:'deformCurves';curveIds:string[];bounds:DeformRect;quad:Quad;allowRelated?:boolean}
+ | {op:'deformCurves';curveIds:string[];bounds:DeformRect;quad:Quad;allowRelated?:boolean;bend?:BendValue}
  | {op:'renameCurve';curveId:string;name:string}
  | {op:'renameStroke';curveId:string;name:string}
  | {op:'setCurveWidth';curveIds:string[];width:number}
@@ -127,6 +128,19 @@ function num(value:unknown,label:string,min:number=-VECTOR_AI_LIMITS.coordinate,
 function point(value:unknown,label:string):Point2{
  if(!Array.isArray(value)||value.length!==2)fail('INVALID_REQUEST',`${label} must be [x, y].`);
  return (value as unknown[]).map((v,i)=>num(v,`${label}[${i}]`)) as Point2;
+}
+function bendValue(value:unknown):BendValue {
+ const b=record(value);keys(b,['enabled','handles']);
+ if(typeof b.enabled!=='boolean')fail('INVALID_REQUEST','bend.enabled must be a boolean.');
+ if(!Array.isArray(b.handles)||b.handles.length!==4)fail('INVALID_REQUEST','bend.handles must contain bottom, right, top and left edge handles.');
+ const handles=(b.handles as unknown[]).map((edge,i)=>{
+  if(!Array.isArray(edge)||edge.length!==2)fail('INVALID_REQUEST',`bend.handles[${i}] must contain two points.`);
+  return (edge as unknown[]).map((p,j)=>{
+   if(!Array.isArray(p)||p.length!==2)fail('INVALID_REQUEST',`bend.handles[${i}][${j}] must be [x, y].`);
+   return (p as unknown[]).map((n,k)=>num(n,`bend.handles[${i}][${j}][${k}]`,-8,8)) as Point2;
+  });
+ }) as BendHandles;
+ return {handles,enabled:b.enabled as boolean};
 }
 function ids(value:unknown,label:string,empty=false):string[]{
  if(!Array.isArray(value)||(!empty&&!value.length)||value.length>10000)fail('INVALID_REQUEST',`${label} must be an array of ${empty?'0':'1'}–10000 IDs or names.`);
@@ -230,11 +244,11 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
    return transform(d,selected,affineMap(c.matrix),c.allowRelated===true);
   }
   case 'deformCurves':{
-   keys(c,['op','curveIds','bounds','quad','allowRelated']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
+   keys(c,['op','curveIds','bounds','quad','allowRelated','bend']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
    const b=record(c.bounds);keys(b,['min','max']);const bounds={min:point(b.min,'bounds.min'),max:point(b.max,'bounds.max')};
    if(bounds.max.some((v,i)=>v-bounds.min[i]<1e-7))fail('INVALID_REQUEST','bounds must have positive width and height.');
    if(!Array.isArray(c.quad)||c.quad.length!==4)fail('INVALID_REQUEST','quad needs four points: bottom-left, bottom-right, top-right, top-left.');
-   const result=deformDrawing(d,selected,bounds,(c.quad as unknown[]).map((p,i)=>point(p,`quad[${i}]`)) as Quad,c.allowRelated===true);
+   const result=deformDrawing(d,selected,bounds,(c.quad as unknown[]).map((p,i)=>point(p,`quad[${i}]`)) as Quad,c.allowRelated===true,c.bend===undefined?undefined:bendValue(c.bend));
    report(result.maxError);return result.document;
   }
   case 'renameCurve':keys(c,['op','curveId','name']);return curveChange(d,curveExists(d,c.curveId),{name:string(c.name,'name',VECTOR_AI_LIMITS.name).trim()});

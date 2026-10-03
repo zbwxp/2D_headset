@@ -5,6 +5,7 @@ import {transform} from './commands';
 const point=(s:Cubic,t:number):Point2=>{const u=1-t,a=u*u*u,b=3*u*u*t,c=3*u*t*t,d=t*t*t;return [a*s[0][0]+b*s[1][0]+c*s[2][0]+d*s[3][0],a*s[0][1]+b*s[1][1]+c*s[2][1]+d*s[3][1]];};
 import {displayField,displayPath} from './displayIntervals';
 import {roundedJoins} from './roundedJoin';
+import {assertBend,bendPoint,bendVector,isNeutralBend,type BendValue} from '../deformation/coons';
 
 /** Counterclockwise in drawing coordinates: bottom left, bottom right, top right, top left. */
 export type Quad=[Point2,Point2,Point2,Point2];
@@ -48,6 +49,25 @@ export function quadProjection(rect:DeformRect,quad:Quad){
  return {map,vector,denominator,matrix,affine:Math.abs(a[6])+Math.abs(a[7])<1e-10};
 }
 
+export type DrawingDeformProjection=Pick<ReturnType<typeof quadProjection>,'map'|'vector'|'denominator'|'affine'>;
+/** Shared editing field: normalized Coons boundary displacement, then the exact
+ * four-corner homography. A neutral cage returns the original projection. */
+export function drawingDeformProjection(rect:DeformRect,quad:Quad,bend?:BendValue):DrawingDeformProjection {
+ const projection=quadProjection(rect,quad);
+ if(!bend)return projection;
+ assertBend(bend);if(isNeutralBend(bend))return projection;
+ const w=rect.max[0]-rect.min[0],h=rect.max[1]-rect.min[1];
+ const normalized=(p:Point2):Point2=>[(p[0]-rect.min[0])/w,(p[1]-rect.min[1])/h];
+ const source=(p:Point2):Point2=>[rect.min[0]+p[0]*w,rect.min[1]+p[1]*h];
+ const bent=(p:Point2)=>source(bendPoint(bend,normalized(p)));
+ const map=(p:Point2)=>projection.map(bent(p));
+ const vector=(p:Point2,v:Point2):Point2=>{const q=normalized(p),t=bendVector(bend,q,[v[0]/w,v[1]/h]);return projection.vector(source(bendPoint(bend,q)),[t[0]*w,t[1]*h]);};
+ // Validate the interior as well as the curve's eventual samples. The bend
+ // guard checks orientation; this guard checks the composed projective horizon.
+ for(let j=0;j<=16;j++)for(let i=0;i<=16;i++)map(source([i/16,j/16]));
+ return {map,vector,denominator:(p:Point2)=>projection.denominator(bent(p)),affine:false};
+}
+
 /** Projective reparameterization equalizes the rational cubic's endpoint weights.
  * This preserves source-point correspondence while avoiding tangential fit error on long curves. */
 export const deformParameter=(t:number,scale:number)=>scale*t/(1+(scale-1)*t);
@@ -57,7 +77,7 @@ export function mappedParameter(t:number,map?:CurveParameterMap){
 }
 /** Fit two positive handle lengths and monotonically refine point correspondence.
  * Endpoint positions and tangent rays remain exact throughout the geometric fit. */
-function fit(shape:Cubic,f:ReturnType<typeof quadProjection>){
+function fit(shape:Cubic,f:DrawingDeformProjection){
  const count=128,scale=Math.cbrt(f.denominator(shape[3])/f.denominator(shape[0]));
  const values=Array.from({length:count+1},(_,i)=>f.affine?i/count:deformParameter(i/count,scale));
  if(f.affine)return {shape:shape.map(f.map) as Cubic,parameters:{values}};
@@ -130,16 +150,24 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
  })};
 }
 
-export function deformDrawing(d:Doc,ids:string[],rect:DeformRect,quad:Quad,allowRelated=false){
+export function deformDrawing(d:Doc,ids:string[],rect:DeformRect,quad:Quad,allowRelated=false,bend?:BendValue){
  if(ids.some(id=>curveById(d,id)?.locked))throw Error('所选曲线包含锁定成员，请先解锁。');
- const f=quadProjection(rect,quad),n=transform(d,ids,f.map,allowRelated);
- if(n===d)return {document:d,maxError:0,parameters:new Map<string,CurveParameterMap>()};
+ const f=drawingDeformProjection(rect,quad,bend),curved=!!bend&&!isNeutralBend(bend),transformed=transform(d,ids,f.map,allowRelated);
+ if(transformed===d&&(!curved||!ids.length))return {document:d,maxError:0,parameters:new Map<string,CurveParameterMap>()};
+ // A curved field can fix every source control and still move its interior.
+ const n=transformed===d?structuredClone(d):transformed;
  let maxError=0;const parameters=new Map<string,CurveParameterMap>();
  for(const id of ids){
-  const shape=shapeOf(d,id);shape.forEach(f.map); // the entire Bezier control hull must remain on one side of the projective horizon
+  const shape=shapeOf(d,id);shape.forEach(f.map); // also guard authored controls outside the normalized cage
   const result=fit(shape,f),fitted=result.shape,c=curveById(n,id);parameters.set(id,result.parameters);c.handles=[fitted[1],fitted[2]];
   for(let i=0;i<=256;i++)maxError=Math.max(maxError,length(sub(point(fitted,mappedParameter(i/256,result.parameters)),f.map(point(shape,i/256)))));
  }
+ // Under a nonlinear field a mapped control chord need not point along the
+ // endpoint derivative. Keep partial Smooth neighbours on that exact ray.
+ if(curved){const selected=new Set(ids);for(const j of n.joins)if(j.mode==='SMOOTH'&&selected.has(j.a.curveId)!==selected.has(j.b.curveId)){
+  const e=selected.has(j.a.curveId)?j.b:j.a,s=shapeOf(d,e.curveId),p=s[e.end?3:0];
+  curveById(n,e.curveId).handles[e.end]=add(f.map(p),f.vector(p,sub(s[e.end?2:1],p)));
+ }}
  for(const j of n.joins)if(j.mode!=='CUSP')for(const e of [j.a,j.b]){const s=shapeOf(n,e.curveId);if(length(sub(s[e.end?2:1],s[e.end?3:0]))<1e-7)throw Error('变换会使连接柄退化。');}
  const oldArcs=roundedJoins(d),newArcs=roundedJoins(n);
  for(const [id,g] of newArcs)if(g.error&&!oldArcs.get(id)?.error)throw Error('变形会使圆弧接笔退化；已保留最后有效位置。');
