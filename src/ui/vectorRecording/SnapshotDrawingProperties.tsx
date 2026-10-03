@@ -31,7 +31,7 @@ export default function SnapshotDrawingProperties({drawing:d,selection,choose,ru
  {!propertiesEditable&&disabledReason&&<p className="drawing-muted" data-testid="snapshot-property-ownership">{disabledReason}</p>}
  {!paint&&<><CurveControlSelection d={d} selection={selection} choose={choose}/><CurvePointControls d={d} selection={selection} run={run} disabled={disabled||!geometryEditable} onPosition={onPosition}/></>}
  <fieldset disabled={!propertiesEditable} className="snapshot-properties-fields">
- {!paint&&<SelectionNameControls d={d} selection={{...selection,ids}} run={run} choose={choose} disabled={disabled} topologyEditable={topologyEditable}/>}
+ {!paint&&<SelectionNameControls d={d} selection={{...selection,ids}} run={run} choose={choose} disabled={disabled} topologyEditable={false}/>}
  {!paint&&<><StrokeNameControl d={d} ids={ids} run={run} disabled={disabled}/><CurveWidthControl d={d} ids={ids} run={run} disabled={disabled}/></>}
  {d.joins.filter(join=>join.mode==='ARC'&&[join.a,join.b].some(endpoint=>ids.includes(endpoint.curveId))).map(join=><ArcControls key={join.id} d={d} join={join} run={run} preview={preview}/>)}
  <AppearanceControls d={d} selection={{...selection,ids}} run={run} choose={choose} preview={preview} capabilities={{create:topologyEditable,remove:topologyEditable,detach:topologyEditable,reorder:false,move:false,translation:translationEditable}}/>
