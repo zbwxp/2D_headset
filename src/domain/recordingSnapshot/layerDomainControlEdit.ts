@@ -1,14 +1,17 @@
+import {isIdentityAffine2D} from '../geometry/affine2d';
 import {nodeAt,sub,add,type Point2,type DrawingDocument} from '../drawing/model';
-import {isNonlinearLayerDomain,type SnapshotLayerDomain} from './layerDomains';
+import {isLayerCageDomain,isNonlinearLayerDomain,type SnapshotLayerDomain} from './layerDomains';
 import type {SceneShapeValue} from '../recordingScene/model';
 const different=(a:Point2,b:Point2)=>Math.hypot(a[0]-b[0],a[1]-b[1])>1e-12;
 const clean=(p:Point2):Point2=>p.map(n=>Math.abs(n)<1e-12?0:n) as Point2;
 export function layerUsesCage(domains:readonly SnapshotLayerDomain[]|undefined,layerId:string):boolean {return !!domains?.some(domain=>isNonlinearLayerDomain(domain)&&domain.enabled!==false&&domain.layerIds.includes(layerId));}
+export const isLayerControlResponseDomain=(domain:SnapshotLayerDomain)=>!isLayerCageDomain(domain)&&!domain.materialProgram&&domain.postShape!==undefined&&isIdentityAffine2D(domain.matrix);
+export function layerUsesOutputControls(domains:readonly SnapshotLayerDomain[]|undefined,layerId:string):boolean {return !!domains?.some(domain=>(isNonlinearLayerDomain(domain)||domain.postShape!==undefined)&&domain.enabled!==false&&domain.layerIds.includes(layerId));}
 /** Diff explicit Drawing targets in the LAST domain's output coordinates. No
  * spatial inverse is applied to a fitted handle; new members have no entries. */
 export function captureLayerDomainControls(before:DrawingDocument,wanted:DrawingDocument,evaluated:readonly SnapshotLayerDomain[],own:readonly SnapshotLayerDomain[]|undefined,layerIds:Iterable<string>){
  let domains=[...own??[]];const handledLayers=new Set<string>(),writes=new Map<string,SnapshotLayerDomain>(),nodes=new Map<string,Set<string>>();
- for(const layerId of layerIds){if(!layerUsesCage(evaluated,layerId))continue;handledLayers.add(layerId);
+ for(const layerId of layerIds){if(!layerUsesOutputControls(evaluated,layerId))continue;handledLayers.add(layerId);
   const last=[...evaluated].reverse().find(domain=>domain.enabled!==false&&domain.layerIds.includes(layerId))!;let changed=writes.get(last.id);if(!changed){changed=structuredClone(last);changed.postShape??={nodes:{},handles:{}};writes.set(last.id,changed);nodes.set(last.id,new Set());}
   const shape=changed.postShape as SceneShapeValue,layer=before.layers.find(layer=>layer.id===layerId);if(!layer)continue;
   for(const curve of before.curves.filter(curve=>layer.items.includes(curve.id))){const target=wanted.curves.find(value=>value.id===curve.id);if(!target)continue;

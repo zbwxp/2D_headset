@@ -1,3 +1,4 @@
+import {isLayerControlResponseDomain} from '../../domain/recordingSnapshot/layerDomainControlEdit';
 import {add,mul,sub,uid,type DrawingDocument,type Point2} from '../../domain/drawing/model';
 import {quadProjection,rectQuad,type DeformRect,type Quad} from '../../domain/drawing/deform';
 import {neutralBend,type BendValue} from '../../domain/deformation/coons';
@@ -16,7 +17,7 @@ export interface CageGesture {cage:DrawingCage;selection:DrawingSelection;contro
 export function resolveDrawingCage(drawing:DrawingDocument,selection:DrawingSelection,options:{cached?:DrawingCage|null;domains?:readonly SnapshotLayerDomain[];canonicalId?:(id:string)=>string;maxError?:number}={}):DrawingCage|null {
  const ids=selection.ids.filter(id=>drawing.curves.some(curve=>curve.id===id));if(!ids.length)return null;
  const cached=options.cached;if(cached?.committed===drawing&&cached.ids.length===ids.length&&ids.every(id=>cached.ids.includes(id)))return cached;
- const layers=selectedLayers(selection).map(options.canonicalId??(id=>id)),last=[...options.domains??[]].reverse().find(domain=>domain.layerIds.some(id=>layers.includes(id)));
+ const layers=selectedLayers(selection).map(options.canonicalId??(id=>id)),last=[...options.domains??[]].reverse().find(domain=>!isLayerControlResponseDomain(domain)&&domain.layerIds.some(id=>layers.includes(id)));
  if(last&&isLayerCageDomain(last)&&last.layerIds.length===layers.length&&last.layerIds.every(id=>layers.includes(id)))return {base:drawing,committed:drawing,ids,rect:structuredClone(last.restRect),quad:structuredClone(last.quad),bend:structuredClone(last.bend??neutralBend()),domainOperationId:last.id,maxError:options.maxError??0};
  const bounds=selectionBounds(drawing,ids);if(!bounds)return null;
  const pad=Math.max(.01,Math.max(bounds.max[0]-bounds.min[0],bounds.max[1]-bounds.min[1])*.05),rect:DeformRect={min:[...bounds.min],max:[...bounds.max]};

@@ -1,3 +1,4 @@
+import {snapshotUsesControlTargetStages} from '../../domain/recordingSnapshot/controlTargets';
 import {drawingCageSelectionIssue,type DrawingCageEditorAdapter} from '../drawing/cageEditorController';
 import LayerDomainControls from '../drawing/LayerDomainControls';
 import {RECORDING_CAGE_BASIS_REQUIRED,resolveRecordingLayerDomainTarget} from '../../app/recordingLayerDomainEdit';
@@ -88,7 +89,7 @@ function SnapshotEditor({recordingId,zh,txt}:{recordingId:string;zh:boolean;txt:
  const commitCage=(intent:LayerDomainIntent)=>{try{useEditor.getState().commitPreparedSnapshotEdit(prepareCage(intent,'full'));setError('');}catch(error){setError((error as Error).message);}setPreview(null);};
  const cageEdit:DrawingCageEditorAdapter={drawing:baseline.drawing,domains:baseline.state.layerDomains??[],targetKey:`${recordingId}/${snapshot?.id}/${recording.angle.x}/${recording.angle.y}/${selectedLayerIds.join(',')}`,historyKey:workspace,editable:!cageIssue,disabledReason:cageIssue,maxError:evaluated.maxError,onError:setError,onPreview:intent=>{if(!intent){setPreview(null);return true;}try{const plan=prepareCage(intent,'preview');setPreview(plan.project.recordingSnapshots!);setError('');return true;}catch(error){setError((error as Error).message);return false;}},onCommit:commitCage};
  const setDomainEnabled=(id:string,enabled:boolean)=>{const domain=baseline.state.layerDomains?.find(domain=>domain.id===id);if(!domain)return;const intent=isLayerCageDomain(domain)?createLayerCageIntent(domain.layerIds,{kind:'h-coons',restRect:domain.restRect,quad:domain.quad,bend:domain.bend,enabled},{operationId:id,replace:true}):createLayerAffineIntent(domain.layerIds,domain.matrix,{operationId:id,replace:true,enabled});commitCage(intent);};
- const shapeLayerIds=[...new Set(selection.ids.map(id=>layerFor(drawing,id)?.id).filter((id):id is string=>!!id))],shapeSingular=!correction&&(shapeLayerIds.some(id=>!tryInverseScenePlacement(layerPlacement(id)))||selection.ids.some(id=>!tryInverseScenePlacement(evaluated.elementPlacements[id]??identityScenePlacement())));
+ const shapeLayerIds=[...new Set(selection.ids.map(id=>layerFor(drawing,id)?.id).filter((id):id is string=>!!id))],shapeSingular=!correction&&!snapshotUsesControlTargetStages(evaluated,selection.ids,true)&&(shapeLayerIds.some(id=>!tryInverseScenePlacement(layerPlacement(id)))||selection.ids.some(id=>!tryInverseScenePlacement(evaluated.elementPlacements[id]??identityScenePlacement())));
  const shapeCommand=(change:RecordingCurveEdit):SnapshotCommand=>snapshotCurveEditCommand(evaluated,change,!!pair||!!surface&&correction);
  const elementTransformIds=selection.ids.filter(id=>drawing.curves.some(c=>c.id===id)),elementFrame=!hasLayerSelection&&!warp?snapshotStrokeTransformFrame(evaluated,elementTransformIds):null,elementTransformBounds=elementFrame?.bounds;
  const transformsForSelection=(ids:string[])=>!warp?snapshotStrokeSelectionTransform(evaluated,baseline,ids,curveEditable,previewCommands,commands=>{run(commands);setPreview(null);},txt('整笔变换','Stroke transform')):undefined;
@@ -159,8 +160,8 @@ export function retainSnapshotDrawingSelection(selection:DrawingSelection,drawin
 /** Freeze the selected stroke IDs and baseline for one pose-only transaction. */
 export function snapshotStrokeSelectionTransform(evaluation:SnapshotEvaluation,baseline:SnapshotEvaluation,selectedIds:string[],editable:boolean,preview:(commands:SnapshotCommand[]|null)=>void,commit:(commands:SnapshotCommand[])=>void,label='Stroke transform'):RecordingInstanceTransform|undefined{
  const ids=[...selectedIds];
- if(evaluation.endpointPair?.role==='correction'||evaluation.angleSurface?.role==='correction'){
-  // Correction controls already live in final viewport coordinates. Never apply
+ if(evaluation.endpointPair?.role==='correction'||evaluation.angleSurface?.role==='correction'||!!evaluation.angleSurface&&snapshotUsesControlTargetStages(evaluation,ids)){
+  // Response and retained-program targets live in final viewport coordinates. Never apply
   // the nearer basis placement again to this frame or its pointer targets.
   const bounds=selectionBounds(evaluation.drawing,ids);if(!bounds)return undefined;
   const commands=(value:ScenePlacementValue):SnapshotCommand[]=>[{op:'transformShapeElements',curveIds:ids,value}];

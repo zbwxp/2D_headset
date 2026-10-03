@@ -1,3 +1,4 @@
+import {snapshotUsesControlTargetStages} from '../../domain/recordingSnapshot/controlTargets';
 import {hasNonlinearDeformationFor} from '../../domain/drawing/evaluatedDeformation';
 import {layerFor} from '../../domain/drawing/model';
 import {layerUsesCage} from '../../domain/recordingSnapshot/layerDomainControlEdit';
@@ -14,7 +15,7 @@ export function snapshotCurveEditCommand(evaluation:SnapshotEvaluation,change:Re
  const {drawing}=evaluation,curve=change.kind==='handle'?drawing.curves.find(curve=>curve.id===change.curveId):drawing.curves.find(curve=>curve.nodes.includes(change.nodeId)),layerId=curve&&layerFor(drawing,curve.id)?.id;
  if(!layerId||!curve)throw Error('The selected source is no longer in this snapshot.');
  let position=change.position;
- if(!worldCoordinates&&!layerUsesCage(evaluation.state.layerDomains,layerId)&&!hasNonlinearDeformationFor(drawing,curve.id)){
+ if(!worldCoordinates&&!layerUsesCage(evaluation.state.layerDomains,layerId)&&!hasNonlinearDeformationFor(drawing,curve.id)&&!snapshotUsesControlTargetStages(evaluation,[curve.id],true)){
   const inverse=tryInverseScenePlacement(evaluation.placements[layerId]??identityScenePlacement());if(!inverse)throw Error('Restore width or height before editing curves.');
   const elementInverse=tryInverseScenePlacement(evaluation.elementPlacements[curve.id]??identityScenePlacement());if(!elementInverse)throw Error('Restore the stroke width or height before editing curves.');
   position=applyScenePlacementMatrix(elementInverse,applyScenePlacementMatrix(inverse,position));

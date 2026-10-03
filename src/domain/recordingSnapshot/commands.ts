@@ -1,5 +1,6 @@
 import {snapshotWithObjectLocks,assertSnapshotObjectsUnlocked} from './objectLocks';
-import {captureLayerDomainControls,layerUsesCage} from './layerDomainControlEdit';
+import {layerUsesCage} from './layerDomainControlEdit';
+import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay,snapshotUsesControlTargetStages,SnapshotControlTargetError} from './controlTargets';
 import {snapshotPathMaterialValue} from './materialPathMapping';
 import {snapshotMaterialPartitionAddress,snapshotMaterialPartitionParentValue,snapshotMaterialPartitionValue,prepareSnapshotPartitionIntervalEdit} from './materialSplit';
 import {trySnapshotControlInverse} from './controlSpace';
@@ -366,16 +367,16 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    if(!graph&&(op==='correctShapeNode'||op==='correctShapeHandle'||pairIntermediate)){applyPairCorrection(op==='moveShapeNode'||op==='correctShapeNode'?'node':'handle');break;}
    const e=evaluated();
    const targetLayers=op==='transformShapeElements'?e.drawing.layers.filter(layer=>(c.curveIds as string[]).some(id=>layer.items.includes(id))).map(layer=>layer.id):[String(c.layerId)];
-   if(targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){
+   const targetCurves=op==='transformShapeElements'?c.curveIds as string[]:e.drawing.curves.filter(curve=>targetLayers.includes(e.drawing.layers.find(layer=>layer.items.includes(curve.id))?.id??'')&&(op==='moveShapeNode'||op==='correctShapeNode'?curve.nodes.includes(String(c.nodeId)):curve.id===c.curveId)).map(curve=>curve.id);
+   if(graph&&snapshotUsesControlTargetStages(e,targetCurves,true)||targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){
     if(op!=='transformShapeElements'){const owner=layer(c.layerId),resolved=e.drawing.layers.find(value=>value.id===owner.id)!;if(op==='moveShapeNode'||op==='correctShapeNode'){if(!e.drawing.curves.some(curve=>resolved.items.includes(curve.id)&&curve.nodes.includes(String(c.nodeId))))fail('MISSING_ELEMENT','Node is not owned by this layer.');}else if(!resolved.items.includes(String(c.curveId)))fail('MISSING_ELEMENT','Curve is not owned by this layer.');}
     let world:DrawingDocument;
     if(op==='transformShapeElements'){const curveIds=ids(c.curveIds),delta=placement(c.value);world=transform(e.drawing,curveIds,p=>applyScenePlacement(delta,p),true,false);world=projectSnapshotTransformTargets(e.drawing,world);}
     else if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');world=moveNode(e.drawing,nodeId,point(c.position),true);}
     else{const curveId=id(c.curveId,'curveId');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');world=moveHandle(e.drawing,{curveId,end:c.end as 0|1},point(c.position),true);}
-    const changed=e.drawing.layers.filter(layer=>e.drawing.curves.some(curve=>layer.items.includes(curve.id)&&world.curves.some(target=>target.id===curve.id&&(JSON.stringify(target.handles)!==JSON.stringify(curve.handles)||curve.nodes.some(node=>JSON.stringify(world.nodes.find(value=>value.id===node)?.position)!==JSON.stringify(e.drawing.nodes.find(value=>value.id===node)?.position)))))).map(layer=>layer.id);
-    if(changed.some(id=>!layerUsesCage(e.state.layerDomains,id)))fail('INCOMPATIBLE_CONTROL_STAGE','These controls use different editing stages. Select targets within the same retained cage stage.');
-    const writable=snapshotForWrite(snapshot()),draft=writable.draft??{angle:clone(writable.angle),deformation:emptySnapshotDeformationState(),channels:[]},post=captureLayerDomainControls(e.drawing,world,e.state.layerDomains??[],draft.deformation.layerDomains,changed);
-    writable.draft={...draft,deformation:{...draft.deformation,layerDomains:post.domains}};break;
+    try{const owner=snapshot(),prior=owner.draft??{angle:clone(owner.angle),deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(e,world,prior.deformation,fresh);if(deformation===prior.deformation)break;const candidate={...owner,draft:{...prior,deformation}},next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'||recording.mode==='endpoint-pair'?evaluateWorkspace(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,diagnostics:'preview'});
+     assertSnapshotControlTargetReplay(replay.drawing,world);snapshotForWrite(owner).draft=candidate.draft;
+    }catch(error){if(error instanceof SnapshotControlTargetError)fail(error.code,error.message);throw error;}break;
    }
    const current=e.preElementPlacementDrawing,base=e.preShapeDrawing,relationNodes=new Set<string>();let next:DrawingDocument;
    if(op==='transformShapeElements'){
