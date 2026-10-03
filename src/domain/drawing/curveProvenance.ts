@@ -4,7 +4,9 @@ export interface CurveSample {id:string;t:number;weight:number}
 const sources=new WeakMap<Cubic,(t:number)=>CurveSample[]>();
 export function tagCurve(s:Cubic,id:string):Cubic {sources.set(s,t=>[{id,t,weight:1}]);return s;}
 export function curveSamples(s:Cubic,t:number){return sources.get(s)?.(t)??[];}
-export function copyCurveSource(from:Cubic,to:Cubic,lo=0,hi=1):Cubic {const f=sources.get(from);if(f)sources.set(to,t=>f(lo+(hi-lo)*t));return to;}
+/** Preserve source material identity through a monotone fitted parameter map. */
+export function mapCurveSource(from:Cubic,to:Cubic,parameter:(t:number)=>number):Cubic {const f=sources.get(from);if(f)sources.set(to,t=>f(parameter(t)));return to;}
+export function copyCurveSource(from:Cubic,to:Cubic,lo=0,hi=1):Cubic {return mapCurveSource(from,to,t=>lo+(hi-lo)*t);}
 export function tagBridge(s:Cubic,a:CurveSample[],b:CurveSample[],lo:number,hi:number):Cubic {
  sources.set(s,t=>{const x=lo+(hi-lo)*t,u=x*x*(3-2*x);return [...a.map(q=>({...q,weight:q.weight*(1-u)})),...b.map(q=>({...q,weight:q.weight*u}))];});return s;
 }

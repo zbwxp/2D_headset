@@ -5,7 +5,7 @@ import {mappedParameter,type CurveParameterMap} from '../deformation/cubicDeform
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 
 type Field=ReturnType<typeof displayField>;
-function distanceAt(part:Field['parts'][number],t:number){
+export function deformMaterialDistanceAt(part:Field['parts'][number],t:number){
  const i=Math.max(1,part.pts.findIndex(p=>p.t>=t)),lo=part.pts[i-1].t,hi=part.pts[i].t;
  return part.start+part.dist[i-1]+(part.dist[i]-part.dist[i-1])*clamp((t-lo)/(hi-lo||1));
 }
@@ -42,7 +42,7 @@ export function transportDeformedIntervals(before:Doc,after:Doc,parameters=new M
     const range=piece.sourceRange??[0,1],sourceT=range[0]+(range[1]-range[0])*parameterAt(part,absolute);
     const reversed=path.segments.find(u=>u.id===piece.owners[0])!.reverse,parameterMap=parameters.get(piece.owners[0]),native=reversed?1-mappedParameter(1-sourceT,parameterMap):mappedParameter(sourceT,parameterMap);
     const j=next.geometry.pieces.findIndex(p=>!p.joinId&&p.owners[0]===piece.owners[0]),r=next.geometry.pieces[j].sourceRange??[0,1];
-    dest=distanceAt(next.parts[j],clamp((native-r[0])/(r[1]-r[0]||1)));
+    dest=deformMaterialDistanceAt(next.parts[j],clamp((native-r[0])/(r[1]-r[0]||1)));
    }
    return next.relative(track,dest/next.total);
   };

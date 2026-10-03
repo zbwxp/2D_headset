@@ -55,3 +55,12 @@ export function fitDeformedCubic(shape:Cubic,field:DeformProjection){
  for(let i=0;i<=256;i++)maxError=Math.max(maxError,length(sub(point(result.shape,mappedParameter(i/256,result.parameters)),field.map(point(shape,i/256)))));
  return {...result,maxError};
 }
+
+/** Inverse of the fitted cubic's strictly increasing source-t → fitted-t table.
+ * This recovers a material parameter only; it never inverts fitted controls. */
+export function sourceParameter(t:number,map?:CurveParameterMap):number {
+ if(!map)return t;
+ const value=clamp(t),values=map.values;let lo=0,hi=values.length-1;
+ while(hi-lo>1){const mid=(lo+hi)>>1;if(values[mid]<=value)lo=mid;else hi=mid;}
+ return (lo+(value-values[lo])/(values[hi]-values[lo]))/(values.length-1);
+}
