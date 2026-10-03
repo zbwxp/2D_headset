@@ -5,7 +5,7 @@ import {configuredSnapshotMirror,seedAutomaticExtremeSnapshots} from './automati
 import {createSnapshotAngleGraph,createTriangulatedRecordingCopy,reconcileSnapshotAngleGraphMesh} from './angleGraph';
 import {insertSnapshotVertex,removeSnapshotVertex,rebindSnapshotVertex,locateSnapshotSimplex} from './triangulation';
 import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses,SnapshotSurfaceTargetEditError} from './surfaceTargets';
-import {prepareSnapshotPropertyTargetEdit,finishSnapshotPropertyDraft,SnapshotPropertyResponseError} from './propertyResponses';
+import {createSnapshotPropertyResponseSampler,prepareSnapshotPropertyTargetEdit,finishSnapshotPropertyDraft,SnapshotPropertyResponseError} from './propertyResponses';
 import {snapshotSimplexIntervalBasisValues} from './simplexMaterial';
 import {mergeSnapshotDeformation} from './tracks';
 import {prepareSnapshotReferencePaste} from './referenceClipboard';
@@ -270,7 +270,8 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   if(c.mode!==undefined||c.fullLoop!==undefined)fail('PROPERTY_BASIS_REQUIRED','Change interval mode or loop structure in a real snapshot; its start and end positions can have independent response constraints here.');
   if(c.start===undefined&&c.end===undefined)fail('INVALID_REQUEST','Provide an interval start or end position.');
   const basis=snapshotSimplexIntervalBasisValues(surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing})),e.drawing,sourceTrackId,rangeId);
-  const edits=(['start','end'] as const).flatMap(end=>c[end]===undefined?[]:[{target:{kind:'interval-endpoint' as const,layerId,sourceTrackId,rangeId,end},basisValues:basis[end],value:number(c[end],end,0,1)}]);
+  const native=createSnapshotPropertyResponseSampler(recording.angleGraph!,surface!.simplex!),currentRange=material!.ranges.find(range=>range.id===rangeId)!;
+  const edits=(['start','end'] as const).flatMap(end=>{if(c[end]===undefined)return [];const target={kind:'interval-endpoint' as const,layerId,sourceTrackId,rangeId,end};return [{target,basisValues:basis[end],value:number(c[end],end,0,1),residual:currentRange[end]-native(target,basis[end])}];});
   try{const result=prepareSnapshotPropertyTargetEdit(recording.angleGraph!,surface!.simplex!,edits,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(recording.angleGraph!).draft?.id??fresh()});if(result.changed)recording.angleGraph=result.graph;}catch(error){if(error instanceof SnapshotPropertyResponseError)fail(error.code,error.message);throw error;}
  };
  if(graph&&['renameKey','deleteKey'].includes(op))fail('SURFACE_LEGACY_TRACKS_READ_ONLY','Retained legacy channels are recovery data. Edit this Recording through its real snapshots or response surface.');

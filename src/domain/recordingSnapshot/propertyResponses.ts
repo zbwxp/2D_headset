@@ -99,7 +99,7 @@ function validateScalarInputs(weights:readonly number[],coordinates:readonly num
  if(!Array.isArray(weights)||weights.length!==count||!Array.from(weights).every(value=>Number.isFinite(value)&&value>=0&&value<=1)||Math.abs(weights.reduce((sum,value)=>sum+value,0)-1)>tolerance||
     !Array.isArray(coordinates)||coordinates.length!==count||!Array.from(coordinates).every(Number.isFinite))invalid('Property basis values must be finite, and their original geometric weights must be nonnegative and sum to one.');
 }
-const blend=(values:readonly number[],weights:readonly number[]):number=>{
+export const blendSnapshotPropertyValues=(values:readonly number[],weights:readonly number[]):number=>{
  // Preserve exact constant bases and endpoint plateaus, including nonzero ones.
  const active=weights.flatMap((weight,index)=>weight===0?[]:[index]);
  if(active.length&&active.every(index=>values[index]===values[active[0]]))return values[active[0]];
@@ -124,7 +124,7 @@ export function createSnapshotPropertyResponseSampler(graph:SnapshotAngleGraph,l
  });
  return (target,basisValues,geometricWeights=original)=>{
   validateSnapshotScalarPropertyTarget(target);validateScalarInputs(geometricWeights,basisValues,support.count);
-  return blend(basisValues,sample(target,geometricWeights));
+  return blendSnapshotPropertyValues(basisValues,sample(target,geometricWeights));
  };
 }
 
@@ -146,7 +146,7 @@ export function solveSnapshotPropertyResponseWeights(geometricWeights:readonly n
  }catch(error){return {available:false,reason:error instanceof Error?error.message:String(error)};}
 }
 
-export interface SnapshotPropertyTargetEdit {target:SnapshotScalarPropertyTarget;basisValues:readonly number[];value:number}
+export interface SnapshotPropertyTargetEdit {target:SnapshotScalarPropertyTarget;basisValues:readonly number[];value:number;/** Existing retained material contribution, held fixed during this scalar inverse. */residual?:number}
 export interface SnapshotPropertyTargetEditOptions {angle:Angle;frameId:string}
 export interface SnapshotPropertyTargetEditResult {graph:SnapshotAngleGraph;changed:boolean}
 /** One transaction for all supplied endpoints/properties. Every inverse and the
@@ -167,8 +167,9 @@ export function prepareSnapshotPropertyTargetEdit(graph:SnapshotAngleGraph,locat
  for(const edit of edits){
   const key=snapshotScalarPropertyTargetKey(edit.target);if(seen.has(key))invalid('An atomic property edit contains a duplicate target.');seen.add(key);
   validateScalarInputs(location.geometricWeights,edit.basisValues,support.count);if(!Number.isFinite(edit.value))invalid('A scalar property target value must be finite.');
-  if(current(edit.target,edit.basisValues)===edit.value)continue;
-  const solved=solveSnapshotPropertyResponseWeights(location.geometricWeights,edit.basisValues,edit.value);
+  if(current(edit.target,edit.basisValues)+(edit.residual??0)===edit.value)continue;
+  if(!Number.isFinite(edit.residual??0))invalid('Inherited property residual must be finite.');
+  const solved=solveSnapshotPropertyResponseWeights(location.geometricWeights,edit.basisValues,edit.value-(edit.residual??0));
   if(!solved.available)fail('PROPERTY_AXIS_UNAVAILABLE',`${key}: ${solved.reason}`);
   updates.push({edit,key,weights:solved.weights});
  }
@@ -201,7 +202,7 @@ export function prepareSnapshotPropertyTargetEdit(graph:SnapshotAngleGraph,locat
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
  const replay=createSnapshotPropertyResponseSampler(candidate,location);
  for(const edit of edits){
-  const value=replay(edit.target,edit.basisValues);
+  const value=replay(edit.target,edit.basisValues)+(edit.residual??0);
   if(Math.abs(value-edit.value)>256*Number.EPSILON*Math.max(1,Math.abs(value),Math.abs(edit.value)))fail('PROPERTY_CONSTRAINT_UNSOLVABLE',`${snapshotScalarPropertyTargetKey(edit.target)}: the complete response cannot reproduce the requested finite material value.`);
  }
  return {graph:candidate,changed:true};

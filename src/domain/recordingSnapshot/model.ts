@@ -1,3 +1,4 @@
+import type {SnapshotMaterialRecipeRegistry} from './materialRestriction';
 import type {SnapshotResponseExpression} from './responseExpressions';
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
@@ -185,6 +186,9 @@ export interface SnapshotExpressionResponses {
 }
 export type SnapshotResponseExpressionRegistry=Record<string,SnapshotExpressionResponses>;
 export interface SnapshotAngleGraph {
+ /** Recorder-owned live material supports, independent of newly inserted geometry keys. */
+ materialRecipes?:SnapshotMaterialRecipeRegistry;
+ materialBasisRecipes?:SnapshotMaterialRecipeRegistry;
  responseExpressions?:SnapshotResponseExpressionRegistry;
  version:1;mesh:SnapshotTriangulation;
  /** Every shared edge has the sole orientation saved in mesh.edges. */
