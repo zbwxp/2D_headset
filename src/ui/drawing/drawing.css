@@ -112,3 +112,6 @@
 
 .drawing-layer-section-heading.fold-only{flex:0 0 24px;padding-inline:4px}
 .drawing-layer-section-header.selected{background:#238eb522;outline:1px solid #238eb566;outline-offset:-1px}
+
+/* Keep each snapshot’s title and scoped batch tools together while its rows scroll. */
+.drawing-layer-section-chrome{position:sticky;top:0;z-index:10;background:#242d32;box-shadow:0 1px 0 #3c474d}

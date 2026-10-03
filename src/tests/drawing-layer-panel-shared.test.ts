@@ -24,8 +24,8 @@ function fixture(){
  d=addLayer(d,'Empty');const empty=d.layers[0].id;d=addLayer(d,'Other');const other=d.layers[0].id;d=createCurve(d,other,[[1,0],[1,1],[2,1],[2,0]],.01,'Other line','other');
  return {d,eye,empty,other,ellipseIds:e.ids,section:{id:'drawing-artwork',name:'Current authored drawing',layerIds:d.layers.map(l=>l.id)} satisfies LayerPanelSection};
 }
-function render(d:DrawingDocument,selection:DrawingSelection={ids:[]},section?:LayerPanelSection){
- return renderToStaticMarkup(createElement(LayerPanel,{document:d,active:selection.layer??d.layers[0]?.id??null,selection,run:ignore,choose:ignore,setLayer:ignore,openProperties:ignore,closeProperties:ignore,upload:ignore,deleteSelected:ignore,cutSelected:ignore,pasteSelected:ignore,canPaste:true,restoreLayer:ignore,...(section?{layerSections:[section]}:{})}));
+function render(d:DrawingDocument,selection:DrawingSelection={ids:[]},section?:LayerPanelSection|LayerPanelSection[],collapsed:string[]=[]){
+ return renderToStaticMarkup(createElement(LayerPanel,{document:d,active:selection.layer??d.layers[0]?.id??null,selection,run:ignore,choose:ignore,setLayer:ignore,openProperties:ignore,closeProperties:ignore,upload:ignore,deleteSelected:ignore,cutSelected:ignore,pasteSelected:ignore,canPaste:true,restoreLayer:ignore,...(section?{layerSections:Array.isArray(section)?section:[section]}:{}),defaultCollapsedSectionIds:collapsed}));
 }
 function button(html:string,id:string){return html.match(new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`))?.[0]??'';}
 
@@ -71,4 +71,13 @@ test('single-snapshot grouping does not reorder source layers or change structur
  const f=fixture(),before=JSON.stringify(f.d),moved=reorderLayers(f.d,f.other,f.eye,true),section={...f.section,layerIds:moved.layers.map(l=>l.id)};
  expect(groupedLayerSections(moved.layers,[section]).flatMap(g=>g.layers.map(l=>l.id))).toEqual([f.empty,f.eye,f.other]);expect([...render(moved,{ids:[]},section).matchAll(/data-testid="drawing-layer" data-id="([^"]+)"/g)].map(m=>m[1])).toEqual([f.empty,f.eye,f.other]);expect(moved.nodes).toBe(f.d.nodes);expect(moved.curves).toBe(f.d.curves);
  expect(()=>deleteLayers(f.d,[f.eye])).toThrow(/锁定/);const copied=duplicateLayer(f.d,f.empty);expect(copied.layers).toHaveLength(f.d.layers.length+1);expect(copied.layers[0].items).toEqual([]);expect(deleteLayers(f.d,[f.empty]).layers.map(l=>l.id)).toEqual([f.other,f.eye]);expect(JSON.stringify(f.d)).toBe(before);
+});
+
+
+test('each snapshot keeps its own title and scoped tools in one sticky chrome while rows remain outside',()=>{
+ const f=fixture(),sections=[{id:'current',name:'Current view',layerIds:[f.eye,f.empty]},{id:'source',name:'Source artwork',layerIds:[f.other]}],html=render(f.d,{ids:[],layers:[f.eye,f.other]},sections);
+ const chrome=[...html.matchAll(/class="drawing-layer-section-chrome"[^>]*>([\s\S]*?)<\/header><\/div>/g)].map(match=>match[1]);expect(chrome).toHaveLength(2);
+ for(const part of chrome){expect(part).toContain('drawing-layer-section-header');expect(part).toContain('drawing-layer-section-tools');expect(part).toContain('drawing-toggle-all');expect(part).toContain('drawing-toggle-fills');expect(part).toContain('drawing-collapse-all');expect(part).not.toContain('data-testid="drawing-layer"');}
+ expect(chrome[0]).toContain('Current view');expect(chrome[0]).not.toContain('Source artwork');expect(chrome[1]).toContain('Source artwork');expect((html.match(/data-testid="drawing-layer"/g)??[])).toHaveLength(3);
+ const collapsed=render(f.d,{ids:[]},sections,['source']);expect(collapsed).toContain('Source artwork');expect((collapsed.match(/data-testid="drawing-layer-section-chrome"/g)??[])).toHaveLength(2);expect(collapsed).not.toContain(`data-testid="drawing-layer" data-id="${f.other}"`);
 });
