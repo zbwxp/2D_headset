@@ -172,12 +172,14 @@ export function createDisplayRouteField(d:Doc,route:DisplayRoute|ResolvedDisplay
  };
  const positionOf=(point:RouteMaterialPoint):number|undefined=>{
   if(field.total<1e-12)return undefined;
-  if(point.kind==='join'){const j=joins.get(point.joinId);return j&&Number.isFinite(point.s)&&point.s>=0&&point.s<=1?(j.start+(j.reverse?1-point.s:point.s)*j.length)/field.total:undefined;}
+  if(point.kind==='join'){const j=joins.get(point.joinId);return j&&Number.isFinite(point.s)&&point.s>=0&&point.s<=1?clamp((j.start+(j.reverse?1-point.s:point.s)*j.length)/field.total):undefined;}
   if(!Number.isFinite(point.t)||point.t<0||point.t>1)return undefined;
   const i=geometry.pieces.findIndex(p=>!p.joinId&&p.owners[0]===point.curveId);if(i<0)return undefined;
   const range=geometry.pieces[i].sourceRange??[0,1],t=uses.get(point.curveId)?.reverse?1-point.t:point.t;
   if(t<range[0]-1e-10||t>range[1]+1e-10||range[1]-range[0]<1e-12)return undefined;
-  return distanceAt(field.parts[i],clamp((t-range[0])/(range[1]-range[0])))/field.total;
+  // Valid source material lies inside this field. Summed piece distances can
+  // exceed total by one ULP at its outer end; never serialize that as > 1.
+  return clamp(distanceAt(field.parts[i],clamp((t-range[0])/(range[1]-range[0])))/field.total);
  };
  return {...field,path:clonePath(resolved.path),geometry,diagnostics,brushes,materialAt,positionOf,materialAtPiece};
 }

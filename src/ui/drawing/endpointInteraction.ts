@@ -11,7 +11,8 @@ export function drawingEndpointCurveIds(drawing:DrawingDocument,layerId?:string|
 }
 /** Pick from committed coordinates, never the moving second-click preview. */
 export function pickDrawingEndpoint(drawing:DrawingDocument,curveIds:readonly string[],point:Point2,unit:number,first:Endpoint|null=null):Endpoint|null {
- return curveIds.flatMap(curveId=>([0,1] as const).map(end=>({curveId,end}))).filter(endpoint=>editable(drawing,endpoint.curveId)&&(!first||!sameEnd(first,endpoint))).map(endpoint=>({...endpoint,distance:length(sub(point,nodeAt(drawing,endpoint).position))*unit})).filter(endpoint=>endpoint.distance<=11).sort((a,b)=>a.distance-b.distance)[0]??null;
+ const hit=curveIds.flatMap(curveId=>([0,1] as const).map(end=>({curveId,end}))).filter(endpoint=>editable(drawing,endpoint.curveId)&&(!first||!sameEnd(first,endpoint))).map(endpoint=>({...endpoint,distance:length(sub(point,nodeAt(drawing,endpoint).position))*unit})).filter(endpoint=>endpoint.distance<=11).sort((a,b)=>a.distance-b.distance)[0];
+ return hit?{curveId:hit.curveId,end:hit.end}:null;
 }
 export const drawingEndpointSelection=(drawing:DrawingDocument,endpoint:Endpoint):DrawingSelection=>({ids:[endpoint.curveId],node:nodeAt(drawing,endpoint).id});
 /** One Drawing command dispatch. 'link' preserves identities; 'bind' really

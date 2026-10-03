@@ -13,7 +13,7 @@ const a:Endpoint={curveId:'a',end:1},b:Endpoint={curveId:'b',end:0};
 function fixture(){let drawing=emptyDrawing();drawing.layers=[{id:'left',name:'Left',visible:true,locked:false,items:[]},{id:'right',name:'Right',visible:true,locked:false,items:[]}];drawing=createCurve(drawing,'left',[[-1,0],[-.7,0],[-.3,0],[0,0]],.01,'A','a');return createCurve(drawing,'right',[[.1,.1],[.4,.2],[.7,.1],[1,.1]],.02,'B','b');}
 test('Drawing endpoint scope and eleven-pixel picking share visibility, lock and layer semantics',()=>{
  const drawing=fixture();expect(drawingEndpointCurveIds(drawing,'left')).toEqual(['a']);expect(drawingEndpointCurveIds(drawing,'right')).toEqual(['b']);expect(drawingEndpointCurveIds(drawing)).toEqual(['a','b']);
- expect(pickDrawingEndpoint(drawing,['a'],[.1,0],100)).toMatchObject(a);expect(pickDrawingEndpoint(drawing,['a'],[.12,0],100)).toBeNull();expect(pickDrawingEndpoint(drawing,['a'],[0,0],100,a)).toBeNull();
+ expect(pickDrawingEndpoint(drawing,['a'],[.1,0],100)).toEqual(a);expect(pickDrawingEndpoint(drawing,['a'],[.12,0],100)).toBeNull();expect(pickDrawingEndpoint(drawing,['a'],[0,0],100,a)).toBeNull();
  drawing.curves[0].locked=true;expect(drawingEndpointCurveIds(drawing,'left')).toEqual([]);expect(pickDrawingEndpoint(drawing,['a'],[0,0],100)).toBeNull();drawing.curves[1].visible=false;expect(drawingEndpointCurveIds(drawing)).toEqual([]);
 });
 test('a link dispatch preserves Drawing’s two-click direction and separate identities across layers',()=>{

@@ -1,0 +1,368 @@
+{
+  "version": 2,
+  "library": {
+    "curves": {
+      "588999f8-d97b-4738-b2f2-d9d5f9e3d09c": {
+        "id": "588999f8-d97b-4738-b2f2-d9d5f9e3d09c",
+        "name": "曲线1",
+        "nodes": [
+          "c4eb11fc-2387-4527-854c-034603e6c2b1",
+          "13ad00bc-f79a-4096-aa08-12a451265525"
+        ],
+        "handles": [
+          [
+            -0.624390243902439,
+            0.6439024390243903
+          ],
+          [
+            -0.3317073170731707,
+            0.25365853658536586
+          ]
+        ],
+        "visible": true,
+        "locked": false,
+        "width": 0.008,
+        "inkEnds": [
+          {
+            "taperWidthScale": 20
+          },
+          {
+            "taperWidthScale": 20
+          }
+        ]
+      },
+      "d5fed239-1cbe-468c-b0af-8d1fd109d37b": {
+        "id": "d5fed239-1cbe-468c-b0af-8d1fd109d37b",
+        "name": "曲线2",
+        "nodes": [
+          "e0f1ffbd-7bd8-486f-bb85-35778599e7a2",
+          "0e3ba392-4e07-479b-a71d-b4af13dfee3b"
+        ],
+        "handles": [
+          [
+            0.5707317073170731,
+            0.5463414634146342
+          ],
+          [
+            0.7902439024390244,
+            -0.014634146341463428
+          ]
+        ],
+        "visible": true,
+        "locked": false,
+        "width": 0.008,
+        "inkEnds": [
+          {
+            "taperWidthScale": 20
+          },
+          {
+            "taperWidthScale": 20
+          }
+        ]
+      }
+    },
+    "nodes": {
+      "c4eb11fc-2387-4527-854c-034603e6c2b1": {
+        "id": "c4eb11fc-2387-4527-854c-034603e6c2b1",
+        "position": [
+          -0.7951219512195122,
+          0.5219512195121951
+        ]
+      },
+      "13ad00bc-f79a-4096-aa08-12a451265525": {
+        "id": "13ad00bc-f79a-4096-aa08-12a451265525",
+        "position": [
+          -0.18536585365853658,
+          0.1073170731707317
+        ]
+      },
+      "e0f1ffbd-7bd8-486f-bb85-35778599e7a2": {
+        "id": "e0f1ffbd-7bd8-486f-bb85-35778599e7a2",
+        "position": [
+          0.424390243902439,
+          0.4
+        ]
+      },
+      "0e3ba392-4e07-479b-a71d-b4af13dfee3b": {
+        "id": "0e3ba392-4e07-479b-a71d-b4af13dfee3b",
+        "position": [
+          0.9365853658536586,
+          -0.13658536585365855
+        ]
+      }
+    },
+    "fills": {},
+    "offsets": {}
+  },
+  "snapshots": [
+    {
+      "id": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+      "name": "View 1",
+      "kind": "view",
+      "angle": {
+        "x": 0,
+        "y": 0
+      },
+      "layers": [
+        {
+          "id": "6b714f42-dc27-46cd-bfe6-8d94410a948d",
+          "name": "图层2",
+          "visible": true,
+          "locked": false,
+          "items": [
+            "d5fed239-1cbe-468c-b0af-8d1fd109d37b"
+          ],
+          "kind": "original"
+        },
+        {
+          "id": "bdc7518e-5e13-456a-a810-40b0f1844b57",
+          "name": "图层1",
+          "visible": true,
+          "locked": false,
+          "items": [
+            "588999f8-d97b-4738-b2f2-d9d5f9e3d09c"
+          ],
+          "kind": "original"
+        }
+      ],
+      "relations": {
+        "endpointLinks": {
+          "add": [
+            {
+              "id": "33987cb5-68eb-492d-8f58-538eed3835c9",
+              "a": {
+                "curveId": "d5fed239-1cbe-468c-b0af-8d1fd109d37b",
+                "end": 0,
+                "distance": 1.5303564783248688e-05
+              },
+              "b": {
+                "curveId": "588999f8-d97b-4738-b2f2-d9d5f9e3d09c",
+                "end": 1,
+                "distance": 2.6146268102446456e-05
+              }
+            }
+          ]
+        },
+        "displayIntervals": {
+          "add": [
+            {
+              "id": "b126e469-9ffd-4391-86f5-c24fa141dbc1",
+              "anchor": {
+                "id": "d5fed239-1cbe-468c-b0af-8d1fd109d37b",
+                "reverse": true
+              },
+              "ranges": [
+                {
+                  "id": "d35f10f8-a329-4795-b058-542dc0ffa047",
+                  "mode": "SHOW",
+                  "start": 0.3333333333333333,
+                  "end": 0.6666666666666666,
+                  "inkEnds": [
+                    {
+                      "taperWidthScale": 20
+                    },
+                    {
+                      "taperWidthScale": 20
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "deformation": {
+        "warps": [],
+        "bindings": [],
+        "layers": {
+          "6b714f42-dc27-46cd-bfe6-8d94410a948d": {
+            "shape": {
+              "nodes": {},
+              "handles": {
+                "d5fed239-1cbe-468c-b0af-8d1fd109d37b": [
+                  [
+                    -0.40803393852394126,
+                    -0.40803393852394143
+                  ],
+                  [
+                    -0.08685237101378251,
+                    0.0723769758448187
+                  ]
+                ]
+              }
+            }
+          },
+          "bdc7518e-5e13-456a-a810-40b0f1844b57": {
+            "shape": {
+              "nodes": {},
+              "handles": {
+                "588999f8-d97b-4738-b2f2-d9d5f9e3d09c": [
+                  [
+                    0.1707317073170732,
+                    0.12195121951219512
+                  ],
+                  [
+                    0.12697781853773787,
+                    -0.12697781853773793
+                  ]
+                ]
+              }
+            }
+          }
+        },
+        "relationPositions": {
+          "4147c709-c07d-443c-aa59-dff15be56410": {
+            "sourceLinkIds": [
+              "33987cb5-68eb-492d-8f58-538eed3835c9"
+            ],
+            "offset": [
+              0.3048780487804878,
+              0.14634146341463417
+            ]
+          }
+        }
+      },
+      "authored": []
+    },
+    {
+      "id": "47851b74-c6d3-4991-9e34-f88506422142",
+      "name": "Placeholder 0°, -90°",
+      "kind": "view",
+      "angle": {
+        "x": 0,
+        "y": -90
+      },
+      "layers": [
+        {
+          "kind": "reference",
+          "id": "6b714f42-dc27-46cd-bfe6-8d94410a948d",
+          "name": "图层2",
+          "baseSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+          "baseLayerId": "6b714f42-dc27-46cd-bfe6-8d94410a948d"
+        },
+        {
+          "kind": "reference",
+          "id": "bdc7518e-5e13-456a-a810-40b0f1844b57",
+          "name": "图层1",
+          "baseSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+          "baseLayerId": "bdc7518e-5e13-456a-a810-40b0f1844b57"
+        }
+      ],
+      "relations": {},
+      "deformation": {
+        "warps": [],
+        "bindings": [],
+        "layers": {},
+        "relationPositions": {}
+      },
+      "authored": [],
+      "parentSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+      "parentLayers": {}
+    },
+    {
+      "id": "30733f6b-27be-478e-8a5e-f0304bc3c403",
+      "name": "Placeholder 0°, 90°",
+      "kind": "view",
+      "angle": {
+        "x": 0,
+        "y": 90
+      },
+      "layers": [
+        {
+          "kind": "reference",
+          "id": "6b714f42-dc27-46cd-bfe6-8d94410a948d",
+          "name": "图层2",
+          "baseSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+          "baseLayerId": "6b714f42-dc27-46cd-bfe6-8d94410a948d"
+        },
+        {
+          "kind": "reference",
+          "id": "bdc7518e-5e13-456a-a810-40b0f1844b57",
+          "name": "图层1",
+          "baseSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+          "baseLayerId": "bdc7518e-5e13-456a-a810-40b0f1844b57"
+        }
+      ],
+      "relations": {},
+      "deformation": {
+        "warps": [],
+        "bindings": [],
+        "layers": {},
+        "relationPositions": {}
+      },
+      "authored": [],
+      "parentSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+      "parentLayers": {}
+    }
+  ],
+  "recordings": [
+    {
+      "id": "dc557247-caba-4d87-8d03-87f9b445235f",
+      "name": "QA v60 局部贯通",
+      "angle": {
+        "x": 0,
+        "y": 0
+      },
+      "snapshotIds": [
+        "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+        "47851b74-c6d3-4991-9e34-f88506422142",
+        "30733f6b-27be-478e-8a5e-f0304bc3c403"
+      ],
+      "tracks": [],
+      "activeSnapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+      "mode": "triangulated",
+      "angleGraph": {
+        "version": 1,
+        "mesh": {
+          "version": 1,
+          "vertices": [
+            {
+              "id": "snapshot-vertex:\"aeba7fd1-b0eb-4668-b42f-5be75904e38d\"",
+              "snapshotId": "aeba7fd1-b0eb-4668-b42f-5be75904e38d",
+              "angle": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "snapshot-vertex:\"47851b74-c6d3-4991-9e34-f88506422142\"",
+              "snapshotId": "47851b74-c6d3-4991-9e34-f88506422142",
+              "angle": {
+                "x": 0,
+                "y": -90
+              }
+            },
+            {
+              "id": "snapshot-vertex:\"30733f6b-27be-478e-8a5e-f0304bc3c403\"",
+              "snapshotId": "30733f6b-27be-478e-8a5e-f0304bc3c403",
+              "angle": {
+                "x": 0,
+                "y": 90
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "snapshot-edge:[\"snapshot-vertex:\\\"30733f6b-27be-478e-8a5e-f0304bc3c403\\\"\",\"snapshot-vertex:\\\"aeba7fd1-b0eb-4668-b42f-5be75904e38d\\\"\"]",
+              "vertexIds": [
+                "snapshot-vertex:\"30733f6b-27be-478e-8a5e-f0304bc3c403\"",
+                "snapshot-vertex:\"aeba7fd1-b0eb-4668-b42f-5be75904e38d\""
+              ]
+            },
+            {
+              "id": "snapshot-edge:[\"snapshot-vertex:\\\"47851b74-c6d3-4991-9e34-f88506422142\\\"\",\"snapshot-vertex:\\\"aeba7fd1-b0eb-4668-b42f-5be75904e38d\\\"\"]",
+              "vertexIds": [
+                "snapshot-vertex:\"47851b74-c6d3-4991-9e34-f88506422142\"",
+                "snapshot-vertex:\"aeba7fd1-b0eb-4668-b42f-5be75904e38d\""
+              ]
+            }
+          ],
+          "triangles": []
+        },
+        "edgeResponses": {},
+        "triangleResponses": {}
+      }
+    }
+  ],
+  "activeRecordingId": "dc557247-caba-4d87-8d03-87f9b445235f"
+}
