@@ -1,5 +1,7 @@
 import type {DrawingDocument,DrawingNode,DrawingCurve,FillRegion,OffsetRelation,DrawingLayer,TangentJoin,EndpointLink,DrawingGroup,StrokeDisplayIntervals,Point2} from '../drawing/model';
 import type {RecordingScene,ScenePlacementValue,SceneShapeValue,SceneIntervalValue,SceneTrack,WarpGrid,Angle} from '../recordingScene/model';
+import type {SnapshotTriangulation} from './triangulation';
+import type {InteriorResponseSample} from './triangularResponses';
 
 export type {Angle,WarpGrid,ScenePlacementValue,SceneShapeValue,SceneIntervalValue};
 
@@ -15,6 +17,9 @@ export interface ReferencedSnapshotLayer {
  kind:'reference';id:string;name:string;
  /** The parent is evaluated at its own saved state, never at the child's angle. */
  baseSnapshotId:string;baseLayerId:string;
+ /** Child-only membership. Missing means full live inheritance. Geometry stays
+  * canonical; excluding an ID never deletes its parent or stored original. */
+ membership?:{addElementIds?:string[];excludeElementIds?:string[]};
 }
 export type SnapshotLayer=OriginalSnapshotLayer|ReferencedSnapshotLayer;
 export interface SnapshotRelationCollection {
@@ -73,7 +78,9 @@ export interface SnapshotSourceMetadata {
 }
 export interface RecordingSnapshot {
  id:string;name:string;kind:'drawing'|'sculpt'|'view'|'assembly';
- /** Saved evaluation coordinates, including static parents of another view. */
+ /** The sole semantic parent. Layer source addresses remain provenance. */
+ parentSnapshotId?:string;
+ /** Legacy evaluation adapter. A triangulated recorder owns its vertex angles. */
  angle:Angle;
  /** One ordered ownership list; there is no separate sorting container. */
  layers:SnapshotLayer[];
@@ -89,8 +96,9 @@ export interface RecordingSnapshot {
 export interface SnapshotRecording {
  id:string;name:string;angle:Angle;snapshotIds:string[];activeSnapshotId?:string;tolerance?:number;
  /** Explicit opt-in. Missing mode retains sparse pose-track evaluation. */
- mode?:'tracks'|'endpoint-pair';
+ mode?:'tracks'|'endpoint-pair'|'triangulated';
  endpointPair?:SnapshotEndpointPair;
+ angleGraph?:SnapshotAngleGraph;
  /** Sole authority for authored sparse angle values; snapshots only refer to keys. */
  tracks:SnapshotPoseTrack[];
  /** A curve/layer-owned response between two saved views. This never authors
@@ -115,6 +123,40 @@ export interface SnapshotEndpointPair {
  /** Editing constraints remain separate from saved scalar responses. */
  draft?:{angle:Angle;responses:SnapshotEndpointResponses};
 }
+/** Scalar constraints in the owning triangle's persisted vertex order. */
+export interface SnapshotTriangleControlResponse {x?:InteriorResponseSample[];y?:InteriorResponseSample[]}
+export interface SnapshotTriangleResponses {
+ nodes:Record<string,SnapshotTriangleControlResponse>;
+ /** Each handle is relative to its resolved node, H-P. */
+ handles:Record<string,[SnapshotTriangleControlResponse,SnapshotTriangleControlResponse]>;
+}
+/** Recorder-owned editing frame, never a snapshot or a geometric mesh vertex.
+ * Draft collections replace the corresponding saved simplex response. */
+export interface SnapshotCorrectionFrame {
+ id:string;angle:Angle;status:'saved'|'draft';
+ edgeResponses?:Record<string,SnapshotEndpointResponses>;
+ triangleResponses?:Record<string,SnapshotTriangleResponses>;
+}
+/** Keep the exact old coordinate frame with retired constraints. Recovery does
+ * not silently attach them to an unrelated live edge or triangle. */
+export interface SnapshotOrphanedResponses {
+ id:string;reason:'deleted-view'|'mesh-change'|'unhandled-rebind';message:string;
+ mesh:SnapshotTriangulation;
+ edgeResponses:Record<string,SnapshotEndpointResponses>;
+ triangleResponses:Record<string,SnapshotTriangleResponses>;
+ correctionFrames?:SnapshotCorrectionFrame[];
+}
+export interface SnapshotAngleGraph {
+ version:1;mesh:SnapshotTriangulation;
+ /** Every shared edge has the sole orientation saved in mesh.edges. */
+ edgeResponses:Record<string,SnapshotEndpointResponses>;
+ triangleResponses:Record<string,SnapshotTriangleResponses>;
+ correctionFrames?:SnapshotCorrectionFrame[];
+ orphanedResponses?:SnapshotOrphanedResponses[];
+ /** Recovery evidence. The original recording and real snapshots also remain
+  * in the workspace, byte-for-byte unchanged by copy migration. */
+ migration?:{sourceRecordingId:string;sourceMode:'endpoint-pair';sourceRecordingJSON:string;sourceSnapshotsJSON:string};
+}
 export interface SnapshotInterpolationWeight {
  id:string;target:{layerId:string;curveId?:string};startSnapshotId:string;endSnapshotId:string;
  /** Monotone control points in normalized progress/weight coordinates. The
@@ -134,7 +176,7 @@ export interface SnapshotPoseTrackIndex {
  channel:SnapshotPoseChannel;targetId:string;elementId?:string;
  interpolation:'independent'|'legacy';keys:SnapshotPoseKeyRef[];
 }
-export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'POSE'|'ROUTE';
+export type SnapshotDiagnosticCode='MISSING_SNAPSHOT'|'MISSING_LAYER'|'MISSING_ELEMENT'|'MISSING_RELATION'|'RELATION_CONFLICT'|'BRANCH_CONFLICT'|'SNAPSHOT_CYCLE'|'LEGACY_READ_ONLY'|'SOURCE_MATERIAL'|'LOCAL_ORIGINAL'|'POSE'|'ROUTE';
 export interface SnapshotDiagnostic {code:SnapshotDiagnosticCode;message:string;snapshotId?:string;layerId?:string;elementId?:string;channelId?:string}
 /** Path records distinguish equal geometry from conflicting parent states. */
 export interface SnapshotElementProvenance {elementId:string;sourceSnapshotId:string;path:string[]}

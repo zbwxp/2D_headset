@@ -1,3 +1,5 @@
+import {validateSnapshotLocalMembership} from './localMembership';
+import {validateSnapshotAngleGraph} from './angleGraph';
 import {validateSnapshotInterpolationWeight} from './weights';
 import {sameAngle,type Angle} from '../vectorRecording/interpolation';
 import {finitePoint} from '../drawing/model';
@@ -45,6 +47,11 @@ function endpointResponses(responses:SnapshotEndpointResponses):void {
 }
 export function validateSnapshotGraph(workspace:RecordingSnapshotWorkspace):void {
  const nodes=new Map(workspace.snapshots.map(s=>[s.id,s])),done=new Set<string>(),visiting=new Set<string>();
+ // Semantic ancestry is one independent chain. Layer source addresses below
+ // still need acyclic provenance resolution, but are not semantic parents.
+ const parentsDone=new Set<string>(),parentsVisiting=new Set<string>();
+ const visitParent=(snapshot:RecordingSnapshot)=>{if(parentsVisiting.has(snapshot.id))fail(`snapshot parent cycle at ${snapshot.id}`);if(parentsDone.has(snapshot.id))return;parentsVisiting.add(snapshot.id);if(snapshot.parentSnapshotId!==undefined){if(!id(snapshot.parentSnapshotId)||!nodes.has(snapshot.parentSnapshotId))fail('missing snapshot parent');visitParent(nodes.get(snapshot.parentSnapshotId)!);}parentsVisiting.delete(snapshot.id);parentsDone.add(snapshot.id);};
+ for(const snapshot of workspace.snapshots)visitParent(snapshot);
  const visit=(snapshot:RecordingSnapshot)=>{if(visiting.has(snapshot.id))fail(`snapshot cycle at ${snapshot.id}`);if(done.has(snapshot.id))return;visiting.add(snapshot.id);for(const layer of snapshot.layers)if(layer.kind==='reference'){const parent=nodes.get(layer.baseSnapshotId);if(parent)visit(parent);}visiting.delete(snapshot.id);done.add(snapshot.id);};
  for(const snapshot of workspace.snapshots)visit(snapshot);
 }
@@ -58,7 +65,7 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
  for(const snapshot of workspace.snapshots){
   if(typeof snapshot.name!=='string'||!['drawing','sculpt','view','assembly'].includes(snapshot.kind)||!angle(snapshot.angle)||!Array.isArray(snapshot.layers)||!record(snapshot.relations)||!Array.isArray(snapshot.authored))fail('snapshot');
   unique(snapshot.layers.map(l=>l.id),'snapshot layer');
-  for(const layer of snapshot.layers){if(typeof layer.name!=='string')fail('layer name');if(layer.kind==='original'){if(!Array.isArray(layer.items))fail('original layer');unique(layer.items,'original member');}else if(layer.kind==='reference'){if(!id(layer.baseSnapshotId)||!id(layer.baseLayerId))fail('base reference');}else fail('layer kind');}
+  for(const layer of snapshot.layers){if(typeof layer.name!=='string')fail('layer name');if(layer.kind==='original'){if(!Array.isArray(layer.items))fail('original layer');unique(layer.items,'original member');}else if(layer.kind==='reference'){if(!id(layer.baseSnapshotId)||!id(layer.baseLayerId))fail('base reference');if(layer.membership!==undefined){if(!record(layer.membership)||Object.keys(layer.membership).some(key=>key!=='addElementIds'&&key!=='excludeElementIds'))fail('local membership');for(const values of [layer.membership.addElementIds,layer.membership.excludeElementIds])if(values!==undefined&&(!Array.isArray(values)||values.length>16384||values.some(value=>!id(value))))fail('local membership IDs');validateSnapshotLocalMembership(layer.membership);}}else fail('layer kind');}
   for(const patch of Object.values(snapshot.relations)){if(!record(patch))fail('relation patch');for(const operation of ['add','update','disable'] as const)if(patch[operation]!==undefined&&!Array.isArray(patch[operation]))fail('relation operation');for(const operation of ['add','update'] as const){const values=patch[operation] as {id:string}[]|undefined;if(values)unique(values.map(v=>v?.id),'relation');}if(patch.disable)unique(patch.disable as string[],'disabled relation');}
   deformation(snapshot.deformation);if(snapshot.inheritedState)deformation(snapshot.inheritedState);
   for(const ref of snapshot.authored)if(!id(ref.trackId)||!id(ref.keyId))fail('authored reference');
@@ -66,7 +73,14 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
  }
  for(const recording of workspace.recordings){
   if(typeof recording.name!=='string'||!angle(recording.angle)||!Array.isArray(recording.snapshotIds)||!Array.isArray(recording.tracks))fail('recording');unique(recording.snapshotIds,'recording snapshot');unique(recording.tracks.map(t=>t.id),'track');
-  if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair')fail('recording mode');
+  if(recording.mode!==undefined&&recording.mode!=='tracks'&&recording.mode!=='endpoint-pair'&&recording.mode!=='triangulated')fail('recording mode');
+  if(recording.mode==='triangulated'){
+   if(!recording.angleGraph)fail('triangulated recording requires an angle graph');
+   if(recording.legacy||recording.interpolationWeights?.length)fail('triangulated recording cannot carry active legacy interpolation assets');
+   validateSnapshotAngleGraph(recording.angleGraph!);
+   const vertices=recording.angleGraph!.mesh.vertices;
+   if(vertices.length!==recording.snapshotIds.length||vertices.some(vertex=>!recording.snapshotIds.includes(vertex.snapshotId)))fail('angle graph must bind every real recording snapshot exactly once');
+  }else if(recording.angleGraph!==undefined)fail('angle graph requires explicit triangulated mode');
   if(recording.mode==='endpoint-pair'){
    const pair=recording.endpointPair;if(!pair||pair.axis!=='x'||!id(pair.startSnapshotId)||!id(pair.endSnapshotId)||pair.startSnapshotId===pair.endSnapshotId)fail('endpoint pair');
    if(recording.legacy||recording.interpolationWeights?.length)fail('endpoint pair cannot carry legacy or old interpolation assets');
