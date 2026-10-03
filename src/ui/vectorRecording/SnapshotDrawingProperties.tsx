@@ -1,8 +1,10 @@
+import PaintOrderControls,{reorderDrawingSelection} from '../drawing/PaintOrderControls';
+import DepthControls from '../drawing/DepthControls';
 import MirrorEditingControls from '../drawing/MirrorEditingControls';
 import SelectionNameControls from '../drawing/SelectionNameControls';
 import {SelectionTransformControls,CurveObjectActions,CurveLayerControl,type DrawingPropertyTransform} from '../drawing/SelectionPropertyControls';
 import {selectionBounds} from '../drawing/geometry';
-import EndpointPropertyControls from '../drawing/EndpointPropertyControls';
+import EndpointPropertyControls,{endpointPropertyTracks} from '../drawing/EndpointPropertyControls';
 import {useState} from 'react';
 import {ChevronDown,ChevronRight} from 'lucide-react';
 import type {DrawingDocument,Point2} from '../../domain/drawing/model';
@@ -31,15 +33,17 @@ export default function SnapshotDrawingProperties({drawing:d,selection,choose,ru
  {!propertiesEditable&&disabledReason&&<p className="drawing-muted" data-testid="snapshot-property-ownership">{disabledReason}</p>}
  {!paint&&<><CurveControlSelection d={d} selection={selection} choose={choose}/><CurvePointControls d={d} selection={selection} run={run} disabled={disabled||!geometryEditable} onPosition={onPosition}/></>}
  <fieldset disabled={!propertiesEditable} className="snapshot-properties-fields">
- {!paint&&<SelectionNameControls d={d} selection={{...selection,ids}} run={run} choose={choose} disabled={disabled} topologyEditable={false}/>}
+ {!paint&&<SelectionNameControls d={d} selection={{...selection,ids}} run={run} choose={choose} disabled={disabled} topologyEditable={topologyEditable}/>}
  {!paint&&<><StrokeNameControl d={d} ids={ids} run={run} disabled={disabled}/><CurveWidthControl d={d} ids={ids} run={run} disabled={disabled}/></>}
  {d.joins.filter(join=>join.mode==='ARC'&&[join.a,join.b].some(endpoint=>ids.includes(endpoint.curveId))).map(join=><ArcControls key={join.id} d={d} join={join} run={run} preview={preview}/>)}
- <AppearanceControls d={d} selection={{...selection,ids}} run={run} choose={choose} preview={preview} capabilities={{create:topologyEditable,remove:topologyEditable,detach:topologyEditable,reorder:false,move:false,translation:translationEditable}}/>
+ <AppearanceControls d={d} selection={{...selection,ids}} run={run} choose={choose} preview={preview} capabilities={{create:topologyEditable,remove:topologyEditable,detach:topologyEditable,reorder:topologyEditable,move:topologyEditable,translation:translationEditable}}/>
+ {!paint&&ids.length===1&&!selection.layer&&!selection.group&&<DepthControls d={d} id={ids[0]} run={run}/>}
  </fieldset>
  {!paint&&bounds&&!selection.node&&!selection.handle&&<SelectionTransformControls center={bounds.center} transform={transform} disabled={disabled||!transformEditable}/> }
  {!paint&&<CurveObjectActions d={d} selection={{...selection,ids}} run={run} choose={choose} transform={transform} disabled={disabled||!transformEditable} topologyEditable={topologyEditable}/> }
- {!paint&&<CurveLayerControl d={d} ids={ids} run={run} disabled/>}
- {!paint&&intervalIds.map(id=><DisplayIntervalControls key={id} d={d} id={id} selection={selection} run={run} choose={choose} editable={intervalEditable} structureEditable={topologyEditable} appearanceEditable={propertiesEditable}/>)}
+ {!paint&&<CurveLayerControl d={d} ids={ids} run={run} disabled={disabled||!topologyEditable}/>}
+ {!paint&&(ids.length!==1||selection.layer||selection.group)&&<PaintOrderControls disabled={disabled||!topologyEditable} onReorder={direction=>run(()=>reorderDrawingSelection(d,{...selection,ids},direction))}/>}
+ {!paint&&intervalIds.map(id=><DisplayIntervalControls key={id} d={d} id={id} selection={selection} run={run} choose={choose} editable={intervalEditable} structureEditable={topologyEditable} appearanceEditable={propertiesEditable} handledRouteTrackIds={endpointPropertyTracks(d,selection).map(track=>track.id)}/>)}
  {!paint&&<EndpointPropertyControls d={d} selection={selection} run={run} choose={choose} tool={tool} editable={topologyEditable}/> }
  </div></section></DrawingPropertySessionProvider>;
 }

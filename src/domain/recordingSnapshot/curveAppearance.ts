@@ -10,12 +10,12 @@ import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
 export type SnapshotInkEndAppearance={[K in keyof InkEndStyle]?:InkEndStyle[K]|null};
 export interface SnapshotCurveAppearance {
  name?:string;width?:number;profile?:Profile|null;profileReverse?:boolean|null;strokeName?:string|null;inkVisible?:boolean|null;
- mist?:Partial<ContourMist>|null;
+ mist?:Partial<ContourMist>|null;depthOffset?:number|null;depthScope?:DrawingCurve['depthScope']|null;localPaintOrder?:boolean|null;
  inkEnds?:{start?:SnapshotInkEndAppearance;end?:SnapshotInkEndAppearance}|null;
 }
 export type SnapshotCurveAppearanceMap=Record<string,SnapshotCurveAppearance>;
-export const snapshotCurveAppearanceFields=['name','width','profile','profileReverse','strokeName','inkVisible','inkEnds','mist'] as const;
-const scalarFields=['name','width','profile','profileReverse','strokeName','inkVisible'] as const;
+export const snapshotCurveAppearanceFields=['name','width','profile','profileReverse','strokeName','inkVisible','inkEnds','mist','depthOffset','depthScope','localPaintOrder'] as const;
+const scalarFields=['name','width','profile','profileReverse','strokeName','inkVisible','depthOffset','depthScope','localPaintOrder'] as const;
 const inkFields=['taper','extension','taperWidthScale','interior'] as const;
 export const contourMistFields=['enabled','width','density','mode'] as const;
 export function validateContourMistPatch(value:unknown):void {
@@ -38,6 +38,9 @@ export function validateSnapshotCurveAppearance(value:unknown):asserts value is 
   if(p.name!==undefined&&(typeof p.name!=='string'||!p.name.trim()||p.name.length>256))fail();
   if(p.inkVisible!==undefined&&p.inkVisible!==null&&typeof p.inkVisible!=='boolean')fail();
   if(p.mist!==undefined&&p.mist!==null)validateContourMistPatch(p.mist);
+  if(p.depthOffset!==undefined&&p.depthOffset!==null&&(!Number.isSafeInteger(p.depthOffset)||Math.abs(p.depthOffset as number)>10000))fail();
+  if(p.depthScope!==undefined&&p.depthScope!==null&&!['PARENT','LAYER'].includes(String(p.depthScope)))fail();
+  if(p.localPaintOrder!==undefined&&p.localPaintOrder!==null&&typeof p.localPaintOrder!=='boolean')fail();
   if(p.width!==undefined&&(typeof p.width!=='number'||!Number.isFinite(p.width)||p.width<=0||p.width>1))fail();
   if(p.profile!==undefined&&p.profile!==null&&!['UNIFORM','TAPER_END','TAPER_BOTH','EYELID'].includes(String(p.profile)))fail();
   if(p.profileReverse!==undefined&&p.profileReverse!==null&&typeof p.profileReverse!=='boolean')fail();

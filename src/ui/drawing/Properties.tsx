@@ -1,6 +1,7 @@
+import PaintOrderControls,{reorderDrawingSelection} from './PaintOrderControls';
 import SelectionNameControls from './SelectionNameControls';
 import {SelectionTransformControls,CurveObjectActions,CurveLayerControl} from './SelectionPropertyControls';
-import EndpointPropertyControls from './EndpointPropertyControls';
+import EndpointPropertyControls,{endpointPropertyTracks} from './EndpointPropertyControls';
 import {CurveControlSelection,CurvePointControls,CurveWidthControl,StrokeNameControl} from './CurvePropertyControls';
 import type {ReactNode} from 'react';
 import type {DrawingCommandRun} from './endpointInteraction';
@@ -9,14 +10,13 @@ import {displayRouteFor} from '../../domain/drawing/displayIntervals';
 import MirrorEditingControls from './MirrorEditingControls';
 import {ChevronDown,ChevronRight} from 'lucide-react';
 import {curveById,layerFor,nodeAt,type DrawingDocument} from '../../domain/drawing/model';
-import {reorderLayers,setMirrorAxis} from '../../domain/drawing/commands';
+import {setMirrorAxis} from '../../domain/drawing/commands';
 import {strokeFor} from '../../domain/drawing/strokes';
 import ArcControls from './ArcControls';
 import DepthControls from './DepthControls';
 import DisplayIntervalControls from './DisplayIntervalControls';
 import AppearanceControls from './AppearanceControls';
-import {groupTree,selectedGroup} from '../../domain/drawing/groups';
-import {reorderPaint} from '../../domain/drawing/paintCommands';
+import {selectedGroup} from '../../domain/drawing/groups';
 import {selectionBounds} from './geometry';
 import {selectedLayers,type DrawingSelection} from './session';
 import {NumberField} from './Field';
@@ -35,15 +35,12 @@ export default function Properties({domainControls,open,setOpen,document:d,selec
  const route=ids.length?displayRouteFor(d,ids[0]):undefined,sharedRoute=!!route&&ids.every(id=>JSON.stringify(displayRouteFor(d,id))===JSON.stringify(route));
  const container=!s.node&&!s.handle&&!s.layer?selectedGroup(d,ids):undefined;
  const disabled=ids.some(id=>curveById(d,id).locked),ref=d.reference;
- function reorder(where:'up'|'down'|'top'|'bottom'){
-  if(layer){const index=d.layers.indexOf(layer),target=d.layers[where==='top'?0:where==='bottom'?d.layers.length-1:where==='up'?index-1:index+1];if(target)run(()=>reorderLayers(d,layer.id,target.id,where==='down'||where==='bottom'));return;}
-  if(!ids.length)return;const id=ids[0],list=groupTree(d,layerFor(d,id)!.id),current=container??strokeFor(d,id),index=list.findIndex(x=>x.id===current.id),target=list[where==='top'?0:where==='bottom'?list.length-1:where==='up'?index-1:index+1];if(target)run(()=>reorderPaint(d,id,target.id,where==='down'||where==='bottom'));
- }
+ const reorder=(where:'up'|'down'|'top'|'bottom')=>run(()=>reorderDrawingSelection(d,{...s,ids},where));
  return <section className="drawing-properties" aria-label={t('绘图属性')}><header><button className="drawing-properties-toggle" aria-expanded={open} aria-controls="drawing-properties-body" onClick={()=>setOpen(!open)}>{open?<ChevronDown size={14}/>:<ChevronRight size={14}/>}<strong>{t('属性')}</strong><span>{t(s.mirrorAxis?'镜像轴':s.displayInterval?'显示区间':s.inkEnd?'笔触端点':s.paint?(d.fills.some(f=>f.id===s.paint)?'填充区域':'偏移跟随'):s.reference?'参考图':s.handle?'控制柄':s.node?'共享端点':multiLayer?'图层多选':layer?'图层':container?'组合':oneGroup&&ids.length>1?'连续笔画':ids.length>1?'多选':'曲线')}</span></button></header>
  <div id="drawing-properties-body" className="drawing-properties-content" hidden={!open}>
  <MirrorEditingControls d={d} ids={ids} nodeId={s.node} run={run}/>
  {domainControls}
- {sharedRoute&&!oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose}/>}
+ {sharedRoute&&!oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose} handledRouteTrackIds={endpointPropertyTracks(d,s).map(track=>track.id)}/>}
  {multiLayer?<>
  <p>{layerIds.length} {t('个图层已选择')}</p>
  <p className="drawing-muted">{d.layers.filter(l=>layerIds.includes(l.id)).map(l=>l.name).join(' · ')}</p>
@@ -54,16 +51,16 @@ export default function Properties({domainControls,open,setOpen,document:d,selec
  {oneGroup&&<StrokeNameControl d={d} ids={ids} run={run} disabled={disabled}/>}
  {d.joins.filter(j=>j.mode==='ARC'&&[j.a,j.b].some(e=>ids.includes(e.curveId))&&(!s.node||nodeAt(d,j.a).id===s.node)).map(j=><ArcControls key={j.id} d={d} join={j} run={run} preview={preview}/>)}
  <CurvePointControls d={d} selection={s} run={run} disabled={disabled}/>
- {layer&&!ids.length&&<div className="drawing-property-actions">{(['top','up','down','bottom'] as const).map((dir,i)=><button key={dir} onClick={()=>reorder(dir)}>{t(['置顶','上移一层','下移一层','置底'][i])}</button>)}</div>}
+ {layer&&!ids.length&&<PaintOrderControls onReorder={reorder}/>}
  {ids.length>0&&<>
  <CurveWidthControl d={d} ids={ids} run={run} disabled={disabled}/>
  <AppearanceControls d={d} selection={s} run={run} choose={choose} preview={preview}/>
- {oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose}/>}
+ {oneGroup&&<DisplayIntervalControls d={d} id={ids[0]} selection={s} run={run} choose={choose} handledRouteTrackIds={endpointPropertyTracks(d,s).map(track=>track.id)}/>}
  {!point&&bounds&&<SelectionTransformControls center={bounds.center} disabled={disabled} transform={transform}/>}
  <CurveObjectActions d={d} selection={{...s,ids}} run={run} choose={choose} transform={transform} disabled={disabled}/>
  {c&&!s.layer&&!s.group&&<DepthControls d={d} id={c.id} run={run}/>}
  <CurveLayerControl d={d} ids={ids} run={run} disabled={disabled}/>
- {(!c||s.layer||s.group)&&<div className="drawing-property-actions">{(['top','up','down','bottom'] as const).map((dir,i)=><button key={dir} disabled={disabled} onClick={()=>reorder(dir)}>{t(['置顶','上移一层','下移一层','置底'][i])}</button>)}</div>}
+ {(!c||s.layer||s.group)&&<PaintOrderControls disabled={disabled} onReorder={reorder}/>}
  </>}
  <EndpointPropertyControls d={d} selection={s} run={run} choose={choose} tool={tool}/>
  {!ids.length&&!layer&&<><p>{t('当前绘制层')}：{d.layers.find(l=>l.id===active)?.name??'—'}</p><button onClick={upload}>{t('插入背景图')}</button><p className="drawing-muted">{t('P 连续绘线 · V 选择整笔 · A 编辑节点')}</p></>}

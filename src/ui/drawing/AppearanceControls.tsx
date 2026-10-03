@@ -1,3 +1,4 @@
+import PaintOrderControls from './PaintOrderControls';
 import PanelSection from '../shared/PanelSection';
 import {curveById,layerFor,type DrawingDocument as Doc,type FillRegion} from '../../domain/drawing/model';
 import {setInk,createFill,createOffset,changePaint,deletePaint,detachOffset,reorderPaint,movePaint} from '../../domain/drawing/paintCommands';
@@ -29,7 +30,7 @@ export default function AppearanceControls({d,selection,run,choose,preview,capab
     <button disabled={disabled||capabilities.detach===false||!!status.error} onClick={()=>run(()=>{const n=detachOffset(d,o!.id);choose({ids:n.ids});return n.document;})}>{t('转为独立曲线')}</button>
    </>}
    <button onClick={()=>choose({ids:(f?.boundary??o!.source).filter(x=>curveById(d,x.id)).map(x=>x.id)})}>{t('选择源边界')}</button>
-   <div className="drawing-property-actions">{(['top','up','down','bottom'] as const).map((dir,i)=><button key={dir} disabled={disabled||capabilities.reorder===false} onClick={()=>order(dir)}>{t(['置顶','上移一层','下移一层','置底'][i])}</button>)}</div>
+   <PaintOrderControls disabled={disabled||capabilities.reorder===false} onReorder={order}/>
    <label className="drawing-field">{t('移动到图层')}<select aria-label={t('移动到图层')} disabled={disabled||capabilities.move===false} value="" onChange={e=>run(()=>movePaint(d,obj.id,e.target.value))}><option value="">—</option>{d.layers.filter(l=>l!==layer).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
    <button disabled={disabled||capabilities.remove===false} onClick={()=>run(()=>{choose({ids:[]});return deletePaint(d,obj.id);})}>{t('删除')}</button>
   </div>;

@@ -194,8 +194,9 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   let basis=plans.flatMap(plan=>plan.frozen).find(value=>value.snapshotId===snapshot.id)?.saved.evaluation.source;
   if(snapshot.inputMirror){const mirror=snapshot.inputMirror;const curvePairs=mirror.curvePairs.flatMap(pair=>{const replacement=batch.mirrorPairs.find(value=>value.oldPairId===pair.id);return replacement?[replacement.left,replacement.right]:plans.some(plan=>pair.a===plan.intent.curveId||pair.b===plan.intent.curveId)?[]:[pair];});snapshot={...snapshot,inputMirror:{...mirror,curvePairs}};}
   for(const plan of plans){const {intent}=plan;
-   const layers=snapshot.layers.map(layer=>layer.kind==='reference'&&layer.membership?{...layer,membership:{...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);
-   snapshot={...snapshot,layers};if(!basis||!hasCurve(basis,intent.curveId))continue;
+   const layers=snapshot.layers.map(layer=>layer.kind==='reference'&&layer.membership?{...layer,membership:{...(layer.membership.orderOverride?{orderOverride:replaceId(layer.membership.orderOverride,intent)}:{}),...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);
+   const memberSources=snapshot.memberSources&&Object.hasOwn(snapshot.memberSources,intent.curveId)?Object.fromEntries(Object.entries(snapshot.memberSources).flatMap(([id,source])=>id===intent.curveId?intent.childCurveIds.map(id=>[id,source]):[[id,source]])):snapshot.memberSources;
+   snapshot={...snapshot,layers,...(memberSources?{memberSources}:{})};if(!basis||!hasCurve(basis,intent.curveId))continue;
    snapshot={...snapshot,...(snapshot.objectLocks?{objectLocks:splitSnapshotObjectLocks(snapshot.objectLocks,intent)}:{}),...(snapshot.nodeForks?{nodeForks:splitSnapshotNodeForks(snapshot.nodeForks,intent)}:{}),relations:remapRelations(snapshot.relations,basis,intent,snapshot.id===batch.sourceSnapshotId?snapshot:undefined),deformation:remapState(snapshot.deformation,basis,intent),...(snapshot.inheritedState?{inheritedState:remapState(snapshot.inheritedState,basis,intent)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:remapState(snapshot.draft.deformation,basis,intent)}}:{})};
    basis=split(basis,intent);
   }
@@ -235,7 +236,7 @@ export function splitSnapshotLocalCurve(before:RecordingSnapshotWorkspace,snapsh
  for(const id of intent.childCurveIds)workspace.library.curves[id]=clone(material.curves.find(curve=>curve.id===id)!);
  workspace.library.nodes[intent.seamNodeId]=clone(material.nodes.find(node=>node.id===intent.seamNodeId)!);
  const slot=local.layers.find(value=>value.id===layer.id)!;if(slot.kind!=='reference')throw Error('Local split layer changed.');
- slot.membership={addElementIds:[...(slot.membership?.addElementIds??[]).filter(id=>id!==intent.curveId),...intent.childCurveIds],excludeElementIds:[...new Set([...(slot.membership?.excludeElementIds??[]),intent.curveId])]};
+ slot.membership={...(slot.membership?.orderOverride?{orderOverride:replaceId(slot.membership.orderOverride,intent)}:{}),addElementIds:[...(slot.membership?.addElementIds??[]).filter(id=>id!==intent.curveId),...intent.childCurveIds],excludeElementIds:[...new Set([...(slot.membership?.excludeElementIds??[]),intent.curveId])]};
  if(local.objectLocks)local.objectLocks=splitSnapshotObjectLocks(local.objectLocks,intent);
  if(local.nodeForks)local.nodeForks=splitSnapshotNodeForks(local.nodeForks,intent,true);
  local.relations=remapRelations(local.relations,saved.evaluation.source,intent);

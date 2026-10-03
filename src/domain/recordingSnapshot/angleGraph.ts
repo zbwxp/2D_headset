@@ -142,7 +142,7 @@ export type SnapshotRecordingCopyResult=
 
 function cloneSnapshot(snapshot:RecordingSnapshot,ids:Record<string,string>):RecordingSnapshot {
  const next=structuredClone(snapshot),mapped=(id:string)=>own(ids,id)??id;
- next.id=mapped(snapshot.id);if(next.parentSnapshotId)next.parentSnapshotId=mapped(next.parentSnapshotId);
+ next.id=mapped(snapshot.id);if(next.parentSnapshotId)next.parentSnapshotId=mapped(next.parentSnapshotId);if(next.memberSources)next.memberSources=Object.fromEntries(Object.entries(next.memberSources).map(([id,source])=>[id,mapped(source)]));
  for(const layer of next.layers)if(layer.kind==='reference')layer.baseSnapshotId=mapped(layer.baseSnapshotId);
  for(const state of [next.deformation,next.inheritedState,next.draft?.deformation])if(state?.intervalMaterialIssues)for(const issue of Object.values(state.intervalMaterialIssues))issue.sourceSnapshotId=mapped(issue.sourceSnapshotId);
  return next;

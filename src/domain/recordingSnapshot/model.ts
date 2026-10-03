@@ -1,3 +1,4 @@
+import type {SnapshotDepthAppearanceContext} from './depthAppearance';
 import type {SnapshotMirrorMetadata} from './mirrorMetadata';
 import type {SnapshotObjectLocks} from './objectLocks';
 import type {SnapshotVisibilityRecipeRegistry} from './visibilityRestriction';
@@ -32,7 +33,7 @@ export interface ReferencedSnapshotLayer {
  baseSnapshotId:string;baseLayerId:string;
  /** Child-only membership. Missing means full live inheritance. Geometry stays
   * canonical; excluding an ID never deletes its parent or stored original. */
- membership?:{addElementIds?:string[];excludeElementIds?:string[]};
+ membership?:{addElementIds?:string[];excludeElementIds?:string[];orderOverride?:string[]};
 }
 export type SnapshotLayer=OriginalSnapshotLayer|ReferencedSnapshotLayer;
 export interface SnapshotRelationCollection {
@@ -111,6 +112,8 @@ export interface RecordingSnapshot {
  /** One ordered ownership list; there is no separate sorting container. */
  layers:SnapshotLayer[];
  relations:SnapshotRelationOverrides;
+ /** Sparse live source addresses for members moved between this snapshot’s layers. */
+ memberSources?:Record<string,string>;
  /** Snapshot-only shared-node authorities; original source topology stays live. */
  nodeAliases?:SnapshotNodeAliases;
  /** Explicit unbind identities, following their source endpoint before local shape. */
@@ -255,6 +258,8 @@ export interface SnapshotElementProvenance {
  elementId:string;sourceSnapshotId:string;path:string[];
  /** Runtime-only material address; never serialized with snapshot resources. */
  materialContext?:{elementId:string;idMap:Record<string,string>};
+ /** Runtime-only local depth ownership, reconstructed from sparse appearance. */
+ depthContext?:SnapshotDepthAppearanceContext;
 }
 export const emptyCanonicalElementStore=():CanonicalElementStore=>({nodes:{},curves:{},fills:{},offsets:{}});
 export const emptySnapshotDeformationState=():SnapshotDeformationState=>({warps:[],bindings:[],layers:{},relationPositions:{}});

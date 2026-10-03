@@ -1,3 +1,4 @@
+import {hasSnapshotLayerMemberEdit} from '../domain/recordingSnapshot/layerMemberEdit';
 import {setObjectState} from '../domain/drawing/objectState';
 import {currentDrawingPresentation} from './drawingSnapshotPresentation';
 import {writeLayerDomainOperation} from './layerDomainOperation';
@@ -109,6 +110,9 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
  const localCurves=new Set(before.curves.filter(curve=>localItems.has(curve.id)).map(curve=>curve.id));
  const localNodes=new Set(before.curves.filter(curve=>localCurves.has(curve.id)).flatMap(curve=>curve.nodes));
  const canonicalNext=remapDrawingIdentities(next,view.canonicalId),evaluation=view.evaluation;
+ if(stage==='full'&&hasSnapshotLayerMemberEdit(before,next)&&before.layers.some(layer=>localLayers.has(layer.id)&&!same(layer.items,next.layers.find(value=>value.id===layer.id)?.items))){
+  const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'snapshot-local-drawing',snapshotId:view.snapshotId,state:'saved',beforeDrawing:view.evaluation.drawing,drawing:canonicalNext});return {...plan,localWorkspace:plan.project.recordingSnapshots};
+ }
  if(stage==='full'){
   const snapshot=workspace!.snapshots.find(value=>value.id===view.snapshotId)!;
   const relation=intent?.kind==='snapshot-relation-authoring'?intent:undefined,nodeUnbind=intent?.kind==='snapshot-node-unbind'?intent:undefined;

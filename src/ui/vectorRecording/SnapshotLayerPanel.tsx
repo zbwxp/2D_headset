@@ -16,6 +16,7 @@ export interface SnapshotLayerPanelProps {
  selection:DrawingSelection;layerSelections?:readonly SnapshotLayerSelection[];
  onSelection:(selection:DrawingSelection,layerSelections?:SnapshotLayerSelection[],tool?:DrawingTool)=>void;
  editEnabled:boolean;canPaste:boolean;
+ onEdit?:(before:DrawingDocument,next:DrawingDocument)=>boolean;onError?:(message:string)=>void;onActiveLayer?:(layerId:string)=>void;
  structuralCommands?:{editable:boolean;disabledReason?:string;addLayer:()=>void;duplicateLayers:(ids:string[])=>void;deleteLayers:(ids:string[])=>void;deleteSelection:()=>void};
  onCut:(sources:SnapshotLayerClipboardSource[])=>void;
  onCopy:(sources:SnapshotLayerClipboardSource[])=>void;onPaste:()=>void;
@@ -54,6 +55,21 @@ export function snapshotLayerPanelModel(current:SnapshotPanelSource|undefined,so
  }
  return {drawing,sections,identities,currentSectionId,currentSnapshotId:current?.snapshotId};
 }
+/** Translate the shared sidebar command output exactly once. A displayed
+ * source section is read-only even when it reuses every canonical ID here. */
+export function snapshotPanelCanonicalEdit(model:SnapshotLayerPanelModel,current:SnapshotPanelSource,next:DrawingDocument):{drawing:DrawingDocument;model:SnapshotLayerPanelModel}{
+ if(model.currentSnapshotId!==current.snapshotId)throw Error('The current Snapshot section changed during this edit.');
+ const categories=['nodes','curves','fills','offsets','layers','joins','endpointLinks','groups','displayIntervals'] as const,identities=new Map(model.identities),same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+ for(const category of categories){const other=(values:readonly {id:string}[])=>values.filter(value=>{const owner=model.identities.get(value.id);return owner&&owner.snapshotId!==current.snapshotId;});if(!same(other(model.drawing[category]??[]),other(next[category]??[])))throw Error('Source sections are read-only. Move or order members only inside the current Snapshot.');}
+ const newLayers=next.layers.filter(layer=>!identities.has(layer.id));
+ for(const layer of newLayers){if(!layer.items.every(id=>identities.get(id)?.snapshotId===current.snapshotId))throw Error('A new current layer cannot take members from a source section.');identities.set(layer.id,{snapshotId:current.snapshotId,id:layer.id});}
+ for(const id of drawingIdentityIds(next))if(!identities.has(id))throw Error('The sidebar command created an unsupported object identity.');
+ const projected=emptyDrawing();for(const category of categories)(projected[category] as {id:string}[]|undefined)=((next[category]??[]) as {id:string}[]).filter(value=>identities.get(value.id)?.snapshotId===current.snapshotId);
+ const mapped=remapDrawingIdentities(projected,id=>{const ref=identities.get(id);if(!ref||ref.snapshotId!==current.snapshotId)throw Error('A current Snapshot member cannot depend on a displayed source-section identity.');return ref.id;});
+ const drawing={...current.drawing};for(const category of categories)Object.assign(drawing,{[category]:mapped[category]});
+ return {drawing,model:{...model,identities}};
+}
+
 const unique=(ids:string[])=>[...new Set(ids)];
 export function snapshotPanelCanonicalSelection(model:SnapshotLayerPanelModel,selection:DrawingSelection):{selection:DrawingSelection;layerSelections:SnapshotLayerSelection[]} {
  const canonical=(ids:readonly string[])=>unique(ids.flatMap(id=>{const ref=model.identities.get(id);return ref?[ref.id]:[];}));
@@ -82,15 +98,23 @@ export function snapshotPanelCachedPresentation(model:SnapshotLayerPanelModel,se
 }
 const ignore=()=>{};
 
-export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLockChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true,structuralCommands}:SnapshotLayerPanelProps){
+export default function SnapshotLayerPanel({current,sources,selection,layerSelections,onSelection,editEnabled,canPaste,onCut,onCopy,onPaste,onVisibilityChange,onLockChange,onLayerReorder,onSelectSnapshot,selectedSnapshotIds,headerActions,collapseSourcesByDefault=true,structuralCommands,onEdit,onError,onActiveLayer}:SnapshotLayerPanelProps){
  const zh=useLanguage(s=>s.language)==='zh';
  const model=useMemo(()=>snapshotLayerPanelModel(current,sources,zh?'当前视图':'Current view'),[current,sources,zh]);
  const recentSelection=useRef<SnapshotPanelSelectionCache|null>(null);
+ const running=useRef(false),pendingSelection=useRef<{selection:DrawingSelection;tool?:DrawingTool}|undefined>(undefined),pendingLayer=useRef<string|undefined>(undefined);
  // Preserve the exact shared-panel selection object on our own round trip, so
  // its single Ctrl/Shift anchor survives canonical ID translation.
  const presented=snapshotPanelCachedPresentation(model,selection,layerSelections,recentSelection.current);
- const choose=(next:DrawingSelection,tool?:DrawingTool)=>{const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections,tool);};
+ const choose=(next:DrawingSelection,tool?:DrawingTool)=>{if(running.current){pendingSelection.current={selection:next,tool};return;}const result=snapshotPanelCanonicalSelection(model,next);recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation:next};onSelection(result.selection,result.layerSelections,tool);};
  const enabled=editEnabled&&!!current;
+ const setLayer=(id:string)=>{if(running.current){pendingLayer.current=id;return;}const ref=model.identities.get(id);if(ref?.snapshotId===current?.snapshotId)onActiveLayer?.(ref!.id);};
+ const run=(operation:()=>DrawingDocument)=>{if(!enabled||!current||!structuralCommands?.editable||!onEdit)return;running.current=true;pendingSelection.current=undefined;pendingLayer.current=undefined;try{
+  const plan=snapshotPanelCanonicalEdit(model,current,operation());if(!onEdit(current.drawing,plan.drawing))return;
+  if(pendingLayer.current){const ref=plan.model.identities.get(pendingLayer.current);if(ref?.snapshotId===current.snapshotId)onActiveLayer?.(ref.id);}
+  const pending=pendingSelection.current as {selection:DrawingSelection;tool?:DrawingTool}|undefined;if(pending){const result=snapshotPanelCanonicalSelection(plan.model,pending.selection),row=(id:string)=>model.identities.has(id)?id:snapshotPanelRowId(current.snapshotId,plan.model.identities.get(id)!.id),selection=pending.selection,presentation={...selection,ids:selection.ids.map(row),...(selection.layers?{layers:selection.layers.map(row)}:{}),...(selection.layer?{layer:row(selection.layer)}:{}),...(selection.paintIds?{paintIds:selection.paintIds.map(row)}:{}),...(selection.paint?{paint:row(selection.paint)}:{}),...(selection.group?{group:row(selection.group)}:{})};recentSelection.current={currentSnapshotId:model.currentSnapshotId,canonicalKey:selectionKey(result.selection),layersKey:JSON.stringify(result.layerSelections),presentation};onSelection(result.selection,result.layerSelections,pending.tool);}
+ }catch(error){onError?.((error as Error).message);}finally{running.current=false;pendingSelection.current=undefined;pendingLayer.current=undefined;}};
+
  const isCurrent=(id:string)=>!!current&&model.identities.get(id)?.snapshotId===current.snapshotId;
  const canonicalCurrent=(ids:readonly string[])=>unique(ids.flatMap(id=>{const ref=model.identities.get(id);return ref&&ref.snapshotId===current?.snapshotId?[ref.id]:[];}));
  const currentSection=model.sections.find(section=>section.id===model.currentSectionId)!;
@@ -107,9 +131,9 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   </div>;
  };
  return <div className="scene-layer-panel snapshot-layer-panel drawing-sidebar" data-testid="snapshot-layer-panel"><LayerPanel
-  document={model.drawing} selection={presented} active={selectedLayers(presented).at(-1)??null} choose={choose} setLayer={ignore}
+  document={model.drawing} selection={presented} active={selectedLayers(presented).at(-1)??null} choose={choose} setLayer={setLayer}
   layerSections={model.sections} defaultCollapsedSectionIds={collapseSourcesByDefault?model.sections.filter(section=>section.id!==model.currentSectionId).map(section=>section.id):[]} layerOrder={Object.fromEntries(currentSection.layerIds.map((id,index)=>[id,index+1]))}
-  poseMode structuralReadOnly editEnabled={enabled} headerActions={headerActions} sectionActions={clipboard}
+  poseMode structuralReadOnly={!structuralCommands?.editable||!onEdit} editEnabled={enabled} headerActions={headerActions} sectionActions={clipboard}
   structuralCommands={structuralCommands?{canEditSection:section=>structuralCommands.editable&&section.id===model.currentSectionId,addLayer:section=>{if(structuralCommands.editable&&section.id===model.currentSectionId)structuralCommands.addLayer();},duplicateLayers:ids=>{if(structuralCommands.editable&&ids.every(isCurrent))structuralCommands.duplicateLayers(canonicalCurrent(ids));},deleteLayers:ids=>{if(structuralCommands.editable&&ids.every(isCurrent))structuralCommands.deleteLayers(canonicalCurrent(ids));},deleteSelection:()=>{if(canDelete)structuralCommands.deleteSelection();},canDeleteSelection:canDelete,disabledReason:structuralCommands.disabledReason}:undefined}
   canEditLayer={isCurrent} fillVisibilityKey={id=>isCurrent(id)?model.identities.get(id)!.id:id}
   sectionEmptyContent={section=>section.id===model.currentSectionId?<p className="drawing-empty" data-testid="snapshot-empty-view">{current?(structuralCommands?.editable?(zh?'新建图层后按 P 绘制，或从下方快照取图层引用。':'Create a layer and press P to draw, or take layer references from a source below.'):(zh?'从下方快照取图层引用，再粘贴到当前视图。':'Take layer references from a source below, then paste into this view.')):(zh?'先建立当前角度的视图，再编辑。':'Create a view at this angle to begin editing.')}</p>:null} emptyContent={null}
@@ -118,6 +142,6 @@ export default function SnapshotLayerPanel({current,sources,selection,layerSelec
   onLockChange={onLockChange?(ids,locked)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onLockChange(canonical,locked);}}:undefined}
   onVisibilityChange={onVisibilityChange?(ids,visible)=>{if(enabled&&ids.every(isCurrent)){const canonical=canonicalCurrent(ids);if(canonical.length)onVisibilityChange(canonical,visible);}}:undefined}
   onLayerReorder={onLayerReorder?(id,target,after)=>{if(enabled&&isCurrent(id)&&isCurrent(target))onLayerReorder(model.identities.get(id)!.id,model.identities.get(target)!.id,after);}:undefined}
-  run={ignore} openProperties={ignore} closeProperties={ignore} upload={ignore} deleteSelected={ignore} cutSelected={ignore} pasteSelected={ignore} canPaste={false}
+  run={run} openProperties={ignore} closeProperties={ignore} upload={ignore} deleteSelected={ignore} cutSelected={ignore} pasteSelected={ignore} canPaste={false}
  /></div>;
 }

@@ -4,11 +4,13 @@
 
 本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。v72 已完成下述有界真人验收，自动化覆盖与真人操作仍分别列明。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
 
+下一成员／深度候选已接主树并构建：`layerMemberEdit.ts` 识别纯组织操作，保留 canonical ID，以 `memberSources` 保留移动对象的实际 live 来源，引用层用 membership/orderOverride 表达新归属。源 Drawing 的 original→original 移动仍经原始资产适配器。当前视角列表直接调用共同 LayerPanel 命令并还原 canonical ID，来源列表继续只读；Group→层、曲线／填充／偏移移动、层内排序及局部 depth 属性均已启用。旧独立 LINK 区块已并入共同端点属性，显示区间入口保留。隔离组合 132 项通过、1 既有跳过，主树复跑 46 项和生产构建通过；尚待部署与真人列表拖动验收。Drawing 的原始拥有层混入借用成员仍需逐对象 authority overlay，未包括在此候选。
+
 当前真正开放的工程分为三组：
 
 1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
 2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；共同 `before → target` 事务 helper、镜像元信息和 UI 已发布，所列椭圆／属性／镜像／跨层 LINK 真人流程通过。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
-3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前尚无完整通道，不能把临时 capability 禁用宣布为完成。
+3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前 Recording／引用层通道和真实列表 adapter 已在上述候选接入；Drawing 原始拥有层混入借用成员的逐对象 authority 仍在后续，不能以禁用代替完成。
 
 待决定项独立列出：中间修正角曲边域对未来成员的程序语义、跨模式 Undo 旧 guard、旧 channel runtime 退役。单点/柄反推的零差轴、互相矛盾的真实连接目标、非有限透视映射是数值或约束边界；它们不等于上述未完成的工程适配。独立中间 Boolean 属性样本未新增；当前明确完成的中间属性是连续区间端点，其他 appearance 在真实 Snapshot 编辑。
 v68（`b04d5fa`）包含继承节点解绑、自有曲边域内 P/绑定、原生曲边独立副本及 Drawing/Recording 共用 cage controller/overlay。合并类型检查、生产构建与 42 项交叉测试通过。实际在真实 0° 眉层设置宽度 150%，拖曲边、切 A 拖柄 (+15, −12) 像素，最终控制点精确同移；Update/Undo/Redo 通过。域内 P 新线以局部成员和 postShape 保存，原稿不变，Undo 一笔恢复。
@@ -95,7 +97,7 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 1. 非线性 source split 的精确角度场、材料参数与后域修正候选：真实 60° 插入后 11/31/59.99/60/60.01/77 处几何及材料端点已由实现者报告通过，仍在最终 JSON/source 更新与交叉构建。尚未合入当前主树或发布。
 2. 继承拟合程序的局部新增／绑定／分割，以及分段家族部分成员排除或源删除，需同一 lineage 与 live 目标适配。任何现存 guard 仍是工程缺口，不能归类为数学不可解。
-3. 本轮共同 Drawing 工具、属性和原子目标已完成上述 v72 有界真人操作；成员移动、层内排序和深度编辑尚在独立候选中。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
+3. 本轮共同 Drawing 工具、属性和原子目标已完成上述 v72 有界真人操作；成员移动、层内排序和深度编辑已在上述独立候选中构建，等待真人验收。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
 4. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑已按上文实际证据关闭，不重复列为待实现。
 5. 中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增；已有连续区间响应和真实快照局部 appearance 不受影响。
 

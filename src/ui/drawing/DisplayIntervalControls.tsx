@@ -8,12 +8,12 @@ import type {DrawingSelection} from './session';
 import {NumberField} from './Field';
 import {uiText as t} from '../i18n';
 import type {DrawingCommandRun} from './endpointInteraction';
-export default function DisplayIntervalControls({d,id,selection,run:commit,choose,editable=true,structureEditable=true,appearanceEditable=true}:{d:Doc;id:string;selection:DrawingSelection;run:DrawingCommandRun;choose:(s:DrawingSelection)=>void;editable?:boolean;structureEditable?:boolean;appearanceEditable?:boolean}){
+export default function DisplayIntervalControls({d,id,selection,run:commit,choose,editable=true,structureEditable=true,appearanceEditable=true,handledRouteTrackIds=[]}:{d:Doc;id:string;selection:DrawingSelection;run:DrawingCommandRun;choose:(s:DrawingSelection)=>void;editable?:boolean;structureEditable?:boolean;appearanceEditable?:boolean;handledRouteTrackIds?:readonly string[]}){
  const run=(operation:()=>Doc)=>commit(operation,{kind:'relation-authoring'});
  const [newMode,setNewMode]=useState<DisplayIntervalMode>('SHOW');
  const path=displayPath(d,id),tracks=pathTracks(d,path),disabled=!editable||path.segments.some(x=>!objectEditable(d,x.id)),structureDisabled=disabled||!structureEditable,appearanceDisabled=disabled||!appearanceEditable,indices=new Map(tracks.flatMap(t=>t.ranges).map((r,i)=>[r.id,i+1]));
  return <PanelSection id="drawing.intervals" title="显示区间" className="drawing-display-intervals" testId="drawing-display-intervals">
- {tracks.filter(track=>track.scope!=='CURVE'&&(selection.displayInterval?.track===track.id||!selection.displayInterval&&tracks.find(t=>t.scope!=='CURVE')===track)).map(track=><DisplayRouteControls key={track.id} d={d} track={track} disabled={structureDisabled} run={run}/>)}
+ {tracks.filter(track=>!handledRouteTrackIds.includes(track.id)&&track.scope!=='CURVE'&&(selection.displayInterval?.track===track.id||!selection.displayInterval&&tracks.find(t=>t.scope!=='CURVE')===track)).map(track=><DisplayRouteControls key={track.id} d={d} track={track} disabled={structureDisabled} run={run}/>)}
  <DisplayCoverageBar d={d} id={id} selection={selection} choose={choose}/>
  <label className="drawing-field">{t('新增区间类型')}<select aria-label={t('新增区间类型')} value={newMode} disabled={structureDisabled} onChange={e=>setNewMode(e.target.value as DisplayIntervalMode)}><option value="SHOW">{t('显线区间')}</option><option value="HIDE">{t('断线区间')}</option></select></label>
  <button disabled={structureDisabled} onClick={()=>run(()=>{const n=addDisplayInterval(d,id,newMode),track=pathTracks(n,path).find(t=>!t.scope)!,range=track.ranges.at(-1)!;choose({ids:[id],displayInterval:{track:track.id,range:range.id,end:0}});return n;})}>{t('添加显示区间')}</button>

@@ -6,6 +6,8 @@ import type {RecordingSnapshotWorkspace} from './model';
 export interface SnapshotLocalMembership {
  addElementIds?:readonly string[];
  excludeElementIds?:readonly string[];
+ /** Listed live IDs keep this authored order; new parent members follow afterward. */
+ orderOverride?:readonly string[];
 }
 
 function uniqueIds(values:readonly string[],label:string):void {
@@ -14,7 +16,7 @@ function uniqueIds(values:readonly string[],label:string):void {
 
 export function validateSnapshotLocalMembership(membership:SnapshotLocalMembership):void {
  const added=membership.addElementIds??[],excluded=membership.excludeElementIds??[];
- uniqueIds(added,'Local additions');uniqueIds(excluded,'Local exclusions');
+ uniqueIds(added,'Local additions');uniqueIds(excluded,'Local exclusions');if(membership.orderOverride)uniqueIds(membership.orderOverride,'Local member order');
  if(added.some(id=>excluded.includes(id)))throw Error('An element cannot be both added and excluded in one membership patch.');
 }
 
@@ -28,7 +30,8 @@ export function resolveSnapshotLocalMembership(parentElementIds:readonly string[
  const excluded=new Set(membership.excludeElementIds),parent=new Set(parentElementIds);
  const inheritedElementIds=parentElementIds.filter(id=>!excluded.has(id));
  const localElementIds=(membership.addElementIds??[]).filter(id=>!parent.has(id));
- return {elementIds:[...inheritedElementIds,...localElementIds],inheritedElementIds,localElementIds};
+ const live=[...inheritedElementIds,...localElementIds],preferred=membership.orderOverride??[],positions=new Map(preferred.map((id,index)=>[id,index]));
+ return {elementIds:preferred.length?live.sort((a,b)=>(positions.get(a)??Infinity)-(positions.get(b)??Infinity)):live,inheritedElementIds,localElementIds};
 }
 
 /** Remove an ID from this reference only. Keep tombstones even if a parent
@@ -39,7 +42,7 @@ export function excludeSnapshotLocalMembers(membership:SnapshotLocalMembership,e
  const added=new Set(membership.addElementIds),removed=new Set(elementIds);
  const addElementIds=[...added].filter(id=>!removed.has(id));
  const excludeElementIds=[...new Set([...(membership.excludeElementIds??[]),...elementIds.filter(id=>!added.has(id))])];
- return {...(addElementIds.length?{addElementIds}:{}),...(excludeElementIds.length?{excludeElementIds}:{})};
+ return {...(addElementIds.length?{addElementIds}:{}),...(excludeElementIds.length?{excludeElementIds}:{}),...(membership.orderOverride?{orderOverride:membership.orderOverride.filter(id=>!removed.has(id))}:{})};
 }
 
 export type SnapshotMembershipCommand=
@@ -79,8 +82,12 @@ export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace
   layer.membership=excludeSnapshotLocalMembers(before,command.elementIds) as NonNullable<typeof layer.membership>;
  }else{
   const restored=new Set(command.elementIds),remaining=(before.excludeElementIds??[]).filter(id=>!restored.has(id));
-  layer.membership={...(before.addElementIds?.length?{addElementIds:[...before.addElementIds]}:{}),...(remaining.length?{excludeElementIds:remaining}:{})};
+  layer.membership={...(before.addElementIds?.length?{addElementIds:[...before.addElementIds]}:{}),...(remaining.length?{excludeElementIds:remaining}:{}),...(before.orderOverride?{orderOverride:[...before.orderOverride]}:{})};
  }
- if(!layer.membership.addElementIds?.length&&!layer.membership.excludeElementIds?.length)delete layer.membership;
+ if(!layer.membership.addElementIds?.length&&!layer.membership.excludeElementIds?.length&&!layer.membership.orderOverride?.length)delete layer.membership;
  return {createdNodeIds:[],removedIds:command.op==='excludeElements'?[...command.elementIds]:[]};
+}
+
+export function validateSnapshotMemberSources(value:unknown):asserts value is Record<string,string> {
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.entries(value).some(([id,source])=>!id||id.length>16384||typeof source!=='string'||!source||source.length>16384))throw Error('Invalid snapshot member source addresses.');
 }

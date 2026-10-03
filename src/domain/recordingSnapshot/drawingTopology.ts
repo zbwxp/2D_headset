@@ -1,6 +1,7 @@
 import {snapshotPaintAppearanceDifference,mergeSnapshotPaintAppearance,type SnapshotPaintAppearanceMap} from './paintAppearance';
 import {inverseAffine2D,applyAffine2DVector} from '../geometry/affine2d';
 import {snapshotControlMatrix} from './controlSpace';
+import {tryPrepareSnapshotLayerMemberEdit} from './layerMemberEdit';
 import {snapshotWithMirrorMetadata} from './mirrorMetadata';
 import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
 import {captureLayerDomainControls,layerUsesCage} from './layerDomainControlEdit';
@@ -96,6 +97,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // Metadata such as the artwork reference does not participate in geometry.
  const content=(drawing:DrawingDocument)=>[drawing.nodes,drawing.curves,drawing.layers,drawing.fills,drawing.offsets,drawing.joins,drawing.endpointLinks??[],drawing.groups??[],drawing.displayIntervals??[]];
  if(!same(content(current),content(edit.beforeDrawing)))return fail('STALE_TOPOLOGY_TARGET','The snapshot changed during this Drawing gesture. Start the gesture again on its current frame.');
+ const members=tryPrepareSnapshotLayerMemberEdit(before,snapshot,edit,evaluation);if(members)return members;
  const owned=new Set(current.curves.filter(curve=>evaluation.provenance[curve.id]?.sourceSnapshotId===snapshot.id&&!drawingSourceOwns(snapshot,curve.id)).map(curve=>curve.id));
  const parsed=parseDrawing(edit.drawing),fork=prepareSnapshotNodeUnbind(snapshot.id,evaluation.topologyInputDrawing,current,parsed,snapshot.nodeForks,snapshot.nodeAliases,edit.nodeUnbind),forkCurves=new Set(Object.values(fork.forks??{}).filter(value=>value.bind!==false).map(value=>value.curveId));
  const merged=prepareSnapshotNodeMerge(current,parsed,new Set([...owned].filter(id=>!forkCurves.has(id))),fork.aliases,fork.freshNodeIds),target=merged.drawing;
@@ -136,7 +138,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
   const membership=excludeSnapshotLocalMembers(prior.membership??{},removed.filter(id=>current.layers.find(value=>value.id===layer.id)?.items.includes(id)));
   const added=layer.items.filter(id=>!current.layers.find(value=>value.id===layer.id)?.items.includes(id));
   const addElementIds=[...new Set([...(membership.addElementIds??[]),...added])],excludeElementIds=(membership.excludeElementIds??[]).filter(id=>!addElementIds.includes(id));
-  return {...prior,name:layer.name,...(addElementIds.length||excludeElementIds.length?{membership:{...(addElementIds.length?{addElementIds}:{}),...(excludeElementIds.length?{excludeElementIds}:{})}}:{membership:undefined})};
+  return {...prior,name:layer.name,...(addElementIds.length||excludeElementIds.length||membership.orderOverride?.length?{membership:{...(membership.orderOverride?{orderOverride:[...layer.items]}:{}),...(addElementIds.length?{addElementIds}:{}),...(excludeElementIds.length?{excludeElementIds}:{})}}:{membership:undefined})};
  });
  // New material starts in this snapshot's input domain. Explicit child P in a
  // nonlinear layer uses a fixed input draft plus an authored output target.
