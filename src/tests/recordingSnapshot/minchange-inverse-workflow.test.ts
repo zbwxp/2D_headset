@@ -1,4 +1,4 @@
-import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan,drawingControlEditStats} from '../../domain/drawing/controlEditPlan';
 import {preparedControlChangesBetween} from '../../domain/recordingSnapshot/preparedControlChanges';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -205,4 +205,16 @@ it('planned 90-degree fallback records its expanded basis and solved protection 
  const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots!,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position,wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+.08,p[1]-.04]}),next=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:'surface',snapshotId:before.snapshotId,angle:recording(project).angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;
  near(evaluate(next).drawing,wanted);sourceAndZeroUnchanged(project,next);
  const changes=preparedControlChangesBetween(project.recordingSnapshots!,next.recordingSnapshots!,'surface');expect(changes).toBeDefined();expect(changes!.basisControls.get('side')).toContainEqual({kind:'node',nodeId:'b'});expect(changes!.basisControls.get('side')).toContainEqual({kind:'handle',curveId:'ear',end:1});expect(changes!.responseControls.length).toBeGreaterThan(0);expect(changes!.basisControls.get('side')!.some(control=>control.kind==='handle'&&control.curveId==='profile')).toBe(false);
+});
+
+it('a planned handle fallback includes linked authorities outside the grabbed curve',()=>{
+ const project=fixture(),workspace=project.recordingSnapshots!;workspace.library.nodes['0']={id:'0',position:[1,1]};delete workspace.library.nodes.p;workspace.library.curves.profile.nodes[0]='0';workspace.library.curves.profile.handles[0]=[1.2,1.3];
+ for(const snapshot of workspace.snapshots){snapshot.relations.endpointLinks={add:[{id:'linked',a:{curveId:'ear',end:1},b:{curveId:'profile',end:0}}]};const shape=snapshot.deformation.layers['profile-layer']?.shape;if(shape){shape.nodes['0']=[.5,1];delete shape.nodes.p;}}
+ const before=evaluateRecordingSnapshot(workspace,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),endpoint={curveId:'ear',end:0 as const},controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'handle',endpoint}),handle=before.drawing.curves.find(curve=>curve.id==='ear')!.handles[0],wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[handle[0]+.03,handle[1]-.02]}),next=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:'surface',snapshotId:before.snapshotId,angle:recording(project).angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;
+ near(evaluate(next).drawing,wanted);sourceAndZeroUnchanged(project,next);const changes=preparedControlChangesBetween(workspace,next.recordingSnapshots!,'surface')!;expect(changes.basisControls.get('side')).toContainEqual({kind:'node',nodeId:'0'});expect(changes.basisControls.get('side')).toContainEqual({kind:'handle',curveId:'profile',end:0});
+});
+
+it('repeated previews reuse one direct plan and one expanded 90-degree basis plan',()=>{
+ const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots!,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position;let compiled:number|undefined;
+ for(const delta of [.04,.08,.06]){const wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+delta,p[1]-.02]}),next=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:'surface',snapshotId:before.snapshotId,angle:recording(project).angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;near(evaluate(next).drawing,wanted);const count=drawingControlEditStats().plans;if(compiled===undefined)compiled=count;else expect(count).toBe(compiled);}
 });

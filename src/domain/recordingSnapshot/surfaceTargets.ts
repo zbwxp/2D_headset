@@ -240,7 +240,9 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
    updates.push({target,axis,weights:result.weights});
   }
  };
+ const authoredNodes=controlPlan?new Set(controlPlan.nodeIds):undefined;
  for(const node of wantedControls.nodes){
+  if(authoredNodes&&!authoredNodes.has(node.id))continue;
   const authority=authorities.get(node.id)!;
   if(!finitePoint(node.position))fail('SURFACE_INVALID_TARGET',`Node ${node.id} target must be finite.`);
   if(authority!==node.id){const position=wanted.nodes.get(authority)!;if(node.position.some((value,axis)=>changedScalar(value,position[axis])))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`Node ${node.id} conflicts with linked position authority ${authority}. Move the linked component together.`);continue;}

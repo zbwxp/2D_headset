@@ -28,3 +28,9 @@ it('unrelated material does not force geometry authoring to rescan all curves',(
 it('scalar producer cannot write outside its closure and copied descriptors carry no proof',()=>{
  const before=fixture(4),plan=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint:{curveId:'a',end:0}});expect(()=>applyDrawingControlWrites(plan,{nodePositions:new Map([['other40',[4,0] as Point2]])})).toThrow(/outside/);expect(()=>applyDrawingControlEditPlan({...plan},{kind:'point',position:[0,0]})).toThrow(/Unknown/);
 });
+
+it('Drawing transform keeps authored ARC edits while Recording controls retain the basis ARC',()=>{
+ const before=fixture();before.mirrorEditing=undefined;before.endpointLinks=[];before.curves[1].nodes[0]='a1';before.curves[1].handles[0]=[1.2,1.3];before.nodes=before.nodes.filter(node=>node.id!=='b0');before.joins=[{id:'arc',a:{curveId:'a',end:1},b:{curveId:'b',end:0},mode:'ARC',radius:.08}];const value={translation:[0,0] as Point2,rotation:0,scale:2},ids=['a','b'];
+ const drawingPlan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:ids}),drawingTarget=applyDrawingControlEditPlan(drawingPlan,{kind:'transform',value}),expected=transform(before,ids,p=>applyScenePlacement(value,p));expect(drawingTarget).toEqual(expected);expect(drawingTarget.curves).toHaveLength(before.curves.length);expect(drawingTarget.joins[0].radius).toBeCloseTo(.16,12);expect(drawingControlEditProof(before,drawingTarget,drawingPlan)).toBeUndefined();
+ const recordingPlan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:ids,preserveRelations:true}),recordingTarget=applyDrawingControlEditPlan(recordingPlan,{kind:'transform',value});expect(recordingTarget.joins).toBe(before.joins);expect(recordingTarget.curves.map(curve=>curve.handles)).toEqual(expected.curves.map(curve=>curve.handles));
+});

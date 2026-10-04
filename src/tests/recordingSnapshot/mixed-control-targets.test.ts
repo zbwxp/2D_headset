@@ -1,3 +1,6 @@
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
+import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit';
+import {preparedControlChangesBetween} from '../../domain/recordingSnapshot/preparedControlChanges';
 import type {EvaluatedMaterialStep} from '../../domain/drawing/materialProgram';
 import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {createLayerAffineIntent} from '../../domain/drawing/layerDomainIntent';
@@ -104,4 +107,10 @@ test('mixed A/V preserves a copied reflected material program and honors local o
  const before=evaluate(f.project),delta={translation:[.1,.2] as Point2,rotation:0,scale:1},wanted=transform(before.drawing,['own','plain'].map(id),p=>applyScenePlacement(delta,p),true,false),after=apply(f.project,[{op:'transformShapeElements',curveIds:['own','plain'].map(id),value:delta}]);sameControls(evaluate(after).drawing,wanted);
  const domain=evaluate(after).state.layerDomains![0];if(domain.kind==='h-coons')throw Error('Lost copied program');expect(domain.materialProgram).toEqual(program);expect(isLayerControlResponseDomain(domain)).toBe(false);
  const locked=apply(after,[{op:'setObjectLocks',objectIds:[id('plain')],locked:true}]),prior=JSON.stringify(locked);expect(()=>apply(locked,[{op:'transformShapeElements',curveIds:['own','plain'].map(id),value:delta}])).toThrow(/锁定/);expect(JSON.stringify(locked)).toBe(prior);
+});
+
+test.each(['link','shared'] as const)('planned %s capture does not claim native-only proof when it creates a common output domain',relation=>{
+ const f=fixture(relation),workspace=f.project.recordingSnapshots;for(const snapshot of workspace.snapshots)delete snapshot.deformation.layerDomains;const view=workspace.snapshots.find(snapshot=>snapshot.id==='view')!;view.deformation.layers.own={placement:{translation:[0,0],rotation:0,scale:2}};
+ const before=evaluateRecordingSnapshot(workspace,'recording',{useDraft:true,immutableInputs:true,diagnostics:'preview'});expect(before.state.layerDomains??[]).toHaveLength(0);const endpoint={curveId:id('own'),end:1 as const},handle=before.drawing.curves.find(curve=>curve.id===endpoint.curveId)!.handles[1],controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'handle',endpoint}),wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[handle[0]+.08,handle[1]-.04]}),after=prepareSnapshotDrawingToolEdit(snapshotEditContext(f.project,false),{recordingId:'recording',snapshotId:'view',angle:{x:0,y:0},beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;
+ sameControls(evaluate(after as typeof f.project).drawing,wanted);const domain=after.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id==='view')!.draft!.deformation.layerDomains!.find(isLayerControlResponseDomain)!;expect(domain.layerIds).toEqual(['own','plain']);expect(preparedControlChangesBetween(workspace,after.recordingSnapshots!,'recording')).toBeUndefined();
 });
