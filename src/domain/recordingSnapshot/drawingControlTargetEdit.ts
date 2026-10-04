@@ -2,7 +2,8 @@ import {uid,type DrawingDocument} from '../drawing/model';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
 import {evaluateRecordingSnapshot,resolveSnapshot,resolveRecordingSnapshotBasis,snapshotSurfaceBasesAtAngle,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
 import {assertSnapshotObjectsUnlocked} from './objectLocks';
-import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
+import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses,SnapshotSurfaceTargetEditError} from './surfaceTargets';
+import {prepareSnapshotSurfaceBasisFallback,SnapshotBasisFallbackError} from './surfaceBasisFallback';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type SnapshotRecording,type RecordingSnapshot,type Angle,type SnapshotAngleGraph} from './model';
 
 export class SnapshotDrawingControlTargetError extends Error {constructor(readonly code:string,message:string){super(message);}}
@@ -17,7 +18,7 @@ export interface SnapshotDrawingControlTarget {recordingId:string;snapshotId:str
 
 /** A frozen Drawing target is captured once, regardless of how many controls
  * its tool authored. Commands and Drawing tools share this write boundary. */
-export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean}={}):{snapshot?:RecordingSnapshot;graph?:SnapshotAngleGraph} {
+export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean}={}):{snapshot?:RecordingSnapshot;snapshots?:RecordingSnapshot[];graph?:SnapshotAngleGraph} {
  const current=evaluation.drawing;
 
  const nodes=new Map(current.nodes.map(node=>[node.id,node.position])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node.position]));
@@ -25,10 +26,19 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const graph=recording.mode==='triangulated'?recording.angleGraph:undefined,vertex=graph?.mesh.vertices.find(value=>value.angle.x===recording.angle.x&&value.angle.y===recording.angle.y);
  if(graph&&!vertex){
   const surface=evaluation.angleSurface;if(!surface?.simplex||surface.role==='outside')fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
-  const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:snapshotSurfaceBasesAtAngle(surface!,recording.angle),mirror:surface!.mirrorContext});
-  return result.changed?{graph:result.graph}:{};
+  try{
+   const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:snapshotSurfaceBasesAtAngle(surface!,recording.angle),mirror:surface!.mirrorContext});
+   return result.changed?{graph:result.graph}:{};
+  }catch(error){
+   if(!(error instanceof SnapshotSurfaceTargetEditError)||!['SURFACE_AXIS_UNAVAILABLE','SURFACE_CONSTRAINT_UNSOLVABLE'].includes(error.code))throw error;
+   try{return prepareSnapshotSurfaceBasisFallback(workspace,recording,evaluation,wanted,fresh,options);}catch(fallback){
+    if(fallback instanceof SnapshotBasisFallbackError&&fallback.code==='SURFACE_BASIS_FALLBACK_UNSUPPORTED')throw new SnapshotSurfaceTargetEditError(error.code,`${error.message} ${fallback.message}`);
+    throw fallback;
+   }
+  }
  }
  const owner=workspace.snapshots.find(value=>value.id===(vertex?.snapshotId??evaluation.snapshotId))??fail('MISSING_SNAPSHOT','The geometry target Snapshot no longer exists.');
+ if(graph?.correctionFrames?.some(frame=>frame.status==='draft'&&frame.basisAdjustment))fail('SURFACE_BASIS_DRAFT_OWNED','A coupled intermediate-angle correction is pending. Save or discard it before editing real views or their dependencies.');
  const bound=vertex?.angle??owner.angle;if(bound.x!==recording.angle.x||bound.y!==recording.angle.y)fail('REAL_SNAPSHOT_REQUIRED','Create a real snapshot at this angle before editing this Recording with Drawing tools.');
  const prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(evaluation,wanted,prior.deformation,fresh);
  if(deformation===prior.deformation)return {};
@@ -48,7 +58,6 @@ export function prepareSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  if(evaluation.snapshotId!==edit.snapshotId||snapshotDrawingEditSignature(evaluation.drawing)!==snapshotDrawingEditSignature(edit.beforeDrawing))fail('STALE_DRAWING_TARGET','The snapshot changed during this Drawing gesture. Start the gesture again on its current frame.');
  if(!same(controlStructure(evaluation.drawing),controlStructure(edit.drawing))||!same(edit.beforeDrawing.mirrorEditing?.curvePairs??[],edit.drawing.mirrorEditing?.curvePairs??[]))fail('CONTROL_TOPOLOGY_CHANGED','A geometry target must preserve topology, relations and appearance.');
  const result=captureSnapshotDrawingControlTarget(workspace,recording,evaluation,edit.drawing,uid,{immutableInputs:true});
- if(result.snapshot)return {...workspace,snapshots:workspace.snapshots.map(value=>value.id===result.snapshot!.id?result.snapshot!:value)};
- if(result.graph)return {...workspace,recordings:workspace.recordings.map(value=>value===recording?{...recording,angleGraph:result.graph}:value)};
- return workspace;
+ const writes=new Map([...result.snapshots??[],...result.snapshot?[result.snapshot]:[]].map(value=>[value.id,value]));
+ return writes.size||result.graph?{...workspace,...writes.size?{snapshots:workspace.snapshots.map(value=>writes.get(value.id)??value)}:{},...result.graph?{recordings:workspace.recordings.map(value=>value===recording?{...recording,angleGraph:result.graph}:value)}:{}}:workspace;
 }

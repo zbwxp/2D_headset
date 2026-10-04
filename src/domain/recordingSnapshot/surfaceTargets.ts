@@ -22,6 +22,8 @@ const sameWeights=(a:readonly number[],b:readonly number[])=>a.length===b.length
 const label=(target:SnapshotScalarTarget)=>target.kind==='node'?`Node ${target.nodeId}`:`Handle ${target.curveId} end ${target.end}`;
 const targetKey=(target:SnapshotScalarTarget,axis:0|1)=>JSON.stringify(target.kind==='node'?['node',target.nodeId,axis]:['handle',target.curveId,target.end,axis]);
 
+export const snapshotSurfaceOwnsBasisDraft=(graph:SnapshotAngleGraph|undefined,snapshotId:string)=>graph?.correctionFrames?.some(frame=>frame.status==='draft'&&frame.basisAdjustment?.snapshotIds.includes(snapshotId))??false;
+
 export type SnapshotSurfaceTargetEditErrorCode='SURFACE_AXIS_UNAVAILABLE'|'SURFACE_CONSTRAINT_UNSOLVABLE'|'OBJECT_DRAFT_AT_OTHER_ANGLE'|'SURFACE_ARC_BASIS_REQUIRED'|'SURFACE_CORRECTION_REQUIRES_INTERIOR'|'SURFACE_OUTSIDE_COVERAGE'|'SURFACE_INVALID_TARGET';
 export class SnapshotSurfaceTargetEditError extends Error {
  constructor(public readonly code:SnapshotSurfaceTargetEditErrorCode,message:string){super(message);this.name='SnapshotSurfaceTargetEditError';}

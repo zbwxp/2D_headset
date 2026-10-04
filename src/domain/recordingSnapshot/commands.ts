@@ -15,7 +15,7 @@ import type {SnapshotAngleGraph,SnapshotViewMirrorRelation} from './model';
 import {configuredSnapshotMirror,seedAutomaticExtremeSnapshots} from './automaticSnapshotEdits';
 import {createSnapshotAngleGraph,createTriangulatedRecordingCopy,reconcileSnapshotAngleGraphMesh} from './angleGraph';
 import {insertSnapshotVertex,removeSnapshotVertex,rebindSnapshotVertex,locateSnapshotSimplex} from './triangulation';
-import {effectiveSnapshotSurfaceResponses} from './surfaceTargets';
+import {effectiveSnapshotSurfaceResponses,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
 import {createSnapshotPropertyResponseSampler,prepareSnapshotPropertyTargetEdit,finishSnapshotPropertyDraft,SnapshotPropertyResponseError} from './propertyResponses';
 import {snapshotSimplexIntervalBasisValues} from './simplexMaterial';
 import {mergeSnapshotDeformation} from './tracks';
@@ -146,6 +146,8 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
  const boundAngle=(view:RecordingSnapshot)=>graph?.mesh.vertices.find(vertex=>vertex.snapshotId===view.id)?.angle??view.angle;
  const sameBinding=(a:Angle,b:Angle)=>graph?a.x===b.x&&a.y===b.y:sameAngle(a,b);
  const realVertex=()=>graph?.mesh.vertices.find(vertex=>sameBinding(vertex.angle,recording.angle));
+ const coupled=graph?.correctionFrames?.find(frame=>frame.status==='draft'&&frame.basisAdjustment);
+ if(coupled&&(['createSnapshot','deleteSnapshot','rebindSnapshotAngle','setViewMirror'].includes(op)||realVertex()&&!['setAngle','selectSnapshot','setTolerance','discardEndpointCorrection','updateEndpointCorrection'].includes(op)))fail('SURFACE_BASIS_DRAFT_OWNED','Return to the intermediate correction angle and save or discard its coupled basis and responses before editing real views or their dependencies.');
  const snapshot=()=>{const selectedId=realVertex()?.snapshotId??recording.activeSnapshotId,s=selectedId&&workspace.snapshots.find(s=>s.id===selectedId);return s||fail('NO_SNAPSHOT','Create or select a snapshot first.');};
  const ownedSnapshot=(value:unknown)=>{const s=findSnapshot(value);if(!recording.snapshotIds.includes(s.id))fail('NOT_FOUND','Snapshot does not belong to this Recording.');return s;};
  const layer=(value:unknown,s=snapshot())=>s.layers.find(l=>l.id===id(value,'layerId'))??fail('MISSING_LAYER','Layer does not exist in this snapshot.');
@@ -231,9 +233,21 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
  };
  const finishSurfaceDraft=(save:boolean,selected?:string[])=>{
   if(!recording.angleGraph)fail('SURFACE_REQUIRED','Select a triangulated Recording first.');
+  const pending=effectiveSnapshotSurfaceResponses(recording.angleGraph!).draft;
+  if(pending?.basisAdjustment){
+   if(selected&&pending.basisAdjustment.layerIds.some(id=>!selected?.includes(id)))fail('PARTIAL_BASIS_ADJUSTMENT','Select every layer in this coupled basis correction, or save/discard the complete correction.');
+   selected=undefined;
+  }
   recording.angleGraph=finishSnapshotPropertyDraft(recording.angleGraph!,save,selected);
   const effective=effectiveSnapshotSurfaceResponses(recording.angleGraph!),draft=effective.draft;if(!draft)return;
   if(save&&!sameBinding(draft.angle,recording.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','Return to the correction draft angle before saving it.');
+  if(draft.basisAdjustment){
+   const owners=draft.basisAdjustment.snapshotIds.map(id=>findSnapshot(id));
+   if(owners.some(owner=>!owner.draft))fail('SURFACE_BASIS_DRAFT_MISSING','A companion 90° draft is missing. Restore the complete correction before saving or discarding it.');
+   for(const owner of owners){const writable=snapshotForWrite(owner);if(save)writable.deformation=mergeSnapshotDeformation(writable.deformation,writable.draft!.deformation);delete writable.draft;}
+   // The response and every companion basis are one authored transaction.
+   selected=undefined;
+  }
   if(!selected){recording.angleGraph={...recording.angleGraph!,...(save?{edgeResponses:effective.edgeResponses,triangleResponses:effective.triangleResponses,...recording.angleGraph!.responseExpressions||draft.responseExpressions?{responseExpressions:effective.responseExpressions}:{}}:{}),correctionFrames:save?recording.angleGraph!.correctionFrames!.map(frame=>frame===draft?{id:frame.id,angle:clone(frame.angle),status:'saved' as const}:frame):recording.angleGraph!.correctionFrames!.filter(frame=>frame!==draft)};return;}
   const e=evaluated(snapshot(),draft.angle),curves=e.drawing.curves.filter(curve=>e.drawing.layers.some(layer=>selected.includes(layer.id)&&layer.items.includes(curve.id))),curveIds=new Set(curves.map(curve=>curve.id)),nodeIds=new Set(curves.flatMap(curve=>curve.nodes.map(id=>e.angleSurface?.nodeAuthorities[id]??id)));
   const nextGraph={...recording.angleGraph!},nextFrame={...draft};
@@ -251,6 +265,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   nextGraph.correctionFrames=recording.angleGraph!.correctionFrames!.flatMap(frame=>frame!==draft?[frame]:remaining?[nextFrame]:save?[{id:frame.id,angle:clone(frame.angle),status:'saved' as const}]:[]);recording.angleGraph=nextGraph;
  };
  const finishLocalDraft=(save:boolean,target=snapshot(),selected=false)=>{
+  if(snapshotSurfaceOwnsBasisDraft(recording.angleGraph,target.id))fail('SURFACE_BASIS_DRAFT_OWNED','Return to the intermediate correction angle and save or discard its coupled basis and responses together.');
   if(!sameBinding(boundAngle(target),recording.angle))fail('SNAPSHOT_ANGLE_MISMATCH','Navigate to the snapshot’s saved angle before updating it.');
   if(!target.draft)return;
   const writable=snapshotForWrite(target),draft=writable.draft!,all=draft.deformation;
@@ -276,7 +291,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');if(!current.curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not present in normal snapshot coverage.');wanted=moveNode(current,nodeId,point(c.position),true);}
    else {const curveId=id(c.curveId,'curveId');if(!owner.items.includes(curveId)||!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Curve is not present in normal snapshot coverage.');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');wanted=moveHandle(current,{curveId,end:c.end as 0|1},point(c.position),true);}
   }
-  const result=captureControlTarget(e,wanted);if(result.graph)recording.angleGraph=result.graph;
+  const result=captureControlTarget(e,wanted);if(result.graph)recording.angleGraph=result.graph;for(const value of result.snapshots??[])snapshotForWrite(findSnapshot(value.id)).draft=value.draft;
  };
  const applySurfaceIntervalEdit=()=>{
   const e=evaluated(),surface=e.angleSurface;

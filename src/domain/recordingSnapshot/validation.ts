@@ -97,6 +97,7 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
    if(!recording.angleGraph)fail('triangulated recording requires an angle graph');
    if(recording.legacy)fail('triangulated recording cannot carry a legacy scene');
    validateSnapshotAngleGraph(recording.angleGraph!);
+   for(const frame of recording.angleGraph!.correctionFrames??[])for(const snapshotId of frame.basisAdjustment?.snapshotIds??[]){const owner=workspace.snapshots.find(snapshot=>snapshot.id===snapshotId);if(!owner?.draft||owner.draft.angle.x!==owner.angle.x||owner.draft.angle.y!==owner.angle.y)fail('coupled basis correction requires its companion snapshot draft');}
    const vertices=recording.angleGraph!.mesh.vertices;
    const mirror=recording.angleGraph!.viewMirror;
    if(mirror){const target=workspace.snapshots.find(snapshot=>snapshot.id===mirror.targetSnapshotId);if(target?.parentSnapshotId!==mirror.sourceSnapshotId)fail('View mirror target must retain its sole source parent');}

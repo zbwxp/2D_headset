@@ -185,6 +185,8 @@ export interface SnapshotPropertyResponses {
 /** Recorder-owned editing frame, never a snapshot or a geometric mesh vertex.
  * Draft collections replace the corresponding saved simplex response. */
 export interface SnapshotCorrectionFrame {
+ /** Companion extreme-basis drafts are one atomic correction transaction. */
+ basisAdjustment?:{snapshotIds:string[];layerIds:string[];trustRegionLimited?:boolean};
  responseExpressions?:SnapshotResponseExpressionRegistry;
  id:string;angle:Angle;status:'saved'|'draft';
  edgeResponses?:Record<string,SnapshotEndpointResponses>;

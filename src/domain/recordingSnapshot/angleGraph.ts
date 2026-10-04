@@ -68,9 +68,16 @@ function responseMaps(data:Record<string,unknown>,mesh:SnapshotTriangulation,opt
 function frames(value:unknown,mesh:SnapshotTriangulation):void {
  const ids=new Set<string>();
  for(const raw of list(value,10000)){
-  const frame=object(raw,['id','angle','status','edgeResponses','triangleResponses','propertyResponses','responseExpressions']);id(frame.id);angle(frame.angle);
+  const frame=object(raw,['id','angle','status','edgeResponses','triangleResponses','propertyResponses','responseExpressions','basisAdjustment']);id(frame.id);angle(frame.angle);
   if(ids.has(frame.id as string))fail('duplicate correction frame');ids.add(frame.id as string);
   if(frame.status!=='saved'&&frame.status!=='draft')fail('correction frame status');
+  if(frame.basisAdjustment!==undefined){
+   if(frame.status!=='draft')fail('basis adjustment must belong to a correction draft');
+   const adjustment=object(frame.basisAdjustment,['snapshotIds','layerIds','trustRegionLimited']);
+   if(adjustment.trustRegionLimited!==undefined&&typeof adjustment.trustRegionLimited!=='boolean')fail('basis adjustment trust-region diagnostic');
+   for(const key of ['snapshotIds','layerIds']){const values=list(adjustment[key],16384);if(!values.length||new Set(values).size!==values.length)fail('basis adjustment requires unique nonempty dependencies');values.forEach(id);}
+   for(const snapshotId of adjustment.snapshotIds as string[]){const vertex=mesh.vertices.find(vertex=>vertex.snapshotId===snapshotId);if(!vertex||!((Math.abs(vertex.angle.x)===90&&vertex.angle.y===0)||(Math.abs(vertex.angle.y)===90&&vertex.angle.x===0)))fail('basis adjustment must reference a cardinal extreme snapshot');}
+  }
   responseMaps(frame,mesh,true);if(frame.responseExpressions!==undefined)validateSnapshotResponseExpressionRegistry(frame.responseExpressions,mesh);if(frame.propertyResponses!==undefined)validateSnapshotPropertyResponses(frame.propertyResponses,mesh);
  }
 }
