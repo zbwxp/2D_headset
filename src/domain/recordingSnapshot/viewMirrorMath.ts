@@ -5,6 +5,7 @@ import {hasEvaluatedDeformationFor} from '../drawing/evaluatedDeformation';
 import {finitePoint,type DrawingDocument,type End,type Point2} from '../drawing/model';
 import type {Affine2D} from '../geometry/affine2d';
 import {retainSnapshotAffines} from './elementPlacement';
+import {snapshotControlComponents} from './controlTargets';
 import {mirrorSnapshotDrawing,type SnapshotMirrorCorrespondence,type SnapshotMirrorDiagnostic,type SnapshotMirrorOptions} from './snapshotMirror';
 
 /** A reference belongs to a complete local zero-view group. The caller chooses
@@ -37,6 +38,15 @@ function components(ids:readonly string[]) {
  return {root,join};
 }
 
+/** Complete canonical zero-view components that contain unpaired geometry.
+ * Includes zero-only and paired members connected by shared nodes/relations,
+ * so callers can measure one whole-group reference before filtering presence.
+ * This only discovers identity groups; it never chooses a geometric pivot. */
+export function viewMirrorUnpairedCurveGroups(zero:DrawingDocument,curvePairs:ViewMirrorOptions['curvePairs']):string[][] {
+ const paired=new Set(curvePairs.flatMap(pair=>[pair.a,pair.b]));
+ return snapshotControlComponents(zero).filter(ids=>ids.some(id=>!paired.has(id)));
+}
+
 /** Reflect deformation in each semantic curve's evaluated zero-view basis.
  * Paired control j -> i: zero_i + S(current_j - zero_j), S(x,y)=(-x,y).
  * An unpaired group first reflects its zero baseline around the supplied local
@@ -66,8 +76,7 @@ export function mirrorViewDrawing(current:DrawingDocument,zero:DrawingDocument,o
   else references.set(id,group.reference);
  }
  const nodeOwners=new Map<string,string[]>();for(const curve of current.curves)for(const id of curve.nodes)nodeOwners.set(id,[...nodeOwners.get(id)??[],curve.id]);
- const connected=components(current.curves.map(curve=>curve.id));for(const ids of nodeOwners.values())connected.join(ids);
- for(const link of current.endpointLinks??[])connected.join([link.a.curveId,link.b.curveId]);
+ const connectedGroups=snapshotControlComponents(current),connected=components(current.curves.map(curve=>curve.id));for(const ids of connectedGroups)connected.join(ids);
  const componentReferences=new Map<string,Point2>();
  for(const curve of current.curves)if(!paired.has(curve.id)){
   const reference=references.get(curve.id);if(!reference){diagnostics.push(issue('INVALID_REFERENCE','curves',curve.id,`Unpaired curve ${curve.id} needs an explicit shared local-zero group reference.`));continue;}
@@ -110,8 +119,7 @@ export function mirrorViewDrawing(current:DrawingDocument,zero:DrawingDocument,o
  // Derived material may span several curves. A shared translation after S is
  // exact for all ordinary placements, including singular/nonuniform affines.
  // Different disconnected groups may use entirely different translations.
- const material=components(current.curves.map(curve=>curve.id));for(const ids of nodeOwners.values())material.join(ids);
- for(const relation of [...current.joins,...current.endpointLinks??[]])material.join([relation.a.curveId,relation.b.curveId]);
+ const material=components(current.curves.map(curve=>curve.id));for(const ids of connectedGroups)material.join(ids);
  for(const fill of current.fills)material.join(fill.boundary.map(use=>use.id));for(const offset of current.offsets)material.join(offset.source.map(use=>use.id));
  for(const track of current.displayIntervals??[])if(track.displayRoute)material.join([...track.displayRoute.seed.segments,...resolveDisplayRoute(current,track.displayRoute).path.segments].map(use=>use.id));
  const materialGroups=new Map<string,string[]>();for(const curve of current.curves){const root=material.root(curve.id);materialGroups.set(root,[...materialGroups.get(root)??[],curve.id]);}

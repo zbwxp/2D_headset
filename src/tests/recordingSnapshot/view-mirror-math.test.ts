@@ -6,7 +6,7 @@ import {derivedUses} from '../../domain/drawing/roundedJoin';
 import {createDisplayRouteField} from '../../domain/drawing/displayRoutes';
 import {strokes,strokePaths} from '../../domain/drawing/strokes';
 import {mirrorSnapshotDrawing} from '../../domain/recordingSnapshot/snapshotMirror';
-import {mirrorViewDrawing,ViewMirrorError,type ViewMirrorOptions} from '../../domain/recordingSnapshot/viewMirrorMath';
+import {mirrorViewDrawing,viewMirrorUnpairedCurveGroups,ViewMirrorError,type ViewMirrorOptions} from '../../domain/recordingSnapshot/viewMirrorMath';
 
 const curve=(id:string,nodes:[string,string],handles:[Point2,Point2]):DrawingCurve=>({id,name:id,nodes,handles,visible:true,locked:false,width:.01});
 const point=(actual:Point2,wanted:Point2)=>actual.forEach((n,i)=>expect(Math.abs(n-wanted[i])).toBeLessThan(1e-12));
@@ -22,6 +22,12 @@ function unpaired():DrawingDocument {return {...emptyDrawing(),nodes:[{id:'p0',p
 const unpairedOptions:ViewMirrorOptions={curvePairs:[],unpairedGroups:[{curveIds:['a','b'],reference:[5,1]}]};
 
 describe('local zero-view reflection',()=>{
+ test('zero group discovery reuses complete canonical relation components without choosing a pivot',()=>{
+  const zero=paired();zero.nodes.push({id:'tip',position:[2.4,3.2]},{id:'linked',position:[2.4,3.2]},{id:'far',position:[4,5]});zero.curves.push(curve('zero-only-detail',['l1','tip'],[[2.1,3.4],[2.3,3.3]]),curve('linked-detail',['linked','far'],[[2.5,3.5],[3.5,4.7]]));zero.endpointLinks=[{id:'link',a:{curveId:'zero-only-detail',end:1},b:{curveId:'linked-detail',end:0}}];
+  const before=JSON.stringify(zero);expect(viewMirrorUnpairedCurveGroups(zero,pairOptions.curvePairs)).toEqual([['left','zero-only-detail','linked-detail']]);expect(JSON.stringify(zero)).toBe(before);
+  expect(viewMirrorUnpairedCurveGroups(paired(),pairOptions.curvePairs)).toEqual([]);expect(viewMirrorUnpairedCurveGroups(unpaired(),[])).toEqual([['a','b']]);
+ });
+
  test('paired controls use semantic zero targets, reverse ends and both components of the source delta',()=>{
   const zero=paired(),current=transformed(zero,([x,y],id)=>[x+(id.startsWith('l')?.4:-.2),y+(id.startsWith('l')?.7:.3)]),before=JSON.stringify([current,zero]);
   const {drawing,correspondence}=mirrorViewDrawing(current,zero,pairOptions);
