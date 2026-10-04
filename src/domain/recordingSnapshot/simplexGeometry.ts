@@ -202,11 +202,14 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
  // Only authored discrete values are shared with immutable bases. Every array
  // and point constructed for a sample is owned by that sample, including the
  // filtered layer/group collections and the caller-visible authority map.
- const values=new Map<ControlPlan,Point2>(),samplePoint=(control:ControlPlan):Point2=>{const value:Point2=[sample(control,0),sample(control,1)];values.set(control,value);return value;};
+ // Generic expression/mirror samplers cannot carry native revision lineage.
+ // Do not allocate its scalar maps or relative-vector buffers for that path.
+ const retainLineage=options?.retainLineage&&nativeResponse(response),values=retainLineage?new Map<ControlPlan,Point2>():undefined;
+ const samplePoint=(control:ControlPlan):Point2=>{const value:Point2=[sample(control,0),sample(control,1)];values?.set(control,value);return value;};
  const positions=variant.positions.map(samplePoint);
  const drawing:DrawingDocument={...template,
   nodes:variant.nodes.map(({node,position})=>({...node,position:positions[position]})),
-  curves:variant.controls.map(({curve,handles,positions:indices})=>({...curve,handles:axes.map(end=>{const node=positions[indices[end]],control=handles[end];const vector=samplePoint(control);return [node[0]+vector[0],node[1]+vector[1]] as Point2;}) as [Point2,Point2]})),
+  curves:variant.controls.map(({curve,handles,positions:indices})=>({...curve,handles:axes.map(end=>{const node=positions[indices[end]],control=handles[end];if(!values)return [node[0]+sample(control,0),node[1]+sample(control,1)] as Point2;const vector=samplePoint(control);return [node[0]+vector[0],node[1]+vector[1]] as Point2;}) as [Point2,Point2]})),
   fills:[...template.fills],displayIntervals:[...template.displayIntervals!],
   layers:template.layers.map(layer=>({...layer,items:[...layer.items]})),
   groups:template.groups?.map(group=>({...group,curveIds:[...group.curveIds]}))};
@@ -216,9 +219,9 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
  drawing.joins=template.joins.map((join,index)=>variant.joinRadii[index]?{...join,radius:scalar(variant.joinRadii[index]!)}:join);
  drawing.endpointLinks=template.endpointLinks!.map((link,index)=>link.joinBrush?.kind==='ARC'?{...link,joinBrush:{...link.joinBrush,trimDistance:scalar(variant.linkTrims[index]!)}}:link);
  drawing.offsets=template.offsets.map((offset,index)=>{const coordinates=variant.offsetTranslations[index];return coordinates?{...offset,translation:[scalar(coordinates[0]),scalar(coordinates[1])]}:offset;});
- if(options?.retainLineage&&nativeResponse(response)){
+ if(retainLineage){
   const componentDiagnostics=variant.components.map(()=>[] as string[]),projected=projectNative(variant,drawing,componentDiagnostics);
-  return retainSample(variant,bases,geometricWeights,values,new Map(variant.allControls.map(control=>[control,control.coordinates])),drawing,projected,componentDiagnostics);
+  return retainSample(variant,bases,geometricWeights,values!,new Map(variant.allControls.map(control=>[control,control.coordinates])),drawing,projected,componentDiagnostics);
  }
  const smooth=response&&'projectSmooth' in response&&response.projectSmooth?response.projectSmooth(drawing):applyEndpointPairSmoothConstraints(drawing);diagnostics.push(...smooth.diagnostics);
  return {drawing:smooth.drawing,diagnostics:[...new Set(diagnostics)],nodeAuthorities:new Map(variant.authorities)};
