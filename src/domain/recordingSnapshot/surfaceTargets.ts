@@ -7,7 +7,7 @@ import {endpointPairNodeAuthorities} from './endpointPair';
 import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotScalarValue,type SnapshotSimplexBasis} from './simplexGeometry';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights} from './triangularResponses';
-import {createSnapshotExpressionValueSampler,snapshotResponseSourceBaseline,type SnapshotResponseExpression} from './responseExpressions';
+import {createSnapshotExpressionValueSampler,prepareSnapshotExpressionValueProgram,snapshotResponseSourceBaseline,type SnapshotResponseBasisScalarResolver,type SnapshotResponseExpression} from './responseExpressions';
 import {createSnapshotResponseBasisResolver,createSnapshotResponseFieldWeightMapper,snapshotResponseExpressionFor} from './responseExpressionRegistry';
 import {describeSnapshotScalarResponseSupport,createSnapshotScalarResponseWeightSampler} from './scalarResponseSupport';
 
@@ -76,31 +76,75 @@ export function createSnapshotSurfaceResponseSampler(graph:SnapshotAngleGraph,lo
  return (target,axis,_coordinates,geometricWeights)=>sample({target,axis},geometricWeights);
 }
 
-/** Shared final-control sampler for runtime, correction replay, and full-curve
- * onion frames. Native corrections and inherited expressions add as values. */
-export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],mirror?:SnapshotSurfaceMirrorContext):SnapshotScalarValue {
+export interface SnapshotSurfaceValueProgram {
+ /** A sampler owns fitted parameters, projection inputs and mirror diagnostics
+  * for one complete geometry sample. Never reuse it for another frame. */
+ createSampler:()=>SnapshotScalarValue;
+}
+export interface SnapshotSurfaceValueProgramOptions {onPrepare?:()=>void}
+export interface SnapshotSurfaceValueSamplerOptions extends SnapshotSurfaceValueProgramOptions {/** All graph and drawing dependencies remain immutable. */immutableInputs?:boolean}
+const surfaceProgramStats={programCompilations:0,expressionCompilations:0};
+export const getSnapshotSurfaceValueProgramStats=()=>({...surfaceProgramStats});
+export const resetSnapshotSurfaceValueProgramStats=()=>{surfaceProgramStats.programCompilations=0;surfaceProgramStats.expressionCompilations=0;};
+interface SurfaceProgramCache {inputs:WeakMap<object,SurfaceProgramCache>;programs:Map<string,SnapshotSurfaceValueProgram>}
+const surfaceProgramCache:SurfaceProgramCache={inputs:new WeakMap(),programs:new Map()},absentSurfaceProgramInput=Object.freeze({});
+
+/** Share compiled controls across angles only inside an immutable input
+ * lifetime. A support signature includes orientation and the mirror side;
+ * drawing identities, not temporary basis arrays, identify the live leaves. */
+export function prepareSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],mirror?:SnapshotSurfaceMirrorContext,options:SnapshotSurfaceValueProgramOptions={}):SnapshotSurfaceValueProgram {
+ // Weights are request data, so validate them even when compilation is cached.
+ const count=location.kind==='vertex'?1:location.kind==='edge'?2:3;
+ if(location.geometricWeights.length!==count||location.geometricWeights.some(weight=>!Number.isFinite(weight)||weight<=0)||Math.abs(location.geometricWeights.reduce((sum,weight)=>sum+weight,0)-1)>64*Number.EPSILON)fail('SURFACE_INVALID_TARGET','A response surface needs the original positive geometric support of its active simplex.');
+ const mirroredPositive=!!mirror&&location.vertexIds.reduce((sum,id,index)=>sum+graph.mesh.vertices.find(vertex=>vertex.id===id)!.angle.x*location.geometricWeights[index],0)>0;
+ const key=JSON.stringify([location.kind,location.simplexId,location.vertexIds,location.snapshotIds,bases.map(basis=>basis.snapshotId),mirroredPositive]);
+ let cache=surfaceProgramCache;
+ for(const input of [graph.mesh,graph.edgeResponses,graph.triangleResponses,graph.responseExpressions??absentSurfaceProgramInput,graph.correctionFrames??absentSurfaceProgramInput,mirror??absentSurfaceProgramInput,...bases.map(basis=>basis.drawing)]){
+  let next=cache.inputs.get(input);if(!next){next={inputs:new WeakMap(),programs:new Map()};cache.inputs.set(input,next);}cache=next;
+ }
+ let program=cache.programs.get(key);if(!program){program=compileSnapshotSurfaceValueProgram(graph,location,bases,mirror);cache.programs.set(key,program);options.onPrepare?.();}return program;
+}
+
+/** Native response and expression programs own no per-angle output buffers. */
+function compileSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,originalLocation:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],mirror?:SnapshotSurfaceMirrorContext):SnapshotSurfaceValueProgram {
+ const location={...originalLocation,vertexIds:[...originalLocation.vertexIds],snapshotIds:[...originalLocation.snapshotIds],geometricWeights:[...originalLocation.geometricWeights]};
  const samplingGraph=positiveMirrorResponseGraph(graph,location,mirror),native=createSnapshotSurfaceResponseSampler(samplingGraph,location),effective=effectiveSnapshotSurfaceResponses(samplingGraph),responses=own(effective.responseExpressions,location.simplexId);
- const fittedParameters=createSnapshotFitParameterCollector(),basisScalar=createSnapshotResponseBasisResolver(bases);let recordParameters=true;basisScalar.recordFitParameter=(domain,q,parent)=>{if(recordParameters)fittedParameters.record(domain,q,parent);};
- const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar,geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
+ const basisScalar=createSnapshotResponseBasisResolver(bases),geometricWeights=createSnapshotResponseFieldWeightMapper(graph.mesh,location),onCompile=()=>{surfaceProgramStats.expressionCompilations++;};
+ const inheritedProgram=prepareSnapshotExpressionValueProgram(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),geometricWeights,onCompile});
  const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
- const sourceBaselines=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;},basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
- const samples=new Map<string,SnapshotProjectionScalarSample>();
- let mirrored:SnapshotSurfaceMirrorSample|undefined,mirrorWeights:readonly number[]|undefined;const mirrorDiagnostics=new Set<string>();
- const mirrorAt=(weights:readonly number[])=>{if(!mirrorWeights||!sameWeights(mirrorWeights,weights)){mirrored=mirror?.sample(location,weights);mirrorWeights=[...weights];}return mirrored;};
- const sample:SnapshotScalarValue=(target,axis,coordinates,weights)=>{
-  if(location.kind==='vertex')return coordinates[0];
-  const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights),candidateSource=mirrorAt(weights),candidateCorners=candidateSource?.corners(target,axis),mirroredValue=candidateSource?.scalar(target,axis),source=mirroredValue!==undefined&&candidateCorners?.every(value=>value!==undefined)?candidateSource:undefined,sourceCorners=source?candidateCorners as readonly number[]:undefined,linear=coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
-  if(candidateSource&&!source)mirrorDiagnostics.add(`View mirror source has no matching ${label(target).toLowerCase()} throughout this support; its positive local controls remain authoritative.`);
-  // Form target-local differences before adding them to B. An exact zero
-  // correction preserves the inherited source sample without cancellation.
-  const corrected=source?mirroredValue!+residual+coordinates.reduce((sum,value,index)=>sum+(value-sourceCorners![index])*weights[index]+value*(nativeWeights[index]-weights[index]),0):coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
-  if(!hasProjection&&!source)return corrected;
-  const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
-  const baseline=source?mirroredValue!+(geometric(weights)-linear)+residual:geometric(weights)+residual;
-  const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>{recordParameters=false;try{return inherited(target,axis,coordinates.map(()=>0),weights);}finally{recordParameters=true;}});
-  samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]+(sourceCorners?sourceCorners[index]-coordinates[index]:0)),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
+ const sourceBaselines=prepareSnapshotExpressionValueProgram(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;},geometricWeights,onCompile}).createSampler(basisScalar);
+ surfaceProgramStats.programCompilations++;
+ const createSampler=():SnapshotScalarValue=>{
+  const fittedParameters=createSnapshotFitParameterCollector();let recordParameters=true;
+  const sampleBasis:SnapshotResponseBasisScalarResolver=reference=>basisScalar(reference);sampleBasis.fitParameter=basisScalar.fitParameter;sampleBasis.recordFitParameter=(domain,q,parent)=>{if(recordParameters)fittedParameters.record(domain,q,parent);};
+  const inherited=inheritedProgram.createSampler(sampleBasis);
+  const samples=new Map<string,SnapshotProjectionScalarSample>();
+  let mirrored:SnapshotSurfaceMirrorSample|undefined,mirrorWeights:readonly number[]|undefined;const mirrorDiagnostics=new Set<string>();
+  const mirrorAt=(weights:readonly number[])=>{if(!mirrorWeights||!sameWeights(mirrorWeights,weights)){mirrored=mirror?.sample({...location,geometricWeights:[...weights]},weights);mirrorWeights=[...weights];}return mirrored;};
+  const sample:SnapshotScalarValue=(target,axis,coordinates,weights)=>{
+   if(location.kind==='vertex')return coordinates[0];
+   const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights),candidateSource=mirrorAt(weights),candidateCorners=candidateSource?.corners(target,axis),mirroredValue=candidateSource?.scalar(target,axis),source=mirroredValue!==undefined&&candidateCorners?.every(value=>value!==undefined)?candidateSource:undefined,sourceCorners=source?candidateCorners as readonly number[]:undefined,linear=coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
+   if(candidateSource&&!source)mirrorDiagnostics.add(`View mirror source has no matching ${label(target).toLowerCase()} throughout this support; its positive local controls remain authoritative.`);
+   // Form target-local differences before adding them to B. An exact zero
+   // correction preserves the inherited source sample without cancellation.
+   const corrected=source?mirroredValue!+residual+coordinates.reduce((sum,value,index)=>sum+(value-sourceCorners![index])*weights[index]+value*(nativeWeights[index]-weights[index]),0):coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
+   if(!hasProjection&&!source)return corrected;
+   const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
+   const baseline=source?mirroredValue!+(geometric(weights)-linear)+residual:geometric(weights)+residual;
+   const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>{recordParameters=false;try{return inherited(target,axis,coordinates.map(()=>0),weights);}finally{recordParameters=true;}});
+   samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]+(sourceCorners?sourceCorners[index]-coordinates[index]:0)),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
+  };
+  sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
  };
- sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
+ return Object.freeze({createSampler});
+}
+
+/** Shared final-control path for runtime, correction replay, and onion frames.
+ * Mutable legacy callers keep an isolated program; prepared callers explicitly
+ * opt into identity reuse and always receive independent sampling scratch. */
+export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],mirror?:SnapshotSurfaceMirrorContext,options:SnapshotSurfaceValueSamplerOptions={}):SnapshotScalarValue {
+ if(options.immutableInputs)return prepareSnapshotSurfaceValueProgram(graph,location,bases,mirror,options).createSampler();
+ const program=compileSnapshotSurfaceValueProgram(graph,location,bases,mirror);options.onPrepare?.();return program.createSampler();
 }
 
 export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}

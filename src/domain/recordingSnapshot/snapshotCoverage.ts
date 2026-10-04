@@ -20,10 +20,13 @@ export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>Snapsh
  * outputs. Curves can have different valid regions. Their red fallback cubics
  * remain separate because two projected regions can assign a shared node two
  * different preview positions; neither is an authoritative geometry edit. */
-export function prepareSnapshotCoverage(mesh:SnapshotTriangulation,bases:readonly SnapshotSimplexBasis[]):{
- evaluate:(requestedAngle:SnapshotTriangulationAngle,responses?:SnapshotLocationResponses)=>SnapshotCoverageEvaluation;
+export interface PreparedSnapshotCoverageStructure {
+ evaluate:(requestedAngle:SnapshotTriangulationAngle,basis:(snapshotId:string)=>SnapshotSimplexBasis,responses?:SnapshotLocationResponses)=>SnapshotCoverageEvaluation;
+ /** Includes red projected supports; expression/reflection leaves add to these. */
+ locations:(requestedAngle:SnapshotTriangulationAngle)=>SnapshotSimplexLocation[];
  curveIds:readonly string[];
-} {
+}
+export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,bases:readonly SnapshotSimplexBasis[]):PreparedSnapshotCoverageStructure {
  const byId=new Map(bases.map(b=>[b.snapshotId,b]));
  if(byId.size!==bases.length||mesh.vertices.some(v=>!byId.has(v.snapshotId)))throw Error('Snapshot coverage needs one basis for every real mesh vertex.');
  const curveMaps=new Map(bases.map(b=>[b.snapshotId,new Map(b.drawing.curves.map(c=>[c.id,c]))]));
@@ -38,8 +41,15 @@ export function prepareSnapshotCoverage(mesh:SnapshotTriangulation,bases:readonl
   region.triangles=region.triangles.filter(triangle=>compatible(triangle.vertexIds)&&triangle.edgeIds.every(id=>edgeIds.has(id)));
   regions.set(curveId,region);
  }
- const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>interpolateSnapshotSimplexGeometry(location.snapshotIds.map(id=>byId.get(id)!),location.geometricWeights,responses?.(location));
- return {curveIds,evaluate:(requestedAngle,responses)=>{
+ const locations=(requested:SnapshotTriangulationAngle):SnapshotSimplexLocation[]=>{
+  const location=locateSnapshotSimplex(mesh,requested),result=location?[location]:[];
+  const present=(curveId:string)=>!!location&&location.snapshotIds.every(id=>curveMaps.get(id)!.has(curveId))&&location.snapshotIds.every(id=>{const a=curveMaps.get(id)!.get(curveId)!,b=curveMaps.get(location.snapshotIds[0])!.get(curveId)!;return a.nodes[0]===b.nodes[0]&&a.nodes[1]===b.nodes[1];});
+  const seen=new Set(result.map(value=>JSON.stringify([value.simplexId,value.vertexIds,value.geometricWeights])));
+  for(const id of curveIds)if(!present(id)){const projected=projectToSnapshotCoverage(regions.get(id)!,requested);if(projected){const key=JSON.stringify([projected.simplex.simplexId,projected.simplex.vertexIds,projected.simplex.geometricWeights]);if(!seen.has(key)){seen.add(key);result.push(projected.simplex);}}}
+  return result;
+ };
+ return {curveIds,locations,evaluate:(requestedAngle,basis,responses)=>{
+  const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>interpolateSnapshotSimplexGeometry(location.snapshotIds.map(basis),location.geometricWeights,responses?.(location));
   const requested={...requestedAngle},location=locateSnapshotSimplex(mesh,requested),normal=location?{...sample(location,responses),simplex:location}:undefined;
   const normalIds=new Set(normal?.drawing.curves.map(curve=>curve.id)),outsideCurves:SnapshotCoverageCurvePreview[]=[],diagnostics=[...(normal?.diagnostics??[])],sampled=new Map<string,SnapshotSimplexGeometry>();
   for(const curveId of curveIds){
@@ -59,3 +69,9 @@ export function prepareSnapshotCoverage(mesh:SnapshotTriangulation,bases:readonl
 /** Creating a real view captures only the normal editable pose. It must never
  * adopt the red fallback reference curves, even when the normal pose is empty. */
 export function snapshotCoverageEditableDrawing(result:SnapshotCoverageEvaluation):DrawingDocument|undefined {return result.normal?.drawing;}
+
+/** Compatibility binding for callers that already own all basis products. */
+export function prepareSnapshotCoverage(mesh:SnapshotTriangulation,bases:readonly SnapshotSimplexBasis[]):{evaluate:(requestedAngle:SnapshotTriangulationAngle,responses?:SnapshotLocationResponses)=>SnapshotCoverageEvaluation;curveIds:readonly string[]} {
+ const structure=prepareSnapshotCoverageStructure(mesh,bases),byId=new Map(bases.map(basis=>[basis.snapshotId,basis]));
+ return {curveIds:structure.curveIds,evaluate:(angle,responses)=>structure.evaluate(angle,id=>byId.get(id)!,responses)};
+}

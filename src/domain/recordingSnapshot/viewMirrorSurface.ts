@@ -7,7 +7,7 @@ import type {SnapshotSmoothProjectionContract} from './responseExpressions';
 import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotSimplexBasis} from './simplexGeometry';
 import {deriveSmoothComponents,smoothEndpointKey} from './smoothComponent';
 import type {SnapshotSurfaceMirrorContext,SnapshotSurfaceMirrorSample} from './surfaceMirrorContext';
-import {createSnapshotSurfaceValueSampler,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
+import {prepareSnapshotSurfaceValueProgram,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import type {ViewMirrorOptions} from './viewMirrorMath';
 import {mirrorViewDrawingPresence} from './viewMirrorInput';
@@ -17,20 +17,21 @@ import {mirrorViewDrawingPresence} from './viewMirrorInput';
 const geometryOnly=(drawing:DrawingDocument):DrawingDocument=>{const ids=new Set(drawing.curves.map(curve=>curve.id));return {...drawing,nodes:[...drawing.nodes],curves:[...drawing.curves],layers:drawing.layers.map(layer=>({...layer,items:layer.items.filter(id=>ids.has(id))})),fills:[],offsets:[],displayIntervals:[]};};
 
 /** Resolve the true reflected source simplex, including a different triangle
- * diagonal. Native source samplers and complete sampled controls are shared by
+ * diagonal. Native source programs and complete sampled controls are shared by
  * every scalar and onion frame; no recursive workspace evaluation occurs. */
 export function prepareSnapshotViewMirrorSurface(graph:SnapshotAngleGraph,bases:readonly SnapshotSimplexBasis[],zero:DrawingDocument,options:(current:DrawingDocument)=>ViewMirrorOptions):SnapshotSurfaceMirrorContext {
  const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.angle])),byId=new Map(bases.map(basis=>[basis.snapshotId,basis])),effective=effectiveSnapshotSurfaceResponses(graph);
  type Frame={drawing:DrawingDocument;location:SnapshotSimplexLocation;scalar:SnapshotSurfaceMirrorSample['scalar'];contracts:SnapshotSmoothProjectionContract[];diagnostics:string[]};
- const samplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>(),frames=new InputCache<Frame>(96),supports=new Map<string,Angle[]>();
+ const programs=new Map<string,ReturnType<typeof prepareSnapshotSurfaceValueProgram>>(),frames=new InputCache<Frame>(96),supports=new Map<string,Angle[]>();
  type NodeMap={sourceId:string;targetId:string;sourceZero:Point2;targetZero:Point2};
  type HandleMap={source:Endpoint;target:Endpoint;sourceZero:Point2;targetZero:Point2;targetNode:string};
  const projections=new Map<string,{nodes:NodeMap[];handles:HandleMap[];contracts:SnapshotSmoothProjectionContract[];diagnostics:string[]}>(),zeroNodes=new Map(zero.nodes.map(node=>[node.id,node])),zeroCurves=new Map(zero.curves.map(curve=>[curve.id,curve]));
  const at=(angle:Angle)=>{
   const sourceAngle={x:-angle.x,y:angle.y},key=JSON.stringify([sourceAngle.x,sourceAngle.y]),known=frames.get(key);if(known)return known;
   const location=locateSnapshotSimplex(graph.mesh,sourceAngle);if(!location)throw Error(`View mirror source angle (${sourceAngle.x}, ${sourceAngle.y}) is outside authored coverage.`);
-  const supportKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=samplers.get(supportKey);
-  if(!sampler){sampler=createSnapshotSurfaceValueSampler(graph,location,bases);samplers.set(supportKey,sampler);}
+  const supportKey=JSON.stringify([location.simplexId,location.vertexIds]);let program=programs.get(supportKey);
+  if(!program){program=prepareSnapshotSurfaceValueProgram(graph,location,bases);programs.set(supportKey,program);}
+  const sampler=program.createSampler();
   const source=interpolateSnapshotSimplexGeometry(location.snapshotIds.map(id=>byId.get(id)!),location.geometricWeights,sampler).drawing;
   let projection=projections.get(supportKey);
   if(!projection){

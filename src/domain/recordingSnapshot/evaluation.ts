@@ -1,4 +1,7 @@
-import {snapshotControlComponents} from './controlTargets';
+import type {PreparedRecordingChanges} from './workspaceChanges';
+export type {PreparedRecordingChanges} from './workspaceChanges';
+import {indexPreparedSnapshotDependencies,snapshotSurfaceDemand,type PreparedSnapshotDependencyIndex} from './preparedSnapshotDependencies';
+import {locateSnapshotSimplex} from './triangulation';
 import {mirrorViewDrawingPresence,snapshotViewMirrorCurvePairs} from './viewMirrorInput';
 import {recordingViewMirrorRelation} from './viewMirrorRelation';
 import {prepareSnapshotViewMirrorSurface} from './viewMirrorSurface';
@@ -31,7 +34,7 @@ import {applySnapshotInheritedFitParameters} from './responseFitParameterInherit
 import {placeSnapshotElements,retainSnapshotAffines} from './elementPlacement';
 import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
 import {resolveSnapshotLocalMembership} from './localMembership';
-import {prepareSnapshotCoverage,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
+import {prepareSnapshotCoverageStructure,type PreparedSnapshotCoverageStructure,type SnapshotCoverageEvaluation,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
 import {evaluateSnapshotSurfaceMaterial} from './surfaceMaterial';
 import {snapshotPropertyResponsesCacheKey} from './propertyResponses';
 import {createSnapshotSurfaceValueSampler,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
@@ -55,7 +58,7 @@ import {materializeSnapshotForkInputs,applySnapshotNodeForks,pruneSnapshotTopolo
 import {applySnapshotCurveAppearance} from './curveAppearance';
 import {type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
 
-export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Recorder preview may include only its currently authored zero/source draft in mirror expressions. */liveBasisDrafts?:boolean;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean}
+export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Recorder preview may include only its currently authored zero/source draft in mirror expressions. */liveBasisDrafts?:boolean;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean;/** Full curves retain authoritative domain material, but omit terminal cuts and paint. */products?:'controls'|'display'}
 export interface SnapshotEvaluation {
  snapshotId:string;topologyInputDrawing:DrawingDocument;source:DrawingDocument;baseDrawing:DrawingDocument;drawing:DrawingDocument;preShapeDrawing:DrawingDocument;prePlacementDrawing:DrawingDocument;preElementPlacementDrawing:DrawingDocument;
  elementPlacements:Record<string,ScenePlacementValue>;
@@ -87,11 +90,12 @@ export interface SnapshotEndpointPairEvaluation extends SnapshotEndpointPairBasi
  axis:'x';progress:number;role:'start'|'end'|'correction';coordinateSpace:'final';nodeAuthorities:Record<string,string>;
  responses?:SnapshotEndpointResponses;
 }
+type SnapshotInputParent=Pick<SnapshotEvaluation,'snapshotId'|'drawing'|'provenance'|'appliedTrackIds'>;
 interface SnapshotInput {drawing:DrawingDocument;topologyInputDrawing:DrawingDocument;provenance:SnapshotEvaluation['provenance'];appliedTrackIds:Set<string>}
 interface EvaluationCache {
  fingerprint:string;parents:InputCache<SnapshotEvaluation>;frames:InputCache<SnapshotEvaluation>;
  inputs:InputCache<{input:SnapshotInput;diagnostics:SnapshotDiagnostic[]}>;
- originals:InputCache<DrawingDocument|undefined>;
+ originals:InputCache<DrawingDocument|undefined>;prepared:InputCache<SnapshotEvaluation>;
  baseStages:WeakMap<DrawingDocument,InputCache<SceneEvaluation>>;
 }
 /** Content guards also catch importer/test mutations in place. The archive is
@@ -110,13 +114,13 @@ const resultIdentities=new WeakMap<SnapshotEvaluation,number>();let nextResultId
 const resultIdentity=(result:SnapshotEvaluation)=>{let id=resultIdentities.get(result);if(id===undefined){id=nextResultIdentity++;resultIdentities.set(result,id);}return id;};
 function evaluationCache(workspace:RecordingSnapshotWorkspace,immutable=false):EvaluationCache {
  const known=evaluationCaches.get(workspace.library);if(immutable&&known)return known;const fingerprint=JSON.stringify(workspace.library);if(known?.fingerprint===fingerprint)return known;
- const cache:EvaluationCache={fingerprint,parents:new InputCache(24),frames:new InputCache(32),inputs:new InputCache(24),originals:new InputCache(16),baseStages:new WeakMap()};evaluationCaches.set(workspace.library,cache);return cache;
+ const cache:EvaluationCache={fingerprint,parents:new InputCache(24),frames:new InputCache(32),inputs:new InputCache(24),originals:new InputCache(16),baseStages:new WeakMap(),prepared:new InputCache(2048)};evaluationCaches.set(workspace.library,cache);return cache;
 }
 function cachedOriginal(workspace:RecordingSnapshotWorkspace,id:string):DrawingDocument|undefined {
  const cache=evaluationCaches.get(workspace.library),snapshot=workspace.snapshots.find(s=>s.id===id);if(!cache||!snapshot)return materializeOriginalSnapshot(workspace,id);
  const key=JSON.stringify(snapshot),known=cache.originals.get(key);if(known)return known;return cache.originals.set(key,materializeOriginalSnapshot(workspace,id));
 }
-const evaluationOptionsKey=(options:SnapshotEvaluationOptions)=>JSON.stringify([options.angle,options.useDraft!==false,!!options.liveBasisDrafts,options.stopAtWarpId??null,!!options.omitPlacements,!!options.omitShapes,options.tolerance??1/250,options.fitSamples??64,options.diagnostics??'full',options.validationSamples??1024]);
+const evaluationOptionsKey=(options:SnapshotEvaluationOptions)=>JSON.stringify([options.angle,options.useDraft!==false,!!options.liveBasisDrafts,options.stopAtWarpId??null,!!options.omitPlacements,!!options.omitShapes,options.tolerance??1/250,options.fitSamples??64,options.diagnostics??'full',options.validationSamples??1024,options.products??'display']);
 export class SnapshotResolutionError extends Error {
  constructor(public diagnostic:SnapshotDiagnostic){super(diagnostic.message);this.name='SnapshotResolutionError';}
 }
@@ -199,12 +203,12 @@ export function snapshotViewMirrorOptions(workspace:RecordingSnapshotWorkspace,r
 /** Select complete cached controls before interpolation; zero authoring itself
  * always selects the authored (negative) side. */
 export function snapshotSurfaceBasesAtAngle(surface:SnapshotAngleSurfaceEvaluation,angle:Angle):SnapshotEvaluation[]{return angle.x>0&&surface.positiveBases?surface.positiveBases:surface.allBases;}
-function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,parents:Map<string,SnapshotEvaluation>,diagnostics:SnapshotDiagnostic[]):SnapshotInput {
+function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,parents:Map<string,SnapshotInputParent>,diagnostics:SnapshotDiagnostic[]):SnapshotInput {
  const drawing=emptyDrawing(),provenance:SnapshotEvaluation['provenance']={},appliedTrackIds=new Set<string>();
  const objects=new Map<string,unknown>(),nodeMap=new Map<string,DrawingDocument['nodes'][number]>(),inherited=emptyRelations();
  const selectedByParent=new Map<string,Set<string>>(),selectedObjectsByParent=new Map<string,Set<string>>();
  for(const layer of snapshot.layers){
-  let source:DrawingDocument|undefined,sourceLayer:DrawingLayer|undefined,parent:SnapshotEvaluation|undefined;
+  let source:DrawingDocument|undefined,sourceLayer:DrawingLayer|undefined,parent:SnapshotInputParent|undefined;
   let localIds=new Set<string>();
   if(layer.kind==='original'){
    sourceLayer={...layer,items:resolveSnapshotLocalMembership(layer.items,layer.membership).elementIds};const curves=sourceLayer.items.map(id=>workspace.library.curves[id]).filter(Boolean),nodes=[...new Set(curves.flatMap(c=>c.nodes))].map(id=>workspace.library.nodes[id]).filter(Boolean);
@@ -357,139 +361,244 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
 }
 /** Returned evaluated documents are immutable runtime values, shared by the
  * bounded cache until their live source, saved state, tracks, or options change. */
-export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- assertRecordingWorkspaceActive(workspace);
- validateSnapshotGraph(workspace);const persistent=evaluationCache(workspace,options.immutableInputs),local=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>(),snapshotStrings=new Map<string,string>(),trackStrings=new Map<SnapshotRecording,Map<boolean,string>>();
+function resolveSnapshotInContext(context:RecordingContext,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ const workspace=context.workspace,persistent=context.cache,local=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>(),snapshotStrings=new Map<string,string>(),trackStrings=new Map<SnapshotRecording,Map<boolean,string>>();
  const resolve=(id:string,root=false,visibilitySource=false):SnapshotEvaluation=>{
-  const localKey=JSON.stringify([id,visibilitySource]),cached=!root&&local.get(localKey);if(cached)return cached;
-  const snapshot=workspace.snapshots.find(s=>s.id===id);if(!snapshot)throw new SnapshotResolutionError({code:'MISSING_SNAPSHOT',snapshotId:id,message:`Snapshot ${id} is missing.`});
+  const plan=context.plan(id,options,root,visibilitySource),localKey=plan.key,cached=context.snapshotValues.get(localKey)??persistent.prepared.get(localKey);if(cached){context.snapshotValues.set(localKey,cached);return plan.recording&&cached.authoredTracks!==plan.recording.tracks?{...cached,authoredTracks:plan.recording?.tracks??[]}:cached;}
+  const snapshot=context.index.snapshots.get(id);if(!snapshot)throw new SnapshotResolutionError({code:'MISSING_SNAPSHOT',snapshotId:id,message:`Snapshot ${id} is missing.`});
   if(visiting.has(id))throw new SnapshotResolutionError({code:'SNAPSHOT_CYCLE',snapshotId:id,message:`Snapshot ${id} contains a parent cycle.`});visiting.add(id);
-  const recording=recordingForSnapshot(workspace,id),viewMirror=recording&&recordingViewMirrorRelation(workspace,recording),materialRecipe=recording?.angleGraph?.materialBasisRecipes?.[id],visibilityRecipe=recording?.angleGraph?.visibilityBasisRecipes?.[id];
+  const recording=context.index.recordingForSnapshot.get(id),viewMirror=recording&&recordingViewMirrorRelation(workspace,recording),materialRecipe=recording?.angleGraph?.materialBasisRecipes?.[id],visibilityRecipe=recording?.angleGraph?.visibilityBasisRecipes?.[id];
   const materialGraph=recording?.angleGraph,liveMaterial=options.liveBasisDrafts??options.useDraft!==false,effectiveMaterialGraph=materialGraph&&!liveMaterial?{...materialGraph,correctionFrames:materialGraph.correctionFrames?.filter(frame=>frame.status!=='draft')}:materialGraph;
   const materialBases=materialRecipe?snapshotMaterialRecipeDependencies(materialRecipe,materialGraph?.mesh,effectiveMaterialGraph,snapshot.angle).map(source=>resolve(source,false,liveMaterial)):[];
   const mirrorTerm=materialRecipe?.terms.find(term=>term.weight==='view-mirror'),materialZero=mirrorTerm&&materialBases.find(base=>base.snapshotId===mirrorTerm.zeroSnapshotId),materialMirrorOptions=materialZero?snapshotViewMirrorOptions(workspace,recording!,materialZero):undefined;
   const materialMirror=materialZero?prepareSnapshotViewMirrorSurface(effectiveMaterialGraph!,materialBases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:materialGraph!.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),materialZero.drawing,current=>snapshotViewMirrorOptions(workspace,recording!,materialZero,{...materialZero,drawing:current})):undefined;
   const visibilityBases=visibilityRecipe?snapshotVisibilityRecipeDependencies(visibilityRecipe).map(source=>resolve(source,false,true)):[];
-  const parents=new Map<string,SnapshotEvaluation>();for(const layer of snapshot.layers)if(layer.kind==='reference'&&workspace.snapshots.some(s=>s.id===layer.baseSnapshotId)&&!parents.has(layer.baseSnapshotId))parents.set(layer.baseSnapshotId,resolve(layer.baseSnapshotId));
-  for(const sourceId of Object.values(snapshot.memberSources??{}))if(workspace.snapshots.some(value=>value.id===sourceId)&&!parents.has(sourceId))parents.set(sourceId,resolve(sourceId));
+  const parents=new Map<string,SnapshotEvaluation>();for(const layer of snapshot.layers)if(layer.kind==='reference'&&context.index.snapshots.has(layer.baseSnapshotId)&&!parents.has(layer.baseSnapshotId))parents.set(layer.baseSnapshotId,resolve(layer.baseSnapshotId));
+  for(const sourceId of Object.values(snapshot.memberSources??{}))if(context.index.snapshots.has(sourceId)&&!parents.has(sourceId))parents.set(sourceId,resolve(sourceId));
   if(viewMirror?.targetSnapshotId===id){
    const live=options.liveBasisDrafts??options.useDraft!==false,parent=resolve(viewMirror.sourceSnapshotId,false,live),zero=resolve(viewMirror.zeroSnapshotId,false,live);
    parents.set(viewMirror.sourceSnapshotId,prepareViewMirrorInput(parent,zero,id,snapshotViewMirrorOptions(workspace,recording!,zero,parent)));
   }else if(snapshot.parentSnapshotId&&(snapshot.parentLayers||snapshot.inputMirror)){const parent=parents.get(snapshot.parentSnapshotId)??resolve(snapshot.parentSnapshotId);parents.set(snapshot.parentSnapshotId,prepareSnapshotParentInput(workspace,snapshot,parent));}
-  const angle=root&&options.angle?options.angle:snapshot.angle,binding=recording?.angleGraph?.mesh.vertices.find(vertex=>vertex.snapshotId===id)?.angle,localOptions:SnapshotEvaluationOptions=root?{...options,angle}:{angle,useDraft:(options.liveBasisDrafts??options.useDraft!==false)&&(snapshotSurfaceOwnsBasisDraft(recording?.angleGraph,id)||visibilitySource&&!!binding&&recording!.angle.x===binding.x&&recording!.angle.y===binding.y),diagnostics:options.diagnostics,tolerance:options.tolerance};
+  const localOptions=plan.options,angle=localOptions.angle!;
   const drafts=localOptions.useDraft!==false,snapshotKey=JSON.stringify([id,drafts]);let snapshotString=snapshotStrings.get(snapshotKey);if(snapshotString===undefined){snapshotString=options.immutableInputs?String(immutableIdentity(drafts?snapshot:savedSnapshotIdentities.get(snapshot)??snapshot)):JSON.stringify(snapshot);snapshotStrings.set(snapshotKey,snapshotString);}let trackString=recording&&trackStrings.get(recording)?.get(drafts);if(recording&&trackString===undefined){if(options.immutableInputs){const memo=immutableTrackStrings.get(recording.tracks)??new Map<boolean,string>();trackString=memo.get(drafts);if(trackString===undefined){trackString=JSON.stringify(recording.tracks.map(track=>[track.id,track.channel,track.targetId,track.elementId,track.channel==='interval'?track.sourceTrackId:undefined,track.interpolation,immutableIdentity(track.keys),drafts?immutableIdentity(track.draft):0,track.channel==='interval'?immutableIdentity(track.materialIssue):0]));memo.set(drafts,trackString);immutableTrackStrings.set(recording.tracks,memo);}}else trackString=JSON.stringify(drafts?recording.tracks:recording.tracks.map(({draft,...track})=>track));const strings=trackStrings.get(recording)??new Map<boolean,string>();strings.set(drafts,trackString);trackStrings.set(recording,strings);}
-  const parentIds=[...parents].map(([id,value])=>[id,resultIdentity(value)]),frameKey=JSON.stringify([snapshotString,trackString??'',parentIds,materialRecipe??null,materialRecipe?[recording?.angleGraph?.mesh,localOptions.immutableInputs?immutableIdentity(recording?.angleGraph?.responseExpressions):recording?.angleGraph?.responseExpressions]:null,visibilityRecipe??null,visibilityBases.map(resultIdentity),recording?.angleGraph?.materialPartitions??null,recording?.angleGraph?.materialPathLineages??null,materialBases.map(resultIdentity),snapshotMaterialRecipeHasMirror(materialRecipe)?[effectiveMaterialGraph?.edgeResponses,effectiveMaterialGraph?.triangleResponses,effectiveMaterialGraph?.responseExpressions,effectiveMaterialGraph?.correctionFrames,effectiveMaterialGraph?.materialRecipes,effectiveMaterialGraph&&snapshotPropertyResponsesCacheKey(effectiveMaterialGraph),materialMirrorOptions]:null,evaluationOptionsKey(localOptions)]),frames=root?persistent.frames:persistent.parents,existing=frames.get(frameKey);
-  if(existing){visiting.delete(id);local.set(localKey,existing);return root&&existing.authoredTracks!==recording?.tracks?{...existing,authoredTracks:recording?.tracks??[]}:existing;}
+  const parentIds=[...parents].map(([id,value])=>[id,resultIdentity(value)]),frameKey=JSON.stringify([snapshotString,trackString??'',parentIds,materialRecipe??null,materialRecipe?[recording?.angleGraph?.mesh,localOptions.immutableInputs?immutableIdentity(recording?.angleGraph?.responseExpressions):recording?.angleGraph?.responseExpressions]:null,visibilityRecipe??null,visibilityBases.map(resultIdentity),recording?.angleGraph?.materialPartitions??null,recording?.angleGraph?.materialPathLineages??null,materialBases.map(resultIdentity),snapshotMaterialRecipeHasMirror(materialRecipe)?[effectiveMaterialGraph?.edgeResponses,effectiveMaterialGraph?.triangleResponses,effectiveMaterialGraph?.responseExpressions,effectiveMaterialGraph?.correctionFrames,effectiveMaterialGraph?.materialRecipes,effectiveMaterialGraph&&snapshotPropertyResponsesCacheKey(effectiveMaterialGraph),materialMirrorOptions]:null,evaluationOptionsKey(localOptions)]),frames=persistent.parents,existing=frames.get(frameKey);
+  if(existing){visiting.delete(id);context.snapshotValues.set(localKey,existing);persistent.prepared.set(localKey,existing);return recording&&existing.authoredTracks!==recording.tracks?{...existing,authoredTracks:recording?.tracks??[]}:existing;}
   const inputKey=JSON.stringify(options.immutableInputs?[id,immutableIdentity(snapshot.layers),immutableIdentity(snapshot.memberSources),immutableIdentity(snapshot.relations),immutableIdentity(snapshot.nodeAliases),immutableIdentity(snapshot.nodeForks),immutableIdentity(snapshot.objectLocks),immutableIdentity(snapshot.source),immutableIdentity(snapshot.inheritedState?.intervalMaterialIssues),immutableIdentity(snapshot.deformation.intervalMaterialIssues),parentIds]:[id,snapshot.layers,snapshot.memberSources,snapshot.relations,snapshot.nodeAliases,snapshot.nodeForks,snapshot.objectLocks,snapshot.source,snapshot.inheritedState?.intervalMaterialIssues,snapshot.deformation.intervalMaterialIssues,parentIds]);
-  let cachedInput=persistent.inputs.get(inputKey);if(!cachedInput){const diagnostics:SnapshotDiagnostic[]=[...parents.values()].flatMap(p=>p.diagnostics),input=inputForSnapshot(workspace,snapshot,parents,diagnostics);cachedInput=persistent.inputs.set(inputKey,{input,diagnostics});}
-  const input=cachedInput.input,diagnostics=[...cachedInput.diagnostics],state=evaluateSnapshotState(snapshot,recording,input.drawing,angle,localOptions.useDraft!==false,input.appliedTrackIds,{diagnostics,signature:sourceId=>{const original=cachedOriginal(workspace,sourceId);return original?drawingSignature(original):undefined;}});
+  let cachedInput=persistent.inputs.get(inputKey);if(!cachedInput){context.count('snapshotInput',id);const diagnostics:SnapshotDiagnostic[]=[...parents.values()].flatMap(p=>p.diagnostics),input=inputForSnapshot(workspace,snapshot,parents,diagnostics);cachedInput=persistent.inputs.set(inputKey,{input,diagnostics});}
+  context.count('snapshotState',id);const input=cachedInput.input,diagnostics=[...cachedInput.diagnostics],state=evaluateSnapshotState(snapshot,recording,input.drawing,angle,localOptions.useDraft!==false,input.appliedTrackIds,{diagnostics,signature:sourceId=>{const original=cachedOriginal(workspace,sourceId);return original?drawingSignature(original):undefined;}});
   const appliedTrackIds=new Set(input.appliedTrackIds);for(const track of recording?.tracks??[])if(snapshot.layers.some(l=>l.id===track.targetId)||state.warps.some(w=>w.id===track.targetId)||state.relationPositions[track.targetId])appliedTrackIds.add(track.id);
   const inheritedMaterial=materialRecipe?applySnapshotMaterialRecipe(materialRecipe,snapshot.angle,materialBases,input.drawing,undefined,recording?.angleGraph?.materialPartitions,recording?.angleGraph?.materialPathLineages,materialMirror):undefined,materialInput=inheritedMaterial?.drawing??input.drawing,materialSource=visibilityRecipe?evaluateSnapshotVisibilityRecipe(visibilityRecipe,visibilityBases,materialInput,snapshot.angle):materialInput;
   if(inheritedMaterial)diagnostics.push(...inheritedMaterial.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,snapshotId:id,message})));
-  const dependencyInput=prepareCageEvaluationDependencies(snapshot,materialSource,state,parents),own=evaluateOwn(snapshot,dependencyInput.source,dependencyInput.state,localOptions,diagnostics,persistent);
+  context.count('ownGeometry',id);const dependencyInput=prepareCageEvaluationDependencies(snapshot,materialSource,state,parents),own=evaluateOwn(snapshot,dependencyInput.source,dependencyInput.state,localOptions,diagnostics,persistent);
   for(const stage of ['drawing','preShapeDrawing','prePlacementDrawing','preElementPlacementDrawing'] as const)own[stage]=dependencyInput.restrict(own[stage]);
   own.state=state;
   if(dependencyInput.source!==materialSource){const curves=new Set(materialSource.curves.map(curve=>curve.id));own.fitDiagnostics=own.fitDiagnostics.filter(fit=>curves.has(fit.sourceCurveId));own.warningCurveIds=own.warningCurveIds.filter(id=>curves.has(id));}
   if(materialRecipe){own.drawing=applySnapshotInheritedFitParameters(recording!.angleGraph!,id,snapshot.angle,materialBases,own.drawing);own.drawing=applySnapshotAuthoredMaterial(state,materialSource,own.drawing);const edited=new Set(Object.values(state.layers).flatMap(layer=>Object.keys(layer.intervals??{})));const material=applySnapshotMaterialRecipe(materialRecipe,snapshot.angle,materialBases,own.drawing,edited,recording?.angleGraph?.materialPartitions,recording?.angleGraph?.materialPathLineages,materialMirror);own.drawing=material.drawing;diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,snapshotId:id,message})));}
-  const result:SnapshotEvaluation={snapshotId:id,topologyInputDrawing:input.topologyInputDrawing,source:materialSource,baseDrawing:materialSource,provenance:snapshotDepthAppearanceProvenance(own.drawing,state,input.provenance),appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);local.set(localKey,result);return frames.set(frameKey,result);
+  const result:SnapshotEvaluation={snapshotId:id,topologyInputDrawing:input.topologyInputDrawing,source:materialSource,baseDrawing:materialSource,provenance:snapshotDepthAppearanceProvenance(own.drawing,state,input.provenance),appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};context.count('paint',id);result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);context.snapshotValues.set(localKey,result);persistent.prepared.set(localKey,result);if(recording?.angleGraph?.mesh.vertices.some(vertex=>vertex.snapshotId===id))context.count('basis',id);return frames.set(frameKey,result);
  };return resolve(snapshotId,true);
 }
 /** Retained as an explicit error boundary for callers of the retired pair API. */
 export function resolveEndpointPairBasis(_workspace:RecordingSnapshotWorkspace,_recordingId:string,_options:SnapshotEvaluationOptions={}):SnapshotEndpointPairBasis {
  throw Error(RECORDING_RETIRED_MESSAGE);
 }
-const surfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<ReturnType<typeof prepareSnapshotCoverage>>>();
+const structurePreparationCaches=new InputCache<PreparedSnapshotCoverageStructure>(256);
+const controlGeometryProducts=new InputCache<SnapshotCoverageEvaluation>(2048);
+const membershipPreparationCaches=new InputCache<SnapshotInputParent>(1024);
 const mirrorSurfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<SnapshotSurfaceMirrorContext>>();
 /** The controls at a real Recorder vertex are exactly this resolved basis.
  * Keep its saved compatibility angle, current draft and mirror/material parents
  * identical for runtime sampling and control-target replay. Surface visibility
  * recipes change only visibility flags after these controls are resolved. */
-export function resolveRecordingSnapshotBasis(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+function resolveRecordingSnapshotBasisInContext(context:RecordingContext,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ const workspace=context.workspace;
  const vertex=recording.angleGraph?.mesh.vertices.find(value=>value.snapshotId===snapshotId),snapshot=workspace.snapshots.find(value=>value.id===snapshotId);
  if(!vertex||!snapshot)throw Error(`Missing real snapshot ${snapshotId}.`);
- return resolveSnapshot(workspace,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&(snapshotSurfaceOwnsBasisDraft(recording.angleGraph,snapshotId)||recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y),tolerance:options.tolerance??recording.tolerance});
+ return resolveSnapshotInContext(context,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&(snapshotSurfaceOwnsBasisDraft(recording.angleGraph,snapshotId)||recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y),tolerance:options.tolerance??recording.tolerance});
 }
-function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,options:SnapshotEvaluationOptions):SnapshotEvaluation {
- const graph=recording.angleGraph;if(!graph)throw Error('Triangulated recording has no angle graph.');
- const requested=options.angle??recording.angle;
+function evaluateTriangulatedRecording(context:RecordingContext,recording:SnapshotRecording,options:SnapshotEvaluationOptions):SnapshotEvaluation {
+ const workspace=context.workspace,graph=recording.angleGraph;if(!graph)throw Error('Triangulated recording has no angle graph.');
+ const requested=options.angle??recording.angle,controls=options.products==='controls';
  if(![requested.x,requested.y].every(value=>Number.isFinite(value)&&value>=-90&&value<=90))throw Error('Recording angle must be finite and within −90…90.');
- const allBases=graph.mesh.vertices.map(vertex=>resolveRecordingSnapshotBasis(workspace,recording,vertex.snapshotId,options));
- if(!allBases.length)throw Error('Recording has no real snapshot. Create one to begin editing.');
- const mirror=recordingViewMirrorRelation(workspace,recording),zero=mirror&&allBases.find(base=>base.snapshotId===mirror.zeroSnapshotId);
- const positiveBases=zero?allBases.map(base=>graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle.x===0?prepareViewMirrorInput(base,zero,base.snapshotId,snapshotViewMirrorOptions(workspace,recording,zero,base)):base):undefined;
- const bases=requested.x>0&&positiveBases?positiveBases:allBases;
- const angleFor=(snapshotId:string)=>graph.mesh.vertices.find(vertex=>vertex.snapshotId===snapshotId)!.angle;
- const baseRefs=bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:angleFor(base.snapshotId)})),meshKey=options.immutableInputs?immutableIdentity(graph.mesh):graph.mesh;
- const basisKey=JSON.stringify([meshKey,bases.map(resultIdentity)]);let preparedCache=surfacePreparationCaches.get(workspace.library);if(!preparedCache){preparedCache=new InputCache(12);surfacePreparationCaches.set(workspace.library,preparedCache);}
- let prepared=preparedCache.get(basisKey);if(!prepared){prepared=prepareSnapshotCoverage(graph.mesh,baseRefs);preparedCache.set(basisKey,prepared);}
- const effectiveGraph=options.useDraft===false&&graph.correctionFrames?.some(frame=>frame.status==='draft')?{...graph,correctionFrames:graph.correctionFrames.filter(frame=>frame.status!=='draft')}:graph;
- const responseKey=options.immutableInputs?[immutableIdentity(graph.edgeResponses),immutableIdentity(graph.triangleResponses),immutableIdentity(graph.responseExpressions),options.useDraft!==false?immutableIdentity(graph.correctionFrames):0]:[graph.edgeResponses,graph.triangleResponses,graph.responseExpressions,options.useDraft!==false?graph.correctionFrames:null];
- const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['angle-surface',recording.id,basisKey,responseKey,snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes??null,graph.visibilityRecipes??null,graph.materialPartitions??null,graph.materialPathLineages??null,requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
- const responseSamplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>();
- let mirrorContext:SnapshotSurfaceMirrorContext|undefined;
- if(zero){let mirrorCache=mirrorSurfacePreparationCaches.get(workspace.library);if(!mirrorCache){mirrorCache=new InputCache(12);mirrorSurfacePreparationCaches.set(workspace.library,mirrorCache);}
-  const mirrorKey=JSON.stringify([recording.id,meshKey,allBases.map(resultIdentity),positiveBases?.map(resultIdentity),responseKey,snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes??null,graph.materialPartitions??null,graph.materialPathLineages??null]);mirrorContext=mirrorCache.get(mirrorKey);
-  if(!mirrorContext){mirrorContext=prepareSnapshotViewMirrorSurface(effectiveGraph,allBases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:angleFor(base.snapshotId)})),zero.drawing,current=>snapshotViewMirrorOptions(workspace,recording,zero,{...zero,drawing:current}));mirrorCache.set(mirrorKey,mirrorContext);}
- }
- const sampled=prepared.evaluate(requested,location=>{const locationKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=responseSamplers.get(locationKey);if(!sampler){sampler=createSnapshotSurfaceValueSampler(effectiveGraph,location,baseRefs,mirrorContext);responseSamplers.set(locationKey,sampler);}return sampler;});
- const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>bases.find(base=>base.snapshotId===id)!)??[];
- const selected=active.length?active[dominantSnapshotBasis(active.map(base=>({snapshotId:base.snapshotId,angle:angleFor(base.snapshotId)})),normal!.simplex.geometricWeights)]:bases.find(base=>base.snapshotId===recording.activeSnapshotId)??bases[0];
+ if(!graph.mesh.vertices.length)throw Error('Recording has no real snapshot. Create one to begin editing.');
+ const effectiveGraph=context.effectiveGraph(recording,options.useDraft!==false),mirror=recordingViewMirrorRelation(workspace,recording),positive=!!mirror&&requested.x>0,prepared=context.coverage(recording,positive),locations=prepared.locations(requested),demand=snapshotSurfaceDemand(effectiveGraph,locations,mirror?.zeroSnapshotId,!controls),vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.snapshotId,vertex]));
+ const fallback=recording.activeSnapshotId??graph.mesh.vertices[0].snapshotId;if(!locateSnapshotSimplex(graph.mesh,requested))demand.add(fallback);
+ // A real vertex's visibility recipe may reference other saved controls.
+ for(const location of locations)if(location.kind==='vertex'){const recipe=graph.visibilityBasisRecipes?.[location.snapshotIds[0]];if(recipe&&!controls)for(const id of snapshotVisibilityRecipeDependencies(recipe))demand.add(id);}
+ if(positive&&mirror)demand.add(mirror.zeroSnapshotId);
+ const angleFor=(id:string)=>vertices.get(id)!.angle;
+ const basisOptions=(id:string):SnapshotEvaluationOptions=>{const vertex=vertices.get(id)!,snapshot=context.index.snapshots.get(id)!;return {...options,snapshotId:id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&(snapshotSurfaceOwnsBasisDraft(graph,id)||recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y),tolerance:options.tolerance??recording.tolerance};};
+ const basisKey=[...demand].map(id=>[id,context.plan(id,basisOptions(id),true).key]);
+ const responseFrames=options.useDraft===false?[]:(graph.correctionFrames??[]).filter(frame=>frame.edgeResponses||frame.triangleResponses||frame.responseExpressions).map(frame=>[frame.id,frame.status,frame.edgeResponses,frame.triangleResponses,frame.responseExpressions]),responseKey=[graph.edgeResponses,graph.triangleResponses,graph.responseExpressions,responseFrames];
+ const geometryDemand=snapshotSurfaceDemand(effectiveGraph,locations,mirror?.zeroSnapshotId,false);if(positive&&mirror)geometryDemand.add(mirror.zeroSnapshotId);
+ const geometryKey=semanticKey(['control-geometry',graph.mesh,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).key]),responseKey,requested,evaluationOptionsKey({...options,angle:requested,useDraft:false,liveBasisDrafts:false,products:'controls'})]);
+ const key=semanticKey(['angle-surface',recording.id,graph.mesh,basisKey,responseKey,controls?null:[snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.visibilityRecipes,graph.materialPartitions,graph.materialPathLineages],requested,evaluationOptionsKey(options)]),known=context.surfaceValues.get(key);if(known)return known;
+ const native=new Map<string,SnapshotEvaluation>(),reflected=new Map<string,SnapshotEvaluation>();
+ const base=(id:string,positiveSide=positive):SnapshotEvaluation=>{
+  let value=native.get(id);if(!value){value=context.resolveBasis(recording.id,id,options);native.set(id,value);}
+  if(!positiveSide||!mirror||angleFor(id).x!==0)return value;
+  let result=reflected.get(id);if(!result){const zero=base(mirror.zeroSnapshotId,false);result=prepareViewMirrorInput(value,zero,id,snapshotViewMirrorOptions(workspace,recording,zero,value));reflected.set(id,result);}return result;
+ };
+ const refs=[...demand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));
+ const makeMirror=(ids:readonly string[])=>{
+  if(!mirror)return undefined;const zero=base(mirror.zeroSnapshotId,false),sources=ids.map(id=>base(id,false)),mirrorKey=semanticKey(['mirror',recording.id,graph.mesh,sources.map(resultIdentity),responseKey,snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.materialPartitions,graph.materialPathLineages]);
+  let cache=mirrorSurfacePreparationCaches.get(workspace.library);if(!cache){cache=new InputCache(64);mirrorSurfacePreparationCaches.set(workspace.library,cache);}let value=cache.get(mirrorKey);if(!value){value=prepareSnapshotViewMirrorSurface(effectiveGraph,sources.map(source=>({snapshotId:source.snapshotId,drawing:source.drawing,angle:angleFor(source.snapshotId)})),zero.drawing,current=>snapshotViewMirrorOptions(workspace,recording,zero,{...zero,drawing:current}));cache.set(mirrorKey,value);}return value;
+ };
+ const mirrorContext=positive?makeMirror([...demand]):undefined,prior=context.inheritedSurface(key);
+ let sampled=context.geometryValues.get(geometryKey)??controlGeometryProducts.get(geometryKey);
+ if(!sampled){context.count('surfaceSample');const geometryRefs=[...geometryDemand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));sampled=prepared.evaluate(requested,id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}),location=>createSnapshotSurfaceValueSampler(effectiveGraph,location,geometryRefs,mirrorContext,{immutableInputs:true,onPrepare:()=>context.count('responseProgram')}));controlGeometryProducts.set(geometryKey,sampled);}context.geometryValues.set(geometryKey,sampled);
+
+ const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>base(id))??[],selected=active.length?active[dominantSnapshotBasis(active.map(value=>({snapshotId:value.snapshotId,angle:angleFor(value.snapshotId)})),normal!.simplex.geometricWeights)]:base(fallback);
  const role:SnapshotAngleSurfaceEvaluation['role']=!normal?'outside':normal.simplex.kind==='vertex'?'basis':'correction';
- const surface:SnapshotAngleSurfaceEvaluation={role,coordinateSpace:'final',...(normal?{simplex:normal.simplex}:{}),bases:active,allBases,...(positiveBases?{positiveBases}:{}),...(mirrorContext?{mirrorContext}:{}),responseGraph:effectiveGraph,nodeAuthorities:Object.fromEntries(normal?.nodeAuthorities??[]),outsideCurves:sampled.outsideCurves};
- const diagnostics:SnapshotDiagnostic[]=[...active.flatMap(base=>base.diagnostics),...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
+ let allBases:SnapshotEvaluation[]|undefined,positiveBases:SnapshotEvaluation[]|undefined,inspectionMirror:SnapshotSurfaceMirrorContext|undefined;
+ const surface:SnapshotAngleSurfaceEvaluation={role,coordinateSpace:'final',...(normal?{simplex:normal.simplex}:{}),bases:active,
+  get allBases(){return allBases??=graph.mesh.vertices.map(vertex=>base(vertex.snapshotId,false));},
+  get positiveBases(){return mirror?(positiveBases??=graph.mesh.vertices.map(vertex=>base(vertex.snapshotId,true))):undefined;},
+  get mirrorContext(){return mirror?(inspectionMirror??=makeMirror(graph.mesh.vertices.map(vertex=>vertex.snapshotId))):undefined;},
+  responseGraph:effectiveGraph,nodeAuthorities:Object.fromEntries(normal?.nodeAuthorities??[]),outsideCurves:sampled.outsideCurves};
+ const diagnostics:SnapshotDiagnostic[]=[...active.flatMap(value=>value.diagnostics),...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
  if(role==='basis'){
-  const recipe=graph.visibilityBasisRecipes?.[selected.snapshotId];
+  const recipe=controls?undefined:graph.visibilityBasisRecipes?.[selected.snapshotId],bases=refs.map(value=>base(value.snapshotId));
   const drawing=recipe?applySnapshotVisibilityState(evaluateSnapshotVisibilityRecipe(recipe,bases,selected.drawing,requested),selected.state):selected.drawing;
   const result={...selected,drawing,angle:{...requested},angleSurface:surface,diagnostics};
-  if(recipe||allBases.find(base=>base.snapshotId===selected.snapshotId)!==selected)result.paintBatches=snapshotPaintBatches(workspace,workspace.snapshots.find(s=>s.id===selected.snapshotId)!,drawing,result.provenance);
-  return cache.frames.set(key,result);
+  if(controls)result.paintBatches=[];else if(recipe||native.get(selected.snapshotId)!==selected){context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,context.index.snapshots.get(selected.snapshotId)!,drawing,result.provenance);}
+  context.surfaceValues.set(key,result);return result;
  }
- let drawing=normal?.drawing??emptyDrawing();
- if(normal){
-  const material=evaluateSnapshotSurfaceMaterial(effectiveGraph,normal.simplex,baseRefs,drawing,requested,mirrorContext);
-  const visibility=graph.visibilityRecipes?.[normal.simplex.simplexId];
-  drawing=visibility?evaluateSnapshotVisibilityRecipe(visibility,bases,material.drawing,requested):material.drawing;
+ let drawing=prior?.drawing??normal?.drawing??emptyDrawing();
+ if(normal&&!controls&&!prior){
+  context.count('material');const material=evaluateSnapshotSurfaceMaterial(effectiveGraph,normal.simplex,refs,drawing,requested,mirrorContext),visibility=graph.visibilityRecipes?.[normal.simplex.simplexId];
+  drawing=visibility?evaluateSnapshotVisibilityRecipe(visibility,refs.map(value=>base(value.snapshotId)),material.drawing,requested):material.drawing;
   diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));
  }
- const snapshot=workspace.snapshots.find(s=>s.id===selected.snapshotId)!;
- const result:SnapshotEvaluation={...selected,angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(base=>base.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(base=>base.intervalTransportErrors)};
- result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);return cache.frames.set(key,result);
+ const snapshot=context.index.snapshots.get(selected.snapshotId)!;
+ const result:SnapshotEvaluation={...selected,angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(value=>value.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(value=>value.intervalTransportErrors)};
+ if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}context.surfaceValues.set(key,result);return result;
 }
-/** Exact native control preview at a real vertex. The caller supplies the
- * immutable workspace/evaluation frozen at gesture start. Other views are
- * resolved only when an inspection consumer requests their live bases. */
-export function evaluateSnapshotControlTargetPreview(before:RecordingSnapshotWorkspace,workspace:RecordingSnapshotWorkspace,recordingId:string,baseline:SnapshotEvaluation):SnapshotEvaluation {
- const options:SnapshotEvaluationOptions={useDraft:true,immutableInputs:true,diagnostics:'preview'},full=()=>evaluateRecordingSnapshot(workspace,recordingId,options);
- const recording=workspace.recordings.find(value=>value.id===recordingId),priorRecording=before.recordings.find(value=>value.id===recordingId),surface=baseline.angleSurface,graph=recording?.angleGraph;
- if(!recording||recording!==priorRecording||before.library!==workspace.library||!graph||surface?.role!=='basis'||surface.simplex?.kind!=='vertex'||baseline.angle.x!==recording.angle.x||baseline.angle.y!==recording.angle.y||graph.visibilityBasisRecipes?.[baseline.snapshotId])return full();
- const owner=workspace.snapshots.find(value=>value.id===baseline.snapshotId),prior=before.snapshots.find(value=>value.id===baseline.snapshotId);
- if(!owner||!prior||workspace.snapshots.length!==before.snapshots.length||workspace.snapshots.some((snapshot,index)=>snapshot.id!==before.snapshots[index].id||snapshot.id!==owner.id&&snapshot!==before.snapshots[index]))return full();
- const savedKeys=new Set([...Object.keys(owner),...Object.keys(prior)]);savedKeys.delete('draft');
- if([...savedKeys].some(key=>owner[key as keyof RecordingSnapshot]!==prior[key as keyof RecordingSnapshot]))return full();
- const selected=resolveRecordingSnapshotBasis(workspace,recording,owner.id,options),current=selected.drawing;
- const topology=(drawing:DrawingDocument)=>[drawing.nodes.map(node=>node.id),drawing.curves.map(curve=>[curve.id,curve.nodes]),drawing.layers.map(layer=>[layer.id,layer.items]),drawing.joins,drawing.endpointLinks,drawing.groups,drawing.mirrorEditing];
- if(!same(topology(current),topology(baseline.drawing)))return full();
- // A red projection may reuse another basis, linked component or mirror pair.
- // Keep it frozen only when all its support is separate from current layers
- // and controls. Complex cross-basis expression programs keep the full route.
- if(surface.outsideCurves.length){
-  if(Object.keys(graph.responseExpressions??{}).length||graph.correctionFrames?.some(frame=>Object.keys(frame.responseExpressions??{}).length)||Object.keys(graph.materialBasisRecipes??{}).length)return full();
-  const outside=new Set(surface.outsideCurves.map(curve=>curve.curveId)),curves=new Set(current.curves.map(curve=>curve.id)),nodes=new Set(current.nodes.map(node=>node.id)),layers=new Set(current.layers.map(layer=>layer.id));
-  for(const basis of surface.allBases){const drawing=basis.drawing;
-   if(drawing.layers.some(layer=>layers.has(layer.id)&&layer.items.some(id=>outside.has(id)))||drawing.curves.some(curve=>outside.has(curve.id)&&curve.nodes.some(id=>nodes.has(id))))return full();
-   const components=[...snapshotControlComponents(drawing),...drawing.groups?.map(group=>group.curveIds)??[],...drawing.mirrorEditing?.curvePairs.map(pair=>[pair.a,pair.b])??[]],related=new Set(curves);let expanded=true;
-   while(expanded){expanded=false;for(const component of components)if(component.some(id=>related.has(id)))for(const id of component)if(!related.has(id)){related.add(id);expanded=true;}}
-   if([...outside].some(id=>related.has(id)))return full();
-  }
+export interface PreparedRecordingCounters {
+ validation:number;dependencyIndex:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;
+ bySnapshot:Record<string,Partial<Record<'snapshotInput'|'snapshotState'|'ownGeometry'|'basis'|'paint',number>>>;
+}
+export interface PreparedRecordingContext {
+ readonly workspace:RecordingSnapshotWorkspace;readonly counters:PreparedRecordingCounters;
+ resolveSnapshot(snapshotId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
+ resolveBasis(recordingId:string,snapshotId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
+ sample(recordingId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
+ sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[];
+ /** The immutable before context itself is the gesture's pinned baseline. */
+ beginGesture():PreparedRecordingContext;
+ fork(workspace:RecordingSnapshotWorkspace,changes?:PreparedRecordingChanges):PreparedRecordingContext;
+}
+type SnapshotPlan={key:string;options:SnapshotEvaluationOptions;recording?:SnapshotRecording};
+const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
+const semanticKey=(value:unknown):string=>{const text=JSON.stringify(value);let key=semanticKeys.get(text);if(!key){key=String(nextSemanticKey++);if(semanticKeys.size>=32768)semanticKeys.delete(semanticKeys.keys().next().value!);semanticKeys.set(text,key);}return key;};
+const contextEvaluations=new WeakMap<SnapshotEvaluation,PreparedRecordingContext>();
+export const preparedRecordingContextForEvaluation=(evaluation:SnapshotEvaluation):PreparedRecordingContext|undefined=>contextEvaluations.get(evaluation);
+const recordingContexts=new WeakMap<RecordingSnapshotWorkspace,{immutable?:{context:RecordingContext;revision:string};mutable?:{context:RecordingContext;fingerprint:string}}>();
+const immutableWorkspaceRevision=(workspace:RecordingSnapshotWorkspace):string=>semanticKey([immutableIdentity(workspace.library),workspace.snapshots.map(snapshot=>[snapshot.id,immutableIdentity(snapshot),immutableIdentity(snapshot.draft),immutableIdentity(snapshot.deformation)]),workspace.recordings.map(recording=>[recording.id,recording.angle.x,recording.angle.y,recording.tolerance,recording.activeSnapshotId,immutableIdentity(recording.angleGraph),immutableIdentity(recording.tracks),immutableIdentity(recording.snapshotIds)])]);
+const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,bySnapshot:{}});
+
+/** An immutable, validated dependency revision. Values are pinned here rather
+ * than in the small display-frame LRU. A fork can borrow any unaffected value
+ * from its frozen parent while keeping its own products and sample scratch. */
+class RecordingContext implements PreparedRecordingContext {
+ readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;
+ readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();
+ private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
+ constructor(readonly workspace:RecordingSnapshotWorkspace,readonly defaults:SnapshotEvaluationOptions,readonly before?:RecordingContext){
+  this.defaults={...defaults,angle:undefined,snapshotId:undefined,useDraft:true,liveBasisDrafts:undefined,products:'display'};
+  this.workspace=defaults.immutableInputs?workspace:structuredClone(workspace);workspace=this.workspace;
+  assertRecordingWorkspaceActive(workspace);validateSnapshotGraph(workspace);this.counters.validation++;
+  this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;
+  this.cache=evaluationCache(workspace,defaults.immutableInputs);
  }
- let complete:SnapshotEvaluation|undefined;const inspection=()=>complete??=full();
- const lazySurface:SnapshotAngleSurfaceEvaluation={role:'basis',coordinateSpace:'final',simplex:surface.simplex,bases:[selected],nodeAuthorities:surface.nodeAuthorities,outsideCurves:surface.outsideCurves,
-  get allBases(){return inspection().angleSurface!.allBases;},get positiveBases(){return inspection().angleSurface!.positiveBases;},get mirrorContext(){return inspection().angleSurface!.mirrorContext;},get responseGraph(){return inspection().angleSurface!.responseGraph;}};
- return {...selected,angle:{...recording.angle},angleSurface:lazySurface,diagnostics:[...selected.diagnostics,...baseline.diagnostics.filter(issue=>issue.code==='POSE')]};
+ count(stage:Exclude<keyof PreparedRecordingCounters,'bySnapshot'>,snapshotId?:string):void {
+  this.counters[stage]++;
+  if(snapshotId&&['snapshotInput','snapshotState','ownGeometry','basis','paint'].includes(stage)){const values=this.counters.bySnapshot[snapshotId]??={};const name=stage as keyof typeof values;values[name]=(values[name]??0)+1;}
+ }
+ plan(id:string,requested:SnapshotEvaluationOptions,root=false,visibilitySource=false):SnapshotPlan {
+  const snapshot=this.index.snapshots.get(id);if(!snapshot)throw new SnapshotResolutionError({code:'MISSING_SNAPSHOT',snapshotId:id,message:`Snapshot ${id} is missing.`});
+  const recording=this.index.recordingForSnapshot.get(id),graph=recording?.angleGraph,live=requested.liveBasisDrafts??requested.useDraft!==false,binding=graph?.mesh.vertices.find(vertex=>vertex.snapshotId===id)?.angle;
+  const options:SnapshotEvaluationOptions=root?{...requested,angle:requested.angle??snapshot.angle,liveBasisDrafts:live,products:'display'}:{angle:snapshot.angle,useDraft:live&&(snapshotSurfaceOwnsBasisDraft(graph,id)||visibilitySource&&!!binding&&recording!.angle.x===binding.x&&recording!.angle.y===binding.y),liveBasisDrafts:live,diagnostics:requested.diagnostics,tolerance:requested.tolerance,immutableInputs:requested.immutableInputs,products:'display'};
+  if(!snapshot.draft&&(recording?.mode==='triangulated'||!recording?.tracks.some(track=>track.draft)))options.useDraft=false;
+  const localKey=JSON.stringify([id,evaluationOptionsKey(options)]),known=this.plans.get(localKey);if(known)return known;
+  if(this.planning.has(localKey))throw new SnapshotResolutionError({code:'SNAPSHOT_CYCLE',snapshotId:id,message:`Snapshot ${id} contains a dependency cycle.`});this.planning.add(localKey);
+  const token=(value:unknown)=>requested.immutableInputs&&value!==null&&typeof value==='object'?immutableIdentity(value as object):value;
+  const material=graph?.materialBasisRecipes?.[id],visibility=graph?.visibilityBasisRecipes?.[id],mirror=recording&&recordingViewMirrorRelation(this.workspace,recording),effectiveGraph=graph&&!live?{...graph,correctionFrames:graph.correctionFrames?.filter(frame=>frame.status!=='draft')}:graph;
+  const dependencies=new Map<string,string>();const add=(source:string,visible=false)=>{const key=JSON.stringify([source,visible]);if(!dependencies.has(key))dependencies.set(key,this.plan(source,requested,false,visible).key);};
+  if(material)for(const source of snapshotMaterialRecipeDependencies(material,graph?.mesh,effectiveGraph,snapshot.angle))add(source,live);
+  if(visibility)for(const source of snapshotVisibilityRecipeDependencies(visibility))add(source,true);
+  for(const layer of snapshot.layers)if(layer.kind==='reference'&&this.index.snapshots.has(layer.baseSnapshotId))add(layer.baseSnapshotId);
+  for(const source of Object.values(snapshot.memberSources??{}))if(this.index.snapshots.has(source))add(source);
+  if(mirror?.targetSnapshotId===id){add(mirror.sourceSnapshotId,live);add(mirror.zeroSnapshotId,live);}
+  else if(snapshot.parentSnapshotId&&(snapshot.parentLayers||snapshot.inputMirror))add(snapshot.parentSnapshotId);
+  const drafts=options.useDraft!==false,own=[snapshot.id,snapshot.name,snapshot.kind,snapshot.angle,token(snapshot.layers),token(snapshot.memberSources),token(snapshot.relations),token(snapshot.nodeAliases),token(snapshot.nodeForks),token(snapshot.objectLocks),token(snapshot.source),token(snapshot.deformation),token(snapshot.inheritedState),token(snapshot.authored),snapshot.parentSnapshotId,token(snapshot.parentLayers),token(snapshot.inputMirror),drafts?token(snapshot.draft):null];
+  const originalIds=new Set(snapshot.layers.flatMap(layer=>[...(layer.kind==='original'?layer.items:[]),...layer.membership?.addElementIds??[]]).filter(id=>!snapshot.memberSources?.[id]));
+  for(const fork of Object.values(snapshot.nodeForks??{}))originalIds.add((fork.source??fork).curveId);
+  const libraryInputs=[...originalIds].map(id=>{const curve=this.workspace.library.curves[id];return [id,token(curve),...(curve?.nodes??[]).map(id=>token(this.workspace.library.nodes[id])),token(this.workspace.library.fills[id]),token(this.workspace.library.offsets[id])];});
+  const tracks=recording?.mode==='triangulated'?null:recording?.tracks.map(track=>{const {draft,...saved}=track;return drafts?token(track):requested.immutableInputs?[track.id,track.channel,track.targetId,track.elementId,token(track.keys),track.interpolation,track.channel==='interval'?token(track.materialIssue):null]:saved;});
+  const recipeKeys=[token(material),token(visibility),material?token(graph?.mesh):null,material?token(graph?.responseExpressions):null,material?token(graph?.materialPartitions):null,material?token(graph?.materialPathLineages):null,snapshotMaterialRecipeHasMirror(material)?[token(graph?.edgeResponses),token(graph?.triangleResponses),token(graph?.responseExpressions),live?token(graph?.correctionFrames):null,token(graph?.materialRecipes),effectiveGraph&&snapshotPropertyResponsesCacheKey(effectiveGraph)]:null,mirror?.targetSnapshotId===id?mirror:null];
+  const plan={key:semanticKey([own,libraryInputs,tracks,recipeKeys,[...dependencies.values()],evaluationOptionsKey({...options,liveBasisDrafts:false})]),options,recording};this.planning.delete(localKey);this.plans.set(localKey,plan);
+  for(let parent=this.before;parent;parent=parent.before){const value=parent.snapshotValues.get(plan.key);if(value){this.snapshotValues.set(plan.key,value);break;}}
+  return plan;
+ }
+ effectiveGraph(recording:SnapshotRecording,live:boolean):NonNullable<SnapshotRecording['angleGraph']> {const key=JSON.stringify([recording.id,live]);let graph=this.effectiveGraphs.get(key);if(!graph){const source=recording.angleGraph!;graph=live||!source.correctionFrames?.some(frame=>frame.status==='draft')?source:{...source,correctionFrames:source.correctionFrames?.filter(frame=>frame.status!=='draft')};this.effectiveGraphs.set(key,graph);}return graph;}
+ /** Coordinate-free structural projection using the same membership/alias/fork
+  * assembly as numeric evaluation. No response, cage or coordinate fit runs. */
+ membership(id:string):{key:string;input:SnapshotInputParent} {
+  const known=this.memberships.get(id);if(known)return known;
+  const snapshot=this.index.snapshots.get(id);if(!snapshot)throw Error(`Missing snapshot ${id}.`);
+  const recording=this.index.recordingForSnapshot.get(id),mirror=recording&&recordingViewMirrorRelation(this.workspace,recording),parentIds=new Set(snapshot.layers.flatMap(layer=>layer.kind==='reference'?[layer.baseSnapshotId]:[]));
+  for(const source of Object.values(snapshot.memberSources??{}))parentIds.add(source);
+  if(snapshot.parentSnapshotId&&(snapshot.parentLayers||snapshot.inputMirror))parentIds.add(snapshot.parentSnapshotId);
+  if(mirror?.targetSnapshotId===id){parentIds.add(mirror.sourceSnapshotId);parentIds.add(mirror.zeroSnapshotId);}
+  const parents=new Map([...parentIds].filter(id=>this.index.snapshots.has(id)).map(id=>[id,this.membership(id)])),library=this.workspace.library;
+  const ids=new Set(snapshot.layers.flatMap(layer=>[...(layer.kind==='original'?layer.items:[]),...layer.membership?.addElementIds??[]]));for(const fork of Object.values(snapshot.nodeForks??{}))ids.add((fork.source??fork).curveId);
+  const key=semanticKey(['membership',id,snapshot.layers,snapshot.memberSources,snapshot.nodeAliases,snapshot.nodeForks,snapshot.relations,snapshot.objectLocks,snapshot.source,snapshot.inputMirror,mirror,[...parents].map(([id,value])=>[id,value.key]),[...ids].map(id=>[id,library.curves[id]?.nodes,library.curves[id]?.nodes.map(id=>!!library.nodes[id]),library.fills[id]?.boundary,library.offsets[id]?.source])]);
+  const cached=membershipPreparationCaches.get(key);if(cached){const result={key,input:cached};this.memberships.set(id,result);return result;}
+  const neutral=(drawing:DrawingDocument):DrawingDocument=>({...drawing,nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,handles:[[0,0],[0,0]]}))});
+  const inputs=new Map([...parents].map(([id,value])=>[id,value.input]));
+  if(mirror?.targetSnapshotId===id){const parent=inputs.get(mirror.sourceSnapshotId)!,zero=inputs.get(mirror.zeroSnapshotId)!;const curvePairs=snapshotViewMirrorCurvePairs(this.workspace,mirror.zeroSnapshotId,snapshot.inputMirror?.curvePairs??[]),options={curvePairs,unpairedGroups:viewMirrorUnpairedCurveGroups(zero.drawing,curvePairs).map(curveIds=>({curveIds,reference:[0,0] as Point2}))};inputs.set(parent.snapshotId,{...parent,drawing:neutral(mirrorViewDrawingPresence(parent.drawing,zero.drawing,options).drawing)});}
+  else if(snapshot.inputMirror&&snapshot.parentSnapshotId){const parent=inputs.get(snapshot.parentSnapshotId);if(parent)inputs.set(parent.snapshotId,{...parent,drawing:neutral(mirrorSnapshotDrawing(parent.drawing,snapshot.inputMirror).drawing)});}
+  const structuralWorkspace={...this.workspace,library:{...library,nodes:Object.fromEntries(Object.entries(library.nodes).map(([id,node])=>[id,{...node,position:[0,0] as Point2}])),curves:Object.fromEntries(Object.entries(library.curves).map(([id,curve])=>[id,{...curve,handles:[[0,0],[0,0]] as [Point2,Point2]}]))}},value=inputForSnapshot(structuralWorkspace,snapshot,inputs,[]),input:SnapshotInputParent={snapshotId:id,drawing:neutral(value.drawing),provenance:value.provenance,appliedTrackIds:[...value.appliedTrackIds]},result={key,input};membershipPreparationCaches.set(key,input);this.memberships.set(id,result);return result;
+ }
+ coverage(recording:SnapshotRecording,positive:boolean):PreparedSnapshotCoverageStructure {
+  const localKey=JSON.stringify([recording.id,positive]),known=this.coverageValues.get(localKey);if(known)return known;
+  const graph=recording.angleGraph!,mirror=recordingViewMirrorRelation(this.workspace,recording),zero=mirror?this.membership(mirror.zeroSnapshotId).input:undefined;
+  const members=graph.mesh.vertices.map(vertex=>{const value=this.membership(vertex.snapshotId);let drawing=value.input.drawing;if(positive&&zero&&vertex.angle.x===0)drawing=mirrorViewDrawingPresence(drawing,zero.drawing,(()=>{const curvePairs=snapshotViewMirrorCurvePairs(this.workspace,mirror!.zeroSnapshotId);return {curvePairs,unpairedGroups:viewMirrorUnpairedCurveGroups(zero.drawing,curvePairs).map(curveIds=>({curveIds,reference:[0,0] as Point2}))};})()).drawing;return {snapshotId:vertex.snapshotId,drawing,angle:vertex.angle};});
+  const key=semanticKey(['coverage',graph.mesh,members.map(value=>[value.snapshotId,value.drawing.curves.map(curve=>[curve.id,curve.nodes])])]);let structure=structurePreparationCaches.get(key);if(!structure){structure=prepareSnapshotCoverageStructure(graph.mesh,members);structurePreparationCaches.set(key,structure);this.count('coverageStructure');}this.coverageValues.set(localKey,structure);return structure;
+ }
+ resolveSnapshot(snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return resolveSnapshotInContext(this,snapshotId,{...this.defaults,...options});}
+ resolveBasis(recordingId:string,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {const recording=this.index.recordings.get(recordingId);if(!recording)throw Error('Missing recording');return resolveRecordingSnapshotBasisInContext(this,recording,snapshotId,{...this.defaults,...options});}
+ sample(recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+  const recording=this.index.recordings.get(recordingId);if(!recording){if(this.index.snapshots.has(recordingId))return this.resolveSnapshot(recordingId,options);throw Error('Missing recording');}
+  const result=evaluateTriangulatedRecording(this,recording,{...this.defaults,...options});contextEvaluations.set(result,this);return result;
+ }
+ inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
+ sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return requests.map(options=>this.sample(recordingId,options));}
+ beginGesture():PreparedRecordingContext{return this;}
+ fork(workspace:RecordingSnapshotWorkspace,_changes?:PreparedRecordingChanges):PreparedRecordingContext {
+  if(workspace===this.workspace)return this;const known=recordingContexts.get(workspace)??{};if(known.immutable&&this.defaults.immutableInputs&&known.immutable.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
+  const context=new RecordingContext(workspace,this.defaults,this);if(this.defaults.immutableInputs)known.immutable={context,revision:immutableWorkspaceRevision(workspace)};else known.mutable={context,fingerprint:JSON.stringify(workspace)};recordingContexts.set(workspace,known);return context;
+ }
+}
+/** Mutable/import boundaries remain content guarded. Immutable store callers
+ * opt in explicitly; changing objects in place after that opt-in is unsupported. */
+export function prepareRecordingContext(workspace:RecordingSnapshotWorkspace,options:SnapshotEvaluationOptions={}):PreparedRecordingContext {
+ const known=recordingContexts.get(workspace)??{},fingerprint=options.immutableInputs?undefined:JSON.stringify(workspace);
+ if(options.immutableInputs&&known.immutable?.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
+ if(!options.immutableInputs&&known.mutable&&known.mutable.fingerprint===fingerprint)return known.mutable.context;
+ const context=new RecordingContext(workspace,options);if(options.immutableInputs)known.immutable={context,revision:immutableWorkspaceRevision(workspace)};else known.mutable={context,fingerprint:fingerprint!};recordingContexts.set(workspace,known);return context;
 }
 
+/** Compatibility adapter: gestures fork the same domain evaluation kernel. */
+export function evaluateSnapshotControlTargetPreview(before:RecordingSnapshotWorkspace,workspace:RecordingSnapshotWorkspace,recordingId:string,_baseline:SnapshotEvaluation):SnapshotEvaluation {
+ return prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).fork(workspace).sample(recordingId,{useDraft:true,diagnostics:'preview'});
+}
+export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ return prepareRecordingContext(workspace,options).resolveSnapshot(snapshotId,options);
+}
+export function resolveRecordingSnapshotBasis(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ return prepareRecordingContext(workspace,options).resolveBasis(recording.id,snapshotId,options);
+}
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- assertRecordingWorkspaceActive(workspace);
- const recording=workspace.recordings.find(r=>r.id===recordingId);if(!recording){if(workspace.snapshots.some(s=>s.id===recordingId))return resolveSnapshot(workspace,recordingId,options);throw Error('Missing recording');}
- return evaluateTriangulatedRecording(workspace,recording,options);
+ return prepareRecordingContext(workspace,options).sample(recordingId,options);
 }

@@ -543,23 +543,32 @@ export function prepareSnapshotResponseExpression(expression:SnapshotResponseExp
  * A weight-only adapter cannot express nonconstant responses at equal child
  * endpoint coordinates. Membership must still use the untouched geometric λ. */
 export type SnapshotScalarResponseValueSampler=(target:SnapshotScalarTarget,axis:0|1,coordinates:readonly number[],geometricWeights:readonly number[])=>number;
-export function createSnapshotExpressionValueSampler(location:Pick<SnapshotSimplexLocation,'vertexIds'>,source:{expression:(target:SnapshotScalarTarget,axis:0|1)=>SnapshotResponseExpression|undefined;basisScalar:SnapshotResponseExpressionEvaluation['basisScalar'];geometricWeights?:(field:SnapshotResponseExpressionField,weights:readonly number[])=>readonly number[]}):SnapshotScalarResponseValueSampler {
+/** Compiled expressions and support matrices are independent of the resolver
+ * that records fitted parameters for one sample. Only compiled operands are
+ * shared; every expression evaluation still owns its numeric scratch maps. */
+export function prepareSnapshotExpressionValueProgram(location:Pick<SnapshotSimplexLocation,'vertexIds'>,source:{expression:(target:SnapshotScalarTarget,axis:0|1)=>SnapshotResponseExpression|undefined;geometricWeights?:(field:SnapshotResponseExpressionField,weights:readonly number[])=>readonly number[];onCompile?:()=>void}) {
  const ids=array(location.vertexIds,3,'Active simplex vertices');ids.forEach(id);if(!ids.length||new Set(ids).size!==ids.length)invalid('An active simplex needs one to three distinct vertex IDs.');
  const cache=new Map<string,ReturnType<typeof prepareSnapshotResponseExpression>|null>(),vertexIds=[...location.vertexIds];
- return (target,axis,coordinates,weights)=>{
+ const createSampler=(basisScalar:SnapshotResponseBasisScalarResolver):SnapshotScalarResponseValueSampler=>(target,axis,coordinates,weights)=>{
   array(coordinates,3,'Active basis coordinates');array(weights,3,'Original geometric weights');
   if(coordinates.length!==weights.length||weights.length!==vertexIds.length||!coordinates.every(finite)||!weights.every(w=>finite(w)&&w>=0)||Math.abs(weights.reduce((sum,w)=>sum+w,0)-1)>64*Number.EPSILON)invalid('A scalar value sampler needs finite bases and original geometric weights.');
   const key=JSON.stringify([target,axis]);let sample=cache.get(key);
-  if(sample===undefined){const expression=source.expression({...target},axis);sample=expression?prepareSnapshotResponseExpression(expression):null;cache.set(key,sample);}
+  if(sample===undefined){const expression=source.expression({...target},axis);sample=expression?prepareSnapshotResponseExpression(expression):null;if(sample)source.onCompile?.();cache.set(key,sample);}
   const baseline=coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
   const callbackWeights=source.geometricWeights?Object.freeze([...weights]):weights;
-  const residual=sample?.({basisScalar:source.basisScalar,geometricWeights:field=>{
+  const residual=sample?.({basisScalar,geometricWeights:field=>{
    if(source.geometricWeights)return source.geometricWeights(field,callbackWeights);
    if(vertexIds.some((id,index)=>weights[index]!==0&&!field.vertexIds.includes(id)))fail('EXPRESSION_MISSING_SUPPORT',`Field ${field.id} needs an explicit map from the new simplex into its original angle support.`);
    return field.vertexIds.map(id=>{const index=vertexIds.indexOf(id);return index<0?0:weights[index];});
   }})??0;
   const result=baseline+residual;if(!finite(result))invalid('Response expression value is nonfinite.');return result;
  };
+ return Object.freeze({createSampler});
+}
+
+/** Compatibility adapter for one independently owned sampling session. */
+export function createSnapshotExpressionValueSampler(location:Pick<SnapshotSimplexLocation,'vertexIds'>,source:{expression:(target:SnapshotScalarTarget,axis:0|1)=>SnapshotResponseExpression|undefined;basisScalar:SnapshotResponseExpressionEvaluation['basisScalar'];geometricWeights?:(field:SnapshotResponseExpressionField,weights:readonly number[])=>readonly number[]}):SnapshotScalarResponseValueSampler {
+ return prepareSnapshotExpressionValueProgram(location,source).createSampler(source.basisScalar);
 }
 
 /** P0, H0-P0, H1-P1, P1 in final snapshot coordinates. */
