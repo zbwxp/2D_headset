@@ -105,6 +105,16 @@ describe('mutable Drawing defaults remain guarded by content',()=>{
 });
 
 describe('synchronous evaluation read scope',()=>{
+ test('new numerical samples reuse a bounded value-guarded topology plan',()=>{
+  const d=fixture();withDrawingReadScope(()=>resolveDisplayRoute(d,route));
+  const before=drawingReadContextStats(),next:Doc={...d,nodes:d.nodes.map(n=>({...n,position:[n.position[0]+.4,n.position[1]-.2]})),curves:d.curves.map(c=>({...c,handles:c.handles.map(p=>[p[0]+.4,p[1]-.2]) as [Point2,Point2]}))};
+  withDrawingReadScope(()=>expect(resolveDisplayRoute(next,route).diagnostics).toEqual([]));
+  const after=drawingReadContextStats();
+  expect(after.contexts-before.contexts).toBe(1);expect(after.topologyKeys-before.topologyKeys).toBe(1);
+  expect(after.topologyPlans-before.topologyPlans).toBe(0);expect(after.strokeBuilds-before.strokeBuilds).toBe(0);
+  expect(after.localConnectionBuilds-before.localConnectionBuilds).toBe(0);
+  expect(preparedDrawingReadContext(next)).toBeUndefined();
+ });
  test('shares nested readers, disposes after throw, and sees later mutable edits',()=>{
   const d=fixture(),expected=resolveDisplayRoute(d,route),before=drawingReadContextStats();
   expect(()=>withDrawingReadScope(()=>{

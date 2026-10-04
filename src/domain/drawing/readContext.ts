@@ -1,5 +1,6 @@
 import type {DrawingDocument,DrawingCurve,DrawingNode,DrawingLayer,FillRegion,OffsetRelation,EndpointLink,Endpoint} from './model';
 import type {StrokeIndex} from './strokes';
+import {InputCache} from '../geometry/cache';
 
 /** IDs and continuation only. Numeric geometry, visibility, brushes, interval
  * collections and paint-depth fields must always come from the current Drawing. */
@@ -22,6 +23,10 @@ export interface DrawingReadContext {
  readonly visibleStrokes:Map<string,StrokeIndex>;
 }
 const prepared=new WeakMap<DrawingDocument,DrawingReadContext>();
+// Bounded, value-guarded ID plans contain no Drawing objects or numeric data.
+// New immutable samples can therefore retain connectivity without rebuilding
+// it, while each current document still owns fresh geometry/visibility maps.
+const topologyPlans=new InputCache<DrawingTopologyPlan>(128);
 type ReadStamp=readonly unknown[];
 interface ScopedRead {stamp:ReadStamp;context:DrawingReadContext}
 let activeScope:WeakMap<DrawingDocument,ScopedRead>|undefined;
@@ -53,8 +58,8 @@ function topologyKey(d:DrawingDocument):string {
 }
 const index=<T extends {id:string}>(items:T[])=>new Map(items.map(item=>[item.id,item]));
 function createContext(d:DrawingDocument,prior?:DrawingReadContext,persist=true):DrawingReadContext {
- const key=topologyKey(d),retain=prior?.topology.key===key;
- const topology=retain?prior.topology:{key,strokes:new Map<string,StrokeIndex>()};
+ const key=topologyKey(d),known=prior?.topology.key===key?prior.topology:topologyPlans.get(key),retain=!!known;
+ const topology=known??topologyPlans.set(key,{key,strokes:new Map<string,StrokeIndex>()});
  counts.contexts++;if(retain)counts.topologyRetains++;else counts.topologyPlans++;
  const owners=new Map<string,DrawingLayer>();
  for(const layer of d.layers)for(const id of layer.items)if(!owners.has(id))owners.set(id,layer);

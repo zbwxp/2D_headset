@@ -203,6 +203,7 @@ describe('prepared Recording context through the production sampling entrypoints
   // no per-query content signature. The scope cannot mark editable buffers as
   // permanently immutable merely because a renderer read them once.
   expect(completed.strokeKeys-reads.strokeKeys).toBe(0);
+  expect(completed.strokeBuilds-reads.strokeBuilds).toBe(0);
   expect(completed.topologyKeys-reads.topologyKeys).toBe(completed.contexts-reads.contexts);
   expect(completed.contexts-reads.contexts).toBeLessThan(40);
   expect(fresh.every(value=>preparedDrawingReadContext(value.drawing)===undefined)).toBe(true);
