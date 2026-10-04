@@ -1,3 +1,5 @@
+import {assertCubicContinuationRange} from '../drawing/cubicRangeContinuation';
+import type {CageSplitLineage} from './cageSplitLineage';
 import {pruneSnapshotMirrorMetadata} from './mirrorMetadata';
 import {pruneSnapshotObjectLocks} from './objectLocks';
 import {pruneSnapshotNodeAliases} from './nodeAliases';
@@ -43,6 +45,17 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   }
   changed=removed.size!==count;
  }
+ // A surviving cubic determines its old parent only when inverse restriction
+ // is numerically available. Reject this specific source transaction before
+ // commit; never let a tiny remnant disable an unrelated curve's whole domain.
+ const checkFamily=(family:CageSplitLineage,snapshotId:string)=>{
+  if(!family.parts.some(part=>removed.has(part.curveId)))return;
+  const live=family.parts.filter(part=>!removed.has(part.curveId));if(!live.length||live[0].parameterRange[0]===0&&live.at(-1)!.parameterRange[1]===1)return;
+  const longest=live.reduce((a,b)=>b.parameterRange[1]-b.parameterRange[0]>a.parameterRange[1]-a.parameterRange[0]?b:a);
+  try{assertCubicContinuationRange(...longest.parameterRange);}catch(error){throw Error(`Cannot delete source members of cage family ${family.id} in snapshot ${snapshotId}: ${(error as Error).message}`);}
+ };
+ const checkProgram=(program:import('../drawing/materialProgram').EvaluatedMaterialStep[],snapshotId:string)=>{for(const step of program){if(step.kind==='cage'&&step.domain.enabled!==false)for(const family of step.domain.fitLineages??[])checkFamily(family,snapshotId);else if(step.kind==='reflected')checkProgram(step.steps,snapshotId);}};
+ for(const snapshot of after.snapshots)for(const state of [snapshot.deformation,snapshot.inheritedState,snapshot.draft?.deformation])for(const domain of state?.layerDomains??[]){if(domain.enabled===false)continue;if(domain.kind==='h-coons')for(const family of domain.fitLineages??[])checkFamily(family,snapshot.id);else if(domain.materialProgram)checkProgram(domain.materialProgram,snapshot.id);}
  const appearance=(track:StrokeDisplayIntervals):StrokeDisplayIntervals=>({...track,ranges:track.ranges.filter(range=>!removed.has(range.id)).map(range=>{if(!range.originId||!removed.has(range.originId))return range;const {originId,...rest}=range;void originId;return rest;})});
  const interval=(value:SceneIntervalValue):SceneIntervalValue=>({...value,appearance:value.appearance?appearance(value.appearance):null,enabled:without(value.enabled,removed)});
  const shape=(value:SceneShapeValue):SceneShapeValue=>({...value,nodes:without(value.nodes,removed),handles:without(value.handles,removed)});

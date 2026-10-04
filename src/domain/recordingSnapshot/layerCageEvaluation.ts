@@ -7,7 +7,7 @@ import {createCageSplitProjector,cageSplitShapeRange,retainCageSplitShapeRange} 
 import {displayField,displayPath} from '../drawing/displayIntervals';
 import {derivedUses} from '../drawing/roundedJoin';
 import {strokes,strokePaths} from '../drawing/strokes';
-import {appendEvaluatedDeformation,evaluatedControlParameter,evaluatedControlParameterSlope,evaluatedFitRange} from '../drawing/evaluatedDeformation';
+import {appendEvaluatedDeformation,evaluatedControlParameter,evaluatedControlParameterSlope,evaluatedFitRange,evaluatedFitContext} from '../drawing/evaluatedDeformation';
 import {applyDrawingShapeValue} from '../drawing/sparseShape';
 import {createCubicCorrectionProjector} from '../drawing/cubicCorrection';
 import {createCageGeometryProjector,type CageFitDiagnostic} from '../drawing/cageGeometry';
@@ -22,7 +22,7 @@ export function evaluateLayerCageDomain(input:DrawingDocument,domain:SnapshotLay
  const field=layerCageDomainProjection(domain);
  const layers=new Set(domain.layerIds),scope=new Set(input.layers.filter(layer=>layers.has(layer.id)).flatMap(layer=>layer.items)),curves=new Set(input.curves.filter(curve=>scope.has(curve.id)).map(curve=>curve.id));
  if(domain.enabled===false)curves.clear();
- const native=createCageGeometryProjector(field,curves,tolerance);let projector=domain.fitLineages?.length?createCageSplitProjector(native,domain.fitLineages,{curveIds:curves,residual:true,targetPoint:(shape,t)=>field.map(point(shape,t)),currentRanges:new Map([...curves].flatMap(id=>{const range=evaluatedFitRange(input,id);return range?[[id,range] as const]:[];})),tolerance}):native;
+ const native=createCageGeometryProjector(field,curves,tolerance);let projector=domain.fitLineages?.length?createCageSplitProjector(native,domain.fitLineages,{curveIds:curves,inputPieces:[...curves].map(id=>({shape:shapeOf(input,id),owners:[id]})),residual:true,parentParameter:(id,t)=>evaluatedFitContext(input,id)?.parentParameter?.(t)??t,targetPoint:(shape,t)=>field.map(point(shape,t)),currentRanges:new Map([...curves].flatMap(id=>{const range=evaluatedFitRange(input,id);return range?[[id,range] as const]:[];})),tolerance}):native;
  const pieces=[...curves].map(id=>({shape:shapeOf(input,id),owners:[id]})),projected=projector.projectGeometry({pieces,shapes:pieces.map(piece=>piece.shape)}),fits=new Map(projected.fits.flatMap((fit,i)=>fit?[[pieces[i].owners[0],fit] as const]:[])),positions=new Map<string,Point2>(),diagnostics:CageFitDiagnostic[]=[];
  for(const curve of input.curves){
   const result=fits.get(curve.id),shape=result?.shape??shapeOf(input,curve.id);
@@ -65,7 +65,7 @@ export function evaluateLayerCageDomain(input:DrawingDocument,domain:SnapshotLay
 export function applyLayerCageDomain(input:DrawingDocument,domain:SnapshotLayerCageDomain,postShape?:import('../recordingScene/model').SceneShapeValue,tolerance=.00004,shapeLineages?:import('./cageSplitLineage').CageSplitShapeLineage[]):DrawingDocument {
  if(domain.enabled===false){layerCageDomainProjection(domain);return input;}
  const evaluated=evaluateLayerCageDomain(input,domain,tolerance);
- let drawing=appendEvaluatedDeformation(evaluated.controlDrawing,input,evaluated.curveIds,evaluated.projector,JSON.stringify(domain),new Map([...evaluated.fits].map(([id,fit])=>[id,fit.parameters])),{kind:'cage',domain},new Map([...evaluated.fits].flatMap(([id,fit])=>{const range=cageSplitShapeRange(fit.shape);return range?[[id,range.parameterRange] as const]:[];})));
+ let drawing=appendEvaluatedDeformation(evaluated.controlDrawing,input,evaluated.curveIds,evaluated.projector,JSON.stringify(domain),new Map([...evaluated.fits].map(([id,fit])=>[id,fit.parameters])),{kind:'cage',domain},new Map([...evaluated.fits].flatMap(([id,fit])=>{const range=cageSplitShapeRange(fit.shape);return range?[[id,range.parameterRange] as const]:[];})),new Map([...evaluated.fits].flatMap(([id,fit])=>{const range=cageSplitShapeRange(fit.shape);return range?[[id,range] as const]:[];})));
  if(postShape)drawing=applyLayerDomainPostShape(drawing,shapeLineages?.length?expandCageSplitPostShape(drawing,postShape,shapeLineages):postShape,new Set(input.layers.filter(layer=>domain.layerIds.includes(layer.id)).flatMap(layer=>layer.items)),tolerance);
  for(const layer of drawing.layers)for(const stroke of strokes(drawing,layer.id))for(const path of strokePaths(stroke))if(path.segments.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,path.segments,path.closed);if(geometry.error)throw Error(geometry.error);}
  for(const fill of drawing.fills)if(fill.boundary.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,fill.boundary,true);if(geometry.error)throw Error(geometry.error);}

@@ -81,10 +81,10 @@ test('ARC bridge pieces still use the existing ordinary cage fitter',()=>{
  sameShape(output.geometry.shapes.at(-1)!,base.fit(bridge).shape);expect(cageSplitShapeRange(output.geometry.shapes.at(-1)!)).toBeUndefined();expect(output.geometry.pieces.at(-1)!.joinId).toBe('arc');
 });
 
-test('divergent source controls and incomplete native families fail with a precise lineage diagnostic',()=>{
+test('divergent source controls fail with a precise lineage diagnostic',()=>{
  const {geometry,projector}=fixture(),broken=geometry.pieces.map((piece,i)=>({...piece,shape:i===0?tagCurve(piece.shape.map((point,j)=>j===1?[point[0]+.04,point[1]]:[...point]) as Cubic,piece.owners[0]):piece.shape}));
  expect(()=>projector.projectGeometry({pieces:broken,shapes:broken.map(piece=>piece.shape)})).toThrow(/Cage split lineage parent: declared native piece .* no longer belongs to one coherent cubic/);
- expect(()=>projector.projectGeometry({pieces:geometry.pieces.slice(0,1),shapes:geometry.shapes.slice(0,1)})).toThrow(/Cage split lineage parent:.*every declared native piece exactly once/);
+
 });
 
 test('opt-in live residual keeps untouched splits exact and independently edited shared seams together',()=>{
@@ -103,4 +103,15 @@ test('opt-in live residual keeps untouched splits exact and independently edited
  const distance=(a:Cubic,b:Cubic)=>Math.hypot(...a.flatMap((p,i)=>p.map((n,axis)=>n-b[i][axis])));
  for(let i=0;i<geometry.shapes.length;i++){expect(distance(small.geometry.shapes[i],original.geometry.shapes[i])).toBeLessThan(.00002);expect(distance(smaller.geometry.shapes[i],original.geometry.shapes[i])).toBeLessThan(distance(small.geometry.shapes[i],original.geometry.shapes[i]));}
  expect(()=>createCageSplitProjector(base,[lineage],{residual:true})).toThrow(/actual field target/);
+});
+
+
+test('a partial render uses its live family inputs without rendering dependencies',()=>{
+ const {lineage,geometry,base}=fixture(),projector=createCageSplitProjector(base,[lineage],{inputPieces:geometry.pieces}),whole=projector.projectGeometry(geometry);
+ for(const index of [0,1]){const piece=geometry.pieces[index],result=projector.projectGeometry({pieces:[piece],shapes:[piece.shape]});expect(result.geometry.pieces).toHaveLength(1);expect(result.geometry.pieces[0].owners).toEqual(piece.owners);sameShape(result.geometry.shapes[0],whole.geometry.shapes[index]);}
+});
+
+test('retired intervals continue the longest surviving live polynomial on the original axis',()=>{
+ const {lineage,geometry,base}=fixture([0,.21,.67,1]),parent=base.fit(root);
+ for(const indices of [[1],[0,2]]){const parts=indices.map(i=>lineage.parts[i]),pieces=indices.map(i=>geometry.pieces[i]),result=createCageSplitProjector(base,[{...lineage,parts}]).projectGeometry({pieces,shapes:pieces.map(piece=>piece.shape)});parts.forEach((part,i)=>sameShape(result.geometry.shapes[i],subcurve(parent.shape,mappedParameter(part.parameterRange[0],parent.parameters),mappedParameter(part.parameterRange[1],parent.parameters))));}
 });

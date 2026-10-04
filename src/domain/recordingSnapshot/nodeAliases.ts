@@ -1,4 +1,7 @@
-import {hasEvaluatedDeformation,hasEvaluatedDeformationFor,retainEvaluatedDeformations} from '../drawing/evaluatedDeformation';
+import {cageEvaluationDependencyContext} from './cageEvaluationDependencies';
+import {replaySnapshotTopologyMaterial} from './inheritedTopologyMaterial';
+import {remapMaterialProgram} from '../drawing/materialProgram';
+import {hasEvaluatedDeformation,hasEvaluatedDeformationFor,retainEvaluatedDeformations,evaluatedMaterialSource,evaluatedMaterialProgram} from '../drawing/evaluatedDeformation';
 import {add,sub,type DrawingDocument,type DrawingCurve,type Point2} from '../drawing/model';
 import {cleanEndpointLinks} from '../drawing/endpointLinks';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../drawing/evaluatedAffine';
@@ -41,7 +44,7 @@ function aliasDrawing(drawing:DrawingDocument,aliases:SnapshotNodeAliases):Drawi
 /** Evaluate the same relative-handle translation as Drawing's true node merge.
  * Unavailable membership leaves an explicit alias inactive; permanent source
  * deletion retires it through the normal source-dependency transaction. */
-export function applySnapshotNodeAliases(drawing:DrawingDocument,value:SnapshotNodeAliases|undefined,diagnostics:SnapshotDiagnostic[],snapshotId:string):DrawingDocument {
+export function applySnapshotNodeAliases(drawing:DrawingDocument,value:SnapshotNodeAliases|undefined,diagnostics:SnapshotDiagnostic[],snapshotId:string,sourceForLayer?:(layerId:string,representativeCurveId:string)=>DrawingDocument|undefined):DrawingDocument {
  if(!value||!Object.keys(value).length)return drawing;
  const normalized=normalizeSnapshotNodeAliases(value),nodes=new Set(drawing.nodes.map(node=>node.id)),aliases:SnapshotNodeAliases={};
  for(const [id,authority] of Object.entries(normalized)){
@@ -49,7 +52,11 @@ export function applySnapshotNodeAliases(drawing:DrawingDocument,value:SnapshotN
   else diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:id,message:`Shared-node alias ${id} → ${authority} is inactive because one source node is outside this Snapshot's membership.`});
  }
  if(!Object.keys(aliases).length)return drawing;
- if(hasEvaluatedDeformation(drawing)&&Object.entries(aliases).some(([id,authority])=>hasEvaluatedDeformationFor(drawing,id)||hasEvaluatedDeformationFor(drawing,authority)))return fail('NODE_ALIAS_MATERIAL_CONFLICT','Binding controls inside a retained cage needs a post-domain topology target. Disable or reset the affected cage first; no source or Snapshot was changed.');
+ if(hasEvaluatedDeformation(drawing)&&Object.entries(aliases).some(([id,authority])=>hasEvaluatedDeformationFor(drawing,id)||hasEvaluatedDeformationFor(drawing,authority))){
+  const target=cleanEndpointLinks(aliasDrawing(drawing,aliases)),material=cleanEndpointLinks(aliasDrawing(evaluatedMaterialSource(drawing),aliases)),programs=new Map<string,import('../drawing/materialProgram').EvaluatedMaterialStep[]>();
+  for(const curve of drawing.curves){const steps=evaluatedMaterialProgram(drawing,curve.id);if(!steps)return fail('NODE_ALIAS_MATERIAL_CONFLICT',`Curve ${curve.id} has no replayable material lineage for the requested node authority.`);if(steps.length)programs.set(curve.id,remapMaterialProgram(steps,id=>snapshotNodeAuthority(aliases,id),{keepObject:id=>snapshotNodeAuthority(aliases,id)===id}));}
+  return retainSnapshotRouteMaterialInput(replaySnapshotTopologyMaterial(target,material,programs,(layerId,curveId)=>{const parent=sourceForLayer?.(layerId,curveId);if(!parent)return undefined;const raw=evaluatedMaterialSource(cageEvaluationDependencyContext(parent)),ids=new Set(raw.nodes.map(node=>node.id));return aliasDrawing({...raw,nodes:[...raw.nodes,...material.nodes.filter(node=>!ids.has(node.id))]},aliases);}),drawing);
+ }
  const result=cleanEndpointLinks(aliasDrawing(drawing,aliases)),material=evaluatedAffineSource(drawing);
  retainEvaluatedDeformations(result,[drawing]);
  if(material){

@@ -1,3 +1,4 @@
+import type {CurveFitRange} from './curveFitRange';
 import {remapCurveSource,transformCurveSource} from './curveProvenance';
 import type {Affine2D} from '../geometry/affine2d';
 import {createFittedGeometryProjector,type CageFitDiagnostic} from './cageGeometry';
@@ -11,7 +12,7 @@ export type {EvaluatedMaterialStep} from './materialProgram';
 type Projector=ReturnType<typeof createFittedGeometryProjector>;
 type Geometry={shapes:Cubic[];pieces:DrawingPiece[];error?:string};
 type Material=Parameters<Projector['projectMaterialField']>[0];
-interface Program {key:string;steps:Projector[];data?:EvaluatedMaterialStep[];parameter:(t:number)=>number;slope:(t:number)=>number;fitRange?:readonly [number,number]}
+interface Program {key:string;steps:Projector[];data?:EvaluatedMaterialStep[];parameter:(t:number)=>number;slope:(t:number)=>number;fitRange?:readonly [number,number];fitContext?:CurveFitRange}
 interface Evaluation {source:DrawingDocument;programs:Map<string,Program>;sources:WeakMap<DrawingDocument,DrawingDocument>;diagnostics:Map<string,CageFitDiagnostic>}
 const evaluations=new WeakMap<DrawingDocument['nodes'],Evaluation>();
 const identityValues=Array.from({length:129},(_,i)=>i/128);
@@ -41,16 +42,17 @@ export function evaluatedDeformationSource(drawing:DrawingDocument):DrawingDocum
 /** Material measurements must strip the complete output program, including a
  * prior nonuniform affine. Identity and topology are retained by the caller. */
 export const evaluatedMaterialSource=(drawing:DrawingDocument)=>evaluatedDeformationSource(drawing)??evaluatedAffineSource(drawing)??drawing;
+export const evaluatedFitContext=(drawing:DrawingDocument,id:string)=>evaluations.get(drawing.nodes)?.programs.get(id)?.fitContext;
 export const evaluatedFitRange=(drawing:DrawingDocument,id:string)=>evaluations.get(drawing.nodes)?.programs.get(id)?.fitRange;
 export function evaluatedControlParameter(drawing:DrawingDocument,id:string,t:number):number {return evaluations.get(drawing.nodes)?.programs.get(id)?.parameter(t)??t;}
 export function evaluatedControlParameterSlope(drawing:DrawingDocument,id:string,t:number):number {return evaluations.get(drawing.nodes)?.programs.get(id)?.slope(t)??1;}
 
 /** Append one stage while retaining live canonical identities and material
  * control provenance. The stage's pure projector owns all fitting math. */
-export function appendEvaluatedDeformation(drawing:DrawingDocument,before:DrawingDocument,curveIds:ReadonlySet<string>,projector:Projector,key:string,parameters:ReadonlyMap<string,CurveParameterMap>=new Map(),data?:EvaluatedMaterialStep,fitRanges:ReadonlyMap<string,readonly [number,number]>=new Map()):DrawingDocument {
+export function appendEvaluatedDeformation(drawing:DrawingDocument,before:DrawingDocument,curveIds:ReadonlySet<string>,projector:Projector,key:string,parameters:ReadonlyMap<string,CurveParameterMap>=new Map(),data?:EvaluatedMaterialStep,fitRanges:ReadonlyMap<string,readonly [number,number]>=new Map(),fitContexts:ReadonlyMap<string,CurveFitRange>=new Map()):DrawingDocument {
  if(!curveIds.size)return drawing;
  const programs=programsFor(before),source=evaluatedMaterialSource(before);
- for(const curve of before.curves){if(!curveIds.has(curve.id))continue;const prior=programs.get(curve.id),map=parameters.get(curve.id),program:Program={fitRange:fitRanges.get(curve.id)??prior?.fitRange,key:JSON.stringify([prior?.key??'',key]),steps:[...prior?.steps??[],projector],data:data&&(!prior||prior.data)?[...prior?.data??[],structuredClone(data)]:undefined,parameter:t=>mappedParameter(prior?.parameter(t)??t,map),slope:t=>(prior?.slope(t)??1)*mappedParameterSlope(prior?.parameter(t)??t,map)};
+ for(const curve of before.curves){if(!curveIds.has(curve.id))continue;const prior=programs.get(curve.id),map=parameters.get(curve.id),program:Program={fitContext:fitContexts.get(curve.id)??prior?.fitContext,fitRange:fitRanges.get(curve.id)??prior?.fitRange,key:JSON.stringify([prior?.key??'',key]),steps:[...prior?.steps??[],projector],data:data&&(!prior||prior.data)?[...prior?.data??[],structuredClone(data)]:undefined,parameter:t=>mappedParameter(prior?.parameter(t)??t,map),slope:t=>(prior?.slope(t)??1)*mappedParameterSlope(prior?.parameter(t)??t,map)};
   programs.set(curve.id,program);for(const node of curve.nodes)programs.set(node,program);
  }
  evaluations.set(drawing.nodes,{source,programs,sources:new WeakMap(),diagnostics:new Map()});return drawing;
@@ -112,6 +114,6 @@ export function remapEvaluatedDeformations(drawing:DrawingDocument,input:Drawing
   if(!steps)return undefined;const mapped=remapMaterialProgram(steps,id);if(!reflection)return mapped;
   return reflection.frame?[{kind:'reflected',axisX:reflection.frame.axisX,reverseCurveIds:reflection.frame.reverseCurveIds.map(id),steps:mapped}]:undefined;
  };
- const programs=new Map([...evaluation.programs].map(([key,program])=>[id(key),{...program,key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reflection?.reverse(key)?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reflection?.reverse(key)?(t:number)=>program.slope(1-t):program.slope,data:data(program.data)}]));
+ const programs=new Map([...evaluation.programs].map(([key,program])=>[id(key),{...program,...(program.fitContext?{fitContext:{...program.fitContext,id:id(program.fitContext.id)}}:{}),key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reflection?.reverse(key)?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reflection?.reverse(key)?(t:number)=>program.slope(1-t):program.slope,data:data(program.data)}]));
  evaluations.set(drawing.nodes,{source:material,programs,sources:new WeakMap(),diagnostics:new Map()});return drawing;
 }

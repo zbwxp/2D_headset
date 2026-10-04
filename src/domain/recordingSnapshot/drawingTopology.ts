@@ -1,3 +1,4 @@
+import {inheritedTopologyLayerProgram} from './inheritedTopologyMaterial';
 import {snapshotPaintAppearanceDifference,mergeSnapshotPaintAppearance,type SnapshotPaintAppearanceMap} from './paintAppearance';
 import {inverseAffine2D,applyAffine2DVector} from '../geometry/affine2d';
 import {snapshotControlMatrix} from './controlSpace';
@@ -79,7 +80,7 @@ function layerWarpInverse(evaluation:SnapshotEvaluation,layerId:string):(point:P
  return point=>inverses.reduceRight((value,inverse)=>inverse(value),point);
 }
 function unplace(evaluation:SnapshotEvaluation,layerId:string,curveId:string,point:Point2):Point2 {
- if(layerUsesCage(evaluation.state.layerDomains,layerId)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))return fail('NONLINEAR_TOPOLOGY_INVERSE','Topology in this inherited fitted layer needs an explicit material/control lineage target. Its fitted handles cannot be inverse-mapped; edit the owning snapshot or disable the inherited cage first. No geometry was changed.');
+ if(layerUsesCage(evaluation.state.layerDomains,layerId)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))return fail('MISSING_TOPOLOGY_CONTROL_LINEAGE',`Control ${curveId} in layer ${layerId} has no resolved canonical input/output topology target. No geometry was changed.`);
  const inverse=trySnapshotControlInverse(evaluation,layerId,curveId);
  if(!inverse)return fail('SINGULAR_TOPOLOGY_INVERSE',`Layer ${layerId} or curve ${curveId} has a collapsed placement axis or layer domain. Restore or disable that operation before authoring its controls.`);
  return applyScenePlacementMatrix(inverse,point);
@@ -143,7 +144,9 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // New material starts in this snapshot's input domain. Explicit child P in a
  // nonlinear layer uses a fixed input draft plus an authored output target.
  // New parent/source members still have no private child correction entries.
- const nonlinearLayers=nonlinearTopologyTargetLayers(evaluation,target),nonlinearInputs=createNonlinearTopologyInput(evaluation,target,newIds,nonlinearLayers);
+ const inheritedPrograms=new Map<string,import('../drawing/materialProgram').EvaluatedMaterialStep[]>();
+ for(const layer of snapshot.layers)if(layer.kind==='reference'&&before.snapshots.some(value=>value.id===layer.baseSnapshotId)&&target.layers.find(value=>value.id===layer.id)?.items.some(id=>newIds.has(id))){const program=inheritedTopologyLayerProgram(resolveSnapshot(before,layer.baseSnapshotId,{useDraft:false,diagnostics:'preview'}).drawing,layer.baseLayerId);if(program)inheritedPrograms.set(layer.id,program);}
+ const nonlinearLayers=nonlinearTopologyTargetLayers(evaluation,target,inheritedPrograms),nonlinearInputs=createNonlinearTopologyInput(evaluation,target,newIds,nonlinearLayers,inheritedPrograms);
  const inverseByLayer=new Map<string,(point:Point2)=>Point2>(),nodes=new Map(target.nodes.map(node=>[node.id,node]));
  const inverse=(layerId:string)=>{let value=inverseByLayer.get(layerId);if(!value){value=layerWarpInverse(evaluation,layerId);inverseByLayer.set(layerId,value);}return value;};
  for(const curve of target.curves){if(!newIds.has(curve.id)){if(owned.has(curve.id)&&!forkCurves.has(curve.id)&&!same(curve.nodes,workspace.library.curves[curve.id].nodes))workspace.library.curves[curve.id].nodes=[...curve.nodes];continue;}
@@ -176,7 +179,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  // changed IDs are authored; saved state and an unrelated draft remain intact.
  const state:SnapshotDeformationState=useDraft&&local.draft?local.draft.deformation:local.deformation,shapes=new Map<string,NonNullable<SnapshotDeformationState['layers'][string]['shape']>>();
  const priorDomains=state.layerDomains;
- if(nonlinearLayers.size)state.layerDomains=nonlinearTopologyControlBase(evaluation.state.layerDomains??[],state.layerDomains,nonlinearLayers);
+ if(nonlinearLayers.size)state.layerDomains=nonlinearTopologyControlBase(evaluation.state.layerDomains??[],state.layerDomains,nonlinearLayers,()=>{let serial=1,id=`${snapshot.id}:topology-controls:${serial}`;while(occupied.has(id)||workspace.snapshots.some(value=>[...value.deformation.layerDomains??[],...value.inheritedState?.layerDomains??[],...value.draft?.deformation.layerDomains??[]].some(domain=>domain.id===id)))id=`${snapshot.id}:topology-controls:${++serial}`;occupied.add(id);return id;});
  const intermediate=evaluate(workspace);
  const nonlinearCurves=new Set(target.curves.filter(curve=>nonlinearLayers.has(layerFor(target,curve.id)!.id)).map(curve=>curve.id));
  const linearRelations=(drawing:DrawingDocument):DrawingDocument=>({...drawing,endpointLinks:drawing.endpointLinks?.filter(link=>!nonlinearCurves.has(link.a.curveId)&&!nonlinearCurves.has(link.b.curveId))});
