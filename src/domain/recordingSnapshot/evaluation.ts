@@ -80,6 +80,7 @@ export interface SnapshotEvaluation {
 export interface SnapshotAngleSurfaceEvaluation {
  role:'basis'|'correction'|'outside';coordinateSpace:'final';
  simplex?:SnapshotSimplexLocation;bases:SnapshotEvaluation[];allBases:SnapshotEvaluation[];
+ /** Actual control/material/reflection closure at this sampled angle. */requiredBases?:SnapshotEvaluation[];
  /** Side-qualified virtual poses share the same genuine geometric vertices. */positiveBases?:SnapshotEvaluation[];
  /** Prepared live negative response surface, shared by editing and onions. */mirrorContext?:SnapshotSurfaceMirrorContext;
  /** Matches the draft visibility used for the resolved controls. */responseGraph?:NonNullable<SnapshotRecording['angleGraph']>;
@@ -203,6 +204,8 @@ export function snapshotViewMirrorOptions(workspace:RecordingSnapshotWorkspace,r
 /** Select complete cached controls before interpolation; zero authoring itself
  * always selects the authored (negative) side. */
 export function snapshotSurfaceBasesAtAngle(surface:SnapshotAngleSurfaceEvaluation,angle:Angle):SnapshotEvaluation[]{return angle.x>0&&surface.positiveBases?surface.positiveBases:surface.allBases;}
+/** Inverse consumers use the sampled closure; full inspection remains explicit. */
+export function snapshotSurfaceRequiredBases(surface:SnapshotAngleSurfaceEvaluation,angle:Angle):SnapshotEvaluation[]{return surface.requiredBases??snapshotSurfaceBasesAtAngle(surface,angle);}
 function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,parents:Map<string,SnapshotInputParent>,diagnostics:SnapshotDiagnostic[]):SnapshotInput {
  const drawing=emptyDrawing(),provenance:SnapshotEvaluation['provenance']={},appliedTrackIds=new Set<string>();
  const objects=new Map<string,unknown>(),nodeMap=new Map<string,DrawingDocument['nodes'][number]>(),inherited=emptyRelations();
@@ -453,14 +456,19 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const surface:SnapshotAngleSurfaceEvaluation={role,coordinateSpace:'final',...(normal?{simplex:normal.simplex}:{}),bases:active,
   get allBases(){return allBases??=graph.mesh.vertices.map(vertex=>base(vertex.snapshotId,false));},
   get positiveBases(){return mirror?(positiveBases??=graph.mesh.vertices.map(vertex=>base(vertex.snapshotId,true))):undefined;},
-  get mirrorContext(){return mirror?(inspectionMirror??=makeMirror(graph.mesh.vertices.map(vertex=>vertex.snapshotId))):undefined;},
+  get mirrorContext(){
+   if(!mirror)return undefined;
+   const forLocations=(locations:SnapshotSimplexLocation[])=>{const ids=snapshotSurfaceDemand(effectiveGraph,locations,mirror.zeroSnapshotId,true);ids.add(mirror.zeroSnapshotId);return makeMirror(graph.mesh.vertices.filter(vertex=>ids.has(vertex.snapshotId)).map(vertex=>vertex.snapshotId));};
+   return inspectionMirror??={sample:(location,weights)=>{const at=location.vertexIds.reduce((sum,id,index)=>{const vertex=graph.mesh.vertices.find(vertex=>vertex.id===id)!;return sum+vertex.angle.x*weights[index];},0);if(at<=0)return undefined;return forLocations([{...location,geometricWeights:[...weights]}])?.sample(location,weights);},material:(location,drawing)=>{const locations='angle' in location?[location.angle,...location.corners].flatMap(angle=>{const at=locateSnapshotSimplex(graph.mesh,angle);return at?[at]:[];}):[location];return forLocations(locations)?.material?.(location,drawing);}};
+  },
+  requiredBases:refs.map(value=>base(value.snapshotId)),
   responseGraph:effectiveGraph,nodeAuthorities:Object.fromEntries(normal?.nodeAuthorities??[]),outsideCurves:sampled.outsideCurves};
- const diagnostics:SnapshotDiagnostic[]=[...active.flatMap(value=>value.diagnostics),...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
+ const diagnostics:SnapshotDiagnostic[]=prior?[...prior.diagnostics]:[...active.flatMap(value=>value.diagnostics),...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
  if(role==='basis'){
   const recipe=controls?undefined:graph.visibilityBasisRecipes?.[selected.snapshotId],bases=refs.map(value=>base(value.snapshotId));
-  const drawing=recipe?applySnapshotVisibilityState(evaluateSnapshotVisibilityRecipe(recipe,bases,selected.drawing,requested),selected.state):selected.drawing;
+  const drawing=prior?.drawing??(recipe?applySnapshotVisibilityState(evaluateSnapshotVisibilityRecipe(recipe,bases,selected.drawing,requested),selected.state):selected.drawing);
   const result={...selected,drawing,angle:{...requested},angleSurface:surface,diagnostics};
-  if(controls)result.paintBatches=[];else if(recipe||native.get(selected.snapshotId)!==selected){context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,context.index.snapshots.get(selected.snapshotId)!,drawing,result.provenance);}
+  if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else if(recipe||native.get(selected.snapshotId)!==selected){context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,context.index.snapshots.get(selected.snapshotId)!,drawing,result.provenance);}
   context.surfaceValues.set(key,result);return result;
  }
  let drawing=prior?.drawing??normal?.drawing??emptyDrawing();
@@ -491,6 +499,8 @@ type SnapshotPlan={key:string;options:SnapshotEvaluationOptions;recording?:Snaps
 const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
 const semanticKey=(value:unknown):string=>{const text=JSON.stringify(value);let key=semanticKeys.get(text);if(!key){key=String(nextSemanticKey++);if(semanticKeys.size>=32768)semanticKeys.delete(semanticKeys.keys().next().value!);semanticKeys.set(text,key);}return key;};
 const contextEvaluations=new WeakMap<SnapshotEvaluation,PreparedRecordingContext>();
+const evaluationRequests=new WeakMap<SnapshotEvaluation,SnapshotEvaluationOptions>();
+export const preparedRecordingOptionsForEvaluation=(evaluation:SnapshotEvaluation):SnapshotEvaluationOptions|undefined=>{const options=evaluationRequests.get(evaluation);return options?{...options,...(options.angle?{angle:{...options.angle}}:{})}:undefined;};
 export const preparedRecordingContextForEvaluation=(evaluation:SnapshotEvaluation):PreparedRecordingContext|undefined=>contextEvaluations.get(evaluation);
 const recordingContexts=new WeakMap<RecordingSnapshotWorkspace,{immutable?:{context:RecordingContext;revision:string};mutable?:{context:RecordingContext;fingerprint:string}}>();
 const immutableWorkspaceRevision=(workspace:RecordingSnapshotWorkspace):string=>semanticKey([immutableIdentity(workspace.library),workspace.snapshots.map(snapshot=>[snapshot.id,immutableIdentity(snapshot),immutableIdentity(snapshot.draft),immutableIdentity(snapshot.deformation)]),workspace.recordings.map(recording=>[recording.id,recording.angle.x,recording.angle.y,recording.tolerance,recording.activeSnapshotId,immutableIdentity(recording.angleGraph),immutableIdentity(recording.tracks),immutableIdentity(recording.snapshotIds)])]);
@@ -504,7 +514,7 @@ class RecordingContext implements PreparedRecordingContext {
  readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();
  private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
  constructor(readonly workspace:RecordingSnapshotWorkspace,readonly defaults:SnapshotEvaluationOptions,readonly before?:RecordingContext){
-  this.defaults={...defaults,angle:undefined,snapshotId:undefined,useDraft:true,liveBasisDrafts:undefined,products:'display'};
+  this.defaults={immutableInputs:defaults.immutableInputs};
   this.workspace=defaults.immutableInputs?workspace:structuredClone(workspace);workspace=this.workspace;
   assertRecordingWorkspaceActive(workspace);validateSnapshotGraph(workspace);this.counters.validation++;
   this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;
@@ -570,7 +580,7 @@ class RecordingContext implements PreparedRecordingContext {
  resolveBasis(recordingId:string,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {const recording=this.index.recordings.get(recordingId);if(!recording)throw Error('Missing recording');return resolveRecordingSnapshotBasisInContext(this,recording,snapshotId,{...this.defaults,...options});}
  sample(recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
   const recording=this.index.recordings.get(recordingId);if(!recording){if(this.index.snapshots.has(recordingId))return this.resolveSnapshot(recordingId,options);throw Error('Missing recording');}
-  const result=evaluateTriangulatedRecording(this,recording,{...this.defaults,...options});contextEvaluations.set(result,this);return result;
+  const request={...this.defaults,...options},result=evaluateTriangulatedRecording(this,recording,request);contextEvaluations.set(result,this);evaluationRequests.set(result,{...request,angle:{...result.angle}});return result;
  }
  inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
  sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return requests.map(options=>this.sample(recordingId,options));}
@@ -582,11 +592,30 @@ class RecordingContext implements PreparedRecordingContext {
 }
 /** Mutable/import boundaries remain content guarded. Immutable store callers
  * opt in explicitly; changing objects in place after that opt-in is unsupported. */
-export function prepareRecordingContext(workspace:RecordingSnapshotWorkspace,options:SnapshotEvaluationOptions={}):PreparedRecordingContext {
+function recordingContext(workspace:RecordingSnapshotWorkspace,options:SnapshotEvaluationOptions={}):RecordingContext {
  const known=recordingContexts.get(workspace)??{},fingerprint=options.immutableInputs?undefined:JSON.stringify(workspace);
  if(options.immutableInputs&&known.immutable?.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
  if(!options.immutableInputs&&known.mutable&&known.mutable.fingerprint===fingerprint)return known.mutable.context;
  const context=new RecordingContext(workspace,options);if(options.immutableInputs)known.immutable={context,revision:immutableWorkspaceRevision(workspace)};else known.mutable={context,fingerprint:fingerprint!};recordingContexts.set(workspace,known);return context;
+}
+
+const contextPolicies=new WeakMap<RecordingContext,Map<string,PreparedRecordingContext>>();
+/** Request defaults belong to this handle, not to the shared dependency session.
+ * Public wrappers always pass their own options and cannot inherit a prior
+ * caller's draft, truncation or quality policy. */
+function contextWithOptions(context:RecordingContext,options:SnapshotEvaluationOptions):PreparedRecordingContext {
+ const key=evaluationOptionsKey(options),policies=contextPolicies.get(context)??new Map<string,PreparedRecordingContext>(),known=policies.get(key);if(known)return known;
+ const defaults={...options,...(options.angle?{angle:{...options.angle}}:{})};
+ const handle:PreparedRecordingContext={workspace:context.workspace,counters:context.counters,
+  resolveSnapshot:(id,request)=>context.resolveSnapshot(id,{...defaults,...request}),
+  resolveBasis:(recording,id,request)=>context.resolveBasis(recording,id,{...defaults,...request}),
+  sample:(recording,request)=>context.sample(recording,{...defaults,...request}),
+  sampleMany:(recording,requests)=>context.sampleMany(recording,requests.map(request=>({...defaults,...request}))),
+  beginGesture:()=>handle,fork:(workspace,changes)=>contextWithOptions(context.fork(workspace,changes) as RecordingContext,defaults)};
+ policies.set(key,handle);contextPolicies.set(context,policies);return handle;
+}
+export function prepareRecordingContext(workspace:RecordingSnapshotWorkspace,options:SnapshotEvaluationOptions={}):PreparedRecordingContext {
+ return contextWithOptions(recordingContext(workspace,options),options);
 }
 
 /** Compatibility adapter: gestures fork the same domain evaluation kernel. */
@@ -594,11 +623,13 @@ export function evaluateSnapshotControlTargetPreview(before:RecordingSnapshotWor
  return prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).fork(workspace).sample(recordingId,{useDraft:true,diagnostics:'preview'});
 }
 export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- return prepareRecordingContext(workspace,options).resolveSnapshot(snapshotId,options);
+ return recordingContext(workspace,options).resolveSnapshot(snapshotId,options);
 }
 export function resolveRecordingSnapshotBasis(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- return prepareRecordingContext(workspace,options).resolveBasis(recording.id,snapshotId,options);
+ const context=recordingContext(workspace,options),effective=context.index.recordings.get(recording.id);
+ if(effective===recording||!options.immutableInputs&&same(effective,recording))return context.resolveBasis(recording.id,snapshotId,options);
+ const fork=context.fork({...workspace,recordings:workspace.recordings.map(value=>value.id===recording.id?recording:value)}) as RecordingContext;return fork.resolveBasis(recording.id,snapshotId,options);
 }
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- return prepareRecordingContext(workspace,options).sample(recordingId,options);
+ return recordingContext(workspace,options).sample(recordingId,options);
 }

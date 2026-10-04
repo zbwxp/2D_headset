@@ -1,12 +1,12 @@
 import {sub,type DrawingDocument,type Point2} from '../drawing/model';
 import {endpointPairNodeAuthorities} from './endpointPair';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
-import {evaluateRecordingSnapshot,resolveRecordingSnapshotBasis,snapshotSurfaceBasesAtAngle,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
+import {prepareRecordingContext,resolveRecordingSnapshotBasis,snapshotSurfaceRequiredBases,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
 import {assertSnapshotObjectsUnlocked} from './objectLocks';
 import {emptySnapshotDeformationState,type Angle,type RecordingSnapshot,type RecordingSnapshotWorkspace,type SnapshotAngleGraph,type SnapshotRecording} from './model';
-import {createSnapshotSurfaceResponseSampler,createSnapshotSurfaceValueSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEdit,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
+import {createSnapshotSurfaceResponseSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEdit,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
 import {locateSnapshotSimplex} from './triangulation';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget} from './simplexGeometry';
+import {type SnapshotScalarTarget} from './simplexGeometry';
 import {solveBoundedSnapshotBasisAdjustment,SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS,type BoundedBasisScalar,type BasisDisplacementRow} from './boundedBasisInverse';
 
 export class SnapshotBasisFallbackError extends Error {constructor(readonly code:string,message:string){super(message);}}
@@ -36,6 +36,7 @@ function calibrationAngles(graph:SnapshotAngleGraph,active:Angle):Angle[] {
  * generalization is deliberately a cardinal-edge fallback; triangle and live
  * inherited-expression inverses continue to use the original exact solver. */
 export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean}={}):{graph:SnapshotAngleGraph;snapshots:RecordingSnapshot[]} {
+ const frozen=prepareRecordingContext(workspace,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).beginGesture();
  const graph=recording.angleGraph!,surface=evaluation.angleSurface!,location=surface.simplex!,vertices=location.snapshotIds.map(id=>graph.mesh.vertices.find(v=>v.snapshotId===id)!);
  const zero=vertices.find(v=>v.angle.x===0&&v.angle.y===0),side=vertices.find(v=>(Math.abs(v.angle.x)===90&&v.angle.y===0)||(Math.abs(v.angle.y)===90&&v.angle.x===0));
  if(location.kind!=='edge'||!zero||!side)fail('SURFACE_BASIS_FALLBACK_UNSUPPORTED','The fixed-basis inverse is unavailable here. Bounded basis adjustment currently supports only an edge from 0° to a cardinal ±90° view; this triangle or other edge needs an explicit saved-basis edit.');
@@ -74,29 +75,26 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  const frameId=effective.draft?.id??fresh(),layerIds=[...new Set([...effective.draft?.basisAdjustment?.layerIds??[],...evaluation.drawing.layers.filter(l=>implicated.some(c=>l.items.includes(c.id))).map(l=>l.id)])],snapshotIds=[...new Set([...effective.draft?.basisAdjustment?.snapshotIds??[],owner.id])];
  const frame={...effective.draft,id:frameId,angle:{...recording.angle},status:'draft' as const,basisAdjustment:{snapshotIds,layerIds,...solution!.boundActive?{trustRegionLimited:true}:{}}};
  let nextGraph:SnapshotAngleGraph={...graph,correctionFrames:effective.draft?graph.correctionFrames!.map(f=>f===effective.draft?frame:f):[...graph.correctionFrames??[],frame]};
- const snapshots=workspace.snapshots.map(s=>s===owner?snapshot:s),nextWorkspace=():RecordingSnapshotWorkspace=>({...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)});
- const basisReplay=resolveRecordingSnapshotBasis(nextWorkspace(),{...recording,angleGraph:nextGraph},side!.snapshotId,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis);
+ const snapshots=workspace.snapshots.map(s=>s===owner?snapshot:s);let stagedGraph:SnapshotAngleGraph|undefined,stagedWorkspace:RecordingSnapshotWorkspace|undefined;
+ const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};}return stagedWorkspace!;};
+ const candidate=()=>frozen.fork(nextWorkspace());
+ const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis);
  // Capture every old output BEFORE changing the bases. Responses may change
  // only in the companion draft to preserve those exact authored outputs.
- const protections=calibrationAngles(graph,recording.angle).map(angle=>({angle,drawing:evaluateRecordingSnapshot(workspace,recording.id,{angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).drawing}));
+ const protections=calibrationAngles(graph,recording.angle).map(angle=>({angle,drawing:frozen.sample(recording.id,{angle}).drawing}));
  const targets=[...protections,{angle:recording.angle,drawing:wanted}];
  for(const protection of targets){
-  // The active native edge needs only its two frozen controls; the full final
-  // replay below still checks live mirror/material dependencies authoritatively.
-  // Protected off-axis frames keep the full evaluator and their exact support.
-  const active=sameAngle(protection.angle,recording.angle),replace=(bases:readonly SnapshotEvaluation[])=>bases.map(base=>base.snapshotId===side!.snapshotId?basisReplay:base),activeSurface={...surface,bases:replace(surface.bases),allBases:replace(surface.allBases),...surface.positiveBases?{positiveBases:replace(surface.positiveBases)}:{}};
-  const activeBases=activeSurface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing}));
-  const current=active?{...evaluation,angleSurface:activeSurface,drawing:interpolateSnapshotSimplexGeometry(activeBases,location.geometricWeights,createSnapshotSurfaceValueSampler(nextGraph,location,snapshotSurfaceBasesAtAngle(activeSurface,recording.angle),surface.mirrorContext)).drawing}:evaluateRecordingSnapshot(nextWorkspace(),recording.id,{angle:protection.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}),support=current.angleSurface;
+  const current=candidate().sample(recording.id,{angle:protection.angle,products:'controls'}),support=current.angleSurface;
   if(!support?.simplex||support.simplex.kind==='vertex'){assertSnapshotControlTargetReplay(current.drawing,protection.drawing);continue;}
   const temporary={...nextGraph,correctionFrames:nextGraph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...protection.angle}}:f)};
-  const result=prepareSnapshotSurfaceTargetEdit(temporary,support.simplex,support.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(v=>v.snapshotId===base.snapshotId)!.angle})),current.drawing,protection.drawing,{angle:protection.angle,frameId,allBases:snapshotSurfaceBasesAtAngle(support,protection.angle),mirror:support.mirrorContext});
+  const result=prepareSnapshotSurfaceTargetEdit(temporary,support.simplex,support.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(v=>v.snapshotId===base.snapshotId)!.angle})),current.drawing,protection.drawing,{angle:protection.angle,frameId,allBases:snapshotSurfaceRequiredBases(support,protection.angle),mirror:support.mirrorContext});
   nextGraph={...result.graph,correctionFrames:result.graph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...recording.angle},basisAdjustment:frame.basisAdjustment}:f)};
  }
  // Verify the entire coupled workspace after all constraints have been added;
  // nonlinear projection and adjacent-triangle interactions can reject a solve.
- for(const protection of targets)assertSnapshotControlTargetReplay(evaluateRecordingSnapshot(nextWorkspace(),recording.id,{angle:protection.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).drawing,protection.drawing);
+ for(const protection of targets)assertSnapshotControlTargetReplay(candidate().sample(recording.id,{angle:protection.angle}).drawing,protection.drawing);
  assertResponseTrustRegion(graph,nextGraph);
- const zeroBefore=resolveRecordingSnapshotBasis(workspace,recording,zero!.snapshotId,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).drawing,zeroReplay=resolveRecordingSnapshotBasis(nextWorkspace(),{...recording,angleGraph:nextGraph},zero!.snapshotId,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).drawing;
+ const zeroBefore=frozen.resolveBasis(recording.id,zero!.snapshotId).drawing,zeroReplay=candidate().resolveBasis(recording.id,zero!.snapshotId).drawing;
  if(JSON.stringify(zeroReplay.nodes)!==JSON.stringify(zeroBefore.nodes)||JSON.stringify(zeroReplay.curves)!==JSON.stringify(zeroBefore.curves))fail('SURFACE_ZERO_BASIS_CONFLICT','This correction would change the fixed 0° controls through inheritance. Edit the responsible basis explicitly.');
  return {graph:nextGraph,snapshots:[snapshot]};
 }
