@@ -37,6 +37,8 @@ export const getSnapshotSimplexSamplingStats=()=>({...samplingStats});
 export const resetSnapshotSimplexSamplingStats=()=>{for(const key of Object.keys(samplingStats) as (keyof typeof samplingStats)[])samplingStats[key]=0;};
 type ReviseSample=(bases:readonly SnapshotSimplexBasis[],weights:readonly number[],response:SnapshotScalarResponse|undefined,changes:SnapshotSimplexRevisionChanges)=>SnapshotSimplexGeometry|undefined;
 const sampleLineages=new WeakMap<SnapshotSimplexGeometry,ReviseSample>();
+/** Opaque capability carried only by samples that can revise native controls. */
+export const hasSnapshotSimplexRevisionLineage=(sample:SnapshotSimplexGeometry):boolean=>sampleLineages.has(sample);
 export interface SnapshotSimplexDrawingRevision {readonly previous:DrawingDocument;readonly dirtyCurveIds:readonly string[]}
 const drawingRevisions=new WeakMap<DrawingDocument,SnapshotSimplexDrawingRevision>();
 /** Proven complete native output closure for downstream geometry-dependent

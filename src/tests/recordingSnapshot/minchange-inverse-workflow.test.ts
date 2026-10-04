@@ -1,5 +1,5 @@
 import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan,drawingControlEditStats} from '../../domain/drawing/controlEditPlan';
-import {preparedControlChangesBetween} from '../../domain/recordingSnapshot/preparedControlChanges';
+import {preparedControlChangesBetween,registerPreparedControlChanges} from '../../domain/recordingSnapshot/preparedControlChanges';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -19,7 +19,8 @@ import {shapeOf,type DrawingDocument,type Point2} from '../../domain/drawing/mod
 import {parseLandmarks} from '../../domain/landmarks/persistence';
 import type {LandmarkProject} from '../../domain/landmarks/model';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
-import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {evaluateRecordingSnapshot,evaluateSnapshotControlTargetPreview,resolveRecordingSnapshotBasis,prepareRecordingContext} from '../../domain/recordingSnapshot/evaluation';
+import {sceneShapeWorkStats,resetSceneShapeWorkStats} from '../../domain/recordingScene/shapes';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type Angle} from '../../domain/recordingSnapshot/model';
 import {parseRecordingSnapshots} from '../../domain/recordingSnapshot/persistence';
 import {effectiveSnapshotSurfaceResponses} from '../../domain/recordingSnapshot/surfaceTargets';
@@ -217,4 +218,34 @@ it('a planned handle fallback includes linked authorities outside the grabbed cu
 it('repeated previews reuse one direct plan and one expanded 90-degree basis plan',()=>{
  const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots!,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position;let compiled:number|undefined;
  for(const delta of [.04,.08,.06]){const wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+delta,p[1]-.02]}),next=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:'surface',snapshotId:before.snapshotId,angle:recording(project).angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;near(evaluate(next).drawing,wanted);const count=drawingControlEditStats().plans;if(compiled===undefined)compiled=count;else expect(count).toBe(compiled);}
+});
+
+
+it.each(['full','preview'] as const)('prepared basis shape revises from a %s frozen view through the actual inverse transaction',quality=>{
+ const project=fixture(),workspace=project.recordingSnapshots!,r=recording(project),before=evaluateRecordingSnapshot(workspace,r.id,{angle:r.angle,useDraft:true,immutableInputs:true,diagnostics:quality}),saved=JSON.stringify(project);
+ const controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position,wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+.07,p[1]-.03]});
+ resetSceneShapeWorkStats();
+ const edit=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:r.id,snapshotId:before.snapshotId,angle:r.angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}),actual=evaluateSnapshotControlTargetPreview(workspace,edit.project.recordingSnapshots!,r.id,before),work=sceneShapeWorkStats();
+ expect(work.revisionApplications).toBeGreaterThan(0);expect(work.fullApplications).toBe(0);expect(work.transportedTracks).toBe(0);
+ near(actual.drawing,wanted);const cold=evaluateRecordingSnapshot(structuredClone(edit.project.recordingSnapshots!),r.id,{angle:r.angle,useDraft:true,diagnostics:quality});expect(actual.drawing).toEqual(cold.drawing);expect(actual.paintBatches).toEqual(cold.paintBatches);
+ sourceAndZeroUnchanged(project,edit.project);expect(JSON.stringify(project)).toBe(saved);
+});
+
+
+it('saved-basis inspection cannot replace the live draft product for a later control revision',()=>{
+ const original=fixture(),r0=recording(original),first=evaluateRecordingSnapshot(original.recordingSnapshots!,r0.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'}),profilePlan=prepareDrawingControlEditPlan(first.drawing,{kind:'curves',curveIds:['profile'],preserveRelations:true});
+ const profileTarget=applyDrawingControlEditPlan(profilePlan,{kind:'map',map:([x,y])=>[x,y*1.15]}),project=prepareSnapshotDrawingToolEdit(snapshotEditContext(original,false),{recordingId:r0.id,snapshotId:first.snapshotId,angle:r0.angle,beforeDrawing:first.drawing,drawing:profileTarget,intent:{kind:'geometry',controlPlan:profilePlan},validation:'preview'}).project;
+ const workspace=project.recordingSnapshots!,r=recording(project),before=evaluateRecordingSnapshot(workspace,r.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'});
+ expect(workspace.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeDefined();
+ const savedBasis=resolveRecordingSnapshotBasis(workspace,r,'side',{useDraft:false,immutableInputs:true,diagnostics:'preview'}),liveBasis=resolveRecordingSnapshotBasis(workspace,r,'side',{useDraft:true,immutableInputs:true,diagnostics:'preview'});expect(savedBasis.drawing).not.toEqual(liveBasis.drawing);
+ // Keep the saved-policy lookup last, just as a detached inspection may do.
+ resolveRecordingSnapshotBasis(workspace,r,'side',{useDraft:false,immutableInputs:true,diagnostics:'preview'});
+ const side=workspace.snapshots.find(snapshot=>snapshot.id==='side')!,changed={...side,draft:structuredClone(side.draft!)};changed.draft.deformation.layers['ear-layer']=structuredClone(liveBasis.state.layers['ear-layer']);changed.draft.deformation.layers['ear-layer'].shape!.handles.ear[0][0]+=.025;
+ const candidate={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot===side?changed:snapshot)};
+ registerPreparedControlChanges(workspace,candidate,r.id,{structureUnchanged:true,basisControls:new Map([['side',[{kind:'handle' as const,curveId:'ear',end:0 as const}]]]),responseControls:[]});
+ const revisedBasis=prepareRecordingContext(workspace,{immutableInputs:true}).fork(candidate).resolveBasis(r.id,'side',{useDraft:true,diagnostics:'preview'}),coldBasis=resolveRecordingSnapshotBasis(structuredClone(candidate),r,'side',{useDraft:true,diagnostics:'preview'});
+ expect(revisedBasis.drawing).toEqual(coldBasis.drawing);expect(revisedBasis.fitDiagnostics).toEqual(coldBasis.fitDiagnostics);
+ const controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position,wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+.07,p[1]-.03]});
+ const edit=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:r.id,snapshotId:before.snapshotId,angle:r.angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}),actual=evaluateSnapshotControlTargetPreview(workspace,edit.project.recordingSnapshots!,r.id,before),cold=evaluateRecordingSnapshot(structuredClone(edit.project.recordingSnapshots!),r.id,{useDraft:true,diagnostics:'preview'});
+ near(actual.drawing,wanted);expect(actual.drawing).toEqual(cold.drawing);expect(actual.fitDiagnostics).toEqual(cold.fitDiagnostics);sourceAndZeroUnchanged(original,edit.project);
 });

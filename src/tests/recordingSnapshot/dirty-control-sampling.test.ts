@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
 import {emptyDrawing,type Point2} from '../../domain/drawing/model';
-import {snapshotCoverageRevisionChanges,prepareSnapshotCoverage,prepareSnapshotCoverageStructure,type SnapshotCoverageEvaluation} from '../../domain/recordingSnapshot/snapshotCoverage';
+import {hasSnapshotCoverageRevisionLineage,snapshotCoverageRevisionChanges,prepareSnapshotCoverage,prepareSnapshotCoverageStructure,type SnapshotCoverageEvaluation} from '../../domain/recordingSnapshot/snapshotCoverage';
 import {createSnapshotSurfaceValueSampler} from '../../domain/recordingSnapshot/surfaceTargets';
 import {createSnapshotTriangulation,locateSnapshotSimplex} from '../../domain/recordingSnapshot/triangulation';
 import {snapshotSimplexDrawingRevision,getSnapshotSimplexSamplingStats,resetSnapshotSimplexSamplingStats,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges,type SnapshotScalarTarget} from '../../domain/recordingSnapshot/simplexGeometry';
@@ -35,6 +35,7 @@ const handle:SnapshotScalarTarget={kind:'handle',curveId:'a',end:1};
 describe('prepared native control sample lineage',()=>{
  it.each([0,100,1000])('bounds scalar/projection work independently of %i unrelated curves',unrelated=>{
   const f=fixture(unrelated),before=f.sample(),next=changeHandle(f.bases,'A','a',1,[.25,.4]);resetSnapshotSimplexSamplingStats();
+  expect(hasSnapshotCoverageRevisionLineage(before)).toBe(true);
   const actual=f.sample(next,f.graph,before,changes('A',[handle])),counts=getSnapshotSimplexSamplingStats();
   expect(actual).toEqual(f.expected(next));
   expect(counts).toMatchObject({revisionSamples:1,fullSamples:0,scalarEvaluations:2,basisCoordinateReads:2,projectedComponents:1});
@@ -86,6 +87,7 @@ describe('prepared native control sample lineage',()=>{
  it('takes the canonical full path for expressions and unbranded callback wrappers',()=>{
   const f=fixture(4),before=f.sample(),graph={...f.graph,responseExpressions:{[f.location.simplexId]:{nodes:{a0:{x:createSnapshotResponseConstant(.125)}},handles:{}}}};
   resetSnapshotSimplexSamplingStats();const actual=f.sample(f.bases,graph,before,{structureUnchanged:true,basisControls:new Map(),responseControls:[{kind:'node',nodeId:'a0'}]});expect(getSnapshotSimplexSamplingStats()).toMatchObject({revisionSamples:0,fullSamples:1});expect(snapshotSimplexDrawingRevision(actual.normal!.drawing)).toBeUndefined();expect(actual).toEqual(f.expected(f.bases,graph));
+  expect(hasSnapshotCoverageRevisionLineage(actual)).toBe(false);
   const callback=vi.fn((_target:SnapshotScalarTarget,_axis:0|1,_coordinates:readonly number[],weights:readonly number[])=>weights);
   resetSnapshotSimplexSamplingStats();f.structure.evaluate(f.angle,id=>f.bases.find(basis=>basis.snapshotId===id)!,()=>callback,{immutableInputs:true,previous:before,changes:{structureUnchanged:true,basisControls:new Map(),responseControls:[]}});expect(getSnapshotSimplexSamplingStats().revisionSamples).toBe(0);expect(callback).toHaveBeenCalledTimes(getSnapshotSimplexSamplingStats().scalarEvaluations);
  });
@@ -93,6 +95,15 @@ describe('prepared native control sample lineage',()=>{
   const f=fixture(5),before=f.sample(),mirror={sample:()=>undefined},responses=(support:typeof f.location)=>createSnapshotSurfaceValueSampler(f.graph,support,f.bases,mirror,{immutableInputs:true});
   resetSnapshotSimplexSamplingStats();const actual=f.structure.evaluate(f.angle,id=>f.bases.find(basis=>basis.snapshotId===id)!,responses,{immutableInputs:true,previous:before,changes:{structureUnchanged:true,basisControls:new Map(),responseControls:[]}});
   expect(getSnapshotSimplexSamplingStats()).toMatchObject({revisionSamples:0,fullSamples:1});expect(actual).toEqual(prepareSnapshotCoverage(f.mesh,f.bases).evaluate(f.angle,responses));
+  expect(hasSnapshotCoverageRevisionLineage(actual)).toBe(false);
+ });
+ it('retains a native fallback sample alongside an unrevisable normal sample',()=>{
+  const f=fixture(1,true),bases=f.bases.map(basis=>basis.snapshotId!=='C'?basis:{...basis,drawing:{...basis.drawing,curves:basis.drawing.curves.filter(curve=>curve.id!=='other0')}}),structure=prepareSnapshotCoverageStructure(f.mesh,bases);
+  const responses=(input:SnapshotSimplexBasis[],support:typeof f.location)=>support.kind==='triangle'?(_target:SnapshotScalarTarget,_axis:0|1,_coordinates:readonly number[],weights:readonly number[])=>weights:createSnapshotSurfaceValueSampler(f.graph,support,input,undefined,{immutableInputs:true});
+  const sample=(input:SnapshotSimplexBasis[],previous?:SnapshotCoverageEvaluation)=>structure.evaluate(f.angle,id=>input.find(basis=>basis.snapshotId===id)!,support=>responses(input,support),{immutableInputs:true,previous,changes:previous?changes('A',[{kind:'handle',curveId:'other0',end:0}]):undefined}),before=sample(bases),next=changeHandle(bases,'A','other0',0,[.2,.3]);
+  expect(hasSnapshotCoverageRevisionLineage(before)).toBe(true);expect(before.outsideCurves.map(curve=>curve.curveId)).toContain('other0');
+  resetSnapshotSimplexSamplingStats();const actual=sample(next,before),counts=getSnapshotSimplexSamplingStats();
+  expect(counts).toMatchObject({revisionSamples:1,fullSamples:1});expect(actual).toEqual(prepareSnapshotCoverage(f.mesh,next).evaluate(f.angle,support=>responses(next,support)));
  });
  it('rejects malformed callback results even with retained coverage options',()=>{
   const f=fixture(),before=f.sample();expect(()=>f.structure.evaluate(f.angle,id=>f.bases.find(basis=>basis.snapshotId===id)!,()=>()=>[NaN,0],{immutableInputs:true,previous:before,changes:{structureUnchanged:true,basisControls:new Map(),responseControls:[]}})).toThrow(/finite sum-one/);

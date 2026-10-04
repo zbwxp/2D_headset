@@ -41,6 +41,8 @@ interface PreparedMaterial {
  options:SnapshotSimplexMaterialOptions;
 }
 const prepared=new WeakMap<SnapshotSurfaceMaterialResult,PreparedMaterial>();
+/** Only a successfully compiled native material plan carries revision ancestry. */
+export const hasPreparedSnapshotSurfaceMaterial=(result:SnapshotSurfaceMaterialResult):boolean=>prepared.has(result);
 const add=<T>(map:Map<string,Set<T>>,id:string,value:T)=>{let values=map.get(id);if(!values){values=new Set();map.set(id,values);}values.add(value);};
 const nativeCurve=(drawing:DrawingDocument,id:string)=>!hasEvaluatedDeformationFor(drawing,id)&&!evaluatedAffine(drawing,id);
 const consumed=(plan:DocumentPlan,id:string)=>plan.curveTracks.has(id)||plan.curveRoutes.has(id);
@@ -49,7 +51,8 @@ const stamp=(graph:SnapshotAngleGraph):readonly unknown[]=>[
  graph.visibilityRecipes,graph.visibilityBasisRecipes,graph.viewMirror,
  ...(graph.correctionFrames??[]).filter(frame=>frame.status==='draft'&&frame.propertyResponses).flatMap(frame=>[frame.id,frame.angle.x,frame.angle.y,frame.propertyResponses]),
 ];
-const supported=({graph,location,bases,mirror}:SnapshotSurfaceMaterialInputs)=>location.kind!=='vertex'&&!mirror&&!graph.materialRecipes?.[location.simplexId]&&!graph.materialPartitions?.length&&!graph.materialPathLineages?.length&&!graph.visibilityRecipes?.[location.simplexId]&&!bases.some(basis=>graph.materialBasisRecipes?.[basis.snapshotId]||graph.visibilityBasisRecipes?.[basis.snapshotId]);
+/** Cheap eligibility only; live route and native path proof is compiled later. */
+export const supportsPreparedSnapshotSurfaceMaterial=({graph,location,bases,mirror}:SnapshotSurfaceMaterialInputs):boolean=>location.kind!=='vertex'&&!mirror&&!graph.materialRecipes?.[location.simplexId]&&!graph.materialPartitions?.length&&!graph.materialPathLineages?.length&&!graph.visibilityRecipes?.[location.simplexId]&&!bases.some(basis=>graph.materialBasisRecipes?.[basis.snapshotId]||graph.visibilityBasisRecipes?.[basis.snapshotId]);
 function prepareDocument(drawing:DrawingDocument,output:DrawingDocument):DocumentPlan|undefined {
  const tracks=drawing.displayIntervals??[],trackIndices=new Map(tracks.map((track,index)=>[track.id,index]));
  if(trackIndices.size!==tracks.length)return undefined;
@@ -105,7 +108,7 @@ function validDirtyRoutes(drawing:DrawingDocument,plan:DocumentPlan,dirty:Readon
 /** Compile one reverse consumer index from frozen native input and source
  * support. It deliberately contains no alternate material transport math. */
 export function retainPreparedSnapshotSurfaceMaterial(result:SnapshotSurfaceMaterialResult,material:SnapshotSimplexMaterialResult,inputs:SnapshotSurfaceMaterialInputs,options:SnapshotSimplexMaterialOptions):void {
- if(!supported(inputs)||inputs.bases.length<2)return;
+ if(!supportsPreparedSnapshotSurfaceMaterial(inputs)||inputs.bases.length<2)return;
  const plans=withDrawingReadScope(()=>[inputs.input,...inputs.bases.map(basis=>basis.drawing)].map(drawing=>prepareDocument(drawing,inputs.input)));
  if(plans.some(plan=>!plan))return;
  const layerIds=new Map<string,string>();for(const track of inputs.input.displayIntervals??[]){const layer=inputs.input.layers.find(layer=>layer.items.includes(track.anchor.id));if(layer)layerIds.set(track.id,layer.id);}
@@ -127,7 +130,7 @@ function geometryChangesBetween(before:DrawingDocument,current:DrawingDocument):
  * even when its weighted final controls cancel. No scene diff is performed. */
 export function revisePreparedSnapshotSurfaceMaterial(inputs:SnapshotSurfaceMaterialInputs,revision:SnapshotSurfaceMaterialEvaluationOptions):SnapshotSurfaceMaterialResult|undefined {
  const previous=revision.previous,changes=revision.changes,plan=previous&&prepared.get(previous);
- if(!previous||!plan||!changes?.structureUnchanged||!supported(inputs))return undefined;
+ if(!previous||!plan||!changes?.structureUnchanged||!supportsPreparedSnapshotSurfaceMaterial(inputs))return undefined;
  const geometry=geometryChangesBetween(plan.inputs.input,inputs.input);if(!geometry)return undefined;
  const before=plan.inputs,currentStamp=stamp(inputs.graph);
  if(currentStamp.length!==plan.stamp.length||currentStamp.some((value,index)=>value!==plan.stamp[index])||inputs.angle.x!==before.angle.x||inputs.angle.y!==before.angle.y||inputs.location.kind!==before.location.kind||inputs.location.simplexId!==before.location.simplexId||inputs.location.geometricWeights.some((value,index)=>value!==before.location.geometricWeights[index])||inputs.bases.length!==before.bases.length)return undefined;

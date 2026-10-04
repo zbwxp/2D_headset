@@ -24,6 +24,8 @@ export function countSnapshotSimplexMaterialWork(kind:'dependencyPlans'|'revisio
 export interface SnapshotSimplexMaterialOptions {
  /** Only a native prepared plan with complete control/source proof may reuse. */
  reuse?:SnapshotSimplexMaterialReuse;
+ /** Capture track-local diagnostics only for a prospective native revision plan. */
+ retainTrackDiagnostics?:boolean;
  partitions?:readonly SnapshotMaterialPartition[];
  pathLineages?:readonly SnapshotMaterialPathLineage[];
  response?:(target:SnapshotScalarPropertyTarget,values:readonly number[],weights:readonly number[])=>number;
@@ -53,7 +55,7 @@ export function transportSnapshotSimplexMaterial(bases:readonly SnapshotSimplexB
  if(bases.length<2||!drawing.displayIntervals?.length)return {drawing,diagnostics:[]};
  const diagnostics:string[]=[],blend=(values:number[])=>blendSnapshotPropertyValues(values,weights);
  const partitionBasis=options.partitions?.length||options.pathLineages?.length?createSnapshotMaterialPartitionBasis(options.partitions,bases,drawing,diagnostics,options.pathLineages):undefined;
- const reuse=options.reuse,trackDiagnostics=reuse?[...reuse.trackDiagnostics]:drawing.displayIntervals.map(()=>[] as string[]);
+ const reuse=options.reuse,trackDiagnostics=reuse?[...reuse.trackDiagnostics]:options.retainTrackDiagnostics?new Array<string[]>(drawing.displayIntervals.length):undefined;
  const transport=(selected:StrokeDisplayIntervals,index:number)=>{
   materialStats.transportedTracks++;const diagnosticStart=diagnostics.length;
   try{
@@ -73,9 +75,9 @@ export function transportSnapshotSimplexMaterial(bases:readonly SnapshotSimplexB
     let start=coordinate('start'),end=coordinate('end');if(closedPath&&Math.abs(logicalValues.end-logicalValues.start)>=1-1e-10){start=logicalValues.start;end=logicalValues.end;}const inkEnds=snapshotMaterialPartitionInkEnds(options.partitions,drawing,selected.id,range.id,logicalValues);
     return withIntervalPinch({...range,start,end,...inkEnds?{inkEnds}:{}},options.pinch?.(selected.id,range.id)??blend(values.map(value=>intervalPinch(value!))));
    })};
-  }catch(error){diagnostics.push(`Material ${selected.id}: ${error instanceof Error?error.message:String(error)} The saved discrete material is retained for review.`);return selected;}finally{trackDiagnostics[index]=diagnostics.slice(diagnosticStart);}
+  }catch(error){diagnostics.push(`Material ${selected.id}: ${error instanceof Error?error.message:String(error)} The saved discrete material is retained for review.`);return selected;}finally{if(trackDiagnostics)trackDiagnostics[index]=diagnostics.slice(diagnosticStart);}
  };
  const intervals=reuse?(reuse.dirtyTrackIndices.length?[...reuse.intervals]:reuse.intervals):drawing.displayIntervals.map(transport);
  if(reuse){materialStats.reusedTracks+=intervals.length-reuse.dirtyTrackIndices.length;for(const index of reuse.dirtyTrackIndices)intervals[index]=transport(drawing.displayIntervals[index],index);}
- return {drawing:replaceEndpointPairMaterial(drawing,intervals),diagnostics:[...new Set(reuse?trackDiagnostics.flat():diagnostics)],trackDiagnostics};
+ return {drawing:replaceEndpointPairMaterial(drawing,intervals),diagnostics:[...new Set(reuse?trackDiagnostics!.flat():diagnostics)],...trackDiagnostics?{trackDiagnostics}:{}};
 }

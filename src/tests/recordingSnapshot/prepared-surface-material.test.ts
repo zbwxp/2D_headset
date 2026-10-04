@@ -7,8 +7,8 @@ import {createFittedGeometryProjector} from '../../domain/drawing/cageGeometry';
 import {prepareSnapshotSimplexGeometry,reviseSnapshotSimplexGeometry,snapshotSimplexDrawingRevision,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges,type SnapshotScalarTarget} from '../../domain/recordingSnapshot/simplexGeometry';
 import {createSnapshotTriangulation,locateSnapshotSimplex} from '../../domain/recordingSnapshot/triangulation';
 import type {SnapshotAngleGraph} from '../../domain/recordingSnapshot/model';
-import {evaluateSnapshotSurfaceMaterial} from '../../domain/recordingSnapshot/surfaceMaterial';
-import {getSnapshotSimplexMaterialStats,resetSnapshotSimplexMaterialStats} from '../../domain/recordingSnapshot/simplexMaterial';
+import {evaluateSnapshotSurfaceMaterial,hasPreparedSnapshotSurfaceMaterial} from '../../domain/recordingSnapshot/surfaceMaterial';
+import {getSnapshotSimplexMaterialStats,resetSnapshotSimplexMaterialStats,transportSnapshotSimplexMaterial} from '../../domain/recordingSnapshot/simplexMaterial';
 
 function drawing(count=18):DrawingDocument {
  const drawing=emptyDrawing();drawing.layers=[{id:'layer',name:'Layer',items:[],visible:true,locked:false}];drawing.displayIntervals=[];
@@ -41,6 +41,13 @@ function revise(f:ReturnType<typeof fixture>,bases:SnapshotSimplexBasis[],dirty:
 }
 
 describe('prepared native surface material consumers',()=>{
+ it('allocates track diagnostics only when requested and retains only successful native plans',()=>{
+  const f=fixture(),run=(retainTrackDiagnostics=false)=>transportSnapshotSimplexMaterial(f.bases,{...f.normal.drawing},f.location.geometricWeights,{retainTrackDiagnostics}),generic=run(),retained=run(true);
+  expect(generic.trackDiagnostics).toBeUndefined();expect(retained.trackDiagnostics).toHaveLength(9);expect(output(generic)).toEqual(output(retained));
+  expect(hasPreparedSnapshotSurfaceMaterial(f.material)).toBe(true);
+  const mirror=evaluateSnapshotSurfaceMaterial(f.graph,f.location,f.bases,f.normal.drawing,f.angle,{sample:()=>undefined},{retainLineage:true});
+  expect(hasPreparedSnapshotSurfaceMaterial(mirror)).toBe(false);expect(output(mirror)).toEqual(output(f.material));
+ });
  it.each(['curve0','curve8'])('transports one of nine paths for %s and retains every unaffected output',id=>{
   const f=fixture(),next=changeHandle(f.bases,'A',id,[.2,.6]),{material,counts}=revise(f,next,changes(id));
   expect(counts).toEqual({transportedTracks:1,transportedBasisTracks:2,reusedTracks:8,dependencyPlans:0,revisionSamples:1});expect(material.paintLayoutUnchanged).toBe(true);
@@ -77,6 +84,7 @@ describe('prepared native surface material consumers',()=>{
  it('retains per-track diagnostics and zero-length intervals exactly',()=>{
   const d=drawing();d.displayIntervals![2].ranges[0]={id:'range2',start:.4,end:.4,mode:'HIDE'};d.nodes[6].position=[9,0];d.nodes[7].position=[9,0];d.curves[3].handles=[[9,0],[9,0]];
   const f=fixture(d),result=revise(f,changeHandle(f.bases,'A','curve0',[0,.25]),changes('curve0'));
+  expect(hasPreparedSnapshotSurfaceMaterial(f.material)).toBe(true);expect(hasPreparedSnapshotSurfaceMaterial(result.material)).toBe(true);
   expect(result.material.diagnostics).toEqual(f.material.diagnostics);expect(result.material.diagnostics.length).toBeGreaterThan(0);expect(result.material.drawing.displayIntervals![2]).toBe(f.material.drawing.displayIntervals![2]);
  });
  it.each(['local ARC','route ARC'] as const)('includes the neighboring %s support in the reverse closure',kind=>{

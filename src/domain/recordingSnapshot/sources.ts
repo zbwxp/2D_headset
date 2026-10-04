@@ -25,27 +25,60 @@ export function drawingIdentityIds(drawing:DrawingDocument):string[]{
  return [...drawing.nodes,...drawing.curves,...drawing.fills,...drawing.offsets,...drawing.layers,...drawing.joins,...(drawing.endpointLinks??[]),...(drawing.groups??[]),...(drawing.displayIntervals??[]),...(drawing.displayIntervals??[]).flatMap(t=>t.ranges),...(drawing.mirrorEditing?.curvePairs??[])].map(x=>x.id);
 }
 
-export function remapIntervalIdentities(track:StrokeDisplayIntervals,id:(id:string)=>string):StrokeDisplayIntervals{
- const use=(u:CurveUse):CurveUse=>({...u,id:id(u.id)});
- return {...structuredClone(track),id:id(track.id),anchor:use(track.anchor),...(track.displayRoute?{displayRoute:mapDisplayRouteReferences(track.displayRoute,id,id)}:{}),ranges:track.ranges.map(range=>({...structuredClone(range),id:id(range.id),...(range.originId?{originId:id(range.originId)}:{})}))};
+type DrawingIdentityKind='drawing'|'node'|'curve'|'fill'|'offset'|'layer'|'join'|'endpointLink'|'group'|'interval'|'range'|'curveUse'|'endpoint'|'displayRoute'|'mirrorEditing'|'mirrorPair';
+type MapIdentityRecord=<T extends object>(kind:DrawingIdentityKind,value:T,map:(value:T)=>T)=>T;
+
+/** One explicit field map for both defensive copies and trusted immutable
+ * inputs. Labels, arbitrary metadata and references to missing IDs survive. */
+function drawingIdentityMapper(id:(id:string)=>string,record:MapIdentityRecord){
+ const use=(u:CurveUse):CurveUse=>record('curveUse',u,u=>({...u,id:id(u.id)})),end=(e:Endpoint):Endpoint=>record('endpoint',e,e=>({...e,curveId:id(e.curveId)}));
+ const interval=(track:StrokeDisplayIntervals):StrokeDisplayIntervals=>record('interval',track,t=>({...t,id:id(t.id),anchor:use(t.anchor),...(t.displayRoute?{displayRoute:record('displayRoute',t.displayRoute,route=>mapDisplayRouteReferences(route,id,id))}:{}),ranges:t.ranges.map(range=>record('range',range,range=>({...range,id:id(range.id),...(range.originId?{originId:id(range.originId)}:{})})))}));
+ const map=(drawing:DrawingDocument):DrawingDocument=>record('drawing',drawing,d=>({...d,
+  nodes:d.nodes.map(n=>record('node',n,n=>({...n,id:id(n.id)}))),
+  curves:d.curves.map(c=>record('curve',c,c=>({...c,id:id(c.id),nodes:[id(c.nodes[0]),id(c.nodes[1])]}))),
+  fills:d.fills.map(f=>record('fill',f,f=>({...f,id:id(f.id),boundary:f.boundary.map(use)}))),
+  offsets:d.offsets.map(o=>record('offset',o,o=>({...o,id:id(o.id),source:o.source.map(use)}))),
+  layers:d.layers.map(l=>record('layer',l,l=>({...l,id:id(l.id),items:l.items.map(id)}))),
+  joins:d.joins.map(j=>record('join',j,j=>({...j,id:id(j.id),a:end(j.a),b:end(j.b)}))),
+  ...(d.endpointLinks?{endpointLinks:d.endpointLinks.map(l=>record('endpointLink',l,l=>({...l,id:id(l.id),a:end(l.a),b:end(l.b)})))}:{}),
+  ...(d.groups?{groups:d.groups.map(g=>record('group',g,g=>({...g,id:id(g.id),curveIds:g.curveIds.map(id)})))}:{}),
+  ...(d.displayIntervals?{displayIntervals:d.displayIntervals.map(interval)}:{}),
+  ...(d.mirrorEditing?{mirrorEditing:record('mirrorEditing',d.mirrorEditing,m=>({...m,curvePairs:m.curvePairs.map(p=>record('mirrorPair',p,p=>({...p,id:id(p.id),a:id(p.a),b:id(p.b)}))),...(m.axisNodeIds?{axisNodeIds:m.axisNodeIds.map(id)}:{})}))}:{}),
+ }));
+ return {map,interval};
 }
 
-/** Explicit field mapping deliberately excludes labels and arbitrary strings.
- * References to currently missing IDs are mapped too, preserving orphan data. */
+const mapIdentityRecord:MapIdentityRecord=(_kind,value,map)=>map(value);
+
+export function remapIntervalIdentities(track:StrokeDisplayIntervals,id:(id:string)=>string):StrokeDisplayIntervals{
+ return drawingIdentityMapper(id,mapIdentityRecord).interval(structuredClone(track));
+}
+
+/** Defensive external boundary: every call owns all of its returned data. */
 export function remapDrawingIdentities(drawing:DrawingDocument,id:(id:string)=>string):DrawingDocument{
- const d=structuredClone(drawing),use=(u:CurveUse):CurveUse=>({...u,id:id(u.id)}),end=(e:Endpoint):Endpoint=>({...e,curveId:id(e.curveId)});
- return {...d,
-  nodes:d.nodes.map(n=>({...n,id:id(n.id)})),
-  curves:d.curves.map(c=>({...c,id:id(c.id),nodes:[id(c.nodes[0]),id(c.nodes[1])]})),
-  fills:d.fills.map(f=>({...f,id:id(f.id),boundary:f.boundary.map(use)})),
-  offsets:d.offsets.map(o=>({...o,id:id(o.id),source:o.source.map(use)})),
-  layers:d.layers.map(l=>({...l,id:id(l.id),items:l.items.map(id)})),
-  joins:d.joins.map(j=>({...j,id:id(j.id),a:end(j.a),b:end(j.b)})),
-  ...(d.endpointLinks?{endpointLinks:d.endpointLinks.map(l=>({...l,id:id(l.id),a:end(l.a),b:end(l.b)}))}:{}),
-  ...(d.groups?{groups:d.groups.map(g=>({...g,id:id(g.id),curveIds:g.curveIds.map(id)}))}:{}),
-  ...(d.displayIntervals?{displayIntervals:d.displayIntervals.map(t=>remapIntervalIdentities(t,id))}:{}),
-  ...(d.mirrorEditing?{mirrorEditing:{...d.mirrorEditing,curvePairs:d.mirrorEditing.curvePairs.map(p=>({...p,id:id(p.id),a:id(p.a),b:id(p.b)})),...(d.mirrorEditing.axisNodeIds?{axisNodeIds:d.mirrorEditing.axisNodeIds.map(id)}:{})}}:{}),
+ return drawingIdentityMapper(id,mapIdentityRecord).map(structuredClone(drawing));
+}
+
+export interface PreparedDrawingIdentityMapper {
+ /** Read-only result under the immutable contract, typed for Drawing readers. */
+ readonly map:(drawing:DrawingDocument)=>DrawingDocument;
+}
+
+/** Trusted callers promise immutable input graphs, immutable returned graphs,
+ * and one stable, pure ID function for this mapper's lifetime. Remapped records
+ * and containers are owned; untouched geometry and metadata may be shared with
+ * inputs. Nothing is frozen or mutated. Use remapDrawingIdentities for mutable
+ * callers. Weak caches reuse unchanged records by kind and whole Drawings;
+ * a new Drawing still copies its top-level arrays in O(number of records).
+ * Runtime affine/deformation programs are not transferred by either mapper. */
+export function prepareDrawingIdentityMapper(id:(id:string)=>string):PreparedDrawingIdentityMapper{
+ const records=new Map<DrawingIdentityKind,WeakMap<object,object>>();
+ const record:MapIdentityRecord=(kind,value,map)=>{
+  let cache=records.get(kind);if(!cache){cache=new WeakMap();records.set(kind,cache);}
+  const known=cache.get(value);if(known)return known as typeof value;
+  const mapped=map(value);cache.set(value,mapped);return mapped;
  };
+ return {map:drawingIdentityMapper(id,record).map};
 }
 
 export function drawingSnapshotForArtwork(workspace:RecordingSnapshotWorkspace,artworkId:string):RecordingSnapshot|undefined{

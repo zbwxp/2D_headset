@@ -1,6 +1,6 @@
 # 统一录制求值与性能重构
 
-核对：2026-10-04 15:53 UTC。曲线级阶段 v87（`0a96548`）已于 15:45:16 UTC 发布。此前 v86（`3bf7d612`）于 14:24:05 UTC 发布。它完成共同读计划、严格重放产品复用和标量编译，回退目标同步 Node CPU 约 41～47ms；这些数字不是用户接受的终点。浏览器的可见 renderer 崩溃经普通 Reload 恢复，随后在公开内置完整脸上完成 −60° A 下颌柄、末端基准补偿、Save、Undo、镜像开关及零基准不变检查，最后导出与新鲜基线完全一致。仍没有浏览器 FPS 结论。
+核对：2026-10-04 16:59 UTC。曲线级阶段 v87（`0a96548`）已于 15:45:16 UTC 发布。此前 v86（`3bf7d612`）于 14:24:05 UTC 发布。它完成共同读计划、严格重放产品复用和标量编译，回退目标同步 Node CPU 约 41～47ms；这些数字不是用户接受的终点。浏览器的可见 renderer 崩溃经普通 Reload 恢复，随后在公开内置完整脸上完成 −60° A 下颌柄、末端基准补偿、Save、Undo、镜像开关及零基准不变检查，最后导出与新鲜基线完全一致。仍没有浏览器 FPS 结论。
 
 v87 以曲线为数值失效单位，使用共同 selection/edit plan 和预编译反向依赖。私人完整脸四种实际目标已得到冷／热完整产品一致的结果，组合测试、匹配计时与 TypeScript／Vite 生产构建已完成；新增线组／整层变形器专项 16 项、主树类型检查和公开站 A／V／两种框 Save／Undo 验收已通过。下面历史阶段的数字保留其当时口径，不应当作当前候选的结果。
 
@@ -172,13 +172,39 @@ v87 以曲线为数值失效单位，使用共同 selection/edit plan 和预编�
 
 组合 33 文件得到 333 项通过，另 5 项旧 live-onion 用退休模式建夹具而失败；纯 v86 同文件复跑也是同 5 项失败、7 项通过。已通过范围含 affine、曲边／连续组／新成员、LINK／SMOOTH／ARC、镜像／材料、冷热身份、取消／Undo、严格零基准与私人目标回归。窄审发现的 ARC 柄塌零漏校验已修：只增加 ARC 对侧的只读验证依赖，不扩大可写控制；仍由原 `moveHandle` 执行校验。
 
+## 基点 shape 阶段继续按真实变化更新
+
+2026-10-04 16:57 UTC，后续计算候选为 `26f29ec`，线上仍为 v87。前一阶段已经缩小最终插值／材料工作，但变化 basis 内的 `applySceneShapes` 仍重新应用全部 116 条曲线和 9 条材料路径。本阶段沿同一准备上下文把这段工作也缩小。
+
+- `drawing/sparseShape.ts` 的完整和修订求值共用节点相对偏移、LINK 与 SMOOTH 数学。原始输入和投影后结果分别保存，删除偏移等价于回到零，不能把旧投影当新原始控制
+- `recordingScene/shapes.ts` 保留实际作用成员、材料消费者、每路径诊断和 fit 记录；只重新运输真实依赖的材料，并移动改变曲线的诊断位置。新来源或未知程序继续完整求值
+- `recordingSnapshot/evaluation.ts` 以固定 source／Warp 产品和真正的事务控制地址取得上一份 shape。saved/live 草稿政策分别建立键；只有此前根本没有 draft 时，才允许 saved 基线进入第一个新 draft。独立保存态检查不能覆盖 live 草稿的缓存
+- 同一身份字段映射同时服务公开防御性复制和内部不可变映射；稳定的 source／Warp 基线拥有后者。未变记录与 fit 对象复用，变化曲线仍由权威数学重新求值
+
+专项回归先复现了错误地合并草稿政策会使无关 profile 草稿回退，然后验证了修正。完整基线到 preview 的复用仍单向保留更强的诊断。主树组合 36 文件 373 项通过，TypeScript／Vite 生产构建通过，包含私档、冷热、历史、镜像／区间与线组／整层域矩阵；此前已经在纯 v86 复现的退休 live-onion 夹具不属于本轮绿色集合。
+
+同一个冻结起点、双方共同 UI 选区计划、每轮新目标的 prepare＋display Node CPU：
+
+| 操作 | v87 | 基点修订候选 |
+| --- | ---: | ---: |
+| 耳根 X／方向跟随／末端补偿 | 29.09ms | 18.85ms |
+| 耳根 Y／方向跟随／末端补偿 | 24.36ms | 16.90ms |
+| 轮廓横缩／只调响应 | 3.34ms | 3.05ms |
+| 轮廓纵缩／末端补偿 | 23.71ms | 14.82ms |
+
+33 个完整输出、174 个 ghost 帧及冷热／严格 0° 检查精确一致。变化 basis 不再执行完整 shape：耳根只处理 4 节点、8 个柄、5 条 fit 记录和 1／9 材料路径；纵缩只处理 9 节点、18 个柄、9 条 fit 记录和 0／9 路径。未受影响的 8／9 材料直接保留。`evaluateOwn` 由约 8ms 降为 2～4ms，包含这些实际计算；不会把只剩一个公共函数调用误称为仍重算整幅画。
+
+正侧一组观察为 35.42→30.21ms，但独立重复存在明显重叠，不能据此宣称整个旧回退已解决。10／19 帧新响应洋葱分别 15.52→17.64ms、36.38→36.33ms，完整编辑＋主显示＋洋葱为 20.08→22.08ms、40.10→40.10ms。本轮收益集中在需要改变 basis 的目标，洋葱没有重跑 basis、材料或 paint。
+
+剩余真实成本包括约 3.3～4.6ms 的回退编排、1.4～1.6ms 的依赖 key／计划开销、0.7～1.4ms 的控制捕获，以及按不可变数据约定产生的容器拷贝。这里不包含浏览器 DOM／绘制／输入到显示，也没有 FPS 或全局最优声明。
+
 ## GPU 的评估边界
 
 当前 App 挂载 DrawingRoom 与 SnapshotRecordingWorkspace，录制使用 PaintScene/SVG。旧 `rendering/edit2d/GpuScene` 仍可把已求出的 Float32 几何缓冲交给 Three 绘制，且其 picking 有同步读取；它不是现有 Recording 插值计算后端。
 
 先统一 CPU 准备、减少工作量，再分别量控制采样、材料/墨线、序列化、GPU 上传/读回和实际绘制。如果届时批量洋葱或绘制占主导，可评估共享产品后的 GPU 渲染接收端；不能把双精度权威逆解/回放直接改成 Float32，也不能声称 GPU 会消除关系解析、重复克隆或验证。
 
-参考：[WebGPU 的提交和数据组织优化](https://webgpufundamentals.org/webgpu/lessons/webgpu-optimization.html)、[NVIDIA 性能诊断指导](https://github.com/NVIDIA/elements/blob/main/.agents/skills/guidance-webgpu-performance/references/performance-diagnostics.md)。当前没有 GPU 实现或加速承诺，也没有浏览器 FPS 证据。
+参考：[WebGPU 的提交和数据组织优化](https://webgpufundamentals.org/webgpu/lessons/webgpu-optimization.html)、[NVIDIA 性能诊断指导](https://github.com/NVIDIA/elements/blob/main/.agents/skills/guidance-webgpu-performance/references/performance-diagnostics.md)。用户已授权在 CPU 优化后评估 GPU 的整体收益；只有把上传、读回、同步和真实绘制成本一并计入后，仍有显著收益可能，才实现紧凑的共享后端与 CPU 回退。当前未实施 GPU，也没有浏览器 FPS 证据。
 
 ## 已验证候选结果
 
