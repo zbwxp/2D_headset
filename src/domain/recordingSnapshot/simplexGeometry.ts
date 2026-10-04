@@ -30,6 +30,9 @@ const nativeResponses=new WeakSet<SnapshotScalarResponse>();
 export function markNativeSnapshotScalarResponse<T extends SnapshotScalarResponse>(response:T):T {nativeResponses.add(response);return response;}
 const nativeResponse=(response:SnapshotScalarResponse|undefined)=>!response||nativeResponses.has(response);
 const samplingStats={scalarEvaluations:0,basisCoordinateReads:0,projectedComponents:0,revisionSamples:0,fullSamples:0,copiedControlSlots:0};
+/** Actual scalar calls and retained-native kernel projections. Arbitrary custom
+ * projection hooks are opaque; their internal work is not included. Container
+ * slot copies are reported separately from numerical dependency work. */
 export const getSnapshotSimplexSamplingStats=()=>({...samplingStats});
 export const resetSnapshotSimplexSamplingStats=()=>{for(const key of Object.keys(samplingStats) as (keyof typeof samplingStats)[])samplingStats[key]=0;};
 type ReviseSample=(bases:readonly SnapshotSimplexBasis[],weights:readonly number[],response:SnapshotScalarResponse|undefined,changes:SnapshotSimplexRevisionChanges)=>SnapshotSimplexGeometry|undefined;
@@ -57,7 +60,7 @@ const validateWeights=(count:number,weights:readonly number[])=>{
 export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBasis[]):PreparedSnapshotSimplexGeometry {
  if(bases.length<1||bases.length>3||new Set(bases.map(b=>b.snapshotId)).size!==bases.length)throw Error('A snapshot simplex needs one to three distinct active bases.');
  const count=bases.length;
- if(count===1){const drawing=bases[0].drawing,authorities=endpointPairNodeAuthorities(drawing);return {sample(weights){validateWeights(count,weights);return {drawing,diagnostics:[],nodeAuthorities:new Map(authorities)};}};}
+ if(count===1){const drawing=bases[0].drawing,authorities=endpointPairNodeAuthorities(drawing);return {sample(weights){samplingStats.fullSamples++;validateWeights(count,weights);return {drawing,diagnostics:[],nodeAuthorities:new Map(authorities)};}};}
  const bindings=bases.map(({snapshotId,angle})=>({snapshotId,angle:angle&&{...angle}}));
  const curveMaps=bases.map(b=>keys(b.drawing.curves)),nodeMaps=bases.map(b=>keys(b.drawing.nodes));
  const joinMaps=bases.map(b=>keys(b.drawing.joins)),linkMaps=bases.map(b=>keys(b.drawing.endpointLinks??[])),fillMaps=bases.map(b=>keys(b.drawing.fills)),offsetMaps=bases.map(b=>keys(b.drawing.offsets)),intervalMaps=bases.map(b=>keys(b.drawing.displayIntervals??[]));
