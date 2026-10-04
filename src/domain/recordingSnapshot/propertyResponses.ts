@@ -84,13 +84,18 @@ export function effectiveSnapshotPropertyResponses(graph:SnapshotAngleGraph,opti
  return {edges:replacement?{...saved.edges,...replacement.edges}:saved.edges,triangles:replacement?{...saved.triangles,...replacement.triangles}:saved.triangles,...draft?{draft}:{}};
 }
 
+/** Shared dependency projection for defensive content keys and trusted compact
+ * keys. A fragment mapper may change representation, never the selected inputs. */
+export function snapshotPropertyResponsesKeyInputs(graph:SnapshotAngleGraph,options:SnapshotPropertyResponseOptions={},fragment:(value:object)=>unknown=value=>value):unknown[] {
+ return ['scalar-properties-v1',fragment(graph.mesh),graph.propertyResponses==null?null:fragment(graph.propertyResponses),options.useDraft!==false,
+  options.useDraft===false?null:(graph.correctionFrames??[]).filter(frame=>frame.status==='draft').map(frame=>[frame.id,frame.angle,frame.propertyResponses==null?null:fragment(frame.propertyResponses)])];
+}
 /** Explicit response-only cache dependency. Caller must also include its saved
  * material-basis key, location and geometric weights. Geometry response changes
  * belong in the caller's final-material-frame key. No object identity cache can
  * conceal an in-place property edit or saved/draft selection. */
 export function snapshotPropertyResponsesCacheKey(graph:SnapshotAngleGraph,options:SnapshotPropertyResponseOptions={}):string {
- return JSON.stringify(['scalar-properties-v1',graph.mesh,graph.propertyResponses??null,options.useDraft!==false,
-  options.useDraft===false?null:(graph.correctionFrames??[]).filter(frame=>frame.status==='draft').map(frame=>[frame.id,frame.angle,frame.propertyResponses??null])]);
+ return JSON.stringify(snapshotPropertyResponsesKeyInputs(graph,options));
 }
 
 const descriptor=(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation)=>describeSnapshotScalarResponseSupport(graph.mesh,location,invalid);

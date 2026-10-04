@@ -39,7 +39,8 @@ import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
 import {resolveSnapshotLocalMembership} from './localMembership';
 import {hasSnapshotCoverageRevisionLineage,prepareSnapshotCoverageStructure,type PreparedSnapshotCoverageStructure,type SnapshotCoverageEvaluation,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
 import {evaluateSnapshotSurfaceMaterial,hasPreparedSnapshotSurfaceMaterial,type SnapshotSurfaceMaterialResult} from './surfaceMaterial';
-import {snapshotPropertyResponsesCacheKey} from './propertyResponses';
+import {snapshotPropertyResponsesCacheKey,snapshotPropertyResponsesKeyInputs} from './propertyResponses';
+import {recordingSemanticFragment} from './semanticFragments';
 import {createSnapshotSurfaceValueSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEditWithReplay,SnapshotSurfaceTargetEditError,snapshotSurfaceOwnsBasisDraft,type SnapshotSurfaceTargetEditResult} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,shapeOf,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
@@ -466,12 +467,15 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const angleFor=(id:string)=>vertices.get(id)!.angle;
  const basisOptions=(id:string):SnapshotEvaluationOptions=>{const vertex=vertices.get(id)!,snapshot=context.index.snapshots.get(id)!;return {...options,snapshotId:id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&(snapshotSurfaceOwnsBasisDraft(graph,id)||recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y),tolerance:options.tolerance??recording.tolerance};};
  const basisKey=[...demand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]);
- const responseFrames=options.useDraft===false?[]:(graph.correctionFrames??[]).filter(frame=>frame.edgeResponses||frame.triangleResponses||frame.responseExpressions).map(frame=>[frame.id,frame.status,frame.edgeResponses,frame.triangleResponses,frame.responseExpressions]),responseKey=[graph.edgeResponses,graph.triangleResponses,graph.responseExpressions,responseFrames];
+ const fragment=(value:object|undefined)=>recordingSemanticFragment(value,options.immutableInputs===true),meshKey=fragment(graph.mesh);
+ const responseFrames=options.useDraft===false?[]:(graph.correctionFrames??[]).filter(frame=>frame.edgeResponses||frame.triangleResponses||frame.responseExpressions).map(frame=>[frame.id,frame.status,fragment(frame.edgeResponses),fragment(frame.triangleResponses),fragment(frame.responseExpressions)]),responseKey=[fragment(graph.edgeResponses),fragment(graph.triangleResponses),fragment(graph.responseExpressions),responseFrames];
  const geometryDemand=snapshotSurfaceDemand(effectiveGraph,locations,mirror?.zeroSnapshotId,false);if(positive&&mirror)geometryDemand.add(mirror.zeroSnapshotId);
  const geometryPolicy=evaluationOptionsKey({...options,angle:requested,useDraft:false,liveBasisDrafts:false,diagnostics:'preview',validationSamples:undefined,products:'controls'});
- const geometryKey=semanticKey(['control-geometry',graph.mesh,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]),responseKey,requested,geometryPolicy]);
+ const geometryKey=semanticKey(['control-geometry',meshKey,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]),responseKey,requested,geometryPolicy]);
  const lineageKey=semanticKey(['control-lineage',recording.id,immutableIdentity(graph.mesh),immutableIdentity(prepared),requested,geometryPolicy]);
- const surfaceKey=(quality=options.diagnostics)=>semanticKey(['angle-surface',recording.id,graph.mesh,basisKey,responseKey,controls?null:[snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.visibilityRecipes,graph.materialPartitions,graph.materialPathLineages],requested,evaluationOptionsKey({...options,angle:requested,diagnostics:quality})]);
+ let propertyKey:string|undefined;const propertyResponsesKey=()=>propertyKey??=surfacePropertyResponsesKey(effectiveGraph,options.immutableInputs===true);
+ const materialKey=controls?null:[propertyResponsesKey(),fragment(graph.materialRecipes),fragment(graph.visibilityRecipes),fragment(graph.materialPartitions),fragment(graph.materialPathLineages)];
+ const surfaceKey=(quality=options.diagnostics)=>semanticKey(['angle-surface',recording.id,meshKey,basisKey,responseKey,materialKey,requested,evaluationOptionsKey({...options,angle:requested,diagnostics:quality})]);
  const key=surfaceKey(),known=context.surfaceValues.get(key);if(known)return known;
 
  const native=new Map<string,SnapshotEvaluation>(),reflected=new Map<string,SnapshotEvaluation>();
@@ -482,7 +486,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  };
  const refs=[...demand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));
  const makeMirror=(ids:readonly string[])=>{
-  if(!mirror)return undefined;const zero=base(mirror.zeroSnapshotId,false),sources=ids.map(id=>base(id,false)),mirrorKey=semanticKey(['mirror',recording.id,graph.mesh,sources.map(resultIdentity),responseKey,snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.materialPartitions,graph.materialPathLineages]);
+  if(!mirror)return undefined;const zero=base(mirror.zeroSnapshotId,false),sources=ids.map(id=>base(id,false)),mirrorKey=semanticKey(['mirror',recording.id,meshKey,sources.map(resultIdentity),responseKey,propertyResponsesKey(),fragment(graph.materialRecipes),fragment(graph.materialPartitions),fragment(graph.materialPathLineages)]);
   let cache=mirrorSurfacePreparationCaches.get(workspace.library);if(!cache){cache=new InputCache(64);mirrorSurfacePreparationCaches.set(workspace.library,cache);}let value=cache.get(mirrorKey);if(!value){value=prepareSnapshotViewMirrorSurface(effectiveGraph,sources.map(source=>({snapshotId:source.snapshotId,drawing:source.drawing,angle:angleFor(source.snapshotId)})),zero.drawing,current=>snapshotViewMirrorOptions(workspace,recording,zero,copySnapshotEvaluation(zero,{drawing:current})));cache.set(mirrorKey,value);}return value;
  };
  const mirrorContext=positive?makeMirror([...demand]):undefined,prior=completeSurfaceProducts.get(key)??context.inheritedSurface(key)??(options.diagnostics==='preview'?(completeSurfaceProducts.get(surfaceKey('full'))??context.inheritedSurface(surfaceKey('full'))):undefined);
@@ -553,6 +557,12 @@ export interface PreparedRecordingContext {
 type SnapshotPlan={key:string;valueKey:string;options:SnapshotEvaluationOptions;recording?:SnapshotRecording;originalDependencies:readonly string[]};
 const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
 const semanticKey=(value:unknown):string=>{const text=JSON.stringify(value);let key=semanticKeys.get(text);if(!key){key=String(nextSemanticKey++);if(semanticKeys.size>=32768)semanticKeys.delete(semanticKeys.keys().next().value!);semanticKeys.set(text,key);}return key;};
+/** The public defensive key and compact key share one property dependency
+ * projection, including draft selection, IDs and authoring angles. */
+function surfacePropertyResponsesKey(graph:SnapshotAngleGraph,immutable:boolean):string {
+ if(!immutable)return snapshotPropertyResponsesCacheKey(graph);
+ return semanticKey(snapshotPropertyResponsesKeyInputs(graph,{},value=>recordingSemanticFragment(value,true)));
+}
 interface SharedStructuralProducts {memberships:Map<string,{key:string;input:SnapshotInputParent}>;coverage:Map<string,PreparedSnapshotCoverageStructure>}
 const structuralProductCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<SharedStructuralProducts>>();
 const dependencyPlanCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<PreparedSnapshotDependencyIndex>>();
@@ -616,7 +626,7 @@ class RecordingContext implements PreparedRecordingContext {
   for(const fork of Object.values(snapshot.nodeForks??{}))originalIds.add((fork.source??fork).curveId);
   const libraryInputs=[...originalIds].map(id=>{const curve=this.workspace.library.curves[id];return [id,token(curve),...(curve?.nodes??[]).map(id=>token(this.workspace.library.nodes[id])),token(this.workspace.library.fills[id]),token(this.workspace.library.offsets[id])];});
   const tracks=recording?.mode==='triangulated'?null:recording?.tracks.map(track=>{const {draft,...saved}=track;return drafts?token(track):requested.immutableInputs?[track.id,track.channel,track.targetId,track.elementId,token(track.keys),track.interpolation,track.channel==='interval'?token(track.materialIssue):null]:saved;});
-  const recipeKeys=[token(material),token(visibility),material?token(graph?.mesh):null,material?token(graph?.responseExpressions):null,material?token(graph?.materialPartitions):null,material?token(graph?.materialPathLineages):null,snapshotMaterialRecipeHasMirror(material)?[token(graph?.edgeResponses),token(graph?.triangleResponses),token(graph?.responseExpressions),live?token(graph?.correctionFrames):null,token(graph?.materialRecipes),effectiveGraph&&snapshotPropertyResponsesCacheKey(effectiveGraph)]:null,mirror?.targetSnapshotId===id?mirror:null];
+  const recipeKeys=[token(material),token(visibility),material?token(graph?.mesh):null,material?token(graph?.responseExpressions):null,material?token(graph?.materialPartitions):null,material?token(graph?.materialPathLineages):null,snapshotMaterialRecipeHasMirror(material)?[token(graph?.edgeResponses),token(graph?.triangleResponses),token(graph?.responseExpressions),live?token(graph?.correctionFrames):null,token(graph?.materialRecipes),effectiveGraph&&surfacePropertyResponsesKey(effectiveGraph,requested.immutableInputs===true)]:null,mirror?.targetSnapshotId===id?mirror:null];
   const materialIssues=[...Object.values(snapshot.inheritedState?.intervalMaterialIssues??{}),...Object.values(snapshot.deformation.intervalMaterialIssues??{}),...(drafts?Object.values(snapshot.draft?.deformation.intervalMaterialIssues??{}):[]),...(recording?.mode!=='triangulated'?recording?.tracks.flatMap(track=>track.channel==='interval'&&track.materialIssue?[track.materialIssue]:[])??[]:[])],originalDependencies=[...new Set(materialIssues.map(issue=>issue.sourceSnapshotId))].map(source=>this.originalDependencyKey(source));
   const key=semanticKey([own,libraryInputs,tracks,recipeKeys,originalDependencies,[...dependencies.values()],evaluationOptionsKey({...options,liveBasisDrafts:false})]),plan:SnapshotPlan={key,valueKey:key,options,recording,originalDependencies};this.planning.delete(localKey);this.plans.set(localKey,plan);
   for(let parent=this.before;parent;parent=parent.before){const value=parent.snapshotValues.get(plan.key);if(value){this.snapshotValues.set(plan.key,value);break;}}
@@ -661,7 +671,7 @@ class RecordingContext implements PreparedRecordingContext {
   const localKey=JSON.stringify([recording.id,positive]),known=this.coverageValues.get(localKey);if(known)return known;
   const graph=recording.angleGraph!,mirror=recordingViewMirrorRelation(this.workspace,recording),zero=mirror?this.membership(mirror.zeroSnapshotId).input:undefined;
   const members=graph.mesh.vertices.map(vertex=>{const value=this.membership(vertex.snapshotId);let drawing=value.input.drawing;if(positive&&zero&&vertex.angle.x===0)drawing=mirrorViewDrawingPresence(drawing,zero.drawing,(()=>{const curvePairs=snapshotViewMirrorCurvePairs(this.workspace,mirror!.zeroSnapshotId);return {curvePairs,unpairedGroups:viewMirrorUnpairedCurveGroups(zero.drawing,curvePairs).map(curveIds=>({curveIds,reference:[0,0] as Point2}))};})()).drawing;return {snapshotId:vertex.snapshotId,drawing,angle:vertex.angle};});
-  const key=semanticKey(['coverage',graph.mesh,members.map(value=>[value.snapshotId,value.drawing.curves.map(curve=>[curve.id,curve.nodes])])]);let structure=structurePreparationCaches.get(key);if(!structure){structure=prepareSnapshotCoverageStructure(graph.mesh,members);structurePreparationCaches.set(key,structure);this.count('coverageStructure');}this.coverageValues.set(localKey,structure);return structure;
+  const key=semanticKey(['coverage',recordingSemanticFragment(graph.mesh,this.defaults.immutableInputs===true),members.map(value=>[value.snapshotId,value.drawing.curves.map(curve=>[curve.id,curve.nodes])])]);let structure=structurePreparationCaches.get(key);if(!structure){structure=prepareSnapshotCoverageStructure(graph.mesh,members);structurePreparationCaches.set(key,structure);this.count('coverageStructure');}this.coverageValues.set(localKey,structure);return structure;
  }
  resolveSnapshot(snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return withDrawingReadScope(()=>resolveSnapshotInContext(this,snapshotId,{...this.defaults,...options}));}
  resolveBasis(recordingId:string,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return withDrawingReadScope(()=>{const recording=this.index.recordings.get(recordingId);if(!recording)throw Error('Missing recording');return resolveRecordingSnapshotBasisInContext(this,recording,snapshotId,{...this.defaults,...options});});}
