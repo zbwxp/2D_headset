@@ -1,7 +1,7 @@
 import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
 import {InputCache} from '../geometry/cache';
 import {shapeOf,type Cubic,type DrawingDocument} from '../drawing/model';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
+import {reviseSnapshotSimplexGeometry,interpolateSnapshotSimplexGeometry,type SnapshotSimplexRevisionChanges,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
 import {locateSnapshotSimplex,projectToSnapshotCoverage,restrictSnapshotCoverage,type SnapshotSimplexLocation,type SnapshotTriangulation,type SnapshotTriangulationAngle} from './triangulation';
 
 export interface SnapshotCoverageCurvePreview {
@@ -16,6 +16,8 @@ export interface SnapshotCoverageEvaluation {
  outsideCurves:SnapshotCoverageCurvePreview[];
  diagnostics:string[];
 }
+export interface SnapshotCoverageSampleOptions {immutableInputs?:boolean;onGeometryPrepare?:()=>void;previous?:SnapshotCoverageEvaluation;changes?:SnapshotSimplexRevisionChanges}
+const coverageLineages=new WeakMap<SnapshotCoverageEvaluation,{structure:object;samples:ReadonlyMap<string,SnapshotSimplexGeometry>}>();
 export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>SnapshotScalarResponse|undefined;
 
 /** Prepare static membership/topology support once for a set of immutable basis
@@ -23,7 +25,7 @@ export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>Snapsh
  * remain separate because two projected regions can assign a shared node two
  * different preview positions; neither is an authoritative geometry edit. */
 export interface PreparedSnapshotCoverageStructure {
- evaluate:(requestedAngle:SnapshotTriangulationAngle,basis:(snapshotId:string)=>SnapshotSimplexBasis,responses?:SnapshotLocationResponses,options?:{immutableInputs?:boolean;onGeometryPrepare?:()=>void})=>SnapshotCoverageEvaluation;
+ evaluate:(requestedAngle:SnapshotTriangulationAngle,basis:(snapshotId:string)=>SnapshotSimplexBasis,responses?:SnapshotLocationResponses,options?:SnapshotCoverageSampleOptions)=>SnapshotCoverageEvaluation;
  /** Includes red projected supports; expression/reflection leaves add to these. */
  locations:(requestedAngle:SnapshotTriangulationAngle)=>SnapshotSimplexLocation[];
  curveIds:readonly string[];
@@ -52,9 +54,14 @@ export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,base
   for(const id of curveIds)if(!present(id)){const projected=projectToSnapshotCoverage(regions.get(id)!,requested);if(projected){projections.set(id,projected);const key=JSON.stringify([projected.simplex.simplexId,projected.simplex.vertexIds,projected.simplex.geometricWeights]);if(!seen.has(key)){seen.add(key);result.push(projected.simplex);}}}
   return requests.set(key,{location,locations:result,projections});
  };
- const locations=(requested:SnapshotTriangulationAngle)=>request(requested).locations;
+ const locations=(requested:SnapshotTriangulationAngle)=>request(requested).locations,structureIdentity={};
  return {curveIds,locations,evaluate:(requestedAngle,basis,responses,options)=>{
-  const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>{const active=location.snapshotIds.map(basis),response=responses?.(location);return options?.immutableInputs?preparedSnapshotSimplexProgram(active,options.onGeometryPrepare).sample(location.geometricWeights,response):interpolateSnapshotSimplexGeometry(active,location.geometricWeights,response);};
+  const previous=options?.previous&&coverageLineages.get(options.previous),retained=new Map<string,SnapshotSimplexGeometry>();
+  const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>{
+   const key=JSON.stringify([location.simplexId,location.snapshotIds,location.geometricWeights]),active=location.snapshotIds.map(basis),response=responses?.(location),prior=previous?.structure===structureIdentity?previous.samples.get(key):undefined;
+   const revised=options?.immutableInputs&&options.changes&&prior?reviseSnapshotSimplexGeometry(prior,active,location.geometricWeights,response,options.changes):undefined;
+   const result=revised??(options?.immutableInputs?preparedSnapshotSimplexProgram(active,options.onGeometryPrepare).sample(location.geometricWeights,response,{retainLineage:true}):interpolateSnapshotSimplexGeometry(active,location.geometricWeights,response));retained.set(key,result);return result;
+  };
   const requested={...requestedAngle},planned=request(requested),location=planned.location,normal=location?{...sample(location,responses),simplex:location}:undefined;
   const normalIds=new Set(normal?.drawing.curves.map(curve=>curve.id)),outsideCurves:SnapshotCoverageCurvePreview[]=[],diagnostics=[...(normal?.diagnostics??[])],sampled=new Map<string,SnapshotSimplexGeometry>();
   for(const curveId of curveIds){
@@ -67,7 +74,7 @@ export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,base
   }
   if(!location)diagnostics.push('The requested angle is outside recording coverage. Red curves show their closest valid supported pose.');
   if(outsideCurves.length)diagnostics.push(`${outsideCurves.length} curve(s) are outside their own recording coverage; red previews are read-only and are not snapshot members.`);
-  return {requestedAngle:requested,...(normal?{normal}:{}),outsideCurves,diagnostics:[...new Set(diagnostics)]};
+  const result={requestedAngle:requested,...(normal?{normal}:{}),outsideCurves,diagnostics:[...new Set(diagnostics)]};if(options?.immutableInputs)coverageLineages.set(result,{structure:structureIdentity,samples:retained});return result;
  }};
 }
 

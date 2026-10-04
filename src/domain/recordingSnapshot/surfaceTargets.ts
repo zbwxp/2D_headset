@@ -5,7 +5,7 @@ import type {SnapshotSurfaceMirrorContext,SnapshotSurfaceMirrorSample} from './s
 import {finitePoint,sub,type DrawingDocument,type Point2} from '../drawing/model';
 import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotTriangleControlResponse,SnapshotTriangleResponses,SnapshotResponseExpressionRegistry,SnapshotExpressionControlResponse} from './model';
 import {endpointPairNodeAuthorities} from './endpointPair';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotScalarValue,type SnapshotSimplexBasis} from './simplexGeometry';
+import {markNativeSnapshotScalarResponse,interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotScalarWeights,type SnapshotScalarValue,type SnapshotSimplexBasis} from './simplexGeometry';
 import {locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {solveClosestBarycentricWeights,upsertInteriorResponseSample,type BarycentricWeights} from './triangularResponses';
 import {createSnapshotExpressionValueSampler,prepareSnapshotExpressionValueProgram,snapshotResponseSourceBaseline,type SnapshotResponseBasisScalarResolver,type SnapshotResponseExpression} from './responseExpressions';
@@ -119,8 +119,9 @@ export function prepareSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,loca
 function compileSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,originalLocation:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],mirror?:SnapshotSurfaceMirrorContext):SnapshotSurfaceValueProgram {
  const location={...originalLocation,vertexIds:[...originalLocation.vertexIds],snapshotIds:[...originalLocation.snapshotIds],geometricWeights:[...originalLocation.geometricWeights]};
  const samplingGraph=positiveMirrorResponseGraph(graph,location,mirror),native=createSnapshotSurfaceResponseSampler(samplingGraph,location),effective=effectiveSnapshotSurfaceResponses(samplingGraph),responses=own(effective.responseExpressions,location.simplexId);
- const basisScalar=createSnapshotResponseBasisResolver(bases),geometricWeights=createSnapshotResponseFieldWeightMapper(graph.mesh,location),onCompile=()=>{surfaceProgramStats.expressionCompilations++;};
+ const geometricWeights=createSnapshotResponseFieldWeightMapper(graph.mesh,location),onCompile=()=>{surfaceProgramStats.expressionCompilations++;};
  const hasExpressions=!!responses&&[...Object.values(responses.nodes),...Object.values(responses.handles).flat()].some(control=>control.x!==undefined||control.y!==undefined);
+ const basisScalar:SnapshotResponseBasisScalarResolver=hasExpressions?createSnapshotResponseBasisResolver(bases):()=>undefined;
  const inheritedProgram=prepareSnapshotExpressionValueProgram(location,{expression:hasExpressions?(target,axis)=>snapshotResponseExpressionFor(responses,target,axis):undefined,geometricWeights,onCompile});
  const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
  const sourceBaselines=prepareSnapshotExpressionValueProgram(location,{expression:hasExpressions?(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;}:undefined,geometricWeights,onCompile}).createSampler(basisScalar);
@@ -161,7 +162,7 @@ function compileSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,originalLoc
    const cornerResiduals=currentExpression?cornerWeights.map(weights=>{recordParameters=false;try{return inherited(target,axis,emptyCoordinates,weights);}finally{recordParameters=true;}}):zeroCoordinates;
    samples.set(projectionKey(target,axis),{baseline,corrected,baselineCorners:cornerWeights.map((weights,index)=>geometric(weights)+cornerResiduals[index]+(sourceCorners?sourceCorners[index]-coordinates[index]:0)),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
   };
-  sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(projectionKey(target,axis))?.corrected;return sample;
+  sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(projectionKey(target,axis))?.corrected;if(!hasExpressions&&!mirror)markNativeSnapshotScalarResponse(sample);return sample;
  };
  return Object.freeze({createSampler});
 }
@@ -175,7 +176,7 @@ export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,locat
 }
 
 export interface SnapshotSurfaceTargetEditOptions {immutableInputs?:boolean;angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}
-export interface SnapshotSurfaceTargetEditResult {graph:SnapshotAngleGraph;changed:boolean}
+export interface SnapshotSurfaceTargetEditResult {graph:SnapshotAngleGraph;changed:boolean;/** Ephemeral exact solved outputs; never persisted in the graph. */responseControls?:readonly SnapshotScalarTarget[]}
 type TargetUpdate={target:SnapshotScalarTarget;axis:0|1;weights:BarycentricWeights};
 
 /** One inverse transaction for A and V. Read the frozen frame and bases once,
@@ -189,7 +190,7 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
 /** Internal prepared-context adapter. Only the context's ordinary sample path
  * produces retained products; this solver still verifies every target control.
  * Standalone and mutable callers retain the same local replay below. */
-export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],currentDrawing:DrawingDocument,wantedDrawing:DrawingDocument,options:SnapshotSurfaceTargetEditOptions,replayCandidate?:(candidate:SnapshotAngleGraph)=>DrawingDocument):SnapshotSurfaceTargetEditResult {
+export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],currentDrawing:DrawingDocument,wantedDrawing:DrawingDocument,options:SnapshotSurfaceTargetEditOptions,replayCandidate?:(candidate:SnapshotAngleGraph,responseControls:readonly SnapshotScalarTarget[])=>DrawingDocument):SnapshotSurfaceTargetEditResult {
  const actualLocation=locateSnapshotSimplex(graph.mesh,options.angle);
  if(!actualLocation)fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. The projected red preview is read-only; return inside coverage to correct controls.');
  const descriptor=surfaceDescriptor(graph,location);
@@ -285,11 +286,12 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
   nextFrame={...draft,id:frameId,angle:{...options.angle},status:'draft',triangleResponses:{...draft?.triangleResponses,[location.simplexId]:responses}};
  }
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
- const replay=index(replayCandidate?replayCandidate(candidate):(()=>{const sampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs});return (options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler)).drawing;})());
+ const responseControls=[...new Map(updates.map(({target})=>[targetKey(target,0),target])).values()];
+ const replay=index(replayCandidate?replayCandidate(candidate,responseControls):(()=>{const sampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs});return (options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler)).drawing;})());
  const verify=(name:string,position:Point2|undefined,target:Point2)=>{
   if(!position||position.some((value,axis)=>!Number.isFinite(value)||Math.abs(value-target[axis])>Math.max(1e-7,4*scalarTolerance(value,target[axis]))))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`${name}: the complete correction cannot reproduce the target after linked-node and SMOOTH constraints. Edit the responsible basis control or its SMOOTH driver first.`);
  };
  for(const node of wantedDrawing.nodes)verify(`Node ${node.id}`,replay.nodes.get(node.id),node.position);
  for(const curve of wantedDrawing.curves)for(const end of [0,1] as const)verify(`Handle ${curve.id} end ${end}`,replay.curves.get(curve.id)?.handles[end],curve.handles[end]);
- return {graph:candidate,changed:true};
+ return {graph:candidate,changed:true,responseControls};
 }
