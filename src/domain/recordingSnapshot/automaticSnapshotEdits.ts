@@ -90,7 +90,7 @@ export function seedAutomaticExtremeSnapshots(workspace:RecordingSnapshotWorkspa
  if(at.x===-90&&!existing(90,0)){
   const selected=options.mirror?{mirror:options.mirror,diagnostics:[]}:configuredSnapshotMirror(workspace,parent);diagnostics.push(...selected.diagnostics);
   if(selected.mirror){const child=add(parent,90,0,selected.mirror);if(child){
-   const zero=existing(0,0);if(zero)recording.angleGraph!.viewMirror={zeroSnapshotId:zero.snapshotId,sourceSnapshotId:parent.id,targetSnapshotId:child.id};
+   const zero=existing(0,0);if(zero)recording.angleGraph!.viewMirror={zeroSnapshotId:zero.snapshotId,sourceSnapshotId:parent.id,targetSnapshotId:child.id,unpairedReference:'zero-stroke-frame'};
    else diagnostics.push({code:'VIEW_MIRROR_ZERO_REQUIRED',snapshotId:child.id,message:'No local 0° basis is bound; this legacy opposite view retains its explicit absolute input mirror.'});
    add(child,90,-90);add(child,90,90);
   }}

@@ -10,7 +10,7 @@ export function recordingViewMirrorRelation(workspace:RecordingSnapshotWorkspace
  if(child?.parentSnapshotId!==source.snapshotId||!child.inputMirror)return;
  // Compatibility is derived in memory; reading an older document never saves
  // new geometry, a mirror relation, or a second zero mesh vertex.
- return {zeroSnapshotId:zero.snapshotId,sourceSnapshotId:source.snapshotId,targetSnapshotId:target.snapshotId};
+ return {zeroSnapshotId:zero.snapshotId,sourceSnapshotId:source.snapshotId,targetSnapshotId:target.snapshotId,unpairedReference:'zero-stroke-frame'};
 }
 
 export function validateSnapshotViewMirrorRelation(value:unknown,recording:Pick<SnapshotRecording,'angleGraph'>):asserts value is SnapshotViewMirrorRelation {
