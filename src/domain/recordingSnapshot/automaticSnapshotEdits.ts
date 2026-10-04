@@ -1,3 +1,4 @@
+import {classifyRecordingWorkspaceChanges,needsSnapshotLayerPropagation} from './workspaceChanges';
 import {emptyRecordingSnapshot,type RecordingSnapshot,type RecordingSnapshotWorkspace,type ReferencedSnapshotLayer,type SnapshotDiagnostic,type SnapshotLayer} from './model';
 import {resolveSnapshot,prepareSnapshotParentInput} from './evaluation';
 import type {SnapshotMirrorOptions} from './snapshotMirror';
@@ -14,6 +15,7 @@ const inherited=(snapshot:RecordingSnapshot,layer:SnapshotLayer):layer is Refere
  * Loading/evaluation never adds snapshots, layers, or points. The caller keeps
  * the old workspace for Undo; only changed snapshot records are replaced. */
 export function propagateAutomaticSnapshotLayers(before:RecordingSnapshotWorkspace|undefined,after:RecordingSnapshotWorkspace):{workspace:RecordingSnapshotWorkspace;diagnostics:SnapshotDiagnostic[]} {
+ if(before&&!needsSnapshotLayerPropagation(classifyRecordingWorkspaceChanges(before,after)))return {workspace:after,diagnostics:[]};
  let workspace=after;const diagnostics:SnapshotDiagnostic[]=[],done=new Set<string>(),visiting=new Set<string>();
  const replace=(value:RecordingSnapshot)=>{workspace={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id===value.id?value:snapshot)};};
  const visit=(id:string):void=>{

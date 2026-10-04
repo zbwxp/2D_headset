@@ -1,3 +1,5 @@
+import {currentPreparedEditRevision} from './preparedEditRevision';
+import {shareValidatedRecordingWorkspace} from '../domain/recordingSnapshot/workspaceChanges';
 import {assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
 import {effectiveSnapshotSurfaceResponses} from '../domain/recordingSnapshot/surfaceTargets';
 import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
@@ -49,6 +51,7 @@ export type SnapshotEdit =
  | {kind:'local-curve-split';snapshotId:string;intent:CurveSplitIntent}
  | {kind:'snapshot-state';workspace:RecordingSnapshotWorkspace;validation?:'full'|'preview'};
 export interface SnapshotEditPlan {
+ readonly preparedRevision?:number;
  readonly before:LandmarkProject;
  readonly project:LandmarkProject;
  readonly changed:boolean;
@@ -133,6 +136,9 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+ const preparedRevision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);return {...plan,preparedRevision};
+}
+function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  assertRecordingProjectActive(context.project);
  assertCoupledBasisEditOwnership(context.workspace,edit);
  if(edit.kind==='object-locks'){
@@ -160,7 +166,7 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots;
   assertOriginalsUnchanged(original,edit.workspace);
   const propagated=propagateAutomaticSnapshotLayers(original,edit.workspace).workspace;
-  const recordingSnapshots=edit.validation==='preview'?propagated:parseRecordingSnapshots(propagated);
+  const recordingSnapshots=edit.validation==='preview'?propagated:shareValidatedRecordingWorkspace(original,parseRecordingSnapshots(propagated));
   project=recordingSnapshots===context.workspace?before:{...before,recordingSnapshots};
  }else{
   if(!context.canEditOriginals)throw Error('录制模式不能修改源画稿。请先返回绘制模式。');

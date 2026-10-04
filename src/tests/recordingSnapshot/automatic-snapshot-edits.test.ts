@@ -1,4 +1,5 @@
-import {describe,expect,test} from 'vitest';
+import {describe,expect,test,vi} from 'vitest';
+import * as evaluation from '../../domain/recordingSnapshot/evaluation';
 import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {emptyDrawing,type DrawingDocument} from '../../domain/drawing/model';
@@ -86,4 +87,14 @@ describe('ordinary automatic extreme snapshot edits',()=>{
   const f=fixture();seedAutomaticExtremeSnapshots(f.workspace,f.recording.id,f.view.id,f.fresh);const removed=find(f.workspace,0,90).id;f.workspace.snapshots=f.workspace.snapshots.filter(snapshot=>snapshot.id!==removed);f.recording.snapshotIds=f.recording.snapshotIds.filter(id=>id!==removed);f.recording.angleGraph!.mesh=removeSnapshotVertex(f.recording.angleGraph!.mesh,removed);
   const loaded=parseRecordingSnapshots(f.workspace),after=commit(loaded,structuredClone(loaded));expect(after.recordings[0].snapshotIds).toHaveLength(2);expect(after.snapshots.some(snapshot=>snapshot.id===removed)).toBe(false);
  });
+});
+
+
+test('draft-only geometry skips saved mirror membership work while mirror changes invalidate it',()=>{
+ const f=fixture(),source=addSource(f.workspace),negative=emptyRecordingSnapshot('negative','Left','view',{x:-90,y:0});
+ negative.layers=source.layers.map(layer=>({kind:'reference' as const,id:layer.id,name:layer.name,baseSnapshotId:source.id,baseLayerId:layer.id}));f.view.layers=structuredClone(negative.layers);f.workspace.snapshots.push(negative);f.recording.snapshotIds.push(negative.id);f.recording.angleGraph!.mesh=insertSnapshotVertex(f.recording.angleGraph!.mesh,{snapshotId:negative.id,angle:negative.angle});seedAutomaticExtremeSnapshots(f.workspace,f.recording.id,negative.id,f.fresh);
+ const before=f.workspace,next={...before,snapshots:before.snapshots.map(snapshot=>snapshot.id===negative.id?{...snapshot,draft:{angle:snapshot.angle,deformation:{warps:[],bindings:[],relationPositions:{},layers:{'left-layer':{shape:{nodes:{a:[.02,.01] as [number,number]},handles:{}}}}},channels:[]}}:snapshot)},spy=vi.spyOn(evaluation,'resolveSnapshot');
+ try{expect(propagateAutomaticSnapshotLayers(before,next).workspace).toBe(next);expect(spy).not.toHaveBeenCalled();
+  const mirror=find(before,90,0),changed={...before,snapshots:before.snapshots.map(snapshot=>snapshot.id===mirror.id?{...snapshot,inputMirror:{...snapshot.inputMirror!,axisX:1}}:snapshot)};propagateAutomaticSnapshotLayers(before,changed);expect(spy).toHaveBeenCalled();
+ }finally{spy.mockRestore();}
 });

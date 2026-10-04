@@ -15,7 +15,11 @@ export interface PreparedRecordingChanges {
  mirrors?:readonly string[];
  mesh?:readonly string[];
 }
-const different=(a:unknown,b:unknown)=>a!==b;
+const sameValue=(a:unknown,b:unknown):boolean=>{
+ if(Object.is(a,b))return true;if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return false;
+ const x=a as Record<string,unknown>,y=b as Record<string,unknown>,keys=Object.keys(x),other=Object.keys(y);return keys.length===other.length&&keys.every((key,index)=>key===other[index]&&sameValue(x[key],y[key]));
+};
+const different=(a:unknown,b:unknown)=>!sameValue(a,b);
 const hasChanged=(a:object|undefined,b:object|undefined,keys:readonly string[])=>keys.some(key=>different((a as Record<string,unknown>|undefined)?.[key],(b as Record<string,unknown>|undefined)?.[key]));
 const blank=(value:unknown)=>value===undefined||!!value&&typeof value==='object'&&Object.keys(value).length===0;
 const nonemptyChanged=(a:object|undefined,b:object|undefined,keys:readonly string[])=>keys.some(key=>{const x=(a as Record<string,unknown>|undefined)?.[key],y=(b as Record<string,unknown>|undefined)?.[key];return x!==y&&!(blank(x)&&blank(y));});
@@ -46,10 +50,10 @@ export function classifyRecordingWorkspaceChanges(before:RecordingSnapshotWorksp
   const a=prior.get(id),b=next.get(id);if(a===b)continue;
   if(!a||!b){structure.add(id);geometry.add(id);if(a?.source||b?.source)sourceSnapshots.add(id);continue;}
   if(hasChanged(a,b,['layers','parentSnapshotId','parentLayers','memberSources','nodeAliases','nodeForks','objectLocks','source']))structure.add(id);
-  if(a.source!==b.source)sourceSnapshots.add(id);
+  if(different(a.source,b.source))sourceSnapshots.add(id);
   if(hasChanged(a.relations,b.relations,['joins','endpointLinks','groups']))relations.add(id);
   if(hasChanged(a.relations,b.relations,['displayIntervals']))material.add(id);
-  if(a.inputMirror!==b.inputMirror||hasChanged(a.source,b.source,['mirrorAxisX','mirrorEditing']))mirrors.add(id);
+  if(different(a.inputMirror,b.inputMirror)||hasChanged(a.source,b.source,['mirrorAxisX','mirrorEditing']))mirrors.add(id);
   if(a.draft!==b.draft)drafts.add(id);
   for(const [x,y] of [[a.deformation,b.deformation],[a.inheritedState,b.inheritedState],[a.draft?.deformation,b.draft?.deformation]] as const){const changed=deformationChanges(x,y);if(changed.geometry)geometry.add(id);if(changed.material)material.add(id);}
   // Legacy saved-angle adapters may still influence a directly resolved node.
@@ -59,13 +63,13 @@ export function classifyRecordingWorkspaceChanges(before:RecordingSnapshotWorksp
  for(const b of after.recordings){
   const a=recordings.get(b.id);recordings.delete(b.id);if(a===b)continue;
   const x=a?.angleGraph,y=b.angleGraph;
-  if(!a||a.mode!==b.mode||a.snapshotIds!==b.snapshotIds||x?.mesh!==y?.mesh)mesh.add(b.id);
-  if(x?.viewMirror!==y?.viewMirror)mirrors.add(b.id);
+  if(!a||a.mode!==b.mode||different(a.snapshotIds,b.snapshotIds)||different(x?.mesh,y?.mesh))mesh.add(b.id);
+  if(different(x?.viewMirror,y?.viewMirror))mirrors.add(b.id);
   if(!a||a.tracks!==b.tracks||hasChanged(x,y,['edgeResponses','triangleResponses','responseExpressions'])||!sameRows(frameFields(x,'geometry'),frameFields(y,'geometry')))responses.add(b.id);
   if(hasChanged(x,y,['propertyResponses','materialRecipes','materialBasisRecipes','materialPartitions','materialPathLineages','visibilityRecipes','visibilityBasisRecipes'])||!sameRows(frameFields(x,'material'),frameFields(y,'material')))material.add(b.id);
  }
  for(const id of recordings.keys())mesh.add(id);
- const result:PreparedRecordingChanges={};if(!before||before.library!==after.library)result.source=true;
+ const result:PreparedRecordingChanges={};if(!before||different(before.library,after.library))result.source=true;
  for(const [key,values] of Object.entries({sourceSnapshots,structure,geometry,drafts,responses,material,relations,mirrors,mesh}))if(values.size)Object.assign(result,{[key]:[...values].sort()});
  return result;
 }
@@ -74,7 +78,7 @@ export function classifyRecordingWorkspaceChanges(before:RecordingSnapshotWorksp
  * coordinates or scalar response updates. Draft geometry has no saved-parent
  * membership effect. The evaluator separately handles live companion drafts. */
 export function needsSnapshotLayerPropagation(changes:PreparedRecordingChanges):boolean {
- return !!(changes.source||changes.sourceSnapshots?.length||changes.structure?.length||changes.relations?.length||changes.mirrors?.length||changes.mesh?.length);
+ return !!(changes.sourceSnapshots?.length||changes.structure?.length||changes.relations?.length||changes.mirrors?.length||changes.mesh?.length);
 }
 
 /** Reuse only old immutable fragments that equal already validated fresh data.
