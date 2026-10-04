@@ -109,6 +109,9 @@ export const allSnapshotIds=(workspace:RecordingSnapshotWorkspace):string[]=>[..
 export interface SnapshotCommandOptions {
  /** Immutable native preview inputs use evaluation identities rather than JSON. */
  immutableInputs?:boolean;
+ /** A placement-only batch preserves membership and locks. Its immutable
+  * preflight drawing can validate every layer without evaluating partial poses. */
+ layerPlacementDrawing?:DrawingDocument;
  /** Internal preview copy-on-write boundary, only used by nonstructural commands. */
  snapshotForWrite?:(snapshotId:string)=>RecordingSnapshot;
  trackForWrite?:(trackId:string)=>SnapshotPoseTrack;
@@ -355,7 +358,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   }
   case 'removeLayers':{const s=snapshot(),selected=new Set(selectedLayers(c.layerIds).map(l=>l.id));s.layers=s.layers.filter(l=>!selected.has(l.id));effects.removedIds.push(...selected);break;}
   case 'reorderLayers':{const s=snapshot(),order=ids(c.layerIds,true);if(order.length!==s.layers.length||order.some(value=>!s.layers.some(l=>l.id===value)))fail('INVALID_REQUEST','Provide every current layer ID exactly once.');s.layers=order.map(value=>layer(value,s));break;}
-  case 'setLayerPlacement':{const l=layer(c.layerId),drawing=evaluated().drawing;assertSnapshotObjectsUnlocked(drawing,drawing.layers.find(value=>value.id===l.id)?.items??[]);setDraft(ensureTrack('placement',l.id),placement(c.value));break;}
+  case 'setLayerPlacement':{const l=layer(c.layerId),drawing=options.layerPlacementDrawing??evaluated().drawing;assertSnapshotObjectsUnlocked(drawing,drawing.layers.find(value=>value.id===l.id)?.items??[]);setDraft(ensureTrack('placement',l.id),placement(c.value));break;}
   case 'setShapeElementPlacement':{
    const e=evaluated(),curveIds=ids(c.curveIds),value=placement(c.value),placements={...e.elementPlacements};
    assertSnapshotObjectsUnlocked(e.drawing,curveIds);
