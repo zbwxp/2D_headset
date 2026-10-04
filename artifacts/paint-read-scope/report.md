@@ -77,21 +77,28 @@ serialization. It is not a browser DOM, raster, FPS or input latency measure.
 
 Raw per-frame work, timings and hashes are in `measurements.json`. The structured
 summary includes source fixture SHA-256 and hashes of the directly compared full
-SVG exports. Full SVG exports remain under
-`/workspace/shared/contour-render-read-scope/`; each is about 2 MB and contains
-only public/synthetic fixtures.
+SVG exports. The directly compared complete SVG exports are retained locally;
+they contain only public/synthetic fixtures and are not needed to reproduce the
+committed regression checks.
 
 ## Verification and remaining browser gate
 
-The core 39-file manifest plus four relevant Drawing renderer/read-context test
-files passed: 43 files, 409 tests passed, five existing skipped tests. New focused
-coverage contains eight tests. The normal production build and standalone
-benchmark TypeScript check passed. `test-manifest.json` names all 43 files and
-`test.log` contains the verbose results. The standalone browser bundle has an
-independent bootstrap smoke guard, separate from actual browser rendering.
+At candidate `0ea573e`, the core 39-file manifest plus four relevant Drawing
+renderer/read-context test files produced 409 passes and five skips in one
+43-file aggregate run. New focused coverage contains eight tests. The release
+verifier then set `CONTOUR_MINCHANGE_PRIVATE_FIXTURE` and ran the original five
+skipped cases separately on that same candidate; all five passed. This is
+**414 unique passing tests across the aggregate and separate private-fixture
+runs**, not a single 43-file run with 414 passes. `test-manifest.json` names the
+43 aggregate files; `test.log` accurately retains that run's 409-pass/five-skip
+result.
 
-The five skips are explicitly gated by the unset
-`CONTOUR_MINCHANGE_PRIVATE_FIXTURE` variable:
+The normal production build, standalone benchmark TypeScript check and
+revision-labelled bundle bootstrap smoke guard passed. Bootstrap validation is
+separate from actual browser rendering.
+
+These are the five cases that initially skipped because
+`CONTOUR_MINCHANGE_PRIVATE_FIXTURE` was unset, then passed in the separate run:
 
 - `replays the supplied private ear X target without altering its file`
 - `replays the supplied private ear Y target without altering its file`
@@ -110,7 +117,14 @@ have 177 paths. This is solid-fill parity, not fill-mist bitmap validation. SVG
 ink mist is included. Native browser testing is still required for actual fill
 mist (the existing browser fixture has 179 main paths with fills on), DOM commit,
 raster behavior and a browser speed comparison. No browser speedup is claimed by
-these Node results.
+these Node results. Candidate `0ea573e` is deployed as v91, with the 21-pass
+native browser comparison in progress at this documentation update.
+
+The v91 public diagnostics matrix does not replace main-app manual A/V and
+line/layer-domain Save/Undo interaction acceptance for this revision. Earlier
+v87/v88 manual acceptance remains evidence for those releases and their tested
+flows. The bounded private-file SSR comparison above establishes rendering
+parity only, not end-to-end interaction latency.
 
 ## Reproduction
 

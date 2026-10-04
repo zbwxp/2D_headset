@@ -26,6 +26,14 @@
 
 对应入口：`preparedControlChanges.ts`、`preparedSurfaceMaterial.ts`、`surfaceBasisFallback.ts`、`workspaceChanges.ts`；外部导入继续使用生产 parser 和完整验证。
 
+## 消费者拥有自己的同步读取生命周期
+
+10. **求值结束后的渲染要建立自己的读取 scope。** 求值器的同步 `withDrawingReadScope` 在返回时结束，React 随后调用 `PaintScene`，不能假设求值时的临时读取上下文仍然存在。共同 renderer 为本次同步绘制准备建立 scope，让当前 Drawing 和可见性包装共同复用经过结构值校验的 ID／续接计划。DrawingRoom 与 Recording 的 SceneWarpCanvas 都走这一个 `PaintScene`，不为工具或房间另建缓存。
+
+scope 只覆盖同步读取与绘制准备；React hook 保留在组件顶层，子组件继续消费已准备好的几何。当前文档的对象索引、几何和可见性只在这次读取中有效，退出或异常后清理。可变作者 Drawing 下一次渲染必须重新取得当前状态，不能为了提速永久注册为不可变文档。跨次复用的仍是已有有界、按结构值校验的拓扑计划；结构、绑定或成员变化必须重新准备。
+
+这条规则减少重复查找和签名工作，不改变曲线最小计算单位，也不省略 affine／四角／Coons 域、ARC、材料、填色或命中几何。冷拓扑仍须完成实际编译；额外可见曲线仍须绘制。对应实现见 [共同 PaintScene](../../src/ui/drawing/PaintScene.tsx) 与 [现有 Drawing readContext](../../src/domain/drawing/readContext.ts)，生命周期、原地修改、域元数据、SVG 等价和实际工作计数见 [drawing-paint-read-scope.test.ts](../../src/tests/drawing-paint-read-scope.test.ts)。
+
 ## 当前验收与边界
 
 | 需要保证的行为 | 自动化依据 |
@@ -36,6 +44,7 @@
 | affine、四角、曲边、连续组、新成员与 fitted 材料保持正确 | `layer-affine-domains.test.ts`、`layer-cage-evaluation.test.ts`、`layer-cage-runtime.test.ts`、`topological-cage-scope.test.ts` |
 | 真实域与临时修正框使用共同作者数学，存储语义各自准确 | `recording-cage-control-target.test.ts`、`temporary-cage-edit.test.ts`、`shared-cage-editor.test.ts` |
 | 线组／整层 × 仿射／四角／曲边 × 基点／修正角，同入口范围与拟合计数 | `deformer-scope-parity.test.ts`（16 项） |
+| 同步 render scope 清理、可变 Drawing 原地修改、共同 renderer 的 SVG 与域元数据等价 | [drawing-paint-read-scope.test.ts](../../src/tests/drawing-paint-read-scope.test.ts) |
 | 冷热一致、取消、Save／Discard／Undo、严格零基准 | `prepared-recording-policy.test.ts`、`prepared-recording-invalidation.test.ts`、`minchange-inverse-workflow.test.ts`、`global-history.test.ts` |
 
 专项 16 项在主树通过：12 格组合、同 operation ID 的 scope 改绑、连接／未连接的新来源成员。实际 cubic fit 计数分别为线组 3 条、改绑后 1 条、加入连接延续后 4 条、整层 6 条；不是只比较最终截图。
@@ -47,3 +56,5 @@
 变化 basis 的完整求值、不可变容器拷贝、正侧完整材料／绘制仍是已测剩余成本。详细同任务数字及回退见 [统一求值报告](prepared-recording-evaluation.md)。没有引入第二套 GPU 反推算法，也没有把本阶段结果宣称为性能极限。
 
 基点阶段也遵守相同规则：原生 shape、材料消费者、fit 诊断和身份映射现已支持可信修订。saved/live 政策不共用同一状态槽；外部防御性解析不因内部加速而省略。后续 GPU 是否值得加入，以 CPU 整理后的整体实测收益决定；如采用，继续消费同一作用计划和产品，保留 CPU 回退，不为 A/V／各类框各造一套后端。
+
+`0ea573e` 的共同 renderer 读取 scope 已通过 Node SSR 等价及结构工作计数检查，见 [PaintScene 报告](../../artifacts/paint-read-scope/report.md)。43 文件聚合为 409 通过、5 条私档条件测试跳过；同一候选随后设置私档环境变量，独立补跑原 5 条全部通过，合计 414 条不同测试通过，不是一次聚合 414 全过。v91 同浏览器 21 项对照尚在进行，浏览器实际收益与 fill-mist 仍待完整结果；Node SSR 时间不能替代浏览器数据。本阶段 v91 的公开诊断复测与私档 SSR 等价不替代主应用 A／V、线组／图层域及 Save／Undo 的真人操作验收，也不证明端到端交互延迟。上述 v87／v88 真人验收继续作为对应版本和流程的历史证据保留。
