@@ -112,8 +112,12 @@ describe('prepared Recording dependency invalidation',()=>{
   const node=before.drawing.nodes.find(value=>value.id===id('a'))!,target=moveNode(before.drawing,id('a'),[node.position[0]+.07,node.position[1]-.03],true),edit=prepareSnapshotDrawingToolEdit(snapshotEditContext(f.project,false),{recordingId:'recording',snapshotId:before.snapshotId,angle:f.recording.angle,beforeDrawing:before.drawing,drawing:target,intent:{kind:'geometry'}});
   useWorkspaceMode.setState({mode:'recording'});useEditor.setState({project:f.project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(edit);
   const draft=useEditor.getState().project,draftContext=context.fork(draft.recordingSnapshots!),draftValue=draftContext.sample('recording');expect(draftValue.drawing.nodes).toEqual(target.nodes);expect(draftContext.resolveBasis('recording','zero')).toBe(zero);
-  const discarded=prepareSnapshotBatch(draft,{commands:[{op:'discardEndpointCorrection'}]}).recordingSnapshots,discardedContext=draftContext.fork(discarded);expect(discardedContext.sample('recording').drawing).toEqual(before.drawing);expect(discardedContext.resolveBasis('recording','zero')).toBe(zero);
-  const saved=prepareSnapshotBatch(draft,{commands:[{op:'updateEndpointCorrection'}]}).recordingSnapshots,savedContext=draftContext.fork(saved);expect(savedContext.sample('recording',{useDraft:false}).drawing.nodes).toEqual(target.nodes);expect(savedContext.resolveBasis('recording','zero')).toBe(zero);
+  // JSON command batches deliberately detach mutable external data. Native
+  // Save/Discard adopts that result through the same validated transaction as
+  // the store before a context may reuse historical immutable fragments.
+  const adopt=(workspace:RecordingSnapshotWorkspace)=>prepareSnapshotEdit(snapshotEditContext(draft,false),{kind:'snapshot-state',workspace}).project.recordingSnapshots!;
+  const discarded=adopt(prepareSnapshotBatch(draft,{commands:[{op:'discardEndpointCorrection'}]}).recordingSnapshots),discardedContext=draftContext.fork(discarded);expect(discardedContext.sample('recording').drawing).toEqual(before.drawing);expect(discardedContext.resolveBasis('recording','zero')).toBe(zero);
+  const saved=adopt(prepareSnapshotBatch(draft,{commands:[{op:'updateEndpointCorrection'}]}).recordingSnapshots),savedContext=draftContext.fork(saved);expect(savedContext.sample('recording',{useDraft:false}).drawing.nodes).toEqual(target.nodes);expect(savedContext.resolveBasis('recording','zero')).toBe(zero);
   useEditor.getState().undo();expect(useEditor.getState().project).toBe(f.project);expect(prepareRecordingContext(f.workspace,options)).toBe(context);expect(context.sample('recording')).toBe(before);
   useEditor.getState().redo();expect(useEditor.getState().project).toBe(draft);expect(prepareRecordingContext(draft.recordingSnapshots!,options)).toBe(draftContext);expect(draftContext.sample('recording')).toBe(draftValue);
  });
