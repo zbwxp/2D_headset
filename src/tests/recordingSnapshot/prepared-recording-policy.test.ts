@@ -55,6 +55,10 @@ describe('prepared recording request ownership',()=>{
   expect(preparedRecordingOptionsForEvaluation(full)?.diagnostics).toBe('full');expect(preparedRecordingOptionsForEvaluation(preview)?.diagnostics).toBe('preview');
   const fresh=prepareRecordingContext(structuredClone(workspace),{immutableInputs:true});fresh.sample('r',{diagnostics:'preview'});const count=fresh.counters.ownGeometry;fresh.sample('r',{diagnostics:'full'});expect(fresh.counters.ownGeometry).toBeGreaterThan(count);
  });
+ it('keeps outside-coverage preview diagnostics truthful when there are no active bases',()=>{
+  const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true}),preview=context.sample('r',{angle:{x:40,y:20},diagnostics:'preview'});
+  expect(preview.angleSurface?.role).toBe('outside');expect(preview.diagnosticStage).toBe('preview');
+ });
  it('hands a complete replay product to an equivalent immutable workspace wrapper without repeating material or paint',()=>{
   const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'}),before=context.sample('r',{angle:{x:45,y:0}}),equivalent={...workspace,recordings:[{...workspace.recordings[0]}]},fork=context.fork(equivalent),after=fork.sample('r',{angle:{x:45,y:0}});
   expect(after.drawing).toBe(before.drawing);expect(after).not.toBe(before);expect(fork.counters.material).toBe(0);expect(fork.counters.paint).toBe(0);expect(fork.counters.surfaceSample).toBe(0);

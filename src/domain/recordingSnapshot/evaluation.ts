@@ -485,7 +485,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
   diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));
  }
  const snapshot=context.index.snapshots.get(selected.snapshotId)!;
- const result=copySnapshotEvaluation(selected,{paintBatches:[],diagnosticStage:active.every(value=>value.diagnosticStage==='full')?'full':'preview',angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(value=>value.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(value=>value.intervalTransportErrors)});
+ const result=copySnapshotEvaluation(selected,{paintBatches:[],diagnosticStage:(active.length?active:[selected]).every(value=>value.diagnosticStage==='full')?'full':'preview',angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(value=>value.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(value=>value.intervalTransportErrors)});
  if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
 }
 export interface PreparedRecordingCounters {
