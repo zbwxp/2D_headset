@@ -2,7 +2,7 @@ import type {DrawingDocument} from '../drawing/model';
 import {displayPath} from '../drawing/displayIntervals';
 import {resolveDisplayRoute} from '../drawing/displayRoutes';
 import {evaluatedAffine} from '../drawing/evaluatedAffine';
-import {hasEvaluatedDeformation} from '../drawing/evaluatedDeformation';
+import {hasEvaluatedDeformationFor} from '../drawing/evaluatedDeformation';
 import {drawingMaterialPathDependencies,withDrawingReadScope} from '../drawing/readContext';
 import type {Angle,SnapshotAngleGraph} from './model';
 import {snapshotSimplexDrawingRevision,type SnapshotScalarTarget,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges} from './simplexGeometry';
@@ -42,7 +42,8 @@ interface PreparedMaterial {
 }
 const prepared=new WeakMap<SnapshotSurfaceMaterialResult,PreparedMaterial>();
 const add=<T>(map:Map<string,Set<T>>,id:string,value:T)=>{let values=map.get(id);if(!values){values=new Set();map.set(id,values);}values.add(value);};
-const native=(drawing:DrawingDocument)=>!hasEvaluatedDeformation(drawing)&&!drawing.curves.some(curve=>evaluatedAffine(drawing,curve.id));
+const nativeCurve=(drawing:DrawingDocument,id:string)=>!hasEvaluatedDeformationFor(drawing,id)&&!evaluatedAffine(drawing,id);
+const consumed=(plan:DocumentPlan,id:string)=>plan.curveTracks.has(id)||plan.curveRoutes.has(id);
 const stamp=(graph:SnapshotAngleGraph):readonly unknown[]=>[
  graph.mesh,graph.propertyResponses,graph.materialRecipes,graph.materialBasisRecipes,graph.materialPartitions,graph.materialPathLineages,
  graph.visibilityRecipes,graph.visibilityBasisRecipes,graph.viewMirror,
@@ -50,7 +51,6 @@ const stamp=(graph:SnapshotAngleGraph):readonly unknown[]=>[
 ];
 const supported=({graph,location,bases,mirror}:SnapshotSurfaceMaterialInputs)=>location.kind!=='vertex'&&!mirror&&!graph.materialRecipes?.[location.simplexId]&&!graph.materialPartitions?.length&&!graph.materialPathLineages?.length&&!graph.visibilityRecipes?.[location.simplexId]&&!bases.some(basis=>graph.materialBasisRecipes?.[basis.snapshotId]||graph.visibilityBasisRecipes?.[basis.snapshotId]);
 function prepareDocument(drawing:DrawingDocument,output:DrawingDocument):DocumentPlan|undefined {
- if(!native(drawing))return undefined;
  const tracks=drawing.displayIntervals??[],trackIndices=new Map(tracks.map((track,index)=>[track.id,index]));
  if(trackIndices.size!==tracks.length)return undefined;
  const nodes=new Map(drawing.nodes.map((node,index)=>[node.id,index])),curves=new Map(drawing.curves.map(curve=>[curve.id,curve]));
@@ -76,21 +76,23 @@ function prepareDocument(drawing:DrawingDocument,output:DrawingDocument):Documen
   const source=tracks[trackIndices.get(selected.id)!];if(!source)return undefined;
   const path=displayPath(drawing,source.anchor.id);if(!path)return undefined;
   const closure=drawingMaterialPathDependencies(drawing,path.segments.map(use=>use.id));if(!closure)return undefined;
-  for(const id of closure.dependencies.curveIds)add(curveTracks,id,index);
+  for(const id of closure.dependencies.curveIds){if(!nativeCurve(drawing,id))return undefined;add(curveTracks,id,index);}
  }
+ for(const id of curveRoutes.keys())if(!nativeCurve(drawing,id))return undefined;
  return {trackIndices,nodeSlots:nodes,curveSlots:new Map(drawing.curves.map((curve,index)=>[curve.id,index])),nodeCurves,curveTracks,curveRoutes,routes};
 }
 function dirtySourceCurves(plan:DocumentPlan,targets:readonly SnapshotScalarTarget[],before:DrawingDocument,current:DrawingDocument):Set<string>|undefined {
  const result=new Set<string>(),samePoint=(a:readonly number[],b:readonly number[])=>a.length===b.length&&a.every((value,index)=>Object.is(value,b[index]));
  for(const target of targets){
   if(target.kind==='handle'){
+   if(!consumed(plan,target.curveId))continue;
    const index=plan.curveSlots.get(target.curveId);if(index===undefined)continue;
-   const prior=before.curves[index],curve=current.curves[index];if(prior?.id!==target.curveId||curve?.id!==target.curveId||evaluatedAffine(current,target.curveId))return undefined;
+   const prior=before.curves[index],curve=current.curves[index];if(prior?.id!==target.curveId||curve?.id!==target.curveId||!nativeCurve(current,target.curveId))return undefined;
    if(!samePoint(prior.handles[target.end],curve.handles[target.end]))result.add(target.curveId);
   }else{
    const index=plan.nodeSlots.get(target.nodeId);if(index===undefined)continue;
    const prior=before.nodes[index],node=current.nodes[index];if(prior?.id!==target.nodeId||node?.id!==target.nodeId)return undefined;
-   for(const id of plan.nodeCurves.get(target.nodeId)??[]){if(evaluatedAffine(current,id))return undefined;if(!samePoint(prior.position,node.position))result.add(id);}
+   for(const id of plan.nodeCurves.get(target.nodeId)??[]){if(!consumed(plan,id))continue;if(!nativeCurve(current,id))return undefined;if(!samePoint(prior.position,node.position))result.add(id);}
   }
  }
  return result;
@@ -109,23 +111,36 @@ export function retainPreparedSnapshotSurfaceMaterial(result:SnapshotSurfaceMate
  const layerIds=new Map<string,string>();for(const track of inputs.input.displayIntervals??[]){const layer=inputs.input.layers.find(layer=>layer.items.includes(track.anchor.id));if(layer)layerIds.set(track.id,layer.id);}
  prepared.set(result,{inputs,stamp:stamp(inputs.graph),plans:plans as DocumentPlan[],layerIds,trackDiagnostics:material.trackDiagnostics??[],options});countSnapshotSimplexMaterialWork('dependencyPlans');
 }
+/** Controls-only intermediate samples need not build material. Follow only
+ * the sampler's opaque ancestry; an unknown/cold sample or cycle is a miss. */
+function geometryChangesBetween(before:DrawingDocument,current:DrawingDocument):Set<string>|undefined {
+ const dirty=new Set<string>(),seen=new Set<DrawingDocument>();
+ while(current!==before){
+  if(seen.has(current))return undefined;seen.add(current);
+  const revision=snapshotSimplexDrawingRevision(current);if(!revision)return undefined;
+  for(const id of revision.dirtyCurveIds)dirty.add(id);current=revision.previous;
+ }
+ return dirty;
+}
 /** The opaque previous normal-drawing token proves actual final curve changes.
  * Basis controls are an independent source dependency: source material can move
  * even when its weighted final controls cancel. No scene diff is performed. */
 export function revisePreparedSnapshotSurfaceMaterial(inputs:SnapshotSurfaceMaterialInputs,revision:SnapshotSurfaceMaterialEvaluationOptions):SnapshotSurfaceMaterialResult|undefined {
- const previous=revision.previous,changes=revision.changes,plan=previous&&prepared.get(previous),geometry=snapshotSimplexDrawingRevision(inputs.input);
- if(!previous||!plan||!changes?.structureUnchanged||!geometry||geometry.previous!==plan.inputs.input||!supported(inputs))return undefined;
+ const previous=revision.previous,changes=revision.changes,plan=previous&&prepared.get(previous);
+ if(!previous||!plan||!changes?.structureUnchanged||!supported(inputs))return undefined;
+ const geometry=geometryChangesBetween(plan.inputs.input,inputs.input);if(!geometry)return undefined;
  const before=plan.inputs,currentStamp=stamp(inputs.graph);
  if(currentStamp.length!==plan.stamp.length||currentStamp.some((value,index)=>value!==plan.stamp[index])||inputs.angle.x!==before.angle.x||inputs.angle.y!==before.angle.y||inputs.location.kind!==before.location.kind||inputs.location.simplexId!==before.location.simplexId||inputs.location.geometricWeights.some((value,index)=>value!==before.location.geometricWeights[index])||inputs.bases.length!==before.bases.length)return undefined;
  const sourceDirty:Set<string>[]=[];
  for(const [index,basis] of inputs.bases.entries()){
   const prior=before.bases[index],targets=changes.basisControls.get(basis.snapshotId);
-  if(basis.snapshotId!==prior.snapshotId||basis.angle?.x!==prior.angle?.x||basis.angle?.y!==prior.angle?.y||basis.drawing!==prior.drawing&&!targets||hasEvaluatedDeformation(basis.drawing))return undefined;
+  if(basis.snapshotId!==prior.snapshotId||basis.angle?.x!==prior.angle?.x||basis.angle?.y!==prior.angle?.y||basis.drawing!==prior.drawing&&!targets)return undefined;
   const dirty=dirtySourceCurves(plan.plans[index+1],targets??[],prior.drawing,basis.drawing);if(!dirty)return undefined;sourceDirty.push(dirty);
  }
- const dirty=[new Set(geometry.dirtyCurveIds),...sourceDirty],drawings=[inputs.input,...inputs.bases.map(basis=>basis.drawing)],indices=new Set<number>();
+ const dirty=[geometry,...sourceDirty],drawings=[inputs.input,...inputs.bases.map(basis=>basis.drawing)],indices=new Set<number>();
  for(const [index,ids] of dirty.entries()){
-  if(hasEvaluatedDeformation(drawings[index])||[...ids].some(id=>evaluatedAffine(drawings[index],id))||!validDirtyRoutes(drawings[index],plan.plans[index],ids))return undefined;
+  const consumers=new Set([...ids].filter(id=>consumed(plan.plans[index],id)));
+  if([...consumers].some(id=>!nativeCurve(drawings[index],id))||!validDirtyRoutes(drawings[index],plan.plans[index],consumers))return undefined;
   for(const id of ids)for(const track of plan.plans[index].curveTracks.get(id)??[])indices.add(track);
  }
  const drawing=retainSnapshotRouteMaterialInput({...inputs.input},inputs.input),material=transportSnapshotSimplexMaterial(inputs.bases,drawing,inputs.location.geometricWeights,{...plan.options,reuse:{intervals:previous.drawing.displayIntervals??[],dirtyTrackIndices:[...indices].sort((a,b)=>a-b),trackDiagnostics:plan.trackDiagnostics,basisTrackIndices:plan.plans.slice(1).map(plan=>plan.trackIndices),layerIds:plan.layerIds}});

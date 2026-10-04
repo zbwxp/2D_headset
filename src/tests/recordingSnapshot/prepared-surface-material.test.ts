@@ -54,6 +54,17 @@ describe('prepared native surface material consumers',()=>{
    f={...f,bases:next,normal:result.normal,material:result.material};
   }
  });
+ it('follows controls-only intermediate geometry back to the retained material baseline',()=>{
+  const f=fixture(),a=changeHandle(f.bases,'A','curve0',[0,.3]),first=reviseSnapshotSimplexGeometry(f.normal,a,f.location.geometricWeights,undefined,changes('curve0'))!,b=changeHandle(a,'A','curve1',[0,-.2]),second=reviseSnapshotSimplexGeometry(first,b,f.location.geometricWeights,undefined,changes('curve1'))!,dirty:SnapshotSimplexRevisionChanges={structureUnchanged:true,basisControls:new Map([['A',[target('curve0'),target('curve1')]]]),responseControls:[]};
+  resetSnapshotSimplexMaterialStats();const material=evaluateSnapshotSurfaceMaterial(f.graph,f.location,b,second.drawing,f.angle,undefined,{previous:f.material,changes:dirty}),counts=getSnapshotSimplexMaterialStats();
+  expect(counts).toMatchObject({transportedTracks:2,transportedBasisTracks:4,reusedTracks:7,revisionSamples:1,dependencyPlans:0});expect(output(material)).toEqual(output(evaluateSnapshotSurfaceMaterial(f.graph,f.location,b,second.drawing,f.angle)));
+ });
+ it('allows nine fixed affine curves outside the nine native material paths',()=>{
+  const f=fixture(),zero=f.bases[1].drawing,unrelated=new Set(zero.curves.slice(9).map(curve=>curve.id));registerEvaluatedAffine(zero,{...zero,nodes:[...zero.nodes]},id=>unrelated.has(id)?{point:point=>[point[0]*2,point[1]],maxScale:2}:undefined);
+  resetSnapshotSimplexMaterialStats();const material=evaluateSnapshotSurfaceMaterial(f.graph,f.location,f.bases,f.normal.drawing,f.angle,undefined,{retainLineage:true});expect(getSnapshotSimplexMaterialStats().dependencyPlans).toBe(1);
+  const prior={...f,material},painted=revise(prior,changeHandle(f.bases,'A','curve0',[0,.3]),changes('curve0'));expect(painted.counts).toMatchObject({transportedTracks:1,reusedTracks:8,revisionSamples:1});
+  const unrelatedEdit=revise(prior,changeHandle(f.bases,'B','curve9',[0,.3]),changes('curve9',['B']));expect(unrelatedEdit.counts).toMatchObject({transportedTracks:0,reusedTracks:9,revisionSamples:1});expect(unrelatedEdit.material.drawing.displayIntervals).toBe(material.drawing.displayIntervals);
+ });
  it('skips numerically unchanged source control candidates',()=>{
   const f=fixture(),next=f.bases.map(basis=>({...basis,drawing:{...basis.drawing}})),result=revise(f,next,changes('curve0',['A','B']));
   expect(result.counts).toMatchObject({transportedTracks:0,transportedBasisTracks:0,reusedTracks:9,revisionSamples:1});expect(result.material.drawing.displayIntervals).toBe(f.material.drawing.displayIntervals);
