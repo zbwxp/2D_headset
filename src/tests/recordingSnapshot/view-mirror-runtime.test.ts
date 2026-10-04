@@ -7,6 +7,7 @@ import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGrap
 import {evaluateRecordingSnapshot,resolveSnapshot} from '../../domain/recordingSnapshot/evaluation';
 import {parseRecordingSnapshots} from '../../domain/recordingSnapshot/persistence';
 import {applySnapshotCommand} from '../../domain/recordingSnapshot/commands';
+import {seedAutomaticExtremeSnapshots} from '../../domain/recordingSnapshot/automaticSnapshotEdits';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
 const at=(x:number)=>({x,y:0});
@@ -49,6 +50,29 @@ describe('Recorder local-zero View mirror runtime',()=>{
   const loaded=parseRecordingSnapshots(JSON.parse(JSON.stringify(next)));expect(loaded).toEqual(next);expect(node(loaded,90)[0]).toBeCloseTo(.3);expect(JSON.stringify(f.w)).toBe(before);
   const project={...createEmptyProject(),recordingSnapshots:f.w},plan=prepareSnapshotEdit(snapshotEditContext(project,false),{kind:'snapshot-state',workspace:next}),{useEditor}=await import('../../app/store'),previous=useEditor.getState();
   try{useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(useEditor.getState().past).toEqual([project]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(plan.project);}finally{useEditor.setState(previous,true);}
+ });
+ it('mirrors current source membership under canonical target identities without restoring absent zero-only members',()=>{
+  const f=fixture();f.left.layers[0].membership={excludeElementIds:['right']};
+  const actual=resolveSnapshot(f.w,f.right.id,{useDraft:false});expect(actual.drawing.curves.map(curve=>curve.id)).toEqual(['right']);expect(actual.drawing.nodes.map(node=>node.id).sort()).toEqual(['c','d']);expect(actual.drawing.nodes.find(node=>node.id==='c')!.position[0]).toBeCloseTo(.3);
+  expect(resolveSnapshot(f.w,f.zero.id).drawing.curves).toHaveLength(2);
+ });
+ it('uses an explicit live zero V-frame for unpaired groups and keeps their intentional zero-side jump',()=>{
+  const f=fixture();f.source.source!.mirrorEditing!.curvePairs=[];f.recording.angleGraph!.viewMirror={zeroSnapshotId:f.zero.id,sourceSnapshotId:f.left.id,targetSnapshotId:f.right.id,unpairedReference:'zero-stroke-frame'};
+  const current=evaluateRecordingSnapshot(f.w,f.recording.id,{useDraft:false,diagnostics:'preview'}),zeroPlus=current.angleSurface!.positiveBases!.find(base=>base.snapshotId===f.zero.id)!;
+  expect(current.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(-.4);expect(zeroPlus.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(.1);expect(node(f.w,90,'a')[0]).toBeCloseTo(-.3);expect(node(f.w,1,'a')[0]).toBeCloseTo(.1-.4/90);
+  const onion=interpolateSnapshotSurfaceOnion(f.recording,current,{startSnapshotId:f.left.id,endSnapshotId:f.right.id},10);for(const frame of onion.frames)expect(frame.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(node(f.w,frame.angle.x,'a')[0]);
+  f.zero.deformation.layers.layer.placement!.translation=[.5,0];expect(node(f.w,90,'a')[0]).toBeCloseTo(.1);expect(f.recording.angleGraph!.viewMirror).toEqual({zeroSnapshotId:f.zero.id,sourceSnapshotId:f.left.id,targetSnapshotId:f.right.id,unpairedReference:'zero-stroke-frame'});
+ });
+ it('qualifies every automatic zero-yaw pitch support with the same central-zero operator',()=>{
+  const f=fixture();f.source.source!.mirrorEditing!.curvePairs=[];f.recording.angleGraph!.viewMirror={zeroSnapshotId:f.zero.id,sourceSnapshotId:f.left.id,targetSnapshotId:f.right.id,unpairedReference:'zero-stroke-frame'};let index=0;for(const view of [f.zero,f.left,f.right])seedAutomaticExtremeSnapshots(f.w,f.recording.id,view.id,()=>`generated-${++index}`);
+  const evaluate=(x:number,y:number)=>evaluateRecordingSnapshot(f.w,f.recording.id,{angle:{x,y},useDraft:false,diagnostics:'preview'}),current=evaluate(0,0),graph=f.recording.angleGraph!,top=graph.mesh.vertices.find(vertex=>vertex.angle.x===0&&vertex.angle.y===90)!,rightTop=graph.mesh.vertices.find(vertex=>vertex.angle.x===90&&vertex.angle.y===90)!;
+  for(const y of [-90,-45,0,45,90])expect(evaluate(30,y).drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(node(f.w,30,'a')[0]);
+  const onion=interpolateSnapshotSurfaceOnion(f.recording,current,{startSnapshotId:top.snapshotId,endSnapshotId:rightTop.snapshotId},10);for(const frame of onion.frames)expect(frame.drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(evaluate(frame.angle.x,frame.angle.y).drawing.nodes.find(node=>node.id==='a')!.position[0]);
+  f.w.snapshots.find(view=>view.id===top.snapshotId)!.deformation.layers.layer={placement:{...identityScenePlacement(),translation:[.2,0]}};expect(evaluate(30,90).drawing.nodes.find(node=>node.id==='a')!.position[0]).toBeCloseTo(-1/6);expect(graph.mesh.vertices).toHaveLength(9);
+ });
+ it('preserves an off-axis zero-width unpaired group without an inverse or a duplicated zero vertex',()=>{
+  const f=fixture();f.source.source!.mirrorEditing!.curvePairs=[];f.recording.angleGraph!.viewMirror={zeroSnapshotId:f.zero.id,sourceSnapshotId:f.left.id,targetSnapshotId:f.right.id,unpairedReference:'zero-stroke-frame'};f.zero.deformation.layers.layer.placement={...identityScenePlacement(),translation:[1.3,0],scaleX:0,scaleY:1};
+  const current=evaluateRecordingSnapshot(f.w,f.recording.id,{useDraft:false,diagnostics:'preview'}),zeroPlus=current.angleSurface!.positiveBases!.find(base=>base.snapshotId===f.zero.id)!;expect(zeroPlus.drawing.nodes).toEqual(current.drawing.nodes);expect(zeroPlus.drawing.curves.map(curve=>curve.handles)).toEqual(current.drawing.curves.map(curve=>curve.handles));expect(node(f.w,90,'a')[0]).toBeCloseTo(2.6);expect(f.recording.angleGraph!.mesh.vertices.filter(vertex=>vertex.angle.x===0&&vertex.angle.y===0)).toHaveLength(1);
  });
  it('rejects missing zero identities and a missing Recorder zero binding instead of manufacturing geometry',()=>{
   const f=fixture();f.zero.layers[0].membership={excludeElementIds:['left']};expect(()=>node(f.w,90)).toThrow(/zero-view baseline/);
