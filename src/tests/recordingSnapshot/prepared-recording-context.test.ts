@@ -1,4 +1,4 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
 import fullFace from '../../assets/hairless-symmetric-two-face-mirror.json';
 import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotPreview} from '../../app/recordingSnapshotApi';
@@ -12,6 +12,7 @@ import {evaluateRecordingSnapshot,resolveRecordingSnapshotBasis,type SnapshotEva
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type Angle,type RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
 import {prepareRecordingContext} from '../../domain/recordingSnapshot/preparedRecordingContext';
 import {upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
+import * as triangulation from '../../domain/recordingSnapshot/triangulation';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
 const at=(x:number,y=0):Angle=>({x,y});
@@ -131,12 +132,17 @@ describe('prepared Recording context through the production sampling entrypoints
 
  it('does not request terminal material or paint products for full-curve onion sampling',()=>{
   const f=freeze(fixture()),context=prepareRecordingContext(f.workspace,options),current=context.sample('recording'),before={...context.counters};
-  for(const step of [10,5] as const){
-   const onion=interpolateSnapshotSurfaceOnion(f.recording,current,{startSnapshotId:'zero',endSnapshotId:'side'},step);
-   expect(onion.frames.every(frame=>frame.paintBatches.length===0)).toBe(true);
-  }
-  expect(context.counters.material).toBe(before.material);expect(context.counters.paint).toBe(before.paint);
-  expect(context.counters.coverageStructure).toBe(before.coverageStructure);expect(context.counters.ownGeometry).toBe(before.ownGeometry);
+  // This executes the structural restriction itself, not the public cache
+  // adapter. It catches an onion-only preparation path omitted from counters.
+  const restrict=vi.spyOn(triangulation,'restrictSnapshotCoverage');
+  try{
+   for(const step of [10,5] as const){
+    const onion=interpolateSnapshotSurfaceOnion(f.recording,current,{startSnapshotId:'zero',endSnapshotId:'side'},step);
+    expect(onion.frames.every(frame=>frame.paintBatches.length===0)).toBe(true);
+   }
+   expect(context.counters.material).toBe(before.material);expect(context.counters.paint).toBe(before.paint);
+   expect(context.counters.coverageStructure).toBe(before.coverageStructure);expect(context.counters.ownGeometry).toBe(before.ownGeometry);expect(restrict).not.toHaveBeenCalled();
+  }finally{restrict.mockRestore();}
  });
 
  it('keeps the fixed zero basis and untouched source through a side fallback candidate',()=>{
