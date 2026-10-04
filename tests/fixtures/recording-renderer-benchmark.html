@@ -6,10 +6,11 @@
   <h1>Contour renderer cost</h1>
   <p>Public full face · 121 curves · actual PaintScene and full-curve SceneOnionSkin</p>
   <div class="controls">
-   <label>Workload <select id="workload"><option value="angle">Varied angle, fixed bases</option><option value="basis">Varied live basis (synthetic translation)</option></select></label>
+   <label>Workload <select id="workload"><option value="angle">Varied angle, fixed bases</option><option value="basis">Varied live basis (synthetic translation)</option><option value="single-curve">Single nose handle, frozen source (0 ghosts)</option></select></label>
    <label>Ghosts <select id="ghosts"><option value="0">0</option><option value="10">10 (10° steps)</option><option value="19" selected>19 (5° steps)</option></select></label>
    <label><input id="fills" type="checkbox"/> Main fills (optional; baseline off)</label>
    <label>Samples <select id="samples"><option value="12">12 + 4 warmups</option><option value="24" selected>24 + 4 warmups</option><option value="48">48 + 4 warmups</option></select></label>
+   <label>Selected pass <select id="pass"><option value="all">All three passes</option><option value="combined">Combined</option><option value="evaluation-only">Evaluation / target only</option><option value="render-only">Precomputed render only</option></select></label>
   </div>
   <div class="controls">
    <button id="preview">Show selected scene</button>
@@ -28,7 +29,7 @@
   <section class="report"><h2>Results</h2><p>Times in milliseconds. Combined = preparation + sampling + display. It excludes input dispatch, inverse solving, transactions and the rest of the editor.</p><div id="summary">No measurement yet</div></section>
  </main>
  <details><summary>Measurement contract and raw report</summary>
-  <p>Each pass starts with a fresh public workspace. Cold fixture construction, context preparation, first main and ghost evaluations, and first render are reported separately. Steady frames vary angles or a synthetic live basis. Main evaluation forces lazy drawing and paint products before rendering; ghosts reuse the production controls-only sampler.</p>
+  <p>Each pass starts with a fresh public workspace. Cold fixture construction, context preparation, first main and ghost evaluations, and first render are reported separately. Steady frames vary angles or a synthetic live basis. The optional single-curve workload prepares one frozen gesture-start Drawing and an existing production handle-edit plan, then measures fresh native handle targets from that same source. Its source preparation and per-frame target cost are separate. Exactly one curve changes; all other source geometry and relations are asserted unchanged outside measured work. It uses zero ghosts and is not a recording inverse-edit benchmark. Main evaluation forces lazy drawing and paint products before rendering; ghosts reuse the production controls-only sampler.</p>
   <p>Combined, evaluation-only, and pre-evaluated render-only passes use the same semantic frames. Render-only includes path generation, React reconciliation, and DOM commit, but excludes preparation and sampling. React Profiler reports subtree render time. The synchronous flush residual includes DOM commit and instrumentation overhead; it is not a pure DOM measurement.</p>
   <p>requestAnimationFrame reports frame opportunities only. It does not establish actual paint completion, input-to-paint latency, dropped frames, or FPS. Keep this foreground tab visible. Production profiling adds overhead. No GPU speedup is measured by this CPU/SVG baseline.</p>
   <pre id="json"></pre>

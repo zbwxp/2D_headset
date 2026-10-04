@@ -86,3 +86,57 @@ cost can possibly be removed, while keeping the current material, full-curve
 ghost, picking and DOM semantics. A fast hypothetical geometry kernel does not
 remove the renderer's path-string, React, or DOM work. This fixture alone cannot
 establish an end-to-end GPU speedup or the private project's gesture cost.
+
+## Optional native single-handle A/B
+
+`Single nose handle, frozen source` is a bounded additional workload; the
+existing angle/basis cases and their matrix are unchanged. Its primary case
+uses 0 ghosts and fills off. It measures the same native target and renderer
+scope as the Node single-handle probe, not a Recording inverse edit. One fixed
+production evaluation creates the complete public 121-curve source Drawing.
+The source is deeply frozen; `prepareDrawingControlEditPlan` selects end 0 of
+`鼻尖短线` once. Every frame calls the real `applyDrawingControlEditPlan` /
+`moveHandle` producer using offsets `[.001, .0007] * (index + 1)` from that same
+gesture-start handle. Targets never build on the preceding frame.
+
+`startup.singleCurveGesturePreparationMs` covers fixed-angle evaluation, lazy
+display products, freezing, and plan preparation. `targetMs` measures just the
+native target producer; `mainMs` and `ghostMs` are zero for its steady frames.
+Combined adds target and actual `PaintScene` display. Evaluation-only is
+target-only for this workload. Render-only precomputes its complete targets
+before timing, then calls the real renderer. Assertions of one changed curve,
+zero other changed curves/nodes, unchanged relation/material containers, and
+exact gesture-start target positions run outside measured work. Their overhead
+may affect rAF opportunities, which remain explicitly unrelated to input/paint
+latency. The last assertion is included in each pass's counts.
+
+Build matching bundles from the current clean production HEAD and an explicit
+baseline Git ref, using the same current harness:
+
+```sh
+./node_modules/.bin/tsc -p tests/fixtures/recording-renderer-benchmark.tsconfig.json
+./node_modules/.bin/vitest run --config tests/fixtures/recording-renderer-benchmark.vitest.config.ts
+node scripts/build-recording-renderer-benchmark.mjs --out-dir /absolute/output/single-curve-v92
+node scripts/build-recording-renderer-benchmark.mjs --baseline-ref 0ea573eaa58d436e4dfe72eae06a5b7114b4f015 --out-dir /absolute/output/single-curve-v91
+```
+
+Use the actual baseline ref present in the publishing repository, such as its
+same-content ancestor, rather than substituting a label. `--baseline-ref`
+archives that ref's source and compiler inputs into an isolated temporary
+directory, verifies every production source file against its Git blob ID,
+copies the current test harness, and builds that baseline's own real renderer
+and kernel. No old worktree or artifact is required. Each output has
+`benchmark-build.json` with the full production commit, production `src` tree,
+and SHA-256 of the identical harness manifest. The browser report includes the
+full production commit and harness SHA. The bootstrap guard runs on both bundles.
+No server or publication is started by these build commands.
+
+Publish these standalone relative-asset directories within the authorized
+Site. The optional visible-control preset is
+`recording-renderer-benchmark.html?workload=single-curve&ghosts=0&samples=24&pass=all`.
+It never starts a run. For the bounded A/B, verify the face once, keep fills off,
+use 24 samples plus 4 warmups, run v91 then v92, and then v92 followed by v91.
+Do not run either alongside functional QA or other timing work. Download each
+JSON and compare matching pass medians and p95 values. The pass selector can
+restrict a selected-case run to combined, target-only, or render-only; the
+existing angle/basis matrix always runs its original three passes.
