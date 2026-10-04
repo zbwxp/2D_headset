@@ -160,10 +160,16 @@ describe('prepared snapshot simplex geometry',()=>{
   expect(second).toEqual(expected);expect(plan.sample([.7,.3],response)).toEqual(expected);
  });
 
- it('does no compatibility serialization while sampling a prepared plan',()=>{
+ it('compiles only the requested dominant variant and never serializes compatibility again for it',()=>{
   const bases=[basis(0),basis(1)];for(const b of bases)b.drawing.endpointLinks=b.drawing.endpointLinks!.filter(l=>l.id!=='smooth');
-  const plan=prepareSnapshotSimplexGeometry(freeze(bases)),stringify=vi.spyOn(JSON,'stringify');
-  try{plan.sample([.7,.3]);plan.sample([.3,.7]);expect(stringify).not.toHaveBeenCalled();}finally{stringify.mockRestore();}
+  freeze(bases);const stringify=vi.spyOn(JSON,'stringify');
+  try{
+   const plan=prepareSnapshotSimplexGeometry(bases);expect(stringify).not.toHaveBeenCalled();
+   plan.sample([.7,.3]);expect(stringify).toHaveBeenCalled();stringify.mockClear();
+   plan.sample([.6,.4]);expect(stringify).not.toHaveBeenCalled();
+   plan.sample([.3,.7]);expect(stringify).toHaveBeenCalled();stringify.mockClear();
+   plan.sample([.2,.8]);plan.sample([.8,.2]);expect(stringify).not.toHaveBeenCalled();
+  }finally{stringify.mockRestore();}
  });
 
  it('observes in-place geometry, relation and binding edits through the standalone adapter',()=>{

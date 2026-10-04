@@ -44,7 +44,7 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
  const curveControls=(curve:DrawingDocument['curves'][number]):readonly [ControlPlan,ControlPlan]=>{
   let controls=handleControls.get(curve.id);if(!controls){controls=axes.map(end=>({target:Object.freeze({kind:'handle' as const,curveId:curve.id,end}),coordinates:coordinates((index,axis)=>curveMaps[index].get(curve.id)!.handles[end][axis]-nodeMaps[index].get(curve.nodes[end])!.position[axis])})) as [ControlPlan,ControlPlan];handleControls.set(curve.id,controls);}return controls;
  };
- const variants=bases.map(({drawing:selected})=>{
+ const prepareVariant=(selected:DrawingDocument)=>{
  const diagnostics:string[]=[];
  const curves=selected.curves.filter(curve=>{
   if(!curveMaps.every(map=>map.has(curve.id)))return false;
@@ -82,10 +82,13 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
  const linkTrims=drawing.endpointLinks!.map(link=>link.joinBrush?.kind==='ARC'?Object.freeze(linkMaps.map(map=>{const brush=map.get(link.id)!.joinBrush!;return brush.kind==='ARC'?brush.trimDistance:0;})):undefined);
  const offsetTranslations=drawing.offsets.map(offset=>offsetMaps.some(map=>map.get(offset.id)!.translation)?coordinates((index,axis)=>offsetMaps[index].get(offset.id)!.translation?.[axis]??0):undefined);
  return {drawing,diagnostics,authorities,positions,nodes,controls,joinRadii,linkTrims,offsetTranslations};
- });
+ };
+ // A fresh standalone call needs only its selected variant. Retained immutable
+ // plans compile the other metadata/order variants only when an angle uses them.
+ const variants:(ReturnType<typeof prepareVariant>|undefined)[]=new Array(count);
  return {sample(geometricWeights,response){
  validateWeights(count,geometricWeights);
- const variant=variants[dominantSnapshotBasis(bindings,geometricWeights)],template=variant.drawing,diagnostics=[...variant.diagnostics];
+ const dominant=dominantSnapshotBasis(bindings,geometricWeights),variant=variants[dominant]??(variants[dominant]=prepareVariant(bases[dominant].drawing)),template=variant.drawing,diagnostics=[...variant.diagnostics];
  const sample=(control:ControlPlan,axis:0|1):number=>{
   const coordinates=control.coordinates[axis],sampled=response?.(control.target,axis,coordinates,geometricWeights)??geometricWeights;
   if(typeof sampled==='number'){if(!Number.isFinite(sampled))throw Error('A simplex response produced a non-finite coordinate.');return sampled;}
