@@ -546,27 +546,36 @@ export type SnapshotScalarResponseValueSampler=(target:SnapshotScalarTarget,axis
 /** Compiled expressions and support matrices are independent of the resolver
  * that records fitted parameters for one sample. Only compiled operands are
  * shared; every expression evaluation still owns its numeric scratch maps. */
-export function prepareSnapshotExpressionValueProgram(location:Pick<SnapshotSimplexLocation,'vertexIds'>,source:{expression:(target:SnapshotScalarTarget,axis:0|1)=>SnapshotResponseExpression|undefined;geometricWeights?:(field:SnapshotResponseExpressionField,weights:readonly number[])=>readonly number[];onCompile?:()=>void}) {
+export function prepareSnapshotExpressionValueProgram(location:Pick<SnapshotSimplexLocation,'vertexIds'>,source:{/** Omit when this compiled support has no inherited expressions. */expression?:(target:SnapshotScalarTarget,axis:0|1)=>SnapshotResponseExpression|undefined;geometricWeights?:(field:SnapshotResponseExpressionField,weights:readonly number[])=>readonly number[];onCompile?:()=>void}) {
  const ids=array(location.vertexIds,3,'Active simplex vertices');ids.forEach(id);if(!ids.length||new Set(ids).size!==ids.length)invalid('An active simplex needs one to three distinct vertex IDs.');
  const cache=new Map<string,ReturnType<typeof prepareSnapshotResponseExpression>|null>(),vertexIds=[...location.vertexIds],frozenKeys=new WeakMap<SnapshotScalarTarget,readonly [string,string]>();
+ // Only frozen dense data arrays can retain successful validation. Mutable
+ // external inputs are inspected on every call, including their descriptors.
+ const frozenCoordinates=new WeakMap<readonly number[],{zero:boolean}>(),frozenWeights=new WeakSet<readonly number[]>();
  const createSampler=(basisScalar:SnapshotResponseBasisScalarResolver):SnapshotScalarResponseValueSampler=>(target,axis,coordinates,weights)=>{
-  array(coordinates,3,'Active basis coordinates');array(weights,3,'Original geometric weights');
-  if(coordinates.length!==weights.length||weights.length!==vertexIds.length||!coordinates.every(finite)||!weights.every(w=>finite(w)&&w>=0)||Math.abs(weights.reduce((sum,w)=>sum+w,0)-1)>64*Number.EPSILON)invalid('A scalar value sampler needs finite bases and original geometric weights.');
-  let keys=frozenKeys.get(target);
-  if(!keys&&Object.isFrozen(target)){
-   const expected=target.kind==='node'?['kind','nodeId']:['kind','curveId','end'],fields=Object.keys(target);
-   if(fields.length===expected.length&&expected.every(field=>{const descriptor=Object.getOwnPropertyDescriptor(target,field);return !!descriptor&&'value' in descriptor&&(typeof descriptor.value==='string'||typeof descriptor.value==='number');})){keys=[JSON.stringify([target,0]),JSON.stringify([target,1])];frozenKeys.set(target,keys);}
+  let knownCoordinates=frozenCoordinates.get(coordinates);const knownWeights=frozenWeights.has(weights);
+  if(!knownCoordinates)array(coordinates,3,'Active basis coordinates');if(!knownWeights)array(weights,3,'Original geometric weights');
+  if(coordinates.length!==weights.length||weights.length!==vertexIds.length||!knownCoordinates&&!coordinates.every(finite)||!knownWeights&&(!weights.every(w=>finite(w)&&w>=0)||Math.abs(weights.reduce((sum,w)=>sum+w,0)-1)>64*Number.EPSILON))invalid('A scalar value sampler needs finite bases and original geometric weights.');
+  if(!knownCoordinates&&Object.isFrozen(coordinates)){knownCoordinates={zero:coordinates.every(value=>value===0)};frozenCoordinates.set(coordinates,knownCoordinates);}
+  if(!knownWeights&&Object.isFrozen(weights))frozenWeights.add(weights);
+  let sample:ReturnType<typeof prepareSnapshotResponseExpression>|null=null;
+  if(source.expression){
+   let keys=frozenKeys.get(target);
+   if(!keys&&Object.isFrozen(target)){
+    const expected=target.kind==='node'?['kind','nodeId']:['kind','curveId','end'],fields=Object.keys(target);
+    if(fields.length===expected.length&&expected.every(field=>{const descriptor=Object.getOwnPropertyDescriptor(target,field);return !!descriptor&&'value' in descriptor&&(typeof descriptor.value==='string'||typeof descriptor.value==='number');})){keys=[JSON.stringify([target,0]),JSON.stringify([target,1])];frozenKeys.set(target,keys);}
+   }
+   const key=keys?.[axis]??JSON.stringify([target,axis]),known=cache.get(key);
+   if(known===undefined){const expression=source.expression({...target},axis);sample=expression?prepareSnapshotResponseExpression(expression):null;if(sample)source.onCompile?.();cache.set(key,sample);}else sample=known;
   }
-  const key=keys?.[axis]??JSON.stringify([target,axis]);let sample=cache.get(key);
-  if(sample===undefined){const expression=source.expression({...target},axis);sample=expression?prepareSnapshotResponseExpression(expression):null;if(sample)source.onCompile?.();cache.set(key,sample);}
-  const baseline=coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
+  const baseline=knownCoordinates?.zero?0:coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
   if(!sample){const result=baseline+0;if(!finite(result))invalid('Response expression value is nonfinite.');return result;}
   const callbackWeights=source.geometricWeights?Object.freeze([...weights]):weights;
-  const residual=sample?.({basisScalar,geometricWeights:field=>{
+  const residual=sample({basisScalar,geometricWeights:field=>{
    if(source.geometricWeights)return source.geometricWeights(field,callbackWeights);
    if(vertexIds.some((id,index)=>weights[index]!==0&&!field.vertexIds.includes(id)))fail('EXPRESSION_MISSING_SUPPORT',`Field ${field.id} needs an explicit map from the new simplex into its original angle support.`);
    return field.vertexIds.map(id=>{const index=vertexIds.indexOf(id);return index<0?0:weights[index];});
-  }})??0;
+  }});
   const result=baseline+residual;if(!finite(result))invalid('Response expression value is nonfinite.');return result;
  };
  return Object.freeze({createSampler});

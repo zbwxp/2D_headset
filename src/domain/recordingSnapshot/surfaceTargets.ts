@@ -120,9 +120,26 @@ function compileSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,originalLoc
  const location={...originalLocation,vertexIds:[...originalLocation.vertexIds],snapshotIds:[...originalLocation.snapshotIds],geometricWeights:[...originalLocation.geometricWeights]};
  const samplingGraph=positiveMirrorResponseGraph(graph,location,mirror),native=createSnapshotSurfaceResponseSampler(samplingGraph,location),effective=effectiveSnapshotSurfaceResponses(samplingGraph),responses=own(effective.responseExpressions,location.simplexId);
  const basisScalar=createSnapshotResponseBasisResolver(bases),geometricWeights=createSnapshotResponseFieldWeightMapper(graph.mesh,location),onCompile=()=>{surfaceProgramStats.expressionCompilations++;};
- const inheritedProgram=prepareSnapshotExpressionValueProgram(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),geometricWeights,onCompile});
+ const hasExpressions=!!responses&&[...Object.values(responses.nodes),...Object.values(responses.handles).flat()].some(control=>control.x!==undefined||control.y!==undefined);
+ const inheritedProgram=prepareSnapshotExpressionValueProgram(location,{expression:hasExpressions?(target,axis)=>snapshotResponseExpressionFor(responses,target,axis):undefined,geometricWeights,onCompile});
  const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
- const sourceBaselines=prepareSnapshotExpressionValueProgram(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;},geometricWeights,onCompile}).createSampler(basisScalar);
+ const sourceBaselines=prepareSnapshotExpressionValueProgram(location,{expression:hasExpressions?(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;}:undefined,geometricWeights,onCompile}).createSampler(basisScalar);
+ // Unit support and the zero residual input are immutable program operands,
+ // shared by all scalars and frames. Public mutable coordinate arrays still
+ // take the original map path so malformed/sparse inputs retain validation.
+ const zeroCoordinates=Object.freeze(location.vertexIds.map(()=>0)),cornerWeights=Object.freeze(location.vertexIds.map((_,index)=>Object.freeze(location.vertexIds.map((_,coordinate)=>coordinate===index?1:0))));
+ const coordinatePlans=new WeakSet<readonly number[]>(),projectionKeys=new WeakMap<SnapshotScalarTarget,readonly [string,string]>();
+ const residualCoordinates=(coordinates:readonly number[])=>{
+  if(coordinatePlans.has(coordinates))return zeroCoordinates;
+  if(coordinates.length===zeroCoordinates.length&&Object.isFrozen(coordinates)&&zeroCoordinates.every((_,index)=>{const descriptor=Object.getOwnPropertyDescriptor(coordinates,index);return !!descriptor&&'value' in descriptor;})){coordinatePlans.add(coordinates);return zeroCoordinates;}
+  return coordinates.map(()=>0);
+ };
+ const projectionKey=(target:SnapshotScalarTarget,axis:0|1)=>{
+  let keys=projectionKeys.get(target);if(keys)return keys[axis];
+  const fields=target.kind==='node'?['kind','nodeId']:['kind','curveId','end'];
+  if(Object.isFrozen(target)&&fields.every(field=>{const descriptor=Object.getOwnPropertyDescriptor(target,field);return !!descriptor&&'value' in descriptor&&(typeof descriptor.value==='string'||typeof descriptor.value==='number');})){keys=[snapshotProjectionScalarKey(target,0),snapshotProjectionScalarKey(target,1)];projectionKeys.set(target,keys);return keys[axis];}
+  return snapshotProjectionScalarKey(target,axis);
+ };
  surfaceProgramStats.programCompilations++;
  const createSampler=():SnapshotScalarValue=>{
   const fittedParameters=createSnapshotFitParameterCollector();let recordParameters=true;
@@ -133,18 +150,18 @@ function compileSnapshotSurfaceValueProgram(graph:SnapshotAngleGraph,originalLoc
   const mirrorAt=(weights:readonly number[])=>{if(!mirrorWeights||!sameWeights(mirrorWeights,weights)){mirrored=mirror?.sample({...location,geometricWeights:[...weights]},weights);mirrorWeights=[...weights];}return mirrored;};
   const sample:SnapshotScalarValue=(target,axis,coordinates,weights)=>{
    if(location.kind==='vertex')return coordinates[0];
-   const nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,coordinates.map(()=>0),weights),candidateSource=mirrorAt(weights),candidateCorners=candidateSource?.corners(target,axis),mirroredValue=candidateSource?.scalar(target,axis),source=mirroredValue!==undefined&&candidateCorners?.every(value=>value!==undefined)?candidateSource:undefined,sourceCorners=source?candidateCorners as readonly number[]:undefined,linear=coordinates.reduce((sum,value,index)=>sum+value*weights[index],0);
+   const emptyCoordinates=residualCoordinates(coordinates),nativeWeights=native(target,axis,coordinates,weights),residual=inherited(target,axis,emptyCoordinates,weights),candidateSource=mirrorAt(weights),candidateCorners=candidateSource?.corners(target,axis),mirroredValue=candidateSource?.scalar(target,axis),source=mirroredValue!==undefined&&candidateCorners?.every(value=>value!==undefined)?candidateSource:undefined,sourceCorners=source?candidateCorners as readonly number[]:undefined;
    if(candidateSource&&!source)mirrorDiagnostics.add(`View mirror source has no matching ${label(target).toLowerCase()} throughout this support; its positive local controls remain authoritative.`);
    // Form target-local differences before adding them to B. An exact zero
    // correction preserves the inherited source sample without cancellation.
    const corrected=source?mirroredValue!+residual+coordinates.reduce((sum,value,index)=>sum+(value-sourceCorners![index])*weights[index]+value*(nativeWeights[index]-weights[index]),0):coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
    if(!hasProjection&&!source)return corrected;
-   const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
-   const baseline=source?mirroredValue!+(geometric(weights)-linear)+residual:geometric(weights)+residual;
-   const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>{recordParameters=false;try{return inherited(target,axis,coordinates.map(()=>0),weights);}finally{recordParameters=true;}});
-   samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]+(sourceCorners?sourceCorners[index]-coordinates[index]:0)),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
+   const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,emptyCoordinates,sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
+   const baseline=source?mirroredValue!+(geometric(weights)-coordinates.reduce((sum,value,index)=>sum+value*weights[index],0))+residual:geometric(weights)+residual;
+   const cornerResiduals=currentExpression?cornerWeights.map(weights=>{recordParameters=false;try{return inherited(target,axis,emptyCoordinates,weights);}finally{recordParameters=true;}}):zeroCoordinates;
+   samples.set(projectionKey(target,axis),{baseline,corrected,baselineCorners:cornerWeights.map((weights,index)=>geometric(weights)+cornerResiduals[index]+(sourceCorners?sourceCorners[index]-coordinates[index]:0)),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
   };
-  sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
+  sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples,mirrored?.contracts);return {...result,drawing:fittedParameters.apply(result.drawing),diagnostics:[...result.diagnostics,...mirrored?.diagnostics??[],...mirrorDiagnostics]};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available,mirrored?.contracts);sample.rawScalar=(target,axis)=>samples.get(projectionKey(target,axis))?.corrected;return sample;
  };
  return Object.freeze({createSampler});
 }
