@@ -41,7 +41,8 @@ export interface SnapshotSimplexDrawingRevision {readonly previous:DrawingDocume
 const drawingRevisions=new WeakMap<DrawingDocument,SnapshotSimplexDrawingRevision>();
 /** Proven complete native output closure for downstream geometry-dependent
  * products. The previous token is the pre-material projected sample, and the
- * frozen addresses include every affected SMOOTH member, not just its driver. */
+ * frozen addresses compare only the bounded node/handle/SMOOTH output closure.
+ * A basis change that cancels in this output is deliberately absent. */
 export const snapshotSimplexDrawingRevision=(drawing:DrawingDocument):SnapshotSimplexDrawingRevision|undefined=>drawingRevisions.get(drawing);
 /** No ID-only cache: the previous complete immutable sample is the capability.
  * Unsupported response/program dependencies return to canonical preparation. */
@@ -180,7 +181,8 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
    const nextRaw={...raw,nodes,curves},nextDiagnostics=componentDiagnostics.map(value=>value),nextProjected=projectNative(variant,nextRaw,nextDiagnostics,projected,dirtyComponents,changedEnds);
    const dirtyCurves=new Set([...changedEnds.keys()].map(index=>variant.controls[index].curve.id));
    for(const index of dirtyComponents)for(const {endpoint} of variant.components[index].members)dirtyCurves.add(endpoint.curveId);
-   drawingRevisions.set(nextProjected,Object.freeze({previous:projected,dirtyCurveIds:Object.freeze([...dirtyCurves])}));
+   const changedCurveIds=[...dirtyCurves].filter(id=>{const index=variant.curveIndices.get(id)!,before=projected.curves[index],after=nextProjected.curves[index];return axes.some(end=>{const node=variant.nodeIndices.get(after.nodes[end])!;return axes.some(axis=>!Object.is(before.handles[end][axis],after.handles[end][axis])||!Object.is(projected.nodes[node].position[axis],nextProjected.nodes[node].position[axis]));});});
+   drawingRevisions.set(nextProjected,Object.freeze({previous:projected,dirtyCurveIds:Object.freeze(changedCurveIds)}));
    samplingStats.revisionSamples++;
    return retainSample(variant,next,nextWeights,nextValues,nextCoordinates,nextRaw,nextProjected,nextDiagnostics);
   });return result;

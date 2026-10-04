@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
 import {emptyDrawing,type Point2} from '../../domain/drawing/model';
-import {prepareSnapshotCoverage,prepareSnapshotCoverageStructure,type SnapshotCoverageEvaluation} from '../../domain/recordingSnapshot/snapshotCoverage';
+import {snapshotCoverageRevisionChanges,prepareSnapshotCoverage,prepareSnapshotCoverageStructure,type SnapshotCoverageEvaluation} from '../../domain/recordingSnapshot/snapshotCoverage';
 import {createSnapshotSurfaceValueSampler} from '../../domain/recordingSnapshot/surfaceTargets';
 import {createSnapshotTriangulation,locateSnapshotSimplex} from '../../domain/recordingSnapshot/triangulation';
 import {snapshotSimplexDrawingRevision,getSnapshotSimplexSamplingStats,resetSnapshotSimplexSamplingStats,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges,type SnapshotScalarTarget} from '../../domain/recordingSnapshot/simplexGeometry';
@@ -39,7 +39,7 @@ describe('prepared native control sample lineage',()=>{
   expect(actual).toEqual(f.expected(next));
   expect(counts).toMatchObject({revisionSamples:1,fullSamples:0,scalarEvaluations:2,basisCoordinateReads:2,projectedComponents:1});
   expect(counts.copiedControlSlots).toBeGreaterThan(unrelated*4);
-  const proof=snapshotSimplexDrawingRevision(actual.normal!.drawing)!;expect(proof.previous).toBe(before.normal!.drawing);expect([...proof.dirtyCurveIds].sort()).toEqual(['a','b']);expect(Object.isFrozen(proof)).toBe(true);expect(Object.isFrozen(proof.dirtyCurveIds)).toBe(true);expect(snapshotSimplexDrawingRevision(before.normal!.drawing)).toBeUndefined();
+  const proof=snapshotSimplexDrawingRevision(actual.normal!.drawing)!;expect(proof.previous).toBe(before.normal!.drawing);expect([...proof.dirtyCurveIds].sort()).toEqual(['a','b']);expect(Object.isFrozen(proof)).toBe(true);expect(Object.isFrozen(proof.dirtyCurveIds)).toBe(true);expect(snapshotSimplexDrawingRevision(before.normal!.drawing)).toBeUndefined();expect(snapshotCoverageRevisionChanges(before,actual)).toEqual({curveIds:proof.dirtyCurveIds});expect(snapshotCoverageRevisionChanges(actual,before)).toBeUndefined();
   expect(actual.normal!.drawing.curves.find(curve=>curve.id==='b')!.handles[0]).not.toEqual(before.normal!.drawing.curves.find(curve=>curve.id==='b')!.handles[0]);
   expect(actual.normal!.drawing.fills).toEqual(before.normal!.drawing.fills);
  });
@@ -53,6 +53,11 @@ describe('prepared native control sample lineage',()=>{
   const f=fixture(100),before=f.sample(),next=f.bases.map(basis=>({...basis,drawing:{...basis.drawing}}));resetSnapshotSimplexSamplingStats();
   const actual=f.sample(next,f.graph,before,{structureUnchanged:true,basisControls:new Map(next.map(basis=>[basis.snapshotId,[handle]])),responseControls:[]});
   expect(actual).toEqual(before);expect(getSnapshotSimplexSamplingStats()).toMatchObject({revisionSamples:1,scalarEvaluations:0,basisCoordinateReads:4,projectedComponents:0});
+ });
+ it('reports no final curve change when a dirty response candidate evaluates identically',()=>{
+  const f=fixture(3),before=f.sample(),actual=f.sample(f.bases,f.graph,before,{structureUnchanged:true,basisControls:new Map(),responseControls:[handle]});
+  expect(actual).toEqual(before);expect(snapshotCoverageRevisionChanges(before,actual)).toEqual({curveIds:[]});
+  const cold=f.sample();expect(snapshotCoverageRevisionChanges(before,cold)).toBeUndefined();
  });
  it('expands a canonical linked-node move to raw incident vectors without reprojecting unrelated handles',()=>{
   const f=fixture(12),before=f.sample(),next=f.bases.map(basis=>basis.snapshotId!=='A'?basis:{...basis,drawing:{...basis.drawing,nodes:basis.drawing.nodes.map(node=>!['a1','b0'].includes(node.id)?node:{...node,position:[node.position[0]+.5,node.position[1]+.25] as Point2})}});

@@ -1,7 +1,7 @@
 import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
 import {InputCache} from '../geometry/cache';
 import {shapeOf,type Cubic,type DrawingDocument} from '../drawing/model';
-import {reviseSnapshotSimplexGeometry,interpolateSnapshotSimplexGeometry,type SnapshotSimplexRevisionChanges,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
+import {snapshotSimplexDrawingRevision,reviseSnapshotSimplexGeometry,interpolateSnapshotSimplexGeometry,type SnapshotSimplexRevisionChanges,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
 import {locateSnapshotSimplex,projectToSnapshotCoverage,restrictSnapshotCoverage,type SnapshotSimplexLocation,type SnapshotTriangulation,type SnapshotTriangulationAngle} from './triangulation';
 
 export interface SnapshotCoverageCurvePreview {
@@ -18,6 +18,15 @@ export interface SnapshotCoverageEvaluation {
 }
 export interface SnapshotCoverageSampleOptions {immutableInputs?:boolean;onGeometryPrepare?:()=>void;previous?:SnapshotCoverageEvaluation;changes?:SnapshotSimplexRevisionChanges}
 const coverageLineages=new WeakMap<SnapshotCoverageEvaluation,{structure:object;samples:ReadonlyMap<string,SnapshotSimplexGeometry>}>();
+/** Normal editable geometry only. Red coverage references remain separate.
+ * Presence of a trusted successful native revision is mandatory; a full or
+ * unsupported sample never acquires a proof by matching IDs or equal values. */
+export function snapshotCoverageRevisionChanges(previous:SnapshotCoverageEvaluation,current:SnapshotCoverageEvaluation):{readonly curveIds:readonly string[]}|undefined {
+ const before=coverageLineages.get(previous),after=coverageLineages.get(current);
+ if(!before||!after||before.structure!==after.structure||!previous.normal||!current.normal)return undefined;
+ const revision=snapshotSimplexDrawingRevision(current.normal.drawing);
+ return revision?.previous===previous.normal.drawing?Object.freeze({curveIds:revision.dirtyCurveIds}):undefined;
+}
 export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>SnapshotScalarResponse|undefined;
 
 /** Prepare static membership/topology support once for a set of immutable basis
