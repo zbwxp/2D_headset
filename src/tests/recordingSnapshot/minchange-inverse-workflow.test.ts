@@ -160,12 +160,20 @@ describe('minimum-change inverse through the existing editing workflow',()=>{
 // Opt in locally: CONTOUR_MINCHANGE_PRIVATE_FIXTURE=/absolute/path/124.json.
 // No private drawing bytes, IDs, or derived geometry are checked into this test.
 const privateFixture=process.env.CONTOUR_MINCHANGE_PRIVATE_FIXTURE;
-it.skipIf(!privateFixture)('replays the supplied private profile X/Y scale and ear node follow targets without altering its file',()=>{
+it.skipIf(!privateFixture).each(['ear X','ear Y','profile X','profile Y'] as const)('replays the supplied private %s target without altering its file',kind=>{
  const raw=readFileSync(privateFixture!,'utf8'),digest=createHash('sha256').update(raw).digest('hex');expect(digest).toBe('8bd646f952dfca21f149b7cb89c25534564827eff8a5caadd69a17f96b046a7c');
- const project=parseLandmarks(raw),original=JSON.stringify(project),r=recording(project),angle:Angle={x:-60,y:0},before=evaluate(project,angle),ear=before.drawing.curves.find(curve=>curve.name==='左片·外侧下颌')!;expect(ear).toBeDefined();
- const node=before.drawing.nodes.find(node=>node.id===ear.nodes[0])!,position:Point2=[node.position[0]+.02,node.position[1]],earTarget=applyMirrorEditing(before.drawing,dragNode(before.drawing,node.id,position,.4),{nodes:[{nodeId:node.id,position}]});
- const profile=before.drawing.layers.find(layer=>layer.name==='朝左·额鼻唇颏开放轮廓')!;expect(profile).toBeDefined();const profileIds=profile.items.filter(id=>before.drawing.curves.some(curve=>curve.id===id));expect(profileIds).toHaveLength(9);
- const targets=[earTarget,...[{scaleX:1.08,scaleY:1},{scaleX:1,scaleY:.92}].map(value=>transform(before.drawing,profileIds,point=>applyScenePlacement({...identityScenePlacement(),...value},point),true,false))];
- for(const target of targets){const started=performance.now(),result=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:r.id,snapshotId:before.snapshotId,angle,beforeDrawing:before.drawing,drawing:target,intent:{kind:'geometry'},validation:'preview'});near(evaluate(result.project,angle).drawing,target);expect(performance.now()-started).toBeLessThan(30000);expect(JSON.stringify(result.project.recordingSnapshots!.library)).toBe(JSON.stringify(project.recordingSnapshots!.library));}
+ const project=parseLandmarks(raw),original=JSON.stringify(project),r=recording(project),angle:Angle={x:-60,y:0},before=evaluate(project,angle),zero=evaluate(project,{x:0,y:0}).drawing,axis=kind.endsWith('X')?0:1;
+ let target:DrawingDocument;
+ if(kind.startsWith('ear')){
+  const ear=before.drawing.curves.find(curve=>curve.name==='左片·外侧下颌')!;expect(ear).toBeDefined();
+  const node=before.drawing.nodes.find(node=>node.id===ear.nodes[0])!,position:Point2=[...node.position];position[axis]+=.02;
+  target=applyMirrorEditing(before.drawing,dragNode(before.drawing,node.id,position,.4),{nodes:[{nodeId:node.id,position}]});
+ }else{
+  const profile=before.drawing.layers.find(layer=>layer.name==='朝左·额鼻唇颏开放轮廓')!;expect(profile).toBeDefined();const profileIds=profile.items.filter(id=>before.drawing.curves.some(curve=>curve.id===id));expect(profileIds).toHaveLength(9);
+  target=transform(before.drawing,profileIds,point=>applyScenePlacement({...identityScenePlacement(),scaleX:axis===0?1.08:1,scaleY:axis===1?.92:1},point),true,false);
+ }
+ const started=performance.now(),result=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:r.id,snapshotId:before.snapshotId,angle,beforeDrawing:before.drawing,drawing:target,intent:{kind:'geometry'},validation:'preview'}),elapsedMs=performance.now()-started;
+ near(evaluate(result.project,angle).drawing,target);expect(JSON.stringify(evaluate(result.project,{x:0,y:0}).drawing)).toBe(JSON.stringify(zero));expect(JSON.stringify(result.project.recordingSnapshots!.library)).toBe(JSON.stringify(project.recordingSnapshots!.library));expect(recording(result.project).snapshotIds).toEqual(r.snapshotIds);
  expect(JSON.stringify(project)).toBe(original);expect(createHash('sha256').update(readFileSync(privateFixture!)).digest('hex')).toBe(digest);
+ console.info(JSON.stringify({fixture:'private minchange regression',target:kind,elapsedMs:Math.round(elapsedMs)}));
 },120000);
