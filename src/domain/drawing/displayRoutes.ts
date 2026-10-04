@@ -6,6 +6,7 @@ import {arcField} from './sampling';
 import type {InkSpan} from './displayIntervals';
 import {compileDisplayRouteBrushes,type CompiledDisplayRouteBrushes,type DisplayLinkBrushOverrides} from './displayRouteBrush';
 import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineMaterialField,affineShape} from './evaluatedAffine';
+import {preparedDrawingReadContext,countDrawingReadWork} from './readContext';
 
 /** Display traversal only. The captured seed preserves the path selected before
  * linking. Geometry endpoints/links and interval positioning remain separate. */
@@ -27,6 +28,19 @@ const entrance=(u:CurveUse):Endpoint=>({curveId:u.id,end:u.reverse?1:0});
 const exit=(u:CurveUse)=>opposite(entrance(u));
 const clonePath=(p:StrokePath):StrokePath=>({segments:p.segments.map(u=>({...u})),closed:p.closed});
 
+/** Compile local continuation only. Each resolution owns its mutable pair map;
+ * selected links, seed validation and endpoint positions are still checked live. */
+function localConnections(d:Doc):Map<string,Endpoint> {
+ const plan=preparedDrawingReadContext(d)?.topology;
+ if(plan?.localConnections)return new Map(plan.localConnections);
+ countDrawingReadWork('localConnectionBuilds');
+ const pairs=new Map<string,Endpoint>();
+ for(const layer of d.layers)for(const stroke of strokes(d,layer.id))for(const path of strokePaths(stroke))for(let i=0;i<(path.closed?path.segments.length:path.segments.length-1);i++){
+  const a=exit(path.segments[i]),b=entrance(path.segments[(i+1)%path.segments.length]);pairs.set(endKey(a),b);pairs.set(endKey(b),a);
+ }
+ if(plan){plan.localConnections=pairs;return new Map(pairs);}return pairs;
+}
+
 /** Invalid routes retain their captured traversal and report why they cannot be
  * adopted. Never choose a different branch from coordinates or tangent angles. */
 export function resolveDisplayRoute(d:Doc,route:DisplayRoute,options:{deferEndpointPositions?:boolean}={}):ResolvedDisplayRoute {
@@ -39,10 +53,9 @@ export function resolveDisplayRoute(d:Doc,route:DisplayRoute,options:{deferEndpo
  if(!Array.isArray(route.throughLinkIds)||new Set(route.throughLinkIds).size!==route.throughLinkIds.length){diagnostics.push({code:'INVALID_SEED',message:'显示路径的联动引用重复或无效。'});return result();}
  // The seed itself is authoritative for its local continuation. Other paths are
  // discovered only by explicit selected links; layer/item order is not a route.
- const pairs=new Map<string,Endpoint>();
+ const pairs=localConnections(d);
  const connect=(a:Endpoint,b:Endpoint)=>{pairs.set(endKey(a),b);pairs.set(endKey(b),a);};
  const disconnect=(e:Endpoint)=>{const partner=pairs.get(endKey(e));pairs.delete(endKey(e));if(partner&&sameEnd(pairs.get(endKey(partner))??{curveId:'',end:0},e))pairs.delete(endKey(partner));};
- for(const layer of d.layers)for(const stroke of strokes(d,layer.id))for(const path of strokePaths(stroke))for(let i=0;i<(path.closed?path.segments.length:path.segments.length-1);i++)connect(exit(path.segments[i]),entrance(path.segments[(i+1)%path.segments.length]));
  for(const u of seed.segments){disconnect(entrance(u));disconnect(exit(u));}
  for(let i=0;i<(seed.closed?seed.segments.length:seed.segments.length-1);i++){
   const a=exit(seed.segments[i]),b=entrance(seed.segments[(i+1)%seed.segments.length]);
@@ -52,7 +65,7 @@ export function resolveDisplayRoute(d:Doc,route:DisplayRoute,options:{deferEndpo
  if(!route.throughLinkIds.length)return result();
  const selected=new Set<string>(),linkAt=new Map<string,string>();
  for(const id of route.throughLinkIds){
-  const link=d.endpointLinks?.find(l=>l.id===id);
+  const context=preparedDrawingReadContext(d),link=context?context.endpointLinks.get(id):d.endpointLinks?.find(l=>l.id===id);
   if(!link){diagnostics.push({code:'MISSING_LINK',message:'显示路径引用的端点联动已删除。',linkId:id});continue;}
   if((link as typeof link & {throughDisplay?:boolean}).throughDisplay!==true){diagnostics.push({code:'DISABLED_LINK',message:'此端点联动尚未启用显示贯通。',linkId:id});continue;}
   if([link.a,link.b].some(e=>selected.has(endKey(e)))){diagnostics.push({code:'PORT_CONFLICT',message:'同一个几何端点指定了多个显示续接；请保留一个明确续接。',linkId:id});continue;}

@@ -2,23 +2,34 @@ import {reconcileGroups} from './groups';
 import {endKey,curveById,shapeOf,type DrawingDocument,type Endpoint,type Cubic} from './model';
 import {InputCache} from '../geometry/cache';
 import {derivedUses} from './roundedJoin';
+import {preparedDrawingReadContext,countDrawingReadWork} from './readContext';
 export interface StrokePath {segments:{id:string;reverse:boolean}[];closed:boolean}
 export interface Stroke extends StrokePath {id:string;/** Branches share a group but never acquire artificial connecting segments. */paths?:StrokePath[]}
 export const strokePaths=(s:Stroke):StrokePath[]=>s.paths??[s];
 export const strokeName=(d:DrawingDocument,s:Stroke)=>s.segments.map(x=>curveById(d,x.id).strokeName).find(Boolean)??curveById(d,s.id).name;
-interface StrokeIndex {strokes:Stroke[];byCurve:Map<string,Stroke>}
+export interface StrokeIndex {strokes:Stroke[];byCurve:Map<string,Stroke>}
 const topologyCache=new InputCache<StrokeIndex>(128);
 const emptyIndex:StrokeIndex={strokes:[],byCurve:new Map()};
 /** Only connectivity/order determine strokes. Key by values, not document identity:
  * commands may mutate their private draft, while handle drags change no topology.
  * The bounded cache contains IDs only, never documents or undo history. */
 function strokeIndex(d:DrawingDocument,layerId:string,visibleOnly=false):StrokeIndex{
- const layer=d.layers.find(l=>l.id===layerId);if(!layer)return emptyIndex;
- const curves=new Map(d.curves.map(c=>[c.id,c]));
+ const context=preparedDrawingReadContext(d),local=context&&(visibleOnly?context.visibleStrokes:context.topology.strokes),ready=local?.get(layerId);if(ready)return ready;
+ const layer=context?context.layers.get(layerId):d.layers.find(l=>l.id===layerId);if(!layer)return emptyIndex;
+ const curves=context?.curves??new Map(d.curves.map(c=>[c.id,c]));
  const ids=layer.items.filter(id=>curves.has(id)&&(!visibleOnly||curves.get(id)!.visible)),allowed=new Set(ids);
  const joins=d.joins.filter(j=>allowed.has(j.a.curveId)&&allowed.has(j.b.curveId));
+ if(local){
+  countDrawingReadWork('preparedStrokeMisses');const result=buildStrokeIndex(ids,curves,joins);local.set(layerId,result);return result;
+ }
+ countDrawingReadWork('strokeKeys');
  const key=JSON.stringify([ids.map(id=>[id,...curves.get(id)!.nodes]),joins.map(j=>[j.a.curveId,j.a.end,j.b.curveId,j.b.end])]);
  const cached=topologyCache.get(key);if(cached)return cached;
+ return topologyCache.set(key,buildStrokeIndex(ids,curves,joins));
+}
+/** One canonical topology algorithm for guarded drafts and prepared runtimes. */
+function buildStrokeIndex(ids:string[],curves:Map<string,DrawingDocument['curves'][number]>,joins:DrawingDocument['joins']):StrokeIndex {
+ countDrawingReadWork('strokeBuilds');
  const pairs=new Map<string,Endpoint>(),atNode=new Map<string,Endpoint[]>();
  const nodeId=(e:Endpoint)=>curves.get(e.curveId)!.nodes[e.end];
  for(const curveId of ids)for(const end of [0,1] as const){const e={curveId,end},node=nodeId(e);atNode.set(node,[...(atNode.get(node)??[]),e]);}
@@ -38,11 +49,11 @@ function strokeIndex(d:DrawingDocument,layerId:string,visibleOnly=false):StrokeI
   }
   result.push({id:seed,segments:paths.flatMap(p=>p.segments),closed:paths.length===1&&paths[0].closed,...(paths.length>1?{paths}:{})});
  }
- return topologyCache.set(key,{strokes:result,byCurve:new Map(result.flatMap(s=>s.segments.map(x=>[x.id,s] as const)))});
+ return {strokes:result,byCurve:new Map(result.flatMap(s=>s.segments.map(x=>[x.id,s] as const)))};
 }
 /** A shared node defines group membership. Tangent joins only define the local shape. */
 export const strokes=(d:DrawingDocument,layerId:string,visibleOnly=false)=>strokeIndex(d,layerId,visibleOnly).strokes;
-export const strokeFor=(d:DrawingDocument,id:string)=>strokeIndex(d,d.layers.find(l=>l.items.includes(id))?.id??'').byCurve.get(id)!;
+export const strokeFor=(d:DrawingDocument,id:string)=>strokeIndex(d,(preparedDrawingReadContext(d)?.owners.get(id)??d.layers.find(l=>l.items.includes(id)))?.id??'').byCurve.get(id)!;
 export const strokeIds=(s:Stroke)=>s.segments.map(x=>x.id);
 export const orientedShape=(d:DrawingDocument,segment:Stroke['segments'][number])=>{const shape=shapeOf(d,segment.id);return (segment.reverse?[...shape].reverse():shape) as Cubic;};
 export function strokePath(d:DrawingDocument,stroke:Stroke,point:(p:[number,number])=>[number,number]=p=>p):string{
