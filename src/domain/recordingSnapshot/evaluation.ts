@@ -38,7 +38,7 @@ import {placeSnapshotElements,retainSnapshotAffines} from './elementPlacement';
 import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
 import {resolveSnapshotLocalMembership} from './localMembership';
 import {prepareSnapshotCoverageStructure,type PreparedSnapshotCoverageStructure,type SnapshotCoverageEvaluation,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
-import {evaluateSnapshotSurfaceMaterial} from './surfaceMaterial';
+import {evaluateSnapshotSurfaceMaterial,type SnapshotSurfaceMaterialResult} from './surfaceMaterial';
 import {snapshotPropertyResponsesCacheKey} from './propertyResponses';
 import {createSnapshotSurfaceValueSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEditWithReplay,SnapshotSurfaceTargetEditError,snapshotSurfaceOwnsBasisDraft,type SnapshotSurfaceTargetEditResult} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
@@ -416,6 +416,8 @@ const controlGeometryProducts=new InputCache<SnapshotCoverageEvaluation>(2048);
 /** Same complete semantic key as the pinned product map; bridges equivalent
  * immutable replay/commit wrappers without retaining discarded contexts. */
 const completeSurfaceProducts=new InputCache<SnapshotEvaluation>(512);
+interface PreparedSurfaceProduct {material:SnapshotSurfaceMaterialResult;paintBatches:PaintBatch[];snapshotId:string}
+const surfaceMaterialProducts=new WeakMap<SnapshotEvaluation,PreparedSurfaceProduct>();
 const membershipPreparationCaches=new InputCache<SnapshotInputParent>(1024);
 const mirrorSurfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<SnapshotSurfaceMirrorContext>>();
 /** The controls at a real Recorder vertex are exactly this resolved basis.
@@ -487,15 +489,21 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
   if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else if(recipe||native.get(selected.snapshotId)!==selected){context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,context.index.snapshots.get(selected.snapshotId)!,drawing,result.provenance);}else result.paintBatches=selected.paintBatches;
   context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
  }
- let drawing=prior?.drawing??normal?.drawing??emptyDrawing();
+ let drawing=prior?.drawing??normal?.drawing??emptyDrawing(),materialProduct:SnapshotSurfaceMaterialResult|undefined,reusedPaint:PaintBatch[]|undefined;
  if(normal&&!controls&&!prior){
-  context.count('material');const material=evaluateSnapshotSurfaceMaterial(effectiveGraph,normal.simplex,refs,drawing,requested,mirrorContext),visibility=graph.visibilityRecipes?.[normal.simplex.simplexId];
+  const previousMaterial=context.inheritedMaterial(lineageKey,recording.id);
+  context.count('material');const material=evaluateSnapshotSurfaceMaterial(effectiveGraph,normal.simplex,refs,drawing,requested,mirrorContext,{retainLineage:true,...previousMaterial?{previous:previousMaterial.product.material,changes:previousMaterial.changes}:{}}),visibility=graph.visibilityRecipes?.[normal.simplex.simplexId];
+  materialProduct=material;
+  if(material.paintLayoutUnchanged&&previousMaterial?.product.snapshotId===selected.snapshotId)reusedPaint=previousMaterial.product.paintBatches;
   drawing=visibility?evaluateSnapshotVisibilityRecipe(visibility,refs.map(value=>base(value.snapshotId)),material.drawing,requested):material.drawing;
   diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));
  }
  const snapshot=context.index.snapshots.get(selected.snapshotId)!;
  const result=copySnapshotEvaluation(selected,{paintBatches:[],diagnosticStage:(active.length?active:[selected]).every(value=>value.diagnosticStage==='full')?'full':'preview',angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(value=>value.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(value=>value.intervalTransportErrors)});
- if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
+ if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else if(reusedPaint)result.paintBatches=reusedPaint;else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}
+ const product=materialProduct?{material:materialProduct,paintBatches:result.paintBatches,snapshotId:selected.snapshotId}:prior?surfaceMaterialProducts.get(prior):undefined;
+ if(product){context.materialLineages.set(lineageKey,product);surfaceMaterialProducts.set(result,product);}
+ context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
 }
 export interface PreparedRecordingCounters {
  validation:number;dependencyIndex:number;membershipSignature:number;membershipStructure:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;simplexProgram:number;
@@ -542,7 +550,7 @@ export const getRecordingEvaluationStageTotals=()=>({...evaluationStageTotals});
  * from its frozen parent while keeping its own products and sample scratch. */
 class RecordingContext implements PreparedRecordingContext {
  readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;readonly dependencyRevision:string;
- readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();readonly geometryLineages=new Map<string,SnapshotCoverageEvaluation>();
+ readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();readonly geometryLineages=new Map<string,SnapshotCoverageEvaluation>();readonly materialLineages=new Map<string,PreparedSurfaceProduct>();
  private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private originalKeys=new Map<string,string>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
  constructor(readonly workspace:RecordingSnapshotWorkspace,readonly defaults:SnapshotEvaluationOptions,readonly before?:RecordingContext){
   this.defaults={immutableInputs:defaults.immutableInputs};
@@ -647,6 +655,13 @@ class RecordingContext implements PreparedRecordingContext {
   for(let context=this.before;context;context=context.before){
    const previous=context.geometryLineages.get(key);if(!previous)continue;
    const changes=preparedControlChangesBetween(context.workspace,this.workspace,recordingId);if(changes)return {previous,changes};
+  }
+ }
+ inheritedMaterial(key:string,recordingId:string):{product:PreparedSurfaceProduct;changes:NonNullable<ReturnType<typeof preparedControlChangesBetween>>}|undefined {
+  if(!this.defaults.immutableInputs)return;
+  for(let context=this.before;context;context=context.before){
+   const product=context.materialLineages.get(key);if(!product)continue;
+   const changes=preparedControlChangesBetween(context.workspace,this.workspace,recordingId);if(changes)return {product,changes};
   }
  }
  sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return withDrawingReadScope(()=>requests.map(options=>this.sample(recordingId,options)));}
