@@ -1,6 +1,6 @@
 import type {PreparedRecordingChanges} from './workspaceChanges';
 export type {PreparedRecordingChanges} from './workspaceChanges';
-import {indexPreparedSnapshotDependencies,snapshotSurfaceDemand,type PreparedSnapshotDependencyIndex} from './preparedSnapshotDependencies';
+import {indexPreparedSnapshotDependencies,preparedSnapshotDependencyRevision,snapshotSurfaceDemand,type PreparedSnapshotDependencyIndex} from './preparedSnapshotDependencies';
 import {locateSnapshotSimplex} from './triangulation';
 import {mirrorViewDrawingPresence,snapshotViewMirrorCurvePairs} from './viewMirrorInput';
 import {recordingViewMirrorRelation} from './viewMirrorRelation';
@@ -502,6 +502,7 @@ export interface PreparedRecordingContext {
 type SnapshotPlan={key:string;options:SnapshotEvaluationOptions;recording?:SnapshotRecording};
 const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
 const semanticKey=(value:unknown):string=>{const text=JSON.stringify(value);let key=semanticKeys.get(text);if(!key){key=String(nextSemanticKey++);if(semanticKeys.size>=32768)semanticKeys.delete(semanticKeys.keys().next().value!);semanticKeys.set(text,key);}return key;};
+const dependencyPlanCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<PreparedSnapshotDependencyIndex>>();
 const contextEvaluations=new WeakMap<SnapshotEvaluation,PreparedRecordingContext>();
 const evaluationRequests=new WeakMap<SnapshotEvaluation,SnapshotEvaluationOptions>();
 export const preparedRecordingOptionsForEvaluation=(evaluation:SnapshotEvaluation):SnapshotEvaluationOptions|undefined=>{const options=evaluationRequests.get(evaluation);return options?{...options,...(options.angle?{angle:{...options.angle}}:{})}:undefined;};
@@ -514,14 +515,18 @@ const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex
  * than in the small display-frame LRU. A fork can borrow any unaffected value
  * from its frozen parent while keeping its own products and sample scratch. */
 class RecordingContext implements PreparedRecordingContext {
- readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;
+ readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;readonly dependencyRevision:string;
  readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();
- private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
+ private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private originalKeys=new Map<string,string>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
  constructor(readonly workspace:RecordingSnapshotWorkspace,readonly defaults:SnapshotEvaluationOptions,readonly before?:RecordingContext){
   this.defaults={immutableInputs:defaults.immutableInputs};
   this.workspace=defaults.immutableInputs?workspace:structuredClone(workspace);workspace=this.workspace;
-  assertRecordingWorkspaceActive(workspace);validateSnapshotGraph(workspace);this.counters.validation++;
-  this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;
+  assertRecordingWorkspaceActive(workspace);this.dependencyRevision=preparedSnapshotDependencyRevision(workspace,immutableIdentity);
+  let plans=dependencyPlanCaches.get(workspace.library);if(!plans){plans=new InputCache(64);dependencyPlanCaches.set(workspace.library,plans);}
+  const reusable=defaults.immutableInputs?(before?.dependencyRevision===this.dependencyRevision?before.index:plans.get(this.dependencyRevision)):undefined;
+  if(reusable)this.index=indexPreparedSnapshotDependencies(workspace,reusable);
+  else{validateSnapshotGraph(workspace);this.counters.validation++;this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;}
+  if(defaults.immutableInputs)plans.set(this.dependencyRevision,this.index);
   this.cache=evaluationCache(workspace,defaults.immutableInputs);
  }
  count(stage:Exclude<keyof PreparedRecordingCounters,'bySnapshot'>,snapshotId?:string):void {
@@ -550,9 +555,17 @@ class RecordingContext implements PreparedRecordingContext {
   const libraryInputs=[...originalIds].map(id=>{const curve=this.workspace.library.curves[id];return [id,token(curve),...(curve?.nodes??[]).map(id=>token(this.workspace.library.nodes[id])),token(this.workspace.library.fills[id]),token(this.workspace.library.offsets[id])];});
   const tracks=recording?.mode==='triangulated'?null:recording?.tracks.map(track=>{const {draft,...saved}=track;return drafts?token(track):requested.immutableInputs?[track.id,track.channel,track.targetId,track.elementId,token(track.keys),track.interpolation,track.channel==='interval'?token(track.materialIssue):null]:saved;});
   const recipeKeys=[token(material),token(visibility),material?token(graph?.mesh):null,material?token(graph?.responseExpressions):null,material?token(graph?.materialPartitions):null,material?token(graph?.materialPathLineages):null,snapshotMaterialRecipeHasMirror(material)?[token(graph?.edgeResponses),token(graph?.triangleResponses),token(graph?.responseExpressions),live?token(graph?.correctionFrames):null,token(graph?.materialRecipes),effectiveGraph&&snapshotPropertyResponsesCacheKey(effectiveGraph)]:null,mirror?.targetSnapshotId===id?mirror:null];
-  const plan={key:semanticKey([own,libraryInputs,tracks,recipeKeys,[...dependencies.values()],evaluationOptionsKey({...options,liveBasisDrafts:false})]),options,recording};this.planning.delete(localKey);this.plans.set(localKey,plan);
+  const materialIssues=[...Object.values(snapshot.inheritedState?.intervalMaterialIssues??{}),...Object.values(snapshot.deformation.intervalMaterialIssues??{}),...(drafts?Object.values(snapshot.draft?.deformation.intervalMaterialIssues??{}):[]),...(recording?.mode!=='triangulated'?recording?.tracks.flatMap(track=>track.channel==='interval'&&track.materialIssue?[track.materialIssue]:[])??[]:[])],originalDependencies=[...new Set(materialIssues.map(issue=>issue.sourceSnapshotId))].map(source=>this.originalDependencyKey(source));
+  const plan={key:semanticKey([own,libraryInputs,tracks,recipeKeys,originalDependencies,[...dependencies.values()],evaluationOptionsKey({...options,liveBasisDrafts:false})]),options,recording};this.planning.delete(localKey);this.plans.set(localKey,plan);
   for(let parent=this.before;parent;parent=parent.before){const value=parent.snapshotValues.get(plan.key);if(value){this.snapshotValues.set(plan.key,value);break;}}
   return plan;
+ }
+ /** Suspended interval channels inspect original material signatures without
+  * numerically resolving that source. They can reach outside layer ancestry. */
+ originalDependencyKey(id:string):string {
+  const known=this.originalKeys.get(id);if(known)return known;const snapshot=this.index.snapshots.get(id),token=(value:object|undefined)=>this.defaults.immutableInputs?immutableIdentity(value):value;
+  const ids=snapshot?.layers.flatMap(layer=>layer.kind==='original'?layer.items:[])??[],library=this.workspace.library;
+  const key=semanticKey(['original-material',id,token(snapshot?.layers),token(snapshot?.relations),token(snapshot?.source),ids.map(id=>{const curve=library.curves[id];return [id,token(curve),...curve?.nodes.map(id=>token(library.nodes[id]))??[],token(library.fills[id]),token(library.offsets[id])];})]);this.originalKeys.set(id,key);return key;
  }
  effectiveGraph(recording:SnapshotRecording,live:boolean):NonNullable<SnapshotRecording['angleGraph']> {const key=JSON.stringify([recording.id,live]);let graph=this.effectiveGraphs.get(key);if(!graph){const source=recording.angleGraph!;graph=live||!source.correctionFrames?.some(frame=>frame.status==='draft')?source:{...source,correctionFrames:source.correctionFrames?.filter(frame=>frame.status!=='draft')};this.effectiveGraphs.set(key,graph);}return graph;}
  /** Coordinate-free structural projection using the same membership/alias/fork

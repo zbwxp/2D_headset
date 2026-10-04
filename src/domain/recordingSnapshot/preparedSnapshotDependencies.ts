@@ -1,6 +1,6 @@
 import type {RecordingSnapshotWorkspace,RecordingSnapshot,SnapshotRecording,SnapshotAngleGraph,Angle} from './model';
 import {recordingViewMirrorRelation} from './viewMirrorRelation';
-import {snapshotMaterialRecipeDependencies} from './materialRestriction';
+import {snapshotMaterialRecipeDependencies,snapshotMaterialRecipeHasMirror} from './materialRestriction';
 import {snapshotVisibilityRecipeDependencies} from './visibilityRestriction';
 import {snapshotResponseExpressionBasisReferences,snapshotResponseExpressionFitParameters} from './responseExpressions';
 import {effectiveSnapshotSurfaceResponses} from './surfaceTargets';
@@ -15,9 +15,10 @@ export interface PreparedSnapshotDependencyIndex {
  dependencies:ReadonlyMap<string,ReadonlySet<string>>;
  dependents:ReadonlyMap<string,ReadonlySet<string>>;
 }
-export function indexPreparedSnapshotDependencies(workspace:RecordingSnapshotWorkspace):PreparedSnapshotDependencyIndex {
+export function indexPreparedSnapshotDependencies(workspace:RecordingSnapshotWorkspace,reuse?:Pick<PreparedSnapshotDependencyIndex,'dependencies'|'dependents'>):PreparedSnapshotDependencyIndex {
  const snapshots=new Map(workspace.snapshots.map(snapshot=>[snapshot.id,snapshot])),recordings=new Map(workspace.recordings.map(recording=>[recording.id,recording])),owners=new Map<string,SnapshotRecording>();
  for(const recording of workspace.recordings)for(const id of recording.snapshotIds)if(!owners.has(id))owners.set(id,recording);
+ if(reuse)return {snapshots,recordings,recordingForSnapshot:owners,dependencies:reuse.dependencies,dependents:reuse.dependents};
  const dependencies=new Map<string,Set<string>>(),dependents=new Map<string,Set<string>>();
  for(const snapshot of snapshots.values()){
   const ids=new Set(snapshot.layers.flatMap(layer=>layer.kind==='reference'?[layer.baseSnapshotId]:[]));
@@ -27,10 +28,22 @@ export function indexPreparedSnapshotDependencies(workspace:RecordingSnapshotWor
   const recording=owners.get(snapshot.id),graph=recording?.angleGraph,mirror=recording&&recordingViewMirrorRelation(workspace,recording),material=graph?.materialBasisRecipes?.[snapshot.id],visibility=graph?.visibilityBasisRecipes?.[snapshot.id];
   if(material)for(const id of snapshotMaterialRecipeDependencies(material,graph!.mesh,graph,snapshot.angle))ids.add(id);
   if(visibility)for(const id of snapshotVisibilityRecipeDependencies(visibility))ids.add(id);
+  for(const state of [snapshot.inheritedState,snapshot.deformation,snapshot.draft?.deformation])for(const issue of Object.values(state?.intervalMaterialIssues??{}))ids.add(issue.sourceSnapshotId);
+  if(recording?.mode!=='triangulated')for(const track of recording?.tracks??[])if(track.channel==='interval'&&track.materialIssue)ids.add(track.materialIssue.sourceSnapshotId);
   if(mirror?.targetSnapshotId===snapshot.id){ids.add(mirror.sourceSnapshotId);ids.add(mirror.zeroSnapshotId);}
   dependencies.set(snapshot.id,ids);for(const id of ids){let values=dependents.get(id);if(!values){values=new Set();dependents.set(id,values);}values.add(snapshot.id);}
  }
  return {snapshots,recordings,recordingForSnapshot:owners,dependencies,dependents};
+}
+
+/** Graph validation and address compilation depend on ancestry and recipe
+ * addresses, not on coordinates, scalar knots or the cursor. Revisions retain
+ * effective mirror-expression inputs, including draft expression leaves. */
+export function preparedSnapshotDependencyRevision(workspace:RecordingSnapshotWorkspace,identity:(value:object|undefined)=>number):string {
+ return JSON.stringify([
+  workspace.snapshots.map(snapshot=>[snapshot.id,snapshot.parentSnapshotId,!!snapshot.parentLayers,!!snapshot.inputMirror,snapshot.layers.map(layer=>layer.kind==='reference'?[layer.kind,layer.id,layer.baseSnapshotId,layer.baseLayerId,layer.membership]:[layer.kind,layer.id,layer.items,layer.membership]),snapshot.nodeAliases,snapshot.nodeForks,Object.values(snapshot.memberSources??{}),[snapshot.inheritedState,snapshot.deformation,snapshot.draft?.deformation].flatMap(state=>Object.values(state?.intervalMaterialIssues??{}).map(issue=>issue.sourceSnapshotId))]),
+  workspace.recordings.map(recording=>{const graph=recording.angleGraph,mirrorMaterial=Object.values(graph?.materialBasisRecipes??{}).some(snapshotMaterialRecipeHasMirror);return [recording.id,recording.snapshotIds,identity(graph?.mesh),identity(graph?.materialBasisRecipes),identity(graph?.visibilityBasisRecipes),recordingViewMirrorRelation(workspace,recording),mirrorMaterial?[identity(graph?.responseExpressions),identity(graph?.materialRecipes),graph?.correctionFrames?.filter(frame=>frame.status==='draft'&&frame.responseExpressions).map(frame=>identity(frame.responseExpressions))]:null,recording.mode!=='triangulated'?recording.tracks.flatMap(track=>track.channel==='interval'&&track.materialIssue?[track.materialIssue.sourceSnapshotId]:[]):[]];}),
+ ]);
 }
 
 /** Active controls include expression basis leaves and fitted parameter domains.

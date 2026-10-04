@@ -1,3 +1,5 @@
+import {drawingSignature} from '../../domain/vectorRecording/model';
+import {materializeOriginalSnapshot} from '../../domain/recordingSnapshot/sources';
 import {describe,expect,it} from 'vitest';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
 import {evaluateRecordingSnapshot,resolveRecordingSnapshotBasis} from '../../domain/recordingSnapshot/evaluation';
@@ -38,6 +40,23 @@ describe('prepared recording request ownership',()=>{
   const {workspace,recording}=fixture(),options={immutableInputs:true,useDraft:true,diagnostics:'preview'} as const;
   const saved=resolveRecordingSnapshotBasis(workspace,recording,'side',options),live=resolveRecordingSnapshotBasis(workspace,{...recording,angle:{x:90,y:0}},'side',options);
   expect(node(saved)).toBe(1);expect(node(live)).toBe(2);expect(node(resolveRecordingSnapshotBasis(workspace,recording,'side',options))).toBe(1);expect(recording.angle).toEqual({x:0,y:0});
+ });
+ it('shares validated dependency preparation across response forks and rebuilds it for structural changes',()=>{
+  const {workspace,recording}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'});context.sample('r',{angle:{x:45,y:0}});
+  const graph=recording.angleGraph!,edge=graph.mesh.edges[0],response={...workspace,recordings:[{...recording,angleGraph:{...graph,edgeResponses:{[edge.id]:{nodes:{a:{x:[[.5,.6] as [number,number]]}},handles:{}}}}}]},fork=context.fork(response);fork.sample('r',{angle:{x:45,y:0}});
+  expect(fork.counters.validation).toBe(0);expect(fork.counters.dependencyIndex).toBe(0);expect(fork.counters.ownGeometry).toBe(0);
+  const structural={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id==='side'?{...snapshot,layers:snapshot.layers.map(layer=>({...layer,membership:{excludeElementIds:['c']}}))}:snapshot)},changed=context.fork(structural);changed.sample('r',{angle:{x:45,y:0}});
+  expect(changed.counters.validation).toBe(1);expect(changed.counters.dependencyIndex).toBe(1);
+  expect(()=>context.fork({...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id==='side'?{...snapshot,parentSnapshotId:'side'}:snapshot)})).toThrow(/cycle/);
+ });
+ it('invalidates a retained material source signature outside geometric ancestry',()=>{
+  const {workspace}=fixture(),external=emptyRecordingSnapshot('external','External','drawing');external.layers=[{kind:'original',id:'external-layer',name:'External',items:['external-curve'],visible:true,locked:false}];
+  workspace.library.nodes.externalA={id:'externalA',position:[0,0]};workspace.library.nodes.externalB={id:'externalB',position:[1,1]};workspace.library.curves['external-curve']={...workspace.library.curves.c,id:'external-curve',nodes:['externalA','externalB']};workspace.snapshots.push(external);
+  const zero=workspace.snapshots[0];zero.relations.displayIntervals={add:[{id:'interval',anchor:{id:'c',reverse:false},scope:'CURVE',ranges:[{id:'gap',mode:'HIDE',start:.2,end:.7}]}]};
+  zero.deformation.intervalMaterialIssues={interval:{sourceSnapshotId:external.id,sourceSignature:drawingSignature(materializeOriginalSnapshot(workspace,external.id)!),message:'Source material is unavailable.'}};
+  const context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'}),before=context.sample('r');expect(before.drawing.displayIntervals).toHaveLength(1);
+  const changed={...workspace,library:{...workspace.library,nodes:{...workspace.library.nodes,externalA:{...workspace.library.nodes.externalA,position:[.3,.2] as [number,number]}}}},next=context.fork(changed).sample('r'),cold=evaluateRecordingSnapshot(structuredClone(changed),'r',{diagnostics:'preview'});
+  expect(next.drawing.displayIntervals).toHaveLength(0);expect(next.drawing).toEqual(cold.drawing);
  });
  it('retains the exact sampled draft and product policy independently of the factory handle',()=>{
   const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,useDraft:true,omitShapes:true,diagnostics:'preview'}),sample=context.sample('r',{angle:{x:45,y:0},useDraft:false,omitShapes:false,products:'controls'});
