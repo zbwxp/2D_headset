@@ -126,6 +126,7 @@ describe('prepared Recording context through the production sampling entrypoints
   const preview=prepareSnapshotPreview(f.project,{commands:[{op:'changeInterval',layerId:'layer',sourceTrackId:'interval',rangeId:'gap',end:.3}]}),fork=context.fork(preview.recordingSnapshots),actual=fork.sample('recording');
   expect(actual.drawing.displayIntervals![0].ranges[0].end).toBeCloseTo(.3,12);expect(controls(actual.drawing)).toEqual(controls(before.drawing));
   expect(fork.counters.ownGeometry).toBe(0);expect(fork.counters.basis).toBe(0);expect(fork.counters.coverageStructure).toBe(0);
+  expect(fork.counters.surfaceSample).toBe(0);
   expect(preparation(context)).toEqual(warm);
   expectColdEquivalent(actual,preview.recordingSnapshots);
  });
