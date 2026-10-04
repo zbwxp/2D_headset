@@ -1,3 +1,4 @@
+import type {EditorHistoryContext} from '../../app/editorHistory';
 import {prepareDrawingSnapshotObjectLocks} from '../../app/drawingSnapshotEdit';
 import {prepareDrawingCageControlPreview} from '../../app/drawingSnapshotEdit';
 import {isLayerCageDomain} from '../../domain/recordingSnapshot/layerDomains';
@@ -83,6 +84,11 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const snapshots=useEditor(s=>s.project.drawingSnapshots),activeSnapshot=snapshots?.items.find(item=>item.id===snapshots.activeId);
  const {tool,selection,layerId,zoom,pan,preview,sidebar,width,penJoin,showFills,fillVisibility}=session;
  const panelHeight=session.panelHeight,setPanelHeight=(value:number)=>session.set({panelHeight:value});
+ const viewportGesture=useRef<{zoom:number;pan:Point2;context:EditorHistoryContext}|null>(null);
+ function beginViewport(){const current=useDrawing.getState();viewportGesture.current={zoom:current.zoom,pan:[...current.pan],context:useEditor.getState().captureHistoryContext()};}
+ function finishViewport(){const before=viewportGesture.current;viewportGesture.current=null;if(!before)return;const current=useDrawing.getState(),after={zoom:current.zoom,pan:[...current.pan] as Point2};if(before.zoom===after.zoom&&before.pan.every((v,i)=>v===after.pan[i]))return;useEditor.getState().commitWorkspaceEdit({kind:'viewport',undo:()=>session.set({zoom:before.zoom,pan:before.pan}),redo:()=>session.set(after)},before.context);}
+ function cancelViewport(){const before=viewportGesture.current;viewportGesture.current=null;if(before)session.set({zoom:before.zoom,pan:before.pan});}
+ function viewportChange(change:()=>void){beginViewport();change();finishViewport();}
  const [draft,setDraft]=useState<Doc|null>(null),[hint,setHint]=useState(''),[first,setFirst]=useState<Endpoint|null>(null),[pen,setPen]=useState<Pen|null>(null),[penPreview,setPenPreview]=useState<Cubic|null>(null);
  const [pending,setPending]=useState<{ids:string[];scope:string[];mirror?:{source:string;target:string;base:Doc}}|null>(null),[referenceMoving,setReferenceMoving]=useState(false),[box,setBox]=useState<{a:Point2;b:Point2}|null>(null);
  const [zoomOut,setZoomOut]=useState(false),[axisSnap,setAxisSnap]=useState<Point2|null>(null),[nodeSnap,setNodeSnap]=useState<Point2|null>(null),[guideSnap,setGuideSnap]=useState<{point:Point2;kind:string}|null>(null);
@@ -113,7 +119,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
  const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent)=>{const before=currentDrawing();if(n===before)return;n=workspaceId==='drawing'&&!editIntent?prepareDrawingCageControlPreview(useEditor.getState().project,before,n)??finalizeGeometryEdit(before,n,writes):finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent?.kind==='node-unbind'?(view?createSnapshotNodeUnbindIntent(view.snapshotId,before,n,editIntent.endpoint):undefined):editIntent?.kind==='geometry-authoring'||editIntent?.kind==='mirror-authoring'?undefined:editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
- const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom')session.set({zoom:g.zoom,pan:g.pan});if(g)release(g.pointerId);};
+ const cancelDraft=()=>{const g=drag.current;if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom'||g?.kind==='pan')cancelViewport();if(g)release(g.pointerId);};
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
  function run(fn:()=>Doc,intent?:DrawingCommandIntent){try{const n=fn();commit(n,undefined,intent);setHint('');}catch(e){error(e);}}
  function choose(next:DrawingSelection,mode?:DrawingTool){
@@ -169,7 +175,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const penOptions=()=>({layerId:activeLayer?.id??null,unit,width,join:penJoin,taperScale:usePenPreferences.getState().taperScale});
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
   if(drag.current||e.button!==0&&kind!=='pan'&&kind!=='zoom')return;e.preventDefault();e.stopPropagation();svg.current!.focus({preventScroll:true});
-  const base=currentDrawing();
+  const base=currentDrawing();if(kind==='pan'||kind==='zoom')beginViewport();
   drag.current={kind,...(['move','rotate','scale','deform'].includes(kind)?{layerDomainOperationId:uid()}:{}),start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='pen'&&drag.current.penGesture)drag.current.penGesture={...drag.current.penGesture,base};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
   try{svg.current!.setPointerCapture(e.pointerId);}catch{/* Window tracking remains active if native capture is unavailable. */}
  }
@@ -202,7 +208,8 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(tool==='ellipse'){try{startDrag(e,'ellipse',{ellipse:beginDrawingEllipseGesture(stored,activeLayer?.id??null,local(e),width)});}catch(ex){error(ex);}return;}
   if(tool==='select'||tool==='direct'){if(!e.shiftKey)choose({ids:[]},tool);startDrag(e,'box',{shift:e.shiftKey});}
  }
- function fit(){const b=selectionBounds(d,shownCurves);if(!b){session.set({zoom:1,pan:[0,0]});return;}const base=Math.min(size.width,size.height)/2.8,z=Math.max(.1,Math.min(8,Math.min((size.width-100)/Math.max(.1,b.max[0]-b.min[0]),(size.height-100)/Math.max(.1,b.max[1]-b.min[1]))/base));session.set({zoom:z,pan:[-b.center[0]*base*z,b.center[1]*base*z]});}
+ function fit(){viewportChange(fitViewport);}
+ function fitViewport(){const b=selectionBounds(d,shownCurves);if(!b){session.set({zoom:1,pan:[0,0]});return;}const base=Math.min(size.width,size.height)/2.8,z=Math.max(.1,Math.min(8,Math.min((size.width-100)/Math.max(.1,b.max[0]-b.min[0]),(size.height-100)/Math.max(.1,b.max[1]-b.min[1]))/base));session.set({zoom:z,pan:[-b.center[0]*base*z,b.center[1]*base*z]});}
  function zoomAt(e:{clientX:number;clientY:number},value:number){const z=Math.max(.1,Math.min(12,value)),p=local(e),r=svg.current!.getBoundingClientRect(),u=unit*z/zoom;session.set({zoom:z,pan:[e.clientX-r.left-size.width/2-p[0]*u,e.clientY-r.top-size.height/2+p[1]*u]});}
  function move(e:React.PointerEvent|PointerEvent){
   let p=local(e);const g=drag.current;if(!g&&tool==='pen'){const hit=guideCandidate(stored,p,e.altKey);setGuideSnap(hit);if(hit)p=hit.point;}
@@ -257,12 +264,12 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   }catch(ex){if(ex instanceof cmd.RelatedSelection){cancelDraft();error(ex,g.ids);}else setHint(t((ex as Error).message));}
  }
  function up(e?:PointerEvent|MouseEvent,interrupted=false){
-  const g=drag.current;if(!g)return;
+  const g=drag.current;if(!g)return;if(interrupted){cancelDraft();return;}
   drag.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);
   release(g.pointerId);
-  if(currentDrawing()!==g.base){setPenPreview(null);return;}
+  if(currentDrawing()!==g.base){cancelViewport();setPenPreview(null);return;}
   try{
-   if(g.kind==='zoom'){if(!g.zoomMoved&&!interrupted&&e)zoomAt(e,g.zoom!*((e.ctrlKey||e.altKey)?1/1.3:1.3));return;}
+   if(g.kind==='zoom'||g.kind==='pan'){if(g.kind==='zoom'&&!g.zoomMoved&&!interrupted&&e)zoomAt(e,g.zoom!*((e.ctrlKey||e.altKey)?1/1.3:1.3));interrupted?cancelViewport():finishViewport();return;}
    if(g.kind==='pen'){
     const result=finishPenGesture(g.penGesture!,penOptions()),n=result.candidate;
     if(!g.pen){penHistory.current=new WeakMap([[g.base,result.state]]);setPen(result.state);}
@@ -322,6 +329,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const editor=useEditor.getState();redo?editor.redo():editor.undo();
  }
  latest.current={d,selected,selection,tool,run,choose,selectTool,cancelDraft,commit,applyTransform,scope,mayInclude,groupSelection,deleteSelected,cutSelected,pasteSelected,clipboard:clipboard||(workspaceId==='drawing'&&layerReferenceClipboard),history};
+ useEffect(()=>{const cancel=()=>latest.current.cancelDraft();window.addEventListener('contour:cancel-recording-gesture',cancel);return()=>window.removeEventListener('contour:cancel-recording-gesture',cancel);},[]);
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
    setZoomOut(e.ctrlKey||e.altKey);
@@ -386,7 +394,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   if(ref.locked||!ref.visible)commit({...d,reference:{...ref,locked:false,visible:true}});
   setPropertiesOpen(true);setReferenceMoving(true);
  }}>{t(referenceMoving?'完成图片平移':ref?.locked?'解锁并平移参考图':'平移参考图')}</button></div>}
- <svg ref={svg} width="100%" height="100%" tabIndex={0} data-testid="drawing-canvas" aria-label={t('绘制画布')} onContextMenu={e=>e.preventDefault()} onPointerDown={down} onPointerEnter={e=>setZoomOut(e.ctrlKey||e.altKey)} onPointerMove={e=>{setZoomOut(e.ctrlKey||e.altKey);if(!drag.current)move(e);}} onWheel={e=>{if(!drag.current)zoomAt(e,zoom*Math.exp(-e.deltaY*.001));}}>
+ <svg ref={svg} width="100%" height="100%" tabIndex={0} data-testid="drawing-canvas" aria-label={t('绘制画布')} onContextMenu={e=>e.preventDefault()} onPointerDown={down} onPointerEnter={e=>setZoomOut(e.ctrlKey||e.altKey)} onPointerMove={e=>{setZoomOut(e.ctrlKey||e.altKey);if(!drag.current)move(e);}} onWheel={e=>{if(!drag.current)viewportChange(()=>zoomAt(e,zoom*Math.exp(-e.deltaY*.001)));}}>
  {ref?.visible&&<image data-testid="drawing-reference" href={ref.dataUrl} width={refSize[0]} height={refSize[1]} x={-refSize[0]/2} y={-refSize[1]/2} opacity={ref.opacity} transform={`translate(${screen(ref.offset)}) rotate(${ref.rotation})`} pointerEvents="none"/>}
  <ArtworkReference screen={screen} unit={unit}/>
  {underlay?.({...size,unit,pan})}

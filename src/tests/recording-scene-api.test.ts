@@ -87,10 +87,10 @@ test('failed commands, stale source revisions and mode guards cannot partially w
  h.mode('drawing');expect(h.api.scene({commands:[]})).toMatchObject({ok:false,error:{code:'MODE_RESTRICTED'}});expect(h.api.inspectScene().ok).toBe(true);
 });
 
-test('Recording-mode facade history cannot undo an inactive working-copy-only source change',()=>{
+test('Recording-mode facade delegates source history to the global transaction host',()=>{
  const a=project(),asset=a.drawingSnapshots!.activeId!,before={...a,...saveDrawingSnapshot(a,'Other active artwork')},current={...before,drawingWorkingCopies:{[asset]:{...a.drawing!,mirrorAxisX:.3}}};let calls=0;
  const api=createVectorEditingApi({getState:()=>({project:current,past:[before],future:[]}),getMode:()=> 'recording',commitDrawing(){throw Error('Unexpected source write');},undo(){calls++;},redo(){calls++;}});
- expect(api.undo()).toMatchObject({ok:false,error:{code:'MODE_RESTRICTED'}});expect(calls).toBe(0);
+ expect(api.undo()).toMatchObject({ok:true});expect(calls).toBe(1);
 });
 
 test('pure planner and JSON parser reject unknown payloads and retain orphan source references',()=>{

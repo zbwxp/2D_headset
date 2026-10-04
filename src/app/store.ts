@@ -10,7 +10,8 @@ import {syncVectorRecordingSources,recordingSourceBaselines,loadKnownRecordingSo
 import {validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
 import {getInitialAutosave,getStorageStatus,markInitialAutosaveUnreadable} from './projectStorage';
-import {assertSourceEditable,canEditSource} from './workspaceMode';
+import {assertSourceEditable,canEditSource,useWorkspaceMode} from './workspaceMode';
+import {captureEditorHistoryContext,restoreEditorHistoryContext,type EditorHistoryContext,type EditorHistoryEntry,type WorkspaceHistoryEffect} from './editorHistory';
 import {parseVectorRecording} from '../domain/vectorRecording/persistence';
 import {syncPoseSnapshots} from '../domain/recording/poses';
 import {getStarterProject} from './starterProject';
@@ -223,6 +224,11 @@ interface State {
   selectedId: string | null;
   past: LandmarkProject[];
   future: LandmarkProject[];
+  historyPast: (EditorHistoryEntry|null)[];
+  historyFuture: (EditorHistoryEntry|null)[];
+  captureHistoryContext:()=>EditorHistoryContext;
+  commitWorkspaceEdit:(effect:WorkspaceHistoryEffect,context?:EditorHistoryContext)=>void;
+  cancelEdit:()=>void;
   message: string;
   referenceMoving: boolean;
   beginEdit: (continuous?:boolean) => void;
@@ -269,9 +275,20 @@ const autosave=createAutosave(p=>{void writeAutosave(KEY,p).catch(()=>useEditor.
 const persist=(p:LandmarkProject)=>autosave.request(p);
 if(typeof window!=='undefined'){window.addEventListener('beforeunload',e=>{autosave.flush();const state=getStorageStatus().state;if(state==='saving'||state==='error'){e.preventDefault();e.returnValue='';}});window.addEventListener('pagehide',()=>autosave.flush());document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosave.flush();});}
 export const useEditor = create<State>((rawSet, get, api) => {
-  const set:typeof rawSet=(update:any)=>rawSet(normalizeEditorUpdate(get(),typeof update==="function"?update(get()):update),true);
-  api.setState=set;
   let editBase:LandmarkProject|null=null;
+  let activeHistory:EditorHistoryEntry|null=null;
+  let abandonedFuture:{past:LandmarkProject[];historyPast:(EditorHistoryEntry|null)[];future:LandmarkProject[];historyFuture:(EditorHistoryEntry|null)[]}|null=null;
+  const set:typeof rawSet=(update:any)=>{
+    const patch=typeof update==='function'?update(get()):update;
+    if(activeHistory&&patch.project){activeHistory.after=patch.project;activeHistory.afterContext=captureEditorHistoryContext(patch.project,patch.viewId??get().viewId);}
+    rawSet(normalizeEditorUpdate(get(),patch),true);
+  };
+  api.setState=(update:any)=>{
+    const patch=typeof update==='function'?update(get()):update;
+    // Explicit host/test history replacement cannot reuse stale transactions.
+    if('past' in patch||'future' in patch){editBase=null;activeHistory=null;abandonedFuture=null;}
+    set({...patch,...('past' in patch&&!('historyPast' in patch)?{historyPast:patch.past.map(()=>null)}:{}),...('future' in patch&&!('historyFuture' in patch)?{historyFuture:patch.future.map(()=>null)}:{})});
+  };
   const applySnapshotEdit=(plan:SnapshotEditPlan)=>{if(!plan.changed)return;if(get().project!==plan.before)throw Error('The project changed before the snapshot edit could be applied.');set({project:plan.project});persist(plan.project);};
   const propagate=(next:LandmarkProject,directCurve?:string)=>{
     const end=timed('dependencyPropagation');const base=editBase??get().project;
@@ -374,7 +391,20 @@ export const useEditor = create<State>((rawSet, get, api) => {
     deleteLoomisRegion:id=>{if(!canEditModule(get().project,id,get().activeModule))return;const base=id.replace(/:mirror$/,'');get().beginEdit();commit({...get().project,loomisRegions:get().project.loomisRegions?.filter(r=>r.id!==base&&r.id!==base+':mirror')});get().endEdit();},
     setHeadRadius:(axis,value)=>{if(get().activeModule!=='HEADSET')return;const s=get();if(!Number.isFinite(value)||value<=1e-6)return;if(s.project.lockedViews?.length||s.project.landmarks.some(l=>Object.keys(l.viewLocks).length)){set({message:'调整 Loomis 尺寸前请先 Unlock 视图锁。'});return;}try{const p=migrateHeadFrame(s.project);commit(propagate({...p,headFrame:{...p.headFrame!,[axis]:value}}));}catch(e){set({message:(e as Error).message});}},
     beginDisplayEdit:()=>autosave.begin(),
-    endEdit:()=>{editBase=null;autosave.end();},
+    endEdit:()=>{
+      const entry=activeHistory;activeHistory=null;editBase=null;
+      if(entry){
+        if(useWorkspaceMode.getState().mode===entry.afterContext.mode)entry.afterContext=captureEditorHistoryContext(entry.after,get().viewId);
+        if(entry.before===entry.after&&!entry.effect&&get().historyPast.at(-1)===entry)set({past:get().past.slice(0,-1),historyPast:get().historyPast.slice(0,-1),...(abandonedFuture??{})});
+      }
+      abandonedFuture=null;autosave.end();
+    },
+    cancelEdit:()=>{
+      const entry=activeHistory;if(!entry){get().endEdit();return;}
+      activeHistory=null;editBase=null;
+      set({project:entry.before,past:get().past.slice(0,-1),historyPast:get().historyPast.slice(0,-1),...(abandonedFuture??{})});
+      abandonedFuture=null;entry.effect?.undo();restoreEditorHistoryContext(entry.beforeContext);persist(entry.before);autosave.end();
+    },
     startPointMerge:keepId=>{get().setTool({kind:'mergePoint'});if(keepId)get().pickMergePoint(keepId);},
     pickMergePoint:id=>{
       const s=get(),t=s.tool;if(t.kind!=='mergePoint')return;
@@ -516,13 +546,22 @@ export const useEditor = create<State>((rawSet, get, api) => {
     selectedId: initial.landmarks[0]?.id ?? null,
     past: [],
     future: [],
+    historyPast:[],historyFuture:[],
+    captureHistoryContext:()=>captureEditorHistoryContext(get().project,get().viewId),
+    commitWorkspaceEdit:(effect,context)=>{
+      get().beginEdit();const entry=activeHistory!;
+      if(context)entry.beforeContext=context;
+      entry.effect=effect;entry.afterContext=get().captureHistoryContext();get().endEdit();
+    },
     message,
     referenceMoving: false,
-    beginEdit: (continuous=false) => {if(continuous)autosave.begin();editBase=get().project;
-      set((s) => ({
-        past: [...s.past.slice(-(HISTORY_LIMIT - 1)), s.project],
-        future: [],
-      }));},
+    beginEdit: (continuous=false) => {
+      get().endEdit();if(continuous)autosave.begin();const s=get();editBase=s.project;
+      const context=captureEditorHistoryContext(s.project,s.viewId);
+      activeHistory={before:s.project,after:s.project,beforeContext:context,afterContext:context};
+      abandonedFuture={past:s.past,historyPast:s.historyPast,future:s.future,historyFuture:s.historyFuture};
+      set({past:[...s.past.slice(-(HISTORY_LIMIT-1)),s.project],historyPast:[...s.historyPast.slice(-(HISTORY_LIMIT-1)),activeHistory],future:[],historyFuture:[]});
+    },
     addView:(name,yaw,pitch)=>{try{const view=customView(name,yaw,pitch);get().beginEdit();commit({...get().project,views:[...get().project.views,view]});get().endEdit();set({viewId:view.id,referenceMoving:false});return true;}catch(e){get().notify((e as Error).message);return false;}},
     updateView:(id,name,yaw,pitch)=>{try{
       const s=get(),old=s.project.views.find(v=>v.id===id);if(!old)return false;
@@ -604,51 +643,25 @@ export const useEditor = create<State>((rawSet, get, api) => {
         message: `${v.label}：${locked ? "已启用视图锁；成对点仅约束 driver" : "已解除该视图锁"}`,
       });
     },
-    undo: () => {if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));editBase=null;autosave.end();
-      const s = get(),
-        p = s.past.at(-1);
-      if (!p) return;
-      if(!canEditSource()&&(p.drawing!==s.project.drawing||p.drawingSnapshots!==s.project.drawingSnapshots||p.drawingWorkingCopies!==s.project.drawingWorkingCopies)){s.notify('此历史步骤会修改源画稿，请返回绘制模式后撤销/重做。');return;}
-      set({
-        project: p, tool:{kind:"select"},
-        selectedCurveId: null,
-        curveCreation: null, patchCreation:null,selectedPatchId:p.patches?.some(x=>x.id===s.selectedPatchId)?s.selectedPatchId:null,
-        past: s.past.slice(0, -1),
-        future: [s.project, ...s.future],
-        selectedId: p.landmarks.some((l) => l.id === s.selectedId)
-          ? s.selectedId
-          : (p.landmarks[0]?.id ?? null),
-        viewId: p.views.some((v) => v.id === s.viewId)
-          ? s.viewId
-          : p.views[0].id,
-        referenceMoving: false,
-      });
-      // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='recordingSnapshots'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
-      else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
+    undo: () => {
+      if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));
+      get().endEdit();const s=get(),entry=s.historyPast.at(-1),p=entry?.before??s.past.at(-1);if(!p)return;
+      const context=entry?.beforeContext??captureEditorHistoryContext(p,s.viewId);
+      set({project:p,tool:{kind:'select'},selectedCurveId:null,curveCreation:null,patchCreation:null,selectedPatchId:null,
+        past:s.past.slice(0,-1),historyPast:s.historyPast.slice(0,-1),future:[entry?.after??s.project,...s.future],historyFuture:[entry??null,...s.historyFuture],
+        selectedId:p.landmarks.some(l=>l.id===s.selectedId)?s.selectedId:p.landmarks[0]?.id??null,
+        viewId:p.views.some(v=>v.id===context.viewId)?context.viewId:p.views[0].id,referenceMoving:false});
+      entry?.effect?.undo();restoreEditorHistoryContext(context);persist(p);
     },
-    redo: () => {if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));editBase=null;autosave.end();
-      const s = get(),
-        p = s.future[0];
-      if (!p) return;
-      if(!canEditSource()&&(p.drawing!==s.project.drawing||p.drawingSnapshots!==s.project.drawingSnapshots||p.drawingWorkingCopies!==s.project.drawingWorkingCopies)){s.notify('此历史步骤会修改源画稿，请返回绘制模式后撤销/重做。');return;}
-      set({
-        project: p, tool:{kind:"select"},
-        selectedCurveId: null,
-        curveCreation: null, patchCreation:null,selectedPatchId:p.patches?.some(x=>x.id===s.selectedPatchId)?s.selectedPatchId:null,
-        future: s.future.slice(1),
-        past: [...s.past, s.project],
-        selectedId: p.landmarks.some((l) => l.id === s.selectedId)
-          ? s.selectedId
-          : (p.landmarks[0]?.id ?? null),
-        viewId: p.views.some((v) => v.id === s.viewId)
-          ? s.viewId
-          : p.views[0].id,
-        referenceMoving: false,
-      });
-      // Recording/Drawing history changes no modeling geometry; skip modeling propagation.
-      if(Object.keys({...s.project,...p}).every(key=>key==='recording'||key==='drawing'||key==='drawingSnapshots'||key==='drawingWorkingCopies'||key==='poseRecording'||key==='hairstyle'||key==='assembly'||key==='vectorRecording'||key==='recordingScenes'||key==='recordingSnapshots'||key==='legacyWorkspaces'||(p as any)[key]===(s.project as any)[key]))persist(p);
-      else commit({...p,patchDisplay:s.project.patchDisplay,inspectionBackground:s.project.inspectionBackground},false);
+    redo: () => {
+      if(typeof window!=='undefined')window.dispatchEvent(new Event('contour:cancel-recording-gesture'));
+      get().endEdit();const s=get(),entry=s.historyFuture[0],p=entry?.after??s.future[0];if(!p)return;
+      const context=entry?.afterContext??captureEditorHistoryContext(p,s.viewId);
+      set({project:p,tool:{kind:'select'},selectedCurveId:null,curveCreation:null,patchCreation:null,selectedPatchId:null,
+        future:s.future.slice(1),historyFuture:s.historyFuture.slice(1),past:[...s.past,entry?.before??s.project],historyPast:[...s.historyPast,entry??null],
+        selectedId:p.landmarks.some(l=>l.id===s.selectedId)?s.selectedId:p.landmarks[0]?.id??null,
+        viewId:p.views.some(v=>v.id===context.viewId)?context.viewId:p.views[0].id,referenceMoving:false});
+      entry?.effect?.redo();restoreEditorHistoryContext(context);persist(p);
     },
     load: (p) => {const {recording,hairstyle,...withoutLegacy}=p;void recording;void hairstyle;p={...withoutLegacy,...(withoutLegacy.poseRecording?{poseRecording:syncPoseSnapshots(withoutLegacy.poseRecording,withoutLegacy.drawingSnapshots)}:{})};p=prepareSceneProject(migrateFree3D(assignModules(repairCurveNames(ensureScaffold(migrateHeadFrame(p))))));editBase=null;autosave.cancel();
       get().beginEdit();
@@ -724,3 +737,6 @@ export const useEditor = create<State>((rawSet, get, api) => {
 });
 
 if(import.meta.env.DEV)(globalThis as typeof globalThis & {__editorPerfStore?:typeof useEditor}).__editorPerfStore=useEditor;
+
+// A user mode switch ends any legacy open edit; Undo restoration opens none.
+useWorkspaceMode.subscribe((next,previous)=>{if(next.mode!==previous.mode)useEditor.getState().endEdit();});

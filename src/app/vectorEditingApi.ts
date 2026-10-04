@@ -533,8 +533,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   const r=record(raw);keys(r,['expectedRevision']);expected(r.expectedRevision);
   const state=host.getState(),target=direction==='undo'?state.past.at(-1):state.future[0];
   if(!target)return {changed:false,mode:host.getMode()};
-  if(host.getMode()==='recording'&&(target.drawing!==state.project.drawing||target.drawingSnapshots!==state.project.drawingSnapshots||target.drawingWorkingCopies!==state.project.drawingWorkingCopies))fail('MODE_RESTRICTED','This history step changes source artwork. Return to Drawing mode to undo or redo it.');
-  host[direction]();return {changed:host.getState().project!==state.project,mode:host.getMode()};
+  host[direction]();const next=host.getState();return {changed:next.project!==state.project||next.past.length!==state.past.length||next.future.length!==state.future.length,mode:host.getMode()};
  }
  function previewCamera(d:DrawingDocument,o:Record<string,unknown>){
    const width=num(o.width??800,'width',1,4096),height=num(o.height??800,'height',1,4096),b=drawingBounds(d);

@@ -1,3 +1,4 @@
+import {useEditor} from '../../app/store';
 import {emptyDrawing,type DrawingDocument} from '../../domain/drawing/model';
 import type {ReferenceImage} from '../../domain/project/types';
 import {RECORDING_REFERENCE_IMAGE,validateRecordingReference} from '../../domain/recording/reference';
@@ -8,8 +9,10 @@ type ReadImage=(file:File,options:typeof RECORDING_REFERENCE_IMAGE)=>Promise<Ref
 const copy=(reference:ReferenceImage|undefined)=>reference?{...reference,offset:[...reference.offset] as [number,number]}:undefined;
 const sameImageTransform=(a:ReferenceImage,b:ReferenceImage)=>a.name===b.name&&a.dataUrl===b.dataUrl&&a.width===b.width&&a.height===b.height&&a.opacity===b.opacity&&a.scale===b.scale&&a.rotation===b.rotation&&a.offset.every((value,i)=>value===b.offset[i]);
 
-/** View-only session state. No project, source drawing, history, scene or export writes. */
-export function createRecordingReferenceState(seed?:ReferenceImage,storage?:RecordingReferenceStorage){
+export type RecordingReferenceHistory=(effect:import('../../app/editorHistory').WorkspaceHistoryEffect)=>void;
+/** Local reference state. Committed edits can join global history without
+ * placing pixels in project/source/snapshot/key data. Previews never do. */
+export function createRecordingReferenceState(seed?:ReferenceImage,storage?:RecordingReferenceStorage,history?:RecordingReferenceHistory){
  let snapshot:Snapshot={document:{...emptyDrawing(),reference:copy(seed)},preview:null,moving:false,busy:false,error:'',hydrating:false,saving:false,persistenceError:'',persistenceFailure:null};
  let active=true,request=0,revision=0,saveVersion=0;
  let restorePromise:Promise<void>|undefined,writeQueue=Promise.resolve();
@@ -36,12 +39,23 @@ export function createRecordingReferenceState(seed?:ReferenceImage,storage?:Reco
   const current=snapshot.document.reference;
   return !current?.locked||!!next&&sameImageTransform(current,next);
  }
- function change(reference:ReferenceImage|undefined){
-  if(!active||!editable(reference))return;
-  validateRecordingReference(reference);request++;revision++;
-  publish({document:{...snapshot.document,reference:copy(reference)},preview:null,busy:false,error:'',moving:snapshot.moving&&!!reference?.visible&&!reference.locked});
+ function install(reference:ReferenceImage|undefined){
+  request++;revision++;
+  publish({document:{...snapshot.document,reference:copy(reference)},preview:null,busy:false,error:'',moving:false});
   persist(reference);
  }
+ function commit(reference:ReferenceImage|undefined){
+  const before=copy(snapshot.document.reference),after=copy(reference);
+  if(!before&&!after||before&&after&&sameImageTransform(before,after)&&before.visible===after.visible&&before.locked===after.locked){request++;publish({preview:null,busy:false,error:''});return;}
+  install(after);history?.({kind:'reference',undo:()=>install(before),redo:()=>install(after)});
+ }
+ function change(reference:ReferenceImage|undefined){
+  if(!active||!editable(reference))return;
+  validateRecordingReference(reference);const moving=snapshot.moving;
+  commit(reference);
+  if(moving&&reference?.visible&&!reference.locked)publish({moving:true});
+ }
+ function cancelPending(){request++;publish({preview:null,busy:false,error:''});}
  function preview(reference:ReferenceImage|null){
   if(!active)return;
   if(reference===null){if(snapshot.preview)publish({preview:null});return;}
@@ -67,8 +81,8 @@ export function createRecordingReferenceState(seed?:ReferenceImage,storage?:Reco
   whenSaved:()=>writeQueue,
   retrySave(){persist(snapshot.document.reference);return writeQueue;},
   retryStorage(){if(snapshot.persistenceFailure==='restore'&&revision===0)return restore();persist(snapshot.document.reference);return writeQueue;},
-  activate(){active=true;void restore();},
-  deactivate(){active=false;request++;publish({preview:null,moving:false,busy:false,error:''});},
+  activate(){active=true;if(typeof window!=='undefined')window.addEventListener('contour:cancel-recording-gesture',cancelPending);void restore();},
+  deactivate(){active=false;if(typeof window!=='undefined')window.removeEventListener('contour:cancel-recording-gesture',cancelPending);request++;publish({preview:null,moving:false,busy:false,error:''});},
   async upload(file:File,readImage:ReadImage){
    if(!active||snapshot.document.reference?.locked)return;
    const ticket=++request;revision++;publish({busy:true,preview:null,moving:false,error:''});
@@ -76,18 +90,18 @@ export function createRecordingReferenceState(seed?:ReferenceImage,storage?:Reco
     const reference=await readImage(file,RECORDING_REFERENCE_IMAGE);
     if(!active||ticket!==request)return;
     validateRecordingReference(reference);
-    publish({document:{...snapshot.document,reference:copy({...reference,locked:true})},preview:null,moving:false,busy:false,error:''});
-    persist(snapshot.document.reference);
+    commit({...reference,locked:true});
    }catch(error){if(active&&ticket===request)publish({busy:false,error:error instanceof Error?error.message:String(error)});}
   },
  };
 }
 export type RecordingReferenceState=ReturnType<typeof createRecordingReferenceState>;
 // View state survives scene switches; committed images also live in a dedicated
-// local IndexedDB store, never in project JSON, snapshots, history or keys.
+// local IndexedDB store. Runtime history restores edits; project JSON, source
+// snapshots and keys never contain these workspace images.
 const sessions=new Map<string,RecordingReferenceState>();
 export function recordingReferenceSession(sceneKey:string,seed?:ReferenceImage,fallbackSceneKey?:string){
  let state=sessions.get(sceneKey);
- if(!state){state=createRecordingReferenceState(seed,fallbackSceneKey&&fallbackSceneKey!==sceneKey?withRecordingReferenceFallback(recordingReferenceStorage(sceneKey),recordingReferenceStorage(fallbackSceneKey)):recordingReferenceStorage(sceneKey));sessions.set(sceneKey,state);}
+ if(!state){state=createRecordingReferenceState(seed,fallbackSceneKey&&fallbackSceneKey!==sceneKey?withRecordingReferenceFallback(recordingReferenceStorage(sceneKey),recordingReferenceStorage(fallbackSceneKey)):recordingReferenceStorage(sceneKey),effect=>useEditor.getState().commitWorkspaceEdit(effect));sessions.set(sceneKey,state);}
  return state;
 }

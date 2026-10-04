@@ -1,3 +1,6 @@
+import {useEditor} from '../app/store';
+import {useWorkspaceMode} from '../app/workspaceMode';
+import {readHistoryViewport,recordingHistoryViewportKey} from '../app/editorHistory';
 import DeformCageOverlay from '../ui/drawing/DeformCageOverlay';
 import type {LayerCageDomainIntent} from '../domain/drawing/layerDomainIntent';
 import {deformDrawing} from '../domain/drawing/deform';
@@ -23,7 +26,7 @@ vi.mock('../ui/drawing/session',async original=>{const actual=await original<typ
 class Target {constructor(readonly tag='svg'){}closest(selector:string){return selector.split(',').includes(this.tag)?this:null;}}
 const listeners=new Map<string,(event:unknown)=>void>();
 beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(event:unknown)=>void)=>listeners.set(name,fn),removeEventListener:(name:string,fn:unknown)=>{if(listeners.get(name)===fn)listeners.delete(name);}});});
-afterEach(()=>vi.unstubAllGlobals());
+afterEach(()=>{hooks.cleanups.forEach(fn=>fn?.());vi.unstubAllGlobals();});
 type Props={children?:unknown;[key:string]:any};
 function elements(tree:unknown):ReactElement<Props>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<Props>(tree))return [];if(tree.type===DeformCageOverlay)return elements(DeformCageOverlay(tree.props as ComponentProps<typeof DeformCageOverlay>));if(tree.type===SceneInstanceTransformBox)return elements(SceneInstanceTransformBox(tree.props as ComponentProps<typeof SceneInstanceTransformBox>));if(tree.type===SceneCurveEditOverlay)return elements(SceneCurveEditOverlay(tree.props as ComponentProps<typeof SceneCurveEditOverlay>));return [tree,...elements(tree.props.children)];}
 function fixture():DrawingDocument{
@@ -121,4 +124,26 @@ test.each(['cancel','lost','navigate','escape','tool'])('%s discards an active R
  const h=harness({cage:true}),control=h.findAll('drawing-deform-bend-handle')[0],p:Point2=[control.props.cx,control.props.cy];control.props.onPointerDown(pointer(...p));move(h,[p[0]+15,p[1]-10]);h.render();
  if(action==='cancel')h.element('vr-scene-canvas').props.onPointerCancel();else if(action==='lost')h.element('vr-scene-canvas').props.onLostPointerCapture();else if(action==='navigate')h.navigate();else if(action==='escape')listeners.get('keydown')!(key('Escape'));else{h.element('vr-tool-direct').props.onClick();h.render();}
  release(h,[p[0]+15,p[1]-10]);expect(h.cageCommit).not.toHaveBeenCalled();expect(h.cagePreview).toHaveBeenLastCalledWith(null);
+});
+
+
+test('Recording pan/zoom release creates one global transaction; cancellation and replay create none',()=>{
+ const previous=useEditor.getState(),mode=useWorkspaceMode.getState().mode;
+ vi.useFakeTimers();Object.assign(window,{dispatchEvent:(event:Event)=>{listeners.get(event.type)?.(event);return true;}});
+ try{
+  const project={...previous.project,meta:{...previous.project.meta,createdAt:previous.project.meta.createdAt+72819}};
+  useEditor.setState({project,past:[],future:[]});useWorkspaceMode.setState({mode:'recording'});
+  const h=harness(),key=recordingHistoryViewportKey(project),before=readHistoryViewport(key)!;
+  h.element('vr-scene-canvas').props.onPointerDown({...pointer(400,325),button:1});
+  for(let i=1;i<=12;i++){move(h,[400+i*3,325+i*2]);h.render();}
+  expect(useEditor.getState().past).toHaveLength(0);release(h,[436,349]);h.render();
+  expect(useEditor.getState().past).toHaveLength(1);expect(readHistoryViewport(key)!.pan).toEqual([36,24]);
+  useEditor.getState().undo();h.render();expect(readHistoryViewport(key)).toEqual(before);expect(useEditor.getState().future).toHaveLength(1);
+  h.element('vr-scene-canvas').props.onPointerDown({...pointer(400,325),button:1});move(h,[460,385]);h.render();h.element('vr-scene-canvas').props.onPointerCancel();h.render();
+  expect(readHistoryViewport(key)).toEqual(before);expect(useEditor.getState().past).toHaveLength(0);expect(useEditor.getState().future).toHaveLength(1);
+  useEditor.getState().redo();h.render();expect(readHistoryViewport(key)!.pan).toEqual([36,24]);
+  h.element('vr-tool-zoom').props.onClick();h.render();const zoomBefore=readHistoryViewport(key)!;
+  h.element('vr-scene-canvas').props.onPointerDown(pointer(400,325));move(h,[400,285]);h.render();release(h,[400,285]);h.render();expect(useEditor.getState().past).toHaveLength(2);expect(readHistoryViewport(key)!.zoom).toBeGreaterThan(zoomBefore.zoom);
+  useEditor.getState().undo();h.render();expect(readHistoryViewport(key)).toEqual(zoomBefore);expect(useEditor.getState().project).toBe(project);
+ }finally{useEditor.getState().endEdit();vi.runAllTimers();useEditor.setState(previous);useWorkspaceMode.setState({mode});vi.useRealTimers();}
 });
