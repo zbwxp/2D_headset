@@ -118,6 +118,14 @@ test('real empty snapshots expose the native New layer control through the expli
  commands.addLayer(current);commands.addLayer(source);expect(addLayer).toHaveBeenCalledTimes(1);expect(commands.canEditSection(current)).toBe(true);expect(commands.canEditSection(source)).toBe(false);
 });
 
+test('Recording suppresses the duplicate reference section even with shared Drawing editing enabled',()=>{
+ const f=fixture(),structuralCommands={editable:true,addLayer:vi.fn(),duplicateLayers:vi.fn(),deleteLayers:vi.fn(),deleteSelection:vi.fn()};
+ const html=render({current:f.current,structuralCommands,onEdit:()=>true});
+ expect(capturedPanel.props!.referenceControls).toBe(false);expect(html).not.toContain('drawing-reference-panel');
+ const drawingHtml=renderToStaticMarkup(createElement(LayerPanel,{...capturedPanel.props!,poseMode:false,structuralReadOnly:false,referenceControls:undefined}));
+ expect(drawingHtml).toContain('drawing-reference-panel');expect(drawingHtml).toContain('参考图');
+});
+
 test('native structural controls translate only current rows to canonical IDs and protect source row aliases',()=>{
  const f=fixture(),duplicateLayers=vi.fn(),deleteLayers=vi.fn(),deleteSelection=vi.fn(),structuralCommands={editable:true,addLayer:vi.fn(),duplicateLayers,deleteLayers,deleteSelection};
  render({current:f.current,sources:[f.source],selection:{ids:[],layers:[f.eye]},layerSelections:[{snapshotId:'view',layerId:f.eye}],structuralCommands});

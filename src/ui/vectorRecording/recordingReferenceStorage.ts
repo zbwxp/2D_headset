@@ -1,10 +1,11 @@
 import type {ReferenceImage} from '../../domain/project/types';
 import {validateRecordingReference} from '../../domain/recording/reference';
+import {validateReferenceMetadata,type RecordingReferenceMetadata} from './recordingReferenceBindings';
 
-export interface SavedRecordingReference {reference?:ReferenceImage}
+export interface SavedRecordingReference extends RecordingReferenceMetadata {reference?:ReferenceImage}
 export interface RecordingReferenceStorage {
  load:()=>Promise<SavedRecordingReference|null>;
- save:(reference:ReferenceImage|undefined)=>Promise<void>;
+ save:(reference:ReferenceImage|undefined,metadata?:RecordingReferenceMetadata)=>Promise<void>;
 }
 const databaseName='contour-recording-viewport',storeName='scene-references';
 let database:Promise<IDBDatabase>|undefined;
@@ -36,15 +37,13 @@ export function recordingReferenceStorage(sceneKey:string):RecordingReferenceSto
     transaction.onerror=transaction.onabort=()=>reject(transaction.error??request.error??Error('Cannot read local reference'));
    });
    if(value===undefined)return null;
-   if(!value||typeof value!=='object'||!('version' in value)||value.version!==1)throw Error('Invalid local reference record');
-   const reference=(value as SavedRecordingReference).reference;validateRecordingReference(reference);
-   return {reference};
+   return decodeRecordingReferenceRecord(value);
   },
-  async save(reference){
-   validateRecordingReference(reference);const db=await openDatabase();
+  async save(reference,metadata={}){
+   validateRecordingReference(reference);validateReferenceMetadata(reference,metadata);const db=await openDatabase();
    await new Promise<void>((resolve,reject)=>{
     const transaction=db.transaction(storeName,'readwrite');
-    const request=transaction.objectStore(storeName).put({version:1,reference},sceneKey);
+    const request=transaction.objectStore(storeName).put({version:2,reference,...metadata},sceneKey);
     transaction.oncomplete=()=>resolve();
     transaction.onerror=transaction.onabort=()=>reject(transaction.error??request.error??Error('Cannot save local reference'));
    });
@@ -52,8 +51,17 @@ export function recordingReferenceStorage(sceneKey:string):RecordingReferenceSto
  };
 }
 
+/** Version 1 has no angle defaults; keep its current alignment unchanged. */
+export function decodeRecordingReferenceRecord(value:unknown):SavedRecordingReference {
+ if(!value||typeof value!=='object'||!('version' in value)||(value.version!==1&&value.version!==2))throw Error('Invalid local reference record');
+ const saved=value as SavedRecordingReference,reference=saved.reference;validateRecordingReference(reference);
+ if(value.version===1)return {reference};
+ const metadata={imageId:saved.imageId,bindings:saved.bindings};validateReferenceMetadata(reference,metadata);
+ return {reference,...metadata};
+}
+
 /** Prefer current workspace edits (including explicit image removal). Legacy
  * storage is read only when no current record has ever been saved. */
 export function withRecordingReferenceFallback(primary:RecordingReferenceStorage,fallback:RecordingReferenceStorage):RecordingReferenceStorage{
- return {save:reference=>primary.save(reference),load:async()=>{const current=await primary.load();return current===null?fallback.load():current;}};
+ return {save:(reference,metadata)=>metadata===undefined?primary.save(reference):primary.save(reference,metadata),load:async()=>{const current=await primary.load();return current===null?fallback.load():current;}};
 }
