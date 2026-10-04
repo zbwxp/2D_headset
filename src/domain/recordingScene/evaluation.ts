@@ -24,6 +24,7 @@ export interface SceneEvaluationOptions extends Omit<WarpFitOptions,'endpoints'>
  omitPlacements?:boolean;
  /** Omit direct Bezier pose offsets when inspecting the live Warp baseline. */
  omitShapes?:boolean;
+ /** Domain evaluators can request controls before constructing paint products. */omitPaint?:boolean;
 }
 export interface SceneLayerView extends SceneLayerRef {compiledLayerId:string;instanceName:string;name:string;included:boolean;inLocalDomain:boolean}
 export interface SceneEvaluation {
@@ -180,5 +181,5 @@ export function evaluateScene(scene:RecordingScene,resolve:SceneSourceResolver,o
  const shaped=options.omitShapes?deformed:applySceneShapes(deformed,scene,angle,useDraft,provenance,diagnostics);
  const result=options.omitPlacements?shaped:placeDrawing(shaped,placements,provenance);
  const routes=new Set<string>();for(const track of result.drawing.displayIntervals??[])if(track.displayRoute){const key=JSON.stringify(track.displayRoute);if(routes.has(key))continue;routes.add(key);for(const diagnostic of createDisplayRouteField(result.drawing,track.displayRoute).diagnostics){const p=provenance[track.id];diagnostics.push({code:'ROUTE',instanceId:p?.instanceId,trackId:p?.sourceId,message:diagnostic.message});}}
- return {source,drawing:result.drawing,preShapeDrawing:deformed.drawing,prePlacementDrawing:shaped.drawing,angle,warpGrids,placements,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
+ return {source,drawing:result.drawing,preShapeDrawing:deformed.drawing,prePlacementDrawing:shaped.drawing,angle,warpGrids,placements,layerMap,objectMap,provenance,layers,chains,diagnostics,paintBatches:options.omitPaint?[]:scenePaintBatches(result.drawing,originals,provenance),fitDiagnostics:result.diagnostics as SceneEvaluation['fitDiagnostics'],warningCurveIds:result.warningCurveIds,intervalTransportErrors:result.intervalTransportErrors,maxError:result.maxError,diagnosticStage:result.diagnosticStage,conflictingNodeIds:result.conflictingNodeIds};
 }

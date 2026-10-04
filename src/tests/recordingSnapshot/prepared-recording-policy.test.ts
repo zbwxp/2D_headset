@@ -23,6 +23,17 @@ describe('prepared recording request ownership',()=>{
   expect(shapes.counters).toBe(normal.counters);expect(normal.counters.validation).toBe(1);
   expect(node(shapes.sample('r',{angle:{x:90,y:0}}))).toBe(0);
  });
+ it('does not leak the first wrapper angle or draft/shape policy into later implicit requests',()=>{
+  const {workspace}=fixture(),options={immutableInputs:true,diagnostics:'preview' as const};
+  evaluateRecordingSnapshot(workspace,'r',{...options,angle:{x:90,y:0},useDraft:false,omitShapes:true});
+  const implicit=evaluateRecordingSnapshot(workspace,'r',options);expect(implicit.angle).toEqual({x:0,y:0});expect(node(implicit)).toBe(0);
+  expect(node(evaluateRecordingSnapshot(workspace,'r',{...options,angle:{x:90,y:0}}))).toBe(1);
+ });
+ it('prepares controls from a cold context without constructing terminal paint',()=>{
+  const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'});
+  const controls=context.sample('r',{angle:{x:45,y:0},products:'controls'});expect(node(controls)).toBe(.5);expect(controls.paintBatches).toEqual([]);expect(context.counters.ownGeometry).toBe(2);expect(context.counters.paint).toBe(0);expect(context.counters.material).toBe(0);
+  const before=context.counters.surfaceSample,display=context.sample('r',{angle:{x:45,y:0}});expect(display.paintBatches.length).toBeGreaterThan(0);expect(context.counters.surfaceSample).toBe(before);expect(context.counters.paint).toBe(1);
+ });
  it('preserves a supplied temporary side-angle draft policy while the recording cursor remains at zero',()=>{
   const {workspace,recording}=fixture(),options={immutableInputs:true,useDraft:true,diagnostics:'preview'} as const;
   const saved=resolveRecordingSnapshotBasis(workspace,recording,'side',options),live=resolveRecordingSnapshotBasis(workspace,{...recording,angle:{x:90,y:0}},'side',options);
