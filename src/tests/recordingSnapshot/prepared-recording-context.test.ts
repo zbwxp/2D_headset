@@ -13,6 +13,7 @@ import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotReco
 import {prepareRecordingContext} from '../../domain/recordingSnapshot/preparedRecordingContext';
 import {upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
 import * as triangulation from '../../domain/recordingSnapshot/triangulation';
+import * as snapshotValidation from '../../domain/recordingSnapshot/validation';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
 const at=(x:number,y=0):Angle=>({x,y});
@@ -116,6 +117,18 @@ describe('prepared Recording context through the production sampling entrypoints
    expectColdEquivalent(result,preview.recordingSnapshots);
   }
   expect(preparation(context)).toEqual(warm);
+ });
+
+ it('keeps a native command fallback in the same validated dependency session',()=>{
+  const f=freeze(fixture()),context=prepareRecordingContext(f.workspace,options),before=context.sample('recording'),handle=before.drawing.curves[0].handles[0];
+  const validation=vi.spyOn(snapshotValidation,'validateSnapshotGraph');
+  try{
+   const preview=prepareSnapshotPreview(f.project,{commands:[{op:'moveShapeHandle',layerId:'layer',curveId:'curve',end:0,position:[handle[0]+.04,handle[1]]}]}),fork=context.fork(preview.recordingSnapshots),actual=fork.sample('recording');
+   expect(preview.recordingSnapshots.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeDefined();
+   expect(actual.drawing.curves[0].handles[0][0]).toBeCloseTo(handle[0]+.04,10);
+   expect(actual.drawing.curves[0].handles[0][1]).toBeCloseTo(handle[1],10);
+   expect(validation).not.toHaveBeenCalled();
+  }finally{validation.mockRestore();}
  });
 
  it('keeps property-only preview controls and native geometry while changing terminal material',()=>{
