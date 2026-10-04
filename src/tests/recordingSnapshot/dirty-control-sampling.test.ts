@@ -3,7 +3,7 @@ import {emptyDrawing,type Point2} from '../../domain/drawing/model';
 import {prepareSnapshotCoverage,prepareSnapshotCoverageStructure,type SnapshotCoverageEvaluation} from '../../domain/recordingSnapshot/snapshotCoverage';
 import {createSnapshotSurfaceValueSampler} from '../../domain/recordingSnapshot/surfaceTargets';
 import {createSnapshotTriangulation,locateSnapshotSimplex} from '../../domain/recordingSnapshot/triangulation';
-import {getSnapshotSimplexSamplingStats,resetSnapshotSimplexSamplingStats,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges,type SnapshotScalarTarget} from '../../domain/recordingSnapshot/simplexGeometry';
+import {snapshotSimplexDrawingRevision,getSnapshotSimplexSamplingStats,resetSnapshotSimplexSamplingStats,type SnapshotSimplexBasis,type SnapshotSimplexRevisionChanges,type SnapshotScalarTarget} from '../../domain/recordingSnapshot/simplexGeometry';
 import {createSnapshotResponseConstant} from '../../domain/recordingSnapshot/responseExpressions';
 import type {SnapshotAngleGraph} from '../../domain/recordingSnapshot/model';
 
@@ -39,6 +39,7 @@ describe('prepared native control sample lineage',()=>{
   expect(actual).toEqual(f.expected(next));
   expect(counts).toMatchObject({revisionSamples:1,fullSamples:0,scalarEvaluations:2,basisCoordinateReads:2,projectedComponents:1});
   expect(counts.copiedControlSlots).toBeGreaterThan(unrelated*4);
+  const proof=snapshotSimplexDrawingRevision(actual.normal!.drawing)!;expect(proof.previous).toBe(before.normal!.drawing);expect([...proof.dirtyCurveIds].sort()).toEqual(['a','b']);expect(Object.isFrozen(proof)).toBe(true);expect(Object.isFrozen(proof.dirtyCurveIds)).toBe(true);expect(snapshotSimplexDrawingRevision(before.normal!.drawing)).toBeUndefined();
   expect(actual.normal!.drawing.curves.find(curve=>curve.id==='b')!.handles[0]).not.toEqual(before.normal!.drawing.curves.find(curve=>curve.id==='b')!.handles[0]);
   expect(actual.normal!.drawing.fills).toEqual(before.normal!.drawing.fills);
  });
@@ -79,7 +80,7 @@ describe('prepared native control sample lineage',()=>{
  });
  it('takes the canonical full path for expressions and unbranded callback wrappers',()=>{
   const f=fixture(4),before=f.sample(),graph={...f.graph,responseExpressions:{[f.location.simplexId]:{nodes:{a0:{x:createSnapshotResponseConstant(.125)}},handles:{}}}};
-  resetSnapshotSimplexSamplingStats();const actual=f.sample(f.bases,graph,before,{structureUnchanged:true,basisControls:new Map(),responseControls:[{kind:'node',nodeId:'a0'}]});expect(getSnapshotSimplexSamplingStats()).toMatchObject({revisionSamples:0,fullSamples:1});expect(actual).toEqual(f.expected(f.bases,graph));
+  resetSnapshotSimplexSamplingStats();const actual=f.sample(f.bases,graph,before,{structureUnchanged:true,basisControls:new Map(),responseControls:[{kind:'node',nodeId:'a0'}]});expect(getSnapshotSimplexSamplingStats()).toMatchObject({revisionSamples:0,fullSamples:1});expect(snapshotSimplexDrawingRevision(actual.normal!.drawing)).toBeUndefined();expect(actual).toEqual(f.expected(f.bases,graph));
   const callback=vi.fn((_target:SnapshotScalarTarget,_axis:0|1,_coordinates:readonly number[],weights:readonly number[])=>weights);
   resetSnapshotSimplexSamplingStats();f.structure.evaluate(f.angle,id=>f.bases.find(basis=>basis.snapshotId===id)!,()=>callback,{immutableInputs:true,previous:before,changes:{structureUnchanged:true,basisControls:new Map(),responseControls:[]}});expect(getSnapshotSimplexSamplingStats().revisionSamples).toBe(0);expect(callback).toHaveBeenCalledTimes(getSnapshotSimplexSamplingStats().scalarEvaluations);
  });

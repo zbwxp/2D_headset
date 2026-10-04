@@ -37,6 +37,12 @@ export const getSnapshotSimplexSamplingStats=()=>({...samplingStats});
 export const resetSnapshotSimplexSamplingStats=()=>{for(const key of Object.keys(samplingStats) as (keyof typeof samplingStats)[])samplingStats[key]=0;};
 type ReviseSample=(bases:readonly SnapshotSimplexBasis[],weights:readonly number[],response:SnapshotScalarResponse|undefined,changes:SnapshotSimplexRevisionChanges)=>SnapshotSimplexGeometry|undefined;
 const sampleLineages=new WeakMap<SnapshotSimplexGeometry,ReviseSample>();
+export interface SnapshotSimplexDrawingRevision {readonly previous:DrawingDocument;readonly dirtyCurveIds:readonly string[]}
+const drawingRevisions=new WeakMap<DrawingDocument,SnapshotSimplexDrawingRevision>();
+/** Proven complete native output closure for downstream geometry-dependent
+ * products. The previous token is the pre-material projected sample, and the
+ * frozen addresses include every affected SMOOTH member, not just its driver. */
+export const snapshotSimplexDrawingRevision=(drawing:DrawingDocument):SnapshotSimplexDrawingRevision|undefined=>drawingRevisions.get(drawing);
 /** No ID-only cache: the previous complete immutable sample is the capability.
  * Unsupported response/program dependencies return to canonical preparation. */
 export function reviseSnapshotSimplexGeometry(previous:SnapshotSimplexGeometry,bases:readonly SnapshotSimplexBasis[],weights:readonly number[],response:SnapshotScalarResponse|undefined,changes:SnapshotSimplexRevisionChanges):SnapshotSimplexGeometry|undefined {
@@ -172,6 +178,9 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
    for(const control of dirty){for(const index of variant.positionNodes.get(control)??[])nodes[index]={...nodes[index],position:nextValues.get(control)!};for(const endpoint of variant.positionEnds.get(control)??[])end(endpoint.curve,endpoint.end);const handle=variant.handleEnds.get(control);if(handle)end(handle.curve,handle.end);}
    for(const [index,ends] of changedEnds){const plan=variant.controls[index],handles=[...curves[index].handles] as [Point2,Point2];for(const side of ends){const position=nextValues.get(variant.positions[plan.positions[side]])!,vector=nextValues.get(plan.handles[side])!;handles[side]=[position[0]+vector[0],position[1]+vector[1]];for(const component of variant.handleComponents.get(plan.handles[side])??[])dirtyComponents.add(component);}curves[index]={...curves[index],handles};}
    const nextRaw={...raw,nodes,curves},nextDiagnostics=componentDiagnostics.map(value=>value),nextProjected=projectNative(variant,nextRaw,nextDiagnostics,projected,dirtyComponents,changedEnds);
+   const dirtyCurves=new Set([...changedEnds.keys()].map(index=>variant.controls[index].curve.id));
+   for(const index of dirtyComponents)for(const {endpoint} of variant.components[index].members)dirtyCurves.add(endpoint.curveId);
+   drawingRevisions.set(nextProjected,Object.freeze({previous:projected,dirtyCurveIds:Object.freeze([...dirtyCurves])}));
    samplingStats.revisionSamples++;
    return retainSample(variant,next,nextWeights,nextValues,nextCoordinates,nextRaw,nextProjected,nextDiagnostics);
   });return result;
