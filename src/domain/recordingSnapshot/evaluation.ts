@@ -445,7 +445,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const geometryDemand=snapshotSurfaceDemand(effectiveGraph,locations,mirror?.zeroSnapshotId,false);if(positive&&mirror)geometryDemand.add(mirror.zeroSnapshotId);
  const geometryPolicy=evaluationOptionsKey({...options,angle:requested,useDraft:false,liveBasisDrafts:false,diagnostics:'preview',validationSamples:undefined,products:'controls'});
  const geometryKey=semanticKey(['control-geometry',graph.mesh,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]),responseKey,requested,geometryPolicy]);
- const lineageKey=semanticKey(['control-lineage',recording.id,graph.mesh,prepared,requested,geometryPolicy]);
+ const lineageKey=semanticKey(['control-lineage',recording.id,immutableIdentity(graph.mesh),immutableIdentity(prepared),requested,geometryPolicy]);
  const surfaceKey=(quality=options.diagnostics)=>semanticKey(['angle-surface',recording.id,graph.mesh,basisKey,responseKey,controls?null:[snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.visibilityRecipes,graph.materialPartitions,graph.materialPathLineages],requested,evaluationOptionsKey({...options,angle:requested,diagnostics:quality})]);
  const key=surfaceKey(),known=context.surfaceValues.get(key);if(known)return known;
 
