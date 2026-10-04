@@ -1,3 +1,4 @@
+import {createSnapshotFittedSplitExpressions,rewriteSnapshotFittedSplitBases} from './responseExpressionFitSplit';
 import {captureSnapshotProjectedResponses,remapSnapshotSmoothContracts,type SnapshotProjectionComponent} from './responseExpressionProjection';
 import {smoothEndpointKey} from './smoothComponent';
 import type {CurveSplitIntent} from '../drawing/layerEditIntent';
@@ -114,6 +115,7 @@ export function certifySnapshotSmoothResponseIdentity(bases:readonly SnapshotSmo
 }
 
 export interface SnapshotSplitResponseOptions {
+ fittedParameters?:boolean;
  /** The workspace compiler must inspect actual shared projection dependencies.
   * Supplying none asserts that this response transfer is linear. */
  nonlinearDependencies:readonly string[];
@@ -139,7 +141,7 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
   if(basis.target.kind!=='handle'||basis.target.curveId!==intent.curveId)return undefined;
   const end=basis.target.end;return [{coefficient:1/(end===0?intent.t:1-intent.t),basis:{...basis,target:{kind:'handle' as const,curveId:intent.childCurveIds[end],end}}}];
  };
- const rewrite=(expression:SnapshotResponseExpression)=>remapSnapshotSmoothContracts(substituteSnapshotResponseBases(expression,replacement),intent);
+ const rewrite=(expression:SnapshotResponseExpression)=>remapSnapshotSmoothContracts(options.fittedParameters?rewriteSnapshotFittedSplitBases(expression,intent):substituteSnapshotResponseBases(expression,replacement),intent);
  const rewriteControl=(value:SnapshotExpressionControlResponse):SnapshotExpressionControlResponse=>({...value,...value.x?{x:rewrite(value.x)}:{},...value.y?{y:rewrite(value.y)}:{}});
 
  const transfer=(source:Surface,scope:string):Surface=>{
@@ -170,7 +172,10 @@ export function remapSnapshotSplitResponses(graph:SnapshotAngleGraph,intent:Spli
    }
    const targets:readonly SnapshotScalarTarget[]=[{kind:'node',nodeId:options.nodeAuthority?.(intent.sourceNodeIds[0],location)??intent.sourceNodeIds[0]},{kind:'handle',curveId:intent.curveId,end:0},{kind:'handle',curveId:intent.curveId,end:1},{kind:'node',nodeId:options.nodeAuthority?.(intent.sourceNodeIds[1],location)??intent.sourceNodeIds[1]}];
    const seam:SnapshotExpressionControlResponse={},left:[SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]=[{},{}],right:[SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]=[{},{}];
-   for(const axis of [0,1] as const){
+   if(options.fittedParameters){
+    const transformed=createSnapshotFittedSplitExpressions(graph.mesh,location,intent,(target,axis)=>captured(location,target,axis),id=>options.nodeAuthority?.(id,location)??id);
+    for(const axis of [0,1] as const){seam[axes[axis]]=transformed.left[axis][3];for(const end of [0,1] as const){left[end][axes[axis]]=transformed.left[axis][end+1];right[end][axes[axis]]=transformed.right[axis][end+1];}}
+   }else for(const axis of [0,1] as const){
     const expressions=targets.map(target=>{const expression=captured(location,target,axis);if(!projected.get(location.simplexId)?.size&&!expression.smoothContracts?.length)return expression;
      const field:SnapshotResponseExpressionField={id:JSON.stringify(['split-source-baseline',scope,location.simplexId,intent.childCurveIds]),vertexIds:[...location.vertexIds],edges:[],samples:[]};
      const {sourceBaselineOperations:ignored,...withoutBaselineProgram}=expression;void ignored;

@@ -1,3 +1,4 @@
+import {strokeFor,strokePaths} from './strokes';
 import {evaluatedDeformationSource,projectEvaluatedGeometry} from './evaluatedDeformation';
 import {copyCurveSource,curveSamples,tagBridge} from './curveProvenance';
 import {split} from '../geometry/bezier';
@@ -39,7 +40,7 @@ const cache=new WeakMap<Doc,Map<string,ArcJoinGeometry>>();
 export function roundedJoins(d:Doc):Map<string,ArcJoinGeometry>{
  const found=cache.get(d);if(found)return found;
  const deformationSource=evaluatedDeformationSource(d);if(deformationSource){
-  const out=new Map([...roundedJoins(deformationSource)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id);if(!join||g.error)return [id,g] as const;const geometry=projectEvaluatedGeometry(d,derivedUses(deformationSource,[{id:join.a.curveId,reverse:join.a.end===0},{id:join.b.curveId,reverse:join.b.end===1}]));return [id,{...g,shapes:geometry.pieces.filter(piece=>piece.joinId===id).map(piece=>piece.shape),...(geometry.error?{error:geometry.error}:{})}] as const;}));cache.set(d,out);return out;
+  const out=new Map([...roundedJoins(deformationSource)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id);if(!join||g.error)return [id,g] as const;const path=strokePaths(strokeFor(deformationSource,join.a.curveId)).find(path=>path.segments.some(use=>use.id===join.b.curveId));if(!path)throw Error(`ARC ${id} has no common live path for its retained program.`);const a=path.segments.find(use=>use.id===join.a.curveId)!,uses=a.reverse===(join.a.end===0)?path.segments:[...path.segments].reverse().map(use=>({...use,reverse:!use.reverse}));const geometry=projectEvaluatedGeometry(d,derivedUses(deformationSource,uses,path.closed));return [id,{...g,shapes:geometry.pieces.filter(piece=>piece.joinId===id).map(piece=>piece.shape),...(geometry.error?{error:geometry.error}:{})}] as const;}));cache.set(d,out);return out;
  }
  const source=evaluatedAffineSource(d);if(source){
   const out=new Map([...roundedJoins(source)].map(([id,g])=>{const join=d.joins.find(j=>j.id===id),affine=evaluatedAffine(d,join?.a.curveId);return [id,affine?{...g,shapes:g.shapes.map(s=>affineShape(s,affine))}:g] as const;}));cache.set(d,out);return out;

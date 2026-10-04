@@ -2,7 +2,7 @@ import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
-import {hasNonlinearDeformationFor} from '../domain/drawing/evaluatedDeformation';
+import {hasNonlinearDeformationFor,evaluatedMaterialProgram} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
 import {prepareDrawingLayerDomainEdit} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
@@ -151,7 +151,7 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
    const expected=applyLayerEditIntent(before.drawing,edit.intent,{propagate:true}).document;
    if(!same(expected,state.drawing))throw Error('The explicit split intent and submitted Drawing document disagree.');
    if(state.drawingSnapshots?.activeId!==before.drawingSnapshots?.activeId)throw Error('A split transaction cannot switch its source artwork.');
-   if(context.workspace){const source=drawingSnapshotForArtwork(context.workspace,before.drawingSnapshots?.activeId??'$working');if(!source)throw Error('The split source adapter is missing.');const intent=canonicalSnapshotLayerEditIntent(source,edit.intent,context.workspace);assertCageSplitSupported(context.workspace,curveSplitIntents(intent).map(value=>value.curveId));splitPlan=prepareSnapshotCurveSplits(context.workspace,source.id,curveSplitIntents(intent),intent.kind==='split-curves'?intent.mirrorPairs:[]);}
+   if(context.workspace){const source=drawingSnapshotForArtwork(context.workspace,before.drawingSnapshots?.activeId??'$working');if(!source)throw Error('The split source adapter is missing.');const intent=canonicalSnapshotLayerEditIntent(source,edit.intent,context.workspace);assertSourceSplitProgramSupported(context.workspace,curveSplitIntents(intent).map(value=>value.curveId));splitPlan=prepareSnapshotCurveSplits(context.workspace,source.id,curveSplitIntents(intent),intent.kind==='split-curves'?intent.mirrorPairs:[]);}
   }
   project=prepareOriginalState(before,state,splitPlan);
   if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
@@ -165,4 +165,10 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
 function assertCageSplitSupported(workspace:NonNullable<LandmarkProject['recordingSnapshots']>,curveIds:readonly string[],snapshotId?:string){
  if(!workspace.snapshots.some(snapshot=>[snapshot.deformation,snapshot.inheritedState,snapshot.draft?.deformation].some(state=>state?.layerDomains?.some(domain=>isNonlinearLayerDomain(domain)&&domain.enabled!==false))))return;
  for(const snapshot of workspace.snapshots)if(!snapshotId||snapshot.id===snapshotId){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;if(curveIds.some(id=>hasNonlinearDeformationFor(drawing,id)))throw Error('Splitting a retained cage needs an exact fitted-program restriction. Disable or reset the affected cage before splitting its source.');}
+}
+
+/** Native cage families now have a restriction law. A reflected descriptor
+ * additionally needs its explicit one-to-many endpoint-direction transport. */
+function assertSourceSplitProgramSupported(workspace:RecordingSnapshotWorkspace,curveIds:readonly string[]):void {
+ for(const snapshot of workspace.snapshots){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;for(const id of curveIds)if(hasNonlinearDeformationFor(drawing,id)){const program=evaluatedMaterialProgram(drawing,id);if(!program||program.some(step=>step.kind==='reflected'))throw Error(`Cannot split ${id} through snapshot ${snapshot.id}: its reflected fitted program requires an explicit child-identity and endpoint-direction restriction. No geometry was changed.`);}}
 }

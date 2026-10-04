@@ -1,4 +1,5 @@
 import {remapMaterialProgram} from '../drawing/materialProgram';
+import {remapCageSplitLineages} from './cageSplitLineage';
 import {evaluatedMaterialSource,evaluatedMaterialProgram,type EvaluatedMaterialStep} from '../drawing/evaluatedDeformation';
 import {isLayerCageDomain,type SnapshotLayerAffineDomain,type SnapshotLayerDomain} from './layerDomains';
 import {emptyDrawing,parseDrawing,type DrawingDocument,type Point2} from '../drawing/model';
@@ -84,7 +85,7 @@ function copyMaterialPrograms(current:DrawingDocument,material:DrawingDocument,c
     else {previous={id:freshDomain(),layerIds:[...layerIds],matrix:identityAffine2D(),postShape};domains.push(previous);}
    }else if(step.kind!=='reflected'){
     const preferred=step.kind==='cage'?map(step.domain.id):undefined,id=preferred&&!domains.some(domain=>domain.id===preferred)?preferred:freshDomain();
-    previous=step.kind==='cage'?{...structuredClone(step.domain),id,layerIds:[...layerIds]}:{id,layerIds:[...layerIds],matrix:[...step.matrix]};domains.push(previous);
+    previous=step.kind==='cage'?{...structuredClone(step.domain),id,layerIds:[...layerIds],...(step.domain.fitLineages?{fitLineages:remapCageSplitLineages(step.domain.fitLineages,map)}:{})}:{id,layerIds:[...layerIds],matrix:[...step.matrix]};domains.push(previous);
    }
   }
  }

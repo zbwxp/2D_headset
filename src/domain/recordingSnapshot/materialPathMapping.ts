@@ -18,7 +18,7 @@ export function createSnapshotPathMaterialBasis(lineages:readonly SnapshotMateri
  return (target:SnapshotScalarPropertyTarget):{target:SnapshotScalarPropertyTarget;values:number[];project:(value:number)=>number;closed:boolean}|undefined=>{
   const lineage=lineages?.find(lineage=>lineage.sourceTrackId===target.sourceTrackId);if(!lineage)return undefined;
   const track=ownTrack(drawing,target.sourceTrackId),actual=createSnapshotPathMaterialFrame(drawing,track),logical=createSnapshotPathMaterialFrame(drawing,track,lineage,true);
-  const values=bases.map(basis=>{const source=ownTrack(basis.drawing,target.sourceTrackId),range=source.ranges.find(range=>range.id===target.rangeId);if(!range)fail('a live path basis range is absent.');const frame=createSnapshotPathMaterialFrame(basis.drawing,source);return full(source,target.rangeId,frame.closed)?range![target.end]:logical.positionOf(frame.materialAt(range![target.end]));});
+  const values=bases.map(basis=>{const source=ownTrack(basis.drawing,target.sourceTrackId),range=source.ranges.find(range=>range.id===target.rangeId);if(!range)fail('a live path basis range is absent.');const frame=createSnapshotPathMaterialFrame(basis.drawing,source);return full(source,target.rangeId,frame.closed)?range![target.end]:logical.positionOf(frame.materialAt(range![target.end]),basis.drawing);});
   return {target,values,closed:actual.closed,project:value=>actual.positionOf(logical.materialAt(value))};
  };
 }

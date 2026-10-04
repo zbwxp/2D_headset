@@ -1,7 +1,8 @@
+import {resolveSnapshotFitParameter} from './splitParameterField';
 import type {SnapshotResponseExpressionRegistry,SnapshotExpressionResponses} from './model';
 import type {SnapshotScalarTarget,SnapshotSimplexBasis} from './simplexGeometry';
 import type {SnapshotSimplexLocation,SnapshotTriangulation} from './triangulation';
-import {SnapshotResponseExpressionError,validateSnapshotResponseExpression,snapshotResponseExpressionTerms,type SnapshotResponseBasisReference,type SnapshotResponseExpression,type SnapshotResponseExpressionField} from './responseExpressions';
+import {SnapshotResponseExpressionError,validateSnapshotResponseExpression,snapshotResponseExpressionBasisReferences,snapshotResponseExpressionFitParameters,type SnapshotResponseBasisReference,type SnapshotResponseBasisScalarResolver,type SnapshotResponseExpression,type SnapshotResponseExpressionField} from './responseExpressions';
 
 const own=<T>(record:Record<string,T>|undefined,id:string):T|undefined=>record&&Object.hasOwn(record,id)?record[id]:undefined;
 export const snapshotResponseExpressionFor=(responses:SnapshotExpressionResponses|undefined,target:SnapshotScalarTarget,axis:0|1):SnapshotResponseExpression|undefined=>(target.kind==='node'?own(responses?.nodes,target.nodeId):own(responses?.handles,target.curveId)?.[target.end])?.[axis===0?'x':'y'];
@@ -19,7 +20,7 @@ export function validateSnapshotResponseExpressionRegistry(value:unknown,mesh:Sn
  const control=(raw:unknown)=>{const data=object(raw,['x','y']);for(const axis of ['x','y'])if(data[axis]!==undefined){validateSnapshotResponseExpression(data[axis]);const expression=data[axis] as SnapshotResponseExpression;
   for(const contract of expression.smoothContracts??[]){const serialized=JSON.stringify(contract),prior=contracts.get(contract.id);if(prior&&prior!==serialized)invalid('The expression registry contains inconsistent original SMOOTH contracts.');contracts.set(contract.id,serialized);}
   if(expression.fields.some(field=>field.vertexIds.some(id=>!vertices.has(id))))invalid('Expression field references a missing real mesh vertex; archive it before deleting its source.');
-  if(snapshotResponseExpressionTerms(expression).some(term=>term.basis.some(value=>!snapshots.has(value.basis.snapshotId))))invalid('Expression references a missing real basis snapshot; archive it before deleting its source.');
+  if(snapshotResponseExpressionBasisReferences(expression).some(reference=>!snapshots.has(reference.snapshotId))||snapshotResponseExpressionFitParameters(expression).some(reference=>!snapshots.has(reference.snapshotId)))invalid('Expression references a missing real basis snapshot; archive it before deleting its source.');
  }};
  for(const [simplexId,raw] of Object.entries(object(value))){
   if(!simplexes.has(simplexId))invalid('Expression registry references a missing active simplex; archive it with its original frame.');
@@ -31,13 +32,14 @@ export function validateSnapshotResponseExpressionRegistry(value:unknown,mesh:Sn
 
 /** Resolve only already evaluated real controls, with relative H-P for handles.
  * This closure is reused by every control and ghost in a prepared frame. */
-export function createSnapshotResponseBasisResolver(bases:readonly SnapshotSimplexBasis[]):(basis:SnapshotResponseBasisReference)=>number|undefined {
- const index=new Map(bases.map(basis=>[basis.snapshotId,{nodes:new Map(basis.drawing.nodes.map(node=>[node.id,node.position])),curves:new Map(basis.drawing.curves.map(curve=>[curve.id,curve]))}]));
- return basis=>{const source=index.get(basis.snapshotId);if(!source)return undefined;
+export function createSnapshotResponseBasisResolver(bases:readonly SnapshotSimplexBasis[]):SnapshotResponseBasisScalarResolver {
+ const index=new Map(bases.map(basis=>[basis.snapshotId,{drawing:basis.drawing,nodes:new Map(basis.drawing.nodes.map(node=>[node.id,node.position])),curves:new Map(basis.drawing.curves.map(curve=>[curve.id,curve]))}]));
+ const scalar:SnapshotResponseBasisScalarResolver=basis=>{const source=index.get(basis.snapshotId);if(!source)return undefined;
   if(basis.target.kind==='node')return source.nodes.get(basis.target.nodeId)?.[basis.axis];
   const curve=source.curves.get(basis.target.curveId),node=curve&&source.nodes.get(curve.nodes[basis.target.end]);
   return curve&&node?curve.handles[basis.target.end][basis.axis]-node[basis.axis]:undefined;
  };
+ scalar.fitParameter=reference=>{const drawing=index.get(reference.snapshotId)?.drawing;return drawing?resolveSnapshotFitParameter(drawing,reference.parts,reference.t):undefined;};return scalar;
 }
 
 /** Map current ORIGINAL geometric barycentrics into each retained field frame.
@@ -63,5 +65,5 @@ export function createSnapshotResponseFieldWeightMapper(mesh:SnapshotTriangulati
 
 export function snapshotResponseExpressionRegistryValidForMesh(responses:SnapshotExpressionResponses,mesh:SnapshotTriangulation):boolean {
  const vertices=new Set(mesh.vertices.map(vertex=>vertex.id)),snapshots=new Set(mesh.vertices.map(vertex=>vertex.snapshotId));
- return [...Object.values(responses.nodes),...Object.values(responses.handles).flat()].every(control=>(Object.values(control) as SnapshotResponseExpression[]).every(expression=>expression.fields.every(field=>field.vertexIds.every(id=>vertices.has(id)))&&snapshotResponseExpressionTerms(expression).every(term=>term.basis.every(value=>snapshots.has(value.basis.snapshotId)))));
+ return [...Object.values(responses.nodes),...Object.values(responses.handles).flat()].every(control=>(Object.values(control) as SnapshotResponseExpression[]).every(expression=>expression.fields.every(field=>field.vertexIds.every(id=>vertices.has(id)))&&snapshotResponseExpressionBasisReferences(expression).every(reference=>snapshots.has(reference.snapshotId))&&snapshotResponseExpressionFitParameters(expression).every(reference=>snapshots.has(reference.snapshotId))));
 }

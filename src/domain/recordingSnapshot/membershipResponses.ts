@@ -1,6 +1,6 @@
 import type {DrawingDocument} from '../drawing/model';
 import {resolveSnapshot} from './evaluation';
-import {snapshotResponseExpressionTerms,type SnapshotResponseExpression} from './responseExpressions';
+import {snapshotResponseExpressionBasisReferences,snapshotResponseExpressionFitParameters,snapshotResponseExpressionMaterialDomains,type SnapshotResponseExpression} from './responseExpressions';
 import type {RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotExpressionResponses,SnapshotOrphanedResponses,SnapshotResponseExpressionRegistry,SnapshotTriangleResponses} from './model';
 
 type Target={kind:'node';nodeId:string}|{kind:'handle';curveId:string;end:0|1};
@@ -34,7 +34,9 @@ export function reconcileSnapshotMembershipResponses(workspace:RecordingSnapshot
    const unsupported=supports.get(simplexId)?.find(snapshotId=>lost(snapshotId,target));
    if(unsupported)return `${address(target)} is no longer a member of real view ${unsupported}`;
    if(expression){
-    for(const term of snapshotResponseExpressionTerms(expression))for(const {basis} of term.basis)if(lost(basis.snapshotId,basis.target))return `live basis ${address(basis.target)} is no longer a member of real view ${basis.snapshotId}`;
+    for(const basis of snapshotResponseExpressionBasisReferences(expression))if(lost(basis.snapshotId,basis.target))return `live basis ${address(basis.target)} is no longer a member of real view ${basis.snapshotId}`;
+    for(const reference of snapshotResponseExpressionFitParameters(expression))for(const part of reference.parts)if(lost(reference.snapshotId,{kind:'handle',curveId:part.curveId,end:0}))return `live fitted-parameter curve ${part.curveId} is no longer a member of real view ${reference.snapshotId}`;
+    for(const domain of snapshotResponseExpressionMaterialDomains(expression))for(const part of domain.parts)for(const snapshotId of supports.get(simplexId)??[])if(lost(snapshotId,{kind:'handle',curveId:part.curveId,end:0}))return `live material-parameter curve ${part.curveId} is no longer a member of real view ${snapshotId}`;
     for(const contract of expression.smoothContracts??[])for(const {endpoint} of contract.targets)if(!Object.hasOwn(workspace.library.curves,endpoint.curveId)&&[...before.values()].some(value=>value.curves.has(endpoint.curveId)))return `SMOOTH target ${endpoint.curveId}/${endpoint.end} was deleted`;
    }
   };

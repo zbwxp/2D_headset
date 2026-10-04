@@ -1,6 +1,7 @@
 import {createSnapshotPathMaterialBasis,snapshotPathMaterialValue} from './materialPathMapping';
 import {createSnapshotPathMaterialFrame,type SnapshotMaterialPathLineage} from './pathMaterialFrame';
 import {curveMaterialParameterMap} from '../drawing/materialParameter';
+import {resolveSnapshotFitParameter,snapshotSplitParameterParts,snapshotSplitUsesCurrentMaterialFrame} from './splitParameterField';
 import {shapeOf,type DrawingDocument,type StrokeDisplayIntervals,type DisplayIntervalMode,type InkEnds,type Cubic} from '../drawing/model';
 import {arcField} from '../drawing/sampling';
 import {subcurve} from '../drawing/roundedJoin';
@@ -43,14 +44,22 @@ export function snapshotMaterialPartitionAddress(partitions:readonly SnapshotMat
 }
 type PartitionMetric={parameter:(fraction:number)=>number;fraction:(parameter:number)=>number};
 const metrics=new WeakMap<DrawingDocument,WeakMap<SnapshotMaterialPartition,PartitionMetric>>();
+const metricSource=(drawing:DrawingDocument)=>snapshotSplitUsesCurrentMaterialFrame(drawing)?drawing:evaluatedMaterialSource(drawing);
+const metricParts=(partition:SnapshotMaterialPartition,drawing:DrawingDocument)=>snapshotSplitParameterParts(metricSource(drawing),partition.parts);
+function fittedMetricParameter(partition:SnapshotMaterialPartition,drawing:DrawingDocument,parameter:number):number {
+ if(snapshotSplitUsesCurrentMaterialFrame(drawing))return parameter;
+ const parts=metricParts(partition,drawing),found=parts.findIndex(part=>parameter<=part.parameterRange[1]),index=found<0?parts.length-1:found,domain=parts[index].parameterRange,native=partition.parts[index].parameterRange,t=native[0]+clamp((parameter-domain[0])/(domain[1]-domain[0]))*(native[1]-native[0]);
+ return resolveSnapshotFitParameter(drawing,partition.parts,t)??parameter;
+}
 /** Recover maximal exact cubic runs from the live native parameter pieces.
  * Independently edited children remain separate, while a subsequent split of
  * one of those children still uses that child's original material arc table.
  * Every recovered control is verified; no historical geometry is retained. */
 function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocument):PartitionMetric {
  let cache=metrics.get(drawing);if(!cache){cache=new WeakMap();metrics.set(drawing,cache);}const known=cache.get(partition);if(known)return known;
- const measure=evaluatedMaterialSource(drawing);
- const children=partition.parts.map(part=>{if(!measure.curves.some(curve=>curve.id===part.curveId))fail(`parameter piece ${part.curveId} is missing from [${measure.curves.map(curve=>curve.id).join(', ')}].`);const shape=shapeOf(measure,part.curveId),path=displayPath(measure,part.curveId),field=endpointPairDisplayField(measure,path),index=field.geometry.pieces.findIndex(piece=>!piece.joinId&&piece.owners[0]===part.curveId);if(index<0)fail('a split material curve has no native material piece.');const raw=field.geometry.pieces[index].sourceRange??[0,1],range=path.segments.find(use=>use.id===part.curveId)!.reverse?[1-raw[1],1-raw[0]]:raw;return {shape,range,domain:part.parameterRange};});
+ const measure=metricSource(drawing);
+ const currentParts=metricParts(partition,drawing);
+ const children=partition.parts.map((part,i)=>{if(!measure.curves.some(curve=>curve.id===part.curveId))fail(`parameter piece ${part.curveId} is missing from [${measure.curves.map(curve=>curve.id).join(', ')}].`);const shape=shapeOf(measure,part.curveId),path=displayPath(measure,part.curveId),field=endpointPairDisplayField(measure,path),index=field.geometry.pieces.findIndex(piece=>!piece.joinId&&piece.owners[0]===part.curveId);if(index<0)fail('a split material curve has no native material piece.');const raw=field.geometry.pieces[index].sourceRange??[0,1],range=path.segments.find(use=>use.id===part.curveId)!.reverse?[1-raw[1],1-raw[0]]:raw;return {shape,range,domain:currentParts[i].parameterRange};});
  const globalRange=(child:typeof children[number])=>child.range.map(t=>t<=0?child.domain[0]:t>=1?child.domain[1]:child.domain[0]+t*(child.domain[1]-child.domain[0])) as [number,number];
  const recompose=(start:number,end:number):Cubic|undefined=>{
   const first=children[start],last=children[end-1],lo=first.domain[0],span=last.domain[1]-lo,left=span/(first.domain[1]-lo),right=span/(last.domain[1]-last.domain[0]),parent:Cubic=[first.shape[0],first.shape[0].map((n,axis)=>n+(first.shape[1][axis]-n)*left) as [number,number],last.shape[3].map((n,axis)=>n+(last.shape[2][axis]-n)*right) as [number,number],last.shape[3]];
@@ -84,12 +93,12 @@ function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocu
  }};
  cache.set(partition,metric);return metric;
 }
-function pieceParameter(partition:SnapshotMaterialPartition,drawing:DrawingDocument,index:number){const part=partition.parts[index],track=drawing.displayIntervals?.find(track=>track.id===part.sourceTrackId);if(!track)fail('a material partition piece is missing.');const source=snapshotRouteMaterialSource(drawing,track!),path=displayPath(source,part.curveId);return curveMaterialParameterMap(endpointPairDisplayField(source,path),path,part.curveId);}
+function pieceParameter(partition:SnapshotMaterialPartition,drawing:DrawingDocument,index:number){const part=partition.parts[index],track=drawing.displayIntervals?.find(track=>track.id===part.sourceTrackId);if(!track)fail('a material partition piece is missing.');const source=snapshotRouteMaterialSource(drawing,track!),path=displayPath(source,part.curveId),field=endpointPairDisplayField(source,path);return curveMaterialParameterMap(snapshotSplitUsesCurrentMaterialFrame(drawing)?{...field,sourcePieceParameter:undefined,fittedPieceParameter:undefined}:field,path,part.curveId);}
 export function snapshotMaterialPartitionParentValue(address:SnapshotMaterialPartitionAddress,drawing:DrawingDocument,childValue:number):number {
- const part=address.partition.parts[address.part],local=pieceParameter(address.partition,drawing,address.part).parameterAt(childValue),parameter=part.parameterRange[0]+local*(part.parameterRange[1]-part.parameterRange[0]),native=partitionMetric(address.partition,drawing).fraction(parameter);return address.partition.reverse?1-native:native;
+ const domain=metricParts(address.partition,drawing)[address.part].parameterRange,local=pieceParameter(address.partition,drawing,address.part).parameterAt(childValue),parameter=domain[0]+local*(domain[1]-domain[0]),native=partitionMetric(address.partition,drawing).fraction(parameter);return address.partition.reverse?1-native:native;
 }
 export function snapshotMaterialPartitionChildValue(address:SnapshotMaterialPartitionAddress,drawing:DrawingDocument,parentValue:number):number {
- const part=address.partition.parts[address.part],native=address.partition.reverse?1-parentValue:parentValue,parameter=partitionMetric(address.partition,drawing).parameter(native),local=clamp((parameter-part.parameterRange[0])/(part.parameterRange[1]-part.parameterRange[0]));return pieceParameter(address.partition,drawing,address.part).valueAt(local);
+ const domain=metricParts(address.partition,drawing)[address.part].parameterRange,native=address.partition.reverse?1-parentValue:parentValue,parameter=partitionMetric(address.partition,drawing).parameter(native),local=clamp((parameter-domain[0])/(domain[1]-domain[0]));return pieceParameter(address.partition,drawing,address.part).valueAt(local);
 }
 /** An endpoint belongs to the first piece whose retained value has not yet
  * clamped to its far boundary. At an exact seam either neighboring native
@@ -109,7 +118,7 @@ export function snapshotMaterialPartitionInkEnds(partitions:readonly SnapshotMat
  const address=snapshotMaterialPartitionAddress(partitions,{kind:'interval-endpoint',layerId:'material',sourceTrackId,rangeId,end:'start'});if(!address)return undefined;
  const styles=([0,1] as const).map(end=>{const candidates=address.partition.parts.flatMap(part=>{const id=part.ranges.find(range=>range.rangeId===address.target.rangeId)?.sourceRangeId,range=drawing.displayIntervals?.find(track=>track.id===part.sourceTrackId)?.ranges.find(range=>range.id===id);return range?.inkEnds?.[end]?[range.inkEnds[end]]:[];});return candidates.find(style=>Object.keys(style).length)??{};}) as InkEnds;
  if(!values)return styles;
- const domain=address.partition.parts[address.part].parameterRange,metric=partitionMetric(address.partition,drawing);return (['start','end'] as const).map((end,index)=>{const native=address.partition.reverse?1-values[end]:values[end],parameter=metric.parameter(native);return parameter>=domain[0]&&parameter<=domain[1]?styles[index]:{};}) as InkEnds;
+ const domain=metricParts(address.partition,drawing)[address.part].parameterRange,metric=partitionMetric(address.partition,drawing);return (['start','end'] as const).map((end,index)=>{const native=address.partition.reverse?1-values[end]:values[end],parameter=metric.parameter(native);return parameter>=domain[0]&&parameter<=domain[1]?styles[index]:{};}) as InkEnds;
 }
 export function createSnapshotMaterialPartitionBasis(partitions:readonly SnapshotMaterialPartition[]|undefined,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,diagnostics:string[]=[],lineages?:readonly SnapshotMaterialPathLineage[]){
  const pathBasis=createSnapshotPathMaterialBasis(lineages,bases,drawing);
@@ -118,7 +127,7 @@ export function createSnapshotMaterialPartitionBasis(partitions:readonly Snapsho
  return (target:SnapshotScalarPropertyTarget):{target:SnapshotScalarPropertyTarget;values:number[];project:(value:number)=>number;closed?:boolean}=>{
   const path=pathBasis(target);if(path)return path;
   const address=snapshotMaterialPartitionAddress(partitions,target);if(!address)return {target,values:bases.map(basis=>{const range=track(basis,target.sourceTrackId).ranges.find(range=>range.id===target.rangeId);if(!range)fail('a live material range is absent.');return range![target.end];}),project:value=>value};
-  const finalMetric=partitionMetric(address.partition,drawing),values=bases.map(basis=>{const value=snapshotMaterialPartitionValue(partitions,basis.drawing,address.target);if(value===undefined)fail('a logical material basis lost a child range.');const sourceMetric=partitionMetric(address.partition,basis.drawing),native=address.partition.reverse?1-value!:value!,parameter=sourceMetric.parameter(native),mapped=finalMetric.fraction(parameter);return address.partition.reverse?1-mapped:mapped;});
+  const finalMetric=partitionMetric(address.partition,drawing),values=bases.map(basis=>{const value=snapshotMaterialPartitionValue(partitions,basis.drawing,address.target);if(value===undefined)fail('a logical material basis lost a child range.');const sourceMetric=partitionMetric(address.partition,basis.drawing),native=address.partition.reverse?1-value!:value!,parameter=sourceMetric.parameter(native),fitted=fittedMetricParameter(address.partition,basis.drawing,parameter),mapped=finalMetric.fraction(fitted);return address.partition.reverse?1-mapped:mapped;});
   return {target:address.target,values,project:value=>snapshotMaterialPartitionChildValue(address,drawing,value)};
  };
 }

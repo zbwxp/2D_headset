@@ -1,3 +1,4 @@
+import {createSnapshotFitParameterCollector} from './responseFitParameterRanges';
 import {projectSnapshotResponseCorrections,unprojectSnapshotResponseTarget,snapshotProjectionScalarKey,type SnapshotProjectionScalarSample} from './responseExpressionProjection';
 import {finitePoint,sub,type DrawingDocument,type Point2} from '../drawing/model';
 import type {Angle,SnapshotAngleGraph,SnapshotControlResponse,SnapshotCorrectionFrame,SnapshotEndpointResponses,SnapshotTriangleControlResponse,SnapshotTriangleResponses,SnapshotResponseExpressionRegistry} from './model';
@@ -61,7 +62,8 @@ export function createSnapshotSurfaceResponseSampler(graph:SnapshotAngleGraph,lo
  * onion frames. Native corrections and inherited expressions add as values. */
 export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[]):SnapshotScalarValue {
  const native=createSnapshotSurfaceResponseSampler(graph,location),effective=effectiveSnapshotSurfaceResponses(graph),responses=own(effective.responseExpressions,location.simplexId);
- const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
+ const fittedParameters=createSnapshotFitParameterCollector(),basisScalar=createSnapshotResponseBasisResolver(bases);let recordParameters=true;basisScalar.recordFitParameter=(domain,q)=>{if(recordParameters)fittedParameters.record(domain,q);};
+ const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(responses,target,axis),basisScalar,geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const hasProjection=Object.values(responses?.handles??{}).some(pair=>pair.some(control=>Object.values(control).some(expression=>expression.smoothContracts?.length)));
  const sourceBaselines=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>{const expression=snapshotResponseExpressionFor(responses,target,axis);return expression?snapshotResponseSourceBaseline(expression):undefined;},basisScalar:createSnapshotResponseBasisResolver(bases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const samples=new Map<string,SnapshotProjectionScalarSample>();
@@ -71,10 +73,10 @@ export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,locat
   if(!hasProjection)return coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
   const currentExpression=snapshotResponseExpressionFor(responses,target,axis),hasSourceBaseline=!!currentExpression&&(currentExpression.sourceBaseline!==undefined||!!currentExpression.sourceBaselineOperations),geometric=(sampleWeights:readonly number[])=>hasSourceBaseline?sourceBaselines(target,axis,coordinates.map(()=>0),sampleWeights):coordinates.reduce((sum,value,index)=>sum+value*sampleWeights[index],0);
   const baseline=geometric(weights)+residual,corrected=coordinates.reduce((sum,value,index)=>sum+value*nativeWeights[index],0)+residual;
-  const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>inherited(target,axis,coordinates.map(()=>0),weights));
+  const corners=weights.map((_,index)=>weights.map((_,coordinate)=>coordinate===index?1:0)),cornerResiduals=corners.map(weights=>{recordParameters=false;try{return inherited(target,axis,coordinates.map(()=>0),weights);}finally{recordParameters=true;}});
   samples.set(snapshotProjectionScalarKey(target,axis),{baseline,corrected,baselineCorners:corners.map((weights,index)=>geometric(weights)+cornerResiduals[index]),correctedCorners:coordinates.map((value,index)=>value+cornerResiduals[index]),weights});return corrected;
  };
- sample.projectSmooth=drawing=>projectSnapshotResponseCorrections(drawing,responses,samples);sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
+ sample.projectSmooth=drawing=>{const result=projectSnapshotResponseCorrections(drawing,responses,samples);return {...result,drawing:fittedParameters.apply(result.drawing)};};sample.unprojectSmooth=(drawing,available)=>unprojectSnapshotResponseTarget(drawing,responses,samples,available);sample.rawScalar=(target,axis)=>samples.get(snapshotProjectionScalarKey(target,axis))?.corrected;return sample;
 }
 
 export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[]}

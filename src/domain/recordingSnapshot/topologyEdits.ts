@@ -1,5 +1,9 @@
 import {splitSnapshotMirrorMetadata} from './mirrorMetadata';
+import {resolveSnapshotFitParameter} from './splitParameterField';
+import {recordingForSnapshot} from './tracks';
 import {splitSnapshotObjectLocks} from './objectLocks';
+import {splitCageLineages,splitCageShapeLineages} from './cageSplitLineage';
+import {evaluatedControlParameter,evaluatedMaterialSource,hasEvaluatedDeformationFor} from '../drawing/evaluatedDeformation';
 import {markSnapshotRouteMaterialInput,snapshotRouteMaterialSource} from './routeMaterialSource';
 import {remapSnapshotMaterialPathLineages} from './materialPathLineages';
 import {remapSnapshotMaterialPartitions} from './materialSplit';
@@ -28,7 +32,13 @@ const clone=<T,>(value:T):T=>structuredClone(value);
 // Source intent is checked against the canonical library at transaction entry.
 // Referenced frames may expose a local shared-node authority for an outer end;
 // split that exact current topology with the same curve/seam/material IDs.
-const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>applyCurveSplitIntent(drawing,{...intent,sourceNodeIds:drawing.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds},{propagate:true,materialSource:(drawing,track)=>snapshotRouteMaterialSource(markSnapshotRouteMaterialInput(drawing),track)}).document;
+const splitParameter=(drawing:DrawingDocument,intent:CurveSplitIntent)=>resolveSnapshotFitParameter(drawing,[{curveId:intent.curveId,parameterRange:[0,1]}],intent.t)??evaluatedControlParameter(drawing,intent.curveId,intent.t);
+const split=(drawing:DrawingDocument,intent:CurveSplitIntent)=>{
+ const current={...intent,sourceNodeIds:drawing.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds},q=splitParameter(drawing,intent),materialSource=(drawing:DrawingDocument,track:StrokeDisplayIntervals)=>snapshotRouteMaterialSource(markSnapshotRouteMaterialInput(drawing),track);
+ if(!hasEvaluatedDeformationFor(drawing,intent.curveId)&&q===intent.t)return applyCurveSplitIntent(drawing,current,{propagate:true,materialSource}).document;
+ const controls=applyCurveSplitIntent({...drawing,displayIntervals:undefined},{...current,t:q},{propagate:true}).document,source=evaluatedMaterialSource(drawing),material=applyCurveSplitIntent(source,{...current,t:source===drawing?q:intent.t,sourceNodeIds:source.curves.find(curve=>curve.id===intent.curveId)?.nodes??current.sourceNodeIds},{propagate:true,materialSource}).document;
+ return {...controls,displayIntervals:material.displayIntervals};
+};
 const replaceId=(ids:readonly string[],intent:CurveSplitIntent)=>[...new Set(ids.flatMap(id=>id===intent.curveId?[...intent.childCurveIds]:[id]))];
 const endpoint=(value:Endpoint,intent:CurveSplitIntent):Endpoint=>value.curveId===intent.curveId?{...value,curveId:intent.childCurveIds[value.end]}:value;
 const hasCurve=(drawing:DrawingDocument,id:string)=>drawing.curves.some(curve=>curve.id===id);
@@ -54,6 +64,8 @@ function frozenPose(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnaps
 function preflightTracks(workspace:RecordingSnapshotWorkspace,frozen:readonly FrozenSnapshot[],intent:CurveSplitIntent,localOnly=false):void {
  for(const recording of workspace.recordings){
   const affected=frozen.filter(value=>recording.snapshotIds.includes(value.snapshotId));if(!affected.length)continue;
+  const interpolates=recording.mode==='endpoint-pair'&&recording.snapshotIds.length>1;
+  if(!localOnly&&interpolates){const vertexIds=new Set(recording.mode==='triangulated'?recording.angleGraph!.mesh.vertices.map(vertex=>vertex.snapshotId):recording.snapshotIds);for(const frame of affected)if(vertexIds.has(frame.snapshotId))for(const [kind,pose] of [['saved',frame.saved],['draft',frame.draft]] as const){if(!pose)continue;const q=evaluatedControlParameter(pose.evaluation.drawing,intent.curveId,intent.t);if(q!==intent.t)fail(frame.snapshotId,intent.curveId,`Recording ${recording.id} ${kind} basis uses fitted cut ${q} for native t ${intent.t}. Its intermediate scalar field needs a live fitted-parameter restriction before this source split can preserve it; no state was changed.`);}}
   if(recording.legacy)fail(affected[0].snapshotId,intent.curveId,`legacy scene Recording ${recording.id} requires an explicit topology migration (${recording.legacy.reason}).`);
   if(localOnly&&recording.mode==='endpoint-pair')fail(affected[0].snapshotId,intent.curveId,`endpoint-pair Recording ${recording.id} cannot evaluate mismatched local topology; create a triangulated copy before this local split.`);
   if(recording.mode==='endpoint-pair')for(const responses of [recording.endpointPair?.responses,recording.endpointPair?.draft?.responses])if(responses){
@@ -62,6 +74,22 @@ function preflightTracks(workspace:RecordingSnapshotWorkspace,frozen:readonly Fr
   }
   if(recording.mode==='triangulated'){
    if(localOnly)continue;
+   // An explicitly edited inserted interval still uses the authored inversion
+   // path. Until that path can retain a changing fitted parameter exactly, fail
+   // before replacing source IDs instead of committing material endpoint drift.
+   for(const frame of affected){
+    if(!recording.angleGraph?.materialBasisRecipes?.[frame.snapshotId])continue;
+    const snapshot=workspace.snapshots.find(value=>value.id===frame.snapshotId)!;
+    for(const mode of ['inherited','saved','draft'] as const){
+     const pose=frame[mode],state=mode==='inherited'?snapshot.inheritedState:mode==='draft'?snapshot.draft?.deformation:snapshot.deformation;
+     if(!pose||!state||Math.abs(splitParameter(pose.evaluation.drawing,intent)-intent.t)<=1e-10)continue;
+     for(const layer of Object.values(state.layers))for(const [id,value] of Object.entries(layer.intervals??{})){
+      const track=value.appearance&&pose.evaluation.drawing.displayIntervals?.find(track=>track.id===id);if(!track)continue;
+      const affected=track.scope==='CURVE'?track.anchor.id===intent.curveId:displayPath(pose.evaluation.drawing,track.anchor.id).segments.some(use=>use.id===intent.curveId);
+      if(affected)fail(frame.snapshotId,intent.curveId,`authored interval ${id} on an inherited fitted material field needs exact authored-parameter rebasing before source splitting; no state was changed.`);
+     }
+    }
+   }
    remapSnapshotMaterialPartitions(recording.angleGraph?.materialPartitions,intent,affected.flatMap(value=>value.saved.evaluation.source.displayIntervals??[]));
    remapSnapshotMaterialPathLineages(recording.angleGraph?.materialPathLineages,intent,affected.map(value=>value.saved.evaluation.source));
    continue; // Old tracks in graph copies are recovery evidence only.
@@ -109,6 +137,7 @@ function remapIntervals(values:Record<string,SceneIntervalValue>|undefined,basis
 }
 function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:CurveSplitIntent):SnapshotDeformationState {
  const result=clone(state);
+ for(const domain of result.layerDomains??[])if(domain.layerIds.includes(layerFor(basis,intent.curveId)?.id??'')){if(domain.kind==='h-coons')domain.fitLineages=splitCageLineages(domain.fitLineages,intent);const shaped=splitCageShapeLineages(domain.shapeLineages,domain.postShape,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});if(shaped.lineages.length)domain.shapeLineages=shaped.lineages;if(shaped.value)domain.postShape=shaped.value;}
  for(const value of Object.values(result.layers)){
   for(const category of ['elementPlacements','visibility'] as const){const map=value[category];if(map&&Object.hasOwn(map,intent.curveId)){const prior=map[intent.curveId];delete map[intent.curveId];for(const id of intent.childCurveIds)Object.defineProperty(map,id,{value:clone(prior),enumerable:true,writable:true,configurable:true});}}
   if(value.curveAppearance)value.curveAppearance=splitSnapshotCurveAppearance(value.curveAppearance,intent);
@@ -153,13 +182,19 @@ function rebasePose(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnaps
  // Material is authored in the input domain. Invert the existing evaluated
  // material pipeline, including Warp correspondence and nonuniform placement,
  // instead of copying final-space arc fractions into that input domain.
+ const inheritedMaterial=recordingForSnapshot(workspace,snapshot.id)?.angleGraph?.materialBasisRecipes?.[snapshot.id];
  let evaluated=evaluate();
  for(const wanted of frozen.finalSplit.displayIntervals??[]){
   if(!displayPath(frozen.finalSplit,wanted.anchor.id).segments.some(use=>intent.childCurveIds.includes(use.id)||extraCurveIds.includes(use.id)))continue;
+  const materialLayer=layerFor(evaluated.source,wanted.anchor.id)?.id??layerId;
+  // A retained recipe is restored after the temporary topology rebase. Do not
+  // turn its interim value into an authored override that suppresses the live
+  // recipe; only appearances already owned by this raw state may be inverted.
+  if(inheritedMaterial&&!state.layers[materialLayer]?.intervals?.[wanted.id]?.appearance)continue;
   const actual=evaluated.drawing.displayIntervals?.find(track=>track.id===wanted.id),input=evaluated.source.displayIntervals?.find(track=>track.id===wanted.id);if(!actual||!input)fail(snapshot.id,wanted.id,'split material lost its source track.');
   for(const range of wanted.ranges)for(const side of ['start','end'] as const){
    const observed=evaluated.drawing.displayIntervals?.find(track=>track.id===wanted.id)?.ranges.find(value=>value.id===range.id)?.[side];if(observed!==undefined&&Math.abs(observed-range[side])<=1e-9)continue;
-   const materialLayer=layerFor(evaluated.source,wanted.anchor.id)?.id??layerId,materialState=state.layers[materialLayer]??(state.layers[materialLayer]={}),intervals=materialState.intervals??(materialState.intervals={}),entry=intervals[wanted.id]??(intervals[wanted.id]={appearance:clone(input!),enabled:{}});if(!entry.appearance)entry.appearance=clone(input!);
+   const materialState=state.layers[materialLayer]??(state.layers[materialLayer]={}),intervals=materialState.intervals??(materialState.intervals={}),entry=intervals[wanted.id]??(intervals[wanted.id]={appearance:clone(input!),enabled:{}});if(!entry.appearance)entry.appearance=clone(input!);
    const authored=entry.appearance.ranges.find(value=>value.id===range.id);if(!authored)fail(snapshot.id,range.id,'split material range is missing.');
    let lo=0,hi=1;const collapsed=range.start===range.end;
    for(let iteration=0;iteration<42;iteration++){const mid=(lo+hi)/2;authored![side]=mid;if(collapsed)authored!.start=authored!.end=mid;evaluated=evaluate();const result=evaluated.drawing.displayIntervals?.find(track=>track.id===wanted.id)?.ranges.find(value=>value.id===range.id)?.[side];if(result===undefined||!Number.isFinite(result))fail(snapshot.id,range.id,'material response cannot be inverted.');if(Math.abs(result!-range[side])<=1e-10)break;if(result!<range[side])lo=mid;else hi=mid;}
@@ -180,7 +215,11 @@ export interface SnapshotCurveSplitBatchPlan {before:RecordingSnapshotWorkspace;
 export function prepareSnapshotCurveSplits(workspace:RecordingSnapshotWorkspace,sourceSnapshotId:string,intents:readonly CurveSplitIntent[],mirrorPairs:readonly SnapshotSplitMirrorReplacement[]=[]):SnapshotCurveSplitBatchPlan {
  if(!intents.length||new Set(intents.map(value=>value.curveId)).size!==intents.length)throw Error('A split batch requires distinct source curves.');
  const plans=intents.map(intent=>prepareSnapshotCurveSplit(workspace,sourceSnapshotId,intent,mirrorPairs));
- const splitAll=(drawing:DrawingDocument)=>intents.reduce((document,intent)=>hasCurve(document,intent.curveId)?split(document,intent):document,drawing);
+ const splitAll=(drawing:DrawingDocument)=>{
+  if(!intents.some(intent=>hasEvaluatedDeformationFor(drawing,intent.curveId)||splitParameter(drawing,intent)!==intent.t))return intents.reduce((document,intent)=>hasCurve(document,intent.curveId)?split(document,intent):document,drawing);
+  const materialSource=evaluatedMaterialSource(drawing),material=intents.reduce((document,intent)=>hasCurve(document,intent.curveId)?split(document,materialSource===drawing?{...intent,t:splitParameter(drawing,intent)}:intent):document,materialSource);
+  const controls=intents.reduce<DrawingDocument>((document,intent)=>hasCurve(document,intent.curveId)?applyCurveSplitIntent(document,{...intent,t:splitParameter(drawing,intent),sourceNodeIds:document.curves.find(curve=>curve.id===intent.curveId)!.nodes},{propagate:true}).document:document,{...drawing,displayIntervals:undefined});return {...controls,displayIntervals:material.displayIntervals};
+ };
  const frozenPlans=plans.map(plan=>({...plan,frozen:plan.frozen.map(frozen=>{
   const pose=(value:FrozenPose):FrozenPose=>({...value,split:splitAll(value.evaluation.preElementPlacementDrawing),finalSplit:splitAll(value.evaluation.drawing),material:splitAll(value.evaluation.source)});
   return {...frozen,saved:pose(frozen.saved),...(frozen.inherited?{inherited:pose(frozen.inherited)}:{}),...(frozen.draft?{draft:pose(frozen.draft)}:{})};})}));
@@ -214,6 +253,7 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   for(const mode of ['inherited','saved','draft'] as const)for(const plan of plans){const frozen=plan.frozen.find(value=>value.snapshotId===snapshot.id),pose=frozen?.[mode];if(pose)replace(rebasePose(workspace,snapshot,pose,plan.intent,mode,extras(plan)));}
   for(const mode of ['saved','draft'] as const)for(const plan of plans){const frozen=plan.frozen.find(value=>value.snapshotId===snapshot.id),pose=frozen?.[mode];if(!pose)continue;const actual=resolveSnapshot(workspace,snapshot.id,{useDraft:mode==='draft',angle:mode==='draft'?snapshot.draft!.angle:snapshot.angle,diagnostics:'preview'}).preElementPlacementDrawing;
    for(const id of [...plan.intent.childCurveIds,...extras(plan)]){const expected=shapeOf(pose.split,id),got=shapeOf(actual,id);if(expected.some((point,index)=>point.some((value,axis)=>Math.abs(value-got[index][axis])>1e-8)))fail(snapshot.id,id,'the current constraints cannot preserve the already-deformed split controls exactly.');}
+   const final=resolveSnapshot(workspace,snapshot.id,{useDraft:mode==='draft',angle:mode==='draft'?snapshot.draft!.angle:snapshot.angle,diagnostics:'preview'});for(const id of plan.intent.childCurveIds){const expected=shapeOf(pose.finalSplit,id),got=shapeOf(final.drawing,id);if(expected.some((point,index)=>point.some((value,axis)=>Math.abs(value-got[index][axis])>1e-8)))fail(snapshot.id,id,final.diagnostics.find(issue=>issue.code==='LAYER_DOMAIN')?.message??'the retained output program cannot preserve its exact fitted restriction.');}
   }
  }
  for(const {intent} of plans)delete workspace.library.curves[intent.curveId];return workspace;

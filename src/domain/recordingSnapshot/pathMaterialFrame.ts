@@ -1,6 +1,10 @@
 import type {ResolvedDisplayRoute} from '../drawing/displayRoutes';
 import {createDrawingPathMaterialFrame,resolveDrawingMaterialPath,type DrawingPathMaterialPoint,type DrawingPathMaterialFrame} from '../drawing/pathMaterialSupport';
-import {evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
+import {evaluatedControlParameter,evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
+import {snapshotSplitParameterParts,snapshotSplitUsesCurrentMaterialFrame} from './splitParameterField';
+import {curveMaterialParameterMap} from '../drawing/materialParameter';
+import {displayPath} from '../drawing/displayIntervals';
+import {endpointPairDisplayField} from './endpointPairMaterial';
 import {shapeOf,type Cubic,type CurveUse,type DrawingDocument,type Endpoint,type Point2,type StrokeDisplayIntervals} from '../drawing/model';
 import {subcurve} from '../drawing/roundedJoin';
 import type {StrokePath} from '../drawing/strokes';
@@ -15,7 +19,10 @@ export interface SnapshotMaterialPathLineage {
 /** ARC s is oriented from the relation's a port toward its b port. A display
  * link has its own stable identity even if its synthetic join name changes. */
 export type SnapshotPathMaterialPoint=DrawingPathMaterialPoint;
-export type SnapshotPathMaterialFrame=DrawingPathMaterialFrame;
+export interface SnapshotPathMaterialFrame extends DrawingPathMaterialFrame {
+ /** A transported support belongs to this live basis's native child frame. */
+ positionOf:(point:SnapshotPathMaterialPoint,sourceDrawing?:DrawingDocument)=>number;
+}
 type LineagePart=SnapshotMaterialPathLineage['curves'][number]['parts'][number];
 interface Run {id:string;parts:LineagePart[];shape:Cubic;lo:number;hi:number}
 const fail=(message:string):never=>{throw Error(`Path material frame: ${message}`);};
@@ -45,7 +52,8 @@ function lineageRuns(drawing:DrawingDocument,path:StrokePath,lineage:SnapshotMat
   if(drawing.endpointLinks?.some(link=>[link.a,link.b].some(e=>sameEnd(e,exit)||sameEnd(e,entry))))return false;
   return !drawing.joins.some(join=>[join.a,join.b].some(e=>sameEnd(e,exit)||sameEnd(e,entry))&&(join.mode==='ARC'||!([join.a,join.b].some(e=>sameEnd(e,exit))&&[join.a,join.b].some(e=>sameEnd(e,entry)))));
  };
- for(const root of lineage.curves){
+ for(const nativeRoot of lineage.curves){
+  const root={...nativeRoot,parts:snapshotSplitParameterParts(drawing,nativeRoot.parts).map(part=>({...part,parameterRange:[...part.parameterRange] as [number,number]}))};
   let boundary=0;
   for(const part of root.parts){const [lo,hi]=part.parameterRange;if(!Number.isFinite(lo)||!Number.isFinite(hi)||lo!==boundary||hi<=lo||hi>1||claimed.has(part.curveId))fail('invalid live parameter partition.');boundary=hi;claimed.add(part.curveId);if(!curves.has(part.curveId)||!uses.has(part.curveId))fail(`lineage curve ${part.curveId} is absent from its live path.`);}
   if(!root.parts.length||boundary!==1)fail('a live parameter partition must cover 0…1.');
@@ -83,22 +91,31 @@ export function createSnapshotPathMaterialFrame(drawing:DrawingDocument,track:St
  const key=JSON.stringify([track.id,track.anchor,track.scope,track.displayRoute,logical?lineage:null]),cache=caches.get(drawing),known=cache?.get(key);if(known)return known;
  let source=snapshotRouteMaterialSource(drawing,track);if(!logical||!lineage)return createDrawingPathMaterialFrame(source,track);
  let resolved=resolveDrawingMaterialPath(source,track);
- source=evaluatedMaterialSource(source);resolved=resolveDrawingMaterialPath(source,track);
+ const currentMaterial=snapshotSplitUsesCurrentMaterialFrame(source);if(!currentMaterial)source=evaluatedMaterialSource(source);resolved=resolveDrawingMaterialPath(source,track);
  const originalPath=resolved.path,runs=lineageRuns(source,originalPath,lineage),contracted=contract(source,resolved,runs),actualCurveIds=new Set(originalPath.segments.map(use=>use.id)),runById=new Map(runs.map(run=>[run.id,run]));
- const virtualPoint=(point:SnapshotPathMaterialPoint)=>{
+ const virtualPoint=(point:SnapshotPathMaterialPoint,sourceDrawing?:DrawingDocument)=>{
   if(point.kind==='join')return point;
   if(!actualCurveIds.has(point.curveId)||!Number.isFinite(point.t)||point.t<0||point.t>1)fail(`material curve ${point.curveId} is absent or has an invalid parameter.`);
-  const found=contracted.byChild.get(point.curveId);return found?{kind:'curve' as const,curveId:found.run.id,t:clamp((found.part.parameterRange[0]+point.t*(found.part.parameterRange[1]-found.part.parameterRange[0])-found.run.lo)/(found.run.hi-found.run.lo))}:point;
+  if(sourceDrawing){
+   const root=lineage.curves.find(root=>root.parts.some(part=>part.curveId===point.curveId));
+   if(root){const native=snapshotSplitParameterParts(sourceDrawing,root.parts).find(part=>part.curveId===point.curveId)!,local=evaluatedControlParameter(sourceDrawing,point.curveId,point.t),fitted=native.parameterRange[0]+local*(native.parameterRange[1]-native.parameterRange[0]);
+    const current=snapshotSplitParameterParts(source,root.parts),target=current.find(part=>fitted<=part.parameterRange[1])??current.at(-1)!,found=contracted.byChild.get(target.curveId),lo=found?.run.lo??target.parameterRange[0],hi=found?.run.hi??target.parameterRange[1];
+    return {kind:'curve' as const,curveId:found?.run.id??target.curveId,t:clamp((fitted-lo)/(hi-lo))};
+   }
+   return {...point,t:evaluatedControlParameter(sourceDrawing,point.curveId,point.t)};
+  }
+  const local=currentMaterial?evaluatedControlParameter(drawing,point.curveId,point.t):point.t,found=contracted.byChild.get(point.curveId);return found?{kind:'curve' as const,curveId:found.run.id,t:clamp((found.part.parameterRange[0]+local*(found.part.parameterRange[1]-found.part.parameterRange[0])-found.run.lo)/(found.run.hi-found.run.lo))}:{...point,t:local};
  };
  const first=originalPath.segments[0],anchor={start:virtualPoint({kind:'curve',curveId:track.anchor.id,t:0}),end:virtualPoint({kind:'curve',curveId:track.anchor.id,t:1})},materialTrack={...track,anchor:{...track.anchor,id:contracted.byChild.get(track.anchor.id)?.run.id??track.anchor.id}},base=createDrawingPathMaterialFrame(contracted.document,materialTrack,{resolvedPath:contracted.resolved,anchor,routeOrigin:virtualPoint({kind:'curve',curveId:first.id,t:first.reverse?1:0})});
+ const nativeMaps=new Map<string,(t:number)=>number>(),nativeLocal=(curveId:string,t:number)=>{if(!currentMaterial)return t;let map=nativeMaps.get(curveId);if(!map){const path=displayPath(drawing,curveId),field=endpointPairDisplayField(drawing,path),native=curveMaterialParameterMap(field,path,curveId),fitted=curveMaterialParameterMap({...field,sourcePieceParameter:undefined,fittedPieceParameter:undefined},path,curveId);map=value=>native.parameterAt(fitted.valueAt(value));nativeMaps.set(curveId,map);}return map(t);};
  const frame:SnapshotPathMaterialFrame={closed:base.closed,total:base.total,
   materialAt(value){
    const point=base.materialAt(value);if(point.kind==='join')return point;
-   const run=runById.get(point.curveId);if(!run)return point;
+   const run=runById.get(point.curveId);if(!run)return {...point,t:nativeLocal(point.curveId,point.t)};
    const t=run.lo+point.t*(run.hi-run.lo),part=run.parts.find(part=>t<=part.parameterRange[1]+1e-14)??run.parts.at(-1)!;
-   return {kind:'curve',curveId:part.curveId,t:clamp((t-part.parameterRange[0])/(part.parameterRange[1]-part.parameterRange[0]))};
+   return {kind:'curve',curveId:part.curveId,t:nativeLocal(part.curveId,clamp((t-part.parameterRange[0])/(part.parameterRange[1]-part.parameterRange[0])))};
   },
-  positionOf(point){return base.positionOf(virtualPoint(point));},
+  positionOf(point,sourceDrawing){return base.positionOf(virtualPoint(point,sourceDrawing));},
  };
  if(cache)cache.set(key,frame);else caches.set(drawing,new Map([[key,frame]]));return frame;
 }

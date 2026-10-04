@@ -1,3 +1,4 @@
+import {validateCageSplitLineages,remapCageSplitLineages,type CageSplitLineage} from './cageSplitLineage';
 import {drawingDeformProjection,rectQuad,type DeformProjection,type DeformRect,type Quad} from '../deformation/cageField';
 import {assertBend,type BendValue} from '../deformation/coons';
 import type {Point2} from '../drawing/model';
@@ -13,6 +14,7 @@ export interface SnapshotLayerCageDomain {
  quad:Quad;
  bend?:BendValue;
  enabled?:boolean;
+ fitLineages?:CageSplitLineage[];
 }
 
 const maxDomains=1000,maxScope=16384;
@@ -27,8 +29,9 @@ const point=(value:unknown):value is Point2=>Array.isArray(value)&&value.length=
 /** Validate both JSON shape and the existing cage kernel's orientation/horizon
  * constraints. Disabling a domain never makes malformed authored data valid. */
 export function validateLayerCageDomain(value:unknown):asserts value is SnapshotLayerCageDomain {
- const domain=object(value,['kind','id','layerIds','restRect','quad','bend','enabled']);
+ const domain=object(value,['kind','id','layerIds','restRect','quad','bend','enabled','fitLineages']);
  if(domain.kind!=='h-coons'||!id(domain.id)||!Array.isArray(domain.layerIds)||!domain.layerIds.length||domain.layerIds.length>maxScope||Array.from(domain.layerIds).some(layer=>!id(layer))||new Set(domain.layerIds).size!==domain.layerIds.length||domain.enabled!==undefined&&typeof domain.enabled!=='boolean')fail();
+ if(domain.fitLineages!==undefined)validateCageSplitLineages(domain.fitLineages);
  const rect=object(domain.restRect,['min','max']);
  if(!point(rect.min)||!point(rect.max))fail();
  const restRect=rect as unknown as DeformRect,w=restRect.max[0]-restRect.min[0],h=restRect.max[1]-restRect.min[1];
@@ -68,7 +71,7 @@ export function remapLayerCageDomains(domains:readonly SnapshotLayerCageDomain[]
  validateLayerCageDomains(domains);
  const remapped=domains.flatMap(domain=>{
   const layers=domain.layerIds.filter(layer=>!selected||selected(layer));
-  return layers.length?[{...structuredClone(domain),id:id(domain.id),layerIds:layers.map(id)}]:[];
+  return layers.length?[{...structuredClone(domain),id:id(domain.id),layerIds:layers.map(id),...(domain.fitLineages?{fitLineages:remapCageSplitLineages(domain.fitLineages,id)}:{})}]:[];
  });
  validateLayerCageDomains(remapped);return remapped;
 }

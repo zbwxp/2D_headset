@@ -8,9 +8,23 @@ const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 /** Projective reparameterization equalizes the rational cubic's endpoint weights.
  * This preserves source-point correspondence while avoiding tangential fit error on long curves. */
 export const deformParameter=(t:number,scale:number)=>scale*t/(1+(scale-1)*t);
-export interface CurveParameterMap {values:number[]}
+export interface CurveParameterMap {
+ values:number[];
+ /** Source coordinates for exact restrictions/compositions. Omitted by the
+  * original fitter, whose source samples remain uniformly spaced. */
+ sourceKnots?:number[];
+}
+/** All source breakpoints, including the endpoints of the parameter domain. */
+export function curveParameterSourceKnots(map?:CurveParameterMap):readonly number[] {
+ return map?.sourceKnots??(map?map.values.map((_,i)=>i/(map.values.length-1)):[0,1]);
+}
+const parameterInterval=(knots:readonly number[],value:number)=>{
+ let lo=0,hi=knots.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(knots[mid]<=value)lo=mid;else hi=mid;}return lo;
+};
 export function mappedParameter(t:number,map?:CurveParameterMap){
- if(!map)return t;const x=clamp(t)*(map.values.length-1),i=Math.min(map.values.length-2,Math.floor(x));return map.values[i]+(map.values[i+1]-map.values[i])*(x-i);
+ if(!map)return t;
+ if(map.sourceKnots){const value=clamp(t),i=parameterInterval(map.sourceKnots,value);return map.values[i]+(map.values[i+1]-map.values[i])*(value-map.sourceKnots[i])/(map.sourceKnots[i+1]-map.sourceKnots[i]);}
+ const x=clamp(t)*(map.values.length-1),i=Math.min(map.values.length-2,Math.floor(x));return map.values[i]+(map.values[i+1]-map.values[i])*(x-i);
 }
 /** Fit two positive handle lengths and monotonically refine point correspondence.
  * Endpoint positions and tangent rays remain exact throughout the geometric fit. */
@@ -62,6 +76,7 @@ export function sourceParameter(t:number,map?:CurveParameterMap):number {
  if(!map)return t;
  const value=clamp(t),values=map.values;let lo=0,hi=values.length-1;
  while(hi-lo>1){const mid=(lo+hi)>>1;if(values[mid]<=value)lo=mid;else hi=mid;}
+ if(map.sourceKnots)return map.sourceKnots[lo]+(map.sourceKnots[hi]-map.sourceKnots[lo])*(value-values[lo])/(values[hi]-values[lo]);
  return (lo+(value-values[lo])/(values[hi]-values[lo]))/(values.length-1);
 }
 
@@ -82,7 +97,9 @@ export function fitCubicTarget(target:CubicFitTarget){
 }
 /** One-sided slope of the same piecewise-linear material correspondence. */
 export function mappedParameterSlope(t:number,map?:CurveParameterMap):number {
- if(!map)return 1;const i=Math.min(map.values.length-2,Math.floor(clamp(t)*(map.values.length-1)));
+ if(!map)return 1;
+ if(map.sourceKnots){const i=parameterInterval(map.sourceKnots,clamp(t));return (map.values[i+1]-map.values[i])/(map.sourceKnots[i+1]-map.sourceKnots[i]);}
+ const i=Math.min(map.values.length-2,Math.floor(clamp(t)*(map.values.length-1)));
  return (map.values[i+1]-map.values[i])*(map.values.length-1);
 }
 export function sourceParameterSlope(t:number,map?:CurveParameterMap):number {

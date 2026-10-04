@@ -11,7 +11,7 @@ export type {EvaluatedMaterialStep} from './materialProgram';
 type Projector=ReturnType<typeof createFittedGeometryProjector>;
 type Geometry={shapes:Cubic[];pieces:DrawingPiece[];error?:string};
 type Material=Parameters<Projector['projectMaterialField']>[0];
-interface Program {key:string;steps:Projector[];data?:EvaluatedMaterialStep[];parameter:(t:number)=>number;slope:(t:number)=>number}
+interface Program {key:string;steps:Projector[];data?:EvaluatedMaterialStep[];parameter:(t:number)=>number;slope:(t:number)=>number;fitRange?:readonly [number,number]}
 interface Evaluation {source:DrawingDocument;programs:Map<string,Program>;sources:WeakMap<DrawingDocument,DrawingDocument>;diagnostics:Map<string,CageFitDiagnostic>}
 const evaluations=new WeakMap<DrawingDocument['nodes'],Evaluation>();
 const identityValues=Array.from({length:129},(_,i)=>i/128);
@@ -41,15 +41,16 @@ export function evaluatedDeformationSource(drawing:DrawingDocument):DrawingDocum
 /** Material measurements must strip the complete output program, including a
  * prior nonuniform affine. Identity and topology are retained by the caller. */
 export const evaluatedMaterialSource=(drawing:DrawingDocument)=>evaluatedDeformationSource(drawing)??evaluatedAffineSource(drawing)??drawing;
+export const evaluatedFitRange=(drawing:DrawingDocument,id:string)=>evaluations.get(drawing.nodes)?.programs.get(id)?.fitRange;
 export function evaluatedControlParameter(drawing:DrawingDocument,id:string,t:number):number {return evaluations.get(drawing.nodes)?.programs.get(id)?.parameter(t)??t;}
 export function evaluatedControlParameterSlope(drawing:DrawingDocument,id:string,t:number):number {return evaluations.get(drawing.nodes)?.programs.get(id)?.slope(t)??1;}
 
 /** Append one stage while retaining live canonical identities and material
  * control provenance. The stage's pure projector owns all fitting math. */
-export function appendEvaluatedDeformation(drawing:DrawingDocument,before:DrawingDocument,curveIds:ReadonlySet<string>,projector:Projector,key:string,parameters:ReadonlyMap<string,CurveParameterMap>=new Map(),data?:EvaluatedMaterialStep):DrawingDocument {
+export function appendEvaluatedDeformation(drawing:DrawingDocument,before:DrawingDocument,curveIds:ReadonlySet<string>,projector:Projector,key:string,parameters:ReadonlyMap<string,CurveParameterMap>=new Map(),data?:EvaluatedMaterialStep,fitRanges:ReadonlyMap<string,readonly [number,number]>=new Map()):DrawingDocument {
  if(!curveIds.size)return drawing;
  const programs=programsFor(before),source=evaluatedMaterialSource(before);
- for(const curve of before.curves){if(!curveIds.has(curve.id))continue;const prior=programs.get(curve.id),map=parameters.get(curve.id),program:Program={key:JSON.stringify([prior?.key??'',key]),steps:[...prior?.steps??[],projector],data:data&&(!prior||prior.data)?[...prior?.data??[],structuredClone(data)]:undefined,parameter:t=>mappedParameter(prior?.parameter(t)??t,map),slope:t=>(prior?.slope(t)??1)*mappedParameterSlope(prior?.parameter(t)??t,map)};
+ for(const curve of before.curves){if(!curveIds.has(curve.id))continue;const prior=programs.get(curve.id),map=parameters.get(curve.id),program:Program={fitRange:fitRanges.get(curve.id)??prior?.fitRange,key:JSON.stringify([prior?.key??'',key]),steps:[...prior?.steps??[],projector],data:data&&(!prior||prior.data)?[...prior?.data??[],structuredClone(data)]:undefined,parameter:t=>mappedParameter(prior?.parameter(t)??t,map),slope:t=>(prior?.slope(t)??1)*mappedParameterSlope(prior?.parameter(t)??t,map)};
   programs.set(curve.id,program);for(const node of curve.nodes)programs.set(node,program);
  }
  evaluations.set(drawing.nodes,{source,programs,sources:new WeakMap(),diagnostics:new Map()});return drawing;
@@ -100,7 +101,7 @@ export function remapEvaluatedDeformations(drawing:DrawingDocument,input:Drawing
  const project=(step:Projector)=>{let cached=wrapped.get(step);if(cached)return cached;
   const fitted=(result:ReturnType<Projector['fit']>)=>({...result,shape:mapShape(result.shape,id)}),fit=(shape:Cubic)=>fitted(step.fit(mapShape(shape,originalId)));
   const canonicalPiece=(piece:DrawingPiece)=>({...piece,shape:mapShape(piece.shape,originalId),owners:piece.owners.map(originalId),...(piece.joinId?{joinId:originalId(piece.joinId)}:{}),...(piece.inkOwner?{inkOwner:originalId(piece.inkOwner)}:{})});
-  cached=createFittedGeometryProjector(piece=>{const canonical=canonicalPiece(piece),result=step.projectGeometry({shapes:[canonical.shape],pieces:[canonical]}).fits[0];return result?fitted(result):undefined;},fit,.00004,(geometry,initial)=>{
+  cached=createFittedGeometryProjector(piece=>({shape:piece.shape,parameters:{values:[0,1]},maxError:0}),fit,.00004,(geometry,initial)=>{
    // Relation-constrained stages need neighbouring pieces after ID/reflection
    // adaptation too. Replaying pieces independently would lose ARC tangency.
    const pieces=geometry.pieces.map(canonicalPiece),selected=new Set(pieces.filter((_,i)=>initial[i]));

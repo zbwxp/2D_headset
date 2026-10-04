@@ -1,5 +1,5 @@
 import type {DeformProjection} from '../deformation/cageField';
-import {fitDeformedCubic,mappedParameter,sourceParameter,sourceParameterSlope} from '../deformation/cubicDeformation';
+import {fitDeformedCubic,mappedParameter,sourceParameter,sourceParameterSlope,curveParameterSourceKnots} from '../deformation/cubicDeformation';
 import {derivative} from '../geometry/bezier';
 import {arcField,point,type ArcSampling} from './sampling';
 import {length,sub,type Cubic,type Point2} from './model';
@@ -65,7 +65,7 @@ export function createFittedGeometryProjector(fitPiece:(piece:DrawingPiece)=>Fit
    // the transported table exactly composes the two piecewise-linear maps.
    const table={...part,start:0},distance=(t:number)=>deformMaterialDistanceAt(table,t);
    const samples=(quality?:ArcSampling)=>{
-    const parameters=[...new Set([...part.pts.map(p=>p.t),...result.parameters.values.map((_,i)=>i/(result.parameters.values.length-1)),...fitted.renderSamples(quality).map(p=>sourceParameter(p.t,result.parameters))])].sort((a,b)=>a-b);
+    const parameters=[...new Set([...part.pts.map(p=>p.t),...curveParameterSourceKnots(result.parameters),...fitted.renderSamples(quality).map(p=>sourceParameter(p.t,result.parameters))])].sort((a,b)=>a-b);
     return parameters.map(t=>{const mapped=parameter(t);return {p:point(result.shape,mapped),t:mapped,distance:distance(t)};});
    };
    const points=samples();return {...part,shape:result.shape,pts:points.map(({p,t})=>({p,t})),dist:points.map(p=>p.distance),renderSamples:samples};

@@ -1,3 +1,4 @@
+import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
 import {deriveSmoothComponents} from './smoothComponent';
 import {createSnapshotResponseBasisResolver} from './responseExpressionRegistry';
 import {unprovenSnapshotSmoothResponses} from './responseExpressionSmooth';
@@ -8,7 +9,7 @@ import {remapSnapshotSplitResponses} from './responseExpressionSplit';
 import {interpolateSnapshotSimplexGeometry} from './simplexGeometry';
 import {validateRecordingSnapshots} from './validation';
 import type {RecordingSnapshotWorkspace,SnapshotAngleGraph,SnapshotExpressionControlResponse,SnapshotExpressionResponses,SnapshotResponseExpressionRegistry} from './model';
-import {snapshotResponseExpressionTerms,type SnapshotResponseExpression,type SnapshotResponseBasisReference} from './responseExpressions';
+import {snapshotResponseExpressionBasisReferences,snapshotResponseExpressionFitParameters,snapshotResponseExpressionMaterialDomains,type SnapshotResponseExpression,type SnapshotResponseBasisReference,type SnapshotResponseFitParameterReference} from './responseExpressions';
 
 /** Final step of the existing frozen-source topology transaction. Only the
  * algebra is persisted; old evaluated poses are ephemeral basis evidence. */
@@ -29,7 +30,7 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
    nonlinearDependencies.push(...unprovenSnapshotSmoothResponses(effective,proofBases,dependencies,`split-proof:${intent.curveId}:draft:${frame.id}`).map(message=>`Draft ${frame.id}, ${message}`));
   }
   const authorities=new Map<string,Map<string,string>>();
-  const next=remapSnapshotSplitResponses(graph,intent,{nonlinearDependencies,...nonlinearDependencies.length?{smoothComponents:(location:import('./triangulation').SnapshotSimplexLocation)=>{const active=location.snapshotIds.map(id=>bases.find(basis=>basis.snapshotId===id)!),drawing=interpolateSnapshotSimplexGeometry(active,location.geometricWeights).drawing,curves=new Map(drawing.curves.map(curve=>[curve.id,curve])),nodeAuthority=endpointPairNodeAuthorities(drawing),relations=[...drawing.joins.filter(join=>join.mode==='SMOOTH'),...(drawing.endpointLinks??[]).filter(link=>link.joinBrush?.kind==='SMOOTH')];return deriveSmoothComponents(relations).filter(component=>component.members.some(({endpoint})=>endpoint.curveId===intent.curveId)).map(component=>({component,nodeIds:component.members.map(({endpoint})=>{const node=curves.get(endpoint.curveId)!.nodes[endpoint.end];return nodeAuthority.get(node)??node;})}));}}:{},nodeAuthority:(nodeId,location)=>{
+  const next=remapSnapshotSplitResponses(graph,intent,{fittedParameters:bases.some(basis=>hasNonlinearDeformationFor(basis.drawing,intent.curveId)),nonlinearDependencies,...nonlinearDependencies.length?{smoothComponents:(location:import('./triangulation').SnapshotSimplexLocation)=>{const active=location.snapshotIds.map(id=>bases.find(basis=>basis.snapshotId===id)!),drawing=interpolateSnapshotSimplexGeometry(active,location.geometricWeights).drawing,curves=new Map(drawing.curves.map(curve=>[curve.id,curve])),nodeAuthority=endpointPairNodeAuthorities(drawing),relations=[...drawing.joins.filter(join=>join.mode==='SMOOTH'),...(drawing.endpointLinks??[]).filter(link=>link.joinBrush?.kind==='SMOOTH')];return deriveSmoothComponents(relations).filter(component=>component.members.some(({endpoint})=>endpoint.curveId===intent.curveId)).map(component=>({component,nodeIds:component.members.map(({endpoint})=>{const node=curves.get(endpoint.curveId)!.nodes[endpoint.end];return nodeAuthority.get(node)??node;})}));}}:{},nodeAuthority:(nodeId,location)=>{
    let map=authorities.get(location.simplexId);if(!map){const active=location.snapshotIds.map(id=>bases.find(basis=>basis.snapshotId===id)!);map=endpointPairNodeAuthorities(interpolateSnapshotSimplexGeometry(active,location.geometricWeights).drawing);authorities.set(location.simplexId,map);}return map.get(nodeId)??nodeId;
   }});
   return {...recording,angleGraph:{...next,...recording.angleGraph.materialPartitions?{materialPartitions:recording.angleGraph.materialPartitions}:{},...recording.angleGraph.materialPathLineages?{materialPathLineages:recording.angleGraph.materialPathLineages}:{}}};
@@ -37,9 +38,9 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
  const result={...candidate,recordings};validateRecordingSnapshots(result);return result;
 }
 
-function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean,targetAlive:(kind:'nodes'|'handles',id:string)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {
+function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean,hasFitParameter:(reference:SnapshotResponseFitParameterReference)=>boolean,targetAlive:(kind:'nodes'|'handles',id:string)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {
  const kept:SnapshotResponseExpressionRegistry={},retired:SnapshotResponseExpressionRegistry={};
- const valid=(expression:SnapshotResponseExpression)=>(expression.smoothContracts??[]).every(contract=>contract.targets.every(({endpoint})=>targetAlive('handles',endpoint.curveId)))&&snapshotResponseExpressionTerms(expression).every(term=>term.basis.every(({basis})=>targetAlive(basis.target.kind==='node'?'nodes':'handles',basis.target.kind==='node'?basis.target.nodeId:basis.target.curveId)&&hasBasis(basis)));
+ const valid=(expression:SnapshotResponseExpression)=>(expression.smoothContracts??[]).every(contract=>contract.targets.every(({endpoint})=>targetAlive('handles',endpoint.curveId)))&&snapshotResponseExpressionBasisReferences(expression).every(basis=>targetAlive(basis.target.kind==='node'?'nodes':'handles',basis.target.kind==='node'?basis.target.nodeId:basis.target.curveId)&&hasBasis(basis))&&snapshotResponseExpressionFitParameters(expression).every(hasFitParameter)&&snapshotResponseExpressionMaterialDomains(expression).every(domain=>domain.parts.every(part=>targetAlive('handles',part.curveId)));
  for(const [simplexId,responses] of Object.entries(registry??{})){
   const active:SnapshotExpressionResponses={nodes:{},handles:{}},archive:SnapshotExpressionResponses={nodes:{},handles:{}};
   const filter=(control:SnapshotExpressionControlResponse,alive:boolean)=>{const yes:SnapshotExpressionControlResponse={},no:SnapshotExpressionControlResponse={};for(const axis of ['x','y'] as const){const expression=control[axis];if(expression)(alive&&valid(expression)?yes:no)[axis]=expression;}return [yes,no] as const;};
@@ -57,9 +58,12 @@ export function pruneSnapshotResponseDependencies(workspace:RecordingSnapshotWor
  const recordings=workspace.recordings.map(recording=>{
   const graph=recording.angleGraph;if(!graph||!graph.responseExpressions&&!graph.correctionFrames?.some(frame=>frame.responseExpressions))return recording;
   const resolvedBases=graph.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,drawing:resolveSnapshot(workspace,vertex.snapshotId,{useDraft:false,diagnostics:'preview'}).drawing})),basis=createSnapshotResponseBasisResolver(resolvedBases),hasBasis=(reference:SnapshotResponseBasisReference)=>basis(reference)!==undefined;
+  // Fit references need the complete live family in their own real view. Do
+  // not evaluate the fitter while deciding whether a dependency still exists.
+  const curvesBySnapshot=new Map(resolvedBases.map(value=>[value.snapshotId,new Set(value.drawing.curves.map(curve=>curve.id))])),hasFitParameter=(reference:SnapshotResponseFitParameterReference)=>reference.parts.every(part=>curvesBySnapshot.get(reference.snapshotId)?.has(part.curveId)===true);
   // Local node identities use the already resolved bases, never library copies.
   const alive={nodes:new Set(resolvedBases.flatMap(value=>value.drawing.nodes.map(node=>node.id))),handles:new Set(resolvedBases.flatMap(value=>value.drawing.curves.map(curve=>curve.id)))},targetAlive=(kind:'nodes'|'handles',id:string)=>alive[kind].has(id);
-  const saved=filterRegistry(graph.responseExpressions,hasBasis,targetAlive),frames=(graph.correctionFrames??[]).map(frame=>({frame,...filterRegistry(frame.responseExpressions,hasBasis,targetAlive)}));
+  const saved=filterRegistry(graph.responseExpressions,hasBasis,hasFitParameter,targetAlive),frames=(graph.correctionFrames??[]).map(frame=>({frame,...filterRegistry(frame.responseExpressions,hasBasis,hasFitParameter,targetAlive)}));
   if(!Object.keys(saved.retired).length&&!frames.some(value=>Object.keys(value.retired).length))return recording;
   changed=true;const archives=graph.orphanedResponses??[],stem=`deleted-response-source:${recording.id}`;let id=stem,index=1;while(archives.some(archive=>archive.id===id))id=`${stem}:${index++}`;
   const next:SnapshotAngleGraph={...graph,...graph.responseExpressions?{responseExpressions:saved.kept}:{},...graph.correctionFrames?{correctionFrames:frames.map(value=>value.frame.responseExpressions?{...value.frame,responseExpressions:value.kept}:value.frame)}:{},orphanedResponses:[...archives,{id,reason:'mesh-change',message:'Inherited scalar responses were archived because their canonical target or live basis control was deleted.',mesh:structuredClone(graph.mesh),edgeResponses:{},triangleResponses:{},...Object.keys(saved.retired).length?{responseExpressions:saved.retired}:{},correctionFrames:frames.filter(value=>Object.keys(value.retired).length).map(value=>({id:value.frame.id,angle:value.frame.angle,status:value.frame.status,responseExpressions:value.retired}))}]};

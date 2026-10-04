@@ -1,4 +1,6 @@
 import {projectSmoothComponent,projectSmoothComponentCorrection,type SmoothComponent} from './smoothComponent';
+import {createSnapshotSplitParameterField} from './splitParameterField';
+import type {Cubic} from '../drawing/model';
 import type {SnapshotScalarTarget} from './simplexGeometry';
 import {describeSnapshotScalarResponseSupport} from './scalarResponseSupport';
 import type {SnapshotSimplexLocation,SnapshotTriangulation} from './triangulation';
@@ -11,6 +13,16 @@ import {prepareTriangularResponse,type BarycentricWeights,type InteriorResponseS
 export interface SnapshotResponseBasisReference {
  snapshotId:string;target:SnapshotScalarTarget;axis:0|1;
 }
+export interface SnapshotResponseFitParameterReference {
+ snapshotId:string;parts:readonly {curveId:string;parameterRange:readonly [number,number]}[];t:number;
+}
+export type SnapshotResponseFitParameterDomain=Pick<SnapshotResponseFitParameterReference,'parts'|'t'>;
+export interface SnapshotResponseBasisScalarResolver {
+ (basis:SnapshotResponseBasisReference):number|undefined;
+ fitParameter?:(reference:SnapshotResponseFitParameterReference)=>number|undefined;
+ recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number)=>void;
+}
+export type SnapshotResponseBasisResolver=SnapshotResponseBasisScalarResolver;
 export interface SnapshotResponseBasisTerm {coefficient:number;basis:SnapshotResponseBasisReference}
 export type SnapshotResponseLinearBasis=readonly SnapshotResponseBasisTerm[];
 export interface SnapshotResponseExpressionField {
@@ -28,8 +40,14 @@ export interface SnapshotResponseExpressionTerm {
 }
 export interface SnapshotSmoothProjectionContract {id:string;component:SmoothComponent;targets:readonly {endpoint:{curveId:string;end:0|1};scale:number}[]}
 export type SnapshotResponseOperation=
+ |{kind:'constant';value:number}
+ |{kind:'basis';basis:SnapshotResponseBasisReference}
+ |{kind:'fit-parameter';reference:SnapshotResponseFitParameterReference}
+ |{kind:'product';left:number;right:number}
+ |{kind:'quotient';left:number;right:number}
+ |{kind:'curve-material-parameter';controls:readonly (readonly [number,number])[];parameters:readonly number[];fieldId:string;domain?:SnapshotResponseFitParameterDomain}
  |{kind:'at';source:number;weights:readonly {fieldId:string;values:readonly number[]}[]}
- |{kind:'weighted';source:number;fieldId:string;coordinate:0|1|2}
+ |{kind:'weighted';source:number;fieldId:string;coordinate:0|1|2;weight?:'residual'|'geometric'}
  |{kind:'linear';terms:readonly SnapshotResponseExpressionTerm[]}
  |{kind:'sum';inputs:readonly {coefficient:number;operation:number}[]}
  |{kind:'smooth';component:SmoothComponent;inputs:readonly {node:readonly [number,number];vector:readonly [number,number]}[];member:number;axis:0|1}
@@ -85,8 +103,19 @@ function validateTarget(value:unknown):void {
 }
 function validateBasis(value:unknown):void {
  const term=object(value,['coefficient','basis']);if(!finite(term.coefficient))invalid('Basis coefficients must be finite.');
- const basis=object(term.basis,['snapshotId','target','axis']);id(basis.snapshotId);validateTarget(basis.target);
+ validateBasisReference(term.basis);
+}
+function validateBasisReference(value:unknown):void {
+ const basis=object(value,['snapshotId','target','axis']);id(basis.snapshotId);validateTarget(basis.target);
  if(basis.axis!==0&&basis.axis!==1)invalid('Basis axis must be zero or one.');
+}
+function validateFitParameterReference(value:unknown):number {
+ const reference=object(value,['snapshotId','parts','t']);id(reference.snapshotId);
+ if(!finite(reference.t)||reference.t<0||reference.t>1)invalid('A fitted parameter reference needs a finite native t within 0…1.');
+ const parts=array(reference.parts,256,'Fitted parameter pieces'),ids=new Set<string>();let boundary=0;
+ if(!parts.length)invalid('A fitted parameter reference needs current live pieces.');
+ for(const raw of parts){const part=object(raw,['curveId','parameterRange']);id(part.curveId);if(ids.has(part.curveId))invalid('Fitted parameter pieces must have distinct live identities.');ids.add(part.curveId);const range=array(part.parameterRange,2,'Fitted parameter interval');if(range.length!==2||!range.every(finite)||range[0]!==boundary||!(Number(range[1])>boundary)||Number(range[1])>1)invalid('Fitted parameter pieces must form a contiguous native partition.');boundary=Number(range[1]);}
+ if(boundary!==1)invalid('Fitted parameter pieces must cover 0…1.');return parts.length;
 }
 function validateField(value:unknown):void {
  const field=object(value,['id','vertexIds','edges','samples']);id(field.id);
@@ -138,10 +167,15 @@ export function validateSnapshotResponseExpression(value:unknown):asserts value 
  for(const [index,raw] of program.entries()){
   const kind=raw&&typeof raw==='object'?Object.getOwnPropertyDescriptor(raw,'kind')?.value:undefined;
   let depth=0;evaluationWork++;const reference=(value:unknown)=>{totalInputs++;if(!Number.isInteger(value)||(value as number)<0||(value as number)>=index)invalid('Operation references must point strictly backward.');depth=Math.max(depth,depths[value as number]);};
-  if(kind==='linear'){const operation=object(raw,['kind','terms']);validateTerms(operation.terms);}
+  if(kind==='constant'){const operation=object(raw,['kind','value']);if(!finite(operation.value))invalid('Expression constants must be finite.');}
+  else if(kind==='basis'){const operation=object(raw,['kind','basis']);validateBasisReference(operation.basis);totalBasis++;}
+  else if(kind==='fit-parameter'){const operation=object(raw,['kind','reference']);totalBasis+=validateFitParameterReference(operation.reference);}
+  else if(kind==='product'||kind==='quotient'){const operation=object(raw,['kind','left','right']);reference(operation.left);reference(operation.right);}
+  else if(kind==='curve-material-parameter'){const operation=object(raw,['kind','controls','parameters','fieldId',...Object.hasOwn(raw as object,'domain')?['domain']:[]]);id(operation.fieldId);const field=byId.get(operation.fieldId);if(!field)invalid('A material parameter needs a known field.');const controls=array(operation.controls,4,'Material parameter controls');if(controls.length!==4)invalid('A material parameter needs four cubic controls.');for(const raw of controls){const pair=array(raw,2,'Material parameter control');if(pair.length!==2)invalid('A material parameter control needs two scalar references.');pair.forEach(reference);}const parameters=array(operation.parameters,3,'Material basis parameters');if(parameters.length!==field!.vertexIds.length)invalid('A material parameter needs one cut per field vertex.');parameters.forEach(reference);if(operation.domain!==undefined){const domain=object(operation.domain,['parts','t']);totalBasis+=validateFitParameterReference({snapshotId:'material-domain',...domain});}}
+  else if(kind==='linear'){const operation=object(raw,['kind','terms']);validateTerms(operation.terms);}
   else if(kind==='sum'){const operation=object(raw,['kind','inputs']);for(const rawInput of array(operation.inputs,snapshotResponseExpressionLimits.operationInputs,'Operation inputs')){const input=object(rawInput,['coefficient','operation']);if(!finite(input.coefficient))invalid('Operation coefficients must be finite.');reference(input.operation);}}
   else if(kind==='at'){const operation=object(raw,['kind','source','weights']);reference(operation.source);evaluationWork+=(operation.source as number)+1;const keys=new Set<string>();for(const rawWeight of array(operation.weights,snapshotResponseExpressionLimits.fields,'Anchor weights')){const weight=object(rawWeight,['fieldId','values']);id(weight.fieldId);const field=byId.get(weight.fieldId);if(!field||keys.has(weight.fieldId))invalid('An anchor needs distinct known field weights.');keys.add(weight.fieldId);const values=array(weight.values,3,'Anchor coordinates');totalInputs+=values.length;if(values.length!==field!.vertexIds.length||!values.every(finite)||Math.abs((values as number[]).reduce((sum,value)=>sum+value,0)-1)>1e-10)invalid('Anchor coordinates must be finite affine weights.');}}
-  else if(kind==='weighted'){const operation=object(raw,['kind','source','fieldId','coordinate']);reference(operation.source);id(operation.fieldId);const field=byId.get(operation.fieldId);if(!field||!Number.isInteger(operation.coordinate)||(operation.coordinate as number)<0||(operation.coordinate as number)>=field.vertexIds.length)invalid('A weighted operation needs a coordinate in a known field.');}
+  else if(kind==='weighted'){const operation=object(raw,['kind','source','fieldId','coordinate',...Object.hasOwn(raw as object,'weight')?['weight']:[]]);reference(operation.source);id(operation.fieldId);const field=byId.get(operation.fieldId);if(!field||!Number.isInteger(operation.coordinate)||(operation.coordinate as number)<0||(operation.coordinate as number)>=field.vertexIds.length)invalid('A weighted operation needs a coordinate in a known field.');if(operation.weight!==undefined&&operation.weight!=='geometric'&&operation.weight!=='residual')invalid('Unknown weighted response operation.');}
   else if(kind==='smooth'||kind==='smooth-correction'){
    const operation=object(raw,['kind','component','inputs','member','axis',...kind==='smooth-correction'?['baselineInputs','scales']:[]]),component=object(operation.component,['relationId','members','conflict']);id(component.relationId);if(typeof component.conflict!=='boolean')invalid('SMOOTH conflict must be boolean.');
    const members=array(component.members,snapshotResponseExpressionLimits.operationInputs,'SMOOTH members');if(!members.length)invalid('A SMOOTH component needs a driver.');
@@ -173,8 +207,25 @@ export function emptySnapshotResponseExpression():SnapshotResponseExpression{ret
 
 /** Visit every live leaf, including the original inputs of nonlinear programs. */
 export function snapshotResponseExpressionTerms(expression:SnapshotResponseExpression):readonly SnapshotResponseExpressionTerm[]{return [...expression.terms,...expression.sourceBaseline??[],...[...expression.operations??[],...expression.sourceBaselineOperations??[]].flatMap(operation=>operation.kind==='linear'?operation.terms:[])];}
+export function snapshotResponseExpressionBasisReferences(expression:SnapshotResponseExpression):SnapshotResponseBasisReference[]{
+ const references=[...snapshotResponseExpressionTerms(expression).flatMap(term=>term.basis.map(value=>value.basis)),...[...expression.operations??[],...expression.sourceBaselineOperations??[]].flatMap(operation=>operation.kind==='basis'?[operation.basis]:[])];
+ return [...new Map(references.map(reference=>[snapshotResponseBasisKey(reference),reference])).values()].map(copyBasis);
+}
+export function snapshotResponseExpressionFitParameters(expression:SnapshotResponseExpression):SnapshotResponseFitParameterReference[]{
+ const references=[...expression.operations??[],...expression.sourceBaselineOperations??[]].flatMap(operation=>operation.kind==='fit-parameter'?[operation.reference]:[]);
+ return [...new Map(references.map(reference=>[JSON.stringify(reference),reference])).values()].map(reference=>structuredClone(reference));
+}
+export function snapshotResponseExpressionMaterialDomains(expression:SnapshotResponseExpression):SnapshotResponseFitParameterDomain[]{
+ const domains=[...expression.operations??[],...expression.sourceBaselineOperations??[]].flatMap(operation=>operation.kind==='curve-material-parameter'&&operation.domain?[operation.domain]:[]);
+ return [...new Map(domains.map(domain=>[JSON.stringify(domain),domain])).values()].map(domain=>structuredClone(domain));
+}
 export const snapshotResponseExpressionHasValue=(expression:SnapshotResponseExpression):boolean=>!!expression.terms.length||!!expression.operations?.length;
 function mapOperationReferences(operation:SnapshotResponseOperation,map:(index:number)=>number):SnapshotResponseOperation {
+ if(operation.kind==='constant')return {...operation};
+ if(operation.kind==='basis')return {...operation,basis:copyBasis(operation.basis)};
+ if(operation.kind==='fit-parameter')return {...operation,reference:structuredClone(operation.reference)};
+ if(operation.kind==='product'||operation.kind==='quotient')return {...operation,left:map(operation.left),right:map(operation.right)};
+ if(operation.kind==='curve-material-parameter')return {...operation,controls:operation.controls.map(pair=>pair.map(map) as [number,number]),parameters:operation.parameters.map(map),...operation.domain?{domain:structuredClone(operation.domain)}:{}};
  if(operation.kind==='linear')return {kind:'linear',terms:operation.terms.map(term=>({...term,basis:canonicalBasis(term.basis)}))};
  if(operation.kind==='at')return {...operation,source:map(operation.source),weights:operation.weights.map(weight=>({fieldId:weight.fieldId,values:[...weight.values]}))};
  if(operation.kind==='weighted')return {...operation,source:map(operation.source)};
@@ -182,12 +233,50 @@ function mapOperationReferences(operation:SnapshotResponseOperation,map:(index:n
  const inputs=(values:typeof operation.inputs)=>values.map(input=>({node:input.node.map(map) as [number,number],vector:input.vector.map(map) as [number,number]}));
  return {...operation,component:structuredClone(operation.component),inputs:inputs(operation.inputs),...operation.kind==='smooth-correction'?{baselineInputs:inputs(operation.baselineInputs),scales:[...operation.scales]}:{}};
 }
+/** Select one live scalar program without evaluating unrelated earlier roots.
+ * The original bounded backward DAG supplies dependency order and provenance. */
+export function extractSnapshotResponseOperation(expression:SnapshotResponseExpression,rootIndex:number):SnapshotResponseExpression {
+ validateSnapshotResponseExpression(expression);const source=expression.operations;
+ if(!source||!Number.isInteger(rootIndex)||rootIndex<0||rootIndex>=source.length)invalid('An extracted response root must address an existing operation.');
+ const reachable=new Set<number>(),pending=[rootIndex];while(pending.length){const index=pending.pop()!;if(reachable.has(index))continue;reachable.add(index);mapOperationReferences(source![index],reference=>{pending.push(reference);return reference;});}
+ const ordered=[...reachable].sort((a,b)=>a-b),indices=new Map(ordered.map((old,index)=>[old,index])),result:SnapshotResponseExpression={version:1,fields:expression.fields.map(cloneField),terms:[],operations:ordered.map(index=>mapOperationReferences(source![index],reference=>indices.get(reference)!))};validateSnapshotResponseExpression(result);return result;
+}
+
 function programBuilder(){
  const operations:SnapshotResponseOperation[]=[],byKey=new Map<string,number>();
  const append=(input:SnapshotResponseOperation)=>{let operation=input;if(operation.kind==='sum'){const coefficients=new Map<number,number>();for(const term of operation.inputs){const value=operations[term.operation],terms=value?.kind==='sum'?value.inputs.map(child=>({operation:child.operation,coefficient:child.coefficient*term.coefficient})):[term];for(const child of terms)coefficients.set(child.operation,(coefficients.get(child.operation)??0)+child.coefficient);}const inputs=[...coefficients].sort(([a],[b])=>a-b).filter(([,coefficient])=>coefficient!==0).map(([operation,coefficient])=>({operation,coefficient}));if(inputs.length===1&&inputs[0].coefficient===1)return inputs[0].operation;operation={kind:'sum',inputs};}const key=JSON.stringify(operation),known=byKey.get(key);if(known!==undefined)return known;if(operations.length>=snapshotResponseExpressionLimits.operations)fail('EXPRESSION_LIMIT','The expression program exceeds its operation limit.');const index=operations.length;operations.push(operation);byKey.set(key,index);return index;};
  const importProgram=(expression:SnapshotResponseExpression)=>{const indices:number[]=[];for(const operation of expression.operations??[])indices.push(append(mapOperationReferences(operation,index=>indices[index])));return indices.at(-1);};
  const finish=(index:number)=>{if(index!==operations.length-1)operations.push({kind:'sum',inputs:[{coefficient:1,operation:index}]});};
  return {operations,append,importProgram,finish};
+}
+function scalarOperation(builder:ReturnType<typeof programBuilder>,expression:SnapshotResponseExpression):number {
+ const program=builder.importProgram(expression),linear=expression.terms.length?builder.append({kind:'linear',terms:expression.terms}):undefined;
+ const inputs=[program,linear].filter((value):value is number=>value!==undefined).map(operation=>({coefficient:1,operation}));
+ return builder.append({kind:'sum',inputs});
+}
+/** Build bounded scalar arithmetic while retaining the same field supports and
+ * original source-baseline program. Nothing here captures evaluated geometry. */
+function arithmeticExpression(inputs:readonly SnapshotResponseExpression[],operation:(indices:readonly number[])=>SnapshotResponseOperation,extraFields:readonly SnapshotResponseExpressionField[]=[],baseline=true):SnapshotResponseExpression {
+ const fields=new Map<string,SnapshotResponseExpressionField>(),contracts=new Map<string,SnapshotSmoothProjectionContract>(),builder=programBuilder();let smoothOwned=false;
+ const addField=(field:SnapshotResponseExpressionField)=>{validateField(field);const owned=cloneField(field),prior=fields.get(field.id);if(prior&&JSON.stringify(prior)!==JSON.stringify(owned))invalid('Arithmetic operands have conflicting field support.');fields.set(field.id,owned);};
+ for(const expression of inputs){validateSnapshotResponseExpression(expression);expression.fields.forEach(addField);smoothOwned ||= !!expression.smoothOwned;for(const contract of expression.smoothContracts??[]){const prior=contracts.get(contract.id);if(prior&&JSON.stringify(prior)!==JSON.stringify(contract))invalid('Arithmetic operands have conflicting SMOOTH contracts.');contracts.set(contract.id,structuredClone(contract));}}
+ extraFields.forEach(addField);builder.finish(builder.append(operation(inputs.map(expression=>scalarOperation(builder,expression)))));
+ let result:SnapshotResponseExpression={version:1,fields:[...fields.values()],terms:[],operations:builder.operations,...smoothOwned?{smoothOwned:true}:{},...contracts.size?{smoothContracts:[...contracts.values()]}:{}};
+ if(baseline&&inputs.some(expression=>snapshotResponseSourceBaseline(expression)!==undefined)){
+  const source=arithmeticExpression(inputs.map(expression=>snapshotResponseSourceBaseline(expression)??{version:1,fields:expression.fields,terms:expression.terms,...expression.operations?{operations:expression.operations}:{}}),operation,extraFields,false);
+  result={...result,sourceBaseline:[],sourceBaselineOperations:source.operations};
+ }
+ return combineSnapshotResponseExpressions([{coefficient:1,expression:result}]);
+}
+export const createSnapshotResponseConstant=(value:number):SnapshotResponseExpression=>arithmeticExpression([],()=>({kind:'constant',value}));
+export const createSnapshotResponseBasisValue=(basis:SnapshotResponseBasisReference):SnapshotResponseExpression=>arithmeticExpression([],()=>({kind:'basis',basis:copyBasis(basis)}));
+export const createSnapshotResponseFitParameter=(reference:SnapshotResponseFitParameterReference):SnapshotResponseExpression=>arithmeticExpression([],()=>({kind:'fit-parameter',reference:structuredClone(reference)}));
+export const multiplySnapshotResponseExpressions=(left:SnapshotResponseExpression,right:SnapshotResponseExpression):SnapshotResponseExpression=>arithmeticExpression([left,right],([left,right])=>({kind:'product',left,right}));
+export const divideSnapshotResponseExpressions=(left:SnapshotResponseExpression,right:SnapshotResponseExpression):SnapshotResponseExpression=>arithmeticExpression([left,right],([left,right])=>({kind:'quotient',left,right}));
+export const weightSnapshotResponseExpression=(expression:SnapshotResponseExpression,field:SnapshotResponseExpressionField,coordinate:0|1|2,weight:'geometric'|'residual'='geometric'):SnapshotResponseExpression=>arithmeticExpression([expression],([source])=>({kind:'weighted',source,fieldId:field.id,coordinate,weight}),[field]);
+export function createSnapshotResponseMaterialParameter(controls:readonly (readonly [SnapshotResponseExpression,SnapshotResponseExpression])[],parameters:readonly SnapshotResponseExpression[],field:SnapshotResponseExpressionField,domain?:SnapshotResponseFitParameterDomain):SnapshotResponseExpression {
+ if(controls.length!==4||controls.some(pair=>pair.length!==2)||parameters.length!==field.vertexIds.length)invalid('A material parameter needs four two-axis controls and one cut per field vertex.');
+ return arithmeticExpression([...controls.flat(),...parameters],indices=>({kind:'curve-material-parameter',controls:controls.map((_,i)=>[indices[2*i],indices[2*i+1]]),parameters:indices.slice(8),fieldId:field.id,...domain?{domain:structuredClone(domain)}:{}}),[field]);
 }
 /** Construct one projection over complete original scalar values. Its leaves
  * remain live, and repeated operations are shared by structural identity. */
@@ -233,7 +322,7 @@ export function combineSnapshotResponseExpressions(inputs:readonly {coefficient:
  if(outputs.length)program.finish(program.append({kind:'sum',inputs:outputs}));
  if(sourceOutputs.length)sourceProgram.finish(sourceProgram.append({kind:'sum',inputs:sourceOutputs}));
  const kept=[...terms].sort(([a],[b])=>compare(a,b)).map(([,term])=>term).filter(term=>term.basis.length),used=new Set([...kept,...baselineTerms.values(),...[...program.operations,...sourceProgram.operations].flatMap(operation=>operation.kind==='linear'?operation.terms:[])].map(term=>term.fieldId));
- for(const operation of [...program.operations,...sourceProgram.operations]){if(operation.kind==='at')operation.weights.forEach(weight=>used.add(weight.fieldId));if(operation.kind==='weighted')used.add(operation.fieldId);}
+ for(const operation of [...program.operations,...sourceProgram.operations]){if(operation.kind==='at')operation.weights.forEach(weight=>used.add(weight.fieldId));if(operation.kind==='weighted'||operation.kind==='curve-material-parameter')used.add(operation.fieldId);}
  const result:SnapshotResponseExpression={version:1,fields:[...fields.values()].filter(field=>used.has(field.id)).sort((a,b)=>compare(a.id,b.id)),terms:kept,...outputs.length?{operations:program.operations}:{},...smoothOwned?{smoothOwned:true as const}:{},...contracts.size?{smoothContracts:[...contracts.values()].sort((a,b)=>compare(a.id,b.id))}:{},...baselineTerms.size||sourceOutputs.length?{sourceBaseline:[...baselineTerms.values()]}:{},...sourceOutputs.length?{sourceBaselineOperations:sourceProgram.operations}:{}};
  validateSnapshotResponseExpression(result);return result;
 }
@@ -277,6 +366,7 @@ export function captureSnapshotResponseField(id:string,mesh:SnapshotTriangulatio
  * are live linear recipes, never expressions that could form a dependency cycle. */
 export function substituteSnapshotResponseBases(expression:SnapshotResponseExpression,replacement:(basis:SnapshotResponseBasisReference)=>SnapshotResponseLinearBasis|undefined):SnapshotResponseExpression {
  validateSnapshotResponseExpression(expression);
+ if([...expression.operations??[],...expression.sourceBaselineOperations??[]].some(operation=>operation.kind==='basis'))return substituteSnapshotResponseBasisValues(expression,basis=>{const replaced=replacement(basis);if(replaced===undefined)return undefined;return combineSnapshotResponseExpressions(replaced.map(value=>({coefficient:value.coefficient,expression:createSnapshotResponseBasisValue(value.basis)})));});
  let expanded=0;
  const rewrite=(terms:readonly SnapshotResponseExpressionTerm[])=>terms.map(term=>({...term,basis:term.basis.flatMap(value=>{
   const replaced=replacement(copyBasis(value.basis)),values=replaced===undefined?[value]:array(replaced,snapshotResponseExpressionLimits.basisTerms,'Replacement basis');
@@ -286,6 +376,50 @@ export function substituteSnapshotResponseBases(expression:SnapshotResponseExpre
   return replaced.map(candidate=>({basis:copyBasis(candidate.basis),coefficient:candidate.coefficient*value.coefficient}));
  })}));
  const next:SnapshotResponseExpression={...expression,terms:rewrite(expression.terms),...expression.sourceBaseline?{sourceBaseline:rewrite(expression.sourceBaseline)}:{},...expression.operations?{operations:expression.operations.map(operation=>operation.kind==='linear'?{...operation,terms:rewrite(operation.terms)}:operation)}:{},...expression.sourceBaselineOperations?{sourceBaselineOperations:expression.sourceBaselineOperations.map(operation=>operation.kind==='linear'?{...operation,terms:rewrite(operation.terms)}:operation)}:{}};
+ return combineSnapshotResponseExpressions([{coefficient:1,expression:next}]);
+}
+
+/** Replace a live scalar leaf with another bounded expression in one pass.
+ * Weighted linear leaves become arithmetic only where a substitution needs it.
+ * Existing support fields, projections and independent source baselines remain
+ * intact; replacement values are never recursively substituted into themselves. */
+export function substituteSnapshotResponseBasisValues(expression:SnapshotResponseExpression,replacement:(basis:SnapshotResponseBasisReference)=>SnapshotResponseExpression|undefined):SnapshotResponseExpression {
+ validateSnapshotResponseExpression(expression);
+ const fields=new Map(expression.fields.map(field=>[field.id,cloneField(field)])),contracts=new Map((expression.smoothContracts??[]).map(contract=>[contract.id,structuredClone(contract)])),replacements=new Map<string,SnapshotResponseExpression|undefined>();let smoothOwned=!!expression.smoothOwned,work=0;
+ const replaced=(basis:SnapshotResponseBasisReference)=>{
+  const key=snapshotResponseBasisKey(basis);if(replacements.has(key))return replacements.get(key);
+  const value=replacement(copyBasis(basis));if(value){validateSnapshotResponseExpression(value);work+=(value.operations?.length??0)+value.terms.length+snapshotResponseExpressionTerms(value).reduce((sum,term)=>sum+term.basis.length,0);if(work>4*snapshotResponseExpressionLimits.operationInputs)fail('EXPRESSION_LIMIT','Substituting scalar basis values exceeds its bounded expansion budget.');
+   for(const field of value.fields){const owned=cloneField(field),prior=fields.get(field.id);if(prior&&JSON.stringify(prior)!==JSON.stringify(owned))invalid('A substituted basis value has conflicting field support.');fields.set(field.id,owned);}
+   smoothOwned ||= !!value.smoothOwned;for(const contract of value.smoothContracts??[]){const prior=contracts.get(contract.id);if(prior&&JSON.stringify(prior)!==JSON.stringify(contract))invalid('A substituted basis value has conflicting SMOOTH contracts.');contracts.set(contract.id,structuredClone(contract));}
+  }replacements.set(key,value);return value;
+ };
+ const build=(terms:readonly SnapshotResponseExpressionTerm[],operations:readonly SnapshotResponseOperation[])=>{
+  const builder=programBuilder(),replacementIndices=new Map<string,number>();
+  const basis=(reference:SnapshotResponseBasisReference):number=>{const key=snapshotResponseBasisKey(reference),known=replacementIndices.get(key);if(known!==undefined)return known;const value=replaced(reference),index=value?scalarOperation(builder,value):builder.append({kind:'basis',basis:copyBasis(reference)});replacementIndices.set(key,index);return index;};
+  const sum=(inputs:readonly {coefficient:number;operation:number}[])=>builder.append({kind:'sum',inputs});
+  const linearBasis=(values:SnapshotResponseLinearBasis):number=>{
+   const canonical=canonicalBasis(values);if(!canonical.length)return sum([]);
+   const first=basis(canonical[0].basis),coefficient=canonical.reduce((total,value)=>total+value.coefficient,0),inputs=[{coefficient,operation:first}];
+   for(const value of canonical.slice(1))inputs.push({coefficient:value.coefficient,operation:sum([{coefficient:1,operation:basis(value.basis)},{coefficient:-1,operation:first}])});
+   return sum(inputs);
+  };
+  const rewriteTerms=(values:readonly SnapshotResponseExpressionTerm[]):number=>{
+   const outputs:{coefficient:number;operation:number}[]=[],unchanged:SnapshotResponseExpressionTerm[]=[];
+   for(const fieldId of new Set(values.map(term=>term.fieldId))){
+    const terms=values.filter(term=>term.fieldId===fieldId),residual=terms.filter(term=>term.weight==='residual'),geometric=terms.filter(term=>term.weight==='geometric');
+    if(residual.some(term=>term.basis.some(value=>replaced(value.basis)!==undefined))){
+     const field=fields.get(fieldId)!,anchor=field.vertexIds.length-1,byCoordinate=field.vertexIds.map((_,coordinate)=>linearBasis(residual.filter(term=>term.coordinate===coordinate).flatMap(term=>term.basis))),origin=byCoordinate[anchor];
+     for(let coordinate=0;coordinate<anchor;coordinate++){const source=sum([{coefficient:1,operation:byCoordinate[coordinate]},{coefficient:-1,operation:origin}]);outputs.push({coefficient:1,operation:builder.append({kind:'weighted',source,fieldId,coordinate:coordinate as 0|1|2,weight:'residual'})});}
+    }else unchanged.push(...residual);
+    for(const term of geometric)if(term.basis.some(value=>replaced(value.basis)!==undefined))outputs.push({coefficient:1,operation:builder.append({kind:'weighted',source:linearBasis(term.basis),fieldId,coordinate:term.coordinate,weight:'geometric'})});else unchanged.push(term);
+   }
+   if(unchanged.length)outputs.push({coefficient:1,operation:builder.append({kind:'linear',terms:unchanged})});return sum(outputs);
+  };
+  const indices:number[]=[];for(const operation of operations)indices.push(operation.kind==='basis'?basis(operation.basis):operation.kind==='linear'?rewriteTerms(operation.terms):builder.append(mapOperationReferences(operation,index=>indices[index])));
+  const roots:{coefficient:number;operation:number}[]=[];if(indices.length)roots.push({coefficient:1,operation:indices.at(-1)!});if(terms.length)roots.push({coefficient:1,operation:rewriteTerms(terms)});builder.finish(sum(roots));return builder.operations;
+ };
+ const operations=build(expression.terms,expression.operations??[]),sourceBaselineOperations=expression.sourceBaseline!==undefined||expression.sourceBaselineOperations?build(expression.sourceBaseline??[],expression.sourceBaselineOperations??[]):undefined;
+ const next:SnapshotResponseExpression={version:1,fields:[...fields.values()],terms:[],operations,...smoothOwned?{smoothOwned:true}:{},...contracts.size?{smoothContracts:[...contracts.values()]}:{},...sourceBaselineOperations?{sourceBaseline:[],sourceBaselineOperations}:{}};
  return combineSnapshotResponseExpressions([{coefficient:1,expression:next}]);
 }
 
@@ -336,7 +470,9 @@ export function rebaseSnapshotResponseExpression(expression:SnapshotResponseExpr
 }
 
 export interface SnapshotResponseExpressionEvaluation {
- basisScalar:(basis:SnapshotResponseBasisReference)=>number|undefined;
+ basisScalar:SnapshotResponseBasisScalarResolver;
+ fitParameter?:(reference:SnapshotResponseFitParameterReference)=>number|undefined;
+ recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number)=>void;
  /** Return ORIGINAL geometric weights in this operand's persisted vertex order.
   * After mesh insertion, map the new simplex into the retained old angle frame.
   * The operand's sample support and edge extension remain completely unchanged. */
@@ -354,6 +490,7 @@ export function prepareSnapshotResponseExpression(expression:SnapshotResponseExp
  const fields=owned.fields.map(field=>({field,sample:prepareTriangularResponse(field.edges,field.samples)}));
  return evaluation=>{
   const bases=new Map<string,number>();
+  const fitParameters=new Map<string,number>();
   const scalar=(terms:SnapshotResponseLinearBasis)=>{
    let origin:number|undefined,coefficient=0,offset=0;
    for(const value of terms){
@@ -384,9 +521,15 @@ export function prepareSnapshotResponseExpression(expression:SnapshotResponseExp
    if(depth>32)fail('EXPRESSION_LIMIT','Projection anchor nesting exceeds its bounded evaluation depth.');
    const current=context(overrides),values=current.values;
    while(values.length<=last){if(++steps>65536)fail('EXPRESSION_LIMIT','Response operation evaluation exceeds its bounded work budget.');const operation=owned.operations![values.length];let result:number;
-    if(operation.kind==='linear')result=sampleTerms(operation.terms,overrides);
+    if(operation.kind==='constant')result=operation.value;
+    else if(operation.kind==='basis')result=scalar([{coefficient:1,basis:operation.basis}]);
+    else if(operation.kind==='fit-parameter'){const key=JSON.stringify(operation.reference),known=fitParameters.get(key);if(known!==undefined)result=known;else{const value=(evaluation.fitParameter??evaluation.basisScalar.fitParameter)?.(structuredClone(operation.reference));if(!finite(value)||value<0||value>1)fail('EXPRESSION_MISSING_BASIS',`Missing or invalid live fitted parameter ${key}.`);result=value!;fitParameters.set(key,result);}}
+    else if(operation.kind==='product')result=values[operation.left]*values[operation.right];
+    else if(operation.kind==='quotient'){const denominator=values[operation.right];if(denominator===0)invalid('Response quotient has a zero live denominator.');result=values[operation.left]/denominator;}
+    else if(operation.kind==='curve-material-parameter'){const shape=operation.controls.map(pair=>pair.map(index=>values[index])) as Cubic;result=createSnapshotSplitParameterField(shape).parameterAt(operation.parameters.map(index=>values[index]),weight(operation.fieldId,overrides).original);if(operation.domain&&!overrides.length)(evaluation.recordFitParameter??evaluation.basisScalar.recordFitParameter)?.(structuredClone(operation.domain),result);}
+    else if(operation.kind==='linear')result=sampleTerms(operation.terms,overrides);
     else if(operation.kind==='sum')result=operation.inputs.reduce((sum,input)=>sum+input.coefficient*values[input.operation],0);
-    else if(operation.kind==='weighted')result=values[operation.source]*weight(operation.fieldId,overrides).original[operation.coordinate];
+    else if(operation.kind==='weighted')result=values[operation.source]*weight(operation.fieldId,overrides)[operation.weight==='residual'?'difference':'original'][operation.coordinate];
     else if(operation.kind==='at')result=evaluate(operation.source,operation.weights,depth+1);
     else {const key=JSON.stringify({...operation,member:0,axis:0});let projected=current.projections.get(key);if(!projected){const inputs=(raw:typeof operation.inputs)=>raw.map(input=>({node:input.node.map(index=>values[index]) as [number,number],vector:input.vector.map(index=>values[index]) as [number,number]}));projected=operation.kind==='smooth-correction'?projectSmoothComponentCorrection(operation.component,inputs(operation.baselineInputs),inputs(operation.inputs),operation.scales):projectSmoothComponent(operation.component,inputs(operation.inputs));current.projections.set(key,projected);}result=projected.controls[operation.member].vector[operation.axis];}
     if(!finite(result))invalid('Response operation produced a nonfinite scalar.');values.push(result);

@@ -1,10 +1,10 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 3 日 23:44 UTC。当前线上 v72（`76403fb`）于 23:38:33 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
+核对日期：2026 年 10 月 4 日 00:08 UTC。当前线上 v73（`f4c098c`）于 10 月 3 日 23:58:30 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
 
 本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。v72 已完成下述有界真人验收，自动化覆盖与真人操作仍分别列明。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
 
-下一成员／深度候选已接主树并构建：`layerMemberEdit.ts` 识别纯组织操作，保留 canonical ID，以 `memberSources` 保留移动对象的实际 live 来源，引用层用 membership/orderOverride 表达新归属。源 Drawing 的 original→original 移动仍经原始资产适配器。当前视角列表直接调用共同 LayerPanel 命令并还原 canonical ID，来源列表继续只读；Group→层、曲线／填充／偏移移动、层内排序及局部 depth 属性均已启用。旧独立 LINK 区块已并入共同端点属性，显示区间入口保留。隔离组合 132 项通过、1 既有跳过，主树复跑 46 项和生产构建通过；尚待部署与真人列表拖动验收。Drawing 的原始拥有层混入借用成员仍需逐对象 authority overlay，未包括在此候选。
+下一成员／深度候选已接主树并构建：`layerMemberEdit.ts` 识别纯组织操作，保留 canonical ID，以 `memberSources` 保留移动对象的实际 live 来源，引用层用 membership/orderOverride 表达新归属。源 Drawing 的 original→original 移动仍经原始资产适配器。当前视角列表直接调用共同 LayerPanel 命令并还原 canonical ID，来源列表继续只读；Group→层、曲线／填充／偏移移动、层内排序及局部 depth 属性均已启用。旧独立 LINK 区块已并入共同端点属性，显示区间入口保留。隔离组合 132 项通过、1 既有跳过，主树复跑 46 项和生产构建通过；v73 已通过真实当前列表跨层拖动和层内排序，见下文。Drawing 的原始拥有层混入借用成员仍需逐对象 authority overlay，未包括在此阶段。
 
 当前真正开放的工程分为三组：
 
@@ -23,6 +23,8 @@ v70（`8d1ddbf`）真人验证：Drawing 锁左眉后引用到 Recording，A 显
 v71（`cee081a`）真人验证：一条眉有 cage、一条普通，按曲线复选并用共同 V 中心拖 (+19,+6) 像素，两条曲线全部控制点精确同移；A 仅动普通线的一柄 (+12,−9)，其余三柄不变。Update/Undo/Redo、保存与 6 笔清理均通过；source Drawing 全字段不变，仍 3 个真实角度点，分别写 cage 后修正与普通 shape。共享 node/LINK/SMOOTH、可达零轴的覆盖来自针对自动化，未虚称为此轮真人覆盖。证据：[v71 操作](../../artifacts/triangulated-recorder-qa/v71-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v71-save-validation.json)。
 
 v72（`76403fb`）真人验证：在两眉引用层中使用共同 L 椭圆工具新增 4 段闭合笔画；原线宽控件 2→5、Undo→2、Redo→5。创建黑色填充并切为雾化后，透明度方向键 65→66%，一笔 Undo／Redo 恢复。按镜像轴放置只改变椭圆 4 段，原眉线不变，Undo／Redo 同视口 6 条命中路径逐字一致；切镜像开关不改变几何。共同连接菜单选择左眉端点后切到右层，第一端仍保留，第二击建立跨层 LINK；Undo／Redo 恢复。实际下载的 JSON 中 Drawing 五稿全字段不变，仍 3 个真实点、0 个旧轨，局部宽度、填充、镜像关系及 LINK 均归当前 Snapshot。11 笔正常 Undo 清理 QA，原 4 个录制保留、返回 Drawing 且 Undo 禁用。证据：[v72 操作](../../artifacts/triangulated-recorder-qa/v72-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v72-save-validation.json)。本轮没有浏览器重新导入、私人档案上传或 FPS 测量；全部端点模式仍不由这条有界路径代表。旧独立 LINK 属性区与新共享属性区存在重复显示，下一属性阶段将合并并保留显示区间入口。
+
+v73（`f4c098c`）于 10 月 4 日 00:02 UTC 真人验收：原生多点鼠标拖动将左眉曲线移到右眉层，再在右层内拖到另一条之后。DOM 层归属与顺序真实改变；一次 Undo／Redo 恢复顺序，两个 canonical ID 的 SVG 几何逐字不变。下载 JSON 中 Drawing 五稿和 source snapshots 全字段保持，只在当前快照写 exclude/add/orderOverride/memberSources；仍 3 个真实点，无 draft。4 笔普通 Undo 清 QA，回 Drawing、Undo 禁用。证据：[v73 操作](../../artifacts/triangulated-recorder-qa/v73-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v73-save-validation.json)。未将属性按钮测试替代真实列表拖动，也未声称全组合、浏览器重导入或 FPS 已验收。
 
 ### 最新实现与证据
 
@@ -95,13 +97,13 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 
 当前清单只保留实际未完成项，后续历史段落按其版本日期阅读：
 
-1. 非线性 source split 的精确角度场、材料参数与后域修正候选：真实 60° 插入后 11/31/59.99/60/60.01/77 处几何及材料端点已由实现者报告通过，仍在最终 JSON/source 更新与交叉构建。尚未合入当前主树或发布。
-2. 继承拟合程序的局部新增／绑定／分割，以及分段家族部分成员排除或源删除，需同一 lineage 与 live 目标适配。任何现存 guard 仍是工程缺口，不能归类为数学不可解。
-3. 本轮共同 Drawing 工具、属性和原子目标已完成上述 v72 有界真人操作；成员移动、层内排序和深度编辑已在上述独立候选中构建，等待真人验收。借用成员的移动保持 canonical ID、来源地址和 offset 语义，不将其偷换为源所有者数据。
-4. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑已按上文实际证据关闭，不重复列为待实现。
-5. 中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增；已有连续区间响应和真实快照局部 appearance 不受影响。
+1. 非线性 source split 当前候选已合并，保 `split(fit(parent))` 的 live restriction、角度相关 q 与材料端点。已修插入真实 30°／60° 后的材料映射及再次分段的继承所有权；主树 103 项交叉测试和生产构建通过，尚未发布或真人验收。
+2. 明确剩余的材料场案例：插入真实视图后手动修改区间端点，再次 source split 遇到 fitted q 与 native t 不同，尚缺精确作者参数转移。已复现 0.00037734 世界坐标漂移，当前候选在提交前针对该组合原子拒绝且项目字节保持。这个防失真 guard 不代表功能完成。
+3. 已反射的非线性程序仍需端方向／子 ID restriction；继承程序的 P／绑定仍需显式后域拓扑目标。部分分段家族被排除或源删除后也需要隐藏的存活源依赖与剩余多项式延拓；现有 evaluator 诊断有时回到域输入，不能泛称所有这些入口都原子拒绝。这些均是后续工程工作，不归类为数学不可能。
+4. v72 的共同工具／属性、v73 的列表成员移动／排序已按所列有界真人路径验证。Drawing 拥有层混入借用成员的逐对象 authority、以及父 source 换层后子快照原有 point/appearance 记录归属搬迁在独立候选中，不能将借用 ID 塞进源 items 或复制新 ID 代替。
+5. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑保持已关闭。中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增。
 
-每一职责须有一个实际执行内核。当前 neutral SMOOTH component、shared cage controller、共同钢笔和 Snapshot 事务已有消费者；这些归口不等于全部工具组合已经验收。真正的退化轴、矛盾连接目标、非有限投影仍应原子拒绝；正常继承拓扑与成员移动不能借此关闭。
+每一职责须有一个实际执行内核。真正的退化轴、矛盾连接目标、非有限投影仍应原子拒绝；正常继承拓扑与成员移动不能借此关闭。被暂停的 Warp／旧 endpoint 模式的既有组合限制须与当前三角化编辑职责分开列明。
 
 ## v53/v54 与下一候选边界
 

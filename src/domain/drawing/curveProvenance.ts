@@ -1,4 +1,5 @@
 import type {Cubic} from './model';
+import {retainCurveFitRange} from './curveFitRange';
 /** Runtime-only provenance survives trims/reversal; never serialized in artwork. */
 export interface CurveSample {id:string;t:number;weight:number}
 /** Derivatives are with respect to this derived cubic's own parameter. */
@@ -9,7 +10,7 @@ export function curveSamples(s:Cubic,t:number){return sources.get(s)?.(t)??[];}
 export function curveSampleDerivatives(s:Cubic,t:number){return derivatives.get(s)?.(t)??[];}
 /** Preserve source material identity through a monotone fitted parameter map. */
 export function mapCurveSource(from:Cubic,to:Cubic,parameter:(t:number)=>number,slope:(t:number)=>number):Cubic {
- const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(parameter(t)));if(d)derivatives.set(to,t=>{const v=slope(t);return d(parameter(t)).map(sample=>({...sample,tDerivative:sample.tDerivative*v,weightDerivative:sample.weightDerivative*v}));});return to;
+ const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(parameter(t)));if(d)derivatives.set(to,t=>{const v=slope(t);return d(parameter(t)).map(sample=>({...sample,tDerivative:sample.tDerivative*v,weightDerivative:sample.weightDerivative*v}));});return retainCurveFitRange(from,to,parameter(0),parameter(1));
 }
 export function copyCurveSource(from:Cubic,to:Cubic,lo=0,hi=1):Cubic {return mapCurveSource(from,to,t=>lo+(hi-lo)*t,()=>hi-lo);}
 export function tagBridge(s:Cubic,a:CurveSample[],b:CurveSample[],lo:number,hi:number):Cubic {
@@ -26,10 +27,10 @@ export function tagExtension(out:Cubic,base:Cubic,end:0|1):Cubic {
 
 /** Rename stable identities while retaining the exact material parameter map. */
 export function remapCurveSource(from:Cubic,to:Cubic,id:(id:string)=>string):Cubic {
- const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(t).map(sample=>({...sample,id:id(sample.id)})));if(d)derivatives.set(to,t=>d(t).map(sample=>({...sample,id:id(sample.id)})));return to;
+ const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(t).map(sample=>({...sample,id:id(sample.id)})));if(d)derivatives.set(to,t=>d(t).map(sample=>({...sample,id:id(sample.id)})));return retainCurveFitRange(from,to,0,1,id);
 }
 
 /** Conjugate a material identity/parameter frame, without changing its weights. */
 export function transformCurveSource(from:Cubic,to:Cubic,id:(id:string)=>string,reverse:(id:string)=>boolean):Cubic {
- const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(t).map(sample=>({...sample,id:id(sample.id),t:reverse(sample.id)?1-sample.t:sample.t})));if(d)derivatives.set(to,t=>d(t).map(sample=>({...sample,id:id(sample.id),t:reverse(sample.id)?1-sample.t:sample.t,tDerivative:(reverse(sample.id)?-1:1)*sample.tDerivative})));return to;
+ const f=sources.get(from),d=derivatives.get(from);if(f)sources.set(to,t=>f(t).map(sample=>({...sample,id:id(sample.id),t:reverse(sample.id)?1-sample.t:sample.t})));if(d)derivatives.set(to,t=>d(t).map(sample=>({...sample,id:id(sample.id),t:reverse(sample.id)?1-sample.t:sample.t,tDerivative:(reverse(sample.id)?-1:1)*sample.tDerivative})));return retainCurveFitRange(from,to,0,1,id);
 }
