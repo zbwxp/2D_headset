@@ -20,6 +20,22 @@ Sources with identical raw IDs are isolated by original artwork identity, with a
 4. At real vertices, A/V writes that snapshot's residual state. At normal intermediate coordinates, A/V inverse-edits Recorder node and relative-handle responses. Save correction commits the draft without creating a new mesh vertex. Creating an additional real snapshot inside existing coverage uses the common geometric/material restriction machinery; a currently unsupported dependency is diagnosed before mutation.
 5. Onion preview uses the same Recorder geometry sampler on the selected angle path. Each ghost shows complete source cubics, including hidden construction curves. It skips interval clipping, ARC construction, fill and brush tessellation. Current fill is temporarily hidden; 30°/60° guides are highlighted. Sampling creates no snapshot, geometry key, or history entry.
 
+### Minimum-change correction (unpublished candidate)
+
+Geometry tools still produce one complete desired Drawing target. The common resolver first uses the existing fixed-basis inverse unchanged. Only if that inverse has an unavailable coordinate or an unsatisfied geometric constraint does the candidate try a coupled correction: 0° remains bit-exact, while the participating cardinal ±90° basis and response values may change. A/V, nonuniform scaling, rotation and the temporary cage all consume this target resolver; there is no endpoint-only UI exception.
+
+The fallback minimizes normalized sampled Bézier displacement plus movement and response-change costs. Node displacement has penalty 16 and relative-handle displacement penalty 1; this is a soft preference, so an explicit endpoint target is never approximated by moving a handle instead. The response-change coefficient is 0.005. A finite trust radius of 8 is centered on every frozen pre-gesture response value, including existing values outside ±8. The existing feasible response-only path remains unbounded and unchanged. Basis displacement is limited to the frozen geometry extent. Active bounds are reported, and an infeasible target fails atomically. The deterministic bounded coordinate solve is a local minimization; it does not claim a unique or global optimum.
+
+Existing saved response samples and correction-frame angles are evaluated before the basis changes and protected by exact replay. Each pointer target starts from the same pre-drag project and prepared context. The companion ±90° draft and response draft are linked by `correctionFrames[].basisAdjustment.{snapshotIds,layerIds,trustRegionLimited?}`; Save, Discard and global Undo/Redo operate on the coupled transaction. No new real 30°/60° snapshot or source mutation is introduced. A separate existing side-basis draft must be finished first; edits to a coupled real basis remain blocked until this correction is saved or discarded.
+
+This fallback currently supports an edge from 0/0 to a cardinal ±90° basis. It does not generalize basis adjustment to triangle interiors, non-cardinal edges or inherited response expressions. Their existing fixed-basis inverse still runs; if it cannot reach the target, the diagnostic identifies the unsupported fallback rather than changing another basis or dropping protected samples.
+
+### Prepared evaluation API (unpublished candidate)
+
+`prepareRecordingContext(workspace, options)` is the domain-owned preparation entry. Its `sample`, `sampleMany`, `resolveBasis`, `resolveSnapshot`, `beginGesture` and `fork` methods share the same dependency resolution and product caches. Existing public evaluation exports delegate to this kernel. `products:'controls'` requests final controls and required domain dependencies without terminal interval clipping or paint; `products:'display'` adds the main display products. The onion adapter uses the context and exact draft policy associated with the current evaluation and has no separate coverage/evaluation branch.
+
+Trusted native immutable transactions preserve unchanged identities after validation. External imports and mutable command batches remain defensively parsed and copied. History restores immutable project identity; cancellation has a separate session fence so an old prepared edit cannot commit after Cancel, Undo or Redo. This is runtime bookkeeping, not serialized project state. See the [evaluation architecture and measurements](architecture/prepared-recording-evaluation.md) for dependency and cache limits.
+
 ### Independent interval endpoint responses
 
 In a triangulated Recording, `changeInterval` with `start` and/or `end` at an intermediate covered angle edits a Recorder property response. It does not add a real snapshot, change geometry responses, or bake the current pose. Target identity is `{kind:'interval-endpoint', layerId, sourceTrackId, rangeId, end:'start'|'end'}`. The two endpoints are independent scalar properties, transported to the current material path before sampling.
@@ -46,7 +62,7 @@ Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setA
 
 `cloneLayers` creates a [current-shape independent copy](current-shape-independent-copy.md) of the addressed snapshot’s saved evaluated layers with new IDs. Its current geometry and local material are preserved, old parents are disconnected, and only the affine material representation required for exact ARC is retained. Unsupported appearance rejects the whole batch with object diagnostics. `pasteLayers` stays a live reference.
 
-### Local-zero View mirror relation (current candidate)
+### Local-zero View mirror relation
 
 `setViewMirror` accepts `{relation:{zeroSnapshotId,sourceSnapshotId,targetSnapshotId,unpairedReference?}}` for an existing triangulated Recording. The three IDs bind 0/0, −90/0 and +90/0. The positive snapshot retains its single negative parent; the zero snapshot is an additional Recorder expression input, not another inheritance parent. This command stores references and a policy, never copied geometry, a fixed world pivot or duplicated response assets.
 
@@ -56,7 +72,7 @@ The positive side uses virtual zero-column inputs, including pitch placeholders,
 
 Main evaluation, full-curve onion and positive inverse/replay share the live negative geometry field. The mapped source value is rebased against its mapped corner values before the positive local contribution is applied; source response assets are never copied into positive maps. This also handles different source/target triangle diagonals. Authored zero-column edge responses enter the positive side through the mirrored field once. Missing zero support omits only the affected positive curve sample, retains its diagnostic and read-only red fallback, and does not block unrelated members.
 
-Material interval-property mirroring remains a separate follow-up; those fields still use the existing positive material sampler. Restriction of an already projected positive correction during real-view insertion has not been established by these mirror regressions. Drawing mirror-edit preferences remain a separate editing behavior.
+Material interval-property mirroring is implemented in v84 through the common `surfaceMaterial` sampler. New positive real-view insertions retain a live mirror term in the existing material recipe; later negative response edits remain live and positive local overrides remain local. Previously serialized positive recipes without that term are not silently migrated. Drawing mirror-edit preferences remain a separate editing behavior.
 
 ### Retired v40 common weight assets
 
