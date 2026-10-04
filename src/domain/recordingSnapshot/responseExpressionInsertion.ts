@@ -1,3 +1,5 @@
+import {recordingViewMirrorRelation} from './viewMirrorRelation';
+import {prepareSnapshotViewMirrorSurface} from './viewMirrorSurface';
 import {captureSnapshotVisibilityRecipe,restrictSnapshotVisibilityRecipes} from './visibilityRestriction';
 import {snapshotMaterialPartitionInkEnds,type SnapshotMaterialPartition} from './materialSplit';
 import {captureSnapshotProjectedResponses,type SnapshotProjectionComponent} from './responseExpressionProjection';
@@ -7,7 +9,7 @@ import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget} from './si
 import {captureSnapshotMaterialRecipe,evaluateSnapshotMaterialRecipe,restrictSnapshotMaterialRecipes} from './materialRestriction';
 import {unprovenSnapshotSmoothResponses} from './responseExpressionSmooth';
 import {sub,type DrawingDocument} from '../drawing/model';
-import {evaluateRecordingSnapshot,resolveSnapshot,snapshotSurfaceBasesAtAngle} from './evaluation';
+import {evaluateRecordingSnapshot,resolveSnapshot,snapshotSurfaceBasesAtAngle,snapshotViewMirrorOptions} from './evaluation';
 import {reconcileSnapshotAngleGraphMesh,validateSnapshotAngleGraph} from './angleGraph';
 import {insertSnapshotVertex,locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {createSnapshotResponseFieldWeightMapper,snapshotResponseExpressionFor} from './responseExpressionRegistry';
@@ -96,10 +98,10 @@ export function prepareSnapshotSurfaceInsertion(workspace:RecordingSnapshotWorks
   for(const curve of captured.drawing.curves){const pair=[transfer({kind:'handle',curveId:curve.id,end:0}),transfer({kind:'handle',curveId:curve.id,end:1})] as const;if(pair.some(control=>Object.keys(control).length))Object.defineProperty(responses.handles,curve.id,{value:pair,enumerable:true});}
   if(Object.keys(responses.nodes).length||Object.keys(responses.handles).length)Object.defineProperty(registry,simplex.id,{value:responses,enumerable:true});
  }
- const hasMaterial=!!captured.drawing.displayIntervals?.length;
- const result:SnapshotAngleGraph={...next,visibilityRecipes:restrictSnapshotVisibilityRecipes(graph!,mesh,view.id),visibilityBasisRecipes:{...graph!.visibilityBasisRecipes,[view.id]:captureSnapshotVisibilityRecipe(graph!,captured.location)},...hasMaterial?{materialRecipes:restrictSnapshotMaterialRecipes(graph!,mesh,view.id),materialBasisRecipes:{...graph!.materialBasisRecipes,[view.id]:captureSnapshotMaterialRecipe(graph!,captured.location)},propertyResponses:{edges:{},triangles:{}}}:{},...Object.keys(registry).length?{responseExpressions:registry}:{},...graph!.correctionFrames?{correctionFrames:graph!.correctionFrames.map(frame=>({id:frame.id,angle:frame.angle,status:frame.status}))}:{}};
+ const hasMaterial=!!captured.drawing.displayIntervals?.length,mirrorRelation=recordingViewMirrorRelation(workspace,recording),zeroSnapshotId=mirrorRelation?.zeroSnapshotId;
+ const result:SnapshotAngleGraph={...next,visibilityRecipes:restrictSnapshotVisibilityRecipes(graph!,mesh,view.id),visibilityBasisRecipes:{...graph!.visibilityBasisRecipes,[view.id]:captureSnapshotVisibilityRecipe(graph!,captured.location)},...hasMaterial?{materialRecipes:restrictSnapshotMaterialRecipes(graph!,mesh,view.id,zeroSnapshotId),materialBasisRecipes:{...graph!.materialBasisRecipes,[view.id]:captureSnapshotMaterialRecipe(graph!,captured.location,zeroSnapshotId)},propertyResponses:{edges:{},triangles:{}}}:{},...Object.keys(registry).length?{responseExpressions:registry}:{},...graph!.correctionFrames?{correctionFrames:graph!.correctionFrames.map(frame=>({id:frame.id,angle:frame.angle,status:frame.status}))}:{}};
  if(hasMaterial){
-  try{const replay=evaluateSnapshotMaterialRecipe(result.materialBasisRecipes![view.id],captured.bases,captured.drawing,view.angle,result.materialPartitions,result.materialPathLineages);
+  try{const zero=zeroSnapshotId&&resolveSnapshot(workspace,zeroSnapshotId,{useDraft:false,diagnostics:'preview'}),nativeBases=zero?graph!.mesh.vertices.map(vertex=>({snapshotId:vertex.snapshotId,angle:vertex.angle,drawing:resolveSnapshot(workspace,vertex.snapshotId,{useDraft:false,diagnostics:'preview'}).drawing})):[],mirror=zero?prepareSnapshotViewMirrorSurface(graph!,nativeBases,zero.drawing,current=>snapshotViewMirrorOptions(workspace,recording,zero,{...zero,drawing:current})):undefined;const replay=evaluateSnapshotMaterialRecipe(result.materialBasisRecipes![view.id],captured.bases,captured.drawing,view.angle,result.materialPartitions,result.materialPathLineages,mirror);
    for(const track of captured.drawing.displayIntervals??[])for(const range of track.ranges){const actual=replay.drawing.displayIntervals?.find(value=>value.id===track.id)?.ranges.find(value=>value.id===range.id);if(!actual||(['start','end'] as const).some(end=>Math.abs(actual[end]-range[end])>1e-10))fail(`New real view cannot exactly replay material ${track.id}/${range.id}.`);}
   }catch(error){fail(error instanceof Error?error.message:String(error));}
  }

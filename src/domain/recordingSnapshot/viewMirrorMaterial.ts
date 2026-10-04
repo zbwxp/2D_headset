@@ -20,7 +20,7 @@ export function prepareSnapshotViewMirrorMaterial(graph:SnapshotAngleGraph,bases
  let prepared:ReturnType<typeof compileSnapshotViewMirrorMaterial>|undefined;
  const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.angle]));
  return (location,drawing)=>{
-  if(!drawing.displayIntervals?.length||location.kind==='vertex'||location.vertexIds.reduce((sum,id,index)=>sum+vertices.get(id)!.x*location.geometricWeights[index],0)<=0)return;
+  if(!drawing.displayIntervals?.length||('angle' in location?location.angle.x<=0:location.kind==='vertex'||location.vertexIds.reduce((sum,id,index)=>sum+vertices.get(id)!.x*location.geometricWeights[index],0)<=0))return;
   prepared??=compileSnapshotViewMirrorMaterial(graph,bases,zero,options,sourceAt);return prepared(location,drawing);
  };
 }
@@ -42,14 +42,14 @@ function compileSnapshotViewMirrorMaterial(graph:SnapshotAngleGraph,bases:readon
   return frames.set(key,{drawing:mirrored.drawing,diagnostics:[...diagnostics,...mirrored.diagnostics.map(issue=>issue.message)]});
  };
  return (location,drawing):SnapshotSurfaceMirrorMaterial|undefined=>{
-  const corners=location.vertexIds.map(id=>vertices.get(id)!),angle=corners.reduce((sum,corner,index)=>({x:sum.x+corner.x*location.geometricWeights[index],y:sum.y+corner.y*location.geometricWeights[index]}),{x:0,y:0});if(angle.x<=0||location.kind==='vertex')return;
+  const corners='angle' in location?location.corners:location.vertexIds.map(id=>vertices.get(id)!),weights='angle' in location?location.weights:location.geometricWeights,angle='angle' in location?location.angle:corners.reduce((sum,corner,index)=>({x:sum.x+corner.x*weights[index],y:sum.y+corner.y*weights[index]}),{x:0,y:0});if(angle.x<=0)return;
   const frames=[at(angle),...corners.map(at)],diagnostics=[...new Set(frames.flatMap(frame=>frame.diagnostics))],read=createSnapshotMaterialPartitionBasis(graph.materialPartitions,frames.map((frame,index)=>({snapshotId:`mirror-material:${index}`,drawing:frame.drawing})),drawing,diagnostics,graph.materialPathLineages),values=new Map<string,{value:number;baseline:number}|undefined>();
   const available=(target:SnapshotScalarPropertyTarget)=>{
    const key=snapshotScalarPropertyTargetKey(target);if(values.has(key))return values.get(key);
    // The ordinary local path owns targets absent from canonical zero. Mirroring
    // must never manufacture a destination interval, range, layer or member.
    if(!targets.get(target.sourceTrackId)?.has(target.rangeId))return;
-   try {const sampled=read(target).values,result={value:sampled[0],baseline:blendSnapshotPropertyValues(sampled.slice(1),location.geometricWeights)};values.set(key,result);return result;}
+   try {const sampled=read(target).values,result={value:sampled[0],baseline:blendSnapshotPropertyValues(sampled.slice(1),weights)};values.set(key,result);return result;}
    catch(error){diagnostics.push(`Material ${target.sourceTrackId} range ${target.rangeId}: live mirror support is unavailable (${error instanceof Error?error.message:String(error)}). The native local material is retained.`);values.set(key,undefined);return;}
   };
   return {diagnostics,sample:(target,native)=>{const source=available(target);if(!source)return;const local=native-source.baseline,tolerance=128*Number.EPSILON*Math.max(1,Math.abs(native),Math.abs(source.baseline));return Math.abs(local)<=tolerance?source.value:source.value+local;}};

@@ -1,3 +1,4 @@
+import type {SnapshotSurfaceMirrorContext} from './surfaceMirrorContext';
 import {snapshotSupportWeights} from './simplexSupport';
 import type {SnapshotMaterialPathLineage} from './materialPathLineages';
 import {resolveDisplayRoute} from '../drawing/displayRoutes';
@@ -7,7 +8,7 @@ import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {retainSnapshotAffines} from './elementPlacement';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
 import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
-import {captureSnapshotResponseField,validateSnapshotResponseExpression} from './responseExpressions';
+import {captureSnapshotResponseField,validateSnapshotResponseExpression,snapshotResponseExpressionBasisReferences,snapshotResponseExpressionFitParameters} from './responseExpressions';
 import {blendSnapshotPropertyValues,effectiveSnapshotPropertyResponses,snapshotScalarPropertyTargetKey,validateSnapshotScalarPropertyTarget} from './propertyResponses';
 import {prepareTriangularResponse,type BarycentricWeights,type InteriorResponseSample,type OrientedEdgeResponse} from './triangularResponses';
 import type {Angle,SnapshotAngleGraph,SnapshotScalarPropertyTarget} from './model';
@@ -24,7 +25,8 @@ export interface SnapshotMaterialField {
  properties:{target:SnapshotScalarPropertyTarget;edges:OrientedEdgeResponse[];samples:InteriorResponseSample[]}[];
 }
 export interface SnapshotMaterialTerm {
- field:SnapshotMaterialField;weight:'response'|'residual'|'geometric';
+ field:SnapshotMaterialField;weight:'response'|'residual'|'geometric'|'view-mirror';
+ /** Only the live mirror term owns this canonical zero dependency. */zeroSnapshotId?:string;
  bases:{snapshotId:string;kind:'value'|'edit';coefficient:number}[];
 }
 export interface SnapshotMaterialRecipe {version:1;terms:SnapshotMaterialTerm[]}
@@ -39,15 +41,17 @@ const list=(value:unknown,max:number):unknown[]=>{if(!Array.isArray(value)||valu
 const id=(value:unknown)=>{if(typeof value!=='string'||!value||value.length>16384)fail('invalid identifier.');};
 export function validateSnapshotMaterialRecipe(value:unknown):asserts value is SnapshotMaterialRecipe {
  const recipe=object(value,['version','terms']);if(recipe.version!==1)fail('unsupported recipe version.');
- let constraints=0;
+ let constraints=0,mirrors=0;
  for(const raw of list(recipe.terms,256)){
-  const term=object(raw,['field','weight','bases']),field=object(term.field,['vertexIds','angles','properties']);
-  if(!['response','residual','geometric'].includes(String(term.weight)))fail('invalid weight operation.');
+  const term=object(raw,['field','weight','bases','zeroSnapshotId']),field=object(term.field,['vertexIds','angles','properties']);
+  if(!['response','residual','geometric','view-mirror'].includes(String(term.weight)))fail('invalid weight operation.');
   const vertices=list(field.vertexIds,3);if(vertices.length<2||new Set(vertices).size!==vertices.length)fail('two or three distinct support vertices required.');vertices.forEach(id);
   const angles=list(field.angles,3);if(angles.length!==vertices.length)fail('missing support coordinates.');for(const raw of angles){const a=object(raw,['x','y']);if(![a.x,a.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=90))fail('invalid angle support.');}
   const bases=list(term.bases,3);if(bases.length!==vertices.length)fail('missing live basis.');for(const raw of bases){const basis=object(raw,['snapshotId','kind','coefficient']);id(basis.snapshotId);if(!['value','edit'].includes(String(basis.kind))||typeof basis.coefficient!=='number'||!Number.isFinite(basis.coefficient))fail('invalid live basis leaf.');}
+  const properties=list(field.properties,16384);
+  if(term.weight==='view-mirror'){if(++mirrors>1)fail('a material recipe owns only one live mirror residual.');id(term.zeroSnapshotId);if(properties.length||!(angles as Angle[]).every(angle=>angle.x>=0)||!(angles as Angle[]).some(angle=>angle.x>0)||bases.some(raw=>{const basis=raw as SnapshotMaterialTerm['bases'][number];return basis.kind!=='value'||basis.coefficient!==1;}))fail('a live mirror term requires a positive geometric support and no copied property constraints.');}else if(term.zeroSnapshotId!==undefined)fail('only a live mirror term can own a zero dependency.');
   const targets=new Set<string>();
-  for(const raw of list(field.properties,16384)){
+  for(const raw of properties){
    const property=object(raw,['target','edges','samples']);validateSnapshotScalarPropertyTarget(property.target);const key=snapshotScalarPropertyTargetKey(property.target);if(targets.has(key))fail('duplicate property field.');targets.add(key);
    constraints+=list(property.edges,3).reduce<number>((sum,raw)=>sum+list(object(raw,['from','to','knots']).knots??[],256).length,0)+list(property.samples,4096).length;if(constraints>65536)fail('material support limit exceeded.');
    validateSnapshotResponseExpression({version:1,fields:[{id:'material-validation',vertexIds:vertices,edges:property.edges,samples:property.samples}],terms:[]});
@@ -55,19 +59,47 @@ export function validateSnapshotMaterialRecipe(value:unknown):asserts value is S
   geometricWeights(field as unknown as SnapshotMaterialField,(angles[0] as Angle));
  }
 }
-export function snapshotMaterialRecipeDependencies(recipe:SnapshotMaterialRecipe):string[]{return [...new Set(recipe.terms.flatMap(term=>term.bases.filter(b=>b.coefficient!==0).map(b=>b.snapshotId)))];}
+/** Real-basis evaluation follows only its actual reflected point and retained
+ * corner supports. Unrelated negative views are not semantic dependencies. */
+export function snapshotMaterialRecipeDependencies(recipe:SnapshotMaterialRecipe,mesh?:SnapshotTriangulation,graph?:SnapshotAngleGraph,at?:Angle):string[]{
+ const result=new Set(recipe.terms.filter(term=>term.weight!=='view-mirror').flatMap(term=>term.bases.filter(basis=>basis.coefficient!==0).map(basis=>basis.snapshotId)));
+ for(const term of recipe.terms.filter(term=>term.weight==='view-mirror')){
+  result.add(term.zeroSnapshotId!);if(!mesh)continue;
+  const center=at??{x:term.field.angles.reduce((sum,angle)=>sum+angle.x,0)/term.field.angles.length,y:term.field.angles.reduce((sum,angle)=>sum+angle.y,0)/term.field.angles.length};
+  const points=[center,...term.field.angles],expressions=graph?[graph.responseExpressions,...(graph.correctionFrames??[]).filter(frame=>frame.status==='draft').map(frame=>frame.responseExpressions)]:[];
+  for(const positive of points){
+   const source={x:-positive.x,y:positive.y},location=locateSnapshotSimplex(mesh,source);if(!location)fail('a live mirror source support is outside coverage.');
+   for(const id of location!.snapshotIds)result.add(id);
+   for(const registry of expressions){const responses=registry?.[location!.simplexId];if(!responses)continue;for(const control of [...Object.values(responses.nodes),...Object.values(responses.handles).flat()])for(const expression of Object.values(control))for(const reference of [...snapshotResponseExpressionBasisReferences(expression),...snapshotResponseExpressionFitParameters(expression)])result.add(reference.snapshotId);}
+   const retained=graph?.materialRecipes?.[location!.simplexId];if(retained){if(snapshotMaterialRecipeHasMirror(retained))fail('a native negative material support cannot own a positive mirror residual.');for(const id of snapshotMaterialRecipeDependencies(retained,mesh,graph,source))result.add(id);}
+  }
+ }
+ return [...result];
+}
+export const snapshotMaterialRecipeHasMirror=(recipe:SnapshotMaterialRecipe|undefined)=>!!recipe?.terms.some(term=>term.weight==='view-mirror');
+/** The authored zero-column field arrives through the live mirror exactly once,
+ * including real-basis resolution and insertion replay. */
+export function snapshotPositiveMaterialRecipe(recipe:SnapshotMaterialRecipe):SnapshotMaterialRecipe {
+ return {...recipe,terms:recipe.terms.map(term=>({...term,field:{...term.field,properties:term.field.properties.map(property=>({...property,edges:property.edges.map(edge=>term.field.angles[edge.from].x===0&&term.field.angles[edge.to].x===0?{from:edge.from,to:edge.to}:edge)}))}}))};
+}
+
+function validateMirrorSupport(recipe:SnapshotMaterialRecipe,mesh:SnapshotTriangulation):void {
+ for(const term of recipe.terms)if(term.weight==='view-mirror'){
+  if(!mesh.vertices.some(vertex=>vertex.snapshotId===term.zeroSnapshotId&&vertex.angle.x===0&&vertex.angle.y===0)||term.bases.some((basis,index)=>!mesh.vertices.some(vertex=>vertex.id===term.field.vertexIds[index]&&vertex.snapshotId===basis.snapshotId)))fail('a live mirror term has a missing zero or source support.');
+ }
+}
 export function validateSnapshotMaterialRecipeRegistry(value:unknown,mesh:SnapshotTriangulation):asserts value is SnapshotMaterialRecipeRegistry {
  const simplexes=new Set([...mesh.edges,...mesh.triangles].map(s=>s.id)),snapshots=new Set(mesh.vertices.map(v=>v.snapshotId));
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>50000)fail('invalid material registry.');
- for(const [simplex,recipe] of Object.entries(value as Record<string,unknown>)){if(!simplexes.has(simplex))fail('material recipe references a retired simplex.');validateSnapshotMaterialRecipe(recipe);if(snapshotMaterialRecipeDependencies(recipe).some(id=>!snapshots.has(id)))fail('a live material basis was removed; retain or explicitly transfer it before deleting its view.');}
+ for(const [simplex,recipe] of Object.entries(value as Record<string,unknown>)){if(!simplexes.has(simplex))fail('material recipe references a retired simplex.');validateSnapshotMaterialRecipe(recipe);validateMirrorSupport(recipe,mesh);if(snapshotMaterialRecipeDependencies(recipe,mesh).some(id=>!snapshots.has(id)))fail('a live material basis was removed; retain or explicitly transfer it before deleting its view.');}
 }
-export function validateSnapshotMaterialBasisRecipes(value:unknown,mesh:SnapshotTriangulation):asserts value is SnapshotMaterialRecipeRegistry {
+export function validateSnapshotMaterialBasisRecipes(value:unknown,mesh:SnapshotTriangulation,graph?:SnapshotAngleGraph):asserts value is SnapshotMaterialRecipeRegistry {
  const snapshots=new Set(mesh.vertices.map(v=>v.snapshotId));
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>10000)fail('invalid material basis registry.');
  const registry=value as SnapshotMaterialRecipeRegistry;
- for(const [snapshot,recipe] of Object.entries(registry)){if(!snapshots.has(snapshot))fail('material basis recipe references a removed view.');validateSnapshotMaterialRecipe(recipe);if(snapshotMaterialRecipeDependencies(recipe).some(id=>!snapshots.has(id)))fail('a live material source was removed.');}
+ for(const [snapshot,recipe] of Object.entries(registry)){if(!snapshots.has(snapshot))fail('material basis recipe references a removed view.');validateSnapshotMaterialRecipe(recipe);validateMirrorSupport(recipe,mesh);if(snapshotMaterialRecipeDependencies(recipe,mesh).some(id=>!snapshots.has(id)))fail('a live material source was removed.');}
  const done=new Set<string>(),visiting=new Set<string>();
- const visit=(id:string)=>{if(visiting.has(id))fail('cyclic material expression dependency.');if(done.has(id))return;visiting.add(id);if(visiting.size>64)fail('material dependency depth exceeds its bounded limit.');for(const source of registry[id]?snapshotMaterialRecipeDependencies(registry[id]):[])visit(source);visiting.delete(id);done.add(id);};
+ const visit=(id:string)=>{if(visiting.has(id))fail('cyclic material expression dependency.');if(done.has(id))return;visiting.add(id);if(visiting.size>64)fail('material dependency depth exceeds its bounded limit.');for(const source of registry[id]?snapshotMaterialRecipeDependencies(registry[id],mesh,graph,mesh.vertices.find(vertex=>vertex.snapshotId===id)!.angle):[])visit(source);visiting.delete(id);done.add(id);};
  Object.keys(registry).forEach(visit);
 }
 export function validateSnapshotMaterialEditLeaves(graph:SnapshotAngleGraph):void {
@@ -83,17 +115,17 @@ function captureField(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation)
  const simplex=location.kind==='edge'?graph.mesh.edges.find(s=>s.id===location.simplexId)!:graph.mesh.triangles.find(s=>s.id===location.simplexId)!;
  return {vertexIds:[...simplex.vertexIds],angles:simplex.vertexIds.map(id=>({...graph.mesh.vertices.find(v=>v.id===id)!.angle})),properties};
 }
-export function captureSnapshotMaterialRecipe(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation):SnapshotMaterialRecipe {
+export function captureSnapshotMaterialRecipe(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,zeroSnapshotId=graph.viewMirror?.zeroSnapshotId):SnapshotMaterialRecipe {
  if(location.kind==='vertex')return fail('a material capture needs an interior support.');
  const inherited=graph.materialRecipes?.[location.simplexId],field=captureField(graph,location),bases=field.vertexIds.map(id=>({snapshotId:graph.mesh.vertices.find(v=>v.id===id)!.snapshotId,kind:'value' as const,coefficient:1}));
- const recipe:SnapshotMaterialRecipe={version:1,terms:[...structuredClone(inherited?.terms??[]),...!inherited||field.properties.length?[{field,weight:inherited?'residual' as const:'response' as const,bases}]:[]]};validateSnapshotMaterialRecipe(recipe);return recipe;
+ const recipe:SnapshotMaterialRecipe={version:1,terms:[...structuredClone(inherited?.terms??[]),...!inherited||field.properties.length?[{field,weight:inherited?'residual' as const:'response' as const,bases}]:[]]};if(zeroSnapshotId&&!snapshotMaterialRecipeHasMirror(recipe)&&field.angles.every(angle=>angle.x>=0)&&field.angles.some(angle=>angle.x>0))recipe.terms.push({field:{...structuredClone(field),properties:[]},weight:'view-mirror',zeroSnapshotId,bases:structuredClone(bases)});validateSnapshotMaterialRecipe(recipe);return recipe;
 }
-export function restrictSnapshotMaterialRecipes(graph:SnapshotAngleGraph,mesh:SnapshotTriangulation,snapshotId:string):SnapshotMaterialRecipeRegistry {
+export function restrictSnapshotMaterialRecipes(graph:SnapshotAngleGraph,mesh:SnapshotTriangulation,snapshotId:string,zeroSnapshotId=graph.viewMirror?.zeroSnapshotId):SnapshotMaterialRecipeRegistry {
  const registry:SnapshotMaterialRecipeRegistry={};
  for(const simplex of [...mesh.edges,...mesh.triangles]){
   const angles=simplex.vertexIds.map(id=>mesh.vertices.find(v=>v.id===id)!.angle),at={x:angles.reduce((sum,a)=>sum+a.x,0)/angles.length,y:angles.reduce((sum,a)=>sum+a.y,0)/angles.length},old=locateSnapshotSimplex(graph.mesh,at);
   if(!old||old.kind==='vertex')fail('a child simplex has no original material support.');
-  const recipe=captureSnapshotMaterialRecipe(graph,old!),newIndex=simplex.vertexIds.findIndex(id=>mesh.vertices.find(v=>v.id===id)!.snapshotId===snapshotId);
+  const recipe=captureSnapshotMaterialRecipe(graph,old!,zeroSnapshotId),newIndex=simplex.vertexIds.findIndex(id=>mesh.vertices.find(v=>v.id===id)!.snapshotId===snapshotId);
   if(newIndex>=0)recipe.terms.push({field:{vertexIds:[...simplex.vertexIds],angles:angles.map(a=>({...a})),properties:[]},weight:'geometric',bases:simplex.vertexIds.map((id,index)=>({snapshotId:mesh.vertices.find(v=>v.id===id)!.snapshotId,kind:'edit',coefficient:index===newIndex?1:0}))});
   validateSnapshotMaterialRecipe(recipe);Object.defineProperty(registry,simplex.id,{value:recipe,enumerable:true});
  }
@@ -101,9 +133,10 @@ export function restrictSnapshotMaterialRecipes(graph:SnapshotAngleGraph,mesh:Sn
 }
 const baselines=new WeakMap<DrawingDocument,DrawingDocument>();
 const copyMaterial=(drawing:DrawingDocument,displayIntervals:StrokeDisplayIntervals[])=>{const next={...drawing,displayIntervals};retainSnapshotAffines(next,[drawing]);return retainSnapshotRouteMaterialInput(next,drawing);};
-/** Pure material evaluation. Every basis is already resolved; this never runs
- * an angle's geometry, Warp, SMOOTH, coverage, or onion pipeline. */
-export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle,partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[]):{drawing:DrawingDocument;diagnostics:string[]} {
+/** Every basis is already resolved. A live mirror term consumes its prepared
+ * source sampler once per drawing, never a recursive workspace evaluation. */
+export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,at:Angle,partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[],mirror?:SnapshotSurfaceMirrorContext):{drawing:DrawingDocument;diagnostics:string[]} {
+ if(snapshotMaterialRecipeHasMirror(recipe))recipe=snapshotPositiveMaterialRecipe(recipe);
  const byId=new Map(bases.map(b=>[b.snapshotId,b.drawing])),diagnostics:string[]=[],transports=new Map<string,StrokeDisplayIntervals>();
  const transported=(snapshotId:string,trackId:string,baseline=false)=>{const key=JSON.stringify([snapshotId,trackId,baseline]);let result=transports.get(key);if(result)return result;const actual=byId.get(snapshotId);if(!actual)fail(`missing live material basis ${snapshotId}.`);const source=baseline?baselines.get(actual!):actual;if(!source)fail(`missing inherited material baseline ${snapshotId}.`);const track=source!.displayIntervals?.find(t=>t.id===trackId);if(!track)fail(`material ${trackId} is absent from live basis ${snapshotId}.`);result=transportEndpointPairMaterial(source!,track!,drawing,diagnostics);transports.set(key,result);return result;};
  const partitionReaders=new Map<string,ReturnType<typeof createSnapshotMaterialPartitionBasis>>();
@@ -116,20 +149,21 @@ export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bas
   const partition=partitions?.find(partition=>partition.parts.some(part=>part.sourceTrackId===track.id)),required=partition?partition.parts.map(part=>({id:part.sourceTrackId,ranges:part.ranges.map(range=>range.sourceRangeId)})):[{id:track.id,ranges:track.ranges.map(range=>range.id)}];
   const pathLineage=lineages?.find(lineage=>lineage.sourceTrackId===track.id),pathPieces=pathLineage?.curves.flatMap(curve=>curve.parts.map(part=>part.curveId))??[];
   let reason:string|undefined;
-  for(const term of recipe.terms)for(const basis of term.bases){if(!basis.coefficient||reason)continue;const actual=byId.get(basis.snapshotId),sources=basis.kind==='edit'?[actual,actual&&baselines.get(actual)]:[actual];for(const source of sources){if(!source){reason=`live basis ${basis.snapshotId} is unavailable`;break;}if(pathPieces.some(id=>!source.curves.some(curve=>curve.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies the complete path measurement`;break;}for(const item of required){const material=source.displayIntervals?.find(track=>track.id===item.id);if(!material||item.ranges.some(id=>!material.ranges.some(range=>range.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies material ${item.id}`;break;}if(material.displayRoute&&resolveDisplayRoute(source,material.displayRoute,{deferEndpointPositions:true}).diagnostics.length){reason=`live basis ${basis.snapshotId} no longer supplies the complete route ${item.id}`;break;}}if(reason)break;}}
+  for(const term of recipe.terms)for(const basis of term.bases){if(term.weight==='view-mirror'||!basis.coefficient||reason)continue;const actual=byId.get(basis.snapshotId),sources=basis.kind==='edit'?[actual,actual&&baselines.get(actual)]:[actual];for(const source of sources){if(!source){reason=`live basis ${basis.snapshotId} is unavailable`;break;}if(pathPieces.some(id=>!source.curves.some(curve=>curve.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies the complete path measurement`;break;}for(const item of required){const material=source.displayIntervals?.find(track=>track.id===item.id);if(!material||item.ranges.some(id=>!material.ranges.some(range=>range.id===id))){reason=`live basis ${basis.snapshotId} no longer supplies material ${item.id}`;break;}if(material.displayRoute&&resolveDisplayRoute(source,material.displayRoute,{deferEndpointPositions:true}).diagnostics.length){reason=`live basis ${basis.snapshotId} no longer supplies the complete route ${item.id}`;break;}}if(reason)break;}}
   if(!reason&&partition?.parts.some(part=>!drawing.curves.some(curve=>curve.id===part.curveId)))reason='a split material measurement piece is outside the current membership';
   if(!reason&&pathPieces.some(id=>!drawing.curves.some(curve=>curve.id===id)))reason='a path measurement piece is outside the current membership';
   if(!reason&&track.displayRoute&&resolveDisplayRoute(drawing,track.displayRoute,{deferEndpointPositions:true}).diagnostics.length)reason='its explicit route is outside the current membership';
   if(reason){for(const item of required)inactive.add(item.id);diagnostics.push(`Material ${track.id} is inactive because ${reason}. Its retained field can resume when membership is restored.`);}
  }
  const projectMaterial=createSnapshotMaterialPartitionBasis(partitions,[],drawing,diagnostics,lineages);
- const compiled=recipe.terms.map(term=>({term,geometric:geometricWeights(term.field,at),properties:new Map(term.field.properties.map(property=>[snapshotScalarPropertyTargetKey(property.target),prepareTriangularResponse(property.edges,property.samples)]))}));
+ const compiled=recipe.terms.map(term=>({term,geometric:geometricWeights(term.field,at),live:term.weight==='view-mirror'?mirror?.material?.({angle:at,corners:term.field.angles,weights:geometricWeights(term.field,at)},drawing):undefined,properties:new Map(term.field.properties.map(property=>[snapshotScalarPropertyTargetKey(property.target),prepareTriangularResponse(property.edges,property.samples)]))}));
  const intervals=(drawing.displayIntervals??[]).filter(track=>!inactive.has(track.id)).map(track=>({...track,ranges:track.ranges.map(range=>{
   const layerId=drawing.layers.find(layer=>layer.items.includes(track.anchor.id))?.id;
   const logicalValues={start:range.start,end:range.end};let closedPath=false;
   const scalar=(end:'start'|'end'|'pinch')=>{
    const target=layerId&&end!=='pinch'?{kind:'interval-endpoint' as const,layerId,sourceTrackId:track.id,rangeId:range.id,end}:undefined,address=target?snapshotMaterialPartitionAddress(partitions,target):undefined,path=lineages?.find(lineage=>lineage.sourceTrackId===track.id),projection=target&&(address||path)?projectMaterial(target):undefined,logical=projection?.target??target;closedPath=!!projection?.closed;
-   const result=compiled.reduce((total,{term,geometric,properties})=>{
+   const result=compiled.reduce((total,{term,geometric,properties,live})=>{
+   if(term.weight==='view-mirror'){if(!mirror)fail('a live mirror material dependency was not prepared.');return logical&&end!=='pinch'?live?.sample(logical,total)??total:total;}
    const values=term.bases.map(basis=>{if(!basis.coefficient)return 0;if((address||path)&&target){const value=partitionValue(basis.snapshotId,target),baseline=basis.kind==='edit'?partitionValue(basis.snapshotId,target,true):0;return (value-baseline)*basis.coefficient;}const value=transported(basis.snapshotId,track.id).ranges.find(r=>r.id===range.id);if(!value)fail(`material range ${range.id} is absent from ${basis.snapshotId}.`);const read=(r:typeof value)=>end==='pinch'?intervalPinch(r!):r![end];let scalar=read(value);if(basis.kind==='edit'){const baseline=transported(basis.snapshotId,track.id,true).ranges.find(r=>r.id===range.id);if(!baseline)fail('edited material range has no inherited baseline.');scalar-=read(baseline);}return scalar*basis.coefficient;});
    const blend=(weights:readonly number[])=>blendSnapshotPropertyValues(values,weights);
    const ordinary=blend(geometric);if(term.weight==='geometric'||end==='pinch')return total+(term.weight==='residual'?0:ordinary);
@@ -142,12 +176,12 @@ export function evaluateSnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,bas
   let start=scalar('start'),end=scalar('end');if(closedPath&&Math.abs(logicalValues.end-logicalValues.start)>=1-1e-10){start=logicalValues.start;end=logicalValues.end;}const inkEnds=snapshotMaterialPartitionInkEnds(partitions,drawing,track.id,range.id,logicalValues);
   return withIntervalPinch({...range,start,end,...inkEnds?{inkEnds}:{}},scalar('pinch'));
  })}));
- return {drawing:copyMaterial(drawing,intervals),diagnostics:[...new Set(diagnostics)]};
+ return {drawing:copyMaterial(drawing,intervals),diagnostics:[...new Set([...diagnostics,...compiled.flatMap(value=>value.live?.diagnostics??[])])]};
 }
 /** Apply the live inherited recipe first. Explicit local interval channels stay
  * authoritative. The inherited baseline is runtime-only and invalidates with
  * the already-resolved source basis identities. */
-export function applySnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,at:Angle,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,editedTrackIds:ReadonlySet<string>=new Set(),partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[]):{drawing:DrawingDocument;diagnostics:string[]} {
- const sampled=evaluateSnapshotMaterialRecipe(recipe,bases,drawing,at,partitions,lineages),baseline=sampled.drawing;
+export function applySnapshotMaterialRecipe(recipe:SnapshotMaterialRecipe,at:Angle,bases:readonly SnapshotSimplexBasis[],drawing:DrawingDocument,editedTrackIds:ReadonlySet<string>=new Set(),partitions?:readonly SnapshotMaterialPartition[],lineages?:readonly SnapshotMaterialPathLineage[],mirror?:SnapshotSurfaceMirrorContext):{drawing:DrawingDocument;diagnostics:string[]} {
+ const sampled=evaluateSnapshotMaterialRecipe(recipe,bases,drawing,at,partitions,lineages,mirror),baseline=sampled.drawing;
  const intervals=baseline.displayIntervals!.map(track=>editedTrackIds.has(track.id)?drawing.displayIntervals!.find(t=>t.id===track.id)??track:track),result=copyMaterial(drawing,intervals);baselines.set(result,baseline);return {...sampled,drawing:result};
 }

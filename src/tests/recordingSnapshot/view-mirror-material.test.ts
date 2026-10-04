@@ -1,3 +1,5 @@
+import {createEmptyProject} from '../../app/emptyProject';
+import {prepareSnapshotBatch} from '../../app/recordingSnapshotApi';
 import {describe,expect,it} from 'vitest';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
 import {applySnapshotCommand} from '../../domain/recordingSnapshot/commands';
@@ -93,6 +95,32 @@ describe('live View mirror interval response fields',()=>{
  it('keeps a preexisting positive inserted material basis live when the negative response changes',()=>{
   const w=fixture();applySnapshotCommand(w,{op:'createSnapshot',angle:angle(60)});edit(w,-30,range(w,-30).start);
   for(const x of [15,30,45,60,75])expect(range(w,x).end).toBeCloseTo(range(w,-x).end,12);
+ });
+
+ it('roundtrips live recipe references and follows source drafts, saved edits and positive correction residuals',()=>{
+  const w=fixture();edit(w,-30,range(w,-30).start);applySnapshotCommand(w,{op:'createSnapshot',angle:angle(60)});
+  const loaded=parseRecordingSnapshots(JSON.parse(JSON.stringify(w)));expect(loaded).toEqual(w);
+  for(const recipe of Object.values(loaded.recordings[0].angleGraph!.materialBasisRecipes!)){const mirrors=recipe.terms.filter(term=>term.weight==='view-mirror');expect(mirrors).toHaveLength(1);expect(mirrors[0].zeroSnapshotId).toBe('zero');expect(mirrors[0].field.properties).toEqual([]);expect(mirrors[0]).not.toHaveProperty('drawing');}
+  edit(loaded,-30,.4,false);for(const x of [15,30,45,60,75])expect(range(loaded,x,'right',true).end).toBeCloseTo(range(loaded,-x,'left',true).end,12);expect(range(loaded,60).end).toBeCloseTo(.6,12);expect(range(loaded,60,'right',true).end).toBeCloseTo(.65,12);
+  applySnapshotCommand(loaded,{op:'discardEndpointCorrection'});expect(range(loaded,60).end).toBeCloseTo(.6,12);
+  edit(loaded,30,.45);edit(loaded,-30,.4);
+  // The saved local response keeps its native basis weights: .4 inherited +
+  // (.65 response − .475 ordinary) after the live +60 basis moves to .65.
+  expect(range(loaded,30).end).toBeCloseTo(.575,12);
+  applySnapshotCommand(loaded,{op:'setAngle',angle:angle(60)});applySnapshotCommand(loaded,{op:'changeInterval',layerId:'layer',sourceTrackId:'right-material',rangeId:'right-gap',end:.78});applySnapshotCommand(loaded,{op:'saveSelected',layerIds:['layer']});expect(range(loaded,60).end).toBeCloseTo(.78,12);
+  edit(loaded,-30,.46);expect(range(loaded,60).end).toBeCloseTo(.78,12);expect(range(loaded,-60).end).toBeCloseTo(.68,12);
+  const again=parseRecordingSnapshots(JSON.parse(JSON.stringify(loaded)));for(const x of [15,30,45,60,75])expect(range(again,x)).toEqual(range(loaded,x));
+ });
+ it('rejects malformed mirror terms and material or mixed source cycles without changing the original',()=>{
+  const w=fixture();applySnapshotCommand(w,{op:'createSnapshot',angle:angle(60)});const saved=JSON.stringify(w),owner=w.snapshots.at(-1)!.id;
+  const malformed=structuredClone(w),term=malformed.recordings[0].angleGraph!.materialBasisRecipes![owner].terms.find(term=>term.weight==='view-mirror')!;term.zeroSnapshotId='missing';expect(()=>parseRecordingSnapshots(malformed)).toThrow(/missing zero|missing.*support/);
+  const copied=structuredClone(w),marker=copied.recordings[0].angleGraph!.materialBasisRecipes![owner].terms.find(term=>term.weight==='view-mirror')!;marker.field.properties=[{target:{kind:'interval-endpoint',layerId:'layer',sourceTrackId:'left-material',rangeId:'left-gap',end:'end'},edges:[],samples:[]}];expect(()=>parseRecordingSnapshots(copied)).toThrow(/no copied property/);
+  const cycle=structuredClone(w),graph=cycle.recordings[0].angleGraph!,native=structuredClone(graph.materialBasisRecipes![owner].terms.find(term=>term.weight==='response')!);native.bases=native.bases.map((basis,index)=>({...basis,snapshotId:index===0?owner:basis.snapshotId,coefficient:index===0?1:0}));graph.materialBasisRecipes!['left-view']={version:1,terms:[native]};expect(()=>parseRecordingSnapshots(cycle)).toThrow(/cycl/i);
+  const mixed=structuredClone(w),layer=mixed.snapshots.find(view=>view.id==='left-view')!.layers[0];if(layer.kind!=='reference')throw Error('fixture');layer.baseSnapshotId=owner;expect(()=>parseRecordingSnapshots(mixed)).toThrow(/cycl/i);expect(JSON.stringify(w)).toBe(saved);
+ });
+ it('keeps a failed positive insertion atomic when discrete material support is incompatible',()=>{
+  const w=fixture();edit(w,-30,range(w,-30).start);w.snapshots[2].relations.displayIntervals!.update![0].ranges[0].mode='SHOW';const project={...createEmptyProject(),recordingSnapshots:w},saved=JSON.stringify(project);
+  expect(()=>prepareSnapshotBatch(project,{commands:[{op:'createSnapshot',angle:angle(60)}]})).toThrow(/differing membership|material/);expect(JSON.stringify(project)).toBe(saved);expect(w.recordings[0].angleGraph!.materialBasisRecipes).toBeUndefined();
  });
 
 });
