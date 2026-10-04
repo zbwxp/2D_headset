@@ -101,7 +101,7 @@ test('v1 references migrate without a binding, v2 validates bindings and fallbac
 });
 
 const prior=useEditor.getState(),priorMode=useWorkspaceMode.getState().mode;
-beforeEach(()=>{const project=ensureRecordingSnapshots(createEmptyProject());useEditor.setState({project,past:[],future:[],historyPast:[],historyFuture:[],viewId:project.views[0].id});useWorkspaceMode.setState({mode:'recording'});});
+beforeEach(()=>{const initial=ensureRecordingSnapshots(createEmptyProject()),project={...initial,recordingSnapshots:prepareSnapshotPreview(initial,{commands:[{op:'createTriangulatedRecording',name:'Reference test'}]}).recordingSnapshots};useEditor.setState({project,past:[],future:[],historyPast:[],historyFuture:[],viewId:project.views[0].id});useWorkspaceMode.setState({mode:'recording'});});
 afterEach(()=>{useEditor.getState().endEdit();useEditor.setState(prior);useWorkspaceMode.setState({mode:priorMode});});
 function projectAngle(){return useEditor.getState().project.recordingSnapshots!.recordings[0].angle;}
 function navigate(angle:ReferenceAngle){const s=useEditor.getState(),recordingId=s.project.recordingSnapshots!.recordings[0].id,plan=prepareSnapshotPreview(s.project,{recordingId,commands:[{op:'setAngle',angle}]});s.setRecordingSnapshots(plan.recordingSnapshots);}

@@ -101,11 +101,12 @@ describe('real surface snapshots and Recorder bindings',()=>{
   near(h.drawing(undefined,false).nodes.find(node=>node.id==='a')!.position,[2,3]);near(h.drawing(undefined,false).nodes.find(node=>node.id==='d')!.position,base.nodes.find(node=>node.id==='d')!.position);near(h.drawing().nodes.find(node=>node.id==='d')!.position,[8,9]);
   h.apply({op:'discardSelected',layerIds:['right']});expect(h.current().angleGraph!.correctionFrames?.some(frame=>frame.status==='draft')).toBe(false);near(h.drawing().nodes.find(node=>node.id==='a')!.position,[2,3]);near(h.drawing().nodes.find(node=>node.id==='d')!.position,base.nodes.find(node=>node.id==='d')!.position);
  });
- it('copies saved legacy state and endpoint drafts once, then discards locally without reactivating old drafts',()=>{
+ it('refuses retired endpoint copies without deleting saved state or drafts',()=>{
   const h=fixture(),source=h.current();source.mode='endpoint-pair';delete source.angleGraph;source.snapshotIds=['front','side'];source.angle={x:90,y:0};source.activeSnapshotId='side';source.endpointPair={axis:'x',startSnapshotId:'front',endSnapshotId:'side'};
   source.tracks=[{id:'old-placement',channel:'placement',targetId:'left',keys:[{id:'start-key',angle:{x:0,y:0},value:{...identityScenePlacement(),translation:[1,2]}},{id:'end-key',angle:{x:90,y:0},value:{...identityScenePlacement(),translation:[3,4]}}],draft:{angle:{x:90,y:0},value:{...identityScenePlacement(),translation:[5,6]}}}];
-  const saved=h.drawing(undefined,false),draft=h.drawing(),before=JSON.stringify(source),oldSnapshots=structuredClone(h.project().recordingSnapshots!.snapshots);h.apply({op:'createTriangulatedRecordingCopy'});expect(h.current().mode).toBe('triangulated');expect(h.drawing(undefined,false).nodes).toEqual(saved.nodes);expect(h.drawing().nodes).toEqual(draft.nodes);expect(JSON.stringify(h.project().recordingSnapshots!.recordings[0])).toBe(before);expect(h.project().recordingSnapshots!.snapshots.slice(0,3)).toEqual(oldSnapshots);
-  h.apply({op:'discardSelected',layerIds:['left','right']});expect(h.drawing().nodes).toEqual(saved.nodes);expect(h.current().tracks[0].draft).toEqual(source.tracks[0].draft);
+  const before=JSON.stringify(h.project()),project=h.project();const result=h.api.snapshot({commands:[{op:'createTriangulatedRecordingCopy'}]});
+  expect(result.ok).toBe(false);if(!result.ok)expect(result.error.message).toContain('旧录制已停用');
+  expect(h.project()).toBe(project);expect(JSON.stringify(h.project())).toBe(before);expect(h.past).toEqual([]);
  });
  it('limits linked basis position drafts to the one real snapshot',()=>{
   const h=fixture(true);h.apply({op:'selectSnapshot',snapshotId:'front'});const before=freeze(h.project()),preview=prepareSnapshotPreview(before,{commands:[{op:'moveShapeNode',layerId:'left',nodeId:'b',position:[2,2]}]});
