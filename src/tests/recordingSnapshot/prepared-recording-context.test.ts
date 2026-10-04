@@ -1,4 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import fullFace from '../../assets/hairless-symmetric-two-face-mirror.json';
 import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotPreview} from '../../app/recordingSnapshotApi';
@@ -6,15 +8,18 @@ import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit'
 import {snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {moveNode} from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
+import {applyMirrorEditing} from '../../domain/drawing/mirrorEditing';
 import {drawingReadContextStats,preparedDrawingReadContext} from '../../domain/drawing/readContext';
 import {parseDrawing,shapeOf,type DrawingDocument} from '../../domain/drawing/model';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
+import {parseLandmarks} from '../../domain/landmarks/persistence';
 import {evaluateRecordingSnapshot,resolveRecordingSnapshotBasis,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type Angle,type RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
 import {prepareRecordingContext} from '../../domain/recordingSnapshot/preparedRecordingContext';
 import {upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
 import * as triangulation from '../../domain/recordingSnapshot/triangulation';
 import * as snapshotValidation from '../../domain/recordingSnapshot/validation';
+import * as simplexPrograms from '../../domain/recordingSnapshot/preparedSimplexPrograms';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
 const at=(x:number,y=0):Angle=>({x,y});
@@ -60,6 +65,21 @@ function expectColdEquivalent(actual:SnapshotEvaluation,workspace:RecordingSnaps
 const preparation=(context:ReturnType<typeof prepareRecordingContext>)=>{
  const c=context.counters;return {validation:c.validation,dependencyIndex:c.dependencyIndex,snapshotInput:c.snapshotInput,snapshotState:c.snapshotState,ownGeometry:c.ownGeometry,basis:c.basis,coverageStructure:c.coverageStructure};
 };
+/** Counts actual numeric execution, including solver replay outside the context
+ * counters. Vertex samples do not run the control scalar loops. */
+function observeControlSamples(){
+ const prepare=simplexPrograms.preparedSnapshotSimplexProgram,counts={samples:0,scalars:0};
+ const spy=vi.spyOn(simplexPrograms,'preparedSnapshotSimplexProgram').mockImplementation((...args)=>{
+  const program=prepare(...args);
+  return {sample(weights,response){
+   if(args[0].length>1)counts.samples++;
+   let measured=response;
+   if(response){const scalar=response;measured=Object.assign((...args:Parameters<typeof scalar>)=>{counts.scalars++;return scalar(...args);},scalar) as typeof scalar;}
+   return program.sample(weights,measured);
+  }};
+ });
+ return {counts,restore:()=>spy.mockRestore()};
+}
 
 describe('prepared Recording context through the production sampling entrypoints',()=>{
  it('validates and prepares shared parents once per effective revision',()=>{
@@ -130,6 +150,32 @@ describe('prepared Recording context through the production sampling entrypoints
    expect(actual.drawing.curves[0].handles[0][1]).toBeCloseTo(handle[1],10);
    expect(validation).not.toHaveBeenCalled();
   }finally{validation.mockRestore();}
+ });
+
+ it('samples exactly the pre-response and verified candidate controls for a coupled fallback',()=>{
+  const f=freeze(fixture()),context=prepareRecordingContext(f.workspace,options),before=context.sample('recording'),node=before.drawing.nodes.find(value=>value.id==='a')!;
+  const wanted=dragNode(before.drawing,'a',[node.position[0]+.081,node.position[1]-.043],.4),observed=observeControlSamples(),bytes=JSON.stringify(f.project);
+  try{
+   const edit=prepareSnapshotDrawingToolEdit(snapshotEditContext(f.project,false),{recordingId:'recording',snapshotId:before.snapshotId,angle:f.recording.angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry'},validation:'preview'});
+   expect(edit.project.recordingSnapshots!.snapshots.find(value=>value.id==='side')!.draft).toBeDefined();
+   expectControls(context.fork(edit.project.recordingSnapshots!).sample('recording').drawing,wanted,7);
+   expect(observed.counts.samples).toBe(2);expect(observed.counts.scalars).toBe(16);
+   expect(JSON.stringify(f.project)).toBe(bytes);
+  }finally{observed.restore();}
+ });
+
+ it('retains the complete candidate coverage and diagnostics after response-only replay',()=>{
+  const f=fixture(2);f.side.layers[1]={...f.side.layers[1],membership:{excludeElementIds:['curve1']}};freeze(f);
+  const context=prepareRecordingContext(f.workspace,options),before=context.sample('recording'),node=before.drawing.nodes.find(value=>value.id==='a')!,wanted=moveNode(before.drawing,'a',[node.position[0]+.077,node.position[1]-.031],true),observed=observeControlSamples();
+  try{
+   expect(before.angleSurface!.outsideCurves).toHaveLength(1);
+   const result=context.prepareSurfaceTargetEdit('recording',before,wanted,{angle:f.recording.angle,frameId:'coverage-replay'}),workspace={...f.workspace,recordings:[{...f.recording,angleGraph:result.graph}]};
+   const actual=context.fork(workspace).sample('recording');expectControls(actual.drawing,wanted);
+   expect(observed.counts.samples).toBe(1);expect(actual.angleSurface!.outsideCurves).toEqual(before.angleSurface!.outsideCurves);
+   const cold=evaluateRecordingSnapshot(structuredClone(workspace),'recording',{useDraft:true,diagnostics:'preview'});
+   expect(actual.drawing).toEqual(cold.drawing);expect(actual.angleSurface!.outsideCurves).toEqual(cold.angleSurface!.outsideCurves);
+   expect(actual.angleSurface!.nodeAuthorities).toEqual(cold.angleSurface!.nodeAuthorities);expect(actual.diagnostics).toEqual(cold.diagnostics);expect(actual.paintBatches).toEqual(cold.paintBatches);
+  }finally{observed.restore();}
  });
 
  it('keeps property-only preview controls and native geometry while changing terminal material',()=>{
@@ -210,3 +256,16 @@ describe('prepared Recording context through the production sampling entrypoints
   interpolateSnapshotSurfaceOnion(recording,current,{startSnapshotId:'view:-90:0',endSnapshotId:'view:90:0'},10);expect(preparation(context)).toEqual(warm);
  },30000);
 });
+
+// Local opt-in only. The private source and its geometry never enter the repo.
+const privateFixture=process.env.CONTOUR_MINCHANGE_PRIVATE_FIXTURE;
+it.skipIf(!privateFixture)('private 124 fallback samples 718 scalars exactly twice and preserves its frozen source',()=>{
+ const raw=readFileSync(privateFixture!,'utf8'),hash=createHash('sha256').update(raw).digest('hex'),project=freeze(parseLandmarks(raw)),workspace=project.recordingSnapshots!,recording=workspace.recordings.find(value=>value.id===workspace.activeRecordingId)!,context=prepareRecordingContext(workspace,options),before=context.sample(recording.id);
+ expect(recording.angle).toEqual(at(-60));
+ const curve=before.drawing.curves.find(value=>value.name==='左片·外侧下颌')!,node=before.drawing.nodes.find(value=>value.id===curve.nodes[0])!,position:[number,number]=[node.position[0]+.021,node.position[1]],wanted=applyMirrorEditing(before.drawing,dragNode(before.drawing,node.id,position,.4),{nodes:[{nodeId:node.id,position}]}),bytes=JSON.stringify(project),observed=observeControlSamples();
+ try{
+  const edit=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:recording.id,snapshotId:before.snapshotId,angle:recording.angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry'},validation:'preview'}),actual=context.fork(edit.project.recordingSnapshots!).sample(recording.id);
+  expectControls(actual.drawing,wanted,7);expect(observed.counts).toEqual({samples:2,scalars:1436});
+  expect(JSON.stringify(project)).toBe(bytes);expect(createHash('sha256').update(readFileSync(privateFixture!)).digest('hex')).toBe(hash);
+ }finally{observed.restore();}
+},30000);

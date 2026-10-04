@@ -38,7 +38,7 @@ import {resolveSnapshotLocalMembership} from './localMembership';
 import {prepareSnapshotCoverageStructure,type PreparedSnapshotCoverageStructure,type SnapshotCoverageEvaluation,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
 import {evaluateSnapshotSurfaceMaterial} from './surfaceMaterial';
 import {snapshotPropertyResponsesCacheKey} from './propertyResponses';
-import {createSnapshotSurfaceValueSampler,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
+import {createSnapshotSurfaceValueSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEditWithReplay,SnapshotSurfaceTargetEditError,snapshotSurfaceOwnsBasisDraft,type SnapshotSurfaceTargetEditResult} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,shapeOf,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
 import {depthContext,depthPaintBatches,type PaintBatch} from '../drawing/depth';
@@ -57,7 +57,7 @@ import {validateSnapshotGraph} from './validation';
 import {applySnapshotNodeAliases} from './nodeAliases';
 import {materializeSnapshotForkInputs,applySnapshotNodeForks,pruneSnapshotTopologyNodes} from './nodeForks';
 import {applySnapshotCurveAppearance} from './curveAppearance';
-import {type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
+import {type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses,type SnapshotAngleGraph} from './model';
 
 export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Recorder preview may include only its currently authored zero/source draft in mirror expressions. */liveBasisDrafts?:boolean;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean;/** Full curves retain authoritative domain material, but omit terminal cuts and paint. */products?:'controls'|'display'}
 export interface SnapshotEvaluation {
@@ -496,12 +496,19 @@ export interface PreparedRecordingCounters {
  validation:number;dependencyIndex:number;membershipSignature:number;membershipStructure:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;simplexProgram:number;
  bySnapshot:Record<string,Partial<Record<'snapshotInput'|'snapshotState'|'ownGeometry'|'basis'|'paint',number>>>;
 }
+export interface PreparedSnapshotSurfaceTargetEditOptions {
+ angle:Angle;frameId:string;
+ /** Coupled basis corrections solve protected angles in their existing draft. */
+ preserveDraftOwner?:boolean;
+}
 export interface PreparedRecordingContext {
  readonly workspace:RecordingSnapshotWorkspace;readonly counters:PreparedRecordingCounters;
  resolveSnapshot(snapshotId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
  resolveBasis(recordingId:string,snapshotId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
  sample(recordingId:string,options?:SnapshotEvaluationOptions):SnapshotEvaluation;
  sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[];
+ /** Solve and verify through this context's canonical complete control product. */
+ prepareSurfaceTargetEdit(recordingId:string,current:SnapshotEvaluation,wanted:DrawingDocument,options:PreparedSnapshotSurfaceTargetEditOptions):SnapshotSurfaceTargetEditResult;
  /** The immutable before context itself is the gesture's pinned baseline. */
  beginGesture():PreparedRecordingContext;
  fork(workspace:RecordingSnapshotWorkspace,changes?:PreparedRecordingChanges):PreparedRecordingContext;
@@ -630,6 +637,22 @@ class RecordingContext implements PreparedRecordingContext {
  }
  inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
  sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return withDrawingReadScope(()=>requests.map(options=>this.sample(recordingId,options)));}
+ prepareSurfaceTargetEdit(recordingId:string,current:SnapshotEvaluation,wanted:DrawingDocument,options:PreparedSnapshotSurfaceTargetEditOptions):SnapshotSurfaceTargetEditResult {return withDrawingReadScope(()=>{
+  const recording=this.index.recordings.get(recordingId),sourceGraph=recording?.angleGraph,surface=current.angleSurface;
+  if(!recording||!sourceGraph)throw Error('Missing triangulated recording');
+  if(!surface?.simplex||surface.role==='outside')throw new SnapshotSurfaceTargetEditError('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. The projected red preview is read-only; return inside coverage to correct controls.');
+  const owner=options.preserveDraftOwner?effectiveSnapshotSurfaceResponses(sourceGraph).draft:undefined;
+  const graph=owner?{...sourceGraph,correctionFrames:sourceGraph.correctionFrames!.map(frame=>frame===owner?{...frame,angle:{...options.angle}}:frame)}:sourceGraph;
+  let replayGraph:SnapshotAngleGraph|undefined;
+  const result=prepareSnapshotSurfaceTargetEditWithReplay(graph,surface.simplex,surface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:sourceGraph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current.drawing,wanted,{immutableInputs:this.defaults.immutableInputs,angle:options.angle,frameId:options.frameId,allBases:snapshotSurfaceRequiredBases(surface,options.angle),mirror:surface.mirrorContext},candidate=>{
+   // Only draft ownership is restored. Keep all accumulated protection outputs
+   // in the candidate so later constraints cannot erase earlier corrections.
+   replayGraph=owner?{...candidate,correctionFrames:candidate.correctionFrames!.map(frame=>frame.status==='draft'?{...frame,angle:{...owner.angle},basisAdjustment:owner.basisAdjustment}:frame)}:candidate;
+   const workspace={...this.workspace,recordings:this.workspace.recordings.map(value=>value===recording?{...value,angleGraph:replayGraph}:value)};
+   return this.fork(workspace).sample(recordingId,{...evaluationRequests.get(current),angle:options.angle,useDraft:true,products:'controls'}).drawing;
+  });
+  return result.changed?{...result,graph:replayGraph!}:{graph:sourceGraph,changed:false};
+ });}
  beginGesture():PreparedRecordingContext{return this;}
  fork(workspace:RecordingSnapshotWorkspace,_changes?:PreparedRecordingChanges):PreparedRecordingContext {
   if(workspace===this.workspace)return this;const known=recordingContexts.get(workspace)??{};if(known.immutable&&this.defaults.immutableInputs&&known.immutable.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
@@ -657,6 +680,7 @@ function contextWithOptions(context:RecordingContext,options:SnapshotEvaluationO
   resolveBasis:(recording,id,request)=>context.resolveBasis(recording,id,{...defaults,...request}),
   sample:(recording,request)=>context.sample(recording,{...defaults,...request}),
   sampleMany:(recording,requests)=>context.sampleMany(recording,requests.map(request=>({...defaults,...request}))),
+  prepareSurfaceTargetEdit:(recording,current,wanted,request)=>context.prepareSurfaceTargetEdit(recording,current,wanted,request),
   beginGesture:()=>handle,fork:(workspace,changes)=>contextWithOptions(context.fork(workspace,changes) as RecordingContext,defaults)};
  policies.set(key,handle);contextPolicies.set(context,policies);return handle;
 }

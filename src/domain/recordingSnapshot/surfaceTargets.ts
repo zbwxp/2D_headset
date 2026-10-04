@@ -183,6 +183,13 @@ type TargetUpdate={target:SnapshotScalarTarget;axis:0|1;weights:BarycentricWeigh
  * the complete candidate through the runtime sampler and SMOOTH projection.
  * No drawing geometry, pose key, or sampled intermediate enters persistence. */
 export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],currentDrawing:DrawingDocument,wantedDrawing:DrawingDocument,options:SnapshotSurfaceTargetEditOptions):SnapshotSurfaceTargetEditResult {
+ return prepareSnapshotSurfaceTargetEditWithReplay(graph,location,bases,currentDrawing,wantedDrawing,options);
+}
+
+/** Internal prepared-context adapter. Only the context's ordinary sample path
+ * produces retained products; this solver still verifies every target control.
+ * Standalone and mutable callers retain the same local replay below. */
+export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGraph,location:SnapshotSimplexLocation,bases:readonly SnapshotSimplexBasis[],currentDrawing:DrawingDocument,wantedDrawing:DrawingDocument,options:SnapshotSurfaceTargetEditOptions,replayCandidate?:(candidate:SnapshotAngleGraph)=>DrawingDocument):SnapshotSurfaceTargetEditResult {
  const actualLocation=locateSnapshotSimplex(graph.mesh,options.angle);
  if(!actualLocation)fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. The projected red preview is read-only; return inside coverage to correct controls.');
  const descriptor=surfaceDescriptor(graph,location);
@@ -278,7 +285,7 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   nextFrame={...draft,id:frameId,angle:{...options.angle},status:'draft',triangleResponses:{...draft?.triangleResponses,[location.simplexId]:responses}};
  }
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
- const replaySampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs}),replay=index((options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,replaySampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,replaySampler)).drawing);
+ const replay=index(replayCandidate?replayCandidate(candidate):(()=>{const sampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs});return (options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler)).drawing;})());
  const verify=(name:string,position:Point2|undefined,target:Point2)=>{
   if(!position||position.some((value,axis)=>!Number.isFinite(value)||Math.abs(value-target[axis])>Math.max(1e-7,4*scalarTolerance(value,target[axis]))))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`${name}: the complete correction cannot reproduce the target after linked-node and SMOOTH constraints. Edit the responsible basis control or its SMOOTH driver first.`);
  };
