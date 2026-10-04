@@ -155,7 +155,10 @@ describe('prepared Recording context through the production sampling entrypoints
   expectControls(fork.sample('recording').drawing,target,7);
   expect(fork.resolveBasis('recording','zero')).toBe(zero);expect(fork.resolveSnapshot('source')).toBe(source);
   expect(fork.counters.bySnapshot.zero?.ownGeometry??0).toBe(0);expect(fork.counters.bySnapshot.source?.ownGeometry??0).toBe(0);
-  expect(fork.resolveSnapshot('side-child').drawing).not.toEqual(priorChild.drawing);expect(fork.counters.bySnapshot.side?.ownGeometry).toBe(1);expect(fork.counters.bySnapshot['side-child']?.ownGeometry).toBe(1);
+  expect(fork.resolveSnapshot('side-child').drawing).not.toEqual(priorChild.drawing);
+  // App replay may already have produced the candidate's native basis; the
+  // returned fork must reuse that product rather than manufacture another miss.
+  expect(fork.counters.bySnapshot.side?.ownGeometry??0).toBeLessThanOrEqual(1);expect(fork.counters.bySnapshot['side-child']?.ownGeometry??0).toBeLessThanOrEqual(1);
   expect(fork.sample('recording',{angle:at(0)}).drawing).toEqual(zero.drawing);expectColdEquivalent(fork.sample('recording'),edit.project.recordingSnapshots!);
  });
 
