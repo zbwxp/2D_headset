@@ -10,10 +10,16 @@ import {strokeInkPasses} from '../../domain/drawing/mist';
 import MistInk from './MistInk';
 import MistFill from './MistFill';
 import {depthPaintBatches,memberInk,type PaintBatch} from '../../domain/drawing/depth';
+import {withDrawingReadScope} from '../../domain/drawing/readContext';
 import type {DrawingTool} from './session';
 interface Props {paintBatches?:PaintBatch[];pixelsPerUnit?:number;interactiveEffects?:boolean;opacity?:ReadonlyMap<string,number>;d:Doc;screen:(p:Point2)=>Point2;unit:number;preview:boolean;showFills:boolean;fillVisibility?:Readonly<Record<string,boolean>>;referenceMoving:boolean;tool:DrawingTool;selectedPaint?:string;selectedPaints?:string[];curveDown:(e:React.PointerEvent,id:string)=>void;paintDown:(e:React.PointerEvent,id:string)=>void;arcDown:(e:React.PointerEvent,id:string)=>void}
 export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffects=false,opacity,d,screen:project,unit,preview,showFills,fillVisibility,referenceMoving,tool,selectedPaint,selectedPaints,curveDown,paintDown,arcDown}:Props){
- const clipPrefix=useId(),sampling=displayInkSampling(pixelsPerUnit??unit);
+ const clipPrefix=useId();
+ // Share ID/continuation plans for this synchronous render, including the
+ // visibility wrapper below. Mutable Drawing drafts get a fresh scope on the
+ // next render; no numeric, material or visibility state is retained here.
+ return withDrawingReadScope(()=>{
+ const sampling=displayInkSampling(pixelsPerUnit??unit);
  // Only SVG display coordinates are rounded; authoring/interpolation remains exact.
  const screen=(p:Point2):Point2=>{const q=project(p);return [Math.round(q[0]*1000)/1000,Math.round(q[1]*1000)/1000];};
  const pick=!preview&&!referenceMoving,select=pick&&['select','direct'].includes(tool);
@@ -70,4 +76,5 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
   {pick&&(selectedPaint===offset.id||selectedPaints?.includes(offset.id))&&<path d={pathOf(inkShapes,screen)} fill="none" stroke="#2589b0" strokeWidth="1.5" pointerEvents="none"/>}{pick&&<path data-testid="drawing-offset-hit" d={pathOf(inkShapes,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={select&&!o.locked?'stroke':'none'} onPointerDown={e=>paintDown(e,offset.id)}/>}</g>;
  })}</g>;
  })}</>;
+ });
 }

@@ -1,0 +1,423 @@
+
+ RUN  v4.1.11 /workspace/scratch/cb5730328fca/contour-development-recovery
+
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > runtime Drawing consumers use one cage program for source ARC, material and fixed-width ink 71ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > post-domain sparse handles edit the displayed cubic and carry the correction onto retained ARC material 37ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > cage and sparse correction survive identity copies and later affine order including zero 19ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > runtime route ARC projection preserves canonical source material identities after a handle correction 81ms
+ ✓ src/tests/drawing-render-quality.test.ts > display samples preserve the face silhouette, tips and interval boundaries within a subpixel budget 1083ms
+ ✓ src/tests/drawing-render-quality.test.ts > uniform cubic rendering keeps exact curves and sharp tips without a redundant outline 2ms
+ ✓ src/tests/drawing-render-quality.test.ts > paint order cache follows structural edits but reuses unchanged topology across interpolated frames 83ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > real Recorder basis A writes sparse post-domain draft and Save keeps material replay 1078ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > validates and prepares shared parents once per effective revision 65ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > scrubs unique 2-D angles without rebuilding unchanged native bases or structural coverage 54ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > presentation identity remapping preserves projected ARC and source material provenance 19ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > automatic mirror conjugates a cage and its post-correction instead of rebuilding its ARC 100ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > pure program export contains authored fields and sparse corrections, with no prior Snapshot references 32ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > domain material survives a referenced parent, and child sparse shape acts after that field 80ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > retains the same frozen bases beyond the former 24-parent and 32-frame cache limits 195ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > shares preparation across main, 9/18-step onion sweeps, and exact inverse replay 57ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > rebuilds zero native bases for independent response-only pointer targets 26ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > keeps a native command fallback in the same validated dependency session 20ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > disabling a domain recovers its input while retaining sparse corrections for restore 64ms
+ ✓ src/tests/recordingSnapshot/layer-cage-runtime.test.ts > post-domain ARC remains tangent to its source pieces after a handle correction 89ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree group affine shares Drawing controls and the current Recording transaction with LINK/SMOOTH 422ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > local exclusion retains live sibling fit and unrelated cage geometry, correction=false 877ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > Drawing and Recording SVG bytes retain the pre-scope renderer across visibility, topology, materials and domains 1550ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree group four-corner shares Drawing controls and the current Recording transaction with LINK/SMOOTH 318ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > 121-curve Recording render removes repeated signature/connection work without dropping geometry or hit paths 192ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree group curved shares Drawing controls and the current Recording transaction with LINK/SMOOTH 326ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > local exclusion retains live sibling fit and unrelated cage geometry, correction=true 498ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > keeps actual inverse, topology and replay work constant with 100 and 1000 unrelated curves 2276ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > solves native-dirty nodes outside the narrow handle plan and verifies linked SMOOTH members 30ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > does not turn an arbitrary target, forged plan or interrupted ancestry into a scope 3ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > rejects changed structural wrapper metadata and retains the full ARC guard 2ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > retains full validation for mirror and inherited expression uncertainty 6ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > declines deferred projectors and domain plans 1ms
+ ✓ src/tests/recordingSnapshot/surface-target-replay-scope.test.ts > native surface target read/replay scope > retains full validation when the native dirty closure includes hidden controls 1ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > a new topology compiles real work once and shares it with the visibility wrapper 27ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > visible nuisance curves still paint while topology work is shared once per transient scope 143ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > samples exactly the pre-response and verified candidate controls for a coupled fallback 12ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > retains the complete candidate coverage and diagnostics after response-only replay 23ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > keeps property-only preview controls and native geometry while changing terminal material 19ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > does not request terminal material or paint products for full-curve onion sampling 6ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > keeps the fixed zero basis and untouched source through a side fallback candidate 11ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > prepared Recording context through the production sampling entrypoints > shares the nine-view preparation on the bundled 121-curve complete eyes-and-ears drawing 947ms
+ ↓ src/tests/recordingSnapshot/prepared-recording-context.test.ts > private 124 fallback samples 718 scalars exactly twice and preserves its frozen source
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree layer affine shares Drawing controls and the current Recording transaction with LINK/SMOOTH 177ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > each mutable render sees in-place coordinate, visibility, membership and route edits 16ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > line affine, quad and Coons retain runtime source/control metadata 28ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > layer affine, quad and Coons retain runtime source/control metadata 102ms
+ ✓ src/tests/drawing-paint-read-scope.test.ts > a failed projection disposes the render scope, including nested synchronous reads 13ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > source child 0 deletion retains original parent field, correction=false 332ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps the exact nonzero HIDE plateau through 30 degrees, then expands with directed reverse parity 165ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree layer four-corner shares Drawing controls and the current Recording transaction with LINK/SMOOTH 191ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > updates saved and draft negative source fields live and keeps full-curve onions geometry-only 62ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > replays positive independent property edits over the mirrored residual and preserves positive real-view overrides 63ms
+ ✓ src/tests/recordingSnapshot/temporary-cage-edit.test.ts > 60° temporary cage {"corner":2} stores only grouped responses and preserves both persistent bases 437ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > complements scalar values only for explicit canonical-forward split identities 35ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > samples reflected pitched triangles and zero-edge fields once, with positive inverse replay 70ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > source child 1 deletion retains original parent field, correction=false 304ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 0 degree layer curved shares Drawing controls and the current Recording transaction with LINK/SMOOTH 301ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps retained source and positive material recipes live after inserting real view -60 91ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps retained source and positive material recipes live after inserting real view 60 72ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree group affine shares Drawing controls and the current Recording transaction with LINK/SMOOTH 179ms
+ ✓ src/tests/recordingSnapshot/temporary-cage-edit.test.ts > 60° temporary cage {"edge":1,"handle":0} stores only grouped responses and preserves both persistent bases 379ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > transports live curved route cuts to the final positive geometry through the native material law 54ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps a missing mirror support local, leaves other material intact, and resumes after restoration 27ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps a preexisting positive inserted material basis live when the negative response changes 59ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > anchors paired deltas to the evaluated zero and applies positive local overrides once 43ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > keeps current zero draft live in main sampling and the complete onion without saving it 26ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > uses only the currently authored draft, including minus90, and caches source and zero revisions separately 12ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > persists only Recorder expression references and restores the complete relation through Undo/Redo 55ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > source child 0 deletion retains original parent field, correction=true 360ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > mirrors current source membership under canonical target identities without restoring absent zero-only members 4ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > uses an explicit live zero V-frame for unpaired groups and keeps their intentional zero-side jump 46ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > defaults existing and newly seeded unpaired mirrors to their live local zero V-frame center 20ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > qualifies every automatic zero-yaw pitch support with the same central-zero operator 82ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > roundtrips live recipe references and follows source drafts, saved edits and positive correction residuals 184ms
+ ✓ src/tests/recordingSnapshot/temporary-cage-edit.test.ts > a late unavailable cage coordinate adjusts the side basis atomically while keeping zero fixed 34ms
+ ✓ src/tests/recordingSnapshot/temporary-cage-edit.test.ts > a whole continuous stroke can use a temporary cage without moving other strokes in the same layer 190ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > rejects malformed mirror terms and material or mixed source cycles without changing the original 23ms
+ ✓ src/tests/recordingSnapshot/view-mirror-material.test.ts > live View mirror interval response fields > keeps a failed positive insertion atomic when discrete material support is incompatible 19ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree group four-corner shares Drawing controls and the current Recording transaction with LINK/SMOOTH 242ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > keeps the previously feasible signed response-only route exact, even beyond the fallback trust radius 52ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > remedies the flat H-P follow target on the x/1 cardinal edge 31ms
+ ✓ src/tests/recordingSnapshot/temporary-cage-edit.test.ts > temporary cages reject saved-cage replacement, real bases and stale gestures 73ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > preserves an off-axis zero-width unpaired group without an inverse or a duplicated zero vertex 5ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > keeps a negative-only line valid and exposes its absent positive sample through existing red coverage 16ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > trims only material and routes dependent on omitted curves while preserving available material 9ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > preserves invalid real constraints as atomic failures even alongside missing zero members 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > Recorder local-zero View mirror runtime > omits half-missing pairs without self mapping and rejects a missing Recorder zero binding 3ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > fresh real handle replay retains live mirror and saved bases at yaw 0 148ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > remedies the flat H-P follow target on the x/-1 cardinal edge 21ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > remedies the flat H-P follow target on the y/1 cardinal edge 16ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > remedies the flat H-P follow target on the y/-1 cardinal edge 14ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > centers fallback weight bounds on pregesture signed responses above eight 29ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > uses the common V target pipeline for {"scaleX":1.2,"scaleY":1} 22ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > uses the common V target pipeline for {"scaleX":1,"scaleY":0.8} 16ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree group curved shares Drawing controls and the current Recording transaction with LINK/SMOOTH 255ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > source child 1 deletion retains original parent field, correction=true 356ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > fresh real handle replay retains live mirror and saved bases at yaw -90 126ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > uses the common V target pipeline for {"rotation":17} 19ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > routes an A handle command and an arbitrary final control target to the same geometry 25ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > replays a temporary cage through the same fallback without persisting a new cage or viewpoint 23ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > protects the evaluated output of a previously saved calibration angle 29ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > compiles trust validation once per angle while checking every solved scalar 17ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > fresh real handle replay retains live mirror and saved bases at yaw 90 115ms
+ ✓ src/tests/recordingSnapshot/view-mirror-runtime.test.ts > native real preview preserves separate red coverage and defers exact live inspection bases 8ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > solves every preview from the frozen beforeProject and ends at the direct target regardless of pointer detours 27ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > one global Undo/Redo restores the coupled basis and response and the Recording room 10ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > cancelled previews and failed or stale targets preserve project bytes, history, and Redo 11ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > save, selected discard, and JSON round trips keep basis and response in the same state 13ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > holds direct real-view topology, property and domain edits until coupled updateEndpointCorrection 23ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > minimum-change inverse through the existing editing workflow > holds direct real-view topology, property and domain edits until coupled discardEndpointCorrection 17ms
+ ↓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > replays the supplied private ear X target without altering its file
+ ↓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > replays the supplied private ear Y target without altering its file
+ ↓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > replays the supplied private profile X target without altering its file
+ ↓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > replays the supplied private profile Y target without altering its file
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > planned 90-degree fallback records its expanded basis and solved protection controls 14ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree layer affine shares Drawing controls and the current Recording transaction with LINK/SMOOTH 169ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > last source curves leave an empty layer; explicit source-layer deletion removes aliases 225ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > a planned handle fallback includes linked authorities outside the grabbed curve 14ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > repeated previews reuse one direct plan and one expanded 90-degree basis plan 15ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > prepared basis shape revises from a full frozen view through the actual inverse transaction 10ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > prepared basis shape revises from a preview frozen view through the actual inverse transaction 10ms
+ ✓ src/tests/recordingSnapshot/minchange-inverse-workflow.test.ts > saved-basis inspection cannot replace the live draft product for a later control revision 19ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > a fixed authored cage evaluates current members including later additions and hidden locked curves 73ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > disabled domains recover their exact input and replacement evaluations do not accumulate fitting 32ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > linked endpoint scope is checked while unrelated layers and paint metadata do not lock a cage 63ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > true source ARC pieces are fitted with their original owners and trims, not rebuilt from output handles 21ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > route material stays in the original frame while cuts and tangents follow the fitted geometry 14ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > every transported material table includes the fit-map knots and returns reversible source parameters 49ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree layer four-corner shares Drawing controls and the current Recording transaction with LINK/SMOOTH 252ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > one target transaction groups own cage, inherited program and plain controls without a blanket stage rejection 453ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > link authority across stages uses one final control owner and reuses it on later A edits 81ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > nonlinear material projection composes after an affine including reflection and exact zero without inverse 32ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > successive cage stages retain route material identities and preserve operation order 26ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > numeric fitting cache does not merge distinct source identities with identical geometry 9ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > material projection rejects only an actually incompatible derived piece rather than unrelated geometry 4ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > a cage preserves an existing true-zero SMOOTH collapse without requiring an inverse 8ms
+ ✓ src/tests/recordingSnapshot/layer-cage-evaluation.test.ts > an identity cage preserves linked endpoints inside the existing Drawing tolerance 2ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > continuation uses only surviving controls and refuses numerically unavailable tiny intervals 1ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > local excluded dependency retains its parent cage and the child own cage in one input pass 346ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > shared authority across stages uses one final control owner and reuses it on later A edits 72ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > smooth authority across stages uses one final control owner and reuses it on later A edits 74ms
+ ✓ src/tests/recordingSnapshot/shared-cage-editor.test.ts > one actual Drawing controller drives both owner adapters with fixed rest and stable operation ID 237ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > moving a split sibling to another layer leaves the original layer fit stable 255ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > 60 degree layer curved shares Drawing controls and the current Recording transaction with LINK/SMOOTH 273ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > SMOOTH handle targets are projected by Drawing once and preserve unrelated parent controls 28ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > an actually collapsed local target names its curve and axis and rolls the whole mixed edit back 31ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > locked linked followers reject the shared target before any control stage is authored 15ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > reflects saved nonlinear node XY and H-P overshoot at every positive angle with reversed ends 127ms
+ ✓ src/tests/recordingSnapshot/topological-cage-scope.test.ts > source additions follow whole layers or only their actual continuous stroke, never the rectangle 98ms
+ ✓ src/tests/recordingSnapshot/topological-cage-scope.test.ts > source split/deletion retain provenance and existing chronological Undo restores the exact cage 129ms
+ ✓ src/tests/recordingSnapshot/shared-cage-editor.test.ts > Recorder cage gesture, A, Save, source growth, reopen, reset and Undo retain the live domain 198ms
+ ✓ src/tests/recordingSnapshot/shared-cage-editor.test.ts > real target resolver rejects correction, stale angle, wrong scope and locks without creating keys or sources 18ms
+ ✓ src/tests/recordingSnapshot/shared-cage-editor.test.ts > Drawing and Recording render the same cage overlay, controls and parameter resets 63ms
+ ✓ src/tests/recordingSnapshot/recording-cage-control-target.test.ts > Recorder A sends final cage controls once through placement (inherited=false) 206ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > shares current negative draft and saved-only sampling with complete onion geometry 57ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > replays positive node and relative-handle edits on the live inherited response while retaining +90 overrides 53ms
+ ✓ src/tests/recordingSnapshot/topological-cage-scope.test.ts > deleting the original anchor retains an appended connected survivor and empty scope never widens 28ms
+ ✓ src/tests/recordingSnapshot/topological-cage-scope.test.ts > whole-stroke selection authors and reopens the same stage; full layer selection stays distinct 23ms
+ ✓ src/tests/recordingSnapshot/topological-cage-scope.test.ts > local new disconnected curves retain their authored controls beside a restricted cage 34ms
+ ✓ src/tests/recordingSnapshot/recording-cage-control-target.test.ts > Recorder A sends final cage controls once through placement (inherited=true) 90ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > invalidates source and zero revisions without serializing sampled controls 25ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > preserves the already projected mirrored SMOOTH baseline and inverses positive corrections through the same component 34ms
+ ✓ src/tests/recordingSnapshot/view-mirror-responses.test.ts > live whole-negative-branch View mirror responses > locates opposite source diagonals and carries shared zero-column edge responses only once 15ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > mixed targets retain a collapsed input coordinate while editing its feasible remaining axis 166ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > control-stage reset/restore is explicit and a later unrelated source member receives identity plus zero residual 94ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > four-corner frozen gesture reuses one plan, changed group binding selects a new scope, and fitting counts actual members 333ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > shape and source-material consumers revise one of nine paths with 0 unrelated curves 23ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > shape and source-material consumers revise one of nine paths with 100 unrelated curves 23ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > shape and source-material consumers revise one of nine paths with 1000 unrelated curves 148ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > real UI A adapter sends a feasible collapsed plain target to the resolver before any inverse can block it 246ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > curved frozen gesture reuses one plan, changed group binding selects a new scope, and fitting counts actual members 469ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > four-corner fits a real source continuation but excludes a nearby disconnected addition from the group cage 34ms
+ ✓ src/tests/recordingSnapshot/deformer-scope-parity.test.ts > curved fits a real source continuation but excludes a nearby disconnected addition from the group cage 65ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > mixed A/V preserves a copied reflected material program and honors local object locks 199ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > planned link capture does not claim native-only proof when it creates a common output domain 12ms
+ ✓ src/tests/recordingSnapshot/mixed-control-targets.test.ts > planned shared capture does not claim native-only proof when it creates a common output domain 7ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > an unpainted edit transports zero paths and first shape creation revises a retained empty-track product 3ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > ordered per-track diagnostics, source errors, pinches and unaffected fit diagnostics are retained exactly 6ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > the real local ARC dependency closure consumes an adjacent curve edit 4ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > the real route ARC dependency closure consumes an adjacent curve edit 7ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > invalid route support and unknown material programs use canonical transport for all tracks 5ms
+ ✓ src/tests/recording-scene-shape-revision.test.ts > source, provenance and unretained products cannot establish revision authority 14ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > bounds scalar/projection work independently of 0 unrelated curves 21ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > bounds scalar/projection work independently of 100 unrelated curves 22ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > bounds scalar/projection work independently of 1000 unrelated curves 191ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > zero group discovery reuses complete canonical relation components without choosing a pivot 3ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > paired controls use semantic zero targets, reverse ends and both components of the source delta 4ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > absolute handles and endpoint-relative H−P deltas are equivalent 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > source-only current presence maps to its zero counterpart without padding the missing half 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > one continuous unpaired profile shares one supplied zero reference and permits an orientation change at zero 3ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > different disconnected profiles retain different explicit local zero references 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > collapsed width at an off-global-axis zero is identical on both zero sides and needs no division or smoothing 4ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > an unpaired shared-node branch follows explicit paired node authority with relative handles 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > EndpointLinks preserve distinct node identities while an unpaired follower uses the pair baseline once 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > missing zero IDs fail with actionable diagnostics without guessing a global axis 1ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > per-segment reference conflicts are rejected for a continuous profile 0ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > existing ARC, fill, route and affine material mapping survives local-zero reflection at x scale 1.7 100ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > does not flush reachable controls or structural coverage after an unrelated source update 57ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > invalidates a numeric source dependency and its descendants while retaining the membership plan 15ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > propagates a live source addition to descendants and rebuilds structural coverage once 19ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > keeps raw vectors separate through repeated basis changes, undo and cancel (triangle=false) 11ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > keeps raw vectors separate through repeated basis changes, undo and cancel (triangle=true) 9ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > compares only the bounded dependency coordinates and skips unchanged candidates 6ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > reports no final curve change when a dirty response candidate evaluates identically 1ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > expands a canonical linked-node move to raw incident vectors without reprojecting unrelated handles 3ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > samples signed native response revisions with original support (triangle=false) 15ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > samples signed native response revisions with original support (triangle=true) 18ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > reprepares when linked geometry changes coherence and recomputes node authority 5ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > requires complete basis lineage and source/membership proof 7ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > takes the canonical full path for expressions and unbranded callback wrappers 6ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > uses the complete canonical mirror sampler when mirror dependencies are not proven 2ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > retains a native fallback sample alongside an unrevisable normal sample 4ms
+ ✓ src/tests/recordingSnapshot/dirty-control-sampling.test.ts > prepared native control sample lineage > rejects malformed callback results even with retained coverage options 2ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > existing ARC, fill, route and affine material mapping survives local-zero reflection at x scale 0 74ms
+ ✓ src/tests/recordingSnapshot/view-mirror-math.test.ts > local zero-view reflection > nonuniform zero corrections with deferred material fail explicitly instead of rebuilding a different ARC 1ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > rebuilds red coverage and actual descendants when one view excludes a source member 12ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > retires deleted source members from both normal controls and cached red previews 14ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > rebuilds coverage after source split and preserves the same de Casteljau controls in every descendant 75ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > keeps saved/live and active-basis draft masks separate when the cursor revisits history 12ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > restores historical project and basis identity across Save, Discard, Undo, and Redo 23ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > never trusts external JSON identity after in-place library, response, or membership mutation 25ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-invalidation.test.ts > prepared Recording dependency invalidation > cancels preview state and rejects a stale commit without changing history or allowing a timer commit 12ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > allocates track diagnostics only when requested and retains only successful native plans 37ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > transports one of nine paths for curve0 and retains every unaffected output 7ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > transports one of nine paths for curve8 and retains every unaffected output 5ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > transports no paths for nine unpainted curves, without rebuilding the plan 13ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > follows controls-only intermediate geometry back to the retained material baseline 13ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > allows nine fixed affine curves outside the nine native material paths 11ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > skips numerically unchanged source control candidates 6ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > tracks source material changes even when final weighted controls cancel 7ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > node follow/mirror and SMOOTH handle scope ignores 0 unrelated curves 7ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > node follow/mirror and SMOOTH handle scope ignores 100 unrelated curves 9ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > node follow/mirror and SMOOTH handle scope ignores 1000 unrelated curves 99ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > V transforms use the same frozen canonical kernel and retain snapshot ARC ownership 2ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > unrelated material does not force geometry authoring to rescan all curves 1ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > scalar producer cannot write outside its closure and copied descriptors carry no proof 5ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > Drawing transform keeps authored ARC edits while Recording controls retain the basis ARC 1ms
+ ✓ src/tests/drawing-control-edit-plan.test.ts > ARC handle plans retain the canonical zero-length guard without making the partner writable 2ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > retains per-track diagnostics and zero-length intervals exactly 4ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > includes the neighboring local ARC support in the reverse closure 10ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > includes the neighboring route ARC support in the reverse closure 18ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > includes a source node and preserves exact unmodified source ranges 7ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > does not retain invalid route precedence and rebuilds after source structure changes 12ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > uses canonical material after a property-response change 6ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > requires exact prior geometry ancestry, unchanged angle and complete typed changes 4ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > retains the canonical path for affine source programs 12ms
+ ✓ src/tests/recordingSnapshot/prepared-surface-material.test.ts > prepared native surface material consumers > retains the canonical path for domain source programs 10ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > holds a true zero-length gap through30 then opens, without geometry keys or snapshots 86ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > keeps a reversed negative-yaw zero plateau exact across serialized reload 11ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > invalidates cached material after response-only edits and restores exact values on Undo-style project restoration 19ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > nested split correction survives deletion of local child 0 without renormalizing 1174ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > shares draft/save/discard transactions with geometry and respects selected layer commits 36ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > rejects unavailable scalar edits atomically and keeps mode changes on real snapshots 5ms
+ ✓ src/tests/recordingSnapshot/property-response-integration.test.ts > Recorder interval responses use independent material coordinates > archives property constraints with deleted mesh support rather than silently moving them 6ms
+ ✓ src/tests/drawing-shape-revision.test.ts > retained LINK/SMOOTH revisions equal cold and numerical work is independent of 0 nuisance curves 5ms
+ ✓ src/tests/drawing-shape-revision.test.ts > retained LINK/SMOOTH revisions equal cold and numerical work is independent of 100 nuisance curves 11ms
+ ✓ src/tests/drawing-shape-revision.test.ts > retained LINK/SMOOTH revisions equal cold and numerical work is independent of 1000 nuisance curves 76ms
+ ✓ src/tests/drawing-shape-revision.test.ts > revision additions, deletions, LINK conflicts and cumulative SMOOTH handle policy match the cold kernel 4ms
+ ✓ src/tests/drawing-shape-revision.test.ts > SMOOTH collapse and contradictory components keep the complete raw product and exact ordered diagnostics 7ms
+ ✓ src/tests/drawing-shape-revision.test.ts > exact source and retained ownership guard revisions; replacing topology or mutable/unknown products uses cold work 2ms
+ ✓ src/tests/drawing-shape-revision.test.ts > unchanged values preserve output objects and produce an empty opaque dirty proof 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > hundreds of repeated stroke and route queries compile each shared plan only once 44ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > fresh numeric/material indexes retain ID-only topology through geometry and paint changes 3ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > retained topology never caches resolved endpoints or caller route references 0ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > curve node membership changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > layer membership changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > layer order changes cannot inherit an old structural plan 2ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > item order changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > join relation changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > link relation changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > link enabled changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > fill source changes cannot inherit an old structural plan 4ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > offset source changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > group membership changes cannot inherit an old structural plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > interval wrappers keep their own current collection while sharing only local topology 1ms
+ ✓ src/tests/drawing-read-context.test.ts > explicit immutable Drawing read context > preparation leaves paint order, depth, hidden members, fills and route geometry exactly unchanged 5ms
+ ✓ src/tests/drawing-read-context.test.ts > mutable Drawing defaults remain guarded by content > in-place node, ownership, visibility and link edits are observed without preparation 1ms
+ ✓ src/tests/drawing-read-context.test.ts > synchronous evaluation read scope > new numerical samples reuse a bounded value-guarded topology plan 1ms
+ ✓ src/tests/drawing-read-context.test.ts > synchronous evaluation read scope > shares nested readers, disposes after throw, and sees later mutable edits 5ms
+ ✓ src/tests/drawing-read-context.test.ts > synchronous evaluation read scope > replacement arrays invalidate current geometry, membership and visible strokes 1ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > interns exact values across detached objects, bounds strong storage, and never recycles a token 5ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > never applies weak identity memoization to an external value 0ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > serializes each immutable fragment once across cold/warm geometry, display, saved/live, and quality requests 61ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > retains complete products for value-equal cloned graph wrappers and only prepares changed response fragments 10ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > keeps property drafts separate from saved properties and invalidates their angle/status metadata 12ms
+ ✓ src/tests/recordingSnapshot/semantic-fragment-reuse.test.ts > bounded immutable semantic fragments > keeps defensive mutable edits visible and reloads JSON without runtime fragment state 17ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > authored affine order preserves shear/reflection and exact singular matrices without pseudo-inversion 2ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > domain merge replaces by stable ID without reordering and disabling true zero restores retained input 1ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > scope remaps layer and operation IDs, keeps ordered empty-layer domains, and removes only deleted layer scopes 1ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > persistence retains exact authored matrices and rejects malformed or duplicate domain operations 6ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > shared affine material application keeps ARC as its affine image at [ 1, 0.3, 0.7, -1, 0.2, 0.4 ], with fixed ink width 16ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > shared affine material application keeps ARC as its affine image at [ +0, +0, +0, 2, 0.2, 0.4 ], with fixed ink width 2ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > shared affine material application keeps ARC as its affine image at [ +0, +0, +0, +0, 0.2, 0.4 ], with fixed ink width 2ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > independent layer cloning remaps operation/scope IDs and preserves the live affine evaluation 31ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > new topology and real-basis direct controls invert the same full affine chain; zero rejects atomically 29ms
+ ✓ src/tests/recordingSnapshot/layer-affine-domains.test.ts > source removal retains empty-layer domains and removes the scope only when its source layer is deleted 5ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > matches the direct objective for 'signed responses and coupled node / H…' 7ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > matches the direct objective for 'preexisting positive and negative ove…' 5ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > matches the direct objective for 'flat spans and equal-cost signed bran…' 3ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > matches the direct objective for 'zero targets and isolated feasible co…' 3ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > matches the direct objective for 'aliased endpoints, cancelled terms an…' 6ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > retains a finite boundary solution and rejects an unreachable target 0ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-quadratic.test.ts > sparse quadratic bounded basis objective > does not revisit every sample row during coordinate trials on a large sparse selection 36ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > matches the original 2-basis evaluator across dominant metadata/order switches and responses 24ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > matches the original 3-basis evaluator across dominant metadata/order switches and responses 13ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > keeps linked endpoints inactive when just one active basis is incoherent, including tiny positive support 2ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > preserves variant-specific diagnostics for missing members and incompatible relationships 2ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > keeps ARC and offset numeric interpolation geometric under signed control responses 1ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > keeps response call order, shared-node authority and the shared SMOOTH projection hook 2ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > reuses immutable scalar inputs but never shares mutable per-sample arrays, points or authority maps 5ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > compiles only the requested dominant variant and never serializes compatibility again for it 1ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > observes in-place geometry, relation and binding edits through the standalone adapter 1ms
+ ✓ src/tests/recordingSnapshot/prepared-simplex-geometry.test.ts > prepared snapshot simplex geometry > preserves exact vertices and weight/response validation 2ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > uses the same final-control surface on edges and inside the triangle 48ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > keeps a snapshot pose fixed when only its Recorder angle binding changes 5ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > invalidates only response evaluation after a cached edge response changes 9ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > returns red fallback geometry separately outside the actual covered region 7ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > retains vertex geometry, partial membership, and live source updates through reload 7ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > changes membership exactly at vertices and edges without a positive or negative epsilon halo 10ms
+ ✓ src/tests/recordingSnapshot/triangulated-evaluation.test.ts > triangulated recording runtime > does not bridge matching endpoint IDs across an empty real middle snapshot 5ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > reproduces a representable group translate in one immutable draft 17ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > reproduces a representable group rotate in one immutable draft 3ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > reproduces a representable group nonuniform scale in one immutable draft 3ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > skips unchanged zero-delta handle vectors during a translation 2ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > rejects the entire operation with its control and axis when one changed coordinate has no inverse 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > diagnoses a near-zero scalar basis without introducing an epsilon denominator 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > solves three-coordinate minimum norm from the original barycentrics, independently per axis 2ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > uses one authority for linked nodes and verifies rotated SMOOTH controls together 5ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > rejects inconsistent linked nodes before recording responses 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > atomically rejects a representable scalar target that SMOOTH cannot reproduce 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > keeps saved samples, replaces only the exact current sample, and retains one draft frame 4ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > blocks another draft angle, projected red fallback, and exact-vertex correction 2ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > explicitly rejects ARC radius and trim changes, including an otherwise unchanged target 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot surface target transactions > returns the same graph for an unchanged target without creating a draft 1ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot shared surface response sampler > remaps triangle and edge controls to caller location order, with signed edge inverses 4ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot shared surface response sampler > uses the one globally oriented shared edge on both incident triangles and approaches it continuously 2ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot shared surface response sampler > keeps draft-effective geometry identical after save over the whole simplex 15ms
+ ✓ src/tests/recordingSnapshot/surface-targets.test.ts > snapshot shared surface response sampler > preserves unrelated knots and does not let corrected weights change active membership 1ms
+ ✓ src/tests/drawing-route-rendering.test.ts > route field crosses layers while local paths, fill shapes and serialized source stay unchanged by rendering 30ms
+ ✓ src/tests/drawing-route-rendering.test.ts > route owners occupy original layer/depth slots, with white fills and offsets still rendered normally 18ms
+ ✓ src/tests/drawing-route-rendering.test.ts > unsupported local width/profile is diagnostic rather than silently copying the first style 1ms
+ ✓ src/tests/drawing-route-rendering.test.ts > a hidden owner does not paint its half of the cross-layer ARC or move the structural route field 4ms
+ ✓ src/tests/drawing-route-rendering.test.ts > Warp transports route range coordinates once, retains route IDs and does not edit source/fills 11ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > keeps coincident material endpoints exactly closed through 30 degrees and opens linearly to 90 9ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > samples actual non-normalized material values, distinguishes every typed address, and permits equal endpoints 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > preserves geometry drafts and unrelated property constraints in an atomic edit 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > rejects an entire edit when one target is unavailable or invalid 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > keeps vertex attributes, outside coverage, and another draft angle out of response editing 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > uses persisted edge orientation when callers reverse their basis order 0ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > supports signed triangular scalar inverse independently of original geometric membership 2ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > shares one edge field with both incident triangles and preserves the boundary exactly 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > retains prior knots and samples while replacing the current constraint atomically 2ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > prepares an owned sampler and exposes saved/draft cache dependencies 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > saves and discards selected layers while preserving all other draft maps 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > saves deletion of selected targets without deleting unrelated saved targets 0ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > typed scalar property responses > returns finite conditioned inverses without inventing epsilon denominators 1ms
+ ✓ src/tests/recordingSnapshot/property-responses.test.ts > property response persisted validation > accepts signed responses and strict interval addresses while rejecting malformed or unsupported data 2ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > keeps factory defaults local and never leaks omitted-shape policy into a public wrapper 37ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > does not leak the first wrapper angle or draft/shape policy into later implicit requests 7ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > prepares controls from a cold context without constructing terminal paint 8ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > preserves a supplied temporary side-angle draft policy while the recording cursor remains at zero 2ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > shares validated dependency preparation across response forks and rebuilds it for structural changes 8ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > reuses a full validation for preview without weakening its diagnostics or sharing request wrappers 15ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > keeps outside-coverage preview diagnostics truthful when there are no active bases 7ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > hands a complete replay product to an equivalent immutable workspace wrapper without repeating material or paint 3ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > invalidates a retained material source signature outside geometric ancestry 12ms
+ ✓ src/tests/recordingSnapshot/prepared-recording-policy.test.ts > prepared recording request ownership > retains the exact sampled draft and product policy independently of the factory handle 3ms
+ ✓ src/tests/recordingSnapshot/snapshot-coverage.test.ts > per-curve recording coverage preview > keeps one real sample fixed and red everywhere else without editable membership 6ms
+ ✓ src/tests/recordingSnapshot/snapshot-coverage.test.ts > per-curve recording coverage preview > turns a matching-ID pasted basis black while wrong IDs coexist with red references 1ms
+ ✓ src/tests/recordingSnapshot/snapshot-coverage.test.ts > per-curve recording coverage preview > projects onto each curve’s valid edge, rather than the nearest whole snapshot 9ms
+ ✓ src/tests/recordingSnapshot/snapshot-coverage.test.ts > per-curve recording coverage preview > keeps red preview controls separate when topology correspondence is broken 1ms
+ ✓ src/tests/recordingSnapshot/surface-scalar-scratch.test.ts > validates mutable scalar inputs after frozen operands have warmed (absent expression) 5ms
+ ✓ src/tests/recordingSnapshot/surface-scalar-scratch.test.ts > validates mutable scalar inputs after frozen operands have warmed (inherited expression) 4ms
+ ✓ src/tests/recordingSnapshot/surface-scalar-scratch.test.ts > preserves surface input validation with no inherited fields and frozen coordinate plans 4ms
+ ✓ src/tests/recordingSnapshot/surface-scalar-scratch.test.ts > keeps mirrored corner sampling out of each frame fitted-parameter collector 8ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-inverse.test.ts > finds finite signed responses for a singular basis, balancing shape and response change 2ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-inverse.test.ts > normalizes the objective and permits preexisting signed overshoot 4ms
+ ✓ src/tests/recordingSnapshot/bounded-basis-inverse.test.ts > gives a larger displacement cost to nodes and rejects targets outside the finite envelope 1ms
+ ✓ src/tests/recordingSnapshot/surface-value-program.test.ts > reuses one compiled program across new support objects and immutable basis wrappers 14ms
+ ✓ src/tests/recordingSnapshot/surface-value-program.test.ts > keeps the mutable compatibility adapter responsive to in-place changes 1ms
+ ✓ src/tests/recordingSnapshot/surface-value-program.test.ts > isolates fitted parameter collectors between interleaved samples of one program 4ms
+ ✓ src/tests/recordingSnapshot/surface-value-program.test.ts > isolates mirror angle buffers, projection scalars and diagnostics between samplers 2ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > prepared cold mapping matches defensive mapping and preserves explicit orphan and reversed references 7ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > whole drawings and unchanged records reuse owned mapped products under the immutable contract 3ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > node and handle edits replace only their changed mapped records 2ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > additions, deletions and reference edits remap the current graph while retaining orphan IDs 4ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > material edits reuse unchanged ranges, route and anchor without repeating their ID callbacks 1ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > one node and handle edit repeats four ID callbacks with 100 unrelated curves 1ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > one node and handle edit repeats four ID callbacks with 1000 unrelated curves 5ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > record kind and mapper identity keep distinct interpretations and namespaces separate 1ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > public mappings retain deep mutation isolation for geometry, material and arbitrary metadata 2ms
+ ✓ src/tests/recordingSnapshot/prepared-drawing-identity-mapper.test.ts > prepared identity mapping does not retain runtime affine or deformation programs 2ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > nested split correction survives deletion of local child 1 without renormalizing 1024ms
+ ✓ src/tests/recordingSnapshot/prepared-control-changes.test.ts > completed immutable control revision provenance > unions the actual basis and response writes through intermediate control-only stages 2ms
+ ✓ src/tests/recordingSnapshot/prepared-control-changes.test.ts > completed immutable control revision provenance > does not infer an untouched structure from untracked edits, imports or an unrelated history state 0ms
+ ✓ src/tests/recordingSnapshot/prepared-control-changes.test.ts > completed immutable control revision provenance > retains addresses through validated copies and owns immutable target values 0ms
+ ✓ src/tests/recordingSnapshot/prepared-control-changes.test.ts > completed immutable control revision provenance > fails closed on a cyclic or interrupted provenance chain 0ms
+ ✓ src/tests/recordingSnapshot/workspace-changes.test.ts > validated adoption retains unchanged source, snapshots and program fragments without retaining fresh aliases 9ms
+ ✓ src/tests/recordingSnapshot/workspace-changes.test.ts > coordinate draft and response revisions do not request saved membership propagation 2ms
+ ✓ src/tests/recordingSnapshot/workspace-changes.test.ts > terminal interval changes and navigation do not mark control geometry dirty 1ms
+ ✓ src/tests/recordingSnapshot/workspace-changes.test.ts > source membership, mirror policy and mesh changes invalidate structural consumers 1ms
+ ✓ src/tests/global-history.test.ts > global Drawing → Recording Undo/Redo restores each transaction mode, snapshot and viewport without navigation entries 57ms
+ ✓ src/tests/global-history.test.ts > facade Undo crosses rooms and reports local-only history changes 4ms
+ ✓ src/tests/global-history.test.ts > reference upload, unlock, one drag, scale, visibility and removal share global order and persist Undo 5ms
+ ✓ src/tests/global-history.test.ts > cancel and unchanged reference previews leave history and Redo intact 2ms
+ ✓ src/tests/global-history.test.ts > a canceled/no-op transaction at the limit never drops the oldest edit 25ms
+ ✓ src/tests/global-history.test.ts > viewport-only transactions replay exact camera state without changing project/source/key data 2ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > source child deletion, Undo, and Redo are one source transaction 276ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > an ill-conditioned sole remnant is rejected atomically before source deletion can disable its layer 631ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > a descendant own cage receives only the excluded parent family dependency, with no new member 487ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > an excluded sibling remains a live dependency after source updates and never enters serialized state 339ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > local exclusion at an inserted real view preserves survivor fields and scalar response membership 724ms
+ ✓ src/tests/recordingSnapshot/cage-partial-family.test.ts > an inherited-only intermediate layer carries excluded family inputs through its local placement 334ms
+
+ Test Files  43 passed (43)
+      Tests  409 passed | 5 skipped (414)
+   Start at  03:02:11
+   Duration  10.68s (transform 12.33s, setup 0ms, import 27.58s, tests 30.32s, environment 4ms)
+

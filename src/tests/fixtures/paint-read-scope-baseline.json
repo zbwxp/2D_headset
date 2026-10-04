@@ -1,0 +1,152 @@
+{
+  "drawing-fills-off": {
+    "hash": "0ccf70b7675e1466b602321a99d58c4012717b8ad35e4488060fe4cb5cd1d5ba",
+    "length": 104692,
+    "paths": 157
+  },
+  "drawing-solid-fills": {
+    "hash": "7387e85ac312275bea63ed32d19ea82b5605fe267f00ef11d96bd68cbef934cc",
+    "length": 113332,
+    "paths": 177
+  },
+  "recording-angle-1-ink": {
+    "hash": "b99cc74cd971c6438d7c3648d5521236734a04e64bbe093fb9fdde4987c41016",
+    "length": 110312,
+    "paths": 157
+  },
+  "recording-angle-1-solid-fills": {
+    "hash": "9eb334fefaf68da5660d69225d031e8d13bb2b86fca52d4e51f3266417d77d07",
+    "length": 119486,
+    "paths": 177
+  },
+  "recording-basis-1-ink": {
+    "hash": "25133837adeb409db537525fb1dd4181bdf98fc2fddff4ed67dbe3a1bec431d3",
+    "length": 110330,
+    "paths": 157
+  },
+  "recording-basis-1-solid-fills": {
+    "hash": "865dbaa65143d4c177307514453789d100837ece1e8bf58397c80f9a91bc9445",
+    "length": 119503,
+    "paths": 177
+  },
+  "recording-angle-7-ink": {
+    "hash": "6f2a5ab295bd66cf7ee310b000a142dfe9dfcf75e260e2dab3db1756d5ee9e4a",
+    "length": 110319,
+    "paths": 157
+  },
+  "recording-angle-7-solid-fills": {
+    "hash": "27a791c6860acdc09e950b0ef1e0d03a58b587262e228d980ef337066a986e04",
+    "length": 119501,
+    "paths": 177
+  },
+  "recording-basis-7-ink": {
+    "hash": "b8f975bcc7f576fd7efb82d724b52bdbb6e4f00efe65f42311c1c5781c680a01",
+    "length": 110303,
+    "paths": 157
+  },
+  "recording-basis-7-solid-fills": {
+    "hash": "144c679974b89aff1d34b40081f65fe0b22320e4d0a3623814c4ca71edb0a4db",
+    "length": 119454,
+    "paths": 177
+  },
+  "recording-angle-19-ink": {
+    "hash": "11576408dd88a00e93d35a09c2eccd42abaced88dd064ae68860b26b45243b89",
+    "length": 110319,
+    "paths": 157
+  },
+  "recording-angle-19-solid-fills": {
+    "hash": "ef7b066b8d720d5699d431b8893dbcf56b8add0280415f6bc391165b0dd118ff",
+    "length": 119504,
+    "paths": 177
+  },
+  "recording-basis-19-ink": {
+    "hash": "ea84cdf3809ef1afed13984a7d9a6067989d8fcb5d815acaac1a925954143406",
+    "length": 110298,
+    "paths": 157
+  },
+  "recording-basis-19-solid-fills": {
+    "hash": "134c9430df22b05b65303b917347afc7d0f44d622cf5e69b7ac4bb55b2916534",
+    "length": 119498,
+    "paths": 177
+  },
+  "public-plus-80-visible-curves": {
+    "hash": "586d797272839a13c10391e94ef2444e389b12693f98bd12834b113461f12c54",
+    "length": 142738,
+    "paths": 317
+  },
+  "line-affine": {
+    "hash": "73fb66bd1b3bd39a4f39395503eb11d0f1ec3bbbbaf2dfba58a23f8bfc5acef5",
+    "length": 17867,
+    "paths": 30
+  },
+  "line-quad": {
+    "hash": "6fd36639e732c8db977998eb496d0c3db9acbbbb09b3a0c8e6b7ac0a8e8f6be9",
+    "length": 17809,
+    "paths": 30
+  },
+  "line-coons": {
+    "hash": "f3b97ef84aa8e4614d600951efc9afd8d5ee33f10853a23ef9901abf36a4a2e6",
+    "length": 17872,
+    "paths": 30
+  },
+  "layer-affine": {
+    "hash": "1909429007e429e3a004118a351b32844f87874cda81a9c0e56b292d3c0e5bb4",
+    "length": 18396,
+    "paths": 30
+  },
+  "layer-quad": {
+    "hash": "210650fad2ce0b9632abcf405b7f6b2fa8e46b53943289d910e7c9b0fe2a4220",
+    "length": 18500,
+    "paths": 30
+  },
+  "layer-coons": {
+    "hash": "34490dd403aa87b798f8b2043fe5b4dacbef3de1a59f8b5c623d0b58cb93e454",
+    "length": 18497,
+    "paths": 30
+  },
+  "mutable-initial": {
+    "hash": "8bad26d3b19d862bc62ed13bbe0b57f829b14d93457f0c489f103b18cfa273c0",
+    "length": 16633,
+    "paths": 28
+  },
+  "mutable-coordinate": {
+    "hash": "92069863f3959f54ad4773a19d9bc7bb29eaa75c900d3684b3ff7b6444c26fc9",
+    "length": 18081,
+    "paths": 30
+  },
+  "mutable-visibility": {
+    "hash": "db94a2f0febb8c930297647dd0561c15ff1e4e715521f1d5804fa9c1021dbe02",
+    "length": 11443,
+    "paths": 28
+  },
+  "mutable-topology": {
+    "hash": "ea7432cc7739a64c9ab87ff1da341d8200d25e3442cdca5d5517f16d48742963",
+    "length": 8911,
+    "paths": 19
+  },
+  "mutable-order": {
+    "hash": "a939c5adc35bf68e2307a396283bdd7e31bf12b1be3fabb36b954e172d215481",
+    "length": 11443,
+    "paths": 28
+  },
+  "mutable-link": {
+    "hash": "2f2043e1b8b8cb7462230e7197e2f974514c7e565f0059791e50f96ea33766f9",
+    "length": 10196,
+    "paths": 19
+  },
+  "mutable-range": {
+    "hash": "2b2fd083b17e835bb15e3088e1337ed232bd26df10d02cf6250f8955218f4f7b",
+    "length": 16559,
+    "paths": 28
+  },
+  "styled-preview": {
+    "hash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+    "length": 13238,
+    "paths": 14
+  },
+  "styled-moving": {
+    "hash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+    "length": 13238,
+    "paths": 14
+  }
+}

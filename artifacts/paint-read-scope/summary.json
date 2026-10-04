@@ -1,0 +1,396 @@
+{
+  "baselineRevision": "5069518",
+  "productionChange": "src/ui/drawing/PaintScene.tsx only",
+  "fixture": "src/assets/hairless-symmetric-two-face-mirror.json",
+  "fixtureSha256": "0c7222a979fef40d49c3792c2ad524a25885cf3b83a715da7045256ff46dc1a0",
+  "processOrder": [
+    "baseline",
+    "candidate",
+    "candidate-reverse",
+    "baseline-reverse"
+  ],
+  "ssrParityCases": 30,
+  "measuredFramesPerRun": 192,
+  "totalMeasuredFrames": 768,
+  "fullSvgParity": true,
+  "rawSvgFiles": {
+    "baseline": {
+      "path": "/workspace/shared/contour-render-read-scope/baseline-svg.json",
+      "sha256": "34743aacc8eeaf8774d82c2468daf1047eba9f4c4b7e18cae1fd872d36967ff9"
+    },
+    "candidate": {
+      "path": "/workspace/shared/contour-render-read-scope/candidate-svg.json",
+      "sha256": "34743aacc8eeaf8774d82c2468daf1047eba9f4c4b7e18cae1fd872d36967ff9"
+    },
+    "candidate-reverse": {
+      "path": "/workspace/shared/contour-render-read-scope/candidate-reverse-svg.json",
+      "sha256": "34743aacc8eeaf8774d82c2468daf1047eba9f4c4b7e18cae1fd872d36967ff9"
+    },
+    "baseline-reverse": {
+      "path": "/workspace/shared/contour-render-read-scope/baseline-reverse-svg.json",
+      "sha256": "34743aacc8eeaf8774d82c2468daf1047eba9f4c4b7e18cae1fd872d36967ff9"
+    }
+  },
+  "rows": [
+    {
+      "workload": "angle",
+      "solidFills": false,
+      "baselineP50": [
+        39.08433500000001,
+        37.8664389999999
+      ],
+      "candidateP50": [
+        24.404806000000008,
+        22.445122000000083
+      ],
+      "baselineP95": [
+        44.93592099999978,
+        41.02287999999999
+      ],
+      "candidateP95": [
+        31.082848000000013,
+        29.82898800000021
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 481,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 37,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 157
+    },
+    {
+      "workload": "angle",
+      "solidFills": true,
+      "baselineP50": [
+        35.04890699999942,
+        35.55612399999973
+      ],
+      "candidateP50": [
+        23.158988000000136,
+        21.930084999999963
+      ],
+      "baselineP95": [
+        41.57952600000044,
+        38.737451999999394
+      ],
+      "candidateP95": [
+        31.450333000000683,
+        28.307442999999694
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 481,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 37,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 177
+    },
+    {
+      "workload": "basis",
+      "solidFills": false,
+      "baselineP50": [
+        38.45459299999948,
+        33.61363600000004
+      ],
+      "candidateP50": [
+        21.204389999999876,
+        22.65845300000001
+      ],
+      "baselineP95": [
+        45.60260299999936,
+        38.61611600000015
+      ],
+      "candidateP95": [
+        26.916924999999537,
+        35.07959699999992
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 481,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 37,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 157
+    },
+    {
+      "workload": "basis",
+      "solidFills": true,
+      "baselineP50": [
+        39.200957999999446,
+        36.09812299999976
+      ],
+      "candidateP50": [
+        22.243207999999868,
+        18.42655999999988
+      ],
+      "baselineP95": [
+        46.37885300000016,
+        43.76756999999998
+      ],
+      "candidateP95": [
+        28.76086200000009,
+        27.060723000000507
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 481,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 37,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 177
+    },
+    {
+      "workload": "mutable",
+      "solidFills": false,
+      "baselineP50": [
+        21.82969100000082,
+        22.101330999999846
+      ],
+      "candidateP50": [
+        9.942685999999412,
+        11.54010400000061
+      ],
+      "baselineP95": [
+        26.510639999998602,
+        24.827323000000433
+      ],
+      "candidateP95": [
+        14.46255199999996,
+        14.469022000000223
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 494,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 38,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 157
+    },
+    {
+      "workload": "mutable",
+      "solidFills": true,
+      "baselineP50": [
+        23.847153000000617,
+        20.584043999999267
+      ],
+      "candidateP50": [
+        9.926911999999902,
+        9.808332000000519
+      ],
+      "baselineP95": [
+        28.553781000000527,
+        26.175054999999702
+      ],
+      "candidateP95": [
+        13.36228299999948,
+        12.123474999999416
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 494,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 38,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 177
+    },
+    {
+      "workload": "nuisance",
+      "solidFills": false,
+      "baselineP50": [
+        37.67869299999984,
+        32.78461299999981
+      ],
+      "candidateP50": [
+        21.648811000000023,
+        19.98972799999956
+      ],
+      "baselineP95": [
+        46.14834499999961,
+        40.46835099999953
+      ],
+      "candidateP95": [
+        28.60982899999999,
+        29.109362000000147
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 532,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 38,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 317
+    },
+    {
+      "workload": "nuisance",
+      "solidFills": true,
+      "baselineP50": [
+        33.70066399999996,
+        32.70047599999998
+      ],
+      "candidateP50": [
+        21.736151999999493,
+        19.991289999999935
+      ],
+      "baselineP95": [
+        43.53128900000047,
+        45.54826200000025
+      ],
+      "candidateP95": [
+        30.98424999999952,
+        25.66207299999951
+      ],
+      "baselineReadWork": {
+        "contexts": 0,
+        "topologyKeys": 0,
+        "topologyPlans": 0,
+        "topologyRetains": 0,
+        "strokeKeys": 532,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 38,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "candidateReadWork": {
+        "contexts": 2,
+        "topologyKeys": 2,
+        "topologyPlans": 0,
+        "topologyRetains": 2,
+        "strokeKeys": 0,
+        "strokeBuilds": 0,
+        "preparedStrokeMisses": 0,
+        "localConnectionBuilds": 0,
+        "materialDependencyIndexes": 0,
+        "materialPathPlans": 0
+      },
+      "paths": 337
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+import {test,expect} from 'vitest';
+import {createHash} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {forEachPaintCase,paintMarkup,publicPaintDrawing,addNuisanceCurves,withoutFillMist} from './tests/fixtures/paint-read-scope';
+import {drawingReadContextStats,preparedDrawingReadContext} from './domain/drawing/readContext';
+import {makeFixture,RECORDING_ID,shiftedBasis} from '../tests/fixtures/recording-renderer-benchmark-fixture';
+import {prepareRecordingContext} from './domain/recordingSnapshot/evaluation';
+const delta=(before:ReturnType<typeof drawingReadContextStats>,after:ReturnType<typeof drawingReadContextStats>)=>Object.fromEntries(Object.keys(after).map(key=>[key,after[key as keyof typeof after]-before[key as keyof typeof before]]));
+const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
+test('matched synchronous paint preparation',()=>{
+ const parity:Record<string,unknown>={},outputs:Record<string,string>={};
+ forEachPaintCase((name,d,options)=>{const original=JSON.stringify(d),before=drawingReadContextStats(),svg=paintMarkup(d,options);expect(JSON.stringify(d)).toBe(original);outputs[name]=svg;parity[name]={hash:hash(svg),length:svg.length,paths:(svg.match(/<path/g)??[]).length,read:delta(before,drawingReadContextStats()),persistentReadContext:!!preparedDrawingReadContext(d)};});
+ const {workspace}=makeFixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,useDraft:true,diagnostics:'preview'}),cases=[];
+ for(const workload of ['angle','basis','mutable','nuisance']){
+  const mutable=workload==='nuisance'?addNuisanceCurves(publicPaintDrawing()):publicPaintDrawing();
+  const frames=Array.from({length:28},(_,index)=>{const angle={x:11.137+(index*17.713)%63,y:14.713+(index*.317)%9},current=workload==='basis'?context.fork(shiftedBasis(workspace,index)):context,frame=current.sample(RECORDING_ID,{angle});return {drawing:frame.drawing,paintBatches:frame.paintBatches};});
+  for(const showFills of [false,true]){
+   const rows=[];
+   for(let index=0;index<frames.length;index++){
+    const frame=frames[index],isMutable=workload==='mutable'||workload==='nuisance',raw=isMutable?mutable:frame.drawing,d=showFills?withoutFillMist(raw):raw;
+    if(isMutable)d.curves[0].handles[0][0]=-.3+index*.001;
+    const options={showFills,...(isMutable?{}:{paintBatches:frame.paintBatches})},before=drawingReadContextStats(),start=performance.now(),svg=paintMarkup(d,options),ms=performance.now()-start;
+    if(index>=4)rows.push({index,ms,hash:hash(svg),length:svg.length,paths:(svg.match(/<path/g)??[]).length,read:delta(before,drawingReadContextStats())});
+   }
+   const sorted=rows.map(row=>row.ms).sort((a,b)=>a-b);cases.push({workload,showFills,frames:rows.length,p50:sorted[Math.floor((sorted.length-1)*.5)],p95:sorted[Math.floor((sorted.length-1)*.95)],rows});
+  }
+ }
+ const prefix=process.env.PAINT_READ_OUTPUT!;writeFileSync(prefix+'.json',JSON.stringify({parity,cases,limits:'Node SSR only; includes path preparation and HTML serialization, excludes browser DOM commit and rasterization. No fill-mist Canvas in these fixtures; ordinary fills and SVG ink-mist are included.'},null,2));writeFileSync(prefix+'-svg.json',JSON.stringify(outputs));
+},120000);
