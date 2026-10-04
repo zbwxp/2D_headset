@@ -39,6 +39,9 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
  const seenCollapsedDefaults=useRef(new Set(defaultCollapsedSectionIds??[]));
  useEffect(()=>{const added=(defaultCollapsedSectionIds??[]).filter(id=>!seenCollapsedDefaults.current.has(id));for(const id of added)seenCollapsedDefaults.current.add(id);if(added.length)setClosedSections(ids=>[...new Set([...ids,...added])]);},[defaultCollapsedSectionIds?.join('\0')]);
  const sectionFor=new Map(sections.flatMap(section=>section.layerIds.map(id=>[id,section] as const)));
+ // Each layer header in a section uses the same membership and fold scope.
+ // Compute it once per render instead of rebuilding every layer tree per header.
+ const scopeBySection=new Map(sections.map(section=>[section.id,layerSectionSelectedBatchScope(d,section,selectedLayers(selection))]));
  const sectionRuns=groupedLayerSections(d.layers,sections);
  const visibleLayers=sectionRuns.flatMap(group=>closedSections.includes(group.section?.id??'')?[]:group.layers);
  const layerDragEnabled=editEnabled&&(!structuralReadOnly||!!onLayerReorder),memberDragEnabled=editEnabled&&!structuralReadOnly;
@@ -114,7 +117,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
     {stateButtons([...strokeIds(s),...item.fills],'chain',name,change=>setStrokeState(d,s.id,change))}
    </div>{!closed.includes(s.id)&&<div className="drawing-segments">{l.items.filter(id=>s.segments.some(x=>x.id===id)).map(id=>curveRow(id,true))}{item.fills.map(paintRow)}</div>}</>}
   </div>;};
- const renderLayer=(l:DrawingDocument['layers'][number])=>{const section=sectionFor.get(l.id),localBatch=section?layerSectionSelectedBatchScope(d,section,selectedLayers(selection)):batch;return <div className="drawing-layer" key={l.id} data-testid="drawing-layer" data-id={l.id}>
+ const renderLayer=(l:DrawingDocument['layers'][number])=>{const section=sectionFor.get(l.id),localBatch=section?scopeBySection.get(section.id)!:batch;return <div className="drawing-layer" key={l.id} data-testid="drawing-layer" data-id={l.id}>
   <div draggable={editableLayer(l.id)} onDragStart={e=>drag(e,'layer',l.id)} onDragOver={e=>over(e,l.id,'layer')} onDrop={e=>dropped(e,'layer',l.id)} onDragEnd={endDrag} className={`drawing-layer-row ${active===l.id?'active':''} ${batch.selected.includes(l.id)?'selected':''}${dropClass(l.id)}`}>
    <button aria-label={t(closed.includes(l.id)?'展开':'收起')+' '+l.name} onClick={()=>toggle(l.id)}>{closed.includes(l.id)?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
    <button className="drawing-object-name" data-testid="drawing-layer-select" aria-pressed={batch.selected.includes(l.id)} title={t('Shift 连选图层 · Ctrl/Cmd 增减选择')} onClick={e=>pick(`layer:${l.id}`,e)}>{l.name}</button>{layerOrder?.[l.id]!==undefined&&<small className="drawing-layer-global-order" data-testid="drawing-layer-global-order" title={zh?'场景图层顺序（跨快照）；列表按快照分组。':'Scene layer order across snapshots; this list is grouped by snapshot.'}>{zh?'层序':'Order'} {layerOrder[l.id]}</small>}
@@ -131,7 +134,7 @@ export default function LayerPanel({openProperties,closeProperties,document:d,ac
   </div>:renderItem(entry.item!,l))}
  </div>;};
  const sectionTools=(section:LayerPanelSection)=>{
-  const scope=layerSectionSelectedBatchScope(d,section,selectedLayers(selection)),scoped=scope.selected.length>0,state=objectState(d,scope.items),key=`section:${section.id}:${scoped?scope.selected.join('|'):'*'}`;
+  const scope=scopeBySection.get(section.id)!,scoped=scope.selected.length>0,state=objectState(d,scope.items),key=`section:${section.id}:${scoped?scope.selected.join('|'):'*'}`;
   const reveal=!state.anyVisible||!state.allVisible&&sectionVisibility[key]===false;
   const fillLayers=scope.layers.filter(layer=>d.fills.some(fill=>layer.items.includes(fill.id))),all=fillLayers.every(layer=>fillVisibility[fillVisibilityKey(layer.id)]??showFills),any=fillLayers.some(layer=>fillVisibility[fillVisibilityKey(layer.id)]??showFills);
   const folded=scope.layers.length>0&&scope.layers.every(layer=>closed.includes(layer.id));
