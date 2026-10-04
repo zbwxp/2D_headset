@@ -2,18 +2,23 @@ import {expect,test} from 'vitest';
 import {createHash} from 'node:crypto';
 import {forEachPaintCase,paintMarkup,publicPaintDrawing,addNuisanceCurves,styledPaintDrawing,domainPaintDrawing} from './fixtures/paint-read-scope';
 import expected from './fixtures/paint-read-scope-baseline.json';
+import coldExpected from './fixtures/paint-products-baseline.json';
 import {drawingReadContextStats,preparedDrawingReadContext,withDrawingReadScope} from '../domain/drawing/readContext';
 import {evaluatedAffine,evaluatedAffineSource} from '../domain/drawing/evaluatedAffine';
 import {evaluatedDeformationSource,evaluatedMaterialProgram} from '../domain/drawing/evaluatedDeformation';
 import {makeFixture,RECORDING_ID} from '../../tests/fixtures/recording-renderer-benchmark-fixture';
+import {createPaintProductReader} from '../ui/drawing/paintProducts';
+import {displayInkSampling} from '../domain/drawing/appearance';
 import {prepareRecordingContext} from '../domain/recordingSnapshot/evaluation';
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const paths=(value:string)=>(value.match(/<path/g)??[]).length;
 
+// Mutable ARC/offset reference uses an independent 0ea573e cold facade: its
+// prior same-object WeakMap caches retained old geometry after in-place edits.
 test('Drawing and Recording SVG bytes retain the pre-scope renderer across visibility, topology, materials and domains',()=>{
  const seen:string[]=[];
  forEachPaintCase((name,d,options)=>{
-  const original=JSON.stringify(d),svg=paintMarkup(d,options),baseline=expected[name as keyof typeof expected];
+  const original=JSON.stringify(d),svg=paintMarkup(d,options),baseline=name.startsWith('mutable-')?coldExpected[name as keyof typeof coldExpected]:expected[name as keyof typeof expected];
   expect(baseline,name).toBeDefined();expect(hash(svg),name).toBe(baseline.hash);expect(svg.length,name).toBe(baseline.length);expect(paths(svg),name).toBe(baseline.paths);
   // Opaque object/control metadata and every authoring field remain unchanged.
   expect(JSON.stringify(d),name).toBe(original);expect(preparedDrawingReadContext(d),name).toBeUndefined();seen.push(name);
@@ -60,7 +65,11 @@ test('each mutable render sees in-place coordinate, visibility, membership and r
 test.each(['line','layer'] as const)('%s affine, quad and Coons retain runtime source/control metadata',scope=>{
  for(const kind of ['affine','quad','coons'] as const){
   const d=domainPaintDrawing(kind,scope),id=scope==='line'?'c':'a0',affine=evaluatedAffine(d,id),source=evaluatedAffineSource(d),deformation=evaluatedDeformationSource(d),program=evaluatedMaterialProgram(d,id),original=JSON.stringify(d);
-  expect(affine||deformation).toBeTruthy();const rendered=paintMarkup(d,{showFills:true});expect(rendered.length).toBeGreaterThan(1000);
+  expect(affine||deformation).toBeTruthy();
+  const read=(scale:number)=>withDrawingReadScope(()=>createPaintProductReader(d,displayInkSampling(scale))),first=read(250),zoomed=read(750);
+  expect(first.drawing).toBe(d);expect(zoomed.drawing).toBe(d);
+  expect(zoomed.offset(d.offsets[0])).toBe(first.offset(d.offsets[0]));
+  const rendered=paintMarkup(d,{showFills:true});expect(rendered.length).toBeGreaterThan(1000);
   expect(evaluatedAffine(d,id)).toBe(affine);expect(evaluatedAffineSource(d)).toBe(source);expect(evaluatedDeformationSource(d)).toBe(deformation);expect(evaluatedMaterialProgram(d,id)).toEqual(program);expect(JSON.stringify(d)).toBe(original);
  }
 });

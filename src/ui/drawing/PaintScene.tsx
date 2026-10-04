@@ -1,35 +1,29 @@
-import {displayRouteFor} from '../../domain/drawing/displayIntervals';
-import {displayRouteInk,type DisplayRouteInkPlan} from '../../domain/drawing/displayRouteInk';
 import {useId,type ReactNode} from 'react';
-import {objectById,visible,curveById,type DrawingDocument as Doc,type Point2,type InkEnds} from '../../domain/drawing/model';
+import {objectById,visible,curveById,type DrawingDocument as Doc,type Point2} from '../../domain/drawing/model';
 import {strokeWidth,strokePaths} from '../../domain/drawing/strokes';
-import {strokeInk,fillGeometry,fillVisible,offsetGeometry,inkRuns,pathOf,strokeEnds,extendedInk,displayInkSampling} from '../../domain/drawing/appearance';
-import {derivedUses,partitionedUses} from '../../domain/drawing/roundedJoin';
+import {fillVisible,inkRuns,pathOf,extendedInk,displayInkSampling} from '../../domain/drawing/appearance';
 import {curvePath} from './geometry';
-import {strokeInkPasses} from '../../domain/drawing/mist';
 import MistInk from './MistInk';
 import MistFill from './MistFill';
-import {depthPaintBatches,memberInk,type PaintBatch} from '../../domain/drawing/depth';
+import type {PaintBatch} from '../../domain/drawing/depth';
+import {createPaintProductReader} from './paintProducts';
 import {withDrawingReadScope} from '../../domain/drawing/readContext';
 import type {DrawingTool} from './session';
 interface Props {paintBatches?:PaintBatch[];pixelsPerUnit?:number;interactiveEffects?:boolean;opacity?:ReadonlyMap<string,number>;d:Doc;screen:(p:Point2)=>Point2;unit:number;preview:boolean;showFills:boolean;fillVisibility?:Readonly<Record<string,boolean>>;referenceMoving:boolean;tool:DrawingTool;selectedPaint?:string;selectedPaints?:string[];curveDown:(e:React.PointerEvent,id:string)=>void;paintDown:(e:React.PointerEvent,id:string)=>void;arcDown:(e:React.PointerEvent,id:string)=>void}
-export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffects=false,opacity,d,screen:project,unit,preview,showFills,fillVisibility,referenceMoving,tool,selectedPaint,selectedPaints,curveDown,paintDown,arcDown}:Props){
+export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffects=false,opacity,d:source,screen:project,unit,preview,showFills,fillVisibility,referenceMoving,tool,selectedPaint,selectedPaints,curveDown,paintDown,arcDown}:Props){
  const clipPrefix=useId();
  // Share ID/continuation plans for this synchronous render, including the
  // visibility wrapper below. Mutable Drawing drafts get a fresh scope on the
  // next render; no numeric, material or visibility state is retained here.
  return withDrawingReadScope(()=>{
- const sampling=displayInkSampling(pixelsPerUnit??unit);
+ const sampling=displayInkSampling(pixelsPerUnit??unit),products=createPaintProductReader(source,sampling,paintBatches),{drawing:d,batches}=products;
  // Only SVG display coordinates are rounded; authoring/interpolation remains exact.
  const screen=(p:Point2):Point2=>{const q=project(p);return [Math.round(q[0]*1000)/1000,Math.round(q[1]*1000)/1000];};
  const pick=!preview&&!referenceMoving,select=pick&&['select','direct'].includes(tool);
- const inkDocument=d.curves.some(c=>!visible(d,c.id))?{...d,curves:d.curves.map(c=>visible(d,c.id)?c:{...c,inkVisible:false})}:d;
- const batches=paintBatches??depthPaintBatches(d),positions=new Map(batches.filter(b=>b.owner).map(b=>[b.owner!,b.position]));
- const partitionCache=new Map<string,ReturnType<typeof memberInk>>(),routeCache=new Map<string,DisplayRouteInkPlan>();
  const groups:{layerId:string;batches:typeof batches}[]=[];
  for(const b of batches.slice().reverse()){if(groups.at(-1)?.layerId===b.layerId)groups.at(-1)!.batches.push(b);else groups.push({layerId:b.layerId,batches:[b]});}
  return <>{groups.map((batchGroup,layerIndex)=>{const l=d.layers.find(l=>l.id===batchGroup.layerId)!;
-  const fills=d.fills.filter(f=>l.items.includes(f.id)&&fillVisible(d,f)&&(fillVisibility?.[l.id]??showFills)),geometry=new Map(fills.map(f=>[f.id,fillGeometry(d,f)]));
+  const fills=d.fills.filter(f=>l.items.includes(f.id)&&fillVisible(d,f)&&(fillVisibility?.[l.id]??showFills)),geometry=new Map(fills.map(f=>[f.id,products.fill(f)]));
   const cutouts=fills.filter(f=>f.color==='transparent'&&!geometry.get(f.id)!.error);
   // Intersect inverse clips, so overlapping cutouts remove their union instead
   // of filling each other's holes. Native SVG clipping also excludes fill hits
@@ -44,18 +38,18 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
   {batchGroup.batches.map(({item,owner})=>{
   if(item.stroke)return strokePaths(item.stroke).map((path,pathIndex)=>{const s={...path,id:item.id},enabled=s.segments.map(x=>visible(d,x.id));if(!enabled.some(Boolean)||owner&&!s.segments.some(x=>x.id===owner))return null;
    if(owner){
-    const route=displayRouteFor(d,owner);
-    if(route){const routeKey=JSON.stringify(route);let plan=routeCache.get(routeKey);if(!plan){plan=displayRouteInk(inkDocument,route,positions,sampling);routeCache.set(routeKey,plan);}if(!plan.pieces.length)return <g key={'route-error:'+owner} data-testid="drawing-route-error" data-id={owner} data-message={plan.diagnostics.join(' ')}><title>{plan.diagnostics.join(' ')}</title></g>;if(plan.pieces.length){const c=curveById(d,owner);return <g key={'route:'+owner} data-testid="drawing-route-ink" data-id={owner} data-depth={c.depthOffset??0} opacity={opacity?.get(owner)}>{plan.diagnostics.length>0&&<title>{plan.diagnostics.join(' ')}</title>}<MistInk runs={plan.runs.get(owner)??[]} mist={c.mist} screen={screen} unit={unit} width={c.width} owner={owner}/>{pick&&plan.pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))).map((p,i)=><path key={i} data-testid="drawing-hit" data-id={owner} d={curvePath(p.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','split','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,owner)}/>)}</g>;}}
-    const key=`${item.id}:${pathIndex}`;let divided=partitionCache.get(key);if(!divided){divided=memberInk(inkDocument,s,positions,sampling);partitionCache.set(key,divided);}
-    const runs=divided.get(owner)??[],pieces=partitionedUses(d,s.segments,s.closed).pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))),c=curveById(d,owner);
+    const route=products.routeFor(owner);
+    if(route){const plan=products.route(route);if(!plan.pieces.length)return <g key={'route-error:'+owner} data-testid="drawing-route-error" data-id={owner} data-message={plan.diagnostics.join(' ')}><title>{plan.diagnostics.join(' ')}</title></g>;if(plan.pieces.length){const c=curveById(d,owner);return <g key={'route:'+owner} data-testid="drawing-route-ink" data-id={owner} data-depth={c.depthOffset??0} opacity={opacity?.get(owner)}>{plan.diagnostics.length>0&&<title>{plan.diagnostics.join(' ')}</title>}<MistInk runs={plan.runs.get(owner)??[]} mist={c.mist} screen={screen} unit={unit} width={c.width} owner={owner}/>{pick&&plan.pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))).map((p,i)=><path key={i} data-testid="drawing-hit" data-id={owner} d={curvePath(p.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','split','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,owner)}/>)}</g>;}}
+    const key=`${item.id}:${pathIndex}`,product=products.member(s);
+    const runs=product.runs.get(owner)??[],pieces=product.pieces.filter(p=>p.inkOwner===owner&&p.owners.every(id=>visible(d,id))),c=curveById(d,owner);
     return <g key={`${key}:${owner}`} data-testid="drawing-depth-ink" data-id={owner} data-depth={c.depthOffset??0} opacity={opacity?.get(owner)}>
      <MistInk runs={runs} mist={c.mist} screen={screen} unit={unit} width={strokeWidth(d,s)} strokeId={s.id} owner={owner}/>
      {pick&&runs.flatMap(r=>r.extensions??[]).map((ext,i)=><path key={'ext'+i} data-testid="drawing-ink-extension-hit" data-id={owner} d={curvePath(ext.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,owner)}/>)}
      {pick&&pieces.map((p,i)=><path key={i} data-testid={p.joinId?'drawing-arc-hit':'drawing-hit'} data-id={p.joinId??owner} d={curvePath(p.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','split','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>p.joinId?arcDown(e,p.joinId):curveDown(e,owner)}/>)}
     </g>;
    }
-   const runs=strokeInk(inkDocument,s,undefined,false,sampling),pieces=derivedUses(d,s.segments,s.closed).pieces,ends=strokeEnds(d,s),extensions=s.closed?[]:extendedInk(pieces.map(p=>p.shape),ends.map(e=>e.style) as InkEnds).extensions;
-   return <g key={`${item.id}:${pathIndex}`} opacity={opacity?.get(s.segments[0].id)}>{strokeInkPasses(inkDocument,s,runs,sampling).map((g,i)=><MistInk key={i} runs={g.runs} mist={g.mist} screen={screen} unit={unit} width={strokeWidth(d,s)} strokeId={s.id} owner={g.owner}/>)}
+   const {runs,pieces,ends,extensions,passes}=products.stroke(s);
+   return <g key={`${item.id}:${pathIndex}`} opacity={opacity?.get(s.segments[0].id)}>{passes.map((g,i)=><MistInk key={i} runs={g.runs} mist={g.mist} screen={screen} unit={unit} width={strokeWidth(d,s)} strokeId={s.id} owner={g.owner}/>)}
     {pick&&extensions.map((ext,i)=>{const id=ends[ext.end].endpoint.curveId;return visible(d,id)&&curveById(d,id).inkVisible!==false?<path key={'ext'+i} data-testid="drawing-ink-extension-hit" data-id={id} d={curvePath(ext.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,id)}/>:null;})}
     {pick&&runs.flatMap(run=>run.extensions??[]).map((ext,i)=>{const id=pieces[ext.pieceIndex].owners[0];return <path key={'local-ext'+i} data-testid="drawing-ink-extension-hit" data-id={id} d={curvePath(ext.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>curveDown(e,id)}/>;})}
     {pick&&pieces.filter(p=>p.owners.every(id=>visible(d,id))).map((p,i)=><path key={i} data-testid={p.joinId?'drawing-arc-hit':'drawing-hit'} data-id={p.joinId??p.owners[0]} d={curvePath(p.shape,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={['select','direct','deform','split','mirror'].includes(tool)?'stroke':'none'} onPointerDown={e=>p.joinId?arcDown(e,p.joinId):curveDown(e,p.owners[0])}/>)}</g>;
@@ -71,7 +65,7 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
    const fill=f.mist?.enabled?<MistFill interactive={interactiveEffects} fill={f} shapes={g.shapes} path={path} screen={screen} unit={unit} pick={select&&!o.locked} selected={!!selected} onPointerDown={e=>paintDown(e,f.id)}/>:<path data-testid="drawing-fill" data-id={f.id} d={path} fill={f.color} fillRule="evenodd" stroke={selected?'#2589b0':'none'} strokeWidth="1.5" pointerEvents={select&&!o.locked?'fill':'none'} onPointerDown={e=>paintDown(e,f.id)}/>;
    return <g key={f.id} opacity={opacity?.get(f.id)}>{clips.reduce<ReactNode>((child,c)=><g key={c.id} clipPath={`url(#${c.id})`}>{child}</g>,fill)}</g>;
   }
-  const offset=d.offsets.find(x=>x.id===item.id)!,g=offsetGeometry(d,offset);if(g.error)return null;const inkShapes=extendedInk(g.shapes,offset.inkEnds).shapes,runs=inkRuns(g.shapes,offset.width,offset.profile??'UNIFORM',offset.profileReverse,undefined,false,offset.inkEnds,undefined,undefined,undefined,undefined,false,sampling);
+  const offset=d.offsets.find(x=>x.id===item.id)!,g=products.offset(offset);if(g.error)return null;const inkShapes=extendedInk(g.shapes,offset.inkEnds).shapes,runs=inkRuns(g.shapes,offset.width,offset.profile??'UNIFORM',offset.profileReverse,undefined,false,offset.inkEnds,undefined,undefined,undefined,undefined,false,sampling);
   return <g key={offset.id} data-testid="drawing-offset" data-id={offset.id} opacity={opacity?.get(offset.id)}><MistInk runs={runs} mist={offset.mist} screen={screen} unit={unit} width={offset.width} owner={offset.id}/>
   {pick&&(selectedPaint===offset.id||selectedPaints?.includes(offset.id))&&<path d={pathOf(inkShapes,screen)} fill="none" stroke="#2589b0" strokeWidth="1.5" pointerEvents="none"/>}{pick&&<path data-testid="drawing-offset-hit" d={pathOf(inkShapes,screen)} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={select&&!o.locked?'stroke':'none'} onPointerDown={e=>paintDown(e,offset.id)}/>}</g>;
  })}</g>;

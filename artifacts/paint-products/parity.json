@@ -1,0 +1,546 @@
+{
+  "baseline": {
+    "drawing-fills-off": {
+      "hash": "0ccf70b7675e1466b602321a99d58c4012717b8ad35e4488060fe4cb5cd1d5ba",
+      "length": 104692,
+      "paths": 157,
+      "warmHash": "0ccf70b7675e1466b602321a99d58c4012717b8ad35e4488060fe4cb5cd1d5ba",
+      "warmMatchesFresh": true
+    },
+    "drawing-solid-fills": {
+      "hash": "7387e85ac312275bea63ed32d19ea82b5605fe267f00ef11d96bd68cbef934cc",
+      "length": 113332,
+      "paths": 177,
+      "warmHash": "7387e85ac312275bea63ed32d19ea82b5605fe267f00ef11d96bd68cbef934cc",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-1-ink": {
+      "hash": "b99cc74cd971c6438d7c3648d5521236734a04e64bbe093fb9fdde4987c41016",
+      "length": 110312,
+      "paths": 157,
+      "warmHash": "b99cc74cd971c6438d7c3648d5521236734a04e64bbe093fb9fdde4987c41016",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-1-solid-fills": {
+      "hash": "9eb334fefaf68da5660d69225d031e8d13bb2b86fca52d4e51f3266417d77d07",
+      "length": 119486,
+      "paths": 177,
+      "warmHash": "9eb334fefaf68da5660d69225d031e8d13bb2b86fca52d4e51f3266417d77d07",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-1-ink": {
+      "hash": "25133837adeb409db537525fb1dd4181bdf98fc2fddff4ed67dbe3a1bec431d3",
+      "length": 110330,
+      "paths": 157,
+      "warmHash": "25133837adeb409db537525fb1dd4181bdf98fc2fddff4ed67dbe3a1bec431d3",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-1-solid-fills": {
+      "hash": "865dbaa65143d4c177307514453789d100837ece1e8bf58397c80f9a91bc9445",
+      "length": 119503,
+      "paths": 177,
+      "warmHash": "865dbaa65143d4c177307514453789d100837ece1e8bf58397c80f9a91bc9445",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-7-ink": {
+      "hash": "6f2a5ab295bd66cf7ee310b000a142dfe9dfcf75e260e2dab3db1756d5ee9e4a",
+      "length": 110319,
+      "paths": 157,
+      "warmHash": "6f2a5ab295bd66cf7ee310b000a142dfe9dfcf75e260e2dab3db1756d5ee9e4a",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-7-solid-fills": {
+      "hash": "27a791c6860acdc09e950b0ef1e0d03a58b587262e228d980ef337066a986e04",
+      "length": 119501,
+      "paths": 177,
+      "warmHash": "27a791c6860acdc09e950b0ef1e0d03a58b587262e228d980ef337066a986e04",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-7-ink": {
+      "hash": "b8f975bcc7f576fd7efb82d724b52bdbb6e4f00efe65f42311c1c5781c680a01",
+      "length": 110303,
+      "paths": 157,
+      "warmHash": "b8f975bcc7f576fd7efb82d724b52bdbb6e4f00efe65f42311c1c5781c680a01",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-7-solid-fills": {
+      "hash": "144c679974b89aff1d34b40081f65fe0b22320e4d0a3623814c4ca71edb0a4db",
+      "length": 119454,
+      "paths": 177,
+      "warmHash": "144c679974b89aff1d34b40081f65fe0b22320e4d0a3623814c4ca71edb0a4db",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-19-ink": {
+      "hash": "11576408dd88a00e93d35a09c2eccd42abaced88dd064ae68860b26b45243b89",
+      "length": 110319,
+      "paths": 157,
+      "warmHash": "11576408dd88a00e93d35a09c2eccd42abaced88dd064ae68860b26b45243b89",
+      "warmMatchesFresh": true
+    },
+    "recording-angle-19-solid-fills": {
+      "hash": "ef7b066b8d720d5699d431b8893dbcf56b8add0280415f6bc391165b0dd118ff",
+      "length": 119504,
+      "paths": 177,
+      "warmHash": "ef7b066b8d720d5699d431b8893dbcf56b8add0280415f6bc391165b0dd118ff",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-19-ink": {
+      "hash": "ea84cdf3809ef1afed13984a7d9a6067989d8fcb5d815acaac1a925954143406",
+      "length": 110298,
+      "paths": 157,
+      "warmHash": "ea84cdf3809ef1afed13984a7d9a6067989d8fcb5d815acaac1a925954143406",
+      "warmMatchesFresh": true
+    },
+    "recording-basis-19-solid-fills": {
+      "hash": "134c9430df22b05b65303b917347afc7d0f44d622cf5e69b7ac4bb55b2916534",
+      "length": 119498,
+      "paths": 177,
+      "warmHash": "134c9430df22b05b65303b917347afc7d0f44d622cf5e69b7ac4bb55b2916534",
+      "warmMatchesFresh": true
+    },
+    "public-plus-80-visible-curves": {
+      "hash": "586d797272839a13c10391e94ef2444e389b12693f98bd12834b113461f12c54",
+      "length": 142738,
+      "paths": 317,
+      "warmHash": "586d797272839a13c10391e94ef2444e389b12693f98bd12834b113461f12c54",
+      "warmMatchesFresh": true
+    },
+    "line-affine": {
+      "hash": "73fb66bd1b3bd39a4f39395503eb11d0f1ec3bbbbaf2dfba58a23f8bfc5acef5",
+      "length": 17867,
+      "paths": 30,
+      "warmHash": "73fb66bd1b3bd39a4f39395503eb11d0f1ec3bbbbaf2dfba58a23f8bfc5acef5",
+      "warmMatchesFresh": true
+    },
+    "line-quad": {
+      "hash": "6fd36639e732c8db977998eb496d0c3db9acbbbb09b3a0c8e6b7ac0a8e8f6be9",
+      "length": 17809,
+      "paths": 30,
+      "warmHash": "6fd36639e732c8db977998eb496d0c3db9acbbbb09b3a0c8e6b7ac0a8e8f6be9",
+      "warmMatchesFresh": true
+    },
+    "line-coons": {
+      "hash": "f3b97ef84aa8e4614d600951efc9afd8d5ee33f10853a23ef9901abf36a4a2e6",
+      "length": 17872,
+      "paths": 30,
+      "warmHash": "f3b97ef84aa8e4614d600951efc9afd8d5ee33f10853a23ef9901abf36a4a2e6",
+      "warmMatchesFresh": true
+    },
+    "layer-affine": {
+      "hash": "1909429007e429e3a004118a351b32844f87874cda81a9c0e56b292d3c0e5bb4",
+      "length": 18396,
+      "paths": 30,
+      "warmHash": "1909429007e429e3a004118a351b32844f87874cda81a9c0e56b292d3c0e5bb4",
+      "warmMatchesFresh": true
+    },
+    "layer-quad": {
+      "hash": "210650fad2ce0b9632abcf405b7f6b2fa8e46b53943289d910e7c9b0fe2a4220",
+      "length": 18500,
+      "paths": 30,
+      "warmHash": "210650fad2ce0b9632abcf405b7f6b2fa8e46b53943289d910e7c9b0fe2a4220",
+      "warmMatchesFresh": true
+    },
+    "layer-coons": {
+      "hash": "34490dd403aa87b798f8b2043fe5b4dacbef3de1a59f8b5c623d0b58cb93e454",
+      "length": 18497,
+      "paths": 30,
+      "warmHash": "34490dd403aa87b798f8b2043fe5b4dacbef3de1a59f8b5c623d0b58cb93e454",
+      "warmMatchesFresh": true
+    },
+    "mutable-initial": {
+      "hash": "8bad26d3b19d862bc62ed13bbe0b57f829b14d93457f0c489f103b18cfa273c0",
+      "length": 16633,
+      "paths": 28,
+      "warmHash": "8bad26d3b19d862bc62ed13bbe0b57f829b14d93457f0c489f103b18cfa273c0",
+      "warmMatchesFresh": true
+    },
+    "mutable-coordinate": {
+      "hash": "ab732ed5a00390ac3064c59baba0aa50f6f4f70b366f39a3c1a748cc516bcbf0",
+      "length": 18093,
+      "paths": 30,
+      "warmHash": "92069863f3959f54ad4773a19d9bc7bb29eaa75c900d3684b3ff7b6444c26fc9",
+      "warmMatchesFresh": false
+    },
+    "mutable-visibility": {
+      "hash": "8af6ac978c7a1ae521bd53e20bf55eaaad95b82de73147b87817f18992277c9d",
+      "length": 11455,
+      "paths": 28,
+      "warmHash": "db94a2f0febb8c930297647dd0561c15ff1e4e715521f1d5804fa9c1021dbe02",
+      "warmMatchesFresh": false
+    },
+    "mutable-topology": {
+      "hash": "2d1ad77ff59ab21a964e88ade2046322c80e1d0ff85c25ad71ca05960e647993",
+      "length": 9121,
+      "paths": 20,
+      "warmHash": "ea7432cc7739a64c9ab87ff1da341d8200d25e3442cdca5d5517f16d48742963",
+      "warmMatchesFresh": false
+    },
+    "mutable-order": {
+      "hash": "ed0d1bdc706d4fbb6d5fc54a78fbab3ad57b37fdf6ba0a02c6558b32caae90bd",
+      "length": 11455,
+      "paths": 28,
+      "warmHash": "a939c5adc35bf68e2307a396283bdd7e31bf12b1be3fabb36b954e172d215481",
+      "warmMatchesFresh": false
+    },
+    "mutable-link": {
+      "hash": "390d3cfd5079ccd129d1e5785bde8812d670017ce89fab105cf29dd3b443f512",
+      "length": 10415,
+      "paths": 20,
+      "warmHash": "2f2043e1b8b8cb7462230e7197e2f974514c7e565f0059791e50f96ea33766f9",
+      "warmMatchesFresh": false
+    },
+    "mutable-range": {
+      "hash": "718448ee669f5a943504fb47f9ce947bc4ba1453aa4799fb6525d2514861086b",
+      "length": 16571,
+      "paths": 28,
+      "warmHash": "2b2fd083b17e835bb15e3088e1337ed232bd26df10d02cf6250f8955218f4f7b",
+      "warmMatchesFresh": false
+    },
+    "styled-preview": {
+      "hash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+      "length": 13238,
+      "paths": 14,
+      "warmHash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+      "warmMatchesFresh": true
+    },
+    "styled-moving": {
+      "hash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+      "length": 13238,
+      "paths": 14,
+      "warmHash": "05154d73cd81d1b6177cd53b9912b7e385682953f9eea81fc7a8d929cdbb0614",
+      "warmMatchesFresh": true
+    },
+    "camera-line-affine-125": {
+      "hash": "cc4aa632d881eafb1dd5072d82c50adee7766436f26dfbc04f68c59fefecf175",
+      "length": 18281,
+      "paths": 30,
+      "warmHash": "cc4aa632d881eafb1dd5072d82c50adee7766436f26dfbc04f68c59fefecf175",
+      "warmMatchesFresh": true
+    },
+    "camera-line-affine-500": {
+      "hash": "303901b82a0ead3aae990968f6d5b535d73f3a8d4a19c45eb3aba069830e9ef8",
+      "length": 20102,
+      "paths": 30,
+      "warmHash": "303901b82a0ead3aae990968f6d5b535d73f3a8d4a19c45eb3aba069830e9ef8",
+      "warmMatchesFresh": true
+    },
+    "camera-line-affine-750": {
+      "hash": "2594ccf3ea1d46d81ec66397229757f9992fcf1600a505acd176fd59bfe14104",
+      "length": 20354,
+      "paths": 30,
+      "warmHash": "2594ccf3ea1d46d81ec66397229757f9992fcf1600a505acd176fd59bfe14104",
+      "warmMatchesFresh": true
+    },
+    "camera-line-quad-125": {
+      "hash": "05bbf62fd53a607c156562d900738f1b30490c75e40c641fe59d463bbd0372a7",
+      "length": 18288,
+      "paths": 30,
+      "warmHash": "05bbf62fd53a607c156562d900738f1b30490c75e40c641fe59d463bbd0372a7",
+      "warmMatchesFresh": true
+    },
+    "camera-line-quad-500": {
+      "hash": "083c09526aefc1d66eb51109a6e817d02b9b7893bcf366c853811dd79d2008de",
+      "length": 20054,
+      "paths": 30,
+      "warmHash": "083c09526aefc1d66eb51109a6e817d02b9b7893bcf366c853811dd79d2008de",
+      "warmMatchesFresh": true
+    },
+    "camera-line-quad-750": {
+      "hash": "7e3ee8f7a5a6cc132c15e2e246b0bfa702f274d193a418dd451774a5a067ffcf",
+      "length": 20323,
+      "paths": 30,
+      "warmHash": "7e3ee8f7a5a6cc132c15e2e246b0bfa702f274d193a418dd451774a5a067ffcf",
+      "warmMatchesFresh": true
+    },
+    "camera-line-coons-125": {
+      "hash": "22f1642c982f71962adc1079959376a32dad034894d93c5dba42c0497d054326",
+      "length": 18293,
+      "paths": 30,
+      "warmHash": "22f1642c982f71962adc1079959376a32dad034894d93c5dba42c0497d054326",
+      "warmMatchesFresh": true
+    },
+    "camera-line-coons-500": {
+      "hash": "63c208cc44eb8b9558e6ad7633bbd043cfac59262e4931bc58272f1c2800bf25",
+      "length": 20624,
+      "paths": 30,
+      "warmHash": "63c208cc44eb8b9558e6ad7633bbd043cfac59262e4931bc58272f1c2800bf25",
+      "warmMatchesFresh": true
+    },
+    "camera-line-coons-750": {
+      "hash": "65ea7e9bc2eeb5fb0718df13ca23e7fc4a0c2d7942d1730f3796e3862fa94876",
+      "length": 20838,
+      "paths": 30,
+      "warmHash": "65ea7e9bc2eeb5fb0718df13ca23e7fc4a0c2d7942d1730f3796e3862fa94876",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-affine-125": {
+      "hash": "52e83faa76dbd1eea40a9485d1bc29e31963f23ac30a38abde710c9b0f9f4a4a",
+      "length": 18422,
+      "paths": 30,
+      "warmHash": "52e83faa76dbd1eea40a9485d1bc29e31963f23ac30a38abde710c9b0f9f4a4a",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-affine-500": {
+      "hash": "b6231b22739096ca57d8d002f910307de261d05a475f48370fa980b4130274b1",
+      "length": 20095,
+      "paths": 30,
+      "warmHash": "b6231b22739096ca57d8d002f910307de261d05a475f48370fa980b4130274b1",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-affine-750": {
+      "hash": "d35da1905ca9d3110ee744c94faa2c30b23c4b005ada00a18325792c83f608e0",
+      "length": 20530,
+      "paths": 30,
+      "warmHash": "d35da1905ca9d3110ee744c94faa2c30b23c4b005ada00a18325792c83f608e0",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-quad-125": {
+      "hash": "8cfacb5bb8f799f0bba1c4baca1e66181de63d05b03d1c46edf9407e4e3f6627",
+      "length": 18462,
+      "paths": 30,
+      "warmHash": "8cfacb5bb8f799f0bba1c4baca1e66181de63d05b03d1c46edf9407e4e3f6627",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-quad-500": {
+      "hash": "4286cb455d6c1fe6b5a4f47af089d9e722c8398dafce6c98ddbfc335a4c57ea6",
+      "length": 20307,
+      "paths": 30,
+      "warmHash": "4286cb455d6c1fe6b5a4f47af089d9e722c8398dafce6c98ddbfc335a4c57ea6",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-quad-750": {
+      "hash": "e98042c577014457d70720a276f1576b879e3691fb103f90a0f0c71bde07a497",
+      "length": 20563,
+      "paths": 30,
+      "warmHash": "e98042c577014457d70720a276f1576b879e3691fb103f90a0f0c71bde07a497",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-coons-125": {
+      "hash": "60f6dd56662666aea039c138fbe07400fa3cb611203f98dd620cfce7d5cba674",
+      "length": 18581,
+      "paths": 30,
+      "warmHash": "60f6dd56662666aea039c138fbe07400fa3cb611203f98dd620cfce7d5cba674",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-coons-500": {
+      "hash": "9446dfa4dc36c6d99ef2d73d94b0b672cbf0729b70cb769a831cbdd6ac084e24",
+      "length": 21334,
+      "paths": 30,
+      "warmHash": "9446dfa4dc36c6d99ef2d73d94b0b672cbf0729b70cb769a831cbdd6ac084e24",
+      "warmMatchesFresh": true
+    },
+    "camera-layer-coons-750": {
+      "hash": "8c46ed7b6ce35e9a5170c2c5bbf93f7200188e2ff03be495224596f16f0b7441",
+      "length": 21593,
+      "paths": 30,
+      "warmHash": "8c46ed7b6ce35e9a5170c2c5bbf93f7200188e2ff03be495224596f16f0b7441",
+      "warmMatchesFresh": true
+    },
+    "in-place-original": {
+      "hash": "922c84123dc0f84e9478cd7ae84f503dbd72c94b2d9b0c79ef2acd23cc0ed578",
+      "length": 17420,
+      "paths": 29,
+      "warmHash": "922c84123dc0f84e9478cd7ae84f503dbd72c94b2d9b0c79ef2acd23cc0ed578",
+      "warmMatchesFresh": true
+    },
+    "in-place-handle": {
+      "hash": "bec49f4cab42a6731e08b8c7f9eb34d72c3327675094a05cb2ec87b993796da0",
+      "length": 17434,
+      "paths": 29,
+      "warmHash": "70352a462e360099e0432c4bb68c69245bf407d577c186fec7d81243d5088a38",
+      "warmMatchesFresh": false
+    },
+    "in-place-width": {
+      "hash": "d54162001af121dd86da9078194231c68255279c5d5ba31e2c5b17019c1065d3",
+      "length": 17442,
+      "paths": 29,
+      "warmHash": "ca56963f9070da78dee64b4118300864b0ef338fa621ac0189ad93e8dae3fbf2",
+      "warmMatchesFresh": false
+    },
+    "in-place-profile": {
+      "hash": "444e2855c164dc5248fc78846358c6dcd70458cf9a5d041509fec34ea6cb8a1a",
+      "length": 17071,
+      "paths": 29,
+      "warmHash": "73287438738f551bb1be0d0759e9fc7a95cef88880d14966c8ca33e90a5346ee",
+      "warmMatchesFresh": false
+    },
+    "in-place-taper": {
+      "hash": "f9e183b5a2909b87b65411075113029703d8523d8f6e0d964f4f983d1d8039e6",
+      "length": 17065,
+      "paths": 29,
+      "warmHash": "c4b55f2bdcc3f35241562fe22a5a5952404df30fc40ff29778c83071531ab878",
+      "warmMatchesFresh": false
+    },
+    "in-place-extension": {
+      "hash": "2c2e64db1f409c71701361dad54d1251ce278352d8045bd9dcc6e5d3b03627db",
+      "length": 17073,
+      "paths": 29,
+      "warmHash": "1e786720fb4356c4b335d91b917814883a7165a474a46180e92cac29130f54a1",
+      "warmMatchesFresh": false
+    },
+    "in-place-mist": {
+      "hash": "82cb63e59308fbf71ea57441850e34e464b4998b7204e3c61a912597c9ac74cc",
+      "length": 17073,
+      "paths": 29,
+      "warmHash": "8f614394f270f7e173377c1ab84dd3f37fd1e6ddb81874b74098c2e3f1b4c438",
+      "warmMatchesFresh": false
+    },
+    "in-place-depth": {
+      "hash": "625a01f6176f540eac8df1ce93ccb3b416967422683935b24015aaf97190d0c8",
+      "length": 17207,
+      "paths": 29,
+      "warmHash": "c6a826b36fb966874ec2bce0733a989b418b0562bcafab0590f26f7f60c17a46",
+      "warmMatchesFresh": false
+    },
+    "in-place-join-radius": {
+      "hash": "8f91e7323dcea1f9995bfbe601e7850a963fee1917abf19f9be683956f6a7eb7",
+      "length": 17272,
+      "paths": 29,
+      "warmHash": "efb14f99984ef65f85017cc998a1fc56184a877ce769c6a04487366486c76d4a",
+      "warmMatchesFresh": false
+    },
+    "in-place-visibility": {
+      "hash": "42d65f607a6be949d145dcf549bfa3eb8913f607458fe67535146f7423fe2830",
+      "length": 11525,
+      "paths": 27,
+      "warmHash": "8196180b6065374f609468e69139dd7f7379e64a919985e4d4eb896aed21eb01",
+      "warmMatchesFresh": false
+    },
+    "in-place-ink-visibility": {
+      "hash": "98a4d6a50b264001f5491013e44299f8f08a8e5712929fcd2cad2630399a5bf3",
+      "length": 10378,
+      "paths": 22,
+      "warmHash": "e6d95e46ad46f7bd34ca0c656c76ebc26035ddcb87c75a84c4313e1d27d50131",
+      "warmMatchesFresh": false
+    },
+    "in-place-range": {
+      "hash": "3128f2b8ee2701d37f3f8578c201f6c8d19a618fe55cadace1dd7415e33770b5",
+      "length": 10091,
+      "paths": 21,
+      "warmHash": "b131939b7316bf75ceb82cbdb170d379308cdeb523fc0e764814cfdc37b1a84c",
+      "warmMatchesFresh": false
+    },
+    "in-place-pinch": {
+      "hash": "3128f2b8ee2701d37f3f8578c201f6c8d19a618fe55cadace1dd7415e33770b5",
+      "length": 10091,
+      "paths": 21,
+      "warmHash": "b131939b7316bf75ceb82cbdb170d379308cdeb523fc0e764814cfdc37b1a84c",
+      "warmMatchesFresh": false
+    },
+    "evaluated-large-brush": {
+      "hash": "da41bba0e51f429b04888638a616d9ee89966becc9ebdc58849dce759c7347cc",
+      "length": 18201,
+      "paths": 28,
+      "warmHash": "da41bba0e51f429b04888638a616d9ee89966becc9ebdc58849dce759c7347cc",
+      "warmMatchesFresh": true
+    },
+    "raw-large-brush-same-json": {
+      "hash": "d35e1035cd31ef053c550dfdfd9f621509775fb0f032fa3b3a917c7df48737f9",
+      "length": 7463,
+      "paths": 8,
+      "warmHash": "d35e1035cd31ef053c550dfdfd9f621509775fb0f032fa3b3a917c7df48737f9",
+      "warmMatchesFresh": true
+    },
+    "earlier-route-invalid": {
+      "hash": "f5eaf2cb2d665b00647fe274c628c48f87cf2072273b555a6cd3e241d77a1571",
+      "length": 13643,
+      "paths": 25,
+      "warmHash": "f5eaf2cb2d665b00647fe274c628c48f87cf2072273b555a6cd3e241d77a1571",
+      "warmMatchesFresh": true
+    },
+    "earlier-route-valid": {
+      "hash": "6b7ee2a321524d8eb3d37f2fb4b6c79dfa8864508da878331ff409e5aff89609",
+      "length": 10187,
+      "paths": 25,
+      "warmHash": "a8bc84aeda4f3bb883886b3abcdb5097aea01ee0586c680a8a0626d9a35d9ac6",
+      "warmMatchesFresh": false
+    },
+    "ui-false-select": {
+      "hash": "a2f3c044458995fd645f2dcdaea0f4d65f69756b125f0087eec202272f1a0041",
+      "length": 17743,
+      "paths": 30,
+      "warmHash": "a2f3c044458995fd645f2dcdaea0f4d65f69756b125f0087eec202272f1a0041",
+      "warmMatchesFresh": true
+    },
+    "ui-false-deform": {
+      "hash": "7e1bfb3f2605c50edb40af12f3296c9d1aabbd541711ff6fde7fbddd157c3d33",
+      "length": 17739,
+      "paths": 30,
+      "warmHash": "7e1bfb3f2605c50edb40af12f3296c9d1aabbd541711ff6fde7fbddd157c3d33",
+      "warmMatchesFresh": true
+    },
+    "ui-false-split": {
+      "hash": "75ef69d72cb3b7151319c0aadd364c9ab8df7ad7b1edbf26e2c85d7c92187e32",
+      "length": 17737,
+      "paths": 30,
+      "warmHash": "75ef69d72cb3b7151319c0aadd364c9ab8df7ad7b1edbf26e2c85d7c92187e32",
+      "warmMatchesFresh": true
+    },
+    "ui-true-select": {
+      "hash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "length": 12467,
+      "paths": 12,
+      "warmHash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "warmMatchesFresh": true
+    },
+    "ui-true-deform": {
+      "hash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "length": 12467,
+      "paths": 12,
+      "warmHash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "warmMatchesFresh": true
+    },
+    "ui-true-split": {
+      "hash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "length": 12467,
+      "paths": 12,
+      "warmHash": "66b291a42e83f4826366328fd270f0e709588a835a20c45e49d3a696a6244113",
+      "warmMatchesFresh": true
+    },
+    "public-camera-125": {
+      "hash": "089517a3893a4502a28b3e21f6ee2975de0fd094e233881a96e1d3dbf1f57342",
+      "length": 111340,
+      "paths": 177,
+      "warmHash": "089517a3893a4502a28b3e21f6ee2975de0fd094e233881a96e1d3dbf1f57342",
+      "warmMatchesFresh": true
+    },
+    "public-camera-500": {
+      "hash": "f111475e2033804e3c4e17d1ab05029d339b1d8a213340badf69bb509b8b07ab",
+      "length": 130150,
+      "paths": 177,
+      "warmHash": "f111475e2033804e3c4e17d1ab05029d339b1d8a213340badf69bb509b8b07ab",
+      "warmMatchesFresh": true
+    },
+    "public-camera-750": {
+      "hash": "695078f368dcb817cbcb85cb0ff5a272a62f9b0ade1d220578647a4525148707",
+      "length": 151531,
+      "paths": 177,
+      "warmHash": "695078f368dcb817cbcb85cb0ff5a272a62f9b0ade1d220578647a4525148707",
+      "warmMatchesFresh": true
+    }
+  },
+  "reference": "fresh shallow document facade using unchanged canonical renderer",
+  "cases": 74,
+  "candidateMatchesReference": true,
+  "oldWarmReferenceDifferences": [
+    "mutable-coordinate",
+    "mutable-visibility",
+    "mutable-topology",
+    "mutable-order",
+    "mutable-link",
+    "mutable-range",
+    "in-place-handle",
+    "in-place-width",
+    "in-place-profile",
+    "in-place-taper",
+    "in-place-extension",
+    "in-place-mist",
+    "in-place-depth",
+    "in-place-join-radius",
+    "in-place-visibility",
+    "in-place-ink-visibility",
+    "in-place-range",
+    "in-place-pinch",
+    "earlier-route-valid"
+  ]
+}

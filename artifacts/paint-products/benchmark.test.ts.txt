@@ -1,0 +1,34 @@
+import {test,expect} from 'vitest';
+import {writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import PaintScene from './ui/drawing/PaintScene';
+import SceneOnionSkin from './ui/vectorRecording/SceneOnionSkin';
+import {interpolateSnapshotSurfaceOnion} from './ui/vectorRecording/surfaceOnion';
+import {prepareRecordingContext} from './domain/recordingSnapshot/evaluation';
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan,drawingControlEditProof} from './domain/drawing/controlEditPlan';
+import {drawingReadContextStats} from './domain/drawing/readContext';
+import {makeFixture,RECORDING_ID,ENDPOINTS,screen} from '../tests/fixtures/recording-renderer-benchmark-fixture';
+import {styledPaintDrawing} from './tests/fixtures/paint-read-scope';
+// PRODUCT_IMPORT
+const productStats=()=>({/* PRODUCT_STATS */});
+const noop=()=>{},hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+const delta=(before:any,after:any)=>Object.fromEntries(Object.keys(after).map(k=>[k,after[k]-before[k]]));
+const percentile=(v:number[],q:number)=>[...v].sort((a,b)=>a-b)[Math.floor((v.length-1)*q)];
+test('bounded fixed, single handle, ordinary angle and 19-onion renderer comparison',()=>{
+ const {workspace}=makeFixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,useDraft:true,diagnostics:'preview'}),base=context.sample(RECORDING_ID,{angle:{x:37.137,y:14.713}}),curve=base.drawing.curves.find(c=>c.name==='鼻尖短线')!,plan=prepareDrawingControlEditPlan(base.drawing,{kind:'handle',endpoint:{curveId:curve.id,end:0}}),styled=styledPaintDrawing();
+ expect(plan.controls).toHaveLength(1);
+ const samples=Array.from({length:12},(_,i)=>{const angle={x:11.137+(i*17.713)%63,y:14.713+(i*.317)%9},frame=context.sample(RECORDING_ID,{angle}),ghosts=interpolateSnapshotSurfaceOnion(workspace.recordings[0],frame,ENDPOINTS,5).frames,single=applyDrawingControlEditPlan(plan,{kind:'point',position:[curve.handles[0][0]+.001*(i+1),curve.handles[0][1]+.0007*(i+1)]});expect(drawingControlEditProof(base.drawing,single,plan)).toBe(plan);expect(single.curves.filter((c,j)=>c!==base.drawing.curves[j])).toHaveLength(1);return {frame,ghosts,single};});
+ const cases=[];
+ for(const mode of ['fixed','single-handle','angle','angle-19-onions','fixed-fill-offset']){
+  const rows=[];
+  for(let i=0;i<12;i++){
+   const sample=samples[i],main=mode.startsWith('angle')?sample.frame:base,d=mode==='single-handle'?sample.single:mode==='fixed-fill-offset'?styled:main.drawing,ghosts=mode==='angle-19-onions'?sample.ghosts:[],reads=drawingReadContextStats(),products=productStats(),start=performance.now();
+   const svg=renderToStaticMarkup(createElement('svg',null,createElement(SceneOnionSkin,{frames:ghosts,angle:main.angle,opacity:.16,screen,unit:250}),createElement(PaintScene,{d,paintBatches:mode==='fixed-fill-offset'?undefined:main.paintBatches,screen,unit:250,pixelsPerUnit:250,preview:false,showFills:mode==='fixed-fill-offset',referenceMoving:false,tool:'select',curveDown:noop,paintDown:noop,arcDown:noop}))),ms=performance.now()-start;
+   if(i>=4)rows.push({i,ms,hash:hash(svg),length:svg.length,paths:(svg.match(/<path/g)??[]).length,read:delta(reads,drawingReadContextStats()),products:delta(products,productStats())});
+  }
+  cases.push({mode,frames:rows.length,p50:percentile(rows.map(r=>r.ms),.5),p95:percentile(rows.map(r=>r.ms),.95),rows});
+ }
+ writeFileSync(process.env.PAINT_PRODUCT_OUTPUT!+'.json',JSON.stringify({definition:'Node SSR renderer only. Four warmups and eight measured frames per case. Evaluation and target preparation are excluded. Fills-off except deterministic styled solid-fill/offset fixture. No browser timing or raster inference.',cases},null,2));
+},60000);
