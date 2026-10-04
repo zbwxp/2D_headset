@@ -5,7 +5,7 @@ import {applyScenePlacement,scenePlacementScales,setScenePlacementAxisScale} fro
 
 export type InstanceTransformBounds={min:Point2;max:Point2;center:Point2};
 export type InstanceTransformKind='move'|'scale'|'rotate';
-export type RecordingInstanceTransform={allowCurveSelection?:boolean;ids:string[];bounds:InstanceTransformBounds;onPreview:(delta:ScenePlacementValue|null)=>void;onCommit:(delta:ScenePlacementValue)=>void;editable:boolean;label:string;basePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;materialBounds?:InstanceTransformBounds;onValuePreview?:(value:ScenePlacementValue|null)=>void;onValueCommit?:(value:ScenePlacementValue)=>void};
+export type RecordingInstanceTransform={/** The entire rendered scene follows a world translation exactly. Other gestures still use canonical preview. */exactTranslationPreview?:boolean;allowCurveSelection?:boolean;ids:string[];bounds:InstanceTransformBounds;onPreview:(delta:ScenePlacementValue|null)=>void;onCommit:(delta:ScenePlacementValue)=>void;editable:boolean;label:string;basePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;materialBounds?:InstanceTransformBounds;onValuePreview?:(value:ScenePlacementValue|null)=>void;onValueCommit?:(value:ScenePlacementValue)=>void};
 export type InstanceTransformGesture={kind:InstanceTransformKind;start:Point2;origin:Point2;lastAngle:number;rotation:number};
 export type InstanceAxisScaleGesture={axis:'x'|'y';start:Point2;anchor:Point2;extent:number;placement:ScenePlacementValue};
 export function beginInstanceTransform(kind:InstanceTransformKind,start:Point2,origin:Point2):InstanceTransformGesture{

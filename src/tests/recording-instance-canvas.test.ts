@@ -4,29 +4,33 @@ import {emptyDrawing,type Point2} from '../domain/drawing/model';
 import {identityScenePlacement,type ScenePlacementValue} from '../domain/recordingScene/model';
 import {applyScenePlacement,scenePlacementScales} from '../domain/recordingScene/tracks';
 import {createWarpGrid,type WarpGrid} from '../domain/vectorWarp/model';
+import {emptyWorkspaceView,replaceWorkspaceView} from '../app/workspaceView';
 import SceneWarpCanvas from '../ui/vectorRecording/SceneWarpCanvas';
 import SceneInstanceTransformBox,{beginInstanceTransform,instanceTransformDelta,instanceAxisScaleValue,type RecordingInstanceTransform} from '../ui/vectorRecording/SceneInstanceTransformBox';
 
-const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0}));
+const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,stateWrites:0}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
- useState:(initial:unknown)=>{const i=hooks.stateIndex++;if(!(i in hooks.states))hooks.states[i]=typeof initial==='function'?initial():initial;return [hooks.states[i],(next:unknown)=>{hooks.states[i]=typeof next==='function'?next(hooks.states[i]):next;}];},
+ useState:(initial:unknown)=>{const i=hooks.stateIndex++;if(!(i in hooks.states))hooks.states[i]=typeof initial==='function'?initial():initial;return [hooks.states[i],(next:unknown)=>{hooks.stateWrites++;hooks.states[i]=typeof next==='function'?next(hooks.states[i]):next;}];},
  useRef:(initial:unknown)=>hooks.refs[hooks.refIndex++]??(hooks.refs[hooks.refIndex-1]={current:initial}),
  useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),useEffect:(fn:()=>void)=>{hooks.effects.push(fn);},
 }));
+vi.mock('../app/workspaceView',async original=>{const actual=await original<typeof import('../app/workspaceView')>();return {...actual,useWorkspaceView:(selector:(state:ReturnType<typeof actual.getWorkspaceView>)=>unknown)=>selector(actual.getWorkspaceView())};});
 vi.mock('../ui/drawing/session',async original=>{const actual=await original<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
 class Target {constructor(readonly tag='svg'){}closest(selector:string){return selector.split(',').includes(this.tag)?this:null;}}
+const frames=new Map<number,FrameRequestCallback>();let frameId=0;
 const listeners=new Map<string,(event:unknown)=>void>();
-beforeEach(()=>{hooks.states=[];hooks.refs=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(e:unknown)=>void)=>listeners.set(name,fn),removeEventListener:()=>{}});});
+beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.stateWrites=0;listeners.clear();frames.clear();frameId=0;replaceWorkspaceView(emptyWorkspaceView());vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>{frames.set(++frameId,fn);return frameId;});vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id));vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(e:unknown)=>void)=>listeners.set(name,fn),removeEventListener:()=>{}});});
 afterEach(()=>vi.unstubAllGlobals());
 type Props={children?:unknown;[key:string]:any};
 function elements(tree:unknown):ReactElement<Props>[] {if(Array.isArray(tree))return tree.flatMap(elements);if(!isValidElement<Props>(tree))return [];if(tree.type===SceneInstanceTransformBox)return elements(SceneInstanceTransformBox(tree.props as ComponentProps<typeof SceneInstanceTransformBox>));return [tree,...elements(tree.props.children)];}
 const bounds={min:[-1,-1] as Point2,max:[1,1] as Point2,center:[0,0] as Point2};
-function harness(options:{snapshot?:boolean;editable?:boolean;grid?:boolean;placement?:ScenePlacementValue;framePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;stroke?:boolean}={}){
+function harness(options:{snapshot?:boolean;editable?:boolean;grid?:boolean;placement?:ScenePlacementValue;framePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;stroke?:boolean;exactTranslation?:boolean;onion?:boolean}={}){
  const source=emptyDrawing(),grid=options.grid?createWarpGrid(bounds,2,2):undefined,preview=vi.fn(),commit=vi.fn(),warpPreview=vi.fn(),warpCommit=vi.fn(),selectSource=vi.fn(),selectWarp=vi.fn(),valuePreview=vi.fn(),valueCommit=vi.fn();
- let instance:RecordingInstanceTransform|undefined=options.snapshot===false?undefined:{ids:['snapshot'],allowCurveSelection:options.stroke,bounds,onPreview:preview,onCommit:commit,editable:options.editable??true,label:'Snapshot',displayPlacement:options.displayPlacement,...(options.framePlacement?{basePlacement:options.framePlacement,materialBounds:bounds,onValuePreview:valuePreview,onValueCommit:valueCommit}:{})};
+ let instance:RecordingInstanceTransform|undefined=options.snapshot===false?undefined:{ids:['snapshot'],exactTranslationPreview:options.exactTranslation,allowCurveSelection:options.stroke,bounds,onPreview:preview,onCommit:commit,editable:options.editable??true,label:'Snapshot',displayPlacement:options.displayPlacement,...(options.framePlacement?{basePlacement:options.framePlacement,materialBounds:bounds,onValuePreview:valuePreview,onValueCommit:valueCommit}:{})};
+ const translated=Object.fromEntries(['paint','selection','warnings','frame'].map(id=>[id,{setAttribute:vi.fn(),removeAttribute:vi.fn()}]));
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};let all:ReactElement<Props>[]=[];
- const render=()=>{hooks.stateIndex=0;hooks.refIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:source,grid,gridPlacement:options.placement,ghostGridPlacements:grid?[{instanceId:'other',name:'Other',value:identityScenePlacement()}]:[],instanceTransform:instance,targetKey:'canvas',label:'Test',zh:false,editEnabled:options.grid??false,onPreview:warpPreview,onCommit:warpCommit,onSelection:selectSource,onWarpSelection:selectWarp}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.at(-1)!();};render();
- return {source,grid,preview,commit,valuePreview,valueCommit,setPlacement:(placement:ScenePlacementValue)=>{instance={...instance!,basePlacement:placement};render();},warpPreview,warpCommit,selectSource,selectWarp,render,setBounds:(next:typeof bounds)=>{instance={...instance!,bounds:next};render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,nodes:()=>all.filter(e=>e.props['data-testid']==='vr-node'),findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id)};
+ const render=()=>{hooks.stateIndex=0;hooks.refIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:source,inspectionHideFills:options.onion,grid,gridPlacement:options.placement,ghostGridPlacements:grid?[{instanceId:'other',name:'Other',value:identityScenePlacement()}]:[],instanceTransform:instance,targetKey:'canvas',label:'Test',zh:false,editEnabled:options.grid??false,onPreview:warpPreview,onCommit:warpCommit,onSelection:selectSource,onWarpSelection:selectWarp}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;for(const [id,node] of Object.entries(translated)){const group=all.find(e=>e.props['data-testid']===`vr-translation-${id}`);if(group)group.props.ref.current=node;}hooks.effects.at(-1)!();};render();
+ return {translated,source,grid,preview,commit,valuePreview,valueCommit,setPlacement:(placement:ScenePlacementValue)=>{instance={...instance!,basePlacement:placement};render();},warpPreview,warpCommit,selectSource,selectWarp,render,setBounds:(next:typeof bounds)=>{instance={...instance!,bounds:next};render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,nodes:()=>all.filter(e=>e.props['data-testid']==='vr-node'),findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id)};
 }
 const pointer=(clientX:number,clientY:number,shiftKey=false)=>({button:0,pointerId:1,clientX,clientY,shiftKey,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const key=(name:string,tag='svg')=>({key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target:new Target(tag),preventDefault:vi.fn()});
@@ -99,3 +103,49 @@ test('stroke side handles and movement stay in the displayed rotated nonuniform 
 
 
 test('stroke transform frame leaves its contents available for selecting more curves, while layer-body drag stays available',()=>{const h=harness({stroke:true});expect(h.element('vr-instance-move').props.pointerEvents).toBe('none');expect(h.element('vr-instance-center').props.onPointerDown).toBeDefined();expect(h.findAll('vr-instance-scale')).toHaveLength(4);});
+
+
+test('exact whole-scene move coalesces frames without authoring previews or React state writes',()=>{
+ const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props,paint=h.element('vr-translation-paint').props.children,before=JSON.stringify(h.source);
+ center.onPointerDown(pointer(center.cx,center.cy));const writes=hooks.stateWrites;
+ for(let n=1;n<=30;n++)h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+n,center.cy-n));
+ expect(h.element('vr-scene-canvas').props['data-translation-preview']).toBe('exact');expect(h.preview).not.toHaveBeenCalled();expect(h.commit).not.toHaveBeenCalled();expect(hooks.stateWrites).toBe(writes);expect(frames.size).toBe(1);
+ [...frames.values()][0](0);expect(frames.size).toBe(0);for(const node of Object.values(h.translated)){expect(node.setAttribute).toHaveBeenCalledTimes(1);expect(node.setAttribute.mock.calls[0][0]).toBe('transform');const numbers=node.setAttribute.mock.calls[0][1].match(/-?\d+(?:\.\d+)?/g)!.map(Number);near(numbers as Point2,[30,-30]);}
+ h.render();expect(h.element('vr-translation-paint').props.children).toBe(paint);expect(JSON.stringify(h.source)).toBe(before);
+});
+
+test('exact translation flushes release coordinates, commits once and clears pending animation',()=>{
+ const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props,edge=h.findAll('vr-instance-scale')[0].props,unit=(center.cx-edge.x-4);
+ center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+10,center.cy));
+ h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+45,center.cy+20));h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+60,center.cy));
+ expect(h.commit).toHaveBeenCalledTimes(1);expect(h.preview).not.toHaveBeenCalled();near(h.commit.mock.calls[0][0].translation,[45/unit,-20/unit]);expect(frames.size).toBe(0);
+ for(const node of Object.values(h.translated)){expect(node.setAttribute).toHaveBeenCalledTimes(1);expect(node.removeAttribute).toHaveBeenLastCalledWith('transform');}
+});
+
+test.each(['cancel','escape','history','tool','lost capture','blur'])('exact translation clears pending frames on %s without committing',action=>{
+ const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props;
+ center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+25,center.cy));expect(frames.size).toBe(1);
+ if(action==='cancel')h.element('vr-scene-canvas').props.onPointerCancel();
+ else if(action==='escape')listeners.get('keydown')!(key('Escape'));
+ else if(action==='history')listeners.get('keydown')!({...key('z'),ctrlKey:true});
+ else if(action==='tool')h.element('vr-tool-direct').props.onClick();
+ else if(action==='lost capture')h.element('vr-scene-canvas').props.onLostPointerCapture();
+ else {hooks.effects.find(fn=>fn.toString().includes('contour:cancel-recording-gesture'))!();listeners.get('blur')!({});}
+ expect(frames.size).toBe(0);h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+25,center.cy));expect(h.commit).not.toHaveBeenCalled();for(const node of Object.values(h.translated))expect(node.removeAttribute).toHaveBeenLastCalledWith('transform');
+});
+
+test('exact move returning to its origin creates no history and repeated drags start clean',()=>{
+ const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props;
+ center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+30,center.cy));h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx,center.cy));expect(h.commit).not.toHaveBeenCalled();expect(frames.size).toBe(0);
+ center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+15,center.cy));expect(h.commit).toHaveBeenCalledTimes(1);expect(frames.size).toBe(0);
+});
+
+test.each(['onion','snap','scale','rotate','display parent'])('%s retains canonical preview even when a translation capability is supplied',mode=>{
+ if(mode==='snap')replaceWorkspaceView({...emptyWorkspaceView(),guides:[{id:'guide',axis:'x',value:0}]});
+ const h=harness({exactTranslation:true,onion:mode==='onion',displayPlacement:mode==='display parent'?identityScenePlacement():undefined}),center=h.element(mode==='scale'?'vr-instance-scale':mode==='rotate'?'vr-instance-rotate':'vr-instance-center').props,x=center.cx??center.x,y=center.cy??center.y;
+ center.onPointerDown(pointer(x,y));h.element('vr-scene-canvas').props.onPointerMove(pointer(x+30,y+10));expect(h.preview).toHaveBeenCalledTimes(1);expect(frames.size).toBe(0);
+});
+
+test('enabling guide snapping during exact movement cancels before changing snap targets',()=>{
+ const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props;center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+30,center.cy));replaceWorkspaceView({...emptyWorkspaceView(),guides:[{id:'guide',axis:'x',value:0}]});h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+40,center.cy));expect(h.commit).not.toHaveBeenCalled();expect(frames.size).toBe(0);expect(h.preview).toHaveBeenLastCalledWith(null);
+});
