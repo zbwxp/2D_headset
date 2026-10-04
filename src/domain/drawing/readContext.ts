@@ -1,4 +1,4 @@
-import type {DrawingDocument,DrawingCurve,DrawingNode,DrawingLayer,FillRegion,OffsetRelation,EndpointLink,Endpoint} from './model';
+import type {DrawingDocument,DrawingCurve,DrawingNode,DrawingLayer,FillRegion,OffsetRelation,EndpointLink,Endpoint,TangentJoin} from './model';
 import type {StrokeIndex} from './strokes';
 import {InputCache} from '../geometry/cache';
 
@@ -8,6 +8,7 @@ export interface DrawingTopologyPlan {
  readonly key:string;
  readonly strokes:Map<string,StrokeIndex>;
  localConnections?:Map<string,Endpoint>;
+ materialDependencies?:DrawingMaterialDependencyIndex;
 }
 export interface DrawingReadContext {
  readonly curves:Map<string,DrawingCurve>;
@@ -16,6 +17,7 @@ export interface DrawingReadContext {
  readonly fills:Map<string,FillRegion>;
  readonly offsets:Map<string,OffsetRelation>;
  readonly endpointLinks:Map<string,EndpointLink>;
+ readonly joins:Map<string,TangentJoin>;
  /** Same first-owner semantics as Drawing's existing layer lookup. */
  readonly owners:Map<string,DrawingLayer>;
  readonly topology:DrawingTopologyPlan;
@@ -27,6 +29,7 @@ const prepared=new WeakMap<DrawingDocument,DrawingReadContext>();
 // New immutable samples can therefore retain connectivity without rebuilding
 // it, while each current document still owns fresh geometry/visibility maps.
 const topologyPlans=new InputCache<DrawingTopologyPlan>(128);
+let nextMaterialDependencyToken=0;
 type ReadStamp=readonly unknown[];
 interface ScopedRead {stamp:ReadStamp;context:DrawingReadContext}
 let activeScope:WeakMap<DrawingDocument,ScopedRead>|undefined;
@@ -39,7 +42,7 @@ export function withDrawingReadScope<T>(read:()=>T):T {
  const prior=activeScope;activeScope=new WeakMap();
  try{return read();}finally{activeScope=prior;}
 }
-const counts={contexts:0,topologyKeys:0,topologyPlans:0,topologyRetains:0,strokeKeys:0,strokeBuilds:0,preparedStrokeMisses:0,localConnectionBuilds:0};
+const counts={contexts:0,topologyKeys:0,topologyPlans:0,topologyRetains:0,strokeKeys:0,strokeBuilds:0,preparedStrokeMisses:0,localConnectionBuilds:0,materialDependencyIndexes:0,materialPathPlans:0};
 /** Structural work counters, not wall-clock instrumentation. */
 export const drawingReadContextStats=()=>({...counts});
 export function countDrawingReadWork(kind:keyof typeof counts):void {counts[kind]++;}
@@ -63,7 +66,7 @@ function createContext(d:DrawingDocument,prior?:DrawingReadContext,persist=true)
  counts.contexts++;if(retain)counts.topologyRetains++;else counts.topologyPlans++;
  const owners=new Map<string,DrawingLayer>();
  for(const layer of d.layers)for(const id of layer.items)if(!owners.has(id))owners.set(id,layer);
- const context:DrawingReadContext={curves:index(d.curves),nodes:index(d.nodes),layers:index(d.layers),fills:index(d.fills),offsets:index(d.offsets),endpointLinks:index(d.endpointLinks??[]),owners,topology,visibleStrokes:new Map()};
+ const context:DrawingReadContext={curves:index(d.curves),nodes:index(d.nodes),layers:index(d.layers),fills:index(d.fills),offsets:index(d.offsets),endpointLinks:index(d.endpointLinks??[]),joins:index(d.joins),owners,topology,visibleStrokes:new Map()};
  if(persist)prepared.set(d,context);return context;
 }
 /** Explicit runtime opt-in. The caller owns this evaluated Drawing and promises
@@ -86,4 +89,68 @@ export function preparedDrawingReadContext(drawing:DrawingDocument):DrawingReadC
 export function retainPreparedDrawingReadContext(next:DrawingDocument,prior:DrawingDocument):DrawingReadContext|undefined {
  const source=prepared.get(prior);if(!source)return undefined;
  return prepared.get(next)??createContext(next,source);
+}
+
+/** Only IDs and document order are retained with topology. The current read
+ * context supplies every numeric/material object when a signature is read. */
+interface DrawingPathDependencyPlan {
+ readonly curveIds:readonly string[];
+ readonly nodeIds:readonly string[];
+ readonly joinIds:readonly string[];
+ readonly linkIds:readonly string[];
+}
+interface MaterialRelationIndex {
+ readonly order:Map<string,number>;
+ readonly ends:Map<string,readonly [string,string]>;
+ readonly incident:Map<string,string[]>;
+}
+interface DrawingMaterialDependencyIndex {
+ readonly curveOrder:Map<string,number>;
+ readonly nodeOrder:Map<string,number>;
+ readonly curveNodes:Map<string,readonly string[]>;
+ readonly joins:MaterialRelationIndex;
+ readonly links:MaterialRelationIndex;
+ readonly structuralIdToken:number;
+ readonly uniqueIds:boolean;
+ readonly paths:InputCache<DrawingPathDependencyPlan>;
+}
+function materialRelationIndex(relations:readonly {id:string;a:Endpoint;b:Endpoint}[]):MaterialRelationIndex {
+ const order=new Map<string,number>(),ends=new Map<string,readonly [string,string]>(),incident=new Map<string,string[]>();
+ relations.forEach((relation,i)=>{
+  order.set(relation.id,i);ends.set(relation.id,[relation.a.curveId,relation.b.curveId]);
+  for(const id of new Set([relation.a.curveId,relation.b.curveId])){
+   const ids=incident.get(id);if(ids)ids.push(relation.id);else incident.set(id,[relation.id]);
+  }
+ });
+ return {order,ends,incident};
+}
+function materialDependencyIndex(d:DrawingDocument):DrawingMaterialDependencyIndex {
+ counts.materialDependencyIndexes++;
+ const ids=(items:readonly {id:string}[])=>items.map(item=>item.id),curveIds=ids(d.curves),nodeIds=ids(d.nodes),joinIds=ids(d.joins),linkIds=ids(d.endpointLinks??[]);
+ const order=(values:string[])=>new Map(values.map((id,i)=>[id,i]));
+ return {curveOrder:order(curveIds),nodeOrder:order(nodeIds),curveNodes:new Map(d.curves.map(curve=>[curve.id,[...curve.nodes]])),
+  joins:materialRelationIndex(d.joins),links:materialRelationIndex(d.endpointLinks??[]),
+  // The value-guarded topology key includes every structural ID and its order.
+  // A unique token avoids serializing that scene-sized key for each native path.
+  structuralIdToken:++nextMaterialDependencyToken,
+  // Imported/mutable duplicate-ID documents keep the original array-filter
+  // semantics instead of collapsing distinct objects through the read maps.
+  uniqueIds:[curveIds,nodeIds,joinIds,linkIds].every(values=>new Set(values).size===values.length),
+  paths:new InputCache<DrawingPathDependencyPlan>(256)};
+}
+/** Reuse only bounded structural dependency addresses. Interval collections,
+ * route selection, ARC geometry, and material fields are deliberately absent. */
+export function drawingMaterialPathDependencies(drawing:DrawingDocument,pathCurveIds:readonly string[]) {
+ const context=preparedDrawingReadContext(drawing);if(!context)return undefined;
+ const index=context.topology.materialDependencies??=materialDependencyIndex(drawing);if(!index.uniqueIds)return undefined;
+ const key=JSON.stringify(pathCurveIds),known=index.paths.get(key);
+ if(known)return {context,dependencies:known,structuralIdToken:index.structuralIdToken};
+ counts.materialPathPlans++;
+ const inOrder=(ids:Iterable<string>,order:Map<string,number>)=>[...new Set(ids)].filter(id=>order.has(id)).sort((a,b)=>order.get(a)!-order.get(b)!);
+ const relations=(source:MaterialRelationIndex)=>inOrder(pathCurveIds.flatMap(id=>source.incident.get(id)??[]),source.order);
+ const joinIds=relations(index.joins),linkIds=relations(index.links);
+ const curveIds=inOrder([...pathCurveIds,...joinIds.flatMap(id=>index.joins.ends.get(id)!),...linkIds.flatMap(id=>index.links.ends.get(id)!)],index.curveOrder);
+ const nodeIds=inOrder(curveIds.flatMap(id=>index.curveNodes.get(id)!),index.nodeOrder);
+ const dependencies=index.paths.set(key,{curveIds,nodeIds,joinIds,linkIds});
+ return {context,dependencies,structuralIdToken:index.structuralIdToken};
 }
