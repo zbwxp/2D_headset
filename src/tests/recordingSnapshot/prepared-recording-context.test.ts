@@ -173,7 +173,9 @@ describe('prepared Recording context through the production sampling entrypoints
   const recording=emptySnapshotRecording('recording');recording.mode='triangulated';recording.snapshotIds=views.map(view=>view.id);recording.activeSnapshotId='view:0:0';recording.angle=at(-60);recording.angleGraph=createSnapshotAngleGraph(views.map(view=>({snapshotId:view.id,angle:view.angle})));
   workspace.snapshots.push(...views);workspace.recordings=[recording];workspace.activeRecordingId='recording';freeze(workspace);
   const context=prepareRecordingContext(workspace,options),current=context.sample('recording');
-  expect(context.counters.ownGeometry).toBeLessThanOrEqual(10);expect(context.counters.basis).toBeLessThanOrEqual(9);expect(current.drawing.curves).toHaveLength(121);
+  // This edge has two numeric supports; structural membership alone must not
+  // force numerical preparation of all nine real views.
+  expect(context.counters.ownGeometry).toBe(3);expect(context.counters.basis).toBe(2);expect(current.drawing.curves).toHaveLength(121);
   const samples=context.sampleMany('recording',[{angle:at(-31,22)},{angle:at(37,-19)},{angle:at(0,45)}]);
   for(const sample of samples)expectColdEquivalent(sample,workspace);
   const onion=interpolateSnapshotSurfaceOnion(recording,current,{startSnapshotId:'view:-90:0',endSnapshotId:'view:90:0'},5);
