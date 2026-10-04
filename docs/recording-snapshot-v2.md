@@ -129,6 +129,16 @@ The material-insertion candidate retains `angleGraph.materialRecipes` and `mater
 
 Validation rejects missing/cyclic material dependencies atomically. Source curve/layer deletion cannot resurrect removed geometry through a retained recipe. Equal interval endpoints remain an exact no-op, including flat zero-response ranges; no epsilon gap is introduced. Full-curve onion rendering still bypasses material transport, clipping, ARC and fills. These support recipes are Recorder interpolation data, not another Snapshot inheritance system.
 
+### Live mirrored interval responses
+
+View mirroring samples the negative side's current interval response field, maps canonical track/range identities through the same semantic mirror correspondence, and transports those material positions to the positive final curves. An exact collapsed HIDE range through 30° stays collapsed on the reflected side. Directed route traversal already carries orientation: ordinary start/end labels are preserved; only an explicitly canonical-forward split mapping complements the scalar coordinate. Missing support is diagnosed locally and does not invent an interval or suppress unrelated geometry.
+
+Positive real-view insertion retains this dependency through one `view-mirror` term in the existing material recipe. The term contains the zero snapshot reference and original geometric support, without sampled drawings or copied property knots. Evaluation resolves its actual negative support first, completes the inherited material baseline, then applies positive local overrides. Later negative saved or draft responses remain live after insertion; positive authored response weights and real-view overrides retain their existing semantics. JSON validation includes these dependencies in material/source cycle checks, and failed insertion leaves the project unchanged.
+
+This term is captured by the new insertion path. Previously serialized positive recipes without it are not silently rewritten or claimed to have the same live dependency; that import boundary is separate from new insertion and later source edits.
+
+Native rendering, interval inverse editing and insertion replay share this material stage. The full-curve onion sampler continues to show complete construction curves and does not evaluate interval clipping. This change does not add discrete property authoring or close the separate complex ARC/source-split boundary.
+
 
 ### Explicit whole-layer domain and endpoint authoring
 
