@@ -24,6 +24,7 @@ import {sceneShapeWorkStats,resetSceneShapeWorkStats} from '../../domain/recordi
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type Angle} from '../../domain/recordingSnapshot/model';
 import {parseRecordingSnapshots} from '../../domain/recordingSnapshot/persistence';
 import {effectiveSnapshotSurfaceResponses} from '../../domain/recordingSnapshot/surfaceTargets';
+import {getSnapshotBasisFallbackWorkStats,resetSnapshotBasisFallbackWorkStats} from '../../domain/recordingSnapshot/surfaceBasisFallback';
 import {applyScenePlacement} from '../../domain/recordingScene/tracks';
 import {identityScenePlacement,type ScenePlacementValue} from '../../domain/recordingScene/model';
 
@@ -127,9 +128,17 @@ describe('minimum-change inverse through the existing editing workflow',()=>{
  it('protects the evaluated output of a previously saved calibration angle',()=>{
   const start=batch(fixture(),[{op:'setAngle',angle:{x:30,y:0}}]),current=evaluate(start).drawing,p=current.nodes.find(node=>node.id==='a')!.position;
   const saved=batch(plan(start,moveNode(current,'a',[p[0]+.12,p[1]-.08],true)).project,[{op:'updateSnapshot'}]),old=evaluate(saved,{x:30,y:0},false).drawing;
-  const before=batch(saved,[{op:'setAngle',angle:{x:60,y:0}}]),wanted=followTarget(before),next=plan(before,wanted).project;
+  const before=batch(saved,[{op:'setAngle',angle:{x:60,y:0}}]),wanted=followTarget(before);resetSnapshotBasisFallbackWorkStats();const next=plan(before,wanted).project;
+  const safeguards=getSnapshotBasisFallbackWorkStats();expect(safeguards.trustTargets).toBeGreaterThan(2);expect(safeguards.trustSupports).toBe(2);expect(safeguards.trustSamplers).toBe(4);
   near(evaluate(next).drawing,wanted);near(evaluate(next,{x:30,y:0}).drawing,old,8);sourceAndZeroUnchanged(before,next);
   const committed=batch(next,[{op:'updateSnapshot'}]);near(evaluate(committed,{x:30,y:0},false).drawing,old,8);near(evaluate(committed,undefined,false).drawing,wanted);
+ });
+
+ it('compiles trust validation once per angle while checking every solved scalar',()=>{
+  const project=fixture(),wanted=followTarget(project);resetSnapshotBasisFallbackWorkStats();
+  const next=plan(project,wanted).project,work=getSnapshotBasisFallbackWorkStats();
+  expect(work.trustTargets).toBeGreaterThan(2);expect(work.trustSupports).toBe(1);expect(work.trustSamplers).toBe(2);
+  near(evaluate(next).drawing,wanted);sourceAndZeroUnchanged(project,next);
  });
 
  it('solves every preview from the frozen beforeProject and ends at the direct target regardless of pointer detours',()=>{

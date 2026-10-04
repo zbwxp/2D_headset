@@ -15,6 +15,10 @@ import {solveBoundedSnapshotBasisAdjustment,SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS
 
 export class SnapshotBasisFallbackError extends Error {constructor(readonly code:string,message:string){super(message);}}
 const fail=(code:string,message:string):never=>{throw new SnapshotBasisFallbackError(code,message);};
+const fallbackWork={trustTargets:0,trustSupports:0,trustSamplers:0};
+/** Count numerical safeguards, independently of target size or timing. */
+export const getSnapshotBasisFallbackWorkStats=()=>({...fallbackWork});
+export const resetSnapshotBasisFallbackWorkStats=()=>{fallbackWork.trustTargets=0;fallbackWork.trustSupports=0;fallbackWork.trustSamplers=0;};
 const sameAngle=(a:Angle,b:Angle)=>a.x===b.x&&a.y===b.y;
 const key=(target:SnapshotScalarTarget,axis:0|1)=>JSON.stringify(target.kind==='node'?['node',target.nodeId,axis]:['handle',target.curveId,target.end,axis]);
 const indexed=new WeakMap<DrawingDocument,{nodes:Map<string,Point2>;curves:Map<string,DrawingDocument['curves'][number]>}>();
@@ -116,13 +120,30 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  for(const protection of targets)assertSnapshotControlTargetReplay(candidate().sample(recording.id,{angle:protection.angle}).drawing,protection.drawing);
  assertResponseTrustRegion(graph,nextGraph);
  const zeroBefore=frozen.resolveBasis(recording.id,zero!.snapshotId).drawing,zeroReplay=candidate().resolveBasis(recording.id,zero!.snapshotId).drawing;
- if(JSON.stringify(zeroReplay.nodes)!==JSON.stringify(zeroBefore.nodes)||JSON.stringify(zeroReplay.curves)!==JSON.stringify(zeroBefore.curves))fail('SURFACE_ZERO_BASIS_CONFLICT','This correction would change the fixed 0° controls through inheritance. Edit the responsible basis explicitly.');
+ if(zeroReplay.nodes!==zeroBefore.nodes&&JSON.stringify(zeroReplay.nodes)!==JSON.stringify(zeroBefore.nodes)||zeroReplay.curves!==zeroBefore.curves&&JSON.stringify(zeroReplay.curves)!==JSON.stringify(zeroBefore.curves))fail('SURFACE_ZERO_BASIS_CONFLICT','This correction would change the fixed 0° controls through inheritance. Edit the responsible basis explicitly.');
  return {graph:nextGraph,snapshots:[snapshot],...canBound?{changes:changes()}:{}};
 }
 
 function assertResponseTrustRegion(before:SnapshotAngleGraph,after:SnapshotAngleGraph):void {
  const draft=effectiveSnapshotSurfaceResponses(after).draft!,vertices=new Map(before.mesh.vertices.map(v=>[v.id,v.angle]));
- const check=(angle:Angle,target:SnapshotScalarTarget,axis:0|1)=>{const location=locateSnapshotSimplex(before.mesh,angle);if(!location||location.kind==='vertex')return;const coordinates=location.geometricWeights.map(()=>0),a=createSnapshotSurfaceResponseSampler(before,location)(target,axis,coordinates,location.geometricWeights),b=createSnapshotSurfaceResponseSampler(after,location)(target,axis,coordinates,location.geometricWeights);if(b.some((w,i)=>!Number.isFinite(w)||Math.abs(w-a[i])>SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS+1e-7))fail('SURFACE_BASIS_TRUST_LIMIT','Preserving the authored angles would exceed this correction’s finite response trust region. Use a smaller drag or explicitly edit the 90° basis.');};
+ // Every scalar still receives the same bound check. Only immutable support
+ // lookup and response compilation are shared within this validation pass.
+ // Each angle has its own original geometric weights; no sampler output or
+ // corrected weight is reused for another scalar or support.
+ const supports=new Map<string,ReturnType<typeof prepareSupport>>();
+ function prepareSupport(angle:Angle){
+  fallbackWork.trustSupports++;
+  const location=locateSnapshotSimplex(before.mesh,angle);if(!location||location.kind==='vertex')return;
+  fallbackWork.trustSamplers+=2;
+  return {location,coordinates:location.geometricWeights.map(()=>0),prior:createSnapshotSurfaceResponseSampler(before,location),next:createSnapshotSurfaceResponseSampler(after,location)};
+ }
+ const check=(angle:Angle,target:SnapshotScalarTarget,axis:0|1)=>{
+  fallbackWork.trustTargets++;
+  const id=JSON.stringify(angle);let support=supports.get(id);if(!supports.has(id)){support=prepareSupport(angle);supports.set(id,support);}
+  if(!support)return;
+  const {location,coordinates,prior,next}=support,a=prior(target,axis,coordinates,location.geometricWeights),b=next(target,axis,coordinates,location.geometricWeights);
+  if(b.some((w,i)=>!Number.isFinite(w)||Math.abs(w-a[i])>SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS+1e-7))fail('SURFACE_BASIS_TRUST_LIMIT','Preserving the authored angles would exceed this correction’s finite response trust region. Use a smaller drag or explicitly edit the 90° basis.');
+ };
  for(const [edgeId,responses] of Object.entries(draft.edgeResponses??{})){const edge=before.mesh.edges.find(e=>e.id===edgeId)!,a=vertices.get(edge.vertexIds[0])!,b=vertices.get(edge.vertexIds[1])!;const controls:[SnapshotScalarTarget,{x?:readonly (readonly [number,number])[];y?:readonly (readonly [number,number])[]}][]=[...Object.entries(responses.nodes).map(([nodeId,control])=>[{kind:'node',nodeId},control] as [SnapshotScalarTarget,typeof control]),...Object.entries(responses.handles).flatMap(([curveId,pair])=>pair.map((control,end)=>[{kind:'handle',curveId,end:end as 0|1},control] as [SnapshotScalarTarget,typeof control]))];for(const [target,control] of controls)for(const axis of [0,1] as const)for(const [t] of control[axis===0?'x':'y']??[])check({x:a.x*(1-t)+b.x*t,y:a.y*(1-t)+b.y*t},target,axis);}
  for(const [triangleId,responses] of Object.entries(draft.triangleResponses??{})){const triangle=before.mesh.triangles.find(t=>t.id===triangleId)!,points=triangle.vertexIds.map(id=>vertices.get(id)!);const controls=[...Object.entries(responses.nodes).map(([nodeId,control])=>[{kind:'node',nodeId} as SnapshotScalarTarget,control] as const),...Object.entries(responses.handles).flatMap(([curveId,pair])=>pair.map((control,end)=>[{kind:'handle',curveId,end:end as 0|1} as SnapshotScalarTarget,control] as const))];for(const [target,control] of controls)for(const axis of [0,1] as const)for(const sample of control[axis===0?'x':'y']??[])check({x:points.reduce((sum,p,i)=>sum+p.x*sample.at[i],0),y:points.reduce((sum,p,i)=>sum+p.y*sample.at[i],0)},target,axis);}
 }
