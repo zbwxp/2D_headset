@@ -1,3 +1,5 @@
+import type {DrawingDocument} from '../drawing/model';
+import type {SnapshotScalarPropertyTarget} from './model';
 import type {SnapshotScalarTarget} from './simplexGeometry';
 import type {SnapshotSimplexLocation} from './triangulation';
 import type {SnapshotSmoothProjectionContract} from './responseExpressions';
@@ -10,6 +12,12 @@ export interface SnapshotSurfaceMirrorSample {
  contracts:readonly SnapshotSmoothProjectionContract[];
  diagnostics:readonly string[];
 }
+export interface SnapshotSurfaceMirrorMaterial {
+ sample:(target:SnapshotScalarPropertyTarget,native:number)=>number|undefined;
+ diagnostics:string[];
+}
 export interface SnapshotSurfaceMirrorContext {
+ /** Main rendering only; independent of geometry/onion sampling. */
+ material?:(location:SnapshotSimplexLocation,drawing:DrawingDocument)=>SnapshotSurfaceMirrorMaterial|undefined;
  sample:(location:SnapshotSimplexLocation,weights:readonly number[])=>SnapshotSurfaceMirrorSample|undefined;
 }

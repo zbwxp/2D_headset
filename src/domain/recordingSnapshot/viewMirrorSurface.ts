@@ -1,3 +1,4 @@
+import {prepareSnapshotViewMirrorMaterial} from './viewMirrorMaterial';
 import type {DrawingDocument,Endpoint,Point2} from '../drawing/model';
 import {InputCache} from '../geometry/cache';
 import type {Angle,SnapshotAngleGraph} from './model';
@@ -20,7 +21,7 @@ const geometryOnly=(drawing:DrawingDocument):DrawingDocument=>{const ids=new Set
  * every scalar and onion frame; no recursive workspace evaluation occurs. */
 export function prepareSnapshotViewMirrorSurface(graph:SnapshotAngleGraph,bases:readonly SnapshotSimplexBasis[],zero:DrawingDocument,options:(current:DrawingDocument)=>ViewMirrorOptions):SnapshotSurfaceMirrorContext {
  const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.angle])),byId=new Map(bases.map(basis=>[basis.snapshotId,basis])),effective=effectiveSnapshotSurfaceResponses(graph);
- type Frame={scalar:SnapshotSurfaceMirrorSample['scalar'];contracts:SnapshotSmoothProjectionContract[];diagnostics:string[]};
+ type Frame={drawing:DrawingDocument;location:SnapshotSimplexLocation;scalar:SnapshotSurfaceMirrorSample['scalar'];contracts:SnapshotSmoothProjectionContract[];diagnostics:string[]};
  const samplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>(),frames=new InputCache<Frame>(96),supports=new Map<string,Angle[]>();
  type NodeMap={sourceId:string;targetId:string;sourceZero:Point2;targetZero:Point2};
  type HandleMap={source:Endpoint;target:Endpoint;sourceZero:Point2;targetZero:Point2;targetNode:string};
@@ -47,9 +48,9 @@ export function prepareSnapshotViewMirrorSurface(graph:SnapshotAngleGraph,bases:
   for(const node of projection.nodes)for(const axis of [0,1] as const)values.set(snapshotProjectionScalarKey({kind:'node',nodeId:node.targetId},axis),node.targetZero[axis]+(axis===0?-1:1)*(sourceNodes.get(node.sourceId)![axis]-node.sourceZero[axis]));
   for(const handle of projection.handles)for(const axis of [0,1] as const){const absolute=handle.targetZero[axis]+(axis===0?-1:1)*(sourceCurves.get(handle.source.curveId)!.handles[handle.source.end][axis]-handle.sourceZero[axis]);values.set(snapshotProjectionScalarKey({kind:'handle',...handle.target},axis),absolute-values.get(snapshotProjectionScalarKey({kind:'node',nodeId:handle.targetNode},axis))!);}
   const scalar:SnapshotSurfaceMirrorSample['scalar']=(target,axis)=>values.get(snapshotProjectionScalarKey(target,axis));
-  return frames.set(key,{scalar,contracts:projection.contracts,diagnostics:projection.diagnostics});
+  return frames.set(key,{drawing:source,location,scalar,contracts:projection.contracts,diagnostics:projection.diagnostics});
  };
- return {sample:(location:SnapshotSimplexLocation,weights:readonly number[]):SnapshotSurfaceMirrorSample|undefined=>{
+ return {material:prepareSnapshotViewMirrorMaterial(graph,bases,zero,options,at),sample:(location:SnapshotSimplexLocation,weights:readonly number[]):SnapshotSurfaceMirrorSample|undefined=>{
   const key=JSON.stringify(location.vertexIds);let corners=supports.get(key);if(!corners){corners=location.vertexIds.map(id=>vertices.get(id)!);supports.set(key,corners);}
   const angle=corners.reduce((sum,corner,index)=>({x:sum.x+corner.x*weights[index],y:sum.y+corner.y*weights[index]}),{x:0,y:0});if(angle.x<=0)return;
   const current=at(angle),anchors=corners.map(at);

@@ -20,22 +20,20 @@ import {displayField,displayPath} from '../drawing/displayIntervals';
 import {derivedUses} from '../drawing/roundedJoin';
 import {applyLayerDomains} from './layerDomainEvaluation';
 import {hasEvaluatedDeformation,evaluatedDeformationDiagnostics,evaluatedMaterialSource,projectEvaluatedGeometry} from '../drawing/evaluatedDeformation';
-import {snapshotMaterialPartitionValue} from './materialSplit';
 import {placeDrawingAffines,drawingLayerObjectOwners} from '../drawing/affineDrawing';
 import {layerDomainMatrices} from './layerDomains';
 import {applyAffine2D,affine2DMaxScale,identityAffine2D} from '../geometry/affine2d';
-import {intervalPinch} from '../drawing/intervalPinch';
 import {snapshotRouteMaterialSource,markSnapshotRouteMaterialInput} from './routeMaterialSource';
 import {transportEndpointPairMaterial} from './endpointPairMaterial';
 import {applyIntervalEnableFlags} from '../vectorRecording/intervals';
-import {applySnapshotMaterialRecipe,evaluateSnapshotMaterialRecipe,snapshotMaterialRecipeDependencies} from './materialRestriction';
+import {applySnapshotMaterialRecipe,snapshotMaterialRecipeDependencies} from './materialRestriction';
 import {applySnapshotInheritedFitParameters} from './responseFitParameterInheritance';
 import {placeSnapshotElements,retainSnapshotAffines} from './elementPlacement';
 import {mirrorSnapshotDrawing,SnapshotMirrorError} from './snapshotMirror';
 import {resolveSnapshotLocalMembership} from './localMembership';
 import {prepareSnapshotCoverage,type SnapshotCoverageCurvePreview} from './snapshotCoverage';
-import {transportSnapshotSimplexMaterial} from './simplexMaterial';
-import {blendSnapshotPropertyValues,createSnapshotPropertyResponseSampler,snapshotPropertyResponsesCacheKey} from './propertyResponses';
+import {evaluateSnapshotSurfaceMaterial} from './surfaceMaterial';
+import {snapshotPropertyResponsesCacheKey} from './propertyResponses';
 import {createSnapshotSurfaceValueSampler} from './surfaceTargets';
 import type {SnapshotSimplexLocation} from './triangulation';
 import {emptyDrawing,layerFor,shapeOf,type DrawingDocument,type DrawingLayer,type Point2,type Cubic} from '../drawing/model';
@@ -427,7 +425,7 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  const responseSamplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>();
  let mirrorContext:SnapshotSurfaceMirrorContext|undefined;
  if(zero){let mirrorCache=mirrorSurfacePreparationCaches.get(workspace.library);if(!mirrorCache){mirrorCache=new InputCache(12);mirrorSurfacePreparationCaches.set(workspace.library,mirrorCache);}
-  const mirrorKey=JSON.stringify([recording.id,meshKey,allBases.map(resultIdentity),positiveBases?.map(resultIdentity),responseKey]);mirrorContext=mirrorCache.get(mirrorKey);
+  const mirrorKey=JSON.stringify([recording.id,meshKey,allBases.map(resultIdentity),positiveBases?.map(resultIdentity),responseKey,snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes??null,graph.materialPartitions??null,graph.materialPathLineages??null]);mirrorContext=mirrorCache.get(mirrorKey);
   if(!mirrorContext){mirrorContext=prepareSnapshotViewMirrorSurface(effectiveGraph,allBases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:angleFor(base.snapshotId)})),zero.drawing,current=>snapshotViewMirrorOptions(workspace,recording,zero,{...zero,drawing:current}));mirrorCache.set(mirrorKey,mirrorContext);}
  }
  const sampled=prepared.evaluate(requested,location=>{const locationKey=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=responseSamplers.get(locationKey);if(!sampler){sampler=createSnapshotSurfaceValueSampler(effectiveGraph,location,baseRefs,mirrorContext);responseSamplers.set(locationKey,sampler);}return sampler;});
@@ -445,13 +443,10 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  }
  let drawing=normal?.drawing??emptyDrawing();
  if(normal){
-  const materialBases=active.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing})),recipe=graph.materialRecipes?.[normal.simplex.simplexId];
-  const retained=recipe?evaluateSnapshotMaterialRecipe(recipe,baseRefs,drawing,requested,graph.materialPartitions,graph.materialPathLineages):undefined;
-  const native=createSnapshotPropertyResponseSampler(effectiveGraph,normal.simplex),inherited=(target:Parameters<typeof native>[0])=>retained?snapshotMaterialPartitionValue(graph.materialPartitions,retained.drawing,target,graph.materialPathLineages):undefined;
-  const material=transportSnapshotSimplexMaterial(materialBases,retained?.drawing??drawing,normal.simplex.geometricWeights,{partitions:graph.materialPartitions,pathLineages:graph.materialPathLineages,inherited,response:(target,values,weights)=>{const old=inherited(target),value=native(target,values,weights);return old===undefined?value:old+(value-blendSnapshotPropertyValues(values,weights));},pinch:(trackId,rangeId)=>{const range=retained?.drawing.displayIntervals?.find(track=>track.id===trackId)?.ranges.find(range=>range.id===rangeId);return range?intervalPinch(range):undefined;}});
+  const material=evaluateSnapshotSurfaceMaterial(effectiveGraph,normal.simplex,baseRefs,drawing,requested,mirrorContext?.material?.(normal.simplex,drawing));
   const visibility=graph.visibilityRecipes?.[normal.simplex.simplexId];
   drawing=visibility?evaluateSnapshotVisibilityRecipe(visibility,bases,material.drawing,requested):material.drawing;
-  diagnostics.push(...[...material.diagnostics,...retained?.diagnostics??[]].map(message=>({code:'SOURCE_MATERIAL' as const,message})));
+  diagnostics.push(...material.diagnostics.map(message=>({code:'SOURCE_MATERIAL' as const,message})));
  }
  const snapshot=workspace.snapshots.find(s=>s.id===selected.snapshotId)!;
  const result:SnapshotEvaluation={...selected,angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(base=>base.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(base=>base.intervalTransportErrors)};

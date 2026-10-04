@@ -43,7 +43,7 @@ function restrictMirrorPresence(drawing:DrawingDocument,curveIds:ReadonlySet<str
 /** Partial canonical coverage is a runtime presence decision, never a weaker
  * mirror kernel. Missing zero inputs omit that positive sample and leave the
  * native negative sample available to the ordinary read-only red fallback. */
-export function mirrorViewDrawingPresence(current:DrawingDocument,zero:DrawingDocument,options:ViewMirrorOptions):ViewMirrorResult {
+export function mirrorViewDrawingPresence(current:DrawingDocument,zero:DrawingDocument,options:ViewMirrorOptions,prepared?:Parameters<typeof mirrorViewDrawing>[3]):ViewMirrorResult {
  validateSnapshotMirrorMetadata({curvePairs:{add:[...options.curvePairs]}});
  for(const node of current.nodes)if(!finitePoint(node.position))throw new ViewMirrorError([{code:'INVALID_REFERENCE',entityKind:'nodes',entityId:node.id,message:`Current node ${node.id} has non-finite controls.`}]);
  for(const curve of current.curves)if(curve.handles.some(point=>!finitePoint(point)))throw new ViewMirrorError([{code:'INVALID_REFERENCE',entityKind:'curves',entityId:curve.id,message:`Current curve ${curve.id} has non-finite controls.`}]);
@@ -58,5 +58,5 @@ export function mirrorViewDrawingPresence(current:DrawingDocument,zero:DrawingDo
  }
  const availablePairs=options.curvePairs.filter(pair=>validZero(pair.a)&&validZero(pair.b)),zeroEligible=new Set(zero.curves.filter(curve=>validZero(curve.id)).map(curve=>curve.id));
  const filtered={...options,curvePairs:availablePairs,axisNodeIds:options.axisNodeIds?.filter(id=>zeroNodes.has(id)),unpairedGroups:options.unpairedGroups?.map(group=>({...group,curveIds:group.curveIds.filter(id=>eligible.has(id))})).filter(group=>group.curveIds.length)};
- const result=mirrorViewDrawing(restrictMirrorPresence(current,eligible),restrictMirrorPresence(zero,zeroEligible),filtered);return {...result,diagnostics:[...diagnostics,...result.diagnostics]};
+ const result=mirrorViewDrawing(restrictMirrorPresence(current,eligible),restrictMirrorPresence(zero,zeroEligible),filtered,prepared);return {...result,diagnostics:[...diagnostics,...result.diagnostics]};
 }

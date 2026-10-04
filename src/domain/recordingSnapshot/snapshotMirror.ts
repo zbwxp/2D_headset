@@ -108,6 +108,12 @@ function entityCorrespondence<T extends {id:string}>(
  * It never inserts absent current objects or uses geometry to infer identity.
  */
 export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMirrorOptions,canonicalDrawing:DrawingDocument=drawing):SnapshotMirrorResult {
+ return prepareSnapshotMirrorDrawing(options,canonicalDrawing)(drawing);
+}
+
+/** Compile canonical semantic identities once for a runtime sampling batch.
+ * Changing sampled cuts never changes track/range correspondence. */
+export function prepareSnapshotMirrorDrawing(options:SnapshotMirrorOptions,canonicalDrawing:DrawingDocument):(drawing:DrawingDocument)=>SnapshotMirrorResult {
  if(!options||!Number.isFinite(options.axisX))fail('INVALID_AXIS','Snapshot reflection requires an explicit finite axisX.');
  const curves=new Map(canonicalDrawing.curves.map(curve=>[curve.id,curve])),nodes=new Set(canonicalDrawing.nodes.map(node=>node.id));
  if(curves.size!==canonicalDrawing.curves.length||nodes.size!==canonicalDrawing.nodes.length)fail('INVALID_REFERENCE','Canonical curve and node IDs must be unique.');
@@ -173,6 +179,7 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  const objectId=(id:string)=>curveMap[id]?.id??fills[id]??offsets[id]??fail('INVALID_REFERENCE',`Mirror layer points to missing object ${id}.`);
  const layers=entityCorrespondence(canonicalDrawing.layers,'layers',(layer,mapped)=>setSignature(mapped?layer.items.map(objectId):layer.items),diagnostics);
  const correspondence:SnapshotMirrorCorrespondence={curves:curveMap,nodes:nodeMap,fills,offsets,layers,joins,endpointLinks:links,groups,displayIntervals:intervals,ranges};
+ return (drawing:DrawingDocument):SnapshotMirrorResult=>{
  if(canonicalDrawing!==drawing){
   for(const [kind,values] of [['nodes',drawing.nodes],['curves',drawing.curves],['fills',drawing.fills],['offsets',drawing.offsets],['layers',drawing.layers],['joins',drawing.joins],['endpointLinks',drawing.endpointLinks??[]],['groups',drawing.groups??[]],['displayIntervals',drawing.displayIntervals??[]],['ranges',(drawing.displayIntervals??[]).flatMap(track=>track.ranges)]] as const)
    for(const value of values)if(!Object.hasOwn(correspondence[kind],value.id))fail('INVALID_REFERENCE',`Current ${kind} ${value.id} has no canonical mirror identity.`);
@@ -229,4 +236,5 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
   });
  }
  return {drawing:result,correspondence,diagnostics};
+ };
 }

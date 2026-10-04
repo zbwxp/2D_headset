@@ -73,7 +73,7 @@ export function validateSnapshotPropertyResponses(value:unknown,mesh:SnapshotTri
  }
 }
 
-export interface SnapshotPropertyResponseOptions {useDraft?:boolean}
+export interface SnapshotPropertyResponseOptions {useDraft?:boolean;/** The mirrored source supplies the authored 0− column to positive material. */omitZeroEdgeResponses?:boolean}
 /** Draft maps replace only the simplex entries they contain. Saved responses
  * stay independent, and a geometry-only draft does not mask saved properties. */
 export function effectiveSnapshotPropertyResponses(graph:SnapshotAngleGraph,options:SnapshotPropertyResponseOptions={}):SnapshotPropertyResponses&{draft?:SnapshotCorrectionFrame} {
@@ -116,10 +116,10 @@ export function createSnapshotPropertyResponseSampler(graph:SnapshotAngleGraph,l
  validateSnapshotPropertyResponses(responses,graph.mesh);
  // Freeze the field's inputs at preparation; lazy compilation cannot see later
  // editor mutations. Compilation and field validation happen once per target.
- const owned=structuredClone(responses),original=[...location.geometricWeights];
+ const owned=structuredClone(responses),original=[...location.geometricWeights],zero=new Set(graph.mesh.vertices.filter(vertex=>vertex.angle.x===0).map(vertex=>vertex.id)),excluded=new Set(options.omitZeroEdgeResponses?graph.mesh.edges.filter(edge=>edge.vertexIds.every(id=>zero.has(id))).map(edge=>edge.id):[]);
  const sample=createSnapshotScalarResponseWeightSampler<SnapshotScalarPropertyTarget>(support,{
   key:snapshotScalarPropertyTargetKey,
-  edgeKnots:(edgeId,target)=>own(owned.edges,edgeId)?.find(response=>snapshotScalarPropertyTargetKey(response.target)===snapshotScalarPropertyTargetKey(target))?.knots,
+  edgeKnots:(edgeId,target)=>excluded.has(edgeId)?undefined:own(owned.edges,edgeId)?.find(response=>snapshotScalarPropertyTargetKey(response.target)===snapshotScalarPropertyTargetKey(target))?.knots,
   triangleSamples:(triangleId,target)=>own(owned.triangles,triangleId)?.find(response=>snapshotScalarPropertyTargetKey(response.target)===snapshotScalarPropertyTargetKey(target))?.samples,
  });
  return (target,basisValues,geometricWeights=original)=>{
@@ -147,7 +147,7 @@ export function solveSnapshotPropertyResponseWeights(geometricWeights:readonly n
 }
 
 export interface SnapshotPropertyTargetEdit {target:SnapshotScalarPropertyTarget;basisValues:readonly number[];value:number;/** Existing retained material contribution, held fixed during this scalar inverse. */residual?:number}
-export interface SnapshotPropertyTargetEditOptions {angle:Angle;frameId:string}
+export interface SnapshotPropertyTargetEditOptions extends Pick<SnapshotPropertyResponseOptions,'omitZeroEdgeResponses'> {angle:Angle;frameId:string}
 export interface SnapshotPropertyTargetEditResult {graph:SnapshotAngleGraph;changed:boolean}
 /** One transaction for all supplied endpoints/properties. Every inverse and the
  * complete replay must succeed before a candidate draft is returned. A real
@@ -162,7 +162,7 @@ export function prepareSnapshotPropertyTargetEdit(graph:SnapshotAngleGraph,locat
  const effective=effectiveSnapshotPropertyResponses(graph),draft=effective.draft;
  if(draft&&!sameAngle(draft.angle,options.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','A correction draft exists at another angle. Save or discard it before editing another angle.');
  if(!draft&&(graph.correctionFrames??[]).some(frame=>frame.id===options.frameId))invalid('This correction frame ID is already saved. Use a new draft frame ID.');
- const current=createSnapshotPropertyResponseSampler(graph,location),seen=new Set<string>();
+ const current=createSnapshotPropertyResponseSampler(graph,location,options),seen=new Set<string>();
  const updates:{edit:SnapshotPropertyTargetEdit;key:string;weights:BarycentricWeights}[]=[];
  for(const edit of edits){
   const key=snapshotScalarPropertyTargetKey(edit.target);if(seen.has(key))invalid('An atomic property edit contains a duplicate target.');seen.add(key);
@@ -200,7 +200,7 @@ export function prepareSnapshotPropertyTargetEdit(graph:SnapshotAngleGraph,locat
  validateSnapshotPropertyResponses(propertyResponses,graph.mesh);
  const nextFrame:SnapshotCorrectionFrame={...draft,id:frameId,angle:{...options.angle},status:'draft',propertyResponses};
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
- const replay=createSnapshotPropertyResponseSampler(candidate,location);
+ const replay=createSnapshotPropertyResponseSampler(candidate,location,options);
  for(const edit of edits){
   const value=replay(edit.target,edit.basisValues)+(edit.residual??0);
   if(Math.abs(value-edit.value)>256*Number.EPSILON*Math.max(1,Math.abs(value),Math.abs(edit.value)))fail('PROPERTY_CONSTRAINT_UNSOLVABLE',`${snapshotScalarPropertyTargetKey(edit.target)}: the complete response cannot reproduce the requested finite material value.`);

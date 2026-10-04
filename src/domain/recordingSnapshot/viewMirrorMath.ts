@@ -7,6 +7,7 @@ import type {Affine2D} from '../geometry/affine2d';
 import {retainSnapshotAffines} from './elementPlacement';
 import {snapshotControlComponents} from './controlTargets';
 import {mirrorSnapshotDrawing,type SnapshotMirrorCorrespondence,type SnapshotMirrorDiagnostic,type SnapshotMirrorOptions} from './snapshotMirror';
+import type {SnapshotMirrorResult} from './snapshotMirror';
 
 /** A reference belongs to a complete local zero-view group. The caller chooses
  * it; neither the global Drawing axis nor individual curve bounds select it. */
@@ -57,7 +58,7 @@ export function viewMirrorUnpairedCurveGroups(zero:DrawingDocument,curvePairs:Vi
  * to the existing snapshot mapper. Its axis=0 below is only the linear S
  * operation; it is never a world-space reference or a fallback mirror axis.
  */
-export function mirrorViewDrawing(current:DrawingDocument,zero:DrawingDocument,options:ViewMirrorOptions):ViewMirrorResult {
+export function mirrorViewDrawing(current:DrawingDocument,zero:DrawingDocument,options:ViewMirrorOptions,prepared?:(drawing:DrawingDocument)=>SnapshotMirrorResult):ViewMirrorResult {
  const zeroNodes=new Map(zero.nodes.map(node=>[node.id,node])),zeroCurves=new Map(zero.curves.map(curve=>[curve.id,curve]));
  const currentCurves=new Map(current.curves.map(curve=>[curve.id,curve])),currentNodes=new Map(current.nodes.map(node=>[node.id,node]));
  const diagnostics:ViewMirrorDiagnostic[]=[];
@@ -66,7 +67,7 @@ export function mirrorViewDrawing(current:DrawingDocument,zero:DrawingDocument,o
  for(const curve of current.curves){const baseline=zeroCurves.get(curve.id);if(!baseline)diagnostics.push(issue('MISSING_ZERO_ENTITY','curves',curve.id,`Curve ${curve.id} has no evaluated zero-view baseline.`));else if(curve.nodes.some((id,end)=>baseline.nodes[end]!==id))diagnostics.push(issue('ZERO_TOPOLOGY_MISMATCH','curves',curve.id,`Curve ${curve.id} changed canonical endpoints between the current and zero views.`));else if([...curve.handles,...baseline.handles].some(point=>!finitePoint(point)))diagnostics.push(issue('INVALID_REFERENCE','curves',curve.id,`Curve ${curve.id} has non-finite current or zero-view handles.`));}
  for(const pair of options.curvePairs)for(const id of [pair.a,pair.b])if(!zeroCurves.has(id)&&!diagnostics.some(value=>value.entityKind==='curves'&&value.entityId===id))diagnostics.push(issue('MISSING_ZERO_ENTITY','curves',id,`Paired curve ${id} has no evaluated zero-view baseline.`));
  if(diagnostics.length)throw new ViewMirrorError(diagnostics);
- const mapped=mirrorSnapshotDrawing(current,{...options,axisX:0},zero),mapping=mapped.correspondence;
+ const mapped=prepared?prepared(current):mirrorSnapshotDrawing(current,{...options,axisX:0},zero),mapping=mapped.correspondence;
  const paired=new Set(options.curvePairs.flatMap(pair=>[pair.a,pair.b]));
  const pairedNodes=new Set(current.curves.filter(curve=>paired.has(curve.id)).flatMap(curve=>curve.nodes));
  const references=new Map<string,Point2>();
