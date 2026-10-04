@@ -1,26 +1,26 @@
 # Recording snapshots v2
 
-The published v50 default is the triangulated Recorder. Its UI/mirror acceptance is documented in `artifacts/triangulated-recorder-qa/v50-browser-verification.json`. The next candidate adds independent interval endpoint responses, clean source deletion, and Drawing reference editing; its browser acceptance is still pending. The agreed responsibility boundaries are in [editor, snapshot and recording principles](architecture/editor-snapshot-recording-principles.md).
+The current app uses the triangulated Recorder. Independent interval endpoint responses, source deletion, shared Drawing editing and global Undo are implemented; release-specific evidence and remaining boundaries are tracked in the [acceptance matrix](architecture/editor-unification-acceptance.md). Old channel and endpoint-pair recordings were retired in v80. The endpoint-pair sections below document historical data and mathematics, not an available creation workflow. The agreed responsibility boundaries are in [editor, snapshot and recording principles](architecture/editor-snapshot-recording-principles.md).
 
 ## Data model
 
 `project.recordingSnapshots.version=2` contains one canonical original-element library, snapshots, and recordings. A snapshot stores ordered live layer references, its own relationship overrides (`add`, `update`, `disable`), and residual pose state. It stores no baked copy of original curves. Source snapshots own the live layer member list; referenced snapshots follow source additions and edits.
 
-A recording indexes view snapshots and independent sparse channel tracks. Creating a view inherits the current evaluated references and state without creating a key for every object. Updating a view saves only its current-angle drafts. Warp creation seeds that new Warp at existing views so established poses remain neutral. Snapshot ancestry has stable identities, cycle checks and explicit branch-conflict diagnostics; a face-variant editing UI is outside this release.
+A recording binds generic snapshots to mesh vertices and owns geometric and interval endpoint response fields on its edges and triangles. Correction frames edit these fields without creating new snapshot vertices. A real-view insertion captures its evaluated state and restricts supported existing fields. Updating a real view saves its local draft. Snapshot ancestry has stable identities, cycle checks and explicit branch-conflict diagnostics; a face-variant editing UI is outside this release.
 
 Drawing remains the original-element editor. Its changes and canonical-library updates share one history transaction. Existing per-curve offsets remain relative to the updated originals. A new curve has zero direct offsets and follows any live layer Warp or domain placement. Take-reference/cut is non-destructive: paste adds the same live layer address to another snapshot, while explicit removal changes only the target snapshot membership. Copy/paste creates new canonical identities and rewrites their internal references.
 
-Legacy sources with identical raw IDs are isolated by original artwork identity, with a complete origin mapping. Valid v33 pose tracks migrate to editable layer channels, preserving every key, empty key, interpolation mode, draft and exact zero scale. Original project JSON is archived for recovery. Missing or conflicting dependencies retain explicit legacy fallback rather than guessing or deleting data.
+Sources with identical raw IDs are isolated by original artwork identity, with a complete origin mapping. Importing a retired recording preserves its original input for viewing/export and does not silently convert or delete it. An explicit reviewed action can clear recording relationships while keeping all Drawing sources, then start a fresh triangulated workspace. No additional archive or hidden conversion is created by that action.
 
 ## Current triangulated workflow
 
 1. Create a Recording with `createTriangulatedRecording`. The 0/0 real snapshot starts empty; missing pitch ±90 placeholders initially inherit it without a pitch deformation.
 2. Take selected Drawing layer references and paste them into the current real snapshot. This does not remove the source layers, duplicate geometry, or add another semantic parent.
 3. Move the XY cursor to inspect. Geometry outside its own recorded support is a red read-only overlay. Creating an outside real snapshot starts empty; the overlay is not captured. Paste matching canonical layer references to establish normal support there. Creating −90/0 also creates missing +90 semantic mirror and extreme pitch placeholders. Existing real snapshots are never overwritten.
-4. At real vertices, A/V writes that snapshot's residual state. At normal intermediate coordinates, A/V inverse-edits Recorder node and relative-handle responses. Save correction commits the draft without creating a new mesh vertex. Creating an additional real snapshot inside existing coverage remains explicitly blocked until trajectory transfer is implemented.
+4. At real vertices, A/V writes that snapshot's residual state. At normal intermediate coordinates, A/V inverse-edits Recorder node and relative-handle responses. Save correction commits the draft without creating a new mesh vertex. Creating an additional real snapshot inside existing coverage uses the common geometric/material restriction machinery; a currently unsupported dependency is diagnosed before mutation.
 5. Onion preview uses the same Recorder geometry sampler on the selected angle path. Each ghost shows complete source cubics, including hidden construction curves. It skips interval clipping, ARC construction, fill and brush tessellation. Current fill is temporarily hidden; 30°/60° guides are highlighted. Sampling creates no snapshot, geometry key, or history entry.
 
-### Independent interval endpoint responses (next candidate)
+### Independent interval endpoint responses
 
 In a triangulated Recording, `changeInterval` with `start` and/or `end` at an intermediate covered angle edits a Recorder property response. It does not add a real snapshot, change geometry responses, or bake the current pose. Target identity is `{kind:'interval-endpoint', layerId, sourceTrackId, rangeId, end:'start'|'end'}`. The two endpoints are independent scalar properties, transported to the current material path before sampling.
 
@@ -46,6 +46,18 @@ Core operations are `createRecording`, `createSnapshot`, `selectSnapshot`, `setA
 
 `cloneLayers` creates a [current-shape independent copy](current-shape-independent-copy.md) of the addressed snapshot’s saved evaluated layers with new IDs. Its current geometry and local material are preserved, old parents are disconnected, and only the affine material representation required for exact ARC is retained. Unsupported appearance rejects the whole batch with object diagnostics. `pasteLayers` stays a live reference.
 
+### Local-zero View mirror relation (current candidate)
+
+`setViewMirror` accepts `{relation:{zeroSnapshotId,sourceSnapshotId,targetSnapshotId,unpairedReference?}}` for an existing triangulated Recording. The three IDs bind 0/0, −90/0 and +90/0. The positive snapshot retains its single negative parent; the zero snapshot is an additional Recorder expression input, not another inheritance parent. This command stores references and a policy, never copied geometry, a fixed world pivot or duplicated response assets.
+
+Semantic paired controls use their current evaluated zero baselines and reflected source deformation. The canonical correspondence includes reversed curve ends, shared nodes and endpoint-relative handles. For unpaired connected geometry, the user-approved default `unpairedReference:'zero-stroke-frame'` reads the displayed zero-view V frame each time its dependencies change. A zero-width frame remains a valid reference. Each connected group uses its own frame; no global character axis is inferred.
+
+The positive side uses virtual zero-column inputs, including pitch placeholders, while the mesh keeps one real vertex at each coordinate. Exact zero editing stays on the authored side. Asymmetric unpaired zero geometry may have an intentional seam; the application must not smooth it, relocate it to a global axis or create fake near-zero angle keys. Child local deformation is applied once after the mirrored input. Ordinary parent reads use saved state; Recorder preview can include the currently authored zero or negative draft without saving it.
+
+Main evaluation, full-curve onion and positive inverse/replay share the live negative geometry field. The mapped source value is rebased against its mapped corner values before the positive local contribution is applied; source response assets are never copied into positive maps. This also handles different source/target triangle diagonals. Authored zero-column edge responses enter the positive side through the mirrored field once. Missing zero support omits only the affected positive curve sample, retains its diagnostic and read-only red fallback, and does not block unrelated members.
+
+Material interval-property mirroring remains a separate follow-up; those fields still use the existing positive material sampler. Restriction of an already projected positive correction during real-view insertion has not been established by these mirror regressions. Drawing mirror-edit preferences remain a separate editing behavior.
+
 ### Retired v40 common weight assets
 
 The old common monotone layer/line weight editor, commands and runtime remapping have been removed. Import accepts and discards only the obsolete `recording.interpolationWeights` registry. Independent sparse channel tracks, all authored keys and drafts, canonical source IDs, and embedded recovery JSON strings remain intact. Older projects still open; endpoint node/handle responses and the interval `propertyResponses` maps keep their own supported behavior.
@@ -64,7 +76,7 @@ In a saved legacy view or an endpoint-pair basis, V selects a connected stroke a
 
 A shared endpoint, explicit link, rounded join or material boundary cannot receive conflicting transforms from the same operation. Incomplete selections are rejected with the additional curves to include; no endpoint averaging or unrequested movement is used. Derived ARC and material ink use the composed affine mapping, including nonuniform and zero scales, while retaining the fixed-width ink convention. The existing endpoint-pair restriction on incompatible deferred ARC bases remains explicit. Intermediate inverse-correction angles route V through the final-control target resolver described below, rather than authoring these placement tracks or adding geometry keys.
 
-## Explicit endpoint-pair inverse corrections
+## Historical endpoint-pair inverse corrections (retired)
 
 Human workflow: in the existing recording, select the two endpoint views above the onion controls, then click **建立两端反推副本 / Create endpoint-correction copy**. The new recording has two basis buttons and a fixed yaw interval. At an endpoint, edit and **更新基础端点 / Update basis endpoint**. At 30°/60° or another interior angle, use A for a node/handle or V for a selected stroke, layer or multiple layers. V supports translation, rotation, uniform scaling and the independent X/Y edge handles. Then **保存反推修正 / Save inverse correction**. There is no Add View button at correction positions. Select a canvas control or the control dropdown to edit its X/Y response graph. Save or discard a canvas correction draft before editing graph assets. Graph dragging is one Undo transaction; response values can reverse or exceed 0–100%. The basis endpoints remain fixed by the response graph.
 
