@@ -139,5 +139,7 @@ describe('prepared Recording dependency invalidation',()=>{
   expect(()=>useEditor.getState().commitPreparedSnapshotEdit(cancelled)).toThrow(/cancel|stale|supersed/i);vi.runAllTimers();expect(useEditor.getState().project).toBe(f.project);expect(useEditor.getState().future).toBe(state.future);
   useEditor.getState().redo();const after=useEditor.getState();expect(()=>after.commitPreparedSnapshotEdit(edit)).toThrow(/stale/i);vi.runAllTimers();
   expect(useEditor.getState().project).toBe(after.project);expect(useEditor.getState().past).toBe(after.past);expect(useEditor.getState().future).toBe(after.future);
+  useEditor.getState().undo();const fresh=prepareSnapshotDrawingToolEdit(snapshotEditContext(f.project,false),{recordingId:'recording',snapshotId:before.snapshotId,angle:f.recording.angle,beforeDrawing:before.drawing,drawing:target,intent:{kind:'geometry'}});
+  expect(()=>useEditor.getState().commitPreparedSnapshotEdit(fresh)).not.toThrow();expect(useEditor.getState().project).toBe(fresh.project);expect(useEditor.getState().past).toEqual([f.project]);
  });
 });
