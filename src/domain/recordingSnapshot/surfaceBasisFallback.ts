@@ -1,3 +1,6 @@
+import {registerPreparedControlChanges} from './preparedControlChanges';
+import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
+import {drawingControlDependencyIndex,drawingControlEditProof,drawingControlPlanView,prepareDrawingControlEditPlan,applyDrawingControlWrites,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {sub,type DrawingDocument,type Point2} from '../drawing/model';
 import {endpointPairNodeAuthorities} from './endpointPair';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
@@ -13,7 +16,10 @@ export class SnapshotBasisFallbackError extends Error {constructor(readonly code
 const fail=(code:string,message:string):never=>{throw new SnapshotBasisFallbackError(code,message);};
 const sameAngle=(a:Angle,b:Angle)=>a.x===b.x&&a.y===b.y;
 const key=(target:SnapshotScalarTarget,axis:0|1)=>JSON.stringify(target.kind==='node'?['node',target.nodeId,axis]:['handle',target.curveId,target.end,axis]);
-const index=(drawing:DrawingDocument)=>({nodes:new Map(drawing.nodes.map(n=>[n.id,n.position])),curves:new Map(drawing.curves.map(c=>[c.id,c]))});
+const indexed=new WeakMap<DrawingDocument,{nodes:Map<string,Point2>;curves:Map<string,DrawingDocument['curves'][number]>}>();
+const index=(drawing:DrawingDocument)=>{let result=indexed.get(drawing);if(!result){result={nodes:new Map(drawing.nodes.map(n=>[n.id,n.position])),curves:new Map(drawing.curves.map(c=>[c.id,c]))};indexed.set(drawing,result);}return result;};
+const scales=new WeakMap<DrawingDocument,WeakMap<DrawingDocument,number>>();
+function basisScale(side:DrawingDocument,zero:DrawingDocument):number {let cache=scales.get(side);if(!cache){cache=new WeakMap();scales.set(side,cache);}let scale=cache.get(zero);if(scale===undefined){const points=[...side.nodes.map(n=>n.position),...side.curves.flatMap(c=>c.handles),...zero.nodes.map(n=>n.position),...zero.curves.flatMap(c=>c.handles)],extent=(axis:0|1)=>Math.max(...points.map(p=>p[axis]))-Math.min(...points.map(p=>p[axis]));scale=Math.max(1e-6,extent(0),extent(1));cache.set(zero,scale);}return scale;}
 const vector=(drawing:ReturnType<typeof index>,curveId:string,end:0|1)=>{const curve=drawing.curves.get(curveId)!;return sub(curve.handles[end],drawing.nodes.get(curve.nodes[end])!);};
 const changed=(a:number,b:number)=>Math.abs(a-b)>64*Number.EPSILON*Math.max(1,Math.abs(a),Math.abs(b));
 
@@ -35,7 +41,7 @@ function calibrationAngles(graph:SnapshotAngleGraph,active:Angle):Angle[] {
 /** Joint nodes and relative handles, with a soft node penalty. This bounded
  * generalization is deliberately a cardinal-edge fallback; triangle and live
  * inherited-expression inverses continue to use the original exact solver. */
-export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean}={}):{graph:SnapshotAngleGraph;snapshots:RecordingSnapshot[]} {
+export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean;controlPlan?:DrawingControlEditPlan}={}):{graph:SnapshotAngleGraph;snapshots:RecordingSnapshot[];changes?:SnapshotSimplexRevisionChanges} {
  const frozen=prepareRecordingContext(workspace,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}).beginGesture();
  const graph=recording.angleGraph!,surface=evaluation.angleSurface!,location=surface.simplex!,vertices=location.snapshotIds.map(id=>graph.mesh.vertices.find(v=>v.snapshotId===id)!);
  const zero=vertices.find(v=>v.angle.x===0&&v.angle.y===0),side=vertices.find(v=>(Math.abs(v.angle.x)===90&&v.angle.y===0)||(Math.abs(v.angle.y)===90&&v.angle.x===0));
@@ -45,10 +51,15 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  const owner=workspace.snapshots.find(s=>s.id===side!.snapshotId)!;
  if(owner.draft&&!snapshotSurfaceOwnsBasisDraft(graph,owner.id))fail('SURFACE_BASIS_DRAFT_CONFLICT','The 90° view already has a separate draft. Save or discard that draft before using the coupled correction.');
  const sideIndex=location.snapshotIds.indexOf(side!.snapshotId),zeroIndex=location.snapshotIds.indexOf(zero!.snapshotId),sideDrawing=surface.bases[sideIndex].drawing,zeroDrawing=surface.bases[zeroIndex].drawing;
- const before=index(evaluation.drawing),target=index(wanted),basis=index(sideDrawing),fixed=index(zeroDrawing),authorities=endpointPairNodeAuthorities(evaluation.drawing);
- const affected=wanted.curves.filter(c=>{const old=before.curves.get(c.id)!;return c.handles.some((p,e)=>p.some((v,a)=>changed(v,old.handles[e][a])))||c.nodes.some(id=>target.nodes.get(id)!.some((v,a)=>changed(v,before.nodes.get(id)![a])));});
+ const controlPlan=options.controlPlan&&drawingControlEditProof(options.controlPlan.before,wanted,options.controlPlan),controls=controlPlan?drawingControlPlanView(wanted,controlPlan):wanted,beforeControls=controlPlan?drawingControlPlanView(evaluation.drawing,controlPlan):evaluation.drawing;
+ const before=index(beforeControls),target=index(controls),basis=index(sideDrawing),fixed=index(zeroDrawing),dependencies=drawingControlDependencyIndex(evaluation.drawing),authorities=dependencies.nodeAuthorities;
+ const affected=controls.curves.filter(c=>{const old=before.curves.get(c.id)!;return c.handles.some((p,e)=>p.some((v,a)=>changed(v,old.handles[e][a])))||c.nodes.some(id=>target.nodes.get(id)!.some((v,a)=>changed(v,before.nodes.get(id)![a])));});
  const nodeIds=new Set(affected.flatMap(c=>c.nodes.map(id=>authorities.get(id)??id))),curveIds=new Set(affected.map(c=>c.id));
- const implicated=sideDrawing.curves.filter(c=>curveIds.has(c.id)||c.nodes.some(id=>nodeIds.has(authorities.get(id)??id)));
+ // A fallback may move either end of an affected curve. Its linked authority
+ // can be outside the direct handle gesture's narrower read view.
+ for(const id of nodeIds)if(!before.nodes.has(id)){const at=dependencies.nodePositions.get(id)!;before.nodes.set(id,evaluation.drawing.nodes[at].position);target.nodes.set(id,wanted.nodes[at].position);}
+ const sideDependencies=drawingControlDependencyIndex(sideDrawing),implicatedIds=new Set([...curveIds,...[...nodeIds].flatMap(id=>(dependencies.linkedNodes.get(id)??[id]).flatMap(member=>(dependencies.nodeIncidence.get(member)??[]).map(end=>end.curveId)))]),implicated=[...implicatedIds].sort((a,b)=>sideDependencies.curvePositions.get(a)!-sideDependencies.curvePositions.get(b)!).map(id=>sideDependencies.curves.get(id)!);
+ const basisPlan=prepareDrawingControlEditPlan(sideDrawing,{kind:'curves',curveIds:[...curveIds]});
  assertSnapshotObjectsUnlocked(sideDrawing,implicated.map(c=>c.id));
  const weights=createSnapshotSurfaceResponseSampler(graph,location),variables:{target:SnapshotScalarTarget;axis:0|1;scalar:BoundedBasisScalar}[]=[],indices=new Map<string,number>();
  const add=(control:SnapshotScalarTarget,axis:0|1,baseline:number,start:number,prior:number,desired:number)=>{
@@ -60,7 +71,7 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  };
  for(const nodeId of nodeIds)for(const axis of [0,1] as const)add({kind:'node',nodeId},axis,basis.nodes.get(nodeId)![axis],fixed.nodes.get(nodeId)![axis],before.nodes.get(nodeId)![axis],target.nodes.get(nodeId)![axis]);
  for(const curveId of curveIds)for(const end of [0,1] as const)for(const axis of [0,1] as const)add({kind:'handle',curveId,end},axis,vector(basis,curveId,end)[axis],vector(fixed,curveId,end)[axis],vector(before,curveId,end)[axis],vector(target,curveId,end)[axis]);
- const points=[...sideDrawing.nodes.map(n=>n.position),...sideDrawing.curves.flatMap(c=>c.handles),...zeroDrawing.nodes.map(n=>n.position),...zeroDrawing.curves.flatMap(c=>c.handles)],extent=(axis:0|1)=>Math.max(...points.map(p=>p[axis]))-Math.min(...points.map(p=>p[axis])),scale=Math.max(1e-6,extent(0),extent(1));
+ const scale=basisScale(sideDrawing,zeroDrawing);
  const rows:BasisDisplacementRow[]=[];
  for(const curve of implicated)for(let sample=0;sample<=8;sample++){const t=sample/8,u=1-t,b=[u*u*u,3*u*u*t,3*u*t*t,t*t*t];
   for(const axis of [0,1] as const){const terms:{index:number;coefficient:number}[]=[];for(const end of [0,1] as const){const node=indices.get(key({kind:'node',nodeId:authorities.get(curve.nodes[end])??curve.nodes[end]},axis)),handle=indices.get(key({kind:'handle',curveId:curve.id,end},axis));if(node!==undefined)terms.push({index:node,coefficient:end===0?b[0]+b[1]:b[2]+b[3]});if(handle!==undefined)terms.push({index:handle,coefficient:end===0?b[1]:b[2]});}rows.push({terms,weight:1/(9*Math.max(1,implicated.length))});}
@@ -69,16 +80,20 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  if(!solution)fail('SURFACE_BASIS_TRUST_LIMIT','The target cannot be reached inside this correction’s finite response/basis trust region. Use a smaller drag or explicitly edit the 90° basis.');
  const delta=(control:SnapshotScalarTarget,axis:0|1)=>{const i=indices.get(key(control,axis));return i===undefined?0:solution!.deltas[i];};
  const nodeDelta=(id:string,axis:0|1)=>delta({kind:'node',nodeId:authorities.get(id)??id},axis);
- const desiredBasis:DrawingDocument={...sideDrawing,nodes:sideDrawing.nodes.map(n=>({...n,position:([0,1] as const).map(axis=>n.position[axis]+nodeDelta(n.id,axis)) as Point2})),curves:sideDrawing.curves.map(c=>({...c,handles:([0,1] as const).map(end=>([0,1] as const).map(axis=>c.handles[end][axis]+nodeDelta(c.nodes[end],axis)+delta({kind:'handle',curveId:c.id,end},axis)) as Point2) as [Point2,Point2]}))};
- const basisRecording={...recording,angle:{...side!.angle}},basisEvaluation=resolveRecordingSnapshotBasis(workspace,basisRecording,side!.snapshotId,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}),prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(basisEvaluation,desiredBasis,prior.deformation,fresh),snapshot={...owner,draft:{...prior,deformation}};
+ const nodePositions=new Map(basisPlan.nodeIds.map(id=>[id,([0,1] as const).map(axis=>basis.nodes.get(id)![axis]+nodeDelta(id,axis)) as Point2])),handlePositions=basisPlan.controls.filter((control):control is Extract<typeof control,{kind:'handle'}>=>control.kind==='handle').map(control=>{const c=basis.curves.get(control.curveId)!;return {...control,position:([0,1] as const).map(axis=>c.handles[control.end][axis]+nodeDelta(c.nodes[control.end],axis)+delta(control,axis)) as Point2};});
+ const desiredBasis=applyDrawingControlWrites(basisPlan,{nodePositions,handlePositions});
+ const basisRecording={...recording,angle:{...side!.angle}},basisEvaluation=resolveRecordingSnapshotBasis(workspace,basisRecording,side!.snapshotId,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}),prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(basisEvaluation,desiredBasis,prior.deformation,fresh,basisPlan),snapshot={...owner,draft:{...prior,deformation}};
  if(options.immutableInputs)retainSnapshotSavedEvaluationIdentity(snapshot,owner);
  const frameId=effective.draft?.id??fresh(),layerIds=[...new Set([...effective.draft?.basisAdjustment?.layerIds??[],...evaluation.drawing.layers.filter(l=>implicated.some(c=>l.items.includes(c.id))).map(l=>l.id)])],snapshotIds=[...new Set([...effective.draft?.basisAdjustment?.snapshotIds??[],owner.id])];
  const frame={...effective.draft,id:frameId,angle:{...recording.angle},status:'draft' as const,basisAdjustment:{snapshotIds,layerIds,...solution!.boundActive?{trustRegionLimited:true}:{}}};
  let nextGraph:SnapshotAngleGraph={...graph,correctionFrames:effective.draft?graph.correctionFrames!.map(f=>f===effective.draft?frame:f):[...graph.correctionFrames??[],frame]};
+ const responseChanges=new Map<string,SnapshotScalarTarget>(),canBound=!!controlPlan&&!basisEvaluation.state.layerDomains?.length&&!basisEvaluation.state.warps.length&&!owner.inputMirror&&!surface.mirrorContext;
+ const changes=():SnapshotSimplexRevisionChanges=>({structureUnchanged:true,basisControls:new Map([[owner.id,basisPlan.controls]]),responseControls:[...responseChanges.values()]});
+ const rememberResponses=(controls:readonly SnapshotScalarTarget[]|undefined)=>{for(const control of controls??[])responseChanges.set(key(control,0),control);};
  const snapshots=workspace.snapshots.map(s=>s===owner?snapshot:s);let stagedGraph:SnapshotAngleGraph|undefined,stagedWorkspace:RecordingSnapshotWorkspace|undefined;
- const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};}return stagedWorkspace!;};
+ const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};if(canBound)registerPreparedControlChanges(workspace,stagedWorkspace,recording.id,changes());}return stagedWorkspace!;};
  const candidate=()=>frozen.fork(nextWorkspace());
- const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis);
+ const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis,basisPlan);
  // Capture every old output BEFORE changing the bases. Responses may change
  // only in the companion draft to preserve those exact authored outputs.
  const protections=calibrationAngles(graph,recording.angle).map(angle=>({angle,drawing:frozen.sample(recording.id,{angle}).drawing}));
@@ -86,10 +101,10 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  for(const protection of targets){
   const context=candidate(),current=context.sample(recording.id,{angle:protection.angle,products:'controls'}),support=current.angleSurface;
   if(!support?.simplex||support.simplex.kind==='vertex'){assertSnapshotControlTargetReplay(current.drawing,protection.drawing);continue;}
-  if(options.immutableInputs){nextGraph=context.prepareSurfaceTargetEdit(recording.id,current,protection.drawing,{angle:protection.angle,frameId,preserveDraftOwner:true}).graph;continue;}
+  if(options.immutableInputs){const result=context.prepareSurfaceTargetEdit(recording.id,current,protection.drawing,{angle:protection.angle,frameId,preserveDraftOwner:true});rememberResponses(result.responseControls);nextGraph=result.graph;continue;}
   const temporary={...nextGraph,correctionFrames:nextGraph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...protection.angle}}:f)};
   const result=prepareSnapshotSurfaceTargetEdit(temporary,support.simplex,support.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(v=>v.snapshotId===base.snapshotId)!.angle})),current.drawing,protection.drawing,{immutableInputs:options.immutableInputs,angle:protection.angle,frameId,allBases:snapshotSurfaceRequiredBases(support,protection.angle),mirror:support.mirrorContext});
-  nextGraph={...result.graph,correctionFrames:result.graph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...recording.angle},basisAdjustment:frame.basisAdjustment}:f)};
+  rememberResponses(result.responseControls);nextGraph={...result.graph,correctionFrames:result.graph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...recording.angle},basisAdjustment:frame.basisAdjustment}:f)};
  }
  // Verify the entire coupled workspace after all constraints have been added;
  // nonlinear projection and adjacent-triangle interactions can reject a solve.
@@ -97,7 +112,7 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  assertResponseTrustRegion(graph,nextGraph);
  const zeroBefore=frozen.resolveBasis(recording.id,zero!.snapshotId).drawing,zeroReplay=candidate().resolveBasis(recording.id,zero!.snapshotId).drawing;
  if(JSON.stringify(zeroReplay.nodes)!==JSON.stringify(zeroBefore.nodes)||JSON.stringify(zeroReplay.curves)!==JSON.stringify(zeroBefore.curves))fail('SURFACE_ZERO_BASIS_CONFLICT','This correction would change the fixed 0° controls through inheritance. Edit the responsible basis explicitly.');
- return {graph:nextGraph,snapshots:[snapshot]};
+ return {graph:nextGraph,snapshots:[snapshot],...canBound?{changes:changes()}:{}};
 }
 
 function assertResponseTrustRegion(before:SnapshotAngleGraph,after:SnapshotAngleGraph):void {

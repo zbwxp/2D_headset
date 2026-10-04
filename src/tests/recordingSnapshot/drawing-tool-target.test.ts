@@ -1,3 +1,4 @@
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
 import {afterEach,expect,it,vi} from 'vitest';
 import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit';
@@ -100,4 +101,11 @@ it('fresh A previews replay complete linked controls exactly and only the final 
   near(shown,wanted);near(committed,wanted);expect(shown.curves.map(curve=>curve.id)).toEqual(before.drawing.curves.map(curve=>curve.id));expect(shown.endpointLinks).toEqual(before.drawing.endpointLinks);expect(controls(shown)).toEqual(controls(committed));expect(JSON.stringify(project)).toBe(saved);expect(preview.project.recordingSnapshots!.library).toBe(project.recordingSnapshots.library);final=strict;
  }
  vi.useFakeTimers();useWorkspaceMode.getState().setMode('recording');useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(final!);expect(useEditor.getState().past).toEqual([project]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(final!.project);
+});
+
+for(const angle of [{x:0,y:0},{x:30,y:30}])it(`frozen control plan replays the complete linked target at ${angle.x},${angle.y}`,()=>{
+ const project=fixture(angle,true),before=evaluateRecordingSnapshot(project.recordingSnapshots,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'b'}),wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[2.5,3.5]}),edit={recordingId:'surface',snapshotId:before.snapshotId,angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry' as const,controlPlan},validation:'preview' as const};
+ const prepared=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),edit);near(evaluateRecordingSnapshot(prepared.project.recordingSnapshots!,'surface',{useDraft:true}).drawing,wanted);
+ const changed={...wanted,curves:wanted.curves.map(curve=>({...curve,width:.04}))};expect(()=>prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{...edit,drawing:changed})).toThrow(/preserve topology/);
+ expect(()=>prepareSnapshotDrawingToolEdit(snapshotEditContext(prepared.project,false),edit)).toThrow(/changed during/);
 });

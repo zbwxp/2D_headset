@@ -1,3 +1,5 @@
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
+import {preparedControlChangesBetween} from '../../domain/recordingSnapshot/preparedControlChanges';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -198,3 +200,9 @@ it.skipIf(!privateFixture).each(['ear X','ear Y','profile X','profile Y'] as con
  expect(JSON.stringify(project)).toBe(original);expect(createHash('sha256').update(readFileSync(privateFixture!)).digest('hex')).toBe(digest);
  console.info(JSON.stringify({fixture:'private minchange regression',target:kind,elapsedMs:Math.round(elapsedMs)}));
 },120000);
+
+it('planned 90-degree fallback records its expanded basis and solved protection controls',()=>{
+ const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots!,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'node',nodeId:'a',followStrength:.4}),p=before.drawing.nodes.find(node=>node.id==='a')!.position,wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[p[0]+.08,p[1]-.04]}),next=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:'surface',snapshotId:before.snapshotId,angle:recording(project).angle,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan},validation:'preview'}).project;
+ near(evaluate(next).drawing,wanted);sourceAndZeroUnchanged(project,next);
+ const changes=preparedControlChangesBetween(project.recordingSnapshots!,next.recordingSnapshots!,'surface');expect(changes).toBeDefined();expect(changes!.basisControls.get('side')).toContainEqual({kind:'node',nodeId:'b'});expect(changes!.basisControls.get('side')).toContainEqual({kind:'handle',curveId:'ear',end:1});expect(changes!.responseControls.length).toBeGreaterThan(0);expect(changes!.basisControls.get('side')!.some(control=>control.kind==='handle'&&control.curveId==='profile')).toBe(false);
+});

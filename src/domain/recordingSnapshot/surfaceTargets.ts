@@ -1,3 +1,4 @@
+import {drawingControlDependencyIndex,drawingControlEditProof,drawingControlPlanView,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
 import {createSnapshotFitParameterCollector} from './responseFitParameterRanges';
 import {projectSnapshotResponseCorrections,unprojectSnapshotResponseTarget,snapshotProjectionScalarKey,snapshotResponseProjectionContracts,type SnapshotProjectionScalarSample} from './responseExpressionProjection';
@@ -175,7 +176,7 @@ export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,locat
  const program=compileSnapshotSurfaceValueProgram(graph,location,bases,mirror);options.onPrepare?.();return program.createSampler();
 }
 
-export interface SnapshotSurfaceTargetEditOptions {immutableInputs?:boolean;angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}
+export interface SnapshotSurfaceTargetEditOptions {controlPlan?:DrawingControlEditPlan;immutableInputs?:boolean;angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}
 export interface SnapshotSurfaceTargetEditResult {graph:SnapshotAngleGraph;changed:boolean;/** Ephemeral exact solved outputs; never persisted in the graph. */responseControls?:readonly SnapshotScalarTarget[]}
 type TargetUpdate={target:SnapshotScalarTarget;axis:0|1;weights:BarycentricWeights};
 
@@ -203,8 +204,11 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
  const basisMap=new Map(bases.map(basis=>[basis.snapshotId,basis]));
  if(bases.length!==location.snapshotIds.length||basisMap.size!==bases.length||location.snapshotIds.some(id=>!basisMap.has(id)))fail('SURFACE_INVALID_TARGET','Supply exactly the active saved snapshot bases for this correction angle.');
  const orderedBases=location.snapshotIds.map(id=>basisMap.get(id)!);
+ const supplied=options.controlPlan,controlPlan=supplied&&drawingControlEditProof(supplied.before,wantedDrawing,supplied)&&currentDrawing.nodes===supplied.before.nodes&&currentDrawing.curves===supplied.before.curves&&!Object.keys(effective.responseExpressions).length&&!options.mirror?supplied:undefined;
+ const currentControls=controlPlan?drawingControlPlanView(currentDrawing,controlPlan):currentDrawing,wantedControls=controlPlan?drawingControlPlanView(wantedDrawing,controlPlan):wantedDrawing;
  const index=(drawing:DrawingDocument)=>({nodes:new Map(drawing.nodes.map(node=>[node.id,node.position])),curves:new Map(drawing.curves.map(curve=>[curve.id,curve]))});
- const before=index(currentDrawing),wanted=index(wantedDrawing),basisIndices=orderedBases.map(basis=>index(basis.drawing));
+ const before=index(currentControls),wanted=index(wantedControls),basisIndices=orderedBases.map(basis=>{if(!controlPlan)return index(basis.drawing);const cached=drawingControlDependencyIndex(basis.drawing);return {nodes:new Map(currentControls.nodes.map(node=>[node.id,cached.nodes.get(node.id)?.position!])),curves:new Map(currentControls.curves.map(curve=>[curve.id,cached.curves.get(curve.id)!]))};});
+ if(!controlPlan){
  if(before.nodes.size!==currentDrawing.nodes.length||wanted.nodes.size!==wantedDrawing.nodes.length||before.curves.size!==currentDrawing.curves.length||wanted.curves.size!==wantedDrawing.curves.length||before.nodes.size!==wanted.nodes.size||before.curves.size!==wanted.curves.size||[...before.nodes.keys()].some(id=>!wanted.nodes.has(id))||[...before.curves].some(([id,curve])=>!same(curve.nodes,wanted.curves.get(id)?.nodes)))fail('SURFACE_INVALID_TARGET','A correction target must preserve the current active node and curve topology. Edit membership at a saved snapshot.');
  for(const [kind,left,right] of [['Join',currentDrawing.joins,wantedDrawing.joins],['EndpointLink',currentDrawing.endpointLinks??[],wantedDrawing.endpointLinks??[]]] as const){
   const prior=new Map(left.map(item=>[item.id,item]));
@@ -220,7 +224,8 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
   if((link.joinBrush?.kind==='ARC'||prior.joinBrush?.kind==='ARC')&&!same(link.joinBrush,prior.joinBrush))fail('SURFACE_ARC_BASIS_REQUIRED',`ARC ${link.id} brush or trim changes in this target. Edit the ARC brush in a saved snapshot basis first.`);
   if(link.joinBrush?.kind!==prior.joinBrush?.kind)fail('SURFACE_INVALID_TARGET',`EndpointLink ${link.id} brush kind cannot change in a control response correction.`);
  }
- const authorities=endpointPairNodeAuthorities(currentDrawing),updates:TargetUpdate[]=[];
+ }
+ const authorities=controlPlan?drawingControlDependencyIndex(controlPlan.before).nodeAuthorities:endpointPairNodeAuthorities(currentDrawing),updates:TargetUpdate[]=[];
  const inheritedResponses=effectiveSnapshotSurfaceResponses(positiveMirrorResponseGraph(graph,location,options.mirror)).responseExpressions;
  const inherited=createSnapshotExpressionValueSampler(location,{expression:(target,axis)=>snapshotResponseExpressionFor(own(inheritedResponses,location.simplexId),target,axis),basisScalar:createSnapshotResponseBasisResolver(options.allBases??orderedBases),geometricWeights:createSnapshotResponseFieldWeightMapper(graph.mesh,location)});
  const mirrored=options.mirror?.sample(location,location.geometricWeights),mirrorResidual=(target:SnapshotScalarTarget,axis:0|1)=>{const value=mirrored?.scalar(target,axis),corners=mirrored?.corners(target,axis);return value!==undefined&&corners?.every(value=>value!==undefined)?value-(corners as readonly number[]).reduce((sum,value,index)=>sum+value*location.geometricWeights[index],0):0;};
@@ -235,7 +240,7 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
    updates.push({target,axis,weights:result.weights});
   }
  };
- for(const node of wantedDrawing.nodes){
+ for(const node of wantedControls.nodes){
   const authority=authorities.get(node.id)!;
   if(!finitePoint(node.position))fail('SURFACE_INVALID_TARGET',`Node ${node.id} target must be finite.`);
   if(authority!==node.id){const position=wanted.nodes.get(authority)!;if(node.position.some((value,axis)=>changedScalar(value,position[axis])))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`Node ${node.id} conflicts with linked position authority ${authority}. Move the linked component together.`);continue;}
@@ -253,8 +258,8 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
  if(sampler){if(options.immutableInputs)preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler);else interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler);}
  const available=(target:SnapshotScalarTarget,axis:0|1)=>{if(target.kind==='node')return true;const values=basisIndices.map(basis=>vector(basis,target.curveId,target.end)[axis]);return Math.max(...values)-Math.min(...values)>scalarTolerance(...values);};
  let unprojected:DrawingDocument;try{unprojected=sampler?.unprojectSmooth?.(wantedDrawing,available)??wantedDrawing;}catch(error){return fail('SURFACE_CONSTRAINT_UNSOLVABLE',error instanceof Error?error.message:String(error));}
- const rawWanted=index(unprojected);
- for(const curve of wantedDrawing.curves)for(const end of [0,1] as const){const target:SnapshotScalarTarget={kind:'handle',curveId:curve.id,end},projected=projectedEndpoints.has(JSON.stringify([curve.id,end]));
+ const rawWanted=index(controlPlan?drawingControlPlanView(unprojected,controlPlan):unprojected);
+ for(const curve of wantedControls.curves)for(const end of [0,1] as const){const target:SnapshotScalarTarget={kind:'handle',curveId:curve.id,end},projected=projectedEndpoints.has(JSON.stringify([curve.id,end]));
   const prior=vector(before,curve.id,end),raw=projected?([0,1] as const).map(axis=>sampler?.rawScalar?.(target,axis)??prior[axis]) as Point2:prior;
   solve(target,raw,vector(rawWanted,curve.id,end),basisIndices.map(basis=>vector(basis,curve.id,end)));
  }
@@ -287,11 +292,12 @@ export function prepareSnapshotSurfaceTargetEditWithReplay(graph:SnapshotAngleGr
  }
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
  const responseControls=[...new Map(updates.map(({target})=>[targetKey(target,0),target])).values()];
- const replay=index(replayCandidate?replayCandidate(candidate,responseControls):(()=>{const sampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs});return (options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler)).drawing;})());
+ const replayDrawing=replayCandidate?replayCandidate(candidate,responseControls):(()=>{const sampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs});return (options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler)).drawing;})();
+ const replay=index(controlPlan?drawingControlPlanView(replayDrawing,controlPlan):replayDrawing);
  const verify=(name:string,position:Point2|undefined,target:Point2)=>{
   if(!position||position.some((value,axis)=>!Number.isFinite(value)||Math.abs(value-target[axis])>Math.max(1e-7,4*scalarTolerance(value,target[axis]))))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`${name}: the complete correction cannot reproduce the target after linked-node and SMOOTH constraints. Edit the responsible basis control or its SMOOTH driver first.`);
  };
- for(const node of wantedDrawing.nodes)verify(`Node ${node.id}`,replay.nodes.get(node.id),node.position);
- for(const curve of wantedDrawing.curves)for(const end of [0,1] as const)verify(`Handle ${curve.id} end ${end}`,replay.curves.get(curve.id)?.handles[end],curve.handles[end]);
+ for(const node of wantedControls.nodes)verify(`Node ${node.id}`,replay.nodes.get(node.id),node.position);
+ for(const curve of wantedControls.curves)for(const end of [0,1] as const)verify(`Handle ${curve.id} end ${end}`,replay.curves.get(curve.id)?.handles[end],curve.handles[end]);
  return {graph:candidate,changed:true,responseControls};
 }

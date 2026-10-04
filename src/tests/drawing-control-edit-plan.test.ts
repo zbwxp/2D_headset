@@ -1,0 +1,30 @@
+import {expect,it} from 'vitest';
+import {emptyDrawing,type DrawingDocument,type Point2} from '../domain/drawing/model';
+import {dragNode} from '../domain/drawing/nodeDrag';
+import {moveHandle,transform} from '../domain/drawing/commands';
+import {applyMirrorEditing} from '../domain/drawing/mirrorEditing';
+import {applyScenePlacement} from '../domain/recordingScene/tracks';
+import {applyDrawingControlEditPlan,prepareDrawingControlEditPlan,drawingControlEditProof,drawingControlEditStats,applyDrawingControlWrites} from '../domain/drawing/controlEditPlan';
+function fixture(unrelated=0):DrawingDocument {
+ const drawing:DrawingDocument={...emptyDrawing(),layers:[{id:'layer',name:'Layer',visible:true,locked:false,items:[]}],mirrorEditing:{enabled:true,curvePairs:[{id:'mirror',a:'a',b:'b',reverse:false}]}};
+ for(let i=0;i<unrelated+4;i++){const id=['a','b','c','d'][i]??`other${i}`,x=i*3;drawing.nodes.push({id:`${id}0`,position:[x,0]},{id:`${id}1`,position:[x+1,1]});drawing.curves.push({id,name:id,nodes:[`${id}0`,`${id}1`],handles:[[x+.2,.3],[x+.8,.7]],visible:true,locked:false,width:.01});drawing.layers[0].items.push(id);}
+ drawing.nodes.find(n=>n.id==='c0')!.position=[0,0];drawing.curves[2].handles[0]=[-.4,-.6];drawing.endpointLinks=[{id:'link',a:{curveId:'a',end:0},b:{curveId:'c',end:0},joinBrush:{kind:'SMOOTH'}}];
+ return drawing;
+}
+for(const count of [0,100,1000])it(`node follow/mirror and SMOOTH handle scope ignores ${count} unrelated curves`,()=>{
+ const before=fixture(count),saved=JSON.stringify(before),point:Point2=[.15,.2],stats=drawingControlEditStats();
+ const node=prepareDrawingControlEditPlan(before,{kind:'node',nodeId:'a0',followStrength:.6}),wanted=applyDrawingControlEditPlan(node,{kind:'point',position:point}),full=applyMirrorEditing(before,dragNode(before,'a0',point,.6),{nodes:[{nodeId:'a0',position:point}]});
+ expect(wanted).toEqual(full);expect(node.curveIds).toEqual(['a','b','c']);expect(drawingControlEditProof(before,wanted,node)).toBe(node);expect(drawingControlEditProof(before,{...wanted},node)).toBeUndefined();
+ const endpoint={curveId:'a',end:0 as const},handle=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint}),position:Point2=[.25,.4],edited=applyDrawingControlEditPlan(handle,{kind:'point',position}),expected=applyMirrorEditing(before,moveHandle(before,endpoint,position),{handles:[{...endpoint,position}]});
+ expect(edited).toEqual(expected);expect(handle.curveIds).toEqual(['a','b','c']);expect(drawingControlEditStats().authoredCurves-stats.authoredCurves).toBe(6);expect(JSON.stringify(before)).toBe(saved);
+});
+it('V transforms use the same frozen canonical kernel and retain snapshot ARC ownership',()=>{
+ const before=fixture(30);before.endpointLinks=[];const value={translation:[.1,-.2] as Point2,rotation:8,scale:1.1},plan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:['a']}),actual=applyDrawingControlEditPlan(plan,{kind:'transform',value}),raw=transform(before,['a'],p=>applyScenePlacement(value,p));
+ expect(actual).toEqual(applyMirrorEditing(before,{...raw,joins:before.joins}));expect(plan.curveIds).toEqual(['a','b']);expect(prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:['a']})).toBe(plan);
+});
+it('unrelated material does not force geometry authoring to rescan all curves',()=>{
+ const before=fixture(100);before.displayIntervals=[{id:'ink',anchor:{id:'other20',reverse:false},scope:'CURVE',ranges:[{id:'show',start:.1,end:.8}]}];const plan=prepareDrawingControlEditPlan(before,{kind:'node',nodeId:'a0'}),next=applyDrawingControlEditPlan(plan,{kind:'point',position:[.1,.2]});expect(plan.fallbackReason).toBeUndefined();expect(next.displayIntervals).toBe(before.displayIntervals);expect(plan.curveIds).toHaveLength(3);
+});
+it('scalar producer cannot write outside its closure and copied descriptors carry no proof',()=>{
+ const before=fixture(4),plan=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint:{curveId:'a',end:0}});expect(()=>applyDrawingControlWrites(plan,{nodePositions:new Map([['other40',[4,0] as Point2]])})).toThrow(/outside/);expect(()=>applyDrawingControlEditPlan({...plan},{kind:'point',position:[0,0]})).toThrow(/Unknown/);
+});

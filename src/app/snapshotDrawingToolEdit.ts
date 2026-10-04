@@ -1,3 +1,4 @@
+import type {DrawingControlEditPlan} from '../domain/drawing/controlEditPlan';
 import type {DrawingDocument} from '../domain/drawing/model';
 import type {Angle} from '../domain/recordingSnapshot/model';
 import type {SnapshotNodeUnbindIntent} from '../domain/recordingSnapshot/nodeForks';
@@ -8,7 +9,7 @@ import {snapshotDrawingEditContent} from '../domain/recordingSnapshot/drawingCon
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
 import {prepareSnapshotEdit,type SnapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
 
-export type SnapshotDrawingToolIntent={kind:'geometry'}|{kind:'topology';nodeUnbind?:SnapshotNodeUnbindIntent}|{kind:'mirror-metadata'};
+export type SnapshotDrawingToolIntent={kind:'geometry';controlPlan?:DrawingControlEditPlan}|{kind:'topology';nodeUnbind?:SnapshotNodeUnbindIntent}|{kind:'mirror-metadata'};
 export interface SnapshotDrawingToolEdit {recordingId:string;snapshotId:string;angle:Angle;beforeDrawing:DrawingDocument;drawing:DrawingDocument;intent:SnapshotDrawingToolIntent;validation?:'preview'|'full'}
 /** One submitted Drawing gesture, one validated common transaction and Undo. */
 export function prepareSnapshotDrawingToolEdit(context:SnapshotEditContext,edit:SnapshotDrawingToolEdit):SnapshotEditPlan {
@@ -22,7 +23,7 @@ export function prepareSnapshotDrawingToolEdit(context:SnapshotEditContext,edit:
   if(!same(snapshotDrawingEditContent(current),snapshotDrawingEditContent(edit.beforeDrawing))||!same([current.mirrorAxisX,current.mirrorEditing],[edit.beforeDrawing.mirrorAxisX,edit.beforeDrawing.mirrorEditing]))throw Error('The mirror metadata target changed during this Drawing gesture.');
   if(!same(snapshotDrawingEditContent(edit.beforeDrawing),snapshotDrawingEditContent(edit.drawing)))throw Error('Mirror preferences cannot change geometry, topology or appearance.');
   const next=snapshotWithMirrorMetadata(snapshot,current,edit.drawing);if(next!==snapshot)workspace={...before,snapshots:before.snapshots.map(value=>value===snapshot?next:value)};
- }else workspace=prepareSnapshotDrawingControlTarget(before,edit);
+ }else workspace=prepareSnapshotDrawingControlTarget(before,{...edit,controlPlan:edit.intent.controlPlan});
  if(workspace===before)return {before:context.project,project:context.project,changed:false};
  return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace,validation:edit.validation});
 }

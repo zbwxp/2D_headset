@@ -1,3 +1,4 @@
+import {drawingControlEditProof,drawingControlPlanView,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {layerFor,nodeAt,sub,length,type DrawingDocument,type Point2} from '../drawing/model';
 import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
 import {identityAffine2D,applyAffine2D,type Affine2D} from '../geometry/affine2d';
@@ -31,8 +32,11 @@ export function snapshotUsesControlTargetStages(evaluation:SnapshotEvaluation,cu
  * relation component spanning stages receives one common sparse output owner;
  * its identity field preserves all existing input programs and live membership.
  * This is an explicit post-control stage, never an inverse fit of cage handles. */
-export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,wanted:DrawingDocument,own:SnapshotDeformationState,fresh:()=>string):SnapshotDeformationState {
- const before=evaluation.drawing,state=structuredClone(own),curves=new Map(before.curves.map(curve=>[curve.id,curve])),nodes=new Map(before.nodes.map(node=>[node.id,node])),targets=new Map(wanted.curves.map(curve=>[curve.id,curve])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node]));
+export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,wanted:DrawingDocument,own:SnapshotDeformationState,fresh:()=>string,controlPlan?:DrawingControlEditPlan):SnapshotDeformationState {
+ const trusted=controlPlan&&drawingControlEditProof(controlPlan.before,wanted,controlPlan),bounded=trusted&&!evaluation.drawing.endpointLinks?.length&&!evaluation.state.layerDomains?.length;
+ const before=bounded?drawingControlPlanView(evaluation.drawing,trusted):evaluation.drawing;
+ if(bounded)wanted=drawingControlPlanView(wanted,trusted);
+ const state=structuredClone(own),curves=new Map(before.curves.map(curve=>[curve.id,curve])),nodes=new Map(before.nodes.map(node=>[node.id,node])),targets=new Map(wanted.curves.map(curve=>[curve.id,curve])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node]));
  if(curves.size!==targets.size||nodes.size!==wantedNodes.size||before.curves.some(curve=>!targets.has(curve.id)||curve.nodes.some((id,end)=>id!==targets.get(curve.id)!.nodes[end])))throw new SnapshotControlTargetError('CONTROL_TOPOLOGY_CHANGED','Control targets must preserve node and curve identity.');
  const changed=new Set(before.curves.filter(curve=>curve.handles.some((p,end)=>!close(p,targets.get(curve.id)!.handles[end])||!close(nodes.get(curve.nodes[end])!.position,wantedNodes.get(curve.nodes[end])!.position))).map(curve=>curve.id));
  if(!changed.size)return own;
@@ -62,7 +66,8 @@ export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,want
 }
 
 /** No partial writes: verify the complete linked/SMOOTH target before commit. */
-export function assertSnapshotControlTargetReplay(actual:DrawingDocument,wanted:DrawingDocument):void {
+export function assertSnapshotControlTargetReplay(actual:DrawingDocument,wanted:DrawingDocument,controlPlan?:DrawingControlEditPlan):void {
+ if(controlPlan){actual=drawingControlPlanView(actual,controlPlan);wanted=drawingControlPlanView(wanted,controlPlan);}
  const verify=(label:string,a:Point2|undefined,b:Point2)=>{for(const axis of [0,1] as const)if(!a||!Number.isFinite(a[axis])||Math.abs(a[axis]-b[axis])>1e-7*Math.max(1,Math.abs(b[axis])))throw new SnapshotControlTargetError('CONTROL_TARGET_UNSOLVABLE',`${label} ${axis===0?'X':'Y'}: its complete write-stage and relation replay cannot reproduce this target.`);};
  const nodes=new Map(actual.nodes.map(node=>[node.id,node])),curves=new Map(actual.curves.map(curve=>[curve.id,curve]));for(const node of wanted.nodes)verify(`Node ${node.id}`,nodes.get(node.id)?.position,node.position);for(const curve of wanted.curves)for(const end of [0,1] as const)verify(`Handle ${curve.id} end ${end}`,curves.get(curve.id)?.handles[end],curve.handles[end]);
 }

@@ -45,3 +45,6 @@ export function drawingControlDragTarget(base:DrawingDocument,target:DrawingCont
  const position='nodeId' in target?base.nodes.find(node=>node.id===target.nodeId)!.position:curveById(base,target.handle.curveId).handles[target.handle.end];
  return controlDragTarget(position,pointerStart,pointerNow);
 }
+
+// Both Drawing and Recording author geometry through this frozen operation plan.
+export {prepareDrawingControlEditPlan,applyDrawingControlEditPlan,type DrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
