@@ -17,6 +17,15 @@ import type {ViewMirrorOptions} from './viewMirrorMath';
  * material is evaluated once per angle, then its native supports are transported
  * to the positive final drawing. No field or sampled drawing is persisted. */
 export function prepareSnapshotViewMirrorMaterial(graph:SnapshotAngleGraph,bases:readonly SnapshotSimplexBasis[],zero:DrawingDocument,options:(drawing:DrawingDocument)=>ViewMirrorOptions,sourceAt:(positive:Angle)=>{drawing:DrawingDocument;location:SnapshotSimplexLocation}):NonNullable<SnapshotSurfaceMirrorContext['material']> {
+ let prepared:ReturnType<typeof compileSnapshotViewMirrorMaterial>|undefined;
+ const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.angle]));
+ return (location,drawing)=>{
+  if(!drawing.displayIntervals?.length||location.kind==='vertex'||location.vertexIds.reduce((sum,id,index)=>sum+vertices.get(id)!.x*location.geometricWeights[index],0)<=0)return;
+  prepared??=compileSnapshotViewMirrorMaterial(graph,bases,zero,options,sourceAt);return prepared(location,drawing);
+ };
+}
+
+function compileSnapshotViewMirrorMaterial(graph:SnapshotAngleGraph,bases:readonly SnapshotSimplexBasis[],zero:DrawingDocument,options:(drawing:DrawingDocument)=>ViewMirrorOptions,sourceAt:(positive:Angle)=>{drawing:DrawingDocument;location:SnapshotSimplexLocation}):NonNullable<SnapshotSurfaceMirrorContext['material']> {
  const vertices=new Map(graph.mesh.vertices.map(vertex=>[vertex.id,vertex.angle])),frames=new InputCache<{drawing:DrawingDocument;diagnostics:string[]}>(96),canonical=options(zero),ids=new Set(zero.curves.map(curve=>curve.id));
  const reflect=prepareSnapshotMirrorDrawing({...canonical,curvePairs:canonical.curvePairs.filter(pair=>ids.has(pair.a)&&ids.has(pair.b)),axisX:0},zero),knownTracks=new Map((zero.displayIntervals??[]).map(track=>[track.id,new Set(track.ranges.map(range=>range.id))]));
  const targets=new Map((reflect(zero).drawing.displayIntervals??[]).map(track=>[track.id,new Set(track.ranges.map(range=>range.id))]));

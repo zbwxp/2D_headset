@@ -1,8 +1,10 @@
 import {describe,expect,it} from 'vitest';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
 import {applySnapshotCommand} from '../../domain/recordingSnapshot/commands';
-import {evaluateRecordingSnapshot} from '../../domain/recordingSnapshot/evaluation';
+import {evaluateRecordingSnapshot,snapshotViewMirrorOptions} from '../../domain/recordingSnapshot/evaluation';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
+import {mirrorViewDrawing} from '../../domain/recordingSnapshot/viewMirrorMath';
+import {transportEndpointPairMaterial} from '../../domain/recordingSnapshot/endpointPairMaterial';
 import {parseRecordingSnapshots} from '../../domain/recordingSnapshot/persistence';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
@@ -60,6 +62,37 @@ describe('live View mirror interval response fields',()=>{
   const sample=(x:number,y:number)=>evaluateRecordingSnapshot(w,'recording',{angle:{x,y},useDraft:false,diagnostics:'preview'}).drawing.displayIntervals!.find(track=>track.id===`${x>0?'right':'left'}-material`)!.ranges[0];
   for(const [x,y] of [[20,35],[60,20],[15,70],[70,65]])expect(sample(x,y).end).toBeCloseTo(sample(-x,y).end,12);
   applySnapshotCommand(w,{op:'setAngle',angle:{x:20,y:35}});applySnapshotCommand(w,{op:'changeInterval',layerId:'layer',sourceTrackId:'right-material',rangeId:'right-gap',end:.55});applySnapshotCommand(w,{op:'updateEndpointCorrection'});expect(sample(20,35).end).toBeCloseTo(.55,12);
+ });
+
+ it.each([-60,60])('keeps retained source and positive material recipes live after inserting real view %s',inserted=>{
+  const w=fixture();edit(w,-30,range(w,-30).start);const angles=[5,15,30,45,60,75,85],before=angles.map(x=>range(w,x));
+  applySnapshotCommand(w,{op:'createSnapshot',angle:angle(inserted)});
+  for(let i=0;i<angles.length;i++)expect(range(w,angles[i]).end).toBeCloseTo(before[i].end,12);
+  edit(w,-30,.4);for(const x of angles)expect(range(w,x).end).toBeCloseTo(range(w,-x).end,12);
+ });
+
+ it('transports live curved route cuts to the final positive geometry through the native material law',()=>{
+  const w=fixture();for(const view of [w.snapshots[0],w.snapshots[2]])for(const track of [...view.relations.displayIntervals?.add??[],...view.relations.displayIntervals?.update??[]]){delete track.scope;track.displayRoute={seed:{segments:[{...track.anchor}],closed:false},throughLinkIds:[]};}
+  w.library.curves.left.handles=[[-1.8,.4],[-1.4,-.3]];w.library.curves.right.handles=[[1.4,-.3],[1.8,.4]];
+  w.snapshots[2].deformation.layers.layer={shape:{nodes:{b:[.4,.3],c:[-.3,.2]},handles:{left:[[.1,.3],[-.1,.5]],right:[[-.2,-.1],[.1,.2]]}}};
+  edit(w,-30,range(w,-30).start);w.snapshots[3].deformation.layers.layer={shape:{nodes:{d:[.2,.1]},handles:{right:[[.1,.1],[.3,-.2]]}}};
+  for(const x of [15,30,45,75]){const actual=evaluate(w,x),source=evaluate(w,-x),zero=evaluate(w,0),mapped=mirrorViewDrawing(source.drawing,zero.drawing,snapshotViewMirrorOptions(w,w.recordings[0],zero)).drawing,track=mapped.displayIntervals!.find(track=>track.id==='right-material')!,native=transportEndpointPairMaterial(mapped,track,actual.drawing,[]);
+   // Positive local geometry keeps its own native support coordinates; the
+   // reflected cut is then transported to precisely that final geometry.
+   const actualRange=actual.drawing.displayIntervals!.find(track=>track.id==='right-material')!.ranges[0];for(const end of ['start','end'] as const)expect(actualRange[end]).toBeCloseTo(native.ranges[0][end],11);
+  }
+ });
+ it('keeps a missing mirror support local, leaves other material intact, and resumes after restoration',()=>{
+  const w=fixture();edit(w,-30,range(w,-30).start);const expected=range(w,30),left=w.snapshots[2],right=w.snapshots[3];
+  right.relations.displayIntervals={add:[structuredClone(evaluate(w,90).drawing.displayIntervals!.find(track=>track.id==='right-material')!)]};
+  const source=left.relations.displayIntervals!.update!;left.relations.displayIntervals={disable:['left-material'],update:source.filter(track=>track.id!=='left-material')};
+  const missing=evaluate(w,30);expect(missing.drawing.curves).toHaveLength(2);expect(missing.drawing.displayIntervals!.find(track=>track.id==='left-material')!.ranges).toHaveLength(2);expect(missing.diagnostics.some(issue=>issue.code==='SOURCE_MATERIAL'&&issue.message.includes('mirror support is unavailable'))).toBe(true);
+  left.relations.displayIntervals={update:source};right.relations.displayIntervals={};expect(range(w,30)).toEqual(expected);
+ });
+
+ it('keeps a preexisting positive inserted material basis live when the negative response changes',()=>{
+  const w=fixture();applySnapshotCommand(w,{op:'createSnapshot',angle:angle(60)});edit(w,-30,range(w,-30).start);
+  for(const x of [15,30,45,60,75])expect(range(w,x).end).toBeCloseTo(range(w,-x).end,12);
  });
 
 });
