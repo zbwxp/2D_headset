@@ -128,6 +128,7 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
  // plans compile the other metadata/order variants only when an angle uses them.
  type Variant=ReturnType<typeof prepareVariant>;
  const projectNative=(variant:Variant,raw:DrawingDocument,diagnostics:string[][],previous?:DrawingDocument,dirty?:ReadonlySet<number>,changedEnds?:ReadonlyMap<number,ReadonlySet<0|1>>):DrawingDocument=>{
+  if(previous)samplingStats.copiedControlSlots+=previous.curves.length;
   const curves=previous?[...previous.curves]:raw.curves.map(curve=>({...curve,handles:curve.handles.map(point=>[...point]) as [Point2,Point2]}));
   const owned=new Set<number>();
   const setHandle=(index:number,end:0|1,point:Point2)=>{if(!owned.has(index)){curves[index]={...curves[index],handles:[...curves[index].handles]};owned.add(index);}curves[index].handles[end]=point;};
@@ -142,7 +143,7 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
    validateWeights(next.length,nextWeights);
    if(!changes.structureUnchanged||next.length!==sources.length||nextWeights.some((weight,index)=>weight!==originalWeights[index])||next.some((basis,index)=>basis.snapshotId!==sources[index].snapshotId||basis.angle?.x!==sources[index].angle?.x||basis.angle?.y!==sources[index].angle?.y||basis.drawing.nodes.length!==sources[index].drawing.nodes.length||basis.drawing.curves.length!==sources[index].drawing.curves.length||basis.drawing!==sources[index].drawing&&!changes.basisControls.has(basis.snapshotId)))return undefined;
    const dirty=new Set<ControlPlan>(),nextCoordinates=new Map(coordinates),changedLinks=new Set<NonNullable<DrawingDocument['endpointLinks']>[number]>();
-   samplingStats.copiedControlSlots+=coordinates.size+values.size+raw.nodes.length+2*raw.curves.length;
+   samplingStats.copiedControlSlots+=coordinates.size;
    for(let basisIndex=0;basisIndex<next.length;basisIndex++){
     const targets=changes.basisControls.get(next[basisIndex].snapshotId);if(!targets)continue;
     const affected=new Set<ControlPlan>();
@@ -159,12 +160,13 @@ export function prepareSnapshotSimplexGeometry(bases:readonly SnapshotSimplexBas
    const coherent=(input:readonly SnapshotSimplexBasis[],link:NonNullable<DrawingDocument['endpointLinks']>[number])=>input.every((_,index)=>{const a=sourceCurve(input,index,link.a.curveId),b=sourceCurve(input,index,link.b.curveId),p=a&&sourceNode(input,index,a.nodes[link.a.end])?.position,q=b&&sourceNode(input,index,b.nodes[link.b.end])?.position;return !!p&&!!q&&Math.hypot(p[0]-q[0],p[1]-q[1])<=64*Number.EPSILON*Math.max(1,...p.map(Math.abs),...q.map(Math.abs));});
    for(const link of changedLinks)if(coherent(sources,link)!==coherent(next,link))return undefined;
    for(const target of changes.responseControls){const control=target.kind==='node'?variant.outputNodes.get(target.nodeId):variant.outputHandles.get(target.curveId)?.[target.end];if(control)dirty.add(control);}
-   const nextValues=new Map(values);
+   const nextValues=new Map(values);samplingStats.copiedControlSlots+=values.size;
    for(const control of dirty){const value=axes.map(axis=>{samplingStats.scalarEvaluations++;const input=nextCoordinates.get(control)![axis],sampled=response?.(control.target,axis,input,nextWeights)??nextWeights;
     if(typeof sampled==='number'){if(!Number.isFinite(sampled))throw Error('A simplex response produced a non-finite coordinate.');return sampled;}
     if(sampled.length!==count||sampled.some(weight=>!Number.isFinite(weight))||Math.abs(sampled.reduce((sum,weight)=>sum+weight,0)-1)>1e-9)throw Error('A scalar response must return finite sum-one weights for its active bases.');
     const result=input.reduce((sum,value,index)=>sum+value*sampled[index],0);if(!Number.isFinite(result))throw Error('A simplex response produced a non-finite coordinate.');return result;
    }) as Point2;nextValues.set(control,value);}
+   samplingStats.copiedControlSlots+=raw.nodes.length+raw.curves.length;
    const nodes=[...raw.nodes],curves=[...raw.curves],changedEnds=new Map<number,Set<0|1>>(),dirtyComponents=new Set<number>();
    const end=(index:number,side:0|1)=>{let ends=changedEnds.get(index);if(!ends){ends=new Set();changedEnds.set(index,ends);}ends.add(side);};
    for(const control of dirty){for(const index of variant.positionNodes.get(control)??[])nodes[index]={...nodes[index],position:nextValues.get(control)!};for(const endpoint of variant.positionEnds.get(control)??[])end(endpoint.curve,endpoint.end);const handle=variant.handleEnds.get(control);if(handle)end(handle.curve,handle.end);}
