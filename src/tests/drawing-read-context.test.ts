@@ -3,7 +3,7 @@ import {type DrawingDocument as Doc,type DrawingCurve,type Point2} from '../doma
 import {strokes,strokeFor,paintItems,strokeFillIds} from '../domain/drawing/strokes';
 import {resolveDisplayRoute,createDisplayRouteField,type DisplayRoute} from '../domain/drawing/displayRoutes';
 import {depthPaintBatches} from '../domain/drawing/depth';
-import {prepareDrawingReadContext,preparedDrawingReadContext,retainPreparedDrawingReadContext,drawingReadContextStats} from '../domain/drawing/readContext';
+import {prepareDrawingReadContext,preparedDrawingReadContext,retainPreparedDrawingReadContext,drawingReadContextStats,withDrawingReadScope} from '../domain/drawing/readContext';
 
 const route:DisplayRoute={seed:{segments:['a0','a1','a2'].map(id=>({id,reverse:false})),closed:true},throughLinkIds:['ab']};
 function fixture():Doc {
@@ -101,5 +101,33 @@ describe('mutable Drawing defaults remain guarded by content',()=>{
   d.curves[1].nodes[0]='na1';d.layers[0].items=d.layers[0].items.filter(id=>id!=='a1');d.layers[1].items.push('a1');expect(strokeFor(d,'a1').segments).toEqual([{id:'a1',reverse:false}]);
   d.endpointLinks![0].throughDisplay=false;expect(resolveDisplayRoute(d,route).diagnostics[0].code).toBe('DISABLED_LINK');
   expect(preparedDrawingReadContext(d)).toBeUndefined();expect(retainPreparedDrawingReadContext({...d},d)).toBeUndefined();
+ });
+});
+
+describe('synchronous evaluation read scope',()=>{
+ test('shares nested readers, disposes after throw, and sees later mutable edits',()=>{
+  const d=fixture(),expected=resolveDisplayRoute(d,route),before=drawingReadContextStats();
+  expect(()=>withDrawingReadScope(()=>{
+   for(let i=0;i<100;i++)withDrawingReadScope(()=>expect(resolveDisplayRoute(d,route)).toEqual(expected));
+   expect(drawingReadContextStats().contexts-before.contexts).toBe(1);
+   throw Error('stop');
+  })).toThrow('stop');
+  expect(preparedDrawingReadContext(d)).toBeUndefined();
+  d.curves[1].nodes[0]='nc0';
+  expect(withDrawingReadScope(()=>resolveDisplayRoute(d,route)).diagnostics[0].code).toBe('INVALID_SEED');
+  expect(preparedDrawingReadContext(d)).toBeUndefined();
+ });
+ test('replacement arrays invalidate current geometry, membership and visible strokes',()=>{
+  const d=fixture();
+  withDrawingReadScope(()=>{
+   expect(resolveDisplayRoute(d,route).diagnostics).toEqual([]);
+   expect(strokes(d,'a',true).flatMap(s=>s.segments.map(u=>u.id))).toContain('a1');
+   d.nodes=d.nodes.map(n=>n.id==='nb0'?{...n,position:[.2,.1]}:n);
+   expect(resolveDisplayRoute(d,route).diagnostics[0].code).toBe('SEPARATED_LINK');
+   d.curves=d.curves.map(c=>c.id==='a1'?{...c,visible:false}:c);
+   expect(strokes(d,'a',true).flatMap(s=>s.segments.map(u=>u.id))).not.toContain('a1');
+   d.layers=d.layers.map(l=>l.id==='a'?{...l,items:l.items.filter(id=>id!=='a1')}:l.id==='b'?{...l,items:[...l.items,'a1']}:l);
+   expect(strokeFor(d,'a1').segments).toEqual([{id:'a1',reverse:false}]);
+  });
  });
 });

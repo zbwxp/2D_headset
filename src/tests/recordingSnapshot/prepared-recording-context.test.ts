@@ -6,6 +6,7 @@ import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit'
 import {snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {moveNode} from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
+import {drawingReadContextStats,preparedDrawingReadContext} from '../../domain/drawing/readContext';
 import {parseDrawing,shapeOf,type DrawingDocument} from '../../domain/drawing/model';
 import {createSnapshotAngleGraph} from '../../domain/recordingSnapshot/angleGraph';
 import {evaluateRecordingSnapshot,resolveRecordingSnapshotBasis,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
@@ -195,7 +196,16 @@ describe('prepared Recording context through the production sampling entrypoints
   expect(onion.frames).toHaveLength(37);expect(onion.frames.every(frame=>frame.drawing.curves.length===121)).toBe(true);
   for(const view of views)context.resolveBasis('recording',view.id);const warm=preparation(context);
   expect(warm.ownGeometry).toBe(10);expect(warm.basis).toBe(9);expect(warm.coverageStructure).toBeLessThanOrEqual(1);
-  context.sampleMany('recording',[{angle:at(-43,12)},{angle:at(21,-27)},{angle:at(0,37)}]);
+  const reads=drawingReadContextStats();
+  const fresh=context.sampleMany('recording',[{angle:at(-43,12)},{angle:at(21,-27)},{angle:at(0,37)}]);
+  const completed=drawingReadContextStats();
+  // Hundreds of stroke consumers share one plan per transient document, with
+  // no per-query content signature. The scope cannot mark editable buffers as
+  // permanently immutable merely because a renderer read them once.
+  expect(completed.strokeKeys-reads.strokeKeys).toBe(0);
+  expect(completed.topologyKeys-reads.topologyKeys).toBe(completed.contexts-reads.contexts);
+  expect(completed.contexts-reads.contexts).toBeLessThan(40);
+  expect(fresh.every(value=>preparedDrawingReadContext(value.drawing)===undefined)).toBe(true);
   interpolateSnapshotSurfaceOnion(recording,current,{startSnapshotId:'view:-90:0',endSnapshotId:'view:90:0'},10);expect(preparation(context)).toEqual(warm);
  },30000);
 });

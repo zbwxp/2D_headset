@@ -1,4 +1,5 @@
 import type {PreparedRecordingChanges} from './workspaceChanges';
+import {withDrawingReadScope} from '../drawing/readContext';
 export type {PreparedRecordingChanges} from './workspaceChanges';
 import {indexPreparedSnapshotDependencies,preparedSnapshotDependencyRevision,snapshotSurfaceDemand,type PreparedSnapshotDependencyIndex} from './preparedSnapshotDependencies';
 import {locateSnapshotSimplex} from './triangulation';
@@ -291,6 +292,9 @@ function placeLayers(before:DrawingDocument,placements:Record<string,ScenePlacem
 }
 /** Element offsets resolve against their source siblings before assembly ordering. */
 function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,drawing:DrawingDocument,provenance:SnapshotEvaluation['provenance']):PaintBatch[]{
+ return withDrawingReadScope(()=>snapshotPaintBatchesInScope(workspace,snapshot,drawing,provenance));
+}
+function snapshotPaintBatchesInScope(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,drawing:DrawingDocument,provenance:SnapshotEvaluation['provenance']):PaintBatch[]{
  const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
  for(const batch of base){positions.set(batch.owner??batch.item.id,batch.position);if(!batch.owner)for(const use of batch.item.stroke?.segments??[])positions.set(use.id,batch.position);}
  const originalLayer=(snapshotId:string,layerId:string):string|undefined=>{const owner=workspace.snapshots.find(s=>s.id===snapshotId),layer=owner?.layers.find(l=>l.id===layerId);return layer?.kind==='reference'?originalLayer(layer.baseSnapshotId,layer.baseLayerId):layer?.id;};
@@ -615,14 +619,17 @@ class RecordingContext implements PreparedRecordingContext {
   const members=graph.mesh.vertices.map(vertex=>{const value=this.membership(vertex.snapshotId);let drawing=value.input.drawing;if(positive&&zero&&vertex.angle.x===0)drawing=mirrorViewDrawingPresence(drawing,zero.drawing,(()=>{const curvePairs=snapshotViewMirrorCurvePairs(this.workspace,mirror!.zeroSnapshotId);return {curvePairs,unpairedGroups:viewMirrorUnpairedCurveGroups(zero.drawing,curvePairs).map(curveIds=>({curveIds,reference:[0,0] as Point2}))};})()).drawing;return {snapshotId:vertex.snapshotId,drawing,angle:vertex.angle};});
   const key=semanticKey(['coverage',graph.mesh,members.map(value=>[value.snapshotId,value.drawing.curves.map(curve=>[curve.id,curve.nodes])])]);let structure=structurePreparationCaches.get(key);if(!structure){structure=prepareSnapshotCoverageStructure(graph.mesh,members);structurePreparationCaches.set(key,structure);this.count('coverageStructure');}this.coverageValues.set(localKey,structure);return structure;
  }
- resolveSnapshot(snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return resolveSnapshotInContext(this,snapshotId,{...this.defaults,...options});}
- resolveBasis(recordingId:string,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {const recording=this.index.recordings.get(recordingId);if(!recording)throw Error('Missing recording');return resolveRecordingSnapshotBasisInContext(this,recording,snapshotId,{...this.defaults,...options});}
+ resolveSnapshot(snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return withDrawingReadScope(()=>resolveSnapshotInContext(this,snapshotId,{...this.defaults,...options}));}
+ resolveBasis(recordingId:string,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {return withDrawingReadScope(()=>{const recording=this.index.recordings.get(recordingId);if(!recording)throw Error('Missing recording');return resolveRecordingSnapshotBasisInContext(this,recording,snapshotId,{...this.defaults,...options});});}
  sample(recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+  return withDrawingReadScope(()=>this.sampleInScope(recordingId,options));
+ }
+ private sampleInScope(recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
   const recording=this.index.recordings.get(recordingId);if(!recording){if(this.index.snapshots.has(recordingId))return this.resolveSnapshot(recordingId,options);throw Error('Missing recording');}
   const request={...this.defaults,...options},result=evaluateTriangulatedRecording(this,recording,request);contextEvaluations.set(result,this);evaluationRequests.set(result,{...request,angle:{...result.angle}});return result;
  }
  inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
- sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return requests.map(options=>this.sample(recordingId,options));}
+ sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return withDrawingReadScope(()=>requests.map(options=>this.sample(recordingId,options)));}
  beginGesture():PreparedRecordingContext{return this;}
  fork(workspace:RecordingSnapshotWorkspace,_changes?:PreparedRecordingChanges):PreparedRecordingContext {
   if(workspace===this.workspace)return this;const known=recordingContexts.get(workspace)??{};if(known.immutable&&this.defaults.immutableInputs&&known.immutable.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
