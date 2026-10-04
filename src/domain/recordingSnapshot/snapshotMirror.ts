@@ -103,12 +103,15 @@ function entityCorrespondence<T extends {id:string}>(
  * Array traversal and layer item traversal follow the source, with IDs mapped
  * in place. This preserves reflected paint order, including unequal depth.
  * All entity maps are involutions; missing/ambiguous counterparts stay local.
+ * An optional canonicalDrawing compiles that same mapping from a complete
+ * identity baseline while retaining only the current drawing's presence set.
+ * It never inserts absent current objects or uses geometry to infer identity.
  */
-export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMirrorOptions):SnapshotMirrorResult {
+export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMirrorOptions,canonicalDrawing:DrawingDocument=drawing):SnapshotMirrorResult {
  if(!options||!Number.isFinite(options.axisX))fail('INVALID_AXIS','Snapshot reflection requires an explicit finite axisX.');
- const curves=new Map(drawing.curves.map(curve=>[curve.id,curve])),nodes=new Set(drawing.nodes.map(node=>node.id));
- if(curves.size!==drawing.curves.length||nodes.size!==drawing.nodes.length)fail('INVALID_REFERENCE','Canonical curve and node IDs must be unique.');
- const curveMap:SnapshotMirrorCorrespondence['curves']=Object.fromEntries(drawing.curves.map(curve=>[curve.id,{id:curve.id,reverse:false}]));
+ const curves=new Map(canonicalDrawing.curves.map(curve=>[curve.id,curve])),nodes=new Set(canonicalDrawing.nodes.map(node=>node.id));
+ if(curves.size!==canonicalDrawing.curves.length||nodes.size!==canonicalDrawing.nodes.length)fail('INVALID_REFERENCE','Canonical curve and node IDs must be unique.');
+ const curveMap:SnapshotMirrorCorrespondence['curves']=Object.fromEntries(canonicalDrawing.curves.map(curve=>[curve.id,{id:curve.id,reverse:false}]));
  const paired=new Set<string>(),pairIds=new Set<string>();
  if(!Array.isArray(options.curvePairs))fail('INVALID_REFERENCE','Snapshot reflection requires explicit curvePairs.');
  for(const pair of options.curvePairs){
@@ -128,7 +131,7 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // Only explicit pairs infer node correspondence. An unpaired new curve can
  // share a paired node: it keeps its own curve ID and follows that node's map,
  // without inventing a partner or breaking its genuine shared-node connection.
- for(const curve of drawing.curves){
+ for(const curve of canonicalDrawing.curves){
   if(curve.nodes.some(id=>!nodes.has(id)))fail('INVALID_REFERENCE',`Curve ${curve.id} refers to a missing canonical node.`);
   if(paired.has(curve.id)){const map=curveMap[curve.id],target=curves.get(map.id)!;for(const end of [0,1] as const)bindNode(curve.nodes[end],target.nodes[flip(end,map.reverse)]);}
  }
@@ -140,26 +143,26 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  const use=(value:CurveUse):CurveUse=>{const map=mappedCurve(value.id);return {...value,id:map.id,reverse:value.reverse!==map.reverse};};
  const endpoint=(value:Endpoint):Endpoint=>{const map=mappedCurve(value.curveId);return {...value,curveId:map.id,end:flip(value.end,map.reverse)};};
  const diagnostics:SnapshotMirrorDiagnostic[]=[];
- const joins=entityCorrespondence(drawing.joins,'joins',(value,mapped)=>relationSignature(mapped?{a:endpoint(value.a),b:endpoint(value.b)}:value),diagnostics);
- const links=entityCorrespondence(drawing.endpointLinks??[],'endpointLinks',(value,mapped)=>relationSignature(mapped?{a:endpoint(value.a),b:endpoint(value.b)}:value),diagnostics);
- const fills=entityCorrespondence(drawing.fills,'fills',(value,mapped)=>boundarySignature(mapped?value.boundary.map(use):value.boundary),diagnostics,value=>encoded([value.color,value.mist?[value.mist.enabled,value.mist.side]:null]));
- const offsets=entityCorrespondence(drawing.offsets,'offsets',(value,mapped)=>usesSignature(mapped?value.source.map(use):value.source),diagnostics);
- const groups=entityCorrespondence(drawing.groups??[],'groups',(value,mapped)=>setSignature(mapped?value.curveIds.map(id=>mappedCurve(id).id):value.curveIds),diagnostics);
+ const joins=entityCorrespondence(canonicalDrawing.joins,'joins',(value,mapped)=>relationSignature(mapped?{a:endpoint(value.a),b:endpoint(value.b)}:value),diagnostics);
+ const links=entityCorrespondence(canonicalDrawing.endpointLinks??[],'endpointLinks',(value,mapped)=>relationSignature(mapped?{a:endpoint(value.a),b:endpoint(value.b)}:value),diagnostics);
+ const fills=entityCorrespondence(canonicalDrawing.fills,'fills',(value,mapped)=>boundarySignature(mapped?value.boundary.map(use):value.boundary),diagnostics,value=>encoded([value.color,value.mist?[value.mist.enabled,value.mist.side]:null]));
+ const offsets=entityCorrespondence(canonicalDrawing.offsets,'offsets',(value,mapped)=>usesSignature(mapped?value.source.map(use):value.source),diagnostics);
+ const groups=entityCorrespondence(canonicalDrawing.groups??[],'groups',(value,mapped)=>setSignature(mapped?value.curveIds.map(id=>mappedCurve(id).id):value.curveIds),diagnostics);
  const linkId=(id:string)=>links[id]??fail('INVALID_REFERENCE',`Mirror route points to missing endpoint link ${id}.`);
  const trackSignature=(track:StrokeDisplayIntervals,mapped:boolean)=>encoded([
   track.scope??'STROKE',usesSignature([mapped?use(track.anchor):track.anchor]),
   track.displayRoute?[track.displayRoute.seed.closed,usesSignature(mapped?track.displayRoute.seed.segments.map(use):track.displayRoute.seed.segments),setSignature(mapped?track.displayRoute.throughLinkIds.map(linkId):track.displayRoute.throughLinkIds)]:null,
  ]);
- const intervals=entityCorrespondence(drawing.displayIntervals??[],'displayIntervals',trackSignature,diagnostics);
+ const intervals=entityCorrespondence(canonicalDrawing.displayIntervals??[],'displayIntervals',trackSignature,diagnostics);
  const splitMaterials=new Map<string,{id:string;ranges:Map<string,string>}>();
- const tracksById=new Map((drawing.displayIntervals??[]).map(track=>[track.id,track]));
+ const tracksById=new Map((canonicalDrawing.displayIntervals??[]).map(track=>[track.id,track]));
  for(const pair of options.splitMaterials??[]){
   const a=tracksById.get(pair.a),b=tracksById.get(pair.b);if(!a||!b)continue;
   if(a.scope!=='CURVE'||b.scope!=='CURVE'||mappedCurve(a.anchor.id).id!==b.anchor.id||mappedCurve(b.anchor.id).id!==a.anchor.id||splitMaterials.has(a.id)||splitMaterials.has(b.id))fail('INVALID_REFERENCE',`Split mirror material ${pair.a} has no exact reciprocal curve identity.`);
   const used=new Set<string>();for(const range of pair.ranges){if(!a.ranges.some(value=>value.id===range.a)||!b.ranges.some(value=>value.id===range.b)||used.has(range.a)||used.has(range.b))fail('INVALID_REFERENCE',`Split mirror material ${pair.a} has no exact reciprocal range identity.`);used.add(range.a);used.add(range.b);}
   for(const [a,b,reverse] of [[pair.a,pair.b,false],[pair.b,pair.a,true]] as const){intervals[a]=b;splitMaterials.set(a,{id:b,ranges:new Map(pair.ranges.map(range=>reverse?[range.b,range.a]:[range.a,range.b]))});}
  }
- const allRanges=(drawing.displayIntervals??[]).flatMap(track=>track.ranges.map(range=>({...range,trackId:track.id})));
+ const allRanges=(canonicalDrawing.displayIntervals??[]).flatMap(track=>track.ranges.map(range=>({...range,trackId:track.id})));
  // Range equality is an exact material parameter match within its mapped track,
  // never ordinal pairing or a nearest-cut heuristic. Unequal authored cuts keep
  // their own IDs and remain fully editable in the mirrored track.
@@ -168,8 +171,12 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // Exact saved split identities supersede changed forward-anchor signatures.
  for(let i=diagnostics.length-1;i>=0;i--){const issue=diagnostics[i];if(issue.entityKind==='displayIntervals'&&splitMaterials.has(issue.entityId)||issue.entityKind==='ranges'&&[...splitMaterials.values()].some(entry=>entry.ranges.has(issue.entityId)))diagnostics.splice(i,1);}
  const objectId=(id:string)=>curveMap[id]?.id??fills[id]??offsets[id]??fail('INVALID_REFERENCE',`Mirror layer points to missing object ${id}.`);
- const layers=entityCorrespondence(drawing.layers,'layers',(layer,mapped)=>setSignature(mapped?layer.items.map(objectId):layer.items),diagnostics);
+ const layers=entityCorrespondence(canonicalDrawing.layers,'layers',(layer,mapped)=>setSignature(mapped?layer.items.map(objectId):layer.items),diagnostics);
  const correspondence:SnapshotMirrorCorrespondence={curves:curveMap,nodes:nodeMap,fills,offsets,layers,joins,endpointLinks:links,groups,displayIntervals:intervals,ranges};
+ if(canonicalDrawing!==drawing){
+  for(const [kind,values] of [['nodes',drawing.nodes],['curves',drawing.curves],['fills',drawing.fills],['offsets',drawing.offsets],['layers',drawing.layers],['joins',drawing.joins],['endpointLinks',drawing.endpointLinks??[]],['groups',drawing.groups??[]],['displayIntervals',drawing.displayIntervals??[]],['ranges',(drawing.displayIntervals??[]).flatMap(track=>track.ranges)]] as const)
+   for(const value of values)if(!Object.hasOwn(correspondence[kind],value.id))fail('INVALID_REFERENCE',`Current ${kind} ${value.id} has no canonical mirror identity.`);
+ }
  const reflect=([x,y]:Point2):Point2=>[2*options.axisX-x,y];
  const pinches=new Map((drawing.displayIntervals??[]).flatMap(track=>track.ranges.map(range=>[range.id,intervalPinch(range)] as const)));
  const d=structuredClone(drawing);
@@ -209,12 +216,12 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // nonuniform/singular affine images of ARC joins. Rebuilding a circle from
  // the already-placed controls would silently change that geometry.
  const deformationMaterial=evaluatedDeformationSource(drawing);
- if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options).drawing,parents=new Map<string,string>();for(const curve of drawing.curves){const source=evaluatedFitContext(drawing,curve.id),target=evaluatedFitContext(drawing,curveMap[curve.id].id);if(source&&target){const previous=parents.get(source.id);if(previous!==undefined&&previous!==target.id)fail('PAIR_CONFLICT',`Mirror fitted parent ${source.id} has inconsistent child correspondence.`);parents.set(source.id,target.id);}}const id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??parents.get(value)??value;
+ if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options,canonicalDrawing===drawing?deformationMaterial:canonicalDrawing).drawing,parents=new Map<string,string>();for(const curve of drawing.curves){const source=evaluatedFitContext(drawing,curve.id),target=evaluatedFitContext(drawing,curveMap[curve.id].id);if(source&&target){const previous=parents.get(source.id);if(previous!==undefined&&previous!==target.id)fail('PAIR_CONFLICT',`Mirror fitted parent ${source.id} has inconsistent child correspondence.`);parents.set(source.id,target.id);}}const id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??parents.get(value)??value;
   remapEvaluatedDeformations(result,drawing,mirroredMaterial,id,id,{point:reflect,reverse:value=>curveMap[value]?.reverse??false,key:JSON.stringify(['mirror',options.axisX,curveMap]),frame:{axisX:options.axisX,reverseCurveIds:drawing.curves.filter(curve=>curveMap[curve.id]?.reverse).map(curve=>curve.id)}});
  }
  const material=evaluatedAffineSource(drawing);
  if(material){
-  const mirroredMaterial=mirrorSnapshotDrawing(material,options).drawing;
+  const mirroredMaterial=mirrorSnapshotDrawing(material,options,canonicalDrawing===drawing?material:canonicalDrawing).drawing;
   const sourceId=(id:string)=>nodeMap[id]??curveMap[id]?.id??fills[id]??offsets[id]??id;
   registerEvaluatedAffine(result,mirroredMaterial,id=>{
    const affine=evaluatedAffine(drawing,sourceId(id));
