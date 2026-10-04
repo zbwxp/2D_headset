@@ -1,3 +1,4 @@
+import {snapshotControlComponents} from './controlTargets';
 import {mirrorViewDrawingPresence,snapshotViewMirrorCurvePairs} from './viewMirrorInput';
 import {recordingViewMirrorRelation} from './viewMirrorRelation';
 import {prepareSnapshotViewMirrorSurface} from './viewMirrorSurface';
@@ -456,6 +457,39 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  const result:SnapshotEvaluation={...selected,angle:{...requested},drawing,preShapeDrawing:drawing,prePlacementDrawing:drawing,preElementPlacementDrawing:drawing,elementPlacements:{},angleSurface:surface,diagnostics,fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(...active.map(base=>base.maxError),0),conflictingNodeIds:[],intervalTransportErrors:active.flatMap(base=>base.intervalTransportErrors)};
  result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);return cache.frames.set(key,result);
 }
+/** Exact native control preview at a real vertex. The caller supplies the
+ * immutable workspace/evaluation frozen at gesture start. Other views are
+ * resolved only when an inspection consumer requests their live bases. */
+export function evaluateSnapshotControlTargetPreview(before:RecordingSnapshotWorkspace,workspace:RecordingSnapshotWorkspace,recordingId:string,baseline:SnapshotEvaluation):SnapshotEvaluation {
+ const options:SnapshotEvaluationOptions={useDraft:true,immutableInputs:true,diagnostics:'preview'},full=()=>evaluateRecordingSnapshot(workspace,recordingId,options);
+ const recording=workspace.recordings.find(value=>value.id===recordingId),priorRecording=before.recordings.find(value=>value.id===recordingId),surface=baseline.angleSurface,graph=recording?.angleGraph;
+ if(!recording||recording!==priorRecording||before.library!==workspace.library||!graph||surface?.role!=='basis'||surface.simplex?.kind!=='vertex'||baseline.angle.x!==recording.angle.x||baseline.angle.y!==recording.angle.y||graph.visibilityBasisRecipes?.[baseline.snapshotId])return full();
+ const owner=workspace.snapshots.find(value=>value.id===baseline.snapshotId),prior=before.snapshots.find(value=>value.id===baseline.snapshotId);
+ if(!owner||!prior||workspace.snapshots.length!==before.snapshots.length||workspace.snapshots.some((snapshot,index)=>snapshot.id!==before.snapshots[index].id||snapshot.id!==owner.id&&snapshot!==before.snapshots[index]))return full();
+ const savedKeys=new Set([...Object.keys(owner),...Object.keys(prior)]);savedKeys.delete('draft');
+ if([...savedKeys].some(key=>owner[key as keyof RecordingSnapshot]!==prior[key as keyof RecordingSnapshot]))return full();
+ const selected=resolveRecordingSnapshotBasis(workspace,recording,owner.id,options),current=selected.drawing;
+ const topology=(drawing:DrawingDocument)=>[drawing.nodes.map(node=>node.id),drawing.curves.map(curve=>[curve.id,curve.nodes]),drawing.layers.map(layer=>[layer.id,layer.items]),drawing.joins,drawing.endpointLinks,drawing.groups,drawing.mirrorEditing];
+ if(!same(topology(current),topology(baseline.drawing)))return full();
+ // A red projection may reuse another basis, linked component or mirror pair.
+ // Keep it frozen only when all its support is separate from current layers
+ // and controls. Complex cross-basis expression programs keep the full route.
+ if(surface.outsideCurves.length){
+  if(Object.keys(graph.responseExpressions??{}).length||graph.correctionFrames?.some(frame=>Object.keys(frame.responseExpressions??{}).length)||Object.keys(graph.materialBasisRecipes??{}).length)return full();
+  const outside=new Set(surface.outsideCurves.map(curve=>curve.curveId)),curves=new Set(current.curves.map(curve=>curve.id)),nodes=new Set(current.nodes.map(node=>node.id)),layers=new Set(current.layers.map(layer=>layer.id));
+  for(const basis of surface.allBases){const drawing=basis.drawing;
+   if(drawing.layers.some(layer=>layers.has(layer.id)&&layer.items.some(id=>outside.has(id)))||drawing.curves.some(curve=>outside.has(curve.id)&&curve.nodes.some(id=>nodes.has(id))))return full();
+   const components=[...snapshotControlComponents(drawing),...drawing.groups?.map(group=>group.curveIds)??[],...drawing.mirrorEditing?.curvePairs.map(pair=>[pair.a,pair.b])??[]],related=new Set(curves);let expanded=true;
+   while(expanded){expanded=false;for(const component of components)if(component.some(id=>related.has(id)))for(const id of component)if(!related.has(id)){related.add(id);expanded=true;}}
+   if([...outside].some(id=>related.has(id)))return full();
+  }
+ }
+ let complete:SnapshotEvaluation|undefined;const inspection=()=>complete??=full();
+ const lazySurface:SnapshotAngleSurfaceEvaluation={role:'basis',coordinateSpace:'final',simplex:surface.simplex,bases:[selected],nodeAuthorities:surface.nodeAuthorities,outsideCurves:surface.outsideCurves,
+  get allBases(){return inspection().angleSurface!.allBases;},get positiveBases(){return inspection().angleSurface!.positiveBases;},get mirrorContext(){return inspection().angleSurface!.mirrorContext;},get responseGraph(){return inspection().angleSurface!.responseGraph;}};
+ return {...selected,angle:{...recording.angle},angleSurface:lazySurface,diagnostics:[...selected.diagnostics,...baseline.diagnostics.filter(issue=>issue.code==='POSE')]};
+}
+
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
  assertRecordingWorkspaceActive(workspace);
  const recording=workspace.recordings.find(r=>r.id===recordingId);if(!recording){if(workspace.snapshots.some(s=>s.id===recordingId))return resolveSnapshot(workspace,recordingId,options);throw Error('Missing recording');}

@@ -27,7 +27,7 @@ import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTra
 import {createCurveSplitIntent} from '../../domain/drawing/layerEditIntent';
 import {useEditor} from '../../app/store';
 import {prepareSnapshotBatch,prepareSnapshotPreview} from '../../app/recordingSnapshotApi';
-import {evaluateRecordingSnapshot,resolveSnapshot,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
+import {evaluateRecordingSnapshot,evaluateSnapshotControlTargetPreview,resolveSnapshot,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
 import {snapshotMigrationId} from '../../domain/recordingSnapshot/migration';
 import type {RecordingSnapshotWorkspace} from '../../domain/recordingSnapshot/model';
 import type {SnapshotCommand} from '../../domain/recordingSnapshot/commands';
@@ -83,7 +83,8 @@ function SnapshotEditor({recordingId,zh,txt}:{recordingId:string;zh:boolean;txt:
  // still performs the strict ownership, propagation, validation and history transaction.
  const run=useCallback((commands:SnapshotCommand[],history=true)=>{try{const placementOnly=commands.length>0&&commands.every(command=>command.op==='setLayerPlacement'),result=(history&&!placementOnly?prepareSnapshotBatch:prepareSnapshotPreview)(useEditor.getState().project,{recordingId,commands});if(result.changed){const store=useEditor.getState();history?store.commitRecordingSnapshots(result.recordingSnapshots):store.setRecordingSnapshots(result.recordingSnapshots);}setError(result.diagnostics?.map(d=>d.message).join(' ')??'');return result;}catch(e){setError((e as Error).message);return undefined;}},[recordingId]);
  const previewCommands=useCallback((commands:SnapshotCommand[]|null)=>{if(!commands){setPreview(null);return;}if(!currentView&&!pair&&!surface)return;try{const result=prepareSnapshotPreview(useEditor.getState().project,{recordingId,commands});setPreview(result.recordingSnapshots);setError('');}catch(e){setError((e as Error).message);}},[recordingId,!!currentView,!!pair,!!surface]);
- const evaluated=useMemo(()=>evaluateRecordingSnapshot(preview??workspace,recordingId,{angle:recording.angle,useDraft:true,immutableInputs:true,diagnostics:preview?'preview':'full',...(warpId&&localEdit?{stopAtWarpId:warpId}:{})}),[workspace,preview,recordingId,recording.angle,warpId,localEdit]);
+ const controlPreview=useRef<{workspace:RecordingSnapshotWorkspace;before:RecordingSnapshotWorkspace;baseline:SnapshotEvaluation}|null>(null);
+ const evaluated=useMemo(()=>preview&&controlPreview.current?.workspace===preview&&!warpId?evaluateSnapshotControlTargetPreview(controlPreview.current.before,preview,recordingId,controlPreview.current.baseline):evaluateRecordingSnapshot(preview??workspace,recordingId,{angle:recording.angle,useDraft:true,immutableInputs:true,diagnostics:preview?'preview':'full',...(warpId&&localEdit?{stopAtWarpId:warpId}:{})}),[workspace,preview,recordingId,recording.angle,warpId,localEdit]);
  const baseline=useMemo(()=>evaluateRecordingSnapshot(workspace,recordingId,{angle:recording.angle,useDraft:true,immutableInputs:true,diagnostics:'preview'}),[workspace,recordingId,recording.angle]);
  const snapshot=workspace.snapshots.find(s=>s.id===evaluated.snapshotId),state=evaluated.state,correction=pairCorrection||evaluated.angleSurface?.role==='correction',surfaceOutside=evaluated.angleSurface?.role==='outside';
  const [correctionMirror,setCorrectionMirror]=useState<{axisX?:number;enabled?:boolean}>({});
@@ -137,9 +138,9 @@ function SnapshotEditor({recordingId,zh,txt}:{recordingId:string;zh:boolean;txt:
   const store=useEditor.getState(),resolved=toolIntent(before,next,intent);if(resolved.kind==='topology'&&!topologyEditable)throw Error(topologyHint);
   const plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(store.project,false),{recordingId,snapshotId:snapshot!.id,angle:recording.angle,beforeDrawing:before,drawing:next,intent:resolved});store.commitPreparedSnapshotEdit(plan);setPreview(null);setError(plan.diagnostics?.map(value=>value.message).join(' ')??'');return useEditor.getState().project.recordingSnapshots;
  }catch(error){setPreview(null);setError((error as Error).message);return undefined;}}
- function previewDrawingTool(before:DrawingDocument,next:DrawingDocument|null,intent?:DrawingCommandIntent):boolean {if(!next){setPreview(null);return true;}try{
+ function previewDrawingTool(before:DrawingDocument,next:DrawingDocument|null,intent?:DrawingCommandIntent):boolean {if(!next){controlPreview.current=null;setPreview(null);return true;}try{
   if(!curveEditable||warp)throw Error(txt('先选择当前快照中的可编辑对象。','Select editable objects in the current snapshot.'));
-  const resolved=toolIntent(before,next,intent),plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(useEditor.getState().project,false),{recordingId,snapshotId:snapshot!.id,angle:recording.angle,beforeDrawing:before,drawing:next,intent:resolved,validation:'preview'});setPreview(plan.project.recordingSnapshots!);setError('');return true;
+  const resolved=toolIntent(before,next,intent),plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(useEditor.getState().project,false),{recordingId,snapshotId:snapshot!.id,angle:recording.angle,beforeDrawing:before,drawing:next,intent:resolved,validation:'preview'});controlPreview.current=resolved.kind==='geometry'?{workspace:plan.project.recordingSnapshots!,before:workspace,baseline}:null;setPreview(plan.project.recordingSnapshots!);setError('');return true;
  }catch(error){setPreview(null);setError((error as Error).message);return false;}}
  const propertyBaseline=useRef(toolDrawing);propertyBaseline.current=toolDrawing;
  const propertyToken=useRef('');propertyToken.current=JSON.stringify([recordingId,snapshot?.id,recording.angle,selection,warpId,reference.moving]);
