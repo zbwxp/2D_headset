@@ -5,13 +5,13 @@ import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotBatch,prepareSnapshotPreview,type SnapshotCommand} from '../../app/recordingSnapshotApi';
 import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit';
 import {prepareRecordingTemporaryCageEdit} from '../../app/recordingTemporaryCageEdit';
-import {snapshotEditContext} from '../../app/snapshotEditTransaction';
+import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {useEditor} from '../../app/store';
 import {useWorkspaceMode} from '../../app/workspaceMode';
-import {moveHandle,moveNode,transform} from '../../domain/drawing/commands';
+import {createCurve,moveHandle,moveNode,transform} from '../../domain/drawing/commands';
 import {dragNode} from '../../domain/drawing/nodeDrag';
 import {applyMirrorEditing} from '../../domain/drawing/mirrorEditing';
-import {applyLayerDomainIntent,createLayerCageIntent} from '../../domain/drawing/layerDomainIntent';
+import {applyLayerDomainIntent,createLayerAffineIntent,createLayerCageIntent} from '../../domain/drawing/layerDomainIntent';
 import {rectQuad} from '../../domain/drawing/deform';
 import {shapeOf,type DrawingDocument,type Point2} from '../../domain/drawing/model';
 import {parseLandmarks} from '../../domain/landmarks/persistence';
@@ -161,6 +161,20 @@ describe('minimum-change inverse through the existing editing workflow',()=>{
   const discarded=batch(loaded,[{op:'discardSelected',layerIds:['ear-layer'],warpIds:[]}]);near(evaluate(discarded).drawing,evaluate(project).drawing);expect(discarded.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeUndefined();expect(recording(discarded).angleGraph!.correctionFrames?.some(frame=>frame.status==='draft')??false).toBe(false);
   const saved=batch(loaded,[{op:'saveSelected',layerIds:['ear-layer'],warpIds:[]}]),reopened={...saved,recordingSnapshots:parseRecordingSnapshots(JSON.parse(JSON.stringify(saved.recordingSnapshots)))};
   near(evaluate(reopened,undefined,false).drawing,wanted);expect(reopened.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeUndefined();expect(recording(reopened).angleGraph!.correctionFrames?.some(frame=>frame.status==='draft')??false).toBe(false);sourceAndZeroUnchanged(project,reopened);
+ });
+
+ it.each(['updateEndpointCorrection','discardEndpointCorrection'] as const)('holds direct real-view topology, property and domain edits until coupled %s',finish=>{
+  const project=fixture(),draft=plan(project,followTarget(project)).project;
+  const navigate=(from:LandmarkProject,angle:Angle)=>prepareSnapshotEdit(snapshotEditContext(from,false),{kind:'snapshot-state',workspace:prepareSnapshotBatch(from,{commands:[{op:'setAngle',angle}]}).recordingSnapshots}).project;
+  const atZero=freeze(navigate(draft,{x:0,y:0})),original=JSON.stringify(atZero);
+  const topology=(from:LandmarkProject)=>{const beforeDrawing=evaluate(from).drawing;return prepareSnapshotEdit(snapshotEditContext(from,false),{kind:'snapshot-local-drawing',snapshotId:'zero',state:'saved',beforeDrawing,drawing:createCurve(beforeDrawing,'ear-layer',[[.1,.2],[.2,.3],[.3,.4],[.4,.5]],.01,'New local curve','new-local')});};
+  const property=(from:LandmarkProject)=>{const workspace=structuredClone(from.recordingSnapshots!);workspace.snapshots.find(snapshot=>snapshot.id==='zero')!.deformation.layers['ear-layer']={curveAppearance:{ear:{width:.02}}};return prepareSnapshotEdit(snapshotEditContext(from,false),{kind:'snapshot-state',workspace});};
+  const domain=(from:LandmarkProject)=>prepareSnapshotEdit(snapshotEditContext(from,false),{kind:'recording-layer-domain',recordingId:'surface',snapshotId:'zero',angle:{x:0,y:0},intent:createLayerAffineIntent(['ear-layer'],[1,0,0,1,.03,0],{operationId:'new-local-domain'})});
+  for(const edit of [topology,property,domain])expect(()=>edit(atZero)).toThrow(/coupled.*pending.*save or discard/i);
+  expect(JSON.stringify(atZero)).toBe(original);expect(recording(atZero).angle).toEqual({x:0,y:0});expect(atZero.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeDefined();
+  const returned=navigate(atZero,{x:60,y:0}),finished=prepareSnapshotEdit(snapshotEditContext(returned,false),{kind:'snapshot-state',workspace:prepareSnapshotBatch(returned,{commands:[{op:finish}]}).recordingSnapshots}).project;
+  expect(recording(finished).angleGraph!.correctionFrames?.some(frame=>frame.status==='draft')??false).toBe(false);expect(finished.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id==='side')!.draft).toBeUndefined();
+  const reopened=navigate(finished,{x:0,y:0});for(const edit of [topology,property,domain])expect(edit(reopened).changed).toBe(true);
  });
 });
 
