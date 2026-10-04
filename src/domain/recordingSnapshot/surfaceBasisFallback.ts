@@ -87,7 +87,7 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
   const current=candidate().sample(recording.id,{angle:protection.angle,products:'controls'}),support=current.angleSurface;
   if(!support?.simplex||support.simplex.kind==='vertex'){assertSnapshotControlTargetReplay(current.drawing,protection.drawing);continue;}
   const temporary={...nextGraph,correctionFrames:nextGraph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...protection.angle}}:f)};
-  const result=prepareSnapshotSurfaceTargetEdit(temporary,support.simplex,support.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(v=>v.snapshotId===base.snapshotId)!.angle})),current.drawing,protection.drawing,{angle:protection.angle,frameId,allBases:snapshotSurfaceRequiredBases(support,protection.angle),mirror:support.mirrorContext});
+  const result=prepareSnapshotSurfaceTargetEdit(temporary,support.simplex,support.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(v=>v.snapshotId===base.snapshotId)!.angle})),current.drawing,protection.drawing,{immutableInputs:options.immutableInputs,angle:protection.angle,frameId,allBases:snapshotSurfaceRequiredBases(support,protection.angle),mirror:support.mirrorContext});
   nextGraph={...result.graph,correctionFrames:result.graph.correctionFrames!.map(f=>f.status==='draft'?{...f,angle:{...recording.angle},basisAdjustment:frame.basisAdjustment}:f)};
  }
  // Verify the entire coupled workspace after all constraints have been added;

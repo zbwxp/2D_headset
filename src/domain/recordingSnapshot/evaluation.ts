@@ -455,7 +455,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const mirrorContext=positive?makeMirror([...demand]):undefined,prior=completeSurfaceProducts.get(key)??context.inheritedSurface(key)??(options.diagnostics==='preview'?(completeSurfaceProducts.get(surfaceKey('full'))??context.inheritedSurface(surfaceKey('full'))):undefined);
  let sampled=context.geometryValues.get(geometryKey)??controlGeometryProducts.get(geometryKey);
  if(!sampled&&prior)sampled={requestedAngle:requested,normal:prior.angleSurface?.simplex?{drawing:prior.drawing,simplex:prior.angleSurface.simplex,diagnostics:[],nodeAuthorities:new Map(Object.entries(prior.angleSurface.nodeAuthorities))}:undefined,outsideCurves:prior.angleSurface?.outsideCurves??[],diagnostics:prior.diagnostics.filter(issue=>issue.code==='POSE').map(issue=>issue.message)};
- if(!sampled){context.count('surfaceSample');const geometryRefs=[...geometryDemand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));sampled=prepared.evaluate(requested,id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}),location=>createSnapshotSurfaceValueSampler(effectiveGraph,location,geometryRefs,mirrorContext,{immutableInputs:true,onPrepare:()=>context.count('responseProgram')}));controlGeometryProducts.set(geometryKey,sampled);context.geometryValues.set(geometryKey,sampled);}else if(!prior)context.geometryValues.set(geometryKey,sampled);
+ if(!sampled){context.count('surfaceSample');const geometryRefs=[...geometryDemand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));sampled=prepared.evaluate(requested,id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}),location=>createSnapshotSurfaceValueSampler(effectiveGraph,location,geometryRefs,mirrorContext,{immutableInputs:true,onPrepare:()=>context.count('responseProgram')}),{immutableInputs:true,onGeometryPrepare:()=>context.count('simplexProgram')});controlGeometryProducts.set(geometryKey,sampled);context.geometryValues.set(geometryKey,sampled);}else if(!prior)context.geometryValues.set(geometryKey,sampled);
 
  const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>base(id))??[],selected=active.length?active[dominantSnapshotBasis(active.map(value=>({snapshotId:value.snapshotId,angle:angleFor(value.snapshotId)})),normal!.simplex.geometricWeights)]:base(fallback);
  const role:SnapshotAngleSurfaceEvaluation['role']=!normal?'outside':normal.simplex.kind==='vertex'?'basis':'correction';
@@ -489,7 +489,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
 }
 export interface PreparedRecordingCounters {
- validation:number;dependencyIndex:number;membershipStructure:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;
+ validation:number;dependencyIndex:number;membershipSignature:number;membershipStructure:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;simplexProgram:number;
  bySnapshot:Record<string,Partial<Record<'snapshotInput'|'snapshotState'|'ownGeometry'|'basis'|'paint',number>>>;
 }
 export interface PreparedRecordingContext {
@@ -514,7 +514,7 @@ export const preparedRecordingOptionsForEvaluation=(evaluation:SnapshotEvaluatio
 export const preparedRecordingContextForEvaluation=(evaluation:SnapshotEvaluation):PreparedRecordingContext|undefined=>contextEvaluations.get(evaluation);
 const recordingContexts=new WeakMap<RecordingSnapshotWorkspace,{immutable?:{context:RecordingContext;revision:string};mutable?:{context:RecordingContext;fingerprint:string}}>();
 const immutableWorkspaceRevision=(workspace:RecordingSnapshotWorkspace):string=>semanticKey([immutableIdentity(workspace.library),workspace.snapshots.map(snapshot=>[snapshot.id,immutableIdentity(snapshot),immutableIdentity(snapshot.draft),immutableIdentity(snapshot.deformation)]),workspace.recordings.map(recording=>[recording.id,recording.angle.x,recording.angle.y,recording.tolerance,recording.activeSnapshotId,immutableIdentity(recording.angleGraph),immutableIdentity(recording.tracks),immutableIdentity(recording.snapshotIds)])]);
-const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,membershipStructure:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,bySnapshot:{}});
+const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,membershipSignature:0,membershipStructure:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,simplexProgram:0,bySnapshot:{}});
 
 /** An immutable, validated dependency revision. Values are pinned here rather
  * than in the small display-frame LRU. A fork can borrow any unaffected value
@@ -588,7 +588,7 @@ class RecordingContext implements PreparedRecordingContext {
  /** Coordinate-free structural projection using the same membership/alias/fork
   * assembly as numeric evaluation. No response, cage or coordinate fit runs. */
  membership(id:string):{key:string;input:SnapshotInputParent} {
-  const known=this.memberships.get(id);if(known)return known;
+  const known=this.memberships.get(id);if(known)return known;this.count('membershipSignature');
   const snapshot=this.index.snapshots.get(id);if(!snapshot)throw Error(`Missing snapshot ${id}.`);
   const recording=this.index.recordingForSnapshot.get(id),mirror=recording&&recordingViewMirrorRelation(this.workspace,recording),parentIds=new Set(snapshot.layers.flatMap(layer=>layer.kind==='reference'?[layer.baseSnapshotId]:[]));
   for(const source of Object.values(snapshot.memberSources??{}))parentIds.add(source);

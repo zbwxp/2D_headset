@@ -1,10 +1,11 @@
+import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
 import {prepareSnapshotViewMirrorMaterial} from './viewMirrorMaterial';
 import type {DrawingDocument,Endpoint,Point2} from '../drawing/model';
 import {InputCache} from '../geometry/cache';
 import type {Angle,SnapshotAngleGraph} from './model';
 import {snapshotProjectionScalarKey,snapshotResponseProjectionContracts} from './responseExpressionProjection';
 import type {SnapshotSmoothProjectionContract} from './responseExpressions';
-import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget,type SnapshotSimplexBasis} from './simplexGeometry';
+import {type SnapshotScalarTarget,type SnapshotSimplexBasis} from './simplexGeometry';
 import {deriveSmoothComponents,smoothEndpointKey} from './smoothComponent';
 import type {SnapshotSurfaceMirrorContext,SnapshotSurfaceMirrorSample} from './surfaceMirrorContext';
 import {prepareSnapshotSurfaceValueProgram,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
@@ -32,7 +33,7 @@ export function prepareSnapshotViewMirrorSurface(graph:SnapshotAngleGraph,bases:
   const supportKey=JSON.stringify([location.simplexId,location.vertexIds]);let program=programs.get(supportKey);
   if(!program){program=prepareSnapshotSurfaceValueProgram(graph,location,bases);programs.set(supportKey,program);}
   const sampler=program.createSampler();
-  const source=interpolateSnapshotSimplexGeometry(location.snapshotIds.map(id=>byId.get(id)!),location.geometricWeights,sampler).drawing;
+  const source=preparedSnapshotSimplexProgram(location.snapshotIds.map(id=>byId.get(id)!)).sample(location.geometricWeights,sampler).drawing;
   let projection=projections.get(supportKey);
   if(!projection){
   const reference={...geometryOnly(source),nodes:source.nodes.map(node=>zeroNodes.get(node.id)??node),curves:source.curves.map(curve=>({...curve,handles:zeroCurves.get(curve.id)?.handles??curve.handles}))};

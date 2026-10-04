@@ -1,3 +1,5 @@
+import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
+import {InputCache} from '../geometry/cache';
 import {shapeOf,type Cubic,type DrawingDocument} from '../drawing/model';
 import {interpolateSnapshotSimplexGeometry,type SnapshotScalarResponse,type SnapshotSimplexBasis,type SnapshotSimplexGeometry} from './simplexGeometry';
 import {locateSnapshotSimplex,projectToSnapshotCoverage,restrictSnapshotCoverage,type SnapshotSimplexLocation,type SnapshotTriangulation,type SnapshotTriangulationAngle} from './triangulation';
@@ -21,7 +23,7 @@ export type SnapshotLocationResponses=(location:SnapshotSimplexLocation)=>Snapsh
  * remain separate because two projected regions can assign a shared node two
  * different preview positions; neither is an authoritative geometry edit. */
 export interface PreparedSnapshotCoverageStructure {
- evaluate:(requestedAngle:SnapshotTriangulationAngle,basis:(snapshotId:string)=>SnapshotSimplexBasis,responses?:SnapshotLocationResponses)=>SnapshotCoverageEvaluation;
+ evaluate:(requestedAngle:SnapshotTriangulationAngle,basis:(snapshotId:string)=>SnapshotSimplexBasis,responses?:SnapshotLocationResponses,options?:{immutableInputs?:boolean;onGeometryPrepare?:()=>void})=>SnapshotCoverageEvaluation;
  /** Includes red projected supports; expression/reflection leaves add to these. */
  locations:(requestedAngle:SnapshotTriangulationAngle)=>SnapshotSimplexLocation[];
  curveIds:readonly string[];
@@ -29,7 +31,7 @@ export interface PreparedSnapshotCoverageStructure {
 export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,bases:readonly SnapshotSimplexBasis[]):PreparedSnapshotCoverageStructure {
  const byId=new Map(bases.map(b=>[b.snapshotId,b]));
  if(byId.size!==bases.length||mesh.vertices.some(v=>!byId.has(v.snapshotId)))throw Error('Snapshot coverage needs one basis for every real mesh vertex.');
- const curveMaps=new Map(bases.map(b=>[b.snapshotId,new Map(b.drawing.curves.map(c=>[c.id,c]))]));
+ const curveMaps=new Map(bases.map(b=>[b.snapshotId,new Map(b.drawing.curves.map(c=>[c.id,c]))])),nodeIds=new Map(bases.map(basis=>[basis.snapshotId,new Set(basis.drawing.nodes.map(node=>node.id))]));
  const vertexSnapshot=new Map(mesh.vertices.map(v=>[v.id,v.snapshotId]));
  const curveIds=[...new Set(mesh.vertices.flatMap(v=>byId.get(v.snapshotId)!.drawing.curves.map(c=>c.id)))].sort();
  const regions=new Map<string,SnapshotTriangulation>();
@@ -41,20 +43,23 @@ export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,base
   region.triangles=region.triangles.filter(triangle=>compatible(triangle.vertexIds)&&triangle.edgeIds.every(id=>edgeIds.has(id)));
   regions.set(curveId,region);
  }
- const locations=(requested:SnapshotTriangulationAngle):SnapshotSimplexLocation[]=>{
-  const location=locateSnapshotSimplex(mesh,requested),result=location?[location]:[];
-  const present=(curveId:string)=>!!location&&location.snapshotIds.every(id=>curveMaps.get(id)!.has(curveId))&&location.snapshotIds.every(id=>{const a=curveMaps.get(id)!.get(curveId)!,b=curveMaps.get(location.snapshotIds[0])!.get(curveId)!;return a.nodes[0]===b.nodes[0]&&a.nodes[1]===b.nodes[1];});
+ const requests=new InputCache<{location:SnapshotSimplexLocation|undefined;locations:SnapshotSimplexLocation[];projections:Map<string,NonNullable<ReturnType<typeof projectToSnapshotCoverage>>>}>(128);
+ const request=(requested:SnapshotTriangulationAngle)=>{
+  const key=JSON.stringify([requested.x,requested.y]),known=requests.get(key);if(known)return known;
+  const location=locateSnapshotSimplex(mesh,requested),result=location?[location]:[],projections=new Map<string,NonNullable<ReturnType<typeof projectToSnapshotCoverage>>>();
+  const present=(curveId:string)=>!!location&&location.snapshotIds.every(id=>curveMaps.get(id)!.has(curveId))&&location.snapshotIds.every(id=>{const a=curveMaps.get(id)!.get(curveId)!,b=curveMaps.get(location.snapshotIds[0])!.get(curveId)!;return a.nodes[0]===b.nodes[0]&&a.nodes[1]===b.nodes[1]&&a.nodes.every(node=>nodeIds.get(id)!.has(node));});
   const seen=new Set(result.map(value=>JSON.stringify([value.simplexId,value.vertexIds,value.geometricWeights])));
-  for(const id of curveIds)if(!present(id)){const projected=projectToSnapshotCoverage(regions.get(id)!,requested);if(projected){const key=JSON.stringify([projected.simplex.simplexId,projected.simplex.vertexIds,projected.simplex.geometricWeights]);if(!seen.has(key)){seen.add(key);result.push(projected.simplex);}}}
-  return result;
+  for(const id of curveIds)if(!present(id)){const projected=projectToSnapshotCoverage(regions.get(id)!,requested);if(projected){projections.set(id,projected);const key=JSON.stringify([projected.simplex.simplexId,projected.simplex.vertexIds,projected.simplex.geometricWeights]);if(!seen.has(key)){seen.add(key);result.push(projected.simplex);}}}
+  return requests.set(key,{location,locations:result,projections});
  };
- return {curveIds,locations,evaluate:(requestedAngle,basis,responses)=>{
-  const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>interpolateSnapshotSimplexGeometry(location.snapshotIds.map(basis),location.geometricWeights,responses?.(location));
-  const requested={...requestedAngle},location=locateSnapshotSimplex(mesh,requested),normal=location?{...sample(location,responses),simplex:location}:undefined;
+ const locations=(requested:SnapshotTriangulationAngle)=>request(requested).locations;
+ return {curveIds,locations,evaluate:(requestedAngle,basis,responses,options)=>{
+  const sample=(location:SnapshotSimplexLocation,responses:SnapshotLocationResponses|undefined)=>{const active=location.snapshotIds.map(basis),response=responses?.(location);return options?.immutableInputs?preparedSnapshotSimplexProgram(active,options.onGeometryPrepare).sample(location.geometricWeights,response):interpolateSnapshotSimplexGeometry(active,location.geometricWeights,response);};
+  const requested={...requestedAngle},planned=request(requested),location=planned.location,normal=location?{...sample(location,responses),simplex:location}:undefined;
   const normalIds=new Set(normal?.drawing.curves.map(curve=>curve.id)),outsideCurves:SnapshotCoverageCurvePreview[]=[],diagnostics=[...(normal?.diagnostics??[])],sampled=new Map<string,SnapshotSimplexGeometry>();
   for(const curveId of curveIds){
    if(normalIds.has(curveId))continue;
-   const projected=projectToSnapshotCoverage(regions.get(curveId)!,requested);if(!projected)continue;
+   const projected=planned.projections.get(curveId)??projectToSnapshotCoverage(regions.get(curveId)!,requested);if(!projected)continue;
    const key=JSON.stringify([projected.simplex.simplexId,projected.simplex.snapshotIds,projected.simplex.geometricWeights]);
    let geometry=sampled.get(key);if(!geometry){geometry=sample(projected.simplex,responses);sampled.set(key,geometry);}
    if(!geometry.drawing.curves.some(curve=>curve.id===curveId)){diagnostics.push(`Curve ${curveId} has no compatible preview at its closest supported region.`);continue;}

@@ -44,7 +44,7 @@ describe('prepared recording request ownership',()=>{
  it('shares validated dependency preparation across response forks and rebuilds it for structural changes',()=>{
   const {workspace,recording}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'});context.sample('r',{angle:{x:45,y:0}});
   const graph=recording.angleGraph!,edge=graph.mesh.edges[0],response={...workspace,recordings:[{...recording,angleGraph:{...graph,edgeResponses:{[edge.id]:{nodes:{a:{x:[[.5,.6] as [number,number]]}},handles:{}}}}}]},fork=context.fork(response);fork.sample('r',{angle:{x:45,y:0}});
-  expect(fork.counters.validation).toBe(0);expect(fork.counters.dependencyIndex).toBe(0);expect(fork.counters.ownGeometry).toBe(0);
+  expect(fork.counters.validation).toBe(0);expect(fork.counters.dependencyIndex).toBe(0);expect(fork.counters.membershipSignature).toBe(0);expect(fork.counters.membershipStructure).toBe(0);expect(fork.counters.ownGeometry).toBe(0);
   const structural={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id==='side'?{...snapshot,layers:snapshot.layers.map(layer=>({...layer,membership:{excludeElementIds:['c']}}))}:snapshot)},changed=context.fork(structural);changed.sample('r',{angle:{x:45,y:0}});
   expect(changed.counters.validation).toBe(1);expect(changed.counters.dependencyIndex).toBe(1);
   expect(()=>context.fork({...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id==='side'?{...snapshot,parentSnapshotId:'side'}:snapshot)})).toThrow(/cycle/);

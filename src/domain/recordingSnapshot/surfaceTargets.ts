@@ -1,3 +1,4 @@
+import {preparedSnapshotSimplexProgram} from './preparedSimplexPrograms';
 import {createSnapshotFitParameterCollector} from './responseFitParameterRanges';
 import {projectSnapshotResponseCorrections,unprojectSnapshotResponseTarget,snapshotProjectionScalarKey,snapshotResponseProjectionContracts,type SnapshotProjectionScalarSample} from './responseExpressionProjection';
 import type {SnapshotSurfaceMirrorContext,SnapshotSurfaceMirrorSample} from './surfaceMirrorContext';
@@ -147,7 +148,7 @@ export function createSnapshotSurfaceValueSampler(graph:SnapshotAngleGraph,locat
  const program=compileSnapshotSurfaceValueProgram(graph,location,bases,mirror);options.onPrepare?.();return program.createSampler();
 }
 
-export interface SnapshotSurfaceTargetEditOptions {angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}
+export interface SnapshotSurfaceTargetEditOptions {immutableInputs?:boolean;angle:Angle;frameId:string;/** Includes expression leaves outside the active child simplex. */allBases?:readonly SnapshotSimplexBasis[];mirror?:SnapshotSurfaceMirrorContext}
 export interface SnapshotSurfaceTargetEditResult {graph:SnapshotAngleGraph;changed:boolean}
 type TargetUpdate={target:SnapshotScalarTarget;axis:0|1;weights:BarycentricWeights};
 
@@ -213,9 +214,9 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   if(!curve||!node)fail('SURFACE_INVALID_TARGET',`Handle ${curveId} end ${end} is missing from an active saved snapshot basis.`);
   return sub(curve.handles[end],node);
  };
- const owned=own(effective.responseExpressions,location.simplexId),contracts=snapshotResponseProjectionContracts(owned,mirrored?.contracts),projectedEndpoints=new Set(contracts.flatMap(contract=>contract.targets.map(target=>JSON.stringify([target.endpoint.curveId,target.endpoint.end])))),sampler=contracts.length?createSnapshotSurfaceValueSampler(graph,location,options.allBases??orderedBases,options.mirror):undefined;
+ const owned=own(effective.responseExpressions,location.simplexId),contracts=snapshotResponseProjectionContracts(owned,mirrored?.contracts),projectedEndpoints=new Set(contracts.flatMap(contract=>contract.targets.map(target=>JSON.stringify([target.endpoint.curveId,target.endpoint.end])))),sampler=contracts.length?createSnapshotSurfaceValueSampler(graph,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs}):undefined;
  // Populate the shared raw component inputs without changing the user's graph.
- if(sampler)interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler);
+ if(sampler){if(options.immutableInputs)preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,sampler);else interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,sampler);}
  const available=(target:SnapshotScalarTarget,axis:0|1)=>{if(target.kind==='node')return true;const values=basisIndices.map(basis=>vector(basis,target.curveId,target.end)[axis]);return Math.max(...values)-Math.min(...values)>scalarTolerance(...values);};
  let unprojected:DrawingDocument;try{unprojected=sampler?.unprojectSmooth?.(wantedDrawing,available)??wantedDrawing;}catch(error){return fail('SURFACE_CONSTRAINT_UNSOLVABLE',error instanceof Error?error.message:String(error));}
  const rawWanted=index(unprojected);
@@ -251,7 +252,7 @@ export function prepareSnapshotSurfaceTargetEdit(graph:SnapshotAngleGraph,locati
   nextFrame={...draft,id:frameId,angle:{...options.angle},status:'draft',triangleResponses:{...draft?.triangleResponses,[location.simplexId]:responses}};
  }
  const candidate:SnapshotAngleGraph={...graph,correctionFrames:draft?graph.correctionFrames!.map(frame=>frame===draft?nextFrame:frame):[...graph.correctionFrames??[],nextFrame]};
- const replay=index(interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror)).drawing);
+ const replaySampler=createSnapshotSurfaceValueSampler(candidate,location,options.allBases??orderedBases,options.mirror,{immutableInputs:options.immutableInputs}),replay=index((options.immutableInputs?preparedSnapshotSimplexProgram(orderedBases).sample(location.geometricWeights,replaySampler):interpolateSnapshotSimplexGeometry(orderedBases,location.geometricWeights,replaySampler)).drawing);
  const verify=(name:string,position:Point2|undefined,target:Point2)=>{
   if(!position||position.some((value,axis)=>!Number.isFinite(value)||Math.abs(value-target[axis])>Math.max(1e-7,4*scalarTolerance(value,target[axis]))))fail('SURFACE_CONSTRAINT_UNSOLVABLE',`${name}: the complete correction cannot reproduce the target after linked-node and SMOOTH constraints. Edit the responsible basis control or its SMOOTH driver first.`);
  };

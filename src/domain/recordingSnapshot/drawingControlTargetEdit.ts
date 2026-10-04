@@ -27,7 +27,7 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  if(graph&&!vertex){
   const surface=evaluation.angleSurface;if(!surface?.simplex||surface.role==='outside')fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
   try{
-   const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:snapshotSurfaceRequiredBases(surface!,recording.angle),mirror:surface!.mirrorContext});
+   const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{immutableInputs:options.immutableInputs,angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:snapshotSurfaceRequiredBases(surface!,recording.angle),mirror:surface!.mirrorContext});
    return result.changed?{graph:result.graph}:{};
   }catch(error){
    if(!(error instanceof SnapshotSurfaceTargetEditError)||!['SURFACE_AXIS_UNAVAILABLE','SURFACE_CONSTRAINT_UNSOLVABLE'].includes(error.code))throw error;
