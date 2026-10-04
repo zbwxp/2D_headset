@@ -43,7 +43,7 @@ export function prepareSnapshotCoverageStructure(mesh:SnapshotTriangulation,base
   region.triangles=region.triangles.filter(triangle=>compatible(triangle.vertexIds)&&triangle.edgeIds.every(id=>edgeIds.has(id)));
   regions.set(curveId,region);
  }
- const requests=new InputCache<{location:SnapshotSimplexLocation|undefined;locations:SnapshotSimplexLocation[];projections:Map<string,NonNullable<ReturnType<typeof projectToSnapshotCoverage>>>}>(128);
+ const requests=new InputCache<{location:SnapshotSimplexLocation|null|undefined;locations:SnapshotSimplexLocation[];projections:Map<string,NonNullable<ReturnType<typeof projectToSnapshotCoverage>>>}>(128);
  const request=(requested:SnapshotTriangulationAngle)=>{
   const key=JSON.stringify([requested.x,requested.y]),known=requests.get(key);if(known)return known;
   const location=locateSnapshotSimplex(mesh,requested),result=location?[location]:[],projections=new Map<string,NonNullable<ReturnType<typeof projectToSnapshotCoverage>>>();
