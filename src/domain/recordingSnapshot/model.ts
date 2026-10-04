@@ -216,7 +216,15 @@ export interface SnapshotExpressionResponses {
  handles:Record<string,readonly [SnapshotExpressionControlResponse,SnapshotExpressionControlResponse]>;
 }
 export type SnapshotResponseExpressionRegistry=Record<string,SnapshotExpressionResponses>;
+/** One local-zero yaw expression. The target retains its sole source parent;
+ * zero is a Recorder expression reference, never a second inheritance parent. */
+export interface SnapshotViewMirrorRelation {
+ zeroSnapshotId:string;sourceSnapshotId:string;targetSnapshotId:string;
+ /** Recomputed from the current resolved zero; never a frozen world pivot. */
+ unpairedReference?:'zero-stroke-frame';
+}
 export interface SnapshotAngleGraph {
+ viewMirror?:SnapshotViewMirrorRelation;
  /** Live curve/t measurement lineage for unscoped stroke and explicit-route fields. */
  materialPathLineages?:SnapshotMaterialPathLineage[];
  /** Recorder-owned material partitions retain split IDs and source fractions. */

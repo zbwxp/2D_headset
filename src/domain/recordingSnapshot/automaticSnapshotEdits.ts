@@ -24,7 +24,8 @@ export function propagateAutomaticSnapshotLayers(before:RecordingSnapshotWorkspa
    if(parent){
     visit(parent.id);snapshot=workspace.snapshots.find(value=>value.id===id)!;
     const currentParent=workspace.snapshots.find(value=>value.id===parent.id)!;
-    const input=snapshot.inputMirror?prepareSnapshotParentInput(workspace,snapshot,resolveSnapshot(workspace,parent.id,{useDraft:false,diagnostics:'preview'})):undefined;
+    const mirroredInput=!!snapshot.inputMirror||workspace.recordings.some(recording=>recording.angleGraph?.viewMirror?.targetSnapshotId===snapshot.id);
+    const input=mirroredInput?prepareSnapshotParentInput(workspace,snapshot,resolveSnapshot(workspace,parent.id,{useDraft:false,diagnostics:'preview'})):undefined;
     if(input)diagnostics.push(...input.diagnostics.filter(issue=>issue.code==='INPUT_MIRROR'));
     const sourceLayers=input?.drawing.layers??currentParent.layers,available=new Set(sourceLayers.map(layer=>layer.id));
     const previous=before?.snapshots.find(value=>value.id===id),excluded=new Set(snapshot.parentLayers!.excludedLayerIds??[]);
@@ -88,7 +89,11 @@ export function seedAutomaticExtremeSnapshots(workspace:RecordingSnapshotWorkspa
  add(parent,at.x,-90);add(parent,at.x,90);
  if(at.x===-90&&!existing(90,0)){
   const selected=options.mirror?{mirror:options.mirror,diagnostics:[]}:configuredSnapshotMirror(workspace,parent);diagnostics.push(...selected.diagnostics);
-  if(selected.mirror){const child=add(parent,90,0,selected.mirror);if(child){add(child,90,-90);add(child,90,90);}}
+  if(selected.mirror){const child=add(parent,90,0,selected.mirror);if(child){
+   const zero=existing(0,0);if(zero)recording.angleGraph!.viewMirror={zeroSnapshotId:zero.snapshotId,sourceSnapshotId:parent.id,targetSnapshotId:child.id};
+   else diagnostics.push({code:'VIEW_MIRROR_ZERO_REQUIRED',snapshotId:child.id,message:'No local 0° basis is bound; this legacy opposite view retains its explicit absolute input mirror.'});
+   add(child,90,-90);add(child,90,90);
+  }}
  }
  const propagated=propagateAutomaticSnapshotLayers(undefined,workspace);workspace.snapshots=propagated.workspace.snapshots;diagnostics.push(...propagated.diagnostics);
  return {createdSnapshotIds,diagnostics};

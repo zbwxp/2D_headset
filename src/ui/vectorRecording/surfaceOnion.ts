@@ -1,5 +1,5 @@
 import {emptyDrawing,shapeOf} from '../../domain/drawing/model';
-import type {SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
+import {snapshotSurfaceBasesAtAngle,type SnapshotEvaluation} from '../../domain/recordingSnapshot/evaluation';
 import type {SnapshotRecording} from '../../domain/recordingSnapshot/model';
 import {prepareSnapshotCoverage} from '../../domain/recordingSnapshot/snapshotCoverage';
 import {createSnapshotSurfaceValueSampler} from '../../domain/recordingSnapshot/surfaceTargets';
@@ -13,10 +13,11 @@ export function interpolateSnapshotSurfaceOnion(recording:SnapshotRecording,curr
  const graph=recording.angleGraph,surface=current.angleSurface;if(!graph||!surface)throw Error('A triangulated recording evaluation is required for this inspection.');
  const first=graph.mesh.vertices.find(vertex=>vertex.snapshotId===endpoints.startSnapshotId),last=graph.mesh.vertices.find(vertex=>vertex.snapshotId===endpoints.endSnapshotId);
  if(!first||!last||first.id===last.id)throw Error('Choose two different real snapshot bindings.');
- const prepared=prepareSnapshotCoverage(graph.mesh,surface.allBases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle}))),diagnostics=new Set<string>();
+ const diagnostics=new Set<string>(),preparations=new Map<SnapshotEvaluation[],ReturnType<typeof prepareSnapshotCoverage>>();
  const samplers=new Map<string,ReturnType<typeof createSnapshotSurfaceValueSampler>>();
  const frames=sampleEndpointOnionAngles(first.angle,last.angle,step).map(({angle}):SceneOnionFrame=>{
-  const sampled=prepared.evaluate(angle,location=>{const key=JSON.stringify([location.simplexId,location.vertexIds]);let sampler=samplers.get(key);if(!sampler){sampler=createSnapshotSurfaceValueSampler(graph,location,surface.allBases);samplers.set(key,sampler);}return sampler;});
+  const bases=snapshotSurfaceBasesAtAngle(surface,angle);let prepared=preparations.get(bases);if(!prepared){prepared=prepareSnapshotCoverage(graph.mesh,bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})));preparations.set(bases,prepared);}
+  const sampled=prepared.evaluate(angle,location=>{const key=JSON.stringify([angle.x>0?'positive':'negative',location.simplexId,location.vertexIds]);let sampler=samplers.get(key);if(!sampler){sampler=createSnapshotSurfaceValueSampler(graph,location,bases);samplers.set(key,sampler);}return sampler;});
   for(const message of sampled.diagnostics)diagnostics.add(message);
   const drawing=sampled.normal?.drawing??emptyDrawing(),centerlines=[...drawing.curves.map(curve=>({id:`curve:${curve.id}`,cubic:shapeOf(drawing,curve.id)})),...sampled.outsideCurves.map(curve=>({id:`outside:${curve.curveId}`,cubic:curve.cubic,outside:true}))];
   return {angle,drawing,paintBatches:[],centerlines};

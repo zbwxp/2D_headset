@@ -63,7 +63,7 @@ export function validateSnapshotGraph(workspace:RecordingSnapshotWorkspace):void
  const parentsDone=new Set<string>(),parentsVisiting=new Set<string>();
  const visitParent=(snapshot:RecordingSnapshot)=>{if(parentsVisiting.has(snapshot.id))fail(`snapshot parent cycle at ${snapshot.id}`);if(parentsDone.has(snapshot.id))return;parentsVisiting.add(snapshot.id);if(snapshot.parentSnapshotId!==undefined){if(!id(snapshot.parentSnapshotId)||!nodes.has(snapshot.parentSnapshotId))fail('missing snapshot parent');visitParent(nodes.get(snapshot.parentSnapshotId)!);}parentsVisiting.delete(snapshot.id);parentsDone.add(snapshot.id);};
  for(const snapshot of workspace.snapshots)visitParent(snapshot);
- const visit=(snapshot:RecordingSnapshot)=>{if(visiting.has(snapshot.id))fail(`snapshot cycle at ${snapshot.id}`);if(done.has(snapshot.id))return;visiting.add(snapshot.id);for(const layer of snapshot.layers)if(layer.kind==='reference'){const parent=nodes.get(layer.baseSnapshotId);if(parent)visit(parent);}for(const sourceId of Object.values(snapshot.memberSources??{})){const parent=nodes.get(sourceId);if(parent)visit(parent);}visiting.delete(snapshot.id);done.add(snapshot.id);};
+ const visit=(snapshot:RecordingSnapshot)=>{if(visiting.has(snapshot.id))fail(`snapshot cycle at ${snapshot.id}`);if(done.has(snapshot.id))return;visiting.add(snapshot.id);if(snapshot.parentSnapshotId&&(snapshot.parentLayers||snapshot.inputMirror)){const parent=nodes.get(snapshot.parentSnapshotId);if(parent)visit(parent);}for(const layer of snapshot.layers)if(layer.kind==='reference'){const parent=nodes.get(layer.baseSnapshotId);if(parent)visit(parent);}for(const sourceId of Object.values(snapshot.memberSources??{})){const parent=nodes.get(sourceId);if(parent)visit(parent);}for(const recording of workspace.recordings){const relation=recording.angleGraph?.viewMirror;if(relation?.targetSnapshotId===snapshot.id){for(const id of [relation.sourceSnapshotId,relation.zeroSnapshotId]){const dependency=nodes.get(id);if(dependency)visit(dependency);}}}visiting.delete(snapshot.id);done.add(snapshot.id);};
  for(const snapshot of workspace.snapshots)visit(snapshot);
 }
 export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWorkspace):void {
@@ -97,6 +97,8 @@ export function validateRecordingSnapshotWorkspace(workspace:RecordingSnapshotWo
    if(recording.legacy)fail('triangulated recording cannot carry a legacy scene');
    validateSnapshotAngleGraph(recording.angleGraph!);
    const vertices=recording.angleGraph!.mesh.vertices;
+   const mirror=recording.angleGraph!.viewMirror;
+   if(mirror){const target=workspace.snapshots.find(snapshot=>snapshot.id===mirror.targetSnapshotId);if(target?.parentSnapshotId!==mirror.sourceSnapshotId)fail('View mirror target must retain its sole source parent');}
    if(vertices.length!==recording.snapshotIds.length||vertices.some(vertex=>!recording.snapshotIds.includes(vertex.snapshotId)))fail('angle graph must bind every real recording snapshot exactly once');
   }else if(recording.angleGraph!==undefined)fail('angle graph requires explicit triangulated mode');
   if(recording.mode==='endpoint-pair'){
