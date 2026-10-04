@@ -35,7 +35,27 @@ export function solveBoundedSnapshotBasisAdjustment(scalars:readonly BoundedBasi
   return result;
  });
  if(intervals.some(value=>!value.length))return undefined;
- const count=Math.max(1,normalized.length),cost=()=>{
+ const count=Math.max(1,normalized.length);
+ // Only controls sharing a sampled cubic can couple. Keep those quadratic
+ // coefficients sparse rather than allocating a selection-sized dense matrix.
+ const diagonal=normalized.map(s=>(s.kind==='node'?SNAPSHOT_BASIS_NODE_PENALTY:1)/count),couplings=normalized.map(()=>new Map<number,number>());
+ for(const row of rows){
+  // Endpoint aliases can put the same coordinate into a row more than once.
+  const combined=new Map<number,number>();
+  for(const {index,coefficient} of row.terms)combined.set(index,(combined.get(index)??0)+coefficient);
+  const terms=[...combined].filter(([,coefficient])=>coefficient!==0);
+  for(let a=0;a<terms.length;a++){
+   const [i,ci]=terms[a];diagonal[i]+=row.weight*ci*ci;
+   for(let b=a+1;b<terms.length;b++){
+    const [j,cj]=terms[b],coefficient=2*row.weight*ci*cj;
+    couplings[i].set(j,(couplings[i].get(j)??0)+coefficient);couplings[j].set(i,(couplings[j].get(i)??0)+coefficient);
+   }
+  }
+ }
+ const neighbors=couplings.map(row=>[...row]);
+ // Recompute the full objective only at sweep boundaries, also keeping the
+ // returned cost independent of accumulated quadratic cancellation error.
+ const cost=()=>{
   let value=0;
   for(let i=0;i<normalized.length;i++){
    const w=scalarWeight(normalized[i],deltas[i]);if(w===undefined)return Infinity;
@@ -54,16 +74,24 @@ export function solveBoundedSnapshotBasisAdjustment(scalars:readonly BoundedBasi
  for(let sweep=0;sweep<12;sweep++){
   const before=current;
   for(let i=0;i<normalized.length;i++){
-   let best=deltas[i],bestCost=current;
-   const consider=(x:number)=>{deltas[i]=x;const value=cost();if(value<bestCost){best=x;bestCost=value;}return value;};
+   const scalar=normalized[i],quadratic=diagonal[i],linear=neighbors[i].reduce((sum,[j,coefficient])=>sum+coefficient*deltas[j],0);
+   // All other coordinates are fixed during this search, so their constant
+   // objective terms cannot affect its minimum. Every trial is now O(1).
+   const conditionalCost=(x:number)=>{
+    const weight=scalarWeight(scalar,x);if(weight===undefined)return Infinity;
+    return (quadratic*x+linear)*x+SNAPSHOT_BASIS_RESPONSE_PENALTY*(weight-scalar.weight)**2/count;
+   };
+   let best=deltas[i],bestCost=conditionalCost(best);
+   const consider=(x:number)=>{const value=conditionalCost(x);if(value<bestCost){best=x;bestCost=value;}return value;};
    consider(0);
    for(const [lo,hi] of intervals[i]){
     consider(lo);consider(hi);if(lo===hi)continue;
     let a=lo,b=hi,x=b-(b-a)*.6180339887498949,y=a+(b-a)*.6180339887498949,fx=consider(x),fy=consider(y);
     for(let iteration=0;iteration<22;iteration++)if(fx<fy){b=y;y=x;fy=fx;x=b-(b-a)*.6180339887498949;fx=consider(x);}else{a=x;x=y;fx=fy;y=a+(b-a)*.6180339887498949;fy=consider(y);}
    }
-   deltas[i]=best;current=bestCost;
+   deltas[i]=best;
   }
+  current=cost();
   if(before-current<=1e-12*Math.max(1,before))break;
  }
  const weights=normalized.map((s,i)=>scalarWeight(s,deltas[i])!);
