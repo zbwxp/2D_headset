@@ -1,10 +1,11 @@
-import {evaluatedDeformationSource,remapEvaluatedDeformations} from '../drawing/evaluatedDeformation';
+import {evaluatedDeformationSource,evaluatedFitContext,remapEvaluatedDeformations} from '../drawing/evaluatedDeformation';
 import type {CurveUse,DrawingDocument,Endpoint,End,Point2,StrokeDisplayIntervals} from '../drawing/model';
 import type {MirrorCurvePair} from '../drawing/mirrorEditing';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../drawing/evaluatedAffine';
 import {intervalPinch,withIntervalPinch} from '../drawing/intervalPinch';
 import {scaleEvaluatedDisplayRouteBrush} from '../drawing/displayRouteBrush';
 
+export interface SnapshotSplitMirrorMaterial {a:string;b:string;ranges:{a:string;b:string}[]}
 export interface SnapshotMirrorOptions {
  /** A caller-selected coordinate, never inferred from geometry or names. */
  axisX:number;
@@ -12,6 +13,9 @@ export interface SnapshotMirrorOptions {
  /** Legacy axis references; explicit pair endpoints remain authoritative.
   * Distinct left/right axis nodes can exchange IDs and are never clamped. */
  axisNodeIds?:readonly string[];
+ /** Exact child identities retained from a source split. Split CURVE intervals
+  * use their canonical forward parameter after the reflection. */
+ splitMaterials?:readonly SnapshotSplitMirrorMaterial[];
 }
 export interface SnapshotMirrorCurveCorrespondence {id:string;reverse:boolean}
 export interface SnapshotMirrorCorrespondence {
@@ -147,11 +151,22 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
   track.displayRoute?[track.displayRoute.seed.closed,usesSignature(mapped?track.displayRoute.seed.segments.map(use):track.displayRoute.seed.segments),setSignature(mapped?track.displayRoute.throughLinkIds.map(linkId):track.displayRoute.throughLinkIds)]:null,
  ]);
  const intervals=entityCorrespondence(drawing.displayIntervals??[],'displayIntervals',trackSignature,diagnostics);
+ const splitMaterials=new Map<string,{id:string;ranges:Map<string,string>}>();
+ const tracksById=new Map((drawing.displayIntervals??[]).map(track=>[track.id,track]));
+ for(const pair of options.splitMaterials??[]){
+  const a=tracksById.get(pair.a),b=tracksById.get(pair.b);if(!a||!b)continue;
+  if(a.scope!=='CURVE'||b.scope!=='CURVE'||mappedCurve(a.anchor.id).id!==b.anchor.id||mappedCurve(b.anchor.id).id!==a.anchor.id||splitMaterials.has(a.id)||splitMaterials.has(b.id))fail('INVALID_REFERENCE',`Split mirror material ${pair.a} has no exact reciprocal curve identity.`);
+  const used=new Set<string>();for(const range of pair.ranges){if(!a.ranges.some(value=>value.id===range.a)||!b.ranges.some(value=>value.id===range.b)||used.has(range.a)||used.has(range.b))fail('INVALID_REFERENCE',`Split mirror material ${pair.a} has no exact reciprocal range identity.`);used.add(range.a);used.add(range.b);}
+  for(const [a,b,reverse] of [[pair.a,pair.b,false],[pair.b,pair.a,true]] as const){intervals[a]=b;splitMaterials.set(a,{id:b,ranges:new Map(pair.ranges.map(range=>reverse?[range.b,range.a]:[range.a,range.b]))});}
+ }
  const allRanges=(drawing.displayIntervals??[]).flatMap(track=>track.ranges.map(range=>({...range,trackId:track.id})));
  // Range equality is an exact material parameter match within its mapped track,
  // never ordinal pairing or a nearest-cut heuristic. Unequal authored cuts keep
  // their own IDs and remain fully editable in the mirrored track.
  const ranges=entityCorrespondence(allRanges,'ranges',(range,mapped)=>encoded([mapped?intervals[range.trackId]:range.trackId,range.start,range.end,range.fullLoop??false,range.mode??'SHOW']),diagnostics);
+ for(const entry of splitMaterials.values())for(const [a,b] of entry.ranges)ranges[a]=b;
+ // Exact saved split identities supersede changed forward-anchor signatures.
+ for(let i=diagnostics.length-1;i>=0;i--){const issue=diagnostics[i];if(issue.entityKind==='displayIntervals'&&splitMaterials.has(issue.entityId)||issue.entityKind==='ranges'&&[...splitMaterials.values()].some(entry=>entry.ranges.has(issue.entityId)))diagnostics.splice(i,1);}
  const objectId=(id:string)=>curveMap[id]?.id??fills[id]??offsets[id]??fail('INVALID_REFERENCE',`Mirror layer points to missing object ${id}.`);
  const layers=entityCorrespondence(drawing.layers,'layers',(layer,mapped)=>setSignature(mapped?layer.items.map(objectId):layer.items),diagnostics);
  const correspondence:SnapshotMirrorCorrespondence={curves:curveMap,nodes:nodeMap,fills,offsets,layers,joins,endpointLinks:links,groups,displayIntervals:intervals,ranges};
@@ -182,10 +197,10 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
    ...(link.joinBrush?.kind==='ARC'?{joinBrush:scaleEvaluatedDisplayRouteBrush(drawing.endpointLinks![index].joinBrush!,1)}:{}),
   }))}:{}),
   ...(d.groups?{groups:d.groups.map(group=>({...group,id:groups[group.id],curveIds:group.curveIds.map(id=>mappedCurve(id).id)}))}:{}),
-  ...(d.displayIntervals?{displayIntervals:d.displayIntervals.map(track=>({...track,id:intervals[track.id],anchor:use(track.anchor),
+  ...(d.displayIntervals?{displayIntervals:d.displayIntervals.map(track=>({...track,id:intervals[track.id],anchor:splitMaterials.has(track.id)?{id:mappedCurve(track.anchor.id).id,reverse:false}:use(track.anchor),
    ...(track.revealFrom!==undefined?{revealFrom:flip(track.revealFrom,mappedCurve(track.anchor.id).reverse)}:{}),
    ...(track.displayRoute?{displayRoute:{...track.displayRoute,seed:{...track.displayRoute.seed,segments:track.displayRoute.seed.segments.map(use)},throughLinkIds:track.displayRoute.throughLinkIds.map(linkId)}}:{}),
-   ranges:track.ranges.map(range=>withIntervalPinch({...range,id:ranges[range.id],...(range.originId?{originId:ranges[range.originId]??range.originId}:{})},pinches.get(range.id)??0)),
+   ranges:track.ranges.map(range=>withIntervalPinch({...range,...(splitMaterials.has(track.id)&&use(track.anchor).reverse?{start:1-range.start,end:1-range.end}:{}),id:ranges[range.id],...(range.originId?{originId:ranges[range.originId]??range.originId}:{})},pinches.get(range.id)??0)),
   }))}:{}),
   ...(d.mirrorAxisX!==undefined?{mirrorAxisX:2*options.axisX-d.mirrorAxisX}:{}),
  };
@@ -194,7 +209,7 @@ export function mirrorSnapshotDrawing(drawing:DrawingDocument,options:SnapshotMi
  // nonuniform/singular affine images of ARC joins. Rebuilding a circle from
  // the already-placed controls would silently change that geometry.
  const deformationMaterial=evaluatedDeformationSource(drawing);
- if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options).drawing,id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??value;
+ if(deformationMaterial){const mirroredMaterial=mirrorSnapshotDrawing(deformationMaterial,options).drawing,parents=new Map<string,string>();for(const curve of drawing.curves){const source=evaluatedFitContext(drawing,curve.id),target=evaluatedFitContext(drawing,curveMap[curve.id].id);if(source&&target){const previous=parents.get(source.id);if(previous!==undefined&&previous!==target.id)fail('PAIR_CONFLICT',`Mirror fitted parent ${source.id} has inconsistent child correspondence.`);parents.set(source.id,target.id);}}const id=(value:string)=>nodeMap[value]??curveMap[value]?.id??fills[value]??offsets[value]??layers[value]??joins[value]??links[value]??groups[value]??intervals[value]??ranges[value]??parents.get(value)??value;
   remapEvaluatedDeformations(result,drawing,mirroredMaterial,id,id,{point:reflect,reverse:value=>curveMap[value]?.reverse??false,key:JSON.stringify(['mirror',options.axisX,curveMap]),frame:{axisX:options.axisX,reverseCurveIds:drawing.curves.filter(curve=>curveMap[curve.id]?.reverse).map(curve=>curve.id)}});
  }
  const material=evaluatedAffineSource(drawing);

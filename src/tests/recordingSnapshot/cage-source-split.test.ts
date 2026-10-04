@@ -103,8 +103,8 @@ test('Recorder A saves a split child response independently and survives strict 
  const broken=JSON.parse(JSON.stringify(loaded)),domain=broken.snapshots.find((s:{id:string})=>s.id==='view').deformation.layerDomains[0];domain.fitLineages[0].parts[1].curveId=domain.fitLineages[0].parts[0].curveId;expect(()=>parseRecordingSnapshots(broken)).toThrow(/lineage|parameter/);
 });
 
-test('reflected fitted source restriction remains an explicit atomic direction-lineage boundary',()=>{
- const f=fixture(),mirror=emptyRecordingSnapshot('mirror');mirror.parentSnapshotId='view';mirror.inputMirror={axisX:0,curvePairs:[]};mirror.layers=[{kind:'reference',id:'mirror-slot',name:'Mirror',baseSnapshotId:'view',baseLayerId:'slot'}];f.workspace.snapshots.push(mirror);const bytes=JSON.stringify(f.project);expect(()=>prepareSnapshotEdit(snapshotEditContext(f.project,true),{kind:'original-geometry',drawing:applyCurveSplitIntent(f.drawing,f.intent).document,intent:f.intent})).toThrow(/reflected fitted program.*child-identity/);expect(JSON.stringify(f.project)).toBe(bytes);
+test('reflected fitted source restriction preserves the existing reflected controls',()=>{
+ const f=fixture(),mirror=emptyRecordingSnapshot('mirror');mirror.parentSnapshotId='view';mirror.inputMirror={axisX:0,curvePairs:[]};mirror.layers=[{kind:'reference',id:'mirror-slot',name:'Mirror',baseSnapshotId:'view',baseLayerId:'slot'}];f.workspace.snapshots.push(mirror);const before=resolveSnapshot(f.workspace,'mirror').drawing,q=evaluatedControlParameter(before,cid('curve'),f.intent.t),expected=manualSplit(shapeOf(before,cid('curve')),q),after=prepareSnapshotEdit(snapshotEditContext(f.project,true),{kind:'original-geometry',drawing:applyCurveSplitIntent(f.drawing,f.intent).document,intent:f.intent}).project.recordingSnapshots!,actual=resolveSnapshot(after,'mirror').drawing;f.canonical.childCurveIds.forEach((id,k)=>shapeOf(actual,id).forEach((p,i)=>p.forEach((v,a)=>expect(v).toBeCloseTo(expected[k][i][a],9))));
 });
 
 test('a split family can be mirrored and then copied through the shared recursive program descriptor',async()=>{

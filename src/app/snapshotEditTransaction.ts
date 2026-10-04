@@ -167,8 +167,8 @@ function assertCageSplitSupported(workspace:NonNullable<LandmarkProject['recordi
  for(const snapshot of workspace.snapshots)if(!snapshotId||snapshot.id===snapshotId){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;if(curveIds.some(id=>hasNonlinearDeformationFor(drawing,id)))throw Error('Splitting a retained cage needs an exact fitted-program restriction. Disable or reset the affected cage before splitting its source.');}
 }
 
-/** Native cage families now have a restriction law. A reflected descriptor
- * additionally needs its explicit one-to-many endpoint-direction transport. */
+/** Only a serializable material descriptor has an exact source restriction.
+ * Reflected descriptors transport the same intent through endpoint parity. */
 function assertSourceSplitProgramSupported(workspace:RecordingSnapshotWorkspace,curveIds:readonly string[]):void {
- for(const snapshot of workspace.snapshots){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;for(const id of curveIds)if(hasNonlinearDeformationFor(drawing,id)){const program=evaluatedMaterialProgram(drawing,id);if(!program||program.some(step=>step.kind==='reflected'))throw Error(`Cannot split ${id} through snapshot ${snapshot.id}: its reflected fitted program requires an explicit child-identity and endpoint-direction restriction. No geometry was changed.`);}}
+ for(const snapshot of workspace.snapshots){const drawing=resolveSnapshot(workspace,snapshot.id).drawing;for(const id of curveIds)if(hasNonlinearDeformationFor(drawing,id)){const program=evaluatedMaterialProgram(drawing,id);if(!program)throw Error(`Cannot split ${id} through snapshot ${snapshot.id}: its fitted program has no serializable source restriction. No geometry was changed.`);}}
 }

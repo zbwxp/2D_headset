@@ -1,20 +1,18 @@
 # 编辑器统一实现验收矩阵
 
-核对日期：2026 年 10 月 4 日 00:44 UTC。当前线上 v75（`b93acdb`）于 00:22:49 UTC 部署。v70 的 Snapshot 编辑锁与镜像曲边独立复制、v71 的不同控制阶段共同编辑均已有下述真人证据。全框架任务仍在进行；尚未接入的工具、属性、成员移动与精确非线性分段，不因公共包装存在而算作完成。
+核对日期：2026 年 10 月 4 日 02:01 UTC。当前线上 v77（`01cc15e`），01:51:41 UTC 部署，下面列明的全局 Undo 真人流程已通过。v72–v75 的共享工具、属性、成员排序和混合所有权阶段已有实际证据；v76 的继承 P／真绑定也已通过本轮真人检查。整体任务仍在进行。
 
-本轮共享工具／属性候选已接主树：Recording 直接消费 Drawing palette、ellipse／mirror／endpoint controller 与属性组件，`prepareSnapshotDrawingToolEdit` 将同一 before→target 按所有权提交。真实快照写局部属性／拓扑／镜像关系，修正位置只反解几何及既有区间端点；镜像偏好不创建角度键。51 个生产与测试文件的冻结组合在隔离树通过 1272 项、跳过 7 项；主树复跑 107 项及 TypeScript／生产构建通过。v72 已完成下述有界真人验收，自动化覆盖与真人操作仍分别列明。成员移动／排序 capability 仍待下一阶段，未按禁用按钮算完成。
+当前开放范围分清代码和验证：
 
-下一成员／深度候选已接主树并构建：`layerMemberEdit.ts` 识别纯组织操作，保留 canonical ID，以 `memberSources` 保留移动对象的实际 live 来源，引用层用 membership/orderOverride 表达新归属。源 Drawing 的 original→original 移动仍经原始资产适配器。当前视角列表直接调用共同 LayerPanel 命令并还原 canonical ID，来源列表继续只读；Group→层、曲线／填充／偏移移动、层内排序及局部 depth 属性均已启用。旧独立 LINK 区块已并入共同端点属性，显示区间入口保留。隔离组合 132 项通过、1 既有跳过，主树复跑 46 项和生产构建通过；v73 已通过真实当前列表跨层拖动和层内排序，见下文。Drawing 的原始拥有层混入借用成员仍需逐对象 authority overlay，未包括在此阶段。
+1. 已合入、待本轮冻结发布：继承曲边程序内的节点解除绑定，以及普通反射源分段的身份／方向／材料运输。组合 4 文件 38 项测试通过；构建结果随候选记录，不把它提前写成线上行为。
+2. 仍在实现：真实内部插点后手动修改区间，再做非线性源分段的精确材料转移。已定位近角材料端点漂移，线上原子 guard 保留；该 guard 是防错措施，不能算功能完成。
+3. 用户新确认的范围：basis 曲边框是当前图层属性，可按动态图层或连续线组拓扑确定成员；0/90 分别求值后，录制仍只插值最终曲线。连续线组 scope 正在接同一 cage 内核。中间角曲边框明确是临时编辑工具，生成目标后批量反推，不保存新的持久框关系；对应入口正在实现。
+4. 验证缺口：v76 partial-family 局部排除／源删除已有生产回归，尚未完成专门浏览器操作。本轮不扩大 v76 的 P／真绑定真人证据。
 
-混合来源候选已接主树：Drawing original 层的资产 `items` 与本地借用 `membership` 分开，`objectOwners` 按对象分配原始／局部写入；borrowed A/width/topology 留在当前快照，原始 A 仍同步真实源。混合整层变换保一个局部域，双方源几何不烘焙；父源同 ID 换层会搬迁子快照 saved/inherited/draft 的原有点／柄、width、visibility 等稀疏记录，后续 source 更新继续叠加原 delta。主树 47 项交叉测试与构建通过，尚待发布与真人验收。
+全局 Undo 已于 v77 完成：跨 Drawing／Recording 按同一时间顺序撤销，自动恢复所属模式、快照／角度与视口；工作区参考和画布 pan／zoom／Fit 进入同一历史。栈仍为当前会话，不在 JSON 或刷新后恢复。旧 channel runtime 退役仍待明确决定；独立中间 Boolean 作者 UI 未新增，也不因区间端点响应已完成而推定批准。
 
-当前真正开放的工程分为三组：
+基点域不是每次鼠标移动的操作日志：同一最后活动框复用 ID 并替换当前参数。不同作用范围或不同类型的有序变形阶段可以保留组合，不能把当前实现说成每层只有一个绝对框。下面的历次版本段落保留当时结论；当前开放范围以上述清单为准。
 
-1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
-2. Drawing 编辑调用面：Recording 消费共同 palette、ellipse、mirror、bind/merge/unbind 控制器，以及原属性组件；共同 `before → target` 事务 helper、镜像元信息和 UI 已发布，所列椭圆／属性／镜像／跨层 LINK 真人流程通过。Drawing 已有属性在真实 Snapshot 保存局部覆盖，不能改源或显示空按钮。
-3. 成员移动与排序：同一 Drawing 操作写局部 membership/order；引用中的移动为旧层排除＋目标层增加相同 canonical ID，保原始来源与 offset 属性。源码所有者移动使用原始资产规则。当前 Recording／引用层通道和真实列表 adapter 已在上述候选接入；Drawing 原始拥有层混入借用成员的逐对象 authority 仍在后续，不能以禁用代替完成。
-
-待决定项独立列出：中间修正角曲边域对未来成员的程序语义、跨模式 Undo 旧 guard、旧 channel runtime 退役。单点/柄反推的零差轴、互相矛盾的真实连接目标、非有限透视映射是数值或约束边界；它们不等于上述未完成的工程适配。独立中间 Boolean 属性样本未新增；当前明确完成的中间属性是连续区间端点，其他 appearance 在真实 Snapshot 编辑。
 v68（`b04d5fa`）包含继承节点解绑、自有曲边域内 P/绑定、原生曲边独立副本及 Drawing/Recording 共用 cage controller/overlay。合并类型检查、生产构建与 42 项交叉测试通过。实际在真实 0° 眉层设置宽度 150%，拖曲边、切 A 拖柄 (+15, −12) 像素，最终控制点精确同移；Update/Undo/Redo 通过。域内 P 新线以局部成员和 postShape 保存，原稿不变，Undo 一笔恢复。
 
 v68 同层复制曾使原对象的编辑 cubic 保持不变，但 derived material 再次应用 affine/cage。v69 在 `affineDrawing.ts` 从各组真正的变换前材料输入追加程序；offset-only 图层也保留其位移。41 项针对回归和构建通过，真实保存文件冷读重现由失败转为通过。v69 实际复测同一流程：新 ID 副本与原线完全重合；同视口 Undo/Redo 中原路径逐字不变；右移副本 1 像素只改变副本，Undo 恢复。实际 SaveJSON 显示副本为无语义父级的自有根，Drawing 来源全字段不变。7 笔正常 Undo 清理全部本轮准备，原 4 个录制与 5 份画稿保留。证据：[v68 报告与发现](../../artifacts/triangulated-recorder-qa/v68-browser-verification.json)、[v69 修复验收](../../artifacts/triangulated-recorder-qa/v69-browser-verification.json)、[保存数据核对](../../artifacts/triangulated-recorder-qa/v69-save-validation.json)。
@@ -32,9 +30,9 @@ v74（`e1f92c0`）真人验证已完成：在真实 0° 给左眉层弯边并保
 
 v75（`b93acdb`）真人验证：正面眉毛引用移入侧稿 original 层后，其柄和线宽只写局部 shape/appearance；原始 drawing 与 Front canonical 库全字段不变，借用 ID 不进 raw Drawing/items。随后在同一混合右眉层修改可见 original 成员，确实写回 Side 原始柄坐标，同时借用局部修改及 Front 库保持。最初命中的隐藏辅助线按原 hidden/locked 规则拒绝，保存文件证明没有写入；未把它误报为所有权故障。7 笔普通 Undo 恢复原 Front、原 5 稿和先前稍侧 working copy，Undo 禁用。证据：[v75 操作](../../artifacts/triangulated-recorder-qa/v75-browser-verification.json)、[保存核对](../../artifacts/triangulated-recorder-qa/v75-save-validation.json)。实际使用数值坐标控件，未虚称鼠标拖柄；父换层后的子 delta 保持有针对自动化证据。
 
-当前下一组合候选已构建：继承 Coons 的 P／真绑定与 partial family 共用一份 live 依赖／材料重放上下文，隐藏数学依赖不成为编辑成员、选择或新的关系权威。局部排除以相同层输入求场，真正源删除从存活区间做精确多项式延拓；嵌套 correction 保原拟合父参数轴。主树 62 项交叉测试和生产构建通过；候选组合 87 通过、1 可选私人 fixture 跳过，尚待发布与真人验收。逆延拓放大超过 2²⁴ 原子拒绝，属于明确数值条件边界。继承 unbind/fork、异构／缺失程序描述符和嵌套反射部分家族仍需分别列明；不由此次 P／真绑定测试覆盖。
+v76（`1d644900`）已发布：继承 Coons 的 P／真绑定与 partial family 共用一份 live 依赖／材料重放上下文，隐藏数学依赖不成为编辑成员、选择或新的关系权威。局部排除以相同层输入求场，真正源删除从存活区间做精确多项式延拓；嵌套 correction 保原拟合父参数轴。主树 62 项交叉测试和生产构建通过；候选组合 87 通过、1 可选私人 fixture 跳过。真人已执行基点曲边层引用粘到另一 Drawing 快照、P 新画拖柄、真绑定到继承端点、Undo；保存文件确认新节点成为相同 canonical 端点，原五稿逐字段不变。partial-family 删除的浏览器检查尚未完成。逆延拓放大超过 2²⁴ 原子拒绝，属于明确数值条件边界。继承 unbind/fork、异构／缺失程序描述符和嵌套反射部分家族仍需分别列明；不由此次 P／真绑定测试覆盖。
 
-### 最新实现与证据
+### 已发布阶段的实现与证据（剩余项以顶部当前清单为准）
 
 | 当前路径 | 唯一职责模块与消费者 | 已验证范围 | 当前剩余 |
 | --- | --- | --- | --- |
@@ -44,15 +42,15 @@ v75（`b93acdb`）真人验证：正面眉毛引用移入侧稿 original 层后�
 | 局部移除与真正源删除 | response / material 依赖退役和 `sourceDeletion.ts` | v62 局部移除只停用失去支持的字段，其他曲线继续正常；恢复成员可恢复材料字段；真正源删除清相应属性目标，不产生红色幽灵 | 继续随新材料 lineage / 非线性域检查具体依赖，不设置全画面硬门槛 |
 | Drawing 引用层通用作者入口 | `drawingSnapshotEdit.ts`、`drawingTopology.ts`、`relationAuthoringIntent.ts` | `144eb41` 已冻结：P 本地创建、来源／引用混合关系批次、API、一次 Undo 和来源隔离；独立 203 项及组合构建通过 | v63/v65 实际引用层 P 与真合笔通过；width/profile/inkEnds 使用局部 curveAppearance，v66 nodeAliases 支持两个继承端点真绑定。继承解除绑定已在 v68 接入；v70 实际验证源锁继承与局部 false 解锁。继承非线性程序的部分拓扑组合仍须收口 |
 | 独立当前形状复制 | `independentCopy.ts` 经现有 `cloneLayers` 和共同事务调用 | `e5b4273` 已冻结：新自有 ID、脱离旧父级、当前几何和颜色／填充／区间／ARC／偏移／层序检查，74 项通过、1 既有跳过 | v63 实际自动 +90° 镜像左眉复制：新 ID、同一视口 SVG 逐字相同、保存为无父级自有根；确实无法保持外观的异构 affine / 材料组合原子诊断 |
-| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | v67 持久层域已消费同一数学；v68 将实际 Drawing/Recording cage controller、overlay、controls 归为一份并完成所列 UI 验证；中间角程序 cage 的未来成员语义仍待用户决定 |
+| 共享曲边数学 | `deformation/cageField.ts`、`cubicDeformation.ts`、`drawing/deformMaterial.ts` | `c071169` 抽出当前 Drawing H∘Coons 与单 cubic 拟合；20 个旧／新结果逐字段一致，185 项相关测试通过 | v67 持久层域已消费同一数学；v68 将实际 Drawing/Recording cage controller、overlay、controls 归为一份并完成所列 UI 验证；连续线组 basis scope 与中间角临时 cage → 批量反推已获确认，正在实现 |
 
 v62 浏览器证据：[操作报告](../../artifacts/triangulated-recorder-qa/v62-browser-verification.json)、[保存文件回读](../../artifacts/triangulated-recorder-qa/v62-domain-save-validation.json)。9 笔准备与编辑已正常 Undo 到底，原 5 稿和先前稍侧工作副本恢复。本轮实际使用数字变换控件，没有宣称重新拖过全部框柄；文件以精确发布模块本地回读，没有重新导入浏览器。未上传私人归档，未测浏览器 FPS，也未作美术审美验收。
 
 完成标准是全部已约定职责落实在代码中，并且每项职责只有一份实际执行的实现，由 Drawing、Recording、API 和预览共同消费。公共包装函数、相同按钮或共享面板不能代替功能去重。v50 的自动化、构建与列明的浏览器操作已验证；“已接入”仍不代表其他缺口已关闭。本次文档更新未重新运行代码测试。
 
-## 按原则核对
+## 原则职责落点与早期验收记录
 
-模块列标明当前职责落点；多文件可以承担不同阶段，但同一项规则不能各算一遍。测试列列出已有证据及其范围，不把测试辅助函数等同于实际消费路径。
+模块列标明职责落点；多文件可以承担不同阶段，但同一项规则不能各算一遍。以下表保留首次核对时的阶段状态，后续版本记录和顶部当前清单覆盖其较早的未完成表述。测试辅助函数不等同于实际消费路径。
 
 | 原则 | 职责归口与当前代码 | 实际消费者 | 已有测试证据 | 尚未满足的验收条件 |
 | --- | --- | --- | --- | --- |
@@ -237,7 +235,7 @@ Recording 的关系卡现在直接消费同一个 `DisplayRouteControls`：可�
 
 报告：[v66 UI](../../artifacts/triangulated-recorder-qa/v66-browser-verification.json)、[跨层平滑回读](../../artifacts/triangulated-recorder-qa/v66-smooth-save-validation.json)。三组实际操作分别 3／3／7 笔正常 Undo 清理，窗口回 Drawing，Undo 禁用。API 与 Drawing 同目标相等有专门自动化；本轮鼠标执行的是 Drawing A。没有浏览器 FPS、私人档案浏览器验收或完整转头美术验收。
 
-### 21:13 未关闭清单
+### 历史检查点：10 月 3 日 21:13（已由顶部当前清单取代）
 
 - 有序 H∘Coons 域的完整持久、ARC/material provenance、后域 A、UI/API/save 实现正在最后冻结；Recording 尚无共用 quad/cage 作者工具栏入口，不能把 API 已能存算成录制 UI 已能操作
 - 后域 alias／bind、父 split 的 fit 参数 restriction、独立当前形状复制和局部 P 的共同作者目标适配仍需组合闭环。新父/source线默认无自身 delta；child 主动 P 创建的明确局部目标可以拥有本地 postShape，不能误扩大“零 delta”限制
@@ -245,3 +243,12 @@ Recording 的关系卡现在直接消费同一个 `DisplayRouteControls`：可�
 - 测试专用 `resolveSnapshotSimplexPresence` 已移除，三条缺失合同改测实际 runtime；此清理 `9c57652` 与文案 `a7f9c8c` 尚未部署，不改变采样规则
 - 中间角独立布尔作者样本的切换语义尚未新增；当前已明确要求的连续区间端点与真实插点离散继承分别有实现，不悄悄增加布尔 UI
 - 跨模式全局 Undo 的守卫去除等待用户对明确问题的答复；旧 channel runtime 的退役仍未获得清楚决定。原归档不随任何清理被删除
+
+
+## v77 全局历史与参考图实际验收
+
+实际把 Drawing 眉线宽度由 3 改为 4，切到 Recording 按 Undo 自动回原 Drawing 稿并恢复 3；从 Recording 按 Redo 同样回原稿恢复 4。撤销后的普通模式切换没有产生新历史。
+
+使用本地生成、无个人信息的网格 PNG：Recording 载入参考、解锁、缩放到 120%，实际平移 44×22 像素；切 Drawing 后一次 Undo 自动回 Recording 并完整撤回该拖动，Redo 恢复精确 transform 字符串，再一次 Undo 缩放回 100%。继续撤销解锁和载入后图片消失、Undo 禁用。Recording 抓手平移 33×17 像素后，从 Drawing Undo 也回 Recording，一次撤销到底。
+
+原五份保存画稿逐字段不变，最终工作副本等于其当前 Fullfront 保存稿，原四个录制保留。测试准备已通过正常 Undo 撤回。记录：[v77 真人报告](../../artifacts/triangulated-recorder-qa/v77-browser-verification.json)、[v76 继承 P／绑定](../../artifacts/triangulated-recorder-qa/v76-browser-verification.json)。没有上传私人归档、测量浏览器 FPS 或声称全部材料组合已经过真人检查。

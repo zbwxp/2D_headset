@@ -1,3 +1,5 @@
+import {splitSnapshotMirrorMaterial} from './splitMirrorMaterial';
+import {splitMaterialProgram} from './materialProgramSplit';
 import {splitSnapshotMirrorMetadata} from './mirrorMetadata';
 import {resolveSnapshotFitParameter} from './splitParameterField';
 import {recordingForSnapshot} from './tracks';
@@ -137,7 +139,7 @@ function remapIntervals(values:Record<string,SceneIntervalValue>|undefined,basis
 }
 function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:CurveSplitIntent):SnapshotDeformationState {
  const result=clone(state);
- for(const domain of result.layerDomains??[])if(domain.layerIds.includes(layerFor(basis,intent.curveId)?.id??'')){if(domain.kind==='h-coons')domain.fitLineages=splitCageLineages(domain.fitLineages,intent);const shaped=splitCageShapeLineages(domain.shapeLineages,domain.postShape,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});if(shaped.lineages.length)domain.shapeLineages=shaped.lineages;if(shaped.value)domain.postShape=shaped.value;}
+ for(const domain of result.layerDomains??[])if(domain.layerIds.includes(layerFor(basis,intent.curveId)?.id??'')){if(domain.kind==='h-coons')domain.fitLineages=splitCageLineages(domain.fitLineages,intent);else if(domain.materialProgram)domain.materialProgram=splitMaterialProgram(domain.materialProgram,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});const shaped=splitCageShapeLineages(domain.shapeLineages,domain.postShape,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});if(shaped.lineages.length)domain.shapeLineages=shaped.lineages;if(shaped.value)domain.postShape=shaped.value;}
  for(const value of Object.values(result.layers)){
   for(const category of ['elementPlacements','visibility'] as const){const map=value[category];if(map&&Object.hasOwn(map,intent.curveId)){const prior=map[intent.curveId];delete map[intent.curveId];for(const id of intent.childCurveIds)Object.defineProperty(map,id,{value:clone(prior),enumerable:true,writable:true,configurable:true});}}
   if(value.curveAppearance)value.curveAppearance=splitSnapshotCurveAppearance(value.curveAppearance,intent);
@@ -231,7 +233,7 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   let snapshot=initial;
   if(snapshot.relations.mirrorEditing)for(const plan of plans)snapshot={...snapshot,relations:{...snapshot.relations,mirrorEditing:splitSnapshotMirrorMetadata(snapshot.relations.mirrorEditing!,plan.intent,batch.mirrorPairs)}};
   let basis=plans.flatMap(plan=>plan.frozen).find(value=>value.snapshotId===snapshot.id)?.saved.evaluation.source;
-  if(snapshot.inputMirror){const mirror=snapshot.inputMirror;const curvePairs=mirror.curvePairs.flatMap(pair=>{const replacement=batch.mirrorPairs.find(value=>value.oldPairId===pair.id);return replacement?[replacement.left,replacement.right]:plans.some(plan=>pair.a===plan.intent.curveId||pair.b===plan.intent.curveId)?[]:[pair];});snapshot={...snapshot,inputMirror:{...mirror,curvePairs}};}
+  if(snapshot.inputMirror){const mirror=snapshot.inputMirror,parent=snapshot.parentSnapshotId&&resolveSnapshot(batch.before,snapshot.parentSnapshotId).drawing,splitMaterials=parent?splitSnapshotMirrorMaterial(parent,mirror,plans.map(plan=>plan.intent)):mirror.splitMaterials;const curvePairs=mirror.curvePairs.flatMap(pair=>{const replacement=batch.mirrorPairs.find(value=>value.oldPairId===pair.id);return replacement?[replacement.left,replacement.right]:plans.some(plan=>pair.a===plan.intent.curveId||pair.b===plan.intent.curveId)?[]:[pair];});snapshot={...snapshot,inputMirror:{...mirror,curvePairs,...(splitMaterials?{splitMaterials}:{})}};}
   for(const plan of plans){const {intent}=plan;
    const layers=snapshot.layers.map(layer=>layer.membership?{...layer,membership:{...(layer.membership.orderOverride?{orderOverride:replaceId(layer.membership.orderOverride,intent)}:{}),...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);
    const memberSources=snapshot.memberSources&&Object.hasOwn(snapshot.memberSources,intent.curveId)?Object.fromEntries(Object.entries(snapshot.memberSources).flatMap(([id,source])=>id===intent.curveId?intent.childCurveIds.map(id=>[id,source]):[[id,source]])):snapshot.memberSources;

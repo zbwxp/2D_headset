@@ -45,7 +45,7 @@ import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
 import {sameAngle} from '../vectorRecording/interpolation';
 import {applySnapshotNodeAliases} from './nodeAliases';
-import {applySnapshotNodeForks,pruneSnapshotTopologyNodes} from './nodeForks';
+import {materializeSnapshotForkInputs,applySnapshotNodeForks,pruneSnapshotTopologyNodes} from './nodeForks';
 import {applySnapshotCurveAppearance} from './curveAppearance';
 import {endpointPairCompatibility,endpointPairNodeAuthorities,interpolateEndpointPairDrawing,validateSnapshotEndpointPair} from './endpointPair';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
@@ -141,7 +141,7 @@ export function prepareSnapshotParentInput(workspace:RecordingSnapshotWorkspace,
   for(const id of metadata.mirrorEditing?.axisNodeIds??[])axisNodes.add(id);
  }
  const activePairs=pairs.filter(pair=>{const a=curves.has(pair.a),b=curves.has(pair.b);if(a!==b)diagnostics.push({code:'INPUT_MIRROR',snapshotId:snapshot.id,elementId:a?pair.a:pair.b,message:`Mirror pair ${pair.id} is incomplete in this parent; its available curve keeps its canonical identity.`});return a&&b;});
- const options={axisX:mirror.axisX,curvePairs:activePairs,axisNodeIds:[...axisNodes].filter(id=>nodes.has(id))},key=JSON.stringify([snapshot.id,options,diagnostics]);
+ const options={...mirror,axisX:mirror.axisX,curvePairs:activePairs,axisNodeIds:[...axisNodes].filter(id=>nodes.has(id))},key=JSON.stringify([snapshot.id,options,diagnostics]);
  const cache=mirroredParentInputs.get(parent)??new InputCache<SnapshotEvaluation>(8),known=cache.get(key);if(known)return known;
  try{
   const reflected=mirrorSnapshotDrawing(parent.drawing,options),correspondence=reflected.correspondence;
@@ -212,9 +212,12 @@ function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:Recordin
  const metadata=applySnapshotMirrorMetadata(drawing,snapshot,[...selectedByParent.keys()].map(id=>parents.get(id)!.drawing));
  const runtimeSources=[...selectedObjectsByParent].map(([id,items])=>{const source=parents.get(id)!.drawing,curves=source.curves.filter(curve=>items.has(curve.id)),nodes=new Set(curves.flatMap(curve=>curve.nodes));return retainSnapshotAffines({...source,curves,nodes:source.nodes.filter(node=>nodes.has(node.id)),fills:source.fills.filter(fill=>items.has(fill.id)),offsets:source.offsets.filter(offset=>items.has(offset.id))},[source]);});
  let input=applySnapshotObjectLocks(retainSnapshotAffines(metadata,runtimeSources),snapshot.objectLocks);
+ const forkOrigins=snapshot.nodeForks?[...[...parents.values()].map(parent=>parent.drawing),{...emptyDrawing(),curves:Object.values(workspace.library.curves),nodes:Object.values(workspace.library.nodes)}]:[];
+ input=materializeSnapshotForkInputs(input,snapshot.nodeForks,forkOrigins);
  for(const layer of snapshot.layers)if(layer.kind==='reference'){const parent=parents.get(layer.baseSnapshotId);if(parent)input=extendSnapshotInheritedTopology(input,parent.drawing,layer.id,layer.baseLayerId,new Set((layer.membership?.addElementIds??[]).filter(id=>!snapshot.memberSources?.[id])),new Set(Object.keys(snapshot.memberSources??{})));}
  for(const id of Object.keys(snapshot.nodeForks??{}))provenance[id]={elementId:id,sourceSnapshotId:snapshot.id,path:[snapshot.id]};
- const forked=applySnapshotNodeForks(input,snapshot.nodeForks,diagnostics,snapshot.id,snapshot.nodeForks?[...[...parents.values()].map(parent=>parent.drawing),{...emptyDrawing(),curves:Object.values(workspace.library.curves),nodes:Object.values(workspace.library.nodes)}]:[]),aliased=applySnapshotNodeAliases(forked,snapshot.nodeAliases,diagnostics,snapshot.id,(layerId,curveId)=>{const layer=snapshot.layers.find(value=>value.id===layerId),parentId=snapshot.memberSources?.[curveId]??(layer?.kind==='reference'?layer.baseSnapshotId:undefined);return parentId?parents.get(parentId)?.drawing:undefined;}),topology=snapshot.nodeForks?pruneSnapshotTopologyNodes(aliased):aliased;
+ const materialSourceForLayer=(layerId:string,curveId:string)=>{const layer=snapshot.layers.find(value=>value.id===layerId),parentId=snapshot.memberSources?.[curveId]??(layer?.kind==='reference'?layer.baseSnapshotId:undefined);return parentId?parents.get(parentId)?.drawing:undefined;};
+ const forked=applySnapshotNodeForks(input,snapshot.nodeForks,diagnostics,snapshot.id,forkOrigins,materialSourceForLayer),aliased=applySnapshotNodeAliases(forked,snapshot.nodeAliases,diagnostics,snapshot.id,materialSourceForLayer),topology=snapshot.nodeForks?pruneSnapshotTopologyNodes(aliased):aliased;
  return {drawing:markSnapshotRouteMaterialInput(validRelationships(topology,diagnostics,snapshot.id)),topologyInputDrawing:input,provenance,appliedTrackIds};
 }
 function shapeState(source:DrawingDocument,state:SnapshotDeformationState,diagnostics:SnapshotDiagnostic[],snapshotId:string):SceneShapeValue {

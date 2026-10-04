@@ -66,18 +66,18 @@ export function applyLayerCageDomain(input:DrawingDocument,domain:SnapshotLayerC
  if(domain.enabled===false){layerCageDomainProjection(domain);return input;}
  const evaluated=evaluateLayerCageDomain(input,domain,tolerance);
  let drawing=appendEvaluatedDeformation(evaluated.controlDrawing,input,evaluated.curveIds,evaluated.projector,JSON.stringify(domain),new Map([...evaluated.fits].map(([id,fit])=>[id,fit.parameters])),{kind:'cage',domain},new Map([...evaluated.fits].flatMap(([id,fit])=>{const range=cageSplitShapeRange(fit.shape);return range?[[id,range.parameterRange] as const]:[];})),new Map([...evaluated.fits].flatMap(([id,fit])=>{const range=cageSplitShapeRange(fit.shape);return range?[[id,range] as const]:[];})));
- if(postShape)drawing=applyLayerDomainPostShape(drawing,shapeLineages?.length?expandCageSplitPostShape(drawing,postShape,shapeLineages):postShape,new Set(input.layers.filter(layer=>domain.layerIds.includes(layer.id)).flatMap(layer=>layer.items)),tolerance);
+ if(postShape)drawing=applyLayerDomainPostShape(drawing,postShape,new Set(input.layers.filter(layer=>domain.layerIds.includes(layer.id)).flatMap(layer=>layer.items)),tolerance,shapeLineages);
  for(const layer of drawing.layers)for(const stroke of strokes(drawing,layer.id))for(const path of strokePaths(stroke))if(path.segments.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,path.segments,path.closed);if(geometry.error)throw Error(geometry.error);}
  for(const fill of drawing.fills)if(fill.boundary.some(use=>evaluated.curveIds.has(use.id))){const geometry=derivedUses(drawing,fill.boundary,true);if(geometry.error)throw Error(geometry.error);}
  for(const track of drawing.displayIntervals??[]){const path=displayPath(drawing,track.anchor.id);if(path.segments.some(use=>evaluated.curveIds.has(use.id)))displayField(drawing,path);}
  return drawing;
 }
 /** Same sparse-control engine as Scene, followed by the same derived fitter. */
-export function applyLayerDomainPostShape(input:DrawingDocument,value:import('../recordingScene/model').SceneShapeValue,scope:ReadonlySet<string>,tolerance=.00004):DrawingDocument {
+export function applyLayerDomainPostShape(input:DrawingDocument,value:import('../recordingScene/model').SceneShapeValue,scope:ReadonlySet<string>,tolerance=.00004,shapeLineages?:import('./cageSplitLineage').CageSplitShapeLineage[]):DrawingDocument {
  const availableCurves=new Set(input.curves.filter(curve=>scope.has(curve.id)).map(curve=>curve.id)),availableNodes=new Set(input.curves.filter(curve=>availableCurves.has(curve.id)).flatMap(curve=>curve.nodes));
  if(Object.keys(value.handles).some(id=>input.curves.some(curve=>curve.id===id)&&!availableCurves.has(id))||Object.keys(value.nodes).some(id=>input.nodes.some(node=>node.id===id)&&!availableNodes.has(id)))throw Error('A post-domain correction targets controls outside its live layer scope.');
- const shaped=applyDrawingShapeValue(input,value);if(shaped.issues.length)throw Error(shaped.issues[0].message);if(!shaped.changed)return input;
+ const shaped=applyDrawingShapeValue(input,shapeLineages?.length?expandCageSplitPostShape(input,value,shapeLineages):value);if(shaped.issues.length)throw Error(shaped.issues[0].message);if(!shaped.changed)return input;
  const projector=createCubicCorrectionProjector(input,shaped.drawing,(id,t)=>evaluatedControlParameter(input,id,t),(id,t)=>evaluatedControlParameterSlope(input,id,t),tolerance);
  const curves=new Set(input.curves.filter(curve=>scope.has(curve.id)||projector.curveIds.has(curve.id)).map(curve=>curve.id));
- return appendEvaluatedDeformation(shaped.drawing,input,curves,projector,JSON.stringify(['post-shape',value]),new Map(),{kind:'post-shape',value});
+ return appendEvaluatedDeformation(shaped.drawing,input,curves,projector,JSON.stringify(['post-shape',value,shapeLineages]),new Map(),{kind:'post-shape',value,...(shapeLineages?.length?{shapeLineages}:{} )});
 }

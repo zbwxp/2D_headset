@@ -1,4 +1,7 @@
-import {hasEvaluatedDeformation,hasEvaluatedDeformationFor,retainEvaluatedDeformations} from '../drawing/evaluatedDeformation';
+import {replaySnapshotTopologyMaterial} from './inheritedTopologyMaterial';
+import {cageEvaluationDependencyContext,retainCageEvaluationDependencyContext} from './cageEvaluationDependencies';
+import type {EvaluatedMaterialStep} from '../drawing/materialProgram';
+import {hasEvaluatedDeformation,hasEvaluatedDeformationFor,retainEvaluatedDeformations,evaluatedMaterialSource,evaluatedMaterialProgram} from '../drawing/evaluatedDeformation';
 import {nodeAt,members,type DrawingDocument,type Endpoint} from '../drawing/model';
 import {evaluatedAffine,evaluatedAffineSource,registerEvaluatedAffine} from '../drawing/evaluatedAffine';
 import {retainSnapshotAffines} from './elementPlacement';
@@ -37,11 +40,28 @@ function forkDrawing(drawing:DrawingDocument,forks:SnapshotNodeForks,origins:rea
  for(const [id,fork] of Object.entries(forks)){const origin=fork.source??fork,source=[drawing,...origins].find(value=>value.curves.some(curve=>curve.id===origin.curveId)),curve=source?.curves.find(curve=>curve.id===origin.curveId);if(!curve||!source)continue;const node=source.nodes.find(node=>node.id===curve.nodes[origin.end]);if(!node)fail(`source endpoint ${origin.curveId}:${origin.end} has no current node.`);nodes.set(id,{id,position:[...node!.position]});if(fork.bind!==false&&curves.has(fork.curveId))ends.set(JSON.stringify([fork.curveId,fork.end]),id);}
  return {...drawing,nodes:[...nodes.values()],curves:drawing.curves.map(curve=>({...curve,nodes:curve.nodes.map((id,end)=>ends.get(JSON.stringify([curve.id,end]))??id) as [string,string]}))};
 }
-export function applySnapshotNodeForks(drawing:DrawingDocument,forks:SnapshotNodeForks|undefined,diagnostics:SnapshotDiagnostic[],snapshotId:string,origins:readonly DrawingDocument[]=[]):DrawingDocument {
+/** Child-owned curves may already share a runtime fork before inherited fields
+ * are replayed. Materialize only their missing canonical input nodes; the full
+ * endpoint identity adaptation still runs once at the normal topology stage. */
+export function materializeSnapshotForkInputs(drawing:DrawingDocument,forks:SnapshotNodeForks|undefined,origins:readonly DrawingDocument[]):DrawingDocument {
+ if(!forks)return drawing;const present=new Set(drawing.nodes.map(node=>node.id)),needed=new Set(drawing.curves.flatMap(curve=>curve.nodes).filter(id=>Object.hasOwn(forks,id)&&!present.has(id)));if(!needed.size)return drawing;
+ const material=evaluatedMaterialSource(drawing),resolved=forkDrawing(material,forks,origins.map(evaluatedMaterialSource)),nodes=resolved.nodes.filter(node=>needed.has(node.id));
+ if(nodes.length!==needed.size)throw new SnapshotNodeAliasError('NODE_FORK_MATERIAL_CONFLICT','A local curve references a fork whose live canonical endpoint is unavailable. No source or Snapshot was changed.');
+ return retainCageEvaluationDependencyContext(retainSnapshotAffines({...drawing,nodes:[...drawing.nodes,...nodes]},[drawing]),[drawing]);
+}
+export function applySnapshotNodeForks(drawing:DrawingDocument,forks:SnapshotNodeForks|undefined,diagnostics:SnapshotDiagnostic[],snapshotId:string,origins:readonly DrawingDocument[]=[],sourceForLayer?:(layerId:string,representativeCurveId:string)=>DrawingDocument|undefined):DrawingDocument {
  if(!forks||!Object.keys(forks).length)return drawing;validateSnapshotNodeForks(forks);
  const active:SnapshotNodeForks={};for(const [id,fork] of Object.entries(forks))if([drawing,...origins].some(value=>value.curves.some(curve=>curve.id===(fork.source??fork).curveId)))active[id]=fork;else diagnostics.push({code:'MISSING_ELEMENT',snapshotId,elementId:id,message:`Local node ${id} is inactive because source curve ${fork.curveId} is outside this Snapshot's membership.`});
  if(!Object.keys(active).length)return drawing;
- for(const input of [drawing,...origins])if(hasEvaluatedDeformation(input)&&Object.values(active).some(fork=>hasEvaluatedDeformationFor(input,fork.curveId)||hasEvaluatedDeformationFor(input,(fork.source??fork).curveId)))throw new SnapshotNodeAliasError('NODE_FORK_MATERIAL_CONFLICT','Unbinding an endpoint inside a retained cage needs explicit runtime node-identity adaptation. Disable or reset the affected cage first; no source or Snapshot was changed.');
+ if([drawing,...origins].some(input=>hasEvaluatedDeformation(input)&&Object.values(active).some(fork=>hasEvaluatedDeformationFor(input,fork.curveId)||hasEvaluatedDeformationFor(input,(fork.source??fork).curveId)))){
+  const inputs=[drawing,...origins].map(input=>evaluatedMaterialSource(cageEvaluationDependencyContext(input))),target=retainSnapshotAffines(forkDrawing(drawing,active,origins),[drawing]),material=forkDrawing(evaluatedMaterialSource(drawing),active,inputs.slice(1)),programs=new Map<string,EvaluatedMaterialStep[]>();
+  // A fork duplicates a live node's identity at each retained correction stage.
+  // Relative handles and the existing field descriptors remain unchanged.
+  const nodeOrigins=new Map(Object.entries(active).flatMap(([id,fork])=>{const origin=fork.source??fork,curve=inputs.map(input=>input.curves.find(curve=>curve.id===origin.curveId)).find(Boolean);return curve?[[id,curve.nodes[origin.end]] as const]:[];}));
+  const adapt=(steps:readonly EvaluatedMaterialStep[]):EvaluatedMaterialStep[]=>steps.map(step=>{if(step.kind==='reflected')return {...step,steps:adapt(step.steps)};if(step.kind!=='post-shape')return step;const nodes={...step.value.nodes};for(const [id,origin] of nodeOrigins)if(Object.hasOwn(nodes,origin))nodes[id]=[...nodes[origin]];return {...step,value:{...step.value,nodes}};});
+  for(const curve of drawing.curves){const steps=evaluatedMaterialProgram(drawing,curve.id);if(!steps)throw new SnapshotNodeAliasError('NODE_FORK_MATERIAL_CONFLICT',`Curve ${curve.id} has no replayable material lineage for the requested endpoint fork.`);if(steps.length)programs.set(curve.id,adapt(steps));}
+  return retainSnapshotRouteMaterialInput(replaySnapshotTopologyMaterial(target,material,programs,(layerId,curveId)=>{const parent=sourceForLayer?.(layerId,curveId);return parent?forkDrawing(evaluatedMaterialSource(cageEvaluationDependencyContext(parent)),active,inputs):undefined;}),drawing);
+ }
  const result=forkDrawing(drawing,active,origins),material=evaluatedAffineSource(drawing);
  retainEvaluatedDeformations(result,[drawing]);
  if(material)registerEvaluatedAffine(result,forkDrawing(material,active,origins.map(value=>evaluatedAffineSource(value)??value)),id=>evaluatedAffine(drawing,id)??(active[id]?evaluatedAffine(drawing,active[id].curveId):undefined));
@@ -51,7 +71,7 @@ export function applySnapshotNodeForks(drawing:DrawingDocument,forks:SnapshotNod
  * Then only actual curve-owned nodes enter downstream picking and rendering. */
 export function pruneSnapshotTopologyNodes(drawing:DrawingDocument):DrawingDocument {
  const used=new Set(drawing.curves.flatMap(curve=>curve.nodes));if(drawing.nodes.every(node=>used.has(node.id)))return drawing;
- return retainSnapshotRouteMaterialInput(retainSnapshotAffines({...drawing,nodes:drawing.nodes.filter(node=>used.has(node.id))},[drawing]),drawing);
+ return retainSnapshotRouteMaterialInput(retainCageEvaluationDependencyContext(retainSnapshotAffines({...drawing,nodes:drawing.nodes.filter(node=>used.has(node.id))},[drawing]),[drawing]),drawing);
 }
 export function prepareSnapshotNodeUnbind(snapshotId:string,input:DrawingDocument,before:DrawingDocument,target:DrawingDocument,priorForks:SnapshotNodeForks|undefined,priorAliases:SnapshotNodeAliases|undefined,intent:SnapshotNodeUnbindIntent|undefined):{forks:SnapshotNodeForks|undefined;aliases:SnapshotNodeAliases|undefined;freshNodeIds:Set<string>} {
  if(!intent)return {forks:priorForks,aliases:priorAliases,freshNodeIds:new Set()};

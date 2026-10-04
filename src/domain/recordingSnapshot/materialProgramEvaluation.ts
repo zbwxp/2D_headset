@@ -14,7 +14,7 @@ function replay(input:DrawingDocument,steps:readonly EvaluatedMaterialStep[],tol
  for(const step of steps){
   if(step.kind==='affine')drawing=placeDrawingAffines(drawing,Object.fromEntries(layerIds.map(id=>[id,step.matrix])),id=>owners.get(id),{retainMaterial:true});
   else if(step.kind==='cage')drawing=applyLayerCageDomain(drawing,{...step.domain,layerIds},undefined,tolerance);
-  else if(step.kind==='post-shape')drawing=applyLayerDomainPostShape(drawing,step.value,scope,tolerance);
+  else if(step.kind==='post-shape')drawing=applyLayerDomainPostShape(drawing,step.value,scope,tolerance,step.shapeLineages);
   else {const frame={axisX:step.axisX,reverseCurveIds:step.reverseCurveIds};drawing=reflectMaterialProgramFrame(replay(reflectMaterialProgramFrame(drawing,frame),step.steps,tolerance),frame);}
  }
  return drawing;

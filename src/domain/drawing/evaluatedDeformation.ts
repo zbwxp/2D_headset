@@ -1,9 +1,9 @@
 import type {CurveFitRange} from './curveFitRange';
-import {remapCurveSource,transformCurveSource} from './curveProvenance';
+import {remapCurveSource,transformCurveSource,copyCurveSource,curveSamples} from './curveProvenance';
 import type {Affine2D} from '../geometry/affine2d';
 import {createFittedGeometryProjector,type CageFitDiagnostic} from './cageGeometry';
 import {evaluatedAffine,evaluatedAffineSource,affineShape,type EvaluatedAffine} from './evaluatedAffine';
-import {mappedParameter,mappedParameterSlope,type CurveParameterMap} from '../deformation/cubicDeformation';
+import {mappedParameter,mappedParameterSlope,curveParameterSourceKnots,type CurveParameterMap} from '../deformation/cubicDeformation';
 import type {DrawingDocument,Cubic,Point2} from './model';
 import type {DrawingPiece} from './roundedJoin';
 import {remapMaterialProgram,materialProgramIsNonlinear,type MaterialReflectionFrame,type EvaluatedMaterialStep} from './materialProgram';
@@ -99,21 +99,26 @@ export function evaluatedMaterialProgram(drawing:DrawingDocument,curveId:string)
  * IDs, preserving its numeric fit and material correspondence exactly. */
 export function remapEvaluatedDeformations(drawing:DrawingDocument,input:DrawingDocument,material:DrawingDocument,id:(id:string)=>string,originalId:(id:string)=>string,reflection?:{point:(p:Point2)=>Point2;reverse:(id:string)=>boolean;key:string;frame?:MaterialReflectionFrame}):DrawingDocument {
  const evaluation=evaluations.get(input.nodes);if(!evaluation)return drawing;
- const wrapped=new Map<Projector,Projector>(),mapShape=(shape:Cubic,map:(id:string)=>string)=>reflection?transformCurveSource(shape,shape.map(reflection.point) as Cubic,map,reflection.reverse):remapCurveSource(shape,shape.map(p=>[...p]) as Cubic,map);
+ // Retired fitted parents inherit parity from their explicit live children.
+ // A source split removes the parent curve, not its material parameter axis.
+ const parentReverse=new Map<string,boolean>();if(reflection)for(const curve of input.curves){const context=evaluation.programs.get(curve.id)?.fitContext;if(context)parentReverse.set(context.id,reflection.reverse(curve.id));}
+ const reverse=(value:string)=>parentReverse.get(value)??reflection?.reverse(value)??false;
+ const wrapped=new Map<Projector,Projector>(),mapShape=(shape:Cubic,map:(id:string)=>string)=>reflection?transformCurveSource(shape,shape.map(reflection.point) as Cubic,map,reverse):remapCurveSource(shape,shape.map(p=>[...p]) as Cubic,map);
  const project=(step:Projector)=>{let cached=wrapped.get(step);if(cached)return cached;
   const fitted=(result:ReturnType<Projector['fit']>)=>({...result,shape:mapShape(result.shape,id)}),fit=(shape:Cubic)=>fitted(step.fit(mapShape(shape,originalId)));
-  const canonicalPiece=(piece:DrawingPiece)=>({...piece,shape:mapShape(piece.shape,originalId),owners:piece.owners.map(originalId),...(piece.joinId?{joinId:originalId(piece.joinId)}:{}),...(piece.inkOwner?{inkOwner:originalId(piece.inkOwner)}:{})});
+  const reverseShape=(shape:Cubic)=>copyCurveSource(shape,[...shape].reverse() as Cubic,1,0);
+  const canonicalPiece=(piece:DrawingPiece)=>{let shape=mapShape(piece.shape,originalId);const samples=curveSamples(shape,0),ends=curveSamples(shape,1),reverse=!!reflection&&reflection.reverse(originalId(piece.owners[0]))&&!piece.joinId&&piece.owners.length===1&&samples.length===1&&ends.length===1&&samples[0].id===ends[0].id&&samples[0].t>ends[0].t;if(reverse)shape=reverseShape(shape);return {reverse,piece:{...piece,shape,owners:piece.owners.map(originalId),...(piece.joinId?{joinId:originalId(piece.joinId)}:{}),...(piece.inkOwner?{inkOwner:originalId(piece.inkOwner)}:{})}};};
   cached=createFittedGeometryProjector(piece=>({shape:piece.shape,parameters:{values:[0,1]},maxError:0}),fit,.00004,(geometry,initial)=>{
    // Relation-constrained stages need neighbouring pieces after ID/reflection
    // adaptation too. Replaying pieces independently would lose ARC tangency.
-   const pieces=geometry.pieces.map(canonicalPiece),selected=new Set(pieces.filter((_,i)=>initial[i]));
-   return step.projectGeometry({...geometry,pieces,shapes:pieces.map(piece=>piece.shape)},piece=>selected.has(piece)).fits.map(result=>result?fitted(result):undefined);
+   const adapted=geometry.pieces.map(canonicalPiece),pieces=adapted.map(value=>value.piece),selected=new Set(pieces.filter((_,i)=>initial[i]));
+   return step.projectGeometry({...geometry,pieces,shapes:pieces.map(piece=>piece.shape)},piece=>selected.has(piece)).fits.map((result,i)=>{if(!result)return undefined;const oriented=adapted[i].reverse?{...result,shape:reverseShape(result.shape),parameters:{sourceKnots:[...curveParameterSourceKnots(result.parameters)].reverse().map(t=>1-t),values:[...result.parameters.values].reverse().map(t=>1-t)}}:result;return fitted(oriented);});
   });wrapped.set(step,cached);return cached;
  };
  const data=(steps:EvaluatedMaterialStep[]|undefined):EvaluatedMaterialStep[]|undefined=>{
   if(!steps)return undefined;const mapped=remapMaterialProgram(steps,id);if(!reflection)return mapped;
   return reflection.frame?[{kind:'reflected',axisX:reflection.frame.axisX,reverseCurveIds:reflection.frame.reverseCurveIds.map(id),steps:mapped}]:undefined;
  };
- const programs=new Map([...evaluation.programs].map(([key,program])=>[id(key),{...program,...(program.fitContext?{fitContext:{...program.fitContext,id:id(program.fitContext.id)}}:{}),key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reflection?.reverse(key)?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reflection?.reverse(key)?(t:number)=>program.slope(1-t):program.slope,data:data(program.data)}]));
+ const programs=new Map([...evaluation.programs].map(([key,program])=>{const reversed=reverse(key),context=program.fitContext,range=(value:readonly [number,number]):readonly [number,number]=>reversed?[1-value[1],1-value[0]]:value;return [id(key),{...program,...(program.fitRange?{fitRange:range(program.fitRange)}:{}),...(context?{fitContext:{...context,id:id(context.id),parameterRange:range(context.parameterRange),...(context.sourceRange?{sourceRange:range(context.sourceRange)}:{}),...(reversed&&context.parentParameter?{parentParameter:(t:number)=>1-context.parentParameter!(1-t)}:{})}}:{}),key:reflection?JSON.stringify([reflection.key,program.key]):program.key,steps:program.steps.map(project),parameter:reversed?(t:number)=>1-program.parameter(1-t):program.parameter,slope:reversed?(t:number)=>program.slope(1-t):program.slope,data:data(program.data)}] as const;}));
  evaluations.set(drawing.nodes,{source:material,programs,sources:new WeakMap(),diagnostics:new Map()});return drawing;
 }

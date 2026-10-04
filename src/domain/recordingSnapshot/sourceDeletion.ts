@@ -86,7 +86,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
    ...(snapshot.nodeForks?{nodeForks:pruneSnapshotNodeForks(snapshot.nodeForks,removed)}:{}),
    ...(snapshot.nodeAliases?{nodeAliases:pruneSnapshotNodeAliases(snapshot.nodeAliases,removed)}:{}),
    ...(snapshot.source?{source:{...snapshot.source,originIds:without(snapshot.source.originIds,removed)}}:{}),
-   ...(mirror?{inputMirror:{...mirror,curvePairs:mirror.curvePairs.filter(pair=>!removed.has(pair.id)&&!removed.has(pair.a)&&!removed.has(pair.b)),...(mirror.axisNodeIds?{axisNodeIds:mirror.axisNodeIds.filter(id=>!removed.has(id))}:{})}}:{}),
+   ...(mirror?{inputMirror:{...mirror,curvePairs:mirror.curvePairs.filter(pair=>!removed.has(pair.id)&&!removed.has(pair.a)&&!removed.has(pair.b)),...(mirror.axisNodeIds?{axisNodeIds:mirror.axisNodeIds.filter(id=>!removed.has(id))}:{}),...(mirror.splitMaterials?{splitMaterials:mirror.splitMaterials.filter(pair=>!removed.has(pair.a)&&!removed.has(pair.b)).map(pair=>({...pair,ranges:pair.ranges.filter(range=>!removed.has(range.a)&&!removed.has(range.b))}))}:{})}}:{}),
    ...(snapshot.parentLayers?.excludedLayerIds?{parentLayers:{...snapshot.parentLayers,excludedLayerIds:snapshot.parentLayers.excludedLayerIds.filter(id=>!removedLayers.has(address(snapshot.parentSnapshotId!,id)))}}:{}),
   };
  });
