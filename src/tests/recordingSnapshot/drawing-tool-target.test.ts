@@ -91,3 +91,13 @@ it('shared-node arbitrary targets write one real residual and correction prefere
  expect(next.project.recordingSnapshots!.snapshots).toBe(correction.recordingSnapshots.snapshots);near(evaluateRecordingSnapshot(next.project.recordingSnapshots!,'surface',{useDraft:true}).drawing,target);
  expect(()=>prepareSnapshotDrawingToolEdit(snapshotEditContext(correction,false),{recordingId:'surface',snapshotId:evaluation.snapshotId,angle:{x:30,y:30},beforeDrawing:evaluation.drawing,drawing:preferences,intent:{kind:'mirror-metadata'}})).toThrow(/real snapshot/);
 });
+it('fresh A previews replay complete linked controls exactly and only the final gesture enters history',()=>{
+ const project=fixture({x:0,y:0},true),before=evaluateRecordingSnapshot(project.recordingSnapshots,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}),saved=JSON.stringify(project);
+ let final:ReturnType<typeof prepareSnapshotDrawingToolEdit>|undefined;
+ for(const delta of [.04,.08,-.03]){
+  const p=before.drawing.curves.find(curve=>curve.id==='first')!.handles[1],wanted=moveHandle(before.drawing,{curveId:'first',end:1},[p[0]+delta,p[1]+delta/2]),edit={recordingId:'surface',snapshotId:before.snapshotId,angle:{x:0,y:0},beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry' as const}};
+  const preview=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{...edit,validation:'preview'}),strict=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),edit),shown=evaluateRecordingSnapshot(preview.project.recordingSnapshots!,'surface',{useDraft:true,immutableInputs:true,diagnostics:'preview'}).drawing,committed=evaluateRecordingSnapshot(strict.project.recordingSnapshots!,'surface',{useDraft:true,diagnostics:'preview'}).drawing;
+  near(shown,wanted);near(committed,wanted);expect(shown.curves.map(curve=>curve.id)).toEqual(before.drawing.curves.map(curve=>curve.id));expect(shown.endpointLinks).toEqual(before.drawing.endpointLinks);expect(controls(shown)).toEqual(controls(committed));expect(JSON.stringify(project)).toBe(saved);expect(preview.project.recordingSnapshots!.library).toBe(project.recordingSnapshots.library);final=strict;
+ }
+ vi.useFakeTimers();useWorkspaceMode.getState().setMode('recording');useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(final!);expect(useEditor.getState().past).toEqual([project]);useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(final!.project);
+});

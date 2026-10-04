@@ -1,6 +1,6 @@
 import {uid,type DrawingDocument} from '../drawing/model';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
-import {evaluateRecordingSnapshot,resolveSnapshot,snapshotSurfaceBasesAtAngle,type SnapshotEvaluation} from './evaluation';
+import {evaluateRecordingSnapshot,resolveSnapshot,resolveRecordingSnapshotBasis,snapshotSurfaceBasesAtAngle,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
 import {assertSnapshotObjectsUnlocked} from './objectLocks';
 import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type SnapshotRecording,type RecordingSnapshot,type Angle,type SnapshotAngleGraph} from './model';
@@ -17,7 +17,7 @@ export interface SnapshotDrawingControlTarget {recordingId:string;snapshotId:str
 
 /** A frozen Drawing target is captured once, regardless of how many controls
  * its tool authored. Commands and Drawing tools share this write boundary. */
-export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string):{snapshot?:RecordingSnapshot;graph?:SnapshotAngleGraph} {
+export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,evaluation:SnapshotEvaluation,wanted:DrawingDocument,fresh:()=>string,options:{immutableInputs?:boolean}={}):{snapshot?:RecordingSnapshot;graph?:SnapshotAngleGraph} {
  const current=evaluation.drawing;
 
  const nodes=new Map(current.nodes.map(node=>[node.id,node.position])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node.position]));
@@ -32,7 +32,11 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const bound=vertex?.angle??owner.angle;if(bound.x!==recording.angle.x||bound.y!==recording.angle.y)fail('REAL_SNAPSHOT_REQUIRED','Create a real snapshot at this angle before editing this Recording with Drawing tools.');
  const prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(evaluation,wanted,prior.deformation,fresh);
  if(deformation===prior.deformation)return {};
- const candidate={...owner,draft:{...prior,deformation}},next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'||recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,diagnostics:'preview'});
+ const candidate={...owner,draft:{...prior,deformation}};
+ // A fresh pointer target replaces only this draft. Keep saved bases reusable,
+ // while the changed draft gets its own exact replay and dependent mirror.
+ if(options.immutableInputs)retainSnapshotSavedEvaluationIdentity(candidate,owner);
+ const next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'?resolveRecordingSnapshotBasis(next,recording,owner.id,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}):recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});
  assertSnapshotControlTargetReplay(replay.drawing,wanted);return {snapshot:candidate};
 }
 
@@ -43,7 +47,7 @@ export function prepareSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const evaluation=evaluateRecordingSnapshot(workspace,recording.id,{angle:edit.angle,useDraft:true,immutableInputs:true,diagnostics:'preview'});
  if(evaluation.snapshotId!==edit.snapshotId||snapshotDrawingEditSignature(evaluation.drawing)!==snapshotDrawingEditSignature(edit.beforeDrawing))fail('STALE_DRAWING_TARGET','The snapshot changed during this Drawing gesture. Start the gesture again on its current frame.');
  if(!same(controlStructure(evaluation.drawing),controlStructure(edit.drawing))||!same(edit.beforeDrawing.mirrorEditing?.curvePairs??[],edit.drawing.mirrorEditing?.curvePairs??[]))fail('CONTROL_TOPOLOGY_CHANGED','A geometry target must preserve topology, relations and appearance.');
- const result=captureSnapshotDrawingControlTarget(workspace,recording,evaluation,edit.drawing,uid);
+ const result=captureSnapshotDrawingControlTarget(workspace,recording,evaluation,edit.drawing,uid,{immutableInputs:true});
  if(result.snapshot)return {...workspace,snapshots:workspace.snapshots.map(value=>value.id===result.snapshot!.id?result.snapshot!:value)};
  if(result.graph)return {...workspace,recordings:workspace.recordings.map(value=>value===recording?{...recording,angleGraph:result.graph}:value)};
  return workspace;

@@ -1,4 +1,6 @@
 import {describe,expect,it} from 'vitest';
+import {prepareSnapshotDrawingToolEdit} from '../../app/snapshotDrawingToolEdit';
+import {moveHandle} from '../../domain/drawing/commands';
 import {createEmptyProject} from '../../app/emptyProject';
 import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 import {identityScenePlacement} from '../../domain/recordingScene/model';
@@ -94,4 +96,17 @@ describe('Recorder local-zero View mirror runtime',()=>{
   const f=fixture();f.zero.layers[0].membership={excludeElementIds:['left']};const right=resolveSnapshot(f.w,f.right.id,{useDraft:false});expect(right.drawing.curves).toEqual([]);expect(right.diagnostics.filter(issue=>issue.code==='INPUT_MIRROR').every(issue=>issue.message.includes('positive sample'))).toBe(true);expect(resolveSnapshot(f.w,f.left.id).drawing.curves).toHaveLength(2);
   const g=fixture();g.recording.angleGraph!.viewMirror={zeroSnapshotId:'missing',sourceSnapshotId:g.left.id,targetSnapshotId:g.right.id};expect(()=>parseRecordingSnapshots(g.w)).toThrow(/missing 0°/);
  });
+});
+
+for(const x of [0,-90,90])it(`fresh real handle replay retains live mirror and saved bases at yaw ${x}`,()=>{
+ const f=fixture();f.recording.angle=at(x);const project={...createEmptyProject(),recordingSnapshots:f.w},before=evaluateRecordingSnapshot(f.w,f.recording.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'}),saved=JSON.stringify(f.w);
+ for(const delta of [.03,-.02,.06]){
+  const wanted=moveHandle(before.drawing,{curveId:'left',end:0},[before.drawing.curves.find(curve=>curve.id==='left')!.handles[0][0]+delta,.15]),plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:f.recording.id,snapshotId:before.snapshotId,angle:at(x),beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry'},validation:'preview'}),next=plan.project.recordingSnapshots!,loaded=parseRecordingSnapshots(next);
+  const current=evaluateRecordingSnapshot(next,f.recording.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'});expect(current.drawing.nodes).toEqual(wanted.nodes);expect(current.drawing.curves.map(curve=>curve.id)).toEqual(wanted.curves.map(curve=>curve.id));for(const curve of wanted.curves)for(const end of [0,1] as const)for(const axis of [0,1] as const)expect(current.drawing.curves.find(value=>value.id===curve.id)!.handles[end][axis]).toBeCloseTo(curve.handles[end][axis],12);
+  for(const angle of [at(-90),at(-30),at(0),at(30),at(90)])for(const useDraft of [false,true]){
+   const cached=evaluateRecordingSnapshot(next,f.recording.id,{angle,useDraft,immutableInputs:true,diagnostics:'preview'}),strict=evaluateRecordingSnapshot(loaded,f.recording.id,{angle,useDraft,diagnostics:'preview'});expect(cached.drawing).toEqual(strict.drawing);
+  }
+  const onion=interpolateSnapshotSurfaceOnion(next.recordings[0],current,{startSnapshotId:f.left.id,endSnapshotId:f.right.id},5);for(const frame of onion.frames)expect(frame.drawing).toEqual(evaluateRecordingSnapshot(loaded,f.recording.id,{angle:frame.angle,useDraft:true,diagnostics:'preview'}).drawing);
+  expect(next.library).toBe(f.w.library);expect(JSON.stringify(f.w)).toBe(saved);
+ }
 });

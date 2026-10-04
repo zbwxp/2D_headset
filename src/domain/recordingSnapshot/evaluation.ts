@@ -398,17 +398,20 @@ export function resolveEndpointPairBasis(_workspace:RecordingSnapshotWorkspace,_
 }
 const surfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<ReturnType<typeof prepareSnapshotCoverage>>>();
 const mirrorSurfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<SnapshotSurfaceMirrorContext>>();
-/** Real snapshot poses are resolved at their own saved compatibility state.
- * Their Recorder coordinates only locate/mix poses; rebinding an angle never
- * feeds the new coordinate back into a snapshot's legacy deformation tracks. */
+/** The controls at a real Recorder vertex are exactly this resolved basis.
+ * Keep its saved compatibility angle, current draft and mirror/material parents
+ * identical for runtime sampling and control-target replay. Surface visibility
+ * recipes change only visibility flags after these controls are resolved. */
+export function resolveRecordingSnapshotBasis(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ const vertex=recording.angleGraph?.mesh.vertices.find(value=>value.snapshotId===snapshotId),snapshot=workspace.snapshots.find(value=>value.id===snapshotId);
+ if(!vertex||!snapshot)throw Error(`Missing real snapshot ${snapshotId}.`);
+ return resolveSnapshot(workspace,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y,tolerance:options.tolerance??recording.tolerance});
+}
 function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,options:SnapshotEvaluationOptions):SnapshotEvaluation {
  const graph=recording.angleGraph;if(!graph)throw Error('Triangulated recording has no angle graph.');
  const requested=options.angle??recording.angle;
  if(![requested.x,requested.y].every(value=>Number.isFinite(value)&&value>=-90&&value<=90))throw Error('Recording angle must be finite and within −90…90.');
- const allBases=graph.mesh.vertices.map(vertex=>{
-  const snapshot=workspace.snapshots.find(s=>s.id===vertex.snapshotId);if(!snapshot)throw Error(`Missing real snapshot ${vertex.snapshotId}.`);
-  return resolveSnapshot(workspace,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,liveBasisDrafts:options.useDraft!==false,useDraft:options.useDraft!==false&&recording.angle.x===vertex.angle.x&&recording.angle.y===vertex.angle.y,tolerance:options.tolerance??recording.tolerance});
- });
+ const allBases=graph.mesh.vertices.map(vertex=>resolveRecordingSnapshotBasis(workspace,recording,vertex.snapshotId,options));
  if(!allBases.length)throw Error('Recording has no real snapshot. Create one to begin editing.');
  const mirror=recordingViewMirrorRelation(workspace,recording),zero=mirror&&allBases.find(base=>base.snapshotId===mirror.zeroSnapshotId);
  const positiveBases=zero?allBases.map(base=>graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle.x===0?prepareViewMirrorInput(base,zero,base.snapshotId,snapshotViewMirrorOptions(workspace,recording,zero,base)):base):undefined;
