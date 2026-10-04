@@ -74,7 +74,7 @@ function observeControlSamples(){
   return {sample(weights,response){
    if(args[0].length>1)counts.samples++;
    let measured=response;
-   if(response){const scalar=response;measured=Object.assign((...args:Parameters<typeof scalar>)=>{counts.scalars++;return scalar(...args);},scalar) as typeof scalar;}
+   if(response){const scalar=response;measured=Object.assign((...args:Parameters<typeof scalar>)=>{counts.scalars++;return scalar(args[0],args[1],args[2],args[3]);},scalar) as typeof scalar;}
    return program.sample(weights,measured);
   }};
  });
