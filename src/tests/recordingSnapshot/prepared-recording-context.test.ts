@@ -20,6 +20,7 @@ import {upsertDrawingSource} from '../../domain/recordingSnapshot/sources';
 import * as triangulation from '../../domain/recordingSnapshot/triangulation';
 import * as snapshotValidation from '../../domain/recordingSnapshot/validation';
 import * as simplexPrograms from '../../domain/recordingSnapshot/preparedSimplexPrograms';
+import {getSnapshotSimplexSamplingStats} from '../../domain/recordingSnapshot/simplexGeometry';
 import {interpolateSnapshotSurfaceOnion} from '../../ui/vectorRecording/surfaceOnion';
 
 const at=(x:number,y=0):Angle=>({x,y});
@@ -166,12 +167,12 @@ describe('prepared Recording context through the production sampling entrypoints
 
  it('retains the complete candidate coverage and diagnostics after response-only replay',()=>{
   const f=fixture(2);f.side.layers[1]={...f.side.layers[1],membership:{excludeElementIds:['curve1']}};freeze(f);
-  const context=prepareRecordingContext(f.workspace,options),before=context.sample('recording'),node=before.drawing.nodes.find(value=>value.id==='a')!,wanted=moveNode(before.drawing,'a',[node.position[0]+.077,node.position[1]-.031],true),observed=observeControlSamples();
+  const context=prepareRecordingContext(f.workspace,options),before=context.sample('recording'),node=before.drawing.nodes.find(value=>value.id==='a')!,wanted=moveNode(before.drawing,'a',[node.position[0]+.077,node.position[1]-.031],true),observed=observeControlSamples(),samplingBefore=getSnapshotSimplexSamplingStats();
   try{
    expect(before.angleSurface!.outsideCurves).toHaveLength(1);
    const result=context.prepareSurfaceTargetEdit('recording',before,wanted,{angle:f.recording.angle,frameId:'coverage-replay'}),workspace={...f.workspace,recordings:[{...f.recording,angleGraph:result.graph}]};
    const actual=context.fork(workspace).sample('recording');expectControls(actual.drawing,wanted);
-   expect(observed.counts.samples).toBe(1);expect(actual.angleSurface!.outsideCurves).toEqual(before.angleSurface!.outsideCurves);
+   expect(observed.counts.samples).toBe(0);expect(getSnapshotSimplexSamplingStats().revisionSamples-samplingBefore.revisionSamples).toBe(1);expect(actual.angleSurface!.outsideCurves).toEqual(before.angleSurface!.outsideCurves);
    const cold=evaluateRecordingSnapshot(structuredClone(workspace),'recording',{useDraft:true,diagnostics:'preview'});
    expect(actual.drawing).toEqual(cold.drawing);expect(actual.angleSurface!.outsideCurves).toEqual(cold.angleSurface!.outsideCurves);
    expect(actual.angleSurface!.nodeAuthorities).toEqual(cold.angleSurface!.nodeAuthorities);expect(actual.diagnostics).toEqual(cold.diagnostics);expect(actual.paintBatches).toEqual(cold.paintBatches);

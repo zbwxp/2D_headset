@@ -657,7 +657,11 @@ class RecordingContext implements PreparedRecordingContext {
   const owner=options.preserveDraftOwner?effectiveSnapshotSurfaceResponses(sourceGraph).draft:undefined;
   const graph=owner?{...sourceGraph,correctionFrames:sourceGraph.correctionFrames!.map(frame=>frame===owner?{...frame,angle:{...options.angle}}:frame)}:sourceGraph;
   let replayGraph:SnapshotAngleGraph|undefined;
-  const result=prepareSnapshotSurfaceTargetEditWithReplay(graph,surface.simplex,surface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:sourceGraph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current.drawing,wanted,{immutableInputs:this.defaults.immutableInputs,angle:options.angle,frameId:options.frameId,allBases:snapshotSurfaceRequiredBases(surface,options.angle),mirror:surface.mirrorContext,controlPlan:options.controlPlan},(candidate,responseControls)=>{
+  // This context's view mirror owns positive yaw only. The inspection getter
+  // also exists on native negative/zero views; its mere presence is not a
+  // geometry dependency or a reason to discard their compiled native closure.
+  const mirror=options.angle.x>0?surface.mirrorContext:undefined;
+  const result=prepareSnapshotSurfaceTargetEditWithReplay(graph,surface.simplex,surface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:sourceGraph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current.drawing,wanted,{immutableInputs:this.defaults.immutableInputs,angle:options.angle,frameId:options.frameId,allBases:snapshotSurfaceRequiredBases(surface,options.angle),mirror,controlPlan:options.controlPlan},(candidate,responseControls)=>{
    // Only draft ownership is restored. Keep all accumulated protection outputs
    // in the candidate so later constraints cannot erase earlier corrections.
    replayGraph=owner?{...candidate,correctionFrames:candidate.correctionFrames!.map(frame=>frame.status==='draft'?{...frame,angle:{...owner.angle},basisAdjustment:owner.basisAdjustment}:frame)}:candidate;
