@@ -19,6 +19,9 @@ if(process.argv.includes('--serve')){
  // A revision label must describe the production code actually measured.
  // Harness-only uncommitted files are fine; build dirty production elsewhere.
  execFileSync('git',['diff','--quiet','HEAD','--','src'],{cwd:root});
- await build({...common,plugins:[react()],resolve:{alias:[{find:/^react-dom\/client$/,replacement:'react-dom/profiling'},{find:/^react-dom$/,replacement:'react-dom/profiling'}]},define:{__RENDERER_BENCHMARK_REVISION__:JSON.stringify(revision)},build:{...common.build,minify:'esbuild',rollupOptions:{input:resolve(root,'tests/fixtures/recording-renderer-benchmark.html')}}});
+ // The profiling client itself imports base react-dom for shared internals.
+ // Aliasing that base package back to profiling creates a circular bootstrap.
+ await build({...common,plugins:[react()],resolve:{alias:[{find:/^react-dom\/client$/,replacement:'react-dom/profiling'}]},define:{__RENDERER_BENCHMARK_REVISION__:JSON.stringify(revision)},build:{...common.build,minify:'esbuild',rollupOptions:{input:resolve(root,'tests/fixtures/recording-renderer-benchmark.html')}}});
+ execFileSync(process.execPath,[resolve(root,'scripts/check-recording-renderer-bootstrap.mjs'),outDir],{stdio:'inherit'});
  console.log(`Built ${revision} in ${outDir}. Serve with node scripts/build-recording-renderer-benchmark.mjs --serve`);
 }
