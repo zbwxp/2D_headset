@@ -1,4 +1,6 @@
 import type {PreparedRecordingChanges} from './workspaceChanges';
+import type {DrawingControlEditPlan} from '../drawing/controlEditPlan';
+import {registerPreparedControlChanges,preparedControlChangesBetween} from './preparedControlChanges';
 import {withDrawingReadScope} from '../drawing/readContext';
 export type {PreparedRecordingChanges} from './workspaceChanges';
 import {indexPreparedSnapshotDependencies,preparedSnapshotDependencyRevision,snapshotSurfaceDemand,type PreparedSnapshotDependencyIndex} from './preparedSnapshotDependencies';
@@ -441,7 +443,9 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const basisKey=[...demand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]);
  const responseFrames=options.useDraft===false?[]:(graph.correctionFrames??[]).filter(frame=>frame.edgeResponses||frame.triangleResponses||frame.responseExpressions).map(frame=>[frame.id,frame.status,frame.edgeResponses,frame.triangleResponses,frame.responseExpressions]),responseKey=[graph.edgeResponses,graph.triangleResponses,graph.responseExpressions,responseFrames];
  const geometryDemand=snapshotSurfaceDemand(effectiveGraph,locations,mirror?.zeroSnapshotId,false);if(positive&&mirror)geometryDemand.add(mirror.zeroSnapshotId);
- const geometryKey=semanticKey(['control-geometry',graph.mesh,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]),responseKey,requested,evaluationOptionsKey({...options,angle:requested,useDraft:false,liveBasisDrafts:false,diagnostics:'preview',validationSamples:undefined,products:'controls'})]);
+ const geometryPolicy=evaluationOptionsKey({...options,angle:requested,useDraft:false,liveBasisDrafts:false,diagnostics:'preview',validationSamples:undefined,products:'controls'});
+ const geometryKey=semanticKey(['control-geometry',graph.mesh,[...geometryDemand].map(id=>[id,context.plan(id,basisOptions(id),true).valueKey]),responseKey,requested,geometryPolicy]);
+ const lineageKey=semanticKey(['control-lineage',recording.id,graph.mesh,prepared,requested,geometryPolicy]);
  const surfaceKey=(quality=options.diagnostics)=>semanticKey(['angle-surface',recording.id,graph.mesh,basisKey,responseKey,controls?null:[snapshotPropertyResponsesCacheKey(effectiveGraph),graph.materialRecipes,graph.visibilityRecipes,graph.materialPartitions,graph.materialPathLineages],requested,evaluationOptionsKey({...options,angle:requested,diagnostics:quality})]);
  const key=surfaceKey(),known=context.surfaceValues.get(key);if(known)return known;
 
@@ -459,7 +463,8 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  const mirrorContext=positive?makeMirror([...demand]):undefined,prior=completeSurfaceProducts.get(key)??context.inheritedSurface(key)??(options.diagnostics==='preview'?(completeSurfaceProducts.get(surfaceKey('full'))??context.inheritedSurface(surfaceKey('full'))):undefined);
  let sampled=context.geometryValues.get(geometryKey)??controlGeometryProducts.get(geometryKey);
  if(!sampled&&prior)sampled={requestedAngle:requested,normal:prior.angleSurface?.simplex?{drawing:prior.drawing,simplex:prior.angleSurface.simplex,diagnostics:[],nodeAuthorities:new Map(Object.entries(prior.angleSurface.nodeAuthorities))}:undefined,outsideCurves:prior.angleSurface?.outsideCurves??[],diagnostics:prior.diagnostics.filter(issue=>issue.code==='POSE').map(issue=>issue.message)};
- if(!sampled){context.count('surfaceSample');const geometryRefs=[...geometryDemand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}));sampled=prepared.evaluate(requested,id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}),location=>createSnapshotSurfaceValueSampler(effectiveGraph,location,geometryRefs,mirrorContext,{immutableInputs:true,onPrepare:()=>context.count('responseProgram')}),{immutableInputs:true,onGeometryPrepare:()=>context.count('simplexProgram')});controlGeometryProducts.set(geometryKey,sampled);context.geometryValues.set(geometryKey,sampled);}else if(!prior)context.geometryValues.set(geometryKey,sampled);
+ if(!sampled){context.count('surfaceSample');const geometryRefs=[...geometryDemand].map(id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)})),lineage=context.inheritedGeometry(lineageKey,recording.id);sampled=prepared.evaluate(requested,id=>({snapshotId:id,drawing:base(id).drawing,angle:angleFor(id)}),location=>createSnapshotSurfaceValueSampler(effectiveGraph,location,geometryRefs,mirrorContext,{immutableInputs:true,onPrepare:()=>context.count('responseProgram')}),{immutableInputs:true,onGeometryPrepare:()=>context.count('simplexProgram'),...lineage});controlGeometryProducts.set(geometryKey,sampled);context.geometryValues.set(geometryKey,sampled);}else if(!prior)context.geometryValues.set(geometryKey,sampled);
+ context.geometryLineages.set(lineageKey,sampled);
 
  const normal=sampled.normal,active=normal?.simplex.snapshotIds.map(id=>base(id))??[],selected=active.length?active[dominantSnapshotBasis(active.map(value=>({snapshotId:value.snapshotId,angle:angleFor(value.snapshotId)})),normal!.simplex.geometricWeights)]:base(fallback);
  const role:SnapshotAngleSurfaceEvaluation['role']=!normal?'outside':normal.simplex.kind==='vertex'?'basis':'correction';
@@ -498,6 +503,7 @@ export interface PreparedRecordingCounters {
 }
 export interface PreparedSnapshotSurfaceTargetEditOptions {
  angle:Angle;frameId:string;
+ controlPlan?:DrawingControlEditPlan;
  /** Coupled basis corrections solve protected angles in their existing draft. */
  preserveDraftOwner?:boolean;
 }
@@ -536,7 +542,7 @@ export const getRecordingEvaluationStageTotals=()=>({...evaluationStageTotals});
  * from its frozen parent while keeping its own products and sample scratch. */
 class RecordingContext implements PreparedRecordingContext {
  readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;readonly dependencyRevision:string;
- readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();
+ readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();readonly geometryLineages=new Map<string,SnapshotCoverageEvaluation>();
  private effectiveGraphs=new Map<string,NonNullable<SnapshotRecording['angleGraph']>>();private coverageValues=new Map<string,PreparedSnapshotCoverageStructure>();private originalKeys=new Map<string,string>();private plans=new Map<string,SnapshotPlan>();private planning=new Set<string>();private memberships=new Map<string,{key:string;input:SnapshotInputParent}>();
  constructor(readonly workspace:RecordingSnapshotWorkspace,readonly defaults:SnapshotEvaluationOptions,readonly before?:RecordingContext){
   this.defaults={immutableInputs:defaults.immutableInputs};
@@ -636,6 +642,13 @@ class RecordingContext implements PreparedRecordingContext {
   const request={...this.defaults,...options},result=evaluateTriangulatedRecording(this,recording,request);contextEvaluations.set(result,this);evaluationRequests.set(result,{...request,angle:{...result.angle}});return result;
  }
  inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
+ inheritedGeometry(key:string,recordingId:string):{previous:SnapshotCoverageEvaluation;changes:NonNullable<ReturnType<typeof preparedControlChangesBetween>>}|undefined {
+  if(!this.defaults.immutableInputs)return;
+  for(let context=this.before;context;context=context.before){
+   const previous=context.geometryLineages.get(key);if(!previous)continue;
+   const changes=preparedControlChangesBetween(context.workspace,this.workspace,recordingId);if(changes)return {previous,changes};
+  }
+ }
  sampleMany(recordingId:string,requests:readonly SnapshotEvaluationOptions[]):SnapshotEvaluation[]{return withDrawingReadScope(()=>requests.map(options=>this.sample(recordingId,options)));}
  prepareSurfaceTargetEdit(recordingId:string,current:SnapshotEvaluation,wanted:DrawingDocument,options:PreparedSnapshotSurfaceTargetEditOptions):SnapshotSurfaceTargetEditResult {return withDrawingReadScope(()=>{
   const recording=this.index.recordings.get(recordingId),sourceGraph=recording?.angleGraph,surface=current.angleSurface;
@@ -644,11 +657,12 @@ class RecordingContext implements PreparedRecordingContext {
   const owner=options.preserveDraftOwner?effectiveSnapshotSurfaceResponses(sourceGraph).draft:undefined;
   const graph=owner?{...sourceGraph,correctionFrames:sourceGraph.correctionFrames!.map(frame=>frame===owner?{...frame,angle:{...options.angle}}:frame)}:sourceGraph;
   let replayGraph:SnapshotAngleGraph|undefined;
-  const result=prepareSnapshotSurfaceTargetEditWithReplay(graph,surface.simplex,surface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:sourceGraph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current.drawing,wanted,{immutableInputs:this.defaults.immutableInputs,angle:options.angle,frameId:options.frameId,allBases:snapshotSurfaceRequiredBases(surface,options.angle),mirror:surface.mirrorContext},candidate=>{
+  const result=prepareSnapshotSurfaceTargetEditWithReplay(graph,surface.simplex,surface.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:sourceGraph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current.drawing,wanted,{immutableInputs:this.defaults.immutableInputs,angle:options.angle,frameId:options.frameId,allBases:snapshotSurfaceRequiredBases(surface,options.angle),mirror:surface.mirrorContext,controlPlan:options.controlPlan},(candidate,responseControls)=>{
    // Only draft ownership is restored. Keep all accumulated protection outputs
    // in the candidate so later constraints cannot erase earlier corrections.
    replayGraph=owner?{...candidate,correctionFrames:candidate.correctionFrames!.map(frame=>frame.status==='draft'?{...frame,angle:{...owner.angle},basisAdjustment:owner.basisAdjustment}:frame)}:candidate;
    const workspace={...this.workspace,recordings:this.workspace.recordings.map(value=>value===recording?{...value,angleGraph:replayGraph}:value)};
+   if(this.defaults.immutableInputs)registerPreparedControlChanges(this.workspace,workspace,recordingId,{structureUnchanged:true,basisControls:new Map(),responseControls});
    return this.fork(workspace).sample(recordingId,{...evaluationRequests.get(current),angle:options.angle,useDraft:true,products:'controls'}).drawing;
   });
   return result.changed?{...result,graph:replayGraph!}:{graph:sourceGraph,changed:false};

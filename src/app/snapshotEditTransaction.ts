@@ -1,5 +1,6 @@
 import {currentPreparedEditRevision} from './preparedEditRevision';
 import {shareValidatedRecordingWorkspace} from '../domain/recordingSnapshot/workspaceChanges';
+import {retainPreparedControlChanges} from '../domain/recordingSnapshot/preparedControlChanges';
 import {assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
 import {effectiveSnapshotSurfaceResponses} from '../domain/recordingSnapshot/surfaceTargets';
 import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
@@ -167,6 +168,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   assertOriginalsUnchanged(original,edit.workspace);
   const propagated=propagateAutomaticSnapshotLayers(original,edit.workspace).workspace;
   const recordingSnapshots=edit.validation==='preview'?propagated:shareValidatedRecordingWorkspace(original,parseRecordingSnapshots(propagated));
+  if(propagated===edit.workspace)retainPreparedControlChanges(recordingSnapshots,edit.workspace);
   project=recordingSnapshots===context.workspace?before:{...before,recordingSnapshots};
  }else{
   if(!context.canEditOriginals)throw Error('录制模式不能修改源画稿。请先返回绘制模式。');
