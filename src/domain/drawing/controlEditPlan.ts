@@ -72,7 +72,7 @@ export type DrawingControlEditValue={kind:'point';position:Point2}|{kind:'map';m
  * control and all topology/appearance identities by construction. */
 export function applyDrawingControlEditPlan(plan:DrawingControlEditPlan,value:DrawingControlEditValue):DrawingDocument {
  const internal=plans.get(plan);if(!internal)throw Error('Unknown Drawing control edit plan.');const {before,intent}=plan,base=plan.fallbackReason?before:internal.scope;
- const execute=(base:DrawingDocument):DrawingDocument=>{let next:DrawingDocument;
+ const execute=(base:DrawingDocument):DrawingDocument=>{work[base===before?'fullAuthoring':'scopedAuthoring']++;work.authoredCurves+=base.curves.length;let next:DrawingDocument;
  if(intent.kind==='node'&&value.kind==='point')next=applyMirrorEditing(base,dragNode(base,intent.nodeId,value.position,intent.followStrength??0),{nodes:[{nodeId:intent.nodeId,position:value.position}]});
  else if(intent.kind==='handle'&&value.kind==='point')next=applyMirrorEditing(base,moveHandle(base,intent.endpoint,value.position),{handles:[{...intent.endpoint,position:value.position}]});
  else if(intent.kind==='curves'&&(value.kind==='transform'||value.kind==='map')){const raw=transform(base,[...intent.curveIds],value.kind==='map'?value.map:point=>applyScenePlacement(value.value,point),value.kind==='map'&&value.allowRelated===true),target=intent.preserveRelations?{...raw,joins:base.joins}:raw;next=applyMirrorEditing(base,target,value.kind==='map'?mirrorWritesForCurves(target,intent.curveIds):{});}
@@ -86,7 +86,6 @@ export function applyDrawingControlEditPlan(plan:DrawingControlEditPlan,value:Dr
  return next;};
  const next=execute(base);
  if(next.joins!==base.joins&&JSON.stringify(next.joins)!==JSON.stringify(base.joins)||next.displayIntervals!==base.displayIntervals&&JSON.stringify(next.displayIntervals)!==JSON.stringify(base.displayIntervals))return base===before?next:execute(before);
- work[plan.fallbackReason?'fullAuthoring':'scopedAuthoring']++;work.authoredCurves+=base.curves.length;
  const nodes=new Map(next.nodes.map(n=>[n.id,n])),curves=new Map(next.curves.map(c=>[c.id,c]));
  // Canonical fallback output is checked once in full. Never drop unexpected
  // followers merely because they were absent from the declared selection.
