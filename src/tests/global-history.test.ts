@@ -19,6 +19,10 @@ afterEach(()=>{useEditor.getState().endEdit();vi.runAllTimers();useEditor.setSta
 function sourceEdit(axis:number){const s=useEditor.getState();s.beginEdit();s.setDrawing({...s.project.drawing!,mirrorAxisX:axis});s.endEdit();return useEditor.getState().project;}
 
 test('global Drawing → Recording Undo/Redo restores each transaction mode, snapshot and viewport without navigation entries',()=>{
+ // The current workspace starts without a Recorder; this history fixture
+ // explicitly prepares one instead of relying on the retired implicit setup.
+ const initial=useEditor.getState().project,created=prepareSnapshotBatch(initial,{commands:[{op:'createTriangulatedRecording',name:'History fixture'}]});
+ useEditor.setState({project:{...initial,recordingSnapshots:created.recordingSnapshots}});
  const before=useEditor.getState().project;
  useDrawing.getState().set({zoom:2,pan:[12,34]});const source=sourceEdit(.3);
  useWorkspaceMode.getState().setMode('recording');const key=recordingHistoryViewportKey(source),viewport={zoom:3,pan:[40,-20] as [number,number],bounds:{min:[-2,-1] as [number,number],max:[2,1] as [number,number]}};writeHistoryViewport(key,viewport);
