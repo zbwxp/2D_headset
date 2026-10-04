@@ -21,7 +21,16 @@ const scalarTolerance=(...values:number[])=>64*Number.EPSILON*Math.max(1,...valu
 const changedScalar=(a:number,b:number)=>Math.abs(a-b)>scalarTolerance(a,b);
 const sameWeights=(a:readonly number[],b:readonly number[])=>a.length===b.length&&a.every((weight,index)=>weight===b[index]);
 const label=(target:SnapshotScalarTarget)=>target.kind==='node'?`Node ${target.nodeId}`:`Handle ${target.curveId} end ${target.end}`;
-const targetKey=(target:SnapshotScalarTarget,axis:0|1)=>JSON.stringify(target.kind==='node'?['node',target.nodeId,axis]:['handle',target.curveId,target.end,axis]);
+const frozenTargetKeys=new WeakMap<SnapshotScalarTarget,readonly [string,string]>();
+const targetKey=(target:SnapshotScalarTarget,axis:0|1):string=>{
+ const known=frozenTargetKeys.get(target);if(known)return known[axis];
+ const key=(axis:0|1)=>JSON.stringify(target.kind==='node'?['node',target.nodeId,axis]:['handle',target.curveId,target.end,axis]);
+ const fields=target.kind==='node'?['kind','nodeId']:['kind','curveId','end'];
+ if(Object.isFrozen(target)&&fields.every(field=>{const descriptor=Object.getOwnPropertyDescriptor(target,field);return !!descriptor&&'value' in descriptor&&(typeof descriptor.value==='string'||typeof descriptor.value==='number');})){
+  const keys=[key(0),key(1)] as const;frozenTargetKeys.set(target,keys);return keys[axis];
+ }
+ return key(axis);
+};
 
 export const snapshotSurfaceOwnsBasisDraft=(graph:SnapshotAngleGraph|undefined,snapshotId:string)=>graph?.correctionFrames?.some(frame=>frame.status==='draft'&&frame.basisAdjustment?.snapshotIds.includes(snapshotId))??false;
 

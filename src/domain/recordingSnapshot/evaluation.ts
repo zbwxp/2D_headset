@@ -516,6 +516,10 @@ const recordingContexts=new WeakMap<RecordingSnapshotWorkspace,{immutable?:{cont
 const immutableWorkspaceRevision=(workspace:RecordingSnapshotWorkspace):string=>semanticKey([immutableIdentity(workspace.library),workspace.snapshots.map(snapshot=>[snapshot.id,immutableIdentity(snapshot),immutableIdentity(snapshot.draft),immutableIdentity(snapshot.deformation)]),workspace.recordings.map(recording=>[recording.id,recording.angle.x,recording.angle.y,recording.tolerance,recording.activeSnapshotId,immutableIdentity(recording.angleGraph),immutableIdentity(recording.tracks),immutableIdentity(recording.snapshotIds)])]);
 const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,membershipSignature:0,membershipStructure:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,simplexProgram:0,bySnapshot:{}});
 
+const evaluationStageTotals=Object.fromEntries(Object.keys(emptyCounters()).filter(key=>key!=='bySnapshot').map(key=>[key,0])) as Omit<PreparedRecordingCounters,'bySnapshot'>;
+/** Cumulative actual stage executions across all candidate contexts. */
+export const getRecordingEvaluationStageTotals=()=>({...evaluationStageTotals});
+
 /** An immutable, validated dependency revision. Values are pinned here rather
  * than in the small display-frame LRU. A fork can borrow any unaffected value
  * from its frozen parent while keeping its own products and sample scratch. */
@@ -530,7 +534,7 @@ class RecordingContext implements PreparedRecordingContext {
   let plans=dependencyPlanCaches.get(workspace.library);if(!plans){plans=new InputCache(64);dependencyPlanCaches.set(workspace.library,plans);}
   const reusable=defaults.immutableInputs?(before?.dependencyRevision===this.dependencyRevision?before.index:plans.get(this.dependencyRevision)):undefined;
   if(reusable)this.index=indexPreparedSnapshotDependencies(workspace,reusable);
-  else{validateSnapshotGraph(workspace);this.counters.validation++;this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;}
+  else{validateSnapshotGraph(workspace);this.count('validation');this.index=indexPreparedSnapshotDependencies(workspace);this.count('dependencyIndex');}
   if(defaults.immutableInputs)plans.set(this.dependencyRevision,this.index);
   if(defaults.immutableInputs){
    const structureKey=semanticKey([workspace.snapshots.map(snapshot=>[snapshot.id,snapshot.parentSnapshotId,immutableIdentity(snapshot.layers),immutableIdentity(snapshot.memberSources),immutableIdentity(snapshot.nodeAliases),immutableIdentity(snapshot.nodeForks),immutableIdentity(snapshot.relations),immutableIdentity(snapshot.objectLocks),immutableIdentity(snapshot.source),immutableIdentity(snapshot.inputMirror)]),workspace.recordings.map(recording=>[recording.id,recording.snapshotIds,immutableIdentity(recording.angleGraph?.mesh),recordingViewMirrorRelation(workspace,recording)])]);
@@ -540,7 +544,7 @@ class RecordingContext implements PreparedRecordingContext {
   this.cache=evaluationCache(workspace,defaults.immutableInputs);
  }
  count(stage:Exclude<keyof PreparedRecordingCounters,'bySnapshot'>,snapshotId?:string):void {
-  this.counters[stage]++;
+  this.counters[stage]++;evaluationStageTotals[stage]++;
   if(snapshotId&&['snapshotInput','snapshotState','ownGeometry','basis','paint'].includes(stage)){const values=this.counters.bySnapshot[snapshotId]??={};const name=stage as keyof typeof values;values[name]=(values[name]??0)+1;}
  }
  plan(id:string,requested:SnapshotEvaluationOptions,root=false,visibilitySource=false):SnapshotPlan {
