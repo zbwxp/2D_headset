@@ -49,6 +49,16 @@ describe('prepared recording request ownership',()=>{
   expect(changed.counters.validation).toBe(1);expect(changed.counters.dependencyIndex).toBe(1);
   expect(()=>context.fork({...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id==='side'?{...snapshot,parentSnapshotId:'side'}:snapshot)})).toThrow(/cycle/);
  });
+ it('reuses a full validation for preview without weakening its diagnostics or sharing request wrappers',()=>{
+  const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true}),full=context.sample('r',{angle:{x:45,y:0},diagnostics:'full'}),prepared=context.counters.ownGeometry,sampled=context.counters.surfaceSample,preview=context.sample('r',{angle:{x:45,y:0},diagnostics:'preview'});
+  expect(preview.drawing).toBe(full.drawing);expect(preview).not.toBe(full);expect(preview.diagnosticStage).toBe('full');expect(preview.fitDiagnostics).toEqual(full.fitDiagnostics);expect(context.counters.ownGeometry).toBe(prepared);expect(context.counters.surfaceSample).toBe(sampled);
+  expect(preparedRecordingOptionsForEvaluation(full)?.diagnostics).toBe('full');expect(preparedRecordingOptionsForEvaluation(preview)?.diagnostics).toBe('preview');
+  const fresh=prepareRecordingContext(structuredClone(workspace),{immutableInputs:true});fresh.sample('r',{diagnostics:'preview'});const count=fresh.counters.ownGeometry;fresh.sample('r',{diagnostics:'full'});expect(fresh.counters.ownGeometry).toBeGreaterThan(count);
+ });
+ it('hands a complete replay product to an equivalent immutable workspace wrapper without repeating material or paint',()=>{
+  const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'}),before=context.sample('r',{angle:{x:45,y:0}}),equivalent={...workspace,recordings:[{...workspace.recordings[0]}]},fork=context.fork(equivalent),after=fork.sample('r',{angle:{x:45,y:0}});
+  expect(after.drawing).toBe(before.drawing);expect(after).not.toBe(before);expect(fork.counters.material).toBe(0);expect(fork.counters.paint).toBe(0);expect(fork.counters.surfaceSample).toBe(0);
+ });
  it('invalidates a retained material source signature outside geometric ancestry',()=>{
   const {workspace}=fixture(),external=emptyRecordingSnapshot('external','External','drawing');external.layers=[{kind:'original',id:'external-layer',name:'External',items:['external-curve'],visible:true,locked:false}];
   workspace.library.nodes.externalA={id:'externalA',position:[0,0]};workspace.library.nodes.externalB={id:'externalB',position:[1,1]};workspace.library.curves['external-curve']={...workspace.library.curves.c,id:'external-curve',nodes:['externalA','externalB']};workspace.snapshots.push(external);
@@ -57,6 +67,12 @@ describe('prepared recording request ownership',()=>{
   const context=prepareRecordingContext(workspace,{immutableInputs:true,diagnostics:'preview'}),before=context.sample('r');expect(before.drawing.displayIntervals).toHaveLength(1);
   const changed={...workspace,library:{...workspace.library,nodes:{...workspace.library.nodes,externalA:{...workspace.library.nodes.externalA,position:[.3,.2] as [number,number]}}}},next=context.fork(changed).sample('r'),cold=evaluateRecordingSnapshot(structuredClone(changed),'r',{diagnostics:'preview'});
   expect(next.drawing.displayIntervals).toHaveLength(0);expect(next.drawing).toEqual(cold.drawing);
+  const changedRelations={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id===external.id?{...snapshot,relations:{displayIntervals:{add:[{id:'external-interval',anchor:{id:'external-curve',reverse:false},scope:'CURVE' as const,ranges:[{id:'external-gap',mode:'HIDE' as const,start:.1,end:.6}]}]}}}:snapshot)};
+  const signature=drawingSignature(materializeOriginalSnapshot(changedRelations,external.id)!);expect(signature).not.toBe(zero.deformation.intervalMaterialIssues!.interval.sourceSignature);expect(changedRelations.library).toBe(workspace.library);
+  const relationFork=context.fork(changedRelations).sample('r'),relationCold=evaluateRecordingSnapshot(structuredClone(changedRelations),'r',{diagnostics:'preview'});expect(relationFork.drawing.displayIntervals).toHaveLength(0);expect(relationFork.drawing).toEqual(relationCold.drawing);
+  const changedLayers={...workspace,snapshots:workspace.snapshots.map(snapshot=>snapshot.id===external.id?{...snapshot,layers:snapshot.layers.map(layer=>layer.kind==='original'?{...layer,items:[]}:layer)}:snapshot)};
+  const layerFork=context.fork(changedLayers).sample('r'),layerCold=evaluateRecordingSnapshot(structuredClone(changedLayers),'r',{diagnostics:'preview'});expect(layerFork.drawing.displayIntervals).toHaveLength(0);expect(layerFork.drawing).toEqual(layerCold.drawing);
+
  });
  it('retains the exact sampled draft and product policy independently of the factory handle',()=>{
   const {workspace}=fixture(),context=prepareRecordingContext(workspace,{immutableInputs:true,useDraft:true,omitShapes:true,diagnostics:'preview'}),sample=context.sample('r',{angle:{x:45,y:0},useDraft:false,omitShapes:false,products:'controls'});
