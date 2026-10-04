@@ -489,7 +489,7 @@ function evaluateTriangulatedRecording(context:RecordingContext,recording:Snapsh
  if(prior)result.paintBatches=prior.paintBatches;else if(controls)result.paintBatches=[];else{context.count('paint');result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);}context.surfaceValues.set(key,result);completeSurfaceProducts.set(key,result);return result;
 }
 export interface PreparedRecordingCounters {
- validation:number;dependencyIndex:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;
+ validation:number;dependencyIndex:number;membershipStructure:number;snapshotInput:number;snapshotState:number;ownGeometry:number;basis:number;coverageStructure:number;surfaceSample:number;material:number;paint:number;responseProgram:number;
  bySnapshot:Record<string,Partial<Record<'snapshotInput'|'snapshotState'|'ownGeometry'|'basis'|'paint',number>>>;
 }
 export interface PreparedRecordingContext {
@@ -505,6 +505,8 @@ export interface PreparedRecordingContext {
 type SnapshotPlan={key:string;valueKey:string;options:SnapshotEvaluationOptions;recording?:SnapshotRecording;originalDependencies:readonly string[]};
 const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
 const semanticKey=(value:unknown):string=>{const text=JSON.stringify(value);let key=semanticKeys.get(text);if(!key){key=String(nextSemanticKey++);if(semanticKeys.size>=32768)semanticKeys.delete(semanticKeys.keys().next().value!);semanticKeys.set(text,key);}return key;};
+interface SharedStructuralProducts {memberships:Map<string,{key:string;input:SnapshotInputParent}>;coverage:Map<string,PreparedSnapshotCoverageStructure>}
+const structuralProductCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<SharedStructuralProducts>>();
 const dependencyPlanCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<PreparedSnapshotDependencyIndex>>();
 const contextEvaluations=new WeakMap<SnapshotEvaluation,PreparedRecordingContext>();
 const evaluationRequests=new WeakMap<SnapshotEvaluation,SnapshotEvaluationOptions>();
@@ -512,7 +514,7 @@ export const preparedRecordingOptionsForEvaluation=(evaluation:SnapshotEvaluatio
 export const preparedRecordingContextForEvaluation=(evaluation:SnapshotEvaluation):PreparedRecordingContext|undefined=>contextEvaluations.get(evaluation);
 const recordingContexts=new WeakMap<RecordingSnapshotWorkspace,{immutable?:{context:RecordingContext;revision:string};mutable?:{context:RecordingContext;fingerprint:string}}>();
 const immutableWorkspaceRevision=(workspace:RecordingSnapshotWorkspace):string=>semanticKey([immutableIdentity(workspace.library),workspace.snapshots.map(snapshot=>[snapshot.id,immutableIdentity(snapshot),immutableIdentity(snapshot.draft),immutableIdentity(snapshot.deformation)]),workspace.recordings.map(recording=>[recording.id,recording.angle.x,recording.angle.y,recording.tolerance,recording.activeSnapshotId,immutableIdentity(recording.angleGraph),immutableIdentity(recording.tracks),immutableIdentity(recording.snapshotIds)])]);
-const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,bySnapshot:{}});
+const emptyCounters=():PreparedRecordingCounters=>({validation:0,dependencyIndex:0,membershipStructure:0,snapshotInput:0,snapshotState:0,ownGeometry:0,basis:0,coverageStructure:0,surfaceSample:0,material:0,paint:0,responseProgram:0,bySnapshot:{}});
 
 /** An immutable, validated dependency revision. Values are pinned here rather
  * than in the small display-frame LRU. A fork can borrow any unaffected value
@@ -530,6 +532,11 @@ class RecordingContext implements PreparedRecordingContext {
   if(reusable)this.index=indexPreparedSnapshotDependencies(workspace,reusable);
   else{validateSnapshotGraph(workspace);this.counters.validation++;this.index=indexPreparedSnapshotDependencies(workspace);this.counters.dependencyIndex++;}
   if(defaults.immutableInputs)plans.set(this.dependencyRevision,this.index);
+  if(defaults.immutableInputs){
+   const structureKey=semanticKey([workspace.snapshots.map(snapshot=>[snapshot.id,snapshot.parentSnapshotId,immutableIdentity(snapshot.layers),immutableIdentity(snapshot.memberSources),immutableIdentity(snapshot.nodeAliases),immutableIdentity(snapshot.nodeForks),immutableIdentity(snapshot.relations),immutableIdentity(snapshot.objectLocks),immutableIdentity(snapshot.source),immutableIdentity(snapshot.inputMirror)]),workspace.recordings.map(recording=>[recording.id,recording.snapshotIds,immutableIdentity(recording.angleGraph?.mesh),recordingViewMirrorRelation(workspace,recording)])]);
+   let structures=structuralProductCaches.get(workspace.library);if(!structures){structures=new InputCache(64);structuralProductCaches.set(workspace.library,structures);}let shared=structures.get(structureKey);
+   if(!shared){shared={memberships:this.memberships,coverage:this.coverageValues};structures.set(structureKey,shared);}else{this.memberships=shared.memberships;this.coverageValues=shared.coverage;}
+  }
   this.cache=evaluationCache(workspace,defaults.immutableInputs);
  }
  count(stage:Exclude<keyof PreparedRecordingCounters,'bySnapshot'>,snapshotId?:string):void {
@@ -591,6 +598,7 @@ class RecordingContext implements PreparedRecordingContext {
   const ids=new Set(snapshot.layers.flatMap(layer=>[...(layer.kind==='original'?layer.items:[]),...layer.membership?.addElementIds??[]]));for(const fork of Object.values(snapshot.nodeForks??{}))ids.add((fork.source??fork).curveId);
   const key=semanticKey(['membership',id,snapshot.layers,snapshot.memberSources,snapshot.nodeAliases,snapshot.nodeForks,snapshot.relations,snapshot.objectLocks,snapshot.source,snapshot.inputMirror,mirror,[...parents].map(([id,value])=>[id,value.key]),[...ids].map(id=>[id,library.curves[id]?.nodes,library.curves[id]?.nodes.map(id=>!!library.nodes[id]),library.fills[id]?.boundary,library.offsets[id]?.source])]);
   const cached=membershipPreparationCaches.get(key);if(cached){const result={key,input:cached};this.memberships.set(id,result);return result;}
+  this.count('membershipStructure');
   const neutral=(drawing:DrawingDocument):DrawingDocument=>({...drawing,nodes:drawing.nodes.map(node=>({...node,position:[0,0]})),curves:drawing.curves.map(curve=>({...curve,handles:[[0,0],[0,0]]}))});
   const inputs=new Map([...parents].map(([id,value])=>[id,value.input]));
   if(mirror?.targetSnapshotId===id){const parent=inputs.get(mirror.sourceSnapshotId)!,zero=inputs.get(mirror.zeroSnapshotId)!;const curvePairs=snapshotViewMirrorCurvePairs(this.workspace,mirror.zeroSnapshotId,snapshot.inputMirror?.curvePairs??[]),options={curvePairs,unpairedGroups:viewMirrorUnpairedCurveGroups(zero.drawing,curvePairs).map(curveIds=>({curveIds,reference:[0,0] as Point2}))};inputs.set(parent.snapshotId,{...parent,drawing:neutral(mirrorViewDrawingPresence(parent.drawing,zero.drawing,options).drawing)});}
