@@ -1,3 +1,5 @@
+import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay,snapshotUsesControlTargetStages} from '../domain/recordingSnapshot/controlTargets';
+import {snapshotDrawingEditContent} from '../domain/recordingSnapshot/drawingControlTargetEdit';
 import {hasSnapshotLayerMemberEdit} from '../domain/recordingSnapshot/layerMemberEdit';
 import {setObjectState} from '../domain/drawing/objectState';
 import {currentDrawingPresentation} from './drawingSnapshotPresentation';
@@ -10,7 +12,7 @@ import {shapeOf} from '../domain/drawing/model';
 import {trySnapshotControlInverse} from '../domain/recordingSnapshot/controlSpace';
 import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {add,sub,nodeAt,parseDrawing,type DrawingDocument as Doc,type Point2} from '../domain/drawing/model';
+import {uid,add,sub,nodeAt,parseDrawing,type DrawingDocument as Doc,type Point2} from '../domain/drawing/model';
 import {identityScenePlacement,identitySceneShape} from '../domain/recordingScene/model';
 import {applyScenePlacementMatrix,composePlacementSimilarity} from '../domain/recordingScene/tracks';
 import {drawingSnapshotForArtwork,remapDrawingIdentities} from '../domain/recordingSnapshot/sources';
@@ -38,6 +40,17 @@ function mergeChanged<T extends {id:string}>(source:T,before:T|undefined,after:T
 }
 function preserveSourceOrder<T extends {id:string}>(source:T[],values:T[]):T[]{const byId=new Map(values.map(value=>[value.id,value])),known=new Set(source.map(value=>value.id));return [...source.flatMap(value=>byId.has(value.id)?[byId.get(value.id)!]:[]),...values.filter(value=>!known.has(value.id))];}
 
+/** Source ownership is independent of a mixed container's rendered members.
+ * Only source-to-source organizational moves change the source asset's lists;
+ * local overlays and borrowed canonical identities never enter those lists. */
+function originalLayerTargets(source:Doc,before:Doc,next:Doc,view:DrawingSnapshotPresentation,localLayers:Set<string>,existingOnly=false):Doc['layers'] {
+ const sourceIds=new Set([...source.curves,...source.fills,...source.offsets].map(value=>value.id)),known=new Set([...before.curves,...before.fills,...before.offsets].map(value=>value.id));
+ const layers=next.layers.filter(layer=>!localLayers.has(layer.id)&&(!existingOnly||source.layers.some(value=>value.id===layer.id))),layerIds=new Set(layers.map(layer=>layer.id)),available=new Set([...next.curves,...next.fills,...next.offsets].map(value=>value.id)),owners=new Map<string,string>();
+ for(const layer of source.layers)for(const id of layer.items){if(!available.has(id)&&known.has(id))continue;const prior=before.layers.find(layer=>layer.items.includes(id)),after=next.layers.find(layer=>layer.items.includes(id));owners.set(id,prior&&after&&layerIds.has(prior.id)&&layerIds.has(after.id)?after.id:layer.id);}
+ for(const layer of layers)for(const id of layer.items)if(available.has(id)&&!known.has(id)&&!sourceIds.has(id)&&view.objectOwners.get(id)?.kind!=='snapshot-local')owners.set(id,layer.id);
+ return layers.map(layer=>{const raw=source.layers.find(value=>value.id===layer.id),prior=before.layers.find(value=>value.id===layer.id),visible=layer.items.filter(id=>owners.get(id)===layer.id),oldVisible=prior?.items.filter(id=>sourceIds.has(id))??[],moved=!same(oldVisible,layer.items.filter(id=>sourceIds.has(id)))||visible.some(id=>!raw?.items.includes(id)),retained=raw?.items.filter(id=>owners.get(id)===layer.id)??[];return {...layer,items:moved?[...visible,...retained.filter(id=>!visible.includes(id))]:[...retained,...visible.filter(id=>!retained.includes(id))]};});
+}
+
 export interface DrawingSnapshotEditPlan extends SnapshotEditPlan {
  /** Original-only legacy document; never contains referenced geometry. */
  sourceDrawing?:Doc;
@@ -58,7 +71,7 @@ export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:Lay
  const matrix=intent.domain.kind==='h-coons'?undefined:layerDomainMatrix(intent);
  if(!intent.replace&&matrix&&isIdentityAffine2D(matrix))return {before:project,project,changed:false,drawing:markFinalizedGeometry(before)};
  if(!view){if(intent.replace||intent.domain.kind!=='placement-similarity'&&intent.domain.enabled===false)throw new DrawingSnapshotEditCapabilityError('Only a saved referenced layer domain can be replaced or disabled.');if(options.canEditOriginals===false)throw new DrawingSnapshotEditCapabilityError('Recording cannot edit Drawing-owned original layers.');const drawing=applyLayerDomainIntent(before,intent,options).document,plan=prepareDrawingSnapshotEdit(project,drawing);return {...plan,drawing:markFinalizedGeometry(drawing)};}
- const localIds=[...targets].filter(id=>view.layerOwners.get(id)?.kind==='snapshot-local'),originalIds=[...targets].filter(id=>!localIds.includes(id)),local=new Set(localIds);
+ const localIds=[...targets].filter(id=>view.layerOwners.get(id)?.kind==='snapshot-local'||before.layers.find(layer=>layer.id===id)?.items.some(item=>view.objectOwners.get(item)?.kind==='snapshot-local')),originalIds=[...targets].filter(id=>!localIds.includes(id)),local=new Set(localIds);
  if(originalIds.length&&(intent.replace||intent.domain.kind!=='placement-similarity'&&intent.domain.enabled===false))throw new DrawingSnapshotEditCapabilityError('Source-owned transforms edit original geometry; only referenced layer domains can be replaced or disabled.');
  if(originalIds.length&&options.canEditOriginals===false)throw new DrawingSnapshotEditCapabilityError('Recording cannot edit Drawing-owned original layers.');
  // A shared endpoint cannot acquire a second position authority. Coherent
@@ -106,12 +119,23 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
  if(!view||!project.drawing){const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing:next});return {...plan,sourceDrawing:next};}
  const before=view.drawing;if(next===before||same(next,before))return {before:project,project,changed:false};
  const source=project.drawing,localLayers=new Set([...view.layerOwners].filter(([,owner])=>owner.kind==='snapshot-local').map(([id])=>id));
- const localItems=new Set(before.layers.filter(layer=>localLayers.has(layer.id)).flatMap(layer=>layer.items));
+ const localItems=new Set([...view.objectOwners].filter(([,owner])=>owner.kind==='snapshot-local').map(([id])=>id));
  const localCurves=new Set(before.curves.filter(curve=>localItems.has(curve.id)).map(curve=>curve.id));
  const localNodes=new Set(before.curves.filter(curve=>localCurves.has(curve.id)).flatMap(curve=>curve.nodes));
  const canonicalNext=remapDrawingIdentities(next,view.canonicalId),evaluation=view.evaluation;
- if(stage==='full'&&hasSnapshotLayerMemberEdit(before,next)&&before.layers.some(layer=>localLayers.has(layer.id)&&!same(layer.items,next.layers.find(value=>value.id===layer.id)?.items))){
-  const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'snapshot-local-drawing',snapshotId:view.snapshotId,state:'saved',beforeDrawing:view.evaluation.drawing,drawing:canonicalNext});return {...plan,localWorkspace:plan.project.recordingSnapshots};
+ if(stage==='full'){
+  const current=evaluation.drawing,changed=current.curves.filter(curve=>{const target=canonicalNext.curves.find(value=>value.id===curve.id);return target&&(!same(curve.handles,target.handles)||curve.nodes.some(id=>!same(current.nodes.find(node=>node.id===id)?.position,canonicalNext.nodes.find(node=>node.id===id)?.position)));}).map(curve=>curve.id);
+  const fractions=(drawing:Doc):Doc=>({...drawing,displayIntervals:drawing.displayIntervals?.map(track=>({...track,ranges:track.ranges.map(range=>({...range,start:0,end:1}))}))}),controls={...current,nodes:canonicalNext.nodes,curves:current.curves.map(curve=>({...curve,handles:canonicalNext.curves.find(value=>value.id===curve.id)?.handles??curve.handles}))};
+  if(changed.length&&snapshotUsesControlTargetStages(evaluation,changed,true)&&same(snapshotDrawingEditContent(fractions(controls)),snapshotDrawingEditContent(fractions(canonicalNext)))){
+   const snapshot=workspace!.snapshots.find(value=>value.id===view.snapshotId)!,deformation=captureSnapshotControlTargets(evaluation,canonicalNext,snapshot.deformation,uid),localWorkspace={...workspace!,snapshots:workspace!.snapshots.map(value=>value===snapshot?{...snapshot,deformation}:value)};
+   assertSnapshotControlTargetReplay(resolveSnapshot(localWorkspace,snapshot.id,{useDraft:false,diagnostics:'preview'}).drawing,canonicalNext);
+   const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'snapshot-state',workspace:localWorkspace});return {...plan,localWorkspace:plan.project.recordingSnapshots};
+  }
+ }
+
+ if(stage==='full'&&hasSnapshotLayerMemberEdit(before,next)&&before.layers.some(layer=>(localLayers.has(layer.id)||layer.items.some(id=>localItems.has(id)))&&!same(layer.items,next.layers.find(value=>value.id===layer.id)?.items))){
+  const original={...source,layers:originalLayerTargets(source,before,next,view,localLayers,true)},sourcePlan=same(original,source)?{before:project,project,changed:false}:prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing:original}),refreshed=drawingSnapshotPresentation(sourcePlan.project.recordingSnapshots!,artworkId)!;
+  const plan=prepareSnapshotEdit(snapshotEditContext(sourcePlan.project,true),{kind:'snapshot-local-drawing',snapshotId:view.snapshotId,state:'saved',beforeDrawing:refreshed.evaluation.drawing,drawing:canonicalNext});return {...plan,before:project,changed:sourcePlan.changed||plan.changed,...(sourcePlan.changed?{sourceDrawing:original}:{}),localWorkspace:plan.project.recordingSnapshots};
  }
  if(stage==='full'){
   const snapshot=workspace!.snapshots.find(value=>value.id===view.snapshotId)!;
@@ -121,7 +145,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
    const ids=kind==='endpointLinks'?relation.endpointLinkIds:relation.displayIntervalIds;
    return [evaluation.drawing,canonicalNext].some(drawing=>(drawing[kind]??[]).some(value=>ids.map(view.canonicalId).includes(value.id)&&snapshotRelationWriteOwner(snapshot,drawing,kind,value)==='snapshot-local'));
   });
-  const localTopology=next.layers.some(layer=>localLayers.has(layer.id)&&layer.items.some(id=>!localItems.has(id)))||next.curves.some(curve=>localCurves.has(curve.id)&&!same(curve.nodes,before.curves.find(value=>value.id===curve.id)?.nodes));
+  const localTopology=next.curves.some(curve=>!before.curves.some(prior=>prior.id===curve.id)&&curve.nodes.some(id=>localNodes.has(id)))||[...next.fills,...next.offsets].some(value=>!view.objectOwners.has(value.id)&&('boundary' in value?value.boundary:value.source).some(use=>localCurves.has(use.id)))||[...localItems].some(id=>!next.layers.some(layer=>layer.items.includes(id)))||next.layers.some(layer=>localLayers.has(layer.id)&&layer.items.some(id=>!localItems.has(id)))||next.curves.some(curve=>localCurves.has(curve.id)&&!same(curve.nodes,before.curves.find(value=>value.id===curve.id)?.nodes));
   const localAppearance=next.curves.some(curve=>localCurves.has(curve.id)&&snapshotCurveAppearanceDifference(before.curves.find(value=>value.id===curve.id)!,curve));
   if(localTopology||localRelation||localAppearance)return prepareDrawingSnapshotLocalTopology(project,next,view,localLayers,localRelation?scope:undefined,nodeUnbind);
  }
@@ -152,7 +176,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
 
  // Rebuild only the adapter-owned subset. New geometry is permitted only in
  // original layers. Existing reference IDs may never become source originals.
- const sourceLayers=next.layers.filter(layer=>!localLayers.has(layer.id)),sourceItems=new Set(sourceLayers.flatMap(layer=>layer.items));
+ const sourceLayers=originalLayerTargets(source,before,next,view,localLayers),sourceItems=new Set(sourceLayers.flatMap(layer=>layer.items));
  if([...sourceItems].some(id=>localItems.has(id)))throw new DrawingSnapshotEditCapabilityError();
  const sourceCurves=next.curves.filter(curve=>sourceItems.has(curve.id)),sourceNodes=new Set(sourceCurves.flatMap(curve=>curve.nodes));
  if([...sourceNodes].some(id=>localNodes.has(id)))throw new DrawingSnapshotEditCapabilityError();
@@ -214,7 +238,7 @@ function prepareDrawingSnapshotEditStage(project:LandmarkProject,next:Doc,stage:
   const relationNodes=reconcileSnapshotEndpointRelationEdit(localEvaluation.drawing,relationTarget,localEvaluation,deformation,(layerId,curveId,point)=>inverse(layerId,curveId,point));
   for(const layerId of changedLocalLayers){
    const layer=localEvaluation.drawing.layers.find(layer=>layer.id===layerId)!;
-   if(!layer||view.layerOwners.get(view.presentationId(layerId))?.kind!=='snapshot-local')throw new DrawingSnapshotEditCapabilityError('The edit couples original and referenced layer controls. Edit each source independently.');
+   if(!layer||!layer.items.some(id=>localItems.has(view.presentationId(id))))throw new DrawingSnapshotEditCapabilityError('The edit couples original and referenced layer controls. Edit each source independently.');
    if(post.handledLayers.has(layerId)){const own=deformation.layers[layerId];if(visibility.has(layerId))deformation.layers[layerId]={...own,visibility:{...own?.visibility,...visibility.get(layerId)}};continue;}
    const shape=structuredClone(deformation.layers[layerId]?.shape??localEvaluation.state.layers[layerId]?.shape??identitySceneShape());
    for(const curve of localEvaluation.preElementPlacementDrawing.curves.filter(curve=>layer.items.includes(curve.id)&&!removedCurves.has(view.presentationId(curve.id)))){
@@ -245,7 +269,7 @@ export function prepareDrawingSnapshotObjectLocks(project:LandmarkProject,object
  const drawing=currentDrawingPresentation(project),next=setObjectState(drawing,objectIds,{locked}),plan=prepareDrawingSnapshotEdit(project,next);
  const workspace=plan.project.recordingSnapshots,view=workspace&&drawingSnapshotPresentation(workspace,plan.project.drawingSnapshots?.activeId??'$working');
  if(!view)return plan;
- const localIds=objectIds.filter(id=>view.layerOwners.get(drawing.layers.find(layer=>layer.items.includes(id))?.id??'')?.kind==='snapshot-local');
+ const localIds=objectIds.filter(id=>view.objectOwners.get(id)?.kind==='snapshot-local');
  if(!localIds.length)return plan;
  const local=prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'object-locks',snapshotId:view.snapshotId,changes:Object.fromEntries(localIds.map(id=>[view.canonicalId(id),locked]))});
  return {...plan,project:local.project,changed:plan.changed||local.changed,localWorkspace:local.project.recordingSnapshots};
@@ -255,11 +279,11 @@ export function prepareDrawingSnapshotObjectLocks(project:LandmarkProject,object
  * source coordinate math; the common Snapshot adapter owns every local write. */
 function prepareDrawingSnapshotLocalTopology(project:LandmarkProject,next:Doc,view:DrawingSnapshotPresentation,localLayers:Set<string>,scope?:SnapshotRelationAuthoringScope,nodeUnbind?:SnapshotNodeUnbindIntent):DrawingSnapshotEditPlan {
  const before=view.drawing,artworkId=project.drawingSnapshots?.activeId??'$working';
- const beforeLocalItems=new Set(before.layers.filter(layer=>localLayers.has(layer.id)).flatMap(layer=>layer.items)),nextLocalItems=new Set(next.layers.filter(layer=>localLayers.has(layer.id)).flatMap(layer=>layer.items));
+ const beforeLocalItems=new Set([...view.objectOwners].filter(([,owner])=>owner.kind==='snapshot-local').map(([id])=>id)),nextLocalItems=new Set([...next.curves,...next.fills,...next.offsets].filter(value=>beforeLocalItems.has(value.id)||!view.objectOwners.has(value.id)&&(localLayers.has(next.layers.find(layer=>layer.items.includes(value.id))?.id??'')||'nodes' in value&&value.nodes.some(id=>before.curves.some(curve=>beforeLocalItems.has(curve.id)&&curve.nodes.includes(id)))||('boundary' in value?value.boundary:'source' in value?value.source:[]).some(use=>beforeLocalItems.has(use.id)))).map(value=>value.id));
  const localCurveIds=new Set([...before.curves.filter(curve=>beforeLocalItems.has(curve.id)),...next.curves.filter(curve=>nextLocalItems.has(curve.id))].map(curve=>curve.id));
  const originalLayers=next.layers.filter(layer=>!localLayers.has(layer.id));let slot=0;
  const layers=[...before.layers.flatMap(layer=>localLayers.has(layer.id)?[layer]:slot<originalLayers.length?[originalLayers[slot++]]:[]),...originalLayers.slice(slot)];
- const sourceItems=new Set(originalLayers.flatMap(layer=>layer.items));
+ const sourceItems=new Set([...next.curves,...next.fills,...next.offsets].filter(value=>!nextLocalItems.has(value.id)).map(value=>value.id));
  const curves=preserveSourceOrder(before.curves,[...next.curves.filter(curve=>sourceItems.has(curve.id)).map(curve=>scope?.curveIds.has(curve.id)?{...restoreSnapshotCurveAppearance(curve,before.curves.find(value=>value.id===curve.id)??curve),handles:before.curves.find(value=>value.id===curve.id)?.handles??curve.handles}:curve),...before.curves.filter(curve=>beforeLocalItems.has(curve.id))]);
  const nodeIds=new Set(curves.flatMap(curve=>curve.nodes)),localNodeIds=new Set(before.curves.filter(curve=>beforeLocalItems.has(curve.id)).flatMap(curve=>curve.nodes));
  const nodes=preserveSourceOrder(before.nodes,[...next.nodes.filter(node=>nodeIds.has(node.id)&&!localNodeIds.has(node.id)).map(node=>scope?.nodeIds.has(node.id)?before.nodes.find(value=>value.id===node.id)??node:node),...before.nodes.filter(node=>localNodeIds.has(node.id))]);
@@ -300,7 +324,7 @@ export function prepareDrawingCurveSplit(project:LandmarkProject,curveId:string,
  if(view&&source){
   const curve=view.drawing.curves.find(value=>value.id===curveId),layer=curve&&view.drawing.layers.find(value=>value.items.includes(curve.id));
   if(!curve||!layer)throw Error('The selected curve no longer exists.');
-  const owner=view.layerOwners.get(layer.id)!;
+  const owner=view.objectOwners.get(curveId)??view.layerOwners.get(layer.id)!;
   if(owner.kind==='snapshot-local'){
    const intent=createCurveSplitIntent(view.evaluation.drawing,view.canonicalId(curveId),t),plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'local-curve-split',snapshotId:view.snapshotId,intent});
    return {...plan,intent,ids:[...intent.childCurveIds],localWorkspace:plan.project.recordingSnapshots};
@@ -336,6 +360,6 @@ export function prepareDrawingCageControlPreview(project:LandmarkProject,before:
  if(before.curves.length!==next.curves.length||before.nodes.length!==next.nodes.length)return;
  const changed=before.curves.filter(curve=>{const target=next.curves.find(value=>value.id===curve.id);return target&&(JSON.stringify(target.handles)!==JSON.stringify(curve.handles)||curve.nodes.some(id=>JSON.stringify(next.nodes.find(node=>node.id===id)?.position)!==JSON.stringify(before.nodes.find(node=>node.id===id)?.position)));});
  if(!changed.length||!changed.some(curve=>hasNonlinearDeformationFor(before,curve.id)))return;
- const view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(!view||changed.some(curve=>view.layerOwners.get(before.layers.find(layer=>layer.items.includes(curve.id))!.id)?.kind!=='snapshot-local'))return;
+ const view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(!view||changed.some(curve=>view.objectOwners.get(curve.id)?.kind!=='snapshot-local'&&!snapshotUsesControlTargetStages(view.evaluation,[view.canonicalId(curve.id)],true)))return;
  const plan=prepareDrawingSnapshotEdit(project,next);return markFinalizedGeometry(drawingSnapshotPresentation(plan.project.recordingSnapshots!,plan.project.drawingSnapshots?.activeId??'$working')!.drawing);
 }

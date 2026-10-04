@@ -18,6 +18,8 @@ export interface DrawingSnapshotPresentation {
  drawing:DrawingDocument;
  evaluation:SnapshotEvaluation;
  layerOwners:ReadonlyMap<string,DrawingSnapshotLayerOwner>;
+ /** Element authority is independent of its current organizational layer. */
+ objectOwners:ReadonlyMap<string,DrawingSnapshotLayerOwner>;
  canonicalId:(presentationId:string)=>string;
  presentationId:(canonicalId:string)=>string;
 }
@@ -47,6 +49,7 @@ export function drawingSnapshotPresentation(workspace:RecordingSnapshotWorkspace
   canonicalIds.set(presented,id);
  }
  const layerOwners=new Map<string,DrawingSnapshotLayerOwner>(snapshot.layers.map(layer=>[presentationId(layer.id),{snapshotId:snapshot.id,layerId:layer.id,kind:layer.kind==='original'&&drawingSourceOwns(snapshot,layer.id)?'source-original':'snapshot-local'}]));
+ const objectOwners=new Map<string,DrawingSnapshotLayerOwner>([...evaluation.drawing.curves,...evaluation.drawing.fills,...evaluation.drawing.offsets].map(value=>[presentationId(value.id),{snapshotId:snapshot.id,layerId:evaluation.drawing.layers.find(layer=>layer.items.includes(value.id))!.id,kind:drawingSourceOwns(snapshot,value.id)?'source-original':'snapshot-local'}]));
  const canonicalId=(id:string)=>canonicalIds.get(id)??id;
  const drawing=remapDrawingIdentities(evaluation.drawing,presentationId),original=materializeOriginalSnapshot(workspace,snapshot.id);
  // Image and mirror controls belong to the original adapter. Resolution does
@@ -55,6 +58,6 @@ export function drawingSnapshotPresentation(workspace:RecordingSnapshotWorkspace
   drawing.layers=drawing.layers.map(layer=>{const source=metadata.layers.find(value=>value.id===layer.id);return source?{...layer,visible:source.visible&&layer.visible,locked:source.locked||layer.locked}:layer;});}
  const deformedMaterial=evaluatedDeformationSource(evaluation.drawing);if(deformedMaterial)remapEvaluatedDeformations(drawing,evaluation.drawing,remapDrawingIdentities(deformedMaterial,presentationId),presentationId,canonicalId);
  const material=evaluatedAffineSource(evaluation.drawing);if(material)registerEvaluatedAffine(drawing,remapDrawingIdentities(material,presentationId),id=>evaluatedAffine(evaluation.drawing,canonicalId(id)));
- const result={snapshotId:snapshot.id,drawing,evaluation,layerOwners,canonicalId,presentationId};
+ const result={snapshotId:snapshot.id,drawing,evaluation,layerOwners,objectOwners,canonicalId,presentationId};
  const cache=presentations.get(workspace)??new Map();cache.set(artworkId,result);presentations.set(workspace,cache);return result;
 }

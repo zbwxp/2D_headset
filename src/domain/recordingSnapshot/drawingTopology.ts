@@ -134,7 +134,7 @@ export function prepareSnapshotLocalDrawingEdit(before:RecordingSnapshotWorkspac
  local.layers=target.layers.map(layer=>{
   const prior=local.layers.find(value=>value.id===layer.id);
   if(!prior)return {...clone(layer),kind:'original' as const};
-  if(prior.kind==='original'){if(drawingSourceOwns(snapshot,layer.id)&&(!same(prior.items,layer.items)||prior.name!==layer.name))return fail('DRAWING_SOURCE_OWNERSHIP','Drawing-owned layer membership must be changed through its original-source adapter.');return {...prior,name:layer.name,items:[...layer.items]};}
+  if(prior.kind==='original'){if(drawingSourceOwns(snapshot,layer.id)){if(prior.name!==layer.name)return fail('DRAWING_SOURCE_OWNERSHIP','Drawing-owned layer names must be changed through their original-source adapter.');const added=layer.items.filter(id=>!prior.items.includes(id)),excluded=prior.items.filter(id=>!layer.items.includes(id)),ordered=prior.membership?.orderOverride||!same(current.layers.find(value=>value.id===layer.id)?.items,layer.items);return {...prior,...(added.length||excluded.length||ordered?{membership:{...(added.length?{addElementIds:added}:{}),...(excluded.length?{excludeElementIds:excluded}:{}),...(ordered?{orderOverride:[...layer.items]}:{})}}:{membership:undefined})};}return {...prior,name:layer.name,items:[...layer.items]};}
   const membership=excludeSnapshotLocalMembers(prior.membership??{},removed.filter(id=>current.layers.find(value=>value.id===layer.id)?.items.includes(id)));
   const added=layer.items.filter(id=>!current.layers.find(value=>value.id===layer.id)?.items.includes(id));
   const addElementIds=[...new Set([...(membership.addElementIds??[]),...added])],excludeElementIds=(membership.excludeElementIds??[]).filter(id=>!addElementIds.includes(id));

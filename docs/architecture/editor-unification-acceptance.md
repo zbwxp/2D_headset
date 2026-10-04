@@ -6,6 +6,8 @@
 
 下一成员／深度候选已接主树并构建：`layerMemberEdit.ts` 识别纯组织操作，保留 canonical ID，以 `memberSources` 保留移动对象的实际 live 来源，引用层用 membership/orderOverride 表达新归属。源 Drawing 的 original→original 移动仍经原始资产适配器。当前视角列表直接调用共同 LayerPanel 命令并还原 canonical ID，来源列表继续只读；Group→层、曲线／填充／偏移移动、层内排序及局部 depth 属性均已启用。旧独立 LINK 区块已并入共同端点属性，显示区间入口保留。隔离组合 132 项通过、1 既有跳过，主树复跑 46 项和生产构建通过；v73 已通过真实当前列表跨层拖动和层内排序，见下文。Drawing 的原始拥有层混入借用成员仍需逐对象 authority overlay，未包括在此阶段。
 
+混合来源候选已接主树：Drawing original 层的资产 `items` 与本地借用 `membership` 分开，`objectOwners` 按对象分配原始／局部写入；borrowed A/width/topology 留在当前快照，原始 A 仍同步真实源。混合整层变换保一个局部域，双方源几何不烘焙；父源同 ID 换层会搬迁子快照 saved/inherited/draft 的原有点／柄、width、visibility 等稀疏记录，后续 source 更新继续叠加原 delta。主树 47 项交叉测试与构建通过，尚待发布与真人验收。
+
 当前真正开放的工程分为三组：
 
 1. 非线性程序下的分段和后续拓扑：源分段须保原角度场、原材料位置与 live source；已有角度相关 q、响应、JSON、重复分段的生产回归，真实内部插点仍在最后接线。继承程序中的局部拓扑、分段家族部分成员删除／排除仍须同一 lineage 支持，不能以永久拒绝代替正常操作。
@@ -100,7 +102,7 @@ Drawing 原稿与 working copy 仍通过 [drawingWorkingCopies.ts](../../src/app
 1. 非线性 source split 当前候选已合并，保 `split(fit(parent))` 的 live restriction、角度相关 q 与材料端点。已修插入真实 30°／60° 后的材料映射及再次分段的继承所有权；主树 103 项交叉测试和生产构建通过，尚未发布或真人验收。
 2. 明确剩余的材料场案例：插入真实视图后手动修改区间端点，再次 source split 遇到 fitted q 与 native t 不同，尚缺精确作者参数转移。已复现 0.00037734 世界坐标漂移，当前候选在提交前针对该组合原子拒绝且项目字节保持。这个防失真 guard 不代表功能完成。
 3. 已反射的非线性程序仍需端方向／子 ID restriction；继承程序的 P／绑定仍需显式后域拓扑目标。部分分段家族被排除或源删除后也需要隐藏的存活源依赖与剩余多项式延拓；现有 evaluator 诊断有时回到域输入，不能泛称所有这些入口都原子拒绝。这些均是后续工程工作，不归类为数学不可能。
-4. v72 的共同工具／属性、v73 的列表成员移动／排序已按所列有界真人路径验证。Drawing 拥有层混入借用成员的逐对象 authority、以及父 source 换层后子快照原有 point/appearance 记录归属搬迁在独立候选中，不能将借用 ID 塞进源 items 或复制新 ID 代替。
+4. v72 的共同工具／属性、v73 的列表成员移动／排序已按所列有界真人路径验证。Drawing 拥有层混入借用成员的逐对象 authority、以及父 source 换层后子快照原有 point/appearance 记录归属搬迁已在当前独立候选构建，尚待真人验收；借用 ID 不进入源 items，也不复制新 ID。
 5. v70 的镜像程序独立副本及局部 objectLocks、v71 的不同程序阶段 A/V 编辑保持已关闭。中间修正角程序 cage、跨模式 Undo guard 和旧 channel runtime 退役仍分别等待明确决定。独立中间 Boolean 作者 UI 本轮没有新增。
 
 每一职责须有一个实际执行内核。真正的退化轴、矛盾连接目标、非有限投影仍应原子拒绝；正常继承拓扑与成员移动不能借此关闭。被暂停的 Warp／旧 endpoint 模式的既有组合限制须与当前三角化编辑职责分开列明。

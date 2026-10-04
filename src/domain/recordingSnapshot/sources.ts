@@ -1,3 +1,4 @@
+import {reconcileSnapshotSourceMemberMoves} from './sourceMemberMoves';
 import {type DrawingDocument,type StrokeDisplayIntervals,type CurveUse,type Endpoint} from '../drawing/model';
 import {mapDisplayRouteReferences} from '../drawing/displayRoutes';
 import type {DrawingSnapshotState} from '../drawing/snapshots';
@@ -71,7 +72,7 @@ export function materializeOriginalSnapshot(workspace:RecordingSnapshotWorkspace
  const stored=workspace.snapshots.find(s=>s.id===snapshotId);if(!stored)return undefined;
  const snapshot:RecordingSnapshot=stored.source?{...stored,layers:stored.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(stored,layer.id)),relations:Object.fromEntries(Object.entries(stored.relations).filter(([kind])=>kind!=='mirrorEditing').map(([kind,patch])=>[kind,{add:patch.add?.filter((value:{id:string})=>drawingSourceOwns(stored,value.id))??[]}]))}:stored;
  if(snapshot.layers.some(layer=>layer.kind!=='original'))return undefined;
- const layers=snapshot.layers.map(layer=>{const {kind,...rest}=layer;void kind;return structuredClone(rest) as DrawingDocument['layers'][number];}),items=new Set(layers.flatMap(l=>l.items));
+ const layers=snapshot.layers.map(layer=>{const {kind,membership,...rest}=layer;void kind;void membership;return structuredClone(rest) as DrawingDocument['layers'][number];}),items=new Set(layers.flatMap(l=>l.items));
  const curves=[...items].flatMap(id=>Object.hasOwn(workspace.library.curves,id)?[structuredClone(workspace.library.curves[id])]:[]),nodeIds=new Set(curves.flatMap(c=>c.nodes));
  const relation=<T extends {id:string}>(patch:{add?:T[];update?:T[];disable?:string[]}|undefined):T[]=>{
   const map=new Map((patch?.add??[]).map(value=>[value.id,structuredClone(value)]));for(const value of patch?.update??[])map.set(value.id,structuredClone(value));for(const id of patch?.disable??[])map.delete(id);return [...map.values()];
@@ -98,7 +99,7 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
  if(!previous){let suffix=2;const occupied=(scope:string)=>workspace.snapshots.some(snapshot=>snapshot.id===canonicalSourceId(scope))||Object.values(workspace.library).some(elements=>Object.keys(elements).some(id=>id.startsWith(canonicalElementId(scope,''))));while(occupied(identityScope))identityScope=`${artworkId}#${suffix++}`;}
  const id=(raw:string)=>existing.get(raw)??canonicalElementId(identityScope,raw),canonical=remapDrawingIdentities(drawing,id),originIds=Object.fromEntries(drawingIdentityIds(drawing).map(raw=>[id(raw),raw]));
  const deletedIds=new Set(Object.keys(previous?.source?.originIds??{}).filter(id=>!Object.hasOwn(originIds,id)));
- const originals=canonical.layers.map(layer=>({...layer,kind:'original' as const}));let nextOriginal=0;
+ const originals=canonical.layers.map(layer=>{const local=previous?.layers.find(value=>value.id===layer.id)?.membership;return {...layer,kind:'original' as const,...(local?{membership:local}:{})};});let nextOriginal=0;
  // Preserve local slots in order while refreshing the adapter's ordered slots.
  const layers=previous?previous.layers.flatMap(layer=>layer.kind==='original'&&drawingSourceOwns(previous,layer.id)?(nextOriginal<originals.length?[originals[nextOriginal++]]:[]):[layer]):[];
  layers.push(...originals.slice(nextOriginal));
@@ -114,7 +115,7 @@ export function upsertDrawingSource(workspace:RecordingSnapshotWorkspace,artwork
  // Split retirement is transferred by the topology transaction before cleanup.
  // Other deletions remain ordinary destructive source edits.
  const destructive=new Set([...deletedIds].filter(id=>!options.splitRetiredIds?.has(id)));
- return removeDeletedSourceReferences(workspace,refreshed,source.id,destructive);
+ return reconcileSnapshotSourceMemberMoves(workspace,removeDeletedSourceReferences(workspace,refreshed,source.id,destructive),source.id);
 }
 
 /** Saving the working Drawing changes the adapter identity, never canonical

@@ -54,7 +54,7 @@ export function snapshotLayerWriteOwner(snapshot:RecordingSnapshot,layerId:strin
 export function snapshotRelationWriteOwner<K extends keyof SnapshotRelationCollection>(snapshot:RecordingSnapshot,drawing:DrawingDocument,kind:K,value:SnapshotRelationCollection[K][number]):SnapshotDrawingWriteOwner {
  const ids=snapshotRelationCurveIds(drawing,kind,value),layers=new Set(ids.map(id=>{const layer=layerFor(drawing,id);if(!layer)throw Error('A relation member has no current Snapshot layer.');return layer.id;}));
  const patch=snapshot.relations[kind];
- if(layers.size!==1||patch?.update?.some(relation=>relation.id===value.id)||patch?.disable?.includes(value.id)||patch?.add?.some(relation=>relation.id===value.id&&!drawingSourceOwns(snapshot,value.id)))return 'snapshot-local';
+ if(ids.some(id=>Object.hasOwn(snapshot.memberSources??{},id)||!drawingSourceOwns(snapshot,id)&&snapshot.layers.some(layer=>layer.membership?.addElementIds?.includes(id)))||layers.size!==1||patch?.update?.some(relation=>relation.id===value.id)||patch?.disable?.includes(value.id)||patch?.add?.some(relation=>relation.id===value.id&&!drawingSourceOwns(snapshot,value.id)))return 'snapshot-local';
  return snapshotLayerWriteOwner(snapshot,[...layers][0]);
 }
 

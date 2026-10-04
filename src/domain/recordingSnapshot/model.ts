@@ -26,7 +26,7 @@ export interface CanonicalElementStore {
 }
 export interface CanonicalElementRef {assetId:string;sourceId:string}
 /** Original layers alone own membership. Referencing layers follow it live. */
-export interface OriginalSnapshotLayer extends DrawingLayer {kind:'original'}
+export interface OriginalSnapshotLayer extends DrawingLayer {kind:'original';membership?:{addElementIds?:string[];excludeElementIds?:string[];orderOverride?:string[]}}
 export interface ReferencedSnapshotLayer {
  kind:'reference';id:string;name:string;
  /** The parent is evaluated at its own saved state, never at the child's angle. */

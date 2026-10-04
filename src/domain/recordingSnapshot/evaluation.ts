@@ -159,8 +159,8 @@ function inputForSnapshot(workspace:RecordingSnapshotWorkspace,snapshot:Recordin
   let source:DrawingDocument|undefined,sourceLayer:DrawingLayer|undefined,parent:SnapshotEvaluation|undefined;
   let localIds=new Set<string>();
   if(layer.kind==='original'){
-   sourceLayer=layer;const curves=layer.items.map(id=>workspace.library.curves[id]).filter(Boolean),nodes=[...new Set(curves.flatMap(c=>c.nodes))].map(id=>workspace.library.nodes[id]).filter(Boolean);
-   source={version:3,layers:[layer],nodes,curves,fills:layer.items.map(id=>workspace.library.fills[id]).filter(Boolean),offsets:layer.items.map(id=>workspace.library.offsets[id]).filter(Boolean),joins:[]};
+   sourceLayer={...layer,items:resolveSnapshotLocalMembership(layer.items,layer.membership).elementIds};const curves=sourceLayer.items.map(id=>workspace.library.curves[id]).filter(Boolean),nodes=[...new Set(curves.flatMap(c=>c.nodes))].map(id=>workspace.library.nodes[id]).filter(Boolean);
+   source={version:3,layers:[sourceLayer],nodes,curves,fills:sourceLayer.items.map(id=>workspace.library.fills[id]).filter(Boolean),offsets:sourceLayer.items.map(id=>workspace.library.offsets[id]).filter(Boolean),joins:[]};
   }else{
    parent=parents.get(layer.baseSnapshotId);source=parent?.drawing;sourceLayer=source?.layers.find(l=>l.id===layer.baseLayerId);
    if(!source)diagnostics.push({code:'MISSING_SNAPSHOT',snapshotId:snapshot.id,layerId:layer.id,message:`Base snapshot ${layer.baseSnapshotId} is missing; its reference is retained.`});

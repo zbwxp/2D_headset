@@ -55,7 +55,7 @@ export interface SnapshotEditPlan {
 const same=(before:unknown,after:unknown)=>before===after||JSON.stringify(before)===JSON.stringify(after);
 const sourceOnly=(snapshot:RecordingSnapshot)=>({
  kind:snapshot.kind,source:snapshot.source,
- layers:snapshot.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(snapshot,layer.id)),
+ layers:snapshot.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(snapshot,layer.id)).map(({membership,...layer})=>layer),
  relations:Object.fromEntries((['joins','endpointLinks','groups','displayIntervals'] as const).map(kind=>[kind,{
   add:snapshot.relations[kind]?.add?.filter(value=>drawingSourceOwns(snapshot,value.id))??[],
  }])),
