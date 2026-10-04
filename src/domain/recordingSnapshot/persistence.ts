@@ -1,3 +1,4 @@
+import {validateSnapshotAuthoredMaterial} from './authoredMaterial';
 import {validateSnapshotPaintAppearance} from './paintAppearance';
 import {validateSnapshotMemberSources} from './localMembership';
 import {validateSnapshotMirrorMetadata} from './mirrorMetadata';
@@ -34,7 +35,7 @@ const interval=(value:unknown)=>{
  for(const raw of list(t.ranges)){const range=object(raw,['id','originId','name','fullLoop','start','end','inkEnds','mode','enabled']);id(range.id);if(range.originId!==undefined)id(range.originId);finite(range.start,0,1);finite(range.end,0,1);if(range.mode!==undefined&&range.mode!=='SHOW'&&range.mode!=='HIDE')fail('interval mode');if(range.enabled!==undefined)boolean(range.enabled);if(range.fullLoop!==undefined)boolean(range.fullLoop);if(!validInkEnds(range.inkEnds))fail('interval brush');}
  if(t.displayRoute!==undefined){const route=object(t.displayRoute,['seed','throughLinkIds']),seed=object(route.seed,['segments','closed']);uses(seed.segments);list(route.throughLinkIds).forEach(id);}
 };
-const intervalValue=(value:unknown)=>{const data=object(value,['appearance','enabled']);if(data.appearance!==null)interval(data.appearance);map(data.enabled);};
+const intervalValue=(value:unknown)=>{const data=object(value,['appearance','enabled','authoredMaterial']);if(data.appearance!==null)interval(data.appearance);map(data.enabled);if(data.authoredMaterial!==undefined){const material=object(data.authoredMaterial,['version','appearance','partition','path']);interval(material.appearance);validateSnapshotAuthoredMaterial(material);}};
 const relation=(kind:string,value:unknown)=>{
  if(kind==='displayIntervals'){interval(value);return;}
  const data=object(value,kind==='groups'?['id','name','visible','locked','curveIds']:kind==='joins'?['id','a','b','mode','radius']:['id','a','b','throughDisplay','joinBrush']);id(data.id);
@@ -49,7 +50,7 @@ function relations(value:unknown){
 }
 function deformation(value:unknown){
  const data=object(value,['warps','bindings','layers','relationPositions','intervalMaterialIssues','layerDomains']);
- if(data.layerDomains!==undefined){for(const raw of list(data.layerDomains,1000)){const domain=object(raw,(raw as {kind?:unknown})?.kind==='h-coons'?['kind','id','layerIds','restRect','quad','bend','enabled','postShape','fitLineages','shapeLineages']:['kind','id','layerIds','matrix','enabled','postShape','shapeLineages','materialProgram']);id(domain.id);list(domain.layerIds).forEach(id);if(domain.postShape!==undefined)shape(domain.postShape);}validateLayerDomains(data.layerDomains as Parameters<typeof validateLayerDomains>[0]);}
+ if(data.layerDomains!==undefined){for(const raw of list(data.layerDomains,1000)){const domain=object(raw,(raw as {kind?:unknown})?.kind==='h-coons'?['kind','id','layerIds','strokeScope','restRect','quad','bend','enabled','postShape','fitLineages','shapeLineages']:['kind','id','layerIds','matrix','enabled','postShape','shapeLineages','materialProgram']);id(domain.id);list(domain.layerIds).forEach(id);if(domain.postShape!==undefined)shape(domain.postShape);}validateLayerDomains(data.layerDomains as Parameters<typeof validateLayerDomains>[0]);}
  if(data.intervalMaterialIssues!==undefined)for(const [trackId,issue] of Object.entries(map(data.intervalMaterialIssues))){id(trackId);materialIssue(issue);}
  for(const raw of list(data.warps,1000)){const warp=object(raw,['id','name','parentId','restGrid','grid']);id(warp.id);name(warp.name);if(warp.parentId!==undefined)id(warp.parentId);grid(warp.restGrid);grid(warp.grid);}
  for(const raw of list(data.bindings)){const binding=object(raw,['layerId','warpId']);id(binding.layerId);id(binding.warpId);}

@@ -1,6 +1,7 @@
 import {evaluatedControlParameter,evaluatedFitRange} from '../drawing/evaluatedDeformation';
 import {materialTableFractionAt,materialTableParameterAt} from '../drawing/materialParameter';
 import type {Cubic,DrawingDocument} from '../drawing/model';
+import {subcurve} from '../drawing/roundedJoin';
 import {arcField} from '../drawing/sampling';
 import {InputCache} from '../geometry/cache';
 
@@ -51,4 +52,15 @@ export function createSnapshotSplitParameterField(parent:Cubic):SnapshotSplitPar
   if(!(table.length>0))throw Error('Snapshot split material parameter has a degenerate parent path.');
   return materialTableParameterAt(table,cuts.reduce((sum,value,index)=>sum+weights[index]*materialTableFractionAt(table,value),0));
  }};fields.set(parent,field);numericFields.set(key,field);return field;
+}
+
+export interface SnapshotSplitMaterialFrame {parts:readonly SnapshotSplitParameterPart[];parent:Cubic}
+const materialFrames=new WeakMap<DrawingDocument['nodes'],readonly SnapshotSplitMaterialFrame[]>();
+export function recordSnapshotSplitMaterialFrames(drawing:DrawingDocument,frames:readonly SnapshotSplitMaterialFrame[]):DrawingDocument {materialFrames.set(drawing.nodes,frames);return drawing;}
+/** An explicit scalar domain owns this parent. Its live control values are
+ * evaluation results and never become source geometry or persisted state. */
+export function snapshotSplitMaterialFrame(drawing:DrawingDocument,parts:readonly SnapshotSplitParameterPart[]):Cubic|undefined {
+ const frame=materialFrames.get(drawing.nodes)?.filter(frame=>{const start=frame.parts.findIndex(part=>part.curveId===parts[0]?.curveId);return start>=0&&parts.every((part,index)=>frame.parts[start+index]?.curveId===part.curveId);}).sort((a,b)=>b.parts.length-a.parts.length)[0];if(!frame)return;
+ const current=snapshotSplitParameterParts(drawing,frame.parts),lo=current.find(part=>part.curveId===parts[0].curveId)!.parameterRange[0],hi=current.find(part=>part.curveId===parts.at(-1)!.curveId)!.parameterRange[1];
+ return lo===0&&hi===1?frame.parent:subcurve(frame.parent,lo,hi);
 }

@@ -1,10 +1,12 @@
 import {splitSnapshotMirrorMaterial} from './splitMirrorMaterial';
 import {splitMaterialProgram} from './materialProgramSplit';
+import {remapSnapshotAuthoredMaterial,assertSnapshotAuthoredMaterialSplitSupported} from './authoredMaterial';
 import {splitSnapshotMirrorMetadata} from './mirrorMetadata';
 import {resolveSnapshotFitParameter} from './splitParameterField';
 import {recordingForSnapshot} from './tracks';
 import {splitSnapshotObjectLocks} from './objectLocks';
 import {splitCageLineages,splitCageShapeLineages} from './cageSplitLineage';
+import {layerCageCurveIds} from './layerCageScope';
 import {evaluatedControlParameter,evaluatedMaterialSource,hasEvaluatedDeformationFor} from '../drawing/evaluatedDeformation';
 import {markSnapshotRouteMaterialInput,snapshotRouteMaterialSource} from './routeMaterialSource';
 import {remapSnapshotMaterialPathLineages} from './materialPathLineages';
@@ -76,21 +78,8 @@ function preflightTracks(workspace:RecordingSnapshotWorkspace,frozen:readonly Fr
   }
   if(recording.mode==='triangulated'){
    if(localOnly)continue;
-   // An explicitly edited inserted interval still uses the authored inversion
-   // path. Until that path can retain a changing fitted parameter exactly, fail
-   // before replacing source IDs instead of committing material endpoint drift.
-   for(const frame of affected){
-    if(!recording.angleGraph?.materialBasisRecipes?.[frame.snapshotId])continue;
-    const snapshot=workspace.snapshots.find(value=>value.id===frame.snapshotId)!;
-    for(const mode of ['inherited','saved','draft'] as const){
-     const pose=frame[mode],state=mode==='inherited'?snapshot.inheritedState:mode==='draft'?snapshot.draft?.deformation:snapshot.deformation;
-     if(!pose||!state||Math.abs(splitParameter(pose.evaluation.drawing,intent)-intent.t)<=1e-10)continue;
-     for(const layer of Object.values(state.layers))for(const [id,value] of Object.entries(layer.intervals??{})){
-      const track=value.appearance&&pose.evaluation.drawing.displayIntervals?.find(track=>track.id===id);if(!track)continue;
-      const affected=track.scope==='CURVE'?track.anchor.id===intent.curveId:displayPath(pose.evaluation.drawing,track.anchor.id).segments.some(use=>use.id===intent.curveId);
-      if(affected)fail(frame.snapshotId,intent.curveId,`authored interval ${id} on an inherited fitted material field needs exact authored-parameter rebasing before source splitting; no state was changed.`);
-     }
-    }
+   for(const frame of affected){if(!recording.angleGraph?.materialBasisRecipes?.[frame.snapshotId])continue;const snapshot=workspace.snapshots.find(value=>value.id===frame.snapshotId)!;
+    for(const mode of ['inherited','saved','draft'] as const){const pose=frame[mode],state=mode==='inherited'?snapshot.inheritedState:mode==='draft'?snapshot.draft?.deformation:snapshot.deformation;if(pose&&state&&Math.abs(splitParameter(pose.evaluation.drawing,intent)-intent.t)>1e-10)assertSnapshotAuthoredMaterialSplitSupported(frame.snapshotId,state,pose.evaluation.source,recording.angleGraph,intent);}
    }
    remapSnapshotMaterialPartitions(recording.angleGraph?.materialPartitions,intent,affected.flatMap(value=>value.saved.evaluation.source.displayIntervals??[]));
    remapSnapshotMaterialPathLineages(recording.angleGraph?.materialPathLineages,intent,affected.map(value=>value.saved.evaluation.source));
@@ -125,26 +114,27 @@ export function prepareSnapshotCurveSplit(workspace:RecordingSnapshotWorkspace,s
  preflightTracks(workspace,frozen,intent);
  return {before:workspace,sourceSnapshotId,intent:clone(intent),frozen};
 }
-function remapIntervals(values:Record<string,SceneIntervalValue>|undefined,basis:DrawingDocument,intent:CurveSplitIntent):Record<string,SceneIntervalValue>|undefined {
+function remapIntervals(values:Record<string,SceneIntervalValue>|undefined,basis:DrawingDocument,intent:CurveSplitIntent,retainAuthored=false):Record<string,SceneIntervalValue>|undefined {
  if(!values)return values;const result:Record<string,SceneIntervalValue>={};
  for(const [id,value] of Object.entries(values)){
   const plan=intent.intervals.find(track=>track.trackId===id);
   if(!value.appearance&&!plan){result[id]=clone(value);continue;}
   const appearance=value.appearance??basis.displayIntervals?.find(track=>track.id===id);
   if(!appearance){result[id]=clone(value);continue;}
+  const authoredMaterial=value.appearance&&(retainAuthored||value.authoredMaterial)?remapSnapshotAuthoredMaterial(value,basis,intent):undefined;
   const mapped=split({...basis,displayIntervals:[appearance]},intent).displayIntervals??[];
-  for(const track of mapped){const right=track.id===plan?.rightTrackId,enabled=Object.fromEntries(Object.entries(value.enabled).map(([rangeId,on])=>[right?plan?.ranges.find(range=>range.rangeId===rangeId)?.rightRangeId??rangeId:rangeId,on]));result[track.id]={...clone(value),appearance:value.appearance?track:null,enabled};}
+  for(const track of mapped){const right=track.id===plan?.rightTrackId,enabled=Object.fromEntries(Object.entries(value.enabled).map(([rangeId,on])=>[right?plan?.ranges.find(range=>range.rangeId===rangeId)?.rightRangeId??rangeId:rangeId,on]));result[track.id]={...clone(value),appearance:value.appearance?track:null,enabled,...(authoredMaterial?{authoredMaterial}:{})};}
  }
  return result;
 }
-function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:CurveSplitIntent):SnapshotDeformationState {
+function remapState(state:SnapshotDeformationState,basis:DrawingDocument,intent:CurveSplitIntent,retainAuthored=false):SnapshotDeformationState {
  const result=clone(state);
- for(const domain of result.layerDomains??[])if(domain.layerIds.includes(layerFor(basis,intent.curveId)?.id??'')){if(domain.kind==='h-coons')domain.fitLineages=splitCageLineages(domain.fitLineages,intent);else if(domain.materialProgram)domain.materialProgram=splitMaterialProgram(domain.materialProgram,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});const shaped=splitCageShapeLineages(domain.shapeLineages,domain.postShape,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});if(shaped.lineages.length)domain.shapeLineages=shaped.lineages;if(shaped.value)domain.postShape=shaped.value;}
+ for(const domain of result.layerDomains??[])if(domain.layerIds.includes(layerFor(basis,intent.curveId)?.id??'')){if(domain.kind==='h-coons'&&layerCageCurveIds(basis,domain).has(intent.curveId)){if(domain.strokeScope)domain.strokeScope={...domain.strokeScope,curveIds:replaceId([...layerCageCurveIds(basis,domain)],intent)};domain.fitLineages=splitCageLineages(domain.fitLineages,intent);}else if(domain.kind!=='h-coons'&&domain.materialProgram)domain.materialProgram=splitMaterialProgram(domain.materialProgram,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});const shaped=splitCageShapeLineages(domain.shapeLineages,domain.postShape,{...intent,sourceNodeIds:basis.curves.find(curve=>curve.id===intent.curveId)?.nodes??intent.sourceNodeIds});if(shaped.lineages.length)domain.shapeLineages=shaped.lineages;if(shaped.value)domain.postShape=shaped.value;}
  for(const value of Object.values(result.layers)){
   for(const category of ['elementPlacements','visibility'] as const){const map=value[category];if(map&&Object.hasOwn(map,intent.curveId)){const prior=map[intent.curveId];delete map[intent.curveId];for(const id of intent.childCurveIds)Object.defineProperty(map,id,{value:clone(prior),enumerable:true,writable:true,configurable:true});}}
   if(value.curveAppearance)value.curveAppearance=splitSnapshotCurveAppearance(value.curveAppearance,intent);
   if(value.shape)delete value.shape.handles[intent.curveId];
-  if(value.intervals)value.intervals=remapIntervals(value.intervals,basis,intent);
+  if(value.intervals)value.intervals=remapIntervals(value.intervals,basis,intent,retainAuthored);
  }
  return result;
 }
@@ -191,8 +181,9 @@ function rebasePose(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnaps
   const materialLayer=layerFor(evaluated.source,wanted.anchor.id)?.id??layerId;
   // A retained recipe is restored after the temporary topology rebase. Do not
   // turn its interim value into an authored override that suppresses the live
-  // recipe; only appearances already owned by this raw state may be inverted.
-  if(inheritedMaterial&&!state.layers[materialLayer]?.intervals?.[wanted.id]?.appearance)continue;
+  // recipe. Retained authored material is replayed once its live fit ranges
+  // have been restored, so none of these interim fractions may be inverted.
+  if(inheritedMaterial)continue;
   const actual=evaluated.drawing.displayIntervals?.find(track=>track.id===wanted.id),input=evaluated.source.displayIntervals?.find(track=>track.id===wanted.id);if(!actual||!input)fail(snapshot.id,wanted.id,'split material lost its source track.');
   for(const range of wanted.ranges)for(const side of ['start','end'] as const){
    const observed=evaluated.drawing.displayIntervals?.find(track=>track.id===wanted.id)?.ranges.find(value=>value.id===range.id)?.[side];if(observed!==undefined&&Math.abs(observed-range[side])<=1e-9)continue;
@@ -234,11 +225,11 @@ export function finishSnapshotCurveSplits(batch:SnapshotCurveSplitBatchPlan,cand
   if(snapshot.relations.mirrorEditing)for(const plan of plans)snapshot={...snapshot,relations:{...snapshot.relations,mirrorEditing:splitSnapshotMirrorMetadata(snapshot.relations.mirrorEditing!,plan.intent,batch.mirrorPairs)}};
   let basis=plans.flatMap(plan=>plan.frozen).find(value=>value.snapshotId===snapshot.id)?.saved.evaluation.source;
   if(snapshot.inputMirror){const mirror=snapshot.inputMirror,parent=snapshot.parentSnapshotId&&resolveSnapshot(batch.before,snapshot.parentSnapshotId).drawing,splitMaterials=parent?splitSnapshotMirrorMaterial(parent,mirror,plans.map(plan=>plan.intent)):mirror.splitMaterials;const curvePairs=mirror.curvePairs.flatMap(pair=>{const replacement=batch.mirrorPairs.find(value=>value.oldPairId===pair.id);return replacement?[replacement.left,replacement.right]:plans.some(plan=>pair.a===plan.intent.curveId||pair.b===plan.intent.curveId)?[]:[pair];});snapshot={...snapshot,inputMirror:{...mirror,curvePairs,...(splitMaterials?{splitMaterials}:{})}};}
-  for(const plan of plans){const {intent}=plan;
+  for(const plan of plans){const {intent}=plan,retainAuthored=!!recordingForSnapshot(batch.before,snapshot.id)?.angleGraph?.materialBasisRecipes?.[snapshot.id];
    const layers=snapshot.layers.map(layer=>layer.membership?{...layer,membership:{...(layer.membership.orderOverride?{orderOverride:replaceId(layer.membership.orderOverride,intent)}:{}),...(layer.membership.addElementIds?{addElementIds:replaceId(layer.membership.addElementIds,intent)}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:replaceId(layer.membership.excludeElementIds,intent)}:{})}}:layer);
    const memberSources=snapshot.memberSources&&Object.hasOwn(snapshot.memberSources,intent.curveId)?Object.fromEntries(Object.entries(snapshot.memberSources).flatMap(([id,source])=>id===intent.curveId?intent.childCurveIds.map(id=>[id,source]):[[id,source]])):snapshot.memberSources;
    snapshot={...snapshot,layers,...(memberSources?{memberSources}:{})};if(!basis||!hasCurve(basis,intent.curveId))continue;
-   snapshot={...snapshot,...(snapshot.objectLocks?{objectLocks:splitSnapshotObjectLocks(snapshot.objectLocks,intent)}:{}),...(snapshot.nodeForks?{nodeForks:splitSnapshotNodeForks(snapshot.nodeForks,intent)}:{}),relations:remapRelations(snapshot.relations,basis,intent,snapshot.id===batch.sourceSnapshotId?snapshot:undefined),deformation:remapState(snapshot.deformation,basis,intent),...(snapshot.inheritedState?{inheritedState:remapState(snapshot.inheritedState,basis,intent)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:remapState(snapshot.draft.deformation,basis,intent)}}:{})};
+   snapshot={...snapshot,...(snapshot.objectLocks?{objectLocks:splitSnapshotObjectLocks(snapshot.objectLocks,intent)}:{}),...(snapshot.nodeForks?{nodeForks:splitSnapshotNodeForks(snapshot.nodeForks,intent)}:{}),relations:remapRelations(snapshot.relations,basis,intent,snapshot.id===batch.sourceSnapshotId?snapshot:undefined),deformation:remapState(snapshot.deformation,basis,intent,retainAuthored),...(snapshot.inheritedState?{inheritedState:remapState(snapshot.inheritedState,basis,intent,retainAuthored)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:remapState(snapshot.draft.deformation,basis,intent,retainAuthored)}}:{})};
    basis=split(basis,intent);
   }
   return snapshot;

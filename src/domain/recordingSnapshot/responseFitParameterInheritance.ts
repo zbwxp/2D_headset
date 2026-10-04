@@ -26,7 +26,7 @@ export function applySnapshotInheritedFitParameters(graph:SnapshotAngleGraph,sna
   // cannot supply a current inherited frame during that unpublished stage.
   if(controls.some(reference=>basisScalar(reference)===undefined)||parameters.some(reference=>basisScalar.fitParameter?.(reference)===undefined))continue;
   const key=JSON.stringify([operation.domain,operation.fieldId,candidate.operations]);if(seen.has(key))continue;seen.add(key);
-  const sample=prepareSnapshotResponseExpression(candidate),q=sample({basisScalar,geometricWeights});collector.record(operation.domain,q);
+  const sample=prepareSnapshotResponseExpression(candidate),q=sample({basisScalar,geometricWeights,recordFitParameter:collector.record});collector.record(operation.domain,q);
   const root=candidate.operations!.at(-1)!;if(root.kind!=='curve-material-parameter')return fail('the extracted scalar root is not a material parameter.');
   const parameterLeaves=root.parameters.map(index=>candidate.operations![index]);if(parameterLeaves.some(leaf=>leaf.kind!=='fit-parameter'))return fail('a retained parameter root has no direct live basis cuts.');
   const values=new Map<number,number>([[0,0],[1,1],[operation.domain.t,q]]);

@@ -1,3 +1,4 @@
+import {transportSnapshotAuthoredMaterialSource} from './authoredMaterial';
 import {reconcileSnapshotSourceMemberMoves} from './sourceMemberMoves';
 import {type DrawingDocument,type StrokeDisplayIntervals,type CurveUse,type Endpoint} from '../drawing/model';
 import {mapDisplayRouteReferences} from '../drawing/displayRoutes';
@@ -188,7 +189,7 @@ export function transportSnapshotSourceIntervals(before:RecordingSnapshotWorkspa
    return source&&source.beforeSignature!==source.afterSignature?moveSourceAppearance(appearance,source.before,source.after):appearance;
   }))};}catch(error){return {values,issue:{sourceSnapshotId:failureSource.sourceSnapshotId,sourceSignature:failureSource.beforeSignature,message:error instanceof Error?error.message:String(error)}};}
  };
- const valueMap=(value:SceneIntervalValue,move:(appearance:StrokeDisplayIntervals)=>StrokeDisplayIntervals):SceneIntervalValue=>!value.appearance?value:{...value,appearance:move(value.appearance)};
+ const valueMap=(value:SceneIntervalValue,move:(appearance:StrokeDisplayIntervals)=>StrokeDisplayIntervals):SceneIntervalValue=>{if(!value.appearance)return value;const source=sources.get(value.appearance.id);return {...value,appearance:move(value.appearance),...(value.authoredMaterial&&source&&source.beforeSignature!==source.afterSignature?{authoredMaterial:transportSnapshotAuthoredMaterialSource(value.authoredMaterial,source.before,source.after)}:{})};};
  const state=(value:SnapshotDeformationState,context:LocalContext):SnapshotDeformationState=>{
   const issues={...value.intervalMaterialIssues},layers=Object.fromEntries(Object.entries(value.layers).map(([id,layer])=>{if(!layer.intervals)return [id,layer];return [id,{...layer,intervals:Object.fromEntries(Object.entries(layer.intervals).map(([trackId,value])=>{const result=process(trackId,[value],valueMap,issues[trackId],context);if(result.issue)issues[trackId]=result.issue;else delete issues[trackId];return [trackId,result.values[0]];}))}];}));
   const {intervalMaterialIssues,...rest}=value;void intervalMaterialIssues;return {...rest,layers,...(Object.keys(issues).length?{intervalMaterialIssues:issues}:{})};

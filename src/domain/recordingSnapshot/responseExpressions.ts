@@ -20,7 +20,7 @@ export type SnapshotResponseFitParameterDomain=Pick<SnapshotResponseFitParameter
 export interface SnapshotResponseBasisScalarResolver {
  (basis:SnapshotResponseBasisReference):number|undefined;
  fitParameter?:(reference:SnapshotResponseFitParameterReference)=>number|undefined;
- recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number)=>void;
+ recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number,parent?:Cubic)=>void;
 }
 export type SnapshotResponseBasisResolver=SnapshotResponseBasisScalarResolver;
 export interface SnapshotResponseBasisTerm {coefficient:number;basis:SnapshotResponseBasisReference}
@@ -472,7 +472,7 @@ export function rebaseSnapshotResponseExpression(expression:SnapshotResponseExpr
 export interface SnapshotResponseExpressionEvaluation {
  basisScalar:SnapshotResponseBasisScalarResolver;
  fitParameter?:(reference:SnapshotResponseFitParameterReference)=>number|undefined;
- recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number)=>void;
+ recordFitParameter?:(domain:SnapshotResponseFitParameterDomain,parameter:number,parent?:Cubic)=>void;
  /** Return ORIGINAL geometric weights in this operand's persisted vertex order.
   * After mesh insertion, map the new simplex into the retained old angle frame.
   * The operand's sample support and edge extension remain completely unchanged. */
@@ -526,7 +526,7 @@ export function prepareSnapshotResponseExpression(expression:SnapshotResponseExp
     else if(operation.kind==='fit-parameter'){const key=JSON.stringify(operation.reference),known=fitParameters.get(key);if(known!==undefined)result=known;else{const value=(evaluation.fitParameter??evaluation.basisScalar.fitParameter)?.(structuredClone(operation.reference));if(!finite(value)||value<0||value>1)fail('EXPRESSION_MISSING_BASIS',`Missing or invalid live fitted parameter ${key}.`);result=value!;fitParameters.set(key,result);}}
     else if(operation.kind==='product')result=values[operation.left]*values[operation.right];
     else if(operation.kind==='quotient'){const denominator=values[operation.right];if(denominator===0)invalid('Response quotient has a zero live denominator.');result=values[operation.left]/denominator;}
-    else if(operation.kind==='curve-material-parameter'){const shape=operation.controls.map(pair=>pair.map(index=>values[index])) as Cubic;result=createSnapshotSplitParameterField(shape).parameterAt(operation.parameters.map(index=>values[index]),weight(operation.fieldId,overrides).original);if(operation.domain&&!overrides.length)(evaluation.recordFitParameter??evaluation.basisScalar.recordFitParameter)?.(structuredClone(operation.domain),result);}
+    else if(operation.kind==='curve-material-parameter'){const shape=operation.controls.map(pair=>pair.map(index=>values[index])) as Cubic;result=createSnapshotSplitParameterField(shape).parameterAt(operation.parameters.map(index=>values[index]),weight(operation.fieldId,overrides).original);if(operation.domain&&!overrides.length)(evaluation.recordFitParameter??evaluation.basisScalar.recordFitParameter)?.(structuredClone(operation.domain),result,shape);}
     else if(operation.kind==='linear')result=sampleTerms(operation.terms,overrides);
     else if(operation.kind==='sum')result=operation.inputs.reduce((sum,input)=>sum+input.coefficient*values[input.operation],0);
     else if(operation.kind==='weighted')result=values[operation.source]*weight(operation.fieldId,overrides)[operation.weight==='residual'?'difference':'original'][operation.coordinate];

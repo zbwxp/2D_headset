@@ -2,6 +2,7 @@ import {validateCageSplitLineages,remapCageSplitLineages,type CageSplitLineage} 
 import {drawingDeformProjection,rectQuad,type DeformProjection,type DeformRect,type Quad} from '../deformation/cageField';
 import {assertBend,type BendValue} from '../deformation/coons';
 import type {Point2} from '../drawing/model';
+import {validateLayerCageStrokeScope,remapLayerCageStrokeScope,type LayerCageStrokeScope} from './layerCageScope';
 
 /** An authored H(Coons) field over a fixed rest rectangle and a live layer scope.
  * Membership and evaluated geometry belong to the caller, never this DTO.
@@ -10,6 +11,7 @@ export interface SnapshotLayerCageDomain {
  kind:'h-coons';
  id:string;
  layerIds:string[];
+ strokeScope?:LayerCageStrokeScope;
  restRect:DeformRect;
  quad:Quad;
  bend?:BendValue;
@@ -29,9 +31,10 @@ const point=(value:unknown):value is Point2=>Array.isArray(value)&&value.length=
 /** Validate both JSON shape and the existing cage kernel's orientation/horizon
  * constraints. Disabling a domain never makes malformed authored data valid. */
 export function validateLayerCageDomain(value:unknown):asserts value is SnapshotLayerCageDomain {
- const domain=object(value,['kind','id','layerIds','restRect','quad','bend','enabled','fitLineages']);
+ const domain=object(value,['kind','id','layerIds','strokeScope','restRect','quad','bend','enabled','fitLineages']);
  if(domain.kind!=='h-coons'||!id(domain.id)||!Array.isArray(domain.layerIds)||!domain.layerIds.length||domain.layerIds.length>maxScope||Array.from(domain.layerIds).some(layer=>!id(layer))||new Set(domain.layerIds).size!==domain.layerIds.length||domain.enabled!==undefined&&typeof domain.enabled!=='boolean')fail();
  if(domain.fitLineages!==undefined)validateCageSplitLineages(domain.fitLineages);
+ if(domain.strokeScope!==undefined)validateLayerCageStrokeScope(domain.strokeScope);
  const rect=object(domain.restRect,['min','max']);
  if(!point(rect.min)||!point(rect.max))fail();
  const restRect=rect as unknown as DeformRect,w=restRect.max[0]-restRect.min[0],h=restRect.max[1]-restRect.min[1];
@@ -71,7 +74,7 @@ export function remapLayerCageDomains(domains:readonly SnapshotLayerCageDomain[]
  validateLayerCageDomains(domains);
  const remapped=domains.flatMap(domain=>{
   const layers=domain.layerIds.filter(layer=>!selected||selected(layer));
-  return layers.length?[{...structuredClone(domain),id:id(domain.id),layerIds:layers.map(id),...(domain.fitLineages?{fitLineages:remapCageSplitLineages(domain.fitLineages,id)}:{})}]:[];
+  return layers.length?[{...structuredClone(domain),id:id(domain.id),layerIds:layers.map(id),...(domain.strokeScope?{strokeScope:remapLayerCageStrokeScope(domain.strokeScope,id)}:{}),...(domain.fitLineages?{fitLineages:remapCageSplitLineages(domain.fitLineages,id)}:{})}]:[];
  });
  validateLayerCageDomains(remapped);return remapped;
 }

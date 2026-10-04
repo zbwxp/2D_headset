@@ -147,3 +147,8 @@ test('Recording pan/zoom release creates one global transaction; cancellation an
   useEditor.getState().undo();h.render();expect(readHistoryViewport(key)).toEqual(zoomBefore);expect(useEditor.getState().project).toBe(project);
  }finally{useEditor.getState().endEdit();vi.runAllTimers();useEditor.setState(previous);useWorkspaceMode.setState({mode});vi.useRealTimers();}
 });
+
+test('a rejected last cage preview clears an earlier accepted intent before pointer-up',()=>{
+ const h=harness({cage:true}),control=h.element('drawing-deform-corner'),p:Point2=[control.props.x+6,control.props.y+6];control.props.onPointerDown(pointer(...p));move(h,[p[0]+10,p[1]]);expect(h.cagePreview.mock.calls.some(([intent])=>!!intent)).toBe(true);
+ h.cagePreview.mockImplementation(intent=>intent===null);move(h,[p[0]+20,p[1]]);release(h,[p[0]+20,p[1]]);expect(h.cageCommit).not.toHaveBeenCalled();expect(h.cagePreview).toHaveBeenLastCalledWith(null);
+});

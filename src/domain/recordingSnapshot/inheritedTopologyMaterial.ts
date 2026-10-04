@@ -8,6 +8,7 @@ import type {DrawingDocument} from '../drawing/model';
 import {remapMaterialProgram,type EvaluatedMaterialStep} from '../drawing/materialProgram';
 import {applyOwnedMaterialProgram} from './materialProgramEvaluation';
 import {retainSnapshotAffines} from './elementPlacement';
+import {layerCageCurveIds} from './layerCageScope';
 
 /** Replay a topology-adapted canonical input through today's inherited program.
  * The caller supplies identity lineage, never inverse-fitted output handles.
@@ -32,19 +33,28 @@ export function replaySnapshotTopologyMaterial(before:DrawingDocument,material:D
  return result;
 }
 
-/** Explicit child-owned members join the same live layer field as their parent
- * peers. Parent additions still arrive with no child-authored correction. */
-export function inheritedTopologyLayerProgram(parent:DrawingDocument,layerId:string):EvaluatedMaterialStep[]|undefined {
+export interface InheritedTopologyProgramTarget {drawing:DrawingDocument;layerId:string;curveId:string}
+
+/** A child member inherits whole-layer stages and its actual connected stroke's
+ * scoped cages. The target contributes topology only; coordinates never select
+ * a field. A disconnected target must have one unambiguous common program. */
+export function inheritedTopologyLayerProgram(parent:DrawingDocument,layerId:string,target?:InheritedTopologyProgramTarget):EvaluatedMaterialStep[]|undefined {
  const ids=new Set(parent.layers.find(layer=>layer.id===layerId)?.items??[]),curves=parent.curves.filter(curve=>ids.has(curve.id));
  if(!curves.some(curve=>hasNonlinearDeformationFor(parent,curve.id)))return undefined;
- const steps=evaluatedMaterialProgram(parent,curves[0].id);
- if(!steps)throw Error(`Layer ${layerId}: the inherited field has no replayable material lineage.`);
- if(curves.some(curve=>JSON.stringify(evaluatedMaterialProgram(parent,curve.id))!==JSON.stringify(steps)))throw Error(`Layer ${layerId}: its inherited members have different material programs; the new curve needs a single explicit field scope.`);
+ const connected=target?layerCageCurveIds(target.drawing,{layerIds:[target.layerId],strokeScope:{kind:'continuous-strokes',curveIds:[target.curveId]}}):undefined,peers=connected?curves.filter(curve=>connected.has(curve.id)):curves,candidates=peers.length?peers:curves;
+ const applicable=(steps:EvaluatedMaterialStep[]):EvaluatedMaterialStep[]=>steps.flatMap<EvaluatedMaterialStep>(step=>{
+  if(step.kind==='cage'&&step.domain.strokeScope&&target&&!layerCageCurveIds(target.drawing,{layerIds:[target.layerId],strokeScope:step.domain.strokeScope}).has(target.curveId))return [];
+  if(step.kind==='reflected'){const nested=applicable(step.steps);return nested.length?[{...step,steps:nested}]:[];}
+  return [step];
+ });
+ const programs=candidates.map(curve=>{const steps=evaluatedMaterialProgram(parent,curve.id);if(!steps)throw Error(`Layer ${layerId}: the inherited field has no replayable material lineage.`);return applicable(steps);}),steps=programs[0];
+ if(programs.some(program=>JSON.stringify(program)!==JSON.stringify(steps)))throw Error(`Layer ${layerId}: its inherited members have different material programs; the new curve needs a single explicit field scope.`);
  return steps;
 }
 export function extendSnapshotInheritedTopology(input:DrawingDocument,parent:DrawingDocument,layerId:string,parentLayerId:string,localIds:ReadonlySet<string>,remoteIds:ReadonlySet<string>=new Set()):DrawingDocument {
  if(!input.curves.some(curve=>localIds.has(curve.id)))return input;
- const steps=inheritedTopologyLayerProgram(parent,parentLayerId);if(!steps)return input;
- const members=new Set(input.layers.find(layer=>layer.id===layerId)?.items??[]),programs=new Map(input.curves.filter(curve=>members.has(curve.id)&&!remoteIds.has(curve.id)).map(curve=>[curve.id,steps]));
+ const members=new Set(input.layers.find(layer=>layer.id===layerId)?.items??[]),programs=new Map<string,EvaluatedMaterialStep[]>();
+ for(const curve of input.curves)if(members.has(curve.id)&&!remoteIds.has(curve.id)){const steps=inheritedTopologyLayerProgram(parent,parentLayerId,{drawing:input,layerId,curveId:curve.id});if(steps?.length)programs.set(curve.id,steps);}
+ if(!programs.size)return input;
  return replaySnapshotTopologyMaterial(input,evaluatedMaterialSource(input),programs,()=>evaluatedMaterialSource(cageEvaluationDependencyContext(parent)));
 }

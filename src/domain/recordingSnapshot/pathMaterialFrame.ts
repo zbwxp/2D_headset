@@ -1,3 +1,4 @@
+import {createSnapshotMaterialMeasurement} from './materialSplit';
 import type {ResolvedDisplayRoute} from '../drawing/displayRoutes';
 import {createDrawingPathMaterialFrame,resolveDrawingMaterialPath,type DrawingPathMaterialPoint,type DrawingPathMaterialFrame} from '../drawing/pathMaterialSupport';
 import {evaluatedControlParameter,evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
@@ -83,6 +84,15 @@ function contract(drawing:DrawingDocument,resolved:ResolvedDisplayRoute,runs:Run
  return {document,resolved:{...resolved,path:{...resolved.path,segments:collapse(resolved.path.segments)}},byChild};
 }
 
+/** A complete open native family uses the same declared parent grid as its
+ * curve-local material. ARC bridges, external route links and multiple roots
+ * keep their existing route frame until their grid restriction is proved. */
+export function snapshotPathUsesDeclaredMaterialGrid(drawing:DrawingDocument,track:StrokeDisplayIntervals,lineage:SnapshotMaterialPathLineage):boolean {
+ if(track.scope==='CURVE'||track.displayRoute||lineage.curves.length!==1)return false;
+ const root=lineage.curves[0],ids=new Set(root.parts.map(part=>part.curveId)),path=displayPath(drawing,track.anchor.id);
+ return !path.closed&&path.segments.length===ids.size&&path.segments.every(use=>ids.has(use.id))&&!drawing.joins.some(join=>join.mode==='ARC'&&(ids.has(join.a.curveId)||ids.has(join.b.curveId)))&&!(drawing.endpointLinks??[]).some(link=>ids.has(link.a.curveId)||ids.has(link.b.curveId));
+}
+
 /** Read a track in the actual display frame, or its retained pre-split material
  * measurement. Logical output supports always name CURRENT live children.
  * This helper derives material only; it never runs rendering or onion passes. */
@@ -92,6 +102,15 @@ export function createSnapshotPathMaterialFrame(drawing:DrawingDocument,track:St
  let source=snapshotRouteMaterialSource(drawing,track);if(!logical||!lineage)return createDrawingPathMaterialFrame(source,track);
  let resolved=resolveDrawingMaterialPath(source,track);
  const currentMaterial=snapshotSplitUsesCurrentMaterialFrame(source);if(!currentMaterial)source=evaluatedMaterialSource(source);resolved=resolveDrawingMaterialPath(source,track);
+ if(snapshotPathUsesDeclaredMaterialGrid(source,track,lineage)){
+  const root=lineage.curves[0],parts=snapshotSplitParameterParts(source,root.parts),metric=createSnapshotMaterialMeasurement(root.parts,source),reverse=track.anchor.reverse;
+  const nativeLocal=(curveId:string,t:number)=>{if(!currentMaterial)return t;const path=displayPath(drawing,curveId),field=endpointPairDisplayField(drawing,path),native=curveMaterialParameterMap(field,path,curveId),fitted=curveMaterialParameterMap({...field,sourcePieceParameter:undefined,fittedPieceParameter:undefined},path,curveId);return native.parameterAt(fitted.valueAt(t));};
+  const frame:SnapshotPathMaterialFrame={closed:false,total:metric.total,
+   materialAt(value){const parameter=metric.parameter(reverse?1-value:value),part=parts.find(part=>parameter<=part.parameterRange[1])??parts.at(-1)!,[lo,hi]=part.parameterRange;return {kind:'curve',curveId:part.curveId,t:nativeLocal(part.curveId,clamp((parameter-lo)/(hi-lo)))};},
+   positionOf(point,sourceDrawing){if(point.kind!=='curve')fail('an open native material family has no ARC support.');const pointValue=point as Extract<SnapshotPathMaterialPoint,{kind:'curve'}>,current=sourceDrawing?snapshotSplitParameterParts(sourceDrawing,root.parts):parts,part=current.find(part=>part.curveId===pointValue.curveId);if(!part)fail('the material point is outside its declared family.');const local=sourceDrawing?evaluatedControlParameter(sourceDrawing,pointValue.curveId,pointValue.t):currentMaterial?evaluatedControlParameter(drawing,pointValue.curveId,pointValue.t):pointValue.t,[lo,hi]=part!.parameterRange,value=metric.fraction(lo+(hi-lo)*local);return reverse?1-value:value;},
+  };
+  if(cache)cache.set(key,frame);else caches.set(drawing,new Map([[key,frame]]));return frame;
+ }
  const originalPath=resolved.path,runs=lineageRuns(source,originalPath,lineage),contracted=contract(source,resolved,runs),actualCurveIds=new Set(originalPath.segments.map(use=>use.id)),runById=new Map(runs.map(run=>[run.id,run]));
  const virtualPoint=(point:SnapshotPathMaterialPoint,sourceDrawing?:DrawingDocument)=>{
   if(point.kind==='join')return point;

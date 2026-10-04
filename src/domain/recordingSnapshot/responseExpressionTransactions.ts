@@ -1,3 +1,4 @@
+import {assertSnapshotAuthoredMaterialSplit} from './authoredMaterial';
 import {hasNonlinearDeformationFor} from '../drawing/evaluatedDeformation';
 import {deriveSmoothComponents} from './smoothComponent';
 import {createSnapshotResponseBasisResolver} from './responseExpressionRegistry';
@@ -35,7 +36,19 @@ export function transferSnapshotSplitResponses(before:RecordingSnapshotWorkspace
   }});
   return {...recording,angleGraph:{...next,...recording.angleGraph.materialPartitions?{materialPartitions:recording.angleGraph.materialPartitions}:{},...recording.angleGraph.materialPathLineages?{materialPathLineages:recording.angleGraph.materialPathLineages}:{}}};
  });
- const result={...candidate,recordings};validateRecordingSnapshots(result);return result;
+ const result={...candidate,recordings};validateRecordingSnapshots(result);
+ // Compare only authored inserted views after every fitted scalar leaf has
+ // been transferred. Throwing here keeps the source transaction unpublished.
+ for(const recording of result.recordings){const prior=before.recordings.find(value=>value.id===recording.id)?.angleGraph,next=recording.angleGraph;if(!prior||!next)continue;
+  for(const snapshotId of Object.keys(prior.materialBasisRecipes??{})){
+   const snapshot=before.snapshots.find(value=>value.id===snapshotId);if(!snapshot)continue;
+   for(const useDraft of snapshot.draft?[false,true]:[false]){
+    const options={useDraft,angle:useDraft?snapshot.draft!.angle:snapshot.angle},old=resolveSnapshot(before,snapshotId,options),current=resolveSnapshot(result,snapshotId,options);
+    assertSnapshotAuthoredMaterialSplit(snapshotId,old,current.drawing,prior,next,intent);
+   }
+  }
+ }
+ return result;
 }
 
 function filterRegistry(registry:SnapshotResponseExpressionRegistry|undefined,hasBasis:(basis:SnapshotResponseBasisReference)=>boolean,hasFitParameter:(reference:SnapshotResponseFitParameterReference)=>boolean,targetAlive:(kind:'nodes'|'handles',id:string)=>boolean):{kept:SnapshotResponseExpressionRegistry;retired:SnapshotResponseExpressionRegistry} {

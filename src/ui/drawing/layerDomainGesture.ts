@@ -5,6 +5,8 @@ import type {Affine2D} from '../../domain/geometry/affine2d';
 import type {DrawingDocument} from '../../domain/drawing/model';
 import type {ScenePlacementValue} from '../../domain/recordingScene/model';
 import {selectedLayers,type DrawingSelection} from './session';
+import {layerCageCurveIds} from '../../domain/recordingSnapshot/layerCageScope';
+import {layerFor} from '../../domain/drawing/model';
 
 /** Whole-layer intent requires an explicit complete layer selection. Selecting
  * all current curves by box or endpoint never silently creates a live domain. */
@@ -24,5 +26,9 @@ export function layerAffineIntentForSelection(drawing:DrawingDocument,selection:
 
 export function layerCageIntentForSelection(drawing:DrawingDocument,selection:DrawingSelection,value:Omit<SnapshotLayerCageDomain,'id'|'layerIds'>,curveIds:readonly string[]=selection.ids,operationId?:string,replace=false):LayerCageDomainIntent|undefined {
  const selected=layerSimilarityIntentForSelection(drawing,selection,{translation:[0,0],rotation:0,scale:1},curveIds,operationId);
- return selected?createLayerCageIntent(selected.scope.layerIds,value,{operationId:selected.operationId,replace}):undefined;
+ if(selected)return createLayerCageIntent(selected.scope.layerIds,value,{operationId:selected.operationId,replace});
+ if(selectedLayers(selection).length||selection.node||selection.handle||selection.paint||selection.reference||selection.mirrorAxis||selection.inkEnd||selection.displayInterval||!curveIds.length)return;
+ const layerIds=[...new Set(curveIds.map(id=>layerFor(drawing,id)?.id).filter((id):id is string=>!!id))],strokeScope={kind:'continuous-strokes' as const,curveIds:[...curveIds]},members=layerCageCurveIds(drawing,{layerIds,strokeScope});
+ if(members.size!==curveIds.length||curveIds.some(id=>!members.has(id)))return;
+ return createLayerCageIntent(layerIds,{...value,strokeScope:value.strokeScope??strokeScope},{operationId,replace});
 }

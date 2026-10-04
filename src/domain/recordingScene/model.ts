@@ -23,7 +23,7 @@ export interface SceneLayerBinding extends SceneLayerRef {warpId:string}
 export interface SceneVisibilityTrack extends SceneTrack<boolean|null> {id:string;target:SceneObjectRef}
 /** Null appearance inherits current source. Enabled flags are held separately
  * and applied after range interpolation, preserving legacy mixed SHOW/HIDE IDs. */
-export interface SceneIntervalValue {appearance:StrokeDisplayIntervals|null;enabled:Record<string,boolean>}
+export interface SceneIntervalValue {appearance:StrokeDisplayIntervals|null;enabled:Record<string,boolean>;authoredMaterial?:import('../recordingSnapshot/authoredMaterial').SnapshotAuthoredMaterial}
 export interface SceneIntervalTrack extends SceneTrack<SceneIntervalValue> {
  id:string;instanceId:string;sourceTrackId:string;
  /** Failed material migration suspends only this channel while the source

@@ -1,3 +1,4 @@
+import {validateSnapshotAuthoredMaterial} from './authoredMaterial';
 import {validateSnapshotPaintAppearance} from './paintAppearance';
 import {validateSnapshotMirrorMetadata} from './mirrorMetadata';
 import {validateSnapshotObjectLocks} from './objectLocks';
@@ -40,6 +41,7 @@ function deformation(state:SnapshotDeformationState):void {
 function interval(value:any):void {
  if(!value||!record(value.enabled)||Object.values(value.enabled).some(v=>typeof v!=='boolean'))fail('interval');
  if(value.appearance!==null)validateIntervalOverrides([value.appearance]);
+ if(value.authoredMaterial!==undefined){if(value.appearance===null)fail('authored material ownership');validateSnapshotAuthoredMaterial(value.authoredMaterial);}
 }
 function track(track:SnapshotPoseTrack):void {
  if(!id(track.id)||!id(track.targetId)||track.elementId!==undefined&&!id(track.elementId)||!Array.isArray(track.keys)||track.interpolation!==undefined&&!['independent','legacy'].includes(track.interpolation))fail('track');

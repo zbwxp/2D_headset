@@ -7,8 +7,9 @@ import {isLayerCageDomain,type SnapshotLayerDomain} from '../../domain/recording
 import {selectedLayers,type DrawingSelection} from './session';
 import {selectionBounds} from './geometry';
 import {layerCageIntentForSelection} from './layerDomainGesture';
+import {layerCageCurveIds,type LayerCageStrokeScope} from '../../domain/recordingSnapshot/layerCageScope';
 
-export interface DrawingCage {domainOperationId?:string;base:DrawingDocument;committed:DrawingDocument;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
+export interface DrawingCage {domainOperationId?:string;strokeScope?:LayerCageStrokeScope;base:DrawingDocument;committed:DrawingDocument;ids:string[];rect:DeformRect;quad:Quad;bend:BendValue;maxError:number}
 export type CageControl={corner:number}|{edge:number;handle:0|1|2};
 export interface CageGesture {cage:DrawingCage;selection:DrawingSelection;control:CageControl;start:Point2;operationId:string}
 
@@ -17,8 +18,10 @@ export interface CageGesture {cage:DrawingCage;selection:DrawingSelection;contro
 export function resolveDrawingCage(drawing:DrawingDocument,selection:DrawingSelection,options:{cached?:DrawingCage|null;domains?:readonly SnapshotLayerDomain[];canonicalId?:(id:string)=>string;maxError?:number}={}):DrawingCage|null {
  const ids=selection.ids.filter(id=>drawing.curves.some(curve=>curve.id===id));if(!ids.length)return null;
  const cached=options.cached;if(cached?.committed===drawing&&cached.ids.length===ids.length&&ids.every(id=>cached.ids.includes(id)))return cached;
- const layers=selectedLayers(selection).map(options.canonicalId??(id=>id)),last=[...options.domains??[]].reverse().find(domain=>!isLayerControlResponseDomain(domain)&&domain.layerIds.some(id=>layers.includes(id)));
- if(last&&isLayerCageDomain(last)&&last.layerIds.length===layers.length&&last.layerIds.every(id=>layers.includes(id)))return {base:drawing,committed:drawing,ids,rect:structuredClone(last.restRect),quad:structuredClone(last.quad),bend:structuredClone(last.bend??neutralBend()),domainOperationId:last.id,maxError:options.maxError??0};
+ const canonical=options.canonicalId??(id=>id),layers=selectedLayers(selection).map(canonical),canonicalDrawing=options.canonicalId?{...drawing,layers:drawing.layers.map(layer=>({...layer,id:canonical(layer.id),items:layer.items.map(canonical)})),curves:drawing.curves.map(curve=>({...curve,id:canonical(curve.id),nodes:curve.nodes.map(canonical) as [string,string]})),joins:drawing.joins.map(join=>({...join,a:{...join.a,curveId:canonical(join.a.curveId)},b:{...join.b,curveId:canonical(join.b.curveId)}}))}:drawing,canonicalIds=ids.map(canonical);
+ const matches=(domain:SnapshotLayerDomain)=>isLayerCageDomain(domain)&&domain.strokeScope?!layers.length&&(()=>{const members=layerCageCurveIds(canonicalDrawing,domain);return members.size===canonicalIds.length&&canonicalIds.every(id=>members.has(id));})():domain.layerIds.length===layers.length&&domain.layerIds.every(id=>layers.includes(id));
+ const selectedCurveLayers=canonicalDrawing.layers.filter(layer=>layer.items.some(id=>canonicalIds.includes(id))).map(layer=>layer.id),last=[...options.domains??[]].reverse().find(domain=>!isLayerControlResponseDomain(domain)&&(layers.length?domain.layerIds.some(id=>layers.includes(id)):isLayerCageDomain(domain)&&domain.strokeScope?[...layerCageCurveIds(canonicalDrawing,domain)].some(id=>canonicalIds.includes(id)):domain.layerIds.some(id=>selectedCurveLayers.includes(id))));
+ if(last&&isLayerCageDomain(last)&&matches(last))return {base:drawing,committed:drawing,ids,rect:structuredClone(last.restRect),quad:structuredClone(last.quad),bend:structuredClone(last.bend??neutralBend()),domainOperationId:last.id,...(last.strokeScope?{strokeScope:{...last.strokeScope,curveIds:last.strokeScope.curveIds.map(id=>drawing.curves.find(curve=>canonical(curve.id)===id)?.id??id)}}:{}),maxError:options.maxError??0};
  const bounds=selectionBounds(drawing,ids);if(!bounds)return null;
  const pad=Math.max(.01,Math.max(bounds.max[0]-bounds.min[0],bounds.max[1]-bounds.min[1])*.05),rect:DeformRect={min:[...bounds.min],max:[...bounds.max]};
  for(const axis of [0,1] as const)if(rect.max[axis]-rect.min[axis]<pad){rect.min[axis]-=pad;rect.max[axis]+=pad;}
@@ -38,7 +41,7 @@ export function beginDrawingCageGesture(cage:DrawingCage,selection:DrawingSelect
 export function updateDrawingCageGesture(gesture:CageGesture,current:Point2) {
  const {cage,control}=gesture,quad=structuredClone(cage.quad),bend='corner' in control?cage.bend:moveDeformBoundary(cage.rect,cage.quad,cage.bend,control.edge,control.handle,gesture.start,current);
  if('corner' in control)quad[control.corner]=add(quad[control.corner],sub(current,gesture.start));
- const next={...cage,quad,bend},intent=layerCageIntentForSelection(cage.committed,gesture.selection,{kind:'h-coons',restRect:cage.rect,quad,bend},cage.ids,gesture.operationId,!!cage.domainOperationId);
+ const next={...cage,quad,bend},intent=layerCageIntentForSelection(cage.committed,gesture.selection,{kind:'h-coons',restRect:cage.rect,quad,bend,...(cage.strokeScope?{strokeScope:cage.strokeScope}:{})},cage.ids,gesture.operationId,!!cage.domainOperationId);
  return {cage:next,intent};
 }
 
@@ -55,12 +58,13 @@ export interface DrawingCageEditorAdapter {
  onError:(message:string)=>void;
 }
 
-/** Recording exposes Drawing's cage only for explicit complete layer scopes.
- * This deliberately does not turn a coincident all-curve selection into a live
- * membership operation. Hidden members remain part of an explicit layer. */
+/** Whole layers and complete topological strokes are distinct live scopes.
+ * Selecting every curve still authors stroke provenance unless the selection
+ * explicitly identifies its layers. Hidden members remain in either scope. */
 export function drawingCageSelectionIssue(drawing:DrawingDocument,selection:DrawingSelection):string|undefined {
- const layers=selectedLayers(selection),selected=drawing.layers.filter(layer=>layers.includes(layer.id));
- if(!layers.length||selected.length!==layers.length||!layerCageIntentForSelection(drawing,selection,{kind:'h-coons',restRect:{min:[0,0],max:[1,1]},quad:rectQuad({min:[0,0],max:[1,1]})},selection.ids,'selection-check'))return 'Select complete layers in the current snapshot to edit a live cage.';
- if(selected.some(layer=>layer.locked||drawing.curves.some(curve=>layer.items.includes(curve.id)&&curve.locked)))return 'Unlock the selected layer and its curves before transforming the whole layer.';
+ const intent=layerCageIntentForSelection(drawing,selection,{kind:'h-coons',restRect:{min:[0,0],max:[1,1]},quad:rectQuad({min:[0,0],max:[1,1]})},selection.ids,'selection-check');
+ if(!intent)return 'Select complete layers or complete continuous strokes in the current snapshot to edit a cage.';
+ const members=layerCageCurveIds(drawing,{...intent.domain,layerIds:intent.scope.layerIds});
+ if(drawing.layers.some(layer=>intent.scope.layerIds.includes(layer.id)&&layer.locked)||drawing.curves.some(curve=>members.has(curve.id)&&curve.locked))return 'Unlock the selected layer and its curves before transforming the cage scope.';
  if(!selection.ids.length)return 'Add a curve to the selected layer before creating its cage.';
 }

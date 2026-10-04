@@ -8,6 +8,8 @@ import {retireSnapshotMaterialPathLineages} from './materialPathLineages';
 import {pruneSnapshotMaterialPropertyReferences} from './materialSourceDeletion';
 import {retireSnapshotMaterialPartitions} from './materialSplit';
 import {remapLayerDomains} from './layerDomains';
+import {reconcileLayerCageStrokeScope} from './layerCageScope';
+import {resolveSnapshot} from './evaluation';
 import type {StrokeDisplayIntervals} from '../drawing/model';
 import type {RecordingSnapshotWorkspace,SnapshotDeformationState,SnapshotLayerState,SnapshotPoseTrack,SceneIntervalValue,SceneShapeValue,SnapshotEndpointResponses,SnapshotTriangleResponses,SnapshotRelationPatch,SnapshotPropertyResponses} from './model';
 
@@ -66,7 +68,11 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   ...(value.intervals?{intervals:Object.fromEntries(Object.entries(value.intervals).filter(([id,value])=>!removed.has(id)&&(!value.appearance||!intervalDepends(value.appearance))).map(([id,value])=>[id,interval(value)]))}:{}),
  });
  const removedRelationsBySnapshot=new Map<string,Set<string>>();
- const state=(value:SnapshotDeformationState,snapshotId:string):SnapshotDeformationState=>{
+ const state=(value:SnapshotDeformationState,snapshotId:string,useDraft=false):SnapshotDeformationState=>{
+  if(value.layerDomains?.some(domain=>domain.kind==='h-coons'&&domain.strokeScope)&&before.snapshots.some(snapshot=>snapshot.id===snapshotId)){
+   const prior=resolveSnapshot(before,snapshotId,{useDraft,diagnostics:'preview'}).drawing,live={...prior,curves:prior.curves.filter(curve=>!removed.has(curve.id)),layers:prior.layers.filter(layer=>!removedLayers.has(address(snapshotId,layer.id))).map(layer=>({...layer,items:layer.items.filter(id=>!removed.has(id))}))};
+   value={...value,layerDomains:value.layerDomains.map(domain=>domain.kind==='h-coons'&&domain.strokeScope?{...domain,strokeScope:reconcileLayerCageStrokeScope(domain,prior,live)}:domain)};
+  }
   const relations=removedRelationsBySnapshot.get(snapshotId)??new Set<string>();removedRelationsBySnapshot.set(snapshotId,relations);
   const relationPositions=Object.fromEntries(Object.entries(value.relationPositions).flatMap(([id,relation])=>{const sourceLinkIds=relation.sourceLinkIds.filter(id=>!removed.has(id));if(removed.has(id)||!sourceLinkIds.length){relations.add(id);return [];}return [[id,{...relation,sourceLinkIds}]];}));
   return {...value,...(value.layerDomains?{layerDomains:remapLayerDomains(value.layerDomains,id=>id,id=>!removedLayers.has(address(snapshotId,id)),id=>!removed.has(id))}:{}),bindings:value.bindings.filter(binding=>!removedLayers.has(address(snapshotId,binding.layerId))),layers:Object.fromEntries(Object.entries(value.layers).filter(([id])=>!removedLayers.has(address(snapshotId,id))).map(([id,layer])=>[id,layerState(layer)])),relationPositions,...(value.intervalMaterialIssues?{intervalMaterialIssues:without(value.intervalMaterialIssues,removed)}:{})};
@@ -80,7 +86,7 @@ export function removeDeletedSourceReferences(before:RecordingSnapshotWorkspace,
   const intervals=relations.displayIntervals;if(intervals){const clean=(values:StrokeDisplayIntervals[])=>values.filter(value=>!intervalDepends(value)).map(appearance);relations.displayIntervals={...intervals,...(intervals.add?{add:clean(intervals.add)}:{}),...(intervals.update?{update:clean(intervals.update)}:{}),...(intervals.disable?{disable:intervals.disable.filter(id=>!removed.has(id))}:{})};}
   const mirror=snapshot.inputMirror;
   return {...snapshot,layers:snapshot.layers.filter(layer=>!removedLayers.has(address(snapshot.id,layer.id))).map(layer=>({...layer,...(layer.kind==='original'?{items:layer.items.filter(id=>!removed.has(id))}:{}),...(layer.membership?{membership:{...(layer.membership.orderOverride?{orderOverride:layer.membership.orderOverride.filter(id=>!removed.has(id))}:{}),...(layer.membership.addElementIds?{addElementIds:layer.membership.addElementIds.filter(id=>!removed.has(id))}:{}),...(layer.membership.excludeElementIds?{excludeElementIds:layer.membership.excludeElementIds.filter(id=>!removed.has(id))}:{})}}:{})})),relations,
-   deformation:state(snapshot.deformation,snapshot.id),...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,snapshot.id)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,snapshot.id)}}:{}),
+   deformation:state(snapshot.deformation,snapshot.id),...(snapshot.inheritedState?{inheritedState:state(snapshot.inheritedState,snapshot.id)}:{}),...(snapshot.draft?{draft:{...snapshot.draft,deformation:state(snapshot.draft.deformation,snapshot.id,true)}}:{}),
    ...(snapshot.memberSources?{memberSources:without(snapshot.memberSources,removed)}:{}),
    ...(snapshot.objectLocks?{objectLocks:pruneSnapshotObjectLocks(snapshot.objectLocks,removed)}:{}),
    ...(snapshot.nodeForks?{nodeForks:pruneSnapshotNodeForks(snapshot.nodeForks,removed)}:{}),

@@ -1,6 +1,7 @@
 import {validateMaterialProgram,remapMaterialProgram,materialProgramIsNonlinear,type EvaluatedMaterialStep} from '../drawing/materialProgram';
 import {remapCageSplitLineages,validateCageSplitShapeLineages,remapCageSplitShapeLineages,type CageSplitShapeLineage} from './cageSplitLineage';
 import {validateLayerCageDomain,type SnapshotLayerCageDomain} from './layerCageDomain';
+import {remapLayerCageStrokeScope} from './layerCageScope';
 import {validateSceneShape} from '../recordingScene/validation';
 import type {SceneShapeValue} from '../recordingScene/model';
 import {composeAffine2D,identityAffine2D,validAffine2D,type Affine2D} from '../geometry/affine2d';
@@ -44,6 +45,7 @@ export function remapLayerDomains(domains:readonly SnapshotLayerDomain[],id:(id:
  return domains.flatMap(domain=>{const layers=domain.layerIds.filter(layer=>!selected||selected(layer));if(!layers.length)return [];
   const copy=structuredClone(domain);if(copy.shapeLineages)copy.shapeLineages=remapCageSplitShapeLineages(copy.shapeLineages,id,keepObject);if(isLayerCageDomain(copy)&&copy.fitLineages)copy.fitLineages=remapCageSplitLineages(copy.fitLineages,id,keepObject);if(copy.postShape)copy.postShape={nodes:Object.fromEntries(Object.entries(copy.postShape.nodes).filter(([key])=>!keepObject||keepObject(key)).map(([key,value])=>[id(key),value])),handles:Object.fromEntries(Object.entries(copy.postShape.handles).filter(([key])=>!keepObject||keepObject(key)).map(([key,value])=>[id(key),value]))};
   if(!isLayerCageDomain(copy)&&copy.materialProgram)copy.materialProgram=remapMaterialProgram(copy.materialProgram,id,{layerIds:layers.map(id),keepObject});
+  if(isLayerCageDomain(copy)&&copy.strokeScope)copy.strokeScope=remapLayerCageStrokeScope(copy.strokeScope,id,keepObject);
   return [{...copy,id:id(domain.id),layerIds:layers.map(id)}];
  });
 }

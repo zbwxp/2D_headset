@@ -1,9 +1,9 @@
 import {createSnapshotPathMaterialBasis,snapshotPathMaterialValue} from './materialPathMapping';
 import {createSnapshotPathMaterialFrame,type SnapshotMaterialPathLineage} from './pathMaterialFrame';
 import {curveMaterialParameterMap} from '../drawing/materialParameter';
-import {resolveSnapshotFitParameter,snapshotSplitParameterParts,snapshotSplitUsesCurrentMaterialFrame} from './splitParameterField';
+import {resolveSnapshotFitParameter,snapshotSplitParameterParts,snapshotSplitUsesCurrentMaterialFrame,snapshotSplitMaterialFrame} from './splitParameterField';
 import {shapeOf,type DrawingDocument,type StrokeDisplayIntervals,type DisplayIntervalMode,type InkEnds,type Cubic} from '../drawing/model';
-import {arcField} from '../drawing/sampling';
+import {arcField,point} from '../drawing/sampling';
 import {subcurve} from '../drawing/roundedJoin';
 import {evaluatedMaterialSource} from '../drawing/evaluatedDeformation';
 import {displayPath} from '../drawing/displayIntervals';
@@ -42,8 +42,8 @@ export function snapshotMaterialPartitionAddress(partitions:readonly SnapshotMat
  for(const partition of partitions??[])for(let part=0;part<partition.parts.length;part++){const piece=partition.parts[part];if(piece.sourceTrackId!==target.sourceTrackId)continue;const range=piece.ranges.find(range=>range.sourceRangeId===target.rangeId);if(range)return {partition,part,target:{...target,sourceTrackId:partition.sourceTrackId,rangeId:range.rangeId}};}
  return undefined;
 }
-type PartitionMetric={parameter:(fraction:number)=>number;fraction:(parameter:number)=>number};
-const metrics=new WeakMap<DrawingDocument,WeakMap<SnapshotMaterialPartition,PartitionMetric>>();
+export type SnapshotMaterialMeasurement={parameter:(fraction:number)=>number;fraction:(parameter:number)=>number;total:number;nativeRuns:readonly (readonly [number,number])[]};
+const metrics=new WeakMap<DrawingDocument,WeakMap<SnapshotMaterialPartition,SnapshotMaterialMeasurement>>();
 const metricSource=(drawing:DrawingDocument)=>snapshotSplitUsesCurrentMaterialFrame(drawing)?drawing:evaluatedMaterialSource(drawing);
 const metricParts=(partition:SnapshotMaterialPartition,drawing:DrawingDocument)=>snapshotSplitParameterParts(metricSource(drawing),partition.parts);
 function fittedMetricParameter(partition:SnapshotMaterialPartition,drawing:DrawingDocument,parameter:number):number {
@@ -55,28 +55,39 @@ function fittedMetricParameter(partition:SnapshotMaterialPartition,drawing:Drawi
  * Independently edited children remain separate, while a subsequent split of
  * one of those children still uses that child's original material arc table.
  * Every recovered control is verified; no historical geometry is retained. */
-function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocument):PartitionMetric {
+function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocument,useDeclared=true):SnapshotMaterialMeasurement {
  let cache=metrics.get(drawing);if(!cache){cache=new WeakMap();metrics.set(drawing,cache);}const known=cache.get(partition);if(known)return known;
  const measure=metricSource(drawing);
  const currentParts=metricParts(partition,drawing);
  const children=partition.parts.map((part,i)=>{if(!measure.curves.some(curve=>curve.id===part.curveId))fail(`parameter piece ${part.curveId} is missing from [${measure.curves.map(curve=>curve.id).join(', ')}].`);const shape=shapeOf(measure,part.curveId),path=displayPath(measure,part.curveId),field=endpointPairDisplayField(measure,path),index=field.geometry.pieces.findIndex(piece=>!piece.joinId&&piece.owners[0]===part.curveId);if(index<0)fail('a split material curve has no native material piece.');const raw=field.geometry.pieces[index].sourceRange??[0,1],range=path.segments.find(use=>use.id===part.curveId)!.reverse?[1-raw[1],1-raw[0]]:raw;return {shape,range,domain:currentParts[i].parameterRange};});
  const globalRange=(child:typeof children[number])=>child.range.map(t=>t<=0?child.domain[0]:t>=1?child.domain[1]:child.domain[0]+t*(child.domain[1]-child.domain[0])) as [number,number];
+ const declared=useDeclared?snapshotSplitMaterialFrame(measure,partition.parts):undefined;
  const recompose=(start:number,end:number):Cubic|undefined=>{
   const first=children[start],last=children[end-1],lo=first.domain[0],span=last.domain[1]-lo,left=span/(first.domain[1]-lo),right=span/(last.domain[1]-last.domain[0]),parent:Cubic=[first.shape[0],first.shape[0].map((n,axis)=>n+(first.shape[1][axis]-n)*left) as [number,number],last.shape[3].map((n,axis)=>n+(last.shape[2][axis]-n)*right) as [number,number],last.shape[3]];
   return children.slice(start,end).every(child=>{const expected=subcurve(parent,(child.domain[0]-lo)/span,(child.domain[1]-lo)/span);return child.shape.every((point,i)=>point.every((value,axis)=>Math.abs(value-expected[i][axis])<=1e-11*Math.max(1,Math.abs(value),Math.abs(expected[i][axis]))));})?parent:undefined;
  };
- const domains:[number,number][]=[],shapes:Cubic[]=[];
+ const domains:[number,number][]=[],shapes:Cubic[]=[],nativeRuns:[number,number][]=[];
  for(let start=0;start<children.length;){
   let end=start+1,shape=children[start].shape;
   // A live ARC trim at an interior seam is an authored material boundary,
   // even when the underlying untrimmed controls still compose one cubic.
   while(end<children.length&&children[end-1].range[1]===1&&children[end].range[0]===0){const candidate=recompose(start,end+1);if(!candidate)break;shape=candidate;end++;}
   const lo=children[start].domain[0],span=children[end-1].domain[1]-lo,domain:[number,number]=[globalRange(children[start])[0],globalRange(children[end-1])[1]];
-  domains.push(domain);shapes.push(subcurve(shape,clamp((domain[0]-lo)/span),clamp((domain[1]-lo)/span)));start=end;
+  domains.push(domain);nativeRuns.push([partition.parts[start].parameterRange[0],partition.parts[end-1].parameterRange[1]]);shapes.push(subcurve(shape,clamp((domain[0]-lo)/span),clamp((domain[1]-lo)/span)));start=end;
  }
- const field=arcField(shapes);
+ let field=arcField(shapes);
+ if(declared&&children.every(child=>child.range[0]===0&&child.range[1]===1)){
+  // The scalar domain owns the original parent table's parameter grid. Read
+  // current children on that grid, including their live geometry residuals;
+  // never replace an independently edited child with the declared parent.
+  const base=arcField([declared]),table=base.parts[0],pts=table.pts.map(sample=>{
+   const child=children.find(child=>sample.t<=child.domain[1])??children.at(-1)!,span=child.domain[1]-child.domain[0];
+   return {t:sample.t,p:point(child.shape,clamp((sample.t-child.domain[0])/span))};
+  }),dist=[0];for(let i=1;i<pts.length;i++)dist.push(dist[i-1]+Math.hypot(pts[i].p[0]-pts[i-1].p[0],pts[i].p[1]-pts[i-1].p[1]));
+  const length=dist.at(-1)!;field={...base,total:length,parts:[{...table,pts,dist,length,start:0}]};domains.splice(0,domains.length,[0,1]);nativeRuns.splice(0,nativeRuns.length,[0,1]);
+ }
  if(!(field.total>0))fail('the live parent material curve is degenerate.');
- const metric:PartitionMetric={parameter:fraction=>{
+ const metric:SnapshotMaterialMeasurement={nativeRuns,total:field.total,parameter:fraction=>{
   if(fraction<=0)return domains[0][0];if(fraction>=1)return domains.at(-1)![1];
   // Exact normalized run boundaries must keep their exact parameter label;
   // multiplying/dividing a table boundary again can move it by one ULP.
@@ -93,6 +104,14 @@ function partitionMetric(partition:SnapshotMaterialPartition,drawing:DrawingDocu
  }};
  cache.set(partition,metric);return metric;
 }
+/** The exact live cubic runs that own the material arc tables. A topology-only
+ * split must preserve these native ranges; switching tables changes the field
+ * even when the child controls differ by less than ordinary geometry tolerance. */
+export function createSnapshotMaterialMeasurement(parts:readonly {curveId:string;parameterRange:readonly [number,number]}[],drawing:DrawingDocument,useDeclared=true):SnapshotMaterialMeasurement {
+ const partition:SnapshotMaterialPartition={sourceTrackId:'measurement-proof',reverse:false,parts:parts.map(part=>({curveId:part.curveId,sourceTrackId:part.curveId,parameterRange:[...part.parameterRange],ranges:[]}))};
+ return partitionMetric(partition,drawing,useDeclared);
+}
+export function snapshotMaterialMeasurementRuns(parts:readonly {curveId:string;parameterRange:readonly [number,number]}[],drawing:DrawingDocument,useDeclared=true):readonly (readonly [number,number])[] {return createSnapshotMaterialMeasurement(parts,drawing,useDeclared).nativeRuns;}
 function pieceParameter(partition:SnapshotMaterialPartition,drawing:DrawingDocument,index:number){const part=partition.parts[index],track=drawing.displayIntervals?.find(track=>track.id===part.sourceTrackId);if(!track)fail('a material partition piece is missing.');const source=snapshotRouteMaterialSource(drawing,track!),path=displayPath(source,part.curveId),field=endpointPairDisplayField(source,path);return curveMaterialParameterMap(snapshotSplitUsesCurrentMaterialFrame(drawing)?{...field,sourcePieceParameter:undefined,fittedPieceParameter:undefined}:field,path,part.curveId);}
 export function snapshotMaterialPartitionParentValue(address:SnapshotMaterialPartitionAddress,drawing:DrawingDocument,childValue:number):number {
  const domain=metricParts(address.partition,drawing)[address.part].parameterRange,local=pieceParameter(address.partition,drawing,address.part).parameterAt(childValue),parameter=domain[0]+local*(domain[1]-domain[0]),native=partitionMetric(address.partition,drawing).fraction(parameter);return address.partition.reverse?1-native:native;
@@ -130,6 +149,18 @@ export function createSnapshotMaterialPartitionBasis(partitions:readonly Snapsho
   const finalMetric=partitionMetric(address.partition,drawing),values=bases.map(basis=>{const value=snapshotMaterialPartitionValue(partitions,basis.drawing,address.target);if(value===undefined)fail('a logical material basis lost a child range.');const sourceMetric=partitionMetric(address.partition,basis.drawing),native=address.partition.reverse?1-value!:value!,parameter=sourceMetric.parameter(native),fitted=fittedMetricParameter(address.partition,basis.drawing,parameter),mapped=finalMetric.fraction(fitted);return address.partition.reverse?1-mapped:mapped;});
   return {target:address.target,values,project:value=>snapshotMaterialPartitionChildValue(address,drawing,value)};
  };
+}
+/** Preserve the native support of a retained authored frame through the same
+ * source refresh that transports ordinary interval percentages. */
+export function transportSnapshotAuthoredPartitionSource(partition:SnapshotMaterialPartition,before:DrawingDocument,after:DrawingDocument,value:number):number {
+ const parameter=partitionMetric(partition,before).parameter(partition.reverse?1-value:value),next=partitionMetric(partition,after).fraction(parameter);return partition.reverse?1-next:next;
+}
+/** Restrict a raw authored fraction in its retained source frame to one current
+ * child, using the same live parent tables as Recorder material transport. */
+export function transferSnapshotAuthoredPartition(partition:SnapshotMaterialPartition,source:DrawingDocument,drawing:DrawingDocument,target:SnapshotScalarPropertyTarget,value:number):number {
+ const address=snapshotMaterialPartitionAddress([partition],target);if(!address)return fail('authored material lost its child address.');
+ const parameter=partitionMetric(partition,source).parameter(partition.reverse?1-value:value),fitted=fittedMetricParameter(partition,source,parameter),mapped=partitionMetric(partition,drawing).fraction(fitted);
+ return snapshotMaterialPartitionChildValue(address,drawing,partition.reverse?1-mapped:mapped);
 }
 /** Same explicit split identities are used in every descendant. Further splits
  * replace a single live piece; the original logical field stays unchanged. */

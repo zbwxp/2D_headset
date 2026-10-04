@@ -9,7 +9,7 @@ import {splitCageLineages,splitCageShapeLineages} from './cageSplitLineage';
 export function splitMaterialProgram(steps:readonly EvaluatedMaterialStep[],intent:CurveSplitIntent):EvaluatedMaterialStep[] {
  return steps.map(step=>{
   if(step.kind==='affine')return structuredClone(step);
-  if(step.kind==='cage')return {...structuredClone(step),domain:{...structuredClone(step.domain),fitLineages:splitCageLineages(step.domain.fitLineages,intent)}};
+  if(step.kind==='cage')return {...structuredClone(step),domain:{...structuredClone(step.domain),...(step.domain.strokeScope?{strokeScope:{...step.domain.strokeScope,curveIds:step.domain.strokeScope.curveIds.flatMap(id=>id===intent.curveId?[...intent.childCurveIds]:[id])}}:{}),fitLineages:splitCageLineages(step.domain.fitLineages,intent)}};
   if(step.kind==='post-shape'){
    const shaped=splitCageShapeLineages(step.shapeLineages,step.value,intent);
    return {kind:'post-shape',value:shaped.value!,...(shaped.lineages.length?{shapeLineages:shaped.lineages}:{})};

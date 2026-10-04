@@ -88,6 +88,7 @@ export function prepareLayerCageDependencies(input:DrawingDocument,state:Snapsho
    const map=(id:string)=>replacements.get(id)??nodeReplacements.get(id)??id;
    family.parts=family.parts.map(part=>({...part,curveId:map(part.curveId)}));
    for(const candidate of next.layerDomains??[]){if(!candidate.layerIds.includes(targetLayer.id))continue;
+    if(isLayerCageDomain(candidate)&&candidate.strokeScope)candidate.strokeScope={...candidate.strokeScope,curveIds:candidate.strokeScope.curveIds.map(map)};
     if(candidate.postShape){
      const inScope=(id:string)=>input.layers.some(layer=>candidate.layerIds.includes(layer.id)&&layer.items.some(curveId=>curveId===id||input.curves.some(curve=>curve.id===curveId&&curve.nodes.includes(id))));
      for(const [id,mapped] of replacements)if(mapped!==id&&candidate.postShape.handles[id]){candidate.postShape.handles[mapped]=structuredClone(candidate.postShape.handles[id]);if(!inScope(id))delete candidate.postShape.handles[id];}

@@ -13,6 +13,7 @@ import {createCubicCorrectionProjector} from '../drawing/cubicCorrection';
 import {createCageGeometryProjector,type CageFitDiagnostic} from '../drawing/cageGeometry';
 import {shapeOf,length,sub,type DrawingDocument,type Point2,type Cubic} from '../drawing/model';
 import {layerCageDomainProjection,type SnapshotLayerCageDomain} from './layerCageDomain';
+import {layerCageCurveIds} from './layerCageScope';
 
 /** Independent stage evaluation. controlDrawing is the fitted editing baseline,
  * not a render-ready replacement: ARC/route consumers must use projectGeometry
@@ -20,7 +21,7 @@ import {layerCageDomainProjection,type SnapshotLayerCageDomain} from './layerCag
  * shared Snapshot pipeline is intentionally a separate integration step. */
 export function evaluateLayerCageDomain(input:DrawingDocument,domain:SnapshotLayerCageDomain,tolerance=.00004){
  const field=layerCageDomainProjection(domain);
- const layers=new Set(domain.layerIds),scope=new Set(input.layers.filter(layer=>layers.has(layer.id)).flatMap(layer=>layer.items)),curves=new Set(input.curves.filter(curve=>scope.has(curve.id)).map(curve=>curve.id));
+ const curves=layerCageCurveIds(input,domain);
  if(domain.enabled===false)curves.clear();
  const native=createCageGeometryProjector(field,curves,tolerance);let projector=domain.fitLineages?.length?createCageSplitProjector(native,domain.fitLineages,{curveIds:curves,inputPieces:[...curves].map(id=>({shape:shapeOf(input,id),owners:[id]})),residual:true,parentParameter:(id,t)=>evaluatedFitContext(input,id)?.parentParameter?.(t)??t,targetPoint:(shape,t)=>field.map(point(shape,t)),currentRanges:new Map([...curves].flatMap(id=>{const range=evaluatedFitRange(input,id);return range?[[id,range] as const]:[];})),tolerance}):native;
  const pieces=[...curves].map(id=>({shape:shapeOf(input,id),owners:[id]})),projected=projector.projectGeometry({pieces,shapes:pieces.map(piece=>piece.shape)}),fits=new Map(projected.fits.flatMap((fit,i)=>fit?[[pieces[i].owners[0],fit] as const]:[])),positions=new Map<string,Point2>(),diagnostics:CageFitDiagnostic[]=[];

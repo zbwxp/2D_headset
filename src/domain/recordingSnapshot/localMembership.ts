@@ -1,5 +1,7 @@
 import type {Cubic} from '../drawing/model';
 import type {RecordingSnapshotWorkspace} from './model';
+import {resolveSnapshot} from './evaluation';
+import {layerCageCurveIds} from './layerCageScope';
 
 /** Contract for a reference layer. Absent membership means live,
  * complete inheritance. These IDs are membership, never geometry or pose keys. */
@@ -79,6 +81,8 @@ export function applySnapshotMembershipEdit(workspace:RecordingSnapshotWorkspace
  uniqueIds(command.elementIds,'Membership edit IDs');if(!command.elementIds.length)throw Error('Select at least one member.');
  if(command.op==='excludeElements'){
   for(const id of command.elementIds)if(!Object.hasOwn(workspace.library.curves,id)&&!Object.hasOwn(workspace.library.fills,id)&&!Object.hasOwn(workspace.library.offsets,id))throw Error(`Canonical member ${id} does not exist.`);
+  const states=[snapshot.deformation,...snapshot.inheritedState?[snapshot.inheritedState]:[],...snapshot.draft?[snapshot.draft.deformation]:[]];
+  if(states.some(state=>state.layerDomains?.some(domain=>domain.kind==='h-coons'&&domain.strokeScope))){const drawing=resolveSnapshot(workspace,snapshotId,{useDraft:true,diagnostics:'preview'}).drawing;for(const state of states)for(const domain of state.layerDomains??[])if(domain.kind==='h-coons'&&domain.strokeScope)domain.strokeScope={...domain.strokeScope,curveIds:[...new Set([...domain.strokeScope.curveIds,...layerCageCurveIds(drawing,domain)])]};}
   layer.membership=excludeSnapshotLocalMembers(before,command.elementIds) as NonNullable<typeof layer.membership>;
  }else{
   const restored=new Set(command.elementIds),remaining=(before.excludeElementIds??[]).filter(id=>!restored.has(id));

@@ -6,6 +6,7 @@ import {layerFor,shapeOf,add,sub,type DrawingDocument,type DrawingCurve,type Poi
 import {isLayerCageDomain,type SnapshotLayerDomain} from './layerDomains';
 import {layerUsesCage} from './layerDomainControlEdit';
 import type {SnapshotEvaluation} from './evaluation';
+import {layerCageCurveIds} from './layerCageScope';
 
 /** Existing output stages and live inherited fields both accept an explicit
  * final-space topology target. Inherited fields receive a sparse local output
@@ -13,7 +14,7 @@ import type {SnapshotEvaluation} from './evaluation';
 export function nonlinearTopologyTargetLayers(evaluation:SnapshotEvaluation,target:DrawingDocument,inheritedPrograms:ReadonlyMap<string,EvaluatedMaterialStep[]>=new Map()):Set<string> {
  const before=evaluation.drawing;
  const signature=(drawing:DrawingDocument,layerId:string)=>{const ids=new Set(drawing.layers.find(layer=>layer.id===layerId)?.items??[]),curves=drawing.curves.filter(curve=>ids.has(curve.id)),nodes=new Set(curves.flatMap(curve=>curve.nodes));return JSON.stringify([curves.map(curve=>[curve.id,curve.nodes,curve.handles]),drawing.nodes.filter(node=>nodes.has(node.id)),drawing.joins.filter(join=>ids.has(join.a.curveId)||ids.has(join.b.curveId)),drawing.endpointLinks?.filter(link=>ids.has(link.a.curveId)||ids.has(link.b.curveId))??[]]);};
- return new Set(target.layers.filter(layer=>(layerUsesCage(evaluation.state.layerDomains,layer.id)||inheritedPrograms.has(layer.id)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(value=>value.id===layer.id)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))&&signature(before,layer.id)!==signature(target,layer.id)).map(layer=>layer.id));
+ return new Set(target.layers.filter(layer=>(layerUsesCage(evaluation.state.layerDomains,layer.id)||layer.items.some(id=>inheritedPrograms.get(id)?.length)||evaluation.source.curves.some(curve=>evaluation.source.layers.find(value=>value.id===layer.id)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)))&&signature(before,layer.id)!==signature(target,layer.id)).map(layer=>layer.id));
 }
 
 /** A new child-owned P curve has two explicit parts: a finite canonical input
@@ -24,17 +25,23 @@ export function nonlinearTopologyTargetLayers(evaluation:SnapshotEvaluation,targ
  */
 export function createNonlinearTopologyInput(evaluation:SnapshotEvaluation,target:DrawingDocument,newIds:ReadonlySet<string>,layerIds:ReadonlySet<string>,inheritedPrograms:ReadonlyMap<string,EvaluatedMaterialStep[]>=new Map()):Map<string,{curve:DrawingCurve;nodes:Map<string,Point2>}> {
  const result=new Map<string,{curve:DrawingCurve;nodes:Map<string,Point2>}>(),material=evaluatedMaterialSource(evaluation.source),inputNodes=new Map(material.nodes.map(node=>[node.id,node.position]));
- const firstCage=(steps:readonly EvaluatedMaterialStep[]):import('./layerCageDomain').SnapshotLayerCageDomain|undefined=>{for(const step of steps){if(step.kind==='cage')return step.domain;if(step.kind==='reflected'){const cage=firstCage(step.steps);if(cage)return cage;}}};
+ const firstCage=(steps:readonly EvaluatedMaterialStep[],layerId:string,curveId:string):import('./layerCageDomain').SnapshotLayerCageDomain|undefined=>{for(const step of steps){if(step.kind==='cage'&&layerCageCurveIds(target,{...step.domain,layerIds:[layerId]}).has(curveId))return step.domain;if(step.kind==='reflected'){const cage=firstCage(step.steps,layerId,curveId);if(cage)return cage;}}};
  for(const layerId of layerIds){
-  const inherited=evaluation.source.curves.find(curve=>evaluation.source.layers.find(layer=>layer.id===layerId)?.items.includes(curve.id)&&hasNonlinearDeformationFor(evaluation.source,curve.id)),domain=firstCage(inheritedPrograms.get(layerId)??(inherited?evaluatedMaterialProgram(evaluation.source,inherited.id)??[]:[]))??evaluation.state.layerDomains?.find(domain=>domain.enabled!==false&&isLayerCageDomain(domain)&&domain.layerIds.includes(layerId));if(!domain||!isLayerCageDomain(domain))continue;
-  const curves=target.curves.filter(curve=>newIds.has(curve.id)&&layerFor(target,curve.id)?.id===layerId);if(!curves.length)continue;
-  const points=curves.flatMap(curve=>shapeOf(target,curve.id)),min:Point2=[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))],max:Point2=[Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
-  const map=(point:Point2):Point2=>point.map((value,axis)=>domain.restRect.min[axis]+(domain.restRect.max[axis]-domain.restRect.min[axis])*(max[axis]===min[axis] ? .5 : .2+.6*(value-min[axis])/(max[axis]-min[axis]))) as Point2;
-  for(const curve of curves){
-   const shape=shapeOf(target,curve.id),nodes=new Map<string,Point2>();
-   for(const end of [0,1] as const){const id=curve.nodes[end],position=inputNodes.get(id)??map(shape[end?3:0]);inputNodes.set(id,position);nodes.set(id,position);}
-   const handles=curve.handles.map((point,end)=>add(nodes.get(curve.nodes[end])!,sub(map(point),map(shape[end?3:0])))) as [Point2,Point2];
-   result.set(curve.id,{curve:{...structuredClone(curve),handles},nodes});
+  const groups=new Map<string,{domain:import('./layerCageDomain').SnapshotLayerCageDomain;curves:DrawingCurve[]}>();
+  for(const curve of target.curves.filter(curve=>newIds.has(curve.id)&&layerFor(target,curve.id)?.id===layerId)){
+   const inherited=inheritedPrograms.get(curve.id),sourceSteps=inherited??evaluation.source.curves.filter(peer=>layerFor(evaluation.source,peer.id)?.id===layerId).flatMap(peer=>evaluatedMaterialProgram(evaluation.source,peer.id)??[]),domain=firstCage(sourceSteps,layerId,curve.id)??evaluation.state.layerDomains?.find(domain=>domain.enabled!==false&&isLayerCageDomain(domain)&&layerCageCurveIds(target,domain).has(curve.id));
+   if(!domain||!isLayerCageDomain(domain))continue;
+   const key=JSON.stringify(domain),group=groups.get(key)??{domain,curves:[]};group.curves.push(curve);groups.set(key,group);
+  }
+  for(const {domain,curves} of groups.values()){
+   const points=curves.flatMap(curve=>shapeOf(target,curve.id)),min:Point2=[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))],max:Point2=[Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
+   const map=(point:Point2):Point2=>point.map((value,axis)=>domain.restRect.min[axis]+(domain.restRect.max[axis]-domain.restRect.min[axis])*(max[axis]===min[axis] ? .5 : .2+.6*(value-min[axis])/(max[axis]-min[axis]))) as Point2;
+   for(const curve of curves){
+    const shape=shapeOf(target,curve.id),nodes=new Map<string,Point2>();
+    for(const end of [0,1] as const){const id=curve.nodes[end],position=inputNodes.get(id)??map(shape[end?3:0]);inputNodes.set(id,position);nodes.set(id,position);}
+    const handles=curve.handles.map((point,end)=>add(nodes.get(curve.nodes[end])!,sub(map(point),map(shape[end?3:0])))) as [Point2,Point2];
+    result.set(curve.id,{curve:{...structuredClone(curve),handles},nodes});
+   }
   }
  }
  // A continued SMOOTH segment starts on the existing input tangent ray.

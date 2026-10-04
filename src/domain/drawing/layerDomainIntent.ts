@@ -1,5 +1,6 @@
 import {deformDrawing} from './deform';
 import {validateLayerCageDomain,type SnapshotLayerCageDomain} from '../recordingSnapshot/layerCageDomain';
+import {layerCageCurveIds,remapLayerCageStrokeScope} from '../recordingSnapshot/layerCageScope';
 import {transform} from './commands';
 import {finalizeGeometryEdit} from './geometryEdit';
 import {mirrorWritesForCurves} from './mirrorEditing';
@@ -45,14 +46,14 @@ export function assertLayerDomainIntent(intent:LayerDomainIntent):void {
  if(intent.domain.kind!=='placement-similarity'||!isScenePlacementSimilarity(value)||![...value.translation,value.rotation,value.scale,value.scaleX??1,value.scaleY??1].every(Number.isFinite)||value.scale<=0)throw Error('A layer domain requires a finite positive similarity.');
 }
 export function mapLayerDomainIntent(intent:LayerDomainIntent,id:(id:string)=>string):LayerDomainIntent {
- return {...intent,operationId:id(intent.operationId),scope:{kind:'layers',layerIds:intent.scope.layerIds.map(id)},domain:structuredClone(intent.domain)} as LayerDomainIntent;
+ return {...intent,operationId:id(intent.operationId),scope:{kind:'layers',layerIds:intent.scope.layerIds.map(id)},domain:{...structuredClone(intent.domain),...(intent.domain.kind==='h-coons'&&intent.domain.strokeScope?{strokeScope:remapLayerCageStrokeScope(intent.domain.strokeScope,id)}:{})}} as LayerDomainIntent;
 }
 /** Shared Drawing transform kernel remains the sole source-original geometry
  * edit. Snapshot adapters persist referenced domains and own their evaluation. */
 export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomainIntent,options:{allowRelated?:boolean}={}) {
  assertLayerDomainIntent(intent);
  const layers=intent.scope.layerIds.map(id=>{const layer=drawing.layers.find(layer=>layer.id===id);if(!layer)throw Error('A layer domain target no longer exists.');if(layer.locked)throw Error('对象已锁定。');return layer;});
- const items=new Set(layers.flatMap(layer=>layer.items)),ids=drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
+ const items=new Set(layers.flatMap(layer=>layer.items)),ids=intent.domain.kind==='h-coons'?[...layerCageCurveIds(drawing,{...intent.domain,layerIds:intent.scope.layerIds})]:drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
  if(intent.domain.kind==='h-coons'){const value=intent.domain;return {document:value.enabled===false?drawing:deformDrawing(drawing,ids,value.restRect,value.quad,options.allowRelated??false,value.bend).document,intent,ids};}
  const matrix=layerDomainMatrix(intent),raw=transform(drawing,ids,point=>applyAffine2D(matrix,point),options.allowRelated??false,true);
  return {document:finalizeGeometryEdit(drawing,raw,mirrorWritesForCurves(raw,ids)),intent,ids};
