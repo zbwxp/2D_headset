@@ -93,6 +93,13 @@ describe('minimum-change inverse through the existing editing workflow',()=>{
   for(const edge of Object.values(responses))for(const response of [...Object.values(edge.nodes),...Object.values(edge.handles).flat()])for(const knots of [response.x,response.y])for(const [t,weight] of knots??[]){expect(Number.isFinite(t)&&Number.isFinite(weight)).toBe(true);expect(Math.abs(weight-t)).toBeLessThanOrEqual(8+1e-8);}
  });
 
+ it('centers fallback weight bounds on pregesture signed responses above eight',()=>{
+  const seed=fixture(),saved=batch(plan(seed,moveNode(evaluate(seed).drawing,'a',[25,-13],true)).project,[{op:'updateSnapshot'}]),before=evaluate(saved).drawing,handle=before.curves.find(curve=>curve.id==='ear')!.handles[0],wanted=moveHandle(before,{curveId:'ear',end:0},[handle[0]+.06,handle[1]-.03],true);
+  const prior=Object.values(effectiveSnapshotSurfaceResponses(recording(saved).angleGraph!).edgeResponses)[0].nodes.a,next=plan(saved,wanted).project,after=Object.values(effectiveSnapshotSurfaceResponses(recording(next).angleGraph!).edgeResponses)[0].nodes.a;
+  near(evaluate(next).drawing,wanted);sourceAndZeroUnchanged(saved,next);
+  for(const axis of ['x','y'] as const){const old=prior[axis]!.at(-1)![1],weight=after[axis]!.at(-1)![1];expect(Math.abs(old)).toBeGreaterThan(8);expect(Number.isFinite(weight)).toBe(true);expect(Math.abs(weight-old)).toBeLessThanOrEqual(8+1e-8);}
+ });
+
  it.each([{scaleX:1.2,scaleY:1},{scaleX:1,scaleY:.8},{rotation:17}])('uses the common V target pipeline for %j',value=>{
   const project=freeze(fixture()),before=evaluate(project).drawing,placement={...identityScenePlacement(),...value},wanted=transform(before,['ear'],point=>applyScenePlacement(placement,point),true,false),commands=[transformCommand(value)];
   const preview=prepareSnapshotPreview(project,{commands}),strict=prepareSnapshotBatch(project,{commands});
