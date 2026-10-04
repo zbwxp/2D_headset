@@ -51,10 +51,17 @@ test.each([{corner:2},{edge:1,handle:0}] as CageControl[])('60° temporary cage 
  const reopened=resolveDrawingCage(current.drawing,{ids:current.drawing.curves.map(curve=>curve.id),layer:'layer'},{domains:[]})!;expect(reopened.domainOperationId).toBeUndefined();expect(reopened.quad).toEqual(rectQuad(reopened.rect));
 });
 
-test('a late unavailable cage coordinate rejects the complete edit and leaves no response draft',()=>{
+test('a late unavailable cage coordinate adjusts the side basis atomically while keeping zero fixed',()=>{
  const project=fixture(false);project.recordingSnapshots.snapshots[1].deformation.layers.layer.shape!.nodes.e[0]=0;
- const before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{useDraft:true}),restRect:DeformRect={min:[-1,-1],max:[9,9]},intent=createLayerCageIntent(['layer'],{kind:'h-coons',restRect,quad:rectQuad(restRect).map(([x,y]):Point2=>[x+.1,y+.1]) as [Point2,Point2,Point2,Point2]},{operationId:'rejected'}),saved=JSON.stringify(project);
- for(const validation of ['preview','full'] as const)expect(()=>prepareRecordingTemporaryCageEdit(snapshotEditContext(project,false),{recordingId:'recording',snapshotId:before.snapshotId,angle:at(60),beforeDrawing:before.drawing,intent,validation})).toThrow(/Node e X/);
+ const before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{useDraft:true}),restRect:DeformRect={min:[-1,-1],max:[9,9]},intent=createLayerCageIntent(['layer'],{kind:'h-coons',restRect,quad:rectQuad(restRect).map(([x,y]):Point2=>[x+.1,y+.1]) as [Point2,Point2,Point2,Point2]},{operationId:'bounded-adjustment'}),saved=JSON.stringify(project),wanted=applyLayerDomainIntent(before.drawing,intent).document;
+ for(const validation of ['preview','full'] as const){
+  const plan=prepareRecordingTemporaryCageEdit(snapshotEditContext(project,false),{recordingId:'recording',snapshotId:before.snapshotId,angle:at(60),beforeDrawing:before.drawing,intent,validation}),workspace=plan.project.recordingSnapshots!;
+  near(evaluateRecordingSnapshot(workspace,'recording',{useDraft:true}).drawing,wanted);
+  expect(workspace.library).toEqual(project.recordingSnapshots.library);expect(workspace.snapshots[0]).toEqual(project.recordingSnapshots.snapshots[0]);
+  expect(evaluateRecordingSnapshot(workspace,'recording',{angle:at(0),useDraft:true}).drawing).toEqual(evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{angle:at(0),useDraft:true}).drawing);
+  expect(workspace.snapshots[1].draft).toBeDefined();expect(workspace.recordings[0].angleGraph!.correctionFrames!.find(frame=>frame.status==='draft')!.basisAdjustment?.snapshotIds).toEqual(['side']);
+  expect(JSON.stringify(workspace.recordings[0].angleGraph)).not.toMatch(/bounded-adjustment|h-coons|restRect|quad/);
+ }
  expect(JSON.stringify(project)).toBe(saved);expect(project.recordingSnapshots.recordings[0].angleGraph!.correctionFrames).toBeUndefined();
 });
 

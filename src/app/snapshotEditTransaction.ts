@@ -1,4 +1,5 @@
 import {assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
+import {effectiveSnapshotSurfaceResponses} from '../domain/recordingSnapshot/surfaceTargets';
 import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
@@ -80,6 +81,24 @@ function assertOriginalsUnchanged(before:RecordingSnapshotWorkspace,after:Record
  if(!same(before.legacyArchive,after.legacyArchive))throw Error('Snapshot edits must preserve the original project archive.');
 }
 
+/** A coupled correction owns its real bases until the one Save/Discard.
+ * Direct topology/property/domain adapters share the same ownership boundary
+ * as control commands; navigation and the coupled finish transaction stay free. */
+function assertCoupledBasisEditOwnership(original:RecordingSnapshotWorkspace|undefined,edit:SnapshotEdit):void {
+ if(!original)return;
+ const pending=original.recordings.flatMap(recording=>{const graph=recording.angleGraph,draft=graph&&effectiveSnapshotSurfaceResponses(graph).draft;return draft?.basisAdjustment?[{recording,draft}]:[];});
+ const blocked=()=>{throw Error('A coupled intermediate-angle correction is pending. Save or discard it before editing real views or their dependencies.');};
+ if(edit.kind==='snapshot-state'){
+  for(const {recording,draft} of pending){
+   const next=edit.workspace.recordings.find(value=>value.id===recording.id),stillOwned=next?.angleGraph?.correctionFrames?.some(frame=>frame.id===draft.id&&frame.status==='draft'&&frame.basisAdjustment);
+   if(!stillOwned||!recording.angleGraph!.mesh.vertices.some(vertex=>vertex.angle.x===recording.angle.x&&vertex.angle.y===recording.angle.y))continue;
+   if(recording.snapshotIds.some(id=>!same(original.snapshots.find(value=>value.id===id),edit.workspace.snapshots.find(value=>value.id===id))))blocked();
+  }
+ }else if('snapshotId' in edit){
+  if(pending.some(({recording})=>recording.snapshotIds.includes(edit.snapshotId)))blocked();
+ }
+}
+
 /** Preserve old adapters/checkpoints without making them a second authority
  * for Recording edits. Only an original-source transaction refreshes them. */
 function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotState,splitPlan?:SnapshotCurveSplitBatchPlan):LandmarkProject{
@@ -115,6 +134,7 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  assertRecordingProjectActive(context.project);
+ assertCoupledBasisEditOwnership(context.workspace,edit);
  if(edit.kind==='object-locks'){
   const before=context.project,workspace=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,snapshot=workspace.snapshots.find(value=>value.id===edit.snapshotId);if(!snapshot)throw Error('The lock target Snapshot no longer exists.');
   const next=snapshotWithObjectLocks(snapshot,resolveSnapshot(workspace,snapshot.id,{useDraft:true,diagnostics:'preview'}).drawing,edit.changes);
