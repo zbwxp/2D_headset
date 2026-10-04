@@ -1,3 +1,4 @@
+import {assertRecordingWorkspaceActive,RECORDING_RETIRED_MESSAGE} from './retirement';
 import {applySnapshotAuthoredMaterial} from './authoredMaterial';
 import {prepareCageEvaluationDependencies} from './cageEvaluationDependencies';
 import {extendSnapshotInheritedTopology} from './inheritedTopologyMaterial';
@@ -44,12 +45,10 @@ import {applyScenePlacement,placementMatrix,scenePlacementMaxScale} from '../rec
 import {materializeOriginalSnapshot,remapDrawingIdentities} from './sources';
 import {evaluateSnapshotState,recordingForSnapshot} from './tracks';
 import {validateSnapshotGraph} from './validation';
-import {sameAngle} from '../vectorRecording/interpolation';
 import {applySnapshotNodeAliases} from './nodeAliases';
 import {materializeSnapshotForkInputs,applySnapshotNodeForks,pruneSnapshotTopologyNodes} from './nodeForks';
 import {applySnapshotCurveAppearance} from './curveAppearance';
-import {endpointPairCompatibility,endpointPairNodeAuthorities,interpolateEndpointPairDrawing,validateSnapshotEndpointPair} from './endpointPair';
-import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
+import {type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotDeformationState,type SnapshotDiagnostic,type SnapshotElementProvenance,type SnapshotRelationCollection,type SnapshotRelationPatch,type Angle,type WarpGrid,type SnapshotPoseTrack,type SnapshotRecording,type SnapshotEndpointResponses} from './model';
 
 export interface SnapshotEvaluationOptions extends SceneEvaluationOptions {snapshotId?:string;/** Trusted store/render callers only: all library, snapshot, key, and draft objects must be immutable. */immutableInputs?:boolean}
 export interface SnapshotEvaluation {
@@ -310,17 +309,10 @@ function evaluateOwn(snapshot:RecordingSnapshot,source:DrawingDocument,state:Sna
  const fitDiagnostics=evaluated.fitDiagnostics.map(d=>{const sourceCurveId=raw(d.sourceCurveId),placement=placements[layerFor(source,sourceCurveId)?.id??'']??identityScenePlacement();if(options.omitPlacements)return {...d,sourceCurveId};const element=elementPlacements[sourceCurveId]??identityScenePlacement(),domain=domainMatrices[layerFor(source,sourceCurveId)?.id??'']??identityAffine2D(),map=(p:Point2)=>applyAffine2D(domain,applyScenePlacement(placement,applyScenePlacement(element,p))),maximum=affine2DMaxScale(domain)*scenePlacementMaxScale(placement)*scenePlacementMaxScale(element),maxError=d.maxError*maximum,endpointMismatchError=d.endpointMismatchError*maximum,exceedsTolerance=maxError>d.tolerance,endpointConflict=d.endpointConflict||endpointMismatchError>1e-8,cubic=d.cubic.map(map) as Cubic;return {...d,sourceCurveId,cubic,peakExpected:map(d.peakExpected),peakActual:map(d.peakActual),maxError,endpointMismatchError,exceedsTolerance,endpointConflict,warning:exceedsTolerance||endpointConflict||d.nonFinite||!!d.appearanceWarning};});
  return {drawing,preShapeDrawing,prePlacementDrawing,preElementPlacementDrawing,elementPlacements,angle:evaluated.angle,state,diagnostics,warpGrids:evaluated.warpGrids,placements,paintBatches:depthPaintBatches(drawing),fitDiagnostics,warningCurveIds:[...new Set([...fitDiagnostics.filter(d=>d.warning).map(d=>d.sourceCurveId),...domainFits.filter(d=>d.exceedsTolerance).flatMap(d=>d.owners)])],intervalTransportErrors:evaluated.intervalTransportErrors.map(e=>({...e,trackId:raw(e.trackId),sourceCurveIds:e.sourceCurveIds.map(raw)})),maxError:Math.max(fitDiagnostics.reduce((m,d)=>Math.max(m,d.maxError),0),...domainFits.map(d=>d.maxError)),diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds.map(raw)};
 }
-function evaluateLegacySnapshot(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,snapshotId:string,options:SnapshotEvaluationOptions):SnapshotEvaluation {
- const scene=recording.legacy!.scene;
- const evaluated=evaluateScene(scene,artworkId=>{const source=workspace.snapshots.find(s=>s.kind==='drawing'&&s.source?.artworkId===artworkId);if(!source)return undefined;const drawing=materializeOriginalSnapshot(workspace,source.id);if(!drawing)return undefined;const order=new Map(Object.keys(source.source!.originIds).map((id,index)=>[id,index]));for(const key of ['nodes','curves','fills','offsets'] as const)drawing[key].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));return remapDrawingIdentities(drawing,id=>source.source!.originIds[id]??id);},{...options,angle:options.angle??recording.angle});
- const provenance:SnapshotEvaluation['provenance']={};for(const [id,p] of Object.entries(evaluated.provenance)){const source=workspace.snapshots.find(s=>s.source?.artworkId===p.artworkId),canonical=source&&Object.entries(source.source!.originIds).find(([,raw])=>raw===p.sourceId)?.[0];provenance[id]={elementId:canonical??p.sourceId,sourceSnapshotId:source?.id??p.artworkId,path:[source?.id??p.artworkId,snapshotId]};}
- const diagnostics:SnapshotDiagnostic[]=[{code:'LEGACY_READ_ONLY',snapshotId,message:recording.legacy!.reason},...evaluated.diagnostics.map(d=>({code:'POSE' as const,snapshotId,layerId:d.sourceLayerId,elementId:d.sourceObjectId,channelId:d.trackId,message:d.message}))];
- return {snapshotId,topologyInputDrawing:evaluated.source,source:evaluated.source,baseDrawing:evaluated.source,drawing:evaluated.drawing,preShapeDrawing:evaluated.preShapeDrawing,prePlacementDrawing:evaluated.prePlacementDrawing,preElementPlacementDrawing:evaluated.drawing,elementPlacements:{},angle:evaluated.angle,state:emptySnapshotDeformationState(),provenance,diagnostics,warpGrids:evaluated.warpGrids,placements:evaluated.placements,placementsByLayer:evaluated.placements,paintBatches:evaluated.paintBatches,fitDiagnostics:evaluated.fitDiagnostics,warningCurveIds:evaluated.warningCurveIds,intervalTransportErrors:evaluated.intervalTransportErrors,maxError:evaluated.maxError,diagnosticStage:evaluated.diagnosticStage,conflictingNodeIds:evaluated.conflictingNodeIds,appliedTrackIds:[],layerProvenance:{},authoredTracks:recording.tracks};
-}
 /** Returned evaluated documents are immutable runtime values, shared by the
  * bounded cache until their live source, saved state, tracks, or options change. */
 export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
- const fallback=recordingForSnapshot(workspace,snapshotId);if(fallback?.legacy)return evaluateLegacySnapshot(workspace,fallback,snapshotId,options);
+ assertRecordingWorkspaceActive(workspace);
  validateSnapshotGraph(workspace);const persistent=evaluationCache(workspace,options.immutableInputs),local=new Map<string,SnapshotEvaluation>(),visiting=new Set<string>(),snapshotStrings=new Map<string,string>(),trackStrings=new Map<SnapshotRecording,Map<boolean,string>>();
  const resolve=(id:string,root=false,visibilitySource=false):SnapshotEvaluation=>{
   const localKey=JSON.stringify([id,visibilitySource]),cached=!root&&local.get(localKey);if(cached)return cached;
@@ -350,34 +342,9 @@ export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:
   const result:SnapshotEvaluation={snapshotId:id,topologyInputDrawing:input.topologyInputDrawing,source:materialSource,baseDrawing:materialSource,provenance:snapshotDepthAppearanceProvenance(own.drawing,state,input.provenance),appliedTrackIds:[...appliedTrackIds],...own,placementsByLayer:own.placements,layerProvenance:Object.fromEntries(snapshot.layers.map(l=>[l.id,{layerId:l.id,baseSnapshotId:l.kind==='reference'?l.baseSnapshotId:id,sourceLayerId:l.kind==='reference'?l.baseLayerId:l.id}])),authoredTracks:recording?.tracks??[]};result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);visiting.delete(id);local.set(localKey,result);return frames.set(frameKey,result);
  };return resolve(snapshotId,true);
 }
-/** Endpoint pipelines remain live, including source edits and only the current
- * endpoint's unsaved draft. resolveSnapshot itself intentionally stays a raw
- * saved-view evaluator, so parent references cannot recurse through the pair. */
-export function resolveEndpointPairBasis(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEndpointPairBasis {
- const recording=workspace.recordings.find(r=>r.id===recordingId),pair=recording?.endpointPair;if(!recording||recording.mode!=='endpoint-pair'||!pair)throw Error('Recording is not an endpoint pair.');validateSnapshotEndpointPair(pair);
- const first=workspace.snapshots.find(s=>s.id===pair.startSnapshotId),last=workspace.snapshots.find(s=>s.id===pair.endSnapshotId);if(!first||!last)throw Error('Endpoint pair references a missing basis snapshot.');
- if(!recording.snapshotIds.includes(first.id)||!recording.snapshotIds.includes(last.id)||!Number.isFinite(first.angle.x)||!Number.isFinite(last.angle.x)||Math.abs(first.angle.x-last.angle.x)<1e-8||Math.abs(first.angle.y-last.angle.y)>1e-8)throw Error('Endpoint pair needs distinct yaw angles at the same pitch.');
- const raw=(snapshot:RecordingSnapshot)=>resolveSnapshot(workspace,snapshot.id,{...options,snapshotId:snapshot.id,angle:snapshot.angle,useDraft:options.useDraft!==false&&sameAngle(recording.angle,snapshot.angle),tolerance:options.tolerance??recording.tolerance});
- return {start:raw(first),end:raw(last),startSnapshotId:first.id,endSnapshotId:last.id};
-}
-function evaluateEndpointPair(workspace:RecordingSnapshotWorkspace,recording:SnapshotRecording,options:SnapshotEvaluationOptions):SnapshotEvaluation {
- const pair=recording.endpointPair!,basis=resolveEndpointPairBasis(workspace,recording.id,options),requested=options.angle??recording.angle;
- if(![requested.x,requested.y].every(Number.isFinite))throw Error('Endpoint pair angle must be finite.');
- if(Math.abs(requested.y-basis.start.angle.y)>1e-8)throw Error('Endpoint pair supports one yaw axis at its saved pitch; 2D pitch interpolation is not enabled.');
- const progress=Math.max(0,Math.min(1,(requested.x-basis.start.angle.x)/(basis.end.angle.x-basis.start.angle.x))),responses=options.useDraft!==false&&pair.draft?pair.draft.responses:pair.responses;
- const compatibility=endpointPairCompatibility(basis.start.drawing,basis.end.drawing);if(compatibility.length)throw Error(compatibility.join('\n'));
- const startWins=progress<.5||progress===.5&&basis.start.angle.x<basis.end.angle.x,selected=startWins?basis.start:basis.end;
- const cache=evaluationCache(workspace,options.immutableInputs),key=JSON.stringify(['endpoint-pair',recording.id,resultIdentity(basis.start),resultIdentity(basis.end),responses??null,requested,evaluationOptionsKey(options)]),known=cache.frames.get(key);if(known)return known;
- const sampled=interpolateEndpointPairDrawing(basis.start.drawing,basis.end.drawing,progress,responses,{startWins});
- const endpointPair:SnapshotEndpointPairEvaluation={...basis,axis:'x',progress,role:progress===0?'start':progress===1?'end':'correction',coordinateSpace:'final',nodeAuthorities:Object.fromEntries(endpointPairNodeAuthorities(basis.start.drawing)),responses};
- const diagnostics=[...basis.start.diagnostics,...basis.end.diagnostics,...sampled.diagnostics.map(message=>({code:'POSE' as const,message}))];
- if(progress===0||progress===1){const exact=progress===0?basis.start:basis.end;return cache.frames.set(key,{...exact,angle:{...requested},endpointPair,diagnostics});}
- const snapshot=workspace.snapshots.find(s=>s.id===selected.snapshotId)!;
- const result:SnapshotEvaluation={...selected,angle:{...requested},drawing:sampled.drawing,preShapeDrawing:sampled.drawing,prePlacementDrawing:sampled.drawing,preElementPlacementDrawing:sampled.drawing,elementPlacements:{},diagnostics,endpointPair,
-  // Endpoint fits are evidence about their endpoints only, never invented
-  // intermediate fit measurements. The final controls require no refitting.
-  fitDiagnostics:[],warningCurveIds:[],maxError:Math.max(basis.start.maxError,basis.end.maxError),conflictingNodeIds:[...new Set([...basis.start.conflictingNodeIds,...basis.end.conflictingNodeIds])],intervalTransportErrors:[...basis.start.intervalTransportErrors,...basis.end.intervalTransportErrors]};
- result.paintBatches=snapshotPaintBatches(workspace,snapshot,result.drawing,result.provenance);return cache.frames.set(key,result);
+/** Retained as an explicit error boundary for callers of the retired pair API. */
+export function resolveEndpointPairBasis(_workspace:RecordingSnapshotWorkspace,_recordingId:string,_options:SnapshotEvaluationOptions={}):SnapshotEndpointPairBasis {
+ throw Error(RECORDING_RETIRED_MESSAGE);
 }
 const surfacePreparationCaches=new WeakMap<RecordingSnapshotWorkspace['library'],InputCache<ReturnType<typeof prepareSnapshotCoverage>>>();
 /** Real snapshot poses are resolved at their own saved compatibility state.
@@ -427,12 +394,7 @@ function evaluateTriangulatedRecording(workspace:RecordingSnapshotWorkspace,reco
  result.paintBatches=snapshotPaintBatches(workspace,snapshot,drawing,result.provenance);return cache.frames.set(key,result);
 }
 export function evaluateRecordingSnapshot(workspace:RecordingSnapshotWorkspace,recordingId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
+ assertRecordingWorkspaceActive(workspace);
  const recording=workspace.recordings.find(r=>r.id===recordingId);if(!recording){if(workspace.snapshots.some(s=>s.id===recordingId))return resolveSnapshot(workspace,recordingId,options);throw Error('Missing recording');}
- if(recording.mode==='endpoint-pair')return evaluateEndpointPair(workspace,recording,options);
- if(recording.mode==='triangulated')return evaluateTriangulatedRecording(workspace,recording,options);
- const at=options.angle??recording.angle,ordered=recording.snapshotIds.map(id=>workspace.snapshots.find(s=>s.id===id)).filter((s):s is RecordingSnapshot=>!!s).sort((a,b)=>Math.hypot(a.angle.x-at.x,a.angle.y-at.y)-Math.hypot(b.angle.x-at.x,b.angle.y-at.y)||a.angle.y-b.angle.y||a.angle.x-b.angle.x||a.id.localeCompare(b.id));
- const snapshotId=options.snapshotId??ordered[0]?.id;if(!snapshotId)throw Error('Recording has no view snapshot');
- if(recording.legacy)return evaluateLegacySnapshot(workspace,recording,snapshotId,{...options,tolerance:options.tolerance??recording.tolerance});
- const result=resolveSnapshot(workspace,snapshotId,{...options,angle:options.angle??recording.angle,tolerance:options.tolerance??recording.tolerance});
- return result;
+ return evaluateTriangulatedRecording(workspace,recording,options);
 }

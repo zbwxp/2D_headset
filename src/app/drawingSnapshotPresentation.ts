@@ -1,3 +1,4 @@
+import {recordingRetirementStatus} from '../domain/recordingSnapshot/retirement';
 import {evaluatedDeformationSource,remapEvaluatedDeformations} from '../domain/drawing/evaluatedDeformation';
 import {emptyDrawing,parseDrawing,type DrawingDocument} from '../domain/drawing/model';
 import type {LandmarkProject} from '../domain/landmarks/model';
@@ -29,7 +30,7 @@ const EMPTY=emptyDrawing();
 /** Every native Drawing tool reads this same immutable presentation. Other
  * workspaces still edit their own original document through their adapter. */
 export function currentDrawingPresentation(project:LandmarkProject,workspaceId='drawing'):DrawingDocument {
- if(workspaceId==='drawing'&&project.recordingSnapshots){const view=drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(view)return view.drawing;}
+ if(workspaceId==='drawing'&&!recordingRetirementStatus(project)&&project.recordingSnapshots){const view=drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working');if(view)return view.drawing;}
  const drawing=project.drawing??EMPTY;return drawing.version===3?drawing:parseDrawing(drawing);
 }
 
@@ -38,6 +39,7 @@ export function currentDrawingPresentation(project:LandmarkProject,workspaceId='
  * retain canonical IDs. Neither the result nor its local geometry is a source
  * document: callers must route writes through layerOwners. */
 export function drawingSnapshotPresentation(workspace:RecordingSnapshotWorkspace,artworkId:string):DrawingSnapshotPresentation|undefined {
+ if(recordingRetirementStatus({recordingSnapshots:workspace}))return undefined;
  const cached=presentations.get(workspace)?.get(artworkId);if(cached)return cached;
  const snapshot=drawingSnapshotForArtwork(workspace,artworkId);if(!snapshot?.source)return undefined;
  const evaluation=resolveSnapshot(workspace,snapshot.id,{useDraft:false,diagnostics:'preview',immutableInputs:true});

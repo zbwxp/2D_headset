@@ -1,12 +1,10 @@
 import {type DrawingDocument,type Point2} from '../drawing/model';
 import type {DrawingSnapshotState} from '../drawing/snapshots';
 import {drawingSignature,type VectorRecording} from '../vectorRecording/model';
-import {migrateLegacyRecordingScenes} from '../recordingScene/migration';
-import {recordingSceneSources} from '../recordingScene/sources';
+import {sourceOnlyRecordingWorkspace} from './retirement';
 import type {RecordingScene,RecordingScenes,SceneShapeValue,SceneTrack,Angle} from '../recordingScene/model';
-import {canonicalElementId,drawingSnapshotForArtwork,remapIntervalIdentities,upsertDrawingSource} from './sources';
-import {emptyRecordingSnapshotWorkspace,emptyRecordingSnapshot,emptySnapshotRecording,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotPoseTrack,type SnapshotDeformationState} from './model';
-import {parseRecordingSnapshots} from './persistence';
+import {canonicalElementId,drawingSnapshotForArtwork,remapIntervalIdentities} from './sources';
+import {emptyRecordingSnapshot,emptySnapshotRecording,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotPoseTrack,type SnapshotDeformationState} from './model';
 
 export type LegacySnapshotProject=DrawingSnapshotState&{recordingScenes?:RecordingScenes;vectorRecording?:VectorRecording;recordingSnapshots?:RecordingSnapshotWorkspace};
 const clone=<T,>(value:T):T=>structuredClone(value);
@@ -89,17 +87,11 @@ export function migrateRecordingScene(workspace:RecordingSnapshotWorkspace,scene
  return {recording,snapshots};
 }
 
-/** Deterministic, non-destructive upgrade. The original project text remains a
- * rollback artifact; all new live geometry exists only in the canonical maps. */
-export function ensureRecordingSnapshots<T extends LegacySnapshotProject>(project:T,originalJSON?:string):T&{recordingSnapshots:RecordingSnapshotWorkspace}{
+/** Initialize only the unified source workspace. Old payloads remain untouched
+ * for explicit user review; opening a file never converts or clears them. */
+export function ensureRecordingSnapshots<T extends LegacySnapshotProject>(project:T,_originalJSON?:string):T&{recordingSnapshots:RecordingSnapshotWorkspace}{
  if(project.recordingSnapshots)return project as T&{recordingSnapshots:RecordingSnapshotWorkspace};
- const compatible=migrateLegacyRecordingScenes(project),sources=recordingSceneSources(compatible);let workspace=emptyRecordingSnapshotWorkspace();
- for(const [artworkId,source] of Object.entries(sources))workspace=upsertDrawingSource(workspace,artworkId,source,project.drawingSnapshots?.items.find(item=>item.id===artworkId)?.name??'Current drawing');
- for(const scene of compatible.recordingScenes?.scenes??[]){const migrated=migrateRecordingScene(workspace,scene,sources);workspace.recordings.push(migrated.recording);workspace.snapshots.push(...migrated.snapshots);if(scene.id===compatible.recordingScenes?.activeSceneId)workspace.activeRecordingId=migrated.recording.id;}
- if(!workspace.recordings.length){const recording=emptySnapshotRecording('v2-recording:default','Recording 1'),view=emptyRecordingSnapshot('v2-view:default','View 1');recording.snapshotIds=[view.id];recording.activeSnapshotId=view.id;workspace.recordings.push(recording);workspace.snapshots.push(view);}
- workspace.activeRecordingId??=workspace.recordings[0].id;
- workspace.legacyArchive={format:'landmark-project-json',migrationVersion:2,projectJSON:originalJSON??JSON.stringify(project)};
- return {...project,recordingSnapshots:parseRecordingSnapshots(workspace)};
+ return {...project,recordingSnapshots:sourceOnlyRecordingWorkspace(project)};
 }
 
 /** Returns the exact archived text; opening it uses the usual project parser. */

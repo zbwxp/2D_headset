@@ -23,3 +23,5 @@
 .vr-right .snapshot-drawing-properties{flex:none;overflow:visible;border-bottom:1px solid #3b474d}
 .vr-right .snapshot-drawing-properties .drawing-properties-content{overflow:visible}
 .snapshot-properties-fields{border:0;padding:0;margin:0;min-width:0}
+
+.vr-legacy-review{overflow:auto;padding:24px 32px;max-width:1000px;width:100%;margin:0 auto;box-sizing:border-box}.vr-legacy-review p{line-height:1.6}.vr-legacy-review ul{max-height:130px;overflow:auto}.vr-legacy-actions{display:flex;gap:12px;margin:20px 0}.vr-legacy-confirm{border:1px solid #cc9544;background:#fff5df;padding:18px;margin:16px 0;border-radius:8px}.vr-legacy-confirm button{margin-right:12px}.vr-legacy-review svg{display:block;width:100%;max-height:460px;background:#fff;border:1px solid #ddd;margin-top:12px}.vr-legacy-review select{max-width:360px}

@@ -1,3 +1,4 @@
+import {assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
 import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
@@ -113,6 +114,7 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+ assertRecordingProjectActive(context.project);
  if(edit.kind==='object-locks'){
   const before=context.project,workspace=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,snapshot=workspace.snapshots.find(value=>value.id===edit.snapshotId);if(!snapshot)throw Error('The lock target Snapshot no longer exists.');
   const next=snapshotWithObjectLocks(snapshot,resolveSnapshot(workspace,snapshot.id,{useDraft:true,diagnostics:'preview'}).drawing,edit.changes);

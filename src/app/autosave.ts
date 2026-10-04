@@ -1,3 +1,4 @@
+import {originalProjectFile} from './originalProjectFile';
 import {saveDurableProject} from './projectStorage';
 import {syncPoseSnapshots} from '../domain/recording/poses';
 import type {LandmarkProject} from '../domain/landmarks/model';
@@ -5,6 +6,7 @@ import {count,timed} from '../domain/geometry/diagnostics';
 const viewJSON=new WeakMap<LandmarkProject['views'],string>();
 const snapshotJSON=new WeakMap<NonNullable<LandmarkProject['drawingSnapshots']>,string>();
 export function serializeProject(p:LandmarkProject){
+ const original=originalProjectFile(p);if(original!==undefined)return original;
  if(p.poseRecording&&!p.legacyWorkspaces?.poseRecording){const recording=syncPoseSnapshots(p.poseRecording,p.drawingSnapshots);if(recording!==p.poseRecording)p={...p,poseRecording:recording};}
  let views=viewJSON.get(p.views);if(views===undefined){views=JSON.stringify(p.views);viewJSON.set(p.views,views);count('referenceSerializations');}
  // Archived poses do not change during ordinary drags/edits; serialize them once.
