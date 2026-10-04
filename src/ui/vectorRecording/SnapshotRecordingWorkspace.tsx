@@ -1,3 +1,4 @@
+import {snapshotStrokeFrameInOutputSpace} from '../../domain/recordingSnapshot/strokeTransformFrame';
 import LegacyRecordingReview from './LegacyRecordingReview';
 import {recordingRetirementStatus} from '../../domain/recordingSnapshot/retirement';
 import {applyMirrorEditing} from '../../domain/drawing/mirrorEditing';
@@ -216,7 +217,7 @@ export function retainSnapshotDrawingSelection(selection:DrawingSelection,drawin
 /** Freeze the selected stroke IDs and baseline for one pose-only transaction. */
 export function snapshotStrokeSelectionTransform(evaluation:SnapshotEvaluation,baseline:SnapshotEvaluation,selectedIds:string[],editable:boolean,preview:(commands:SnapshotCommand[]|null)=>void,commit:(commands:SnapshotCommand[])=>void,label='Stroke transform'):RecordingInstanceTransform|undefined{
  const ids=[...selectedIds];
- if(evaluation.endpointPair?.role==='correction'||evaluation.angleSurface?.role==='correction'||!!evaluation.angleSurface&&snapshotUsesControlTargetStages(evaluation,ids)){
+ if(snapshotStrokeFrameInOutputSpace(evaluation,ids)){
   // Response and retained-program targets live in final viewport coordinates. Never apply
   // the nearer basis placement again to this frame or its pointer targets.
   const bounds=selectionBounds(evaluation.drawing,ids);if(!bounds)return undefined;
