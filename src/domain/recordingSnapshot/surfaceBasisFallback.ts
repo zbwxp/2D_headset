@@ -1,10 +1,11 @@
+import {hasEvaluatedDeformation} from '../drawing/evaluatedDeformation';
 import {registerPreparedControlChanges} from './preparedControlChanges';
 import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
 import {drawingControlDependencyIndex,drawingControlEditProof,drawingControlPlanView,prepareDrawingControlEditPlan,applyDrawingControlWrites,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {sub,type DrawingDocument,type Point2} from '../drawing/model';
 import {endpointPairNodeAuthorities} from './endpointPair';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
-import {prepareRecordingContext,resolveRecordingSnapshotBasis,snapshotSurfaceRequiredBases,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
+import {prepareRecordingContext,preparedRecordingContextForEvaluation,resolveRecordingSnapshotBasis,snapshotSurfaceRequiredBases,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluation} from './evaluation';
 import {assertSnapshotObjectsUnlocked} from './objectLocks';
 import {emptySnapshotDeformationState,type Angle,type RecordingSnapshot,type RecordingSnapshotWorkspace,type SnapshotAngleGraph,type SnapshotRecording} from './model';
 import {createSnapshotSurfaceResponseSampler,effectiveSnapshotSurfaceResponses,prepareSnapshotSurfaceTargetEdit,snapshotSurfaceOwnsBasisDraft} from './surfaceTargets';
@@ -87,13 +88,17 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  const frameId=effective.draft?.id??fresh(),layerIds=[...new Set([...effective.draft?.basisAdjustment?.layerIds??[],...evaluation.drawing.layers.filter(l=>implicated.some(c=>l.items.includes(c.id))).map(l=>l.id)])],snapshotIds=[...new Set([...effective.draft?.basisAdjustment?.snapshotIds??[],owner.id])];
  const frame={...effective.draft,id:frameId,angle:{...recording.angle},status:'draft' as const,basisAdjustment:{snapshotIds,layerIds,...solution!.boundActive?{trustRegionLimited:true}:{}}};
  let nextGraph:SnapshotAngleGraph={...graph,correctionFrames:effective.draft?graph.correctionFrames!.map(f=>f===effective.draft?frame:f):[...graph.correctionFrames??[],frame]};
- const responseChanges=new Map<string,SnapshotScalarTarget>(),canBound=!!controlPlan&&!basisEvaluation.state.layerDomains?.length&&!basisEvaluation.state.warps.length&&!owner.inputMirror&&!surface.mirrorContext;
+ // The runtime's inspection mirror wrapper also exists on native negative
+ // angles. Only its positive-angle branch contributes geometry; custom
+ // standalone evaluation objects retain the conservative callback boundary.
+ const activeMirror=recording.angle.x<=0&&preparedRecordingContextForEvaluation(evaluation)?undefined:surface.mirrorContext;
+ const responseChanges=new Map<string,SnapshotScalarTarget>(),canBound=!!controlPlan&&!basisEvaluation.state.layerDomains?.length&&!deformation.layerDomains?.length&&!basisEvaluation.state.warps.length&&!deformation.warps.length&&!owner.inputMirror&&!activeMirror&&!hasEvaluatedDeformation(basisEvaluation.drawing)&&!hasEvaluatedDeformation(sideDrawing);
  const changes=():SnapshotSimplexRevisionChanges=>({structureUnchanged:true,basisControls:new Map([[owner.id,basisPlan.controls]]),responseControls:[...responseChanges.values()]});
  const rememberResponses=(controls:readonly SnapshotScalarTarget[]|undefined)=>{for(const control of controls??[])responseChanges.set(key(control,0),control);};
  const snapshots=workspace.snapshots.map(s=>s===owner?snapshot:s);let stagedGraph:SnapshotAngleGraph|undefined,stagedWorkspace:RecordingSnapshotWorkspace|undefined;
  const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};if(canBound)registerPreparedControlChanges(workspace,stagedWorkspace,recording.id,changes());}return stagedWorkspace!;};
  const candidate=()=>frozen.fork(nextWorkspace());
- const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis,basisPlan);
+ const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis,canBound?basisPlan:undefined);
  // Capture every old output BEFORE changing the bases. Responses may change
  // only in the companion draft to preserve those exact authored outputs.
  const protections=calibrationAngles(graph,recording.angle).map(angle=>({angle,drawing:frozen.sample(recording.id,{angle}).drawing}));

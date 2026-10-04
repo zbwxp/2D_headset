@@ -1,3 +1,4 @@
+import {hasEvaluatedDeformation} from '../drawing/evaluatedDeformation';
 import {registerPreparedControlChanges} from './preparedControlChanges';
 import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
 import {drawingControlEditProof,drawingControlPlanView,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
@@ -51,7 +52,7 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  // while the changed draft gets its own exact replay and dependent mirror.
  if(options.immutableInputs)retainSnapshotSavedEvaluationIdentity(candidate,owner);
  const next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'?resolveRecordingSnapshotBasis(next,recording,owner.id,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}):recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});
- assertSnapshotControlTargetReplay(replay.drawing,wanted,controlPlan);return {snapshot:candidate,...controlPlan&&!evaluation.state.layerDomains?.length&&!evaluation.state.warps.length&&!owner.inputMirror?{changes:{structureUnchanged:true as const,basisControls:new Map([[owner.id,controlPlan.controls]]),responseControls:[]}}:{}};
+ const bounded=controlPlan&&!evaluation.state.layerDomains?.length&&!deformation.layerDomains?.length&&!evaluation.state.warps.length&&!deformation.warps.length&&!owner.inputMirror&&!hasEvaluatedDeformation(evaluation.drawing)&&!hasEvaluatedDeformation(replay.drawing);assertSnapshotControlTargetReplay(replay.drawing,wanted,bounded?controlPlan:undefined);return {snapshot:candidate,...bounded?{changes:{structureUnchanged:true as const,basisControls:new Map([[owner.id,controlPlan.controls]]),responseControls:[]}}:{}};
 }
 
 export function prepareSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,edit:SnapshotDrawingControlTarget):RecordingSnapshotWorkspace {

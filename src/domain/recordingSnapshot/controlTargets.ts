@@ -28,12 +28,23 @@ export function snapshotUsesControlTargetStages(evaluation:SnapshotEvaluation,cu
  return snapshotControlComponents(evaluation.drawing).some(component=>component.some(id=>selected.has(id))&&component.some(id=>!!outputDomain(evaluation,layerFor(evaluation.drawing,id)!.id)||hasNonlinearDeformationFor(evaluation.drawing,id)||includeCollapsed&&!trySnapshotControlInverse(evaluation,layerFor(evaluation.drawing,id)!.id,id)));
 }
 
+const capturePlanStages=new WeakMap<SnapshotEvaluation,WeakMap<DrawingControlEditPlan,boolean>>();
+/** Capture grouping is broader than directly changed controls: a far member of
+ * the same shared-node component can select a common output write stage. Check
+ * this frozen dependency once, before using the narrower numeric control view. */
+function boundedControlCapture(evaluation:SnapshotEvaluation,plan:DrawingControlEditPlan):boolean {
+ let cache=capturePlanStages.get(evaluation);if(!cache){cache=new WeakMap();capturePlanStages.set(evaluation,cache);}const known=cache.get(plan);if(known!==undefined)return known;
+ let bounded=!evaluation.drawing.endpointLinks?.length&&!evaluation.state.layerDomains?.length;
+ if(bounded){const selected=new Set(plan.curveIds);for(const component of snapshotControlComponents(evaluation.drawing))if(component.some(id=>selected.has(id))){if(component.some(id=>hasNonlinearDeformationFor(evaluation.drawing,id))||new Set(component.map(id=>JSON.stringify(snapshotControlMatrix(evaluation,layerFor(evaluation.drawing,id)!.id,id)))).size>1){bounded=false;break;}}}
+ cache.set(plan,bounded);return bounded;
+}
+
 /** Resolve one frozen final-space target into its existing write stages. A
  * relation component spanning stages receives one common sparse output owner;
  * its identity field preserves all existing input programs and live membership.
  * This is an explicit post-control stage, never an inverse fit of cage handles. */
 export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,wanted:DrawingDocument,own:SnapshotDeformationState,fresh:()=>string,controlPlan?:DrawingControlEditPlan):SnapshotDeformationState {
- const trusted=controlPlan&&drawingControlEditProof(controlPlan.before,wanted,controlPlan),bounded=trusted&&!evaluation.drawing.endpointLinks?.length&&!evaluation.state.layerDomains?.length;
+ const trusted=controlPlan&&drawingControlEditProof(controlPlan.before,wanted,controlPlan),bounded=trusted&&boundedControlCapture(evaluation,trusted);
  const before=bounded?drawingControlPlanView(evaluation.drawing,trusted):evaluation.drawing;
  if(bounded)wanted=drawingControlPlanView(wanted,trusted);
  const state=structuredClone(own),curves=new Map(before.curves.map(curve=>[curve.id,curve])),nodes=new Map(before.nodes.map(node=>[node.id,node])),targets=new Map(wanted.curves.map(curve=>[curve.id,curve])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node]));
