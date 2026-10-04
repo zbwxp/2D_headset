@@ -34,3 +34,12 @@ it('Drawing transform keeps authored ARC edits while Recording controls retain t
  const drawingPlan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:ids}),drawingTarget=applyDrawingControlEditPlan(drawingPlan,{kind:'transform',value}),expected=transform(before,ids,p=>applyScenePlacement(value,p));expect(drawingTarget).toEqual(expected);expect(drawingTarget.curves).toHaveLength(before.curves.length);expect(drawingTarget.joins[0].radius).toBeCloseTo(.16,12);expect(drawingControlEditProof(before,drawingTarget,drawingPlan)).toBeUndefined();
  const recordingPlan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:ids,preserveRelations:true}),recordingTarget=applyDrawingControlEditPlan(recordingPlan,{kind:'transform',value});expect(recordingTarget.joins).toBe(before.joins);expect(recordingTarget.curves.map(curve=>curve.handles)).toEqual(expected.curves.map(curve=>curve.handles));
 });
+
+it('ARC handle plans retain the canonical zero-length guard without making the partner writable',()=>{
+ const before=fixture(100);before.mirrorEditing=undefined;before.endpointLinks=[];before.curves[1].nodes[0]='a1';before.curves[1].handles[0]=[1.2,1.3];before.nodes=before.nodes.filter(node=>node.id!=='b0');before.joins=[{id:'arc',a:{curveId:'a',end:1},b:{curveId:'b',end:0},mode:'ARC',radius:.08}];
+ const endpoint={curveId:'a',end:1 as const},plan=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint}),collapsed=before.nodes.find(node=>node.id==='a1')!.position,saved=JSON.stringify(before);
+ expect(plan.curveIds).toEqual(['a']);expect(plan.controls).toEqual([{kind:'handle',...endpoint}]);
+ expect(()=>moveHandle(before,endpoint,collapsed)).toThrow('连接柄不能缩为零');expect(()=>applyDrawingControlEditPlan(plan,{kind:'point',position:collapsed})).toThrow('连接柄不能缩为零');
+ const position:Point2=[.7,.8],stats=drawingControlEditStats(),actual=applyDrawingControlEditPlan(plan,{kind:'point',position}),expected=moveHandle(before,endpoint,position);
+ expect(actual).toEqual(expected);expect(actual.curves[1]).toBe(before.curves[1]);expect(actual.joins).toBe(before.joins);expect(drawingControlEditProof(before,actual,plan)).toBe(plan);expect(drawingControlEditStats().authoredCurves-stats.authoredCurves).toBe(2);expect(JSON.stringify(before)).toBe(saved);
+});
