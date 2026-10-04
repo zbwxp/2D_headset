@@ -7,7 +7,7 @@ import {interpolateSnapshotSimplexGeometry,type SnapshotScalarTarget} from './si
 import {captureSnapshotMaterialRecipe,evaluateSnapshotMaterialRecipe,restrictSnapshotMaterialRecipes} from './materialRestriction';
 import {unprovenSnapshotSmoothResponses} from './responseExpressionSmooth';
 import {sub,type DrawingDocument} from '../drawing/model';
-import {evaluateRecordingSnapshot,resolveSnapshot} from './evaluation';
+import {evaluateRecordingSnapshot,resolveSnapshot,snapshotSurfaceBasesAtAngle} from './evaluation';
 import {reconcileSnapshotAngleGraphMesh,validateSnapshotAngleGraph} from './angleGraph';
 import {insertSnapshotVertex,locateSnapshotSimplex,type SnapshotSimplexLocation} from './triangulation';
 import {createSnapshotResponseFieldWeightMapper,snapshotResponseExpressionFor} from './responseExpressionRegistry';
@@ -41,7 +41,7 @@ function captureRealView(workspace:RecordingSnapshotWorkspace,recording:Snapshot
  const replay=resolveSnapshot({...workspace,snapshots:[...workspace.snapshots,next]},next.id,{useDraft:false,diagnostics:'preview'}).drawing;
  for(const node of evaluated.drawing.nodes){const actual=replay.nodes.find(value=>value.id===node.id);if(!actual||actual.position.some((value,axis)=>Math.abs(value-node.position[axis])>1e-10*Math.max(1,Math.abs(value))))fail(`New real view cannot exactly replay node ${node.id}.`);}
  for(const curve of evaluated.drawing.curves){const actual=replay.curves.find(value=>value.id===curve.id);if(!actual||actual.handles.some((point,end)=>point.some((value,axis)=>Math.abs(value-curve.handles[end][axis])>1e-10*Math.max(1,Math.abs(value)))))fail(`New real view cannot exactly replay handle ${curve.id}.`);}
- return {view:next,drawing:evaluated.drawing,bases:surface.allBases,location:surface.simplex};
+ return {view:next,drawing:evaluated.drawing,bases:snapshotSurfaceBasesAtAngle(surface,view.angle),location:surface.simplex};
 }
 
 /** Restrict independent old fields and subtract their values at new real

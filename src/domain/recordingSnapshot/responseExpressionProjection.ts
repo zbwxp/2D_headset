@@ -45,15 +45,23 @@ export function remapSnapshotSmoothContracts(expression:SnapshotResponseExpressi
 }
 export const snapshotProjectionScalarKey=(target:SnapshotScalarTarget,axis:0|1)=>JSON.stringify([target.kind,target.kind==='node'?target.nodeId:target.curveId,target.kind==='handle'?target.end:null,axis]);
 export interface SnapshotProjectionScalarSample {baseline:number;corrected:number;baselineCorners:readonly number[];correctedCorners:readonly number[];weights:readonly number[]}
-/** Native corrections remain in the exact same original component frame.
- * Applying a correction of zero returns the projected baseline untouched. */
-export function projectSnapshotResponseCorrections(drawing:DrawingDocument,responses:SnapshotExpressionResponses|undefined,samples:ReadonlyMap<string,SnapshotProjectionScalarSample>):{drawing:DrawingDocument;diagnostics:string[]} {
+/** Persisted positive contracts keep their original scales and ownership.
+ * Runtime inherited components fill only the remaining endpoint sets. */
+export function snapshotResponseProjectionContracts(responses:SnapshotExpressionResponses|undefined,inherited:readonly SnapshotSmoothProjectionContract[]=[]):SnapshotSmoothProjectionContract[] {
  const contracts=new Map<string,SnapshotSmoothProjectionContract>();
  for(const pair of Object.values(responses?.handles??{}))for(const response of pair)for(const expression of Object.values(response))for(const contract of expression.smoothContracts??[])contracts.set(contract.id,contract);
- if(!contracts.size)return applyEndpointPairSmoothConstraints(drawing);
+ const owned=new Set([...contracts.values()].flatMap(contract=>contract.targets.map(target=>smoothEndpointKey(target.endpoint))));
+ for(const contract of inherited)if(contract.targets.every(target=>!owned.has(smoothEndpointKey(target.endpoint)))){contracts.set(contract.id,contract);contract.targets.forEach(target=>owned.add(smoothEndpointKey(target.endpoint)));}
+ return [...contracts.values()];
+}
+/** Native corrections remain in the exact same original component frame.
+ * Applying a correction of zero returns the projected baseline untouched. */
+export function projectSnapshotResponseCorrections(drawing:DrawingDocument,responses:SnapshotExpressionResponses|undefined,samples:ReadonlyMap<string,SnapshotProjectionScalarSample>,inherited:readonly SnapshotSmoothProjectionContract[]=[]):{drawing:DrawingDocument;diagnostics:string[]} {
+ const contracts=snapshotResponseProjectionContracts(responses,inherited);
+ if(!contracts.length)return applyEndpointPairSmoothConstraints(drawing);
  const curves=new Map(drawing.curves.map(curve=>[curve.id,curve])),nodes=new Map(drawing.nodes.map(node=>[node.id,node.position])),authorities=endpointPairNodeAuthorities(drawing),owned=new Set<string>(),diagnostics:string[]=[];
  const scalar=(target:SnapshotScalarTarget,axis:0|1,kind:'baseline'|'corrected',fallback:number)=>samples.get(snapshotProjectionScalarKey(target,axis))?.[kind]??fallback;
- for(const contract of contracts.values()){
+ for(const contract of contracts){
   if(!contract.targets.every(({endpoint})=>curves.has(endpoint.curveId)))continue;
   const input=(kind:'baseline'|'corrected',corner?:number)=>contract.targets.map(({endpoint})=>{const curve=curves.get(endpoint.curveId)!,nodeId=curve.nodes[endpoint.end],authority=authorities.get(nodeId)??nodeId,node=nodes.get(nodeId)!,handle=curve.handles[endpoint.end];const value=(target:SnapshotScalarTarget,axis:0|1,fallback:number)=>corner===undefined?scalar(target,axis,kind,fallback):samples.get(snapshotProjectionScalarKey(target,axis))?.[kind==='baseline'?'baselineCorners':'correctedCorners'][corner]??fallback;return {node:([0,1] as const).map(axis=>value({kind:'node',nodeId:authority},axis,node[axis])) as Point2,vector:([0,1] as const).map(axis=>value({kind:'handle',...endpoint},axis,handle[axis]-node[axis])) as Point2};});
   const baseline=input('baseline'),corrected=input('corrected'),unchanged=baseline.every((value,index)=>value.node.every((coordinate,axis)=>coordinate===corrected[index].node[axis])&&value.vector.every((coordinate,axis)=>coordinate===corrected[index].vector[axis]));
@@ -72,12 +80,11 @@ export function projectSnapshotResponseCorrections(drawing:DrawingDocument,respo
 /** Invert the retained component's length/direction law before solving scalar
  * response weights. Final projected axes are coupled: an unchanged final axis
  * can still require a different raw coordinate when the other axis changes. */
-export function unprojectSnapshotResponseTarget(wanted:DrawingDocument,responses:SnapshotExpressionResponses|undefined,samples:ReadonlyMap<string,SnapshotProjectionScalarSample>,available:(target:SnapshotScalarTarget,axis:0|1)=>boolean):DrawingDocument {
- const contracts=new Map<string,SnapshotSmoothProjectionContract>();
- for(const pair of Object.values(responses?.handles??{}))for(const response of pair)for(const expression of Object.values(response))for(const contract of expression.smoothContracts??[])contracts.set(contract.id,contract);
- if(!contracts.size)return wanted;
+export function unprojectSnapshotResponseTarget(wanted:DrawingDocument,responses:SnapshotExpressionResponses|undefined,samples:ReadonlyMap<string,SnapshotProjectionScalarSample>,available:(target:SnapshotScalarTarget,axis:0|1)=>boolean,inherited:readonly SnapshotSmoothProjectionContract[]=[]):DrawingDocument {
+ const contracts=snapshotResponseProjectionContracts(responses,inherited);
+ if(!contracts.length)return wanted;
  const curves=new Map(wanted.curves.map(curve=>[curve.id,curve])),nodes=new Map(wanted.nodes.map(node=>[node.id,node.position])),authorities=endpointPairNodeAuthorities(wanted);
- for(const contract of contracts.values()){
+ for(const contract of contracts){
   if(!contract.targets.every(({endpoint})=>curves.has(endpoint.curveId)))continue;
   const input=(kind:'baseline'|'corrected',corner?:number)=>contract.targets.map(({endpoint})=>{
    const curve=curves.get(endpoint.curveId)!,nodeId=curve.nodes[endpoint.end],authority=authorities.get(nodeId)??nodeId,node=nodes.get(nodeId)!,handle=curve.handles[endpoint.end];

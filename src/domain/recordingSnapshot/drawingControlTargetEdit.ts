@@ -1,6 +1,6 @@
 import {uid,type DrawingDocument} from '../drawing/model';
 import {captureSnapshotControlTargets,assertSnapshotControlTargetReplay} from './controlTargets';
-import {evaluateRecordingSnapshot,resolveSnapshot,type SnapshotEvaluation} from './evaluation';
+import {evaluateRecordingSnapshot,resolveSnapshot,snapshotSurfaceBasesAtAngle,type SnapshotEvaluation} from './evaluation';
 import {assertSnapshotObjectsUnlocked} from './objectLocks';
 import {prepareSnapshotSurfaceTargetEdit,effectiveSnapshotSurfaceResponses} from './surfaceTargets';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type SnapshotRecording,type RecordingSnapshot,type Angle,type SnapshotAngleGraph} from './model';
@@ -25,7 +25,7 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const graph=recording.mode==='triangulated'?recording.angleGraph:undefined,vertex=graph?.mesh.vertices.find(value=>value.angle.x===recording.angle.x&&value.angle.y===recording.angle.y);
  if(graph&&!vertex){
   const surface=evaluation.angleSurface;if(!surface?.simplex||surface.role==='outside')fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
-  const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:surface!.allBases});
+  const result=prepareSnapshotSurfaceTargetEdit(graph,surface!.simplex!,surface!.bases.map(base=>({snapshotId:base.snapshotId,drawing:base.drawing,angle:graph.mesh.vertices.find(vertex=>vertex.snapshotId===base.snapshotId)!.angle})),current,wanted,{angle:recording.angle,frameId:effectiveSnapshotSurfaceResponses(graph).draft?.id??fresh(),allBases:snapshotSurfaceBasesAtAngle(surface!,recording.angle),mirror:surface!.mirrorContext});
   return result.changed?{graph:result.graph}:{};
  }
  const owner=workspace.snapshots.find(value=>value.id===(vertex?.snapshotId??evaluation.snapshotId))??fail('MISSING_SNAPSHOT','The geometry target Snapshot no longer exists.');
