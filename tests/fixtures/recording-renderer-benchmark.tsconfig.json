@@ -1,0 +1,1 @@
+{"extends":"../../tsconfig.json","include":["recording-renderer-benchmark.tsx","recording-renderer-benchmark-fixture.ts","../../src/vite-env.d.ts"]}
