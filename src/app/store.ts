@@ -1,9 +1,9 @@
-import {assertPreparedEditCurrent,invalidatePreparedEdits} from './preparedEditRevision';
+import {invalidatePreparedEdits} from './preparedEditRevision';
 import {retainOriginalProjectFile} from './originalProjectFile';
 import {recordingRetirementStatus,clearRecordingRelationships,RECORDING_RETIRED_MESSAGE,assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
 import {syncRecordingSnapshotSources} from '../domain/recordingSnapshot/sources';
-import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
+import {finalizePreparedSnapshotEdit,prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from './snapshotEditTransaction';
 import {parseDrawingSnapshots,parseDrawingWorkingCopies} from '../domain/drawing/snapshots';
 import {parseRecordingScenes} from '../domain/recordingScene/persistence';
 import {syncVectorRecordingSources,recordingSourceBaselines,loadKnownRecordingSourceBaselines} from './vectorSourceSync';
@@ -288,7 +288,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
     if('past' in patch||'future' in patch){editBase=null;activeHistory=null;abandonedFuture=null;}
     set({...patch,...('past' in patch&&!('historyPast' in patch)?{historyPast:patch.past.map(()=>null)}:{}),...('future' in patch&&!('historyFuture' in patch)?{historyFuture:patch.future.map(()=>null)}:{})});
   };
-  const applySnapshotEdit=(plan:SnapshotEditPlan)=>{assertPreparedEditCurrent(plan);if(!plan.changed)return;if(get().project!==plan.before)throw Error('The project changed before the snapshot edit could be applied.');set({project:plan.project});persist(plan.project);};
+  const applySnapshotEdit=(accepted:SnapshotEditPlan)=>{const plan=finalizePreparedSnapshotEdit(accepted,get().project);if(!plan.changed)return;set({project:plan.project});persist(plan.project);};
   const propagate=(next:LandmarkProject,directCurve?:string)=>{
     const end=timed('dependencyPropagation');const base=editBase??get().project;
     const affected=dirtyDescendants(base,next).curves;
@@ -311,7 +311,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
       const project=clearRecordingRelationships(expected);get().endEdit();get().beginEdit();
       try{set({project,projectSessionId:get().projectSessionId+1,message:'已保留源画稿，清空全部录制关系；可以重新建立录制。'});persist(project);}finally{get().endEdit();}
     },
-    commitPreparedSnapshotEdit:(plan)=>{assertPreparedEditCurrent(plan);if(get().project!==plan.before)throw Error('Snapshot edit became stale before commit.');if(!plan.changed)return;get().beginEdit();try{applySnapshotEdit(plan);}finally{get().endEdit();}},
+    commitPreparedSnapshotEdit:(accepted)=>{const plan=finalizePreparedSnapshotEdit(accepted,get().project);if(!plan.changed)return;get().beginEdit();try{applySnapshotEdit(plan);}finally{get().endEdit();}},
     commitArtworkCleanup:(expected,next)=>{
       assertSourceEditable();assertRecordingProjectActive(get().project);if(get().project!==expected)throw Error('工程在预览后已变更，请重新检查整理清单。');
       const allowed=new Set(['drawing','drawingSnapshots','drawingWorkingCopies','recordingScenes','vectorRecording']);
@@ -323,7 +323,7 @@ export const useEditor = create<State>((rawSet, get, api) => {
       if(next.vectorRecording)parseVectorRecording(next.vectorRecording);
       if(next===expected)return;get().beginEdit();try{set({project:next});persist(next);}finally{get().endEdit();}
     },
-    setRecordingSnapshots:(workspace)=>applySnapshotEdit(prepareSnapshotEdit(snapshotEditContext(get().project,canEditSource()),{kind:'snapshot-state',workspace,validation:'preview'})),
+    setRecordingSnapshots:(workspace)=>applySnapshotEdit(prepareSnapshotEdit(snapshotEditContext(get().project,canEditSource()),{kind:'snapshot-state',workspace})),
     commitRecordingSnapshots:(workspace)=>{const plan=prepareSnapshotEdit(snapshotEditContext(get().project,canEditSource()),{kind:'snapshot-state',workspace});if(!plan.changed)return;get().beginEdit();try{applySnapshotEdit(plan);}finally{get().endEdit();}},
     setRecordingScenes:()=>{throw Error(RECORDING_RETIRED_MESSAGE);},
     commitRecordingScenes:()=>{throw Error(RECORDING_RETIRED_MESSAGE);},

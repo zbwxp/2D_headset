@@ -1,4 +1,4 @@
-import {currentPreparedEditRevision} from './preparedEditRevision';
+import {assertPreparedEditCurrent,currentPreparedEditRevision} from './preparedEditRevision';
 import {shareValidatedRecordingWorkspace} from '../domain/recordingSnapshot/workspaceChanges';
 import {retainPreparedControlChanges} from '../domain/recordingSnapshot/preparedControlChanges';
 import {assertRecordingProjectActive} from '../domain/recordingSnapshot/retirement';
@@ -9,16 +9,16 @@ import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {hasNonlinearDeformationFor,evaluatedMaterialProgram} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
-import {prepareDrawingLayerDomainEdit} from './drawingSnapshotEdit';
+import {buildDrawingLayerDomainEdit,buildDrawingSnapshotEdit,type DrawingSnapshotEditIntent} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
-import type {DrawingDocument} from '../domain/drawing/model';
+import {parseDrawing,type DrawingDocument} from '../domain/drawing/model';
 import {applyLayerEditIntent,curveSplitIntents,type LayerEditIntent,type CurveSplitIntent,type LayerDomainIntent} from '../domain/drawing/layerEditIntent';
 import {transferSnapshotSplitResponses,pruneSnapshotResponseDependencies} from '../domain/recordingSnapshot/responseExpressionTransactions';
 import {canonicalSnapshotLayerEditIntent,prepareSnapshotCurveSplits,finishSnapshotCurveSplits,splitSnapshotLocalCurve,type SnapshotCurveSplitBatchPlan} from '../domain/recordingSnapshot/topologyEdits';
-import type {DrawingSnapshotState} from '../domain/drawing/snapshots';
+import {parseDrawingSnapshots,parseDrawingWorkingCopies,type DrawingSnapshotState} from '../domain/drawing/snapshots';
 import type {RecordingSnapshot,RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
-import {finalizeGeometryEdit} from '../domain/drawing/geometryEdit';
+import {finalizeGeometryEdit,retainFinalizedGeometry} from '../domain/drawing/geometryEdit';
 import {assertDisplayRouteSupport} from '../domain/drawing/displayRouteInk';
 import {validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
@@ -45,11 +45,13 @@ export type SnapshotEdit =
  | {kind:'object-locks';snapshotId:string;changes:SnapshotObjectLocks}
  | ({kind:'recording-layer-domain'}&RecordingLayerDomainEdit)
  | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
+ | {kind:'drawing-document';drawing:DrawingDocument;intent?:DrawingSnapshotEditIntent}
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
  | ({kind:'local-drawing-topology'}&SnapshotDrawingTopologyEdit)
  | ({kind:'snapshot-local-drawing'}&SnapshotLocalDrawingEdit)
  | {kind:'local-curve-split';snapshotId:string;intent:CurveSplitIntent}
+ | {kind:'snapshot-build';build:(workspace:RecordingSnapshotWorkspace)=>RecordingSnapshotWorkspace;validation?:'full'|'preview'}
  | {kind:'snapshot-state';workspace:RecordingSnapshotWorkspace;validation?:'full'|'preview'};
 export interface SnapshotEditPlan {
  readonly preparedRevision?:number;
@@ -59,6 +61,58 @@ export interface SnapshotEditPlan {
  readonly diagnostics?:readonly {code:string;message:string;snapshotId?:string}[];
 }
 const same=(before:unknown,after:unknown)=>before===after||JSON.stringify(before)===JSON.stringify(after);
+
+// The receipt is runtime-only. Spreading a plan to add adapter metadata keeps
+// it, while JSON and a caller-supplied revision cannot manufacture acceptance.
+const receiptKey=Symbol('prepared snapshot edit');
+type ValidationStage='full'|'preview';
+interface PreparedReceipt {
+ readonly before:LandmarkProject;
+ readonly project:LandmarkProject;
+ readonly changed:boolean;
+ readonly revision:number;
+ readonly validation:ValidationStage;
+ finalized?:SnapshotEditPlan;
+}
+const receipts=new WeakMap<object,PreparedReceipt>();
+const frozenValues=new WeakSet<object>();
+function freezeCandidate(value:unknown):void {
+ if(!value||typeof value!=='object'||frozenValues.has(value))return;
+ frozenValues.add(value);for(const child of Object.values(value))freezeCandidate(child);Object.freeze(value);
+}
+function issuePreparedEdit(plan:SnapshotEditPlan,validation:ValidationStage,revision=currentPreparedEditRevision()):SnapshotEditPlan {
+ if(plan.changed)freezeCandidate(plan.project);
+ const token=Object.freeze({}),result={...plan,preparedRevision:revision,[receiptKey]:token};
+ receipts.set(token,{before:result.before,project:result.project,changed:result.changed,revision,validation});return result;
+}
+function preparedReceipt(plan:SnapshotEditPlan):PreparedReceipt {
+ const token=(plan as SnapshotEditPlan&{[receiptKey]?:object})[receiptKey],receipt=token&&receipts.get(token);
+ if(!receipt||receipt.before!==plan.before||receipt.project!==plan.project||receipt.changed!==plan.changed||receipt.revision!==plan.preparedRevision)throw Error('This snapshot edit has no valid prepared acceptance receipt. Prepare the edit again.');
+ assertPreparedEditCurrent(plan);return receipt;
+}
+/** Finish an accepted preview without running its target producer, inverse,
+ * source synchronization or propagation again. A full plan is already done.
+ * The cached upgrade preserves normalizer output and runs at most once. */
+export function finalizePreparedSnapshotEdit<T extends SnapshotEditPlan>(plan:T,currentProject?:LandmarkProject):T {
+ const receipt=preparedReceipt(plan);
+ if(currentProject!==undefined&&currentProject!==receipt.before)throw Error('Snapshot edit became stale before commit.');
+ if(receipt.validation==='full'||!plan.changed)return plan;
+ if(!receipt.finalized){
+  const candidate=receipt.project,workspace=candidate.recordingSnapshots;
+  const recordingSnapshots=workspace&&shareValidatedRecordingWorkspace(workspace,parseRecordingSnapshots(workspace));
+  if(workspace&&recordingSnapshots)retainPreparedControlChanges(recordingSnapshots,workspace);
+  const project=recordingSnapshots===workspace?candidate:{...candidate,recordingSnapshots};
+  receipt.finalized=issuePreparedEdit({before:plan.before,project,changed:plan.changed},'full',receipt.revision);
+ }
+ return {...plan,...receipt.finalized} as T;
+}
+/** Compose only a contiguous chain of accepted owner transactions. No caller
+ * can certify an arbitrary project by copying a revision or a native flag. */
+export function composePreparedSnapshotEdits(before:LandmarkProject,steps:readonly SnapshotEditPlan[]):SnapshotEditPlan {
+ let project=before,validation:ValidationStage='full';const diagnostics:NonNullable<SnapshotEditPlan['diagnostics']>[number][]=[];
+ for(const step of steps){const receipt=preparedReceipt(step);if(step.before!==project)throw Error('Prepared snapshot edits must form one exact project sequence.');project=step.project;if(receipt.validation==='preview')validation='preview';if(step.diagnostics)diagnostics.push(...step.diagnostics);}
+ return issuePreparedEdit({before,project,changed:project!==before,...(diagnostics.length?{diagnostics}:{})},validation);
+}
 const sourceOnly=(snapshot:RecordingSnapshot)=>({
  kind:snapshot.kind,source:snapshot.source,
  layers:snapshot.layers.filter(layer=>layer.kind==='original'&&drawingSourceOwns(snapshot,layer.id)).map(({membership,...layer})=>layer),
@@ -106,7 +160,13 @@ function assertCoupledBasisEditOwnership(original:RecordingSnapshotWorkspace|und
 /** Preserve old adapters/checkpoints without making them a second authority
  * for Recording edits. Only an original-source transaction refreshes them. */
 function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotState,splitPlan?:SnapshotCurveSplitBatchPlan):LandmarkProject{
- const prepared=prepareDrawingWorkingCopyTransition(before,incoming),{drawing,drawingSnapshots,drawingWorkingCopies}=prepared.state,promotion=prepared.promotedWorkingArtworkId;
+ const prepared=prepareDrawingWorkingCopyTransition(before,incoming),raw=prepared.state,promotion=prepared.promotedWorkingArtworkId;
+ const checkedDrawing=raw.drawing&&raw.drawing!==before.drawing?parseDrawing(raw.drawing):raw.drawing;
+ const drawing=raw.drawing&&checkedDrawing?(same(raw.drawing,checkedDrawing)?raw.drawing:retainFinalizedGeometry(checkedDrawing,raw.drawing)):checkedDrawing;
+ const checkedSnapshots=raw.drawingSnapshots&&raw.drawingSnapshots!==before.drawingSnapshots?parseDrawingSnapshots(raw.drawingSnapshots):raw.drawingSnapshots;
+ const drawingSnapshots=same(raw.drawingSnapshots,checkedSnapshots)?raw.drawingSnapshots:checkedSnapshots;
+ const checkedCopies=raw.drawingWorkingCopies&&raw.drawingWorkingCopies!==before.drawingWorkingCopies?parseDrawingWorkingCopies(raw.drawingWorkingCopies,drawingSnapshots):raw.drawingWorkingCopies;
+ const drawingWorkingCopies=same(raw.drawingWorkingCopies,checkedCopies)?raw.drawingWorkingCopies:checkedCopies;
  if(drawing){assertDisplayRouteSupport(drawing);validateMirrorEditing(drawing);}
  const vectorRecording=promotion&&before.vectorRecording?{...before.vectorRecording,rigs:before.vectorRecording.rigs.map(rig=>rig.artworkId==='$working'?{...rig,artworkId:promotion}:rig)}:before.vectorRecording;
  const project:LandmarkProject={...before,drawing,drawingSnapshots,drawingWorkingCopies,
@@ -137,11 +197,19 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * also validate before opening history; source gestures retain their caller's
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
- const preparedRevision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);return {...plan,preparedRevision};
+ if(context.workspace!==context.project.recordingSnapshots)throw Error('The snapshot edit context must belong to its exact project.');
+ const revision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);
+ if(revision!==currentPreparedEditRevision())throw Error('This prepared edit was canceled during preparation.');
+ if(receiptKey in plan){preparedReceipt(plan);return plan;}
+ return issuePreparedEdit(plan,edit.kind==='snapshot-state'&&edit.validation==='preview'?'preview':'full',revision);
 }
 function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  assertRecordingProjectActive(context.project);
  assertCoupledBasisEditOwnership(context.workspace,edit);
+ if(edit.kind==='snapshot-build'){
+  const workspace=context.workspace??ensureRecordingSnapshots(context.project).recordingSnapshots;freezeCandidate(workspace);
+  return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:edit.build(workspace),validation:edit.validation});
+ }
  if(edit.kind==='object-locks'){
   const before=context.project,workspace=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,snapshot=workspace.snapshots.find(value=>value.id===edit.snapshotId);if(!snapshot)throw Error('The lock target Snapshot no longer exists.');
   const next=snapshotWithObjectLocks(snapshot,resolveSnapshot(workspace,snapshot.id,{useDraft:true,diagnostics:'preview'}).drawing,edit.changes);
@@ -149,7 +217,11 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:{...workspace,snapshots:workspace.snapshots.map(value=>value===snapshot?next:value)}});
  }
  if(edit.kind==='recording-layer-domain')return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:prepareRecordingLayerDomainWorkspace(context.project,edit),validation:edit.validation});
- if(edit.kind==='layer-domain')return prepareDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
+ if(edit.kind==='layer-domain')return buildDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
+ if(edit.kind==='drawing-document'){
+  if(!context.canEditOriginals)throw Error('Drawing document edits require the original-source adapter in Drawing mode.');
+  return buildDrawingSnapshotEdit(context.project,edit.drawing,edit.intent);
+ }
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
  if(edit.kind==='local-drawing-topology'||edit.kind==='snapshot-local-drawing'){
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots,result=edit.kind==='local-drawing-topology'?prepareSnapshotDrawingTopologyEdit(original,edit):prepareSnapshotLocalDrawingEdit(original,edit);
@@ -166,7 +238,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
  if(edit.kind==='snapshot-state'){
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots;
   assertOriginalsUnchanged(original,edit.workspace);
-  const propagated=propagateAutomaticSnapshotLayers(original,edit.workspace).workspace;
+  const propagation=propagateAutomaticSnapshotLayers(original,edit.workspace),propagated=propagation.workspace;diagnostics=propagation.diagnostics;
   const recordingSnapshots=edit.validation==='preview'?propagated:shareValidatedRecordingWorkspace(original,parseRecordingSnapshots(propagated));
   if(propagated===edit.workspace)retainPreparedControlChanges(recordingSnapshots,edit.workspace);
   project=recordingSnapshots===context.workspace?before:{...before,recordingSnapshots};
@@ -186,7 +258,8 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   project=prepareOriginalState(before,state,splitPlan);
   if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
  }
- if(project.recordingSnapshots&&edit.kind!=='snapshot-state'&&edit.intent)project={...project,recordingSnapshots:parseRecordingSnapshots(project.recordingSnapshots)};
+ if(project.recordingSnapshots&&edit.kind!=='snapshot-state')project={...project,recordingSnapshots:shareValidatedRecordingWorkspace(context.workspace,parseRecordingSnapshots(project.recordingSnapshots))};
+ if(edit.kind!=='snapshot-state'&&same(project,before))project=before;
  return {before,project,changed:project!==before,...(diagnostics?{diagnostics}:{})};
 }
 

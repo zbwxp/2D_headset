@@ -5,5 +5,5 @@ let revision=0;
 export const currentPreparedEditRevision=()=>revision;
 export function invalidatePreparedEdits():void {revision++;}
 export function assertPreparedEditCurrent(plan:{readonly preparedRevision?:number}):void {
- if(plan.preparedRevision!==undefined&&plan.preparedRevision!==revision)throw Error('This prepared edit is stale, canceled or superseded. Start the gesture again.');
+ if(plan.preparedRevision!==revision)throw Error('This prepared edit is stale, canceled or superseded. Start the gesture again.');
 }

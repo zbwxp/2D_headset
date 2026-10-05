@@ -11,7 +11,7 @@ import type {LandmarkProject} from '../../domain/landmarks/model';
 import {layerFor,type DrawingDocument,type DisplayInterval,type StrokeDisplayIntervals} from '../../domain/drawing/model';
 import type {DrawingCommandIntent} from '../drawing/endpointInteraction';
 import type {SnapshotCommand} from '../../domain/recordingSnapshot/commands';
-import {prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from '../../app/snapshotEditTransaction';
+import {composePreparedSnapshotEdits,prepareSnapshotEdit,snapshotEditContext,type SnapshotEditPlan} from '../../app/snapshotEditTransaction';
 import {prepareSnapshotBatch,prepareSnapshotPreview} from '../../app/recordingSnapshotApi';
 import type {Angle} from '../../domain/recordingSnapshot/model';
 
@@ -48,7 +48,7 @@ export interface SnapshotDrawingPropertyEdit {recordingId:string;snapshotId:stri
  * boundary. Never replace the source Drawing or serialize evaluated geometry. */
 export function prepareSnapshotDrawingPropertyEdit(project:LandmarkProject,edit:SnapshotDrawingPropertyEdit):SnapshotEditPlan{
  const commands=snapshotDrawingIntervalCommands(edit.beforeDrawing,edit.drawing);
- if(commands){if(!commands.length)return {before:project,project,changed:false};
+ if(commands){if(!commands.length)return composePreparedSnapshotEdits(project,[]);
   const workspace=project.recordingSnapshots! ,recording=workspace.recordings.find(value=>value.id===edit.recordingId)!,evaluation=evaluateRecordingSnapshot(workspace,edit.recordingId,{useDraft:true,diagnostics:'preview'});
   if(!same(contents(evaluation.drawing),contents(edit.beforeDrawing))||!same(evaluation.drawing.displayIntervals,edit.beforeDrawing.displayIntervals))throw Error('The Snapshot changed during this property edit. Start the edit again.');
   const correction=evaluation.angleSurface?.role==='correction'||evaluation.endpointPair?.role==='correction';
@@ -60,7 +60,7 @@ export function prepareSnapshotDrawingPropertyEdit(project:LandmarkProject,edit:
    const track=edit.drawing.displayIntervals!.find(track=>track.id===command.sourceTrackId)!,material=snapshotIntervalMaterialSource(evaluation,track.id),range=transportEndpointPairMaterial(edit.beforeDrawing,track,material,[]).ranges.find(range=>range.id===command.rangeId)!;
    return {...command,...(command.start!==undefined?{start:range.start}:{}),...(command.end!==undefined?{end:range.end}:{})};
   });
-  const result=(edit.validation==='preview'?prepareSnapshotPreview:prepareSnapshotBatch)(project,{recordingId:edit.recordingId,commands:mapped});return {before:project,project:result.changed?{...project,recordingSnapshots:result.recordingSnapshots}:project,changed:result.changed,diagnostics:result.diagnostics};
+  const result=(edit.validation==='preview'?prepareSnapshotPreview:prepareSnapshotBatch)(project,{recordingId:edit.recordingId,commands:mapped});return {...result.preparedPlan,diagnostics:result.diagnostics};
  }
  const workspace=project.recordingSnapshots,recording=workspace?.recordings.find(value=>value.id===edit.recordingId),snapshot=workspace?.snapshots.find(value=>value.id===edit.snapshotId),angle=recording?.mode==='triangulated'?recording.angleGraph?.mesh.vertices.find(vertex=>vertex.snapshotId===edit.snapshotId)?.angle:snapshot?.angle;
  if(!recording||!snapshot||!recording.snapshotIds.includes(snapshot.id)||!angle||angle.x!==edit.angle.x||angle.y!==edit.angle.y||recording.angle.x!==angle.x||recording.angle.y!==angle.y)throw Error('Edit these properties in a real Snapshot. Intermediate angles currently support geometry and interval endpoint responses.');
