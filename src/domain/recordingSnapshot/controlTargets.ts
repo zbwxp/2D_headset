@@ -5,6 +5,7 @@ import {identityAffine2D,applyAffine2D,type Affine2D} from '../geometry/affine2d
 import {snapshotControlMatrix,trySnapshotControlInverse} from './controlSpace';
 import {captureLayerDomainControls,layerUsesOutputControls} from './layerDomainControlEdit';
 import {reconcileSnapshotEndpointRelationEdit} from './endpointRelationEdits';
+import {createSnapshotControlTargetWriter} from './controlTargetWriter';
 import type {SnapshotEvaluation} from './evaluation';
 import type {SnapshotDeformationState} from './model';
 import type {SnapshotLayerDomain} from './layerDomains';
@@ -43,14 +44,15 @@ function boundedControlCapture(evaluation:SnapshotEvaluation,plan:DrawingControl
  * relation component spanning stages receives one common sparse output owner;
  * its identity field preserves all existing input programs and live membership.
  * This is an explicit post-control stage, never an inverse fit of cage handles. */
-export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,wanted:DrawingDocument,own:SnapshotDeformationState,fresh:()=>string,controlPlan?:DrawingControlEditPlan):SnapshotDeformationState {
+export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,wanted:DrawingDocument,own:SnapshotDeformationState,fresh:()=>string,controlPlan?:DrawingControlEditPlan,options:{immutableInputs?:boolean}={}):SnapshotDeformationState {
  const trusted=controlPlan&&drawingControlEditProof(controlPlan.before,wanted,controlPlan),bounded=trusted&&boundedControlCapture(evaluation,trusted);
  const before=bounded?drawingControlPlanView(evaluation.drawing,trusted):evaluation.drawing;
  if(bounded)wanted=drawingControlPlanView(wanted,trusted);
- const state=structuredClone(own),curves=new Map(before.curves.map(curve=>[curve.id,curve])),nodes=new Map(before.nodes.map(node=>[node.id,node])),targets=new Map(wanted.curves.map(curve=>[curve.id,curve])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node]));
+ const curves=new Map(before.curves.map(curve=>[curve.id,curve])),nodes=new Map(before.nodes.map(node=>[node.id,node])),targets=new Map(wanted.curves.map(curve=>[curve.id,curve])),wantedNodes=new Map(wanted.nodes.map(node=>[node.id,node]));
  if(curves.size!==targets.size||nodes.size!==wantedNodes.size||before.curves.some(curve=>!targets.has(curve.id)||curve.nodes.some((id,end)=>id!==targets.get(curve.id)!.nodes[end])))throw new SnapshotControlTargetError('CONTROL_TOPOLOGY_CHANGED','Control targets must preserve node and curve identity.');
  const changed=new Set(before.curves.filter(curve=>curve.handles.some((p,end)=>!close(p,targets.get(curve.id)!.handles[end])||!close(nodes.get(curve.nodes[end])!.position,wantedNodes.get(curve.nodes[end])!.position))).map(curve=>curve.id));
  if(!changed.size)return own;
+ const writer=createSnapshotControlTargetWriter(own,evaluation.state,options.immutableInputs),state=writer.state;
  const finalLayers=new Set<string>(),stage=(id:string)=>{const layer=layerFor(before,id)!.id,domain=outputDomain(evaluation,layer);return domain?`domain:${domain.id}`:`local:${JSON.stringify(snapshotControlMatrix(evaluation,layer,id))}`;};
  for(const component of snapshotControlComponents(before))if(component.some(id=>changed.has(id))&&new Set(component.map(stage)).size>1)for(const id of component)finalLayers.add(layerFor(before,id)!.id);
  let evaluatedDomains:SnapshotLayerDomain[]=[...evaluation.state.layerDomains??[]];
@@ -65,12 +67,11 @@ export function captureSnapshotControlTargets(evaluation:SnapshotEvaluation,want
   return solveCollapsedControlTarget(matrix,anchor,p,label,layerId);
  };
  const localRelations=(drawing:DrawingDocument):DrawingDocument=>({...drawing,endpointLinks:drawing.endpointLinks?.filter(link=>localLayers.has(layerFor(drawing,link.a.curveId)!.id)&&localLayers.has(layerFor(drawing,link.b.curveId)!.id))});
- const relationNodes=reconcileSnapshotEndpointRelationEdit(localRelations(before),localRelations(wanted),evaluation,state,unplace);
- const shapeFor=(layerId:string)=>{const layer=state.layers[layerId]??={};return layer.shape??=structuredClone(evaluation.state.layers[layerId]?.shape??{nodes:{},handles:{}});};
+ const relationNodes=reconcileSnapshotEndpointRelationEdit(localRelations(before),localRelations(wanted),evaluation,state,unplace,[state],writer),shapeFor=writer.shapeFor;
  for(const curve of wanted.curves){const layerId=layerFor(wanted,curve.id)!.id;if(!localLayers.has(layerId))continue;const prior=curves.get(curve.id)!,base=evaluation.preShapeDrawing.curves.find(value=>value.id===curve.id)!;
   for(const end of [0,1] as const){const node=nodeAt(wanted,{curveId:curve.id,end}),old=nodeAt(before,{curveId:curve.id,end}),baseNode=nodeAt(evaluation.preShapeDrawing,{curveId:curve.id,end});
    if(!relationNodes.has(node.id)&&!close(node.position,old.position))shapeFor(layerId).nodes[node.id]=sub(unplace(layerId,curve.id,node.position),baseNode.position);
-   if(!close(sub(curve.handles[end],node.position),sub(prior.handles[end],old.position))){const shape=shapeFor(layerId),pair=shape.handles[curve.id]??=[[0,0],[0,0]];pair[end]=sub(sub(unplace(layerId,curve.id,curve.handles[end]),unplace(layerId,curve.id,node.position)),sub(base.handles[end],baseNode.position));}
+   if(!close(sub(curve.handles[end],node.position),sub(prior.handles[end],old.position))){const pair=writer.handlePair(layerId,curve.id);pair[end]=sub(sub(unplace(layerId,curve.id,curve.handles[end]),unplace(layerId,curve.id,node.position)),sub(base.handles[end],baseNode.position));}
   }
  }
  return state;

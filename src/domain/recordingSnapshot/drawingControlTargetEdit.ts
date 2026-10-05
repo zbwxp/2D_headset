@@ -45,14 +45,21 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const owner=workspace.snapshots.find(value=>value.id===(vertex?.snapshotId??evaluation.snapshotId))??fail('MISSING_SNAPSHOT','The geometry target Snapshot no longer exists.');
  if(graph?.correctionFrames?.some(frame=>frame.status==='draft'&&frame.basisAdjustment))fail('SURFACE_BASIS_DRAFT_OWNED','A coupled intermediate-angle correction is pending. Save or discard it before editing real views or their dependencies.');
  const bound=vertex?.angle??owner.angle;if(bound.x!==recording.angle.x||bound.y!==recording.angle.y)fail('REAL_SNAPSHOT_REQUIRED','Create a real snapshot at this angle before editing this Recording with Drawing tools.');
- const prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(evaluation,wanted,prior.deformation,fresh,controlPlan);
+ const prior=owner.draft??{angle:{...owner.angle},deformation:emptySnapshotDeformationState(),channels:[]},deformation=captureSnapshotControlTargets(evaluation,wanted,prior.deformation,fresh,controlPlan,{immutableInputs:options.immutableInputs});
  if(deformation===prior.deformation)return {};
  const candidate={...owner,draft:{...prior,deformation}};
  // A fresh pointer target replaces only this draft. Keep saved bases reusable,
  // while the changed draft gets its own exact replay and dependent mirror.
  if(options.immutableInputs)retainSnapshotSavedEvaluationIdentity(candidate,owner);
- const next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)},replay=recording.mode==='triangulated'?resolveRecordingSnapshotBasis(next,recording,owner.id,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'}):recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});
- const bounded=controlPlan&&!evaluation.state.layerDomains?.length&&!deformation.layerDomains?.length&&!evaluation.state.warps.length&&!deformation.warps.length&&!owner.inputMirror&&!hasEvaluatedDeformation(evaluation.drawing)&&!hasEvaluatedDeformation(replay.drawing);assertSnapshotControlTargetReplay(replay.drawing,wanted,bounded?controlPlan:undefined);return {snapshot:candidate,...bounded?{changes:{structureUnchanged:true as const,basisControls:new Map([[owner.id,controlPlan.controls]]),responseControls:[]}}:{}};
+ const next={...workspace,snapshots:workspace.snapshots.map(value=>value===owner?candidate:value)};
+ // The controlled writer only changed the proven scalar closure. Establish its
+ // lineage before replay so the candidate can revise the frozen native basis.
+ // Domains, Warp programs and reflected inputs keep the canonical full path.
+ const native=controlPlan&&!evaluation.state.layerDomains?.length&&!deformation.layerDomains?.length&&!evaluation.state.warps.length&&!deformation.warps.length&&!owner.inputMirror&&!hasEvaluatedDeformation(evaluation.drawing),changes=native?{structureUnchanged:true as const,basisControls:new Map([[owner.id,controlPlan.controls]]),responseControls:[]}:undefined;
+ if(options.immutableInputs&&changes)registerPreparedControlChanges(workspace,next,recording.id,changes);
+ const context=options.immutableInputs&&changes?prepareRecordingContext(workspace,{useDraft:true,immutableInputs:true,diagnostics:'preview'}).fork(next):undefined;
+ const replay=recording.mode==='triangulated'?(context?context.resolveBasis(recording.id,owner.id):resolveRecordingSnapshotBasis(next,recording,owner.id,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'})):recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):context?context.resolveSnapshot(owner.id,{angle:recording.angle}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});
+ const bounded=native&&!hasEvaluatedDeformation(replay.drawing);assertSnapshotControlTargetReplay(replay.drawing,wanted,bounded?controlPlan:undefined);return {snapshot:candidate,...bounded?{changes}:{}};
 }
 
 export function prepareSnapshotDrawingControlTarget(workspace:RecordingSnapshotWorkspace,edit:SnapshotDrawingControlTarget):RecordingSnapshotWorkspace {
