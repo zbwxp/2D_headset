@@ -218,9 +218,10 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
  if(edit.kind==='drawing-source-target'){
   assertRecordingProjectActive(context.project);assertCoupledBasisEditOwnership(context.workspace,edit);
   if(!context.canEditOriginals||!canDeferDrawingSourceSynchronization(context.project,edit.beforeDrawing))throw Error('Only an unchanged pure-source Drawing presentation can defer source synchronization.');
-  freezeCandidate(edit.beforeDrawing);freezeCandidate(edit.drawing);
-  const plan=issuePreparedEdit({before:context.project,project:context.project,changed:edit.drawing!==edit.beforeDrawing},'source-target',revision);
-  preparedReceipt(plan).completeSource=()=>prepareSnapshotEdit(context,{kind:'drawing-document',drawing:edit.drawing,intent:edit.intent});
+  const before=context.project,drawing=edit.drawing,intent=edit.intent;
+  freezeCandidate(edit.beforeDrawing);freezeCandidate(drawing);freezeCandidate(intent);
+  const plan=issuePreparedEdit({before,project:before,changed:drawing!==edit.beforeDrawing},'source-target',revision);
+  preparedReceipt(plan).completeSource=()=>prepareSnapshotEdit(snapshotEditContext(before,true),{kind:'drawing-document',drawing,intent});
   return plan;
  }
  const plan=buildSnapshotEditPlan(context,edit);

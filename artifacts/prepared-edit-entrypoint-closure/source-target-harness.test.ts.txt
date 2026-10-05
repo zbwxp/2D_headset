@@ -1,0 +1,17 @@
+import {it,expect} from 'vitest';
+import {writeFileSync} from 'node:fs';
+import fullFace from './assets/hairless-symmetric-two-face-mirror.json';
+import {makeFixture} from '../tests/fixtures/recording-renderer-benchmark-fixture';
+import {parseDrawing} from './domain/drawing/model';
+import {createEmptyProject} from './app/emptyProject';
+import {currentDrawingPresentation} from './app/drawingSnapshotPresentation';
+import {prepareDrawingSnapshotEdit} from './app/drawingSnapshotEdit';
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from './domain/drawing/controlEditPlan';
+import {prepareSnapshotEdit,snapshotEditContext,finalizePreparedSnapshotEdit} from './app/snapshotEditTransaction';
+import {canDeferDrawingSourceSynchronization} from './app/drawingSnapshotEdit';
+import {finalizeGeometryEdit} from './domain/drawing/geometryEdit';
+it('measures source authoring preview phase',()=>{
+ const {workspace}=makeFixture(),source=parseDrawing(fullFace),project={...createEmptyProject(),drawing:source,drawingSnapshots:{version:1 as const,activeId:'complete-face',images:[],items:[{id:'complete-face',name:'Face',drawing:source}]},recordingSnapshots:workspace},before=currentDrawingPresentation(project),curve=before.curves.find(c=>c.name==='鼻尖短线')!,controlPlan=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint:{curveId:curve.id,end:0}}),rows=[];
+ expect(canDeferDrawingSourceSynchronization(project,before)).toBe(true);for(let i=0;i<9;i++){let now=performance.now();const target=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[curve.handles[0][0]+.002+i*.001,curve.handles[0][1]+.004]});const author=performance.now()-now;now=performance.now();const finalized=finalizeGeometryEdit(before,target);const finalize=performance.now()-now;now=performance.now();const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'drawing-source-target',beforeDrawing:before,drawing:finalized,intent:{kind:'geometry-authoring',controlPlan}});const prepare=performance.now()-now;now=performance.now();const display=finalized;const presentation=performance.now()-now;expect(display.curves.length).toBe(before.curves.length);const startCommit=performance.now(),full=finalizePreparedSnapshotEdit(plan,project),commit=performance.now()-startCommit;const actual=currentDrawingPresentation(full.project);expect(actual.curves.length).toBe(before.curves.length);for(const node of finalized.nodes){const p=actual.nodes.find(n=>n.id===node.id)!.position;node.position.forEach((v,a)=>expect(p[a]).toBeCloseTo(v,10));}for(const c of finalized.curves)c.handles.forEach((p,e)=>p.forEach((v,a)=>expect(actual.curves.find(x=>x.id===c.id)!.handles[e][a]).toBeCloseTo(v,10)));rows.push({i,author,finalize,prepare,presentation,commit});}
+ writeFileSync(process.env.SOURCE_PHASE_OUTPUT!,JSON.stringify({diff:Object.keys({...source,...before}).filter(k=>JSON.stringify((source as any)[k])!==JSON.stringify((before as any)[k])),rows},null,2));
+},60000);

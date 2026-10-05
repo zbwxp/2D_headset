@@ -1,0 +1,33 @@
+import {it,expect} from 'vitest';
+import {writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {makeFixture,RECORDING_ID,ENDPOINTS} from '../tests/fixtures/recording-renderer-benchmark-fixture';
+import {createEmptyProject} from './app/emptyProject';
+import {prepareSnapshotDrawingToolEdit} from './app/snapshotDrawingToolEdit';
+import {snapshotEditContext} from './app/snapshotEditTransaction';
+import {prepareRecordingContext,evaluateSnapshotControlTargetPreview,evaluateRecordingSnapshot,getRecordingEvaluationStageTotals} from './domain/recordingSnapshot/evaluation';
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from './domain/drawing/controlEditPlan';
+import {interpolateSnapshotSurfaceOnion} from './ui/vectorRecording/surfaceOnion';
+import {sceneShapeWorkStats} from './domain/recordingScene/shapes';
+import {drawingShapeWorkStats} from './domain/drawing/sparseShape';
+import type {Point2} from './domain/drawing/model';
+const stats=()=>({stage:getRecordingEvaluationStageTotals(),shape:sceneShapeWorkStats(),numeric:drawingShapeWorkStats()});
+const diff=(a:any,b:any):any=>Object.fromEntries(Object.entries(b).map(([k,v])=>[k,typeof v==='number'?v-a[k]:diff(a[k],v)]));
+const timed=<T,>(f:()=>T)=>{const counts=stats(),start=performance.now(),value=f();return {value,ms:performance.now()-start,counts:diff(counts,stats())};};
+const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+it('real-basis handle and group targets use production transaction and display with warm onions',()=>{
+ const fixture=makeFixture(),recording={...fixture.workspace.recordings[0],angle:{x:90,y:0},activeSnapshotId:'view:90:0'},workspace={...fixture.workspace,recordings:[recording]},project={...createEmptyProject(),recordingSnapshots:workspace},saved=hash(project),ctx=prepareRecordingContext(workspace,{immutableInputs:true,useDraft:true,diagnostics:'preview'}),before=ctx.sample(RECORDING_ID),nose=before.drawing.curves.find(c=>c.name==='鼻尖短线')!;
+ interpolateSnapshotSurfaceOnion(recording,before,ENDPOINTS,5);
+ const rows:any[]=[];
+ for(const kind of ['handle','layer']){
+ const layer=before.drawing.layers.find(l=>l.items.includes(nose.id))!,plan=prepareDrawingControlEditPlan(before.drawing,kind==='handle'?{kind:'handle',endpoint:{curveId:nose.id,end:0}}:{kind:'curves',curveIds:layer.items.filter(id=>before.drawing.curves.some(c=>c.id===id)),preserveRelations:true});
+ for(let i=0;i<9;i++){
+ const target=timed(()=>applyDrawingControlEditPlan(plan,kind==='handle'?{kind:'point',position:[nose.handles[0][0]+.01+i*.001,nose.handles[0][1]+.003] as Point2}:{kind:'map',map:([x,y])=>[x*1.02+.01+i*.001,y*.98+.01]}));
+ const prepared=timed(()=>prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:RECORDING_ID,snapshotId:before.snapshotId,angle:recording.angle,beforeDrawing:before.drawing,drawing:target.value,intent:{kind:'geometry',controlPlan:plan},validation:'preview'}));
+ const next=prepared.value.project.recordingSnapshots!,display=timed(()=>{const e=evaluateSnapshotControlTargetPreview(workspace,next,RECORDING_ID,before);void e.drawing;void e.paintBatches;return e;}),onion=timed(()=>interpolateSnapshotSurfaceOnion(next.recordings[0],display.value,ENDPOINTS,5));
+ const cold=evaluateRecordingSnapshot(structuredClone(next),RECORDING_ID,{useDraft:true,diagnostics:'preview'});expect(display.value.drawing).toEqual(cold.drawing);expect(display.value.paintBatches).toEqual(cold.paintBatches);
+ rows.push({kind,i,targetMs:target.ms,prepareMs:prepared.ms,displayMs:display.ms,onionMs:onion.ms,prepareCounts:prepared.counts,displayCounts:display.counts,onionCounts:onion.counts,outputHash:hash({d:display.value.drawing,paint:display.value.paintBatches,ghosts:onion.value.frames.map(f=>f.centerlines)})});
+ }
+ }
+ expect(hash(project)).toBe(saved);writeFileSync(process.env.REAL_PHASE_OUTPUT!,JSON.stringify({scope:'Public complete-face real-basis immutable A handle and selected-layer transform. First2of9 excluded. Onions warm before gesture. Node CPU production transaction/display; no DOM or input latency. Cold parity outside timing.',rows},null,2));
+},60000);

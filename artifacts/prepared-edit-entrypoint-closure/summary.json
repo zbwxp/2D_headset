@@ -1,0 +1,397 @@
+{
+  "outputsExact": 18,
+  "orders": {
+    "baseline-forward": {
+      "handle": {
+        "targetMs": 0.281,
+        "prepareMs": 11.091,
+        "displayMs": 2.809,
+        "onionMs": 6.203,
+        "pipelineMs": 21.122,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "materialPlans": 1,
+            "materialPathPlans": 11,
+            "transportedTracks": 11,
+            "reusedTracks": 0,
+            "fitShifts": 121,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 0,
+            "copiedDiagnosticSlots": 0,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 1,
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "nodeComponents": 130,
+            "nodeControls": 135,
+            "handleControls": 242,
+            "projectedComponents": 0,
+            "copiedControlSlots": 0
+          }
+        }
+      },
+      "layer": {
+        "targetMs": 0.286,
+        "prepareMs": 10.514,
+        "displayMs": 2.617,
+        "onionMs": 7.344,
+        "pipelineMs": 22.349,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "materialPlans": 1,
+            "materialPathPlans": 11,
+            "transportedTracks": 11,
+            "reusedTracks": 0,
+            "fitShifts": 121,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 0,
+            "copiedDiagnosticSlots": 0,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 1,
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "nodeComponents": 130,
+            "nodeControls": 135,
+            "handleControls": 242,
+            "projectedComponents": 0,
+            "copiedControlSlots": 0
+          }
+        }
+      }
+    },
+    "candidate-forward": {
+      "handle": {
+        "targetMs": 0.282,
+        "prepareMs": 4.108,
+        "displayMs": 2.569,
+        "onionMs": 7.459,
+        "pipelineMs": 15.0,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "materialPlans": 0,
+            "materialPathPlans": 0,
+            "transportedTracks": 0,
+            "reusedTracks": 11,
+            "fitShifts": 1,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 11,
+            "copiedDiagnosticSlots": 121,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 0,
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "nodeComponents": 0,
+            "nodeControls": 0,
+            "handleControls": 1,
+            "projectedComponents": 0,
+            "copiedControlSlots": 377
+          }
+        }
+      },
+      "layer": {
+        "targetMs": 0.331,
+        "prepareMs": 3.199,
+        "displayMs": 2.435,
+        "onionMs": 6.917,
+        "pipelineMs": 13.534,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "materialPlans": 0,
+            "materialPathPlans": 0,
+            "transportedTracks": 0,
+            "reusedTracks": 11,
+            "fitShifts": 1,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 11,
+            "copiedDiagnosticSlots": 121,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 0,
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "nodeComponents": 2,
+            "nodeControls": 2,
+            "handleControls": 2,
+            "projectedComponents": 0,
+            "copiedControlSlots": 377
+          }
+        }
+      }
+    },
+    "candidate-reverse": {
+      "handle": {
+        "targetMs": 0.263,
+        "prepareMs": 3.47,
+        "displayMs": 2.342,
+        "onionMs": 6.645,
+        "pipelineMs": 13.214,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "materialPlans": 0,
+            "materialPathPlans": 0,
+            "transportedTracks": 0,
+            "reusedTracks": 11,
+            "fitShifts": 1,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 11,
+            "copiedDiagnosticSlots": 121,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 0,
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "nodeComponents": 0,
+            "nodeControls": 0,
+            "handleControls": 1,
+            "projectedComponents": 0,
+            "copiedControlSlots": 377
+          }
+        }
+      },
+      "layer": {
+        "targetMs": 0.273,
+        "prepareMs": 3.459,
+        "displayMs": 2.256,
+        "onionMs": 6.724,
+        "pipelineMs": 13.826,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "materialPlans": 0,
+            "materialPathPlans": 0,
+            "transportedTracks": 0,
+            "reusedTracks": 11,
+            "fitShifts": 1,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 11,
+            "copiedDiagnosticSlots": 121,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 0,
+            "fullApplications": 0,
+            "revisionApplications": 1,
+            "nodeComponents": 2,
+            "nodeControls": 2,
+            "handleControls": 2,
+            "projectedComponents": 0,
+            "copiedControlSlots": 377
+          }
+        }
+      }
+    },
+    "baseline-reverse": {
+      "handle": {
+        "targetMs": 0.262,
+        "prepareMs": 11.835,
+        "displayMs": 3.191,
+        "onionMs": 6.761,
+        "pipelineMs": 25.774,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "materialPlans": 1,
+            "materialPathPlans": 11,
+            "transportedTracks": 11,
+            "reusedTracks": 0,
+            "fitShifts": 121,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 0,
+            "copiedDiagnosticSlots": 0,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 1,
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "nodeComponents": 130,
+            "nodeControls": 135,
+            "handleControls": 242,
+            "projectedComponents": 0,
+            "copiedControlSlots": 0
+          }
+        }
+      },
+      "layer": {
+        "targetMs": 0.358,
+        "prepareMs": 11.097,
+        "displayMs": 2.944,
+        "onionMs": 7.562,
+        "pipelineMs": 22.128,
+        "counts": {
+          "stage": {
+            "validation": 0,
+            "dependencyIndex": 0,
+            "membershipSignature": 0,
+            "membershipStructure": 0,
+            "snapshotInput": 0,
+            "snapshotState": 1,
+            "ownGeometry": 1,
+            "basis": 1,
+            "coverageStructure": 0,
+            "surfaceSample": 0,
+            "material": 0,
+            "paint": 0,
+            "responseProgram": 0,
+            "simplexProgram": 0
+          },
+          "shape": {
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "materialPlans": 1,
+            "materialPathPlans": 11,
+            "transportedTracks": 11,
+            "reusedTracks": 0,
+            "fitShifts": 121,
+            "copiedControlSlots": 0,
+            "copiedMaterialSlots": 0,
+            "copiedDiagnosticSlots": 0,
+            "routePortChecks": 0
+          },
+          "numeric": {
+            "plans": 1,
+            "fullApplications": 1,
+            "revisionApplications": 0,
+            "nodeComponents": 130,
+            "nodeControls": 135,
+            "handleControls": 242,
+            "projectedComponents": 0,
+            "copiedControlSlots": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -128,3 +128,9 @@ it('source-target receipts cannot stand in for an evaluated Recording or referen
  const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{immutableInputs:true}).drawing;
  expect(()=>prepareSnapshotEdit(snapshotEditContext(project,false),{kind:'drawing-source-target',beforeDrawing:before,drawing:before})).toThrow(/pure-source/);
 });
+
+it('source target acceptance pins values rather than retaining a mutable caller edit wrapper',()=>{
+ const drawing=emptyDrawing(),project={...createEmptyProject(),drawing},first={...drawing,mirrorAxisX:1},second={...drawing,mirrorAxisX:2},context=snapshotEditContext(project,true),edit={kind:'drawing-source-target' as const,beforeDrawing:drawing,drawing:first},accepted=prepareSnapshotEdit(context,edit);
+ edit.drawing=second;(context as {project:typeof project}).project={...project,drawing:second};
+ const result=finalizePreparedSnapshotEdit(accepted,project);expect(result.before).toBe(project);expect(result.project.drawing!.mirrorAxisX).toBe(1);expect(result.project.drawing!.mirrorAxisX).not.toBe(second.mirrorAxisX);
+});
