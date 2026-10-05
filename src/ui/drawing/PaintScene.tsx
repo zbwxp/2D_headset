@@ -1,12 +1,13 @@
 import {useId,type ReactNode} from 'react';
 import {objectById,visible,curveById,type DrawingDocument as Doc,type Point2} from '../../domain/drawing/model';
 import {strokeWidth,strokePaths} from '../../domain/drawing/strokes';
-import {fillVisible,inkRuns,pathOf,extendedInk,displayInkSampling} from '../../domain/drawing/appearance';
+import {fillVisible,inkRuns,pathOf,outlinePath,extendedInk,displayInkSampling} from '../../domain/drawing/appearance';
 import {curvePath} from './geometry';
 import MistInk from './MistInk';
 import MistFill from './MistFill';
 import type {PaintBatch} from '../../domain/drawing/depth';
 import {createPaintProductReader} from './paintProducts';
+import {fillInkSupport} from './fillInkSupport';
 import {withDrawingReadScope} from '../../domain/drawing/readContext';
 import type {DrawingTool} from './session';
 interface Props {paintBatches?:PaintBatch[];pixelsPerUnit?:number;interactiveEffects?:boolean;opacity?:ReadonlyMap<string,number>;d:Doc;screen:(p:Point2)=>Point2;unit:number;preview:boolean;showFills:boolean;fillVisibility?:Readonly<Record<string,boolean>>;referenceMoving:boolean;tool:DrawingTool;selectedPaint?:string;selectedPaints?:string[];curveDown:(e:React.PointerEvent,id:string)=>void;paintDown:(e:React.PointerEvent,id:string)=>void;arcDown:(e:React.PointerEvent,id:string)=>void}
@@ -35,7 +36,7 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
   const outer=clips.length?`M ${bounds[0]-padding} ${bounds[1]-padding} H ${bounds[2]+padding} V ${bounds[3]+padding} H ${bounds[0]-padding} Z`:'';
   return <g key={`${l.id}:${layerIndex}`} data-testid="drawing-paint-layer" data-id={l.id}>
   {clips.length>0&&<defs>{clips.map(c=><clipPath key={c.id} id={c.id} clipPathUnits="userSpaceOnUse"><path d={`${outer} ${c.path}`} clipRule="evenodd"/></clipPath>)}</defs>}
-  {batchGroup.batches.map(({item,owner})=>{
+  {batchGroup.batches.map(({item,owner},batchIndex)=>{
   if(item.stroke)return strokePaths(item.stroke).map((path,pathIndex)=>{const s={...path,id:item.id},enabled=s.segments.map(x=>visible(d,x.id));if(!enabled.some(Boolean)||owner&&!s.segments.some(x=>x.id===owner))return null;
    if(owner){
     const route=products.routeFor(owner);
@@ -62,8 +63,26 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
     {selected&&<path d={path} fill="none" stroke="#2589b0" strokeWidth="1.5" strokeDasharray="4 3" pointerEvents="none"/>}
     <path d={path} fill="none" stroke="transparent" strokeWidth="13" pointerEvents={select&&!o.locked?'stroke':'none'} onPointerDown={e=>paintDown(e,f.id)}/>
    </g>:null;
-   const fill=f.mist?.enabled?<MistFill interactive={interactiveEffects} fill={f} shapes={g.shapes} path={path} screen={screen} unit={unit} pick={select&&!o.locked} selected={!!selected} onPointerDown={e=>paintDown(e,f.id)}/>:<path data-testid="drawing-fill" data-id={f.id} d={path} fill={f.color} fillRule="evenodd" stroke={selected?'#2589b0':'none'} strokeWidth="1.5" pointerEvents={select&&!o.locked?'fill':'none'} onPointerDown={e=>paintDown(e,f.id)}/>;
-   return <g key={f.id} opacity={opacity?.get(f.id)}>{clips.reduce<ReactNode>((child,c)=><g key={c.id} clipPath={`url(#${c.id})`}>{child}</g>,fill)}</g>;
+   const boundaryInk=products.fillBoundaryInk(f,opacity),support=boundaryInk.passes.flatMap(pass=>fillInkSupport(pass,sampling));
+   const fill=f.mist?.enabled?<MistFill interactive={interactiveEffects} fill={f} shapes={g.shapes} path={path} screen={screen} unit={unit} pick={select&&!o.locked} selected={!!selected&&!support.length} onPointerDown={e=>paintDown(e,f.id)}/>:<path data-testid="drawing-fill" data-id={f.id} d={path} fill={f.color} fillRule="evenodd" stroke={selected&&!support.length?'#2589b0':'none'} strokeWidth="1.5" pointerEvents={select&&!o.locked?'fill':'none'} onPointerDown={e=>paintDown(e,f.id)}/>;
+   // Each inverse clip subtracts one support shape; their intersection removes
+   // the union even when runs/caps overlap. SVG clips also remove fill hits.
+   // The fill alone is clipped at its original queue slot: foreign paint already
+   // covering the boundary ink remains untouched, and ink is never redrawn.
+   const supportBounds=support.length?g.shapes.flatMap(shape=>shape.map(screen)).reduce((b,p)=>[Math.min(b[0],p[0]),Math.min(b[1],p[1]),Math.max(b[2],p[0]),Math.max(b[3],p[1])],[Infinity,Infinity,-Infinity,-Infinity]):[];
+   const supportPadding=4+(f.mist?.enabled&&f.mist.side!=='INSIDE'?f.mist.width*unit:0),supportOuter=support.length?`M ${supportBounds[0]-supportPadding} ${supportBounds[1]-supportPadding} H ${supportBounds[2]+supportPadding} V ${supportBounds[3]+supportPadding} H ${supportBounds[0]-supportPadding} Z`:'';
+   const ownClips=support.map((part,i)=>{const id=`${clipPrefix}-own-${layerIndex}-${batchIndex}-${i}`;
+    if(part.kind==='outline')return {id,path:outlinePath(part.points,screen)};
+    const [x,y]=screen(part.center),r=part.radius*unit;
+    return {id,path:`M ${x-r} ${y} a ${r} ${r} 0 1 0 ${2*r} 0 a ${r} ${r} 0 1 0 ${-2*r} 0 Z`};
+   });
+   const protectedFill=ownClips.reduce<ReactNode>((child,c)=><g key={c.id} data-testid="drawing-owned-ink-clip" data-id={f.id} clipPath={`url(#${c.id})`}>{child}</g>,fill);
+   const selectedFill=support.length&&selected?<>{protectedFill}<path d={path} fill="none" stroke="#2589b0" strokeWidth="1.5" pointerEvents="none"/></>:protectedFill;
+   return <g key={f.id} opacity={opacity?.get(f.id)} data-testid={boundaryInk.diagnostics.length?'drawing-owned-ink-diagnostic':undefined} data-id={boundaryInk.diagnostics.length?f.id:undefined} data-message={boundaryInk.diagnostics.length?boundaryInk.diagnostics.join('; '):undefined}>
+    {boundaryInk.diagnostics.length>0&&<title>{boundaryInk.diagnostics.join('; ')}</title>}
+    {ownClips.length>0&&<defs>{ownClips.map(c=><clipPath key={c.id} id={c.id} clipPathUnits="userSpaceOnUse"><path d={`${supportOuter} ${c.path}`} clipRule="evenodd"/></clipPath>)}</defs>}
+    {clips.reduce<ReactNode>((child,c)=><g key={c.id} clipPath={`url(#${c.id})`}>{child}</g>,selectedFill)}
+   </g>;
   }
   const offset=d.offsets.find(x=>x.id===item.id)!,g=products.offset(offset);if(g.error)return null;const inkShapes=extendedInk(g.shapes,offset.inkEnds).shapes,runs=inkRuns(g.shapes,offset.width,offset.profile??'UNIFORM',offset.profileReverse,undefined,false,offset.inkEnds,undefined,undefined,undefined,undefined,false,sampling);
   return <g key={offset.id} data-testid="drawing-offset" data-id={offset.id} opacity={opacity?.get(offset.id)}><MistInk runs={runs} mist={offset.mist} screen={screen} unit={unit} width={offset.width} owner={offset.id}/>
