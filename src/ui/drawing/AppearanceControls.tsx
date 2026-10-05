@@ -29,9 +29,15 @@ export default function AppearanceControls({d,selection,run,choose,preview,capab
     <p className="drawing-muted">{t('正负距离切换偏移侧；线宽与距离随画布缩放。')}</p>
     <button disabled={disabled||capabilities.detach===false||!!status.error} onClick={()=>run(()=>{const n=detachOffset(d,o!.id);choose({ids:n.ids});return n.document;})}>{t('转为独立曲线')}</button>
    </>}
-   <button onClick={()=>choose({ids:(f?.boundary??o!.source).filter(x=>curveById(d,x.id)).map(x=>x.id)})}>{t('选择源边界')}</button>
-   <PaintOrderControls disabled={disabled||capabilities.reorder===false} onReorder={order}/>
-   <label className="drawing-field">{t('移动到图层')}<select aria-label={t('移动到图层')} disabled={disabled||capabilities.move===false} value="" onChange={e=>run(()=>movePaint(d,obj.id,e.target.value))}><option value="">—</option>{d.layers.filter(l=>l!==layer).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
+   <PanelSection id="drawing.paint-boundary" title="边界曲线">
+    <button onClick={()=>choose({ids:(f?.boundary??o!.source).filter(x=>curveById(d,x.id)).map(x=>x.id)})}>{t('选择边界曲线')}</button>
+    <p className="drawing-muted">{t('选择决定形状的源曲线，不移动或复制对象。')}</p>
+   </PanelSection>
+   <PanelSection id="drawing.paint-order" title="所属图层与顺序">
+    <PaintOrderControls disabled={disabled||capabilities.reorder===false} onReorder={order}/>
+    <label className="drawing-field">{t('移至图层')}<select aria-label={t('移动到图层')} disabled={disabled||capabilities.move===false} value="" onChange={e=>run(()=>movePaint(d,obj.id,e.target.value))}><option value="">—</option>{d.layers.filter(l=>l!==layer).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
+    <p className="drawing-muted">{t('更改此对象的所属图层，边界曲线仍在原处；透明挖空仅作用于所属图层的填充。')}</p>
+   </PanelSection>
    <button disabled={disabled||capabilities.remove===false} onClick={()=>run(()=>{choose({ids:[]});return deletePaint(d,obj.id);})}>{t('删除')}</button>
   </div>;
  }

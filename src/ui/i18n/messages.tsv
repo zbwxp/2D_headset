@@ -1956,3 +1956,11 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 
 四角 / 曲边	Quad / curved edges
 先选图层或笔画；拖四角调整透视，拖边柄或菱形中点弯曲边界。隐藏成员一起变形，锁定成员受保护。	Select a layer or stroke. Drag corners for perspective; drag edge handles or diamond midpoints to bend boundaries. Hidden members follow; locked members are protected.
+
+选择线条、填充或图层以查看属性。	Select a curve, fill or layer to inspect its properties.
+边界曲线	Boundary curves
+选择边界曲线	Select boundary curves
+选择决定形状的源曲线，不移动或复制对象。	Select the source curves that define the shape without moving or copying any object.
+所属图层与顺序	Layer membership and order
+移至图层	Move to layer
+更改此对象的所属图层，边界曲线仍在原处；透明挖空仅作用于所属图层的填充。	Change this object’s layer while keeping its boundary curves in place. Cutouts affect fills in their own layer only.

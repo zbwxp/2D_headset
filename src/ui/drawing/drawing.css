@@ -118,3 +118,6 @@
 
 /* Recording uses the same palette and menu in its compact canvas header. */
 .recording-drawing-tools{flex-direction:row;align-items:center;flex-wrap:wrap;gap:2px;width:auto;padding:0;overflow:visible;border:0}.recording-drawing-tools button{display:inline-flex;justify-content:center;min-height:30px;width:32px;padding:5px}.recording-drawing-tools button.drawing-tool-break{margin-top:0;margin-left:5px}.recording-drawing-tools button>span,.recording-drawing-tools kbd{display:none}.recording-drawing-tools button:disabled{opacity:.35;cursor:not-allowed}
+
+/* Both workspaces share one layer/property split and resize interaction. */
+.drawing-split-sidebar{overflow:hidden}.drawing-sidebar-layers{display:flex;flex-direction:column;min-height:0;overflow:hidden}.drawing-sidebar-layers>.drawing-layers{flex:1;min-height:0}.drawing-sidebar-properties{display:flex;flex-direction:column;min-height:0;overflow:hidden}.drawing-sidebar-properties>.drawing-properties{flex:1;min-height:0;overflow:auto}
