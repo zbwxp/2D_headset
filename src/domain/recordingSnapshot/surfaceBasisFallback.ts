@@ -1,5 +1,4 @@
 import {hasEvaluatedDeformation} from '../drawing/evaluatedDeformation';
-import {registerPreparedControlChanges} from './preparedControlChanges';
 import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
 import {drawingControlDependencyIndex,drawingControlEditProof,drawingControlPlanView,prepareDrawingControlEditPlan,applyDrawingControlWrites,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {sub,type DrawingDocument,type Point2} from '../drawing/model';
@@ -100,8 +99,8 @@ export function prepareSnapshotSurfaceBasisFallback(workspace:RecordingSnapshotW
  const changes=():SnapshotSimplexRevisionChanges=>({structureUnchanged:true,basisControls:new Map([[owner.id,basisPlan.controls]]),responseControls:[...responseChanges.values()]});
  const rememberResponses=(controls:readonly SnapshotScalarTarget[]|undefined)=>{for(const control of controls??[])responseChanges.set(key(control,0),control);};
  const snapshots=workspace.snapshots.map(s=>s===owner?snapshot:s);let stagedGraph:SnapshotAngleGraph|undefined,stagedWorkspace:RecordingSnapshotWorkspace|undefined;
- const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};if(canBound)registerPreparedControlChanges(workspace,stagedWorkspace,recording.id,changes());}return stagedWorkspace!;};
- const candidate=()=>frozen.fork(nextWorkspace());
+ const nextWorkspace=():RecordingSnapshotWorkspace=>{if(stagedGraph!==nextGraph){stagedGraph=nextGraph;stagedWorkspace={...workspace,snapshots,recordings:workspace.recordings.map(r=>r===recording?{...r,angleGraph:nextGraph}:r)};}return stagedWorkspace!;};
+ const candidate=()=>frozen.forkCandidate(nextWorkspace(),recording.id,canBound?changes():undefined);
  const basisReplay=candidate().resolveBasis(recording.id,side!.snapshotId);assertSnapshotControlTargetReplay(basisReplay.drawing,desiredBasis,canBound?basisPlan:undefined);
  // Capture every old output BEFORE changing the bases. Responses may change
  // only in the companion draft to preserve those exact authored outputs.

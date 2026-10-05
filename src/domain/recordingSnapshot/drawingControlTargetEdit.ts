@@ -1,5 +1,4 @@
 import {hasEvaluatedDeformation} from '../drawing/evaluatedDeformation';
-import {registerPreparedControlChanges} from './preparedControlChanges';
 import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
 import {drawingControlEditProof,drawingControlPlanView,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {uid,type DrawingDocument} from '../drawing/model';
@@ -56,8 +55,7 @@ export function captureSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  // lineage before replay so the candidate can revise the frozen native basis.
  // Domains, Warp programs and reflected inputs keep the canonical full path.
  const native=controlPlan&&!evaluation.state.layerDomains?.length&&!deformation.layerDomains?.length&&!evaluation.state.warps.length&&!deformation.warps.length&&!owner.inputMirror&&!hasEvaluatedDeformation(evaluation.drawing),changes=native?{structureUnchanged:true as const,basisControls:new Map([[owner.id,controlPlan.controls]]),responseControls:[]}:undefined;
- if(options.immutableInputs&&changes)registerPreparedControlChanges(workspace,next,recording.id,changes);
- const context=options.immutableInputs&&changes?prepareRecordingContext(workspace,{useDraft:true,immutableInputs:true,diagnostics:'preview'}).fork(next):undefined;
+ const context=options.immutableInputs?prepareRecordingContext(workspace,{useDraft:true,immutableInputs:true,diagnostics:'preview'}).forkCandidate(next,recording.id,changes):undefined;
  const replay=recording.mode==='triangulated'?(context?context.resolveBasis(recording.id,owner.id):resolveRecordingSnapshotBasis(next,recording,owner.id,{useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'})):recording.mode==='endpoint-pair'?evaluateRecordingSnapshot(next,recording.id,{snapshotId:owner.id,angle:recording.angle,useDraft:true,diagnostics:'preview'}):context?context.resolveSnapshot(owner.id,{angle:recording.angle}):resolveSnapshot(next,owner.id,{angle:recording.angle,useDraft:true,immutableInputs:options.immutableInputs,diagnostics:'preview'});
  const bounded=native&&!hasEvaluatedDeformation(replay.drawing);assertSnapshotControlTargetReplay(replay.drawing,wanted,bounded?controlPlan:undefined);return {snapshot:candidate,...bounded?{changes}:{}};
 }
@@ -73,5 +71,5 @@ export function prepareSnapshotDrawingControlTarget(workspace:RecordingSnapshotW
  const result=captureSnapshotDrawingControlTarget(workspace,recording,evaluation,edit.drawing,uid,{immutableInputs:true,controlPlan});
  const writes=new Map([...result.snapshots??[],...result.snapshot?[result.snapshot]:[]].map(value=>[value.id,value]));
  const next=writes.size||result.graph?{...workspace,...writes.size?{snapshots:workspace.snapshots.map(value=>writes.get(value.id)??value)}:{},...result.graph?{recordings:workspace.recordings.map(value=>value===recording?{...recording,angleGraph:result.graph}:value)}:{}}:workspace;
- if(result.changes)registerPreparedControlChanges(workspace,next,recording.id,result.changes);return next;
+ if(next!==workspace)prepareRecordingContext(workspace,{useDraft:true,immutableInputs:true,diagnostics:'preview'}).forkCandidate(next,recording.id,result.changes);return next;
 }

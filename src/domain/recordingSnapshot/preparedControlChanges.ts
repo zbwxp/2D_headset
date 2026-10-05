@@ -6,7 +6,7 @@ import type {SnapshotScalarTarget,SnapshotSimplexRevisionChanges} from './simple
  * Unknown external changes retain the canonical full evaluation path. */
 interface ControlRevision {
  readonly before:RecordingSnapshotWorkspace;
- readonly recordingId:string;
+ readonly recordingId:string|object;
  readonly changes:SnapshotSimplexRevisionChanges;
 }
 const revisions=new WeakMap<RecordingSnapshotWorkspace,ControlRevision>();
@@ -17,7 +17,7 @@ function frozenChanges(changes:SnapshotSimplexRevisionChanges):SnapshotSimplexRe
 }
 /** Only a controlled target/capture or response writer may supply this complete
  * dependency set after validating ownership and unchanged structural content. */
-export function registerPreparedControlChanges(before:RecordingSnapshotWorkspace,after:RecordingSnapshotWorkspace,recordingId:string,changes:SnapshotSimplexRevisionChanges):void {
+export function registerPreparedControlChanges(before:RecordingSnapshotWorkspace,after:RecordingSnapshotWorkspace,recordingId:string|object,changes:SnapshotSimplexRevisionChanges):void {
  if(before!==after)revisions.set(after,{before,recordingId,changes:frozenChanges(changes)});
 }
 /** A defensive validator may replace a candidate with an equal immutable copy.
@@ -27,7 +27,7 @@ export function retainPreparedControlChanges(validated:RecordingSnapshotWorkspac
 }
 /** Follow only recorded transaction ancestry. No whole scene comparison or
  * guessed selected-curve invalidation is used to construct the dirty closure. */
-export function preparedControlChangesBetween(before:RecordingSnapshotWorkspace,after:RecordingSnapshotWorkspace,recordingId:string):SnapshotSimplexRevisionChanges|undefined {
+export function preparedControlChangesBetween(before:RecordingSnapshotWorkspace,after:RecordingSnapshotWorkspace,recordingId:string|object):SnapshotSimplexRevisionChanges|undefined {
  const basis=new Map<string,Map<string,SnapshotScalarTarget>>(),responses=new Map<string,SnapshotScalarTarget>(),seen=new Set<RecordingSnapshotWorkspace>();
  let current=after;
  while(current!==before){

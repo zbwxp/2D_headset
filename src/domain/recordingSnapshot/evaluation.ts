@@ -1,5 +1,6 @@
+import type {SnapshotSimplexRevisionChanges} from './simplexGeometry';
 import type {PreparedRecordingChanges} from './workspaceChanges';
-import type {DrawingControlEditPlan,DrawingScalarControl} from '../drawing/controlEditPlan';
+import {drawingControlEditProof,type DrawingControlEditPlan,type DrawingScalarControl} from '../drawing/controlEditPlan';
 import {registerPreparedControlChanges,preparedControlChangesBetween} from './preparedControlChanges';
 import {withDrawingReadScope} from '../drawing/readContext';
 export type {PreparedRecordingChanges} from './workspaceChanges';
@@ -417,11 +418,12 @@ function resolveSnapshotInContext(context:RecordingContext,snapshotId:string,opt
   const retainOwn=localOptions.immutableInputs===true&&!localOptions.omitShapes&&!materialRecipe&&!visibilityRecipe&&!snapshot.inputMirror&&viewMirror?.targetSnapshotId!==id&&dependencyInput.source===materialSource&&!dependencyInput.state.warps.length&&!dependencyInput.state.bindings.length&&!dependencyInput.state.layerDomains?.length&&!hasEvaluatedDeformation(dependencyInput.source)&&!evaluatedAffineSource(dependencyInput.source);
   const ownKeyFor=(quality=localOptions.diagnostics,useDraft=localOptions.useDraft)=>JSON.stringify([id,immutableIdentity(dependencyInput.source),evaluationOptionsKey({...localOptions,useDraft,diagnostics:quality})]);
   const ownKey=retainOwn?ownKeyFor():undefined;
-  let revision=ownKey&&recording?(context.inheritedOwn(ownKey,recording.id,id)??(localOptions.diagnostics==='preview'?context.inheritedOwn(ownKeyFor('full'),recording.id,id):undefined)):undefined;
+  const controlOwner=recording?.id??snapshotControlOwner(workspace,id);
+  let revision=ownKey?(context.inheritedOwn(ownKey,controlOwner,id)??(localOptions.diagnostics==='preview'?context.inheritedOwn(ownKeyFor('full'),controlOwner,id):undefined)):undefined;
   // Saved and live inputs are distinct even when their source/Warp is shared.
   // Only the first draft can reuse a saved baseline: the previous snapshot must
   // actually have had no draft, not merely have been inspected with it hidden.
-  if(!revision&&ownKey&&recording&&localOptions.useDraft!==false)revision=context.inheritedOwn(ownKeyFor(localOptions.diagnostics,false),recording.id,id,true)??(localOptions.diagnostics==='preview'?context.inheritedOwn(ownKeyFor('full',false),recording.id,id,true):undefined);
+  if(!revision&&ownKey&&localOptions.useDraft!==false)revision=context.inheritedOwn(ownKeyFor(localOptions.diagnostics,false),controlOwner,id,true)??(localOptions.diagnostics==='preview'?context.inheritedOwn(ownKeyFor('full',false),controlOwner,id,true):undefined);
   const own=evaluateOwn(snapshot,dependencyInput.source,dependencyInput.state,localOptions,diagnostics,persistent,revision,retainOwn);
   if(ownKey)context.ownLineages.set(ownKey,own);
   for(const stage of ['drawing','preShapeDrawing','prePlacementDrawing','preElementPlacementDrawing'] as const)own[stage]=dependencyInput.restrict(own[stage]);
@@ -553,6 +555,12 @@ export interface PreparedRecordingContext {
  /** The immutable before context itself is the gesture's pinned baseline. */
  beginGesture():PreparedRecordingContext;
  fork(workspace:RecordingSnapshotWorkspace,changes?:PreparedRecordingChanges):PreparedRecordingContext;
+ /** Completed authoring candidates enter through their frozen before context.
+  * Only producer-owned complete control changes enable sparse replay. Unknown
+  * domain/structural strategies keep canonical dependency evaluation. */
+ forkCandidate(workspace:RecordingSnapshotWorkspace,recordingId:string,changes?:SnapshotSimplexRevisionChanges):PreparedRecordingContext;
+ /** Generic snapshot authoring uses the same own-stage dependency pipeline. */
+ forkSnapshotCandidate(workspace:RecordingSnapshotWorkspace,snapshotId:string,proof?:{controlPlan:DrawingControlEditPlan;target:DrawingDocument}):PreparedRecordingContext;
 }
 type SnapshotPlan={key:string;valueKey:string;options:SnapshotEvaluationOptions;recording?:SnapshotRecording;originalDependencies:readonly string[]};
 const semanticKeys=new Map<string,string>();let nextSemanticKey=1;
@@ -581,6 +589,10 @@ export const getRecordingEvaluationStageTotals=()=>({...evaluationStageTotals});
 /** An immutable, validated dependency revision. Values are pinned here rather
  * than in the small display-frame LRU. A fork can borrow any unaffected value
  * from its frozen parent while keeping its own products and sample scratch. */
+const snapshotControlOwners=new WeakMap<RecordingSnapshotWorkspace['library'],Map<string,object>>();
+function snapshotControlOwner(workspace:RecordingSnapshotWorkspace,id:string):object {
+ let owners=snapshotControlOwners.get(workspace.library);if(!owners){owners=new Map();snapshotControlOwners.set(workspace.library,owners);}let owner=owners.get(id);if(!owner){owner=Object.freeze({snapshotId:id});owners.set(id,owner);}return owner;
+}
 class RecordingContext implements PreparedRecordingContext {
  readonly counters=emptyCounters();readonly index:PreparedSnapshotDependencyIndex;readonly cache:EvaluationCache;readonly dependencyRevision:string;
  readonly snapshotValues=new Map<string,SnapshotEvaluation>();readonly surfaceValues=new Map<string,SnapshotEvaluation>();readonly geometryValues=new Map<string,SnapshotCoverageEvaluation>();readonly geometryLineages=new Map<string,SnapshotCoverageEvaluation>();readonly materialLineages=new Map<string,PreparedSurfaceProduct>();readonly ownLineages=new Map<string,SnapshotOwnEvaluation>();
@@ -683,7 +695,7 @@ class RecordingContext implements PreparedRecordingContext {
   const request={...this.defaults,...options},result=evaluateTriangulatedRecording(this,recording,request);contextEvaluations.set(result,this);evaluationRequests.set(result,{...request,angle:{...result.angle}});return result;
  }
  inheritedSurface(key:string):SnapshotEvaluation|undefined {for(let context=this.before;context;context=context.before){const value=context.surfaceValues.get(key);if(value)return value;}return undefined;}
- inheritedOwn(key:string,recordingId:string,snapshotId:string,requiresNoPreviousDraft=false):SnapshotOwnGeometryRevision|undefined {
+ inheritedOwn(key:string,recordingId:string|object,snapshotId:string,requiresNoPreviousDraft=false):SnapshotOwnGeometryRevision|undefined {
   if(!this.defaults.immutableInputs)return;
   for(let context=this.before;context;context=context.before){
    if(requiresNoPreviousDraft&&context.index.snapshots.get(snapshotId)?.draft)continue;
@@ -723,12 +735,25 @@ class RecordingContext implements PreparedRecordingContext {
    // in the candidate so later constraints cannot erase earlier corrections.
    replayGraph=owner?{...candidate,correctionFrames:candidate.correctionFrames!.map(frame=>frame.status==='draft'?{...frame,angle:{...owner.angle},basisAdjustment:owner.basisAdjustment}:frame)}:candidate;
    const workspace={...this.workspace,recordings:this.workspace.recordings.map(value=>value===recording?{...value,angleGraph:replayGraph}:value)};
-   if(this.defaults.immutableInputs)registerPreparedControlChanges(this.workspace,workspace,recordingId,{structureUnchanged:true,basisControls:new Map(),responseControls});
-   return this.fork(workspace).sample(recordingId,{...evaluationRequests.get(current),angle:options.angle,useDraft:true,products:'controls'}).drawing;
+   return this.forkCandidate(workspace,recordingId,{structureUnchanged:true,basisControls:new Map(),responseControls}).sample(recordingId,{...evaluationRequests.get(current),angle:options.angle,useDraft:true,products:'controls'}).drawing;
   });
   return result.changed?{...result,graph:replayGraph!}:{graph:sourceGraph,changed:false};
  });}
  beginGesture():PreparedRecordingContext{return this;}
+ forkCandidate(workspace:RecordingSnapshotWorkspace,recordingId:string,changes?:SnapshotSimplexRevisionChanges):PreparedRecordingContext {
+  if(!this.index.recordings.has(recordingId)||!workspace.recordings.some(recording=>recording.id===recordingId))throw Error('A prepared candidate requires its existing Recording owner.');
+  if(changes&&this.defaults.immutableInputs)registerPreparedControlChanges(this.workspace,workspace,recordingId,changes);
+  return this.fork(workspace);
+ }
+ forkSnapshotCandidate(workspace:RecordingSnapshotWorkspace,snapshotId:string,proof?:{controlPlan:DrawingControlEditPlan;target:DrawingDocument}):PreparedRecordingContext {
+  if(!this.index.snapshots.has(snapshotId)||!workspace.snapshots.some(snapshot=>snapshot.id===snapshotId))throw Error('A prepared candidate requires its existing Snapshot owner.');
+  if(proof){
+   if(drawingControlEditProof(proof.controlPlan.before,proof.target,proof.controlPlan)!==proof.controlPlan)throw Error('A Snapshot control candidate requires its authentic Drawing producer.');
+   const owner=this.index.recordingForSnapshot.get(snapshotId)?.id??snapshotControlOwner(this.workspace,snapshotId);
+   if(this.defaults.immutableInputs)registerPreparedControlChanges(this.workspace,workspace,owner,{structureUnchanged:true,basisControls:new Map([[snapshotId,proof.controlPlan.controls]]),responseControls:[]});
+  }
+  return this.fork(workspace);
+ }
  fork(workspace:RecordingSnapshotWorkspace,_changes?:PreparedRecordingChanges):PreparedRecordingContext {
   if(workspace===this.workspace)return this;const known=recordingContexts.get(workspace)??{};if(known.immutable&&this.defaults.immutableInputs&&known.immutable.revision===immutableWorkspaceRevision(workspace))return known.immutable.context;
   const context=new RecordingContext(workspace,this.defaults,this);if(this.defaults.immutableInputs)known.immutable={context,revision:immutableWorkspaceRevision(workspace)};else known.mutable={context,fingerprint:JSON.stringify(workspace)};recordingContexts.set(workspace,known);return context;
@@ -756,7 +781,7 @@ function contextWithOptions(context:RecordingContext,options:SnapshotEvaluationO
   sample:(recording,request)=>context.sample(recording,{...defaults,...request}),
   sampleMany:(recording,requests)=>context.sampleMany(recording,requests.map(request=>({...defaults,...request}))),
   prepareSurfaceTargetEdit:(recording,current,wanted,request)=>context.prepareSurfaceTargetEdit(recording,current,wanted,request),
-  beginGesture:()=>handle,fork:(workspace,changes)=>contextWithOptions(context.fork(workspace,changes) as RecordingContext,defaults)};
+  beginGesture:()=>handle,fork:(workspace,changes)=>contextWithOptions(context.fork(workspace,changes) as RecordingContext,defaults),forkCandidate:(workspace,recordingId,changes)=>contextWithOptions(context.forkCandidate(workspace,recordingId,changes) as RecordingContext,defaults),forkSnapshotCandidate:(workspace,snapshotId,proof)=>contextWithOptions(context.forkSnapshotCandidate(workspace,snapshotId,proof) as RecordingContext,defaults)};
  policies.set(key,handle);contextPolicies.set(context,policies);return handle;
 }
 export function prepareRecordingContext(workspace:RecordingSnapshotWorkspace,options:SnapshotEvaluationOptions={}):PreparedRecordingContext {
@@ -765,7 +790,7 @@ export function prepareRecordingContext(workspace:RecordingSnapshotWorkspace,opt
 
 /** Compatibility adapter: gestures fork the same domain evaluation kernel. */
 export function evaluateSnapshotControlTargetPreview(before:RecordingSnapshotWorkspace,workspace:RecordingSnapshotWorkspace,recordingId:string,_baseline:SnapshotEvaluation):SnapshotEvaluation {
- return prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).fork(workspace).sample(recordingId,{useDraft:true,diagnostics:'preview'});
+ return prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).forkCandidate(workspace,recordingId).sample(recordingId,{useDraft:true,diagnostics:'preview'});
 }
 export function resolveSnapshot(workspace:RecordingSnapshotWorkspace,snapshotId:string,options:SnapshotEvaluationOptions={}):SnapshotEvaluation {
  return recordingContext(workspace,options).resolveSnapshot(snapshotId,options);
