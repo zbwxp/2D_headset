@@ -54,7 +54,7 @@ describe('Snapshot-local shared depth properties',()=>{
   const reloaded=parseRecordingSnapshots(JSON.parse(JSON.stringify(changed)));expect(order(resolveSnapshot(reloaded,'child'))).toEqual(order(resolveSnapshot(changed,'child')));
  });
  it('preserves local depth targets through semantic mirror input',()=>{
-  const {project}=fixture(),workspace=edit(project,2).project.recordingSnapshots!,parent=resolveSnapshot(workspace,'view'),mirror={axisX:0,curvePairs:[]},child=emptyRecordingSnapshot('mirror');child.parentSnapshotId='view';child.inputMirror=mirror;child.layers=structuredClone(workspace.snapshots.find(snapshot=>snapshot.id==='view')!.layers).map(layer=>({kind:'reference',id:layer.id,name:layer.name,baseSnapshotId:'view',baseLayerId:layer.id}));workspace.snapshots.push(child);
+  const {project}=fixture(),workspace=structuredClone(edit(project,2).project.recordingSnapshots!),parent=resolveSnapshot(workspace,'view'),mirror={axisX:0,curvePairs:[]},child=emptyRecordingSnapshot('mirror');child.parentSnapshotId='view';child.inputMirror=mirror;child.layers=structuredClone(workspace.snapshots.find(snapshot=>snapshot.id==='view')!.layers).map(layer=>({kind:'reference',id:layer.id,name:layer.name,baseSnapshotId:'view',baseLayerId:layer.id}));workspace.snapshots.push(child);
   const result=resolveSnapshot(workspace,'mirror'),expected=depthPaintBatches(mirrorSnapshotDrawing(parent.drawing,mirror).drawing).map(batch=>batch.owner??batch.item.id);expect(order(result)).toEqual(expected);
  });
  it('renders the shared DepthControls and actual paint batches in the locally authored order',()=>{

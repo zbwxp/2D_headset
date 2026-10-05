@@ -300,12 +300,24 @@ function snapshotPaintBatches(workspace:RecordingSnapshotWorkspace,snapshot:Reco
  return withDrawingReadScope(()=>snapshotPaintBatchesInScope(workspace,snapshot,drawing,provenance));
 }
 function snapshotPaintBatchesInScope(workspace:RecordingSnapshotWorkspace,snapshot:RecordingSnapshot,drawing:DrawingDocument,provenance:SnapshotEvaluation['provenance']):PaintBatch[]{
- const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
+ const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c),fills:drawing.fills.map(fill=>fill.depthOffset?{...fill,depthOffset:0}:fill)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
  for(const batch of base){positions.set(batch.owner??batch.item.id,batch.position);if(!batch.owner)for(const use of batch.item.stroke?.segments??[])positions.set(use.id,batch.position);}
  const originalLayer=(snapshotId:string,layerId:string):string|undefined=>{const owner=workspace.snapshots.find(s=>s.id===snapshotId),layer=owner?.layers.find(l=>l.id===layerId);return layer?.kind==='reference'?originalLayer(layer.baseSnapshotId,layer.baseLayerId):layer?.id;};
  let cursor=0;for(const layer of drawing.layers){const original=originalLayer(snapshot.id,layer.id);if(original)slots.set(original,cursor);slots.set(layer.id,cursor);for(const item of paintItems(drawing,layer.id))cursor+=item.stroke?item.stroke.segments.length:1;cursor++;}
  const sources=new Map<string,DrawingDocument|undefined>();
- const result=base.map(batch=>{if(!batch.owner)return batch;const p=provenance[batch.owner];if(!p)return batch;if(p.depthContext){const context=p.depthContext;if(!context.offset||!context.effective)return batch;const targets=context.targetIds.map(id=>positions.get(id)).filter((value):value is number=>value!==undefined);return {...batch,position:targets.length?(context.offset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):slots.get(context.targetId)??batch.position};}if(!sources.has(p.sourceSnapshotId))sources.set(p.sourceSnapshotId,cachedOriginal(workspace,p.sourceSnapshotId));const source=sources.get(p.sourceSnapshotId),curve=source?.curves.find(c=>c.id===(p.materialContext?.elementId??p.elementId));if(!source||!curve?.depthOffset)return batch;const context=depthContext(source,curve.id);if(!context.effective)return batch;const mapped=(id:string)=>p.materialContext?.idMap[id]??id,targets=context.target.ids.map(id=>positions.get(mapped(id))).filter((n):n is number=>n!==undefined),fallback=p.materialContext&&!Object.hasOwn(p.materialContext.idMap,context.target.id)?batch.position:slots.get(mapped(context.target.id))??batch.position;return {...batch,position:targets.length?(curve.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):fallback};});
+ const result=base.map(batch=>{
+  const id=batch.owner??(batch.item.kind==='fill'?batch.item.id:undefined);if(!id)return batch;
+  // A transparent cutout remains attached to its ordinary mask slot. Retain
+  // the authored value so returning to an opaque fill restores its depth.
+  if(batch.item.kind==='fill'&&drawing.fills.find(fill=>fill.id===id)?.color==='transparent')return batch;
+  const p=provenance[id];if(!p)return batch;
+  if(p.depthContext){const context=p.depthContext;if(!context.offset||!context.effective)return batch;const targets=context.targetIds.map(id=>positions.get(id)).filter((value):value is number=>value!==undefined);return {...batch,position:targets.length?(context.offset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):slots.get(context.targetId)??batch.position};}
+  if(!sources.has(p.sourceSnapshotId))sources.set(p.sourceSnapshotId,cachedOriginal(workspace,p.sourceSnapshotId));
+  const source=sources.get(p.sourceSnapshotId),sourceId=p.materialContext?.elementId??p.elementId,object=source&&(batch.item.kind==='fill'?source.fills.find(fill=>fill.id===sourceId):source.curves.find(curve=>curve.id===sourceId));
+  if(!source||!object?.depthOffset)return batch;const context=depthContext(source,object.id);if(!context.effective)return batch;
+  const mapped=(id:string)=>p.materialContext?.idMap[id]??id,targets=context.target.ids.map(id=>positions.get(mapped(id))).filter((n):n is number=>n!==undefined),fallback=p.materialContext&&!Object.hasOwn(p.materialContext.idMap,context.target.id)?batch.position:slots.get(mapped(context.target.id))??batch.position;
+  return {...batch,position:targets.length?(object.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):fallback};
+ });
  const order=new Map(base.map((batch,index)=>[batch.owner??batch.item.id,index]));return result.sort((a,b)=>a.position-b.position||order.get(a.owner??a.item.id)!-order.get(b.owner??b.item.id)!);
 }
 type SnapshotOwnEvaluation=Omit<SnapshotEvaluation,'snapshotId'|'topologyInputDrawing'|'source'|'baseDrawing'|'provenance'|'appliedTrackIds'|'placementsByLayer'|'layerProvenance'|'authoredTracks'>;

@@ -7,7 +7,7 @@ import {validateLayerDomains} from './layerDomains';
 import type {RecordingSnapshotWorkspace} from './model';
 import {validateRecordingSnapshots} from './validation';
 import {parseRecordingScenes} from '../recordingScene/persistence';
-import {finitePoint,validInkEnds,validContourMist,validFillMist} from '../drawing/model';
+import {finitePoint,validInkEnds,validContourMist,validFillMist,validDepthAppearance} from '../drawing/model';
 import {validateRecordingReference} from '../recording/reference';
 import {normalizeSnapshotNodeAliases,type SnapshotNodeAliases} from './nodeAliases';
 import {validateSnapshotNodeForks} from './nodeForks';
@@ -69,10 +69,11 @@ const authored=(value:unknown)=>{for(const raw of list(value)){const ref=object(
 export function parseRecordingSnapshots(value:unknown):RecordingSnapshotWorkspace{
  const root=object(value,['version','library','snapshots','recordings','activeRecordingId','legacyArchive']);if(root.activeRecordingId!==undefined)id(root.activeRecordingId);
  const library=object(root.library,['nodes','curves','fills','offsets']);
- const fields={nodes:['id','position'],curves:['id','name','strokeName','nodes','handles','visible','locked','width','inkVisible','inkEnds','profile','profileReverse','mist','depthOffset','depthScope','localPaintOrder'],fills:['id','name','visible','locked','color','mist','boundary','hiddenWithStroke'],offsets:['id','name','visible','locked','source','distance','start','end','taper','width','inkEnds','translation','profile','profileReverse','mist']};
+ const fields={nodes:['id','position'],curves:['id','name','strokeName','nodes','handles','visible','locked','width','inkVisible','inkEnds','profile','profileReverse','mist','depthOffset','depthScope','localPaintOrder'],fills:['id','name','visible','locked','color','mist','boundary','hiddenWithStroke','depthOffset','depthScope'],offsets:['id','name','visible','locked','source','distance','start','end','taper','width','inkEnds','translation','profile','profileReverse','mist']};
  for(const category of ['nodes','curves','fills','offsets'] as const)for(const [key,raw] of Object.entries(map(library[category]))){
   id(key);const item=object(raw,fields[category]);id(item.id);if(category==='nodes'){if(!finitePoint(item.position))fail('node position');continue;}named(item);
-  if(category==='curves'){ink(item);finite(item.width,Number.MIN_VALUE,1);const nodes=list(item.nodes,2),handles=list(item.handles,2);if(nodes.length!==2||handles.length!==2||handles.some(p=>!finitePoint(p)))fail('curve geometry');nodes.forEach(id);if(item.inkVisible!==undefined)boolean(item.inkVisible);if(item.strokeName!==undefined)name(item.strokeName);if(item.depthOffset!==undefined){finite(item.depthOffset,-10000,10000);if(!Number.isSafeInteger(item.depthOffset))fail('depth offset');}if(item.depthScope!==undefined&&item.depthScope!=='PARENT'&&item.depthScope!=='LAYER')fail('depth scope');if(item.localPaintOrder!==undefined)boolean(item.localPaintOrder);}
+  if((category==='curves'||category==='fills')&&!validDepthAppearance(item))fail('depth appearance');
+  if(category==='curves'){ink(item);finite(item.width,Number.MIN_VALUE,1);const nodes=list(item.nodes,2),handles=list(item.handles,2);if(nodes.length!==2||handles.length!==2||handles.some(p=>!finitePoint(p)))fail('curve geometry');nodes.forEach(id);if(item.inkVisible!==undefined)boolean(item.inkVisible);if(item.strokeName!==undefined)name(item.strokeName);if(item.localPaintOrder!==undefined)boolean(item.localPaintOrder);}
   if(category==='fills'){uses(item.boundary);if(!['white','black','transparent'].includes(String(item.color))||!validFillMist(item.mist)||item.color==='transparent'&&(item.mist as {enabled?:boolean}|undefined)?.enabled)fail('fill appearance');}
   if(category==='offsets'){ink(item);uses(item.source);finite(item.distance,-2,2);finite(item.start,0,1);finite(item.end,0,1);if((item.end as number)<=(item.start as number))fail('offset interval');finite(item.taper,0,.5);finite(item.width,Number.MIN_VALUE,1);if(item.translation!==undefined&&!finitePoint(item.translation))fail('offset translation');}
  }

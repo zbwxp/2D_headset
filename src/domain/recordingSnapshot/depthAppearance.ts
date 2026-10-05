@@ -8,10 +8,10 @@ import type {SnapshotDeformationState,SnapshotElementProvenance} from './model';
 export interface SnapshotDepthAppearanceContext {offset:number;effective:number;targetId:string;targetIds:string[]}
 export function snapshotDepthAppearanceProvenance(drawing:DrawingDocument,state:SnapshotDeformationState,provenance:Record<string,SnapshotElementProvenance>):Record<string,SnapshotElementProvenance> {
  let result=provenance;
- for(const curve of drawing.curves){const layerId=layerFor(drawing,curve.id)?.id,patch=layerId?state.layers[layerId]?.curveAppearance?.[curve.id]:undefined;
+ for(const object of [...drawing.curves,...drawing.fills]){const layerId=layerFor(drawing,object.id)?.id,layer=layerId?state.layers[layerId]:undefined,patch='color' in object?layer?.paintAppearance?.[object.id]:layer?.curveAppearance?.[object.id];
   if(!patch||!Object.hasOwn(patch,'depthOffset')&&!Object.hasOwn(patch,'depthScope'))continue;
-  const prior=provenance[curve.id];if(!prior)continue;const context=depthContext(drawing,curve.id);if(result===provenance)result={...provenance};
-  result[curve.id]={...prior,depthContext:{offset:curve.depthOffset??0,effective:context.effective,targetId:context.target.id,targetIds:[...context.target.ids]}};
+  const prior=provenance[object.id];if(!prior)continue;const context=depthContext(drawing,object.id);if(result===provenance)result={...provenance};
+  result[object.id]={...prior,depthContext:{offset:object.depthOffset??0,effective:context.effective,targetId:context.target.id,targetIds:[...context.target.ids]}};
  }
  return result;
 }

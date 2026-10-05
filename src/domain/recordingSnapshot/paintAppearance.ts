@@ -1,15 +1,15 @@
-import {DEFAULT_FILL_MIST,type DrawingDocument,type FillRegion,type FillMist,type OffsetRelation,type Point2} from '../drawing/model';
+import {DEFAULT_FILL_MIST,validDepthAppearance,type DrawingDocument,type FillRegion,type FillMist,type OffsetRelation,type Point2} from '../drawing/model';
 import {appearanceDifference,sameAppearance,mergeAppearanceObject,applyAppearanceObject,validateAppearanceMap,appearanceRecord} from './appearancePatch';
 import {snapshotCurveAppearanceDifference,mergeSnapshotCurveAppearance,applySnapshotCurveAppearanceToCurve,validateSnapshotCurveAppearance,type SnapshotCurveAppearance} from './curveAppearance';
 import {InputCache} from '../geometry/cache';
 import {retainSnapshotRouteMaterialInput} from './routeMaterialSource';
 import type {SnapshotDeformationState} from './model';
 
-export type SnapshotFillAppearance={kind:'fill';name?:string;color?:FillRegion['color'];mist?:Partial<FillMist>|null};
+export type SnapshotFillAppearance={kind:'fill';name?:string;color?:FillRegion['color'];mist?:Partial<FillMist>|null;depthOffset?:number|null;depthScope?:FillRegion['depthScope']|null};
 export type SnapshotOffsetAppearance=Pick<SnapshotCurveAppearance,'name'|'width'|'profile'|'profileReverse'|'inkEnds'|'mist'>&{kind:'offset';distance?:number;start?:number;end?:number;taper?:number;translation?:Point2|null};
 export type SnapshotPaintAppearance=SnapshotFillAppearance|SnapshotOffsetAppearance;
 export type SnapshotPaintAppearanceMap=Record<string,SnapshotPaintAppearance>;
-const fillFields=['name','color','mist'] as const,offsetFields=['name','width','profile','profileReverse','inkEnds','mist','distance','start','end','taper','translation'] as const,mistFields=['enabled','width','opacity','side'] as const;
+const fillFields=['name','color','mist','depthOffset','depthScope'] as const,offsetFields=['name','width','profile','profileReverse','inkEnds','mist','distance','start','end','taper','translation'] as const,mistFields=['enabled','width','opacity','side'] as const;
 const inkFields=['name','width','profile','profileReverse','inkEnds','mist'] as const;
 const fail=():never=>{throw Error('Invalid snapshot paint appearance override.');};
 export function validateSnapshotPaintAppearance(value:unknown):asserts value is SnapshotPaintAppearanceMap{
@@ -19,6 +19,7 @@ export function validateSnapshotPaintAppearance(value:unknown):asserts value is 
   if(patch.name!==undefined&&(typeof patch.name!=='string'||!patch.name.trim()||patch.name.length>256))fail();
   const num=(key:string,min:number,max:number)=>{const v=patch[key];if(v!==undefined&&(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max))fail();};
   if(patch.kind==='fill'){
+   if(!validDepthAppearance({depthOffset:patch.depthOffset??undefined,depthScope:patch.depthScope??undefined}))fail();
    if(patch.color!==undefined&&!['white','black','transparent'].includes(String(patch.color)))fail();
    if(patch.mist!==undefined&&patch.mist!==null){const mist=patch.mist;if(!appearanceRecord(mist)||Object.keys(mist).some(key=>!mistFields.includes(key as typeof mistFields[number])))fail();
     const m=mist as Record<string,unknown>;
@@ -39,7 +40,7 @@ export function snapshotPaintAppearanceDifference(before:FillRegion|OffsetRelati
  if(unsupported.length)throw Error(`Paint ${before.id} changes unsupported local fields: ${unsupported.join(', ')}.`);
  if(kind==='fill'){
   const a=before as FillRegion,b=after as FillRegion,patch:SnapshotFillAppearance={kind};
-  for(const key of ['name','color'] as const)if(a[key]!==b[key])Object.assign(patch,{[key]:b[key]});
+  for(const key of ['name','color','depthOffset','depthScope'] as const)if(a[key]!==b[key])Object.assign(patch,{[key]:b[key]??null});
   const mist=appearanceDifference(a.mist,b.mist,mistFields);if(mist!==undefined)patch.mist=mist;
   return Object.keys(patch).length>1?patch:undefined;
  }
@@ -61,7 +62,7 @@ export function mergeSnapshotPaintAppearance(before:SnapshotPaintAppearanceMap|u
 export function applySnapshotPaintAppearanceToObject<T extends FillRegion|OffsetRelation>(object:T,patch:SnapshotPaintAppearance):T{
  if(patch.kind==='fill'){
   if(!('color' in object))fail();const result={...object} as FillRegion;
-  for(const key of ['name','color'] as const)if(patch[key]!==undefined)Object.assign(result,{[key]:patch[key]});
+  for(const key of ['name','color','depthOffset','depthScope'] as const)if(patch[key]!==undefined){if(patch[key]===null)Reflect.deleteProperty(result,key);else Object.assign(result,{[key]:patch[key]});}
   if(patch.mist!==undefined){const mist=applyAppearanceObject(result.mist,patch.mist,DEFAULT_FILL_MIST);if(mist===undefined)delete result.mist;else result.mist=mist;}
   // A live source may change to transparent after a local mist edit.
   if(result.color==='transparent'&&result.mist?.enabled)result.mist={...result.mist,enabled:false};

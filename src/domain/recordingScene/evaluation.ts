@@ -109,14 +109,15 @@ function placeDrawing(result:DeformedDrawing,placements:Record<string,ScenePlace
 /** Paint positions resolve source offsets inside their original instance first.
  * The target neighbor side survives scene layer reordering and interleaving. */
 function scenePaintBatches(drawing:DrawingDocument,originals:Map<string,DrawingDocument>,provenance:Record<string,SceneSourceObject>):PaintBatch[]{
- const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
+ const plain={...drawing,curves:drawing.curves.map(c=>c.depthOffset?{...c,depthOffset:0,localPaintOrder:true}:c),fills:drawing.fills.map(fill=>fill.depthOffset?{...fill,depthOffset:0}:fill)},base=depthPaintBatches(plain),positions=new Map<string,number>(),slots=new Map<string,number>();
  for(const b of base){positions.set(b.owner??b.item.id,b.position);if(!b.owner)for(const s of b.item.stroke?.segments??[])positions.set(s.id,b.position);}
  let cursor=0;for(const layer of drawing.layers){slots.set(layer.id,cursor);for(const item of paintItems(drawing,layer.id))cursor+=item.stroke?item.stroke.segments.length:1;cursor++;}
  const result=base.map(batch=>{
-  if(!batch.owner)return batch;const p=provenance[batch.owner],source=p&&originals.get(p.instanceId),curve=source?.curves.find(c=>c.id===p.sourceId);if(!source||!curve?.depthOffset)return batch;
-  const context=depthContext(source,curve.id);if(!context.effective)return batch;
+  const id=batch.owner??(batch.item.kind==='fill'?batch.item.id:undefined);if(!id||batch.item.kind==='fill'&&drawing.fills.find(fill=>fill.id===id)?.color==='transparent')return batch;
+  const p=provenance[id],source=p&&originals.get(p.instanceId),object=source&&(batch.item.kind==='fill'?source.fills.find(fill=>fill.id===p.sourceId):source.curves.find(curve=>curve.id===p.sourceId));if(!source||!object?.depthOffset)return batch;
+  const context=depthContext(source,object.id);if(!context.effective)return batch;
   const targets=context.target.ids.map(id=>positions.get(instanceObjectId(p.instanceId,id))).filter((n):n is number=>n!==undefined);
-  const position=targets.length?(curve.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):(slots.get(instanceObjectId(p.instanceId,context.target.id))??batch.position);
+  const position=targets.length?(object.depthOffset>0?Math.min(...targets)-.5:Math.max(...targets)+.5):(slots.get(instanceObjectId(p.instanceId,context.target.id))??batch.position);
   return {...batch,position};
  });
  const originalOrder=new Map(base.map((b,i)=>[b.owner??b.item.id,i]));return result.sort((a,b)=>a.position-b.position||originalOrder.get(a.owner??a.item.id)!-originalOrder.get(b.owner??b.item.id)!);
