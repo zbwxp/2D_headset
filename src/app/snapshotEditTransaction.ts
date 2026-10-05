@@ -6,7 +6,7 @@ import {effectiveSnapshotSurfaceResponses} from '../domain/recordingSnapshot/sur
 import {isNonlinearLayerDomain} from '../domain/recordingSnapshot/layerDomains';
 import {snapshotWithObjectLocks,type SnapshotObjectLocks} from '../domain/recordingSnapshot/objectLocks';
 import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from './recordingLayerDomainEdit';
-import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
+import {prepareRecordingContext,resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {hasNonlinearDeformationFor,evaluatedMaterialProgram} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
 import {buildDrawingLayerDomainEdit,buildDrawingSnapshotEdit,type DrawingSnapshotEditIntent} from './drawingSnapshotEdit';
@@ -90,6 +90,18 @@ function preparedReceipt(plan:SnapshotEditPlan):PreparedReceipt {
  if(!receipt||receipt.before!==plan.before||receipt.project!==plan.project||receipt.changed!==plan.changed||receipt.revision!==plan.preparedRevision)throw Error('This snapshot edit has no valid prepared acceptance receipt. Prepare the edit again.');
  assertPreparedEditCurrent(plan);return receipt;
 }
+/** Normalization may create a new immutable workspace identity. Keep both the
+ * completed candidate and its validated result in the same dependency lineage. */
+function normalizePreparedWorkspace(before:RecordingSnapshotWorkspace|undefined,candidate:RecordingSnapshotWorkspace):RecordingSnapshotWorkspace {
+ const validated=shareValidatedRecordingWorkspace(before,parseRecordingSnapshots(candidate));
+ retainPreparedControlChanges(validated,candidate);
+ if(before)prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).fork(candidate);
+ prepareRecordingContext(candidate,{immutableInputs:true,diagnostics:'preview'}).fork(validated);
+ return validated;
+}
+function adoptPreparedWorkspace(before:LandmarkProject,after:LandmarkProject):void {
+ if(before.recordingSnapshots&&after.recordingSnapshots&&before.recordingSnapshots!==after.recordingSnapshots)prepareRecordingContext(before.recordingSnapshots,{immutableInputs:true,diagnostics:'preview'}).fork(after.recordingSnapshots);
+}
 /** Finish an accepted preview without running its target producer, inverse,
  * source synchronization or propagation again. A full plan is already done.
  * The cached upgrade preserves normalizer output and runs at most once. */
@@ -99,7 +111,7 @@ export function finalizePreparedSnapshotEdit<T extends SnapshotEditPlan>(plan:T,
  if(receipt.validation==='full'||!plan.changed)return plan;
  if(!receipt.finalized){
   const candidate=receipt.project,workspace=candidate.recordingSnapshots;
-  const recordingSnapshots=workspace&&shareValidatedRecordingWorkspace(workspace,parseRecordingSnapshots(workspace));
+  const recordingSnapshots=workspace&&normalizePreparedWorkspace(workspace,workspace);
   if(workspace&&recordingSnapshots)retainPreparedControlChanges(recordingSnapshots,workspace);
   const project=recordingSnapshots===workspace?candidate:{...candidate,recordingSnapshots};
   receipt.finalized=issuePreparedEdit({before:plan.before,project,changed:plan.changed},'full',receipt.revision);
@@ -201,6 +213,7 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
  freezeCandidate(context.project);
  const revision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);
  if(revision!==currentPreparedEditRevision())throw Error('This prepared edit was canceled during preparation.');
+ adoptPreparedWorkspace(plan.before,plan.project);
  if(receiptKey in plan){preparedReceipt(plan);return plan;}
  return issuePreparedEdit(plan,'validation' in edit&&edit.validation==='preview'?'preview':'full',revision);
 }
@@ -240,7 +253,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   const original=context.workspace??ensureRecordingSnapshots(before).recordingSnapshots;
   assertOriginalsUnchanged(original,edit.workspace);
   const propagation=propagateAutomaticSnapshotLayers(original,edit.workspace),propagated=propagation.workspace;diagnostics=propagation.diagnostics;
-  const recordingSnapshots=edit.validation==='preview'?propagated:shareValidatedRecordingWorkspace(original,parseRecordingSnapshots(propagated));
+  const recordingSnapshots=edit.validation==='preview'?propagated:normalizePreparedWorkspace(original,propagated);
   if(propagated===edit.workspace)retainPreparedControlChanges(recordingSnapshots,edit.workspace);
   project=recordingSnapshots===context.workspace?before:{...before,recordingSnapshots};
  }else{
@@ -259,7 +272,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   project=prepareOriginalState(before,state,splitPlan);
   if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
  }
- if(project.recordingSnapshots&&edit.kind!=='snapshot-state'&&(!('validation' in edit)||edit.validation!=='preview'))project={...project,recordingSnapshots:shareValidatedRecordingWorkspace(context.workspace,parseRecordingSnapshots(project.recordingSnapshots))};
+ if(project.recordingSnapshots&&edit.kind!=='snapshot-state'&&(!('validation' in edit)||edit.validation!=='preview'))project={...project,recordingSnapshots:normalizePreparedWorkspace(context.workspace,project.recordingSnapshots)};
  if(edit.kind!=='snapshot-state'&&same(project,before))project=before;
  return {before,project,changed:project!==before,...(diagnostics?{diagnostics}:{})};
 }

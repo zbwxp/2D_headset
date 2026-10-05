@@ -41,6 +41,6 @@
 
 `command-candidate-lifecycle.test.ts`、`drawing-snapshot-control-capture.test.ts` 将无关曲线扩到 0/100/1000，分别验证基点、响应、最小改变回退和没有 Recorder 的 Drawing。未知域回退不是这个计数断言的豁免漏洞，而有自己的权威冷热等价检查。
 
-`shared-canvas-selection-gestures.test.ts` 执行实际组件处理器与父级预览更新，验证接受候选在松手时不再次作者求值/反推；`drawing-pen-controller.test.ts`、`recording-pen.test.ts`、`recording-drawing-tools.test.ts` 检查稳定新 ID、合法→失败→松手、取消/切换与重复释放。`numeric-slider-gesture.test.ts` 检查标量预览取消及历史事件消费。
+`shared-canvas-selection-gestures.test.ts` 执行实际组件处理器与父级预览更新，验证接受候选在松手时不再次作者求值/反推；`drawing-pen-controller.test.ts`、`recording-pen-canvas.test.ts`、`recording-drawing-tools.test.ts` 检查稳定新 ID、合法→失败→松手、取消/切换与重复释放。`numeric-slider-gesture.test.ts` 检查标量预览取消及历史事件消费。
 
 这些是自动化组件/域检查。发布后的浏览器操作、同环境 CPU 对照和全量工作负载回退必须单独记录，不能由测试数量替代。
