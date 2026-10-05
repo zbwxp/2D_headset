@@ -17,9 +17,9 @@ function chordTurn(before:Point2,after:Point2):number{
 /** Pointer editing, always evaluated from the gesture's original document.
  * strength is 0..1. Numeric moves, nudges and binding keep using moveNode.
  * The result is ordinary cubic geometry, with no persisted follow relation. */
-export function dragNode(base:DrawingDocument,nodeId:string,position:Point2,strength:number):DrawingDocument{
+export function dragNode(base:DrawingDocument,nodeId:string,position:Point2,strength:number,allowHidden=false):DrawingDocument{
  position=constrainMirrorNodePosition(base,nodeId,position);
- const next=moveNode(base,nodeId,position);
+ const next=moveNode(base,nodeId,position,allowHidden);
  if(next===base||!Number.isFinite(strength)||strength<=0)return next;
  const amount=Math.min(1,strength),moving=linkedNodeIds(base,nodeId);
  const before=new Map(base.nodes.map(n=>[n.id,n.position])),after=new Map(next.nodes.map(n=>[n.id,n.position]));

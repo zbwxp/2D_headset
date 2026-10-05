@@ -15,9 +15,9 @@ export type DrawingScalarControl={readonly kind:'node';readonly nodeId:string}|{
 const work={plans:0,scopedAuthoring:0,fullAuthoring:0,authoredCurves:0,capturedControls:0,nodeArrayCopiedSlots:0,curveArrayCopiedSlots:0};
 export const drawingControlEditStats=()=>({...drawingControlDependencyStats(),...work});
 export type DrawingControlEditIntent=
- |{readonly kind:'node';readonly nodeId:string;readonly followStrength?:number}
- |{readonly kind:'handle';readonly endpoint:Endpoint}
- |{readonly kind:'curves';readonly curveIds:readonly string[];readonly preserveRelations?:boolean}
+ |{readonly kind:'node';readonly nodeId:string;readonly followStrength?:number;readonly allowHidden?:boolean}
+ |{readonly kind:'handle';readonly endpoint:Endpoint;readonly allowHidden?:boolean}
+ |{readonly kind:'curves';readonly curveIds:readonly string[];readonly preserveRelations?:boolean;readonly allowHidden?:boolean}
  |{readonly kind:'domain';readonly layerIds:readonly string[];readonly curveIds?:readonly string[];readonly strokeScope?:LayerCageStrokeScope};
 export interface DrawingControlEditPlan {
  readonly before:DrawingDocument;readonly intent:DrawingControlEditIntent;readonly controls:readonly DrawingScalarControl[];
@@ -57,9 +57,9 @@ export type DrawingControlEditValue={kind:'point';position:Point2}|{kind:'map';m
 export function applyDrawingControlEditPlan(plan:DrawingControlEditPlan,value:DrawingControlEditValue):DrawingDocument {
  const internal=plans.get(plan);if(!internal)throw Error('Unknown Drawing control edit plan.');const {before,intent}=plan,base=plan.fallbackReason?before:internal.scope;
  const execute=(base:DrawingDocument):DrawingDocument=>{work[base===before?'fullAuthoring':'scopedAuthoring']++;work.authoredCurves+=base.curves.length;let next:DrawingDocument;
- if(intent.kind==='node'&&value.kind==='point')next=applyMirrorEditing(base,dragNode(base,intent.nodeId,value.position,intent.followStrength??0),{nodes:[{nodeId:intent.nodeId,position:value.position}]});
- else if(intent.kind==='handle'&&value.kind==='point')next=applyMirrorEditing(base,moveHandle(base,intent.endpoint,value.position),{handles:[{...intent.endpoint,position:value.position}]});
- else if(intent.kind==='curves'&&(value.kind==='transform'||value.kind==='map')){const raw=transform(base,[...intent.curveIds],value.kind==='map'?value.map:point=>applyScenePlacement(value.value,point),value.kind==='map'&&value.allowRelated===true),target=intent.preserveRelations?{...raw,joins:base.joins}:raw;next=applyMirrorEditing(base,target,value.kind==='map'?mirrorWritesForCurves(target,intent.curveIds):{});}
+ if(intent.kind==='node'&&value.kind==='point')next=applyMirrorEditing(base,dragNode(base,intent.nodeId,value.position,intent.followStrength??0,intent.allowHidden),{nodes:[{nodeId:intent.nodeId,position:value.position}]});
+ else if(intent.kind==='handle'&&value.kind==='point')next=applyMirrorEditing(base,moveHandle(base,intent.endpoint,value.position,intent.allowHidden),{handles:[{...intent.endpoint,position:value.position}]});
+ else if(intent.kind==='curves'&&(value.kind==='transform'||value.kind==='map')){const raw=transform(base,[...intent.curveIds],value.kind==='map'?value.map:point=>applyScenePlacement(value.value,point),value.kind==='map'&&value.allowRelated===true,intent.allowHidden),target=intent.preserveRelations?{...raw,joins:base.joins}:raw;next=applyMirrorEditing(base,target,value.kind==='map'?mirrorWritesForCurves(target,intent.curveIds):{});}
  else if(intent.kind==='domain'&&value.kind==='cage'){
   if(JSON.stringify(intent.layerIds)!==JSON.stringify(value.intent.scope.layerIds))throw Error('The cage scope changed during this gesture.');
   // Reuse the frozen semantic membership, while the canonical complete

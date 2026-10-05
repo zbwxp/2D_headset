@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest';
 import {emptyDrawing,type DrawingDocument,type Point2} from '../domain/drawing/model';
 import {dragNode} from '../domain/drawing/nodeDrag';
-import {moveHandle,transform} from '../domain/drawing/commands';
+import {moveHandle,moveNode,transform} from '../domain/drawing/commands';
 import {applyMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {applyScenePlacement} from '../domain/recordingScene/tracks';
 import {applyDrawingControlEditPlan,prepareDrawingControlEditPlan,drawingControlEditProof,drawingControlEditStats,applyDrawingControlWrites} from '../domain/drawing/controlEditPlan';
@@ -42,4 +42,16 @@ it('ARC handle plans retain the canonical zero-length guard without making the p
  expect(()=>moveHandle(before,endpoint,collapsed)).toThrow('连接柄不能缩为零');expect(()=>applyDrawingControlEditPlan(plan,{kind:'point',position:collapsed})).toThrow('连接柄不能缩为零');
  const position:Point2=[.7,.8],stats=drawingControlEditStats(),actual=applyDrawingControlEditPlan(plan,{kind:'point',position}),expected=moveHandle(before,endpoint,position);
  expect(actual).toEqual(expected);expect(actual.curves[1]).toBe(before.curves[1]);expect(actual.joins).toBe(before.joins);expect(drawingControlEditProof(before,actual,plan)).toBe(plan);expect(drawingControlEditStats().authoredCurves-stats.authoredCurves).toBe(2);expect(JSON.stringify(before)).toBe(saved);
+});
+
+it.each(['node','handle','curves'] as const)('%s plans keep hidden authoring explicit and preserve lock rejection',kind=>{
+ const before=fixture();before.mirrorEditing=undefined;before.endpointLinks=[];before.curves[0].visible=false;
+ const intent=kind==='node'?{kind,nodeId:'a0'}:kind==='handle'?{kind,endpoint:{curveId:'a',end:0 as const}}:{kind,curveIds:['a']};
+ const position:Point2=[.4,.5],value=kind==='curves'?{kind:'map' as const,map:(p:Point2):Point2=>[p[0]+.2,p[1]-.1]}:{kind:'point' as const,position};
+ expect(()=>applyDrawingControlEditPlan(prepareDrawingControlEditPlan(before,intent),value)).toThrow(/隐藏/);
+ const plan=prepareDrawingControlEditPlan(before,{...intent,allowHidden:true}),actual=applyDrawingControlEditPlan(plan,value);
+ const expected=kind==='node'?moveNode(before,'a0',position,true):kind==='handle'?moveHandle(before,{curveId:'a',end:0},position,true):transform(before,['a'],(value as {map:(point:Point2)=>Point2}).map,false,true);
+ expect(actual).toEqual(expected);expect(actual.curves[0].visible).toBe(false);expect(drawingControlEditProof(before,actual,plan)).toBe(plan);
+ const locked={...before,curves:before.curves.map(curve=>curve.id==='a'?{...curve,locked:true}:curve)},saved=JSON.stringify(locked);
+ expect(()=>applyDrawingControlEditPlan(prepareDrawingControlEditPlan(locked,{...intent,allowHidden:true}),value)).toThrow(/锁定/);expect(JSON.stringify(locked)).toBe(saved);
 });
