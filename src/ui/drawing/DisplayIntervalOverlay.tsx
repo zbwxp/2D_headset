@@ -1,10 +1,12 @@
 import {curveById,editable,visible,type DrawingDocument as Doc,type Point2} from '../../domain/drawing/model';
-import {displayPath,displayField,intervalMode} from '../../domain/drawing/displayIntervals';
+import {displayPath,displayField,intervalMode,pathTracks} from '../../domain/drawing/displayIntervals';
 import {pathOf} from '../../domain/drawing/appearance';
 import type {DrawingSelection} from './session';
 import {uiText as t} from '../i18n';
 // Match both endpoints to their interval number, independently of selection and mode.
 function intervalColor(index:number,light=false){return `hsl(${(165+(index-1)*137.508)%360} 65% ${light?94:34}%)`;}
+/** Keep authored gaps legible beneath the common selection guide. */
+export function drawingMaterialSelectionOpacity(d:Doc,id:string,selection:DrawingSelection):number{return selection.displayInterval||pathTracks(d,displayPath(d,id)).length||d.joins.some(join=>join.mode==='ARC'&&[join.a,join.b].some(end=>end.curveId===id))?.25:1;}
 export default function DisplayIntervalOverlay({d,selection,screen,pick}:{d:Doc;selection:DrawingSelection;screen:(p:Point2)=>Point2;pick:(e:React.PointerEvent,track:string,range:string,end:0|1)=>void}){
  const selectedGeometry=selection.node?d.nodes.find(n=>n.id===selection.node)?.position:selection.handle?curveById(d,selection.handle.curveId)?.handles[selection.handle.end]:undefined,geometryScreen=selectedGeometry?screen(selectedGeometry):undefined;
  const highlights:{key:string;points:string;hide:boolean}[]=[],seen=new Set<string>(),guides:{key:string;path:string}[]=[],grips:{track:string;range:string;end:0|1;mode:'SHOW'|'HIDE';index:number;p:Point2;active:boolean;locked:boolean;enabled:boolean}[]=[];

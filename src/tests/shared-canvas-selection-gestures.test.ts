@@ -1,6 +1,7 @@
 import {isValidElement,type ComponentProps,type ReactElement} from 'react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import SnapshotRecordingWorkspace from '../ui/vectorRecording/SnapshotRecordingWorkspace';
+import * as snapshotProperties from '../ui/vectorRecording/snapshotDrawingPropertyEdit';
 import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {canonicalElementId,upsertDrawingSource} from '../domain/recordingSnapshot/sources';
 import {emptyRecordingSnapshotWorkspace,emptyRecordingSnapshot,emptySnapshotRecording} from '../domain/recordingSnapshot/model';
@@ -22,6 +23,9 @@ import {chooseDrawingSelection} from '../ui/drawing/interactionController';
 import {selectionBounds} from '../ui/drawing/geometry';
 import {applyDrawingControlEditPlan,beginDrawingMarquee,drawingCurveBodySelection,finishDrawingMarquee,prepareDrawingControlEditPlan} from '../ui/drawing/editGestures';
 import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
+import DisplayIntervalOverlay from '../ui/drawing/DisplayIntervalOverlay';
+import InkEndOverlay from '../ui/drawing/InkEndOverlay';
+import {addDisplayInterval,changeDisplayInterval,displayPath,displayField} from '../domain/drawing/displayIntervals';
 import SceneWarpCanvas from '../ui/vectorRecording/SceneWarpCanvas';
 import SceneInstanceTransformBox,{type RecordingInstanceTransform} from '../ui/vectorRecording/SceneInstanceTransformBox';
 import type {DrawingCommandIntent} from '../ui/drawing/endpointInteraction';
@@ -48,6 +52,8 @@ type Props={children?:unknown;[key:string]:any};
 function elements(tree:unknown):ReactElement<Props>[] {
  if(Array.isArray(tree))return tree.flatMap(elements);
  if(!isValidElement<Props>(tree))return [];
+ if(tree.type===DisplayIntervalOverlay)return elements(DisplayIntervalOverlay(tree.props as ComponentProps<typeof DisplayIntervalOverlay>));
+ if(tree.type===InkEndOverlay)return elements(InkEndOverlay(tree.props as ComponentProps<typeof InkEndOverlay>));
  if(tree.type===SceneInstanceTransformBox)return elements(SceneInstanceTransformBox(tree.props as ComponentProps<typeof SceneInstanceTransformBox>));
  return [tree,...elements(tree.props.children)];
 }
@@ -67,7 +73,7 @@ afterEach(()=>{hooks.cleanups.forEach(fn=>fn?.());vi.unstubAllGlobals();useEdito
 const pointer=(point:Point2,shiftKey=false)=>({button:0,buttons:1,pointerId:1,pointerType:'mouse',clientX:point[0],clientY:point[1],shiftKey,altKey:true,ctrlKey:false,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const emit=(name:string,event:unknown)=>[...(listeners.get(name)??[])].forEach(fn=>fn(event));
 const near=(actual:Point2,expected:Point2)=>actual.forEach((n,i)=>expect(n).toBeCloseTo(expected[i],9));
-type Options={tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean;twoLayers?:boolean;instanceStrategy?:'placement'|'control-target'};
+type Options={interval?:boolean;intervalAtNode?:boolean;correction?:boolean;tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean;twoLayers?:boolean;instanceStrategy?:'placement'|'control-target'};
 function fixture(options:Options):DrawingDocument {
  let drawing=emptyDrawing();drawing.layers=[{id:'layer',name:'Outline',visible:true,locked:false,items:[]}];
  const curves:Record<string,Cubic>={a:[[-1,-.4],[-.9,-.2],[-.7,-.2],[-.6,-.4]],b:[[-.3,-.4],[-.2,-.2],[0,-.2],[.1,-.4]],c:[[-.3,.4],[-.2,.6],[0,.6],[.1,.4]],mirror:[[1,-.4],[.9,-.2],[.7,-.2],[.6,-.4]]};
@@ -76,6 +82,7 @@ function fixture(options:Options):DrawingDocument {
  if(options.mirrored)drawing.mirrorEditing={enabled:true,curvePairs:[{id:'pair',a:'a',b:'mirror',reverse:false}]};
  if(options.hiddenContinuation){drawing=connect(drawing,{curveId:'a',end:1},{curveId:'b',end:0},'POSITION');drawing.curves.find(c=>c.id==='b')!.visible=false;}
  if(options.lockedGroup){drawing.groups=[{id:'group',name:'Complete group',curveIds:['a','b'],visible:true,locked:false}];drawing.curves.find(c=>c.id==='b')!.locked=true;}
+ if(options.interval){drawing=addDisplayInterval(drawing,'a','HIDE');const track=drawing.displayIntervals!.at(-1)!;drawing=changeDisplayInterval(drawing,track.id,track.ranges[0].id,{start:options.intervalAtNode?0:.2,end:.6});}
  return drawing;
 }
 
@@ -95,7 +102,7 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  function render(){
   let count=0;do{
    hooks.dirty=false;hooks.memoIndex=0;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
-   all=elements(consumer==='Drawing'?DrawingRoom():SceneWarpCanvas({source,drawing:shown,targetKey,label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,onSelectionTool:choose,interaction:{tool,onToolChange:next=>{tool=next;}},instanceTransform:transform(selection.ids),transformsForSelection:transform,curveEdit:{editable:true,onCommit:legacyCurveCommit,onPreview:vi.fn()},topology:{editable:true,onSplit:vi.fn(),pen:{targetKey:`${targetKey}/${activeLayer}`,historyKey,layerId:activeLayer,editable:true,onCommit:commit,onSelection:ids=>choose({ids},'pen'),onError:error},editor:{drawing,targetKey,historyKey,layerId:activeLayer,editable:true,topologyEditable:true,onCommit:commit,onPreview:preview,onSelection:choose,onError:error}}}));
+   all=elements(consumer==='Drawing'?DrawingRoom():SceneWarpCanvas({intervalEditor:{drawing,targetKey,historyKey,layerId:activeLayer,editable:true,topologyEditable:false,onPreview:preview,onCommit:commit,onSelection:next=>choose(next,tool),onError:error},editEnabled:!options.correction,source,drawing:shown,targetKey,label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,onSelectionTool:choose,interaction:{tool,onToolChange:next=>{tool=next;}},instanceTransform:transform(selection.ids),transformsForSelection:transform,curveEdit:{editable:true,onCommit:legacyCurveCommit,onPreview:vi.fn()},topology:{editable:true,onSplit:vi.fn(),pen:{targetKey:`${targetKey}/${activeLayer}`,historyKey,layerId:activeLayer,editable:true,onCommit:commit,onSelection:ids=>choose({ids},'pen'),onError:error},editor:{drawing,targetKey,historyKey,layerId:activeLayer,editable:true,topologyEditable:true,onCommit:commit,onPreview:preview,onSelection:choose,onError:error}}}));
    element(consumer==='Drawing'?'drawing-canvas':'vr-scene-canvas').props.ref.current=svg;
    hooks.effects.forEach(fn=>fn());if(++count>12)throw Error('Canvas effects did not settle');
   }while(hooks.dirty);
@@ -105,11 +112,13 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  const paint=()=>all.find(e=>e.props.curveDown)!;
  render();preview.mockClear();
  return {
-  source,render,element,paint,commit,preview,error,transformPreview,transformCommit,legacyCurveCommit,adapters,
+  source,render,element,paint,commit,preview,error,
+  inkDown:()=>{const grip=element('drawing-ink-endpoint');grip.props.onPointerDown(pointer([grip.props.cx,grip.props.cy]));render();},
+  intervalDown:(end:0|1)=>{const grip=all.find(element=>element.props['data-testid']==='drawing-display-grip'&&element.props['data-end']===end)!,track=drawing.displayIntervals![0],field=displayField(drawing,displayPath(drawing,track.anchor.id)),position=paint().props.screen(field.at(field.native(track,end?track.ranges[0].end:track.ranges[0].start)).p);grip.props.onPointerDown(pointer(position));render();return position;},transformPreview,transformCommit,legacyCurveCommit,adapters,
   transform:(kind:string,value:number)=>{all.find(e=>typeof e.props.transform==='function')!.props.transform(kind,value);render();},
   changeHistory:()=>{historyKey={};render();},changeFrame:(frame:ScenePlacementValue)=>{displayPlacement=frame;render();},rejectPreview:(value:boolean)=>{rejectPreview=value;},
   key:(name:string,phase='keydown',modifiers:Partial<KeyboardEvent>={})=>{emit(phase,{key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,isComposing:false,defaultPrevented:false,target:new Target(),preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),...modifiers});render();},
-  selectControl:(kind:'node'|'handle')=>{const curve=drawing.curves[0],control=kind==='node'?{kind,nodeId:curve.nodes[0],position:drawing.nodes.find(n=>n.id===curve.nodes[0])!.position}:{kind,curveId:curve.id,end:0 as const,position:curve.handles[0]};if(consumer==='Drawing'){useDrawing.setState({selection:kind==='node'?{ids:[curve.id],node:curve.nodes[0]}:{ids:[curve.id],handle:{curveId:curve.id,end:0}}});render();}else{all.find(e=>e.type===SceneCurveEditOverlay)!.props.onBegin(pointer(paint().props.screen(control.position)),control);render();canvas().props.onPointerUp(pointer(paint().props.screen(control.position)));render();}},
+  selectControl:(kind:'node'|'handle',end:0|1=0)=>{const curve=drawing.curves[0],control=kind==='node'?{kind,nodeId:curve.nodes[end],position:drawing.nodes.find(n=>n.id===curve.nodes[end])!.position}:{kind,curveId:curve.id,end,position:curve.handles[end]};if(consumer==='Drawing'){useDrawing.setState({selection:kind==='node'?{ids:[curve.id],node:curve.nodes[0]}:{ids:[curve.id],handle:{curveId:curve.id,end:0}}});render();}else{all.find(e=>e.type===SceneCurveEditOverlay)!.props.onBegin(pointer(paint().props.screen(control.position)),control);render();canvas().props.onPointerUp(pointer(paint().props.screen(control.position)));render();}},
   drawing:()=>consumer==='Drawing'?useEditor.getState().project.drawing!:drawing,
   shown:()=>paint().props.d as DrawingDocument,
   selection:()=>consumer==='Drawing'?useDrawing.getState().selection:selection,
@@ -343,9 +352,10 @@ test('Drawing held arrows keep locked group members in the selected scope and re
 });
 
 
-function recordingWorkspaceHarness(correction:boolean){
- const source=fixture({}),workspace=upsertDrawingSource(emptyRecordingSnapshotWorkspace(),'source',source),sourceSnapshot=workspace.snapshots[0],view=emptyRecordingSnapshot('view'),side=emptyRecordingSnapshot('side','Side','view',{x:60,y:0}),recording=emptySnapshotRecording('recording');
+function recordingWorkspaceHarness(correction:boolean,interval=false){
+ const source=fixture({interval}),workspace=upsertDrawingSource(emptyRecordingSnapshotWorkspace(),'source',source),sourceSnapshot=workspace.snapshots[0],view=emptyRecordingSnapshot('view'),side=emptyRecordingSnapshot('side','Side','view',{x:60,y:0}),recording=emptySnapshotRecording('recording');
  view.layers=[{kind:'reference',id:'slot',name:'Layer',baseSnapshotId:sourceSnapshot.id,baseLayerId:canonicalElementId('source','layer')}];side.layers=structuredClone(view.layers);side.deformation.layers.slot={placement:{translation:[0,.4],rotation:0,scale:1}};
+ if(interval){const track=sourceSnapshot.relations.displayIntervals!.add![0];side.relations.displayIntervals={update:[{...track,ranges:track.ranges.map(range=>({...range,end:.9}))}]};}
  recording.mode='triangulated';recording.snapshotIds=[view.id,side.id];recording.activeSnapshotId=view.id;recording.angle={x:correction?30:0,y:0};recording.angleGraph=createSnapshotAngleGraph([view,side].map(snapshot=>({snapshotId:snapshot.id,angle:snapshot.angle})));
  workspace.snapshots.push(view,side);workspace.recordings=[recording];workspace.activeRecordingId=recording.id;
  const project={...createEmptyProject(),drawing:source,recordingSnapshots:workspace};useEditor.setState({project,past:[],future:[]});useWorkspaceMode.setState({mode:'recording'});
@@ -357,7 +367,13 @@ function recordingWorkspaceHarness(correction:boolean){
  }while(hooks.dirty);}
  const key=(name:string,phase='keydown')=>{emit(phase,{key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,isComposing:false,defaultPrevented:false,target:new Target(),preventDefault:vi.fn(),stopImmediatePropagation:vi.fn()});render();};
  render();props!.onSelectionTool!({ids:[canonicalElementId('source','a')]},'select');render();
- return {project,source,render,key,props:()=>props!,drawing:()=>evaluateRecordingSnapshot(useEditor.getState().project.recordingSnapshots!,'recording',{useDraft:true,immutableInputs:true}).drawing};
+ return {project,source,render,key,props:()=>props!,drawing:()=>evaluateRecordingSnapshot(useEditor.getState().project.recordingSnapshots!,'recording',{useDraft:true,immutableInputs:true}).drawing,
+  selectLayer:()=>{props!.onSelectionTool!({ids:props!.drawing.curves.map(curve=>curve.id),layer:'slot',layers:['slot']},'select');render();},
+  materialPoint:(value:number)=>{const d=props!.intervalEditor!.drawing,track=d.displayIntervals![0],field=displayField(d,displayPath(d,track.anchor.id));return all.find(element=>element.props.curveDown)!.props.screen(field.at(field.native(track,value)).p) as Point2;},
+  intervalDown:(point:Point2)=>{all.find(element=>element.props['data-testid']==='drawing-display-grip'&&element.props['data-end']===1)!.props.onPointerDown(pointer(point));render();},
+  move:(point:Point2)=>{all.find(element=>element.props['data-testid']==='vr-scene-canvas')!.props.onPointerMove(pointer(point));render();},
+  up:(point:Point2)=>{all.find(element=>element.props['data-testid']==='vr-scene-canvas')!.props.onPointerUp(pointer(point));render();},
+ };
 }
 
 test.each([{label:'real-basis',correction:false},{label:'correction',correction:true}])('native Recording V keyboard freezes the actual $label adapter through preview, commit and Undo',({correction})=>{
@@ -396,4 +412,46 @@ test('Drawing retains a source pointer preview through parent renders and consum
 test('Drawing Pen keeps accepted segment IDs for the next connected segment',()=>{
  const h=harness('Drawing');h.key('p');const a=h.screen([-.8,-.8]),b=h.screen([-.2,-.8]),c=h.screen([.4,-.8]);h.down(a);h.up(a);h.down(b);h.move([b[0]+3,b[1]-5]);h.up([b[0]+3,b[1]-5]);h.down(c);h.move([c[0]+4,c[1]-4]);h.up([c[0]+4,c[1]-4]);
  const added=h.drawing().curves.filter(curve=>!h.source.curves.some(old=>old.id===curve.id));expect(added).toHaveLength(2);expect(added[0].nodes[1]).toBe(added[1].nodes[0]);expect(h.historyCount()).toBe(2);expect(h.selection().ids).toEqual([added[1].id]);
+});
+
+
+test.each(['Drawing','Recording'] as const)('%s V/A material grips share selection and commit only the accepted target',consumer=>{
+ for(const tool of ['select','direct'] as const){
+  // Each host render uses an isolated hook session, as a new mounted canvas.
+  hooks.memos=[];hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();
+  const h=harness(consumer,{tool,selected:['a','b'],interval:true,correction:consumer==='Recording'}),track=h.source.displayIntervals![0],field=displayField(h.source,displayPath(h.source,track.anchor.id)),target=h.screen(field.at(field.native(track,.7)).p);
+  expect(h.element('drawing-display-interval-overlay')).toBeDefined();expect(h.element(consumer==='Drawing'?'drawing-selected':'vr-selected-curve').props.opacity).toBe(.25);expect(h.historyCount()).toBe(0);
+  h.intervalDown(1);expect(h.historyCount()).toBe(0);expect(h.selection().displayInterval).toEqual({track:track.id,range:track.ranges[0].id,end:1});
+  h.move(target);const accepted=h.shown();expect(accepted.displayIntervals![0].ranges[0].end).toBeCloseTo(.7,3);expect(accepted.nodes).toEqual(h.source.nodes);expect(accepted.curves).toEqual(h.source.curves);expect(h.historyCount()).toBe(0);
+  h.up(target);h.up(target);expect(h.historyCount()).toBe(1);expect(h.drawing().displayIntervals).toEqual(accepted.displayIntervals);expect(h.error).not.toHaveBeenCalled();
+ }
+});
+
+test.each(['reject','throw','Escape','history','navigate','undo','redo'] as const)('Recording interval %s retires the accepted target without a late commit',action=>{
+ const h=harness('Recording',{selected:['a','b'],interval:true,correction:true}),track=h.source.displayIntervals![0],field=displayField(h.source,displayPath(h.source,track.anchor.id)),point=(value:number)=>h.screen(field.at(field.native(track,value)).p);
+ h.intervalDown(1);h.move(point(.7));expect(h.shown()).not.toBe(h.source);
+ if(action==='reject'||action==='throw'){h.preview.mockImplementationOnce(()=>{if(action==='throw')throw Error('Rejected interval');return false;});h.move(point(.8));}
+ else if(action==='Escape')h.key('Escape');else if(action==='history')h.changeHistory();else if(action==='navigate')h.navigate();else h.key('z','keydown',{ctrlKey:true,shiftKey:action==='redo'});
+ h.up(point(.8));expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);
+});
+
+
+test('Recording direct geometry focus keeps priority over a coincident interval grip until the interval is explicitly selected',()=>{
+ const h=harness('Recording',{tool:'direct',selected:['a'],interval:true,intervalAtNode:true});h.selectControl('node',h.source.displayIntervals![0].anchor.reverse?1:0);
+ expect(h.element('drawing-display-grip').props['data-geometry-priority']).toBe(true);expect(h.element('drawing-display-grip').props.pointerEvents).toBe('none');
+ h.intervalDown(1);expect(h.element('drawing-display-grip').props['data-geometry-priority']).toBe(false);expect(h.historyCount()).toBe(0);h.key('Escape');
+});
+
+
+test.each([false,true])('actual Recording workspace reuses accepted interval targets after a layer-to-grip selection transition (correction=%s)',correction=>{
+ const h=recordingWorkspaceHarness(correction,true),before=h.drawing(),library=JSON.stringify(h.project.recordingSnapshots.library),authors=vi.spyOn(snapshotProperties,'prepareSnapshotDrawingPropertyEdit');
+ h.selectLayer();const start=h.materialPoint(before.displayIntervals![0].ranges[0].end),target=h.materialPoint(.8);h.intervalDown(start);expect(useEditor.getState().past).toHaveLength(0);
+ h.move(target);const accepted=h.props().drawing;expect(accepted.displayIntervals![0].ranges[0].end).toBeCloseTo(.8,3);const calls=authors.mock.calls.length;expect(calls).toBe(1);
+ h.up(target);h.up(target);expect(authors.mock.calls.length).toBe(calls);expect(useEditor.getState().past).toHaveLength(1);expect(h.drawing().displayIntervals![0].ranges[0].end).toBeCloseTo(.8,3);expect(h.drawing().curves).toEqual(before.curves);expect(h.drawing().nodes).toEqual(before.nodes);expect(JSON.stringify(useEditor.getState().project.recordingSnapshots!.library)).toBe(library);expect(useEditor.getState().project.recordingSnapshots!.recordings[0].snapshotIds).toHaveLength(2);
+ useEditor.getState().undo();h.render();expect(h.drawing().displayIntervals).toEqual(before.displayIntervals);authors.mockRestore();
+});
+
+
+test('Recording ink endpoint selection retires same-curve geometry focus before keyboard editing',()=>{
+ const h=harness('Recording',{tool:'direct',selected:['a'],interval:true});h.selectControl('node');h.inkDown();expect(h.selection().inkEnd?.id).toBe('a');h.key('ArrowUp');h.key('ArrowUp','keyup');expect(h.historyCount()).toBe(0);expect(h.shown()).toBe(h.source);expect(h.legacyCurveCommit).not.toHaveBeenCalled();
 });
