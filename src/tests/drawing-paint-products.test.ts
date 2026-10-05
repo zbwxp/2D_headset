@@ -13,7 +13,10 @@ import {scaleEvaluatedDisplayRouteBrush} from '../domain/drawing/displayRouteBru
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const delta=(before:ReturnType<typeof paintProductStats>)=>Object.fromEntries(Object.entries(paintProductStats()).map(([key,value])=>[key,value-before[key as keyof typeof before]]));
 
-test('all 74 renderer cases match the independent previous canonical kernel, with fresh and reused products',()=>{
+// Linked-ARC fills now follow the active route's owned corner; only derived
+// fill/cutout paths changed. Stroke ink, stroke/offset hits and path counts match
+// the independently captured previous renderer; authoring data stays untouched.
+test('all 74 renderer cases match the verified linked-ARC fill baseline, with fresh and reused products',()=>{
  let count=0;
  forEachPaintProductCase((name,d,options)=>{
   const before=JSON.stringify(d),reference=expected[name as keyof typeof expected],svg=paintMarkup(d,options);

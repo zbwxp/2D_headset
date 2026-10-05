@@ -15,7 +15,9 @@ const paths=(value:string)=>(value.match(/<path/g)??[]).length;
 
 // Mutable ARC/offset reference uses an independent 0ea573e cold facade: its
 // prior same-object WeakMap caches retained old geometry after in-place edits.
-test('Drawing and Recording SVG bytes retain the pre-scope renderer across visibility, topology, materials and domains',()=>{
+// Linked-ARC updates affect only derived fill contours and their cutout/selection
+// paths. Other SVG bytes retain the independent previous renderer's baseline.
+test('Drawing and Recording SVG match the verified baseline across visibility, topology, materials and domains',()=>{
  const seen:string[]=[];
  forEachPaintCase((name,d,options)=>{
   const original=JSON.stringify(d),svg=paintMarkup(d,options),baseline=name.startsWith('mutable-')?coldExpected[name as keyof typeof coldExpected]:expected[name as keyof typeof expected];
