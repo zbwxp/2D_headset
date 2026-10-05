@@ -1,6 +1,6 @@
 import {resolveDisplayRoute} from './displayRoutes';
 import {InputCache} from '../geometry/cache';
-import {curveById,layerFor,groupFor,objectById,validDepthAppearance,type DrawingDocument as Doc,type DepthAppearance} from './model';
+import {curveById,layerFor,groupFor,objectById,validDepthAppearance,type DrawingDocument as Doc,type DrawingCurve,type FillRegion,type DepthAppearance} from './model';
 import {strokeFor,strokeIds,strokeObjectIds,strokeName,paintItems,layerTree,type PaintItem} from './strokes';
 import {groupTree,groupObjectIds} from './groups';
 import {strokeInk,strokeEnds,extendedInk,type InkRun,type InkSampling} from './appearance';
@@ -10,7 +10,7 @@ import type {Stroke} from './strokes';
 export type DepthScope=NonNullable<DepthAppearance['depthScope']>;
 interface Container {id:string;name:string;ids:string[]}
 const layerContainer=(d:Doc,id:string):Container=>{const l=d.layers.find(l=>l.id===id)!;return {id:l.id,name:l.name,ids:l.items};};
-const depthObject=(d:Doc,id:string)=>curveById(d,id)??d.fills.find(f=>f.id===id);
+const depthObject=(d:Doc,id:string):DrawingCurve|FillRegion|undefined=>curveById(d,id)??d.fills.find(f=>f.id===id);
 const paintOffset=(d:Doc,id:string)=>{const item=depthObject(d,id);return item&&(!('color' in item)||item.color!=='transparent')?item.depthOffset??0:0;};
 /** Reference only structural siblings: hidden/folded objects still occupy slots.
  * Curves and fills share their structural parent, but move independently.
