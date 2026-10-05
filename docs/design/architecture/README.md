@@ -8,6 +8,7 @@
 | [02-candidate-architectures.md](02-candidate-architectures.md) | 候选架构、推荐方案、验收检验点、待决问题 | Claude |
 | [03-scenarios.md](03-scenarios.md) | 需求场景与反例清单（RC-01～RC-20），用于压测候选架构 | dot（Claude 同步入库） |
 | [04-pressure-test.md](04-pressure-test.md) | 用 RC-01～20 压测候选 A，修订为 v0.2；对 Q1～Q5 的看法 | Claude |
+| [05-numeric-cases.md](05-numeric-cases.md) | 数值例子 N1～N5（dot 出题，Claude 推导）与由此引出的 4 处契约澄清 | dot + Claude |
 
 约定：
 
