@@ -31,10 +31,10 @@ test('V follows continuous stroke topology, while A preserves the exact compiled
  expect(JSON.stringify(d)).toBe(before);
 });
 test('V keeps an existing complete multi-selection when clicking one selected stroke',()=>{const d=fixture(),selected={ids:[id('a'),id('b'),id('separate')]};expect(recordingCurveSelection(d,selected,id('a'),'select')?.ids).toEqual(selected.ids);expect(recordingCurveSelection(d,selected,id('a'),'direct')?.ids).toEqual([id('a')]);});
-test('V expands organizational groups while filtering hidden and locked members; Shift toggles the unit',()=>{
+test('V retains complete organizational groups including hidden and locked members; Shift toggles the unit',()=>{
  const d=fixture();d.groups=[{id:id('group'),name:'Group',visible:true,locked:false,curveIds:['a','b','separate','hidden','locked'].map(name=>id(name))}];
- const selected=recordingCurveSelection(d,{ids:[]},id('a'),'select')!;expect(selected.ids).toEqual(['a','b','separate'].map(name=>id(name)));
- expect(recordingCurveSelection(d,{ids:[id('a','instance/two'),id('hidden')]},id('a'),'select',true)?.ids).toEqual([id('a','instance/two'),...selected.ids]);
+ const selected=recordingCurveSelection(d,{ids:[]},id('a'),'select')!;expect(selected.ids).toEqual(['a','b','separate','hidden','locked'].map(name=>id(name)));
+ expect(recordingCurveSelection(d,{ids:[id('a','instance/two'),id('hidden')]},id('a'),'select',true)?.ids).toEqual([id('a','instance/two'),id('hidden'),...selected.ids.filter(value=>value!==id('hidden'))]);
  expect(recordingCurveSelection(d,selected,id('a'),'select',true)?.ids).toEqual([]);
  expect(recordingCurveSelection(d,selected,id('hidden'),'direct')).toBeNull();expect(recordingCurveSelection(d,selected,id('locked'),'select')).toBeNull();
 });

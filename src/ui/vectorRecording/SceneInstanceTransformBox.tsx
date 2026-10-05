@@ -1,25 +1,31 @@
 import type {PointerEvent} from 'react';
+import {applyAffine2D,inverseAffine2D,type Affine2D} from '../../domain/geometry/affine2d';
+import {drawingCornerScale} from '../drawing/editGestures';
 import type {Point2} from '../../domain/drawing/model';
 import type {ScenePlacementValue} from '../../domain/recordingScene/model';
-import {applyScenePlacement,scenePlacementScales,setScenePlacementAxisScale} from '../../domain/recordingScene/tracks';
+import {applyScenePlacement,scenePlacementScales,setScenePlacementAxisScale,tryInverseScenePlacement} from '../../domain/recordingScene/tracks';
 
+export type InstanceDisplayFrame=ScenePlacementValue|Affine2D;
+export const applyInstanceDisplayFrame=(frame:InstanceDisplayFrame,point:Point2):Point2=>Array.isArray(frame)?applyAffine2D(frame,point):applyScenePlacement(frame,point);
+export const inverseInstanceDisplayFrame=(frame:InstanceDisplayFrame):Affine2D|null=>Array.isArray(frame)?inverseAffine2D(frame):tryInverseScenePlacement(frame);
 export type InstanceTransformBounds={min:Point2;max:Point2;center:Point2};
 export type InstanceTransformKind='move'|'scale'|'rotate';
-export type RecordingInstanceTransform={/** The entire rendered scene follows a world translation exactly. Other gestures still use canonical preview. */exactTranslationPreview?:boolean;allowCurveSelection?:boolean;ids:string[];bounds:InstanceTransformBounds;onPreview:(delta:ScenePlacementValue|null)=>void;onCommit:(delta:ScenePlacementValue)=>void;editable:boolean;label:string;basePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;materialBounds?:InstanceTransformBounds;onValuePreview?:(value:ScenePlacementValue|null)=>void;onValueCommit?:(value:ScenePlacementValue)=>void};
+export type RecordingInstanceTransform={/** The entire rendered scene follows a world translation exactly. Other gestures still use canonical preview. */exactTranslationPreview?:boolean;allowCurveSelection?:boolean;ids:string[];bounds:InstanceTransformBounds;onPreview:(delta:ScenePlacementValue|null)=>boolean|void;onCommit:(delta:ScenePlacementValue)=>void;editable:boolean;label:string;basePlacement?:ScenePlacementValue;displayPlacement?:InstanceDisplayFrame;materialBounds?:InstanceTransformBounds;onValuePreview?:(value:ScenePlacementValue|null)=>void;onValueCommit?:(value:ScenePlacementValue)=>void};
 export type InstanceTransformGesture={kind:InstanceTransformKind;start:Point2;origin:Point2;lastAngle:number;rotation:number};
+export type InstanceCornerScaleGesture={start:Point2;anchor:Point2;placement:ScenePlacementValue};
 export type InstanceAxisScaleGesture={axis:'x'|'y';start:Point2;anchor:Point2;extent:number;placement:ScenePlacementValue};
 export function beginInstanceTransform(kind:InstanceTransformKind,start:Point2,origin:Point2):InstanceTransformGesture{
  return {kind,start,origin,lastAngle:Math.atan2(start[1]-origin[1],start[0]-origin[0]),rotation:0};
 }
-/** Deltas are world-space similarities, left-composed onto each instance. The
+/** Deltas are authored in the existing display frame. The
  * gesture accumulates angle across the atan2 seam instead of wrapping at 180°. */
 export function instanceTransformDelta(gesture:InstanceTransformGesture,point:Point2,shift=false):ScenePlacementValue{
  const {kind,start,origin}=gesture;
  if(kind==='move')return {translation:[point[0]-start[0],point[1]-start[1]],rotation:0,scale:1};
  let rotation=0,scale=1;
  if(kind==='scale'){
-  const x=start[0]-origin[0],y=start[1]-origin[1],length=x*x+y*y;
-  scale=length>1e-20?Math.max(.001,((point[0]-origin[0])*x+(point[1]-origin[1])*y)/length):1;
+  const {sx,sy,matrix}=drawingCornerScale(start,point,origin,shift);
+  return {translation:[matrix[4],matrix[5]],rotation:0,scale:sx,...(sx===sy?{}:{scaleX:sx,scaleY:sy})};
  }else{
   const angle=Math.atan2(point[1]-origin[1],point[0]-origin[0]),step=Math.atan2(Math.sin(angle-gesture.lastAngle),Math.cos(angle-gesture.lastAngle));
   gesture.rotation+=step*180/Math.PI;gesture.lastAngle=angle;rotation=shift?Math.round(gesture.rotation/15)*15:gesture.rotation;
@@ -34,11 +40,16 @@ export function instanceAxisScaleValue(gesture:InstanceAxisScaleGesture,point:Po
  const current=scales[axis==='x'?0:1],raw=extent===0?current:current+distance/extent,next=raw<=Number.EPSILON*Math.max(1,current)*8?0:Math.min(1e6,raw);
  return setScenePlacementAxisScale(placement,axis,next,anchor);
 }
+export function instanceCornerScaleValue(gesture:InstanceCornerScaleGesture,point:Point2,shift=false):ScenePlacementValue{
+ const {placement,start,anchor}=gesture,origin=applyScenePlacement(placement,anchor),a=-placement.rotation*Math.PI/180,c=Math.cos(a),s=Math.sin(a),local=(p:Point2):Point2=>[c*(p[0]-origin[0])-s*(p[1]-origin[1]),s*(p[0]-origin[0])+c*(p[1]-origin[1])],{sx,sy}=drawingCornerScale(local(start),local(point),[0,0],shift),scales=scenePlacementScales(placement);
+ // Native placement axes stop at zero, matching the existing edge handles.
+ return setScenePlacementAxisScale(setScenePlacementAxisScale(placement,'x',Math.max(0,Math.min(1e6,scales[0]*sx)),anchor),'y',Math.max(0,Math.min(1e6,scales[1]*sy)),anchor);
+}
 export function instanceTransformCorners(bounds:InstanceTransformBounds):Point2[]{return [bounds.min,[bounds.max[0],bounds.min[1]],bounds.max,[bounds.min[0],bounds.max[1]]];}
 
-export default function SceneInstanceTransformBox({bounds,delta,basePlacement,displayPlacement,materialBounds,value,screen,editable,label,onBegin,onBeginAxis,passThroughContents=false}:{bounds:InstanceTransformBounds;delta?:ScenePlacementValue;basePlacement?:ScenePlacementValue;displayPlacement?:ScenePlacementValue;materialBounds?:InstanceTransformBounds;value?:ScenePlacementValue;screen:(p:Point2)=>Point2;editable:boolean;label:string;passThroughContents?:boolean;onBegin:(event:PointerEvent,kind:InstanceTransformKind,origin:Point2)=>void;onBeginAxis?:(event:PointerEvent,axis:'x'|'y',anchor:Point2,extent:number)=>void}){
+export default function SceneInstanceTransformBox({bounds,delta,basePlacement,displayPlacement,materialBounds,value,screen,editable,label,onBegin,onBeginAxis,passThroughContents=false}:{bounds:InstanceTransformBounds;delta?:ScenePlacementValue;basePlacement?:ScenePlacementValue;displayPlacement?:InstanceDisplayFrame;materialBounds?:InstanceTransformBounds;value?:ScenePlacementValue;screen:(p:Point2)=>Point2;editable:boolean;label:string;passThroughContents?:boolean;onBegin:(event:PointerEvent,kind:InstanceTransformKind,origin:Point2,materialAnchor?:Point2)=>void;onBeginAxis?:(event:PointerEvent,axis:'x'|'y',anchor:Point2,extent:number)=>void}){
  const placed=basePlacement&&materialBounds,frame=placed?materialBounds:bounds,placement=value??basePlacement;
- const parent=(p:Point2)=>displayPlacement?applyScenePlacement(displayPlacement,p):p,local=(p:Point2)=>placed?applyScenePlacement(placement!,p):p,world=(p:Point2)=>parent(local(p)),map=(p:Point2)=>screen(parent(delta?applyScenePlacement(delta,local(p)):local(p))),corners=instanceTransformCorners(frame),points=corners.map(map),center=map(frame.center),top=map([frame.center[0],frame.max[1]]),worldCenter=world(frame.center);
+ const parent=(p:Point2)=>displayPlacement?applyInstanceDisplayFrame(displayPlacement,p):p,local=(p:Point2)=>placed?applyScenePlacement(placement!,p):p,world=(p:Point2)=>parent(local(p)),map=(p:Point2)=>screen(parent(delta?applyScenePlacement(delta,local(p)):local(p))),corners=instanceTransformCorners(frame),points=corners.map(map),center=map(frame.center),top=map([frame.center[0],frame.max[1]]),worldCenter=world(frame.center);
  const angle=((placement?.rotation??0)+(delta?.rotation??0))*Math.PI/180,localY:Point2=[-Math.sin(angle),Math.cos(angle)],screenOrigin=screen(parent([0,0])),screenY=screen(parent(localY)),dx=placed?screenY[0]-screenOrigin[0]:top[0]-center[0],dy=placed?screenY[1]-screenOrigin[1]:top[1]-center[1],length=Math.hypot(dx,dy),rotation:Point2=[top[0]+(length?dx/length:0)*30,top[1]+(length?dy/length:-1)*30];
  const axes=placed&&onBeginAxis?(['x','y'] as const).flatMap(axis=>{
   const component=axis==='x'?0:1,extent=frame.max[component]-frame.min[component],unit:Point2=axis==='x'?[Math.cos(angle),Math.sin(angle)]:[-Math.sin(angle),Math.cos(angle)],a=screen(parent([0,0])),b=screen(parent(unit)),length=Math.hypot(b[0]-a[0],b[1]-a[1]),direction:Point2=length?[(b[0]-a[0])/length,(b[1]-a[1])/length]:[axis==='x'?1:0,axis==='y'?-1:0];
@@ -48,7 +59,7 @@ export default function SceneInstanceTransformBox({bounds,delta,basePlacement,di
   <polygon data-testid="vr-instance-move" pointerEvents={passThroughContents?'none':undefined} points={points.map(p=>p.join(',')).join(' ')} fill="transparent" stroke="#238eb5" strokeWidth="1.25" strokeDasharray="4 3" style={{cursor:editable?'move':'default'}} onPointerDown={e=>onBegin(e,'move',worldCenter)}/>
   <line x1={top[0]} y1={top[1]} x2={rotation[0]} y2={rotation[1]} stroke="#238eb5" pointerEvents="none"/>
   <circle data-testid="vr-instance-rotate" cx={rotation[0]} cy={rotation[1]} r="5" fill="#fff" stroke="#238eb5" style={{cursor:editable?'alias':'default'}} onPointerDown={e=>onBegin(e,'rotate',worldCenter)}/>
-  {corners.map((_,i)=><rect key={i} data-testid="vr-instance-scale" data-corner={i} x={points[i][0]-4} y={points[i][1]-4} width="8" height="8" fill="#fff" stroke="#238eb5" style={{cursor:editable?(i%2?'nwse-resize':'nesw-resize'):'default'}} onPointerDown={e=>onBegin(e,'scale',world(corners[(i+2)%4]))}/>)}
+  {corners.map((_,i)=><rect key={i} data-testid="vr-instance-scale" data-corner={i} x={points[i][0]-4} y={points[i][1]-4} width="8" height="8" fill="#fff" stroke="#238eb5" style={{cursor:editable?(i%2?'nwse-resize':'nesw-resize'):'default'}} onPointerDown={e=>onBegin(e,'scale',world(corners[(i+2)%4]),placed?corners[(i+2)%4]:undefined)}/>)}
   <circle data-testid="vr-instance-center" cx={center[0]} cy={center[1]} r="9" fill="transparent" style={{cursor:editable?'move':'default'}} onPointerDown={e=>onBegin(e,'move',worldCenter)}/>
   <path d={`M ${center[0]-5} ${center[1]} h 10 M ${center[0]} ${center[1]-5} v 10`} stroke="#238eb5" pointerEvents="none"/>
   {axes.map(({axis,side,anchor,extent,actual,handle,offset})=><g key={`${axis}${side}`}>
