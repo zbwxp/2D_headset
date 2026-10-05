@@ -221,7 +221,7 @@ test('the actual Drawing property panel exposes zero-capable dimensions and rese
 });
 
 test('replacing an earlier domain refuses a newly separated true linked endpoint atomically',()=>{
- const f=fixture(),other:DrawingDocument={...f.other,nodes:[...f.other.nodes,{id:'c',position:[1,0]},{id:'d',position:[2,0]}],curves:[...f.other.curves,{...f.other.curves[0],id:'second',nodes:['c','d'],handles:[[1.3,0],[1.7,0]]}],layers:[...f.other.layers,{id:'second-layer',name:'Second',visible:true,locked:false,items:['second']}],endpointLinks:[{id:'link',a:{curveId:'curve',end:1},b:{curveId:'second',end:0}}]},project=fixture(other).project,snapshot=drawingSnapshotForArtwork(project.recordingSnapshots!,'A')!;
+ const f=fixture(),other:DrawingDocument={...f.other,nodes:[...f.other.nodes,{id:'c',position:[1,0]},{id:'d',position:[2,0]}],curves:[...f.other.curves,{...f.other.curves[0],id:'second',nodes:['c','d'],handles:[[1.3,0],[1.7,0]]}],layers:[...f.other.layers,{id:'second-layer',name:'Second',visible:true,locked:false,items:['second']}],endpointLinks:[{id:'link',a:{curveId:'curve',end:1},b:{curveId:'second',end:0}}]},project=structuredClone(fixture(other).project),snapshot=drawingSnapshotForArtwork(project.recordingSnapshots!,'A')!;
  snapshot.deformation.layerDomains=[{id:'first',layerIds:[bid('layer'),bid('second-layer')],matrix:[1,0,0,1,0,0]},{id:'later',layerIds:[bid('layer')],matrix:[2,0,0,1,-1,0]}];const before=JSON.stringify(project);
  expect(()=>prepareDrawingLayerDomainEdit(project,createLayerAffineIntent([bid('layer'),bid('second-layer')],[1,0,0,1,.5,0],{operationId:'first',replace:true}))).toThrow(/linked|relation/i);expect(JSON.stringify(project)).toBe(before);
 });
