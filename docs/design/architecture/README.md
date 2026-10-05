@@ -7,6 +7,7 @@
 | [01-reference-survey.md](01-reference-survey.md) | 成熟软件对照：各自怎么建模、借什么、不借什么 | Claude |
 | [02-candidate-architectures.md](02-candidate-architectures.md) | 候选架构、推荐方案、验收检验点、待决问题 | Claude |
 | [03-scenarios.md](03-scenarios.md) | 需求场景与反例清单（RC-01～RC-20），用于压测候选架构 | dot（Claude 同步入库） |
+| [04-pressure-test.md](04-pressure-test.md) | 用 RC-01～20 压测候选 A，修订为 v0.2；对 Q1～Q5 的看法 | Claude |
 
 约定：
 
