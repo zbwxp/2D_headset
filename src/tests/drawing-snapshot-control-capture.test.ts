@@ -2,6 +2,7 @@ import {describe,expect,it,vi} from 'vitest';
 import {createEmptyProject} from '../app/emptyProject';
 import {prepareDrawingCageControlPreviewPlan,prepareDrawingLayerDomainEdit,prepareDrawingSnapshotEdit} from '../app/drawingSnapshotEdit';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from '../app/drawingSnapshotPresentation';
+import {finalizePreparedSnapshotEdit} from '../app/snapshotEditTransaction';
 import {applyDrawingControlEditPlan,prepareDrawingControlEditPlan} from '../domain/drawing/controlEditPlan';
 import {createCurve,moveHandle,transform,widthChange} from '../domain/drawing/commands';
 import {emptyDrawing,shapeOf,type DrawingDocument} from '../domain/drawing/model';
@@ -13,6 +14,7 @@ import {snapshotControlTargetWriteStats} from '../domain/recordingSnapshot/contr
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
 import {canonicalElementId,drawingSnapshotForArtwork} from '../domain/recordingSnapshot/sources';
 import {resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
+import * as persistence from '../domain/recordingSnapshot/persistence';
 import {useEditor} from '../app/store';
 
 const bid=(id:string)=>canonicalElementId('B',id);
@@ -58,6 +60,15 @@ describe('Drawing snapshot owner control capture',()=>{
   const f=fixture(2),before=currentDrawingPresentation(f.project),{controlPlan,wanted}=target(before,'node'),stats=sceneShapeWorkStats(),writes=snapshotControlTargetWriteStats();
   const plan=prepareDrawingSnapshotEdit(f.project,structuredClone(wanted),{kind:'geometry-authoring',controlPlan});
   expect(difference(stats,sceneShapeWorkStats())).toMatchObject({fullApplications:1,revisionApplications:0});expect(difference(writes,snapshotControlTargetWriteStats())).toMatchObject({sharedCaptures:1,detachedCaptures:0});nearControls(currentDrawingPresentation(plan.project),wanted);
+ });
+
+ it.each(['source','reference','mixed'] as const)('defers workspace parsing for an accepted %s control preview and finalizes exactly once',owner=>{
+  const f=fixture(1),before=currentDrawingPresentation(f.project),curveIds=owner==='source'?['c0']:owner==='reference'?[bid('c0')]:['c0',bid('c0')],controlPlan=prepareDrawingControlEditPlan(before,{kind:'curves',curveIds,preserveRelations:true}),wanted=applyDrawingControlEditPlan(controlPlan,{kind:'map',map:([x,y])=>[x+.03,y-.02]}),saved=JSON.stringify(f.project),parse=vi.spyOn(persistence,'parseRecordingSnapshots');
+  try{
+   const plan=prepareDrawingSnapshotEdit(f.project,wanted,{kind:'geometry-authoring',controlPlan},{validation:'preview'});expect(parse).not.toHaveBeenCalled();expect(JSON.stringify(f.project)).toBe(saved);nearControls(currentDrawingPresentation(plan.project),wanted);
+   const captured=snapshotControlTargetWriteStats(),full=finalizePreparedSnapshotEdit(plan,f.project);expect(parse).toHaveBeenCalledTimes(1);expect(finalizePreparedSnapshotEdit(plan,f.project).project).toBe(full.project);expect(parse).toHaveBeenCalledTimes(1);expect(snapshotControlTargetWriteStats()).toEqual(captured);nearControls(currentDrawingPresentation(full.project),wanted);expect(full.sourceDrawing!==undefined).toBe(owner!=='reference');
+   const prior=useEditor.getState();try{useEditor.setState({project:f.project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(useEditor.getState().project).toBe(full.project);expect(useEditor.getState().past).toEqual([f.project]);expect(parse).toHaveBeenCalledTimes(1);expect(snapshotControlTargetWriteStats()).toEqual(captured);}finally{useEditor.setState(prior,true);}
+  }finally{parse.mockRestore();}
  });
 
  it('keeps retained cage controls on canonical replay and commits the accepted preview without recapture',()=>{
