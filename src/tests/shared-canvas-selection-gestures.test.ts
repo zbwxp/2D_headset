@@ -155,6 +155,31 @@ test.each([
  expect(h.historyCount()).toBe(0);expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);expect(h.error).not.toHaveBeenCalled();
 });
 
+test.each([
+ ['p','reject'],['p','throw'],['l','reject'],['l','throw'],
+] as const)('Recording: %s valid preview then %s retires the accepted target before release',(key,failure)=>{
+ const h=harness('Recording'),start=h.screen([-.5,.1]),end=h.screen([.4,.2]),handle=h.screen([.5,.3]),invalid=h.screen([.6,.4]);h.key(key);
+ if(key==='p'){h.down(start);h.up(start);}
+ h.down(key==='p'?end:start);h.move(handle);const preview=h.shown();
+ expect(h.preview.mock.calls.at(-1)![1]).toBe(preview);expect(preview).not.toBe(h.source);
+ h.preview.mockImplementationOnce(()=>{if(failure==='throw')throw Error('Rejected topology preview');return false;});
+ h.move(invalid);expect(h.shown()).toBe(h.source);expect(h.preview.mock.calls.at(-1)![1]).toBeNull();
+ h.up(invalid);h.up(invalid);
+ expect(h.historyCount()).toBe(0);expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);expect(h.commit).not.toHaveBeenCalled();expect(h.error).toHaveBeenCalledTimes(failure==='throw'?1:0);
+});
+
+test.each([
+ ['p','Escape'],['l','Escape'],['p','undo'],['l','undo'],['p','redo'],['l','redo'],['p','history'],['l','history'],
+] as const)('Recording: %s %s cancels its accepted topology target and invalidates prepared edits',(key,action)=>{
+ const h=harness('Recording'),start=h.screen([-.5,.1]),end=h.screen([.4,.2]),handle=h.screen([.5,.3]);h.key(key);
+ if(key==='p'){h.down(start);h.up(start);}
+ h.down(key==='p'?end:start);h.move(handle);expect(h.preview.mock.calls.at(-1)![1]).toBe(h.shown());
+ const revision=currentPreparedEditRevision();
+ if(action==='history')h.changeHistory();else if(action==='Escape')h.key('Escape');else h.key('z','keydown',{ctrlKey:true,shiftKey:action==='redo'});
+ expect(currentPreparedEditRevision()).toBeGreaterThan(revision);expect(h.preview.mock.calls.at(-1)![1]).toBeNull();h.up(handle);
+ expect(h.commit).not.toHaveBeenCalled();expect(h.historyCount()).toBe(0);expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);
+});
+
 function checkCornerScale(consumer:'Drawing'|'Recording',shift:boolean){
  const h=harness(consumer,{selected:['a']}),bounds=selectionBounds(h.source,['a'])!,origin=bounds.max;
  const pointerAt=(sx:number,sy:number):Point2=>h.screen([origin[0]+(bounds.min[0]-origin[0])*sx,origin[1]+(bounds.min[1]-origin[1])*sy]);
