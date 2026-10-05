@@ -1,3 +1,5 @@
+import {consumeEditorHistoryShortcut} from '../ui/drawing/gestureTransaction';
+import {isDrawingShortcutInput} from '../ui/drawing/interactionController';
 import {editorHistoryTarget} from './editorHistory';
 import {recordingRetirementStatus} from '../domain/recordingSnapshot/retirement';
 import LegacyRecordingReview from '../ui/vectorRecording/LegacyRecordingReview';
@@ -28,7 +30,7 @@ export default function App(){
  const s=useEditor(),{mode,setMode}=useWorkspaceMode(),{language,setLanguage}=useLanguage(),zh=language==='zh',text=(cn:string,en:string)=>zh?cn:en;
  const openRequest=useRef(0),file=useRef<HTMLInputElement>(null),apiDialog=useRef<HTMLDialogElement>(null),[viewPanel,setViewPanel]=useState(false),[aiGuides,setAIGuides]=useState(false),[loading,setLoading]=useState(false),[apiInput,setApiInput]=useState('{"commands":[]}'),[apiResult,setApiResult]=useState(''),[apiPreview,setApiPreview]=useState('');
  useEffect(()=>{document.documentElement.lang=zh?'zh-CN':'en';},[zh]);
- useEffect(()=>{const key=(e:KeyboardEvent)=>{if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=='z')return;const target=e.target as HTMLElement;if(target.closest('input,textarea,[role="dialog"],[data-ui-keyboard],[contenteditable]'))return;e.preventDefault();const s=useEditor.getState();e.shiftKey?s.redo():s.undo();};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+ useEffect(()=>{const key=(e:KeyboardEvent)=>{if(isDrawingShortcutInput(e.target))return;consumeEditorHistoryShortcut(e,redo=>{const s=useEditor.getState();redo?s.redo():s.undo();});};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
  useEffect(()=>{if(!s.message)return;const timer=setTimeout(()=>useEditor.getState().notify(''),6500);return()=>clearTimeout(timer);},[s.message]);
  const save=()=>{const url=URL.createObjectURL(new Blob([serializeProject(s.project)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=s.project.meta.name+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  const loadStarter=async()=>{const request=++openRequest.current,before=s.project;setLoading(true);try{const p=await loadStarterProject();if(request!==openRequest.current)return;if(useEditor.getState().project!==before){s.notify(text('载入期间工程已变更，请重试。','The project changed while loading. Please retry.'));return;}setMode('drawing');s.load(p);s.endEdit();finishProjectStartup();useDrawing.getState().set({room:true,selection:{ids:[]},layerId:null,tool:'select',zoom:1,pan:[0,0]});s.notify(text('基础脸模已载入，可撤销恢复原工程。','Starter face loaded. Undo restores the previous project.'));}catch(e){s.notify((e as Error).message);}finally{if(request===openRequest.current)setLoading(false);}};

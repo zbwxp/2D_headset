@@ -12,6 +12,7 @@ vi.mock('react',async importOriginal=>({...await importOriginal<typeof import('r
  useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),useEffect:(fn:()=>void)=>{hooks.effects.push(fn);},
 }));
 vi.mock('../ui/drawing/session',async importOriginal=>{const actual=await importOriginal<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
+vi.mock('../app/workspaceView',async original=>{const actual=await original<typeof import('../app/workspaceView')>();return {...actual,useWorkspaceView:Object.assign((selector:(state:ReturnType<typeof actual.useWorkspaceView.getState>)=>unknown)=>selector(actual.useWorkspaceView.getState()),actual.useWorkspaceView)};});
 class Target {constructor(readonly tag='svg'){}closest(selector:string){return selector.split(',').includes(this.tag)?this:null;}}
 const listeners=new Map<string,(e:unknown)=>void>();
 beforeEach(()=>{hooks.states=[];hooks.refs=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(e:unknown)=>void)=>listeners.set(name,fn),removeEventListener:()=>{}});});
@@ -23,7 +24,7 @@ function harness(editEnabled=true,reference?:RecordingCanvasReference){
  const render=()=>{hooks.stateIndex=0;hooks.refIndex=0;hooks.effects=[];all=elements(SceneWarpCanvas({source,drawing:source,grid,reference,targetKey:'test',label:'Test',zh:false,editEnabled,onPreview:preview,onCommit:commit,onSelection:selectSource,onWarpSelection:selectWarp}));all.find(e=>e.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.at(-1)!();};render();
  return {grid,source,preview,commit,focus,selectSource,selectWarp,render,button:(name:string)=>all.find(e=>e.type==='button'&&e.props.children===name)!,nodes:()=>all.filter(e=>e.props['data-testid']==='vr-node'),element:(testId:string)=>all.find(e=>e.props['data-testid']===testId)!,find:(predicate:(e:ReactElement<ElementProps>)=>boolean)=>all.find(predicate)!};
 }
-function key(name:string,target=new Target(),modifiers:Partial<KeyboardEvent>={}){return {key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target,preventDefault:vi.fn(),...modifiers};}
+function key(name:string,target=new Target(),modifiers:Partial<KeyboardEvent>={}){return {key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target,preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),...modifiers};}
 function pointer(clientX=400,clientY=325,shiftKey=false){return {button:0,pointerId:1,clientX,clientY,shiftKey,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()};}
 
 test.each(['Row','Column','Nodes'].flatMap(mode=>[{mode,shortcut:false},{mode,shortcut:true}]))('All nodes from $mode (shortcut=$shortcut) focuses the canvas and survives the next node drag',({mode,shortcut})=>{

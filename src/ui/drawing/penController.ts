@@ -1,3 +1,4 @@
+import {editorHistoryAction} from './gestureTransaction';
 import {add,sub,mul,length,nodeAt,shapeOf,uid,type DrawingDocument,type Cubic,type Point2,type Endpoint} from '../../domain/drawing/model';
 import {createPenCurve,connect} from '../../domain/drawing/commands';
 
@@ -44,5 +45,5 @@ export function finishPenGesture(gesture:PenGesture,options:PenOptions):PenResul
 /** History keys belong to the host: Drawing uses its document, Recording uses
  * the immutable workspace revision. An unsaved first anchor has no document edit. */
 export function penHistoryAction(redo:boolean,activeGesture:boolean,state:PenState|null):'cancel-gesture'|'cancel-anchor'|'history' {
- return activeGesture?'cancel-gesture':!redo&&state&&!state.last?'cancel-anchor':'history';
+ return editorHistoryAction(redo,activeGesture,!!state&&!state.last);
 }

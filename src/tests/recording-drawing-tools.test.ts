@@ -1,3 +1,4 @@
+import {useEditor} from '../app/store';
 import {isValidElement,type ComponentProps,type ReactElement} from 'react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {dragNode} from '../domain/drawing/nodeDrag';
@@ -19,6 +20,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),
 }));
 vi.mock('react-dom',async original=>({...await original<typeof import('react-dom')>(),createPortal:(children:unknown)=>children}));
 vi.mock('../ui/drawing/session',async original=>{const actual=await original<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
+vi.mock('../app/workspaceView',async original=>{const actual=await original<typeof import('../app/workspaceView')>();return {...actual,useWorkspaceView:Object.assign((selector:(state:ReturnType<typeof actual.useWorkspaceView.getState>)=>unknown)=>selector(actual.useWorkspaceView.getState()),actual.useWorkspaceView)};});
 class Target {closest(){return null;}}
 const listeners=new Map<string,(event:unknown)=>void>();
 beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('document',{body:{}});vi.stubGlobal('window',{innerWidth:1000,innerHeight:800,addEventListener:(name:string,fn:(event:unknown)=>void)=>listeners.set(name,fn),removeEventListener:(name:string,fn:unknown)=>{if(listeners.get(name)===fn)listeners.delete(name);}});});
@@ -35,7 +37,7 @@ function harness(options:{correction?:boolean;mirrored?:boolean;locked?:boolean}
  return {source,render,element,targets,error,commit,preview,curveCommit,curvePreview,drawing:()=>drawing,selection:()=>selection,tool:()=>tool,select:(next:DrawingTool)=>{tool=next;render();},selectCurves:(ids:string[])=>{selection={ids};render();},navigate:()=>{targetKey='view-1';render();},historyChange:()=>{historyKey={};render();},layerChange:()=>{layerId='other';render();},paint:()=>all.find(element=>element.props.curveDown)!,all:()=>all};
 }
 const pointer=(x:number,y:number,extra={})=>({button:0,pointerId:1,clientX:x,clientY:y,shiftKey:false,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn(),...extra});
-const key=(name:string,extra={})=>({key:name,code:name,target:new Target(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,preventDefault:vi.fn(),...extra});
+const key=(name:string,extra={})=>({key:name,code:name,target:new Target(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),...extra});
 const xy=(element:ReactElement<Props>):Point2=>[element.props.x+4,element.props.y+4];
 function endpoint(h:ReturnType<typeof harness>,curve:string,end:number){return h.targets().find(element=>element.props['data-curve-id']===curve&&element.props['data-end']===end)!;}
 
@@ -65,7 +67,7 @@ test('mirror toggle and dragged axis are explicit metadata transactions without 
  const h=harness({mirrored:true}),original=shapeOf(h.source,'a');h.element('recording-mirror-toggle').props.onClick();h.render();expect(h.drawing().mirrorEditing?.enabled).toBe(false);expect(h.commit.mock.calls[0][2]).toEqual({kind:'mirror-authoring'});const grip=h.element('recording-mirror-grip'),x=grip.props.x+10;grip.props.onPointerDown(pointer(x,13));h.element('vr-scene-canvas').props.onPointerMove(pointer(x+30,13));h.element('vr-scene-canvas').props.onPointerUp(pointer(x+30,13));h.render();expect(h.drawing().mirrorAxisX).toBeGreaterThan(0);expect(shapeOf(h.drawing(),'a')).toEqual(original);expect(h.commit.mock.calls[1][2]).toEqual({kind:'mirror-authoring'});
 });
 test('A pointer edits use Drawing follow preference and one final target transaction',()=>{
- const saved=useDirectPreferences.getState().followPercent;useDirectPreferences.getState().setFollowPercent(100);try{const h=harness();h.selectCurves(['a']);h.select('direct');const node=h.all().find(element=>element.props['data-testid']==='vr-curve-node')!,p=xy(node);node.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+20,p[1]-30));h.render();expect(h.preview).toHaveBeenCalled();expect(h.curvePreview).not.toHaveBeenCalled();h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+20,p[1]-30));h.render();expect(h.commit).toHaveBeenCalledTimes(1);expect(h.curveCommit).not.toHaveBeenCalled();expect(h.commit.mock.calls[0][2]).toEqual({kind:'geometry-authoring'});const moved=h.drawing().nodes.find(value=>value.id===node.props['data-node'])!;expect(shapeOf(h.drawing(),'a')).toEqual(shapeOf(dragNode(h.source,moved.id,moved.position,1),'a'));}finally{useDirectPreferences.getState().setFollowPercent(saved);}
+ const saved=useDirectPreferences.getState().followPercent;useDirectPreferences.getState().setFollowPercent(100);try{const h=harness();h.selectCurves(['a']);h.select('direct');const node=h.all().find(element=>element.props['data-testid']==='vr-curve-node')!,p=xy(node);node.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+20,p[1]-30));h.render();expect(h.preview).toHaveBeenCalled();expect(h.curvePreview).not.toHaveBeenCalled();h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+20,p[1]-30));h.render();expect(h.commit).toHaveBeenCalledTimes(1);expect(h.curveCommit).not.toHaveBeenCalled();expect(h.commit.mock.calls[0][2]).toMatchObject({kind:'geometry-authoring',controlPlan:{before:h.source,intent:{kind:'node',nodeId:node.props['data-node'],followStrength:1}}});const moved=h.drawing().nodes.find(value=>value.id===node.props['data-node'])!;expect(shapeOf(h.drawing(),'a')).toEqual(shapeOf(dragNode(h.source,moved.id,moved.position,1),'a'));}finally{useDirectPreferences.getState().setFollowPercent(saved);}
 });
 test('Recording whole-layer cages retain layer selections while individual curve selection exits using shared rules',()=>{
  const capabilities={deformRequiresLayers:true};expect(chooseDrawingSelection('deform',{ids:['a'],layer:'layer'},'select',capabilities).tool).toBe('deform');expect(chooseDrawingSelection('deform',{ids:['a']},'select',capabilities).tool).toBe('select');expect(chooseDrawingSelection('deform',{ids:['a']},'direct',capabilities).tool).toBe('direct');
@@ -76,4 +78,22 @@ test('locked mirror targets stay unchanged and cannot become endpoint targets',(
 });
 test.each(['escape','navigate','history','tool'])('%s cancels a Drawing-controlled A preview without committing to a changed context',action=>{
  const h=harness();h.selectCurves(['a']);h.select('direct');const node=h.all().find(element=>element.props['data-testid']==='vr-curve-node')!,p=xy(node);node.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+20,p[1]-10));h.render();if(action==='escape')listeners.get('keydown')!(key('Escape'));else if(action==='navigate')h.navigate();else if(action==='history')h.historyChange();else h.select('select');h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+20,p[1]-10));h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
+});
+
+test.each(['reject','throw'] as const)('A valid preview then %s clears the visible and committable target on mouse release',failure=>{
+ const h=harness();h.selectCurves(['a']);h.select('direct');const handle=h.all().find(e=>e.props['data-testid']==='vr-curve-handle'&&e.props['data-id']==='a')!,p:Point2=[handle.props.cx,handle.props.cy];
+ handle.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+15,p[1]));h.render();expect(h.paint().props.d).not.toBe(h.source);expect(h.commit).not.toHaveBeenCalled();
+ h.preview.mockImplementationOnce(()=>{if(failure==='throw')throw Error('Unrepresentable target');return false;});h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+25,p[1]-15));h.render();expect(h.paint().props.d).toBe(h.source);
+ h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+25,p[1]-15));h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
+});
+test.each(['reject','throw'] as const)('A keyboard valid preview then %s cannot commit a stale target on key release',failure=>{
+ const h=harness();h.selectCurves(['a']);h.select('direct');const handle=h.all().find(e=>e.props['data-testid']==='vr-curve-handle'&&e.props['data-id']==='a')!,p:Point2=[handle.props.cx,handle.props.cy];
+ handle.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerUp(pointer(...p));h.render();expect(h.commit).not.toHaveBeenCalled();
+ listeners.get('keydown')!(key('ArrowRight'));h.render();expect(h.paint().props.d).not.toBe(h.source);
+ h.preview.mockImplementationOnce(()=>{if(failure==='throw')throw Error('Unrepresentable nudge');return false;});listeners.get('keydown')!(key('ArrowUp'));h.render();expect(h.paint().props.d).toBe(h.source);
+ listeners.get('keyup')!(key('ArrowRight'));listeners.get('keyup')!(key('ArrowUp'));h.render();expect(h.commit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
+});
+test('A active pointer Undo consumes cancellation, and Ctrl+Y reaches global Redo exactly once',()=>{
+ const h=harness();h.selectCurves(['a']);h.select('direct');const handle=h.all().find(e=>e.props['data-testid']==='vr-curve-handle'&&e.props['data-id']==='a')!,p:Point2=[handle.props.cx,handle.props.cy],undo=vi.spyOn(useEditor.getState(),'undo').mockImplementation(()=>{}),redo=vi.spyOn(useEditor.getState(),'redo').mockImplementation(()=>{});
+ try{handle.props.onPointerDown(pointer(...p));h.element('vr-scene-canvas').props.onPointerMove(pointer(p[0]+15,p[1]));h.render();const event=key('z',{ctrlKey:true});listeners.get('keydown')!(event);h.render();expect(event.stopImmediatePropagation).toHaveBeenCalledTimes(1);expect(undo).not.toHaveBeenCalled();expect(h.paint().props.d).toBe(h.source);h.element('vr-scene-canvas').props.onPointerUp(pointer(p[0]+15,p[1]));expect(h.commit).not.toHaveBeenCalled();listeners.get('keydown')!(key('z',{ctrlKey:true}));expect(undo).toHaveBeenCalledTimes(1);listeners.get('keydown')!(key('y',{ctrlKey:true}));expect(redo).toHaveBeenCalledTimes(1);}finally{undo.mockRestore();redo.mockRestore();}
 });
