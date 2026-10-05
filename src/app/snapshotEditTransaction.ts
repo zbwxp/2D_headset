@@ -198,6 +198,7 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
  * single Undo boundary. Previews share ownership guards without deep parsing. */
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  if(context.workspace!==context.project.recordingSnapshots)throw Error('The snapshot edit context must belong to its exact project.');
+ freezeCandidate(context.project);
  const revision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);
  if(revision!==currentPreparedEditRevision())throw Error('This prepared edit was canceled during preparation.');
  if(receiptKey in plan){preparedReceipt(plan);return plan;}

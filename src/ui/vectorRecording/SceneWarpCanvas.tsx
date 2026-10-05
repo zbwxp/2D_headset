@@ -295,7 +295,7 @@ export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,pai
     e.preventDefault();let held=nudgeInstance.current;
     if(held&&(held.targetKey!==targetKey||held.historyKey!==instanceHistoryKey||held.selectionKey!==instanceKey)){cancel();return;}
     if(!held)nudgeInstance.current=held={...beginKeyboardGesture<ScenePlacementValue>(),editor:instanceTransform,targetKey,historyKey:instanceHistoryKey,selectionKey:instanceKey,frame:instanceTransform.displayPlacement??identityScenePlacement()};
-    const frozen=held,zero=instancePoint([0,0],frozen.frame),point=instancePoint(delta,frozen.frame);if(!zero||!point)return;
+    const frozen=held,zero=instancePoint([0,0],frozen.frame),point=instancePoint(delta,frozen.frame);if(!zero||!point){cancel();return;}
     previewKeyboardGesture(frozen,e.key,sub(point,zero),offset=>({...identityScenePlacement(),translation:offset}),value=>{setInstancePreview(value);return frozen.editor.onPreview(value);});return;
    }
    if(delta&&!instanceSelect&&!reference?.moving&&gridEditable&&inversePlacement&&grid&&nodeSelection.length&&!drag.current){e.preventDefault();keys.current.add(e.key);const base=nudge.current??grid,zero=applyScenePlacementMatrix(inversePlacement,[0,0]),point=applyScenePlacementMatrix(inversePlacement,delta),localDelta:Point2=[point[0]-zero[0],point[1]-zero[1]];let next=base;for(const i of nodeSelection)next=moveWarpNode(next,i,[base.nodes[i].position[0]+localDelta[0],base.nodes[i].position[1]+localDelta[1]]);nudge.current=next;onPreview(next);return;}

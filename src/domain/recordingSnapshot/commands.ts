@@ -34,7 +34,7 @@ import {createWarpGrid,moveWarpNode,validateWarpGrid,type WarpGrid} from '../vec
 import {sameAngle} from '../vectorRecording/interpolation';
 import {identityScenePlacement,identitySceneShape,type SceneTrack,type ScenePlacementValue,type SceneShapeValue,type SceneIntervalValue} from '../recordingScene/model';
 import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotControlResponse,type SnapshotEndpointResponses,type SnapshotTriangleResponses,type Angle} from './model';
-import {resolveSnapshot,retainSnapshotSavedEvaluationIdentity,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
+import {prepareRecordingContext,resolveSnapshot,retainSnapshotSavedEvaluationIdentity,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
 import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,interpolateEndpointPairGeometry,validateSnapshotControlResponse,validateSnapshotEndpointResponses} from './endpointPair';
 
 export interface SnapshotSelection {layerIds?:string[];warpIds?:string[]}
@@ -127,9 +127,10 @@ export interface PreparedSnapshotCommand {workspace:RecordingSnapshotWorkspace;e
  * one completed candidate. Evaluation never observes an identity still being
  * mutated by the command or another command later in its batch. */
 export function prepareSnapshotCommand(before:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandOptions={}):PreparedSnapshotCommand {
- const original=before.recordings.find(recording=>recording.id===before.activeRecordingId),stage=snapshotCommandStage(raw);
+ const original=before.recordings.find(recording=>recording.id===before.activeRecordingId),stage=snapshotCommandStage(raw),context=prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'});
+ const completed=(workspace:RecordingSnapshotWorkspace,effects:SnapshotCommandEffects,stage:'local'|'structural'):PreparedSnapshotCommand=>{context.fork(workspace);return {workspace,effects,stage};};
  if(stage==='structural'||original?.mode!=='triangulated'){
-  const draft=clone(before),effects=executeSnapshotCommand(draft,raw,options);return {workspace:draft,effects,stage:'structural'};
+  const draft=clone(before),effects=executeSnapshotCommand(draft,raw,options);return completed(draft,effects,'structural');
  }
  const recording={...original},draft={...before,recordings:before.recordings.map(value=>value===original?recording:value)},written=new Map<string,RecordingSnapshot>();
  const snapshotForWrite=(snapshotId:string)=>{
@@ -141,9 +142,9 @@ export function prepareSnapshotCommand(before:RecordingSnapshotWorkspace,raw:unk
  };
  let complete:RecordingSnapshotWorkspace|undefined;
  const effects=executeSnapshotCommand(draft,raw,{...options,inputWorkspace:before,snapshotForWrite,completeWorkspace:workspace=>{complete=workspace;}});
- if(complete)return {workspace:complete,effects,stage};
+ if(complete)return completed(complete,effects,stage);
  const changed=written.size>0||Object.keys(recording).some(key=>{const next=recording[key as keyof SnapshotRecording],prior=original[key as keyof SnapshotRecording];return next!==prior&&JSON.stringify(next)!==JSON.stringify(prior);});
- return {workspace:changed?draft:before,effects,stage};
+ return completed(changed?draft:before,effects,stage);
 }
 /** Compatibility for domain callers that deliberately own a mutable draft.
  * Modern editor/API transactions consume prepareSnapshotCommand directly. */

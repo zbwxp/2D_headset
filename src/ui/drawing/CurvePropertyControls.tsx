@@ -1,8 +1,9 @@
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
 import {curveById,nodeAt,type DrawingDocument,type Point2} from '../../domain/drawing/model';
-import {moveHandle,moveNode,widthChange,renameStroke} from '../../domain/drawing/commands';
+import {widthChange,renameStroke} from '../../domain/drawing/commands';
 import {strokeFor,strokeName} from '../../domain/drawing/strokes';
 import type {DrawingSelection} from './session';
-import type {DrawingCommandRun} from './endpointInteraction';
+import type {DrawingCommandRun,DrawingCommandIntent} from './endpointInteraction';
 import {NumberField,NameField} from './Field';
 import {uiText as t} from '../i18n';
 
@@ -16,10 +17,20 @@ export function CurveControlSelection({d,selection,choose,disabled=false}:{d:Dra
   <button aria-label={`P${end} ${t('控制柄')}`} aria-pressed={selection.handle?.curveId===curve.id&&selection.handle.end===end} disabled={disabled} onClick={()=>choose({ids:[curve.id],handle:{curveId:curve.id,end}})}>P{end} {t('控制柄')}</button>
  </div>)}</div>;
 }
+/** Numeric controls use the same frozen geometry producer as pointer and keys.
+ * Hosts choose their committed baseline; the displayed preview is not a base. */
+export function drawingControlPointTarget(d:DrawingDocument,selection:DrawingSelection,position:Point2){
+ const controlPlan=prepareDrawingControlEditPlan(d,selection.handle?{kind:'handle',endpoint:selection.handle}:{kind:'node',nodeId:selection.node!,followStrength:0});
+ return {drawing:applyDrawingControlEditPlan(controlPlan,{kind:'point',position}),controlPlan};
+}
+export function drawingControlPointCommand(d:DrawingDocument,selection:DrawingSelection,position:Point2){
+ const intent:Extract<DrawingCommandIntent,{kind:'geometry-authoring'}>={kind:'geometry-authoring'};
+ return {intent,operation:()=>{const target=drawingControlPointTarget(d,selection,position);intent.controlPlan=target.controlPlan;return target.drawing;}};
+}
 export function CurvePointControls({d,selection,run,disabled=false,onPosition}:{d:DrawingDocument;selection:DrawingSelection;run:DrawingCommandRun;disabled?:boolean;onPosition?:(position:Point2)=>void}){
  const handle=selection.handle,point=handle?d.curves.find(curve=>curve.id===handle.curveId)?.handles[handle.end]:d.nodes.find(node=>node.id===selection.node)?.position;
  if(!point)return null;
- const change=(position:Point2)=>onPosition?onPosition(position):run(()=>handle?moveHandle(d,handle,position):moveNode(d,selection.node!,position));
+ const change=(position:Point2)=>{if(onPosition){onPosition(position);return;}const command=drawingControlPointCommand(d,selection,position);run(command.operation,command.intent);};
  const anchor=handle?nodeAt(d,handle).position:undefined,length=anchor?Math.hypot(point[0]-anchor[0],point[1]-anchor[1]):0;
  return <><div className="drawing-fields">{(['X','Y'] as const).map((axis,index)=><NumberField key={axis} label={'节点 '+axis} value={point[index]} disabled={disabled} onChange={value=>change(point.map((n,k)=>k===index?value:n) as Point2)}/>)}</div>
  {anchor&&<NumberField label="控制柄长度" value={length} min={.000001} disabled={disabled||length<1e-7} onChange={value=>change([anchor[0]+(point[0]-anchor[0])*value/length,anchor[1]+(point[1]-anchor[1])*value/length])}/>}</>;

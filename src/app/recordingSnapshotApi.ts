@@ -2,7 +2,7 @@ import {prepareSnapshotEdit,snapshotEditContext} from './snapshotEditTransaction
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {prepareSnapshotCommand,snapshotCommandStage,allSnapshotIds,SnapshotCommandError,snapshotCommandNames as allSnapshotCommandNames,type SnapshotCommand,type SnapshotCreation} from '../domain/recordingSnapshot/commands';
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
-import {evaluateRecordingSnapshot as evaluateWorkspace,resolveSnapshot,type SnapshotEvaluationOptions} from '../domain/recordingSnapshot/evaluation';
+import {prepareRecordingContext,evaluateRecordingSnapshot as evaluateWorkspace,resolveSnapshot,type SnapshotEvaluationOptions} from '../domain/recordingSnapshot/evaluation';
 import {emptyRecordingSnapshotWorkspace,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type Angle} from '../domain/recordingSnapshot/model';
 import {recordingPoseTrackIndex} from '../domain/recordingSnapshot/tracks';
 import {recordingRetirementStatus,assertRecordingProjectActive,RECORDING_RETIRED_MESSAGE} from '../domain/recordingSnapshot/retirement';
@@ -64,6 +64,9 @@ function prepareSnapshotCommands(project:LandmarkProject,raw:unknown,validation:
  completed={workspace:candidate,recordingId,recording,snapshotId};return candidate;
  }});}catch(error){if(error instanceof SnapshotApiError)throw error;throw new SnapshotApiError('CONSTRAINT_VIOLATION',(error as Error).message,commands.length?commands.length-1:undefined);}
  const {recordingId,recording,snapshotId}=completed,recordingSnapshots=preparedPlan.project.recordingSnapshots??completed.workspace;diagnostics.push(...preparedPlan.diagnostics??[]);
+ // Final validation/propagation may produce a normalized identity. It retains
+ // the same pinned-before dependency session, never a UI-specific evaluator.
+ prepareRecordingContext(before,{immutableInputs:true,diagnostics:'preview'}).fork(recordingSnapshots);
  // Linked placements are a coherent batch constraint, checked on the complete
  // propagated candidate, never on a partially written mutable snapshot.
  for(const check of placementChecks.values()){

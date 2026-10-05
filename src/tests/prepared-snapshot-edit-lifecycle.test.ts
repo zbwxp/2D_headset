@@ -104,3 +104,10 @@ it('commits the accepted correction preview without a second inverse solve',()=>
  const evaluation=evaluateRecordingSnapshot(workspace,recording.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(evaluation.drawing,{kind:'node',nodeId:'a'}),drawing=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[.3,.3]}),before=getSnapshotSurfaceTargetWorkStats(),plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:recording.id,snapshotId:evaluation.snapshotId,angle:recording.angle,beforeDrawing:evaluation.drawing,drawing,intent:{kind:'geometry',controlPlan},validation:'preview'}),solved=getSnapshotSurfaceTargetWorkStats();expect(solved.nodeSolves).toBeGreaterThan(before.nodeSolves);
  useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(getSnapshotSurfaceTargetWorkStats()).toEqual(solved);expect(useEditor.getState().past).toEqual([project]);
 });
+
+it('freezes every accepted transaction baseline even when replaced snapshots are not shared by its candidate',()=>{
+ const project=fixture(),beforeSnapshot=project.recordingSnapshots.snapshots[0],plan=rename(project,'Replacement','preview');
+ expect(Object.isFrozen(beforeSnapshot)).toBe(true);expect(()=>{beforeSnapshot.name='Late mutation';}).toThrow();
+ expect(plan.before.recordingSnapshots!.snapshots[0].name).not.toBe('Late mutation');
+ expect(finalizePreparedSnapshotEdit(plan,project).project.recordingSnapshots!.snapshots[0].name).toBe('Replacement');
+});
