@@ -3,7 +3,7 @@ import {assertLayerDomainIntent,type LayerDomainIntent} from '../domain/drawing/
 import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {emptySnapshotDeformationState,type RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
 import {writeLayerDomainOperation} from './layerDomainOperation';
-import {layerCageCurveIds} from '../domain/recordingSnapshot/layerCageScope';
+import {prepareDrawingLayerDomainPlan} from '../domain/drawing/layerDomainEditPlan';
 
 export interface RecordingLayerDomainEdit {recordingId:string;snapshotId:string;angle:{x:number;y:number};intent:LayerDomainIntent;validation?:'preview'|'full'}
 export const RECORDING_CAGE_BASIS_REQUIRED='Persistent cage parameters are editable at a real snapshot in a triangulated Recording. Intermediate angles use temporary cages to edit curve responses. Select a saved viewpoint to edit its saved cage.';
@@ -23,13 +23,11 @@ export function resolveRecordingLayerDomainTarget(workspace:RecordingSnapshotWor
 export function prepareRecordingLayerDomainWorkspace(project:LandmarkProject,edit:RecordingLayerDomainEdit) {
  assertLayerDomainIntent(edit.intent);
  const workspace=project.recordingSnapshots;if(!workspace)throw Error('The Recording workspace is unavailable.');
- const {snapshot}=resolveRecordingLayerDomainTarget(workspace,edit),evaluation=evaluateRecordingSnapshot(workspace,edit.recordingId,{angle:edit.angle,useDraft:true,immutableInputs:true,diagnostics:'preview'}),drawing=evaluation.drawing,targets=new Set(edit.intent.scope.layerIds);
- const members=edit.intent.domain.kind==='h-coons'?layerCageCurveIds(drawing,{...edit.intent.domain,layerIds:[...targets]}):new Set(drawing.layers.filter(layer=>targets.has(layer.id)).flatMap(layer=>layer.items));
- for(const id of targets){const layer=drawing.layers.find(value=>value.id===id);if(!layer||!snapshot.layers.some(value=>value.id===id))throw Error('A layer domain target no longer exists.');if(layer.locked||drawing.curves.some(curve=>members.has(curve.id)&&curve.locked))throw Error('Unlock the selected layer and its curves before transforming the cage scope.');}
- const owner=(id:string)=>drawing.layers.find(layer=>layer.items.includes(id))?.id;
- const check=(ids:(string|undefined)[])=>{if(ids.some(id=>id&&targets.has(id))&&ids.some(id=>!id||!targets.has(id)))throw Error('Select every linked layer before transforming their shared endpoints.');};
- for(const link of drawing.endpointLinks??[])if(members.has(link.a.curveId)||members.has(link.b.curveId))check([members.has(link.a.curveId)?owner(link.a.curveId):undefined,members.has(link.b.curveId)?owner(link.b.curveId):undefined]);
- for(const node of drawing.nodes){const incident=drawing.curves.filter(curve=>curve.nodes.includes(node.id));if(incident.some(curve=>members.has(curve.id)))check(incident.map(curve=>members.has(curve.id)?owner(curve.id):undefined));}
+ const {snapshot}=resolveRecordingLayerDomainTarget(workspace,edit),evaluation=evaluateRecordingSnapshot(workspace,edit.recordingId,{angle:edit.angle,useDraft:true,immutableInputs:true,diagnostics:'preview'}),drawing=evaluation.drawing;
+ const scope=prepareDrawingLayerDomainPlan(drawing,{layerIds:edit.intent.scope.layerIds,...edit.intent.domain.kind==='h-coons'?{strokeScope:edit.intent.domain.strokeScope}:{}});
+ if(scope.layers.some(layer=>!snapshot.layers.some(value=>value.id===layer.id)))throw Error('A layer domain target no longer exists.');
+ if(scope.layers.some(layer=>layer.locked)||scope.curves.some(curve=>curve.locked))throw Error('Unlock the selected layer and its curves before transforming the cage scope.');
+ if(scope.separatesLinkedLayers)throw Error('Select every linked layer before transforming their shared endpoints.');
  const draft=snapshot.draft??{angle:{...snapshot.angle},deformation:emptySnapshotDeformationState(),channels:[]},layerDomains=writeLayerDomainOperation(draft.deformation.layerDomains,evaluation.state.layerDomains??[],edit.intent),next={...workspace,snapshots:workspace.snapshots.map(value=>value===snapshot?{...snapshot,draft:{...draft,deformation:{...draft.deformation,layerDomains}}}:value)};
  const result=evaluateRecordingSnapshot(next,edit.recordingId,{angle:edit.angle,useDraft:true,immutableInputs:true,diagnostics:'preview'}),failed=result.diagnostics.find(issue=>issue.code==='LAYER_DOMAIN'&&issue.channelId===edit.intent.operationId);
  if(failed)throw Error(failed.message);

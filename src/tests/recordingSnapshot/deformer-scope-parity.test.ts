@@ -75,7 +75,7 @@ for(const x of [0,60])for(const scope of ['group','layer'] as const)for(const ki
    wanted=applyDrawingControlEditPlan(controlPlan,{kind:'map',map:([px,py])=>[1.03*px+.02*py+.04,.01*px+1.02*py+.03]});
    plan=prepareSnapshotDrawingToolEdit(context,{...target,beforeDrawing:before.drawing,drawing:wanted,intent:{kind:'geometry',controlPlan}});
   }else{
-   const intent=cageIntent(before.drawing,scope,kind),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'domain',layerIds:intent.scope.layerIds,curveIds:[...layerCageCurveIds(before.drawing,{...intent.domain,layerIds:intent.scope.layerIds})]});
+   const intent=cageIntent(before.drawing,scope,kind),controlPlan=prepareDrawingControlEditPlan(before.drawing,{kind:'domain',layerIds:intent.scope.layerIds,strokeScope:intent.domain.strokeScope});
    wanted=applyDrawingControlEditPlan(controlPlan,{kind:'cage',intent});near(wanted,applyLayerDomainIntent(before.drawing,intent).document);
    plan=x?prepareRecordingTemporaryCageEdit(context,{...target,beforeDrawing:before.drawing,intent}):prepareSnapshotEdit(context,{kind:'recording-layer-domain',...target,intent});
   }
@@ -91,7 +91,7 @@ for(const x of [0,60])for(const scope of ['group','layer'] as const)for(const ki
 test.each(['four-corner','curved'] as const)('%s frozen gesture reuses one plan, changed group binding selects a new scope, and fitting counts actual members',kind=>{
  const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{useDraft:true,immutableInputs:true}),intent=cageIntent(before.drawing,'group',kind),context=snapshotEditContext(project,false),edit={recordingId:'recording',snapshotId:before.snapshotId,angle:angle(60),beforeDrawing:before.drawing};
  const stats=drawingControlEditStats(),fit=vi.spyOn(cubicDeformation,'fitDeformedCubic');
- const makePlan=(value:typeof intent)=>prepareDrawingControlEditPlan(before.drawing,{kind:'domain',layerIds:value.scope.layerIds,curveIds:[...layerCageCurveIds(before.drawing,{...value.domain,layerIds:value.scope.layerIds})]});
+ const makePlan=(value:typeof intent)=>prepareDrawingControlEditPlan(before.drawing,{kind:'domain',layerIds:value.scope.layerIds,strokeScope:value.domain.strokeScope});
  const first=makePlan(intent);expect(first.curveIds).toEqual(groupIds);expect(first.fallbackReason).toBe('live-domain-scope');
  for(let i=0;i<2;i++){fit.mockClear();applyDrawingControlEditPlan(first,{kind:'cage',intent});expect(fit).toHaveBeenCalledTimes(groupIds.length);expect(makePlan(intent)).toBe(first);}
  expect(drawingControlEditStats().dependencyIndexes-stats.dependencyIndexes).toBe(1);expect(drawingControlEditStats().plans-stats.plans).toBe(1);
@@ -108,7 +108,7 @@ test.each(['four-corner','curved'] as const)('%s fits a real source continuation
  const before=source(),intent=cageIntent(before,'group',kind),end=shapeOf(before,'second')[3];
  let grown=createCurve(before,'layer',[end,[2.2,2.2],[2.4,2.3],[2.6,2.4]],.01,'Continuation','continued');grown=connect(grown,{curveId:'second',end:1},{curveId:'continued',end:0},'POSITION');
  grown=createCurve(grown,'layer',[[.2,.2],[.3,.3],[.4,.4],[.5,.5]],.01,'Nearby','nearby');
- const members=[...layerCageCurveIds(grown,{...intent.domain,layerIds:['layer']})],plan=prepareDrawingControlEditPlan(grown,{kind:'domain',layerIds:['layer'],curveIds:members}),fit=vi.spyOn(cubicDeformation,'fitDeformedCubic');
+ const members=[...layerCageCurveIds(grown,{...intent.domain,layerIds:['layer']})],plan=prepareDrawingControlEditPlan(grown,{kind:'domain',layerIds:['layer'],strokeScope:intent.domain.strokeScope}),fit=vi.spyOn(cubicDeformation,'fitDeformedCubic');
  expect(members).toContain('continued');expect(members).not.toContain('nearby');
  const result=applyDrawingControlEditPlan(plan,{kind:'cage',intent});expect(fit).toHaveBeenCalledTimes(4);expect(shapeOf(result,'continued')).not.toEqual(shapeOf(grown,'continued'));expect(shapeOf(result,'nearby')).toEqual(shapeOf(grown,'nearby'));expectRelations(result,grown);
  const whole=createLayerCageIntent(['layer'],{...intent.domain,strokeScope:undefined},{operationId:'whole-layer'}),wholePlan=prepareDrawingControlEditPlan(grown,{kind:'domain',layerIds:['layer']});fit.mockClear();const all=applyDrawingControlEditPlan(wholePlan,{kind:'cage',intent:whole});expect(fit).toHaveBeenCalledTimes(grown.curves.length);expect(shapeOf(all,'nearby')).not.toEqual(shapeOf(grown,'nearby'));

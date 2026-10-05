@@ -1,3 +1,4 @@
+import {drawingLayerDomainPlanProof,type DrawingLayerDomainPlan} from './layerDomainEditPlan';
 import {deformDrawing} from './deform';
 import {validateLayerCageDomain,type SnapshotLayerCageDomain} from '../recordingSnapshot/layerCageDomain';
 import {layerCageCurveIds,remapLayerCageStrokeScope} from '../recordingSnapshot/layerCageScope';
@@ -8,6 +9,9 @@ import {uid,type DrawingDocument,type Point2} from './model';
 import {applyScenePlacement,placementMatrix,isScenePlacementSimilarity,type ScenePlacementMatrix} from '../recordingScene/tracks';
 import type {ScenePlacementValue} from '../recordingScene/model';
 import {applyAffine2D,validAffine2D,type Affine2D} from '../geometry/affine2d';
+
+const work={scopeResolutions:0};
+export const layerDomainIntentStats=()=>({...work});
 
 /** Explicit layer membership, never a frozen list of the current curves. A
  * domain is authored by a tool, not reconstructed from fitted controls.
@@ -50,10 +54,16 @@ export function mapLayerDomainIntent(intent:LayerDomainIntent,id:(id:string)=>st
 }
 /** Shared Drawing transform kernel remains the sole source-original geometry
  * edit. Snapshot adapters persist referenced domains and own their evaluation. */
-export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomainIntent,options:{allowRelated?:boolean}={}) {
+export function applyLayerDomainIntent(drawing:DrawingDocument,intent:LayerDomainIntent,options:{allowRelated?:boolean;scopePlan?:DrawingLayerDomainPlan}={}) {
  assertLayerDomainIntent(intent);
- const layers=intent.scope.layerIds.map(id=>{const layer=drawing.layers.find(layer=>layer.id===id);if(!layer)throw Error('A layer domain target no longer exists.');if(layer.locked)throw Error('对象已锁定。');return layer;});
- const items=new Set(layers.flatMap(layer=>layer.items)),ids=intent.domain.kind==='h-coons'?[...layerCageCurveIds(drawing,{...intent.domain,layerIds:intent.scope.layerIds})]:drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
+ const scope={layerIds:intent.scope.layerIds,...intent.domain.kind==='h-coons'?{strokeScope:intent.domain.strokeScope}:{}},prepared=drawingLayerDomainPlanProof(drawing,scope,options.scopePlan);
+ let ids:string[];
+ if(prepared){if(prepared.layers.some(layer=>layer.locked))throw Error('对象已锁定。');ids=[...prepared.curveIds];}
+ else {
+  work.scopeResolutions++;
+  const layers=intent.scope.layerIds.map(id=>{const layer=drawing.layers.find(layer=>layer.id===id);if(!layer)throw Error('A layer domain target no longer exists.');if(layer.locked)throw Error('对象已锁定。');return layer;});
+  const items=new Set(layers.flatMap(layer=>layer.items));ids=intent.domain.kind==='h-coons'?[...layerCageCurveIds(drawing,scope)]:drawing.curves.filter(curve=>items.has(curve.id)).map(curve=>curve.id);
+ }
  if(intent.domain.kind==='h-coons'){const value=intent.domain;return {document:value.enabled===false?drawing:deformDrawing(drawing,ids,value.restRect,value.quad,options.allowRelated??false,value.bend).document,intent,ids};}
  const matrix=layerDomainMatrix(intent),raw=transform(drawing,ids,point=>applyAffine2D(matrix,point),options.allowRelated??false,true);
  return {document:finalizeGeometryEdit(drawing,raw,mirrorWritesForCurves(raw,ids)),intent,ids};
