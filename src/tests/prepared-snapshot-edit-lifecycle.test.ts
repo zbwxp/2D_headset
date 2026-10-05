@@ -1,4 +1,6 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {createVectorEditingApi} from '../app/vectorEditingApi';
+import {prepareSnapshotDrawingPropertyEdit} from '../ui/vectorRecording/snapshotDrawingPropertyEdit';
 import {createEmptyProject} from '../app/emptyProject';
 import {composePreparedSnapshotEdits,finalizePreparedSnapshotEdit,prepareSnapshotEdit,snapshotEditContext} from '../app/snapshotEditTransaction';
 import {invalidatePreparedEdits} from '../app/preparedEditRevision';
@@ -15,6 +17,7 @@ import {createSnapshotAngleGraph} from '../domain/recordingSnapshot/angleGraph';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
 import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {canonicalElementId,drawingSnapshotForArtwork,remapDrawingIdentities,upsertDrawingSource} from '../domain/recordingSnapshot/sources';
+import {getSnapshotSurfaceTargetWorkStats} from '../domain/recordingSnapshot/surfaceTargets';
 import * as persistence from '../domain/recordingSnapshot/persistence';
 
 const initial=useEditor.getState(),initialMode=useWorkspaceMode.getState().mode;
@@ -79,4 +82,25 @@ it('makes empty composition and unchanged workspace genuine no-ops',()=>{
 it('maps authentic Drawing control plans through canonical identities without trusting a copied descriptor',()=>{
  const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{useDraft:true}).drawing,plan=prepareDrawingControlEditPlan(before,{kind:'node',nodeId:'a'}),wanted=applyDrawingControlEditPlan(plan,{kind:'point',position:[.1,.2]}),id=(value:string)=>`canonical:${value}`,canonicalBefore=remapDrawingIdentities(before,id),canonicalWanted=remapDrawingIdentities(wanted,id),mapped=prepareDrawingSnapshotControlTarget(before,wanted,canonicalBefore,canonicalWanted,id,plan)!;
  expect(mapped.drawing).toEqual(canonicalWanted);expect(drawingControlEditProof(canonicalBefore,mapped.drawing,mapped.controlPlan)).toBe(mapped.controlPlan);expect(prepareDrawingSnapshotControlTarget(before,wanted,canonicalBefore,canonicalWanted,id,{...plan})).toBeUndefined();expect(prepareDrawingSnapshotControlTarget(before,{...wanted},canonicalBefore,canonicalWanted,id,plan)).toBeUndefined();
+});
+
+it('routes interval property plans through the authentic full gate and one Undo',()=>{
+ const project=fixture();project.recordingSnapshots.snapshots[0].relations.displayIntervals={add:[{id:'interval',scope:'CURVE',anchor:{id:'curve',reverse:false},ranges:[{id:'range',start:.1,end:.9}]}]};
+ const beforeDrawing=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{useDraft:true}).drawing,drawing={...beforeDrawing,displayIntervals:beforeDrawing.displayIntervals!.map(track=>({...track,ranges:track.ranges.map(range=>({...range,enabled:false}))}))},parse=vi.spyOn(persistence,'parseRecordingSnapshots'),plan=prepareSnapshotDrawingPropertyEdit(project,{recordingId:'recording',snapshotId:'front',angle:{x:0,y:0},beforeDrawing,drawing});
+ expect(parse).toHaveBeenCalledTimes(1);expect(finalizePreparedSnapshotEdit(plan,project)).toBe(plan);useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(parse).toHaveBeenCalledTimes(1);expect(useEditor.getState().past).toEqual([project]);expect(evaluateRecordingSnapshot(useEditor.getState().project.recordingSnapshots!,'recording',{useDraft:true}).drawing.displayIntervals![0].ranges[0].enabled).toBe(false);
+});
+it('default JSON Snapshot host commits the prepared plan once and rejects request-supplied receipts',()=>{
+ const project=fixture();useEditor.setState({project,past:[],future:[]});useWorkspaceMode.setState({mode:'recording'});const api=createVectorEditingApi(),parse=vi.spyOn(persistence,'parseRecordingSnapshots'),result=api.snapshot({commands:[{op:'setTolerance',pixels:3}]});
+ expect(result.ok).toBe(true);expect(useEditor.getState().past).toEqual([project]);expect(parse).toHaveBeenCalledTimes(1);const after=useEditor.getState().project,bad=api.snapshot({commands:[],preparedPlan:{before:after,project:after,changed:false}} as never);expect(bad.ok).toBe(false);expect(useEditor.getState().project).toBe(after);expect(useEditor.getState().past).toEqual([project]);
+});
+it('source normalization survives preparation and malformed source schema creates no history',()=>{
+ const drawing={...emptyDrawing(),version:2,layers:[{id:'layer',name:'Layer',items:['curve'],visible:true,locked:true}],nodes:[{id:'a',position:[0,0]},{id:'b',position:[1,0]}],curves:[{id:'curve',name:'Curve',nodes:['a','b'],handles:[[.3,0],[.7,0]],width:.01,visible:true,locked:false}]} as unknown as DrawingDocument,project=createEmptyProject(),plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing});
+ expect(plan.project.drawing!.version).toBe(3);expect(plan.project.drawing!.layers[0].locked).toBe(false);expect(plan.project.drawing!.curves[0].locked).toBe(true);useEditor.setState({project,past:[],future:[]});expect(()=>prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'original-geometry',drawing:{...drawing,curves:drawing.curves.map(curve=>({...curve,width:-1}))}})).toThrow();expect(useEditor.getState().past).toEqual([]);expect(useEditor.getState().project).toBe(project);
+});
+
+it('commits the accepted correction preview without a second inverse solve',()=>{
+ const project=fixture(),workspace=project.recordingSnapshots,front=workspace.snapshots[0],side={...structuredClone(front),id:'side',angle:{x:90,y:0}},up={...structuredClone(front),id:'up',angle:{x:0,y:90}};
+ side.deformation.layers.layer={shape:{nodes:{a:[1,0],b:[1,0]},handles:{}}};up.deformation.layers.layer={shape:{nodes:{a:[0,1],b:[0,1]},handles:{}}};workspace.snapshots=[front,side,up];const recording=workspace.recordings[0];recording.snapshotIds=workspace.snapshots.map(snapshot=>snapshot.id);recording.angle={x:20,y:20};recording.angleGraph=createSnapshotAngleGraph(workspace.snapshots.map(snapshot=>({snapshotId:snapshot.id,angle:snapshot.angle})));
+ const evaluation=evaluateRecordingSnapshot(workspace,recording.id,{useDraft:true,immutableInputs:true,diagnostics:'preview'}),controlPlan=prepareDrawingControlEditPlan(evaluation.drawing,{kind:'node',nodeId:'a'}),drawing=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[.3,.3]}),before=getSnapshotSurfaceTargetWorkStats(),plan=prepareSnapshotDrawingToolEdit(snapshotEditContext(project,false),{recordingId:recording.id,snapshotId:evaluation.snapshotId,angle:recording.angle,beforeDrawing:evaluation.drawing,drawing,intent:{kind:'geometry',controlPlan},validation:'preview'}),solved=getSnapshotSurfaceTargetWorkStats();expect(solved.nodeSolves).toBeGreaterThan(before.nodeSolves);
+ useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(plan);expect(getSnapshotSurfaceTargetWorkStats()).toEqual(solved);expect(useEditor.getState().past).toEqual([project]);
 });

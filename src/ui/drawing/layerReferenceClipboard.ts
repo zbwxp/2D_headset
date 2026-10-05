@@ -4,7 +4,7 @@ import type {LandmarkProject} from '../../domain/landmarks/model';
 import {ensureRecordingSnapshots} from '../../domain/recordingSnapshot/migration';
 import {captureDrawingLayerClipboard,captureSnapshotLayerClipboard,planSnapshotClipboardPaste,prepareSnapshotReferencePaste,type SnapshotReferenceClipboard} from '../../domain/recordingSnapshot/referenceClipboard';
 import {drawingSnapshotPresentation} from './snapshotPresentation';
-import {prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
+import {composePreparedSnapshotEdits,prepareSnapshotEdit,snapshotEditContext} from '../../app/snapshotEditTransaction';
 
 interface LayerReferenceClipboardSession {
  projectId:string;
@@ -54,6 +54,6 @@ export function prepareDrawingLayerReferencePaste(project:LandmarkProject,clipbo
  for(const command of planned.commands){const result=prepareSnapshotReferencePaste(workspace,{targetSnapshotId:view.snapshotId,sourceSnapshotId:command.sourceSnapshotId,layerIds:command.layerIds});if(result.blockedCode)throw Error(result.diagnostics.at(-1)?.message??result.blockedCode);workspace=result.workspace;layerIds.push(...result.created.map(layer=>layer.id),...result.reused.map(layer=>layer.id));}
  // Validate identity mapping as well as the generic graph before committing.
  drawingSnapshotPresentation(workspace,artworkId);
- if(workspace===project.recordingSnapshots)return {before:project,project,changed:false,workspace,layerIds};
+ if(workspace===project.recordingSnapshots)return {...composePreparedSnapshotEdits(project,[]),workspace,layerIds};
  const plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'snapshot-state',workspace});return {...plan,workspace:plan.project.recordingSnapshots!,layerIds};
 }
