@@ -34,6 +34,7 @@ import {applyElementCommand,elementCommandNames,ElementCommandError,type Element
 import {applyMirrorCommand,mirrorCommandNames,MirrorApiError,MirrorBatchIntent,type MirrorEditingCommand} from './vectorMirrorEditingApi';
 import {MirrorEditingError,validateMirrorEditing} from '../domain/drawing/mirrorEditing';
 import {markFinalizedGeometry} from '../domain/drawing/geometryEdit';
+import {applyDrawingControlEditPlan,applyDrawingControlWrites,prepareDrawingControlEditPlan,type DrawingControlEditIntent,type DrawingControlEditPlan,type DrawingControlEditValue} from '../domain/drawing/controlEditPlan';
 import {createLayerCurveSplitIntent,applyLayerEditIntent,curveSplitIntents,type LayerEditIntent} from '../domain/drawing/layerEditIntent';
 import {createLayerDomainIntent,createLayerAffineIntent,layerSimilarityFromMatrix,type LayerDomainIntent} from '../domain/drawing/layerDomainIntent';
 import {currentDrawingPresentation,drawingSnapshotPresentation} from './drawingSnapshotPresentation';
@@ -101,6 +102,7 @@ function snapshotCommandView(project:LandmarkProject,command:Record<string,unkno
  if(command.op==='createCurve')return typeof command.layerId==='string'&&view.layerOwners.get(command.layerId)?.kind==='snapshot-local'?view:undefined;
  if(command.op==='moveHandle')return view.drawing.curves.some(curve=>curve.id===command.curveId)?view:undefined;
  if(command.op==='moveNode')return view.drawing.nodes.some(node=>node.id===command.nodeId)?view:undefined;
+ if(command.op==='transformCurves')return Array.isArray(command.curveIds)&&command.curveIds.some(id=>view.objectOwners.get(String(id))?.kind==='snapshot-local')?view:undefined;
  if(!relationCommandNames.has(String(command.op)))return undefined;
  const snapshot=project.recordingSnapshots!.snapshots.find(snapshot=>snapshot.id===view.snapshotId)!,drawing=remapDrawingIdentities(view.drawing,view.canonicalId),id=(value:unknown)=>typeof value==='string'?view.canonicalId(value):'';
  const link=command.op==='linkEndpoints'?{id:'$new-relation',a:{curveId:id((command.a as {curveId?:unknown}|undefined)?.curveId),end:(command.a as {end?:0|1}|undefined)?.end??0},b:{curveId:id((command.b as {curveId?:unknown}|undefined)?.curveId),end:(command.b as {end?:0|1}|undefined)?.end??0}}:drawing.endpointLinks?.find(link=>link.id===id(command.linkId));
@@ -262,23 +264,36 @@ function checkNewDiagnostics(before:DrawingDocument,after:DrawingDocument){
  const added=diagnostics(after).filter(x=>!prior.has(`${x.kind}:${x.id}:${x.message}`));
  if(added.length)fail('GEOMETRY_INVALID',`Edit would introduce invalid derived geometry: ${added.map(x=>`${x.kind} ${x.id}: ${x.message}`).join('; ')}`);
 }
-function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void,prepareSplit:(drawing:DrawingDocument,curveId:string,t:number)=>ReturnType<typeof applyLayerEditIntent>):DrawingDocument{
+type ControlCommandAuthor=(intent:DrawingControlEditIntent,value:DrawingControlEditValue,canonical:()=>DrawingDocument)=>DrawingDocument;
+/** API normalization and cumulative mirror intentions are full boundaries.
+ * Reconstruct only declared scalar addresses, then compare the COMPLETE result
+ * before retaining its producer proof. Metadata/material or out-of-closure
+ * changes keep the canonical unproven target and its full capture path. */
+function authenticatedControlOutput(plan:DrawingControlEditPlan,wanted:DrawingDocument):DrawingDocument {
+ const nodes=new Map(wanted.nodes.map(node=>[node.id,node])),curves=new Map(wanted.curves.map(curve=>[curve.id,curve]));
+ if(plan.controls.some(control=>control.kind==='node'?!nodes.has(control.nodeId):!curves.has(control.curveId)))return wanted;
+ const nodePositions=new Map<string,Point2>(),handlePositions:Array<{curveId:string;end:0|1;position:Point2}>=[];
+ for(const control of plan.controls)if(control.kind==='node')nodePositions.set(control.nodeId,nodes.get(control.nodeId)!.position);else handlePositions.push({curveId:control.curveId,end:control.end,position:curves.get(control.curveId)!.handles[control.end]});
+ const controlled=applyDrawingControlWrites(plan,{nodePositions,handlePositions});
+ return JSON.stringify(controlled)===JSON.stringify(wanted)?controlled:wanted;
+}
+function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:number)=>void,created:(kind:CreatedEntity['kind'],id:string,ref:unknown,idMap?:Record<string,string>)=>void,prepareSplit:(drawing:DrawingDocument,curveId:string,t:number)=>ReturnType<typeof applyLayerEditIntent>,controlEdit:ControlCommandAuthor=(_intent,_value,canonical)=>canonical()):DrawingDocument{
  const c=record(raw),op=c.op;
  if(mirrorCommandNames.includes(op as string))return applyMirrorCommand(d,c,(id,ref)=>created('mirrorPair',id,ref));
  switch(op){
   case 'moveNode':{
    keys(c,['op','nodeId','position']);const id=string(c.nodeId,'nodeId');
    if(!d.nodes.some(n=>n.id===id))fail('NOT_FOUND',`Unknown node ID: ${id}.`);
-   return moveNode(d,id,point(c.position,'position'));
+   const position=point(c.position,'position');return controlEdit({kind:'node',nodeId:id},{kind:'point',position},()=>moveNode(d,id,position));
   }
   case 'moveHandle':{
    keys(c,['op','curveId','end','position']);const id=curveExists(d,c.curveId);
    if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');
-   return moveHandle(d,{curveId:id,end:c.end as 0|1},point(c.position,'position'));
+   const endpoint={curveId:id,end:c.end as 0|1},position=point(c.position,'position');return controlEdit({kind:'handle',endpoint},{kind:'point',position},()=>moveHandle(d,endpoint,position));
   }
   case 'transformCurves':{
    keys(c,['op','curveIds','matrix','allowRelated']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
-   return transform(d,selected,affineMap(c.matrix),c.allowRelated===true);
+   const map=affineMap(c.matrix),allowRelated=c.allowRelated===true;return controlEdit({kind:'curves',curveIds:selected},{kind:'map',map,allowRelated},()=>transform(d,selected,map,allowRelated));
   }
   case 'deformCurves':{
    keys(c,['op','curveIds','bounds','quad','allowRelated','bend']);const selected=curvesExist(d,c.curveIds);bool(c.allowRelated,'allowRelated');
@@ -445,7 +460,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
   };
   for(const [index,c] of (r.commands as unknown[]).entries()){
    try{
-    let topologyIntent:LayerEditIntent|undefined;
+    let topologyIntent:LayerEditIntent|undefined,controlPlan:DrawingControlEditPlan|undefined;
     const raw=record(c),resolved=record(resolve(c,'',raw.op==='createMirrorPair'||raw.op==='setMirrorPair'));let previous=next;
     // Layer scope survives the API boundary. Resolve ownership against the
     // current candidate, after prior source edits, before expanding members.
@@ -468,7 +483,7 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
     if(relationCommandNames.has(String(resolved.op))&&pendingSource){candidateProject=accept(prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}));pendingSource=false;}
     let localView=snapshotCommandView(candidateProject,resolved);
     if(localView){if(pendingSource){candidateProject=accept(prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next)}));pendingSource=false;localView=snapshotCommandView(candidateProject,resolved);}
-     if(localView)previous=clone(localView.drawing);
+     if(localView)previous=['moveNode','moveHandle','transformCurves'].includes(String(resolved.op))?localView.drawing:clone(localView.drawing);
     }
     // Ordinary runs share one source synchronization. A split is the explicit
     // boundary: flush prior edits before freezing any real Snapshot controls.
@@ -483,13 +498,26 @@ export function createVectorEditingApi(host:VectorEditingHost=defaultHost()){
      const workspace=candidateProject.recordingSnapshots,source=workspace&&drawingSnapshotForArtwork(workspace,candidateProject.drawingSnapshots?.activeId??'$working'),pair=drawing.mirrorEditing?.enabled?drawing.mirrorEditing.curvePairs.find(pair=>pair.a===curveId||pair.b===curveId):undefined,rawTargets=new Set([curveId,...(pair?[pair.a,pair.b]:[])]),canonicalTargets=new Set(Object.entries(source?.source?.originIds??{}).filter(([,raw])=>rawTargets.has(raw)).map(([id])=>id));
      const relatedDrawings=workspace&&source?workspace.snapshots.flatMap(snapshot=>[resolveSnapshot(workspace,snapshot.id,{useDraft:false,diagnostics:'preview'}).drawing,...(snapshot.draft?[resolveSnapshot(workspace,snapshot.id,{useDraft:true,angle:snapshot.draft.angle,diagnostics:'preview'}).drawing]:[])].filter(evaluated=>evaluated.curves.some(curve=>canonicalTargets.has(curve.id))).map(evaluated=>remapDrawingIdentities(evaluated,id=>source.source!.originIds[id]??id))):[];
      topologyIntent=createLayerCurveSplitIntent(drawing,curveId,t,{relatedDrawings});topologyIntents.push(topologyIntent);return applyLayerEditIntent(drawing,topologyIntent);
-    });
+    },localView?(intent,value,canonical)=>{
+     controlPlan=prepareDrawingControlEditPlan(previous,intent);
+     // A batch can protect earlier explicitly authored mirror counterparts.
+     // Keep its canonical raw command + one cumulative mirror pass; a separate
+     // single-command mirror pass could reject a valid protected intention.
+     return previous.mirrorEditing?.enabled?canonical():applyDrawingControlEditPlan(controlPlan,value);
+    }:undefined);
     if(!localView&&mirrorCommandNames.includes(resolved.op as string)){if(JSON.stringify(previous.mirrorEditing)!==JSON.stringify(next.mirrorEditing))mirrorIntent.clear();}
-    else if(!localView||resolved.op==='moveNode'||resolved.op==='moveHandle'){if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
+    else if(!localView||resolved.op==='moveNode'||resolved.op==='moveHandle'||resolved.op==='transformCurves'){if(previous.mirrorEditing?.enabled)mirrorIntent.capture(next,resolved);next=mirrorIntent.apply(previous,next);}
     // Quad deformation already transports material cut positions; other geometry edits do so here.
-    if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op))next=transportDeformedIntervals(previous,next);
+    if(['moveNode','moveHandle','transformCurves','transformLayers','linkEndpoints','connectGeometry'].includes((c as VectorCommand).op)){
+     // This API transports its already evaluated raw controls. Runtime affine
+     // material views are keyed by node arrays; detach those keys as the former
+     // full clone did, including handle-only writes that retain the node array.
+     const rawMaterial=!!localView&&!!previous.displayIntervals?.length;
+     next=transportDeformedIntervals(rawMaterial?{...previous,nodes:previous.nodes.slice()}:previous,rawMaterial?{...next,nodes:next.nodes.slice()}:next);
+    }
     validateBounds(next);assertDisplayRouteSupport(next);next=parseDrawing(next);checkNewDiagnostics(previous,next);
-    if(localView){const intent=relationCommandNames.has(String(resolved.op))?createSnapshotRelationAuthoringIntent(localView.snapshotId,previous,next):undefined,plan=prepareDrawingSnapshotEdit(candidateProject,markFinalizedGeometry(next),intent);candidateProject=accept(plan);domainChanged=domainChanged||plan.changed;if((resolved.op==='setObjectState'||resolved.op==='setLayer')&&resolved.locked!==undefined){const objectIds=resolved.op==='setObjectState'?resolved.objectIds as string[]:previous.layers.find(layer=>layer.id===resolved.layerId)!.items,locks=prepareDrawingSnapshotObjectLocks(candidateProject,objectIds,resolved.locked as boolean);candidateProject=accept(locks);domainChanged=domainChanged||locks.changed;}snapshotContextChanged=true;next=clone(candidateProject.drawing??emptyDrawing());pendingSource=false;}
+    if(controlPlan)next=authenticatedControlOutput(controlPlan,next);
+    if(localView){const intent=controlPlan?{kind:'geometry-authoring' as const,controlPlan}:relationCommandNames.has(String(resolved.op))?createSnapshotRelationAuthoringIntent(localView.snapshotId,previous,next):undefined,plan=prepareDrawingSnapshotEdit(candidateProject,markFinalizedGeometry(next),intent);candidateProject=accept(plan);domainChanged=domainChanged||plan.changed;if((resolved.op==='setObjectState'||resolved.op==='setLayer')&&resolved.locked!==undefined){const objectIds=resolved.op==='setObjectState'?resolved.objectIds as string[]:previous.layers.find(layer=>layer.id===resolved.layerId)!.items,locks=prepareDrawingSnapshotObjectLocks(candidateProject,objectIds,resolved.locked as boolean);candidateProject=accept(locks);domainChanged=domainChanged||locks.changed;}snapshotContextChanged=true;next=clone(candidateProject.drawing??emptyDrawing());pendingSource=false;}
     else if(topologyIntent){candidateProject=accept(prepareSnapshotEdit(snapshotEditContext(candidateProject,true),{kind:'original-geometry',drawing:markFinalizedGeometry(next),intent:topologyIntent}));pendingSource=false;}else pendingSource=true;
    }catch(error){const e=error as Error;throw new ApiError(e instanceof ApiError||e instanceof ElementCommandError||e instanceof MirrorApiError?e.code:e instanceof MirrorEditingError?`MIRROR_${e.code}`:'CONSTRAINT_VIOLATION',e.message,index,e instanceof RelatedSelection?e.ids:undefined);}
   }
