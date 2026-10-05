@@ -10,6 +10,8 @@
 | [04-pressure-test.md](04-pressure-test.md) | 用 RC-01～20 压测候选 A，修订为 v0.2；对 Q1～Q5 的看法 | Claude |
 | [05-numeric-cases.md](05-numeric-cases.md) | 数值例子 N1～N5（dot 出题，Claude 推导）与由此引出的 4 处契约澄清 | dot + Claude |
 | [06-decisions.md](06-decisions.md) | bowen 已决定的事项（只追加，不删除） | bowen |
+| [07-tech-stack.md](07-tech-stack.md) | 技术底座选型：三条路线对比；直接采用 / 只借鉴 / 必须自研 | Claude |
+| [08-base-one-pager.md](08-base-one-pager.md) | **给 bowen 的地基一页说明**（一张图、3 个日常操作、插件怎么接、现成 vs 自研） | Claude（待 dot 挑措辞） |
 
 约定：
 
