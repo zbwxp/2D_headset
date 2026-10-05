@@ -152,7 +152,9 @@ export default function SceneWarpCanvas({source,drawing,grid,targetKey,label,pai
  useEffect(()=>{setNodeSelection([]);clearCurveFocus();cancel();},[targetKey]);
  useEffect(()=>{if(drag.current?.kind==='deform')cancel();setCagePreview(null);},[cageEdit?.targetKey,cageEdit?.historyKey]);
  useEffect(()=>{if(drag.current?.kind==='deform'&&(tool!=='deform'||!cageEdit?.editable))cancel();},[tool,cageEdit?.editable]);
- useEffect(()=>{cancel();endPen();},[topology?.pen?.targetKey]);
+ // A canvas pick may update the destination Pen layer. Only a Pen gesture
+ // owns that adapter target; view/history changes have their own full fences.
+ useEffect(()=>{if(drag.current?.kind==='pen')cancel();endPen();},[topology?.pen?.targetKey]);
  useEffect(()=>{const key=topology?.pen?.historyKey;if(!key)return;if(key!==ownPenHistoryKey.current){cancel();const restored=tool==='pen'?penHistory.current.get(key):undefined;if(restored===undefined)endPen();else{setPen(restored);if(restored?.last)topology?.pen?.onSelection([restored.last]);}}ownPenHistoryKey.current=null;},[topology?.pen?.historyKey]);
  useEffect(()=>{endRelation();setMirrorFirst(null);setMirrorPending(null);if(drag.current?.editor||nudgeCurve.current?.toolEditor)cancel();},[endpointAdapter?.targetKey,endpointAdapter?.historyKey]);
  useEffect(()=>{if(tool!=='link')endRelation();if(drag.current?.kind==='ellipse')cancel();},[endpointAdapter?.layerId]);

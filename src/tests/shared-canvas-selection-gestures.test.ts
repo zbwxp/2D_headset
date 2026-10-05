@@ -58,11 +58,12 @@ afterEach(()=>{hooks.cleanups.forEach(fn=>fn?.());vi.unstubAllGlobals();useEdito
 const pointer=(point:Point2,shiftKey=false)=>({button:0,buttons:1,pointerId:1,pointerType:'mouse',clientX:point[0],clientY:point[1],shiftKey,altKey:true,ctrlKey:false,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const emit=(name:string,event:unknown)=>[...(listeners.get(name)??[])].forEach(fn=>fn(event));
 const near=(actual:Point2,expected:Point2)=>actual.forEach((n,i)=>expect(n).toBeCloseTo(expected[i],9));
-type Options={tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean};
+type Options={tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean;twoLayers?:boolean};
 function fixture(options:Options):DrawingDocument {
  let drawing=emptyDrawing();drawing.layers=[{id:'layer',name:'Outline',visible:true,locked:false,items:[]}];
  const curves:Record<string,Cubic>={a:[[-1,-.4],[-.9,-.2],[-.7,-.2],[-.6,-.4]],b:[[-.3,-.4],[-.2,-.2],[0,-.2],[.1,-.4]],c:[[-.3,.4],[-.2,.6],[0,.6],[.1,.4]],mirror:[[1,-.4],[.9,-.2],[.7,-.2],[.6,-.4]]};
  for(const [id,shape] of Object.entries(curves))drawing=createCurve(drawing,'layer',shape,.02,id,id);
+ if(options.twoLayers){drawing.layers[0].items=drawing.layers[0].items.filter(id=>id!=='c');drawing.layers.push({id:'other',name:'Other',visible:true,locked:false,items:['c']});}
  if(options.mirrored)drawing.mirrorEditing={enabled:true,curvePairs:[{id:'pair',a:'a',b:'mirror',reverse:false}]};
  if(options.hiddenContinuation){drawing=connect(drawing,{curveId:'a',end:1},{curveId:'b',end:0},'POSITION');drawing.curves.find(c=>c.id==='b')!.visible=false;}
  if(options.lockedGroup){drawing.groups=[{id:'group',name:'Complete group',curveIds:['a','b'],visible:true,locked:false}];drawing.curves.find(c=>c.id==='b')!.locked=true;}
@@ -73,16 +74,16 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  const source=fixture(options),project={...createEmptyProject(),drawing:source,recordingSnapshots:undefined};
  useEditor.setState({project,past:[],future:[]});
  useDrawing.setState({tool:options.tool??'select',selection:{ids:options.selected??[]}});
- let drawing=source,shown=drawing,historyKey={},tool:DrawingTool=options.tool??'select',selection:DrawingSelection={ids:options.selected??[]},all:ReactElement<Props>[]=[];
+ let drawing=source,shown=drawing,historyKey={},tool:DrawingTool=options.tool??'select',selection:DrawingSelection={ids:options.selected??[]},targetKey='view',activeLayer=options.twoLayers?'other':'layer',all:ReactElement<Props>[]=[];
  const error=vi.fn(),commit=vi.fn((before:DrawingDocument,next:DrawingDocument,_intent?:DrawingCommandIntent)=>{expect(before).toBe(drawing);drawing=next;shown=next;historyKey={};return historyKey;}),preview=vi.fn((before:DrawingDocument,next:DrawingDocument|null)=>{expect(before).toBe(drawing);shown=next??drawing;return true;});
  const transformPreview=vi.fn(),transformCommit=vi.fn(),legacyCurveCommit=vi.fn();
  const transform=(ids:string[]):RecordingInstanceTransform|undefined=>{const bounds=selectionBounds(drawing,ids);return bounds?{ids,bounds,allowCurveSelection:true,editable:ids.every(id=>transformable(drawing,id,ids)),label:'Selection',onPreview:transformPreview,onCommit:transformCommit}:undefined;};
- const choose=(next:DrawingSelection,mode?:DrawingTool)=>{const transition=chooseDrawingSelection(tool,next,mode);selection=transition.selection;tool=transition.tool;};
+ const choose=(next:DrawingSelection,mode?:DrawingTool)=>{const transition=chooseDrawingSelection(tool,next,mode);selection=transition.selection;tool=transition.tool;activeLayer=drawing.layers.find(layer=>layer.items.includes(next.ids[0]))?.id??activeLayer;};
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};
  function render(){
   let count=0;do{
    hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
-   all=elements(consumer==='Drawing'?DrawingRoom():SceneWarpCanvas({source,drawing:shown,targetKey:'view',label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,onSelectionTool:choose,interaction:{tool,onToolChange:next=>{tool=next;}},instanceTransform:transform(selection.ids),transformsForSelection:transform,curveEdit:{editable:true,onCommit:legacyCurveCommit,onPreview:vi.fn()},topology:{editable:true,onSplit:vi.fn(),editor:{drawing,targetKey:'view',historyKey,layerId:'layer',editable:true,topologyEditable:true,onCommit:commit,onPreview:preview,onSelection:choose,onError:error}}}));
+   all=elements(consumer==='Drawing'?DrawingRoom():SceneWarpCanvas({source,drawing:shown,targetKey,label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,onSelectionTool:choose,interaction:{tool,onToolChange:next=>{tool=next;}},instanceTransform:transform(selection.ids),transformsForSelection:transform,curveEdit:{editable:true,onCommit:legacyCurveCommit,onPreview:vi.fn()},topology:{editable:true,onSplit:vi.fn(),pen:{targetKey:`${targetKey}/${activeLayer}`,historyKey,layerId:activeLayer,editable:true,onCommit:commit,onSelection:ids=>choose({ids},'pen'),onError:error},editor:{drawing,targetKey,historyKey,layerId:activeLayer,editable:true,topologyEditable:true,onCommit:commit,onPreview:preview,onSelection:choose,onError:error}}}));
    element(consumer==='Drawing'?'drawing-canvas':'vr-scene-canvas').props.ref.current=svg;
    hooks.effects.forEach(fn=>fn());if(++count>12)throw Error('Canvas effects did not settle');
   }while(hooks.dirty);
@@ -98,6 +99,7 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
   selection:()=>consumer==='Drawing'?useDrawing.getState().selection:selection,
   tool:()=>consumer==='Drawing'?useDrawing.getState().tool:tool,
   historyCount:()=>consumer==='Drawing'?useEditor.getState().past.length:commit.mock.calls.length,
+  navigate:()=>{targetKey='other-view';render();},
   setSelection:(next:DrawingSelection)=>{if(consumer==='Drawing')useDrawing.setState({selection:next});else selection=next;render();},
   screen:(p:Point2)=>paint().props.screen(p) as Point2,
   down:(p:Point2,shift=false)=>{canvas().props.onPointerDown(pointer(p,shift));render();},
@@ -209,4 +211,18 @@ test('shared marquee policy freezes semantic IDs while explicit layer containers
  expect(beginDrawingMarquee({ids:['a'],layer:'layer'},'select',false,true)).toBeNull();
  expect(drawingCurveBodySelection(drawing,{ids:[]},'b','select')).toBeNull();
  expect(drawingCurveBodySelection(drawing,{ids:[]},'a','select')?.selection).toEqual({ids:['a','b'],group:'group'});
+});
+
+test.each(['direct','select'] as const)('Recording first %s body drag survives the parent updating its Pen target layer',tool=>{
+ const h=harness('Recording',{tool,selected:['c'],twoLayers:true}),start=h.screen([-.8,-.3]),end:Point2=[start[0]+25,start[1]-15],before=shapeOf(h.source,'a');
+ h.body('a',start);h.move(end);
+ if(tool==='direct')expect(shapeOf(h.shown(),'a')).not.toEqual(before);else expect(h.transformPreview).toHaveBeenCalled();
+ h.up(end);
+ if(tool==='direct'){expect(h.historyCount()).toBe(1);expect(shapeOf(h.drawing(),'a')).not.toEqual(before);}else expect(h.transformCommit).toHaveBeenCalledTimes(1);
+ expect(h.selection().ids).toEqual(['a']);expect(h.tool()).toBe(tool);expect(h.error).not.toHaveBeenCalled();
+});
+test.each(['direct','select'] as const)('Recording %s body drag still cancels on an actual view target change',tool=>{
+ const h=harness('Recording',{tool,selected:['c'],twoLayers:true}),start=h.screen([-.8,-.3]),end:Point2=[start[0]+25,start[1]-15];
+ h.body('a',start);h.move(end);h.navigate();h.up(end);
+ expect(h.commit).not.toHaveBeenCalled();expect(h.transformCommit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
 });

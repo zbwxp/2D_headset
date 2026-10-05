@@ -17,3 +17,5 @@
 后续合并补齐 V 的 bool 预览反馈，拒绝必须从命令适配一路返回 Canvas；delta、absolute-value 与临时反推框不再吞掉 false。快平移仍只合并 DOM transform，不新增每次指针 React setState。实际 Canvas 回归覆盖 move／corner／axis／nudge 的合法→拒绝或异常→释放。
 
 最终组合：25 个相关文件、352 项在同一次运行全部通过（含启用本地输入的最小改动回归）。这是针对本轮共享交互与域的聚合，不是全仓库全绿。旧 singular-input 文案断言更新为检查实际明确拒绝原因，并追加工程不变断言；轴框测试补齐当前 SnapshotEvaluation 的 state，未改生产行为迁就夹具。
+
+实际界面后发现父组件选线会同步更新 Pen 目标图层，原 Pen effect 无条件取消所有手势，导致 A/V 第一次拖动只选中、第二次才移动。修正只让 Pen 手势消费 Pen 目标变更；真实视角／历史身份的完整取消栅栏保留。新增回归模拟父级 Pen targetKey 变化，分别验证 A/V 首拖继续、实际 view targetKey 改变仍取消，避免仅测固定 Canvas props。
