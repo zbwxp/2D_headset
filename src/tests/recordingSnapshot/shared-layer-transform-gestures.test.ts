@@ -21,6 +21,7 @@ import {applyScenePlacement,placementMatrix,scenePlacementScales} from '../../do
 import {beginInstanceTransform,instanceTransformDelta,instanceAxisScaleValue,instanceCornerScaleValue,applyInstanceDisplayFrame} from '../../ui/vectorRecording/SceneInstanceTransformBox';
 import {snapshotLayerSelectionTransform} from '../../ui/vectorRecording/snapshotLayerTransform';
 import {snapshotStrokeSelectionTransform} from '../../ui/vectorRecording/SnapshotRecordingWorkspace';
+import {previewGestureTarget,takeGestureTarget,type GesturePreviewTarget} from '../../ui/drawing/gestureTransaction';
 
 const previousEditor=useEditor.getState(),previousMode=useWorkspaceMode.getState().mode;
 afterEach(()=>{useEditor.setState(previousEditor,true);useWorkspaceMode.getState().setMode(previousMode);vi.useRealTimers();});
@@ -88,6 +89,18 @@ test('a world move after multilayer anisotropy appends after the domain and pres
 test('a locked member rejects the shared affine preview and commit without partial state',()=>{
  const project=fixture();project.recordingSnapshots!.library.curves[id('curve-b')].locked=true;const before=JSON.stringify(project),h=harness(project),delta=cornerDelta(h);
  expect(()=>h.adapter.onPreview(delta)).toThrow(/Unlock/);expect(()=>h.adapter.onCommit(delta)).toThrow(/Unlock/);expect(h.preview()).toBeNull();expect(h.project()).toBe(project);expect(JSON.stringify(project)).toBe(before);
+});
+
+test.each(['layer','stroke'] as const)('%s preview adapters propagate rejection for deltas and absolute native values',kind=>{
+ const project=fixture(),evaluation=evaluate(project),delta={...identityScenePlacement(),translation:[.1,.2] as Point2};let accepts=true;
+ const preview=vi.fn((commands:SnapshotCommand[]|null)=>commands===null||accepts),commit=vi.fn();
+ const adapter=kind==='layer'?snapshotLayerSelectionTransform(evaluation,evaluation,['slot-a'],true,preview,commit,()=>true,()=>{}):snapshotStrokeSelectionTransform(evaluation,evaluation,[id('curve-a')],true,preview,commit);
+ for(const publish of [adapter!.onPreview,adapter!.onValuePreview!]){
+  const slot:GesturePreviewTarget<ScenePlacementValue>={};accepts=true;
+  expect(previewGestureTarget(slot,()=>delta,publish)).toBe(true);expect(slot.target).toBe(delta);
+  accepts=false;expect(previewGestureTarget(slot,()=>delta,publish)).toBe(false);expect(takeGestureTarget(slot)).toBeUndefined();expect(preview).toHaveBeenLastCalledWith(null);expect(publish(null)).toBe(true);
+ }
+ expect(commit).not.toHaveBeenCalled();
 });
 
 test('one multilayer affine gesture produces one global Undo and Redo transaction',()=>{

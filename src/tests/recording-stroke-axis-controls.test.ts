@@ -47,7 +47,7 @@ test('inverse selection frame uses final controls once and routes axis, rotation
  evaluation.placements[evaluation.drawing.layers[0].id]={translation:[8,-3],rotation:25,scale:3};
  evaluation.endpointPair={role:'correction'} as NonNullable<SnapshotEvaluation['endpointPair']>;
  const previews:unknown[]=[];const commits:unknown[]=[];
- const frame=snapshotStrokeSelectionTransform(evaluation,evaluation,[curve.id],true,c=>previews.push(c),c=>commits.push(c))!;
+ const frame=snapshotStrokeSelectionTransform(evaluation,evaluation,[curve.id],true,c=>{previews.push(c);},c=>commits.push(c))!;
  expect(frame.displayPlacement).toBeUndefined();expect(frame.basePlacement).toEqual(identityScenePlacement());expect(frame.materialBounds).toEqual(frame.bounds);expect(frame.editable).toBe(true);
  const html=renderToStaticMarkup(createElement(SceneInstanceTransformBox,{...frame,screen:(point:Point2)=>point,onBegin(){},onBeginAxis(){}}));
  expect(html.match(/data-testid="vr-instance-scale-x"/g)).toHaveLength(2);expect(html.match(/data-testid="vr-instance-scale-y"/g)).toHaveLength(2);

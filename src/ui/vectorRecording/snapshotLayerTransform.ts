@@ -14,7 +14,7 @@ import type {RecordingInstanceTransform} from './SceneInstanceTransformBox';
  * their input and all later world gestures stay after that domain as well. */
 export function snapshotLayerSelectionTransform(
  evaluation:SnapshotEvaluation,baseline:SnapshotEvaluation,selectedIds:readonly string[],editable:boolean,
- preview:(commands:SnapshotCommand[]|null)=>void,commit:(commands:SnapshotCommand[])=>void,
+ preview:(commands:SnapshotCommand[]|null)=>boolean|void,commit:(commands:SnapshotCommand[])=>void,
  previewDomain:(intent:LayerAffineDomainIntent|null)=>boolean,commitDomain:(intent:LayerAffineDomainIntent)=>void,
  label='Selected layer transform',
 ):RecordingInstanceTransform|undefined {
@@ -27,7 +27,7 @@ export function snapshotLayerSelectionTransform(
  const needsDomain=(delta:ScenePlacementValue)=>!nativeFrame&&(hasDomains||!isScenePlacementSimilarity(delta));
  const valueCommands=(value:ScenePlacementValue):SnapshotCommand[]=>[{op:'setLayerPlacement',layerId:ids[0],value}];
  return {ids,bounds,editable:editable&&(!displayPlacement||!!inverseAffine2D(displayPlacement)),label,
-  onPreview:delta=>{if(!delta){preview(null);previewDomain(null);return true;}return needsDomain(delta)?previewDomain(domain(delta)):(preview(commands(delta)),true);},
+  onPreview:delta=>{if(!delta){preview(null);previewDomain(null);return true;}return needsDomain(delta)?previewDomain(domain(delta)):preview(commands(delta));},
   onCommit:delta=>{if(needsDomain(delta)){const intent=domain(delta);if(!isIdentityAffine2D(intent.domain.matrix))commitDomain(intent);}else commit(commands(delta));},
   ...(nativeFrame&&materialBounds?{basePlacement:evaluation.placements[ids[0]]??identityScenePlacement(),displayPlacement,materialBounds,onValuePreview:(value:ScenePlacementValue|null)=>preview(value?valueCommands(value):null),onValueCommit:(value:ScenePlacementValue)=>commit(valueCommands(value))}:{}),
  };
