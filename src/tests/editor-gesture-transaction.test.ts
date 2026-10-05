@@ -47,7 +47,7 @@ describe('one shared preview target transaction',()=>{
  it('cancel and duplicate release cannot submit a target, including after a failed adapter',()=>{
   const slot:GesturePreviewTarget<object>={},target={value:1};const publish=vi.fn();
   previewGestureTarget(slot,()=>target,publish);clearGestureTarget(slot);expect(takeGestureTarget(slot)).toBeUndefined();
-  previewGestureTarget(slot,()=>target,publish);const commit=vi.fn(()=>{throw Error('stale');});
+  previewGestureTarget(slot,()=>target,publish);const commit=vi.fn((_target:object)=>{throw Error('stale');});
   expect(()=>{const wanted=takeGestureTarget(slot);if(wanted)commit(wanted);}).toThrow('stale');
   expect(takeGestureTarget(slot)).toBeUndefined();expect(commit).toHaveBeenCalledTimes(1);
  });

@@ -33,7 +33,7 @@ function harness(options:{snapshot?:boolean;editable?:boolean;grid?:boolean;plac
  return {translated,source,grid,preview,commit,valuePreview,valueCommit,setPlacement:(placement:ScenePlacementValue)=>{instance={...instance!,basePlacement:placement};render();},warpPreview,warpCommit,selectSource,selectWarp,render,setBounds:(next:typeof bounds)=>{instance={...instance!,bounds:next};render();},element:(id:string)=>all.find(e=>e.props['data-testid']===id)!,nodes:()=>all.filter(e=>e.props['data-testid']==='vr-node'),findAll:(id:string)=>all.filter(e=>e.props['data-testid']===id)};
 }
 const pointer=(clientX:number,clientY:number,shiftKey=false)=>({button:0,pointerId:1,clientX,clientY,shiftKey,altKey:true,stopPropagation:vi.fn(),preventDefault:vi.fn()});
-const key=(name:string,tag='svg')=>({key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target:new Target(tag),preventDefault:vi.fn()});
+const key=(name:string,tag='svg')=>({key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,defaultPrevented:false,isComposing:false,target:new Target(tag),preventDefault:vi.fn(),stopImmediatePropagation:vi.fn()});
 const near=(actual:Point2,expected:Point2)=>{expect(actual[0]).toBeCloseTo(expected[0],10);expect(actual[1]).toBeCloseTo(expected[1],10);};
 
 test('snapshot V moves without a Warp and commits once while source remains untouched',()=>{
@@ -154,4 +154,17 @@ test.each(['onion','snap','scale','rotate','display parent'])('%s retains canoni
 
 test('enabling guide snapping during exact movement cancels before changing snap targets',()=>{
  const h=harness({exactTranslation:true}),center=h.element('vr-instance-center').props;center.onPointerDown(pointer(center.cx,center.cy));h.element('vr-scene-canvas').props.onPointerMove(pointer(center.cx+30,center.cy));replaceWorkspaceView({...emptyWorkspaceView(),guides:[{id:'guide',axis:'x',value:0}]});h.element('vr-scene-canvas').props.onPointerUp(pointer(center.cx+40,center.cy));expect(h.commit).not.toHaveBeenCalled();expect(frames.size).toBe(0);expect(h.preview).toHaveBeenLastCalledWith(null);
+});
+
+test.each(['move','corner','axis','nudge'].flatMap(kind=>['reject','throw'].map(failure=>({kind,failure}))))('V $kind accepted then $failure cannot release an obsolete target',({kind,failure})=>{
+ const h=harness({framePlacement:identityScenePlacement()}),absolute=kind==='corner'||kind==='axis',preview=absolute?h.valuePreview:h.preview,commit=absolute?h.valueCommit:h.commit;
+ const grip=h.element(kind==='corner'?'vr-instance-scale':kind==='axis'?'vr-instance-scale-x':'vr-instance-center').props,start:Point2=kind==='move'||kind==='nudge'?[grip.cx,grip.cy]:[grip.x+4,grip.y+4];
+ if(kind==='nudge')listeners.get('keydown')!(key('ArrowRight'));else{grip.onPointerDown(pointer(...start));h.element('vr-scene-canvas').props.onPointerMove(pointer(start[0]+12,start[1]-8));}
+ expect(preview.mock.calls.some(([value])=>value!==null)).toBe(true);expect(commit).not.toHaveBeenCalled();
+ preview.mockImplementationOnce(()=>{if(failure==='throw')throw Error('Rejected transform');return false;});
+ const update=()=>{if(kind==='nudge')listeners.get('keydown')!(key('ArrowUp'));else h.element('vr-scene-canvas').props.onPointerMove(pointer(start[0]+20,start[1]-18));};
+ if(failure==='throw')expect(update).toThrow('Rejected transform');else update();
+ expect(preview).toHaveBeenLastCalledWith(null);
+ if(kind==='nudge'){listeners.get('keyup')!(key('ArrowRight'));listeners.get('keyup')!(key('ArrowUp'));}else h.element('vr-scene-canvas').props.onPointerUp(pointer(start[0]+20,start[1]-18));
+ expect(commit).not.toHaveBeenCalled();expect(h.warpCommit).not.toHaveBeenCalled();
 });

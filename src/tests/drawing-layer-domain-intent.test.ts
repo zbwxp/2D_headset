@@ -189,7 +189,7 @@ test('ordered affine and later similarity domains preserve composition, live sou
 test('Drawing control edits inverse-map the full affine chain and singular controls refuse until reset',()=>{
  const f=fixture(),matrix:Affine2D=[1,.3,.5,-1,.2,.4],plan=prepareDrawingLayerDomainEdit(f.project,createLayerAffineIntent([bid('layer')],matrix)),wanted=moveHandle(plan.drawing,{curveId:bid('curve'),end:0},[.6,.8]),edited=prepareDrawingSnapshotEdit(plan.project,wanted).project;
  near(currentDrawingPresentation(edited).curves.find(curve=>curve.id===bid('curve'))!.handles[0],[.6,.8]);expect(Object.keys(local(edited).shape!.handles)).toEqual([bid('curve')]);
- const zero=prepareDrawingLayerDomainEdit(edited,createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0]));expect(()=>prepareDrawingSnapshotEdit(zero.project,moveHandle(zero.drawing,{curveId:bid('curve'),end:0},[.2,.8]))).toThrow(/Restore or disable/);
+ const zero=prepareDrawingLayerDomainEdit(edited,createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0])),unchanged=JSON.stringify(zero.project);expect(()=>prepareDrawingSnapshotEdit(zero.project,moveHandle(zero.drawing,{curveId:bid('curve'),end:0},[.2,.8]))).toThrow(/local placement cannot reach.*collapsed input/);expect(JSON.stringify(zero.project)).toBe(unchanged);
  const id=drawingSnapshotForArtwork(zero.project.recordingSnapshots!,'A')!.deformation.layerDomains!.at(-1)!.id,restored=prepareDrawingLayerDomainEdit(zero.project,createLayerAffineIntent([bid('layer')],[0,0,0,1,0,0],{operationId:id,replace:true,enabled:false}));near(restored.drawing.curves.find(curve=>curve.id===bid('curve'))!.handles[0],[.6,.8]);
 });
 
