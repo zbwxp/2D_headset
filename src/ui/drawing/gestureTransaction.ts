@@ -21,6 +21,13 @@ export function takeGestureTarget<T>(state:GesturePreviewTarget<T>|undefined):T|
  const target=state?.target;clearGestureTarget(state);return target;
 }
 
+/** Cancellation is a revision boundary, unlike normal preview cleanup during
+ * release. Only an actual active gesture can invalidate an accepted receipt. */
+export function cancelEditorGesture(active:boolean,cancel:()=>void):void {
+ if(active)invalidatePreparedEdits();
+ cancel();
+}
+
 export type EditorHistoryAction='cancel-gesture'|'cancel-anchor'|'history';
 export function editorHistoryAction(redo:boolean,activeGesture:boolean,pendingAnchor:boolean):EditorHistoryAction {
  return activeGesture?'cancel-gesture':!redo&&pendingAnchor?'cancel-anchor':'history';
@@ -45,3 +52,4 @@ export function consumeEditorHistoryShortcut(event:HistoryKeyEvent,run:(redo:boo
  const key=event.key.toLowerCase();if(key!=='z'&&key!=='y')return false;
  event.preventDefault();event.stopImmediatePropagation();run(key==='y'||event.shiftKey);return true;
 }
+import {invalidatePreparedEdits} from '../../app/preparedEditRevision';

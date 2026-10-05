@@ -1,4 +1,5 @@
-import {previewGestureTarget,takeGestureTarget,clearGestureTarget,runEditorHistory,consumeEditorHistoryShortcut,type GesturePreviewTarget} from './gestureTransaction';
+import {previewGestureTarget,takeGestureTarget,clearGestureTarget,cancelEditorGesture,runEditorHistory,consumeEditorHistoryShortcut,type GesturePreviewTarget} from './gestureTransaction';
+import {beginKeyboardGesture,previewKeyboardGesture,releaseKeyboardGesture,cancelKeyboardGesture,type KeyboardGesture} from './keyboardGesture';
 import type {EditorHistoryContext} from '../../app/editorHistory';
 import {prepareDrawingSnapshotObjectLocks} from '../../app/drawingSnapshotEdit';
 import {prepareDrawingCageControlPreview} from '../../app/drawingSnapshotEdit';
@@ -40,10 +41,10 @@ import {currentDrawingPresentation,drawingSnapshotPresentation} from './snapshot
 import {commitDrawingSnapshotEdit,commitDrawingCurveSplit,prepareDrawingLayerDomainEdit,DRAWING_REFERENCE_EDIT_CAPABILITY} from './snapshotEditContext';
 import {chooseDrawingSelection,selectDrawingTool,drawingToolForShortcut,isDrawingShortcutInput} from './interactionController';
 import {drawingCornerScale,drawingCurveBodySelection,beginDrawingMarquee,finishDrawingMarquee,type DrawingMarqueeGesture,drawingControlDragTarget,prepareDrawingControlEditPlan,applyDrawingControlEditPlan,type DrawingControlEditPlan} from './editGestures';
-import {hasNudgeTarget,nudgeSelection} from './nudge';
+import {hasNudgeTarget,prepareDrawingNudgePlan,applyDrawingNudgePlan,type DrawingNudgePlan} from './nudge';
 import LayerDomainControls from './LayerDomainControls';
 import {layerSimilarityIntentForSelection,layerAffineIntentForSelection} from './layerDomainGesture';
-import {layerSimilarityValue,layerDomainMatrix,createLayerAffineIntent,type LayerDomainIntent} from '../../domain/drawing/layerDomainIntent';
+import {layerSimilarityValue,createLayerAffineIntent,type LayerDomainIntent} from '../../domain/drawing/layerDomainIntent';
 import type {Affine2D} from '../../domain/geometry/affine2d';
 import LayerPanel from './LayerPanel';
 import LayerSnapshotDialog from './LayerSnapshotDialog';
@@ -69,7 +70,8 @@ import {curvePath,selectionBounds} from './geometry';
 import './drawing.css';
 const EMPTY=emptyDrawing();
 
-interface Drag extends TrackedPointer {previewTarget:GesturePreviewTarget<Doc>;marquee?:DrawingMarqueeGesture;controlPlan?:DrawingControlEditPlan;ellipse?:DrawingEllipseGesture;layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;cageGesture?:CageGesture;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface Drag extends TrackedPointer {selection:DrawingSelection;allowRelated:boolean;previewTarget:GesturePreviewTarget<Doc>;marquee?:DrawingMarqueeGesture;controlPlan?:DrawingControlEditPlan;ellipse?:DrawingEllipseGesture;layerDomainOperationId?:string;layerDomainIntent?:LayerDomainIntent;intervalWalk?:IntervalDragState;followStrength?:number;cage?:DeformCage;cageGesture?:CageGesture;corner?:number;bendEdge?:number;bendHandle?:0|1|2;kind:'deform'|'displayInterval'|'node'|'handle'|'move'|'scale'|'rotate'|'box'|'pan'|'pen'|'ellipse'|'reference'|'mirrorAxis'|'zoom';start:Point2;client:Point2;last:{clientX:number;clientY:number};base:Doc;next?:Doc;displayInterval?:NonNullable<DrawingSelection['displayInterval']>;node?:string;endpoint?:Endpoint;ids?:string[];origin?:Point2;pan?:Point2;cursor?:Point2;pen?:Pen|null;penGesture?:PenGesture;shift?:boolean;zoom?:number;zoomMoved?:boolean}
+interface HeldNudge extends KeyboardGesture<Doc> {base:Doc;next?:Doc;plan:DrawingNudgePlan;selectionKey:string;tool:DrawingTool;layerDomainOperationId:string;layerDomainIntent?:LayerDomainIntent}
 export interface DrawingUnderlay {width:number;height:number;unit:number;pan:Point2}
 /** Replace only the canvas artwork; keep the reference, viewport and editor UI mounted. */
 export interface DrawingArtworkPreview {render:(view:DrawingUnderlay)=>ReactNode;hint:string;edit:()=>void}
@@ -99,7 +101,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const [clipboard,setClipboard]=useState<DrawingCut|null>(null);
  const [busy,setBusy]=useState(false),[size,setSize]=useState({width:900,height:700});
  const penHistory=useRef(new WeakMap<Doc,Pen|null>());
- const drag=useRef<Drag|null>(null),held=useRef<{previewTarget:GesturePreviewTarget<Doc>;base:Doc;next:Doc;layerDomainIntent?:LayerDomainIntent}|null>(null),svg=useRef<SVGSVGElement>(null),host=useRef<HTMLDivElement>(null),file=useRef<HTMLInputElement>(null),own=useRef<Doc|null>(null),approved=useRef<{ids:string[];scope:string[]}|null>(null),space=useRef(false),request=useRef(0),latest=useRef<any>(null);
+ const drag=useRef<Drag|null>(null),held=useRef<HeldNudge|null>(null),svg=useRef<SVGSVGElement>(null),host=useRef<HTMLDivElement>(null),file=useRef<HTMLInputElement>(null),own=useRef<Doc|null>(null),approved=useRef<{ids:string[];scope:string[]}|null>(null),space=useRef(false),request=useRef(0),latest=useRef<any>(null);
  // Migrate a live pre-V3 session without clearing it or creating an authoring Undo.
  useEffect(()=>{if(rawStored!==sourceStored)useEditor.getState().setDrawing(sourceStored);},[rawStored,sourceStored]);
  function endPen(){penHistory.current=new WeakMap();setPen(null);setPenPreview(null);}
@@ -118,9 +120,9 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  const endpointCurveIds=(document:Doc)=>drawingEndpointCurveIds(document,activeLayer?.id??null);
  const connections=t(drawingEndpointInstruction(tool,!!first));
  function mirrorIntent(n:Doc,s:DrawingSelection):MirrorAuthoredWrites{if(s.node){const p=n.nodes.find(x=>x.id===s.node)?.position;return p?{nodes:[{nodeId:s.node,position:p}]}:{};}if(s.handle){const p=curveById(n,s.handle.curveId)?.handles[s.handle.end];return p?{handles:[{...s.handle,position:p}]}:{};}const ids=s.ids.filter(id=>curveById(n,id));return ids.length?mirrorWritesForCurves(n,ids):{};}
- const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent)=>{const before=currentDrawing();if(n===before)return;n=workspaceId==='drawing'&&!editIntent?prepareDrawingCageControlPreview(useEditor.getState().project,before,n)??finalizeGeometryEdit(before,n,writes):finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent?.kind==='node-unbind'?(view?createSnapshotNodeUnbindIntent(view.snapshotId,before,n,editIntent.endpoint):undefined):editIntent?.kind==='geometry-authoring'||editIntent?.kind==='mirror-authoring'?undefined:editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
+ const commit=(n:Doc,writes:MirrorAuthoredWrites=mirrorIntent(n,selection),editIntent?:LayerDomainIntent|DrawingCommandIntent,acceptedTarget=false)=>{const before=currentDrawing();if(n===before)return;if(!acceptedTarget)n=workspaceId==='drawing'&&(!editIntent||editIntent.kind==='geometry-authoring')?prepareDrawingCageControlPreview(useEditor.getState().project,before,n)??finalizeGeometryEdit(before,n,writes):finalizeGeometryEdit(before,n,writes);if(artworkPreview&&Object.keys(n).some(k=>k!=='reference'&&n[k as keyof Doc]!==before[k as keyof Doc]))artworkPreview.edit();if(workspaceId==='drawing'){const project=useEditor.getState().project,view=project.recordingSnapshots&&drawingSnapshotPresentation(project.recordingSnapshots,project.drawingSnapshots?.activeId??'$working'),intent=editIntent?.kind==='relation-authoring'?(view?createSnapshotRelationAuthoringIntent(view.snapshotId,before,n):undefined):editIntent?.kind==='node-unbind'?(view?createSnapshotNodeUnbindIntent(view.snapshotId,before,n,editIntent.endpoint):undefined):editIntent?.kind==='mirror-authoring'?undefined:editIntent;commitDrawingSnapshotEdit(useEditor.getState(),n,intent);}else commitDrawing(n);own.current=currentDrawing();const penState=penHistory.current.get(n);if(penState!==undefined)penHistory.current.set(own.current,penState);};
  const release=(id:number)=>{if(svg.current?.hasPointerCapture(id))svg.current.releasePointerCapture(id);};
- const cancelDraft=()=>{const g=drag.current;clearGestureTarget(g?.previewTarget);clearGestureTarget(held.current?.previewTarget);if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom'||g?.kind==='pan')cancelViewport();if(g)release(g.pointerId);};
+ const cancelDraft=()=>cancelEditorGesture(!!(drag.current||held.current),()=>{const g=drag.current;clearGestureTarget(g?.previewTarget);cancelKeyboardGesture(held.current);if(g?.kind==='deform')setDeformCage(g.cage!);drag.current=null;held.current=null;setAxisSnap(null);setNodeSnap(null);setGuideSnap(null);setDraft(null);setBox(null);setPenPreview(null);if(g?.kind==='zoom'||g?.kind==='pan')cancelViewport();if(g)release(g.pointerId);});
  function error(e:unknown,scope=selected){if(e instanceof cmd.RelatedSelection)setPending({ids:e.ids,scope:[...scope]});else setHint(t((e as Error).message));}
  function run(fn:()=>Doc,intent?:DrawingCommandIntent){try{const n=fn();commit(n,undefined,intent);setHint('');}catch(e){error(e);}}
  function choose(next:DrawingSelection,mode?:DrawingTool){
@@ -128,15 +130,15 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const transition=chooseDrawingSelection(tool,next,mode),patch={selection:transition.selection,tool:transition.tool,...(transition.layerId?{layerId:transition.layerId}:{})};
   // Switching the endpoint target layer keeps the tool. Only LINK supports a
   // cross-layer relation, so other tools restart their two-click selection.
-  if(endpointTools&&next.layer){finishHeld();cancelDraft();approved.current=null;setPending(null);endPen();if(tool!=='link')setFirst(null);session.set(patch);setHint('');return;}
-  finishHeld();setDeformCage(null);approved.current=null;setPending(null);setFirst(null);setReferenceMoving(false);endPen();setPenPreview(null);session.set(patch);setHint('');
+  if(endpointTools&&next.layer){cancelHeld();cancelDraft();approved.current=null;setPending(null);endPen();if(tool!=='link')setFirst(null);session.set(patch);setHint('');return;}
+  cancelHeld();setDeformCage(null);approved.current=null;setPending(null);setFirst(null);setReferenceMoving(false);endPen();setPenPreview(null);session.set(patch);setHint('');
  }
- function prepareSnapshotChange(){artworkPreview?.edit();finishHeld();cancelDraft();setDeformCage(null);endPen();setFirst(null);setPending(null);setReferenceMoving(false);approved.current=null;}
+ function prepareSnapshotChange(){artworkPreview?.edit();cancelHeld();cancelDraft();setDeformCage(null);endPen();setFirst(null);setPending(null);setReferenceMoving(false);approved.current=null;}
  function setLayerDomainEnabled(id:string,enabled:boolean){
   try{const view=useEditor.getState().project.recordingSnapshots&&drawingSnapshotPresentation(useEditor.getState().project.recordingSnapshots!,useEditor.getState().project.drawingSnapshots?.activeId??'$working'),domain=view?.evaluation.state.layerDomains?.find(domain=>domain.id===id);if(!view||!domain)return;const intent=isLayerCageDomain(domain)?createLayerCageIntent(domain.layerIds.map(view.presentationId),{kind:'h-coons',restRect:domain.restRect,quad:domain.quad,bend:domain.bend,...(domain.strokeScope?{strokeScope:{...domain.strokeScope,curveIds:domain.strokeScope.curveIds.map(view.presentationId)}}:{}),enabled},{operationId:id,replace:true}):createLayerAffineIntent(domain.layerIds.map(view.presentationId),domain.matrix,{operationId:id,replace:true,enabled}),plan=prepareDrawingLayerDomainEdit(useEditor.getState().project,intent);commit(plan.drawing,undefined,intent);setHint('');}catch(ex){error(ex);}
  }
  function groupSelection(remove=false){run(()=>{let i=1;while(d.groups?.some(g=>g.name===`${t('组合')} ${i}`))i++;const n=remove?ungroup(d,selected):createGroup(d,selected,`${t('组合')} ${i}`);const g=remove?undefined:n.groups!.at(-1);choose({ids:g?.curveIds??selected,group:g?.id},'select');return n;});}
- function selectTool(next:DrawingTool){finishHeld();setDeformCage(null);approved.current=null;cancelDraft();setFirst(null);endPen();setPending(null);setPenPreview(null);setReferenceMoving(false);setHint('');
+ function selectTool(next:DrawingTool){cancelHeld();setDeformCage(null);approved.current=null;cancelDraft();setFirst(null);endPen();setPending(null);setPenPreview(null);setReferenceMoving(false);setHint('');
   if(next!=='hand'&&next!=='zoom')artworkPreview?.edit();
   const owner=selected.length?layerFor(stored,selected[0])?.id:undefined;
   const transition=selectDrawingTool(next,selection);
@@ -148,7 +150,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   const ids=scope(),b=selectionBounds(d,ids);if(!b)return;
   const center=b.center,angle=value*Math.PI/180;
   const map=(p:Point2):Point2=>kind==='scaleX'?[center[0]+(p[0]-center[0])*value,p[1]]:kind==='scaleY'?[p[0],center[1]+(p[1]-center[1])*value]:kind==='moveX'?add(p,[value,0]):kind==='moveY'?add(p,[0,value]):kind==='mirror'?[2*center[0]-p[0],p[1]]:kind==='mirrorAxis'?[2*(d.mirrorAxisX??0)-p[0],p[1]]:kind==='scale'?add(center,mul(sub(p,center),value)):(()=>{const [x,y]=sub(p,center);return add(center,[x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle)]);})();
-  try{const placement=kind==='moveX'?layerSimilarityValue([value,0]):kind==='moveY'?layerSimilarityValue([0,value]):kind==='rotate'?layerSimilarityValue([0,0],value,1,center):kind==='scale'&&value>0?layerSimilarityValue([0,0],0,value,center):undefined;const affine:Affine2D|undefined=kind==='scaleX'?[value,0,0,1,center[0]*(1-value),0]:kind==='scaleY'?[1,0,0,value,0,center[1]*(1-value)]:kind==='mirror'||kind==='mirrorAxis'?[-1,0,0,1,2*(kind==='mirror'?center[0]:(d.mirrorAxisX??0)),0]:undefined;const intent=workspaceId==='drawing'?(affine?layerAffineIntentForSelection(d,selection,affine,ids):placement?layerSimilarityIntentForSelection(d,selection,placement,ids):undefined):undefined;const n=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:cmd.transform(d,ids,map,mayInclude());commit(n,mirrorWritesForCurves(n,ids),intent);setHint('');}catch(e){error(e,ids);}
+  try{const placement=kind==='moveX'?layerSimilarityValue([value,0]):kind==='moveY'?layerSimilarityValue([0,value]):kind==='rotate'?layerSimilarityValue([0,0],value,1,center):kind==='scale'&&value>0?layerSimilarityValue([0,0],0,value,center):undefined;const affine:Affine2D|undefined=kind==='scaleX'?[value,0,0,1,center[0]*(1-value),0]:kind==='scaleY'?[1,0,0,value,0,center[1]*(1-value)]:kind==='mirror'||kind==='mirrorAxis'?[-1,0,0,1,2*(kind==='mirror'?center[0]:(d.mirrorAxisX??0)),0]:undefined;const intent=workspaceId==='drawing'?(affine?layerAffineIntentForSelection(d,selection,affine,ids):placement?layerSimilarityIntentForSelection(d,selection,placement,ids):undefined):undefined;const controlPlan=intent?undefined:prepareDrawingControlEditPlan(d,{kind:'curves',curveIds:ids}),n=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:applyDrawingControlEditPlan(controlPlan!,{kind:'map',map,allowRelated:mayInclude()});commit(n,mirrorWritesForCurves(n,ids),intent??{kind:'geometry-authoring',controlPlan});setHint('');}catch(e){error(e,ids);}
  }
  useEffect(()=>{const obs=new ResizeObserver(([e])=>setSize({width:e.contentRect.width,height:e.contentRect.height}));obs.observe(host.current!);return()=>obs.disconnect();},[]);
  useEffect(()=>{
@@ -165,7 +167,8 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  },[stored]);
  useEffect(()=>{if(!stored.layers.some(l=>l.id===layerId))session.set({layerId:stored.layers[0]?.id??null});},[stored.layers,layerId]);
  useEffect(()=>{request.current++;cancelDraft();setFirst(null);endPen();setClipboard(null);},[projectId]);
- useEffect(()=>{const blur=()=>{finishHeld();space.current=false;setZoomOut(false);},pointer=()=>finishHeld();window.addEventListener('blur',blur);window.addEventListener('pointerdown',pointer,true);return()=>{request.current++;finishHeld();window.removeEventListener('blur',blur);window.removeEventListener('pointerdown',pointer,true);};},[]);
+ useEffect(()=>{const k=held.current;if(k&&(k.selectionKey!==JSON.stringify(selection)||k.tool!==tool))cancelHeld();},[selection,tool]);
+ useEffect(()=>{const blur=()=>{cancelHeld();space.current=false;setZoomOut(false);},pointer=()=>cancelHeld();window.addEventListener('blur',blur);window.addEventListener('pointerdown',pointer,true);return()=>{request.current++;cancelHeld();window.removeEventListener('blur',blur);window.removeEventListener('pointerdown',pointer,true);};},[]);
  usePointerDragTracking({active:()=>drag.current,move:e=>move(e),finish:(e,interrupted)=>up(e,interrupted)});
  async function upload(e:React.ChangeEvent<HTMLInputElement>){const photo=e.target.files?.[0];e.target.value='';if(!photo)return;const ticket=++request.current,origin=useEditor.getState().project;setBusy(true);try{const reference=await readPhoto(photo,RECORDING_REFERENCE_IMAGE);if(ticket!==request.current||origin.meta.createdAt!==useEditor.getState().project.meta.createdAt)return;commit({...currentDrawing(),reference:{...reference,locked:true}});choose({ids:[],reference:true});}catch(e){error(e);}finally{setBusy(false);}}
  function pickEndpoint(p:Point2):Endpoint|null{return pickDrawingEndpoint(stored,endpointCurveIds(stored),p,unit,first);}
@@ -177,7 +180,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  function startDrag(e:React.PointerEvent,kind:Drag['kind'],extra:Partial<Drag>={}){
   if(drag.current||e.button!==0&&kind!=='pan'&&kind!=='zoom')return;e.preventDefault();e.stopPropagation();svg.current!.focus({preventScroll:true});
   const base=currentDrawing();if(kind==='pan'||kind==='zoom')beginViewport();
-  drag.current={kind,previewTarget:{},...(['move','rotate','scale','deform'].includes(kind)?{layerDomainOperationId:uid()}:{}),start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='node'&&drag.current.node)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'node',nodeId:drag.current.node,followStrength:drag.current.followStrength});else if(kind==='handle'&&drag.current.endpoint)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'handle',endpoint:drag.current.endpoint});else if(['move','rotate','scale'].includes(kind)&&drag.current.ids)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'curves',curveIds:drag.current.ids});if(kind==='pen'&&drag.current.penGesture)drag.current.penGesture={...drag.current.penGesture,base};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
+  drag.current={kind,selection:structuredClone(useDrawing.getState().selection),allowRelated:!!approved.current,previewTarget:{},...(['move','rotate','scale','deform'].includes(kind)?{layerDomainOperationId:uid()}:{}),start:local(e),client:[e.clientX,e.clientY],last:{clientX:e.clientX,clientY:e.clientY},base,pointerId:e.pointerId,button:e.button,pointerType:e.pointerType,followStrength:tool==='direct'?useDirectPreferences.getState().followPercent/100:0,...extra};if(kind==='node'&&drag.current.node)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'node',nodeId:drag.current.node,followStrength:drag.current.followStrength});else if(kind==='handle'&&drag.current.endpoint)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'handle',endpoint:drag.current.endpoint});else if(['move','rotate','scale'].includes(kind)&&drag.current.ids)drag.current.controlPlan=prepareDrawingControlEditPlan(base,{kind:'curves',curveIds:drag.current.ids});if(kind==='pen'&&drag.current.penGesture)drag.current.penGesture={...drag.current.penGesture,base};if(kind==='displayInterval'){const grip=drag.current.displayInterval!,track=base.displayIntervals!.find(t=>t.id===grip.track)!,range=track.ranges.find(r=>r.id===grip.range)!;drag.current.intervalWalk=beginIntervalDrag(displayField(base,displayPath(base,track.anchor.id)),track,range,grip.end,local(e),1/unit);}setHint('');
   try{svg.current!.setPointerCapture(e.pointerId);}catch{/* Window tracking remains active if native capture is unavailable. */}
  }
  function axisDown(e:React.PointerEvent){
@@ -246,18 +249,18 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    }
    if(g.kind==='handle'){const target=drawingControlDragTarget(g.base,{handle:g.endpoint!},g.start,p),hit=guideCandidate(g.base,target,e.altKey,[g.endpoint!.curveId]);g.next=applyDrawingControlEditPlan(g.controlPlan!,{kind:'point',position:hit?.point??target});setGuideSnap(hit);}
    if(g.kind==='deform'){
-    const original=g.cage!,gesture=g.cageGesture??=beginDrawingCageGesture(original,selection,g.corner!==undefined?{corner:g.corner}:{edge:g.bendEdge!,handle:g.bendHandle!},g.start,g.layerDomainOperationId),update=updateDrawingCageGesture(gesture,p),{quad,bend}=update.cage;
+    const original=g.cage!,gesture=g.cageGesture??=beginDrawingCageGesture(original,g.selection,g.corner!==undefined?{corner:g.corner}:{edge:g.bendEdge!,handle:g.bendHandle!},g.start,g.layerDomainOperationId),update=updateDrawingCageGesture(gesture,p),{quad,bend}=update.cage;
     const explicit=workspaceId==='drawing'?update.intent:undefined;
     const referenced=explicit?.scope.layerIds.filter(id=>presentation?.layerOwners.get(id)?.kind==='snapshot-local'||original.ids.some(curveId=>presentation?.drawing.layers.find(layer=>layer.id===id)?.items.includes(curveId)&&presentation?.objectOwners.get(curveId)?.kind==='snapshot-local'))??[];
     if(explicit&&referenced.length){if(referenced.length!==explicit.scope.layerIds.length)throw Error('Select referenced layers together for a retained cage; source-owned cages edit their original geometry.');g.layerDomainIntent=explicit;const plan=prepareDrawingLayerDomainEdit(useEditor.getState().project,explicit);g.next=plan.drawing;setDeformCage({...original,quad,bend,domainOperationId:explicit.operationId,maxError:drawingSnapshotPresentation(plan.project.recordingSnapshots!,plan.project.drawingSnapshots?.activeId??'$working')!.evaluation.maxError});}
-    else{const result=deformDrawing(original.base,original.ids,original.rect,quad,!!approved.current,bend);g.next=result.document;setDeformCage({...original,quad,bend,maxError:result.maxError});}setHint('');
+    else{const result=deformDrawing(original.base,original.ids,original.rect,quad,g.allowRelated,bend);g.next=result.document;setDeformCage({...original,quad,bend,maxError:result.maxError});}setHint('');
    }
-   if(g.kind==='move'){g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,selection,layerSimilarityValue(delta),g.ids,g.layerDomainOperationId):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>add(x,delta),allowRelated:!!approved.current});}
-   if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,selection,layerSimilarityValue([0,0],a*180/Math.PI,1,o),g.ids,g.layerDomainOperationId):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},allowRelated:!!approved.current});}
+   if(g.kind==='move'){g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,g.selection,layerSimilarityValue(delta),g.ids,g.layerDomainOperationId):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>add(x,delta),allowRelated:g.allowRelated});}
+   if(g.kind==='rotate'){const o=g.origin!,angle=Math.atan2(p[1]-o[1],p[0]-o[0])-Math.atan2(g.start[1]-o[1],g.start[0]-o[0]),a=e.shiftKey?Math.round(angle/(Math.PI/12))*Math.PI/12:angle;g.layerDomainIntent=workspaceId==='drawing'?layerSimilarityIntentForSelection(g.base,g.selection,layerSimilarityValue([0,0],a*180/Math.PI,1,o),g.ids,g.layerDomainOperationId):undefined;g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>{const v=sub(x,o);return add(o,[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]);},allowRelated:g.allowRelated});}
    if(g.kind==='scale'){
-    const o=g.origin!,referenced=workspaceId==='drawing'&&selectedLayers(selection).some(id=>presentation?.layerOwners.get(id)?.kind==='snapshot-local'),{sx,sy,matrix}=drawingCornerScale(g.start,p,o,e.shiftKey,referenced?0:.01);
-    g.layerDomainIntent=workspaceId==='drawing'?layerAffineIntentForSelection(g.base,selection,matrix,g.ids,g.layerDomainOperationId):undefined;
-    g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},allowRelated:!!approved.current});
+    const o=g.origin!,referenced=workspaceId==='drawing'&&selectedLayers(g.selection).some(id=>presentation?.layerOwners.get(id)?.kind==='snapshot-local'),{sx,sy,matrix}=drawingCornerScale(g.start,p,o,e.shiftKey,referenced?0:.01);
+    g.layerDomainIntent=workspaceId==='drawing'?layerAffineIntentForSelection(g.base,g.selection,matrix,g.ids,g.layerDomainOperationId):undefined;
+    g.next=g.layerDomainIntent?prepareDrawingLayerDomainEdit(useEditor.getState().project,g.layerDomainIntent).drawing:applyDrawingControlEditPlan(g.controlPlan!,{kind:'map',map:x=>{const v=sub(x,o);return add(o,[v[0]*sx,v[1]*sy]);},allowRelated:g.allowRelated});
    }
    if(g.kind==='reference'&&g.base.reference){const ref=g.base.reference;g.next={...g.base,reference:{...ref,offset:add(ref.offset,delta).map(clampReferenceOffset) as Point2}};}
    if(g.next){const writes=g.kind==='node'?mirrorIntent(g.next,{ids:[],node:g.node}):g.kind==='handle'?mirrorIntent(g.next,{ids:[],handle:g.endpoint}):g.ids?mirrorWritesForCurves(g.next,g.ids):{};g.next=workspaceId==='drawing'&&!g.layerDomainIntent?prepareDrawingCageControlPreview(useEditor.getState().project,g.base,g.next)??finalizeGeometryEdit(g.base,g.next,writes):finalizeGeometryEdit(g.base,g.next,writes);if(g.kind==='handle'){const actual=curveById(g.next,g.endpoint!.curveId).handles[g.endpoint!.end];setGuideSnap(hit=>hit&&Math.hypot(hit.point[0]-actual[0],hit.point[1]-actual[1])<1e-10?hit:null);}}
@@ -277,7 +280,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
     else if(n){penHistory.current.set(g.base,g.pen);penHistory.current.set(n.document,result.state);commit(n.document);setPen(result.state);session.set({selection:{ids:[n.next.last!]}});setPenPreview(null);}
    }else if(g.kind==='box'){
     if(g.marquee)choose(finishDrawingMarquee(d,shownCurves,g.start,local(e??g.last),g.marquee),tool);
-   }else {const next=takeGestureTarget(g.previewTarget);if(!next)return;commit(next,undefined,g.kind==='displayInterval'?{kind:'relation-authoring'}:g.layerDomainIntent);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
+   }else {const next=takeGestureTarget(g.previewTarget);if(!next)return;commit(next,undefined,g.kind==='displayInterval'?{kind:'relation-authoring'}:g.layerDomainIntent??(g.controlPlan?{kind:'geometry-authoring',controlPlan:g.controlPlan}:undefined),true);if(g.kind==='deform')setDeformCage(c=>c?{...c,committed:currentDrawing()}:c);if(g.kind==='ellipse'){const ids=next.curves.filter(c=>!g.base.curves.some(x=>x.id===c.id)).map(c=>c.id);choose({ids},'select');}}
   }catch(ex){error(ex);}
   if(interrupted&&g.next)setHint(t('拖动已中断，已保留最后有效位置。'));
  }
@@ -288,14 +291,14 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   run(()=>{const n=cmd.deleteObjects(d,ids);choose({ids:[]});return n;});
  }
  function cutSelected(){
-  if(drag.current)return;finishHeld();
+  if(drag.current)return;cancelHeld();
   if(workspaceId==='drawing'&&selectedLayers(selection).length){takeLayerReference(selectedLayers(selection));return;}
   try{const result=cutDrawing(currentDrawing(),selectedObjects(selection));if(!result)return;
    choose({ids:[]},'select');commit(result.document);setClipboard(result.clipboard);if(workspaceId==='drawing')useLayerReferenceClipboard.getState().clear();setHint(t('已剪切；选择目标图层后按 Ctrl/Cmd+V 原位粘贴。'));
   }catch(ex){error(ex);}
  }
  function takeLayerReference(layerIds:readonly string[]){
-  if(workspaceId!=='drawing'||drag.current||!layerIds.length)return;finishHeld();
+  if(workspaceId!=='drawing'||drag.current||!layerIds.length)return;cancelHeld();
   try{
    const project=useEditor.getState().project,artworkId=project.drawingSnapshots?.activeId??'$working';
    useLayerReferenceClipboard.getState().capture(captureDrawingLayerReferences(project,artworkId,layerIds,'reference',layerClipboardProjectId()));
@@ -304,7 +307,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
   }catch(ex){error(ex);}
  }
  function pasteSelected(){
-  if(drag.current)return;finishHeld();
+  if(drag.current)return;cancelHeld();
   const reference=workspaceId==='drawing'?useLayerReferenceClipboard.getState().clipboard:null;
   if(reference){try{const editor=useEditor.getState(),plan=prepareDrawingLayerReferencePaste(editor.project,reference,layerClipboardProjectId());if(plan.changed)editor.commitRecordingSnapshots(plan.workspace);const drawing=currentDrawing(),ids=drawing.layers.filter(layer=>plan.layerIds.includes(layer.id)).flatMap(layer=>layer.items);choose({ids:ids.filter(id=>!!curveById(drawing,id)),paintIds:ids.filter(id=>!curveById(drawing,id)),layers:plan.layerIds,layer:plan.layerIds.length===1?plan.layerIds[0]:undefined},'select');if(plan.layerIds[0])session.set({layerId:plan.layerIds[0]});setHint(zh?'已粘贴实时图层引用；源画稿保持独立。':'Live layer references pasted; source artwork stays independent.');}catch(ex){error(ex);}return;}
   if(!clipboard)return;
@@ -313,14 +316,15 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    choose({ids,paintIds,paint:!ids.length&&paintIds.length===1?paintIds[0]:undefined,group:selectedGroup(next,ids)?.id,layer:activeLayer.id},'select');commit(next);setHint(t('已原位粘贴到当前图层。'));
   }catch(ex){error(ex);}
  }
+ function cancelHeld(){const k=held.current;if(!k)return;cancelEditorGesture(true,()=>{cancelKeyboardGesture(k);held.current=null;setDraft(null);});}
  function finishHeld(){
   const k=held.current;if(!k)return;const target=takeGestureTarget(k.previewTarget);held.current=null;setDraft(null);if(!target)return;
-  if(currentDrawing()===k.base){
+  if(currentDrawing()===k.base&&k.selectionKey===JSON.stringify(useDrawing.getState().selection)&&k.tool===useDrawing.getState().tool){
    const prior=penHistory.current.get(k.base);
-   if(useDrawing.getState().tool==='pen'&&prior?.last&&curveById(k.next,prior.last)){
-    const next={...prior,position:nodeAt(k.next,{curveId:prior.last,end:1}).position};penHistory.current.set(k.next,next);setPen(next);setPenPreview(null);
+   if(useDrawing.getState().tool==='pen'&&prior?.last&&curveById(target,prior.last)){
+    const next={...prior,position:nodeAt(target,{curveId:prior.last,end:1}).position};penHistory.current.set(target,next);setPen(next);setPenPreview(null);
    }
-   try{commit(target,undefined,k.layerDomainIntent);}catch(ex){error(ex);}
+   try{commit(target,mirrorIntent(target,k.plan.selection),k.layerDomainIntent??(k.plan.kind==='geometry'?{kind:'geometry-authoring',controlPlan:k.plan.controlPlan}:undefined),true);}catch(ex){error(ex);}
   }
  }
  function history(redo=false){
@@ -331,7 +335,7 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
    setZoomOut(e.ctrlKey||e.altKey);
-   if(isDrawingShortcutInput(e.target))return;
+   if(e.defaultPrevented||e.isComposing||isDrawingShortcutInput(e.target))return;
    // Menu navigation belongs to the tool group, never to selected geometry.
    if(document.querySelector('.drawing-tool-menu')||(e.key==='ArrowDown'&&(e.target as Element).closest('[data-tool-group="connections"]')))return;
    const s=latest.current;if(e.code==='Space'){e.preventDefault();space.current=true;return;}
@@ -346,13 +350,22 @@ export default function DrawingRoom({underlay,artworkPreview,aiGuides=false}:{un
    if(['Delete','Backspace'].includes(e.key)){e.preventDefault();s.deleteSelected();return;}
    if(e.key.startsWith('Arrow')&&hasNudgeTarget(s.selection)){
     e.preventDefault();e.stopImmediatePropagation();if(drag.current||e.ctrlKey||e.metaKey)return;
-    const amount=.004*(e.shiftKey?5:e.altKey?0.2:1),delta:Point2=[e.key==='ArrowRight'?amount:e.key==='ArrowLeft'?-amount:0,e.key==='ArrowUp'?amount:e.key==='ArrowDown'?-amount:0],base=held.current?.next??s.d;
-    try{const previewTarget=held.current?.previewTarget??{};previewGestureTarget(previewTarget,()=>{const prior=held.current?.layerDomainIntent?layerDomainMatrix(held.current.layerDomainIntent).slice(4) as Point2:[0,0] as Point2,intent=workspaceId==='drawing'?layerSimilarityIntentForSelection(held.current?.base??base,s.selection,layerSimilarityValue(add(prior,delta)),undefined,held.current?.layerDomainIntent?.operationId):undefined,raw=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:nudgeSelection(base,s.selection,delta),n=finalizeGeometryEdit(base,raw,mirrorIntent(raw,s.selection));if(!held.current)held.current={base,next:n,layerDomainIntent:intent,previewTarget};else {held.current.next=n;held.current.layerDomainIntent=intent;}return n;},next=>{if(!next)held.current=null;setDraft(next);});setHint('');}catch(ex){held.current=null;setDraft(null);setHint(t((ex as Error).message));}return;
+    const amount=.004*(e.shiftKey?5:e.altKey?0.2:1),delta:Point2=[e.key==='ArrowRight'?amount:e.key==='ArrowLeft'?-amount:0,e.key==='ArrowUp'?amount:e.key==='ArrowDown'?-amount:0];
+    try{
+     let k=held.current;const selectionKey=JSON.stringify(s.selection);
+     if(k&&(k.base!==currentDrawing()||k.selectionKey!==selectionKey||k.tool!==s.tool)){cancelHeld();return;}
+     if(!k){const base=currentDrawing();held.current=k={...beginKeyboardGesture<Doc>(),base,plan:prepareDrawingNudgePlan(base,s.selection),selectionKey,tool:s.tool,layerDomainOperationId:uid()};}
+     const frozen=k;previewKeyboardGesture(frozen,e.key,delta,offset=>{
+      const geometry=frozen.plan.kind==='geometry'||frozen.plan.kind==='objects',intent=workspaceId==='drawing'&&geometry?layerSimilarityIntentForSelection(frozen.base,frozen.plan.selection,layerSimilarityValue(offset),undefined,frozen.layerDomainOperationId):undefined;
+      const raw=intent?prepareDrawingLayerDomainEdit(useEditor.getState().project,intent).drawing:applyDrawingNudgePlan(frozen.plan,offset,frozen.next,delta),base=geometry?frozen.base:frozen.next??frozen.base,writes=mirrorIntent(raw,frozen.plan.selection);
+      frozen.layerDomainIntent=intent;frozen.next=workspaceId==='drawing'&&geometry&&!intent?prepareDrawingCageControlPreview(useEditor.getState().project,frozen.base,raw)??finalizeGeometryEdit(base,raw,writes):finalizeGeometryEdit(base,raw,writes);return frozen.next;
+     },next=>setDraft(next));setHint('');
+    }catch(ex){setDraft(null);setHint(t((ex as Error).message));}return;
    }
    if(e.ctrlKey||e.metaKey||e.altKey)return;
    const nextTool=drawingToolForShortcut(e);if(nextTool){e.preventDefault();s.selectTool(nextTool);}
   };
-  const release=(e:KeyboardEvent)=>{setZoomOut(e.ctrlKey||e.altKey);if(e.code==='Space')space.current=false;if(e.key.startsWith('Arrow'))finishHeld();};
+  const release=(e:KeyboardEvent)=>{setZoomOut(e.ctrlKey||e.altKey);if(e.code==='Space')space.current=false;if(releaseKeyboardGesture(held.current,e.key))finishHeld();};
   window.addEventListener('keydown',key,true);window.addEventListener('keyup',release,true);return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',release,true);};
  },[]);
  const penDrag=drag.current?.kind==='pen'?drag.current:null,visiblePen=penDrag?{position:penDrag.start,out:sub(penDrag.cursor??penDrag.start,penDrag.start)}:pen;

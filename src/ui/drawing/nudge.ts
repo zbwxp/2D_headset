@@ -6,6 +6,32 @@ import {changeDisplayInterval} from '../../domain/drawing/displayIntervals';
 import {inkEndpointInfo} from '../../domain/drawing/appearance';
 import {clampReferenceOffset} from '../../domain/recording/reference';
 import {selectedObjects,type DrawingSelection} from './session';
+import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan,type DrawingControlEditPlan} from '../../domain/drawing/controlEditPlan';
+
+export type DrawingNudgePlan=
+ |{readonly kind:'geometry';readonly before:Doc;readonly selection:DrawingSelection;readonly controlPlan:DrawingControlEditPlan;readonly origin?:Point2}
+ |{readonly kind:'mirror-axis'|'reference'|'display-interval'|'ink-end'|'objects';readonly before:Doc;readonly selection:DrawingSelection};
+
+/** Freeze the semantic target once. Metadata/material controls keep their
+ * existing command, while scalar geometry uses the pointer authoring plan. */
+export function prepareDrawingNudgePlan(before:Doc,selection:DrawingSelection):DrawingNudgePlan {
+ const s=structuredClone(selection),base={before,selection:s};
+ if(s.mirrorAxis)return {...base,kind:'mirror-axis'};
+ if(s.reference)return {...base,kind:'reference'};
+ if(s.displayInterval)return {...base,kind:'display-interval'};
+ if(s.handle){const curve=curveById(before,s.handle.curveId);if(curve)return {...base,kind:'geometry',origin:[...curve.handles[s.handle.end]],controlPlan:prepareDrawingControlEditPlan(before,{kind:'handle',endpoint:s.handle,allowHidden:true})};}
+ if(s.node){const node=before.nodes.find(n=>n.id===s.node);if(node)return {...base,kind:'geometry',origin:[...node.position],controlPlan:prepareDrawingControlEditPlan(before,{kind:'node',nodeId:s.node,allowHidden:true})};}
+ if(s.inkEnd)return {...base,kind:'ink-end'};
+ const ids=selectedObjects(s);
+ // Mixed paint selections own boundary/offset transport in translateObjects.
+ // Its complete canonical command must not be narrowed to only curve IDs.
+ if(ids.some(id=>!curveById(before,id)))return {...base,kind:'objects'};
+ return {...base,kind:'geometry',controlPlan:prepareDrawingControlEditPlan(before,{kind:'curves',curveIds:ids,allowHidden:true})};
+}
+export function applyDrawingNudgePlan(plan:DrawingNudgePlan,offset:Point2,previous=plan.before,delta=offset):Doc {
+ if(plan.kind!=='geometry')return plan.kind==='objects'?nudgeSelection(plan.before,plan.selection,offset):nudgeSelection(previous,plan.selection,delta);
+ return applyDrawingControlEditPlan(plan.controlPlan,plan.origin?{kind:'point',position:add(plan.origin,offset)}:{kind:'map',map:point=>add(point,offset),allowRelated:true});
+}
 
 export const hasNudgeTarget=(s:DrawingSelection)=>!!(s.mirrorAxis||s.reference||s.displayInterval||s.inkEnd||s.handle||s.node||selectedObjects(s).length);
 export function nudgeSelection(d:Doc,s:DrawingSelection,delta:Point2):Doc{

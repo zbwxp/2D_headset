@@ -1,6 +1,12 @@
 import {isValidElement,type ComponentProps,type ReactElement} from 'react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
+import SnapshotRecordingWorkspace from '../ui/vectorRecording/SnapshotRecordingWorkspace';
+import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
+import {canonicalElementId,upsertDrawingSource} from '../domain/recordingSnapshot/sources';
+import {emptyRecordingSnapshotWorkspace,emptyRecordingSnapshot,emptySnapshotRecording} from '../domain/recordingSnapshot/model';
+import {createSnapshotAngleGraph} from '../domain/recordingSnapshot/angleGraph';
 import {createEmptyProject} from '../app/emptyProject';
+import {currentPreparedEditRevision} from '../app/preparedEditRevision';
 import {useEditor} from '../app/store';
 import {useWorkspaceMode} from '../app/workspaceMode';
 import {connect,createCurve} from '../domain/drawing/commands';
@@ -14,6 +20,7 @@ import {useDrawing,type DrawingSelection,type DrawingTool} from '../ui/drawing/s
 import {chooseDrawingSelection} from '../ui/drawing/interactionController';
 import {selectionBounds} from '../ui/drawing/geometry';
 import {applyDrawingControlEditPlan,beginDrawingMarquee,drawingCurveBodySelection,finishDrawingMarquee,prepareDrawingControlEditPlan} from '../ui/drawing/editGestures';
+import SceneCurveEditOverlay from '../ui/vectorRecording/SceneCurveEditOverlay';
 import SceneWarpCanvas from '../ui/vectorRecording/SceneWarpCanvas';
 import SceneInstanceTransformBox,{type RecordingInstanceTransform} from '../ui/vectorRecording/SceneInstanceTransformBox';
 import type {DrawingCommandIntent} from '../ui/drawing/endpointInteraction';
@@ -27,6 +34,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),
  useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),useContext:(context:{_currentValue:unknown})=>context._currentValue,
  useSyncExternalStore:(_subscribe:unknown,getSnapshot:()=>unknown)=>getSnapshot(),useDebugValue:()=>{},
  useEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
+ useLayoutEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
 }));
 vi.mock('react-dom',async original=>({...await original<typeof import('react-dom')>(),createPortal:(children:unknown)=>children}));
 vi.mock('zustand',async original=>{
@@ -49,7 +57,7 @@ beforeEach(()=>{
  hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();
  const events={addEventListener:(name:string,fn:(event:any)=>void)=>{if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name)!.add(fn);},removeEventListener:(name:string,fn:(event:any)=>void)=>listeners.get(name)?.delete(fn)};
  vi.stubGlobal('Element',Target);vi.stubGlobal('window',{...events,innerWidth:1000,innerHeight:800,dispatchEvent:(event:Event)=>{emit(event.type,event);return true;}});
- vi.stubGlobal('document',{...events,body:{},hidden:false});
+ vi.stubGlobal('document',{...events,body:{},hidden:false,querySelector:()=>null});
  vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
  useWorkspaceMode.setState({mode:'drawing'});
  useDrawing.setState({...savedSession,tool:'select',selection:{ids:[]},layerId:'layer',zoom:1,pan:[0,0],preview:false});
@@ -58,7 +66,7 @@ afterEach(()=>{hooks.cleanups.forEach(fn=>fn?.());vi.unstubAllGlobals();useEdito
 const pointer=(point:Point2,shiftKey=false)=>({button:0,buttons:1,pointerId:1,pointerType:'mouse',clientX:point[0],clientY:point[1],shiftKey,altKey:true,ctrlKey:false,stopPropagation:vi.fn(),preventDefault:vi.fn()});
 const emit=(name:string,event:unknown)=>[...(listeners.get(name)??[])].forEach(fn=>fn(event));
 const near=(actual:Point2,expected:Point2)=>actual.forEach((n,i)=>expect(n).toBeCloseTo(expected[i],9));
-type Options={tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean;twoLayers?:boolean};
+type Options={tool?:'select'|'direct';selected?:string[];mirrored?:boolean;hiddenContinuation?:boolean;lockedGroup?:boolean;twoLayers?:boolean;instanceStrategy?:'placement'|'control-target'};
 function fixture(options:Options):DrawingDocument {
  let drawing=emptyDrawing();drawing.layers=[{id:'layer',name:'Outline',visible:true,locked:false,items:[]}];
  const curves:Record<string,Cubic>={a:[[-1,-.4],[-.9,-.2],[-.7,-.2],[-.6,-.4]],b:[[-.3,-.4],[-.2,-.2],[0,-.2],[.1,-.4]],c:[[-.3,.4],[-.2,.6],[0,.6],[.1,.4]],mirror:[[1,-.4],[.9,-.2],[.7,-.2],[.6,-.4]]};
@@ -76,8 +84,11 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  useDrawing.setState({tool:options.tool??'select',selection:{ids:options.selected??[]}});
  let drawing=source,shown=drawing,historyKey={},tool:DrawingTool=options.tool??'select',selection:DrawingSelection={ids:options.selected??[]},targetKey='view',activeLayer=options.twoLayers?'other':'layer',all:ReactElement<Props>[]=[];
  const error=vi.fn(),commit=vi.fn((before:DrawingDocument,next:DrawingDocument,_intent?:DrawingCommandIntent)=>{expect(before).toBe(drawing);drawing=next;shown=next;historyKey={};return historyKey;}),preview=vi.fn((before:DrawingDocument,next:DrawingDocument|null)=>{expect(before).toBe(drawing);shown=next??drawing;return true;});
- const transformPreview=vi.fn(),transformCommit=vi.fn(),legacyCurveCommit=vi.fn();
- const transform=(ids:string[]):RecordingInstanceTransform|undefined=>{const bounds=selectionBounds(drawing,ids);return bounds?{ids,bounds,allowCurveSelection:true,editable:ids.every(id=>transformable(drawing,id,ids)),label:'Selection',onPreview:transformPreview,onCommit:transformCommit}:undefined;};
+ const transformPreview=vi.fn(),transformCommit=vi.fn(),legacyCurveCommit=vi.fn(),adapters:RecordingInstanceTransform[]=[];let rejectPreview=false,displayPlacement:ScenePlacementValue|undefined;
+ const transform=(ids:string[]):RecordingInstanceTransform|undefined=>{
+  const bounds=selectionBounds(drawing,ids);if(!bounds)return;const base=drawing,controlPlan=options.instanceStrategy==='control-target'?prepareDrawingControlEditPlan(base,{kind:'curves',curveIds:ids,preserveRelations:true}):undefined;
+  const adapter:RecordingInstanceTransform={ids:[...ids],bounds,displayPlacement,allowCurveSelection:true,editable:ids.every(id=>transformable(drawing,id,ids)),label:'Selection',onPreview:vi.fn(value=>{transformPreview(value);if(controlPlan)shown=value&&!rejectPreview?applyDrawingControlEditPlan(controlPlan,{kind:'transform',value}):drawing;return !value||!rejectPreview;}),onCommit:vi.fn(value=>{transformCommit(value);if(controlPlan)commit(base,applyDrawingControlEditPlan(controlPlan,{kind:'transform',value}),{kind:'geometry-authoring',controlPlan});})};adapters.push(adapter);return adapter;
+ };
  const choose=(next:DrawingSelection,mode?:DrawingTool)=>{const transition=chooseDrawingSelection(tool,next,mode);selection=transition.selection;tool=transition.tool;activeLayer=drawing.layers.find(layer=>layer.items.includes(next.ids[0]))?.id??activeLayer;};
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};
  function render(){
@@ -93,7 +104,11 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  const paint=()=>all.find(e=>e.props.curveDown)!;
  render();preview.mockClear();
  return {
-  source,render,element,paint,commit,preview,error,transformPreview,transformCommit,legacyCurveCommit,
+  source,render,element,paint,commit,preview,error,transformPreview,transformCommit,legacyCurveCommit,adapters,
+  transform:(kind:string,value:number)=>{all.find(e=>typeof e.props.transform==='function')!.props.transform(kind,value);render();},
+  changeHistory:()=>{historyKey={};render();},changeFrame:(frame:ScenePlacementValue)=>{displayPlacement=frame;render();},rejectPreview:(value:boolean)=>{rejectPreview=value;},
+  key:(name:string,phase='keydown',modifiers:Partial<KeyboardEvent>={})=>{emit(phase,{key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,isComposing:false,defaultPrevented:false,target:new Target(),preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),...modifiers});render();},
+  selectControl:(kind:'node'|'handle')=>{const curve=drawing.curves[0],control=kind==='node'?{kind,nodeId:curve.nodes[0],position:drawing.nodes.find(n=>n.id===curve.nodes[0])!.position}:{kind,curveId:curve.id,end:0 as const,position:curve.handles[0]};if(consumer==='Drawing'){useDrawing.setState({selection:kind==='node'?{ids:[curve.id],node:curve.nodes[0]}:{ids:[curve.id],handle:{curveId:curve.id,end:0}}});render();}else{all.find(e=>e.type===SceneCurveEditOverlay)!.props.onBegin(pointer(paint().props.screen(control.position)),control);render();canvas().props.onPointerUp(pointer(paint().props.screen(control.position)));render();}},
   drawing:()=>consumer==='Drawing'?useEditor.getState().project.drawing!:drawing,
   shown:()=>paint().props.d as DrawingDocument,
   selection:()=>consumer==='Drawing'?useDrawing.getState().selection:selection,
@@ -225,4 +240,98 @@ test.each(['direct','select'] as const)('Recording %s body drag still cancels on
  const h=harness('Recording',{tool,selected:['c'],twoLayers:true}),start=h.screen([-.8,-.3]),end:Point2=[start[0]+25,start[1]-15];
  h.body('a',start);h.move(end);h.navigate();h.up(end);
  expect(h.commit).not.toHaveBeenCalled();expect(h.transformCommit).not.toHaveBeenCalled();expect(h.drawing()).toBe(h.source);
+});
+
+test.each(['Drawing','Recording'] as const)('%s: two held arrows form one gesture and releasing the first cannot commit',consumer=>{
+ const h=harness(consumer,{selected:['a']}),before=shapeOf(h.source,'a'),plans=drawingControlEditStats().plans;
+ h.key('ArrowRight');h.key('ArrowUp');h.key('ArrowRight');
+ const wanted=consumer==='Drawing'?h.shown():h.transformPreview.mock.calls.at(-1)![0];
+ expect(h.historyCount()).toBe(0);expect(h.transformCommit).not.toHaveBeenCalled();h.key('ArrowRight','keyup');expect(h.historyCount()).toBe(0);expect(h.transformCommit).not.toHaveBeenCalled();
+ h.key('ArrowUp','keyup');h.key('ArrowUp','keyup');
+ if(consumer==='Drawing'){expect(h.historyCount()).toBe(1);expect(h.drawing()).toEqual(wanted);expect(drawingControlEditStats().plans-plans).toBe(1);shapeOf(h.drawing(),'a').forEach((point,i)=>near(point,[before[i][0]+.008,before[i][1]+.004]));}
+ else{expect(h.transformCommit).toHaveBeenCalledExactlyOnceWith(wanted);expect(h.drawing()).toBe(h.source);}
+});
+
+test.each(['Drawing','Recording'].flatMap(consumer=>['node','handle'].map(kind=>({consumer:consumer as 'Drawing'|'Recording',kind:kind as 'node'|'handle'}))))('$consumer $kind arrows use one frozen control plan and commit the exact preview',({consumer,kind})=>{
+ const h=harness(consumer,{tool:'direct',selected:['a'],mirrored:true});h.selectControl(kind);const plans=drawingControlEditStats().plans;
+ h.key('ArrowRight');h.key('ArrowUp');h.key('ArrowRight', 'keydown',{shiftKey:true});
+ const wanted=h.shown();expect(wanted).not.toBe(h.source);expect(h.historyCount()).toBe(0);
+ h.key('ArrowRight','keyup');expect(h.historyCount()).toBe(0);h.key('ArrowUp','keyup');h.key('ArrowUp','keyup');
+ expect(h.historyCount()).toBe(1);expect(h.drawing()).toEqual(wanted);expect(drawingControlEditStats().plans-plans).toBeLessThanOrEqual(1);expect(h.legacyCurveCommit).not.toHaveBeenCalled();
+ if(consumer==='Recording')expect(h.commit.mock.calls[0][2]?.kind).toBe('geometry-authoring');
+});
+
+test.each(['Drawing','Recording'].flatMap(consumer=>['Escape','history','blur','cancel','selection'].map(reason=>({consumer:consumer as 'Drawing'|'Recording',reason}))))('$consumer held arrows cancel on $reason without late commit',({consumer,reason})=>{
+ const h=harness(consumer,{selected:['a']});h.key('ArrowRight');h.key('ArrowUp');const revision=currentPreparedEditRevision();
+ if(reason==='Escape')h.key('Escape');else if(reason==='history')h.key('z','keydown',{ctrlKey:true});else if(reason==='selection')h.setSelection({ids:['b']});else{emit(reason==='blur'?'blur':'contour:cancel-recording-gesture',{});h.render();}
+ h.key('ArrowRight','keyup');h.key('ArrowUp','keyup');expect(h.historyCount()).toBe(0);expect(h.transformCommit).not.toHaveBeenCalled();expect(h.shown()).toEqual(h.source);expect(currentPreparedEditRevision()).toBeGreaterThan(revision);
+});
+
+test.each(['placement','control-target'] as const)('Recording V %s adapters stay frozen across parent preview rebuilds',instanceStrategy=>{
+ const h=harness('Recording',{selected:['a'],instanceStrategy}),first=h.adapters.at(-1)!;
+ h.key('ArrowRight');const second=h.adapters.at(-1)!;expect(second).not.toBe(first);h.key('ArrowRight');h.key('ArrowUp');
+ const accepted=h.transformPreview.mock.calls.at(-1)![0];h.key('ArrowRight','keyup');expect(h.transformCommit).not.toHaveBeenCalled();h.key('ArrowUp','keyup');
+ expect(first.onCommit).toHaveBeenCalledExactlyOnceWith(accepted);expect(second.onCommit).not.toHaveBeenCalled();expect(first.onPreview).toHaveBeenLastCalledWith(null);expect(second.onPreview).not.toHaveBeenCalled();expect(h.transformCommit).toHaveBeenCalledTimes(1);
+});
+
+test.each(['history','target'] as const)('Recording V retires a frozen adapter when its %s changes',change=>{
+ const h=harness('Recording',{selected:['a']}),frozen=h.adapters.at(-1)!;h.key('ArrowRight');if(change==='history')h.changeHistory();else h.navigate();h.key('ArrowRight','keyup');
+ expect(frozen.onPreview).toHaveBeenLastCalledWith(null);expect(frozen.onCommit).not.toHaveBeenCalled();expect(h.transformCommit).not.toHaveBeenCalled();
+});
+
+test('Recording V rejected preview cannot commit an earlier target and retains total requested displacement on recovery',()=>{
+ const h=harness('Recording',{selected:['a']}),frozen=h.adapters.at(-1)!;h.key('ArrowRight');const first=h.transformPreview.mock.calls.at(-1)![0] as ScenePlacementValue;
+ h.rejectPreview(true);h.key('ArrowRight');expect(frozen.onPreview).toHaveBeenLastCalledWith(null);h.rejectPreview(false);h.key('ArrowRight');
+ const accepted=h.transformPreview.mock.calls.at(-1)![0] as ScenePlacementValue;near(accepted.translation,[first.translation[0]*3,0]);h.key('ArrowRight','keyup');expect(frozen.onCommit).toHaveBeenCalledExactlyOnceWith(accepted);
+});
+
+test('Drawing hidden selected members remain in a held-key plan',()=>{
+ const h=harness('Drawing',{selected:['a','b'],hiddenContinuation:true}),before=shapeOf(h.source,'b');h.key('ArrowRight');h.key('ArrowRight','keyup');expect(h.historyCount()).toBe(1);shapeOf(h.drawing(),'b').forEach((point,i)=>near(point,[before[i][0]+.004,before[i][1]]));expect(h.drawing().curves.find(c=>c.id==='b')!.visible).toBe(false);
+});
+
+test('Drawing held arrows keep locked group members in the selected scope and reject atomically',()=>{
+ const h=harness('Drawing',{selected:['a','b'],lockedGroup:true});h.key('ArrowRight');h.key('ArrowRight','keyup');expect(h.selection().ids).toEqual(['a','b']);expect(h.historyCount()).toBe(0);expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);
+});
+
+
+function recordingWorkspaceHarness(correction:boolean){
+ const source=fixture({}),workspace=upsertDrawingSource(emptyRecordingSnapshotWorkspace(),'source',source),sourceSnapshot=workspace.snapshots[0],view=emptyRecordingSnapshot('view'),side=emptyRecordingSnapshot('side','Side','view',{x:60,y:0}),recording=emptySnapshotRecording('recording');
+ view.layers=[{kind:'reference',id:'slot',name:'Layer',baseSnapshotId:sourceSnapshot.id,baseLayerId:canonicalElementId('source','layer')}];side.layers=structuredClone(view.layers);side.deformation.layers.slot={placement:{translation:[0,.4],rotation:0,scale:1}};
+ recording.mode='triangulated';recording.snapshotIds=[view.id,side.id];recording.activeSnapshotId=view.id;recording.angle={x:correction?30:0,y:0};recording.angleGraph=createSnapshotAngleGraph([view,side].map(snapshot=>({snapshotId:snapshot.id,angle:snapshot.angle})));
+ workspace.snapshots.push(view,side);workspace.recordings=[recording];workspace.activeRecordingId=recording.id;
+ const project={...createEmptyProject(),drawing:source,recordingSnapshots:workspace};useEditor.setState({project,past:[],future:[]});useWorkspaceMode.setState({mode:'recording'});
+ let all:ReactElement<Props>[]=[],props:ComponentProps<typeof SceneWarpCanvas>;const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};
+ function render(){let passes=0;do{
+  hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
+  const root=SnapshotRecordingWorkspace(),editorTree=(root.type as (props:Props)=>ReactElement<Props>)(root.props),canvas=elements(editorTree).find(element=>element.type===SceneWarpCanvas)!;props=canvas.props as ComponentProps<typeof SceneWarpCanvas>;
+  all=elements(SceneWarpCanvas(props));all.find(element=>element.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++passes>20)throw Error('Recording workspace effects did not settle');
+ }while(hooks.dirty);}
+ const key=(name:string,phase='keydown')=>{emit(phase,{key:name,code:name,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,isComposing:false,defaultPrevented:false,target:new Target(),preventDefault:vi.fn(),stopImmediatePropagation:vi.fn()});render();};
+ render();props!.onSelectionTool!({ids:[canonicalElementId('source','a')]},'select');render();
+ return {project,source,render,key,props:()=>props!,drawing:()=>evaluateRecordingSnapshot(useEditor.getState().project.recordingSnapshots!,'recording',{useDraft:true,immutableInputs:true}).drawing};
+}
+
+test.each([{label:'real-basis',correction:false},{label:'correction',correction:true}])('native Recording V keyboard freezes the actual $label adapter through preview, commit and Undo',({correction})=>{
+ const h=recordingWorkspaceHarness(correction),initial=h.props(),adapter=initial.instanceTransform!,before=initial.drawing,id=canonicalElementId('source','a'),library=JSON.stringify(h.project.recordingSnapshots.library);
+ adapter.onPreview=vi.fn(adapter.onPreview);adapter.onCommit=vi.fn(adapter.onCommit);
+ h.key('ArrowUp');const replacement=h.props().instanceTransform!;expect(replacement).not.toBe(adapter);replacement.onCommit=vi.fn(replacement.onCommit);
+ h.key('ArrowUp');const wanted=h.props().drawing;expect(shapeOf(wanted,id)).not.toEqual(shapeOf(before,id));expect(useEditor.getState().past).toHaveLength(0);
+ h.key('ArrowUp','keyup');h.key('ArrowUp','keyup');expect(adapter.onCommit).toHaveBeenCalledTimes(1);expect(replacement.onCommit).not.toHaveBeenCalled();expect(useEditor.getState().past).toHaveLength(1);
+ shapeOf(h.drawing(),id).forEach((point,i)=>near(point,shapeOf(wanted,id)[i]));expect(JSON.stringify(useEditor.getState().project.recordingSnapshots!.library)).toBe(library);expect(useEditor.getState().project.drawing).toBe(h.source);
+ useEditor.getState().undo();h.render();shapeOf(h.drawing(),id).forEach((point,i)=>near(point,shapeOf(before,id)[i]));
+});
+
+
+test('Recording V key deltas keep the first display frame when preview rebuilds change the live frame',()=>{
+ const h=harness('Recording',{selected:['a']}),frozen=h.adapters.at(-1)!;h.key('ArrowRight');const first=h.transformPreview.mock.calls.at(-1)![0] as ScenePlacementValue;
+ h.changeFrame({translation:[.5,.3],rotation:90,scale:2});h.key('ArrowRight');const accepted=h.transformPreview.mock.calls.at(-1)![0] as ScenePlacementValue;
+ near(accepted.translation,[first.translation[0]*2,0]);h.key('ArrowRight','keyup');expect(frozen.onCommit).toHaveBeenCalledExactlyOnceWith(accepted);
+});
+
+
+test.each([{kind:'moveX',value:.2},{kind:'scaleY',value:.6},{kind:'mirror',value:0}])('Drawing numeric $kind uses an authentic control plan and one transaction',({kind,value})=>{
+ const h=harness('Drawing',{selected:['a'],mirrored:true}),before=drawingControlEditStats().plans;h.transform(kind,value);
+ expect(drawingControlEditStats().plans-before).toBe(1);expect(h.historyCount()).toBe(1);expect(shapeOf(h.drawing(),'a')).not.toEqual(shapeOf(h.source,'a'));
+ for(const [i,point] of shapeOf(h.drawing(),'a').entries())near(shapeOf(h.drawing(),'mirror')[i],[-point[0],point[1]]);
+ useEditor.getState().undo();h.render();expect(shapeOf(h.drawing(),'a')).toEqual(shapeOf(h.source,'a'));
 });

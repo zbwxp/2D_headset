@@ -10,7 +10,8 @@ import type {SnapshotAngleGraph} from '../domain/recordingSnapshot/model';
 import {addLayer,createCurve} from '../domain/drawing/commands';
 import {emptyDrawing,type DrawingDocument} from '../domain/drawing/model';
 import {prepareDrawingControlEditPlan,applyDrawingControlEditPlan} from '../ui/drawing/editGestures';
-import {clearGestureTarget,previewGestureTarget,takeGestureTarget,runEditorHistory,consumeEditorHistoryShortcut,type GesturePreviewTarget} from '../ui/drawing/gestureTransaction';
+import {clearGestureTarget,previewGestureTarget,takeGestureTarget,cancelEditorGesture,runEditorHistory,consumeEditorHistoryShortcut,type GesturePreviewTarget} from '../ui/drawing/gestureTransaction';
+import {currentPreparedEditRevision,assertPreparedEditCurrent} from '../app/preparedEditRevision';
 
 function fixture(){
  let source=addLayer(emptyDrawing(),'Layer');source=createCurve(source,source.layers[0].id,[[0,0],[.2,.3],[.8,.3],[1,0]],.01,'Curve','curve');
@@ -24,6 +25,11 @@ function fixture(){
 }
 
 describe('one shared preview target transaction',()=>{
+ it('normal release cleanup preserves a prepared receipt; actual cancellation invalidates it',()=>{
+  const receipt={preparedRevision:currentPreparedEditRevision()},slot:GesturePreviewTarget<object>={target:receipt},accepted=takeGestureTarget(slot);
+  clearGestureTarget(slot);cancelEditorGesture(false,()=>clearGestureTarget(slot));expect(()=>assertPreparedEditCurrent(accepted!)).not.toThrow();
+  slot.target=receipt;cancelEditorGesture(true,()=>clearGestureTarget(slot));expect(takeGestureTarget(slot)).toBeUndefined();expect(()=>assertPreparedEditCurrent(receipt)).toThrow(/stale, canceled or superseded/);
+ });
  it('a valid target followed by an unavailable inverse clears both display and commit target',()=>{
   const f=fixture(),original=JSON.stringify([f.graph,f.allBases]),slot:GesturePreviewTarget<DrawingDocument>={};let visible=f.current,accepted=0,rejected=0;
   const start=f.current.curves[0].handles[0];
