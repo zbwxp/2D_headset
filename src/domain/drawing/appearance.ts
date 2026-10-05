@@ -10,6 +10,7 @@ import {point,arcField,type ArcSampling} from './sampling';
 import {InputCache} from '../geometry/cache';
 import type {InkPinch} from './intervalPinch';
 import {evaluatedAffine,evaluatedAffineSource,affineShape,type EvaluatedAffine} from './evaluatedAffine';
+import {resolvedFillGeometry} from './resolvedFillGeometry';
 export {point,samples,arcField} from './sampling';
 const smooth=(x:number)=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);};
 export function profileAt(profile:Profile,s:number,reverse=false){
@@ -23,7 +24,7 @@ export function profileAt(profile:Profile,s:number,reverse=false){
 export const resolveUses=derivedUses;
 /** Boundary visibility is ink-only; whole-stroke hiding is an explicit separate action. */
 export const fillVisible=(d:Doc,f:FillRegion)=>objectVisible(d,f.id)&&!!f.boundary.length&&f.boundary.every(x=>!!curveById(d,x.id));
-export function fillGeometry(d:Doc,f:FillRegion){return resolveUses(d,f.boundary,true);}
+export function fillGeometry(d:Doc,f:FillRegion){return resolvedFillGeometry(d,f);}
 export function pathOf(shapes:Cubic[],project:(p:Point2)=>Point2=p=>p,closed=false){return shapes.map((s,i)=>{const p=s.map(project);return `${i?'':`M ${p[0]} `}C ${p[1]} ${p[2]} ${p[3]}`;}).join(' ')+(closed?' Z':'');}
 export interface InkFragment {pieceIndex:number;jointWith?:number;outline:Point2[];shapes:Cubic[];tips:Point2[][]}
 export interface InkRun {fragments?:InkFragment[];shapes:Cubic[];outline:Point2[];uniform:boolean;closed:boolean;tips:Point2[][];clipped?:boolean;extensions?:{shape:Cubic;pieceIndex:number}[]}

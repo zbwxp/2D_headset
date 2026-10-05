@@ -38,7 +38,7 @@ describe('cross-layer 末端接笔 compiles to transient ink only',()=>{
   // assertion of exact circles or parameter-speed C1 continuity.
   for(const s of field.geometry.pieces.filter(p=>p.joinId).map(p=>p.shape))for(let i=0;i<=256;i++){const p=point(s,i/256);expect(Math.abs(Math.hypot(p[0]+.2,p[1]-.2)-.2)).toBeLessThan(.00006);}
  });
- test('source white fills, source topology and original depth plan stay unchanged',()=>{
+ test('an unadopted route leaves white fills, source topology and original depth unchanged',()=>{
   let {d,id}=fixture();
   const layerA=d.layers.find(l=>l.items.includes('a'))!.id,layerB=d.layers.find(l=>l.items.includes('b'))!.id;
   d=c.createCurve(d,layerA,line([0,0],[-1,1]),.01,'A closure1','ac1');d=c.createCurve(d,layerA,line([-1,1],[-1,0]),.01,'A closure2','ac2');
@@ -48,8 +48,8 @@ describe('cross-layer 末端接笔 compiles to transient ink only',()=>{
   const route:DisplayRoute={seed:{segments:[{id:'a',reverse:false},{id:'ac1',reverse:false},{id:'ac2',reverse:false}],closed:true},throughLinkIds:[id]},snapshot=JSON.stringify(d),fills=d.fills.map(f=>fillGeometry(d,f)),depth=depthPaintBatches(d);
   const field=createDisplayRouteField(d,route);expect(field.diagnostics).toEqual([]);expect(field.geometry.pieces.some(p=>p.joinId)).toBe(true);
   expect(d.fills.map(f=>fillGeometry(d,f))).toEqual(fills);expect(depthPaintBatches(d)).toEqual(depth);expect(JSON.stringify(d)).toBe(snapshot);
-  // Deliberate validation tradeoff: ink is rounded while the independent fill
-  // still contains its original sharp vertex. This helper never rewrites it.
+  // The route exists only as this local preview request. No display interval
+  // adopts it, so the stored fill still follows its original sharp boundary.
   expect(fills.every(f=>f.shapes.some(s=>s.some(p=>p[0]===0&&p[1]===0)))).toBe(true);
  });
  test('ARC bridge uses both original paint owners and no extra caps at its midpoint',()=>{

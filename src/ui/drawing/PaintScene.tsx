@@ -78,10 +78,11 @@ export default function PaintScene({paintBatches,pixelsPerUnit,interactiveEffect
    });
    const protectedFill=ownClips.reduce<ReactNode>((child,c)=><g key={c.id} data-testid="drawing-owned-ink-clip" data-id={f.id} clipPath={`url(#${c.id})`}>{child}</g>,fill);
    const selectedFill=support.length&&selected?<>{protectedFill}<path d={path} fill="none" stroke="#2589b0" strokeWidth="1.5" pointerEvents="none"/></>:protectedFill;
+   const diagnosedFill=g.diagnostics?.length?<g data-testid="drawing-fill-geometry-diagnostic" data-id={f.id} data-message={g.diagnostics.join('; ')}><title>{g.diagnostics.join('; ')}</title>{selectedFill}</g>:selectedFill;
    return <g key={f.id} opacity={opacity?.get(f.id)} data-testid={boundaryInk.diagnostics.length?'drawing-owned-ink-diagnostic':undefined} data-id={boundaryInk.diagnostics.length?f.id:undefined} data-message={boundaryInk.diagnostics.length?boundaryInk.diagnostics.join('; '):undefined}>
     {boundaryInk.diagnostics.length>0&&<title>{boundaryInk.diagnostics.join('; ')}</title>}
     {ownClips.length>0&&<defs>{ownClips.map(c=><clipPath key={c.id} id={c.id} clipPathUnits="userSpaceOnUse"><path d={`${supportOuter} ${c.path}`} clipRule="evenodd"/></clipPath>)}</defs>}
-    {clips.reduce<ReactNode>((child,c)=><g key={c.id} clipPath={`url(#${c.id})`}>{child}</g>,selectedFill)}
+    {clips.reduce<ReactNode>((child,c)=><g key={c.id} clipPath={`url(#${c.id})`}>{child}</g>,diagnosedFill)}
    </g>;
   }
   const offset=d.offsets.find(x=>x.id===item.id)!,g=products.offset(offset);if(g.error)return null;const inkShapes=extendedInk(g.shapes,offset.inkEnds).shapes,runs=inkRuns(g.shapes,offset.width,offset.profile??'UNIFORM',offset.profileReverse,undefined,false,offset.inkEnds,undefined,undefined,undefined,undefined,false,sampling);

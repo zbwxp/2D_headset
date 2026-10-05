@@ -1,12 +1,12 @@
-import {evaluatedDeformationSource,projectEvaluatedMaterial} from './evaluatedDeformation';
+import {evaluatedDeformationSource,projectEvaluatedGeometry,projectEvaluatedMaterial} from './evaluatedDeformation';
 import {curveById,endKey,nodeAt,sameEnd,sub,length,type Cubic,type CurveUse,type DrawingDocument as Doc,type Endpoint,type InkEnds} from './model';
 import {strokes,strokePaths,type StrokePath} from './strokes';
-import {derivedUses,subcurve,type DerivedUses} from './roundedJoin';
+import {derivedUses,partitionedUses,subcurve,type DerivedUses} from './roundedJoin';
 import {arcField} from './sampling';
 import type {InkSpan} from './displayIntervals';
 import {compileDisplayRouteBrushes,type CompiledDisplayRouteBrushes,type DisplayLinkBrushOverrides} from './displayRouteBrush';
 import {evaluatedAffine,evaluatedAffineSource,affineGeometry,affineMaterialField,affineShape} from './evaluatedAffine';
-import {preparedDrawingReadContext,countDrawingReadWork} from './readContext';
+import {preparedDrawingReadContext,countDrawingReadWork,type DrawingReadContext} from './readContext';
 
 /** Display traversal only. The captured seed preserves the path selected before
  * linking. Geometry endpoints/links and interval positioning remain separate. */
@@ -23,6 +23,33 @@ export function splitDisplayRoute(route:DisplayRoute,id:string,newId:string,left
 }
 export interface DisplayRouteDiagnostic {code:'INVALID_SEED'|'MISSING_LINK'|'DISABLED_LINK'|'PORT_CONFLICT'|'DISCONNECTED_LINK'|'SEPARATED_LINK'|'INVALID_TRAVERSAL'|'GEOMETRY';message:string;linkId?:string}
 export interface ResolvedDisplayRoute {path:StrokePath;usedLinkIds:string[];displacedJoinIds:string[];diagnostics:DisplayRouteDiagnostic[]}
+export interface DisplayRouteCornerGeometry {resolved:ResolvedDisplayRoute;brushes:CompiledDisplayRouteBrushes;geometry:DerivedUses}
+interface ActiveRoutes {intervals:Doc['displayIntervals'];byOwner:Map<string,DisplayRoute>;resolved:Map<DisplayRoute,ResolvedDisplayRoute>}
+const activeRoutes=new WeakMap<DrawingReadContext,ActiveRoutes>();
+const cornerGeometry=new WeakMap<DrawingReadContext,Map<string,DisplayRouteCornerGeometry>>();
+/** Match paint's first valid adopted route per owner. Lifetime is one immutable
+ * evaluation/read scope, never the mutable authoring document's identity. */
+export function adoptedDisplayRoutes(d:Doc):ActiveRoutes {
+ const context=preparedDrawingReadContext(d),known=context&&activeRoutes.get(context);if(known&&known.intervals===d.displayIntervals)return known;
+ const result:ActiveRoutes={intervals:d.displayIntervals,byOwner:new Map(),resolved:new Map()};
+ for(const track of d.displayIntervals??[]){if(!track.displayRoute)continue;let resolved=result.resolved.get(track.displayRoute);
+  if(!resolved){resolved=resolveDisplayRoute(d,track.displayRoute);result.resolved.set(track.displayRoute,resolved);}
+  if(!resolved.diagnostics.length)for(const use of resolved.path.segments)if(!result.byOwner.has(use.id))result.byOwner.set(use.id,track.displayRoute);
+ }
+ if(context)activeRoutes.set(context,result);return result;
+}
+/** Shared structural ARC ownership for ink and fill. Partition in the native
+ * material frame, then replay the existing program; never refit an ARC from
+ * deformed controls or choose a new midpoint after placement. */
+export function deriveDisplayRouteCornerGeometry(d:Doc,route:DisplayRoute):DisplayRouteCornerGeometry {
+ const context=preparedDrawingReadContext(d),active=context&&activeRoutes.get(context),key=JSON.stringify(route);let cache=context&&cornerGeometry.get(context);
+ if(context&&!cache){cache=new Map();cornerGeometry.set(context,cache);}const known=cache?.get(key);if(known)return known;
+ const deformation=evaluatedDeformationSource(d),affine=evaluatedAffine(d,route.seed.segments[0]?.id);let result:DisplayRouteCornerGeometry;
+ if(deformation){const source=deriveDisplayRouteCornerGeometry(deformation,route);result={...source,geometry:projectEvaluatedGeometry(d,source.geometry)};}
+ else if(affine){const source=deriveDisplayRouteCornerGeometry(evaluatedAffineSource(d)!,route);result={...source,geometry:affineGeometry(source.geometry,affine)};}
+ else {const resolved=active?.resolved.get(route)??resolveDisplayRoute(d,route),brushes=compileDisplayRouteBrushes(d,resolved);result={resolved,brushes,geometry:partitionedUses(brushes.inkDocument,resolved.path.segments,resolved.path.closed)};}
+ cache?.set(key,result);return result;
+}
 const opposite=(e:Endpoint):Endpoint=>({curveId:e.curveId,end:e.end===0?1:0});
 const entrance=(u:CurveUse):Endpoint=>({curveId:u.id,end:u.reverse?1:0});
 const exit=(u:CurveUse)=>opposite(entrance(u));

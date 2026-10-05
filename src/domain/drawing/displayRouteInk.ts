@@ -2,7 +2,7 @@ import {evaluatedDeformationSource,projectEvaluatedGeometry,projectEvaluatedMate
 import {curveSamples} from './curveProvenance';
 import {arcField} from './sampling';
 import {curveById,visible,nodeAt,length,sub,type DrawingDocument as Doc} from './model';
-import {resolveDisplayRoute,type DisplayRoute} from './displayRoutes';
+import {resolveDisplayRoute,deriveDisplayRouteCornerGeometry,type DisplayRoute} from './displayRoutes';
 import {compileDisplayRouteBrushes} from './displayRouteBrush';
 import {partitionedUses} from './roundedJoin';
 import {inkRuns,strokeEnds,type InkRun,type InkSampling} from './appearance';
@@ -36,7 +36,7 @@ export function displayRouteInk(d:Doc,route:DisplayRoute,positions:ReadonlyMap<s
  }
  const diagnostics=displayRouteInkSupport(d,route),runs=new Map<string,InkRun[]>(),resolved=resolveDisplayRoute(d,route),curveIds=new Set(resolved.path.segments.map(u=>u.id));
  if(diagnostics.length)return {runs,pieces:[],curveIds,diagnostics};
- const compiled=compileDisplayRouteBrushes(d,resolved),g=partitionedUses(compiled.inkDocument,resolved.path.segments,resolved.path.closed),field=displayField(d,resolved.path);
+ const corners=deriveDisplayRouteCornerGeometry(d,route),compiled=corners.brushes,g=corners.geometry,field=displayField(d,resolved.path);
  if(g.error)return {runs,pieces:[],curveIds,diagnostics:[g.error]};
  const c=curveById(d,resolved.path.segments[0].id),owner=(i:number)=>g.pieces[i].inkOwner!,enabled=g.pieces.map(p=>p.owners.every(id=>visible(d,id)&&curveById(d,id).inkVisible!==false));
  const sharpAfter=g.pieces.flatMap((p,i)=>{const q=g.pieces[(i+1)%g.pieces.length];if(!resolved.path.closed&&i===g.pieces.length-1)return [];return compiled.inkDocument.joins.some(j=>j.mode==='CUSP'&&((p.owners.includes(j.a.curveId)&&q.owners.includes(j.b.curveId))||(p.owners.includes(j.b.curveId)&&q.owners.includes(j.a.curveId)))&&length(sub(p.shape[3],nodeAt(d,j.a).position))<1e-7)?[i]:[];});

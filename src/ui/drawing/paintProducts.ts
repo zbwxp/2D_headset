@@ -10,6 +10,7 @@ import {nativeDrawingPathMaterialSignature} from '../../domain/drawing/pathMater
 import {evaluatedAffine} from '../../domain/drawing/evaluatedAffine';
 import {hasEvaluatedDeformation} from '../../domain/drawing/evaluatedDeformation';
 import {copyCurveSource} from '../../domain/drawing/curveProvenance';
+import {fillBoundaryRoutePlan} from '../../domain/drawing/resolvedFillGeometry';
 import {InputCache} from '../../domain/geometry/cache';
 import {strokePaths,strokeWidth,type Stroke,type StrokePath} from '../../domain/drawing/strokes';
 import {fillInkSupportDiagnostics} from './fillInkSupport';
@@ -81,17 +82,18 @@ export function createPaintProductReader(source:DrawingDocument,sampling:InkSamp
  };
  const nativeSampling=!sampling.projection&&!sampling.materialAffine&&!sampling.materialDeformation&&Object.keys(sampling).every(key=>['tolerance','maxStep','taperSteps','nativeUniform'].includes(key));
  const opaque=opaqueDomain||!nativeSampling||(source.endpointLinks??[]).some(link=>link.joinBrush?.kind==='ARC'&&link.joinBrush.trimDistance>2);
- function read<T>(kind:string,path:StrokePath,build:()=>T,extra:unknown=undefined):T {
+ function read<T>(kind:string,path:StrokePath,build:()=>T,extra:unknown=undefined,dependencyCurveIds?:readonly string[]):T {
   const localKey=JSON.stringify([kind,path,extra]),ready=local.get(localKey);if(ready){work.scopeHits++;return ready as T;}
   ensureRoutes();
-  const closure=opaque?undefined:drawingMaterialPathDependencies(inkDocument,path.segments.map(use=>use.id));
+  const dependencyPath=dependencyCurveIds?{segments:dependencyCurveIds.map(id=>({id,reverse:false})),closed:false}:path;
+  const closure=opaque?undefined:drawingMaterialPathDependencies(inkDocument,dependencyCurveIds??path.segments.map(use=>use.id));
   // Check the authoritative input before relying on any visibility facade.
   const selected=routesByOwner.get(path.segments[0]?.id),borrowed=selected&&resolvedRoutes.get(selected)?.path;
   // displayField can borrow an equal-length route for a local branch. Its
   // numeric dependencies may exceed that branch; keep the canonical fallback.
   const foreignRoute=(kind==='stroke'||kind==='member')&&borrowed?.segments.length===path.segments.length&&borrowed.segments.some(use=>!path.segments.some(local=>local.id===use.id));
   const native=closure&&!foreignRoute&&!closure.dependencies.curveIds.some(id=>evaluatedAffine(source,id));
-  const signature=native?nativeDrawingPathMaterialSignature(inkDocument,path):undefined;
+  const signature=native?nativeDrawingPathMaterialSignature(inkDocument,dependencyPath):undefined;
   const key=signature===undefined?undefined:localKey+'\0'+signature+'\0'+JSON.stringify([closure!.structuralIdToken,routeAuthority,sampling,path.segments.map(use=>[use.id,positions.get(use.id)])]);
   if(key!==undefined){work.nativeSignatures++;const hit=products.get(key);if(hit){work.cacheHits++;local.set(localKey,hit);return hit as T;}}
   work.productBuilds++;if(key===undefined)work.fallbackBuilds++;if(kind==='fill')work.fillBuilds++;if(kind==='offset')work.offsetBuilds++;
@@ -99,7 +101,7 @@ export function createPaintProductReader(source:DrawingDocument,sampling:InkSamp
  }
  const reader={drawing,inkDocument,batches,
   routeFor(id:string){ensureRoutes();return routesByOwner.get(id);},
-  fill(fill:FillRegion){return read('fill',{segments:fill.boundary,closed:true},()=>fillGeometry(drawing,fill),fill);},
+  fill(fill:FillRegion){const plan=fillBoundaryRoutePlan(drawing,fill);return read('fill',{segments:fill.boundary,closed:true},()=>fillGeometry(drawing,fill),fill,plan.routes.length?plan.dependencyCurveIds:undefined);},
   offset(offset:OffsetRelation){return read('offset',{segments:offset.source,closed:false},()=>offsetGeometry(drawing,offset),offset);},
   route(route:DisplayRoute):DisplayRouteInkPlan {
    ensureRoutes();const path=resolvedRoutes.get(route)?.path??resolveDisplayRoute(drawing,route).path;
