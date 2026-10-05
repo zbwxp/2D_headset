@@ -16,19 +16,43 @@ export function recordingPoseTrackIndex(recording:SnapshotRecording,workspace?:R
 export function snapshotAuthoredKeyCount(recording:SnapshotRecording,channel?:SnapshotPoseTrack['channel'],targetId?:string):number {
  return recording.tracks.filter(t=>(!channel||t.channel===channel)&&(!targetId||t.targetId===targetId)).reduce((n,t)=>n+t.keys.length,0);
 }
-export function mergeSnapshotDeformation(fallback:SnapshotDeformationState|undefined,own:SnapshotDeformationState):SnapshotDeformationState {
- if(!fallback)return structuredClone(own);
- const layers=structuredClone(fallback.layers);
- for(const [id,value] of Object.entries(own.layers))layers[id]={...layers[id],...structuredClone(value),...(layers[id]?.curveAppearance||value.curveAppearance?{curveAppearance:mergeSnapshotCurveAppearance(layers[id]?.curveAppearance,value.curveAppearance)}:{}),...(layers[id]?.paintAppearance||value.paintAppearance?{paintAppearance:mergeSnapshotPaintAppearance(layers[id]?.paintAppearance,value.paintAppearance)}:{}),...(layers[id]?.visibility||value.visibility?{visibility:{...layers[id]?.visibility,...structuredClone(value.visibility??{})}}:{}),...(layers[id]?.intervals||value.intervals?{intervals:{...layers[id]?.intervals,...structuredClone(value.intervals??{})}}:{}),...(layers[id]?.elementPlacements||value.elementPlacements?{elementPlacements:{...layers[id]?.elementPlacements,...structuredClone(value.elementPlacements??{})}}:{})};
- return {...(fallback.layerDomains||own.layerDomains?{layerDomains:mergeLayerDomains(fallback.layerDomains,own.layerDomains)}:{}),warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,structuredClone(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,{...b}])).values()],layers,relationPositions:{...structuredClone(fallback.relationPositions),...structuredClone(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...structuredClone(fallback.intervalMaterialIssues??{}),...structuredClone(own.intervalMaterialIssues??{})}}:{})};
+/** Immutable evaluation may retain existing values. Authoring/save callers keep
+ * the detached default. One merge policy owns field precedence in both cases. */
+export interface SnapshotDeformationMergeOptions {immutableInputs?:boolean}
+const mergedStates=new WeakMap<SnapshotDeformationState,WeakMap<SnapshotDeformationState,SnapshotDeformationState>>();
+const absentLayer=Object.freeze({});
+type LayerState=SnapshotDeformationState['layers'][string];
+const mergedLayers=new WeakMap<LayerState,WeakMap<LayerState,LayerState>>();
+export function mergeSnapshotDeformation(fallback:SnapshotDeformationState|undefined,own:SnapshotDeformationState,options:SnapshotDeformationMergeOptions={}):SnapshotDeformationState {
+ const immutable=options.immutableInputs===true,copy=<T,>(value:T):T=>immutable?value:structuredClone(value);
+ if(!fallback)return copy(own);
+ let cache=immutable?mergedStates.get(fallback):undefined;const known=cache?.get(own);if(known)return known;
+ const layers=immutable?{...fallback.layers}:structuredClone(fallback.layers);
+ for(const [id,value] of Object.entries(own.layers)){
+  const base=layers[id],key=base??absentLayer;let layerCache=immutable?mergedLayers.get(key):undefined,layer=layerCache?.get(value);
+  if(!layer){
+   layer={...base,...copy(value),...(base?.curveAppearance||value.curveAppearance?{curveAppearance:mergeSnapshotCurveAppearance(base?.curveAppearance,value.curveAppearance)}:{}),...(base?.paintAppearance||value.paintAppearance?{paintAppearance:mergeSnapshotPaintAppearance(base?.paintAppearance,value.paintAppearance)}:{}),...(base?.visibility||value.visibility?{visibility:{...base?.visibility,...copy(value.visibility??{})}}:{}),...(base?.intervals||value.intervals?{intervals:{...base?.intervals,...copy(value.intervals??{})}}:{}),...(base?.elementPlacements||value.elementPlacements?{elementPlacements:{...base?.elementPlacements,...copy(value.elementPlacements??{})}}:{})};
+   if(immutable){if(!layerCache){layerCache=new WeakMap();mergedLayers.set(key,layerCache);}layerCache.set(value,layer);}
+  }
+  layers[id]=layer;
+ }
+ const result:SnapshotDeformationState={...(fallback.layerDomains||own.layerDomains?{layerDomains:mergeLayerDomains(fallback.layerDomains,own.layerDomains,options)}:{}),warps:[...new Map([...fallback.warps,...own.warps].map(w=>[w.id,copy(w)])).values()],bindings:[...new Map([...fallback.bindings,...own.bindings].map(b=>[b.layerId,immutable?b:{...b}])).values()],layers,relationPositions:{...copy(fallback.relationPositions),...copy(own.relationPositions)},...(fallback.intervalMaterialIssues||own.intervalMaterialIssues?{intervalMaterialIssues:{...copy(fallback.intervalMaterialIssues??{}),...copy(own.intervalMaterialIssues??{})}}:{})};
+ if(immutable){if(!cache){cache=new WeakMap();mergedStates.set(fallback,cache);}cache.set(own,result);}return result;
 }
 /** The old interpolation implementation is reused channel by channel. Its
  * authored lattice, empty keys, drafts, and exact zero scales stay unchanged. */
-export function evaluateSnapshotState(snapshot:RecordingSnapshot,recording:SnapshotRecording|undefined,source:DrawingDocument,angle=snapshot.angle,useDraft=true,omitTrackIds:ReadonlySet<string>=new Set(),material?:{signature:(snapshotId:string)=>string|undefined;diagnostics:SnapshotDiagnostic[]}):SnapshotDeformationState {
- let state=mergeSnapshotDeformation(snapshot.inheritedState,snapshot.deformation);
- if(useDraft&&snapshot.draft&&snapshot.draft.angle.x===angle.x&&snapshot.draft.angle.y===angle.y)state=mergeSnapshotDeformation(state,snapshot.draft.deformation);
+export function evaluateSnapshotState(snapshot:RecordingSnapshot,recording:SnapshotRecording|undefined,source:DrawingDocument,angle=snapshot.angle,useDraft=true,omitTrackIds:ReadonlySet<string>=new Set(),material?:{signature:(snapshotId:string)=>string|undefined;diagnostics:SnapshotDiagnostic[];immutableInputs?:boolean}):SnapshotDeformationState {
+ const options={immutableInputs:material?.immutableInputs===true&&(!recording||recording.mode==='triangulated')};
+ let state=mergeSnapshotDeformation(snapshot.inheritedState,snapshot.deformation,options);
+ if(useDraft&&snapshot.draft&&snapshot.draft.angle.x===angle.x&&snapshot.draft.angle.y===angle.y)state=mergeSnapshotDeformation(state,snapshot.draft.deformation,options);
  const suspended=(issue:SnapshotMaterialIssue|undefined,channelId:string)=>{if(!issue||!material||material.signature(issue.sourceSnapshotId)===issue.sourceSignature)return false;material.diagnostics.push({code:'SOURCE_MATERIAL',snapshotId:snapshot.id,channelId,message:issue.message});return true;};
- for(const [id,issue] of Object.entries(state.intervalMaterialIssues??{}))if(suspended(issue,id))for(const layer of Object.values(state.layers))if(layer.intervals)delete layer.intervals[id];
+ for(const [id,issue] of Object.entries(state.intervalMaterialIssues??{}))if(suspended(issue,id)){
+  if(options.immutableInputs)state={...state,layers:{...state.layers}};
+  for(const [layerId,layer] of Object.entries(state.layers))if(layer.intervals&&Object.hasOwn(layer.intervals,id)){
+   if(options.immutableInputs)state.layers[layerId]={...layer,intervals:{...layer.intervals}};
+   delete state.layers[layerId].intervals![id];
+  }
+ }
  // Graph snapshots own their saved residual channels. Copy migration resolves
  // old keys once; keeping those keys is recovery evidence, not another live
  // authority which could affect a later view or overwrite a local draft.

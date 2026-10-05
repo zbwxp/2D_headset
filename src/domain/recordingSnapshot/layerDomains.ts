@@ -34,10 +34,11 @@ export function validateLayerDomains(domains:readonly SnapshotLayerDomain[]):voi
   if(domain.postShape!==undefined)validateSceneShape(domain.postShape);
  }
 }
-export function mergeLayerDomains(base:readonly SnapshotLayerDomain[]=[],own:readonly SnapshotLayerDomain[]=[]):SnapshotLayerDomain[] {
- validateLayerDomains(base);validateLayerDomains(own);
+const validatedImmutableDomains=new WeakSet<readonly SnapshotLayerDomain[]>();
+export function mergeLayerDomains(base:readonly SnapshotLayerDomain[]=[],own:readonly SnapshotLayerDomain[]=[],options:{immutableInputs?:boolean}={}):SnapshotLayerDomain[] {
+ for(const domains of [base,own])if(!options.immutableInputs||!validatedImmutableDomains.has(domains)){validateLayerDomains(domains);if(options.immutableInputs)validatedImmutableDomains.add(domains);}
  const replacements=new Map(own.map(domain=>[domain.id,domain])),ids=new Set(base.map(domain=>domain.id));
- return [...base.map(domain=>replacements.get(domain.id)??domain),...own.filter(domain=>!ids.has(domain.id))].map(domain=>structuredClone(domain));
+ return [...base.map(domain=>replacements.get(domain.id)??domain),...own.filter(domain=>!ids.has(domain.id))].map(domain=>options.immutableInputs?domain:structuredClone(domain));
 }
 /** One copy helper is used by independent cloning and source namespace remaps.
  * Filtering a scope preserves order and retains an empty source layer's domain. */
