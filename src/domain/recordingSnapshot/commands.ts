@@ -1,8 +1,8 @@
 import {validateSnapshotViewMirrorRelation} from './viewMirrorRelation';
-import {applyMirrorEditing,mirrorWritesForCurves} from '../drawing/mirrorEditing';
+import {applyDrawingControlEditPlan,prepareDrawingControlEditPlan,type DrawingControlEditPlan} from '../drawing/controlEditPlan';
 import {snapshotWithObjectLocks,assertSnapshotObjectsUnlocked} from './objectLocks';
 import {layerUsesCage} from './layerDomainControlEdit';
-import {captureSnapshotDrawingControlTarget} from './drawingControlTargetEdit';
+import {prepareSnapshotDrawingControlTarget} from './drawingControlTargetEdit';
 import {snapshotPathMaterialValue} from './materialPathMapping';
 import {snapshotMaterialPartitionAddress,snapshotMaterialPartitionParentValue,snapshotMaterialPartitionValue,prepareSnapshotPartitionIntervalEdit} from './materialSplit';
 import {trySnapshotControlInverse} from './controlSpace';
@@ -34,7 +34,7 @@ import {createWarpGrid,moveWarpNode,validateWarpGrid,type WarpGrid} from '../vec
 import {sameAngle} from '../vectorRecording/interpolation';
 import {identityScenePlacement,identitySceneShape,type SceneTrack,type ScenePlacementValue,type SceneShapeValue,type SceneIntervalValue} from '../recordingScene/model';
 import {emptyRecordingSnapshot,emptySnapshotRecording,emptySnapshotDeformationState,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type SnapshotDeformationState,type SnapshotPoseTrack,type SnapshotControlResponse,type SnapshotEndpointResponses,type SnapshotTriangleResponses,type Angle} from './model';
-import {resolveSnapshot,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
+import {resolveSnapshot,retainSnapshotSavedEvaluationIdentity,evaluateRecordingSnapshot as evaluateWorkspace} from './evaluation';
 import {endpointPairCompatibility,endpointPairNodeAuthorities,invertEndpointPairCoordinate,interpolateEndpointPairGeometry,validateSnapshotControlResponse,validateSnapshotEndpointResponses} from './endpointPair';
 
 export interface SnapshotSelection {layerIds?:string[];warpIds?:string[]}
@@ -106,19 +106,58 @@ export interface SnapshotCreation {kind:'curve'|'node'|'recording'|'snapshot'|'l
 export interface SnapshotCommandEffects {created:SnapshotCreation[];removedIds:string[];idMap?:Record<string,string>;diagnostics?:Array<{code:string;message:string}>}
 export const allSnapshotIds=(workspace:RecordingSnapshotWorkspace):string[]=>[...Object.values(workspace.library).flatMap(map=>Object.keys(map)),...workspace.snapshots.flatMap(s=>[s.id,...Object.keys(s.nodeForks??{}),...s.layers.map(l=>l.id),...s.deformation.warps.map(w=>w.id),...(s.inheritedState?.warps??[]).map(w=>w.id)]),...workspace.recordings.flatMap(r=>[r.id,...r.tracks.flatMap(t=>[t.id,...t.keys.map(k=>k.id)])])];
 
-/** Commands mutate a detached transaction draft only. Validation of the complete
- * graph happens after the batch, so linked layer edits can be committed together. */
+/** The finite nonstructural command family can use snapshot-local copy on
+ * write. Everything else retains the detached structural writer and full
+ * validation; a caller cannot promote an unknown command with a trust flag. */
+const localCommands=new Set<SnapshotCommand['op']>(['setAngle','selectSnapshot','setLayerPlacement','setShapeElementPlacement','moveShapeNode','moveShapeHandle','transformShapeElements','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','setObjectLocks','saveSelected','discardSelected','updateSnapshot','setTolerance','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','updateEndpointCorrection','discardEndpointCorrection']);
+export function snapshotCommandStage(raw:unknown):'local'|'structural' {return raw&&typeof raw==='object'&&localCommands.has((raw as SnapshotCommand).op)?'local':'structural';}
 export interface SnapshotCommandOptions {
- /** Immutable native preview inputs use evaluation identities rather than JSON. */
- immutableInputs?:boolean;
- /** A placement-only batch preserves membership and locks. Its immutable
-  * preflight drawing can validate every layer without evaluating partial poses. */
+ /** A placement-only batch validates membership/locks against its one complete
+  * initial frame and checks linked-layer distances after all placements. */
  layerPlacementDrawing?:DrawingDocument;
- /** Internal preview copy-on-write boundary, only used by nonstructural commands. */
- snapshotForWrite?:(snapshotId:string)=>RecordingSnapshot;
- trackForWrite?:(trackId:string)=>SnapshotPoseTrack;
 }
+interface SnapshotCommandMutationOptions extends SnapshotCommandOptions {
+ readonly inputWorkspace?:RecordingSnapshotWorkspace;
+ readonly completeWorkspace?:(workspace:RecordingSnapshotWorkspace)=>void;
+ readonly snapshotForWrite?:(snapshotId:string)=>RecordingSnapshot;
+ readonly trackForWrite?:(trackId:string)=>SnapshotPoseTrack;
+}
+export interface PreparedSnapshotCommand {workspace:RecordingSnapshotWorkspace;effects:SnapshotCommandEffects;stage:'local'|'structural'}
+/** Every sequential command consumes one immutable, completed input and returns
+ * one completed candidate. Evaluation never observes an identity still being
+ * mutated by the command or another command later in its batch. */
+export function prepareSnapshotCommand(before:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandOptions={}):PreparedSnapshotCommand {
+ const original=before.recordings.find(recording=>recording.id===before.activeRecordingId),stage=snapshotCommandStage(raw);
+ if(stage==='structural'||original?.mode!=='triangulated'){
+  const draft=clone(before),effects=executeSnapshotCommand(draft,raw,options);return {workspace:draft,effects,stage:'structural'};
+ }
+ const recording={...original},draft={...before,recordings:before.recordings.map(value=>value===original?recording:value)},written=new Map<string,RecordingSnapshot>();
+ const snapshotForWrite=(snapshotId:string)=>{
+  const known=written.get(snapshotId);if(known)return known;
+  const source=before.snapshots.find(snapshot=>snapshot.id===snapshotId)??fail('NOT_FOUND','Snapshot does not exist.'),copy={...source,deformation:{...source.deformation,relationPositions:{...source.deformation.relationPositions}}};
+  // These commands write drafts only, so saved-basis evaluation remains valid.
+  if((raw as SnapshotCommand).op==='setLayerPlacement'||(raw as SnapshotCommand).op==='setShapeElementPlacement')retainSnapshotSavedEvaluationIdentity(copy,source);
+  written.set(snapshotId,copy);draft.snapshots=draft.snapshots.map(value=>value===source?copy:value);return copy;
+ };
+ let complete:RecordingSnapshotWorkspace|undefined;
+ const effects=executeSnapshotCommand(draft,raw,{...options,inputWorkspace:before,snapshotForWrite,completeWorkspace:workspace=>{complete=workspace;}});
+ if(complete)return {workspace:complete,effects,stage};
+ const changed=written.size>0||Object.keys(recording).some(key=>{const next=recording[key as keyof SnapshotRecording],prior=original[key as keyof SnapshotRecording];return next!==prior&&JSON.stringify(next)!==JSON.stringify(prior);});
+ return {workspace:changed?draft:before,effects,stage};
+}
+/** Compatibility for domain callers that deliberately own a mutable draft.
+ * Modern editor/API transactions consume prepareSnapshotCommand directly. */
 export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandOptions={}):SnapshotCommandEffects {
+ // Never register immutable evaluation caches under the mutable facade input.
+ const result=prepareSnapshotCommand(clone(workspace),raw,options);
+ const replace=<T extends object>(target:T,value:T):T=>{for(const key of Object.keys(target))if(!Object.hasOwn(value,key))delete (target as Record<string,unknown>)[key];return Object.assign(target,value);};
+ const snapshots=new Map(workspace.snapshots.map(value=>[value.id,value])),recordings=new Map(workspace.recordings.map(value=>[value.id,value]));
+ const next={...result.workspace,snapshots:result.workspace.snapshots.map(value=>snapshots.has(value.id)?replace(snapshots.get(value.id)!,value):value),recordings:result.workspace.recordings.map(value=>recordings.has(value.id)?replace(recordings.get(value.id)!,value):value)};
+ replace(workspace,next);return result.effects;
+}
+/** Existing typed writers own representation and geometry semantics. Structural
+ * writers mutate only their detached transaction; local reads stay frozen. */
+function executeSnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:unknown,options:SnapshotCommandMutationOptions={}):SnapshotCommandEffects {
  const c=object(raw,['op',...new Set(Object.values(fields).flat())]),op=c.op as SnapshotCommand['op'];if(!Object.hasOwn(fields,op))fail('UNKNOWN_COMMAND',`Unknown snapshot command: ${String(op)}`);object(c,['op',...fields[op]]);
  const membershipBefore=['removeLayers','excludeElements','moveLayers','applyDrawingTopology'].includes(op)?captureSnapshotResponseMembership(workspace):undefined;
  const effects:SnapshotCommandEffects={created:[],removedIds:[]};let occupied:Set<string>|undefined;
@@ -152,7 +191,7 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
  const ownedSnapshot=(value:unknown)=>{const s=findSnapshot(value);if(!recording.snapshotIds.includes(s.id))fail('NOT_FOUND','Snapshot does not belong to this Recording.');return s;};
  const layer=(value:unknown,s=snapshot())=>s.layers.find(l=>l.id===id(value,'layerId'))??fail('MISSING_LAYER','Layer does not exist in this snapshot.');
  const selectedLayers=(value:unknown,s=snapshot())=>ids(value).map(value=>layer(value,s));
- const evaluated=(s=snapshot(),at=recording.angle,useDraft=true)=>recording.mode==='endpoint-pair'||graph?evaluateWorkspace(workspace,recording.id,{snapshotId:s.id,angle:at,useDraft,diagnostics:'preview',immutableInputs:options.immutableInputs}):resolveSnapshot(workspace,s.id,{angle:at,useDraft});
+ const evaluated=(s=snapshot(),at=recording.angle,useDraft=true)=>recording.mode==='endpoint-pair'||graph?evaluateWorkspace(options.inputWorkspace??workspace,recording.id,{snapshotId:s.id,angle:at,useDraft,diagnostics:'preview',immutableInputs:!!options.inputWorkspace}):resolveSnapshot(options.inputWorkspace??workspace,s.id,{angle:at,useDraft});
  const state=()=>evaluated().state;
  const writable=(track:SnapshotPoseTrack)=>{if(track.draft&&!sameAngle(track.draft.angle,recording.angle))fail('OBJECT_DRAFT_AT_OTHER_ANGLE','This channel has a draft at another angle. Return to that angle or discard its draft.');};
  const ensureTrack=(channel:SnapshotPoseTrack['channel'],targetId:string,elementId?:string,sourceTrackId?:string):SnapshotPoseTrack=>{if(graph)return {id:JSON.stringify(['snapshot-local',channel,targetId,elementId,sourceTrackId]),channel,targetId,keys:[],...(elementId?{elementId}:{}),...(sourceTrackId?{sourceTrackId}:{})} as SnapshotPoseTrack;let track=recording.tracks.find(t=>t.channel===channel&&t.targetId===targetId&&(channel==='interval'?t.channel==='interval'&&t.sourceTrackId===sourceTrackId:t.elementId===elementId));if(!track){track={id:fresh(),channel,targetId,keys:[],interpolation:'independent',...(elementId?{elementId}:{}),...(sourceTrackId?{sourceTrackId}:{})} as SnapshotPoseTrack;recording.tracks.push(track);created('track',track.id);if(recording.mode==='endpoint-pair'){const seeds=recording.snapshotIds.map(sid=>{const view=findSnapshot(sid),saved=resolveSnapshot(workspace,view.id,{angle:view.angle,useDraft:false,diagnostics:'preview'}).state;return {view,value:channelValue(saved,track!)??defaultChannelValue(track!)};});for(const {view,value} of seeds){if(value===undefined)continue;const key={id:fresh(),angle:clone(view.angle),value:clone(value)};(track as SceneTrack<unknown>).keys.push(key);snapshotForWrite(view).authored=[...view.authored,{trackId:track.id,keyId:key.id}];created('key',key.id);}}}return track;};
@@ -279,19 +318,30 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
   if(save)writable.deformation=mergeSnapshotDeformation(writable.deformation,take);
   if(!left.layerDomains?.length&&!left.warps.length&&!left.bindings.length&&!Object.keys(left.layers).length&&!Object.keys(left.relationPositions).length)delete writable.draft;else writable.draft={...draft,deformation:left};
  };
- const captureControlTarget=(e:ReturnType<typeof evaluated>,wanted:DrawingDocument)=>{try{const writes=op==='transformShapeElements'?mirrorWritesForCurves(wanted,ids(c.curveIds)):op==='moveShapeNode'||op==='correctShapeNode'?{nodes:[{nodeId:String(c.nodeId),position:wanted.nodes.find(node=>node.id===c.nodeId)!.position}]}:{handles:[{curveId:String(c.curveId),end:c.end as 0|1,position:wanted.curves.find(curve=>curve.id===c.curveId)!.handles[c.end as 0|1]}]};return captureSnapshotDrawingControlTarget(workspace,recording,e,applyMirrorEditing(e.drawing,wanted,writes),fresh,{immutableInputs:options.immutableInputs});}catch(error){if(error&&typeof error==='object'&&'code' in error)fail(String(error.code),String('message' in error?error.message:error));throw error;}};
- const applySurfaceEdit=(e:ReturnType<typeof evaluated>)=>{
-  const surface=e.angleSurface;if(!surface?.simplex||surface.role==='outside')fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
-  const current=e.drawing;let wanted:DrawingDocument;
+ /** Geometry commands freeze the same authenticated producer used by Drawing
+  * gestures. Numeric/API nodes deliberately keep followStrength at zero. */
+ const applyControlTarget=(e:ReturnType<typeof evaluated>)=>{try{
+  if(graph&&!realVertex()&&(!e.angleSurface?.simplex||e.angleSurface.role==='outside'))fail('SURFACE_OUTSIDE_COVERAGE','This angle is outside saved snapshot coverage. Red projected geometry is read-only.');
+  const current=e.drawing;let plan:DrawingControlEditPlan,wanted:DrawingDocument;
   if(op==='transformShapeElements'){
-   const curveIds=ids(c.curveIds),delta=placement(c.value);for(const curveId of curveIds)if(!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Selected curve is not present in normal snapshot coverage.');
-   wanted=projectSnapshotTransformTargets(current,transform(current,curveIds,p=>applyScenePlacement(delta,p),true,false));
+   const curveIds=ids(c.curveIds),delta=placement(c.value);
+   for(const curveId of curveIds)if(!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Selected curve is not present in normal snapshot coverage.');
+   plan=prepareDrawingControlEditPlan(current,{kind:'curves',curveIds,preserveRelations:true});
+   wanted=applyDrawingControlEditPlan(plan,{kind:'map',map:point=>applyScenePlacement(delta,point),allowRelated:true,project:projectSnapshotTransformTargets});
   }else{
-   const owner=current.layers.find(layer=>layer.id===id(c.layerId,'layerId'))??fail('MISSING_LAYER','Layer is not present in normal snapshot coverage.');
-   if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');if(!current.curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not present in normal snapshot coverage.');wanted=moveNode(current,nodeId,point(c.position),true);}
-   else {const curveId=id(c.curveId,'curveId');if(!owner.items.includes(curveId)||!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Curve is not present in normal snapshot coverage.');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');wanted=moveHandle(current,{curveId,end:c.end as 0|1},point(c.position),true);}
+   const owner=current.layers.find(value=>value.id===id(c.layerId,'layerId'))??fail('MISSING_LAYER','Resolved layer is missing.'),position=point(c.position);
+   if(op==='moveShapeNode'||op==='correctShapeNode'){
+    const nodeId=id(c.nodeId,'nodeId');if(!current.curves.some(curve=>owner.items.includes(curve.id)&&curve.nodes.includes(nodeId)))fail('MISSING_ELEMENT','Node is not owned by this layer.');
+    plan=prepareDrawingControlEditPlan(current,{kind:'node',nodeId,followStrength:0,allowHidden:true});
+   }else{
+    const curveId=id(c.curveId,'curveId');if(!owner.items.includes(curveId)||!current.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Curve is not owned by this layer.');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');
+    plan=prepareDrawingControlEditPlan(current,{kind:'handle',endpoint:{curveId,end:c.end as 0|1},allowHidden:true});
+   }
+   wanted=applyDrawingControlEditPlan(plan,{kind:'point',position});
   }
-  const result=captureControlTarget(e,wanted);if(result.graph)recording.angleGraph=result.graph;for(const value of result.snapshots??[])snapshotForWrite(findSnapshot(value.id)).draft=value.draft;
+   const input=options.inputWorkspace??clone(workspace),next=prepareSnapshotDrawingControlTarget(input,{recordingId:recording.id,snapshotId:e.snapshotId,angle:recording.angle,beforeDrawing:current,drawing:wanted,controlPlan:plan});
+   if(options.completeWorkspace)options.completeWorkspace(next);else Object.assign(workspace,next);
+  }catch(error){if(error&&typeof error==='object'&&'code' in error)fail(String(error.code),String('message' in error?error.message:error));throw error;}
  };
  const applySurfaceIntervalEdit=()=>{
   const e=evaluated(),surface=e.angleSurface;
@@ -390,19 +440,12 @@ export function applySnapshotCommand(workspace:RecordingSnapshotWorkspace,raw:un
    for(const curveId of curveIds){const owner=e.drawing.layers.find(layer=>layer.items.includes(curveId))!;setDraft(ensureTrack('placement',owner.id,curveId),value);}break;
   }
   case 'correctShapeNode':case 'correctShapeHandle':case 'moveShapeNode':case 'moveShapeHandle':case 'transformShapeElements':{
-   if(graph&&!realVertex()){applySurfaceEdit(evaluated());break;}
+   if(graph&&!realVertex()){applyControlTarget(evaluated());break;}
    if(pairIntermediate&&op==='transformShapeElements'){applyPairTransform();break;}
    if(!graph&&(op==='correctShapeNode'||op==='correctShapeHandle'||pairIntermediate)){applyPairCorrection(op==='moveShapeNode'||op==='correctShapeNode'?'node':'handle');break;}
    const e=evaluated();
    const targetLayers=op==='transformShapeElements'?e.drawing.layers.filter(layer=>(c.curveIds as string[]).some(id=>layer.items.includes(id))).map(layer=>layer.id):[String(c.layerId)];
-   if(graph||targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){
-    if(op!=='transformShapeElements'){const owner=layer(c.layerId),resolved=e.drawing.layers.find(value=>value.id===owner.id)!;if(op==='moveShapeNode'||op==='correctShapeNode'){if(!e.drawing.curves.some(curve=>resolved.items.includes(curve.id)&&curve.nodes.includes(String(c.nodeId))))fail('MISSING_ELEMENT','Node is not owned by this layer.');}else if(!resolved.items.includes(String(c.curveId)))fail('MISSING_ELEMENT','Curve is not owned by this layer.');}
-    let world:DrawingDocument;
-    if(op==='transformShapeElements'){const curveIds=ids(c.curveIds),delta=placement(c.value);world=transform(e.drawing,curveIds,p=>applyScenePlacement(delta,p),true,false);world=projectSnapshotTransformTargets(e.drawing,world);}
-    else if(op==='moveShapeNode'||op==='correctShapeNode'){const nodeId=id(c.nodeId,'nodeId');world=moveNode(e.drawing,nodeId,point(c.position),true);}
-    else{const curveId=id(c.curveId,'curveId');if(c.end!==0&&c.end!==1)fail('INVALID_REQUEST','end must be 0 or 1.');world=moveHandle(e.drawing,{curveId,end:c.end as 0|1},point(c.position),true);}
-    const result=captureControlTarget(e,world);if(result.snapshot)snapshotForWrite(snapshot()).draft=result.snapshot.draft;break;
-   }
+   if(graph||targetLayers.some(id=>layerUsesCage(e.state.layerDomains,id))){applyControlTarget(e);break;}
    const current=e.preElementPlacementDrawing,base=e.preShapeDrawing,relationNodes=new Set<string>();let next:DrawingDocument;
    if(op==='transformShapeElements'){
     const curveIds=ids(c.curveIds),delta=placement(c.value);for(const curveId of curveIds)if(!e.drawing.curves.some(curve=>curve.id===curveId))fail('MISSING_ELEMENT','Selected curve does not exist.');

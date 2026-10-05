@@ -50,7 +50,9 @@ export function prepareDrawingControlEditPlan(before:DrawingDocument,intent:Draw
  const controls:DrawingScalarControl[]=[...nodeList.map(nodeId=>Object.freeze({kind:'node' as const,nodeId})),...handleQueue.map(e=>Object.freeze({kind:'handle' as const,curveId:e.curveId,end:e.end}))];
  const plan:DrawingControlEditPlan=Object.freeze({before,intent:structuredClone(intent),controls:Object.freeze(controls),curveIds:Object.freeze(curveList),nodeIds:Object.freeze(nodeList),structureUnchanged:true,...fallbackReason?{fallbackReason}:{}});plans.set(plan,{domainPlan,index,scope,nodeIds,handleKeys:new Set(handles.keys()),curveIds});work.plans++;cache.set(cacheKey,plan);return plan;
 }
-export type DrawingControlEditValue={kind:'point';position:Point2}|{kind:'map';map:(point:Point2)=>Point2;allowRelated?:boolean}|{kind:'transform';value:ScenePlacementValue}|{kind:'cage';intent:LayerCageDomainIntent};
+/** A representation adapter may use its existing relation projector before
+ * mirror propagation. The same closure checks authenticate its final output. */
+export type DrawingControlEditValue={kind:'point';position:Point2}|{kind:'map';map:(point:Point2)=>Point2;allowRelated?:boolean;project?:(before:DrawingDocument,target:DrawingDocument)=>DrawingDocument}|{kind:'transform';value:ScenePlacementValue}|{kind:'cage';intent:LayerCageDomainIntent};
 /** Shared authoring adapter. Existing Drawing commands own all geometry math.
  * A scoped operation uses the compiled closure; merging preserves every other
  * control and all topology/appearance identities by construction. */
@@ -59,7 +61,7 @@ export function applyDrawingControlEditPlan(plan:DrawingControlEditPlan,value:Dr
  const execute=(base:DrawingDocument):DrawingDocument=>{work[base===before?'fullAuthoring':'scopedAuthoring']++;work.authoredCurves+=base.curves.length;let next:DrawingDocument;
  if(intent.kind==='node'&&value.kind==='point')next=applyMirrorEditing(base,dragNode(base,intent.nodeId,value.position,intent.followStrength??0,intent.allowHidden),{nodes:[{nodeId:intent.nodeId,position:value.position}]});
  else if(intent.kind==='handle'&&value.kind==='point')next=applyMirrorEditing(base,moveHandle(base,intent.endpoint,value.position,intent.allowHidden),{handles:[{...intent.endpoint,position:value.position}]});
- else if(intent.kind==='curves'&&(value.kind==='transform'||value.kind==='map')){const raw=transform(base,[...intent.curveIds],value.kind==='map'?value.map:point=>applyScenePlacement(value.value,point),value.kind==='map'&&value.allowRelated===true,intent.allowHidden),target=intent.preserveRelations?{...raw,joins:base.joins}:raw;next=applyMirrorEditing(base,target,value.kind==='map'?mirrorWritesForCurves(target,intent.curveIds):{});}
+ else if(intent.kind==='curves'&&(value.kind==='transform'||value.kind==='map')){const raw=transform(base,[...intent.curveIds],value.kind==='map'?value.map:point=>applyScenePlacement(value.value,point),value.kind==='map'&&value.allowRelated===true,intent.allowHidden),target=intent.preserveRelations?{...raw,joins:base.joins}:raw,projected=value.kind==='map'&&value.project?value.project(base,target):target;next=applyMirrorEditing(base,projected,value.kind==='map'?mirrorWritesForCurves(projected,intent.curveIds):{});}
  else if(intent.kind==='domain'&&value.kind==='cage'){
   if(JSON.stringify(intent.layerIds)!==JSON.stringify(value.intent.scope.layerIds))throw Error('The cage scope changed during this gesture.');
   // Reuse the frozen semantic membership, while the canonical complete

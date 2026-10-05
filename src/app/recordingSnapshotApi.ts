@@ -1,10 +1,9 @@
-import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
+import {prepareSnapshotEdit,snapshotEditContext} from './snapshotEditTransaction';
 import type {LandmarkProject} from '../domain/landmarks/model';
-import {applySnapshotCommand,allSnapshotIds,SnapshotCommandError,snapshotCommandNames as allSnapshotCommandNames,type SnapshotCommand,type SnapshotCreation} from '../domain/recordingSnapshot/commands';
-import {parseRecordingSnapshots} from '../domain/recordingSnapshot/persistence';
+import {prepareSnapshotCommand,snapshotCommandStage,allSnapshotIds,SnapshotCommandError,snapshotCommandNames as allSnapshotCommandNames,type SnapshotCommand,type SnapshotCreation} from '../domain/recordingSnapshot/commands';
 import {ensureRecordingSnapshots} from '../domain/recordingSnapshot/migration';
-import {evaluateRecordingSnapshot as evaluateWorkspace,resolveSnapshot,retainSnapshotSavedEvaluationIdentity,type SnapshotEvaluationOptions} from '../domain/recordingSnapshot/evaluation';
-import {emptyRecordingSnapshotWorkspace,type RecordingSnapshotWorkspace,type RecordingSnapshot,type Angle} from '../domain/recordingSnapshot/model';
+import {evaluateRecordingSnapshot as evaluateWorkspace,resolveSnapshot,type SnapshotEvaluationOptions} from '../domain/recordingSnapshot/evaluation';
+import {emptyRecordingSnapshotWorkspace,type RecordingSnapshotWorkspace,type RecordingSnapshot,type SnapshotRecording,type Angle} from '../domain/recordingSnapshot/model';
 import {recordingPoseTrackIndex} from '../domain/recordingSnapshot/tracks';
 import {recordingRetirementStatus,assertRecordingProjectActive,RECORDING_RETIRED_MESSAGE} from '../domain/recordingSnapshot/retirement';
 
@@ -22,62 +21,67 @@ const bool=(v:unknown):boolean=>typeof v==='boolean'?v:fail('INVALID_REQUEST','E
 const list=(v:unknown):string[]=>{if(!Array.isArray(v)||v.length>16384)fail('INVALID_REQUEST','Expected an ID array.');return (v as unknown[]).map(id);};
 function assertProjectRecordingActive(project:LandmarkProject):void {try{assertRecordingProjectActive(project);}catch{fail('LEGACY_RECORDING_RETIRED',recordingRetiredReason);}}
 
-/** One pure, detached plan shared by the native UI and the JSON editing facade.
- * A failed command or graph check never writes any project/source/history state. */
-export function prepareSnapshotBatch(project:LandmarkProject,raw:unknown){
+/** Both native previews and external requests use this command transaction.
+ * JSON request/body validation remains at the edge; completed command outputs
+ * stay immutable through sequential authoring and the common project gate. */
+function prepareSnapshotCommands(project:LandmarkProject,raw:unknown,validation:'full'|'preview'){
  const request=object(raw,['recordingId','commands','expectedRevision','dryRun']);if(request.expectedRevision!==undefined)id(request.expectedRevision);if(request.dryRun!==undefined)bool(request.dryRun);if(!Array.isArray(request.commands)||request.commands.length>1000)fail('INVALID_REQUEST','commands must contain at most 1000 items.');
  assertProjectRecordingActive(project);
- const before=project.recordingSnapshots??emptyRecordingSnapshotWorkspace(),draft=parseRecordingSnapshots(ensureRecordingSnapshots(project).recordingSnapshots),priorActive=draft.activeRecordingId;let explicitSelection=false;
- if(request.recordingId!==undefined){const target=id(request.recordingId);if(!draft.recordings.some(r=>r.id===target))fail('NOT_FOUND','Recording does not exist.');draft.activeRecordingId=target;}
- const placementOnly=(request.commands as SnapshotCommand[]).length>0&&(request.commands as SnapshotCommand[]).every(command=>command?.op==='setLayerPlacement');
+ const before=project.recordingSnapshots??emptyRecordingSnapshotWorkspace();
+ const commands=request.commands as unknown[],placementOnly=commands.length>0&&commands.every(command=>(command as SnapshotCommand)?.op==='setLayerPlacement');
  let placementEvaluation:ReturnType<typeof resolveSnapshot>|undefined;
- const placementChecks=new Map<string,{snapshotId:string;angle:Angle;distances:Map<string,number>;commandIndex:number}>();
- const linkDistances=(evaluation:ReturnType<typeof resolveSnapshot>)=>new Map((evaluation.drawing.endpointLinks??[]).map(link=>{const a=evaluation.drawing.curves.find(c=>c.id===link.a.curveId),b=evaluation.drawing.curves.find(c=>c.id===link.b.curveId),p=a&&evaluation.drawing.nodes.find(n=>n.id===a.nodes[link.a.end])?.position,q=b&&evaluation.drawing.nodes.find(n=>n.id===b.nodes[link.b.end])?.position;return [link.id,p&&q?Math.hypot(p[0]-q[0],p[1]-q[1]):Infinity] as const;}));
+ const placementChecks=new Map<string,{recordingId:string;snapshotId:string;angle:Angle;distances:Map<string,number>;commandIndex:number}>();
+ const linkDistances=(evaluation:ReturnType<typeof resolveSnapshot>)=>new Map((evaluation.drawing.endpointLinks??[]).map(link=>{const a=evaluation.drawing.curves.find(curve=>curve.id===link.a.curveId),b=evaluation.drawing.curves.find(curve=>curve.id===link.b.curveId),p=a&&evaluation.drawing.nodes.find(node=>node.id===a.nodes[link.a.end])?.position,q=b&&evaluation.drawing.nodes.find(node=>node.id===b.nodes[link.b.end])?.position;return [link.id,p&&q?Math.hypot(p[0]-q[0],p[1]-q[1]):Infinity] as const;}));
  const refs=new Map<string,string>(),created:Array<SnapshotCreation&{commandIndex:number}>=[],removedIds:string[]=[],idMaps:Array<{commandIndex:number;idMap:Record<string,string>}>=[],diagnostics:Array<{code:string;message:string}>=[];
- const canonical=(value:string)=>allSnapshotIds(draft).includes(value);
- const dereference=(value:unknown,key=''):unknown=>{if(typeof value==='string'&&/Id$|Ids$/.test(key)&&value.startsWith('$')){if(canonical(value))return value;return refs.get(value.slice(1))??fail('UNKNOWN_REFERENCE',`Unknown batch reference ${value}.`);}if(Array.isArray(value))return value.map(v=>dereference(v,key));if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,dereference(v,k)]));return value;};
- for(const [index,command] of (request.commands as unknown[]).entries())try{
-  const op=(command as SnapshotCommand)?.op;if(retiredCreationOps.has(op))fail('LEGACY_RECORDING_RETIRED',`${op} is retired. Use createTriangulatedRecording for a new Recording. ${recordingRetiredReason}`);const resolved=dereference(command);if(op==='setLayerPlacement'){const current=draft.recordings.find(r=>r.id===draft.activeRecordingId),sid=current?.activeSnapshotId;if(current&&sid){const key=JSON.stringify([sid,current.angle]);if(!placementChecks.has(key)){const evaluation=current.mode==='triangulated'?evaluateWorkspace(draft,current.id,{angle:current.angle,diagnostics:'preview'}):resolveSnapshot(draft,sid,{angle:current.angle,diagnostics:'preview'});if(placementOnly)placementEvaluation=evaluation;placementChecks.set(key,{snapshotId:sid,angle:structuredClone(current.angle),distances:linkDistances(evaluation),commandIndex:index});}}}const effects=applySnapshotCommand(draft,resolved,placementEvaluation?{layerPlacementDrawing:placementEvaluation.drawing}:undefined);if(['createTriangulatedRecording','selectRecording','deleteRecording'].includes(op))explicitSelection=true;
-  for(const item of effects.created){if(item.ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(item.ref))fail('INVALID_REQUEST','Invalid batch ref.');if(refs.has(item.ref))fail('DUPLICATE_REFERENCE','Batch refs must be unique.');if(canonical(`$${item.ref}`))fail('REFERENCE_COLLISION','Batch ref collides with a canonical ID.');refs.set(item.ref,item.id);}created.push({...item,commandIndex:index});}removedIds.push(...effects.removedIds);diagnostics.push(...effects.diagnostics??[]);if(effects.idMap)idMaps.push({commandIndex:index,idMap:effects.idMap});
- }catch(error){const e=error as Error;throw new SnapshotApiError(e instanceof SnapshotApiError||e instanceof SnapshotCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index);}
- const inherited=propagateAutomaticSnapshotLayers(before,draft);draft.snapshots=inherited.workspace.snapshots;diagnostics.push(...inherited.diagnostics);
- const recordingId=draft.activeRecordingId,recording=draft.recordings.find(r=>r.id===recordingId),snapshotId=recording?.activeSnapshotId;if(request.recordingId!==undefined&&!explicitSelection)draft.activeRecordingId=priorActive;
- for(const check of placementChecks.values()){if(!draft.snapshots.some(s=>s.id===check.snapshotId))continue;const owner=draft.recordings.find(recording=>recording.snapshotIds.includes(check.snapshotId)),result=owner?.mode==='triangulated'?evaluateWorkspace(draft,owner.id,{angle:check.angle,diagnostics:'preview'}):resolveSnapshot(draft,check.snapshotId,{angle:check.angle,diagnostics:'preview'}),distances=linkDistances(result);for(const link of result.drawing.endpointLinks??[]){if((check.distances.get(link.id)??Infinity)>1e-8||(distances.get(link.id)??0)<=1e-8)continue;const owners=[link.a,link.b].map(end=>result.drawing.layers.find(layer=>layer.items.includes(end.curveId)));if(owners[0]?.id===owners[1]?.id)continue;throw new SnapshotApiError('LINKED_LAYER_PLACEMENT',`Placement separates linked layers ${owners.map(layer=>layer?.name??'missing layer').join(' and ')}. Include both linked layers in the same placement transform.`,check.commandIndex);}}
- let recordingSnapshots;try{recordingSnapshots=parseRecordingSnapshots(draft);const needsResolution=(request.commands as SnapshotCommand[]).some(c=>['pasteLayers','moveLayers','cloneLayers','createSnapshot','createEndpointPairRecording','createTriangulatedRecordingCopy','removeLayers','rebindLayers','setWarp','deleteWarp'].includes(c.op));if(needsResolution&&snapshotId&&!recording?.legacy)recording?.mode==='triangulated'?evaluateWorkspace(draft,recording.id,{useDraft:true,angle:recording.angle,diagnostics:'preview'}):resolveSnapshot(draft,snapshotId,{useDraft:true,angle:recording?.angle,diagnostics:'preview'});}catch(error){throw new SnapshotApiError('CONSTRAINT_VIOLATION',(error as Error).message,(request.commands as unknown[]).length? (request.commands as unknown[]).length-1:undefined);}
- return {before,recordingSnapshots,recordingId,snapshotId,angle:recording?.angle,changed:JSON.stringify(before)!==JSON.stringify(recordingSnapshots),dryRun:request.dryRun===true,created,removedIds:[...new Set(removedIds)],idMaps,diagnostics};
+ let completed!:{workspace:RecordingSnapshotWorkspace;recordingId?:string;recording?:SnapshotRecording;snapshotId?:string};
+ let preparedPlan:ReturnType<typeof prepareSnapshotEdit>;
+ try{preparedPlan=prepareSnapshotEdit(snapshotEditContext(project,false),{kind:'snapshot-build',validation:commands.some(command=>snapshotCommandStage(command)==='structural')?'full':validation,build:initial=>{
+ const priorActive=initial.activeRecordingId;let candidate=initial,explicitSelection=false;
+ if(request.recordingId!==undefined){const target=id(request.recordingId);if(!candidate.recordings.some(recording=>recording.id===target))fail('NOT_FOUND','Recording does not exist.');if(target!==candidate.activeRecordingId)candidate={...candidate,activeRecordingId:target};}
+ const canonical=(value:string)=>allSnapshotIds(candidate).includes(value);
+ const dereference=(value:unknown,key=''):unknown=>{if(typeof value==='string'&&/Id$|Ids$/.test(key)&&value.startsWith('$')){if(canonical(value))return value;return refs.get(value.slice(1))??fail('UNKNOWN_REFERENCE',`Unknown batch reference ${value}.`);}if(Array.isArray(value))return value.map(value=>dereference(value,key));if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,value])=>[key,dereference(value,key)]));return value;};
+ for(const [index,command] of commands.entries())try{
+  const op=(command as SnapshotCommand)?.op;
+  if(retiredCreationOps.has(op))fail('LEGACY_RECORDING_RETIRED',`${op} is retired. Use createTriangulatedRecording for a new Recording. ${recordingRetiredReason}`);
+  const resolved=dereference(command);
+  if(op==='setLayerPlacement'){
+   const current=candidate.recordings.find(recording=>recording.id===candidate.activeRecordingId),snapshotId=current?.activeSnapshotId;
+   if(current&&snapshotId){const key=JSON.stringify([current.id,snapshotId,current.angle]);if(!placementChecks.has(key)){
+    // This identity is complete and will never be mutated. Placement-only
+    // batches intentionally share one frame for membership and lock checks.
+    const evaluation=current.mode==='triangulated'?evaluateWorkspace(candidate,current.id,{angle:current.angle,diagnostics:'preview',immutableInputs:true}):resolveSnapshot(candidate,snapshotId,{angle:current.angle,diagnostics:'preview'});
+    if(placementOnly)placementEvaluation=evaluation;
+    placementChecks.set(key,{recordingId:current.id,snapshotId,angle:{...current.angle},distances:linkDistances(evaluation),commandIndex:index});
+   }}
+  }
+  const prepared=prepareSnapshotCommand(candidate,resolved,placementEvaluation?{layerPlacementDrawing:placementEvaluation.drawing}:undefined);candidate=prepared.workspace;
+  if(['createTriangulatedRecording','selectRecording','deleteRecording'].includes(op))explicitSelection=true;
+  for(const item of prepared.effects.created){if(item.ref!==undefined){if(!/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(item.ref))fail('INVALID_REQUEST','Invalid batch ref.');if(refs.has(item.ref))fail('DUPLICATE_REFERENCE','Batch refs must be unique.');if(canonical(`$${item.ref}`))fail('REFERENCE_COLLISION','Batch ref collides with a canonical ID.');refs.set(item.ref,item.id);}created.push({...item,commandIndex:index});}
+  removedIds.push(...prepared.effects.removedIds);diagnostics.push(...prepared.effects.diagnostics??[]);if(prepared.effects.idMap)idMaps.push({commandIndex:index,idMap:prepared.effects.idMap});
+ }catch(error){const value=error as Error;throw new SnapshotApiError(value instanceof SnapshotApiError||value instanceof SnapshotCommandError?value.code:'CONSTRAINT_VIOLATION',value.message,index);}
+ const recordingId=candidate.activeRecordingId,recording=candidate.recordings.find(recording=>recording.id===recordingId),snapshotId=recording?.activeSnapshotId;
+ if(request.recordingId!==undefined&&!explicitSelection&&candidate.activeRecordingId!==priorActive)candidate={...candidate,activeRecordingId:priorActive};
+ completed={workspace:candidate,recordingId,recording,snapshotId};return candidate;
+ }});}catch(error){if(error instanceof SnapshotApiError)throw error;throw new SnapshotApiError('CONSTRAINT_VIOLATION',(error as Error).message,commands.length?commands.length-1:undefined);}
+ const {recordingId,recording,snapshotId}=completed,recordingSnapshots=preparedPlan.project.recordingSnapshots??completed.workspace;diagnostics.push(...preparedPlan.diagnostics??[]);
+ // Linked placements are a coherent batch constraint, checked on the complete
+ // propagated candidate, never on a partially written mutable snapshot.
+ for(const check of placementChecks.values()){
+  if(!recordingSnapshots.snapshots.some(snapshot=>snapshot.id===check.snapshotId))continue;
+  const owner=recordingSnapshots.recordings.find(recording=>recording.id===check.recordingId),result=owner?.mode==='triangulated'?evaluateWorkspace(recordingSnapshots,owner.id,{angle:check.angle,diagnostics:'preview',immutableInputs:true}):resolveSnapshot(recordingSnapshots,check.snapshotId,{angle:check.angle,diagnostics:'preview'}),distances=linkDistances(result);
+  for(const link of result.drawing.endpointLinks??[]){if((check.distances.get(link.id)??Infinity)>1e-8||(distances.get(link.id)??0)<=1e-8)continue;const owners=[link.a,link.b].map(end=>result.drawing.layers.find(layer=>layer.items.includes(end.curveId)));if(owners[0]?.id===owners[1]?.id)continue;throw new SnapshotApiError('LINKED_LAYER_PLACEMENT',`Placement separates linked layers ${owners.map(layer=>layer?.name??'missing layer').join(' and ')}. Include both linked layers in the same placement transform.`,check.commandIndex);}
+ }
+ try{const needsResolution=commands.some(command=>['pasteLayers','moveLayers','cloneLayers','createSnapshot','createEndpointPairRecording','createTriangulatedRecordingCopy','removeLayers','rebindLayers','setWarp','deleteWarp'].includes((command as SnapshotCommand).op));if(needsResolution&&snapshotId&&!recording?.legacy)recording?.mode==='triangulated'?evaluateWorkspace(recordingSnapshots,recording.id,{useDraft:true,angle:recording.angle,diagnostics:'preview',immutableInputs:true}):resolveSnapshot(recordingSnapshots,snapshotId,{useDraft:true,angle:recording?.angle,diagnostics:'preview'});}
+ catch(error){throw new SnapshotApiError('CONSTRAINT_VIOLATION',(error as Error).message,commands.length?commands.length-1:undefined);}
+ return {before,recordingSnapshots,preparedPlan,recordingId,snapshotId,angle:recording?.angle,changed:preparedPlan.changed,dryRun:request.dryRun===true,created,removedIds:[...new Set(removedIds)],idMaps,diagnostics};
 }
-
+export function prepareSnapshotBatch(project:LandmarkProject,raw:unknown){return prepareSnapshotCommands(project,raw,'full');}
 export interface SnapshotPreviewRequest {recordingId?:string;commands:readonly SnapshotCommand[]}
-const localPreviewOps=new Set<SnapshotCommand['op']>(['setAngle','selectSnapshot','setLayerPlacement','setShapeElementPlacement','moveShapeNode','moveShapeHandle','transformShapeElements','editWarpNodes','setVisibility','setLayerOrder','changeInterval','setIntervalEnd','setIntervalEnabled','discardSelected','setTolerance','correctShapeNode','correctShapeHandle','setControlResponse','resetControlResponse','updateEndpointCorrection','discardEndpointCorrection']);
-/** Trusted native UI preview. Canonical geometry, saved keys, source snapshots
- * and archive remain immutable shared inputs. External JSON requests always use
- * prepareSnapshotBatch, including external dry runs. Structural UI commands
- * take that same fully validated path rather than widening this fast boundary. */
+/** Native command bodies use the same typed writers; structural operations
+ * select explicit full validation rather than a widened preview trust flag. */
 export function prepareSnapshotPreview(project:LandmarkProject,request:SnapshotPreviewRequest):SnapshotBatchPlan {
- const q=object(request,['recordingId','commands']);if(!Array.isArray(q.commands)||q.commands.length>1000)fail('INVALID_REQUEST','commands must contain at most 1000 items.');
- assertProjectRecordingActive(project);
- if(request.commands.some(command=>!localPreviewOps.has(command.op)))return prepareSnapshotBatch(project,{...request,dryRun:true});
- const before=ensureRecordingSnapshots(project).recordingSnapshots,recordingId=request.recordingId===undefined?before.activeRecordingId:id(request.recordingId),original=before.recordings.find(r=>r.id===recordingId)??fail('NO_RECORDING','Create or select a Recording first.'),changesTracks=request.commands.some(command=>!['setAngle','selectSnapshot','setTolerance'].includes(command.op));
- const placementOnly=request.commands.length>0&&request.commands.every(command=>command.op==='setLayerPlacement');
- const recording={...original,...(original.endpointPair?{endpointPair:structuredClone(original.endpointPair)}:{}),tracks:changesTracks&&!(placementOnly&&original.mode==='triangulated')?[...original.tracks]:original.tracks};
- const draft:RecordingSnapshotWorkspace={...before,recordings:before.recordings.map(r=>r===original?recording:r),snapshots:before.snapshots,activeRecordingId:recording.id},written=new Map<string,RecordingSnapshot>();
- const snapshotForWrite=(snapshotId:string)=>{const known=written.get(snapshotId);if(known)return known;const index=draft.snapshots.findIndex(s=>s.id===snapshotId),source=draft.snapshots[index];if(!source)fail('NOT_FOUND','Snapshot does not exist.');const copy={...source,deformation:{...source.deformation,relationPositions:{...source.deformation.relationPositions}}};if(placementOnly)retainSnapshotSavedEvaluationIdentity(copy,source);if(draft.snapshots===before.snapshots)draft.snapshots=[...before.snapshots];draft.snapshots[index]=copy;written.set(snapshotId,copy);return copy;};
- const writableTracks=new Set<string>();const trackForWrite=(trackId:string)=>{const index=recording.tracks.findIndex(t=>t.id===trackId),track=recording.tracks[index];if(!track)fail('NOT_FOUND','Track does not exist.');if(writableTracks.has(trackId)||!original.tracks.includes(track))return track;const copy={...track};recording.tracks[index]=copy;writableTracks.add(trackId);return copy;};
- const created:Array<SnapshotCreation&{commandIndex:number}>=[],removedIds:string[]=[],checks=new Map<string,{snapshotId:string;angle:Angle;distances:Map<string,number>;commandIndex:number}>();
- const distances=(evaluation:ReturnType<typeof resolveSnapshot>)=>new Map((evaluation.drawing.endpointLinks??[]).map(link=>{const a=evaluation.drawing.curves.find(c=>c.id===link.a.curveId),b=evaluation.drawing.curves.find(c=>c.id===link.b.curveId),p=a&&evaluation.drawing.nodes.find(n=>n.id===a.nodes[link.a.end])?.position,q=b&&evaluation.drawing.nodes.find(n=>n.id===b.nodes[link.b.end])?.position;return [link.id,p&&q?Math.hypot(p[0]-q[0],p[1]-q[1]):Infinity] as const;}));
- // Layer placement changes neither membership nor locks. Resolve its immutable
- // input once, then evaluate only the complete copied snapshot. Evaluating
- // between writes would cache a partially edited pose under that same identity.
- let placementEvaluation:ReturnType<typeof resolveSnapshot>|undefined;
- for(const [index,command] of request.commands.entries())try{
-  if(command.op==='setLayerPlacement'&&recording.activeSnapshotId){const key=JSON.stringify([recording.activeSnapshotId,recording.angle]);if(!checks.has(key)){const evaluation=recording.mode==='triangulated'?evaluateWorkspace(draft,recording.id,{angle:recording.angle,diagnostics:'preview',immutableInputs:placementOnly}):resolveSnapshot(draft,recording.activeSnapshotId,{angle:recording.angle,diagnostics:'preview',immutableInputs:placementOnly});if(placementOnly)placementEvaluation=evaluation;checks.set(key,{snapshotId:recording.activeSnapshotId,angle:{...recording.angle},distances:distances(evaluation),commandIndex:index});}}
-  const effects=applySnapshotCommand(draft,command,{snapshotForWrite,trackForWrite,immutableInputs:placementOnly||request.commands.length===1,...(placementEvaluation?{layerPlacementDrawing:placementEvaluation.drawing}:{})});created.push(...effects.created.map(item=>({...item,commandIndex:index})));removedIds.push(...effects.removedIds);
- }catch(error){const e=error as Error;throw new SnapshotApiError(e instanceof SnapshotApiError||e instanceof SnapshotCommandError?e.code:'CONSTRAINT_VIOLATION',e.message,index);}
- for(const check of checks.values()){const evaluation=recording.mode==='triangulated'?evaluateWorkspace(draft,recording.id,{angle:check.angle,diagnostics:'preview',immutableInputs:placementOnly}):resolveSnapshot(draft,check.snapshotId,{angle:check.angle,diagnostics:'preview',immutableInputs:placementOnly}),after=distances(evaluation);for(const link of evaluation.drawing.endpointLinks??[]){if((check.distances.get(link.id)??Infinity)>1e-8||(after.get(link.id)??0)<=1e-8)continue;const owners=[link.a,link.b].map(end=>evaluation.drawing.layers.find(layer=>layer.items.includes(end.curveId)));if(owners[0]?.id===owners[1]?.id)continue;throw new SnapshotApiError('LINKED_LAYER_PLACEMENT',`Placement separates linked layers ${owners.map(layer=>layer?.name??'missing layer').join(' and ')}. Include both linked layers in the same placement transform.`,check.commandIndex);}}
- if(request.recordingId!==undefined)draft.activeRecordingId=before.activeRecordingId;
- if(recording.tracks.length===original.tracks.length&&recording.tracks.every((track,index)=>track===original.tracks[index]))recording.tracks=original.tracks;
- const changed=written.size>0||recording.angleGraph!==original.angleGraph||JSON.stringify(recording.endpointPair)!==JSON.stringify(original.endpointPair)||recording.angle.x!==original.angle.x||recording.angle.y!==original.angle.y||recording.activeSnapshotId!==original.activeSnapshotId||recording.tolerance!==original.tolerance||recording.tracks.length!==original.tracks.length||recording.tracks.some((track,index)=>track.draft!==original.tracks[index]?.draft&&JSON.stringify(track.draft)!==JSON.stringify(original.tracks[index]?.draft));
- return {before,recordingSnapshots:changed?draft:before,recordingId:recording.id,snapshotId:recording.activeSnapshotId,angle:recording.angle,changed,dryRun:true,created,removedIds:[...new Set(removedIds)],idMaps:[],diagnostics:[]};
+ const query=object(request,['recordingId','commands']);if(!Array.isArray(query.commands)||query.commands.length>1000)fail('INVALID_REQUEST','commands must contain at most 1000 items.');
+ return prepareSnapshotCommands(project,{...request,dryRun:true},request.commands.some(command=>snapshotCommandStage(command)==='structural')?'full':'preview');
 }
 
 export function snapshotOverview(project:LandmarkProject,raw:unknown={}){
