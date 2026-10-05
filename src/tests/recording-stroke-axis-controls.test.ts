@@ -1,3 +1,4 @@
+import {emptySnapshotDeformationState} from '../domain/recordingSnapshot/model';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,test} from 'vitest';
@@ -13,7 +14,7 @@ import {snapshotStrokeTransformFrame,snapshotStrokeDeltaCommands,snapshotStrokeV
 function fixture(value:ScenePlacementValue=identityScenePlacement()){
  let material=addLayer(emptyDrawing(),'Profile');material=createCurve(material,material.layers[0].id,[[0,0],[.35,.8],[.8,.9],[1,2]],.01,'Edited profile');
  const curve=material.curves[0],drawing={...material,nodes:material.nodes.map(node=>({...node,position:applyScenePlacement(value,node.position)})),curves:material.curves.map(curve=>({...curve,handles:curve.handles.map(point=>applyScenePlacement(value,point)) as [Point2,Point2]}))};
- const evaluation={drawing,state:{layerDomains:[]},placements:{},preElementPlacementDrawing:material,elementPlacements:{[curve.id]:value}} as SnapshotEvaluation;
+ const evaluation={drawing,state:emptySnapshotDeformationState(),placements:{},preElementPlacementDrawing:material,elementPlacements:{[curve.id]:value}} as SnapshotEvaluation;
  return {evaluation,curve,material};
 }
 
