@@ -37,7 +37,6 @@ export function propagateAutomaticSnapshotLayers(before:RecordingSnapshotWorkspa
     // An explicit re-add clears that layer's earlier deletion intent.
     for(const [baseId] of currentByBase)if(previous&&!previous.layers.some(layer=>inherited(previous,layer)&&layer.baseLayerId===baseId))excluded.delete(baseId);
     let orderOverride=!!snapshot.parentLayers!.orderOverride;
-    if(previous){const currentIds=new Set(snapshot.layers.map(layer=>layer.id)),old=previous.layers.filter(layer=>currentIds.has(layer.id)).map(layer=>layer.id),oldIds=new Set(old),current=snapshot.layers.filter(layer=>oldIds.has(layer.id)).map(layer=>layer.id);if(!same(old,current))orderOverride=true;}
     const desired:ReferencedSnapshotLayer[]=[],occupied=new Set(snapshot.layers.filter(layer=>!inherited(snapshot,layer)).map(layer=>layer.id));
     for(const source of sourceLayers){
      if(excluded.has(source.id))continue;const existing=currentByBase.get(source.id);
@@ -46,6 +45,17 @@ export function propagateAutomaticSnapshotLayers(before:RecordingSnapshotWorkspa
      // keeps a temporarily missing parent's child residual address intact.
      if(occupied.has(source.id)){diagnostics.push({code:'MISSING_LAYER',snapshotId:id,layerId:source.id,message:'A local layer already owns this inherited slot ID; the local layer is retained.'});continue;}
      desired.push({kind:'reference',id:source.id,name:source.name,baseSnapshotId:parent.id,baseLayerId:source.id});
+    }
+    if(previous&&!orderOverride){
+     const currentIds=new Set(snapshot.layers.map(layer=>layer.id)),old=previous.layers.filter(layer=>currentIds.has(layer.id)).map(layer=>layer.id),oldIds=new Set(old),current=snapshot.layers.filter(layer=>oldIds.has(layer.id)).map(layer=>layer.id);
+     if(!same(old,current)){
+      // A topology command can already have propagated before the enclosing
+      // project transaction reaches this same before/candidate pair. Recognize
+      // the parent's current order in the old inherited slots, keeping local
+      // slots fixed; that automatic result is not a new authored override.
+      const inheritedIds=new Set(snapshot.layers.filter(layer=>inherited(snapshot,layer)).map(layer=>layer.id)),remaining=desired.filter(layer=>oldIds.has(layer.id)).map(layer=>layer.id),automatic=old.map(id=>inheritedIds.has(id)?remaining.shift()??id:id);
+      if(!same(current,automatic))orderOverride=true;
+     }
     }
     const retained=snapshot.layers.filter(layer=>!inherited(snapshot,layer)||available.has(layer.baseLayerId)&&!excluded.has(layer.baseLayerId));
     let layers:SnapshotLayer[];
