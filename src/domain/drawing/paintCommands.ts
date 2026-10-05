@@ -1,4 +1,4 @@
-import {DEFAULT_FILL_MIST,validFillMist} from './model';
+import {DEFAULT_FILL_MIST,validFillMist,validDepthAppearance} from './model';
 import {groupFor,uid,curveById,shapeOf,layerFor,objectById,editable,length,sub,finitePoint,validInkEnds,validContourMist,DEFAULT_PEN_TAPER_SCALE,type CurveUse,type DrawingDocument as Doc,type InkStyle,type InkEndStyle,type InkEnds,type FillRegion,type OffsetRelation} from './model';
 import {groupObjectIds,selectionUnit,orderGroups} from './groups';
 import {normalizeOrder,strokeFor,strokeIds,strokeObjectIds,paintItems,strokePaths,layerTree} from './strokes';
@@ -54,6 +54,8 @@ export function changePaint(d:Doc,id:string,change:Partial<FillRegion&OffsetRela
  if(d.fills.some(f=>f.id===id)){
   if(change.color!==undefined&&!['white','black','transparent'].includes(change.color))return d;
   const next={...d.fills.find(f=>f.id===id)!,...change};
+  if(!validDepthAppearance(next))throw Error('深度偏移须为整数。');
+  if(next.color==='transparent'&&(Object.hasOwn(change,'depthOffset')||Object.hasOwn(change,'depthScope')))throw Error('透明挖空不支持深度偏移。');
   if(next.color==='transparent'&&next.mist?.enabled)next.mist={...next.mist,enabled:false};
   if(!validFillMist(next.mist))throw Error('雾化填充参数无效。');
   return {...d,fills:d.fills.map(f=>f.id===id?next:f)};
