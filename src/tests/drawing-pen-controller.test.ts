@@ -36,3 +36,44 @@ test('Undo cancels a pending drag or unsaved anchor before touching document his
  expect(penHistoryAction(false,true,null)).toBe('cancel-gesture');expect(penHistoryAction(false,false,{position:[0,0],out:[0,0]})).toBe('cancel-anchor');
  expect(penHistoryAction(true,false,{position:[0,0],out:[0,0]})).toBe('history');expect(penHistoryAction(false,false,{position:[1,0],out:[0,0],last:'curve'})).toBe('history');
 });
+
+test('preview and finish retain the exact pen candidate for one gesture and equal options',()=>{
+ const {document,options}=fixture(),first=end(document,null,[0,0],[.4,.5],options).state;
+ const gesture=movePenGesture(beginPenGesture(document,first,[1,0]),[1.3,.4]),preview=previewPenGesture(gesture,options)!;
+ expect(previewPenGesture(gesture,{...options})).toBe(preview);
+ const result=finishPenGesture(gesture,{...options});expect(result.candidate).toBe(preview);expect(result.candidate!.document).toBe(preview.document);expect(result.state).toBe(preview.next);
+ expect(finishPenGesture(gesture,options).candidate).toBe(preview);
+});
+
+test('finish without a prior preview prepares one candidate and retains it for later reads',()=>{
+ const {document,options}=fixture(),first=end(document,null,[0,0],[0,0],options).state,gesture=beginPenGesture(document,first,[1,0]);
+ const result=finishPenGesture(gesture,options);expect(result.candidate).toBeDefined();expect(previewPenGesture(gesture,options)).toBe(result.candidate);
+});
+
+test('moving a gesture creates a fresh candidate without altering a retained earlier target',()=>{
+ const {document,options}=fixture(),first=end(document,null,[0,0],[0,0],options).state,gesture=beginPenGesture(document,first,[1,0]),preview=previewPenGesture(gesture,options)!,before=JSON.stringify(preview);
+ const moved=movePenGesture(gesture,[1.3,.4]),next=previewPenGesture(moved,options)!;
+ expect(next).not.toBe(preview);expect(next.next.last).not.toBe(preview.next.last);expect(next.shape).not.toEqual(preview.shape);expect(finishPenGesture(moved,options).candidate).toBe(next);
+ expect(finishPenGesture(gesture,options).candidate).toBe(preview);expect(JSON.stringify(preview)).toBe(before);
+});
+
+test.each([
+ {width:.02},{unit:200},{join:'SMOOTH'},{taperScale:4},{preserveAuthoredBrush:true},
+] satisfies Partial<PenOptions>[])('a changed pen option %j replaces the candidate even if the options object is reused',change=>{
+ const {document,options}=fixture(),first=end(document,null,[0,0],[0,0],options).state,gesture=beginPenGesture(document,first,[1,0]),preview=previewPenGesture(gesture,options)!;
+ Object.assign(options,change);const next=previewPenGesture(gesture,options)!;
+ expect(next).not.toBe(preview);expect(next.next.last).not.toBe(preview.next.last);expect(finishPenGesture(gesture,{...options}).candidate).toBe(next);
+});
+
+test('layer changes replace the candidate and invalid options cannot return a stale target',()=>{
+ const {document,options}=fixture(),base=addLayer(document,'Other'),first=end(base,null,[0,0],[0,0],options).state,gesture=beginPenGesture(base,first,[1,0]),preview=previewPenGesture(gesture,options)!;
+ options.layerId=base.layers.find(layer=>layer.id!==options.layerId)!.id;const next=previewPenGesture(gesture,options)!;
+ expect(next).not.toBe(preview);expect(next.document.layers.find(layer=>layer.id===options.layerId)!.items).toContain(next.next.last);
+ const invalid={...options,layerId:null};expect(()=>previewPenGesture(gesture,invalid)).toThrow();expect(()=>finishPenGesture(gesture,invalid)).toThrow();
+});
+
+test('changed pixel scale can suppress a previously previewed segment',()=>{
+ const {document,options}=fixture(),first=end(document,null,[0,0],[0,0],options).state,gesture=beginPenGesture(document,first,[.03,0]);
+ expect(previewPenGesture(gesture,options)).toBeDefined();options.unit=10;
+ expect(previewPenGesture(gesture,options)).toBeUndefined();expect(finishPenGesture(gesture,options)).toEqual({state:first});
+});

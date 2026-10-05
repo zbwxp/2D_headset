@@ -132,6 +132,29 @@ type Harness=ReturnType<typeof harness>;
 function boxFor(h:Harness,id:string):[Point2,Point2]{const bounds=selectionBounds(h.source,[id])!;return [h.screen([bounds.min[0]-.04,bounds.max[1]+.04]),h.screen([bounds.max[0]+.04,bounds.min[1]-.04])];}
 function marquee(h:Harness,id:string,shift=false){const [start,end]=boxFor(h,id);h.down(start,shift);h.move(end,shift);h.up(end,shift);}
 
+test.each([
+ ['Drawing','p'],['Recording','p'],['Drawing','l'],['Recording','l'],
+] as const)('%s: %s release retains the previewed topology IDs and commits only once',(consumer,key)=>{
+ const h=harness(consumer),start=h.screen([-.5,.1]),end=h.screen([.4,.2]),handle=h.screen([.5,.3]);h.key(key);
+ if(key==='p'){h.down(start);h.up(start);}
+ h.down(key==='p'?end:start);h.move(handle);const preview=h.shown();
+ expect(preview.curves.length).toBeGreaterThan(h.source.curves.length);expect(h.historyCount()).toBe(0);
+ h.up(handle);h.up(handle);
+ expect(h.historyCount()).toBe(1);expect(h.drawing().curves).toEqual(preview.curves);expect(h.drawing().nodes).toEqual(preview.nodes);
+ if(consumer==='Recording')expect(h.commit.mock.calls[0][1]).toBe(preview);
+ expect(h.error).not.toHaveBeenCalled();
+});
+
+test.each([
+ ['Drawing','p'],['Recording','p'],['Drawing','l'],['Recording','l'],
+] as const)('%s: canceling %s discards its preview and never commits on release',(consumer,key)=>{
+ const h=harness(consumer),start=h.screen([-.5,.1]),end=h.screen([.4,.2]),handle=h.screen([.5,.3]);h.key(key);
+ if(key==='p'){h.down(start);h.up(start);}
+ h.down(key==='p'?end:start);h.move(handle);expect(h.shown().curves.length).toBeGreaterThan(h.source.curves.length);
+ h.key('Escape');h.up(handle);
+ expect(h.historyCount()).toBe(0);expect(h.drawing()).toBe(h.source);expect(h.shown()).toBe(h.source);expect(h.error).not.toHaveBeenCalled();
+});
+
 function checkCornerScale(consumer:'Drawing'|'Recording',shift:boolean){
  const h=harness(consumer,{selected:['a']}),bounds=selectionBounds(h.source,['a'])!,origin=bounds.max;
  const pointerAt=(sx:number,sy:number):Point2=>h.screen([origin[0]+(bounds.min[0]-origin[0])*sx,origin[1]+(bounds.min[1]-origin[1])*sy]);

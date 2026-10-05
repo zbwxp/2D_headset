@@ -10,6 +10,13 @@ export interface PenGesture {base:DrawingDocument;from:PenState|null;start:Point
 export interface PenCandidate {document:DrawingDocument;next:PenState;closed:boolean;shape:Cubic}
 export interface PenResult {state:PenState|null;candidate?:PenCandidate}
 
+// A moved gesture has a new identity. Retain only its latest option snapshot so
+// pointer release adopts the displayed document, including its generated IDs.
+const candidates=new WeakMap<PenGesture,{options:PenOptions;candidate:PenCandidate|undefined}>();
+function samePenOptions(a:PenOptions,b:PenOptions):boolean {
+ return a.layerId===b.layerId&&a.unit===b.unit&&a.width===b.width&&a.join===b.join&&a.taperScale===b.taperScale&&a.preserveAuthoredBrush===b.preserveAuthoredBrush;
+}
+
 export function beginPenGesture(base:DrawingDocument,from:PenState|null,start:Point2,origin=start):PenGesture {
  return {base,from,start:[...start],origin:[...origin],cursor:[...start]};
 }
@@ -35,7 +42,10 @@ export function penCandidate(base:DrawingDocument,from:PenState,to:Point2,handle
  return {document,next:{position:target,out:join==='SMOOTH'?sub(target,actual[2]):[0,0],last:id,first},closed,shape:actual};
 }
 export function previewPenGesture(gesture:PenGesture,options:PenOptions):PenCandidate|undefined {
- return gesture.from&&length(sub(gesture.start,gesture.from.position))*options.unit>2?penCandidate(gesture.base,gesture.from,gesture.start,gesture.cursor,options):undefined;
+ const retained=candidates.get(gesture);if(retained&&samePenOptions(retained.options,options))return retained.candidate;
+ candidates.delete(gesture);
+ const snapshot={...options},candidate=gesture.from&&length(sub(gesture.start,gesture.from.position))*snapshot.unit>2?penCandidate(gesture.base,gesture.from,gesture.start,gesture.cursor,snapshot):undefined;
+ candidates.set(gesture,{options:snapshot,candidate});return candidate;
 }
 export function finishPenGesture(gesture:PenGesture,options:PenOptions):PenResult {
  if(!gesture.from)return {state:{position:gesture.start,out:sub(gesture.cursor,gesture.start)}};

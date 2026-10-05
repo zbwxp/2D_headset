@@ -12,6 +12,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),
  useEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
 }));
 vi.mock('../ui/drawing/session',async original=>{const actual=await original<typeof import('../ui/drawing/session')>();return {...actual,useDrawing:Object.assign((selector:(state:ReturnType<typeof actual.useDrawing.getState>)=>unknown)=>selector(actual.useDrawing.getState()),actual.useDrawing)};});
+vi.mock('../app/workspaceView',async original=>{const actual=await original<typeof import('../app/workspaceView')>();return {...actual,useWorkspaceView:Object.assign((selector:(state:ReturnType<typeof actual.useWorkspaceView.getState>)=>unknown)=>selector(actual.useWorkspaceView.getState()),actual.useWorkspaceView)};});
 class Target {constructor(readonly tag='svg'){}closest(selector:string){return selector.split(',').includes(this.tag)?this:null;}}
 const listeners=new Map<string,(event:unknown)=>void>();
 beforeEach(()=>{hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();vi.stubGlobal('Element',Target);vi.stubGlobal('window',{addEventListener:(name:string,fn:(event:unknown)=>void)=>listeners.set(name,fn),removeEventListener:(name:string,fn:unknown)=>{if(listeners.get(name)===fn)listeners.delete(name);}});});
@@ -42,8 +43,8 @@ const near=(a:Point2,b:Point2)=>a.forEach((n,i)=>expect(n).toBeCloseTo(b[i],9));
 test('P authors the visible translated target through one adapter with native continuation, width, and handle geometry',()=>{
  const h=harness(),before=h.drawing(),start:Point2=[4.2,6.5],end:Point2=[5.8,6.6],handle:Point2=[5.9,7];h.key('p');expect(h.tool()).toBe('pen');
  click(h,h.point(start));expect(h.commit).not.toHaveBeenCalled();expect(h.element('recording-pen-anchor')).toBeDefined();
- const endScreen=h.point(end);down(h,endScreen);move(h,h.point(handle));expect(h.commit).not.toHaveBeenCalled();expect(h.paint().props.d.curves.length).toBe(2);up(h,h.point(handle));
- expect(h.commit).toHaveBeenCalledTimes(1);expect(h.past).toHaveLength(1);expect(h.drawing().curves[0]).toEqual(before.curves[0]);
+ const endScreen=h.point(end);down(h,endScreen);move(h,h.point(handle));expect(h.commit).not.toHaveBeenCalled();const preview=h.paint().props.d;expect(preview.curves.length).toBe(2);up(h,h.point(handle));up(h,h.point(handle));
+ expect(h.commit).toHaveBeenCalledTimes(1);expect(h.commit.mock.calls[0][1]).toBe(preview);expect(h.drawing()).toBe(preview);expect(h.past).toHaveLength(1);expect(h.drawing().curves[0]).toEqual(before.curves[0]);
  const curve=h.drawing().curves.at(-1)!,shape=shapeOf(h.drawing(),curve.id);near(shape[0],start);near(shape[3],end);near(shape[2],[5.7,6.2]);near(h.point(end),endScreen);
  click(h,h.point([5.4,6.9]));expect(h.drawing().curves.at(-1)!.nodes[0]).toBe(curve.nodes[1]);expect(h.commit).toHaveBeenCalledTimes(2);expect(h.error).not.toHaveBeenCalled();
 });
