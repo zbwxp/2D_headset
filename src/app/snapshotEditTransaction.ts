@@ -9,7 +9,7 @@ import {prepareRecordingLayerDomainWorkspace,type RecordingLayerDomainEdit} from
 import {prepareRecordingContext,resolveSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {hasNonlinearDeformationFor,evaluatedMaterialProgram} from '../domain/drawing/evaluatedDeformation';
 import {prepareSnapshotDrawingTopologyEdit,prepareSnapshotLocalDrawingEdit,type SnapshotDrawingTopologyEdit,type SnapshotLocalDrawingEdit} from '../domain/recordingSnapshot/drawingTopology';
-import {buildDrawingLayerDomainEdit,buildDrawingSnapshotEdit,type DrawingSnapshotEditIntent} from './drawingSnapshotEdit';
+import {canDeferDrawingSourceSynchronization,buildDrawingLayerDomainEdit,buildDrawingSnapshotEdit,type DrawingSnapshotEditIntent} from './drawingSnapshotEdit';
 import type {LandmarkProject} from '../domain/landmarks/model';
 import {propagateAutomaticSnapshotLayers} from '../domain/recordingSnapshot/automaticSnapshotEdits';
 import {parseDrawing,type DrawingDocument} from '../domain/drawing/model';
@@ -44,7 +44,8 @@ export function snapshotEditContext(project:LandmarkProject,canEditOriginals:boo
 export type SnapshotEdit =
  | {kind:'object-locks';snapshotId:string;changes:SnapshotObjectLocks}
  | ({kind:'recording-layer-domain'}&RecordingLayerDomainEdit)
- | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
+ | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean;validation?:'full'|'preview'}
+ | {kind:'drawing-source-target';beforeDrawing:DrawingDocument;drawing:DrawingDocument;intent?:DrawingSnapshotEditIntent}
  | {kind:'drawing-document';drawing:DrawingDocument;intent?:DrawingSnapshotEditIntent;validation?:'full'|'preview'}
  | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent;validation?:'full'|'preview'}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
@@ -65,7 +66,7 @@ const same=(before:unknown,after:unknown)=>before===after||JSON.stringify(before
 // The receipt is runtime-only. Spreading a plan to add adapter metadata keeps
 // it, while JSON and a caller-supplied revision cannot manufacture acceptance.
 const receiptKey=Symbol('prepared snapshot edit');
-type ValidationStage='full'|'preview';
+type ValidationStage='full'|'preview'|'source-target';
 interface PreparedReceipt {
  readonly before:LandmarkProject;
  readonly project:LandmarkProject;
@@ -73,6 +74,7 @@ interface PreparedReceipt {
  readonly revision:number;
  readonly validation:ValidationStage;
  finalized?:SnapshotEditPlan;
+ completeSource?:()=>SnapshotEditPlan;
 }
 const receipts=new WeakMap<object,PreparedReceipt>();
 const frozenValues=new WeakSet<object>();
@@ -109,6 +111,7 @@ export function finalizePreparedSnapshotEdit<T extends SnapshotEditPlan>(plan:T,
  const receipt=preparedReceipt(plan);
  if(currentProject!==undefined&&currentProject!==receipt.before)throw Error('Snapshot edit became stale before commit.');
  if(receipt.validation==='full'||!plan.changed)return plan;
+ if(receipt.validation==='source-target'){if(!receipt.finalized)receipt.finalized=receipt.completeSource!();preparedReceipt(receipt.finalized);return {...plan,...receipt.finalized} as T;}
  if(!receipt.finalized){
   const candidate=receipt.project,workspace=candidate.recordingSnapshots;
   const recordingSnapshots=workspace&&normalizePreparedWorkspace(workspace,workspace);
@@ -122,7 +125,7 @@ export function finalizePreparedSnapshotEdit<T extends SnapshotEditPlan>(plan:T,
  * can certify an arbitrary project by copying a revision or a native flag. */
 export function composePreparedSnapshotEdits(before:LandmarkProject,steps:readonly SnapshotEditPlan[]):SnapshotEditPlan {
  let project=before,validation:ValidationStage='full';const diagnostics:NonNullable<SnapshotEditPlan['diagnostics']>[number][]=[];
- for(const step of steps){const receipt=preparedReceipt(step);if(step.before!==project)throw Error('Prepared snapshot edits must form one exact project sequence.');project=step.project;if(receipt.validation==='preview')validation='preview';if(step.diagnostics)diagnostics.push(...step.diagnostics);}
+ for(const step of steps){const receipt=preparedReceipt(step);if(receipt.validation==='source-target')throw Error('Accept the prepared source target before composing project transactions.');if(step.before!==project)throw Error('Prepared snapshot edits must form one exact project sequence.');project=step.project;if(receipt.validation==='preview')validation='preview';if(step.diagnostics)diagnostics.push(...step.diagnostics);}
  return issuePreparedEdit({before,project,changed:project!==before,...(diagnostics.length?{diagnostics}:{})},validation);
 }
 const sourceOnly=(snapshot:RecordingSnapshot)=>({
@@ -211,13 +214,22 @@ function prepareOriginalState(before:LandmarkProject,incoming:DrawingSnapshotSta
 export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  if(context.workspace!==context.project.recordingSnapshots)throw Error('The snapshot edit context must belong to its exact project.');
  freezeCandidate(context.project);
- const revision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);
+ const revision=currentPreparedEditRevision();
+ if(edit.kind==='drawing-source-target'){
+  assertRecordingProjectActive(context.project);assertCoupledBasisEditOwnership(context.workspace,edit);
+  if(!context.canEditOriginals||!canDeferDrawingSourceSynchronization(context.project,edit.beforeDrawing))throw Error('Only an unchanged pure-source Drawing presentation can defer source synchronization.');
+  freezeCandidate(edit.beforeDrawing);freezeCandidate(edit.drawing);
+  const plan=issuePreparedEdit({before:context.project,project:context.project,changed:edit.drawing!==edit.beforeDrawing},'source-target',revision);
+  preparedReceipt(plan).completeSource=()=>prepareSnapshotEdit(context,{kind:'drawing-document',drawing:edit.drawing,intent:edit.intent});
+  return plan;
+ }
+ const plan=buildSnapshotEditPlan(context,edit);
  if(revision!==currentPreparedEditRevision())throw Error('This prepared edit was canceled during preparation.');
  adoptPreparedWorkspace(plan.before,plan.project);
  if(receiptKey in plan){preparedReceipt(plan);return plan;}
  return issuePreparedEdit(plan,'validation' in edit&&edit.validation==='preview'?'preview':'full',revision);
 }
-function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
+function buildSnapshotEditPlan(context:SnapshotEditContext,edit:Exclude<SnapshotEdit,{kind:'drawing-source-target'}>):SnapshotEditPlan{
  assertRecordingProjectActive(context.project);
  assertCoupledBasisEditOwnership(context.workspace,edit);
  if(edit.kind==='snapshot-build'){
@@ -231,7 +243,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:{...workspace,snapshots:workspace.snapshots.map(value=>value===snapshot?next:value)}});
  }
  if(edit.kind==='recording-layer-domain')return prepareSnapshotEdit(context,{kind:'snapshot-state',workspace:prepareRecordingLayerDomainWorkspace(context.project,edit),validation:edit.validation});
- if(edit.kind==='layer-domain')return buildDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
+ if(edit.kind==='layer-domain')return buildDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated,validation:edit.validation});
  if(edit.kind==='drawing-document'){
   if(!context.canEditOriginals)throw Error('Drawing document edits require the original-source adapter in Drawing mode.');
   return buildDrawingSnapshotEdit(context.project,edit.drawing,edit.intent,{validation:edit.validation});

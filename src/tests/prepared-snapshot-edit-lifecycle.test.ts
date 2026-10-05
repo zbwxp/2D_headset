@@ -15,7 +15,7 @@ import {emptyDrawing,type DrawingDocument} from '../domain/drawing/model';
 import {moveHandle} from '../domain/drawing/commands';
 import {createSnapshotAngleGraph} from '../domain/recordingSnapshot/angleGraph';
 import {emptyRecordingSnapshot,emptyRecordingSnapshotWorkspace,emptySnapshotRecording,type RecordingSnapshotWorkspace} from '../domain/recordingSnapshot/model';
-import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
+import {getRecordingEvaluationStageTotals,evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {canonicalElementId,drawingSnapshotForArtwork,remapDrawingIdentities,upsertDrawingSource} from '../domain/recordingSnapshot/sources';
 import {getSnapshotSurfaceTargetWorkStats} from '../domain/recordingSnapshot/surfaceTargets';
 import * as persistence from '../domain/recordingSnapshot/persistence';
@@ -110,4 +110,21 @@ it('freezes every accepted transaction baseline even when replaced snapshots are
  expect(Object.isFrozen(beforeSnapshot)).toBe(true);expect(()=>{beforeSnapshot.name='Late mutation';}).toThrow();
  expect(plan.before.recordingSnapshots!.snapshots[0].name).not.toBe('Late mutation');
  expect(finalizePreparedSnapshotEdit(plan,project).project.recordingSnapshots!.snapshots[0].name).toBe('Replacement');
+});
+
+it('stages a pure-source target under the same receipt and synchronizes once on acceptance',()=>{
+ const drawing:DrawingDocument={...emptyDrawing(),nodes:[{id:'a',position:[0,0]},{id:'b',position:[1,0]}],curves:[{id:'curve',name:'Source',nodes:['a','b'],handles:[[.3,0],[.7,0]],width:.01,visible:true,locked:false}],layers:[{id:'layer',name:'Layer',items:['curve'],visible:true,locked:false}]};
+ const project={...createEmptyProject(),drawing,recordingSnapshots:upsertDrawingSource(emptyRecordingSnapshotWorkspace(),'$working',drawing)},before=currentDrawingPresentation(project),controlPlan=prepareDrawingControlEditPlan(before,{kind:'handle',endpoint:{curveId:'curve',end:0}}),wanted=applyDrawingControlEditPlan(controlPlan,{kind:'point',position:[.3,.2]}),parse=vi.spyOn(persistence,'parseRecordingSnapshots');
+ const stages=getRecordingEvaluationStageTotals(),accepted=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'drawing-source-target',beforeDrawing:before,drawing:wanted,intent:{kind:'geometry-authoring',controlPlan}});expect(getRecordingEvaluationStageTotals()).toEqual(stages);expect(()=>composePreparedSnapshotEdits(project,[accepted])).toThrow(/Accept the prepared source target/);
+ expect(accepted.project).toBe(project);expect(accepted.changed).toBe(true);expect(parse).not.toHaveBeenCalled();expect(()=>{wanted.curves[0].handles[0][0]=8;}).toThrow();expect(project.drawing.curves[0].handles[0]).toEqual([.3,0]);
+ const full=finalizePreparedSnapshotEdit(accepted,project),calls=parse.mock.calls.length;expect(calls).toBeGreaterThan(0);expect(full.project.drawing!.curves[0].handles[0]).toEqual([.3,.2]);expect(finalizePreparedSnapshotEdit(accepted,project).project).toBe(full.project);expect(parse).toHaveBeenCalledTimes(calls);
+ useEditor.setState({project,past:[],future:[]});useEditor.getState().commitPreparedSnapshotEdit(accepted);expect(useEditor.getState().past).toEqual([project]);expect(useEditor.getState().project).toBe(full.project);expect(parse).toHaveBeenCalledTimes(calls);useEditor.getState().undo();expect(useEditor.getState().project).toBe(project);useEditor.getState().redo();expect(useEditor.getState().project).toBe(full.project);
+});
+it('canceled and stale source targets cannot synchronize or enter history',()=>{
+ const drawing=emptyDrawing(),project={...createEmptyProject(),drawing},wanted={...drawing,mirrorAxisX:1},accepted=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'drawing-source-target',beforeDrawing:drawing,drawing:wanted}),parse=vi.spyOn(persistence,'parseRecordingSnapshots');
+ expect(()=>finalizePreparedSnapshotEdit(accepted,{...project})).toThrow(/stale/);invalidatePreparedEdits();expect(()=>finalizePreparedSnapshotEdit(accepted,project)).toThrow(/canceled|stale/);expect(parse).not.toHaveBeenCalled();expect(project.drawing.mirrorAxisX).not.toBe(1);
+});
+it('source-target receipts cannot stand in for an evaluated Recording or reference target',()=>{
+ const project=fixture(),before=evaluateRecordingSnapshot(project.recordingSnapshots,'recording',{immutableInputs:true}).drawing;
+ expect(()=>prepareSnapshotEdit(snapshotEditContext(project,false),{kind:'drawing-source-target',beforeDrawing:before,drawing:before})).toThrow(/pure-source/);
 });

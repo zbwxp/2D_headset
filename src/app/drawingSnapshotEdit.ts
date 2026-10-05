@@ -77,6 +77,23 @@ function originalLayerTargets(source:Doc,before:Doc,next:Doc,view:DrawingSnapsho
  return layers.map(layer=>{const raw=source.layers.find(value=>value.id===layer.id),prior=before.layers.find(value=>value.id===layer.id),visible=layer.items.filter(id=>owners.get(id)===layer.id),oldVisible=prior?.items.filter(id=>sourceIds.has(id))??[],moved=!same(oldVisible,layer.items.filter(id=>sourceIds.has(id)))||visible.some(id=>!raw?.items.includes(id)),retained=raw?.items.filter(id=>owners.get(id)===layer.id)??[];return {...layer,items:moved?[...visible,...retained.filter(id=>!visible.includes(id))]:[...retained,...visible.filter(id=>!retained.includes(id))]};});
 }
 
+/** Pure-source previews already are the visible Drawing target. Their write
+ * strategy synchronizes other source consumers once on acceptance. References
+ * and local output stages must prepare a complete evaluated candidate instead. */
+const sourcePreviewPolicies=new WeakMap<LandmarkProject,WeakMap<Doc,boolean>>();
+export function canDeferDrawingSourceSynchronization(project:LandmarkProject,before:Doc):boolean {
+ const cacheable=Object.isFrozen(project)&&Object.isFrozen(before),cached=cacheable?sourcePreviewPolicies.get(project)?.get(before):undefined;if(cached!==undefined)return cached;
+ const result=plainDrawingSourcePresentation(project,before);if(cacheable){const policies=sourcePreviewPolicies.get(project)??new WeakMap<Doc,boolean>();policies.set(before,result);sourcePreviewPolicies.set(project,policies);}return result;
+}
+function plainDrawingSourcePresentation(project:LandmarkProject,before:Doc):boolean {
+ if(!project.drawing)return false;
+ const workspace=project.recordingSnapshots,view=workspace&&drawingSnapshotPresentation(workspace,project.drawingSnapshots?.activeId??'$working');
+ if(!view)return currentDrawingPresentation(project)===before;
+ if(view.drawing!==before||[...view.layerOwners.values(),...view.objectOwners.values()].some(owner=>owner.kind!=='source-original'))return false;
+ const snapshot=workspace!.snapshots.find(value=>value.id===view.snapshotId)!,state=snapshot.deformation;
+ return !snapshot.draft&&!snapshot.inheritedState&&!snapshot.inputMirror&&!Object.keys(snapshot.nodeAliases??{}).length&&!Object.keys(state.layers).length&&!state.warps.length&&!state.bindings.length&&!state.layerDomains?.length&&!Object.keys(state.relationPositions??{}).length;
+}
+
 export interface DrawingSnapshotEditPlan extends SnapshotEditPlan {
  /** Original-only legacy document; never contains referenced geometry. */
  sourceDrawing?:Doc;
@@ -88,17 +105,18 @@ export interface DrawingSnapshotEditPlan extends SnapshotEditPlan {
  * edit their source through the common Drawing command; references persist a
  * local placement and consume the existing Warp/shape/placement evaluator.
  * Resolving this plan also supplies the preview, including deferred ARC ink. */
-export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:LayerDomainIntent,options:{canEditOriginals?:boolean;allowRelated?:boolean}={}):DrawingSnapshotEditPlan&{drawing:Doc} {
- return prepareSnapshotEdit(snapshotEditContext(project,options.canEditOriginals!==false),{kind:'layer-domain',intent,allowRelated:options.allowRelated}) as DrawingSnapshotEditPlan&{drawing:Doc};
+export function prepareDrawingLayerDomainEdit(project:LandmarkProject,intent:LayerDomainIntent,options:{canEditOriginals?:boolean;allowRelated?:boolean;validation?:'full'|'preview'}={}):DrawingSnapshotEditPlan&{drawing:Doc} {
+ return prepareSnapshotEdit(snapshotEditContext(project,options.canEditOriginals!==false),{kind:'layer-domain',intent,allowRelated:options.allowRelated,validation:options.validation}) as DrawingSnapshotEditPlan&{drawing:Doc};
 }
 /** Internal producer; callers enter through prepareDrawingLayerDomainEdit. */
-export function buildDrawingLayerDomainEdit(project:LandmarkProject,intent:LayerDomainIntent,options:{canEditOriginals?:boolean;allowRelated?:boolean}={}):DrawingSnapshotEditPlan&{drawing:Doc} {
+export function buildDrawingLayerDomainEdit(project:LandmarkProject,intent:LayerDomainIntent,options:{canEditOriginals?:boolean;allowRelated?:boolean;validation?:'full'|'preview'}={}):DrawingSnapshotEditPlan&{drawing:Doc} {
  assertLayerDomainIntent(intent);
  const artworkId=project.drawingSnapshots?.activeId??'$working',workspace=project.recordingSnapshots,view=workspace&&drawingSnapshotPresentation(workspace,artworkId),before=view?.drawing??project.drawing;
  if(!before)throw new DrawingSnapshotEditCapabilityError('The original Drawing document is unavailable.');
  const targets=new Set(intent.scope.layerIds),cageMembers=intent.domain.kind==='h-coons'?layerCageCurveIds(before,{...intent.domain,layerIds:intent.scope.layerIds}):undefined;
  for(const id of targets){const layer=before.layers.find(layer=>layer.id===id);if(!layer)throw new DrawingSnapshotEditCapabilityError('A layer domain target no longer exists.');if(layer.locked||before.curves.some(curve=>layer.items.includes(curve.id)&&(!cageMembers||cageMembers.has(curve.id))&&curve.locked))throw new DrawingSnapshotEditCapabilityError('Unlock the selected layer and its curves before transforming the cage scope.');}
  const matrix=intent.domain.kind==='h-coons'?undefined:layerDomainMatrix(intent);
+ if(options.validation==='preview'&&options.canEditOriginals!==false&&!intent.replace&&!(intent.domain.kind!=='placement-similarity'&&intent.domain.enabled===false)&&canDeferDrawingSourceSynchronization(project,before)){const drawing=markFinalizedGeometry(applyLayerDomainIntent(before,intent,options).document),plan=prepareSnapshotEdit(snapshotEditContext(project,true),{kind:'drawing-source-target',beforeDrawing:before,drawing});return {...plan,drawing};}
  if(!intent.replace&&matrix&&isIdentityAffine2D(matrix))return {...composePreparedSnapshotEdits(project,[]),drawing:markFinalizedGeometry(before)};
  if(!view){if(intent.replace||intent.domain.kind!=='placement-similarity'&&intent.domain.enabled===false)throw new DrawingSnapshotEditCapabilityError('Only a saved referenced layer domain can be replaced or disabled.');if(options.canEditOriginals===false)throw new DrawingSnapshotEditCapabilityError('Recording cannot edit Drawing-owned original layers.');const drawing=applyLayerDomainIntent(before,intent,options).document,plan=prepareDrawingSnapshotEdit(project,drawing);return {...plan,drawing:markFinalizedGeometry(drawing)};}
  const localIds=[...targets].filter(id=>view.layerOwners.get(id)?.kind==='snapshot-local'||before.layers.find(layer=>layer.id===id)?.items.some(item=>view.objectOwners.get(item)?.kind==='snapshot-local')),originalIds=[...targets].filter(id=>!localIds.includes(id)),local=new Set(localIds);
