@@ -57,3 +57,33 @@ not alter that behavior or its test.
 
 `npx tsc --noEmit` and `git diff --check` pass. No production build, browser
 run or deployment is part of this stage.
+
+## Serialized CPU measurement
+
+Baseline `5027930` and candidate `0aec4ed` ran sequentially in one reserved CPU
+window. Each cell uses one selected curve, 1,000 unrelated curves, three different
+cage parameter targets, one warm-up batch and seven measured batches. Each entry
+is the median / maximum batch duration in milliseconds; the maximum is an
+observed sample, not an estimated percentile.
+
+| Scope / field | Address preparation + 3 guards, before → after | Persistent adapter 3 targets, before → after | Temporary Drawing preparation + 3 targets, before → after |
+| --- | --- | --- | --- |
+| Line / quad | 88.14 / 103.08 → 1.75 / 3.75 | 286.97 / 314.86 → 113.26 / 142.70 | 43.16 / 51.13 → 39.57 / 48.22 |
+| Line / Coons | 88.33 / 89.02 → 1.54 / 1.70 | 240.91 / 322.28 → 113.58 / 114.96 | 41.28 / 43.05 → 41.27 / 50.79 |
+| Layer / quad | 86.86 / 91.08 → 1.44 / 1.70 | 253.66 / 284.12 → 105.00 / 124.37 | 39.40 / 41.15 → 40.72 / 43.53 |
+| Layer / Coons | 87.00 / 95.04 → 1.57 / 3.86 | 255.08 / 326.58 → 112.56 / 122.18 | 41.53 / 48.11 → 43.38 / 51.48 |
+
+The isolated address baseline copies the original guard exactly. The persistent
+measurement calls the actual baseline/candidate
+`prepareRecordingLayerDomainWorkspace`, including candidate evaluation and
+canonical fitting, after preparing the frozen input evaluation. It does not
+include the outer transaction parser, store commit or browser rendering.
+The temporary measurement includes control-plan preparation and canonical
+Drawing authoring/fitting, but excludes the inverse Recording transaction.
+
+The persistent adapter improves in this synthetic CPU case. Temporary authoring
+shows no consistent total improvement despite removing repeated membership
+discovery; its remaining canonical work still dominates. No overall editor,
+real-scene or browser frame-rate conclusion follows from these measurements.
+Both measurement runs completed without target errors; exact geometry/replay and
+source-topology correctness are established by the focused regressions above.
