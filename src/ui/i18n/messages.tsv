@@ -1964,3 +1964,5 @@ A 拖端点或控制柄；新姿态偏移从 0 开始，姿态之间自动插值
 所属图层与顺序	Layer membership and order
 移至图层	Move to layer
 更改此对象的所属图层，边界曲线仍在原处；透明挖空仅作用于所属图层的填充。	Change this object’s layer while keeping its boundary curves in place. Cutouts affect fills in their own layer only.
+透明挖空只作用于所属图层，不按深度排序；切回实色或雾化填充后恢复保存的偏移。	Cutouts affect their own layer without depth sorting. Switching back to a solid or mist fill restores the saved offset.
+只改变填充的遮挡深度，所属图层与边界曲线不变。切换基准会重置偏移。	Changes only the fill's paint depth, keeping its layer and boundary curves. Changing scope resets the offset.

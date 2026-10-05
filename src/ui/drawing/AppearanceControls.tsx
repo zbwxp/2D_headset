@@ -1,4 +1,5 @@
 import PaintOrderControls from './PaintOrderControls';
+import DepthControls from './DepthControls';
 import PanelSection from '../shared/PanelSection';
 import {curveById,layerFor,type DrawingDocument as Doc,type FillRegion} from '../../domain/drawing/model';
 import {setInk,createFill,createOffset,changePaint,deletePaint,detachOffset,reorderPaint,movePaint} from '../../domain/drawing/paintCommands';
@@ -29,6 +30,7 @@ export default function AppearanceControls({d,selection,run,choose,preview,capab
     <p className="drawing-muted">{t('正负距离切换偏移侧；线宽与距离随画布缩放。')}</p>
     <button disabled={disabled||capabilities.detach===false||!!status.error} onClick={()=>run(()=>{const n=detachOffset(d,o!.id);choose({ids:n.ids});return n.document;})}>{t('转为独立曲线')}</button>
    </>}
+   {f&&<DepthControls d={d} id={f.id} run={run}/>}
    <PanelSection id="drawing.paint-boundary" title="边界曲线">
     <button onClick={()=>choose({ids:(f?.boundary??o!.source).filter(x=>curveById(d,x.id)).map(x=>x.id)})}>{t('选择边界曲线')}</button>
     <p className="drawing-muted">{t('选择决定形状的源曲线，不移动或复制对象。')}</p>

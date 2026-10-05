@@ -83,7 +83,7 @@ export type VectorCommand=MirrorEditingCommand|DisplayRouteCommand|ElementComman
  | {op:'setMirrorAxis';x:number}
  | {op:'setInkVisibility';curveIds:string[];visible:boolean}
  | {op:'setCurveInkEnd';curveId:string;end:0|1;style:TerminusBrushStyle}
- | {op:'setDepth';curveId:string;offset:number;scope?:'PARENT'|'LAYER'}
+ | ({op:'setDepth';offset:number;scope?:'PARENT'|'LAYER'}&({curveId:string;fillId?:never}|{fillId:string;curveId?:never}))
  | {op:'addDisplayInterval';curveId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;fullLoop?:boolean;ref?:string}
  | {op:'changeDisplayInterval';rangeId:string;mode?:DisplayIntervalMode;start?:number;end?:number;enabled?:boolean;fullLoop?:boolean}
  | {op:'removeDisplayInterval';rangeId:string}
@@ -355,7 +355,7 @@ function applyCommand(d:DrawingDocument,raw:unknown,report:(sampledMaxError:numb
   case 'setInkVisibility':keys(c,['op','curveIds','visible']);if(typeof c.visible!=='boolean')fail('INVALID_REQUEST','visible must be a boolean.');return setInk(d,curvesExist(d,c.curveIds),{inkVisible:c.visible as boolean});
   case 'setCurveInkEnd':keys(c,['op','curveId','end','style']);return setInkEnd(d,curveExists(d,c.curveId),end(c.end),terminusBrushStyle(c.style));
   case 'setDepth':{
-   keys(c,['op','curveId','offset','scope']);if(c.scope!==undefined&&c.scope!=='PARENT'&&c.scope!=='LAYER')fail('INVALID_REQUEST','scope must be PARENT or LAYER.');const offset=num(c.offset,'offset');if(!Number.isSafeInteger(offset))fail('INVALID_REQUEST','offset must be an integer.');return setDepthOffset(d,curveExists(d,c.curveId),offset,c.scope as 'PARENT'|'LAYER'|undefined);
+   keys(c,['op','curveId','fillId','offset','scope']);if((c.curveId!==undefined)===(c.fillId!==undefined))fail('INVALID_REQUEST','Provide exactly one curveId or fillId.');if(c.scope!==undefined&&c.scope!=='PARENT'&&c.scope!=='LAYER')fail('INVALID_REQUEST','scope must be PARENT or LAYER.');const offset=num(c.offset,'offset');if(!Number.isSafeInteger(offset)||Math.abs(offset)>10000)fail('INVALID_REQUEST','offset must be an integer in -10000…10000.');const target=c.curveId!==undefined?curveExists(d,c.curveId):string(c.fillId,'fillId');if(c.fillId!==undefined&&!d.fills.some(fill=>fill.id===target))fail('NOT_FOUND',`Unknown fill ID: ${target}.`);return setDepthOffset(d,target,offset,c.scope as 'PARENT'|'LAYER'|undefined);
   }
   case 'addDisplayInterval':{
    keys(c,['op','curveId','mode','start','end','enabled','fullLoop','ref']);const id=curveExists(d,c.curveId),change=intervalChange(c),prior=new Set((d.displayIntervals??[]).flatMap(t=>t.ranges.map(r=>r.id)));let n=addDisplayInterval(d,id,change.mode);
