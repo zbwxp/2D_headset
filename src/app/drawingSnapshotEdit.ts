@@ -124,6 +124,9 @@ export function buildDrawingLayerDomainEdit(project:LandmarkProject,intent:Layer
   const domainPlan=prepareSnapshotEdit(snapshotEditContext(plan.project,true),{kind:'snapshot-state',workspace:next});
   plan={...plan,...composePreparedSnapshotEdits(project,[plan,domainPlan]),localWorkspace:domainPlan.project.recordingSnapshots};
  }
+ // Retained domains use full canonical replay, still within the same pinned
+ // before-context lineage used by scalar targets. No sparse proof is invented.
+ prepareRecordingContext(workspace!,{immutableInputs:true,diagnostics:'preview'}).forkSnapshotCandidate(plan.project.recordingSnapshots!,view.snapshotId);
  const result=drawingSnapshotPresentation(plan.project.recordingSnapshots!,artworkId)!;
  const failedDomain=result.evaluation.diagnostics.find(issue=>issue.code==='LAYER_DOMAIN'&&issue.channelId===intent.operationId);if(failedDomain)throw new DrawingSnapshotEditCapabilityError(failedDomain.message);
  const priorConflicts=new Set(view.evaluation.diagnostics.filter(issue=>issue.code==='RELATION_CONFLICT').map(issue=>JSON.stringify(issue)));

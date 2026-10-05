@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {SLIDER,formatNumeric,modifierScale,holdMultiplier,trackValue,snapTowardTargets} from './numericSliderMath';
 export interface NumericSliderProps {
  label:string; value:number; min:number; max:number;
- onChange:(value:number)=>void; onEditStart?:()=>void; onEditEnd?:()=>void;
+ onChange:(value:number)=>void; onEditStart?:()=>void; onEditEnd?:()=>void; onEditCancel?:()=>void;
  onUndo?:()=>void; onRedo?:()=>void;
  snapTargets?:number[]; step?:number; fineScale?:number; coarseScale?:number;
  /** Display units per stored unit, e.g. 100 for normalized percentages. */
@@ -17,20 +17,21 @@ export default function NumericSlider(props:NumericSliderProps){
  const input=useRef<HTMLInputElement>(null),editing=useRef(false),pointer=useRef<number|null>(null);
  const pointerAtNeutral=useRef<number|null>(null);
  const hold=useRef<{key:string;direction:number;start:number;last:number;alt:boolean;shift:boolean}|null>(null),raf=useRef(0);
- const end=useCallback(()=>{
+ const finish=useCallback((commit:boolean)=>{
   cancelAnimationFrame(raf.current);hold.current=null;pointerAtNeutral.current=null;
   const id=pointer.current;pointer.current=null;
   if(id!==null&&input.current?.hasPointerCapture(id))input.current.releasePointerCapture(id);
-  if(editing.current){editing.current=false;latest.current.onEditEnd?.();}
+  if(editing.current){editing.current=false;const p=latest.current;if(!commit&&p.onEditCancel)p.onEditCancel();else p.onEditEnd?.();}
  },[]);
+ const end=useCallback(()=>finish(true),[finish]),cancel=useCallback(()=>finish(false),[finish]);
  const change=useCallback((value:number,snap=true)=>{
   const p=latest.current;if(p.disabled||!Number.isFinite(value))return;
   value=Math.max(p.min,Math.min(p.max,value));if(snap)value=snapTowardTargets(p.value,value,p.min,p.max,p.snapTargets);if(value===p.value)return;
   if(!editing.current){editing.current=true;p.onEditStart?.();}
   latest.current={...p,value};p.onChange(value);
  },[]);
- useEffect(()=>{const stop=()=>end(),visibility=()=>{if(document.hidden)end();};window.addEventListener('blur',stop);document.addEventListener('visibilitychange',visibility);return()=>{window.removeEventListener('blur',stop);document.removeEventListener('visibilitychange',visibility);end();};},[end]);
- useEffect(()=>{if(props.disabled){end();draftActive.current=false;setDraft(null);setInvalid(false);}},[props.disabled,end]);
+ useEffect(()=>{const stop=()=>cancel(),visibility=()=>{if(document.hidden)cancel();};window.addEventListener('blur',stop);document.addEventListener('visibilitychange',visibility);return()=>{window.removeEventListener('blur',stop);document.removeEventListener('visibilitychange',visibility);cancel();};},[cancel]);
+ useEffect(()=>{if(props.disabled){cancel();draftActive.current=false;setDraft(null);setInvalid(false);}},[props.disabled,cancel]);
  const move=(x:number)=>{
   const r=input.current!.getBoundingClientRect(),p=latest.current,raw=trackValue(x,r.left,r.width,p.min,p.max);
   if(pointerAtNeutral.current!==null&&Math.abs(raw-pointerAtNeutral.current)<=(p.max-p.min)*.01)return;
@@ -64,11 +65,12 @@ export default function NumericSlider(props:NumericSliderProps){
  <input ref={input} aria-label={uiText(props.label)} aria-valuetext={(props.formatValue??formatNumeric)(props.value)} type="range" min={props.min} max={props.max} step="any" value={props.value} disabled={props.disabled}
  onPointerDown={e=>{if(e.button!==0||props.disabled)return;e.preventDefault();end();e.currentTarget.focus();pointer.current=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);move(e.clientX);}}
  onPointerMove={e=>{if(pointer.current===e.pointerId)move(e.clientX);}}
- onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end}
+ onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel} onBlur={end}
  onKeyDown={e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){
-   const action=e.shiftKey?latest.current.onRedo:latest.current.onUndo;
-   if(action){e.preventDefault();e.stopPropagation();end();action();}
+  if(e.key==='Escape'&&editing.current&&latest.current.onEditCancel){e.preventDefault();e.stopPropagation();cancel();return;}
+  if((e.metaKey||e.ctrlKey)&&['z','y'].includes(e.key.toLowerCase())){
+   const action=e.key.toLowerCase()==='y'||e.shiftKey?latest.current.onRedo:latest.current.onUndo;
+   if(action){e.preventDefault();e.stopPropagation();if(editing.current&&latest.current.onEditCancel)cancel();else{end();action();}}
    return;
   }
   if(hold.current){hold.current.alt=e.altKey;hold.current.shift=e.shiftKey;}

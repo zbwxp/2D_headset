@@ -45,8 +45,8 @@ export type SnapshotEdit =
  | {kind:'object-locks';snapshotId:string;changes:SnapshotObjectLocks}
  | ({kind:'recording-layer-domain'}&RecordingLayerDomainEdit)
  | {kind:'layer-domain';intent:LayerDomainIntent;allowRelated?:boolean}
- | {kind:'drawing-document';drawing:DrawingDocument;intent?:DrawingSnapshotEditIntent}
- | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent}
+ | {kind:'drawing-document';drawing:DrawingDocument;intent?:DrawingSnapshotEditIntent;validation?:'full'|'preview'}
+ | {kind:'original-geometry';drawing:DrawingDocument;intent?:LayerEditIntent;validation?:'full'|'preview'}
  | {kind:'original-state';state:DrawingSnapshotState;intent?:LayerEditIntent}
  | ({kind:'local-drawing-topology'}&SnapshotDrawingTopologyEdit)
  | ({kind:'snapshot-local-drawing'}&SnapshotLocalDrawingEdit)
@@ -202,7 +202,7 @@ export function prepareSnapshotEdit(context:SnapshotEditContext,edit:SnapshotEdi
  const revision=currentPreparedEditRevision(),plan=buildSnapshotEditPlan(context,edit);
  if(revision!==currentPreparedEditRevision())throw Error('This prepared edit was canceled during preparation.');
  if(receiptKey in plan){preparedReceipt(plan);return plan;}
- return issuePreparedEdit(plan,edit.kind==='snapshot-state'&&edit.validation==='preview'?'preview':'full',revision);
+ return issuePreparedEdit(plan,'validation' in edit&&edit.validation==='preview'?'preview':'full',revision);
 }
 function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):SnapshotEditPlan{
  assertRecordingProjectActive(context.project);
@@ -221,7 +221,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
  if(edit.kind==='layer-domain')return buildDrawingLayerDomainEdit(context.project,edit.intent,{canEditOriginals:context.canEditOriginals,allowRelated:edit.allowRelated});
  if(edit.kind==='drawing-document'){
   if(!context.canEditOriginals)throw Error('Drawing document edits require the original-source adapter in Drawing mode.');
-  return buildDrawingSnapshotEdit(context.project,edit.drawing,edit.intent);
+  return buildDrawingSnapshotEdit(context.project,edit.drawing,edit.intent,{validation:edit.validation});
  }
  const before=context.project;let project:LandmarkProject;let diagnostics:readonly {code:string;message:string;snapshotId?:string}[]|undefined;
  if(edit.kind==='local-drawing-topology'||edit.kind==='snapshot-local-drawing'){
@@ -259,7 +259,7 @@ function buildSnapshotEditPlan(context:SnapshotEditContext,edit:SnapshotEdit):Sn
   project=prepareOriginalState(before,state,splitPlan);
   if(project.recordingSnapshots){const recordingSnapshots=propagateAutomaticSnapshotLayers(context.workspace,project.recordingSnapshots).workspace;if(recordingSnapshots!==project.recordingSnapshots)project={...project,recordingSnapshots};}
  }
- if(project.recordingSnapshots&&edit.kind!=='snapshot-state')project={...project,recordingSnapshots:shareValidatedRecordingWorkspace(context.workspace,parseRecordingSnapshots(project.recordingSnapshots))};
+ if(project.recordingSnapshots&&edit.kind!=='snapshot-state'&&(!('validation' in edit)||edit.validation!=='preview'))project={...project,recordingSnapshots:shareValidatedRecordingWorkspace(context.workspace,parseRecordingSnapshots(project.recordingSnapshots))};
  if(edit.kind!=='snapshot-state'&&same(project,before))project=before;
  return {before,project,changed:project!==before,...(diagnostics?{diagnostics}:{})};
 }

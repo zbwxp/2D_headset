@@ -4,6 +4,7 @@ import SnapshotRecordingWorkspace from '../ui/vectorRecording/SnapshotRecordingW
 import {evaluateRecordingSnapshot} from '../domain/recordingSnapshot/evaluation';
 import {canonicalElementId,upsertDrawingSource} from '../domain/recordingSnapshot/sources';
 import {emptyRecordingSnapshotWorkspace,emptyRecordingSnapshot,emptySnapshotRecording} from '../domain/recordingSnapshot/model';
+import {getSnapshotSurfaceTargetWorkStats} from '../domain/recordingSnapshot/surfaceTargets';
 import {createSnapshotAngleGraph} from '../domain/recordingSnapshot/angleGraph';
 import {createEmptyProject} from '../app/emptyProject';
 import {currentPreparedEditRevision} from '../app/preparedEditRevision';
@@ -27,11 +28,11 @@ import type {DrawingCommandIntent} from '../ui/drawing/endpointInteraction';
 
 // Execute the actual canvas handlers and effects without a browser renderer.
 // Both consumers retain their real selection policy and geometry commands.
-const hooks=vi.hoisted(()=>({states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
+const hooks=vi.hoisted(()=>({memos:[] as {deps:unknown[]|undefined;value:unknown}[],memoIndex:0,states:[] as unknown[],refs:[] as {current:unknown}[],deps:[] as (unknown[]|undefined)[],cleanups:[] as ((()=>void)|void)[],effects:[] as (()=>void)[],stateIndex:0,refIndex:0,effectIndex:0,dirty:false}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
  useState:(initial:unknown)=>{const i=hooks.stateIndex++;if(!(i in hooks.states))hooks.states[i]=typeof initial==='function'?initial():initial;return [hooks.states[i],(next:unknown)=>{const value=typeof next==='function'?next(hooks.states[i]):next;if(!Object.is(value,hooks.states[i])){hooks.states[i]=value;hooks.dirty=true;}}];},
  useRef:(initial:unknown)=>hooks.refs[hooks.refIndex++]??(hooks.refs[hooks.refIndex-1]={current:initial}),
- useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown)=>fn(),useContext:(context:{_currentValue:unknown})=>context._currentValue,
+ useCallback:(fn:unknown)=>fn,useMemo:(fn:()=>unknown,deps?:unknown[])=>{const i=hooks.memoIndex++,previous=hooks.memos[i];if(previous&&deps&&previous.deps&&deps.length===previous.deps.length&&deps.every((value,index)=>Object.is(value,previous.deps![index])))return previous.value;const value=fn();hooks.memos[i]={deps,value};return value;},useContext:(context:{_currentValue:unknown})=>context._currentValue,
  useSyncExternalStore:(_subscribe:unknown,getSnapshot:()=>unknown)=>getSnapshot(),useDebugValue:()=>{},
  useEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
  useLayoutEffect:(fn:()=>void|(()=>void),deps?:unknown[])=>{const i=hooks.effectIndex++,previous=hooks.deps[i];if(!previous||!deps||deps.some((value,j)=>!Object.is(value,previous[j]))){hooks.deps[i]=deps;hooks.effects.push(()=>{hooks.cleanups[i]?.();hooks.cleanups[i]=fn();});}},
@@ -54,7 +55,7 @@ class Target {closest(){return null;}}
 const listeners=new Map<string,Set<(event:any)=>void>>();
 const savedEditor=useEditor.getState(),savedSession=useDrawing.getState(),savedMode=useWorkspaceMode.getState().mode;
 beforeEach(()=>{
- hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();
+ hooks.memos=[];hooks.memoIndex=0;hooks.states=[];hooks.refs=[];hooks.deps=[];hooks.cleanups=[];listeners.clear();
  const events={addEventListener:(name:string,fn:(event:any)=>void)=>{if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name)!.add(fn);},removeEventListener:(name:string,fn:(event:any)=>void)=>listeners.get(name)?.delete(fn)};
  vi.stubGlobal('Element',Target);vi.stubGlobal('window',{...events,innerWidth:1000,innerHeight:800,dispatchEvent:(event:Event)=>{emit(event.type,event);return true;}});
  vi.stubGlobal('document',{...events,body:{},hidden:false,querySelector:()=>null});
@@ -93,7 +94,7 @@ function harness(consumer:'Drawing'|'Recording',options:Options={}){
  const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};
  function render(){
   let count=0;do{
-   hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
+   hooks.dirty=false;hooks.memoIndex=0;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
    all=elements(consumer==='Drawing'?DrawingRoom():SceneWarpCanvas({source,drawing:shown,targetKey,label:'Test',zh:false,onPreview:vi.fn(),onCommit:vi.fn(),showWarpTools:false,selection,onSelectionTool:choose,interaction:{tool,onToolChange:next=>{tool=next;}},instanceTransform:transform(selection.ids),transformsForSelection:transform,curveEdit:{editable:true,onCommit:legacyCurveCommit,onPreview:vi.fn()},topology:{editable:true,onSplit:vi.fn(),pen:{targetKey:`${targetKey}/${activeLayer}`,historyKey,layerId:activeLayer,editable:true,onCommit:commit,onSelection:ids=>choose({ids},'pen'),onError:error},editor:{drawing,targetKey,historyKey,layerId:activeLayer,editable:true,topologyEditable:true,onCommit:commit,onPreview:preview,onSelection:choose,onError:error}}}));
    element(consumer==='Drawing'?'drawing-canvas':'vr-scene-canvas').props.ref.current=svg;
    hooks.effects.forEach(fn=>fn());if(++count>12)throw Error('Canvas effects did not settle');
@@ -350,7 +351,7 @@ function recordingWorkspaceHarness(correction:boolean){
  const project={...createEmptyProject(),drawing:source,recordingSnapshots:workspace};useEditor.setState({project,past:[],future:[]});useWorkspaceMode.setState({mode:'recording'});
  let all:ReactElement<Props>[]=[],props:ComponentProps<typeof SceneWarpCanvas>;const svg={focus:vi.fn(),setPointerCapture:vi.fn(),hasPointerCapture:()=>false,getBoundingClientRect:()=>({left:0,top:0})};
  function render(){let passes=0;do{
-  hooks.dirty=false;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
+  hooks.dirty=false;hooks.memoIndex=0;hooks.stateIndex=0;hooks.refIndex=0;hooks.effectIndex=0;hooks.effects=[];
   const root=SnapshotRecordingWorkspace(),editorTree=(root.type as (props:Props)=>ReactElement<Props>)(root.props),canvas=elements(editorTree).find(element=>element.type===SceneWarpCanvas)!;props=canvas.props as ComponentProps<typeof SceneWarpCanvas>;
   all=elements(SceneWarpCanvas(props));all.find(element=>element.props['data-testid']==='vr-scene-canvas')!.props.ref.current=svg;hooks.effects.forEach(fn=>fn());if(++passes>20)throw Error('Recording workspace effects did not settle');
  }while(hooks.dirty);}
@@ -382,4 +383,17 @@ test.each([{kind:'moveX',value:.2},{kind:'scaleY',value:.6},{kind:'mirror',value
  expect(drawingControlEditStats().plans-before).toBe(1);expect(h.historyCount()).toBe(1);expect(shapeOf(h.drawing(),'a')).not.toEqual(shapeOf(h.source,'a'));
  for(const [i,point] of shapeOf(h.drawing(),'a').entries())near(shapeOf(h.drawing(),'mirror')[i],[-point[0],point[1]]);
  useEditor.getState().undo();h.render();expect(shapeOf(h.drawing(),'a')).toEqual(shapeOf(h.source,'a'));
+});
+
+
+test.each([false,true])('real workspace V releases its accepted candidate without reauthoring or inverse replay, correction=%s',correction=>{
+ const h=recordingWorkspaceHarness(correction);h.key('ArrowUp');const authored=drawingControlEditStats(),solved=getSnapshotSurfaceTargetWorkStats();
+ h.key('ArrowUp','keyup');const after=drawingControlEditStats();for(const key of ['authoredCurves','scopedAuthoring','fullAuthoring','capturedControls','nodeArrayCopiedSlots','curveArrayCopiedSlots'] as const)expect(after[key]).toBe(authored[key]);expect(after.plans-authored.plans).toBeLessThanOrEqual(1);expect(getSnapshotSurfaceTargetWorkStats()).toEqual(solved);expect(useEditor.getState().past).toHaveLength(1);
+});
+test('Drawing retains a source pointer preview through parent renders and consumes it without reauthoring',()=>{
+ const h=harness('Drawing',{selected:['a']}),p=h.screen(shapeOf(h.source,'a')[0]);h.body('a',p);h.move([p[0]+20,p[1]-10]);const wanted=h.shown(),counts=drawingControlEditStats();h.up([p[0]+20,p[1]-10]);expect(h.drawing()).toEqual(wanted);expect(drawingControlEditStats()).toEqual(counts);expect(h.historyCount()).toBe(1);
+});
+test('Drawing Pen keeps accepted segment IDs for the next connected segment',()=>{
+ const h=harness('Drawing');h.key('p');const a=h.screen([-.8,-.8]),b=h.screen([-.2,-.8]),c=h.screen([.4,-.8]);h.down(a);h.up(a);h.down(b);h.move([b[0]+3,b[1]-5]);h.up([b[0]+3,b[1]-5]);h.down(c);h.move([c[0]+4,c[1]-4]);h.up([c[0]+4,c[1]-4]);
+ const added=h.drawing().curves.filter(curve=>!h.source.curves.some(old=>old.id===curve.id));expect(added).toHaveLength(2);expect(added[0].nodes[1]).toBe(added[1].nodes[0]);expect(h.historyCount()).toBe(2);expect(h.selection().ids).toEqual([added[1].id]);
 });
