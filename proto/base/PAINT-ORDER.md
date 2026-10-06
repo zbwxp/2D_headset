@@ -97,7 +97,7 @@ passed before only because all curves were painted after all fills).
 
 ## 3. Proposals (Claude → dot)
 
-**D1 — depth offset base and unit (R3).** Candidate = v103 `src/domain/drawing/depth.ts` (read): one
+**D1 — depth offset base and unit (R3). SHELVED (bowen, 2026-10-06): masks (headset-design doc 18 §1.7b) now express the side-face and collar cases; the stored depthOffset stays 'stored, not applied, reported'.** Candidate = v103 `src/domain/drawing/depth.ts` (read): one
 mechanism for curves AND fills; an integer counted in structural sibling slots; the reference
 (`depthScope`) is PARENT or LAYER per object; positive = forward; clamped at the ends; never follows
 another object's offset → no cycles; ties keep the stable list order. Worked example, layers
