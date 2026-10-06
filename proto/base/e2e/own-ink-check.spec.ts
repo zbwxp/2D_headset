@@ -20,3 +20,26 @@ test('own-ink inverse mask excludes exactly the stroke ink (butt ends, mitres, l
     expect(c.fabricUnprotected.ateStroke).toBeGreaterThan(0)
   }
 })
+
+for (const dpr of [1, 2])
+  test.describe(`pan / zoom at DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr })
+    test(`own-ink cut stays aligned under a fractional pan and zoom (DPR ${dpr})`, async ({ page }) => {
+      await page.goto('/ownink.html')
+      await page.waitForFunction(() => (window as any).__ownInkViews)
+      const r = await page.evaluate(() => (window as any).__ownInkViews)
+      expect(r.dpr).toBe(dpr)
+      console.log('OWN_INK_VIEWS', dpr, JSON.stringify(r.results.map((x: any) => ({ view: x.view, case: x.case, c2d: x.canvas2d, c2dOff: x.canvas2dUnprotected.ateStroke, fabric: x.fabricScratch }))))
+      for (const x of r.results) {
+        for (const k of ['canvas2d', 'fabricScratch']) {
+          expect(x[k].ateStroke, `${x.case} ${JSON.stringify(x.view)} ${k}: stroke eaten`).toBe(0)
+          expect(x[k].holes, `${x.case} ${JSON.stringify(x.view)} ${k}: holes`).toBe(0)
+        }
+        expect(x.canvas2dUnprotected.ateStroke).toBeGreaterThan(0)
+        // KNOWN (reported, not passed off as fine): the exact cut leaves see-through pixels along the
+        // stroke's inner anti-aliased edge (stroke a behind, fill 1-a in front → alpha 1-a+a², 0.75 at
+        // a = 0.5) — a faint seam. Asserted to still exist so a fix is noticed.
+        expect(x.canvas2d.seams).toBeGreaterThan(0)
+      }
+    })
+  })
