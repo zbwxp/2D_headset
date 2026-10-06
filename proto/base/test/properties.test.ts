@@ -162,9 +162,10 @@ function lockedSnapshot(e: Editor) {
   return out
 }
 
-/** I2: a locked record may only change if one of its lockers was a flag target of this edit. */
+/** I2: a locked record may only change if one of its lockers was the target of an unlock in this edit. */
 function checkLocks(e: Editor, locked: ReturnType<typeof lockedSnapshot>, cmds: Command[]) {
-  const targets = new Set(cmds.flatMap((c) => (c.type === 'setContainerFlags' ? [c.containerId as string] : [])))
+  // only an UNLOCK attempt can release a lock (dot: visibility-only or locked:true flags must not exempt)
+  const targets = new Set(cmds.flatMap((c) => (c.type === 'setContainerFlags' && c.locked === false ? [c.containerId as string] : [])))
   for (const [id, { json, lockers }] of locked) if (!lockers.some((l) => targets.has(l))) expect(key(e.reader.get(id as any)), id).toBe(json)
 }
 

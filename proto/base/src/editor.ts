@@ -17,6 +17,10 @@
 //   the write as done, plus an OBSERVER_FAILED warning — the result always describes the document.
 //   If `onWarning` itself throws, that is added as WARNING_HANDLER_FAILED; nothing escapes to the caller.
 //   Whether a write committed is decided by whether the transaction body finished, never assumed.
+// - Notification is isolated from state (dot's review of 8875a57): `commit` only describes what
+//   happened; `report` is the single caller of `onWarning`, runs after the operation's state is final
+//   (including batch cleanup, which is in `finally`), and records a throwing handler as
+//   WARNING_HANDLER_FAILED. A batch is one transaction, so subscribers never see its intermediate states.
 // - The official grouping entry is `batch` / `applyBatch`. Consistency after an outer `transaction`
 //   rolls back is a TESTED COMPATIBILITY BOUNDARY (property I10, kept as a regression test), not a
 //   promise about arbitrary external nesting or about notification behaviour inside it. It holds
@@ -35,7 +39,7 @@ export type EditWarning = { code: 'OBSERVER_FAILED' | 'WARNING_HANDLER_FAILED'; 
 export type ApplyResult =
   | { ok: true; written: true; revision: number; affected: string[]; warnings?: EditWarning[] }
   | { ok: true; written: false; revision: number; affected: string[] } // valid but changed nothing
-  | { ok: false; written: false; revision: number; error: EditError }
+  | { ok: false; written: false; revision: number; error: EditError; warnings?: EditWarning[] }
 
 export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[] } | { ok: false; error: EditError }
 
@@ -103,67 +107,93 @@ export class Editor {
       // recorded INSIDE the transaction: document and history commit or roll back together
       if (!isRecordsDiffEmpty(diff)) this.record(p.label, diff)
     })
+    // State is final here; only now is anything reported (and a failing report changes nothing above).
+    const warnings = this.report(run.warnings)
     if (!run.committed)
       // Unexpected (planning should have caught it); the transaction rolled back document AND history.
-      return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: run.error, objects: p.affected, fixes: [] } }
+      return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: errorMessage(run.error), objects: p.affected, fixes: [] }, ...(warnings.length && { warnings }) }
     if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
-    return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(run.warnings.length && { warnings: run.warnings }) }
+    return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(warnings.length && { warnings }) }
   }
 
   /**
-   * Run `body` in a transaction. committed = the body finished (so the transaction committed);
-   * an exception after that came from a subscriber during the flush and is a warning, not a failure.
+   * Run `body` in a transaction and describe what happened. It never throws and never calls back
+   * out: it only reports. committed ⇔ the body finished (tldraw then commits). An exception that
+   * still escapes `transaction` came from a subscriber during the flush that follows a commit — or
+   * that follows a rollback — and becomes a warning; it never changes `committed`.
    */
-  private commit(body: () => void): { committed: true; warnings: EditWarning[] } | { committed: false; error: string } {
+  private commit(body: () => void): { committed: true; warnings: EditWarning[] } | { committed: false; error: unknown; warnings: EditWarning[] } {
     let finished = false
+    let bodyError: { error: unknown } | undefined
     try {
       transaction(() => {
-        body()
+        try {
+          body()
+        } catch (error) {
+          bodyError = { error }
+          throw error
+        }
         finished = true
       })
       return { committed: true, warnings: [] }
-    } catch (e) {
-      const message = String((e as Error)?.message ?? e)
-      if (!finished) return { committed: false, error: message }
-      const warnings: EditWarning[] = [{ code: 'OBSERVER_FAILED', message }]
-      try {
-        this.onWarning(warnings[0])
-      } catch (h) {
-        // The report channel itself failed: still return the truth, with both failures in the result.
-        warnings.push({ code: 'WARNING_HANDLER_FAILED', message: String((h as Error)?.message ?? h) })
-      }
-      return { committed: true, warnings }
+    } catch (thrown) {
+      const observer = (e: unknown): EditWarning[] => [{ code: 'OBSERVER_FAILED', message: errorMessage(e) }]
+      if (finished) return { committed: true, warnings: observer(thrown) }
+      // Rolled back. If what escaped is not the body's own error, a subscriber failed during the rollback flush.
+      if (!bodyError) return { committed: false, error: thrown, warnings: [] }
+      return { committed: false, error: bodyError.error, warnings: thrown === bodyError.error ? [] : observer(thrown) }
     }
   }
 
   /**
+   * The one place that calls `onWarning`, always AFTER all state changes of the operation are done.
+   * A throwing handler is recorded as WARNING_HANDLER_FAILED and never propagates (dot's review of
+   * 8875a57: notification failures must not alter commit, rollback or cleanup).
+   */
+  private report(warnings: EditWarning[]): EditWarning[] {
+    const out = [...warnings]
+    for (const w of warnings) {
+      try {
+        this.onWarning(w)
+      } catch (h) {
+        out.push({ code: 'WARNING_HANDLER_FAILED', message: errorMessage(h) })
+      }
+    }
+    return out
+  }
+
+  /**
    * Several commands → one undo step (one gesture or one API batch). Nestable; outermost records.
-   * If any level throws, exactly that level's changes are reverted and dropped from the group, so
-   * they can never come back through redo (dot #2).
+   * The whole batch is ONE transaction (nested batches are nested transactions): if a level throws,
+   * tldraw's rollback restores exactly that level's document AND history changes, and subscribers
+   * see only the final state. Group bookkeeping is cleaned up in `finally`, whatever happened.
+   * Warnings from the final flush go through `report` (onWarning) after cleanup.
    */
   batch<T>(label: string, fn: () => T): T {
     const outer = !this.group
     if (outer) this.group = { label, diffs: [] }
     const group = this.group!
     const mark = group.diffs.length
+    let result!: T
+    let run: ReturnType<Editor['commit']> | undefined
     try {
-      const result = fn()
-      if (outer) {
-        this.group = null
-        const net = netDiff(squashRecordDiffs(group.diffs))
-        // A batch whose net effect is nothing (e.g. +1 then −1) leaves history and redo alone (dot).
-        if (!isRecordsDiffEmpty(net)) this.commit(() => this.pushEntry(group.label, net))
-      }
-      return result
-    } catch (e) {
-      const failed = group.diffs.splice(mark)
-      if (failed.length) {
-        const run = this.commit(() => this.#store.applyDiff(reverseRecordsDiff(squashRecordDiffs(failed))))
-        if (!run.committed) throw new Error(`batch revert failed: ${run.error}`)
-      }
+      run = this.commit(() => {
+        result = fn()
+        if (outer) {
+          const net = netDiff(squashRecordDiffs(group.diffs))
+          // A batch whose net effect is nothing (e.g. +1 then −1) leaves history and redo alone (dot).
+          if (!isRecordsDiffEmpty(net)) this.pushEntry(group.label, net)
+        }
+      })
+    } finally {
+      // Runs no matter what: a failed level's diffs can never come back through redo (dot #2), and a
+      // later edit can never be appended to an abandoned group (dot's review of 8875a57).
+      if (!run?.committed) group.diffs.splice(mark)
       if (outer) this.group = null
-      throw e
     }
+    this.report(run.warnings)
+    if (!run.committed) throw run.error
+    return result
   }
 
   private record(label: string, diff: RecordsDiff<DocRecord>) {
@@ -187,7 +217,8 @@ export class Editor {
       this.#redo.update((r) => [...r, e])
       this.#revision.set(this.#undo.get().at(-1)?.revision ?? 0)
     })
-    if (!run.committed) throw new Error(`undo failed and was rolled back: ${run.error}`)
+    this.report(run.warnings)
+    if (!run.committed) throw new Error(`undo failed and was rolled back: ${errorMessage(run.error)}`)
     return true
   }
 
@@ -200,7 +231,8 @@ export class Editor {
       this.#undo.update((u) => [...u, e])
       this.#revision.set(e.revision)
     })
-    if (!run.committed) throw new Error(`redo failed and was rolled back: ${run.error}`)
+    this.report(run.warnings)
+    if (!run.committed) throw new Error(`redo failed and was rolled back: ${errorMessage(run.error)}`)
     return true
   }
 
@@ -225,6 +257,8 @@ export class Editor {
     return editor
   }
 }
+
+const errorMessage = (e: unknown) => String((e as Error)?.message ?? e)
 
 /** Drop updates whose before and after are equal, and records added then removed within the diff. */
 function netDiff(d: RecordsDiff<DocRecord>): RecordsDiff<DocRecord> {
