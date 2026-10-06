@@ -64,7 +64,10 @@
 〔依据〕
 - 只影响描边的连法：SVG 的 `stroke-linejoin` 和 `stroke-linecap`（miter、round、bevel）只作用于描边，填充仍沿原路径（W3C SVG 2 Painting 规范）。这正是旧 bug 混淆的那一类。
 - 会改变几何的连法：Figma vector network 顶点上的圆角半径，会同时改变填充和描边；Illustrator 的实时转角（corner widget）。
-- 可变线宽描边在连接处的画法：Inkscape 的 Power Stroke 路径效果提供多种连接方式（圆、斜接、外推弧等）〔待核对：具体选项名称和行为以 Inkscape 文档为准〕。
+- **主要参照（dot 核对）**：Inkscape 的实时路径效果（Live Path Effects）。它保留“原路径 + 参数”，生成一条输出路径供后续使用；Fillet/Chamfer 负责几何转角，PowerStroke 负责可变线宽描边，两者分开。这正好支撑“一份最终边界同时供填充和描边使用”。[LPE 说明](https://wiki.inkscape.org/wiki/Creating_Live_Path_Effects)、[lpe-fillet-chamfer](https://inkscape.gitlab.io/inkscape/doxygen/lpe-fillet-chamfer_8cpp_source.html)、[lpe-powerstroke](https://inkscape.gitlab.io/inkscape/doxygen/lpe-powerstroke_8cpp_source.html)（来源已核对，还没有运行或移植）。
+- 两个注意点：
+  - SVG 的端帽（butt / round / square）和接笔（miter / round / bevel）是两套不同的枚举，不要混成一个；
+  - 用普通三次 Bézier 拟合的圆弧只是近似，不能因为它叫“ARC”就承诺是严格的圆。
 - 旧实现 v103 的“ARC 填充”修复（`resolvedFillGeometry.ts`）已经让填充跟随连接弧，但当时是作为特例加上去的。这里把它提升为基础原则。
 
 〔决定〕连接是单独的对象，归画稿。
