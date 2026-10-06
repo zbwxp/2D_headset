@@ -1,6 +1,6 @@
 # 13 录制的参照：Live2D、Clip Studio Paint、MMD
 
-草稿 v0.1（2026-10-07）。来源：Claude 的调研代理用 curl 读取官方文档和开源加载器源码；dot 独立核对了三处容易误读的地方（标为“dot 核对”）。原文副本保存在 scratchpad 的 `recording-refs/`。没有特别标注的，都已对照所引页面或源码确认；**〔未证实〕**表示未逐字核对。
+草稿 v0.2（2026-10-07；按 dot 的意见，把全称判断收紧到已核实的范围）。来源：Claude 的调研代理用 curl 读取官方文档和开源加载器源码；dot 独立核对了三处容易误读的地方（标为“dot 核对”）。原文副本保存在 scratchpad 的 `recording-refs/`。没有特别标注的，都已对照所引页面或源码确认；**〔未证实〕**表示未逐字核对。
 
 bowen 指出这三个软件最接近“录制”。dot 补充：我们的“录制间”最接近的是 Live2D 的**建模参数和关键形态编辑**，而不是它那个叫 Record 的时间轴录制功能。
 
@@ -10,20 +10,21 @@ bowen 指出这三个软件最接近“录制”。dot 补充：我们的“录�
 - **参数**：带编号，有最小值、默认值、最大值，可以设成循环，可以标记为混合形状。有一套标准编号（如 ParamAngleX/Y/Z、ParamEyeLOpen、ParamMouthForm……）。[参数文档](https://docs.live2d.com/en/cubism-editor-manual/parameter/)，[标准参数表](https://docs.live2d.com/en/cubism-editor-manual/standard-parameter-list/)
 - **关键形态**：每个对象在它绑定的各参数的关键点组合上，各存一份形态。例：一个对象绑定两个参数，分别有 4 个和 2 个关键点，就要存 8 份。官方建议每个对象最多绑 2 个参数，最多 3 个，绝不要 4 个以上；更多维度应拆到上下级变形器上分担（眉毛的例子：拆开后需要 3+3+9=15 份，不拆则是 81 份）。[多关键点](https://docs.live2d.com/en/cubism-editor-manual/multi-key/)，[父子分担](https://docs.live2d.com/en/cubism-editor-manual/keyform-parent-chilid-relation/)
 - **ArtPath**：Live2D **本身就有矢量线**，带控制点、每个点各自的线宽、线色，线宽不随变形器缩放而变化。但它只在模型目标版本为 “SDK(N/A)/Latest” 时可用，不会进入游戏运行时。[ArtPath](https://docs.live2d.com/en/cubism-editor-manual/artpath/) **这是和我们最相关的一项先例。**
+  dot 核对后补充：官方的说法是“把带纹理的线当作矢量线的材料，通过动态网格来表现”，所以它**不能等同于**我们原生的 Bézier 线稿、跨图层路径和可编辑的矢量导出；而且它只能用于 SDK(N/A) 目标。
 - **绘制顺序**：取值 0–1000，可以按关键形态变化；“绘制顺序组”让一个部件在外部看起来像一层。[绘制顺序](https://docs.live2d.com/en/cubism-editor-manual/draworder/)，[绘制顺序组](https://docs.live2d.com/en/cubism-editor-manual/drawing-order-group/)
 
 **怎样组合和插值**
 - 关键点之间做线性插值（在多维网格上是多线性插值）。“扩展插值”会预先烘焙出最多 20 个额外的关键点。[扩展插值](https://docs.live2d.com/en/cubism-editor-manual/extended-interpolation/)
 - **混合形状**是叠加上去的增量：相对“最接近默认值的那份关键形态”计算差值。默认形态必须先锁定；可以设置权重上限曲线，防止多个混合形状叠加后形状崩坏。[混合形状](https://docs.live2d.com/en/cubism-editor-manual/blend-shape/)
 - **辅助工具全部是“烘焙”出关键形态，而不是实时约束**：镜像会按变形器中心翻转生成关键形态；“3D 旋转表现”从正面自动估算出 AngleX/Y 的关键形态。[镜像](https://docs.live2d.com/en/cubism-editor-manual/motion-mirroring/)，[3D 旋转表现](https://docs.live2d.com/en/cubism-editor-manual/apply-3d-rotation-expression/)
-- **在中间值编辑**：在当前参数值上点 [+] 添加一个关键点。新关键点的初始形状来自插值结果〔未证实：是否只能在关键点上编辑〕。**没有把修改反推分摊到相邻关键点的功能。**[编辑参数](https://docs.live2d.com/en/cubism-editor-manual/edit-parameters/)
+- **在中间值编辑**：在当前参数值上点 [+] 添加一个关键点。新关键点的初始形状来自插值结果〔未证实：是否只能在关键点上编辑〕。在我们查阅过的手册页面里，**没有找到**把修改反推、分摊到相邻关键点的功能（只限这些页面，不代表整个软件都没有）。[编辑参数](https://docs.live2d.com/en/cubism-editor-manual/edit-parameters/)
 
 **Glue（黏合）**
 - 把两个 ArtMesh 上重叠的顶点成对绑在一起。每个顶点可以设置 A:B 的影响权重（用画笔涂，不能按关键形态变化）；整体“有效度”按关键形态设置，可以变化。
 - **dot 核对**：Glue 确实是跨 ArtMesh 的顶点黏合，有两侧的影响权重，也有可以绑定参数的有效度。但官方文档**不支持**把它等同于通用的“端点 / 切线约束”；而且修改网格之前，要先解除 Glue。[Glue](https://docs.live2d.com/en/cubism-editor-manual/glue/)
 - **可以借鉴的**：连接处设一个“谁主导”的权重，再加一个可以随参数变化的强度。**不能借鉴的**：它是变形完成后施加的软约束，不能代替我们的拓扑连接。
 
-**运行时**：`.moc3` 是不透明的编译数据，运行时只暴露参数这个输入，以及顶点、透明度、绘制顺序这些输出，看不到关键形态和变形器。所有驱动（动作、物理、表情、追踪）都只写参数。[CubismModel.cpp](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Model/CubismModel.cpp)
+**运行时**：`.moc3` 是不透明的编译数据，运行时只暴露参数这个输入，以及顶点、透明度、绘制顺序这些输出，看不到关键形态和变形器。在我们看过的运行时 API 里，动作、物理、表情、追踪这几种驱动写入的都是参数（只限这几种）。另外，编辑器里还有一个**表单动画（Form Animation）**：在动画时间轴上直接编辑形状，并且不修改模型数据（[Form Animation](https://docs.live2d.com/en/cubism-editor-manual/about-form-animation/)，dot 补充）。这一项在 v0.1 中被漏掉了，所以不能拿 v0.1 的内容来概括整个软件。[CubismModel.cpp](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Model/CubismModel.cpp)
 
 ## 2. Clip Studio Paint
 
@@ -68,6 +69,6 @@ Direct Manipulation Blendshapes（Lewis & Anjyo, 2010）求解的未知量是**�
 | 每个点各自的线宽 | CSP 矢量线、Live2D ArtPath | 线宽按控制点存；修正线宽时保留尖头的模式 | — |
 | 填充 | CSP“填充到矢量路径为止” | 以线的中心线作为边界 | CSP 填充是一次性结果，我们需要实时的区域 |
 | 镜像 | Live2D 镜像（烘焙） | 显式的镜像轴，生成新的形态，而不是永久约束 | MMD 的翻转变形不是几何镜像 |
-| 在中间角度拖动后反推 | 三个软件和《2.5D Cartoon Models》都没有（它们都是添加新的关键视角）；DMB 只解混合权重 | 正则化的思路 | **这一块需要我们自己设计并验证** |
+| 在中间角度拖动后反推 | 在已经核实的资料范围内（三个软件查阅过的手册页、《2.5D Cartoon Models》全文）没有找到；论文的做法是添加新的关键视角；DMB 求解的只是混合权重 | 正则化的思路 | **这一块需要我们自己设计并验证** |
 
 
