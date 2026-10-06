@@ -104,6 +104,28 @@ describe('fill-only closing edge', () => {
     report.push({ case: 'unrelated fill', bridgesInG: 1 })
   })
 
+  it('a cut point that already touches an existing bridge (review of 066676c): the bridge is re-pointed, forward and reverse', () => {
+    for (const reversed of [false, true]) {
+      const base = loopDoc()
+      // G: s1 (a→b) then an existing bridge b→a — or the reverse-equivalent [bridge a→b, s1 reversed b→a]
+      base.fills.G = {
+        id: 'G',
+        boundary: reversed
+          ? [{ kind: 'bridge', from: { curveId: 'C', anchorId: 'a' }, to: { curveId: 'C', anchorId: 'b' } }, { kind: 'segment', curveId: 'C', segmentId: 's1', dir: -1 }]
+          : [{ kind: 'segment', curveId: 'C', segmentId: 's1', dir: 1 }, { kind: 'bridge', from: { curveId: 'C', anchorId: 'b' }, to: { curveId: 'C', anchorId: 'a' } }],
+      }
+      const cut = ok(breakAt(base, 'C', 'b'))
+      // the copy that now ends s1
+      const s1 = cut.curves.C.segments.find((x) => x.id === 's1')!
+      const moved = moveAnchor(cut, { curveId: 'C', anchorId: s1.to }, P(-3, -13))
+      const gap = outlineGaps(fillGeometry(moved, 'G'))
+      report.push({ case: 'existing bridge at the cut', reversed, gap, gBridges: moved.fills.G.boundary.filter((x) => x.kind === 'bridge').length })
+      expect(gap).toBe(0)
+      expect(moved.fills.G.boundary.filter((x) => x.kind === 'bridge').length).toBe(1) // re-pointed, not duplicated
+      expect(outlineGaps(fillGeometry(moved, 'F'))).toBe(0)
+    }
+  })
+
   it('prints the table', () => {
     console.log('[fillBridge]\n' + report.map((r) => JSON.stringify(r)).join('\n'))
   })

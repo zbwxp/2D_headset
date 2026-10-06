@@ -9,8 +9,9 @@
 //     current positions, takes no part in endpoint linkage and draws no stroke;
 //   - a cut inserts a bridge ONLY at a break the original boundary passed through, keeping order and
 //     direction; invalid boundaries are never patched automatically; deleting a bridged endpoint is refused;
-//   - the bridge is part of the real fill geometry, which hit-testing, masks and caches all read from the
-//     one function `fillGeometry` (consecutive pieces start where the previous one ended — no "read p0 once").
+//   - the bridge is part of the real fill geometry: `fillGeometry` is the one source (consecutive pieces start
+//     where the previous one ended — no "read p0 once"); in THIS experiment only `fillContains` (a sampled
+//     even-odd test) and `fillDependencies` read it. No mask, stroke, own-ink or cache consumer exists here.
 import { v, type V } from './scenarioE'
 
 export type Anchor = { id: string; p: V; hIn: V; hOut: V } // handles are absolute points here
@@ -64,7 +65,7 @@ export function fillDependencies(d: Doc, fillId: string): string[] {
   }
   return [...s].sort()
 }
-/** even-odd hit test on a sampled polygon of the SAME geometry (picking and masks read this) */
+/** sampled even-odd hit test on the SAME geometry (experiment only; not native picking, not exact) */
 export function fillContains(d: Doc, fillId: string, p: V): boolean {
   const pts: V[] = []
   for (const q of fillGeometry(d, fillId))
@@ -125,31 +126,42 @@ export function breakAt(doc: Doc, curveId: string, anchorId: string): Result {
   const ownerOf = (segId: string) => (right && right.segments.some((s) => s.id === segId) ? right.id : curveId)
   // re-map every fill: segment owners, and a bridge exactly where a boundary passed through the broken anchor
   for (const f of Object.values(d.fills)) {
-    const nb: BoundaryStep[] = []
+    // owners first: segments that moved to the new curve, and bridge ends whose anchor moved there
     const ownerOfAnchor = (e: End): End => (e.curveId === curveId && right && right.anchors[e.anchorId] && !left.anchors[e.anchorId] ? { ...e, curveId: right.id } : e)
     const steps: BoundaryStep[] = f.boundary.map((st) =>
       st.kind === 'segment' ? (st.curveId === curveId ? { ...st, curveId: ownerOf(st.segmentId) } : st) : { ...st, from: ownerOfAnchor(st.from), to: ownerOfAnchor(st.to) },
     )
-    for (let i = 0; i < steps.length; i++) {
-      const st = steps[i]
-      nb.push(st)
-      const nx = steps[(i + 1) % steps.length]
-      if (st.kind !== 'segment' || nx.kind !== 'segment') continue
-      const end = (x: typeof st): End => {
-        const cc = d.curves[x.curveId]
-        const s = cc.segments.find((q) => q.id === x.segmentId)!
-        return { curveId: x.curveId, anchorId: x.dir === 1 ? s.to : s.from }
-      }
-      const start = (x: typeof st): End => {
-        const cc = d.curves[x.curveId]
-        const s = cc.segments.find((q) => q.id === x.segmentId)!
-        return { curveId: x.curveId, anchorId: x.dir === 1 ? s.from : s.to }
-      }
-      const e = end(st)
-      const s0 = start(nx)
-      const passedHere = [e.anchorId, s0.anchorId].sort().join() === [anchorId, copyId].sort().join()
-      if (passedHere) nb.push({ kind: 'bridge', from: e, to: s0 })
+    // Unified adjacency pass (review of 066676c): look at EVERY consecutive pair — segment or bridge — and
+    // where the pair meets at the broken anchor {anchorId, copyId}: a bridge end is re-pointed to the side its
+    // neighbour actually uses; two segments meeting there get a new bridge. Existing bridges count as neighbours.
+    const startOf = (st: BoundaryStep): End => {
+      if (st.kind === 'bridge') return st.from
+      const sg = d.curves[st.curveId].segments.find((q) => q.id === st.segmentId)!
+      return { curveId: st.curveId, anchorId: st.dir === 1 ? sg.from : sg.to }
     }
+    const endOf = (st: BoundaryStep): End => {
+      if (st.kind === 'bridge') return st.to
+      const sg = d.curves[st.curveId].segments.find((q) => q.id === st.segmentId)!
+      return { curveId: st.curveId, anchorId: st.dir === 1 ? sg.to : sg.from }
+    }
+    const atBreak = (e: End) => e.anchorId === anchorId || e.anchorId === copyId
+    const work: BoundaryStep[] = steps.map((st) => (st.kind === 'bridge' ? { ...st, from: { ...st.from }, to: { ...st.to } } : st))
+    const insertAfter = new Set<number>()
+    for (let i = 0; i < work.length; i++) {
+      const cur = work[i]
+      const nx = work[(i + 1) % work.length]
+      const e = endOf(cur)
+      const s0 = startOf(nx)
+      if (!atBreak(e) || !atBreak(s0) || e.anchorId === s0.anchorId) continue
+      if (cur.kind === 'bridge') cur.to = { ...s0 } // the bridge now ends where its neighbour starts
+      else if (nx.kind === 'bridge') nx.from = { ...e } // the bridge now starts where its neighbour ends
+      else insertAfter.add(i) // two segments meeting at the break: a new bridge between them
+    }
+    const nb: BoundaryStep[] = []
+    work.forEach((st, i) => {
+      nb.push(st)
+      if (insertAfter.has(i)) nb.push({ kind: 'bridge', from: endOf(st), to: startOf(work[(i + 1) % work.length]) })
+    })
     f.boundary = nb
   }
   return { ok: true, doc: d }
