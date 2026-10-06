@@ -24,6 +24,7 @@
 | [14-route-workload.md](14-route-workload.md) | 三种组合（tldraw 全套 / `@tldraw/store`+Fabric / 全自建）的补写清单、粗估工作量、风险、初步倾向 | Claude（待 dot 抽查） |
 | [15-slice-plan.md](15-slice-plan.md) | **写代码前给 bowen 的方案**：小切片范围、两条路线各复用什么、各自最先验证的两个风险、继续 / 放弃的判定 | Claude（待 dot 审） |
 | [16-product-core-and-check-scenarios.md](16-product-core-and-check-scenarios.md) | **成品形态与共用求值核心**：制作器 → 捏脸器 → runtime 共用“这张脸怎样被算出来”；未来能力检查场景 E（宽眼/窄眼 × 闭眼/惊讶 × 转头）；两种性能工作量。组合规则未定 | Claude 整理（待 dot 审） |
+| [17-scenario-e-comparison.md](17-scenario-e-comparison.md) | **场景 E 比较**：宽眼/窄眼 × 闭眼/惊讶 × 转头 30° 的数字例子；共同接口表；闭眼需要关系规则（固定偏移在捏形后不闭合）；惊讶是美术取舍；转头后捏形的三种带法；建议的实验模块 | Claude 起草（待 dot 审、bowen 定取舍） |
 
 约定：
 
