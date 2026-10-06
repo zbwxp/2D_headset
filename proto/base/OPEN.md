@@ -83,6 +83,13 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   per-move counts, 0 snapshot rows), property I13 (preview == full recompute after commit, every
   apply), `e2e/preview-counts.spec.ts` (real mouse drag in Chromium: 8 previews, 0 snapshot rows,
   0 full evaluations during the drag, 0 fallbacks). Mutations M18–M20 caught.
+- **Reviewed by dot at 8373b9b**: drag scope passed (104 tests per mode, 15 browser checks, dot's
+  independent preview checks; no store copy during drags, confirmed with Store method spies). Found:
+  a reference `sourceId` change kept the old instances in `Derived.preview` (no current command does
+  this). Fixed after review: the fast path is now an ALLOW-list of geometry/appearance fields
+  (curve: name, tags, anchors, segments with unchanged ids, closed, stroke; reference: name, tags,
+  transform, overrides) — anything else falls back. `test/preview-relations.test.ts` (dot's case +
+  random relationship-field replacements vs an independently built document); M21–M22 caught.
 - Still full per render (drawing layer, not changed by design): the view assembles the whole preview
   list (`previewItems` = list length per move) and rebuilds every canvas object (`canvasObjects`).
 - Found by I13: a plan that CREATES a record without an explicit id gets a fresh random id per plan,

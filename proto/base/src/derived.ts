@@ -14,6 +14,7 @@
 // Caches are per store: a reopened document (Editor.open) is a new store with new caches; a record
 // removed and re-added (undo/redo, same id) gets a new atom, and createComputedCache keys by atom.
 import { computed, type Computed } from '@tldraw/state'
+import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
 import { evalCurve, evaluate, IDENTITY, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
@@ -110,6 +111,31 @@ export function overlayReader(reader: DocReader, puts: DocRecord[]): DocReader {
   }
 }
 
+/**
+ * Fields a preview may change on the fast path: geometry and appearance only. It is an ALLOW-list
+ * (dot, review of 8373b9b: a sourceId change kept the old instances because the old guard listed only
+ * parent/index/depth). Any other field — parent, order, depth, reference source, and any field added
+ * later — can change membership, dependencies or paint order, so the preview falls back to a full
+ * overlay evaluation. Segment ids must stay the same (fills name segments by id).
+ */
+const FAST_FIELDS: Partial<Record<DocRecord['typeName'], Set<string>>> = {
+  curve: new Set(['name', 'tags', 'anchors', 'segments', 'closed', 'stroke']),
+  reference: new Set(['name', 'tags', 'transform', 'overrides']),
+}
+function fastPathChange(old: DocRecord, next: DocRecord) {
+  const allowed = FAST_FIELDS[next.typeName]
+  if (!allowed) return false
+  const keys = new Set([...Object.keys(old), ...Object.keys(next)])
+  for (const k of keys) {
+    const a = (old as any)[k]
+    const b = (next as any)[k]
+    if (isEqual(a, b)) continue
+    if (!allowed.has(k)) return false
+    if (k === 'segments' && !isEqual((a as { id: string }[]).map((x) => x.id), (b as { id: string }[]).map((x) => x.id))) return false
+  }
+  return true
+}
+
 export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | EvalFill> } | { fallback: true }
 
 export class Derived {
@@ -194,11 +220,7 @@ export class Derived {
     const store = this.store
     for (const r of puts) {
       const old = store.get(r.id as any) as DocRecord | undefined
-      if (!old || old.typeName !== r.typeName || (r.typeName !== 'curve' && r.typeName !== 'reference')) return { fallback: true }
-      const o = old as CurveRecord | ReferenceRecord
-      const n = r as CurveRecord | ReferenceRecord
-      if (o.parentId !== n.parentId || o.index !== n.index) return { fallback: true }
-      if (o.typeName === 'curve' && (n as CurveRecord).depthOffset !== o.depthOffset) return { fallback: true }
+      if (!old || old.typeName !== r.typeName || !fastPathChange(old, r)) return { fallback: true }
     }
     const view = overlayReader(this.reader, puts)
     const items = new Map<string, EvalCurve | EvalFill>()
