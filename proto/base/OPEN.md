@@ -135,10 +135,11 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   author state and history unchanged; invalid data rejected explicitly. Mutations M26–M27 caught.
 - Measured (node, synthetic, informational):
   - maker onion (19 yaws), drag one free anchor: 19 curve-at-yaw evaluations + 1 curve evaluation
-    per drag, identical for 121 and 3000 curves (≈0.09–0.14 ms per drag, per-item consumer).
+    per drag, identical for 121 and 3000 curves (≈0.09–0.14 ms per drag, per-item consumer — synthetic
+    evaluation only, NOT a real onion drag frame: no list traversal, no drawing).
   - runtime, parameter-driven sweep over 60 NEW angles (every curve changes every frame, no edits):
     3000 curves — cached path ≈10.8 ms/frame on first visit vs ≈3.7 ms uncached; replaying cached
-    angles ≈0; heap growth with a large cache 89–133 MB (noisy, no forced GC). 1000 curves — 2.7 vs
+    angles ≈0 (= returning the already-computed list object; traversal and drawing not included); heap growth with a large cache 89–133 MB (noisy, no forced GC). 1000 curves — 2.7 vs
     1.2 ms. **For full-change playback the per-item caches cost ~3× a plain recompute and a lot of
     memory**: runtime caching must be decided from such numbers (16 §3), not assumed.
 
