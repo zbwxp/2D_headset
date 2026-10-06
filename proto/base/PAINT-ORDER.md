@@ -105,6 +105,11 @@ back → front L1 = [collar K], L2 = [neck], L3 = [group G = [eye-white fill F, 
 K +1 (LAYER) → in front of all of L2, behind L3; K +5 → clamped, in front of all of L3. bowen's use
 case: the side-face patch fill with a LAYER offset in front of the side-face edge lines.
 
+D1 second reference (read, docs.live2d.com/en/cubism-editor-manual/draworder/): Live2D gives every
+drawable an ABSOLUTE draw order 0–1000 (higher in front; equal values → Parts palette order), which
+can be keyed to parameters like shapes; "Draw Order Group" scopes it per part. Candidates to compare:
+absolute value + group scope + parameter-driven (Live2D) vs relative sibling-slot offset (v103).
+
 **D2 — compositing for R4 (C1, agreed direction; = v103 `docs/architecture/owned-fill-compositing.md`,
 read).** Every object paints once at its own position in the order; a fill does not paint inside the
 visible ink area of its own boundary strokes that are BEHIND it. No repaint of the stroke, no lifting
@@ -145,7 +150,11 @@ deterministically, follow no other offset (no cyclic dependency) and ties use a 
 result is a total order; with C1, R4 adds no ordering constraint. This does NOT cover local
 interleaving, which stays out of scope (D5).
 
-**D5 — local interleaving (RC-16 待定).** Out of scope for this contract version.
+**D5 — local interleaving (RC-16 待定).** Out of scope for this contract version. Mature reference
+(read): Illustrator "Intertwine" — overlapping objects form an Intertwine group; clicking or encircling
+an overlap area chooses which object is on top there; non-destructive (Edit / Release)
+(helpx.adobe.com/illustrator/desktop/manage-objects/reshape-transform-objects/create-intertwined-objects.html).
+bowen's case: a closed curve "wrapping" another layer (a collar in front of / behind the neck).
 
 **D6 — references (candidate boundary for this round, dot agreed).** A reference's content is painted at
 the reference's own position in its parent; the source's internal order is kept; offsets inside the
