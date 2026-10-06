@@ -178,3 +178,20 @@ Fabric drawing as such. Every earlier conclusion of the form "Fabric renderAll d
 faster than Fabric" compared B against a misconfigured Fabric and is withdrawn. The setting is not
 changed in the product yet (dot is reviewing the reuse boundary); comparisons must be redone with the
 dots uncached (and with B's own-ink cost included on both sides).
+
+
+## Re-comparison with the anchor dots uncached (2026-10-06, single run, fitted, DPR 1)
+
+Anchor dots now `objectCaching: false` like every other scene object (fabricView.ts `dot`). Both
+paths include the own-ink protection of all 100 fills (S2) and the interleaved paint order (S1).
+
+| onion | drag | Fabric A renderAll | Fabric A input → draw call done | B renderAll | B input → draw call done | full rebuild input → draw done |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | free anchor | 21.8 ms | 39.1 ms | 14.8 ms | 31.3 ms | 136 ms |
+| 0 | fill boundary | 21.9 | 39.3 | 14.2 | 30.3 | 136 |
+| 19 | free anchor | 43.5 | 66.0 | 23.4 | 43.2 | 368 |
+| 19 | fill boundary | 44.4 | 65.9 | 24.0 | 43.8 | 371 |
+
+B is ≈ 1.5–1.9× faster than Fabric A on the draw call — not ≈ 200×; the earlier gap was the dot cache.
+Option A (incremental scene) still matters: a full rebuild per move costs ≈ 100–300 ms more (build +
+attach). Input → draw call done is not on-screen presentation.

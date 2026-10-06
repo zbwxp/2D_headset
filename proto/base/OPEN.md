@@ -33,7 +33,8 @@ object (`e2e/scene-incremental.spec.ts`) and pixel by pixel at a fixed viewport
 6,600 scene objects: input → draw call done ≈ 570 ms (A) vs ≈ 950 ms (full
 rebuild); with 19 onion yaws ≈ 590 vs ≈ 1,220–1,320 ms; the dominant cost is Fabric renderAll
 (≈ 0.55 s) — CORRECTION 2026-10-06: almost all of it is the anchor dots' default Fabric object cache
-(dots uncached: ≈ 23 ms; see bench-results/drawing-costs.md). Fill materials not measured (not implemented).
+(dots uncached: ≈ 23 ms; see bench-results/drawing-costs.md). Dots are now uncached; re-compared: Fabric
+A ≈ 22 / 44 ms renderAll (0 / 19 onion) vs B ≈ 14.5 / 23.7 ms — ≈ 1.5–1.9×, no canvas decision yet. Fill materials not measured (not implemented).
 **B (dot reviewed 0264deb: experimental, NOT a replacement candidate):** Canvas2D reference drawing the same scene (not pixel-identical; in the sampled
 comparisons no difference was found away from stroke edges — NOT a proof that all differences are
 anti-aliasing; width, position and occlusion still need small images with exact expected results;

@@ -567,7 +567,9 @@ export class FabricView {
 const round = (n: number) => Math.round(n * 1000) / 1000
 
 function dot(p: Vec, color: string, r: number) {
-  return new Circle({ left: p.x, top: p.y, radius: r, fill: color, originX: 'center', originY: 'center', selectable: false, evented: false })
+  // objectCaching off like every other scene object: Fabric's default per-object cache on 6,000 tiny
+  // dots cost ≈ 540 of ≈ 560 ms per renderAll (e2e/dots-cache-probe.spec.ts; dot's reuse review)
+  return new Circle({ left: p.x, top: p.y, radius: r, fill: color, originX: 'center', originY: 'center', selectable: false, evented: false, objectCaching: false })
 }
 
 /** Evaluate a preview without touching the document: a throwaway store with the planned records. */
