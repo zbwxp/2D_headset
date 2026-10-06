@@ -71,6 +71,7 @@ export function presetExpr(store: Get, f: FormsRecord, param: string, yaw: numbe
   const rule = owner && ruleFor(store, owner.familyId, param)
   const impl = rule && RULES[rule.kind]
   if (!rule || !impl) return null
+  if (rule.roles[impl.moved] !== f.curveId) return null // only the rule's moved role has this track (reported by the forms check)
   const src = as(store, presetFormsIdOf(owner!.id, rule.roles[impl.source]), 'forms')
   const at = (k: ExprKey) => {
     const s = src && presetNeutral(src, k.yaw)
@@ -106,9 +107,12 @@ export function newRecordProblems(store: Get, r: DocRecord): Problem[] {
     const shapes: [string, Shape][] = [...(r.original && r.original !== 'curve' ? [['original', r.original] as [string, Shape]] : []), ...(r.yaw as AbsoluteYawKey[]).map((k) => [`yaw ${k.yaw}`, k.shape] as [string, Shape])]
     for (const [param, keys] of Object.entries(r.expr)) for (const k of keys) if (k.kind === 'author') shapes.push([`${param} target ${k.yaw}`, k.target], [`${param} base ${k.yaw}`, k.base])
     for (const [where, sh] of shapes) if (!sameAnchors(sh, c)) p(where, c.id, `${where} does not list exactly the anchors of ${c.id}`)
-    if (family) for (const param of Object.keys(r.expr)) {
+    if (family && store.allRecords) for (const param of Object.keys(r.expr)) {
       const rule = ruleFor(store, family.id, param)
-      if (store.allRecords && !rule) p(`expr.${param}`, param, `no rule bound to ${family.id} / ${param}`)
+      const impl = rule && RULES[rule.kind]
+      if (!rule) p(`expr.${param}`, param, `no rule bound to ${family.id} / ${param}`)
+      else if (impl && rule.roles[impl.moved] !== c.id)
+        p(`expr.${param}`, rule.id, `${c.id} has a ${param} track but is not the moved role (${impl.moved} = ${rule.roles[impl.moved]}) of ${rule.id}`)
     }
   }
   if (r.typeName === 'family') for (const [i, id] of r.curves.entries()) need(`curves[${i}]`, id, 'curve')
@@ -120,6 +124,9 @@ export function newRecordProblems(store: Get, r: DocRecord): Problem[] {
   if (r.typeName === 'rule') {
     const family = as(store, r.familyId, 'family')
     if (!family) need('familyId', r.familyId, 'family')
+    // ONE rule per (family, parameter): lookups find a rule by that pair (dot, review of 2c92206)
+    const twins = store.allRecords?.().filter((x) => x.typeName === 'rule' && x.id !== r.id && x.familyId === r.familyId && x.param === r.param) ?? []
+    if (twins.length) p('param', twins.map((x) => x.id).join(', '), `${r.familyId} / ${r.param} is also bound by ${twins.map((x) => x.id).join(', ')}: one rule per family parameter`)
     const impl = RULES[r.kind]
     if (!impl || !impl.versions.includes(r.version)) p('kind', `${r.kind}@${r.version}`, `unknown rule ${r.kind} version ${r.version}`)
     else {
@@ -223,7 +230,14 @@ export function presetConnectionProblems(store: Get, r: ConnectionRecord): Probl
     for (const st of states) {
       let pts: (Shape[string]['p'] | undefined)[]
       try {
-        pts = r.ends.map((e, i) => st.at(fs[i]!, st.yaw)?.[e.anchorId]?.p)
+        const shapes = r.ends.map((e, i) => st.at(fs[i]!, st.yaw))
+        const lacking = r.ends.findIndex((e, i) => shapes[i] && !shapes[i]![e.anchorId])
+        if (lacking >= 0) {
+          // an evaluated shape without the end anchor is an error, never a silently skipped comparison
+          out.push({ object: r.id, field: 'ends', target: pr.id, message: `${r.id}: in ${pr.id} at ${st.name} the shape of ${r.ends[lacking].curveId} has no anchor ${r.ends[lacking].anchorId}` })
+          break
+        }
+        pts = r.ends.map((e, i) => shapes[i]?.[e.anchorId]?.p)
       } catch (err) {
         // malformed forms (their own checks report why): say so here instead of crashing the whole check
         out.push({ object: r.id, field: 'ends', target: pr.id, message: `${r.id}: cannot evaluate the ends in ${pr.id} at ${st.name}` })

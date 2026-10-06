@@ -194,3 +194,74 @@ describe('nothing the write entry commits is refused on reopen (dot 1791308648)'
     }
   })
 })
+
+describe('review of 2c92206 (dot): uniqueness, closure, required fields, wrong roles, migration collisions, new-mode overrides', () => {
+  const err = (fn: () => unknown) => {
+    try {
+      fn()
+      return ''
+    } catch (e) {
+      return String((e as Error).message)
+    }
+  }
+  it('two rules binding the same family parameter are refused on open (so deleting one cannot silently switch rules)', () => {
+    const rs = structuredClone(sample())
+    const twin: any = structuredClone(rs.find((r: any) => r.id === 'rule:eye/blink'))
+    twin.id = 'rule:z-alternate'
+    twin.correspondence.b = 'c'
+    rs.push(twin)
+    expect(err(() => openRecords(rs))).toMatch(/is also bound by rule:z-alternate: one rule per family parameter/)
+  })
+
+  it('removing a rule re-checks the shared nodes evaluated through its forms (closure reaches the connections)', () => {
+    // the only way to remove the single rule is refused; its dependants include the corner connection
+    const e = openRecords(sample())
+    const r = e.apply({ type: 'deleteRecords', ids: ['rule:eye/blink'] })
+    expect(r.ok === false && r.error.objects).toContain('forms:preset:P/curve:lid')
+  })
+
+  it('a migration never overwrites: an old pose whose target forms id already exists refuses the file', () => {
+    const old = legacySnapshot()
+    old.store['forms:document/curve:E1'] = { typeName: 'forms', id: 'forms:document/curve:E1', curveId: 'curve:E1', owner: { kind: 'document' }, encoding: 'legacy-delta', original: 'curve', yaw: [], expr: {} }
+    expect(err(() => Editor.open(old))).toMatch(/would become forms:document\/curve:E1, which already exists/)
+  })
+
+  const missing: [string, string, (r: any) => void, RegExp][] = [
+    ['absolute forms without expr', 'forms:preset:P/curve:lowerLid', (r) => delete r.expr, /expr \(required/],
+    ['visibility without owner', 'visibility:preset:P/curve:strand', (r) => delete r.owner, /visibility .* owner/],
+    ['helper domain without source', 'helperDomain:P/90', (r) => delete r.source, /source \/ target yaw/],
+    ['character without weights', 'character:K', (r) => delete r.weights, /weights \/ fineTune \/ takeovers \/ exprFixes/],
+    ['rule with a non-string role', 'rule:eye/blink', (r) => (r.roles.lower = 3), /rule .* roles/],
+    ['family with a duplicate curve', 'family:eye', (r) => r.curves.push('curve:lid'), /unique curve ids/],
+  ]
+  for (const [name, id, mutate, message] of missing)
+    it(`required fields are validated, not crashed on: ${name}`, () => {
+      const rs = structuredClone(sample())
+      mutate(rs.find((r: any) => r.id === id))
+      const m = err(() => openRecords(rs))
+      expect(m).toMatch(message)
+      expect(m).not.toMatch(/Cannot read|Cannot convert|undefined is not/)
+    })
+
+  it("an expression track on a curve that is not the rule's moved role is refused; presetExpr never returns another curve's anchors", () => {
+    const rs = structuredClone(sample())
+    const lower: any = rs.find((r: any) => r.id === 'forms:preset:P/curve:lowerLid')
+    lower.expr.blink = [{ yaw: 0, kind: 'rule' }]
+    expect(err(() => openRecords(rs))).toMatch(/curve:lowerLid has a blink track but is not the moved role \(upper = curve:lid\)/)
+    const reader = { get: (id: string) => rs.find((r: any) => r.id === id), allRecords: () => rs }
+    expect(presetExpr(reader as any, lower, 'blink', 0)).toBeNull()
+  })
+
+  it('a reference override on a preset-form (family) curve is refused at the write entry; legacy overrides still work', () => {
+    const rs = structuredClone(sample())
+    const r1: any = rs.find((r: any) => r.id === 'reference:R1')
+    Object.assign(r1, { sourceId: 'container:L1', parentId: 'container:L3', overrides: {} })
+    const e = openRecords(rs)
+    const before = JSON.stringify(e.reader.allRecords())
+    const r = e.apply({ type: 'moveOverride', referenceId: 'reference:R1' as any, target: { curveId: 'curve:lid' as any, anchorId: 'm' }, delta: { x: 3, y: 2 } })
+    expect(r.ok === false && r.error.message).toMatch(/reference overrides on preset-form curves are not supported/)
+    expect(JSON.stringify(e.reader.allRecords())).toBe(before)
+    const legacy = openRecords(sample())
+    expect(legacy.apply({ type: 'moveOverride', referenceId: 'reference:R1' as any, target: { curveId: 'curve:C1' as any, anchorId: 'a1' }, delta: { x: 1, y: 0 } }).ok).toBe(true)
+  })
+})

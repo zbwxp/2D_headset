@@ -11,7 +11,7 @@
 import { computed, isUninitialized, RESET_VALUE, unsafe__withoutCapture, type Computed } from '@tldraw/state'
 import type { StoreQueries } from '@tldraw/store'
 import { counters } from './counters'
-import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FillRecord, ReferenceRecord } from './schema'
+import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FamilyRecord, FillRecord, ReferenceRecord } from './schema'
 
 type Type = DocRecord['typeName']
 type Rec<T extends Type> = Extract<DocRecord, { typeName: T }>
@@ -85,6 +85,7 @@ type Indexes = {
   childrenByParent: Record<'container' | 'curve' | 'fill' | 'reference', KeyIndex>
   fillsByCurve: KeyIndex
   referencesBySource: KeyIndex
+  familiesByCurve: KeyIndex
 }
 const cache = new WeakMap<object, Indexes>()
 
@@ -98,6 +99,7 @@ export function indexesOf(store: Indexed): Indexes {
       childrenByParent: { container: byParent('container'), curve: byParent('curve'), fill: byParent('fill'), reference: byParent('reference') },
       fillsByCurve: multiIndex(store, 'fill', (f: FillRecord) => f.boundary.map((b) => b.curveId as string)),
       referencesBySource: multiIndex(store, 'reference', (r: ReferenceRecord) => [r.sourceId as string]),
+      familiesByCurve: multiIndex(store, 'family', (f: FamilyRecord) => f.curves.map(String)),
     }
     cache.set(store.query, ix)
   }
@@ -126,6 +128,9 @@ export const childrenOf = <T extends 'container' | 'curve' | 'fill' | 'reference
     : scan(store, type).filter((r) => String((r as { parentId: unknown }).parentId) === String(parentId)).map((r) => (r as { id: string }).id)) as Rec<T>['id'][]
 export const fillsUsing = (store: Queryable, curveId: string) =>
   (indexed(store) ? lookup(indexesOf(store).fillsByCurve, curveId) : scan(store, 'fill').filter((f) => f.boundary.some((b) => b.curveId === curveId)).map((f) => f.id)) as FillRecord['id'][]
+/** Families registering a curve (a family curve has preset forms: the new mode). */
+export const familiesOf = (store: Queryable, curveId: string) =>
+  (indexed(store) ? lookup(indexesOf(store).familiesByCurve, curveId) : scan(store, 'family').filter((f) => f.curves.includes(curveId as any)).map((f) => f.id)) as FamilyRecord['id'][]
 export const referencesOf = (store: Queryable, sourceId: string) =>
   (indexed(store) ? lookup(indexesOf(store).referencesBySource, sourceId) : scan(store, 'reference').filter((r) => r.sourceId === sourceId).map((r) => r.id)) as ReferenceRecord['id'][]
 

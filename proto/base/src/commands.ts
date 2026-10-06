@@ -7,7 +7,7 @@
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { legacyKeys, offsetAt } from './pose'
-import { childrenOf, connectionsAt, fillsUsing, referencesOf, within } from './indexes'
+import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
 import { actualKind, anchorKey, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
@@ -23,6 +23,7 @@ import {
   type DocRecord,
   type BaseReader as DocStore,
   type FillRecord,
+  type FormsRecord,
   type ReferenceRecord,
   type Vec,
   validateRecord,
@@ -231,9 +232,16 @@ function dependantsOf(store: DocStore, id: string): string[] {
     return r.owner.kind === 'preset' ? [...out, r.owner.id] : out
   }
   // a rule is found by (family, param), not by id: the forms of that family's presets depend on it
+  // and the shared nodes evaluated through those forms: every connection at an anchor of the family's curves
+  // (dot, review of 2c92206: a remaining twin rule changed the closed shape and split the corner)
   if (r.typeName === 'rule') {
     const presets = new Set(store.allRecords().filter((x) => x.typeName === 'preset' && x.familyId === r.familyId).map((x) => x.id as string))
-    return [...mentioning(store, r.id), ...store.allRecords().filter((x) => x.typeName === 'forms' && x.owner.kind === 'preset' && presets.has(x.owner.id)).map((x) => x.id)]
+    const forms = store.allRecords().filter((x): x is FormsRecord => x.typeName === 'forms' && x.owner.kind === 'preset' && presets.has(x.owner.id))
+    const conns = [...new Set(forms.map((f) => f.curveId))].flatMap((cid) => {
+      const c = getAs(store, cid, 'curve')
+      return c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
+    })
+    return [...mentioning(store, r.id), ...forms.map((f) => f.id), ...conns]
   }
   return mentioning(store, r.id)
 }
@@ -380,6 +388,10 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       if (!curve || !a) return notFound(store, cmd.target.curveId, curve ? 'anchor' : 'curve', anchorKey(cmd.target))
       if (!isWithin(store, curve.parentId, ref.sourceId))
         return fail('INVALID', `${anchorKey(cmd.target)} is not part of ${ref.id}'s source ${ref.sourceId}`, [ref.id, anchorKey(cmd.target)])
+      // A reference override is defined for legacy curves only (samples §4.5). On a family curve (preset forms) its
+      // meaning is undefined: refused, never written as an old-style absolute position (dot, review of 2c92206).
+      const fam = familiesOf(store, curve.id)
+      if (fam.length) return fail('INVALID', `${anchorKey(cmd.target)} belongs to ${fam.join(', ')}: reference overrides on preset-form curves are not supported`, [ref.id, anchorKey(cmd.target), ...fam])
       const key = anchorKey(cmd.target)
       const current = ref.overrides[key] ?? a.p
       const next = { ...ref, overrides: { ...ref.overrides, [key]: add(current, cmd.delta) } }

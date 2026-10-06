@@ -32,7 +32,7 @@ import { isEqual } from '@tldraw/utils'
 import { freshIds, plan, type Command, type EditError, type IdSource } from './commands'
 import { Derived } from './derived'
 import { graphProblems } from './model'
-import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
+import { createDocStore, deepFreeze, legacyMigrationConflicts, type DocReader, type DocRecord, type DocStore } from './schema'
 
 /** Something went wrong outside the write itself (e.g. a subscriber threw); the write stands. */
 export type EditWarning = { code: 'OBSERVER_FAILED' | 'WARNING_HANDLER_FAILED'; message: string }
@@ -332,6 +332,9 @@ export class Editor {
   /** Migrate, validate records and structure; throw (nothing opened) if anything is wrong. */
   static open(snapshot: StoreSnapshot<DocRecord>) {
     const editor = new Editor()
+    // tldraw reports a failed migration only as "migration-error": name the reason first (stage 1)
+    const conflicts = legacyMigrationConflicts((snapshot as any)?.store ?? {})
+    if (conflicts.length) throw new Error(`invalid document: ${conflicts.join('; ')}`)
     editor.#store.loadStoreSnapshot(snapshot)
     for (const r of editor.#store.allRecords()) deepFreeze(r)
     const problems = graphProblems(editor.reader)

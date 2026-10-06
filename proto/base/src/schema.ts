@@ -220,6 +220,9 @@ export const Reference = createRecordType<ReferenceRecord>('reference', {
   },
 }).withDefaultProperties(() => ({ index: 'a0', overrides: {} }))
 
+const isObj = (o: unknown) => !!o && typeof o === 'object' && !Array.isArray(o)
+const isOwner = (o: any) => isObj(o) && (o.kind === 'document' || (o.kind === 'preset' && typeof o.id === 'string'))
+const isStrArr = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === 'string')
 const isShape = (sh: any) => sh && typeof sh === 'object' && Object.values(sh).every((a: any) => a && isVec(a.p) && isVec(a.hIn) && isVec(a.hOut))
 const sortedUnique = (keys: { yaw: unknown }[], what: string) =>
   keys.forEach((k, i) => {
@@ -232,7 +235,10 @@ export const Forms = createRecordType<FormsRecord>('forms', {
   validator: {
     validate(r: any) {
       check(r.encoding === 'legacy-delta' || r.encoding === 'absolute', `forms ${r.id} encoding`)
+      check(typeof r.curveId === 'string', `forms ${r.id} curveId`)
+      check(isOwner(r.owner), `forms ${r.id} owner`)
       check(Array.isArray(r.yaw), `forms ${r.id} yaw`)
+      check(isObj(r.expr), `forms ${r.id} expr (required; {} when none)`)
       sortedUnique(r.yaw, `forms ${r.id}`)
       if (r.encoding === 'legacy-delta') {
         check(r.owner?.kind === 'document' && r.original === 'curve', `forms ${r.id}: legacy-delta is owned by the document with original 'curve'`)
@@ -262,7 +268,7 @@ export const poseIdOf = legacyFormsIdOf
 
 export const Family = createRecordType<FamilyRecord>('family', {
   scope: 'document',
-  validator: { validate: (r: any) => (check(typeof r.name === 'string' && Array.isArray(r.curves), `family ${r.id}`), r) },
+  validator: { validate: (r: any) => (check(typeof r.name === 'string' && isStrArr(r.curves) && new Set(r.curves).size === r.curves.length, `family ${r.id} (name, unique curve ids)`), r) },
 })
 export const Preset = createRecordType<PresetRecord>('preset', {
   scope: 'document',
@@ -272,8 +278,9 @@ export const Rule = createRecordType<RuleRecord>('rule', {
   scope: 'document',
   validator: {
     validate(r: any) {
-      check(typeof r.param === 'string' && typeof r.kind === 'string' && isNum(r.version), `rule ${r.id}`)
-      check(r.roles && typeof r.roles === 'object' && r.correspondence && typeof r.correspondence === 'object', `rule ${r.id} roles / correspondence`)
+      check(typeof r.familyId === 'string' && typeof r.param === 'string' && typeof r.kind === 'string' && isNum(r.version), `rule ${r.id}`)
+      check(isObj(r.roles) && Object.values(r.roles).every((x) => typeof x === 'string'), `rule ${r.id} roles`)
+      check(isObj(r.correspondence) && Object.values(r.correspondence).every((x) => typeof x === 'string'), `rule ${r.id} correspondence`)
       return r
     },
   },
@@ -283,7 +290,8 @@ export const HelperDomain = createRecordType<HelperDomainRecord>('helperDomain',
   validator: {
     validate(r: any) {
       const t = r.affine
-      check(isNum(r.yaw) && t && [t.a, t.b, t.c, t.d, t.e, t.f].every(isNum) && isNum(r.ruleVersion), `helperDomain ${r.id}`)
+      check(typeof r.presetId === 'string' && isNum(r.yaw) && t && [t.a, t.b, t.c, t.d, t.e, t.f].every(isNum) && isNum(r.ruleVersion), `helperDomain ${r.id}`)
+      check(isObj(r.source) && isNum(r.source.yaw) && isObj(r.target) && isNum(r.target.yaw), `helperDomain ${r.id} source / target yaw`)
       return r
     },
   },
@@ -294,15 +302,20 @@ export const Character = createRecordType<CharacterRecord>('character', {
   validator: {
     validate(r: any) {
       check(typeof r.name === 'string' && typeof r.familyId === 'string', `character ${r.id}`)
-      for (const [p, w] of Object.entries(r.weights ?? {})) check(isNum(w), `character ${r.id} weight ${p}`)
-      for (const [c, as] of Object.entries(r.fineTune ?? {}) as [string, any][])
+      // every field is required (defaults apply only when a record is CREATED): what is validated is what is read
+      check(isObj(r.weights) && isObj(r.fineTune) && Array.isArray(r.takeovers) && Array.isArray(r.exprFixes), `character ${r.id} weights / fineTune / takeovers / exprFixes`)
+      for (const [p, w] of Object.entries(r.weights)) check(isNum(w), `character ${r.id} weight ${p}`)
+      for (const [c, as] of Object.entries(r.fineTune) as [string, any][]) {
+        check(isObj(as), `character ${r.id} fineTune ${c}`)
         for (const [a, d] of Object.entries(as)) check(isVec((d as any).dp) && isVec((d as any).dIn) && isVec((d as any).dOut), `character ${r.id} fineTune ${c}#${a}`)
-      for (const t of r.takeovers ?? []) {
-        check(isL(t.L) && isNum(t.state?.yaw) && isNum(t.direction?.from) && isNum(t.direction?.to), `character ${r.id} takeover ${t.id}`)
-        if (t.kind === 'line') check(isShape(t.target) && isShape(t.basisFront), `character ${r.id} takeover ${t.id} shapes`)
-        else check(t.kind === 'node' && isVec(t.target) && isVec(t.basisFront) && typeof t.basisFrom === 'string', `character ${r.id} takeover ${t.id}`)
       }
-      for (const f of r.exprFixes ?? []) check(isShape(f.target) && isShape(f.base) && isNum(f.ruleVersion) && isNum(f.state?.yaw), `character ${r.id} exprFix ${f.id}`)
+      for (const t of r.takeovers) {
+        check(isObj(t) && typeof t.id === 'string', `character ${r.id} takeover id`)
+        check(isL(t.L) && isNum(t.state?.yaw) && isNum(t.direction?.from) && isNum(t.direction?.to), `character ${r.id} takeover ${t.id}`)
+        if (t.kind === 'line') check(typeof t.curveId === 'string' && isShape(t.target) && isShape(t.basisFront), `character ${r.id} takeover ${t.id} shapes`)
+        else check(t.kind === 'node' && typeof t.connectionId === 'string' && isVec(t.target) && isVec(t.basisFront) && typeof t.basisFrom === 'string', `character ${r.id} takeover ${t.id}`)
+      }
+      for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && isShape(f.target) && isShape(f.base) && isNum(f.ruleVersion) && isNum(f.state?.yaw), `character ${r.id} exprFix ${f?.id}`)
       return r
     },
   },
@@ -311,7 +324,7 @@ export const Visibility = createRecordType<VisibilityRecord>('visibility', {
   scope: 'document',
   validator: {
     validate(r: any) {
-      check(r.mode === 'step' && Array.isArray(r.keys), `visibility ${r.id}`)
+      check(r.mode === 'step' && Array.isArray(r.keys) && typeof r.curveId === 'string' && isOwner(r.owner), `visibility ${r.id} (mode, keys, curveId, owner)`)
       sortedUnique(r.keys, `visibility ${r.id}`)
       for (const k of r.keys) check(typeof k.visible === 'boolean', `visibility ${r.id} key ${k.yaw}`)
       return r
@@ -325,6 +338,13 @@ export const Visibility = createRecordType<VisibilityRecord>('visibility', {
  * Store-scoped because the record TYPE changes; retroactive, so files saved before this sequence existed
  * are migrated on open.
  */
+/** Old poses that the migration could not move without overwriting a record (refused with this reason). */
+export function legacyMigrationConflicts(store: Record<string, any>): string[] {
+  return Object.entries(store)
+    .filter(([, r]) => r?.typeName === 'pose' && store[legacyFormsIdOf(r.curveId)])
+    .map(([id, r]) => `migration: ${id} would become ${legacyFormsIdOf(r.curveId)}, which already exists`)
+}
+
 export const documentMigrations = createMigrationSequence({
   sequenceId: 'contour.document',
   retroactive: true,
@@ -335,8 +355,11 @@ export const documentMigrations = createMigrationSequence({
       up(store: any) {
         for (const [id, r] of Object.entries(store) as [string, any][]) {
           if (r.typeName !== 'pose') continue
-          delete store[id]
           const nid = legacyFormsIdOf(r.curveId)
+          // never overwrite: a file holding both an old pose and a forms record with the target id is refused
+          // (dot, review of 2c92206: the old pose silently replaced the existing record)
+          if (store[nid]) throw new Error(`migration: ${id} would become ${nid}, which already exists`)
+          delete store[id]
           store[nid] = { typeName: 'forms', id: nid, curveId: r.curveId, owner: { kind: 'document' }, encoding: 'legacy-delta', original: 'curve', yaw: r.keys, expr: {} }
         }
       },
