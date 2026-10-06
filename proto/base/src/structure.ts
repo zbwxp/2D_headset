@@ -13,9 +13,10 @@
 import type { RecordId } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { deviation, joinCubic, type JoinMode } from './experiments/deletePoint'
+import { ctxOf, prepareCharacter } from './character'
 import { presetFormsIdOf } from './forms'
 import { connectionsAt, familiesOf, fillsUsing, referencesOf } from './indexes'
-import { anchorKey, containerChain, getAs, type AnchorRef } from './model'
+import { anchorKey, containerChain, getAs, overlayReader, type AnchorRef } from './model'
 import { legacy3Keys, promoteLegacy } from './pose'
 import {
   Curve,
@@ -28,6 +29,7 @@ import {
   type BoundaryStep,
   type CharacterRecord,
   type ConnectionRecord,
+  type AbsoluteYawKey,
   type CurveRecord,
   type DocRecord,
   type FamilyRecord,
@@ -498,7 +500,8 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       if (!['mid', 'first', 'last'].includes(cmd.keep)) return fail('INVALID', `keep must be mid, first or last (got ${cmd.keep})`, [c.id])
       const F = c.segments[0].from, L = c.segments[c.segments.length - 1].to
       const d = curveData(store, c)
-      const no = refuse(d, 'merging the ends', ['family', 'rules', 'characters', 'overrides'])
+      const no = refuse(d, 'merging the ends', ['rules', 'characters', 'overrides'])
+      if (d.legacy && d.families.length) return fail('INVALID', `${c.id} has both a legacy track and preset forms: merging mixed modes is not supported`, [c.id])
       if (no) return no
       for (const a of [F, L]) {
         const cs = connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))
@@ -515,7 +518,12 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
         },
       }
       const segments = c.segments.map((s, i) => (i === c.segments.length - 1 ? { ...s, to: F } : s))
-      return { ok: true, label: 'mergeEnds', puts: applyEverywhere(d, op, segments, { closed: true }), affected: [c.id] }
+      const puts = applyEverywhere(d, op, segments, { closed: true })
+      for (const fam of d.families) {
+        const still = familyStillPlayable(store, puts, fam.id)
+        if (still) return still
+      }
+      return { ok: true, label: 'mergeEnds', puts, affected: [c.id] }
     }
 
     case 'bind': {
@@ -528,9 +536,11 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
         if (e.anchorId !== c.segments[0]?.from && e.anchorId !== c.segments[c.segments.length - 1]?.to) return fail('INVALID', `${anchorKey(e)} is not an end node`, [anchorKey(e)])
         const cs = connectionsAt(store, anchorKey(e))
         if (cs.length) return fail('INVALID', `${anchorKey(e)} is already in connection ${cs.join(', ')}: adding to a connection group is not supported`, [anchorKey(e), ...cs])
-        const no = refuse(curveData(store, c), 'binding', ['family', 'overrides'])
+        const no = refuse(curveData(store, c), 'binding', ['overrides'])
         if (no) return no
       }
+      const [da, db] = [curveData(store, ca), curveData(store, cb)]
+      if (da.families.length || db.families.length) return bindFamily(store, cmd, da, db, ids)
       const id = (cmd.id ?? take(ids, 'connection', () => unique('connection:bind', (x) => !!store.get(x as any)), (x) => !!store.get(x as any))) as RecordId<ConnectionRecord>
       const pa = ca.anchors[cmd.a.anchorId].p, pb = cb.anchors[cmd.b.anchorId].p
       const at = cmd.keep === 'first' ? pa : cmd.keep === 'second' ? pb : v((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)
@@ -616,6 +626,95 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       return { ok: true, label: 'createCurve', puts, affected: [id], creates }
     }
   }
+}
+
+/**
+ * Stage 3c: bind two FAMILY curves (new mode). Every preset of the family moves both ends to one position at every
+ * state it stores — the original, every key of the union of the two curves' yaw tracks (missing keys inserted with
+ * their existing evaluated form), and every expression author key (target and base shifted alike, so corrections are
+ * kept) — handles moving with their end; the curve records likewise. Refused: mixed family / non-family or legacy
+ * tracks; characters with takeovers or expression fixes on these curves, or with different fine-tune at the two ends
+ * (binding never edits character data). The final document is checked by the usual relation checks (shared nodes at
+ * the union of key yaws, closed states included).
+ */
+function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' }>, da: CurveData, db: CurveData, ids: IdSource): Plan {
+  const fa = da.families.map((f) => f.id).sort().join(), fb = db.families.map((f) => f.id).sort().join()
+  if (fa !== fb || da.families.length !== 1) return fail('INVALID', `${da.curve.id} and ${db.curve.id} are not curves of one family: binding across modes is not supported`, [da.curve.id, db.curve.id])
+  if (da.legacy || db.legacy) return fail('INVALID', 'a family curve with a legacy head-turn track: binding mixed modes is not supported', [da.curve.id, db.curve.id])
+  const fam = da.families[0]
+  for (const k of store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === fam.id)) {
+    if (k.takeovers.some((t) => t.kind === 'line' && (t.curveId === da.curve.id || t.curveId === db.curve.id)) || k.exprFixes.some((x) => x.curveId === da.curve.id || x.curveId === db.curve.id))
+      return fail('INVALID', `${k.id} holds takeovers / expression fixes on these curves: binding is not supported then`, [k.id])
+    const fta = k.fineTune[da.curve.id]?.[cmd.a.anchorId]?.dp ?? v(0, 0), ftb = k.fineTune[db.curve.id]?.[cmd.b.anchorId]?.dp ?? v(0, 0)
+    if (fta.x !== ftb.x || fta.y !== ftb.y) return fail('INVALID', `${k.id} fine-tunes the two ends differently: binding would edit character data (not done)`, [k.id])
+  }
+  const id = (cmd.id ?? take(ids, 'connection', () => unique('connection:bind', (x) => !!store.get(x as any)), (x) => !!store.get(x as any))) as RecordId<ConnectionRecord>
+  const target = (pa: Vec, pb: Vec) => (cmd.keep === 'first' ? pa : cmd.keep === 'second' ? pb : v((pa.x + pb.x) / 2, (pa.y + pb.y) / 2))
+  const moveEnd = (sh: Shape, a: string, to: Vec): Shape => {
+    const q = sh[a]
+    const dx = to.x - q.p.x, dy = to.y - q.p.y
+    return { ...sh, [a]: { p: { ...to }, hIn: v(q.hIn.x + dx, q.hIn.y + dy), hOut: v(q.hOut.x + dx, q.hOut.y + dy) } }
+  }
+  const sampleS = (keys: { yaw: number; shape: Shape }[], yaw: number): Shape => {
+    if (yaw <= keys[0].yaw) return keys[0].shape
+    const last = keys[keys.length - 1]
+    if (yaw >= last.yaw) return last.shape
+    const i = keys.findIndex((k) => k.yaw >= yaw)
+    const a = keys[i - 1].shape, b = keys[i].shape, t = (yaw - keys[i - 1].yaw) / (keys[i].yaw - keys[i - 1].yaw)
+    return Object.fromEntries(Object.keys(a).map((k) => [k, Object.fromEntries((['p', 'hIn', 'hOut'] as const).map((h) => [h, v(a[k][h].x + (b[k][h].x - a[k][h].x) * t, a[k][h].y + (b[k][h].y - a[k][h].y) * t)]))])) as Shape
+  }
+  const puts: DocRecord[] = []
+  // the curve records (the drawing): both ends to one position, relative handles move with them
+  const pa0 = da.curve.anchors[cmd.a.anchorId].p, pb0 = db.curve.anchors[cmd.b.anchorId].p
+  const at0 = target(pa0, pb0)
+  puts.push({ ...da.curve, anchors: { ...da.curve.anchors, [cmd.a.anchorId]: { ...da.curve.anchors[cmd.a.anchorId], p: at0 } } })
+  puts.push({ ...db.curve, anchors: { ...db.curve.anchors, [cmd.b.anchorId]: { ...db.curve.anchors[cmd.b.anchorId], p: at0 } } })
+  for (const pr of da.presets) {
+    const A = da.presetForms.find((f) => f.owner.kind === 'preset' && f.owner.id === pr.id)
+    const B = db.presetForms.find((f) => f.owner.kind === 'preset' && f.owner.id === pr.id)
+    if (!A || !B || A.encoding !== 'absolute' || B.encoding !== 'absolute') continue
+    const ka = A.yaw as AbsoluteYawKey[], kb = B.yaw as AbsoluteYawKey[]
+    const origA = A.original && A.original !== 'curve' ? A.original : null, origB = B.original && B.original !== 'curve' ? B.original : null
+    const stateA = (y: number) => (ka.length ? sampleS(ka, y) : origA), stateB = (y: number) => (kb.length ? sampleS(kb, y) : origB)
+    const yaws = [...new Set([...ka, ...kb].map((k) => k.yaw))].sort((x, y) => x - y)
+    const deltaA = new Map<number, Vec>(), deltaB = new Map<number, Vec>()
+    const keysA: AbsoluteYawKey[] = [], keysB: AbsoluteYawKey[] = []
+    for (const y of yaws) {
+      const sa = stateA(y), sb = stateB(y)
+      if (!sa || !sb) continue // a missing shape stays missing (blending reports it)
+      const to = target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
+      deltaA.set(y, v(to.x - sa[cmd.a.anchorId].p.x, to.y - sa[cmd.a.anchorId].p.y))
+      deltaB.set(y, v(to.x - sb[cmd.b.anchorId].p.x, to.y - sb[cmd.b.anchorId].p.y))
+      keysA.push({ yaw: y, shape: moveEnd(sa, cmd.a.anchorId, to) })
+      keysB.push({ yaw: y, shape: moveEnd(sb, cmd.b.anchorId, to) })
+    }
+    const orig = origA && origB ? target(origA[cmd.a.anchorId].p, origB[cmd.b.anchorId].p) : null
+    // expression author keys: target and base shifted by the same corner move at that yaw (the correction is kept)
+    const shiftExpr = (f: FormsRecord, a: string, deltas: Map<number, Vec>) =>
+      Object.fromEntries(Object.entries(f.expr).map(([param, keys]) => [param, keys.map((k) => {
+        if (k.kind !== 'author') return k
+        const d = deltas.get(k.yaw) ?? v(0, 0)
+        const sh = (s: Shape) => moveEnd(s, a, v(s[a].p.x + d.x, s[a].p.y + d.y))
+        return { ...k, target: sh(k.target), base: sh(k.base) }
+      })]))
+    puts.push({ ...A, original: orig && origA ? moveEnd(origA, cmd.a.anchorId, orig) : A.original, yaw: ka.length || keysA.length ? keysA : A.yaw, expr: shiftExpr(A, cmd.a.anchorId, deltaA) })
+    puts.push({ ...B, original: orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : B.original, yaw: kb.length || keysB.length ? keysB : B.yaw, expr: shiftExpr(B, cmd.b.anchorId, deltaB) })
+  }
+  puts.push({ typeName: 'connection', id, ends: [{ ...cmd.a }, { ...cmd.b }], geometricJoin: 'corner' } as ConnectionRecord)
+  const still = familyStillPlayable(store, puts, fam.id)
+  if (still) return still
+  return { ok: true, label: 'bind', puts, affected: [anchorKey(cmd.a), anchorKey(cmd.b), id], creates: [id] }
+}
+
+/** every character of the family that prepared before still prepares on the final overlay (stage 3c) */
+function familyStillPlayable(store: Store, puts: DocRecord[], familyId: string): Plan | null {
+  const after = overlayReader(store, puts)
+  for (const k of store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === familyId)) {
+    if (!prepareCharacter(ctxOf(store), k.id).ok) continue
+    const p = prepareCharacter(ctxOf(after), k.id)
+    if (!p.ok) return fail('INVALID', `${k.id} would no longer be playable: ${p.problems.join('; ')}`, [k.id])
+  }
+  return null
 }
 
 /**

@@ -272,7 +272,7 @@ describe('createCurve, deleteAnchorWithSegments, breakAt, closing segments', () 
     const positions = JSON.stringify([curve(e, ids.E1), curve(e, 'curve:O')])
     roundTrip(e, { type: 'unbind', connectionId: 'connection:EO' as any })
     expect(JSON.stringify([curve(e, ids.E1), curve(e, 'curve:O')])).toBe(positions)
-    refused(openRecords(sample()), { type: 'bind', a: { curveId: 'curve:strand' as any, anchorId: 'u' }, b: { curveId: 'curve:C1' as any, anchorId: 'a1' }, keep: 'mid' }, /stage 3/)
+    refused(openRecords(sample()), { type: 'bind', a: { curveId: 'curve:strand' as any, anchorId: 'u' }, b: { curveId: 'curve:C1' as any, anchorId: 'a1' }, keep: 'mid' }, /override its anchors|across modes is not supported/) // stage 3c: new-mode bind exists; mixed family / legacy is still refused
   })
 })
 
