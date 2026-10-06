@@ -3,19 +3,6 @@
 Status words: **verified** = passed dot's independent re-review at the named commit; **implemented** =
 done and tested by Claude only; **open** = not done. Keep claims scoped to what was verified.
 
-## Stage conclusion (dot, 2026-10-06, independent re-review of 3f697ca)
-
-**The limited editing-transaction sample may proceed to the next validation stage.** Verified at
-`3f697ca` (first run, normal and production mode): 84/84 unit tests, 14/14 browser checks, dot's 8
-independent whole-operation result/state checks, typecheck. Within scope: relation rules, locks,
-batch cancel/failure, net-zero batches, undo/redo, observer and warning-handler failures, cleanup
-and follow-up edits, the unified result contract (`api.applyBatch` / `api.undo` / `api.redo`).
-Report: `/Users/bowen/Documents/Codex/2026-10-06/task/evidence-3f697ca/REVIEW.md` (on bowen's Mac).
-
-**Not accepted:** the base as a whole, recording, snapshots, real-face onion-skin performance,
-renderer changes, the product. Passing this sample does not prove the architecture; each new
-capability is verified again against the same rules.
-
 ## Stage conclusion (dot, 2026-10-06, independent re-review of 53d9fc0)
 
 **Converged:** the on-demand angle-evaluation sample, **without active external subscribers**.
@@ -33,6 +20,19 @@ inverse solving, real drawing / byte / GPU budgets.
 **Next (dot):** list the whole-list collections, object rebuilds and drawing costs that remain in a
 REAL drag and in playback; measure them with one workload; decide from the numbers how the canvas
 changes. Replacing the renderer is not a given.
+
+## Stage conclusion (dot, 2026-10-06, independent re-review of 3f697ca)
+
+**The limited editing-transaction sample may proceed to the next validation stage.** Verified at
+`3f697ca` (first run, normal and production mode): 84/84 unit tests, 14/14 browser checks, dot's 8
+independent whole-operation result/state checks, typecheck. Within scope: relation rules, locks,
+batch cancel/failure, net-zero batches, undo/redo, observer and warning-handler failures, cleanup
+and follow-up edits, the unified result contract (`api.applyBatch` / `api.undo` / `api.redo`).
+Report: `/Users/bowen/Documents/Codex/2026-10-06/task/evidence-3f697ca/REVIEW.md` (on bowen's Mac).
+
+**Not accepted:** the base as a whole, recording, snapshots, real-face onion-skin performance,
+renderer changes, the product. Passing this sample does not prove the architecture; each new
+capability is verified again against the same rules.
 
 ## Incremental stage — plan and steps (done; see the conclusion above)
 
