@@ -229,6 +229,16 @@ holes into the fill.
   (only fills painted after their own boundary need it). Main-workload cost in S3.
 - Tests: P6-own-boundary and P6-cross-layer pass; D2 example 2 becomes a 明确 case.
 
+**S2 status (implemented):** core `fromPaint` decides `ownInk` (visible own boundary curves painted
+before the fill; hidden ones protect nothing); `inkStyle` is the one stroke definition; B and Fabric
+call the same `paintFillLeavingOwnInk` (src/view/ownInk.ts; Fabric through `OwnInkFill._render`, an
+internal fabric 7.4.0 dependency, documented in src/view/ownInkFill.ts); picking excludes the own ink
+(distance ≤ half width — stated approximation, round instead of butt / mitre). Tests: P6 own / cross
+layer / 50 % fill / third party between pass in A and B, also at a fractional pan and DPR 2; unit
+tests for ownInk in maker, full, runtime, preview and yaw, and for picking; mutations (no protection,
+cut on the main canvas) fail 16 picture tests each. Known: the inner anti-aliased seam (alpha ≥ 0.75)
+— option (a) kept until decided. Cost: see S3.
+
 **S3 — measure.** Main workload (500 curves, 100 fills, 6,000 dots), A and B: the cost of the paint
 list (structural edits only) and of the clips (Fabric clipPath may force object caching — measured,
 not assumed). Then D1 offsets, then D7 container opacity, each after agreement.

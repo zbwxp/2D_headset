@@ -130,6 +130,43 @@ export const paintCases: Record<string, PaintCase> = {
       { at: centre, rgba: red, what: 'F itself' },
     ],
   },
+  // P6 with a semi-transparent FILL (fills may have opacity, R9): the own stroke stays fully opaque
+  // inside F; the centre is the fill colour at its own opacity over nothing.
+  'P6-semi-fill': {
+    rule: 'P6 own boundary with a 50 % fill in front: [B blue, F 50 % red]',
+    above: [['fill:F', 'curve:F-boundary']],
+    records: () => {
+      const [b, f] = square(id('L'), 'a2', 'a1', BLUE, 12)
+      return [layer('L', 'a1'), b, { ...f, color: 'rgba(255,0,0,0.5)' } as DocRecord]
+    },
+    expect: [
+      { at: { x: 40, y: 11 }, rgba: blue, what: 'own boundary stroke unchanged under a semi-transparent fill' },
+      { at: centre, rgba: [255, 0, 0, 128], what: 'F at 50 %' },
+    ],
+  },
+  // D2 example 2 (C1's natural result, dot): an unrelated green X between F's own boundary B and F.
+  // Inside F along B: where X covers B → green (X is in front of B, F leaves B's ink out); elsewhere
+  // on B → blue; F's interior → red.
+  'P6-third-party-between': {
+    rule: 'C1 with a third-party object between: L1 = [B blue] < L2 = [X green] < L3 = [F]',
+    above: [['fill:F', 'curve:X'], ['curve:X', 'curve:F-boundary']],
+    records: () => {
+      const [b, f] = square(id('L3'), 'a1', 'a1', BLUE, 12)
+      return [
+        layer('L1', 'a1'),
+        layer('L2', 'a2'),
+        layer('L3', 'a3'),
+        { ...b, parentId: id('L1') } as DocRecord,
+        line('X', id('L2'), 'a1', '#00ff00', 30, 0, 30, 60),
+        f,
+      ]
+    },
+    expect: [
+      { at: { x: 30, y: 11 }, rgba: [0, 255, 0, 255], what: 'X in front of B, F leaves B out → X shows there' },
+      { at: { x: 50, y: 11 }, rgba: blue, what: 'B elsewhere along the boundary' },
+      { at: { x: 30, y: 30 }, rgba: red, what: 'F covers X inside, away from B' },
+    ],
+  },
   // P7 — other objects cover a fill normally: V behind F is covered, U in front covers F.
   'P7-others': {
     rule: 'P7 others normal: L1 = [V] behind L2 = [B, F] behind L3 = [U]',

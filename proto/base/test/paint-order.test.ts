@@ -174,3 +174,41 @@ describe('depth offsets are reported, not applied (D1 open)', () => {
     expect(unappliedDepthOffsets(ev)).toEqual(['curve:C'])
   })
 })
+
+describe('own ink (S2): decided once by the core', () => {
+  const ownOf = (ev: Evaluated, fill: string) => (ev.paint.find((p) => p.item.address === fill) as any).ownInk
+  it('a fill after its visible own boundary lists it; before it, nothing', () => {
+    expect(ownOf(new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated(), 'fill:F')).toEqual(['curve:F-boundary'])
+    expect(ownOf(new Editor(paintCases['P6-cross-layer'].records()).derived.evaluated(), 'fill:F')).toEqual(['curve:F-boundary'])
+    // move the boundary after the fill (index a9 > a2): nothing to leave out
+    const recs = paintCases['P6-own-boundary'].records().map((r) => (r.id === Curve.createId('F-boundary') ? { ...r, index: 'a9' } : r))
+    expect(ownOf(new Editor(recs).derived.evaluated(), 'fill:F')).toEqual([])
+  })
+  it('a hidden own boundary protects nothing (no hidden line is revived)', () => {
+    const recs = paintCases['P6-cross-layer'].records().map((r) => (r.id === Container.createId('L1') ? { ...r, visible: false } : r))
+    expect(ownOf(new Editor(recs).derived.evaluated(), 'fill:F')).toEqual([])
+  })
+  it('maker, full recompute, runtime, preview and a yaw all carry the same ownInk', () => {
+    const recs = paintCases['P6-third-party-between'].records()
+    const e = new Editor(recs)
+    const want = ownOf(e.derived.evaluated(), 'fill:F')
+    expect(ownOf(evaluate(e.reader), 'fill:F')).toEqual(want)
+    expect(ownOf(evaluateSaved(recs), 'fill:F')).toEqual(want)
+    expect(ownOf(e.derived.atYaw(30), 'fill:F')).toEqual(want)
+    const b = e.reader.get(Curve.createId('F-boundary'))!
+    expect(ownOf(e.derived.preview([{ ...b, anchors: { ...(b as any).anchors, a: anchor('a', 21, 10) } } as DocRecord]), 'fill:F')).toEqual(want)
+  })
+})
+
+describe('picking a fill obeys the same protected area (S2)', () => {
+  it('a point on the own ink inside the fill is not the fill; the interior is', async () => {
+    const { hitTest } = await import('../src/evaluate')
+    const ev = new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated()
+    // tolerance below the half-width so the segment rule does not decide: only the fill test runs
+    expect(hitTest(ev, { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toBeNull()
+    expect(hitTest(ev, { x: 40, y: 30 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill', address: 'fill:F' })
+    // without protection (boundary after the fill) the same point IS the fill
+    const recs = paintCases['P6-own-boundary'].records().map((r) => (r.id === Curve.createId('F-boundary') ? { ...r, index: 'a9' } : r))
+    expect(hitTest(new Editor(recs).derived.evaluated(), { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill' })
+  })
+})

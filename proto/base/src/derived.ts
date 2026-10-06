@@ -16,7 +16,7 @@
 import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
-import { byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintItem } from './evaluate'
+import { byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
@@ -164,6 +164,7 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
       const [p0, c1, c2, p3] = seg.cubic
       return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
     }),
+    boundaryCurves: [...new Set(f.boundary.map((step) => step.curveId as string))],
     visible: effectivelyVisible(get as DocStore, f.parentId),
     locked: !!lockedBy(get as DocStore, f.parentId),
     depth: f.depthOffset,
@@ -325,7 +326,7 @@ export class Derived {
     // re-collects references to the cached items (the order is reused); nothing is sorted here.
     this.all = computed('evaluated', () => {
       const used = new Set<string>()
-      const paint: PaintItem[] = this.order.get().map((e) => {
+      const paint: PaintInput[] = this.order.get().map((e) => {
         if (e.kind === 'fill') return { kind: 'fill', item: this.fill(e.address as FillRecord['id'])! }
         if (!e.refId) return { kind: 'curve', item: this.curve(e.address as CurveRecord['id'])! }
         used.add(e.address)
@@ -459,6 +460,6 @@ export class Derived {
     const base = this.evaluated()
     counters.previewItems += base.paint.length
     // same order (the fast path never changes parent / index / membership), current geometry
-    return fromPaint(base.paint.map((p) => ({ kind: p.kind, item: ch.items.get(p.item.address) ?? p.item }) as PaintItem))
+    return fromPaint(base.paint.map((p) => ({ kind: p.kind, item: ch.items.get(p.item.address) ?? p.item }) as PaintInput))
   }
 }

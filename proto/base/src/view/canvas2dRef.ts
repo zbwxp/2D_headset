@@ -6,7 +6,8 @@
 // non-zero fill, no stroke on dots). Path2D objects are built straight from the evaluated cubics (no
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
 // still REPAINTED each frame, like renderAll. Not a cost floor (dot): a reference with the same output.
-import type { EvalCurve, EvalFill, Evaluated } from '../evaluate'
+import { inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
+import { paintFillLeavingOwnInk } from './ownInk'
 
 export class Canvas2DRef {
   private readonly paths = new WeakMap<object, Path2D>()
@@ -57,14 +58,23 @@ export class Canvas2DRef {
     ctx.lineWidth = 0.4
     for (const o of onions) for (const c of o.curves) if (c.visible) ctx.stroke(this.curvePath(c))
     // the core's ONE paint list: lines and fills interleaved (PAINT-ORDER.md), never re-sorted here
+    const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
     for (const p of ev.paint) {
       if (!p.item.visible) continue
       if (p.kind === 'fill') {
-        ctx.fillStyle = p.item.color
-        ctx.fill(this.fillPath(p.item))
+        if (p.ownInk.length)
+          paintFillLeavingOwnInk(ctx, p.item, this.fillPath(p.item), p.ownInk.map((a) => ({ curve: byAddress.get(a)!, path: this.curvePath(byAddress.get(a)!) })))
+        else {
+          ctx.fillStyle = p.item.color
+          ctx.fill(this.fillPath(p.item))
+        }
       } else {
+        const st = inkStyle(p.item)
         ctx.strokeStyle = p.item.locked ? '#999' : p.item.stroke.color
-        ctx.lineWidth = p.item.stroke.width / 3
+        ctx.lineWidth = st.width
+        ctx.lineCap = st.cap
+        ctx.lineJoin = st.join
+        ctx.miterLimit = st.miterLimit
         ctx.stroke(this.curvePath(p.item))
       }
     }

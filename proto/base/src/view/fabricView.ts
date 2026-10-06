@@ -13,7 +13,9 @@ import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, 
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
-import { cubicsToPath, evaluate, hitTest, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit } from '../evaluate'
+import { cubicsToPath, evaluate, hitTest, inkStyle, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
+import { cubicsPath2D, curvePath2D } from './ownInk'
+import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
@@ -211,16 +213,27 @@ export class FabricView {
     // Phases are timed separately (dot): build objects, then attach them.
     let t = performance.now()
     const pathOfOnion = (c: EvalCurve) => new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false })
-    const pathOfFill = (f: EvalFill) => new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false })
-    const pathOf = (c: EvalCurve) =>
-      new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
+    const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
+    // a fill painted after its own visible strokes leaves out their ink (S2; `ownInk` decided by the core)
+    const pathOfFill = (p: Extract<PaintItem, { kind: 'fill' }>) => {
+      const f = p.item
+      if (!p.ownInk.length) return new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false })
+      return new OwnInkFill(cubicsToPath(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((a) => ({ curve: byAddress.get(a)!, path: curvePath2D(byAddress.get(a)!) })))
+    }
+    const pathOf = (c: EvalCurve) => {
+      const st = inkStyle(c)
+      return new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
         fill: '',
         stroke: c.locked ? '#999' : c.stroke.color,
-        strokeWidth: c.stroke.width / 3,
+        strokeWidth: st.width,
+        strokeLineCap: st.cap,
+        strokeLineJoin: st.join,
+        strokeMiterLimit: st.miterLimit,
         selectable: false,
         evented: false,
         objectCaching: false,
       })
+    }
     const dotsOf = (c: EvalCurve) => Object.values(c.anchors).flatMap((a) => [dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9)])
     const curves = ev.curves.filter((c) => c.visible)
 
@@ -266,7 +279,7 @@ export class FabricView {
         if (p.item.visible)
           want.push(
             p.kind === 'fill'
-              ? { key: `f:${p.item.address}`, item: p.item, make: () => [pathOfFill(p.item)] }
+              ? { key: `f:${p.item.address}`, item: p.item, make: () => [pathOfFill(p)] }
               : { key: `c:${p.item.address}`, item: p.item, make: () => [pathOf(p.item)] },
           )
       for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
@@ -349,7 +362,7 @@ export class FabricView {
       const top = this.topOf(p.item.address)
       if (!top) continue
       if (!members.has(top)) members.set(top, [])
-      members.get(top)!.push(p.kind === 'fill' ? pathOfFill(p.item) : pathOf(p.item))
+      members.get(top)!.push(p.kind === 'fill' ? pathOfFill(p) : pathOf(p.item))
       if (p.item.locked) lockedTop.add(top)
     }
     for (const k of tops) {

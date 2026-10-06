@@ -26,9 +26,16 @@ export type EvalCurve = {
   locked: boolean
   depth: number
 }
-export type EvalFill = { address: string; color: string; cubics: Cubic[]; visible: boolean; locked: boolean; depth: number }
-/** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1). */
-export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill }
+/** `boundaryCurves`: the curves whose segments bound the fill (its OWN strokes, R4/D3), in boundary order. */
+export type EvalFill = { address: string; color: string; cubics: Cubic[]; boundaryCurves: string[]; visible: boolean; locked: boolean; depth: number }
+/** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1).
+ *  A fill carries `ownInk` (S2): the addresses of its own visible boundary curves painted BEFORE it —
+ *  the strokes whose ink it must leave out. Decided here, once, so renderers never judge it. */
+export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill; ownInk: string[] }
+export type PaintInput = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill }
+
+/** How a line is drawn — ONE definition for Fabric, B, the own-ink cut and picking (R9: lines opaque). */
+export const inkStyle = (c: Pick<EvalCurve, 'stroke'>) => ({ width: c.stroke.width / 3, cap: 'butt' as const, join: 'miter' as const, miterLimit: 4 })
 /** `paint` is THE order every renderer draws in; `curves` / `fills` are the same items split by kind
  *  (same relative order), for hit testing, onion skins and dots. */
 export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintItem[] }
@@ -58,10 +65,20 @@ export const byKey = (a: { key: string; address: string }, b: { key: string; add
   a.key < b.key ? -1 : a.key > b.key ? 1 : a.address < b.address ? -1 : a.address > b.address ? 1 : 0 // address: stable tie-break
 
 /** The list split by kind; one place, so `curves` / `fills` can never disagree with `paint`. */
-export function fromPaint(paint: PaintItem[]): Evaluated {
+export function fromPaint(input: PaintInput[]): Evaluated {
   const curves: EvalCurve[] = []
   const fills: EvalFill[] = []
-  for (const p of paint) p.kind === 'curve' ? curves.push(p.item) : fills.push(p.item)
+  const before = new Map<string, EvalCurve>() // curves painted so far (only base curves can bound a fill)
+  const paint: PaintItem[] = input.map((p) => {
+    if (p.kind === 'curve') {
+      curves.push(p.item)
+      if (!p.item.referenceId) before.set(p.item.address, p.item)
+      return p
+    }
+    fills.push(p.item)
+    const ownInk = p.item.boundaryCurves.filter((a) => before.get(a)?.visible)
+    return { kind: 'fill', item: p.item, ownInk }
+  })
   return { curves, fills, paint }
 }
 
@@ -134,6 +151,7 @@ export function evaluate(store: DocStore): Evaluated {
       const [p0, c1, c2, p3] = seg.cubic
       return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
     }),
+    boundaryCurves: [...new Set(f.boundary.map((step) => step.curveId as string))],
     visible: effectivelyVisible(store, f.parentId),
     locked: !!lockedBy(store, f.parentId),
     depth: f.depthOffset,
@@ -151,8 +169,8 @@ export function evaluate(store: DocStore): Evaluated {
     return paintKey(store, r.parentId, r.index) + KEY_SEP + paintKey(store, c.parentId, c.index, r.sourceId)
   }
   const entries = [
-    ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintItem })),
-    ...fills.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'fill', item } as PaintItem })),
+    ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintInput })),
+    ...fills.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'fill', item } as PaintInput })),
   ].sort(byKey)
   return fromPaint(entries.map((e) => e.p))
 }
@@ -215,10 +233,22 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
   )
   const s = pick(segs.filter((x) => x.d <= opts.tolerance))
   if (s) return s
-  for (const f of [...ev.fills].reverse()) {
+  const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
+  for (const entry of [...ev.paint].reverse()) {
+    if (entry.kind !== 'fill') continue
+    const f = entry.item
     if (!f.visible || f.locked) continue
     const poly = f.cubics.flatMap((c) => new Bezier(...c.flatMap((v) => [v.x, v.y])).getLUT(16))
-    if (pointInPolygon(p, poly)) return { kind: 'fill', address: f.address, d: 0 }
+    if (!pointInPolygon(p, poly)) continue
+    // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
+    // fill. Approximation, stated: distance ≤ half the drawn width, i.e. round ends / joins instead of
+    // the drawn butt ends / mitres (no per-pixel read on pointer moves).
+    const onOwnInk = entry.ownInk.some((a) => {
+      const c = byAddress.get(a)!
+      const half = inkStyle(c).width / 2
+      return c.segments.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= half)
+    })
+    if (!onOwnInk) return { kind: 'fill', address: f.address, d: 0 }
   }
   return null
 }

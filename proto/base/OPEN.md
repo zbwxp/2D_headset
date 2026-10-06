@@ -254,7 +254,10 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   offset; RC-16: a fill does not cover its own boundary strokes, other objects cover it normally;
   definite order first, reject global contradictions. Rules, expected pictures and the compositing
   design now live in ONE place: PAINT-ORDER.md (this entry does not restate them). S1 done (one
-  paint list in the core, all renderers read it); S2 (own-outline protection) and S3 (cost) open.
+  paint list in the core, all renderers read it) and S2 (own-outline protection) done. Open: the faint
+  see-through seam along a protected stroke's inner anti-aliased edge (alpha ≥ 0.75; options a/b/c in
+  the Slack thread); cost — B 1.9 → 15 ms per frame on the main workload, where all 100 fills are
+  protected (bench-results/drawing-costs.md).
 - **Depth offsets are stored but NOT applied** to the paint order (PAINT-ORDER.md D1 open);
   `unappliedDepthOffsets` lists them and the editor status line says so.
 - **New fills get index `a0`** (schema default; `createFill` passes none) → they go to the back of their

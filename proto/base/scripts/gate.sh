@@ -17,5 +17,6 @@ known=$(grep -oE "it\.fails\('[^']+'" test/known-failures.test.ts | sed "s/it.fa
 echo "KNOWN FAILURES (still reproducing, see test/known-failures.test.ts):"
 echo "$known" | sed 's/^/  - /'
 echo "KNOWN PAINT-ORDER FAILURES (test.fail in e2e/paint-order.spec.ts, see PAINT-ORDER.md):"
-sed -n "/^const KNOWN/,/^}/p" e2e/paint-order.spec.ts | grep -oE "^  '[^']+': '[^']+'" | sed "s/^  /  - /"
+paint_known=$(sed -n "/^const KNOWN/,/^}/p" e2e/paint-order.spec.ts | { grep -oE "^  '[^']+': '[^']+'" || true; })
+if [ -n "$paint_known" ]; then echo "$paint_known" | sed "s/^  /  - /"; else echo "  (none)"; fi
 echo "GATE OK ($repeats property runs)"

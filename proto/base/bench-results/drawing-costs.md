@@ -144,3 +144,17 @@ What remains on the drawing path, per move (from the code and these counts):
 Evaluation (plan + preview changes + list assembly) is ≤ 5 ms in every completed case; it is not where
 the time goes. These numbers do not decide the drawing approach by themselves (dot: replacing the
 renderer is not a given) — see the comparison proposed in OPEN.md.
+
+
+## After paint order S1 + S2 (2026-10-06, single run, 0 onion, fitted, DPR 1)
+
+The main workload's 100 fills are ALL painted after their own boundary loops, so all 100 leave out
+their own ink (S2, scratch layer per protected fill).
+
+| drag | B renderAll | B input → draw call done | Fabric A renderAll | Fabric A input → draw call done |
+| --- | --- | --- | --- | --- |
+| free anchor | 15.0 ms (was 1.9) | 31.3 ms (was 17.7) | 557 ms (was 552) | 574 ms |
+| fill boundary | 15.1 ms (was 2.2) | 31.4 ms (was 18.3) | 556 ms (was 546) | 573 ms |
+
+≈ 13 ms per frame for 100 protected fills in B — the cost probe's order (8.8 ms / 100 bounding-box
+scratch composites). Earlier numbers in this file time the OLD, wrong paint order.
