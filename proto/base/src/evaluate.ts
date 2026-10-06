@@ -43,20 +43,22 @@ export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintIt
 export const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
 
-/** Separator of paint keys: below every fractional-index character (`0-9A-Za-z`), so a container's
- *  key is a prefix of its children's keys and sorts before any later sibling's key. */
-export const KEY_SEP = ' '
+/** Separators of paint keys, both below every character of fractional indexes (`0-9A-Za-z`) and of
+ *  record ids: LEVEL between path levels, TIE between a level's index and its stable identity. */
+export const KEY_SEP = '\u0000'
+const KEY_TIE = '\u0001'
 /**
- * Paint key (PAINT-ORDER.md R1/R2): the fractional indexes of the WHOLE container path from the root,
- * then the object's own index. Compared by code unit (`<`), never `localeCompare` (P4). `stopAt`
- * (exclusive) gives the key relative to a referenced source container. Depth offsets are NOT applied
- * (D1 is not agreed; see `unappliedDepthOffsets`).
+ * Paint key (PAINT-ORDER.md R1/R2): for every level of the WHOLE container path from the root, then the
+ * object itself: its fractional index, then its id. Compared by code unit (`<`), never `localeCompare`
+ * (P4). The id breaks ties AT EACH LEVEL (dot): two siblings with the same index are still ordered as
+ * whole subtrees, so a container's content stays contiguous. `stopAt` (exclusive) gives the key
+ * relative to a referenced source container. Depth offsets are NOT applied (D1; `unappliedDepthOffsets`).
  */
-export function paintKey(store: Pick<DocStore, 'get'>, parentId: RecordId<ContainerRecord> | null, index: string, stopAt?: string) {
-  const parts = [index]
-  let cur = parentId ? (store.get(parentId) as ContainerRecord | undefined) : undefined
+export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; parentId: RecordId<ContainerRecord> | null; index: string }, stopAt?: string) {
+  const parts = [rec.index + KEY_TIE + rec.id]
+  let cur = rec.parentId ? (store.get(rec.parentId) as ContainerRecord | undefined) : undefined
   while (cur && cur.id !== stopAt) {
-    parts.push(cur.index)
+    parts.push(cur.index + KEY_TIE + cur.id)
     cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
   }
   return parts.reverse().join(KEY_SEP)
@@ -168,11 +170,11 @@ export function evaluate(store: DocStore): Evaluated {
     const slash = address.indexOf('/')
     if (slash < 0) {
       const rec = store.get(address as any) as CurveRecord | FillRecord
-      return paintKey(store, rec.parentId, rec.index)
+      return paintKey(store, rec)
     }
     const r = store.get(address.slice(0, slash) as any) as ReferenceRecord
     const c = store.get(address.slice(slash + 1) as any) as CurveRecord
-    return paintKey(store, r.parentId, r.index) + KEY_SEP + paintKey(store, c.parentId, c.index, r.sourceId)
+    return paintKey(store, r) + KEY_SEP + paintKey(store, c, r.sourceId)
   }
   const entries = [
     ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintInput })),

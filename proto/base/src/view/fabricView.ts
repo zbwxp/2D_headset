@@ -372,9 +372,13 @@ export class FabricView {
       members.get(top)!.push(p.kind === 'fill' ? pathOfFill(p) : pathOf(p.item))
       if (p.item.locked) lockedTop.add(top)
     }
-    for (const k of tops) {
-      const objsOfK = members.get(k.id)
-      if (!objsOfK?.length) continue
+    // groups in PAINT order (dot: they were added in creation order, so a top-level layer could cover
+    // one that the common order puts in front); a top-level container's items are contiguous in the
+    // paint list (its key component comes first), so first appearance = its place in the order
+    const byId = new Map(tops.map((k) => [k.id as string, k]))
+    for (const [kid, objsOfK] of members) {
+      const k = byId.get(kid)
+      if (!k || !objsOfK.length) continue
       const locked = lockedTop.has(k.id)
       const g = new Group(objsOfK, { selectable: !locked, evented: !locked, objectCaching: false })
       ;(g as any).containerId = k.id

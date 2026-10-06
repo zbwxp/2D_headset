@@ -11,9 +11,10 @@ const KNOWN: Record<string, string> = {}
 const frames = (p: Page) => p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))))
 const close = (a: number[], b: number[], tol: number) => a.every((x, i) => Math.abs(x - b[i]) <= tol)
 
-async function sample(page: Page, name: string, renderer: 'A' | 'B', vpt?: number[]) {
+async function sample(page: Page, name: string, renderer: 'A' | 'B' | 'V', vpt?: number[]) {
   await page.goto(`/?case=${name}${renderer === 'B' ? '&renderer=b' : ''}`)
   await page.waitForFunction(() => (window as any).__contour)
+  if (renderer === 'V') await page.click('#modeV') // Fabric's V mode (groups per top-level layer)
   if (vpt)
     await page.evaluate((vpt) => {
       const { view } = (window as any).__contour
@@ -23,7 +24,7 @@ async function sample(page: Page, name: string, renderer: 'A' | 'B', vpt?: numbe
   await frames(page)
   return page.evaluate((renderer) => {
     const { view, paintCase } = (window as any).__contour
-    const el: HTMLCanvasElement = renderer === 'B' ? view.refCanvas : view.canvas.lowerCanvasEl
+    const el: HTMLCanvasElement = renderer === 'B' ? view.refCanvas : view.canvas.lowerCanvasEl // A and V: Fabric
     const ctx = el.getContext('2d')!
     const [z, , , , e, f] = view.canvas.viewportTransform
     const dpr = view.canvas.getRetinaScaling()
@@ -36,7 +37,7 @@ async function sample(page: Page, name: string, renderer: 'A' | 'B', vpt?: numbe
 
 const names = ['P1-fill-after-line', 'P1-line-after-fill', 'P2-fill-layer-in-front', 'P2-line-layer-in-front', 'P3-nested', 'P4-index-bytes', 'P6-own-boundary', 'P6-cross-layer', 'P6-semi-fill', 'P6-third-party-between', 'P7-others', 'P10-shown-parent', 'P10-hidden-parent']
 for (const name of names)
-  for (const renderer of ['A', 'B'] as const)
+  for (const renderer of ['A', 'B', 'V'] as const)
     test(`${KNOWN[name] ? `KF ${name}` : name} [${renderer}]`, async ({ page }) => {
       if (KNOWN[name]) test.fail(true, KNOWN[name])
       const points = await sample(page, name, renderer)
@@ -49,7 +50,7 @@ const OWN = ['P6-own-boundary', 'P6-cross-layer', 'P6-semi-fill', 'P6-third-part
 test.describe('own ink at a fractional pan / zoom, DPR 2', () => {
   test.use({ deviceScaleFactor: 2 })
   for (const name of OWN)
-    for (const renderer of ['A', 'B'] as const)
+    for (const renderer of ['A', 'B', 'V'] as const)
       test(`${name} [${renderer}] pan/zoom DPR2`, async ({ page }) => {
         const points = await sample(page, name, renderer, [2.7, 0, 0, 2.7, 13.37, 21.6])
         console.log('PAINT-DPR2', name, renderer, JSON.stringify(points.map((p: any) => ({ want: p.rgba, got: p.got }))))

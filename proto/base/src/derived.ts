@@ -302,7 +302,7 @@ export class Derived {
     // the id lists and reference membership — never geometry — so a drag does not rebuild it.
     this.keys = store.createComputedCache<string, CurveRecord | FillRecord | ReferenceRecord | ContainerRecord>(
       'paintKey',
-      (r) => paintKey(store, r.parentId, r.index),
+      (r) => paintKey(store, r),
       { areRecordsEqual: (a, b) => a.parentId === b.parentId && a.index === b.index },
     )
     this.sources = store.createComputedCache<ContainerRecord['id'], ReferenceRecord>('referenceSource', (r) => r.sourceId, {

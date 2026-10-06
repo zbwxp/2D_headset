@@ -34,7 +34,9 @@ describe('contract cases: painted-above pairs', () => {
 
 // ---- random trees -------------------------------------------------------------------------------
 const anchor = (id: string, x: number, y: number): Anchor => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
-const idx = fc.stringMatching(/^[0-9A-Za-z]{1,3}$/) // includes mixed case and prefixes of each other
+// includes mixed case, prefixes of each other and (often) EQUAL sibling indexes (dot: equal ancestor
+// indexes interleaved their contents before ties were broken per level)
+const idx = fc.oneof(fc.constantFrom('a0', 'a1', 'a1V'), fc.stringMatching(/^[0-9A-Za-z]{1,3}$/))
 type Spec = { containers: { parent: number; index: string }[]; items: { kind: 'curve' | 'fill' | 'reference'; parent: number; index: string; other: number }[] }
 const spec: fc.Arbitrary<Spec> = fc.record({
   containers: fc.array(fc.record({ parent: fc.nat(), index: idx }), { minLength: 1, maxLength: 7 }),
@@ -93,14 +95,16 @@ function pathOf(records: Map<string, any>, address: string): [string, string][] 
   const [head, tail] = address.split('/')
   if (!tail) return up(head)
   const ref = records.get(head)
-  return [...up(head), ...up(tail, ref.sourceId)]
+  // inside an instance the source's containers are COPIES: identified per reference
+  return [...up(head), ...up(tail, ref.sourceId).map(([index, id]): [string, string] => [index, `${head}/${id}`])]
 }
-/** -1 / 1 when the rule decides (first level whose INDEXES differ, by code unit), 0 when it does not. */
+/** Order of two painted items: at the first level where their paths differ, by index (code unit), then
+ *  — equal indexes — by the record id at THAT level, so each subtree stays contiguous. */
 function rule(a: [string, string][], b: [string, string][]) {
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
     if (a[i][1] === b[i][1]) continue
-    if (a[i][0] === b[i][0]) return 0 // equal sibling indexes: only "deterministic" is promised
-    return a[i][0] < b[i][0] ? -1 : 1
+    if (a[i][0] !== b[i][0]) return a[i][0] < b[i][0] ? -1 : 1
+    return a[i][1] < b[i][1] ? -1 : 1
   }
   return 0
 }
@@ -121,7 +125,12 @@ describe('random trees', () => {
         const byId = new Map(records.map((r) => [r.id as string, r]))
         const paths = list.map((a) => pathOf(byId, a))
         for (let i = 0; i < list.length; i++)
-          for (let j = i + 1; j < list.length; j++) expect(rule(paths[i], paths[j]), `${list[i]} before ${list[j]}`).not.toBe(1)
+          for (let j = i + 1; j < list.length; j++) expect(rule(paths[i], paths[j]), `${list[i]} before ${list[j]}`).toBe(-1)
+        // and directly: every container's painted content is one contiguous block of the list
+        for (const k of records.filter((r) => r.typeName === 'container')) {
+          const at = list.flatMap((a, i) => (pathOf(byId, a).some(([, id]) => id === k.id) ? [i] : []))
+          if (at.length) expect(at[at.length - 1] - at[0] + 1, `${k.id} contiguous`).toBe(at.length)
+        }
       }),
       { numRuns: 300 },
     )

@@ -180,8 +180,10 @@ opacity (D7) are NOT in these steps.
 - `Derived` gets a `paint` computed: the visible curves, fills and reference instances interleaved in
   one list (`{ kind, item }[]`). `evaluateSaved` (runtime) and the reference `evaluate` return the
   same list.
-- Order key = the whole container path from the root (each level's fractional index), then the
-  object's own index; strings compared by code unit (`<`), not `localeCompare`. Ties: address (stable).
+- Order key = for every level of the whole container path from the root, then the object itself:
+  its fractional index, then its record id (stable identity breaks ties AT EACH LEVEL, so siblings
+  with equal indexes are ordered as whole subtrees and a container's content stays contiguous — dot,
+  S1 review: tie-breaking only at the leaf interleaved two equal-index containers). Code-unit compare.
 - Reference instances (D6): key = the reference's own path, then the source-relative path of the
   source item, so the source's internal order is kept and nothing leaves the instance.
 - `depthOffset`: not interpreted in S1 (before, it only broke ties, which has no meaning under D1);
@@ -190,7 +192,8 @@ opacity (D7) are NOT in these steps.
 - Recomputed only when parent / index / visibility / membership change (it reads those fields, not
   geometry), so a drag preview reuses it; counted (`paintOrderBuilds`).
 - FabricView (A): `want` = onion yaws → `paint` → anchor dots (E1); same incremental keys as today.
-  B draws the same list in the same order. V mode: one group per top-level container with ALL its
+  B draws the same list in the same order. V mode: groups are added in PAINT order (dot, S1 review:
+  they were added in creation order, so P2 turned red in V); one group per top-level container with ALL its
   painted items (lines, fills, reference instances, nested containers' items) in paint order — before,
   fills were drawn under every group, reference instances above them, and curves of NESTED
   containers were not drawn in V mode at all (members were matched on the direct parent).
