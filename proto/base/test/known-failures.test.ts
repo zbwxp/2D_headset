@@ -7,6 +7,8 @@ import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
 import { Derived } from '../src/derived'
 import { createDocStore, Reference, type FillRecord } from '../src/schema'
+import { hitTest } from '../src/evaluate'
+import { paintCases } from '../src/paintCases'
 
 describe('KNOWN FAILURE', () => {
   // KF-1 (found by property I13, 8373b9b): a create without an explicit id gets a fresh random id on
@@ -35,4 +37,12 @@ describe('KNOWN FAILURE', () => {
   // or removes references, so this is a stated limit, a required acceptance case for future reference
   // add/remove — not claimed solved. dot's original test, verbatim except `it` → `it.fails` and the `KF-3 ` name prefix.
   it.fails('KF-3 base reference membership is lazy: raw-store delete + item reads retain historical keys until whole-table read prunes',()=>{const s=createDocStore();s.put(exampleRecords());const d=new Derived(s,s,{yawRetainedItems:1});d.evaluated();for(let i=0;i<20;i++){const r=Reference.create({id:Reference.createId(`dot${i}`),name:'x',parentId:ids.L1,sourceId:ids.L3,transform:{a:1,b:0,c:0,d:1,e:0,f:0}});s.put([r]);d.instance(r.id,ids.E1);s.remove([r.id]);d.curve(ids.C1)}const before=d.instanceCacheSize;expect(before).toBe(21);d.evaluated();const after=d.instanceCacheSize;expect(after).toBe(1);console.log('BASE_REFERENCE_LIFECYCLE',{beforeWholeRead:before,afterWholeRead:after,liveRefs:1})})
+  // KF-4 (dot, review of S1): V-mode picking ignores paint order — segments always beat fills — so a line
+  // completely hidden under a fill in front is still picked. Picking must agree with what is visible
+  // (principle 4); picking hidden lines, if wanted, is an explicit mode. Fix after S2.
+  it.fails('KF-4 V-mode picking selects a line fully hidden under a fill in front', () => {
+    const e = new Editor(paintCases['P2-fill-layer-in-front'].records())
+    const hit = hitTest(e.derived.evaluated(), { x: 40, y: 30 }, { mode: 'V', tolerance: 2 })
+    expect(hit).toMatchObject({ kind: 'fill', address: 'fill:F' })
+  })
 })

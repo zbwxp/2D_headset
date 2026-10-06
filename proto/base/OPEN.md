@@ -260,9 +260,10 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
 - **New fills get index `a0`** (schema default; `createFill` passes none) → they go to the back of their
   parent and can share an index with a sibling (order then only deterministic, by address). Where a new
   fill should be placed is open (v103 inserted it just behind its boundary strokes — evidence only).
-- **Hit testing vs occlusion:** V-mode hit testing prefers segments over fills regardless of paint
-  order, so a line hidden under a fill in front is still picked. Principle 4 (display and picking must
-  not contradict) — to decide with dot.
+- **Hit testing vs occlusion (KF-4, known failure):** V-mode hit testing prefers segments over fills
+  regardless of paint order, so a line hidden under a fill in front is still picked (probe: hit =
+  segment `curve:C/s` at the centre of P2). Picking must agree with what is visible (principle 4,
+  dot); picking hidden lines, if wanted, is an explicit mode. Fix after S2.
 
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 
