@@ -1,7 +1,7 @@
 // Point deletion (doc 18 §19 items 4a / 4b). Expected values come from the stored data (anchors, handles by id),
 // not from the functions under test where avoidable; approximation errors are REPORTED, not hidden.
 import { describe, expect, it } from 'vitest'
-import { bez, deleteAnchorWithSegments, deviation, fixture, isCusp, removeAnchorJoin, segCubic, Session, type Cubic, type Doc, type Result } from '../src/experiments/deletePoint'
+import { bez, deleteAnchorWithSegments, deviation, fixture, removeAnchorJoin, segCubic, Session, type Cubic, type Doc, type Result } from '../src/experiments/deletePoint'
 
 const report: Record<string, unknown>[] = []
 const ok = (r: Result) => {
@@ -20,7 +20,7 @@ const each = (d: Doc) => Object.entries(d.presets).flatMap(([pid, cs]) => Object
 describe('4a remove anchor and join', () => {
   it('smooth node: one segment replaces two in every preset and state; untouched data identical; error reported', () => {
     const d0 = fixture()
-    const r = ok(removeAnchorJoin(d0, 'U', 'b'))
+    const r = ok(removeAnchorJoin(d0, 'U', 'b', 'keepShape'))
     for (const [pid, st] of each(r.doc)) {
       const c = r.doc.presets[pid].U
       const o = d0.presets[pid].U.states[st]
@@ -41,7 +41,7 @@ describe('4a remove anchor and join', () => {
       const old: Cubic[] = [segCubic(d0.presets[pid].U, st, 's1'), segCubic(d0.presets[pid].U, st, 's2')]
       const naive = deviation(old, [o.a.p, o.a.hOut, o.c.hIn, o.c.p])
       expect(r.errors[`${pid}/${st}`]).toBeLessThanOrEqual(naive + 1e-9)
-      report.push({ case: '4a smooth b', at: `${pid}/${st}`, fitError: +r.errors[`${pid}/${st}`].toFixed(4), keepHandlesError: +naive.toFixed(4) })
+      report.push({ case: '4a keepShape b', at: `${pid}/${st}`, fitError: +r.errors[`${pid}/${st}`].toFixed(4), keepHandlesError: +naive.toFixed(4) })
     }
   })
 
@@ -58,7 +58,7 @@ describe('4a remove anchor and join', () => {
       c.states[st] = { ...c.states[st], c: { ...c.states[st].c, hOut: p01 }, m: { id: 'm', hIn: p012, p: m, hOut: p123 }, d: { ...c.states[st].d, hIn: p23 } }
     }
     for (const cs of Object.values(d.presets)) cs.U.segments.splice(2, 1, { id: 's3a', from: 'c', to: 'm' }, { id: 's3b', from: 'm', to: 'd' })
-    const r = ok(removeAnchorJoin(d, 'U', 'm'))
+    const r = ok(removeAnchorJoin(d, 'U', 'm', 'keepShape'))
     let worstHandle = 0
     for (const [pid, st] of each(r.doc)) {
       const o = d0.presets[pid].U.states[st]
@@ -71,30 +71,26 @@ describe('4a remove anchor and join', () => {
     expect(worstHandle).toBeLessThan(1e-9)
   })
 
-  it('sharp corner keeps the neighbouring handles exactly; straight variant gives a straight segment', () => {
+  it('keepHandles mode keeps the neighbouring handles exactly in every state; straight mode gives a straight segment', () => {
     const d0 = fixture()
-    const sharp = ok(removeAnchorJoin(d0, 'U', 'c'))
+    const sharp = ok(removeAnchorJoin(d0, 'U', 'c', 'keepHandles'))
     const straight = ok(removeAnchorJoin(d0, 'U', 'b', 'straight'))
-    const cuspIn: string[] = []
     for (const [pid, st] of each(d0)) {
       const o = d0.presets[pid].U.states[st]
-      // node type is not stored (§17: deferred to rendering), so sharpness is read from each state's geometry
-      if (isCusp(o.c)) {
-        cuspIn.push(`${pid}/${st}`)
-        expect(sharp.doc.presets[pid].U.states[st].b.hOut).toEqual(o.b.hOut)
-        expect(sharp.doc.presets[pid].U.states[st].d.hIn).toEqual(o.d.hIn)
-      }
+      // explicit mode, same for every state (no per-state guessing of node type; dot 1791304209)
+      expect(sharp.doc.presets[pid].U.states[st].b.hOut).toEqual(o.b.hOut)
+      expect(sharp.doc.presets[pid].U.states[st].d.hIn).toEqual(o.d.hIn)
       const q = segCubic(straight.doc.presets[pid].U, st, 's1+s2')
       for (let i = 0; i <= 10; i++) {
         const p = bez(q, i / 10)
         expect(Math.abs((p.x - o.a.p.x) * (o.c.p.y - o.a.p.y) - (p.y - o.a.p.y) * (o.c.p.x - o.a.p.x))).toBeLessThan(1e-9)
       }
     }
-    report.push({ case: '4a sharp c', cuspIn, worstError: +Math.max(...Object.values(sharp.errors)).toFixed(4) }, { case: '4a straight b', worstError: +Math.max(...Object.values(straight.errors)).toFixed(4) })
+    report.push({ case: '4a keepHandles c', worstError: +Math.max(...Object.values(sharp.errors)).toFixed(4) }, { case: '4a straight b', worstError: +Math.max(...Object.values(straight.errors)).toFixed(4) })
   })
 
   it('references on either removed segment move onto the joined one (movement reported); others untouched', () => {
-    const r = ok(removeAnchorJoin(fixture(), 'U', 'b'))
+    const r = ok(removeAnchorJoin(fixture(), 'U', 'b', 'keepShape'))
     expect(r.doc.refs.intervalStart.segmentId).toBe('s1+s2')
     expect(r.doc.refs.lash.segmentId).toBe('s1+s2')
     expect(r.doc.refs.intervalStart.u).toBeLessThan(r.doc.refs.lash.u) // order along the curve kept
@@ -106,14 +102,14 @@ describe('4a remove anchor and join', () => {
     const base = fixture()
     const F = (ids: string[], dir: 1 | -1) => ids.map((segmentId) => ({ curveId: 'U', segmentId, dir }))
     base.fills = { fwd: F(['s1', 's2', 's3', 's4'], 1), rev: F(['s4', 's3', 's2', 's1'], -1), wrap: F(['s2', 's3', 's4', 's1'], 1) }
-    const r = ok(removeAnchorJoin(base, 'U', 'b'))
+    const r = ok(removeAnchorJoin(base, 'U', 'b', 'keepShape'))
     const ids = (k: string) => r.doc.fills[k].map((s) => `${s.segmentId}${s.dir === 1 ? '+' : '-'}`)
     expect(ids('fwd')).toEqual(['s1+s2+', 's3+', 's4+'])
     expect(ids('rev')).toEqual(['s4-', 's3-', 's1+s2-'])
     expect(ids('wrap')).toEqual(['s3+', 's4+', 's1+s2+']) // same cyclic order as s1 s2 s3 s4
     const partial = fixture()
     partial.fills = { part: F(['s2', 's3'], 1) }
-    const rr = removeAnchorJoin(partial, 'U', 'b')
+    const rr = removeAnchorJoin(partial, 'U', 'b', 'keepShape')
     expect(rr.ok).toBe(false)
     if (!rr.ok) expect(rr.reason).toContain('fill part')
     report.push({ case: '4a fills', fwd: ids('fwd'), rev: ids('rev'), wrap: ids('wrap'), partialRefused: !rr.ok })
@@ -125,19 +121,19 @@ describe('4a remove anchor and join', () => {
     deepFreeze(d)
     const before = JSON.stringify(d)
     const cases = {
-      end: removeAnchorJoin(d, 'U', 'a'),
-      connection: removeAnchorJoin(d, 'U', 'b'),
-      noCurve: removeAnchorJoin(d, 'Z', 'b'),
-      noAnchor: removeAnchorJoin(d, 'U', 'zz'),
+      end: removeAnchorJoin(d, 'U', 'a', 'keepShape'),
+      connection: removeAnchorJoin(d, 'U', 'b', 'keepShape'),
+      noCurve: removeAnchorJoin(d, 'Z', 'b', 'keepShape'),
+      noAnchor: removeAnchorJoin(d, 'U', 'zz', 'keepShape'),
     }
     const nan = structuredClone(d)
     nan.presets.B.U.states['90|open'].e.hIn.x = Number.NaN
-    const all = { ...cases, nonFinite: removeAnchorJoin(nan, 'U', 'c') }
+    const all = { ...cases, nonFinite: removeAnchorJoin(nan, 'U', 'c', 'keepShape') }
     for (const r of Object.values(all)) expect(r.ok).toBe(false)
     expect(all.connection.ok === false && all.connection.reason).toContain('connection k1')
     expect(JSON.stringify(d)).toBe(before)
     // a frozen input still works for a legal deletion
-    expect(removeAnchorJoin(d, 'U', 'c').ok).toBe(true)
+    expect(removeAnchorJoin(d, 'U', 'c', 'keepShape').ok).toBe(true)
     report.push({ case: '4a refusals', reasons: Object.fromEntries(Object.entries(all).map(([k, r]) => [k, r.ok ? 'ok' : r.reason])) })
   })
 })
@@ -212,13 +208,13 @@ describe('session', () => {
   it('direct edits undo / redo exactly and survive JSON save / reopen', () => {
     const s = new Session(fixture())
     const start = JSON.stringify(s.doc)
-    expect(s.apply(removeAnchorJoin(s.doc, 'U', 'b'))).toBe(true)
+    expect(s.apply(removeAnchorJoin(s.doc, 'U', 'b', 'keepShape'))).toBe(true)
     const d2 = structuredClone(s.doc)
     delete d2.refs.intervalEnd
     expect(s.apply({ ok: true, doc: d2, errors: {}, refMoves: {} })).toBe(true) // the user removes a reference first
     expect(s.apply(deleteAnchorWithSegments(s.doc, 'U', 'd'))).toBe(true)
     const end = JSON.stringify(s.doc)
-    expect(s.apply(removeAnchorJoin(s.doc, 'U', 'a'))).toBe(false) // refused: nothing recorded
+    expect(s.apply(removeAnchorJoin(s.doc, 'U', 'a', 'keepShape'))).toBe(false) // refused: nothing recorded
     expect(s.undo()).toBe(true)
     expect(s.undo()).toBe(true)
     expect(s.undo()).toBe(true)
@@ -239,7 +235,7 @@ describe('session', () => {
       cs['U~1'].id = 'U~1'
     }
     d0.refs = {}
-    const j = ok(removeAnchorJoin(d0, 'U', 'b'))
+    const j = ok(removeAnchorJoin(d0, 'U', 'b', 'keepShape'))
     const ids = j.doc.presets.A.U.segments.map((s) => s.id)
     expect(new Set(ids).size).toBe(ids.length)
     const k = ok(deleteAnchorWithSegments(d0, 'U', 'c'))

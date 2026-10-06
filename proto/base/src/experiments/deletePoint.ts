@@ -2,10 +2,19 @@
 // every state of every preset. Two different commands, as Illustrator distinguishes them (dot 1791302010):
 //
 // 4a removeAnchorJoin — remove an interior anchor and keep the curve continuous: the two segments become one.
-//    Default follows Inkscape 1.4 (official notes, dot): at a SHARP corner the neighbouring handles are kept;
-//    only at a SMOOTH node are the handles adjusted to keep the shape (here: least squares on the two handle
-//    lengths along the kept end tangents — the same idea as v103 fitWarpedCubic); variant 'straight' replaces
-//    the part by a straight segment. Direct edit, no confirmation; per-state error REPORTED as information.
+//    The MODE is an explicit argument of the command and is the same for every state and preset (dot
+//    1791304209: no per-state guessing of node type — it would change the meaning of one operation across
+//    states, and node types are not stored, §17). Modes, after Inkscape 1.4 (official notes, dot):
+//      'keepHandles' — keep the neighbouring handles;  'straight' — replace the part by a straight segment;
+//      'keepShape'   — try to keep the shape. Which mode to pick automatically is DEFERRED.
+//    'keepShape' is OUR ADAPTATION, not a mature method as such: per state it takes the smallest measured
+//    deviation among three candidates — (i) a least-squares fit of the two handle lengths along the kept end
+//    tangents, using the parameterisation step of Schneider, "An Algorithm for Automatically Fitting Digitized
+//    Curves" (Graphics Gems, 1990; Paper.js PathFitter implements Schneider) but NOT his full algorithm (no
+//    splitting, tangents fixed); (ii) the old handles; (iii) the inverse of a de Casteljau split (exact when
+//    the anchor came from one). Direct edit, no confirmation; per-state error REPORTED as information.
+//    References are re-mapped by arc-length fraction — also OUR ADAPTATION; their movement is reported for
+//    every preset and state, not only one.
 // 4b deleteAnchorWithSegments — delete the anchor and its adjacent segments: an interior anchor splits the
 //    curve into two open chains, an end anchor shortens it (a closed curve is not handled in this experiment).
 //
@@ -78,23 +87,14 @@ export function deviation(from: Cubic[], to: Cubic): number {
   return worst
 }
 
-/** is the node a sharp corner? (its two handles not collinear through it, or a handle collapsed) */
-export function isCusp(m: Anchor, degrees = 5): boolean {
-  const a = sub(m.p, m.hIn)
-  const b = sub(m.hOut, m.p)
-  if (len(a) < 1e-9 || len(b) < 1e-9) return true
-  const cos = (a.x * b.x + a.y * b.y) / (len(a) * len(b))
-  return Math.acos(Math.max(-1, Math.min(1, cos))) > (degrees * Math.PI) / 180
-}
-
 /** the one cubic for A → C replacing (A → M → C) in one state */
-export function joinCubic(A: Anchor, M: Anchor, C: Anchor, mode: 'keepShape' | 'straight'): { hOut: V; hIn: V } {
+export type JoinMode = 'keepHandles' | 'keepShape' | 'straight'
+export function joinCubic(A: Anchor, M: Anchor, C: Anchor, mode: JoinMode): { hOut: V; hIn: V } {
   if (mode === 'straight') return { hOut: { ...A.p }, hIn: { ...C.p } }
   const keep = { hOut: { ...A.hOut }, hIn: { ...C.hIn } }
-  if (isCusp(M)) return keep // sharp corner: keep the neighbouring handles
-  // smooth: keep both end tangent DIRECTIONS and solve the two handle lengths by least squares against samples
-  // of the two old segments. Mature method: Schneider, "An Algorithm for Automatically Fitting Digitized Curves"
-  // (Graphics Gems, 1990) — chord-length parameters, then Newton re-parameterisation; Paper.js PathFitter uses it.
+  if (mode === 'keepHandles') return keep
+  // candidate (i): keep both end tangent DIRECTIONS and solve the two handle lengths by least squares against
+  // samples of the two old segments; chord-length parameters, then Newton re-parameterisation (Schneider's step)
   const t1 = arcTable([A.p, A.hOut, M.hIn, M.p])
   const t2 = arcTable([M.p, M.hOut, C.hIn, C.p])
   const total = t1.total + t2.total
@@ -153,7 +153,7 @@ const connectionOn = (doc: Doc, curveId: string, anchorId: string) =>
   Object.entries(doc.connections).find(([, ends]) => ends.some((e) => e.curveId === curveId && e.anchorId === anchorId))?.[0]
 const first = <T>(r: Record<string, T>) => Object.values(r)[0]
 
-export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mode: 'keepShape' | 'straight' = 'keepShape'): Result {
+export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mode: JoinMode): Result {
   const bad = invalid(doc, curveId, anchorId)
   if (bad) return { ok: false, reason: bad }
   const c0 = first(doc.presets)[curveId]
@@ -182,10 +182,9 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
       const old: Cubic[] = [[A.p, A.hOut, M.hIn, M.p], [M.p, M.hOut, C.hIn, C.p]]
       let j = joinCubic(A, M, C, mode)
       let err = deviation(old, [A.p, j.hOut, j.hIn, C.p])
-      if (mode === 'keepShape' && !isCusp(M)) {
-        // candidates, the smallest measured deviation wins: the least-squares fit (minimises the mean, not the worst
-        // distance), the old handles, and the inverse of a de Casteljau split (exact when M came from one: the
-        // split parameter is the ratio of M's handle lengths, the outer handles are scaled back by 1/u and 1/(1−u))
+      if (mode === 'keepShape') {
+        // candidates (ii) old handles and (iii) inverse de Casteljau split (the split parameter is the ratio of M's
+        // handle lengths, the outer handles are scaled back by 1/u and 1/(1−u)); the smallest measured deviation wins
         const hi = len(sub(M.p, M.hIn)), ho = len(sub(M.hOut, M.p))
         const u = hi / (hi + ho)
         const cands = [
@@ -206,10 +205,9 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
     c.segments.splice(i, 2, { id: newSeg, from: sIn.from, to: sOut.to })
   }
   // references: one shared u per reference (as stored), mapped by arc-length fraction measured in the first
-  // preset's first state; how far each moves there is reported, never hidden
+  // preset's first state; the movement is then measured in EVERY preset and state and the worst is reported
   const st0 = Object.keys(c0.states)[0]
-  const q1 = segCubic(c0, st0, sIn.id), q2 = segCubic(c0, st0, sOut.id)
-  const t1 = arcTable(q1), t2 = arcTable(q2)
+  const t1 = arcTable(segCubic(c0, st0, sIn.id)), t2 = arcTable(segCubic(c0, st0, sOut.id))
   const total = t1.total + t2.total
   for (const [k, r] of Object.entries(d.refs)) {
     if (r.curveId !== curveId || (r.segmentId !== sIn.id && r.segmentId !== sOut.id)) continue
@@ -217,7 +215,11 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
     const at = (onIn ? t1 : t2).acc[Math.round(r.u * N)]
     const u = total > 0 ? (onIn ? at : t1.total + at) / total : 0.5
     d.refs[k] = { curveId, segmentId: newSeg, u }
-    refMoves[k] = len(sub(bez(segCubic(first(d.presets)[curveId], st0, newSeg), u), bez(onIn ? q1 : q2, r.u)))
+    let worst = 0
+    for (const [pid, curves] of Object.entries(doc.presets))
+      for (const st of Object.keys(curves[curveId].states))
+        worst = Math.max(worst, len(sub(bez(segCubic(d.presets[pid][curveId], st, newSeg), u), bez(segCubic(curves[curveId], st, r.segmentId), r.u))))
+    refMoves[k] = worst
   }
   for (const [fid, steps] of Object.entries(d.fills)) {
     const idx = steps.findIndex(pair)
