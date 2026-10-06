@@ -29,7 +29,7 @@
 import { atom, transaction } from '@tldraw/state'
 import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type RecordsDiff, type StoreSnapshot } from '@tldraw/store'
 import { isEqual } from '@tldraw/utils'
-import { plan, type Command, type EditError } from './commands'
+import { freshIds, plan, type Command, type EditError, type IdSource } from './commands'
 import { Derived } from './derived'
 import { graphProblems } from './model'
 import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
@@ -56,7 +56,7 @@ export type BatchRun<T> =
   | { ok: true; written: boolean; revision: number; value: T; warnings?: EditWarning[] }
   | { ok: false; written: false; revision: number; thrown: unknown; warnings?: EditWarning[] }
 
-export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[] } | { ok: false; error: EditError }
+export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[]; removals: string[] } | { ok: false; error: EditError }
 
 type Entry = { label: string; diff: RecordsDiff<DocRecord>; revision: number }
 type Group = { label: string; diffs: RecordsDiff<DocRecord>[] }
@@ -78,6 +78,17 @@ export class Editor {
    * Deliberately NOT an atom: an aborted transaction must not hand its revision id out again.
    */
   private nextRevision = 1
+  /**
+   * Edit generation: +1 after every committed write, undo and redo, and it NEVER goes back (unlike
+   * `revision`, which undo restores). A prepared operation compares it with its start to know whether
+   * the document changed meanwhile — an edit followed by its undo still counts as a change (dot
+   * 1791306076). Not an atom on purpose: an outer rollback keeps the bump, which only makes a prepared
+   * operation conservatively stale, never wrongly fresh.
+   */
+  #generation = 0
+  get generation() {
+    return this.#generation
+  }
   /** Called for subscriber failures after a committed write/undo/redo (default: console.warn). */
   onWarning: (w: EditWarning) => void = (w) => console.warn(`[contour] ${w.code}: ${w.message}`)
 
@@ -106,23 +117,35 @@ export class Editor {
     return this.revision !== this.savedRevision
   }
 
-  /** Plan without writing. Same validation as `apply`. */
-  preview(cmd: Command): PreviewResult {
-    const p = plan(this.reader, cmd)
+  /**
+   * Plan without writing. Same validation as `apply`. Independent calls allocate independent ids; to
+   * preview and then commit the SAME new records, use a prepared operation (`prepare`).
+   */
+  preview(cmd: Command, ids: IdSource = freshIds): PreviewResult {
+    const p = plan(this.reader, cmd, ids)
     // Planned records are fresh objects; freeze them so a preview can't be mistaken for a writable doc.
-    return p.ok ? { ok: true, affected: p.affected, puts: p.puts.map(deepFreeze) } : { ok: false, error: p.error }
+    return p.ok ? { ok: true, affected: p.affected, puts: p.puts.map(deepFreeze), removals: [...(p.removals ?? [])] } : { ok: false, error: p.error }
+  }
+
+  /** One gesture / one API operation with a fixed identity: see `Operation`. */
+  prepare(): Operation {
+    return new Operation(this)
   }
 
   /** The only path that writes author data. */
-  apply(cmd: Command): ApplyResult {
-    const p = plan(this.reader, cmd)
+  apply(cmd: Command, ids: IdSource = freshIds): ApplyResult {
+    const p = plan(this.reader, cmd, ids)
     if (!p.ok) return { ok: false, written: false, revision: this.revision, error: p.error }
     // Records equal to what is stored are not written: no-op edits never touch history (dot #3).
     const changed = p.puts.filter((r) => !isEqual(this.#store.get(r.id), r)).map(deepFreeze)
-    if (!changed.length) return { ok: true, written: false, revision: this.revision, affected: p.affected }
+    const removals = p.removals ?? [] // all exist: checked while planning
+    if (!changed.length && !removals.length) return { ok: true, written: false, revision: this.revision, affected: p.affected }
     let diff: RecordsDiff<DocRecord> | undefined
     const run = this.commit(() => {
-      diff = this.#store.extractingChanges(() => this.#store.put(changed))
+      diff = this.#store.extractingChanges(() => {
+        if (changed.length) this.#store.put(changed)
+        if (removals.length) this.#store.remove(removals as any)
+      })
       // recorded INSIDE the transaction: document and history commit or roll back together
       if (!isRecordsDiffEmpty(diff)) this.record(p.label, diff)
     })
@@ -132,6 +155,7 @@ export class Editor {
       // Unexpected (planning should have caught it); the transaction rolled back document AND history.
       return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: errorMessage(run.error), objects: p.affected, fixes: [] }, ...(warnings.length && { warnings }) }
     if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
+    this.#generation++
     return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(warnings.length && { warnings }) }
   }
 
@@ -279,6 +303,7 @@ export class Editor {
     const w = warnings.length ? { warnings } : {}
     if (!run.committed)
       return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: `${name} failed and was rolled back: ${errorMessage(run.error)}`, objects: [], fixes: [] }, ...w }
+    this.#generation++
     return { ok: true, written: true, revision: this.revision, ...w }
   }
 
@@ -310,6 +335,80 @@ export class Editor {
 }
 
 const errorMessage = (e: unknown) => String((e as Error)?.message ?? e)
+
+/**
+ * A prepared operation (one drag gesture, or one API preview → commit). Fixed at the start: the edit
+ * generation it starts from and the identities of the records it creates (ids are allocated on first
+ * use and reused by every later plan of THIS operation; another operation never gets them). Not fixed:
+ * the plan — every `preview` re-plans the latest input against the current document, and `commit`
+ * plans once more, so versions, locks and dependencies are checked again at commit (doc 18 §22.3).
+ * - commit after the document changed since the start (even if undone again) → STALE, nothing written;
+ * - an operation ends once: a second `commit`, or `commit` after `cancel`, writes nothing;
+ * - `cancel` writes nothing. The caller's command objects are never modified.
+ * The edit TARGET (preset / character, state) joins these fixed parts when targets exist (stage 3).
+ */
+export class Operation {
+  readonly startGeneration: number
+  readonly #editor: Editor
+  readonly #ids = new Map<string, string>()
+  #finished: 'ended' | 'cancelled' | null = null
+  #last: Command | undefined
+
+  constructor(editor: Editor) {
+    this.#editor = editor
+    this.startGeneration = editor.generation
+  }
+
+  /** 'ended' = commit was called (written or refused — the result says which); either way it is over. */
+  get state(): 'open' | 'ended' | 'cancelled' {
+    return this.#finished ?? 'open'
+  }
+
+  /** ids by (kind, ordinal within one plan): the n-th fill created by any plan of this operation is the same id */
+  #source(): IdSource {
+    const n = new Map<string, number>()
+    return {
+      take: (kind, fresh) => {
+        const i = n.get(kind) ?? 0
+        n.set(kind, i + 1)
+        const key = `${kind}#${i}`
+        let id = this.#ids.get(key)
+        if (!id) this.#ids.set(key, (id = fresh()))
+        return id
+      },
+    }
+  }
+
+  #refusal(): EditError | null {
+    if (this.#finished) return { code: 'INVALID', message: `operation already ${this.#finished}`, objects: [], fixes: ['prepare a new operation'] }
+    if (this.#editor.generation !== this.startGeneration)
+      return { code: 'STALE', message: `the document changed since this operation started (generation ${this.startGeneration} → ${this.#editor.generation})`, objects: [], fixes: ['prepare a new operation'] }
+    return null
+  }
+
+  /** Re-plan with the latest input; shows the same new ids every time. */
+  preview(cmd: Command): PreviewResult {
+    const no = this.#refusal()
+    if (no) return { ok: false, error: no }
+    this.#last = cmd
+    return this.#editor.preview(cmd, this.#source())
+  }
+
+  /** Plan once more and write (the latest previewed command unless one is given). Ends the operation. */
+  commit(cmd: Command | undefined = this.#last): ApplyResult {
+    const no = this.#refusal()
+    if (this.#finished) return { ok: false, written: false, revision: this.#editor.revision, error: no! }
+    this.#finished = 'ended'
+    if (no) return { ok: false, written: false, revision: this.#editor.revision, error: no }
+    if (!cmd) return { ok: false, written: false, revision: this.#editor.revision, error: { code: 'INVALID', message: 'nothing to commit', objects: [], fixes: [] } }
+    return this.#editor.apply(cmd, this.#source())
+  }
+
+  /** End without writing. */
+  cancel(): void {
+    this.#finished ??= 'cancelled'
+  }
+}
 
 /** Drop updates whose before and after are equal, and records added then removed within the diff. */
 function netDiff(d: RecordsDiff<DocRecord>): RecordsDiff<DocRecord> {

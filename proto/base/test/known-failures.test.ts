@@ -11,22 +11,9 @@ import { hitTest } from '../src/evaluate'
 import { paintCases } from '../src/paintCases'
 
 describe('KNOWN FAILURE', () => {
-  // KF-1 (found by property I13, 8373b9b): a create without an explicit id gets a fresh random id on
-  // every plan, so the previewed record and the committed record have DIFFERENT ids. API callers who
-  // preview then apply see an id that never exists. Fix direction (dot): a prepared create reuses its
-  // allocated identity and the commit re-validates it — not by rewriting ids when comparing.
-  it.fails('KF-1 preview and commit of a create give the same new id', () => {
-    const e = new Editor(exampleRecords())
-    const boundary = (exampleRecords().find((r) => r.id === ids.F) as FillRecord).boundary
-    const cmd: Command = { type: 'createFill', parentId: ids.L1, boundary }
-    const pv = e.preview(cmd)
-    expect(pv.ok).toBe(true)
-    const previewed = pv.ok ? pv.affected[0] : undefined
-    const r = e.apply(cmd)
-    expect(r.ok && r.written).toBe(true)
-    const committed = r.ok ? r.affected[0] : undefined
-    expect(committed).toBe(previewed) // fails today: two different fresh ids
-  })
+  // KF-1 (preview / commit ids of a create) — FIXED in stage 0 through prepared operations with an explicit
+  // identity (dot's fix direction); now test/stage0-write-entry.test.ts block 3. Plain `preview` and `apply`
+  // stay independent on purpose (two independent creates never share an id).
 
   // KF-2 (connected ends separated under a pose key) — FIXED with option A; now test/pose-connections.test.ts
 

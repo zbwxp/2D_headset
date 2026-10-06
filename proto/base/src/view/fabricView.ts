@@ -12,7 +12,7 @@ import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
-import type { Editor } from '../editor'
+import type { Editor, Operation } from '../editor'
 import { cubicsToCommands, evaluate, FILL_RULE, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, ownInkPath2D } from './ownInk'
 import { OwnInkFill } from './ownInkFill'
@@ -32,7 +32,8 @@ export class FabricView {
   /** Gestures refused before any command could be formed (e.g. unsupported reference handle edits). */
   readonly rejections: { address: string; error: EditError }[] = []
   status = ''
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; cmd?: Command; ok: boolean; rejected?: EditError } | null = null
+  /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError } | null = null
   private groupStart = new Map<FabricObject, TMat2D>()
   /** True while we re-project. Fabric fires `object:modified` again when we remove an object that
    *  is still the current transform target (endCurrentTransform → _finalizeCurrentTransform), which
@@ -116,6 +117,7 @@ export class FabricView {
 
   cancelGesture() {
     if (this.drag) {
+      this.drag.op.cancel()
       this.drag = null
       this.setStatus('已取消')
       this.render()
@@ -439,7 +441,7 @@ export class FabricView {
     if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
     const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
-    if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, ok: false }
+    if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
   }
 
   /**
@@ -481,16 +483,17 @@ export class FabricView {
     const cmd = mapped
     this.timing.moves++
     let t = performance.now()
-    const pv = this.editor.preview(cmd)
+    const pv = this.drag.op.preview(cmd)
     this.timing.plan += performance.now() - t
     this.drag.cmd = cmd
     this.drag.ok = pv.ok
+    this.drag.error = pv.ok ? undefined : pv.error
     if (pv.ok) {
       this.setStatus('')
       // incremental preview: only the affected items are re-evaluated; no store copy (dot)
       const d = this.editor.derived
       t = performance.now()
-      const ch = d.previewChanges(pv.puts) // once per move, shared by the drawing and every onion yaw
+      const ch = d.previewChanges(pv.puts, pv.removals) // once per move, shared by the drawing and every onion yaw
       this.timing.previewChanges += performance.now() - t
       t = performance.now()
       const main = d.preview(pv.puts, ch)
@@ -509,13 +512,22 @@ export class FabricView {
     const d = this.drag
     this.drag = null
     if (d?.rejected && !d.cmd) {
+      d.op.cancel()
       this.rejections.push({ address: d.hit.address, error: d.rejected })
       this.render()
       return
     }
-    if (!d?.cmd) return
-    if (d.ok) this.applyAndLog(d.cmd)
-    else this.log.push({ source: 'ui', cmd: d.cmd, ok: false, written: false, error: this.editor.preview(d.cmd).ok ? undefined : (this.editor.preview(d.cmd) as any).error })
+    if (!d) return
+    if (!d.cmd) return d.op.cancel()
+    if (d.ok) {
+      // the operation plans once more and checks generation, locks and dependencies again; ends once
+      const r = d.op.commit(d.cmd)
+      this.log.push({ source: 'ui', cmd: d.cmd, ok: r.ok, written: r.written, error: r.ok ? undefined : r.error })
+      this.setStatus(r.ok ? '' : `${r.error.code}: ${r.error.message}`)
+    } else {
+      d.op.cancel()
+      this.log.push({ source: 'ui', cmd: d.cmd, ok: false, written: false, error: d.error })
+    }
     this.render()
   }
 

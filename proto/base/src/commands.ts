@@ -7,7 +7,7 @@
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { offsetAt } from './pose'
-import { connectionsAt, fillsUsing, within } from './indexes'
+import { childrenOf, connectionsAt, fillsUsing, referencesOf, within } from './indexes'
 import { actualKind, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
@@ -35,6 +35,7 @@ export type ErrorCode =
   | 'INVALID'
   | 'ID_CONFLICT'
   | 'BAD_REFERENCE' // the result would break a relation rule (same rules as open)
+  | 'STALE' // a prepared operation's document changed since it started (edit generation moved on)
   | 'INTERNAL' // unexpected exception while planning — a bug; nothing was written
 export type EditError = {
   code: ErrorCode
@@ -55,10 +56,29 @@ export type Command =
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
   /** Record (or replace) a curve's form at one angle: per-anchor offsets from the base drawing. */
   | { type: 'setPoseKey'; curveId: RecordId<CurveRecord>; yaw: number; offsets: Record<string, Vec> }
+  /**
+   * Remove records. Generic: nothing is removed implicitly — a record that something still depends on
+   * (a curve with a connection, fill or pose; a container with children or references) is refused
+   * unless the dependants are removed in the same command (doc 18 §22.1).
+   */
+  | { type: 'deleteRecords'; ids: string[] }
 
+/**
+ * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
+ * an id appears at most once in puts, at most once in removals, never in both (doc 18 §22.1).
+ */
 export type Plan =
-  | { ok: true; label: string; puts: DocRecord[]; affected: string[]; creates?: string[] }
+  | { ok: true; label: string; puts: DocRecord[]; removals?: string[]; affected: string[]; creates?: string[] }
   | { ok: false; error: EditError }
+
+/**
+ * Where new record ids come from while planning. The default allocates a fresh id every time (two
+ * independent creates never share an id). A prepared operation passes its own source so that every
+ * re-plan of the same operation reuses the same ids (KF-1; dot: an explicit prepared identity, the
+ * caller's command is never rewritten).
+ */
+export type IdSource = { take: (kind: string, fresh: () => string) => string }
+export const freshIds: IdSource = { take: (_kind, fresh) => fresh() }
 
 const fail = (code: ErrorCode, message: string, objects: string[], fixes: string[] = []): Plan => ({
   ok: false,
@@ -114,19 +134,24 @@ function writeAnchors(store: DocStore, moves: Map<string, { ref: AnchorRef; p: V
  * Plan a command: everything is checked here (targets, locks, closure, record validators), so
  * `preview` and `apply` share exactly the same validation (dot's review of 11ca75d).
  */
-export function plan(store: DocStore, cmd: Command): Plan {
+export function plan(store: DocStore, cmd: Command, ids: IdSource = freshIds): Plan {
   try {
-    return planChecked(store, cmd)
+    return planChecked(store, cmd, ids)
   } catch (e) {
     // The API never throws at its caller (UI or AI). An exception here is a bug, reported as such.
     return fail('INTERNAL', `unexpected error while planning ${String((cmd as { type?: unknown })?.type)}: ${String((e as Error)?.message ?? e)}`, [])
   }
 }
 
-function planChecked(store: DocStore, cmd: Command): Plan {
+function planChecked(store: DocStore, cmd: Command, ids: IdSource): Plan {
   counters.plans++
-  const p = planRaw(store, cmd)
+  const p = planRaw(store, cmd, ids)
   if (!p.ok) return p
+  const removals = p.removals ?? []
+  const unique = overlayConflict(p.puts, removals)
+  if (unique) return unique
+  const removal = removalGuard(store, removals)
+  if (removal) return removal
   const guard = writeGuard(store, cmd, p.puts, new Set(p.creates ?? []))
   if (guard) return guard
   for (const r of p.puts) {
@@ -136,7 +161,7 @@ function planChecked(store: DocStore, cmd: Command): Plan {
       return fail('INVALID', String((e as Error).message ?? e), [r.id])
     }
   }
-  const broken = relationCheck(store, p.puts)
+  const broken = relationCheck(store, p.puts, removals)
   if (broken.length)
     return fail('BAD_REFERENCE', broken.map((b) => b.message).join('; '), [...new Set(broken.flatMap((b) => [b.object, b.target]))], ['pass an id of the expected type'])
   return p
@@ -149,9 +174,10 @@ function planChecked(store: DocStore, cmd: Command): Plan {
  * invalidate them (a curve losing anchors/segments, or a container changing parent). A drag that
  * only moves anchors therefore costs O(written records), not a whole-document scan (dot).
  */
-function relationCheck(store: DocStore, puts: DocRecord[]) {
+function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = []) {
   const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
-  const next = { get: (id: string) => overlay.get(id) ?? store.get(id as any) } as Pick<DocStore, 'get'>
+  const gone = new Set(removals)
+  const next = { get: (id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? store.get(id as any))) } as Pick<DocStore, 'get'>
   const problems = puts.flatMap((r) => recordProblems(next, r))
   // Incoming relations, looked up through the indexes (not by scanning a type): connections at an
   // anchor a curve loses, fills reading a curve that loses a segment. A container changing parent
@@ -170,8 +196,57 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
       if (c) for (const a of Object.keys(c.anchors)) for (const cn of connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) incoming.add(cn)
     }
   }
-  for (const id of incoming) if (!overlay.has(id)) problems.push(...recordProblems(next, store.get(id as any) as DocRecord))
+  // Incoming relations of removed records: everything that may still point at them (indexes, no scan).
+  for (const id of removals) for (const d of dependantsOf(store, id)) incoming.add(d)
+  for (const id of incoming) if (!overlay.has(id) && !gone.has(id)) problems.push(...recordProblems(next, store.get(id as any) as DocRecord))
   return problems
+}
+
+/** Records that may refer to `id` (found through the dependency indexes). */
+function dependantsOf(store: DocStore, id: string): string[] {
+  const r = store.get(id as any) as DocRecord | undefined
+  if (!r) return []
+  if (r.typeName === 'container')
+    return [...(['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store, r.id, t)), ...referencesOf(store, r.id)]
+  if (r.typeName === 'curve') {
+    const out: string[] = [...fillsUsing(store, r.id)]
+    for (const a of Object.keys(r.anchors)) out.push(...connectionsAt(store, anchorKey({ curveId: r.id, anchorId: a })))
+    if (store.get(poseIdOf(r.id) as any)) out.push(poseIdOf(r.id))
+    return out
+  }
+  return []
+}
+
+/** One final overlay: no id twice in puts or removals, none in both (dot 1791306076). */
+export function overlayConflict(puts: DocRecord[], removals: string[]): Plan | null {
+  const seen = new Set<string>()
+  for (const r of puts) {
+    if (seen.has(r.id)) return fail('ID_CONFLICT', `${r.id} is written twice in one plan`, [r.id])
+    seen.add(r.id)
+  }
+  const removed = new Set<string>()
+  for (const id of removals) {
+    if (removed.has(id)) return fail('ID_CONFLICT', `${id} is removed twice in one plan`, [id])
+    if (seen.has(id)) return fail('ID_CONFLICT', `${id} is both written and removed in one plan`, [id])
+    removed.add(id)
+  }
+  return null
+}
+
+/**
+ * Removals: the record must exist, and neither its place nor (for a container) itself may be locked.
+ * Dependants still present are checked by `relationCheck` on the final overlay.
+ */
+function removalGuard(store: DocStore, removals: string[]): Plan | null {
+  for (const id of removals) {
+    const old = store.get(id as any) as DocRecord | undefined
+    if (!old) return fail('NOT_FOUND', `${id} does not exist`, [id])
+    const place = placeOf(store, old)
+    const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
+    if (locker) return fail('LOCKED', `${id} is in locked container ${locker.id}`, [id, locker.id], [`unlock ${locker.id}`])
+    if (old.typeName === 'container' && old.locked) return fail('LOCKED', `${id} is locked`, [id], [`unlock ${id}`])
+  }
+  return null
 }
 
 /**
@@ -214,7 +289,7 @@ function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: S
   return null
 }
 
-function planRaw(store: DocStore, cmd: Command): Plan {
+function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
   switch (cmd.type) {
     case 'moveAnchors': {
       const moved = linkedAnchors(store, cmd.targets)
@@ -255,7 +330,7 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       return { ok: true, label: 'moveOverride', puts: [next], affected: [`${ref.id}/${key}`] }
     }
     case 'transformContainer':
-      return planRaw(store, { type: 'transformContainers', containerIds: [cmd.containerId], matrix: cmd.matrix })
+      return planRaw(store, { type: 'transformContainers', containerIds: [cmd.containerId], matrix: cmd.matrix }, ids)
     case 'transformContainers': {
       // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
       // (Illustrator behaviour) so the comparison can be made later with real numbers.
@@ -297,7 +372,7 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       if (!cmd.boundary.length) return fail('FILL_NOT_CLOSED', 'boundary is empty', [cmd.parentId])
       const gap = findGap(store, cmd.boundary)
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
-      const fill = Fill.create({ id: cmd.id ?? Fill.createId(), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
+      const fill = Fill.create({ id: cmd.id ?? (ids.take('fill', () => Fill.createId()) as RecordId<FillRecord>), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
       return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
     }
     case 'setPoseKey': {
@@ -356,6 +431,11 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       if (!c) return notFound(store, cmd.containerId, 'container')
       const next = { ...c, ...(cmd.locked !== undefined && { locked: cmd.locked }), ...(cmd.visible !== undefined && { visible: cmd.visible }) }
       return { ok: true, label: 'setContainerFlags', puts: [next], affected: [c.id] }
+    }
+    case 'deleteRecords': {
+      if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'no records to delete', [])
+      // existence, duplicates, locks and dependants are checked generically on the final overlay
+      return { ok: true, label: 'deleteRecords', puts: [], removals: [...cmd.ids], affected: [...cmd.ids] }
     }
   }
 }

@@ -13,7 +13,7 @@ on retained result items; evictable entries depend only on non-evictable sources
 fully). Latest: 51 related tests per mode (incl. 2 known-failure markers), dot's 5 independent
 checks per mode, typecheck; unchanged UI not re-run.
 
-**Still open:** KF-1 (preview / commit ids of creates), KF-3 (low-level reference lifecycle), full
+**Still open:** KF-3 (low-level reference lifecycle), full
 canvas rebuild per render, whole-list collection on the drawing path, complete recording and
 inverse solving, real drawing / byte / GPU budgets.
 
@@ -150,6 +150,10 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   difference with an id-mapping or order-insensitive comparison. Reproduced by **KF-1** in `test/known-failures.test.ts`
   (`it.fails`: green only while the bug reproduces; listed separately by `gate.sh`). Fix direction
   (dot): a prepared create reuses its allocated identity and the commit re-validates it.
+  **Fixed in stage 0 (doc 18 §23):** `Editor.prepare()` returns an `Operation` whose plans share one
+  identity source; commit plans again on the current document (STALE if the non-rewinding edit
+  generation moved). Plain `preview` / `apply` stay independent by contract. Property I13 still does
+  not compare creating plans; comparing them through prepared operations is a possible later addition.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).

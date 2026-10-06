@@ -171,14 +171,20 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
   }
 }
 
-/** A reader that sees `puts` layered over `reader` (used by the preview; never writes). */
-export function overlayReader(reader: DocReader, puts: DocRecord[]): DocReader {
+/**
+ * A reader that sees `puts` layered over `reader` and `removals` taken out (used by the preview; never
+ * writes). A removed record is a tombstone for BOTH reads by id and enumeration (doc 18 §22.1).
+ * Its `query` is still the underlying store's: index-based membership does not see the overlay, so
+ * evaluation of an overlay must go through `get` / `allRecords` (the full-evaluation path does).
+ */
+export function overlayReader(reader: DocReader, puts: DocRecord[], removals: readonly string[] = []): DocReader {
   const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
+  const gone = new Set(removals)
   return {
     ...reader,
-    get: ((id: string) => overlay.get(id) ?? reader.get(id as any)) as DocReader['get'],
+    get: ((id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? reader.get(id as any)))) as DocReader['get'],
     allRecords: () => {
-      const out = reader.allRecords().map((r) => overlay.get(r.id) ?? r)
+      const out = reader.allRecords().filter((r) => !gone.has(r.id)).map((r) => overlay.get(r.id) ?? r)
       for (const r of puts) if (!reader.get(r.id as any)) out.push(r)
       return out
     },
@@ -212,7 +218,7 @@ function fastPathChange(old: DocRecord, next: DocRecord) {
 
 type PaintEntry = { kind: 'curve' | 'fill'; address: string; key: string; refId?: ReferenceRecord['id']; curveId?: CurveRecord['id'] }
 
-export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | EvalFill> } | { fallback: true }
+export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | EvalFill> } | { fallback: true; removals?: readonly string[] }
 
 export class Derived {
   private readonly curves
@@ -379,7 +385,7 @@ export class Derived {
   previewAtYaw(puts: DocRecord[], yaw: number, ch: PreviewChanges = this.previewChanges(puts)): Evaluated {
     if (ch.fallback) {
       counters.previewFallbacks++
-      return evaluateAtYaw(overlayReader(this.reader, puts), yaw)
+      return evaluateAtYaw(overlayReader(this.reader, puts, ch.removals), yaw)
     }
     const view = overlayReader(this.reader, puts)
     const curves = new Map<string, EvalCurve>()
@@ -415,8 +421,10 @@ export class Derived {
    * instances of a changed reference — through an overlay `get`; everything else stays cached.
    * Falls back when the plan could change paint order or touches other record kinds.
    */
-  previewChanges(puts: DocRecord[]): PreviewChanges {
+  previewChanges(puts: DocRecord[], removals: readonly string[] = []): PreviewChanges {
     counters.previews++
+    // removals change membership: always the full overlay evaluation (tombstones)
+    if (removals.length) return { fallback: true, removals }
     const store = this.store
     for (const r of puts) {
       const old = store.get(r.id as any) as DocRecord | undefined
@@ -455,7 +463,7 @@ export class Derived {
   preview(puts: DocRecord[], ch: PreviewChanges = this.previewChanges(puts)): Evaluated {
     if (ch.fallback) {
       counters.previewFallbacks++
-      return evaluate(overlayReader(this.reader, puts))
+      return evaluate(overlayReader(this.reader, puts, ch.removals))
     }
     const base = this.evaluated()
     counters.previewItems += base.paint.length
