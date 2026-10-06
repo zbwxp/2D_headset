@@ -1,0 +1,184 @@
+// Evaluation: author data → ONE evaluated geometry that stroke, fill, hit-test and export all read
+// (docs/design/architecture/11 §2 join principle, 08 §2½ guarantee 2). Evaluated data is never saved.
+// - Original vs evaluated split: Blender depsgraph design docs (behaviour only, no code read)
+//   https://developer.blender.org/docs/features/core/depsgraph/
+// - Curve math: bezier-js 6.1.4 (MIT) `project` / `getLUT` — https://github.com/Pomax/bezierjs
+// - Reference expansion with per-instance sub-element addresses `${referenceId}/${curveId}`:
+//   Figma instance sublayer ids (I<instance>;<child>) / SVG <use> — behaviour only.
+import { Bezier } from 'bezier-js'
+import type { RecordId } from '@tldraw/store'
+import { all, effectivelyVisible, lockedBy } from './model'
+import type { Affine, ContainerRecord, CurveRecord, DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
+
+export type Cubic = [Vec, Vec, Vec, Vec]
+export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }
+export type EvalAnchor = { id: string; p: Vec; hIn: Vec; hOut: Vec } // handles in absolute coords
+export type EvalCurve = {
+  address: string // `curve:C1` or `reference:R1/curve:E1`
+  curveId: RecordId<CurveRecord>
+  referenceId?: RecordId<ReferenceRecord>
+  name: string
+  anchors: Record<string, EvalAnchor>
+  segments: EvalSegment[]
+  stroke: { color: string; width: number }
+  visible: boolean
+  locked: boolean
+  depth: number
+}
+export type EvalFill = { address: string; color: string; cubics: Cubic[]; visible: boolean; locked: boolean; depth: number }
+export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[] }
+
+const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
+const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
+
+/** Paint order key: container order, then index within the container, then depth offset. */
+function orderKey(store: DocStore, parentId: RecordId<ContainerRecord>, index: string) {
+  const parent = store.get(parentId) as ContainerRecord | undefined
+  return `${parent?.index ?? ''}/${index}`
+}
+
+function evalCurve(curve: CurveRecord, m: Affine, overrides: Record<string, Vec>, address: string): Pick<EvalCurve, 'anchors' | 'segments'> {
+  const anchors: Record<string, EvalAnchor> = {}
+  for (const a of Object.values(curve.anchors)) {
+    const local = overrides[`${curve.id}#${a.id}`] ?? a.p
+    const p = tp(m, local)
+    anchors[a.id] = { id: a.id, p, hIn: tp(m, { x: local.x + a.hIn.x, y: local.y + a.hIn.y }), hOut: tp(m, { x: local.x + a.hOut.x, y: local.y + a.hOut.y }) }
+  }
+  const segments = curve.segments.map((s) => {
+    const A = anchors[s.from]
+    const B = anchors[s.to]
+    return { id: s.id, from: s.from, to: s.to, cubic: [A.p, A.hOut, B.hIn, B.p] as Cubic }
+  })
+  void address
+  return { anchors, segments }
+}
+
+export function evaluate(store: DocStore): Evaluated {
+  const curves: EvalCurve[] = []
+  const byCurveId = new Map<string, EvalCurve>()
+  for (const c of all(store, 'curve') as CurveRecord[]) {
+    const ev: EvalCurve = {
+      address: c.id,
+      curveId: c.id,
+      name: c.name,
+      ...evalCurve(c, IDENTITY, {}, c.id),
+      stroke: c.stroke,
+      visible: effectivelyVisible(store, c.parentId),
+      locked: !!lockedBy(store, c.parentId),
+      depth: c.depthOffset,
+    }
+    curves.push(ev)
+    byCurveId.set(c.id, ev)
+  }
+  // Reference expansion: each placement gets its own addresses; the source is not duplicated in data.
+  for (const r of all(store, 'reference') as ReferenceRecord[]) {
+    for (const c of (all(store, 'curve') as CurveRecord[]).filter((c) => inside(store, c.parentId, r.sourceId))) {
+      curves.push({
+        address: `${r.id}/${c.id}`,
+        curveId: c.id,
+        referenceId: r.id,
+        name: c.name,
+        ...evalCurve(c, r.transform, r.overrides, `${r.id}/${c.id}`),
+        stroke: c.stroke,
+        visible: effectivelyVisible(store, r.parentId),
+        locked: !!lockedBy(store, r.parentId),
+        depth: c.depthOffset,
+      })
+    }
+  }
+  const fills: EvalFill[] = (all(store, 'fill') as FillRecord[]).map((f) => ({
+    address: f.id,
+    color: f.color,
+    // The fill reads the SAME evaluated segments the strokes use — never its own copy of anchors.
+    cubics: f.boundary.map((step) => {
+      const seg = byCurveId.get(step.curveId)!.segments.find((s) => s.id === step.segmentId)!
+      const [p0, c1, c2, p3] = seg.cubic
+      return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
+    }),
+    visible: effectivelyVisible(store, f.parentId),
+    locked: !!lockedBy(store, f.parentId),
+    depth: f.depthOffset,
+  }))
+  const order = (addr: string) => {
+    const rec = store.get(addr.split('/')[0] as any) as any
+    return rec ? orderKey(store, rec.parentId, rec.index) : ''
+  }
+  curves.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth)
+  fills.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth)
+  return { curves, fills }
+}
+
+function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
+  let cur = parentId ? (store.get(parentId) as ContainerRecord | undefined) : undefined
+  while (cur) {
+    if (cur.id === containerId) return true
+    cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
+  }
+  return false
+}
+
+/** SVG path data from cubics — used by display AND export, so they cannot disagree. */
+export function cubicsToPath(cubics: Cubic[], close = false) {
+  if (!cubics.length) return ''
+  const f = (v: Vec) => `${+v.x.toFixed(3)} ${+v.y.toFixed(3)}`
+  let d = `M ${f(cubics[0][0])}`
+  for (const [, c1, c2, p3] of cubics) d += ` C ${f(c1)} ${f(c2)} ${f(p3)}`
+  return close ? d + ' Z' : d
+}
+
+export type Hit =
+  | { kind: 'anchor'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; anchorId: string; d: number }
+  | { kind: 'handle'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; anchorId: string; handle: 'in' | 'out'; d: number }
+  | { kind: 'segment'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; segmentId: string; t: number; d: number }
+  | { kind: 'fill'; address: string; d: 0 }
+
+/**
+ * Hit test against the evaluated geometry (precision risk of route B is decided here, not by
+ * Fabric's bounding-box hit test). A mode: anchors > handles > segments; V mode: segments > fills.
+ * Locked or hidden objects are not hittable. Topmost (last painted) wins ties.
+ */
+export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; tolerance: number }): Hit | null {
+  const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y)
+  const live = ev.curves.filter((c) => c.visible && !c.locked)
+  const top = [...live].reverse()
+  const pick = <T extends { d: number }>(xs: T[]) => xs.sort((a, b) => a.d - b.d)[0] ?? null
+  if (opts.mode === 'A') {
+    const anchors = top.flatMap((c) =>
+      Object.values(c.anchors).map((a) => ({ kind: 'anchor' as const, address: `${c.address}#${a.id}`, curveId: c.curveId, referenceId: c.referenceId, anchorId: a.id, d: dist(a.p, p) })),
+    )
+    const a = pick(anchors.filter((h) => h.d <= opts.tolerance))
+    if (a) return a
+    const handles = top.flatMap((c) =>
+      Object.values(c.anchors).flatMap((a) => [
+        { kind: 'handle' as const, address: `${c.address}#${a.id}.in`, curveId: c.curveId, referenceId: c.referenceId, anchorId: a.id, handle: 'in' as const, d: dist(a.hIn, p) },
+        { kind: 'handle' as const, address: `${c.address}#${a.id}.out`, curveId: c.curveId, referenceId: c.referenceId, anchorId: a.id, handle: 'out' as const, d: dist(a.hOut, p) },
+      ]),
+    )
+    const h = pick(handles.filter((x) => x.d <= opts.tolerance))
+    if (h) return h
+  }
+  const segs = top.flatMap((c) =>
+    c.segments.map((s) => {
+      const pr = new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p)
+      return { kind: 'segment' as const, address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: pr.t, d: pr.d }
+    }),
+  )
+  const s = pick(segs.filter((x) => x.d <= opts.tolerance))
+  if (s) return s
+  for (const f of [...ev.fills].reverse()) {
+    if (!f.visible || f.locked) continue
+    const poly = f.cubics.flatMap((c) => new Bezier(...c.flatMap((v) => [v.x, v.y])).getLUT(16))
+    if (pointInPolygon(p, poly)) return { kind: 'fill', address: f.address, d: 0 }
+  }
+  return null
+}
+
+function pointInPolygon(p: Vec, poly: Vec[]) {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]
+    const b = poly[j]
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
