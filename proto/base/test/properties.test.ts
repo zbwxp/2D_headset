@@ -95,7 +95,7 @@ const likelyOk: fc.Arbitrary<Command> = fc.oneof(
 ) as fc.Arbitrary<Command>
 
 type Action =
-  | { kind: 'observerThrow'; cmd: Command }
+  | { kind: 'observerThrow'; inner: { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' }; handlerThrows: boolean }
   | { kind: 'outerAbort'; inner: { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' } }
   | { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' } | { kind: 'saveOpen' }
 const action: fc.Arbitrary<Action> = fc.oneof(
@@ -107,7 +107,19 @@ const action: fc.Arbitrary<Action> = fc.oneof(
   { weight: 2, arbitrary: fc.constant({ kind: 'undo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'redo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'saveOpen' as const }) },
-  { weight: 1, arbitrary: fc.oneof(command, likelyOk).map((cmd) => ({ kind: 'observerThrow' as const, cmd })) },
+  {
+    weight: 3,
+    arbitrary: fc.record({
+      kind: fc.constant('observerThrow' as const),
+      inner: fc.oneof(
+        fc.oneof(command, likelyOk).map((cmd) => ({ kind: 'apply' as const, cmd })),
+        fc.array(fc.oneof(command, likelyOk), { minLength: 1, maxLength: 3 }).map((cmds) => ({ kind: 'batch' as const, cmds })),
+        fc.constant({ kind: 'undo' as const }),
+        fc.constant({ kind: 'redo' as const }),
+      ),
+      handlerThrows: fc.boolean(),
+    }),
+  },
   {
     weight: 1,
     arbitrary: fc
@@ -238,7 +250,7 @@ function checkStatic(e: Editor) {
 
 describe('properties of the single write entry', () => {
   it('hold for random sequences of edits, bad inputs, batches, undo/redo and save/open', () => {
-    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0, observerWarned: 0, outerAborted: 0 }
+    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0, observerWarned: 0, observerFiredNonApply: 0, handlerThrew: 0, outerAborted: 0 }
     fc.assert(
       fc.property(fc.array(action, { maxLength: 25 }), (actions) => {
         let e = new Editor(initial())
@@ -291,38 +303,71 @@ describe('properties of the single write entry', () => {
             }
             checkLocks(e, locked, act.cmds) // I2
           } else if (act.kind === 'observerThrow') {
-            // I9: a subscriber that throws on every change after its first run
+            // I9: a subscriber (of document AND history) throws on every change after its first run;
+            // sometimes the warning handler throws as well. Nothing may escape, results must not lie.
             let armed = false
             const stop = react('throwing subscriber', () => {
               e.reader.allRecords()
+              void e.history
               if (armed) throw new Error('subscriber failure')
             })
             armed = true
             const undoLen = e.history.undo.length
-            let r: ReturnType<typeof api.apply>
             const warn = e.onWarning
-            e.onWarning = () => {}
+            e.onWarning = act.handlerThrows
+              ? () => {
+                  throw new Error('handler failure')
+                }
+              : () => {}
+            const inner = act.inner
+            let out: unknown
             try {
-              r = api.apply(act.cmd)
+              expect(() => {
+                if (inner.kind === 'apply') out = api.apply(inner.cmd)
+                else if (inner.kind === 'batch') out = api.applyBatch('b', inner.cmds)
+                else if (inner.kind === 'undo') out = e.undo()
+                else out = e.redo()
+              }).not.toThrow()
             } finally {
               stop()
               e.onWarning = warn
             }
-            if (r.ok && r.written && r.warnings?.length) seen.observerWarned++
-            if (r.ok && r.written) {
-              expect(doc(e)).not.toBe(before)
-              expect(e.history.undo.length).toBe(undoLen + 1)
-              const after = doc(e)
-              e.undo()
-              expect(doc(e)).toBe(before)
-              e.redo()
-              expect(doc(e)).toBe(after)
+            const changed = doc(e) !== before
+            if (changed && inner.kind !== 'apply') seen.observerFiredNonApply++
+            if (changed && act.handlerThrows) seen.handlerThrew++
+            if (inner.kind === 'apply' || inner.kind === 'batch') {
+              const r = out as any
+              const ok = inner.kind === 'apply' ? r.ok : Array.isArray(r)
+              const written = inner.kind === 'apply' ? ok && r.written : ok && changed
+              if (inner.kind === 'apply' && ok && r.written && r.warnings?.length) seen.observerWarned++
+              if (!ok) expect(r.error.code, r.error.message).not.toBe('INTERNAL')
+              if (written) {
+                expect(changed).toBe(true)
+                expect(e.history.undo.length).toBe(undoLen + 1)
+                const after = doc(e)
+                e.undo()
+                expect(doc(e)).toBe(before)
+                e.redo()
+                expect(doc(e)).toBe(after)
+              } else {
+                expect(changed).toBe(false)
+                expect(JSON.stringify(e.history)).toBe(hist)
+              }
+              checkLocks(e, locked, inner.kind === 'apply' ? [inner.cmd] : inner.cmds)
             } else {
-              if (!r.ok) expect(r.error.code, r.error.message).not.toBe('INTERNAL')
-              expect(doc(e)).toBe(before)
-              expect(JSON.stringify(e.history)).toBe(hist)
+              // undo/redo: returned true ⇔ exactly one step moved between the stacks, and it reverses
+              const moved = out === true
+              expect(e.history.undo.length).toBe(inner.kind === 'undo' ? undoLen - (moved ? 1 : 0) : undoLen + (moved ? 1 : 0))
+              if (!moved) expect(changed).toBe(false)
+              else {
+                if (inner.kind === 'undo') e.redo()
+                else e.undo()
+                expect(doc(e)).toBe(before)
+                expect(JSON.stringify(e.history)).toBe(hist)
+                if (inner.kind === 'undo') e.undo()
+                else e.redo()
+              }
             }
-            checkLocks(e, locked, [act.cmd])
           } else if (act.kind === 'outerAbort') {
             // I10: the caller wraps us in its own transaction and rolls it back
             const rev = e.revision
@@ -361,9 +406,10 @@ describe('properties of the single write entry', () => {
     )
     console.log('[properties] coverage of outcomes', JSON.stringify(seen))
     // the generator must actually exercise every branch, otherwise passing proves little
-    // Floor of 5 per branch. Measured over 40 runs (2026-10-06): the lowest branch minimum was 12
-    // (unlocked, median 21); every other branch had min ≥ 30. A floor at typical counts made the
-    // test fail by chance (946e816, a3bf7a0) — re-measure if the generator changes.
+    // Floor of 5 per branch. Re-measured over 40 runs after the I9 extension (2026-10-06): lowest
+    // branch minimum 11 (unlocked, median 19), then observerWarned min 23; all others ≥ 24. A floor
+    // at typical counts made the test fail by chance (946e816, a3bf7a0) — re-measure on any
+    // generator change.
     for (const [k, v] of Object.entries(seen)) expect(v, k).toBeGreaterThanOrEqual(5)
   })
 })

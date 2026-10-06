@@ -12,11 +12,15 @@
 // - Undo/redo stacks and revisions are @tldraw/state atoms, i.e. they live in the SAME transactional
 //   state as the document. Any rollback — ours, or an outer `transaction` the caller wraps around
 //   us — restores document and history together. Calling the editor inside an outer transaction is
-//   therefore allowed; `batch` remains the supported way to group edits.
+//   therefore consistent (see the last point).
 // - Subscribers (`react`, views) run after a root transaction has committed (tldraw flushes effects
 //   in `commit`). An exception thrown by a subscriber does not undo the write, so the result reports
 //   the write as done, plus an OBSERVER_FAILED warning — the result always describes the document.
+//   If `onWarning` itself throws, that is added as WARNING_HANDLER_FAILED; nothing escapes to the caller.
 //   Whether a write committed is decided by whether the transaction body finished, never assumed.
+// - Supported grouping is `batch` / `applyBatch`. An outer `transaction` around the editor is not part
+//   of the contract (tldraw exposes no public "is a transaction active" check to refuse it), but
+//   because history lives in the same atoms, its rollback still leaves document and history consistent.
 import { atom, transaction } from '@tldraw/state'
 import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type RecordsDiff, type StoreSnapshot } from '@tldraw/store'
 import { isEqual } from '@tldraw/utils'
@@ -25,7 +29,7 @@ import { graphProblems } from './model'
 import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
 
 /** Something went wrong outside the write itself (e.g. a subscriber threw); the write stands. */
-export type EditWarning = { code: 'OBSERVER_FAILED'; message: string }
+export type EditWarning = { code: 'OBSERVER_FAILED' | 'WARNING_HANDLER_FAILED'; message: string }
 
 export type ApplyResult =
   | { ok: true; written: true; revision: number; affected: string[]; warnings?: EditWarning[] }
@@ -120,9 +124,14 @@ export class Editor {
     } catch (e) {
       const message = String((e as Error)?.message ?? e)
       if (!finished) return { committed: false, error: message }
-      const w: EditWarning = { code: 'OBSERVER_FAILED', message }
-      this.onWarning(w)
-      return { committed: true, warnings: [w] }
+      const warnings: EditWarning[] = [{ code: 'OBSERVER_FAILED', message }]
+      try {
+        this.onWarning(warnings[0])
+      } catch (h) {
+        // The report channel itself failed: still return the truth, with both failures in the result.
+        warnings.push({ code: 'WARNING_HANDLER_FAILED', message: String((h as Error)?.message ?? h) })
+      }
+      return { committed: true, warnings }
     }
   }
 
