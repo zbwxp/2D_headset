@@ -16,7 +16,25 @@ Report: `/Users/bowen/Documents/Codex/2026-10-06/task/evidence-3f697ca/REVIEW.md
 renderer changes, the product. Passing this sample does not prove the architecture; each new
 capability is verified again against the same rules.
 
-## Next stage (agreed with dot; not started)
+## Stage conclusion (dot, 2026-10-06, independent re-review of 53d9fc0)
+
+**Converged:** the on-demand angle-evaluation sample, **without active external subscribers**.
+Verified across the stage (each at the commit named in its section below): limited editing
+transactions; incremental drag preview (no store copy); a small pose model with connection
+linkage (option A) and source-local offsets carried by references; bounded angle caches (one limit
+on retained result items; evictable entries depend only on non-evictable sources; geometry counted
+fully). Latest: 51 related tests per mode (incl. 2 known-failure markers), dot's 5 independent
+checks per mode, typecheck; unchanged UI not re-run.
+
+**Still open:** KF-1 (preview / commit ids of creates), KF-3 (low-level reference lifecycle), full
+canvas rebuild per render, whole-list collection on the drawing path, complete recording and
+inverse solving, real drawing / byte / GPU budgets.
+
+**Next (dot):** list the whole-list collections, object rebuilds and drawing costs that remain in a
+REAL drag and in playback; measure them with one workload; decide from the numbers how the canvas
+changes. Replacing the renderer is not a given.
+
+## Incremental stage — plan and steps (done; see the conclusion above)
 
 Goal: prove that unrelated content is not recomputed. "Only what changed" means: the changed objects
 and the objects that really depend on them (e.g. a jaw point → its connections, fills, references
