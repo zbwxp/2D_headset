@@ -244,6 +244,9 @@ function flowArchive(): DocRecord[] {
   return recs
 }
 
+// NOT covered (stated, dot 1791314662): the original §16 joint closed-eye fix of BOTH lids' tail. The product's
+// expression tracks live on the rule's moved role only, so that author / character target is refused (see the last
+// test); the shared fixture below lifts the upper middle, and only the shared part is compared with flowVerify.
 describe('§16 flow through the product (oracle: flowVerify where the two models coincide)', () => {
   const C1 = 'character:c1' as any
   const oracle = flowDoc() // flowVerify data, edited in step with the product
@@ -301,4 +304,14 @@ describe('§16 flow through the product (oracle: flowVerify where the two models
     expect(s['curve:upper'].b.p).toEqual(s['curve:lower'].d.p)
     expect(s['curve:upper'].a.p).toEqual(s['curve:lower'].c.p)
   })
+})
+
+it('the original §16 joint closed-eye target (both lids) is refused, not silently approximated', () => {
+  const rs = flowArchive()
+  const lower = rs.find((r: any) => r.id === 'forms:preset:A/curve:lower') as any
+  lower.expr = { blink: [{ yaw: 0, kind: 'rule' }] } // an expression track on the lower lid (the source role)
+  expect(() => openRecords(rs)).toThrow(/curve:lower has a blink track but is not the moved role/)
+  const e = openRecords(flowArchive())
+  const now = (e.derived.character('character:c1') as any).grid.curves['curve:lower'].neutral[0]
+  refused(e, { type: 'fixExpression', character: 'character:c1' as any, curveId: 'curve:lower' as any, param: 'blink', yaw: 0, target: now }, /not the moved role/)
 })
