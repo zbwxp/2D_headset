@@ -158,3 +158,23 @@ their own ink (S2, scratch layer per protected fill).
 
 ≈ 13 ms per frame for 100 protected fills in B — the cost probe's order (8.8 ms / 100 bounding-box
 scratch composites). Earlier numbers in this file time the OLD, wrong paint order.
+
+
+## Correction: the ≈ 550 ms Fabric renderAll is the anchor dots' default object cache (2026-10-06)
+
+dot (reuse review) pointed out that the anchor dots keep Fabric's default `objectCaching: true` while
+every path is uncached. Probe `e2e/dots-cache-probe.spec.ts` (not in the gate): main workload exactly
+as above (6,600 objects, 6,000 dots), Fabric A, fitted, 0 onion, DPR 1, synchronous `renderAll` on the
+same scene, two runs:
+
+| variant | first render | median of 7 |
+| --- | --- | --- |
+| dots cached (Fabric default — what every Fabric number above measured) | 568–661 ms | 557–562 ms |
+| dots NOT cached | 24–27 ms | 23 ms |
+| dots removed | 13–14 ms | 12 ms |
+
+So nearly all of Fabric's ≈ 550 ms was 6,000 tiny per-object cache canvases being composited, not
+Fabric drawing as such. Every earlier conclusion of the form "Fabric renderAll dominates" / "B is ~200×
+faster than Fabric" compared B against a misconfigured Fabric and is withdrawn. The setting is not
+changed in the product yet (dot is reviewing the reuse boundary); comparisons must be redone with the
+dots uncached (and with B's own-ink cost included on both sides).
