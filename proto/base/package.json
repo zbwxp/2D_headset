@@ -1,0 +1,26 @@
+{
+  "name": "contour-proto-base",
+  "version": "1.0.0",
+  "description": "Route B slice: @tldraw/store + Fabric (see docs/design/architecture/15-slice-plan.md)",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev": "vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@tldraw/state": "^5.5.2",
+    "@tldraw/store": "^5.5.2",
+    "fabric": "^7.4.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  },
+  "private": true
+}
