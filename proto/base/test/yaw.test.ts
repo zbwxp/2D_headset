@@ -57,7 +57,7 @@ describe('cached angle evaluation equals the full recompute', () => {
     expect({ doc: JSON.stringify(e.reader.serialize('document')), hist: JSON.stringify(e.history), rev: e.revision, dirty: e.isDirty }).toEqual(before)
   })
 
-  it('stroke width stays the authored width at every angle (16 §3.0)', () => {
+  it('geometric forms do not change the authored stroke width at any angle (16 §3.0)', () => {
     const { e } = withPoses()
     const authored = new Map((e.reader.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).map((c) => [c.id as string, c.stroke.width]))
     for (const y of YAWS) for (const c of e.derived.atYaw(y).curves) expect(c.stroke.width).toBe(authored.get(c.curveId))

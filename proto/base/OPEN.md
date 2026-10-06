@@ -114,7 +114,7 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   item and its curve's pose. `previewAtYaw(puts, yaw, ch)` re-does only the plan's changed items at
   that yaw; the view computes the plan's changes ONCE per move and shares them across onion yaws.
   `pose.evaluateAtYaw` is the uncached full reference.
-- Stroke width is never changed by a form (16 §3.0), tested at every yaw. Shape vs stroke drawing
+- Geometric forms do not change the authored stroke width (16 §3.0), tested at every yaw. Expressions explicitly driving width (bowen) are allowed by the requirement and not implemented yet. Shape vs stroke drawing
   separation (dot) is a requirement for the drawing layer; not implemented there yet.
 - Generic fix found on the way: `writeGuard` skipped the lock check for CREATED records (createFill
   had its own check); creates are now lock-checked generically (a pose cannot be created in a
@@ -141,6 +141,12 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
     angles ≈0; heap growth with a large cache 89–133 MB (noisy, no forced GC). 1000 curves — 2.7 vs
     1.2 ms. **For full-change playback the per-item caches cost ~3× a plain recompute and a lot of
     memory**: runtime caching must be decided from such numbers (16 §3), not assumed.
+
+- **Open coordinate-space question (flagged before dot's review of 2a48719):** pose offsets are
+  added in WORLD space, also for reference instances — a mirrored instance (R1, a = −1) receives the
+  source curve's offset unmirrored. Whether forms live in the curve's local frame and are carried by
+  the reference / parent transform (Live2D parent–child deformers, dot) is exactly the open
+  composition question (turn vs expression vs joint parameters); not decided, not fixed.
 
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 
