@@ -89,7 +89,9 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   so preview and commit ids differ (and equal-key paint order among such items follows the random
   ids). Not on the drag path; matters for API callers who preview then apply. **Open contract
   problem** (dot): property I13 does not compare creating plans at all rather than masking the
-  difference with an id-mapping or order-insensitive comparison.
+  difference with an id-mapping or order-insensitive comparison. Reproduced by **KF-1** in `test/known-failures.test.ts`
+  (`it.fails`: green only while the bug reproduces; listed separately by `gate.sh`). Fix direction
+  (dot): a prepared create reuses its allocated identity and the commit re-validates it.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).
