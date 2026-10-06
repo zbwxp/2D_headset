@@ -155,3 +155,53 @@ first: to agree; until then container opacity stays unimplemented and listed in 
 
 **E1 — editor overlays** (onion yaws, anchor dots, selection): editor display convention, not a
 product rule. Today: onion under everything, dots over everything. Kept as is, stated here.
+
+## 4. Implementation design (draft for dot, before code)
+
+Scope agreed (dot, after bowen's answer): opaque line art first — correct normal order, own-outline
+protection (C1) and occlusion of / by other objects. See-through own strokes are not a driver;
+"every fill leaves out its full stroke area" is NOT a general rule. Depth offsets (D1) and container
+opacity (D7) are NOT in these steps.
+
+**S1 — one paint list in the evaluation core; renderers only read it.**
+- `Derived` gets a `paint` computed: the visible curves, fills and reference instances interleaved in
+  one list (`{ kind, item }[]`). `evaluateSaved` (runtime) and the reference `evaluate` return the
+  same list.
+- Order key = the whole container path from the root (each level's fractional index), then the
+  object's own index; strings compared by code unit (`<`), not `localeCompare`. Ties: address (stable).
+- Reference instances (D6): key = the reference's own path, then the source-relative path of the
+  source item, so the source's internal order is kept and nothing leaves the instance.
+- `depthOffset`: not interpreted in S1 (today it only breaks ties, which has no meaning under D1);
+  listed in OPEN.md as unimplemented until D1 is agreed.
+- Recomputed only when parent / index / visibility / membership change (it reads those fields, not
+  geometry), so a drag preview reuses it; counted (`paintOrderBuilds`).
+- FabricView (A): `want` = onion yaws → `paint` → anchor dots (E1); same incremental keys as today.
+  B draws the same list in the same order.
+- Tests: P1–P4, P7 must leave the known-failure list (Playwright reports if they don't); unit test of
+  the paint list itself for every case in `src/paintCases.ts` (the third check the contract asks for);
+  property: the list is a permutation of the visible items, consistent with the tree order pairwise.
+- New case added in S1, expected to FAIL until S2 and listed as a known failure: **P6-cross-layer** —
+  F's own boundary B (opaque blue) in back layer L1, F in front layer L2 (R7): at (40, 11) blue.
+  (Today it passes only because fills are always under curves; S1 alone breaks it.)
+
+**S2 — C1: a fill leaves out the visible ink of its own boundary strokes that are behind it.**
+- Core: each `EvalFill` gets `ownInk`: the boundary pieces whose curve is visible and earlier in
+  `paint` than the fill, with each piece's ink outline in world units: `bezier-js` `outline(w/2)` per
+  segment (butt ends) plus a disk of radius w/2 at interior joints (covers round / most miter joins;
+  sharp miter tips are a stated limit). Cached per curve item (geometry + width); a drag of a boundary
+  curve recomputes only that curve's outlines.
+- Renderers: B — `ctx.clip(rect + piece, 'evenodd')` once per piece (successive clips intersect, i.e.
+  the complement of the union, the same "intersected inverse clips" as v103), then fill. A — Fabric
+  `clipPath` = Group of the piece outlines with `inverted: true, absolutePositioned: true`. A fill with
+  no `ownInk` paints exactly as today (no clip).
+- Hit testing uses the same exclusion (v103: fill painting and fill hit share one clip).
+- Limits (stated, with a diagnostic): self-intersecting outline pieces, blurred / textured stroke
+  edges (none exist yet).
+- Tests: P6-cross-layer passes; D2 example 2 becomes a 明确 case (B < X < F: green where X covers B's
+  ink inside F, blue where it does not, red at the centre); P6 / P7 unchanged.
+
+**S3 — measure.** Main workload (500 curves, 100 fills, 6,000 dots), A and B: the cost of the paint
+list (structural edits only) and of the clips (Fabric clipPath may force object caching — measured,
+not assumed). Then D1 offsets, then D7 container opacity, each after agreement.
+
+One step per commit, gate before each.
