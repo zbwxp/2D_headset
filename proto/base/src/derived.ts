@@ -19,7 +19,7 @@ import { counters } from './counters'
 import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
-import { asCharacter, ctxOf, playCharacter, prepareCharacter, type Prepared } from './character'
+import { asCharacter, ctxOf, playCharacter, prepareCharacter, retainedShapes, type Prepared } from './character'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
 import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
 
@@ -34,15 +34,33 @@ import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type
  * parents' values alive, so a dependency on an evicted entry would retain it outside the count.
  */
 export class SharedBudget {
-  used = 0
+  /**
+   * The DISTINCT result objects retained by all registered caches (dot, review of 819dd22: an EvalCurve shared by
+   * several yaw keys was counted once per key). Each entry declares the objects it holds; a reference count per
+   * object makes `used` the number of different objects, whatever number of keys hold them.
+   */
+  private readonly refs = new Map<unknown, number>()
   evictions = 0
   private readonly caches: KeyedComputedCache<unknown>[] = []
   constructor(
     readonly limit: number,
     private readonly onEvict: () => void = () => {},
   ) {}
+  get used() {
+    return this.refs.size
+  }
   register(c: KeyedComputedCache<unknown>) {
     this.caches.push(c)
+  }
+  hold(objects: readonly unknown[]) {
+    for (const o of objects) this.refs.set(o, (this.refs.get(o) ?? 0) + 1)
+  }
+  release(objects: readonly unknown[]) {
+    for (const o of objects) {
+      const n = (this.refs.get(o) ?? 0) - 1
+      if (n > 0) this.refs.set(o, n)
+      else this.refs.delete(o)
+    }
   }
   enforce(keep: { cache: KeyedComputedCache<unknown>; key: string }) {
     for (const c of this.caches) while (this.used > this.limit && c.evictOldest(keep, this.limit)) {
@@ -50,38 +68,32 @@ export class SharedBudget {
       this.onEvict()
     }
   }
-  /** Bookkeeping invariant (for tests): every weighed entry is in its map, and `used` = Σ weights. */
+  /** Bookkeeping invariant (for tests): every held entry is in its map, and the reference counts are exactly the entries' objects. */
   consistent(): boolean {
-    let sum = 0
+    const recount = new Map<unknown, number>()
     for (const c of this.caches) {
-      const { keys, weights } = c.bookkeeping()
-      if (weights.size !== keys.size || [...weights.keys()].some((k) => !keys.has(k))) return false
-      for (const w of weights.values()) sum += w
+      const { keys, held } = c.bookkeeping()
+      if (held.size !== keys.size || [...held.keys()].some((k) => !keys.has(k))) return false
+      for (const objs of held.values()) for (const o of objs) recount.set(o, (recount.get(o) ?? 0) + 1)
     }
-    return sum === this.used
+    return recount.size === this.refs.size && [...recount].every(([o, n]) => this.refs.get(o) === n)
   }
   /** The distinct result objects currently held by all caches (for tests). */
   retainedObjects(): Set<unknown> {
-    const out = new Set<unknown>()
-    for (const c of this.caches) for (const v of c.values()) {
-      if (v && typeof v === 'object' && 'curves' in (v as object)) {
-        for (const x of (v as Evaluated).curves) out.add(x)
-        for (const x of (v as Evaluated).fills) out.add(x)
-      } else out.add(v)
-    }
-    return out
+    return new Set(this.refs.keys())
   }
 }
 
-/** Computeds keyed by a string, least-recently-used, counted against a shared budget. */
+/** Computeds keyed by a string, least-recently-used, counted against a shared budget by the objects they hold. */
 export class KeyedComputedCache<T> {
   private map = new Map<string, Computed<T>>()
-  private weights = new Map<string, number>()
+  private held = new Map<string, readonly unknown[]>()
   private last = new Map<string, T>()
   constructor(
     private readonly budget: SharedBudget,
     private readonly create: (key: string) => Computed<T>,
-    private readonly weightOf: (value: T) => number = () => 1,
+    /** the result objects an entry holds (default: the value itself) */
+    private readonly objectsOf: (value: T) => readonly unknown[] = (v) => [v],
   ) {
     budget.register(this as KeyedComputedCache<unknown>)
   }
@@ -93,9 +105,10 @@ export class KeyedComputedCache<T> {
     const v = c.get()
     this.map.delete(key)
     this.map.set(key, c)
-    const w = this.weightOf(v)
-    this.budget.used += w - (this.weights.get(key) ?? 0)
-    this.weights.set(key, w)
+    const objs = this.objectsOf(v)
+    this.budget.hold(objs)
+    this.budget.release(this.held.get(key) ?? [])
+    this.held.set(key, objs)
     this.last.set(key, v)
     this.budget.enforce({ cache: this as KeyedComputedCache<unknown>, key })
     return v
@@ -103,10 +116,10 @@ export class KeyedComputedCache<T> {
   /** Drop the least-recently-used entry (not `keep`, unless `keep` alone exceeds the budget). */
   evictOldest(keep: { cache: KeyedComputedCache<unknown>; key: string }, limit: number): boolean {
     for (const key of this.map.keys()) {
-      if (keep.cache === (this as KeyedComputedCache<unknown>) && key === keep.key && (this.weights.get(key) ?? 0) <= limit) continue
+      if (keep.cache === (this as KeyedComputedCache<unknown>) && key === keep.key && (this.held.get(key)?.length ?? 0) <= limit) continue
       this.map.delete(key)
-      this.budget.used -= this.weights.get(key) ?? 0
-      this.weights.delete(key)
+      this.budget.release(this.held.get(key) ?? [])
+      this.held.delete(key)
       this.last.delete(key)
       return true
     }
@@ -116,7 +129,11 @@ export class KeyedComputedCache<T> {
     return this.last.values()
   }
   bookkeeping() {
-    return { keys: new Set(this.map.keys()), weights: this.weights }
+    return { keys: new Set(this.map.keys()), held: this.held }
+  }
+  /** per-key object counts (Σ over keys ≥ the budget's distinct `used` when keys share an object) */
+  get weights() {
+    return new Map([...this.held].map(([k, o]) => [k, o.length]))
   }
   get size() {
     return this.map.size
@@ -246,7 +263,7 @@ export class Derived {
           counters.characterPrepares++
           return prepareCharacter(ctxOf(this.reader), id)
         }),
-      (p) => (p.ok ? p.grid.retained : 1),
+      (p) => (p.ok ? retainedShapes(p.grid) : [p]),
     )
     this.yawCurves = new KeyedComputedCache<EvalCurve>(
       this.yawRetainedItems,

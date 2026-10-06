@@ -250,3 +250,75 @@ describe('review requests for 3a (dot 1791314079): fills and reference instances
       expect(play(g, y).visible['curve:strand']).toBe(want)
   })
 })
+
+describe('review of 819dd22 (dot): both node directions, other families, shared yaw budget, expression fix meaning, clearing a source line, notices', () => {
+  it('two node takeovers on one connection (−60 and +90) both apply, each over its own range', () => {
+    const rs = sample()
+    const k = rs.find((r) => r.id === K)
+    k.takeovers.push({ kind: 'node', id: 'takeover:corner@-60', connectionId: 'connection:corner', state: { yaw: -60 }, direction: { from: 0, to: -60 }, target: { x: -20, y: 7 }, basisFront: { x: 10, y: 0 }, L: [1, 0, 0, 1], basisFrom: 'takeover:lid@90' })
+    const g = ok(prep(rs))
+    expect(play(g, -60).shapes['curve:lowerLid'].d.p).toEqual({ x: -20, y: 7 })
+    expect(play(g, 90).shapes['curve:lowerLid'].d.p).toEqual({ x: 15.5, y: -0.4 })
+    for (const y of [-60, -30, 0, 45, 90]) expect(gap(play(g, y).shapes)).toBe(0)
+  })
+
+  it('a change in ANOTHER family (helper domain, rule, visibility) does not rebuild this character', () => {
+    const rs = sample()
+    rs.push({ typeName: 'family', id: 'family:other', name: 'other', curves: [] }, { typeName: 'preset', id: 'preset:O', name: 'O', familyId: 'family:other' },
+      { typeName: 'helperDomain', id: 'helperDomain:O/30', presetId: 'preset:O', yaw: 30, affine: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, source: { yaw: 0 }, target: { yaw: 30 }, ruleVersion: 1 })
+    const e = openRecords(rs)
+    e.derived.character(K)
+    const before = counters.characterPrepares
+    expect(e.apply({ type: 'deleteRecords', ids: ['helperDomain:O/30'] }).ok).toBe(true)
+    e.derived.character(K)
+    expect(counters.characterPrepares - before).toBe(0)
+  })
+
+  it('the shared budget counts a yaw result held by several keys once (distinct objects; consistent bookkeeping)', () => {
+    const e = openRecords(sample())
+    for (const y of [0, 10, 20, 30, 40, 50, 60]) e.derived.atYaw(y)
+    const b = e.derived.yawRetainedItems
+    expect(b.used).toBe(b.retainedObjects().size)
+    expect(b.consistent()).toBe(true)
+  })
+
+  it('a new expression fix replaces an imported one with the same meaning (curve, parameter, yaw), whatever its id; two such records are refused on open', () => {
+    const e = openRecords(sample()) // has exprFix:lid@90/blink
+    const now = (play(ok(prep(sample())), 90, 1).shapes['curve:lid'])
+    const target = { ...now, m: { p: { x: now.m.p.x, y: now.m.p.y - 2 }, hIn: { x: now.m.hIn.x, y: now.m.hIn.y - 2 }, hOut: { x: now.m.hOut.x, y: now.m.hOut.y - 2 } } }
+    const r = e.apply({ type: 'fixExpression', character: K as any, curveId: 'curve:lid' as any, param: 'blink', yaw: 90, target })
+    expect(r.ok && r.written).toBe(true)
+    const fixes = (e.reader.get(K as any) as any).exprFixes
+    expect(fixes.map((x: any) => x.id)).toEqual(['exprFix:lid@90/blink']) // replaced, id kept
+    const p = e.derived.character(K)
+    if (!p.ok) throw new Error(p.problems.join())
+    const got = playCharacter(p.grid, { yaw: 90, params: { blink: 1 } })
+    expect(got.ok && Math.abs((got as any).shapes['curve:lid'].m.p.y - target.m.p.y)).toBeLessThan(1e-12)
+    const dup = sample()
+    const kd = dup.find((x) => x.id === K)
+    kd.exprFixes.push({ ...structuredClone(kd.exprFixes[0]), id: 'exprFix:other' })
+    expect(() => openRecords(dup)).toThrow(/fix the same state .*ambiguous/)
+  })
+
+  it('clearing the line a node takeover names as basisFrom is allowed: the node is untouched (copied L, provenance kept); reopen works', () => {
+    const e = openRecords(sample())
+    const node = () => (e.reader.get(K as any) as any).takeovers.find((t: any) => t.kind === 'node')
+    const L = [...node().L]
+    const r = e.apply({ type: 'clearFix', character: K as any, id: 'takeover:lid@90' })
+    expect(r.ok && r.written, JSON.stringify(r)).toBe(true)
+    expect(node().L).toEqual(L)
+    expect(node().basisFrom).toBe('takeover:lid@90') // provenance kept as written (history only)
+    expect(() => Editor.open(JSON.parse(JSON.stringify(e.save())))).not.toThrow()
+    expect(e.derived.character(K).ok).toBe(true)
+  })
+
+  it('createCurve in preset author mode is allowed and names the characters that now miss the curve (prepare reports it)', () => {
+    const e = openRecords(sample())
+    const r = e.apply({ type: 'createCurve', id: 'curve:brow' as any, parentId: 'container:L1' as any, preset: 'preset:P' as any,
+      anchors: { p: { id: 'p', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 1, y: 0 } }, q: { id: 'q', p: { x: 9, y: 0 }, hIn: { x: -1, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 'k1', from: 'p', to: 'q' }] })
+    expect(r.ok && r.written).toBe(true)
+    expect(r.ok && (r as any).notices?.join()).toMatch(/character:K cannot be prepared until: preset:Q \(weight 0.4\) has no shape for curve:brow/)
+    const p = e.derived.character(K)
+    expect(p.ok).toBe(false) // missing is reported, never faked
+  })
+})

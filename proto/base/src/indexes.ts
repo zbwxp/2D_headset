@@ -11,7 +11,7 @@
 import { computed, isUninitialized, RESET_VALUE, unsafe__withoutCapture, type Computed } from '@tldraw/state'
 import type { StoreQueries } from '@tldraw/store'
 import { counters } from './counters'
-import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FamilyRecord, FillRecord, ReferenceRecord } from './schema'
+import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FamilyRecord, FillRecord, HelperDomainRecord, ReferenceRecord, RuleRecord, VisibilityRecord } from './schema'
 
 type Type = DocRecord['typeName']
 type Rec<T extends Type> = Extract<DocRecord, { typeName: T }>
@@ -86,6 +86,9 @@ type Indexes = {
   fillsByCurve: KeyIndex
   referencesBySource: KeyIndex
   familiesByCurve: KeyIndex
+  helpersByPreset: KeyIndex
+  rulesByFamily: KeyIndex
+  visibilityByCurve: KeyIndex
 }
 const cache = new WeakMap<object, Indexes>()
 
@@ -101,10 +104,29 @@ export function indexesOf(store: Indexed): Indexes {
       fillsByCurve: multiIndex(store, 'fill', (f: FillRecord) => f.boundary.flatMap((b) => ('bridge' in b ? [b.bridge.from.curveId, b.bridge.to.curveId] : [b.curveId]) as string[])),
       referencesBySource: multiIndex(store, 'reference', (r: ReferenceRecord) => [r.sourceId as string]),
       familiesByCurve: multiIndex(store, 'family', (f: FamilyRecord) => f.curves.map(String)),
+      helpersByPreset: multiIndex(store, 'helperDomain', (h: HelperDomainRecord) => [h.presetId as string]),
+      rulesByFamily: multiIndex(store, 'rule', (r: RuleRecord) => [r.familyId as string]),
+      visibilityByCurve: multiIndex(store, 'visibility', (v: VisibilityRecord) => [v.curveId as string]),
     }
     cache.set(store.query, ix)
   }
   return ix
+}
+
+/**
+ * Membership of ONE key as its own computed (equal arrays keep the old value): a reader of it re-runs only when THAT
+ * key's membership changes, not when any key of the index does (dot, review of 819dd22: a helper domain of another
+ * family rebuilt this character). Used by the character preparation.
+ */
+const perKey = new WeakMap<KeyIndex, Map<string, Computed<string[]>>>()
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
+function lookupKey(ix: KeyIndex, key: string): string[] {
+  let m = perKey.get(ix)
+  if (!m) perKey.set(ix, (m = new Map()))
+  let c = m.get(key)
+  if (!c) m.set(key, (c = computed(`index-key:${key}`, () => [...(ix.get().get(key) ?? [])].sort(), { isEqual: sameList })))
+  counters.indexQueries++
+  return c.get()
 }
 
 const lookup = (ix: KeyIndex, key: string): string[] => {
@@ -129,6 +151,13 @@ export const childrenOf = <T extends 'container' | 'curve' | 'fill' | 'reference
     : scan(store, type).filter((r) => String((r as { parentId: unknown }).parentId) === String(parentId)).map((r) => (r as { id: string }).id)) as Rec<T>['id'][]
 export const fillsUsing = (store: Queryable, curveId: string) =>
   (indexed(store) ? lookup(indexesOf(store).fillsByCurve, curveId) : scan(store, 'fill').filter((f) => f.boundary.some((b) => ('bridge' in b ? b.bridge.from.curveId === curveId || b.bridge.to.curveId === curveId : b.curveId === curveId))).map((f) => f.id)) as FillRecord['id'][]
+/** Helper domains of a preset / rules of a family / visibility records of a curve (stage 3: keyed membership). */
+export const helperDomainsOf = (store: Queryable, presetId: string) =>
+  (indexed(store) ? lookupKey(indexesOf(store).helpersByPreset, presetId) : scan(store, 'helperDomain').filter((h) => h.presetId === presetId).map((h) => h.id)) as string[]
+export const rulesOfFamily = (store: Queryable, familyId: string) =>
+  (indexed(store) ? lookupKey(indexesOf(store).rulesByFamily, familyId) : scan(store, 'rule').filter((r) => r.familyId === familyId).map((r) => r.id)) as string[]
+export const visibilityOfCurve = (store: Queryable, curveId: string) =>
+  (indexed(store) ? lookupKey(indexesOf(store).visibilityByCurve, curveId) : scan(store, 'visibility').filter((v) => v.curveId === curveId).map((v) => v.id)) as string[]
 /** Families registering a curve (a family curve has preset forms: the new mode). */
 export const familiesOf = (store: Queryable, curveId: string) =>
   (indexed(store) ? lookup(indexesOf(store).familiesByCurve, curveId) : scan(store, 'family').filter((f) => f.curves.includes(curveId as any)).map((f) => f.id)) as FamilyRecord['id'][]
@@ -155,3 +184,7 @@ export const within = <T extends 'curve' | 'fill' | 'reference'>(store: Queryabl
   containersWithin(store, containerId).flatMap((c) => childrenOf(store, c, type))
 
 export type { CurveRecord }
+
+/** connections at an anchor, as a per-key computed (for the character preparation; see lookupKey) */
+export const connectionsAtKeyed = (store: Queryable, key: string) =>
+  (indexed(store) ? lookupKey(indexesOf(store).connectionsByAnchor, key) : connectionsAt(store, key)) as ConnectionRecord['id'][]

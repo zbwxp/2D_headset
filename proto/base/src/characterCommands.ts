@@ -67,15 +67,20 @@ const prepOn = (r: Store, id: string) => prepareCharacter(ctxOf(r), id)
 /** characters of a family */
 const charactersOf = (store: Store, familyId: string) => store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === familyId)
 
-/** every character that prepared before must still prepare on the plan's final overlay */
-function stillPlayable(store: Store, puts: DocRecord[], characters: string[]): Plan | null {
-  const after = overlayReader(store, puts)
+/**
+ * Characters that prepared before and would not after: a NOTICE, not a refusal — normal authoring (a new curve not yet
+ * drawn in every preset, a key whose basis is added next …) must not be blocked; prepare / play then report what is
+ * missing and never fake a playable result (dot 1791315660).
+ */
+export function playabilityNotices(store: Store, puts: DocRecord[], characters: string[], removals: string[] = []): string[] {
+  const after = overlayReader(store, puts, removals)
+  const out: string[] = []
   for (const id of characters) {
-    if (!prepOn(store, id).ok) continue // already not playable before: not this edit's doing
+    if (!prepOn(store, id).ok) continue
     const p = prepOn(after, id)
-    if (!p.ok) return fail('INVALID', `${id} would no longer be playable: ${p.problems.join('; ')}`, [id])
+    if (!p.ok) out.push(`${id} cannot be prepared until: ${p.problems.join('; ')}`)
   }
-  return null
+  return out
 }
 
 const sample = <K extends { yaw: number }>(keys: K[], yaw: number, at: (k: K) => Mat2): Mat2 => {
@@ -232,19 +237,27 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
         return keys[i].yaw === y ? srcGrid[i] : lerpS(srcGrid[i - 1], srcGrid[i], (y - keys[i - 1].yaw) / (keys[i].yaw - keys[i - 1].yaw))
       }
       const base = impl.apply(at(cmd.yaw), rule.correspondence)!
-      const id = `exprFix:${c.id}@${cmd.yaw}/${cmd.param}`
+      // replace by meaning — the same curve, parameter and yaw — whatever id an imported record has (dot, review of
+      // 819dd22: an imported exprFix:lid@90/blink kept winning over a new one)
+      const same = (x: CharacterRecord['exprFixes'][number]) => x.curveId === c.id && x.state.yaw === cmd.yaw && x.state[cmd.param] === 1
+      const prior = K.exprFixes.find(same)
+      const id = prior?.id ?? `exprFix:${c.id}@${cmd.yaw}/${cmd.param}`
       const fix = { id, curveId: c.id, state: { yaw: cmd.yaw, [cmd.param]: 1 } as { yaw: number } & Record<string, number>, target: structuredClone(cmd.target), base, ruleVersion: rule.version }
-      next = { ...K, exprFixes: [...K.exprFixes.filter((x) => x.id !== id), fix] }
+      next = { ...K, exprFixes: [...K.exprFixes.filter((x) => !same(x)), fix] }
       break
     }
     case 'clearFix': {
       if (!K.takeovers.some((t) => t.id === cmd.id) && !K.exprFixes.some((x) => x.id === cmd.id)) return fail('NOT_FOUND', `${K.id} has no takeover or expression fix ${cmd.id}`, [K.id])
+      // a node takeover that named this line as basisFrom is untouched: its copied L is the authority and basisFrom is
+      // provenance only, kept as written (dot, review of 819dd22: clearing the source was refused)
       next = { ...K, takeovers: K.takeovers.filter((t) => t.id !== cmd.id), exprFixes: K.exprFixes.filter((x) => x.id !== cmd.id) }
       break
     }
   }
-  const check = stillPlayable(store, [next], [K.id])
-  if (check) return check
+  // an edit of a CHARACTER must leave that character preparable (it is the thing being edited: an unsupported result —
+  // e.g. a joint eye-tail correction that splits a node — is refused); preset authoring only reports (notices)
+  const broken = playabilityNotices(store, [next], [K.id])
+  if (broken.length) return fail('INVALID', `${K.id} would no longer be playable: ${broken.join('; ')}`, [K.id])
   return { ok: true, label: cmd.type, puts: [next], affected: [K.id] }
 }
 
@@ -261,9 +274,8 @@ function planPreset(store: Store, cmd: Extract<CharacterCommand, { type: 'setPre
     const old = getAs(store, id, 'visibility') as VisibilityRecord | undefined
     const keys = [...(old?.keys ?? []).filter((k) => k.yaw !== cmd.yaw), { yaw: cmd.yaw, visible: !!cmd.visible }].sort((a, b) => a.yaw - b.yaw)
     puts.push(old ? { ...old, keys } : ({ typeName: 'visibility', id, curveId: cmd.curveId, owner: { kind: 'preset', id: pr.id }, mode: 'step', keys } as VisibilityRecord))
-    const check = stillPlayable(store, puts, charactersOf(store, fam.id).map((c) => c.id))
-    if (check) return check
-    return { ok: true, label: 'setVisibilityKey', puts, affected: [id], ...(old ? {} : { creates: [id] }) }
+    const notices = playabilityNotices(store, puts, charactersOf(store, fam.id).map((c) => c.id))
+    return { ok: true, label: 'setVisibilityKey', puts, affected: [id], ...(old ? {} : { creates: [id] }), ...(notices.length ? { notices } : {}) }
   }
   const c = getAs(store, cmd.curveId, 'curve')!
   if (!shapeOk(cmd.shape, c)) return fail('INVALID', `shape must list exactly the anchors of ${c.id} with finite control points`, [c.id])
@@ -292,9 +304,8 @@ function planPreset(store: Store, cmd: Extract<CharacterCommand, { type: 'setPre
         else puts.push(withKey(lf, moved))
       }
     }
-  const check = stillPlayable(store, puts, charactersOf(store, fam.id).map((ch) => ch.id))
-  if (check) return check
-  return { ok: true, label: 'setPresetKey', puts, affected: puts.map((r) => r.id) }
+  const notices = playabilityNotices(store, puts, charactersOf(store, fam.id).map((ch) => ch.id))
+  return { ok: true, label: 'setPresetKey', puts, affected: puts.map((r) => r.id), ...(notices.length ? { notices } : {}) }
 }
 
 function sampleShape(keys: AbsoluteYawKey[], yaw: number): Shape {

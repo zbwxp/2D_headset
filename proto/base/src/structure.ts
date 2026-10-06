@@ -13,7 +13,7 @@
 import type { RecordId } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { deviation, joinCubic, type JoinMode } from './experiments/deletePoint'
-import { ctxOf, prepareCharacter } from './character'
+import { playabilityNotices } from './characterCommands'
 import { presetFormsIdOf } from './forms'
 import { connectionsAt, familiesOf, fillsUsing, referencesOf } from './indexes'
 import { anchorKey, containerChain, getAs, overlayReader, type AnchorRef } from './model'
@@ -519,11 +519,8 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       }
       const segments = c.segments.map((s, i) => (i === c.segments.length - 1 ? { ...s, to: F } : s))
       const puts = applyEverywhere(d, op, segments, { closed: true })
-      for (const fam of d.families) {
-        const still = familyStillPlayable(store, puts, fam.id)
-        if (still) return still
-      }
-      return { ok: true, label: 'mergeEnds', puts, affected: [c.id] }
+      const notices = d.families.flatMap((fam) => familyNotices(store, puts, fam.id))
+      return { ok: true, label: 'mergeEnds', puts, affected: [c.id], ...(notices.length ? { notices } : {}) }
     }
 
     case 'bind': {
@@ -623,7 +620,9 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
           creates.push(f.id)
         }
       }
-      return { ok: true, label: 'createCurve', puts, affected: [id], creates }
+      // characters of the family that will report this curve missing until their presets draw it (§20.4: allowed)
+      const notices = cmd.preset ? familyNotices(store, puts, (getAs(store, (getAs(store, cmd.preset, 'preset') as PresetRecord).familyId, 'family') as FamilyRecord).id) : []
+      return { ok: true, label: 'createCurve', puts, affected: [id], creates, ...(notices.length ? { notices } : {}) }
     }
   }
 }
@@ -701,20 +700,13 @@ function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' 
     puts.push({ ...B, original: orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : B.original, yaw: kb.length || keysB.length ? keysB : B.yaw, expr: shiftExpr(B, cmd.b.anchorId, deltaB) })
   }
   puts.push({ typeName: 'connection', id, ends: [{ ...cmd.a }, { ...cmd.b }], geometricJoin: 'corner' } as ConnectionRecord)
-  const still = familyStillPlayable(store, puts, fam.id)
-  if (still) return still
-  return { ok: true, label: 'bind', puts, affected: [anchorKey(cmd.a), anchorKey(cmd.b), id], creates: [id] }
+  const notices = familyNotices(store, puts, fam.id)
+  return { ok: true, label: 'bind', puts, affected: [anchorKey(cmd.a), anchorKey(cmd.b), id], creates: [id], ...(notices.length ? { notices } : {}) }
 }
 
-/** every character of the family that prepared before still prepares on the final overlay (stage 3c) */
-function familyStillPlayable(store: Store, puts: DocRecord[], familyId: string): Plan | null {
-  const after = overlayReader(store, puts)
-  for (const k of store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === familyId)) {
-    if (!prepareCharacter(ctxOf(store), k.id).ok) continue
-    const p = prepareCharacter(ctxOf(after), k.id)
-    if (!p.ok) return fail('INVALID', `${k.id} would no longer be playable: ${p.problems.join('; ')}`, [k.id])
-  }
-  return null
+/** characters of the family that prepared before and would not after: notices (stage 3c; authoring is not blocked) */
+function familyNotices(store: Store, puts: DocRecord[], familyId: string): string[] {
+  return playabilityNotices(store, puts, store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === familyId).map((k) => k.id))
 }
 
 /**

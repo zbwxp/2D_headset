@@ -200,10 +200,18 @@ function characterProblems(store: Get, r: CharacterRecord, p: (f: string, t: str
           const others = connectionsAt(store as BaseReader, `${e.curveId}#${e.anchorId}`).filter((c) => c !== conn.id)
           if (others.length) p(`takeovers.${t.id}`, others.join(', '), `node of ${conn.id} is also in ${others.join(', ')}: node takeovers on connected groups are not supported`)
         }
-      // provenance only (the copied L is the authority): a line takeover of this character, or a declared blend
-      if (typeof t.basisFrom === 'string' ? !ids.has(t.basisFrom) : t.basisFrom.kind !== 'blend')
+      // provenance only (the copied L is the authority): the id of the line takeover it was copied from — which may
+      // have been cleared since (history) — or a declared blend; never re-derived (dot, review of 819dd22)
+      if (typeof t.basisFrom === 'string' ? !t.basisFrom : t.basisFrom.kind !== 'blend' && t.basisFrom.kind !== 'clearedLine')
         p(`takeovers.${t.id}.basisFrom`, typeof t.basisFrom === 'string' ? t.basisFrom : JSON.stringify(t.basisFrom), `basisFrom ${typeof t.basisFrom === 'string' ? t.basisFrom : JSON.stringify(t.basisFrom)} is not a takeover of ${r.id} nor a blend basis (it only records where the copied L came from)`)
     }
+  }
+  const meaning = (f: CharacterRecord['exprFixes'][number]) => `${f.curveId}@${f.state.yaw}/${Object.entries(f.state).filter(([k, x]) => k !== 'yaw' && x === 1).map(([k]) => k).sort().join(',')}`
+  const byMeaning = new Map<string, string>()
+  for (const f of r.exprFixes) {
+    const m = meaning(f)
+    if (byMeaning.has(m)) p(`exprFixes.${f.id}`, byMeaning.get(m)!, `${f.id} and ${byMeaning.get(m)} fix the same state (${m}): ambiguous`)
+    byMeaning.set(m, f.id)
   }
   for (const f of r.exprFixes) {
     const c = curveOf(f.curveId)

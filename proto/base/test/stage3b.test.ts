@@ -60,7 +60,7 @@ describe('character commands on the sample', () => {
     expect(character(e).fineTune['curve:lid'].a).toBeUndefined()
   })
 
-  it('a fine-tune that a preset cannot carry (no helper domain at its key) is refused: the character would stop playing', () => {
+  it('a fine-tune that a preset cannot carry is refused: an edit of a character must leave it playable (preset authoring only reports)', () => {
     const e = openRecords(json('stage1-valid.json').records)
     refused(e, { type: 'setFineTune', character: K, curveId: 'curve:strand' as any, anchorId: 'w', delta: { dp: { x: 1, y: 0 }, dIn: { x: 1, y: 0 }, dOut: { x: 1, y: 0 } } }, /no longer be playable: .*no helper domain at yaw 90/)
   })
@@ -154,14 +154,17 @@ describe('character commands on the sample', () => {
     // an interior change at 30 goes through; the linked curve's key keeps its evaluated form
     const inner = { ...at30, m: { p: { x: at30.m.p.x, y: at30.m.p.y - 1 }, hIn: at30.m.hIn, hOut: at30.m.hOut } }
     apply(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: inner })
-    // with a fine-tune, a new key at a yaw without a helper domain would stop the character: refused
+    // with a fine-tune, a new key at a yaw without a helper domain: written with a notice (the basis is added next)
     const f = openRecords(json('stage1-valid.json').records)
-    refused(f, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: at30 }, /no longer be playable: .*no helper domain at yaw 30/)
+    const n = apply(f, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: at30 })
+    expect(n.ok && (n as any).notices?.join()).toMatch(/no helper domain at yaw 30/)
   })
 
-  it('setVisibilityKey: presets that would disagree are refused; a consistent change goes through', () => {
+  it('setVisibilityKey: presets that would disagree → written with a notice (prepare refuses until they agree); a consistent change has none', () => {
     const e = openRecords(json('stage1-valid.json').records)
-    refused(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false }, /disagree on visibility/)
+    const r = apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false })
+    expect(r.ok && (r as any).notices?.join()).toMatch(/disagree on visibility/)
+    expect(e.undo()).toBe(true)
     const k = character(e)
     apply(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 1 } })
     apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 50, visible: false })

@@ -138,7 +138,9 @@ export interface HelperDomainRecord extends BaseRecord<'helperDomain', RecordId<
 export type PointDelta = { dp: Vec; dIn: Vec; dOut: Vec }
 export type Takeover =
   | { kind: 'line'; id: string; curveId: RecordId<CurveRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Shape; basisFront: Shape; L: [number, number, number, number] }
-  | { kind: 'node'; id: string; connectionId: RecordId<ConnectionRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Vec; basisFront: Vec; L: [number, number, number, number]; basisFrom: string | BlendBasis }
+  | { kind: 'node'; id: string; connectionId: RecordId<ConnectionRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Vec; basisFront: Vec; L: [number, number, number, number]; basisFrom: string | BlendBasis | ClearedLineBasis }
+/** The node's L was copied from a line takeover that was cleared since (history only; the copied L stays the authority). */
+export type ClearedLineBasis = { kind: 'clearedLine'; id: string }
 /** Where a node takeover's copied L came from when no line takeover provided it: the weighted helper domains (§24.2). */
 export type BlendBasis = { kind: 'blend'; yaw: number; weights: Record<string, number> }
 export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; state: { yaw: number } & Record<string, number>; target: Shape; base: Shape; ruleVersion: number }
@@ -350,7 +352,9 @@ export const Character = createRecordType<CharacterRecord>('character', {
         else
           check(
             t.kind === 'node' && typeof t.connectionId === 'string' && isVec(t.target) && isVec(t.basisFront) &&
-              (typeof t.basisFrom === 'string' || (isObj(t.basisFrom) && t.basisFrom.kind === 'blend' && isNum(t.basisFrom.yaw) && isObj(t.basisFrom.weights) && Object.values(t.basisFrom.weights).every(isNum))),
+              (typeof t.basisFrom === 'string' ||
+                (isObj(t.basisFrom) && t.basisFrom.kind === 'blend' && isNum(t.basisFrom.yaw) && isObj(t.basisFrom.weights) && Object.values(t.basisFrom.weights).every(isNum)) ||
+                (isObj(t.basisFrom) && t.basisFrom.kind === 'clearedLine' && typeof t.basisFrom.id === 'string')),
             `character ${r.id} takeover ${t.id}`,
           )
       }

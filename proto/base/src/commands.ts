@@ -79,7 +79,9 @@ export type Command =
  * an id appears at most once in puts, at most once in removals, never in both (doc 18 §22.1).
  */
 export type Plan =
-  | { ok: true; label: string; puts: DocRecord[]; removals?: string[]; affected: string[]; creates?: string[] }
+  /** notices: what the edit leaves to be completed, e.g. characters that cannot be prepared until a preset draws a
+   *  new curve (dot 1791315660: normal authoring is not blocked; the result says what is affected) */
+  | { ok: true; label: string; puts: DocRecord[]; removals?: string[]; affected: string[]; creates?: string[]; notices?: string[] }
   | { ok: false; error: EditError }
 
 /**

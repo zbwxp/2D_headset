@@ -7,14 +7,29 @@
 // connection nodes; one expression value (1) per parameter; visibility conflicts refused; weights must sum to 1.
 import { fillCubics, fromPaint, IDENTITY, type Cubic, type EvalCurve, type Evaluated } from './evaluate'
 import { presetFormsIdOf, RULES } from './forms'
+import { connectionsAtKeyed, helperDomainsOf, rulesOfFamily, visibilityOfCurve, type Queryable } from './indexes'
 import type { AbsoluteYawKey, Affine, BaseReader, FillRecord, ReferenceRecord, CharacterRecord, ConnectionRecord, DocRecord, ExprKey, FamilyRecord, FormsRecord, HelperDomainRecord, PresetRecord, RuleRecord, Shape, Vec, VisibilityRecord } from './schema'
 
-/** What prepare reads: records by id, and the ids of one type (the store's reactive index when there is one). */
-export type Ctx = { get: (id: string) => DocRecord | undefined; ids: (type: DocRecord['typeName']) => string[] }
-export function ctxOf(store: BaseReader & { query?: { ids: (t: any) => { get: () => Set<string> } } }): Ctx {
+/**
+ * What prepare reads: records by id, and keyed membership — helper domains of a preset, rules of a family,
+ * visibility of a curve, connections at an anchor — through the store's incremental indexes when it has them (so
+ * a change in another family never re-runs this character: dot, review of 819dd22), else by scanning.
+ */
+export type Ctx = {
+  get: (id: string) => DocRecord | undefined
+  helpersOf: (presetId: string) => string[]
+  rulesOf: (familyId: string) => string[]
+  visibilityOf: (curveId: string) => string[]
+  connectionsAt: (anchorKey: string) => string[]
+}
+export function ctxOf(store: BaseReader & { query?: unknown }): Ctx {
+  const q = store as Queryable
   return {
     get: (id) => store.get(id as any) as DocRecord | undefined,
-    ids: (type) => (store.query ? [...store.query.ids(type).get()] : store.allRecords().filter((r) => r.typeName === type).map((r) => r.id)),
+    helpersOf: (p) => helperDomainsOf(q, p),
+    rulesOf: (f) => rulesOfFamily(q, f),
+    visibilityOf: (c) => visibilityOfCurve(q, c),
+    connectionsAt: (k) => connectionsAtKeyed(q, k),
   }
 }
 
@@ -59,10 +74,9 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   if (Math.abs(sum - 1) > 1e-9) problems.push(`${K.id}: the non-zero weights sum to ${sum}, not 1 (never renormalised)`)
   const anchorsOf = (c: string) => Object.keys((ctx.get(c) as { anchors: Record<string, unknown> }).anchors)
   const formsOf = (p: string, c: string) => ctx.get(presetFormsIdOf(p, c)) as FormsRecord | undefined
-  const helpers = ctx.ids('helperDomain').map((id) => ctx.get(id) as HelperDomainRecord)
   const helperL = (p: string, yaw: number): Mat2 | undefined => {
     if (yaw === 0) return [1, 0, 0, 1]
-    const h = helpers.find((x) => x.presetId === p && x.yaw === yaw)
+    const h = ctx.helpersOf(p).map((id) => ctx.get(id) as HelperDomainRecord).find((x) => x.yaw === yaw)
     return h ? [h.affine.a, h.affine.b, h.affine.c, h.affine.d] : undefined
   }
   // the character's fine-tune of a curve as a full offset shape (missing anchors = 0), or null
@@ -167,12 +181,14 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   }
 
   // ---- step 5: nodes — the normal (pre-takeover) result, or an explicit node takeover over its whole range ----
-  const conns = ctx.ids('connection').map((id) => ctx.get(id) as ConnectionRecord).filter((cn) => cn.ends.every((e) => fam.curves.includes(e.curveId)))
+  const connIds = new Set(fam.curves.flatMap((c) => anchorsOf(c).flatMap((a) => ctx.connectionsAt(`${c}#${a}`))))
+  const conns = [...connIds].sort().map((id) => ctx.get(id) as ConnectionRecord).filter((cn) => cn.ends.every((e) => fam.curves.includes(e.curveId)))
   for (const cn of conns) {
     const first = cn.ends[0]
-    const nodeTk = K.takeovers.find((t) => t.kind === 'node' && t.connectionId === cn.id) as Extract<CharacterRecord['takeovers'][number], { kind: 'node' }> | undefined
+    // every node takeover of this connection — one per direction (dot, review of 819dd22: only the first was used)
+    const nodeTks = K.takeovers.filter((t) => t.kind === 'node' && t.connectionId === cn.id) as Extract<CharacterRecord['takeovers'][number], { kind: 'node' }>[]
     let nodeAt = (i: number) => normal[first.curveId][i][first.anchorId].p
-    if (nodeTk) {
+    for (const nodeTk of nodeTks) {
       const front = frontOf(first.curveId)
       if (!front) {
         problems.push(`${nodeTk.id}: the front of ${first.curveId} is needed`)
@@ -197,7 +213,7 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   if (problems.length) return { ok: false, problems }
 
   // ---- step 6: expressions — the moved role's own sparse track, resampled (no rule at sampling angles) ----
-  const rules = ctx.ids('rule').map((id) => ctx.get(id) as RuleRecord).filter((r) => r.familyId === fam.id)
+  const rules = ctx.rulesOf(fam.id).map((id) => ctx.get(id) as RuleRecord)
   const expr: Record<string, Record<string, Shape[]>> = Object.fromEntries(fam.curves.map((c) => [c, {}]))
   const params: string[] = []
   for (const rule of rules) {
@@ -228,9 +244,9 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
 
   // ---- step 7: visibility (presets must agree; stepped) ----
   const visibility: Record<string, CurveGrid['visible']> = {}
-  const visRecs = ctx.ids('visibility').map((id) => ctx.get(id) as VisibilityRecord)
   for (const c of fam.curves) {
-    const tracks = parts.map(([p]) => visRecs.find((r) => r.curveId === c && r.owner.kind === 'preset' && r.owner.id === p)?.keys ?? null)
+    const visRecs = ctx.visibilityOf(c).map((id) => ctx.get(id) as VisibilityRecord)
+    const tracks = parts.map(([p]) => visRecs.find((r) => r.owner.kind === 'preset' && r.owner.id === p)?.keys ?? null)
     if (tracks.every((t) => !t)) {
       visibility[c] = null
       continue
@@ -273,6 +289,17 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   }
   const retained = kept.size
   return { ok: true, grid: { characterId, yaws, params, curves, front, retained } }
+}
+
+/** The distinct shape objects a grid keeps (what the cache budget counts). */
+export function retainedShapes(grid: CharacterGrid): unknown[] {
+  const kept = new Set<unknown>()
+  for (const g of Object.values(grid.curves)) {
+    for (const sh of g.neutral) kept.add(sh)
+    for (const list of Object.values(g.expr)) for (const sh of list) kept.add(sh)
+  }
+  for (const f of Object.values(grid.front)) if (f) kept.add(f)
+  return [...kept]
 }
 
 /** Step 9: read-only playback — bilinear in (yaw, expression value) on the grid; no-yaw context = the front. */

@@ -96,7 +96,7 @@ describe('the stage-1 sample archive', () => {
     ['a rule correspondence to a missing anchor', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').correspondence.m = 'zz'), /curve:lowerLid#zz missing/],
     ['an unknown rule version', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').version = 9), /unknown rule lidClose version 9/],
     ['a weight on a preset outside the family', (rs) => (rs.find((r) => r.id === 'character:K').weights['preset:X'] = 0.1), /preset:X is not a preset of family:eye/],
-    ['a node takeover whose basisFrom is not a takeover', (rs) => (rs.find((r) => r.id === 'character:K').takeovers[1].basisFrom = 'nope'), /basisFrom nope is not a takeover/],
+    ['a node takeover whose basisFrom is empty', (rs) => (rs.find((r) => r.id === 'character:K').takeovers[1].basisFrom = ''), /basisFrom  is not a takeover/], // review of 819dd22: a string names the source line (possibly cleared since): provenance only
     ['the shared corner separating in the closed state (c2a1ce7 counterexample)', (rs) => {
       const lid = rs.find((r) => r.id === 'forms:preset:Q/curve:lid')
       lid.expr.blink = lid.expr.blink.filter((k: any) => k.yaw !== 0)

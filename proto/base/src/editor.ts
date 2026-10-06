@@ -38,7 +38,7 @@ import { createDocStore, deepFreeze, legacyMigrationConflicts, type DocReader, t
 export type EditWarning = { code: 'OBSERVER_FAILED' | 'WARNING_HANDLER_FAILED'; message: string }
 
 export type ApplyResult =
-  | { ok: true; written: true; revision: number; affected: string[]; warnings?: EditWarning[] }
+  | { ok: true; written: true; revision: number; affected: string[]; warnings?: EditWarning[]; notices?: string[] }
   | { ok: true; written: false; revision: number; affected: string[] } // valid but changed nothing
   | { ok: false; written: false; revision: number; error: EditError; warnings?: EditWarning[] }
 
@@ -56,7 +56,7 @@ export type BatchRun<T> =
   | { ok: true; written: boolean; revision: number; value: T; warnings?: EditWarning[] }
   | { ok: false; written: false; revision: number; thrown: unknown; warnings?: EditWarning[] }
 
-export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[]; removals: string[] } | { ok: false; error: EditError }
+export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[]; removals: string[]; notices?: string[] } | { ok: false; error: EditError }
 
 type Entry = { label: string; diff: RecordsDiff<DocRecord>; revision: number }
 type Group = { label: string; diffs: RecordsDiff<DocRecord>[] }
@@ -125,7 +125,7 @@ export class Editor {
   preview(cmd: Command, ids: IdSource = freshIds): PreviewResult {
     const p = plan(this.reader, cmd, ids)
     // Planned records are fresh objects; freeze them so a preview can't be mistaken for a writable doc.
-    return p.ok ? { ok: true, affected: p.affected, puts: p.puts.map(deepFreeze), removals: [...(p.removals ?? [])] } : { ok: false, error: p.error }
+    return p.ok ? { ok: true, affected: p.affected, puts: p.puts.map(deepFreeze), removals: [...(p.removals ?? [])], ...(p.notices?.length ? { notices: [...p.notices] } : {}) } : { ok: false, error: p.error }
   }
 
   /** One gesture / one API operation with a fixed identity: see `Operation`. */
@@ -161,7 +161,7 @@ export class Editor {
       // Unexpected (planning should have caught it); the transaction rolled back document AND history.
       return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: errorMessage(run.error), objects: p.affected, fixes: [] }, ...(warnings.length && { warnings }) }
     if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
-    return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(warnings.length && { warnings }) }
+    return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(warnings.length && { warnings }), ...(p.notices?.length ? { notices: [...p.notices] } : {}) }
   }
 
   /**
