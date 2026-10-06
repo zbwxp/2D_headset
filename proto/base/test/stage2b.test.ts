@@ -353,3 +353,39 @@ it('a cut where the boundary meets an EXISTING bridge re-points that bridge (no 
   expect(b[1]).toEqual({ bridge: { from: { curveId: 'curve:O', anchorId: "q'" }, to: { curveId: 'curve:O', anchorId: 'p' } } })
   expect(e.derived.evaluated().fills.find((f) => f.address === 'fill:G')!.cubics).toEqual(before)
 })
+
+describe('review of 56ede93 (dot): sparse promoted tracks, segment identity, operation target binding', () => {
+  it('insertPoint on a sparse legal delta3 track (missing anchor = 0) works and keeps the shape at every yaw', () => {
+    const recs = exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r)) as DocRecord[]
+    // E1 has no connections; only e1 has offsets (e2 missing = 0)
+    recs.push({ typeName: 'forms', id: 'forms:document/curve:E1', curveId: ids.E1, owner: { kind: 'document' }, encoding: 'legacy-delta3', original: 'curve', expr: {},
+      yaw: [{ yaw: 0, offsets: { e1: { dp: { x: 2, y: 1 }, dIn: { x: 3, y: 4 }, dOut: { x: 5, y: 6 } } } }, { yaw: 40, offsets: {} }] } as any)
+    const e = Editor.open({ store: Object.fromEntries(recs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
+    const before = Object.fromEntries([-10, 0, 20, 40, 70].map((y) => [y, evaluateAtYaw(e.reader, y)]))
+    roundTrip(e, { type: 'insertPoint', curveId: ids.E1, segmentId: 's5', u: 0.4 })
+    for (const y of [-10, 0, 20, 40, 70]) expect(maxDiff(split(seg(before[y], ids.E1, 's5'), 0.4), [seg(evaluateAtYaw(e.reader, y), ids.E1, 's5a'), seg(evaluateAtYaw(e.reader, y), ids.E1, 's5b')])).toBeLessThan(1e-12)
+  })
+
+  it('a segment id twice, or a segment from an anchor to itself, is refused (createCurve and open)', () => {
+    const e = new Editor(unlocked())
+    const anchors = { a: { id: 'a', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }, b: { id: 'b', p: { x: 9, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }, c: { id: 'c', p: { x: 9, y: 9 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } } }
+    refused(e, { type: 'createCurve', parentId: ids.L1, anchors, segments: [{ id: 's0', from: 'a', to: 'b' }, { id: 's0', from: 'b', to: 'c' }] }, /segment ids must be unique/)
+    const file = JSON.parse(JSON.stringify(e.save()))
+    file.store[ids.C1].segments[1] = { id: 's2', from: 'a3', to: 'a3' }
+    expect(() => Editor.open(file)).toThrow(/invalid document: .*goes from a3 to itself/)
+  })
+
+  it('a prepared operation re-aimed at another target never reuses its ids there (no self loop)', () => {
+    const e = new Editor(unlocked())
+    const B = { anchors: { x: { id: 'x', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }, m: { id: 'm', p: { x: 9, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }, z: { id: 'z', p: { x: 9, y: 9 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 's0', from: 'x', to: 'm' }, { id: 's1', from: 'm', to: 'z' }] }
+    roundTrip(e, { type: 'createCurve', id: 'curve:B' as any, parentId: ids.L1, ...B })
+    const op = e.prepare()
+    expect(op.preview({ type: 'insertPoint', curveId: ids.E1, segmentId: 's5', u: 0.3 }).ok).toBe(true) // allocates m on E1
+    const r = op.commit({ type: 'insertPoint', curveId: 'curve:B' as any, segmentId: 's0', u: 0.6 })
+    expect(r.ok && r.written).toBe(true)
+    const c = curve(e, 'curve:B')
+    expect(Object.keys(c.anchors).length).toBe(4)
+    expect(c.segments.every((s) => s.from !== s.to)).toBe(true)
+    expect(graphProblems(e.reader)).toEqual([])
+  })
+})

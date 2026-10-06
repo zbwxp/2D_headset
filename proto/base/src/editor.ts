@@ -354,6 +354,10 @@ export class Editor {
 
 const errorMessage = (e: unknown) => String((e as Error)?.message ?? e)
 
+/** What a command is aimed at: its type and identifier fields (not its geometry, which changes during a gesture). */
+const TARGET_FIELDS = ['curveId', 'segmentId', 'anchorId', 'parentId', 'preset', 'connectionId', 'referenceId', 'containerId', 'containerIds', 'a', 'b', 'targets', 'target', 'ids']
+const targetOf = (cmd: Command) => JSON.stringify([(cmd as { type: string }).type, ...TARGET_FIELDS.map((f) => (cmd as Record<string, unknown>)[f] ?? null)])
+
 /**
  * A prepared operation (one drag gesture, or one API preview → commit). Fixed at the start: the edit
  * generation it starts from and the identities of the records it creates (ids are allocated on first
@@ -382,14 +386,19 @@ export class Operation {
     return this.#finished ?? 'open'
   }
 
-  /** ids by (kind, ordinal within one plan): the n-th fill created by any plan of this operation is the same id */
-  #source(): IdSource {
+  /**
+   * ids by (target, kind, ordinal within one plan): re-plans of the SAME target (latest input) reuse their ids; a
+   * plan aimed at another target (another curve, segment, parent …) gets its own (review of 56ede93). Structure
+   * commands also re-check every reused id against the current target.
+   */
+  #source(cmd: Command): IdSource {
     const n = new Map<string, number>()
+    const target = targetOf(cmd)
     return {
       take: (kind, fresh) => {
         const i = n.get(kind) ?? 0
         n.set(kind, i + 1)
-        const key = `${kind}#${i}`
+        const key = `${target}|${kind}#${i}`
         let id = this.#ids.get(key)
         if (!id) this.#ids.set(key, (id = fresh()))
         return id
@@ -409,7 +418,7 @@ export class Operation {
     const no = this.#refusal()
     if (no) return { ok: false, error: no }
     this.#last = cmd
-    return this.#editor.preview(cmd, this.#source())
+    return this.#editor.preview(cmd, this.#source(cmd))
   }
 
   /** Plan once more and write (the latest previewed command unless one is given). Ends the operation. */
@@ -419,7 +428,7 @@ export class Operation {
     this.#finished = 'ended'
     if (no) return { ok: false, written: false, revision: this.#editor.revision, error: no }
     if (!cmd) return { ok: false, written: false, revision: this.#editor.revision, error: { code: 'INVALID', message: 'nothing to commit', objects: [], fixes: [] } }
-    return this.#editor.apply(cmd, this.#source())
+    return this.#editor.apply(cmd, this.#source(cmd))
   }
 
   /** End without writing. */

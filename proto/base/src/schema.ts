@@ -196,9 +196,15 @@ export const Curve = createRecordType<CurveRecord>('curve', {
       for (const a of Object.values(r.anchors) as Anchor[]) {
         check(isVec(a.p) && isVec(a.hIn) && isVec(a.hOut), `curve ${r.id} anchor ${a.id} not finite`)
       }
+      const seen = new Set<string>()
       for (const s of r.segments as Segment[]) {
         check(r.anchors[s.from] && r.anchors[s.to], `curve ${r.id} segment ${s.id} dangling`)
+        // topology identity (stage 2b review): a segment id once per curve, never from an anchor to itself
+        check(!seen.has(s.id), `curve ${r.id} segment id ${s.id} is used twice`)
+        check(s.from !== s.to, `curve ${r.id} segment ${s.id} goes from ${s.from} to itself`)
+        seen.add(s.id)
       }
+      for (const [k, a] of Object.entries(r.anchors) as [string, Anchor][]) check(a.id === k, `curve ${r.id} anchor key ${k} holds id ${a.id}`)
       return r
     },
   },

@@ -163,7 +163,11 @@ const curveAfter = (c: CurveRecord, op: Op, segments: Segment[], extra: Partial<
 
 /** a legacy track after an op: promoted, then its offsets transformed (directly when linear) */
 function legacyAfter(f: FormsRecord, curve: CurveRecord, op: Op): FormsRecord {
-  const p = promoteLegacy(f, Object.keys(curve.anchors))
+  // a promoted track may be sparse (missing anchor = 0 offsets): complete it, so the op sees every anchor
+  // (dot, review of 56ede93: a sparse delta3 insert read an undefined end)
+  const zero = () => ({ dp: v(0, 0), dIn: v(0, 0), dOut: v(0, 0) })
+  const promoted = promoteLegacy(f, Object.keys(curve.anchors))
+  const p: FormsRecord = { ...promoted, yaw: legacy3Keys(promoted).map((k) => ({ yaw: k.yaw, offsets: Object.fromEntries(Object.keys(curve.anchors).map((a) => [a, k.offsets[a] ?? zero()])) })) }
   const base = absOf(curve)
   const opBase = op.linear ? undefined : op.apply(base)
   const yaw = legacy3Keys(p).map((k): Legacy3YawKey => {
@@ -224,6 +228,17 @@ function curveData(store: Store, curve: CurveRecord): CurveData {
   return { curve, legacy: getAs(store, poseIdOf(curve.id), 'forms'), families, presets, presetForms, characters, rules, visibility, refs, overrides }
 }
 
+class Collision extends Error {}
+/**
+ * A new id from the operation's identity source, re-checked against the CURRENT target: a prepared operation may
+ * reuse an id it allocated earlier, but never one that is taken here (dot, review of 56ede93: a re-targeted
+ * prepared insert reused 'm' on a curve that already had an 'm' and wrote an m → m segment).
+ */
+function take(ids: IdSource, kind: string, fresh: () => string, taken: (id: string) => boolean): string {
+  const id = ids.take(kind, fresh)
+  if (taken(id)) throw new Collision(`the prepared new id ${id} is already used in the target: prepare a new operation`)
+  return id
+}
 const unique = (base: string, taken: (id: string) => boolean) => {
   let id = base
   for (let k = 1; taken(id); k++) id = `${base}~${k}`
@@ -256,6 +271,15 @@ const fillStepsOf = (store: Store, curveId: string) => fillsUsing(store, curveId
 
 // ---------- the commands ----------
 export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource): Plan {
+  try {
+    return planStructureChecked(store, cmd, ids)
+  } catch (e) {
+    if (e instanceof Collision) return fail('ID_CONFLICT', e.message, [])
+    throw e
+  }
+}
+
+function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource): Plan {
   switch (cmd.type) {
     case 'insertPoint': {
       const c = getAs(store, cmd.curveId, 'curve')
@@ -266,9 +290,9 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       const d = curveData(store, c)
       const no = refuse(d, 'inserting a point', ['rules', 'overrides'])
       if (no) return no
-      const M = ids.take('anchor', () => unique('m', (x) => !!c.anchors[x]))
-      const sa = ids.take('segment', () => unique(`${seg.id}a`, (x) => c.segments.some((s) => s.id === x)))
-      const sb = ids.take('segment', () => unique(`${seg.id}b`, (x) => x === sa || c.segments.some((s) => s.id === x)))
+      const M = take(ids, 'anchor', () => unique('m', (x) => !!c.anchors[x]), (x) => !!c.anchors[x])
+      const sa = take(ids, 'segment', () => unique(`${seg.id}a`, (x) => c.segments.some((s) => s.id === x)), (x) => c.segments.some((s) => s.id === x))
+      const sb = take(ids, 'segment', () => unique(`${seg.id}b`, (x) => x === sa || c.segments.some((s) => s.id === x)), (x) => x === sa || c.segments.some((s) => s.id === x))
       const op = splitOp(seg.from, seg.to, M, cmd.u)
       const segments = c.segments.flatMap((s) => (s.id === seg.id ? [{ id: sa, from: s.from, to: M }, { id: sb, from: M, to: s.to }] : [s]))
       const puts = applyEverywhere(d, op, segments)
@@ -314,7 +338,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       const d = curveData(store, c)
       const no = refuse(d, 'removing an anchor', ['rules', 'characters', 'overrides'])
       if (no) return no
-      const seg = ids.take('segment', () => unique(`${sIn.id}+${sOut.id}`, (x) => c.segments.some((s) => s.id === x)))
+      const seg = take(ids, 'segment', () => unique(`${sIn.id}+${sOut.id}`, (x) => c.segments.some((s) => s.id === x)), (x) => c.segments.some((s) => s.id === x && s.id !== sIn.id && s.id !== sOut.id))
       const op = joinOp(sIn.from, cmd.anchorId, sOut.to, cmd.mode)
       const segments = c.segments.flatMap((s) => (s.id === sIn.id ? [{ id: seg, from: sIn.from, to: sOut.to }] : s.id === sOut.id ? [] : [s]))
       const puts = applyEverywhere(d, op, segments)
@@ -357,7 +381,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       }
       // the parts after the edit
       const removed = isCut ? [] : [iIn, iOut].filter((i) => i >= 0).map((i) => c.segments[i].id)
-      const copy = isCut ? ids.take('anchor', () => unique(`${X}'`, (x) => !!c.anchors[x])) : ''
+      const copy = isCut ? take(ids, 'anchor', () => unique(`${X}'`, (x) => !!c.anchors[x]), (x) => !!c.anchors[x]) : ''
       let first: Segment[], second: Segment[]
       if (isCut && closed) {
         // closed loop: ONE open chain starting at the cut; the incoming segment now ends at the copy
@@ -384,7 +408,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       for (const f of fillStepsOf(store, c.id))
         if (f.boundary.some((st) => (isBridge(st) ? [st.bridge.from, st.bridge.to].some((e) => e.curveId === c.id && gone.includes(e.anchorId)) : st.curveId === c.id && removed.includes(st.segmentId))))
           return fail('INVALID', `fill ${f.id} uses a removed segment or anchor of ${c.id}: repair or remove it first`, [f.id])
-      const newId = second.length ? (ids.take('curve', () => unique(`${c.id}~part`, (x) => !!store.get(x as any))) as RecordId<CurveRecord>) : undefined
+      const newId = second.length ? (take(ids, 'curve', () => unique(`${c.id}~part`, (x) => !!store.get(x as any)), (x) => !!store.get(x as any)) as RecordId<CurveRecord>) : undefined
       const opCut = isCut ? copyOp(X, copy) : { linear: true, apply: (sh: Shape) => sh }
       const opFirst: Op = { linear: true, apply: (sh) => subsetOp(keep1).apply(opCut.apply(sh)) }
       const opSecond: Op = { linear: true, apply: (sh) => subsetOp(keep2).apply(opCut.apply(sh)) }
@@ -448,7 +472,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       if (!c) return fail('NOT_FOUND', `no curve ${cmd.curveId}`, [String(cmd.curveId)])
       if (isClosedLoop(c)) return fail('INVALID', `${c.id} is already closed`, [c.id])
       if (!c.segments.length) return fail('INVALID', `${c.id} has no segments`, [c.id])
-      const s = ids.take('segment', () => unique('close', (x) => c.segments.some((q) => q.id === x)))
+      const s = take(ids, 'segment', () => unique('close', (x) => c.segments.some((q) => q.id === x)), (x) => c.segments.some((q) => q.id === x))
       // our command semantics: the new segment uses the ends' stored outer handles; nothing else changes
       return { ok: true, label: 'addClosingSegment', puts: [{ ...c, closed: true, segments: [...c.segments, { id: s, from: c.segments[c.segments.length - 1].to, to: c.segments[0].from }] }], affected: [c.id] }
     }
@@ -507,7 +531,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
         const no = refuse(curveData(store, c), 'binding', ['family', 'overrides'])
         if (no) return no
       }
-      const id = (cmd.id ?? ids.take('connection', () => unique('connection:bind', (x) => !!store.get(x as any)))) as RecordId<ConnectionRecord>
+      const id = (cmd.id ?? take(ids, 'connection', () => unique('connection:bind', (x) => !!store.get(x as any)), (x) => !!store.get(x as any))) as RecordId<ConnectionRecord>
       const pa = ca.anchors[cmd.a.anchorId].p, pb = cb.anchors[cmd.b.anchorId].p
       const at = cmd.keep === 'first' ? pa : cmd.keep === 'second' ? pb : v((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)
       const moved = (c: CurveRecord, a: string): CurveRecord => ({ ...c, anchors: { ...c.anchors, [a]: { ...c.anchors[a], p: at } } }) // relative handles move with it
@@ -566,6 +590,7 @@ export function planStructure(store: Store, cmd: StructureCommand, ids: IdSource
       if (!segs.length) return fail('INVALID', 'a new curve needs at least one segment', [id])
       for (const [k, a] of Object.entries(anchors)) if (!a || a.id !== k) return fail('INVALID', `anchor ${k} must carry its own id`, [id])
       for (let i = 1; i < segs.length; i++) if (segs[i].from !== segs[i - 1].to) return fail('INVALID', `segments must form one chain (${segs[i - 1].id} → ${segs[i].id})`, [id])
+      if (new Set(segs.map((q) => q.id)).size !== segs.length) return fail('INVALID', 'segment ids must be unique within the curve', [id])
       const used = new Set(segs.flatMap((s) => [s.from, s.to]))
       if ([...used].some((a) => !anchors[a]) || Object.keys(anchors).some((a) => !used.has(a))) return fail('INVALID', 'every segment end must be an anchor and every anchor on a segment', [id])
       const closed = !!cmd.closed
