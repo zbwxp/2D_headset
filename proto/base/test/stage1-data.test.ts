@@ -142,3 +142,55 @@ describe('malformed archives are refused with a reason, never an internal crash'
       expect(message).not.toMatch(/Cannot read|undefined is not/)
     })
 })
+
+describe('nothing the write entry commits is refused on reopen (dot 1791308648)', () => {
+  it('deleting the expression rule is refused at the write entry (its forms still need it)', () => {
+    const e = openRecords(sample())
+    const r = e.apply({ type: 'deleteRecords', ids: ['rule:eye/blink'] })
+    expect(r.ok === false && r.error.message).toContain('no rule bound to family:eye / blink')
+  })
+
+  it('every single-record deletion of the sample is either refused or leaves a document that reopens', () => {
+    const recs = sample()
+    const outcomes: Record<string, string> = {}
+    for (const rec of recs) {
+      const e = openRecords(recs)
+      const r = e.apply({ type: 'deleteRecords', ids: [rec.id] })
+      if (!r.ok) {
+        outcomes[rec.id] = r.error.code
+        continue
+      }
+      expect(() => Editor.open(JSON.parse(JSON.stringify(e.save())))).not.toThrow()
+      outcomes[rec.id] = 'deleted, reopens'
+    }
+    expect(Object.values(outcomes).filter((o) => o === 'deleted, reopens').length).toBeGreaterThan(0)
+    console.log('[stage1 deletions]', JSON.stringify(outcomes))
+  })
+
+  it('every PAIR of record deletions is either refused or reopens (300 pairs)', () => {
+    const recs = sample()
+    let committed = 0
+    for (let i = 0; i < recs.length; i++)
+      for (let j = i + 1; j < recs.length; j++) {
+        const e = openRecords(recs)
+        const r = e.apply({ type: 'deleteRecords', ids: [recs[i].id, recs[j].id] })
+        if (!r.ok) continue
+        committed++
+        expect(() => Editor.open(JSON.parse(JSON.stringify(e.save()))), `${recs[i].id} + ${recs[j].id}`).not.toThrow()
+      }
+    expect(committed).toBeGreaterThan(0)
+  })
+
+  it('existing edits on the sample (drag an anchor, move a container, legacy pose key) reopen', () => {
+    const e = openRecords(sample())
+    for (const cmd of [
+      { type: 'moveAnchors', targets: [{ curveId: 'curve:lid', anchorId: 'm' }], delta: { x: 1, y: 2 } },
+      { type: 'transformContainer', containerId: 'container:L1', matrix: { a: 1, b: 0, c: 0, d: 1, e: 5, f: 0 } },
+      { type: 'setPoseKey', curveId: 'curve:C1', yaw: 10, offsets: { a1: { x: 1, y: 0 } } },
+    ] as const) {
+      const r = e.apply(cmd as any)
+      expect(r.ok, JSON.stringify(r)).toBe(true)
+      expect(() => Editor.open(JSON.parse(JSON.stringify(e.save())))).not.toThrow()
+    }
+  })
+})

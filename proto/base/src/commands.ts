@@ -8,7 +8,7 @@ import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { legacyKeys, offsetAt } from './pose'
 import { childrenOf, connectionsAt, fillsUsing, referencesOf, within } from './indexes'
-import { actualKind, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
+import { actualKind, anchorKey, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
   Curve,
@@ -177,7 +177,13 @@ function planChecked(store: DocStore, cmd: Command, ids: IdSource): Plan {
 function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = []) {
   const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
   const gone = new Set(removals)
-  const next = { get: (id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? store.get(id as any))) } as Pick<DocStore, 'get'>
+  // Checks that need other records of a type (rules of a family, presets sharing a node, connected groups) run
+  // on the FULL final overlay whenever the plan could affect them: removals, any stage-1 record other than the
+  // legacy head-turn track, or a connection. Otherwise (drags, legacy pose keys) a get-only view keeps the
+  // per-move cost independent of document size. Nothing that open would refuse can be committed (dot
+  // 1791308648: deleting the rule committed and reopen then failed).
+  const full = removals.length > 0 || puts.some((r) => r.typeName === 'connection' || (NEW_TYPES.has(r.typeName) && !(r.typeName === 'forms' && r.encoding === 'legacy-delta')))
+  const next = full ? overlayReader(store, puts, removals) : ({ get: (id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? store.get(id as any))) } as Pick<DocStore, 'get'>)
   const problems = puts.flatMap((r) => recordProblems(next, r))
   // Incoming relations, looked up through the indexes (not by scanning a type): connections at an
   // anchor a curve loses, fills reading a curve that loses a segment. A container changing parent
@@ -187,6 +193,8 @@ function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = 
     const old = store.get(r.id as any) as DocRecord | undefined
     if (old?.typeName === 'curve' && r.typeName === 'curve') {
       for (const k of Object.keys(old.anchors)) if (!r.anchors[k]) for (const c of connectionsAt(store, anchorKey({ curveId: r.id, anchorId: k }))) incoming.add(c)
+      // stage-1 records name a curve's anchors (forms shapes, rule correspondence, fine-tune): re-check them too
+      if (Object.keys(old.anchors).some((k) => !r.anchors[k]) || Object.keys(r.anchors).some((k) => !old.anchors[k])) for (const m of mentioning(store, r.id)) incoming.add(m)
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) && store.get(poseIdOf(r.id) as any)) incoming.add(poseIdOf(r.id)) // offsets name anchors
       if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
     }
@@ -221,6 +229,11 @@ function dependantsOf(store: DocStore, id: string): string[] {
     const c = getAs(store, r.curveId, 'curve')
     const out = c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
     return r.owner.kind === 'preset' ? [...out, r.owner.id] : out
+  }
+  // a rule is found by (family, param), not by id: the forms of that family's presets depend on it
+  if (r.typeName === 'rule') {
+    const presets = new Set(store.allRecords().filter((x) => x.typeName === 'preset' && x.familyId === r.familyId).map((x) => x.id as string))
+    return [...mentioning(store, r.id), ...store.allRecords().filter((x) => x.typeName === 'forms' && x.owner.kind === 'preset' && presets.has(x.owner.id)).map((x) => x.id)]
   }
   return mentioning(store, r.id)
 }
