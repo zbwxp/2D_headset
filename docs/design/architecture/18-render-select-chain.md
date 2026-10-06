@@ -981,13 +981,15 @@
 | 1 | 新建线 | 待验证（结构登记部分）；其他状态的出现规则在第 2 批 | 复用现有曲线记录；补「在哪个预设、哪个状态建立」 |
 | 2 | 拖点 / 手柄 | 已定（现有命令） | 复用现有 `moveAnchors` / `moveHandle` 与事务；补「写进哪个编辑目标」（§15），已由 §16 实验覆盖核心流程 |
 | 3 | 加点 | 待验证 | 复用：三次曲线同参数精确拆分（Paper.js `divideAtTime` 同一做法）；补：所有状态 / 预设 / 引用同步、u 的换算；实验：拆分后各状态逐点形状不变、引用位置不变 |
-| 4 | 删点 | 待验证 | 复用：单段拟合（v103 `fitWarpedCubic`「exactly one cubic … with warnings」的语义）；补：逐状态误差报告与确认 / 拒绝；实验：报告值正确、超容差处理 |
-| 5 | 剪断 | 待验证 | 复用：Paper.js `splitAt` 语义；补：多状态同步、连接 / 填充处理 |
-| 6 | 绑定 / 解绑 | 待验证 | 复用：现有连接规则与联动写入（`setPoseKey` 方式）、§17 节点接管 |
+| 4 | 删点 | 待验证 | 复用：Inkscape 删点「尽量保形、不确认不拒绝」（19.1-1）＋ v103 单段拟合；补：逐状态同步、误差报告；实验：报告值正确、各状态结构一致 |
+| 5 | 剪断 | 待验证 | 复用：Paper.js `splitAt` 语义；补：多状态同步；填充只改曲线 ID、保持有效（19.1-2） |
+| 6 | 绑定 / 解绑 | 待验证 | 复用：Inkscape 合并节点（默认中点、可锁一端，19.1-3）、现有连接规则与联动写入、§17 节点接管 |
 | 7 | 开 / 闭路径 | 待验证 | 同 6 |
 | 8 | 填充边界 | 待验证 | 复用：现有 `createFill` / `findGap`；补：随 3 / 4 / 5 同步更新或报告失效 |
 
-### 19.1 待定（交 dot）
-1. 删点误差超容差时：要求确认，还是直接拒绝。
-2. 剪断时穿过断点的填充：拆成两块、失效报告，还是拒绝。
-3. 新建线在其他状态的规则放第 2 批，第 1 批只保证结构登记，这样切分是否合适。
+### 19.1 原来的待定项，按成熟工具的选择定默认（bowen 1791301927：细节按成熟工具的选择优先）
+证据：Inkscape 官方快捷键与操作说明（inkscape.org/doc/keys.html，Node tool 一节，Claude 读原文）。
+1. **删点**：Inkscape「Del: delete selected node(s), trying to keep shape if not too cusp」；「Ctrl+Del: … replacing them by a straight line segment」；说明里写「adjusts handles on the remaining nodes to preserve the shape of the curve in some, but not all cases」。即成熟做法是**总是允许删点，尽量保形（调整剩余手柄），不要求确认，也不拒绝**，可撤销。→ 默认：每个状态都按「尽量保形」合成一段（不细分），**报告**各状态的误差（只是信息），不确认、不拒绝；另提供「替换为直线段」的变体。
+2. **剪断时穿过断点的填充**：我们的填充边界引用的是「曲线、段 ID」；剪断把一条曲线分成两条，**段本身不变**，只是后半段属于新曲线——所以填充边界把这些段的曲线 ID 改成新曲线即可，**填充保持有效**，不需要拆、也不报失效。（Inkscape 的「Break selected node(s)」只把路径断开，见同页 `Shift+B`。）
+3. **绑定（把两个端点合成一个节点）**：Inkscape「Shift+J join selected nodes … You can lock the position of one of the two joined nodes by hovering mouse over it」——默认合到中间、可以锁定其中一端；另有「Alt+J join selected end nodes with new segment」（用新段连接）。→ 默认：**每个状态里两端合到中点**；作者可指定以某一端为准；另提供「用新段连接」。这是作者一次明确的编辑，按 §17 作为节点接管原子提交（与 §17「已接受目标冲突不自动平均」不矛盾：那条针对已存数据的冲突）。
+4. 新建线在其他状态的规则放第 2 批：保持。
