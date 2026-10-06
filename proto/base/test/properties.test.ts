@@ -9,7 +9,9 @@
 //  I4 undo after a written edit restores the exact previous document; redo restores the edit
 //  I5 a successful no-op (written=false) leaves history unchanged; written=true means the document changed
 //  I6 save → open round-trips exactly and the opened document has no structural problems
-//  I7 every stored record passes its validator (finite coordinates, closed fills, …)
+//  I6' after EVERY step (not only explicit saves) the current state reopens
+//  I7 every stored record passes its validator, AND an oracle written independently of src/ (finite
+//     numbers, typed references, no dangling ends, no container cycles, fills closed by position)
 //  I8 dirty state: clean right after save; dirty after a new write
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
@@ -61,6 +63,13 @@ const small = fc.record({ x: fc.integer({ min: -20, max: 20 }), y: fc.integer({ 
 const likelyOk: fc.Arbitrary<Command> = fc.oneof(
   fc.record({ type: fc.constant('moveAnchors' as const), targets: fc.constantFrom([{ curveId: ids.C1, anchorId: 'a2' }], [{ curveId: ids.E1, anchorId: 'e1' }]), delta: small }),
   fc.record({ type: fc.constant('moveHandle' as const), target: fc.constantFrom({ curveId: ids.C1, anchorId: 'a2' }, { curveId: ids.E1, anchorId: 'e2' }), handle: fc.constantFrom('in' as const, 'out' as const), delta: small }),
+  // the closed loop s1,s2 → J → s4⁻,s3⁻ → J0, rotated and/or reversed: closed in every variant
+  fc.record({ type: fc.constant('createFill' as const), parentId: fc.constantFrom(ids.L1, ids.L3), rot: fc.integer({ min: 0, max: 3 }), rev: fc.boolean() }).map(({ rot, rev, ...c }) => {
+    const loop = [segs[0], segs[1], { ...segs[3], dir: -1 as const }, { ...segs[2], dir: -1 as const }].map((x) => ({ dir: 1 as const, ...x }))
+    let b = [...loop.slice(rot), ...loop.slice(0, rot)]
+    if (rev) b = b.reverse().map((x) => ({ ...x, dir: (x.dir === 1 ? -1 : 1) as 1 | -1 }))
+    return { ...c, boundary: b }
+  }),
   fc.record({ type: fc.constant('transformContainer' as const), containerId: fc.constant(ids.L3), matrix: fc.record({ a: fc.constant(1), b: fc.constant(0), c: fc.constant(0), d: fc.constant(1), e: fc.integer({ min: -9, max: 9 }), f: fc.integer({ min: -9, max: 9 }) }) }),
 ) as fc.Arbitrary<Command>
 
@@ -69,6 +78,7 @@ const action: fc.Arbitrary<Action> = fc.oneof(
   { weight: 6, arbitrary: command.map((cmd) => ({ kind: 'apply' as const, cmd })) },
   { weight: 2, arbitrary: fc.array(command, { minLength: 1, maxLength: 3 }).map((cmds) => ({ kind: 'batch' as const, cmds })) },
   { weight: 1, arbitrary: fc.array(likelyOk, { minLength: 1, maxLength: 3 }).map((cmds) => ({ kind: 'batch' as const, cmds })) },
+  { weight: 1, arbitrary: likelyOk.map((cmd) => ({ kind: 'apply' as const, cmd })) },
   { weight: 2, arbitrary: fc.constant({ kind: 'undo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'redo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'saveOpen' as const }) },
@@ -87,19 +97,72 @@ function lockedSnapshot(e: Editor) {
   return out
 }
 
+// ---- Oracles written independently of src/ (dot: the judge must not be the implementation itself) ----
+type Raw = Record<string, any>
+function allFinite(x: unknown): boolean {
+  if (typeof x === 'number') return Number.isFinite(x)
+  if (x && typeof x === 'object') return Object.values(x).every(allFinite)
+  return true
+}
+/** Structural integrity by direct lookup in the raw snapshot: every reference points at a record of the right type, no cycles. */
+function integrityProblems(rs: Raw[]): string[] {
+  const byId = new Map(rs.map((r) => [r.id, r]))
+  const is = (id: unknown, type: string) => typeof id === 'string' && byId.get(id)?.typeName === type
+  const out: string[] = []
+  for (const r of rs) {
+    if (!allFinite(r)) out.push(`${r.id}: non-finite number`)
+    if (r.typeName === 'container' && r.parentId != null && !is(r.parentId, 'container')) out.push(`${r.id}: bad parent`)
+    if (['curve', 'fill', 'reference'].includes(r.typeName) && !is(r.parentId, 'container')) out.push(`${r.id}: bad parent`)
+    if (r.typeName === 'reference' && !is(r.sourceId, 'container')) out.push(`${r.id}: bad source`)
+    if (r.typeName === 'curve') for (const s of r.segments) if (!r.anchors[s.from] || !r.anchors[s.to]) out.push(`${r.id}/${s.id}: dangling segment`)
+    if (r.typeName === 'connection') for (const end of r.ends) if (!is(end.curveId, 'curve') || !byId.get(end.curveId).anchors[end.anchorId]) out.push(`${r.id}: dangling end`)
+    if (r.typeName === 'fill') {
+      // closed = non-empty, every step exists, and each step ends where the next one starts (by position)
+      const ends = r.boundary.map((st: Raw) => {
+        const c = byId.get(st.curveId)
+        const seg = c?.typeName === 'curve' ? c.segments.find((x: Raw) => x.id === st.segmentId) : undefined
+        if (!seg) return null
+        const [a, b] = st.dir === 1 ? [seg.from, seg.to] : [seg.to, seg.from]
+        return { start: c.anchors[a].p, end: c.anchors[b].p }
+      })
+      if (!ends.length) out.push(`${r.id}: empty boundary`)
+      else if (ends.some((x: unknown) => !x)) out.push(`${r.id}: boundary step missing`)
+      else ends.forEach((x: Raw, i: number) => {
+        const y = ends[(i + 1) % ends.length]
+        if (x.end.x !== y.start.x || x.end.y !== y.start.y) out.push(`${r.id}: boundary open after step ${i}`)
+      })
+    }
+  }
+  for (const r of rs.filter((r) => r.typeName === 'container')) {
+    const seen = new Set<string>()
+    for (let cur: Raw | undefined = r; cur; cur = cur.parentId ? byId.get(cur.parentId) : undefined) {
+      if (seen.has(cur.id)) {
+        out.push(`${r.id}: container cycle`)
+        break
+      }
+      seen.add(cur.id)
+    }
+  }
+  return out
+}
+
 function checkStatic(e: Editor) {
   // I3
   for (const c of records(e).filter((r) => r.typeName === 'connection') as ConnectionRecord[]) {
     const ps = c.ends.map((end) => (e.reader.get(end.curveId) as CurveRecord).anchors[end.anchorId].p)
     for (const p of ps) expect(p).toEqual(ps[0])
   }
-  // I7
+  // I7 (own validators) and I7' (independent oracle above)
   for (const r of records(e)) validateRecord(r)
+  expect(integrityProblems(JSON.parse(JSON.stringify(records(e))))).toEqual([])
+  // I6' every accepted state reopens — not only at explicit save points (dot: "written OK, then can't open")
+  const snap = JSON.parse(JSON.stringify(e.reader.getStoreSnapshot('document')))
+  expect(() => Editor.open(snap)).not.toThrow()
 }
 
 describe('properties of the single write entry', () => {
   it('hold for random sequences of edits, bad inputs, batches, undo/redo and save/open', () => {
-    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0 }
+    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0 }
     fc.assert(
       fc.property(fc.array(action, { maxLength: 25 }), (actions) => {
         let e = new Editor(exampleRecords())
@@ -112,6 +175,7 @@ describe('properties of the single write entry', () => {
           if (act.kind === 'apply') {
             const r = api.apply(act.cmd)
             if (act.cmd.type === 'setContainerFlags' && act.cmd.locked === false && r.ok && r.written) seen.unlocked++
+            if (act.cmd.type === 'createFill' && r.ok && r.written) seen.fillCreated++
             if (!r.ok) seen.rejected++
             else if (!r.written) seen.noop++
             else seen.written++
