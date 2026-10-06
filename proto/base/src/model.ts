@@ -5,7 +5,7 @@ import { counters } from './counters'
 import { connectionsAt } from './indexes'
 import { newRecordProblems, presetConnectionProblems } from './forms'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
-import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type BaseReader, type FillRecord, type ReferenceRecord } from './schema'
+import { poseIdOf, type BoundaryStep, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type BaseReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
 export const anchorKey = (r: AnchorRef) => `${r.curveId}#${r.anchorId}`
@@ -123,6 +123,13 @@ export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<Bas
       }
     }
   }
+  // the whole boundary must be one continuous loop (each step starts where the previous ended, or at an anchor
+  // connected to it) — the same rule as createFill; checked whenever the reader can enumerate (open, structural
+  // writes), so no saved fill can be drawn from a wrong start point (dot, review of 71f36d3)
+  if (r.typeName === 'fill' && store.allRecords && r.boundary.every((b) => ('bridge' in b ? [b.bridge.from, b.bridge.to].every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId]) : getAs(store, b.curveId, 'curve')?.segments.some((s) => s.id === b.segmentId)))) {
+    const gap = boundaryGap(store as BaseReader, r.boundary)
+    if (gap) out.push({ object: r.id, field: 'boundary', target: gap.join(' / '), message: `${r.id}: boundary is not continuous between ${gap[0]} and ${gap[1]}` })
+  }
   if (r.typeName === 'fill')
     r.boundary.forEach((b, i) => {
       if ('bridge' in b) {
@@ -194,4 +201,33 @@ export function overlayReader(reader: BaseReader, puts: DocRecord[], removals: r
       return out
     },
   }
+}
+
+/**
+ * A boundary is closed when each step's end anchor is the next step's start anchor (same curve), or the two are
+ * joined by a connection; a bridge starts and ends at its two anchors. Gaps are never silently bridged (11 §1).
+ * Returns the first gap, or null.
+ */
+export function boundaryGap(store: BaseReader, boundary: BoundaryStep[]): [string, string] | null {
+  const label = (step: BoundaryStep | undefined) => (!step ? 'undefined' : 'bridge' in step ? `bridge ${anchorKey(step.bridge.from as AnchorRef)}→${anchorKey(step.bridge.to as AnchorRef)}` : String(step.segmentId))
+  const ends = boundary.map((step) => {
+    if ('bridge' in step) {
+      const ok = [step.bridge.from, step.bridge.to].every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId])
+      return ok ? { start: step.bridge.from as AnchorRef, end: step.bridge.to as AnchorRef } : null
+    }
+    const c = getAs(store, step.curveId, 'curve')
+    const seg = c?.segments.find((s) => s.id === step.segmentId)
+    if (!seg) return null
+    const [from, to] = step.dir === 1 ? [seg.from, seg.to] : [seg.to, seg.from]
+    return { start: { curveId: step.curveId, anchorId: from }, end: { curveId: step.curveId, anchorId: to } }
+  })
+  for (let i = 0; i < ends.length; i++) {
+    const a = ends[i]
+    const b = ends[(i + 1) % ends.length]
+    if (!a || !b) return [label(boundary[i]), label(boundary[(i + 1) % ends.length])]
+    if (anchorKey(a.end) === anchorKey(b.start)) continue
+    const joined = linkedAnchors(store, [a.end]).some((m) => anchorKey(m.ref) === anchorKey(b.start))
+    if (!joined) return [anchorKey(a.end), anchorKey(b.start)]
+  }
+  return null
 }

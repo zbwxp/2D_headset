@@ -155,3 +155,30 @@ it('Editor.open never freezes or changes the caller snapshot', () => {
   expect(Object.isFrozen(snap.store[ids.C1])).toBe(false)
   expect(JSON.stringify(snap)).toBe(before)
 })
+
+describe('review of 71f36d3 (dot)', () => {
+  it('open refuses a bridge boundary that is not continuous (it would be drawn from the previous end)', () => {
+    const e = new Editor(unlocked())
+    expect(e.apply({ type: 'createFill', id: G, parentId: ids.L1, boundary: bridged }).ok).toBe(true)
+    const file = JSON.parse(JSON.stringify(e.save()))
+    file.store[G].boundary[2].bridge.from = { curveId: ids.C1, anchorId: 'a1' } // the previous step ends at a3
+    expect(() => Editor.open(file)).toThrow(/invalid document: fill:G: boundary is not continuous between curve:C1#a3 and curve:C1#a1/)
+  })
+
+  it('setPoseKey on a track with independent handle offsets moves the handles WITH the anchor (their own shape kept)', () => {
+    const recs = exampleRecords().map((r) => r) as DocRecord[]
+    recs.push({ typeName: 'forms', id: 'forms:document/curve:E1', curveId: ids.E1, owner: { kind: 'document' }, encoding: 'legacy-delta3', original: 'curve', expr: {},
+      yaw: [{ yaw: 0, offsets: { e1: { dp: { x: 2, y: 3 }, dIn: { x: 7, y: 11 }, dOut: { x: -4, y: 9 } }, e2: { dp: { x: 1, y: 1 }, dIn: { x: 0, y: 2 }, dOut: { x: 3, y: 0 } } } }] } as any)
+    const e = new Editor(recs)
+    expect(e.apply({ type: 'setPoseKey', curveId: ids.E1, yaw: 0, offsets: { e1: { x: 5, y: 7 } } }).ok).toBe(true)
+    const k = (e.reader.get('forms:document/curve:E1' as any) as any).yaw[0].offsets
+    expect(k.e1).toEqual({ dp: { x: 5, y: 7 }, dIn: { x: 10, y: 15 }, dOut: { x: -1, y: 13 } })
+    expect(k.e2).toEqual({ dp: { x: 1, y: 1 }, dIn: { x: 0, y: 2 }, dOut: { x: 3, y: 0 } })
+  })
+
+  it('createFill with a malformed step is INVALID input, not an internal error', () => {
+    const e = new Editor(unlocked())
+    const r = e.apply({ type: 'createFill', parentId: ids.L1, boundary: [bridged[0], { bridge: { from: { curveId: ids.C1, anchorId: 'a3' } } } as any] })
+    expect(r.ok === false && r.error.code).toBe('INVALID')
+  })
+})

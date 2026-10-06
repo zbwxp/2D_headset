@@ -9,7 +9,7 @@ import { counters } from './counters'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
-import { actualKind, anchorKey, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
+import { actualKind, anchorKey, boundaryGap, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
   Curve,
@@ -187,7 +187,14 @@ function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = 
   // legacy head-turn track, or a connection. Otherwise (drags, legacy pose keys) a get-only view keeps the
   // per-move cost independent of document size. Nothing that open would refuse can be committed (dot
   // 1791308648: deleting the rule committed and reopen then failed).
-  const full = removals.length > 0 || puts.some((r) => r.typeName === 'connection' || (NEW_TYPES.has(r.typeName) && !(r.typeName === 'forms' && r.encoding === 'legacy-delta')))
+  const structural = (r: DocRecord) => {
+    if (r.typeName === 'fill' || r.typeName === 'connection') return true
+    const old = store.get(r.id as any) as DocRecord | undefined
+    if (r.typeName !== 'curve' || old?.typeName !== 'curve') return false
+    const ids = (c: CurveRecord) => Object.keys(c.anchors).sort().join() + '|' + JSON.stringify(c.segments) + '|' + c.closed
+    return ids(old) !== ids(r) // same anchors, segments and closure: geometry only (drags)
+  }
+  const full = removals.length > 0 || puts.some((r) => structural(r) || (NEW_TYPES.has(r.typeName) && !(r.typeName === 'forms' && (r.encoding === 'legacy-delta' || r.encoding === 'legacy-delta3'))))
   const next = full ? overlayReader(store, puts, removals) : ({ get: (id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? store.get(id as any))) } as Pick<DocStore, 'get'>)
   const problems = puts.flatMap((r) => recordProblems(next, r))
   // Incoming relations, looked up through the indexes (not by scanning a type): connections at an
@@ -441,7 +448,13 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       if (!getAs(store, cmd.parentId, 'container')) return notFound(store, cmd.parentId, 'container')
       const locker = lockedBy(store, cmd.parentId)
       if (locker) return fail('LOCKED', `container ${cmd.parentId} is locked by ${locker.id}`, [cmd.parentId, locker.id], [`unlock ${locker.id}`])
-      if (!cmd.boundary.length) return fail('FILL_NOT_CLOSED', 'boundary is empty', [cmd.parentId])
+      if (!Array.isArray(cmd.boundary) || !cmd.boundary.length) return fail('FILL_NOT_CLOSED', 'boundary is empty', [cmd.parentId])
+      // structure first: a malformed step is the caller's INVALID input, never an internal error (review of 71f36d3)
+      try {
+        validateRecord(Fill.create({ id: Fill.createId('probe'), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary }))
+      } catch (e) {
+        return fail('INVALID', String((e as Error).message ?? e), [cmd.parentId])
+      }
       const gap = findGap(store, cmd.boundary)
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
       const fill = Fill.create({ id: cmd.id ?? (ids.take('fill', () => Fill.createId()) as RecordId<FillRecord>), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
@@ -492,7 +505,14 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
               const offsets: Record<string, PointDelta> = existing ? { ...existing.offsets } : Object.fromEntries(Object.keys(c.anchors).map((a) => [a, at(a)]))
               if (yaw === cmd.yaw) for (const a of Object.keys(c.anchors)) {
                 const v = want.get(anchorKey({ curveId: c.id, anchorId: a }))
-                if (v) offsets[a] = { dp: { ...v }, dIn: { ...v }, dOut: { ...v } }
+                if (!v) continue
+                // the command sets the ANCHOR's offset; its handles move with it and keep their own offsets relative
+                // to it (review of 71f36d3: resetting them lost independent handle shapes)
+                const cur = offsets[a] ?? at(a)
+                const shift = { x: v.x - cur.dp.x, y: v.y - cur.dp.y }
+                // a handle whose offset equals the anchor's gets the new value itself (bit-identical to the old track)
+                const move = (h: Vec) => (h.x === cur.dp.x && h.y === cur.dp.y ? { ...v } : { x: h.x + shift.x, y: h.y + shift.y })
+                offsets[a] = { dp: { ...v }, dIn: move(cur.dIn), dOut: move(cur.dOut) }
               }
               return { yaw, offsets }
             })
@@ -549,30 +569,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
  * A boundary is closed when each step's end anchor is the next step's start anchor (same curve),
  * or the two anchors are joined by a connection. Gaps are never silently bridged (11 §1).
  */
-export function findGap(store: DocStore, boundary: BoundaryStep[]): [string, string] | null {
-  const label = (step: BoundaryStep | undefined) => (!step ? 'undefined' : 'bridge' in step ? `bridge ${anchorKey(step.bridge.from as AnchorRef)}→${anchorKey(step.bridge.to as AnchorRef)}` : String(step.segmentId))
-  const ends = boundary.map((step) => {
-    // a bridge starts and ends at its two anchors (it exists only in this boundary)
-    if ('bridge' in step) {
-      const ok = [step.bridge.from, step.bridge.to].every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId])
-      return ok ? { start: step.bridge.from as AnchorRef, end: step.bridge.to as AnchorRef } : null
-    }
-    const c = getAs(store, step.curveId, 'curve')
-    const seg = c?.segments.find((s) => s.id === step.segmentId)
-    if (!seg) return null
-    const [from, to] = step.dir === 1 ? [seg.from, seg.to] : [seg.to, seg.from]
-    return { start: { curveId: step.curveId, anchorId: from }, end: { curveId: step.curveId, anchorId: to } }
-  })
-  for (let i = 0; i < ends.length; i++) {
-    const a = ends[i]
-    const b = ends[(i + 1) % ends.length]
-    if (!a || !b) return [label(boundary[i]), label(boundary[(i + 1) % ends.length])]
-    if (anchorKey(a.end) === anchorKey(b.start)) continue
-    const joined = linkedAnchors(store, [a.end]).some((m) => anchorKey(m.ref) === anchorKey(b.start))
-    if (!joined) return [anchorKey(a.end), anchorKey(b.start)]
-  }
-  return null
-}
+/** The boundary closure rule (one definition, model.boundaryGap — also applied on open and on structural writes). */
+export const findGap = (store: DocStore, boundary: BoundaryStep[]) => boundaryGap(store, boundary)
 
 // Re-exported so callers can build records without importing the schema module separately.
 export { Container, Curve, Reference }
