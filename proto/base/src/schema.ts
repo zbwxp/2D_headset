@@ -226,6 +226,7 @@ const isStrArr = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x ===
 const isShape = (sh: any) => sh && typeof sh === 'object' && Object.values(sh).every((a: any) => a && isVec(a.p) && isVec(a.hIn) && isVec(a.hOut))
 const sortedUnique = (keys: { yaw: unknown }[], what: string) =>
   keys.forEach((k, i) => {
+    check(isObj(k), `${what} key ${i} is not an object`)
     check(isNum(k.yaw), `${what} key ${i} yaw not finite`)
     if (i > 0) check((k.yaw as number) > (keys[i - 1].yaw as number), `${what} keys not sorted by yaw / duplicate yaw`)
   })
@@ -242,7 +243,10 @@ export const Forms = createRecordType<FormsRecord>('forms', {
       sortedUnique(r.yaw, `forms ${r.id}`)
       if (r.encoding === 'legacy-delta') {
         check(r.owner?.kind === 'document' && r.original === 'curve', `forms ${r.id}: legacy-delta is owned by the document with original 'curve'`)
-        for (const k of r.yaw) for (const [a, o] of Object.entries(k.offsets ?? {})) check(isVec(o), `forms ${r.id} offset ${a} at ${k.yaw} not finite`)
+        for (const k of r.yaw) {
+          check(isObj(k.offsets), `forms ${r.id} offsets at ${k.yaw} (an object; {} when none)`)
+          for (const [a, o] of Object.entries(k.offsets)) check(isVec(o), `forms ${r.id} offset ${a} at ${k.yaw} not finite`)
+        }
         check(r.expr && Object.keys(r.expr).length === 0, `forms ${r.id}: legacy-delta has no expression tracks`)
       } else {
         check(r.owner?.kind === 'preset' && typeof r.owner.id === 'string', `forms ${r.id}: absolute forms are owned by a preset`)
@@ -307,7 +311,7 @@ export const Character = createRecordType<CharacterRecord>('character', {
       for (const [p, w] of Object.entries(r.weights)) check(isNum(w), `character ${r.id} weight ${p}`)
       for (const [c, as] of Object.entries(r.fineTune) as [string, any][]) {
         check(isObj(as), `character ${r.id} fineTune ${c}`)
-        for (const [a, d] of Object.entries(as)) check(isVec((d as any).dp) && isVec((d as any).dIn) && isVec((d as any).dOut), `character ${r.id} fineTune ${c}#${a}`)
+        for (const [a, d] of Object.entries(as)) check(isObj(d) && isVec((d as any).dp) && isVec((d as any).dIn) && isVec((d as any).dOut), `character ${r.id} fineTune ${c}#${a}`)
       }
       for (const t of r.takeovers) {
         check(isObj(t) && typeof t.id === 'string', `character ${r.id} takeover id`)

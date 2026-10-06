@@ -265,3 +265,27 @@ describe('review of 2c92206 (dot): uniqueness, closure, required fields, wrong r
     expect(legacy.apply({ type: 'moveOverride', referenceId: 'reference:R1' as any, target: { curveId: 'curve:C1' as any, anchorId: 'a1' }, delta: { x: 1, y: 0 } }).ok).toBe(true)
   })
 })
+
+describe('review of 72438b8 (dot): null inside existing fields is a named refusal, never a TypeError', () => {
+  const cases: [string, (rs: any[]) => void, RegExp][] = [
+    ['a yaw key that is null', (rs) => (rs.find((r) => r.id === 'forms:preset:P/curve:lid').yaw = [null]), /forms:preset:P\/curve:lid key 0 is not an object/],
+    ['an expression key that is null', (rs) => (rs.find((r) => r.id === 'forms:preset:P/curve:lid').expr.blink = [null]), /expr blink key 0 is not an object/],
+    ['legacy offsets that are null', (rs) => (rs.find((r) => r.id === 'forms:document/curve:C1').yaw = [{ yaw: 0, offsets: null }]), /offsets at 0 \(an object/],
+    ['a fine-tune delta that is null', (rs) => (rs.find((r) => r.id === 'character:K').fineTune['curve:lid'].m = null), /fineTune curve:lid#m/],
+    ['a visibility key that is null', (rs) => (rs.find((r) => r.id === 'visibility:preset:P/curve:strand').keys = [null]), /visibility .* key 0 is not an object/],
+  ]
+  for (const [name, mutate, message] of cases)
+    it(name, () => {
+      const rs = structuredClone(sample())
+      mutate(rs)
+      let m = ''
+      try {
+        openRecords(rs)
+      } catch (e) {
+        m = String((e as Error).message)
+      }
+      expect(m).toMatch(/^invalid document: /)
+      expect(m).toMatch(message)
+      expect(m).not.toMatch(/TypeError|Cannot read|Cannot convert/)
+    })
+})

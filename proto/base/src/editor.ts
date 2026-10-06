@@ -335,9 +335,17 @@ export class Editor {
     // tldraw reports a failed migration only as "migration-error": name the reason first (stage 1)
     const conflicts = legacyMigrationConflicts((snapshot as any)?.store ?? {})
     if (conflicts.length) throw new Error(`invalid document: ${conflicts.join('; ')}`)
-    editor.#store.loadStoreSnapshot(snapshot)
-    for (const r of editor.#store.allRecords()) deepFreeze(r)
-    const problems = graphProblems(editor.reader)
+    // The public open boundary reports every refusal the same way: `invalid document: <reason>` (validators name
+    // the record and field; anything unforeseen keeps its own message) — dot, review of 72438b8.
+    let problems: string[]
+    try {
+      editor.#store.loadStoreSnapshot(snapshot)
+      for (const r of editor.#store.allRecords()) deepFreeze(r)
+      problems = graphProblems(editor.reader)
+    } catch (e) {
+      const m = String((e as Error)?.message ?? e)
+      throw new Error(m.startsWith('invalid document: ') ? m : `invalid document: ${m}`)
+    }
     if (problems.length) throw new Error(`invalid document: ${problems.join('; ')}`)
     return editor
   }
