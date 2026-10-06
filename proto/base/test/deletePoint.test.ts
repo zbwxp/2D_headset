@@ -254,6 +254,21 @@ describe('session', () => {
     report.push({ case: 'id collision', joined: ids, curves: Object.keys(k.doc.presets.A) })
   })
 
+  it('closed loops are refused by both commands, document unchanged (review of 0e29fb3)', () => {
+    const d = fixture()
+    d.refs = {}
+    for (const cs of Object.values(d.presets)) cs.U.segments.push({ id: 's5', from: 'e', to: 'a' })
+    const before = JSON.stringify(d)
+    const reasons: Record<string, string> = {}
+    for (const at of ['a', 'c', 'e'])
+      for (const [name, r] of [['4a', removeAnchorJoin(d, 'U', at, 'keepShape')], ['4b', deleteAnchorWithSegments(d, 'U', at)]] as const) {
+        expect(r.ok).toBe(false)
+        if (!r.ok) reasons[`${name}@${at}`] = r.reason
+      }
+    expect(JSON.stringify(d)).toBe(before)
+    report.push({ case: 'closed loop refused', reasons: reasons['4a@a'] })
+  })
+
   it('prints the table', () => {
     console.log('[deletePoint]\n' + report.map((r) => JSON.stringify(r)).join('\n'))
   })

@@ -18,7 +18,8 @@
 //    every state (an arc-length re-mapping measured up to 1.17 units of movement in another state, 0e29fb3);
 //    the two things are recorded separately. Deletions without such references are what this experiment covers.
 // 4b deleteAnchorWithSegments — delete the anchor and its adjacent segments: an interior anchor splits the
-//    curve into two open chains, an end anchor shortens it (a closed curve is not handled in this experiment).
+//    curve into two open chains, an end anchor shortens it. Closed loops are REFUSED by both commands (open-chain
+//    scope; dot review of 0e29fb3 found 4a leaving a dangling segment and 4b skipping the first segment there).
 //
 // Broken dependencies are refused with the dependant named (no dangling reference, no automatic patching):
 // a connection on the anchor, a fill using only one of the two segments (4a) or any removed segment (4b),
@@ -151,6 +152,9 @@ function invalid(doc: Doc, curveId: string, anchorId: string): string | null {
   }
   return null
 }
+/** a closed loop (the last segment ends where the first starts): not supported by this experiment, refused */
+const isClosed = (c: Curve) => c.segments.length > 0 && c.segments[c.segments.length - 1].to === c.segments[0].from
+const closedRefusal = (curveId: string) => ({ ok: false as const, reason: `${curveId} is a closed loop: deleting on closed curves is not supported yet` })
 const connectionOn = (doc: Doc, curveId: string, anchorId: string) =>
   Object.entries(doc.connections).find(([, ends]) => ends.some((e) => e.curveId === curveId && e.anchorId === anchorId))?.[0]
 const first = <T>(r: Record<string, T>) => Object.values(r)[0]
@@ -159,6 +163,7 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
   const bad = invalid(doc, curveId, anchorId)
   if (bad) return { ok: false, reason: bad }
   const c0 = first(doc.presets)[curveId]
+  if (Object.values(doc.presets).some((cs) => isClosed(cs[curveId]))) return closedRefusal(curveId)
   const sIn = c0.segments.find((s) => s.to === anchorId)
   const sOut = c0.segments.find((s) => s.from === anchorId)
   if (!sIn || !sOut) return { ok: false, reason: `${anchorId} is an end node: use deleteAnchorWithSegments` }
@@ -222,6 +227,7 @@ export function deleteAnchorWithSegments(doc: Doc, curveId: string, anchorId: st
   const bad = invalid(doc, curveId, anchorId)
   if (bad) return { ok: false, reason: bad }
   const c0 = first(doc.presets)[curveId]
+  if (Object.values(doc.presets).some((cs) => isClosed(cs[curveId]))) return closedRefusal(curveId)
   const sIn = c0.segments.find((s) => s.to === anchorId)
   const sOut = c0.segments.find((s) => s.from === anchorId)
   const removed = [sIn, sOut].filter((s): s is Segment => !!s).map((s) => s.id)
