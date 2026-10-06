@@ -77,7 +77,11 @@ describe('cached angle evaluation equals the full recompute', () => {
       expect(s.lists).toBeLessThanOrEqual(8)
     }
     expect(counters.yawEvictions).toBeGreaterThan(0)
-    for (const y of [-90, -12.3, 45, 90]) expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y)) // evicted entries recompute correctly
+    // -90 was visited first, so it has been evicted: asking again must RECOMPUTE (counted) and be exact
+    resetCounters()
+    expect(e.derived.atYaw(-90)).toEqual(evaluateAtYaw(e.reader, -90))
+    expect(counters.yawCurveEvals).toBeGreaterThan(0)
+    for (const y of [-12.3, 45, 90]) expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y))
   })
 })
 
@@ -121,6 +125,32 @@ describe('workloads (counts asserted, times and heap informational)', () => {
     const ms = (performance.now() - t0) / 10
     return { counts: snapshotCounters(), ms }
   }
+  function makerDependents(curves: number, cmd: Command) {
+    const shapes = syntheticRecords({ curves, layers: 8, fills: 15 })
+    const e = new Editor([...shapes, ...syntheticPoses(shapes)])
+    const api = createApi(e)
+    const yaws = onionYaws(19)
+    for (const y of yaws) e.derived.atYaw(y)
+    api.apply(cmd)
+    for (const y of yaws) e.derived.atYaw(y)
+    resetCounters()
+    api.apply(cmd)
+    for (const y of yaws) e.derived.atYaw(y) // whole onion lists: dependents included
+    const c = snapshotCounters()
+    for (const y of [yaws[0], yaws[9], yaws[18]]) expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y))
+    return { yawCurveEvals: c.yawCurveEvals, yawFillEvals: c.yawFillEvals, curveEvals: c.curveEvals, fillEvals: c.fillEvals }
+  }
+  it('maker: a CONNECTED anchor re-evaluates both connected curves at each yaw; a fill-boundary anchor also re-evaluates the fill', () => {
+    const connected: Command = { type: 'moveAnchors', targets: [{ curveId: 'curve:S0' as CurveRecord['id'], anchorId: 'p3' }], delta: { x: 0.5, y: 0 } } // S0.p3 ⟷ S8.p0
+    const boundary: Command = { type: 'moveAnchors', targets: [{ curveId: 'curve:L0' as CurveRecord['id'], anchorId: 'q1' }], delta: { x: 0.5, y: 0 } } // loop of fill L0
+    const rows = { connected: [makerDependents(121, connected), makerDependents(3000, connected)], boundary: [makerDependents(121, boundary), makerDependents(3000, boundary)] }
+    console.log('[yaw maker dependents per drag]', JSON.stringify(rows))
+    expect(rows.connected[1]).toEqual(rows.connected[0])
+    expect(rows.connected[0]).toMatchObject({ yawCurveEvals: 2 * 19, curveEvals: 2, yawFillEvals: 0, fillEvals: 0 })
+    expect(rows.boundary[1]).toEqual(rows.boundary[0])
+    expect(rows.boundary[0]).toMatchObject({ yawCurveEvals: 19, curveEvals: 1, yawFillEvals: 19, fillEvals: 1 })
+  })
+
   it('maker: an onion drag of one curve re-evaluates that curve at each yaw, independent of document size', () => {
     const small = maker(121)
     const large = maker(3000)

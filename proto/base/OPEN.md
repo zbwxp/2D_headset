@@ -125,6 +125,14 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   commit), `test/pose.test.ts` (forms, 0° form, base edits propagate, pose keys are author edits),
   property I14 (cached angle evaluation == full at 4 yaws, every step; generator now edits poses).
   Mutations M23–M25 caught.
+- Follow-up (dot's acceptance points, after 2a48719): real dependents at every yaw — a CONNECTED
+  anchor re-evaluates both connected curves (2 × 19), a fill-boundary anchor the curve and the fill
+  (19 + 19), identical at 121 and 3000 curves; an evicted angle is explicitly recomputed (counted) and
+  exact. **Read-only entry** `src/runtime.ts` (saved records + parameters; no Editor, store, undo or
+  UI; imports only evaluate/model/pose/schema — tested): the same author data gives the same
+  geometry and appearance as the maker (cached `evaluated`/`atYaw`, and what the drag preview showed
+  at each yaw, through commit and save); playing (maker cache, preview at yaws, runtime entry) leaves
+  author state and history unchanged; invalid data rejected explicitly. Mutations M26–M27 caught.
 - Measured (node, synthetic, informational):
   - maker onion (19 yaws), drag one free anchor: 19 curve-at-yaw evaluations + 1 curve evaluation
     per drag, identical for 121 and 3000 curves (≈0.09–0.14 ms per drag, per-item consumer).
