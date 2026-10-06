@@ -96,6 +96,13 @@ describe('§20 where each state comes from', () => {
     if (!r.ok) expect(r.reason).toContain('preset Q (weight 0.4)')
     const zero = only(d, { P: 1, Q: 0 })
     expect(got(characterOpen(zero, 'strand', { yaw: 90 }))).toEqual(d.presets.P.strand.yaw[0].shape)
+    // a whole participating preset missing: the same reported result, not an exception (review of 2c916f5/002ea9f)
+    const gone = only(d, { P: 0.6, R: 0.4 })
+    for (const ev of [characterOpen(gone, 'lid', { yaw: 0 }), closedAt(gone, 'lid', 0), closedAtKey(gone, 'lid', 0)]) {
+      expect(ev.ok).toBe(false)
+      if (!ev.ok) expect(ev.reason).toContain('preset R (weight 0.4): preset missing')
+    }
+    expect(() => grid(gone, 'lid')).not.toThrow()
     report.push({ case: 'missing participant', reason: r.ok ? 'ok' : r.reason })
   })
 

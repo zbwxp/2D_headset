@@ -62,7 +62,9 @@ function blend(doc: Doc, f: (p: Preset) => Eval): Eval {
   const sources: string[] = []
   for (const [pid, w] of Object.entries(doc.character.weights)) {
     if (w === 0) continue
-    const r = f(doc.presets[pid])
+    const preset = doc.presets[pid]
+    if (!preset) return { ok: false, reason: `preset ${pid} (weight ${w}): preset missing` } // reported, never thrown or dropped
+    const r = f(preset)
     if (!r.ok) return { ok: false, reason: `preset ${pid} (weight ${w}): ${r.reason}` }
     acc = acc ? add(acc, scale(r.shape, w)) : scale(r.shape, w)
     sources.push(`${pid}:${r.source}`)
@@ -76,7 +78,7 @@ export const characterOpen = (doc: Doc, curve: string, ctx: { yaw?: number }) =>
  *  character's fix yaws — never the neutral track's yaws */
 export function closedKeyYaws(doc: Doc, curve: string): number[] {
   const ys = new Set<number>()
-  for (const [pid, w] of Object.entries(doc.character.weights)) if (w !== 0) for (const k of doc.presets[pid][curve]?.closed ?? []) ys.add(k.yaw)
+  for (const [pid, w] of Object.entries(doc.character.weights)) if (w !== 0) for (const k of doc.presets[pid]?.[curve]?.closed ?? []) ys.add(k.yaw)
   for (const y of Object.keys(doc.character.closedFix[curve] ?? {})) ys.add(Number(y))
   return [...ys].sort((a, b) => a - b)
 }
@@ -130,7 +132,7 @@ export function closedAt(doc: Doc, curve: string, yaw: number): Eval {
 /** playback grid: union of neutral yaws and closed yaws; every cell is a resample of its own track */
 export function grid(doc: Doc, curve: string) {
   const ys = new Set(closedKeyYaws(doc, curve))
-  for (const [pid, w] of Object.entries(doc.character.weights)) if (w !== 0) for (const k of doc.presets[pid][curve]?.yaw ?? []) ys.add(k.yaw)
+  for (const [pid, w] of Object.entries(doc.character.weights)) if (w !== 0) for (const k of doc.presets[pid]?.[curve]?.yaw ?? []) ys.add(k.yaw)
   const yaws = [...ys].sort((a, b) => a - b)
   return yaws.map((yaw) => ({ yaw, open: characterOpen(doc, curve, { yaw }), closed: closedAt(doc, curve, yaw) }))
 }
