@@ -39,6 +39,7 @@
 | 点选判断 | 浏览器原生 `isPointInPath`（填充）、`isPointInStroke`（墨迹），参数来自 `inkStyle` / `FILL_RULE` | 遮挡顺序（读画序计划）；线段编号和位置 t（bezier-js 的投影，用于知道点到了哪一段） |
 | 自身墨迹保护 | 同一个笔触操作做反向遮罩（临时层 + destination-out） | 「哪些段算自身」由核心决定；Fabric 那一侧要覆盖内部 `_render`（已注明是内部依赖） |
 | 变换框 | Fabric 的变换框 | 把框的变换写回成命令（`transformContainer`） |
+| 路径编辑控件（候选，未试验） | Fabric 默认路径控件 | 它会直接改自己的 path，并按数组位置定位点（dot）；要用必须先适配到稳定 ID 和统一编辑入口，不能照搬它的默认写入 |
 
 ## 4. 普通流程推演（从一次操作到画面）
 
