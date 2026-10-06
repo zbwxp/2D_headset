@@ -26,12 +26,42 @@ export type EvalCurve = {
   locked: boolean
   depth: number
 }
-/** `boundaryCurves`: the curves whose segments bound the fill (its OWN strokes, R4/D3), in boundary order. */
-export type EvalFill = { address: string; color: string; cubics: Cubic[]; boundaryCurves: string[]; visible: boolean; locked: boolean; depth: number }
+/** `boundaryRefs`: per curve, the segments the fill's boundary actually references (its OWN strokes,
+ *  R4/D3) — only these, never the whole curve (dot: an unreferenced inner extension is not own ink). */
+export type BoundaryRef = { curve: string; segments: string[] }
+export type EvalFill = { address: string; color: string; cubics: Cubic[]; boundaryRefs: BoundaryRef[]; visible: boolean; locked: boolean; depth: number }
+
+/** A fill's boundary references grouped by curve (curve order of first use; segment ids as referenced). */
+export function boundaryRefsOf(boundary: { curveId: string; segmentId: string }[]): BoundaryRef[] {
+  const by = new Map<string, Set<string>>()
+  for (const step of boundary) {
+    if (!by.has(step.curveId)) by.set(step.curveId, new Set())
+    by.get(step.curveId)!.add(step.segmentId)
+  }
+  return [...by].map(([curve, segs]) => ({ curve, segments: [...segs] }))
+}
+
+/**
+ * The drawn ink of only some segments of a curve: maximal runs of consecutive referenced segments in
+ * the curve's own chain order, each a separate open sub-path. Inside a run the joins are the drawn
+ * joins; at a run's end the stroke ends butt (the join to an unreferenced neighbour belongs to neither
+ * side). The drawn path is open (no join from the last segment back to the first), so runs never wrap.
+ */
+export function inkRuns(c: Pick<EvalCurve, 'segments'>, segmentIds: string[]): Cubic[][] {
+  const want = new Set(segmentIds)
+  const runs: Cubic[][] = []
+  let cur: Cubic[] | null = null
+  for (const s of c.segments) {
+    if (want.has(s.id)) (cur ??= []).push(s.cubic)
+    else if (cur) runs.push(cur), (cur = null)
+  }
+  if (cur) runs.push(cur)
+  return runs
+}
 /** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1).
- *  A fill carries `ownInk` (S2): the addresses of its own visible boundary curves painted BEFORE it —
- *  the strokes whose ink it must leave out. Decided here, once, so renderers never judge it. */
-export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill; ownInk: string[] }
+ *  A fill carries `ownInk` (S2): its referenced segments of own visible boundary curves painted BEFORE
+ *  it — the ink it must leave out. Decided here, once, so renderers never judge it. */
+export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill; ownInk: BoundaryRef[] }
 export type PaintInput = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill }
 
 /** How a line is drawn — ONE definition for Fabric, B, the own-ink cut and picking (R9: lines opaque). */
@@ -78,7 +108,7 @@ export function fromPaint(input: PaintInput[]): Evaluated {
       return p
     }
     fills.push(p.item)
-    const ownInk = p.item.boundaryCurves.filter((a) => before.get(a)?.visible)
+    const ownInk = p.item.boundaryRefs.filter((r) => before.get(r.curve)?.visible)
     return { kind: 'fill', item: p.item, ownInk }
   })
   return { curves, fills, paint }
@@ -159,7 +189,7 @@ export function evaluate(store: DocStore): Evaluated {
       const [p0, c1, c2, p3] = seg.cubic
       return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
     }),
-    boundaryCurves: [...new Set(f.boundary.map((step) => step.curveId as string))],
+    boundaryRefs: boundaryRefsOf(f.boundary),
     visible: effectivelyVisible(store, f.parentId),
     locked: !!lockedBy(store, f.parentId),
     depth: f.depthOffset,
@@ -208,7 +238,7 @@ export function cubicsToPath(cubics: Cubic[], close = false) {
  * picking and display agree. Where no canvas exists (node), it fails loudly instead of approximating.
  */
 let probe: OffscreenCanvasRenderingContext2D | null = null
-export function inkContains(c: EvalCurve, p: Vec): boolean {
+export function inkContains(c: EvalCurve, segmentIds: string[], p: Vec): boolean {
   if (typeof OffscreenCanvas === 'undefined') throw new Error('inkContains: no native stroke test in this environment (needs a canvas)')
   probe ??= new OffscreenCanvas(1, 1).getContext('2d')!
   const st = inkStyle(c)
@@ -217,10 +247,10 @@ export function inkContains(c: EvalCurve, p: Vec): boolean {
   probe.lineJoin = st.join
   probe.miterLimit = st.miterLimit
   const path = new Path2D()
-  const segs = c.segments
-  if (!segs.length) return false
-  path.moveTo(segs[0].cubic[0].x, segs[0].cubic[0].y)
-  for (const s of segs) path.bezierCurveTo(s.cubic[1].x, s.cubic[1].y, s.cubic[2].x, s.cubic[2].y, s.cubic[3].x, s.cubic[3].y)
+  for (const run of inkRuns(c, segmentIds)) {
+    path.moveTo(run[0][0].x, run[0][0].y)
+    for (const [, c1, c2, p3] of run) path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p3.x, p3.y)
+  }
   return probe.isPointInStroke(path, p.x, p.y)
 }
 
@@ -273,12 +303,13 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
     // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
     // fill. "Ink" = the browser's own stroke geometry with the drawn parameters (inkContains), not an
     // approximation (dot). A distance bound only skips the call where no ink can be.
-    const onOwnInk = entry.ownInk.some((a) => {
-      const c = byAddress.get(a)!
+    const onOwnInk = entry.ownInk.some((ref) => {
+      const c = byAddress.get(ref.curve)!
       const st = inkStyle(c)
       const reach = (st.width / 2) * Math.max(1, st.miterLimit) // a mitre reaches at most miterLimit × half width
-      if (!c.segments.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= reach)) return false
-      return inkContains(c, p)
+      const segs = c.segments.filter((s) => ref.segments.includes(s.id))
+      if (!segs.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= reach)) return false
+      return inkContains(c, ref.segments, p)
     })
     if (!onOwnInk) return { kind: 'fill', address: f.address, d: 0 }
   }

@@ -191,7 +191,11 @@ export const paintCases: Record<string, PaintCase> = {
       const f = Fill.create({ id: Fill.createId('F'), name: 'F', parentId: id('L'), index: 'a2', color: RED, boundary: ['ab', 'bc', 'cd', 'da'].map((segmentId) => ({ curveId: b.id, segmentId, dir: 1 as const })) })
       return [layer('L', 'a1'), b, f]
     },
-    expect: [{ at: { x: 50, y: 40 }, rgba: red, what: 'F interior' }],
+    expect: [
+      { at: { x: 50, y: 40 }, rgba: red, what: 'F interior' },
+      { at: { x: 30, y: 20 }, rgba: red, what: 'the UNREFERENCED tail e→a inside F is covered by F (not own ink)' },
+      { at: { x: 40, y: 11 }, rgba: blue, what: 'referenced boundary ab stays visible' },
+    ],
   },
   'H2-acute-inward-mitre': {
     rule: 'H2 picking vs picture at an acute inward mitre: notch vertex (40,15)',

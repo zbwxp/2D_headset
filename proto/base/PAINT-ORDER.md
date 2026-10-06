@@ -245,8 +245,10 @@ holes into the fill.
   (only fills painted after their own boundary need it). Main-workload cost in S3.
 - Tests: P6-own-boundary and P6-cross-layer pass; D2 example 2 becomes a 明确 case.
 
-**S2 status (implemented):** core `fromPaint` decides `ownInk` (visible own boundary curves painted
-before the fill; hidden ones protect nothing); `inkStyle` is the one stroke definition; B and Fabric
+**S2 status (implemented):** core `fromPaint` decides `ownInk` (the REFERENCED segments of visible own
+boundary curves painted before the fill — not the whole curve, dot: an unreferenced inner extension
+is not own ink; drawn as `inkRuns`, maximal consecutive runs in chain order, butt at run ends; hidden
+ones protect nothing); `inkStyle` is the one stroke definition; B and Fabric
 call the same `paintFillLeavingOwnInk` (src/view/ownInk.ts; Fabric through `OwnInkFill._render`, an
 internal fabric 7.4.0 dependency, documented in src/view/ownInkFill.ts); picking excludes the own ink
 with the browser's native stroke test (`inkContains`: `isPointInStroke` with the same `inkStyle`), so

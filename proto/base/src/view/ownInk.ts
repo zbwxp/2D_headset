@@ -7,7 +7,7 @@
 // Checked first on small pictures (ownink.html, e2e/own-ink-check.spec.ts): butt ends, mitres, the
 // mitre limit, curved joints, fractional pan / zoom, DPR 1 and 2. Known: the exact cut leaves a faint
 // see-through seam along the stroke's inner anti-aliased edge (alpha ≥ 0.75) — open with dot.
-import { inkStyle, type Cubic, type EvalCurve, type EvalFill } from '../evaluate'
+import { inkRuns, inkStyle, type Cubic, type EvalCurve, type EvalFill } from '../evaluate'
 
 export function cubicsPath2D(cubics: Cubic[], close = false) {
   const p = new Path2D()
@@ -17,7 +17,12 @@ export function cubicsPath2D(cubics: Cubic[], close = false) {
   if (close) p.closePath()
   return p
 }
-export const curvePath2D = (c: EvalCurve) => cubicsPath2D(c.segments.map((s) => s.cubic))
+/** The own ink of a fill on one curve: only the referenced segments, as the core's runs (`inkRuns`). */
+export function ownInkPath2D(c: EvalCurve, segmentIds: string[]) {
+  const p = new Path2D()
+  for (const run of inkRuns(c, segmentIds)) p.addPath(cubicsPath2D(run))
+  return p
+}
 
 let scratch: HTMLCanvasElement | null = null
 

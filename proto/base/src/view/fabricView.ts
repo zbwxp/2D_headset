@@ -14,7 +14,7 @@ import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
 import { cubicsToPath, evaluate, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
-import { cubicsPath2D, curvePath2D } from './ownInk'
+import { cubicsPath2D, ownInkPath2D } from './ownInk'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
@@ -225,7 +225,7 @@ export class FabricView {
     const pathOfFill = (p: Extract<PaintItem, { kind: 'fill' }>) => {
       const f = p.item
       if (!p.ownInk.length) return new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false })
-      return new OwnInkFill(cubicsToPath(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((a) => ({ curve: byAddress.get(a)!, path: curvePath2D(byAddress.get(a)!) })))
+      return new OwnInkFill(cubicsToPath(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
     }
     const pathOf = (c: EvalCurve) => {
       const st = inkStyle(c)

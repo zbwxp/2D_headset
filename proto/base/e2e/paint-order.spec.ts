@@ -59,8 +59,8 @@ test.describe('own ink at a fractional pan / zoom, DPR 2', () => {
 })
 
 // Picking agrees with the picture (dot, S2): for every device pixel inside the fill that the picture
-// shows as pure fill colour or pure stroke colour, picking the fill (V mode, zero segment tolerance so
-// only the fill rule decides) must say "fill" exactly where the fill colour shows. Anti-aliased pixels
+// shows as pure fill colour or pure stroke colour, picking the fill (V mode, segment rule disabled with
+// a negative tolerance so only the fill rule decides; KF-4 covers lines beating fills) must say "fill" exactly where the fill colour shows. Anti-aliased pixels
 // are skipped. Uses the B picture (same routine as Fabric).
 for (const name of ['P6-own-boundary', 'P6-cross-layer', 'H1-butt-end-inside', 'H2-acute-inward-mitre'])
   test(`picking agrees with the picture: ${name}`, async ({ page }) => {
@@ -92,7 +92,7 @@ for (const name of ['P6-own-boundary', 'P6-cross-layer', 'H1-butt-end-inside', '
           const isInk = px[i] <= 2 && px[i + 1] <= 2 && px[i + 2] >= 253 && px[i + 3] >= 253
           if (!isFill && !isInk) continue
           isFill ? fillPx++ : inkPx++
-          const hit = hitTest(ev, w, { mode: 'V', tolerance: 0 })
+          const hit = hitTest(ev, w, { mode: 'V', tolerance: -1 }) // segment rule off: KF-4 (lines beating fills) is tracked separately
           const pickedFill = hit?.kind === 'fill'
           if (pickedFill !== isFill) {
             disagree++

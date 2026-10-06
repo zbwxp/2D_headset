@@ -7,7 +7,7 @@
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
 // still REPAINTED each frame, like renderAll. Not a cost floor (dot): a reference with the same output.
 import { inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
-import { paintFillLeavingOwnInk } from './ownInk'
+import { ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 
 export class Canvas2DRef {
   private readonly paths = new WeakMap<object, Path2D>()
@@ -63,7 +63,7 @@ export class Canvas2DRef {
       if (!p.item.visible) continue
       if (p.kind === 'fill') {
         if (p.ownInk.length)
-          paintFillLeavingOwnInk(ctx, p.item, this.fillPath(p.item), p.ownInk.map((a) => ({ curve: byAddress.get(a)!, path: this.curvePath(byAddress.get(a)!) })))
+          paintFillLeavingOwnInk(ctx, p.item, this.fillPath(p.item), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
         else {
           ctx.fillStyle = p.item.color
           ctx.fill(this.fillPath(p.item))

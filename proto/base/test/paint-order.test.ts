@@ -11,7 +11,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { counters, resetCounters } from '../src/counters'
 import { Editor } from '../src/editor'
-import { evaluate, unappliedContainerOpacity, unappliedDepthOffsets, type Evaluated } from '../src/evaluate'
+import { evaluate, inkRuns, unappliedContainerOpacity, unappliedDepthOffsets, type Evaluated } from '../src/evaluate'
 import { paintCases } from '../src/paintCases'
 import { evaluateSaved } from '../src/runtime'
 import { Container, Curve, Fill, Reference, type Anchor, type DocRecord } from '../src/schema'
@@ -190,8 +190,8 @@ describe('depth offsets are reported, not applied (D1 open)', () => {
 describe('own ink (S2): decided once by the core', () => {
   const ownOf = (ev: Evaluated, fill: string) => (ev.paint.find((p) => p.item.address === fill) as any).ownInk
   it('a fill after its visible own boundary lists it; before it, nothing', () => {
-    expect(ownOf(new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated(), 'fill:F')).toEqual(['curve:F-boundary'])
-    expect(ownOf(new Editor(paintCases['P6-cross-layer'].records()).derived.evaluated(), 'fill:F')).toEqual(['curve:F-boundary'])
+    expect(ownOf(new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated(), 'fill:F')).toEqual([{ curve: 'curve:F-boundary', segments: ['ab', 'bc', 'cd', 'da'] }])
+    expect(ownOf(new Editor(paintCases['P6-cross-layer'].records()).derived.evaluated(), 'fill:F')).toEqual([{ curve: 'curve:F-boundary', segments: ['ab', 'bc', 'cd', 'da'] }])
     // move the boundary after the fill (index a9 > a2): nothing to leave out
     const recs = paintCases['P6-own-boundary'].records().map((r) => (r.id === Curve.createId('F-boundary') ? { ...r, index: 'a9' } : r))
     expect(ownOf(new Editor(recs).derived.evaluated(), 'fill:F')).toEqual([])
@@ -233,5 +233,20 @@ describe('container opacity is reported, not applied (current scope limit, D7)',
     expect(e.derived.evaluated()).toEqual(plain)
     expect(unappliedContainerOpacity(e.reader as any)).toEqual(['container:L2'])
     expect(unappliedContainerOpacity(new Editor(records).reader as any)).toEqual([])
+  })
+})
+
+describe('own ink = only the REFERENCED segments (dot, S2 review)', () => {
+  it('H1: the unreferenced tail e→a is not own ink', () => {
+    const ev = new Editor(paintCases['H1-butt-end-inside'].records()).derived.evaluated()
+    expect((ev.paint.find((p) => p.item.address === 'fill:F') as any).ownInk).toEqual([{ curve: 'curve:B', segments: ['ab', 'bc', 'cd', 'da'] }])
+  })
+  it('inkRuns: maximal consecutive runs in chain order, never wrapping', () => {
+    const P = (x: number) => ({ x, y: 0 })
+    const seg = (id: string, x: number) => ({ id, from: '', to: '', cubic: [P(x), P(x), P(x + 1), P(x + 1)] as any })
+    const c = { segments: [seg('s1', 0), seg('s2', 1), seg('s3', 2), seg('s4', 3), seg('s5', 4)] }
+    expect(inkRuns(c, ['s1', 's2', 's4']).map((r) => r.length)).toEqual([2, 1])
+    expect(inkRuns(c, ['s5', 's1']).map((r) => r.map((q) => q[0].x))).toEqual([[0], [4]]) // no wrap from s5 to s1
+    expect(inkRuns(c, [])).toEqual([])
   })
 })

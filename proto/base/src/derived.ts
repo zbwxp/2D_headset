@@ -16,7 +16,7 @@
 import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
-import { byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
+import { boundaryRefsOf, byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
@@ -164,7 +164,7 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
       const [p0, c1, c2, p3] = seg.cubic
       return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
     }),
-    boundaryCurves: [...new Set(f.boundary.map((step) => step.curveId as string))],
+    boundaryRefs: boundaryRefsOf(f.boundary),
     visible: effectivelyVisible(get as DocStore, f.parentId),
     locked: !!lockedBy(get as DocStore, f.parentId),
     depth: f.depthOffset,
