@@ -2,7 +2,7 @@
 // arithmetic, literal affine numbers, own least squares) — never by calling the functions under test
 // (dot 1791297493). Undo / reopen are verified at the experiment data level only.
 import { describe, expect, it } from 'vitest'
-import { blinkRule, counters, fineTuneUp, makeDoc, playback, rebuild, Session, type Cache, type Doc } from '../src/experiments/flowVerify'
+import { blinkRule, counters, fineTuneUp, fineTuneUpAndLower, makeDoc, playback, rebuild, Session, type Cache, type Doc } from '../src/experiments/flowVerify'
 import { curveIds, type CurveId, type Cubic, type Eye } from '../src/experiments/fineTuneTransfer'
 import type { V } from '../src/experiments/scenarioE'
 
@@ -112,13 +112,15 @@ describe('flow verification (doc 18 §16)', () => {
 
   it('6. change fine-tune again: rule re-closes, then the character correction; still closed; tail fix kept', () => {
     const fix = s.doc.characters.c1.exprFixes[0]
-    s.setFineTune('c1', fineTuneUp(0.5))
+    s.setFineTune('c1', fineTuneUpAndLower(0.5, 0.7)) // also moves the lower lid, so the closed base really changes
     const c = rebuild(s.doc, 'c1')
     // independent expectation: new open front → close (copy lower onto upper) → + (target − base at fix time)
     const open0 = c['0|open']
     const newBase: Eye = { ...open0, U0: open0.L0, U1: open0.L1 }
     const want = each(newBase, (p, id, i) => P(p.x + fix.target[id][i].x - fix.base[id][i].x, p.y + fix.target[id][i].y - fix.base[id][i].y))
-    report.push({ step: 6, vsIndependent: maxDiff(c['0|closed'], want), closure: closureGap(c['0|closed']) })
+    const baseMoved = maxDiff(newBase, fix.base)
+    report.push({ step: 6, vsIndependent: maxDiff(c['0|closed'], want), closure: closureGap(c['0|closed']), baseMovedBy: baseMoved })
+    expect(baseMoved).toBeGreaterThan(0.1) // the same-state base really changed, so 'new base + correction' is exercised
     expect(maxDiff(c['0|closed'], want)).toBeLessThan(1e-12)
     expect(closureGap(c['0|closed'])).toBeLessThan(1e-12)
     snap('fine-tune 3')

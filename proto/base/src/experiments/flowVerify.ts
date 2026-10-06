@@ -96,6 +96,9 @@ export function rebuild(doc: Doc, charId: string): Cache {
 }
 
 // ---------- entry 2: playback (§15.3) — reads and interpolates only ----------
+// Interpolation rule (stated for independent hand calculation, dot 1791300051): bilinear over the four key
+// states. t = clamp(yaw / 90, 0, 1); open(yaw) = (1−t)·K(0|open) + t·K(90|open); closed(yaw) likewise;
+// result = (1−blink)·open(yaw) + blink·closed(yaw), per control point.
 export function playback(cache: Cache, yaw: number, blink: number): Eye {
   const t = Math.max(0, Math.min(1, yaw / 90))
   const lerp = (a: Eye, b: Eye, k: number) => zipEye(a, b, (p, q) => add(p, mul(sub(q, p), k)))
@@ -189,5 +192,9 @@ export function makeDoc(): Doc {
     },
   }
 }
-/** the fine-tune used in steps 2 / 4 / 6: upper-lid middle raised (anchor and handles) */
+/** the fine-tune used in steps 2 / 4: upper-lid middle raised (anchor and handles) */
 export const fineTuneUp = (k: number): Eye => mapEye(zeroEye(), (p, id, i) => ((id === 'U0' && i >= 2) || (id === 'U1' && i <= 1) ? v(0, -k) : p))
+/** the fine-tune used in step 6 (dot 1791300051): upper-lid middle raised AND lower-lid middle lowered, so the
+ *  blink rule's same-state base (upper copied onto lower) actually changes and 'new base + correction' is tested */
+export const fineTuneUpAndLower = (up: number, down: number): Eye =>
+  mapEye(zeroEye(), (p, id, i) => ((id === 'U0' && i >= 2) || (id === 'U1' && i <= 1) ? v(0, -up) : (id === 'L0' && i >= 2) || (id === 'L1' && i <= 1) ? v(0, down) : p))
