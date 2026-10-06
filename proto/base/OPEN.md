@@ -103,6 +103,28 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).
 
+## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
+
+`src/experiments/scenarioE*.ts` are framework tests only. They do **not** verify the common
+evaluation interface. Registered gaps:
+
+- **Bug (confirmed by dot, not fixed):** `closePresetTarget` always applies the turn to its preset
+  line, so in order O2 (close → turn) the target is turned twice. Closure metrics still read 0 — the
+  checks test closure, not world position. O2 preset-target results at non-zero angles are invalid.
+- Declared reads (`part:turn`, `rule:close`, `rule:surprise`) are never actually read; the
+  "declared = actual reads" check covers character keys only. `writesTo` is metadata — no writer,
+  invalidation or ownership enforcement.
+- `generatedTarget` is a current-shape rule (midline of the current lids), not a character-data
+  target. T1 rebuilds from PART + character data and ignores its input (a named baseline only).
+- Surprise compared at 0° only; the "30° turn" is an affine squeeze + 10° rotation + shift, not a 3D
+  yaw, perspective or occlusion. "wide/narrow" vary middle anchors only; one topology in ebb7ff8.
+- Metrics are sampled (129 points per lid): maxGap is not an analytic maximum; crossings miss
+  tangencies, collinear overlap, near-corner and single-lid self-intersections; area is not
+  transform-invariant; strokeOverlap is a one-sided proximity proxy, not rendered coverage. No
+  rendering, so nothing about stroke darkening/thickening is established.
+- No costs measured. Default + reusable specialist family is not demonstrated (8570f8f's range
+  experiment is not reviewed and will not be extended).
+
 ## Open
 
 1. Not covered by tests yet: fill picking and save/reopen through the UI (the slice has no save/open
