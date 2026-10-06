@@ -8,6 +8,8 @@ import {
   curveIds,
   dist,
   fineTune,
+  fineTuneLarge,
+  strongSide,
   frontEye,
   mapEye,
   MIN_SPREAD,
@@ -87,6 +89,15 @@ describe('fine-tune transfer (doc 18 §10.3d)', () => {
     const rule = transferPerCurve(front, tuned, side)
     const t1 = transferAdditive(front, tuned, side)
     report.push({ check: 'redrawn', ruleVsT1: curveDev(rule.eye, t1), sharedGapRule: sharedGap(rule.eye), sharedGapReconciled: sharedGap(reconcileShared(rule.eye)) })
+  })
+
+  it('large fine-tune on a strong side view (bowen 1791293646): reported, not judged', () => {
+    const big = fineTuneLarge(front)
+    const side = mapEye(front, strongSide)
+    const ideal = mapEye(big, strongSide)
+    const rule = transferPerCurve(front, big, side)
+    const t1 = transferAdditive(front, big, side)
+    report.push({ check: 'large + strong', carriedVsIdeal: curveDev(rule.eye, ideal), carriedReconciledVsIdeal: curveDev(reconcileShared(rule.eye), ideal), asIsVsIdeal: curveDev(t1, ideal), sharedGapCarried: sharedGap(rule.eye), perCurve: rule.perCurve })
   })
 
   it('prints the table', () => {

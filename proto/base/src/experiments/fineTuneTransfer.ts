@@ -157,6 +157,22 @@ export const sideMaps = {
     return v(Math.cos(th) * x - Math.sin(th) * y + 2, Math.sin(th) * x + Math.cos(th) * y)
   },
 }
+/** A large fine-tune (bowen 1791293646): upper-lid middle raised by 4, right corner moved out by 3. */
+export function fineTuneLarge(front: Eye): Eye {
+  const e = Object.fromEntries(curveIds.map((id) => [id, front[id].map((p) => ({ ...p }))])) as Eye
+  const up = v(0, -4)
+  e.U0[3] = add(e.U0[3], up); e.U0[2] = add(e.U0[2], up); e.U1[0] = add(e.U1[0], up); e.U1[1] = add(e.U1[1], up)
+  const out = v(3, 0)
+  for (const id of ['U1', 'L1'] as CurveId[]) { e[id][3] = add(e[id][3], out); e[id][2] = add(e[id][2], out) }
+  return e
+}
+/** A strong side view: squeezed to about a third, tilted 25°, slightly stretched vertically, with a sag. */
+export const strongSide = (p: V) => {
+  const th = (25 * Math.PI) / 180
+  const x = 0.33 * p.x + 0.01 * p.x * p.x
+  const y = 1.1 * p.y * (1 + 0.025 * p.x) + 0.02 * p.x * p.x
+  return v(Math.cos(th) * x - Math.sin(th) * y + 2, Math.sin(th) * x + Math.cos(th) * y)
+}
 export function redrawn(side: Eye): Eye {
   const e = Object.fromEntries(curveIds.map((id) => [id, side[id].map((p) => ({ ...p }))])) as Eye
   // independent edits an artist might make when redrawing the side view (handles only, ends kept shared)
