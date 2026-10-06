@@ -193,6 +193,8 @@ paths include the own-ink protection of all 100 fills (S2) and the interleaved p
 | 19 | fill boundary | 44.4 | 65.9 | 24.0 | 43.8 | 371 |
 
 B is ≈ 1.5–1.9× faster than Fabric A on the draw call — not ≈ 200×; the earlier gap was the dot cache.
+These are draw-call times of the current sample (not a whole frame, not on-screen latency), single run,
+not yet independently re-verified (dot).
 Option A (incremental scene) still matters: a full rebuild per move costs ≈ 100–300 ms more (build +
 attach). Input → draw call done is not on-screen presentation.
 
