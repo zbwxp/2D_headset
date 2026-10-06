@@ -6,14 +6,22 @@ curves/fills, 8 layers, connections, one pose per curve); A-mode drag of one fre
 moves after one warm-up move; each move waits two animation frames. **Per-move averages; one run —
 informational, not a benchmark, not a cross-machine claim.**
 
-| curves | onion yaws | plan | preview changes | assemble lists | container scan | build objects | attach (remove + add) | renderAll (per render) | renders / move | Fabric objects | path strings / move | whole-table rows scanned / move |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 121 | 0 | 0.08 ms | 0.10 ms | 0.02 ms | 0.07 ms | 11.5 ms | 12.5 ms | 156 ms | 2 | 1,783 | 151 | 408 |
-| 121 | 19 | 0.07 | 0.08 | 0.72 | 0.08 | 37.4 | 34.2 | 170 | 2 | 4,367 | 2,735 | 408 |
-| 1000 | 0 | 0.10 | 0.05 | 0.05 | 0.22 | 85.9 | 140.0 | 178 | 2 | 13,210 | 1,030 | 3,045 |
-| 1000 | 19 | 0.10 | 0.07 | 4.62 | 0.25 | 280.2 | 539.1 | 207 | 2 | 32,495 | 20,315 | 3,045 |
-| 3000 | 0 | 0.07 | 0.05 | 0.18 | 0.62 | 259.7 | 734.2 | 207 | 2 | 39,210 | 3,030 | 9,045 |
-| 3000 | 19 | — | — | — | — | — | — | — | — | — | — | — (did not finish the initial load within 300 s) |
+**Correction (same day):** the first table counted Fabric's top-layer `after:render` (renderTop,
+`contextTop`) as a second render of each move and timed it from the earlier start mark, so "2 renders
+per move" and "renderAll ≈ 156–207 ms" were wrong. Fixed in `FabricView`: only the main canvas render
+is timed; input → paint is measured from the pointer event to the end of that render. Corrected run:
+
+| curves | onion yaws | plan | preview changes | assemble lists | container scan | build objects | attach (remove + add) | renderAll (main canvas) | input → paint | renders / move | Fabric objects | path strings / move | whole-table rows / move |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 121 | 0 | 0.05 ms | 0.05 ms | 0.05 ms | 0.03 ms | 11.4 ms | 12.6 ms | 128.8 ms | 168.7 ms | 1 | 1,783 | 151 | 408 |
+| 121 | 19 | 0.08 | 0.07 | 0.80 | 0.05 | 37.7 | 34.2 | 144.0 | 232.9 | 1 | 4,367 | 2,735 | 408 |
+| 1000 | 0 | 0.08 | 0.08 | 0.07 | 0.43 | 86.2 | 138.8 | 151.1 | 394.1 | 1 | 13,210 | 1,030 | 3,045 |
+| 1000 | 19 | 0.12 | 0.03 | 4.72 | 0.23 | 279.1 | 540.5 | 178.2 | 1,020.0 | 1 | 32,495 | 20,315 | 3,045 |
+| 3000 | 0 | 0.10 | 0.07 | 0.15 | 0.65 | 259.8 | 743.7 | 186.5 | 1,209.6 | 1 | 39,210 | 3,030 | 9,045 |
+| 3000 | 19 | — | — | — | — | — | — | — | — | — | — | — | — (did not finish the initial load within 300 s, first run) |
+
+"Evaluation ≤ 5 ms" holds for THIS workload only (dot): no fill materials, no real recording, no
+large-area full change.
 
 What remains on the drawing path, per move (from the code and these counts):
 
@@ -26,8 +34,7 @@ What remains on the drawing path, per move (from the code and these counts):
 4. **Attach**: all canvas objects are removed and re-added every render (`attach`), growing faster
    than linearly with the object count here.
 5. **One whole-table scan per render** (`all(reader, 'container')`): rows scanned = document size.
-6. **renderAll** repaints every object (≈ 156–207 ms per render in this run), and each move produced two
-   renders.
+6. **renderAll** repaints every object (≈ 129–187 ms per render in the corrected run); one render per move.
 
 Evaluation (plan + preview changes + list assembly) is ≤ 5 ms in every completed case; it is not where
 the time goes. These numbers do not decide the drawing approach by themselves (dot: replacing the

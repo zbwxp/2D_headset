@@ -44,7 +44,7 @@ export class FabricView {
   /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
   readonly latencies: number[] = []
   /** Drawing-path phase timings in ms, accumulated (dot: measure before deciding how the canvas changes). */
-  readonly timing = { plan: 0, previewChanges: 0, assemble: 0, containerScan: 0, buildObjects: 0, attach: 0, renderAll: 0, renders: 0, moves: 0 }
+  readonly timing = { plan: 0, previewChanges: 0, assemble: 0, containerScan: 0, buildObjects: 0, attach: 0, renderAll: 0, renders: 0, moves: 0, inputToPaint: 0, paintsAfterInput: 0 }
   resetTiming() {
     for (const k of Object.keys(this.timing) as (keyof FabricView['timing'])[]) this.timing[k] = 0
   }
@@ -57,11 +57,24 @@ export class FabricView {
   ) {
     this.canvas = new Canvas(el, { selection: true, preserveObjectStacking: true })
     this.canvas.setViewportTransform([3, 0, 0, 3, 150, 60])
+    // Time the MAIN canvas render only: Fabric also fires after:render for the top layer (renderTop,
+    // ctx = contextTop) — counting those doubled the renders and mis-timed them (found 2026-10-06).
     let renderStart = 0
-    this.canvas.on('before:render', () => (renderStart = performance.now()))
-    this.canvas.on('after:render', () => {
-      this.timing.renderAll += performance.now() - renderStart
+    let paintedInput = 0
+    this.canvas.on('before:render', (e) => {
+      if ((e as { ctx?: unknown }).ctx !== this.canvas.contextTop) renderStart = performance.now()
+    })
+    this.canvas.on('after:render', (e) => {
+      if ((e as { ctx?: unknown }).ctx === this.canvas.contextTop) return
+      const now = performance.now()
+      this.timing.renderAll += now - renderStart
       this.timing.renders++
+      // input → presentation: from the latest pointer event to the end of the main render it caused
+      if (this.lastInputTs > paintedInput) {
+        this.timing.inputToPaint += now - this.lastInputTs
+        this.timing.paintsAfterInput++
+        paintedInput = this.lastInputTs
+      }
     })
     // Fabric caches its target before 'mouse:down:before' fires, so we route V-mode targets in a
     // capture-phase listener on Fabric's wrapper element (public `wrapperEl`), which runs first.

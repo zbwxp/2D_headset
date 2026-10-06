@@ -23,7 +23,9 @@ changes. Replacing the renderer is not a given.
 
 **Inventory done (not reviewed):** `bench-results/drawing-costs.md` — in a real Chromium drag the
 evaluation is ≤ 5 ms in every completed case; the time is in building Fabric objects (path strings +
-parsing), attaching (remove + re-add all), renderAll (≈ 156–207 ms per render; 2 renders per move),
+parsing), attaching (remove + re-add all), renderAll (≈ 129–187 ms per render, corrected — an earlier
+reading of "2 renders per move, 156–207 ms" counted Fabric's top-layer render), input → paint 169 ms
+(121 curves) to 1.2 s (3000),
 plus one whole-table scan per render and whole-list consumption per onion yaw. 3000 curves with 19
 onion yaws did not finish loading.
 

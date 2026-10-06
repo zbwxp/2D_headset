@@ -50,6 +50,7 @@ for (const curves of SIZES)
           buildObjects: per(r.timing.buildObjects),
           attach: per(r.timing.attach),
           renderAll: r.timing.renders ? +(r.timing.renderAll / r.timing.renders).toFixed(2) : null,
+          inputToPaint: r.timing.paintsAfterInput ? +(r.timing.inputToPaint / r.timing.paintsAfterInput).toFixed(2) : null,
         },
         perMove: {
           previewEvals: per(r.counters.previewEvals),
