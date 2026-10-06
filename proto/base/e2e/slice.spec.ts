@@ -239,3 +239,39 @@ test('V: Escape during a Fabric transform cancels it; nothing written', async ({
   expect(after.log.filter((l: any) => l.cmd.type.startsWith('transform'))).toEqual([])
   expect(await sceneIsPureProjection(page)).toBe(true)
 })
+
+test('reference + 改源: dragging right on the mirrored copy moves the placed point right (source moves left)', async ({ page }) => {
+  await open(page)
+  await page.check('#src')
+  // R1/E1#e2 is placed at (90, 50) (mirror of E1 e2 at (-30, 50) around x = 30)
+  await drag(page, { x: 90, y: 50 }, { x: 96, y: 50 })
+  const pts = await page.evaluate(() => {
+    const c = (window as any).__contour
+    const ev = c.evaluate(c.editor.reader)
+    return {
+      placed: ev.curves.find((x: any) => x.address === 'reference:R1/curve:E1').anchors.e2.p,
+      source: c.editor.reader.get('curve:E1').anchors.e2.p,
+    }
+  })
+  expect(pts.placed).toEqual({ x: 96, y: 50 }) // follows the mouse on screen
+  expect(pts.source).toEqual({ x: -36, y: 50 }) // source moved in its own (mirrored) space
+  const s = await state(page)
+  expect(s.log[0].cmd).toMatchObject({ type: 'moveAnchors', delta: { x: -6, y: 0 } })
+  expect((await replayViaApi(page)).doc).toBe(s.doc)
+})
+
+test('reference handle drag without 改源 is rejected explicitly; the source is not written', async ({ page }) => {
+  await open(page)
+  // give E1/e2 a visible handle through the source first, via the API (not part of the gesture under test)
+  await page.evaluate(() => (window as any).__contour.api.apply({ type: 'moveHandle', target: { curveId: 'curve:E1', anchorId: 'e2' }, handle: 'out', delta: { x: -10, y: 0 } }))
+  await page.evaluate(() => (window as any).__contour.view.render())
+  const before = await state(page)
+  // R1 mirrors it: placed handle at x = −(−40) + 60 = 100, y = 50
+  await drag(page, { x: 100, y: 50 }, { x: 104, y: 52 })
+  const after = await state(page)
+  expect(after.doc).toBe(before.doc)
+  expect(after.undo).toEqual(before.undo)
+  expect(after.status).toContain('INVALID')
+  const rej = await page.evaluate(() => (window as any).__contour.view.rejections)
+  expect(rej[0].address).toBe('reference:R1/curve:E1#e2.out')
+})

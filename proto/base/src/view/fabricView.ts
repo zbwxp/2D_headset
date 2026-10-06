@@ -25,8 +25,10 @@ export class FabricView {
   /** In A mode, editing an anchor seen through a reference writes an override unless this is true. */
   editSource = false
   readonly log: UiLogEntry[] = []
+  /** Gestures refused before any command could be formed (e.g. unsupported reference handle edits). */
+  readonly rejections: { address: string; error: EditError }[] = []
   status = ''
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; cmd?: Command; ok: boolean } | null = null
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; cmd?: Command; ok: boolean; rejected?: EditError } | null = null
   private groupStart = new Map<FabricObject, TMat2D>()
   /** True while we re-project. Fabric fires `object:modified` again when we remove an object that
    *  is still the current transform target (endCurrentTransform → _finalizeCurrentTransform), which
@@ -201,23 +203,43 @@ export class FabricView {
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, ok: false }
   }
 
-  private commandFor(hit: Extract<Hit, { kind: 'anchor' | 'handle' }>, delta: Vec): Command {
+  /**
+   * Map a screen-space drag to a command. Seen through a reference, the delta is converted into the
+   * source's local space for BOTH override and source edits (dot: mirrored drag went the wrong way).
+   * Handle overrides on references are not supported in this slice and are rejected explicitly, never
+   * silently written to the source (dot).
+   */
+  private commandFor(hit: Extract<Hit, { kind: 'anchor' | 'handle' }>, delta: Vec): Command | { error: EditError } {
     const target = { curveId: hit.curveId, anchorId: hit.anchorId }
-    if (hit.kind === 'handle') return { type: 'moveHandle', target, handle: hit.handle, delta }
-    if (hit.referenceId && !this.editSource) {
-      // The reference is mirrored: convert the screen-space delta into the source's local space.
+    let local = delta
+    if (hit.referenceId) {
       const r = this.editor.reader.get(hit.referenceId) as any
       const inv = util.invertTransform([r.transform.a, r.transform.b, r.transform.c, r.transform.d, 0, 0])
-      return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: { x: inv[0] * delta.x + inv[2] * delta.y, y: inv[1] * delta.x + inv[3] * delta.y } }
+      local = { x: round(inv[0] * delta.x + inv[2] * delta.y), y: round(inv[1] * delta.x + inv[3] * delta.y) }
     }
-    return { type: 'moveAnchors', targets: [target], delta }
+    if (hit.kind === 'handle') {
+      if (hit.referenceId && !this.editSource)
+        return { error: { code: 'INVALID', message: 'handle overrides on a reference are not supported in this slice; tick 改源 to edit the source', objects: [hit.address], fixes: ['tick 改源'] } }
+      return { type: 'moveHandle', target, handle: hit.handle, delta: local }
+    }
+    if (hit.referenceId && !this.editSource) return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: local }
+    return { type: 'moveAnchors', targets: [target], delta: local }
   }
 
   private onMove(e: PointerEvent) {
     if (!this.drag) return
     const p = this.canvas.getScenePoint(e)
     const delta = { x: round(p.x - this.drag.start.x), y: round(p.y - this.drag.start.y) }
-    const cmd = this.commandFor(this.drag.hit, delta)
+    const mapped = this.commandFor(this.drag.hit, delta)
+    if ('error' in mapped) {
+      this.drag.cmd = undefined
+      this.drag.ok = false
+      this.drag.rejected = mapped.error
+      this.setStatus(`${mapped.error.code}: ${mapped.error.message}`)
+      this.render()
+      return
+    }
+    const cmd = mapped
     const pv = this.editor.preview(cmd)
     this.drag.cmd = cmd
     this.drag.ok = pv.ok
@@ -236,6 +258,11 @@ export class FabricView {
   private onUp() {
     const d = this.drag
     this.drag = null
+    if (d?.rejected && !d.cmd) {
+      this.rejections.push({ address: d.hit.address, error: d.rejected })
+      this.render()
+      return
+    }
     if (!d?.cmd) return
     if (d.ok) this.applyAndLog(d.cmd)
     else this.log.push({ source: 'ui', cmd: d.cmd, ok: false, written: false, error: this.editor.preview(d.cmd).ok ? undefined : (this.editor.preview(d.cmd) as any).error })
