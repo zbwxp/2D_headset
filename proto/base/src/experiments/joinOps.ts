@@ -2,18 +2,19 @@
 // same data model as deletePoint (full control points per state and preset; references; fills; connections).
 // Every command acts on every state of every preset in one result, or refuses with the dependant named.
 //
-// 6a addClosingSegment — Inkscape "join selected end nodes with a new segment" (Alt+J): a new segment from the
-//    last anchor to the first; existing anchors and handles are NOT changed (the new segment uses the stored
-//    outer handles of the two ends — our choice, reported; no data elsewhere changes).
+// 6a addClosingSegment — after Inkscape "join selected end nodes with a new segment" (Alt+J): a new segment from
+//    the last anchor to the first. OUR COMMAND SEMANTICS (not claimed to be Inkscape's exact implementation): no
+//    existing anchor or handle changes; the new segment uses the stored outer handles of the two ends.
 // 6b mergeEnds — Inkscape "join selected nodes" (Shift+J): the two end anchors become one, at their midpoint by
 //    default, or at one of them ("you can lock the position of one of the two joined nodes"). Each handle moves
 //    with its anchor. The curve becomes a closed loop; the removed anchor must carry no connection.
 // 7  removeClosingSegment — the inverse of 6a: a closed loop becomes one open chain starting at the removed
 //    segment's end. A reference or fill on that segment is refused (no dangling address).
 //    (Opening a merged node = cutting at it: fillBridge.breakAt, already reviewed.)
-// 8  bind / unbind — Inkscape Shift+J between end nodes of two curves: a new connection; positions per state
-//    at the midpoint or locked to one end, handles moving with their anchors; unbind removes the connection
-//    and leaves positions as they are.
+// 8  bind / unbind — after Inkscape Shift+J between end nodes of two curves: a new connection; positions per
+//    state at the midpoint or locked to one end, handles moving with their anchors; unbind removes the
+//    connection and leaves positions as they are. An end already in a connection is refused (adding a node to an
+//    existing connection group is not supported; moving it would pull its old binding apart).
 import { v, type V } from './scenarioE'
 import type { Anchor, Curve, Doc, End, Segment } from './deletePoint'
 
@@ -66,8 +67,10 @@ export function mergeEnds(doc: Doc, curveId: string, keep: Keep = 'mid'): Result
   if (isClosed(c0)) return { ok: false, reason: `${curveId} is already closed` }
   if (c0.segments.length < 2) return { ok: false, reason: `${curveId} has one segment: merging its ends would make a degenerate loop` }
   const { first, last } = ends(c0)
-  const conn = Object.entries(doc.connections).find(([, es]) => es.some((e) => e.curveId === curveId && e.anchorId === last))
-  if (conn) return { ok: false, reason: `connection ${conn[0]} uses ${curveId}#${last}, which merging removes: unbind it first` }
+  // either end in a connection: refused — merging removes the last end and moves the first, which would pull an
+  // existing binding apart (dot 1791305159); joining a node into a connection group is not supported here
+  const conn = Object.entries(doc.connections).find(([, es]) => es.some((e) => e.curveId === curveId && (e.anchorId === last || e.anchorId === first)))
+  if (conn) return { ok: false, reason: `connection ${conn[0]} uses an end of ${curveId}: merging would move or remove it — unbind it first` }
   const d: Doc = structuredClone(doc)
   for (const cs of presetsOf(d)) {
     const c = cs[curveId]

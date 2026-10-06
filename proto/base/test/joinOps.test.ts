@@ -74,6 +74,10 @@ describe('close / open', () => {
     c.connections = { k: [{ curveId: 'U', anchorId: 'c' }, { curveId: 'W', anchorId: 'p' }] }
     const r = mergeEnds(c, 'U')
     expect(r.ok === false && r.reason).toContain('connection k')
+    // the FIRST end bound elsewhere: merging would move it and pull the binding apart → refused, for every keep mode
+    const f = structuredClone(d0)
+    f.connections = { k2: [{ curveId: 'U', anchorId: 'a' }, { curveId: 'W', anchorId: 'q' }] }
+    for (const keep of ['mid', 'first', 'second'] as const) expect(mergeEnds(f, 'U', keep).ok).toBe(false)
     report.push({ case: 'merge ends', refusedOnConnection: !r.ok })
   })
 })
@@ -116,10 +120,15 @@ describe('bind / unbind', () => {
       interior: bind(d, { curveId: 'U', anchorId: 'b' }, { curveId: 'W', anchorId: 'p' }),
       sameCurve: bind(d, { curveId: 'U', anchorId: 'a' }, { curveId: 'U', anchorId: 'c' }),
       alreadyBound: bind(bound, { curveId: 'U', anchorId: 'c' }, { curveId: 'W', anchorId: 'q' }),
+      otherEndBound: bind(bound, { curveId: 'W', anchorId: 'q' }, { curveId: 'U', anchorId: 'a' }), // fine: neither is bound
+      partnerBound: bind(bound, { curveId: 'U', anchorId: 'a' }, { curveId: 'W', anchorId: 'p' }), // W#p already bound
       noConnection: unbind(d, 'zz'),
       nonFinite: bind(nan, { curveId: 'U', anchorId: 'c' }, { curveId: 'W', anchorId: 'p' }),
     }
-    for (const r of Object.values(cases)) expect(r.ok).toBe(false)
+    const { otherEndBound, ...refused } = cases
+    expect(otherEndBound.ok).toBe(true)
+    if (otherEndBound.ok) expect(otherEndBound.doc.presets.A.U.states.front.c).toEqual(bound.presets.A.U.states.front.c) // old binding not pulled apart
+    for (const r of Object.values(refused)) expect(r.ok).toBe(false)
     expect(JSON.stringify(d)).toBe(before)
     report.push({ case: 'refusals', reasons: Object.fromEntries(Object.entries(cases).map(([k, r]) => [k, r.ok ? 'ok' : r.reason])) })
   })
