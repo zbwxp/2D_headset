@@ -50,31 +50,37 @@ Today: covered by data tests only; picture test to add (expected to pass).
 
 ## 待定义
 
-**D1 — what depthOffset means.** Doc 11 says it expresses front/back changes "across layers"; the
-unit and the reference are not written down. The old product (V0.12.36, `docs/v01236-curve-depth-offset.md`,
-`src/domain/drawing/depth.ts` in the main repo, read) defines it as: an integer counted in structural
-siblings; the reference is either the direct parent or the top-level layers; positive = forward,
-negative = backward; clamped at the ends, never crossing another hierarchy level; never follows
-another curve's offset (so no cycles); moving a curve's ink does not move fills. Worked example with
-layers back → front L1 = [collar K], L2 = [neck], L3 = [group G = [eye-white fill F, eye line E], jaw J]:
-K +1 (layer reference) → K in front of all of L2, behind L3; K +5 → clamped, in front of all of L3;
-E −1 (parent reference) → E behind F inside G. Proto today has one number and no reference choice.
+**Requirements already fixed (bowen, doc 11 §2–§3; NOT to be re-asked):** lines AND fills support a
+depth offset that can move them across layers; a fill never covers the strokes of its own boundary;
+every other object still covers / is covered by it normally. The old product (V0.12.36) is a
+comparison only: its "offset moves lines only", "a fill may cover its own line" and "boundary in the
+same layer only" are NOT constraints of the new base (dot).
 
-**D2 — the fill and its own boundary strokes (RC-16).** Candidates:
-- R1 (old product): no special rule. A new fill is inserted just behind all of its boundary strokes
-  (`paintCommands.ts` createFill: "A new fill starts immediately behind all of its boundary strokes");
-  an explicit reorder is obeyed in plain painter's order, including a fill covering its own line
-  (V0.12.36: "including occlusion by its own fill").
-- R2 (local guarantee): the fill paints at its own position, then the boundary pieces it actually
-  references are painted again over it, clipped to the fill. Open: semi-transparent lines darken where
-  painted twice; an object between the line and the fill is covered by the repaint inside the fill.
-- Withdrawn: a global constraint "every boundary curve above the fill, reject conflicts" (it creates new
-  conflicts when one boundary is shared by several fills, dot).
-Product choice → bowen. Doc 03 RC-16 says "自身边界保留…已明确"; the old product does R1.
+**P6 — own boundary strokes stay visible (明确, requirement).** Fill F and its boundary curve B; F placed
+in front of B by order or offset. Expected: B's stroke pixels are the stroke colour over F, with the
+same single-stroke colour as where B does not touch F (no double-painted darkening for a
+semi-transparent stroke). Today: passes trivially (all curves are painted after all fills).
 
-**D3 — boundaries in another layer.** Doc 11 §2 (fill row): "边界可以引用其他图层的段". The old product
-refused this ("连接仅支持同一图层"). Which strokes count as the fill's own, and how D2 applies when the
-boundary lies in another layer, depends on D2.
+**D1 — depthOffset base and unit (implementation to design).** The requirement is fixed; how the number
+is measured is not. Candidate for comparison: the old product (`docs/v01236-curve-depth-offset.md`,
+`src/domain/drawing/depth.ts`, read): an integer counted in structural siblings; reference = direct
+parent or top-level layers; positive = forward; clamped at the ends; never follows another curve's
+offset. Worked example, layers back → front L1 = [collar K], L2 = [neck], L3 = [group G = [eye-white
+fill F, eye line E], jaw J]: K +1 (layer reference) → in front of all of L2, behind L3; K +5 → clamped,
+in front of all of L3. For fills the same unit would apply (new requirement; the old product had no
+fill offset).
+
+**D2 — how the own-stroke rule composes with order and offsets (implementation to design).** One
+shared compositing rule is needed that keeps own boundary strokes visible WITHOUT painting a stroke
+twice (no darkening of semi-transparent strokes) and without covering objects that should be in front.
+"Repaint the boundary over the fill" (former R2) is a candidate implementation only and fails that
+second condition as stated. Expected pictures for the hard cases (an unrelated object between the fill
+and its boundary in depth; a semi-transparent boundary) are to be defined with dot before any test.
+Withdrawn: a global "every boundary curve above its fill, reject conflicts" constraint.
+
+**D3 — boundaries in another layer.** Doc 11 §2 (fill row): "边界可以引用其他图层的段" — allowed in the
+new design. Which strokes count as the fill's own, and how D2 applies when one boundary is shared by
+several fills in different layers, follows from D2.
 
 **D4 — global contradictions (RC-16: "全局矛盾可检测").** What counts as a contradiction depends on D1/D2
 (under R1 with the old offset rule there is none: plain order plus clamped offsets cannot form a cycle).
