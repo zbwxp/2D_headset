@@ -245,6 +245,7 @@
 | 共同机制 | 撤销重做、事务（一次手势 / 一次批量 = 一步，失败不留写入） | 已定（`editor.ts` 唯一写入口） | @tldraw/store diff + @tldraw/state | 有。已验：批量失败整体回滚、净效果为零不进历史等（`api-results`、`dot-*` 测试）。各工具不另写一套 |
 | 共同机制 | 保存 | **未写** | @tldraw/store 快照 / 迁移 | 有读取保存数据求值（`runtime.ts`）；保存界面未查 |
 | 共同机制 | 依赖重算 | 部分（§2.1） | @tldraw/state computed | 有（`derived.ts`） |
+| 4 外观与显示 | **部件替换**（同一位置换一套画好的部件：换瞳孔、换牙齿；也包括 `>_<` 这类换线条表情） | **未写**（bowen 1791290440 提出；不属于关键形态或整体变形，是第三种能力） | Spine 的皮肤（Claude 读官方指南：「Skins allow a skeleton's animations to be reused with different sets of attachments」，可用于换装或用零件拼出整个角色） | 无；不在 §9 第一阶段 |
 | 核心 | 捏脸 + 转视角 + 表情共同求值（F9） | 一条组合已定义并验证（§8：局部表情 → 角色形变 → 视角形变 → 放置）；§6-8 能力声明格式未定 | Live2D 父变形器 + 子关键形态；Inkscape Lattice2 正向（参照） | 独立实验通过（proto `5d7053a`，dot 复验）；产品里仍只有转视角（`pose.ts`），未接入 |
 
 - 「核心」一行是 base 的主任务（dot）：绘制工具盘顺了不等于底座完成。
