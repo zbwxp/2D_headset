@@ -16,6 +16,7 @@
 | [10-base-reference-code.md](10-base-reference-code.md) | 最小实现的地基：分两步走，每个模块参考哪份成熟代码（用法、许可证） | Claude 提议，待 dot 商定、bowen 点头 |
 | [11-base-objects-and-layers.md](11-base-objects-and-layers.md) | **基本对象与图层**：曲线 / 端点 / 笔触 / 连接 / 填充 / 图层 / 编组 / 引用；同一内容被引用两次；选择、撤销、保存；人用界面与 AI API 共用一套操作；录制如何叠加 | Claude（待 dot 审） |
 | [12-kernel-check.md](12-kernel-check.md) | 候选内核职责核对（源码审查）：tldraw SDK / svgcanvas / Fabric / Paper.js 对照 11 的四组关键职责；可借用零件；初步结论 | Claude 汇总（待 dot 抽查） |
+| [13-recording-references.md](13-recording-references.md) | 录制的参照：Live2D（含 ArtPath 矢量线、Glue）、CSP、MMD；DMB 论文的边界（dot 核对） | Claude 汇总，dot 核对 |
 
 约定：
 
