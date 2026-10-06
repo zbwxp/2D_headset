@@ -9,7 +9,7 @@
 | 我们的问题 | 最值得参照 | 借什么 |
 | --- | --- | --- |
 | 文档里到底存什么、对象身份 | Figma、Blender | 扁平的 ID → 属性存储；客户端生成稳定 ID；ID 之间的强引用 |
-| 编辑、事务、撤销 | Blender、Compositor、Figma | 一次操作 = 一个撤销步；拖拽先改草稿再一次提交；不改变文档的操作不进历史 |
+| 编辑、事务、撤销 | Blender、Compositor、Figma | 一次操作 = 一个撤销步（Blender 操作符）；Compositor 的前后状态撤销和撤销分组；不改变文档的操作不进历史 |
 | 求值与保存分离 | Blender depsgraph | 只保存原始数据；视口和导出读“求值副本”，求值结果永不保存 |
 | 模板 / 实例 / 局部修改 | Figma、Blender、Spine | 实例 = 引用 + 参数值 + 按稳定 ID 路径记录的稀疏覆盖；链接 / 覆盖 / 断开 |
 | 转头、表情、捏形 | Live2D Cubism、Moho、Spine、Harmony | 参数 → 关键形态；分层叠加；拓扑变化用切换而不是插值 |
@@ -147,13 +147,15 @@ macOS 上用 Swift/Metal 写的像素合成器。
 
 **模型**：`CanvasDocument` 和 `ImageLayer` 是值类型；图层是一个扁平数组，用 `parentID/isGroup` 表达文件夹；像素是不可变的共享 `CGImage`，所以复制文档很便宜。选择属于文档（撤销会覆盖它），但不保存。参数化的形状和文字只在图层图像仍是它们渲染出的那张图时“活着”，任何破坏性像素编辑都会丢掉它们。
 
-**历史**（`Document/DocumentHistory.swift`）：撤销存整份文档的前后快照，共享像素。`beginEdit/endEdit` 可嵌套、带名字，只有最外层记录；没有改变的编辑通过 `Equatable` 丢弃，所以选择、导航不会清空重做；手势进行中禁止撤销；拖拽改的是草稿，结束时一次提交。
+**历史**（`Document/DocumentHistory.swift`）：撤销存整份文档的前后快照，共享像素。`beginEdit/endEdit` 可嵌套、带名字，只有最外层记录。注意：它们只**划定撤销分组的边界**，工具仍然直接修改 `EditorSession`，并不是一个统一做校验、提交、失败回滚的入口（dot 指出）。没有改变的编辑通过 `Equatable` 丢弃，所以选择、导航不会清空重做；手势进行中禁止撤销。变换工具有草稿（`session.transformEdit?.draft`，见 `UI/TransformInspector.swift`），文字和色阶也各有草稿状态；**这只是个别工具的做法，没有证据表明它是全软件的保证**。
 
 **保存**：每个历史条目有一个修订 UUID，“已修改”就是当前修订 ≠ 已保存修订，撤销回保存点会自动变回“未修改”。保存时捕获一份快照和修订号，后台写盘，只把那一个修订标为已保存。文件格式有严格版本号，加载前全量校验再替换，原子写入；外部修改按内容摘要检测。
 
-**借**：不可变文档 + 结构共享（TypeScript 里用 Immer 或持久化 Map）；命名、可嵌套的事务；草稿再提交；无变化的编辑不进历史；修订号做脏标记；后台保存捕获的快照；版本化 schema + 加载前全量校验；屏幕和导出共用一个渲染器；按对象身份做缓存键。
+**可以借鉴的具体工程机制**（目前只是写进设计文档，**还没有实现或移植验证**）：不可变文档 + 结构共享（TypeScript 里可以用 Immer 或持久化 Map）；用前后状态做撤销；带名字、可嵌套的撤销分组；无变化的编辑不进历史；修订号做脏标记；保存时捕获快照后在后台写盘；版本化 schema + 加载前全量校验；按对象身份做缓存键。
 
-**不借**：没有求值层，烘焙后的像素就是文档本身；扁平图层、没有复用和参数；一个巨大的 `EditorSession` 加上工具枚举，没有注册边界；“编辑后静默丢掉矢量数据”的回退（对线稿来说曲线必须永远是真相）。
+**之前说错、已更正的**：v0.1 写过“屏幕和导出共用一个渲染器”。核对代码后发现：导出走 `LayerRenderer`（`IO/ImageExporter.swift:48,52`），屏幕画布用的是 `Rendering/GPUCanvas.swift`（Metal），两者不是同一条路径，所以这条不成立。
+
+**不借或不适用**：它有形状、文字、调整层和效果的求值（例如 `Rendering/AdjustmentSurface.swift`、`LayerEffectsSurface.swift`、`EffectsPreviewCache.swift`）。v0.1 写的“没有求值层、像素就是最终结果”**是错的，已更正**。但它没有我们需要的模板继承、同一曲线的多角度形态、插值和反推；而且是扁平图层，没有复用和参数；一个巨大的 `EditorSession` 加上工具枚举，没有注册边界；“编辑后静默丢掉矢量数据”的回退（对线稿来说曲线必须永远是真相）。
 
 来源：本地克隆的 `Compositor/Document/EditorSession.swift`、`Document/DocumentHistory.swift`、`IO/ProjectController.swift`、`IO/ProjectStore.swift`、`docs/project-format.md`
 
