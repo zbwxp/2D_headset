@@ -287,20 +287,11 @@ describe('properties of the single write entry', () => {
             const shown = pv.ok ? e.derived.preview(pv.puts) : undefined
             const r = api.apply(act.cmd)
             if (shown && pv.ok && r.ok && r.written) {
-              const created = pv.puts.filter((x) => !(x.id in JSON.parse(before))).map((x) => x.id as string)
-              if (!created.length) expect(shown).toEqual(evaluate(e.reader)) // exact, including paint order
-              else {
-                // Created records get a fresh random id per plan (preview and commit plan separately,
-                // see OPEN.md): map the previewed ids to the committed ones; order among items with
-                // equal keys then depends on those random ids, so compare order-independently.
-                let json = JSON.stringify(shown)
-                created.forEach((id) => {
-                  const i = pv.affected.indexOf(id)
-                  if (i >= 0 && r.affected[i]) json = json.split(id).join(r.affected[i])
-                })
-                const norm = (ev: any) => ({ curves: [...ev.curves].sort((a: any, b: any) => a.address.localeCompare(b.address)), fills: [...ev.fills].sort((a: any, b: any) => a.address.localeCompare(b.address)) })
-                expect(norm(JSON.parse(json))).toEqual(norm(JSON.parse(JSON.stringify(evaluate(e.reader)))))
-              }
+              const created = pv.puts.some((x) => !(x.id in JSON.parse(before)))
+              // Plans that CREATE a record are not compared: preview and commit currently get different
+              // fresh ids — an OPEN contract problem (OPEN.md), deliberately not hidden by an
+              // id-mapping or order-insensitive comparison (dot). Every other plan: exact equality.
+              if (!created) expect(shown).toEqual(evaluate(e.reader))
             }
             if (shown && !(r.ok && r.written)) expect(doc(e)).toBe(before) // previewed but not written: nothing changed
             if (act.cmd.type === 'setContainerFlags' && act.cmd.locked === false && r.ok && r.written) seen.unlocked++

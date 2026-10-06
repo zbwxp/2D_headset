@@ -87,7 +87,9 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   list (`previewItems` = list length per move) and rebuilds every canvas object (`canvasObjects`).
 - Found by I13: a plan that CREATES a record without an explicit id gets a fresh random id per plan,
   so preview and commit ids differ (and equal-key paint order among such items follows the random
-  ids). Not on the drag path; matters for API callers who preview then apply. Open.
+  ids). Not on the drag path; matters for API callers who preview then apply. **Open contract
+  problem** (dot): property I13 does not compare creating plans at all rather than masking the
+  difference with an id-mapping or order-insensitive comparison.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).
