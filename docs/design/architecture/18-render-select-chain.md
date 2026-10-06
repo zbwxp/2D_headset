@@ -1071,7 +1071,7 @@
 > 管：**选中了什么、复制时身份怎样变、引用到底复用了什么**。不管：新的选择界面、平滑、笔触（dot）。成熟参照：tldraw 的 selection / groups（祖先选中时去重子项）、clipboard 粘贴时的 **ID 重映射**；具体的「编辑写到哪个目标」是我们的适配（§20.4）。
 
 ### 21.1 选择是会话数据，地址要完整
-- 选择**不进文档、不进撤销**（tldraw：selection 在 instance / session 状态里，不在文档记录里）。
+- 选择**不进文档、不进撤销**（tldraw：selection 在 instance / session 状态里，不在文档记录里——〔未本地核实：proto 只装了 `@tldraw/store`，没有 tlschema 源码；待 dot 或官方文档核〕）。
 - 一个选中项 = **地址**：容器 / 曲线 / 锚点 / 手柄，以及**经过哪个引用实例**（现有地址格式已有：`reference:R1/curve:E1`，`evaluate.ts:18`；命中结果带 `referenceId`，`evaluate.ts:290-292`）。
 - 祖先被选中时，子项从选择里**去重**（tldraw groups 的做法）。
 - Fabric 只提供交互（拖框、变换框），**不等于我们的框选语义已验证**（dot）。框选规则（全包含还是相交、是否穿透到引用里）列为待验证。
