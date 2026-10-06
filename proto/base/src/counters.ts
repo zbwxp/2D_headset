@@ -35,6 +35,8 @@ export const counters = {
   /** curve-at-yaw geometry computations: cached yaw-curve entries AND the boundary curves a yaw fill
    *  computes inline (once per distinct curve per fill evaluation) — all of them, not only cache misses */
   yawCurveEvals: 0,
+  /** character grids prepared (stage 3a): one per character per change of what it reads */
+  characterPrepares: 0,
   /** evaluations of one fill at one yaw */
   yawFillEvals: 0,
   /** entries dropped from the bounded yaw caches */

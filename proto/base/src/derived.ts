@@ -19,6 +19,7 @@ import { counters } from './counters'
 import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
+import { asCharacter, ctxOf, playCharacter, prepareCharacter, type Prepared } from './character'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
 import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
 
@@ -222,6 +223,14 @@ export class Derived {
   // `atYaw` assembles them on demand from the entries. Parents never hold evicted children: tldraw
   // attaches a child to its parents only while the child is actively observed (capture.ts).
   private readonly yawCurves: KeyedComputedCache<EvalCurve>
+  /**
+   * Prepared characters (stage 3a, doc 18 §24.4): one grid per character, a tldraw computed — its dependencies
+   * are what prepare actually reads (the character, family, presets, their forms, rules, helper domains,
+   * visibility, family curves, connections), so any of them changing rebuilds THAT character; edits elsewhere do
+   * not. Weighed by the shapes the grid retains, in the same budget as the angle caches. Committed state only:
+   * a preview evaluates its overlay directly and never enters this cache.
+   */
+  private readonly characters: KeyedComputedCache<Prepared>
   private readonly yawFills: KeyedComputedCache<EvalFill>
 
   constructor(
@@ -230,6 +239,15 @@ export class Derived {
     opts: { yawRetainedItems?: number } = {},
   ) {
     this.yawRetainedItems = new SharedBudget(opts.yawRetainedItems ?? 262_144, () => counters.yawEvictions++)
+    this.characters = new KeyedComputedCache<Prepared>(
+      this.yawRetainedItems,
+      (id) =>
+        computed(`character:${id}`, () => {
+          counters.characterPrepares++
+          return prepareCharacter(ctxOf(this.reader), id)
+        }),
+      (p) => (p.ok ? p.grid.retained : 1),
+    )
     this.yawCurves = new KeyedComputedCache<EvalCurve>(
       this.yawRetainedItems,
       (key) => {
@@ -383,6 +401,19 @@ export class Derived {
     const base = this.atYaw(yaw)
     counters.previewItems += base.paint.length
     return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })))
+  }
+
+  /** The prepared grid of a character (cached; see `characters`). */
+  character(characterId: string): Prepared {
+    return this.characters.get(characterId)
+  }
+  /** The document seen as a character at `yaw` (none = the drawing context) and expression values; read-only. */
+  characterAt(characterId: string, at: { yaw?: number; params?: Record<string, number> }): { ok: true; evaluated: Evaluated } | { ok: false; problems: string[] } {
+    const p = this.character(characterId)
+    if (!p.ok) return p
+    const played = playCharacter(p.grid, at)
+    if (!played.ok) return played
+    return { ok: true, evaluated: asCharacter(this.reader, at.yaw === undefined ? this.evaluated() : this.atYaw(at.yaw), played) }
   }
 
   /** Same value as `evaluate(reader)`, incrementally maintained. */

@@ -79,7 +79,8 @@ describe('maker and read-only entry agree', () => {
   it('the read-only entry imports no editor, command, cache, view or API module (first level only)', () => {
     const src = readFileSync(new URL('../src/runtime.ts', import.meta.url), 'utf8')
     const imports = [...src.matchAll(/from '(\.[^']+)'/g)].map((m) => m[1])
-    expect(imports.sort()).toEqual(['./evaluate', './model', './pose', './schema'])
+    // stage 3a adds './character' (prepare / play; itself imports only evaluate, forms, schema)
+    expect(imports.sort()).toEqual(['./character', './evaluate', './model', './pose', './schema'])
     for (const banned of ['editor', 'commands', 'derived', 'view', 'api']) expect(imports.join(' ')).not.toContain(banned)
   })
 })
