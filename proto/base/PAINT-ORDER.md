@@ -14,9 +14,11 @@ compositing design. OPEN.md and bench-results point here instead of restating ru
   recorded as a known failure until fixed.
 - **Proposal** — our (Claude + dot) design for a technical gap, with counterexamples. Not a user
   choice. No test and no known failure until dot and Claude agree; then it becomes 明确.
-- **Comparison** — the old product (main repo, V0.12.36) is reference material only. Its "offset moves
-  lines only", "a fill may cover its own line" and "boundary in the same layer only" are NOT
-  constraints of the new base.
+- **Comparison** — the pre-refactor baseline is the fixed commit "v103" (zbwxp/2D_headset
+  `720538184a810fc7a1c53ec5dbf497ad1b3ad8ba`, branch codex/recording-snapshot-v2-20261002), read
+  only with `git show <sha>:<path>`; NOT the local main workspace (V0.16 `40978ba` is an older
+  ancestor). Existing methods there are evidence, not the new spec. Its createFill same-layer limit is
+  an entry-point limit, not a global rule (doc 11 allows cross-layer boundaries).
 
 ## 1. Requirements (doc 11 §2–§3, RC-16)
 
@@ -24,7 +26,10 @@ R1. Children of a parent are ordered (fractional indexes); later is painted on t
     level of nesting.
 R2. By default the layer order and the order inside the layer decide what covers what.
 R3. Lines AND fills have a depth offset that can move them across layers.
-R4. A fill never covers the strokes of its own boundary; every other object covers / is covered by it
+R4. A fill never covers the strokes of its own boundary (bowen: to an artist a fill sits tight against
+    its lines; it is stored on the line's centre line only for simplicity, so the stroke looks like it
+    covers the fill's edge. Offsets exist to cover OTHER lines — e.g. near 90° the side-face patch is
+    brought forward to cover the side-face edge lines — never the fill's own outline); every other object covers / is covered by it
     normally. R4 is NOT "the boundary is always visible": a display interval can still hide
     the stroke and objects in front still cover it; only its own fill must not eat it (dot).
 R5. Global contradictions can be detected; local interleaving must not be mistaken for one (RC-16).
@@ -77,29 +82,37 @@ and its control pass.
 
 ## 3. Proposals (Claude → dot)
 
-**D1 — depth offset base and unit (R3).** Candidate for comparison (old product, read: integer counted
-in structural siblings; reference = direct parent or top-level layers; positive = forward; clamped at
-the ends; never follows another object's offset → no cycles). Worked example, layers back → front
-L1 = [collar K], L2 = [neck], L3 = [group G = [eye-white fill F, eye line E], jaw J]: K +1 (layer
-reference) → in front of all of L2, behind L3; K +5 → clamped, in front of all of L3. In the new base
-the same unit applies to fills. Open: whether the reference choice is per object (old) or fixed.
+**D1 — depth offset base and unit (R3).** Candidate = v103 `src/domain/drawing/depth.ts` (read): one
+mechanism for curves AND fills; an integer counted in structural sibling slots; the reference
+(`depthScope`) is PARENT or LAYER per object; positive = forward; clamped at the ends; never follows
+another object's offset → no cycles; ties keep the stable list order. Worked example, layers
+back → front L1 = [collar K], L2 = [neck], L3 = [group G = [eye-white fill F, eye line E], jaw J]:
+K +1 (LAYER) → in front of all of L2, behind L3; K +5 → clamped, in front of all of L3. bowen's use
+case: the side-face patch fill with a LAYER offset in front of the side-face edge lines.
 
-**D2 — compositing for R4 without painting a stroke twice.** Candidate C1 ("the fill leaves out its own
-stroke ink"): every object paints once at its own position in the order; a fill does not paint inside
-the ink area of the stroke pieces it references (its boundary pieces, D3). Effects:
-- An opaque own stroke behind the fill is visible, painted once (P6).
-- Objects in front of the fill cover it and the stroke normally (P7 unchanged).
-Counterexamples to settle with dot:
-1. Semi-transparent own stroke behind the fill: inside the left-out area, what shows under the stroke
-   is whatever is behind the fill, not the fill colour. With the fill BEHIND the stroke (the usual
-   case) the stroke is over the fill colour. So the same 50 % stroke looks different on its inner half
-   depending on order.
-2. An unrelated object X with stroke < X < fill in depth: inside the stroke's ink area the fill paints
-   nothing, so X shows there instead of the fill. Is "X visible through the fill only along the
-   stroke" acceptable, or should the left-out area be limited to pixels where the own stroke is the
-   top-most of {stroke, objects between}?
-Withdrawn: a global constraint lifting boundary curves above their fills; repainting the boundary over
-the fill (paints twice, covers objects that are in front of the stroke).
+**D2 — compositing for R4 (C1, agreed direction; = v103 `docs/architecture/owned-fill-compositing.md`,
+read).** Every object paints once at its own position in the order; a fill does not paint inside the
+visible ink area of its own boundary strokes that are BEHIND it. No repaint of the stroke, no lifting
+of the stroke or layer, offsets are not rewritten; objects in front still cover. v103 details to keep
+as evidence: the protected area is the stroke's actual visible ink (display intervals, tapers, caps
+and joins included; hidden or zero-visibility parts protect nothing and a hidden line is never
+revived); stroke alpha is not multiplied again; the same clip is used for fill painting and fill hit
+testing; blurred / noise-displaced stroke edges and self-intersecting ink outlines are not protected
+exactly and produce a diagnostic instead of a silent workaround; nominal vector protection, not
+byte-identical anti-aliasing.
+
+Expected pictures for the two hard cases (background: opaque grey backdrop `rgb(128,128,128)` in the
+back layer; F red `rgb(255,0,0)`):
+1. Own boundary B = 50 % blue `rgba(0,0,255,0.5)`, behind F. At a point of B's ink inside F: blue
+   over the BACKDROP once = `rgb(64,64,192)` — natural result of "F leaves out B's ink". With F
+   BEHIND B (the usual order) the same point is blue over red = `rgb(128,0,128)`. A violation would
+   be `rgb(255,0,0)` (F ate B) or anything darker than one blue layer (B painted twice).
+   Open (dot): bowen's "fill sits tight against the lines" suggests F should leave out its own ink
+   whatever the order, which would make the usual order also `rgb(64,64,192)` and the picture
+   independent of order. v103 only leaves out strokes behind the fill. Not decided; no test yet.
+2. An unrelated opaque green object X with B < X < F (B opaque blue). On B's ink inside F: where X
+   covers it → green (X is in front of B by order, and F leaves the area out) — natural result; where
+   X does not → blue. A violation would be red there (F ate B) or blue where X should cover.
 
 **D3 — geometry reference vs stroke ownership (R7).** A fill's boundary is a list of segment references
 (geometry); they may live in any layer. "Own strokes" of a fill = the stroke ink of exactly those
@@ -107,28 +120,26 @@ referenced segment pieces, wherever their curves live; the stroke still belongs 
 painted at the curve's position. One segment shared by two fills in different layers: each fill leaves
 out that ink (C1) independently → no ordering constraint between the two fills, no new conflicts.
 
-**D4 — global contradictions (R5).** With D1 (offsets never follow other offsets) plus C1 (R4 adds no
-ordering constraint), the paint order is a total order computed from the tree and the offsets, so these
-rules cannot create a cycle. RC-16's cyclic case (A over B, B over C, C over A) then needs local
-interleaving (D5); a whole-object cycle has no representation. To confirm.
+**D4 — global contradictions (R5), limited inference (dot agreed).** If offsets are computed
+deterministically, follow no other offset (no cyclic dependency) and ties use a stable rule, the
+result is a total order; with C1, R4 adds no ordering constraint. This does NOT cover local
+interleaving, which stays out of scope (D5).
 
 **D5 — local interleaving (RC-16 待定).** Out of scope for this contract version.
 
-**D6 — references.** Proposal: a reference's content is painted at the reference's own position in its
-parent, as if its source subtree were a group placed there; the source's internal order is kept.
-Offsets inside the source resolve within the instance (the instance is their root), so source content
-cannot jump over unrelated layers of the target. Counterexample to check: a source curve whose offset
-uses the "layer" reference — inside an instance it clamps at the instance's ends.
+**D6 — references (candidate boundary for this round, dot agreed).** A reference's content is painted at
+the reference's own position in its parent; the source's internal order is kept; offsets inside the
+source resolve within the instance and cannot leave it. The instance as a whole is ordered (and can be
+offset) in the outer document.
 
-**D7 — container opacity (R8).** Two semantics differ where objects of the container overlap:
-group opacity (paint the container, then fade the result; SVG `<g opacity>`, Photoshop layer opacity)
-vs multiply each object's alpha (overlaps darken). Proposal: group opacity, because an artist's 50 %
-layer should not show darker overlaps of its own lines. Conflict with D1: a group painted as one image
-cannot have an outside object interleaved inside it (CSS: opacity < 1 creates a stacking context).
-Counterexample: setting a layer to 99 % must not change what covers what. Candidate: members whose
-offset moves them out of the container are painted separately with the container's opacity multiplied
-in; the rest of the container is painted as one image. Order never depends on opacity; the cost is
-that escaped members do not share the group image.
+**D7 — container opacity (R8).** Two kinds of container, kept distinct (dot): an ordinary organising
+container, and an explicitly isolated compositing group. An isolated group is painted as one image;
+outside objects cannot be interleaved inside it. How an ordinary container's opacity applies to its
+members is defined separately. The kind never switches automatically (100 % → 99 % must not change
+grouping rules). Withdrawn: "members offset out of the group get the opacity multiplied in, the rest
+is composited" (the group's opacity meaning would change as members move). v103 has no container
+opacity (checked), so there is no baseline to follow. Which kind the minimal prototype supports
+first: to agree; until then container opacity stays unimplemented and listed in OPEN.md.
 
 **E1 — editor overlays** (onion yaws, anchor dots, selection): editor display convention, not a
 product rule. Today: onion under everything, dots over everything. Kept as is, stated here.
