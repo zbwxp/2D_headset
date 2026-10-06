@@ -15,12 +15,18 @@ const deepFreeze = <T>(o: T): T => {
   }
   return o
 }
+/** the fixture without the position references on the given segments (the user moved or removed them first) */
+const noRefsOn = (d: Doc, segs: string[]): Doc => {
+  const c = structuredClone(d)
+  for (const [k, r] of Object.entries(c.refs)) if (segs.includes(r.segmentId)) delete c.refs[k]
+  return c
+}
 const each = (d: Doc) => Object.entries(d.presets).flatMap(([pid, cs]) => Object.keys(cs.U.states).map((st) => [pid, st] as const))
 
 describe('4a remove anchor and join', () => {
   it('smooth node: one segment replaces two in every preset and state; untouched data identical; error reported', () => {
     const d0 = fixture()
-    const r = ok(removeAnchorJoin(d0, 'U', 'b', 'keepShape'))
+    const r = ok(removeAnchorJoin(noRefsOn(d0, ['s1', 's2']), 'U', 'b', 'keepShape'))
     for (const [pid, st] of each(r.doc)) {
       const c = r.doc.presets[pid].U
       const o = d0.presets[pid].U.states[st]
@@ -73,8 +79,8 @@ describe('4a remove anchor and join', () => {
 
   it('keepHandles mode keeps the neighbouring handles exactly in every state; straight mode gives a straight segment', () => {
     const d0 = fixture()
-    const sharp = ok(removeAnchorJoin(d0, 'U', 'c', 'keepHandles'))
-    const straight = ok(removeAnchorJoin(d0, 'U', 'b', 'straight'))
+    const sharp = ok(removeAnchorJoin(noRefsOn(d0, ['s2', 's3']), 'U', 'c', 'keepHandles'))
+    const straight = ok(removeAnchorJoin(noRefsOn(d0, ['s1', 's2']), 'U', 'b', 'straight'))
     for (const [pid, st] of each(d0)) {
       const o = d0.presets[pid].U.states[st]
       // explicit mode, same for every state (no per-state guessing of node type; dot 1791304209)
@@ -89,27 +95,31 @@ describe('4a remove anchor and join', () => {
     report.push({ case: '4a keepHandles c', worstError: +Math.max(...Object.values(sharp.errors)).toFixed(4) }, { case: '4a straight b', worstError: +Math.max(...Object.values(straight.errors)).toFixed(4) })
   })
 
-  it('references on either removed segment move onto the joined one (movement reported); others untouched', () => {
-    const r = ok(removeAnchorJoin(fixture(), 'U', 'b', 'keepShape'))
-    expect(r.doc.refs.intervalStart.segmentId).toBe('s1+s2')
-    expect(r.doc.refs.lash.segmentId).toBe('s1+s2')
-    expect(r.doc.refs.intervalStart.u).toBeLessThan(r.doc.refs.lash.u) // order along the curve kept
-    expect(r.doc.refs.intervalEnd).toEqual(fixture().refs.intervalEnd)
-    report.push({ case: '4a refs', moves: Object.fromEntries(Object.entries(r.refMoves).map(([k, x]) => [k, +x.toFixed(4)])) })
+  it('a position reference on either merged segment is refused (address kept ≠ position kept in every state)', () => {
+    const d = fixture()
+    const before = JSON.stringify(d)
+    const r = removeAnchorJoin(d, 'U', 'b', 'keepShape')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toContain('intervalStart, lash')
+    expect(JSON.stringify(d)).toBe(before)
+    // a reference elsewhere (s4) does not block deleting c; it is untouched
+    const ok4 = ok(removeAnchorJoin(noRefsOn(d, ['s2', 's3']), 'U', 'c', 'keepShape'))
+    expect(ok4.doc.refs.intervalEnd).toEqual(d.refs.intervalEnd)
+    report.push({ case: '4a refs', refused: !r.ok && r.reason })
   })
 
   it('fills: forward, reversed and wrap-around boundaries get the joined segment in order; partial use refused', () => {
     const base = fixture()
     const F = (ids: string[], dir: 1 | -1) => ids.map((segmentId) => ({ curveId: 'U', segmentId, dir }))
     base.fills = { fwd: F(['s1', 's2', 's3', 's4'], 1), rev: F(['s4', 's3', 's2', 's1'], -1), wrap: F(['s2', 's3', 's4', 's1'], 1) }
-    const r = ok(removeAnchorJoin(base, 'U', 'b', 'keepShape'))
+    const r = ok(removeAnchorJoin(noRefsOn(base, ['s1', 's2']), 'U', 'b', 'keepShape'))
     const ids = (k: string) => r.doc.fills[k].map((s) => `${s.segmentId}${s.dir === 1 ? '+' : '-'}`)
     expect(ids('fwd')).toEqual(['s1+s2+', 's3+', 's4+'])
     expect(ids('rev')).toEqual(['s4-', 's3-', 's1+s2-'])
     expect(ids('wrap')).toEqual(['s3+', 's4+', 's1+s2+']) // same cyclic order as s1 s2 s3 s4
     const partial = fixture()
     partial.fills = { part: F(['s2', 's3'], 1) }
-    const rr = removeAnchorJoin(partial, 'U', 'b', 'keepShape')
+    const rr = removeAnchorJoin(noRefsOn(partial, ['s1', 's2']), 'U', 'b', 'keepShape')
     expect(rr.ok).toBe(false)
     if (!rr.ok) expect(rr.reason).toContain('fill part')
     report.push({ case: '4a fills', fwd: ids('fwd'), rev: ids('rev'), wrap: ids('wrap'), partialRefused: !rr.ok })
@@ -133,7 +143,7 @@ describe('4a remove anchor and join', () => {
     expect(all.connection.ok === false && all.connection.reason).toContain('connection k1')
     expect(JSON.stringify(d)).toBe(before)
     // a frozen input still works for a legal deletion
-    expect(removeAnchorJoin(d, 'U', 'c', 'keepShape').ok).toBe(true)
+    expect(removeAnchorJoin(noRefsOn(d, ['s2', 's3']), 'U', 'c', 'keepShape').ok).toBe(true)
     report.push({ case: '4a refusals', reasons: Object.fromEntries(Object.entries(all).map(([k, r]) => [k, r.ok ? 'ok' : r.reason])) })
   })
 })
@@ -206,12 +216,12 @@ describe('4b delete anchor with its segments', () => {
 
 describe('session', () => {
   it('direct edits undo / redo exactly and survive JSON save / reopen', () => {
-    const s = new Session(fixture())
+    const s = new Session(noRefsOn(fixture(), ['s1', 's2']))
     const start = JSON.stringify(s.doc)
     expect(s.apply(removeAnchorJoin(s.doc, 'U', 'b', 'keepShape'))).toBe(true)
     const d2 = structuredClone(s.doc)
     delete d2.refs.intervalEnd
-    expect(s.apply({ ok: true, doc: d2, errors: {}, refMoves: {} })).toBe(true) // the user removes a reference first
+    expect(s.apply({ ok: true, doc: d2, errors: {}, })).toBe(true) // the user removes a reference first
     expect(s.apply(deleteAnchorWithSegments(s.doc, 'U', 'd'))).toBe(true)
     const end = JSON.stringify(s.doc)
     expect(s.apply(removeAnchorJoin(s.doc, 'U', 'a', 'keepShape'))).toBe(false) // refused: nothing recorded

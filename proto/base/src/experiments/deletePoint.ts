@@ -13,8 +13,10 @@
 //    Curves" (Graphics Gems, 1990; Paper.js PathFitter implements Schneider) but NOT his full algorithm (no
 //    splitting, tangents fixed); (ii) the old handles; (iii) the inverse of a de Casteljau split (exact when
 //    the anchor came from one). Direct edit, no confirmation; per-state error REPORTED as information.
-//    References are re-mapped by arc-length fraction — also OUR ADAPTATION; their movement is reported for
-//    every preset and state, not only one.
+//    Position references ((segment, u): interval ends, attachments …) on the two merged segments: REFUSED for
+//    now (dot 1791304437 — uncertain, skipped). One shared u keeps the shared ADDRESS but not the position in
+//    every state (an arc-length re-mapping measured up to 1.17 units of movement in another state, 0e29fb3);
+//    the two things are recorded separately. Deletions without such references are what this experiment covers.
 // 4b deleteAnchorWithSegments — delete the anchor and its adjacent segments: an interior anchor splits the
 //    curve into two open chains, an end anchor shortens it (a closed curve is not handled in this experiment).
 //
@@ -37,7 +39,7 @@ export type Doc = {
   connections: Record<string, End[]>
   seq: number
 }
-export type Result = { ok: true; doc: Doc; errors: Record<string, number>; refMoves: Record<string, number> } | { ok: false; reason: string }
+export type Result = { ok: true; doc: Doc; errors: Record<string, number> } | { ok: false; reason: string }
 
 const sub = (a: V, b: V) => v(a.x - b.x, a.y - b.y)
 const len = (a: V) => Math.hypot(a.x, a.y)
@@ -162,6 +164,8 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
   if (!sIn || !sOut) return { ok: false, reason: `${anchorId} is an end node: use deleteAnchorWithSegments` }
   const conn = connectionOn(doc, curveId, anchorId)
   if (conn) return { ok: false, reason: `connection ${conn} uses ${curveId}#${anchorId}: unbind it first` }
+  const onPair = Object.entries(doc.refs).filter(([, r]) => r.curveId === curveId && (r.segmentId === sIn.id || r.segmentId === sOut.id)).map(([k]) => k)
+  if (onPair.length) return { ok: false, reason: `position reference ${onPair.join(', ')} sits on ${sIn.id} / ${sOut.id}: merging would keep its address but not its position in every state (not supported yet)` }
   const pair = (st: FillStep) => st.curveId === curveId && (st.segmentId === sIn.id || st.segmentId === sOut.id)
   for (const [fid, steps] of Object.entries(doc.fills)) {
     const idx = steps.map((st, i) => (pair(st) ? i : -1)).filter((i) => i >= 0)
@@ -174,7 +178,6 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
   let newSeg = `${sIn.id}+${sOut.id}`
   while (taken.has(newSeg)) newSeg = `${sIn.id}+${sOut.id}~${++d.seq}` // never collide with an existing id
   const errors: Record<string, number> = {}
-  const refMoves: Record<string, number> = {}
   for (const [pid, curves] of Object.entries(d.presets)) {
     const c = curves[curveId]
     for (const st of Object.keys(c.states)) {
@@ -204,23 +207,6 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
     const i = c.segments.findIndex((s) => s.id === sIn.id)
     c.segments.splice(i, 2, { id: newSeg, from: sIn.from, to: sOut.to })
   }
-  // references: one shared u per reference (as stored), mapped by arc-length fraction measured in the first
-  // preset's first state; the movement is then measured in EVERY preset and state and the worst is reported
-  const st0 = Object.keys(c0.states)[0]
-  const t1 = arcTable(segCubic(c0, st0, sIn.id)), t2 = arcTable(segCubic(c0, st0, sOut.id))
-  const total = t1.total + t2.total
-  for (const [k, r] of Object.entries(d.refs)) {
-    if (r.curveId !== curveId || (r.segmentId !== sIn.id && r.segmentId !== sOut.id)) continue
-    const onIn = r.segmentId === sIn.id
-    const at = (onIn ? t1 : t2).acc[Math.round(r.u * N)]
-    const u = total > 0 ? (onIn ? at : t1.total + at) / total : 0.5
-    d.refs[k] = { curveId, segmentId: newSeg, u }
-    let worst = 0
-    for (const [pid, curves] of Object.entries(doc.presets))
-      for (const st of Object.keys(curves[curveId].states))
-        worst = Math.max(worst, len(sub(bez(segCubic(d.presets[pid][curveId], st, newSeg), u), bez(segCubic(curves[curveId], st, r.segmentId), r.u))))
-    refMoves[k] = worst
-  }
   for (const [fid, steps] of Object.entries(d.fills)) {
     const idx = steps.findIndex(pair)
     if (idx < 0) continue
@@ -229,7 +215,7 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
     kept.splice(idx === 0 && !pair(steps[1]) ? kept.length : idx, 0, { curveId, segmentId: newSeg, dir: steps[idx].dir })
     d.fills[fid] = kept
   }
-  return { ok: true, doc: d, errors, refMoves }
+  return { ok: true, doc: d, errors }
 }
 
 export function deleteAnchorWithSegments(doc: Doc, curveId: string, anchorId: string): Result {
@@ -277,7 +263,7 @@ export function deleteAnchorWithSegments(doc: Doc, curveId: string, anchorId: st
     for (const steps of Object.values(d.fills)) for (const st of steps) if (st.curveId === curveId && segs.has(st.segmentId)) st.curveId = newId
     for (const ends of Object.values(d.connections)) for (const e of ends) if (e.curveId === curveId && anchors.has(e.anchorId)) e.curveId = newId
   }
-  return { ok: true, doc: d, errors: {}, refMoves: {} }
+  return { ok: true, doc: d, errors: {} }
 }
 
 export class Session {
