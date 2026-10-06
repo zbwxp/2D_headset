@@ -1,5 +1,11 @@
 # Render / selection chain — what we wrote ourselves (for dot's review)
 
+> **Status (2026-10-06):** the design now lives in headset-design doc 18 v0.5, organised as tools
+> (§1, each with what it acts on, inputs/outputs, composition, unsupported cases, mature reference),
+> shared mechanics (§2), flows (§3) and a requirement→tool mapping (§5). This file stays only as a
+> code-location index of our own code in the chain (where each tool is implemented today); it does not
+> define behaviour.
+
 Purpose (dot, 2026-10-06): decide per piece whether to **hand back to a mature library**, **keep as
 domain logic**, or **delete adapter code** — to reduce home-made rules, not to add tests around
 patches. Claude lists; dot decides. "Mature counterpart" entries marked *checked* were read in the
