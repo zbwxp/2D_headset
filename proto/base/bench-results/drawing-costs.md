@@ -36,9 +36,14 @@ the pixels are presented — dot).
 
 Main workload (closer to real use, dot / bowen) — **actual totals (naming corrected per dot):** 400 open
 curves + **100 closed loop curves** (each fill's boundary is its own 4-segment loop curve) = **500
-curves**, + **100 solid fills** (50 × 50, spacing 30 → overlapping, occluding curves of their layer),
+curves**, + **100 solid fills** (50 × 50, spacing 30 → overlapping each other),
 + **6,000 anchor dots** in A mode (500 curves × 4 anchors × 3 dots: anchor, hIn, hOut) =
-**6,600 scene objects**, all on screen (fitted). Earlier labels "400 curves + 100 fills" undercounted. Stress: curve count only. One Chromium run, fitted
+**6,600 scene objects**, all on screen (fitted). Earlier labels "400 curves + 100 fills" undercounted.
+**Paint-order caveat (dot):** both drawing paths (Fabric A and B) paint in a GLOBAL order — onion yaws →
+all fills → all curves → dots — so fills never cover any curve. That violates doc 11 (depth by layer /
+order / depth offset; RC-16: a fill must not cover its own boundary strokes, other objects cover it
+normally). The earlier phrase "occluding curves of their layer" was wrong. A/B equality does not mean the
+product rule holds; the shared paint order is an open fix (OPEN.md). Stress: curve count only. One Chromium run, fitted
 viewport, A-mode drag, 6 moves; the grabbed anchor is recorded (S0.p1 free; L0.q1 = a fill boundary).
 **Fill materials (gradient, blur, pattern, transparency stacks) are not implemented and not measured.**
 

@@ -238,6 +238,13 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   the reference / parent transform (Live2D parent–child deformers, dot) is exactly the open
   composition question (turn vs expression vs joint parameters); not decided, not fixed.
 
+- **Paint order violates the product rule (dot, review of B) — OPEN, pre-existing since the first
+  slice:** FabricView (and B, which copies it) paints onion yaws → ALL fills → ALL curves → dots, so a
+  fill in front never covers curves behind. Doc 11: depth by layer / order within layer / depth
+  offset; RC-16: a fill does not cover its own boundary strokes, other objects cover it normally;
+  definite order first, reject global contradictions. Fix proposed to dot (one shared paint list in
+  the evaluation core, used by A, B and the runtime), not implemented yet.
+
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 
 `src/experiments/scenarioE*.ts` are framework tests only. They do **not** verify the common
