@@ -752,3 +752,39 @@
 1. 修正的混合步骤（多个预设、部分预设没有作者目标时）——等三个词定清后再写，不在这一轮。
 2. 规则版本的记录方式和升级报告的格式。
 3. 第一小步暂不排（dot 1791294564）。
+
+## 14. 存储与计算顺序：成熟格式对照（草稿 v0；bowen 1791296193「要充分参考成熟经验，不然又是屎山雏形」；Claude 负责 Spine / glTF / Live2D，dot 负责 Moho）
+
+> 先查清成熟软件**怎么存、按什么顺序算**，再定我们的。以下每条都注明出处；只读了文档，没有运行。
+
+### 14.1 读到的事实
+**Spine（官方 JSON 数据格式说明，本地存档 `spine-json-format`）**
+- **皮肤**：「Each skin is essentially a map with a compound key consisting of a slot and attachment name and the value is an attachment」；找附件时**先查当前皮肤，查不到再查默认皮肤**（default 皮肤存非皮肤专属的附件）。皮肤还可以带自己的骨骼和约束。
+- **网格变形关键帧（deform timeline）**：按 皮肤 → 插槽 → 网格 分层；每个关键帧存 `vertices`：「amounts to add to the setup vertex positions」（**相对原形的偏移**），`offset` 表示跳过前面多少个顶点（**稀疏存储**，没写的视为 0）；关键帧之间的插值曲线单独存（线性 / 阶跃 / Bézier）。
+- **约束**（IK、变换、路径）：每个约束有显式的 **`order`**：「The ordinal for the order constraints are applied」——求值顺序是**数据里写明的**，不是隐含的。路径约束字段：`bones`、`target`（路径所在插槽）、`positionMode`（fixed / percent）、`rotateMode`（tangent / chain / chain scale）、`rotation`（相对路径方向的偏移）、`rotateMix` / `translateMix`。
+
+**glTF 2.0（Khronos 规范 registry.khronos.org/glTF/specs/2.0/glTF-2.0.html）**
+- **形态目标**：存的是**位移**；位置 = 原属性 + Σ weights[i] × targets[i]（规范原文的公式）。
+- 「All primitives MUST have the same number of morph targets in the same order」；每个图元的属性数量一致——**结构必须一致**。
+- **顺序写死在规范里**：形态目标「applied before any transformation matrices affecting the mesh vertices such as skinning or node transforms」。
+- 权重（weights）和形状数据分开存；动画驱动的是权重。
+
+**Live2D（官方 CubismSpecs 仓库 `FileFormats/`）**
+- 公开的文件格式只有：model3、exp3、motion3、physics3、**pose3**、cdi3、userdata3、motionsync3。**变形器、关键形态网格存在 moc3 二进制里，公开规范里没有**——这部分只能参照编辑器行为，不能参照存储格式。
+- **exp3**：表情修改的是**参数值**（Add / Multiply / Overwrite，doc 16 已核）。
+- **pose3**：部件**切换组**——「Only one node is displayed in the group」；每个节点是一个部件 ID，带 `Link`（联动切换的其他部件），切换时有 `FadeInTime`。对应我们的替换 / 变体。
+
+### 14.2 对我们的启发（提议，待 dot 审）
+| 我们的东西 | 成熟做法 | 提议 |
+| --- | --- | --- |
+| 关键形态（快照） | Spine 变形关键帧、glTF 形态目标：都存**相对原形的位移**，可稀疏 | 存储形式待定：**相对原稿的位移**（成熟格式的通行做法、可稀疏）还是 §13 定的「完整作者目标」——在原稿不变时两者等价，区别在**原稿被修改时**（§9.3 的相对偏移语义）。交 dot 定 |
+| 驱动参数（yaw、表情强度、预设权重） | glTF 权重与形状分开；Live2D 参数与 exp3 分开 | **参数和形状分开存**：形状数据不含当前参数值；角色只存参数（预设权重、滑杆） |
+| 结构一致 | glTF 要求各形态目标结构一致 | 同一曲线的所有关键形态、同族预设：**段数和控制点一一对应**，写入时校验（§11 已定域编辑不改结构） |
+| 替换 / 变体 | Spine 皮肤（复合键 + 回退到默认皮肤）；Live2D pose3 切换组 | 替换件按「插槽 + 名字」查找，找不到回退到默认；变体之间用切换组，一次只显示一个 |
+| 附着 | Spine 路径约束（显式字段、显式 `order`） | 附着关系存成显式记录：目标曲线、位置（段身份 + u）、朝向模式（切线 / 保持）、朝向偏移 |
+| 求值顺序 | glTF 规范写死「形态先于蒙皮和节点变换」；Spine 约束带 `order` | **顺序写进规格**：预设混合 → 角度关键形态插值 → 表情 → 附着（按显式顺序）→ 放置；有依赖的关系（附着读别的线）按显式顺序求值，循环拒绝 |
+
+### 14.3 待定
+1. 关键形态存「相对原稿位移」还是「完整形状」（14.2 第一行）。
+2. Moho 的动作在文件里怎样存、怎样求值（dot 在核）。
+3. 本节只对照了存储和顺序；缓存、增量更新另议。
