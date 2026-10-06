@@ -231,6 +231,23 @@ describe('session', () => {
     expect(JSON.parse(end)).toEqual(s.doc)
   })
 
+  it('new ids never collide with existing ones', () => {
+    const d0 = fixture()
+    for (const cs of Object.values(d0.presets)) {
+      cs.U.segments[3].id = 's1+s2' // an existing segment already uses the default joined name
+      cs['U~1'] = structuredClone(cs.U) // and an existing curve uses the default split name
+      cs['U~1'].id = 'U~1'
+    }
+    d0.refs = {}
+    const j = ok(removeAnchorJoin(d0, 'U', 'b'))
+    const ids = j.doc.presets.A.U.segments.map((s) => s.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    const k = ok(deleteAnchorWithSegments(d0, 'U', 'c'))
+    expect(Object.keys(k.doc.presets.A).length).toBe(3)
+    expect(k.doc.presets.A['U~1']).toEqual(d0.presets.A['U~1']) // the existing curve untouched
+    report.push({ case: 'id collision', joined: ids, curves: Object.keys(k.doc.presets.A) })
+  })
+
   it('prints the table', () => {
     console.log('[deletePoint]\n' + report.map((r) => JSON.stringify(r)).join('\n'))
   })

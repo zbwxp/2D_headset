@@ -54,9 +54,18 @@ export function remapRef(r: Ref, old: string, us: number, sa: string, sb: string
 
 export function insertPoint(doc: Doc, segId: string, us: number): Doc {
   const d: Doc = structuredClone(doc)
-  const mId = `m${++d.seq}`
-  const sa = `${segId}a`
-  const sb = `${segId}b`
+  // one identity plan for every state and preset; new ids never collide with any existing segment / anchor id
+  const segIds = new Set(Object.values(d.presets).flatMap((c) => c.segments.map((x) => x.id)))
+  const anchorIds = new Set(Object.values(d.presets).flatMap((c) => [...c.order, ...Object.values(c.states).flatMap((st) => Object.keys(st))]))
+  const fresh = (base: string, taken: Set<string>) => {
+    let id = base
+    while (taken.has(id)) id = `${base}~${++d.seq}`
+    taken.add(id)
+    return id
+  }
+  const mId = fresh(`m${++d.seq}`, anchorIds)
+  const sa = fresh(`${segId}a`, segIds)
+  const sb = fresh(`${segId}b`, segIds)
   for (const c of Object.values(d.presets)) {
     const s = c.segments.find((x) => x.id === segId)!
     for (const st of Object.keys(c.states)) {

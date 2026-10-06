@@ -170,7 +170,9 @@ export function removeAnchorJoin(doc: Doc, curveId: string, anchorId: string, mo
     if (!adjacent) return { ok: false, reason: `fill ${fid} uses only part of ${sIn.id} / ${sOut.id}: repair or remove the fill first` }
   }
   const d: Doc = structuredClone(doc)
-  const newSeg = `${sIn.id}+${sOut.id}`
+  const taken = new Set(Object.values(d.presets).flatMap((cs) => cs[curveId].segments.map((x) => x.id)))
+  let newSeg = `${sIn.id}+${sOut.id}`
+  while (taken.has(newSeg)) newSeg = `${sIn.id}+${sOut.id}~${++d.seq}` // never collide with an existing id
   const errors: Record<string, number> = {}
   const refMoves: Record<string, number> = {}
   for (const [pid, curves] of Object.entries(d.presets)) {
@@ -252,7 +254,10 @@ export function deleteAnchorWithSegments(doc: Doc, curveId: string, anchorId: st
   const orphan = Object.entries(doc.connections).find(([, ends]) => ends.some((e) => e.curveId === curveId && !kept0.has(e.anchorId)))
   if (orphan) return { ok: false, reason: `connection ${orphan[0]} uses an anchor of ${curveId} that would be left without segments: unbind it first` }
   const d: Doc = structuredClone(doc)
-  const newId = parts0.length === 2 ? `${curveId}~${++d.seq}` : ''
+  const curveIds = new Set(Object.values(d.presets).flatMap((cs) => Object.keys(cs)))
+  let newId = ''
+  if (parts0.length === 2) do newId = `${curveId}~${++d.seq}`
+  while (curveIds.has(newId)) // never collide with an existing curve id
   for (const curves of Object.values(d.presets)) {
     const c = curves[curveId]
     const parts = split(c.segments)

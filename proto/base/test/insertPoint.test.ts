@@ -105,6 +105,26 @@ describe('exact point insertion', () => {
     expect(JSON.stringify(before)).toBe(JSON.stringify(fixture())) // the input was not mutated (undo = keep the old doc)
   })
 
+  it('new ids never collide with existing ones (review of f9d344b: a document that already has s1a)', () => {
+    const d0 = fixture()
+    for (const c of Object.values(d0.presets)) {
+      c.segments[1].id = 's1a'
+    }
+    d0.refs.lash.segmentId = 's1a'
+    d0.fill[1].segmentId = 's1a'
+    const lashBefore = Object.fromEntries(Object.entries(d0.presets).flatMap(([pid, c]) => Object.keys(c.states).map((st) => [`${pid}/${st}`, bez(segCubic(c, st, 's1a'), 0.5)])))
+    const d = insertPoint(d0, 's1', 0.4)
+    for (const [pid, c] of Object.entries(d.presets)) {
+      const ids = c.segments.map((x) => x.id)
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(ids[2]).toBe('s1a') // the untouched old segment keeps its id
+      for (const st of Object.keys(c.states)) expect(bez(segCubic(c, st, d.refs.lash.segmentId), d.refs.lash.u)).toEqual(lashBefore[`${pid}/${st}`])
+    }
+    expect(Object.values(d.presets).map((c) => c.segments.map((x) => x.id).join())).toEqual(Array(2).fill(d.presets.A.segments.map((x) => x.id).join()))
+    expect(d.fill.map((f) => f.segmentId)).toEqual([...d.presets.A.segments.slice(0, 2).map((x) => x.id), 's1a'])
+    report.push({ case: 'id collision', segments: d.presets.A.segments.map((x) => x.id) })
+  })
+
   it('prints the table', () => {
     console.log('[insertPoint]\n' + report.map((r) => JSON.stringify(r)).join('\n'))
   })
