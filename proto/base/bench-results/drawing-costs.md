@@ -71,7 +71,10 @@ animation frame (as Fabric does). Input, hit testing, planning and preview are u
 pixels differ by > 32 levels, coverage equal; main workload fitted (zoom 0.745, ≈ 0.5 px strokes) —
 9,631 of 77,644 differ by > 32, total coverage within 0.41 %; at zoom 3 / 6 the share falls to 3.1 % /
 2.3 %, no 8 × 8 block at zoom 6 differs by > 5 % on average, coverage within 0.01 %; crops at zoom 6
-are visually identical. The differences are anti-aliasing at stroke edges.
+are visually identical. The differences are anti-aliasing at stroke edges: **every** visible
+difference (> 32 levels) lies within 1 px of an edge in either image (0 interior differences in all
+comparisons). Checked by mutation: a wrong fill colour in B gives thousands of interior differences;
+a doubled stroke width is caught by the coverage / visible-share bounds, not by the edge classifier.
 
 | workload | onion | drag | B renderAll | B input → draw call done | Fabric A renderAll | Fabric A input → draw call done |
 | --- | --- | --- | --- | --- | --- | --- |

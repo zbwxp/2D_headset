@@ -39,6 +39,30 @@ async function compare(page: Page, url: string, zoom?: number) {
     if (d > 32) visible++
     max = Math.max(max, d)
   }
+  // Classify every visible difference (> 32 levels): an EDGE difference lies within 1 px of an edge in
+  // either image (an edge pixel differs from a 4-neighbour by > 32); anything else — inside a stroke, a
+  // fill, an occluded area — indicates a wrong colour / opacity / occlusion (dot). Scope, checked by
+  // mutation: a wrong fill colour gives 6k–105k interior differences; a doubled stroke width does NOT
+  // (its difference band hugs the edges) — width / shape errors are caught by the coverage and
+  // visible-share bounds below instead (a doubled width fails those).
+  const W = f.w, H = f.h
+  const px = (d: number[], i: number) => d.slice(i * 4, i * 4 + 4)
+  const differs = (a: number[], b: number[]) => Math.max(...a.map((v, k) => Math.abs(v - b[k]))) > 32
+  const edge = new Uint8Array(W * H)
+  for (const d of [f.data, b.data])
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x
+        const c = px(d, i)
+        if ((x + 1 < W && differs(c, px(d, i + 1))) || (y + 1 < H && differs(c, px(d, i + W)))) {
+          for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++) {
+            const yy = y + dy, xx = x + dx
+            if (yy >= 0 && yy < H && xx >= 0 && xx < W) edge[yy * W + xx] = 1
+          }
+        }
+      }
+  let interior = 0
+  for (let i = 0; i < W * H; i++) if (!edge[i] && differs(px(f.data, i), px(b.data, i))) interior++
   // Coarser "same picture" measures, robust to sub-pixel anti-aliasing of ~0.5 px lines (where the
   // per-pixel differences concentrate): mean |diff| per 8×8 block, and total alpha coverage.
   const B = 8
@@ -61,7 +85,7 @@ async function compare(page: Page, url: string, zoom?: number) {
   return {
     pixels: f.data.length / 4,
     inkPixels: ink,
-    perPixel: { differing: any, differingBy32: visible, maxChannelDiff: max },
+    perPixel: { differing: any, differingBy32: visible, maxChannelDiff: max, nonEdgeBy32: interior },
     blocks8: { worstMeanDiff: +worstBlock.toFixed(4), blocksOver5pct: blocksOver5, of: blocks },
     coverage: { fabric: covF, b: covB, relDiff: +(Math.abs(covF - covB) / Math.max(1, covF)).toFixed(4) },
   }
@@ -73,6 +97,7 @@ test('example document (fill, curves, reference, control points): Fabric vs B', 
   expect(r.inkPixels).toBeGreaterThan(1000)
   expect(r.coverage.relDiff).toBeLessThan(0.01)
   expect(r.perPixel.differingBy32 / r.inkPixels).toBeLessThan(0.02)
+  expect(r.perPixel.nonEdgeBy32).toBe(0) // every visible difference is at an edge
 })
 
 const MAIN = '/?bench&curves=400&fills=100&fillSize=50&fillSpacing=30&fillCols=10&onion=19'
@@ -87,4 +112,5 @@ test('main workload 400 curves + 100 overlapping fills + 19 onion yaws: Fabric v
   expect(fitted.inkPixels).toBeGreaterThan(1000)
   expect(fitted.coverage.relDiff).toBeLessThan(0.01)
   expect(z6.perPixel.differingBy32 / z6.inkPixels).toBeLessThan(0.03)
+  for (const r of [fitted, z3, z6]) expect(r.perPixel.nonEdgeBy32).toBe(0) // differences only at edges
 })
