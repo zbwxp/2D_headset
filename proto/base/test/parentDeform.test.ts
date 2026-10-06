@@ -4,8 +4,12 @@
 // non-affine preview, not every eye shape (doc 18 §8.8 "结论范围").
 import { describe, expect, it } from 'vitest'
 import {
+  applyAffine,
   bez,
+  characterMap,
   defaultDoc,
+  DISPLAY_PX_PER_UNIT,
+  invertAffine,
   dragUpperMiddle,
   evaluate,
   evaluateT1,
@@ -17,6 +21,7 @@ import {
   VIEW_FRAME,
   viewA,
   viewB,
+  type Affine,
   type CharacterId,
   type Evaluated,
   type Params,
@@ -33,12 +38,19 @@ const dist = (a: V, b: V) => Math.hypot(a.x - b.x, a.y - b.y)
 const report: Record<string, unknown>[] = []
 const row = (r: Record<string, unknown>) => report.push(r)
 
-/** measured (sampled) deviations of one evaluation against the exact composite map */
+/**
+ * Measured (sampled, not a bound) deviations against the exact composite map. Judged in PART-LOCAL
+ * units, i.e. after P⁻¹ — the same space as the fit's stop condition (review of bfe665a: the first
+ * report compared world-space error, scaled ×1.2 by P, with the local tolerance). World error is
+ * reported for reference only.
+ */
 function deviations(e: Evaluated) {
-  let source = 0 // same source position: (segment, u) through the temp segments vs exact
-  let shape = 0 // nearest distance from the exact point to the output curve (shape only)
+  const toLocal = (q: V) => applyAffine(invertAffine(e.placement), q)
+  let source = 0 // same source position: (segment, u) through the temp segments vs exact, local units
+  let sourceWorld = 0
+  let shape = 0 // nearest distance from the exact point to the output curve (shape only), local units
   // output curve as a fine polyline (1000 chords per piece); shape = distance to the nearest CHORD
-  const chords = e.segs.flatMap((s) => Array.from({ length: 1000 }, (_, i) => [bez(s.cubic, i / 1000), bez(s.cubic, (i + 1) / 1000)] as [V, V]))
+  const chords = e.segs.flatMap((s) => Array.from({ length: 1000 }, (_, i) => [toLocal(bez(s.cubic, i / 1000)), toLocal(bez(s.cubic, (i + 1) / 1000))] as [V, V]))
   const toChord = (p: V, [a, b]: [V, V]) => {
     const dx = b.x - a.x
     const dy = b.y - a.y
@@ -48,13 +60,15 @@ function deviations(e: Evaluated) {
   for (const id of segIds)
     for (let i = 0; i <= SAMPLES_PER_SEGMENT; i++) {
       const u = i / SAMPLES_PER_SEGMENT
-      const ex = e.exact(id, u)
-      source = Math.max(source, dist(e.at(id, u), ex))
+      const exW = e.exact(id, u)
+      const ex = toLocal(exW)
+      sourceWorld = Math.max(sourceWorld, dist(e.at(id, u), exW))
+      source = Math.max(source, dist(toLocal(e.at(id, u)), ex))
       let best = Infinity
       for (const c of chords) best = Math.min(best, toChord(ex, c))
       shape = Math.max(shape, best)
     }
-  return { source, shape, segments: e.segs.length, maxDepth: Math.max(...e.segs.map((s) => s.depth)) }
+  return { source, sourcePx: source * DISPLAY_PX_PER_UNIT, shape, sourceWorld, segments: e.segs.length, maxDepth: Math.max(...e.segs.map((s) => s.depth)), fitOk: e.fitOk }
 }
 const closureGap = (e: Evaluated) => {
   let g = 0
@@ -103,24 +117,15 @@ const lidPolyline = (e: Evaluated, lid: 'U' | 'L') =>
 describe('parent-deformer combination (doc 18 §8.8)', () => {
   const doc = defaultDoc()
 
-  it('1. forward geometry: tier A exact (measured, sampled)', () => {
-    for (const ch of chars) {
-      const d = deviations(evaluate(doc, ch, P(), tiers.A))
-      row({ check: 1, tier: 'A', ch, ...d })
-      expect(d.source).toBeLessThan(1e-9)
-    }
-  })
-
-  // KNOWN FAILURE of this experiment (first run): the fit stops on a 16-point sampled error, the check
-  // samples 200 points per source segment and measures 0.00531 > SOURCE_TOL 0.005 for the narrow eye.
-  // A sampled stop condition is not a bound (dot 1791283945). Kept failing on purpose; the tolerance
-  // was fixed before the run and is NOT raised. Fix direction is a design question (stop test), not here.
-  it.fails('1b. tier B: measured source-position error ≤ SOURCE_TOL for every character', () => {
-    for (const ch of chars) {
-      const d = deviations(evaluate(doc, ch, P(), tiers.B))
-      row({ check: '1b', tier: 'B', ch, ...d, FIT_TOL, SOURCE_TOL })
-      expect(d.source).toBeLessThanOrEqual(SOURCE_TOL)
-    }
+  it('1. forward geometry (local units, measured by sampling): tier A exact; tier B within SOURCE_TOL, fit status met', () => {
+    for (const [tier, view] of Object.entries(tiers))
+      for (const ch of chars) {
+        const d = deviations(evaluate(doc, ch, P(), view))
+        row({ check: 1, tier, ch, ...d, FIT_TOL, SOURCE_TOL, pxPerUnitAssumed: DISPLAY_PX_PER_UNIT })
+        expect(d.fitOk).toBe(true)
+        if (tier === 'A') expect(d.source).toBeLessThan(1e-9)
+        else expect(d.source).toBeLessThanOrEqual(SOURCE_TOL)
+      }
   })
 
   it('2. closed eye stays closed at 30° for both characters (same map ⇒ coincident points stay coincident)', () => {
@@ -152,7 +157,7 @@ describe('parent-deformer combination (doc 18 §8.8)', () => {
       }
   })
 
-  it('5. changing the wide character does not recompute the narrow one', () => {
+  it('5. changing the wide character does not recompute the narrow one (hand-declared read versions in this experiment, not automatic dependency capture)', () => {
     const ev = new Evaluator(defaultDoc())
     for (const ch of chars) ev.get(ch, P(), tiers.B, 'B')
     const before = ev.evaluations
@@ -165,7 +170,7 @@ describe('parent-deformer combination (doc 18 §8.8)', () => {
     expect(ev.evaluations - before).toBe(1)
   })
 
-  it('6. interval end points and the fill boundary resolve by (source segment, u), also inside fitted pieces', () => {
+  it('6. queries by (source segment, u) resolve inside fitted pieces; the four fill-boundary joints meet (no interval records, visible-range cutting or fill objects in this experiment)', () => {
     for (const [tier, view] of Object.entries(tiers))
       for (const ch of chars)
         for (const params of [P(), P(1), P(0, 1)]) {
@@ -215,6 +220,24 @@ describe('parent-deformer combination (doc 18 §8.8)', () => {
       expect(partialMiss).toBeGreaterThan(0.1)
       expect(b.ok).toBe(false)
     }
+    // a placement other than the default: passed in, the same one the result was evaluated with
+    const customP: Affine = { m: [2, 0, 0.3, 1], t: v(3, 5) }
+    const start = evaluate(doc, 'wide', P(), tiers.A, customP).at('U0', 1)
+    const goal = { x: start.x - 0.9, y: start.y + 1.3 }
+    const custom = dragUpperMiddle(doc, 'wide', P(), tiers.A, { kind: 'base' }, goal, { placement: customP })
+    if (!custom.ok) throw new Error(custom.reason)
+    const customLanded = dist(evaluate(custom.doc, 'wide', P(), tiers.A, customP).at('U0', 1), goal)
+    row({ check: 8, case: 'custom placement passed in', landed: customLanded })
+    expect(customLanded).toBeLessThan(1e-9)
+    // refusals: a singular step, a non-finite input — never a success carrying NaN
+    const flat = { ...doc, characters: { ...doc.characters, wide: { slider: 0 } } }
+    const singular = dragUpperMiddle(flat, 'wide', P(), tiers.A, { kind: 'base' }, goal)
+    const nanIn = dragUpperMiddle(doc, 'wide', P(), tiers.A, { kind: 'base' }, v(Number.NaN, 0))
+    const infIn = dragUpperMiddle(doc, 'wide', P(), tiers.A, { kind: 'base' }, v(Number.POSITIVE_INFINITY, 0))
+    row({ check: 8, case: 'refusals', singular: singular.ok ? 'accepted' : singular.reason, nan: nanIn.ok ? 'accepted' : nanIn.reason, inf: infIn.ok ? 'accepted' : infIn.reason })
+    expect(singular.ok).toBe(false)
+    expect(nanIn.ok).toBe(false)
+    expect(infIn.ok).toBe(false)
     // between key values: refused
     const mid = dragUpperMiddle(doc, 'wide', P(0.5), tiers.A, { kind: 'expression', name: 'close' }, v(0, 0))
     row({ check: 8, case: 'close = 0.5 (between key values)', refused: !mid.ok, reason: mid.ok ? '' : mid.reason })
@@ -244,7 +267,31 @@ describe('parent-deformer combination (doc 18 §8.8)', () => {
     expect(minDet).toBeGreaterThan(0)
   })
 
-  it('9. T1 control (same author input, formula in the module): computed, then reported — no failure assumed', () => {
+  it('9a. T1 follows its declared formula: one offset per anchor, added to the anchor and both handles', () => {
+    // identity view and placement isolate the formula; the left corner anchor (−10, 0) does not move
+    // in the closed key form, so its offset is 0 and its handles must stay where the base has them
+    const I: Affine = { m: [1, 0, 0, 1], t: v(0, 0) }
+    const e = evaluateT1(doc, 'wide', P(1), IDENTITY_VIEW, I)
+    const L2: Affine = characterMap(doc.characters.wide.slider)
+    for (const [lidKey, segFirst, segSecond] of [['upper', 'U0', 'U1'], ['lower', 'L0', 'L1']] as const) {
+      const base = doc.part[lidKey]
+      const key = doc.expressions.close[lidKey]
+      const off = base.map((a, i) => {
+        const pc = applyAffine(L2, a.p)
+        return { x: pc.x - a.p.x + key[i].p.x - a.p.x, y: pc.y - a.p.y + key[i].p.y - a.p.y }
+      })
+      const want = base.map((a, i) => ({ p: v(a.p.x + off[i].x, a.p.y + off[i].y), hIn: v(a.hIn.x + off[i].x, a.hIn.y + off[i].y), hOut: v(a.hOut.x + off[i].x, a.hOut.y + off[i].y) }))
+      const c0 = e.segs.find((x) => x.src === segFirst)!.cubic
+      const c1 = e.segs.find((x) => x.src === segSecond)!.cubic
+      const got = [c0[0], c0[1], c0[2], c0[3], c1[1], c1[2], c1[3]]
+      const exp = [want[0].p, want[0].hOut, want[1].hIn, want[1].p, want[1].hOut, want[2].hIn, want[2].p]
+      const worst = Math.max(...got.map((g, i) => dist(g, exp[i])))
+      row({ check: '9a', lid: lidKey, worst })
+      expect(worst).toBeLessThan(1e-12)
+    }
+  })
+
+  it('9. T1 control (same author input): computed and reported only — differences may come from T1 representation limits as well as from the order of steps', () => {
     for (const [tier, view] of Object.entries(tiers))
       for (const ch of chars) {
         const closed = evaluateT1(doc, ch, P(1), view)

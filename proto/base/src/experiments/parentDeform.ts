@@ -20,6 +20,12 @@ import { PART, turnAffine, v, type A, type V } from './scenarioE'
 export const FIT_TOL = 0.005 // part units; the fit stops when its sampled parametric error is below this
 export const SOURCE_TOL = 0.005 // part units
 export const SAMPLES_PER_SEGMENT = 200 // measured (not proven) deviation: u-uniform samples per source segment
+export const MAX_FIT_DEPTH = 12 // bisection limit; reaching it without meeting FIT_TOL is reported, never accepted silently
+/** Display scale used ONLY to convert errors to pixels in reports (an assumption, stated): the 20-unit-wide eye drawn 200 px wide. */
+export const DISPLAY_PX_PER_UNIT = 10
+/** Write-back numeric bounds (review of bfe665a): a step whose |det| is below DET_MIN is refused; inputs and outputs must be finite and within ±MAX_COORD. */
+export const DET_MIN = 1e-6
+export const MAX_COORD = 1e6
 
 // ---------- small vector / matrix helpers ----------
 const add = (a: V, b: V): V => v(a.x + b.x, a.y + b.y)
@@ -137,7 +143,7 @@ export function bezD(c: Cubic, t: number): V {
 const mapCubic = (c: Cubic, f: (p: V) => V): Cubic => c.map(f) as Cubic
 
 /** An evaluation-only segment: carries its source segment and the u-range it covers (§8.3). */
-export type TempSeg = { src: SegId; u0: number; u1: number; cubic: Cubic; depth: number }
+export type TempSeg = { src: SegId; u0: number; u1: number; cubic: Cubic; depth: number; /** the fit's own sampled parametric error, part-local units (before P) */ fitError: number; withinTol: boolean }
 
 /**
  * Fit the exact image g(u) = F(B(u)), u ∈ [u0, u1], by a cubic Hermite segment (end points exact,
@@ -155,8 +161,8 @@ function fitSegment(src: SegId, c: Cubic, F: (p: V) => V, J: (p: V) => Mat2, u0:
   const cubic: Cubic = [p0, add(p0, mul(dg(u0), h / 3)), sub(p3, mul(dg(u1), h / 3)), p3]
   let err = 0
   for (let i = 1; i < 16; i++) err = Math.max(err, dist(bez(cubic, i / 16), g(u0 + (h * i) / 16)))
-  if (err <= FIT_TOL || depth >= 12) {
-    out.push({ src, u0, u1, cubic, depth })
+  if (err <= FIT_TOL || depth >= MAX_FIT_DEPTH) {
+    out.push({ src, u0, u1, cubic, depth, fitError: err, withinTol: err <= FIT_TOL })
     return
   }
   const um = (u0 + u1) / 2
@@ -168,6 +174,10 @@ function fitSegment(src: SegId, c: Cubic, F: (p: V) => V, J: (p: V) => Mat2, u0:
 export type Evaluated = {
   /** evaluation-only segments in world coordinates, each mapped back to its source segment */
   segs: TempSeg[]
+  /** the placement used (world = P(local)); errors are judged in local units, i.e. after P⁻¹ */
+  placement: Affine
+  /** false when some piece hit MAX_FIT_DEPTH without meeting FIT_TOL (explicit "not met" status) */
+  fitOk: boolean
   /** exact world position of a source point (no fitting) — the reference for the checks */
   exact: (src: SegId, u: number) => V
   /** world position through the temp segments (what drawing / intervals / fills would read) */
@@ -195,7 +205,7 @@ export function evaluate(doc: Doc, character: CharacterId, params: Params, view:
   for (const id of segIds) {
     const c2 = mapCubic(local[id], (q) => applyAffine(L2, q))
     if (view.kind === 'affine') {
-      segs.push({ src: id, u0: 0, u1: 1, cubic: mapCubic(c2, (q) => applyAffine(P, applyAffine(view.f, q))), depth: 0 })
+      segs.push({ src: id, u0: 0, u1: 1, cubic: mapCubic(c2, (q) => applyAffine(P, applyAffine(view.f, q))), depth: 0, fitError: 0, withinTol: true })
     } else {
       const tmp: TempSeg[] = []
       fitSegment(id, c2, view.f, view.jac, 0, 1, 0, tmp)
@@ -207,6 +217,8 @@ export function evaluate(doc: Doc, character: CharacterId, params: Params, view:
   const mm = (a: Mat2, b: Mat2): Mat2 => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3]]
   return {
     segs,
+    placement: P,
+    fitOk: segs.every((s) => s.withinTol),
     exact: (src, u) => applyAffine(P, Vf(applyAffine(L2, bez(local[src], u)))),
     at: (src, u) => {
       const s = segs.find((x) => x.src === src && u >= x.u0 - 1e-12 && u <= x.u1 + 1e-12)!
@@ -221,10 +233,14 @@ export function evaluate(doc: Doc, character: CharacterId, params: Params, view:
 
 // ---------- T1 control: same author input, offsets per anchor (handles move with their anchor) ----------
 /**
- * Screen = P( p₀ + o_character + w·o_expression + o_angle ), every offset recorded against the
- * NEUTRAL base drawing, per anchor (proto pose.ts semantics: the anchor's offset is added to the
- * anchor and both handles): o_character = L2(p₀) − p₀, o_expression = keyform − p₀,
- * o_angle = V(p₀) − p₀.
+ * Screen = P( c₀ + o_character + o_expression + o_angle ) for every control point c₀ of an anchor,
+ * where ALL offsets are PER ANCHOR, computed from the anchor point p₀ only and added to the anchor
+ * and both of its handles (proto pose.ts semantics):
+ *   o_character = L2(p₀) − p₀,  o_expression = Σ wₑ·(keyformₑ.p − p₀),  o_angle = V(p₀) − p₀.
+ * Representation limit (dot 1791285343): handles can only follow their anchor, so key forms whose
+ * handles change on their own (e.g. the closed eye's corner handles) are NOT fully expressible in T1;
+ * differences from the combination may come from this as well as from the order of the steps.
+ * T1 has no fitting, so `exact` is the same function as `at` — that equality proves nothing.
  */
 export function evaluateT1(doc: Doc, character: CharacterId, params: Params, view: ViewMap, placement: Affine = PLACEMENT): Evaluated {
   const L2 = characterMap(doc.characters[character].slider)
@@ -232,34 +248,51 @@ export function evaluateT1(doc: Doc, character: CharacterId, params: Params, vie
   const exprAt = expressionShape(doc, params)
   const lid = (base: LidCtrl, expr: LidCtrl): LidCtrl =>
     base.map((a, i) => {
-      const oChar = sub(applyAffine(L2, a.p), a.p)
-      const oAngle = sub(Vf(a.p), a.p)
-      const shiftBy = (k: 'p' | 'hIn' | 'hOut') => add(add(add(a[k], oChar), sub(expr[i][k], a[k])), oAngle)
-      return { p: shiftBy('p'), hIn: shiftBy('hIn'), hOut: shiftBy('hOut') }
+      const o = add(add(sub(applyAffine(L2, a.p), a.p), sub(expr[i].p, a.p)), sub(Vf(a.p), a.p)) // one offset per anchor
+      return { p: add(a.p, o), hIn: add(a.hIn, o), hOut: add(a.hOut, o) }
     })
   const part: Part = { upper: lid(doc.part.upper, exprAt.upper), lower: lid(doc.part.lower, exprAt.lower) }
   const segsLocal = segmentsOf(part)
-  const segs: TempSeg[] = segIds.map((id) => ({ src: id, u0: 0, u1: 1, cubic: mapCubic(segsLocal[id], (q) => applyAffine(placement, q)), depth: 0 }))
+  const segs: TempSeg[] = segIds.map((id) => ({ src: id, u0: 0, u1: 1, cubic: mapCubic(segsLocal[id], (q) => applyAffine(placement, q)), depth: 0, fitError: 0, withinTol: true }))
   const at = (src: SegId, u: number) => bez(segs.find((s) => s.src === src)!.cubic, u)
-  return { segs, exact: at, at, linearAt: () => placement.m }
+  return { segs, placement, fitOk: true, exact: at, at, linearAt: () => placement.m }
 }
 
 // ---------- write-back (§8.4): drag a screen point, invert every effective step after the target ----------
 export type EditTarget = { kind: 'base' } | { kind: 'expression'; name: 'close' | 'surprise' }
 export type EditResult = { ok: true; doc: Doc } | { ok: false; reason: string }
+const finite = (p: V) => Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= MAX_COORD && Math.abs(p.y) <= MAX_COORD
 /**
  * Move the MIDDLE anchor of the upper lid (with its handles) so that it lands on `screen`.
- * Allowed only at key states (expression strengths 0 or 1) and only for an affine view (tier A);
- * the inverse chain is P⁻¹ → V⁻¹ → L2⁻¹ (→ L1, an identity at strength 0 for the base target).
- * `skipCharacterInverse` exists only to show that a partial inverse chain does NOT round-trip.
+ * Supported: tier A (affine view), expression strengths on key values (0 or 1), the SAME placement
+ * the result was evaluated with (passed in, default PLACEMENT), every step with |det| ≥ DET_MIN, and
+ * finite inputs / outputs within ±MAX_COORD. Anything else is refused with a reason — never a
+ * success carrying NaN. The inverse chain is P⁻¹ → V⁻¹ → L2⁻¹ (→ L1, identity at strength 0 for the
+ * base target). `skipCharacterInverse` exists only to show that a partial chain does NOT round-trip.
  */
-export function dragUpperMiddle(doc: Doc, character: CharacterId, params: Params, view: ViewMap, target: EditTarget, screen: V, opts: { skipCharacterInverse?: boolean } = {}): EditResult {
+export function dragUpperMiddle(
+  doc: Doc,
+  character: CharacterId,
+  params: Params,
+  view: ViewMap,
+  target: EditTarget,
+  screen: V,
+  opts: { skipCharacterInverse?: boolean; placement?: Affine } = {},
+): EditResult {
   if (view.kind !== 'affine') return { ok: false, reason: 'view deformer is non-affine: editing in the deformed preview is not supported this round — edit the original form or in the neutral view' }
+  if (!finite(screen)) return { ok: false, reason: `screen point must be finite and within ±${MAX_COORD}` }
   const keyState = (w: number) => w === 0 || w === 1
   if (!keyState(params.close) || !keyState(params.surprise)) return { ok: false, reason: 'expression strengths must sit on a key value (0 or 1)' }
-  let q = applyAffine(invertAffine(PLACEMENT), screen)
+  const P = opts.placement ?? PLACEMENT
+  const L2 = characterMap(doc.characters[character].slider)
+  for (const [name, f] of [['placement P', P], ['view V', view.f], ['character map L2', L2]] as [string, Affine][]) {
+    const d = det(f.m)
+    if (!Number.isFinite(d) || Math.abs(d) < DET_MIN) return { ok: false, reason: `${name} is not invertible here (|det| = ${Math.abs(d)} < ${DET_MIN})` }
+  }
+  let q = applyAffine(invertAffine(P), screen)
   q = applyAffine(invertAffine(view.f), q)
-  if (!opts.skipCharacterInverse) q = applyAffine(invertAffine(characterMap(doc.characters[character].slider)), q)
+  if (!opts.skipCharacterInverse) q = applyAffine(invertAffine(L2), q)
+  if (!finite(q)) return { ok: false, reason: 'the inverse produced a non-finite or out-of-range point' }
   const next: Doc = JSON.parse(JSON.stringify(doc))
   if (target.kind === 'base') {
     if (params.close !== 0 || params.surprise !== 0) return { ok: false, reason: 'editing the base needs every expression at strength 0 (L1 = identity)' }
