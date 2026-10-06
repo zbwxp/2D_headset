@@ -17,6 +17,7 @@ import { cubicsToCommands, evaluate, FILL_RULE, hitTest, inkStyle, unappliedCont
 import { cubicsPath2D, ownInkPath2D } from './ownInk'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
+import { topContainerOfHit } from '../select'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
@@ -428,12 +429,9 @@ export class FabricView {
     }
   }
 
+  /** the placement side: a hit through a reference selects where the REFERENCE is (select.ts, doc 18 §21.2) */
   private containerOfHit(hit: Hit): string | undefined {
-    const recId = hit.kind === 'fill' ? hit.address : hit.curveId
-    let id = (this.editor.reader.get(recId as any) as any)?.parentId as string | undefined
-    // climb to the top-level container (one group per top-level container)
-    for (let k = this.editor.reader.get(id as any) as any; k?.parentId; k = this.editor.reader.get(k.parentId)) id = k.parentId
-    return id
+    return topContainerOfHit(this.editor.reader, hit)
   }
 
   // ---- A mode: our own hit test + preview, apply once on release ----

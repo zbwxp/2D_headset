@@ -7,6 +7,7 @@
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { planCharacter, type CharacterCommand } from './characterCommands'
+import { planDuplicate, type DuplicateCommand } from './duplicate'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
@@ -70,6 +71,8 @@ export type Command =
   | StructureCommand
   /** preset author and character commands (stage 3b, characterCommands.ts) */
   | CharacterCommand
+  /** independent copy (stage 4, duplicate.ts) */
+  | DuplicateCommand
 
 /**
  * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
@@ -569,6 +572,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
     case 'setPresetKey':
     case 'setVisibilityKey':
       return planCharacter(store, cmd, ids)
+    case 'duplicate':
+      return planDuplicate(store, cmd, ids)
     case 'deleteRecords': {
       if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'no records to delete', [])
       // existence, duplicates, locks and dependants are checked generically on the final overlay
