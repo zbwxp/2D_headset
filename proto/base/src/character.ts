@@ -263,7 +263,15 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
 
   const curves: Record<string, CurveGrid> = Object.fromEntries(fam.curves.map((c) => [c, { neutral: neutral[c], expr: expr[c], visible: visibility[c] }]))
   const front = Object.fromEntries(fam.curves.map((c) => [c, frontOf(c)]))
-  const retained = fam.curves.length * yaws.length * (1 + params.length) + Object.values(front).filter(Boolean).length
+  // the budget weight = the DISTINCT shape objects this grid actually retains (unchanged curves share their neutral
+  // shapes with their expression lists; dot: count what is kept, not a formula)
+  const kept = new Set<Shape>()
+  for (const c of fam.curves) {
+    for (const sh of neutral[c]) kept.add(sh)
+    for (const list of Object.values(expr[c])) for (const sh of list) kept.add(sh)
+    if (front[c]) kept.add(front[c]!)
+  }
+  const retained = kept.size
   return { ok: true, grid: { characterId, yaws, params, curves, front, retained } }
 }
 

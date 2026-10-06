@@ -173,7 +173,17 @@ describe('cache, budget and the runtime entry', () => {
     const p = e.derived.character(K)
     expect(p.ok).toBe(true)
     if (p.ok) expect(e.derived.yawRetainedItems.used - used).toBe(p.grid.retained)
-    if (p.ok) expect(p.grid.retained).toBe(3 * 4 * 2 + 2) // 3 curves × 4 yaws × (neutral + blink) + the fronts of the two lids (strand has no original)
+    if (p.ok) {
+      // counted independently: the distinct shape objects reachable from the grid
+      const seen = new Set<unknown>()
+      for (const g of Object.values(p.grid.curves)) {
+        g.neutral.forEach((x) => seen.add(x))
+        for (const l of Object.values(g.expr)) l.forEach((x) => seen.add(x))
+      }
+      for (const f of Object.values(p.grid.front)) if (f) seen.add(f)
+      expect(p.grid.retained).toBe(seen.size)
+      expect(seen.size).toBe(4 + 4 + 4 + 4 + 2) // lid neutral + lid closed + lowerLid / strand (closed = neutral, shared) + two fronts
+    }
     expect(e.derived.yawRetainedItems.consistent()).toBe(true)
   })
 
@@ -187,5 +197,56 @@ describe('cache, budget and the runtime entry', () => {
       expect(rt.curves.find((c) => c.address === 'curve:C1')).toEqual(e.derived.atYaw(y).curves.find((c) => c.address === 'curve:C1'))
     }
     expect(() => evaluateSaved(json('stage1-invalid-missing.json').records, { yaw: 0, character: K })).toThrow(/cannot be prepared: .*identity only/)
+  })
+})
+
+describe('review requests for 3a (dot 1791314079): fills and reference instances on family curves, visibility between keys', () => {
+  /** the sample + a fill over both lids (closed by the corner connection and a bridge at the left corner) and a
+   *  mirrored reference that places container:L1 (holding the family curves) inside L3 */
+  const withFillAndInstance = () => {
+    const rs = sample()
+    rs.push({ typeName: 'fill', id: 'fill:eye', name: 'eye', parentId: 'container:L1', index: 'a0', color: '#fff', depthOffset: 0,
+      boundary: [{ curveId: 'curve:lid', segmentId: 's1', dir: 1 }, { curveId: 'curve:lid', segmentId: 's2', dir: 1 }, { curveId: 'curve:lowerLid', segmentId: 's4', dir: -1 }, { curveId: 'curve:lowerLid', segmentId: 's3', dir: -1 }, { bridge: { from: { curveId: 'curve:lowerLid', anchorId: 'c' }, to: { curveId: 'curve:lid', anchorId: 'a' } } }] })
+    rs.push({ typeName: 'reference', id: 'reference:R2', name: 'mirrored eye', parentId: 'container:L3', index: 'b1', sourceId: 'container:L1', transform: { a: -1, b: 0, c: 0, d: 1, e: 100, f: 5 }, overrides: {} })
+    return rs
+  }
+  const tp = (m: any, q: { x: number; y: number }) => ({ x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f })
+
+  it('instances are placed once (transform of the played shape); the fill and its bridge read the played geometry; full = cached = runtime', () => {
+    const rs = withFillAndInstance()
+    const e = openRecords(rs)
+    const m = rs.find((r) => r.id === 'reference:R2').transform
+    for (const [yaw, blink] of [[0, 0], [30, 0.5], [90, 1], [-60, 0.2]]) {
+      const g = ok(prep(rs))
+      const played = play(g, yaw, blink).shapes
+      const maker = e.derived.characterAt(K, { yaw, params: { blink } })
+      if (!maker.ok) throw new Error(maker.problems.join())
+      const ev = maker.evaluated
+      const direct = ev.curves.find((c) => c.address === 'curve:lid')!
+      const inst = ev.curves.find((c) => c.address === 'reference:R2/curve:lid')!
+      for (const [a, q] of Object.entries(played['curve:lid'])) {
+        expect(direct.anchors[a].p).toEqual(q.p)
+        expect(inst.anchors[a].p).toEqual(tp(m, q.p)) // exactly one placement
+        expect(inst.anchors[a].hOut).toEqual(tp(m, q.hOut))
+      }
+      const fill = ev.fills.find((f) => f.address === 'fill:eye')!
+      expect(fill.cubics[0][0]).toEqual(played['curve:lid'].a.p)
+      const bridge = fill.cubics[4]
+      expect(bridge[0]).toEqual(played['curve:lowerLid'].c.p) // the bridge reads the character's geometry
+      expect(bridge[3]).toEqual(played['curve:lid'].a.p)
+      expect(evaluateSaved(rs, { yaw, character: K, expr: { blink } })).toEqual(ev) // runtime = maker cache
+    }
+  })
+
+  it('a reference override on a family curve is refused on open (its meaning is undefined)', () => {
+    const rs = withFillAndInstance()
+    rs.find((r) => r.id === 'reference:R2').overrides = { 'curve:lid#m': { x: 1, y: 2 } }
+    expect(() => openRecords(rs)).toThrow(/reference overrides on preset-form curves are not supported/)
+  })
+
+  it('visibility switches exactly at the key between grid points, and holds outside every key', () => {
+    const g = ok(prep(sample()))
+    for (const [y, want] of [[-1000, false], [-90, false], [29.999999, false], [30, true], [30.000001, true], [44, true], [1000, true]] as const)
+      expect(play(g, y).visible['curve:strand']).toBe(want)
   })
 })

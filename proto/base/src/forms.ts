@@ -140,6 +140,14 @@ export function newRecordProblems(store: Get, r: DocRecord): Problem[] {
     }
   }
   if (r.typeName === 'helperDomain') need('presetId', r.presetId, 'preset')
+  // a reference override on a family (preset-form) curve has no defined meaning (samples §4.5): refused on open too
+  if (r.typeName === 'reference' && store.allRecords) {
+    const famCurves = new Set(store.allRecords().flatMap((x) => (x.typeName === 'family' ? x.curves.map(String) : [])))
+    for (const k of Object.keys(r.overrides)) {
+      const curve = k.slice(0, k.lastIndexOf('#'))
+      if (famCurves.has(curve)) p(`overrides.${k}`, k, `override on ${k}: reference overrides on preset-form curves are not supported`)
+    }
+  }
   if (r.typeName === 'visibility') {
     need('curveId', r.curveId, 'curve')
     if (r.owner.kind === 'preset') need('owner.id', r.owner.id, 'preset')
