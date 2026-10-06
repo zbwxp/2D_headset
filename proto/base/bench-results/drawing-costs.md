@@ -195,3 +195,16 @@ paths include the own-ink protection of all 100 fills (S2) and the interleaved p
 B is ≈ 1.5–1.9× faster than Fabric A on the draw call — not ≈ 200×; the earlier gap was the dot cache.
 Option A (incremental scene) still matters: a full rebuild per move costs ≈ 100–300 ms more (build +
 attach). Input → draw call done is not on-screen presentation.
+
+### A2 controlled check (dot): only the dots' caching toggled, same scene (`e2e/dots-cache-a2.spec.ts`)
+
+| | cache canvases | theoretical RGBA size | renderAll median |
+| --- | --- | --- | --- |
+| dots uncached (now) | 0 | 0 | 21.2 ms |
+| dots cached (Fabric default) | 6,000 (256 × 256 each) | 1,500 MiB | 556 ms |
+
+Pixels: 43,680 of 268,800 device pixels differ (max channel delta 255) — ALL within a dot (radius × zoom
++ 2 px), none elsewhere. Zoomed crops: cached handle dots (radius 0.9 ≈ 0.7 px at zoom 0.745) are
+fainter / blurred; uncached ones are drawn directly, as B draws them. The size is theoretical (cache
+canvas width × height × 4), not measured GPU or resident memory. Picking and dragging do not involve
+the dots (not evented; picking is ours); the gate's drag tests pass with the dots uncached.
