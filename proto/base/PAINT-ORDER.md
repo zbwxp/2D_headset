@@ -150,7 +150,7 @@ deterministically, follow no other offset (no cyclic dependency) and ties use a 
 result is a total order; with C1, R4 adds no ordering constraint. This does NOT cover local
 interleaving, which stays out of scope (D5).
 
-**D5 — local interleaving (RC-16 待定).** Out of scope for this contract version. Mature reference
+**D5 — local interleaving (RC-16 待定).** NOT out of scope by default (dot 1791252092: the old product's element-offset interleaving must not be dropped by a one-line "whole-object order only"). Two meanings of bowen's "wrapping" (dot 1791274169): clip / Draw Inside, and Intertwine. Undecided — see headset-design doc 18 §8-5. Mature reference
 (read): Illustrator "Intertwine" — overlapping objects form an Intertwine group; clicking or encircling
 an overlap area chooses which object is on top there; non-destructive (Edit / Release)
 (helpx.adobe.com/illustrator/desktop/manage-objects/reshape-transform-objects/create-intertwined-objects.html).
@@ -161,19 +161,13 @@ the reference's own position in its parent; the source's internal order is kept;
 source resolve within the instance and cannot leave it. The instance as a whole is ordered (and can be
 offset) in the outer document.
 
-**D7 — container opacity (R8).** Two kinds of container, kept distinct (dot): an ordinary organising
-container, and an explicitly isolated compositing group. An isolated group is painted as one image;
-outside objects cannot be interleaved inside it. How an ordinary container's opacity applies to its
-members is defined separately. The kind never switches automatically (100 % → 99 % must not change
-grouping rules). Withdrawn: "members offset out of the group get the opacity multiplied in, the rest
-is composited" (the group's opacity meaning would change as members move). v103 has no container
-opacity (checked), so there is no baseline to follow. Which kind the minimal prototype supports
-first: to agree; until then container opacity stays unimplemented and listed in OPEN.md.
-Current SCOPE LIMIT (not a product decision — container opacity and stroke opacity are different
-needs, and bowen did not cancel container opacity, dot): the current base does not apply container
-opacity. The stored value is reported, never silently ignored: `unappliedContainerOpacity` lists the
-containers and the editor status line says 「图层不透明度当前不支持（未生效）」. To implement with a
-real need, following the two-kinds rule above.
+**D7 — container kinds and opacity (R8).** Defined in headset-design doc 12 §5.1 (this file earlier
+wrongly called it undecided): an ORDINARY organising container (default) does not isolate — its
+members may interleave with other containers via offsets, and its opacity multiplies into each child;
+an ISOLATED composite group (explicit) composites as one unit and offsets cannot leave it. The kind
+never switches automatically. How ordinary-container opacity meets R9 (opaque lines) is decided when
+container opacity is implemented; today it is stored, not applied, and reported (scope limit). See
+doc 18 §2 and §8-7.
 
 **E1 — editor overlays** (onion yaws, anchor dots, selection): editor display convention, not a
 product rule. Today: onion under everything, dots over everything. Kept as is, stated here.
