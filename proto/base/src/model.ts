@@ -60,35 +60,63 @@ export const curvesIn = (store: DocReader, containerId: RecordId<ContainerRecord
   (all(store, 'curve') as CurveRecord[]).filter((c) => containerChain(store, c.parentId).some((k) => k.id === containerId))
 
 /** Structural checks a loaded document must pass (references resolve, no container cycles). */
-export function graphProblems(store: DocReader): string[] {
-  const problems: string[] = []
-  const has = (id: string | null | undefined) => !!id && !!store.get(id as any)
-  // references must also point at the right KIND of record (dot: a curve as its own parent loaded)
-  const isType = (id: string | null | undefined, t: DocRecord['typeName']) => !!id && (store.get(id as any) as DocRecord | undefined)?.typeName === t
-  for (const c of all(store, 'container') as ContainerRecord[]) {
-    if (c.parentId && !isType(c.parentId, 'container')) problems.push(`${c.id}: parent ${c.parentId} is not a container`)
-    const seen = new Set<string>([c.id])
-    let p = c.parentId ? (store.get(c.parentId) as ContainerRecord | undefined) : undefined
-    while (p) {
+/** Typed lookup: the record only if it exists AND has the expected type (dot: a curve id passed as a parent). */
+export function getAs<T extends DocRecord['typeName']>(store: Pick<DocReader, 'get'>, id: unknown, type: T) {
+  const r = typeof id === 'string' ? (store.get(id as any) as DocRecord | undefined) : undefined
+  return r?.typeName === type ? (r as Extract<DocRecord, { typeName: T }>) : undefined
+}
+
+/** What a missing/wrong-typed id actually is, for error messages: "missing" or its real type. */
+export const actualKind = (store: Pick<DocReader, 'get'>, id: unknown) =>
+  (typeof id === 'string' && (store.get(id as any) as DocRecord | undefined)?.typeName) || 'missing'
+
+/** One broken relation, addressed so a UI or an AI can point at it. */
+export type RelationProblem = { object: string; field: string; target: string; message: string }
+
+/**
+ * THE relation rules of a document, per record (outgoing references only). The same function runs
+ * on every record when a document is opened, and on each candidate record before a write is
+ * published (`plan`), so the editor can never write something it would refuse to open (dot).
+ * Analogous to foreign-key constraints in a database: checked per written row, not by a full scan.
+ */
+export function recordProblems(store: Pick<DocReader, 'get'>, r: DocRecord): RelationProblem[] {
+  const out: RelationProblem[] = []
+  const need = (field: string, id: unknown, type: DocRecord['typeName']) => {
+    if (!getAs(store, id, type)) out.push({ object: r.id, field, target: String(id), message: `${r.id}.${field}: ${id} is not a ${type} (${actualKind(store, id)})` })
+  }
+  if (r.typeName === 'container' && r.parentId) need('parentId', r.parentId, 'container')
+  if (r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') need('parentId', r.parentId, 'container')
+  if (r.typeName === 'reference') need('sourceId', r.sourceId, 'container')
+  if (r.typeName === 'connection')
+    r.ends.forEach((e, i) => {
+      const c = getAs(store, e.curveId, 'curve')
+      if (!c) need(`ends[${i}].curveId`, e.curveId, 'curve')
+      else if (!c.anchors[e.anchorId]) out.push({ object: r.id, field: `ends[${i}].anchorId`, target: anchorKey(e), message: `${r.id}: end ${anchorKey(e)} missing` })
+    })
+  if (r.typeName === 'fill')
+    r.boundary.forEach((b, i) => {
+      const c = getAs(store, b.curveId, 'curve')
+      if (!c) need(`boundary[${i}].curveId`, b.curveId, 'curve')
+      else if (!c.segments.some((s) => s.id === b.segmentId))
+        out.push({ object: r.id, field: `boundary[${i}].segmentId`, target: `${b.curveId}/${b.segmentId}`, message: `${r.id}: boundary ${b.curveId}/${b.segmentId} missing` })
+    })
+  if (r.typeName === 'container') {
+    // a container's own chain must end (no cycle through it)
+    const seen = new Set<string>([r.id])
+    for (let p = r.parentId ? getAs(store, r.parentId, 'container') : undefined; p; p = p.parentId ? getAs(store, p.parentId, 'container') : undefined) {
       if (seen.has(p.id)) {
-        problems.push(`${c.id}: container cycle through ${p.id}`)
+        out.push({ object: r.id, field: 'parentId', target: p.id, message: `${r.id}: container cycle through ${p.id}` })
         break
       }
       seen.add(p.id)
-      p = p.parentId ? (store.get(p.parentId) as ContainerRecord | undefined) : undefined
     }
   }
-  for (const r of store.allRecords()) {
-    if ((r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') && !isType(r.parentId, 'container')) problems.push(`${r.id}: parent ${r.parentId} is not a container`)
-    if (r.typeName === 'reference' && !isType(r.sourceId, 'container')) problems.push(`${r.id}: source ${r.sourceId} is not a container`)
-    if (r.typeName === 'connection')
-      for (const e of r.ends) if (!isType(e.curveId, 'curve') || !(store.get(e.curveId) as CurveRecord).anchors[e.anchorId]) problems.push(`${r.id}: end ${anchorKey(e)} missing`)
-    if (r.typeName === 'fill')
-      for (const b of r.boundary)
-        if (!isType(b.curveId, 'curve') || !(store.get(b.curveId) as CurveRecord).segments.some((s) => s.id === b.segmentId)) problems.push(`${r.id}: boundary ${b.curveId}/${b.segmentId} missing`)
-  }
-  void has
-  return problems
+  return out
+}
+
+/** Whole-document check used on open: the same per-record rules over every record. */
+export function graphProblems(store: DocReader): string[] {
+  return store.allRecords().flatMap((r) => recordProblems(store, r).map((p) => p.message))
 }
 
 /** True if `parentId` is `containerId` or below it. */

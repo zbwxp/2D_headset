@@ -3,6 +3,7 @@
 // hold. Failures shrink to a minimal counterexample. (dot: test properties, not hand-picked examples.)
 //
 // Invariants
+//  I0 any input, however wrong, gets a structured result — never an exception or INTERNAL error
 //  I1 a rejected edit writes nothing: document and history unchanged
 //  I2 nothing inside a locked container changes, except by unlocking it
 //  I3 every connection's ends stay coincident
@@ -24,10 +25,15 @@ import { validateRecord, type ConnectionRecord, type CurveRecord, type DocRecord
 
 const curves = [ids.C1, ids.C2, ids.E1]
 const anchorsOf: Record<string, string[]> = { [ids.C1]: ['a1', 'a2', 'a3'], [ids.C2]: ['b1', 'b2', 'b3'], [ids.E1]: ['e1', 'e2'] }
-const containers = [ids.L1, ids.L2, ids.L3, 'container:missing' as any]
+// wrong-TYPE ids too (dot: a curve or fill passed where a container is expected), not only missing ones
+const containers = [ids.L1, ids.L2, ids.L3, 'container:missing' as any, ids.C1 as any, ids.F as any]
 const num = fc.oneof(fc.integer({ min: -20, max: 20 }), fc.constantFrom(0, Infinity, -Infinity, NaN, Number.MAX_VALUE))
 const vec = fc.record({ x: num, y: num })
-const anchorRef = fc.constantFrom(...curves).chain((curveId) => fc.constantFrom(...anchorsOf[curveId], 'zz').map((anchorId) => ({ curveId, anchorId })))
+const anchorRef = fc.constantFrom(...curves, ids.L1 as any, ids.F as any).chain((curveId) => fc.constantFrom(...(anchorsOf[curveId] ?? ['a1']), 'zz').map((anchorId) => ({ curveId, anchorId })))
+const wrongTypeSegs = [
+  { curveId: ids.L1 as any, segmentId: 's1' },
+  { curveId: ids.F as any, segmentId: 's1' },
+]
 const segs = [
   { curveId: ids.C1, segmentId: 's1' },
   { curveId: ids.C1, segmentId: 's2' },
@@ -53,7 +59,7 @@ const command: fc.Arbitrary<Command> = fc.oneof(
     type: fc.constant('createFill' as const),
     id: fc.option(fc.constantFrom(ids.F, 'fill:new' as any), { nil: undefined }),
     parentId: fc.constantFrom(...containers),
-    boundary: fc.array(fc.constantFrom(...segs).chain((s) => fc.constantFrom(1 as const, -1 as const).map((dir) => ({ ...s, dir }))), { maxLength: 5 }),
+    boundary: fc.array(fc.constantFrom(...segs, ...wrongTypeSegs).chain((s) => fc.constantFrom(1 as const, -1 as const).map((dir) => ({ ...s, dir }))), { maxLength: 5 }),
   }),
   fc.record({ type: fc.constant('setContainerFlags' as const), containerId: fc.constantFrom(...containers), locked: fc.option(fc.boolean(), { nil: undefined }), visible: fc.option(fc.boolean(), { nil: undefined }) }),
 ) as fc.Arbitrary<Command>
@@ -65,7 +71,7 @@ const likelyOk: fc.Arbitrary<Command> = fc.oneof(
   fc.record({ type: fc.constant('moveHandle' as const), target: fc.constantFrom({ curveId: ids.C1, anchorId: 'a2' }, { curveId: ids.E1, anchorId: 'e2' }), handle: fc.constantFrom('in' as const, 'out' as const), delta: small }),
   fc.record({ type: fc.constant('setContainerFlags' as const), containerId: fc.constant(ids.L2), locked: fc.boolean() }),
   // the closed loop s1,s2 → J → s4⁻,s3⁻ → J0, rotated and/or reversed: closed in every variant
-  fc.record({ type: fc.constant('createFill' as const), parentId: fc.constantFrom(ids.L1, ids.L3), rot: fc.integer({ min: 0, max: 3 }), rev: fc.boolean() }).map(({ rot, rev, ...c }) => {
+  fc.record({ type: fc.constant('createFill' as const), parentId: fc.constantFrom(ids.L1, ids.L3, ids.C1 as any), rot: fc.integer({ min: 0, max: 3 }), rev: fc.boolean() }).map(({ rot, rev, ...c }) => {
     const loop = [segs[0], segs[1], { ...segs[3], dir: -1 as const }, { ...segs[2], dir: -1 as const }].map((x) => ({ dir: 1 as const, ...x }))
     let b = [...loop.slice(rot), ...loop.slice(0, rot)]
     if (rev) b = b.reverse().map((x) => ({ ...x, dir: (x.dir === 1 ? -1 : 1) as 1 | -1 }))
@@ -181,6 +187,7 @@ describe('properties of the single write entry', () => {
             else if (!r.written) seen.noop++
             else seen.written++
             if (!r.ok) {
+              expect(r.error.code, r.error.message).not.toBe('INTERNAL') // I0 bad input → structured error, never a crash
               expect(doc(e)).toBe(before) // I1
               expect(JSON.stringify(e.history)).toBe(hist)
             } else if (!r.written) {
@@ -201,6 +208,7 @@ describe('properties of the single write entry', () => {
             if (Array.isArray(r)) seen.batchOk++
             else seen.batchFail++
             if (!Array.isArray(r)) {
+              expect(r.error.code, r.error.message).not.toBe('INTERNAL') // I0
               expect(doc(e)).toBe(before) // I1 for batches
               expect(JSON.stringify(e.history)).toBe(hist)
             } else if (doc(e) === before) {

@@ -67,7 +67,7 @@ export function createApi(editor: Editor) {
           }),
         )
       } catch (e: any) {
-        return { ok: false as const, written: false as const, error: e.editError ?? { code: 'INVALID', message: String(e), objects: [], fixes: [] } }
+        return { ok: false as const, written: false as const, error: e.editError ?? { code: 'INTERNAL', message: String(e), objects: [], fixes: [] } }
       }
     },
     undo: () => editor.undo(),

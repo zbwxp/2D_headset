@@ -5,7 +5,7 @@
 // Expected failures (LOCKED, FILL_NOT_CLOSED, …) are detected while planning, before anything is
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
-import { anchorKey, isWithin, linkedAnchors, lockedBy, type AnchorRef } from './model'
+import { actualKind, all, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
   Curve,
@@ -23,7 +23,14 @@ import {
   validateRecord,
 } from './schema'
 
-export type ErrorCode = 'LOCKED' | 'FILL_NOT_CLOSED' | 'NOT_FOUND' | 'INVALID' | 'ID_CONFLICT'
+export type ErrorCode =
+  | 'LOCKED'
+  | 'FILL_NOT_CLOSED'
+  | 'NOT_FOUND' // missing, or not of the expected type (the message says which)
+  | 'INVALID'
+  | 'ID_CONFLICT'
+  | 'BAD_REFERENCE' // the result would break a relation rule (same rules as open)
+  | 'INTERNAL' // unexpected exception while planning — a bug; nothing was written
 export type EditError = {
   code: ErrorCode
   message: string
@@ -51,6 +58,9 @@ const fail = (code: ErrorCode, message: string, objects: string[], fixes: string
   error: { code, message, objects, fixes },
 })
 
+const notFound = (store: DocStore, id: unknown, type: string, address = String(id)): Plan =>
+  fail('NOT_FOUND', `${address}: no ${type} with id ${String(id)} (${actualKind(store, id)})`, [address])
+
 const add = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y })
 const applyAffine = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
 const applyLinear = (m: Affine, v: Vec): Vec => ({ x: m.a * v.x + m.c * v.y, y: m.b * v.x + m.d * v.y })
@@ -67,8 +77,8 @@ const compose = (m: Affine, n: Affine): Affine => ({
 /** Collect the curves an anchor set touches and reject the whole command if any is locked. */
 function lockCheck(store: DocStore, moved: ReturnType<typeof linkedAnchors>): Plan | null {
   for (const m of moved) {
-    const curve = store.get(m.ref.curveId) as CurveRecord | undefined
-    if (!curve) return fail('NOT_FOUND', `curve ${m.ref.curveId} not found`, [m.ref.curveId])
+    const curve = getAs(store, m.ref.curveId, 'curve')
+    if (!curve) return notFound(store, m.ref.curveId, 'curve', anchorKey(m.ref))
     const locker = lockedBy(store, curve.parentId)
     if (locker) {
       const via = m.via ? ` (linked via ${m.via})` : ''
@@ -98,6 +108,15 @@ function writeAnchors(store: DocStore, moves: Map<string, { ref: AnchorRef; p: V
  * `preview` and `apply` share exactly the same validation (dot's review of 11ca75d).
  */
 export function plan(store: DocStore, cmd: Command): Plan {
+  try {
+    return planChecked(store, cmd)
+  } catch (e) {
+    // The API never throws at its caller (UI or AI). An exception here is a bug, reported as such.
+    return fail('INTERNAL', `unexpected error while planning ${String((cmd as { type?: unknown })?.type)}: ${String((e as Error)?.message ?? e)}`, [])
+  }
+}
+
+function planChecked(store: DocStore, cmd: Command): Plan {
   const p = planRaw(store, cmd)
   if (!p.ok) return p
   const guard = writeGuard(store, cmd, p.puts, new Set(p.creates ?? []))
@@ -109,7 +128,36 @@ export function plan(store: DocStore, cmd: Command): Plan {
       return fail('INVALID', String((e as Error).message ?? e), [r.id])
     }
   }
+  const broken = relationCheck(store, p.puts)
+  if (broken.length)
+    return fail('BAD_REFERENCE', broken.map((b) => b.message).join('; '), [...new Set(broken.flatMap((b) => [b.object, b.target]))], ['pass an id of the expected type'])
   return p
+}
+
+/**
+ * Relation rules (model.recordProblems — the same ones `Editor.open` applies) on the state as it
+ * would be after the write: puts layered over the store. Only affected relations are checked:
+ * each written record's outgoing references, plus incoming ones when a written record could
+ * invalidate them (a curve losing anchors/segments, or a container changing parent). A drag that
+ * only moves anchors therefore costs O(written records), not a whole-document scan (dot).
+ */
+function relationCheck(store: DocStore, puts: DocRecord[]) {
+  const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
+  const next = { get: (id: string) => overlay.get(id) ?? store.get(id as any) } as Pick<DocStore, 'get'>
+  const problems = puts.flatMap((r) => recordProblems(next, r))
+  const incoming = new Set<DocRecord['typeName']>()
+  for (const r of puts) {
+    const old = store.get(r.id as any) as DocRecord | undefined
+    if (old?.typeName === 'curve' && r.typeName === 'curve') {
+      const lostAnchor = Object.keys(old.anchors).some((k) => !r.anchors[k])
+      const lostSegment = old.segments.some((s) => !r.segments.some((t) => t.id === s.id))
+      if (lostAnchor) incoming.add('connection')
+      if (lostSegment) incoming.add('fill')
+    }
+    if (old?.typeName === 'container' && r.typeName === 'container' && old.parentId !== r.parentId) incoming.add('container')
+  }
+  for (const type of incoming) for (const r of all(store, type)) if (!overlay.has(r.id)) problems.push(...recordProblems(next, r))
+  return problems
 }
 
 /**
@@ -148,17 +196,16 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       if (locked) return locked
       const moves = new Map<string, { ref: AnchorRef; p: Vec }>()
       for (const m of moved) {
-        const curve = store.get(m.ref.curveId) as CurveRecord
-        const a = curve.anchors[m.ref.anchorId]
+        const a = getAs(store, m.ref.curveId, 'curve')!.anchors[m.ref.anchorId] // curve checked by lockCheck
         if (!a) return fail('NOT_FOUND', `anchor ${anchorKey(m.ref)} not found`, [anchorKey(m.ref)])
         moves.set(anchorKey(m.ref), { ref: m.ref, p: add(a.p, cmd.delta) })
       }
       return { ok: true, label: 'moveAnchors', puts: writeAnchors(store, moves), affected: [...moves.keys()] }
     }
     case 'moveHandle': {
-      const curve = store.get(cmd.target.curveId) as CurveRecord | undefined
+      const curve = getAs(store, cmd.target.curveId, 'curve')
       const a = curve?.anchors[cmd.target.anchorId]
-      if (!curve || !a) return fail('NOT_FOUND', `anchor ${anchorKey(cmd.target)} not found`, [anchorKey(cmd.target)])
+      if (!curve || !a) return notFound(store, cmd.target.curveId, curve ? 'anchor' : 'curve', anchorKey(cmd.target))
       const locked = lockCheck(store, [{ ref: cmd.target }])
       if (locked) return locked
       const next = structuredClone(curve)
@@ -167,13 +214,13 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       return { ok: true, label: 'moveHandle', puts: [next], affected: [`${anchorKey(cmd.target)}.${key}`] }
     }
     case 'moveOverride': {
-      const ref = store.get(cmd.referenceId) as ReferenceRecord | undefined
-      if (!ref) return fail('NOT_FOUND', `reference ${cmd.referenceId} not found`, [cmd.referenceId])
+      const ref = getAs(store, cmd.referenceId, 'reference')
+      if (!ref) return notFound(store, cmd.referenceId, 'reference')
       const locker = lockedBy(store, ref.parentId)
       if (locker) return fail('LOCKED', `reference ${ref.id} is in locked container ${locker.id}`, [ref.id, locker.id], [`unlock ${locker.id}`])
-      const curve = store.get(cmd.target.curveId) as CurveRecord | undefined
+      const curve = getAs(store, cmd.target.curveId, 'curve')
       const a = curve?.anchors[cmd.target.anchorId]
-      if (!curve || !a) return fail('NOT_FOUND', `anchor ${anchorKey(cmd.target)} not found`, [anchorKey(cmd.target)])
+      if (!curve || !a) return notFound(store, cmd.target.curveId, curve ? 'anchor' : 'curve', anchorKey(cmd.target))
       if (!isWithin(store, curve.parentId, ref.sourceId))
         return fail('INVALID', `${anchorKey(cmd.target)} is not part of ${ref.id}'s source ${ref.sourceId}`, [ref.id, anchorKey(cmd.target)])
       const key = anchorKey(cmd.target)
@@ -187,7 +234,7 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
       // (Illustrator behaviour) so the comparison can be made later with real numbers.
       if (!cmd.containerIds.length) return fail('INVALID', 'no containers', [])
-      for (const id of cmd.containerIds) if (!store.get(id)) return fail('NOT_FOUND', `container ${id} not found`, [id])
+      for (const id of cmd.containerIds) if (!getAs(store, id, 'container')) return notFound(store, id, 'container')
       const within = (parentId: RecordId<ContainerRecord> | null) => cmd.containerIds.some((id) => isWithin(store, parentId, id))
       const curves = (store.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).filter((c) => within(c.parentId))
       // References placed inside the containers move with them: compose their placement transform.
@@ -216,8 +263,7 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       return { ok: true, label, puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
     }
     case 'createFill': {
-      const parent = store.get(cmd.parentId) as ContainerRecord | undefined
-      if (!parent) return fail('NOT_FOUND', `container ${cmd.parentId} not found`, [cmd.parentId])
+      if (!getAs(store, cmd.parentId, 'container')) return notFound(store, cmd.parentId, 'container')
       const locker = lockedBy(store, cmd.parentId)
       if (locker) return fail('LOCKED', `container ${cmd.parentId} is locked by ${locker.id}`, [cmd.parentId, locker.id], [`unlock ${locker.id}`])
       if (!cmd.boundary.length) return fail('FILL_NOT_CLOSED', 'boundary is empty', [cmd.parentId])
@@ -227,21 +273,12 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
     }
     case 'setContainerFlags': {
-      const c = store.get(cmd.containerId) as ContainerRecord | undefined
-      if (!c) return fail('NOT_FOUND', `container ${cmd.containerId} not found`, [cmd.containerId])
+      const c = getAs(store, cmd.containerId, 'container')
+      if (!c) return notFound(store, cmd.containerId, 'container')
       const next = { ...c, ...(cmd.locked !== undefined && { locked: cmd.locked }), ...(cmd.visible !== undefined && { visible: cmd.visible }) }
       return { ok: true, label: 'setContainerFlags', puts: [next], affected: [c.id] }
     }
   }
-}
-
-function inContainer(store: DocStore, curve: CurveRecord, containerId: RecordId<ContainerRecord>) {
-  let cur: ContainerRecord | undefined = store.get(curve.parentId) as ContainerRecord | undefined
-  while (cur) {
-    if (cur.id === containerId) return true
-    cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
-  }
-  return false
 }
 
 /**
@@ -250,7 +287,7 @@ function inContainer(store: DocStore, curve: CurveRecord, containerId: RecordId<
  */
 export function findGap(store: DocStore, boundary: BoundaryStep[]): [string, string] | null {
   const ends = boundary.map((step) => {
-    const c = store.get(step.curveId) as CurveRecord | undefined
+    const c = getAs(store, step.curveId, 'curve')
     const seg = c?.segments.find((s) => s.id === step.segmentId)
     if (!seg) return null
     const [from, to] = step.dir === 1 ? [seg.from, seg.to] : [seg.to, seg.from]
