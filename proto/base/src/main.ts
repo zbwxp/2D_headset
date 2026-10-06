@@ -2,7 +2,7 @@
 import { counters, resetCounters } from './counters'
 import { createApi } from './api'
 import { Editor } from './editor'
-import { evaluate } from './evaluate'
+import { evaluate, hitTest } from './evaluate'
 import { exampleRecords, ids } from './fixture'
 import { FabricView } from './view/fabricView'
 import { runScopeA } from './bench'
@@ -50,6 +50,6 @@ if (bench && onionCount) {
   view.render()
 }
 Object.assign(window, {
-  __contour: { editor, api, view, evaluate, ids, counters, resetCounters, paintCase },
+  __contour: { editor, api, view, evaluate, hitTest, ids, counters, resetCounters, paintCase },
   __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, n ? onionYaws(n) : [], samples) },
 })

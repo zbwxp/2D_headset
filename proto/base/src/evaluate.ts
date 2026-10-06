@@ -202,6 +202,28 @@ export function cubicsToPath(cubics: Cubic[], close = false) {
   return close ? d + ' Z' : d
 }
 
+/**
+ * Is `p` (world) on the drawn ink of `c`? The browser's native stroke test (`isPointInStroke`) with the
+ * SAME parameters the renderers draw with (`inkStyle`: width, butt ends, mitre joins, mitre limit), so
+ * picking and display agree. Where no canvas exists (node), it fails loudly instead of approximating.
+ */
+let probe: OffscreenCanvasRenderingContext2D | null = null
+export function inkContains(c: EvalCurve, p: Vec): boolean {
+  if (typeof OffscreenCanvas === 'undefined') throw new Error('inkContains: no native stroke test in this environment (needs a canvas)')
+  probe ??= new OffscreenCanvas(1, 1).getContext('2d')!
+  const st = inkStyle(c)
+  probe.lineWidth = st.width
+  probe.lineCap = st.cap
+  probe.lineJoin = st.join
+  probe.miterLimit = st.miterLimit
+  const path = new Path2D()
+  const segs = c.segments
+  if (!segs.length) return false
+  path.moveTo(segs[0].cubic[0].x, segs[0].cubic[0].y)
+  for (const s of segs) path.bezierCurveTo(s.cubic[1].x, s.cubic[1].y, s.cubic[2].x, s.cubic[2].y, s.cubic[3].x, s.cubic[3].y)
+  return probe.isPointInStroke(path, p.x, p.y)
+}
+
 export type Hit =
   | { kind: 'anchor'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; anchorId: string; d: number }
   | { kind: 'handle'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; anchorId: string; handle: 'in' | 'out'; d: number }
@@ -249,12 +271,14 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
     const poly = f.cubics.flatMap((c) => new Bezier(...c.flatMap((v) => [v.x, v.y])).getLUT(16))
     if (!pointInPolygon(p, poly)) continue
     // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
-    // fill. Approximation, stated: distance ≤ half the drawn width, i.e. round ends / joins instead of
-    // the drawn butt ends / mitres (no per-pixel read on pointer moves).
+    // fill. "Ink" = the browser's own stroke geometry with the drawn parameters (inkContains), not an
+    // approximation (dot). A distance bound only skips the call where no ink can be.
     const onOwnInk = entry.ownInk.some((a) => {
       const c = byAddress.get(a)!
-      const half = inkStyle(c).width / 2
-      return c.segments.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= half)
+      const st = inkStyle(c)
+      const reach = (st.width / 2) * Math.max(1, st.miterLimit) // a mitre reaches at most miterLimit × half width
+      if (!c.segments.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= reach)) return false
+      return inkContains(c, p)
     })
     if (!onOwnInk) return { kind: 'fill', address: f.address, d: 0 }
   }

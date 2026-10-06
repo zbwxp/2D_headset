@@ -240,7 +240,11 @@ holes into the fill.
 before the fill; hidden ones protect nothing); `inkStyle` is the one stroke definition; B and Fabric
 call the same `paintFillLeavingOwnInk` (src/view/ownInk.ts; Fabric through `OwnInkFill._render`, an
 internal fabric 7.4.0 dependency, documented in src/view/ownInkFill.ts); picking excludes the own ink
-(distance ≤ half width — stated approximation, round instead of butt / mitre). Tests: P6 own / cross
+with the browser's native stroke test (`inkContains`: `isPointInStroke` with the same `inkStyle`), so
+picking agrees with the picture — e2e "picking agrees with the picture" compares every pure-colour
+pixel inside the fill for P6 own / cross layer, H1 (free butt end inside the fill) and H2 (acute inward
+mitre): 0 disagreements; the earlier round-end approximation gave 19 (H1) and 10 (H2). Without a
+canvas (node) it fails loudly instead of approximating; a distance bound skips it where no ink can be. Tests: P6 own / cross
 layer / 50 % fill / third party between pass in A and B, also at a fractional pan and DPR 2; unit
 tests for ownInk in maker, full, runtime, preview and yaw, and for picking; mutations (no protection,
 cut on the main canvas) fail 16 picture tests each. Known: the inner anti-aliased seam (alpha ≥ 0.75)

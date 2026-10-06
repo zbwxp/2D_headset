@@ -167,6 +167,52 @@ export const paintCases: Record<string, PaintCase> = {
       { at: { x: 30, y: 30 }, rgba: red, what: 'F covers X inside, away from B' },
     ],
   },
+  // H1 / H2 — picking must agree with the picture (dot): the fill's own curve has a FREE butt end inside
+  // the fill (H1: a tail from corner a into the interior), or an acute inward mitre (H2: a notch).
+  'H1-butt-end-inside': {
+    rule: 'H1 picking vs picture at a butt end: own curve e→a→b→c→d→a, fill = abcd, fill in front',
+    above: [['fill:F', 'curve:B']],
+    records: () => {
+      const b = Curve.create({
+        id: Curve.createId('B'),
+        name: 'B',
+        parentId: id('L'),
+        index: 'a1',
+        anchors: { e: anchor('e', 35, 25), a: anchor('a', 20, 10), b: anchor('b', 60, 10), c: anchor('c', 60, 50), d: anchor('d', 20, 50) },
+        segments: [
+          { id: 'ea', from: 'e', to: 'a' },
+          { id: 'ab', from: 'a', to: 'b' },
+          { id: 'bc', from: 'b', to: 'c' },
+          { id: 'cd', from: 'c', to: 'd' },
+          { id: 'da', from: 'd', to: 'a' },
+        ],
+        stroke: { color: BLUE, width: 12 },
+      })
+      const f = Fill.create({ id: Fill.createId('F'), name: 'F', parentId: id('L'), index: 'a2', color: RED, boundary: ['ab', 'bc', 'cd', 'da'].map((segmentId) => ({ curveId: b.id, segmentId, dir: 1 as const })) })
+      return [layer('L', 'a1'), b, f]
+    },
+    expect: [{ at: { x: 50, y: 40 }, rgba: red, what: 'F interior' }],
+  },
+  'H2-acute-inward-mitre': {
+    rule: 'H2 picking vs picture at an acute inward mitre: notch vertex (40,15)',
+    above: [['fill:F', 'curve:B']],
+    records: () => {
+      const pts: [string, number, number][] = [['a', 10, 5], ['b', 70, 5], ['c', 70, 60], ['d', 40, 15], ['e', 10, 60]]
+      const segs = ['ab', 'bc', 'cd', 'de', 'ea']
+      const b = Curve.create({
+        id: Curve.createId('B'),
+        name: 'B',
+        parentId: id('L'),
+        index: 'a1',
+        anchors: Object.fromEntries(pts.map(([k, x, y]) => [k, anchor(k, x, y)])),
+        segments: segs.map((sid) => ({ id: sid, from: sid[0], to: sid[1] })),
+        stroke: { color: BLUE, width: 12 },
+      })
+      const f = Fill.create({ id: Fill.createId('F'), name: 'F', parentId: id('L'), index: 'a2', color: RED, boundary: segs.map((segmentId) => ({ curveId: b.id, segmentId, dir: 1 as const })) })
+      return [layer('L', 'a1'), b, f]
+    },
+    expect: [{ at: { x: 40, y: 8 }, rgba: red, what: 'F interior above the notch' }],
+  },
   // P7 — other objects cover a fill normally: V behind F is covered, U in front covers F.
   'P7-others': {
     rule: 'P7 others normal: L1 = [V] behind L2 = [B, F] behind L3 = [U]',

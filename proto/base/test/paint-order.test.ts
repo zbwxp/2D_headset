@@ -209,16 +209,15 @@ describe('own ink (S2): decided once by the core', () => {
   })
 })
 
-describe('picking a fill obeys the same protected area (S2)', () => {
-  it('a point on the own ink inside the fill is not the fill; the interior is', async () => {
+// Picking a fill against its own ink uses the browser's native stroke test (inkContains): checked in
+// e2e/paint-order.spec.ts ("picking agrees with the picture"). Here only: no silent approximation.
+describe('picking a fill near its own ink needs the native stroke test', () => {
+  it('fails loudly in node instead of approximating', async () => {
     const { hitTest } = await import('../src/evaluate')
     const ev = new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated()
-    // tolerance below the half-width so the segment rule does not decide: only the fill test runs
-    expect(hitTest(ev, { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toBeNull()
+    expect(() => hitTest(ev, { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toThrow(/native stroke test/)
+    // far from any own ink: decided without it
     expect(hitTest(ev, { x: 40, y: 30 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill', address: 'fill:F' })
-    // without protection (boundary after the fill) the same point IS the fill
-    const recs = paintCases['P6-own-boundary'].records().map((r) => (r.id === Curve.createId('F-boundary') ? { ...r, index: 'a9' } : r))
-    expect(hitTest(new Editor(recs).derived.evaluated(), { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill' })
   })
 })
 
