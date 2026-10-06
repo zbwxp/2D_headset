@@ -52,6 +52,8 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   if (!K || K.typeName !== 'character') return { ok: false, problems: [`no character ${characterId}`] }
   const fam = ctx.get(K.familyId) as FamilyRecord | undefined
   if (!fam) return { ok: false, problems: [`no family ${K.familyId}`] }
+  // a convex combination (dot 1791313635): finite, non-negative weights summing to 1 within float rounding only
+  for (const [p, w] of Object.entries(K.weights)) if (!Number.isFinite(w) || w < 0) problems.push(`${K.id}: weight of ${p} is ${w} — weights must be finite and non-negative`)
   const parts = Object.entries(K.weights).filter(([, w]) => w !== 0)
   const sum = parts.reduce((s, [, w]) => s + w, 0)
   if (Math.abs(sum - 1) > 1e-9) problems.push(`${K.id}: the non-zero weights sum to ${sum}, not 1 (never renormalised)`)

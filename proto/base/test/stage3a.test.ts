@@ -44,6 +44,9 @@ describe('prepare / play on the stage-1 sample', () => {
     const rs = sample()
     rs.find((r) => r.id === K).weights['preset:Q'] = 0.5
     expect(prep(rs).ok).toBe(false)
+    const neg = sample()
+    neg.find((r) => r.id === K).weights = { 'preset:P': 1.4, 'preset:Q': -0.4 }
+    expect((prep(neg) as any).problems.join()).toMatch(/finite and non-negative/)
     const vis = sample()
     vis.find((r) => r.id === 'visibility:preset:Q/curve:strand').keys[1].yaw = 40
     const p = prep(vis)

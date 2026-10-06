@@ -50,6 +50,9 @@ describe('character commands on the sample', () => {
   it('setPresetWeights and setFineTune: weights must sum to 1; fine-tune deltas finite; both undoable and reopenable', () => {
     const e = openRecords(json('stage1-valid.json').records)
     refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0.5, 'preset:Q': 0.4 } }, /sum to 0.9/)
+    refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 1.5, 'preset:Q': -0.5 } }, /finite and non-negative/)
+    refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0, 'preset:Q': 0 } }, /sum to 0/)
+    apply(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0.1 + 0.2, 'preset:Q': 0.7 } }) // 0.30000000000000004 + 0.7: rounding only
     apply(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0.25, 'preset:Q': 0.75 } })
     apply(e, { type: 'setFineTune', character: K, curveId: 'curve:lid' as any, anchorId: 'a', delta: { dp: { x: 0, y: 1 }, dIn: { x: 0, y: 1 }, dOut: { x: 0, y: 1 } } })
     expect(character(e).fineTune['curve:lid'].a.dp).toEqual({ x: 0, y: 1 })

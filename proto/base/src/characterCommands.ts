@@ -105,7 +105,7 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
       for (const [p, w] of Object.entries(cmd.weights)) {
         const pr = getAs(store, p, 'preset')
         if (!pr || pr.familyId !== fam.id) return fail('INVALID', `${p} is not a preset of ${fam.id}`, [p])
-        if (!Number.isFinite(w)) return fail('INVALID', `weight of ${p} is not finite`, [p])
+        if (!Number.isFinite(w) || w < 0) return fail('INVALID', `weight of ${p} must be finite and non-negative (got ${w})`, [p])
       }
       const sum = Object.values(cmd.weights).reduce((s, w) => s + w, 0)
       if (Math.abs(sum - 1) > 1e-9) return fail('INVALID', `weights sum to ${sum}, not 1 (never renormalised)`, [K.id])
