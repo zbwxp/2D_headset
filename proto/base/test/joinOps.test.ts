@@ -104,6 +104,12 @@ describe('bind / unbind', () => {
     }
     const locked = ok(bind(d0, a, b, 'second'))
     for (const [pid, st] of each(d0, 'W')) expect(locked.presets[pid].W.states[st]).toEqual(d0.presets[pid].W.states[st]) // W untouched
+    // the stored addresses are copies: mutating the caller's arguments afterwards does not touch the document
+    const a2 = { curveId: 'U', anchorId: 'c' }, b2 = { curveId: 'W', anchorId: 'p' }
+    const m2 = ok(bind(d0, a2, b2))
+    a2.anchorId = 'a'
+    b2.curveId = 'X'
+    expect(m2.connections.k).toEqual([{ curveId: 'U', anchorId: 'c' }, { curveId: 'W', anchorId: 'p' }])
     const un = ok(unbind(m, 'k'))
     expect(un.connections).toEqual({})
     expect(un.presets).toEqual(m.presets)

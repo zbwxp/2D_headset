@@ -126,7 +126,7 @@ export function bind(doc: Doc, a: End, b: End, keep: Keep = 'mid', id = 'k'): Re
   const d: Doc = structuredClone(doc)
   let cid = id
   for (let k = 1; d.connections[cid]; k++) cid = `${id}~${k}`
-  d.connections[cid] = [a, b]
+  d.connections[cid] = [{ curveId: a.curveId, anchorId: a.anchorId }, { curveId: b.curveId, anchorId: b.anchorId }] // copies: the document never shares objects with command arguments
   for (const cs of presetsOf(d))
     for (const st of Object.keys(cs[a.curveId].states)) {
       const A = cs[a.curveId].states[st][a.anchorId], B = cs[b.curveId].states[st][b.anchorId]
