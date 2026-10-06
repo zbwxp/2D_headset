@@ -214,13 +214,13 @@ describe('own ink (S2): decided once by the core', () => {
 
 // Picking a fill against its own ink uses the browser's native stroke test (inkContains): checked in
 // e2e/paint-order.spec.ts ("picking agrees with the picture"). Here only: no silent approximation.
-describe('picking a fill near its own ink needs the native stroke test', () => {
+describe('picking a fill needs the native path tests', () => {
   it('fails loudly in node instead of approximating', async () => {
     const { hitTest } = await import('../src/evaluate')
     const ev = new Editor(paintCases['P6-own-boundary'].records()).derived.evaluated()
-    expect(() => hitTest(ev, { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toThrow(/native stroke test/)
-    // far from any own ink: decided without it
-    expect(hitTest(ev, { x: 40, y: 30 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill', address: 'fill:F' })
+    // fill containment and own-ink tests are both native (isPointInPath / isPointInStroke)
+    expect(() => hitTest(ev, { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toThrow(/native path test/)
+    expect(() => hitTest(ev, { x: 40, y: 30 }, { mode: 'V', tolerance: 0.1 })).toThrow(/native path test/)
   })
 })
 

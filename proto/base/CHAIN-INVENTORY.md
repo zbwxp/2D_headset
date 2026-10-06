@@ -39,6 +39,18 @@ fabric 7.4.0, bezier-js 6.1.4. Line numbers at commit `27520ac`.
 | C4 | A-mode drag (`onDown` / `onMove` / `onUp` / `commandFor`) | fabricView.ts 438–520 (~80) | our preview + one command on release; reference edits convert deltas | — (tool state machines in @tldraw/editor, *unchecked*) | domain (write-back rules) |
 | C5 | V write-back (`onModified`) + re-entrancy guards | fabricView.ts 523–556 (~34), flags 37–44 | Fabric transform matrix → `transformContainer(s)`; ignores Fabric's re-entrant `object:modified`; cancel handling | Fabric transform box (used) | adapter — the guards exist because we re-project inside Fabric's event cycle |
 
+## E. Review outcome so far (dot, 2026-10-06) and what was done
+
+1. Fill picking → native `isPointInPath` with one shared `FILL_RULE` (renderers + picking); the
+   polyline sampling (`pointInPolygon`) is deleted. Done; H3 (pentagram) proves the rule is shared.
+2. Fabric paths → public path-command arrays (`cubicsToCommands`), no SVG string round trip (the
+   3-decimal string stays for export only). Done.
+3. V transform box: keep Fabric's, separate "box for interaction" from "content for drawing" — small
+   verification first, no rewrite yet. Open.
+4. Own ink keeps the referenced segment identities. Done (`2fae9fc`).
+Anchor-dot caching measured (Fabric default cache = ≈ 550 ms of the ≈ 560 ms); A/B to be re-compared
+with the dots uncached.
+
 ## D. Notes for the review
 
 - Generic-editor problems found today were in A1 (ordering), B2 (V group order) and C1 (picking vs

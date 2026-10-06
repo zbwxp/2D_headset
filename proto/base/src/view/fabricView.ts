@@ -13,7 +13,7 @@ import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, 
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
-import { cubicsToPath, evaluate, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
+import { cubicsToCommands, evaluate, FILL_RULE, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, ownInkPath2D } from './ownInk'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
@@ -219,17 +219,17 @@ export class FabricView {
   private project(ev: Evaluated, onions: Evaluated[]) {
     // Phases are timed separately (dot): build objects, then attach them.
     let t = performance.now()
-    const pathOfOnion = (c: EvalCurve) => new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false })
+    const pathOfOnion = (c: EvalCurve) => new Path(cubicsToCommands(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false })
     const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
     // a fill painted after its own visible strokes leaves out their ink (S2; `ownInk` decided by the core)
     const pathOfFill = (p: Extract<PaintItem, { kind: 'fill' }>) => {
       const f = p.item
-      if (!p.ownInk.length) return new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false })
-      return new OwnInkFill(cubicsToPath(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
+      if (!p.ownInk.length) return new Path(cubicsToCommands(f.cubics, true), { fill: f.color, fillRule: FILL_RULE, stroke: '', selectable: false, evented: false, objectCaching: false })
+      return new OwnInkFill(cubicsToCommands(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
     }
     const pathOf = (c: EvalCurve) => {
       const st = inkStyle(c)
-      return new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
+      return new Path(cubicsToCommands(c.segments.map((s) => s.cubic)), {
         fill: '',
         stroke: c.locked ? '#999' : c.stroke.color,
         strokeWidth: st.width,

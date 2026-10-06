@@ -222,7 +222,31 @@ function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, con
   return false
 }
 
-/** SVG path data from cubics — used by display AND export, so they cannot disagree. */
+/** The fill rule every renderer AND picking use (one definition: Canvas `fill`, Fabric `fillRule`,
+ *  native `isPointInPath`). */
+export const FILL_RULE: CanvasFillRule = 'nonzero'
+
+/** Path commands for Fabric (its public `TComplexPathData`): full precision, no string round trip (dot). */
+export type PathCommand = ['M', number, number] | ['C', number, number, number, number, number, number] | ['Z']
+export function cubicsToCommands(cubics: Cubic[], close = false): PathCommand[] {
+  if (!cubics.length) return []
+  const out: PathCommand[] = [['M', cubics[0][0].x, cubics[0][0].y]]
+  for (const [, c1, c2, p3] of cubics) out.push(['C', c1.x, c1.y, c2.x, c2.y, p3.x, p3.y])
+  if (close) out.push(['Z'])
+  return out
+}
+
+/** Native path for canvas drawing and native picking (world coordinates). */
+export function cubicsPath2D(cubics: Cubic[], close = false) {
+  const p = new Path2D()
+  if (!cubics.length) return p
+  p.moveTo(cubics[0][0].x, cubics[0][0].y)
+  for (const [, c1, c2, p3] of cubics) p.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p3.x, p3.y)
+  if (close) p.closePath()
+  return p
+}
+
+/** SVG path data from cubics — for EXPORT (Fabric gets commands, not strings). */
 export function cubicsToPath(cubics: Cubic[], close = false) {
   counters.pathStrings++
   if (!cubics.length) return ''
@@ -238,9 +262,17 @@ export function cubicsToPath(cubics: Cubic[], close = false) {
  * picking and display agree. Where no canvas exists (node), it fails loudly instead of approximating.
  */
 let probe: OffscreenCanvasRenderingContext2D | null = null
+function nativeProbe(what: string) {
+  if (typeof OffscreenCanvas === 'undefined') throw new Error(`${what}: no native path test in this environment (needs a canvas)`)
+  return (probe ??= new OffscreenCanvas(1, 1).getContext('2d')!)
+}
+/** Is `p` (world) inside the fill as drawn — native `isPointInPath` with `FILL_RULE` (dot: the old
+ *  polyline sampling could disagree with the drawing, even on the fill rule). */
+export function fillContains(f: EvalFill, p: Vec): boolean {
+  return nativeProbe('fillContains').isPointInPath(cubicsPath2D(f.cubics, true), p.x, p.y, FILL_RULE)
+}
 export function inkContains(c: EvalCurve, segmentIds: string[], p: Vec): boolean {
-  if (typeof OffscreenCanvas === 'undefined') throw new Error('inkContains: no native stroke test in this environment (needs a canvas)')
-  probe ??= new OffscreenCanvas(1, 1).getContext('2d')!
+  const probe = nativeProbe('inkContains')
   const st = inkStyle(c)
   probe.lineWidth = st.width
   probe.lineCap = st.cap
@@ -298,8 +330,7 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
     if (entry.kind !== 'fill') continue
     const f = entry.item
     if (!f.visible || f.locked) continue
-    const poly = f.cubics.flatMap((c) => new Bezier(...c.flatMap((v) => [v.x, v.y])).getLUT(16))
-    if (!pointInPolygon(p, poly)) continue
+    if (!fillContains(f, p)) continue
     // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
     // fill. "Ink" = the browser's own stroke geometry with the drawn parameters (inkContains), not an
     // approximation (dot). A distance bound only skips the call where no ink can be.
@@ -316,12 +347,3 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
   return null
 }
 
-function pointInPolygon(p: Vec, poly: Vec[]) {
-  let inside = false
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]
-    const b = poly[j]
-    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside
-  }
-  return inside
-}

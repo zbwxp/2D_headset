@@ -6,17 +6,17 @@
 // objects with fill 'black', stroke '' — no stroke mask) and the object cache (cut shifted ~1 px).
 // Regression check: e2e/paint-order.spec.ts P6 cases in A (also at fractional pan and DPR 2).
 import { Path } from 'fabric'
-import type { EvalCurve, EvalFill } from '../evaluate'
+import { FILL_RULE, type EvalCurve, type EvalFill } from '../evaluate'
 import { paintFillLeavingOwnInk } from './ownInk'
 
 export class OwnInkFill extends Path {
   constructor(
-    d: string,
+    d: ConstructorParameters<typeof Path>[0],
     private readonly fill_: EvalFill,
     private readonly fillPath: Path2D,
     private readonly own: { curve: EvalCurve; path: Path2D }[],
   ) {
-    super(d, { fill: fill_.color, stroke: '', selectable: false, evented: false, objectCaching: false })
+    super(d, { fill: fill_.color, fillRule: FILL_RULE, stroke: '', selectable: false, evented: false, objectCaching: false })
   }
   _render(ctx: CanvasRenderingContext2D) {
     ctx.save()

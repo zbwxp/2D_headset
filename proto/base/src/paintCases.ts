@@ -217,6 +217,28 @@ export const paintCases: Record<string, PaintCase> = {
     },
     expect: [{ at: { x: 40, y: 8 }, rgba: red, what: 'F interior above the notch' }],
   },
+  // H3 — the fill RULE must be the drawing's (dot): a pentagram boundary winds twice around the centre,
+  // so 'nonzero' fills the centre pentagon and 'evenodd' would leave it empty.
+  'H3-pentagram-fill-rule': {
+    rule: 'H3 fill rule: pentagram boundary, nonzero → the centre is filled',
+    above: [['fill:F', 'curve:B']],
+    records: () => {
+      const pt = (k: number) => [40 + 30 * Math.sin((k * 4 * Math.PI) / 5), 32 - 30 * Math.cos((k * 4 * Math.PI) / 5)] as const
+      const ids5 = ['p0', 'p1', 'p2', 'p3', 'p4']
+      const b = Curve.create({
+        id: Curve.createId('B'),
+        name: 'B',
+        parentId: id('L'),
+        index: 'a1',
+        anchors: Object.fromEntries(ids5.map((k, i) => [k, anchor(k, pt(i)[0], pt(i)[1])])),
+        segments: ids5.map((k, i) => ({ id: `s${i}`, from: k, to: ids5[(i + 1) % 5] })),
+        stroke: { color: BLUE, width: 6 },
+      })
+      const f = Fill.create({ id: Fill.createId('F'), name: 'F', parentId: id('L'), index: 'a2', color: RED, boundary: ids5.map((_, i) => ({ curveId: b.id, segmentId: `s${i}`, dir: 1 as const })) })
+      return [layer('L', 'a1'), b, f]
+    },
+    expect: [{ at: { x: 40, y: 32 }, rgba: red, what: 'centre pentagon filled (nonzero)' }],
+  },
   // P7 — other objects cover a fill normally: V behind F is covered, U in front covers F.
   'P7-others': {
     rule: 'P7 others normal: L1 = [V] behind L2 = [B, F] behind L3 = [U]',

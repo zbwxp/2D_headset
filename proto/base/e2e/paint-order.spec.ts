@@ -35,7 +35,7 @@ async function sample(page: Page, name: string, renderer: 'A' | 'B' | 'V', vpt?:
   }, renderer)
 }
 
-const names = ['P1-fill-after-line', 'P1-line-after-fill', 'P2-fill-layer-in-front', 'P2-line-layer-in-front', 'P3-nested', 'P4-index-bytes', 'P6-own-boundary', 'P6-cross-layer', 'P6-semi-fill', 'P6-third-party-between', 'P7-others', 'P10-shown-parent', 'P10-hidden-parent', 'H1-butt-end-inside', 'H2-acute-inward-mitre']
+const names = ['P1-fill-after-line', 'P1-line-after-fill', 'P2-fill-layer-in-front', 'P2-line-layer-in-front', 'P3-nested', 'P4-index-bytes', 'P6-own-boundary', 'P6-cross-layer', 'P6-semi-fill', 'P6-third-party-between', 'P7-others', 'P10-shown-parent', 'P10-hidden-parent', 'H1-butt-end-inside', 'H2-acute-inward-mitre', 'H3-pentagram-fill-rule']
 for (const name of names)
   for (const renderer of ['A', 'B', 'V'] as const)
     test(`${KNOWN[name] ? `KF ${name}` : name} [${renderer}]`, async ({ page }) => {
@@ -62,7 +62,7 @@ test.describe('own ink at a fractional pan / zoom, DPR 2', () => {
 // shows as pure fill colour or pure stroke colour, picking the fill (V mode, segment rule disabled with
 // a negative tolerance so only the fill rule decides; KF-4 covers lines beating fills) must say "fill" exactly where the fill colour shows. Anti-aliased pixels
 // are skipped. Uses the B picture (same routine as Fabric).
-for (const name of ['P6-own-boundary', 'P6-cross-layer', 'H1-butt-end-inside', 'H2-acute-inward-mitre'])
+for (const name of ['P6-own-boundary', 'P6-cross-layer', 'H1-butt-end-inside', 'H2-acute-inward-mitre', 'H3-pentagram-fill-rule'])
   test(`picking agrees with the picture: ${name}`, async ({ page }) => {
     await page.goto(`/?case=${name}&renderer=b`)
     await page.waitForFunction(() => (window as any).__contour)

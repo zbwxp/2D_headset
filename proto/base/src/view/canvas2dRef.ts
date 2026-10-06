@@ -6,7 +6,7 @@
 // non-zero fill, no stroke on dots). Path2D objects are built straight from the evaluated cubics (no
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
 // still REPAINTED each frame, like renderAll. Not a cost floor (dot): a reference with the same output.
-import { inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
+import { FILL_RULE, inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
 import { ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 
 export class Canvas2DRef {
@@ -66,7 +66,7 @@ export class Canvas2DRef {
           paintFillLeavingOwnInk(ctx, p.item, this.fillPath(p.item), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
         else {
           ctx.fillStyle = p.item.color
-          ctx.fill(this.fillPath(p.item))
+          ctx.fill(this.fillPath(p.item), FILL_RULE)
         }
       } else {
         const st = inkStyle(p.item)

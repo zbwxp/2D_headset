@@ -7,16 +7,9 @@
 // Checked first on small pictures (ownink.html, e2e/own-ink-check.spec.ts): butt ends, mitres, the
 // mitre limit, curved joints, fractional pan / zoom, DPR 1 and 2. Known: the exact cut leaves a faint
 // see-through seam along the stroke's inner anti-aliased edge (alpha ≥ 0.75) — open with dot.
-import { inkRuns, inkStyle, type Cubic, type EvalCurve, type EvalFill } from '../evaluate'
+import { cubicsPath2D, FILL_RULE, inkRuns, inkStyle, type EvalCurve, type EvalFill } from '../evaluate'
+export { cubicsPath2D }
 
-export function cubicsPath2D(cubics: Cubic[], close = false) {
-  const p = new Path2D()
-  if (!cubics.length) return p
-  p.moveTo(cubics[0][0].x, cubics[0][0].y)
-  for (const [, c1, c2, p3] of cubics) p.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p3.x, p3.y)
-  if (close) p.closePath()
-  return p
-}
 /** The own ink of a fill on one curve: only the referenced segments, as the core's runs (`inkRuns`). */
 export function ownInkPath2D(c: EvalCurve, segmentIds: string[]) {
   const p = new Path2D()
@@ -65,7 +58,7 @@ export function paintFillLeavingOwnInk(ctx: CanvasRenderingContext2D, fill: Eval
   l.clearRect(bx, by, bw, bh)
   l.setTransform(m)
   l.fillStyle = fill.color
-  l.fill(fillPath)
+  l.fill(fillPath, FILL_RULE)
   l.globalCompositeOperation = 'destination-out'
   l.strokeStyle = '#000'
   for (const o of own) {

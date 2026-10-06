@@ -66,7 +66,9 @@ describe('hit test on the evaluated geometry', () => {
     expect(hitTest(evaluate(editor.reader), { x: 40, y: 50 }, { mode: 'V', tolerance: 2 })).toBeNull()
     api.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
     const ev = evaluate(editor.reader)
-    expect(hitTest(ev, { x: 40, y: 50 }, { mode: 'V', tolerance: 2 })).toMatchObject({ kind: 'fill', address: ids.F })
+    // fill containment is the browser's native isPointInPath (same fill rule as the drawing): the
+    // unlocked-fill hit is checked in e2e/hit.spec.ts; without a canvas it refuses instead of guessing
+    expect(() => hitTest(ev, { x: 40, y: 50 }, { mode: 'V', tolerance: 2 })).toThrow(/native path test/)
     expect(hitTest(ev, { x: 80, y: 20 }, { mode: 'A', tolerance: 2 })).toMatchObject({ kind: 'anchor', address: `${ids.R1}/${ids.E1}#e1` })
   })
 })
