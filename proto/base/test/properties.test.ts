@@ -91,7 +91,9 @@ const action: fc.Arbitrary<Action> = fc.oneof(
   { weight: 1, arbitrary: fc.constant({ kind: 'saveOpen' as const }) },
 )
 
-const doc = (e: Editor) => JSON.stringify(e.reader.serialize('document'))
+// Lossless comparison key: plain JSON would map NaN, Infinity and -Infinity all to null (dot).
+const key = (x: unknown) => JSON.stringify(x, (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? `#num:${v}` : v))
+const doc = (e: Editor) => key(e.reader.serialize('document'))
 const records = (e: Editor) => e.reader.allRecords() as DocRecord[]
 
 function lockedSnapshot(e: Editor) {
@@ -99,7 +101,7 @@ function lockedSnapshot(e: Editor) {
   const out = new Map<string, string>()
   for (const r of records(e)) {
     const place = r.typeName === 'connection' ? null : r.typeName === 'container' ? r.parentId : r.parentId
-    if (place && lockedBy(e.reader, place)) out.set(r.id, JSON.stringify(r))
+    if (place && lockedBy(e.reader, place)) out.set(r.id, key(r))
   }
   return out
 }
@@ -111,6 +113,20 @@ function allFinite(x: unknown): boolean {
   if (x && typeof x === 'object') return Object.values(x).every(allFinite)
   return true
 }
+// Field-level: these MUST be finite numbers (a null/string/NaN here is a bad value, not "no number").
+const finiteNum = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
+const finiteVec = (v: unknown) => !!v && typeof v === 'object' && finiteNum((v as Raw).x) && finiteNum((v as Raw).y)
+function coordinateProblems(r: Raw): string[] {
+  const out: string[] = []
+  if (r.typeName === 'curve')
+    for (const [k, a] of Object.entries(r.anchors as Record<string, Raw>))
+      for (const f of ['p', 'hIn', 'hOut']) if (!finiteVec(a[f])) out.push(`${r.id}#${k}.${f}: not a finite point`)
+  if (r.typeName === 'reference') {
+    for (const f of ['a', 'b', 'c', 'd', 'e', 'f']) if (!finiteNum(r.transform?.[f])) out.push(`${r.id}.transform.${f}: not finite`)
+    for (const [k, v] of Object.entries((r.overrides ?? {}) as Record<string, unknown>)) if (!finiteVec(v)) out.push(`${r.id}.overrides[${k}]: not a finite point`)
+  }
+  return out
+}
 /** Structural integrity by direct lookup in the raw snapshot: every reference points at a record of the right type, no cycles. */
 function integrityProblems(rs: Raw[]): string[] {
   const byId = new Map<string, Raw>(rs.map((r) => [r.id, r]))
@@ -118,6 +134,7 @@ function integrityProblems(rs: Raw[]): string[] {
   const out: string[] = []
   for (const r of rs) {
     if (!allFinite(r)) out.push(`${r.id}: non-finite number`)
+    out.push(...coordinateProblems(r))
     if (r.typeName === 'container' && r.parentId != null && !is(r.parentId, 'container')) out.push(`${r.id}: bad parent`)
     if (['curve', 'fill', 'reference'].includes(r.typeName) && !is(r.parentId, 'container')) out.push(`${r.id}: bad parent`)
     if (r.typeName === 'reference' && !is(r.sourceId, 'container')) out.push(`${r.id}: bad source`)
@@ -161,8 +178,10 @@ function checkStatic(e: Editor) {
   }
   // I7 (own validators) and I7' (independent oracle above)
   for (const r of records(e)) validateRecord(r)
-  expect(integrityProblems(JSON.parse(JSON.stringify(records(e))))).toEqual([])
+  // raw records, NOT a JSON round trip: JSON turns NaN/±Infinity into null and would hide them (dot)
+  expect(integrityProblems(records(e) as unknown as Raw[])).toEqual([])
   // I6' every accepted state reopens — not only at explicit save points (dot: "written OK, then can't open")
+  // JSON round trip on purpose here: that is what a saved file goes through
   const snap = JSON.parse(JSON.stringify(e.reader.getStoreSnapshot('document')))
   expect(() => Editor.open(snap)).not.toThrow()
 }
@@ -202,7 +221,7 @@ describe('properties of the single write entry', () => {
               e.redo()
               expect(doc(e)).toBe(after)
             }
-            if (act.cmd.type !== 'setContainerFlags') for (const [id, json] of locked) expect(JSON.stringify(e.reader.get(id as any))).toBe(json) // I2
+            if (act.cmd.type !== 'setContainerFlags') for (const [id, json] of locked) expect(key(e.reader.get(id as any))).toBe(json) // I2
           } else if (act.kind === 'batch') {
             const r = api.applyBatch('b', act.cmds)
             if (Array.isArray(r)) seen.batchOk++
@@ -220,12 +239,12 @@ describe('properties of the single write entry', () => {
               e.redo()
               expect(doc(e)).toBe(after)
             }
-            if (!act.cmds.some((c) => c.type === 'setContainerFlags')) for (const [id, json] of locked) expect(JSON.stringify(e.reader.get(id as any))).toBe(json) // I2
+            if (!act.cmds.some((c) => c.type === 'setContainerFlags')) for (const [id, json] of locked) expect(key(e.reader.get(id as any))).toBe(json) // I2
           } else if (act.kind === 'undo') e.undo()
           else if (act.kind === 'redo') e.redo()
           else {
             seen.saveOpen++
-            const saved = JSON.parse(JSON.stringify(e.save()))
+            const saved = JSON.parse(JSON.stringify(e.save())) // as written to a file
             expect(e.isDirty).toBe(false) // I8
             const opened = Editor.open(saved)
             expect(doc(opened)).toBe(doc(e)) // I6
