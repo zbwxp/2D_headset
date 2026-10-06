@@ -1,0 +1,65 @@
+{
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": "Apple M4",
+    "cores": 10
+  },
+  "workload": "121 synthetic open curves (3 segments each), 8 layers, chained connections, 15 closed-loop fills; single-handle edit",
+  "scopeA_onion0": {
+    "browser": "chromium",
+    "compute": {
+      "p50": 0.6,
+      "p95": 0.8,
+      "n": 48
+    },
+    "paths": {
+      "p50": 1.4,
+      "p95": 1.6,
+      "n": 48
+    },
+    "draw": {
+      "p50": 1.1,
+      "p95": 2.3,
+      "n": 48
+    },
+    "total": {
+      "p50": 3,
+      "p95": 4.5,
+      "n": 48
+    }
+  },
+  "scopeB_onion0": {
+    "p50": 156.5,
+    "p95": 173.1,
+    "n": 40
+  },
+  "scopeA_onion19": {
+    "browser": "chromium",
+    "compute": {
+      "p50": 3.8,
+      "p95": 6.1,
+      "n": 48
+    },
+    "paths": {
+      "p50": 30.7,
+      "p95": 33.2,
+      "n": 48
+    },
+    "draw": {
+      "p50": 25.1,
+      "p95": 31.8,
+      "n": 48
+    },
+    "total": {
+      "p50": 60.6,
+      "p95": 69.2,
+      "n": 48
+    }
+  },
+  "scopeB_onion19": {
+    "p50": 221.7,
+    "p95": 238.8,
+    "n": 40
+  }
+}

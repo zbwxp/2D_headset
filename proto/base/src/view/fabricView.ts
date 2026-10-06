@@ -11,6 +11,7 @@ import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
 import { cubicsToPath, evaluate, hitTest, type Evaluated, type Hit } from '../evaluate'
+import { evaluateAtYaw, type PoseTrack } from '../pose'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
@@ -33,6 +34,11 @@ export class FabricView {
   private projecting = false
   /** Number of re-entrant `object:modified` events ignored (evidence for the risk report). */
   ignoredReentrantEvents = 0
+  /** Onion skins: faint projections of the same drawing at other yaws (benchmark input, 15 §2). */
+  onion: { track: PoseTrack; yaws: number[] } | null = null
+  /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
+  readonly latencies: number[] = []
+  private lastInputTs = 0
 
   constructor(
     el: HTMLCanvasElement,
@@ -46,6 +52,7 @@ export class FabricView {
     for (const type of ['pointerdown', 'mousedown'] as const) {
       this.canvas.wrapperEl.addEventListener(type, (e) => this.routeVTarget(e as PointerEvent), { capture: true })
     }
+    this.canvas.wrapperEl.addEventListener('pointermove', (e) => (this.lastInputTs = e.timeStamp), { capture: true })
     this.canvas.on('mouse:down', (o) => this.onDown(o.e as PointerEvent))
     this.canvas.on('mouse:move', (o) => this.onMove(o.e as PointerEvent))
     this.canvas.on('mouse:up', () => this.onUp())
@@ -77,18 +84,27 @@ export class FabricView {
   }
 
   /** Re-project the document (or a preview of it) into Fabric objects. */
-  render(ev: Evaluated = evaluate(this.editor.store)) {
+  render(ev: Evaluated = evaluate(this.editor.store), store = this.editor.store) {
     this.projecting = true
     try {
-      this.project(ev)
+      this.project(ev, store)
     } finally {
       this.projecting = false
     }
   }
 
-  private project(ev: Evaluated) {
+  private project(ev: Evaluated, store: Editor['store']) {
     this.canvas.discardActiveObject()
     this.canvas.remove(...this.canvas.getObjects())
+    if (this.onion) {
+      // All onion yaws share the already-prepared evaluation `ev` (no re-parse of the document).
+      for (const yaw of this.onion.yaws) {
+        const o = evaluateAtYaw(store, this.onion.track, yaw, ev)
+        for (const c of o.curves.filter((c) => c.visible)) {
+          this.canvas.add(new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false }))
+        }
+      }
+    }
     this.groupStart.clear()
     for (const f of ev.fills.filter((f) => f.visible)) {
       this.canvas.add(new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false }))
@@ -187,7 +203,10 @@ export class FabricView {
     this.drag.ok = pv.ok
     if (pv.ok) {
       this.setStatus('')
-      this.render(evaluate(withPuts(this.editor, pv.puts)))
+      const tmp = withPuts(this.editor, pv.puts)
+      this.render(evaluate(tmp), tmp)
+      const t0 = this.lastInputTs
+      requestAnimationFrame(() => this.latencies.push(performance.now() - t0))
     } else {
       this.setStatus(`${pv.error.code}: ${pv.error.message}`) // whole gesture rejected; show the document unchanged
       this.render()
@@ -247,7 +266,7 @@ function dot(p: Vec, color: string, r: number) {
 }
 
 /** Evaluate a preview without touching the document: a throwaway store with the planned records. */
-function withPuts(editor: Editor, puts: DocRecord[]) {
+export function withPuts(editor: Editor, puts: DocRecord[]) {
   const tmp = new Store<DocRecord>({ schema, props: {} })
   tmp.loadStoreSnapshot(editor.store.getStoreSnapshot())
   tmp.put(puts)
