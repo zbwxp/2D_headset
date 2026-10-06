@@ -1,6 +1,6 @@
 # Contour 架构重设计（设计阶段，不含产品代码）
 
-> **当前进度（2026-10-06）**：最小编辑样板（分支 `proto/base-v0`，目录 `proto/base/`）在 commit `3f697ca` 通过 dot 的独立复验，*可以进入下一阶段*。通过的范围只限于：修改入口、撤销/重做、锁定、关系规则、批量、报错与结果格式。*整个底座、录制、真实脸稿的洋葱皮性能、产品都还没有验收。* 下一阶段：依赖索引、缓存失效、计数对照（证明无关内容不会被反复计算），再结合少量录制角度验证。逐项状态见 `proto/base-v0` 分支的 [`proto/base/OPEN.md`](https://github.com/zbwxp/2D_headset/blob/proto/base-v0/proto/base/OPEN.md)（已复验 / 仅我方实现 / 未做）。
+> **当前进度（2026-10-06，dot 复验 `53d9fc0`）**：最小样板（分支 `proto/base-v0`，目录 `proto/base/`）已验证：有限的编辑事务、增量拖动预览（不复制整个文档）、少量姿态（转头）及其连接联动、有上限的角度缓存——前提是"按需读取、没有活跃的外部订阅"。**仍未解决**：新建对象预览／提交 ID 不一致（KF-1）、底层引用增删的缓存生命周期（KF-3）、画布每次全部重建、完整录制与反推。**下一步**：在真实拖动和播放里列出剩余的整表收集、对象重建和绘制成本，用同一份工作量测量，再决定画布怎么改（不预设整个换掉渲染器）。逐项见 [`proto/base/OPEN.md`](https://github.com/zbwxp/2D_headset/blob/proto/base-v0/proto/base/OPEN.md)；成品形态与共用求值核心见 [16](16-product-core-and-check-scenarios.md)，场景 E 收尾见 [17](17-scenario-e-comparison.md)。
 >
 > **当前方案（给 bowen）：[15-slice-plan.md](15-slice-plan.md)**。其余文件是设计依据和历史草稿，不需要按顺序阅读。
 
