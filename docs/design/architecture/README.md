@@ -13,6 +13,7 @@
 | [07-tech-stack.md](07-tech-stack.md) | 技术底座选型：三条路线对比；直接采用 / 只借鉴 / 必须自研 | Claude |
 | [08-base-one-pager.md](08-base-one-pager.md) | **给 bowen 的地基一页说明**（一张图、3 个日常操作、插件怎么接、现成 vs 自研） | Claude（待 dot 挑措辞） |
 | [09-concrete-structure.md](09-concrete-structure.md) | **具体结构**：图层 / 画稿 / 模板 / 角色 / 录制的关系；0° / 30° / 90° 带数字的完整例子；从数据到画面；5 个操作 | Claude（待 dot 挑错） |
+| [10-base-reference-code.md](10-base-reference-code.md) | 最小实现的地基：分两步走，每个模块参考哪份成熟代码（用法、许可证） | Claude 提议，待 dot 商定、bowen 点头 |
 
 约定：
 
