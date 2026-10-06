@@ -66,7 +66,18 @@ export interface ReferenceRecord extends BaseRecord<'reference', RecordId<Refere
   overrides: Record<string, Vec>
 }
 
-export type DocRecord = ContainerRecord | CurveRecord | ConnectionRecord | FillRecord | ReferenceRecord
+/**
+ * Recorded forms of ONE curve at angles (the head turn). One pose per curve; its id is derived from
+ * the curve id (`poseIdOf`), so it never needs an index and a plan always names the same record.
+ * Offsets are relative to the base drawing (11 〔待定 4〕 option 甲); keys are interpolated per curve.
+ */
+export interface PoseRecord extends BaseRecord<'pose', RecordId<PoseRecord>> {
+  curveId: RecordId<CurveRecord>
+  /** sorted by yaw, yaws unique; an anchor missing from a key has offset 0 there */
+  keys: { yaw: number; offsets: Record<string, Vec> }[]
+}
+
+export type DocRecord = ContainerRecord | CurveRecord | ConnectionRecord | FillRecord | ReferenceRecord | PoseRecord
 
 const isNum = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
 const isVec = (v: any) => v && isNum(v.x) && isNum(v.y)
@@ -128,21 +139,40 @@ export const Reference = createRecordType<ReferenceRecord>('reference', {
   },
 }).withDefaultProperties(() => ({ index: 'a0', overrides: {} }))
 
+export const Pose = createRecordType<PoseRecord>('pose', {
+  scope: 'document',
+  validator: {
+    validate(r: any) {
+      check(Array.isArray(r.keys), `pose ${r.id} keys`)
+      r.keys.forEach((k: any, i: number) => {
+        check(isNum(k.yaw), `pose ${r.id} key ${i} yaw not finite`)
+        if (i > 0) check(k.yaw > r.keys[i - 1].yaw, `pose ${r.id} keys not sorted by yaw / duplicate yaw`)
+        for (const [a, o] of Object.entries(k.offsets ?? {})) check(isVec(o), `pose ${r.id} offset ${a} at ${k.yaw} not finite`)
+      })
+      return r
+    },
+  },
+}).withDefaultProperties(() => ({ keys: [] }))
+
+/** The one pose record of a curve. */
+export const poseIdOf = (curveId: string) => Pose.createId(curveId.replace(/^curve:/, ''))
+
 export const schema = StoreSchema.create<DocRecord>({
   container: Container,
   curve: Curve,
   connection: Connection,
   fill: Fill,
   reference: Reference,
+  pose: Pose,
 })
 
 export type DocStore = Store<DocRecord>
-/** Read-only view of the document. Everything except the Editor's write entry gets only this. */
-/** Read-only view. `query` is tldraw's read-only derivation API (indexes); it cannot write. */
+/** Read-only view of the document. Everything except the Editor's write entry gets only this.
+ *  `query` is tldraw's read-only derivation API (indexes); it cannot write. */
 export type DocReader = Pick<DocStore, 'get' | 'allRecords' | 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
-const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference } as const
+const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, pose: Pose } as const
 /** Run the record validators (same ones the store uses) without writing. */
 export function validateRecord(r: DocRecord) {
   ;(recordTypes[r.typeName] as any).validate(r)

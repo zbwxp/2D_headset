@@ -19,7 +19,8 @@ import { counters } from './counters'
 import { evalCurve, evaluate, IDENTITY, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
-import type { ContainerRecord, CurveRecord, DocReader, DocRecord, DocStore, FillRecord, ReferenceRecord } from './schema'
+import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
+import { poseIdOf, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
 
 /**
  * Computeds keyed by a string, with a capacity limit (least recently used are dropped). Used where a
@@ -32,6 +33,7 @@ export class KeyedComputedCache<T> {
   constructor(
     readonly capacity: number,
     private readonly create: (key: string) => Computed<T>,
+    private readonly onEvict: () => void = () => {},
   ) {}
   get(key: string): T {
     let c = this.map.get(key)
@@ -41,6 +43,7 @@ export class KeyedComputedCache<T> {
     while (this.map.size > this.capacity) {
       this.map.delete(this.map.keys().next().value!)
       this.evictions++
+      this.onEvict()
     }
     return c.get()
   }
@@ -143,11 +146,56 @@ export class Derived {
   private readonly fills
   private readonly instances: KeyedComputedCache<EvalCurve>
   private readonly all: Computed<Evaluated>
+  // Angle (head turn) evaluation, bounded (dot: curve × angle caches must not grow without limit
+  // while an angle is dragged). Each entry reads only its base item and its curve's pose record.
+  private readonly yawCurves: KeyedComputedCache<EvalCurve>
+  private readonly yawFills: KeyedComputedCache<EvalFill>
+  private readonly yawLists: KeyedComputedCache<Evaluated>
 
   constructor(
     private readonly store: DocStore,
     private readonly reader: DocReader,
+    opts: { yawCapacity?: number; yawListCapacity?: number } = {},
   ) {
+    const evicted = () => counters.yawEvictions++
+    this.yawCurves = new KeyedComputedCache<EvalCurve>(
+      opts.yawCapacity ?? 65_536,
+      (key) => {
+        const at = key.lastIndexOf('@')
+        const address = key.slice(0, at)
+        const yaw = Number(key.slice(at + 1))
+        return computed(`yawCurve:${key}`, () => {
+          counters.yawCurveEvals++
+          const slash = address.indexOf('/')
+          const base = slash < 0 ? this.curve(address as CurveRecord['id'])! : this.instance(address.slice(0, slash) as ReferenceRecord['id'], address.slice(slash + 1) as CurveRecord['id'])
+          return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw)
+        })
+      },
+      evicted,
+    )
+    this.yawFills = new KeyedComputedCache<EvalFill>(
+      opts.yawCapacity ?? 65_536,
+      (key) => {
+        const at = key.lastIndexOf('@')
+        const id = key.slice(0, at) as FillRecord['id']
+        const yaw = Number(key.slice(at + 1))
+        return computed(`yawFill:${key}`, () => {
+          counters.yawFillEvals++
+          return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) => this.curveAt(cid, yaw))
+        })
+      },
+      evicted,
+    )
+    this.yawLists = new KeyedComputedCache<Evaluated>(
+      opts.yawListCapacity ?? 64,
+      (key) =>
+        computed(`yawList:${key}`, () => {
+          const yaw = Number(key)
+          const base = this.evaluated()
+          return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
+        }),
+      evicted,
+    )
     this.curves = store.createComputedCache<EvalCurve, CurveRecord>('evalCurve', (c) => {
       counters.curveEvals++
       return curveItem(store, c)
@@ -200,6 +248,45 @@ export class Derived {
   instance(refId: ReferenceRecord['id'], curveId: CurveRecord['id']) {
     return this.instances.get(`${refId}/${curveId}`)
   }
+  /** One curve (base address or `reference/curve` instance address) at `yaw`. Cached, bounded. */
+  curveAt(address: string, yaw: number) {
+    return this.yawCurves.get(`${address}@${yaw}`)
+  }
+  fillAt(id: string, yaw: number) {
+    return this.yawFills.get(`${id}@${yaw}`)
+  }
+  /** Same value as `pose.evaluateAtYaw(reader, yaw)`, incrementally maintained. Playing never writes. */
+  atYaw(yaw: number): Evaluated {
+    return this.yawLists.get(String(yaw))
+  }
+  get yawCacheSize() {
+    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size }
+  }
+
+  /** Drag preview at `yaw` (onion skins): only the items the plan changes are re-done at that yaw. */
+  previewAtYaw(puts: DocRecord[], yaw: number, ch: PreviewChanges = this.previewChanges(puts)): Evaluated {
+    if (ch.fallback) {
+      counters.previewFallbacks++
+      return evaluateAtYaw(overlayReader(this.reader, puts), yaw)
+    }
+    const view = overlayReader(this.reader, puts)
+    const curves = new Map<string, EvalCurve>()
+    for (const [address, item] of ch.items)
+      if ('segments' in item) {
+        counters.previewEvals++
+        curves.set(address, curveAtYaw(item, view.get(poseIdOf(item.curveId) as any) as PoseRecord | undefined, yaw))
+      }
+    const fills = new Map<string, EvalFill>()
+    for (const [address, item] of ch.items)
+      if (!('segments' in item)) {
+        counters.previewEvals++
+        fills.set(address, fillAtYaw(item, view.get(address as any) as FillRecord, (cid) => curves.get(cid) ?? this.curveAt(cid, yaw)))
+      }
+    const base = this.atYaw(yaw)
+    counters.previewItems += base.curves.length + base.fills.length
+    return { curves: base.curves.map((c) => curves.get(c.address) ?? c), fills: base.fills.map((f) => fills.get(f.address) ?? f) }
+  }
+
   /** Same value as `evaluate(reader)`, incrementally maintained. */
   evaluated(): Evaluated {
     return this.all.get()
@@ -252,8 +339,7 @@ export class Derived {
   }
 
   /** The whole preview list: the cached list with the affected items replaced (same order). */
-  preview(puts: DocRecord[]): Evaluated {
-    const ch = this.previewChanges(puts)
+  preview(puts: DocRecord[], ch: PreviewChanges = this.previewChanges(puts)): Evaluated {
     if (ch.fallback) {
       counters.previewFallbacks++
       return evaluate(overlayReader(this.reader, puts))

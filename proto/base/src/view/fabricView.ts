@@ -6,14 +6,12 @@
 //   Group transform kept as an attribute (we read its matrix, we never trust its children):
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
-import { overlayReader } from '../derived'
 import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
 import { cubicsToPath, evaluate, hitTest, type Evaluated, type Hit } from '../evaluate'
-import { evaluateAtYaw, type PoseTrack } from '../pose'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
@@ -41,7 +39,8 @@ export class FabricView {
   private vTransforming = false
   private vCancelled = false
   /** Onion skins: faint projections of the same drawing at other yaws (benchmark input, 15 §2). */
-  onion: { track: PoseTrack; yaws: number[] } | null = null
+  /** onion skins: the document at these yaws (forms come from the curves' pose records) */
+  onion: { yaws: number[] } | null = null
   /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
   readonly latencies: number[] = []
   private lastInputTs = 0
@@ -108,10 +107,10 @@ export class FabricView {
   }
 
   /** Re-project the document (or a preview of it) into Fabric objects. */
-  render(ev: Evaluated = this.editor.derived.evaluated(), store: Editor['reader'] = this.editor.reader) {
+  render(ev: Evaluated = this.editor.derived.evaluated(), onions: Evaluated[] = this.onion ? this.onion.yaws.map((y) => this.editor.derived.atYaw(y)) : []) {
     this.projecting = true
     try {
-      this.project(ev, store)
+      this.project(ev, onions)
       // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
       counters.canvasObjects += this.canvas.getObjects().length
     } finally {
@@ -119,13 +118,12 @@ export class FabricView {
     }
   }
 
-  private project(ev: Evaluated, store: Editor['reader']) {
+  private project(ev: Evaluated, onions: Evaluated[]) {
     this.canvas.discardActiveObject()
     this.canvas.remove(...this.canvas.getObjects())
-    if (this.onion) {
-      // All onion yaws share the already-prepared evaluation `ev` (no re-parse of the document).
-      for (const yaw of this.onion.yaws) {
-        const o = evaluateAtYaw(store, this.onion.track, yaw, ev)
+    {
+      // onion yaws come from the cached angle evaluation (or the drag preview at each yaw)
+      for (const o of onions) {
         for (const c of o.curves.filter((c) => c.visible)) {
           this.canvas.add(new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false }))
         }
@@ -250,7 +248,9 @@ export class FabricView {
     if (pv.ok) {
       this.setStatus('')
       // incremental preview: only the affected items are re-evaluated; no store copy (dot)
-      this.render(this.editor.derived.preview(pv.puts), overlayReader(this.editor.reader, pv.puts))
+      const d = this.editor.derived
+      const ch = d.previewChanges(pv.puts) // once per move, shared by the drawing and every onion yaw
+      this.render(d.preview(pv.puts, ch), this.onion ? this.onion.yaws.map((y) => d.previewAtYaw(pv.puts, y, ch)) : [])
       const t0 = this.lastInputTs
       requestAnimationFrame(() => this.latencies.push(performance.now() - t0))
     } else {

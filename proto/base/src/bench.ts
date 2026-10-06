@@ -6,7 +6,7 @@
 import { Path, StaticCanvas } from 'fabric'
 import type { Editor } from './editor'
 import { cubicsToPath, evaluate, type Evaluated } from './evaluate'
-import { evaluateAtYaw, type PoseTrack } from './pose'
+import { evaluateAtYaw } from './pose'
 import { withPuts } from './view/fabricView'
 
 const pct = (xs: number[], q: number) => {
@@ -15,7 +15,8 @@ const pct = (xs: number[], q: number) => {
 }
 const stats = (xs: number[]) => ({ p50: pct(xs, 0.5), p95: pct(xs, 0.95), n: xs.length })
 
-export function runScopeA(editor: Editor, track: PoseTrack, yaws: number[], samples = 48) {
+/** The OLD report's scope (store copy + full evaluation per move), kept as the baseline measurement. */
+export function runScopeA(editor: Editor, yaws: number[], samples = 48) {
   const el = document.createElement('canvas')
   el.width = 640
   el.height = 420
@@ -32,7 +33,7 @@ export function runScopeA(editor: Editor, track: PoseTrack, yaws: number[], samp
     if (!pv.ok) throw new Error(pv.error.message)
     const tmp = withPuts(editor, pv.puts)
     const ev = evaluate(tmp)
-    const onions: Evaluated[] = yaws.map((y) => evaluateAtYaw(tmp, track, y, ev))
+    const onions: Evaluated[] = yaws.map((y) => evaluateAtYaw(tmp, y, ev))
     const t1 = performance.now()
     const objs: Path[] = []
     for (const e of [ev, ...onions]) {

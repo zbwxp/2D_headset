@@ -2,7 +2,7 @@
 // Lock/visibility inheritance follows Illustrator/Figma layer semantics (docs/design/architecture/11 §3).
 import type { RecordId } from '@tldraw/store'
 import { connectionsAt } from './indexes'
-import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, DocReader, FillRecord, ReferenceRecord } from './schema'
+import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type DocReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
 export const anchorKey = (r: AnchorRef) => `${r.curveId}#${r.anchorId}`
@@ -101,6 +101,16 @@ export function recordProblems(store: Pick<DocReader, 'get'>, r: DocRecord): Rel
       else if (!c.segments.some((s) => s.id === b.segmentId))
         out.push({ object: r.id, field: `boundary[${i}].segmentId`, target: `${b.curveId}/${b.segmentId}`, message: `${r.id}: boundary ${b.curveId}/${b.segmentId} missing` })
     })
+  if (r.typeName === 'pose') {
+    const c = getAs(store, r.curveId, 'curve')
+    if (!c) need('curveId', r.curveId, 'curve')
+    else {
+      if (r.id !== poseIdOf(c.id)) out.push({ object: r.id, field: 'id', target: c.id, message: `${r.id}: a pose's id must be ${poseIdOf(c.id)} (one pose per curve)` })
+      r.keys.forEach((k, i) => {
+        for (const a of Object.keys(k.offsets)) if (!c.anchors[a]) out.push({ object: r.id, field: `keys[${i}].offsets.${a}`, target: `${c.id}#${a}`, message: `${r.id}: offset for missing anchor ${c.id}#${a}` })
+      })
+    }
+  }
   if (r.typeName === 'container') {
     // a container's own chain must end (no cycle through it)
     const seen = new Set<string>([r.id])

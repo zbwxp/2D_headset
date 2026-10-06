@@ -30,6 +30,14 @@ export const counters = {
   snapshotRows: 0,
   /** full-document evaluations through the uncached `evaluate()` */
   fullEvals: 0,
+  /** evaluations of one curve (base or instance) at one yaw */
+  yawCurveEvals: 0,
+  /** evaluations of one fill at one yaw */
+  yawFillEvals: 0,
+  /** entries dropped from the bounded yaw caches */
+  yawEvictions: 0,
+  /** full uncached evaluations at a yaw (pose.evaluateAtYaw) */
+  fullYawEvals: 0,
   /** canvas objects (re)built by the view */
   canvasObjects: 0,
 }

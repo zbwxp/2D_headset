@@ -21,6 +21,8 @@
 //  I11 after every step the incremental evaluation (caches) equals the full uncached recompute —
 //      including after undo/redo, rollbacks, outer aborts, throwing subscribers and reopen
 //  I12 after every step each index answer equals a brute-force scan of the raw records
+//  I14 after every step the cached head-turn evaluation (pose records, bounded caches) equals the
+//      full uncached evaluation at several yaws
 //  I13 a drag preview (derived.preview of the plan's records, no store copy) equals the full recompute
 //      of the document after that plan is committed
 import { react, transaction } from '@tldraw/state'
@@ -31,6 +33,7 @@ import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
 import { evaluate } from '../src/evaluate'
+import { evaluateAtYaw } from '../src/pose'
 import { childrenOf, connectionsAt, fillsUsing } from '../src/indexes'
 import { graphProblems } from '../src/model'
 import { Container, validateRecord, type ConnectionRecord, type CurveRecord, type DocRecord } from '../src/schema'
@@ -78,6 +81,15 @@ const command: fc.Arbitrary<Command> = fc.oneof(
     boundary: fc.array(fc.constantFrom(...segs, ...wrongTypeSegs).chain((s) => fc.constantFrom(1 as const, -1 as const).map((dir) => ({ ...s, dir }))), { maxLength: 5 }),
   }),
   fc.record({ type: fc.constant('setContainerFlags' as const), containerId: fc.constantFrom(...containers), locked: fc.option(fc.boolean(), { nil: undefined }), visible: fc.option(fc.boolean(), { nil: undefined }) }),
+  // head-turn forms: valid and invalid anchors, finite and non-finite yaws, curves in locked layers
+  fc.constantFrom(...curves, ids.L1 as any).chain((curveId) =>
+    fc.record({
+      type: fc.constant('setPoseKey' as const),
+      curveId: fc.constant(curveId),
+      yaw: fc.oneof(fc.constantFrom(-90, 0, 30, 90), fc.constantFrom(NaN, Infinity)),
+      offsets: fc.dictionary(fc.constantFrom(...(anchorsOf[curveId] ?? ['a1']), 'zz'), vec, { maxKeys: 2 }),
+    }),
+  ),
 ) as fc.Arbitrary<Command>
 
 // The closed loop s1,s2 → J → s4⁻,s3⁻ → J0, rotated and/or reversed: closed in every variant.
@@ -97,6 +109,8 @@ const likelyOk: fc.Arbitrary<Command> = fc.oneof(
   fc.record({ type: fc.constant('moveAnchors' as const), targets: fc.constantFrom([{ curveId: ids.C1, anchorId: 'a2' }], [{ curveId: ids.E1, anchorId: 'e1' }]), delta: small }),
   fc.record({ type: fc.constant('moveHandle' as const), target: fc.constantFrom({ curveId: ids.C1, anchorId: 'a2' }, { curveId: ids.E1, anchorId: 'e2' }), handle: fc.constantFrom('in' as const, 'out' as const), delta: small }),
   fc.record({ type: fc.constant('setContainerFlags' as const), containerId: fc.constant(ids.L2), locked: fc.boolean() }),
+  fc.constant({ type: 'setContainerFlags' as const, containerId: ids.L2, locked: false }), // unlocks stay well covered
+  fc.record({ type: fc.constant('setPoseKey' as const), curveId: fc.constantFrom(ids.C1, ids.E1), yaw: fc.constantFrom(-90, 0, 90), offsets: fc.record({ a1: small, e1: small }) }).map((c) => ({ ...c, offsets: c.curveId === ids.C1 ? { a1: c.offsets.a1 } : { e1: c.offsets.e1 } })),
   closedFill,
   fc.record({ type: fc.constant('transformContainer' as const), containerId: fc.constant(ids.L3), matrix: fc.record({ a: fc.constant(1), b: fc.constant(0), c: fc.constant(0), d: fc.constant(1), e: fc.integer({ min: -9, max: 9 }), f: fc.integer({ min: -9, max: 9 }) }) }),
 ) as fc.Arbitrary<Command>
@@ -253,6 +267,8 @@ function checkStatic(e: Editor) {
   // I6' every accepted state reopens — not only at explicit save points (dot: "written OK, then can't open")
   // I11 incremental evaluation (caches + indexes) equals the independent full recompute, every step
   expect(e.derived.evaluated()).toEqual(evaluate(e.reader))
+  // I14 cached head-turn evaluation equals the full uncached evaluation at several yaws
+  for (const y of [-90, 12.5, 30, 90]) expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y))
   // I12 every index answer equals a brute-force scan of the raw records (independent of src/indexes)
   const rs = records(e) as any[]
   const expectSame = (got: string[], want: string[]) => expect([...got].sort()).toEqual([...want].sort())
@@ -271,7 +287,7 @@ function checkStatic(e: Editor) {
 
 describe('properties of the single write entry', () => {
   it('hold for random sequences of edits, bad inputs, batches, undo/redo and save/open', () => {
-    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0, observerWarned: 0, observerFiredNonApply: 0, handlerThrew: 0, outerAborted: 0 }
+    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0, observerWarned: 0, observerFiredNonApply: 0, handlerThrew: 0, outerAborted: 0, poseWritten: 0 }
     fc.assert(
       fc.property(fc.array(action, { maxLength: 25 }), (actions) => {
         let e = new Editor(initial())
@@ -296,6 +312,7 @@ describe('properties of the single write entry', () => {
             if (shown && !(r.ok && r.written)) expect(doc(e)).toBe(before) // previewed but not written: nothing changed
             if (act.cmd.type === 'setContainerFlags' && act.cmd.locked === false && r.ok && r.written) seen.unlocked++
             if (act.cmd.type === 'createFill' && r.ok && r.written) seen.fillCreated++
+            if (act.cmd.type === 'setPoseKey' && r.ok && r.written) seen.poseWritten++
             if (!r.ok) seen.rejected++
             else if (!r.written) seen.noop++
             else seen.written++
@@ -452,10 +469,9 @@ describe('properties of the single write entry', () => {
     )
     console.log('[properties] coverage of outcomes', JSON.stringify(seen))
     // the generator must actually exercise every branch, otherwise passing proves little
-    // Floor of 5 per branch. Re-measured over 40 runs after the I9 extension (2026-10-06): lowest
-    // branch minimum 11 (unlocked, median 19), then observerWarned min 23; all others ≥ 24. A floor
-    // at typical counts made the test fail by chance (946e816, a3bf7a0) — re-measure on any
-    // generator change.
+    // Floor of 5 per branch. Re-measured over 40 runs after adding pose commands (2026-10-06; see
+    // the commit message for the minima). A floor at typical counts made the test fail by chance
+    // (946e816, a3bf7a0) — re-measure on any generator change.
     for (const [k, v] of Object.entries(seen)) expect(v, k).toBeGreaterThanOrEqual(5)
   })
 })

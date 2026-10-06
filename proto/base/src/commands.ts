@@ -12,6 +12,8 @@ import {
   Container,
   Curve,
   Fill,
+  Pose,
+  poseIdOf,
   Reference,
   type Affine,
   type BoundaryStep,
@@ -50,6 +52,8 @@ export type Command =
   | { type: 'transformContainers'; containerIds: RecordId<ContainerRecord>[]; matrix: Affine }
   | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[] }
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
+  /** Record (or replace) a curve's form at one angle: per-anchor offsets from the base drawing. */
+  | { type: 'setPoseKey'; curveId: RecordId<CurveRecord>; yaw: number; offsets: Record<string, Vec> }
 
 export type Plan =
   | { ok: true; label: string; puts: DocRecord[]; affected: string[]; creates?: string[] }
@@ -156,6 +160,7 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
     const old = store.get(r.id as any) as DocRecord | undefined
     if (old?.typeName === 'curve' && r.typeName === 'curve') {
       for (const k of Object.keys(old.anchors)) if (!r.anchors[k]) for (const c of connectionsAt(store, anchorKey({ curveId: r.id, anchorId: k }))) incoming.add(c)
+      if (Object.keys(old.anchors).some((k) => !r.anchors[k]) && store.get(poseIdOf(r.id) as any)) incoming.add(poseIdOf(r.id)) // offsets name anchors
       if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
     }
   }
@@ -171,19 +176,29 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
  * gets unlocked), while a locked ancestor blocks everything below it, flags included (11 §3; dot's
  * review of 90692ad: a child's visibility could be changed under a locked parent).
  */
+/** Where a record lives for locking: its parent container; a pose lives where its curve lives. */
+function placeOf(store: DocStore, x: DocRecord): string | null {
+  if (x.typeName === 'connection') return null
+  if (x.typeName === 'pose') return (getAs(store, x.curveId, 'curve')?.parentId as string | undefined) ?? null
+  return x.parentId
+}
+
 function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: Set<string>): Plan | null {
   for (const r of puts) {
     const old = store.get(r.id as any) as DocRecord | undefined
     if (creates.has(r.id)) {
       if (old) return fail('ID_CONFLICT', `${r.id} already exists`, [r.id], ['omit the id to get a fresh one'])
+      // a NEW record may not be placed under a lock either (generic, not left to each command)
+      const place = placeOf(store, r)
+      const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
+      if (locker) return fail('LOCKED', `${r.id} would be created in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
       continue
     }
     if (!old) return fail('NOT_FOUND', `${r.id} does not exist`, [r.id])
     if (old.typeName !== r.typeName) return fail('INVALID', `${r.id} changes type`, [r.id])
     const places = new Set<string | null>()
-    const placeOf = (x: DocRecord) => (x.typeName === 'container' ? x.parentId : x.typeName === 'connection' ? null : x.parentId)
-    places.add(placeOf(old))
-    places.add(placeOf(r))
+    places.add(placeOf(store, old))
+    places.add(placeOf(store, r))
     for (const place of places) {
       const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
       if (locker)
@@ -278,6 +293,17 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
       const fill = Fill.create({ id: cmd.id ?? Fill.createId(), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
       return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
+    }
+    case 'setPoseKey': {
+      const curve = getAs(store, cmd.curveId, 'curve')
+      if (!curve) return notFound(store, cmd.curveId, 'curve')
+      if (typeof cmd.yaw !== 'number' || !Number.isFinite(cmd.yaw)) return fail('INVALID', `yaw ${cmd.yaw} is not a finite number`, [curve.id])
+      for (const a of Object.keys(cmd.offsets ?? {})) if (!curve.anchors[a]) return notFound(store, `${curve.id}#${a}`, 'anchor')
+      const id = poseIdOf(curve.id)
+      const old = getAs(store, id, 'pose')
+      const keys = (old?.keys ?? []).filter((k) => k.yaw !== cmd.yaw).concat([{ yaw: cmd.yaw, offsets: { ...cmd.offsets } }]).sort((a, b) => a.yaw - b.yaw)
+      const pose = old ? { ...old, keys } : Pose.create({ id, curveId: curve.id, keys })
+      return { ok: true, label: 'setPoseKey', puts: [pose], affected: [id], ...(old ? {} : { creates: [id] }) }
     }
     case 'setContainerFlags': {
       const c = getAs(store, cmd.containerId, 'container')

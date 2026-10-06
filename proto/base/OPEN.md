@@ -103,6 +103,37 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).
 
+### Step 3 — head-turn forms in the document, bounded angle caches (implemented, not yet reviewed by dot)
+
+- `PoseRecord` (one per curve, id derived from the curve id): keys `{ yaw, offsets }`, interpolated
+  per curve; edited with `setPoseKey` through the write entry (undoable; lock = the curve's layer;
+  validated; relation rule: offsets name existing anchors). The old global `PoseTrack` is gone —
+  synthetic data, bench, view onion and tests all use pose records (one system, not two).
+- Playing an angle is an evaluation input: `Derived.atYaw(yaw)`, `curveAt`, `fillAt` — bounded
+  LRU caches (`yawCapacity`, `yawListCapacity`; evictions counted); each entry reads only its base
+  item and its curve's pose. `previewAtYaw(puts, yaw, ch)` re-does only the plan's changed items at
+  that yaw; the view computes the plan's changes ONCE per move and shares them across onion yaws.
+  `pose.evaluateAtYaw` is the uncached full reference.
+- Stroke width is never changed by a form (16 §3.0), tested at every yaw. Shape vs stroke drawing
+  separation (dot) is a requirement for the drawing layer; not implemented there yet.
+- Generic fix found on the way: `writeGuard` skipped the lock check for CREATED records (createFill
+  had its own check); creates are now lock-checked generically (a pose cannot be created in a
+  locked layer).
+- Tests: `test/yaw.test.ts` (equality with the full recompute after edits / pose edits / undo /
+  redo / reopen; same pose id re-created after undo; playing writes nothing; stroke width; 1000-angle
+  sweep with capacity 50 never exceeds it and stays exact; drag preview at yaws == full after
+  commit), `test/pose.test.ts` (forms, 0° form, base edits propagate, pose keys are author edits),
+  property I14 (cached angle evaluation == full at 4 yaws, every step; generator now edits poses).
+  Mutations M23–M25 caught.
+- Measured (node, synthetic, informational):
+  - maker onion (19 yaws), drag one free anchor: 19 curve-at-yaw evaluations + 1 curve evaluation
+    per drag, identical for 121 and 3000 curves (≈0.09–0.14 ms per drag, per-item consumer).
+  - runtime, parameter-driven sweep over 60 NEW angles (every curve changes every frame, no edits):
+    3000 curves — cached path ≈10.8 ms/frame on first visit vs ≈3.7 ms uncached; replaying cached
+    angles ≈0; heap growth with a large cache 89–133 MB (noisy, no forced GC). 1000 curves — 2.7 vs
+    1.2 ms. **For full-change playback the per-item caches cost ~3× a plain recompute and a lot of
+    memory**: runtime caching must be decided from such numbers (16 §3), not assumed.
+
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 
 `src/experiments/scenarioE*.ts` are framework tests only. They do **not** verify the common

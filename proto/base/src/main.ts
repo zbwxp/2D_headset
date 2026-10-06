@@ -6,11 +6,12 @@ import { evaluate } from './evaluate'
 import { exampleRecords, ids } from './fixture'
 import { FabricView } from './view/fabricView'
 import { runScopeA } from './bench'
-import { onionYaws, syntheticRecords, syntheticTrack } from './synthetic'
+import { onionYaws, syntheticPoses, syntheticRecords } from './synthetic'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
-const benchRecords = bench ? syntheticRecords({ curves: 121, layers: 8, fills: 15 }) : []
+const benchShapes = bench ? syntheticRecords({ curves: 121, layers: 8, fills: 15 }) : []
+const benchRecords = [...benchShapes, ...syntheticPoses(benchShapes)]
 const editor = new Editor(bench ? benchRecords : exampleRecords())
 const api = createApi(editor)
 const statusEl = document.getElementById('status')!
@@ -30,13 +31,12 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') view.cancelGesture()
 })
 
-const track = syntheticTrack(benchRecords)
 const onionCount = Number(params.get('onion') ?? 0)
 if (bench && onionCount) {
-  view.onion = { track, yaws: onionYaws(onionCount) }
+  view.onion = { yaws: onionYaws(onionCount) }
   view.render()
 }
 Object.assign(window, {
   __contour: { editor, api, view, evaluate, ids, counters, resetCounters },
-  __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, track, n ? onionYaws(n) : [], samples) },
+  __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, n ? onionYaws(n) : [], samples) },
 })

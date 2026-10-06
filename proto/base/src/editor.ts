@@ -88,7 +88,7 @@ export class Editor {
     return this.#saved.get()
   }
 
-  constructor(initial: DocRecord[] = []) {
+  constructor(initial: DocRecord[] = [], opts: { yawCapacity?: number; yawListCapacity?: number } = {}) {
     this.#store = createDocStore()
     if (initial.length) this.#store.put(initial.map((r) => deepFreeze(structuredClone(r))), 'initialize')
     const s = this.#store
@@ -99,7 +99,7 @@ export class Editor {
       serialize: s.serialize.bind(s),
       query: s.query,
     }
-    this.derived = new Derived(s, this.reader)
+    this.derived = new Derived(s, this.reader, opts)
   }
 
   get isDirty() {
