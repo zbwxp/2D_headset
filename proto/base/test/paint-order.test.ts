@@ -6,6 +6,7 @@
 //    element-wise comparison of index PATHS (not the joined-string key the implementation uses).
 // 3. The order is identities + order only: a geometry edit does not rebuild it, a preview reads
 //    current geometry, a structural edit does rebuild it.
+import { sortByIndex, type IndexKey } from '@tldraw/utils'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { counters, resetCounters } from '../src/counters'
@@ -98,12 +99,14 @@ function pathOf(records: Map<string, any>, address: string): [string, string][] 
   // inside an instance the source's containers are COPIES: identified per reference
   return [...up(head), ...up(tail, ref.sourceId).map(([index, id]): [string, string] => [index, `${head}/${id}`])]
 }
-/** Order of two painted items: at the first level where their paths differ, by index (code unit), then
- *  — equal indexes — by the record id at THAT level, so each subtree stays contiguous. */
+/** Order of two painted items: at the first level where their paths differ, by index — compared with
+ *  tldraw's own `sortByIndex` (@tldraw/utils, the mature reference for fractional indexes) — then, for
+ *  equal indexes, by the record id at THAT level, so each subtree stays contiguous. */
 function rule(a: [string, string][], b: [string, string][]) {
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
     if (a[i][1] === b[i][1]) continue
-    if (a[i][0] !== b[i][0]) return a[i][0] < b[i][0] ? -1 : 1
+    const byIndex = sortByIndex({ index: a[i][0] as IndexKey }, { index: b[i][0] as IndexKey })
+    if (byIndex !== 0) return byIndex
     return a[i][1] < b[i][1] ? -1 : 1
   }
   return 0
