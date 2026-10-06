@@ -10,6 +10,7 @@ import {
   fineTune,
   fineTuneLarge,
   strongSide,
+  strongAffineSide,
   frontEye,
   mapEye,
   MIN_SPREAD,
@@ -98,6 +99,17 @@ describe('fine-tune transfer (doc 18 §10.3d)', () => {
     const rule = transferPerCurve(front, big, side)
     const t1 = transferAdditive(front, big, side)
     report.push({ check: 'large + strong', carriedVsIdeal: curveDev(rule.eye, ideal), carriedReconciledVsIdeal: curveDev(reconcileShared(rule.eye), ideal), asIsVsIdeal: curveDev(t1, ideal), sharedGapCarried: sharedGap(rule.eye), perCurve: rule.perCurve })
+  })
+
+  it('same small fine-tune, strong deformation (dot 1791293701): affine and non-uniform reported separately', () => {
+    for (const [name, map] of [['strong affine', strongAffineSide], ['strong non-uniform', strongSide]] as const) {
+      const side = mapEye(front, map)
+      const ref = mapEye(tuned, map)
+      const rule = transferPerCurve(front, tuned, side)
+      const t1 = transferAdditive(front, tuned, side)
+      report.push({ check: `small fine-tune, ${name}`, carriedVsRef: curveDev(rule.eye, ref), carriedReconciledVsRef: curveDev(reconcileShared(rule.eye), ref), asIsVsRef: curveDev(t1, ref), sharedGapCarried: sharedGap(rule.eye) })
+      if (name === 'strong affine') expect(curveDev(rule.eye, ref)).toBeLessThan(1e-9)
+    }
   })
 
   it('prints the table', () => {

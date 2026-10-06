@@ -166,6 +166,13 @@ export function fineTuneLarge(front: Eye): Eye {
   for (const id of ['U1', 'L1'] as CurveId[]) { e[id][3] = add(e[id][3], out); e[id][2] = add(e[id][2], out) }
   return e
 }
+/** A strong AFFINE side view (dot 1791293701): squeezed to 0.3, tilted 30° — the transfer must be exact here. */
+export const strongAffineSide = (p: V) => {
+  const th = (30 * Math.PI) / 180
+  const x = 0.3 * p.x
+  const y = p.y
+  return v(Math.cos(th) * x - Math.sin(th) * y + 2, Math.sin(th) * x + Math.cos(th) * y)
+}
 /** A strong side view: squeezed to about a third, tilted 25°, slightly stretched vertically, with a sag. */
 export const strongSide = (p: V) => {
   const th = (25 * Math.PI) / 180
