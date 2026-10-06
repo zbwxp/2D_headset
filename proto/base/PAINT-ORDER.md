@@ -191,20 +191,30 @@ opacity (D7) are NOT in these steps.
   (Today it passes only because fills are always under curves; S1 alone breaks it.)
 
 **S2 — C1: a fill leaves out the visible ink of its own boundary strokes that are behind it.**
-- Core: each `EvalFill` gets `ownInk`: the boundary pieces whose curve is visible and earlier in
-  `paint` than the fill, with each piece's ink outline in world units: `bezier-js` `outline(w/2)` per
-  segment (butt ends) plus a disk of radius w/2 at interior joints (covers round / most miter joins;
-  sharp miter tips are a stated limit). Cached per curve item (geometry + width); a drag of a boundary
-  curve recomputes only that curve's outlines.
-- Renderers: B — `ctx.clip(rect + piece, 'evenodd')` once per piece (successive clips intersect, i.e.
-  the complement of the union, the same "intersected inverse clips" as v103), then fill. A — Fabric
-  `clipPath` = Group of the piece outlines with `inverted: true, absolutePositioned: true`. A fill with
-  no `ownInk` paints exactly as today (no clip).
-- Hit testing uses the same exclusion (v103: fill painting and fill hit share one clip).
-- Limits (stated, with a diagnostic): self-intersecting outline pieces, blurred / textured stroke
-  edges (none exist yet).
-- Tests: P6-cross-layer passes; D2 example 2 becomes a 明确 case (B < X < F: green where X covers B's
-  ink inside F, blue where it does not, red at the centre); P6 / P7 unchanged.
+Revised after dot: the protected area must be the ACTUAL stroke (same path, width, butt caps, miter
+joins, miter limit), not a separately built outline. Withdrawn: "bezier-js outline per segment plus a
+disk at joints" — a disk at a butt end / miter join covers pixels the stroke does not, which would cut
+holes into the fill.
+- Core: each `EvalFill` gets `ownInk`: the addresses of its boundary curves that are visible and
+  earlier in `paint` than the fill (identities only; geometry is read from the current items).
+- Renderers apply the SAME stroke operation as an inverse mask on the fill, so the excluded pixels are
+  exactly the stroke's ink as that renderer rasterises it:
+  - B / runtime canvas: paint the fill into a scratch layer, then stroke the own boundary paths with
+    the stroke's own width / cap / join / miter limit using `destination-out`, then composite the layer.
+  - Fabric (A): `clipPath` = the boundary path(s) drawn as a stroke with the same parameters,
+    `inverted: true, absolutePositioned: true` (to verify: Fabric renders a clip path's stroke into
+    the mask).
+  - SVG export: `<mask>` with a white rect and the boundary path stroked black with the same attributes.
+- Hit testing: a point on the own ink is not a fill hit — `isPointInStroke` with the same parameters
+  where a canvas is available; the pure core uses distance ≤ w/2 with the same caps / joins rules
+  (stated approximation, checked against `isPointInStroke` on the same examples).
+- Check FIRST (dot), as small pictures: right-angle, acute-angle (miter limit reached and not reached)
+  and curved joints, butt ends at a free end. Expected: every pixel the stroke alone covers fully
+  (alpha 255) shows the stroke colour; every pixel inside the fill the stroke alone does not touch
+  (alpha 0) shows the fill colour; edge pixels are reported, not asserted.
+- Cost (in parallel): a scratch layer per protected fill in B; Fabric clipPath may force object
+  caching — measured on the main workload with fills moved in front of their boundaries.
+- Tests: P6-own-boundary and P6-cross-layer pass; D2 example 2 becomes a 明确 case.
 
 **S3 — measure.** Main workload (500 curves, 100 fills, 6,000 dots), A and B: the cost of the paint
 list (structural edits only) and of the clips (Fabric clipPath may force object caching — measured,
