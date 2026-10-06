@@ -57,11 +57,13 @@ Q_lid = {0: lid(1.4), 45: lid(1.2, 2)}
 blink_rule = lambda low: {a: copy.deepcopy(low[l]) for a, l in (("a", "c"), ("m", "n"), ("b", "d"))}  # lidClose v1: upper := lower (by the rule's correspondence)
 recs += [
     forms("preset:P", "curve:lid", lid(1), sorted(P_lid.items()),
-          {"blink": [{"yaw": 0, "kind": "author", "target": closed(P_lower[0], 1), "base": blink_rule(P_lower[0]), "ruleVersion": 1},
+          # closed keys at EVERY yaw where the connected lower lid has a key (-60, 0, 90): see check_shared_nodes
+          {"blink": [{"yaw": -60, "kind": "rule"},
+                     {"yaw": 0, "kind": "author", "target": closed(P_lower[0], 1), "base": blink_rule(P_lower[0]), "ruleVersion": 1},
                      {"yaw": 90, "kind": "rule"}]}),
     forms("preset:P", "curve:lowerLid", lower(1), sorted(P_lower.items()), {}),
     forms("preset:P", "curve:strand", None, [(90, strand(5))], {}),
-    forms("preset:Q", "curve:lid", lid(1.3), sorted(Q_lid.items()), {"blink": [{"yaw": 45, "kind": "rule"}]}),
+    forms("preset:Q", "curve:lid", lid(1.3), sorted(Q_lid.items()), {"blink": [{"yaw": 0, "kind": "rule"}, {"yaw": 45, "kind": "rule"}]}),
     forms("preset:Q", "curve:lowerLid", lower(1.3), sorted(Q_lower.items()), {}),
     forms("preset:Q", "curve:strand", None, [(90, strand(4))], {}),
     # B: rule binding + version; point correspondence for every anchor of the upper lid
@@ -96,6 +98,48 @@ recs += [
      "encoding": "legacy-delta", "original": "curve", "yaw": [{"yaw": -30, "offsets": {"a1": V(-2, 1)}}, {"yaw": 45, "offsets": {"a1": V(3, 0.5), "a2": V(4, 0)}}], "expr": {}},
 ]
 doc = {"schema": {"contour": 2}, "records": recs}
+
+# ---------- check: every shared node coincides over the WHOLE defined state range (dot 1791307313) ----------
+# Preset level, every yaw from -120 to 120 (in-between angles and clamping at both ends), neutral and closed.
+# The closed state uses the sparse closed track of the upper lid (§20.3: rule keys = rule(lower at that yaw),
+# author keys = target, interpolated and clamped between its OWN keys); the lower lid has no closed track, so
+# closed lower = neutral lower. Blink in between is linear in both, so 0 and 1 suffice.
+def lerp(a, b, t): return {k: {h: {"x": a[k][h]["x"] + (b[k][h]["x"] - a[k][h]["x"]) * t, "y": a[k][h]["y"] + (b[k][h]["y"] - a[k][h]["y"]) * t} for h in a[k]} for k in a}
+def sample(keys, yaw, at):
+    if yaw <= keys[0]: return at(0)
+    if yaw >= keys[-1]: return at(len(keys) - 1)
+    i = next(i for i, k in enumerate(keys) if k >= yaw)
+    return at(i) if keys[i] == yaw else lerp(at(i - 1), at(i), (yaw - keys[i - 1]) / (keys[i] - keys[i - 1]))
+def check_shared_nodes(records):
+    R = {r["id"]: r for r in records}
+    worst = []
+    for pr in ("preset:P", "preset:Q"):
+        up, lo = R[f"forms:{pr}/curve:lid"], R[f"forms:{pr}/curve:lowerLid"]
+        lys = [k["yaw"] for k in lo["yaw"]]
+        lower_at = lambda y: sample(lys, y, lambda i: lo["yaw"][i]["shape"])
+        uys = [k["yaw"] for k in up["yaw"]]
+        upper_at = lambda y: sample(uys, y, lambda i: up["yaw"][i]["shape"])
+        ck = up["expr"]["blink"]
+        cys = [k["yaw"] for k in ck]
+        def closed_key(i):
+            k = ck[i]
+            return k["target"] if k["kind"] == "author" else blink_rule(lower_at(k["yaw"]))
+        gap = 0.0
+        for y in range(-120, 121):
+            for state, ub, ld in (("open", upper_at(y)["b"]["p"], lower_at(y)["d"]["p"]), ("closed", sample(cys, y, closed_key)["b"]["p"], lower_at(y)["d"]["p"])):
+                g = abs(ub["x"] - ld["x"]) + abs(ub["y"] - ld["y"])
+                if g > gap: gap = g; at = (state, y, ub, ld)
+        worst.append((pr, gap, at if gap else None))
+    return worst
+for pr, gap, at in check_shared_nodes(recs):
+    print("shared node lid#b = lowerLid#d", pr, "max gap", gap, at or "")
+    assert gap < 1e-9, (pr, at)
+# the counterexample (closed keys only at the upper lid's own yaws) for the record:
+ce = copy.deepcopy(recs)
+for r in ce:
+    if r["id"] == "forms:preset:P/curve:lid": r["expr"]["blink"] = [k for k in r["expr"]["blink"] if k["yaw"] != -60]
+    if r["id"] == "forms:preset:Q/curve:lid": r["expr"]["blink"] = [{"yaw": 45, "kind": "rule"}]
+for pr, gap, at in check_shared_nodes(ce): print("  counterexample", pr, "max gap", round(gap, 6), at)
 open("stage1-valid.json", "w").write(json.dumps(doc, ensure_ascii=False, indent=1))
 bad = copy.deepcopy(doc)
 for r in bad["records"]:

@@ -535,6 +535,10 @@
    "expr": {
     "blink": [
      {
+      "yaw": -60,
+      "kind": "rule"
+     },
+     {
       "yaw": 0,
       "kind": "author",
       "target": {
@@ -1030,6 +1034,10 @@
    ],
    "expr": {
     "blink": [
+     {
+      "yaw": 0,
+      "kind": "rule"
+     },
      {
       "yaw": 45,
       "kind": "rule"
