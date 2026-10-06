@@ -201,9 +201,10 @@ holes into the fill.
   exactly the stroke's ink as that renderer rasterises it:
   - B / runtime canvas: paint the fill into a scratch layer, then stroke the own boundary paths with
     the stroke's own width / cap / join / miter limit using `destination-out`, then composite the layer.
-  - Fabric (A): `clipPath` = the boundary path(s) drawn as a stroke with the same parameters,
-    `inverted: true, absolutePositioned: true` (to verify: Fabric renders a clip path's stroke into
-    the mask).
+  - Fabric (A): a fill object without object cache whose `_render` does the same scratch-layer cut
+    in the main canvas transform. Checked and rejected: Fabric `clipPath` (fabric 7.4.0
+    `drawObject(ctx, forClipping)` draws clip objects with `fill='black', stroke=''`, so a stroke cannot
+    be a clip) and the fill's own object cache (cut shifted ~1 px against the main canvas).
   - SVG export: `<mask>` with a white rect and the boundary path stroked black with the same attributes.
 - Hit testing: a point on the own ink is not a fill hit — `isPointInStroke` with the same parameters
   where a canvas is available; the pure core uses distance ≤ w/2 with the same caps / joins rules
@@ -212,8 +213,13 @@ holes into the fill.
   and curved joints, butt ends at a free end. Expected: every pixel the stroke alone covers fully
   (alpha 255) shows the stroke colour; every pixel inside the fill the stroke alone does not touch
   (alpha 0) shows the fill colour; edge pixels are reported, not asserted.
-- Cost (in parallel): a scratch layer per protected fill in B; Fabric clipPath may force object
-  caching — measured on the main workload with fills moved in front of their boundaries.
+- Pre-check result (`ownink.html`, `e2e/own-ink-check.spec.ts`, `1cf3078`): right angles + butt ends,
+  30° mitre, 18° mitre-limit bevel, curved smooth joint + kink — Canvas2D scratch + destination-out and
+  the Fabric scratch-layer object: 0 stroke pixels eaten, 0 holes in all four; unprotected: thousands
+  eaten (the check can fail).
+- Cost (single informational run, 640×420, DPR 1, 100 protected fills per frame): unprotected 0.05 ms,
+  full-canvas scratch 14.8 ms, bounding-box scratch 8.8 ms — a real fixed cost per PROTECTED fill
+  (only fills painted after their own boundary need it). Main-workload cost in S3.
 - Tests: P6-own-boundary and P6-cross-layer pass; D2 example 2 becomes a 明确 case.
 
 **S3 — measure.** Main workload (500 curves, 100 fills, 6,000 dots), A and B: the cost of the paint
