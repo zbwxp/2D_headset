@@ -52,11 +52,14 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   rebuilds. Per-item reader ≈ 0.04–0.08 ms per drag. A WHOLE-LIST reader (what the current Fabric view
   does) still re-collects every item: 3000 curves ≈ 12.4 ms per drag vs ≈ 14.5 ms for the full
   uncached evaluation — so the drawing layer only benefits if it consumes changed items.
-- Full-change workload (`test/full-change.test.ts`, every curve moves each frame, medians, node,
-  informational; heap growth includes undo history, no forced GC): 3000 curves — edit through the
+- **Batch-edit** full-change workload (`test/full-change.test.ts`: a whole-scene transform through the
+  write entry every frame — NOT runtime playback, which is an evaluation input and never goes through
+  edit history; medians, node, informational; heap growth includes undo history, no forced GC): 3000 curves — edit through the
   write entry ≈ 53.6 ms, cached evaluation ≈ 19.4 ms, uncached full recompute ≈ 13.3 ms; 1000 —
   19.1 / 6.0 / 4.2 ms. When everything changes, the per-item caches cost ≈1.5× a full recompute, and
   the edit path (plan, validation, history) dominates.
+- Still to add (dot): a **parameter-driven** full-evaluation workload (angle / expression as inputs,
+  no edits), with memory reported separately. Runtime caching is not decided from the batch-edit numbers.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).
