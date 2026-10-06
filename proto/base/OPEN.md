@@ -261,8 +261,13 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
 - **Depth offsets are stored but NOT applied** to the paint order (PAINT-ORDER.md D1 open);
   `unappliedDepthOffsets` lists them and the editor status line says so.
 - **New fills get index `a0`** (schema default; `createFill` passes none) → they go to the back of their
-  parent and can share an index with a sibling (order then only deterministic, by address). Where a new
-  fill should be placed is open (v103 inserted it just behind its boundary strokes — evidence only).
+  parent and can share an index with a sibling (ties broken by id). Agreed default (dot, 2026-10-06):
+  a new fill is inserted just below its own boundary curves in the same parent; if none is in that
+  parent, at the bottom of the parent — a DEFAULT position only, boundary references (also cross-layer)
+  unchanged. Keys from @tldraw/utils `getIndexBelow` / `getIndexBetween`, checked together with the
+  neighbouring keys, stable identity and the full paint-order tests (a unique key alone proves
+  nothing). NOT implemented yet: waits for dot's re-check and the reuse-boundary review
+  (CHAIN-INVENTORY.md). KF-1 (preview / commit identity of a create) stays a separate item.
 - **Hit testing vs occlusion (KF-4, known failure):** V-mode hit testing prefers segments over fills
   regardless of paint order, so a line hidden under a fill in front is still picked (probe: hit =
   segment `curve:C/s` at the centre of P2). Picking must agree with what is visible (principle 4,
