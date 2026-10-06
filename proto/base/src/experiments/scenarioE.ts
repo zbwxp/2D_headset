@@ -9,15 +9,15 @@
 export type V = { x: number; y: number }
 /** Handles are ABSOLUTE points here (so affine maps apply to them directly). */
 export type A = { p: V; hIn: V; hOut: V }
-export type Lid = [A, A, A] // corner, middle, corner
+export type Lid = A[] // corner, …, corner (PART lids have 3 anchors: corner, middle, corner)
 export type Eye = { upper: Lid; lower: Lid; stroke: number }
 
-const v = (x: number, y: number): V => ({ x, y })
-const add = (a: V, b: V): V => v(a.x + b.x, a.y + b.y)
+export const v = (x: number, y: number): V => ({ x, y })
+export const add = (a: V, b: V): V => v(a.x + b.x, a.y + b.y)
 const sub = (a: V, b: V): V => v(a.x - b.x, a.y - b.y)
 const mul = (a: V, k: number): V => v(a.x * k, a.y * k)
-const lerp = (a: V, b: V, t: number): V => add(a, mul(sub(b, a), t))
-const anchor = (p: V, hIn: V, hOut: V): A => ({ p, hIn: add(p, hIn), hOut: add(p, hOut) })
+export const lerp = (a: V, b: V, t: number): V => add(a, mul(sub(b, a), t))
+export const anchor = (p: V, hIn: V, hOut: V): A => ({ p, hIn: add(p, hIn), hOut: add(p, hOut) })
 const mapA = (a: A, f: (p: V) => V): A => ({ p: f(a.p), hIn: f(a.hIn), hOut: f(a.hOut) })
 const mapEye = (e: Eye, f: (p: V, lid: 'upper' | 'lower', i: number) => V): Eye => ({
   ...e,
@@ -29,7 +29,7 @@ const zipEye = (e: Eye, g: (a: A, b: A, lid: 'upper' | 'lower', i: number) => A,
   upper: e.upper.map((a, i) => g(a, other.upper[i], 'upper', i)) as Lid,
   lower: e.lower.map((a, i) => g(a, other.lower[i], 'lower', i)) as Lid,
 })
-const lerpA = (a: A, b: A, t: number): A => ({ p: lerp(a.p, b.p, t), hIn: lerp(a.hIn, b.hIn, t), hOut: lerp(a.hOut, b.hOut, t) })
+export const lerpA = (a: A, b: A, t: number): A => ({ p: lerp(a.p, b.p, t), hIn: lerp(a.hIn, b.hIn, t), hOut: lerp(a.hOut, b.hOut, t) })
 
 // ---------- data: one eye PART shared by three CHARACTERS ----------
 /** The part's base drawing (eye-local coordinates, y down). Corners are shared by both lids. */
@@ -209,8 +209,8 @@ function cubic(p0: V, c1: V, c2: V, p3: V, t: number): V {
 }
 export function sampleLid(lid: Lid, n = 64): V[] {
   const out: V[] = []
-  for (let s = 0; s < 2; s++) for (let i = 0; i < n; i++) out.push(cubic(lid[s].p, lid[s].hOut, lid[s + 1].hIn, lid[s + 1].p, i / n))
-  out.push(lid[2].p)
+  for (let s = 0; s < lid.length - 1; s++) for (let i = 0; i < n; i++) out.push(cubic(lid[s].p, lid[s].hOut, lid[s + 1].hIn, lid[s + 1].p, i / n))
+  out.push(lid[lid.length - 1].p)
   return out
 }
 const distToSeg = (p: V, a: V, b: V) => {
@@ -263,9 +263,12 @@ export function measure(eye: Eye): Metrics {
   const overlap = up.filter((p) => distToPoly(p, lo) < eye.stroke).length / up.length
   return {
     maxGap: +maxGap.toFixed(3),
-    midGap: +Math.hypot(eye.upper[1].p.x - eye.lower[1].p.x, eye.upper[1].p.y - eye.lower[1].p.y).toFixed(3),
+    midGap: eye.upper.length === eye.lower.length ? +Math.hypot(eye.upper[1].p.x - eye.lower[1].p.x, eye.upper[1].p.y - eye.lower[1].p.y).toFixed(3) : NaN,
     crossings: crossings(up, lo),
-    cornersJoined: [0, 2].every((i) => Math.hypot(eye.upper[i].p.x - eye.lower[i].p.x, eye.upper[i].p.y - eye.lower[i].p.y) < 1e-9),
+    cornersJoined: [eye.upper[0].p, eye.upper[eye.upper.length - 1].p].every((p, k) => {
+      const q = k === 0 ? eye.lower[0].p : eye.lower[eye.lower.length - 1].p
+      return Math.hypot(p.x - q.x, p.y - q.y) < 1e-9
+    }),
     area: +(a2 / 2).toFixed(2), // y-down coordinates: upper lid left→right, lower lid back → positive when open
     strokeOverlap: +overlap.toFixed(2),
   }
