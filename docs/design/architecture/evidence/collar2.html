@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:-apple-system,"PingFang SC",sans-serif;color:#222;padding:18px;width:1290px}
+h2{font-size:15px;margin:12px 0 4px} p{font-size:12.5px;margin:0 0 6px;color:#444;line-height:1.5}
+.row{display:flex;gap:12px;margin-bottom:6px} canvas{border:1px solid #ccc;display:block} .cap{font-size:12px;color:#555;width:400px;line-height:1.45;margin-top:3px}
+pre{font-size:12px;background:#f6f6f6;padding:8px;white-space:pre-wrap}
+</style></head><body>
+<h2>实验 1：衣领后半圈用「脖子填充 + 脖子轮廓笔触」作反转蒙版——三种画法对照（独立实验页，不接产品）</h2>
+<p>线：等宽平头（占位笔），衣领是一条连续曲线（后半圈 = 上弧，前半圈 = 下弧，两段在右侧端点处是一个尖角接笔）。上排正常大小；下排两处局部放大 6 倍：左 = 右侧接头，右 = 后半圈穿过脖子的地方。</p>
+<div class="row" id="r1"></div><div class="row" id="z1"></div><div class="row" id="z2"></div>
+<h2>实验 2：不加蒙版，只在一条光滑曲线中间切段——切段本身会不会产生缺口或收尖</h2>
+<p>左：整条一笔；中：在中点切成两段，各自平头，依次画；右：两者差异（放大 6 倍，差异像素标红）。</p>
+<div class="row" id="r2"></div>
+<pre id="out"></pre>
+<script>
+const S=3.2, skin='#f6d2b5', cloth='#9fc3e6', ink='#3b2a20', W=2.4
+const neck=new Path2D('M46 0 L74 0 L76 78 C70 86 50 86 44 78 Z')
+const back=new Path2D('M18 56 C34 38 86 38 102 56')
+const front=new Path2D('M102 56 C92 78 28 78 18 56')
+const collar=new Path2D('M18 56 C34 38 86 38 102 56 C92 78 28 78 18 56')
+const clothes=new Path2D('M18 56 C28 78 92 78 102 56 L124 112 L-4 112 Z')
+const CW=400, CH=380
+function stroke(c,p){c.lineCap='butt';c.lineJoin='miter';c.miterLimit=4;c.lineWidth=W;c.strokeStyle=ink;c.stroke(p)}
+function mk(){const cv=document.createElement('canvas');cv.width=CW;cv.height=CH;const c=cv.getContext('2d');return [cv,c]}
+function layer(){const [L,l]=mk();l.setTransform(S,0,0,S,8,8);return [L,l]}
+function blit(c,L,op){c.save();c.setTransform(1,0,0,1,0,0);if(op)c.globalCompositeOperation=op;c.drawImage(L,0,0);c.restore()}
+function base(withCollar){
+  const [cv,c]=mk();c.fillStyle='#fff';c.fillRect(0,0,CW,CH);c.setTransform(S,0,0,S,8,8)
+  c.fillStyle=skin;c.fill(neck);stroke(c,neck);c.fillStyle=cloth;c.fill(clothes);return [cv,c]}
+// source coverage = neck fill ∪ neck outline ink at actual width, opaque
+function sourceMask(){const [M,m]=layer();m.fillStyle='#000';m.fill(neck);stroke(m,neck);return M}
+function panel(mode){
+  const [cv,c]=base()
+  if(mode==='none'){const [L,l]=layer();stroke(l,collar);blit(c,L)}
+  if(mode==='old'){ // draw whole, then erase (back ink ∩ neck)
+    const [L,l]=layer();stroke(l,collar)
+    const [M,m]=layer();stroke(m,back);m.globalCompositeOperation='destination-in';m.fillStyle='#000';m.fill(neck)
+    blit(l,M,'destination-out');blit(c,L)}
+  if(mode==='new'){ // cut by interval first, then spatially clip only the back piece
+    const [F,f]=layer();stroke(f,front);blit(c,F)
+    const [B,b]=layer();stroke(b,back);blit(b,sourceMask(),'destination-out');blit(c,B)}
+  return cv}
+function zoom(src,x0,y0,w,h,k,hl){const cv=document.createElement('canvas');cv.width=w*k;cv.height=h*k;const c=cv.getContext('2d');c.imageSmoothingEnabled=false;c.drawImage(src,x0,y0,w,h,0,0,w*k,h*k);return cv}
+const P=(x,y)=>[Math.round(x*S+8),Math.round(y*S+8)]
+const caps={none:'A 对照：不加蒙版，整条一笔（后半圈画在脖子上）',old:'B 旧示意：先画整条，再擦掉「后半圈墨迹 ∩ 脖子」',new:'C 提议：先按区间切成前、后两段；前段照常画；后段在「脖子填充 + 脖子轮廓笔触」的范围里不画'}
+const panels={}
+for(const m of ['none','old','new']){panels[m]=panel(m);const d=document.createElement('div');d.appendChild(panels[m]);const t=document.createElement('div');t.className='cap';t.textContent=caps[m];d.appendChild(t);document.getElementById('r1').appendChild(d)}
+const [jx,jy]=P(102,56), [nx,ny]=P(60,45)
+for(const m of ['none','old','new']){
+  const a=document.createElement('div');a.appendChild(zoom(panels[m],jx-33,jy-31,66,62,6));document.getElementById('z1').appendChild(a)
+  const b=document.createElement('div');b.appendChild(zoom(panels[m],nx-33,ny-31,66,62,6));document.getElementById('z2').appendChild(b)}
+// metrics
+const px=cv=>cv.getContext('2d').getImageData(0,0,CW,CH).data
+const [N]=base(); const noCollar=px(N)
+const SM=sourceMask().getContext('2d').getImageData(0,0,CW,CH).data
+const out=[];const locs=[]
+for(const m of ['old','new']){
+  const d=px(panels[m]); let ghost=0, ghostMax=0
+  // ghost: inside source coverage (alpha 255) and away from the front piece, image should equal the no-collar picture
+  const [Fc,fc]=layer();stroke(fc,front);fc.lineWidth=W+4;fc.stroke(front);const Fd=Fc.getContext('2d').getImageData(0,0,CW,CH).data
+  for(let i=0;i<d.length;i+=4){ if(SM[i+3]<255||Fd[i+3]>0) continue
+    const diff=Math.max(Math.abs(d[i]-noCollar[i]),Math.abs(d[i+1]-noCollar[i+1]),Math.abs(d[i+2]-noCollar[i+2]))
+    if(diff>2){ghost++;ghostMax=Math.max(ghostMax,diff)} }
+  // outside the source coverage band (dilated) and away from the joint, compare with A
+  const A=px(panels.none); let off=0, offMax=0
+  for(let y=0;y<CH;y++)for(let x=0;x<CW;x++){const i=(y*CW+x)*4
+    if(SM[i+3]>0) continue; let nearMask=false
+    for(let dy=-3;dy<=3&&!nearMask;dy++)for(let dx=-3;dx<=3;dx++){const yy=y+dy,xx=x+dx;if(yy<0||xx<0||yy>=CH||xx>=CW)continue;if(SM[(yy*CW+xx)*4+3]>0){nearMask=true;break}}
+    if(nearMask) continue
+    if(Math.hypot(x-jx,y-jy)<14) continue
+    const diff=Math.max(Math.abs(d[i]-A[i]),Math.abs(d[i+1]-A[i+1]),Math.abs(d[i+2]-A[i+2]))
+    if(diff>2){off++;offMax=Math.max(offMax,diff);if(m==='new')locs.push(x+','+y)}}
+  out.push(`${m==='old'?'B 旧示意':'C 提议'}：脖子范围内的残影像素 ${ghost}（最大色差 ${ghostMax}）；蒙版范围外、右侧接头以外与 A 不同的像素 ${off}（最大色差 ${offMax}）`)
+}
+// experiment 2
+function split(p0,p1,p2,p3,t){const L=(a,b)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];const a=L(p0,p1),b=L(p1,p2),c=L(p2,p3),d=L(a,b),e=L(b,c),f=L(d,e);return [[p0,a,d,f],[f,e,c,p3]]}
+const Q=[[10,60],[40,10],[80,110],[110,60]], [h1,h2]=split(...Q,0.5)
+const pth=q=>new Path2D(`M${q[0]} C${q[1]} ${q[2]} ${q[3]}`)
+function e2(parts){const [cv,c]=mk();c.fillStyle='#fff';c.fillRect(0,0,CW,CH);c.setTransform(S,0,0,S,8,8);for(const q of parts)stroke(c,pth(q));return cv}
+const whole=e2([Q]), cut=e2([h1,h2])
+const dW=px(whole), dC=px(cut); let n2=0,m2=0
+const dv=document.createElement('canvas');dv.width=CW;dv.height=CH;const dc=dv.getContext('2d');dc.drawImage(cut,0,0);const id=dc.getImageData(0,0,CW,CH)
+for(let i=0;i<dW.length;i+=4){const df=Math.max(Math.abs(dW[i]-dC[i]),Math.abs(dW[i+1]-dC[i+1]),Math.abs(dW[i+2]-dC[i+2]));if(df>2){n2++;m2=Math.max(m2,df);id.data[i]=255;id.data[i+1]=0;id.data[i+2]=0}}
+dc.putImageData(id,0,0)
+const [cx,cy]=P(...h1[3])
+for(const [cv,cap] of [[whole,'整条一笔'],[cut,'中点切成两段，各自平头'],[zoom(dv,cx-33,cy-31,66,62,6),'切口处放大 6 倍，红 = 与整条一笔不同的像素']]){const d=document.createElement('div');d.appendChild(cv);const t=document.createElement('div');t.className='cap';t.textContent=cap;d.appendChild(t);document.getElementById('r2').appendChild(d)}
+out.push(`实验 2：中点切段与整条一笔不同的像素 ${n2}（最大色差 ${m2}）`)
+document.getElementById('out').textContent=out.join('\n')
+document.title='ready'
+</script></body></html>
