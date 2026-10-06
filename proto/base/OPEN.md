@@ -252,8 +252,8 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   slice:** FabricView (and B, which copies it) paints onion yaws → ALL fills → ALL curves → dots, so a
   fill in front never covers curves behind. Doc 11: depth by layer / order within layer / depth
   offset; RC-16: a fill does not cover its own boundary strokes, other objects cover it normally;
-  definite order first, reject global contradictions. Fix proposed to dot (one shared paint list in
-  the evaluation core, used by A, B and the runtime), not implemented yet.
+  definite order first, reject global contradictions. Rules, expected pictures and the compositing
+  design now live in ONE place: PAINT-ORDER.md (this entry does not restate them). Not implemented.
 
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 
