@@ -6,6 +6,7 @@
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
+import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
 import { actualKind, anchorKey, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
@@ -64,6 +65,8 @@ export type Command =
    * unless the dependants are removed in the same command (doc 18 §22.1).
    */
   | { type: 'deleteRecords'; ids: string[] }
+  /** structure commands (stage 2b, structure.ts) */
+  | StructureCommand
 
 /**
  * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
@@ -523,6 +526,17 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const next = { ...c, ...(cmd.locked !== undefined && { locked: cmd.locked }), ...(cmd.visible !== undefined && { visible: cmd.visible }) }
       return { ok: true, label: 'setContainerFlags', puts: [next], affected: [c.id] }
     }
+    case 'insertPoint':
+    case 'removeAnchorJoin':
+    case 'deleteAnchorWithSegments':
+    case 'breakAt':
+    case 'addClosingSegment':
+    case 'removeClosingSegment':
+    case 'mergeEnds':
+    case 'bind':
+    case 'unbind':
+    case 'createCurve':
+      return planStructure(store, cmd, ids)
     case 'deleteRecords': {
       if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'no records to delete', [])
       // existence, duplicates, locks and dependants are checked generically on the final overlay
