@@ -2,7 +2,7 @@
 // Shape: `curves` open curves (4 anchors, 3 segments) in `layers` layers, chained by connections
 // within each layer, plus `fills` closed 4-segment loops used as fill boundaries.
 // It is NOT the old 121-curve face; numbers from it are absolute only (15 §5, dot).
-import { Connection, Container, Curve, Fill, Pose, poseIdOf, type Anchor, type CurveRecord, type DocRecord, type PoseRecord } from './schema'
+import { Connection, Container, Curve, Fill, Forms, poseIdOf, type Anchor, type CurveRecord, type DocRecord, type FormsRecord } from './schema'
 
 const v = (x: number, y: number) => ({ x, y })
 const anchor = (id: string, x: number, y: number): Anchor => ({ id, p: v(x, y), hIn: v(-4, 0), hOut: v(4, 0) })
@@ -75,12 +75,12 @@ export function syntheticRecords(opts: { curves: number; layers: number; fills: 
 }
 
 /** One pose record per curve: 0° and ±90° forms with an offset for every anchor (every onion yaw differs). */
-export function syntheticPoses(records: DocRecord[]): PoseRecord[] {
+export function syntheticPoses(records: DocRecord[]): FormsRecord[] {
   return records
     .filter((r): r is CurveRecord => r.typeName === 'curve')
     .map((c) => {
       const at = (sign: number) => Object.fromEntries(Object.keys(c.anchors).map((a) => [a, { x: 12 * sign, y: (a.charCodeAt(1) % 3) - 1 }]))
-      return Pose.create({ id: poseIdOf(c.id), curveId: c.id, keys: [{ yaw: -90, offsets: at(-1) }, { yaw: 0, offsets: {} }, { yaw: 90, offsets: at(1) }] })
+      return Forms.create({ id: poseIdOf(c.id), curveId: c.id, owner: { kind: 'document' }, encoding: 'legacy-delta', original: 'curve', yaw: [{ yaw: -90, offsets: at(-1) }, { yaw: 0, offsets: {} }, { yaw: 90, offsets: at(1) }], expr: {} })
     })
 }
 

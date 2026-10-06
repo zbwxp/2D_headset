@@ -3,7 +3,8 @@
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { connectionsAt } from './indexes'
-import { offsetAt } from './pose'
+import { newRecordProblems, presetConnectionProblems } from './forms'
+import { legacyKeys, offsetAt } from './pose'
 import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type BaseReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
@@ -84,7 +85,11 @@ export type RelationProblem = { object: string; field: string; target: string; m
  * published (`plan`), so the editor can never write something it would refuse to open (dot).
  * Analogous to foreign-key constraints in a database: checked per written row, not by a full scan.
  */
-export function recordProblems(store: Pick<BaseReader, 'get'>, r: DocRecord): RelationProblem[] {
+/**
+ * Relation rules of one record. `store` needs `get`; checks that must see other records of a type (rules of a
+ * family, presets sharing a connection, connected groups) also need `allRecords` and are skipped without it.
+ */
+export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<BaseReader, 'allRecords'>>, r: DocRecord): RelationProblem[] {
   const out: RelationProblem[] = []
   const need = (field: string, id: unknown, type: DocRecord['typeName']) => {
     if (!getAs(store, id, type)) out.push({ object: r.id, field, target: String(id), message: `${r.id}.${field}: ${id} is not a ${type} (${actualKind(store, id)})` })
@@ -103,7 +108,7 @@ export function recordProblems(store: Pick<BaseReader, 'get'>, r: DocRecord): Re
     // key yaws is EXACT only for per-curve piecewise-linear interpolation clamped to a common domain
     // (pose.offsetAt): between consecutive checked yaws both offsets are linear, outside they are
     // constant. A non-linear or per-anchor response would need a different check (dot).
-    const keysOf = (e: { curveId: string }) => getAs(store, poseIdOf(e.curveId), 'pose')?.keys ?? []
+    const keysOf = (e: { curveId: string }) => legacyKeys(getAs(store, poseIdOf(e.curveId), 'forms'))
     const yaws = [...new Set(r.ends.flatMap((e) => keysOf(e).map((k) => k.yaw)))].sort((x, y) => x - y)
     for (const yaw of yaws) {
       const offs = r.ends.map((e) => offsetAt(keysOf(e), e.anchorId, yaw))
@@ -120,16 +125,19 @@ export function recordProblems(store: Pick<BaseReader, 'get'>, r: DocRecord): Re
       else if (!c.segments.some((s) => s.id === b.segmentId))
         out.push({ object: r.id, field: `boundary[${i}].segmentId`, target: `${b.curveId}/${b.segmentId}`, message: `${r.id}: boundary ${b.curveId}/${b.segmentId} missing` })
     })
-  if (r.typeName === 'pose') {
+  if (r.typeName === 'forms' && r.encoding === 'legacy-delta') {
     const c = getAs(store, r.curveId, 'curve')
     if (!c) need('curveId', r.curveId, 'curve')
     else {
-      if (r.id !== poseIdOf(c.id)) out.push({ object: r.id, field: 'id', target: c.id, message: `${r.id}: a pose's id must be ${poseIdOf(c.id)} (one pose per curve)` })
-      r.keys.forEach((k, i) => {
-        for (const a of Object.keys(k.offsets)) if (!c.anchors[a]) out.push({ object: r.id, field: `keys[${i}].offsets.${a}`, target: `${c.id}#${a}`, message: `${r.id}: offset for missing anchor ${c.id}#${a}` })
+      if (r.id !== poseIdOf(c.id)) out.push({ object: r.id, field: 'id', target: c.id, message: `${r.id}: a legacy forms record's id must be ${poseIdOf(c.id)} (one per curve)` })
+      legacyKeys(r).forEach((k, i) => {
+        for (const a of Object.keys(k.offsets)) if (!c.anchors[a]) out.push({ object: r.id, field: `yaw[${i}].offsets.${a}`, target: `${c.id}#${a}`, message: `${r.id}: offset for missing anchor ${c.id}#${a}` })
       })
     }
   }
+  // the new records (stage 1): references, family registration, rules, characters; shared nodes of presets
+  out.push(...newRecordProblems(store, r))
+  if (r.typeName === 'connection' && r.ends.every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId])) out.push(...presetConnectionProblems(store, r))
   if (r.typeName === 'container') {
     // a container's own chain must end (no cycle through it)
     const seen = new Set<string>([r.id])
@@ -152,4 +160,24 @@ export function graphProblems(store: BaseReader): string[] {
 /** True if `parentId` is `containerId` or below it. */
 export function isWithin(store: BaseReader, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
   return containerChain(store, parentId).some((c) => c.id === containerId)
+}
+
+/**
+ * A reader that sees `puts` layered over `reader` and `removals` taken out (previews and plan checks; never
+ * writes). ONLY a BaseReader: reads by id and enumeration, both over the final state (a removed record is a
+ * tombstone for both). No `query`, `serialize` or snapshot — those would silently answer with the underlying
+ * store — so membership lookups on it scan its final records (indexes.ts) and it never reaches the store's
+ * indexes (doc 18 §22.1; dot, review of 3729d27).
+ */
+export function overlayReader(reader: BaseReader, puts: DocRecord[], removals: readonly string[] = []): BaseReader {
+  const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
+  const gone = new Set(removals)
+  return {
+    get: ((id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? reader.get(id as any)))) as BaseReader['get'],
+    allRecords: () => {
+      const out = reader.allRecords().filter((r) => !gone.has(r.id)).map((r) => overlay.get(r.id) ?? r)
+      for (const r of puts) if (!reader.get(r.id as any) && !gone.has(r.id)) out.push(r)
+      return out
+    },
+  }
 }

@@ -8,7 +8,8 @@ import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
 import { graphProblems } from '../src/model'
 import { evaluateAtYaw } from '../src/pose'
-import { poseIdOf, type PoseRecord } from '../src/schema'
+import { poseIdOf, type FormsRecord } from '../src/schema'
+import { legacyKeys } from '../src/pose'
 
 const YAWS = [-90, -60, -45, -10, 0, 7.5, 30, 45, 60, 89, 90]
 const unlocked = () => new Editor(exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r)))
@@ -66,7 +67,7 @@ describe('anchors not named keep their form', () => {
     const e = unlocked()
     e.apply(key(ids.C1, 90, { a2: { x: 12, y: -2 }, a1: { x: 4, y: 0 } }))
     e.apply(key(ids.C1, 90, { a1: { x: 6, y: 0 } }))
-    const k90 = (e.reader.get(poseIdOf(ids.C1)) as PoseRecord).keys.find((k) => k.yaw === 90)!
+    const k90 = legacyKeys(e.reader.get(poseIdOf(ids.C1)) as FormsRecord).find((k) => k.yaw === 90)! // stage 1: legacy forms record
     expect(k90.offsets.a2).toEqual({ x: 12, y: -2 })
     expect(k90.offsets.a1).toEqual({ x: 6, y: 0 })
     e.apply(key(ids.C1, 90, { a2: { x: 0, y: 0 } }))
@@ -107,7 +108,9 @@ describe('undo, redo, reopen and the safety net', () => {
   it('a document whose poses separate a connection is refused on open (safety net, same rule as writes)', () => {
     const e = unlocked()
     const saved = JSON.parse(JSON.stringify(e.save()))
-    const pose = { id: poseIdOf(ids.C1), typeName: 'pose', curveId: ids.C1, keys: [{ yaw: 90, offsets: { a3: { x: 10, y: 5 } } }] }
+    // stage 1: an OLD-format file (before the schema-2 migration) carrying a raw pose; opening migrates it
+    delete saved.schema.sequences['contour.document']
+    const pose = { id: 'pose:C1', typeName: 'pose', curveId: ids.C1, keys: [{ yaw: 90, offsets: { a3: { x: 10, y: 5 } } }] }
     saved.store[pose.id] = pose
     expect(() => Editor.open(saved)).toThrow(/ends separate at yaw 90/)
   })

@@ -48,7 +48,7 @@ describe('0° / 90° forms and the 30° result', () => {
     key(api, 90, { x: 30, y: -6 })
     expect(editor.history.undo).toEqual(['setPoseKey'])
     api.undo()
-    expect(editor.reader.allRecords().some((r) => r.typeName === 'pose')).toBe(false)
+    expect(editor.reader.allRecords().some((r) => r.typeName === 'forms')).toBe(false) // stage 1: the head-turn track is the legacy forms record
     // C2 lives in locked L2: its pose cannot be created
     expect(api.apply({ type: 'setPoseKey', curveId: ids.C2, yaw: 90, offsets: { b2: { x: 1, y: 0 } } })).toMatchObject({ ok: false, error: { code: 'LOCKED' } })
     expect(api.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { zz: { x: 1, y: 0 } } })).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } })

@@ -1,4 +1,5 @@
-// Head-turn forms stored in the document: one PoseRecord per curve (schema.ts), edited through the
+// Head-turn forms stored in the document: one legacy forms record per curve (schema.ts; migrated from the
+// old pose record, same keys, read in the same order), edited through the
 // write entry (`setPoseKey`), and PLAYED as an evaluation input — playing an angle never writes.
 // Forms are per-anchor OFFSETS relative to the base drawing (11 〔待定 4〕 option 甲 — Spine deform
 // keys "offsets added to the setup pose", https://en.esotericsoftware.com/spine-json-format,
@@ -8,12 +9,15 @@
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
 import { evaluate, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { poseIdOf, type Affine, type BaseReader, type FillRecord, type PoseRecord, type ReferenceRecord, type Vec } from './schema'
+import { poseIdOf, type Affine, type BaseReader, type FillRecord, type FormsRecord, type LegacyYawKey, type ReferenceRecord, type Vec } from './schema'
+
+/** The old head-turn keys of a legacy forms record (none for other encodings: those are not read here). */
+export const legacyKeys = (f: FormsRecord | undefined): LegacyYawKey[] => (f?.encoding === 'legacy-delta' ? (f.yaw as LegacyYawKey[]) : [])
 
 const ZERO: Vec = { x: 0, y: 0 }
 
 /** Offset of one anchor at `yaw`, from one curve's keys (clamped outside the recorded range). */
-export function offsetAt(keys: PoseRecord['keys'], anchorId: string, yaw: number): Vec {
+export function offsetAt(keys: LegacyYawKey[], anchorId: string, yaw: number): Vec {
   if (!keys.length) return ZERO
   if (yaw <= keys[0].yaw) return keys[0].offsets[anchorId] ?? ZERO
   const last = keys[keys.length - 1]
@@ -34,13 +38,14 @@ export function offsetAt(keys: PoseRecord['keys'], anchorId: string, yaw: number
  * as if the source were turned first and then placed (dot, review of 2a48719). Corrections in an
  * instance's own world coordinates would be a different, explicit write target — none exists yet.
  */
-export function curveAtYaw(c: EvalCurve, pose: PoseRecord | undefined, yaw: number, placement?: Affine): EvalCurve {
-  if (!pose || !pose.keys.length) return c
+export function curveAtYaw(c: EvalCurve, pose: FormsRecord | undefined, yaw: number, placement?: Affine): EvalCurve {
+  const keys = legacyKeys(pose)
+  if (!keys.length) return c
   const add = (p: Vec, o: Vec) => ({ x: p.x + o.x, y: p.y + o.y })
   const carry = placement ? (o: Vec): Vec => ({ x: placement.a * o.x + placement.c * o.y, y: placement.b * o.x + placement.d * o.y }) : (o: Vec) => o
   const anchors = Object.fromEntries(
     Object.values(c.anchors).map((a) => {
-      const o = carry(offsetAt(pose.keys, a.id, yaw))
+      const o = carry(offsetAt(keys, a.id, yaw))
       return [a.id, { ...a, p: add(a.p, o), hIn: add(a.hIn, o), hOut: add(a.hOut, o) }]
     }),
   )
@@ -68,7 +73,7 @@ export function evaluateAtYaw(store: Pick<BaseReader, 'get'> & Partial<BaseReade
   counters.fullYawEvals++
   const base = prepared ?? evaluate(store as BaseReader)
   const placementOf = (c: EvalCurve) => (c.referenceId ? (store.get(c.referenceId as any) as ReferenceRecord).transform : undefined)
-  const curves = new Map(base.curves.map((c) => [c.address, curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw, placementOf(c))]))
+  const curves = new Map(base.curves.map((c) => [c.address, curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as FormsRecord | undefined, yaw, placementOf(c))]))
   const byBase = new Map([...curves.values()].filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
   return fromPaint(
     base.paint.map((p) =>

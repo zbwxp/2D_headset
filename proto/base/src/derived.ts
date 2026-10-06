@@ -20,7 +20,7 @@ import { boundaryRefsOf, byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SE
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
-import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
+import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
 
 /**
  * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, reviews of 2a48719 and
@@ -171,26 +171,8 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
   }
 }
 
-/**
- * A reader that sees `puts` layered over `reader` and `removals` taken out (used by the preview; never
- * writes). It is ONLY a BaseReader: reads by id and enumeration, both over the final state (a removed
- * record is a tombstone for both). It deliberately has no `query`, `serialize` or snapshot — those would
- * silently answer with the underlying store — so membership lookups on it scan its final records
- * (indexes.ts), and it can never reach (or seed) the underlying store's indexes (doc 18 §22.1; dot,
- * review of 3729d27).
- */
-export function overlayReader(reader: BaseReader, puts: DocRecord[], removals: readonly string[] = []): BaseReader {
-  const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
-  const gone = new Set(removals)
-  return {
-    get: ((id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? reader.get(id as any)))) as BaseReader['get'],
-    allRecords: () => {
-      const out = reader.allRecords().filter((r) => !gone.has(r.id)).map((r) => overlay.get(r.id) ?? r)
-      for (const r of puts) if (!reader.get(r.id as any) && !gone.has(r.id)) out.push(r)
-      return out
-    },
-  }
-}
+export { overlayReader } from './model'
+import { overlayReader } from './model'
 
 /**
  * Fields a preview may change on the fast path: geometry and appearance only. It is an ALLOW-list
@@ -263,14 +245,14 @@ export class Derived {
           const slash = address.indexOf('/')
           if (slash < 0) {
             const base = this.curve(address as CurveRecord['id'])! // base layer: not evictable
-            return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw)
+            return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as FormsRecord | undefined, yaw)
           }
           // an instance at a yaw reads the records directly (the instance map is base layer too, but
           // reading records keeps this entry's parents free of other caches entirely)
           const ref = store.get(address.slice(0, slash) as any) as ReferenceRecord
           const c = store.get(address.slice(slash + 1) as any) as CurveRecord
           counters.instanceEvals++ // the instance geometry is rebuilt here, not read from the instance cache
-          return curveAtYaw(instanceItem(store, ref, c), store.get(poseIdOf(c.id) as any) as PoseRecord | undefined, yaw, ref.transform)
+          return curveAtYaw(instanceItem(store, ref, c), store.get(poseIdOf(c.id) as any) as FormsRecord | undefined, yaw, ref.transform)
         })
       },
     )
@@ -289,7 +271,7 @@ export class Derived {
             let c = inline.get(cid)
             if (!c) {
               counters.yawCurveEvals++
-              inline.set(cid, (c = curveAtYaw(this.curve(cid as CurveRecord['id'])!, store.get(poseIdOf(cid) as any) as PoseRecord | undefined, yaw)))
+              inline.set(cid, (c = curveAtYaw(this.curve(cid as CurveRecord['id'])!, store.get(poseIdOf(cid) as any) as FormsRecord | undefined, yaw)))
             }
             return c
           })
@@ -394,7 +376,7 @@ export class Derived {
       if ('segments' in item) {
         counters.previewEvals++
         const placement = item.referenceId ? (view.get(item.referenceId as any) as ReferenceRecord).transform : undefined
-        curves.set(address, curveAtYaw(item, view.get(poseIdOf(item.curveId) as any) as PoseRecord | undefined, yaw, placement))
+        curves.set(address, curveAtYaw(item, view.get(poseIdOf(item.curveId) as any) as FormsRecord | undefined, yaw, placement))
       }
     const fills = new Map<string, EvalFill>()
     for (const [address, item] of ch.items)

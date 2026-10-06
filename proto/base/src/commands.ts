@@ -6,14 +6,14 @@
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
-import { offsetAt } from './pose'
+import { legacyKeys, offsetAt } from './pose'
 import { childrenOf, connectionsAt, fillsUsing, referencesOf, within } from './indexes'
 import { actualKind, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
   Curve,
   Fill,
-  Pose,
+  Forms,
   poseIdOf,
   Reference,
   type Affine,
@@ -190,8 +190,8 @@ function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = 
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) && store.get(poseIdOf(r.id) as any)) incoming.add(poseIdOf(r.id)) // offsets name anchors
       if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
     }
-    // a pose change re-checks the connections at its curve's anchors (ends must agree at every yaw)
-    if (r.typeName === 'pose') {
+    // a head-turn track change re-checks the connections at its curve's anchors (ends must agree at every yaw)
+    if (r.typeName === 'forms') {
       const c = getAs(store, r.curveId, 'curve')
       if (c) for (const a of Object.keys(c.anchors)) for (const cn of connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) incoming.add(cn)
     }
@@ -212,15 +212,28 @@ function dependantsOf(store: DocStore, id: string): string[] {
     const out: string[] = [...fillsUsing(store, r.id)]
     for (const a of Object.keys(r.anchors)) out.push(...connectionsAt(store, anchorKey({ curveId: r.id, anchorId: a })))
     if (store.get(poseIdOf(r.id) as any)) out.push(poseIdOf(r.id))
-    return out
+    return [...out, ...mentioning(store, r.id)]
   }
-  // a pose: the connections at its curve's anchors must still agree at every yaw without it (as when a pose
-  // is written; dot, review of 3729d27: deleting one side's pose separated the ends and broke reopen)
-  if (r.typeName === 'pose') {
+  // a head-turn track: the connections at its curve's anchors must still agree at every yaw without it (as when
+  // it is written; dot, review of 3729d27: deleting one side's pose separated the ends and broke reopen); a
+  // preset's forms: also the preset (it must hold one per family curve)
+  if (r.typeName === 'forms') {
     const c = getAs(store, r.curveId, 'curve')
-    return c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
+    const out = c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
+    return r.owner.kind === 'preset' ? [...out, r.owner.id] : out
   }
-  return []
+  return mentioning(store, r.id)
+}
+
+const NEW_TYPES = new Set(['forms', 'family', 'preset', 'rule', 'helperDomain', 'character', 'visibility'])
+/**
+ * Stage-1 records that mention `id` anywhere (family curves, preset family, rule roles, character weights /
+ * takeovers, visibility owner …). No index exists for them yet, so this scans — only removal plans call it,
+ * never the drag path.
+ */
+function mentioning(store: DocStore, id: string): string[] {
+  const needle = JSON.stringify(id)
+  return store.allRecords().filter((x) => NEW_TYPES.has(x.typeName) && x.id !== id && JSON.stringify(x).includes(needle)).map((x) => x.id)
 }
 
 /** One final overlay: no id twice in puts or removals, none in both (dot 1791306076). */
@@ -265,10 +278,14 @@ function removalGuard(store: DocStore, removals: string[]): Plan | null {
  * gets unlocked), while a locked ancestor blocks everything below it, flags included (11 §3; dot's
  * review of 90692ad: a child's visibility could be changed under a locked parent).
  */
-/** Where a record lives for locking: its parent container; a pose lives where its curve lives. */
+/**
+ * Where a record lives for locking: its parent container; forms and visibility live where their curve lives;
+ * family / preset / rule / helper domain / character are document-level (no container lock applies).
+ */
 function placeOf(store: DocStore, x: DocRecord): string | null {
   if (x.typeName === 'connection') return null
-  if (x.typeName === 'pose') return (getAs(store, x.curveId, 'curve')?.parentId as string | undefined) ?? null
+  if (x.typeName === 'forms' || x.typeName === 'visibility') return (getAs(store, x.curveId, 'curve')?.parentId as string | undefined) ?? null
+  if (x.typeName === 'family' || x.typeName === 'preset' || x.typeName === 'rule' || x.typeName === 'helperDomain' || x.typeName === 'character') return null
   return x.parentId
 }
 
@@ -424,15 +441,15 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const want = new Map<string, Vec>()
       for (const n of named) for (const m of linkedAnchors(store, [n])) want.set(anchorKey(m.ref), cmd.offsets[n.anchorId])
       const curveIds = [...new Set([curve.id as string, ...linked.map((m) => m.ref.curveId as string)])]
-      const poseOf = (cid: string) => getAs(store, poseIdOf(cid), 'pose')
+      const poseOf = (cid: string) => getAs(store, poseIdOf(cid), 'forms')
       const yaws = new Set<number>([cmd.yaw])
-      if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const k of poseOf(cid)?.keys ?? []) yaws.add(k.yaw)
+      if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const k of legacyKeys(poseOf(cid))) yaws.add(k.yaw)
       const puts: DocRecord[] = []
       const creates: string[] = []
       for (const cid of curveIds) {
         const c = getAs(store, cid, 'curve')!
         const old = poseOf(cid)
-        const oldKeys = old?.keys ?? []
+        const oldKeys = legacyKeys(old)
         const ownYaws = cid === curve.id && curveIds.length === 1 ? new Set([...oldKeys.map((k) => k.yaw), cmd.yaw]) : new Set([...oldKeys.map((k) => k.yaw), ...yaws])
         const keys = [...ownYaws]
           .sort((a, b) => a - b)
@@ -447,7 +464,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
             return { yaw, offsets }
           })
         const id = poseIdOf(cid)
-        puts.push(old ? { ...old, keys } : Pose.create({ id, curveId: c.id, keys }))
+        // the legacy head-turn track (migrated pose): same keys, same meaning
+        puts.push(old ? { ...old, yaw: keys } : Forms.create({ id, curveId: c.id, owner: { kind: 'document' }, encoding: 'legacy-delta', original: 'curve', yaw: keys, expr: {} }))
         if (!old) creates.push(id)
       }
       return { ok: true, label: 'setPoseKey', puts, affected: puts.map((r) => r.id), ...(creates.length ? { creates } : {}) }

@@ -1,0 +1,1630 @@
+{
+ "schema": {
+  "contour": 2
+ },
+ "records": [
+  {
+   "typeName": "container",
+   "id": "container:L1",
+   "name": "眼",
+   "parentId": null,
+   "index": "a1",
+   "visible": true,
+   "locked": false,
+   "opacity": 1,
+   "tags": []
+  },
+  {
+   "typeName": "container",
+   "id": "container:L3",
+   "name": "旧下颌（迁移示例）",
+   "parentId": null,
+   "index": "a2",
+   "visible": true,
+   "locked": false,
+   "opacity": 1,
+   "tags": []
+  },
+  {
+   "typeName": "curve",
+   "parentId": "container:L1",
+   "closed": false,
+   "depthOffset": 0,
+   "tags": [],
+   "id": "curve:lid",
+   "name": "上眼睑",
+   "index": "a1",
+   "anchors": {
+    "a": {
+     "id": "a",
+     "p": {
+      "x": -10,
+      "y": 0
+     },
+     "hIn": {
+      "x": 0,
+      "y": 0
+     },
+     "hOut": {
+      "x": 3,
+      "y": -4
+     }
+    },
+    "m": {
+     "id": "m",
+     "p": {
+      "x": 0,
+      "y": -4
+     },
+     "hIn": {
+      "x": -5,
+      "y": 0
+     },
+     "hOut": {
+      "x": 5,
+      "y": 0
+     }
+    },
+    "b": {
+     "id": "b",
+     "p": {
+      "x": 10,
+      "y": 0
+     },
+     "hIn": {
+      "x": -3,
+      "y": -4
+     },
+     "hOut": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   },
+   "segments": [
+    {
+     "id": "s1",
+     "from": "a",
+     "to": "m"
+    },
+    {
+     "id": "s2",
+     "from": "m",
+     "to": "b"
+    }
+   ],
+   "stroke": {
+    "color": "#000",
+    "width": 2
+   }
+  },
+  {
+   "typeName": "curve",
+   "parentId": "container:L1",
+   "closed": false,
+   "depthOffset": 0,
+   "tags": [],
+   "id": "curve:lowerLid",
+   "name": "下眼睑",
+   "index": "a2",
+   "anchors": {
+    "c": {
+     "id": "c",
+     "p": {
+      "x": -10,
+      "y": 0
+     },
+     "hIn": {
+      "x": 0,
+      "y": 0
+     },
+     "hOut": {
+      "x": 3,
+      "y": 2
+     }
+    },
+    "n": {
+     "id": "n",
+     "p": {
+      "x": 0,
+      "y": 2
+     },
+     "hIn": {
+      "x": -5,
+      "y": 0
+     },
+     "hOut": {
+      "x": 5,
+      "y": 0
+     }
+    },
+    "d": {
+     "id": "d",
+     "p": {
+      "x": 10,
+      "y": 0
+     },
+     "hIn": {
+      "x": -3,
+      "y": 2
+     },
+     "hOut": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   },
+   "segments": [
+    {
+     "id": "s3",
+     "from": "c",
+     "to": "n"
+    },
+    {
+     "id": "s4",
+     "from": "n",
+     "to": "d"
+    }
+   ],
+   "stroke": {
+    "color": "#000",
+    "width": 1.5
+   }
+  },
+  {
+   "typeName": "curve",
+   "parentId": "container:L1",
+   "closed": false,
+   "depthOffset": 0,
+   "tags": [],
+   "id": "curve:strand",
+   "name": "侧发",
+   "index": "a3",
+   "anchors": {
+    "u": {
+     "id": "u",
+     "p": {
+      "x": 30,
+      "y": -2
+     },
+     "hIn": {
+      "x": 0,
+      "y": 0
+     },
+     "hOut": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    "w": {
+     "id": "w",
+     "p": {
+      "x": 32,
+      "y": 10
+     },
+     "hIn": {
+      "x": -1,
+      "y": -3
+     },
+     "hOut": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   },
+   "segments": [
+    {
+     "id": "t1",
+     "from": "u",
+     "to": "w"
+    }
+   ],
+   "stroke": {
+    "color": "#000",
+    "width": 1.5
+   }
+  },
+  {
+   "typeName": "curve",
+   "parentId": "container:L3",
+   "closed": false,
+   "depthOffset": 0,
+   "tags": [],
+   "id": "curve:C1",
+   "name": "旧下颌线",
+   "index": "a1",
+   "anchors": {
+    "a1": {
+     "id": "a1",
+     "p": {
+      "x": 0,
+      "y": 0
+     },
+     "hIn": {
+      "x": 0,
+      "y": 0
+     },
+     "hOut": {
+      "x": 5,
+      "y": 5
+     }
+    },
+    "a2": {
+     "id": "a2",
+     "p": {
+      "x": 20,
+      "y": 10
+     },
+     "hIn": {
+      "x": -5,
+      "y": 0
+     },
+     "hOut": {
+      "x": 5,
+      "y": 0
+     }
+    }
+   },
+   "segments": [
+    {
+     "id": "j1",
+     "from": "a1",
+     "to": "a2"
+    }
+   ],
+   "stroke": {
+    "color": "#000",
+    "width": 2
+   }
+  },
+  {
+   "typeName": "connection",
+   "id": "connection:corner",
+   "ends": [
+    {
+     "curveId": "curve:lid",
+     "anchorId": "b"
+    },
+    {
+     "curveId": "curve:lowerLid",
+     "anchorId": "d"
+    }
+   ],
+   "geometricJoin": "corner"
+  },
+  {
+   "typeName": "reference",
+   "id": "reference:R1",
+   "name": "镜像下颌",
+   "parentId": "container:L1",
+   "index": "a9",
+   "sourceId": "container:L3",
+   "transform": {
+    "a": -1,
+    "b": 0,
+    "c": 0,
+    "d": 1,
+    "e": 60,
+    "f": 0
+   },
+   "overrides": {
+    "curve:C1#a2": {
+     "x": 21,
+     "y": 10
+    }
+   }
+  },
+  {
+   "typeName": "family",
+   "id": "family:eye",
+   "name": "眼型",
+   "curves": [
+    "curve:lid",
+    "curve:lowerLid",
+    "curve:strand"
+   ]
+  },
+  {
+   "typeName": "preset",
+   "id": "preset:P",
+   "familyId": "family:eye",
+   "name": "杏眼"
+  },
+  {
+   "typeName": "preset",
+   "id": "preset:Q",
+   "familyId": "family:eye",
+   "name": "圆眼"
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:P/curve:lid",
+   "curveId": "curve:lid",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:P"
+   },
+   "encoding": "absolute",
+   "original": {
+    "a": {
+     "p": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hOut": {
+      "x": -7.0,
+      "y": -4.0
+     }
+    },
+    "m": {
+     "p": {
+      "x": 0.0,
+      "y": -4.0
+     },
+     "hIn": {
+      "x": -5.0,
+      "y": -4.0
+     },
+     "hOut": {
+      "x": 5.0,
+      "y": -4.0
+     }
+    },
+    "b": {
+     "p": {
+      "x": 10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": 7.0,
+      "y": -4.0
+     },
+     "hOut": {
+      "x": 10.0,
+      "y": 0.0
+     }
+    }
+   },
+   "yaw": [
+    {
+     "yaw": -60,
+     "shape": {
+      "a": {
+       "p": {
+        "x": -14,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -14,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -11,
+        "y": -3.6
+       }
+      },
+      "m": {
+       "p": {
+        "x": -4,
+        "y": -3.6
+       },
+       "hIn": {
+        "x": -9,
+        "y": -3.6
+       },
+       "hOut": {
+        "x": 1,
+        "y": -3.6
+       }
+      },
+      "b": {
+       "p": {
+        "x": 6,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 3,
+        "y": -3.6
+       },
+       "hOut": {
+        "x": 6,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 0,
+     "shape": {
+      "a": {
+       "p": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -7.0,
+        "y": -4.4
+       }
+      },
+      "m": {
+       "p": {
+        "x": 0.0,
+        "y": -4.4
+       },
+       "hIn": {
+        "x": -5.0,
+        "y": -4.4
+       },
+       "hOut": {
+        "x": 5.0,
+        "y": -4.4
+       }
+      },
+      "b": {
+       "p": {
+        "x": 10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 7.0,
+        "y": -4.4
+       },
+       "hOut": {
+        "x": 10.0,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 90,
+     "shape": {
+      "a": {
+       "p": {
+        "x": -5,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -5,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -2,
+        "y": -2.8
+       }
+      },
+      "m": {
+       "p": {
+        "x": 5,
+        "y": -2.8
+       },
+       "hIn": {
+        "x": 0,
+        "y": -2.8
+       },
+       "hOut": {
+        "x": 10,
+        "y": -2.8
+       }
+      },
+      "b": {
+       "p": {
+        "x": 15,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 12,
+        "y": -2.8
+       },
+       "hOut": {
+        "x": 15,
+        "y": 0.0
+       }
+      }
+     }
+    }
+   ],
+   "expr": {
+    "blink": [
+     {
+      "yaw": -60,
+      "kind": "rule"
+     },
+     {
+      "yaw": 0,
+      "kind": "author",
+      "target": {
+       "a": {
+        "p": {
+         "x": -10.0,
+         "y": 0.0
+        },
+        "hIn": {
+         "x": -10.0,
+         "y": 0.0
+        },
+        "hOut": {
+         "x": -7.0,
+         "y": 2.2
+        }
+       },
+       "m": {
+        "p": {
+         "x": 0.0,
+         "y": 1.9
+        },
+        "hIn": {
+         "x": -5.0,
+         "y": 1.9
+        },
+        "hOut": {
+         "x": 5.0,
+         "y": 1.9
+        }
+       },
+       "b": {
+        "p": {
+         "x": 10.0,
+         "y": 0.0
+        },
+        "hIn": {
+         "x": 7.0,
+         "y": 2.2
+        },
+        "hOut": {
+         "x": 10.0,
+         "y": 0.0
+        }
+       }
+      },
+      "base": {
+       "a": {
+        "p": {
+         "x": -10.0,
+         "y": 0.0
+        },
+        "hIn": {
+         "x": -10.0,
+         "y": 0.0
+        },
+        "hOut": {
+         "x": -7.0,
+         "y": 2.2
+        }
+       },
+       "m": {
+        "p": {
+         "x": 0.0,
+         "y": 2.2
+        },
+        "hIn": {
+         "x": -5.0,
+         "y": 2.2
+        },
+        "hOut": {
+         "x": 5.0,
+         "y": 2.2
+        }
+       },
+       "b": {
+        "p": {
+         "x": 10.0,
+         "y": 0.0
+        },
+        "hIn": {
+         "x": 7.0,
+         "y": 2.2
+        },
+        "hOut": {
+         "x": 10.0,
+         "y": 0.0
+        }
+       }
+      },
+      "ruleVersion": 1
+     },
+     {
+      "yaw": 90,
+      "kind": "rule"
+     }
+    ]
+   }
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:P/curve:lowerLid",
+   "curveId": "curve:lowerLid",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:P"
+   },
+   "encoding": "absolute",
+   "original": {
+    "c": {
+     "p": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hOut": {
+      "x": -7.0,
+      "y": 2.0
+     }
+    },
+    "n": {
+     "p": {
+      "x": 0.0,
+      "y": 2.0
+     },
+     "hIn": {
+      "x": -5.0,
+      "y": 2.0
+     },
+     "hOut": {
+      "x": 5.0,
+      "y": 2.0
+     }
+    },
+    "d": {
+     "p": {
+      "x": 10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": 7.0,
+      "y": 2.0
+     },
+     "hOut": {
+      "x": 10.0,
+      "y": 0.0
+     }
+    }
+   },
+   "yaw": [
+    {
+     "yaw": -60,
+     "shape": {
+      "c": {
+       "p": {
+        "x": -14,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -14,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -11,
+        "y": 1.8
+       }
+      },
+      "n": {
+       "p": {
+        "x": -4,
+        "y": 1.8
+       },
+       "hIn": {
+        "x": -9,
+        "y": 1.8
+       },
+       "hOut": {
+        "x": 1,
+        "y": 1.8
+       }
+      },
+      "d": {
+       "p": {
+        "x": 6,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 3,
+        "y": 1.8
+       },
+       "hOut": {
+        "x": 6,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 0,
+     "shape": {
+      "c": {
+       "p": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -7.0,
+        "y": 2.2
+       }
+      },
+      "n": {
+       "p": {
+        "x": 0.0,
+        "y": 2.2
+       },
+       "hIn": {
+        "x": -5.0,
+        "y": 2.2
+       },
+       "hOut": {
+        "x": 5.0,
+        "y": 2.2
+       }
+      },
+      "d": {
+       "p": {
+        "x": 10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 7.0,
+        "y": 2.2
+       },
+       "hOut": {
+        "x": 10.0,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 90,
+     "shape": {
+      "c": {
+       "p": {
+        "x": -5,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -5,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -2,
+        "y": 1.4
+       }
+      },
+      "n": {
+       "p": {
+        "x": 5,
+        "y": 1.4
+       },
+       "hIn": {
+        "x": 0,
+        "y": 1.4
+       },
+       "hOut": {
+        "x": 10,
+        "y": 1.4
+       }
+      },
+      "d": {
+       "p": {
+        "x": 15,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 12,
+        "y": 1.4
+       },
+       "hOut": {
+        "x": 15,
+        "y": 0.0
+       }
+      }
+     }
+    }
+   ],
+   "expr": {}
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:P/curve:strand",
+   "curveId": "curve:strand",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:P"
+   },
+   "encoding": "absolute",
+   "original": null,
+   "yaw": [
+    {
+     "yaw": 90,
+     "shape": {
+      "u": {
+       "p": {
+        "x": 35,
+        "y": -2
+       },
+       "hIn": {
+        "x": 35,
+        "y": -2
+       },
+       "hOut": {
+        "x": 37,
+        "y": 1
+       }
+      },
+      "w": {
+       "p": {
+        "x": 37,
+        "y": 10
+       },
+       "hIn": {
+        "x": 36,
+        "y": 7
+       },
+       "hOut": {
+        "x": 37,
+        "y": 10
+       }
+      }
+     }
+    }
+   ],
+   "expr": {}
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:Q/curve:lid",
+   "curveId": "curve:lid",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:Q"
+   },
+   "encoding": "absolute",
+   "original": {
+    "a": {
+     "p": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hOut": {
+      "x": -7.0,
+      "y": -5.2
+     }
+    },
+    "m": {
+     "p": {
+      "x": 0.0,
+      "y": -5.2
+     },
+     "hIn": {
+      "x": -5.0,
+      "y": -5.2
+     },
+     "hOut": {
+      "x": 5.0,
+      "y": -5.2
+     }
+    },
+    "b": {
+     "p": {
+      "x": 10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": 7.0,
+      "y": -5.2
+     },
+     "hOut": {
+      "x": 10.0,
+      "y": 0.0
+     }
+    }
+   },
+   "yaw": [
+    {
+     "yaw": 0,
+     "shape": {
+      "a": {
+       "p": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -7.0,
+        "y": -5.6
+       }
+      },
+      "m": {
+       "p": {
+        "x": 0.0,
+        "y": -5.6
+       },
+       "hIn": {
+        "x": -5.0,
+        "y": -5.6
+       },
+       "hOut": {
+        "x": 5.0,
+        "y": -5.6
+       }
+      },
+      "b": {
+       "p": {
+        "x": 10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 7.0,
+        "y": -5.6
+       },
+       "hOut": {
+        "x": 10.0,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 45,
+     "shape": {
+      "a": {
+       "p": {
+        "x": -8,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -8,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -5,
+        "y": -4.8
+       }
+      },
+      "m": {
+       "p": {
+        "x": 2,
+        "y": -4.8
+       },
+       "hIn": {
+        "x": -3,
+        "y": -4.8
+       },
+       "hOut": {
+        "x": 7,
+        "y": -4.8
+       }
+      },
+      "b": {
+       "p": {
+        "x": 12,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 9,
+        "y": -4.8
+       },
+       "hOut": {
+        "x": 12,
+        "y": 0.0
+       }
+      }
+     }
+    }
+   ],
+   "expr": {
+    "blink": [
+     {
+      "yaw": 0,
+      "kind": "rule"
+     },
+     {
+      "yaw": 45,
+      "kind": "rule"
+     }
+    ]
+   }
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:Q/curve:lowerLid",
+   "curveId": "curve:lowerLid",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:Q"
+   },
+   "encoding": "absolute",
+   "original": {
+    "c": {
+     "p": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": -10.0,
+      "y": 0.0
+     },
+     "hOut": {
+      "x": -7.0,
+      "y": 2.6
+     }
+    },
+    "n": {
+     "p": {
+      "x": 0.0,
+      "y": 2.6
+     },
+     "hIn": {
+      "x": -5.0,
+      "y": 2.6
+     },
+     "hOut": {
+      "x": 5.0,
+      "y": 2.6
+     }
+    },
+    "d": {
+     "p": {
+      "x": 10.0,
+      "y": 0.0
+     },
+     "hIn": {
+      "x": 7.0,
+      "y": 2.6
+     },
+     "hOut": {
+      "x": 10.0,
+      "y": 0.0
+     }
+    }
+   },
+   "yaw": [
+    {
+     "yaw": 0,
+     "shape": {
+      "c": {
+       "p": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -7.0,
+        "y": 2.8
+       }
+      },
+      "n": {
+       "p": {
+        "x": 0.0,
+        "y": 2.8
+       },
+       "hIn": {
+        "x": -5.0,
+        "y": 2.8
+       },
+       "hOut": {
+        "x": 5.0,
+        "y": 2.8
+       }
+      },
+      "d": {
+       "p": {
+        "x": 10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 7.0,
+        "y": 2.8
+       },
+       "hOut": {
+        "x": 10.0,
+        "y": 0.0
+       }
+      }
+     }
+    },
+    {
+     "yaw": 45,
+     "shape": {
+      "c": {
+       "p": {
+        "x": -8,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -8,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -5,
+        "y": 2.4
+       }
+      },
+      "n": {
+       "p": {
+        "x": 2,
+        "y": 2.4
+       },
+       "hIn": {
+        "x": -3,
+        "y": 2.4
+       },
+       "hOut": {
+        "x": 7,
+        "y": 2.4
+       }
+      },
+      "d": {
+       "p": {
+        "x": 12,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 9,
+        "y": 2.4
+       },
+       "hOut": {
+        "x": 12,
+        "y": 0.0
+       }
+      }
+     }
+    }
+   ],
+   "expr": {}
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:preset:Q/curve:strand",
+   "curveId": "curve:strand",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:Q"
+   },
+   "encoding": "absolute",
+   "original": null,
+   "yaw": [],
+   "expr": {}
+  },
+  {
+   "typeName": "rule",
+   "id": "rule:eye/blink",
+   "familyId": "family:eye",
+   "param": "blink",
+   "kind": "lidClose",
+   "version": 1,
+   "roles": {
+    "upper": "curve:lid",
+    "lower": "curve:lowerLid"
+   },
+   "correspondence": {
+    "a": "c",
+    "m": "n",
+    "b": "d"
+   }
+  },
+  {
+   "typeName": "helperDomain",
+   "id": "helperDomain:P/-60",
+   "presetId": "preset:P",
+   "yaw": -60,
+   "affine": {
+    "a": 0.9,
+    "b": 0,
+    "c": 0,
+    "d": 0.95,
+    "e": -4,
+    "f": 0
+   },
+   "source": {
+    "yaw": 0
+   },
+   "target": {
+    "yaw": -60
+   },
+   "ruleVersion": 1
+  },
+  {
+   "typeName": "helperDomain",
+   "id": "helperDomain:P/90",
+   "presetId": "preset:P",
+   "yaw": 90,
+   "affine": {
+    "a": 0.42,
+    "b": -0.07,
+    "c": 0.11,
+    "d": 0.9,
+    "e": 5,
+    "f": 0
+   },
+   "source": {
+    "yaw": 0
+   },
+   "target": {
+    "yaw": 90
+   },
+   "ruleVersion": 1
+  },
+  {
+   "typeName": "helperDomain",
+   "id": "helperDomain:Q/45",
+   "presetId": "preset:Q",
+   "yaw": 45,
+   "affine": {
+    "a": 0.8,
+    "b": 0,
+    "c": 0,
+    "d": 0.97,
+    "e": 2,
+    "f": 0
+   },
+   "source": {
+    "yaw": 0
+   },
+   "target": {
+    "yaw": 45
+   },
+   "ruleVersion": 1
+  },
+  {
+   "typeName": "character",
+   "id": "character:K",
+   "familyId": "family:eye",
+   "name": "角色 K",
+   "weights": {
+    "preset:P": 0.6,
+    "preset:Q": 0.4
+   },
+   "fineTune": {
+    "curve:lid": {
+     "m": {
+      "dp": {
+       "x": 0,
+       "y": -0.8
+      },
+      "dIn": {
+       "x": 0.3,
+       "y": -0.8
+      },
+      "dOut": {
+       "x": -0.3,
+       "y": -0.8
+      }
+     }
+    }
+   },
+   "takeovers": [
+    {
+     "kind": "line",
+     "id": "takeover:lid@90",
+     "curveId": "curve:lid",
+     "state": {
+      "yaw": 90
+     },
+     "direction": {
+      "from": 0,
+      "to": 90
+     },
+     "target": {
+      "a": {
+       "p": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hOut": {
+        "x": -1.5,
+        "y": -3.2
+       }
+      },
+      "m": {
+       "p": {
+        "x": 5.5,
+        "y": -3.2
+       },
+       "hIn": {
+        "x": 0.5,
+        "y": -3.2
+       },
+       "hOut": {
+        "x": 10.5,
+        "y": -3.2
+       }
+      },
+      "b": {
+       "p": {
+        "x": 15.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": 12.5,
+        "y": -3.2
+       },
+       "hOut": {
+        "x": 15.5,
+        "y": -0.4
+       }
+      }
+     },
+     "basisFront": {
+      "a": {
+       "p": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": -10.0,
+        "y": 0.0
+       },
+       "hOut": {
+        "x": -7.0,
+        "y": -4.88
+       }
+      },
+      "m": {
+       "p": {
+        "x": 0.0,
+        "y": -4.88
+       },
+       "hIn": {
+        "x": -5.0,
+        "y": -4.88
+       },
+       "hOut": {
+        "x": 5.0,
+        "y": -4.88
+       }
+      },
+      "b": {
+       "p": {
+        "x": 10.0,
+        "y": 0.0
+       },
+       "hIn": {
+        "x": 7.0,
+        "y": -4.88
+       },
+       "hOut": {
+        "x": 10.0,
+        "y": 0.0
+       }
+      }
+     },
+     "L": [
+      0.42,
+      -0.07,
+      0.11,
+      0.9
+     ]
+    },
+    {
+     "kind": "node",
+     "id": "takeover:corner@90",
+     "connectionId": "connection:corner",
+     "state": {
+      "yaw": 90
+     },
+     "direction": {
+      "from": 0,
+      "to": 90
+     },
+     "target": {
+      "x": 15.5,
+      "y": -0.4
+     },
+     "basisFront": {
+      "x": 10,
+      "y": 0
+     },
+     "L": [
+      0.42,
+      -0.07,
+      0.11,
+      0.9
+     ],
+     "basisFrom": "takeover:lid@90"
+    }
+   ],
+   "exprFixes": [
+    {
+     "id": "exprFix:lid@90/blink",
+     "curveId": "curve:lid",
+     "state": {
+      "yaw": 90,
+      "blink": 1
+     },
+     "target": {
+      "a": {
+       "p": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hOut": {
+        "x": -1.5,
+        "y": 1.0
+       }
+      },
+      "m": {
+       "p": {
+        "x": 5.5,
+        "y": 0.85
+       },
+       "hIn": {
+        "x": 0.5,
+        "y": 0.85
+       },
+       "hOut": {
+        "x": 10.5,
+        "y": 0.85
+       }
+      },
+      "b": {
+       "p": {
+        "x": 15.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": 12.5,
+        "y": 1.0
+       },
+       "hOut": {
+        "x": 15.5,
+        "y": -0.4
+       }
+      }
+     },
+     "base": {
+      "a": {
+       "p": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": -4.5,
+        "y": -0.4
+       },
+       "hOut": {
+        "x": -1.5,
+        "y": 1.0
+       }
+      },
+      "m": {
+       "p": {
+        "x": 5.5,
+        "y": 1.0
+       },
+       "hIn": {
+        "x": 0.5,
+        "y": 1.0
+       },
+       "hOut": {
+        "x": 10.5,
+        "y": 1.0
+       }
+      },
+      "b": {
+       "p": {
+        "x": 15.5,
+        "y": -0.4
+       },
+       "hIn": {
+        "x": 12.5,
+        "y": 1.0
+       },
+       "hOut": {
+        "x": 15.5,
+        "y": -0.4
+       }
+      }
+     },
+     "ruleVersion": 1
+    }
+   ]
+  },
+  {
+   "typeName": "visibility",
+   "id": "visibility:preset:P/curve:strand",
+   "curveId": "curve:strand",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:P"
+   },
+   "mode": "step",
+   "keys": [
+    {
+     "yaw": -90,
+     "visible": false
+    },
+    {
+     "yaw": 30,
+     "visible": true
+    }
+   ]
+  },
+  {
+   "typeName": "visibility",
+   "id": "visibility:preset:Q/curve:strand",
+   "curveId": "curve:strand",
+   "owner": {
+    "kind": "preset",
+    "id": "preset:Q"
+   },
+   "mode": "step",
+   "keys": [
+    {
+     "yaw": -90,
+     "visible": false
+    },
+    {
+     "yaw": 30,
+     "visible": true
+    }
+   ]
+  },
+  {
+   "typeName": "forms",
+   "id": "forms:document/curve:C1",
+   "curveId": "curve:C1",
+   "owner": {
+    "kind": "document"
+   },
+   "encoding": "legacy-delta",
+   "original": "curve",
+   "yaw": [
+    {
+     "yaw": -30,
+     "offsets": {
+      "a1": {
+       "x": -2,
+       "y": 1
+      }
+     }
+    },
+    {
+     "yaw": 45,
+     "offsets": {
+      "a1": {
+       "x": 3,
+       "y": 0.5
+      },
+      "a2": {
+       "x": 4,
+       "y": 0
+      }
+     }
+    }
+   ],
+   "expr": {}
+  }
+ ]
+}
