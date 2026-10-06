@@ -287,9 +287,13 @@ describe('properties of the single write entry', () => {
             checkLocks(e, locked, [act.cmd]) // I2
           } else if (act.kind === 'batch') {
             const r = api.applyBatch('b', act.cmds)
-            if (Array.isArray(r)) seen.batchOk++
+            if (r.ok) seen.batchOk++
             else seen.batchFail++
-            if (!Array.isArray(r)) {
+            expect(r.revision).toBe(e.revision) // the result's revision is the document's
+            if (r.ok) expect(r.results.length).toBe(act.cmds.length)
+            else expect(r.failedAt).toBeGreaterThanOrEqual(0) // I0: failures come from a command, never INTERNAL
+            if (r.ok) expect(r.written).toBe(doc(e) !== before) // written ⇔ the whole batch changed the document
+            if (!r.ok) {
               expect(r.error.code, r.error.message).not.toBe('INTERNAL') // I0
               expect(doc(e)).toBe(before) // I1 for batches
               expect(JSON.stringify(e.history)).toBe(hist)
@@ -326,8 +330,8 @@ describe('properties of the single write entry', () => {
               expect(() => {
                 if (inner.kind === 'apply') out = api.apply(inner.cmd)
                 else if (inner.kind === 'batch') out = api.applyBatch('b', inner.cmds)
-                else if (inner.kind === 'undo') out = e.undo()
-                else out = e.redo()
+                else if (inner.kind === 'undo') out = api.undo()
+                else out = api.redo()
               }).not.toThrow()
             } finally {
               stop()
@@ -338,8 +342,9 @@ describe('properties of the single write entry', () => {
             if (changed && act.handlerThrows) seen.handlerThrew++
             if (inner.kind === 'apply' || inner.kind === 'batch') {
               const r = out as any
-              const ok = inner.kind === 'apply' ? r.ok : Array.isArray(r)
-              const written = inner.kind === 'apply' ? ok && r.written : ok && changed
+              const ok = r.ok
+              const written = ok && r.written
+              expect(r.revision).toBe(e.revision)
               if (inner.kind === 'apply' && ok && r.written && r.warnings?.length) seen.observerWarned++
               if (!ok) expect(r.error.code, r.error.message).not.toBe('INTERNAL')
               if (written) {
@@ -357,7 +362,11 @@ describe('properties of the single write entry', () => {
               checkLocks(e, locked, inner.kind === 'apply' ? [inner.cmd] : inner.cmds)
             } else {
               // undo/redo: returned true ⇔ exactly one step moved between the stacks, and it reverses
-              const moved = out === true
+              const res = out as ReturnType<typeof api.undo>
+              expect(res.ok).toBe(true)
+              expect(res.revision).toBe(e.revision)
+              if (res.ok && res.written && act.handlerThrows) expect(res.warnings?.map((w) => w.code)).toEqual(['OBSERVER_FAILED', 'WARNING_HANDLER_FAILED'])
+              const moved = res.ok && res.written
               expect(e.history.undo.length).toBe(inner.kind === 'undo' ? undoLen - (moved ? 1 : 0) : undoLen + (moved ? 1 : 0))
               if (!moved) expect(changed).toBe(false)
               else {
@@ -388,9 +397,14 @@ describe('properties of the single write entry', () => {
             expect(JSON.stringify(e.history)).toBe(hist)
             expect(e.revision).toBe(rev)
             expect(e.isDirty).toBe(dirty)
-          } else if (act.kind === 'undo') e.undo()
-          else if (act.kind === 'redo') e.redo()
-          else {
+          } else if (act.kind === 'undo' || act.kind === 'redo') {
+            const len = e.history.undo.length
+            const res = act.kind === 'undo' ? api.undo() : api.redo()
+            expect(res).toMatchObject({ ok: true, revision: e.revision })
+            // written ⇔ one step moved between the stacks
+            expect(e.history.undo.length).toBe(len + (res.written ? (act.kind === 'undo' ? -1 : 1) : 0))
+            if (!res.written) expect(doc(e)).toBe(before)
+          } else {
             seen.saveOpen++
             const saved = JSON.parse(JSON.stringify(e.save())) // as written to a file
             expect(e.isDirty).toBe(false) // I8

@@ -11,14 +11,12 @@ recording capability are **not accepted**.
 
 ## Open
 
-1. **Unified result contract (API diagnostics).** `apply` returns its warnings; `undo`/`redo` return
-   a boolean and batch warnings from the final history commit only reach `onWarning`. Data consistency
-   holds, but *diagnostic information is not uniform across entries* — do not describe it as such.
-   Candidate: every entry returns `{ ok, written, revision, warnings?, error? }` (API shape change;
-   agree with dot first).
-2. **fb3b84a not yet re-reviewed.** It restructures batch (one transaction, cleanup in `finally`,
-   single `report`) after the verified 6cbdfed. Two of dot's copied tests carry one `[CHANGED]`
-   assertion each, pending dot's agreement.
+1. **Unified result contract — implemented, awaiting dot's re-review.** `api.applyBatch` returns
+   the whole batch's `{ ok, written, revision, results | error+failedAt, warnings? }` (results only
+   when the batch committed); `api.undo`/`api.redo` return `{ ok, written, revision, warnings?,
+   error? }`. `Editor.undo/redo/batch` keep their UI-convenience signatures.
+2. **fb3b84a and the result-contract commit not yet re-reviewed.** It restructures batch (one transaction, cleanup in `finally`,
+   single `report`) after the verified 6cbdfed. dot agreed to the two `[CHANGED]` assertions.
 3. **UI not re-run independently since 8875a57** (dot's 14 browser checks passed there).
 4. Not covered by tests yet: fill picking and save/reopen through the UI, containers nested deeper
    than 2 in UI flows, V transforms with locked children, undo granularity across layers, delete

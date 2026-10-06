@@ -135,7 +135,8 @@ describe('preview, batch, save/reopen', () => {
       { type: 'moveHandle', target: { curveId: ids.C1, anchorId: 'a2' }, handle: 'in', delta: { x: 1, y: 0 } },
       { type: 'moveHandle', target: { curveId: ids.C1, anchorId: 'a2' }, handle: 'out', delta: { x: 1, y: 0 } },
     ])
-    expect(Array.isArray(ok)).toBe(true)
+    expect(ok).toMatchObject({ ok: true, written: true, revision: editor.revision })
+    expect(ok.ok && ok.results.length).toBe(2)
     expect(editor.history.undo).toEqual(['two handles'])
     editor.undo()
     expect(snapshot(editor)).toBe(before)
@@ -144,7 +145,8 @@ describe('preview, batch, save/reopen', () => {
       { type: 'moveHandle', target: { curveId: ids.C1, anchorId: 'a2' }, handle: 'in', delta: { x: 1, y: 0 } },
       { type: 'moveAnchors', targets: [{ curveId: ids.C1, anchorId: 'a3' }], delta: { x: 1, y: 0 } }, // LOCKED via J
     ])
-    expect(Array.isArray(bad)).toBe(false)
+    expect(bad).toMatchObject({ ok: false, written: false, failedAt: 1, error: { code: 'LOCKED' } })
+    expect('results' in bad).toBe(false)
     expect(snapshot(editor)).toBe(before)
     expect(editor.history.undo).toEqual([])
   })

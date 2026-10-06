@@ -41,6 +41,20 @@ export type ApplyResult =
   | { ok: true; written: false; revision: number; affected: string[] } // valid but changed nothing
   | { ok: false; written: false; revision: number; error: EditError; warnings?: EditWarning[] }
 
+/**
+ * Result of undo/redo and of a whole batch — same fields as ApplyResult (dot's review: AI callers
+ * need the outcome of the WHOLE operation in the return value, not only through onWarning).
+ * written = this call changed the document and history (for a batch: created its one undo step).
+ */
+export type OpResult =
+  | { ok: true; written: boolean; revision: number; warnings?: EditWarning[] }
+  | { ok: false; written: false; revision: number; error: EditError; warnings?: EditWarning[] }
+
+/** A batch's outcome. `thrown` is the body's own exception (rethrown as-is by `batch`). */
+export type BatchRun<T> =
+  | { ok: true; written: boolean; revision: number; value: T; warnings?: EditWarning[] }
+  | { ok: false; written: false; revision: number; thrown: unknown; warnings?: EditWarning[] }
+
 export type PreviewResult = { ok: true; affected: string[]; puts: DocRecord[] } | { ok: false; error: EditError }
 
 type Entry = { label: string; diff: RecordsDiff<DocRecord>; revision: number }
@@ -168,21 +182,33 @@ export class Editor {
    * tldraw's rollback restores exactly that level's document AND history changes, and subscribers
    * see only the final state. Group bookkeeping is cleaned up in `finally`, whatever happened.
    * Warnings from the final flush go through `report` (onWarning) after cleanup.
+   * Throws the body's own error if it failed; `batchRun` returns the full outcome instead.
    */
   batch<T>(label: string, fn: () => T): T {
+    const r = this.batchRun(label, fn)
+    if (!r.ok) throw r.thrown
+    return r.value
+  }
+
+  /** `batch` without throwing: the whole batch's outcome, including warnings (used by the API). */
+  batchRun<T>(label: string, fn: () => T): BatchRun<T> {
     const outer = !this.group
     if (outer) this.group = { label, diffs: [] }
     const group = this.group!
     const mark = group.diffs.length
-    let result!: T
+    let value!: T
+    let pushed = false
     let run: ReturnType<Editor['commit']> | undefined
     try {
       run = this.commit(() => {
-        result = fn()
+        value = fn()
         if (outer) {
           const net = netDiff(squashRecordDiffs(group.diffs))
           // A batch whose net effect is nothing (e.g. +1 then −1) leaves history and redo alone (dot).
-          if (!isRecordsDiffEmpty(net)) this.pushEntry(group.label, net)
+          if (!isRecordsDiffEmpty(net)) {
+            this.pushEntry(group.label, net)
+            pushed = true
+          }
         }
       })
     } finally {
@@ -191,9 +217,11 @@ export class Editor {
       if (!run?.committed) group.diffs.splice(mark)
       if (outer) this.group = null
     }
-    this.report(run.warnings)
-    if (!run.committed) throw run.error
-    return result
+    const warnings = this.report(run.warnings)
+    const w = warnings.length ? { warnings } : {}
+    if (!run.committed) return { ok: false, written: false, revision: this.revision, thrown: run.error, ...w }
+    // Only the outermost level commits a history step; an inner level's success is not final.
+    return { ok: true, written: pushed, revision: this.revision, value, ...w }
   }
 
   private record(label: string, diff: RecordsDiff<DocRecord>) {
@@ -208,32 +236,50 @@ export class Editor {
     this.#revision.set(revision)
   }
 
+  /** Undo one step. true = a step was undone. UI convenience; the API uses `undoResult`. */
   undo() {
+    return this.unwrap(this.undoResult())
+  }
+
+  /** Redo one step. true = a step was redone. UI convenience; the API uses `redoResult`. */
+  redo() {
+    return this.unwrap(this.redoResult())
+  }
+
+  undoResult(): OpResult {
     const e = this.#undo.get().at(-1)
-    if (!e) return false
-    const run = this.commit(() => {
+    if (!e) return { ok: true, written: false, revision: this.revision }
+    return this.step('undo', () => {
       this.#store.applyDiff(reverseRecordsDiff(e.diff))
       this.#undo.update((u) => u.slice(0, -1))
       this.#redo.update((r) => [...r, e])
       this.#revision.set(this.#undo.get().at(-1)?.revision ?? 0)
     })
-    this.report(run.warnings)
-    if (!run.committed) throw new Error(`undo failed and was rolled back: ${errorMessage(run.error)}`)
-    return true
   }
 
-  redo() {
+  redoResult(): OpResult {
     const e = this.#redo.get().at(-1)
-    if (!e) return false
-    const run = this.commit(() => {
+    if (!e) return { ok: true, written: false, revision: this.revision }
+    return this.step('redo', () => {
       this.#store.applyDiff(e.diff)
       this.#redo.update((r) => r.slice(0, -1))
       this.#undo.update((u) => [...u, e])
       this.#revision.set(e.revision)
     })
-    this.report(run.warnings)
-    if (!run.committed) throw new Error(`redo failed and was rolled back: ${errorMessage(run.error)}`)
-    return true
+  }
+
+  private step(name: string, body: () => void): OpResult {
+    const run = this.commit(body)
+    const warnings = this.report(run.warnings)
+    const w = warnings.length ? { warnings } : {}
+    if (!run.committed)
+      return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: `${name} failed and was rolled back: ${errorMessage(run.error)}`, objects: [], fixes: [] }, ...w }
+    return { ok: true, written: true, revision: this.revision, ...w }
+  }
+
+  private unwrap(r: OpResult) {
+    if (!r.ok) throw new Error(r.error.message)
+    return r.written
   }
 
   get history() {

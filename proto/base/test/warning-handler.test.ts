@@ -51,7 +51,8 @@ describe('subscriber AND warning handler both throw', () => {
     let b: unknown
     expect(() => (b = api.applyBatch('two', [cmd, cmd]))).not.toThrow()
     stop()
-    expect(Array.isArray(b)).toBe(true)
+    // the whole batch's outcome, including the notification failures of its final commit
+    expect(b).toMatchObject({ ok: true, written: true, warnings: [{ code: 'OBSERVER_FAILED' }, { code: 'WARNING_HANDLER_FAILED' }] })
     expect(e.history.undo).toEqual(['moveAnchors', 'two'])
   })
 })

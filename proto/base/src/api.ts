@@ -2,8 +2,8 @@
 // UI does, so results, errors and undo are identical by construction. Read-only helpers never write.
 // Pattern: Figma plugins mutate only through the document API, one run = one undo step
 //   https://www.figma.com/plugin-docs/how-plugins-run/
-import type { Command } from './commands'
-import type { Editor } from './editor'
+import type { Command, EditError } from './commands'
+import type { ApplyResult, Editor, EditWarning, OpResult } from './editor'
 import { all, effectivelyVisible, lockedBy } from './model'
 import type { ConnectionRecord, ContainerRecord, CurveRecord, FillRecord, ReferenceRecord } from './schema'
 
@@ -16,6 +16,25 @@ export type InspectNode = {
   locked: boolean // effective (inherited)
   visible: boolean // effective (inherited)
   connections?: string[]
+}
+
+/**
+ * The whole batch's outcome. ok/written/revision describe the FINAL commit of the batch; `results`
+ * (per command, as evaluated inside the batch) are only present when the batch committed, so a
+ * command's success is never mistaken for the batch's (dot). On failure `failedAt` is the index of
+ * the rejected command, if the failure came from one.
+ */
+export type BatchResult =
+  | { ok: true; written: boolean; revision: number; results: ApplyResult[]; warnings?: EditWarning[] }
+  | { ok: false; written: false; revision: number; error: EditError; failedAt?: number; warnings?: EditWarning[] }
+
+class Rejected extends Error {
+  constructor(
+    readonly editError: EditError,
+    readonly index: number,
+  ) {
+    super(editError.message)
+  }
 }
 
 export function createApi(editor: Editor) {
@@ -57,21 +76,21 @@ export function createApi(editor: Editor) {
     preview: (cmd: Command) => editor.preview(cmd),
     apply: (cmd: Command) => editor.apply(cmd),
     /** A batch of commands = one undo step; any failure leaves nothing written. */
-    applyBatch(label: string, cmds: Command[]) {
-      try {
-        return editor.batch(label, () =>
-          cmds.map((c) => {
-            const r = editor.apply(c)
-            if (!r.ok) throw Object.assign(new Error(r.error.message), { editError: r.error })
-            return r
-          }),
-        )
-      } catch (e: any) {
-        return { ok: false as const, written: false as const, error: e.editError ?? { code: 'INTERNAL', message: String(e), objects: [], fixes: [] } }
-      }
+    applyBatch(label: string, cmds: Command[]): BatchResult {
+      const r = editor.batchRun(label, () =>
+        cmds.map((c, i) => {
+          const res = editor.apply(c)
+          if (!res.ok) throw new Rejected(res.error, i)
+          return res
+        }),
+      )
+      const w = r.warnings ? { warnings: r.warnings } : {}
+      if (r.ok) return { ok: true, written: r.written, revision: r.revision, results: r.value, ...w }
+      if (r.thrown instanceof Rejected) return { ok: false, written: false, revision: r.revision, error: r.thrown.editError, failedAt: r.thrown.index, ...w }
+      return { ok: false, written: false, revision: r.revision, error: { code: 'INTERNAL', message: String((r.thrown as Error)?.message ?? r.thrown), objects: [], fixes: [] }, ...w }
     },
-    undo: () => editor.undo(),
-    redo: () => editor.redo(),
+    undo: (): OpResult => editor.undoResult(),
+    redo: (): OpResult => editor.redoResult(),
     save: () => editor.save(),
   }
 }
