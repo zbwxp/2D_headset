@@ -1,6 +1,6 @@
 // Reference drawing path B (dot): the same picture as Fabric's A-mode scene. Same document state, same
 // canvas size, DPR and viewport; pixels of Fabric's main canvas vs B's canvas. Exact equality is NOT
-// achieved (anti-aliasing of two drawing paths differs at stroke edges); the numbers are reported and
+// achieved (differences found only near stroke edges in these samples — not proven to be all anti-aliasing); the numbers are reported and
 // bounded: total coverage, and visible per-pixel differences at a zoom where strokes are several px.
 import { expect, test, type Page } from '@playwright/test'
 
@@ -103,7 +103,7 @@ test('example document (fill, curves, reference, control points): Fabric vs B', 
 const MAIN = '/?bench&curves=400&fills=100&fillSize=50&fillSpacing=30&fillCols=10&onion=19'
 test('main workload 500 curves (400 open + 100 fill loops) + 100 overlapping fills + 19 onion yaws: Fabric vs B (fitted, and zoom 3 / 6)', async ({ page }) => {
   test.setTimeout(180_000)
-  // NOT pixel-identical: differences are anti-aliasing of thin strokes / tiny dots at edges — their share
+  // NOT pixel-identical: differences found only near edges of thin strokes / tiny dots in these samples — their share
   // falls as lines get thicker (zoom), crops at zoom 6 are visually identical, total coverage agrees.
   const fitted = await compare(page, MAIN)
   const z3 = await compare(page, MAIN, 3)
