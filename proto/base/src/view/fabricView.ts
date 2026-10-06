@@ -13,7 +13,7 @@ import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, 
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
-import { cubicsToPath, evaluate, hitTest, type EvalCurve, type EvalFill, type Evaluated, type Hit } from '../evaluate'
+import { cubicsToPath, evaluate, hitTest, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit } from '../evaluate'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
@@ -139,6 +139,10 @@ export class FabricView {
   render(ev: Evaluated = this.editor.derived.evaluated(), onions: Evaluated[] = this.onion ? this.onion.yaws.map((y) => this.editor.derived.atYaw(y)) : []) {
     this.projecting = true
     try {
+      // depth offsets are stored but not applied yet (PAINT-ORDER.md D1): say so, never silently
+      const ignored = unappliedDepthOffsets(ev)
+      if (ignored.length !== this.unappliedDepthOffsets.length) this.setStatus(ignored.length ? `深度偏移尚未生效（D1 未定）：${ignored.length} 个对象` : '')
+      this.unappliedDepthOffsets = ignored
       this.project(ev, onions)
       // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
       counters.canvasObjects += this.canvas.getObjects().length
@@ -146,6 +150,9 @@ export class FabricView {
       this.projecting = false
     }
   }
+
+  /** Addresses whose stored depth offset the paint order does not apply yet (D1). */
+  unappliedDepthOffsets: string[] = []
 
   /**
    * Scene of the last A-mode projection, for incremental updates (dot's option A: the SAME display,
@@ -251,11 +258,17 @@ export class FabricView {
       return
     }
     if (this.mode === 'A') {
-      // the scene this render should show, in z-order (same order as the full build below)
+      // the scene this render should show, in z-order: onion yaws (editor aid, E1) → the core's ONE
+      // paint list (lines and fills interleaved, PAINT-ORDER.md) → anchor dots (editor aid, E1)
       const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []
       onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
-      for (const f of ev.fills.filter((f) => f.visible)) want.push({ key: `f:${f.address}`, item: f, make: () => [pathOfFill(f)] })
-      for (const c of curves) want.push({ key: `c:${c.address}`, item: c, make: () => [pathOf(c)] })
+      for (const p of ev.paint)
+        if (p.item.visible)
+          want.push(
+            p.kind === 'fill'
+              ? { key: `f:${p.item.address}`, item: p.item, make: () => [pathOfFill(p.item)] }
+              : { key: `c:${p.item.address}`, item: p.item, make: () => [pathOf(p.item)] },
+          )
       for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
       const prev = this.scene
       if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
@@ -320,25 +333,36 @@ export class FabricView {
     }
     for (const o of onions) for (const c of o.curves.filter((c) => c.visible)) add(pathOfOnion(c))
     this.groupStart.clear()
-    for (const f of ev.fills.filter((f) => f.visible)) add(pathOfFill(f))
     this.timing.buildObjects += performance.now() - t
     t = performance.now()
     // top-level containers from the parent index (no whole-table scan)
     const tops = childrenOf(this.editor.reader, null, 'container').map((id) => this.editor.reader.get(id) as ContainerRecord)
     this.timing.containerScan += performance.now() - t
     t = performance.now()
+    // one group per top-level container holding ALL its painted items (lines, fills, reference
+    // instances, nested containers' items) in the core's paint order; the paint key starts with the
+    // top-level container's index, so groups follow each other in paint order too
+    const members = new Map<string, FabricObject[]>()
+    const lockedTop = new Set<string>()
+    for (const p of ev.paint) {
+      if (!p.item.visible) continue
+      const top = this.topOf(p.item.address)
+      if (!top) continue
+      if (!members.has(top)) members.set(top, [])
+      members.get(top)!.push(p.kind === 'fill' ? pathOfFill(p.item) : pathOf(p.item))
+      if (p.item.locked) lockedTop.add(top)
+    }
     for (const k of tops) {
-      const members = curves.filter((c) => !c.referenceId && this.parentOf(c.curveId) === k.id)
-      if (!members.length) continue
-      const locked = members.some((c) => c.locked)
-      const g = new Group(members.map(pathOf), { selectable: !locked, evented: !locked, objectCaching: false })
+      const objsOfK = members.get(k.id)
+      if (!objsOfK?.length) continue
+      const locked = lockedTop.has(k.id)
+      const g = new Group(objsOfK, { selectable: !locked, evented: !locked, objectCaching: false })
       ;(g as any).containerId = k.id
       ;(g as any).lockedGroup = locked
       this.groupStart.set(g, g.calcTransformMatrix())
-      counters.fabricObjectsCreated += members.length // the member paths inside the group
+      counters.fabricObjectsCreated += objsOfK.length // the member paths inside the group
       add(g)
     }
-    for (const c of curves.filter((c) => c.referenceId)) add(pathOf(c))
     this.timing.buildObjects += performance.now() - t
     t = performance.now()
     this.canvas.discardActiveObject()
@@ -349,8 +373,16 @@ export class FabricView {
   }
 
 
-  private parentOf(curveId: string) {
-    return (this.editor.reader.get(curveId as any) as any)?.parentId as string | undefined
+  /** Top-level container of a painted item (a reference instance belongs where the reference is). */
+  private topOf(address: string) {
+    const reader = this.editor.reader
+    let rec = reader.get(address.split('/')[0] as any) as { parentId: string | null } | undefined
+    let top: string | undefined
+    while (rec?.parentId) {
+      top = rec.parentId
+      rec = reader.get(rec.parentId as any) as { parentId: string | null } | undefined
+    }
+    return top
   }
 
   /**

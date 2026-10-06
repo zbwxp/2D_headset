@@ -16,7 +16,7 @@
 import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
-import { evalCurve, evaluate, IDENTITY, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
+import { byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintItem } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
@@ -209,6 +209,8 @@ function fastPathChange(old: DocRecord, next: DocRecord) {
   return true
 }
 
+type PaintEntry = { kind: 'curve' | 'fill'; address: string; key: string; refId?: ReferenceRecord['id']; curveId?: CurveRecord['id'] }
+
 export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | EvalFill> } | { fallback: true }
 
 export class Derived {
@@ -219,6 +221,12 @@ export class Derived {
   /** The one limit on retained result items of all angle caches; not a byte budget. */
   readonly yawRetainedItems: SharedBudget
   private readonly all: Computed<Evaluated>
+  /** Paint key per record: recomputed only when its parent / index (or an ancestor's) changes. */
+  private readonly keys
+  /** A reference's source container: recomputed only when `sourceId` changes. */
+  private readonly sources
+  /** Identities and order only (dot: no geometry here, so a preview always reads current geometry). */
+  private readonly order: Computed<PaintEntry[]>
   // Angle (head turn) layer — the only EVICTABLE layer. Rule (dot, review of c9553b7): an evictable
   // entry depends only on NON-evictable things (store records and the document-sized base layer:
   // curves, fills, instances, `all`), never on another evictable entry. A tldraw computed keeps its
@@ -288,37 +296,45 @@ export class Derived {
       counters.fillEvals++
       return fillItem(store, f, (id) => this.curve(id))
     })
-    // The assembled list: a computed too, so asking again without a change costs nothing. After a
-    // change it re-collects references to the cached items and sorts them; each item's order key is
-    // computed ONCE (decorate-sort), not inside the comparator (dot: comparator re-read records).
-    this.all = computed('evaluated', () => {
-      const curves: EvalCurve[] = [...store.query.ids('curve').get()].map((id) => this.curve(id)!)
-      const used = new Set<string>()
+    // Paint order (PAINT-ORDER.md §4 S1): identities and order only. It reads each item's paint key
+    // through `keys` (whose value changes only when parent / index of the item or an ancestor change),
+    // the id lists and reference membership — never geometry — so a drag does not rebuild it.
+    this.keys = store.createComputedCache<string, CurveRecord | FillRecord | ReferenceRecord | ContainerRecord>(
+      'paintKey',
+      (r) => paintKey(store, r.parentId, r.index),
+      { areRecordsEqual: (a, b) => a.parentId === b.parentId && a.index === b.index },
+    )
+    this.sources = store.createComputedCache<ContainerRecord['id'], ReferenceRecord>('referenceSource', (r) => r.sourceId, {
+      areRecordsEqual: (a, b) => a.sourceId === b.sourceId,
+    })
+    this.order = computed('paintOrder', () => {
+      counters.paintOrderBuilds++
+      const entries: PaintEntry[] = []
+      for (const id of store.query.ids('curve').get()) entries.push({ kind: 'curve', address: id, key: this.keys.get(id)! })
+      for (const id of store.query.ids('fill').get()) entries.push({ kind: 'fill', address: id, key: this.keys.get(id)! })
       for (const refId of store.query.ids('reference').get()) {
-        const r = store.get(refId) as ReferenceRecord
-        for (const cid of within(store, r.sourceId, 'curve')) {
-          used.add(`${r.id}/${cid}`)
-          curves.push(this.instance(r.id, cid))
-        }
+        const src = this.sources.get(refId)!
+        const refKey = this.keys.get(refId)!
+        const srcKey = this.keys.get(src)! // a source curve's key starts with its source's key + KEY_SEP
+        for (const cid of within(store, src, 'curve'))
+          entries.push({ kind: 'curve', address: `${refId}/${cid}`, key: refKey + KEY_SEP + this.keys.get(cid)!.slice(srcKey.length + 1), refId, curveId: cid })
       }
+      return entries.sort(byKey)
+    })
+    // The assembled list: maps the order to the CURRENT cached items. After a geometry change it
+    // re-collects references to the cached items (the order is reused); nothing is sorted here.
+    this.all = computed('evaluated', () => {
+      const used = new Set<string>()
+      const paint: PaintItem[] = this.order.get().map((e) => {
+        if (e.kind === 'fill') return { kind: 'fill', item: this.fill(e.address as FillRecord['id'])! }
+        if (!e.refId) return { kind: 'curve', item: this.curve(e.address as CurveRecord['id'])! }
+        used.add(e.address)
+        return { kind: 'curve', item: this.instance(e.refId, e.curveId!) }
+      })
       // prune instance entries no longer in the document (membership is document-sized)
       for (const k of [...this.instances.keys()]) if (!used.has(k)) this.instances.delete(k)
-      const fills: EvalFill[] = [...store.query.ids('fill').get()].map((id) => this.fill(id)!)
-      const parentKey = new Map<string, string>()
-      const order = (addr: string) => {
-        const rec = store.get(addr.split('/')[0] as any) as (DocRecord & { parentId: any; index: string }) | undefined
-        if (!rec) return ''
-        let pk = parentKey.get(rec.parentId)
-        if (pk === undefined) parentKey.set(rec.parentId, (pk = (store.get(rec.parentId) as ContainerRecord | undefined)?.index ?? ''))
-        return `${pk}/${rec.index}` // same key as evaluate.orderKey, parent looked up once per parent
-      }
-      const sorted = <T extends { address: string; depth: number }>(xs: T[]) =>
-        xs
-          .map((x) => ({ x, k: order(x.address) }))
-          .sort((a, b) => a.k.localeCompare(b.k) || a.x.depth - b.x.depth || a.x.address.localeCompare(b.x.address))
-          .map((d) => d.x)
-      counters.assembledItems += curves.length + fills.length
-      return { curves: sorted(curves), fills: sorted(fills) }
+      counters.assembledItems += paint.length
+      return fromPaint(paint)
     })
   }
 
@@ -352,7 +368,7 @@ export class Derived {
   atYaw(yaw: number): Evaluated {
     // assembled on demand (not cached: a cached list would hold results outside the budget)
     const base = this.evaluated()
-    return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
+    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: this.curveAt(p.item.address, yaw) } : { kind: 'fill', item: this.fillAt(p.item.address, yaw) })))
   }
   get yawCacheSize() {
     return { curves: this.yawCurves.size, fills: this.yawFills.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
@@ -379,8 +395,8 @@ export class Derived {
         fills.set(address, fillAtYaw(item, view.get(address as any) as FillRecord, (cid) => curves.get(cid) ?? this.curveAt(cid, yaw)))
       }
     const base = this.atYaw(yaw)
-    counters.previewItems += base.curves.length + base.fills.length
-    return { curves: base.curves.map((c) => curves.get(c.address) ?? c), fills: base.fills.map((f) => fills.get(f.address) ?? f) }
+    counters.previewItems += base.paint.length
+    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })))
   }
 
   /** Same value as `evaluate(reader)`, incrementally maintained. */
@@ -441,10 +457,8 @@ export class Derived {
       return evaluate(overlayReader(this.reader, puts))
     }
     const base = this.evaluated()
-    counters.previewItems += base.curves.length + base.fills.length
-    return {
-      curves: base.curves.map((x) => (ch.items.get(x.address) as EvalCurve | undefined) ?? x),
-      fills: base.fills.map((x) => (ch.items.get(x.address) as EvalFill | undefined) ?? x),
-    }
+    counters.previewItems += base.paint.length
+    // same order (the fast path never changes parent / index / membership), current geometry
+    return fromPaint(base.paint.map((p) => ({ kind: p.kind, item: ch.items.get(p.item.address) ?? p.item }) as PaintItem))
   }
 }

@@ -1,7 +1,7 @@
 // Reference drawing path "B" (dot): draws the SAME picture as FabricView's A-mode scene with plain
 // Canvas2D, so the cost of repainting can be compared with Fabric's renderAll on the same workload.
-// Same canvas size and device-pixel ratio, same viewport transform, same order (onion yaws → fills →
-// curves → anchor dots of unlocked curves), same styles as FabricView (stroke colours / widths, onion
+// Same canvas size and device-pixel ratio, same viewport transform, same order (onion yaws → the
+// core's paint list → anchor dots of unlocked curves), same styles as FabricView (stroke colours / widths, onion
 // stroke, fill colours, dot radii) and Fabric's defaults (butt caps, miter joins, miter limit 4,
 // non-zero fill, no stroke on dots). Path2D objects are built straight from the evaluated cubics (no
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
@@ -56,17 +56,19 @@ export class Canvas2DRef {
     ctx.strokeStyle = 'rgba(120,120,200,0.25)'
     ctx.lineWidth = 0.4
     for (const o of onions) for (const c of o.curves) if (c.visible) ctx.stroke(this.curvePath(c))
-    for (const f of ev.fills) {
-      if (!f.visible) continue
-      ctx.fillStyle = f.color
-      ctx.fill(this.fillPath(f))
+    // the core's ONE paint list: lines and fills interleaved (PAINT-ORDER.md), never re-sorted here
+    for (const p of ev.paint) {
+      if (!p.item.visible) continue
+      if (p.kind === 'fill') {
+        ctx.fillStyle = p.item.color
+        ctx.fill(this.fillPath(p.item))
+      } else {
+        ctx.strokeStyle = p.item.locked ? '#999' : p.item.stroke.color
+        ctx.lineWidth = p.item.stroke.width / 3
+        ctx.stroke(this.curvePath(p.item))
+      }
     }
     const curves = ev.curves.filter((c) => c.visible)
-    for (const c of curves) {
-      ctx.strokeStyle = c.locked ? '#999' : c.stroke.color
-      ctx.lineWidth = c.stroke.width / 3
-      ctx.stroke(this.curvePath(c))
-    }
     const dot = (x: number, y: number, r: number, color: string) => {
       ctx.fillStyle = color
       ctx.beginPath()

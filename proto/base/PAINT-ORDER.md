@@ -81,9 +81,13 @@ on top". Today: V painted over F → known failure.
 sample points. Control case with L shown → F and C painted there (so P10 cannot pass by painting
 nothing). Today: passes.
 
-**Results today (A and B identical):** P1 fill-after-line, P2 fill-layer-in-front, P3, P4, P7 fail as
-predicted (known failures, listed by the gate); P1 line-after-fill, P2 line-layer-in-front, P6, P10
-and its control pass.
+**Results after S1 (A and B identical):** P1–P4, P7, P10 (+ control) pass in A and B, and the paint list
+itself passes `test/paint-order.test.ts` (case pairs + a 300-run property over random trees with
+nesting, mixed-case and prefix indexes and references, checked against an element-wise path oracle;
+mutations caught: `localeCompare`, a separator above the index alphabet, direct-parent-only keys,
+fills-before-curves, the order reading geometry). P6-own-boundary and P6-cross-layer are known
+failures until S2: with fills interleaved, a fill painted after its own boundary now covers it (P6
+passed before only because all curves were painted after all fills).
 
 ## 3. Proposals (Claude → dot)
 
@@ -169,12 +173,16 @@ opacity (D7) are NOT in these steps.
   object's own index; strings compared by code unit (`<`), not `localeCompare`. Ties: address (stable).
 - Reference instances (D6): key = the reference's own path, then the source-relative path of the
   source item, so the source's internal order is kept and nothing leaves the instance.
-- `depthOffset`: not interpreted in S1 (today it only breaks ties, which has no meaning under D1);
-  listed in OPEN.md as unimplemented until D1 is agreed.
+- `depthOffset`: not interpreted in S1 (before, it only broke ties, which has no meaning under D1);
+  reported, never silent: `unappliedDepthOffsets(ev)` lists the items, the editor status line says
+  so; listed in OPEN.md until D1 is agreed.
 - Recomputed only when parent / index / visibility / membership change (it reads those fields, not
   geometry), so a drag preview reuses it; counted (`paintOrderBuilds`).
 - FabricView (A): `want` = onion yaws → `paint` → anchor dots (E1); same incremental keys as today.
-  B draws the same list in the same order.
+  B draws the same list in the same order. V mode: one group per top-level container with ALL its
+  painted items (lines, fills, reference instances, nested containers' items) in paint order — before,
+  fills were drawn under every group, reference instances above them, and curves of NESTED
+  containers were not drawn in V mode at all (members were matched on the direct parent).
 - Tests: P1–P4, P7 must leave the known-failure list (Playwright reports if they don't); unit test of
   the paint list itself for every case in `src/paintCases.ts` (the third check the contract asks for);
   property: the list is a permutation of the visible items, consistent with the tree order pairwise.

@@ -18,6 +18,8 @@ export const counters = {
   fillEvals: 0,
   /** items collected when the WHOLE evaluated list is assembled (references, not re-evaluations) */
   assembledItems: 0,
+  /** rebuilds of the paint ORDER (identities + order only; structural edits, not geometry) */
+  paintOrderBuilds: 0,
   /** drag previews computed (Derived.previewChanges) */
   previews: 0,
   /** items re-evaluated for previews (changed curves + dependent fills and instances) */

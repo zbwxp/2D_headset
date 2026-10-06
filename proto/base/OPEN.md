@@ -253,7 +253,16 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   fill in front never covers curves behind. Doc 11: depth by layer / order within layer / depth
   offset; RC-16: a fill does not cover its own boundary strokes, other objects cover it normally;
   definite order first, reject global contradictions. Rules, expected pictures and the compositing
-  design now live in ONE place: PAINT-ORDER.md (this entry does not restate them). Not implemented.
+  design now live in ONE place: PAINT-ORDER.md (this entry does not restate them). S1 done (one
+  paint list in the core, all renderers read it); S2 (own-outline protection) and S3 (cost) open.
+- **Depth offsets are stored but NOT applied** to the paint order (PAINT-ORDER.md D1 open);
+  `unappliedDepthOffsets` lists them and the editor status line says so.
+- **New fills get index `a0`** (schema default; `createFill` passes none) → they go to the back of their
+  parent and can share an index with a sibling (order then only deterministic, by address). Where a new
+  fill should be placed is open (v103 inserted it just behind its boundary strokes — evidence only).
+- **Hit testing vs occlusion:** V-mode hit testing prefers segments over fills regardless of paint
+  order, so a line hidden under a fill in front is still picked. Principle 4 (display and picking must
+  not contradict) — to decide with dot.
 
 ## Scenario E experiments — gaps (dot's review of ebb7ff8; experiments closed, not extended)
 

@@ -7,7 +7,7 @@
 // interpolation, behaviour only: https://docs.live2d.com/en/cubism-editor-manual/parameter/).
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
-import { evaluate, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
+import { evaluate, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
 import { poseIdOf, type Affine, type DocReader, type FillRecord, type PoseRecord, type ReferenceRecord, type Vec } from './schema'
 
 const ZERO: Vec = { x: 0, y: 0 }
@@ -68,8 +68,13 @@ export function evaluateAtYaw(store: Pick<DocReader, 'get'> & Partial<DocReader>
   counters.fullYawEvals++
   const base = prepared ?? evaluate(store as DocReader)
   const placementOf = (c: EvalCurve) => (c.referenceId ? (store.get(c.referenceId as any) as ReferenceRecord).transform : undefined)
-  const curves = base.curves.map((c) => curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw, placementOf(c)))
-  const byBase = new Map(curves.filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
-  const fills = base.fills.map((f) => fillAtYaw(f, store.get(f.address as any) as FillRecord, (id) => byBase.get(id)))
-  return { curves, fills }
+  const curves = new Map(base.curves.map((c) => [c.address, curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw, placementOf(c))]))
+  const byBase = new Map([...curves.values()].filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
+  return fromPaint(
+    base.paint.map((p) =>
+      p.kind === 'curve'
+        ? { kind: 'curve', item: curves.get(p.item.address)! }
+        : { kind: 'fill', item: fillAtYaw(p.item, store.get(p.item.address as any) as FillRecord, (id) => byBase.get(id)) },
+    ),
+  )
 }

@@ -4,7 +4,8 @@
 import { Container, Curve, Fill, type Anchor, type DocRecord } from './schema'
 
 export type Rgba = [number, number, number, number]
-export type PaintCase = { rule: string; records: () => DocRecord[]; expect: { at: { x: number; y: number }; rgba: Rgba; what: string }[] }
+/** `above`: pairs [a, b] — a must come after b in the core's paint list (painted above it). */
+export type PaintCase = { rule: string; records: () => DocRecord[]; above?: [string, string][]; expect: { at: { x: number; y: number }; rgba: Rgba; what: string }[] }
 
 const RED = '#ff0000'
 const BLUE = '#0000ff'
@@ -60,22 +61,26 @@ export const paintCases: Record<string, PaintCase> = {
   // P1 — order inside one parent. C crosses F and is NOT F's boundary (B is).
   'P1-fill-after-line': {
     rule: 'P1 later sibling on top: [B, C, F] → F over C',
+    above: [['fill:F', 'curve:C']],
     records: () => [layer('L', 'a1'), ...square(id('L'), 'a3', 'a1'), line('C', id('L'), 'a2', BLUE, 0, 30, 80, 30)],
     expect: [{ at: centre, rgba: red, what: 'F (later) covers unrelated line C' }],
   },
   'P1-line-after-fill': {
     rule: 'P1 later sibling on top: [B, F, C] → C over F',
+    above: [['curve:C', 'fill:F']],
     records: () => [layer('L', 'a1'), ...square(id('L'), 'a2', 'a1'), line('C', id('L'), 'a3', BLUE, 0, 30, 80, 30)],
     expect: [{ at: centre, rgba: blue, what: 'C (later) over F' }],
   },
   // P2 — layer order.
   'P2-fill-layer-in-front': {
     rule: 'P2 layer order: L1 = [C] behind L2 = [B, F] → F over C',
+    above: [['fill:F', 'curve:C']],
     records: () => [layer('L1', 'a1'), layer('L2', 'a2'), line('C', id('L1'), 'a1', BLUE, 0, 30, 80, 30), ...square(id('L2'), 'a2', 'a1')],
     expect: [{ at: centre, rgba: red, what: 'F (front layer) covers C (back layer)' }],
   },
   'P2-line-layer-in-front': {
     rule: 'P2 layer order: L2 = [B, F] behind L1 = [C] → C over F',
+    above: [['curve:C', 'fill:F']],
     records: () => [layer('L1', 'a2'), layer('L2', 'a1'), line('C', id('L1'), 'a1', BLUE, 0, 30, 80, 30), ...square(id('L2'), 'a2', 'a1')],
     expect: [{ at: centre, rgba: blue, what: 'C (front layer) over F' }],
   },
@@ -83,6 +88,7 @@ export const paintCases: Record<string, PaintCase> = {
   // fill / line split of today's code plays no part).
   'P3-nested': {
     rule: 'P3 whole path: L1 (a0) = [G (a5) = [red R]] behind L2 (a1) = [blue C (a0)] → C over R',
+    above: [['curve:C', 'curve:R']],
     records: () => [
       layer('L1', 'a0'),
       layer('L2', 'a1'),
@@ -95,6 +101,7 @@ export const paintCases: Record<string, PaintCase> = {
   // P4 — fractional indexes compare by character code: 'a0B' < 'a0a'.
   'P4-index-bytes': {
     rule: "P4 character-code order: red R 'a0B' before blue C 'a0a' → C over R",
+    above: [['curve:C', 'curve:R']],
     records: () => [layer('L', 'a1'), line('R', id('L'), 'a0B', RED, 40, 0, 40, 60), line('C', id('L'), 'a0a', BLUE, 0, 30, 80, 30)],
     expect: [{ at: centre, rgba: blue, what: "C ('a0a', later by character code) over R" }],
   },
@@ -102,15 +109,31 @@ export const paintCases: Record<string, PaintCase> = {
   // F is later (in front). The point (40, 11) is on B's stroke, 1 unit inside F.
   'P6-own-boundary': {
     rule: 'P6 own boundary visible: [B blue, F] → B over F along the boundary',
+    above: [['fill:F', 'curve:F-boundary']],
     records: () => [layer('L', 'a1'), ...square(id('L'), 'a2', 'a1', BLUE, 12)],
     expect: [
       { at: { x: 40, y: 11 }, rgba: blue, what: "F's own boundary stroke stays visible inside F" },
       { at: centre, rgba: red, what: 'F itself' },
     ],
   },
+  // P6 across layers (R7): F's own boundary B lies in a BACK layer, F in a front layer, so F is painted
+  // after B. B must stay visible (needs S2's own-ink leave-out; S1 alone paints F over B).
+  'P6-cross-layer': {
+    rule: 'P6 own boundary in a back layer: L1 = [B blue], L2 = [F] → B still visible along the boundary',
+    above: [['fill:F', 'curve:F-boundary']],
+    records: () => {
+      const [b, f] = square(id('L2'), 'a1', 'a1', BLUE, 12)
+      return [layer('L1', 'a1'), layer('L2', 'a2'), { ...b, parentId: id('L1') } as DocRecord, f]
+    },
+    expect: [
+      { at: { x: 40, y: 11 }, rgba: blue, what: "F's own boundary stroke (back layer) stays visible inside F" },
+      { at: centre, rgba: red, what: 'F itself' },
+    ],
+  },
   // P7 — other objects cover a fill normally: V behind F is covered, U in front covers F.
   'P7-others': {
     rule: 'P7 others normal: L1 = [V] behind L2 = [B, F] behind L3 = [U]',
+    above: [['fill:F', 'curve:V'], ['curve:U', 'fill:F']],
     records: () => [
       layer('L1', 'a1'),
       layer('L2', 'a2'),
@@ -127,6 +150,7 @@ export const paintCases: Record<string, PaintCase> = {
   // P10 control: the same document with L shown paints F and C (so P10 cannot pass by painting nothing)
   'P10-shown-parent': {
     rule: 'P10 control: L (shown) = [G = [B, F], C]',
+    above: [['curve:C', 'fill:F']],
     records: () => [
       layer('L', 'a1'),
       layer('G', 'a1', { parentId: id('L') }),

@@ -27,15 +27,47 @@ export type EvalCurve = {
   depth: number
 }
 export type EvalFill = { address: string; color: string; cubics: Cubic[]; visible: boolean; locked: boolean; depth: number }
-export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[] }
+/** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1). */
+export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill }
+/** `paint` is THE order every renderer draws in; `curves` / `fills` are the same items split by kind
+ *  (same relative order), for hit testing, onion skins and dots. */
+export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintItem[] }
 
 export const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
 
-/** Paint order key: container order, then index within the container, then depth offset. */
-export function orderKey(store: DocStore, parentId: RecordId<ContainerRecord>, index: string) {
-  const parent = store.get(parentId) as ContainerRecord | undefined
-  return `${parent?.index ?? ''}/${index}`
+/** Separator of paint keys: below every fractional-index character (`0-9A-Za-z`), so a container's
+ *  key is a prefix of its children's keys and sorts before any later sibling's key. */
+export const KEY_SEP = ' '
+/**
+ * Paint key (PAINT-ORDER.md R1/R2): the fractional indexes of the WHOLE container path from the root,
+ * then the object's own index. Compared by code unit (`<`), never `localeCompare` (P4). `stopAt`
+ * (exclusive) gives the key relative to a referenced source container. Depth offsets are NOT applied
+ * (D1 is not agreed; see `unappliedDepthOffsets`).
+ */
+export function paintKey(store: Pick<DocStore, 'get'>, parentId: RecordId<ContainerRecord> | null, index: string, stopAt?: string) {
+  const parts = [index]
+  let cur = parentId ? (store.get(parentId) as ContainerRecord | undefined) : undefined
+  while (cur && cur.id !== stopAt) {
+    parts.push(cur.index)
+    cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
+  }
+  return parts.reverse().join(KEY_SEP)
+}
+export const byKey = (a: { key: string; address: string }, b: { key: string; address: string }) =>
+  a.key < b.key ? -1 : a.key > b.key ? 1 : a.address < b.address ? -1 : a.address > b.address ? 1 : 0 // address: stable tie-break
+
+/** The list split by kind; one place, so `curves` / `fills` can never disagree with `paint`. */
+export function fromPaint(paint: PaintItem[]): Evaluated {
+  const curves: EvalCurve[] = []
+  const fills: EvalFill[] = []
+  for (const p of paint) p.kind === 'curve' ? curves.push(p.item) : fills.push(p.item)
+  return { curves, fills, paint }
+}
+
+/** Depth offsets are stored but not applied to the paint order yet (D1 open): reported, never silent. */
+export function unappliedDepthOffsets(ev: Evaluated): string[] {
+  return ev.paint.filter((p) => p.item.depth !== 0).map((p) => p.item.address)
 }
 
 export function evalCurve(curve: CurveRecord, m: Affine, overrides: Record<string, Vec>, address: string): Pick<EvalCurve, 'anchors' | 'segments'> {
@@ -106,14 +138,23 @@ export function evaluate(store: DocStore): Evaluated {
     locked: !!lockedBy(store, f.parentId),
     depth: f.depthOffset,
   }))
-  const order = (addr: string) => {
-    const rec = store.get(addr.split('/')[0] as any) as any
-    return rec ? orderKey(store, rec.parentId, rec.index) : ''
+  // one interleaved paint list; a reference instance sits at the reference's own position, the source's
+  // internal order kept (D6)
+  const keyOf = (address: string) => {
+    const slash = address.indexOf('/')
+    if (slash < 0) {
+      const rec = store.get(address as any) as CurveRecord | FillRecord
+      return paintKey(store, rec.parentId, rec.index)
+    }
+    const r = store.get(address.slice(0, slash) as any) as ReferenceRecord
+    const c = store.get(address.slice(slash + 1) as any) as CurveRecord
+    return paintKey(store, r.parentId, r.index) + KEY_SEP + paintKey(store, c.parentId, c.index, r.sourceId)
   }
-  // address breaks ties (e.g. the curves of one reference instance), so paint order is deterministic
-  curves.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth || a.address.localeCompare(b.address))
-  fills.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth || a.address.localeCompare(b.address))
-  return { curves, fills }
+  const entries = [
+    ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintItem })),
+    ...fills.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'fill', item } as PaintItem })),
+  ].sort(byKey)
+  return fromPaint(entries.map((e) => e.p))
 }
 
 function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {

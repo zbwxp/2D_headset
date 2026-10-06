@@ -7,11 +7,8 @@ import { expect, test, type Page } from '@playwright/test'
 
 /** Cases whose counterexample in today's code is documented in PAINT-ORDER.md §2. */
 const KNOWN: Record<string, string> = {
-  'P1-fill-after-line': 'all fills are painted before all curves',
-  'P2-fill-layer-in-front': 'all fills are painted before all curves',
-  'P3-nested': 'order key uses the direct parent only',
-  'P4-index-bytes': 'fractional indexes compared with localeCompare',
-  'P7-others': 'all fills are painted before all curves (V of a back layer over F)',
+  'P6-own-boundary': 'S1 paints F after its own boundary (it was hidden by fills-before-curves before); own-ink leave-out comes in S2',
+  'P6-cross-layer': 'S1 paints F after its own back-layer boundary; own-ink leave-out comes in S2',
 }
 
 const frames = (p: Page) => p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))))
@@ -34,7 +31,7 @@ async function sample(page: Page, name: string, renderer: 'A' | 'B') {
   }, renderer)
 }
 
-const names = ['P1-fill-after-line', 'P1-line-after-fill', 'P2-fill-layer-in-front', 'P2-line-layer-in-front', 'P3-nested', 'P4-index-bytes', 'P6-own-boundary', 'P7-others', 'P10-shown-parent', 'P10-hidden-parent']
+const names = ['P1-fill-after-line', 'P1-line-after-fill', 'P2-fill-layer-in-front', 'P2-line-layer-in-front', 'P3-nested', 'P4-index-bytes', 'P6-own-boundary', 'P6-cross-layer', 'P7-others', 'P10-shown-parent', 'P10-hidden-parent']
 for (const name of names)
   for (const renderer of ['A', 'B'] as const)
     test(`${KNOWN[name] ? `KF ${name}` : name} [${renderer}]`, async ({ page }) => {
