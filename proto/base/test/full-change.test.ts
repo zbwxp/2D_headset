@@ -50,5 +50,5 @@ describe('batch-edit full-change workload (not runtime playback)', () => {
     const rows = [run(121), run(1000), run(3000)]
     console.log('[full-change]', JSON.stringify(rows))
     for (const r of rows) expect(r.evalsPerFrame).toBe(r.curves + 15 + 15) // all curves + loop curves + fills
-  })
+  }, 60_000) // measurement over 3 document sizes; 5 s default timed out under load (dot)
 })

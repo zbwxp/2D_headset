@@ -8,7 +8,7 @@
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
 import { evaluate, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { poseIdOf, type DocReader, type FillRecord, type PoseRecord, type Vec } from './schema'
+import { poseIdOf, type Affine, type DocReader, type FillRecord, type PoseRecord, type ReferenceRecord, type Vec } from './schema'
 
 const ZERO: Vec = { x: 0, y: 0 }
 
@@ -27,13 +27,20 @@ export function offsetAt(keys: PoseRecord['keys'], anchorId: string, yaw: number
   return { x: oa.x + (ob.x - oa.x) * t, y: oa.y + (ob.y - oa.y) * t }
 }
 
-/** One evaluated curve (base or reference instance) at `yaw`: anchors and handles shifted together. */
-export function curveAtYaw(c: EvalCurve, pose: PoseRecord | undefined, yaw: number): EvalCurve {
+/**
+ * One evaluated curve at `yaw`: anchors and handles shifted together. A pose belongs to its SOURCE
+ * curve, so its offsets are in the source curve's coordinates: for a reference instance they are
+ * carried by the reference's linear transform (a mirrored reference gets mirrored offsets), exactly
+ * as if the source were turned first and then placed (dot, review of 2a48719). Corrections in an
+ * instance's own world coordinates would be a different, explicit write target — none exists yet.
+ */
+export function curveAtYaw(c: EvalCurve, pose: PoseRecord | undefined, yaw: number, placement?: Affine): EvalCurve {
   if (!pose || !pose.keys.length) return c
   const add = (p: Vec, o: Vec) => ({ x: p.x + o.x, y: p.y + o.y })
+  const carry = placement ? (o: Vec): Vec => ({ x: placement.a * o.x + placement.c * o.y, y: placement.b * o.x + placement.d * o.y }) : (o: Vec) => o
   const anchors = Object.fromEntries(
     Object.values(c.anchors).map((a) => {
-      const o = offsetAt(pose.keys, a.id, yaw)
+      const o = carry(offsetAt(pose.keys, a.id, yaw))
       return [a.id, { ...a, p: add(a.p, o), hIn: add(a.hIn, o), hOut: add(a.hOut, o) }]
     }),
   )
@@ -60,7 +67,8 @@ export function fillAtYaw(f: EvalFill, rec: FillRecord, curveOf: (id: string) =>
 export function evaluateAtYaw(store: Pick<DocReader, 'get'> & Partial<DocReader>, yaw: number, prepared?: Evaluated): Evaluated {
   counters.fullYawEvals++
   const base = prepared ?? evaluate(store as DocReader)
-  const curves = base.curves.map((c) => curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw))
+  const placementOf = (c: EvalCurve) => (c.referenceId ? (store.get(c.referenceId as any) as ReferenceRecord).transform : undefined)
+  const curves = base.curves.map((c) => curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw, placementOf(c)))
   const byBase = new Map(curves.filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
   const fills = base.fills.map((f) => fillAtYaw(f, store.get(f.address as any) as FillRecord, (id) => byBase.get(id)))
   return { curves, fills }

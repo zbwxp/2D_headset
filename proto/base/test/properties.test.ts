@@ -473,5 +473,5 @@ describe('properties of the single write entry', () => {
     // the commit message for the minima). A floor at typical counts made the test fail by chance
     // (946e816, a3bf7a0) — re-measure on any generator change.
     for (const [k, v] of Object.entries(seen)) expect(v, k).toBeGreaterThanOrEqual(5)
-  })
+  }, 60_000) // long-running by design (400 random sequences); 5 s default timed out under load (dot)
 })

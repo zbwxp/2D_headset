@@ -85,6 +85,35 @@ describe('cached angle evaluation equals the full recompute', () => {
   })
 })
 
+describe('a pose belongs to its source curve: reference instances carry it through their transform', () => {
+  it("dot's case: mirrored reference R1 (x → 60 − x) mirrors the source's pose offset", () => {
+    const e = new Editor(exampleRecords())
+    createApi(e).apply({ type: 'setPoseKey', curveId: ids.E1, yaw: 90, offsets: { e1: { x: 5, y: 1 } } })
+    const at90 = e.derived.atYaw(90)
+    const source = at90.curves.find((c) => c.address === ids.E1)!.anchors.e1.p
+    const mirrored = at90.curves.find((c) => c.address === `${ids.R1}/${ids.E1}`)!.anchors.e1.p
+    expect(source).toEqual({ x: -15, y: 21 }) // (−20, 20) + (5, 1)
+    expect(mirrored).toEqual({ x: 75, y: 21 }) // 60 − (−15), not 60 − (−20) + 5 = 85
+    expect(evaluateAtYaw(e.reader, 90)).toEqual(at90)
+  })
+  it('every instance at every yaw = its placement applied to the source curve at that yaw (no overrides)', () => {
+    const { e } = withPoses()
+    const placement = (e.reader.get(ids.R1) as any).transform
+    const tp = (p: { x: number; y: number }) => ({ x: placement.a * p.x + placement.c * p.y + placement.e, y: placement.b * p.x + placement.d * p.y + placement.f })
+    for (const y of YAWS) {
+      const ev = e.derived.atYaw(y)
+      const src = ev.curves.find((c) => c.address === ids.E1)!
+      const inst = ev.curves.find((c) => c.address === `${ids.R1}/${ids.E1}`)!
+      for (const id of Object.keys(src.anchors))
+        for (const k of ['p', 'hIn', 'hOut'] as const) {
+          const want = tp(src.anchors[id][k])
+          expect(inst.anchors[id][k].x).toBeCloseTo(want.x, 9)
+          expect(inst.anchors[id][k].y).toBeCloseTo(want.y, 9)
+        }
+    }
+  })
+})
+
 describe('drag preview with onion skins', () => {
   it('previewAtYaw equals the full recompute at that yaw after commit', () => {
     const { e, api } = withPoses()

@@ -168,7 +168,8 @@ export class Derived {
           counters.yawCurveEvals++
           const slash = address.indexOf('/')
           const base = slash < 0 ? this.curve(address as CurveRecord['id'])! : this.instance(address.slice(0, slash) as ReferenceRecord['id'], address.slice(slash + 1) as CurveRecord['id'])
-          return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw)
+          const placement = base.referenceId ? (store.get(base.referenceId) as ReferenceRecord).transform : undefined
+          return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw, placement)
         })
       },
       evicted,
@@ -274,7 +275,8 @@ export class Derived {
     for (const [address, item] of ch.items)
       if ('segments' in item) {
         counters.previewEvals++
-        curves.set(address, curveAtYaw(item, view.get(poseIdOf(item.curveId) as any) as PoseRecord | undefined, yaw))
+        const placement = item.referenceId ? (view.get(item.referenceId as any) as ReferenceRecord).transform : undefined
+        curves.set(address, curveAtYaw(item, view.get(poseIdOf(item.curveId) as any) as PoseRecord | undefined, yaw, placement))
       }
     const fills = new Map<string, EvalFill>()
     for (const [address, item] of ch.items)

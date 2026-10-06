@@ -73,7 +73,10 @@ describe('maker and read-only entry agree', () => {
     expect(() => evaluateSaved(bad)).toThrow(/invalid document/)
   })
 
-  it('the read-only entry does not depend on editor code', () => {
+  // Scope (dot): this checks the FIRST-level imports only — no editor, commands, derived cache, view
+  // or API. It does NOT mean "no store library": schema.ts builds its record types with @tldraw/store,
+  // so a bundle of runtime.ts still contains store/state modules (dot measured 16 + 15). Open item.
+  it('the read-only entry imports no editor, command, cache, view or API module (first level only)', () => {
     const src = readFileSync(new URL('../src/runtime.ts', import.meta.url), 'utf8')
     const imports = [...src.matchAll(/from '(\.[^']+)'/g)].map((m) => m[1])
     expect(imports.sort()).toEqual(['./evaluate', './model', './pose', './schema'])

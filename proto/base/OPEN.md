@@ -133,6 +133,16 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   geometry and appearance as the maker (cached `evaluated`/`atYaw`, and what the drag preview showed
   at each yaw, through commit and save); playing (maker cache, preview at yaws, runtime entry) leaves
   author state and history unchanged; invalid data rejected explicitly. Mutations M26–M27 caught.
+- **Reviewed by dot at 2a48719 / a791140 — NOT passed.** Found: (1) pose offsets added in world space
+  on references (mirrored / scaled instances wrong; runtime reproduces) — FIXED after review: offsets
+  are carried by the reference's linear transform (dot's numbers: mirror (85, 52), scale (−40, 152));
+  (2) a pose key on one end of a connection separates the ends at that yaw and opens the fill — OPEN,
+  design to be chosen (reject vs keep joined), reproduced as **KF-2**; (3) `runtime.ts` creates no
+  editor but still depends on @tldraw/store / state through schema.ts (bundle: 16 store + 15 state
+  modules) — "store-free runtime" is NOT established; (4) cache capacities bound each map, not the
+  geometry retained in total: cached yaw LISTS keep references to item values, so retention is up to
+  yawCapacity + yawListCapacity × items; (5) two tests timed out at the 5 s default under load —
+  explicit timeouts added for these long-running-by-design tests.
 - Measured (node, synthetic, informational):
   - maker onion (19 yaws), drag one free anchor: 19 curve-at-yaw evaluations + 1 curve evaluation
     per drag, identical for 121 and 3000 curves (≈0.09–0.14 ms per drag, per-item consumer — synthetic
