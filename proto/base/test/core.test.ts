@@ -2,16 +2,15 @@
 import { describe, expect, it } from 'vitest'
 import { createApi } from '../src/api'
 import { Editor } from '../src/editor'
-import { ids, loadExample } from '../src/fixture'
+import { exampleRecords, ids } from '../src/fixture'
 import type { CurveRecord, ReferenceRecord } from '../src/schema'
 
 function setup() {
-  const editor = new Editor()
-  loadExample(editor.store)
+  const editor = new Editor(exampleRecords())
   return { editor, api: createApi(editor) }
 }
-const curve = (e: Editor, id: CurveRecord['id']) => e.store.get(id) as CurveRecord
-const snapshot = (e: Editor) => JSON.stringify(e.store.serialize('document'))
+const curve = (e: Editor, id: CurveRecord['id']) => e.reader.get(id) as CurveRecord
+const snapshot = (e: Editor) => JSON.stringify(e.reader.serialize('document'))
 
 describe('lock + linkage rule (same for every entry point)', () => {
   it('dragging a3 is rejected as a whole when the linked b3 is in locked L2; nothing is written', () => {
@@ -115,7 +114,7 @@ describe('reference placed twice: source edit vs override', () => {
     const { editor, api } = setup()
     const r = api.apply({ type: 'moveOverride', referenceId: ids.R1, target: { curveId: ids.E1, anchorId: 'e2' }, delta: { x: 0, y: 4 } })
     expect(r.ok).toBe(true)
-    const ref = editor.store.get(ids.R1) as ReferenceRecord
+    const ref = editor.reader.get(ids.R1) as ReferenceRecord
     expect(ref.overrides[`${ids.E1}#e2`]).toEqual({ x: -30, y: 54 })
     expect(curve(editor, ids.E1).anchors.e2.p).toEqual({ x: -30, y: 50 }) // source untouched
   })

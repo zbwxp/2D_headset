@@ -19,7 +19,7 @@ export type InspectNode = {
 }
 
 export function createApi(editor: Editor) {
-  const store = editor.store
+  const store = editor.reader
 
   function inspect(): { nodes: InspectNode[]; connections: { address: string; ends: string[] }[]; revision: number } {
     const connections = all(store, 'connection') as ConnectionRecord[]

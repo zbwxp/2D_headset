@@ -8,7 +8,7 @@ test('breakdown of one A-mode preview frame (onion 0 and 19)', async ({ page }) 
       const c = (window as any).__contour
       const { withPuts } = await import(/* @vite-ignore */ '/src/view/fabricView.ts' as string)
       const t: Record<string, number[]> = { preview: [], withPuts: [], evaluate: [], project: [], renderAll: [] }
-      const id = c.editor.store.allRecords().find((r: any) => r.typeName === 'curve' && r.anchors.p1).id
+      const id = c.editor.reader.allRecords().find((r: any) => r.typeName === 'curve' && r.anchors.p1).id
       for (let i = 0; i < 24; i++) {
         let a = performance.now()
         const pv = c.editor.preview({ type: 'moveAnchors', targets: [{ curveId: id, anchorId: 'p1' }], delta: { x: i * 0.1, y: 0 } })

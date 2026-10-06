@@ -2,17 +2,15 @@
 import { createApi } from './api'
 import { Editor } from './editor'
 import { evaluate } from './evaluate'
-import { ids, loadExample } from './fixture'
+import { exampleRecords, ids } from './fixture'
 import { FabricView } from './view/fabricView'
 import { runScopeA } from './bench'
 import { onionYaws, syntheticRecords, syntheticTrack } from './synthetic'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
-const editor = new Editor()
 const benchRecords = bench ? syntheticRecords({ curves: 121, layers: 8, fills: 15 }) : []
-if (bench) editor.store.put(benchRecords)
-else loadExample(editor.store)
+const editor = new Editor(bench ? benchRecords : exampleRecords())
 const api = createApi(editor)
 const statusEl = document.getElementById('status')!
 const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, editor, (s) => (statusEl.textContent = s))

@@ -1,19 +1,22 @@
 // Read helpers over the document: lookups, effective lock/visibility, connection linkage.
 // Lock/visibility inheritance follows Illustrator/Figma layer semantics (docs/design/architecture/11 §3).
 import type { RecordId } from '@tldraw/store'
-import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, DocStore, FillRecord, ReferenceRecord } from './schema'
+import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, DocReader, FillRecord, ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
 export const anchorKey = (r: AnchorRef) => `${r.curveId}#${r.anchorId}`
 
-export function all<T extends DocRecord['typeName']>(store: DocStore, type: T) {
+export function all<T extends DocRecord['typeName']>(store: DocReader, type: T) {
   return store.allRecords().filter((r) => r.typeName === type) as Extract<DocRecord, { typeName: T }>[]
 }
 
-export function containerChain(store: DocStore, id: RecordId<ContainerRecord> | null): ContainerRecord[] {
+export function containerChain(store: DocReader, id: RecordId<ContainerRecord> | null): ContainerRecord[] {
   const out: ContainerRecord[] = []
+  const seen = new Set<string>()
   let cur = id ? (store.get(id) as ContainerRecord | undefined) : undefined
-  while (cur) {
+  while (cur && !seen.has(cur.id)) {
+    // cycle guard: documents are validated on open, but never loop forever on bad data
+    seen.add(cur.id)
     out.push(cur)
     cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
   }
@@ -21,18 +24,18 @@ export function containerChain(store: DocStore, id: RecordId<ContainerRecord> | 
 }
 
 /** The nearest locked container above (or at) `parentId`, if any. */
-export function lockedBy(store: DocStore, parentId: RecordId<ContainerRecord> | null) {
+export function lockedBy(store: DocReader, parentId: RecordId<ContainerRecord> | null) {
   return containerChain(store, parentId).find((c) => c.locked)
 }
 
-export const effectivelyVisible = (store: DocStore, parentId: RecordId<ContainerRecord> | null) =>
+export const effectivelyVisible = (store: DocReader, parentId: RecordId<ContainerRecord> | null) =>
   containerChain(store, parentId).every((c) => c.visible)
 
 /**
  * All anchors that must move together with the given ones, following connections transitively.
  * Returns each linked anchor with the connection that pulled it in (for error reporting).
  */
-export function linkedAnchors(store: DocStore, seeds: AnchorRef[]) {
+export function linkedAnchors(store: DocReader, seeds: AnchorRef[]) {
   const connections = all(store, 'connection') as ConnectionRecord[]
   const result = new Map<string, { ref: AnchorRef; via?: RecordId<ConnectionRecord> }>()
   const queue = [...seeds]
@@ -51,7 +54,39 @@ export function linkedAnchors(store: DocStore, seeds: AnchorRef[]) {
   return [...result.values()]
 }
 
-export const fillsOf = (store: DocStore) => all(store, 'fill') as FillRecord[]
-export const referencesOf = (store: DocStore) => all(store, 'reference') as ReferenceRecord[]
-export const curvesIn = (store: DocStore, containerId: RecordId<ContainerRecord>) =>
+export const fillsOf = (store: DocReader) => all(store, 'fill') as FillRecord[]
+export const referencesOf = (store: DocReader) => all(store, 'reference') as ReferenceRecord[]
+export const curvesIn = (store: DocReader, containerId: RecordId<ContainerRecord>) =>
   (all(store, 'curve') as CurveRecord[]).filter((c) => containerChain(store, c.parentId).some((k) => k.id === containerId))
+
+/** Structural checks a loaded document must pass (references resolve, no container cycles). */
+export function graphProblems(store: DocReader): string[] {
+  const problems: string[] = []
+  const has = (id: string | null | undefined) => !!id && !!store.get(id as any)
+  for (const c of all(store, 'container') as ContainerRecord[]) {
+    if (c.parentId && !has(c.parentId)) problems.push(`${c.id}: parent ${c.parentId} missing`)
+    const seen = new Set<string>([c.id])
+    let p = c.parentId ? (store.get(c.parentId) as ContainerRecord | undefined) : undefined
+    while (p) {
+      if (seen.has(p.id)) {
+        problems.push(`${c.id}: container cycle through ${p.id}`)
+        break
+      }
+      seen.add(p.id)
+      p = p.parentId ? (store.get(p.parentId) as ContainerRecord | undefined) : undefined
+    }
+  }
+  for (const r of store.allRecords()) {
+    if ((r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') && !has(r.parentId)) problems.push(`${r.id}: parent ${r.parentId} missing`)
+    if (r.typeName === 'reference' && !has(r.sourceId)) problems.push(`${r.id}: source ${r.sourceId} missing`)
+    if (r.typeName === 'connection') for (const e of r.ends) if (!(store.get(e.curveId) as CurveRecord | undefined)?.anchors[e.anchorId]) problems.push(`${r.id}: end ${anchorKey(e)} missing`)
+    if (r.typeName === 'fill')
+      for (const b of r.boundary) if (!(store.get(b.curveId) as CurveRecord | undefined)?.segments.some((s) => s.id === b.segmentId)) problems.push(`${r.id}: boundary ${b.curveId}/${b.segmentId} missing`)
+  }
+  return problems
+}
+
+/** True if `parentId` is `containerId` or below it. */
+export function isWithin(store: DocReader, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
+  return containerChain(store, parentId).some((c) => c.id === containerId)
+}

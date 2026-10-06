@@ -5,7 +5,7 @@
 // Expected failures (LOCKED, FILL_NOT_CLOSED, …) are detected while planning, before anything is
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
-import { anchorKey, linkedAnchors, lockedBy, type AnchorRef } from './model'
+import { anchorKey, isWithin, linkedAnchors, lockedBy, type AnchorRef } from './model'
 import {
   Container,
   Curve,
@@ -16,10 +16,11 @@ import {
   type ContainerRecord,
   type CurveRecord,
   type DocRecord,
-  type DocStore,
+  type DocReader as DocStore,
   type FillRecord,
   type ReferenceRecord,
   type Vec,
+  validateRecord,
 } from './schema'
 
 export type ErrorCode = 'LOCKED' | 'FILL_NOT_CLOSED' | 'NOT_FOUND' | 'INVALID'
@@ -51,6 +52,15 @@ const fail = (code: ErrorCode, message: string, objects: string[], fixes: string
 const add = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y })
 const applyAffine = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
 const applyLinear = (m: Affine, v: Vec): Vec => ({ x: m.a * v.x + m.c * v.y, y: m.b * v.x + m.d * v.y })
+/** m ∘ n: apply n first, then m. */
+const compose = (m: Affine, n: Affine): Affine => ({
+  a: m.a * n.a + m.c * n.b,
+  b: m.b * n.a + m.d * n.b,
+  c: m.a * n.c + m.c * n.d,
+  d: m.b * n.c + m.d * n.d,
+  e: m.a * n.e + m.c * n.f + m.e,
+  f: m.b * n.e + m.d * n.f + m.f,
+})
 
 /** Collect the curves an anchor set touches and reject the whole command if any is locked. */
 function lockCheck(store: DocStore, moved: ReturnType<typeof linkedAnchors>): Plan | null {
@@ -81,7 +91,24 @@ function writeAnchors(store: DocStore, moves: Map<string, { ref: AnchorRef; p: V
   return [...byCurve.values()]
 }
 
+/**
+ * Plan a command: everything is checked here (targets, locks, closure, record validators), so
+ * `preview` and `apply` share exactly the same validation (dot's review of 11ca75d).
+ */
 export function plan(store: DocStore, cmd: Command): Plan {
+  const p = planRaw(store, cmd)
+  if (!p.ok) return p
+  for (const r of p.puts) {
+    try {
+      validateRecord(r)
+    } catch (e) {
+      return fail('INVALID', String((e as Error).message ?? e), [r.id])
+    }
+  }
+  return p
+}
+
+function planRaw(store: DocStore, cmd: Command): Plan {
   switch (cmd.type) {
     case 'moveAnchors': {
       const moved = linkedAnchors(store, cmd.targets)
@@ -114,7 +141,9 @@ export function plan(store: DocStore, cmd: Command): Plan {
       if (locker) return fail('LOCKED', `reference ${ref.id} is in locked container ${locker.id}`, [ref.id, locker.id], [`unlock ${locker.id}`])
       const curve = store.get(cmd.target.curveId) as CurveRecord | undefined
       const a = curve?.anchors[cmd.target.anchorId]
-      if (!a) return fail('NOT_FOUND', `anchor ${anchorKey(cmd.target)} not found`, [anchorKey(cmd.target)])
+      if (!curve || !a) return fail('NOT_FOUND', `anchor ${anchorKey(cmd.target)} not found`, [anchorKey(cmd.target)])
+      if (!isWithin(store, curve.parentId, ref.sourceId))
+        return fail('INVALID', `${anchorKey(cmd.target)} is not part of ${ref.id}'s source ${ref.sourceId}`, [ref.id, anchorKey(cmd.target)])
       const key = anchorKey(cmd.target)
       const current = ref.overrides[key] ?? a.p
       const next = { ...ref, overrides: { ...ref.overrides, [key]: add(current, cmd.delta) } }
@@ -123,7 +152,15 @@ export function plan(store: DocStore, cmd: Command): Plan {
     case 'transformContainer': {
       // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
       // (Illustrator behaviour) so the comparison can be made later with real numbers.
+      if (!store.get(cmd.containerId)) return fail('NOT_FOUND', `container ${cmd.containerId} not found`, [cmd.containerId])
       const curves = (store.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).filter((c) => inContainer(store, c, cmd.containerId))
+      // References placed inside the container move with it: compose their placement transform.
+      const refs = (store.allRecords().filter((r) => r.typeName === 'reference') as ReferenceRecord[]).filter((r) => isWithin(store, r.parentId, cmd.containerId))
+      for (const r of refs) {
+        const locker = lockedBy(store, r.parentId)
+        if (locker) return fail('LOCKED', `reference ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
+      }
+      const movedRefs = refs.map((r) => ({ ...r, transform: compose(cmd.matrix, r.transform) }))
       const seeds: AnchorRef[] = curves.flatMap((c) => Object.keys(c.anchors).map((anchorId) => ({ curveId: c.id, anchorId })))
       const moved = linkedAnchors(store, seeds)
       const locked = lockCheck(store, moved)
@@ -139,11 +176,14 @@ export function plan(store: DocStore, cmd: Command): Plan {
         const a = (store.get(m.ref.curveId) as CurveRecord).anchors[m.ref.anchorId]
         moves.set(anchorKey(m.ref), { ref: m.ref, p: applyAffine(cmd.matrix, a.p) })
       }
-      return { ok: true, label: 'transformContainer', puts: writeAnchors(store, moves), affected: [...moves.keys()] }
+      return { ok: true, label: 'transformContainer', puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
     }
     case 'createFill': {
       const parent = store.get(cmd.parentId) as ContainerRecord | undefined
       if (!parent) return fail('NOT_FOUND', `container ${cmd.parentId} not found`, [cmd.parentId])
+      const locker = lockedBy(store, cmd.parentId)
+      if (locker) return fail('LOCKED', `container ${cmd.parentId} is locked by ${locker.id}`, [cmd.parentId, locker.id], [`unlock ${locker.id}`])
+      if (!cmd.boundary.length) return fail('FILL_NOT_CLOSED', 'boundary is empty', [cmd.parentId])
       const gap = findGap(store, cmd.boundary)
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
       const fill = Fill.create({ id: cmd.id ?? Fill.createId(), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })

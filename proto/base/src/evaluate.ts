@@ -8,7 +8,7 @@
 import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
 import { all, effectivelyVisible, lockedBy } from './model'
-import type { Affine, ContainerRecord, CurveRecord, DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
+import type { Affine, ContainerRecord, CurveRecord, DocReader as DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
 
 export type Cubic = [Vec, Vec, Vec, Vec]
 export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }

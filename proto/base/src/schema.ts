@@ -118,7 +118,14 @@ export const Fill = createRecordType<FillRecord>('fill', {
 
 export const Reference = createRecordType<ReferenceRecord>('reference', {
   scope: 'document',
-  validator: { validate: (r: any) => r },
+  validator: {
+    validate(r: any) {
+      const t = r.transform
+      check(t && [t.a, t.b, t.c, t.d, t.e, t.f].every(isNum), `reference ${r.id} transform not finite`)
+      for (const [k, v] of Object.entries(r.overrides ?? {})) check(isVec(v), `reference ${r.id} override ${k} not finite`)
+      return r
+    },
+  },
 }).withDefaultProperties(() => ({ index: 'a0', overrides: {} }))
 
 export const schema = StoreSchema.create<DocRecord>({
@@ -130,4 +137,12 @@ export const schema = StoreSchema.create<DocRecord>({
 })
 
 export type DocStore = Store<DocRecord>
+/** Read-only view of the document. Everything except the Editor's write entry gets only this. */
+export type DocReader = Pick<DocStore, 'get' | 'allRecords' | 'getStoreSnapshot' | 'serialize'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
+
+const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference } as const
+/** Run the record validators (same ones the store uses) without writing. */
+export function validateRecord(r: DocRecord) {
+  ;(recordTypes[r.typeName] as any).validate(r)
+}

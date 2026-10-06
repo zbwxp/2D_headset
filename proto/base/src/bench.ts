@@ -20,7 +20,7 @@ export function runScopeA(editor: Editor, track: PoseTrack, yaws: number[], samp
   el.width = 640
   el.height = 420
   const canvas = new StaticCanvas(el, { renderOnAddRemove: false })
-  const curveIds = editor.store.allRecords().filter((r) => r.typeName === 'curve' && 'p1' in (r as any).anchors).map((r) => r.id)
+  const curveIds = editor.reader.allRecords().filter((r) => r.typeName === 'curve' && 'p1' in (r as any).anchors).map((r) => r.id)
   const compute: number[] = []
   const paths: number[] = []
   const draw: number[] = []

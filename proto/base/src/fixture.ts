@@ -6,7 +6,7 @@
 // ├─ L3「耳朵」          E1 e1→e2 (s5)
 // ├─ J : a3 ⟷ b3  (chin, cross-layer)
 // └─ J0: a1 ⟷ b1  (top, closes the fill boundary)
-import { Connection, Container, Curve, Fill, Reference, type Anchor, type DocRecord, type DocStore } from './schema'
+import { Connection, Container, Curve, Fill, Reference, type Anchor, type DocRecord } from './schema'
 
 const v = (x: number, y: number) => ({ x, y })
 const anchor = (id: string, x: number, y: number, hIn = v(0, 0), hOut = v(0, 0)): Anchor => ({ id, p: v(x, y), hIn, hOut })
@@ -85,8 +85,4 @@ export function exampleRecords(): DocRecord[] {
       transform: { a: -1, b: 0, c: 0, d: 1, e: 60, f: 0 }, // mirror around x = 30
     }),
   ]
-}
-
-export function loadExample(store: DocStore) {
-  store.put(exampleRecords())
 }

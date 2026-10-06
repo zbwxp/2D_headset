@@ -33,7 +33,7 @@ async function state(page: Page) {
   return page.evaluate(() => {
     const c = (window as any).__contour
     return {
-      doc: JSON.stringify(c.editor.store.serialize('document')),
+      doc: JSON.stringify(c.editor.reader.serialize('document')),
       undo: c.editor.history.undo as string[],
       log: c.view.log as any[],
       status: c.view.status as string,
@@ -47,16 +47,15 @@ async function replayViaApi(page: Page, extra: any[] = []) {
     const c = (window as any).__contour
     const load = (path: string) => import(/* @vite-ignore */ path) // resolved by the Vite dev server in the page
     const { Editor } = await load('/src/editor.ts')
-    const { loadExample } = await load('/src/fixture.ts')
+    const { exampleRecords } = await load('/src/fixture.ts')
     const { createApi } = await load('/src/api.ts')
-    const fresh = new Editor()
-    loadExample(fresh.store)
+    const fresh = new Editor(exampleRecords())
     const api = createApi(fresh)
     const results = [...extra, ...c.view.log.map((l: any) => l.cmd)].map((cmd: any) => {
       const r = api.apply(cmd)
       return { ok: r.ok, written: r.written, code: r.ok ? null : r.error.code, objects: r.ok ? null : r.error.objects }
     })
-    return { doc: JSON.stringify(fresh.store.serialize('document')), results }
+    return { doc: JSON.stringify(fresh.reader.serialize('document')), results }
   }, extra)
 }
 
@@ -142,7 +141,7 @@ test('V: non-uniform scale of L1 through Fabric controls equals the API command;
   expect(r.doc).toBe(s.doc)
   const pts = await page.evaluate(() => {
     const c = (window as any).__contour
-    const g = (id: string) => c.editor.store.get(id).anchors
+    const g = (id: string) => c.editor.reader.get(id).anchors
     return { a3: g('curve:C1').a3.p, b3: g('curve:C2').b3.p, b2: g('curve:C2').b2.p }
   })
   expect(pts.b3).toEqual(pts.a3) // linked endpoint followed

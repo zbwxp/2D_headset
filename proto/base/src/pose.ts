@@ -6,7 +6,7 @@
 // Interpolation: piecewise-linear on yaw between the keys of each curve (Live2D keyform linear
 // interpolation, behaviour only: https://docs.live2d.com/en/cubism-editor-manual/parameter/).
 // Not stored in the document yet: this is a read-only evaluation input for the benchmark.
-import type { CurveRecord, DocStore, Vec } from './schema'
+import type { CurveRecord, DocReader as DocStore, Vec } from './schema'
 import { evaluate, type Evaluated } from './evaluate'
 
 export type PoseKey = { yaw: number; offsets: Record<string, Vec> } // key: `${curveId}#${anchorId}`

@@ -84,7 +84,7 @@ export class FabricView {
   }
 
   /** Re-project the document (or a preview of it) into Fabric objects. */
-  render(ev: Evaluated = evaluate(this.editor.store), store = this.editor.store) {
+  render(ev: Evaluated = evaluate(this.editor.reader), store: Editor['reader'] = this.editor.reader) {
     this.projecting = true
     try {
       this.project(ev, store)
@@ -93,7 +93,7 @@ export class FabricView {
     }
   }
 
-  private project(ev: Evaluated, store: Editor['store']) {
+  private project(ev: Evaluated, store: Editor['reader']) {
     this.canvas.discardActiveObject()
     this.canvas.remove(...this.canvas.getObjects())
     if (this.onion) {
@@ -109,7 +109,7 @@ export class FabricView {
     for (const f of ev.fills.filter((f) => f.visible)) {
       this.canvas.add(new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false }))
     }
-    const containers = all(this.editor.store, 'container') as ContainerRecord[]
+    const containers = all(this.editor.reader, 'container') as ContainerRecord[]
     const curves = ev.curves.filter((c) => c.visible)
     const pathOf = (c: (typeof curves)[number]) =>
       new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
@@ -145,7 +145,7 @@ export class FabricView {
   }
 
   private parentOf(curveId: string) {
-    return (this.editor.store.get(curveId as any) as any)?.parentId as string | undefined
+    return (this.editor.reader.get(curveId as any) as any)?.parentId as string | undefined
   }
 
   /**
@@ -156,7 +156,7 @@ export class FabricView {
   private routeVTarget(e: PointerEvent) {
     if (this.mode !== 'V') return
     const p = this.canvas.getScenePoint(e)
-    const hit = hitTest(evaluate(this.editor.store), p, { mode: 'V', tolerance: 6 / this.canvas.getZoom() })
+    const hit = hitTest(evaluate(this.editor.reader), p, { mode: 'V', tolerance: 6 / this.canvas.getZoom() })
     const target = hit ? this.containerOfHit(hit) : undefined
     const active = new Set(this.canvas.getActiveObjects())
     for (const g of this.groupStart.keys()) {
@@ -167,9 +167,9 @@ export class FabricView {
 
   private containerOfHit(hit: Hit): string | undefined {
     const recId = hit.kind === 'fill' ? hit.address : hit.curveId
-    let id = (this.editor.store.get(recId as any) as any)?.parentId as string | undefined
+    let id = (this.editor.reader.get(recId as any) as any)?.parentId as string | undefined
     // climb to the top-level container (one group per top-level container)
-    for (let k = this.editor.store.get(id as any) as any; k?.parentId; k = this.editor.store.get(k.parentId)) id = k.parentId
+    for (let k = this.editor.reader.get(id as any) as any; k?.parentId; k = this.editor.reader.get(k.parentId)) id = k.parentId
     return id
   }
 
@@ -177,7 +177,7 @@ export class FabricView {
   private onDown(e: PointerEvent) {
     if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
-    const hit = hitTest(evaluate(this.editor.store), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
+    const hit = hitTest(evaluate(this.editor.reader), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, ok: false }
   }
 
@@ -186,7 +186,7 @@ export class FabricView {
     if (hit.kind === 'handle') return { type: 'moveHandle', target, handle: hit.handle, delta }
     if (hit.referenceId && !this.editSource) {
       // The reference is mirrored: convert the screen-space delta into the source's local space.
-      const r = this.editor.store.get(hit.referenceId) as any
+      const r = this.editor.reader.get(hit.referenceId) as any
       const inv = util.invertTransform([r.transform.a, r.transform.b, r.transform.c, r.transform.d, 0, 0])
       return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: { x: inv[0] * delta.x + inv[2] * delta.y, y: inv[1] * delta.x + inv[3] * delta.y } }
     }
@@ -268,7 +268,7 @@ function dot(p: Vec, color: string, r: number) {
 /** Evaluate a preview without touching the document: a throwaway store with the planned records. */
 export function withPuts(editor: Editor, puts: DocRecord[]) {
   const tmp = new Store<DocRecord>({ schema, props: {} })
-  tmp.loadStoreSnapshot(editor.store.getStoreSnapshot())
+  tmp.loadStoreSnapshot(editor.reader.getStoreSnapshot())
   tmp.put(puts)
   return tmp
 }
