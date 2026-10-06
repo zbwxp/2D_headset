@@ -1,4 +1,4 @@
-# Onion-skin benchmark: first run (2026-10-07)
+# Onion-skin benchmark (2026-10-07; re-run after d533b08, results within noise of the first run)
 
 Machine: Apple M4 (10 cores), macOS, Playwright headless Chromium 140.
 Workload: 121 synthetic open curves (3 segments each), 8 layers, chained connections, 15 closed-loop fills.
@@ -38,3 +38,14 @@ Caveat: Playwright sends moves without waiting for frames, so these numbers may 
   - Keep Fabric only for interaction widgets: the V transform box and selection.
   - Update only changed objects instead of re-projecting everything on every move.
 - These numbers say nothing about the real face with real recording, nor about other machines.
+
+## Re-run after the correctness fixes (d533b08)
+
+| scope | onion 0 | onion 19 |
+| --- | --- | --- |
+| A total p50 / p95 | 3.0 / 4.3 | 59.9 / 63.7 |
+| A compute / paths / draw p50 | 0.6 / 1.4 / 1.1 | 3.6 / 30.5 / 24.9 |
+| B p50 / p95 | 156.3 / 169.5 | 222.8 / 236.6 |
+| breakdown: rebuild scene / renderAll | 18.6 / 132.3 | 84.1 / 144.9 |
+
+Commands: `npx playwright test e2e/bench.spec.ts e2e/breakdown.spec.ts --workers=1`.
