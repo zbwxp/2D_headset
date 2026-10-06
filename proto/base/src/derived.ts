@@ -253,6 +253,7 @@ export class Derived {
           // reading records keeps this entry's parents free of other caches entirely)
           const ref = store.get(address.slice(0, slash) as any) as ReferenceRecord
           const c = store.get(address.slice(slash + 1) as any) as CurveRecord
+          counters.instanceEvals++ // the instance geometry is rebuilt here, not read from the instance cache
           return curveAtYaw(instanceItem(store, ref, c), store.get(poseIdOf(c.id) as any) as PoseRecord | undefined, yaw, ref.transform)
         })
       },
@@ -265,10 +266,17 @@ export class Derived {
         const yaw = Number(key.slice(at + 1))
         return computed(`yawFill:${key}`, () => {
           counters.yawFillEvals++
-          // boundary curves at this yaw computed inline from the base layer — not from cached yaw curves
-          return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) =>
-            curveAtYaw(this.curve(cid as CurveRecord['id'])!, store.get(poseIdOf(cid) as any) as PoseRecord | undefined, yaw),
-          )
+          // boundary curves at this yaw computed inline from the base layer — not from cached yaw curves —
+          // once per DISTINCT curve, and counted like any other curve-at-yaw computation (dot)
+          const inline = new Map<string, EvalCurve>()
+          return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) => {
+            let c = inline.get(cid)
+            if (!c) {
+              counters.yawCurveEvals++
+              inline.set(cid, (c = curveAtYaw(this.curve(cid as CurveRecord['id'])!, store.get(poseIdOf(cid) as any) as PoseRecord | undefined, yaw)))
+            }
+            return c
+          })
         })
       },
     )

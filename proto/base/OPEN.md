@@ -166,6 +166,21 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   pruned to current membership). Parents never retain evicted children: tldraw attaches a child to
   its parents only while it is actively observed. dot's independent oracle (walks `parents`) is in
   `test/dot-retention-c9553b7.test.ts` (fails on c9553b7, passes now); mutation M32 caught;
+  **Reviewed by dot at c8f3fc2:** retention passed within scope (limits 0 / 1 / 12, growth, undo,
+  no active subscribers; dot walked `parents` AND `children`). Corrections and limits:
+  - counting: a yaw fill computed its boundary curves inline WITHOUT counting them (4 computations,
+    `yawCurveEvals` 0), so "evaluation counts unchanged" was wrong. Fixed: every curve-at-yaw
+    computation is counted (cached entries + inline), a fill computes each distinct curve once, a yaw
+    instance counts its rebuilt instance. Real costs: dragging a fill-boundary anchor with 19 onion
+    yaws = 2 × 19 curve-at-yaw (entry + inside the fill) + 19 fill; a full sweep adds one inline curve
+    per fill per yaw. This duplication is the price of "evictable entries never read evictable
+    entries".
+  - boundary: the retention limit covers the caches' own entries **without active subscribers**. An
+    active `react` consumer of a yaw entry keeps its dependency chain (and evicted results) reachable
+    until it is disposed — subscriber lifecycle is the consumer's; the limit does not cover it.
+  - limit **KF-3**: the base instance map is pruned only when the whole list recomputes; low-level
+    reference add/remove with net-zero membership leaves historical entries. No Editor command adds or
+    removes references yet — required acceptance case for that future command, not claimed solved.
   test asserts the distinct result objects held by all caches stay ≤ the budget (dot's aggregate test
   adapted, marked [CHANGED]); (5) two tests timed out at the 5 s default under load —
   explicit timeouts added for these long-running-by-design tests.

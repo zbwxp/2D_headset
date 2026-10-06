@@ -12,7 +12,7 @@ export const counters = {
   plans: 0,
   /** evaluations of one curve (base drawing) */
   curveEvals: 0,
-  /** evaluations of one reference instance of one source curve */
+  /** evaluations of one reference instance of one source curve (base cache, and rebuilt inside a yaw instance) */
   instanceEvals: 0,
   /** evaluations of one fill */
   fillEvals: 0,
@@ -30,7 +30,8 @@ export const counters = {
   snapshotRows: 0,
   /** full-document evaluations through the uncached `evaluate()` */
   fullEvals: 0,
-  /** evaluations of one curve (base or instance) at one yaw */
+  /** curve-at-yaw geometry computations: cached yaw-curve entries AND the boundary curves a yaw fill
+   *  computes inline (once per distinct curve per fill evaluation) — all of them, not only cache misses */
   yawCurveEvals: 0,
   /** evaluations of one fill at one yaw */
   yawFillEvals: 0,

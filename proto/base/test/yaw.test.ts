@@ -196,7 +196,9 @@ describe('workloads (counts asserted, times and heap informational)', () => {
     expect(rows.connected[1]).toEqual(rows.connected[0])
     expect(rows.connected[0]).toMatchObject({ yawCurveEvals: 2 * 19, curveEvals: 2, yawFillEvals: 0, fillEvals: 0 })
     expect(rows.boundary[1]).toEqual(rows.boundary[0])
-    expect(rows.boundary[0]).toMatchObject({ yawCurveEvals: 19, curveEvals: 1, yawFillEvals: 19, fillEvals: 1 })
+    // the loop curve at 19 yaws as a cached entry + the same curve computed inside each yaw fill evaluation
+    // (fills do not read cached yaw curves, so they never keep evicted results alive): 19 + 19
+    expect(rows.boundary[0]).toMatchObject({ yawCurveEvals: 2 * 19, curveEvals: 1, yawFillEvals: 19, fillEvals: 1 })
   })
 
   it('maker: an onion drag of one curve re-evaluates that curve at each yaw, independent of document size', () => {
@@ -232,6 +234,7 @@ describe('workloads (counts asserted, times and heap informational)', () => {
   it('runtime: parameter-driven angle sweep — every frame changes every curve; no edits, no history', () => {
     const rows = [runtime(121), runtime(1000), runtime(3000)]
     console.log('[yaw runtime per frame]', JSON.stringify(rows))
-    for (const r of rows) expect(r.evalsPerFrame).toBe(r.curves + 15 + 15) // all curves + loop curves + fills, once per new angle
+    // all curves + loop curves + fills + each fill's (one distinct) loop curve computed inline, per new angle
+    for (const r of rows) expect(r.evalsPerFrame).toBe(r.curves + 15 + 15 + 15)
   })
 })
