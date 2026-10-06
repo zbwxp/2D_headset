@@ -23,7 +23,7 @@ import {
   validateRecord,
 } from './schema'
 
-export type ErrorCode = 'LOCKED' | 'FILL_NOT_CLOSED' | 'NOT_FOUND' | 'INVALID'
+export type ErrorCode = 'LOCKED' | 'FILL_NOT_CLOSED' | 'NOT_FOUND' | 'INVALID' | 'ID_CONFLICT'
 export type EditError = {
   code: ErrorCode
   message: string
@@ -43,7 +43,7 @@ export type Command =
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
 
 export type Plan =
-  | { ok: true; label: string; puts: DocRecord[]; affected: string[] }
+  | { ok: true; label: string; puts: DocRecord[]; affected: string[]; creates?: string[] }
   | { ok: false; error: EditError }
 
 const fail = (code: ErrorCode, message: string, objects: string[], fixes: string[] = []): Plan => ({
@@ -100,6 +100,8 @@ function writeAnchors(store: DocStore, moves: Map<string, { ref: AnchorRef; p: V
 export function plan(store: DocStore, cmd: Command): Plan {
   const p = planRaw(store, cmd)
   if (!p.ok) return p
+  const guard = writeGuard(store, cmd, p.puts, new Set(p.creates ?? []))
+  if (guard) return guard
   for (const r of p.puts) {
     try {
       validateRecord(r)
@@ -108,6 +110,34 @@ export function plan(store: DocStore, cmd: Command): Plan {
     }
   }
   return p
+}
+
+/**
+ * Generic write-scope check applied to EVERY planned record, whatever the command (dot: createFill
+ * with an existing id overwrote the locked fill). Creating requires a fresh id; updating requires an
+ * existing record of the same type, and neither its old nor its new place may be locked. A container
+ * may still change its own flags (that is how it gets unlocked) — only its parents' locks apply.
+ */
+function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: Set<string>): Plan | null {
+  for (const r of puts) {
+    const old = store.get(r.id as any) as DocRecord | undefined
+    if (creates.has(r.id)) {
+      if (old) return fail('ID_CONFLICT', `${r.id} already exists`, [r.id], ['omit the id to get a fresh one'])
+      continue
+    }
+    if (!old) return fail('NOT_FOUND', `${r.id} does not exist`, [r.id])
+    if (old.typeName !== r.typeName) return fail('INVALID', `${r.id} changes type`, [r.id])
+    const places = new Set<string | null>()
+    const placeOf = (x: DocRecord) => (x.typeName === 'container' ? x.parentId : x.typeName === 'connection' ? null : x.parentId)
+    places.add(placeOf(old))
+    places.add(placeOf(r))
+    for (const place of places) {
+      const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
+      if (locker && !(cmd.type === 'setContainerFlags' && r.id === cmd.containerId))
+        return fail('LOCKED', `${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
+    }
+  }
+  return null
 }
 
 function planRaw(store: DocStore, cmd: Command): Plan {
@@ -194,7 +224,7 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       const gap = findGap(store, cmd.boundary)
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
       const fill = Fill.create({ id: cmd.id ?? Fill.createId(), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
-      return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id] }
+      return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
     }
     case 'setContainerFlags': {
       const c = store.get(cmd.containerId) as ContainerRecord | undefined

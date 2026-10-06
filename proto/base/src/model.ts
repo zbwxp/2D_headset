@@ -63,8 +63,10 @@ export const curvesIn = (store: DocReader, containerId: RecordId<ContainerRecord
 export function graphProblems(store: DocReader): string[] {
   const problems: string[] = []
   const has = (id: string | null | undefined) => !!id && !!store.get(id as any)
+  // references must also point at the right KIND of record (dot: a curve as its own parent loaded)
+  const isType = (id: string | null | undefined, t: DocRecord['typeName']) => !!id && (store.get(id as any) as DocRecord | undefined)?.typeName === t
   for (const c of all(store, 'container') as ContainerRecord[]) {
-    if (c.parentId && !has(c.parentId)) problems.push(`${c.id}: parent ${c.parentId} missing`)
+    if (c.parentId && !isType(c.parentId, 'container')) problems.push(`${c.id}: parent ${c.parentId} is not a container`)
     const seen = new Set<string>([c.id])
     let p = c.parentId ? (store.get(c.parentId) as ContainerRecord | undefined) : undefined
     while (p) {
@@ -77,12 +79,15 @@ export function graphProblems(store: DocReader): string[] {
     }
   }
   for (const r of store.allRecords()) {
-    if ((r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') && !has(r.parentId)) problems.push(`${r.id}: parent ${r.parentId} missing`)
-    if (r.typeName === 'reference' && !has(r.sourceId)) problems.push(`${r.id}: source ${r.sourceId} missing`)
-    if (r.typeName === 'connection') for (const e of r.ends) if (!(store.get(e.curveId) as CurveRecord | undefined)?.anchors[e.anchorId]) problems.push(`${r.id}: end ${anchorKey(e)} missing`)
+    if ((r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') && !isType(r.parentId, 'container')) problems.push(`${r.id}: parent ${r.parentId} is not a container`)
+    if (r.typeName === 'reference' && !isType(r.sourceId, 'container')) problems.push(`${r.id}: source ${r.sourceId} is not a container`)
+    if (r.typeName === 'connection')
+      for (const e of r.ends) if (!isType(e.curveId, 'curve') || !(store.get(e.curveId) as CurveRecord).anchors[e.anchorId]) problems.push(`${r.id}: end ${anchorKey(e)} missing`)
     if (r.typeName === 'fill')
-      for (const b of r.boundary) if (!(store.get(b.curveId) as CurveRecord | undefined)?.segments.some((s) => s.id === b.segmentId)) problems.push(`${r.id}: boundary ${b.curveId}/${b.segmentId} missing`)
+      for (const b of r.boundary)
+        if (!isType(b.curveId, 'curve') || !(store.get(b.curveId) as CurveRecord).segments.some((s) => s.id === b.segmentId)) problems.push(`${r.id}: boundary ${b.curveId}/${b.segmentId} missing`)
   }
+  void has
   return problems
 }
 

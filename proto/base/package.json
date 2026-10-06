@@ -6,7 +6,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "dev": "vite",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "test:prod": "NODE_ENV=production vitest run"
   },
   "keywords": [],
   "author": "",

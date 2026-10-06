@@ -12,7 +12,7 @@ import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type Records
 import { isEqual } from '@tldraw/utils'
 import { plan, type Command, type EditError } from './commands'
 import { graphProblems } from './model'
-import { createDocStore, type DocReader, type DocRecord, type DocStore } from './schema'
+import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
 
 export type ApplyResult =
   | { ok: true; written: true; revision: number; affected: string[] }
@@ -38,7 +38,7 @@ export class Editor {
 
   constructor(initial: DocRecord[] = []) {
     this.#store = createDocStore()
-    if (initial.length) this.#store.put(initial, 'initialize')
+    if (initial.length) this.#store.put(initial.map((r) => deepFreeze(structuredClone(r))), 'initialize')
     const s = this.#store
     this.reader = {
       get: s.get.bind(s) as DocStore['get'],
@@ -55,7 +55,8 @@ export class Editor {
   /** Plan without writing. Same validation as `apply`. */
   preview(cmd: Command): PreviewResult {
     const p = plan(this.reader, cmd)
-    return p.ok ? { ok: true, affected: p.affected, puts: p.puts } : { ok: false, error: p.error }
+    // Planned records are fresh objects; freeze them so a preview can't be mistaken for a writable doc.
+    return p.ok ? { ok: true, affected: p.affected, puts: p.puts.map(deepFreeze) } : { ok: false, error: p.error }
   }
 
   /** The only path that writes author data. */
@@ -63,7 +64,7 @@ export class Editor {
     const p = plan(this.reader, cmd)
     if (!p.ok) return { ok: false, written: false, revision: this.revision, error: p.error }
     // Records equal to what is stored are not written: no-op edits never touch history (dot #3).
-    const changed = p.puts.filter((r) => !isEqual(this.#store.get(r.id), r))
+    const changed = p.puts.filter((r) => !isEqual(this.#store.get(r.id), r)).map(deepFreeze)
     if (!changed.length) return { ok: true, written: false, revision: this.revision, affected: p.affected }
     let diff: RecordsDiff<DocRecord> | undefined
     try {
@@ -93,8 +94,9 @@ export class Editor {
       const result = fn()
       if (outer) {
         this.group = null
-        const squashed = squashRecordDiffs(group.diffs)
-        if (!isRecordsDiffEmpty(squashed)) this.pushEntry(group.label, squashed)
+        const net = netDiff(squashRecordDiffs(group.diffs))
+        // A batch whose net effect is nothing (e.g. +1 then −1) leaves history and redo alone (dot).
+        if (!isRecordsDiffEmpty(net)) this.pushEntry(group.label, net)
       }
       return result
     } catch (e) {
@@ -149,8 +151,16 @@ export class Editor {
   static open(snapshot: StoreSnapshot<DocRecord>) {
     const editor = new Editor()
     editor.#store.loadStoreSnapshot(snapshot)
+    for (const r of editor.#store.allRecords()) deepFreeze(r)
     const problems = graphProblems(editor.reader)
     if (problems.length) throw new Error(`invalid document: ${problems.join('; ')}`)
     return editor
   }
+}
+
+/** Drop updates whose before and after are equal, and records added then removed within the diff. */
+function netDiff(d: RecordsDiff<DocRecord>): RecordsDiff<DocRecord> {
+  const updated: RecordsDiff<DocRecord>['updated'] = {}
+  for (const [id, [from, to]] of Object.entries(d.updated)) if (!isEqual(from, to)) (updated as any)[id] = [from, to]
+  return { added: d.added, removed: d.removed, updated }
 }

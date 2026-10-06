@@ -146,3 +146,16 @@ const recordTypes = { container: Container, curve: Curve, connection: Connection
 export function validateRecord(r: DocRecord) {
   ;(recordTypes[r.typeName] as any).validate(r)
 }
+
+/**
+ * Freeze a record deeply. @tldraw/store only freezes in development (`devFreeze`), so in production
+ * a caller could mutate stored objects and bypass history and locks (dot, production-mode review).
+ * We freeze on WRITE only (new or changed records), never by deep-copying the project per frame.
+ */
+export function deepFreeze<T>(o: T): T {
+  if (o && typeof o === 'object' && !Object.isFrozen(o)) {
+    Object.freeze(o)
+    for (const v of Object.values(o as object)) deepFreeze(v)
+  }
+  return o
+}
