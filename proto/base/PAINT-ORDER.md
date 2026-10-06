@@ -161,8 +161,8 @@ the reference's own position in its parent; the source's internal order is kept;
 source resolve within the instance and cannot leave it. The instance as a whole is ordered (and can be
 offset) in the outer document.
 
-**D7 — container kinds and opacity (R8).** Defined in headset-design doc 12 §5.1 (this file earlier
-wrongly called it undecided): an ORDINARY organising container (default) does not isolate — its
+**D7 — container kinds and opacity (R8).** Our PROPOSAL in headset-design doc 12 §5.1 (not a user
+decision; recommended with its basis and limits in doc 18 §1.4): an ORDINARY organising container (default) does not isolate — its
 members may interleave with other containers via offsets, and its opacity multiplies into each child;
 an ISOLATED composite group (explicit) composites as one unit and offsets cannot leave it. The kind
 never switches automatically. How ordinary-container opacity meets R9 (opaque lines) is decided when
