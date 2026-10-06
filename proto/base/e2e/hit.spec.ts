@@ -17,3 +17,32 @@ test('V mode hits the fill interior once its layer is unlocked; a locked fill is
   expect(r.unlocked).toMatchObject({ kind: 'fill', address: r.F })
   expect(r.outside).toBeNull()
 })
+
+test('V mode picks a fill closed only by bridges (fill-only closing edges): native picking reads the bridge', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour)
+  const r = await page.evaluate(() => {
+    const { editor, api, hitTest, ids } = (window as any).__contour
+    // C1: a1 (0,0) → a2 (10,60) → a3 (60,100); the straight bridge a3 → a1 closes it
+    const created = api.apply({
+      type: 'createFill',
+      id: 'fill:bridged',
+      parentId: ids.L1,
+      boundary: [
+        { curveId: ids.C1, segmentId: 's1', dir: 1 },
+        { curveId: ids.C1, segmentId: 's2', dir: 1 },
+        { bridge: { from: { curveId: ids.C1, anchorId: 'a3' }, to: { curveId: ids.C1, anchorId: 'a1' } } },
+      ],
+    })
+    const ev = editor.derived.evaluated()
+    const g = ev.fills.find((f: any) => f.address === 'fill:bridged')
+    const inside = hitTest(ev, { x: 20, y: 55 }, { mode: 'V', tolerance: 1 }) // between the curve and the chord
+    const beyond = hitTest(ev, { x: 45, y: 40 }, { mode: 'V', tolerance: 1 }) // on the other side of the chord
+    return { created: created.ok && created.written, bridge: g?.cubics[2], inside, beyond }
+  })
+  expect(r.created).toBe(true)
+  expect(r.bridge[0]).toEqual({ x: 60, y: 100 })
+  expect(r.bridge[3]).toEqual({ x: 0, y: 0 })
+  expect(r.inside).toMatchObject({ kind: 'fill', address: 'fill:bridged' })
+  expect(r.beyond?.address).not.toBe('fill:bridged')
+})

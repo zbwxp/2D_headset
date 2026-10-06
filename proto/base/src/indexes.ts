@@ -97,7 +97,8 @@ export function indexesOf(store: Indexed): Indexes {
     ix = {
       connectionsByAnchor: multiIndex(store, 'connection', (c: ConnectionRecord) => c.ends.map(anchorKeyOf)),
       childrenByParent: { container: byParent('container'), curve: byParent('curve'), fill: byParent('fill'), reference: byParent('reference') },
-      fillsByCurve: multiIndex(store, 'fill', (f: FillRecord) => f.boundary.map((b) => b.curveId as string)),
+      // a fill depends on every curve its boundary reads: segment steps and both ends of each bridge
+      fillsByCurve: multiIndex(store, 'fill', (f: FillRecord) => f.boundary.flatMap((b) => ('bridge' in b ? [b.bridge.from.curveId, b.bridge.to.curveId] : [b.curveId]) as string[])),
       referencesBySource: multiIndex(store, 'reference', (r: ReferenceRecord) => [r.sourceId as string]),
       familiesByCurve: multiIndex(store, 'family', (f: FamilyRecord) => f.curves.map(String)),
     }
@@ -127,7 +128,7 @@ export const childrenOf = <T extends 'container' | 'curve' | 'fill' | 'reference
     ? lookup(indexesOf(store).childrenByParent[type], String(parentId))
     : scan(store, type).filter((r) => String((r as { parentId: unknown }).parentId) === String(parentId)).map((r) => (r as { id: string }).id)) as Rec<T>['id'][]
 export const fillsUsing = (store: Queryable, curveId: string) =>
-  (indexed(store) ? lookup(indexesOf(store).fillsByCurve, curveId) : scan(store, 'fill').filter((f) => f.boundary.some((b) => b.curveId === curveId)).map((f) => f.id)) as FillRecord['id'][]
+  (indexed(store) ? lookup(indexesOf(store).fillsByCurve, curveId) : scan(store, 'fill').filter((f) => f.boundary.some((b) => ('bridge' in b ? b.bridge.from.curveId === curveId || b.bridge.to.curveId === curveId : b.curveId === curveId))).map((f) => f.id)) as FillRecord['id'][]
 /** Families registering a curve (a family curve has preset forms: the new mode). */
 export const familiesOf = (store: Queryable, curveId: string) =>
   (indexed(store) ? lookup(indexesOf(store).familiesByCurve, curveId) : scan(store, 'family').filter((f) => f.curves.includes(curveId as any)).map((f) => f.id)) as FamilyRecord['id'][]

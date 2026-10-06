@@ -8,11 +8,47 @@
 // interpolation, behaviour only: https://docs.live2d.com/en/cubism-editor-manual/parameter/).
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
-import { evaluate, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { poseIdOf, type Affine, type BaseReader, type FillRecord, type FormsRecord, type LegacyYawKey, type ReferenceRecord, type Vec } from './schema'
+import { evaluate, fillCubics, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
+import { poseIdOf, type Affine, type BaseReader, type FillRecord, type FormsRecord, type Legacy3YawKey, type LegacyYawKey, type ReferenceRecord, type Vec } from './schema'
 
 /** The old head-turn keys of a legacy forms record (none for other encodings: those are not read here). */
 export const legacyKeys = (f: FormsRecord | undefined): LegacyYawKey[] => (f?.encoding === 'legacy-delta' ? (f.yaw as LegacyYawKey[]) : [])
+/** Promoted keys (one offset per control point). */
+export const legacy3Keys = (f: FormsRecord | undefined): Legacy3YawKey[] => (f?.encoding === 'legacy-delta3' ? (f.yaw as Legacy3YawKey[]) : [])
+
+/**
+ * Promote a legacy head-turn track to one offset per control point (doc 18 samples §4.4): every anchor of the
+ * curve gets dp = dIn = dOut = its old offset (0 where the old key had none). Read in the same order as before,
+ * so a promoted but otherwise unchanged track gives exactly the same numbers. Done inside the structure edit
+ * that needs it (same commit), never on its own.
+ */
+export function promoteLegacy(f: FormsRecord, anchorIds: string[]): FormsRecord {
+  if (f.encoding !== 'legacy-delta') return f
+  const yaw = (f.yaw as LegacyYawKey[]).map((k) => ({
+    yaw: k.yaw,
+    offsets: Object.fromEntries(anchorIds.map((a) => {
+      const o = k.offsets[a] ?? ZERO
+      return [a, { dp: { ...o }, dIn: { ...o }, dOut: { ...o } }]
+    })),
+  }))
+  return { ...f, encoding: 'legacy-delta3', yaw }
+}
+
+/** One control point's offset at `yaw` from promoted keys — the SAME arithmetic as `offsetAt`. */
+export function offset3At(keys: Legacy3YawKey[], anchorId: string, part: 'dp' | 'dIn' | 'dOut', yaw: number): Vec {
+  if (!keys.length) return ZERO
+  const v = (k: Legacy3YawKey) => k.offsets[anchorId]?.[part] ?? ZERO
+  if (yaw <= keys[0].yaw) return v(keys[0])
+  const last = keys[keys.length - 1]
+  if (yaw >= last.yaw) return v(last)
+  const i = keys.findIndex((k) => k.yaw >= yaw)
+  const a = keys[i - 1]
+  const b = keys[i]
+  const t = (yaw - a.yaw) / (b.yaw - a.yaw)
+  const oa = v(a)
+  const ob = v(b)
+  return { x: oa.x + (ob.x - oa.x) * t, y: oa.y + (ob.y - oa.y) * t }
+}
 
 const ZERO: Vec = { x: 0, y: 0 }
 
@@ -40,11 +76,17 @@ export function offsetAt(keys: LegacyYawKey[], anchorId: string, yaw: number): V
  */
 export function curveAtYaw(c: EvalCurve, pose: FormsRecord | undefined, yaw: number, placement?: Affine): EvalCurve {
   const keys = legacyKeys(pose)
-  if (!keys.length) return c
+  const keys3 = legacy3Keys(pose)
+  if (!keys.length && !keys3.length) return c
   const add = (p: Vec, o: Vec) => ({ x: p.x + o.x, y: p.y + o.y })
   const carry = placement ? (o: Vec): Vec => ({ x: placement.a * o.x + placement.c * o.y, y: placement.b * o.x + placement.d * o.y }) : (o: Vec) => o
   const anchors = Object.fromEntries(
     Object.values(c.anchors).map((a) => {
+      if (keys3.length) {
+        // promoted: each control point its own offset, same order (place, then add the carried offset)
+        const at = (part: 'dp' | 'dIn' | 'dOut') => carry(offset3At(keys3, a.id, part, yaw))
+        return [a.id, { ...a, p: add(a.p, at('dp')), hIn: add(a.hIn, at('dIn')), hOut: add(a.hOut, at('dOut')) }]
+      }
       const o = carry(offsetAt(keys, a.id, yaw))
       return [a.id, { ...a, p: add(a.p, o), hIn: add(a.hIn, o), hOut: add(a.hOut, o) }]
     }),
@@ -57,11 +99,7 @@ export function curveAtYaw(c: EvalCurve, pose: FormsRecord | undefined, yaw: num
 export function fillAtYaw(f: EvalFill, rec: FillRecord, curveOf: (id: string) => EvalCurve | undefined): EvalFill {
   return {
     ...f,
-    cubics: rec.boundary.map((step) => {
-      const seg = curveOf(step.curveId)!.segments.find((s) => s.id === step.segmentId)!
-      const [p0, c1, c2, p3] = seg.cubic
-      return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
-    }),
+    cubics: fillCubics(rec.boundary, curveOf),
   }
 }
 

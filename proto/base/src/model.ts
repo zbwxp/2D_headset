@@ -4,7 +4,7 @@ import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { connectionsAt } from './indexes'
 import { newRecordProblems, presetConnectionProblems } from './forms'
-import { legacyKeys, offsetAt } from './pose'
+import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type BaseReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
@@ -108,10 +108,15 @@ export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<Bas
     // key yaws is EXACT only for per-curve piecewise-linear interpolation clamped to a common domain
     // (pose.offsetAt): between consecutive checked yaws both offsets are linear, outside they are
     // constant. A non-linear or per-anchor response would need a different check (dot).
-    const keysOf = (e: { curveId: string }) => legacyKeys(getAs(store, poseIdOf(e.curveId), 'forms'))
-    const yaws = [...new Set(r.ends.flatMap((e) => keysOf(e).map((k) => k.yaw)))].sort((x, y) => x - y)
+    const formsOf = (e: { curveId: string }) => getAs(store, poseIdOf(e.curveId), 'forms')
+    const yaws = [...new Set(r.ends.flatMap((e) => [...legacyKeys(formsOf(e)), ...legacy3Keys(formsOf(e))].map((k) => k.yaw)))].sort((x, y) => x - y)
+    // the anchor positions' offsets (dp for a promoted track)
+    const at = (e: { curveId: string; anchorId: string }, yaw: number) => {
+      const f = formsOf(e)
+      return f?.encoding === 'legacy-delta3' ? offset3At(legacy3Keys(f), e.anchorId, 'dp', yaw) : offsetAt(legacyKeys(f), e.anchorId, yaw)
+    }
     for (const yaw of yaws) {
-      const offs = r.ends.map((e) => offsetAt(keysOf(e), e.anchorId, yaw))
+      const offs = r.ends.map((e) => at(e, yaw))
       if (offs.some((o) => o.x !== offs[0].x || o.y !== offs[0].y)) {
         out.push({ object: r.id, field: 'ends', target: r.ends.map(anchorKey).join(' / '), message: `${r.id}: ends separate at yaw ${yaw} (${offs.map((o) => `(${o.x}, ${o.y})`).join(' vs ')})` })
         break
@@ -120,17 +125,26 @@ export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<Bas
   }
   if (r.typeName === 'fill')
     r.boundary.forEach((b, i) => {
+      if ('bridge' in b) {
+        // a bridge's two ends must exist (it reads their current positions)
+        for (const [k, e] of [['from', b.bridge.from], ['to', b.bridge.to]] as const) {
+          const c = getAs(store, e.curveId, 'curve')
+          if (!c) need(`boundary[${i}].bridge.${k}.curveId`, e.curveId, 'curve')
+          else if (!c.anchors[e.anchorId]) out.push({ object: r.id, field: `boundary[${i}].bridge.${k}`, target: anchorKey(e as AnchorRef), message: `${r.id}: bridge end ${anchorKey(e as AnchorRef)} missing` })
+        }
+        return
+      }
       const c = getAs(store, b.curveId, 'curve')
       if (!c) need(`boundary[${i}].curveId`, b.curveId, 'curve')
       else if (!c.segments.some((s) => s.id === b.segmentId))
         out.push({ object: r.id, field: `boundary[${i}].segmentId`, target: `${b.curveId}/${b.segmentId}`, message: `${r.id}: boundary ${b.curveId}/${b.segmentId} missing` })
     })
-  if (r.typeName === 'forms' && r.encoding === 'legacy-delta') {
+  if (r.typeName === 'forms' && (r.encoding === 'legacy-delta' || r.encoding === 'legacy-delta3')) {
     const c = getAs(store, r.curveId, 'curve')
     if (!c) need('curveId', r.curveId, 'curve')
     else {
       if (r.id !== poseIdOf(c.id)) out.push({ object: r.id, field: 'id', target: c.id, message: `${r.id}: a legacy forms record's id must be ${poseIdOf(c.id)} (one per curve)` })
-      legacyKeys(r).forEach((k, i) => {
+      ;[...legacyKeys(r), ...legacy3Keys(r)].forEach((k, i) => {
         for (const a of Object.keys(k.offsets)) if (!c.anchors[a]) out.push({ object: r.id, field: `yaw[${i}].offsets.${a}`, target: `${c.id}#${a}`, message: `${r.id}: offset for missing anchor ${c.id}#${a}` })
       })
     }

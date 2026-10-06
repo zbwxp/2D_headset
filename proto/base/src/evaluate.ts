@@ -9,7 +9,7 @@ import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { all, effectivelyVisible, lockedBy } from './model'
-import type { Affine, BaseReader, ContainerRecord, CurveRecord, BaseReader as DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
+import { isBridge, type Affine, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type BaseReader as DocStore, type FillRecord, type ReferenceRecord, type Vec } from './schema'
 
 export type Cubic = [Vec, Vec, Vec, Vec]
 export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }
@@ -31,10 +31,31 @@ export type EvalCurve = {
 export type BoundaryRef = { curve: string; segments: string[] }
 export type EvalFill = { address: string; color: string; cubics: Cubic[]; boundaryRefs: BoundaryRef[]; visible: boolean; locked: boolean; depth: number }
 
-/** A fill's boundary references grouped by curve (curve order of first use; segment ids as referenced). */
-export function boundaryRefsOf(boundary: { curveId: string; segmentId: string }[]): BoundaryRef[] {
+/**
+ * The cubics of a fill boundary — THE one reading every consumer uses (full, cached, at a yaw, picking):
+ * a segment step reads the curve's evaluated segment (reversed for dir −1); a bridge is the straight line
+ * between its two anchors' current evaluated positions.
+ */
+export function fillCubics(boundary: BoundaryStep[], curveOf: (id: string) => Pick<EvalCurve, 'anchors' | 'segments'> | undefined): Cubic[] {
+  return boundary.map((step) => {
+    if (isBridge(step)) {
+      const P = curveOf(step.bridge.from.curveId)!.anchors[step.bridge.from.anchorId].p
+      const Q = curveOf(step.bridge.to.curveId)!.anchors[step.bridge.to.anchorId].p
+      const at = (t: number): Vec => ({ x: P.x + (Q.x - P.x) * t, y: P.y + (Q.y - P.y) * t })
+      return [P, at(1 / 3), at(2 / 3), Q] as Cubic
+    }
+    const seg = curveOf(step.curveId)!.segments.find((s) => s.id === step.segmentId)!
+    const [p0, c1, c2, p3] = seg.cubic
+    return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
+  })
+}
+
+/** A fill's boundary references grouped by curve (curve order of first use; segment ids as referenced).
+ *  Bridges are not strokes: they are never own ink. */
+export function boundaryRefsOf(boundary: BoundaryStep[]): BoundaryRef[] {
   const by = new Map<string, Set<string>>()
   for (const step of boundary) {
+    if (isBridge(step)) continue
     if (!by.has(step.curveId)) by.set(step.curveId, new Set())
     by.get(step.curveId)!.add(step.segmentId)
   }
@@ -184,11 +205,7 @@ export function evaluate(store: DocStore): Evaluated {
     address: f.id,
     color: f.color,
     // The fill reads the SAME evaluated segments the strokes use — never its own copy of anchors.
-    cubics: f.boundary.map((step) => {
-      const seg = byCurveId.get(step.curveId)!.segments.find((s) => s.id === step.segmentId)!
-      const [p0, c1, c2, p3] = seg.cubic
-      return step.dir === 1 ? seg.cubic : ([p3, c2, c1, p0] as Cubic)
-    }),
+    cubics: fillCubics(f.boundary, (id) => byCurveId.get(id)),
     boundaryRefs: boundaryRefsOf(f.boundary),
     visible: effectivelyVisible(store, f.parentId),
     locked: !!lockedBy(store, f.parentId),

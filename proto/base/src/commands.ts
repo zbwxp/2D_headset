@@ -6,7 +6,7 @@
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
-import { legacyKeys, offsetAt } from './pose'
+import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
 import { actualKind, anchorKey, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
@@ -24,6 +24,7 @@ import {
   type BaseReader as DocStore,
   type FillRecord,
   type FormsRecord,
+  type PointDelta,
   type ReferenceRecord,
   type Vec,
   validateRecord,
@@ -197,7 +198,7 @@ function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = 
       // stage-1 records name a curve's anchors (forms shapes, rule correspondence, fine-tune): re-check them too
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) || Object.keys(r.anchors).some((k) => !old.anchors[k])) for (const m of mentioning(store, r.id)) incoming.add(m)
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) && store.get(poseIdOf(r.id) as any)) incoming.add(poseIdOf(r.id)) // offsets name anchors
-      if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
+      if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id)) || Object.keys(old.anchors).some((k) => !r.anchors[k])) for (const f of fillsUsing(store, r.id)) incoming.add(f) // segments, or bridge ends
     }
     // a head-turn track change re-checks the connections at its curve's anchors (ends must agree at every yaw)
     if (r.typeName === 'forms') {
@@ -468,12 +469,33 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const curveIds = [...new Set([curve.id as string, ...linked.map((m) => m.ref.curveId as string)])]
       const poseOf = (cid: string) => getAs(store, poseIdOf(cid), 'forms')
       const yaws = new Set<number>([cmd.yaw])
-      if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const k of legacyKeys(poseOf(cid))) yaws.add(k.yaw)
+      const keyYaws = (f: FormsRecord | undefined) => [...legacyKeys(f), ...legacy3Keys(f)].map((k) => k.yaw)
+      if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const y of keyYaws(poseOf(cid))) yaws.add(y)
       const puts: DocRecord[] = []
       const creates: string[] = []
       for (const cid of curveIds) {
         const c = getAs(store, cid, 'curve')!
         const old = poseOf(cid)
+        if (old?.encoding === 'legacy-delta3') {
+          // a promoted track: the same rule per control point — a named anchor's point AND handles get the offset
+          // (anchors and handles move together, as before), other anchors keep / capture their own three offsets
+          const old3 = legacy3Keys(old)
+          const own = cid === curve.id && curveIds.length === 1 ? new Set([...old3.map((k) => k.yaw), cmd.yaw]) : new Set([...old3.map((k) => k.yaw), ...yaws])
+          const keys3 = [...own]
+            .sort((a, b) => a - b)
+            .map((yaw) => {
+              const existing = old3.find((k) => k.yaw === yaw)
+              const at = (a: string) => ({ dp: offset3At(old3, a, 'dp', yaw), dIn: offset3At(old3, a, 'dIn', yaw), dOut: offset3At(old3, a, 'dOut', yaw) })
+              const offsets: Record<string, PointDelta> = existing ? { ...existing.offsets } : Object.fromEntries(Object.keys(c.anchors).map((a) => [a, at(a)]))
+              if (yaw === cmd.yaw) for (const a of Object.keys(c.anchors)) {
+                const v = want.get(anchorKey({ curveId: c.id, anchorId: a }))
+                if (v) offsets[a] = { dp: { ...v }, dIn: { ...v }, dOut: { ...v } }
+              }
+              return { yaw, offsets }
+            })
+          puts.push({ ...old, yaw: keys3 })
+          continue
+        }
         const oldKeys = legacyKeys(old)
         const ownYaws = cid === curve.id && curveIds.length === 1 ? new Set([...oldKeys.map((k) => k.yaw), cmd.yaw]) : new Set([...oldKeys.map((k) => k.yaw), ...yaws])
         const keys = [...ownYaws]
@@ -514,7 +536,13 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
  * or the two anchors are joined by a connection. Gaps are never silently bridged (11 §1).
  */
 export function findGap(store: DocStore, boundary: BoundaryStep[]): [string, string] | null {
+  const label = (step: BoundaryStep | undefined) => (!step ? 'undefined' : 'bridge' in step ? `bridge ${anchorKey(step.bridge.from as AnchorRef)}→${anchorKey(step.bridge.to as AnchorRef)}` : String(step.segmentId))
   const ends = boundary.map((step) => {
+    // a bridge starts and ends at its two anchors (it exists only in this boundary)
+    if ('bridge' in step) {
+      const ok = [step.bridge.from, step.bridge.to].every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId])
+      return ok ? { start: step.bridge.from as AnchorRef, end: step.bridge.to as AnchorRef } : null
+    }
     const c = getAs(store, step.curveId, 'curve')
     const seg = c?.segments.find((s) => s.id === step.segmentId)
     if (!seg) return null
@@ -524,7 +552,7 @@ export function findGap(store: DocStore, boundary: BoundaryStep[]): [string, str
   for (let i = 0; i < ends.length; i++) {
     const a = ends[i]
     const b = ends[(i + 1) % ends.length]
-    if (!a || !b) return [String(boundary[i]?.segmentId), String(boundary[(i + 1) % ends.length]?.segmentId)]
+    if (!a || !b) return [label(boundary[i]), label(boundary[(i + 1) % ends.length])]
     if (anchorKey(a.end) === anchorKey(b.start)) continue
     const joined = linkedAnchors(store, [a.end]).some((m) => anchorKey(m.ref) === anchorKey(b.start))
     if (!joined) return [anchorKey(a.end), anchorKey(b.start)]

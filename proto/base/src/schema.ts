@@ -43,7 +43,16 @@ export interface ConnectionRecord extends BaseRecord<'connection', RecordId<Conn
   geometricJoin: 'corner' | 'smooth'
 }
 
-export type BoundaryStep = { curveId: RecordId<CurveRecord>; segmentId: string; dir: 1 | -1 }
+/** A fill boundary step along one segment of a curve, in either direction. */
+export type SegmentStep = { curveId: RecordId<CurveRecord>; segmentId: string; dir: 1 | -1 }
+/**
+ * A fill-only closing edge (bridge, doc 18 §19.2): a straight line between two anchors' CURRENT positions,
+ * stored only in the fill's own boundary — no stroke, no own ink, no endpoint linkage. Cutting a filled loop
+ * inserts one at the cut so the fill stays closed (SVG closepath for open subpaths, adapted to our fills).
+ */
+export type BridgeStep = { bridge: { from: { curveId: RecordId<CurveRecord>; anchorId: string }; to: { curveId: RecordId<CurveRecord>; anchorId: string } } }
+export type BoundaryStep = SegmentStep | BridgeStep
+export const isBridge = (s: BoundaryStep): s is BridgeStep => 'bridge' in s
 
 export interface FillRecord extends BaseRecord<'fill', RecordId<FillRecord>> {
   name: string
@@ -71,6 +80,8 @@ export type Shape = Record<string, { p: Vec; hIn: Vec; hOut: Vec }>
 export type FormsOwner = { kind: 'document' } | { kind: 'preset'; id: RecordId<PresetRecord> }
 /** Legacy yaw key (migrated from the old pose record): one offset per anchor, missing anchor = offset 0. */
 export type LegacyYawKey = { yaw: number; offsets: Record<string, Vec> }
+/** Promoted legacy key (stage 2): one offset per control point (anchor, in-handle, out-handle). */
+export type Legacy3YawKey = { yaw: number; offsets: Record<string, PointDelta> }
 export type AbsoluteYawKey = { yaw: number; shape: Shape }
 /** One key of an expression's own sparse track (§20.3): a rule key, or an author target with its base then. */
 export type ExprKey = { yaw: number; kind: 'rule' } | { yaw: number; kind: 'author'; target: Shape; base: Shape; ruleVersion: number }
@@ -86,11 +97,11 @@ export type ExprKey = { yaw: number; kind: 'rule' } | { yaw: number; kind: 'auth
 export interface FormsRecord extends BaseRecord<'forms', RecordId<FormsRecord>> {
   curveId: RecordId<CurveRecord>
   owner: FormsOwner
-  encoding: 'legacy-delta' | 'absolute'
+  encoding: 'legacy-delta' | 'legacy-delta3' | 'absolute'
   /** legacy-delta: 'curve' (the curve record is the original); absolute: a shape, or null */
   original: 'curve' | Shape | null
   /** sorted by yaw, unique; legacy-delta: LegacyYawKey, absolute: AbsoluteYawKey */
-  yaw: (LegacyYawKey | AbsoluteYawKey)[]
+  yaw: (LegacyYawKey | Legacy3YawKey | AbsoluteYawKey)[]
   /** per expression parameter, its own sparse track sorted by yaw (absolute only; legacy-delta: {}) */
   expr: Record<string, ExprKey[]>
 }
@@ -205,7 +216,16 @@ export const Connection = createRecordType<ConnectionRecord>('connection', {
 
 export const Fill = createRecordType<FillRecord>('fill', {
   scope: 'document',
-  validator: { validate: (r: any) => (check(r.boundary.length > 0, 'fill.boundary'), r) },
+  validator: {
+    validate(r: any) {
+      check(Array.isArray(r.boundary) && r.boundary.length > 0, 'fill.boundary')
+      const end = (e: any) => isObj(e) && typeof e.curveId === 'string' && typeof e.anchorId === 'string'
+      r.boundary.forEach((b: any, i: number) =>
+        check(isObj(b) && (isObj(b.bridge) ? end(b.bridge.from) && end(b.bridge.to) : typeof b.curveId === 'string' && typeof b.segmentId === 'string' && (b.dir === 1 || b.dir === -1)), `fill ${r.id} boundary step ${i}`),
+      )
+      return r
+    },
+  },
 }).withDefaultProperties(() => ({ index: 'a0', color: '#f3d9c4', depthOffset: 0 }))
 
 export const Reference = createRecordType<ReferenceRecord>('reference', {
@@ -235,17 +255,19 @@ export const Forms = createRecordType<FormsRecord>('forms', {
   scope: 'document',
   validator: {
     validate(r: any) {
-      check(r.encoding === 'legacy-delta' || r.encoding === 'absolute', `forms ${r.id} encoding`)
+      check(r.encoding === 'legacy-delta' || r.encoding === 'legacy-delta3' || r.encoding === 'absolute', `forms ${r.id} encoding`)
       check(typeof r.curveId === 'string', `forms ${r.id} curveId`)
       check(isOwner(r.owner), `forms ${r.id} owner`)
       check(Array.isArray(r.yaw), `forms ${r.id} yaw`)
       check(isObj(r.expr), `forms ${r.id} expr (required; {} when none)`)
       sortedUnique(r.yaw, `forms ${r.id}`)
-      if (r.encoding === 'legacy-delta') {
-        check(r.owner?.kind === 'document' && r.original === 'curve', `forms ${r.id}: legacy-delta is owned by the document with original 'curve'`)
+      if (r.encoding === 'legacy-delta' || r.encoding === 'legacy-delta3') {
+        check(r.owner?.kind === 'document' && r.original === 'curve', `forms ${r.id}: ${r.encoding} is owned by the document with original 'curve'`)
         for (const k of r.yaw) {
           check(isObj(k.offsets), `forms ${r.id} offsets at ${k.yaw} (an object; {} when none)`)
-          for (const [a, o] of Object.entries(k.offsets)) check(isVec(o), `forms ${r.id} offset ${a} at ${k.yaw} not finite`)
+          for (const [a, o] of Object.entries(k.offsets) as [string, any][])
+            if (r.encoding === 'legacy-delta') check(isVec(o), `forms ${r.id} offset ${a} at ${k.yaw} not finite`)
+            else check(isObj(o) && isVec(o.dp) && isVec(o.dIn) && isVec(o.dOut), `forms ${r.id} offset ${a} at ${k.yaw} (dp / dIn / dOut)`)
         }
         check(r.expr && Object.keys(r.expr).length === 0, `forms ${r.id}: legacy-delta has no expression tracks`)
       } else {

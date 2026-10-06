@@ -339,7 +339,8 @@ export class Editor {
     // the record and field; anything unforeseen keeps its own message) — dot, review of 72438b8.
     let problems: string[]
     try {
-      editor.#store.loadStoreSnapshot(snapshot)
+      // a copy: the stored records get frozen, the caller's snapshot must not
+      editor.#store.loadStoreSnapshot(structuredClone(snapshot))
       for (const r of editor.#store.allRecords()) deepFreeze(r)
       problems = graphProblems(editor.reader)
     } catch (e) {

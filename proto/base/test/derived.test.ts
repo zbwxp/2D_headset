@@ -8,7 +8,7 @@ import { counters, resetCounters } from '../src/counters'
 import { Editor } from '../src/editor'
 import { evaluate } from '../src/evaluate'
 import { exampleRecords, ids } from '../src/fixture'
-import type { FillRecord } from '../src/schema'
+import type { FillRecord, SegmentStep } from '../src/schema'
 
 const same = (e: Editor) => expect(e.derived.evaluated()).toEqual(evaluate(e.reader))
 const move = (dx: number): Command => ({ type: 'moveAnchors', targets: [{ curveId: ids.C1, anchorId: 'a2' }], delta: { x: dx, y: 0 } })
@@ -59,7 +59,7 @@ describe('incremental evaluation equals the full recompute', () => {
     e.undo() // the fill is removed
     same(e)
     expect(e.derived.fill(id)).toBeUndefined()
-    const reversed = [...F].reverse().map((s) => ({ ...s, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 }))
+    const reversed = [...F].reverse().map((s) => s as SegmentStep).map((s) => ({ ...s, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 }))
     expect(api.apply({ type: 'createFill', id, parentId: ids.L1, boundary: reversed }).ok).toBe(true) // same id, new record
     same(e)
     expect(e.derived.fill(id)!.cubics).not.toEqual(first)
