@@ -1,6 +1,7 @@
 // Drawing-path costs in a REAL mouse drag (dot). Informational: prints per-move averages; asserts only
 // that the instrumentation ran. NOT in the gate (slow). One Chromium run on one machine, not a benchmark.
-// Main group (closer to real use, dot/bowen): 400 curves + 100 solid fills that overlap (occlusion),
+// Main group (closer to real use, dot/bowen): 400 open curves + 100 fill-boundary loop curves + 100 solid
+// fills that overlap (occlusion) + 6,000 anchor dots = 6,600 scene objects;
 // incremental (option A) vs full rebuild each render. Stress group: curve count only (1000 / 3000).
 // Fill MATERIALS (gradient, blur, pattern, transparency stacks) are not implemented: NOT measured here.
 import { expect, test, type Page } from '@playwright/test'
@@ -67,7 +68,7 @@ const FILL_EDGE = { x: 50, y: 160 } // loop L0 anchor q1 (= the boundary of fill
 for (const onion of [0, 19])
   for (const [name, target] of [['free anchor', FREE], ['fill boundary', FILL_EDGE]] as const)
     for (const fullRebuild of [false, true])
-      test(`main 400 curves + 100 overlapping fills, ${onion} onion, ${name}, ${fullRebuild ? 'full rebuild' : 'incremental (A)'}`, async ({ page }) => {
+      test(`main 500 curves (400 open + 100 fill loops) + 100 overlapping fills, ${onion} onion, ${name}, ${fullRebuild ? 'full rebuild' : 'incremental (A)'}`, async ({ page }) => {
         test.setTimeout(300_000)
         const row = await measure(page, `${MAIN}&onion=${onion}`, target, { fullRebuild })
         console.log('[drawing-costs main]', JSON.stringify({ onion, drag: name, mode: fullRebuild ? 'full rebuild' : 'A', ...row }))
@@ -76,7 +77,7 @@ for (const onion of [0, 19])
 // Reference drawing path B (same picture, see e2e/renderer-b.spec.ts): same drags, same workloads
 for (const onion of [0, 19])
   for (const [name, target] of [['free anchor', FREE], ['fill boundary', FILL_EDGE]] as const)
-    test(`main 400 curves + 100 overlapping fills, ${onion} onion, ${name}, renderer B`, async ({ page }) => {
+    test(`main 500 curves (400 open + 100 fill loops) + 100 overlapping fills, ${onion} onion, ${name}, renderer B`, async ({ page }) => {
       test.setTimeout(300_000)
       const row = await measure(page, `${MAIN}&onion=${onion}&renderer=b`, target)
       console.log('[drawing-costs main]', JSON.stringify({ onion, drag: name, mode: 'B', ...row }))

@@ -101,7 +101,7 @@ test('example document (fill, curves, reference, control points): Fabric vs B', 
 })
 
 const MAIN = '/?bench&curves=400&fills=100&fillSize=50&fillSpacing=30&fillCols=10&onion=19'
-test('main workload 400 curves + 100 overlapping fills + 19 onion yaws: Fabric vs B (fitted, and zoom 3 / 6)', async ({ page }) => {
+test('main workload 500 curves (400 open + 100 fill loops) + 100 overlapping fills + 19 onion yaws: Fabric vs B (fitted, and zoom 3 / 6)', async ({ page }) => {
   test.setTimeout(180_000)
   // NOT pixel-identical: differences are anti-aliasing of thin strokes / tiny dots at edges — their share
   // falls as lines get thicker (zoom), crops at zoom 6 are visually identical, total coverage agrees.

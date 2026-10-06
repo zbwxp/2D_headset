@@ -34,21 +34,24 @@ the pixels are presented — dot).
 
 ## Fitted to the canvas — main workload and curve-count stress (current numbers)
 
-Main workload (closer to real use, dot / bowen): 400 curves + 100 solid fills (50 × 50, spacing 30 →
-overlapping, occluding curves of their layer). Stress: curve count only. One Chromium run, fitted
+Main workload (closer to real use, dot / bowen) — **actual totals (naming corrected per dot):** 400 open
+curves + **100 closed loop curves** (each fill's boundary is its own 4-segment loop curve) = **500
+curves**, + **100 solid fills** (50 × 50, spacing 30 → overlapping, occluding curves of their layer),
++ **6,000 anchor dots** in A mode (500 curves × 4 anchors × 3 dots: anchor, hIn, hOut) =
+**6,600 scene objects**, all on screen (fitted). Earlier labels "400 curves + 100 fills" undercounted. Stress: curve count only. One Chromium run, fitted
 viewport, A-mode drag, 6 moves; the grabbed anchor is recorded (S0.p1 free; L0.q1 = a fill boundary).
 **Fill materials (gradient, blur, pattern, transparency stacks) are not implemented and not measured.**
 
 | workload | onion | drag | mode | build objects | attach | renderAll | input → draw call done | objects | objects created / move |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 400 + 100 fills | 0 | free anchor | A | 0.50 ms | 0.12 ms | 552 ms | 570 ms | 6,600 | 1 |
-| 400 + 100 fills | 0 | free anchor | full rebuild | 44.5 | 59.1 | 828 | 950 | 6,600 | 6,600 |
-| 400 + 100 fills | 0 | fill boundary | A | 0.32 | 0.05 | 546 | 563 | 6,600 | 2 |
-| 400 + 100 fills | 0 | fill boundary | full rebuild | 44.9 | 59.4 | 831 | 953 | 6,600 | 6,600 |
-| 400 + 100 fills | 19 | free anchor | A | 1.38 | 0.40 | 569 | 591 | 16,100 | 20 |
-| 400 + 100 fills | 19 | free anchor | full rebuild | 145.3 | 190.3 | 865 | 1,221 | 16,100 | 16,100 |
-| 400 + 100 fills | 19 | fill boundary | A | 1.23 | 0.60 | 567 | 589 | 16,100 | 21 |
-| 400 + 100 fills | 19 | fill boundary | full rebuild | 151.1 | 203.5 | 944 | 1,319 | 16,100 | 16,100 |
+| 500 curves + 100 fills | 0 | free anchor | A | 0.50 ms | 0.12 ms | 552 ms | 570 ms | 6,600 | 1 |
+| 500 curves + 100 fills | 0 | free anchor | full rebuild | 44.5 | 59.1 | 828 | 950 | 6,600 | 6,600 |
+| 500 curves + 100 fills | 0 | fill boundary | A | 0.32 | 0.05 | 546 | 563 | 6,600 | 2 |
+| 500 curves + 100 fills | 0 | fill boundary | full rebuild | 44.9 | 59.4 | 831 | 953 | 6,600 | 6,600 |
+| 500 curves + 100 fills | 19 | free anchor | A | 1.38 | 0.40 | 569 | 591 | 16,100 | 20 |
+| 500 curves + 100 fills | 19 | free anchor | full rebuild | 145.3 | 190.3 | 865 | 1,221 | 16,100 | 16,100 |
+| 500 curves + 100 fills | 19 | fill boundary | A | 1.23 | 0.60 | 567 | 589 | 16,100 | 21 |
+| 500 curves + 100 fills | 19 | fill boundary | full rebuild | 151.1 | 203.5 | 944 | 1,319 | 16,100 | 16,100 |
 | stress 1000 curves | 0 | free anchor | A | 0.65 | 0.10 | 1,777 | 1,793 | 13,210 | 1 |
 | stress 1000 curves | 19 | free anchor | A | 3.65 | 2.07 | 1,378 | 1,414 | 32,495 | 20 |
 | stress 3000 curves | 0 | free anchor | A | 1.92 | 1.05 | 5,113 | 5,169 | 39,210 | 1 |
@@ -76,12 +79,12 @@ difference (> 32 levels) lies within 1 px of an edge in either image (0 interior
 comparisons). Checked by mutation: a wrong fill colour in B gives thousands of interior differences;
 a doubled stroke width is caught by the coverage / visible-share bounds, not by the edge classifier.
 
-| workload | onion | drag | B renderAll | B input → draw call done | Fabric A renderAll | Fabric A input → draw call done |
+| workload (6,600 objects with 0 onion) | onion | drag | B renderAll | B input → draw call done | Fabric A renderAll | Fabric A input → draw call done |
 | --- | --- | --- | --- | --- | --- | --- |
-| 400 + 100 fills | 0 | free anchor | 1.9 ms | 17.7 ms | 552 ms | 570 ms |
-| 400 + 100 fills | 0 | fill boundary | 2.2 | 18.3 | 546 | 563 |
-| 400 + 100 fills | 19 | free anchor | 3.0 | 22.6 | 569 | 591 |
-| 400 + 100 fills | 19 | fill boundary | 2.8 | 21.8 | 567 | 589 |
+| 500 curves + 100 fills | 0 | free anchor | 1.9 ms | 17.7 ms | 552 ms | 570 ms |
+| 500 curves + 100 fills | 0 | fill boundary | 2.2 | 18.3 | 546 | 563 |
+| 500 curves + 100 fills | 19 | free anchor | 3.0 | 22.6 | 569 | 591 |
+| 500 curves + 100 fills | 19 | fill boundary | 2.8 | 21.8 | 567 | 589 |
 | stress 1000 | 0 | free anchor | 3.5 | 19.9 | 1,777 | 1,793 |
 | stress 1000 | 19 | free anchor | 16.5 | 37.1 | 1,378 | 1,414 |
 | stress 3000 | 0 | free anchor | 18.3 | 34.9 | 5,113 | 5,169 |

@@ -29,7 +29,8 @@ reading of "2 renders per move, 156–207 ms" counted Fabric's top-layer render)
 object (`e2e/scene-incremental.spec.ts`) and pixel by pixel at a fixed viewport
 (`e2e/scene-pixels.spec.ts`). **The first A numbers were measured with the drawing mostly off-screen
 (Fabric skips off-screen objects) and understated the cost.** Fitted to the canvas, main workload
-400 curves + 100 overlapping solid fills: input → draw call done ≈ 570 ms (A) vs ≈ 950 ms (full
+500 curves (400 open + 100 fill-boundary loops) + 100 overlapping solid fills + 6,000 anchor dots =
+6,600 scene objects: input → draw call done ≈ 570 ms (A) vs ≈ 950 ms (full
 rebuild); with 19 onion yaws ≈ 590 vs ≈ 1,220–1,320 ms; the dominant cost is Fabric renderAll
 (≈ 0.55 s). Fill materials not measured (not implemented).
 **B (not reviewed):** Canvas2D reference with the same picture (not pixel-identical: anti-aliasing at

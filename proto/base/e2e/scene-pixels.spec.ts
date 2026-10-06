@@ -76,7 +76,7 @@ test('example document: fill under curves, reference instance, control points �
   }
 })
 
-test('main workload: 400 curves + 100 overlapping fills + 19 onion yaws — pixel-identical', async ({ page }) => {
+test('main workload: 500 curves (400 open + 100 fill loops) + 100 overlapping fills + 19 onion yaws — pixel-identical', async ({ page }) => {
   test.setTimeout(180_000)
   await page.goto('/?bench&curves=400&fills=100&fillSize=50&fillSpacing=30&fillCols=10&onion=19')
   await page.waitForFunction(() => (window as any).__contour)
