@@ -23,16 +23,14 @@ import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
 import { poseIdOf, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
 
 /**
- * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, review of 2a48719: a per-map
- * capacity does not bound what is retained in total — cached LISTS keep references to item results).
- * The unit is result items, NOT bytes or memory: one result can hold very different numbers of
- * segments, control points and references. Byte / GPU budgets are to be measured with the drawing
- * workload. Each entry has a weight (an item 1, a list its length, i.e. the results it holds); the
- * sum stays ≤ `limit`. Weights are re-read on every access, so a list that grows with the document
- * is re-weighed and evicts others. When
- * over, entries are evicted least-recently-used, from the caches in registration order (lists
- * first). An entry heavier than the whole budget is returned but not kept. Weights count
- * references, so shared objects are counted more than once: the bound is conservative.
+ * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, reviews of 2a48719 and
+ * c9553b7). The unit is result items, NOT bytes or memory: one result can hold very different numbers
+ * of segments, control points and references; byte / GPU budgets are to be measured with the drawing
+ * workload. Each entry has a weight (default 1), re-read on every access; the sum stays ≤ `limit`;
+ * over it, entries are evicted least-recently-used in cache registration order. An entry heavier than
+ * the whole limit is returned but not kept. The limit covers what the caches retain only because no
+ * evictable entry depends on another evictable entry (see Derived): a tldraw computed keeps its
+ * parents' values alive, so a dependency on an evicted entry would retain it outside the count.
  */
 export class SharedBudget {
   used = 0
@@ -216,16 +214,21 @@ export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | E
 export class Derived {
   private readonly curves
   private readonly fills
-  private readonly instances: KeyedComputedCache<EvalCurve>
-  private readonly instanceBudget: SharedBudget
-  /** The one limit on retained result items of all angle caches (items + lists); not a byte budget. */
+  /** reference × source curve; document-sized (not evicted), pruned to current membership by `all` */
+  private readonly instances = new Map<string, Computed<EvalCurve>>()
+  /** The one limit on retained result items of all angle caches; not a byte budget. */
   readonly yawRetainedItems: SharedBudget
   private readonly all: Computed<Evaluated>
-  // Angle (head turn) evaluation, bounded (dot: curve × angle caches must not grow without limit
-  // while an angle is dragged). Each entry reads only its base item and its curve's pose record.
+  // Angle (head turn) layer — the only EVICTABLE layer. Rule (dot, review of c9553b7): an evictable
+  // entry depends only on NON-evictable things (store records and the document-sized base layer:
+  // curves, fills, instances, `all`), never on another evictable entry. A tldraw computed keeps its
+  // parents (and their last values) alive; if a yaw fill read cached yaw curves, evicting those curves
+  // from the map would not free them. So a yaw fill computes its boundary curves at the yaw inline,
+  // a yaw instance reads the reference and curve records directly, and angle LISTS are not cached —
+  // `atYaw` assembles them on demand from the entries. Parents never hold evicted children: tldraw
+  // attaches a child to its parents only while the child is actively observed (capture.ts).
   private readonly yawCurves: KeyedComputedCache<EvalCurve>
   private readonly yawFills: KeyedComputedCache<EvalFill>
-  private readonly yawLists: KeyedComputedCache<Evaluated>
 
   constructor(
     private readonly store: DocStore,
@@ -233,17 +236,6 @@ export class Derived {
     opts: { yawRetainedItems?: number } = {},
   ) {
     this.yawRetainedItems = new SharedBudget(opts.yawRetainedItems ?? 262_144, () => counters.yawEvictions++)
-    // registration order = eviction order: whole lists first, then single items
-    this.yawLists = new KeyedComputedCache<Evaluated>(
-      this.yawRetainedItems,
-      (key) =>
-        computed(`yawList:${key}`, () => {
-          const yaw = Number(key)
-          const base = this.evaluated()
-          return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
-        }),
-      (list) => list.curves.length + list.fills.length,
-    )
     this.yawCurves = new KeyedComputedCache<EvalCurve>(
       this.yawRetainedItems,
       (key) => {
@@ -253,9 +245,15 @@ export class Derived {
         return computed(`yawCurve:${key}`, () => {
           counters.yawCurveEvals++
           const slash = address.indexOf('/')
-          const base = slash < 0 ? this.curve(address as CurveRecord['id'])! : this.instance(address.slice(0, slash) as ReferenceRecord['id'], address.slice(slash + 1) as CurveRecord['id'])
-          const placement = base.referenceId ? (store.get(base.referenceId) as ReferenceRecord).transform : undefined
-          return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw, placement)
+          if (slash < 0) {
+            const base = this.curve(address as CurveRecord['id'])! // base layer: not evictable
+            return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw)
+          }
+          // an instance at a yaw reads the records directly (the instance map is base layer too, but
+          // reading records keeps this entry's parents free of other caches entirely)
+          const ref = store.get(address.slice(0, slash) as any) as ReferenceRecord
+          const c = store.get(address.slice(slash + 1) as any) as CurveRecord
+          return curveAtYaw(instanceItem(store, ref, c), store.get(poseIdOf(c.id) as any) as PoseRecord | undefined, yaw, ref.transform)
         })
       },
     )
@@ -267,7 +265,10 @@ export class Derived {
         const yaw = Number(key.slice(at + 1))
         return computed(`yawFill:${key}`, () => {
           counters.yawFillEvals++
-          return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) => this.curveAt(cid, yaw))
+          // boundary curves at this yaw computed inline from the base layer — not from cached yaw curves
+          return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) =>
+            curveAtYaw(this.curve(cid as CurveRecord['id'])!, store.get(poseIdOf(cid) as any) as PoseRecord | undefined, yaw),
+          )
         })
       },
     )
@@ -279,23 +280,21 @@ export class Derived {
       counters.fillEvals++
       return fillItem(store, f, (id) => this.curve(id))
     })
-    this.instanceBudget = new SharedBudget(10_000)
-    this.instances = new KeyedComputedCache<EvalCurve>(this.instanceBudget, (key) => {
-      const [refId, curveId] = key.split('/') as [ReferenceRecord['id'], CurveRecord['id']]
-      return computed(`instance:${key}`, () => {
-        counters.instanceEvals++
-        return instanceItem(store, store.get(refId) as ReferenceRecord, store.get(curveId) as CurveRecord)
-      })
-    })
     // The assembled list: a computed too, so asking again without a change costs nothing. After a
     // change it re-collects references to the cached items and sorts them; each item's order key is
     // computed ONCE (decorate-sort), not inside the comparator (dot: comparator re-read records).
     this.all = computed('evaluated', () => {
       const curves: EvalCurve[] = [...store.query.ids('curve').get()].map((id) => this.curve(id)!)
+      const used = new Set<string>()
       for (const refId of store.query.ids('reference').get()) {
         const r = store.get(refId) as ReferenceRecord
-        for (const cid of within(store, r.sourceId, 'curve')) curves.push(this.instance(r.id, cid))
+        for (const cid of within(store, r.sourceId, 'curve')) {
+          used.add(`${r.id}/${cid}`)
+          curves.push(this.instance(r.id, cid))
+        }
       }
+      // prune instance entries no longer in the document (membership is document-sized)
+      for (const k of [...this.instances.keys()]) if (!used.has(k)) this.instances.delete(k)
       const fills: EvalFill[] = [...store.query.ids('fill').get()].map((id) => this.fill(id)!)
       const parentKey = new Map<string, string>()
       const order = (addr: string) => {
@@ -322,7 +321,17 @@ export class Derived {
     return this.fills.get(id)
   }
   instance(refId: ReferenceRecord['id'], curveId: CurveRecord['id']) {
-    return this.instances.get(`${refId}/${curveId}`)
+    const key = `${refId}/${curveId}`
+    let c = this.instances.get(key)
+    if (!c) {
+      const store = this.store
+      c = computed(`instance:${key}`, () => {
+        counters.instanceEvals++
+        return instanceItem(store, store.get(refId) as ReferenceRecord, store.get(curveId) as CurveRecord)
+      })
+      this.instances.set(key, c)
+    }
+    return c.get()
   }
   /** One curve (base address or `reference/curve` instance address) at `yaw`. Cached, bounded. */
   curveAt(address: string, yaw: number) {
@@ -333,10 +342,12 @@ export class Derived {
   }
   /** Same value as `pose.evaluateAtYaw(reader, yaw)`, incrementally maintained. Playing never writes. */
   atYaw(yaw: number): Evaluated {
-    return this.yawLists.get(String(yaw))
+    // assembled on demand (not cached: a cached list would hold results outside the budget)
+    const base = this.evaluated()
+    return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
   }
   get yawCacheSize() {
-    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
+    return { curves: this.yawCurves.size, fills: this.yawFills.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
   }
 
   /** Drag preview at `yaw` (onion skins): only the items the plan changes are re-done at that yaw. */
@@ -370,9 +381,6 @@ export class Derived {
   }
   get instanceCacheSize() {
     return this.instances.size
-  }
-  get instanceEvictions() {
-    return this.instanceBudget.evictions
   }
 
   /**

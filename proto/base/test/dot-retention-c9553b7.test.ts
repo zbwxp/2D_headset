@@ -1,0 +1,15 @@
+// dot's independent retention oracle from the review of c9553b7, copied from
+// /Users/bowen/Documents/Codex/2026-10-06/task/review-c9553b7/proto/base/test/dot-retention.test.ts
+// It walks every live yaw computed's `parents` and counts the distinct yaw RESULT objects reachable,
+// independently of the product's own bookkeeping. ONE marked change: angle lists are no longer
+// cached, so the inspector skips the removed `yawLists` map. The oracle and the limits are unchanged.
+import {it,expect} from 'vitest'
+import {Editor} from '../src/editor'
+import {exampleRecords,ids} from '../src/fixture'
+import {Fill} from '../src/schema'
+import {evaluateAtYaw} from '../src/pose'
+function inspect(e:Editor){const d=e.derived as any;let sum=0;const objects=new Set<any>(),seen=new Set<any>(),states:any[]=[];const add=(v:any)=>{if(v?.curves){v.curves.forEach((x:any)=>objects.add(x));v.fills.forEach((x:any)=>objects.add(x))}else if(v?.address)objects.add(v)};function visit(c:any){if(!c||seen.has(c))return;seen.add(c);if(c.name?.startsWith('yaw')){add(c.state);states.push({name:c.name,address:c.state?.address})}for(const p of c.parents??[])visit(p)}
+ const maps=['yawLists','yawCurves','yawFills'].filter(k=>d[k]/* [CHANGED] yawLists no longer exists */).map(k=>{const x=d[k];expect([...x.map.keys()].sort()).toEqual([...x.weights.keys()].sort());expect([...x.map.keys()].sort()).toEqual([...x.last.keys()].sort());for(const w of x.weights.values())sum+=w;for(const c of x.map.values())visit(c);for(const v of x.last.values())add(v);return{k,keys:[...x.map.keys()],weights:[...x.weights.values()]}});expect(sum).toBe(d.yawRetainedItems.used);return{sum,actual:objects.size,states,maps}}
+function setup(n:number){const e=new Editor(exampleRecords().map(r=>r.id===ids.L2?{...r,locked:false}:r),{yawRetainedItems:n});for(const[cid,aid]of[[ids.C1,'a2'],[ids.C2,'b2']]as const)expect(e.apply({type:'setPoseKey',curveId:cid,yaw:0,offsets:{[aid]:{x:1,y:2}}}).ok).toBe(true);return e}
+it('one cached yaw fill also strongly retains evicted yaw curve Computeds and their result objects',()=>{const e=setup(1);e.derived.fillAt(ids.F,0);const r=inspect(e);console.log('FILL_DEPENDENCY_RETENTION',JSON.stringify(r));expect(r.actual).toBeLessThanOrEqual(1)})
+it('document growth and reads keep raw cache maps/weights consistent and actual retained objects bounded',()=>{const e=setup(12);for(const y of[0,10,20])e.derived.atYaw(y);const boundary=(e.reader.get(ids.F)as any).boundary;for(let i=0;i<7;i++){expect(e.apply({type:'createFill',id:Fill.createId(`dot${i}`),parentId:ids.L1,boundary}).ok).toBe(true);for(const y of[0,10,20,30]){expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader,y));const r=inspect(e);console.log('GROWTH',{i,y,used:r.sum,actual:r.actual});expect.soft(r.actual).toBeLessThanOrEqual(12)}}})

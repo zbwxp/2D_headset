@@ -156,6 +156,16 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   that list's own entry, which was then weighed while missing from the map (an orphan: counted and
   holding results but never evictable); `get` now computes first, then inserts and weighs. A
   bookkeeping invariant (`consistent()`: weighed entries are mapped, `used` = Σ weights) is asserted;
+  **c9553b7 still failed (dot):** tldraw computeds keep their PARENTS' values alive, so a cached yaw
+  fill / list that had read cached yaw curves kept evicted curves alive outside the count (limit 1 →
+  3 results; growth test limit 12 → up to 20). FIXED structurally, not by another counter: evictable
+  yaw entries depend only on NON-evictable things (records and the document-sized base layer); a yaw
+  fill computes its boundary curves at the yaw inline, a yaw instance reads its records, and yaw
+  LISTS are no longer cached (`atYaw` assembles on demand — replay is no longer ≈0 ms: ≈1.5 ms at
+  3000 curves for the assembly). The base instance cache is no longer evictable (document-sized,
+  pruned to current membership). Parents never retain evicted children: tldraw attaches a child to
+  its parents only while it is actively observed. dot's independent oracle (walks `parents`) is in
+  `test/dot-retention-c9553b7.test.ts` (fails on c9553b7, passes now); mutation M32 caught;
   test asserts the distinct result objects held by all caches stay ≤ the budget (dot's aggregate test
   adapted, marked [CHANGED]); (5) two tests timed out at the 5 s default under load —
   explicit timeouts added for these long-running-by-design tests.
