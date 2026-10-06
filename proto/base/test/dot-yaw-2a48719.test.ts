@@ -23,7 +23,7 @@ it('pose create/update observes ancestor locks and rejects unknown anchor/nonfin
  const free=new Editor(exampleRecords());for(const cmd of [{yaw:90,offsets:{missing:{x:1,y:0}}},{yaw:NaN,offsets:{}},{yaw:90,offsets:{a2:{x:Infinity,y:0}}}]){const s=state(free);expect(key(free,ids.C1,cmd.yaw,cmd.offsets).ok).toBe(false);expect(state(free)).toEqual(s)}
 })
 it('default base, explicit zero form, read-only angles, same-ID pose recreation, undo and open',()=>{
- const e=new Editor(exampleRecords(),{yawBudget:6}) /* [CHANGED] options renamed: one shared budget */;const base=e.derived.evaluated();expect(e.derived.atYaw(0)).toEqual(base);key(e,ids.C1,0,{a2:{x:2,y:1}});key(e,ids.C1,90,{a2:{x:20,y:10}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:12,y:61});expect(e.derived.curveAt(ids.C1,45).anchors.a2.p).toEqual({x:21,y:65.5});expect(e.derived.evaluated()).toEqual(base);e.save();const before=state(e);for(let y=-100;y<=100;y++)e.derived.atYaw(y);expect(state(e)).toEqual(before);expect(counters.yawEvictions).toBeGreaterThan(0);
+ const e=new Editor(exampleRecords(),{yawRetainedItems:6}) /* [CHANGED] options renamed: one shared budget */;const base=e.derived.evaluated();expect(e.derived.atYaw(0)).toEqual(base);key(e,ids.C1,0,{a2:{x:2,y:1}});key(e,ids.C1,90,{a2:{x:20,y:10}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:12,y:61});expect(e.derived.curveAt(ids.C1,45).anchors.a2.p).toEqual({x:21,y:65.5});expect(e.derived.evaluated()).toEqual(base);e.save();const before=state(e);for(let y=-100;y<=100;y++)e.derived.atYaw(y);expect(state(e)).toEqual(before);expect(counters.yawEvictions).toBeGreaterThan(0);
  const opened=Editor.open(JSON.parse(JSON.stringify(e.save())));expect(opened.derived.atYaw(45)).toEqual(e.derived.atYaw(45));e.undo();e.undo();expect(e.reader.get(poseIdOf(ids.C1))).toBeUndefined();key(e,ids.C1,0,{a2:{x:-8,y:4}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:2,y:64});
  const single=new Editor(exampleRecords());key(single,ids.C1,90,{a2:{x:9,y:0}});expect(single.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:19,y:60});console.log('NO_IMPLICIT_ZERO','single key at 90 clamps at yaw 0; explicit zero key is needed')
 })
@@ -33,9 +33,9 @@ it('19-yaw shared preview changes equals accepted free-anchor commit and never w
 // [CHANGED by Claude] dot's original asserted the problem itself (lists kept 16 curve results with
 // item capacity 2). With one shared budget the same scenario must keep the retained results within it.
 it('cache eviction is correct and ONE shared budget bounds aggregate retained geometry (lists included)',()=>{
- const e=new Editor(exampleRecords().map(r=>r.id===ids.L2?{...r,locked:false}:r),{yawBudget:8});for(const [cid,aid]of [[ids.C1,'a2'],[ids.C2,'b2'],[ids.E1,'e2']]){key(e,cid,0,{});key(e,cid,90,{[aid]:{x:9,y:3}})}
- for(const y of [0,10,20,30]){e.derived.atYaw(y);expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(8)}
- console.log('AGGREGATE_RETENTION',JSON.stringify({...e.derived.yawCacheSize,distinctRetained:e.derived.yawBudget.retainedObjects().size}));
- for(const y of [40,50,60,70,80])e.derived.atYaw(y);resetCounters();expect(e.derived.atYaw(0)).toEqual(evaluateAtYaw(e.reader,0));expect(counters.yawCurveEvals).toBeGreaterThan(0);expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(8)
+ const e=new Editor(exampleRecords().map(r=>r.id===ids.L2?{...r,locked:false}:r),{yawRetainedItems:8});for(const [cid,aid]of [[ids.C1,'a2'],[ids.C2,'b2'],[ids.E1,'e2']]){key(e,cid,0,{});key(e,cid,90,{[aid]:{x:9,y:3}})}
+ for(const y of [0,10,20,30]){e.derived.atYaw(y);expect(e.derived.yawRetainedItems.retainedObjects().size).toBeLessThanOrEqual(8)}
+ console.log('AGGREGATE_RETENTION',JSON.stringify({...e.derived.yawCacheSize,distinctRetained:e.derived.yawRetainedItems.retainedObjects().size}));
+ for(const y of [40,50,60,70,80])e.derived.atYaw(y);resetCounters();expect(e.derived.atYaw(0)).toEqual(evaluateAtYaw(e.reader,0));expect(counters.yawCurveEvals).toBeGreaterThan(0);expect(e.derived.yawRetainedItems.retainedObjects().size).toBeLessThanOrEqual(8)
 })
 

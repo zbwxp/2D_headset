@@ -88,7 +88,7 @@ export class Editor {
     return this.#saved.get()
   }
 
-  constructor(initial: DocRecord[] = [], opts: { yawBudget?: number } = {}) {
+  constructor(initial: DocRecord[] = [], opts: { yawRetainedItems?: number } = {}) {
     this.#store = createDocStore()
     if (initial.length) this.#store.put(initial.map((r) => deepFreeze(structuredClone(r))), 'initialize')
     const s = this.#store

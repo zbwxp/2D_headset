@@ -148,8 +148,14 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   property I15; (3) `runtime.ts` creates no
   editor but still depends on @tldraw/store / state through schema.ts (bundle: 16 store + 15 state
   modules) — "store-free runtime" is NOT established; (4) cache capacities bounded each map, not the
-  geometry retained in total (cached yaw LISTS keep references to item values) — FIXED: one
-  `SharedBudget` for all angle caches; an item weighs 1, a list its length; LRU eviction lists first;
+  geometry retained in total (cached yaw LISTS keep references to item values) — FIXED: one limit
+  on **retained result items** for all angle caches (`yawRetainedItems`; the unit is result items,
+  NOT bytes or memory — byte / GPU budgets wait for the drawing workload); an item weighs 1, a list
+  its length, re-weighed on access so a growing document still evicts; LRU, lists first;
+  a bug in 009df4e found by the document-growth test and fixed after: computing a list could evict
+  that list's own entry, which was then weighed while missing from the map (an orphan: counted and
+  holding results but never evictable); `get` now computes first, then inserts and weighs. A
+  bookkeeping invariant (`consistent()`: weighed entries are mapped, `used` = Σ weights) is asserted;
   test asserts the distinct result objects held by all caches stay ≤ the budget (dot's aggregate test
   adapted, marked [CHANGED]); (5) two tests timed out at the 5 s default under load —
   explicit timeouts added for these long-running-by-design tests.

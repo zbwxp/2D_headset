@@ -23,9 +23,13 @@ import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
 import { poseIdOf, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
 
 /**
- * One budget shared by several keyed caches (dot, review of 2a48719: a per-map capacity does not
- * bound what is retained in total — cached LISTS keep references to item results). Each entry has a
- * weight (an item 1, a list its length, i.e. the results it holds); the sum stays ≤ `limit`. When
+ * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, review of 2a48719: a per-map
+ * capacity does not bound what is retained in total — cached LISTS keep references to item results).
+ * The unit is result items, NOT bytes or memory: one result can hold very different numbers of
+ * segments, control points and references. Byte / GPU budgets are to be measured with the drawing
+ * workload. Each entry has a weight (an item 1, a list its length, i.e. the results it holds); the
+ * sum stays ≤ `limit`. Weights are re-read on every access, so a list that grows with the document
+ * is re-weighed and evicts others. When
  * over, entries are evicted least-recently-used, from the caches in registration order (lists
  * first). An entry heavier than the whole budget is returned but not kept. Weights count
  * references, so shared objects are counted more than once: the bound is conservative.
@@ -46,6 +50,16 @@ export class SharedBudget {
       this.evictions++
       this.onEvict()
     }
+  }
+  /** Bookkeeping invariant (for tests): every weighed entry is in its map, and `used` = Σ weights. */
+  consistent(): boolean {
+    let sum = 0
+    for (const c of this.caches) {
+      const { keys, weights } = c.bookkeeping()
+      if (weights.size !== keys.size || [...weights.keys()].some((k) => !keys.has(k))) return false
+      for (const w of weights.values()) sum += w
+    }
+    return sum === this.used
   }
   /** The distinct result objects currently held by all caches (for tests). */
   retainedObjects(): Set<unknown> {
@@ -73,11 +87,13 @@ export class KeyedComputedCache<T> {
     budget.register(this as KeyedComputedCache<unknown>)
   }
   get(key: string): T {
-    let c = this.map.get(key)
-    if (c) this.map.delete(key) // re-insert = most recently used
-    else c = this.create(key)
-    this.map.set(key, c)
+    const c = this.map.get(key) ?? this.create(key)
+    // Compute FIRST: computing a list reads items, which can evict entries — including this key. Only
+    // then (re-)insert it as most recently used and weigh it, so an entry can never be weighed while
+    // missing from the map (an orphan that holds results but cannot be evicted).
     const v = c.get()
+    this.map.delete(key)
+    this.map.set(key, c)
     const w = this.weightOf(v)
     this.budget.used += w - (this.weights.get(key) ?? 0)
     this.weights.set(key, w)
@@ -99,6 +115,9 @@ export class KeyedComputedCache<T> {
   }
   values() {
     return this.last.values()
+  }
+  bookkeeping() {
+    return { keys: new Set(this.map.keys()), weights: this.weights }
   }
   get size() {
     return this.map.size
@@ -199,8 +218,8 @@ export class Derived {
   private readonly fills
   private readonly instances: KeyedComputedCache<EvalCurve>
   private readonly instanceBudget: SharedBudget
-  /** The one budget of all angle caches (items + lists). */
-  readonly yawBudget: SharedBudget
+  /** The one limit on retained result items of all angle caches (items + lists); not a byte budget. */
+  readonly yawRetainedItems: SharedBudget
   private readonly all: Computed<Evaluated>
   // Angle (head turn) evaluation, bounded (dot: curve × angle caches must not grow without limit
   // while an angle is dragged). Each entry reads only its base item and its curve's pose record.
@@ -211,12 +230,12 @@ export class Derived {
   constructor(
     private readonly store: DocStore,
     private readonly reader: DocReader,
-    opts: { yawBudget?: number } = {},
+    opts: { yawRetainedItems?: number } = {},
   ) {
-    this.yawBudget = new SharedBudget(opts.yawBudget ?? 262_144, () => counters.yawEvictions++)
+    this.yawRetainedItems = new SharedBudget(opts.yawRetainedItems ?? 262_144, () => counters.yawEvictions++)
     // registration order = eviction order: whole lists first, then single items
     this.yawLists = new KeyedComputedCache<Evaluated>(
-      this.yawBudget,
+      this.yawRetainedItems,
       (key) =>
         computed(`yawList:${key}`, () => {
           const yaw = Number(key)
@@ -226,7 +245,7 @@ export class Derived {
       (list) => list.curves.length + list.fills.length,
     )
     this.yawCurves = new KeyedComputedCache<EvalCurve>(
-      this.yawBudget,
+      this.yawRetainedItems,
       (key) => {
         const at = key.lastIndexOf('@')
         const address = key.slice(0, at)
@@ -241,7 +260,7 @@ export class Derived {
       },
     )
     this.yawFills = new KeyedComputedCache<EvalFill>(
-      this.yawBudget,
+      this.yawRetainedItems,
       (key) => {
         const at = key.lastIndexOf('@')
         const id = key.slice(0, at) as FillRecord['id']
@@ -317,7 +336,7 @@ export class Derived {
     return this.yawLists.get(String(yaw))
   }
   get yawCacheSize() {
-    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size, budgetUsed: this.yawBudget.used, budget: this.yawBudget.limit }
+    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
   }
 
   /** Drag preview at `yaw` (onion skins): only the items the plan changes are re-done at that yaw. */

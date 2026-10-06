@@ -64,7 +64,7 @@ describe('cached angle evaluation equals the full recompute', () => {
   })
 
   it('the angle caches share ONE budget: through 1000 angles the results they hold never exceed it, results stay exact', () => {
-    const e = new Editor([...exampleRecords()], { yawBudget: 50 })
+    const e = new Editor([...exampleRecords()], { yawRetainedItems: 50 })
     const api = createApi(e)
     api.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a2: { x: 30, y: -6 } } })
     resetCounters()
@@ -73,7 +73,8 @@ describe('cached angle evaluation equals the full recompute', () => {
       e.derived.atYaw(y)
       expect(e.derived.yawCacheSize.budgetUsed).toBeLessThanOrEqual(50)
       // the distinct result objects actually held by item caches AND cached lists (dot: lists retain results)
-      expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(50)
+      expect(e.derived.yawRetainedItems.retainedObjects().size).toBeLessThanOrEqual(50)
+      expect(e.derived.yawRetainedItems.consistent()).toBe(true)
     }
     expect(counters.yawEvictions).toBeGreaterThan(0)
     // -90 was visited first, so it has been evicted: asking again must RECOMPUTE (counted) and be exact
@@ -110,6 +111,25 @@ describe('a pose belongs to its source curve: reference instances carry it throu
           expect(inst.anchors[id][k].y).toBeCloseTo(want.y, 9)
         }
     }
+  })
+})
+
+describe('retained result items when the document grows (dot)', () => {
+  it('lists are re-weighed when the document gains items, and the limit still holds', () => {
+    const e = new Editor(exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r)), { yawRetainedItems: 12 })
+    const api = createApi(e)
+    api.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a2: { x: 4, y: 0 } } })
+    for (const y of [0, 30, 60]) e.derived.atYaw(y)
+    const boundary = (e.reader.get(ids.F) as any).boundary
+    for (let i = 0; i < 3; i++) api.apply({ type: 'createFill', parentId: ids.L1, boundary }) // the document grows
+    resetCounters()
+    for (const y of [0, 30, 60, 90]) {
+      expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y))
+      expect(e.derived.yawRetainedItems.retainedObjects().size).toBeLessThanOrEqual(12)
+      expect(e.derived.yawRetainedItems.consistent()).toBe(true) // no orphaned (weighed but unmapped) entries
+      expect(e.derived.yawCacheSize.budgetUsed).toBeLessThanOrEqual(12)
+    }
+    expect(counters.yawEvictions).toBeGreaterThan(0)
   })
 })
 
@@ -190,7 +210,7 @@ describe('workloads (counts asserted, times and heap informational)', () => {
 
   function runtime(curves: number) {
     const shapes = syntheticRecords({ curves, layers: 8, fills: 15 })
-    const e = new Editor([...shapes, ...syntheticPoses(shapes)], { yawBudget: 1_000_000 })
+    const e = new Editor([...shapes, ...syntheticPoses(shapes)], { yawRetainedItems: 1_000_000 })
     const base = e.derived.evaluated()
     const yaws = Array.from({ length: 60 }, (_, i) => -90 + 3 * i + 0.25) // 60 NEW angles: everything changes each frame
     const heap0 = process.memoryUsage().heapUsed
