@@ -112,16 +112,14 @@ back layer; F red `rgb(255,0,0)`):
    over the BACKDROP once = `rgb(64,64,192)` — natural result of "F leaves out B's ink". With F
    BEHIND B (the usual order) the same point is blue over red = `rgb(128,0,128)`. A violation would
    be `rgb(255,0,0)` (F ate B) or anything darker than one blue layer (B painted twice).
-   bowen (2026-10-06): semi-transparent lines hardly occur in drawing (lines change colour / grey;
-   transparency is a fill thing); for pencil-like strokes "decide by the centre line" — the fill
-   reaches the stroke's centre line, so under the inner half of a see-through own stroke the FILL
-   shows: `rgb(128,0,128)` in the usual order. Taking the same intent for a forward-moved fill, C1's
-   `rgb(64,64,192)` misses it (only for see-through strokes; opaque ones are identical).
-   Withdrawn: "leave out own ink whatever the order" (contradicts this answer).
-   Candidates (dot): (a) split the fill — the part under its own visible ink is painted just below
-   that stroke, the rest at the fill's own position: every pixel painted once, stroke not lifted,
-   gives `rgb(128,0,128)` in both orders; (b) keep C1 and report a diagnostic for see-through own
-   strokes, as rare. Not decided; no test for the see-through case yet.
+   bowen (2026-10-06), in his words: lines mostly change colour / grey rather than transparency
+   (fills may be semi-transparent); for pencil-like see-through strokes "decide by the centre line" —
+   such strokes do not emphasise their edge. This does NOT say see-through strokes never occur, and
+   bowen has NOT confirmed exact mixed colours for every offset case (dot).
+   Decision (dot + Claude): C1 as the minimal implementation for opaque line art; see-through own
+   strokes are a recorded simplification (C1 may show what is behind the fill under the inner half
+   of such a stroke when the fill is in front); no extra mechanism (no fill splitting, no
+   "leave out whatever the order"). No test for the see-through case.
 2. An unrelated opaque green object X with B < X < F (B opaque blue). On B's ink inside F: where X
    covers it → green (X is in front of B by order, and F leaves the area out) — natural result; where
    X does not → blue. A violation would be red there (F ate B) or blue where X should cover.
