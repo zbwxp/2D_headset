@@ -10,6 +10,7 @@ import {
   defaultDoc,
   DISPLAY_PX_PER_UNIT,
   invertAffine,
+  MAX_COORD,
   dragUpperMiddle,
   evaluate,
   evaluateT1,
@@ -238,6 +239,19 @@ describe('parent-deformer combination (doc 18 §8.8)', () => {
     expect(singular.ok).toBe(false)
     expect(nanIn.ok).toBe(false)
     expect(infIn.ok).toBe(false)
+    // handles are validated too, before any copy (review of 8f3fb89)
+    const I: Affine = { m: [1, 0, 0, 1], t: v(0, 0) }
+    const unit = { ...doc, characters: { ...doc.characters, wide: { slider: 1 } } }
+    const a0 = unit.part.upper[1]
+    const edgeGoal = v(MAX_COORD, a0.p.y) // the anchor lands exactly on the bound; its out-handle (+5 in x) would not
+    const handleOut = dragUpperMiddle(unit, 'wide', P(), IDENTITY_VIEW, { kind: 'base' }, edgeGoal, { placement: I })
+    const nanDoc = structuredClone(doc)
+    nanDoc.part.upper[1].hIn = v(Number.NaN, nanDoc.part.upper[1].hIn.y)
+    const nanHandle = dragUpperMiddle(nanDoc, 'wide', P(), tiers.A, { kind: 'base' }, goal)
+    row({ check: 8, case: 'handle refusals', handleBeyondBound: handleOut.ok ? 'accepted' : handleOut.reason, nanHandleInAuthorData: nanHandle.ok ? 'accepted' : nanHandle.reason, authorDataUntouched: Number.isNaN(nanDoc.part.upper[1].hIn.x) })
+    expect(handleOut.ok).toBe(false)
+    expect(nanHandle.ok).toBe(false)
+    expect(Number.isNaN(nanDoc.part.upper[1].hIn.x)).toBe(true)
     // between key values: refused
     const mid = dragUpperMiddle(doc, 'wide', P(0.5), tiers.A, { kind: 'expression', name: 'close' }, v(0, 0))
     row({ check: 8, case: 'close = 0.5 (between key values)', refused: !mid.ok, reason: mid.ok ? '' : mid.reason })

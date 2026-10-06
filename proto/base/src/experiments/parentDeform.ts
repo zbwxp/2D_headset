@@ -293,21 +293,27 @@ export function dragUpperMiddle(
   q = applyAffine(invertAffine(view.f), q)
   if (!opts.skipCharacterInverse) q = applyAffine(invertAffine(L2), q)
   if (!finite(q)) return { ok: false, reason: 'the inverse produced a non-finite or out-of-range point' }
-  const next: Doc = JSON.parse(JSON.stringify(doc))
+  // Validate everything this edit READS and PRODUCES — the anchor and both handles — before any copy
+  // (review of 8f3fb89: handles were not checked, and a JSON copy silently turned NaN into null).
+  const finiteA = (a: A) => finite(a.p) && finite(a.hIn) && finite(a.hOut)
+  let lidRead: A
   if (target.kind === 'base') {
     if (params.close !== 0 || params.surprise !== 0) return { ok: false, reason: 'editing the base needs every expression at strength 0 (L1 = identity)' }
-    const a = next.part.upper[1]
-    const d = sub(q, a.p)
-    next.part.upper[1] = { p: q, hIn: add(a.hIn, d), hOut: add(a.hOut, d) }
-    // the expression key forms are absolute shapes: the base edit does not move them
+    lidRead = doc.part.upper[1]
   } else {
     const strength = params[target.name]
     const others = target.name === 'close' ? params.surprise : params.close
     if (strength !== 1 || others !== 0) return { ok: false, reason: `editing the ${target.name} key form needs ${target.name} = 1 and the other expressions at 0` }
-    const a = next.expressions[target.name].upper[1]
-    const d = sub(q, a.p)
-    next.expressions[target.name].upper[1] = { p: q, hIn: add(a.hIn, d), hOut: add(a.hOut, d) }
+    lidRead = doc.expressions[target.name].upper[1]
   }
+  if (!finiteA(lidRead)) return { ok: false, reason: `the anchor or a handle being edited is non-finite or outside ±${MAX_COORD} in the author data` }
+  const d = sub(q, lidRead.p)
+  const written: A = { p: q, hIn: add(lidRead.hIn, d), hOut: add(lidRead.hOut, d) }
+  if (!finiteA(written)) return { ok: false, reason: `the edited anchor or one of its handles would be non-finite or outside ±${MAX_COORD}` }
+  const next: Doc = structuredClone(doc) // lossless copy (keeps NaN / Infinity elsewhere as they are; never rewrites them)
+  if (target.kind === 'base') next.part.upper[1] = written
+  // the expression key forms are absolute shapes: a base edit does not move them
+  else next.expressions[target.name].upper[1] = written
   return { ok: true, doc: next }
 }
 
