@@ -92,6 +92,32 @@ it('bind refuses when one side has yaw keys and the other only an identity place
   expect(JSON.stringify(e.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any))).toBe(before)
 })
 
+it('bind shifts expression author keys (target AND base) at their own yaw, also between neutral keys (dot, review of 6df337d)', () => {
+  const rs = plain()
+  rs.find((r: any) => r.id === K).fineTune = {}
+  const f = rs.find((r: any) => r.id === presetFormsIdOf('preset:P', 'curve:lid'))
+  // the upper lid's corner 2 to the right of the lower lid's in every neutral state, so binding moves it
+  for (const sh of [f.original, ...f.yaw.map((k: any) => k.shape)]) for (const h of ['p', 'hIn', 'hOut']) sh.a[h].x += 2
+  const yaws = f.yaw.map((k: any) => k.yaw)
+  expect(yaws).not.toContain(30)
+  const k0 = f.expr.blink.find((k: any) => k.kind === 'author')
+  const k30 = { ...structuredClone(k0), yaw: 30 }
+  f.expr.blink = [...f.expr.blink, k30].sort((a: any, b: any) => a.yaw - b.yaw)
+  const e = openRecords(rs)
+  roundTrip(e, { type: 'bind', a: { curveId: 'curve:lid' as any, anchorId: 'a' }, b: { curveId: 'curve:lowerLid' as any, anchorId: 'c' }, keep: 'mid' })
+  const now = (e.reader.get(presetFormsIdOf('preset:P', 'curve:lid') as any) as any).expr.blink
+  for (const [was, yaw] of [[k0, k0.yaw], [k30, 30]] as const) {
+    const k = now.find((x: any) => x.yaw === yaw && x.kind === 'author')
+    for (const s of ['target', 'base'] as const) {
+      for (const h of ['p', 'hIn', 'hOut'] as const) {
+        expect(k[s].a[h].x).toBeCloseTo(was[s].a[h].x - 1, 11) // half of the 2-unit gap, toward the lower lid
+        expect(k[s].a[h].y).toBe(was[s].a[h].y)
+      }
+      expect(k[s].m).toEqual(was[s].m) // other anchors untouched
+    }
+  }
+})
+
 describe('mergeEnds on a family curve', () => {
   const three = { anchors: { p: { id: 'p', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 3, y: 0 } }, q: { id: 'q', p: { x: 10, y: 8 }, hIn: { x: -3, y: 0 }, hOut: { x: 3, y: 0 } }, r: { id: 'r', p: { x: 20, y: 2 }, hIn: { x: -3, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 'k1', from: 'p', to: 'q' }, { id: 'k2', from: 'q', to: 'r' }] }
 

@@ -676,29 +676,45 @@ function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' 
     const origA = A.original && A.original !== 'curve' ? A.original : null, origB = B.original && B.original !== 'curve' ? B.original : null
     const stateA = (y: number) => (ka.length ? sampleS(ka, y) : origA), stateB = (y: number) => (kb.length ? sampleS(kb, y) : origB)
     const yaws = [...new Set([...ka, ...kb].map((k) => k.yaw))].sort((x, y) => x - y)
-    const deltaA = new Map<number, Vec>(), deltaB = new Map<number, Vec>()
+    // the corner move at ANY yaw, from the neutral states there (sampled / clamped like playback): bound keys are
+    // affine in the two ends, so this equals sampling the bound result — also at an expression key's own yaw that is
+    // not a neutral key (dot, review of 6df337d)
+    const deltaAt = (y: number): { a: Vec; b: Vec } | null => {
+      const sa = stateA(y), sb = stateB(y)
+      if (!sa || !sb) return null
+      const to = target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
+      return { a: v(to.x - sa[cmd.a.anchorId].p.x, to.y - sa[cmd.a.anchorId].p.y), b: v(to.x - sb[cmd.b.anchorId].p.x, to.y - sb[cmd.b.anchorId].p.y) }
+    }
     const keysA: AbsoluteYawKey[] = [], keysB: AbsoluteYawKey[] = []
     for (const y of yaws) {
       const sa = stateA(y), sb = stateB(y)
       // one side drawn, the other missing here: refused — never drop the drawn side's keys (dot 1791317098)
       if (!sa || !sb) return fail('INVALID', `${pr.id} has no shape for ${!sa ? da.curve.id : db.curve.id} at yaw ${y}: draw it first (binding would otherwise drop the other curve's keys)`, [pr.id, !sa ? da.curve.id : db.curve.id])
       const to = target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
-      deltaA.set(y, v(to.x - sa[cmd.a.anchorId].p.x, to.y - sa[cmd.a.anchorId].p.y))
-      deltaB.set(y, v(to.x - sb[cmd.b.anchorId].p.x, to.y - sb[cmd.b.anchorId].p.y))
       keysA.push({ yaw: y, shape: moveEnd(sa, cmd.a.anchorId, to) })
       keysB.push({ yaw: y, shape: moveEnd(sb, cmd.b.anchorId, to) })
     }
     const orig = origA && origB ? target(origA[cmd.a.anchorId].p, origB[cmd.b.anchorId].p) : null
     // expression author keys: target and base shifted by the same corner move at that yaw (the correction is kept)
-    const shiftExpr = (f: FormsRecord, a: string, deltas: Map<number, Vec>) =>
-      Object.fromEntries(Object.entries(f.expr).map(([param, keys]) => [param, keys.map((k) => {
-        if (k.kind !== 'author') return k
-        const d = deltas.get(k.yaw) ?? v(0, 0)
-        const sh = (s: Shape) => moveEnd(s, a, v(s[a].p.x + d.x, s[a].p.y + d.y))
-        return { ...k, target: sh(k.target), base: sh(k.base) }
-      })]))
-    puts.push({ ...A, original: orig && origA ? moveEnd(origA, cmd.a.anchorId, orig) : A.original, yaw: ka.length || keysA.length ? keysA : A.yaw, expr: shiftExpr(A, cmd.a.anchorId, deltaA) })
-    puts.push({ ...B, original: orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : B.original, yaw: kb.length || keysB.length ? keysB : B.yaw, expr: shiftExpr(B, cmd.b.anchorId, deltaB) })
+    const shiftExpr = (f: FormsRecord, a: string, side: 'a' | 'b'): FormsRecord['expr'] | string => {
+      const out: FormsRecord['expr'] = {}
+      for (const [param, keys] of Object.entries(f.expr)) {
+        const next = []
+        for (const k of keys) {
+          if (k.kind !== 'author') { next.push(k); continue }
+          const d = deltaAt(k.yaw)
+          if (!d) return `${pr.id} has no neutral shape for both curves at the expression key yaw ${k.yaw} (${param})`
+          const sh = (s: Shape) => moveEnd(s, a, v(s[a].p.x + d[side].x, s[a].p.y + d[side].y))
+          next.push({ ...k, target: sh(k.target), base: sh(k.base) })
+        }
+        out[param] = next
+      }
+      return out
+    }
+    const exprA = shiftExpr(A, cmd.a.anchorId, 'a'), exprB = shiftExpr(B, cmd.b.anchorId, 'b')
+    if (typeof exprA === 'string' || typeof exprB === 'string') return fail('INVALID', (typeof exprA === 'string' ? exprA : exprB) as string, [pr.id])
+    puts.push({ ...A, original: orig && origA ? moveEnd(origA, cmd.a.anchorId, orig) : A.original, yaw: ka.length || keysA.length ? keysA : A.yaw, expr: exprA })
+    puts.push({ ...B, original: orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : B.original, yaw: kb.length || keysB.length ? keysB : B.yaw, expr: exprB })
   }
   puts.push({ typeName: 'connection', id, ends: [{ ...cmd.a }, { ...cmd.b }], geometricJoin: 'corner' } as ConnectionRecord)
   const notices = familyNotices(store, puts, fam.id)
