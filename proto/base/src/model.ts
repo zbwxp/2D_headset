@@ -1,6 +1,7 @@
 // Read helpers over the document: lookups, effective lock/visibility, connection linkage.
 // Lock/visibility inheritance follows Illustrator/Figma layer semantics (docs/design/architecture/11 §3).
 import type { RecordId } from '@tldraw/store'
+import { connectionsAt } from './indexes'
 import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, DocReader, FillRecord, ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
@@ -36,14 +37,14 @@ export const effectivelyVisible = (store: DocReader, parentId: RecordId<Containe
  * Returns each linked anchor with the connection that pulled it in (for error reporting).
  */
 export function linkedAnchors(store: DocReader, seeds: AnchorRef[]) {
-  const connections = all(store, 'connection') as ConnectionRecord[]
+  // via the connection index: cost follows the linked anchors, not the number of connections
   const result = new Map<string, { ref: AnchorRef; via?: RecordId<ConnectionRecord> }>()
   const queue = [...seeds]
   for (const s of seeds) result.set(anchorKey(s), { ref: s })
   while (queue.length) {
     const cur = queue.shift()!
-    for (const c of connections) {
-      if (!c.ends.some((e) => anchorKey(e) === anchorKey(cur))) continue
+    for (const id of connectionsAt(store, anchorKey(cur))) {
+      const c = store.get(id) as ConnectionRecord
       for (const e of c.ends) {
         if (result.has(anchorKey(e))) continue
         result.set(anchorKey(e), { ref: e, via: c.id })

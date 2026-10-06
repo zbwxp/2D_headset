@@ -138,7 +138,8 @@ export const schema = StoreSchema.create<DocRecord>({
 
 export type DocStore = Store<DocRecord>
 /** Read-only view of the document. Everything except the Editor's write entry gets only this. */
-export type DocReader = Pick<DocStore, 'get' | 'allRecords' | 'getStoreSnapshot' | 'serialize'>
+/** Read-only view. `query` is tldraw's read-only derivation API (indexes); it cannot write. */
+export type DocReader = Pick<DocStore, 'get' | 'allRecords' | 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
 const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference } as const

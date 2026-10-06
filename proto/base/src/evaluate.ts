@@ -7,6 +7,7 @@
 //   Figma instance sublayer ids (I<instance>;<child>) / SVG <use> — behaviour only.
 import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
+import { counters } from './counters'
 import { all, effectivelyVisible, lockedBy } from './model'
 import type { Affine, ContainerRecord, CurveRecord, DocReader as DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
 
@@ -28,16 +29,16 @@ export type EvalCurve = {
 export type EvalFill = { address: string; color: string; cubics: Cubic[]; visible: boolean; locked: boolean; depth: number }
 export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[] }
 
-const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
+export const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
 
 /** Paint order key: container order, then index within the container, then depth offset. */
-function orderKey(store: DocStore, parentId: RecordId<ContainerRecord>, index: string) {
+export function orderKey(store: DocStore, parentId: RecordId<ContainerRecord>, index: string) {
   const parent = store.get(parentId) as ContainerRecord | undefined
   return `${parent?.index ?? ''}/${index}`
 }
 
-function evalCurve(curve: CurveRecord, m: Affine, overrides: Record<string, Vec>, address: string): Pick<EvalCurve, 'anchors' | 'segments'> {
+export function evalCurve(curve: CurveRecord, m: Affine, overrides: Record<string, Vec>, address: string): Pick<EvalCurve, 'anchors' | 'segments'> {
   const anchors: Record<string, EvalAnchor> = {}
   for (const a of Object.values(curve.anchors)) {
     const local = overrides[`${curve.id}#${a.id}`] ?? a.p
@@ -53,7 +54,13 @@ function evalCurve(curve: CurveRecord, m: Affine, overrides: Record<string, Vec>
   return { anchors, segments }
 }
 
+/**
+ * Full, uncached evaluation of the whole document. Kept as the independent reference that the
+ * incremental evaluation (derived.ts) is compared against (dot: final results are checked against
+ * an independent full recompute).
+ */
 export function evaluate(store: DocStore): Evaluated {
+  counters.fullEvals++
   const curves: EvalCurve[] = []
   const byCurveId = new Map<string, EvalCurve>()
   for (const c of all(store, 'curve') as CurveRecord[]) {
@@ -103,8 +110,9 @@ export function evaluate(store: DocStore): Evaluated {
     const rec = store.get(addr.split('/')[0] as any) as any
     return rec ? orderKey(store, rec.parentId, rec.index) : ''
   }
-  curves.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth)
-  fills.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth)
+  // address breaks ties (e.g. the curves of one reference instance), so paint order is deterministic
+  curves.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth || a.address.localeCompare(b.address))
+  fills.sort((a, b) => order(a.address).localeCompare(order(b.address)) || a.depth - b.depth || a.address.localeCompare(b.address))
   return { curves, fills }
 }
 

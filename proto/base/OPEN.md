@@ -33,6 +33,29 @@ and affected angles); unrelated layers are not touched. Acceptance criteria (dot
 Then, verified together with a few recorded angles: incremental = full recompute. Only after that,
 decide from measurements how the drawing layer changes (no renderer rewrite is presumed).
 
+### Step 1 — indexes, per-record caches, counters (implemented, not yet reviewed by dot)
+
+- `src/indexes.ts`: connections by anchor, children by parent, fills by curve, references by source;
+  incremental from the store's change history (port of tldraw `StoreQueries.index`, public APIs only).
+  Used by `linkedAnchors`, container transforms and the incoming-relation check (no type scans left
+  on the edit path).
+- `src/derived.ts`: one cached result per curve, per fill, per (reference × source curve) —
+  tldraw `createComputedCache` / `computed`; bounded `KeyedComputedCache` (capacity, LRU).
+- `src/counters.ts`: plans, index builds/steps/queries, curve/fill/instance evaluations, assembled
+  items, full evaluations, rebuilt canvas objects.
+- Tests: `test/derived.test.ts` (undo/redo, reopen = new store, same id → new record, flag and
+  relation changes, first build vs continuous drag), `test/scaling.test.ts`, property I11 (incremental
+  = full recompute every step) and I12 (every index answer = brute-force scan) — mutations M13–M17
+  caught.
+- Measured (`test/scaling.test.ts`, synthetic, node, informational): a continuous drag of one free
+  anchor costs the same with 121 and 3000 curves — 1 plan, 1 index query, 1 curve evaluation, 0 index
+  rebuilds. Per-item reader ≈ 0.04–0.08 ms per drag. A WHOLE-LIST reader (what the current Fabric view
+  does) still re-collects every item: 3000 curves ≈ 12.4 ms per drag vs ≈ 14.5 ms for the full
+  uncached evaluation — so the drawing layer only benefits if it consumes changed items.
+- Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
+  so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
+  store per move; onion skin / angle caching not started (pose track is not in the store yet).
+
 ## Open
 
 1. Not covered by tests yet: fill picking and save/reopen through the UI (the slice has no save/open

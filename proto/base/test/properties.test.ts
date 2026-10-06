@@ -18,6 +18,9 @@
 //  I9 a subscriber that throws cannot make the result lie: written ⇔ document changed ⇔ one new
 //     undo step (and undo restores); rejected/no-op ⇔ nothing changed (dot's review of 90692ad)
 //  I10 an outer transaction that rolls back restores document, history, revision and dirty state
+//  I11 after every step the incremental evaluation (caches) equals the full uncached recompute —
+//      including after undo/redo, rollbacks, outer aborts, throwing subscribers and reopen
+//  I12 after every step each index answer equals a brute-force scan of the raw records
 import { react, transaction } from '@tldraw/state'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
@@ -25,6 +28,8 @@ import { createApi } from '../src/api'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
+import { evaluate } from '../src/evaluate'
+import { childrenOf, connectionsAt, fillsUsing } from '../src/indexes'
 import { graphProblems } from '../src/model'
 import { Container, validateRecord, type ConnectionRecord, type CurveRecord, type DocRecord } from '../src/schema'
 
@@ -244,6 +249,19 @@ function checkStatic(e: Editor) {
   // raw records, NOT a JSON round trip: JSON turns NaN/±Infinity into null and would hide them (dot)
   expect(integrityProblems(records(e) as unknown as Raw[])).toEqual([])
   // I6' every accepted state reopens — not only at explicit save points (dot: "written OK, then can't open")
+  // I11 incremental evaluation (caches + indexes) equals the independent full recompute, every step
+  expect(e.derived.evaluated()).toEqual(evaluate(e.reader))
+  // I12 every index answer equals a brute-force scan of the raw records (independent of src/indexes)
+  const rs = records(e) as any[]
+  const expectSame = (got: string[], want: string[]) => expect([...got].sort()).toEqual([...want].sort())
+  for (const c of rs.filter((r) => r.typeName === 'connection'))
+    for (const end of c.ends) {
+      const k = `${end.curveId}#${end.anchorId}`
+      expectSame(connectionsAt(e.reader, k), rs.filter((x) => x.typeName === 'connection' && x.ends.some((y: any) => `${y.curveId}#${y.anchorId}` === k)).map((x) => x.id))
+    }
+  for (const p of rs.filter((r) => r.typeName === 'container'))
+    for (const t of ['container', 'curve', 'fill', 'reference'] as const) expectSame(childrenOf(e.reader, p.id, t), rs.filter((x) => x.typeName === t && x.parentId === p.id).map((x) => x.id))
+  for (const c of rs.filter((r) => r.typeName === 'curve')) expectSame(fillsUsing(e.reader, c.id), rs.filter((x) => x.typeName === 'fill' && x.boundary.some((b: any) => b.curveId === c.id)).map((x) => x.id))
   // JSON round trip on purpose here: that is what a saved file goes through
   const snap = JSON.parse(JSON.stringify(e.reader.getStoreSnapshot('document')))
   expect(() => Editor.open(snap)).not.toThrow()

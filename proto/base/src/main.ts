@@ -1,4 +1,5 @@
 // Slice page: one Editor, one Fabric projection, and the AI API exposed on window for parity tests.
+import { counters, resetCounters } from './counters'
 import { createApi } from './api'
 import { Editor } from './editor'
 import { evaluate } from './evaluate'
@@ -36,6 +37,6 @@ if (bench && onionCount) {
   view.render()
 }
 Object.assign(window, {
-  __contour: { editor, api, view, evaluate, ids },
+  __contour: { editor, api, view, evaluate, ids, counters, resetCounters },
   __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, track, n ? onionYaws(n) : [], samples) },
 })

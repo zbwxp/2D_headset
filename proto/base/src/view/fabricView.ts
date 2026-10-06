@@ -6,6 +6,7 @@
 //   Group transform kept as an attribute (we read its matrix, we never trust its children):
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
+import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
@@ -110,6 +111,8 @@ export class FabricView {
     this.projecting = true
     try {
       this.project(ev, store)
+      // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
+      counters.canvasObjects += this.canvas.getObjects().length
     } finally {
       this.projecting = false
     }

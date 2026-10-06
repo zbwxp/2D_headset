@@ -30,6 +30,7 @@ import { atom, transaction } from '@tldraw/state'
 import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type RecordsDiff, type StoreSnapshot } from '@tldraw/store'
 import { isEqual } from '@tldraw/utils'
 import { plan, type Command, type EditError } from './commands'
+import { Derived } from './derived'
 import { graphProblems } from './model'
 import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
 
@@ -64,6 +65,8 @@ export class Editor {
   readonly #store: DocStore
   /** Read-only view for evaluation, views and the API. */
   readonly reader: DocReader
+  /** Incremental evaluation of this document (same results as `evaluate(reader)`). */
+  readonly derived: Derived
   // History state is transactional (atoms): rolled back together with the document.
   readonly #undo = atom<Entry[]>('undo', [])
   readonly #redo = atom<Entry[]>('redo', [])
@@ -94,7 +97,9 @@ export class Editor {
       allRecords: s.allRecords.bind(s),
       getStoreSnapshot: s.getStoreSnapshot.bind(s),
       serialize: s.serialize.bind(s),
+      query: s.query,
     }
+    this.derived = new Derived(s)
   }
 
   get isDirty() {

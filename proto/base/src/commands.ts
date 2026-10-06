@@ -5,7 +5,9 @@
 // Expected failures (LOCKED, FILL_NOT_CLOSED, …) are detected while planning, before anything is
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
-import { actualKind, all, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
+import { counters } from './counters'
+import { connectionsAt, fillsUsing, within } from './indexes'
+import { actualKind, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
   Curve,
@@ -117,6 +119,7 @@ export function plan(store: DocStore, cmd: Command): Plan {
 }
 
 function planChecked(store: DocStore, cmd: Command): Plan {
+  counters.plans++
   const p = planRaw(store, cmd)
   if (!p.ok) return p
   const guard = writeGuard(store, cmd, p.puts, new Set(p.creates ?? []))
@@ -145,18 +148,18 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
   const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
   const next = { get: (id: string) => overlay.get(id) ?? store.get(id as any) } as Pick<DocStore, 'get'>
   const problems = puts.flatMap((r) => recordProblems(next, r))
-  const incoming = new Set<DocRecord['typeName']>()
+  // Incoming relations, looked up through the indexes (not by scanning a type): connections at an
+  // anchor a curve loses, fills reading a curve that loses a segment. A container changing parent
+  // needs no incoming check: a cycle through it is found on the container itself (outgoing rule).
+  const incoming = new Set<string>()
   for (const r of puts) {
     const old = store.get(r.id as any) as DocRecord | undefined
     if (old?.typeName === 'curve' && r.typeName === 'curve') {
-      const lostAnchor = Object.keys(old.anchors).some((k) => !r.anchors[k])
-      const lostSegment = old.segments.some((s) => !r.segments.some((t) => t.id === s.id))
-      if (lostAnchor) incoming.add('connection')
-      if (lostSegment) incoming.add('fill')
+      for (const k of Object.keys(old.anchors)) if (!r.anchors[k]) for (const c of connectionsAt(store, anchorKey({ curveId: r.id, anchorId: k }))) incoming.add(c)
+      if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
     }
-    if (old?.typeName === 'container' && r.typeName === 'container' && old.parentId !== r.parentId) incoming.add('container')
   }
-  for (const type of incoming) for (const r of all(store, type)) if (!overlay.has(r.id)) problems.push(...recordProblems(next, r))
+  for (const id of incoming) if (!overlay.has(id)) problems.push(...recordProblems(next, store.get(id as any) as DocRecord))
   return problems
 }
 
@@ -237,10 +240,12 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       // (Illustrator behaviour) so the comparison can be made later with real numbers.
       if (!cmd.containerIds.length) return fail('INVALID', 'no containers', [])
       for (const id of cmd.containerIds) if (!getAs(store, id, 'container')) return notFound(store, id, 'container')
-      const within = (parentId: RecordId<ContainerRecord> | null) => cmd.containerIds.some((id) => isWithin(store, parentId, id))
-      const curves = (store.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).filter((c) => within(c.parentId))
+      // Content of the containers via the parent index (no scan of the whole document); a container
+      // nested inside another selected one is visited once.
+      const uniq = <T extends { id: string }>(xs: T[]) => [...new Map(xs.map((x) => [x.id, x])).values()]
+      const curves = uniq(cmd.containerIds.flatMap((id) => within(store, id, 'curve')).map((id) => store.get(id) as CurveRecord))
       // References placed inside the containers move with them: compose their placement transform.
-      const refs = (store.allRecords().filter((r) => r.typeName === 'reference') as ReferenceRecord[]).filter((r) => within(r.parentId))
+      const refs = uniq(cmd.containerIds.flatMap((id) => within(store, id, 'reference')).map((id) => store.get(id) as ReferenceRecord))
       for (const r of refs) {
         const locker = lockedBy(store, r.parentId)
         if (locker) return fail('LOCKED', `reference ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
