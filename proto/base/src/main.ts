@@ -7,6 +7,7 @@ import { exampleRecords, ids } from './fixture'
 import { FabricView } from './view/fabricView'
 import { runScopeA } from './bench'
 import { onionYaws, syntheticPoses, syntheticRecords } from './synthetic'
+import { paintCases } from './paintCases'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
@@ -15,7 +16,10 @@ const benchShapes = bench
   ? syntheticRecords({ curves: num('curves') ?? 121, layers: 8, fills: num('fills') ?? 15, fillSize: num('fillSize'), fillSpacing: num('fillSpacing'), fillCols: num('fillCols') })
   : []
 const benchRecords = [...benchShapes, ...syntheticPoses(benchShapes)]
-const editor = new Editor(bench ? benchRecords : exampleRecords())
+// ?case=<name>: one of the paint-order contract's small documents (PAINT-ORDER.md §2)
+const paintCase = params.has('case') ? paintCases[params.get('case')!] : undefined
+if (params.has('case') && !paintCase) throw Error(`unknown case ${params.get('case')}`)
+const editor = new Editor(paintCase ? paintCase.records() : bench ? benchRecords : exampleRecords())
 const api = createApi(editor)
 const statusEl = document.getElementById('status')!
 const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, editor, (s) => (statusEl.textContent = s))
@@ -37,6 +41,7 @@ window.addEventListener('keydown', (e) => {
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
 // objects; measuring a mostly off-screen drawing would understate the real cost)
 if (bench) view.fitToContent()
+if (paintCase) (view.canvas.setViewportTransform([3, 0, 0, 3, 20, 20]), view.render())
 // ?renderer=b: draw A-mode scenes with the Canvas2D reference path (same output) instead of Fabric
 if (params.get('renderer') === 'b') view.useCanvas2DRef()
 const onionCount = Number(params.get('onion') ?? 0)
@@ -45,6 +50,6 @@ if (bench && onionCount) {
   view.render()
 }
 Object.assign(window, {
-  __contour: { editor, api, view, evaluate, ids, counters, resetCounters },
+  __contour: { editor, api, view, evaluate, ids, counters, resetCounters, paintCase },
   __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, n ? onionYaws(n) : [], samples) },
 })

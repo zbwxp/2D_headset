@@ -8,8 +8,9 @@ compositing design. OPEN.md and bench-results point here instead of restating ru
 
 - **Requirement** — fixed by bowen (doc 11 / RC-16). Not re-asked.
 - **明确** — expected result follows from a requirement. Tested independently: a small picture whose
-  expected colour at named points is written down in advance, checked in the evaluation's paint list,
-  in Fabric (A) and in B. A is never compared with B as the proof. A counterexample in today's code is
+  expected colour at named points is written down in advance (`src/paintCases.ts`), checked in Fabric
+  (A) and in B (`e2e/paint-order.spec.ts`, in the gate); the evaluation's own paint list is checked too
+  once the core produces one (today it returns separate curve and fill lists). A is never compared with B as the proof. A counterexample in today's code is
   recorded as a known failure until fixed.
 - **Proposal** — our (Claude + dot) design for a technical gap, with counterexamples. Not a user
   choice. No test and no known failure until dot and Claude agree; then it becomes 明确.
@@ -47,25 +48,31 @@ the overlap; order [F, C] → blue. Today: blue in both → known failure.
 boundary. Red at the overlap; layers swapped → blue. Today: blue in both → known failure (dot
 reproduced it in the 0264deb review).
 
-**P3 — nested containers (R1).** Top level: L1 (`a0`) behind L2 (`a1`). L1 = [group G (`a5`) = [red F]],
-L2 = [blue C (`a0`)] over F, C not F's boundary. Blue at the overlap; swap L1 / L2 indexes → red.
-Today: key "direct parent index / own index" puts F (`a5/…`) in front → expected known failure.
+**P3 — nested containers (R1).** Two lines, so today's fill / line split plays no part. Top level: L1
+(`a0`) behind L2 (`a1`). L1 = [group G (`a5`) = [red line R]], L2 = [blue line C (`a0`)] crossing R.
+Blue at the crossing. Today: the key "direct parent index / own index" puts R (`a5/…`) in front → red
+→ known failure.
 
-**P4 — fractional index comparison (R1).** Siblings with indexes `a0B` (red F) and `a0a` (blue C), C
-not F's boundary. By character code `a0B` < `a0a` → C in front → blue. Today: `localeCompare` puts
-`a0a` first → known failure.
+**P4 — fractional index comparison (R1).** Siblings red line R (`a0B`) and blue line C (`a0a`) crossing.
+By character code `a0B` < `a0a` → C in front → blue. Today: `localeCompare` puts `a0B` later → red →
+known failure.
 
-**P6 — own boundary strokes stay visible (R4).** Red F with boundary curve B (blue). F placed in front
-of B by order. At a point on B's stroke inside F: the blue stroke colour; for a 50 % blue B the pixel
-equals the same B over F's colour painted once (no darkening from painting twice). Today: passes only
-because all curves are painted after all fills.
+**P6 — own boundary strokes stay visible (R4).** Red F bounded by its own opaque blue curve B, F later
+(in front). At (40, 11) — on B's stroke, 1 unit inside F — blue; at the centre red. Today: passes only
+because all curves are painted after all fills. (The expected picture for a semi-transparent own
+stroke is NOT fixed here: it depends on D2, counterexample 1.)
 
 **P7 — other objects cover a fill normally (R4).** F in L2; unrelated blue curve U in L3 → blue at the
 overlap; unrelated blue curve V in L1 → red at the overlap (F covers V). Guards against "lines always
 on top". Today: V painted over F → known failure.
 
-**P10 — inherited visibility (R6).** Hide the parent container → its curves and fills leave the
-background colour. Today: data tests only; picture test expected to pass.
+**P10 — inherited visibility (R6).** L (hidden) = [G (shown) = [B, F], C (shown)] → transparent at the
+sample points. Control case with L shown → F and C painted there (so P10 cannot pass by painting
+nothing). Today: passes.
+
+**Results today (A and B identical):** P1 fill-after-line, P2 fill-layer-in-front, P3, P4, P7 fail as
+predicted (known failures, listed by the gate); P1 line-after-fill, P2 line-layer-in-front, P6, P10
+and its control pass.
 
 ## 3. Proposals (Claude → dot)
 
