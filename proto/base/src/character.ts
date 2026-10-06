@@ -19,7 +19,7 @@ export function ctxOf(store: BaseReader & { query?: { ids: (t: any) => { get: ()
 }
 
 export type CurveGrid = { neutral: Shape[]; expr: Record<string, Shape[]>; visible: { yaw: number; visible: boolean }[] | null }
-export type CharacterGrid = { characterId: string; yaws: number[]; params: string[]; curves: Record<string, CurveGrid>; front: Record<string, Shape> | null; retained: number }
+export type CharacterGrid = { characterId: string; yaws: number[]; params: string[]; curves: Record<string, CurveGrid>; front: Record<string, Shape | null>; retained: number }
 export type Prepared = { ok: true; grid: CharacterGrid } | { ok: false; problems: string[] }
 
 // ---------- shape arithmetic (absolute control points) ----------
@@ -260,9 +260,9 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   if (problems.length) return { ok: false, problems }
 
   const curves: Record<string, CurveGrid> = Object.fromEntries(fam.curves.map((c) => [c, { neutral: neutral[c], expr: expr[c], visible: visibility[c] }]))
-  const allFront = fam.curves.every((c) => frontOf(c)) ? Object.fromEntries(fam.curves.map((c) => [c, frontOf(c)!])) : null
-  const retained = fam.curves.length * yaws.length * (1 + params.length) + (allFront ? fam.curves.length : 0)
-  return { ok: true, grid: { characterId, yaws, params, curves, front: allFront, retained } }
+  const front = Object.fromEntries(fam.curves.map((c) => [c, frontOf(c)]))
+  const retained = fam.curves.length * yaws.length * (1 + params.length) + Object.values(front).filter(Boolean).length
+  return { ok: true, grid: { characterId, yaws, params, curves, front, retained } }
 }
 
 /** Step 9: read-only playback — bilinear in (yaw, expression value) on the grid; no-yaw context = the front. */
@@ -271,9 +271,10 @@ export function playCharacter(grid: CharacterGrid, at: { yaw?: number; params?: 
   if (active.length > 1) return { ok: false, problems: ['several expressions at once are not supported (deferred)'] }
   for (const [p, x] of active) if (!grid.params.includes(p) || !(x >= 0 && x <= 1)) return { ok: false, problems: [`expression ${p} = ${x} is not playable`] }
   if (at.yaw === undefined) {
-    if (!grid.front) return { ok: false, problems: ['the no-yaw context needs an original for every participating preset'] }
+    const missing = Object.entries(grid.front).filter(([, f]) => !f).map(([c]) => c)
+    if (missing.length) return { ok: false, problems: [`the no-yaw context needs an original for every participating preset (${missing.join(', ')})`] }
     if (active.length) return { ok: false, problems: ['expressions in the no-yaw context are not supported'] }
-    return { ok: true, shapes: grid.front, visible: Object.fromEntries(Object.keys(grid.curves).map((c) => [c, true])) }
+    return { ok: true, shapes: grid.front as Record<string, Shape>, visible: Object.fromEntries(Object.keys(grid.curves).map((c) => [c, true])) }
   }
   const yaw = at.yaw
   const keys = grid.yaws.map((y, i) => ({ yaw: y, i }))

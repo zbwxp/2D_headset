@@ -355,7 +355,9 @@ export class Editor {
 const errorMessage = (e: unknown) => String((e as Error)?.message ?? e)
 
 /** What a command is aimed at: its type and identifier fields (not its geometry, which changes during a gesture). */
-const TARGET_FIELDS = ['curveId', 'segmentId', 'anchorId', 'parentId', 'preset', 'connectionId', 'referenceId', 'containerId', 'containerIds', 'a', 'b', 'targets', 'target', 'ids']
+// owner / character / state are part of the target (dot 1791313511): a plan for another character, preset, yaw or
+// expression parameter never reuses the ids of this one
+const TARGET_FIELDS = ['curveId', 'segmentId', 'anchorId', 'parentId', 'preset', 'character', 'param', 'yaw', 'connectionId', 'referenceId', 'containerId', 'containerIds', 'a', 'b', 'targets', 'ids']
 const targetOf = (cmd: Command) => JSON.stringify([(cmd as { type: string }).type, ...TARGET_FIELDS.map((f) => (cmd as Record<string, unknown>)[f] ?? null)])
 
 /**

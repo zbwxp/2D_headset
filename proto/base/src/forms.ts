@@ -192,7 +192,9 @@ function characterProblems(store: Get, r: CharacterRecord, p: (f: string, t: str
           const others = connectionsAt(store as BaseReader, `${e.curveId}#${e.anchorId}`).filter((c) => c !== conn.id)
           if (others.length) p(`takeovers.${t.id}`, others.join(', '), `node of ${conn.id} is also in ${others.join(', ')}: node takeovers on connected groups are not supported`)
         }
-      if (!ids.has(t.basisFrom)) p(`takeovers.${t.id}.basisFrom`, t.basisFrom, `basisFrom ${t.basisFrom} is not a takeover of ${r.id} (it only records where the copied L came from)`)
+      // provenance only (the copied L is the authority): a line takeover of this character, or a declared blend
+      if (typeof t.basisFrom === 'string' ? !ids.has(t.basisFrom) : t.basisFrom.kind !== 'blend')
+        p(`takeovers.${t.id}.basisFrom`, typeof t.basisFrom === 'string' ? t.basisFrom : JSON.stringify(t.basisFrom), `basisFrom ${typeof t.basisFrom === 'string' ? t.basisFrom : JSON.stringify(t.basisFrom)} is not a takeover of ${r.id} nor a blend basis (it only records where the copied L came from)`)
     }
   }
   for (const f of r.exprFixes) {

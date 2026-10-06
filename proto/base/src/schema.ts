@@ -138,7 +138,9 @@ export interface HelperDomainRecord extends BaseRecord<'helperDomain', RecordId<
 export type PointDelta = { dp: Vec; dIn: Vec; dOut: Vec }
 export type Takeover =
   | { kind: 'line'; id: string; curveId: RecordId<CurveRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Shape; basisFront: Shape; L: [number, number, number, number] }
-  | { kind: 'node'; id: string; connectionId: RecordId<ConnectionRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Vec; basisFront: Vec; L: [number, number, number, number]; basisFrom: string }
+  | { kind: 'node'; id: string; connectionId: RecordId<ConnectionRecord>; state: { yaw: number }; direction: { from: number; to: number }; target: Vec; basisFront: Vec; L: [number, number, number, number]; basisFrom: string | BlendBasis }
+/** Where a node takeover's copied L came from when no line takeover provided it: the weighted helper domains (§24.2). */
+export type BlendBasis = { kind: 'blend'; yaw: number; weights: Record<string, number> }
 export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; state: { yaw: number } & Record<string, number>; target: Shape; base: Shape; ruleVersion: number }
 /** A character: weights, front fine-tune (offsets over the preset blend), takeovers with frozen L, expression fixes. */
 export interface CharacterRecord extends BaseRecord<'character', RecordId<CharacterRecord>> {
@@ -345,7 +347,12 @@ export const Character = createRecordType<CharacterRecord>('character', {
         check(isObj(t) && typeof t.id === 'string', `character ${r.id} takeover id`)
         check(isL(t.L) && isNum(t.state?.yaw) && isNum(t.direction?.from) && isNum(t.direction?.to), `character ${r.id} takeover ${t.id}`)
         if (t.kind === 'line') check(typeof t.curveId === 'string' && isShape(t.target) && isShape(t.basisFront), `character ${r.id} takeover ${t.id} shapes`)
-        else check(t.kind === 'node' && typeof t.connectionId === 'string' && isVec(t.target) && isVec(t.basisFront) && typeof t.basisFrom === 'string', `character ${r.id} takeover ${t.id}`)
+        else
+          check(
+            t.kind === 'node' && typeof t.connectionId === 'string' && isVec(t.target) && isVec(t.basisFront) &&
+              (typeof t.basisFrom === 'string' || (isObj(t.basisFrom) && t.basisFrom.kind === 'blend' && isNum(t.basisFrom.yaw) && isObj(t.basisFrom.weights) && Object.values(t.basisFrom.weights).every(isNum))),
+            `character ${r.id} takeover ${t.id}`,
+          )
       }
       for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && isShape(f.target) && isShape(f.base) && isNum(f.ruleVersion) && isNum(f.state?.yaw), `character ${r.id} exprFix ${f?.id}`)
       return r

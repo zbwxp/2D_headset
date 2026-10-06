@@ -170,7 +170,7 @@ describe('cache, budget and the runtime entry', () => {
     const p = e.derived.character(K)
     expect(p.ok).toBe(true)
     if (p.ok) expect(e.derived.yawRetainedItems.used - used).toBe(p.grid.retained)
-    if (p.ok) expect(p.grid.retained).toBe(3 * 4 * 2 + 0) // 3 curves × 4 yaws × (neutral + blink); no front (strand has no original)
+    if (p.ok) expect(p.grid.retained).toBe(3 * 4 * 2 + 2) // 3 curves × 4 yaws × (neutral + blink) + the fronts of the two lids (strand has no original)
     expect(e.derived.yawRetainedItems.consistent()).toBe(true)
   })
 
