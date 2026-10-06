@@ -29,7 +29,12 @@ R3. Lines AND fills have a depth offset that can move them across layers.
 R4. A fill never covers the strokes of its own boundary (bowen: to an artist a fill sits tight against
     its lines; it is stored on the line's centre line only for simplicity, so the stroke looks like it
     covers the fill's edge. Offsets exist to cover OTHER lines — e.g. near 90° the side-face patch is
-    brought forward to cover the side-face edge lines — never the fill's own outline); every other object covers / is covered by it
+    brought forward to cover the side-face edge lines — never the fill's own outline). A fill and its
+    own outline are NOT a pair the user orders against each other: to remove an outline, hide the line
+    or use a display interval; the offset handles layering against everything else (dot). The own-
+    boundary relation is part of the compositing rule, not of the ordering; "what if the fill is
+    dragged in front of its own outline" is not a creative need to support, and no ordering option or
+    conflict handling exists for it. Storage stays on the centre line; every other object covers / is covered by it
     normally. R4 is NOT "the boundary is always visible": a display interval can still hide
     the stroke and objects in front still cover it; only its own fill must not eat it (dot).
 R5. Global contradictions can be detected; local interleaving must not be mistaken for one (RC-16).
@@ -63,8 +68,8 @@ Blue at the crossing. Today: the key "direct parent index / own index" puts R (`
 By character code `a0B` < `a0a` → C in front → blue. Today: `localeCompare` puts `a0B` later → red →
 known failure.
 
-**P6 — own boundary strokes stay visible (R4).** Red F bounded by its own opaque blue curve B, F later
-(in front). At (40, 11) — on B's stroke, 1 unit inside F — blue; at the centre red. Today: passes only
+**P6 — own boundary strokes stay visible (R4).** Red F bounded by its own opaque blue curve B, F ends up
+later than B (as when an offset brings a fill forward over other lines, bowen's side-face case). At (40, 11) — on B's stroke, 1 unit inside F — blue; at the centre red. Today: passes only
 because all curves are painted after all fills. (The expected picture for a semi-transparent own
 stroke is NOT fixed here: it depends on D2, counterexample 1.)
 
@@ -107,9 +112,11 @@ back layer; F red `rgb(255,0,0)`):
    over the BACKDROP once = `rgb(64,64,192)` — natural result of "F leaves out B's ink". With F
    BEHIND B (the usual order) the same point is blue over red = `rgb(128,0,128)`. A violation would
    be `rgb(255,0,0)` (F ate B) or anything darker than one blue layer (B painted twice).
-   Open (dot): bowen's "fill sits tight against the lines" suggests F should leave out its own ink
-   whatever the order, which would make the usual order also `rgb(64,64,192)` and the picture
-   independent of order. v103 only leaves out strokes behind the fill. Not decided; no test yet.
+   Proposed reading of R4 (to confirm with dot): "the fill meets the FULL stroke seamlessly" means F
+   never paints under its own visible ink, whatever the order — then the usual order is also
+   `rgb(64,64,192)` and the picture does not depend on order. v103 leaves out only strokes behind
+   the fill (for opaque strokes the two are identical). Cost: every fill with a visible own stroke is
+   clipped, not only forward-moved ones. No test until confirmed.
 2. An unrelated opaque green object X with B < X < F (B opaque blue). On B's ink inside F: where X
    covers it → green (X is in front of B by order, and F leaves the area out) — natural result; where
    X does not → blue. A violation would be red there (F ate B) or blue where X should cover.
