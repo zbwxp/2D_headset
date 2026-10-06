@@ -12,8 +12,8 @@
 | 步骤 | 基本工具 | 保留的数据 | 限制 | 来源（已读） |
 | --- | --- | --- | --- | --- |
 | 1 勾线 | 线稿图层（CSP 可以是矢量图层），放在颜色层**上面** | 图层在图层栈里的位置 | — | CSP「Fill Tool」：「keep your lineart and color layers separate」 |
-| 2 底色 | 填充工具参照线稿层填色（CSP「Refer other layers」/ 参照图层）；参照矢量图层时可以填到矢量路径 | 填出来的是**像素**，不保留和线稿的关系；参照图层只是一个图层标记 | 填完后改线稿，底色不会跟着变（与 Illustrator 实时上色不同）；填到矢量「中心线」的说法只在摘要里见到，原页未读 | CSP「Fill Tool」「Advanced Fill」：「When referencing a vector layer, this fills up to the vector path」 |
-| 3 阴影 / 暗面 | 新图层放在底色层上方，**剪贴到下方图层**（PS 剪贴蒙版 / CSP「Clip to Layer Below」）；或在底色层上「锁定透明像素」直接画 | 每个图层一个「剪贴到下方」标记；锁定透明像素也是图层标记 | PS：参与剪贴的图层必须在基底上方连续排列，并沿用基底的不透明度和混合模式；在两个剪贴层之间插入的新层会自动加入剪贴（PS、CSP 都是）；CSP：混合模式为「Through」的图层文件夹不能作为剪贴基底 | PS「Reveal layers with clipping masks」；CSP「Other layer settings」 |
+| 2 底色 | 填充工具参照线稿层填色（CSP「Refer other layers」/ 参照图层）；参照矢量图层时填到矢量的中心线 | 填出来的是**像素**，不保留和线稿的关系；参照图层只是一个图层标记 | 一次性取边界：填完后改线稿，底色不会跟着变（与 Illustrator 实时上色持续重新分配颜色不同） | CSP「Fill Tool」「Advanced Fill」：「When referencing a vector layer, this fills up to the vector path」（Claude 已读）；中心线：810_subtools/A.htm（dot 核对） |
+| 3 阴影 / 暗面 | 新图层放在底色层上方，**剪贴到下方图层**（PS 剪贴蒙版 / CSP「Clip to Layer Below」）；或在底色层上「锁定透明像素」直接画 | 每个图层一个「剪贴到下方」标记；锁定透明像素也是图层标记 | PS：参与剪贴的图层必须在基底上方连续排列；帮助原文说被剪贴的层沿用基底的不透明度和模式属性，而基底的混合模式是影响整组还是只影响基底，由「Blend Clipped Layers As Group」选项决定——不能写成无条件覆盖所有内容层属性；在两个剪贴层之间插入的新层会自动加入剪贴（PS、CSP 都是）；CSP：混合模式为「Through」的图层文件夹不能作为剪贴基底 | PS「Reveal layers with clipping masks」；CSP「Other layer settings」 |
 | 4 柔和、5 高光 | 同 3，继续叠剪贴层（混合模式各自设） | 同上 | 同上 | 同上 |
 | 编组 | 图层组 / 文件夹；PS 默认「穿透」（组没有自己的混合属性），改成其他模式则组先合成为一张图再和外面混合 | 组的混合模式 | 非穿透的组内的调整和混合模式不再影响组外 | PS「Layer opacity and blending」 |
 
@@ -29,15 +29,15 @@
 | --- | --- | --- |
 | SVG（矢量标准） | **同一个形状**同时有填充和描边；默认绘制顺序是先填充、再描边、再标记（`paint-order: normal`）。描边骑在轮廓中线上，所以填充铺到中线，描边盖住它的边缘 | W3C SVG 2 §13.8「paint-order」 |
 | Illustrator 实时上色（Live Paint） | 把若干路径做成一个实时上色组：路径分出的区域叫「面」，路径在交点之间的部分叫「边」；面填色、边描边；**组内所有路径在同一个平面上，没有谁在谁前面**；改路径形状后，颜色自动重新套到新区域上；颜色属于面和边，不属于路径本身。限制：组内不能做剪贴蒙版、Pathfinder 等，透明度、效果只能作用于整组 | Adobe 帮助「About Live Paint」 |
-| Clip Studio Paint | 线稿和颜色分在不同图层（颜色层在线稿下面）；填充工具「Refer other layers」参照线稿层来填，用来「keep your lineart and color layers separate」；参照矢量图层时可以「fills up to the vector path」 | CSP 用户指南「Fill Tool」「Advanced Fill」（「矢量的中心线」一说只在 Google 摘要里看到，原页面未读） |
+| Clip Studio Paint | 线稿和颜色分在不同图层（颜色层在线稿下面）；填充工具「Refer other layers」参照线稿层来填，用来「keep your lineart and color layers separate」；参照矢量图层时可以「fills up to the vector path」，参照的是矢量的中心线。这是**填色时参考边界**，填完是一次性结果，不等同于 Live Paint 那种修改路径后持续重新分配颜色 | CSP 用户指南「Fill Tool」「Advanced Fill」（Claude 已读）；中心线的官方正文见 help.clip-studio.com/en-us/manual_en/810_subtools/A.htm（dot 核对） |
 
-**共同点（只限这三条已查的流程）**：「填充不盖自己的轮廓线」在这三条流程里都是**结构上成立**的——要么填充和描边属于同一个对象（SVG），要么填充和它的边属于同一个组、组内不分前后（Live Paint），要么线稿整层在颜色层上面（CSP）。这**不证明**所有成熟软件都没有别的合成方式（dot）。
+**共同点（只限这几条已核实的流程）**：这些流程让用户**通过对象结构或图层顺序保持线在色上**——要么填充和描边属于同一个对象（SVG），要么填充和它的边属于同一个组、组内不分前后（Live Paint），要么线稿整层在颜色层上面（CSP）。公开的操作模型**不能**证明闭源软件的内部实现，也不证明所有成熟软件都没有别的合成方式（dot）。
 
 ## W2 阴影 / 高光只画在色块范围内；W3 眼珠只显示在眼白里面
 
 | 软件 | 工具与组合 | 来源（已读） |
 | --- | --- | --- |
-| Photoshop 剪贴蒙版 | 「基底」图层的不透明部分决定上面图层的显示范围；参与剪贴的图层**必须在基底上方连续排列**；被剪贴的图层沿用基底的不透明度和混合模式 | Adobe 帮助「Reveal layers with clipping masks」 |
+| Photoshop 剪贴蒙版 | 「基底」图层的不透明部分决定上面图层的显示范围；参与剪贴的图层**必须在基底上方连续排列**；混合行为受「Blend Clipped Layers As Group」选项控制 | Adobe 帮助「Reveal layers with clipping masks」 |
 | Live2D 剪贴蒙版 | 被剪贴的 ArtMesh 在「Clipping ID」里**按 ID 引用**做蒙版的 ArtMesh（可以多个）；官方例子：眼白做蒙版，眼珠、高光、眨眼闪光被它剪贴；还有反向 / 反转蒙版；SDK 对蒙版数量有上限（Web / Native 每个模型 36），并且有性能负担，建议少用 | Live2D 手册「Clipping Mask」 |
 | Spine 剪贴附件 | 一个多边形，剪贴**画序中从它所在的槽到指定的结束槽**（含）之间的所有内容；顶点可以随骨骼变形、可以打关键帧；官方提示剪贴很昂贵 | Spine 用户指南「Clipping attachments」 |
 
@@ -64,7 +64,7 @@
 | --- | --- | --- |
 | Photoshop 图层组 | 默认混合模式「穿透（Pass Through）」：组没有自己的混合属性；改成其他模式后，组内先合成为一张图，再整体和外面混合，组内的调整图层和混合模式不再影响组外 | Adobe 帮助「Layer opacity and blending」 |
 
-这说明「穿透」和「先合成再混合」两种编组方式在 PS 里都存在；但**不能**证明 doc 12 提议里「普通容器的透明度逐个乘到子对象」这一条（dot）。CSS `isolation`、SVG 组透明度本次没有重新核对。
+这证明的是混合是否跨组、是否先合成（两种编组方式在 PS 里都存在）；**不能**证明 doc 12 提议里「普通容器的透明度逐个乘到子对象」这一条（dot）。CSS `isolation`、SVG 组透明度本次没有重新核对。
 
 ## 对照 doc 18 §1 候选工具的发现（供审）
 
