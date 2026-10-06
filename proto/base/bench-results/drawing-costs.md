@@ -60,6 +60,38 @@ workload even with A). Option A removes the rebuild / attach part (≈ 100–350
 workload) but not the repaint. B (a reference implementation with the same output) is the comparison
 for the repaint.
 
+## Reference drawing path B — same picture with plain Canvas2D (dot)
+
+`src/view/canvas2dRef.ts`, `?renderer=b`: draws the A-mode scene (onion yaws → fills → curves → anchor
+dots) with the same canvas size, DPR, viewport, styles and Fabric's defaults; Path2D built from the
+evaluated cubics, cached per evaluated item; the whole frame is repainted each render on the next
+animation frame (as Fabric does). Input, hit testing, planning and preview are unchanged.
+
+**Same picture, not pixel-identical** (`e2e/renderer-b.spec.ts`): example document — 245 of 44,133 ink
+pixels differ by > 32 levels, coverage equal; main workload fitted (zoom 0.745, ≈ 0.5 px strokes) —
+9,631 of 77,644 differ by > 32, total coverage within 0.41 %; at zoom 3 / 6 the share falls to 3.1 % /
+2.3 %, no 8 × 8 block at zoom 6 differs by > 5 % on average, coverage within 0.01 %; crops at zoom 6
+are visually identical. The differences are anti-aliasing at stroke edges.
+
+| workload | onion | drag | B renderAll | B input → draw call done | Fabric A renderAll | Fabric A input → draw call done |
+| --- | --- | --- | --- | --- | --- | --- |
+| 400 + 100 fills | 0 | free anchor | 1.9 ms | 17.7 ms | 552 ms | 570 ms |
+| 400 + 100 fills | 0 | fill boundary | 2.2 | 18.3 | 546 | 563 |
+| 400 + 100 fills | 19 | free anchor | 3.0 | 22.6 | 569 | 591 |
+| 400 + 100 fills | 19 | fill boundary | 2.8 | 21.8 | 567 | 589 |
+| stress 1000 | 0 | free anchor | 3.5 | 19.9 | 1,777 | 1,793 |
+| stress 1000 | 19 | free anchor | 16.5 | 37.1 | 1,378 | 1,414 |
+| stress 3000 | 0 | free anchor | 18.3 | 34.9 | 5,113 | 5,169 |
+| stress 3000 | 19 | free anchor | 50.7 | 85.2 | — (did not load) | — |
+
+Input → draw call done includes the wait for the next animation frame (≈ 16 ms) in both paths.
+
+**Limits — not a decision:** one Chromium run on one machine; B covers only the A-mode drawing (V mode
+with Fabric's transform box, selection etc. is still Fabric); Fabric ran with `objectCaching: false`
+everywhere — Fabric's own object caching was NOT tried and should be measured (with the same pixel
+checks) before concluding; no fill materials; "draw call done" is not presentation; GPU time not
+measured.
+
 ## Option A — Fabric kept, objects reused (same display; dot) — measured OFF-SCREEN, see the correction above
 
 A-mode scene kept per drawn item; only items whose cached evaluation changed are rebuilt (paths) or

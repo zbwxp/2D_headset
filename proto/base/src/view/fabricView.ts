@@ -6,6 +6,7 @@
 //   Group transform kept as an attribute (we read its matrix, we never trust its children):
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
+import { Canvas2DRef } from './canvas2dRef'
 import { childrenOf } from '../indexes'
 import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
@@ -66,7 +67,8 @@ export class FabricView {
       if ((e as { ctx?: unknown }).ctx !== this.canvas.contextTop) renderStart = performance.now()
     })
     this.canvas.on('after:render', (e) => {
-      if ((e as { ctx?: unknown }).ctx === this.canvas.contextTop) return
+      // with the reference renderer B active, Fabric's main canvas is empty: B times its own draws
+      if ((e as { ctx?: unknown }).ctx === this.canvas.contextTop || this.ref) return
       const now = performance.now()
       this.timing.renderAll += now - renderStart
       this.timing.renders++
@@ -165,6 +167,26 @@ export class FabricView {
     this.canvas.setViewportTransform([z, 0, 0, z, margin - x0 * z, margin - y0 * z])
     this.render()
   }
+  /** Reference drawing path B (canvas2dRef.ts): when set, A-mode scenes are drawn by it, not Fabric. */
+  private ref: Canvas2DRef | null = null
+  private refFrame = 0
+  private refPaintedInput = 0
+  private refPending: { ev: Evaluated; onions: Evaluated[] } | null = null
+  /** Switch A-mode drawing to the Canvas2D reference (same size, DPR, viewport and order). */
+  useCanvas2DRef() {
+    const lower = this.canvas.lowerCanvasEl
+    const el = document.createElement('canvas')
+    el.width = lower.width
+    el.height = lower.height
+    el.style.cssText = `position:absolute;left:0;top:0;width:${lower.style.width};height:${lower.style.height};pointer-events:none`
+    lower.after(el) // between Fabric's (now empty) lower canvas and its upper (input) canvas
+    this.ref = new Canvas2DRef(el)
+    this.scene = null
+    this.render()
+  }
+  get refCanvas() {
+    return this.ref?.el ?? null
+  }
   /** Comparison mode: rebuild every object on every render (the behaviour before option A). */
   fullRebuildEachRender = false
   /** Next render rebuilds every object (tests compare the incremental scene with this). */
@@ -191,6 +213,28 @@ export class FabricView {
     const curves = ev.curves.filter((c) => c.visible)
 
     if (this.fullRebuildEachRender) this.scene = null
+    if (this.mode === 'A' && this.ref) {
+      // B: nothing for Fabric to draw; the reference repaints on the next animation frame (as Fabric does)
+      if (this.canvas.getObjects().length) this.canvas.remove(...this.canvas.getObjects())
+      this.refPending = { ev, onions }
+      if (!this.refFrame)
+        this.refFrame = requestAnimationFrame(() => {
+          this.refFrame = 0
+          const job = this.refPending!
+          this.refPending = null
+          const t0 = performance.now()
+          this.ref!.draw(this.canvas.viewportTransform as number[], this.canvas.getRetinaScaling(), job.ev, job.onions)
+          const now = performance.now()
+          this.timing.renderAll += now - t0
+          this.timing.renders++
+          if (this.lastInputTs > this.refPaintedInput) {
+            this.timing.inputToDrawDone += now - this.lastInputTs
+            this.timing.drawsAfterInput++
+            this.refPaintedInput = this.lastInputTs
+          }
+        })
+      return
+    }
     if (this.mode === 'A') {
       // the scene this render should show, in z-order (same order as the full build below)
       const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []

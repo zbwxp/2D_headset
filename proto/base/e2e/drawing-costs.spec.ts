@@ -73,6 +73,22 @@ for (const onion of [0, 19])
         console.log('[drawing-costs main]', JSON.stringify({ onion, drag: name, mode: fullRebuild ? 'full rebuild' : 'A', ...row }))
       })
 
+// Reference drawing path B (same picture, see e2e/renderer-b.spec.ts): same drags, same workloads
+for (const onion of [0, 19])
+  for (const [name, target] of [['free anchor', FREE], ['fill boundary', FILL_EDGE]] as const)
+    test(`main 400 curves + 100 overlapping fills, ${onion} onion, ${name}, renderer B`, async ({ page }) => {
+      test.setTimeout(300_000)
+      const row = await measure(page, `${MAIN}&onion=${onion}&renderer=b`, target)
+      console.log('[drawing-costs main]', JSON.stringify({ onion, drag: name, mode: 'B', ...row }))
+    })
+for (const curves of [1000, 3000])
+  for (const onion of [0, 19])
+    test(`stress ${curves} curves, ${onion} onion, renderer B`, async ({ page }) => {
+      test.setTimeout(300_000)
+      const row = await measure(page, `curves=${curves}&onion=${onion}&renderer=b`, FREE)
+      console.log('[drawing-costs stress]', JSON.stringify({ curves, onion, mode: 'B', ...row }))
+    })
+
 for (const curves of [1000, 3000])
   for (const onion of curves === 3000 ? [0] : [0, 19]) // 3000 × 19: the initial full build does not finish (known)
     test(`stress ${curves} curves, ${onion} onion, incremental (A)`, async ({ page }) => {

@@ -37,6 +37,8 @@ window.addEventListener('keydown', (e) => {
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
 // objects; measuring a mostly off-screen drawing would understate the real cost)
 if (bench) view.fitToContent()
+// ?renderer=b: draw A-mode scenes with the Canvas2D reference path (same output) instead of Fabric
+if (params.get('renderer') === 'b') view.useCanvas2DRef()
 const onionCount = Number(params.get('onion') ?? 0)
 if (bench && onionCount) {
   view.onion = { yaws: onionYaws(onionCount) }
