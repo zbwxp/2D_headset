@@ -6,7 +6,6 @@ import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
 import type { FillRecord } from '../src/schema'
-import { onionYaws } from '../src/synthetic'
 
 describe('KNOWN FAILURE', () => {
   // KF-1 (found by property I13, 8373b9b): a create without an explicit id gets a fresh random id on
@@ -26,23 +25,5 @@ describe('KNOWN FAILURE', () => {
     expect(committed).toBe(previewed) // fails today: two different fresh ids
   })
 
-  // KF-2 (found by dot, review of 2a48719): a pose key on ONE end of a connection is accepted and the
-  // ends separate at that yaw (C1.a3 vs C2.b3), so the fill boundary is open there. Design not chosen
-  // yet (dot): the edit may be REJECTED (nothing written), or the ends must stay JOINED at every yaw —
-  // never silently patched by the fill. This check accepts either outcome.
-  it.fails('KF-2 a pose key never leaves connected ends apart (rejected, or joined at every yaw)', () => {
-    const e = new Editor(exampleRecords())
-    const before = JSON.stringify(e.reader.serialize('document'))
-    const r = e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a3: { x: 10, y: 5 } } })
-    if (!r.ok) {
-      expect(JSON.stringify(e.reader.serialize('document'))).toBe(before)
-      return
-    }
-    for (const y of onionYaws(19)) {
-      const ev = e.derived.atYaw(y)
-      const a = ev.curves.find((c) => c.address === ids.C1)!.anchors.a3.p
-      const b = ev.curves.find((c) => c.address === ids.C2)!.anchors.b3.p
-      expect(a, `yaw ${y}`).toEqual(b)
-    }
-  })
+  // KF-2 (connected ends separated under a pose key) — FIXED with option A; now test/pose-connections.test.ts
 })

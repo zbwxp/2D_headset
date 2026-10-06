@@ -1,7 +1,8 @@
 // dot's independent yaw checks from the review of 2a48719, copied from
 // /Users/bowen/Documents/Codex/2026-10-06/task/review-2a48719/proto/base/test/dot-yaw.test.ts
-// Unchanged except: the connected-endpoint probe is moved to test/known-failures.test.ts as KF-2,
-// phrased neutrally (reject OR keep joined), because the design choice is still open (dot).
+// Unchanged except: the connected-endpoint probe became KF-2 (now fixed: test/pose-connections.test.ts),
+// and two [CHANGED] spots for the shared yaw budget (options renamed; the aggregate-retention test now
+// asserts the bound instead of documenting its absence).
 import {it,expect} from 'vitest'
 import {Editor} from '../src/editor'
 import {evaluate} from '../src/evaluate'
@@ -22,16 +23,19 @@ it('pose create/update observes ancestor locks and rejects unknown anchor/nonfin
  const free=new Editor(exampleRecords());for(const cmd of [{yaw:90,offsets:{missing:{x:1,y:0}}},{yaw:NaN,offsets:{}},{yaw:90,offsets:{a2:{x:Infinity,y:0}}}]){const s=state(free);expect(key(free,ids.C1,cmd.yaw,cmd.offsets).ok).toBe(false);expect(state(free)).toEqual(s)}
 })
 it('default base, explicit zero form, read-only angles, same-ID pose recreation, undo and open',()=>{
- const e=new Editor(exampleRecords(),{yawCapacity:6,yawListCapacity:2});const base=e.derived.evaluated();expect(e.derived.atYaw(0)).toEqual(base);key(e,ids.C1,0,{a2:{x:2,y:1}});key(e,ids.C1,90,{a2:{x:20,y:10}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:12,y:61});expect(e.derived.curveAt(ids.C1,45).anchors.a2.p).toEqual({x:21,y:65.5});expect(e.derived.evaluated()).toEqual(base);e.save();const before=state(e);for(let y=-100;y<=100;y++)e.derived.atYaw(y);expect(state(e)).toEqual(before);expect(counters.yawEvictions).toBeGreaterThan(0);
+ const e=new Editor(exampleRecords(),{yawBudget:6}) /* [CHANGED] options renamed: one shared budget */;const base=e.derived.evaluated();expect(e.derived.atYaw(0)).toEqual(base);key(e,ids.C1,0,{a2:{x:2,y:1}});key(e,ids.C1,90,{a2:{x:20,y:10}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:12,y:61});expect(e.derived.curveAt(ids.C1,45).anchors.a2.p).toEqual({x:21,y:65.5});expect(e.derived.evaluated()).toEqual(base);e.save();const before=state(e);for(let y=-100;y<=100;y++)e.derived.atYaw(y);expect(state(e)).toEqual(before);expect(counters.yawEvictions).toBeGreaterThan(0);
  const opened=Editor.open(JSON.parse(JSON.stringify(e.save())));expect(opened.derived.atYaw(45)).toEqual(e.derived.atYaw(45));e.undo();e.undo();expect(e.reader.get(poseIdOf(ids.C1))).toBeUndefined();key(e,ids.C1,0,{a2:{x:-8,y:4}});expect(e.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:2,y:64});
  const single=new Editor(exampleRecords());key(single,ids.C1,90,{a2:{x:9,y:0}});expect(single.derived.curveAt(ids.C1,0).anchors.a2.p).toEqual({x:19,y:60});console.log('NO_IMPLICIT_ZERO','single key at 90 clamps at yaw 0; explicit zero key is needed')
 })
 it('19-yaw shared preview changes equals accepted free-anchor commit and never writes while previewing',()=>{
  const e=new Editor(exampleRecords());key(e,ids.C1,0,{});key(e,ids.C1,90,{a2:{x:9,y:0}});const cmd={type:'moveAnchors' as const,targets:[{curveId:ids.C1,anchorId:'a2'}],delta:{x:3,y:2}};const before=state(e);const plan=e.preview(cmd);if(!plan.ok)throw Error('preview');resetCounters();const ch=e.derived.previewChanges(plan.puts);const yaws=Array.from({length:19},(_,i)=>-90+i*10);const shown=yaws.map(y=>e.derived.previewAtYaw(plan.puts,y,ch));expect(counters.previews).toBe(1);expect(state(e)).toEqual(before);e.apply(cmd);yaws.forEach((y,i)=>expect(shown[i]).toEqual(evaluateAtYaw(e.reader,y)));expect(shown[18].curves.find(c=>c.address===ids.C1)!.anchors.a2.p).toEqual({x:22,y:62})
 })
-it('cache eviction is correct but small item-map capacity is not a bound on aggregate retained geometry',()=>{
- const e=new Editor(exampleRecords().map(r=>r.id===ids.L2?{...r,locked:false}:r),{yawCapacity:2,yawListCapacity:4});for(const [cid,aid]of [[ids.C1,'a2'],[ids.C2,'b2'],[ids.E1,'e2']]){key(e,cid,0,{});key(e,cid,90,{[aid]:{x:9,y:3}})}
- for(const y of [0,10,20,30])e.derived.atYaw(y);const before=e.derived.yawCacheSize;resetCounters();const uniqueCurves=new Set<any>(),uniqueFills=new Set<any>();for(const y of [0,10,20,30]){const list=e.derived.atYaw(y);list.curves.forEach(c=>uniqueCurves.add(c));list.fills.forEach(f=>uniqueFills.add(f))}
- expect(before).toEqual({curves:2,fills:2,lists:4});expect(counters.yawCurveEvals).toBe(0);expect(uniqueCurves.size).toBe(16);expect(uniqueFills.size).toBe(4);console.log('AGGREGATE_RETENTION',JSON.stringify({maps:before,distinctCurveValuesRetainedByCachedLists:uniqueCurves.size,distinctFillValuesRetainedByCachedLists:uniqueFills.size}));
- for(const y of [40,50,60,70,80])e.derived.atYaw(y);resetCounters();expect(e.derived.atYaw(0)).toEqual(evaluateAtYaw(e.reader,0));expect(counters.yawCurveEvals).toBeGreaterThan(0);expect(e.derived.yawCacheSize).toEqual({curves:2,fills:2,lists:4})
+// [CHANGED by Claude] dot's original asserted the problem itself (lists kept 16 curve results with
+// item capacity 2). With one shared budget the same scenario must keep the retained results within it.
+it('cache eviction is correct and ONE shared budget bounds aggregate retained geometry (lists included)',()=>{
+ const e=new Editor(exampleRecords().map(r=>r.id===ids.L2?{...r,locked:false}:r),{yawBudget:8});for(const [cid,aid]of [[ids.C1,'a2'],[ids.C2,'b2'],[ids.E1,'e2']]){key(e,cid,0,{});key(e,cid,90,{[aid]:{x:9,y:3}})}
+ for(const y of [0,10,20,30]){e.derived.atYaw(y);expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(8)}
+ console.log('AGGREGATE_RETENTION',JSON.stringify({...e.derived.yawCacheSize,distinctRetained:e.derived.yawBudget.retainedObjects().size}));
+ for(const y of [40,50,60,70,80])e.derived.atYaw(y);resetCounters();expect(e.derived.atYaw(0)).toEqual(evaluateAtYaw(e.reader,0));expect(counters.yawCurveEvals).toBeGreaterThan(0);expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(8)
 })
+

@@ -63,18 +63,17 @@ describe('cached angle evaluation equals the full recompute', () => {
     for (const y of YAWS) for (const c of e.derived.atYaw(y).curves) expect(c.stroke.width).toBe(authored.get(c.curveId))
   })
 
-  it('the angle cache is bounded: dragging the angle through 1000 values never exceeds capacity, results stay exact', () => {
-    const e = new Editor([...exampleRecords()], { yawCapacity: 50, yawListCapacity: 8 })
+  it('the angle caches share ONE budget: through 1000 angles the results they hold never exceed it, results stay exact', () => {
+    const e = new Editor([...exampleRecords()], { yawBudget: 50 })
     const api = createApi(e)
     api.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a2: { x: 30, y: -6 } } })
     resetCounters()
     for (let i = 0; i < 1000; i++) {
       const y = -90 + (180 * i) / 999
       e.derived.atYaw(y)
-      const s = e.derived.yawCacheSize
-      expect(s.curves).toBeLessThanOrEqual(50)
-      expect(s.fills).toBeLessThanOrEqual(50)
-      expect(s.lists).toBeLessThanOrEqual(8)
+      expect(e.derived.yawCacheSize.budgetUsed).toBeLessThanOrEqual(50)
+      // the distinct result objects actually held by item caches AND cached lists (dot: lists retain results)
+      expect(e.derived.yawBudget.retainedObjects().size).toBeLessThanOrEqual(50)
     }
     expect(counters.yawEvictions).toBeGreaterThan(0)
     // -90 was visited first, so it has been evicted: asking again must RECOMPUTE (counted) and be exact
@@ -191,7 +190,7 @@ describe('workloads (counts asserted, times and heap informational)', () => {
 
   function runtime(curves: number) {
     const shapes = syntheticRecords({ curves, layers: 8, fills: 15 })
-    const e = new Editor([...shapes, ...syntheticPoses(shapes)], { yawCapacity: 400_000, yawListCapacity: 128 })
+    const e = new Editor([...shapes, ...syntheticPoses(shapes)], { yawBudget: 1_000_000 })
     const base = e.derived.evaluated()
     const yaws = Array.from({ length: 60 }, (_, i) => -90 + 3 * i + 0.25) // 60 NEW angles: everything changes each frame
     const heap0 = process.memoryUsage().heapUsed

@@ -2,6 +2,7 @@
 // Lock/visibility inheritance follows Illustrator/Figma layer semantics (docs/design/architecture/11 §3).
 import type { RecordId } from '@tldraw/store'
 import { connectionsAt } from './indexes'
+import { offsetAt } from './pose'
 import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type DocReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
@@ -94,6 +95,21 @@ export function recordProblems(store: Pick<DocReader, 'get'>, r: DocRecord): Rel
       if (!c) need(`ends[${i}].curveId`, e.curveId, 'curve')
       else if (!c.anchors[e.anchorId]) out.push({ object: r.id, field: `ends[${i}].anchorId`, target: anchorKey(e), message: `${r.id}: end ${anchorKey(e)} missing` })
     })
+  if (r.typeName === 'connection' && r.ends.every((e) => getAs(store, e.curveId, 'curve')?.anchors[e.anchorId])) {
+    // Head-turn forms must keep the ends together at every yaw. Checking the union of the end curves'
+    // key yaws is EXACT only for per-curve piecewise-linear interpolation clamped to a common domain
+    // (pose.offsetAt): between consecutive checked yaws both offsets are linear, outside they are
+    // constant. A non-linear or per-anchor response would need a different check (dot).
+    const keysOf = (e: { curveId: string }) => getAs(store, poseIdOf(e.curveId), 'pose')?.keys ?? []
+    const yaws = [...new Set(r.ends.flatMap((e) => keysOf(e).map((k) => k.yaw)))].sort((x, y) => x - y)
+    for (const yaw of yaws) {
+      const offs = r.ends.map((e) => offsetAt(keysOf(e), e.anchorId, yaw))
+      if (offs.some((o) => o.x !== offs[0].x || o.y !== offs[0].y)) {
+        out.push({ object: r.id, field: 'ends', target: r.ends.map(anchorKey).join(' / '), message: `${r.id}: ends separate at yaw ${yaw} (${offs.map((o) => `(${o.x}, ${o.y})`).join(' vs ')})` })
+        break
+      }
+    }
+  }
   if (r.typeName === 'fill')
     r.boundary.forEach((b, i) => {
       const c = getAs(store, b.curveId, 'curve')

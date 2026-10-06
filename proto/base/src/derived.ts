@@ -23,29 +23,82 @@ import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
 import { poseIdOf, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
 
 /**
- * Computeds keyed by a string, with a capacity limit (least recently used are dropped). Used where a
- * key is not one record: reference × source curve now, curve × angle for onion skins later (dot: those
- * caches must not grow without bound while the angle is dragged).
+ * One budget shared by several keyed caches (dot, review of 2a48719: a per-map capacity does not
+ * bound what is retained in total — cached LISTS keep references to item results). Each entry has a
+ * weight (an item 1, a list its length, i.e. the results it holds); the sum stays ≤ `limit`. When
+ * over, entries are evicted least-recently-used, from the caches in registration order (lists
+ * first). An entry heavier than the whole budget is returned but not kept. Weights count
+ * references, so shared objects are counted more than once: the bound is conservative.
  */
-export class KeyedComputedCache<T> {
-  private map = new Map<string, Computed<T>>()
+export class SharedBudget {
+  used = 0
   evictions = 0
+  private readonly caches: KeyedComputedCache<unknown>[] = []
   constructor(
-    readonly capacity: number,
-    private readonly create: (key: string) => Computed<T>,
+    readonly limit: number,
     private readonly onEvict: () => void = () => {},
   ) {}
+  register(c: KeyedComputedCache<unknown>) {
+    this.caches.push(c)
+  }
+  enforce(keep: { cache: KeyedComputedCache<unknown>; key: string }) {
+    for (const c of this.caches) while (this.used > this.limit && c.evictOldest(keep, this.limit)) {
+      this.evictions++
+      this.onEvict()
+    }
+  }
+  /** The distinct result objects currently held by all caches (for tests). */
+  retainedObjects(): Set<unknown> {
+    const out = new Set<unknown>()
+    for (const c of this.caches) for (const v of c.values()) {
+      if (v && typeof v === 'object' && 'curves' in (v as object)) {
+        for (const x of (v as Evaluated).curves) out.add(x)
+        for (const x of (v as Evaluated).fills) out.add(x)
+      } else out.add(v)
+    }
+    return out
+  }
+}
+
+/** Computeds keyed by a string, least-recently-used, counted against a shared budget. */
+export class KeyedComputedCache<T> {
+  private map = new Map<string, Computed<T>>()
+  private weights = new Map<string, number>()
+  private last = new Map<string, T>()
+  constructor(
+    private readonly budget: SharedBudget,
+    private readonly create: (key: string) => Computed<T>,
+    private readonly weightOf: (value: T) => number = () => 1,
+  ) {
+    budget.register(this as KeyedComputedCache<unknown>)
+  }
   get(key: string): T {
     let c = this.map.get(key)
     if (c) this.map.delete(key) // re-insert = most recently used
     else c = this.create(key)
     this.map.set(key, c)
-    while (this.map.size > this.capacity) {
-      this.map.delete(this.map.keys().next().value!)
-      this.evictions++
-      this.onEvict()
+    const v = c.get()
+    const w = this.weightOf(v)
+    this.budget.used += w - (this.weights.get(key) ?? 0)
+    this.weights.set(key, w)
+    this.last.set(key, v)
+    this.budget.enforce({ cache: this as KeyedComputedCache<unknown>, key })
+    return v
+  }
+  /** Drop the least-recently-used entry (not `keep`, unless `keep` alone exceeds the budget). */
+  evictOldest(keep: { cache: KeyedComputedCache<unknown>; key: string }, limit: number): boolean {
+    for (const key of this.map.keys()) {
+      if (keep.cache === (this as KeyedComputedCache<unknown>) && key === keep.key && (this.weights.get(key) ?? 0) <= limit) continue
+      this.map.delete(key)
+      this.budget.used -= this.weights.get(key) ?? 0
+      this.weights.delete(key)
+      this.last.delete(key)
+      return true
     }
-    return c.get()
+    return false
+  }
+  values() {
+    return this.last.values()
   }
   get size() {
     return this.map.size
@@ -145,6 +198,9 @@ export class Derived {
   private readonly curves
   private readonly fills
   private readonly instances: KeyedComputedCache<EvalCurve>
+  private readonly instanceBudget: SharedBudget
+  /** The one budget of all angle caches (items + lists). */
+  readonly yawBudget: SharedBudget
   private readonly all: Computed<Evaluated>
   // Angle (head turn) evaluation, bounded (dot: curve × angle caches must not grow without limit
   // while an angle is dragged). Each entry reads only its base item and its curve's pose record.
@@ -155,11 +211,22 @@ export class Derived {
   constructor(
     private readonly store: DocStore,
     private readonly reader: DocReader,
-    opts: { yawCapacity?: number; yawListCapacity?: number } = {},
+    opts: { yawBudget?: number } = {},
   ) {
-    const evicted = () => counters.yawEvictions++
+    this.yawBudget = new SharedBudget(opts.yawBudget ?? 262_144, () => counters.yawEvictions++)
+    // registration order = eviction order: whole lists first, then single items
+    this.yawLists = new KeyedComputedCache<Evaluated>(
+      this.yawBudget,
+      (key) =>
+        computed(`yawList:${key}`, () => {
+          const yaw = Number(key)
+          const base = this.evaluated()
+          return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
+        }),
+      (list) => list.curves.length + list.fills.length,
+    )
     this.yawCurves = new KeyedComputedCache<EvalCurve>(
-      opts.yawCapacity ?? 65_536,
+      this.yawBudget,
       (key) => {
         const at = key.lastIndexOf('@')
         const address = key.slice(0, at)
@@ -172,10 +239,9 @@ export class Derived {
           return curveAtYaw(base, store.get(poseIdOf(base.curveId) as any) as PoseRecord | undefined, yaw, placement)
         })
       },
-      evicted,
     )
     this.yawFills = new KeyedComputedCache<EvalFill>(
-      opts.yawCapacity ?? 65_536,
+      this.yawBudget,
       (key) => {
         const at = key.lastIndexOf('@')
         const id = key.slice(0, at) as FillRecord['id']
@@ -185,17 +251,6 @@ export class Derived {
           return fillAtYaw(this.fill(id)!, store.get(id) as FillRecord, (cid) => this.curveAt(cid, yaw))
         })
       },
-      evicted,
-    )
-    this.yawLists = new KeyedComputedCache<Evaluated>(
-      opts.yawListCapacity ?? 64,
-      (key) =>
-        computed(`yawList:${key}`, () => {
-          const yaw = Number(key)
-          const base = this.evaluated()
-          return { curves: base.curves.map((c) => this.curveAt(c.address, yaw)), fills: base.fills.map((f) => this.fillAt(f.address, yaw)) }
-        }),
-      evicted,
     )
     this.curves = store.createComputedCache<EvalCurve, CurveRecord>('evalCurve', (c) => {
       counters.curveEvals++
@@ -205,7 +260,8 @@ export class Derived {
       counters.fillEvals++
       return fillItem(store, f, (id) => this.curve(id))
     })
-    this.instances = new KeyedComputedCache<EvalCurve>(10_000, (key) => {
+    this.instanceBudget = new SharedBudget(10_000)
+    this.instances = new KeyedComputedCache<EvalCurve>(this.instanceBudget, (key) => {
       const [refId, curveId] = key.split('/') as [ReferenceRecord['id'], CurveRecord['id']]
       return computed(`instance:${key}`, () => {
         counters.instanceEvals++
@@ -261,7 +317,7 @@ export class Derived {
     return this.yawLists.get(String(yaw))
   }
   get yawCacheSize() {
-    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size }
+    return { curves: this.yawCurves.size, fills: this.yawFills.size, lists: this.yawLists.size, budgetUsed: this.yawBudget.used, budget: this.yawBudget.limit }
   }
 
   /** Drag preview at `yaw` (onion skins): only the items the plan changes are re-done at that yaw. */
@@ -295,6 +351,9 @@ export class Derived {
   }
   get instanceCacheSize() {
     return this.instances.size
+  }
+  get instanceEvictions() {
+    return this.instanceBudget.evictions
   }
 
   /**

@@ -6,6 +6,7 @@
 // written, as required for the store-based route (docs/design/architecture/12 §5).
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
+import { offsetAt } from './pose'
 import { connectionsAt, fillsUsing, within } from './indexes'
 import { actualKind, anchorKey, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
@@ -163,6 +164,11 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) && store.get(poseIdOf(r.id) as any)) incoming.add(poseIdOf(r.id)) // offsets name anchors
       if (old.segments.some((s) => !r.segments.some((t) => t.id === s.id))) for (const f of fillsUsing(store, r.id)) incoming.add(f)
     }
+    // a pose change re-checks the connections at its curve's anchors (ends must agree at every yaw)
+    if (r.typeName === 'pose') {
+      const c = getAs(store, r.curveId, 'curve')
+      if (c) for (const a of Object.keys(c.anchors)) for (const cn of connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) incoming.add(cn)
+    }
   }
   for (const id of incoming) if (!overlay.has(id)) problems.push(...recordProblems(next, store.get(id as any) as DocRecord))
   return problems
@@ -295,15 +301,55 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
     }
     case 'setPoseKey': {
+      // Option A (dot, review of 2a48719): keep the hard-connection semantics. The edit computes its
+      // whole linked range, checks locks once and commits once; evaluation never pulls the other end.
+      // - Anchors not named in `offsets` keep their current form at this yaw (new key: the current
+      //   interpolated offset; existing key: its stored offset). An explicit {0,0} sets zero.
+      // - Every anchor connected to a named anchor gets the same offset at the same yaw. Equal offsets
+      //   give equal positions ONLY because connected anchors share one coordinate frame and coincide
+      //   in the base drawing (invariant I3); this does not carry over to future local frames.
+      // - So that equal offsets at one yaw mean equal offsets at EVERY yaw, the linked curves first
+      //   get each other's key yaws (inserted with their current interpolated values — shapes do not
+      //   change). This relies on per-curve piecewise-linear interpolation over a common yaw domain.
       const curve = getAs(store, cmd.curveId, 'curve')
       if (!curve) return notFound(store, cmd.curveId, 'curve')
       if (typeof cmd.yaw !== 'number' || !Number.isFinite(cmd.yaw)) return fail('INVALID', `yaw ${cmd.yaw} is not a finite number`, [curve.id])
       for (const a of Object.keys(cmd.offsets ?? {})) if (!curve.anchors[a]) return notFound(store, `${curve.id}#${a}`, 'anchor')
-      const id = poseIdOf(curve.id)
-      const old = getAs(store, id, 'pose')
-      const keys = (old?.keys ?? []).filter((k) => k.yaw !== cmd.yaw).concat([{ yaw: cmd.yaw, offsets: { ...cmd.offsets } }]).sort((a, b) => a.yaw - b.yaw)
-      const pose = old ? { ...old, keys } : Pose.create({ id, curveId: curve.id, keys })
-      return { ok: true, label: 'setPoseKey', puts: [pose], affected: [id], ...(old ? {} : { creates: [id] }) }
+      const named = Object.keys(cmd.offsets ?? {}).map((anchorId) => ({ curveId: curve.id, anchorId }))
+      const linked = linkedAnchors(store, named)
+      const locked = lockCheck(store, linked)
+      if (locked) return locked
+      // the offset each linked anchor receives: that of the named anchor it is connected to
+      const want = new Map<string, Vec>()
+      for (const n of named) for (const m of linkedAnchors(store, [n])) want.set(anchorKey(m.ref), cmd.offsets[n.anchorId])
+      const curveIds = [...new Set([curve.id as string, ...linked.map((m) => m.ref.curveId as string)])]
+      const poseOf = (cid: string) => getAs(store, poseIdOf(cid), 'pose')
+      const yaws = new Set<number>([cmd.yaw])
+      if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const k of poseOf(cid)?.keys ?? []) yaws.add(k.yaw)
+      const puts: DocRecord[] = []
+      const creates: string[] = []
+      for (const cid of curveIds) {
+        const c = getAs(store, cid, 'curve')!
+        const old = poseOf(cid)
+        const oldKeys = old?.keys ?? []
+        const ownYaws = cid === curve.id && curveIds.length === 1 ? new Set([...oldKeys.map((k) => k.yaw), cmd.yaw]) : new Set([...oldKeys.map((k) => k.yaw), ...yaws])
+        const keys = [...ownYaws]
+          .sort((a, b) => a - b)
+          .map((yaw) => {
+            const existing = oldKeys.find((k) => k.yaw === yaw)
+            // keep the stored form, or capture the current interpolated form for a NEW key
+            const offsets: Record<string, Vec> = existing ? { ...existing.offsets } : Object.fromEntries(Object.keys(c.anchors).map((a) => [a, offsetAt(oldKeys, a, yaw)]))
+            if (yaw === cmd.yaw) for (const a of Object.keys(c.anchors)) {
+              const v = want.get(anchorKey({ curveId: c.id, anchorId: a }))
+              if (v) offsets[a] = { ...v }
+            }
+            return { yaw, offsets }
+          })
+        const id = poseIdOf(cid)
+        puts.push(old ? { ...old, keys } : Pose.create({ id, curveId: c.id, keys }))
+        if (!old) creates.push(id)
+      }
+      return { ok: true, label: 'setPoseKey', puts, affected: puts.map((r) => r.id), ...(creates.length ? { creates } : {}) }
     }
     case 'setContainerFlags': {
       const c = getAs(store, cmd.containerId, 'container')

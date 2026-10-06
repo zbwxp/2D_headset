@@ -23,6 +23,7 @@
 //  I12 after every step each index answer equals a brute-force scan of the raw records
 //  I14 after every step the cached head-turn evaluation (pose records, bounded caches) equals the
 //      full uncached evaluation at several yaws
+//  I15 after every step connected ends coincide at several yaws (pose edits keep connections)
 //  I13 a drag preview (derived.preview of the plan's records, no store copy) equals the full recompute
 //      of the document after that plan is committed
 import { react, transaction } from '@tldraw/state'
@@ -269,6 +270,14 @@ function checkStatic(e: Editor) {
   expect(e.derived.evaluated()).toEqual(evaluate(e.reader))
   // I14 cached head-turn evaluation equals the full uncached evaluation at several yaws
   for (const y of [-90, 12.5, 30, 90]) expect(e.derived.atYaw(y)).toEqual(evaluateAtYaw(e.reader, y))
+  // I15 connected ends coincide at every checked yaw, not only in the base drawing (option A, dot)
+  for (const y of [-90, 12.5, 30, 90]) {
+    const byAddr = new Map(e.derived.atYaw(y).curves.filter((c) => !c.referenceId).map((c) => [c.address as string, c]))
+    for (const c of records(e).filter((r) => r.typeName === 'connection') as ConnectionRecord[]) {
+      const ps = c.ends.map((end) => byAddr.get(end.curveId)!.anchors[end.anchorId].p)
+      for (const p of ps) expect(p, `${c.id} @${y}`).toEqual(ps[0])
+    }
+  }
   // I12 every index answer equals a brute-force scan of the raw records (independent of src/indexes)
   const rs = records(e) as any[]
   const expectSame = (got: string[], want: string[]) => expect([...got].sort()).toEqual([...want].sort())

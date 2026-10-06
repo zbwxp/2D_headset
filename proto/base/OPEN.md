@@ -136,12 +136,22 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
 - **Reviewed by dot at 2a48719 / a791140 — NOT passed.** Found: (1) pose offsets added in world space
   on references (mirrored / scaled instances wrong; runtime reproduces) — FIXED after review: offsets
   are carried by the reference's linear transform (dot's numbers: mirror (85, 52), scale (−40, 152));
-  (2) a pose key on one end of a connection separates the ends at that yaw and opens the fill — OPEN,
-  design to be chosen (reject vs keep joined), reproduced as **KF-2**; (3) `runtime.ts` creates no
+  (2) a pose key on one end of a connection separated the ends at that yaw and opened the fill —
+  FIXED with option A (dot): one edit computes its linked range, checks locks once (locked other
+  end → LOCKED, nothing written), commits once; anchors not named keep their form (new key captures
+  the current interpolated offsets; existing key keeps its stored ones; explicit zero sets zero);
+  linked curves are first aligned on each other's key yaws (inserted at current values, shapes
+  unchanged), so ends agree at every yaw; a relation rule checks it on writes and on open. Scope
+  stated in code: exact only for per-curve piecewise-linear interpolation on a common yaw domain,
+  and equal offsets = equal positions only because connected anchors share one frame and coincide
+  in the base. KF-2 retired → `test/pose-connections.test.ts` (8 tests, all fail on the old src),
+  property I15; (3) `runtime.ts` creates no
   editor but still depends on @tldraw/store / state through schema.ts (bundle: 16 store + 15 state
-  modules) — "store-free runtime" is NOT established; (4) cache capacities bound each map, not the
-  geometry retained in total: cached yaw LISTS keep references to item values, so retention is up to
-  yawCapacity + yawListCapacity × items; (5) two tests timed out at the 5 s default under load —
+  modules) — "store-free runtime" is NOT established; (4) cache capacities bounded each map, not the
+  geometry retained in total (cached yaw LISTS keep references to item values) — FIXED: one
+  `SharedBudget` for all angle caches; an item weighs 1, a list its length; LRU eviction lists first;
+  test asserts the distinct result objects held by all caches stay ≤ the budget (dot's aggregate test
+  adapted, marked [CHANGED]); (5) two tests timed out at the 5 s default under load —
   explicit timeouts added for these long-running-by-design tests.
 - Measured (node, synthetic, informational):
   - maker onion (19 yaws), drag one free anchor: 19 curve-at-yaw evaluations + 1 curve evaluation
