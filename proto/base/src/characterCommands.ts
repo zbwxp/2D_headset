@@ -68,15 +68,15 @@ const prepOn = (r: Store, id: string) => prepareCharacter(ctxOf(r), id)
 const charactersOf = (store: Store, familyId: string) => store.allRecords().filter((r): r is CharacterRecord => r.typeName === 'character' && r.familyId === familyId)
 
 /**
- * Characters that prepared before and would not after: a NOTICE, not a refusal — normal authoring (a new curve not yet
- * drawn in every preset, a key whose basis is added next …) must not be blocked; prepare / play then report what is
- * missing and never fake a playable result (dot 1791315660).
+ * Characters that cannot be prepared AFTER the edit — whether or not they could before (an author keeps editing a family
+ * whose character is already unplayable: every edit still says so; dot, review of 513444f): a NOTICE, not a refusal —
+ * normal authoring (a new curve not yet drawn in every preset, a key whose basis is added next …) must not be blocked;
+ * prepare / play then report what is missing and never fake a playable result (dot 1791315660).
  */
 export function playabilityNotices(store: Store, puts: DocRecord[], characters: string[], removals: string[] = []): string[] {
   const after = overlayReader(store, puts, removals)
   const out: string[] = []
   for (const id of characters) {
-    if (!prepOn(store, id).ok) continue
     const p = prepOn(after, id)
     if (!p.ok) out.push(`${id} cannot be prepared until: ${p.problems.join('; ')}`)
   }
@@ -254,8 +254,9 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
       break
     }
   }
-  // an edit of a CHARACTER must leave that character preparable (it is the thing being edited: an unsupported result —
-  // e.g. a joint eye-tail correction that splits a node — is refused); preset authoring only reports (notices)
+  // an edit of a CHARACTER must leave that character preparable — checked on the result alone, also when the character
+  // was already unplayable before the edit (dot, review of 513444f): an unsupported result (e.g. a joint eye-tail
+  // correction that splits a node) is refused; preset authoring only reports (notices)
   const broken = playabilityNotices(store, [next], [K.id])
   if (broken.length) return fail('INVALID', `${K.id} would no longer be playable: ${broken.join('; ')}`, [K.id])
   return { ok: true, label: cmd.type, puts: [next], affected: [K.id] }

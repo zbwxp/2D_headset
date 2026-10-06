@@ -162,14 +162,35 @@ describe('character commands on the sample', () => {
 
   it('setVisibilityKey: presets that would disagree → written with a notice (prepare refuses until they agree); a consistent change has none', () => {
     const e = openRecords(json('stage1-valid.json').records)
+    // (1) the author's commit goes through with a notice (an unfinished preset state is allowed) …
     const r = apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false })
     expect(r.ok && (r as any).notices?.join()).toMatch(/disagree on visibility/)
+    // (2) … but blending the character refuses the conflict — never a playable result (dot 1791316457)
+    const blended = e.derived.character(K)
+    expect(blended.ok === false && blended.problems.join()).toMatch(/disagree on visibility at yaw 30/)
     expect(e.undo()).toBe(true)
     const k = character(e)
     apply(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 1 } })
     apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 50, visible: false })
     expect(playCharacter(grid(e), { yaw: 60 }).ok && (playCharacter(grid(e), { yaw: 60 }) as any).visible['curve:strand']).toBe(false)
     void k
+  })
+
+  it('a character already unplayable before the edit: its own edits are still refused unless the result plays; author edits keep giving the notice (dot, review of 513444f)', () => {
+    const e = openRecords(json('stage1-valid.json').records)
+    apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false })
+    expect(e.derived.character(K).ok).toBe(false)
+    // (1) a character edit whose result is still unplayable → refused, nothing written
+    refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0.5, 'preset:Q': 0.5 } }, /would no longer be playable: .*disagree on visibility at yaw 30/)
+    // (2) a further author edit: written, and preview and commit both carry the notice
+    const cmd: Command = { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 50, visible: false }
+    const pv = e.prepare().preview(cmd)
+    expect(pv.ok && (pv as any).notices?.join()).toMatch(/character:K cannot be prepared until: .*disagree on visibility/)
+    const r = apply(e, cmd)
+    expect(r.ok && (r as any).notices?.join()).toMatch(/character:K cannot be prepared until: .*disagree on visibility/)
+    // (3) a character edit that makes it playable again is allowed
+    apply(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 1 } })
+    expect(e.derived.character(K).ok).toBe(true)
   })
 
   it('identity: a prepared preset-mode createCurve re-aimed at another preset gets its own new curve id', () => {

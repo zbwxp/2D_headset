@@ -52,7 +52,7 @@ describe('duplicate (doc 18 §21.3)', () => {
     const e = new Editor(unlocked())
     expect(e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 40, offsets: { a2: { x: 2, y: 1 } } }).ok).toBe(true)
     const r = roundTrip(e, { type: 'duplicate', ids: [ids.L1] })
-    const copy = (id: string) => `${id}~copy`
+    const copy = (id: string) => `${id}!copy`
     expect(r.affected.sort()).toEqual([copy(ids.C1), copy(ids.L1), copy(ids.R1), `forms:document/${copy(ids.C1)}`].sort())
     expect((e.reader.get(copy(ids.C1) as any) as any).parentId).toBe(copy(ids.L1))
     expect((e.reader.get(copy(ids.R1) as any) as any).sourceId).toBe(ids.L3) // a placement of the same source
@@ -66,10 +66,10 @@ describe('duplicate (doc 18 §21.3)', () => {
   it('both containers: the connections and the fill between them are copied and re-pointed to the copies', () => {
     const e = new Editor(unlocked())
     roundTrip(e, { type: 'duplicate', ids: [ids.L1, ids.L2] })
-    const J = e.reader.get(`${ids.J}~copy` as any) as any
-    expect(J.ends.map((x: any) => x.curveId)).toEqual([`${ids.C1}~copy`, `${ids.C2}~copy`])
-    const F = e.reader.get(`${ids.F}~copy` as any) as any
-    expect(new Set(F.boundary.map((b: any) => b.curveId))).toEqual(new Set([`${ids.C1}~copy`, `${ids.C2}~copy`]))
+    const J = e.reader.get(`${ids.J}!copy` as any) as any
+    expect(J.ends.map((x: any) => x.curveId)).toEqual([`${ids.C1}!copy`, `${ids.C2}!copy`])
+    const F = e.reader.get(`${ids.F}!copy` as any) as any
+    expect(new Set(F.boundary.map((b: any) => b.curveId))).toEqual(new Set([`${ids.C1}!copy`, `${ids.C2}!copy`]))
   })
 
   it('refused: a fill whose boundary curves are not all copied; preset-form (family) curves; creating inside a locked container', () => {
@@ -95,5 +95,26 @@ describe('duplicate (doc 18 §21.3)', () => {
     if (!a.ok || !b.ok || !a2.ok) return
     expect(a2.affected).toEqual(a.affected)
     expect(b.affected.some((x) => a.affected.includes(x))).toBe(false)
+  })
+})
+
+describe('review of stage 4 (dot 1791317224)', () => {
+  it('a reference copied with one of its source curves but not the source container keeps its override keys (still the original source)', () => {
+    const e = new Editor(unlocked())
+    expect(e.apply({ type: 'moveOverride', referenceId: ids.R1, target: { curveId: ids.E1, anchorId: 'e1' }, delta: { x: 1, y: 2 } }).ok).toBe(true)
+    roundTrip(e, { type: 'duplicate', ids: [ids.R1, ids.E1] })
+    const r2 = e.reader.get(`${ids.R1}!copy` as any) as any
+    expect(r2.sourceId).toBe(ids.L3)
+    expect(Object.keys(r2.overrides)).toEqual([`${ids.E1}#e1`])
+  })
+
+  it('siblings with one index keep their relative paint order after copying (a, a1 → their copies in the same order)', () => {
+    const rs = exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r)) as any[]
+    const mk = (id: string) => ({ ...structuredClone(rs.find((r) => r.id === ids.E1)), id, index: 'a5' })
+    rs.push(mk('curve:a'), mk('curve:a1'))
+    const e = new Editor(rs)
+    roundTrip(e, { type: 'duplicate', ids: ['curve:a', 'curve:a1'] })
+    const order = e.derived.evaluated().paint.map((p) => p.item.address).filter((a) => /^curve:a1?(!copy)?$/.test(a))
+    expect(order).toEqual(['curve:a', 'curve:a!copy', 'curve:a1', 'curve:a1!copy'])
   })
 })

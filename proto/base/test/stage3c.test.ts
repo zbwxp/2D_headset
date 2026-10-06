@@ -83,6 +83,15 @@ describe('bind on family curves', () => {
   })
 })
 
+it('bind refuses when one side has yaw keys and the other only an identity placeholder (no drawn keys are dropped)', () => {
+  const e = openRecords(plain())
+  const three = { anchors: { p: { id: 'p', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 3, y: 0 } }, q: { id: 'q', p: { x: 10, y: 8 }, hIn: { x: -3, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 'k1', from: 'p', to: 'q' }] }
+  roundTrip(e, { type: 'createCurve', id: 'curve:brow' as any, parentId: 'container:L1' as any, preset: 'preset:P' as any, ...three }) // Q: identity only
+  const before = JSON.stringify(e.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any))
+  refused(e, { type: 'bind', a: { curveId: 'curve:strand' as any, anchorId: 'w' }, b: { curveId: 'curve:brow' as any, anchorId: 'p' }, keep: 'mid' }, /preset:Q has no shape for curve:brow at yaw 90/)
+  expect(JSON.stringify(e.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any))).toBe(before)
+})
+
 describe('mergeEnds on a family curve', () => {
   const three = { anchors: { p: { id: 'p', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 3, y: 0 } }, q: { id: 'q', p: { x: 10, y: 8 }, hIn: { x: -3, y: 0 }, hOut: { x: 3, y: 0 } }, r: { id: 'r', p: { x: 20, y: 2 }, hIn: { x: -3, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 'k1', from: 'p', to: 'q' }, { id: 'k2', from: 'q', to: 'r' }] }
 

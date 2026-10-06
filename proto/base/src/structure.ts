@@ -680,7 +680,8 @@ function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' 
     const keysA: AbsoluteYawKey[] = [], keysB: AbsoluteYawKey[] = []
     for (const y of yaws) {
       const sa = stateA(y), sb = stateB(y)
-      if (!sa || !sb) continue // a missing shape stays missing (blending reports it)
+      // one side drawn, the other missing here: refused — never drop the drawn side's keys (dot 1791317098)
+      if (!sa || !sb) return fail('INVALID', `${pr.id} has no shape for ${!sa ? da.curve.id : db.curve.id} at yaw ${y}: draw it first (binding would otherwise drop the other curve's keys)`, [pr.id, !sa ? da.curve.id : db.curve.id])
       const to = target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
       deltaA.set(y, v(to.x - sa[cmd.a.anchorId].p.x, to.y - sa[cmd.a.anchorId].p.y))
       deltaB.set(y, v(to.x - sb[cmd.b.anchorId].p.x, to.y - sb[cmd.b.anchorId].p.y))

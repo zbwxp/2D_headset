@@ -6,6 +6,8 @@
 // - a required geometric dependency outside the selection (a copied fill whose boundary reads a curve that is not
 //   copied) → refused, naming it; a reference keeps its source when the source is not copied (it is a placement);
 // - a copied curve's legacy head-turn track is copied with it.
+// - copy ids are `<original>!copy`: '!' sorts below every id character, so siblings with one index keep their
+//   relative paint order (ties break by id) and a copy sorts right after its original (dot 1791317224).
 // Limit (stated): preset-form (family) curves are not duplicated yet — refused (their family registration, every
 // preset's forms and the characters' data would all need copying).
 import type { RecordId } from '@tldraw/store'
@@ -46,8 +48,8 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
   const map = new Map<string, string>()
   for (const r of recs) {
     const id = ids.take(`dup:${r.typeName}`, () => {
-      let n = `${r.id}~copy`
-      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${r.id}~copy${k}`
+      let n = `${r.id}!copy`
+      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${r.id}!copy${k}`
       return n
     })
     if (exists(id) || [...map.values()].includes(id)) return fail('ID_CONFLICT', `the prepared new id ${id} is already used: prepare a new operation`, [id])
@@ -67,9 +69,12 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
       puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, boundary: r.boundary.map((b) => (isBridge(b) ? { bridge: { from: { ...b.bridge.from, curveId: to(b.bridge.from.curveId) }, to: { ...b.bridge.to, curveId: to(b.bridge.to.curveId) } } } : { ...b, curveId: to(b.curveId) })) })
     else if (r.typeName === 'reference') {
       const src = to(r.sourceId)
+      // override keys name curves of the SOURCE: they follow to the copies only when the reference itself now places
+      // the copied source; a copy still placing the original source keeps its keys (dot 1791317224)
+      const remap = src !== r.sourceId
       const overrides = Object.fromEntries(Object.entries(r.overrides).map(([k, p]) => {
         const i = k.lastIndexOf('#')
-        return [`${to(k.slice(0, i))}#${k.slice(i + 1)}`, { ...p }]
+        return [remap ? `${to(k.slice(0, i))}#${k.slice(i + 1)}` : k, { ...p }]
       }))
       puts.push({ ...(r as ReferenceRecord), id, parentId: top(r.parentId) as any, sourceId: src, overrides })
     }
@@ -80,8 +85,8 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
     const cn = getAs(store, cid, 'connection') as ConnectionRecord
     if (!cn.ends.every((e) => sel.has(e.curveId))) continue
     const nid = ids.take('dup:connection', () => {
-      let n = `${cn.id}~copy`
-      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${cn.id}~copy${k}`
+      let n = `${cn.id}!copy`
+      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${cn.id}!copy${k}`
       return n
     })
     if (exists(nid)) return fail('ID_CONFLICT', `the prepared new id ${nid} is already used`, [nid])
