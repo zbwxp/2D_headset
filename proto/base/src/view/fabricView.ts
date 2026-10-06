@@ -67,8 +67,9 @@ export class FabricView {
       if ((e as { ctx?: unknown }).ctx !== this.canvas.contextTop) renderStart = performance.now()
     })
     this.canvas.on('after:render', (e) => {
-      // with the reference renderer B active, Fabric's main canvas is empty: B times its own draws
-      if ((e as { ctx?: unknown }).ctx === this.canvas.contextTop || this.ref) return
+      // while B draws (A mode with B set) Fabric's main canvas is empty and B times its own draws; in
+      // V mode Fabric draws and is timed even when B is set (dot 0264deb: V renders were not counted)
+      if ((e as { ctx?: unknown }).ctx === this.canvas.contextTop || this.refDraws) return
       const now = performance.now()
       this.timing.renderAll += now - renderStart
       this.timing.renders++
@@ -172,6 +173,10 @@ export class FabricView {
   private refFrame = 0
   private refPaintedInput = 0
   private refPending: { ev: Evaluated; onions: Evaluated[] } | null = null
+  /** B draws only A-mode scenes; V mode is always Fabric's own drawing. */
+  private get refDraws() {
+    return this.mode === 'A' && this.ref !== null
+  }
   /** Switch A-mode drawing to the Canvas2D reference (same size, DPR, viewport and order). */
   useCanvas2DRef() {
     const lower = this.canvas.lowerCanvasEl
@@ -213,7 +218,17 @@ export class FabricView {
     const curves = ev.curves.filter((c) => c.visible)
 
     if (this.fullRebuildEachRender) this.scene = null
-    if (this.mode === 'A' && this.ref) {
+    if (this.ref) {
+      // outside A mode B's canvas must neither show its last A frame over Fabric's drawing nor draw a
+      // queued A frame after the switch (dot 0264deb: after A→V the old B picture covered V)
+      this.ref.el.style.display = this.refDraws ? '' : 'none'
+      if (!this.refDraws && this.refFrame) {
+        cancelAnimationFrame(this.refFrame)
+        this.refFrame = 0
+        this.refPending = null
+      }
+    }
+    if (this.refDraws) {
       // B: nothing for Fabric to draw; the reference repaints on the next animation frame (as Fabric does)
       if (this.canvas.getObjects().length) this.canvas.remove(...this.canvas.getObjects())
       this.refPending = { ev, onions }
