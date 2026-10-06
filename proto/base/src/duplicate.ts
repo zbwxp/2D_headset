@@ -6,13 +6,17 @@
 // - a required geometric dependency outside the selection (a copied fill whose boundary reads a curve that is not
 //   copied) → refused, naming it; a reference keeps its source when the source is not copied (it is a placement);
 // - a copied curve's legacy head-turn track is copied with it.
-// - copy ids are `<original>!copy`: '!' sorts below every id character, so siblings with one index keep their
-//   relative paint order (ties break by id) and a copy sorts right after its original (dot 1791317224).
+// - paint order (one explicit policy; ids carry identity only, never order — dot 1791317344): the copied top-level
+//   objects go as ONE block on top of their destination container, in the originals' total paint order (`paintKey`:
+//   index, then id at every level); inside a copied container the copies get fresh indices in the originals' total
+//   order, so two originals sharing an index can never swap through the new ids' tie-break.
 // Limit (stated): preset-form (family) curves are not duplicated yet — refused (their family registration, every
 // preset's forms and the characters' data would all need copying).
 import type { RecordId } from '@tldraw/store'
+import { getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
 import { connectionsAt, containersWithin, familiesOf, within } from './indexes'
+import { paintKey } from './evaluate'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, type BaseReader, type BoundaryStep, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
 
@@ -48,8 +52,8 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
   const map = new Map<string, string>()
   for (const r of recs) {
     const id = ids.take(`dup:${r.typeName}`, () => {
-      let n = `${r.id}!copy`
-      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${r.id}!copy${k}`
+      let n = `${r.id}~copy`
+      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${r.id}~copy${k}`
       return n
     })
     if (exists(id) || [...map.values()].includes(id)) return fail('ID_CONFLICT', `the prepared new id ${id} is already used: prepare a new operation`, [id])
@@ -57,16 +61,36 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
   }
   const to = <T extends string>(id: T): T => (map.get(id) ?? id) as T
   const top = (parent: string | null) => (parent && sel.has(parent) ? to(parent) : (cmd.parentId ?? parent))
+  // paint order: per new parent, the originals in their total paint order get fresh indices that keep that order
+  const index = new Map<string, string>()
+  const groups = new Map<string | null, (DocRecord & { parentId: any; index: string })[]>()
+  for (const r of recs as (DocRecord & { parentId: any; index: string })[]) {
+    const parent = top(r.parentId)
+    groups.set(parent, [...(groups.get(parent) ?? []), r])
+  }
+  for (const [parent, members] of groups) {
+    const inCopy = !!parent && [...map.values()].includes(parent)
+    // a new container's content starts empty; an existing destination: above its current topmost child
+    const topmost = inCopy ? null : store.allRecords().filter((x: any) => ['container', 'curve', 'fill', 'reference'].includes(x.typeName) && (x.parentId ?? null) === parent).map((x: any) => x.index as string).reduce<string | null>((m, i) => (m === null || i > m ? i : m), null)
+    const order = members.map((r) => ({ r, key: paintKey(store, r) })).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    let fresh: IndexKey[]
+    try {
+      fresh = getIndicesBetween(topmost as IndexKey | null, null, order.length)
+    } catch {
+      return fail('INVALID', `${parent ?? 'the top level'} holds an index that is not a fractional index (${topmost}): cannot place the copies`, parent ? [parent] : [])
+    }
+    order.forEach(({ r }, i) => index.set(r.id, fresh[i]))
+  }
   const puts: DocRecord[] = []
   for (const r of recs) {
     const id = map.get(r.id)! as any
-    if (r.typeName === 'container') puts.push({ ...r, id, parentId: top(r.parentId) as any })
+    if (r.typeName === 'container') puts.push({ ...r, id, parentId: top(r.parentId) as any, index: index.get(r.id)! })
     else if (r.typeName === 'curve') {
-      puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any })
+      puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, index: index.get(r.id)! })
       const track = getAs(store, poseIdOf(r.id), 'forms') as FormsRecord | undefined
       if (track) puts.push({ ...structuredClone(track), id: poseIdOf(id), curveId: id })
     } else if (r.typeName === 'fill')
-      puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, boundary: r.boundary.map((b) => (isBridge(b) ? { bridge: { from: { ...b.bridge.from, curveId: to(b.bridge.from.curveId) }, to: { ...b.bridge.to, curveId: to(b.bridge.to.curveId) } } } : { ...b, curveId: to(b.curveId) })) })
+      puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, index: index.get(r.id)!, boundary: r.boundary.map((b) => (isBridge(b) ? { bridge: { from: { ...b.bridge.from, curveId: to(b.bridge.from.curveId) }, to: { ...b.bridge.to, curveId: to(b.bridge.to.curveId) } } } : { ...b, curveId: to(b.curveId) })) })
     else if (r.typeName === 'reference') {
       const src = to(r.sourceId)
       // override keys name curves of the SOURCE: they follow to the copies only when the reference itself now places
@@ -76,7 +100,7 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
         const i = k.lastIndexOf('#')
         return [remap ? `${to(k.slice(0, i))}#${k.slice(i + 1)}` : k, { ...p }]
       }))
-      puts.push({ ...(r as ReferenceRecord), id, parentId: top(r.parentId) as any, sourceId: src, overrides })
+      puts.push({ ...(r as ReferenceRecord), id, parentId: top(r.parentId) as any, index: index.get(r.id)!, sourceId: src, overrides })
     }
   }
   // connections: copied only when every end is copied (re-pointed); a connection reaching outside is not copied
@@ -85,8 +109,8 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
     const cn = getAs(store, cid, 'connection') as ConnectionRecord
     if (!cn.ends.every((e) => sel.has(e.curveId))) continue
     const nid = ids.take('dup:connection', () => {
-      let n = `${cn.id}!copy`
-      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${cn.id}!copy${k}`
+      let n = `${cn.id}~copy`
+      for (let k = 1; exists(n) || [...map.values()].includes(n); k++) n = `${cn.id}~copy${k}`
       return n
     })
     if (exists(nid)) return fail('ID_CONFLICT', `the prepared new id ${nid} is already used`, [nid])
