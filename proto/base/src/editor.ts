@@ -11,16 +11,17 @@
 // Transaction contract (dot's review of 90692ad):
 // - Undo/redo stacks and revisions are @tldraw/state atoms, i.e. they live in the SAME transactional
 //   state as the document. Any rollback — ours, or an outer `transaction` the caller wraps around
-//   us — restores document and history together. Calling the editor inside an outer transaction is
-//   therefore consistent (see the last point).
+//   us — restores document and history together (see the last point for what is promised).
 // - Subscribers (`react`, views) run after a root transaction has committed (tldraw flushes effects
 //   in `commit`). An exception thrown by a subscriber does not undo the write, so the result reports
 //   the write as done, plus an OBSERVER_FAILED warning — the result always describes the document.
 //   If `onWarning` itself throws, that is added as WARNING_HANDLER_FAILED; nothing escapes to the caller.
 //   Whether a write committed is decided by whether the transaction body finished, never assumed.
-// - Supported grouping is `batch` / `applyBatch`. An outer `transaction` around the editor is not part
-//   of the contract (tldraw exposes no public "is a transaction active" check to refuse it), but
-//   because history lives in the same atoms, its rollback still leaves document and history consistent.
+// - The official grouping entry is `batch` / `applyBatch`. Consistency after an outer `transaction`
+//   rolls back is a TESTED COMPATIBILITY BOUNDARY (property I10, kept as a regression test), not a
+//   promise about arbitrary external nesting or about notification behaviour inside it. It holds
+//   because history lives in the same atoms; refusing outer transactions up front is not attempted,
+//   since tldraw exposes no public "is a transaction active" check.
 import { atom, transaction } from '@tldraw/state'
 import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type RecordsDiff, type StoreSnapshot } from '@tldraw/store'
 import { isEqual } from '@tldraw/utils'
