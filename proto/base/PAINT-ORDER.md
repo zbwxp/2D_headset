@@ -25,7 +25,8 @@ R1. Children of a parent are ordered (fractional indexes); later is painted on t
 R2. By default the layer order and the order inside the layer decide what covers what.
 R3. Lines AND fills have a depth offset that can move them across layers.
 R4. A fill never covers the strokes of its own boundary; every other object covers / is covered by it
-    normally.
+    normally. R4 is NOT "the boundary is always visible": a display interval can still hide
+    the stroke and objects in front still cover it; only its own fill must not eat it (dot).
 R5. Global contradictions can be detected; local interleaving must not be mistaken for one (RC-16).
 R6. Shown = own flag AND every ancestor shown (doc 11 §3 显示).
 R7. A fill's boundary may reference segments of other layers (doc 11 §2, fill row).
