@@ -23,6 +23,7 @@
 | [13-recording-references.md](13-recording-references.md) | 录制的参照：Live2D（含 ArtPath 矢量线、Glue）、CSP、MMD；DMB 论文的边界（dot 核对） | Claude 汇总，dot 核对 |
 | [14-route-workload.md](14-route-workload.md) | 三种组合（tldraw 全套 / `@tldraw/store`+Fabric / 全自建）的补写清单、粗估工作量、风险、初步倾向 | Claude（待 dot 抽查） |
 | [15-slice-plan.md](15-slice-plan.md) | **写代码前给 bowen 的方案**：小切片范围、两条路线各复用什么、各自最先验证的两个风险、继续 / 放弃的判定 | Claude（待 dot 审） |
+| [16-product-core-and-check-scenarios.md](16-product-core-and-check-scenarios.md) | **成品形态与共用求值核心**：制作器 → 捏脸器 → runtime 共用“这张脸怎样被算出来”；未来能力检查场景 E（宽眼/窄眼 × 闭眼/惊讶 × 转头）；两种性能工作量。组合规则未定 | Claude 整理（待 dot 审） |
 
 约定：
 
