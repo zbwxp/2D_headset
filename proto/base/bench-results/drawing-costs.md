@@ -23,6 +23,27 @@ is timed; input → paint is measured from the pointer event to the end of that 
 "Evaluation ≤ 5 ms" holds for THIS workload only (dot): no fill materials, no real recording, no
 large-area full change.
 
+## Option A — Fabric kept, objects reused (same display; dot)
+
+A-mode scene kept per drawn item; only items whose cached evaluation changed are rebuilt (paths) or
+moved (anchor dots); membership/order changes and V mode rebuild fully. No whole-table scan (top-level
+containers from the parent index, V mode only). Same run conditions as the corrected baseline.
+
+| curves | onion yaws | build objects | attach | renderAll (main canvas) | input → paint | objects created / move | path strings / move | rows scanned / move | baseline input → paint |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 121 | 0 | 0.23 ms | 0.05 ms | 91.0 ms | 107.5 ms | 1 | 1 | 0 | 168.7 ms |
+| 121 | 19 | 0.63 | 0.28 | 101.8 | 120.1 | 20 | 20 | 0 | 232.9 |
+| 1000 | 0 | 0.35 | 0.03 | 99.7 | 117.7 | 1 | 1 | 0 | 394.1 |
+| 1000 | 19 | 2.25 | 0.92 | 128.9 | 156.3 | 20 | 20 | 0 | 1,020.0 |
+| 3000 | 0 | 0.98 | 0.20 | 123.1 | 143.7 | 1 | 1 | 0 | 1,209.6 |
+| 3000 | 19 | — | — | — | — | — | — | — | — (initial load — the unchanged FULL build — did not finish within 300 s) |
+
+Same display is tested: `e2e/scene-incremental.spec.ts` compares every canvas object (type, path
+commands, position, size, colours, line width, order) of the incremental scene with a full rebuild,
+during drags (preview) and after commit / undo, incl. 19 onion yaws (in the gate). After A, renderAll
+— Fabric repainting every object (≈ 90–130 ms) — is what remains; B (a reference implementation with
+the same output) is the comparison for that part. The initial full build at 3000 × 19 is unsolved.
+
 What remains on the drawing path, per move (from the code and these counts):
 
 1. **Whole-list consumption**: the view takes the whole preview list (`previewItems` = list length) and,

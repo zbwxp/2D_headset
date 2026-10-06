@@ -25,7 +25,10 @@ changes. Replacing the renderer is not a given.
 evaluation is ≤ 5 ms in every completed case; the time is in building Fabric objects (path strings +
 parsing), attaching (remove + re-add all), renderAll (≈ 129–187 ms per render, corrected — an earlier
 reading of "2 renders per move, 156–207 ms" counted Fabric's top-layer render), input → paint 169 ms
-(121 curves) to 1.2 s (3000),
+(121 curves) to 1.2 s (3000), **Option A (not reviewed):** objects reused, no whole-table scan — input → paint
+107 ms (121) / 156 ms (1000 × 19) / 144 ms (3000); what remains is Fabric's renderAll (≈ 90–130 ms);
+same display tested object by object (`e2e/scene-incremental.spec.ts`). 3000 × 19 initial load still
+does not finish. Next: B, a reference implementation with the same output, for the renderAll part.
 plus one whole-table scan per render and whole-list consumption per onion yaw. 3000 curves with 19
 onion yaws did not finish loading.
 

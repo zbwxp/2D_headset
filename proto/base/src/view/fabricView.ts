@@ -6,12 +6,13 @@
 //   Group transform kept as an attribute (we read its matrix, we never trust its children):
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
+import { childrenOf } from '../indexes'
 import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
-import { cubicsToPath, evaluate, hitTest, type Evaluated, type Hit } from '../evaluate'
+import { cubicsToPath, evaluate, hitTest, type EvalCurve, type EvalFill, type Evaluated, type Hit } from '../evaluate'
 import { all } from '../model'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
 
@@ -142,33 +143,25 @@ export class FabricView {
     }
   }
 
+  /**
+   * Scene of the last A-mode projection, for incremental updates (dot's option A: the SAME display,
+   * reusing Fabric objects). One entry per drawn item in z-order, with the evaluated item it was built
+   * from: evaluated items are cached, so an unchanged item is the same object and its Fabric objects
+   * are kept. Any change of membership or order (or V mode) rebuilds everything as before.
+   */
+  private scene: { key: string; item: unknown; objs: FabricObject[] }[] | null = null
+  /** Next render rebuilds every object (tests compare the incremental scene with this). */
+  forceFullRender() {
+    this.scene = null
+    this.render()
+  }
+
   private project(ev: Evaluated, onions: Evaluated[]) {
-    // Phases are timed separately (dot): build objects into `objs`, then attach them in one call.
+    // Phases are timed separately (dot): build objects, then attach them.
     let t = performance.now()
-    const objs: FabricObject[] = []
-    const add = (...o: FabricObject[]) => {
-      counters.fabricObjectsCreated += o.length
-      objs.push(...o)
-    }
-    {
-      // onion yaws come from the cached angle evaluation (or the drag preview at each yaw)
-      for (const o of onions) {
-        for (const c of o.curves.filter((c) => c.visible)) {
-          add(new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false }))
-        }
-      }
-    }
-    this.groupStart.clear()
-    for (const f of ev.fills.filter((f) => f.visible)) {
-      add(new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false }))
-    }
-    this.timing.buildObjects += performance.now() - t
-    t = performance.now()
-    const containers = all(this.editor.reader, 'container') as ContainerRecord[]
-    this.timing.containerScan += performance.now() - t
-    t = performance.now()
-    const curves = ev.curves.filter((c) => c.visible)
-    const pathOf = (c: (typeof curves)[number]) =>
+    const pathOfOnion = (c: EvalCurve) => new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false })
+    const pathOfFill = (f: EvalFill) => new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false })
+    const pathOf = (c: EvalCurve) =>
       new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
         fill: '',
         stroke: c.locked ? '#999' : c.stroke.color,
@@ -177,28 +170,98 @@ export class FabricView {
         evented: false,
         objectCaching: false,
       })
-    if (this.mode === 'V') {
-      // One selectable Group per top-level, unlocked container; its transform box is Fabric's.
-      for (const k of containers.filter((k) => !k.parentId)) {
-        const members = curves.filter((c) => !c.referenceId && this.parentOf(c.curveId) === k.id)
-        if (!members.length) continue
-        const locked = members.some((c) => c.locked)
-        const g = new Group(members.map(pathOf), { selectable: !locked, evented: !locked, objectCaching: false })
-        ;(g as any).containerId = k.id
-        ;(g as any).lockedGroup = locked
-        this.groupStart.set(g, g.calcTransformMatrix())
-        counters.fabricObjectsCreated += members.length // the member paths (pathOf) inside the group
-        add(g)
-      }
-      for (const c of curves.filter((c) => c.referenceId)) add(pathOf(c))
-    } else {
-      for (const c of curves) add(pathOf(c))
-      for (const c of curves.filter((c) => !c.locked)) {
-        for (const a of Object.values(c.anchors)) {
-          add(dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9))
+    const dotsOf = (c: EvalCurve) => Object.values(c.anchors).flatMap((a) => [dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9)])
+    const curves = ev.curves.filter((c) => c.visible)
+
+    if (this.mode === 'A') {
+      // the scene this render should show, in z-order (same order as the full build below)
+      const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []
+      onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
+      for (const f of ev.fills.filter((f) => f.visible)) want.push({ key: `f:${f.address}`, item: f, make: () => [pathOfFill(f)] })
+      for (const c of curves) want.push({ key: `c:${c.address}`, item: c, make: () => [pathOf(c)] })
+      for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
+      const prev = this.scene
+      if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
+        // incremental: only entries whose evaluated item changed are touched
+        const renderOnAddRemove = this.canvas.renderOnAddRemove
+        this.canvas.renderOnAddRemove = false
+        let built = 0
+        let attachMs = 0
+        for (let i = 0; i < want.length; i++) {
+          const e = prev[i]
+          const w = want[i]
+          if (e.item === w.item) continue
+          if (w.key.startsWith('d:') && Object.keys((w.item as EvalCurve).anchors).length * 3 === e.objs.length) {
+            // anchor dots: move the existing circles (same objects, new positions)
+            const pts = Object.values((w.item as EvalCurve).anchors).flatMap((a) => [a.p, a.hIn, a.hOut])
+            e.objs.forEach((o, k) => {
+              o.set({ left: pts[k].x, top: pts[k].y })
+              o.setCoords()
+            })
+          } else {
+            const fresh = w.make()
+            built += fresh.length
+            const a0 = performance.now()
+            const objects = this.canvas.getObjects()
+            const at = objects.indexOf(e.objs[0])
+            this.canvas.remove(...e.objs)
+            this.canvas.insertAt(at, ...fresh)
+            attachMs += performance.now() - a0
+            e.objs = fresh
+          }
+          e.item = w.item
         }
+        counters.fabricObjectsCreated += built
+        this.canvas.renderOnAddRemove = renderOnAddRemove
+        this.timing.buildObjects += performance.now() - t - attachMs
+        this.timing.attach += attachMs
+        this.canvas.requestRenderAll()
+        return
       }
+      // full build (first render, or membership / order changed)
+      const scene = want.map((w) => ({ key: w.key, item: w.item as unknown, objs: w.make() }))
+      const objs = scene.flatMap((e) => e.objs)
+      counters.fabricObjectsCreated += objs.length
+      this.timing.buildObjects += performance.now() - t
+      t = performance.now()
+      this.canvas.discardActiveObject()
+      this.canvas.remove(...this.canvas.getObjects())
+      this.canvas.add(...objs)
+      this.timing.attach += performance.now() - t
+      this.scene = scene
+      this.groupStart.clear()
+      this.canvas.requestRenderAll()
+      return
     }
+
+    // V mode: always a full build (groups per top-level container own the transform box)
+    this.scene = null
+    const objs: FabricObject[] = []
+    const add = (...o: FabricObject[]) => {
+      counters.fabricObjectsCreated += o.length
+      objs.push(...o)
+    }
+    for (const o of onions) for (const c of o.curves.filter((c) => c.visible)) add(pathOfOnion(c))
+    this.groupStart.clear()
+    for (const f of ev.fills.filter((f) => f.visible)) add(pathOfFill(f))
+    this.timing.buildObjects += performance.now() - t
+    t = performance.now()
+    // top-level containers from the parent index (no whole-table scan)
+    const tops = childrenOf(this.editor.reader, null, 'container').map((id) => this.editor.reader.get(id) as ContainerRecord)
+    this.timing.containerScan += performance.now() - t
+    t = performance.now()
+    for (const k of tops) {
+      const members = curves.filter((c) => !c.referenceId && this.parentOf(c.curveId) === k.id)
+      if (!members.length) continue
+      const locked = members.some((c) => c.locked)
+      const g = new Group(members.map(pathOf), { selectable: !locked, evented: !locked, objectCaching: false })
+      ;(g as any).containerId = k.id
+      ;(g as any).lockedGroup = locked
+      this.groupStart.set(g, g.calcTransformMatrix())
+      counters.fabricObjectsCreated += members.length // the member paths inside the group
+      add(g)
+    }
+    for (const c of curves.filter((c) => c.referenceId)) add(pathOf(c))
     this.timing.buildObjects += performance.now() - t
     t = performance.now()
     this.canvas.discardActiveObject()
@@ -207,6 +270,7 @@ export class FabricView {
     this.timing.attach += performance.now() - t
     this.canvas.requestRenderAll()
   }
+
 
   private parentOf(curveId: string) {
     return (this.editor.reader.get(curveId as any) as any)?.parentId as string | undefined
