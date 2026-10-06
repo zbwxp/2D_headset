@@ -6,6 +6,7 @@
 //   Group transform kept as an attribute (we read its matrix, we never trust its children):
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
+import { overlayReader } from '../derived'
 import { counters } from '../counters'
 import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
 import { Store } from '@tldraw/store'
@@ -107,7 +108,7 @@ export class FabricView {
   }
 
   /** Re-project the document (or a preview of it) into Fabric objects. */
-  render(ev: Evaluated = evaluate(this.editor.reader), store: Editor['reader'] = this.editor.reader) {
+  render(ev: Evaluated = this.editor.derived.evaluated(), store: Editor['reader'] = this.editor.reader) {
     this.projecting = true
     try {
       this.project(ev, store)
@@ -181,7 +182,7 @@ export class FabricView {
   private routeVTarget(e: PointerEvent) {
     if (this.mode !== 'V') return
     const p = this.canvas.getScenePoint(e)
-    const hit = hitTest(evaluate(this.editor.reader), p, { mode: 'V', tolerance: 6 / this.canvas.getZoom() })
+    const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'V', tolerance: 6 / this.canvas.getZoom() })
     const target = hit ? this.containerOfHit(hit) : undefined
     const active = new Set(this.canvas.getActiveObjects())
     for (const g of this.groupStart.keys()) {
@@ -202,7 +203,7 @@ export class FabricView {
   private onDown(e: PointerEvent) {
     if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
-    const hit = hitTest(evaluate(this.editor.reader), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
+    const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, ok: false }
   }
 
@@ -248,8 +249,8 @@ export class FabricView {
     this.drag.ok = pv.ok
     if (pv.ok) {
       this.setStatus('')
-      const tmp = withPuts(this.editor, pv.puts)
-      this.render(evaluate(tmp), tmp)
+      // incremental preview: only the affected items are re-evaluated; no store copy (dot)
+      this.render(this.editor.derived.preview(pv.puts), overlayReader(this.editor.reader, pv.puts))
       const t0 = this.lastInputTs
       requestAnimationFrame(() => this.latencies.push(performance.now() - t0))
     } else {
@@ -324,9 +325,12 @@ function dot(p: Vec, color: string, r: number) {
 }
 
 /** Evaluate a preview without touching the document: a throwaway store with the planned records. */
+/** The OLD preview path (copies the whole store); kept for the benchmark comparison, and counted. */
 export function withPuts(editor: Editor, puts: DocRecord[]) {
   const tmp = new Store<DocRecord>({ schema, props: {} })
-  tmp.loadStoreSnapshot(editor.reader.getStoreSnapshot())
+  const snap = editor.reader.getStoreSnapshot()
+  counters.snapshotRows += Object.keys(snap.store).length
+  tmp.loadStoreSnapshot(snap)
   tmp.put(puts)
   return tmp
 }

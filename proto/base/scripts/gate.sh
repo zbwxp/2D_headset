@@ -10,6 +10,6 @@ step typecheck npx tsc --noEmit -p .
 step unit npx vitest run
 step unit-production env NODE_ENV=production npx vitest run
 if lsof -nP -iTCP:5179 -sTCP:LISTEN >/dev/null 2>&1; then echo "FAIL e2e: port 5179 already in use (playwright would reuse a foreign server)"; exit 1; fi
-step e2e npx playwright test e2e/slice.spec.ts
+step e2e npx playwright test e2e/slice.spec.ts e2e/preview-counts.spec.ts
 for i in $(seq 1 "$repeats"); do step "properties-$i" env NODE_ENV=production npx vitest run test/properties.test.ts; done
 echo "GATE OK ($repeats property runs)"

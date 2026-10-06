@@ -99,7 +99,7 @@ export class Editor {
       serialize: s.serialize.bind(s),
       query: s.query,
     }
-    this.derived = new Derived(s)
+    this.derived = new Derived(s, this.reader)
   }
 
   get isDirty() {

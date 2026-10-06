@@ -60,6 +60,34 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   the edit path (plan, validation, history) dominates.
 - Still to add (dot): a **parameter-driven** full-evaluation workload (angle / expression as inputs,
   no edits), with memory reported separately. Runtime caching is not decided from the batch-edit numbers.
+- **Reviewed by dot at 375f9e5**: index/cache correctness passed (92 tests per mode + dot's
+  independent index-key migration, rollback, same-id reuse, multi-level visibility, eviction past
+  10,000). Interaction performance NOT accepted: preview copied the store (272 → 6,030 rows per move
+  at 121 → 3000 curves, uncounted), the view and hit tests used the uncached full evaluation, and the
+  whole-list sort re-read records in its comparator.
+
+### Step 2 — real drag preview without a store copy (implemented, not yet reviewed by dot)
+
+- `Derived.previewChanges(puts)`: re-evaluates only the changed curves, the fills reading them (fill
+  index), the reference instances showing them (references of each container in the curve's chain)
+  and all instances of a changed reference, through an overlay `get` (`overlayReader`); everything
+  else stays cached. Falls back (counted) to a full overlay evaluation if a plan could change paint
+  order or touches other record kinds. Item evaluation is ONE set of functions shared by caches and
+  preview. `Derived.preview(puts)` merges into the cached list for the current whole-list view.
+- FabricView: drag preview, hit tests and default render use `editor.derived`; `withPuts` (store copy)
+  is no longer on the drag path and is counted (`snapshotRows`) where still used (bench, breakdown).
+- Whole-list sort: each item's order key computed once (decorate-sort), parents looked up once.
+- Tests: `test/preview.test.ts` (8 drag kinds incl. connected anchors, fills, overrides, reference
+  sources, V moves of one/two containers: preview == full recompute after commit; cancel and rejected
+  plans change nothing; container plan → counted fallback, still equal; 121 vs 3000 curves: identical
+  per-move counts, 0 snapshot rows), property I13 (preview == full recompute after commit, every
+  apply), `e2e/preview-counts.spec.ts` (real mouse drag in Chromium: 8 previews, 0 snapshot rows,
+  0 full evaluations during the drag, 0 fallbacks). Mutations M18–M20 caught.
+- Still full per render (drawing layer, not changed by design): the view assembles the whole preview
+  list (`previewItems` = list length per move) and rebuilds every canvas object (`canvasObjects`).
+- Found by I13: a plan that CREATES a record without an explicit id gets a fresh random id per plan,
+  so preview and commit ids differ (and equal-key paint order among such items follows the random
+  ids). Not on the drag path; matters for API callers who preview then apply. Open.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).

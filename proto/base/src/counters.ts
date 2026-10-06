@@ -18,6 +18,16 @@ export const counters = {
   fillEvals: 0,
   /** items collected when the WHOLE evaluated list is assembled (references, not re-evaluations) */
   assembledItems: 0,
+  /** drag previews computed (Derived.previewChanges) */
+  previews: 0,
+  /** items re-evaluated for previews (changed curves + dependent fills and instances) */
+  previewEvals: 0,
+  /** items carried over when a whole preview LIST is assembled (references, not re-evaluations) */
+  previewItems: 0,
+  /** previews that fell back to a full evaluation (plan could change paint order / other kinds) */
+  previewFallbacks: 0,
+  /** records loaded by store snapshot copies (withPuts) — the cost the old preview paid per move */
+  snapshotRows: 0,
   /** full-document evaluations through the uncached `evaluate()` */
   fullEvals: 0,
   /** canvas objects (re)built by the view */

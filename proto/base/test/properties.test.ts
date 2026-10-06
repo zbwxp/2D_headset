@@ -21,6 +21,8 @@
 //  I11 after every step the incremental evaluation (caches) equals the full uncached recompute —
 //      including after undo/redo, rollbacks, outer aborts, throwing subscribers and reopen
 //  I12 after every step each index answer equals a brute-force scan of the raw records
+//  I13 a drag preview (derived.preview of the plan's records, no store copy) equals the full recompute
+//      of the document after that plan is committed
 import { react, transaction } from '@tldraw/state'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
@@ -280,7 +282,27 @@ describe('properties of the single write entry', () => {
           const hist = JSON.stringify(e.history)
           const locked = lockedSnapshot(e)
           if (act.kind === 'apply') {
+            // I13 the drag preview of a plan (no store copy) equals the full recompute after commit
+            const pv = e.preview(act.cmd)
+            const shown = pv.ok ? e.derived.preview(pv.puts) : undefined
             const r = api.apply(act.cmd)
+            if (shown && pv.ok && r.ok && r.written) {
+              const created = pv.puts.filter((x) => !(x.id in JSON.parse(before))).map((x) => x.id as string)
+              if (!created.length) expect(shown).toEqual(evaluate(e.reader)) // exact, including paint order
+              else {
+                // Created records get a fresh random id per plan (preview and commit plan separately,
+                // see OPEN.md): map the previewed ids to the committed ones; order among items with
+                // equal keys then depends on those random ids, so compare order-independently.
+                let json = JSON.stringify(shown)
+                created.forEach((id) => {
+                  const i = pv.affected.indexOf(id)
+                  if (i >= 0 && r.affected[i]) json = json.split(id).join(r.affected[i])
+                })
+                const norm = (ev: any) => ({ curves: [...ev.curves].sort((a: any, b: any) => a.address.localeCompare(b.address)), fills: [...ev.fills].sort((a: any, b: any) => a.address.localeCompare(b.address)) })
+                expect(norm(JSON.parse(json))).toEqual(norm(JSON.parse(JSON.stringify(evaluate(e.reader)))))
+              }
+            }
+            if (shown && !(r.ok && r.written)) expect(doc(e)).toBe(before) // previewed but not written: nothing changed
             if (act.cmd.type === 'setContainerFlags' && act.cmd.locked === false && r.ok && r.written) seen.unlocked++
             if (act.cmd.type === 'createFill' && r.ok && r.written) seen.fillCreated++
             if (!r.ok) seen.rejected++
