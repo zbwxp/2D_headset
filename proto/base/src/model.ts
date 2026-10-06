@@ -1,6 +1,7 @@
 // Read helpers over the document: lookups, effective lock/visibility, connection linkage.
 // Lock/visibility inheritance follows Illustrator/Figma layer semantics (docs/design/architecture/11 §3).
 import type { RecordId } from '@tldraw/store'
+import { counters } from './counters'
 import { connectionsAt } from './indexes'
 import { offsetAt } from './pose'
 import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type DocReader, type FillRecord, type ReferenceRecord } from './schema'
@@ -9,7 +10,9 @@ export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
 export const anchorKey = (r: AnchorRef) => `${r.curveId}#${r.anchorId}`
 
 export function all<T extends DocRecord['typeName']>(store: DocReader, type: T) {
-  return store.allRecords().filter((r) => r.typeName === type) as Extract<DocRecord, { typeName: T }>[]
+  const rows = store.allRecords()
+  counters.scannedRows += rows.length // a whole-table read: counted wherever it happens
+  return rows.filter((r) => r.typeName === type) as Extract<DocRecord, { typeName: T }>[]
 }
 
 export function containerChain(store: DocReader, id: RecordId<ContainerRecord> | null): ContainerRecord[] {

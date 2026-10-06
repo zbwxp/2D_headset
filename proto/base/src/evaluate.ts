@@ -127,6 +127,7 @@ function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, con
 
 /** SVG path data from cubics — used by display AND export, so they cannot disagree. */
 export function cubicsToPath(cubics: Cubic[], close = false) {
+  counters.pathStrings++
   if (!cubics.length) return ''
   const f = (v: Vec) => `${+v.x.toFixed(3)} ${+v.y.toFixed(3)}`
   let d = `M ${f(cubics[0][0])}`

@@ -39,6 +39,12 @@ export const counters = {
   yawEvictions: 0,
   /** full uncached evaluations at a yaw (pose.evaluateAtYaw) */
   fullYawEvals: 0,
+  /** rows returned by whole-table reads (`model.all` → `allRecords()`), wherever they happen */
+  scannedRows: 0,
+  /** SVG path strings built (`cubicsToPath`) — Fabric then parses each one back into commands */
+  pathStrings: 0,
+  /** Fabric objects constructed by the view (paths, dots, groups) */
+  fabricObjectsCreated: 0,
   /** canvas objects (re)built by the view */
   canvasObjects: 0,
 }

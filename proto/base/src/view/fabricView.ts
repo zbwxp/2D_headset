@@ -43,6 +43,11 @@ export class FabricView {
   onion: { yaws: number[] } | null = null
   /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
   readonly latencies: number[] = []
+  /** Drawing-path phase timings in ms, accumulated (dot: measure before deciding how the canvas changes). */
+  readonly timing = { plan: 0, previewChanges: 0, assemble: 0, containerScan: 0, buildObjects: 0, attach: 0, renderAll: 0, renders: 0, moves: 0 }
+  resetTiming() {
+    for (const k of Object.keys(this.timing) as (keyof FabricView['timing'])[]) this.timing[k] = 0
+  }
   private lastInputTs = 0
 
   constructor(
@@ -52,6 +57,12 @@ export class FabricView {
   ) {
     this.canvas = new Canvas(el, { selection: true, preserveObjectStacking: true })
     this.canvas.setViewportTransform([3, 0, 0, 3, 150, 60])
+    let renderStart = 0
+    this.canvas.on('before:render', () => (renderStart = performance.now()))
+    this.canvas.on('after:render', () => {
+      this.timing.renderAll += performance.now() - renderStart
+      this.timing.renders++
+    })
     // Fabric caches its target before 'mouse:down:before' fires, so we route V-mode targets in a
     // capture-phase listener on Fabric's wrapper element (public `wrapperEl`), which runs first.
     for (const type of ['pointerdown', 'mousedown'] as const) {
@@ -119,21 +130,30 @@ export class FabricView {
   }
 
   private project(ev: Evaluated, onions: Evaluated[]) {
-    this.canvas.discardActiveObject()
-    this.canvas.remove(...this.canvas.getObjects())
+    // Phases are timed separately (dot): build objects into `objs`, then attach them in one call.
+    let t = performance.now()
+    const objs: FabricObject[] = []
+    const add = (...o: FabricObject[]) => {
+      counters.fabricObjectsCreated += o.length
+      objs.push(...o)
+    }
     {
       // onion yaws come from the cached angle evaluation (or the drag preview at each yaw)
       for (const o of onions) {
         for (const c of o.curves.filter((c) => c.visible)) {
-          this.canvas.add(new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false }))
+          add(new Path(cubicsToPath(c.segments.map((s) => s.cubic)), { fill: '', stroke: 'rgba(120,120,200,0.25)', strokeWidth: 0.4, selectable: false, evented: false, objectCaching: false }))
         }
       }
     }
     this.groupStart.clear()
     for (const f of ev.fills.filter((f) => f.visible)) {
-      this.canvas.add(new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false }))
+      add(new Path(cubicsToPath(f.cubics, true), { fill: f.color, stroke: '', selectable: false, evented: false, objectCaching: false }))
     }
+    this.timing.buildObjects += performance.now() - t
+    t = performance.now()
     const containers = all(this.editor.reader, 'container') as ContainerRecord[]
+    this.timing.containerScan += performance.now() - t
+    t = performance.now()
     const curves = ev.curves.filter((c) => c.visible)
     const pathOf = (c: (typeof curves)[number]) =>
       new Path(cubicsToPath(c.segments.map((s) => s.cubic)), {
@@ -154,17 +174,24 @@ export class FabricView {
         ;(g as any).containerId = k.id
         ;(g as any).lockedGroup = locked
         this.groupStart.set(g, g.calcTransformMatrix())
-        this.canvas.add(g)
+        counters.fabricObjectsCreated += members.length // the member paths (pathOf) inside the group
+        add(g)
       }
-      for (const c of curves.filter((c) => c.referenceId)) this.canvas.add(pathOf(c))
+      for (const c of curves.filter((c) => c.referenceId)) add(pathOf(c))
     } else {
-      for (const c of curves) this.canvas.add(pathOf(c))
+      for (const c of curves) add(pathOf(c))
       for (const c of curves.filter((c) => !c.locked)) {
         for (const a of Object.values(c.anchors)) {
-          this.canvas.add(dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9))
+          add(dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9))
         }
       }
     }
+    this.timing.buildObjects += performance.now() - t
+    t = performance.now()
+    this.canvas.discardActiveObject()
+    this.canvas.remove(...this.canvas.getObjects())
+    this.canvas.add(...objs)
+    this.timing.attach += performance.now() - t
     this.canvas.requestRenderAll()
   }
 
@@ -242,15 +269,24 @@ export class FabricView {
       return
     }
     const cmd = mapped
+    this.timing.moves++
+    let t = performance.now()
     const pv = this.editor.preview(cmd)
+    this.timing.plan += performance.now() - t
     this.drag.cmd = cmd
     this.drag.ok = pv.ok
     if (pv.ok) {
       this.setStatus('')
       // incremental preview: only the affected items are re-evaluated; no store copy (dot)
       const d = this.editor.derived
+      t = performance.now()
       const ch = d.previewChanges(pv.puts) // once per move, shared by the drawing and every onion yaw
-      this.render(d.preview(pv.puts, ch), this.onion ? this.onion.yaws.map((y) => d.previewAtYaw(pv.puts, y, ch)) : [])
+      this.timing.previewChanges += performance.now() - t
+      t = performance.now()
+      const main = d.preview(pv.puts, ch)
+      const onions = this.onion ? this.onion.yaws.map((y) => d.previewAtYaw(pv.puts, y, ch)) : []
+      this.timing.assemble += performance.now() - t
+      this.render(main, onions)
       const t0 = this.lastInputTs
       requestAnimationFrame(() => this.latencies.push(performance.now() - t0))
     } else {

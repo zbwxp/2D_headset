@@ -10,7 +10,7 @@ import { onionYaws, syntheticPoses, syntheticRecords } from './synthetic'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
-const benchShapes = bench ? syntheticRecords({ curves: 121, layers: 8, fills: 15 }) : []
+const benchShapes = bench ? syntheticRecords({ curves: Number(params.get('curves') ?? 121), layers: 8, fills: 15 }) : []
 const benchRecords = [...benchShapes, ...syntheticPoses(benchShapes)]
 const editor = new Editor(bench ? benchRecords : exampleRecords())
 const api = createApi(editor)

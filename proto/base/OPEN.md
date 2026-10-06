@@ -21,6 +21,12 @@ inverse solving, real drawing / byte / GPU budgets.
 REAL drag and in playback; measure them with one workload; decide from the numbers how the canvas
 changes. Replacing the renderer is not a given.
 
+**Inventory done (not reviewed):** `bench-results/drawing-costs.md` — in a real Chromium drag the
+evaluation is ≤ 5 ms in every completed case; the time is in building Fabric objects (path strings +
+parsing), attaching (remove + re-add all), renderAll (≈ 156–207 ms per render; 2 renders per move),
+plus one whole-table scan per render and whole-list consumption per onion yaw. 3000 curves with 19
+onion yaws did not finish loading.
+
 ## Stage conclusion (dot, 2026-10-06, independent re-review of 3f697ca)
 
 **The limited editing-transaction sample may proceed to the next validation stage.** Verified at
