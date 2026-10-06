@@ -169,7 +169,7 @@ test('V: ActiveSelection move of two groups = one undo step; ending the selectio
   await page.mouse.move(l1.x + 30, l1.y + 15, { steps: 6 })
   await page.mouse.up()
   const afterMove = await state(page)
-  expect(afterMove.undo.at(-1)).toBe('V transform')
+  expect(afterMove.undo.at(-1)).toBe('transformContainers')
   // end the multi-selection: Fabric bakes its transform into members; our document must not change
   const empty = await toPage(page, { x: 140, y: 120 })
   await page.mouse.click(empty.x, empty.y)
@@ -181,4 +181,61 @@ test('V: ActiveSelection move of two groups = one undo step; ending the selectio
   await page.click('#undo')
   const undone = await state(page)
   expect(undone.undo).toEqual(['setContainerFlags'])
+})
+
+// ---- dot's UI review cases (2026-10-07) ----
+
+test('V: moving a selection of CONNECTED layers L1+L2 moves each linked endpoint once', async ({ page }) => {
+  await open(page)
+  await page.click('#unlock')
+  await page.click('#modeV')
+  const l1 = await toPage(page, { x: 10, y: 60 }) // a2 of C1 (L1)
+  const l2 = await toPage(page, { x: 80, y: 50 }) // b2 of C2 (L2)
+  await page.mouse.click(l1.x, l1.y)
+  await page.keyboard.down('Shift')
+  await page.mouse.click(l2.x, l2.y)
+  await page.keyboard.up('Shift')
+  expect(await page.evaluate(() => (window as any).__contour.view.canvas.getActiveObjects().map((o: any) => o.containerId).sort())).toEqual([
+    'container:L1',
+    'container:L2',
+  ])
+  await page.mouse.move(l1.x, l1.y)
+  await page.mouse.down()
+  await page.mouse.move(l1.x + 15, l1.y + 7.5, { steps: 3 })
+  await page.mouse.move(l1.x + 30, l1.y + 15, { steps: 3 })
+  await page.mouse.up()
+  const pts = await page.evaluate(() => {
+    const c = (window as any).__contour
+    const g = (id: string) => c.editor.reader.get(id).anchors
+    return { a3: g('curve:C1').a3.p, b3: g('curve:C2').b3.p, b2: g('curve:C2').b2.p }
+  })
+  expect(pts.a3).toEqual({ x: 70, y: 105 })
+  expect(pts.b3).toEqual({ x: 70, y: 105 })
+  expect(pts.b2).toEqual({ x: 90, y: 55 })
+  const s = await state(page)
+  expect(s.undo).toEqual(['setContainerFlags', 'transformContainers'])
+  const r = await replayViaApi(page, [{ type: 'setContainerFlags', containerId: 'container:L2', locked: false }])
+  expect(r.doc).toBe(s.doc)
+  expect(await sceneIsPureProjection(page)).toBe(true)
+})
+
+test('V: Escape during a Fabric transform cancels it; nothing written', async ({ page }) => {
+  await open(page)
+  await page.click('#unlock')
+  await page.click('#modeV')
+  const l1 = await toPage(page, { x: 10, y: 60 })
+  await page.mouse.click(l1.x, l1.y)
+  const before = await state(page)
+  await page.mouse.move(l1.x, l1.y)
+  await page.mouse.down()
+  await page.mouse.move(l1.x + 40, l1.y + 20, { steps: 5 })
+  await page.keyboard.press('Escape')
+  await page.mouse.move(l1.x + 60, l1.y + 30, { steps: 3 })
+  await page.mouse.up()
+  await page.waitForTimeout(50)
+  const after = await state(page)
+  expect(after.doc).toBe(before.doc)
+  expect(after.undo).toEqual(before.undo)
+  expect(after.log.filter((l: any) => l.cmd.type.startsWith('transform'))).toEqual([])
+  expect(await sceneIsPureProjection(page)).toBe(true)
 })

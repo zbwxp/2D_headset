@@ -37,6 +37,8 @@ export type Command =
   | { type: 'moveHandle'; target: AnchorRef; handle: 'in' | 'out'; delta: Vec }
   | { type: 'moveOverride'; referenceId: RecordId<ReferenceRecord>; target: AnchorRef; delta: Vec }
   | { type: 'transformContainer'; containerId: RecordId<ContainerRecord>; matrix: Affine }
+  /** Several containers under ONE selection transform: each anchor moves exactly once (dot: L1+L2 double move). */
+  | { type: 'transformContainers'; containerIds: RecordId<ContainerRecord>[]; matrix: Affine }
   | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[] }
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
 
@@ -149,13 +151,17 @@ function planRaw(store: DocStore, cmd: Command): Plan {
       const next = { ...ref, overrides: { ...ref.overrides, [key]: add(current, cmd.delta) } }
       return { ok: true, label: 'moveOverride', puts: [next], affected: [`${ref.id}/${key}`] }
     }
-    case 'transformContainer': {
+    case 'transformContainer':
+      return planRaw(store, { type: 'transformContainers', containerIds: [cmd.containerId], matrix: cmd.matrix })
+    case 'transformContainers': {
       // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
       // (Illustrator behaviour) so the comparison can be made later with real numbers.
-      if (!store.get(cmd.containerId)) return fail('NOT_FOUND', `container ${cmd.containerId} not found`, [cmd.containerId])
-      const curves = (store.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).filter((c) => inContainer(store, c, cmd.containerId))
-      // References placed inside the container move with it: compose their placement transform.
-      const refs = (store.allRecords().filter((r) => r.typeName === 'reference') as ReferenceRecord[]).filter((r) => isWithin(store, r.parentId, cmd.containerId))
+      if (!cmd.containerIds.length) return fail('INVALID', 'no containers', [])
+      for (const id of cmd.containerIds) if (!store.get(id)) return fail('NOT_FOUND', `container ${id} not found`, [id])
+      const within = (parentId: RecordId<ContainerRecord> | null) => cmd.containerIds.some((id) => isWithin(store, parentId, id))
+      const curves = (store.allRecords().filter((r) => r.typeName === 'curve') as CurveRecord[]).filter((c) => within(c.parentId))
+      // References placed inside the containers move with them: compose their placement transform.
+      const refs = (store.allRecords().filter((r) => r.typeName === 'reference') as ReferenceRecord[]).filter((r) => within(r.parentId))
       for (const r of refs) {
         const locker = lockedBy(store, r.parentId)
         if (locker) return fail('LOCKED', `reference ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
@@ -176,7 +182,8 @@ function planRaw(store: DocStore, cmd: Command): Plan {
         const a = (store.get(m.ref.curveId) as CurveRecord).anchors[m.ref.anchorId]
         moves.set(anchorKey(m.ref), { ref: m.ref, p: applyAffine(cmd.matrix, a.p) })
       }
-      return { ok: true, label: 'transformContainer', puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
+      const label = cmd.containerIds.length === 1 ? 'transformContainer' : 'transformContainers'
+      return { ok: true, label, puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
     }
     case 'createFill': {
       const parent = store.get(cmd.parentId) as ContainerRecord | undefined

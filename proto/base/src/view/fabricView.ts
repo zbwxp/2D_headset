@@ -34,6 +34,8 @@ export class FabricView {
   private projecting = false
   /** Number of re-entrant `object:modified` events ignored (evidence for the risk report). */
   ignoredReentrantEvents = 0
+  private vTransforming = false
+  private vCancelled = false
   /** Onion skins: faint projections of the same drawing at other yaws (benchmark input, 15 §2). */
   onion: { track: PoseTrack; yaws: number[] } | null = null
   /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
@@ -57,6 +59,14 @@ export class FabricView {
     this.canvas.on('mouse:move', (o) => this.onMove(o.e as PointerEvent))
     this.canvas.on('mouse:up', () => this.onUp())
     this.canvas.on('object:modified', (o) => this.onModified(o.target as FabricObject))
+    this.canvas.on('before:transform', () => {
+      this.vTransforming = true
+      this.vCancelled = false
+    })
+    this.canvas.on('mouse:up', () => {
+      // a cancelled transform may end without object:modified (nothing changed): clear the flags
+      if (this.vCancelled) queueMicrotask(() => ((this.vCancelled = false), (this.vTransforming = false)))
+    })
     // Whatever Fabric does when a multi-selection ends, the document is the only truth: re-project.
     this.canvas.on('selection:cleared', () => {
       if (!this.projecting) queueMicrotask(() => this.render())
@@ -71,11 +81,21 @@ export class FabricView {
   }
 
   cancelGesture() {
-    if (!this.drag) return false
-    this.drag = null
-    this.setStatus('已取消')
-    this.render()
-    return true
+    if (this.drag) {
+      this.drag = null
+      this.setStatus('已取消')
+      this.render()
+      return true
+    }
+    if (this.vTransforming) {
+      // V-mode cancel: drop Fabric's in-progress transform by re-projecting the document. Fabric
+      // fires object:modified when the transform ends; `vCancelled` makes us ignore it.
+      this.vCancelled = true
+      this.setStatus('已取消')
+      this.render()
+      return true
+    }
+    return false
   }
 
   private setStatus(s: string) {
@@ -228,24 +248,32 @@ export class FabricView {
       this.ignoredReentrantEvents++
       return
     }
+    this.vTransforming = false
+    if (this.vCancelled) {
+      this.vCancelled = false
+      queueMicrotask(() => this.render())
+      return
+    }
     const groups = target instanceof ActiveSelection ? (target.getObjects() as FabricObject[]) : [target]
-    const cmds: Command[] = []
+    const containerIds: string[] = []
+    let matrix: Affine | null = null
     for (const g of groups) {
       const start = this.groupStart.get(g)
       const containerId = (g as any).containerId
       if (!start || !containerId) continue
       const now = g.calcTransformMatrix() // includes the ActiveSelection's own transform, if any
-      const delta = util.multiplyTransformMatrices(now, util.invertTransform(start))
-      cmds.push({ type: 'transformContainer', containerId, matrix: toAffine(delta.map(round) as TMat2D) })
-    }
-    if (cmds.length === 1) this.applyAndLog(cmds[0])
-    else if (cmds.length > 1) {
-      try {
-        this.editor.batch('V transform', () => cmds.forEach((c) => this.applyAndLog(c, true)))
-      } catch {
-        /* failure already logged; batch restored the document */
+      const m = toAffine(util.multiplyTransformMatrices(now, util.invertTransform(start)).map(round) as TMat2D)
+      // Every member of one selection shares the selection's transform; one command moves each anchor once.
+      if (matrix && Object.keys(m).some((k) => Math.abs((m as any)[k] - (matrix as any)[k]) > 1e-6)) {
+        this.setStatus('INVALID: selection members disagree on the transform')
+        queueMicrotask(() => this.render())
+        return
       }
+      matrix = m
+      containerIds.push(containerId)
     }
+    if (matrix && containerIds.length === 1) this.applyAndLog({ type: 'transformContainer', containerId: containerIds[0] as any, matrix })
+    else if (matrix && containerIds.length > 1) this.applyAndLog({ type: 'transformContainers', containerIds: containerIds as any, matrix })
     // Re-project only after Fabric has finished its own mouse-up bookkeeping.
     queueMicrotask(() => this.render())
   }
