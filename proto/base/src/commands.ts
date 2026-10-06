@@ -21,7 +21,7 @@ import {
   type ContainerRecord,
   type CurveRecord,
   type DocRecord,
-  type DocReader as DocStore,
+  type BaseReader as DocStore,
   type FillRecord,
   type ReferenceRecord,
   type Vec,
@@ -214,6 +214,12 @@ function dependantsOf(store: DocStore, id: string): string[] {
     if (store.get(poseIdOf(r.id) as any)) out.push(poseIdOf(r.id))
     return out
   }
+  // a pose: the connections at its curve's anchors must still agree at every yaw without it (as when a pose
+  // is written; dot, review of 3729d27: deleting one side's pose separated the ends and broke reopen)
+  if (r.typeName === 'pose') {
+    const c = getAs(store, r.curveId, 'curve')
+    return c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
+  }
   return []
 }
 
@@ -241,6 +247,8 @@ function removalGuard(store: DocStore, removals: string[]): Plan | null {
   for (const id of removals) {
     const old = store.get(id as any) as DocRecord | undefined
     if (!old) return fail('NOT_FOUND', `${id} does not exist`, [id])
+    const ends = connectionLock(store, old)
+    if (ends) return ends
     const place = placeOf(store, old)
     const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
     if (locker) return fail('LOCKED', `${id} is in locked container ${locker.id}`, [id, locker.id], [`unlock ${locker.id}`])
@@ -264,12 +272,28 @@ function placeOf(store: DocStore, x: DocRecord): string | null {
   return x.parentId
 }
 
+/**
+ * A connection belongs to all its ends: creating, changing or removing one is refused when any end's
+ * curve is in a locked container (dot, review of 3729d27: deleting J freed the end in locked L2).
+ */
+function connectionLock(store: DocStore, r: DocRecord): Plan | null {
+  if (r.typeName !== 'connection') return null
+  for (const e of r.ends) {
+    const curve = getAs(store, e.curveId, 'curve')
+    const locker = curve ? lockedBy(store, curve.parentId) : undefined
+    if (locker) return fail('LOCKED', `${r.id} joins ${anchorKey(e)} in locked container ${locker.id}`, [r.id, anchorKey(e), locker.id], [`unlock ${locker.id}`])
+  }
+  return null
+}
+
 function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: Set<string>): Plan | null {
   for (const r of puts) {
     const old = store.get(r.id as any) as DocRecord | undefined
     if (creates.has(r.id)) {
       if (old) return fail('ID_CONFLICT', `${r.id} already exists`, [r.id], ['omit the id to get a fresh one'])
       // a NEW record may not be placed under a lock either (generic, not left to each command)
+      const ends = connectionLock(store, r)
+      if (ends) return ends
       const place = placeOf(store, r)
       const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
       if (locker) return fail('LOCKED', `${r.id} would be created in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
@@ -277,6 +301,8 @@ function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: S
     }
     if (!old) return fail('NOT_FOUND', `${r.id} does not exist`, [r.id])
     if (old.typeName !== r.typeName) return fail('INVALID', `${r.id} changes type`, [r.id])
+    const ends = connectionLock(store, old) ?? connectionLock(store, r)
+    if (ends) return ends
     const places = new Set<string | null>()
     places.add(placeOf(store, old))
     places.add(placeOf(store, r))

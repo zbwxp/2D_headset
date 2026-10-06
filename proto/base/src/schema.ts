@@ -169,7 +169,14 @@ export const schema = StoreSchema.create<DocRecord>({
 export type DocStore = Store<DocRecord>
 /** Read-only view of the document. Everything except the Editor's write entry gets only this.
  *  `query` is tldraw's read-only derivation API (indexes); it cannot write. */
-export type DocReader = Pick<DocStore, 'get' | 'allRecords' | 'getStoreSnapshot' | 'serialize' | 'query'>
+/**
+ * What EVERY reader has: reads by id and enumeration, both over the same final state. Overlays (previews)
+ * and plain runtime readers are only this. Membership lookups (indexes.ts) fall back to scanning
+ * `allRecords` on such a reader, so ids, enumeration and membership always agree (dot, review of 3729d27).
+ */
+export type BaseReader = Pick<DocStore, 'get' | 'allRecords'>
+/** A live store view: a BaseReader plus the reactive indexes (`query`) and snapshots. */
+export type DocReader = BaseReader & Pick<DocStore, 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
 const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, pose: Pose } as const

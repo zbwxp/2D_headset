@@ -4,18 +4,18 @@ import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { connectionsAt } from './indexes'
 import { offsetAt } from './pose'
-import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type DocReader, type FillRecord, type ReferenceRecord } from './schema'
+import { poseIdOf, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type BaseReader, type FillRecord, type ReferenceRecord } from './schema'
 
 export type AnchorRef = { curveId: RecordId<CurveRecord>; anchorId: string }
 export const anchorKey = (r: AnchorRef) => `${r.curveId}#${r.anchorId}`
 
-export function all<T extends DocRecord['typeName']>(store: DocReader, type: T) {
+export function all<T extends DocRecord['typeName']>(store: BaseReader, type: T) {
   const rows = store.allRecords()
   counters.scannedRows += rows.length // a whole-table read: counted wherever it happens
   return rows.filter((r) => r.typeName === type) as Extract<DocRecord, { typeName: T }>[]
 }
 
-export function containerChain(store: DocReader, id: RecordId<ContainerRecord> | null): ContainerRecord[] {
+export function containerChain(store: BaseReader, id: RecordId<ContainerRecord> | null): ContainerRecord[] {
   const out: ContainerRecord[] = []
   const seen = new Set<string>()
   let cur = id ? (store.get(id) as ContainerRecord | undefined) : undefined
@@ -29,18 +29,18 @@ export function containerChain(store: DocReader, id: RecordId<ContainerRecord> |
 }
 
 /** The nearest locked container above (or at) `parentId`, if any. */
-export function lockedBy(store: DocReader, parentId: RecordId<ContainerRecord> | null) {
+export function lockedBy(store: BaseReader, parentId: RecordId<ContainerRecord> | null) {
   return containerChain(store, parentId).find((c) => c.locked)
 }
 
-export const effectivelyVisible = (store: DocReader, parentId: RecordId<ContainerRecord> | null) =>
+export const effectivelyVisible = (store: BaseReader, parentId: RecordId<ContainerRecord> | null) =>
   containerChain(store, parentId).every((c) => c.visible)
 
 /**
  * All anchors that must move together with the given ones, following connections transitively.
  * Returns each linked anchor with the connection that pulled it in (for error reporting).
  */
-export function linkedAnchors(store: DocReader, seeds: AnchorRef[]) {
+export function linkedAnchors(store: BaseReader, seeds: AnchorRef[]) {
   // via the connection index: cost follows the linked anchors, not the number of connections
   const result = new Map<string, { ref: AnchorRef; via?: RecordId<ConnectionRecord> }>()
   const queue = [...seeds]
@@ -59,20 +59,20 @@ export function linkedAnchors(store: DocReader, seeds: AnchorRef[]) {
   return [...result.values()]
 }
 
-export const fillsOf = (store: DocReader) => all(store, 'fill') as FillRecord[]
-export const referencesOf = (store: DocReader) => all(store, 'reference') as ReferenceRecord[]
-export const curvesIn = (store: DocReader, containerId: RecordId<ContainerRecord>) =>
+export const fillsOf = (store: BaseReader) => all(store, 'fill') as FillRecord[]
+export const referencesOf = (store: BaseReader) => all(store, 'reference') as ReferenceRecord[]
+export const curvesIn = (store: BaseReader, containerId: RecordId<ContainerRecord>) =>
   (all(store, 'curve') as CurveRecord[]).filter((c) => containerChain(store, c.parentId).some((k) => k.id === containerId))
 
 /** Structural checks a loaded document must pass (references resolve, no container cycles). */
 /** Typed lookup: the record only if it exists AND has the expected type (dot: a curve id passed as a parent). */
-export function getAs<T extends DocRecord['typeName']>(store: Pick<DocReader, 'get'>, id: unknown, type: T) {
+export function getAs<T extends DocRecord['typeName']>(store: Pick<BaseReader, 'get'>, id: unknown, type: T) {
   const r = typeof id === 'string' ? (store.get(id as any) as DocRecord | undefined) : undefined
   return r?.typeName === type ? (r as Extract<DocRecord, { typeName: T }>) : undefined
 }
 
 /** What a missing/wrong-typed id actually is, for error messages: "missing" or its real type. */
-export const actualKind = (store: Pick<DocReader, 'get'>, id: unknown) =>
+export const actualKind = (store: Pick<BaseReader, 'get'>, id: unknown) =>
   (typeof id === 'string' && (store.get(id as any) as DocRecord | undefined)?.typeName) || 'missing'
 
 /** One broken relation, addressed so a UI or an AI can point at it. */
@@ -84,7 +84,7 @@ export type RelationProblem = { object: string; field: string; target: string; m
  * published (`plan`), so the editor can never write something it would refuse to open (dot).
  * Analogous to foreign-key constraints in a database: checked per written row, not by a full scan.
  */
-export function recordProblems(store: Pick<DocReader, 'get'>, r: DocRecord): RelationProblem[] {
+export function recordProblems(store: Pick<BaseReader, 'get'>, r: DocRecord): RelationProblem[] {
   const out: RelationProblem[] = []
   const need = (field: string, id: unknown, type: DocRecord['typeName']) => {
     if (!getAs(store, id, type)) out.push({ object: r.id, field, target: String(id), message: `${r.id}.${field}: ${id} is not a ${type} (${actualKind(store, id)})` })
@@ -145,11 +145,11 @@ export function recordProblems(store: Pick<DocReader, 'get'>, r: DocRecord): Rel
 }
 
 /** Whole-document check used on open: the same per-record rules over every record. */
-export function graphProblems(store: DocReader): string[] {
+export function graphProblems(store: BaseReader): string[] {
   return store.allRecords().flatMap((r) => recordProblems(store, r).map((p) => p.message))
 }
 
 /** True if `parentId` is `containerId` or below it. */
-export function isWithin(store: DocReader, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
+export function isWithin(store: BaseReader, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
   return containerChain(store, parentId).some((c) => c.id === containerId)
 }

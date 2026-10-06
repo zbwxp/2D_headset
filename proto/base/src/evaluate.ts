@@ -9,7 +9,7 @@ import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { all, effectivelyVisible, lockedBy } from './model'
-import type { Affine, ContainerRecord, CurveRecord, DocReader as DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
+import type { Affine, BaseReader, ContainerRecord, CurveRecord, BaseReader as DocStore, FillRecord, ReferenceRecord, Vec } from './schema'
 
 export type Cubic = [Vec, Vec, Vec, Vec]
 export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }
@@ -116,8 +116,8 @@ export function fromPaint(input: PaintInput[]): Evaluated {
 
 /** Container opacity is stored but not applied in the current base (scope limit, PAINT-ORDER.md D7 —
  *  NOT a product decision): reported, never silently ignored. Reads containers only. */
-export function unappliedContainerOpacity(store: Pick<DocStore, 'get'> & { query: DocStore['query'] }): string[] {
-  return [...store.query.ids('container').get()].filter((id) => (store.get(id as any) as ContainerRecord).opacity !== 1).map(String)
+export function unappliedContainerOpacity(store: BaseReader): string[] {
+  return (all(store, 'container') as ContainerRecord[]).filter((c) => c.opacity !== 1).map((c) => String(c.id))
 }
 
 /** Depth offsets are stored but not applied to the paint order yet (D1 open): reported, never silent. */

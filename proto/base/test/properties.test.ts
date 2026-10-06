@@ -307,17 +307,14 @@ describe('properties of the single write entry', () => {
           const hist = JSON.stringify(e.history)
           const locked = lockedSnapshot(e)
           if (act.kind === 'apply') {
-            // I13 the drag preview of a plan (no store copy) equals the full recompute after commit
-            const pv = e.preview(act.cmd)
-            const shown = pv.ok ? e.derived.preview(pv.puts) : undefined
-            const r = api.apply(act.cmd)
-            if (shown && pv.ok && r.ok && r.written) {
-              const created = pv.puts.some((x) => !(x.id in JSON.parse(before)))
-              // Plans that CREATE a record are not compared: preview and commit currently get different
-              // fresh ids — an OPEN contract problem (OPEN.md), deliberately not hidden by an
-              // id-mapping or order-insensitive comparison (dot). Every other plan: exact equality.
-              if (!created) expect(shown).toEqual(evaluate(e.reader))
-            }
+            // I13 the preview of a plan (no store copy) equals the full recompute after commit. Through the
+            // PUBLIC prepared path, so plans that create records are compared exactly too (KF-1 fixed for
+            // prepared operations; plain preview + apply are independent plans by contract, tested elsewhere).
+            const op = api.prepare()
+            const pv = op.preview(act.cmd)
+            const shown = pv.ok ? e.derived.preview(pv.puts, e.derived.previewChanges(pv.puts, pv.removals)) : undefined
+            const r = op.commit(act.cmd)
+            if (shown && pv.ok && r.ok && r.written) expect(shown).toEqual(evaluate(e.reader))
             if (shown && !(r.ok && r.written)) expect(doc(e)).toBe(before) // previewed but not written: nothing changed
             if (act.cmd.type === 'setContainerFlags' && act.cmd.locked === false && r.ok && r.written) seen.unlocked++
             if (act.cmd.type === 'createFill' && r.ok && r.written) seen.fillCreated++

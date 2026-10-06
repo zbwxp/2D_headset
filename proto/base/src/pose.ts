@@ -8,7 +8,7 @@
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
 import { evaluate, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { poseIdOf, type Affine, type DocReader, type FillRecord, type PoseRecord, type ReferenceRecord, type Vec } from './schema'
+import { poseIdOf, type Affine, type BaseReader, type FillRecord, type PoseRecord, type ReferenceRecord, type Vec } from './schema'
 
 const ZERO: Vec = { x: 0, y: 0 }
 
@@ -64,9 +64,9 @@ export function fillAtYaw(f: EvalFill, rec: FillRecord, curveOf: (id: string) =>
  * Full, uncached evaluation at `yaw` — the independent reference the cached angle evaluation
  * (derived.ts) is compared against. `prepared` lets several yaws share one base evaluation.
  */
-export function evaluateAtYaw(store: Pick<DocReader, 'get'> & Partial<DocReader>, yaw: number, prepared?: Evaluated): Evaluated {
+export function evaluateAtYaw(store: Pick<BaseReader, 'get'> & Partial<BaseReader>, yaw: number, prepared?: Evaluated): Evaluated {
   counters.fullYawEvals++
-  const base = prepared ?? evaluate(store as DocReader)
+  const base = prepared ?? evaluate(store as BaseReader)
   const placementOf = (c: EvalCurve) => (c.referenceId ? (store.get(c.referenceId as any) as ReferenceRecord).transform : undefined)
   const curves = new Map(base.curves.map((c) => [c.address, curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as PoseRecord | undefined, yaw, placementOf(c))]))
   const byBase = new Map([...curves.values()].filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))

@@ -152,8 +152,11 @@ decide from measurements how the drawing layer changes (no renderer rewrite is p
   (dot): a prepared create reuses its allocated identity and the commit re-validates it.
   **Fixed in stage 0 (doc 18 §23):** `Editor.prepare()` returns an `Operation` whose plans share one
   identity source; commit plans again on the current document (STALE if the non-rewinding edit
-  generation moved). Plain `preview` / `apply` stay independent by contract. Property I13 still does
-  not compare creating plans; comparing them through prepared operations is a possible later addition.
+  generation moved). Public API: `api.prepare()` (review of 3729d27: it was missing). Plain
+  `preview` / `apply` are two independent plans by contract (stated on the API, tested). Property I13
+  now goes through the public prepared path and compares creating plans exactly. A-mode point / handle
+  drags run as one Operation; V-mode container transforms still apply once at the end (no plan
+  preview during the Fabric transform), so they are not prepared operations.
 - Gaps: no current command changes an index key by UPDATE (parent, connection ends, fill boundary),
   so that index path is untested by commands; the drag preview (`withPuts`) still copies the whole
   store per move; onion skin / angle caching not started (pose track is not in the store yet).

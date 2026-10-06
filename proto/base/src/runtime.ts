@@ -5,23 +5,20 @@
 import { evaluate, type Evaluated } from './evaluate'
 import { graphProblems } from './model'
 import { evaluateAtYaw } from './pose'
-import { validateRecord, type DocReader, type DocRecord } from './schema'
+import { validateRecord, type BaseReader, type DocRecord } from './schema'
 
 export type Saved = { store: Record<string, DocRecord> } | DocRecord[]
 
-/** A read-only reader over a plain record map (what a runtime loading an exported file would have). */
-export function plainReader(saved: Saved): DocReader {
+/**
+ * A read-only reader over a plain record map (what a runtime loading an exported file would have). Only
+ * a BaseReader: membership lookups on it scan its records (indexes.ts), nothing pretends to be a store.
+ */
+export function plainReader(saved: Saved): BaseReader {
   const records = Array.isArray(saved) ? saved : Object.values(saved.store)
   const byId = new Map<string, DocRecord>(records.map((r) => [r.id, r]))
-  const unsupported = (name: string) => () => {
-    throw new Error(`read-only runtime reader: ${name} is not available`)
-  }
   return {
-    get: ((id: string) => byId.get(id)) as DocReader['get'],
+    get: ((id: string) => byId.get(id)) as BaseReader['get'],
     allRecords: () => records,
-    getStoreSnapshot: unsupported('getStoreSnapshot') as DocReader['getStoreSnapshot'],
-    serialize: unsupported('serialize') as DocReader['serialize'],
-    query: undefined as unknown as DocReader['query'], // the full evaluation needs no indexes
   }
 }
 

@@ -73,8 +73,28 @@ export function createApi(editor: Editor) {
   return {
     inspect,
     find,
+    /**
+     * `preview` and `apply` are TWO INDEPENDENT plans: a create without an explicit id gets a different new
+     * id in each. To preview and then commit the same new records, use `prepare`.
+     */
     preview: (cmd: Command) => editor.preview(cmd),
     apply: (cmd: Command) => editor.apply(cmd),
+    /**
+     * One prepared operation (KF-1): every `preview` of it re-plans the latest command with the SAME new ids,
+     * `commit` plans once more on the current document and writes once; STALE if the document changed
+     * since `prepare` (even if undone again); `cancel` writes nothing. Another operation never shares its ids.
+     */
+    prepare() {
+      const op = editor.prepare()
+      return {
+        preview: (cmd: Command) => op.preview(cmd),
+        commit: (cmd?: Command): ApplyResult => op.commit(cmd),
+        cancel: () => op.cancel(),
+        get state() {
+          return op.state
+        },
+      }
+    },
     /** A batch of commands = one undo step; any failure leaves nothing written. */
     applyBatch(label: string, cmds: Command[]): BatchResult {
       const r = editor.batchRun(label, () =>

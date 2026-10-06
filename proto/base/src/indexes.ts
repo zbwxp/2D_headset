@@ -16,9 +16,11 @@ import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FillRec
 type Type = DocRecord['typeName']
 type Rec<T extends Type> = Extract<DocRecord, { typeName: T }>
 type KeyIndex = Computed<Map<string, Set<string>>>
-export type Queryable = { query: StoreQueries<DocRecord>; get: (id: any) => unknown }
+/** A reader with the store's incremental indexes (`query`), or without them (overlay / plain reader → scan). */
+export type Queryable = { query?: StoreQueries<DocRecord>; get: (id: any) => unknown; allRecords?: () => DocRecord[] }
+type Indexed = Queryable & { query: StoreQueries<DocRecord> }
 
-function multiIndex<T extends Type>(store: Queryable, type: T, keysOf: (r: Rec<T>) => Iterable<string>): KeyIndex {
+function multiIndex<T extends Type>(store: Indexed, type: T, keysOf: (r: Rec<T>) => Iterable<string>): KeyIndex {
   const query = store.query
   const history = query.filterHistory(type)
   const keys = (r: DocRecord) => new Set(r.typeName === type ? keysOf(r as Rec<T>) : [])
@@ -87,7 +89,7 @@ type Indexes = {
 const cache = new WeakMap<object, Indexes>()
 
 /** The indexes of one store (created on first use, then maintained incrementally). */
-export function indexesOf(store: Queryable): Indexes {
+export function indexesOf(store: Indexed): Indexes {
   let ix = cache.get(store.query)
   if (!ix) {
     const byParent = <T extends 'container' | 'curve' | 'fill' | 'reference'>(t: T) => multiIndex(store, t, (r) => [String((r as { parentId: unknown }).parentId)])
@@ -107,11 +109,25 @@ const lookup = (ix: KeyIndex, key: string): string[] => {
   return [...(ix.get().get(key) ?? [])]
 }
 
-export const connectionsAt = (store: Queryable, key: string) => lookup(indexesOf(store).connectionsByAnchor, key) as ConnectionRecord['id'][]
+/** Membership on a reader without indexes: one scan of its final records (counted like any whole-table read). */
+function scan<T extends Type>(store: Queryable, type: T): Rec<T>[] {
+  if (!store.allRecords) throw new Error('reader has neither indexes nor allRecords')
+  const rows = store.allRecords()
+  counters.scannedRows += rows.length
+  return rows.filter((r) => r.typeName === type) as Rec<T>[]
+}
+const indexed = (store: Queryable): store is Indexed => !!store.query
+
+export const connectionsAt = (store: Queryable, key: string) =>
+  (indexed(store) ? lookup(indexesOf(store).connectionsByAnchor, key) : scan(store, 'connection').filter((c) => c.ends.some((e) => anchorKeyOf(e) === key)).map((c) => c.id)) as ConnectionRecord['id'][]
 export const childrenOf = <T extends 'container' | 'curve' | 'fill' | 'reference'>(store: Queryable, parentId: string | null, type: T) =>
-  lookup(indexesOf(store).childrenByParent[type], String(parentId)) as Rec<T>['id'][]
-export const fillsUsing = (store: Queryable, curveId: string) => lookup(indexesOf(store).fillsByCurve, curveId) as FillRecord['id'][]
-export const referencesOf = (store: Queryable, sourceId: string) => lookup(indexesOf(store).referencesBySource, sourceId) as ReferenceRecord['id'][]
+  (indexed(store)
+    ? lookup(indexesOf(store).childrenByParent[type], String(parentId))
+    : scan(store, type).filter((r) => String((r as { parentId: unknown }).parentId) === String(parentId)).map((r) => (r as { id: string }).id)) as Rec<T>['id'][]
+export const fillsUsing = (store: Queryable, curveId: string) =>
+  (indexed(store) ? lookup(indexesOf(store).fillsByCurve, curveId) : scan(store, 'fill').filter((f) => f.boundary.some((b) => b.curveId === curveId)).map((f) => f.id)) as FillRecord['id'][]
+export const referencesOf = (store: Queryable, sourceId: string) =>
+  (indexed(store) ? lookup(indexesOf(store).referencesBySource, sourceId) : scan(store, 'reference').filter((r) => r.sourceId === sourceId).map((r) => r.id)) as ReferenceRecord['id'][]
 
 /** Containers at or below `containerId` (cycle-safe), via the parent index. */
 export function containersWithin(store: Queryable, containerId: ContainerRecord['id']): ContainerRecord['id'][] {

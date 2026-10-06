@@ -79,7 +79,8 @@ export class Editor {
    */
   private nextRevision = 1
   /**
-   * Edit generation: +1 after every committed write, undo and redo, and it NEVER goes back (unlike
+   * Edit generation: +1 with every write, undo and redo — inside its transaction, before subscribers run —
+   * and it NEVER goes back (unlike
    * `revision`, which undo restores). A prepared operation compares it with its start to know whether
    * the document changed meanwhile — an edit followed by its undo still counts as a change (dot
    * 1791306076). Not an atom on purpose: an outer rollback keeps the bump, which only makes a prepared
@@ -147,7 +148,12 @@ export class Editor {
         if (removals.length) this.#store.remove(removals as any)
       })
       // recorded INSIDE the transaction: document and history commit or roll back together
-      if (!isRecordsDiffEmpty(diff)) this.record(p.label, diff)
+      if (!isRecordsDiffEmpty(diff)) {
+        this.record(p.label, diff)
+        // bumped before the transaction flushes, so no subscriber or warning handler can see the new data
+        // with the old generation (dot, review of 3729d27); a rollback keeps the bump (conservatively stale)
+        this.#generation++
+      }
     })
     // State is final here; only now is anything reported (and a failing report changes nothing above).
     const warnings = this.report(run.warnings)
@@ -155,7 +161,6 @@ export class Editor {
       // Unexpected (planning should have caught it); the transaction rolled back document AND history.
       return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: errorMessage(run.error), objects: p.affected, fixes: [] }, ...(warnings.length && { warnings }) }
     if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
-    this.#generation++
     return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(warnings.length && { warnings }) }
   }
 
@@ -280,6 +285,7 @@ export class Editor {
     if (!e) return { ok: true, written: false, revision: this.revision }
     return this.step('undo', () => {
       this.#store.applyDiff(reverseRecordsDiff(e.diff))
+      this.#generation++ // inside the transaction: before any subscriber sees the undone state
       this.#undo.update((u) => u.slice(0, -1))
       this.#redo.update((r) => [...r, e])
       this.#revision.set(this.#undo.get().at(-1)?.revision ?? 0)
@@ -291,6 +297,7 @@ export class Editor {
     if (!e) return { ok: true, written: false, revision: this.revision }
     return this.step('redo', () => {
       this.#store.applyDiff(e.diff)
+      this.#generation++ // inside the transaction: before any subscriber sees the redone state
       this.#redo.update((r) => r.slice(0, -1))
       this.#undo.update((u) => [...u, e])
       this.#revision.set(e.revision)
@@ -303,7 +310,6 @@ export class Editor {
     const w = warnings.length ? { warnings } : {}
     if (!run.committed)
       return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: `${name} failed and was rolled back: ${errorMessage(run.error)}`, objects: [], fixes: [] }, ...w }
-    this.#generation++
     return { ok: true, written: true, revision: this.revision, ...w }
   }
 

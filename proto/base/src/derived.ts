@@ -20,7 +20,7 @@ import { boundaryRefsOf, byKey, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SE
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
-import { poseIdOf, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
+import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type PoseRecord, type ReferenceRecord } from './schema'
 
 /**
  * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, reviews of 2a48719 and
@@ -173,19 +173,20 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
 
 /**
  * A reader that sees `puts` layered over `reader` and `removals` taken out (used by the preview; never
- * writes). A removed record is a tombstone for BOTH reads by id and enumeration (doc 18 §22.1).
- * Its `query` is still the underlying store's: index-based membership does not see the overlay, so
- * evaluation of an overlay must go through `get` / `allRecords` (the full-evaluation path does).
+ * writes). It is ONLY a BaseReader: reads by id and enumeration, both over the final state (a removed
+ * record is a tombstone for both). It deliberately has no `query`, `serialize` or snapshot — those would
+ * silently answer with the underlying store — so membership lookups on it scan its final records
+ * (indexes.ts), and it can never reach (or seed) the underlying store's indexes (doc 18 §22.1; dot,
+ * review of 3729d27).
  */
-export function overlayReader(reader: DocReader, puts: DocRecord[], removals: readonly string[] = []): DocReader {
+export function overlayReader(reader: BaseReader, puts: DocRecord[], removals: readonly string[] = []): BaseReader {
   const overlay = new Map<string, DocRecord>(puts.map((r) => [r.id, r]))
   const gone = new Set(removals)
   return {
-    ...reader,
-    get: ((id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? reader.get(id as any)))) as DocReader['get'],
+    get: ((id: string) => (gone.has(id) ? undefined : (overlay.get(id) ?? reader.get(id as any)))) as BaseReader['get'],
     allRecords: () => {
       const out = reader.allRecords().filter((r) => !gone.has(r.id)).map((r) => overlay.get(r.id) ?? r)
-      for (const r of puts) if (!reader.get(r.id as any)) out.push(r)
+      for (const r of puts) if (!reader.get(r.id as any) && !gone.has(r.id)) out.push(r)
       return out
     },
   }

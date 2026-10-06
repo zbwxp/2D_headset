@@ -1,13 +1,17 @@
 // Stage 0 of the unified implementation (doc 18 §23.2 / §22): removals in plans, tombstone previews,
 // prepared operations with fixed identities and a non-rewinding edit generation. dot 1791306076's three
 // points are the three describe blocks below.
+import { react } from '@tldraw/state'
 import { describe, expect, it } from 'vitest'
+import { createApi } from '../src/api'
+import { childrenOf, connectionsAt, fillsUsing, referencesOf } from '../src/indexes'
+import { plainReader } from '../src/runtime'
 import { overlayConflict, type Command } from '../src/commands'
 import { overlayReader } from '../src/derived'
 import { Editor } from '../src/editor'
 import { evaluate } from '../src/evaluate'
 import { exampleRecords, ids } from '../src/fixture'
-import { deepFreeze, type FillRecord } from '../src/schema'
+import { deepFreeze, poseIdOf, type FillRecord } from '../src/schema'
 
 const unlocked = () => exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r))
 const addresses = (e: { paint: { item: { address: string } }[] }) => e.paint.map((p) => p.item.address).sort()
@@ -194,5 +198,74 @@ describe('3. prepared identities: preview and commit share new ids; independent 
     expect(o.commit(locked).ok).toBe(false)
     expect(o.state).toBe('ended')
     expect(state(e)).toBe(before)
+  })
+})
+
+describe('4. after review of 3729d27: public API, generation timing on undo / redo, pose and connection deletion', () => {
+  it('public API: prepare shares new ids between preview and commit; plain preview + apply are independent plans', () => {
+    const e = new Editor(exampleRecords())
+    const api = createApi(e)
+    const cmd: Command = { type: 'createFill', parentId: ids.L1, boundary: boundary() }
+    const op = api.prepare()
+    const pv = op.preview(cmd)
+    const r = op.commit()
+    expect(pv.ok && r.ok && r.written).toBe(true)
+    if (!pv.ok || !r.ok) return
+    expect(r.affected).toEqual(pv.affected)
+    expect(op.state).toBe('ended')
+    const other = api.prepare().preview(cmd)
+    expect(other.ok && other.affected[0] !== pv.affected[0]).toBe(true)
+    const plain = api.preview(cmd)
+    const applied = api.apply(cmd)
+    expect(plain.ok && applied.ok && plain.affected[0] !== applied.affected[0]).toBe(true) // the stated boundary
+  })
+
+  it('undo and redo bump the generation before subscribers run: a waiting operation is already stale there', () => {
+    for (const step of ['undo', 'redo'] as const) {
+      const e = new Editor(exampleRecords())
+      expect(e.apply({ type: 'moveAnchors', targets: [{ curveId: ids.C1, anchorId: 'a2' }], delta: { x: 1, y: 0 } }).ok).toBe(true)
+      if (step === 'redo') e.undo()
+      const op = e.prepare()
+      op.preview({ type: 'moveAnchors', targets: [{ curveId: ids.E1, anchorId: 'e1' }], delta: { x: 3, y: 0 } })
+      let armed = false
+      let nested: ReturnType<typeof op.commit> | undefined
+      const stop = react(`stage0-${step}`, () => {
+        e.reader.get(ids.C1)
+        if (armed) {
+          armed = false
+          nested = op.commit()
+        }
+      })
+      armed = true
+      expect(step === 'undo' ? e.undo() : e.redo()).toBe(true)
+      stop()
+      expect(nested?.ok === false && nested.error.code).toBe('STALE')
+    }
+  })
+
+  it('deleting BOTH linked poses together is legal; deleting one is refused (no silent cascade)', () => {
+    const e = new Editor(unlocked())
+    expect(e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 30, offsets: { a3: { x: 10, y: 0 } } }).ok).toBe(true)
+    const one = e.apply({ type: 'deleteRecords', ids: [poseIdOf(ids.C1)] })
+    expect(one.ok === false && one.error.code).toBe('BAD_REFERENCE')
+    const both = e.apply({ type: 'deleteRecords', ids: [poseIdOf(ids.C1), poseIdOf(ids.C2)] })
+    expect(both.ok && both.written).toBe(true)
+    expect(() => Editor.open(e.save())).not.toThrow()
+  })
+
+  it('a connection with an end in a locked container is not removed; with every end unlocked it is', () => {
+    const locked = new Editor(exampleRecords())
+    const r = locked.apply({ type: 'deleteRecords', ids: [ids.J] })
+    expect(r.ok === false && r.error.code).toBe('LOCKED')
+    const free = new Editor(unlocked())
+    expect(free.apply({ type: 'deleteRecords', ids: [ids.J] }).ok).toBe(true)
+  })
+
+  it('a plain runtime reader (no indexes) answers membership by scanning its records', () => {
+    const rd = plainReader(exampleRecords())
+    expect(childrenOf(rd, ids.L3, 'curve')).toEqual([ids.E1])
+    expect(connectionsAt(rd, `${ids.C1}#a3`)).toEqual([ids.J])
+    expect(fillsUsing(rd, ids.C2)).toEqual([ids.F])
+    expect(referencesOf(rd, ids.L3)).toEqual([ids.R1])
   })
 })
