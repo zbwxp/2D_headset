@@ -18,6 +18,7 @@
 | [12-kernel-check.md](12-kernel-check.md) | 候选内核职责核对（源码审查）：tldraw SDK / svgcanvas / Fabric / Paper.js 对照 11 的四组关键职责；可借用零件；初步结论 | Claude 汇总（待 dot 抽查） |
 | [13-recording-references.md](13-recording-references.md) | 录制的参照：Live2D（含 ArtPath 矢量线、Glue）、CSP、MMD；DMB 论文的边界（dot 核对） | Claude 汇总，dot 核对 |
 | [14-route-workload.md](14-route-workload.md) | 三种组合（tldraw 全套 / `@tldraw/store`+Fabric / 全自建）的补写清单、粗估工作量、风险、初步倾向 | Claude（待 dot 抽查） |
+| [15-slice-plan.md](15-slice-plan.md) | **写代码前给 bowen 的方案**：小切片范围、两条路线各复用什么、各自最先验证的两个风险、继续 / 放弃的判定 | Claude（待 dot 审） |
 
 约定：
 
