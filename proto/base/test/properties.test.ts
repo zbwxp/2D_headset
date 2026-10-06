@@ -5,7 +5,8 @@
 // Invariants
 //  I0 any input, however wrong, gets a structured result — never an exception or INTERNAL error
 //  I1 a rejected edit writes nothing: document and history unchanged
-//  I2 nothing inside a locked container changes, except by unlocking it
+//  I2 nothing below a locked container changes unless that container is itself a flag target of the
+//     same edit (lock state computed by the test from raw records, not by src/model.lockedBy)
 //  I3 every connection's ends stay coincident
 //  I4 undo after a written edit restores the exact previous document; redo restores the edit
 //  I5 a successful no-op (written=false) leaves history unchanged; written=true means the document changed
@@ -14,19 +15,27 @@
 //  I7 every stored record passes its validator, AND an oracle written independently of src/ (finite
 //     numbers, typed references, no dangling ends, no container cycles, fills closed by position)
 //  I8 dirty state: clean right after save; dirty after a new write
+//  I9 a subscriber that throws cannot make the result lie: written ⇔ document changed ⇔ one new
+//     undo step (and undo restores); rejected/no-op ⇔ nothing changed (dot's review of 90692ad)
+//  I10 an outer transaction that rolls back restores document, history, revision and dirty state
+import { react, transaction } from '@tldraw/state'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { createApi } from '../src/api'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { exampleRecords, ids } from '../src/fixture'
-import { graphProblems, lockedBy } from '../src/model'
-import { validateRecord, type ConnectionRecord, type CurveRecord, type DocRecord } from '../src/schema'
+import { graphProblems } from '../src/model'
+import { Container, validateRecord, type ConnectionRecord, type CurveRecord, type DocRecord } from '../src/schema'
+
+// The example drawing plus a child layer under the locked L2 (dot: ancestor locks were bypassable).
+const L2a = Container.createId('L2a')
+const initial = () => [...exampleRecords(), Container.create({ id: L2a, parentId: ids.L2, name: '阴影·子层', index: 'a9' })]
 
 const curves = [ids.C1, ids.C2, ids.E1]
 const anchorsOf: Record<string, string[]> = { [ids.C1]: ['a1', 'a2', 'a3'], [ids.C2]: ['b1', 'b2', 'b3'], [ids.E1]: ['e1', 'e2'] }
 // wrong-TYPE ids too (dot: a curve or fill passed where a container is expected), not only missing ones
-const containers = [ids.L1, ids.L2, ids.L3, 'container:missing' as any, ids.C1 as any, ids.F as any]
+const containers = [ids.L1, ids.L2, ids.L3, L2a, 'container:missing' as any, ids.C1 as any, ids.F as any]
 const num = fc.oneof(fc.integer({ min: -20, max: 20 }), fc.constantFrom(0, Infinity, -Infinity, NaN, Number.MAX_VALUE))
 const vec = fc.record({ x: num, y: num })
 const anchorRef = fc.constantFrom(...curves, ids.L1 as any, ids.F as any).chain((curveId) => fc.constantFrom(...(anchorsOf[curveId] ?? ['a1']), 'zz').map((anchorId) => ({ curveId, anchorId })))
@@ -80,7 +89,10 @@ const likelyOk: fc.Arbitrary<Command> = fc.oneof(
   fc.record({ type: fc.constant('transformContainer' as const), containerId: fc.constant(ids.L3), matrix: fc.record({ a: fc.constant(1), b: fc.constant(0), c: fc.constant(0), d: fc.constant(1), e: fc.integer({ min: -9, max: 9 }), f: fc.integer({ min: -9, max: 9 }) }) }),
 ) as fc.Arbitrary<Command>
 
-type Action = { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' } | { kind: 'saveOpen' }
+type Action =
+  | { kind: 'observerThrow'; cmd: Command }
+  | { kind: 'outerAbort'; inner: { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' } }
+  | { kind: 'apply'; cmd: Command } | { kind: 'batch'; cmds: Command[] } | { kind: 'undo' } | { kind: 'redo' } | { kind: 'saveOpen' }
 const action: fc.Arbitrary<Action> = fc.oneof(
   { weight: 6, arbitrary: command.map((cmd) => ({ kind: 'apply' as const, cmd })) },
   { weight: 2, arbitrary: fc.array(command, { minLength: 1, maxLength: 3 }).map((cmds) => ({ kind: 'batch' as const, cmds })) },
@@ -89,6 +101,18 @@ const action: fc.Arbitrary<Action> = fc.oneof(
   { weight: 2, arbitrary: fc.constant({ kind: 'undo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'redo' as const }) },
   { weight: 1, arbitrary: fc.constant({ kind: 'saveOpen' as const }) },
+  { weight: 1, arbitrary: fc.oneof(command, likelyOk).map((cmd) => ({ kind: 'observerThrow' as const, cmd })) },
+  {
+    weight: 1,
+    arbitrary: fc
+      .oneof(
+        fc.oneof(command, likelyOk).map((cmd) => ({ kind: 'apply' as const, cmd })),
+        fc.array(likelyOk, { minLength: 1, maxLength: 3 }).map((cmds) => ({ kind: 'batch' as const, cmds })),
+        fc.constant({ kind: 'undo' as const }),
+        fc.constant({ kind: 'redo' as const }),
+      )
+      .map((inner) => ({ kind: 'outerAbort' as const, inner })),
+  },
 )
 
 // Lossless comparison key: plain JSON would map NaN, Infinity and -Infinity all to null (dot).
@@ -96,14 +120,34 @@ const key = (x: unknown) => JSON.stringify(x, (_k, v) => (typeof v === 'number' 
 const doc = (e: Editor) => key(e.reader.serialize('document'))
 const records = (e: Editor) => e.reader.allRecords() as DocRecord[]
 
-function lockedSnapshot(e: Editor) {
-  // every record whose place is locked → its serialized form
-  const out = new Map<string, string>()
-  for (const r of records(e)) {
-    const place = r.typeName === 'connection' ? null : r.typeName === 'container' ? r.parentId : r.parentId
-    if (place && lockedBy(e.reader, place)) out.set(r.id, key(r))
+/** Locked containers at or above `place`, computed from raw records (independent of src/model). */
+function lockersOf(byId: Map<string, any>, place: string | null) {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (let c = place ? byId.get(place) : undefined; c && c.typeName === 'container' && !seen.has(c.id); c = c.parentId ? byId.get(c.parentId) : undefined) {
+    seen.add(c.id)
+    if (c.locked) out.push(c.id)
   }
   return out
+}
+
+function lockedSnapshot(e: Editor) {
+  // every record whose place (parent) is under a lock → its serialized form and the lockers
+  const rs = records(e) as any[]
+  const byId = new Map(rs.map((r) => [r.id, r]))
+  const out = new Map<string, { json: string; lockers: string[] }>()
+  for (const r of rs) {
+    if (r.typeName === 'connection') continue
+    const lockers = lockersOf(byId, r.parentId ?? null)
+    if (lockers.length) out.set(r.id, { json: key(r), lockers })
+  }
+  return out
+}
+
+/** I2: a locked record may only change if one of its lockers was a flag target of this edit. */
+function checkLocks(e: Editor, locked: ReturnType<typeof lockedSnapshot>, cmds: Command[]) {
+  const targets = new Set(cmds.flatMap((c) => (c.type === 'setContainerFlags' ? [c.containerId as string] : [])))
+  for (const [id, { json, lockers }] of locked) if (!lockers.some((l) => targets.has(l))) expect(key(e.reader.get(id as any)), id).toBe(json)
 }
 
 // ---- Oracles written independently of src/ (dot: the judge must not be the implementation itself) ----
@@ -188,10 +232,10 @@ function checkStatic(e: Editor) {
 
 describe('properties of the single write entry', () => {
   it('hold for random sequences of edits, bad inputs, batches, undo/redo and save/open', () => {
-    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0 }
+    const seen = { rejected: 0, written: 0, noop: 0, batchOk: 0, batchFail: 0, saveOpen: 0, unlocked: 0, fillCreated: 0, observerWarned: 0, outerAborted: 0 }
     fc.assert(
       fc.property(fc.array(action, { maxLength: 25 }), (actions) => {
-        let e = new Editor(exampleRecords())
+        let e = new Editor(initial())
         let api = createApi(e)
         checkStatic(e)
         for (const act of actions) {
@@ -221,7 +265,7 @@ describe('properties of the single write entry', () => {
               e.redo()
               expect(doc(e)).toBe(after)
             }
-            if (act.cmd.type !== 'setContainerFlags') for (const [id, json] of locked) expect(key(e.reader.get(id as any))).toBe(json) // I2
+            checkLocks(e, locked, [act.cmd]) // I2
           } else if (act.kind === 'batch') {
             const r = api.applyBatch('b', act.cmds)
             if (Array.isArray(r)) seen.batchOk++
@@ -239,7 +283,59 @@ describe('properties of the single write entry', () => {
               e.redo()
               expect(doc(e)).toBe(after)
             }
-            if (!act.cmds.some((c) => c.type === 'setContainerFlags')) for (const [id, json] of locked) expect(key(e.reader.get(id as any))).toBe(json) // I2
+            checkLocks(e, locked, act.cmds) // I2
+          } else if (act.kind === 'observerThrow') {
+            // I9: a subscriber that throws on every change after its first run
+            let armed = false
+            const stop = react('throwing subscriber', () => {
+              e.reader.allRecords()
+              if (armed) throw new Error('subscriber failure')
+            })
+            armed = true
+            const undoLen = e.history.undo.length
+            let r: ReturnType<typeof api.apply>
+            const warn = e.onWarning
+            e.onWarning = () => {}
+            try {
+              r = api.apply(act.cmd)
+            } finally {
+              stop()
+              e.onWarning = warn
+            }
+            if (r.ok && r.written && r.warnings?.length) seen.observerWarned++
+            if (r.ok && r.written) {
+              expect(doc(e)).not.toBe(before)
+              expect(e.history.undo.length).toBe(undoLen + 1)
+              const after = doc(e)
+              e.undo()
+              expect(doc(e)).toBe(before)
+              e.redo()
+              expect(doc(e)).toBe(after)
+            } else {
+              if (!r.ok) expect(r.error.code, r.error.message).not.toBe('INTERNAL')
+              expect(doc(e)).toBe(before)
+              expect(JSON.stringify(e.history)).toBe(hist)
+            }
+            checkLocks(e, locked, [act.cmd])
+          } else if (act.kind === 'outerAbort') {
+            // I10: the caller wraps us in its own transaction and rolls it back
+            const rev = e.revision
+            const dirty = e.isDirty
+            const inner = act.inner
+            expect(() =>
+              transaction(() => {
+                if (inner.kind === 'apply') api.apply(inner.cmd)
+                else if (inner.kind === 'batch') api.applyBatch('b', inner.cmds)
+                else if (inner.kind === 'undo') e.undo()
+                else e.redo()
+                throw new Error('outer abort')
+              }),
+            ).toThrow('outer abort')
+            seen.outerAborted++
+            expect(doc(e)).toBe(before)
+            expect(JSON.stringify(e.history)).toBe(hist)
+            expect(e.revision).toBe(rev)
+            expect(e.isDirty).toBe(dirty)
           } else if (act.kind === 'undo') e.undo()
           else if (act.kind === 'redo') e.redo()
           else {

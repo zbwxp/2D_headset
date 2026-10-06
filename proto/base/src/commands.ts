@@ -163,8 +163,10 @@ function relationCheck(store: DocStore, puts: DocRecord[]) {
 /**
  * Generic write-scope check applied to EVERY planned record, whatever the command (dot: createFill
  * with an existing id overwrote the locked fill). Creating requires a fresh id; updating requires an
- * existing record of the same type, and neither its old nor its new place may be locked. A container
- * may still change its own flags (that is how it gets unlocked) — only its parents' locks apply.
+ * existing record of the same type, and neither its old nor its new place may be locked. A record's
+ * place is its PARENT, so a container's own lock never blocks changing its own flags (that is how it
+ * gets unlocked), while a locked ancestor blocks everything below it, flags included (11 §3; dot's
+ * review of 90692ad: a child's visibility could be changed under a locked parent).
  */
 function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: Set<string>): Plan | null {
   for (const r of puts) {
@@ -181,7 +183,7 @@ function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: S
     places.add(placeOf(r))
     for (const place of places) {
       const locker = place ? lockedBy(store, place as RecordId<ContainerRecord>) : undefined
-      if (locker && !(cmd.type === 'setContainerFlags' && r.id === cmd.containerId))
+      if (locker)
         return fail('LOCKED', `${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
     }
   }

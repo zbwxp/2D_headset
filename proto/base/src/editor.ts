@@ -7,15 +7,28 @@
 //   idea ported from Compositor @ 11d8d7a (MIT), Compositor/Document/DocumentHistory.swift.
 // The store itself is private: callers get a read-only view, so nothing can bypass history or locks
 // by calling `store.put` (dot's review of 11ca75d).
-import { transaction } from '@tldraw/state'
+//
+// Transaction contract (dot's review of 90692ad):
+// - Undo/redo stacks and revisions are @tldraw/state atoms, i.e. they live in the SAME transactional
+//   state as the document. Any rollback — ours, or an outer `transaction` the caller wraps around
+//   us — restores document and history together. Calling the editor inside an outer transaction is
+//   therefore allowed; `batch` remains the supported way to group edits.
+// - Subscribers (`react`, views) run after a root transaction has committed (tldraw flushes effects
+//   in `commit`). An exception thrown by a subscriber does not undo the write, so the result reports
+//   the write as done, plus an OBSERVER_FAILED warning — the result always describes the document.
+//   Whether a write committed is decided by whether the transaction body finished, never assumed.
+import { atom, transaction } from '@tldraw/state'
 import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type RecordsDiff, type StoreSnapshot } from '@tldraw/store'
 import { isEqual } from '@tldraw/utils'
 import { plan, type Command, type EditError } from './commands'
 import { graphProblems } from './model'
 import { createDocStore, deepFreeze, type DocReader, type DocRecord, type DocStore } from './schema'
 
+/** Something went wrong outside the write itself (e.g. a subscriber threw); the write stands. */
+export type EditWarning = { code: 'OBSERVER_FAILED'; message: string }
+
 export type ApplyResult =
-  | { ok: true; written: true; revision: number; affected: string[] }
+  | { ok: true; written: true; revision: number; affected: string[]; warnings?: EditWarning[] }
   | { ok: true; written: false; revision: number; affected: string[] } // valid but changed nothing
   | { ok: false; written: false; revision: number; error: EditError }
 
@@ -28,13 +41,26 @@ export class Editor {
   readonly #store: DocStore
   /** Read-only view for evaluation, views and the API. */
   readonly reader: DocReader
-  private undoStack: Entry[] = []
-  private redoStack: Entry[] = []
+  // History state is transactional (atoms): rolled back together with the document.
+  readonly #undo = atom<Entry[]>('undo', [])
+  readonly #redo = atom<Entry[]>('redo', [])
+  readonly #revision = atom('revision', 0)
+  readonly #saved = atom('savedRevision', 0)
   private group: Group | null = null
-  /** Monotonic: a revision id is never reused, so "saved" can't match a different edit (dot #1). */
+  /**
+   * Monotonic: a revision id is never reused, so "saved" can't match a different edit (dot #1).
+   * Deliberately NOT an atom: an aborted transaction must not hand its revision id out again.
+   */
   private nextRevision = 1
-  revision = 0
-  savedRevision = 0
+  /** Called for subscriber failures after a committed write/undo/redo (default: console.warn). */
+  onWarning: (w: EditWarning) => void = (w) => console.warn(`[contour] ${w.code}: ${w.message}`)
+
+  get revision() {
+    return this.#revision.get()
+  }
+  get savedRevision() {
+    return this.#saved.get()
+  }
 
   constructor(initial: DocRecord[] = []) {
     this.#store = createDocStore()
@@ -67,17 +93,37 @@ export class Editor {
     const changed = p.puts.filter((r) => !isEqual(this.#store.get(r.id), r)).map(deepFreeze)
     if (!changed.length) return { ok: true, written: false, revision: this.revision, affected: p.affected }
     let diff: RecordsDiff<DocRecord> | undefined
+    const run = this.commit(() => {
+      diff = this.#store.extractingChanges(() => this.#store.put(changed))
+      // recorded INSIDE the transaction: document and history commit or roll back together
+      if (!isRecordsDiffEmpty(diff)) this.record(p.label, diff)
+    })
+    if (!run.committed)
+      // Unexpected (planning should have caught it); the transaction rolled back document AND history.
+      return { ok: false, written: false, revision: this.revision, error: { code: 'INTERNAL', message: run.error, objects: p.affected, fixes: [] } }
+    if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
+    return { ok: true, written: true, revision: this.revision, affected: p.affected, ...(run.warnings.length && { warnings: run.warnings }) }
+  }
+
+  /**
+   * Run `body` in a transaction. committed = the body finished (so the transaction committed);
+   * an exception after that came from a subscriber during the flush and is a warning, not a failure.
+   */
+  private commit(body: () => void): { committed: true; warnings: EditWarning[] } | { committed: false; error: string } {
+    let finished = false
     try {
       transaction(() => {
-        diff = this.#store.extractingChanges(() => this.#store.put(changed))
+        body()
+        finished = true
       })
+      return { committed: true, warnings: [] }
     } catch (e) {
-      // Unexpected (planning should have caught it); the transaction rolled everything back.
-      return { ok: false, written: false, revision: this.revision, error: { code: 'INVALID', message: String((e as Error).message ?? e), objects: p.affected, fixes: [] } }
+      const message = String((e as Error)?.message ?? e)
+      if (!finished) return { committed: false, error: message }
+      const w: EditWarning = { code: 'OBSERVER_FAILED', message }
+      this.onWarning(w)
+      return { committed: true, warnings: [w] }
     }
-    if (!diff || isRecordsDiffEmpty(diff)) return { ok: true, written: false, revision: this.revision, affected: p.affected }
-    this.record(p.label, diff)
-    return { ok: true, written: true, revision: this.revision, affected: p.affected }
   }
 
   /**
@@ -96,12 +142,15 @@ export class Editor {
         this.group = null
         const net = netDiff(squashRecordDiffs(group.diffs))
         // A batch whose net effect is nothing (e.g. +1 then −1) leaves history and redo alone (dot).
-        if (!isRecordsDiffEmpty(net)) this.pushEntry(group.label, net)
+        if (!isRecordsDiffEmpty(net)) this.commit(() => this.pushEntry(group.label, net))
       }
       return result
     } catch (e) {
       const failed = group.diffs.splice(mark)
-      if (failed.length) this.#store.applyDiff(reverseRecordsDiff(squashRecordDiffs(failed)))
+      if (failed.length) {
+        const run = this.commit(() => this.#store.applyDiff(reverseRecordsDiff(squashRecordDiffs(failed))))
+        if (!run.committed) throw new Error(`batch revert failed: ${run.error}`)
+      }
       if (outer) this.group = null
       throw e
     }
@@ -113,37 +162,46 @@ export class Editor {
   }
 
   private pushEntry(label: string, diff: RecordsDiff<DocRecord>) {
-    this.revision = this.nextRevision++
-    this.undoStack.push({ label, diff, revision: this.revision })
-    this.redoStack = []
+    const revision = this.nextRevision++
+    this.#undo.update((u) => [...u, { label, diff, revision }])
+    this.#redo.set([])
+    this.#revision.set(revision)
   }
 
   undo() {
-    const e = this.undoStack.pop()
+    const e = this.#undo.get().at(-1)
     if (!e) return false
-    this.#store.applyDiff(reverseRecordsDiff(e.diff))
-    this.redoStack.push(e)
-    this.revision = this.undoStack.at(-1)?.revision ?? 0
+    const run = this.commit(() => {
+      this.#store.applyDiff(reverseRecordsDiff(e.diff))
+      this.#undo.update((u) => u.slice(0, -1))
+      this.#redo.update((r) => [...r, e])
+      this.#revision.set(this.#undo.get().at(-1)?.revision ?? 0)
+    })
+    if (!run.committed) throw new Error(`undo failed and was rolled back: ${run.error}`)
     return true
   }
 
   redo() {
-    const e = this.redoStack.pop()
+    const e = this.#redo.get().at(-1)
     if (!e) return false
-    this.#store.applyDiff(e.diff)
-    this.undoStack.push(e)
-    this.revision = e.revision
+    const run = this.commit(() => {
+      this.#store.applyDiff(e.diff)
+      this.#redo.update((r) => r.slice(0, -1))
+      this.#undo.update((u) => [...u, e])
+      this.#revision.set(e.revision)
+    })
+    if (!run.committed) throw new Error(`redo failed and was rolled back: ${run.error}`)
     return true
   }
 
   get history() {
-    return { undo: this.undoStack.map((e) => e.label), redo: this.redoStack.map((e) => e.label) }
+    return { undo: this.#undo.get().map((e) => e.label), redo: this.#redo.get().map((e) => e.label) }
   }
 
   /** Save = author data only (no evaluated geometry), with schema versions for migration. */
   save(): StoreSnapshot<DocRecord> {
     const snap = this.#store.getStoreSnapshot('document')
-    this.savedRevision = this.revision
+    this.#saved.set(this.revision)
     return snap
   }
 
