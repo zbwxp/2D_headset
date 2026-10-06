@@ -41,6 +41,10 @@ R5. Global contradictions can be detected; local interleaving must not be mistak
 R6. Shown = own flag AND every ancestor shown (doc 11 §3 显示).
 R7. A fill's boundary may reference segments of other layers (doc 11 §2, fill row).
 R8. Containers have an opacity (doc 11 §2, container row).
+R9. Lines are opaque: no transparency option for lines; fills may have opacity (bowen 2026-10-06:
+    "线条默认是不透明的/没有透明选项。填充才可以有透明度" — an inking pen does not darken where its
+    strokes overlap; take the simplest, smallest implementation; see-through lines are an exception to
+    consider only if a real need appears).
 
 Today's code: onion yaws → ALL fills → ALL curves → anchor dots (A and B); depthOffset only breaks
 ties; the order key uses the direct parent only; fractional indexes compared with `localeCompare`;
@@ -154,6 +158,9 @@ grouping rules). Withdrawn: "members offset out of the group get the opacity mul
 is composited" (the group's opacity meaning would change as members move). v103 has no container
 opacity (checked), so there is no baseline to follow. Which kind the minimal prototype supports
 first: to agree; until then container opacity stays unimplemented and listed in OPEN.md.
+Update (bowen, R9): lines have no transparency; take the simplest implementation. So container
+opacity is NOT applied in the minimal base (it would make lines see-through); the field stays stored
+and listed as unapplied, like depth offsets. Revisit with a real need.
 
 **E1 — editor overlays** (onion yaws, anchor dots, selection): editor display convention, not a
 product rule. Today: onion under everything, dots over everything. Kept as is, stated here.
