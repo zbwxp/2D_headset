@@ -7,7 +7,12 @@ import { Connection, Container, Curve, Fill, Pose, poseIdOf, type Anchor, type C
 const v = (x: number, y: number) => ({ x, y })
 const anchor = (id: string, x: number, y: number): Anchor => ({ id, p: v(x, y), hIn: v(-4, 0), hOut: v(4, 0) })
 
-export function syntheticRecords(opts: { curves: number; layers: number; fills: number }) {
+export function syntheticRecords(opts: { curves: number; layers: number; fills: number; fillSize?: number; fillSpacing?: number; fillCols?: number }) {
+  // defaults keep the original small, non-overlapping 20×20 loops; larger size / smaller spacing overlap
+  const size = opts.fillSize ?? 20
+  const cols = opts.fillCols ?? 5
+  const sx = opts.fillSpacing ?? 40
+  const sy = opts.fillSpacing ?? 30
   const records: DocRecord[] = []
   const layerIds = Array.from({ length: opts.layers }, (_, i) => Container.createId(`S${i}`))
   layerIds.forEach((id, i) => records.push(Container.create({ id, name: `layer ${i}`, index: `a${i}` })))
@@ -40,15 +45,15 @@ export function syntheticRecords(opts: { curves: number; layers: number; fills: 
   }
   for (let i = 0; i < opts.fills; i++) {
     const id = Curve.createId(`L${i}`)
-    const x0 = (i % 5) * 40
-    const y0 = 160 + Math.floor(i / 5) * 30
+    const x0 = (i % cols) * sx
+    const y0 = 160 + Math.floor(i / cols) * sy
     records.push(
       Curve.create({
         id,
         name: `loop ${i}`,
         parentId: layerIds[i % opts.layers],
         index: `b${i}`,
-        anchors: { q0: anchor('q0', x0, y0), q1: anchor('q1', x0 + 20, y0), q2: anchor('q2', x0 + 20, y0 + 20), q3: anchor('q3', x0, y0 + 20) },
+        anchors: { q0: anchor('q0', x0, y0), q1: anchor('q1', x0 + size, y0), q2: anchor('q2', x0 + size, y0 + size), q3: anchor('q3', x0, y0 + size) },
         segments: [
           { id: 'h0', from: 'q0', to: 'q1' },
           { id: 'h1', from: 'q1', to: 'q2' },

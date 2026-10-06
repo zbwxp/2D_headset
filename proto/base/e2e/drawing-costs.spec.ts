@@ -1,69 +1,82 @@
-// Drawing-path cost inventory (dot, after 53d9fc0): in a REAL mouse drag, where does the time go once
-// the evaluation is incremental? Same synthetic workload at several sizes, with and without 19 onion
-// yaws. Informational: prints per-move averages; asserts only that the instrumentation ran. NOT in
-// the gate (slow by design). Timings are one Chromium run on one machine, not a benchmark.
-import { expect, test } from '@playwright/test'
+// Drawing-path costs in a REAL mouse drag (dot). Informational: prints per-move averages; asserts only
+// that the instrumentation ran. NOT in the gate (slow). One Chromium run on one machine, not a benchmark.
+// Main group (closer to real use, dot/bowen): 400 curves + 100 solid fills that overlap (occlusion),
+// incremental (option A) vs full rebuild each render. Stress group: curve count only (1000 / 3000).
+// Fill MATERIALS (gradient, blur, pattern, transparency stacks) are not implemented: NOT measured here.
+import { expect, test, type Page } from '@playwright/test'
 
-const SIZES = [121, 1000, 3000]
-const ONIONS = [0, 19]
 const MOVES = 6
+const MAIN = 'curves=400&fills=100&fillSize=50&fillSpacing=30&fillCols=10'
 
-for (const curves of SIZES)
-  for (const onion of ONIONS)
-    test(`drag costs: ${curves} curves, ${onion} onion yaws`, async ({ page }) => {
+async function measure(page: Page, query: string, target: { x: number; y: number }, opts: { fullRebuild?: boolean } = {}) {
+  await page.goto(`/?bench&${query}`)
+  await page.waitForFunction(() => (window as any).__contour)
+  if (opts.fullRebuild) await page.evaluate(() => ((window as any).__contour.view.fullRebuildEachRender = true))
+  const box = (await page.locator('canvas.upper-canvas').boundingBox())!
+  const vpt: number[] = await page.evaluate(() => [...(window as any).__contour.view.canvas.viewportTransform])
+  const at = (p: { x: number; y: number }) => ({ x: box.x + vpt[4] + p.x * vpt[0], y: box.y + vpt[5] + p.y * vpt[3] })
+  const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))))
+  const start = at(target)
+  const grabbed = await page.evaluate(async (t) => {
+    const c = (window as any).__contour
+    const { hitTest } = await import(/* @vite-ignore */ '/src/evaluate.ts' as string)
+    return hitTest(c.editor.derived.evaluated(), t, { mode: 'A', tolerance: 6 / c.view.canvas.getZoom() })?.address ?? null
+  }, target)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 2, start.y) // warm-up move
+  await frame()
+  await page.evaluate(() => {
+    const c = (window as any).__contour
+    c.resetCounters()
+    c.view.resetTiming()
+  })
+  for (let i = 1; i <= MOVES; i++) {
+    await page.mouse.move(start.x + 2 + i * 3, start.y + i)
+    await frame()
+  }
+  const r = await page.evaluate(() => {
+    const c = (window as any).__contour
+    return { timing: { ...c.view.timing }, counters: { ...c.counters }, objects: c.view.canvas.getObjects().length }
+  })
+  await page.mouse.up()
+  const per = (x: number) => +(x / MOVES).toFixed(2)
+  expect(r.timing.moves).toBe(MOVES)
+  expect(r.counters.snapshotRows).toBe(0)
+  return {
+    grabbed,
+    zoom: +vpt[0].toFixed(3),
+    renders: r.timing.renders,
+    msPerMove: {
+      plan: per(r.timing.plan),
+      previewChanges: per(r.timing.previewChanges),
+      assembleLists: per(r.timing.assemble),
+      buildObjects: per(r.timing.buildObjects),
+      attach: per(r.timing.attach),
+      renderAll: r.timing.renders ? +(r.timing.renderAll / r.timing.renders).toFixed(2) : null,
+      inputToDrawDone: r.timing.drawsAfterInput ? +(r.timing.inputToDrawDone / r.timing.drawsAfterInput).toFixed(2) : null,
+    },
+    perMove: { objectsCreated: per(r.counters.fabricObjectsCreated), pathStrings: per(r.counters.pathStrings), rowsScanned: per(r.counters.scannedRows) },
+    canvasObjects: r.objects,
+  }
+}
+
+const FREE = { x: 5, y: 4 } // curve S0 anchor p1 (not connected)
+const FILL_EDGE = { x: 50, y: 160 } // loop L0 anchor q1 (= the boundary of fill L0 and under other fills)
+
+for (const onion of [0, 19])
+  for (const [name, target] of [['free anchor', FREE], ['fill boundary', FILL_EDGE]] as const)
+    for (const fullRebuild of [false, true])
+      test(`main 400 curves + 100 overlapping fills, ${onion} onion, ${name}, ${fullRebuild ? 'full rebuild' : 'incremental (A)'}`, async ({ page }) => {
+        test.setTimeout(300_000)
+        const row = await measure(page, `${MAIN}&onion=${onion}`, target, { fullRebuild })
+        console.log('[drawing-costs main]', JSON.stringify({ onion, drag: name, mode: fullRebuild ? 'full rebuild' : 'A', ...row }))
+      })
+
+for (const curves of [1000, 3000])
+  for (const onion of curves === 3000 ? [0] : [0, 19]) // 3000 × 19: the initial full build does not finish (known)
+    test(`stress ${curves} curves, ${onion} onion, incremental (A)`, async ({ page }) => {
       test.setTimeout(300_000)
-      await page.goto(`/?bench&curves=${curves}&onion=${onion}`)
-      await page.waitForFunction(() => (window as any).__contour)
-      const box = (await page.locator('canvas.upper-canvas').boundingBox())!
-      const at = (p: { x: number; y: number }) => ({ x: box.x + 150 + p.x * 3, y: box.y + 60 + p.y * 3 })
-      const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))))
-      const start = at({ x: 5, y: 4 }) // curve S0, anchor p1 (not connected)
-      await page.mouse.move(start.x, start.y)
-      await page.mouse.down()
-      await page.mouse.move(start.x + 2, start.y) // first move: warms caches and indexes
-      await frame()
-      await page.evaluate(() => {
-        const c = (window as any).__contour
-        c.resetCounters()
-        c.view.resetTiming()
-      })
-      for (let i = 1; i <= MOVES; i++) {
-        await page.mouse.move(start.x + 2 + i * 3, start.y + i)
-        await frame()
-      }
-      const r = await page.evaluate(() => {
-        const c = (window as any).__contour
-        return { timing: { ...c.view.timing }, counters: { ...c.counters }, objects: c.view.canvas.getObjects().length }
-      })
-      await page.mouse.up()
-      const per = (x: number) => +(x / MOVES).toFixed(2)
-      const row = {
-        curves,
-        onion,
-        moves: r.timing.moves,
-        renders: r.timing.renders,
-        msPerMove: {
-          plan: per(r.timing.plan),
-          previewChanges: per(r.timing.previewChanges),
-          assembleLists: per(r.timing.assemble),
-          containerScan: per(r.timing.containerScan),
-          buildObjects: per(r.timing.buildObjects),
-          attach: per(r.timing.attach),
-          renderAll: r.timing.renders ? +(r.timing.renderAll / r.timing.renders).toFixed(2) : null,
-          inputToPaint: r.timing.paintsAfterInput ? +(r.timing.inputToPaint / r.timing.paintsAfterInput).toFixed(2) : null,
-        },
-        perMove: {
-          previewEvals: per(r.counters.previewEvals),
-          previewItems: per(r.counters.previewItems),
-          scannedRows: per(r.counters.scannedRows),
-          pathStrings: per(r.counters.pathStrings),
-          fabricObjectsCreated: per(r.counters.fabricObjectsCreated),
-          fullEvals: per(r.counters.fullEvals),
-          snapshotRows: per(r.counters.snapshotRows),
-        },
-        canvasObjects: r.objects,
-      }
-      console.log('[drawing-costs]', JSON.stringify(row))
-      expect(r.timing.moves).toBe(MOVES)
-      expect(r.counters.snapshotRows).toBe(0)
+      const row = await measure(page, `curves=${curves}&onion=${onion}`, FREE)
+      console.log('[drawing-costs stress]', JSON.stringify({ curves, onion, ...row }))
     })

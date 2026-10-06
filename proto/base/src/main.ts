@@ -10,7 +10,10 @@ import { onionYaws, syntheticPoses, syntheticRecords } from './synthetic'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
-const benchShapes = bench ? syntheticRecords({ curves: Number(params.get('curves') ?? 121), layers: 8, fills: 15 }) : []
+const num = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined)
+const benchShapes = bench
+  ? syntheticRecords({ curves: num('curves') ?? 121, layers: 8, fills: num('fills') ?? 15, fillSize: num('fillSize'), fillSpacing: num('fillSpacing'), fillCols: num('fillCols') })
+  : []
 const benchRecords = [...benchShapes, ...syntheticPoses(benchShapes)]
 const editor = new Editor(bench ? benchRecords : exampleRecords())
 const api = createApi(editor)
@@ -31,6 +34,9 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') view.cancelGesture()
 })
 
+// benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
+// objects; measuring a mostly off-screen drawing would understate the real cost)
+if (bench) view.fitToContent()
 const onionCount = Number(params.get('onion') ?? 0)
 if (bench && onionCount) {
   view.onion = { yaws: onionYaws(onionCount) }

@@ -45,7 +45,7 @@ export class FabricView {
   /** Input→display latency samples (ms): pointermove timeStamp → first animation frame after our render. */
   readonly latencies: number[] = []
   /** Drawing-path phase timings in ms, accumulated (dot: measure before deciding how the canvas changes). */
-  readonly timing = { plan: 0, previewChanges: 0, assemble: 0, containerScan: 0, buildObjects: 0, attach: 0, renderAll: 0, renders: 0, moves: 0, inputToPaint: 0, paintsAfterInput: 0 }
+  readonly timing = { plan: 0, previewChanges: 0, assemble: 0, containerScan: 0, buildObjects: 0, attach: 0, renderAll: 0, renders: 0, moves: 0, inputToDrawDone: 0, drawsAfterInput: 0 }
   resetTiming() {
     for (const k of Object.keys(this.timing) as (keyof FabricView['timing'])[]) this.timing[k] = 0
   }
@@ -70,10 +70,11 @@ export class FabricView {
       const now = performance.now()
       this.timing.renderAll += now - renderStart
       this.timing.renders++
-      // input → presentation: from the latest pointer event to the end of the main render it caused
+      // input → draw call done: from the latest pointer event to the end of the main canvas render it
+      // caused. This does NOT prove the pixels are on screen (compositing / display not included; dot).
       if (this.lastInputTs > paintedInput) {
-        this.timing.inputToPaint += now - this.lastInputTs
-        this.timing.paintsAfterInput++
+        this.timing.inputToDrawDone += now - this.lastInputTs
+        this.timing.drawsAfterInput++
         paintedInput = this.lastInputTs
       }
     })
@@ -150,6 +151,22 @@ export class FabricView {
    * are kept. Any change of membership or order (or V mode) rebuilds everything as before.
    */
   private scene: { key: string; item: unknown; objs: FabricObject[] }[] | null = null
+  /** Zoom and pan so the whole evaluated drawing is on the canvas (with a margin). */
+  fitToContent(margin = 20) {
+    const ev = this.editor.derived.evaluated()
+    const xs: number[] = []
+    const ys: number[] = []
+    for (const c of ev.curves) for (const a of Object.values(c.anchors)) for (const p of [a.p, a.hIn, a.hOut]) (xs.push(p.x), ys.push(p.y))
+    if (!xs.length) return
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+    const w = this.canvas.getWidth() - 2 * margin
+    const h = this.canvas.getHeight() - 2 * margin
+    const z = Math.min(w / Math.max(1, x1 - x0), h / Math.max(1, y1 - y0))
+    this.canvas.setViewportTransform([z, 0, 0, z, margin - x0 * z, margin - y0 * z])
+    this.render()
+  }
+  /** Comparison mode: rebuild every object on every render (the behaviour before option A). */
+  fullRebuildEachRender = false
   /** Next render rebuilds every object (tests compare the incremental scene with this). */
   forceFullRender() {
     this.scene = null
@@ -173,6 +190,7 @@ export class FabricView {
     const dotsOf = (c: EvalCurve) => Object.values(c.anchors).flatMap((a) => [dot(a.p, '#1565c0', 1.4), dot(a.hIn, '#90caf9', 0.9), dot(a.hOut, '#90caf9', 0.9)])
     const curves = ev.curves.filter((c) => c.visible)
 
+    if (this.fullRebuildEachRender) this.scene = null
     if (this.mode === 'A') {
       // the scene this render should show, in z-order (same order as the full build below)
       const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []

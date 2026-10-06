@@ -23,7 +23,44 @@ is timed; input → paint is measured from the pointer event to the end of that 
 "Evaluation ≤ 5 ms" holds for THIS workload only (dot): no fill materials, no real recording, no
 large-area full change.
 
-## Option A — Fabric kept, objects reused (same display; dot)
+## ⚠ Off-screen correction (same day)
+
+All tables below this section and above were measured at the DEFAULT viewport (zoom 3), where the
+synthetic drawing is mostly OFF the 640 × 420 canvas — and Fabric skips drawing off-screen objects. So
+their renderAll / input → draw numbers UNDERSTATE a drawing that is on screen; they are kept only as a
+record. Benchmark documents are now fitted to the canvas (`FabricView.fitToContent`), and the metric is
+named **input → draw call done** (pointer event → end of the main canvas render; it does not prove
+the pixels are presented — dot).
+
+## Fitted to the canvas — main workload and curve-count stress (current numbers)
+
+Main workload (closer to real use, dot / bowen): 400 curves + 100 solid fills (50 × 50, spacing 30 →
+overlapping, occluding curves of their layer). Stress: curve count only. One Chromium run, fitted
+viewport, A-mode drag, 6 moves; the grabbed anchor is recorded (S0.p1 free; L0.q1 = a fill boundary).
+**Fill materials (gradient, blur, pattern, transparency stacks) are not implemented and not measured.**
+
+| workload | onion | drag | mode | build objects | attach | renderAll | input → draw call done | objects | objects created / move |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 400 + 100 fills | 0 | free anchor | A | 0.50 ms | 0.12 ms | 552 ms | 570 ms | 6,600 | 1 |
+| 400 + 100 fills | 0 | free anchor | full rebuild | 44.5 | 59.1 | 828 | 950 | 6,600 | 6,600 |
+| 400 + 100 fills | 0 | fill boundary | A | 0.32 | 0.05 | 546 | 563 | 6,600 | 2 |
+| 400 + 100 fills | 0 | fill boundary | full rebuild | 44.9 | 59.4 | 831 | 953 | 6,600 | 6,600 |
+| 400 + 100 fills | 19 | free anchor | A | 1.38 | 0.40 | 569 | 591 | 16,100 | 20 |
+| 400 + 100 fills | 19 | free anchor | full rebuild | 145.3 | 190.3 | 865 | 1,221 | 16,100 | 16,100 |
+| 400 + 100 fills | 19 | fill boundary | A | 1.23 | 0.60 | 567 | 589 | 16,100 | 21 |
+| 400 + 100 fills | 19 | fill boundary | full rebuild | 151.1 | 203.5 | 944 | 1,319 | 16,100 | 16,100 |
+| stress 1000 curves | 0 | free anchor | A | 0.65 | 0.10 | 1,777 | 1,793 | 13,210 | 1 |
+| stress 1000 curves | 19 | free anchor | A | 3.65 | 2.07 | 1,378 | 1,414 | 32,495 | 20 |
+| stress 3000 curves | 0 | free anchor | A | 1.92 | 1.05 | 5,113 | 5,169 | 39,210 | 1 |
+| stress 3000 curves | 19 | — | — | — | — | — | — | — | — (initial full build does not finish; not run) |
+
+Plan, preview changes and list assembly stay ≤ 7 ms in every row. With the drawing on screen, Fabric's
+**renderAll — repainting every object — is the dominant cost** (≈ 0.55 s per move for the main
+workload even with A). Option A removes the rebuild / attach part (≈ 100–350 ms for the main
+workload) but not the repaint. B (a reference implementation with the same output) is the comparison
+for the repaint.
+
+## Option A — Fabric kept, objects reused (same display; dot) — measured OFF-SCREEN, see the correction above
 
 A-mode scene kept per drawn item; only items whose cached evaluation changed are rebuilt (paths) or
 moved (anchor dots); membership/order changes and V mode rebuild fully. No whole-table scan (top-level
