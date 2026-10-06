@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contour proto — route B slice</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 12px; }
+      #bar button { margin-right: 6px; }
+      #status { color: #b00020; min-height: 1.4em; margin: 6px 0; }
+      #wrap { display: inline-block; outline: 1px solid #ccc; }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <button id="modeA">A 直接选择</button>
+      <button id="modeV">V 整体选择</button>
+      <button id="unlock">解锁 L2</button>
+      <button id="undo">撤销</button>
+      <button id="redo">重做</button>
+      <label><input type="checkbox" id="src" /> 在引用里改源</label>
+    </div>
+    <div id="status"></div>
+    <div id="wrap"><canvas id="c" width="640" height="420"></canvas></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -9,5 +9,5 @@
     "lib": ["ES2022", "DOM"],
     "types": ["vitest/globals"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "e2e"]
 }
