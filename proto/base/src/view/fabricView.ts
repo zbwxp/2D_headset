@@ -13,7 +13,7 @@ import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, 
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor } from '../editor'
-import { cubicsToPath, evaluate, hitTest, inkStyle, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
+import { cubicsToPath, evaluate, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, curvePath2D } from './ownInk'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
@@ -143,8 +143,13 @@ export class FabricView {
     try {
       // depth offsets are stored but not applied yet (PAINT-ORDER.md D1): say so, never silently
       const ignored = unappliedDepthOffsets(ev)
-      if (ignored.length !== this.unappliedDepthOffsets.length) this.setStatus(ignored.length ? `深度偏移尚未生效（D1 未定）：${ignored.length} 个对象` : '')
+      const opacity = unappliedContainerOpacity(this.editor.reader as any)
+      if (ignored.length !== this.unappliedDepthOffsets.length || opacity.length !== this.unappliedContainerOpacity.length) {
+        const notes = [ignored.length ? `深度偏移尚未生效（D1 未定）：${ignored.length} 个对象` : '', opacity.length ? `图层不透明度当前不支持（未生效）：${opacity.length} 个图层` : '']
+        this.setStatus(notes.filter(Boolean).join('；'))
+      }
       this.unappliedDepthOffsets = ignored
+      this.unappliedContainerOpacity = opacity
       this.project(ev, onions)
       // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
       counters.canvasObjects += this.canvas.getObjects().length
@@ -155,6 +160,8 @@ export class FabricView {
 
   /** Addresses whose stored depth offset the paint order does not apply yet (D1). */
   unappliedDepthOffsets: string[] = []
+  /** Containers whose stored opacity the current base does not apply (scope limit, D7). */
+  unappliedContainerOpacity: string[] = []
 
   /**
    * Scene of the last A-mode projection, for incremental updates (dot's option A: the SAME display,

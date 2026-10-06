@@ -10,7 +10,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { counters, resetCounters } from '../src/counters'
 import { Editor } from '../src/editor'
-import { evaluate, unappliedDepthOffsets, type Evaluated } from '../src/evaluate'
+import { evaluate, unappliedContainerOpacity, unappliedDepthOffsets, type Evaluated } from '../src/evaluate'
 import { paintCases } from '../src/paintCases'
 import { evaluateSaved } from '../src/runtime'
 import { Container, Curve, Fill, Reference, type Anchor, type DocRecord } from '../src/schema'
@@ -210,5 +210,17 @@ describe('picking a fill obeys the same protected area (S2)', () => {
     // without protection (boundary after the fill) the same point IS the fill
     const recs = paintCases['P6-own-boundary'].records().map((r) => (r.id === Curve.createId('F-boundary') ? { ...r, index: 'a9' } : r))
     expect(hitTest(new Editor(recs).derived.evaluated(), { x: 40, y: 11 }, { mode: 'V', tolerance: 0.1 })).toMatchObject({ kind: 'fill' })
+  })
+})
+
+describe('container opacity is reported, not applied (current scope limit, D7)', () => {
+  it('a stored opacity below 1 leaves the picture data unchanged and is listed', () => {
+    const records = paintCases['P2-fill-layer-in-front'].records()
+    const plain = new Editor(records).derived.evaluated()
+    const faded = records.map((r) => (r.id === Container.createId('L2') ? { ...r, opacity: 0.5 } : r))
+    const e = new Editor(faded)
+    expect(e.derived.evaluated()).toEqual(plain)
+    expect(unappliedContainerOpacity(e.reader as any)).toEqual(['container:L2'])
+    expect(unappliedContainerOpacity(new Editor(records).reader as any)).toEqual([])
   })
 })

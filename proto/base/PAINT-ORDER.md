@@ -44,7 +44,9 @@ R8. Containers have an opacity (doc 11 §2, container row).
 R9. Lines are opaque: no transparency option for lines; fills may have opacity (bowen 2026-10-06:
     "线条默认是不透明的/没有透明选项。填充才可以有透明度" — an inking pen does not darken where its
     strokes overlap; take the simplest, smallest implementation; see-through lines are an exception to
-    consider only if a real need appears).
+    consider only if a real need appears). Also bowen: if reused mature code brings its own opacity,
+    keep its standard behaviour (e.g. SVG `stroke-opacity`, group opacity) — no custom see-through
+    stroke rules.
 
 Today's code: onion yaws → ALL fills → ALL curves → anchor dots (A and B); depthOffset only breaks
 ties; the order key uses the direct parent only; fractional indexes compared with `localeCompare`;
@@ -158,9 +160,11 @@ grouping rules). Withdrawn: "members offset out of the group get the opacity mul
 is composited" (the group's opacity meaning would change as members move). v103 has no container
 opacity (checked), so there is no baseline to follow. Which kind the minimal prototype supports
 first: to agree; until then container opacity stays unimplemented and listed in OPEN.md.
-Update (bowen, R9): lines have no transparency; take the simplest implementation. So container
-opacity is NOT applied in the minimal base (it would make lines see-through); the field stays stored
-and listed as unapplied, like depth offsets. Revisit with a real need.
+Current SCOPE LIMIT (not a product decision — container opacity and stroke opacity are different
+needs, and bowen did not cancel container opacity, dot): the current base does not apply container
+opacity. The stored value is reported, never silently ignored: `unappliedContainerOpacity` lists the
+containers and the editor status line says 「图层不透明度当前不支持（未生效）」. To implement with a
+real need, following the two-kinds rule above.
 
 **E1 — editor overlays** (onion yaws, anchor dots, selection): editor display convention, not a
 product rule. Today: onion under everything, dots over everything. Kept as is, stated here.

@@ -82,6 +82,12 @@ export function fromPaint(input: PaintInput[]): Evaluated {
   return { curves, fills, paint }
 }
 
+/** Container opacity is stored but not applied in the current base (scope limit, PAINT-ORDER.md D7 —
+ *  NOT a product decision): reported, never silently ignored. Reads containers only. */
+export function unappliedContainerOpacity(store: Pick<DocStore, 'get'> & { query: DocStore['query'] }): string[] {
+  return [...store.query.ids('container').get()].filter((id) => (store.get(id as any) as ContainerRecord).opacity !== 1).map(String)
+}
+
 /** Depth offsets are stored but not applied to the paint order yet (D1 open): reported, never silent. */
 export function unappliedDepthOffsets(ev: Evaluated): string[] {
   return ev.paint.filter((p) => p.item.depth !== 0).map((p) => p.item.address)
