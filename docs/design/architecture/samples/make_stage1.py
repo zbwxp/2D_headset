@@ -92,7 +92,8 @@ recs.append({"typeName": "character", "id": "character:K", "familyId": "family:e
          "target": closed(char_lower_90, 0.5), "base": blink_rule(char_lower_90), "ruleVersion": 1}]})
 recs += [
     {"typeName": "visibility", "id": "visibility:preset:P/curve:strand", "curveId": "curve:strand", "owner": {"kind": "preset", "id": "preset:P"}, "mode": "step", "keys": [{"yaw": -90, "visible": False}, {"yaw": 30, "visible": True}]},
-    {"typeName": "visibility", "id": "visibility:preset:Q/curve:strand", "curveId": "curve:strand", "owner": {"kind": "preset", "id": "preset:Q"}, "mode": "step", "keys": [{"yaw": -90, "visible": False}, {"yaw": 40, "visible": True}]},
+    # Q uses the SAME visibility as P: blending conflicting booleans has no rule yet (deferred / refused, dot 1791307407)
+    {"typeName": "visibility", "id": "visibility:preset:Q/curve:strand", "curveId": "curve:strand", "owner": {"kind": "preset", "id": "preset:Q"}, "mode": "step", "keys": [{"yaw": -90, "visible": False}, {"yaw": 30, "visible": True}]},
     # migrated legacy yaw track (the ONLY legacy-delta data): old offsets as stored, missing = 0
     {"typeName": "forms", "id": "forms:document/curve:C1", "curveId": "curve:C1", "owner": {"kind": "document"},
      "encoding": "legacy-delta", "original": "curve", "yaw": [{"yaw": -30, "offsets": {"a1": V(-2, 1)}}, {"yaw": 45, "offsets": {"a1": V(3, 0.5), "a2": V(4, 0)}}], "expr": {}},
