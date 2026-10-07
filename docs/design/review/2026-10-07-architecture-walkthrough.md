@@ -36,12 +36,24 @@ How this section works:
 | Reference-image tool | is the UI for | Reference-image module | confirmed (module = responsibility boundary, tool = how it is operated) | dot 1791382710, bowen 1791382641 (Q3/Q4) |
 | Artwork layer | does not contain | Reference images | confirmed | bowen 1791382641 (Q3) |
 | Layer | contains | Groups (incl. shape groups), paths, references (instances) | current code | Q4 |
-| Path | owns | Its own fill (a closed path's fill) | current code | Q2/Q4 |
-| Shape group | owns | Faces (fills of enclosed areas) | current code | Q2/Q4 |
+| Path | owns | Its own fill (a closed path's fill) | current code (differs from confirmed Q18 rows) | Q2/Q4 |
+| Shape group | owns | Faces (fills of enclosed areas) | current code (differs from confirmed Q18 rows) | Q2/Q4 |
 | Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
 | Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
 | Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
+| Fill | is an attribute of | Closed curve (show / hide / clear; no separate fill element) | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18) |
+| Fill | does not cross | Layers (cross-layer areas: fill each side and stack) | confirmed | bowen 1791389840, 1791390174 (Q17) |
+| Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
+| Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
+| Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
+| Closed curve | disappears only when | One of its segments is deleted or disconnected ("clear fill" is not "delete loop") | confirmed | dot 1791390455; bowen 1791390987 (Q18) |
+| Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
+| Continuous curve | is drawn as | Its fills first, then all its lines together (no line-over-line order within the group) | confirmed | bowen 1791390897 (Q18) |
+| Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
+| Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
+| Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
+| Self-crossing figure-eight | is | A drawing / deformation error; no special fill handling | confirmed | bowen 1791390533 (Q18) |
 
 ---
 
