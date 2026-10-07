@@ -2447,9 +2447,21 @@ The result is essentially the same as Claude's. Key separation: **shared points 
 - The kept point P's own join records are unaffected.
 - **bowen to confirm:** is this intended, or should binding merge Q's joins into P?
 
+### dot (1791393786) and Claude (1791393799)
+
+- **dot withdraws** its earlier "the join cannot be a point attribute". P's join attribute can record which handles are linked and how their angles are limited; one position, several handles, no contradiction.
+- **Item 1 is only about tapering.** It moves to the stroke layer and does not block now.
+- **On binding:**
+  - Storing joins on the point does not by itself force loss.
+  - Deleting the old point's record and carrying its effective attributes to the kept point are separate questions.
+  - Claude: the plain rule ("delete the later point") loses them, and carrying them over needs an added merge rule.
+  - Both options were put to bowen without choosing.
+
+**Single open question for bowen:** when binding, are the deleted point's join relations dropped, or carried to the kept point?
+
 ### Status
 
-Waiting for bowen on three items:
-1. Handle and end stroke belong to the line end, and position to the point?
-2. A join is a relation between two line ends?
-3. Odd smooth cycle: refuse, or allow and mark the conflict in red?
+- 2 decided (the join is a point attribute).
+- 1 (taper) deferred to the stroke layer.
+- 3 (odd smooth cycle) deferred to last.
+- Open: drop or carry the deleted point's joins on binding.
