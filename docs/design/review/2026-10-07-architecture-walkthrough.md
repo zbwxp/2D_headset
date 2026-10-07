@@ -2403,6 +2403,32 @@ So "binding the θ middle line's ends deletes the whole θ" holds only when ever
 
 **Aside:** a smooth pair at a fork can later decide which branch a stroke follows (the "line group" item). Not expanded here.
 
+### dot's independent derivation (1791393337)
+
+The result is essentially the same as Claude's. Key separation: **shared points decide "joined together"; join relations decide "how they join".**
+
+**Three handles A, B, C at one point:**
+- A–B smooth: A and B are opposite; C is free.
+- Add A–C smooth: B and C are both opposite to A, so they point the same way. This is valid, and the curves can still bend apart later.
+- Add B–C smooth: this demands B and C be both the same and opposite. With non-zero handles there is no solution. This is the real conflict.
+
+**Four lines** can form two pairs, A–B and C–D, each smooth, with free angles between the pairs. No special behaviour for three-way or four-way forks is needed; only the chosen line-end relations are maintained.
+
+**Two things do not follow:**
+1. Smooth constrains direction only. Equal handle length is an extra symmetry constraint.
+2. Smooth relations do not uniquely decide the stroke route. If A is smooth to both B and C, two branches remain. Stroke routing is left for later.
+
+**End stroke belonging to the line end** is a reasonable design proposal, not a necessary consequence of shared positions. bowen decides.
+
+### Claude accepts (1791393354)
+
+- **Point 1:** step 5 only claims direction; equal length would be a separate constraint.
+- **Point 2:** the aside overclaimed and is withdrawn. A smooth fork leaves two possible routes.
+- **End stroke:** already listed as a bowen confirmation (step 1).
+
 ### Status
 
-Waiting for dot's independent derivation and bowen's confirmation of steps 1 and 3 and the odd-cycle decision.
+Waiting for bowen on three items:
+1. Handle and end stroke belong to the line end, and position to the point?
+2. A join is a relation between two line ends?
+3. Odd smooth cycle: refuse, or allow and mark the conflict in red?
