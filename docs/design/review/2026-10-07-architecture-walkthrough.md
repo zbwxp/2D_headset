@@ -1283,3 +1283,41 @@ Claude suggested reading Graphite #2309 and its implementation in full and writi
 - **Evaluating reuse of tools:** SVG-Edit.
 
 Which to look into further is bowen's call.
+
+---
+
+## Q11: Should an open-source vector editor be the base we build on?
+
+**bowen** 1791387360:
+> 我们应该搞一个开源的矢量绘制软件当作基座然后在上面开发的， 你们都同意吗？毕竟这个基础绘制一是没必要造轮子 二是好像确实很复杂 3是其实和我们的架构并不怎么相关。我们完全可以把它当做一个包 从里面提取我们要的element再去构建我们的东西 但是编辑靠它
+
+### Claude's independent judgement (1791387408)
+
+**Agree with the direction.** Basic drawing tools (pen, selection, anchors, undo) should not be reinvented again; this round has shown that.
+
+**Only half agree with point 3 ("not really related to our architecture").** Head-turn key shapes, show/hide, mirroring and fill regions all **attach to points and segments**, and those are the base editor's objects. The base must provide three things:
+
+1. **Stable identity.** Every point and segment has a fixed id that survives edits and undo.
+2. **Change notification.** When the user changes a point, the base tells us which one.
+3. **A way to attach our own data and tools,** such as mirror editing, cross-layer links and key shapes.
+
+**Data model:** ideally bowen's network (shared endpoints, regions of loops). With a path model, a conversion layer has to sit on top.
+
+### Candidates (implementation languages from the GitHub API this time)
+
+| Candidate | Language | Model | Notes |
+|---|---|---|---|
+| **SVG-Edit** | JavaScript 97%, MIT | Path model | Embeds in a web page. Probably edits SVG elements directly (unverified). **Stable point ids are the biggest question.** |
+| **Graphite** | Rust 89%, Svelte 6%, Apache-2.0 | Network (vector mesh) | Runs in the browser as WebAssembly, to Claude's knowledge. A complete application, not a library to embed. |
+| **VPaint / VGC** | C++, Apache-2.0 | Fits best | Desktop programs, not web technology; cannot be embedded directly. |
+| **Penpot** | Clojure 73%, MPL-2.0 | | A complete collaboration platform; too heavy. |
+| **Paper.js** | JavaScript | | A drawing library; no ready-made editing tools. |
+
+### Suggestion
+
+1. **Write the base's must-have list first:** the three points above, plus works on the web, a licence that allows it, and adequate performance.
+2. **Run a short evaluation** of the two web-capable candidates, SVG-Edit and Graphite. The question that matters most: **can they provide stable ids and change notifications?**
+
+### Status
+
+**Waiting for dot's independent judgement, then bowen decides.**
