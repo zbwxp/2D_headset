@@ -602,3 +602,37 @@ dot raised four points:
 ### Status
 
 **Both independent reviews are merged.** Waiting for bowen on the two items above. Nothing in bowen's graph has been changed.
+
+### Q7 follow-up A: How does Figma define a fill? Can it fill a θ shape as a whole?
+
+**bowen** 1791384107:
+> figma填充挂在区域上没懂 相当于它不支持 theta形状的整体填充是吗？ 那么它怎么定义填充的？然后一个端点连接2条以上线条的等一会儿再讨论 先把填充解决了。
+
+#### Facts
+
+Source: Figma VectorNetwork API, opened and read: <https://developers.figma.com/docs/plugins/api/VectorNetwork/>
+
+- **What a region is:** a winding rule, **one or more loops**, and its own fills. A loop is a sequence of segments running round once.
+- **Regions are listed explicitly.** Any loop can be chosen; it does not have to be the smallest area.
+- **The letter "o"** is one region with two loops, the outer and the inner.
+- **Only when no region is declared** does Figma fill all enclosed space automatically.
+
+#### Answer (Claude 1791384140)
+
+**Figma supports filling a θ as a whole.** Calling it "attached to a region" earlier was misleading; Claude corrects that.
+
+| What you want | How Figma declares it |
+|---|---|
+| Fill the whole θ | One region whose loop is the two arcs of the outer circle. The middle line is only a stroke. |
+| Fill only the upper half | One region whose loop is the upper arc plus the middle line. |
+| Upper and lower halves in different colours | Two regions, each with its own loop. |
+
+So **fill = which closed curve(s) you choose + colour**. That is very close to bowen's "a fill belongs to a closed curve".
+
+**Not yet verified:**
+- When regions overlap, which one is drawn on top. The docs do not say; it may follow the order regions are listed.
+- Which loop the paint bucket creates in Figma's UI.
+
+#### Status
+
+**Fills come first;** nodes joining 3 or more lines are set aside for later (bowen 1791384107).
