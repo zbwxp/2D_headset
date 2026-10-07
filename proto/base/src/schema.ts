@@ -167,6 +167,22 @@ export interface VisibilityRecord extends BaseRecord<'visibility', RecordId<Visi
   keys: { yaw: number; visible: boolean }[]
 }
 
+/**
+ * A mask (doc 18 §1.7b, §29.2b; bowen 1791280741 / 1791342631): hide (or show only) the targets inside a region.
+ * The region = the union of the source fills' areas and the source curves' stroke areas (actual stroke width), taken
+ * from the same evaluation BEFORE any mask applies; a hidden source still masks (Compositor LiveMaskTests); only
+ * `enabled: false` turns it off. `inside` = the targets show only inside the region; `outside` = they are hidden inside
+ * it. Several masks on one target all apply (AND). Paint order is not changed.
+ */
+export interface MaskRecord extends BaseRecord<'mask', RecordId<MaskRecord>> {
+  name: string
+  sources: { fills: RecordId<FillRecord>[]; strokes: RecordId<CurveRecord>[] }
+  /** curves (their stroke), fills, or containers (everything drawn inside them) */
+  targets: string[]
+  mode: 'inside' | 'outside'
+  enabled: boolean
+}
+
 export type DocRecord =
   | ContainerRecord
   | CurveRecord
@@ -180,6 +196,7 @@ export type DocRecord =
   | HelperDomainRecord
   | CharacterRecord
   | VisibilityRecord
+  | MaskRecord
 
 const isNum = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
 const isVec = (v: any) => v && isNum(v.x) && isNum(v.y)
@@ -313,6 +330,18 @@ export const Preset = createRecordType<PresetRecord>('preset', {
   scope: 'document',
   validator: { validate: (r: any) => (check(typeof r.name === 'string' && typeof r.familyId === 'string', `preset ${r.id}`), r) },
 })
+export const Mask = createRecordType<MaskRecord>('mask', {
+  scope: 'document',
+  validator: {
+    validate(r: any) {
+      check(typeof r.name === 'string' && isObj(r.sources) && isStrArr(r.sources.fills) && isStrArr(r.sources.strokes), `mask ${r.id} (name, sources.fills, sources.strokes)`)
+      check(r.sources.fills.length + r.sources.strokes.length > 0, `mask ${r.id} has no source`)
+      check(isStrArr(r.targets) && r.targets.length > 0 && new Set(r.targets).size === r.targets.length, `mask ${r.id} targets (unique ids, at least one)`)
+      check((r.mode === 'inside' || r.mode === 'outside') && typeof r.enabled === 'boolean', `mask ${r.id} (mode inside / outside, enabled)`)
+      return r
+    },
+  },
+}).withDefaultProperties(() => ({ name: 'mask', enabled: true }))
 export const ExpressionParam = createRecordType<ExpressionParamRecord>('expressionParam', {
   scope: 'document',
   validator: {
@@ -436,6 +465,7 @@ export const schema = StoreSchema.create<DocRecord>(
     helperDomain: HelperDomain,
     character: Character,
     visibility: Visibility,
+    mask: Mask,
   },
   { migrations: [documentMigrations] },
 )
@@ -453,7 +483,7 @@ export type BaseReader = Pick<DocStore, 'get' | 'allRecords'>
 export type DocReader = BaseReader & Pick<DocStore, 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
-const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, expressionParam: ExpressionParam, helperDomain: HelperDomain, character: Character, visibility: Visibility } as const
+const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, expressionParam: ExpressionParam, helperDomain: HelperDomain, character: Character, visibility: Visibility, mask: Mask } as const
 /** Run the record validators (same ones the store uses) without writing. */
 export function validateRecord(r: DocRecord) {
   ;(recordTypes[r.typeName] as any).validate(r)

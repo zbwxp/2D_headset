@@ -9,7 +9,7 @@ import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { all, effectivelyVisible, lockedBy } from './model'
-import { isBridge, type Affine, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type BaseReader as DocStore, type FillRecord, type ReferenceRecord, type Vec } from './schema'
+import { isBridge, type Affine, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type BaseReader as DocStore, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
 export type Cubic = [Vec, Vec, Vec, Vec]
 export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }
@@ -89,7 +89,16 @@ export type PaintInput = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; it
 export const inkStyle = (c: Pick<EvalCurve, 'stroke'>) => ({ width: c.stroke.width / 3, cap: 'butt' as const, join: 'miter' as const, miterLimit: 4 })
 /** `paint` is THE order every renderer draws in; `curves` / `fills` are the same items split by kind
  *  (same relative order), for hit testing, onion skins and dots. */
-export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintItem[] }
+/**
+ * Masks (doc 18 §1.7b / §29.2b). A definition names paint addresses: the source fills and stroked curves (their
+ * region = union of the fill areas and the strokes' actual ink) and the targets it acts on. Geometry is resolved from
+ * the SAME paint list (so a yaw / character / preview evaluation masks with its own source geometry), before any mask
+ * applies; a hidden source still masks. Several masks on one target all apply (AND).
+ */
+export type MaskDef = { id: string; mode: 'inside' | 'outside'; fills: string[]; strokes: string[]; targets: string[] }
+export type EvalMask = { id: string; mode: 'inside' | 'outside'; fills: EvalFill[]; strokes: EvalCurve[] }
+/** `maskDefs` / `masks` are present only when the document has enabled masks (an evaluation without masks is unchanged) */
+export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintItem[]; maskDefs?: MaskDef[]; masks?: Map<string, EvalMask[]> }
 
 export const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
@@ -118,7 +127,7 @@ export const byKey = (a: { key: string; address: string }, b: { key: string; add
   a.key < b.key ? -1 : a.key > b.key ? 1 : a.address < b.address ? -1 : a.address > b.address ? 1 : 0 // address: stable tie-break
 
 /** The list split by kind; one place, so `curves` / `fills` can never disagree with `paint`. */
-export function fromPaint(input: PaintInput[]): Evaluated {
+export function fromPaint(input: PaintInput[], maskDefs: MaskDef[] = []): Evaluated {
   const curves: EvalCurve[] = []
   const fills: EvalFill[] = []
   const before = new Map<string, EvalCurve>() // curves painted so far (only base curves can bound a fill)
@@ -132,7 +141,54 @@ export function fromPaint(input: PaintInput[]): Evaluated {
     const ownInk = p.item.boundaryRefs.filter((r) => before.get(r.curve)?.visible)
     return { kind: 'fill', item: p.item, ownInk }
   })
-  return { curves, fills, paint }
+  const masks = new Map<string, EvalMask[]>()
+  if (maskDefs.length) {
+    const fillBy = new Map(fills.map((f) => [f.address, f]))
+    const curveBy = new Map(curves.filter((c) => !c.referenceId).map((c) => [c.address, c]))
+    for (const d of maskDefs) {
+      const m: EvalMask = { id: d.id, mode: d.mode, fills: d.fills.map((a) => fillBy.get(a)!).filter(Boolean), strokes: d.strokes.map((a) => curveBy.get(a)!).filter(Boolean) }
+      for (const t of d.targets) masks.set(t, [...(masks.get(t) ?? []), m])
+    }
+  }
+  return maskDefs.length ? { curves, fills, paint, maskDefs, masks } : { curves, fills, paint }
+}
+
+/**
+ * The enabled masks of a document as definitions over the given paint addresses. A target that is a container covers
+ * every curve and fill drawn inside it (and reference instances placed inside it); a curve covers its own stroke; a
+ * fill its own area. Reads the mask records through the reactive id index when the reader has one.
+ */
+export function maskDefsOf(store: BaseReader & { query?: any }, addresses: string[]): MaskDef[] {
+  const ids: string[] = store.query ? [...store.query.ids('mask').get()] : store.allRecords().filter((r) => r.typeName === 'mask').map((r) => r.id)
+  if (!ids.length) return []
+  const recs = ids.map((id) => store.get(id as any) as MaskRecord).filter((m) => m && m.enabled).sort((a, b) => (a.id < b.id ? -1 : 1))
+  if (!recs.length) return []
+  // the chain of an address: the item itself (or its reference), then every container above it
+  const chainOf = (address: string): string[] => {
+    const slash = address.indexOf('/')
+    const own = slash < 0 ? address : address.slice(0, slash)
+    const out = [own]
+    let r = store.get(own as any) as { parentId?: string | null } | undefined
+    for (let n = 0; r?.parentId && n < 1000; n++) {
+      out.push(r.parentId)
+      r = store.get(r.parentId as any) as { parentId?: string | null } | undefined
+    }
+    return out
+  }
+  const chains = new Map(addresses.map((a) => [a, chainOf(a)]))
+  return recs.map((m) => {
+    const t = new Set(m.targets as string[])
+    return { id: m.id, mode: m.mode, fills: [...m.sources.fills], strokes: [...m.sources.strokes], targets: addresses.filter((a) => chains.get(a)!.some((x) => t.has(x))) }
+  })
+}
+
+/** Is the point `p` of the item at `address` left visible by its masks (true when it has none)? */
+export function visibleThroughMasks(ev: Evaluated, address: string, p: Vec): boolean {
+  for (const m of ev.masks?.get(address) ?? []) {
+    const inRegion = m.fills.some((f) => fillContains(f, p)) || m.strokes.some((c) => inkContains(c, c.segments.map((s) => s.id), p))
+    if (m.mode === 'inside' ? !inRegion : inRegion) return false
+  }
+  return true
 }
 
 /** Container opacity is stored but not applied in the current base (scope limit, PAINT-ORDER.md D7 —
@@ -227,7 +283,7 @@ export function evaluate(store: DocStore): Evaluated {
     ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintInput })),
     ...fills.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'fill', item } as PaintInput })),
   ].sort(byKey)
-  return fromPaint(entries.map((e) => e.p))
+  return fromPaint(entries.map((e) => e.p), maskDefsOf(store, entries.map((e) => e.address)))
 }
 
 function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
@@ -340,7 +396,8 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
       return { kind: 'segment' as const, address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: pr.t, d: pr.d }
     }),
   )
-  const s = pick(segs.filter((x) => x.d <= opts.tolerance))
+  // a segment under a mask is not hittable where the mask hides it (picking follows what is drawn, §1.7)
+  const s = pick(segs.filter((x) => x.d <= opts.tolerance && visibleThroughMasks(ev, x.address.slice(0, x.address.lastIndexOf('/')), p)))
   if (s) return s
   const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
   for (const entry of [...ev.paint].reverse()) {
@@ -348,6 +405,7 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
     const f = entry.item
     if (!f.visible || f.locked) continue
     if (!fillContains(f, p)) continue
+    if (!visibleThroughMasks(ev, f.address, p)) continue
     // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
     // fill. "Ink" = the browser's own stroke geometry with the drawn parameters (inkContains), not an
     // approximation (dot). A distance bound only skips the call where no ink can be.

@@ -14,7 +14,8 @@ import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor, Operation } from '../editor'
 import { cubicsToCommands, evaluate, FILL_RULE, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
-import { cubicsPath2D, ownInkPath2D } from './ownInk'
+import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
+import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { topContainerOfHit } from '../select'
@@ -227,11 +228,35 @@ export class FabricView {
     // a fill painted after its own visible strokes leaves out their ink (S2; `ownInk` decided by the core)
     const pathOfFill = (p: Extract<PaintItem, { kind: 'fill' }>) => {
       const f = p.item
+      const masks = ev.masks?.get(f.address)
+      if (masks?.length) {
+        const fillPath = cubicsPath2D(f.cubics, true)
+        const own = p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) }))
+        return new MaskedPath(cubicsToCommands(f.cubics, true), masks, f.cubics.flat(), 0, (l) => {
+          if (own.length) paintFillLeavingOwnInk(l, f, fillPath, own)
+          else {
+            l.fillStyle = f.color
+            l.fill(fillPath, FILL_RULE)
+          }
+        })
+      }
       if (!p.ownInk.length) return new Path(cubicsToCommands(f.cubics, true), { fill: f.color, fillRule: FILL_RULE, stroke: '', selectable: false, evented: false, objectCaching: false })
       return new OwnInkFill(cubicsToCommands(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
     }
     const pathOf = (c: EvalCurve) => {
       const st = inkStyle(c)
+      const masks = ev.masks?.get(c.address)
+      if (masks?.length) {
+        const path = cubicsPath2D(c.segments.map((s) => s.cubic))
+        return new MaskedPath(cubicsToCommands(c.segments.map((s) => s.cubic)), masks, c.segments.flatMap((s) => s.cubic), (st.width / 2) * Math.max(1, st.miterLimit), (l) => {
+          l.strokeStyle = c.locked ? '#999' : c.stroke.color
+          l.lineWidth = st.width
+          l.lineCap = st.cap
+          l.lineJoin = st.join
+          l.miterLimit = st.miterLimit
+          l.stroke(path)
+        })
+      }
       return new Path(cubicsToCommands(c.segments.map((s) => s.cubic)), {
         fill: '',
         stroke: c.locked ? '#999' : c.stroke.color,
@@ -286,12 +311,15 @@ export class FabricView {
       const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []
       onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
       for (const p of ev.paint)
-        if (p.item.visible)
+        if (p.item.visible) {
+          // a masked item depends on its sources' geometry too: compared by this evaluation's mask list
+          const item = ev.masks?.get(p.item.address)?.length ? ({ masked: p.item, masks: ev.masks.get(p.item.address) } as any) : p.item
           want.push(
             p.kind === 'fill'
-              ? { key: `f:${p.item.address}`, item: p.item, make: () => [pathOfFill(p)] }
-              : { key: `c:${p.item.address}`, item: p.item, make: () => [pathOf(p.item)] },
+              ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }
+              : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
           )
+        }
       for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
       const prev = this.scene
       if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {

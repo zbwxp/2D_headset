@@ -110,6 +110,14 @@ export function newRecordProblems(store: Get, r: DocRecord): Problem[] {
       }
     }
   }
+  if (r.typeName === 'mask') {
+    r.sources.fills.forEach((id, i) => need(`sources.fills[${i}]`, id, 'fill'))
+    r.sources.strokes.forEach((id, i) => need(`sources.strokes[${i}]`, id, 'curve'))
+    for (const [i, t] of r.targets.entries()) {
+      const x = store.get(t as any) as DocRecord | undefined
+      if (!x || !['curve', 'fill', 'container'].includes(x.typeName)) p(`targets[${i}]`, t, `${t} is not a curve, fill or container`)
+    }
+  }
   if (r.typeName === 'helperDomain') need('presetId', r.presetId, 'preset')
   // a reference override on a family (preset-form) curve has no defined meaning (samples §4.5): refused on open too
   if (r.typeName === 'reference' && store.allRecords) {

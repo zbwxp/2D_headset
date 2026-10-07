@@ -13,6 +13,7 @@ const GREY = '#808080'
 const red: Rgba = [255, 0, 0, 255]
 const blue: Rgba = [0, 0, 255, 255]
 const empty: Rgba = [0, 0, 0, 0]
+const grey: Rgba = [128, 128, 128, 255]
 
 const anchor = (id: string, x: number, y: number): Anchor => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
 const layer = (name: string, index: string, more: Partial<Parameters<typeof Container.create>[0]> = {}) =>
@@ -56,6 +57,8 @@ const square = (parent: string, fillIndex: string, boundaryIndex: string, bounda
 }
 const id = (name: string) => Container.createId(name)
 const centre = { x: 40, y: 30 }
+const mask = (mode: 'inside' | 'outside', fills: string[], strokes: string[], targets: string[]) =>
+  ({ typeName: 'mask', id: 'mask:m', name: 'm', sources: { fills, strokes }, targets, mode, enabled: true }) as DocRecord
 
 export const paintCases: Record<string, PaintCase> = {
   // P1 — order inside one parent. C crosses F and is NOT F's boundary (B is).
@@ -284,5 +287,50 @@ export const paintCases: Record<string, PaintCase> = {
       { at: centre, rgba: empty, what: 'nothing painted' },
       { at: { x: 40, y: 20 }, rgba: empty, what: 'nothing painted' },
     ],
+  },
+  // ---------- masks (doc 18 §1.7b / §29.2b): the expectation comes from the mask rule, never from a renderer ----------
+  // M1 side nose (outside): the nose line C is hidden where it is inside the face fill F, drawn where it leaves F
+  'M1-mask-outside': {
+    rule: 'M1 mask outside: C (front) hidden inside F, drawn outside F',
+    records: () => [layer('L1', 'a1'), ...square(id('L1'), 'a2', 'a1'), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 40, 30, 80, 30), mask('outside', ['fill:F'], [], ['curve:C'])],
+    expect: [
+      { at: { x: 50, y: 30 }, rgba: red, what: 'inside F: the line is hidden, F shows' },
+      { at: { x: 70, y: 30 }, rgba: blue, what: 'outside F: the line is drawn' },
+    ],
+  },
+  // M2 shadow (inside): the line is drawn only inside F
+  'M2-mask-inside': {
+    rule: 'M2 mask inside: C drawn only inside F',
+    records: () => [layer('L1', 'a1'), ...square(id('L1'), 'a2', 'a1'), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 0, 30, 80, 30), mask('inside', ['fill:F'], [], ['curve:C'])],
+    expect: [
+      { at: centre, rgba: blue, what: 'inside F: drawn' },
+      { at: { x: 10, y: 30 }, rgba: empty, what: 'left of F: not drawn' },
+      { at: { x: 70, y: 30 }, rgba: empty, what: 'right of F: not drawn' },
+    ],
+  },
+  // M3 collar: the source is the neck fill PLUS the neck outline's stroke (its actual width) — the line on the outline
+  // is hidden also just outside the fill, where only the outline's ink covers it
+  'M3-mask-fill-and-stroke': {
+    rule: 'M3 mask outside, sources F + stroke of B: C on the top edge hidden where B ink or F covers it',
+    records: () => [layer('L1', 'a1'), ...square(id('L1'), 'a2', 'a1', GREY, 12), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 0, 10, 80, 10), mask('outside', ['fill:F'], ['curve:F-boundary'], ['curve:C'])],
+    expect: [
+      { at: { x: 40, y: 9 }, rgba: grey, what: "just outside F, on B's ink: C hidden, B shows" },
+      { at: { x: 5, y: 10 }, rgba: blue, what: 'far left: C drawn' },
+    ],
+  },
+  // M4 a hidden source still masks (Compositor LiveMaskTests)
+  'M4-mask-hidden-source': {
+    rule: 'M4 the source F is in a hidden layer: nothing of F drawn, C still hidden inside F',
+    records: () => [layer('L0', 'a1', { visible: false }), ...square(id('L0'), 'a2', 'a1'), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 40, 30, 80, 30), mask('outside', ['fill:F'], [], ['curve:C'])],
+    expect: [
+      { at: { x: 50, y: 30 }, rgba: empty, what: 'inside the hidden F: C hidden, F not drawn' },
+      { at: { x: 70, y: 30 }, rgba: blue, what: 'outside F: drawn' },
+    ],
+  },
+  // M5 a mask switched off does nothing
+  'M5-mask-disabled': {
+    rule: 'M5 disabled mask: C drawn everywhere',
+    records: () => [layer('L1', 'a1'), ...square(id('L1'), 'a2', 'a1'), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 40, 30, 80, 30), { ...mask('outside', ['fill:F'], [], ['curve:C']), enabled: false } as DocRecord],
+    expect: [{ at: { x: 50, y: 30 }, rgba: blue, what: 'inside F: drawn (mask off)' }],
   },
 }

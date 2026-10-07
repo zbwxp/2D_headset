@@ -8,6 +8,7 @@ import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { planCharacter, type CharacterCommand } from './characterCommands'
 import { planDuplicate, type DuplicateCommand } from './duplicate'
+import { planMask, type MaskCommand } from './masks'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
@@ -73,6 +74,7 @@ export type Command =
   | CharacterCommand
   /** independent copy (stage 4, duplicate.ts) */
   | DuplicateCommand
+  | MaskCommand
 
 /**
  * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
@@ -265,7 +267,7 @@ function dependantsOf(store: DocStore, id: string): string[] {
   return mentioning(store, r.id)
 }
 
-const NEW_TYPES = new Set(['forms', 'family', 'preset', 'expressionParam', 'helperDomain', 'character', 'visibility'])
+const NEW_TYPES = new Set(['forms', 'family', 'preset', 'expressionParam', 'helperDomain', 'character', 'visibility', 'mask'])
 /**
  * Stage-1 records that mention `id` anywhere (family curves, preset family, parameter curves, character weights /
  * takeovers, visibility owner …). No index exists for them yet, so this scans — only removal plans call it,
@@ -326,6 +328,16 @@ function placeOf(store: DocStore, x: DocRecord): string | null {
   if (x.typeName === 'connection') return null
   if (x.typeName === 'forms' || x.typeName === 'visibility') return (getAs(store, x.curveId, 'curve')?.parentId as string | undefined) ?? null
   if (x.typeName === 'family' || x.typeName === 'preset' || x.typeName === 'expressionParam' || x.typeName === 'helperDomain' || x.typeName === 'character') return null
+  // a mask changes how its targets look: its place is a LOCKED target's place if there is one (so the lock check
+  // refuses it), else none (document-level)
+  if (x.typeName === 'mask') {
+    for (const t of x.targets) {
+      const r = store.get(t as any) as DocRecord | undefined
+      const place = r && 'parentId' in r ? (r.typeName === 'container' ? r.id : r.parentId) : null
+      if (place && (lockedBy(store, place as RecordId<ContainerRecord>) || (r?.typeName === 'container' && r.locked))) return place as string
+    }
+    return null
+  }
   return x.parentId
 }
 
@@ -576,6 +588,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       return planCharacter(store, cmd, ids)
     case 'duplicate':
       return planDuplicate(store, cmd, ids)
+    case 'setMask':
+      return planMask(store, cmd, ids)
     case 'deleteRecords': {
       if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'no records to delete', [])
       // existence, duplicates, locks and dependants are checked generically on the final overlay

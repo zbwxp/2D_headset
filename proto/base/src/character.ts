@@ -418,5 +418,6 @@ export function asCharacter(store: BaseReader, base: Evaluated, played: { shapes
         ? { kind: 'curve', item: curves.get(p.item.address)! }
         : { kind: 'fill', item: { ...p.item, cubics: fillCubics((store.get(p.item.address as any) as FillRecord).boundary, (id) => byBase.get(id)) } },
     ),
+    base.maskDefs,
   )
 }

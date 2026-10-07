@@ -119,5 +119,6 @@ export function evaluateAtYaw(store: Pick<BaseReader, 'get'> & Partial<BaseReade
         ? { kind: 'curve', item: curves.get(p.item.address)! }
         : { kind: 'fill', item: fillAtYaw(p.item, store.get(p.item.address as any) as FillRecord, (id) => byBase.get(id)) },
     ),
+    base.maskDefs,
   )
 }

@@ -17,7 +17,7 @@ import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
 import { InstanceTable } from './instanceLifecycle'
-import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
+import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, maskDefsOf, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { asCharacter, ctxOf, playCharacter, prepareCharacter, retainedShapes, type Prepared } from './character'
@@ -364,7 +364,7 @@ export class Derived {
       // fallback only: the side effects already keep the table at current membership (KF-3)
       this.instances.reconcile()
       counters.assembledItems += paint.length
-      return fromPaint(paint)
+      return fromPaint(paint, maskDefsOf(this.store, this.order.get().map((e) => e.address)))
     })
   }
 
@@ -388,7 +388,7 @@ export class Derived {
   atYaw(yaw: number): Evaluated {
     // assembled on demand (not cached: a cached list would hold results outside the budget)
     const base = this.evaluated()
-    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: this.curveAt(p.item.address, yaw) } : { kind: 'fill', item: this.fillAt(p.item.address, yaw) })))
+    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: this.curveAt(p.item.address, yaw) } : { kind: 'fill', item: this.fillAt(p.item.address, yaw) })), base.maskDefs)
   }
   get yawCacheSize() {
     return { curves: this.yawCurves.size, fills: this.yawFills.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
@@ -416,7 +416,7 @@ export class Derived {
       }
     const base = this.atYaw(yaw)
     counters.previewItems += base.paint.length
-    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })))
+    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })), base.maskDefs)
   }
 
   /** The prepared grid of a character (cached; see `characters`). */
@@ -503,6 +503,6 @@ export class Derived {
     const base = this.evaluated()
     counters.previewItems += base.paint.length
     // same order (the fast path never changes parent / index / membership), current geometry
-    return fromPaint(base.paint.map((p) => ({ kind: p.kind, item: ch.items.get(p.item.address) ?? p.item }) as PaintInput))
+    return fromPaint(base.paint.map((p) => ({ kind: p.kind, item: ch.items.get(p.item.address) ?? p.item }) as PaintInput), base.maskDefs)
   }
 }

@@ -7,6 +7,7 @@
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
 // still REPAINTED each frame, like renderAll. Not a cost floor (dot): a reference with the same output.
 import { FILL_RULE, inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
+import { paintMasked } from './masks'
 import { ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 
 export class Canvas2DRef {
@@ -61,21 +62,33 @@ export class Canvas2DRef {
     const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
     for (const p of ev.paint) {
       if (!p.item.visible) continue
+      // an item under masks is painted through them (view/masks.ts), the same drawing otherwise
+      const masks = ev.masks?.get(p.item.address)
       if (p.kind === 'fill') {
-        if (p.ownInk.length)
-          paintFillLeavingOwnInk(ctx, p.item, this.fillPath(p.item), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
-        else {
-          ctx.fillStyle = p.item.color
-          ctx.fill(this.fillPath(p.item), FILL_RULE)
+        const f = p.item
+        const draw = (l: CanvasRenderingContext2D) => {
+          if (p.ownInk.length)
+            paintFillLeavingOwnInk(l, f, this.fillPath(f), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
+          else {
+            l.fillStyle = f.color
+            l.fill(this.fillPath(f), FILL_RULE)
+          }
         }
+        if (masks?.length) paintMasked(ctx, masks, f.cubics.flat(), 0, draw)
+        else draw(ctx)
       } else {
-        const st = inkStyle(p.item)
-        ctx.strokeStyle = p.item.locked ? '#999' : p.item.stroke.color
-        ctx.lineWidth = st.width
-        ctx.lineCap = st.cap
-        ctx.lineJoin = st.join
-        ctx.miterLimit = st.miterLimit
-        ctx.stroke(this.curvePath(p.item))
+        const c = p.item
+        const st = inkStyle(c)
+        const draw = (l: CanvasRenderingContext2D) => {
+          l.strokeStyle = c.locked ? '#999' : c.stroke.color
+          l.lineWidth = st.width
+          l.lineCap = st.cap
+          l.lineJoin = st.join
+          l.miterLimit = st.miterLimit
+          l.stroke(this.curvePath(c))
+        }
+        if (masks?.length) paintMasked(ctx, masks, c.segments.flatMap((s) => s.cubic), (st.width / 2) * Math.max(1, st.miterLimit), draw)
+        else draw(ctx)
       }
     }
     const curves = ev.curves.filter((c) => c.visible)
