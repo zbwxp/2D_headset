@@ -103,6 +103,10 @@ export function planArrange(store: BaseReader, cmd: ArrangeCommand, ids: IdSourc
   for (const g of items) {
     if (g.typeName !== 'container') return fail('INVALID', `${g.id} is not a group`, [g.id])
     if (g.parentId === null) return fail('INVALID', `${g.id} is a layer: a layer is not ungrouped`, [g.id])
+    // a shape group's faces are its own (Illustrator: a Live Paint group is not simply ungrouped, only released /
+    // expanded — not here yet): ungrouping is refused while it has a face
+    const faces = (g as ContainerRecord).shape ? childrenOf(store as any, g.id as any, 'fill') : []
+    if (faces.length) return fail('INVALID', `形状组 ${(g as ContainerRecord).name || g.id} 还有面的颜色：先在属性里清除它们，再取消编组`, [g.id, ...faces])
     const refs = referencesOf(store as any, g.id as any)
     if (refs.length) return fail('BAD_REFERENCE', `${g.id} is placed by ${refs.join(', ')}: ungrouping would remove what they place`, [g.id, ...refs])
     const masks = store.allRecords().filter((m: any) => m.typeName === 'mask' && m.targets.includes(g.id)).map((m) => m.id as string)

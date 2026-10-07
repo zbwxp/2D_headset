@@ -11,6 +11,7 @@ import { planDuplicate, type DuplicateCommand } from './duplicate'
 import { planMask, type MaskCommand } from './masks'
 import { planPaste, type PasteCommand } from './clipboard'
 import { planArrange, type ArrangeCommand } from './arrange'
+import { planShape, type ShapeCommand } from './shapes'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
@@ -95,6 +96,8 @@ export type Command =
   | PasteCommand
   /** arrange / group / ungroup / new layer (arrange.ts) */
   | ArrangeCommand
+  /** paint an enclosed area: its shape group gets the face (shapes.ts) */
+  | ShapeCommand
 
 /**
  * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
@@ -682,6 +685,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
     case 'ungroup':
     case 'createContainer':
       return planArrange(store, cmd, ids)
+    case 'paintRegion':
+      return planShape(store, cmd, ids)
     case 'setMask':
       return planMask(store, cmd, ids)
     case 'deleteRecords': {

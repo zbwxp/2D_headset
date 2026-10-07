@@ -16,6 +16,8 @@ export type LayerRow = {
   hiddenBy?: string
   lockedBy?: string
   hasChildren: boolean
+  /** a shape group (doc 18 §30.22): its faces are its properties, not rows */
+  shape?: true
 }
 
 type Item = ContainerRecord | CurveRecord | FillRecord | ReferenceRecord
@@ -32,15 +34,17 @@ export function childrenFrontFirst(reader: BaseReader, parentId: string | null):
 export function layerRows(reader: BaseReader, expanded: (id: string) => boolean): LayerRow[] {
   const out: LayerRow[] = []
   const walk = (parentId: string | null, depth: number, hiddenBy?: string, lockedBy?: string) => {
-    for (const r of childrenFrontFirst(reader, parentId)) {
+    const parent = parentId ? (reader.get(parentId as any) as ContainerRecord | undefined) : undefined
+    for (const r of parent ? rowsOf(reader, parent) : childrenFrontFirst(reader, null)) {
       const isC = r.typeName === 'container'
-      const kids = isC ? childrenFrontFirst(reader, r.id) : []
+      const kids = isC ? rowsOf(reader, r) : []
       out.push({
         id: r.id,
         kind: r.typeName,
         name: r.name,
         depth,
         ...(isC ? { visible: r.visible, locked: r.locked } : {}),
+        ...(isC && r.shape ? { shape: true as const } : {}),
         ...(hiddenBy ? { hiddenBy } : {}),
         ...(lockedBy ? { lockedBy } : {}),
         hasChildren: kids.length > 0,
@@ -51,6 +55,8 @@ export function layerRows(reader: BaseReader, expanded: (id: string) => boolean)
   walk(null, 0)
   return out
 }
+/** the children shown as rows: a shape group's faces are not rows (they are listed in its properties) */
+const rowsOf = (reader: BaseReader, c: ContainerRecord): Item[] => childrenFrontFirst(reader, c.id).filter((k) => !(c.shape && k.typeName === 'fill'))
 
 /** Shift+click in the list: the rows between the anchor row and this one (Figma / Finder range selection) */
 export function rangeOf(rows: LayerRow[], from: string, to: string): string[] {

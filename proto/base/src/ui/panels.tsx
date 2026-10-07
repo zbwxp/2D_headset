@@ -6,6 +6,7 @@ import { useValue } from '@tldraw/state-react'
 import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react'
 import type { Command } from '../commands'
 import type { Editor } from '../editor'
+import { childrenOf } from '../indexes'
 import { layerOf, masksOf } from '../selection'
 import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
@@ -179,7 +180,7 @@ export function LayersPanel({ ui }: { ui: Ui }) {
             >
               {r.hasChildren ? (collapsed[r.id] ? '▸' : '▾') : ''}
             </span>
-            <span className={`kind k-${r.kind}`} title={KIND_LABEL[r.kind]} />
+            <span className={`kind k-${r.shape ? 'shape' : r.kind}`} title={r.shape ? '形状' : KIND_LABEL[r.kind]} />
             {renaming === r.id ? (
               <input
                 className="rename"
@@ -349,7 +350,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <div className="panel-title">属性</div>
       <table>
         <tbody>
-          <tr><th>类型</th><td>{KIND_LABEL[r.typeName] ?? r.typeName}</td></tr>
+          <tr><th>类型</th><td>{r.typeName === 'container' && (r as ContainerRecord).shape ? '形状' : (KIND_LABEL[r.typeName] ?? r.typeName)}</td></tr>
           <tr><th>名称</th><td>{'name' in r ? <CommitInput prop="name" value={r.name} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, name: v })} /> : ''}</td></tr>
           <tr><th>id</th><td className="mono">{r.id}</td></tr>
           {layerName ? <tr><th>所在图层</th><td>{layerName}</td></tr> : null}
@@ -359,6 +360,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
               <tr><th>锁定</th><td><input type="checkbox" checked={(r as ContainerRecord).locked} onChange={(e) => ui.apply({ type: 'setContainerFlags', containerId: r.id as any, locked: e.target.checked })} /></td></tr>
             </>
           ) : null}
+          {r.typeName === 'container' && (r as ContainerRecord).shape ? <Faces ui={ui} group={r as ContainerRecord} /> : null}
           {r.typeName === 'curve' || r.typeName === 'container' ? (
             <tr><th>填充</th><td><button id="makeFill" title="建立填充：这条闭合线（或组里首尾相接的线）围成的轮廓，用工具栏的填充色" onClick={() => view.fillSelection()}>建立填充</button></td></tr>
           ) : null}
@@ -398,6 +400,29 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <AnchorsSection ui={ui} />
       {r.typeName === 'reference' ? <div className="muted small">引用的源和变换在画布上改（V 移动 / 变换框）。</div> : null}
     </div>
+  )
+}
+
+/**
+ * A shape group's faces (doc 18 §30.22): each area's colour, and 清除 (the face goes; the group and its lines stay —
+ * Illustrator: clearing a Live Paint face's colour keeps the group). One write each.
+ */
+function Faces({ ui, group }: { ui: Ui; group: ContainerRecord }) {
+  const editor = ui.editor
+  const faces = useValue('shape faces', () => (void editor.revision, childrenOf(editor.reader as any, group.id, 'fill').map((id) => editor.reader.get(id as any) as FillRecord).filter(Boolean)), [editor, group.id])
+  if (!faces.length) return <tr><th>面</th><td className="muted">没有颜色（K 点线围起来的区域上色）</td></tr>
+  return (
+    <>
+      {faces.map((f, i) => (
+        <tr key={f.id} data-face={f.id}>
+          <th>{faces.length > 1 ? `面 ${i + 1}` : '面'}</th>
+          <td className="inline">
+            <ColorInput prop="faceColor" value={f.color} onCommit={(v) => ui.apply({ type: 'setProps', id: f.id, color: v })} />
+            <button data-face-clear title="清除这块面的颜色（线和形状组都留着）" onClick={() => ui.apply({ type: 'deleteRecords', ids: [f.id] })}>清除</button>
+          </td>
+        </tr>
+      ))}
+    </>
   )
 }
 

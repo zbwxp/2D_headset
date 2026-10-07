@@ -29,6 +29,11 @@ export interface ContainerRecord extends BaseRecord<'container', RecordId<Contai
   visible: boolean
   locked: boolean
   opacity: number
+  /**
+   * A shape group (doc 18 §30.19 / §30.22; Illustrator Live Paint group): the colours of the areas its lines enclose are
+   * its own faces (the fills inside it), drawn below its other children. Absent on plain layers / groups and in older files.
+   */
+  shape?: true
 }
 
 export interface CurveRecord extends BaseRecord<'curve', RecordId<CurveRecord>> {
@@ -220,6 +225,7 @@ export const Container = createRecordType<ContainerRecord>('container', {
       check(typeof r.name === 'string', 'container.name')
       check(typeof r.visible === 'boolean' && typeof r.locked === 'boolean', 'container flags')
       check(isNum(r.opacity) && r.opacity >= 0 && r.opacity <= 1, 'container.opacity')
+      check(r.shape === undefined || r.shape === true, `container ${r.id} shape must be true or absent`)
       return r
     },
   },

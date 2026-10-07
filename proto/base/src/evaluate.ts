@@ -114,15 +114,23 @@ const KEY_TIE = '\u0001'
  * whole subtrees, so a container's content stays contiguous. `stopAt` (exclusive) gives the key
  * relative to a referenced source container. Depth offsets are NOT applied (D1; `unappliedDepthOffsets`).
  */
-export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; parentId: RecordId<ContainerRecord> | null; index: string }, stopAt?: string) {
-  const parts = [rec.index + KEY_TIE + rec.id]
-  let cur = rec.parentId ? (store.get(rec.parentId) as ContainerRecord | undefined) : undefined
-  while (cur && cur.id !== stopAt) {
-    parts.push(cur.index + KEY_TIE + cur.id)
-    cur = cur.parentId ? (store.get(cur.parentId) as ContainerRecord | undefined) : undefined
+export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; typeName?: string; parentId: RecordId<ContainerRecord> | null; index: string }, stopAt?: string) {
+  let parent = rec.parentId ? (store.get(rec.parentId) as ContainerRecord | undefined) : undefined
+  const parts = [levelPart(parent, rec)]
+  while (parent && parent.id !== stopAt) {
+    const up = parent.parentId ? (store.get(parent.parentId) as ContainerRecord | undefined) : undefined
+    parts.push(levelPart(up, parent))
+    parent = up
   }
   return parts.reverse().join(KEY_SEP)
 }
+/**
+ * One level of a paint key. Inside a shape group (doc 18 §30.22) the faces are drawn below every other child: a class
+ * digit (faces 0, the rest 1) comes before the index, so the rule holds whatever the indexes are; elsewhere the index
+ * alone orders (R1).
+ */
+const levelPart = (parent: ContainerRecord | undefined, r: { id: string; typeName?: string; index: string }) =>
+  (parent?.shape ? (r.typeName === 'fill' ? '0' : '1') : '') + r.index + KEY_TIE + r.id
 export const byKey = (a: { key: string; address: string }, b: { key: string; address: string }) =>
   a.key < b.key ? -1 : a.key > b.key ? 1 : a.address < b.address ? -1 : a.address > b.address ? 1 : 0 // address: stable tie-break
 

@@ -20,8 +20,8 @@ import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
-import { getIndexAbove, getIndexBetween, type IndexKey } from '@tldraw/utils'
-import { faceAt, outlineOf, sameFill } from '../fills'
+import { getIndexAbove, type IndexKey } from '@tldraw/utils'
+import { faceAt, outlineOf } from '../fills'
 import { snapPoint, type Snap } from '../snap'
 import { drawingBounds, toSVG } from '../export'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
@@ -853,9 +853,9 @@ export class FabricView {
   }
 
   /**
-   * Live Paint Bucket (K, fills.ts): the area the lines enclose at the click gets a fill in the current fill colour;
-   * an area already filled gets the colour. The new fill goes into the container of the back-most boundary line, just
-   * below it (lines stay over their fill), and is selected.
+   * Live Paint Bucket (K, fills.ts): the area the lines enclose at the click gets a face of the current fill colour in
+   * the lines' shape group (made / reused by `paintRegion`, shapes.ts); an area already filled gets the colour. The
+   * shape group is selected.
    */
   bucket(p: Vec) {
     return this.fillFace(faceAt(this.editor.reader, this.editor.derived.evaluated(), p))
@@ -870,25 +870,10 @@ export class FabricView {
     return this.fillFace(outlineOf(reader, this.editor.derived.evaluated(), curves))
   }
   private fillFace(face: ReturnType<typeof faceAt>) {
-    const reader = this.editor.reader
     if ('error' in face) return this.setStatus(face.error), null
-    const color = this.fillColor.get()
-    const existing = sameFill(reader, face.boundary)
-    if (existing) {
-      const r = this.applyAndLog({ type: 'setProps', id: existing, color })
-      if (r.ok) this.selection.set([existing])
-      return r
-    }
-    const ev = this.editor.derived.evaluated()
-    const order = ev.paint.map((x) => x.item.address)
-    const back = [...face.curves].sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]
-    const bc = reader.get(back as any) as CurveRecord
-    const sibs = (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(reader as any, bc.parentId, t).map((id) => (reader.get(id as any) as unknown as { index: string }).index)).sort()
-    const below = sibs.filter((i) => i < bc.index).at(-1) ?? null
-    // just below the back-most boundary line among its siblings (lines stay over their fill)
-    const index = getIndexBetween((below ?? null) as IndexKey | null, bc.index as IndexKey)
-    const r = this.applyAndLog({ type: 'createFill', parentId: bc.parentId, boundary: face.boundary, color, index })
-    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    const r = this.applyAndLog({ type: 'paintRegion', boundary: face.boundary, color: this.fillColor.get() })
+    // the shape (or an older file's own fill) is the object now selected
+    if (r.ok) this.selection.set([r.affected[0]])
     return r
   }
 
