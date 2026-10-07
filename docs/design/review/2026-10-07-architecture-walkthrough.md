@@ -339,3 +339,68 @@ Fills belong to a path or a shape group.
 ### Status
 
 **Facts recorded.**
+
+### Q5 follow-up: what is a group in the new version, and does it overlap with layers?
+
+**bowen** 1791382929:
+> 那你给我解释一下你们新版的组是个什么玩意？它如果是个清单 那是不是和图层的功能重叠了？
+
+#### Facts (4bc7cc2)
+
+A group and a layer are **the same record** (a container). Without a parent it is a layer; with one it is a group. Both carry exactly the same fields: name, order, visibility, lock and opacity.
+
+The only differences in the code:
+
+1. **Selection unit.** Clicking with V selects the outermost group below the layer (selection.ts:30-41; Illustrator Selection tool).
+2. **New lines go into a layer,** never into a group (fabricView.ts:868-878).
+3. **A layer cannot be grouped or ungrouped** (arrange.ts:116, 131).
+4. **They are created differently:** "＋图层" makes a layer; ⌘G makes a group, placed at the position of the front-most member.
+
+#### Judgements
+
+**Claude (1791382971):** for organising things, groups and layers overlap. The only thing a group adds is being selected and moved as one unit.
+
+**dot (1791383017):**
+- A group is "a level of organisation inside a layer". It does not mean its lines are continuous or closed, or that they can be filled.
+- If layers can already nest and support whole-unit operations, "group" can just be the name for a nested layer. It does not need its own feature set or its own module.
+- Whether to keep both names depends on how bowen needs to organise things. Our existing record types should not decide it in reverse.
+
+#### Status
+
+**Open.** Not added to the graph (bowen 1791382929).
+
+---
+
+## Q6: Where did the group concept come from: a mature tool, or something we made up?
+
+**bowen** 1791383041:
+> 那这个组的概念明显不是很优雅 这玩意是哪来的？是哪个成熟方案写的还是你们瞎写的？
+
+### Facts
+
+**1. The group feature already existed in v103:**
+
+- ⌘G groups two or more lines on the same layer and auto-names the result 组合 N; ⇧⌘G ungroups.
+- Clicking with V selects the whole group.
+- Sources: `7205381:src/domain/drawing/model.ts:66` `DrawingGroup`; UI in DrawingRoom.tsx:154 and 363.
+
+**2. "Group and layer are the same record and can nest without limit" is our own design decision.** It comes from design doc 11 v0.2 (Claude as main author, commit e3514f7, 2026-10-06):
+
+> 〔决定〕全软件只有一种容器机制……图层是顶层的容器，编组是图层里的容器，在 V 模式下点一下会整组选中
+
+- The reason given at the time: v103's templates, characters and drawings each used a different layer mechanism, and we wanted to unify them.
+- **That entry cites no mature tool as its basis.**
+- **The comparison below is unverified** (from memory, not opened this time):
+  - Illustrator treats "layers / sublayers" and "groups" as two different things.
+  - Figma and SVG use one node tree, where a group is just one kind of node.
+  - Our choice is closer to Figma and SVG, but the document never made this comparison.
+
+### Answer (Claude 1791383088)
+
+**What a group is for** comes from bowen's v103 and from Illustrator.
+
+**The structure "group = nested layer, same record"** is our design decision. It had no stated basis, and it was never confirmed with bowen.
+
+### Status
+
+**Open.** Waiting for bowen.
