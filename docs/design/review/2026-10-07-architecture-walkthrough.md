@@ -1795,6 +1795,42 @@ The decisions for bowen are A and B.
   - Clicking a solid fill's area selects the fill itself, not the line (`PaintScene.tsx:67`).
   - A transparent cutout can only be picked by its edge.
 
+### dot's independent check (1791389703; source reading, v103 not run)
+
+**Core:** independent fill element + explicit boundary references + its own layer order. v103 does not rescan the whole network to decide what is filled.
+
+**Three attacks:**
+
+1. **Partial cut loses the fill.**
+   - The clipboard takes a fill only when all of its boundary is selected.
+   - The delete step removes the fill as soon as any one boundary edge is deleted.
+   - Each rule makes sense on its own; together they lose content.
+2. **"Independent" fill, but not independent movement.**
+   - Moving a selected fill (for example with the arrow keys) moves its boundary curves.
+   - Where nodes are shared, unselected branches are pulled along too.
+   - The user selected the fill, but the edit includes the source lines. There is no fill-only geometry transform.
+3. **Cross-layer is not fully unsupported.**
+   - Creating a fill requires the boundary to be in one layer.
+   - After creation, the fill can be moved to another layer and still reference the original layer's lines.
+   - Deleting the source line then deletes that fill in the other layer, and copying may be refused because of the cross-layer dependency.
+   - What is missing is a consistent set of cross-layer rules, not the ability to reference across layers.
+
+**Facts to state precisely:**
+- Closure is judged by a coordinate tolerance; shared node ids are not required.
+- A broken fill that is kept has a diagnosis in the sidebar.
+- Adding points and splitting update the boundary references. Normal line deletion cleans up dependants. There is no evidence of dangling references.
+
+**Conclusion:** the fill representation works. The weak points are the unified meaning of related operations (cut, move, cross-layer). Fixing them does not need an automatic face system.
+
+### Claude's corrections after dot's check (1791389734)
+
+- **dot points 2 and 3 confirmed in code:**
+  - Moving a fill moves its boundary curves: `movement.ts:11-13`.
+  - A sidebar drop moves a fill alone to another layer with no boundary-layer check: `paintCommands.ts:76` `movePaint`, called from `dropPaint`.
+- **Attack A rewritten:** cross-layer is refused only at creation. After creation a fill can already reference another layer. The missing piece is a consistent cross-layer operation rule.
+- **"Broken looks the same as deleted"** is true only on the canvas; the sidebar shows "边界未闭合".
+- **Merged view (Claude and dot agree):** the representation is usable. The open work is consistent rules for cut, move and cross-layer. bowen still decides B (delete a line → delete its fill or keep it invalid).
+
 ### Status
 
-Waiting for dot's independent review; disagreements will be merged here. bowen decides A and B.
+Claude and dot agree on the facts and the conclusion. Waiting for bowen on A (cross-layer rules) and B.
