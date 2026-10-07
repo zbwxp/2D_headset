@@ -853,3 +853,88 @@ These are candidate drawing rules. They do not change the shared curves and they
 #### Status
 
 **Facts recorded.** Fill definition is still waiting for bowen.
+
+---
+
+## Q8: Attacking "only the smallest enclosed regions can be filled" (Claude's independent review)
+
+**bowen** 1791385308:
+> 不透明在我们纯电脑显示里不会出现黄蓝变绿的情况。这里的所谓trap到底要选择哪种方案可以待定，目前设置为null（现阶段有缝就有缝吧） 但是这样就解决了我们之前的架构问题， 只填充最小合围区域。那么如果之前一个大圆中间加了一条线，这个填充就变成两个。这样的设定你们再尝试攻击一下（这样和figma也非常相似了吧？）
+
+### bowen's decisions
+
+- **trap = null for now:** seams are accepted at this stage.
+- **Only the smallest enclosed regions (faces) can be filled.**
+- **When a line is added across a large filled circle, the one fill becomes two.**
+
+### Restatement (to be confirmed by bowen)
+
+- **Fill target:** a fill can only sit on a face of the network.
+- **What a face is:** an area enclosed by segments that share endpoints and that no other segment cuts through.
+- **Lines that cross without sharing an endpoint do not split a face.** This matches the current K, see fills.ts:3-6.
+
+### Attacks
+
+**B1 [Gap] What happens to the fill when a face splits or merges.**
+
+- **Split:** adding a line through a red circle makes two faces. Are both automatically red? bowen implied yes, "the fill becomes two".
+- **Merge:** deleting the line between a red face and a blue face makes one face. What colour is it?
+  - Options: the larger one, the one drawn first, the one that was selected, or no fill.
+  - **No rule yet.**
+- **Undo** must restore exactly the colours from before the split or merge. The structure itself has no way to remember "which pieces used to be one fill".
+
+**B2 [Gap / future conflict] Gradients and blurred fills.**
+
+bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
+
+- With faces only, a gradient across the whole face is cut into two as soon as any line inside joins both sides of the outline at endpoints.
+- The two halves get separate gradients, so there is a visible break where they meet.
+- Whole-face soft edges (blur) are split the same way.
+- **Solid colours are unaffected.** Future gradients or blur would need either "several faces share one gradient coordinate frame" or a separate whole-fill concept.
+
+**B3 [Gap] Islands inside a face (holes).**
+
+- Example: an eye outline sits inside the face outline but is not joined to it. Geometrically, the face region has a hole.
+- With faces only, it is undecided whether the face fill **includes** the eye area (and is covered by the eye's own fill) or **excludes** it (has a hole).
+  - With opaque fills the result looks the same.
+  - With semi-transparent fills, or if the eye fill is removed, the result differs.
+- **The current code makes no faces with holes** (fills.ts:6: "Faces with holes are not made"). In effect it chose "includes".
+
+**B4 [Gap] Faces enclosed by lines from several layers.**
+
+- Example: the chin in the old face is joined across layers.
+- A face enclosed by lines from different layers: which layer does it belong to, and what is its paint order?
+- This was deferred to the cross-layer level earlier (Q7 merged result). It stays deferred, but this rule depends on it.
+
+**B5 [Cost] Faces change as topology changes.**
+
+- Join, cut, delete or add a segment, and faces must be recomputed and existing fills mapped onto the new faces.
+- This is the same class of problem as the earlier rounds of fill fixes (bridges, colourless areas).
+- **But compared with "fill on any loop", faces never overlap.** That removes the overlap-order problem from A1.
+- **Overall complexity goes down.**
+
+**B6 [Cost] Lines crossing without a shared point.**
+
+- Two lines that just cross do not split a face (B-restatement).
+- The user may see an area that looks enclosed and is not fillable. An anchor must be added at the crossing first.
+- This is the current behaviour. Its feedback needs to be clear (batch 2).
+
+### Not found to be a problem (in these cases)
+
+- **No ambiguity from overlapping fills:** faces never overlap.
+- **Head-turn:** topology stays the same across poses, so faces stay the same. Each pose only redraws a face's boundary with that pose's geometry.
+- **Lines that end inside a face** (one end free), such as a hair strand touching the outline at one end, do not split the face.
+
+### Comparison with Figma
+
+**Interaction: very similar.** Figma's Paint tool works on closed regions: highlight on hover, click or drag to fill (Q7 follow-up B, help page opened).
+
+**Data: different.**
+- Figma's region can use any loops, including the outer ring, and holes are expressed with several loops (API opened, Q7 follow-up A).
+- bowen's rule is a **stricter subset**: only the smallest region.
+
+**Still unverified:** what Figma does to existing fills when a line is added across a filled region, and when a separating line is deleted.
+
+### Status
+
+**Claude's independent review is done.** Waiting for dot's independent review, then merging.
