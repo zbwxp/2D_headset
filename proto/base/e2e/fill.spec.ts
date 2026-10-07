@@ -155,3 +155,42 @@ test('K inside three separate lines: a 形状 group holds them and the face; the
   await page.keyboard.press('Meta+z')
   expect((await records(page, 'fill')).map((x: any) => x.color)).toEqual(['#3366cc'])
 })
+
+test('K never reaches through what is drawn in front (dot 1791359954): a blue fill covering a small one is the one recoloured; locked, the click is refused and the small one stays', async ({ page }) => {
+  await open(page)
+  await page.click('#fileNew')
+  const L1 = (await records(page, 'container'))[0].id
+  const ids = await page.evaluate((L) => {
+    const { api } = (window as any).__contour
+    const a = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    api.apply({ type: 'createContainer', id: 'container:F', parentId: null, name: '前景' })
+    const sq = (id: string, parent: string, x0: number, y0: number, x1: number, y1: number) =>
+      api.apply({ type: 'createCurve', id, parentId: parent, anchors: { a: a('a', x0, y0), b: a('b', x1, y0), c: a('c', x1, y1), d: a('d', x0, y1) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+    sq('curve:small', L, 40, 30, 60, 50)
+    sq('curve:big', 'container:F', 10, 10, 90, 70)
+    const steps = (c: string) => ['s1', 's2', 's3', 's4'].map((s) => ({ curveId: c, segmentId: s, dir: 1 }))
+    const small = api.apply({ type: 'paintRegion', boundary: steps('curve:small'), color: '#ff0000' })
+    const big = api.apply({ type: 'paintRegion', boundary: steps('curve:big'), color: '#0000ff' })
+    return { small: small.affected[1] as string, big: big.affected[1] as string }
+  }, L1)
+  const color = async (id: string) => (await records(page, 'fill')).find((f: any) => f.id === id)?.color
+  expect(await color(ids.small)).toBe('#ff0000')
+  await page.locator('#fillColor').fill('#00aa00')
+  await page.keyboard.press('k')
+  await click(page, { x: 50, y: 40 }) // inside both; the blue one is drawn in front
+  expect(await color(ids.big)).toBe('#00aa00')
+  expect(await color(ids.small)).toBe('#ff0000')
+  // locked front layer: refused, nothing behind changes (also when the small one is colourless)
+  for (const behind of ['#ff0000', 'none']) {
+    await page.evaluate(([id, c]) => (window as any).__contour.api.apply({ type: 'setProps', id, color: c }), [ids.small, behind])
+    await page.evaluate(() => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: true }))
+    const steps = (await undoLabels(page)).length
+    await page.locator('#fillColor').fill('#123456')
+    await click(page, { x: 50, y: 40 })
+    await expect(page.locator('#status')).toContainText('LOCKED')
+    expect(await color(ids.small)).toBe(behind)
+    expect(await color(ids.big)).toBe('#00aa00')
+    expect((await undoLabels(page)).length).toBe(steps)
+    await page.evaluate(() => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: false }))
+  }
+})

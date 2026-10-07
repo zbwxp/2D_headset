@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
-import { existingFillAt, faceAt } from '../src/fills'
+import { bucketTarget, faceAt, sameFill } from '../src/fills'
 import { contentOf } from '../src/clipboard'
 import { layerRows } from '../src/ui/layerTree'
 import { deletionSetOf, unitOf } from '../src/selection'
@@ -163,8 +163,8 @@ describe('after painting: clear, cut, delete, ungroup, copy, save / reopen', () 
     expect('error' in faceAt(e.reader, e.derived.evaluated(), { x: 5, y: 3 })).toBe(true) // the face search alone no longer finds it
     expect(run(e, { type: 'setProps', id: fid, color: 'none' }).ok).toBe(true)
     // K at the same place: the existing (colourless) area wins
-    const old = existingFillAt(e.reader, e.derived.evaluated(), { x: 5, y: 3 })!
-    expect(old.id).toBe(fid)
+    const old = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 3 }) as any
+    expect(sameFill(e.reader, old.boundary)).toBe(fid)
     const again = run(e, { type: 'paintRegion', boundary: old.boundary, color: '#00ff00' })
     expect(again.ok && again.written).toBe(true)
     expect(get(e, fid).color).toBe('#00ff00')
@@ -297,8 +297,8 @@ describe("a path's own fill (doc 18 §30.18; dot 1791356669: one closed path is 
     run(e, { type: 'moveAnchors', targets: [{ curveId: 'curve:sq', anchorId: 'a' }], delta: { x: -2, y: -2 } })
     expect(run(e, { type: 'setProps', id: fid, color: 'none' }).ok).toBe(true)
     expect(get(e, fid).owner).toEqual({ kind: 'path', curveId: 'curve:sq' })
-    const old = existingFillAt(e.reader, e.derived.evaluated(), { x: 5, y: 5 })!
-    expect(old.id).toBe(fid)
+    const old = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
+    expect(sameFill(e.reader, old.boundary)).toBe(fid)
     expect(run(e, { type: 'paintRegion', boundary: old.boundary, color: '#0000ff' }).ok).toBe(true)
     expect(get(e, fid).color).toBe('#0000ff')
   })
@@ -310,5 +310,56 @@ describe("a path's own fill (doc 18 §30.18; dot 1791356669: one closed path is 
     reopened.load(JSON.parse(JSON.stringify(e.save())))
     expect(recs(reopened)).toBe(recs(e))
     expect(paintOrder(reopened)).toEqual(paintOrder(e))
+  })
+})
+
+describe('K follows what is drawn (doc 18 §30.25; dot 1791359954): the front-most thing at the click, never reaching through', () => {
+  // a small square (behind, layer B) entirely covered by a big blue square (in front, layer F)
+  const scene = () => {
+    const sq = (n: string, parent: string, x0: number, y0: number, x1: number, y1: number) =>
+      Curve.create({ id: Curve.createId(n), name: n, parentId: parent as any, index: 'a1', anchors: { a: anchor('a', x0, y0), b: anchor('b', x1, y0), c: anchor('c', x1, y1), d: anchor('d', x0, y1) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+    const e = new Editor([layer('B', 'a1'), layer('F', 'a2'), sq('small', 'container:B', 4, 4, 6, 6), sq('big', 'container:F', 0, 0, 10, 10)])
+    const small = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1] // the small square's own fill
+    const bigBoundary = (faceAt(e.reader, e.derived.evaluated(), { x: 1, y: 1 }) as any).boundary
+    const big = run(e, { type: 'paintRegion', boundary: bigBoundary, color: '#0000ff' }).affected[1]
+    return { e, small, big }
+  }
+  it('clicking where the blue front fill covers the small one recolours the FRONT fill', () => {
+    const { e, small, big } = scene()
+    const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
+    expect(sameFill(e.reader, t.boundary)).toBe(big)
+    run(e, { type: 'paintRegion', boundary: t.boundary, color: '#00ff00' })
+    expect(get(e, big).color).toBe('#00ff00')
+    expect(get(e, small).color).toBe('#ff0000')
+  })
+  it('the front fill locked: the write is refused and the fill behind is untouched (coloured or colourless)', () => {
+    for (const behind of ['#ff0000', 'none']) {
+      const { e, small, big } = scene()
+      run(e, { type: 'setProps', id: small, color: behind })
+      run(e, { type: 'setContainerFlags', containerId: 'container:F' as any, locked: true })
+      const before = recs(e)
+      const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
+      expect(sameFill(e.reader, t.boundary)).toBe(big)
+      const r = run(e, { type: 'paintRegion', boundary: t.boundary, color: '#00ff00' })
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.error.code).toBe('LOCKED')
+      expect(recs(e)).toBe(before)
+    }
+  })
+  it('the front fill hidden: what is drawn there is the small fill — it is the one recoloured', () => {
+    const { e, small } = scene()
+    run(e, { type: 'setContainerFlags', containerId: 'container:F' as any, visible: false })
+    const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
+    expect(sameFill(e.reader, t.boundary)).toBe(small)
+  })
+  it('lines drawn in front of a big fill enclose a new area there: K makes that face, not recolouring the fill behind', () => {
+    const big = Curve.create({ id: Curve.createId('big'), name: 'big', parentId: 'container:L' as any, index: 'a0', anchors: { a: anchor('a', -20, -20), b: anchor('b', 40, -20), c: anchor('c', 40, 40), d: anchor('d', -20, 40) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+    const e = new Editor([...triangle(), big])
+    const bf = run(e, { type: 'paintRegion', boundary: face(e, 30, 30), color: '#0000ff' }).affected[1]
+    const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 3 }) as any
+    expect(sameFill(e.reader, t.boundary)).toBeNull() // the triangle's area, a new face
+    const r = run(e, { type: 'paintRegion', boundary: t.boundary, color: '#ff0000' })
+    expect(r.ok).toBe(true)
+    expect(get(e, bf).color).toBe('#0000ff')
   })
 })

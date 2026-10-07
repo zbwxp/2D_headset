@@ -6,7 +6,7 @@
 // add an anchor there (+) or connect the ends (⌘J). Faces with holes are not made (a fill has one boundary).
 // Face search: the usual planar-map walk — at every node the outgoing segment ends are sorted by angle; following
 // "the next one clockwise after the way back" walks each face once; the smallest bounded face containing the click wins.
-import type { EvalCurve, Evaluated } from './evaluate'
+import { visibleThroughMasks, type EvalCurve, type Evaluated } from './evaluate'
 import { anchorKey, linkedAnchors, type AnchorRef } from './model'
 import type { BaseReader, BoundaryStep, ContainerRecord, FillRecord, Vec } from './schema'
 
@@ -136,21 +136,36 @@ function walk(reader: BaseReader, curves: EvalCurve[], p: Vec | null): Face | { 
 }
 
 /**
- * The smallest existing fill whose area contains `p` — painted or colourless (doc 18 §30.24), in a shown, directly
- * placed container — with its area. Its boundary may be held by bridges where the lines no longer meet, so the face
- * search alone would not find it again.
+ * What the Live Paint Bucket (K) acts on at `p` (doc 18 §30.25; dot 1791359954: the bucket never reaches through what
+ * is drawn in front). Candidates, each at its place in the paint order:
+ * - the drawn fills covering `p` (shown, coloured, not masked away there) — locked ones too: a locked fill in front
+ *   still covers what is behind it (the write is then refused, nothing behind is changed);
+ * - colourless areas (doc 18 §30.24) containing `p` in shown containers, at their own place;
+ * - the area the lines enclose at `p` (`faceAt`): its new face sits just below its front-most line, so that line's
+ *   place stands for it.
+ * The FRONT-most candidate wins. Its boundary is returned for `paintRegion` (which recolours an existing fill with that
+ * boundary, else makes the face).
  */
-export function existingFillAt(reader: BaseReader, ev: Evaluated, p: Vec): { id: string; boundary: BoundaryStep[]; area: number } | null {
-  let best: { id: string; boundary: BoundaryStep[]; area: number } | null = null
+export function bucketTarget(reader: BaseReader, ev: Evaluated, p: Vec): { boundary: BoundaryStep[] } | { error: string } {
+  const rank = new Map(ev.paint.map((e, i) => [e.item.address, i]))
+  let best: { boundary: BoundaryStep[]; rank: number } | null = null
+  const offer = (boundary: BoundaryStep[], r: number | undefined) => {
+    if (r !== undefined && (!best || r > best.rank)) best = { boundary, rank: r }
+  }
   for (const f of ev.fills) {
     const rec = reader.get(f.address as any) as FillRecord | undefined
-    if (!rec || !f.cubics.length || !shown(reader, rec.parentId)) continue
-    const pts = f.cubics.flatMap((c) => sampled(c as Cubic).slice(0, -1))
+    if (!rec || !f.cubics.length) continue
+    const painted = f.visible
+    const colourless = rec.color === 'none' && shown(reader, rec.parentId)
+    if (!painted && !colourless) continue
+    const pts = f.cubics.flatMap((c) => sampled(c as Cubic).slice(0, -1)) // the same sampled-outline test as the face search
     if (pts.length < 3 || !contains(pts, p)) continue
-    const a = Math.abs(area(pts))
-    if (!best || a < best.area) best = { id: rec.id, boundary: rec.boundary, area: a }
+    if (painted && !visibleThroughMasks(ev, f.address, p)) continue
+    offer(rec.boundary, rank.get(f.address))
   }
-  return best
+  const face = faceAt(reader, ev, p)
+  if (!('error' in face)) offer(face.boundary, Math.max(...face.curves.map((c) => rank.get(c) ?? -1)))
+  return best ? { boundary: (best as { boundary: BoundaryStep[] }).boundary } : face
 }
 const shown = (reader: BaseReader, id: string | null): boolean => {
   for (let c = id ? (reader.get(id as any) as ContainerRecord | undefined) : undefined; c; c = c.parentId ? (reader.get(c.parentId as any) as ContainerRecord | undefined) : undefined) if (!c.visible) return false

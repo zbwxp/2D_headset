@@ -21,7 +21,7 @@ import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, type IndexKey } from '@tldraw/utils'
-import { existingFillAt, faceAt, outlineOf } from '../fills'
+import { bucketTarget, faceAt, outlineOf } from '../fills'
 import { snapPoint, type Snap } from '../snap'
 import { drawingBounds, toSVG } from '../export'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
@@ -858,13 +858,10 @@ export class FabricView {
    * shape group is selected.
    */
   bucket(p: Vec) {
-    const reader = this.editor.reader, ev = this.editor.derived.evaluated()
-    const face = faceAt(reader, ev, p)
-    // an existing area there (also a colourless one, held by bridges where its lines were pulled apart — doc 18
-    // §30.24) is coloured again when it is the smaller one: the same face, not a new one
-    const old = existingFillAt(reader, ev, p)
-    if (old && ('error' in face || old.area <= face.area + 1e-6)) return this.fillFace({ boundary: old.boundary, curves: [], area: old.area })
-    return this.fillFace(face)
+    // the front-most of: the drawn fills there (locked ones too), colourless areas (§30.24), the area the lines
+    // enclose — never reaching through what is in front (fills.bucketTarget, doc 18 §30.25)
+    const t = bucketTarget(this.editor.reader, this.editor.derived.evaluated(), p)
+    return this.fillFace('error' in t ? t : { boundary: t.boundary, curves: [], area: 0 })
   }
   /** 建立填充 from the selection (v103 createFill(curveIds)): the outline the selected lines form, in the fill colour */
   fillSelection() {
