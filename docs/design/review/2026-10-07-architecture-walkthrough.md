@@ -2253,11 +2253,11 @@ Agrees: the object relation decides the result. A fill depends on its closed loo
 
 ### Claude (1791392438)
 
-Understood. Following the same reasoning: every endpoint is the end of a specific curve. A bind acts on the end of the curve the user clicked, and that curve is the one deleted, so the program never guesses. Recorded this way unless bowen objects.
+Understood. Following the same reasoning: every endpoint is the end of a specific curve. A bind acts on the end of the curve the user clicked, and that curve is the one deleted, so the program never guesses. Recorded this way unless bowen objects. *(Withdrawn; see Status.)*
 
 ### Status
 
 - 1: decided (甲, as a natural result of the principle, not a special case).
 - 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
 - 2: decided. Move = copy or copy-then-delete; the result follows from the principle. Do not block; show consequences.
-- Curve-end question: recorded as "the clicked curve's end", unless bowen objects.
+- Curve-end question: **open**. It moves to the endpoint round (dot 1791392483). A point and "the end of a specific curve" still have to be distinguished at a shared endpoint with several lines, and this does not follow from the copy/delete decision. Claude withdrew "recorded unless bowen objects".
