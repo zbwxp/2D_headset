@@ -636,3 +636,43 @@ So **fill = which closed curve(s) you choose + colour**. That is very close to b
 #### Status
 
 **Fills come first;** nodes joining 3 or more lines are set aside for later (bowen 1791384107).
+
+### Q7 follow-up B: In Figma, do I pick a closed region by hand and then fill it? Is there a smarter way?
+
+**bowen** 1791384247:
+> 那么figma的交互是我需要手动选择一个闭合区间 然后去填充吗？（这应该是最没有歧义的方案吧？只不过有没有更聪明的交互方式。
+
+#### Facts
+
+Source: Figma Help "Edit vector layers", section "Add fills to closed regions", opened and read: <https://help.figma.com/hc/en-us/articles/360039957634-Edit-vector-layers>
+
+1. In vector edit mode, choose the **Paint tool** (Shift B) and pick a colour.
+2. **Hover over a region.** Diagonal stripes mark the region that will be painted, and the cursor shows what a click will do:
+
+   | Cursor | When | Click result |
+   |---|---|---|
+   | Droplet with + | The region has a different colour or no fill | Change or add the fill |
+   | Droplet with − | The region already has this colour | Remove the fill |
+
+3. **Click** to change one region. **Press and drag** across several regions to change them all at once.
+
+**Not verified:** after filling a θ as a whole, is it stored as "one region with the outer ring" or "two regions"? The help page does not say.
+
+#### Answer (Claude 1791384311)
+
+**You do not pick a loop by hand.**
+
+- **Data:** "fill = which closed curve(s)" is the least ambiguous.
+- **Interaction:** the user never touches loops. They hover to see the highlight, then click or drag.
+- These two can sit together.
+
+**Our current K, compared:**
+- It can only click and fill the smallest area.
+- It has no hover preview, no drag across several areas, and no toggle-off.
+- The cursor does not change.
+
+These are batch 2 (interaction feel) items.
+
+#### Status
+
+**Waiting for bowen to decide how fill is defined.** Settle the data definition first; the interaction comes after.
