@@ -177,3 +177,22 @@ describe('review of 6c59e19 (dot): C3–C6', () => {
     expect(r.ok === false && r.error.message).toMatch(/clipboard content cannot be read/)
   })
 })
+
+describe('review of aa206e5 (dot): C4 member set, C5 inherited masks', () => {
+  it('C4: a destination source with an extra child is not the same source — refused', () => {
+    const a = new Editor(exampleRecords())
+    const c = contentOf(a.reader, [ids.R1], a.documentToken) as Content
+    const b = new Editor([...exampleRecords(), { ...(exampleRecords().find((r) => r.id === ids.E1) as any), id: 'curve:extra', index: 'a2' }])
+    const r = b.apply({ type: 'pasteContent', content: c, parentId: ids.L1, origin: b.documentToken })
+    expect(r.ok === false && r.error.code).toBe('BAD_REFERENCE')
+  })
+  it('C5: a curve masked through its container (the mask targets the layer) — refused when the source is left out; carried (target = the copy) when copied with it', () => {
+    const e = new Editor(exampleRecords())
+    e.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
+    e.apply({ type: 'setMask', sources: { fills: [ids.F], strokes: [] }, targets: [ids.L3], mode: 'inside' })
+    const no = contentOf(e.reader, [ids.E1])
+    expect('error' in no && no.error.message).toMatch(/masked by mask:1, whose source fill:F/)
+    const c = contentOf(e.reader, [ids.E1, ids.F, ids.C1, ids.C2]) as Content
+    expect(c.masks?.[0].targets).toEqual([ids.E1])
+  })
+})

@@ -100,3 +100,29 @@ test('paste: a document opened while the clipboard is read gets nothing pasted',
   expect(await page.evaluate(() => (window as any).__contour.editor.history.undo)).toEqual([])
   await expect(page.locator('#status')).toContainText('没有粘贴')
 })
+
+test('save-as twice: the older one finishing last does not take the file; open twice: the older one finishing last does not replace the newer document (review of aa206e5)', async ({ page }) => {
+  await open(page)
+  const r = await page.evaluate(async () => {
+    const { files, api } = (window as any).__contour
+    const wait = (ms: number) => new Promise((res) => setTimeout(res, ms))
+    // two save-as of the same document: old (slow) then new (fast)
+    let k = 0
+    files.io.save = () => (++k === 1 ? wait(300).then(() => ({ name: 'old.contour.json' })) : wait(20).then(() => ({ name: 'new.contour.json' })))
+    const older = files.save(true)
+    api.apply({ type: 'setProps', id: 'container:L1', name: 'edited' })
+    const newer = files.save(true)
+    await Promise.all([older, newer])
+    const afterSaves = { name: files.name.get(), dirty: (window as any).__contour.editor.isDirty }
+    // two opens: A (slow) then B (fast)
+    const doc = JSON.stringify((window as any).__contour.editor.save())
+    let j = 0
+    files.io.open = () => (++j === 1 ? wait(300).then(() => new File([doc], 'A.contour.json')) : wait(20).then(() => new File([doc], 'B.contour.json')))
+    const a = files.open(), b = files.open()
+    const results = await Promise.all([a, b])
+    return { afterSaves, opened: files.name.get(), results }
+  })
+  expect(r.afterSaves).toEqual({ name: 'new.contour.json', dirty: false })
+  expect(r.opened).toBe('B.contour.json')
+  expect(r.results).toEqual([false, true])
+})

@@ -19,6 +19,9 @@ export class Files {
   /** the open file's name (null = never saved) */
   readonly name = atom<string | null>('file name', null)
   private handle: FileSystemFileHandle | null = null
+  /** the latest save / open started: one that finishes after a LATER one started does not take over (review of aa206e5) */
+  private saveSeq = 0
+  private openSeq = 0
 
   constructor(
     private readonly editor: Editor,
@@ -35,12 +38,18 @@ export class Files {
     // finishes, the finished save does not touch that document's name, file or saved state (dot, review of 7538032)
     const epoch = this.editor.documentEpoch
     const revision = this.editor.revision
+    const seq = ++this.saveSeq
     const snapshot = this.editor.reader.getStoreSnapshot('document')
     const blob = new Blob([JSON.stringify(snapshot, null, 1)], { type: 'application/json' })
     try {
       const handle = await this.io.save(blob, { fileName: this.name.get() ?? `未命名${EXT}`, ...TYPES }, as ? null : this.handle)
       if (this.editor.documentEpoch !== epoch) {
         this.status('保存完成，但期间已打开另一个文档：当前文档的文件和保存状态没有改动')
+        return true
+      }
+      if (seq !== this.saveSeq) {
+        // a later save of this document started before this one finished: that one decides the file and saved state
+        this.status('较早的一次保存晚完成了：文件和保存状态以最近那次保存为准')
         return true
       }
       if (handle) {
@@ -60,6 +69,7 @@ export class Files {
   /** ⌘O: read a file and replace the document (checked like any open; a bad file changes nothing and says why) */
   async open(): Promise<boolean> {
     if (this.editor.isDirty && !this.confirmDiscard()) return false
+    const seq = ++this.openSeq
     const asked = { epoch: this.editor.documentEpoch, revision: this.editor.revision }
     let file: File & { handle?: FileSystemFileHandle }
     try {
@@ -74,6 +84,11 @@ export class Files {
       snapshot = JSON.parse(await file.text())
     } catch (e) {
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
+      return false
+    }
+    // a later open started meanwhile: that one decides which document is open (an older one finishing late is dropped)
+    if (seq !== this.openSeq) {
+      this.status('较早的一次打开晚完成了：以最近一次打开为准，没有替换')
       return false
     }
     // edits made while the dialog was open are new unsaved changes: ask again (never discarded silently)
@@ -98,6 +113,7 @@ export class Files {
    */
   async newDocument(): Promise<boolean> {
     if (this.editor.isDirty && !this.confirmDiscard()) return false
+    ++this.openSeq // an open still in flight does not replace the new document when it finishes
     const layer = Container.create({ id: Container.createId(), name: '图层 1', index: 'a1' })
     this.editor.load({ store: { [layer.id]: layer } as any, schema: schema.serialize() })
     this.selection.clear()

@@ -62,8 +62,17 @@ export function contentOf(reader: BaseReader, ids: readonly string[], origin?: s
   // object masked by a source left out is refused, by name, as a fill without its boundary is (the copy would look
   // different) — include the source, or release the mask first
   const masks: MaskRecord[] = []
+  // a copied object is masked directly (it is a target) or through a container it is in (the target is a container
+  // left out: review of aa206e5 C5) — then the copied objects topmost inside that container become the copy's targets
+  const under = (id: string, container: string) => {
+    for (let p = (reader.get(id as any) as { parentId?: string | null } | undefined)?.parentId ?? null; p; p = (reader.get(p as any) as { parentId?: string | null } | undefined)?.parentId ?? null) if (p === container) return true
+    return false
+  }
+  const roots = [...sel].filter((id) => ![...sel].some((o) => o !== id && under(id, o)))
   for (const m of reader.allRecords().filter((r): r is MaskRecord => r.typeName === 'mask')) {
-    const targets = m.targets.filter((t) => sel.has(t))
+    const direct = m.targets.filter((t) => sel.has(t))
+    const inherited = m.targets.filter((t) => !sel.has(t)).flatMap((t) => roots.filter((r) => under(r, t)))
+    const targets = [...new Set([...direct, ...inherited])]
     if (!targets.length) continue
     const outside = [...m.sources.fills, ...m.sources.strokes].filter((x) => !sel.has(x))
     if (outside.length) return { error: { code: 'INVALID', message: `${targets.join(', ')} is masked by ${m.id}, whose source ${outside.join(', ')} is not being copied: include it or release the mask`, objects: [m.id, ...targets, ...outside], fixes: [] } }
@@ -127,7 +136,14 @@ export function planPaste(store: BaseReader, cmd: PasteCommand, ids: IdSource): 
   for (const r of all.filter((x): x is ReferenceRecord => x.typeName === 'reference')) {
     if (inContent.has(r.sourceId) || sameDocument) continue
     const ctx = (content.context ?? []).filter((x) => x.id === r.sourceId || isWithin(content.context ?? [], x, r.sourceId))
-    const same = ctx.length > 0 && ctx.every((x) => JSON.stringify(store.get(x.id as any) ?? null) === JSON.stringify(x))
+    // the same source here: the same records AND no other ones in it (review of aa206e5 C4: an extra child passed)
+    const here = new Set<string>([r.sourceId])
+    if (store.get(r.sourceId as any))
+      for (const c of containersWithin(store, r.sourceId)) {
+        here.add(c)
+        for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(store, c, t)) here.add(x)
+      }
+    const same = ctx.length > 0 && ctx.length === here.size && ctx.every((x) => here.has(x.id as string) && JSON.stringify(store.get(x.id as any) ?? null) === JSON.stringify(x))
     if (!same) return fail('BAD_REFERENCE', `${r.id} places ${r.sourceId}, which was not copied with it, and this document's ${r.sourceId} is not the same: copy the source with it`, [r.id, r.sourceId])
   }
   const idMap = new Map<string, string>()
