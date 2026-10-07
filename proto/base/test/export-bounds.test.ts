@@ -56,6 +56,32 @@ describe('drawingBounds', () => {
     expect(sharp.y + sharp.h).toBeCloseTo(100 + 0.5, 9)
   })
 
+  it("E1b (dot 1791366809): a zero-length segment between two others leaves their join — dot's right angle reaches its miter tip 20·√2", () => {
+    // dot's sample: (-100,-100) → (0,0) → [zero length at (0,0)] → (100,-100); stroke 120 → ink 40, half 20
+    const zeroMid = curve({ a0: a('a0', -100, -100), a1: a('a1', 0, 0), a2: a('a2', 0, 0), a3: a('a3', 100, -100) }, [['a0', 'a1'], ['a1', 'a2'], ['a2', 'a3']], 120)
+    expect(boundsOf(zeroMid).y + boundsOf(zeroMid).h).toBeCloseTo(20 * Math.SQRT2, 9)
+    // the same without the zero-length segment: the same bounds
+    const plain = curve({ a0: a('a0', -100, -100), a1: a('a1', 0, 0), a3: a('a3', 100, -100) }, [['a0', 'a1'], ['a1', 'a3']], 120)
+    expect(boundsOf(zeroMid)).toEqual(boundsOf(plain))
+    // several zero-length segments in a row: still the one join
+    const zeros = curve({ a0: a('a0', -100, -100), a1: a('a1', 0, 0), a2: a('a2', 0, 0), b: a('b', 0, 0), a3: a('a3', 100, -100) }, [['a0', 'a1'], ['a1', 'a2'], ['a2', 'b'], ['b', 'a3']], 120)
+    expect(boundsOf(zeros)).toEqual(boundsOf(plain))
+  })
+
+  it('E1b: zero-length segments at the start or the end, and at the seam of a closed loop (drawn as an open run: caps, no join there)', () => {
+    const plain = curve({ a0: a('a0', -100, -100), a1: a('a1', 0, 0), a3: a('a3', 100, -100) }, [['a0', 'a1'], ['a1', 'a3']], 120)
+    const atStart = curve({ s: a('s', -100, -100), a0: a('a0', -100, -100), a1: a('a1', 0, 0), a3: a('a3', 100, -100) }, [['s', 'a0'], ['a0', 'a1'], ['a1', 'a3']], 120)
+    const atEnd = curve({ a0: a('a0', -100, -100), a1: a('a1', 0, 0), a3: a('a3', 100, -100), e: a('e', 100, -100) }, [['a0', 'a1'], ['a1', 'a3'], ['a3', 'e']], 120)
+    expect(boundsOf(atStart)).toEqual(boundsOf(plain))
+    expect(boundsOf(atEnd)).toEqual(boundsOf(plain))
+    // a closed triangle whose closing segment is zero length at the seam: the inner corners keep their miters
+    const tri = Curve.create({ id: Curve.createId('tri'), name: 'tri', parentId: 'container:L' as any, index: 'a1', closed: true, stroke: { color: '#f00', width: 120 },
+      anchors: { p: a('p', -100, -100), q: a('q', 0, 0), r: a('r', 100, -100), z: a('z', -100, -100) },
+      segments: [{ id: 's1', from: 'p', to: 'q' }, { id: 's2', from: 'q', to: 'r' }, { id: 's3', from: 'r', to: 'z' }, { id: 's4', from: 'z', to: 'p' }] })
+    const b = boundsOf(tri)
+    expect(b.y + b.h).toBeCloseTo(20 * Math.SQRT2, 9) // the corner at (0, 0)
+  })
+
   it('fills: the exact bounds of their outline, no ink', () => {
     const e = new Editor([layer, curve({ p: a('p', 0, 0, { x: 0, y: -100 }), q: a('q', 10, 0) }, [['p', 'q']])])
     const c = e.reader.allRecords().find((r) => r.typeName === 'curve')!

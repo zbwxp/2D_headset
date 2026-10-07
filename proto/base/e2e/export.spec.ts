@@ -92,3 +92,44 @@ test("E1 (dot 1791365700): a cubic whose top lies between samples — the export
   // the box starts above the exact top (-4454.444…, at t = 1/3) by the margin and the ink's half width (default stroke 2)
   expect(rows.top).toBeCloseTo(-10 - 10000 * (4 / 9) - 2 / 3 / 2 - 4, 6)
 })
+
+test("E1b (dot 1791366809): a zero-length segment between two lines meeting at a right angle — the exported PNG and SVG keep the whole miter tip", async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#exportPng'))
+  page.once('dialog', (d) => d.accept())
+  await page.click('#fileNew')
+  const out = await page.evaluate(async () => {
+    const { api, view, editor } = (window as any).__contour
+    const L = editor.reader.allRecords().find((r: any) => r.typeName === 'container').id
+    const a = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    api.apply({ type: 'createCurve', id: 'curve:v', parentId: L, anchors: { a0: a('a0', -100, -100), a1: a('a1', 0, 0), a2: a('a2', 0, 0), a3: a('a3', 100, -100) }, segments: [{ id: 's0', from: 'a0', to: 'a1' }, { id: 's1', from: 'a1', to: 'a2' }, { id: 's2', from: 'a2', to: 'a3' }] })
+    api.apply({ type: 'setProps', id: 'curve:v', stroke: { width: 120 } })
+    const load = (path: string) => import(/* @vite-ignore */ path)
+    const { drawingBounds } = await load('/src/export.ts')
+    const box = drawingBounds(editor.derived.evaluated())
+    const scale = 2
+    const res: Record<string, number> = {}
+    for (const kind of ['png', 'svg']) {
+      const blob: Blob = await view.exportBlob(kind, scale)
+      const c = document.createElement('canvas')
+      c.width = Math.ceil(box.w * scale)
+      c.height = Math.ceil(box.h * scale)
+      const ctx = c.getContext('2d')!
+      if (kind === 'png') ctx.drawImage(await createImageBitmap(blob), 0, 0)
+      else {
+        const img = new Image()
+        img.src = URL.createObjectURL(blob)
+        await img.decode()
+        ctx.drawImage(img, 0, 0, c.width, c.height)
+      }
+      // rows below the last inked one (from the bottom): a clear margin, not 0
+      const d = ctx.getImageData(0, 0, c.width, c.height).data
+      let last = -1
+      for (let y = c.height - 1; y >= 0 && last < 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 0) { last = y; break }
+      res[kind] = c.height - 1 - last
+    }
+    return { res, bottom: box.y + box.h }
+  })
+  expect(out.bottom).toBeCloseTo(20 * Math.SQRT2 + 4, 6) // the miter tip and the margin
+  for (const kind of ['png', 'svg']) expect(out.res[kind], kind).toBeGreaterThanOrEqual(6)
+})

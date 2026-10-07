@@ -27,8 +27,9 @@ const endDir = (c: Cubic) => unit([c[2], c[1], c[0]].find((q) => !same(q, c[3]))
  * Where a stroke's ink reaches (review of 9291848, dot 1791365700: 16 samples missed a cubic's real extreme). Every point
  * of a stroke lies within half the ink width of its centre line, except at a mitred join, where the ink reaches the
  * miter tip. So: each cubic's EXACT bounds grown by half the ink width, plus the miter tip of every join inside a drawn
- * run (`inkStyle`: butt caps, miter joins, limit 4 — a join beyond the limit is bevelled and stays within half the
- * width). Exact where the curve's extreme is not an end (the tangent is then perpendicular to the axis); at a butt-capped
+ * run — between the segments that have a length, as drawn: a zero-length segment leaves the join of its neighbours
+ * (dot 1791366809 E1b) — (`inkStyle`: butt caps, miter joins, limit 4 — a join beyond the limit is bevelled and stays
+ * within half the width). Exact where the curve's extreme is not an end (the tangent is then perpendicular to the axis); at a butt-capped
  * end it may exceed the ink by up to half the width, never fall short.
  */
 function strokeBox(c: EvalCurve, grow: (x: number, y: number) => void) {
@@ -40,8 +41,11 @@ function strokeBox(c: EvalCurve, grow: (x: number, y: number) => void) {
       grow(b.x.min - half, b.y.min - half)
       grow(b.x.max + half, b.y.max + half)
     }
-    for (let i = 0; i + 1 < run.length; i++) {
-      const t1 = endDir(run[i]), t2 = startDir(run[i + 1])
+    // joins are between the segments that have a length, as drawn: a zero-length segment (all four points at one place)
+    // between two others leaves their join where it is (review of 57d1c12, dot 1791366809 E1b)
+    const live = run.filter((c) => !(same(c[0], c[1]) && same(c[0], c[2]) && same(c[0], c[3])))
+    for (let i = 0; i + 1 < live.length; i++) {
+      const t1 = endDir(live[i]), t2 = startDir(live[i + 1])
       if (!t1 || !t2) continue
       const cos = t1.x * t2.x + t1.y * t2.y
       if (cos >= 1 - 1e-12) continue // straight on: no corner
@@ -53,7 +57,7 @@ function strokeBox(c: EvalCurve, grow: (x: number, y: number) => void) {
       const a = { x: s * n1.x, y: s * n1.y }, b2 = { x: s * -t2.y, y: s * t2.x }
       const u = unit({ x: 0, y: 0 }, { x: a.x + b2.x, y: a.y + b2.y })
       if (!u) continue
-      const p = run[i][3]
+      const p = live[i][3]
       grow(p.x + u.x * half * ratio, p.y + u.y * half * ratio)
     }
   }
