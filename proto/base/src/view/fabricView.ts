@@ -22,9 +22,10 @@ import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, getIndexBetween, type IndexKey } from '@tldraw/utils'
 import { faceAt, sameFill } from '../fills'
+import { snapPoint, type Snap } from '../snap'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
-import { anchorKey, containerChain, lockedBy, type AnchorRef } from '../model'
+import { anchorKey, containerChain, linkedAnchors, lockedBy, type AnchorRef } from '../model'
 
 export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K' | 'N'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
@@ -42,12 +43,12 @@ export class FabricView {
   readonly rejections: { address: string; error: EditError }[] = []
   status = ''
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[]; smooth?: { hIn: Vec; hOut: Vec }; convert?: 'anchor' | 'handle' } | null = null
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[]; smooth?: { hIn: Vec; hOut: Vec }; convert?: 'anchor' | 'handle'; origin?: Vec; moving?: Set<string> } | null = null
   /** the Pen tool's path being drawn (not in the document until it ends: one createCurve, one undo step) */
   pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec; from?: { curveId: string; end: 'start' | 'end'; other: Vec } } | null = null
   /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
   private vGesture:
-    | { kind: 'move'; start: Vec; op: Operation; ids: string[]; cmd?: Command; ok: boolean; error?: EditError }
+    | { kind: 'move'; start: Vec; op: Operation; ids: string[]; cmd?: Command; ok: boolean; error?: EditError; grab?: Vec; moving?: Set<string> }
     | { kind: 'marquee'; start: Vec; now: Vec; additive: boolean; enclosed: boolean }
     | { kind: 'box'; op: Operation; ids: string[]; start: TMat2D; cmd?: Command; ok: boolean; error?: EditError }
     | null = null
@@ -55,6 +56,36 @@ export class FabricView {
   private box: FabricObject | null = null
   /** identity of the current box (selection + its drawn bounds): kept while a gesture previews, rebuilt otherwise */
   private boxItem: { ids: readonly string[]; bounds: SelRect; locked: boolean } | null = null
+  /** Smart Guides (⌘U): snapping to anchors and alignment with them while placing / dragging (snap.ts) */
+  readonly snapOn = atom('smart guides', (() => {
+    try {
+      return localStorage.getItem('contour.smartGuides') !== 'off'
+    } catch {
+      return true
+    }
+  })())
+  setSnap(on: boolean) {
+    this.snapOn.set(on)
+    try {
+      localStorage.setItem('contour.smartGuides', on ? 'on' : 'off')
+    } catch {
+      // not stored: still works for this page
+    }
+  }
+  /** what the last snap found (drawn as the smart guide while a gesture runs) */
+  private snapHint: Snap | null = null
+  /** snap a world point (none when Smart Guides are off); `moving` = anchor keys that move with it */
+  private snapAt(p: Vec, moving?: Set<string>): Snap {
+    if (!this.snapOn.get()) return (this.snapHint = null), { p, kind: 'none', guides: {} }
+    const s = snapPoint(this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), (c, a) => !!moving?.has(`${c}#${a}`))
+    this.snapHint = s.kind === 'none' ? null : s
+    return s
+  }
+  /** the anchors that move with these (their connected partners too) */
+  private movingSet(refs: AnchorRef[]) {
+    return new Set(linkedAnchors(this.editor.reader, refs).map((m) => anchorKey(m.ref)))
+  }
+
   /** the colour the Live Paint Bucket (K) fills with — the toolbar's fill colour well */
   readonly fillColor = atom('fill colour', '#f3d9c4')
   /** the canvas zoom, for the toolbar (set on every render) */
@@ -442,9 +473,16 @@ export class FabricView {
     this.canvas.requestRenderAll()
   }
 
+  /** a press that SELECTED something is a move, even where the new box's handle lies under the pointer (Illustrator):
+   *  the new box is not Fabric's active object (no handles to grab) until that press ends */
+  private pressSelected = false
   /** the handle box is Fabric's active object while it exists (Fabric draws its border and controls) */
   private activateBox() {
     const active = this.canvas.getActiveObject()
+    if (this.pressSelected) {
+      if (active) this.canvas.discardActiveObject()
+      return
+    }
     if (this.box && this.canvas.getObjects().includes(this.box)) {
       if (active !== this.box) this.canvas.setActiveObject(this.box)
     } else if (active) this.canvas.discardActiveObject()
@@ -474,6 +512,15 @@ export class FabricView {
         return q ? [q] : []
       })
       want.push({ key: 'anchors', item: { pts, z }, make: () => pts.map((q) => new Rect({ left: q.x, top: q.y, width: 6 / z, height: 6 / z, originX: 'center', originY: 'center', fill: '#1e88e5', stroke: '', strokeWidth: 0, selectable: false, evented: false, objectCaching: false })) })
+    }
+    const sh = (this.pen || this.drag || this.vGesture?.kind === 'move') ? this.snapHint : null
+    if (sh) {
+      const mk: FabricObject[] = []
+      const guide = { stroke: '#e0218a', strokeWidth: 1 / z, strokeDashArray: [4 / z, 3 / z], selectable: false, evented: false, objectCaching: false }
+      if (sh.kind === 'point' && sh.target) mk.push(new Rect({ left: sh.target.x, top: sh.target.y, width: 8 / z, height: 8 / z, originX: 'center', originY: 'center', fill: '', stroke: '#e0218a', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false }))
+      if (sh.guides.x !== undefined) mk.push(new Path(`M ${sh.guides.x} -100000 L ${sh.guides.x} 100000`, { fill: '', ...guide }))
+      if (sh.guides.y !== undefined) mk.push(new Path(`M -100000 ${sh.guides.y} L 100000 ${sh.guides.y}`, { fill: '', ...guide }))
+      want.push({ key: 'snap', item: { ...sh, z }, make: () => mk })
     }
     if (this.mode === 'P' && this.pen) {
       const pen = this.pen
@@ -587,7 +634,7 @@ export class FabricView {
   private penDown(e: PointerEvent) {
     const z = this.canvas.getZoom()
     let p: Vec = this.canvas.getScenePoint(e)
-    p = { x: round(p.x), y: round(p.y) }
+    p = e.shiftKey && this.pen ? { x: round(p.x), y: round(p.y) } : this.snapAt({ x: round(p.x), y: round(p.y) }).p
     const pen = this.pen
     if (!pen) {
       const ev = this.editor.derived.evaluated()
@@ -639,7 +686,7 @@ export class FabricView {
     const pen = this.pen!
     const p = this.canvas.getScenePoint(e)
     if (!pen.dragging) {
-      pen.hover = { x: p.x, y: p.y }
+      pen.hover = e.shiftKey ? { x: p.x, y: p.y } : this.snapAt({ x: p.x, y: p.y }).p
       this.render()
       return
     }
@@ -655,6 +702,7 @@ export class FabricView {
 
   private penUp() {
     const pen = this.pen
+    this.snapHint = null
     if (!pen) return
     pen.dragging = false
     if (pen.closing) this.finishPen(true)
@@ -1020,11 +1068,32 @@ export class FabricView {
     const unit = pickAt(reader, this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), behind ? now : undefined)
     this.selection.setAnchors([])
     if (unit) {
+      const before = this.selection.get()
+      if (!e.shiftKey && (behind || !now.includes(unit))) this.pressSelected = true
       if (e.shiftKey) this.selection.toggle(unit)
       else if (behind || !now.includes(unit)) this.selection.set([unit])
+      if (this.selection.get() === before) this.pressSelected = false
       const ids = this.selection.get()
       // the canvas has re-rendered for the new selection (react): the box is current
-      if (ids.includes(unit) && !this.boxItem?.locked) this.vGesture = { kind: 'move', start: { x: p.x, y: p.y }, op: this.editor.prepare(), ids: [...ids], ok: false }
+      if (ids.includes(unit) && !this.boxItem?.locked) {
+        // the point that snaps: the selection's anchor nearest the pointer (within the tolerance), else the pointer
+        const ev = this.editor.derived.evaluated()
+        const mine = new Set(drawnOf(reader, ev, ids))
+        const refs: AnchorRef[] = []
+        let grab: Vec = { x: p.x, y: p.y }, best = 6 / this.canvas.getZoom()
+        for (const c of ev.curves.filter((x) => mine.has(x.address)))
+          for (const a of Object.values(c.anchors)) {
+            if (!c.referenceId) refs.push({ curveId: c.curveId, anchorId: a.id })
+            const d = Math.hypot(a.p.x - p.x, a.p.y - p.y)
+            if (d <= best) (best = d), (grab = { ...a.p })
+          }
+        // a fill moves its boundary lines: their anchors move too
+        for (const id of ids) {
+          const f = reader.get(id as any) as DocRecord | undefined
+          if (f?.typeName === 'fill') for (const st of f.boundary) if (!('bridge' in st)) for (const aid of Object.keys((reader.get(st.curveId) as CurveRecord).anchors)) refs.push({ curveId: st.curveId, anchorId: aid })
+        }
+        this.vGesture = { kind: 'move', start: { x: p.x, y: p.y }, op: this.editor.prepare(), ids: [...ids], ok: false, grab, moving: this.movingSet(refs) }
+      }
     } else {
       if (!e.shiftKey) this.selection.clear()
       this.vGesture = { kind: 'marquee', start: { x: p.x, y: p.y }, now: { x: p.x, y: p.y }, additive: e.shiftKey, enclosed: false }
@@ -1191,6 +1260,11 @@ export class FabricView {
         dx = len * Math.cos(a)
         dy = len * Math.sin(a)
       }
+      if (!e.shiftKey && g.grab) {
+        const s = this.snapAt({ x: g.grab.x + dx, y: g.grab.y + dy }, g.moving)
+        dx = s.p.x - g.grab.x
+        dy = s.p.y - g.grab.y
+      }
       dx = round(dx)
       dy = round(dy)
       this.timing.moves++
@@ -1204,7 +1278,19 @@ export class FabricView {
     }
     if (!this.drag) return
     const p = this.canvas.getScenePoint(e)
-    const delta = { x: round(p.x - this.drag.start.x), y: round(p.y - this.drag.start.y) }
+    let delta = { x: round(p.x - this.drag.start.x), y: round(p.y - this.drag.start.y) }
+    // an anchor being dragged snaps onto other anchors / aligns with them (Smart Guides); handles do not snap
+    const dh = this.drag.hit
+    if (dh.kind === 'anchor' && !dh.referenceId && !this.drag.convert) {
+      if (!this.drag.origin) {
+        const ea = this.editor.derived.evaluated().curves.find((c) => c.address === dh.curveId)?.anchors[dh.anchorId]
+        this.drag.origin = ea ? { ...ea.p } : { ...this.drag.start }
+        this.drag.moving = this.movingSet(this.drag.targets ?? [{ curveId: dh.curveId, anchorId: dh.anchorId }])
+      }
+      const o = this.drag.origin
+      const s = this.snapAt({ x: o.x + delta.x, y: o.y + delta.y }, this.drag.moving)
+      delta = { x: round(s.p.x - o.x), y: round(s.p.y - o.y) }
+    }
     const mapped = this.commandFor(this.drag.hit, delta)
     if ('error' in mapped) {
       this.drag.cmd = undefined
@@ -1243,6 +1329,11 @@ export class FabricView {
   }
 
   private onUp() {
+    this.snapHint = null
+    if (this.pressSelected) {
+      this.pressSelected = false
+      queueMicrotask(() => this.render()) // the box takes its handles now
+    }
     const g = this.vGesture
     if (g?.kind === 'move') {
       this.vGesture = null

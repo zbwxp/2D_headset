@@ -85,6 +85,7 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button title="适合窗口 (⌘0)" onClick={() => view.fitToContent()}>适合</button>
       </div>
       <div className="group">
+        <SnapToggle ui={ui} />
         <HelpButton />
       </div>
       <div className="group debug">
@@ -96,6 +97,16 @@ export function Toolbar({ ui }: { ui: Ui }) {
         </label>
       </div>
     </div>
+  )
+}
+
+/** Smart Guides on / off (⌘U, Illustrator): snapping to anchors and alignment guides */
+function SnapToggle({ ui }: { ui: Ui }) {
+  const on = useValue(ui.view.snapOn)
+  return (
+    <button id="snapToggle" className={on ? 'on' : ''} title="智能参考线 / 吸附 (⌘U)：拖动和画点时吸到别的锚点、和锚点对齐" onClick={() => ui.view.setSnap(!on)}>
+      吸附
+    </button>
   )
 }
 

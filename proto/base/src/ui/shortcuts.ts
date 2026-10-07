@@ -30,6 +30,7 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     }
     if (mod && (k === 'z' || k === 'Z') && !e.shiftKey && view.penUndo()) return done()
     if (mod && (k === 'j' || k === 'J')) return view.join(), done()
+    if (mod && (k === 'u' || k === 'U')) return view.setSnap(!view.snapOn.get()), done() // Smart Guides
     if (mod && e.code === 'Digit7') return (e.altKey ? view.releaseMask() : view.makeMask()), done()
     if (mod && e.code === 'BracketRight') return view.arrange(e.shiftKey ? 'front' : 'forward'), done()
     if (mod && e.code === 'BracketLeft') return view.arrange(e.shiftKey ? 'back' : 'backward'), done()
