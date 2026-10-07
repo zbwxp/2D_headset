@@ -1986,10 +1986,14 @@ Claude agrees. There are only two operations: **clear fill** and **delete curve*
 6. **No cross-layer fill.**
 7. **A figure-eight is a drawing error** and gets no special handling.
 
-**Completion proposed by Claude, pending bowen:** where do lines sit in the order? The θ middle line belongs to two loops but is drawn once. Following v103:
+**Completion proposed by Claude, pending bowen:** where do lines sit in the order? The θ middle line belongs to two loops but is drawn once. Proposal:
 - a continuous curve's lines are drawn above all of its own fills;
 - continuous curves are ordered in the layer list;
 - closed-curve order only decides which fill covers which inside one continuous curve.
+
+**Correction (dot 1791390661; Claude agreed):** this is a **new rule**, not v103's. v103 only places a new fill directly behind its boundary strokes at creation (`paintCommands.ts:36`); afterwards it can be reordered freely.
+
+**Effect of the new rule:** even if the θ outer-loop fill is ordered last, it never covers the middle line. To make the middle line disappear, hide its stroke. The other answers stand and need no re-confirmation.
 
 ### dot (1791390592)
 
@@ -2002,7 +2006,6 @@ dot also asked Claude to write the formal graph now. Claude declined (1791390610
 ### Status
 
 bowen answered A–E (1791390533). Still open:
-- bowen to confirm Claude's seven-point restatement;
-- bowen to confirm the line-order completion (a continuous curve's lines are drawn above its own fills).
+- bowen to confirm the new line-order rule (a continuous curve's lines are drawn above its own fills). dot notes the other answers are already settled.
 
 Graph rows wait for bowen's "写".
