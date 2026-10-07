@@ -38,6 +38,9 @@ How this section works:
 | Shape group | owns | Faces (fills of enclosed areas) | current code | Q2/Q4 |
 | Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
+| v103 continuous / closed curve | corresponds to | New path (one record; ordered segments plus whether it is closed) | current code (comparison) | Q5 |
+| v103 group / layer | corresponds to | New container (group / layer) | current code (comparison) | Q5 |
+| Container | does not decide | How segments join into a line (that is the path's job) | current code | Q5 |
 | Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
 | Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
 
@@ -302,3 +305,38 @@ Fills belong to a path or a shape group.
 ### Status
 
 **Facts recorded.** Next item waits for bowen.
+
+---
+
+## Q5: Is a container / group the same as v103's continuous and closed curves?
+
+**bowen** 1791382807:
+> 容器/组 是不是老版的连续曲线和封闭曲线？也就是曲线组成的结构？
+
+### Facts
+
+**v103** (`7205381:src/domain/drawing/model.ts`):
+
+- **One record is one segment:** two nodes and two handles (line 62, `DrawingCurve`).
+- **A continuous curve is not a record.** It is derived from segments that share nodes. A curve whose ends join is a closed curve. `strokeName` is only a label copied onto each segment; the comment says "geometry membership remains derived".
+- **A group** (line 66, `DrawingGroup`) is a list of segment ids (`curveIds`).
+- **A layer** (line 64) is a list of items (`items`).
+- **Group and layer flags are retired** (line 69 comment): only the members' own visibility and lock count.
+
+**New version** (4bc7cc2):
+
+- **A path is one record** holding its segments in order and whether it is closed (schema.ts `CurveRecord`). It is stored explicitly, not derived.
+- **A container** is a layer or group. It holds things and manages order, lock and visibility. It has nothing to do with how segments join into a line.
+- **Visibility and lock live only on containers.** Paths have none of their own, which is the reverse of v103.
+- **Shape groups are new;** v103 has nothing equivalent.
+
+### Answer (Claude 1791382835)
+
+**No.**
+
+- v103's continuous and closed curves correspond to the new **path**.
+- v103's group and layer correspond to the new **container**.
+
+### Status
+
+**Facts recorded.**
