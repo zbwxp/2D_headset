@@ -716,6 +716,18 @@ These are batch 2 (interaction feel) items.
   4. Use a renderer that does not produce conflation artifacts (high cost).
 - **How this relates to bowen's need:** if "one whole fill defined by the outer ring" is supported, a θ is a single region and there is no seam at all. This is a technical reason in favour of supporting whole fills.
 
+#### dot's judgement (1791384685)
+
+**It does not need especially high geometric precision.** But a shared boundary alone does not guarantee a seamless picture on screen; what matters is how anti-aliasing is composited.
+
+- Two 50% coverages composited with the ordinary formula give 75%. Adding decimal places does not fix that. Formula source: <https://www.w3.org/TR/compositing-1/>
+- **For adjacent regions with the same colour and opacity,** both regions can keep their identity for editing, while drawing treats their coverage together. The object structure does not have to change to remove the seam.
+- **Expanding each region slightly has side effects.** It breaks with transparency, different colours or blur, so it cannot be a general fix. Claude's fix 3 above should carry this caveat.
+- **Hiding the middle line's ink is not the same as deleting the middle segment's geometry:**
+  - Hiding the ink keeps the shared boundary.
+  - Deleting the geometry can change the region structure.
+  - These two operations must not be mixed up.
+
 #### Status
 
 **Waiting for bowen to decide how fill is defined** (minimal regions only, or whole fills defined by a chosen outer loop as well).
