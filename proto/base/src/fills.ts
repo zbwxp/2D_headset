@@ -40,7 +40,21 @@ export type Face = { boundary: BoundaryStep[]; curves: string[]; area: number }
  * The smallest enclosed area at `p` among the drawn (visible, directly placed) curves, as a fill boundary; or why none.
  */
 export function faceAt(reader: BaseReader, ev: Evaluated, p: Vec): Face | { error: string } {
-  const curves = ev.curves.filter((c) => c.visible && !c.referenceId)
+  return walk(reader, ev.curves.filter((c) => c.visible && !c.referenceId), p)
+}
+
+/**
+ * The OUTLINE the selected curves form (v103 `createFill(curveIds)`: select the boundary lines, make their fill): the
+ * largest bounded face of the network of just these curves — one closed curve, or several meeting at anchors.
+ */
+export function outlineOf(reader: BaseReader, ev: Evaluated, curveIds: readonly string[]): Face | { error: string } {
+  const ids = new Set(curveIds)
+  const curves = ev.curves.filter((c) => !c.referenceId && ids.has(c.curveId))
+  if (!curves.length) return { error: '先选中围成轮廓的线（一条闭合线，或几条首尾相接的线）' }
+  return walk(reader, curves, null)
+}
+
+function walk(reader: BaseReader, curves: EvalCurve[], p: Vec | null): Face | { error: string } {
   // nodes: an anchor, joined with its connected anchors and with anchors at the same place
   const parent = new Map<string, string>()
   const find = (k: string): string => {
@@ -99,11 +113,16 @@ export function faceAt(reader: BaseReader, ev: Evaluated, p: Vec): Face | { erro
     const pts = face.flatMap((h) => h.pts.slice(0, -1))
     if (pts.length < 3) continue
     const a = area(pts)
-    // a bounded face (one orientation; the outer face of each part has the other) that contains the click
-    if (a <= 1e-9 || !contains(pts, p)) continue
-    if (!best || a < best.area) best = { face, pts, area: a }
+    // at a click: the smallest BOUNDED face (one orientation) containing it. For an outline (no click): the face of
+    // largest size in either orientation — the outer face of the selected lines is their outline (with lines inside
+    // it, e.g. a diagonal, the bounded faces are only the pieces)
+    if (p) {
+      if (a <= 1e-9 || !contains(pts, p)) continue
+      if (!best || a < best.area) best = { face, pts, area: a }
+    } else if (Math.abs(a) > 1e-9 && (!best || Math.abs(a) > best.area)) best = { face, pts, area: Math.abs(a) }
   }
-  if (!best) return { error: '这里没有被线围起来的区域（线要在锚点处相接；只是交叉不算：用 + 在交点加点，或 ⌘J 连接端点）' }
+  if (!best)
+    return { error: p ? '这里没有被线围起来的区域（线要在锚点处相接；只是交叉不算：用 + 在交点加点，或 ⌘J 连接端点）' : '选中的线没有围成闭合轮廓（要首尾相接：钢笔点回起点、⌘J，或吸附到端点）' }
   // the boundary: the face's segments in order; a zero-length bridge where two of them meet at different anchors that
   // are only at the same place (connected or identical anchors need none)
   const boundary: BoundaryStep[] = []

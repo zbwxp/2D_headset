@@ -330,7 +330,10 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <div className="panel props" id="propsPanel">
         <div className="panel-title">属性</div>
         <div>已选 {recs.length} 个：{Object.entries(count).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join('，')}</div>
-        <div className="actions"><button id="makeMask" title="建立蒙版 (⌘7)：最上面的对象当蒙版，其余被蒙" onClick={() => view.makeMask()}>建立蒙版</button></div>
+        <div className="actions">
+          <button id="makeFill" title="建立填充：选中的线围成的轮廓，用工具栏的填充色" onClick={() => view.fillSelection()}>建立填充</button>
+          <button id="makeMask" title="建立蒙版 (⌘7)：最上面的对象当蒙版，其余被蒙" onClick={() => view.makeMask()}>建立蒙版</button>
+        </div>
         <AnchorsSection ui={ui} />
       </div>
     )
@@ -353,6 +356,9 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
               <tr><th>显示</th><td><input type="checkbox" checked={(r as ContainerRecord).visible} onChange={(e) => ui.apply({ type: 'setContainerFlags', containerId: r.id as any, visible: e.target.checked })} /></td></tr>
               <tr><th>锁定</th><td><input type="checkbox" checked={(r as ContainerRecord).locked} onChange={(e) => ui.apply({ type: 'setContainerFlags', containerId: r.id as any, locked: e.target.checked })} /></td></tr>
             </>
+          ) : null}
+          {r.typeName === 'curve' || r.typeName === 'container' ? (
+            <tr><th>填充</th><td><button id="makeFill" title="建立填充：这条闭合线（或组里首尾相接的线）围成的轮廓，用工具栏的填充色" onClick={() => view.fillSelection()}>建立填充</button></td></tr>
           ) : null}
           {r.typeName === 'curve' ? (
             <>

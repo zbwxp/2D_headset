@@ -21,7 +21,7 @@ import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, getIndexBetween, type IndexKey } from '@tldraw/utils'
-import { faceAt, sameFill } from '../fills'
+import { faceAt, outlineOf, sameFill } from '../fills'
 import { snapPoint, type Snap } from '../snap'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
@@ -851,8 +851,19 @@ export class FabricView {
    * below it (lines stay over their fill), and is selected.
    */
   bucket(p: Vec) {
+    return this.fillFace(faceAt(this.editor.reader, this.editor.derived.evaluated(), p))
+  }
+  /** 建立填充 from the selection (v103 createFill(curveIds)): the outline the selected lines form, in the fill colour */
+  fillSelection() {
     const reader = this.editor.reader
-    const face = faceAt(reader, this.editor.derived.evaluated(), p)
+    const curves = this.selection.get().flatMap((id) => {
+      const r = reader.get(id as any) as DocRecord | undefined
+      return r?.typeName === 'curve' ? [id] : r?.typeName === 'container' ? within(reader as any, r.id as any, 'curve') : []
+    })
+    return this.fillFace(outlineOf(reader, this.editor.derived.evaluated(), curves))
+  }
+  private fillFace(face: ReturnType<typeof faceAt>) {
+    const reader = this.editor.reader
     if ('error' in face) return this.setStatus(face.error), null
     const color = this.fillColor.get()
     const existing = sameFill(reader, face.boundary)

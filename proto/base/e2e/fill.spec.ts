@@ -56,3 +56,20 @@ test('K on the example jaw: the existing fill F is recoloured (refused while its
   await click(page, { x: 30, y: 50 })
   expect((await records(page, 'fill')).map((f: any) => [f.id, f.color])).toEqual([['fill:F', '#00aa00']])
 })
+
+test('select a closed line, 建立填充 in the properties panel: its fill in the toolbar colour, under the line, one step; an open line is refused with the reason', async ({ page }) => {
+  await open(page)
+  await page.click('[data-id="container:L1"]')
+  await page.keyboard.press('p')
+  for (const p of [{ x: 100, y: 10 }, { x: 140, y: 10 }, { x: 120, y: 40 }, { x: 100, y: 10 }]) await click(page, p)
+  const [curve] = await page.evaluate(() => (window as any).__contour.selection.get())
+  await page.locator('#fillColor').fill('#123456')
+  await page.click('#propsPanel #makeFill')
+  const fill = (await records(page, 'fill')).find((f: any) => f.id !== 'fill:F')
+  expect(fill).toMatchObject({ color: '#123456', parentId: 'container:L1' })
+  expect(fill.boundary.map((b: any) => b.curveId)).toEqual([curve, curve, curve])
+  expect((await undoLabels(page)).at(-1)).toBe('createFill')
+  await page.click('[data-id="curve:E1"]') // an open line
+  await page.click('#propsPanel #makeFill')
+  await expect(page.locator('#status')).toContainText('没有围成闭合轮廓')
+})

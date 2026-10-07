@@ -1,7 +1,7 @@
 // The Live Paint Bucket's face search (src/fills.ts, doc 18 §30.11).
 import { describe, expect, it } from 'vitest'
 import { Editor } from '../src/editor'
-import { faceAt, sameFill } from '../src/fills'
+import { faceAt, outlineOf, sameFill } from '../src/fills'
 import { exampleRecords, ids } from '../src/fixture'
 import { Container, Curve } from '../src/schema'
 
@@ -36,5 +36,18 @@ describe('faceAt', () => {
     // line 1 / 3 run past x = 10 without an anchor there: the divider 5 only crosses them — one area, the whole box
     const whole = faceAt(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
     expect(whole.area).toBeCloseTo(200, 6)
+  })
+})
+
+describe('outlineOf (select the outline, make its fill — v103 createFill(curveIds))', () => {
+  it('the two jaw curves give F\'s outline; four lines meeting at their ends give the square; open lines are refused', () => {
+    const e = new Editor(exampleRecords())
+    const f = outlineOf(e.reader, e.derived.evaluated(), [ids.C1, ids.C2]) as any
+    expect(keys(f)).toEqual(['curve:C1/s1', 'curve:C1/s2', 'curve:C2/s3', 'curve:C2/s4'])
+    expect((outlineOf(e.reader, e.derived.evaluated(), [ids.C1]) as any).error).toMatch(/没有围成闭合轮廓/)
+    const q = new Editor([Container.create({ id: 'container:L' as any, name: 'L', index: 'a1' }), line('1', 0, 0, 10, 0), line('2', 10, 0, 10, 10), line('3', 10, 10, 0, 10), line('4', 0, 10, 0, 0), line('5', 0, 0, 10, 10)])
+    // with a diagonal through it: the OUTLINE (largest face), not one of the triangles
+    expect((outlineOf(q.reader, q.derived.evaluated(), ['curve:1', 'curve:2', 'curve:3', 'curve:4', 'curve:5']) as any).area).toBeCloseTo(100, 6)
+    expect((outlineOf(q.reader, q.derived.evaluated(), []) as any).error).toMatch(/先选中/)
   })
 })
