@@ -2140,3 +2140,35 @@ The rule holds. There are two distinct actions:
 
 Cases 2 and 3 decided by bowen. The curve-end question waits for bowen. The binding rule goes to the graph in the endpoint round.
 
+
+## Q21: Any attacks left on fill / loop / binding?
+
+**bowen** 1791391864:
+> 这回还有攻击方案了吗？
+
+### Claude (1791391895)
+
+**1. Unbinding (a real gap).**
+- The rule is "a loop becomes invalid when any of its curves is deleted". Unbinding breaks a loop without deleting any curve: it splits a shared endpoint back into two separate ends (v103 `unbind`, `7205381:src/domain/drawing/commands.ts`).
+- Options for the fill:
+  - **甲:** same as deleting a line; the loop is invalid and the fill disappears.
+  - **乙:** refuse to unbind while a filled loop passes through that endpoint, and warn the user.
+  - **丙:** keep the fill but do not draw it until the endpoint is rebound (v103's "边界未闭合" state).
+- **Claude prefers 甲:** one rule, "the loop is no longer closed → the fill is gone", exactly like deleting a line.
+
+**2. Consequence of 1: moving part of a loop to another layer.**
+- Endpoints cannot be shared across layers, so this action contains an unbind and follows rule 1.
+- Alternative: do not allow moving only part of a loop.
+
+**3. Partial cut.**
+- A cut is copy-then-delete. Cutting part of a loop invalidates it and its fill disappears. Pasting brings the lines back but not the fill.
+- This is consistent with "delete a line → invalid"; the user just needs to know that cut-and-paste loses the fill.
+- Undo restores everything, and cutting the whole loop carries the fill along.
+
+**Also pending:** the curve-end question from Q20.
+
+Apart from these, Claude finds no further attack on the fill / loop / binding layer.
+
+### Status
+
+Waiting for dot's independent review and bowen's decision.
