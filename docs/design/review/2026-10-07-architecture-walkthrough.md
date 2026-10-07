@@ -2119,7 +2119,7 @@ The rule holds. There are two distinct actions:
   - Binding a free curve's own two ends deletes it.
 - **Case 3 does not invalidate the loop.** It is kept as a special editing method, for tool consistency.
 
-> **Note (Q22):** the case 2 and case 3 derivations above silently assumed that only one curve is deleted. Under the general rule, the lemon and the θ are deleted entirely. Reopened in Q22.
+> **Note (Q22):** the case 2 and case 3 derivations above silently assumed that only one curve is deleted. **Superseded by Q22 (bowen 1791392871 chose 甲):** binding deletes every curve whose two ends land on one point. A 2-curve loop and the θ are deleted entirely, and no single-curve loop exists.
 
 ### Claude (1791391716): one ambiguity in case 2
 
@@ -2299,6 +2299,33 @@ So a lemon (upper and lower arc, both A→B) becomes two petals: both arcs becom
   - Single-curve loops and the θ special edit work.
   - It needs one extra rule: "the clicked curve end decides".
 
+### bowen's decision (1791392871)
+
+> 显然是甲 不过你再仔细解释下 我没想明白为什么都没了
+
+**Decided: 甲.**
+
+### Claude's explanation (1791392896)
+
+**Key point:** a bind acts on **points**, and a point is shared by every line that ends there. Binding A and B binds both ends of **every** line running between A and B.
+
+- **Lemon** (points A and B only):
+  - Both arcs run A–B.
+  - Binding B onto A rewires every end at B to A.
+  - Each arc now has both ends on A, so both are deleted. Nothing remains.
+- **θ** (points P and Q only):
+  - The upper arc, the lower arc and the middle line all run P–Q.
+  - Binding Q onto P deletes all three.
+- **Triangle** (A, B, C; lines AB, BC, CA). Binding C onto B:
+  - Only BC runs between B and C, so it is deleted.
+  - CA becomes BA; AB is unchanged.
+  - Two lines remain between A and B, forming a lemon. The loop stays closed and the fill stays.
+  - Binding the lemon's A and B then deletes everything.
+
+**Effect:** reducing points by binding goes down to at least two lines; one more bind deletes the shape. No loop made of a single line exists.
+
 ### Status
 
-Q20 cases 2 and 3 are reopened by this correction. Waiting for bowen: 甲 or 乙.
+**Decided (甲).** Q20 cases 2 and 3 are superseded:
+- no single-curve loop exists;
+- binding the θ middle line's ends deletes the whole θ.
