@@ -792,3 +792,46 @@ Source, opened: Ruffle (a reimplementation of the Flash player) issue #26, "Seam
 #### Status
 
 **Facts and both judgements recorded.** Fill definition is still waiting for bowen.
+
+### Q7 follow-up E: Is overlapping the regions what print calls "bleed"? Who overlaps whom, and should we overlap before hiding the line?
+
+**bowen** 1791384973:
+> 我觉得可以互相压的方案，出版学上叫"出血"？ 因为缝的问题远远大于交界处偏移几个像素的问题。这样同色的也解决了 至于谁压谁，在隐藏线条之前要不要出血 这个成熟方案怎么定的？
+
+#### Facts (Claude 1791385033)
+
+**Terms:**
+
+- **Bleed (出血)** extends the artwork beyond the trim line.
+- **Two adjacent colours overlapping slightly** is called a **trap (陷印 / 补漏白)** in print.
+
+**Adobe Illustrator Help, "Trapping"** (opened): <https://helpx.adobe.com/illustrator/using/trapping.html>
+
+- A trap is "a small area of overlap between colors" that compensates for gaps.
+- **Default: the lighter colour is pushed into the darker one.** Illustrator "identifies the lighter-colored artwork (object or background) and overprints (trapping) it into the darker artwork".
+- **Two kinds:**
+  - *Spread*: a lighter object overlaps a darker background.
+  - *Choke*: a lighter background overlaps a darker object.
+- **Reverse Traps** pushes darker colours into lighter ones.
+- **The width is set by the print shop.**
+- **Tint Reduction exists for two light colours,** because their overlap mixes into a third colour. The page's example: light yellow into light blue gives a green border.
+
+**Not sourced (Claude's inference):** why lighter goes into darker. The darker colour defines the edge the eye sees, so pushing the lighter colour into it is nearly invisible.
+
+#### How this differs for this project (Claude's suggestion, not mature-tool text)
+
+1. **The width is much smaller.**
+   - Print traps cover plate misregistration of a fraction of a millimetre.
+   - Here we only need to cover one row of anti-aliased pixels: **a fraction of a screen pixel to 1 screen pixel**.
+   - So the cost is not "an offset of a few pixels"; it is below one pixel.
+2. **When to overlap.**
+   - In Illustrator, a trap is an extra treatment added on top (an effect or a separate stroke). It does not change the original shape.
+   - Following that idea: overlap only when the shared edge's line is hidden or not drawn. When the line is drawn, its stroke already covers the seam.
+   - Stored geometry stays unchanged; this is done only when drawing.
+3. **Caveat (dot 1791384685).**
+   - Overlapping semi-transparent or blurred fills produces a darker band.
+   - Traps suit opaque colour blocks. Semi-transparent cases need another approach, such as compositing on shared subsample positions (dot 1791384943).
+
+#### Status
+
+**Facts recorded.** Fill definition is still waiting for bowen.
