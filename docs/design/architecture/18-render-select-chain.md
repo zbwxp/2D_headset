@@ -1393,6 +1393,12 @@
   - 「引用套引用、引用带填充」等实例功能，不再列为 bowen 必须等的基础缺口；
   - 先按 v103 的实际流程核哪些真有需要，没需求的不补；
   - 图层剪切粘贴（独立复制）与跨视角形态传递（域或线对照传递改动 → 更新各视角关键形态 → 插值）是两件事，分开核。
+- **中间角度的「响应比例」**（dot 1791338275 核到；Claude 1791338273 只查了 `recordingScene/tracks.ts`，漏了这一处，那里的结论更正）：v103 的形状本身有**逐节点、逐手柄、分 x / y 轴的响应曲线**。
+  - 依据：`recordingSnapshot/model.ts:143` `SnapshotControlResponse {x?: Point2[]; y?: Point2[]}`；`surfaceTargets.ts` 的 `edgeResponses` / `triangleResponses`；注释原文 "Scalar responses change final control geometry only; they never change membership or the original geometric λ."
+  - 它修改的是中间角度的插值进度，**不新增几何关键帧**。
+  - 新版要承接「调中间角度的响应比例」这个操作，不能默认换成「在 30° 加一张形状」。加形状关键是另一种操作，作用不同。
+  - 已撤回给 bowen 的「存比例还是存形状」问题：答案在旧实现里，是存比例。
+  - 联动的硬条件同样适用：要求重合的端点，响应进度必须协调。
 - **转头 × 眨眼**：已支持，就是角色网格。多表情按 Live2D 的做法：多参数组合的关键形状，先自动组合，再允许作者手修个别角落。笑也只是另一条形状参数轴，补的是多轴一起作用的通用组合规则和作者修正，不为每种情绪单独发明算法（dot 1791337382）。
 
 ### 26.1 KF-3：引用实例缓存的条目跟着记录走
