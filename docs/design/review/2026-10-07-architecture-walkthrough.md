@@ -401,6 +401,28 @@ The only differences in the code:
 
 **The structure "group = nested layer, same record"** is our design decision. It had no stated basis, and it was never confirmed with bowen.
 
+### Judgement 2: dot (1791383140)
+
+**Ordinary grouping is a mature feature, and dot opened the source.** Adobe Illustrator's help says a group moves and transforms several objects as one while each keeps its own attributes, and the group appears in the Layers panel. Source: <https://helpx.adobe.com/illustrator/desktop/manage-objects/select-objects/group-ungroup-objects.html>
+
+**Two separate things:**
+
+- **The grouping feature** has a mature precedent.
+- **Putting layers, ordinary groups and shape groups into one container record** is our own structural design, and the code is ours too.
+
+**Sharing one container is not inelegant in itself;** it can reduce duplication. What needs reviewing is whether three jobs are tied together:
+
+1. ordinary organisation
+2. whole-unit selection
+3. fill areas
+
+If they are tied, changing fills forces changes to ordinary group rules.
+
+**Neither shortcut proves anything:**
+
+- A mature precedent for groups does not prove our implementation is reasonable.
+- Overlapping features do not prove the group concept is unnecessary.
+
 ### Status
 
 **Open.** Waiting for bowen.
