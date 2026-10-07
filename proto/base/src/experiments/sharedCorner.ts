@@ -5,13 +5,19 @@
 // corresponding lower anchor, `forms.ts:25`). The two corners are one linked point (a connection; doc 18 §26.5).
 // Expression = one parameter at value 1 (blink); yaw keys are sparse; between keys interpolate, outside clamp (§20).
 //
-// Evaluation at a yaw (closed eye):
+// Evaluation at a yaw (closed eye) — v2 after dot's review of 5b76ee2:
 //   lower = N_lower + corr_lower                      (corr = target − base; character line fix, else Σw presets)
 //   node  = if a character node fix: N_node + (target − base) REPLACES the corner's position correction (def. 1)
-//   upper = shape interpolation between the upper track's own keys of [ rule(lower) + corr_upper ] — the rule runs
-//           only at key yaws, never at sampling angles (§24 v2)
+//   upper = each track interpolated between ITS OWN keys of [ rule(lower at that key) + corr_upper ] — the rule runs
+//           only at the moved role's own key yaws, never at sampling angles nor at another preset's keys (§24 v2);
+//           a character without its own upper fix mixes the presets' COMPLETED upper tracks (Σw), it never re-runs
+//           the rule on a union of key yaws
+//   final node coordination: the shared corner takes ONE final position at every yaw — the lower (source) side's,
+//           node fix included — and the upper corner moves there with its own handles; nothing else of the upper is
+//           regenerated. This also covers node-fix and neutral breakpoints that are no key of the upper track.
+// An EMPTY moved-role (upper) track is a missing closed state: refused, not "rule at every yaw" (§24 v2).
 // Linked edits (§26.2 v3): the command gives FINAL targets; the common point comes from the given end; both given and
-// different → refused; before editing, the union of the two tracks' key yaws is filled with the pre-edit full shapes.
+// different → refused. Only the edited track gets a key at the edited yaw; no union is written into other tracks.
 import type { Shape } from '../schema'
 
 export type P = { x: number; y: number }
@@ -58,10 +64,23 @@ export function presetLower(pe: PresetEye, yaw: number): Shape {
   const n = presetNeutral(pe, 'lower', yaw)
   return addS(n, corrOfKeys(pe.expr.lower, yaw) ?? zeroLike(n))
 }
-export function presetUpper(eye: Eye, pe: PresetEye, yaw: number): Shape {
+export class MissingClosedState extends Error {}
+/** a preset's upper track alone, interpolated between its own keys (before the final node coordination) */
+function presetUpperOwn(eye: Eye, pe: PresetEye, yaw: number): Shape {
   const keys = pe.expr.upper
-  if (!keys.length) return rule(eye, presetLower(pe, yaw))
+  if (!keys.length) throw new MissingClosedState('the moved role (upper) has no expression keys: no closed state to play')
   return sampleShape(keys, yaw, (k) => addS(rule(eye, presetLower(pe, k.yaw)), subS(k.target, k.base)))!
+}
+/** final node coordination: the upper corner takes the lower corner's final position; its handles move with it */
+const coordinate = (eye: Eye, upper: Shape, lower: Shape) => moveAnchor(upper, eye.corner.upper, lower[eye.corner.lower].p)
+export function presetUpper(eye: Eye, pe: PresetEye, yaw: number): Shape {
+  return coordinate(eye, presetUpperOwn(eye, pe, yaw), presetLower(pe, yaw))
+}
+/** stored data the coordination would otherwise hide: an upper key with a position correction at the shared corner */
+export function storedCornerProblems(eye: Eye, pe: PresetEye): string[] {
+  return pe.expr.upper
+    .filter((k) => k.target[eye.corner.upper].p.x !== k.base[eye.corner.upper].p.x || k.target[eye.corner.upper].p.y !== k.base[eye.corner.upper].p.y)
+    .map((k) => `upper key at ${k.yaw}° moves the shared corner by itself (the corner belongs to the linked point)`)
 }
 
 // ---------- a character (weights, line fixes, node fix) ----------
@@ -85,18 +104,20 @@ export function characterLower(eye: Eye, ch: CharacterEye, yaw: number): Shape {
   if (d) s = moveAnchor(s, eye.corner.lower, { x: n[eye.corner.lower].p.x + d.x, y: n[eye.corner.lower].p.y + d.y })
   return s
 }
-/** the upper track's key yaws: the character's own fix keys, else the union of the weighted presets' keys */
-const upperKeyYaws = (eye: Eye, ch: CharacterEye) =>
-  ch.lineFix.upper.length ? ch.lineFix.upper.map((k) => k.yaw) : [...new Set(Object.entries(ch.weights).filter(([, w]) => w).flatMap(([p]) => eye.presets[p].expr.upper.map((k) => k.yaw)))]
 export function characterUpper(eye: Eye, ch: CharacterEye, yaw: number): Shape {
-  const ys = upperKeyYaws(eye, ch).map((y) => ({ yaw: y }))
-  const at = (y: number) => {
-    const low = characterLower(eye, ch, y)
-    const r = rule(eye, low)
-    return addS(r, corrSide(eye, ch, 'upper', y, zeroLike(r)))
-  }
-  if (!ys.length) return at(yaw)
-  return sampleShape(ys, yaw, (k) => at(k.yaw))!
+  let own: Shape
+  if (ch.lineFix.upper.length)
+    // the character's own upper fix: its own keys, the rule on the character's final lower at those keys only
+    own = sampleShape(ch.lineFix.upper, yaw, (k) => addS(rule(eye, characterLower(eye, ch, k.yaw)), subS(k.target, k.base)))!
+  else
+    // the weighted presets' COMPLETED upper tracks (dot, review of 5b76ee2 failure B: no rule on a union of keys)
+    own = Object.entries(ch.weights)
+      .filter(([, w]) => w !== 0)
+      .reduce<Shape | null>((acc, [p, w]) => {
+        const s = scale(presetUpperOwn(eye, eye.presets[p], yaw), w)
+        return acc ? addS(acc, s) : s
+      }, null)!
+  return coordinate(eye, own, characterLower(eye, ch, yaw))
 }
 export const cornerGap = (eye: Eye, lower: Shape, upper: Shape) => {
   const a = lower[eye.corner.lower].p, b = upper[eye.corner.upper].p
@@ -106,9 +127,11 @@ export const cornerGap = (eye: Eye, lower: Shape, upper: Shape) => {
 // ---------- linked edit: preset author (setPresetKey in the expression state) ----------
 export type Refusal = { ok: false; reason: string }
 export type Given = { lower?: Shape; upper?: Shape }
-/** fill the union of both tracks' key yaws (plus `extra`) with the pre-edit FULL displayed shapes; nothing changes */
+/** HELPER, not used by the edits any more (dot, review of 5b76ee2 failure C): fill the union of both tracks' key yaws
+ *  (plus `extra`) with the pre-edit FULL displayed shapes; the display does not change. Refuses an empty upper. */
 export function fillUnion(eye: Eye, pe: PresetEye, extra: number[] = []): PresetEye {
   const ys = [...new Set([...pe.expr.lower, ...pe.expr.upper].map((k) => k.yaw).concat(extra))].sort((a, b) => a - b)
+  if (!pe.expr.upper.length) throw new MissingClosedState('the moved role (upper) has no expression keys: no closed state to fill')
   const lower = [...pe.expr.lower], upper = [...pe.expr.upper]
   for (const y of ys) {
     if (!lower.some((k) => k.yaw === y)) lower.push({ yaw: y, target: presetLower(pe, y), base: presetNeutral(pe, 'lower', y) })
@@ -124,15 +147,16 @@ export function presetLinkedEdit(eye: Eye, presetId: string, yaw: number, given:
   const cl = given.lower?.[eye.corner.lower].p, cu = given.upper?.[eye.corner.upper].p
   if (cl && cu && (cl.x !== cu.x || cl.y !== cu.y)) return { ok: false, reason: `the two given corners differ (${cl.x}, ${cl.y}) vs (${cu.x}, ${cu.y}): one shared point` }
   const c = (cl ?? cu)!
-  // fill the key-yaw union first (the edit yaw included). The fill keeps the pre-edit display EXACTLY — so it cannot
-  // close a split that already exists (finding, see tests: a neutral key with no moved-role key at its yaw)
-  const pe = fillUnion(eye, pe0, [yaw])
+  const pe = pe0
+  if (!pe.expr.upper.length) return { ok: false, reason: 'the moved role (upper) has no expression keys: no closed state to edit' }
+  // only the edited tracks get a key at the edited yaw; no other track is written (dot, review of 5b76ee2 failure C).
+  // Gaps between unequal key sets are closed by the final node coordination, not by writing keys.
+  const put = (keys: Key[], k: Key) => [...keys.filter((x) => x.yaw !== k.yaw), k].sort((a, b) => a.yaw - b.yaw)
   // 2. lower: given, or the pre-edit display with the corner moved to the common point
   const lowerTarget = given.lower ?? moveAnchor(presetLower(pe, yaw), eye.corner.lower, c)
-  const lower = pe.expr.lower.map((k) => (k.yaw === yaw ? { yaw, target: lowerTarget, base: presetNeutral(pe, 'lower', yaw) } : k))
-  // 3. upper: base = rule(this edit's FINAL lower); given → its target as is (its corner is the common point)
-  const upperBase = rule(eye, lowerTarget)
-  const upper = given.upper ? pe.expr.upper.map((k) => (k.yaw === yaw ? { yaw, target: given.upper!, base: upperBase } : k)) : pe.expr.upper
+  const lower = put(pe.expr.lower, { yaw, target: lowerTarget, base: presetNeutral(pe, 'lower', yaw) })
+  // 3. upper (only when given): base = rule(this edit's FINAL lower); its corner is the common point → no correction there
+  const upper = given.upper ? put(pe.expr.upper, { yaw, target: given.upper, base: rule(eye, lowerTarget) }) : pe.expr.upper
   return { ok: true, eye: { ...eye, presets: { ...eye.presets, [presetId]: { ...pe, expr: { lower, upper } } } } }
 }
 
@@ -181,4 +205,21 @@ export function independent(params: { moved: string; source: string }[], links: 
     for (const c of d) seen.add(c)
   }
   return true
+}
+
+// ---------- §26.3 joint playback of independent eyes: yaw × one value per eye ----------
+export type EyeRig = { eye: Eye; ch: CharacterEye; param: string; curves: { moved: string; source: string } }
+/** the curves of every eye at (yaw, values): each eye blends ITS neutral and closed state by ITS own value. Refused
+ *  when the eyes' read/write dependencies (incl. links) intersect — that is the multi-axis case, not done here. */
+export function playEyes(rigs: EyeRig[], links: [string, string][], yaw: number, values: Record<string, number>): { ok: true; curves: Record<string, Shape> } | Refusal {
+  if (!independent(rigs.map((r) => r.curves), links)) return { ok: false, reason: 'the parameters share curves (directly or through links): a multi-axis combination, not supported' }
+  const out: Record<string, Shape> = {}
+  for (const r of rigs) {
+    const b = values[r.param] ?? 0
+    if (!(b >= 0 && b <= 1)) return { ok: false, reason: `${r.param} = ${b} is outside 0..1` }
+    const nl = characterNeutral(r.eye, r.ch, 'lower', yaw), nu = characterNeutral(r.eye, r.ch, 'upper', yaw)
+    out[r.curves.source] = b === 0 ? nl : lerpS(nl, characterLower(r.eye, r.ch, yaw), b)
+    out[r.curves.moved] = b === 0 ? nu : lerpS(nu, characterUpper(r.eye, r.ch, yaw), b)
+  }
+  return { ok: true, curves: out }
 }

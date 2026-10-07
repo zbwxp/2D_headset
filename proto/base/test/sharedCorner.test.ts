@@ -1,8 +1,9 @@
-// Shared eye corner (doc 18 §26.2 v3, dot 1791337766) and two independent eyes (§26.3) — standalone oracle.
+// Shared eye corner (doc 18 §26.2 v3, dot 1791337766) and two independent eyes (§26.3) — standalone oracle, v2 after
+// dot's review of 5b76ee2 (final node coordination; completed preset tracks; no union written; empty upper refused).
 import { describe, expect, it } from 'vitest'
 import {
   characterCornerFix, characterLineFix, characterLower, characterUpper, clearNodeFix, cornerGap, fillUnion, independent, moveAnchor,
-  presetLinkedEdit, presetLower, presetUpper, rule, type CharacterEye, type Eye, type Key, type PresetEye,
+  playEyes, presetLinkedEdit, presetLower, presetUpper, rule, storedCornerProblems, type CharacterEye, type Eye, type Key, type PresetEye,
 } from '../src/experiments/sharedCorner'
 import type { Shape } from '../src/schema'
 
@@ -10,7 +11,7 @@ const pt = (x: number, y: number) => ({ x, y })
 const shape = (pts: Record<string, [number, number]>): Shape =>
   Object.fromEntries(Object.entries(pts).map(([a, [x, y]]) => [a, { p: pt(x, y), hIn: pt(x - 1, y), hOut: pt(x + 1, y) }])) as Shape
 // lower lid c–n–d, upper lid a–m–b; the corners c / a are one linked point
-const lowerAt = (cy = 0, dx = 0) => shape({ c: [0 + dx, cy], n: [5 + dx, -2], d: [10 + dx, 0] })
+const lowerAt = (cy = 0, dx = 0, ny = -2) => shape({ c: [0 + dx, cy], n: [5 + dx, ny], d: [10 + dx, 0] })
 const upperAt = (cy = 0, dx = 0) => shape({ a: [0 + dx, cy], m: [5 + dx, 3], b: [10 + dx, 0] })
 const ruleKeys = (eye: Eye, pe: PresetEye, yaws: number[]): Key[] => yaws.map((y) => ({ yaw: y, target: rule(eye, presetLower(pe, y)), base: rule(eye, presetLower(pe, y)) }))
 const preset = (neutral: { yaw: number; cy: number }[] = [{ yaw: 0, cy: 0 }, { yaw: 90, cy: 0 }]): PresetEye => ({
@@ -23,87 +24,93 @@ const eyeOf = (presets: Record<string, PresetEye>): Eye => {
   return eye
 }
 const ch = (weights: Record<string, number>): CharacterEye => ({ weights, lineFix: { lower: [], upper: [] }, nodeFix: [] })
-const YAWS = [0, 10, 20, 30, 45, 60, 75, 90]
+const YAWS = [-30, 0, 10, 15, 20, 30, 45, 60, 75, 90, 120]
+const noGap = (eye: Eye, lo: (y: number) => Shape, up: (y: number) => Shape) => {
+  for (const y of YAWS) expect(cornerGap(eye, lo(y), up(y))).toBeCloseTo(0, 12)
+}
 
-describe('shared corner, preset author (§26.2 v3)', () => {
+describe('shared corner, preset author', () => {
   it('dot’s 0.6 example: one linked lift → both corners 0.6 at weight 1, 0.3 / 0.3 at weight 0.5; the upper stores 0 at the corner', () => {
     let eye = eyeOf({ P: preset(), Q: preset() })
-    const target = moveAnchor(presetUpper(eye, eye.presets.P, 0), 'a', pt(0, 0.6)) // the author drags the UPPER corner
-    const r = presetLinkedEdit(eye, 'P', 0, { upper: target })
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
+    const r = presetLinkedEdit(eye, 'P', 0, { upper: moveAnchor(presetUpper(eye, eye.presets.P, 0), 'a', pt(0, 0.6)) })
+    if (!r.ok) throw new Error(r.reason)
     eye = r.eye
-    expect(presetLower(eye.presets.P, 0).c.p).toEqual(pt(0, 0.6))
-    expect(presetUpper(eye, eye.presets.P, 0).a.p).toEqual(pt(0, 0.6))
     const k = eye.presets.P.expr.upper.find((x) => x.yaw === 0)!
-    expect(k.target.a.p.y - k.base.a.p.y).toBe(0) // no position correction at the shared corner (no double lift)
+    expect(k.target.a.p.y - k.base.a.p.y).toBe(0)
+    expect(storedCornerProblems(eye, eye.presets.P)).toEqual([])
     for (const [w, want] of [[{ P: 1 }, 0.6], [{ P: 0.5, Q: 0.5 }, 0.3]] as const) {
-      const c = ch(w)
-      const lo = characterLower(eye, c, 0), up = characterUpper(eye, c, 0)
-      expect(lo.c.p.y).toBeCloseTo(want, 12)
-      expect(up.a.p.y).toBeCloseTo(want, 12)
+      expect(characterLower(eye, ch(w), 0).c.p.y).toBeCloseTo(want, 12)
+      expect(characterUpper(eye, ch(w), 0).a.p.y).toBeCloseTo(want, 12)
     }
   })
 
-  it('why the base must be rule(final lower): correcting both lids by +0.6 against the old base lifts the upper by 1.2', () => {
+  it('a corner correction stored on the upper against the old base (the double lift) is REPORTED, not hidden by the coordination', () => {
     const eye = eyeOf({ P: preset() })
     const pe = eye.presets.P
-    const lift = (s: Shape, a: string) => moveAnchor(s, a, pt(s[a].p.x, s[a].p.y + 0.6))
-    pe.expr.lower = [{ yaw: 0, target: lift(presetLower(pe, 0), 'c'), base: presetLower(pe, 0) }]
     const oldBase = rule(eye, lowerAt())
-    pe.expr.upper = [{ yaw: 0, target: lift(oldBase, 'a'), base: oldBase }]
-    expect(presetUpper(eye, pe, 0).a.p.y).toBeCloseTo(1.2, 12)
-    expect(cornerGap(eye, presetLower(pe, 0), presetUpper(eye, pe, 0))).toBeCloseTo(0.6, 12)
+    pe.expr.upper = [{ yaw: 0, target: moveAnchor(oldBase, 'a', pt(0, 0.6)), base: oldBase }, ...pe.expr.upper.filter((k) => k.yaw !== 0)]
+    expect(storedCornerProblems(eye, pe)).toHaveLength(1)
   })
 
-  it('two given corners that differ → refused; nothing changes', () => {
+  it('two given corners that differ → refused; an empty upper track (no closed state) → refused, not "rule everywhere"', () => {
     const eye = eyeOf({ P: preset() })
     const r = presetLinkedEdit(eye, 'P', 0, { lower: moveAnchor(presetLower(eye.presets.P, 0), 'c', pt(0, 1)), upper: moveAnchor(presetUpper(eye, eye.presets.P, 0), 'a', pt(0, 2)) })
     expect(r.ok).toBe(false)
+    eye.presets.P.expr.upper = []
+    expect(presetLinkedEdit(eye, 'P', 30, { lower: presetLower(eye.presets.P, 30) }).ok).toBe(false)
+    expect(() => presetUpper(eye, eye.presets.P, 30)).toThrow(/no expression keys/)
+    expect(() => fillUnion(eye, eye.presets.P, [30])).toThrow(/no expression keys/)
   })
 
-  it('dot’s union counterexample (lower keys 0/30/90, upper 0/90, edit at 45): no split anywhere after the fill; inserting alone changes nothing', () => {
+  it('unequal key sets (lower 0/30/90, upper 0/90), edit at 45: no split at any yaw; the upper track is not written; its interior is untouched', () => {
     const eye = eyeOf({ P: preset() })
     const pe = eye.presets.P
     pe.expr.lower = [0, 30, 90].map((y) => ({ yaw: y, target: presetLower(pe, y), base: presetLower(pe, y) }))
-    // naive: a key only at 45 on both sides
-    const lowered = (s: Shape) => moveAnchor(s, 'c', pt(s.c.p.x, 1))
-    const naive: Eye = structuredClone(eye)
-    naive.presets.P.expr.lower = [...naive.presets.P.expr.lower, { yaw: 45, target: lowered(presetLower(pe, 45)), base: presetLower(pe, 45) }].sort((a, b) => a.yaw - b.yaw)
-    naive.presets.P.expr.upper = [...naive.presets.P.expr.upper, { yaw: 45, target: moveAnchor(presetUpper(eye, pe, 45), 'a', pt(presetUpper(eye, pe, 45).a.p.x, 1)), base: rule(eye, lowered(presetLower(pe, 45))) }].sort((a, b) => a.yaw - b.yaw)
-    expect(cornerGap(naive, presetLower(naive.presets.P, 30), presetUpper(naive, naive.presets.P, 30))).toBeCloseTo(2 / 3, 12)
-    // the fill alone: every grid yaw unchanged
+    const upperBefore = structuredClone(pe.expr.upper)
+    const interior = YAWS.map((y) => presetUpper(eye, pe, y).m)
+    const r = presetLinkedEdit(eye, 'P', 45, { lower: moveAnchor(presetLower(pe, 45), 'c', pt(presetLower(pe, 45).c.p.x, 1)) })
+    if (!r.ok) throw new Error(r.reason)
+    const p2 = r.eye.presets.P
+    expect(p2.expr.upper).toEqual(upperBefore)
+    expect(p2.expr.lower.map((k) => k.yaw)).toEqual([0, 30, 45, 90])
+    noGap(r.eye, (y) => presetLower(p2, y), (y) => presetUpper(r.eye, p2, y))
+    expect(YAWS.map((y) => presetUpper(r.eye, p2, y).m)).toEqual(interior)
+  })
+
+  it('a first lower key clamps its own correction (no zero endpoints synthesised); the upper follows only at the corner', () => {
+    const eye = eyeOf({ P: preset() })
+    const pe = eye.presets.P
+    const r = presetLinkedEdit(eye, 'P', 30, { lower: moveAnchor(presetLower(pe, 30), 'c', pt(presetLower(pe, 30).c.p.x, 1)) })
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.eye.presets.P.expr.lower.map((k) => k.yaw)).toEqual([30])
+    for (const y of YAWS) {
+      expect(presetLower(r.eye.presets.P, y).c.p.y).toBeCloseTo(1, 12)
+      expect(presetUpper(r.eye, r.eye.presets.P, y).a.p.y).toBeCloseTo(1, 12)
+    }
+  })
+
+  it('a neutral breakpoint that is no upper key (neutral corner 0/2/0 at 0/45/90, upper keys 0/90): coordinated with no edit; the interior stays the upper’s own interpolation', () => {
+    const eye = eyeOf({ P: preset([{ yaw: 0, cy: 0 }, { yaw: 45, cy: 2 }, { yaw: 90, cy: 0 }]) })
+    const pe = eye.presets.P
+    noGap(eye, (y) => presetLower(pe, y), (y) => presetUpper(eye, pe, y))
+    // m (not shared) is the upper's own interpolation between its 0° and 90° keys
+    const m0 = presetUpper(eye, pe, 0).m.p, m90 = presetUpper(eye, pe, 90).m.p
+    expect(presetUpper(eye, pe, 45).m.p).toEqual(pt((m0.x + m90.x) / 2, (m0.y + m90.y) / 2))
+  })
+
+  it('fillUnion (helper, not used by edits) keeps every displayed value', () => {
+    const eye = eyeOf({ P: preset() })
+    const pe = eye.presets.P
+    pe.expr.lower = [0, 30, 90].map((y) => ({ yaw: y, target: presetLower(pe, y), base: presetLower(pe, y) }))
     const filled = fillUnion(eye, pe, [45])
     for (const y of YAWS) {
       expect(presetLower(filled, y)).toEqual(presetLower(pe, y))
       expect(presetUpper(eye, filled, y)).toEqual(presetUpper(eye, pe, y))
     }
-    // the linked edit (fills first)
-    const r = presetLinkedEdit(eye, 'P', 45, { lower: lowered(presetLower(pe, 45)) })
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    for (const y of YAWS) expect(cornerGap(r.eye, presetLower(r.eye.presets.P, y), presetUpper(r.eye, r.eye.presets.P, y))).toBeCloseTo(0, 12)
-    expect(presetLower(r.eye.presets.P, 45).c.p.y).toBe(1)
-  })
-
-  it('FINDING (§26.2 待核): a neutral key with no moved-role key at its yaw splits the corner BEFORE any edit; the pre-edit fill keeps it; a rule key at every neutral yaw keeps it closed', () => {
-    // neutral corner y: 0 at 0°, 2 at 45°, 0 at 90°; the upper's (rule) keys only at 0 / 90
-    const eye = eyeOf({ P: preset([{ yaw: 0, cy: 0 }, { yaw: 45, cy: 2 }, { yaw: 90, cy: 0 }]) })
-    const pe = eye.presets.P
-    expect(cornerGap(eye, presetLower(pe, 45), presetUpper(eye, pe, 45))).toBeCloseTo(2, 12) // split with no edit at all
-    const r = presetLinkedEdit(eye, 'P', 0, { lower: moveAnchor(presetLower(pe, 0), 'c', pt(0, 0.5)) })
-    if (!r.ok) throw new Error(r.reason)
-    expect(cornerGap(r.eye, presetLower(r.eye.presets.P, 45), presetUpper(r.eye, r.eye.presets.P, 45))).toBeCloseTo(2, 12) // kept, not closed
-    // with a rule key at every neutral key yaw (0 / 45 / 90) the same edit leaves no split anywhere
-    const ok = eyeOf({ P: preset([{ yaw: 0, cy: 0 }, { yaw: 45, cy: 2 }, { yaw: 90, cy: 0 }]) })
-    ok.presets.P.expr.upper = ruleKeys(ok, ok.presets.P, [0, 45, 90])
-    const r2 = presetLinkedEdit(ok, 'P', 0, { lower: moveAnchor(presetLower(ok.presets.P, 0), 'c', pt(0, 0.5)) })
-    if (!r2.ok) throw new Error(r2.reason)
-    for (const y of YAWS) expect(cornerGap(r2.eye, presetLower(r2.eye.presets.P, y), presetUpper(r2.eye, r2.eye.presets.P, y))).toBeCloseTo(0, 12)
   })
 })
 
-describe('shared corner, character node fix (dot 1791337766 def. 1–3)', () => {
+describe('character', () => {
   const setup = () => {
     // neutral corner y = 10; the preset lifts it to 12 in the closed eye
     const eye = eyeOf({ P: preset([{ yaw: 0, cy: 10 }, { yaw: 90, cy: 10 }]) })
@@ -112,61 +119,90 @@ describe('shared corner, character node fix (dot 1791337766 def. 1–3)', () => 
     pe.expr.upper = ruleKeys(eye, pe, [0, 90])
     return { eye, c: ch({ P: 1 }) }
   }
-  it('neutral 10, preset 12, character target 13 → 13; neutral moved to 11 → 14; both corners together', () => {
+  it('node fix: neutral 10, preset 12, target 13 → 13; neutral moved to 11 → 14; both corners', () => {
     const { eye, c } = setup()
-    expect(characterLower(eye, c, 0).c.p.y).toBe(12)
     const k = characterCornerFix(eye, c, 0, pt(0, 13))
-    expect(characterLower(eye, k, 0).c.p.y).toBe(13)
-    expect(characterUpper(eye, k, 0).a.p.y).toBe(13)
-    for (const n of [...eye.presets.P.neutral.lower, ...eye.presets.P.neutral.upper]) n.shape = moveAnchor(n.shape, n.shape.c ? 'c' : 'a', pt(n.shape[n.shape.c ? 'c' : 'a'].p.x, 11))
-    expect(characterLower(eye, k, 0).c.p.y).toBe(14)
-    expect(characterUpper(eye, k, 0).a.p.y).toBe(14)
+    expect([characterLower(eye, k, 0).c.p.y, characterUpper(eye, k, 0).a.p.y]).toEqual([13, 13])
+    for (const n of [...eye.presets.P.neutral.lower, ...eye.presets.P.neutral.upper]) {
+      const a = n.shape.c ? 'c' : 'a'
+      n.shape = moveAnchor(n.shape, a, pt(n.shape[a].p.x, 11))
+    }
+    expect([characterLower(eye, k, 0).c.p.y, characterUpper(eye, k, 0).a.p.y]).toEqual([14, 14])
   })
-  it('clearing the node fix returns to the preset result; only the corner was ever overridden (the rest of the lower lid still follows the preset)', () => {
+  it('dot failure A: node fix breakpoints 0/45/90 = 0/2/0 between upper keys 0/90 → one coordinated corner at every yaw; the upper interior keeps its own interpolation', () => {
+    const eye = eyeOf({ P: preset() })
+    const pe = eye.presets.P
+    pe.expr.upper = pe.expr.upper.map((k) => ({ ...k, target: moveAnchor({ ...k.target, m: { ...k.target.m, p: pt(k.target.m.p.x, k.yaw === 0 ? 4 : 6) } }, 'a', k.target.a.p) }))
+    let c = ch({ P: 1 })
+    for (const [y, py] of [[0, 0], [90, 0], [45, 2]] as const) c = characterCornerFix(eye, c, y, pt(presetLower(pe, y).c.p.x, py))
+    noGap(eye, (y) => characterLower(eye, c, y), (y) => characterUpper(eye, c, y))
+    expect(characterLower(eye, c, 45).c.p.y).toBeCloseTo(2, 12)
+    expect(characterUpper(eye, c, 45).m.p.y).toBeCloseTo(-2 + (4 - -2 + 6 - -2) / 2, 12) // rule(n=-2) + mean of the m corrections (6, 8)
+  })
+  it('dot failure B: a character mixes the presets’ COMPLETED upper tracks — another preset’s key yaw never re-runs the rule', () => {
+    const eye = eyeOf({ P: preset(), Q: preset() })
+    const p = eye.presets.P, q = eye.presets.Q
+    p.expr.lower = [0, 30, 90].map((y) => ({ yaw: y, target: { ...presetLower(p, y), n: { ...presetLower(p, y).n, p: pt(presetLower(p, y).n.p.x, y === 30 ? 6 : -2) } }, base: presetLower(p, y) }))
+    p.expr.upper = ruleKeys(eye, p, [0, 90]) // P's upper: keys 0 / 90 only → its m at 30° is interpolated, not rule(6)
+    q.expr.upper = ruleKeys(eye, q, [0, 30, 90])
+    const pAt30 = presetUpper(eye, p, 30).m.p.y, qAt30 = presetUpper(eye, q, 30).m.p.y
+    expect(characterUpper(eye, ch({ P: 0.5, Q: 0.5 }), 30).m.p.y).toBeCloseTo(0.5 * pAt30 + 0.5 * qAt30, 12)
+    expect(pAt30).toBeCloseTo(-2, 12) // not 6: the rule did not run at 30° for P
+  })
+  it('clear returns to the preset result; a corner-only fix creates no line fix; whole-line conflict refused, replace clears the node track', () => {
     const { eye, c } = setup()
     const k = characterCornerFix(eye, c, 0, pt(0, 13))
-    expect(k.lineFix.lower).toEqual([]) // no line fix created for the other curve (def. 3)
-    expect(characterLower(eye, k, 0).n).toEqual(characterLower(eye, c, 0).n)
+    expect(k.lineFix).toEqual({ lower: [], upper: [] })
     expect(characterLower(eye, clearNodeFix(k), 0)).toEqual(characterLower(eye, c, 0))
-  })
-  it('a whole-line target disagreeing with the node fix → refused; with replace → the node track is cleared and the lines win', () => {
-    const { eye, c } = setup()
-    const k = characterCornerFix(eye, c, 0, pt(0, 13))
     const lo = moveAnchor(characterLower(eye, k, 0), 'c', pt(0, 15)), up = moveAnchor(characterUpper(eye, k, 0), 'a', pt(0, 15))
     expect(characterLineFix(eye, k, 0, { lower: lo, upper: up }).ok).toBe(false)
     const r = characterLineFix(eye, k, 0, { lower: lo, upper: up }, { replace: true })
     if (!r.ok) throw new Error(r.reason)
     expect(r.ch.nodeFix).toEqual([])
-    expect(characterLower(eye, r.ch, 0).c.p.y).toBe(15)
-    expect(characterUpper(eye, r.ch, 0).a.p.y).toBe(15)
+    expect([characterLower(eye, r.ch, 0).c.p.y, characterUpper(eye, r.ch, 0).a.p.y]).toEqual([15, 15])
   })
-  it('a single node key applies at every yaw (clamp, like every sparse track); an unmodified neutral key inserted does not change its reach', () => {
+  it('a single node key clamps at every yaw; an unmodified neutral key inserted does not change its reach', () => {
     const { eye, c } = setup()
     const k = characterCornerFix(eye, c, 30, pt(1, 13))
-    const before = YAWS.map((y) => characterLower(eye, k, y).c.p.y - eye.presets.P.neutral.lower[0].shape.c.p.y)
-    expect(new Set(before.map((x) => x.toFixed(12))).size).toBe(1) // +3 everywhere
+    const lift = () => YAWS.map((y) => characterLower(eye, k, y).c.p.y)
+    const before = lift()
+    expect(new Set(before.map((x) => x.toFixed(12))).size).toBe(1)
     const pe = eye.presets.P
-    const mid = { yaw: 45, shape: structuredClone(presetLower({ ...pe, expr: { lower: [], upper: [] } }, 45)) }
-    pe.neutral.lower = [...pe.neutral.lower, mid].sort((a, b) => a.yaw - b.yaw)
-    expect(YAWS.map((y) => characterLower(eye, k, y).c.p.y - eye.presets.P.neutral.lower[0].shape.c.p.y)).toEqual(before)
+    pe.neutral.lower = [...pe.neutral.lower, { yaw: 45, shape: structuredClone(presetLower({ ...pe, expr: { lower: [], upper: [] } }, 45)) }].sort((a, b) => a.yaw - b.yaw)
+    expect(lift()).toEqual(before)
   })
 })
 
-describe('two independent eyes (§26.3, dot 1791337766 def. 4)', () => {
-  it('disjoint read/write dependencies → independent; a link or a shared source makes them dependent', () => {
-    const L = { moved: 'lidL', source: 'lowL' }, R = { moved: 'lidR', source: 'lowR' }
-    const corners: [string, string][] = [['lidL', 'lowL'], ['lidR', 'lowR']]
-    expect(independent([L, R], corners)).toBe(true)
-    expect(independent([L, R], [...corners, ['lowL', 'brow'], ['brow', 'lowR']])).toBe(false) // linked through a third curve
-    expect(independent([{ moved: 'x', source: 'y' }, { moved: 'y', source: 'z' }], [])).toBe(false) // one reads what the other writes
+describe('two independent eyes (§26.3)', () => {
+  const rig = (side: 'L' | 'R', lift: number) => {
+    const eye = eyeOf({ P: preset() })
+    const c = lift ? characterCornerFix(eye, ch({ P: 1 }), 0, pt(0, lift)) : ch({ P: 1 })
+    return { eye, ch: c, param: `blink${side}`, curves: { moved: `lid${side}`, source: `low${side}` } }
+  }
+  const corners: [string, string][] = [['lidL', 'lowL'], ['lidR', 'lowR']]
+  it('dependency sets: independent eyes; linked through a third curve or one reading the other’s curve → dependent', () => {
+    expect(independent([{ moved: 'lidL', source: 'lowL' }, { moved: 'lidR', source: 'lowR' }], corners)).toBe(true)
+    expect(independent([{ moved: 'lidL', source: 'lowL' }, { moved: 'lidR', source: 'lowR' }], [...corners, ['lowL', 'brow'], ['brow', 'lowR']])).toBe(false)
+    expect(independent([{ moved: 'x', source: 'y' }, { moved: 'y', source: 'z' }], [])).toBe(false)
   })
-  it('each eye plays its own value: left closed, right open', () => {
-    const left = eyeOf({ P: preset() }), right = eyeOf({ P: preset() })
-    const c = ch({ P: 1 })
-    const k = characterCornerFix(left, c, 0, pt(0, 0.4))
-    // closed left = expression result; open right = neutral: no cross-talk by construction (separate curves)
-    expect(characterLower(left, k, 0).c.p.y).toBeCloseTo(0.4, 12)
-    expect(characterUpper(left, k, 0).a.p.y).toBeCloseTo(0.4, 12)
-    expect(right.presets.P.neutral.lower[0].shape.c.p.y).toBe(0)
+  it('joint playback yaw × blinkL × blinkR: each eye equals its single-eye result; corners never split; a shared link is refused', () => {
+    const L = rig('L', 0.4), R = rig('R', 0)
+    for (const y of [0, 30, 90]) for (const bl of [0, 0.5, 1]) for (const br of [0, 0.5, 1]) {
+      const r = playEyes([L, R], corners, y, { blinkL: bl, blinkR: br })
+      if (!r.ok) throw new Error(r.reason)
+      const alone = playEyes([L], [], y, { blinkL: bl })
+      const aloneR = playEyes([R], [], y, { blinkR: br })
+      if (!alone.ok || !aloneR.ok) throw new Error()
+      expect(r.curves.lidL).toEqual(alone.curves.lidL)
+      expect(r.curves.lowR).toEqual(aloneR.curves.lowR)
+      expect(cornerGap(L.eye, r.curves.lowL, r.curves.lidL)).toBeCloseTo(0, 12)
+      expect(cornerGap(R.eye, r.curves.lowR, r.curves.lidR)).toBeCloseTo(0, 12)
+    }
+    // one eye closed, the other open: the open eye is exactly its neutral
+    const wink = playEyes([L, R], corners, 30, { blinkL: 1, blinkR: 0 })
+    if (!wink.ok) throw new Error()
+    expect(wink.curves.lowR.c.p.y).toBe(0)
+    expect(wink.curves.lowL.c.p.y).toBeCloseTo(0.4, 12)
+    expect(playEyes([L, R], [...corners, ['lowL', 'brow'], ['brow', 'lowR']], 30, { blinkL: 1, blinkR: 1 }).ok).toBe(false)
   })
 })
