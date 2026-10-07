@@ -188,6 +188,11 @@ export class FabricView {
     return false
   }
 
+  /** for the UI around the canvas (shortcut handlers, panels) */
+  showStatus(s: string) {
+    this.setStatus(s)
+  }
+
   private setStatus(s: string) {
     this.status = s
     this.onStatus(s)
@@ -809,7 +814,7 @@ export class FabricView {
   async copy(ids: readonly string[] = this.selection.get()) {
     ids = ids.filter((id) => this.editor.reader.get(id as any))
     if (!ids.length) return false
-    const c = contentOf(this.editor.reader, ids)
+    const c = contentOf(this.editor.reader, ids, this.editor.documentToken)
     if ('error' in c) return this.setStatus(`${c.error.code}: ${c.error.message}`), false
     this.clip = JSON.stringify(c)
     try {
@@ -860,7 +865,7 @@ export class FabricView {
     let offset = { x: 0, y: 0 }
     const centre = contentCentre(content)
     if (!inPlace && centre) offset = { x: round(centreOfView.x - centre.x), y: round(centreOfView.y - centre.y) }
-    const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset })
+    const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset, origin: this.editor.documentToken })
     if (r.ok && r.written) this.selection.set(r.affected.filter((id) => (this.editor.reader.get(id as any) as { parentId?: string } | undefined)?.parentId === layer))
     return r
   }

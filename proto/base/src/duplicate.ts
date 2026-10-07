@@ -31,7 +31,7 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
  * The copy itself, reading the originals from `src` and placing the copies into `dst` (the same store for duplicate;
  * the clipboard content's own store for paste, clipboard.ts). Same rules either way.
  */
-export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCommand, ids: IdSource, label: string): Plan {
+export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCommand, ids: IdSource, label: string, idMap?: Map<string, string>): Plan {
   const store = src
   if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'nothing to duplicate', [])
   if (cmd.parentId && !getAs(dst, cmd.parentId, 'container')) return fail('NOT_FOUND', `no container ${cmd.parentId}`, [String(cmd.parentId)])
@@ -127,5 +127,6 @@ export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCom
     puts.push({ ...cn, id: nid as any, ends: cn.ends.map((e) => ({ ...e, curveId: to(e.curveId) })) })
   }
   const creates = puts.map((r) => r.id as string)
+  if (idMap) for (const [k, v] of map) idMap.set(k, v)
   return { ok: true, label, puts, affected: creates, creates }
 }

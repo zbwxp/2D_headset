@@ -68,11 +68,18 @@ export class Editor {
   readonly reader: DocReader
   /** Incremental evaluation of this document (same results as `evaluate(reader)`). */
   readonly derived: Derived
+  /** this editor session (not saved): with `documentEpoch` it says which open document copied content came from */
+  readonly sessionId = Math.random().toString(36).slice(2)
+  get documentToken() {
+    return `${this.sessionId}:${this.#documentEpoch}`
+  }
   // History state is transactional (atoms): rolled back together with the document.
   readonly #undo = atom<Entry[]>('undo', [])
   readonly #redo = atom<Entry[]>('redo', [])
   readonly #revision = atom('revision', 0)
   readonly #saved = atom('savedRevision', 0)
+  /** the revision of the document before its first undoable step (0; a loaded file's own revision — review of 6c59e19 C3) */
+  readonly #base = atom('baseRevision', 0)
   private group: Group | null = null
   /**
    * Monotonic: a revision id is never reused, so "saved" can't match a different edit (dot #1).
@@ -289,7 +296,7 @@ export class Editor {
       this.#generation++ // inside the transaction: before any subscriber sees the undone state
       this.#undo.update((u) => u.slice(0, -1))
       this.#redo.update((r) => [...r, e])
-      this.#revision.set(this.#undo.get().at(-1)?.revision ?? 0)
+      this.#revision.set(this.#undo.get().at(-1)?.revision ?? this.#base.get())
     })
   }
 
@@ -361,6 +368,7 @@ export class Editor {
       const revision = this.nextRevision++
       this.#revision.set(revision)
       this.#saved.set(revision)
+      this.#base.set(revision)
     })
   }
 

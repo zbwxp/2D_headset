@@ -123,3 +123,57 @@ describe('Editor.load (open a file into the running editor)', () => {
     expect(JSON.stringify(e.reader.serialize('document'))).toBe(before)
   })
 })
+
+describe('review of 6c59e19 (dot): C3–C6', () => {
+  it('C3: after a load, an edit then its undo is clean again (the loaded revision is the base, not 0)', () => {
+    const e = new Editor([])
+    e.load(JSON.parse(JSON.stringify(new Editor(exampleRecords()).save())))
+    expect(e.isDirty).toBe(false)
+    e.apply({ type: 'moveAnchors', targets: [{ curveId: ids.E1, anchorId: 'e1' }], delta: { x: 1, y: 0 } })
+    expect(e.isDirty).toBe(true)
+    e.undo()
+    expect(e.isDirty).toBe(false)
+    e.redo()
+    expect(e.isDirty).toBe(true)
+  })
+  it('C4: a reference copied without its source — same document keeps it; another document only with the same source, else refused by name', () => {
+    const a = new Editor(exampleRecords())
+    const c = contentOf(a.reader, [ids.R1], a.documentToken) as Content
+    expect(c.context?.map((r) => r.id).sort()).toEqual([ids.E1, ids.L3].sort())
+    expect(a.apply({ type: 'pasteContent', content: c, parentId: ids.L1, origin: a.documentToken }).ok).toBe(true)
+    // another document with the same source: kept
+    const same = new Editor(exampleRecords())
+    expect(same.apply({ type: 'pasteContent', content: c, parentId: ids.L1, origin: same.documentToken }).ok).toBe(true)
+    // another document whose L3 / E1 differ: refused, nothing written
+    const other = new Editor(exampleRecords().map((r: any) => (r.id === ids.E1 ? { ...r, anchors: { ...r.anchors, e1: { ...r.anchors.e1, p: { x: 80, y: 20 } } } } : r)))
+    const before = JSON.stringify(other.reader.serialize('document'))
+    const r = other.apply({ type: 'pasteContent', content: c, parentId: ids.L1, origin: other.documentToken })
+    expect(r.ok === false && r.error.code).toBe('BAD_REFERENCE')
+    expect(r.ok === false && r.error.message).toMatch(/not the same: copy the source with it/)
+    expect(JSON.stringify(other.reader.serialize('document'))).toBe(before)
+  })
+  it('C5: masks travel with a copy that holds their targets and sources; a masked object without its source is refused by name', () => {
+    const e = new Editor(exampleRecords())
+    e.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
+    e.apply({ type: 'setMask', sources: { fills: [ids.F], strokes: [] }, targets: [ids.E1], mode: 'inside' })
+    const c = contentOf(e.reader, [ids.L3, ids.F, ids.C1, ids.C2]) as Content
+    expect(c.masks?.length).toBe(1)
+    expect(e.apply({ type: 'pasteContent', content: c, parentId: ids.L1, offset: { x: 100, y: 0 } }).ok).toBe(true)
+    const masks = e.reader.allRecords().filter((r: any) => r.typeName === 'mask') as any[]
+    expect(masks.length).toBe(2)
+    const copy = masks.find((m) => m.id !== 'mask:1')
+    expect(copy.targets[0]).not.toBe(ids.E1)
+    expect(copy.sources.fills[0]).not.toBe(ids.F)
+    expect(e.reader.get(copy.targets[0])).toBeTruthy()
+    const r = contentOf(e.reader, [ids.L3])
+    expect('error' in r && r.error.message).toMatch(/masked by mask:1, whose source fill:F is not being copied/)
+  })
+  it('C6: malformed content never throws: the centre skips it and the paste refuses it', () => {
+    const e = new Editor(exampleRecords())
+    const bad: Content = { kind: 'contour/content', schema: (contentOf(e.reader, [ids.E1]) as Content).schema, records: [{ typeName: 'curve', id: 'curve:bad' } as any] }
+    expect(() => contentCentre(bad)).not.toThrow()
+    expect(contentCentre(bad)).toBe(null)
+    const r = e.apply({ type: 'pasteContent', content: bad, parentId: ids.L1 })
+    expect(r.ok === false && r.error.message).toMatch(/clipboard content cannot be read/)
+  })
+})
