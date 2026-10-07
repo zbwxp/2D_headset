@@ -1906,6 +1906,50 @@ Waiting for dot's independent review; bowen decides.
 
 **Summary:** "no cross-layer + fill is an attribute of a closed curve + closed curves enumerated on demand" holds, provided bowen agrees to A (a fill only sits under its own lines) and decides D (picking). Graph rows wait for bowen.
 
+### dot's independent review (1791390408)
+
+Agrees a fill can be a closed-curve attribute. Turning a fill off or clearing it is an operation on the loop, with no separate element. Not supporting cross-layer does not by itself decide element vs attribute; both organisations work. Agrees that showing a segment under several loops is a reference, with geometry stored once.
+
+**Four attacks:**
+
+1. **Discovering every loop is not the same as enumerating all of them on each edit and filling the list.**
+   - Keep "any loop can be picked".
+   - Discover unused loops on demand.
+   - Always show filled loops.
+2. **A filled loop must keep its identity and boundary.**
+   - Example: the outer loop is filled red and a chord is added. The red must not jump to the upper loop because re-enumeration renumbered the loops.
+   - Adding a point updates the loop's boundary; it is not "old loop gone, colour deleted".
+   - "Unused candidates can be computed" does not mean "filled loops need not be stored".
+3. **Repeated listing must not become repeated drawing.**
+   - The θ middle line is drawn once, otherwise translucent strokes darken.
+   - Deleting the shared line from one row affects both loops. The user must not think only that row was deleted.
+4. **Ownership and paint order are separate.**
+   - "An attribute can only be drawn directly under its own lines" (Claude A) is not a necessary limit.
+   - Loop fills can have an order, and strokes their own drawing rule.
+   - Whether line art always sits above colour is a product rule to decide separately.
+
+**Core accepted:** same-layer shared curves form a network; closed loops reference its segments; fills hang on loops.
+- **Must keep:** stable loop identity, fill order, and one copy of each shared line.
+- **Should not be an architectural requirement:** "exhaustively enumerate all loops".
+
+### Claude's response (1791390428)
+
+- **Point 4 accepted; Claude's A was an overclaim.** It becomes a product choice for bowen:
+  - **甲:** a fill is fixed directly under its own lines. Simple, but it cannot go under other lines.
+  - **乙:** fills have their own adjustable order in the layer, as in v103.
+- **Point 2:** "loops need not be stored" meant unused candidate loops only. Filled loops store their identity and boundary segments. Adding a chord does not move the colour; adding a point updates the referenced segments.
+- **Point 3:** agreed. One drawing per line. Deleting a shared line warns which loops are affected.
+- **Point 1:** agreed; same as Claude's C. The architecture requires only "any loop can be picked", not exhaustive enumeration.
+
+**Joint conclusion (Claude and dot):** same-layer lines sharing endpoints form a network; closed loops reference its segments; fills hang on loops. Three guarantees:
+- stable loop identity;
+- fill order;
+- one copy of each shared line.
+
 ### Status
 
-Waiting for dot's independent review; bowen decides A and D.
+Claude and dot agree on the core. bowen decides:
+- paint order 甲 / 乙 (replaces A);
+- D, the picking rule.
+
+Graph rows wait for bowen.
