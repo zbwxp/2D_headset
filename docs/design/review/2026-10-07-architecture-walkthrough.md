@@ -1722,3 +1722,63 @@ Tiers B and C are not internal implementations that have been verified.
 ### Status
 
 **Waiting for dot's independent review, then merging.** bowen decides A–E.
+
+## Q16: How v103 set up fills, and attacking it
+
+**bowen** 1791389256:
+> 你们回头看看旧版，看旧版是怎么设置的 然后攻击一下旧版
+
+dot is checking the same code independently (1791389316); its result goes here when it arrives.
+
+### What v103 does (Claude 1791389522; code at fixed SHA `7205381`)
+
+**Conclusion first:** in v103 **a fill is already its own element.** This is essentially v3 method 2 (Q15), but without cross-layer support.
+
+1. **Own record.**
+   - `FillRegion` has a name, visible, locked, a colour (white / black / transparent) and an optional mist.
+   - `boundary` is a list of segments, each with a direction (`CurveUse[]`).
+   - The fill has its own slot in the layer item order. It is created directly behind its boundary strokes.
+   - Code: `model.ts:60`, `paintCommands.ts:36`.
+2. **Creation.**
+   - The user selects the boundary curves.
+   - The endpoints must coincide by coordinate (1e-7) and form exactly one loop with no branches. The curves must all be in the same layer. Anything else is refused.
+   - Code: `paintCommands.ts:27`, `:40`.
+3. **Shape** is recomputed from the boundary curves every time, so the fill follows line edits (`resolvedFillGeometry.ts:99`).
+4. **Splitting a boundary curve:** the boundary is rewritten to the two halves and stays valid (`commands.ts:225`).
+5. **Deleting any boundary curve** deletes the fill in the same edit (`commands.ts:146`).
+6. **Dragging an endpoint apart so the loop breaks:**
+   - The fill is kept, with the status "边界未闭合".
+   - The hairstyle studio refuses to use it (`studio.ts:42`).
+7. **Visibility** is independent of the strokes. The legacy `hiddenWithStroke` is migrated to `visible=false` on load (`model.ts:162`).
+8. **Copy, cut and move to layer:** the fill goes along only when **all** of its boundary curves are selected; otherwise it stays (`clipboard.ts:12`, `commands.ts:207`).
+9. **Transparent fill** cuts the other solid and mist fills in its own layer; strokes are kept.
+
+### Attacks (Claude)
+
+- **A. No cross-layer fill.** Cross-layer is exactly what v3 method 2 is meant for. Allowing it raises two questions:
+  - Which layer does the fill sit in?
+  - How is it ordered against strokes in the other layer?
+  - The v103 rule "directly behind its boundary strokes" no longer works across layers.
+- **B. "Loop no longer closed" has two different outcomes.**
+  - Deleting a segment deletes the fill.
+  - Dragging an endpoint apart keeps the fill and reports an error.
+  - With v3's "not bound to the closed curve", should deleting a line still delete its fill? Decide this together with Q9's "ambiguity → destructive delete".
+- **C. "Closed" is judged by coordinates, not by whether the endpoints are connected.**
+  - Ends that look joined but are off by a tiny amount are refused.
+  - Ends that coincide by accident count as joined.
+- **D. Partial copy drops the fill silently.** Whether a partial cut leaves a fill pointing at removed curves is **not checked yet**.
+- **E. Fill shape depends on the stroke display computation.**
+  - ARC joins borrow geometry from display routes (`resolvedFillGeometry.ts:13-60`).
+  - So fill computation is coupled to the hide/show interval machinery, which was v103's performance bottleneck.
+- **F. Colours are only white, black and transparent, plus mist.** Skin and shadow need colour and gradients.
+- **G. Figure-eight:** whether a self-crossing closed line can be filled, and with which fill rule, is **not checked yet**.
+
+**What this means for v3:** v103 already shows that "own element + references its boundary segments + own slot in the layer order" works. v3 adds two things:
+- method 1, one-step fill of a single closed line;
+- cross-layer fills.
+
+The decisions for bowen are A and B.
+
+### Status
+
+Waiting for dot's independent review; disagreements will be merged here. bowen decides A and B.
