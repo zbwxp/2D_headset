@@ -19,9 +19,15 @@ export class Files {
   /** the open file's name (null = never saved) */
   readonly name = atom<string | null>('file name', null)
   private handle: FileSystemFileHandle | null = null
-  /** the latest save / open started: one that finishes after a LATER one started does not take over (review of aa206e5) */
-  private saveSeq = 0
+  /**
+   * Saves run one after another (a queue): two writes never overlap, so a file always ends with the content of the
+   * save started last, and each finished save applies its own result in order — an earlier one that succeeded stays
+   * valid when a later one fails or is cancelled (review of 7736688 B1 / B3).
+   */
+  private saveQueue: Promise<unknown> = Promise.resolve()
+  /** opens: an older one is dropped only when a NEWER one actually loaded (`loadedSeq`), not merely started (B2) */
   private openSeq = 0
+  private loadedSeq = 0
 
   constructor(
     private readonly editor: Editor,
@@ -33,23 +39,29 @@ export class Files {
   ) {}
 
   /** ⌘S (or ⇧⌘S = `as`): write the document; returns false when cancelled or failed (the document stays unsaved) */
-  async save(as = false): Promise<boolean> {
-    // what is written and to which file are fixed when the save STARTS; if another document is opened before the write
-    // finishes, the finished save does not touch that document's name, file or saved state (dot, review of 7538032)
+  save(as = false): Promise<boolean> {
+    // what is written is fixed when the save is asked for; the write waits for the saves before it
     const epoch = this.editor.documentEpoch
     const revision = this.editor.revision
-    const seq = ++this.saveSeq
     const snapshot = this.editor.reader.getStoreSnapshot('document')
+    const run = this.saveQueue.then(() => this.write(as, epoch, revision, snapshot))
+    this.saveQueue = run.catch(() => undefined)
+    return run
+  }
+
+  private async write(as: boolean, epoch: number, revision: number, snapshot: unknown): Promise<boolean> {
+    // if another document is opened before this write finishes, the finished save does not touch that document's
+    // name, file or saved state (dot, review of 7538032); the file to write to is the current one when it runs (a
+    // save queued after a Save As writes to that new file)
+    if (this.editor.documentEpoch !== epoch) {
+      this.status('保存没有执行：期间已打开另一个文档')
+      return false
+    }
     const blob = new Blob([JSON.stringify(snapshot, null, 1)], { type: 'application/json' })
     try {
       const handle = await this.io.save(blob, { fileName: this.name.get() ?? `未命名${EXT}`, ...TYPES }, as ? null : this.handle)
       if (this.editor.documentEpoch !== epoch) {
         this.status('保存完成，但期间已打开另一个文档：当前文档的文件和保存状态没有改动')
-        return true
-      }
-      if (seq !== this.saveSeq) {
-        // a later save of this document started before this one finished: that one decides the file and saved state
-        this.status('较早的一次保存晚完成了：文件和保存状态以最近那次保存为准')
         return true
       }
       if (handle) {
@@ -86,9 +98,10 @@ export class Files {
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
       return false
     }
-    // a later open started meanwhile: that one decides which document is open (an older one finishing late is dropped)
-    if (seq !== this.openSeq) {
-      this.status('较早的一次打开晚完成了：以最近一次打开为准，没有替换')
+    // a NEWER open already loaded its document: this older one is dropped (a newer one that failed or was cancelled
+    // does not cancel this one — review of 7736688 B2)
+    if (this.loadedSeq > seq) {
+      this.status('较早的一次打开晚完成了：已经打开了更新的那次，没有替换')
       return false
     }
     // edits made while the dialog was open are new unsaved changes: ask again (never discarded silently)
@@ -100,6 +113,7 @@ export class Files {
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
       return false
     }
+    this.loadedSeq = seq
     this.selection.clear()
     this.handle = file.handle ?? null
     this.name.set(file.name)
@@ -113,7 +127,7 @@ export class Files {
    */
   async newDocument(): Promise<boolean> {
     if (this.editor.isDirty && !this.confirmDiscard()) return false
-    ++this.openSeq // an open still in flight does not replace the new document when it finishes
+    this.loadedSeq = ++this.openSeq // an open still in flight does not replace the new document when it finishes
     const layer = Container.create({ id: Container.createId(), name: '图层 1', index: 'a1' })
     this.editor.load({ store: { [layer.id]: layer } as any, schema: schema.serialize() })
     this.selection.clear()

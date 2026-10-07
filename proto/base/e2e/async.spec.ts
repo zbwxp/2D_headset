@@ -126,3 +126,78 @@ test('save-as twice: the older one finishing last does not take the file; open t
   expect(r.opened).toBe('B.contour.json')
   expect(r.results).toEqual([false, true])
 })
+
+test('saves are queued (review of 7736688 B1 / B3): writes to the same file never overlap and end with the newest content; a newer save-as that fails does not undo an older one that succeeded', async ({ page }) => {
+  await open(page)
+  const r = await page.evaluate(async () => {
+    const { files, api, editor } = (window as any).__contour
+    const disk: Record<string, string> = {}
+    const calls: string[] = []
+    const held: (() => void)[] = []
+    // a save writes when released; it records the content it wrote and when it started
+    files.io.save = (blob: Blob, opts: any, handle: any) =>
+      new Promise((resolve) => {
+        const name = handle?.name ?? 'same.contour.json'
+        calls.push(`start ${name}`)
+        held.push(async () => {
+          disk[name] = await blob.text()
+          calls.push(`done ${name}`)
+          resolve({ name })
+        })
+      })
+    const release = () => held.shift()!()
+    const tick = () => new Promise((res) => setTimeout(res, 20))
+    const x = () => JSON.parse(disk['same.contour.json']).store['curve:E1'].anchors.e1.p.x
+    api.apply({ type: 'moveAnchors', targets: [{ curveId: 'curve:E1', anchorId: 'e1' }], delta: { x: 1, y: 0 } }) // −19
+    const a = files.save()
+    await tick()
+    api.apply({ type: 'moveAnchors', targets: [{ curveId: 'curve:E1', anchorId: 'e1' }], delta: { x: 10, y: 0 } }) // −9
+    const b = files.save()
+    await tick()
+    const startedBeforeRelease = calls.length // only A has started: B waits for it
+    release()
+    await a
+    await tick()
+    release()
+    await b
+    const same = { startedBeforeRelease, calls: [...calls], finalX: x(), dirty: editor.isDirty }
+    // B1: save-as A succeeds, a later save-as B is cancelled — A's result stands
+    files.name.set(null)
+    calls.length = 0
+    api.apply({ type: 'moveAnchors', targets: [{ curveId: 'curve:E1', anchorId: 'e1' }], delta: { x: 1, y: 0 } })
+    let cancel: (e: Error) => void = () => {}
+    let k = 0
+    files.io.save = (_b: Blob) => (++k === 1 ? Promise.resolve({ name: 'older.contour.json' }) : new Promise((_res, rej) => (cancel = rej)))
+    const older = files.save(true)
+    const newer = files.save(true)
+    await older
+    await tick()
+    cancel(Object.assign(new Error('cancelled'), { name: 'AbortError' }))
+    const results = [await older, await newer]
+    return { same, b1: { results, name: files.name.get(), dirty: editor.isDirty } }
+  })
+  expect(r.same.startedBeforeRelease).toBe(1)
+  expect(r.same.calls).toEqual(['start same.contour.json', 'done same.contour.json', 'start same.contour.json', 'done same.contour.json'])
+  expect(r.same.finalX).toBe(-9) // the newest content is what the file holds
+  expect(r.same.dirty).toBe(false)
+  expect(r.b1).toEqual({ results: [true, false], name: 'older.contour.json', dirty: false })
+})
+
+test('opens (review of 7736688 B2): a newer open that fails or is cancelled does not cancel an older valid one', async ({ page }) => {
+  await open(page)
+  const r = await page.evaluate(async () => {
+    const { files, editor } = (window as any).__contour
+    const doc = JSON.parse(JSON.stringify(editor.save()))
+    doc.store['curve:E1'].anchors.e1.p.x = 111
+    let releaseA: () => void = () => {}
+    let k = 0
+    files.io.open = () => (++k === 1 ? new Promise((res) => (releaseA = () => res(new File([JSON.stringify(doc)], 'A.contour.json')))) : Promise.reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })))
+    const a = files.open()
+    const b = files.open()
+    const rb = await b
+    releaseA()
+    const ra = await a
+    return { ra, rb, name: files.name.get(), x: editor.reader.get('curve:E1').anchors.e1.p.x }
+  })
+  expect(r).toEqual({ ra: true, rb: false, name: 'A.contour.json', x: 111 })
+})
