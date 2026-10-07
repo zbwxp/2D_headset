@@ -1228,3 +1228,12 @@ Claude suggested reading Graphite #2309 and its implementation in full and writi
 | bowen's v103 | Close to a network: one record per segment, shared endpoints, pairwise joins |
 | The current new proto | Paths plus cross-path connection records: a hybrid |
 | bowen's knowledge-graph structure | A network |
+
+#### dot's additions (1791387125)
+
+- **The core difference is how connections are represented, not which shapes can be drawn.** Both use Bézier curves.
+- **A network can also give a single edge, or a chosen route, a direction.** A branching network just has no single start-to-end order.
+- **A network does not automatically mean "fill only the smallest regions".** The connection model and the fill rule are separate questions. Figma uses separate regions to specify fill boundaries.
+- **"Network" here is neither a 3D triangle mesh nor Graphite's procedural node graph.**
+- bowen's "single segments + shared endpoints" is the network approach.
+- Source: <https://developers.figma.com/docs/plugins/api/VectorNetwork/>
