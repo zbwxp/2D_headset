@@ -1474,3 +1474,81 @@ So each thing is changed in exactly one place.
 - each relation marked decided / proposed / disputed, with sources.
 
 **Nothing is written into the formal graph.**
+
+### Closed-source half (dot 1791388300, summarised)
+
+**Common pattern:** mature tools usually keep **connections, curve geometry, fill boundaries and appearance separate**, rather than packing them all into "closed curve".
+
+1. **Figma:** network plus explicit fill regions.
+   - Edges reference their two endpoints and store the handles.
+   - Regions reference one or more boundary loops and carry the fill.
+   - A region is not a separate layer. Effects such as blur sit on the vector object, not on each face.
+   - Source: <https://developers.figma.com/docs/plugins/api/VectorNetwork/>
+2. **Illustrator:** two mechanisms side by side.
+   - Ordinary and compound paths: fill follows the path object, and several boundaries make holes.
+   - Live Paint: intersections of the original paths define edges and faces, colour attaches to faces, and fills are re-matched after edits. This differs from bowen's "only shared endpoints connect".
+3. **Flash SWF:** each side of an edge references a fill style; strokes are separate.
+   - The public format has no separate face table, and the editor's internals cannot be inferred from the file format.
+   - Its curved edges are **quadratic Béziers**.
+4. **Toon Boom Harmony:** its public model separates lines, connection points, the colour on each side, and line width.
+   - Lines are split at intersections.
+   - Current docs separate pencil lines (centre line), brush shapes (outline) and invisible lines used only to close a fill area.
+   - The old API link is dead, so these are historical public-model references only.
+
+### Cross-check: dot's skeleton against the open-source findings (Claude)
+
+**dot's six candidate concepts:** point, curve segment, connection constraint, boundary loop, fill region, appearance style. Layer organisation and view data sit outside.
+
+| dot's concept | Open-source match |
+|---|---|
+| Point | VGC KeyVertex (position only); Graphite PointDomain |
+| Curve segment | VGC KeyEdge (two endpoint vertices + geometry); Graphite SegmentDomain (start / end + BezierHandles) |
+| Connection constraint | VGC vertex join model (computed per vertex; multi-join off by default); v103 TangentJoin {a, b, mode} pairs |
+| Boundary loop | VGC KeyCycle (closed sequence of halfedges / closed edge / single vertex) |
+| Fill region | VGC KeyFace (several cycles = holes, its own colour); Figma region |
+| Appearance style | VGC CellStyle (per cell); Graphite Appearance (per object); OpenToonz style per stroke plus fill on edges; Synfig WidthPoint |
+
+**No conflict found:** dot's six concepts **match** the VPaint / VGC cell model.
+
+**The one open-source exception:** OpenToonz and Graphite compute regions instead of storing them explicitly. dot's "explicit fill region" is closer to VGC and Figma.
+
+### Draft framework (proposal; not in the formal graph; bowen decides)
+
+**Entities:**
+
+| Entity | What it is |
+|---|---|
+| **Point** | A position |
+| **Segment** | A cubic Bézier: two endpoint Points plus two handles. Handles belong to the segment (Graphite, Figma) |
+| **Join** | On a Point, which **pair** of Segments is smooth / corner / arc |
+| **Loop** | An ordered sequence of directed Segments that closes, as a fill boundary |
+| **Face** | A fill region: one or more Loops, so holes are allowed, plus a fill colour |
+| **Appearance** | Line stroke (on a Segment or a route), end stroke (on a Point / segment end), fill style (on a Face) |
+
+**Relations:**
+
+| Relation | Status |
+|---|---|
+| Segment —two ends are→ Point | decided |
+| A Point may be shared by several Segments | bowen's structure |
+| Join —belongs to→ Point and names a pair of Segments | proposed (Q7 A2) |
+| Loop —consists of→ Segments (direction matters) | proposed |
+| Face —is enclosed by→ one or more Loops | proposed (Q8 point 2) |
+| Fill —belongs to→ Face | decided |
+| Only Segments that share endpoints close a region; a plain crossing does not split | **decided** (bowen 1791386368) |
+
+**Rules:**
+
+- **Creating a Face:** the paint bucket picks the smallest region by default; a boundary can also be chosen by hand. **Proposed** by bowen (1791386268).
+- **A line splits a Face:** both halves inherit the colour. **Proposed.** VPaint and VGC both do this (sources: Q12).
+- **Merging two Faces:** bowen proposes deleting the ambiguous fills.
+  - **Disputed:** dot limits it to fills made invalid directly by an explicit action.
+  - **Mature tools:** blend, larger area wins, or walk order; **none deletes both**.
+- **Cover rules:** "later covers earlier" vs "larger covers smaller". **Disputed, waiting for bowen.**
+- **Topology changes after a Face is chosen by hand** (a dividing line added inside it): **not decided.**
+
+**Unknown:**
+- The split and merge inheritance algorithms in the closed-source tools are not published. **Do not fill the gap with "mature tools ought to do this"** (dot).
+- The open-source rules above are read from code, partly inferred, and not run.
+
+**Outside this graph:** layers and groups, view / snapshot, head-turn key shapes, reference images.
