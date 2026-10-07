@@ -1132,3 +1132,35 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 #### Status
 
 **Waiting for bowen.** The four questions from Q9 are still open; Figma's documentation does not settle them.
+
+---
+
+## Q10: Is Figma open source? Are there similar open-source tools?
+
+**bowen** 1791386850:
+> figma是开源软件吗？或者有和它类似的开源软件吗？
+
+### Facts (Claude 1791386897; licence and star counts from the GitHub API, read this time)
+
+**Figma** is commercial software. Its source code is not public.
+
+**Graphite** (Apache-2.0, about 27k stars): <https://github.com/GraphiteEditor/Graphite>
+
+- An open-source tool for 2D design, illustration and motion graphics, built on a node-based procedural engine.
+- It has "vector meshes", which generalise paths to any topology. This is the same idea as Figma's Vector Networks.
+- **Issue #2309 is still open** (opened 2025-02): <https://github.com/GraphiteEditor/Graphite/issues/2309>
+  - **What it is about:** "topological styling". Fill and stroke styles attach to the **topology**, so that while the geometry moves from frame to frame, every sub-segment and sub-region can still be identified stably.
+  - **Current plan:** "a filled region = the area bounded by a list of segments, each with a direction".
+  - **Why it matters here:** it is almost exactly this project's problem (head-turns keep the topology while the geometry moves), and it is still unsolved there.
+  - Only the first part has been read so far.
+
+**Penpot** (MPL-2.0, about 61k stars): <https://github.com/penpot/penpot>
+
+- The open-source design platform closest to Figma.
+- A search of its issues for "vector network" returns 0. **Probably** it uses plain paths; **not verified**.
+
+**Inkscape:** a long-established open-source vector editor based on ordinary SVG paths.
+
+### Status
+
+Claude suggested reading Graphite #2309 and its implementation in full and writing up a comparison. **Waiting for bowen to agree.**
