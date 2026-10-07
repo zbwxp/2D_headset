@@ -100,6 +100,12 @@ describe('paintRegion (K / 建立填充)', () => {
     expect(run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[0]).toBe('container:S1')
   })
 
+  it('siblings sharing an index (ties broken by id) do not break painting: a path fill and a new shape group', () => {
+    const e = new Editor([layer(), line('far', 50, 50, 60, 60, 'container:L', 'a0'), { ...square(), index: 'a0' } as DocRecord, line('a', 20, 0, 30, 0, 'container:L', 'a0'), line('b', 30, 0, 25, 10, 'container:L', 'a0'), line('c', 25, 10, 20, 0, 'container:L', 'a0'), line('zz', 70, 70, 80, 80, 'container:L', 'a0')])
+    expect(run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).ok).toBe(true)
+    expect(run(e, { type: 'paintRegion', boundary: face(e, 25, 3), color: '#00ff00' }).ok).toBe(true)
+  })
+
   it('a locked layer refuses the whole paint (nothing written)', () => {
     const recs0 = triangle().map((r) => (r.id === 'container:L' ? { ...r, locked: true } : r)) as DocRecord[]
     const e = new Editor(recs0)
@@ -352,6 +358,25 @@ describe('K follows what is drawn (doc 18 §30.25; dot 1791359954): the front-mo
     const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
     expect(sameFill(e.reader, t.boundary)).toBe(small)
   })
+  // ① (a front fill masked away at the click) needs the browser's ink test: e2e/fill.spec.ts
+  it('dot 1791361223 ②: an older fill behind whose boundary lines are in front does not borrow their place — the fill covering it in between is the one coloured', () => {
+    const sq = (n: string, parent: string, x0: number, y0: number, x1: number, y1: number) =>
+      Curve.create({ id: Curve.createId(n), name: n, parentId: parent as any, index: 'a1', anchors: { a: anchor('a', x0, y0), b: anchor('b', x1, y0), c: anchor('c', x1, y1), d: anchor('d', x0, y1) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+    const e = new Editor([layer('B', 'a1'), layer('M', 'a2'), layer('T', 'a3'), sq('lines', 'container:T', 4, 4, 6, 6), sq('mid', 'container:M', 0, 0, 10, 10)])
+    // an older-format fill (no owner) in the back layer, bounded by the front layer's lines
+    const steps = ['s1', 's2', 's3', 's4'].map((x) => ({ curveId: 'curve:lines' as any, segmentId: x, dir: 1 as const }))
+    const old = run(e, { type: 'createFill', parentId: 'container:B' as any, boundary: steps, color: '#ff0000' }).affected[0]
+    const mid = run(e, { type: 'paintRegion', boundary: (faceAt(e.reader, e.derived.evaluated(), { x: 1, y: 1 }) as any).boundary, color: '#0000ff' }).affected[1]
+    const t = bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any
+    expect(sameFill(e.reader, t.boundary)).toBe(mid)
+    // the middle fill hidden: the older fill is what is drawn there
+    run(e, { type: 'setContainerFlags', containerId: 'container:M' as any, visible: false })
+    expect(sameFill(e.reader, (bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any).boundary)).toBe(old)
+    // the older fill hidden as well: it exists but is not drawn — nothing to colour, said (no new face over it)
+    run(e, { type: 'setContainerFlags', containerId: 'container:B' as any, visible: false })
+    expect((bucketTarget(e.reader, e.derived.evaluated(), { x: 5, y: 5 }) as any).error).toMatch(/已经有填充/)
+  })
+
   it('lines drawn in front of a big fill enclose a new area there: K makes that face, not recolouring the fill behind', () => {
     const big = Curve.create({ id: Curve.createId('big'), name: 'big', parentId: 'container:L' as any, index: 'a0', anchors: { a: anchor('a', -20, -20), b: anchor('b', 40, -20), c: anchor('c', 40, 40), d: anchor('d', -20, 40) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
     const e = new Editor([...triangle(), big])

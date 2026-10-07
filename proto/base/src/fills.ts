@@ -141,8 +141,9 @@ function walk(reader: BaseReader, curves: EvalCurve[], p: Vec | null): Face | { 
  * - the drawn fills covering `p` (shown, coloured, not masked away there) — locked ones too: a locked fill in front
  *   still covers what is behind it (the write is then refused, nothing behind is changed);
  * - colourless areas (doc 18 §30.24) containing `p` in shown containers, at their own place;
- * - the area the lines enclose at `p` (`faceAt`): its new face sits just below its front-most line, so that line's
- *   place stands for it.
+ * - the area the lines enclose at `p` (`faceAt`) when no fill has that boundary yet: its new face sits just below its
+ *   front-most line, so that line's place stands for it. An area that exists is a candidate only as that fill, at its
+ *   own place and as drawn (masked away or hidden there → not a candidate).
  * The FRONT-most candidate wins. Its boundary is returned for `paintRegion` (which recolours an existing fill with that
  * boundary, else makes the face).
  */
@@ -163,9 +164,14 @@ export function bucketTarget(reader: BaseReader, ev: Evaluated, p: Vec): { bound
     if (painted && !visibleThroughMasks(ev, f.address, p)) continue
     offer(rec.boundary, rank.get(f.address))
   }
+  // the area the lines enclose stands only for an area that does not exist yet: an existing one (any fill with that
+  // boundary) was judged above by its own place, visibility and masks — never again by its lines (dot 1791361223)
   const face = faceAt(reader, ev, p)
-  if (!('error' in face)) offer(face.boundary, Math.max(...face.curves.map((c) => rank.get(c) ?? -1)))
-  return best ? { boundary: (best as { boundary: BoundaryStep[] }).boundary } : face
+  const stored = 'error' in face ? null : sameFill(reader, face.boundary)
+  if (!('error' in face) && !stored) offer(face.boundary, Math.max(...face.curves.map((c) => rank.get(c) ?? -1)))
+  if (best) return { boundary: (best as { boundary: BoundaryStep[] }).boundary }
+  if (stored) return { error: '这里的区域已经有填充，但在这一点被蒙版遮住或隐藏了：没有画出来的东西可以上色' }
+  return face as { error: string }
 }
 const shown = (reader: BaseReader, id: string | null): boolean => {
   for (let c = id ? (reader.get(id as any) as ContainerRecord | undefined) : undefined; c; c = c.parentId ? (reader.get(c.parentId as any) as ContainerRecord | undefined) : undefined) if (!c.visible) return false

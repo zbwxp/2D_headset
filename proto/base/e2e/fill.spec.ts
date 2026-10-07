@@ -194,3 +194,37 @@ test('K never reaches through what is drawn in front (dot 1791359954): a blue fi
     await page.evaluate(() => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: false }))
   }
 })
+
+test('dot 1791361223 ①: a front fill masked away at the click is not there — K colours what is drawn behind it, locked or not', async ({ page }) => {
+  await open(page)
+  await page.click('#fileNew')
+  const L1 = (await records(page, 'container'))[0].id
+  const ids = await page.evaluate((L) => {
+    const { api } = (window as any).__contour
+    const a = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    api.apply({ type: 'createContainer', id: 'container:F', parentId: null, name: '前景' })
+    const sq = (id: string, parent: string, x0: number, y0: number, x1: number, y1: number) =>
+      api.apply({ type: 'createCurve', id, parentId: parent, anchors: { a: a('a', x0, y0), b: a('b', x1, y0), c: a('c', x1, y1), d: a('d', x0, y1) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+    // behind: a big square; in front: a small square inside it whose fill (and line) a mask hides at the click
+    sq('curve:big', L, 10, 10, 90, 70)
+    sq('curve:small', 'container:F', 40, 30, 60, 50)
+    api.apply({ type: 'createCurve', id: 'curve:far', parentId: 'container:F', anchors: { p: a('p', 150, 150), q: a('q', 160, 150) }, segments: [{ id: 's', from: 'p', to: 'q' }] })
+    const steps = (c: string) => ['s1', 's2', 's3', 's4'].map((s) => ({ curveId: c, segmentId: s, dir: 1 }))
+    const rb = api.apply({ type: 'paintRegion', boundary: steps('curve:big'), color: '#0000ff' })
+    const rs = api.apply({ type: 'paintRegion', boundary: steps('curve:small'), color: '#ff0000' })
+    if (!rb.ok || !rs.ok) throw new Error(JSON.stringify([rb, rs]))
+    const big = rb.affected[1] as string, small = rs.affected[1] as string
+    // shown only inside the far line's ink: the small fill and its line are not drawn at the click
+    api.apply({ type: 'setMask', name: 'm', sources: { fills: [], strokes: ['curve:far'] }, targets: ['curve:small', small], mode: 'inside' })
+    return { small, big }
+  }, L1)
+  const color = async (id: string) => (await records(page, 'fill')).find((f: any) => f.id === id)?.color
+  await page.keyboard.press('k')
+  for (const [lock, c] of [[false, '#00aa00'], [true, '#aa00aa']] as const) {
+    await page.evaluate((l) => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: l }), lock)
+    await page.locator('#fillColor').fill(c)
+    await click(page, { x: 50, y: 40 })
+    expect(await color(ids.big)).toBe(c) // what is drawn there
+    expect(await color(ids.small)).toBe('#ff0000') // masked away there: not coloured, and (locked) not blocking
+  }
+})
