@@ -2,8 +2,9 @@
 // dot's review of 5b76ee2 (final node coordination; completed preset tracks; no union written; empty upper refused).
 import { describe, expect, it } from 'vitest'
 import {
-  characterCornerFix, characterLineFix, characterLower, characterUpper, clearNodeFix, cornerGap, fillUnion, independent, moveAnchor,
-  playEyes, presetLinkedEdit, presetLower, presetUpper, rule, storedCornerProblems, type CharacterEye, type Eye, type Key, type PresetEye,
+  characterCornerFix, characterLineFix, characterLower, characterUpper, clearNodeFix, cornerGap, fillUnion, independent, initClosedState,
+  InvalidEyeData, moveAnchor, playEyes, presetLinkedEdit, presetLower, presetUpper, rule, storedCornerProblems, type CharacterEye, type Eye,
+  type Key, type PresetEye,
 } from '../src/experiments/sharedCorner'
 import type { Shape } from '../src/schema'
 
@@ -204,5 +205,56 @@ describe('two independent eyes (§26.3)', () => {
     expect(wink.curves.lowR.c.p.y).toBe(0)
     expect(wink.curves.lowL.c.p.y).toBeCloseTo(0.4, 12)
     expect(playEyes([L, R], [...corners, ['lowL', 'brow'], ['brow', 'lowR']], 30, { blinkL: 1, blinkR: 1 }).ok).toBe(false)
+  })
+})
+
+describe('v3 (dot, review of 283826e): the public entries validate; explicit closed-state initialisation', () => {
+  const lifted = () => {
+    const eye = eyeOf({ P: preset() })
+    const k = eye.presets.P.expr.upper[0]
+    for (const h of ['p', 'hIn', 'hOut'] as const) k.target.a[h] = pt(k.target.a[h].x, k.target.a[h].y + 2)
+    return eye
+  }
+  it('a stored preset upper key moving the shared corner: presetUpper / characterUpper throw, playEyes refuses — never a coordinated shape', () => {
+    const eye = lifted()
+    expect(storedCornerProblems(eye, eye.presets.P)).toHaveLength(1)
+    expect(() => presetUpper(eye, eye.presets.P, 0)).toThrow(InvalidEyeData)
+    expect(() => characterUpper(eye, ch({ P: 1 }), 0)).toThrow(InvalidEyeData)
+    const r = playEyes([{ eye, ch: ch({ P: 1 }), param: 'blinkL', curves: { moved: 'lidL', source: 'lowL' } }], [], 0, { blinkL: 1 })
+    expect(r.ok === false && r.reason).toMatch(/moves the shared corner/)
+    // a preset with weight 0 does not block the character
+    const eye2 = lifted()
+    eye2.presets.Q = preset()
+    eye2.presets.Q.expr.upper = ruleKeys(eye2, eye2.presets.Q, [0, 90])
+    expect(() => characterUpper(eye2, ch({ P: 0, Q: 1 }), 0)).not.toThrow()
+  })
+  it('a stored character upper fix moving the shared corner, and a one-sided character line fix (def. 3), are refused at the entry', () => {
+    const eye = eyeOf({ P: preset() })
+    const c0 = ch({ P: 1 })
+    const r = characterLineFix(eye, c0, 0, { lower: characterLower(eye, c0, 0), upper: characterUpper(eye, c0, 0) })
+    if (!r.ok) throw new Error(r.reason)
+    const bad = structuredClone(r.ch)
+    bad.lineFix.upper[0].target.a.p = pt(0, 3)
+    expect(() => characterUpper(eye, bad, 0)).toThrow(/character upper fix at 0° moves the shared corner/)
+    const oneSided = { ...structuredClone(r.ch), lineFix: { lower: structuredClone(r.ch.lineFix.lower), upper: [] } }
+    expect(() => characterLower(eye, oneSided, 0)).toThrow(/two-line submissions/)
+    expect(() => characterUpper(eye, oneSided, 0)).toThrow(/two-line submissions/)
+  })
+  it('initClosedState: an empty upper is refused until initialised; generated keys (target = base) then play and edit normally; a second init is refused', () => {
+    const eye = eyeOf({ P: preset() })
+    eye.presets.P.expr.upper = []
+    const edit = presetLinkedEdit(eye, 'P', 30, { lower: presetLower(eye.presets.P, 30) })
+    expect(edit.ok === false && edit.reason).toMatch(/initClosedState/)
+    const init = initClosedState(eye, 'P')
+    if (!init.ok) throw new Error(init.reason)
+    expect(init.eye.presets.P.expr.upper.map((k) => k.yaw)).toEqual([0, 90])
+    expect(init.eye.presets.P.expr.lower).toEqual([]) // nothing else written
+    for (const y of YAWS) {
+      expect(cornerGap(init.eye, presetLower(init.eye.presets.P, y), presetUpper(init.eye, init.eye.presets.P, y))).toBeCloseTo(0, 12)
+      expect(presetUpper(init.eye, init.eye.presets.P, y).m.p.y).toBeCloseTo(presetLower(init.eye.presets.P, y).n.p.y, 12) // closed onto the lower
+    }
+    const r = presetLinkedEdit(init.eye, 'P', 30, { lower: moveAnchor(presetLower(init.eye.presets.P, 30), 'c', pt(1, 1)) })
+    expect(r.ok).toBe(true)
+    expect(initClosedState(init.eye, 'P').ok).toBe(false)
   })
 })

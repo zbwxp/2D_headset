@@ -15,7 +15,12 @@
 //   final node coordination: the shared corner takes ONE final position at every yaw — the lower (source) side's,
 //           node fix included — and the upper corner moves there with its own handles; nothing else of the upper is
 //           regenerated. This also covers node-fix and neutral breakpoints that are no key of the upper track.
-// An EMPTY moved-role (upper) track is a missing closed state: refused, not "rule at every yaw" (§24 v2).
+// An EMPTY moved-role (upper) track is a missing closed state: refused, not "rule at every yaw" (§24 v2). A closed state
+// is created explicitly by `initClosedState` (generated rule keys, target = base); generated keys play like any other.
+// v3 (dot, review of 283826e): every public evaluation entry validates first (`validateEye`) and REFUSES stored data the
+// coordination would otherwise hide — an upper key (preset or character) that moves the shared corner by itself, and a
+// character whole-line fix that is not a two-line submission at the same yaws (def. 3) — instead of returning a
+// coordinated shape.
 // Linked edits (§26.2 v3): the command gives FINAL targets; the common point comes from the given end; both given and
 // different → refused. Only the edited track gets a key at the edited yaw; no union is written into other tracks.
 import type { Shape } from '../schema'
@@ -74,13 +79,39 @@ function presetUpperOwn(eye: Eye, pe: PresetEye, yaw: number): Shape {
 /** final node coordination: the upper corner takes the lower corner's final position; its handles move with it */
 const coordinate = (eye: Eye, upper: Shape, lower: Shape) => moveAnchor(upper, eye.corner.upper, lower[eye.corner.lower].p)
 export function presetUpper(eye: Eye, pe: PresetEye, yaw: number): Shape {
+  const bad = storedCornerProblems(eye, pe)
+  if (bad.length) throw new InvalidEyeData(bad)
   return coordinate(eye, presetUpperOwn(eye, pe, yaw), presetLower(pe, yaw))
 }
+export class InvalidEyeData extends Error {
+  constructor(readonly problems: string[]) {
+    super(problems.join('; '))
+  }
+}
+const movesCorner = (eye: Eye, k: Key) => k.target[eye.corner.upper].p.x !== k.base[eye.corner.upper].p.x || k.target[eye.corner.upper].p.y !== k.base[eye.corner.upper].p.y
 /** stored data the coordination would otherwise hide: an upper key with a position correction at the shared corner */
-export function storedCornerProblems(eye: Eye, pe: PresetEye): string[] {
-  return pe.expr.upper
-    .filter((k) => k.target[eye.corner.upper].p.x !== k.base[eye.corner.upper].p.x || k.target[eye.corner.upper].p.y !== k.base[eye.corner.upper].p.y)
-    .map((k) => `upper key at ${k.yaw}° moves the shared corner by itself (the corner belongs to the linked point)`)
+export function storedCornerProblems(eye: Eye, pe: PresetEye, owner = 'preset'): string[] {
+  return pe.expr.upper.filter((k) => movesCorner(eye, k)).map((k) => `${owner} upper key at ${k.yaw}° moves the shared corner by itself (the corner belongs to the linked point)`)
+}
+/**
+ * The public validation boundary (dot, review of 283826e): what a character may play. Problems (refused, never
+ * coordinated away): a weighted preset's or the character's upper key moving the shared corner by itself; a character
+ * line fix that is not a two-line submission at the same yaws (def. 3 — a one-sided override would leave the other lid
+ * not following). A missing closed state is reported separately (`MissingClosedState`).
+ */
+export function validateEye(eye: Eye, ch?: CharacterEye): string[] {
+  const used = ch ? Object.entries(ch.weights).filter(([, w]) => w !== 0).map(([p]) => p) : Object.keys(eye.presets)
+  const out = used.flatMap((p) => storedCornerProblems(eye, eye.presets[p], `preset ${p}`))
+  if (ch) {
+    out.push(...ch.lineFix.upper.filter((k) => movesCorner(eye, k)).map((k) => `character upper fix at ${k.yaw}° moves the shared corner by itself`))
+    const yl = ch.lineFix.lower.map((k) => k.yaw).sort((a, b) => a - b).join(), yu = ch.lineFix.upper.map((k) => k.yaw).sort((a, b) => a - b).join()
+    if (yl !== yu) out.push(`character line fixes must be two-line submissions at the same yaws (lower [${yl}], upper [${yu}])`)
+  }
+  return out
+}
+const checked = (eye: Eye, ch: CharacterEye) => {
+  const bad = validateEye(eye, ch)
+  if (bad.length) throw new InvalidEyeData(bad)
 }
 
 // ---------- a character (weights, line fixes, node fix) ----------
@@ -97,6 +128,7 @@ function corrSide(eye: Eye, ch: CharacterEye, side: 'lower' | 'upper', yaw: numb
   return Object.entries(ch.weights).reduce((acc, [p, w]) => addS(acc, scale(corrOfKeys(eye.presets[p].expr[side], yaw) ?? zero, w)), zero)
 }
 export function characterLower(eye: Eye, ch: CharacterEye, yaw: number): Shape {
+  checked(eye, ch)
   const n = characterNeutral(eye, ch, 'lower', yaw)
   let s = addS(n, corrSide(eye, ch, 'lower', yaw, zeroLike(n)))
   // def. 1: a node fix REPLACES the corner's position correction: node = neutral corner + (target − base)
@@ -105,6 +137,7 @@ export function characterLower(eye: Eye, ch: CharacterEye, yaw: number): Shape {
   return s
 }
 export function characterUpper(eye: Eye, ch: CharacterEye, yaw: number): Shape {
+  checked(eye, ch)
   let own: Shape
   if (ch.lineFix.upper.length)
     // the character's own upper fix: its own keys, the rule on the character's final lower at those keys only
@@ -122,6 +155,22 @@ export function characterUpper(eye: Eye, ch: CharacterEye, yaw: number): Shape {
 export const cornerGap = (eye: Eye, lower: Shape, upper: Shape) => {
   const a = lower[eye.corner.lower].p, b = upper[eye.corner.upper].p
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+// ---------- explicit closed-state initialisation ----------
+/** Create a preset's closed state on an EMPTY moved-role track: generated rule keys (target = base = rule(lower)) at
+ *  `yaws` (default: every neutral key yaw of both lids). Never triggered implicitly by another edit. */
+export function initClosedState(eye: Eye, presetId: string, yaws?: number[]): { ok: true; eye: Eye } | Refusal {
+  const pe = eye.presets[presetId]
+  if (!pe) return { ok: false, reason: `no preset ${presetId}` }
+  if (pe.expr.upper.length) return { ok: false, reason: `${presetId} already has a closed state (its upper track has keys)` }
+  const ys = [...new Set(yaws ?? [...pe.neutral.lower, ...pe.neutral.upper].map((k) => k.yaw))].sort((a, b) => a - b)
+  if (!ys.length) return { ok: false, reason: 'no yaw to initialise at' }
+  const upper = ys.map((y) => {
+    const r = rule(eye, presetLower(pe, y))
+    return { yaw: y, target: r, base: structuredClone(r) }
+  })
+  return { ok: true, eye: { ...eye, presets: { ...eye.presets, [presetId]: { ...pe, expr: { ...pe.expr, upper } } } } }
 }
 
 // ---------- linked edit: preset author (setPresetKey in the expression state) ----------
@@ -148,7 +197,7 @@ export function presetLinkedEdit(eye: Eye, presetId: string, yaw: number, given:
   if (cl && cu && (cl.x !== cu.x || cl.y !== cu.y)) return { ok: false, reason: `the two given corners differ (${cl.x}, ${cl.y}) vs (${cu.x}, ${cu.y}): one shared point` }
   const c = (cl ?? cu)!
   const pe = pe0
-  if (!pe.expr.upper.length) return { ok: false, reason: 'the moved role (upper) has no expression keys: no closed state to edit' }
+  if (!pe.expr.upper.length) return { ok: false, reason: 'the moved role (upper) has no expression keys: no closed state to edit — create it first (initClosedState)' }
   // only the edited tracks get a key at the edited yaw; no other track is written (dot, review of 5b76ee2 failure C).
   // Gaps between unequal key sets are closed by the final node coordination, not by writing keys.
   const put = (keys: Key[], k: Key) => [...keys.filter((x) => x.yaw !== k.yaw), k].sort((a, b) => a.yaw - b.yaw)
@@ -214,12 +263,20 @@ export type EyeRig = { eye: Eye; ch: CharacterEye; param: string; curves: { move
 export function playEyes(rigs: EyeRig[], links: [string, string][], yaw: number, values: Record<string, number>): { ok: true; curves: Record<string, Shape> } | Refusal {
   if (!independent(rigs.map((r) => r.curves), links)) return { ok: false, reason: 'the parameters share curves (directly or through links): a multi-axis combination, not supported' }
   const out: Record<string, Shape> = {}
+  try {
+    playInto(rigs, yaw, values, out)
+  } catch (e) {
+    if (e instanceof InvalidEyeData || e instanceof MissingClosedState) return { ok: false, reason: e.message }
+    throw e
+  }
+  return { ok: true, curves: out }
+}
+function playInto(rigs: EyeRig[], yaw: number, values: Record<string, number>, out: Record<string, Shape>) {
   for (const r of rigs) {
     const b = values[r.param] ?? 0
-    if (!(b >= 0 && b <= 1)) return { ok: false, reason: `${r.param} = ${b} is outside 0..1` }
+    if (!(b >= 0 && b <= 1)) throw new InvalidEyeData([`${r.param} = ${b} is outside 0..1`])
     const nl = characterNeutral(r.eye, r.ch, 'lower', yaw), nu = characterNeutral(r.eye, r.ch, 'upper', yaw)
     out[r.curves.source] = b === 0 ? nl : lerpS(nl, characterLower(r.eye, r.ch, yaw), b)
     out[r.curves.moved] = b === 0 ? nu : lerpS(nu, characterUpper(r.eye, r.ch, yaw), b)
   }
-  return { ok: true, curves: out }
 }
