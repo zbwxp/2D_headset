@@ -1462,8 +1462,8 @@ So each thing is changed in exactly one place.
   | Illustrator Live Paint | Larger one spreads (Q9) |
   | OpenToonz | Takes one by walk order |
 
-  **No tool found destroys both.** bowen's "ambiguity → delete" is stricter than all of them. That is a product choice, not something to correct.
-- **Head-turn with fixed topology:** VPaint's 1:1 inbetween cells are the closest model. Its interpolation is too simple for a rotating head; this project already has its own head-turn data (key shapes) to fill that gap.
+  **Of the behaviours checked this time, none deletes both.** That does not mean no tool does (dot 1791388425): the full merge rules of several tools are unverified. bowen's "ambiguity → delete" is a product choice, not something to correct.
+- **Head-turn with fixed topology:** VPaint's 1:1 inbetween cells are the closest model. Its interpolation resamples both key paths to the same number of samples by arc length, then interpolates each sample linearly (vertices use cubic Hermite). **No conclusion is drawn here about whether that is enough for a head-turn; there is no evidence yet** (dot 1791388425).
 - **Width along the line:** Synfig's WidthPoint and OpenToonz's per-point thickness are both mature examples. These belong to the "stroke" level, deferred by bowen.
 
 ### Status
@@ -1543,7 +1543,7 @@ So each thing is changed in exactly one place.
 - **A line splits a Face:** both halves inherit the colour. **Proposed.** VPaint and VGC both do this (sources: Q12).
 - **Merging two Faces:** bowen proposes deleting the ambiguous fills.
   - **Disputed:** dot limits it to fills made invalid directly by an explicit action.
-  - **Mature tools:** blend, larger area wins, or walk order; **none deletes both**.
+  - **Behaviours checked this time:** blend, larger area wins, or walk order. **Not generalised to all tools** (dot 1791388425).
 - **Cover rules:** "later covers earlier" vs "larger covers smaller". **Disputed, waiting for bowen.**
 - **Topology changes after a Face is chosen by hand** (a dividing line added inside it): **not decided.**
 
@@ -1552,3 +1552,13 @@ So each thing is changed in exactly one place.
 - The open-source rules above are read from code, partly inferred, and not run.
 
 **Outside this graph:** layers and groups, view / snapshot, head-turn key shapes, reference images.
+
+**Three tiers of evidence, kept apart** (dot 1791388425):
+
+| Tier | Covers |
+|---|---|
+| **A. Source code** | OpenToonz, VPaint / VGC, Graphite, Synfig, Paper.js. Read, with spot checks; several items inferred and not run |
+| **B. Public API or file format** | Figma VectorNetwork API, SWF spec, Harmony's old script model |
+| **C. Behaviour inferred from user docs** | Illustrator Live Paint help, Figma help, Harmony drawing-tool docs |
+
+Tiers B and C are not internal implementations that have been verified.
