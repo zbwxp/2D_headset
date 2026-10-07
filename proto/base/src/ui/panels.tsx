@@ -120,7 +120,14 @@ export function LayersPanel({ ui }: { ui: Ui }) {
   }
   return (
     <div className="panel layers" id="layersPanel">
-      <div className="panel-title">图层</div>
+      <div className="panel-title with-actions">
+        <span>图层</span>
+        <span className="title-actions">
+          <button id="newLayer" title="新建图层（放在最上面）" onClick={() => view.newLayer()}>＋图层</button>
+          <button id="groupSel" title="编组 (⌘G)" onClick={() => view.group()}>编组</button>
+          <button id="ungroupSel" title="取消编组 (⇧⌘G)" onClick={() => view.ungroup()}>取消编组</button>
+        </span>
+      </div>
       <div className="rows" role="tree">
         {rows.map((r) => (
           <div

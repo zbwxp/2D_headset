@@ -878,6 +878,34 @@ export class FabricView {
     return this.applyAndLog({ type: 'setMask', id: m.id, name: m.name, sources: m.sources, targets: m.targets, mode: change.mode ?? m.mode, enabled: change.enabled ?? m.enabled })
   }
 
+  // ---- arrange / group / layers (arrange.ts; Illustrator ⌘] ⌘[ ⌘G ⇧⌘G, Layers › New Layer) ----
+  arrange(to: 'front' | 'forward' | 'backward' | 'back') {
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length) return null
+    return this.applyAndLog({ type: 'arrange', ids, to })
+  }
+  group() {
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length) return null
+    const r = this.applyAndLog({ type: 'group', ids })
+    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    return r
+  }
+  ungroup() {
+    const ids = this.selection.get().filter((id) => (this.editor.reader.get(id as any) as DocRecord | undefined)?.typeName === 'container')
+    if (!ids.length) return this.setStatus('INVALID: 先选中一个组'), null
+    const kids = ids.flatMap((g) => (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(this.editor.reader as any, g, t)))
+    const r = this.applyAndLog({ type: 'ungroup', ids })
+    if (r.ok && r.written) this.selection.set(kids)
+    return r
+  }
+  /** a new layer on top (Illustrator: above the current layer's stack — here the top of the layers) */
+  newLayer() {
+    const r = this.applyAndLog({ type: 'createContainer', parentId: null })
+    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    return r
+  }
+
   /** remove a shared node (the properties panel's 断开连接) */
   unbind(connectionId: string) {
     return this.applyAndLog({ type: 'unbind', connectionId: connectionId as any })
