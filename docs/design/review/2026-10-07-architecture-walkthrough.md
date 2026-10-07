@@ -30,21 +30,35 @@ bowen asked (Slack 1791382158) for a new, separate record of the step-by-step ar
 - With a parent, it is a group.
 - With the `shape` flag added, it is a shape group.
 
-All three are the same record type (schema.ts:25-38). The related code is cut by layer (data / commands / evaluation / UI) and spread over 9 files.
+All three are the same record type (schema.ts:25-38). The related code is cut by layer (data / commands / evaluation / UI) and spread over 9 files. What is missing is a **dedicated layers-module interface**. A single write entry does exist: every change goes through the same plan, check and write path (commands.ts:179-211, editor.ts:145-180).
 
-**The same rules are written more than once:**
+**Several places compute the same kind of thing separately.** Corrected after dot's source check (1791382204).
 
-| Rule | Copies | Where |
-|---|---|---|
-| Which sibling comes first | 4, and they differ | evaluate.ts:148-168, arrange.ts:26-30, ui/layerTree.ts:27-31, view/fabricView.ts:873 |
-| Locks and visibility inherited downwards | 2 | model.ts:19-38, ui/layerTree.ts:36-55 |
+Sibling order is computed in 4 places, mostly for different purposes, so they are not all duplicates:
+
+| Place | What it is for |
+|---|---|
+| evaluate.ts:148-168 | Paint order. Also handles the parent chain and fills |
+| arrange.ts:26-30 | Order used by arrange and group |
+| ui/layerTree.ts:27-31 | Panel display, which is the reverse of internal order |
+| view/fabricView.ts:873 | Default layer to draw into |
+
+**The one real difference found is the last row:** it compares only the index and does not break ties by id. If two layers have the same index, it may choose a different layer from the one the panel shows on top. This is a code risk and **has not been tested**.
+
+Inherited locks and visibility are computed in 2 places with different purposes, and no rule conflict was found:
+
+| Place | What it is for |
+|---|---|
+| model.ts:19-38 | Enforcement |
+| ui/layerTree.ts:36-55 | Panel display |
 
 **There is no current layer.** The layer a new line goes into is worked out from the current selection (fabricView.ts:868-878).
 
 **Commit history:** 17 commits touched layer code: 8 new features, 6 bug fixes, 2 rule changes, 1 refactor.
 
-- 2 of the bug fixes (d4cff1a, dfa6a05) fixed the same thing: which sibling comes first when two have the same index.
-- Both rule changes came from the fill work (bffe561, 62c0753).
+- 2 of the bug fixes (d4cff1a, dfa6a05) concern the same-index tie.
+- The fill and shape-group commits touched paint order, arrange and the panel several times.
+- This shows **where** the repeated impact landed. **It does not show that fills were the root cause** (dot).
 
 ### Answer (dot 1791381882, Claude 1791382023)
 
