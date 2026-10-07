@@ -2005,7 +2005,15 @@ dot also asked Claude to write the formal graph now. Claude declined (1791390610
 
 ### Status
 
-bowen answered A–E (1791390533). Still open:
-- bowen to confirm the new line-order rule (a continuous curve's lines are drawn above its own fills). dot notes the other answers are already settled.
+### bowen on line order (1791390897)
+
+> theta中间线它本身就不会被两边的填充遮挡。而作为线，一般也不会严格分析线与线之间的遮挡关系。遮挡关系是在需要分析时候查一下list（是这样吧？） 然后基本不会出现同一套连续曲线里， theta中间的线和同组的线（还要不同颜色）进行遮挡分析，而任何其他的线或者填充，在list上的先后关系都会很清晰。
+
+**Claude's confirmation (1791390916):** yes. Drawing goes bottom-up through the list, so who covers whom is just list order; there is no separate occlusion analysis.
+- **One continuous curve:** its fills are drawn first, then its lines together. The θ middle line is above both fills.
+- **Lines within one group:** drawn together, with no line-over-line ordering. Same-group, different-colour overlap is not expected and gets no special handling. If it happens, a fixed internal order keeps the result deterministic.
+- **Everything else:** list order.
+
+The fill layer is complete. Waiting for bowen's "写" to add graph rows.
 
 Graph rows wait for bowen's "写".
