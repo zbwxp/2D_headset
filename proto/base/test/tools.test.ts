@@ -37,3 +37,49 @@ it('the Direct Selection marquee selects the anchors of directly drawn, visible,
   e.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
   expect(anchorsInRect(e.derived.evaluated(), { x0: 75, y0: 45, x1: 85, y1: 55 })).toEqual(['curve:C2#b2'])
 })
+
+describe('extendCurve (the Pen continues an open path from an end)', () => {
+  const pen = () => {
+    const e = new Editor(exampleRecords())
+    const r = e.apply(cmd('a9'))
+    return { e, id: (r as any).affected[0] as string }
+  }
+  it('at the end: anchors appended in order with new segments; the end anchor\'s outer handle when given; one undo step', () => {
+    const { e, id } = pen()
+    const r = e.apply({ type: 'extendCurve', curveId: id as any, end: 'end', anchors: [a('x', 20, 0), a('y', 20, 10)], endHandle: { x: 3, y: 0 } })
+    expect(r.ok).toBe(true)
+    const c = e.reader.get(id as any) as any
+    const chain = c.segments.map((s: any) => [s.from, s.to])
+    expect(chain.length).toBe(3)
+    expect(chain[0]).toEqual(['p1', 'p2'])
+    expect(chain[1][0]).toBe('p2')
+    expect(chain.flat().every((x: string) => c.anchors[x])).toBe(true)
+    expect(c.anchors[chain[2][1]].p).toEqual({ x: 20, y: 10 })
+    expect(c.anchors.p2.hOut).toEqual({ x: 3, y: 0 })
+    expect(c.anchors.p2.hIn).toEqual({ x: 0, y: 0 })
+    expect(e.history.undo.at(-1)).toBe('extendCurve')
+  })
+  it('at the start: put before the first anchor; the outer handle there is hIn', () => {
+    const { e, id } = pen()
+    expect(e.apply({ type: 'extendCurve', curveId: id as any, end: 'start', anchors: [a('x', -10, 5)], endHandle: { x: -2, y: 0 } }).ok).toBe(true)
+    const c = e.reader.get(id as any) as any
+    expect(c.segments[0].to).toBe('p1')
+    expect(c.anchors[c.segments[0].from].p).toEqual({ x: -10, y: 5 })
+    expect(c.anchors.p1.hIn).toEqual({ x: -2, y: 0 })
+  })
+  it('refused, with the reason: a closed path; a curve with a head-turn track / preset forms / character data; nothing to add', () => {
+    const { e, id } = pen()
+    const no = (c: any, re: RegExp) => {
+      const r = e.apply(c)
+      expect(r.ok === false && r.error.message).toMatch(re)
+    }
+    no({ type: 'extendCurve', curveId: id, end: 'end', anchors: [] }, /no anchors/)
+    no({ type: 'extendCurve', curveId: id, end: 'middle', anchors: [a('x', 1, 1)] }, /end must be/)
+    e.apply({ type: 'setPoseKey', curveId: id as any, yaw: 30, offsets: { p1: { x: 1, y: 0 } } })
+    no({ type: 'extendCurve', curveId: id, end: 'end', anchors: [a('x', 1, 1)] }, /head-turn track/)
+    const f = new Editor(exampleRecords())
+    const r = f.apply({ ...cmd('a9'), anchors: { p1: a('p1', 0, 0), p2: a('p2', 10, 0), p3: a('p3', 5, 8) }, segments: [{ id: 's1', from: 'p1', to: 'p2' }, { id: 's2', from: 'p2', to: 'p3' }, { id: 's3', from: 'p3', to: 'p1' }], closed: true })
+    const closed = f.apply({ type: 'extendCurve', curveId: (r as any).affected[0], end: 'end', anchors: [a('x', 1, 1)] })
+    expect(closed.ok === false && closed.error.message).toMatch(/closed/)
+  })
+})

@@ -43,7 +43,7 @@ export class FabricView {
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
   private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[] } | null = null
   /** the Pen tool's path being drawn (not in the document until it ends: one createCurve, one undo step) */
-  pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec } | null = null
+  pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec; from?: { curveId: string; end: 'start' | 'end'; other: Vec } } | null = null
   /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
   private vGesture:
     | { kind: 'move'; start: Vec; op: Operation; ids: string[]; cmd?: Command; ok: boolean; error?: EditError }
@@ -564,6 +564,22 @@ export class FabricView {
       const ev = this.editor.derived.evaluated()
       const selected = new Set([...this.selection.get(), ...this.selection.getAnchors().map((k) => k.split('#')[0])])
       const hit = hitTest(ev, p, { mode: 'A', tolerance: 6 / z })
+      // on an END of an open path: continue that path (Illustrator)
+      if (hit?.kind === 'anchor' && !hit.referenceId) {
+        const c = this.editor.reader.get(hit.curveId) as CurveRecord
+        const first = c.segments[0]?.from, last = c.segments[c.segments.length - 1]?.to
+        if (!c.closed && first !== last && (hit.anchorId === first || hit.anchorId === last)) {
+          const end = hit.anchorId === last ? 'end' : 'start'
+          const a = c.anchors[hit.anchorId]
+          const ea = ev.curves.find((x) => x.address === c.id)!.anchors
+          const other = ea[end === 'end' ? first : last].p
+          // the draft starts AT the end anchor, in drawing order (outward): at the start the curve runs the other way
+          this.pen = { anchors: [{ id: hit.anchorId, p: ea[hit.anchorId].p, hIn: end === 'end' ? a.hIn : a.hOut, hOut: { x: 0, y: 0 } }], dragging: true, closing: false, from: { curveId: c.id, end, other: { ...other } } }
+          this.selection.set([c.id])
+          this.render()
+          return
+        }
+      }
       if (hit && (hit.kind === 'anchor' || hit.kind === 'segment') && !hit.referenceId && selected.has(hit.curveId)) {
         if (hit.kind === 'segment') this.applyAndLog({ type: 'insertPoint', curveId: hit.curveId, segmentId: hit.segmentId, u: hit.t })
         else this.deleteAnchor(hit.curveId, hit.anchorId)
@@ -573,8 +589,8 @@ export class FabricView {
       this.render()
       return
     }
-    const first = pen.anchors[0]
-    if (pen.anchors.length >= 2 && Math.hypot(p.x - first.p.x, p.y - first.p.y) <= 6 / z) {
+    const first = pen.from ? { p: pen.from.other } : pen.anchors[0]
+    if ((pen.from ? pen.anchors.length >= 1 : pen.anchors.length >= 2) && Math.hypot(p.x - first.p.x, p.y - first.p.y) <= 6 / z) {
       pen.closing = true
       pen.dragging = true
       return
@@ -599,6 +615,7 @@ export class FabricView {
       return
     }
     // dragging out the handles of the anchor just placed (or of the first anchor when closing): symmetric, smooth
+    if (pen.closing && pen.from) return // closing onto the path's other end: its handles stay as stored
     const a = pen.closing ? pen.anchors[0] : pen.anchors[pen.anchors.length - 1]
     let d = { x: round(p.x - a.p.x), y: round(p.y - a.p.y) }
     if (Math.hypot(d.x, d.y) * this.canvas.getZoom() < 2) d = { x: 0, y: 0 }
@@ -627,6 +644,7 @@ export class FabricView {
   finishPen(closed = false) {
     const pen = this.pen
     this.pen = null
+    if (pen?.from) return this.finishContinuation(pen as { anchors: Anchor[]; from: { curveId: string; end: 'start' | 'end' } }, closed)
     if (!pen || pen.anchors.length < 2) return this.render(), null
     const layer = this.targetLayer()
     if (typeof layer !== 'string') {
@@ -643,6 +661,33 @@ export class FabricView {
     if (r.ok && r.written) this.selection.set([r.affected[0]])
     this.render()
     return r
+  }
+
+  /** a continued path: the drafted anchors are added to that curve (extendCurve) — closing onto its other end too, one step */
+  private finishContinuation(pen: { anchors: Anchor[]; from: { curveId: string; end: 'start' | 'end' } }, closed: boolean) {
+    const [endDraft, ...drawn] = pen.anchors
+    const outer = endDraft.hOut.x || endDraft.hOut.y ? endDraft.hOut : undefined
+    if (!drawn.length && !closed) return this.render(), null
+    // drawing order → curve order: appended as drawn at the end; before the first anchor (reversed, handles swapped) at the start
+    const anchors = pen.from.end === 'end' ? drawn : [...drawn].reverse().map((a) => ({ ...a, hIn: a.hOut, hOut: a.hIn }))
+    const cmd: Command = { type: 'extendCurve', curveId: pen.from.curveId as any, end: pen.from.end, anchors, ...(outer ? { endHandle: outer } : {}) }
+    if (!closed) {
+      const r = this.applyAndLog(cmd)
+      this.render()
+      return r
+    }
+    const run = this.editor.batchRun('continuePath', () => {
+      if (drawn.length) {
+        const a = this.editor.apply(cmd)
+        if (!a.ok) throw a.error
+      }
+      const b = this.editor.apply({ type: 'addClosingSegment', curveId: pen.from.curveId as any })
+      if (!b.ok) throw b.error
+    })
+    const err = !run.ok ? (run.thrown as EditError) : null
+    this.setStatus(err ? `${err.code ?? 'INVALID'}: ${err.message ?? String(err)}` : '')
+    this.render()
+    return run
   }
 
   /** where new drawing goes (Illustrator: the current layer): the layer of the selection, else the front-most layer */

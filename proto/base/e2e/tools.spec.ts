@@ -203,3 +203,37 @@ test('Join (⌘J): end anchors of two paths connect at their midpoint (a shared 
   expect((await rec(page, d)).closed).toBe(true)
   expect((await undoLabels(page)).at(-1)).toBe('addClosingSegment')
 })
+
+test('Pen on an END of an open path continues that path (one extendCurve); from the start the new anchors go before it; clicking the other end closes (one step)', async ({ page }) => {
+  await open(page)
+  await page.click('[data-id="container:L1"]')
+  const id = await penPath(page, [{ x: 100, y: 10 }, { x: 120, y: 10 }])
+  // continue from the last anchor
+  await page.keyboard.press('p')
+  await click(page, { x: 120, y: 10 })
+  await click(page, { x: 140, y: 20 })
+  await page.keyboard.press('Enter')
+  let c = await rec(page, id)
+  expect(c.segments.map((s: any) => [c.anchors[s.from].p, c.anchors[s.to].p])).toEqual([
+    [{ x: 100, y: 10 }, { x: 120, y: 10 }],
+    [{ x: 120, y: 10 }, { x: 140, y: 20 }],
+  ])
+  expect((await undoLabels(page)).at(-1)).toBe('extendCurve')
+  // continue from the FIRST anchor: the new one is put before it
+  await click(page, { x: 100, y: 10 })
+  await click(page, { x: 100, y: 40 })
+  await page.keyboard.press('Enter')
+  c = await rec(page, id)
+  expect(c.anchors[c.segments[0].from].p).toEqual({ x: 100, y: 40 })
+  expect(c.anchors[c.segments[0].to].p).toEqual({ x: 100, y: 10 })
+  // continue from the last end and click the other end: closed, ONE undo step
+  const before = await doc(page)
+  await click(page, { x: 140, y: 20 })
+  await click(page, { x: 140, y: 50 })
+  await click(page, { x: 100, y: 40 }) // the other end
+  c = await rec(page, id)
+  expect(c.closed).toBe(true)
+  expect((await undoLabels(page)).at(-1)).toBe('continuePath')
+  await page.keyboard.press('ControlOrMeta+z')
+  expect(await doc(page)).toBe(before)
+})

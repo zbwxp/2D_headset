@@ -67,6 +67,11 @@ export type Command =
   | { type: 'transformItems'; ids: string[]; matrix: Affine }
   | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[] }
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
+  /**
+   * The properties panel / layer rename (Illustrator / Figma): a record's name; a curve's stroke colour / width; a
+   * fill's colour. One command, one undo step; only the given fields change; the usual lock rule (the record's place).
+   */
+  | { type: 'setProps'; id: string; name?: string; stroke?: { color?: string; width?: number }; color?: string }
   /** Record (or replace) a curve's form at one angle: per-anchor offsets from the base drawing. */
   | { type: 'setPoseKey'; curveId: RecordId<CurveRecord>; yaw: number; offsets: Record<string, Vec> }
   /**
@@ -602,6 +607,30 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const next = { ...c, ...(cmd.locked !== undefined && { locked: cmd.locked }), ...(cmd.visible !== undefined && { visible: cmd.visible }) }
       return { ok: true, label: 'setContainerFlags', puts: [next], affected: [c.id] }
     }
+    case 'setProps': {
+      const r = store.get(cmd.id as any) as DocRecord | undefined
+      if (!r) return fail('NOT_FOUND', `no record ${cmd.id}`, [cmd.id])
+      const hex = (c: unknown) => typeof c === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)
+      let next: any = r
+      if (cmd.name !== undefined) {
+        if (!('name' in r)) return fail('INVALID', `${r.typeName} has no name`, [cmd.id])
+        if (typeof cmd.name !== 'string' || !cmd.name.trim()) return fail('INVALID', 'a name must not be empty', [cmd.id])
+        next = { ...next, name: cmd.name.trim() }
+      }
+      if (cmd.stroke !== undefined) {
+        if (r.typeName !== 'curve') return fail('INVALID', `${r.typeName} has no stroke`, [cmd.id])
+        const { color, width } = cmd.stroke
+        if (color !== undefined && !hex(color)) return fail('INVALID', `stroke colour must be #rgb or #rrggbb (got ${color})`, [cmd.id])
+        if (width !== undefined && !(Number.isFinite(width) && width > 0)) return fail('INVALID', `stroke width must be a positive number (got ${width})`, [cmd.id])
+        next = { ...next, stroke: { ...r.stroke, ...(color !== undefined && { color }), ...(width !== undefined && { width }) } }
+      }
+      if (cmd.color !== undefined) {
+        if (r.typeName !== 'fill') return fail('INVALID', `${r.typeName} has no fill colour`, [cmd.id])
+        if (!hex(cmd.color)) return fail('INVALID', `fill colour must be #rgb or #rrggbb (got ${cmd.color})`, [cmd.id])
+        next = { ...next, color: cmd.color }
+      }
+      return { ok: true, label: 'setProps', puts: [next], affected: [cmd.id] }
+    }
     case 'insertPoint':
     case 'removeAnchorJoin':
     case 'deleteAnchorWithSegments':
@@ -609,6 +638,7 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
     case 'addClosingSegment':
     case 'removeClosingSegment':
     case 'mergeEnds':
+    case 'extendCurve':
     case 'bind':
     case 'unbind':
     case 'createCurve':

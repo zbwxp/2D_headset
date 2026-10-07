@@ -10,7 +10,7 @@ step typecheck npx tsc --noEmit -p .
 step unit npx vitest run
 step unit-production env NODE_ENV=production npx vitest run
 if lsof -nP -iTCP:5179 -sTCP:LISTEN >/dev/null 2>&1; then echo "FAIL e2e: port 5179 already in use (playwright would reuse a foreign server)"; exit 1; fi
-step e2e npx playwright test e2e/slice.spec.ts e2e/preview-counts.spec.ts e2e/scene-incremental.spec.ts e2e/scene-pixels.spec.ts e2e/renderer-b-modes.spec.ts e2e/dot-b-0264deb.spec.ts e2e/paint-order.spec.ts e2e/hit.spec.ts e2e/masks.spec.ts e2e/selection.spec.ts e2e/tools.spec.ts e2e/files.spec.ts
+step e2e npx playwright test e2e/slice.spec.ts e2e/preview-counts.spec.ts e2e/scene-incremental.spec.ts e2e/scene-pixels.spec.ts e2e/renderer-b-modes.spec.ts e2e/dot-b-0264deb.spec.ts e2e/paint-order.spec.ts e2e/hit.spec.ts e2e/masks.spec.ts e2e/selection.spec.ts e2e/tools.spec.ts e2e/files.spec.ts e2e/props.spec.ts
 for i in $(seq 1 "$repeats"); do step "properties-$i" env NODE_ENV=production npx vitest run test/properties.test.ts; done
 # Known failures are reproduced on purpose (it.fails): listed separately, never counted as fixed.
 known=$({ grep -oE "it\.fails\('[^']+'" test/known-failures.test.ts || true; } | sed "s/it.fails('//; s/'$//")

@@ -58,6 +58,14 @@ export type StructureCommand =
   | { type: 'mergeEnds'; curveId: RecordId<CurveRecord>; keep: 'mid' | 'first' | 'last' }
   | { type: 'bind'; a: AnchorRef; b: AnchorRef; keep: 'mid' | 'first' | 'second'; id?: RecordId<ConnectionRecord> }
   | { type: 'unbind'; connectionId: RecordId<ConnectionRecord> }
+  /**
+   * Continue an open path from one end (Illustrator: the Pen on an end point). `anchors` are the new anchors in the
+   * CURVE's order (appended after the last anchor for 'end'; put before the first for 'start'), handles relative as
+   * stored; `endHandle` = the end anchor's new outer handle (hOut at the end, hIn at the start) when the continuing drag
+   * set one. Refused while the curve carries per-anchor data elsewhere (a head-turn track, preset forms, character
+   * data): a new anchor has no offset there yet — stated, not guessed.
+   */
+  | { type: 'extendCurve'; curveId: RecordId<CurveRecord>; end: 'start' | 'end'; anchors: Anchor[]; endHandle?: Vec }
   | {
       type: 'createCurve'
       id?: RecordId<CurveRecord>
@@ -474,6 +482,40 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       const s = take(ids, 'segment', () => unique('close', (x) => c.segments.some((q) => q.id === x)), (x) => c.segments.some((q) => q.id === x))
       // our command semantics: the new segment uses the ends' stored outer handles; nothing else changes
       return { ok: true, label: 'addClosingSegment', puts: [{ ...c, closed: true, segments: [...c.segments, { id: s, from: c.segments[c.segments.length - 1].to, to: c.segments[0].from }] }], affected: [c.id] }
+    }
+
+    case 'extendCurve': {
+      const c = getAs(store, cmd.curveId, 'curve')
+      if (!c) return fail('NOT_FOUND', `no curve ${cmd.curveId}`, [String(cmd.curveId)])
+      if (isClosedLoop(c)) return fail('INVALID', `${c.id} is closed: it has no end to continue from`, [c.id])
+      if (cmd.end !== 'start' && cmd.end !== 'end') return fail('INVALID', `end must be start or end (got ${cmd.end})`, [c.id])
+      if (!Array.isArray(cmd.anchors) || !cmd.anchors.length) return fail('INVALID', 'no anchors to add', [c.id])
+      const fin = (q: unknown) => !!q && Number.isFinite((q as Vec).x) && Number.isFinite((q as Vec).y)
+      if (!cmd.anchors.every((a) => a && fin(a.p) && fin(a.hIn) && fin(a.hOut)) || (cmd.endHandle !== undefined && !fin(cmd.endHandle))) return fail('INVALID', 'anchors and handles must be finite', [c.id])
+      const d = curveData(store, c)
+      const no = refuse(d, 'continuing the path', ['characters', 'family'])
+      if (no) return no
+      if (d.legacy) return fail('INVALID', `continuing the path on ${c.id}: it has a head-turn track — the new anchors would have no offsets there`, [c.id, d.legacy.id])
+      const taken = new Set(Object.keys(c.anchors))
+      const segTaken = new Set(c.segments.map((x) => x.id))
+      const added: Anchor[] = []
+      for (const a of cmd.anchors) {
+        const id = take(ids, 'anchor', () => unique('p', (x) => taken.has(x)), (x) => taken.has(x))
+        taken.add(id)
+        added.push({ id, p: { ...a.p }, hIn: { ...a.hIn }, hOut: { ...a.hOut } })
+      }
+      const E = cmd.end === 'end' ? c.segments[c.segments.length - 1].to : c.segments[0].from
+      const chain = cmd.end === 'end' ? [E, ...added.map((a) => a.id)] : [...added.map((a) => a.id), E]
+      const segs: Segment[] = []
+      for (let i = 1; i < chain.length; i++) {
+        const id = take(ids, 'segment', () => unique('s', (x) => segTaken.has(x)), (x) => segTaken.has(x))
+        segTaken.add(id)
+        segs.push({ id, from: chain[i - 1], to: chain[i] })
+      }
+      const endA = c.anchors[E]
+      const anchors = { ...c.anchors, ...Object.fromEntries(added.map((a) => [a.id, a])), ...(cmd.endHandle ? { [E]: { ...endA, [cmd.end === 'end' ? 'hOut' : 'hIn']: { ...cmd.endHandle } } } : {}) }
+      const segments = cmd.end === 'end' ? [...c.segments, ...segs] : [...segs, ...c.segments]
+      return { ok: true, label: 'extendCurve', puts: [{ ...c, anchors, segments }], affected: [c.id, ...added.map((a) => `${c.id}#${a.id}`)] }
     }
 
     case 'removeClosingSegment': {

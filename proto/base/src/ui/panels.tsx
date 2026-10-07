@@ -3,7 +3,7 @@
 // follow Illustrator / Figma defaults; nothing here writes the document except through `editor.apply` commands.
 import { atom, type Atom } from '@tldraw/state'
 import { useValue } from '@tldraw/state-react'
-import { useRef, useState, type MouseEvent as RMouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react'
 import type { Command } from '../commands'
 import type { Editor } from '../editor'
 import { layerOf } from '../selection'
@@ -107,6 +107,7 @@ function Lock({ on }: { on: boolean }) {
 export function LayersPanel({ ui }: { ui: Ui }) {
   const { editor, view } = ui
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [renaming, setRenaming] = useState<string | null>(null)
   const anchor = useRef<string | null>(null)
   const rows = useValue('layer rows', () => (void editor.revision, layerRows(editor.reader, (id) => !collapsed[id])), [editor, collapsed])
   const selected = useValue('selected ids', () => new Set(view.selection.get()), [view])
@@ -141,7 +142,29 @@ export function LayersPanel({ ui }: { ui: Ui }) {
               {r.hasChildren ? (collapsed[r.id] ? '▸' : '▾') : ''}
             </span>
             <span className={`kind k-${r.kind}`} title={KIND_LABEL[r.kind]} />
-            <span className="name">{r.name || r.id}</span>
+            {renaming === r.id ? (
+              <input
+                className="rename"
+                data-rename={r.id}
+                autoFocus
+                defaultValue={r.name}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => {
+                  setRenaming(null)
+                  if (e.target.value.trim() && e.target.value !== r.name) ui.apply({ type: 'setProps', id: r.id, name: e.target.value })
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                  if (e.key === 'Escape') {
+                    e.stopPropagation()
+                    ;(e.currentTarget as HTMLInputElement).value = r.name
+                    setRenaming(null)
+                  }
+                }}
+              />
+            ) : (
+              <span className="name" title="双击改名" onDoubleClick={(e) => (e.stopPropagation(), setRenaming(r.id))}>{r.name || r.id}</span>
+            )}
             {r.kind === 'container' ? (
               <span className="flags">
                 <button className="flag" data-flag="visible" title={r.visible ? '隐藏' : '显示'} onClick={(e) => (e.stopPropagation(), ui.apply({ type: 'setContainerFlags', containerId: r.id as any, visible: !r.visible }))}>
@@ -160,6 +183,46 @@ export function LayersPanel({ ui }: { ui: Ui }) {
 }
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000)
+/** #rgb → #rrggbb (what a colour input shows) */
+const hex6 = (c: string) => (/^#[0-9a-f]{3}$/i.test(c) ? '#' + [...c.slice(1)].map((x) => x + x).join('') : c)
+
+/** A text field that writes once: Enter or leaving the field commits a change, Esc puts the value back (one undo step). */
+function CommitInput({ value, onCommit, prop, type = 'text', step }: { value: string; onCommit: (v: string) => void; prop: string; type?: 'text' | 'number'; step?: number }) {
+  const [v, setV] = useState(value)
+  useEffect(() => setV(value), [value])
+  const commit = () => {
+    if (v !== value) onCommit(v)
+  }
+  return (
+    <input
+      data-prop={prop}
+      type={type}
+      step={step}
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+        if (e.key === 'Escape') {
+          setV(value)
+          e.stopPropagation()
+        }
+      }}
+    />
+  )
+}
+
+/** A colour well that writes when the picker is closed (the native `change`), not on every drag of the picker. */
+function ColorInput({ value, onCommit, prop }: { value: string; onCommit: (v: string) => void; prop: string }) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const el = ref.current!
+    const h = () => el.value !== hex6(value).toLowerCase() && onCommit(el.value)
+    el.addEventListener('change', h)
+    return () => el.removeEventListener('change', h)
+  }, [value, onCommit])
+  return <input ref={ref} data-prop={prop} type="color" key={value} defaultValue={hex6(value)} />
+}
 
 function AnchorsSection({ ui }: { ui: Ui }) {
   const { editor, view } = ui
@@ -245,7 +308,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <table>
         <tbody>
           <tr><th>类型</th><td>{KIND_LABEL[r.typeName] ?? r.typeName}</td></tr>
-          <tr><th>名称</th><td>{'name' in r ? r.name : ''}</td></tr>
+          <tr><th>名称</th><td>{'name' in r ? <CommitInput prop="name" value={r.name} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, name: v })} /> : ''}</td></tr>
           <tr><th>id</th><td className="mono">{r.id}</td></tr>
           {layerName ? <tr><th>所在图层</th><td>{layerName}</td></tr> : null}
           {r.typeName === 'container' ? (
@@ -256,11 +319,15 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
           ) : null}
           {r.typeName === 'curve' ? (
             <>
-              <tr><th>描边</th><td><span className="swatch" style={{ background: (r as CurveRecord).stroke.color }} /> {(r as CurveRecord).stroke.color}，宽 {fmt((r as CurveRecord).stroke.width)}</td></tr>
+              <tr><th>描边</th><td className="inline">
+                <ColorInput prop="strokeColor" value={(r as CurveRecord).stroke.color} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, stroke: { color: v } })} />
+                <span>宽</span>
+                <CommitInput prop="strokeWidth" type="number" step={0.5} value={fmt((r as CurveRecord).stroke.width)} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, stroke: { width: Number(v) } })} />
+              </td></tr>
               <tr><th>锚点</th><td>{Object.keys((r as CurveRecord).anchors).length}{(r as CurveRecord).closed ? '（闭合）' : ''}</td></tr>
             </>
           ) : null}
-          {r.typeName === 'fill' ? <tr><th>颜色</th><td><span className="swatch" style={{ background: (r as FillRecord).color }} /> {(r as FillRecord).color}</td></tr> : null}
+          {r.typeName === 'fill' ? <tr><th>颜色</th><td><ColorInput prop="fillColor" value={(r as FillRecord).color} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, color: v })} /></td></tr> : null}
           {r.typeName === 'reference' ? (
             <>
               <tr><th>源</th><td className="mono">{(r as ReferenceRecord).sourceId}</td></tr>
@@ -271,7 +338,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
         </tbody>
       </table>
       <AnchorsSection ui={ui} />
-      {r.typeName !== 'container' ? <div className="muted small">描边 / 填充 / 引用这几项目前只读（属性编辑在后面的块）。</div> : null}
+      {r.typeName === 'reference' ? <div className="muted small">引用的源和变换在画布上改（V 移动 / 变换框）。</div> : null}
     </div>
   )
 }
