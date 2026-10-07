@@ -983,9 +983,20 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 2. **May a fill's region have holes?** For example the ring between a large and a small circle: is it one face?
 3. **How do colours carry over on split, merge, or disappear-and-reappear?** On split, both halves inherit? On merge, keep which one?
 
+### bowen's decision on question 1 (1791386368)
+
+> 几何相交只有端点合围起来才算也就是说一条穿圆的线交点没有节点不算把圆分半。我觉得这是矢量图操作的基础
+
+- **Only regions closed at endpoints count.** A line crossing a circle with no node at the crossing does not split the circle.
+- **Comparison (fact only, not an objection):**
+  - Illustrator Live Paint splits edges at geometric intersections, so a circle with a line through it is two faces (verified, see Q9).
+  - bowen's rule matches ordinary paths and Figma vector networks, where only shared vertices connect.
+  - It also matches the current code (fills.ts:3-6).
+- **Interaction note:** an area that looks enclosed but is not fillable needs clear feedback, for example "add a point at the crossing", in batch 2.
+
 ### Status
 
-**Both independent reviews merged.** Waiting for bowen on the three questions.
+**Question 1 decided by bowen (1791386368): split only at endpoints.** Questions 2 (holes) and 3 (colour inheritance) are partly answered in Q9 and wait to be merged there.
 
 ---
 
