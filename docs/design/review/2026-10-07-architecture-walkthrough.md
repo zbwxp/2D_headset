@@ -1970,6 +1970,27 @@ Because loops are discovered automatically, "delete loop" without changing any l
 
 Claude agrees. There are only two operations: **clear fill** and **delete curve**.
 
+### bowen's answers (1791390533)
+
+> A可以调整闭合曲线的顺序 那么填充就自然带顺序了。B本来就设定过图层和里面的element都是order list  C我们就不可能存在特别复杂的环出现在同一个图层的同一组连续曲线里。D 点选默认选小的 想要去填充大的去旁边的list里面去找。那么指定边缘填充也不用了。E 8字形那一定是这个图画错了或者deform过于扭曲了。爱怎么填怎么填 反正这肯定不对劲
+
+### Claude's restatement for bowen to confirm (1791390562)
+
+1. **Fill is a closed-curve attribute.** It can be shown, hidden or cleared. There is no "delete loop"; a loop goes away only when a curve is deleted.
+2. **All closed curves are found automatically** from the continuous curve and listed in the side list.
+   - A segment may appear under several loops.
+   - It is stored once and drawn once.
+3. **Layers and their elements are ordered lists.** Closed curves have an order in the list; reordering a closed curve reorders its fill.
+4. **Canvas click selects the smallest loop.** Larger loops are picked from the side list.
+5. **Manual boundary picking is no longer needed.**
+6. **No cross-layer fill.**
+7. **A figure-eight is a drawing error** and gets no special handling.
+
+**Completion proposed by Claude, pending bowen:** where do lines sit in the order? The θ middle line belongs to two loops but is drawn once. Following v103:
+- a continuous curve's lines are drawn above all of its own fills;
+- continuous curves are ordered in the layer list;
+- closed-curve order only decides which fill covers which inside one continuous curve.
+
 ### Status
 
 Claude and dot agree on the core. bowen decides:
