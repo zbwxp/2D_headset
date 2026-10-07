@@ -2656,7 +2656,10 @@ bowen 的原话：「它的调整范围要大，因为我经常用 9 轴、21 �
 proto `24031b1`：4a208bc 复验的 D1–D6（§31.10），对应合并清单里的 C02、C03、I05、I06、I07、C04。等 dot 复验。
 
 ### 32.1 E1：换选对象以后，Delete 删到了另一条线上的锚点（最高优先级）
-- **规则（一句话）**：选中的锚点只能属于当前选中的那几条线本身；换选对象时，凡是不属于新选择的锚点，一律取消选中。[标准] 依据：Illustrator 里在图层面板或用选择工具选中对象，会替换掉当前选择，包括用直接选择工具选中的锚点。出处：<https://helpx.adobe.com/illustrator/desktop/manage-objects/select-objects/select-objects.html>
+- **规则（一句话）**：选中的锚点只能属于当前选中的那几条线本身；换选对象时，凡是不属于新选择的锚点，一律取消选中。依据：
+  - 旧版 v103：换工具时，端点和柄的焦点会被清掉（`7205381:src/ui/drawing/interactionController.ts:25-33`）；图层面板里点名称会把选择换成那一层（`LayerPanel.tsx:63-70`）。
+  - 「Delete 只作用于当前看得见的选择」是 [默认]：删错对象的后果最重，没有理由让一个看不见的锚点留下来。
+  - Illustrator 在这一点上的文档说法 [待核]：现行帮助页没有写到这一点，旧页面已经下线。
 - **改在哪里**：`Selection.set` 这一处统一裁掉不属于新选择的锚点，不分别去改每个入口。
 - **受影响的入口**：
   - 图层列表单击、Shift 点选、⌘ 点选；
@@ -2676,7 +2679,7 @@ proto `24031b1`：4a208bc 复验的 D1–D6（§31.10），对应合并清单里
 
 ### 32.2 B4：拖控制柄被旁边的锚点抢走；控制柄显示规则
 - **规则**：
-  - A 工具下，**只有选中的线显示控制柄**（带锚点到柄的连线），也只有显示出来的控制柄才能拖。[标准] Illustrator 的直接选择工具只对选中的锚点或路径显示方向线。出处：<https://helpx.adobe.com/illustrator/desktop/draw-and-edit/edit-paths/select-paths-segments-anchor-points.html>
+  - A 工具下，**只有选中的线显示控制柄**（带锚点到柄的连线），也只有显示出来的控制柄才能拖。依据旧版 v103：只给选中的线画柄圈和连线（`7205381:src/ui/drawing/DrawingRoom.tsx:445-447`）。Illustrator 的文档说法 [待核]（现行帮助页没写）。
   - 抓取范围内同时有锚点和控制柄时，**离得最近的那个赢**；距离相差不到 1 屏幕像素时锚点赢，这样仍然能拖动一个长度为 0 的柄所在的锚点。[默认] 理由：现在是「锚点永远优先」，旁边另一条线的锚点会抢走用户正对着的那个柄（B4 / B5）。
 - **受影响的入口**：A 的单击和拖动、⇧C 转换工具、⌥ 拖柄、钢笔在选中路径上的加点、删点判断（命中顺序要一致）、A 模式的叠加显示。
 - **验收**：
@@ -2693,10 +2696,15 @@ proto `24031b1`：4a208bc 复验的 D1–D6（§31.10），对应合并清单里
   2. 同样的操作换成旋转、拖动移动，结果一样。
 
 ### 32.4 C01：闭合线上删点
-- **规则**：[标准] 依据 Illustrator：
-  - 用「− 删点」点一个锚点（或钢笔点在选中路径的锚点上）：这个点去掉，两边的线连成一段，路径**仍然闭合**。
-  - 用 A 选中锚点按 Delete：去掉这个点和它两边的两段，闭合路径从这里**断开，成为开放路径**。
-  - 出处：<https://helpx.adobe.com/illustrator/desktop/draw-and-edit/edit-paths/add-delete-anchor-points.html>、<https://helpx.adobe.com/illustrator/desktop/draw-and-edit/edit-paths/select-paths-segments-anchor-points.html>
+- **规则**：
+  - **「− 删点」**：用「− 删点」点一个锚点（或钢笔点在选中路径的锚点上），这个点去掉，两边的线连成一段，路径**仍然闭合**。[标准]，已打开核对：
+    - Illustrator「Add or remove anchor points」：用 Pen、Delete Anchor Point 工具或按 −，点要去掉的锚点。<https://helpx.adobe.com/illustrator/desktop/draw-shapes-and-paths/modify-paths/add-or-remove-anchor-points.html>
+    - Inkscape：Del 删除选中的节点，并尽量保持形状。<https://inkscape.org/doc/keys.html>
+    - 「仍然闭合」是这两处行为的自然结果，页面上没有逐字写出。
+  - **A 选中锚点按 Delete**：去掉这个点和它两边的两段，闭合路径从这里**断开，成为开放路径**。[默认] 理由：和现在开放线上 Delete 的含义一致（删点连同相邻的段）。
+    - 「Illustrator 也是这样」[待核]：现行帮助页没写。
+    - Inkscape 的 Del 是把两边连起来，和这里相反。
+    - **请 bowen 或 dot 定**：要按 Inkscape，让 Delete 和「−」一样（连起来），还是保持现在的含义（断开）。
 - **项目适配**：
   - 闭合线自己的填充（owner = 这条线）：「− 删点」时填充边界跟着改成合并后的那一段；Delete 断开时，在两个新端点之间用 §19.2 的桥接边补上缺口，填充保持闭合，和现在剪断闭合线的做法一样。[默认]
   - 闭合线只剩 2 个锚点时：「− 删点」拒绝，提示「闭合线至少要留 2 个锚点」；Delete 也拒绝，提示删除整条线。[默认] 理由：再删就退化成没有面积的线。
@@ -2714,9 +2722,11 @@ proto `24031b1`：4a208bc 复验的 D1–D6（§31.10），对应合并清单里
     - 按住鼠标往上拖放大、往下拖缩小，以按下的位置为中心连续缩放，倍率是 exp(Δy · 0.008)，前 2 像素不动；
     - 单击放大 1.3 倍；按住 ⌥ 单击缩小 1.3 倍；
     - 光标显示放大镜。
-    - [标准] 依据旧版 v103（`7205381:src/ui/drawing/DrawingRoom.tsx:220, 238-241, 291`），Illustrator 缩放工具同样是单击放大、⌥ 单击缩小。
+    - 依据旧版 v103（`7205381:src/ui/drawing/DrawingRoom.tsx:220, 238-241, 291`），也就是 bowen 的老规则（1791371996）。Inkscape 缩放工具也是单击放大，但用 Shift 单击缩小（<https://inkscape.org/doc/keys.html>）；这里照 v103 用 ⌥。
     - 缩放只改视口，不写文档，也不写历史。
-  - **「适合」(⌘0)**：把所有可见内容都算进去，包括参考图和填充。[标准] 依据 Illustrator 的 Fit All in Window。
+  - **「适合」(⌘0)**：把所有可见内容都算进去，包括参考图和填充。[默认]
+    - 旧版 v103 只算可见的线（`DrawingRoom.tsx:230-231`）。
+    - 新版画面里可能只有参考图（A-Fit），只算线的话「适合」就没有反应。
     - 修 A-Fit：画面里只有参考图时，「适合」也能定位过去。
 - **验收**：
   1. Z 往上拖 100px，缩放倍率乘以 e^0.8，按下点的位置在屏幕上不动。
