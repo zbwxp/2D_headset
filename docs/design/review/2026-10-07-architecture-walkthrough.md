@@ -1640,3 +1640,32 @@ Tiers B and C are not internal implementations that have been verified.
   1. **Shadow edge and face outline.** A shadow often follows the face outline. Drawn as a separate closed line, it can misalign with the outline during a head-turn. v103 bound such lines with endpoint links (this face has 4 links). This is a **connection** question, not a fill question.
   2. **Scope of the statistics.** Only this one front face was counted. Other drawings (hair, side face) were not.
 - **Suggestion:** settle fill first as "a closed line's own fill + layer stacking". Set the network region-splitting scheme (Q8–Q13) aside until it is actually needed. **Waiting for bowen.**
+
+### Q14 correction and merge (dot 1791388880; Claude re-checked by topology)
+
+**dot:** grouping by `strokeName` cannot prove "one closed outline in topological terms". A name label is not topology.
+
+**Claude re-checked by topology.** Each v103 curve record is one segment, with `nodes` [start, end] and the fill boundary's `reverse` flag.
+
+- **All 23 fills:**
+  - The boundary steps join end to start into **one closed loop**: each step's end node is the next step's start node, and the last joins back to the first.
+  - **No segment or node repeats.**
+  - **Every segment is in the same layer.**
+- **Whether the loop touches other lines:**
+  - 22 loops are **isolated**: every node on the loop has exactly 2 segments.
+  - **1 is not:** 衣领与肩线 · 白底 has 3 nodes where other segments also attach. It sits inside a larger branching network.
+- **More precise wording:** in this front face, every fill is one simple closed loop within one layer. 22 of the 23 are isolated loops, and 1 is embedded in a branching network.
+- **This statistic only supports the conclusion.** The main reason for narrowing the scope is bowen's stated use (dot).
+
+**dot's fill scheme for a face-making app** (Claude agrees):
+
+1. **Skin and shadow are colour blocks the author creates explicitly.** Each has its own closed outline and appearance.
+2. **Colour blocks stack by layer order.** When a shadow must stay inside the skin, use a mask.
+3. **When face-shaping or a head-turn changes the outline, the fill follows.** No rescan of all lines, no automatic split or merge.
+4. **A newly drawn decorative line does not cut an existing fill.**
+
+**A closed outline may be several Bézier segments.** It does not need to be stored as one record.
+
+**Live2D:** the official manual describes importing layered images and turning each layer into an ArtMesh for deformation, which keeps drawing and deformation separate. Source: <https://docs.live2d.com/en/cubism-editor-manual/concept-of-artmesh/>, given by dot. We can borrow that boundary without switching to bitmaps.
+
+**Status:** waiting for bowen to confirm this scope. The network region-splitting scheme (Q8–Q13) is set aside.
