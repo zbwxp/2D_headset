@@ -405,8 +405,9 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
 }
 
 /**
- * A path's own fill (doc 18 §30.18; Illustrator: the fill is an attribute of the selected path): its colour, 无 to remove
- * it (the path stays); without one, 填充 gives the path a fill of the toolbar colour (the outline it encloses — a path
+ * A path's own fill (doc 18 §30.18 / §30.24; Illustrator: the fill is an attribute of the selected path): its colour, 无
+ * sets it to none (the area stays, 填充 colours it again); without one, 填充 gives the path a fill of the toolbar colour
+ * (the outline it encloses — a path
  * whose ends do not meet is refused with the reason). A path inside a shape group is coloured through its shape's faces.
  */
 function PathFill({ ui, curve }: { ui: Ui; curve: CurveRecord }) {
@@ -417,8 +418,17 @@ function PathFill({ ui, curve }: { ui: Ui; curve: CurveRecord }) {
       <tr data-path-fill={own.id}>
         <th>填充</th>
         <td className="inline">
-          <ColorInput prop="pathFill" value={own.color} onCommit={(v) => ui.apply({ type: 'setProps', id: own.id, color: v })} />
-          <button data-path-fill-none title="去掉这条路径的填充（路径留着）" onClick={() => ui.apply({ type: 'deleteRecords', ids: [own.id] })}>无</button>
+          {own.color === 'none' ? (
+            <>
+              <span className="muted">无</span>
+              <button data-path-fill-paint title="用工具栏的填充色填上" onClick={() => ui.apply({ type: 'setProps', id: own.id, color: ui.view.fillColor.get() })}>填充</button>
+            </>
+          ) : (
+            <>
+              <ColorInput prop="pathFill" value={own.color} onCommit={(v) => ui.apply({ type: 'setProps', id: own.id, color: v })} />
+              <button data-path-fill-none title="填充设为无（区域留着，之后可以再填上）" onClick={() => ui.apply({ type: 'setProps', id: own.id, color: 'none' })}>无</button>
+            </>
+          )}
         </td>
       </tr>
     )
@@ -434,21 +444,31 @@ function PathFill({ ui, curve }: { ui: Ui; curve: CurveRecord }) {
 }
 
 /**
- * A shape group's faces (doc 18 §30.22): each area's colour, and 清除 (the face goes; the group and its lines stay —
- * Illustrator: clearing a Live Paint face's colour keeps the group). One write each.
+ * A shape group's faces (doc 18 §30.22 / §30.24): each area's colour; 清除 sets it to none — the face (its area, the
+ * bridges holding it), the group and its lines stay, so 上色 / K colour the same face again (Illustrator: a Live Paint
+ * face painted None stays a face). One write each.
  */
 function Faces({ ui, group }: { ui: Ui; group: ContainerRecord }) {
   const editor = ui.editor
   const faces = useValue('shape faces', () => (void editor.revision, childrenOf(editor.reader as any, group.id, 'fill').map((id) => editor.reader.get(id as any) as FillRecord).filter(Boolean)), [editor, group.id])
-  if (!faces.length) return <tr><th>面</th><td className="muted">没有颜色（K 点线围起来的区域上色）</td></tr>
+  if (!faces.length) return <tr><th>面</th><td className="muted">没有面（K 点线围起来的区域上色）</td></tr>
   return (
     <>
       {faces.map((f, i) => (
         <tr key={f.id} data-face={f.id}>
           <th>{faces.length > 1 ? `面 ${i + 1}` : '面'}</th>
           <td className="inline">
-            <ColorInput prop="faceColor" value={f.color} onCommit={(v) => ui.apply({ type: 'setProps', id: f.id, color: v })} />
-            <button data-face-clear title="清除这块面的颜色（线和形状组都留着）" onClick={() => ui.apply({ type: 'deleteRecords', ids: [f.id] })}>清除</button>
+            {f.color === 'none' ? (
+              <>
+                <span className="muted">无</span>
+                <button data-face-paint title="用工具栏的填充色给这块面上色" onClick={() => ui.apply({ type: 'setProps', id: f.id, color: ui.view.fillColor.get() })}>上色</button>
+              </>
+            ) : (
+              <>
+                <ColorInput prop="faceColor" value={f.color} onCommit={(v) => ui.apply({ type: 'setProps', id: f.id, color: v })} />
+                <button data-face-clear title="清除这块面的颜色（面的区域、线和形状组都留着，之后可以再上色）" onClick={() => ui.apply({ type: 'setProps', id: f.id, color: 'none' })}>清除</button>
+              </>
+            )}
           </td>
         </tr>
       ))}

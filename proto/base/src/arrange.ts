@@ -12,7 +12,7 @@ import type { EditError, IdSource, Plan } from './commands'
 import { paintKey } from './evaluate'
 import { childrenOf, referencesOf } from './indexes'
 import { getAs, lockedBy } from './model'
-import { Container, type BaseReader, type ContainerRecord, type DocRecord } from './schema'
+import { Container, type BaseReader, type ContainerRecord, type DocRecord, type FillRecord } from './schema'
 
 export type ArrangeCommand =
   | { type: 'arrange'; ids: string[]; to: 'front' | 'forward' | 'backward' | 'back' }
@@ -106,14 +106,17 @@ export function planArrange(store: BaseReader, cmd: ArrangeCommand, ids: IdSourc
     if (g.typeName !== 'container') return fail('INVALID', `${g.id} is not a group`, [g.id])
     if (g.parentId === null) return fail('INVALID', `${g.id} is a layer: a layer is not ungrouped`, [g.id])
     // a shape group's faces are its own (Illustrator: a Live Paint group is not simply ungrouped, only released /
-    // expanded — not here yet): ungrouping is refused while it has a face
-    const faces = (g as ContainerRecord).shape ? childrenOf(store as any, g.id as any, 'fill') : []
-    if (faces.length) return fail('INVALID', `形状组 ${(g as ContainerRecord).name || g.id} 还有面的颜色：先在属性里清除它们，再取消编组`, [g.id, ...faces])
+    // expanded — not here yet): ungrouping is refused while a face has a colour; colourless faces (doc 18 §30.24) are
+    // the group's remembered areas and go with it
+    const faces = (g as ContainerRecord).shape ? childrenOf(store as any, g.id as any, 'fill').map((id) => store.get(id as any) as FillRecord) : []
+    const painted = faces.filter((f) => f.color !== 'none')
+    if (painted.length) return fail('INVALID', `形状组 ${(g as ContainerRecord).name || g.id} 还有面的颜色：先在属性里清除它们，再取消编组`, [g.id, ...painted.map((f) => f.id)])
+    removals.push(...faces.map((f) => f.id))
     const refs = referencesOf(store as any, g.id as any)
     if (refs.length) return fail('BAD_REFERENCE', `${g.id} is placed by ${refs.join(', ')}: ungrouping would remove what they place`, [g.id, ...refs])
     const masks = store.allRecords().filter((m: any) => m.typeName === 'mask' && m.targets.includes(g.id)).map((m) => m.id as string)
     if (masks.length) return fail('BAD_REFERENCE', `${g.id} is a target of ${masks.join(', ')}: ungrouping would leave the mask without it`, [g.id, ...masks])
-    const kids = siblings(store, g.id)
+    const kids = siblings(store, g.id).filter((k) => !faces.some((f) => f.id === k.id))
     // the children take the group's place: between the group's index and the next sibling above it
     const above = siblings(store, g.parentId).find((r) => byOrder(r, g) > 0)
     const fresh = kids.length ? getIndicesBetween(g.index as IndexKey, (above?.index ?? null) as IndexKey | null, kids.length) : []

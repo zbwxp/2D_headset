@@ -671,7 +671,8 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       }
       if (cmd.color !== undefined) {
         if (r.typeName !== 'fill') return fail('INVALID', `${r.typeName} has no fill colour`, [cmd.id])
-        if (!hex(cmd.color)) return fail('INVALID', `fill colour must be #rgb or #rrggbb (got ${cmd.color})`, [cmd.id])
+        // 'none': the area stays (its boundary, bridges, mask use), only the colour goes (doc 18 §30.24)
+        if (!(cmd.color === 'none' || hex(cmd.color))) return fail('INVALID', `fill colour must be #rgb, #rrggbb or none (got ${cmd.color})`, [cmd.id])
         next = { ...next, color: cmd.color }
       }
       return { ok: true, label: 'setProps', puts: [next], affected: [cmd.id] }

@@ -17,7 +17,7 @@ import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
 import { InstanceTable } from './instanceLifecycle'
-import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, maskDefsOf, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
+import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, maskDefsOf, KEY_SEP, NO_COLOUR, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { asCharacter, ctxOf, playCharacter, prepareCharacter, retainedShapes, type Prepared } from './character'
@@ -180,7 +180,7 @@ function fillItem(get: Get, f: FillRecord, curveOf: (id: CurveRecord['id']) => E
     // the SAME curve geometry the strokes use
     cubics: fillCubics(f.boundary, (id) => curveOf(id as CurveRecord['id'])),
     boundaryRefs: boundaryRefsOf(f.boundary),
-    visible: effectivelyVisible(get as DocStore, f.parentId),
+    visible: f.color !== NO_COLOUR && effectivelyVisible(get as DocStore, f.parentId), // a colourless area: kept, not drawn
     locked: !!lockedBy(get as DocStore, f.parentId),
     depth: f.depthOffset,
   }

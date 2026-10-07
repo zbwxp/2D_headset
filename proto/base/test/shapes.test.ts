@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
-import { faceAt } from '../src/fills'
+import { existingFillAt, faceAt } from '../src/fills'
 import { contentOf } from '../src/clipboard'
 import { layerRows } from '../src/ui/layerTree'
 import { deletionSetOf, unitOf } from '../src/selection'
@@ -29,6 +29,7 @@ const face = (e: Editor, x: number, y: number) => {
 const run = (e: Editor, cmd: any): any => e.apply(cmd as Command)
 const recs = (e: Editor) => JSON.stringify(e.reader.allRecords().sort((a, b) => (a.id < b.id ? -1 : 1)))
 const get = (e: Editor, id: string) => e.reader.get(id as any) as any
+const solid = (e: Editor, id: string) => JSON.stringify(e.derived.evaluated().fills.find((f) => f.address === id)!.cubics.filter((c) => !(c[0].x === c[3].x && c[0].y === c[3].y)))
 const paintOrder = (e: Editor) => e.derived.evaluated().paint.map((p) => p.item.address)
 
 describe('paintRegion (K / 建立填充)', () => {
@@ -138,17 +139,42 @@ describe('paintRegion (K / 建立填充)', () => {
 })
 
 describe('after painting: clear, cut, delete, ungroup, copy, save / reopen', () => {
-  it('clearing the face keeps the group and its lines; the group can then be ungrouped (refused while it has a face)', () => {
+  it('clearing the face keeps the face (colour none, not drawn), the group and its lines; ungroup then works (refused while a face has a colour) and takes the colourless face with it', () => {
     const e = new Editor(triangle())
     const [gid, fid] = run(e, { type: 'paintRegion', boundary: face(e, 5, 3), color: '#ff0000' }).affected
     const no = run(e, { type: 'ungroup', ids: [gid] })
     expect(no.ok).toBe(false)
     if (!no.ok) expect(no.error.message).toMatch(/先在属性里清除/)
-    expect(run(e, { type: 'deleteRecords', ids: [fid] }).ok).toBe(true)
-    expect(get(e, gid)).toBeTruthy()
+    expect(run(e, { type: 'setProps', id: fid, color: 'none' }).ok).toBe(true)
+    expect(get(e, fid)).toMatchObject({ color: 'none', parentId: gid })
+    expect(e.derived.evaluated().fills.find((f) => f.address === fid)!.visible).toBe(false)
     for (const c of ['a', 'b', 'c']) expect(get(e, `curve:${c}`).parentId).toBe(gid)
     expect(run(e, { type: 'ungroup', ids: [gid] }).ok).toBe(true)
     for (const c of ['a', 'b', 'c']) expect(get(e, `curve:${c}`).parentId).toBe('container:L')
+    expect(get(e, fid)).toBeUndefined()
+  })
+
+  it("dot 1791358732: lines pulled apart (the face held by bridges) → clear → K colours the SAME face again; deleting a line then takes the colourless face along", () => {
+    const e = new Editor(triangle())
+    const [, fid] = run(e, { type: 'paintRegion', boundary: face(e, 5, 3), color: '#ff0000' }).affected
+    const area0 = solid(e, fid)
+    // A drags a's end away from b's start: they no longer meet, the face keeps its bridge there
+    expect(run(e, { type: 'moveAnchors', targets: [{ curveId: 'curve:a', anchorId: 'q' }], delta: { x: 2, y: -2 } }).ok).toBe(true)
+    expect('error' in faceAt(e.reader, e.derived.evaluated(), { x: 5, y: 3 })).toBe(true) // the face search alone no longer finds it
+    expect(run(e, { type: 'setProps', id: fid, color: 'none' }).ok).toBe(true)
+    // K at the same place: the existing (colourless) area wins
+    const old = existingFillAt(e.reader, e.derived.evaluated(), { x: 5, y: 3 })!
+    expect(old.id).toBe(fid)
+    const again = run(e, { type: 'paintRegion', boundary: old.boundary, color: '#00ff00' })
+    expect(again.ok && again.written).toBe(true)
+    expect(get(e, fid).color).toBe('#00ff00')
+    expect(e.reader.allRecords().filter((r) => r.typeName === 'fill').length).toBe(1)
+    expect(solid(e, fid)).not.toBe(area0) // the moved end, through the bridge
+    // a coloured face still names the line on delete; colourless, it goes with it
+    expect(run(e, { type: 'deleteRecords', ids: deletionSetOf(e.reader, ['curve:b']) }).ok).toBe(false)
+    run(e, { type: 'setProps', id: fid, color: 'none' })
+    expect(run(e, { type: 'deleteRecords', ids: deletionSetOf(e.reader, ['curve:b']) }).ok).toBe(true)
+    expect(get(e, fid)).toBeUndefined()
   })
 
   it('a line the face uses is not deleted on its own (the face is named)', () => {
@@ -190,7 +216,6 @@ const square = (parent = 'container:L') =>
     segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }],
     closed: true,
   })
-const solid = (e: Editor, id: string) => JSON.stringify(e.derived.evaluated().fills.find((f) => f.address === id)!.cubics.filter((c) => !(c[0].x === c[3].x && c[0].y === c[3].y)))
 
 describe("a path's own fill (doc 18 §30.18; dot 1791356669: one closed path is filled as its attribute, no group)", () => {
   it('K inside one closed path: the fill is the path\'s own — no group, drawn just below it, selected / listed / deleted with it', () => {
@@ -263,6 +288,19 @@ describe("a path's own fill (doc 18 §30.18; dot 1791356669: one closed path is 
     e.undo()
     expect(get(e, fid).owner).toEqual({ kind: 'path', curveId: 'curve:sq' })
     expect(e.reader.allRecords().some((x: any) => x.typeName === 'container' && x.shape)).toBe(false)
+  })
+
+  it('无 keeps the path\'s own fill as colourless (not drawn); cut once, ends pulled apart, K colours the same fill again', () => {
+    const e = new Editor([layer(), square()])
+    const fid = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1]
+    run(e, { type: 'breakAt', curveId: 'curve:sq', anchorId: 'a' })
+    run(e, { type: 'moveAnchors', targets: [{ curveId: 'curve:sq', anchorId: 'a' }], delta: { x: -2, y: -2 } })
+    expect(run(e, { type: 'setProps', id: fid, color: 'none' }).ok).toBe(true)
+    expect(get(e, fid).owner).toEqual({ kind: 'path', curveId: 'curve:sq' })
+    const old = existingFillAt(e.reader, e.derived.evaluated(), { x: 5, y: 5 })!
+    expect(old.id).toBe(fid)
+    expect(run(e, { type: 'paintRegion', boundary: old.boundary, color: '#0000ff' }).ok).toBe(true)
+    expect(get(e, fid).color).toBe('#0000ff')
   })
 
   it('save and reopen keep the path\'s own fill and its order', () => {

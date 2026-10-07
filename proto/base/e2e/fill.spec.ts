@@ -51,11 +51,16 @@ test('新建 → a blank document with one layer (asks first when there are unsa
   // panels: no row of its own; the path's properties show 填充 with 无
   await expect(page.locator(`[data-id="${fill.id}"]`)).toHaveCount(0)
   await expect(page.locator(`#propsPanel [data-path-fill="${fill.id}"]`)).toHaveCount(1)
+  // 无: the fill stays as colourless (its area kept, not drawn); 填充 colours it again; ⌘Z steps back
   await page.click('#propsPanel [data-path-fill-none]')
-  expect(await records(page, 'fill')).toEqual([])
+  expect((await records(page, 'fill')).map((f: any) => [f.id, f.color])).toEqual([[fill.id, 'none']])
   expect(await records(page, 'curve')).toHaveLength(1)
+  await page.locator('#fillColor').fill('#22aa22')
+  await page.click('#propsPanel [data-path-fill-paint]')
+  expect((await records(page, 'fill')).map((f: any) => [f.id, f.color])).toEqual([[fill.id, '#22aa22']])
   await page.keyboard.press('Meta+z')
-  expect((await records(page, 'fill')).map((f: any) => f.id)).toEqual([fill.id])
+  await page.keyboard.press('Meta+z')
+  expect((await records(page, 'fill')).map((f: any) => [f.id, f.color])).toEqual([[fill.id, '#cc3333']])
   // V on the fill selects the path
   await page.keyboard.press('v')
   await click(page, { x: 120, y: 100 })
@@ -91,7 +96,7 @@ test('select a closed line, 填充 in the properties panel: its own fill in the 
   await expect(page.locator('#status')).toContainText('没有围成闭合轮廓')
 })
 
-test('K inside three separate lines: a 形状 group holds them and the face; the panels; 清除 keeps the shape; ungroup refused while it has a face', async ({ page }) => {
+test('K inside three separate lines: a 形状 group holds them and the face; the panels; ungroup refused while it has a colour; pulled apart + 清除 + K colours the same face (dot 1791358732)', async ({ page }) => {
   await open(page)
   await page.click('#fileNew')
   const layer = (await records(page, 'container'))[0].id
@@ -122,11 +127,31 @@ test('K inside three separate lines: a 形状 group holds them and the face; the
   // ungroup refused while it has a face
   await page.click('#ungroupSel')
   await expect(page.locator('#status')).toContainText('先在属性里清除')
-  // 清除: the face goes, the group and its lines stay; ⌘Z brings it back
+  // dot 1791358732: pull a's end away from b's start (A drag; the face keeps a bridge there), 清除, then K inside:
+  // the SAME face is coloured again
+  await page.keyboard.press('a')
+  const box = (await page.locator('canvas.upper-canvas').boundingBox())!
+  const [z, , , , e, f] = await page.evaluate(() => (window as any).__contour.view.canvas.viewportTransform)
+  await page.click(`[data-id="${layer}"]`) // nothing of the shape selected: A drags the anchor under the pointer
+  await page.mouse.move(box.x + e + 80 * z, box.y + f + 10 * z)
+  await page.mouse.down()
+  await page.mouse.move(box.x + e + 86 * z, box.y + f + 4 * z, { steps: 4 })
+  await page.mouse.up()
+  const a = (await records(page, 'curve')).find((c: any) => c.id === 'curve:a')
+  const b = (await records(page, 'curve')).find((c: any) => c.id === 'curve:b')
+  expect(a.anchors.q.p.x !== b.anchors.p.p.x || a.anchors.q.p.y !== b.anchors.p.p.y).toBe(true) // no longer meet
+  await page.click(`[data-id="${shape.id}"]`)
   await page.click(`#propsPanel [data-face="${fill.id}"] [data-face-clear]`)
-  expect(await records(page, 'fill')).toEqual([])
+  expect((await records(page, 'fill')).map((x: any) => [x.id, x.color])).toEqual([[fill.id, 'none']])
   for (const c of await records(page, 'curve')) expect(c.parentId).toBe(shape.id)
-  await expect(page.locator('#propsPanel')).toContainText('没有颜色')
+  await expect(page.locator(`#propsPanel [data-face="${fill.id}"]`)).toContainText('无')
+  await page.locator('#fillColor').fill('#aa2222')
+  await page.keyboard.press('k')
+  await click(page, { x: 50, y: 30 })
+  expect((await records(page, 'fill')).map((x: any) => [x.id, x.color])).toEqual([[fill.id, '#aa2222']])
+  // ⌘Z: colourless again, then back to the colour before the clear
   await page.keyboard.press('Meta+z')
-  expect((await records(page, 'fill')).map((f: any) => f.id)).toEqual([fill.id])
+  expect((await records(page, 'fill')).map((x: any) => x.color)).toEqual(['none'])
+  await page.keyboard.press('Meta+z')
+  expect((await records(page, 'fill')).map((x: any) => x.color)).toEqual(['#3366cc'])
 })

@@ -8,7 +8,7 @@
 // "the next one clockwise after the way back" walks each face once; the smallest bounded face containing the click wins.
 import type { EvalCurve, Evaluated } from './evaluate'
 import { anchorKey, linkedAnchors, type AnchorRef } from './model'
-import type { BaseReader, BoundaryStep, Vec } from './schema'
+import type { BaseReader, BoundaryStep, ContainerRecord, FillRecord, Vec } from './schema'
 
 type Cubic = [Vec, Vec, Vec, Vec]
 type Half = { curve: EvalCurve; segmentId: string; dir: 1 | -1; from: AnchorRef; to: AnchorRef; fromNode: string; toNode: string; angle: number; pts: Vec[] }
@@ -133,6 +133,28 @@ function walk(reader: BaseReader, curves: EvalCurve[], p: Vec | null): Face | { 
     if (!joined) boundary.push({ bridge: { from: { ...h.to } as any, to: { ...n.from } as any } })
   })
   return { boundary, curves: [...new Set(best.face.map((h) => h.curve.curveId as string))], area: best.area }
+}
+
+/**
+ * The smallest existing fill whose area contains `p` — painted or colourless (doc 18 §30.24), in a shown, directly
+ * placed container — with its area. Its boundary may be held by bridges where the lines no longer meet, so the face
+ * search alone would not find it again.
+ */
+export function existingFillAt(reader: BaseReader, ev: Evaluated, p: Vec): { id: string; boundary: BoundaryStep[]; area: number } | null {
+  let best: { id: string; boundary: BoundaryStep[]; area: number } | null = null
+  for (const f of ev.fills) {
+    const rec = reader.get(f.address as any) as FillRecord | undefined
+    if (!rec || !f.cubics.length || !shown(reader, rec.parentId)) continue
+    const pts = f.cubics.flatMap((c) => sampled(c as Cubic).slice(0, -1))
+    if (pts.length < 3 || !contains(pts, p)) continue
+    const a = Math.abs(area(pts))
+    if (!best || a < best.area) best = { id: rec.id, boundary: rec.boundary, area: a }
+  }
+  return best
+}
+const shown = (reader: BaseReader, id: string | null): boolean => {
+  for (let c = id ? (reader.get(id as any) as ContainerRecord | undefined) : undefined; c; c = c.parentId ? (reader.get(c.parentId as any) as ContainerRecord | undefined) : undefined) if (!c.visible) return false
+  return true
 }
 
 /** an existing fill with exactly this boundary (the same segments and bridges, any starting point / direction) */

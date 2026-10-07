@@ -12,9 +12,9 @@
 // §21.2); the top-level containers are the layers (Illustrator layers), picked from the layers panel, not the canvas.
 import { atom, type Atom } from '@tldraw/state'
 import { fillContains, hitStack, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { childrenOf, connectionsAt, ownFillsOf, type Queryable } from './indexes'
+import { childrenOf, connectionsAt, fillsUsing, ownFillsOf, type Queryable } from './indexes'
 import { anchorKey } from './model'
-import { poseIdOf, type BaseReader, type DocRecord, type MaskRecord, type Vec } from './schema'
+import { poseIdOf, type BaseReader, type DocRecord, type FillRecord, type MaskRecord, type Vec } from './schema'
 
 type Reader = Pick<BaseReader, 'get'>
 /** a path's own fill counts as part of its path (doc 18 §30.18): selected, grouped under and inside it */
@@ -202,6 +202,8 @@ export function deletionSetOf(reader: BaseReader, ids: readonly string[]): strin
       for (const a of Object.keys(r.anchors)) connectionsAt(q, anchorKey({ curveId: r.id, anchorId: a })).forEach((c) => out.add(c))
       if (reader.get(poseIdOf(r.id) as any)) out.add(poseIdOf(r.id))
       ownFillsOf(q, r.id).forEach((f) => out.add(f)) // its own fill is part of it
+      // a colourless face reading it is only a remembered area (doc 18 §30.24): it goes too; a coloured one is named
+      fillsUsing(q, r.id).forEach((f) => (reader.get(f as any) as FillRecord | undefined)?.color === 'none' && out.add(f))
     }
   }
   ids.forEach(visit)

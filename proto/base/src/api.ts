@@ -51,7 +51,7 @@ export function createApi(editor: Editor) {
       nodes.push({ address: c.id, kind: 'curve', name: c.name, tags: c.tags, parent: c.parentId, locked: !!lockedBy(store, c.parentId), visible: effectivelyVisible(store, c.parentId), connections: conOf(c.id) })
     }
     for (const f of all(store, 'fill') as FillRecord[]) {
-      nodes.push({ address: f.id, kind: 'fill', name: f.name, tags: [], parent: f.parentId, locked: !!lockedBy(store, f.parentId), visible: effectivelyVisible(store, f.parentId) })
+      nodes.push({ address: f.id, kind: 'fill', name: f.name, tags: [], parent: f.parentId, locked: !!lockedBy(store, f.parentId), visible: f.color !== 'none' && effectivelyVisible(store, f.parentId) })
     }
     for (const r of all(store, 'reference') as ReferenceRecord[]) {
       nodes.push({ address: r.id, kind: 'reference', name: r.name, tags: [], parent: r.parentId, locked: !!lockedBy(store, r.parentId), visible: effectivelyVisible(store, r.parentId) })

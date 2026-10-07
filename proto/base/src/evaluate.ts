@@ -79,6 +79,12 @@ export function inkRuns(c: Pick<EvalCurve, 'segments'>, segmentIds: string[]): C
   if (cur) runs.push(cur)
   return runs
 }
+/**
+ * A face / path fill whose colour was cleared (doc 18 §30.24; Illustrator: a face painted None): the record and its
+ * area stay — the shape can be coloured again where its lines no longer meet (bridges), a mask using it keeps its
+ * region — but it is not drawn and not picked (evaluated as not visible).
+ */
+export const NO_COLOUR = 'none'
 /** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1).
  *  A fill carries `ownInk` (S2): its referenced segments of own visible boundary curves painted BEFORE
  *  it — the ink it must leave out. Decided here, once, so renderers never judge it. */
@@ -277,7 +283,7 @@ export function evaluate(store: DocStore): Evaluated {
     // The fill reads the SAME evaluated segments the strokes use — never its own copy of anchors.
     cubics: fillCubics(f.boundary, (id) => byCurveId.get(id)),
     boundaryRefs: boundaryRefsOf(f.boundary),
-    visible: effectivelyVisible(store, f.parentId),
+    visible: f.color !== NO_COLOUR && effectivelyVisible(store, f.parentId), // a colourless area is kept, not drawn
     locked: !!lockedBy(store, f.parentId),
     depth: f.depthOffset,
   }))
