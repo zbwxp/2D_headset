@@ -426,3 +426,137 @@ If they are tied, changing fills forces changes to ordinary group rules.
 ### Status
 
 **Open.** Waiting for bowen.
+
+---
+
+## Q7: Attacking bowen's knowledge-graph structure, v1 (Claude's independent review)
+
+**bowen** 1791383214, 1791383633, 1791383724:
+- 1791383214: 我给你们一套知识图谱结构，然后你们来尝试攻击它 看这种关系会有哪里出问题。如果没问题也可以提出和成熟方案不一致然后分析为什么会不一致。
+- 1791383633: 最基础的element是bezier曲线。单条曲线具有四个参数 分别是两个端点和两个handle。 端点具有笔触属性，线条具有线条笔触属性。接下来是连续曲线： 连续曲线是相邻两条单独曲线共用端点构成（相邻两条 意思是可以有很多相邻两条构成很多连续曲线） 共享端点因此具有了接笔属性（定义两端handle的角度限制） 连续曲线出现循环时，就是闭合曲线。闭合曲线增添了填充属性。因此填充属于闭合曲线。闭合曲线是连续曲线的子集。一组连续曲线可能有很多组闭合曲线。 单条曲线+连续曲线构成了图层的基本element （我的语义描述不准确时你们合理补救…帮我完善之后再攻击）
+- 1791383724: 这一版发完 你们可以开始了
+
+**Review rules (dot 1791383276):** findings are sorted into four kinds.
+
+| Kind | What it means |
+|---|---|
+| Real contradiction | A concrete action makes two relations impossible to hold at once |
+| Gap | Something bowen needs cannot be expressed |
+| Cost | The relation holds, but brings sync, performance or maintenance cost |
+| Difference from mature tools | Verified source and the reason for the difference; being different is not an error |
+
+Each challenge names the relation and gives a counter-example. Suggestions go in a separate section. **The graph itself is not changed.**
+
+### 1. Restatement (filling in the wording, to be confirmed by bowen)
+
+**S1 Single curve (segment).**
+- A cubic Bézier with 4 parameters: 2 endpoints, plus 2 handles that each belong to one endpoint.
+- **Line stroke** belongs to the segment: width, colour.
+- **End stroke** belongs to the endpoint: taper and extension where the line ends at that point.
+
+**S2 Shared endpoint (node).**
+- Several segments can share one endpoint, which turns it into a **node**.
+- A node has a **join attribute** that constrains the angles of the handles on each side: smooth, corner, arc.
+
+**S3 Continuous curve.**
+- Segments joined by shared nodes form a connected structure.
+- It is allowed to **branch**: a node can have 3 or more segments, so in effect it is a **network**.
+
+**S4 Closed curve.**
+- A loop inside the continuous curve, carrying a **fill attribute**. The fill belongs to the closed curve.
+- One continuous curve can contain several closed curves. Keep this; do not change it to "a single simple path" (dot 1791383717).
+
+**S5 Layer elements.** A layer's basic elements are single curves and continuous curves.
+
+### 2. Attacks
+
+**A1 [Real contradiction] "Fill belongs to the closed curve" × "one network has several closed curves".**
+
+Counter-example: a θ shape, i.e. a circle with a horizontal line through it whose ends sit on the circle.
+
+- It has 3 loops: upper half, lower half, and the whole outer ring.
+- It has only 2 enclosed regions.
+
+If fill belongs to loops, then "outer ring filled red" plus "upper half filled blue" means the upper region carries two fills from two closed curves. Which shows?
+
+The structure has no rule for this. Moving the middle line also changes all 3 loops at once.
+
+**A2 [Gap] The join attribute assumes two curves.**
+
+"The join defines the angle limits of the handles on both sides" only works where 2 segments meet. At a T or Y junction (3 or more segments), which two are smooth and which is a corner cannot be expressed.
+
+- v103 recorded joins **pairwise** (`TangentJoin {a, b, mode}`, `7205381:src/domain/drawing/model.ts:68`).
+- Doc 11 proposed "through-pairing" for the same reason.
+
+**A3 [Gap] End stroke at a shared endpoint.**
+
+End stroke (taper) naturally belongs at a free end. When an endpoint is shared, which applies there, the end stroke or the join attribute?
+
+- v103 had "interior end enable" (from the v103 inventory: InkEndControls), meaning bowen sometimes wants a taper at an interior node.
+- The structure needs a rule for which takes priority.
+
+**A4 [Gap] Stroke along a whole line.**
+
+Line stroke lives on each segment. A long stroke that **narrows gradually along its whole length**, or a show/hide interval running along a line, needs a **direction and a route** across many segments.
+
+- In the old face, 28 strokes (116 segments) use tapers, and 17 show/hide intervals run along routes.
+- Once a continuous curve can branch (S3), "along the line" is undefined: which branch does it go down?
+- v103 used `DisplayRoute {seed, throughLinkIds}` to choose the route explicitly. Doc 11 had a "path P" for this.
+
+**A5 [Gap] Continuous curves across layers.**
+
+"Single curves and continuous curves are layer elements" implies a continuous curve sits in one layer. But in the old face the chin join crosses layers.
+
+bowen has already said (memory "binding vs linkage"): **across layers, each line stays in its own layer; the ends are only linked.**
+
+The structure has no relation for "linked across layers but not a shared endpoint". Nor does it say which layer a closed curve that crosses layers, and its fill, belongs to.
+
+**A6 [Cost] Fill identity on derived loops and regions.**
+
+Loops are worked out from shared endpoints. Splitting, merging or deleting a segment changes which loops exist.
+
+- After a loop splits in two, or two loops merge into one, which part keeps the old fill?
+- This is the same class of problem as the earlier rounds of fill fixes: bridges, shape groups, keeping an area after clearing its fill.
+- The structure is still workable, but these rules have to be designed explicitly.
+
+**A7 [Cost] Head-turn and keyframes.**
+
+Topology decided by shared endpoints stays the same across poses. That is good for interpolation.
+
+But if fill uses **enclosed regions found from geometry**, the regions can change between poses when lines cross or curves self-intersect. So fill should be tied to topology (which segments surround it), not recomputed from geometry at each pose.
+
+### 3. Differences from mature tools (only sources I opened)
+
+**D1 Figma Vector Networks** (opened and checked; <https://www.figma.com/blog/introducing-vector-networks/>). This is the closest to bowen's structure:
+
+- Lines and curves can connect between any two points, without having to form a single chain.
+- Stroke cap and join styles work even at points with 3 or more lines.
+- Fills automatically fill every enclosed space. The paint bucket toggles any enclosed **region** on or off.
+- **Difference:** Figma attaches fill to **enclosed regions**; bowen's structure attaches it to **closed curves**. Figma's choice avoids the overlapping loops of A1.
+
+**D2 The path model** (Illustrator / SVG / Paper.js / the current new proto).
+
+- Figma's article describes a path as "a chain of lines and curves from one endpoint to the other" and notes that three lines cannot meet at one point.
+- The current proto's `CurveRecord` is exactly this kind of ordered chain (schema.ts:40-49).
+- **So at the most basic level, the current proto differs from bowen's structure**: it stores chains, and cannot branch.
+- Illustrator's own docs on this were not opened this time.
+
+**D3 v103 (bowen's own).** Segment records + shared nodes + pairwise joins + routes along lines (DisplayRoute). This is closest to bowen's structure. The difference: v103 handled A4 with an explicit route.
+
+### 4. Not found to be a problem (in the cases above)
+
+- A segment has 4 parameters, and each handle belongs to its endpoint.
+- A closed curve is part of a continuous curve (a loop inside it).
+- One network can hold several loops (the question is only where fill attaches; see A1).
+
+### 5. Suggestions (separate from the attacks; nothing changed in bowen's graph)
+
+- **For A1:** fill belongs to an **enclosed region (face)** of the network; a region is surrounded by a set of segments. This is how Figma works. It also matches bowen's earlier "fill is an attribute": the region is an attribute of the network, not a separate object.
+- **For A2:** the join attribute is stored **per pair of segments** at a node.
+- **For A4:** add a **stroke route** concept: a directed run along segments, which can pass through nodes and cross-layer links. Line stroke tapers and show/hide intervals hang on the route.
+- **For A5:** add a **cross-layer link** relation, distinct from a shared endpoint (bowen's binding / linkage decision).
+- **For A3:** a rule for which wins between end stroke and join at a node. Suggestion: the join applies by default; an end stroke is used only when explicitly turned on.
+
+### Status
+
+**Claude's independent review is done.** Waiting for dot's independent review, then merging. bowen decides what to adopt.
