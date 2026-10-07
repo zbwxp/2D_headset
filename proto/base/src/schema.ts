@@ -72,6 +72,12 @@ export interface FillRecord extends BaseRecord<'fill', RecordId<FillRecord>> {
   boundary: BoundaryStep[]
   color: string
   depthOffset: number
+  /**
+   * A path's own fill (doc 18 §30.18; bowen: a fill is an attribute of its closed path): drawn just below that curve
+   * wherever it is (its own index is not used), kept in the curve's parent, selected / moved / copied / deleted with
+   * it, and its boundary reads only that curve. Absent: a face of a shape group, or an older file's own fill.
+   */
+  owner?: { kind: 'path'; curveId: RecordId<CurveRecord> }
 }
 
 export type Affine = { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -272,6 +278,7 @@ export const Fill = createRecordType<FillRecord>('fill', {
       r.boundary.forEach((b: any, i: number) =>
         check(isObj(b) && (isObj(b.bridge) ? end(b.bridge.from) && end(b.bridge.to) : typeof b.curveId === 'string' && typeof b.segmentId === 'string' && (b.dir === 1 || b.dir === -1)), `fill ${r.id} boundary step ${i}`),
       )
+      check(r.owner === undefined || (isObj(r.owner) && r.owner.kind === 'path' && typeof r.owner.curveId === 'string'), `fill ${r.id} owner must be { kind: 'path', curveId } or absent`)
       return r
     },
   },

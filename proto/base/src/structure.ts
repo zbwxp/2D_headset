@@ -15,7 +15,8 @@ import type { EditError, IdSource, Plan } from './commands'
 import { deviation, joinCubic, type JoinMode } from './experiments/deletePoint'
 import { playabilityNotices } from './characterCommands'
 import { paramFor, presetFormsIdOf } from './forms'
-import { connectionsAt, familiesOf, fillsUsing, referencesOf } from './indexes'
+import { connectionsAt, familiesOf, fillsUsing, ownFillsOf, referencesOf } from './indexes'
+import { pathFillToShape } from './shapes'
 import { anchorKey, containerChain, getAs, overlayReader, type AnchorRef } from './model'
 import { legacy3Keys, promoteLegacy } from './pose'
 import {
@@ -470,6 +471,18 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       for (const f of fillStepsOf(store, c.id)) {
         const boundary = remapBoundary(f, c.id, newId, segOwner, owner, isCut ? { X, copy } : undefined, puts)
         if (JSON.stringify(boundary) !== JSON.stringify(f.boundary)) puts.push({ ...f, boundary })
+      }
+      // a path with its own fill cut into two pieces: the pieces and the fill become a shape group (shapes.ts)
+      const owned = newId ? ownFillsOf(store, c.id) : []
+      if (newId && owned.length) {
+        const latest = <T extends DocRecord>(id: string) => (puts.find((r) => r.id === id) ?? store.get(id as any)) as T
+        const conv = pathFillToShape(latest<CurveRecord>(c.id), latest<CurveRecord>(newId), owned.map((f) => latest<FillRecord>(f)), ids)
+        for (const r of conv) {
+          const i = puts.findIndex((x) => x.id === r.id)
+          if (i >= 0) puts[i] = r
+          else puts.push(r)
+        }
+        creates.push(conv[0].id)
       }
       return { ok: true, label: cmd.type, puts, affected: [c.id, ...(newId ? [newId] : [])], ...(creates.length ? { creates } : {}) }
     }

@@ -3,10 +3,13 @@
 // one or more paths and Object › Live Paint › Make, or click them with the Live Paint Bucket; the colours belong to the
 // group, the paths stay editable.
 // - one command (`paintRegion`), one write, one undo: the group (new or reused), the lines moved into it, the face;
+// - an area one path encloses by itself is that path's own fill instead (doc 18 §30.18, `FillRecord.owner`): no group;
 // - the lines keep their ids (fills, masks, connections, families, characters name them by id) and their order;
 // - they only ever move into a group INSIDE their own parent, so every container that held them still holds them
 //   (masks on those containers, references placing them, locks: unchanged — the generic write check sees both places);
 // - inside a shape group the faces are drawn below its other children (evaluate.paintKey);
+// - a path with its own fill cut into two pieces becomes a shape group of the pieces (structure.ts breakAt,
+//   `pathFillToShape`), so the whole shape keeps its colour — never only the first piece;
 // - adaptation (stated): areas are closed by lines meeting at anchors (fills.ts), not split at crossings; lines from
 //   different parents (layers / groups) and lines of two shape groups are refused (Illustrator would pull them into one
 //   group / merge the groups — not supported yet).
@@ -42,7 +45,7 @@ const byPaint = (store: BaseReader) => (a: DocRecord, b: DocRecord) => {
 }
 type Item = DocRecord & { parentId: string | null; index: string }
 const siblingsOf = (store: BaseReader, parent: string | null): Item[] =>
-  (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter(Boolean)
+  (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter((r) => r && !(r.typeName === 'fill' && r.owner))
 const byIndex = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): Plan {
@@ -68,10 +71,31 @@ export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): 
   if (existing) {
     const f = getAs(store, existing as any, 'fill')!
     // put even when the colour is the same: the write check still refuses a locked face (nothing changes otherwise)
-    return { ok: true, label: 'paintRegion', puts: [{ ...f, color: cmd.color }], affected: [shapeGroupOf(store, f.id)?.id ?? f.id, f.id] }
+    return { ok: true, label: 'paintRegion', puts: [{ ...f, color: cmd.color }], affected: [f.owner?.curveId ?? shapeGroupOf(store, f.id)?.id ?? f.id, f.id] }
   }
 
-  // 2. the shape group: the one the lines are already in, or a new one in their common parent
+  // 2. one path enclosing the area by itself (all its segments, nothing else) and not in a shape group: the path's own
+  //    fill — an attribute of that path (doc 18 §30.18; bowen: a fill is the closed path's attribute; dot 1791356669:
+  //    only an area of several lines needs a shape group)
+  const only = curves.length === 1 ? curves[0] : undefined
+  if (only && !shapeGroupOf(store, only.id)) {
+    const used = new Set(cmd.boundary.flatMap((b) => (isBridge(b) ? [] : [b.segmentId])))
+    if (only.segments.every((sg) => used.has(sg.id))) {
+      const fill = Fill.create({
+        id: (cmd.fillId ?? ids.take('fill', () => Fill.createId())) as RecordId<FillRecord>,
+        name: '填充',
+        parentId: only.parentId,
+        // not used for the order (drawn just below its path, wherever that is); just below the path when made
+        index: getIndexBetween((siblingsOf(store, only.parentId).sort(byIndex).filter((r) => byIndex(r, only as Item) < 0).at(-1)?.index ?? null) as IndexKey | null, only.index as IndexKey),
+        boundary: structuredClone(cmd.boundary),
+        color: cmd.color,
+        owner: { kind: 'path', curveId: only.id },
+      })
+      return { ok: true, label: 'paintRegion', puts: [fill], affected: [only.id, fill.id], creates: [fill.id] }
+    }
+  }
+
+  // 3. the shape group: the one the lines are already in, or a new one in their common parent
   const groups = [...new Set(curves.map((c) => shapeGroupOf(store, c.id)).filter((g): g is ContainerRecord => !!g))]
   if (groups.length > 1)
     return fail('INVALID', `这块区域的线分属不同的形状组（${groups.map((g) => g.name || g.id).join('、')}）：合并形状组暂不支持`, groups.map((g) => g.id))
@@ -107,7 +131,7 @@ export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): 
     members.forEach((c, i) => puts.push({ ...c, parentId: id, index: fresh[i] }))
   }
 
-  // 3. the face, in the group (faces are drawn below the lines whatever the index; new faces above older faces)
+  // 4. the face, in the group (faces are drawn below the lines whatever the index; new faces above older faces)
   const topFace = childrenOf(store as any, group.id, 'fill').map((id) => (store.get(id as any) as FillRecord).index).sort().at(-1) ?? null
   const fill = Fill.create({
     id: (cmd.fillId ?? ids.take('fill', () => Fill.createId())) as RecordId<FillRecord>,
@@ -120,4 +144,26 @@ export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): 
   puts.push(fill)
   creates.push(fill.id)
   return { ok: true, label: 'paintRegion', puts, affected: [group.id, fill.id, ...curves.map((c) => c.id)], creates }
+}
+
+/**
+ * A path's own fill whose path is cut into two pieces (dot 1791354232: the whole shape is carried by a shape group, not
+ * by the first piece alone): a shape group takes the path's place in its parent, both pieces go into it (the first
+ * piece below the second, as they were drawn), and each own fill becomes a face of the group. breakAt passes its
+ * planned pieces and the fills as planned (boundaries already re-pointed); returns the records to put instead.
+ */
+export function pathFillToShape(first: CurveRecord, second: CurveRecord, owned: FillRecord[], ids: IdSource): DocRecord[] {
+  const id = ids.take('container', () => Container.createId()) as RecordId<ContainerRecord>
+  const group = Container.create({ id, name: '形状', parentId: first.parentId, index: first.index, shape: true })
+  const [a, b] = getIndicesBetween(null, null, 2)
+  const faces = getIndicesBetween(null, a, owned.length)
+  return [
+    group,
+    { ...first, parentId: id, index: a },
+    { ...second, parentId: id, index: b },
+    ...owned.map((f, i) => {
+      const { owner: _owner, ...face } = f
+      return { ...face, name: '面', parentId: id, index: faces[i] } as FillRecord
+    }),
+  ]
 }

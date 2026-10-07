@@ -12,13 +12,15 @@
 // §21.2); the top-level containers are the layers (Illustrator layers), picked from the layers panel, not the canvas.
 import { atom, type Atom } from '@tldraw/state'
 import { fillContains, hitStack, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { childrenOf, connectionsAt, type Queryable } from './indexes'
+import { childrenOf, connectionsAt, ownFillsOf, type Queryable } from './indexes'
 import { anchorKey } from './model'
 import { poseIdOf, type BaseReader, type DocRecord, type MaskRecord, type Vec } from './schema'
 
 type Reader = Pick<BaseReader, 'get'>
+/** a path's own fill counts as part of its path (doc 18 §30.18): selected, grouped under and inside it */
 const parentOf = (reader: Reader, id: string): string | null => {
   const r = reader.get(id as any) as (DocRecord & { parentId?: string | null }) | undefined
+  if (r?.typeName === 'fill' && r.owner) return r.owner.curveId
   return r && 'parentId' in r ? (r.parentId ?? null) : null
 }
 
@@ -183,7 +185,7 @@ export class Selection {
 
 /**
  * What Delete removes (Illustrator: the selected objects with everything inside them): each id, a container's whole
- * content, and the structural records a removed curve owns — its connections and its head-turn track (project
+ * content, and the records a removed curve owns — its own fill (doc 18 §30.18), its connections and its head-turn track (project
  * adaptation: they cannot outlive the curve). Anything else that still depends on a removed record (a fill bounded by
  * a removed line, a mask naming it) is left to `deleteRecords`, which refuses and names it.
  */
@@ -199,6 +201,7 @@ export function deletionSetOf(reader: BaseReader, ids: readonly string[]): strin
     if (r.typeName === 'curve') {
       for (const a of Object.keys(r.anchors)) connectionsAt(q, anchorKey({ curveId: r.id, anchorId: a })).forEach((c) => out.add(c))
       if (reader.get(poseIdOf(r.id) as any)) out.add(poseIdOf(r.id))
+      ownFillsOf(q, r.id).forEach((f) => out.add(f)) // its own fill is part of it
     }
   }
   ids.forEach(visit)

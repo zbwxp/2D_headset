@@ -188,3 +188,8 @@ export type { CurveRecord }
 /** connections at an anchor, as a per-key computed (for the character preparation; see lookupKey) */
 export const connectionsAtKeyed = (store: Queryable, key: string) =>
   (indexed(store) ? lookupKey(indexesOf(store).connectionsByAnchor, key) : connectionsAt(store, key)) as ConnectionRecord['id'][]
+
+/** the fills that are `curveId`'s own (a path's fill, doc 18 §30.18) */
+export function ownFillsOf(store: Queryable, curveId: string): string[] {
+  return fillsUsing(store as any, curveId as any).filter((id) => (store.get(id as any) as FillRecord | undefined)?.owner?.curveId === curveId)
+}

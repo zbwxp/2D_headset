@@ -6,7 +6,7 @@ import { useValue } from '@tldraw/state-react'
 import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react'
 import type { Command } from '../commands'
 import type { Editor } from '../editor'
-import { childrenOf } from '../indexes'
+import { childrenOf, ownFillsOf } from '../indexes'
 import { layerOf, masksOf } from '../selection'
 import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
@@ -361,7 +361,8 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
             </>
           ) : null}
           {r.typeName === 'container' && (r as ContainerRecord).shape ? <Faces ui={ui} group={r as ContainerRecord} /> : null}
-          {r.typeName === 'curve' || r.typeName === 'container' ? (
+          {r.typeName === 'curve' ? <PathFill ui={ui} curve={r as CurveRecord} /> : null}
+          {r.typeName === 'container' && !(r as ContainerRecord).shape ? (
             <tr><th>填充</th><td><button id="makeFill" title="建立填充：这条闭合线（或组里首尾相接的线）围成的轮廓，用工具栏的填充色" onClick={() => view.fillSelection()}>建立填充</button></td></tr>
           ) : null}
           {r.typeName === 'curve' ? (
@@ -400,6 +401,35 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <AnchorsSection ui={ui} />
       {r.typeName === 'reference' ? <div className="muted small">引用的源和变换在画布上改（V 移动 / 变换框）。</div> : null}
     </div>
+  )
+}
+
+/**
+ * A path's own fill (doc 18 §30.18; Illustrator: the fill is an attribute of the selected path): its colour, 无 to remove
+ * it (the path stays); without one, 填充 gives the path a fill of the toolbar colour (the outline it encloses — a path
+ * whose ends do not meet is refused with the reason). A path inside a shape group is coloured through its shape's faces.
+ */
+function PathFill({ ui, curve }: { ui: Ui; curve: CurveRecord }) {
+  const editor = ui.editor
+  const own = useValue('path fill', () => (void editor.revision, ownFillsOf(editor.reader as any, curve.id).map((id) => editor.reader.get(id as any) as FillRecord)[0]), [editor, curve.id])
+  if (own)
+    return (
+      <tr data-path-fill={own.id}>
+        <th>填充</th>
+        <td className="inline">
+          <ColorInput prop="pathFill" value={own.color} onCommit={(v) => ui.apply({ type: 'setProps', id: own.id, color: v })} />
+          <button data-path-fill-none title="去掉这条路径的填充（路径留着）" onClick={() => ui.apply({ type: 'deleteRecords', ids: [own.id] })}>无</button>
+        </td>
+      </tr>
+    )
+  return (
+    <tr>
+      <th>填充</th>
+      <td className="inline">
+        <span className="muted">无</span>
+        <button id="makeFill" title="给这条路径填上工具栏的填充色（路径要首尾相接）" onClick={() => ui.view.fillSelection()}>填充</button>
+      </td>
+    </tr>
   )
 }
 

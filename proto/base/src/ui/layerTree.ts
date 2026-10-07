@@ -35,7 +35,7 @@ export function layerRows(reader: BaseReader, expanded: (id: string) => boolean)
   const out: LayerRow[] = []
   const walk = (parentId: string | null, depth: number, hiddenBy?: string, lockedBy?: string) => {
     const parent = parentId ? (reader.get(parentId as any) as ContainerRecord | undefined) : undefined
-    for (const r of parent ? rowsOf(reader, parent) : childrenFrontFirst(reader, null)) {
+    for (const r of rowsOf(reader, parent)) {
       const isC = r.typeName === 'container'
       const kids = isC ? rowsOf(reader, r) : []
       out.push({
@@ -55,8 +55,10 @@ export function layerRows(reader: BaseReader, expanded: (id: string) => boolean)
   walk(null, 0)
   return out
 }
-/** the children shown as rows: a shape group's faces are not rows (they are listed in its properties) */
-const rowsOf = (reader: BaseReader, c: ContainerRecord): Item[] => childrenFrontFirst(reader, c.id).filter((k) => !(c.shape && k.typeName === 'fill'))
+/** the children shown as rows: a shape group's faces and a path's own fill are not rows (they are listed in the shape's /
+ *  path's properties) */
+const rowsOf = (reader: BaseReader, c: ContainerRecord | undefined): Item[] =>
+  childrenFrontFirst(reader, c?.id ?? null).filter((k) => !(k.typeName === 'fill' && (c?.shape || (k as FillRecord).owner)))
 
 /** Shift+click in the list: the rows between the anchor row and this one (Figma / Finder range selection) */
 export function rangeOf(rows: LayerRow[], from: string, to: string): string[] {

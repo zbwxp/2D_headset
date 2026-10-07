@@ -24,7 +24,9 @@ type Item = DocRecord & { parentId: string | null; index: string }
 const KINDS = ['container', 'curve', 'fill', 'reference'] as const
 const fail = (code: EditError['code'], message: string, objects: string[], fixes: string[] = []): Plan => ({ ok: false, error: { code, message, objects, fixes } })
 const byOrder = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-const siblings = (store: BaseReader, parent: string | null): Item[] => KINDS.flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter(Boolean).sort(byOrder)
+/** the ordered siblings; a path's own fill is not one (it is drawn with its path, doc 18 §30.18 — its index is unused) */
+const siblings = (store: BaseReader, parent: string | null): Item[] =>
+  KINDS.flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter((r) => r && !(r.typeName === 'fill' && r.owner)).sort(byOrder)
 const isItem = (r: DocRecord | undefined): r is Item => !!r && (KINDS as readonly string[]).includes(r.typeName)
 
 /** the items, each refused when it (or its container chain) is locked; nested selections drop the inner one */

@@ -183,8 +183,9 @@ export function plan(store: DocStore, cmd: Command, ids: IdSource = freshIds): P
 
 function planChecked(store: DocStore, cmd: Command, ids: IdSource): Plan {
   counters.plans++
-  const p = planRaw(store, cmd, ids)
-  if (!p.ok) return p
+  const raw = planRaw(store, cmd, ids)
+  if (!raw.ok) return raw
+  const p = carryOwnedFills(store, raw)
   const removals = p.removals ?? []
   const unique = overlayConflict(p.puts, removals)
   if (unique) return unique
@@ -237,6 +238,7 @@ function relationCheck(store: DocStore, puts: DocRecord[], removals: string[] = 
   for (const r of puts) {
     const old = store.get(r.id as any) as DocRecord | undefined
     if (old?.typeName === 'curve' && r.typeName === 'curve') {
+      if (old.parentId !== r.parentId) for (const f of fillsUsing(store, r.id)) incoming.add(f) // a path's own fill stays with it
       for (const k of Object.keys(old.anchors)) if (!r.anchors[k]) for (const c of connectionsAt(store, anchorKey({ curveId: r.id, anchorId: k }))) incoming.add(c)
       // stage-1 records name a curve's anchors (forms shapes, rule correspondence, fine-tune): re-check them too
       if (Object.keys(old.anchors).some((k) => !r.anchors[k]) || Object.keys(r.anchors).some((k) => !old.anchors[k])) for (const m of mentioning(store, r.id)) incoming.add(m)
@@ -334,6 +336,25 @@ function removalGuard(store: DocStore, removals: string[]): Plan | null {
     if (old.typeName === 'container' && old.locked) return fail('LOCKED', `${id} is locked`, [id], [`unlock ${id}`])
   }
   return null
+}
+
+/**
+ * A path's own fill stays with its curve (doc 18 §30.18): whatever command moves a curve to another container (group,
+ * a shape group, …) carries the curve's own fills along, in the same plan. Generic, so no command has to remember it.
+ */
+function carryOwnedFills(store: DocStore, p: Extract<Plan, { ok: true }>): Extract<Plan, { ok: true }> {
+  const written = new Set([...p.puts.map((r) => r.id as string), ...(p.removals ?? [])])
+  const extra: DocRecord[] = []
+  for (const r of p.puts) {
+    if (r.typeName !== 'curve') continue
+    const old = store.get(r.id as any) as CurveRecord | undefined
+    if (!old || old.parentId === r.parentId) continue
+    for (const id of fillsUsing(store, r.id)) {
+      const f = getAs(store, id, 'fill')
+      if (f?.owner?.curveId === r.id && !written.has(f.id)) extra.push({ ...f, parentId: r.parentId })
+    }
+  }
+  return extra.length ? { ...p, puts: [...p.puts, ...extra], affected: [...p.affected, ...extra.map((f) => f.id as string)] } : p
 }
 
 /**

@@ -10,6 +10,8 @@ import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { faceAt } from '../src/fills'
 import { contentOf } from '../src/clipboard'
+import { layerRows } from '../src/ui/layerTree'
+import { deletionSetOf, unitOf } from '../src/selection'
 import { Container, Curve, Family, Mask, type DocRecord } from '../src/schema'
 
 const anchor = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
@@ -24,7 +26,7 @@ const face = (e: Editor, x: number, y: number) => {
   return f.boundary
 }
 /** apply, typed loosely: a refused result has no `affected` */
-const run = (e: Editor, cmd: Command): any => e.apply(cmd)
+const run = (e: Editor, cmd: any): any => e.apply(cmd as Command)
 const recs = (e: Editor) => JSON.stringify(e.reader.allRecords().sort((a, b) => (a.id < b.id ? -1 : 1)))
 const get = (e: Editor, id: string) => e.reader.get(id as any) as any
 const paintOrder = (e: Editor) => e.derived.evaluated().paint.map((p) => p.item.address)
@@ -157,37 +159,6 @@ describe('after painting: clear, cut, delete, ungroup, copy, save / reopen', () 
     if (!r.ok) expect(r.error.objects).toContain(fid)
   })
 
-  it('one closed line: its own shape group; cut into two pieces, both stay in the group and the face keeps its area', () => {
-    const sq = Curve.create({
-      id: Curve.createId('sq'),
-      name: 'sq',
-      parentId: 'container:L' as any,
-      index: 'a1',
-      anchors: { a: anchor('a', 0, 0), b: anchor('b', 10, 0), c: anchor('c', 10, 10), d: anchor('d', 0, 10) },
-      segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }],
-      closed: true,
-    })
-    const e = new Editor([layer(), sq])
-    const [gid, fid] = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected
-    expect(get(e, 'curve:sq').parentId).toBe(gid)
-    const area = (id: string) => JSON.stringify(e.derived.evaluated().fills.find((f) => f.address === id)!.cubics)
-    const before = area(fid)
-    expect(run(e, { type: 'breakAt', curveId: 'curve:sq' as any, anchorId: 'a' }).ok).toBe(true) // open
-    const cut = run(e, { type: 'breakAt', curveId: 'curve:sq' as any, anchorId: 'c' })
-    expect(cut.ok).toBe(true)
-    const pieces = e.reader.allRecords().filter((r) => r.typeName === 'curve')
-    expect(pieces.length).toBe(2)
-    for (const p of pieces) expect((p as any).parentId).toBe(gid)
-    expect(get(e, fid).parentId).toBe(gid)
-    // still closed (bridges at the cuts) and the same area
-    const f = e.derived.evaluated().fills.find((x) => x.address === fid)!
-    expect(f.cubics.length).toBeGreaterThan(0)
-    expect(JSON.stringify(f.cubics.filter((c) => !(c[0].x === c[3].x && c[0].y === c[3].y)))).toBe(JSON.stringify(JSON.parse(before).filter((c: any) => !(c[0].x === c[3].x && c[0].y === c[3].y))))
-    // V selects the group as one unit: moving it moves every piece and the face
-    expect(run(e, { type: 'transformItems', ids: [gid], matrix: { a: 1, b: 0, c: 0, d: 1, e: 5, f: 0 } }).ok).toBe(true)
-    expect(e.derived.evaluated().fills.find((x) => x.address === fid)!.cubics[0][0].x).toBeGreaterThanOrEqual(5)
-  })
-
   it('copy / paste the shape group: a new shape group with its own face on the new lines; save and reopen keep it', () => {
     const e = new Editor(triangle())
     const [gid] = run(e, { type: 'paintRegion', boundary: face(e, 5, 3), color: '#ff0000' }).affected
@@ -202,6 +173,101 @@ describe('after painting: clear, cut, delete, ungroup, copy, save / reopen', () 
     expect(copyFace.color).toBe('#ff0000')
     expect(copyFace.boundary.every((b: any) => ('bridge' in b ? get(e, b.bridge.from.curveId).parentId === copy.id : get(e, b.curveId).parentId === copy.id))).toBe(true)
     // save → reopen
+    const reopened = new Editor()
+    reopened.load(JSON.parse(JSON.stringify(e.save())))
+    expect(recs(reopened)).toBe(recs(e))
+    expect(paintOrder(reopened)).toEqual(paintOrder(e))
+  })
+})
+
+const square = (parent = 'container:L') =>
+  Curve.create({
+    id: Curve.createId('sq'),
+    name: 'sq',
+    parentId: parent as any,
+    index: 'a1',
+    anchors: { a: anchor('a', 0, 0), b: anchor('b', 10, 0), c: anchor('c', 10, 10), d: anchor('d', 0, 10) },
+    segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }],
+    closed: true,
+  })
+const solid = (e: Editor, id: string) => JSON.stringify(e.derived.evaluated().fills.find((f) => f.address === id)!.cubics.filter((c) => !(c[0].x === c[3].x && c[0].y === c[3].y)))
+
+describe("a path's own fill (doc 18 §30.18; dot 1791356669: one closed path is filled as its attribute, no group)", () => {
+  it('K inside one closed path: the fill is the path\'s own — no group, drawn just below it, selected / listed / deleted with it', () => {
+    const e = new Editor([layer(), line('z', 50, 50, 60, 60, 'container:L', 'a0'), square(), line('y', 70, 70, 80, 80, 'container:L', 'a2')])
+    const r = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' })
+    expect(r.ok).toBe(true)
+    const [cid, fid] = r.affected
+    expect(cid).toBe('curve:sq')
+    expect(get(e, fid)).toMatchObject({ parentId: 'container:L', owner: { kind: 'path', curveId: 'curve:sq' } })
+    expect(e.reader.allRecords().filter((x) => x.typeName === 'container').length).toBe(1)
+    expect(paintOrder(e)).toEqual(['curve:z', fid, 'curve:sq', 'curve:y'])
+    // arranged to the front: the fill comes along, still just below
+    run(e, { type: 'arrange', ids: ['curve:sq'], to: 'front' })
+    expect(paintOrder(e)).toEqual(['curve:z', 'curve:y', fid, 'curve:sq'])
+    expect(unitOf(e.reader as any, fid)).toBe('curve:sq')
+    expect(layerRows(e.reader, () => true).map((x) => x.id)).not.toContain(fid)
+    expect(deletionSetOf(e.reader, ['curve:sq'])).toContain(fid)
+    expect(run(e, { type: 'deleteRecords', ids: deletionSetOf(e.reader, ['curve:sq']) }).ok).toBe(true)
+    expect(get(e, fid)).toBeUndefined()
+  })
+
+  it('the path grouped (⌘G): its fill moves into the group with it in the same write; the fill alone cannot leave its path', () => {
+    const e = new Editor([layer(), square()])
+    const fid = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1]
+    const g = run(e, { type: 'group', ids: ['curve:sq'] })
+    expect(g.ok).toBe(true)
+    expect(get(e, fid).parentId).toBe(get(e, 'curve:sq').parentId)
+    e.undo()
+    expect(get(e, fid).parentId).toBe('container:L')
+    const alone = run(e, { type: 'group', ids: [fid] })
+    expect(alone.ok).toBe(false)
+    if (!alone.ok) expect(alone.error.code).toBe('BAD_REFERENCE')
+  })
+
+  it('copy / paste the path: the copy has its own fill on the copied path', () => {
+    const e = new Editor([layer(), square()])
+    const fid = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1]
+    const content = contentOf(e.reader, ['curve:sq'])
+    const pasted = run(e, { type: 'pasteContent', content, parentId: 'container:L' as any, offset: { x: 30, y: 0 } })
+    expect(pasted.ok).toBe(true)
+    const fills = e.reader.allRecords().filter((x) => x.typeName === 'fill') as any[]
+    expect(fills.length).toBe(2)
+    const copy = fills.find((f) => f.id !== fid)
+    expect(copy.owner.curveId).not.toBe('curve:sq')
+    expect(copy.boundary.every((b: any) => b.curveId === copy.owner.curveId)).toBe(true)
+  })
+
+  it('cut once (opened): still the path\'s own fill, same area; cut again into two pieces: a shape group carries the whole shape', () => {
+    const e = new Editor([layer(), square()])
+    const fid = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1]
+    const before = solid(e, fid)
+    expect(run(e, { type: 'breakAt', curveId: 'curve:sq', anchorId: 'a' }).ok).toBe(true)
+    expect(get(e, fid).owner).toEqual({ kind: 'path', curveId: 'curve:sq' })
+    expect(solid(e, fid)).toBe(before)
+    const cut = run(e, { type: 'breakAt', curveId: 'curve:sq', anchorId: 'c' })
+    expect(cut.ok).toBe(true)
+    expect(e.history.undo.at(-1)).toBe('breakAt') // one step
+    const group = e.reader.allRecords().find((x: any) => x.typeName === 'container' && x.shape) as any
+    expect(group).toMatchObject({ parentId: 'container:L', name: '形状' })
+    const pieces = e.reader.allRecords().filter((x) => x.typeName === 'curve') as any[]
+    expect(pieces.length).toBe(2)
+    for (const p of pieces) expect(p.parentId).toBe(group.id)
+    expect(get(e, fid).owner).toBeUndefined()
+    expect(get(e, fid).parentId).toBe(group.id)
+    expect(solid(e, fid)).toBe(before)
+    expect(paintOrder(e)[0]).toBe(fid) // the face below both pieces
+    // V moves the whole shape as one unit
+    expect(unitOf(e.reader as any, pieces[1].id)).toBe(group.id)
+    // undo: one closed… opened path with its own fill again
+    e.undo()
+    expect(get(e, fid).owner).toEqual({ kind: 'path', curveId: 'curve:sq' })
+    expect(e.reader.allRecords().some((x: any) => x.typeName === 'container' && x.shape)).toBe(false)
+  })
+
+  it('save and reopen keep the path\'s own fill and its order', () => {
+    const e = new Editor([layer(), square()])
+    run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' })
     const reopened = new Editor()
     reopened.load(JSON.parse(JSON.stringify(e.save())))
     expect(recs(reopened)).toBe(recs(e))

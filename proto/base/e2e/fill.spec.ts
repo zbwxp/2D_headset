@@ -13,7 +13,7 @@ async function click(page: Page, p: { x: number; y: number }) {
 const records = (page: Page, type: string) => page.evaluate((t) => (window as any).__contour.editor.reader.allRecords().filter((r: any) => r.typeName === t), type)
 const undoLabels = (page: Page) => page.evaluate(() => (window as any).__contour.editor.history.undo as string[])
 
-test('新建 → a blank document with one layer (asks first when there are unsaved changes); draw a closed path, K makes it a shape with a face in the toolbar colour, below the line, one undo step; the panels; clear; ungroup refused', async ({ page }) => {
+test('新建 → a blank document with one layer (asks first when there are unsaved changes); draw a closed path, K fills it as its own attribute in the toolbar colour, just below the line, one undo step; panels, 无, V selects the path', async ({ page }) => {
   await open(page)
   await page.evaluate(() => (window as any).__contour.api.apply({ type: 'setProps', id: 'container:L1', name: 'x' })) // unsaved change
   page.once('dialog', (d) => d.accept())
@@ -32,15 +32,13 @@ test('新建 → a blank document with one layer (asks first when there are unsa
   await page.locator('#fillColor').fill('#3366cc')
   await page.keyboard.press('k')
   await click(page, { x: 50, y: 30 })
-  // the line becomes a shape group (doc 18 §30.22) holding it and its face; the shape is selected
+  // one closed path: the fill is the path's own attribute (doc 18 §30.18) — no group; the path is selected
   const [fill] = await records(page, 'fill')
-  const shape = (await records(page, 'container')).find((c: any) => c.shape)
-  expect(shape).toMatchObject({ name: '形状', parentId: layers[0].id })
-  expect(fill).toMatchObject({ color: '#3366cc', parentId: shape.id })
-  expect((await records(page, 'curve'))[0]).toMatchObject({ id: curve.id, parentId: shape.id })
-  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual([shape.id])
+  expect((await records(page, 'container')).length).toBe(1)
+  expect(fill).toMatchObject({ color: '#3366cc', parentId: layers[0].id, owner: { kind: 'path', curveId: curve.id } })
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual([curve.id])
   const order = await page.evaluate(() => (window as any).__contour.editor.derived.evaluated().paint.map((p: any) => p.item.address))
-  expect(order).toEqual([fill.id, curve.id]) // the face under its line
+  expect(order).toEqual([fill.id, curve.id]) // just below its path
   expect(await undoLabels(page)).toEqual(['createCurve', 'paintRegion'])
   // the same area again recolours it (no second fill)
   await page.locator('#fillColor').fill('#cc3333')
@@ -50,22 +48,19 @@ test('新建 → a blank document with one layer (asks first when there are unsa
   await click(page, { x: 120, y: 100 })
   await expect(page.locator('#status')).toContainText('没有被线围起来的区域')
   expect(await undoLabels(page)).toEqual(['createCurve', 'paintRegion', 'paintRegion'])
-  // the layers panel: a 形状 row holding the line, no separate face row; the properties list the face
-  await expect(page.locator(`[data-id="${shape.id}"] .kind`)).toHaveAttribute('title', '形状')
+  // panels: no row of its own; the path's properties show 填充 with 无
   await expect(page.locator(`[data-id="${fill.id}"]`)).toHaveCount(0)
-  await expect(page.locator(`[data-id="${curve.id}"]`)).toHaveCount(1)
-  await expect(page.locator(`#propsPanel [data-face="${fill.id}"]`)).toHaveCount(1)
-  // 清除: the face goes, the shape group and its line stay; ⌘Z brings it back
-  await page.click(`#propsPanel [data-face="${fill.id}"] [data-face-clear]`)
+  await expect(page.locator(`#propsPanel [data-path-fill="${fill.id}"]`)).toHaveCount(1)
+  await page.click('#propsPanel [data-path-fill-none]')
   expect(await records(page, 'fill')).toEqual([])
-  expect((await records(page, 'curve'))[0].parentId).toBe(shape.id)
-  await expect(page.locator('#propsPanel')).toContainText('没有颜色')
+  expect(await records(page, 'curve')).toHaveLength(1)
   await page.keyboard.press('Meta+z')
   expect((await records(page, 'fill')).map((f: any) => f.id)).toEqual([fill.id])
-  // ungroup is refused while the shape has a face (Illustrator: a Live Paint group is not simply ungrouped)
-  await page.click(`[data-id="${shape.id}"]`)
-  await page.click('#ungroupSel')
-  await expect(page.locator('#status')).toContainText('先在属性里清除')
+  // V on the fill selects the path
+  await page.keyboard.press('v')
+  await click(page, { x: 120, y: 100 })
+  await click(page, { x: 50, y: 40 })
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual([curve.id])
 })
 
 test('K on the example jaw: the existing fill F is recoloured (refused while its layer is locked)', async ({ page }) => {
@@ -79,7 +74,7 @@ test('K on the example jaw: the existing fill F is recoloured (refused while its
   expect((await records(page, 'fill')).map((f: any) => [f.id, f.color])).toEqual([['fill:F', '#00aa00']])
 })
 
-test('select a closed line, 建立填充 in the properties panel: its fill in the toolbar colour, under the line, one step; an open line is refused with the reason', async ({ page }) => {
+test('select a closed line, 填充 in the properties panel: its own fill in the toolbar colour, under the line, one step; an open line is refused with the reason', async ({ page }) => {
   await open(page)
   await page.click('[data-id="container:L1"]')
   await page.keyboard.press('p')
@@ -88,12 +83,50 @@ test('select a closed line, 建立填充 in the properties panel: its fill in th
   await page.locator('#fillColor').fill('#123456')
   await page.click('#propsPanel #makeFill')
   const fill = (await records(page, 'fill')).find((f: any) => f.id !== 'fill:F')
-  const shape = (await records(page, 'container')).find((c: any) => c.shape)
-  expect(shape).toMatchObject({ parentId: 'container:L1' })
-  expect(fill).toMatchObject({ color: '#123456', parentId: shape.id })
+  expect(fill).toMatchObject({ color: '#123456', parentId: 'container:L1', owner: { kind: 'path', curveId: curve } })
   expect(fill.boundary.map((b: any) => b.curveId)).toEqual([curve, curve, curve])
   expect((await undoLabels(page)).at(-1)).toBe('paintRegion')
   await page.click('[data-id="curve:E1"]') // an open line
   await page.click('#propsPanel #makeFill')
   await expect(page.locator('#status')).toContainText('没有围成闭合轮廓')
+})
+
+test('K inside three separate lines: a 形状 group holds them and the face; the panels; 清除 keeps the shape; ungroup refused while it has a face', async ({ page }) => {
+  await open(page)
+  await page.click('#fileNew')
+  const layer = (await records(page, 'container'))[0].id
+  await page.evaluate((L) => {
+    const { api } = (window as any).__contour
+    const a = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    const line = (n: string, i: string, p: [number, number], q: [number, number]) => api.apply({ type: 'createCurve', id: `curve:${n}`, parentId: L, index: i, anchors: { p: a('p', ...p), q: a('q', ...q) }, segments: [{ id: 's', from: 'p', to: 'q' }] })
+    line('a', 'a1', [20, 10], [80, 10])
+    line('b', 'a2', [80, 10], [50, 70])
+    line('c', 'a3', [50, 70], [20, 10])
+  }, layer)
+  expect((await records(page, 'curve')).length).toBe(3)
+  await page.locator('#fillColor').fill('#3366cc')
+  await page.keyboard.press('k')
+  await click(page, { x: 50, y: 30 })
+  const [fill] = await records(page, 'fill')
+  const shape = (await records(page, 'container')).find((c: any) => c.shape)
+  expect(shape).toMatchObject({ name: '形状', parentId: layer })
+  expect(fill).toMatchObject({ color: '#3366cc', parentId: shape.id })
+  expect(fill.owner).toBeUndefined()
+  for (const c of await records(page, 'curve')) expect(c.parentId).toBe(shape.id)
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual([shape.id])
+  expect((await undoLabels(page)).at(-1)).toBe('paintRegion')
+  // panels: a 形状 row, no face row; the shape's faces in its properties
+  await expect(page.locator(`[data-id="${shape.id}"] .kind`)).toHaveAttribute('title', '形状')
+  await expect(page.locator(`[data-id="${fill.id}"]`)).toHaveCount(0)
+  await expect(page.locator(`#propsPanel [data-face="${fill.id}"]`)).toHaveCount(1)
+  // ungroup refused while it has a face
+  await page.click('#ungroupSel')
+  await expect(page.locator('#status')).toContainText('先在属性里清除')
+  // 清除: the face goes, the group and its lines stay; ⌘Z brings it back
+  await page.click(`#propsPanel [data-face="${fill.id}"] [data-face-clear]`)
+  expect(await records(page, 'fill')).toEqual([])
+  for (const c of await records(page, 'curve')) expect(c.parentId).toBe(shape.id)
+  await expect(page.locator('#propsPanel')).toContainText('没有颜色')
+  await page.keyboard.press('Meta+z')
+  expect((await records(page, 'fill')).map((f: any) => f.id)).toEqual([fill.id])
 })

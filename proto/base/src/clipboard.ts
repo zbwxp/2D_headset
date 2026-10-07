@@ -6,7 +6,7 @@
 import { Store, type RecordId, type SerializedSchema } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { planCopyInto } from './duplicate'
-import { connectionsAt, containersWithin, familiesOf, within } from './indexes'
+import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within } from './indexes'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, schema, type BaseReader, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
@@ -39,6 +39,7 @@ export function contentOf(reader: BaseReader, ids: readonly string[], origin?: s
         for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(reader, c, t)) sel.add(x)
       }
   }
+  for (const id of [...sel]) for (const f of ownFillsOf(reader, id)) sel.add(f) // a path's own fill goes with its path
   const recs = [...sel].sort().map((id) => reader.get(id as any) as DocRecord)
   const curves = recs.filter((r): r is CurveRecord => r.typeName === 'curve')
   const fam = curves.filter((c) => familiesOf(reader, c.id).length)

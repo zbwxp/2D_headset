@@ -130,6 +130,16 @@ export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<Bas
     const gap = boundaryGap(store as BaseReader, r.boundary)
     if (gap) out.push({ object: r.id, field: 'boundary', target: gap.join(' / '), message: `${r.id}: boundary is not continuous between ${gap[0]} and ${gap[1]}` })
   }
+  // a path's own fill lives with its curve and reads only it (doc 18 §30.18)
+  if (r.typeName === 'fill' && r.owner) {
+    const c = getAs(store, r.owner.curveId, 'curve')
+    if (!c) need('owner.curveId', r.owner.curveId, 'curve')
+    else {
+      if (c.parentId !== r.parentId) out.push({ object: r.id, field: 'parentId', target: c.id, message: `${r.id}: a path's fill must be in its path's container (${c.parentId}, not ${r.parentId})` })
+      const other = r.boundary.flatMap((b) => ('bridge' in b ? [b.bridge.from.curveId, b.bridge.to.curveId] : [b.curveId])).find((id) => id !== c.id)
+      if (other) out.push({ object: r.id, field: 'boundary', target: other, message: `${r.id}: a path's fill reads only its path ${c.id} (not ${other})` })
+    }
+  }
   if (r.typeName === 'fill')
     r.boundary.forEach((b, i) => {
       if ('bridge' in b) {

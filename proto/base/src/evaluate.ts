@@ -114,7 +114,11 @@ const KEY_TIE = '\u0001'
  * whole subtrees, so a container's content stays contiguous. `stopAt` (exclusive) gives the key
  * relative to a referenced source container. Depth offsets are NOT applied (D1; `unappliedDepthOffsets`).
  */
-export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; typeName?: string; parentId: RecordId<ContainerRecord> | null; index: string }, stopAt?: string) {
+export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; typeName?: string; parentId: RecordId<ContainerRecord> | null; index: string; owner?: unknown }, stopAt?: string): string {
+  // a path's own fill is drawn where its path is, just below it (doc 18 §30.18): its path's key, the tie broken by
+  // `byKey` (a fill before the line)
+  const owner = rec.typeName === 'fill' && rec.owner ? (store.get((rec as FillRecord).owner!.curveId) as CurveRecord | undefined) : undefined
+  if (owner) return paintKey(store, owner, stopAt)
   let parent = rec.parentId ? (store.get(rec.parentId) as ContainerRecord | undefined) : undefined
   const parts = [levelPart(parent, rec)]
   while (parent && parent.id !== stopAt) {
@@ -131,8 +135,10 @@ export function paintKey(store: Pick<DocStore, 'get'>, rec: { id: string; typeNa
  */
 const levelPart = (parent: ContainerRecord | undefined, r: { id: string; typeName?: string; index: string }) =>
   (parent?.shape ? (r.typeName === 'fill' ? '0' : '1') : '') + r.index + KEY_TIE + r.id
+const tieRank = (address: string) => (address.startsWith('fill:') ? 0 : 1)
+/** a path's own fill has its path's key: on equal keys a fill comes first (below its line), then the address */
 export const byKey = (a: { key: string; address: string }, b: { key: string; address: string }) =>
-  a.key < b.key ? -1 : a.key > b.key ? 1 : a.address < b.address ? -1 : a.address > b.address ? 1 : 0 // address: stable tie-break
+  a.key < b.key ? -1 : a.key > b.key ? 1 : tieRank(a.address) - tieRank(b.address) || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0) // address: stable tie-break
 
 /** The list split by kind; one place, so `curves` / `fills` can never disagree with `paint`. */
 export function fromPaint(input: PaintInput[], maskDefs: MaskDef[] = []): Evaluated {
