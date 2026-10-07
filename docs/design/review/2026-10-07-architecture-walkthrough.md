@@ -2234,9 +2234,30 @@ After each complete edit, a fill exists if and only if its loop still exists: it
 - **Item 2 follows too:** moving part of a loop to another layer means the loop is no longer in one layer, so the fill is gone. No separate refusal rule is needed. A warning before the move would be UI only and would not change the rule.
 - **Asked bowen to confirm.**
 
+### dot (1791392383)
+
+Agrees: the object relation decides the result. A fill depends on its closed loop; if the loop does not hold, neither does the fill.
+- Maintain this relation once, after each complete edit.
+- Adding a point or merging endpoints first updates the existing loop's boundary references, then checks whether the loop still holds.
+- Do not find some new loop and move the old colour onto it.
+
+### bowen (1791392425)
+
+> 2的例子同样，软件设计原则是不阻止行为但是展示后果。按照原则写的代码 在2的例子里 你复制过去对于原本图层，你如果是复制过去 那原本图层线条还是闭合， 你如果是复制完再删除 那原本图层就删除了。还需要解释吗？
+
+**General design principle (bowen): do not block an action; show its consequences.**
+
+"Move to another layer" is not a separate primitive. It is either copy or copy-then-delete:
+- **Copy only:** the original layer's lines remain, the loop stays closed, and the fill stays.
+- **Copy, then delete:** the original line is deleted, the loop is no longer closed, and the fill is gone.
+
+### Claude (1791392438)
+
+Understood. Following the same reasoning: every endpoint is the end of a specific curve. A bind acts on the end of the curve the user clicked, and that curve is the one deleted, so the program never guesses. Recorded this way unless bowen objects.
+
 ### Status
 
 - 1: decided (甲, as a natural result of the principle, not a special case).
 - 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
-- 2: waiting for bowen.
-- Curve-end question: waiting for bowen.
+- 2: decided. Move = copy or copy-then-delete; the result follows from the principle. Do not block; show consequences.
+- Curve-end question: recorded as "the clicked curve's end", unless bowen objects.
