@@ -935,6 +935,54 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 
 **Still unverified:** what Figma does to existing fills when a line is added across a filled region, and when a separating line is deleted.
 
+### dot's independent review (1791385538, summarised)
+
+**The change is self-consistent.** It removes the θ ambiguity of the outer ring counting as an extra fill. No hard contradiction found.
+
+**Three items need meaning settled:**
+
+1. **Is a region split by geometric intersection, or only by shared endpoints?**
+   - Example: a line across a circle, with no node added by hand where it crosses. Does it split the circle in two?
+   - Both models are possible and give different results.
+   - "Adding a line cuts it in two" reads like geometric intersection. **The old code's "no shared endpoint, no split" must not be assumed.**
+2. **A smallest region can have two boundaries.**
+   - Put a small circle inside a large circle and include both in the same partition. The result is an inner disc and an outer ring.
+   - The ring is one smallest region with an inner and an outer boundary.
+   - So "a fill belongs to a closed curve" should be extended to **"a fill belongs to a face, and a face is enclosed by one or more boundaries"**.
+   - No separate hole-punching tool is needed.
+3. **How fill colour carries over when a region splits or merges.**
+   - Two halves of a split red circle both inheriting red is the natural candidate.
+   - Red and blue merging into one face: keep one of the colours, or clear it.
+   - "Only one single-colour face remains" and "the original red / blue split stays unchanged" cannot both hold.
+   - A small region that disappears and reappears during a drag needs a similar rule.
+
+**Limits on Claude's conclusions:**
+
+- **"No overlap" only holds inside one partition.** It does not remove paint order between different layers or objects.
+- **A gradient does not necessarily break when the region is split in two.** If both parts inherit the original gradient coordinates, it stays continuous. It only changes if each new region rescales the gradient.
+- **Whether blur applies per face or to the whole** is decided at the effects level.
+
+**Comparison:**
+
+- It is close to how Figma's paint bucket works region by region, but the data models are not the same.
+- **Adobe Live Paint is a more direct comparison:** edges are split at intersections and the enclosed faces are coloured. Source (opened by dot): <https://helpx.adobe.com/illustrator/desktop/paint-and-fill/learn-painting-basics/about-live-paint.html>
+- No more arguing against the seams bowen has already accepted.
+
+### Merged result (Claude accepts dot's corrections)
+
+- **Claude's restatement "lines that only cross do not split a region" is withdrawn as a fact.** It came from the old code (fills.ts:3-6) and is not bowen's decision. It becomes **question 1**.
+- **Claude's B3 (holes) becomes dot's point 2.** A face can have several boundaries, and a ring is one face.
+- **Claude's B2 "a gradient is bound to break" was overstated.** Inheriting the gradient coordinates keeps it continuous. Leave it to the effects level.
+- **Claude's B1 merges with dot's point 3:** inheriting colour on split / merge, plus disappear-and-reappear during a drag.
+- **B4 (across layers)** stays deferred.
+- **No hard contradiction found.**
+
+### Three questions for bowen
+
+1. **What splits a region?** Do lines split it wherever they geometrically cross, as in Live Paint, or only where they share an endpoint?
+2. **May a fill's region have holes?** For example the ring between a large and a small circle: is it one face?
+3. **How do colours carry over on split, merge, or disappear-and-reappear?** On split, both halves inherit? On merge, keep which one?
+
 ### Status
 
-**Claude's independent review is done.** Waiting for dot's independent review, then merging.
+**Both independent reviews merged.** Waiting for bowen on the three questions.
