@@ -2090,7 +2090,27 @@ The graph row "Closed curve becomes invalid when" is rewritten to bowen's wordin
    - The upper and lower loops stay closed and keep their fills.
    - The outer loop becomes a figure-eight through one point twice. Per Q18 E that is a drawing error, so a fill on the outer loop becomes invalid?
 
+### dot (1791391503)
+
+The rule holds. There are two distinct actions:
+
+- **Deleting a boundary segment:** the loop breaks and its fill disappears.
+- **Merging adjacent endpoints:** the two points become one, the segment between them is removed, and the remaining boundary is reconnected. A loop that is still closed keeps its fill.
+
+**Endpoint binding must be one complete operation.** Removing the middle segment internally must not trigger "delete line → delete fill" before the remaining boundary is reconnected. The same applies to adding a point (splitting). This is an implementation rule; the user does nothing extra.
+
+**Only closure is preserved, not the exact outline:** nearby curves change shape.
+
+**Case 3 overreached.** bowen said such error shapes get no special care; he did not say self-intersection deletes the fill. **Case 2** (whether the remaining self-loop is kept) is the real boundary to settle.
+
+### Claude agrees (1791391525)
+
+**Case 3 corrected:**
+- By bowen's rule a loop becomes invalid only when one of its curves is deleted.
+- The outer loop's two arcs still exist, so the loop stays valid and **keeps its fill**.
+- How it draws now that it passes through one point twice is "爱怎么填怎么填": no special handling, and no automatic deletion.
+
 ### Status
 
-Waiting for dot's independent review and bowen's answers on cases 2 and 3. The binding rule is not written to the graph yet; it belongs to the endpoint round.
+Only case 2 is left for bowen. The binding rule is not written to the graph yet; it belongs to the endpoint round.
 
