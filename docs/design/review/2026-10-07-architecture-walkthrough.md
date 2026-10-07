@@ -656,7 +656,13 @@ Source: Figma Help "Edit vector layers", section "Add fills to closed regions", 
 
 3. **Click** to change one region. **Press and drag** across several regions to change them all at once.
 
-**Not verified:** after filling a θ as a whole, is it stored as "one region with the outer ring" or "two regions"? The help page does not say.
+**Not verified:** after dragging across both halves of a θ, is it stored as "one region with the outer ring" or "two regions"? The help page does not say.
+
+**Correction (dot 1791384395):** filling both halves in the same colour can look like one whole fill, but it is not necessarily one fill object. A gradient across the whole circle shows the difference.
+
+- So "drag across both halves" **cannot be treated as** "fill the whole θ".
+- What Figma's interaction is worth borrowing: regions found automatically, with a hover preview before you click.
+- bowen's need, "one whole fill defined by the outer ring", stays a separate requirement to judge. It must not be quietly replaced by painting twice.
 
 #### Answer (Claude 1791384311)
 
