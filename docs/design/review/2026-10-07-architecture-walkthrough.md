@@ -162,13 +162,13 @@ From the user's point of view there are three levels:
   - **Correction (dot 1791382315):** "managed separately" does not mean "cannot be picked". Outside the layer tree it can still have its own drag, scale and selection entry. Both options are candidates only and are not recorded as bowen's decision.
 - bowen's earlier requirements (wide adjustment range, slots, X/Y by field, slider and arrow keys; 1791365335) are unaffected either way.
 
-### bowen's judgement (1791382313)
+### bowen's requirement (1791382313)
 
 > 参考图应该放的位置，很显然 它具有slot 而slot是和视觉/快照绑定的。因此它所在的层级应该是快照（不知道你们叫它什么）
 
 bowen 1791382362 added: "我说的你们要加一重判断。如果觉得我说的不对可以反驳"
 
-### Our review of it (Claude 1791382419)
+### Independent judgement 1: Claude (1791382419)
 
 **Agree:** a reference image is an aid for working with views, not artwork, so it should not be an ordinary layer element. The current code already treats it as an exception: export, K fill and snapping all exclude it.
 
@@ -190,12 +190,29 @@ bowen 1791382362 added: "我说的你们要加一重判断。如果觉得我说�
 - So "the reference image lives at snapshot level" depends on first deciding whether, and how, the new version defines snapshots.
 - Drawing at the default view without recording also needs a reference image.
 
+### Independent judgement 2: dot (1791382433)
+
+**dot accepts bowen's reasoning for how slots are used, with one distinction:** a slot being tied to a view or snapshot does not mean the whole image belongs to that snapshot alone.
+
+Example: a 21-view matrix image. Several snapshots use the same image, each at a different position and scale. A sensible split:
+
+- **The image resource:** one copy, shared.
+- **Each view or snapshot:** manages which reference image it uses, plus its position, size and slot.
+- **Ordinary artwork layers:** hold none of this reference state.
+
+dot supports "reference state belongs to the view/snapshot context". dot does not support "each snapshot stores its own copy of the image and its resources". Binding, data ownership and UI placement must each be decided separately.
+
+This agrees with Claude's addition 2. No disagreement recorded so far.
+
+### Confirmed design
+
+**None yet.** Recording rule (dot 1791382433): record the requirement first, then our independent judgements and reasons, and only then the confirmed design. Keep disagreements on record. Don't turn one sentence from bowen straight into fields.
+
 ### Status
 
-**Direction (bowen 1791382313):** reference images do not go in layers; they are bound to views or snapshots.
+**Open.** Waiting for bowen to confirm. The open points are:
 
-**Still undecided:**
-
-- where the image is stored (document level, as proposed);
-- what a "snapshot" is in the new version;
-- the default-view case.
+1. Is the reference state (which image, position, size, slot) part of the view/snapshot context?
+2. Is the image resource shared, with one copy?
+3. What is a "snapshot" in the new version (it does not exist yet)?
+4. What is the default view when there is no snapshot?
