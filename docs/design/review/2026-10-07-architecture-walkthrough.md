@@ -47,13 +47,24 @@ How this section works:
 | Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
 | Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
 | Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
-| Closed curve | becomes invalid when | Any of its enclosing curves is deleted; the fill disappears too. Adding a point (splitting a segment) is not a deletion and keeps the loop. To reduce points without losing the fill, bind adjacent endpoints. "Clear fill" is not "delete loop". | confirmed | bowen 1791391384 (Q20); dot 1791390455 |
+| Closed curve | becomes invalid when | Its lines no longer connect end to end, close, and lie in one layer, checked after each complete edit. This covers deleting a line, unbinding, and copy-then-delete with no per-operation special case. The fill disappears with it. Adding a point keeps the loop. "Clear fill" is not "delete loop". | confirmed | bowen 1791391384 (Q20), 1791392314, 1791392425 (Q21); dot 1791390455 |
 | Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
 | Continuous curve | is drawn as | Its fills first, then all its lines together (lines within the group use a stable drawing order; no separate occlusion relation) | confirmed | bowen 1791390897 (Q18) |
 | Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
 | Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
 | Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
 | Self-crossing figure-eight | is | A drawing / deformation error; no special fill handling | confirmed | bowen 1791390533 (Q18) |
+| Design principle | is | Do not block an action; show its consequences | confirmed | bowen 1791392425 (Q21) |
+| Delete (user action) | removes | Lines only. An endpoint is removed only by binding. | confirmed | bowen 1791392558 (Q22) |
+| Endpoint binding | merges | Two points into one. The first point is kept and the later-bound point is deleted; every line that ended there re-attaches to the kept point. | confirmed | bowen 1791391384 (Q20); v103 `commands.ts:102-110` |
+| Endpoint binding | deletes | Every line whose two ends land on the same point after the bind | confirmed | bowen 1791391384, 1791392871 (Q22) |
+| Endpoint binding | is | One complete edit. Loops still closed afterwards keep their fills; nearby shapes may change. | confirmed | bowen 1791391384; dot 1791391503 (Q20) |
+| Adding a point (split) | keeps | The loop; its reference is updated to the two halves | confirmed | bowen 1791391384 (Q20) |
+| Closed curve | has at least | Two lines (no loop is made of a single line) | confirmed (consequence of binding rule) | bowen 1791392871 (Q22) |
+| Loop passing through one point twice | is | Valid; keeps its fill (special edit kept for tool consistency) | confirmed | bowen 1791391694 (Q20); dot 1791392923 (Q22) |
+| Move to another layer | is | Copy, or copy then delete; not a separate operation | confirmed | bowen 1791392425 (Q21) |
+| Drawing | has no | Cut, only copy and copy-then-delete | confirmed | bowen 1791392233 (Q21) |
+| Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
 
 ---
 
