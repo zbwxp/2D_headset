@@ -986,3 +986,64 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 ### Status
 
 **Both independent reviews merged.** Waiting for bowen on the three questions.
+
+---
+
+## Q9: bowen's fill proposal v2 (Claude's independent review)
+
+**bowen** 1791386268:
+> 删掉红蓝中间线这种相当于出现了undefined/有歧义的情况，此时直接删除所有有歧义的element 即红蓝都删除。这个遇到歧义即破坏性删除应该适用于整个项目。2.渐变模糊面上面添加线条，只要添加了，那么就展现出切段的渐变，这样会非常明显，并且基本上是undesired的效果。那么想要在渐变的面上加线条，就要在新的图层里绘制。这样不是闭合曲线也就不影响渐变了，纯色同理。（我目前想不到什么在渐变填充上还要是用同一组闭合曲线去绘制一根线的情况，成熟方案支持这个吗？）3 区域里的孤岛：要实现这个孤岛就让大圆套小圆，然后用一根线将大圆小圆相连，这样填充两圆之间区域就能形成孤岛，再把连接大圆小圆的线隐藏 就是完美孤岛。（孤岛一半很少用到，我这个方案你可以再攻击一下试试 4. 跨图层用端点联动围成了区域……。 说到这里，我觉得，如果我在填充之前 手动选择一个闭合区域再填充，是不是就直接解决上述所有问题了？ 跨图层也可以精确定义了只要我手动选择了的是闭合曲线 就可以填充。 也不用trap啥的了（同色时候） 这样就是ui交互繁琐一点， 那么在交互设计上，可以油漆桶default只填充最小区域。然后支持人手动选择区域来填充。后填充覆盖先填充。大填充覆盖小填充。
+
+### Mature-tool facts (opened this time)
+
+**Adobe Illustrator Live Paint:**
+
+- **Faces and edges.** An edge is the part of a path between intersection points. A face is the area enclosed by one or more edges, so **islands are supported natively**. A circle with a line across it is two faces. Each face can be filled with a different colour, pattern or gradient. Source: <https://helpx.adobe.com/illustrator/desktop/paint-and-fill/learn-painting-basics/about-live-paint.html>
+- **Editing a path.** Modified or newly created faces are coloured automatically with the group's existing fills. If the result is not wanted, the user repaints with the Live Paint Bucket. Source: <https://helpx.adobe.com/illustrator/desktop/paint-and-fill/learn-painting-basics/modify-live-paint-groups.html>
+- **Deleting a dividing path.** The merged face is filled with "one of the fills previously in the circle"; the figure caption says "the larger fill spreads into the merged area". Same source.
+- **Live Paint Selection tool.** Double-clicking selects all contiguous faces not separated by a painted edge. Same source.
+
+**Figma VectorNetwork:** a region references any loops; several loops give holes (Q7 follow-up A).
+
+### Review
+
+**1. "Ambiguity → destructive delete (delete both red and blue)", applied project-wide**
+
+- **Difference from mature tools (verified):** Illustrator keeps one fill, the larger. bowen's rule is stricter and simpler. Both are workable; it is a product choice.
+- **Gap: what counts as "ambiguous".** Two faces of the **same colour** merging have no conflict. Should they also be deleted? "Project-wide" needs a definition of ambiguity; otherwise it will be applied inconsistently.
+- **Gap: mid-drag.** During a drag a small face can shrink to nothing and then reappear (dot 1791385538). If each frame decides on its own, the fill is deleted halfway through. Suggestion: decide ambiguity **once, at the end of the gesture (commit)**.
+- **Consistent with "deleting a point is serious" (§32.6a):** a destructive delete must say what it deleted, and one undo must restore everything.
+
+**2. Lines on a gradient face go on a new layer**
+
+- **No problem found.** Mature tools allow drawing a line inside a gradient face, but the result is per face: each face gets its own gradient (verified: each face can have its own gradient, and new faces take the group's fill). bowen's call that this is usually unwanted and the line should go on another layer is reasonable.
+- **To confirm:** a line on a new layer is part of no closed curve and splits no face, which is consistent with "lines on different layers do not partition each other".
+
+**3. An island made by connecting the two circles with a line, then hiding that line**
+
+- **Dependency.** "Hide the line's ink but keep the geometry" belongs to the stroke and visibility features, which bowen deferred (1791378715). The island depends on it.
+- **Risk.** If the user deletes the connecting line instead of hiding it, the faces change and, under rule 1, the ring's fill is destroyed. Accidental data loss.
+- **Rendering, unverified.** The region boundary runs along the bridge once in each direction (a zero-width slit). Some anti-aliased renderers may leave a hairline along the hidden bridge; vello #49 notes that a single path can also show conflation gaps. **Needs testing.**
+- **Difference from mature tools (verified):** Live Paint faces and Figma regions express holes directly with several boundaries; no bridge is needed. With the manual selection in item 5, an island is just "pick the outer ring and the inner ring", so the bridge workaround is unnecessary.
+
+**4 and 5. Manual region selection; the bucket defaults to the smallest region; "later covers earlier" and "larger covers smaller"**
+
+- **Real contradiction: the two cover rules conflict.**
+  - Example: manually fill the whole θ red, then use the bucket to fill the upper half blue.
+  - By "later covers earlier", blue is on top.
+  - By "larger covers smaller", red is on top and blue cannot be seen at all.
+  - **One priority must be chosen.**
+- **Gap: which layer holds a manual cross-layer fill.** Selecting the closed curve defines the boundary exactly, but the fill still has to live in one layer, and which one controls its paint order relative to other layers. Options: the active layer, or the front-most layer among the boundary lines. Needs a decision.
+- **Good: rule 1 makes manual regions well defined.** If a manual region loses part of its boundary through an edit, it is ambiguous and is deleted. This avoids the problem from many earlier fill rounds of "where does the fill go after an edit" (dot point 4).
+- **Good: same-colour seams.** A whole manual region is one fill, so there is no seam.
+- **Matches mature tools (verified):** the data matches Figma, where a region references any loops. The interaction matches Live Paint and Figma's Paint tool (default to the smallest region, with hover preview). Live Paint's double-click to select contiguous faces could serve as a quick way to select manually (verified fact; whether to use it is bowen's call).
+
+### Status
+
+**Claude's independent review is done.** Waiting for dot's independent review and the merge.
+
+**Questions for bowen:**
+
+1. Under the destructive-delete rule, does merging two faces of the same colour count as ambiguous?
+2. Between "later covers earlier" and "larger covers smaller", which has priority?
+3. Which layer does a manual cross-layer fill live in?
