@@ -722,6 +722,8 @@ These are batch 2 (interaction feel) items.
 
 - Two 50% coverages composited with the ordinary formula give 75%. Adding decimal places does not fix that. Formula source: <https://www.w3.org/TR/compositing-1/>
 - **For adjacent regions with the same colour and opacity,** both regions can keep their identity for editing, while drawing treats their coverage together. The object structure does not have to change to remove the seam.
+  - **This is only a candidate (dot 1791384756).** It must also stay compatible with paint order, masks and effects; same-colour fills cannot be merged indiscriminately.
+  - This is a feasibility analysis. No implementation has been chosen.
 - **Expanding each region slightly has side effects.** It breaks with transparency, different colours or blur, so it cannot be a general fix. Claude's fix 3 above should carry this caveat.
 - **Hiding the middle line's ink is not the same as deleting the middle segment's geometry:**
   - Hiding the ink keeps the shared boundary.
