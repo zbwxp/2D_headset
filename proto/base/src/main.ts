@@ -56,6 +56,14 @@ createRoot(document.getElementById('side')!).render(h(Fragment, null, h(ToolHelp
 createRoot(document.getElementById('hintRoot')!).render(h(HintLine, { ui }))
 installShortcuts(editor, view, setTool, files)
 
+// the canvas fills the stage (the window resized), never smaller than 640 × 420 (below that the stage scrolls)
+const stage = document.getElementById('stage')!
+const fit = () => {
+  const below = (document.getElementById('hintRoot')?.offsetHeight ?? 0) + statusEl.offsetHeight + 12
+  view.resize(Math.max(640, Math.floor(stage.clientWidth - 22)), Math.max(420, Math.floor(stage.clientHeight - 22 - below)))
+}
+new ResizeObserver(fit).observe(stage)
+
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
 // objects; measuring a mostly off-screen drawing would understate the real cost)
 if (bench) view.fitToContent()

@@ -304,6 +304,23 @@ export class FabricView {
     this.scene = null
     this.render()
   }
+  /**
+   * The canvas size in CSS pixels (the window resized): the drawing keeps its zoom and pan (Illustrator); the reference
+   * canvas B follows (same size and device-pixel ratio as Fabric's lower canvas).
+   */
+  resize(width: number, height: number) {
+    if (width === this.canvas.getWidth() && height === this.canvas.getHeight()) return
+    this.canvas.setDimensions({ width, height })
+    if (this.ref) {
+      const lower = this.canvas.lowerCanvasEl
+      this.ref.el.width = lower.width
+      this.ref.el.height = lower.height
+      this.ref.el.style.width = lower.style.width
+      this.ref.el.style.height = lower.style.height
+    }
+    this.scene = null
+    this.render()
+  }
   get refCanvas() {
     return this.ref?.el ?? null
   }
