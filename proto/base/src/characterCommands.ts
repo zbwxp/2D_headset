@@ -9,7 +9,7 @@ import type { RecordId } from '@tldraw/store'
 import { ctxOf, prepareCharacter, type CharacterGrid } from './character'
 import type { EditError, IdSource, Plan } from './commands'
 import { fitLinear } from './experiments/fineTuneTransfer'
-import { presetFormsIdOf, RULES } from './forms'
+import { paramFor, presetExpr, presetFormsIdOf, presetNeutral } from './forms'
 import { connectionsAt } from './indexes'
 import { anchorKey, getAs, overlayReader } from './model'
 import {
@@ -25,7 +25,6 @@ import {
   type HelperDomainRecord,
   type PointDelta,
   type PresetRecord,
-  type RuleRecord,
   type Shape,
   type Vec,
   type VisibilityRecord,
@@ -38,9 +37,11 @@ export type CharacterCommand =
   | { type: 'setFineTune'; character: CharId; curveId: RecordId<CurveRecord>; anchorId: string; delta: PointDelta | null }
   | { type: 'fixLine'; character: CharId; curveId: RecordId<CurveRecord>; yaw: number; target: Shape }
   | { type: 'fixNode'; character: CharId; connectionId: RecordId<ConnectionRecord>; yaw: number; target: Vec }
-  | { type: 'fixExpression'; character: CharId; curveId: RecordId<CurveRecord>; param: string; yaw: number; target: Shape }
+  /** the character's own expression keyframes at one yaw: one or more curves the parameter names (full shapes) */
+  | { type: 'fixExpression'; character: CharId; param: string; yaw: number; keyframes: Record<string, Shape> }
   | { type: 'clearFix'; character: CharId; id: string }
-  | { type: 'setPresetKey'; preset: RecordId<PresetRecord>; curveId: RecordId<CurveRecord>; yaw: number; shape: Shape }
+  /** a preset key: neutral (no `param`) or the author's expression keyframe of `param` (value 1) */
+  | { type: 'setPresetKey'; preset: RecordId<PresetRecord>; curveId: RecordId<CurveRecord>; yaw: number; shape: Shape; param?: string }
   | { type: 'setVisibilityKey'; preset: RecordId<PresetRecord>; curveId: RecordId<CurveRecord>; yaw: number; visible: boolean }
 
 const fail = (code: EditError['code'], message: string, objects: string[]): Plan => ({ ok: false, error: { code, message, objects, fixes: [] } })
@@ -217,33 +218,51 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
       break
     }
     case 'fixExpression': {
-      const c = famCurve(cmd.curveId)
-      if (!c) return fail('NOT_FOUND', `${cmd.curveId} is not a family curve of ${fam.id}`, [String(cmd.curveId)])
-      const rule = store.allRecords().find((r): r is RuleRecord => r.typeName === 'rule' && r.familyId === fam.id && r.param === cmd.param)
-      const impl = rule && RULES[rule.kind]
-      if (!rule || !impl) return fail('INVALID', `no rule bound to ${fam.id} / ${cmd.param}`, [fam.id])
-      if (rule.roles[impl.moved] !== c.id) return fail('INVALID', `${c.id} is not the moved role (${impl.moved}) of ${rule.id}`, [c.id, rule.id])
-      if (!Number.isFinite(cmd.yaw) || !shapeOk(cmd.target, c)) return fail('INVALID', `a finite yaw and a target listing exactly the anchors of ${c.id} are needed`, [c.id])
+      // the character's own keyframes (doc 18 §29 I-1): full shapes of curves the parameter names; no rule, no base
+      const ep = paramFor(store, fam.id, cmd.param)
+      if (!ep) return fail('INVALID', `no expression parameter ${cmd.param} in ${fam.id}`, [fam.id])
+      if (!Number.isFinite(cmd.yaw)) return fail('INVALID', 'yaw must be finite', [K.id])
+      const targets = Object.entries(cmd.keyframes ?? {})
+      if (!targets.length) return fail('INVALID', 'no target given', [K.id])
+      for (const [cid, sh] of targets) {
+        const c = famCurve(cid)
+        if (!c) return fail('NOT_FOUND', `${cid} is not a family curve of ${fam.id}`, [cid])
+        if (!ep.curves.includes(c.id)) return fail('INVALID', `${ep.id} does not act on ${c.id} (its curves: ${ep.curves.join(', ')})`, [c.id, ep.id])
+        if (!shapeOk(sh, c)) return fail('INVALID', `the target of ${c.id} must list exactly its anchors with finite control points`, [c.id])
+      }
+      // linked ends: one shared point. Two given ends must agree; an end linked to a curve NOT given must stay where
+      // that curve has it in this state (else give that curve's target too) — never moved behind the author's back
       const no = needGrid()
       if (no) return no
-      // the expression base of this moment: the rule on the character's current source shape at this yaw
-      const srcGrid = grid!.curves[rule.roles[impl.source]].neutral
       const keys = grid!.yaws.map((y, i) => ({ yaw: y, i }))
-      const lerpS = (a: Shape, b: Shape, t: number): Shape => Object.fromEntries(Object.keys(a).map((k) => [k, Object.fromEntries((['p', 'hIn', 'hOut'] as const).map((h) => [h, v(a[k][h].x + (b[k][h].x - a[k][h].x) * t, a[k][h].y + (b[k][h].y - a[k][h].y) * t)]))])) as Shape
-      const at = (y: number): Shape => {
-        if (y <= keys[0].yaw) return srcGrid[0]
-        if (y >= keys[keys.length - 1].yaw) return srcGrid[keys.length - 1]
-        const i = keys.findIndex((k) => k.yaw >= y)
-        return keys[i].yaw === y ? srcGrid[i] : lerpS(srcGrid[i - 1], srcGrid[i], (y - keys[i - 1].yaw) / (keys[i].yaw - keys[i - 1].yaw))
+      const stateOf = (cid: string): Shape | null => {
+        const g = grid!.curves[cid]
+        if (!g) return null
+        const list = ep.curves.includes(cid as any) ? (grid!.unplayable[ep.name] ? null : g.expr[ep.name]) : g.neutral
+        return list ? sampleShape(keys.map((k) => ({ yaw: k.yaw, shape: list[k.i] })), cmd.yaw) : null
       }
-      const base = impl.apply(at(cmd.yaw), rule.correspondence)!
-      // replace by meaning — the same curve, parameter and yaw — whatever id an imported record has (dot, review of
-      // 819dd22: an imported exprFix:lid@90/blink kept winning over a new one)
-      const same = (x: CharacterRecord['exprFixes'][number]) => x.curveId === c.id && x.state.yaw === cmd.yaw && x.state[cmd.param] === 1
-      const prior = K.exprFixes.find(same)
-      const id = prior?.id ?? `exprFix:${c.id}@${cmd.yaw}/${cmd.param}`
-      const fix = { id, curveId: c.id, state: { yaw: cmd.yaw, [cmd.param]: 1 } as { yaw: number } & Record<string, number>, target: structuredClone(cmd.target), base, ruleVersion: rule.version }
-      next = { ...K, exprFixes: [...K.exprFixes.filter((x) => !same(x)), fix] }
+      for (const [cid, sh] of targets)
+        for (const a of Object.keys(sh))
+          for (const cnId of connectionsAt(store, anchorKey({ curveId: cid as RecordId<CurveRecord>, anchorId: a }))) {
+            const cn = getAs(store, cnId, 'connection')!
+            for (const e of cn.ends) {
+              if (e.curveId === cid) continue
+              const q = sh[a].p
+              const given = cmd.keyframes[e.curveId]
+              const other = given ? given[e.anchorId]?.p : stateOf(e.curveId)?.[e.anchorId]?.p
+              if (!other) continue // that curve has no state here yet (an unfinished draft): checked when it is drawn
+              if (other.x !== q.x || other.y !== q.y)
+                return fail('INVALID', given ? `the given ends of ${cn.id} differ: one shared point` : `${cid}#${a} is linked to ${e.curveId}#${e.anchorId} (${cn.id}): give ${e.curveId}'s target too, or keep the end where it is`, [cn.id, e.curveId])
+            }
+          }
+      // replace by meaning — the same curve, parameter and yaw — whatever id an imported record has
+      let fixes = [...K.exprFixes]
+      for (const [cid, sh] of targets) {
+        const same = (x: CharacterRecord['exprFixes'][number]) => x.curveId === cid && x.yaw === cmd.yaw && x.param === ep.name
+        const prior = fixes.find(same)
+        fixes = [...fixes.filter((x) => !same(x)), { id: prior?.id ?? `exprFix:${cid}@${cmd.yaw}/${ep.name}`, curveId: cid as RecordId<CurveRecord>, param: ep.name, yaw: cmd.yaw, shape: structuredClone(sh) }]
+      }
+      next = { ...K, exprFixes: fixes }
       break
     }
     case 'clearFix': {
@@ -282,7 +301,14 @@ function planPreset(store: Store, cmd: Extract<CharacterCommand, { type: 'setPre
   if (!shapeOk(cmd.shape, c)) return fail('INVALID', `shape must list exactly the anchors of ${c.id} with finite control points`, [c.id])
   const fm = getAs(store, presetFormsIdOf(pr.id, c.id), 'forms') as FormsRecord | undefined
   if (!fm || fm.encoding !== 'absolute') return fail('NOT_FOUND', `no forms of ${pr.id} for ${c.id}`, [c.id])
-  const withKey = (f: FormsRecord, shape: Shape): FormsRecord => ({ ...f, yaw: [...(f.yaw as AbsoluteYawKey[]).filter((k) => k.yaw !== cmd.yaw), { yaw: cmd.yaw, shape }].sort((a, b) => a.yaw - b.yaw) })
+  // an expression keyframe (doc 18 §29 I-1): the parameter must NAME this curve
+  const ep = cmd.param !== undefined ? paramFor(store, fam.id, cmd.param) : undefined
+  if (cmd.param !== undefined && !ep) return fail('INVALID', `no expression parameter ${cmd.param} in ${fam.id}`, [fam.id])
+  if (ep && !ep.curves.includes(c.id)) return fail('INVALID', `${ep.id} does not act on ${c.id} (its curves: ${ep.curves.join(', ')})`, [c.id, ep.id])
+  const withKey = (f: FormsRecord, shape: Shape): FormsRecord =>
+    ep
+      ? { ...f, expr: { ...f.expr, [ep.name]: [...(f.expr[ep.name] ?? []).filter((k) => k.yaw !== cmd.yaw), { yaw: cmd.yaw, shape }].sort((a, b) => a.yaw - b.yaw) } }
+      : { ...f, yaw: [...(f.yaw as AbsoluteYawKey[]).filter((k) => k.yaw !== cmd.yaw), { yaw: cmd.yaw, shape }].sort((a, b) => a.yaw - b.yaw) }
   puts.push(withKey(fm, structuredClone(cmd.shape)))
   // linked curves: a key at the same yaw holding their EXISTING evaluated form (never a rule run), with the shared
   // end moved onto this key's end (handles with it) — atomically, like setPoseKey's linked keys
@@ -293,11 +319,25 @@ function planPreset(store: Store, cmd: Extract<CharacterCommand, { type: 'setPre
         if (e.curveId === c.id) continue
         const lf = (puts.find((r) => r.id === presetFormsIdOf(pr.id, e.curveId)) as FormsRecord | undefined) ?? (getAs(store, presetFormsIdOf(pr.id, e.curveId), 'forms') as FormsRecord | undefined)
         if (!lf || lf.encoding !== 'absolute') continue
-        const keys = lf.yaw as AbsoluteYawKey[]
-        const existing = keys.find((k) => k.yaw === cmd.yaw)?.shape
-        const current: Shape | null = existing ?? (keys.length ? sampleShape(keys, cmd.yaw) : lf.original && lf.original !== 'curve' ? lf.original : null)
-        if (!current) return fail('INVALID', `${e.curveId} has no shape in ${pr.id} to link at yaw ${cmd.yaw}`, [e.curveId])
-        const q = current[e.anchorId], n = cmd.shape[a].p
+        const n = cmd.shape[a].p
+        if (ep && !ep.curves.includes(e.curveId)) {
+          // the linked curve stays in its neutral form in this expression: the end may not leave it
+          const there = presetNeutral(lf, cmd.yaw)?.[e.anchorId]?.p
+          if (there && (there.x !== n.x || there.y !== n.y)) return fail('INVALID', `${c.id}#${a} is linked to ${e.curveId}#${e.anchorId}, which ${ep.name} does not move: the end must stay at (${there.x}, ${there.y})`, [cnId, e.curveId])
+          continue
+        }
+        let current: Shape | null
+        if (ep) {
+          // the linked curve's keyframe here, or its keyframes sampled; none yet (an unfinished draft) → nothing to link
+          current = (lf.expr[ep.name] ?? []).find((k) => k.yaw === cmd.yaw)?.shape ?? presetExpr(lf, ep.name, cmd.yaw)
+          if (!current) continue
+        } else {
+          const keys = lf.yaw as AbsoluteYawKey[]
+          const existing = keys.find((k) => k.yaw === cmd.yaw)?.shape
+          current = existing ?? (keys.length ? sampleShape(keys, cmd.yaw) : lf.original && lf.original !== 'curve' ? lf.original : null)
+          if (!current) return fail('INVALID', `${e.curveId} has no shape in ${pr.id} to link at yaw ${cmd.yaw}`, [e.curveId])
+        }
+        const q = current[e.anchorId]
         const dx = n.x - q.p.x, dy = n.y - q.p.y
         const moved: Shape = { ...structuredClone(current), [e.anchorId]: { p: { ...n }, hIn: v(q.hIn.x + dx, q.hIn.y + dy), hOut: v(q.hOut.x + dx, q.hOut.y + dy) } }
         const i = puts.findIndex((r) => r.id === lf.id)

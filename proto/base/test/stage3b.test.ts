@@ -1,6 +1,5 @@
 // Stage 3b (doc 18 §24.5 / §24.6): preset-author and character commands through the real write entry; the §16
 // flow run on the product against the flowVerify oracle (where the two models coincide).
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { playCharacter, type CharacterGrid } from '../src/character'
 import type { Command } from '../src/commands'
@@ -10,8 +9,10 @@ import { curveIds, type Eye } from '../src/experiments/fineTuneTransfer'
 import { graphProblems } from '../src/model'
 import { schema, type DocRecord, type Shape } from '../src/schema'
 
-const json = (f: string) => JSON.parse(readFileSync(`test/fixtures/${f}`, 'utf8'))
+import { BEFORE_I1, converted, eyePlain } from './helpers/stage1'
 const openRecords = (rs: DocRecord[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
+/** records in the format before §29 I-1 (the §16 flow archive below is built that way): converted on open */
+const openOld = (rs: DocRecord[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: BEFORE_I1 } as any)
 const K = 'character:K' as any
 const grid = (e: Editor, id = K): CharacterGrid => {
   const p = e.derived.character(id)
@@ -48,7 +49,7 @@ const maxDiff = (a: Shape, b: Shape) => Math.max(...Object.keys(a).flatMap((k) =
 
 describe('character commands on the sample', () => {
   it('setPresetWeights and setFineTune: weights must sum to 1; fine-tune deltas finite; both undoable and reopenable', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0.5, 'preset:Q': 0.4 } }, /sum to 0.9/)
     refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 1.5, 'preset:Q': -0.5 } }, /finite and non-negative/)
     refused(e, { type: 'setPresetWeights', character: K, weights: { 'preset:P': 0, 'preset:Q': 0 } }, /sum to 0/)
@@ -61,12 +62,12 @@ describe('character commands on the sample', () => {
   })
 
   it('a fine-tune that a preset cannot carry is refused: an edit of a character must leave it playable (preset authoring only reports)', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     refused(e, { type: 'setFineTune', character: K, curveId: 'curve:strand' as any, anchorId: 'w', delta: { dp: { x: 1, y: 0 }, dIn: { x: 1, y: 0 }, dOut: { x: 1, y: 0 } } }, /no longer be playable: .*no helper domain at yaw 90/)
   })
 
   it('fixLine: L fitted on the curve correspondence (front → target), frozen; reproduces its target while the front is unchanged', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     const k0 = character(e)
     k0.takeovers // (sample takeovers are replaced by the command for the same curve and direction)
     const at90 = play(e, 90)['curve:lid']
@@ -83,7 +84,7 @@ describe('character commands on the sample', () => {
   })
 
   it('fixNode copies the L of the line takeover at that node and state (basisFrom = its id)', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     apply(e, { type: 'fixNode', character: K, connectionId: 'connection:corner' as any, yaw: 90, target: { x: 16, y: -1 } })
     const t = character(e).takeovers.find((x: any) => x.kind === 'node')
     const line = character(e).takeovers.find((x: any) => x.kind === 'line')
@@ -97,10 +98,11 @@ describe('character commands on the sample', () => {
   })
 
   it('fixNode without a line takeover: L = Σ w · L (our derivation), checked against a finite difference; a blend basis; frozen under weight changes', () => {
-    const rs = json('stage1-valid.json').records
+    const rs = converted()
     const kr = rs.find((r: any) => r.id === K)
     kr.takeovers = []
     kr.fineTune = {}
+    kr.exprFixes = [] // the converted fix was computed from the takeovers / fine-tune removed here (I-1: not re-derived)
     const e = openRecords(rs)
     apply(e, { type: 'fixNode', character: K, connectionId: 'connection:corner' as any, yaw: 90, target: { x: 15, y: 0 } })
     const t = character(e).takeovers[0]
@@ -124,22 +126,34 @@ describe('character commands on the sample', () => {
     expect(character(e).takeovers[0].L).toEqual(L)
   })
 
-  it('fixExpression on the moved role stores target + the base of this moment; clearFix restores the inherited result', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+  it('fixExpression stores the character’s own keyframe (a full shape) — on either lid; a moved shared end needs the other lid too; clearFix restores the presets’ keyframes', () => {
+    const e = openRecords(eyePlain(converted()))
     const inherited = play(e, 45, 1)
-    const now = play(e, 45, 1)['curve:lid']
-    const target: Shape = { ...now, m: { p: { x: now.m.p.x, y: now.m.p.y - 0.7 }, hIn: now.m.hIn, hOut: now.m.hOut } }
-    apply(e, { type: 'fixExpression', character: K, curveId: 'curve:lid' as any, param: 'blink', yaw: 45, target })
-    expect(maxDiff(play(e, 45, 1)['curve:lid'], target)).toBeLessThan(1e-12)
-    refused(e, { type: 'fixExpression', character: K, curveId: 'curve:lowerLid' as any, param: 'blink', yaw: 45, target: play(e, 45, 1)['curve:lowerLid'] }, /not the moved role/)
-    apply(e, { type: 'clearFix', character: K, id: 'exprFix:curve:lid@45/blink' })
+    const now = inherited['curve:lid']
+    const shape: Shape = { ...now, m: { p: { x: now.m.p.x, y: now.m.p.y - 0.7 }, hIn: now.m.hIn, hOut: now.m.hOut } }
+    apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': shape } })
+    expect(maxDiff(play(e, 45, 1)['curve:lid'], shape)).toBeLessThan(1e-12)
+    expect((character(e).exprFixes as any[]).map((x) => [x.curveId, x.yaw, x.param])).toEqual([['curve:lid', 45, 'blink']])
+    // the lower lid has its own closed keyframe too (no 'moved role' any more)
+    const low = play(e, 45, 1)['curve:lowerLid']
+    const lowShape: Shape = { ...low, n: { p: { x: low.n.p.x, y: low.n.p.y + 0.3 }, hIn: low.n.hIn, hOut: low.n.hOut } }
+    apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lowerLid': lowShape } })
+    expect(maxDiff(play(e, 45, 1)['curve:lowerLid'], lowShape)).toBeLessThan(1e-12)
+    // moving the shared corner of one lid alone is refused (one shared point); giving both moves both
+    const lift = (sh: Shape, a: string) => ({ ...sh, [a]: { p: { x: sh[a].p.x, y: sh[a].p.y + 1 }, hIn: { x: sh[a].hIn.x, y: sh[a].hIn.y + 1 }, hOut: { x: sh[a].hOut.x, y: sh[a].hOut.y + 1 } } })
+    refused(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b') } }, /curve:lid#b is linked to curve:lowerLid#d .*give curve:lowerLid's target too/)
+    apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b'), 'curve:lowerLid': lift(lowShape, 'd') } })
+    expect(play(e, 45, 1)['curve:lid'].b.p).toEqual(play(e, 45, 1)['curve:lowerLid'].d.p)
+    refused(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:strand': play(e, 45, 1)['curve:strand'] } }, /does not act on curve:strand/)
+    // clearing one lid's keyframe while the corner is lifted on both would split the corner: refused
+    refused(e, { type: 'clearFix', character: K, id: 'exprFix:curve:lid@45/blink' }, /ends separate in blink at yaw 45/)
+    apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': shape, 'curve:lowerLid': lowShape } })
+    for (const id of (character(e).exprFixes as any[]).map((x) => x.id)) apply(e, { type: 'clearFix', character: K, id })
     expect(play(e, 45, 1)).toEqual(inherited)
   })
 
   it('setPresetKey: an unmodified key changes nothing; the linked curve gets a key at that yaw with its end moved along; refused when a character would stop playing', () => {
-    const rs = json('stage1-valid.json').records
-    rs.find((r: any) => r.id === K).fineTune = {}
-    const e = openRecords(rs)
+    const e = openRecords(eyePlain(converted()))
     const before = [0, 20, 30, 60, 90].map((y) => play(e, y, 1))
     const P = e.reader.get('forms:preset:P/curve:lid' as any) as any
     const k0 = P.yaw[1].shape, k90 = P.yaw[2].shape
@@ -147,21 +161,31 @@ describe('character commands on the sample', () => {
     apply(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: at30 })
     expect((e.reader.get('forms:preset:P/curve:lowerLid' as any) as any).yaw.map((k: any) => k.yaw)).toContain(30) // linked key
     ;[0, 20, 30, 60, 90].forEach((y, i) => expect(maxDiff(play(e, y, 1)['curve:lid'], before[i]['curve:lid'])).toBeLessThan(1e-12))
-    // moving the corner in a new neutral key: the linked lower lid's end is moved with it, but the closed track has no
-    // key at 30 (its corner stays interpolated) — the node would split in the closed state: refused, not patched
+    // moving the corner in a new NEUTRAL key moves the linked lower lid's end with it; the closed keyframes are the
+    // author's own data, read as drawn — they do not change (no rule derives them from the open form any more)
     const moved = { ...at30, b: { p: { x: at30.b.p.x + 1, y: at30.b.p.y }, hIn: { x: at30.b.hIn.x + 1, y: at30.b.hIn.y }, hOut: { x: at30.b.hOut.x + 1, y: at30.b.hOut.y } } }
-    refused(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: moved }, /ends separate in preset:P at blink at yaw 30/)
+    const closedBefore = play(e, 30, 1)
+    apply(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: moved })
+    expect(play(e, 30, 1)).toEqual(closedBefore)
+    expect(e.undo()).toBe(true)
+    // a closed keyframe of one lid that moves the shared corner moves the linked lid's closed keyframe with it
+    const c30 = play(e, 30, 1)['curve:lid']
+    const cMoved = { ...c30, b: { p: { x: c30.b.p.x, y: c30.b.p.y + 0.5 }, hIn: { x: c30.b.hIn.x, y: c30.b.hIn.y + 0.5 }, hOut: { x: c30.b.hOut.x, y: c30.b.hOut.y + 0.5 } } }
+    apply(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: cMoved, param: 'blink' })
+    const lowP = (e.reader.get('forms:preset:P/curve:lowerLid' as any) as any).expr.blink.find((k: any) => k.yaw === 30).shape
+    expect(lowP.d.p).toEqual(cMoved.b.p)
+    expect(e.undo()).toBe(true)
     // an interior change at 30 goes through; the linked curve's key keeps its evaluated form
     const inner = { ...at30, m: { p: { x: at30.m.p.x, y: at30.m.p.y - 1 }, hIn: at30.m.hIn, hOut: at30.m.hOut } }
     apply(e, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: inner })
     // with a fine-tune, a new key at a yaw without a helper domain: written with a notice (the basis is added next)
-    const f = openRecords(json('stage1-valid.json').records)
+    const f = openRecords(converted())
     const n = apply(f, { type: 'setPresetKey', preset: 'preset:P' as any, curveId: 'curve:lid' as any, yaw: 30, shape: at30 })
     expect(n.ok && (n as any).notices?.join()).toMatch(/no helper domain at yaw 30/)
   })
 
   it('setVisibilityKey: presets that would disagree → written with a notice (prepare refuses until they agree); a consistent change has none', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     // (1) the author's commit goes through with a notice (an unfinished preset state is allowed) …
     const r = apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false })
     expect(r.ok && (r as any).notices?.join()).toMatch(/disagree on visibility/)
@@ -177,7 +201,7 @@ describe('character commands on the sample', () => {
   })
 
   it('a character already unplayable before the edit: its own edits are still refused unless the result plays; author edits keep giving the notice (dot, review of 513444f)', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     apply(e, { type: 'setVisibilityKey', preset: 'preset:P' as any, curveId: 'curve:strand' as any, yaw: 30, visible: false })
     expect(e.derived.character(K).ok).toBe(false)
     // (1) a character edit whose result is still unplayable → refused, nothing written
@@ -194,7 +218,7 @@ describe('character commands on the sample', () => {
   })
 
   it('identity: a prepared preset-mode createCurve re-aimed at another preset gets its own new curve id', () => {
-    const e = openRecords(json('stage1-valid.json').records)
+    const e = openRecords(converted())
     const four = { anchors: { p: { id: 'p', p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 1, y: 0 } }, q: { id: 'q', p: { x: 9, y: 0 }, hIn: { x: -1, y: 0 }, hOut: { x: 0, y: 0 } } }, segments: [{ id: 'k1', from: 'p', to: 'q' }] }
     const op = e.prepare()
     const a = op.preview({ type: 'createCurve', parentId: 'container:L1' as any, preset: 'preset:P' as any, ...four })
@@ -268,49 +292,51 @@ function flowArchive(): DocRecord[] {
   return recs
 }
 
-// NOT covered (stated, dot 1791314662): the original §16 joint closed-eye fix of BOTH lids' tail. The product's
-// expression tracks live on the rule's moved role only, so that author / character target is refused (see the last
-// test); the shared fixture below lifts the upper middle, and only the shared part is compared with flowVerify.
+// §29 I-1: the flow archive is built in the OLD format (rule + rule / author keys) and converted on open; the oracle
+// generates closed states with its own rule. Where the two coincide — the converted keyframes, no fine-tune — playback
+// is compared at every yaw and blink. A closed state that needs the character's fine-tune or takeovers carried in is
+// I-2 (domains / line correspondence, not implemented): it is checked to be REPORTED, and compared open only.
 describe('§16 flow through the product (oracle: flowVerify where the two models coincide)', () => {
   const C1 = 'character:c1' as any
   const oracle = flowDoc() // flowVerify data, edited in step with the product
-  const e = openRecords(flowArchive())
+  const e = openOld(flowArchive())
   const productCache = (blink: number, yaw: number) => fromShapes(play(e, yaw, blink, C1))
-  const check = (label: string) => {
+  const check = (label: string, blinks = [0, 0.5, 1]) => {
     const o = rebuild(oracle, 'c1')
     let worst = 0
-    for (const y of [0, 30, 45, 90]) for (const b of [0, 0.5, 1]) worst = Math.max(worst, eyeDiff(productCache(b, y), playback(o, y, b)))
+    for (const y of [0, 30, 45, 90]) for (const b of blinks) worst = Math.max(worst, eyeDiff(productCache(b, y), playback(o, y, b)))
     expect(worst, label).toBeLessThan(1e-12)
     return worst
   }
+  const closedReported = () => {
+    const r = playCharacter(grid(e, C1), { yaw: 45, params: { blink: 1 } })
+    expect(r.ok === false && r.problems.join()).toMatch(/blink cannot be played: .*I-2/)
+  }
   it('1. the preset blend (no fine-tune, no fixes) equals the oracle at every yaw and blink', () => check('blend'))
-  it('2. fine-tune: Σ w (K + L f) at 90°, closed states close — equals the oracle', () => {
+  it('2. fine-tune: Σ w (K + L f) at 90° equals the oracle (open); the closed state with a fine-tune is I-2: reported', () => {
     oracle.characters.c1.fineTune = fineTuneUp(1.2)
     for (const [c, as] of Object.entries(fineOf(fineTuneUp(1.2)))) for (const [a, d] of Object.entries(as)) if ([d.dp, d.dIn, d.dOut].some((q: any) => q.x || q.y)) apply(e, { type: 'setFineTune', character: C1, curveId: c as any, anchorId: a, delta: d as any })
-    check('fine-tune')
+    check('fine-tune', [0])
+    closedReported()
   })
-  it('3. weights changed: equals the oracle', () => {
+  it('3. weights changed: equals the oracle (open; closed reported while the fine-tune is there)', () => {
     oracle.characters.c1.weights = { A: 0.7, B: 0.3 }
     apply(e, { type: 'setPresetWeights', character: C1, weights: { 'preset:A': 0.7, 'preset:B': 0.3 } })
-    check('weights')
+    check('weights', [0])
+    closedReported()
   })
-  it('4. expression fix at 90° closed (interior of the upper lid): reproduces its target; after a further fine-tune: new base + the kept correction (oracle)', () => {
-    const now = productCache(1, 90)
+  it('4. a character keyframe at 90° closed (interior of the upper lid) is played exactly there; its other yaws still need I-2: reported', () => {
+    const now = productCache(0, 90)
     const target = { ...now, U0: now.U0.map((p, i) => (i === 2 ? { x: p.x + 0.2, y: p.y - 0.6 } : i === 3 ? { x: p.x, y: p.y - 0.6 } : p)) as any, U1: now.U1.map((p, i) => (i === 0 ? { x: p.x, y: p.y - 0.6 } : i === 1 ? { x: p.x - 0.2, y: p.y - 0.6 } : p)) as any }
-    apply(e, { type: 'fixExpression', character: C1, curveId: 'curve:upper' as any, param: 'blink', yaw: 90, target: toShapes(target)['curve:upper'] })
-    const base = blinkRule(rebuild(oracle, 'c1')['90|open'])
-    oracle.characters.c1.exprFixes = [{ kind: 'expression', state: '90|closed', target, base }]
-    expect(eyeDiff(productCache(1, 90), target)).toBeLessThan(1e-12)
-    check('expression fix')
-    oracle.characters.c1.fineTune = fineTuneUpAndLower(0.5, 0.7)
-    for (const c of ['curve:upper', 'curve:lower']) for (const a of c === 'curve:upper' ? ['a', 'm', 'b'] : ['c', 'n', 'd']) if ((e.reader.get(C1) as any).fineTune[c]?.[a]) apply(e, { type: 'setFineTune', character: C1, curveId: c as any, anchorId: a, delta: null })
-    for (const [c, as] of Object.entries(fineOf(fineTuneUpAndLower(0.5, 0.7)))) for (const [a, d] of Object.entries(as)) if ([d.dp, d.dIn, d.dOut].some((q: any) => q.x || q.y)) apply(e, { type: 'setFineTune', character: C1, curveId: c as any, anchorId: a, delta: d as any })
-    check('fine-tune after the expression fix')
+    apply(e, { type: 'fixExpression', character: C1, param: 'blink', yaw: 90, keyframes: { 'curve:upper': toShapes(target)['curve:upper'] } })
+    expect((e.reader.get(C1) as any).exprFixes.map((x: any) => [x.curveId, x.yaw])).toEqual([['curve:upper', 90]])
+    closedReported()
+    check('open after the keyframe', [0])
   })
   it('5. save → reopen gives the same playback; playback writes nothing', () => {
     const before = JSON.stringify(e.reader.allRecords())
     const r = Editor.open(JSON.parse(JSON.stringify(e.save())))
-    for (const y of [0, 45, 90]) expect(fromShapes(playCharacter(grid(r, C1), { yaw: y, params: { blink: 0.5 } }).ok ? (playCharacter(grid(r, C1), { yaw: y, params: { blink: 0.5 } }) as any).shapes : {})).toEqual(productCache(0.5, y))
+    for (const y of [0, 45, 90]) expect(fromShapes((playCharacter(grid(r, C1), { yaw: y, params: { blink: 0 } }) as any).shapes)).toEqual(productCache(0, y))
     expect(JSON.stringify(e.reader.allRecords())).toBe(before)
   })
   it('6. line takeover at 90° on the upper lid: the interior follows target + L·(front − basisFront) (independent formula); the shared corners stay on the node (§17 — where flowVerify, per cubic, would split them)', () => {
@@ -330,12 +356,27 @@ describe('§16 flow through the product (oracle: flowVerify where the two models
   })
 })
 
-it('the original §16 joint closed-eye target (both lids) is refused, not silently approximated', () => {
-  const rs = flowArchive()
-  const lower = rs.find((r: any) => r.id === 'forms:preset:A/curve:lower') as any
-  lower.expr = { blink: [{ yaw: 0, kind: 'rule' }] } // an expression track on the lower lid (the source role)
-  expect(() => openRecords(rs)).toThrow(/curve:lower has a blink track but is not the moved role/)
-  const e = openRecords(flowArchive())
-  const now = (e.derived.character('character:c1') as any).grid.curves['curve:lower'].neutral[0]
-  refused(e, { type: 'fixExpression', character: 'character:c1' as any, curveId: 'curve:lower' as any, param: 'blink', yaw: 0, target: now }, /not the moved role/)
+it('the original §16 joint closed-eye target (both lids lift the tail) is now simply the author’s keyframes of both lids', () => {
+  // flowVerify's own A 0°-closed target lifts the eye tail of BOTH lids; the author draws it on each lid (one command
+  // per lid; the shared corners agree), and the character without fine-tune plays it exactly
+  const e = openOld(flowArchive())
+  const target = toShapes(makeDoc().presets.A.keys['0|closed']!)
+  const before = JSON.stringify(e.reader.allRecords())
+  const r = e.batch('both lids', () => {
+    for (const c of ['curve:upper', 'curve:lower'] as const) {
+      const x = e.apply({ type: 'setPresetKey', preset: 'preset:A' as any, curveId: c as any, yaw: 0, shape: target[c], param: 'blink' })
+      if (!x.ok) throw new Error(x.error.message)
+    }
+    return true
+  })
+  expect(r).toBe(true)
+  expect(graphProblems(e.reader)).toEqual([])
+  const A = (c: string) => (e.reader.get(`forms:preset:A/${c}` as any) as any).expr.blink.find((k: any) => k.yaw === 0).shape
+  expect(A('curve:upper')).toEqual(target['curve:upper'])
+  expect(A('curve:lower')).toEqual(target['curve:lower'])
+  const s = play(e, 0, 1, 'character:c1')
+  expect(s['curve:upper'].a.p).toEqual(s['curve:lower'].c.p)
+  expect(s['curve:upper'].b.p).toEqual(s['curve:lower'].d.p)
+  expect(e.undo()).toBe(true)
+  expect(JSON.stringify(e.reader.allRecords())).toBe(before)
 })

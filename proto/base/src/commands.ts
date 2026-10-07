@@ -250,24 +250,24 @@ function dependantsOf(store: DocStore, id: string): string[] {
     const out = c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
     return r.owner.kind === 'preset' ? [...out, r.owner.id] : out
   }
-  // a rule is found by (family, param), not by id: the forms of that family's presets depend on it
-  // and the shared nodes evaluated through those forms: every connection at an anchor of the family's curves
-  // (dot, review of 2c92206: a remaining twin rule changed the closed shape and split the corner)
-  if (r.typeName === 'rule') {
+  // an expression parameter is found by (family, name), not by id: the forms of that family's presets and its
+  // characters (expression keyframes name it), and the shared nodes compared in its states, depend on it
+  if (r.typeName === 'expressionParam') {
     const presets = new Set(store.allRecords().filter((x) => x.typeName === 'preset' && x.familyId === r.familyId).map((x) => x.id as string))
     const forms = store.allRecords().filter((x): x is FormsRecord => x.typeName === 'forms' && x.owner.kind === 'preset' && presets.has(x.owner.id))
+    const chars = store.allRecords().filter((x) => x.typeName === 'character' && x.familyId === r.familyId).map((x) => x.id)
     const conns = [...new Set(forms.map((f) => f.curveId))].flatMap((cid) => {
       const c = getAs(store, cid, 'curve')
       return c ? Object.keys(c.anchors).flatMap((a) => connectionsAt(store, anchorKey({ curveId: c.id, anchorId: a }))) : []
     })
-    return [...mentioning(store, r.id), ...forms.map((f) => f.id), ...conns]
+    return [...mentioning(store, r.id), ...forms.map((f) => f.id), ...chars, ...conns]
   }
   return mentioning(store, r.id)
 }
 
-const NEW_TYPES = new Set(['forms', 'family', 'preset', 'rule', 'helperDomain', 'character', 'visibility'])
+const NEW_TYPES = new Set(['forms', 'family', 'preset', 'expressionParam', 'helperDomain', 'character', 'visibility'])
 /**
- * Stage-1 records that mention `id` anywhere (family curves, preset family, rule roles, character weights /
+ * Stage-1 records that mention `id` anywhere (family curves, preset family, parameter curves, character weights /
  * takeovers, visibility owner …). No index exists for them yet, so this scans — only removal plans call it,
  * never the drag path.
  */
@@ -320,12 +320,12 @@ function removalGuard(store: DocStore, removals: string[]): Plan | null {
  */
 /**
  * Where a record lives for locking: its parent container; forms and visibility live where their curve lives;
- * family / preset / rule / helper domain / character are document-level (no container lock applies).
+ * family / preset / expression parameter / helper domain / character are document-level (no container lock applies).
  */
 function placeOf(store: DocStore, x: DocRecord): string | null {
   if (x.typeName === 'connection') return null
   if (x.typeName === 'forms' || x.typeName === 'visibility') return (getAs(store, x.curveId, 'curve')?.parentId as string | undefined) ?? null
-  if (x.typeName === 'family' || x.typeName === 'preset' || x.typeName === 'rule' || x.typeName === 'helperDomain' || x.typeName === 'character') return null
+  if (x.typeName === 'family' || x.typeName === 'preset' || x.typeName === 'expressionParam' || x.typeName === 'helperDomain' || x.typeName === 'character') return null
   return x.parentId
 }
 

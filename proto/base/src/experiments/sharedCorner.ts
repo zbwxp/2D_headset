@@ -1,3 +1,5 @@
+// ABANDONED ROUTE (doc 18 §27): built on the generated closed eye (lidClose), which bowen does not want — the author
+// draws open / closed keyframes (§29 I-1). Kept only as a record; not an oracle, not wired anywhere.
 // Shared eye corner in the closed-eye state (doc 18 §26.2 v3 + dot 1791337766 four definitions) and two independent
 // eyes (§26.3). STANDALONE oracle: plain data, no store, no product wiring; the product must later match it.
 //

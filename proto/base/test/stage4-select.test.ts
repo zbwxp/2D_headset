@@ -1,6 +1,7 @@
 // Stage 4 (doc 18 §21.2 / §21.3): a pick through a reference instance selects on the placement side; duplicate.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { converted } from './helpers/stage1'
 import type { Command } from '../src/commands'
 import { graphProblems } from '../src/model'
 import { schema, type DocRecord } from '../src/schema'
@@ -76,7 +77,7 @@ describe('duplicate (doc 18 §21.3)', () => {
     const e = new Editor(unlocked())
     const r = e.apply({ type: 'duplicate', ids: [ids.F] })
     expect(r.ok === false && r.error.message).toMatch(/reads curve:C1, curve:C2, which is not being duplicated/)
-    const s = JSON.parse(readFileSync('test/fixtures/stage1-valid.json', 'utf8')).records as DocRecord[]
+    const s = converted() as DocRecord[]
     const f = Editor.open({ store: Object.fromEntries(s.map((x) => [x.id, x])), schema: schema.serialize() } as any)
     const g = f.apply({ type: 'duplicate', ids: ['curve:lid'] })
     expect(g.ok === false && g.error.message).toMatch(/preset family: duplicating preset-form curves is not supported yet/)

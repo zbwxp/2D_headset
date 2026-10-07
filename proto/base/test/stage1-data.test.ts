@@ -16,9 +16,17 @@ const legacySnapshot = () => json('legacy-v1-snapshot.json')
 const golden = json('legacy-v1-golden.json')
 const yaws = Object.keys(golden.atYaw).map(Number)
 const same = (a: unknown, b: unknown) => expect(JSON.stringify(a)).toBe(JSON.stringify(b)) // same doubles (−0 ≡ 0 aside)
-const archive = (records: DocRecord[]) => ({ store: Object.fromEntries(records.map((r) => [r.id, r])), schema: schema.serialize() })
+// the stage-1 sample files are in the format BEFORE §29 I-1 (rule + rule/author expression keys): opened as that
+// version, they go through the schema-3 conversion (contour.document/2) like any old file
+const BEFORE_I1 = { schemaVersion: 2, sequences: { 'contour.document': 1 } }
+const archive = (records: DocRecord[]) => ({ store: Object.fromEntries(records.map((r) => [r.id, r])), schema: BEFORE_I1 })
+/** an archive already in the current format (built by saving an opened sample) */
+const current = (e: Editor) => JSON.parse(JSON.stringify(e.save()))
 const sample = (): DocRecord[] => json('stage1-valid.json').records
 const openRecords = (records: DocRecord[]) => Editor.open(archive(records) as any)
+/** the sample in the CURRENT format (converted once), for checks that are about the current records */
+const currentRecords = (): any[] => Object.values(current(openRecords(sample())).store)
+const openCurrent = (rs: any[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
 
 describe('migration of old files: pose → legacy forms, read with the old numbers', () => {
   it('an old file opens migrated: no pose records left, one legacy forms record per old pose with the same keys', () => {
@@ -58,7 +66,7 @@ describe('migration of old files: pose → legacy forms, read with the old numbe
   it('migrated files save in the new schema and reopen with the same numbers; legacy setPoseKey writes the legacy forms record', () => {
     const e = Editor.open(legacySnapshot())
     const saved = JSON.parse(JSON.stringify(e.save()))
-    expect(saved.schema.sequences['contour.document']).toBe(1)
+    expect(saved.schema.sequences['contour.document']).toBe(2) // schema 3: the expression conversion (§29 I-1) is the newest step
     const again = Editor.open(saved)
     for (const y of yaws) same(evaluateAtYaw(again.reader, y), golden.atYaw[y])
     const r = again.apply({ type: 'setPoseKey', curveId: 'curve:E1' as any, yaw: 10, offsets: { e2: { x: 1, y: 1 } } })
@@ -81,9 +89,10 @@ describe('the stage-1 sample archive', () => {
     expect(presetNeutral(lidP)).toEqual(lidP.original)
     expect(presetNeutral(lidP, 0)).toEqual((lidP.yaw[1] as any).shape)
     expect(presetNeutral(f('preset:P', 'curve:strand'))).toBeNull() // only drawn at 90: no original
-    // closed at the author key reproduces the target (base unchanged since capture)
-    const k0 = (lidP.expr.blink as any[]).find((k) => k.yaw === 0)
-    expect(presetExpr(e.reader, lidP, 'blink', 0)).toEqual(k0.target)
+    // converted by the old evaluation: at the author key whose base is unchanged since capture, that is its target
+    const old = (sample().find((r: any) => r.id === 'forms:preset:P/curve:lid') as any).expr.blink.find((k: any) => k.yaw === 0)
+    expect(presetExpr(lidP, 'blink', 0)).toEqual(old.target)
+    expect((lidP.expr.blink as any[]).every((k) => k.shape && !('kind' in k))).toBe(true)
     const bad = openRecords(json('stage1-invalid-missing.json').records)
     const qStrand = bad.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any) as FormsRecord
     expect(presetNeutral(qStrand)).toBeNull()
@@ -93,8 +102,6 @@ describe('the stage-1 sample archive', () => {
   const broken: [string, (rs: any[]) => void, RegExp][] = [
     ['a preset without forms for a family curve', (rs) => rs.splice(rs.findIndex((r) => r.id === 'forms:preset:Q/curve:lowerLid'), 1), /no forms for family curve curve:lowerLid/],
     ['a shape missing an anchor', (rs) => delete rs.find((r) => r.id === 'forms:preset:P/curve:lid').original.m, /original does not list exactly the anchors/],
-    ['a rule correspondence to a missing anchor', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').correspondence.m = 'zz'), /curve:lowerLid#zz missing/],
-    ['an unknown rule version', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').version = 9), /unknown rule lidClose version 9/],
     ['a weight on a preset outside the family', (rs) => (rs.find((r) => r.id === 'character:K').weights['preset:X'] = 0.1), /preset:X is not a preset of family:eye/],
     ['a node takeover whose basisFrom is empty', (rs) => (rs.find((r) => r.id === 'character:K').takeovers[1].basisFrom = ''), /basisFrom  is not a takeover/], // review of 819dd22: a string names the source line (possibly cleared since): provenance only
     ['the shared corner separating in the closed state (c2a1ce7 counterexample)', (rs) => {
@@ -107,6 +114,17 @@ describe('the stage-1 sample archive', () => {
   ]
   for (const [name, mutate, message] of broken)
     it(`refused on open: ${name}`, () => {
+      const rs = currentRecords()
+      mutate(rs)
+      expect(() => openCurrent(rs)).toThrow(message)
+    })
+  // old files whose expressions cannot be converted by the old evaluation: refused, with the conversion's reason
+  const unconvertible: [string, (rs: any[]) => void, RegExp][] = [
+    ['an old rule correspondence to a missing anchor', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').correspondence.m = 'zz'), /invalid document: migration: rule:eye\/blink correspondence names zz, missing in its source/],
+    ['an unknown old rule version', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').version = 9), /invalid document: migration: unknown rule lidClose version 9/],
+  ]
+  for (const [name, mutate, message] of unconvertible)
+    it(`old file refused: ${name}`, () => {
       const rs = structuredClone(sample())
       mutate(rs)
       expect(() => openRecords(rs)).toThrow(message)
@@ -124,17 +142,20 @@ describe('the stage-1 sample archive', () => {
 describe('malformed archives are refused with a reason, never an internal crash', () => {
   const mutations: [string, (rs: any[]) => void][] = [
     ['a yaw key shape missing an anchor', (rs) => delete rs.find((r) => r.id === 'forms:preset:P/curve:lowerLid').yaw[1].shape.d],
-    ['an author target missing an anchor', (rs) => delete rs.find((r) => r.id === 'forms:preset:P/curve:lid').expr.blink[1].target.b],
-    ['a rule role naming a missing curve', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').roles.lower = 'curve:nope')],
+    ['an expression keyframe missing an anchor', (rs) => delete rs.find((r) => r.id === 'forms:preset:P/curve:lid').expr.blink[1].shape.b],
+    ['a parameter naming a missing curve', (rs) => rs.find((r) => r.id === 'expressionParam:eye/blink').curves.push('curve:nope')],
     ['a takeover on a non-family curve', (rs) => (rs.find((r) => r.id === 'character:K').takeovers[0].curveId = 'curve:C1')],
+    ['(old file) a rule role naming a missing curve', (rs) => (rs.find((r) => r.id === 'rule:eye/blink').roles.lower = 'curve:nope')],
   ]
   for (const [name, mutate] of mutations)
     it(name, () => {
-      const rs = structuredClone(sample())
+      const old = name.startsWith('(old file)')
+      const rs = old ? structuredClone(sample()) : currentRecords()
       mutate(rs)
       let message = ''
       try {
-        openRecords(rs)
+        if (old) openRecords(rs)
+        else openCurrent(rs)
       } catch (e) {
         message = String((e as Error).message)
       }
@@ -144,10 +165,10 @@ describe('malformed archives are refused with a reason, never an internal crash'
 })
 
 describe('nothing the write entry commits is refused on reopen (dot 1791308648)', () => {
-  it('deleting the expression rule is refused at the write entry (its forms still need it)', () => {
+  it('deleting the expression parameter is refused at the write entry (its forms still need it)', () => {
     const e = openRecords(sample())
-    const r = e.apply({ type: 'deleteRecords', ids: ['rule:eye/blink'] })
-    expect(r.ok === false && r.error.message).toContain('no rule bound to family:eye / blink')
+    const r = e.apply({ type: 'deleteRecords', ids: ['expressionParam:eye/blink'] })
+    expect(r.ok === false && r.error.message).toContain('no expression parameter blink in family:eye')
   })
 
   it('every single-record deletion of the sample is either refused or leaves a document that reopens', () => {
@@ -204,19 +225,15 @@ describe('review of 2c92206 (dot): uniqueness, closure, required fields, wrong r
       return String((e as Error).message)
     }
   }
-  it('two rules binding the same family parameter are refused on open (so deleting one cannot silently switch rules)', () => {
-    const rs = structuredClone(sample())
-    const twin: any = structuredClone(rs.find((r: any) => r.id === 'rule:eye/blink'))
-    twin.id = 'rule:z-alternate'
-    twin.correspondence.b = 'c'
-    rs.push(twin)
-    expect(err(() => openRecords(rs))).toMatch(/is also bound by rule:z-alternate: one rule per family parameter/)
+  it('two expression parameters with the same name in one family are refused on open', () => {
+    const snap = current(openRecords(sample()))
+    snap.store['expressionParam:z-alternate'] = { ...snap.store['expressionParam:eye/blink'], id: 'expressionParam:z-alternate' }
+    expect(err(() => Editor.open(snap))).toMatch(/is also defined by expressionParam:z-alternate: one parameter per family name/)
   })
 
-  it('removing a rule re-checks the shared nodes evaluated through its forms (closure reaches the connections)', () => {
-    // the only way to remove the single rule is refused; its dependants include the corner connection
+  it('removing the parameter re-checks what depends on it (closure reaches the forms)', () => {
     const e = openRecords(sample())
-    const r = e.apply({ type: 'deleteRecords', ids: ['rule:eye/blink'] })
+    const r = e.apply({ type: 'deleteRecords', ids: ['expressionParam:eye/blink'] })
     expect(r.ok === false && r.error.objects).toContain('forms:preset:P/curve:lid')
   })
 
@@ -231,25 +248,30 @@ describe('review of 2c92206 (dot): uniqueness, closure, required fields, wrong r
     ['visibility without owner', 'visibility:preset:P/curve:strand', (r) => delete r.owner, /visibility .* owner/],
     ['helper domain without source', 'helperDomain:P/90', (r) => delete r.source, /source \/ target yaw/],
     ['character without weights', 'character:K', (r) => delete r.weights, /weights \/ fineTune \/ takeovers \/ exprFixes/],
-    ['rule with a non-string role', 'rule:eye/blink', (r) => (r.roles.lower = 3), /rule .* roles/],
     ['family with a duplicate curve', 'family:eye', (r) => r.curves.push('curve:lid'), /unique curve ids/],
   ]
   for (const [name, id, mutate, message] of missing)
     it(`required fields are validated, not crashed on: ${name}`, () => {
-      const rs = structuredClone(sample())
+      const rs = currentRecords()
       mutate(rs.find((r: any) => r.id === id))
-      const m = err(() => openRecords(rs))
+      const m = err(() => openCurrent(rs))
       expect(m).toMatch(message)
       expect(m).not.toMatch(/Cannot read|Cannot convert|undefined is not/)
     })
 
-  it("an expression track on a curve that is not the rule's moved role is refused; presetExpr never returns another curve's anchors", () => {
-    const rs = structuredClone(sample())
-    const lower: any = rs.find((r: any) => r.id === 'forms:preset:P/curve:lowerLid')
-    lower.expr.blink = [{ yaw: 0, kind: 'rule' }]
-    expect(err(() => openRecords(rs))).toMatch(/curve:lowerLid has a blink track but is not the moved role \(upper = curve:lid\)/)
-    const reader = { get: (id: string) => rs.find((r: any) => r.id === id), allRecords: () => rs }
-    expect(presetExpr(reader as any, lower, 'blink', 0)).toBeNull()
+  it('an expression parameter with a non-string curve id is refused (required fields)', () => {
+    const snap = current(openRecords(sample()))
+    snap.store['expressionParam:eye/blink'].curves.push(3)
+    const m = err(() => Editor.open(snap))
+    expect(m).toMatch(/expressionParam .* curves/)
+    expect(m).not.toMatch(/Cannot read|undefined is not/)
+  })
+
+  it('an expression track on a curve the parameter does not name is refused (never guessed from the keys)', () => {
+    const snap = current(openRecords(sample()))
+    const strand = snap.store['forms:preset:P/curve:strand']
+    strand.expr.blink = [{ yaw: 90, shape: strand.yaw[0].shape }]
+    expect(err(() => Editor.open(snap))).toMatch(/curve:strand has a blink track but expressionParam:eye\/blink does not act on it/)
   })
 
   it('a reference override on a preset-form (family) curve is refused at the write entry; legacy overrides still work', () => {
@@ -276,11 +298,11 @@ describe('review of 72438b8 (dot): null inside existing fields is a named refusa
   ]
   for (const [name, mutate, message] of cases)
     it(name, () => {
-      const rs = structuredClone(sample())
+      const rs = currentRecords()
       mutate(rs)
       let m = ''
       try {
-        openRecords(rs)
+        openCurrent(rs)
       } catch (e) {
         m = String((e as Error).message)
       }

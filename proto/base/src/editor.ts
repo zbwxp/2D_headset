@@ -31,6 +31,7 @@ import { isRecordsDiffEmpty, reverseRecordsDiff, squashRecordDiffs, type Records
 import { isEqual } from '@tldraw/utils'
 import { freshIds, plan, type Command, type EditError, type IdSource } from './commands'
 import { Derived } from './derived'
+import { expressionConversionProblem } from './expressionMigration'
 import { graphProblems } from './model'
 import { createDocStore, deepFreeze, legacyMigrationConflicts, type DocReader, type DocRecord, type DocStore } from './schema'
 
@@ -335,6 +336,8 @@ export class Editor {
     // tldraw reports a failed migration only as "migration-error": name the reason first (stage 1)
     const conflicts = legacyMigrationConflicts((snapshot as any)?.store ?? {})
     if (conflicts.length) throw new Error(`invalid document: ${conflicts.join('; ')}`)
+    const conversion = expressionConversionProblem(snapshot as any)
+    if (conversion) throw new Error(`invalid document: ${conversion}`)
     // The public open boundary reports every refusal the same way: `invalid document: <reason>` (validators name
     // the record and field; anything unforeseen keeps its own message) — dot, review of 72438b8.
     let problems: string[]

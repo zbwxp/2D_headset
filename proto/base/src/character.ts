@@ -1,14 +1,19 @@
 // Stage 3a (doc 18 §24 v2 — the limited stage-3 contract): prepare a character once, play it read-only.
 // prepare: §24.1 steps 1–8 → one grid per character (every family curve at every grid yaw, neutral and per
 // expression parameter; visibility; shared-node checks). play: step 9 — bilinear in (yaw, expression) inside the
-// grid; no rule runs, no helper domain is read, nothing is written.
+// grid; no helper domain is read, nothing is written.
+// Expressions (doc 18 §27 / §29 I-1): a parameter NAMES its curves; at value 1 each such curve takes the author's
+// keyframes (the presets' blended keyframes, or the character's own keyframe at a yaw where it has one) — no
+// generation rule. A missing keyframe, or character neutral data an expression state would need carried over
+// (fine-tune / line takeovers: I-2, not done), makes THAT parameter unplayable, reported; the rest still plays.
+// Several parameters play together when their curves (closed over connections) are disjoint — two eyes.
 // Scope (dot 1791312456 / 1791312539): fine-tune transfer only through helper domains at a preset's OWN key yaws
 // (none needed without fine-tune); takeovers only on end-of-direction ranges 0 → θₜ; node takeovers only on single-
 // connection nodes; one expression value (1) per parameter; visibility conflicts refused; weights must sum to 1.
 import { fillCubics, fromPaint, IDENTITY, type Cubic, type EvalCurve, type Evaluated } from './evaluate'
-import { presetFormsIdOf, RULES } from './forms'
-import { connectionsAtKeyed, helperDomainsOf, rulesOfFamily, visibilityOfCurve, type Queryable } from './indexes'
-import type { AbsoluteYawKey, Affine, BaseReader, FillRecord, ReferenceRecord, CharacterRecord, ConnectionRecord, DocRecord, ExprKey, FamilyRecord, FormsRecord, HelperDomainRecord, PresetRecord, RuleRecord, Shape, Vec, VisibilityRecord } from './schema'
+import { presetFormsIdOf } from './forms'
+import { connectionsAtKeyed, helperDomainsOf, paramsOfFamily, visibilityOfCurve, type Queryable } from './indexes'
+import type { AbsoluteYawKey, Affine, BaseReader, FillRecord, ReferenceRecord, CharacterRecord, ConnectionRecord, DocRecord, ExpressionParamRecord, FamilyRecord, FormsRecord, HelperDomainRecord, PresetRecord, Shape, Vec, VisibilityRecord } from './schema'
 
 /**
  * What prepare reads: records by id, and keyed membership — helper domains of a preset, rules of a family,
@@ -18,7 +23,7 @@ import type { AbsoluteYawKey, Affine, BaseReader, FillRecord, ReferenceRecord, C
 export type Ctx = {
   get: (id: string) => DocRecord | undefined
   helpersOf: (presetId: string) => string[]
-  rulesOf: (familyId: string) => string[]
+  paramsOf: (familyId: string) => string[]
   visibilityOf: (curveId: string) => string[]
   connectionsAt: (anchorKey: string) => string[]
 }
@@ -27,14 +32,26 @@ export function ctxOf(store: BaseReader & { query?: unknown }): Ctx {
   return {
     get: (id) => store.get(id as any) as DocRecord | undefined,
     helpersOf: (p) => helperDomainsOf(q, p),
-    rulesOf: (f) => rulesOfFamily(q, f),
+    paramsOf: (f) => paramsOfFamily(q, f),
     visibilityOf: (c) => visibilityOfCurve(q, c),
     connectionsAt: (k) => connectionsAtKeyed(q, k),
   }
 }
 
 export type CurveGrid = { neutral: Shape[]; expr: Record<string, Shape[]>; visible: { yaw: number; visible: boolean }[] | null }
-export type CharacterGrid = { characterId: string; yaws: number[]; params: string[]; curves: Record<string, CurveGrid>; front: Record<string, Shape | null>; retained: number }
+export type CharacterGrid = {
+  characterId: string
+  yaws: number[]
+  params: string[]
+  /** the curves each parameter acts on (from its record), and the linked curve pairs (connections) */
+  paramCurves: Record<string, string[]>
+  links: [string, string][]
+  /** parameters that cannot be played, with why (missing keyframes, I-2 transfer needed) */
+  unplayable: Record<string, string[]>
+  curves: Record<string, CurveGrid>
+  front: Record<string, Shape | null>
+  retained: number
+}
 export type Prepared = { ok: true; grid: CharacterGrid } | { ok: false; problems: string[] }
 
 // ---------- shape arithmetic (absolute control points) ----------
@@ -61,7 +78,7 @@ function sample<K extends { yaw: number }>(keys: K[], yaw: number, at: (k: K) =>
 }
 const nonZero = (s: Shape) => Object.values(s).some((q) => [q.p, q.hIn, q.hOut].some((x) => x.x !== 0 || x.y !== 0))
 
-export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
+export function prepareCharacter(ctx: Ctx, characterId: string, opts: { neutralOnly?: boolean; extraYaws?: number[] } = {}): Prepared {
   const problems: string[] = []
   const K = ctx.get(characterId) as CharacterRecord | undefined
   if (!K || K.typeName !== 'character') return { ok: false, problems: [`no character ${characterId}`] }
@@ -119,8 +136,11 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   }
   // takeover, fix and expression key yaws are grid yaws too (one grid for the whole character)
   for (const t of K.takeovers) gridYaws.add(t.state.yaw), gridYaws.add(0)
-  for (const x of K.exprFixes) gridYaws.add(x.state.yaw)
-  for (const c of fam.curves) for (const [p] of parts) for (const keys of Object.values(formsOf(p, c)?.expr ?? {})) for (const k of keys) gridYaws.add(k.yaw)
+  for (const y of opts.extraYaws ?? []) gridYaws.add(y)
+  if (!opts.neutralOnly) {
+    for (const x of K.exprFixes) gridYaws.add(x.yaw)
+    for (const c of fam.curves) for (const [p] of parts) for (const keys of Object.values(formsOf(p, c)?.expr ?? {})) for (const k of keys) gridYaws.add(k.yaw)
+  }
   if (!gridYaws.size) gridYaws.add(0)
   const yaws = [...gridYaws].sort((a, b) => a - b)
   if (problems.length) return { ok: false, problems }
@@ -212,34 +232,53 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
   }
   if (problems.length) return { ok: false, problems }
 
-  // ---- step 6: expressions — the moved role's own sparse track, resampled (no rule at sampling angles) ----
-  const rules = ctx.rulesOf(fam.id).map((id) => ctx.get(id) as RuleRecord)
+  const conns0 = [...new Set(fam.curves.flatMap((c) => anchorsOf(c).flatMap((a) => ctx.connectionsAt(`${c}#${a}`))))]
+  const links = conns0.map((id) => ctx.get(id) as ConnectionRecord).filter((cn) => cn && cn.ends.every((e) => fam.curves.includes(e.curveId))).flatMap((cn) => cn.ends.slice(1).map((e) => [cn.ends[0].curveId, e.curveId] as [string, string]))
+  if (opts.neutralOnly) {
+    // the conversion of old files only needs the neutral grid (expressionMigration)
+    const curves = Object.fromEntries(fam.curves.map((c) => [c, { neutral: neutral[c], expr: {}, visible: null }]))
+    return { ok: true, grid: { characterId, yaws, params: [], paramCurves: {}, links, unplayable: {}, curves, front: {}, retained: 0 } }
+  }
+
+  // ---- step 6: expressions — the AUTHOR's keyframes (doc 18 §27 / §29 I-1; no generation rule) ----
+  const eps = ctx.paramsOf(fam.id).map((id) => ctx.get(id) as ExpressionParamRecord).filter((x) => x?.typeName === 'expressionParam').sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   const expr: Record<string, Record<string, Shape[]>> = Object.fromEntries(fam.curves.map((c) => [c, {}]))
   const params: string[] = []
-  for (const rule of rules) {
-    const impl = RULES[rule.kind]
-    if (!impl) continue
-    params.push(rule.param)
-    const moved = rule.roles[impl.moved], source = rule.roles[impl.source]
-    const ys = new Set<number>()
-    for (const [p] of parts) for (const k of formsOf(p, moved)?.expr[rule.param] ?? []) ys.add(k.yaw)
-    const fixes = K.exprFixes.filter((x) => x.curveId === moved && x.state[rule.param] === 1)
-    for (const x of fixes) ys.add(x.state.yaw)
-    const keyYaws = [...ys].sort((a, b) => a - b)
-    const srcAt = (y: number) => sample(yaws.map((yy, i) => ({ yaw: yy, i })), y, (k) => neutral[source][k.i])
-    // a preset's correction track: author → target − base, rule → 0 (on its own keys), resampled
-    const corrOf = (p: string, y: number): Shape => {
-      const keys = formsOf(p, moved)?.expr[rule.param] ?? []
-      if (!keys.length) return zeroShape(anchorsOf(moved))
-      return sample(keys, y, (k: ExprKey) => (k.kind === 'author' ? subShape(k.target, k.base) : zeroShape(anchorsOf(moved))))
+  const paramCurves: Record<string, string[]> = {}
+  const unplayable: Record<string, string[]> = {}
+  for (const ep of eps) {
+    params.push(ep.name)
+    paramCurves[ep.name] = [...ep.curves]
+    const why: string[] = []
+    for (const c of fam.curves) {
+      if (!ep.curves.includes(c)) {
+        expr[c][ep.name] = neutral[c] // a curve the parameter does not name keeps its neutral form
+        continue
+      }
+      // the character's own keyframes win at their yaws; elsewhere the weighted presets' keyframes
+      const fixes = K.exprFixes.filter((x) => x.curveId === c && x.param === ep.name)
+      const tracks = parts.map(([p, w]) => ({ p, w, keys: formsOf(p, c)?.expr[ep.name] ?? [] }))
+      const keyYaws = [...new Set([...fixes.map((x) => x.yaw), ...tracks.flatMap((t) => t.keys.map((k) => k.yaw))])].sort((a, b) => a - b)
+      const needPresets = !keyYaws.length || keyYaws.some((y) => !fixes.some((x) => x.yaw === y))
+      const lacking = tracks.filter((t) => !t.keys.length).map((t) => t.p)
+      expr[c][ep.name] = neutral[c] // placeholder until computed (an unplayable parameter is never sampled)
+      if (needPresets && lacking.length) {
+        why.push(`missing ${ep.name} keyframes of ${c} in ${lacking.join(', ')} (drawn by the author, never generated)`)
+        continue
+      }
+      // I-1 does not carry the character's own neutral data into expression states (that is I-2: domains / line
+      // correspondence) — reported, never dropped silently (dot 1791342672)
+      const nodeTk = K.takeovers.some((t) => t.kind === 'node' && (ctx.get(t.connectionId) as ConnectionRecord | undefined)?.ends.some((e) => e.curveId === c))
+      if (needPresets && (fineOf(c) || nodeTk || K.takeovers.some((t) => t.kind === 'line' && t.curveId === c))) {
+        why.push(`${c}: the character's fine-tune / takeovers would have to be carried into ${ep.name} (domain / line transfer, I-2 — not implemented yet)`)
+        continue
+      }
+      const at = (y: number): Shape =>
+        fixes.find((x) => x.yaw === y)?.shape ?? tracks.reduce<Shape | null>((acc, t) => (acc ? addShape(acc, scaleShape(sample(t.keys, y, (k) => k.shape), t.w)) : scaleShape(sample(t.keys, y, (k) => k.shape), t.w)), null)!
+      const ks = keyYaws.map((y) => ({ yaw: y, shape: at(y) }))
+      expr[c][ep.name] = yaws.map((y) => sample(ks, y, (k) => k.shape))
     }
-    const keyShapes = keyYaws.map((y) => {
-      const base = impl.apply(srcAt(y), rule.correspondence)!
-      const fix = fixes.find((x) => x.state.yaw === y)
-      const corr = fix ? subShape(fix.target, fix.base) : parts.reduce<Shape>((acc, [p, w]) => addShape(acc, scaleShape(corrOf(p, y), w)), zeroShape(anchorsOf(moved)))
-      return { yaw: y, shape: addShape(base, corr) }
-    })
-    for (const c of fam.curves) expr[c][rule.param] = c === moved && keyShapes.length ? yaws.map((y) => sample(keyShapes, y, (k) => k.shape)) : [...neutral[c]]
+    if (why.length) unplayable[ep.name] = why
   }
 
   // ---- step 7: visibility (presets must agree; stepped) ----
@@ -267,7 +306,7 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
       problems.push(`${cn.id}: ends separate in the front (${fr.map((q) => `(${q!.x}, ${q!.y})`).join(' vs ')}) — the fine-tune moves one end only`)
   }
   for (const cn of conns)
-    for (const [label, gridOf] of [['neutral', (c: string) => neutral[c]] as const, ...params.map((p) => [`${p}`, (c: string) => expr[c][p]] as const)])
+    for (const [label, gridOf] of [['neutral', (c: string) => neutral[c]] as const, ...params.filter((p) => !unplayable[p]).map((p) => [`${p}`, (c: string) => expr[c][p]] as const)])
       for (let i = 0; i < yaws.length; i++) {
         const pts = cn.ends.map((e) => gridOf(e.curveId)[i][e.anchorId].p)
         if (pts.some((q) => q.x !== pts[0].x || q.y !== pts[0].y)) {
@@ -288,7 +327,7 @@ export function prepareCharacter(ctx: Ctx, characterId: string): Prepared {
     if (front[c]) kept.add(front[c]!)
   }
   const retained = kept.size
-  return { ok: true, grid: { characterId, yaws, params, curves, front, retained } }
+  return { ok: true, grid: { characterId, yaws, params, paramCurves, links, unplayable, curves, front, retained } }
 }
 
 /** The distinct shape objects a grid keeps (what the cache budget counts). */
@@ -302,11 +341,38 @@ export function retainedShapes(grid: CharacterGrid): unknown[] {
   return [...kept]
 }
 
-/** Step 9: read-only playback — bilinear in (yaw, expression value) on the grid; no-yaw context = the front. */
+/** the curves a parameter reads or writes: its own curves, closed over the links (connections) */
+function reach(curves: string[], links: [string, string][]): Set<string> {
+  const out = new Set(curves)
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const [a, b] of links)
+      if (out.has(a) !== out.has(b)) {
+        out.add(a)
+        out.add(b)
+        grew = true
+      }
+  }
+  return out
+}
+
+/**
+ * Step 9: read-only playback — on the grid, bilinear in (yaw, value) per curve. Several parameters play together
+ * when what they act on (closed over connections) is disjoint — each eye its own value; overlapping ones (a
+ * multi-axis combination) are refused, as is an unplayable parameter with a non-zero value. No-yaw context = the
+ * front, without expressions (kept apart from yaw 0).
+ */
 export function playCharacter(grid: CharacterGrid, at: { yaw?: number; params?: Record<string, number> }): { ok: true; shapes: Record<string, Shape>; visible: Record<string, boolean> } | { ok: false; problems: string[] } {
   const active = Object.entries(at.params ?? {}).filter(([, x]) => x !== 0)
-  if (active.length > 1) return { ok: false, problems: ['several expressions at once are not supported (deferred)'] }
-  for (const [p, x] of active) if (!grid.params.includes(p) || !(x >= 0 && x <= 1)) return { ok: false, problems: [`expression ${p} = ${x} is not playable`] }
+  for (const [p, x] of active) {
+    if (!grid.params.includes(p) || !(x >= 0 && x <= 1)) return { ok: false, problems: [`expression ${p} = ${x} is not playable`] }
+    if (grid.unplayable[p]) return { ok: false, problems: [`${p} cannot be played: ${grid.unplayable[p].join('; ')}`] }
+  }
+  const reaches = active.map(([p]) => [p, reach(grid.paramCurves[p], grid.links)] as const)
+  for (let i = 0; i < reaches.length; i++)
+    for (let j = i + 1; j < reaches.length; j++)
+      if ([...reaches[i][1]].some((c) => reaches[j][1].has(c)))
+        return { ok: false, problems: [`${reaches[i][0]} and ${reaches[j][0]} act on the same curves (directly or through connections): combining them is not supported yet`] }
   if (at.yaw === undefined) {
     const missing = Object.entries(grid.front).filter(([, f]) => !f).map(([c]) => c)
     if (missing.length) return { ok: false, problems: [`the no-yaw context needs an original for every participating preset (${missing.join(', ')})`] }
@@ -319,10 +385,8 @@ export function playCharacter(grid: CharacterGrid, at: { yaw?: number; params?: 
   const visible: Record<string, boolean> = {}
   for (const [c, g] of Object.entries(grid.curves)) {
     const n = sample(keys, yaw, (k) => g.neutral[k.i])
-    if (active.length) {
-      const [p, x] = active[0]
-      shapes[c] = lerpShape(n, sample(keys, yaw, (k) => g.expr[p][k.i]), x)
-    } else shapes[c] = n
+    const on = active.find(([p]) => grid.paramCurves[p].includes(c))
+    shapes[c] = on ? lerpShape(n, sample(keys, yaw, (k) => g.expr[on[0]][k.i]), on[1]) : n
     visible[c] = !g.visible ? true : (g.visible.filter((k) => k.yaw <= yaw).pop() ?? g.visible[0]).visible
   }
   return { ok: true, shapes, visible }

@@ -2,6 +2,7 @@
 // Every committed command is checked through prepared preview → commit → undo → redo → save / reopen.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { converted } from './helpers/stage1'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
 import { evaluate, type Cubic, type Evaluated } from '../src/evaluate'
@@ -13,7 +14,7 @@ import { schema, type CurveRecord, type DocRecord, type FillRecord, type FormsRe
 
 const json = (f: string) => JSON.parse(readFileSync(`test/fixtures/${f}`, 'utf8'))
 const unlocked = () => exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r))
-const sample = (): DocRecord[] => json('stage1-valid.json').records
+const sample = (): DocRecord[] => converted() // the stage-1 sample in the current format (§29 I-1)
 const openRecords = (rs: DocRecord[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
 const YAWS = [-120, -90, -45, -12.5, 0, 12, 30, 45, 60, 89, 90, 120]
 const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
@@ -123,8 +124,14 @@ describe('insertPoint: an exact split in every holder', () => {
     expect(presetNeutral(e.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any) as FormsRecord)).toBeNull()
   })
 
-  it('refused: rule role curve, a curve with reference overrides, u outside (0, 1)', () => {
-    refused(openRecords(sample()), { type: 'insertPoint', curveId: 'curve:lid' as any, segmentId: 's1', u: 0.5 }, /role of rule:eye\/blink/)
+  it('an eyelid (named by an expression parameter) splits like any curve — its closed keyframes too; refused: a curve with reference overrides, u outside (0, 1)', () => {
+    // §29 I-1: no rule correspondence any more, so nothing ties the eyelid's anchors to another curve's
+    const lidE = openRecords(sample())
+    const r = lidE.apply({ type: 'insertPoint', curveId: 'curve:lid' as any, segmentId: 's1', u: 0.5 })
+    expect(r.ok && r.written, JSON.stringify(r)).toBe(true)
+    const closed = (lidE.reader.get('forms:preset:P/curve:lid' as any) as any).expr.blink
+    const anchors = Object.keys((lidE.reader.get('curve:lid' as any) as any).anchors).sort()
+    for (const k of closed) expect(Object.keys(k.shape).sort()).toEqual(anchors)
     const e = new Editor(unlocked())
     expect(e.apply({ type: 'moveOverride', referenceId: ids.R1, target: { curveId: ids.E1, anchorId: 'e1' }, delta: { x: 1, y: 0 } }).ok).toBe(true)
     refused(e, { type: 'insertPoint', curveId: ids.E1, segmentId: 's5', u: 0.5 }, /override its anchors/)
@@ -152,11 +159,13 @@ describe('removeAnchorJoin', () => {
     for (const y of YAWS) expect(maxDiff([seg(evaluateAtYaw(e.reader, y), ids.C1, 's2a+s2b')], [seg(before[y], ids.C1, 's2')])).toBeLessThan(1e-9)
   })
 
-  it('refused: end node, connected anchor, closed loop, rule role', () => {
+  it('refused: end node, connected anchor, closed loop, a curve a character holds data on', () => {
     const e = new Editor(unlocked())
     refused(e, { type: 'removeAnchorJoin', curveId: ids.E1, anchorId: 'e1', mode: 'keepShape' }, /end node/)
     refused(e, { type: 'removeAnchorJoin', curveId: ids.C1, anchorId: 'a3', mode: 'keepShape' }, /end node|unbind/)
-    refused(openRecords(sample()), { type: 'removeAnchorJoin', curveId: 'curve:lid' as any, anchorId: 'm', mode: 'keepShape' }, /role of rule/)
+    // (the old 'rule role' refusal is gone with the rule, §29 I-1); the eyelid is still refused here because
+    // character:K holds data on it
+    refused(openRecords(sample()), { type: 'removeAnchorJoin', curveId: 'curve:lid' as any, anchorId: 'm', mode: 'keepShape' }, /characters character:K hold data/)
   })
 })
 

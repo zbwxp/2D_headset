@@ -7,6 +7,7 @@
 // Connections as separate records linking anchors (tldraw bindings idea, MIT tlschema):
 //   https://github.com/tldraw/tldraw/blob/v5.5.2/packages/tlschema/src/records/TLBinding.ts
 import { BaseRecord, RecordId, Store, StoreSchema, createMigrationSequence, createRecordType } from '@tldraw/store'
+import { convertRuleExpressions } from './expressionMigration'
 
 export type Vec = { x: number; y: number }
 
@@ -83,8 +84,12 @@ export type LegacyYawKey = { yaw: number; offsets: Record<string, Vec> }
 /** Promoted legacy key (stage 2): one offset per control point (anchor, in-handle, out-handle). */
 export type Legacy3YawKey = { yaw: number; offsets: Record<string, PointDelta> }
 export type AbsoluteYawKey = { yaw: number; shape: Shape }
-/** One key of an expression's own sparse track (§20.3): a rule key, or an author target with its base then. */
-export type ExprKey = { yaw: number; kind: 'rule' } | { yaw: number; kind: 'author'; target: Shape; base: Shape; ruleVersion: number }
+/**
+ * One key of an expression's own sparse track: the author's FULL shape of this curve in that expression state at that
+ * yaw (doc 18 §27 / §29 I-1 — bowen draws the open and closed keyframes; no generation rule). Schema 3 (`contour.
+ * document/2`) converts the older rule / author keys by their evaluated result.
+ */
+export type ExprKey = { yaw: number; shape: Shape }
 
 /**
  * Every recorded form of ONE curve for ONE owner (doc 18 samples/stage1-archive.md v4.1).
@@ -116,15 +121,15 @@ export interface PresetRecord extends BaseRecord<'preset', RecordId<PresetRecord
   name: string
   familyId: RecordId<FamilyRecord>
 }
-/** An expression rule bound to a family parameter, with its version and point correspondence. */
-export interface RuleRecord extends BaseRecord<'rule', RecordId<RuleRecord>> {
+/**
+ * An expression parameter of a family (blinkL, blinkR, …): it NAMES the curves it acts on (doc 18 §29 I-1, dot
+ * 1791342672 — never guessed from which curves happen to have keys). Value 0 = the neutral forms, 1 = the curves'
+ * expression keyframes. Replaces the old `rule` record (schema 3).
+ */
+export interface ExpressionParamRecord extends BaseRecord<'expressionParam', RecordId<ExpressionParamRecord>> {
   familyId: RecordId<FamilyRecord>
-  param: string
-  kind: string
-  version: number
-  roles: Record<string, RecordId<CurveRecord>>
-  /** anchor of the moved role → anchor of the source role (lidClose: upper → lower) */
-  correspondence: Record<string, string>
+  name: string
+  curves: RecordId<CurveRecord>[]
 }
 /** A helper domain: used to initialise / rebuild a preset's form at one yaw, never during playback. */
 export interface HelperDomainRecord extends BaseRecord<'helperDomain', RecordId<HelperDomainRecord>> {
@@ -143,7 +148,8 @@ export type Takeover =
 export type ClearedLineBasis = { kind: 'clearedLine'; id: string }
 /** Where a node takeover's copied L came from when no line takeover provided it: the weighted helper domains (§24.2). */
 export type BlendBasis = { kind: 'blend'; yaw: number; weights: Record<string, number> }
-export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; state: { yaw: number } & Record<string, number>; target: Shape; base: Shape; ruleVersion: number }
+/** A character's own expression keyframe of one curve (its full shape at value 1 of `param`, at `yaw`). */
+export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; param: string; yaw: number; shape: Shape }
 /** A character: weights, front fine-tune (offsets over the preset blend), takeovers with frozen L, expression fixes. */
 export interface CharacterRecord extends BaseRecord<'character', RecordId<CharacterRecord>> {
   name: string
@@ -170,7 +176,7 @@ export type DocRecord =
   | FormsRecord
   | FamilyRecord
   | PresetRecord
-  | RuleRecord
+  | ExpressionParamRecord
   | HelperDomainRecord
   | CharacterRecord
   | VisibilityRecord
@@ -287,10 +293,7 @@ export const Forms = createRecordType<FormsRecord>('forms', {
         for (const [param, keys] of Object.entries(r.expr ?? {}) as [string, any[]][]) {
           check(Array.isArray(keys), `forms ${r.id} expr ${param}`)
           sortedUnique(keys, `forms ${r.id} expr ${param}`)
-          for (const k of keys) {
-            check(k.kind === 'rule' || k.kind === 'author', `forms ${r.id} expr ${param} kind`)
-            if (k.kind === 'author') check(isShape(k.target) && isShape(k.base) && isNum(k.ruleVersion), `forms ${r.id} expr ${param} author key at ${k.yaw}`)
-          }
+          for (const k of keys) check(isShape(k.shape), `forms ${r.id} expr ${param} key at ${k.yaw} (a full shape)`)
         }
       }
       return r
@@ -310,13 +313,12 @@ export const Preset = createRecordType<PresetRecord>('preset', {
   scope: 'document',
   validator: { validate: (r: any) => (check(typeof r.name === 'string' && typeof r.familyId === 'string', `preset ${r.id}`), r) },
 })
-export const Rule = createRecordType<RuleRecord>('rule', {
+export const ExpressionParam = createRecordType<ExpressionParamRecord>('expressionParam', {
   scope: 'document',
   validator: {
     validate(r: any) {
-      check(typeof r.familyId === 'string' && typeof r.param === 'string' && typeof r.kind === 'string' && isNum(r.version), `rule ${r.id}`)
-      check(isObj(r.roles) && Object.values(r.roles).every((x) => typeof x === 'string'), `rule ${r.id} roles`)
-      check(isObj(r.correspondence) && Object.values(r.correspondence).every((x) => typeof x === 'string'), `rule ${r.id} correspondence`)
+      check(typeof r.familyId === 'string' && typeof r.name === 'string' && r.name.length > 0, `expressionParam ${r.id} (familyId, name)`)
+      check(isStrArr(r.curves) && new Set(r.curves).size === r.curves.length, `expressionParam ${r.id} curves (unique curve ids)`)
       return r
     },
   },
@@ -358,7 +360,7 @@ export const Character = createRecordType<CharacterRecord>('character', {
             `character ${r.id} takeover ${t.id}`,
           )
       }
-      for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && isShape(f.target) && isShape(f.base) && isNum(f.ruleVersion) && isNum(f.state?.yaw), `character ${r.id} exprFix ${f?.id}`)
+      for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && typeof f.param === 'string' && isNum(f.yaw) && isShape(f.shape), `character ${r.id} exprFix ${f?.id} (curveId, param, yaw, shape)`)
       return r
     },
   },
@@ -407,6 +409,16 @@ export const documentMigrations = createMigrationSequence({
         }
       },
     },
+    {
+      // Schema 2 → 3 (doc 18 §27 / §29 I-1): expressions become the author's keyframes; the generation rule goes.
+      // Every converted shape is the OLD EVALUATED result (dot 1791342672: base 10, target 12, current base 11 → 13),
+      // for preset keys and character fixes alike; see expressionMigration.ts.
+      id: 'contour.document/2',
+      scope: 'store',
+      up(store: any) {
+        convertRuleExpressions(store)
+      },
+    },
   ],
 })
 
@@ -420,7 +432,7 @@ export const schema = StoreSchema.create<DocRecord>(
     forms: Forms,
     family: Family,
     preset: Preset,
-    rule: Rule,
+    expressionParam: ExpressionParam,
     helperDomain: HelperDomain,
     character: Character,
     visibility: Visibility,
@@ -441,7 +453,7 @@ export type BaseReader = Pick<DocStore, 'get' | 'allRecords'>
 export type DocReader = BaseReader & Pick<DocStore, 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
-const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, rule: Rule, helperDomain: HelperDomain, character: Character, visibility: Visibility } as const
+const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, expressionParam: ExpressionParam, helperDomain: HelperDomain, character: Character, visibility: Visibility } as const
 /** Run the record validators (same ones the store uses) without writing. */
 export function validateRecord(r: DocRecord) {
   ;(recordTypes[r.typeName] as any).validate(r)

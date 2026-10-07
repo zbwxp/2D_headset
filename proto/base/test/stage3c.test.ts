@@ -1,6 +1,7 @@
 // Stage 3c (doc 18 §24.5 last row, acceptance 8): bind and mergeEnds on FAMILY curves (new mode).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { converted } from './helpers/stage1'
 import { playCharacter } from '../src/character'
 import type { Command } from '../src/commands'
 import { Editor } from '../src/editor'
@@ -11,12 +12,15 @@ import { schema, type DocRecord, type FormsRecord } from '../src/schema'
 const json = (f: string) => JSON.parse(readFileSync(`test/fixtures/${f}`, 'utf8'))
 const openRecords = (rs: DocRecord[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
 const K = 'character:K'
-/** the sample without character data on the lids (binding never edits character data) */
+/** the sample without character data on the lids (binding never edits character data; the closed eye then plays from
+ *  the presets' keyframes — a fine-tune on the lids would need I-2 to be carried into it) */
 const plain = () => {
-  const rs = json('stage1-valid.json').records
+  const rs = converted()
   const k = rs.find((r: any) => r.id === K)
   k.takeovers = []
   k.exprFixes = []
+  delete k.fineTune['curve:lid']
+  delete k.fineTune['curve:lowerLid']
   return rs
 }
 const roundTrip = (e: Editor, cmd: Command) => {
@@ -75,10 +79,10 @@ describe('bind on family curves', () => {
   })
 
   it('refused: characters with takeovers / expression fixes on these curves, different fine-tune at the two ends, curves of different modes', () => {
-    const withData = openRecords(json('stage1-valid.json').records)
+    const withData = openRecords(converted())
     refused(withData, { type: 'bind', a: { curveId: 'curve:lid' as any, anchorId: 'a' }, b: { curveId: 'curve:lowerLid' as any, anchorId: 'c' }, keep: 'mid' }, /holds takeovers \/ expression fixes/)
     const rs = plain()
-    rs.find((r: any) => r.id === K).fineTune['curve:lid'].a = { dp: { x: 0.5, y: 0 }, dIn: { x: 0.5, y: 0 }, dOut: { x: 0.5, y: 0 } }
+    ;(rs.find((r: any) => r.id === K).fineTune['curve:lid'] ??= {}).a = { dp: { x: 0.5, y: 0 }, dIn: { x: 0.5, y: 0 }, dOut: { x: 0.5, y: 0 } }
     refused(openRecords(rs), { type: 'bind', a: { curveId: 'curve:lid' as any, anchorId: 'a' }, b: { curveId: 'curve:lowerLid' as any, anchorId: 'c' }, keep: 'mid' }, /fine-tunes the two ends differently/)
   })
 })
@@ -92,29 +96,34 @@ it('bind refuses when one side has yaw keys and the other only an identity place
   expect(JSON.stringify(e.reader.get(presetFormsIdOf('preset:Q', 'curve:strand') as any))).toBe(before)
 })
 
-it('bind shifts expression author keys (target AND base) at their own yaw, also between neutral keys (dot, review of 6df337d)', () => {
+it('bind moves the ends in the closed keyframes too, at every keyframe yaw of either lid — also one between the neutral keys (dot, review of 6df337d; §29 I-1 keyframes)', () => {
   const rs = plain()
   rs.find((r: any) => r.id === K).fineTune = {}
   const f = rs.find((r: any) => r.id === presetFormsIdOf('preset:P', 'curve:lid'))
-  // the upper lid's corner 2 to the right of the lower lid's in every neutral state, so binding moves it
-  for (const sh of [f.original, ...f.yaw.map((k: any) => k.shape)]) for (const h of ['p', 'hIn', 'hOut']) sh.a[h].x += 2
-  const yaws = f.yaw.map((k: any) => k.yaw)
-  expect(yaws).not.toContain(30)
-  const k0 = f.expr.blink.find((k: any) => k.kind === 'author')
-  const k30 = { ...structuredClone(k0), yaw: 30 }
-  f.expr.blink = [...f.expr.blink, k30].sort((a: any, b: any) => a.yaw - b.yaw)
+  // the upper lid's corner 2 to the right of the lower lid's in every neutral AND closed keyframe of P, so binding moves it
+  const shift = (sh: any) => { for (const h of ['p', 'hIn', 'hOut']) sh.a[h].x += 2 }
+  for (const sh of [f.original, ...f.yaw.map((k: any) => k.shape), ...f.expr.blink.map((k: any) => k.shape)]) shift(sh)
+  expect(f.yaw.map((k: any) => k.yaw)).not.toContain(30)
+  // an extra closed keyframe of the upper lid at 30 (its own yaw: no neutral key there)
+  // (the lid's own track sampled there: unmodified, so the other corner — linked to the lower lid — still meets it)
+  const k0 = f.expr.blink.find((k: any) => k.yaw === 0).shape, k90 = f.expr.blink.find((k: any) => k.yaw === 90).shape
+  const at30 = Object.fromEntries(Object.keys(k0).map((a) => [a, Object.fromEntries((['p', 'hIn', 'hOut'] as const).map((h) => [h, { x: k0[a][h].x + (k90[a][h].x - k0[a][h].x) / 3, y: k0[a][h].y + (k90[a][h].y - k0[a][h].y) / 3 }]))]))
+  f.expr.blink = [...f.expr.blink, { yaw: 30, shape: at30 }].sort((a: any, b: any) => a.yaw - b.yaw)
+  const was = structuredClone(f.expr.blink)
   const e = openRecords(rs)
   roundTrip(e, { type: 'bind', a: { curveId: 'curve:lid' as any, anchorId: 'a' }, b: { curveId: 'curve:lowerLid' as any, anchorId: 'c' }, keep: 'mid' })
   const now = (e.reader.get(presetFormsIdOf('preset:P', 'curve:lid') as any) as any).expr.blink
-  for (const [was, yaw] of [[k0, k0.yaw], [k30, 30]] as const) {
-    const k = now.find((x: any) => x.yaw === yaw && x.kind === 'author')
-    for (const s of ['target', 'base'] as const) {
-      for (const h of ['p', 'hIn', 'hOut'] as const) {
-        expect(k[s].a[h].x).toBeCloseTo(was[s].a[h].x - 1, 11) // half of the 2-unit gap, toward the lower lid
-        expect(k[s].a[h].y).toBe(was[s].a[h].y)
-      }
-      expect(k[s].m).toEqual(was[s].m) // other anchors untouched
+  const low = e.reader.get(presetFormsIdOf('preset:P', 'curve:lowerLid') as any) as any
+  for (const w of was) {
+    const k = now.find((x: any) => x.yaw === w.yaw)
+    for (const h of ['p', 'hIn', 'hOut'] as const) {
+      expect(k.shape.a[h].x).toBeCloseTo(w.shape.a[h].x - 1, 11) // half of the 2-unit gap, toward the lower lid
+      expect(k.shape.a[h].y).toBe(w.shape.a[h].y)
     }
+    expect(k.shape.m).toEqual(w.shape.m) // other anchors untouched
+    // the lower lid's closed keyframes meet it at that yaw (a key is written there if the lower lid had none)
+    const lk = low.expr.blink.find((x: any) => x.yaw === w.yaw)
+    expect(lk.shape.c.p).toEqual(k.shape.a.p)
   }
 })
 

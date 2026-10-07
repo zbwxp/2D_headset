@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { ctxOf, playCharacter, prepareCharacter, type CharacterGrid } from '../src/character'
 import { counters } from '../src/counters'
 import { Editor } from '../src/editor'
-import { RULES } from '../src/forms'
 import { evaluateSaved } from '../src/runtime'
 import { schema, type DocRecord, type Shape } from '../src/schema'
 
 const json = (f: string) => JSON.parse(readFileSync(`test/fixtures/${f}`, 'utf8'))
-const sample = (): any[] => json('stage1-valid.json').records
+import { converted, eyePlain } from './helpers/stage1'
+/** the stage-1 sample in the current format (converted from its pre-I-1 file) */
+const sample = (): any[] => converted()
 const openRecords = (rs: DocRecord[]) => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: schema.serialize() } as any)
 const K = 'character:K'
 const prep = (rs: any[]) => prepareCharacter(ctxOf({ get: (id: string) => rs.find((r) => r.id === id), allRecords: () => rs } as any), K)
@@ -31,11 +32,17 @@ describe('prepare / play on the stage-1 sample', () => {
     const g = ok(prep(sample()))
     expect(g.yaws).toEqual([-60, 0, 45, 90])
     expect(g.params).toEqual(['blink'])
-    for (const y of YAWS) for (const b of [0, 0.5, 1]) expect(gap(play(g, y, b).shapes)).toBe(0)
+    expect(g.paramCurves).toEqual({ blink: ['curve:lid', 'curve:lowerLid'] })
+    for (const y of YAWS) expect(gap(play(g, y, 0).shapes)).toBe(0)
+    // K's fine-tune / takeovers on the eye are not carried into the closed state yet (I-2): blink is reported, not faked
+    const closed = playCharacter(g, { yaw: 30, params: { blink: 1 } })
+    expect(closed.ok === false && closed.problems.join()).toMatch(/blink cannot be played: .*I-2/)
+    const plain = ok(prep(eyePlain(sample())))
+    for (const y of YAWS) for (const b of [0, 0.5, 1]) expect(gap(play(plain, y, b).shapes)).toBe(0)
   })
 
   it('the negative sample (Q has only the identity of the strand) is reported, never renormalised', () => {
-    const p = prep(json('stage1-invalid-missing.json').records)
+    const p = prep(converted('stage1-invalid-missing.json'))
     expect(p.ok).toBe(false)
     if (!p.ok) expect(p.problems.join()).toMatch(/preset:Q \(weight 0.4\) has no shape for curve:strand \(identity only\)/)
   })
@@ -113,26 +120,32 @@ describe('takeovers and expressions', () => {
     expect((prep(ov) as any).problems.join()).toMatch(/overlaps another takeover/)
   })
 
-  it('a character expression fix reproduces its target when the base is unchanged (10 / 12 / 13 → 13); clearing it restores the inherited result', () => {
-    const rs = sample()
-    const k = rs.find((r) => r.id === K)
-    k.exprFixes = []
+  it('a character expression keyframe is played exactly at its yaw; clearing it restores the presets’ keyframes', () => {
+    const rs = eyePlain(sample())
     const inherited = ok(prep(rs))
-    // capture the current base at 90 as fixExpression would: the rule on the character's lower lid there
-    const i90 = inherited.yaws.indexOf(90)
-    const rule = rs.find((r) => r.id === 'rule:eye/blink')
-    const base = RULES.lidClose.apply(inherited.curves['curve:lowerLid'].neutral[i90], rule.correspondence)!
-    const target = Object.fromEntries(Object.entries(base).map(([a, q]) => [a, a === 'm' ? { p: { x: q.p.x, y: q.p.y - 2 }, hIn: { x: q.hIn.x, y: q.hIn.y - 2 }, hOut: { x: q.hOut.x, y: q.hOut.y - 2 } } : q])) as Shape
-    k.exprFixes = [{ id: 'fix', curveId: 'curve:lid', state: { yaw: 90, blink: 1 }, target, base, ruleVersion: 1 }]
+    const at90 = play(inherited, 90, 1).shapes
+    const lid = at90['curve:lid']
+    const shape = { ...lid, m: { p: { x: lid.m.p.x, y: lid.m.p.y - 2 }, hIn: { x: lid.m.hIn.x, y: lid.m.hIn.y - 2 }, hOut: { x: lid.m.hOut.x, y: lid.m.hOut.y - 2 } } }
+    const k = rs.find((r) => r.id === K)
+    k.exprFixes = [{ id: 'fix', curveId: 'curve:lid', param: 'blink', yaw: 90, shape }]
     const fixed = ok(prep(rs))
-    expect(maxDiff(play(fixed, 90, 1).shapes['curve:lid'], target)).toBeLessThan(1e-12)
+    expect(maxDiff(play(fixed, 90, 1).shapes['curve:lid'], shape)).toBeLessThan(1e-12)
+    expect(play(fixed, 90, 1).shapes['curve:lowerLid']).toEqual(at90['curve:lowerLid']) // the other curve keeps its source
     k.exprFixes = []
     for (const y of YAWS) expect(play(ok(prep(rs)), y, 1).shapes).toEqual(play(inherited, y, 1).shapes)
   })
 
-  it('an unmodified extra preset key never changes the closed track (sampling angles run no rule)', () => {
-    const rs = sample()
-    rs.find((r) => r.id === K).fineTune = {}
+  it('every weighted preset needs the keyframes of a curve the parameter names; a missing one makes only that parameter unplayable', () => {
+    const rs = eyePlain(sample())
+    rs.find((r) => r.id === 'forms:preset:Q/curve:lowerLid').expr = {}
+    const g = ok(prep(rs))
+    expect(play(g, 30, 0).shapes['curve:lid']).toBeTruthy() // the open eye still plays
+    const r = playCharacter(g, { yaw: 30, params: { blink: 1 } })
+    expect(r.ok === false && r.problems.join()).toMatch(/missing blink keyframes of curve:lowerLid in preset:Q \(drawn by the author, never generated\)/)
+  })
+
+  it('an unmodified extra preset key never changes the closed track (the closed keyframes are read as drawn)', () => {
+    const rs = eyePlain(sample())
     const g = ok(prep(rs))
     // add a P neutral key at 30 equal to P's current interpolated form (what setPresetKey will capture)
     const extra = structuredClone(rs)
@@ -151,7 +164,7 @@ describe('cache, budget and the runtime entry', () => {
   it('prepare once, play many; edits elsewhere do not rebuild; an edit the character reads does; undo returns the same grid', () => {
     const e = openRecords(sample())
     const before = counters.characterPrepares
-    const first = e.derived.characterAt(K, { yaw: 30, params: { blink: 0.5 } })
+    const first = e.derived.characterAt(K, { yaw: 30, params: { blink: 0 } })
     expect(first.ok).toBe(true)
     for (const y of [-60, 0, 45, 90]) e.derived.characterAt(K, { yaw: y })
     expect(counters.characterPrepares - before).toBe(1)
@@ -182,13 +195,15 @@ describe('cache, budget and the runtime entry', () => {
       }
       for (const f of Object.values(p.grid.front)) if (f) seen.add(f)
       expect(p.grid.retained).toBe(seen.size)
-      expect(seen.size).toBe(4 + 4 + 4 + 4 + 2) // lid neutral + lid closed + lowerLid / strand (closed = neutral, shared) + two fronts
+      // lid / lowerLid neutral (this K's blink is unplayable — fine-tune / takeovers wait for I-2 — so their closed lists
+      // are the shared neutral placeholders) + strand (blink does not name it: closed = neutral, shared) + two fronts
+      expect(seen.size).toBe(4 + 4 + 4 + 2)
     }
     expect(e.derived.yawRetainedItems.consistent()).toBe(true)
   })
 
   it('runtime evaluateSaved with a character = the maker’s cached view (family curves played, legacy curves unchanged)', () => {
-    const e = openRecords(sample())
+    const e = openRecords(eyePlain(sample()))
     for (const y of [-60, 10, 45, 90]) {
       const maker = e.derived.characterAt(K, { yaw: y, params: { blink: 0.25 } })
       if (!maker.ok) throw new Error()
@@ -196,7 +211,7 @@ describe('cache, budget and the runtime entry', () => {
       expect(rt).toEqual(maker.evaluated)
       expect(rt.curves.find((c) => c.address === 'curve:C1')).toEqual(e.derived.atYaw(y).curves.find((c) => c.address === 'curve:C1'))
     }
-    expect(() => evaluateSaved(json('stage1-invalid-missing.json').records, { yaw: 0, character: K })).toThrow(/cannot be prepared: .*identity only/)
+    expect(() => evaluateSaved(converted('stage1-invalid-missing.json'), { yaw: 0, character: K })).toThrow(/cannot be prepared: .*identity only/)
   })
 })
 
@@ -204,7 +219,7 @@ describe('review requests for 3a (dot 1791314079): fills and reference instances
   /** the sample + a fill over both lids (closed by the corner connection and a bridge at the left corner) and a
    *  mirrored reference that places container:L1 (holding the family curves) inside L3 */
   const withFillAndInstance = () => {
-    const rs = sample()
+    const rs = eyePlain(sample())
     rs.push({ typeName: 'fill', id: 'fill:eye', name: 'eye', parentId: 'container:L1', index: 'a0', color: '#fff', depthOffset: 0,
       boundary: [{ curveId: 'curve:lid', segmentId: 's1', dir: 1 }, { curveId: 'curve:lid', segmentId: 's2', dir: 1 }, { curveId: 'curve:lowerLid', segmentId: 's4', dir: -1 }, { curveId: 'curve:lowerLid', segmentId: 's3', dir: -1 }, { bridge: { from: { curveId: 'curve:lowerLid', anchorId: 'c' }, to: { curveId: 'curve:lid', anchorId: 'a' } } }] })
     rs.push({ typeName: 'reference', id: 'reference:R2', name: 'mirrored eye', parentId: 'container:L3', index: 'b1', sourceId: 'container:L1', transform: { a: -1, b: 0, c: 0, d: 1, e: 100, f: 5 }, overrides: {} })
@@ -282,19 +297,21 @@ describe('review of 819dd22 (dot): both node directions, other families, shared 
     expect(b.consistent()).toBe(true)
   })
 
-  it('a new expression fix replaces an imported one with the same meaning (curve, parameter, yaw), whatever its id; two such records are refused on open', () => {
-    const e = openRecords(sample()) // has exprFix:lid@90/blink
-    const now = (play(ok(prep(sample())), 90, 1).shapes['curve:lid'])
-    const target = { ...now, m: { p: { x: now.m.p.x, y: now.m.p.y - 2 }, hIn: { x: now.m.hIn.x, y: now.m.hIn.y - 2 }, hOut: { x: now.m.hOut.x, y: now.m.hOut.y - 2 } } }
-    const r = e.apply({ type: 'fixExpression', character: K as any, curveId: 'curve:lid' as any, param: 'blink', yaw: 90, target })
-    expect(r.ok && r.written).toBe(true)
+  it('a new expression keyframe replaces an imported one with the same meaning (curve, parameter, yaw), whatever its id; two such records are refused on open', () => {
+    const rs = eyePlain(sample())
+    const now = play(ok(prep(rs)), 90, 1).shapes['curve:lid']
+    rs.find((x) => x.id === K).exprFixes = [{ id: 'exprFix:imported', curveId: 'curve:lid', param: 'blink', yaw: 90, shape: now }]
+    const e = openRecords(rs)
+    const shape = { ...now, m: { p: { x: now.m.p.x, y: now.m.p.y - 2 }, hIn: { x: now.m.hIn.x, y: now.m.hIn.y - 2 }, hOut: { x: now.m.hOut.x, y: now.m.hOut.y - 2 } } }
+    const r = e.apply({ type: 'fixExpression', character: K as any, param: 'blink', yaw: 90, keyframes: { 'curve:lid': shape } })
+    expect(r.ok && r.written, JSON.stringify(r)).toBe(true)
     const fixes = (e.reader.get(K as any) as any).exprFixes
-    expect(fixes.map((x: any) => x.id)).toEqual(['exprFix:lid@90/blink']) // replaced, id kept
+    expect(fixes.map((x: any) => x.id)).toEqual(['exprFix:imported']) // replaced, id kept
     const p = e.derived.character(K)
     if (!p.ok) throw new Error(p.problems.join())
     const got = playCharacter(p.grid, { yaw: 90, params: { blink: 1 } })
-    expect(got.ok && Math.abs((got as any).shapes['curve:lid'].m.p.y - target.m.p.y)).toBeLessThan(1e-12)
-    const dup = sample()
+    expect(got.ok && Math.abs((got as any).shapes['curve:lid'].m.p.y - shape.m.p.y)).toBeLessThan(1e-12)
+    const dup = structuredClone(rs)
     const kd = dup.find((x) => x.id === K)
     kd.exprFixes.push({ ...structuredClone(kd.exprFixes[0]), id: 'exprFix:other' })
     expect(() => openRecords(dup)).toThrow(/fix the same state .*ambiguous/)

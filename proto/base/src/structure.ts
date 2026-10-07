@@ -14,7 +14,7 @@ import type { RecordId } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { deviation, joinCubic, type JoinMode } from './experiments/deletePoint'
 import { playabilityNotices } from './characterCommands'
-import { presetFormsIdOf } from './forms'
+import { paramFor, presetFormsIdOf } from './forms'
 import { connectionsAt, familiesOf, fillsUsing, referencesOf } from './indexes'
 import { anchorKey, containerChain, getAs, overlayReader, type AnchorRef } from './model'
 import { legacy3Keys, promoteLegacy } from './pose'
@@ -39,7 +39,6 @@ import {
   type PointDelta,
   type PresetRecord,
   type ReferenceRecord,
-  type RuleRecord,
   type Segment,
   type Shape,
   type Vec,
@@ -187,14 +186,14 @@ function legacyAfter(f: FormsRecord, curve: CurveRecord, op: Op): FormsRecord {
   })
   return { ...p, yaw }
 }
-/** a preset's forms after an op: every stored shape (original, yaw keys, expression targets and bases) */
+/** a preset's forms after an op: every stored shape (original, yaw keys, expression keyframes) */
 function presetFormsAfter(f: FormsRecord, op: Op): FormsRecord {
   if (f.encoding !== 'absolute') return f
   return {
     ...f,
     original: f.original && f.original !== 'curve' ? op.apply(f.original) : f.original,
     yaw: f.yaw.map((k) => ({ yaw: k.yaw, shape: op.apply((k as { shape: Shape }).shape) })),
-    expr: Object.fromEntries(Object.entries(f.expr).map(([param, keys]) => [param, keys.map((k) => (k.kind === 'author' ? { ...k, target: op.apply(k.target), base: op.apply(k.base) } : k))])),
+    expr: Object.fromEntries(Object.entries(f.expr).map(([param, keys]) => [param, keys.map((k) => ({ yaw: k.yaw, shape: op.apply(k.shape) }))])),
   }
 }
 
@@ -206,7 +205,6 @@ type CurveData = {
   presets: PresetRecord[]
   presetForms: FormsRecord[]
   characters: CharacterRecord[] // with data ON this curve
-  rules: RuleRecord[] // with this curve in a role
   visibility: VisibilityRecord[]
   refs: ReferenceRecord[] // references whose source shows the curve
   overrides: ReferenceRecord[] // … with an override on one of its anchors
@@ -223,11 +221,10 @@ function curveData(store: Store, curve: CurveRecord): CurveData {
       r.typeName === 'character' &&
       (!!r.fineTune[curve.id] || r.takeovers.some((t) => (t.kind === 'line' ? t.curveId === curve.id : conns.has(t.connectionId))) || r.exprFixes.some((f) => f.curveId === curve.id)),
   )
-  const rules = all.filter((r): r is RuleRecord => r.typeName === 'rule' && Object.values(r.roles).includes(curve.id))
   const visibility = all.filter((r): r is VisibilityRecord => r.typeName === 'visibility' && r.curveId === curve.id)
   const refs = containerChain(store, curve.parentId).flatMap((k) => referencesOf(store, k.id).map((id) => getAs(store, id, 'reference')!))
   const overrides = refs.filter((r) => Object.keys(r.overrides).some((k) => k.startsWith(`${curve.id}#`)))
-  return { curve, legacy: getAs(store, poseIdOf(curve.id), 'forms'), families, presets, presetForms, characters, rules, visibility, refs, overrides }
+  return { curve, legacy: getAs(store, poseIdOf(curve.id), 'forms'), families, presets, presetForms, characters, visibility, refs, overrides }
 }
 
 class Collision extends Error {}
@@ -248,10 +245,8 @@ const unique = (base: string, taken: (id: string) => boolean) => {
 }
 const isClosedLoop = (c: CurveRecord) => c.closed || (c.segments.length > 0 && c.segments[c.segments.length - 1].to === c.segments[0].from)
 
-function refuse(d: CurveData, what: string, checks: ('rules' | 'characters' | 'overrides' | 'family')[]): Plan | null {
+function refuse(d: CurveData, what: string, checks: ('characters' | 'overrides' | 'family')[]): Plan | null {
   const c = d.curve.id
-  if (checks.includes('rules') && d.rules.length)
-    return fail('INVALID', `${what} changes the anchors of ${c}, a role of ${d.rules.map((r) => r.id).join(', ')}: rule correspondence edits are not supported`, [c, ...d.rules.map((r) => r.id)])
   if (checks.includes('characters') && d.characters.length)
     return fail('INVALID', `${what} on ${c}: characters ${d.characters.map((r) => r.id).join(', ')} hold data on it (fine-tune / takeovers / expression fixes) — not supported for this edit`, [c, ...d.characters.map((r) => r.id)])
   if (checks.includes('overrides') && d.overrides.length)
@@ -290,7 +285,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       if (!seg) return fail('NOT_FOUND', `${c.id} has no segment ${cmd.segmentId}`, [c.id])
       if (typeof cmd.u !== 'number' || !(cmd.u > 0 && cmd.u < 1)) return fail('INVALID', `u must be a number strictly between 0 and 1 (got ${cmd.u})`, [c.id])
       const d = curveData(store, c)
-      const no = refuse(d, 'inserting a point', ['rules', 'overrides'])
+      const no = refuse(d, 'inserting a point', ['overrides'])
       if (no) return no
       const M = take(ids, 'anchor', () => unique('m', (x) => !!c.anchors[x]), (x) => !!c.anchors[x])
       const sa = take(ids, 'segment', () => unique(`${seg.id}a`, (x) => c.segments.some((s) => s.id === x)), (x) => c.segments.some((s) => s.id === x))
@@ -314,7 +309,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
           ...ch,
           fineTune,
           takeovers: ch.takeovers.map((t) => (t.kind === 'line' && t.curveId === c.id ? { ...t, target: op.apply(t.target), basisFront: op.apply(t.basisFront) } : t)),
-          exprFixes: ch.exprFixes.map((f) => (f.curveId === c.id ? { ...f, target: op.apply(f.target), base: op.apply(f.base) } : f)),
+          exprFixes: ch.exprFixes.map((f) => (f.curveId === c.id ? { ...f, shape: op.apply(f.shape) } : f)),
         })
       }
       for (const f of fillStepsOf(store, c.id)) {
@@ -338,7 +333,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       const conn = connectionsAt(store, key)
       if (conn.length) return fail('INVALID', `connection ${conn.join(', ')} uses ${key}: unbind it first`, [key, ...conn])
       const d = curveData(store, c)
-      const no = refuse(d, 'removing an anchor', ['rules', 'characters', 'overrides'])
+      const no = refuse(d, 'removing an anchor', ['characters', 'overrides'])
       if (no) return no
       const seg = take(ids, 'segment', () => unique(`${sIn.id}+${sOut.id}`, (x) => c.segments.some((s) => s.id === x)), (x) => c.segments.some((s) => s.id === x && s.id !== sIn.id && s.id !== sOut.id))
       const op = joinOp(sIn.from, cmd.anchorId, sOut.to, cmd.mode)
@@ -375,7 +370,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       const isCut = cmd.type === 'breakAt'
       if (isCut && (iIn < 0 || iOut < 0)) return fail('INVALID', `${key} is an end node: cutting there changes nothing`, [key])
       if (!isCut && closed) return fail('INVALID', `${c.id} is a closed loop: deleting on closed curves is not supported yet`, [c.id])
-      const no = refuse(d, isCut ? 'cutting' : 'deleting an anchor', ['rules', 'characters'])
+      const no = refuse(d, isCut ? 'cutting' : 'deleting an anchor', ['characters'])
       if (no) return no
       if (isCut) {
         const conn = connectionsAt(store, key)
@@ -500,7 +495,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       if (!['mid', 'first', 'last'].includes(cmd.keep)) return fail('INVALID', `keep must be mid, first or last (got ${cmd.keep})`, [c.id])
       const F = c.segments[0].from, L = c.segments[c.segments.length - 1].to
       const d = curveData(store, c)
-      const no = refuse(d, 'merging the ends', ['rules', 'characters', 'overrides'])
+      const no = refuse(d, 'merging the ends', ['characters', 'overrides'])
       if (d.legacy && d.families.length) return fail('INVALID', `${c.id} has both a legacy track and preset forms: merging mixed modes is not supported`, [c.id])
       if (no) return no
       for (const a of [F, L]) {
@@ -676,15 +671,6 @@ function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' 
     const origA = A.original && A.original !== 'curve' ? A.original : null, origB = B.original && B.original !== 'curve' ? B.original : null
     const stateA = (y: number) => (ka.length ? sampleS(ka, y) : origA), stateB = (y: number) => (kb.length ? sampleS(kb, y) : origB)
     const yaws = [...new Set([...ka, ...kb].map((k) => k.yaw))].sort((x, y) => x - y)
-    // the corner move at ANY yaw, from the neutral states there (sampled / clamped like playback): bound keys are
-    // affine in the two ends, so this equals sampling the bound result — also at an expression key's own yaw that is
-    // not a neutral key (dot, review of 6df337d)
-    const deltaAt = (y: number): { a: Vec; b: Vec } | null => {
-      const sa = stateA(y), sb = stateB(y)
-      if (!sa || !sb) return null
-      const to = target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
-      return { a: v(to.x - sa[cmd.a.anchorId].p.x, to.y - sa[cmd.a.anchorId].p.y), b: v(to.x - sb[cmd.b.anchorId].p.x, to.y - sb[cmd.b.anchorId].p.y) }
-    }
     const keysA: AbsoluteYawKey[] = [], keysB: AbsoluteYawKey[] = []
     for (const y of yaws) {
       const sa = stateA(y), sb = stateB(y)
@@ -695,24 +681,31 @@ function bindFamily(store: Store, cmd: Extract<StructureCommand, { type: 'bind' 
       keysB.push({ yaw: y, shape: moveEnd(sb, cmd.b.anchorId, to) })
     }
     const orig = origA && origB ? target(origA[cmd.a.anchorId].p, origB[cmd.b.anchorId].p) : null
-    // expression author keys: target and base shifted by the same corner move at that yaw (the correction is kept)
-    const shiftExpr = (f: FormsRecord, a: string, side: 'a' | 'b'): FormsRecord['expr'] | string => {
-      const out: FormsRecord['expr'] = {}
-      for (const [param, keys] of Object.entries(f.expr)) {
-        const next = []
-        for (const k of keys) {
-          if (k.kind !== 'author') { next.push(k); continue }
-          const d = deltaAt(k.yaw)
-          if (!d) return `${pr.id} has no neutral shape for both curves at the expression key yaw ${k.yaw} (${param})`
-          const sh = (s: Shape) => moveEnd(s, a, v(s[a].p.x + d[side].x, s[a].p.y + d[side].y))
-          next.push({ ...k, target: sh(k.target), base: sh(k.base) })
-        }
-        out[param] = next
+    // expression keyframes (the author's full shapes): in each parameter's states the two ends meet too. A curve the
+    // parameter names takes its keyframe (sampled); one it does not name stays in its (bound) neutral form there.
+    const bound = (keys: AbsoluteYawKey[], orig0: Shape | null) => (y: number) => (keys.length ? sampleS(keys, y) : orig0)
+    const nA = bound(keysA.length ? keysA : ka, orig && origA ? moveEnd(origA, cmd.a.anchorId, orig) : origA), nB = bound(keysB.length ? keysB : kb, orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : origB)
+    const exprA: FormsRecord['expr'] = { ...A.expr }, exprB: FormsRecord['expr'] = { ...B.expr }
+    for (const name of [...new Set([...Object.keys(A.expr), ...Object.keys(B.expr)])]) {
+      const ep = paramFor(store, fam.id, name)
+      const inA = !!ep?.curves.includes(da.curve.id), inB = !!ep?.curves.includes(db.curve.id)
+      const ea = A.expr[name] ?? [], eb = B.expr[name] ?? []
+      if ((inA && !ea.length && eb.length && inB) || (inB && !eb.length && ea.length && inA))
+        return fail('INVALID', `${pr.id} has ${name} keyframes for only one of ${da.curve.id} / ${db.curve.id}: draw the other first (binding would otherwise leave the ends apart in ${name})`, [pr.id])
+      const ys = [...new Set([...ea, ...eb].map((k) => k.yaw))].sort((x, y) => x - y)
+      const outA: { yaw: number; shape: Shape }[] = [], outB: { yaw: number; shape: Shape }[] = []
+      for (const y of ys) {
+        const sa = inA && ea.length ? sampleS(ea as AbsoluteYawKey[], y) : nA(y)
+        const sb = inB && eb.length ? sampleS(eb as AbsoluteYawKey[], y) : nB(y)
+        if (!sa || !sb) return fail('INVALID', `${pr.id} has no shape for ${!sa ? da.curve.id : db.curve.id} at yaw ${y} (${name})`, [pr.id])
+        // a curve the parameter does not move keeps its end; otherwise the bind choice (mid / first / second)
+        const to = !(inA && ea.length) ? sa[cmd.a.anchorId].p : !(inB && eb.length) ? sb[cmd.b.anchorId].p : target(sa[cmd.a.anchorId].p, sb[cmd.b.anchorId].p)
+        if (inA && ea.length) outA.push({ yaw: y, shape: moveEnd(sa, cmd.a.anchorId, to) })
+        if (inB && eb.length) outB.push({ yaw: y, shape: moveEnd(sb, cmd.b.anchorId, to) })
       }
-      return out
+      if (inA && ea.length) exprA[name] = outA
+      if (inB && eb.length) exprB[name] = outB
     }
-    const exprA = shiftExpr(A, cmd.a.anchorId, 'a'), exprB = shiftExpr(B, cmd.b.anchorId, 'b')
-    if (typeof exprA === 'string' || typeof exprB === 'string') return fail('INVALID', (typeof exprA === 'string' ? exprA : exprB) as string, [pr.id])
     puts.push({ ...A, original: orig && origA ? moveEnd(origA, cmd.a.anchorId, orig) : A.original, yaw: ka.length || keysA.length ? keysA : A.yaw, expr: exprA })
     puts.push({ ...B, original: orig && origB ? moveEnd(origB, cmd.b.anchorId, orig) : B.original, yaw: kb.length || keysB.length ? keysB : B.yaw, expr: exprB })
   }
