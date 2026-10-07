@@ -159,3 +159,41 @@ describe('KF-3 experiment: instance entries follow membership', () => {
 // not covered here (the product integration step, after review): preview overlays never write this table — the
 // product preview reads through an overlay reader and evaluates changed instances without the cache.
 void ([] as DocRecord[])
+
+describe('KF-3 experiment: the source container must exist (dot, review of 15deba2)', () => {
+  const nested = () => {
+    const { s, t } = setup()
+    const sub = Container.create({ id: Container.createId('sub'), name: 'sub', parentId: ids.L3, index: 'a9' } as any)
+    const deep = Container.create({ id: Container.createId('deep'), name: 'deep', parentId: sub.id, index: 'a0' } as any)
+    const cd = curveIn('deep', deep.id)
+    const rs = { ...ref('sub', sub.id) }
+    s.put([sub, deep, cd as any, rs])
+    t.get(ids.R1, ids.E1)
+    t.get(ids.R1, cd.id)
+    t.get(rs.id, cd.id)
+    return { s, t, cd, rs }
+  }
+  it('deleting the source container drops its references’ entries; a reference to a surviving sub-container keeps its own', () => {
+    const { s, t, cd, rs } = nested()
+    expect(t.size).toBe(3)
+    s.remove([ids.L3])
+    expect(t.keys()).toEqual([`${rs.id}/${cd.id}`])
+  })
+  it('reconcile after loading a snapshot without the source clears its entries', () => {
+    const { s, t } = setup()
+    t.get(ids.R1, ids.E1)
+    const snap = s.getStoreSnapshot()
+    s.loadStoreSnapshot({ ...snap, store: Object.fromEntries(Object.entries(snap.store).filter(([id]) => id !== ids.L3)) } as any)
+    t.reconcile()
+    expect(t.size).toBe(0)
+  })
+  it('a source deleted and recreated under the same id: the next read builds a fresh entry', () => {
+    const { s, t } = setup()
+    const old = t.get(ids.R1, ids.E1)
+    const source = s.get(ids.L3)!
+    s.remove([ids.L3])
+    expect(t.size).toBe(0)
+    s.put([source])
+    expect(t.get(ids.R1, ids.E1)).not.toBe(old)
+  })
+})

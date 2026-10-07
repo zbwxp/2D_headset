@@ -1,12 +1,14 @@
 // KF-3 experiment (doc 18 §26.1 v3): reference-instance cache entries live exactly as long as their MEMBERSHIP —
-// reference exists, curve exists, and the curve lies (through its parent chain) inside the reference's source.
+// reference exists, its source container exists, the curve exists, and the curve lies (through its parent chain)
+// inside that source.
 // Independent module: the product cache (`Derived.instances`) is not touched until this is reviewed.
 //
 // Mature reference: @tldraw/store `createCache` keys entries by the record's own atom in a WeakCache
 // (v5.5.2 dist-cjs/lib/Store.js:703-727), so an entry dies with its record. We need a countable table
 // (KF-3 and the budget count entries), so:
-// - the table is an `AtomMap` (@tldraw/store): a @tldraw/state transaction that rolls back restores it together
-//   with the records (side effects do not run on rollback — the table must roll back by itself);
+// - the table is an `AtomMap` (@tldraw/store), chosen HERE because this table is written from store side effects
+//   and a @tldraw/state rollback restores atoms but runs no side effects — so the table rolls back with the records
+//   (a choice for this design, not a general rule for caches);
 // - pruning is driven by the store's SYNCHRONOUS side effects (afterCreate / afterChange / afterDelete).
 //   `store.listen` is throttled to the next frame (Store.js:169 throttleToNextFrame) and cannot give
 //   "pruned when the write returns";
@@ -100,7 +102,9 @@ export class InstanceTable<V> {
     if (!inner) return
     lifecycleCounters.membershipChecks++
     const ref = this.store.get(refId as any) as ReferenceRecord | undefined
-    if (!ref) return this.#drop(refId)
+    // membership needs the reference AND its source container to exist: `within` starts from the id it is given even
+    // when that record is gone, and would still collect the curves whose parentId points at it (dot, review of 15deba2)
+    if (!ref || !this.store.get(ref.sourceId as any)) return this.#drop(refId)
     const members = new Set<string>(within(this.store, ref.sourceId, 'curve'))
     const kept = [...inner].filter(([c]) => members.has(c))
     if (kept.length === inner.size) return
