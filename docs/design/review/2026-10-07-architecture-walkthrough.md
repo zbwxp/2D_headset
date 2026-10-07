@@ -2459,9 +2459,35 @@ The result is essentially the same as Claude's. Key separation: **shared points 
 
 **Single open question for bowen:** when binding, are the deleted point's join relations dropped, or carried to the kept point?
 
+### bowen (1791393850)
+
+> 1端头笔触属于点 这种链接曲线肯定是连接起来的所以是同样的笔触。而且相连的端点都是连贯笔触。如果需要特殊笔触可以在这位置附加显隐区间
+
+**Decided:**
+- The end stroke belongs to the point.
+- Connected endpoints have a continuous stroke.
+- Special effects at a junction are made with a show/hide interval there.
+
+### Claude (1791393874)
+
+**Derived:**
+- End strokes (tapers) only take effect at free ends, i.e. points with one line. Shared points are continuous.
+- On binding, the deleted point's end stroke goes with it. Continuity at the joined point is unaffected.
+- **Matches v103:** binding clears tapers at connected ends by default (`clearConnectedInk`, `7205381:src/domain/drawing/commands.ts`).
+- v103's "interior end taper" switch is replaced by show/hide intervals.
+
+**New question:** does "connected lines have the same stroke" mean:
+- (a) continuous only at the junction; or
+- (b) the whole connected group shares one line stroke (width and profile)?
+
+v103 `connect` unified the width and profile of both groups to the first group's (`c.width=width`, `profile`). Under (b), "line stroke" belongs to the continuous curve, not to each line, and all branches at a fork share it.
+
+**Still open:** on binding, are the deleted point's joins dropped or carried over?
+
 ### Status
 
 - 2 decided (the join is a point attribute).
-- 1 (taper) deferred to the stroke layer.
+- 1 decided (end stroke belongs to the point; shared points are continuous; special effects use show/hide intervals).
+- Open: line stroke per line or per connected group?
 - 3 (odd smooth cycle) deferred to last.
 - Open: drop or carry the deleted point's joins on binding.
