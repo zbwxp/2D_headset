@@ -2029,3 +2029,38 @@ dot also asked Claude to write the formal graph now. Claude declined (1791390610
 The fill layer is complete. Waiting for bowen's "写" to add graph rows.
 
 Graph rows wait for bowen's "写".
+
+## Q19: Is "one endpoint, many lines" the only thing left in point / line / face?
+
+**bowen** 1791390987:
+> 写吧 这样点线面就只差一个端点多条线需要处理吧？其他的关系都无法攻击了吧？
+
+Fill rows were written to the graph in `cb93586`.
+
+### Claude (1791391051) and dot (1791391029)
+
+**Not the only one.** dot found no contradiction that would overturn the point / segment / loop / fill structure for the current scope. Open items:
+
+**Endpoint group:**
+
+1. **3 or more lines at one endpoint.** Which lines are joined smoothly, which handles move together, and which only share a position. v103 stored joins pairwise. (Q7 A2)
+2. **End stroke at a shared endpoint.** Does the taper apply there, or the join? v103 could turn on a taper at an interior end. (Q7 A3)
+3. **Two groups joined by sharing an endpoint.** How do their list positions and fill orders merge? (dot 1791391029)
+
+**Line group:**
+
+4. **Stroke along a whole line.** Tapers and show/hide intervals need a direction and a route across segments and branches. v103 stored an explicit route. This is tied to show/hide interval performance. (Q7 A4)
+5. **Endpoints linked across layers.** Lines stay in their own layers and only the ends are linked (bowen's binding / linkage decision). The graph has no "linked but not shared" relation yet. (Q7 A5)
+
+**Editing rules (dot 1791391029):**
+
+6. Rules that must be written down and later verified:
+   - a loop keeps its identity after a point is added;
+   - which fills are affected when a shared line is deleted;
+   - undo restores the exact previous state.
+
+   They are editing-operation rules inside this structure; nothing so far requires a different point / line / face model.
+
+### Status
+
+Waiting for bowen to choose which group to start with (asked in 1791391085).
