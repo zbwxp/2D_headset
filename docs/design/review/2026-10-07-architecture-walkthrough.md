@@ -1680,3 +1680,45 @@ Tiers B and C are not internal implementations that have been verified.
 - **Limit:** the statistic checks node-and-edge connectivity only. It does not prove that no curve self-intersects geometrically.
 
 **Status:** waiting for bowen to confirm this scope. The network region-splitting scheme (Q8–Q13) is set aside.
+
+---
+
+## Q15: bowen's fill proposal v3 — two ways to create, fill as its own element
+
+**bowen** 1791389089:
+> OK就是填充就是两种：1，单调闭合曲线（即一根线从头到尾）才能进行填充 填充完曲线和其他线条端点绑定成连续曲线也无所谓 反正是靠编辑顺序实现一组连续曲线上多个填充区间的实现的 2，手动指定一个闭合曲线进行填充（这个一般是应付跨图层曲线的填充） 这些都是填充建立的过程 而填充此时应作为element存在 因此可以显隐 删除。（就不和闭合曲线绑定了） 这个你们推敲攻击一下
+
+### Restatement (to be confirmed by bowen)
+
+- **"Monotone closed curve"** = one line joined end to start with no branches. It may be made of several Bézier segments.
+- **The two creation methods differ only in how the boundary is chosen.** Once created, the data is the same: **one fill element that records which segments form its boundary.**
+- **This changes bowen's earlier position.**
+  - **Before:** "fill is an attribute of a closed path, not a separate object" (memory fill-is-attribute; v103 / §30.18).
+  - **Now:** "fill is its own element, not bound to the closed curve".
+  - **Recorded as "changed", not as a contradiction.**
+
+### Claude's independent judgement (1791389133)
+
+**Strengths:**
+
+1. **"Which layer for a cross-layer fill" disappears.** As its own element, a fill has its own place in the layer tree.
+2. **Cover order is the fill's position in the layer tree.** Neither "later covers earlier" nor "larger covers smaller" is needed (the Q9 conflict goes away).
+3. **It matches mature tools:**
+   - VGC's KeyFace is its own cell: it references its boundary cycles and has its own z-order (Q12, tier A).
+   - **bowen's v103 does the same:** a fill is its own record with a name, can be selected and deleted, and its boundary is a list of segments (v103 inventory #104–110).
+4. **Fill first, bind later:** the segments the fill references still exist, so it is unaffected.
+
+**Points to settle:**
+
+- **A. How far "not bound" goes.** Proposed reading: **its identity is independent** (shown, hidden, deleted and ordered on its own), but **its shape still references the boundary segments**, so it follows face-shaping and head-turns. If it stored its own copy of the shape, it would not follow edits; that would contradict "fill follows the outline" (Q14, dot point 3).
+- **B. When the boundary is edited:**
+  - **A point is added, or a segment is split in two:** the fill updates its boundary in place (VGC cut repair).
+  - **A boundary segment is deleted, or the loop is cut open:** the boundary is invalid. Delete the fill, or keep it marked as invalid (it is now its own element)?
+  - **The whole closed line is deleted:** delete the fill too, or keep it?
+- **C. Picking.** Today clicking a fill area selects the line, because a path's own fill counts as part of the path (selection.ts:21-25). With a separate element, clicking the fill area **selects the fill itself**. The behaviour changes.
+- **D. Copying.** Can a fill be copied without its boundary lines? The current new proto refuses this.
+- **E. Figure-eight.** A single line joined end to start but crossing itself: does it count as a "monotone closed curve"?
+
+### Status
+
+**Waiting for dot's independent review, then merging.** bowen decides A–E.
