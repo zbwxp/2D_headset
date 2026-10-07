@@ -28,7 +28,7 @@ export function planMask(store: BaseReader, cmd: MaskCommand, ids: IdSource): Pl
   if (!cmd.targets?.length) return fail('INVALID', 'a mask needs at least one target', [])
   for (const t of cmd.targets) {
     const r = store.get(t as any) as DocRecord | undefined
-    if (!r || !['curve', 'fill', 'container'].includes(r.typeName)) return fail('NOT_FOUND', `${t} is not a curve, fill or container`, [t])
+    if (!r || !['curve', 'fill', 'container', 'image'].includes(r.typeName)) return fail('NOT_FOUND', `${t} is not a curve, fill, image or container`, [t])
   }
   if (cmd.mode !== 'inside' && cmd.mode !== 'outside') return fail('INVALID', `mode must be inside or outside (got ${cmd.mode})`, [])
   const old = cmd.id ? (getAs(store, cmd.id, 'mask') as MaskRecord | undefined) : undefined

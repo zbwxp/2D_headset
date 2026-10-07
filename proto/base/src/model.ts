@@ -95,7 +95,7 @@ export function recordProblems(store: Pick<BaseReader, 'get'> & Partial<Pick<Bas
     if (!getAs(store, id, type)) out.push({ object: r.id, field, target: String(id), message: `${r.id}.${field}: ${id} is not a ${type} (${actualKind(store, id)})` })
   }
   if (r.typeName === 'container' && r.parentId) need('parentId', r.parentId, 'container')
-  if (r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference') need('parentId', r.parentId, 'container')
+  if (r.typeName === 'curve' || r.typeName === 'fill' || r.typeName === 'reference' || r.typeName === 'image') need('parentId', r.parentId, 'container')
   if (r.typeName === 'reference') need('sourceId', r.sourceId, 'container')
   if (r.typeName === 'connection')
     r.ends.forEach((e, i) => {

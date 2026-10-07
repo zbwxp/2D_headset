@@ -9,7 +9,7 @@ import { Bezier } from 'bezier-js'
 import type { RecordId } from '@tldraw/store'
 import { counters } from './counters'
 import { all, effectivelyVisible, lockedBy } from './model'
-import { isBridge, type Affine, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type BaseReader as DocStore, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
+import { isBridge, type Affine, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type BaseReader as DocStore, type FillRecord, type ImageRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
 export type Cubic = [Vec, Vec, Vec, Vec]
 export type EvalSegment = { id: string; from: string; to: string; cubic: Cubic }
@@ -30,6 +30,30 @@ export type EvalCurve = {
  *  R4/D3) — only these, never the whole curve (dot: an unreferenced inner extension is not own ink). */
 export type BoundaryRef = { curve: string; segments: string[] }
 export type EvalFill = { address: string; color: string; cubics: Cubic[]; boundaryRefs: BoundaryRef[]; visible: boolean; locked: boolean; depth: number }
+/** A reference image as drawn (doc 18 §31): its pixels placed by `transform`, shown at `opacity`. No head-turn form. */
+export type EvalImage = { address: string; name: string; src: string; width: number; height: number; transform: Affine; opacity: number; visible: boolean; locked: boolean; depth: number }
+/** the image's four corners in the drawing (image pixels 0..width × 0..height through its transform) */
+export const imageCorners = (i: Pick<EvalImage, 'width' | 'height' | 'transform'>): Vec[] => {
+  const m = i.transform
+  return [{ x: 0, y: 0 }, { x: i.width, y: 0 }, { x: i.width, y: i.height }, { x: 0, y: i.height }].map((q) => ({ x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f }))
+}
+/** the image's placed rectangle as four straight cubics (selection outline, marquee, bounds) */
+export const imageCubics = (i: Pick<EvalImage, 'width' | 'height' | 'transform'>): Cubic[] => {
+  const q = imageCorners(i)
+  return q.map((a, k) => {
+    const b = q[(k + 1) % 4]
+    return [a, a, b, b] as Cubic
+  })
+}
+/** a paint entry's path geometry: a line's segments, a fill's outline, an image's placed rectangle */
+export const itemCubics = (e: PaintItem | PaintInput): Cubic[] => (e.kind === 'curve' ? e.item.segments.map((s) => s.cubic) : e.kind === 'fill' ? e.item.cubics : imageCubics(e.item))
+/** where `p` (drawing) falls in the image's pixels, or null outside it */
+export function imagePixelAt(i: Pick<EvalImage, 'width' | 'height' | 'transform'>, p: Vec): Vec | null {
+  const m = i.transform, det = m.a * m.d - m.b * m.c
+  const x = p.x - m.e, y = p.y - m.f
+  const u = (m.d * x - m.c * y) / det, v = (-m.b * x + m.a * y) / det
+  return u >= 0 && v >= 0 && u < i.width && v < i.height ? { x: u, y: v } : null
+}
 
 /**
  * The cubics of a fill boundary — THE one reading every consumer uses (full, cached, at a yaw, picking):
@@ -88,8 +112,8 @@ export const NO_COLOUR = 'none'
 /** One entry of the paint list: lines and fills interleaved, back to front (PAINT-ORDER.md §4 S1).
  *  A fill carries `ownInk` (S2): its referenced segments of own visible boundary curves painted BEFORE
  *  it — the ink it must leave out. Decided here, once, so renderers never judge it. */
-export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill; ownInk: BoundaryRef[] }
-export type PaintInput = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill }
+export type PaintItem = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill; ownInk: BoundaryRef[] } | { kind: 'image'; item: EvalImage }
+export type PaintInput = { kind: 'curve'; item: EvalCurve } | { kind: 'fill'; item: EvalFill } | { kind: 'image'; item: EvalImage }
 
 /** How a line is drawn — ONE definition for Fabric, B, the own-ink cut and picking (R9: lines opaque). */
 export const inkStyle = (c: Pick<EvalCurve, 'stroke'>) => ({ width: c.stroke.width / 3, cap: 'butt' as const, join: 'miter' as const, miterLimit: 4 })
@@ -104,7 +128,8 @@ export const inkStyle = (c: Pick<EvalCurve, 'stroke'>) => ({ width: c.stroke.wid
 export type MaskDef = { id: string; mode: 'inside' | 'outside'; fills: string[]; strokes: string[]; targets: string[] }
 export type EvalMask = { id: string; mode: 'inside' | 'outside'; fills: EvalFill[]; strokes: EvalCurve[] }
 /** `maskDefs` / `masks` are present only when the document has enabled masks (an evaluation without masks is unchanged) */
-export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; paint: PaintItem[]; maskDefs?: MaskDef[]; masks?: Map<string, EvalMask[]> }
+/** `images` is present only when the document has reference images (an evaluation without them is unchanged) */
+export type Evaluated = { curves: EvalCurve[]; fills: EvalFill[]; images?: EvalImage[]; paint: PaintItem[]; maskDefs?: MaskDef[]; masks?: Map<string, EvalMask[]> }
 
 export const IDENTITY: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 const tp = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
@@ -150,8 +175,13 @@ export const byKey = (a: { key: string; address: string }, b: { key: string; add
 export function fromPaint(input: PaintInput[], maskDefs: MaskDef[] = []): Evaluated {
   const curves: EvalCurve[] = []
   const fills: EvalFill[] = []
+  const images: EvalImage[] = []
   const before = new Map<string, EvalCurve>() // curves painted so far (only base curves can bound a fill)
   const paint: PaintItem[] = input.map((p) => {
+    if (p.kind === 'image') {
+      images.push(p.item)
+      return p
+    }
     if (p.kind === 'curve') {
       curves.push(p.item)
       if (!p.item.referenceId) before.set(p.item.address, p.item)
@@ -170,7 +200,8 @@ export function fromPaint(input: PaintInput[], maskDefs: MaskDef[] = []): Evalua
       for (const t of d.targets) masks.set(t, [...(masks.get(t) ?? []), m])
     }
   }
-  return maskDefs.length ? { curves, fills, paint, maskDefs, masks } : { curves, fills, paint }
+  const withImages = images.length ? { images } : {}
+  return maskDefs.length ? { curves, fills, ...withImages, paint, maskDefs, masks } : { curves, fills, ...withImages, paint }
 }
 
 /**
@@ -287,6 +318,7 @@ export function evaluate(store: DocStore): Evaluated {
     locked: !!lockedBy(store, f.parentId),
     depth: f.depthOffset,
   }))
+  const images: EvalImage[] = (all(store, 'image') as ImageRecord[]).map((r) => imageItem(store, r))
   // one interleaved paint list; a reference instance sits at the reference's own position, the source's
   // internal order kept (D6)
   const keyOf = (address: string) => {
@@ -302,8 +334,14 @@ export function evaluate(store: DocStore): Evaluated {
   const entries = [
     ...curves.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'curve', item } as PaintInput })),
     ...fills.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'fill', item } as PaintInput })),
+    ...images.map((item) => ({ key: keyOf(item.address), address: item.address, p: { kind: 'image', item } as PaintInput })),
   ].sort(byKey)
   return fromPaint(entries.map((e) => e.p), maskDefsOf(store, entries.map((e) => e.address)))
+}
+
+/** an image record as drawn (one definition for the full evaluation and the cached one) */
+export function imageItem(store: Pick<DocStore, 'get'>, r: ImageRecord): EvalImage {
+  return { address: r.id, name: r.name, src: r.src, width: r.width, height: r.height, transform: r.transform, opacity: r.opacity, visible: effectivelyVisible(store as DocStore, r.parentId), locked: !!lockedBy(store as DocStore, r.parentId), depth: 0 }
 }
 
 function inside(store: DocStore, parentId: RecordId<ContainerRecord> | null, containerId: RecordId<ContainerRecord>) {
@@ -384,6 +422,7 @@ export type Hit =
   | { kind: 'handle'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; anchorId: string; handle: 'in' | 'out'; d: number }
   | { kind: 'segment'; address: string; curveId: RecordId<CurveRecord>; referenceId?: RecordId<ReferenceRecord>; segmentId: string; t: number; d: number }
   | { kind: 'fill'; address: string; d: 0 }
+  | { kind: 'image'; address: string; d: 0 }
 
 /**
  * Hit test against the evaluated geometry (precision risk of route B is decided here, not by
@@ -420,8 +459,8 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
  * mask hides it, a fill containing `p` where no mask hides it and not on its own visible ink (S2). One entry per drawn
  * item (its nearest segment). Hidden and locked items are not hittable.
  */
-export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit, { kind: 'segment' | 'fill' }>[] {
-  const out: Extract<Hit, { kind: 'segment' | 'fill' }>[] = []
+export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit, { kind: 'segment' | 'fill' | 'image' }>[] {
+  const out: Extract<Hit, { kind: 'segment' | 'fill' | 'image' }>[] = []
   const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
   for (const entry of [...ev.paint].reverse()) {
     if (!entry.item.visible || entry.item.locked) continue
@@ -446,6 +485,11 @@ export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit,
         if (hit && (!best || hit.d < best.d)) best = { kind: 'segment', address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: hit.t, d: hit.d }
       }
       if (best) out.push(best)
+      continue
+    }
+    if (entry.kind === 'image') {
+      // a reference image is hit where it is drawn: inside its placed rectangle, not masked away there (doc 18 §31.3)
+      if (imagePixelAt(entry.item, p) && visibleThroughMasks(ev, entry.item.address, p)) out.push({ kind: 'image', address: entry.item.address, d: 0 })
       continue
     }
     const f = entry.item

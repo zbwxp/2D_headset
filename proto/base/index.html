@@ -50,6 +50,15 @@
       .k-curve { background: linear-gradient(135deg, transparent 44%, #374151 44%, #374151 56%, transparent 56%); }
       .k-fill { background: #9ca3af; }
       .k-shape { border: 1.5px solid #6b7280; background: #d1d5db; }
+      .k-image { border: 1.5px solid #6b7280; background: linear-gradient(135deg, #bfdbfe 50%, #fde68a 50%); }
+      .seg { display: inline-flex; }
+      .seg button { margin: 0; }
+      .slots { display: flex; flex-direction: column; gap: 2px; }
+      .slot { display: grid; grid-template-columns: 1.6em minmax(3em, 1fr) auto auto auto; gap: 4px; align-items: center; }
+      .slot .slot-values { grid-column: 2 / -1; grid-row: 2; }
+      .slot.empty .slot-name { color: #9ca3af; }
+      .slot.here { background: #dbeafe; border-radius: 3px; }
+      .slot-n { font-weight: 600; text-align: right; }
       .k-reference { border: 1.5px dashed #6b7280; }
       .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .flags { display: flex; gap: 2px; }

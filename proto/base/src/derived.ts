@@ -17,12 +17,12 @@ import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
 import { InstanceTable } from './instanceLifecycle'
-import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, maskDefsOf, KEY_SEP, NO_COLOUR, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
+import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, imageItem, maskDefsOf, KEY_SEP, NO_COLOUR, paintKey, type EvalImage, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
 import { asCharacter, ctxOf, playCharacter, prepareCharacter, retainedShapes, type Prepared } from './character'
 import { curveAtYaw, evaluateAtYaw, fillAtYaw } from './pose'
-import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
+import { poseIdOf, type BaseReader, type ContainerRecord, type CurveRecord, type DocReader, type DocRecord, type DocStore, type FillRecord, type FormsRecord, type ImageRecord, type ReferenceRecord } from './schema'
 
 /**
  * A limit on RETAINED RESULT ITEMS shared by several keyed caches (dot, reviews of 2a48719 and
@@ -214,13 +214,14 @@ function fastPathChange(old: DocRecord, next: DocRecord) {
   return true
 }
 
-type PaintEntry = { kind: 'curve' | 'fill'; address: string; key: string; refId?: ReferenceRecord['id']; curveId?: CurveRecord['id'] }
+type PaintEntry = { kind: 'curve' | 'fill' | 'image'; address: string; key: string; refId?: ReferenceRecord['id']; curveId?: CurveRecord['id'] }
 
 export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | EvalFill> } | { fallback: true; removals?: readonly string[] }
 
 export class Derived {
   private readonly curves
   private readonly fills
+  private readonly images
   /**
    * reference × source curve; document-sized (not evicted). Entries live exactly as long as their membership,
    * pruned by the store's synchronous side effects as each write returns and rolled back with the records
@@ -328,10 +329,12 @@ export class Derived {
       counters.fillEvals++
       return fillItem(store, f, (id) => this.curve(id))
     })
+    // reference images (doc 18 §31): placed and shown as their record says; no geometry depends on them
+    this.images = store.createComputedCache<EvalImage, ImageRecord>('evalImage', (r) => imageItem(store, r))
     // Paint order (PAINT-ORDER.md §4 S1): identities and order only. It reads each item's paint key
     // through `keys` (whose value changes only when parent / index of the item or an ancestor change),
     // the id lists and reference membership — never geometry — so a drag does not rebuild it.
-    this.keys = store.createComputedCache<string, CurveRecord | FillRecord | ReferenceRecord | ContainerRecord>(
+    this.keys = store.createComputedCache<string, CurveRecord | FillRecord | ReferenceRecord | ContainerRecord | ImageRecord>(
       'paintKey',
       (r) => paintKey(store, r),
       { areRecordsEqual: (a, b) => a.parentId === b.parentId && a.index === b.index },
@@ -344,6 +347,7 @@ export class Derived {
       const entries: PaintEntry[] = []
       for (const id of store.query.ids('curve').get()) entries.push({ kind: 'curve', address: id, key: this.keys.get(id)! })
       for (const id of store.query.ids('fill').get()) entries.push({ kind: 'fill', address: id, key: this.keys.get(id)! })
+      for (const id of store.query.ids('image').get()) entries.push({ kind: 'image', address: id, key: this.keys.get(id)! })
       for (const refId of store.query.ids('reference').get()) {
         const src = this.sources.get(refId)!
         const refKey = this.keys.get(refId)!
@@ -358,6 +362,7 @@ export class Derived {
     this.all = computed('evaluated', () => {
       const paint: PaintInput[] = this.order.get().map((e) => {
         if (e.kind === 'fill') return { kind: 'fill', item: this.fill(e.address as FillRecord['id'])! }
+        if (e.kind === 'image') return { kind: 'image', item: this.images.get(e.address as ImageRecord['id'])! }
         if (!e.refId) return { kind: 'curve', item: this.curve(e.address as CurveRecord['id'])! }
         return { kind: 'curve', item: this.instance(e.refId, e.curveId!) }
       })
@@ -388,7 +393,7 @@ export class Derived {
   atYaw(yaw: number): Evaluated {
     // assembled on demand (not cached: a cached list would hold results outside the budget)
     const base = this.evaluated()
-    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: this.curveAt(p.item.address, yaw) } : { kind: 'fill', item: this.fillAt(p.item.address, yaw) })), base.maskDefs)
+    return fromPaint(base.paint.map((p): PaintInput => (p.kind === 'image' ? p : p.kind === 'curve' ? { kind: 'curve', item: this.curveAt(p.item.address, yaw) } : { kind: 'fill', item: this.fillAt(p.item.address, yaw) })), base.maskDefs)
   }
   get yawCacheSize() {
     return { curves: this.yawCurves.size, fills: this.yawFills.size, budgetUsed: this.yawRetainedItems.used, budget: this.yawRetainedItems.limit }
@@ -416,7 +421,7 @@ export class Derived {
       }
     const base = this.atYaw(yaw)
     counters.previewItems += base.paint.length
-    return fromPaint(base.paint.map((p) => (p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })), base.maskDefs)
+    return fromPaint(base.paint.map((p): PaintInput => (p.kind === 'image' ? p : p.kind === 'curve' ? { kind: 'curve', item: curves.get(p.item.address) ?? p.item } : { kind: 'fill', item: fills.get(p.item.address) ?? p.item })), base.maskDefs)
   }
 
   /** The prepared grid of a character (cached; see `characters`). */

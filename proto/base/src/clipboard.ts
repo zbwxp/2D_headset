@@ -6,7 +6,7 @@
 import { Store, type RecordId, type SerializedSchema } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { planCopyInto } from './duplicate'
-import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced } from './indexes'
+import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced, CONTENT_KINDS } from './indexes'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, schema, type BaseReader, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
@@ -36,7 +36,7 @@ export function contentOf(reader: BaseReader, ids: readonly string[], origin?: s
     if (r.typeName === 'container')
       for (const c of containersWithin(reader, r.id)) {
         sel.add(c)
-        for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(reader, c, t)) sel.add(x)
+        for (const t of CONTENT_KINDS) for (const x of within(reader, c, t)) sel.add(x)
       }
   }
   for (const id of [...sel]) for (const f of ownFillsOf(reader, id)) sel.add(f) // a path's own fill goes with its path
@@ -86,7 +86,7 @@ export function contentOf(reader: BaseReader, ids: readonly string[], origin?: s
     const sub = new Set<string>([r.sourceId])
     for (const c of containersWithin(reader, r.sourceId)) {
       sub.add(c)
-      for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(reader, c, t)) sub.add(x)
+      for (const t of CONTENT_KINDS) for (const x of within(reader, c, t)) sub.add(x)
     }
     for (const id of [...sub].sort()) if (!context.some((x) => x.id === id)) context.push(structuredClone(reader.get(id as any) as DocRecord))
   }
@@ -142,7 +142,7 @@ export function planPaste(store: BaseReader, cmd: PasteCommand, ids: IdSource): 
     if (store.get(r.sourceId as any))
       for (const c of containersWithin(store, r.sourceId)) {
         here.add(c)
-        for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(store, c, t)) here.add(x)
+        for (const t of CONTENT_KINDS) for (const x of within(store, c, t)) here.add(x)
       }
     const same = ctx.length > 0 && ctx.length === here.size && ctx.every((x) => here.has(x.id as string) && JSON.stringify(store.get(x.id as any) ?? null) === JSON.stringify(x))
     if (!same) return fail('BAD_REFERENCE', `${r.id} places ${r.sourceId}, which was not copied with it, and this document's ${r.sourceId} is not the same: copy the source with it`, [r.id, r.sourceId])

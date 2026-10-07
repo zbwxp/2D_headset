@@ -8,7 +8,7 @@
 // interpolation, behaviour only: https://docs.live2d.com/en/cubism-editor-manual/parameter/).
 // Strokes are not touched: a form moves points only; the stroke width stays the authored one (16 §3.0).
 import { counters } from './counters'
-import { evaluate, fillCubics, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
+import { evaluate, fillCubics, fromPaint, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { poseIdOf, type Affine, type BaseReader, type FillRecord, type FormsRecord, type Legacy3YawKey, type LegacyYawKey, type ReferenceRecord, type Vec } from './schema'
 
 /** The old head-turn keys of a legacy forms record (none for other encodings: those are not read here). */
@@ -114,10 +114,12 @@ export function evaluateAtYaw(store: Pick<BaseReader, 'get'> & Partial<BaseReade
   const curves = new Map(base.curves.map((c) => [c.address, curveAtYaw(c, store.get(poseIdOf(c.curveId) as any) as FormsRecord | undefined, yaw, placementOf(c))]))
   const byBase = new Map([...curves.values()].filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
   return fromPaint(
-    base.paint.map((p) =>
-      p.kind === 'curve'
-        ? { kind: 'curve', item: curves.get(p.item.address)! }
-        : { kind: 'fill', item: fillAtYaw(p.item, store.get(p.item.address as any) as FillRecord, (id) => byBase.get(id)) },
+    base.paint.map((p): PaintInput =>
+      p.kind === 'image'
+        ? p // a reference image has no head-turn form (doc 18 §31)
+        : p.kind === 'curve'
+          ? { kind: 'curve', item: curves.get(p.item.address)! }
+          : { kind: 'fill', item: fillAtYaw(p.item, store.get(p.item.address as any) as FillRecord, (id) => byBase.get(id)) },
     ),
     base.maskDefs,
   )

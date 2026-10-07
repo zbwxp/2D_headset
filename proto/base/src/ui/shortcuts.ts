@@ -14,6 +14,8 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     const el = e.target as HTMLElement | null
     // text entry only: a checkbox / colour well / button keeps the shortcuts (they take no typed keys)
     if (!el) return false
+    // arrow keys belong to a focused slider too (it moves itself) — never also nudge the selection (dot 1791365450)
+    if (el.tagName === 'INPUT' && e.key.startsWith('Arrow') && (el as HTMLInputElement).type === 'range') return true
     if (el.tagName === 'INPUT') return !['checkbox', 'color', 'radio', 'range', 'button', 'submit'].includes((el as HTMLInputElement).type)
     return el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
   }
@@ -66,6 +68,9 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     if ((k === 'c' || k === 'C') && e.shiftKey) return setTool('N'), done() // ⇧C Convert Anchor Point
     if (k === 'c' || k === 'C') return setTool('C'), done()
     if (k === 'k' || k === 'K') return setTool('K'), done()
+    if (k === 'i' || k === 'I') return setTool('I'), done()
+    // the colour picker's two modes (doc 18 §31.3 step 6): Tab switches them while I is the tool
+    if (k === 'Tab' && view.mode === 'I') return view.pickMode.set(view.pickMode.get() === 'source' ? 'screen' : 'source'), done()
     if (k === '+' || k === '=') return setTool('+'), done()
     if (k === '-' || k === '_') return setTool('-'), done()
     if (k === 'Delete' || k === 'Backspace') return (view.selection.getAnchors().length ? view.deleteSelectedAnchors() : view.deleteSelection()), done()

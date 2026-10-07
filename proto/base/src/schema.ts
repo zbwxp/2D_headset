@@ -92,6 +92,31 @@ export interface ReferenceRecord extends BaseRecord<'reference', RecordId<Refere
   overrides: Record<string, Vec>
 }
 
+/**
+ * A reference image (doc 18 §31): an embedded picture to draw over — never part of the artwork's own data. `src` is the
+ * image itself (a data URL, stored in the file); `width` / `height` its pixel size; `transform` maps image pixels
+ * (0..width, 0..height) into the drawing, like a reference's placement; `opacity` only how it is shown (the pixels are
+ * never changed). `slots`: saved placements the author can recall (bowen 1791365335).
+ */
+export interface ImageRecord extends BaseRecord<'image', RecordId<ImageRecord>> {
+  name: string
+  parentId: RecordId<ContainerRecord>
+  index: string
+  src: string
+  width: number
+  height: number
+  transform: Affine
+  opacity: number
+  slots: ImageSlot[]
+}
+export type ImageSlot = { n: number; name: string; transform: Affine }
+/**
+ * What an image's data may be (one check for placing, reopening and pasting — doc 18 §31.5). The limits are
+ * PROVISIONAL: to be calibrated with bowen's angle-matrix sheets (dot 1791365450), not a decided limit.
+ */
+export const IMAGE_LIMITS = { maxSrcLength: 100_000_000, maxSide: 16384, maxPixels: 16384 * 16384 }
+export const IMAGE_SRC = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/
+
 /** Absolute control points of every anchor of a curve (handles absolute, unlike `CurveRecord.anchors`). */
 export type Shape = Record<string, { p: Vec; hIn: Vec; hOut: Vec }>
 export type FormsOwner = { kind: 'document' } | { kind: 'preset'; id: RecordId<PresetRecord> }
@@ -217,6 +242,7 @@ export type DocRecord =
   | CharacterRecord
   | VisibilityRecord
   | MaskRecord
+  | ImageRecord
 
 const isNum = (n: unknown) => typeof n === 'number' && Number.isFinite(n)
 const isVec = (v: any) => v && isNum(v.x) && isNum(v.y)
@@ -283,6 +309,41 @@ export const Fill = createRecordType<FillRecord>('fill', {
     },
   },
 }).withDefaultProperties(() => ({ index: 'a0', color: '#f3d9c4', depthOffset: 0 }))
+
+/**
+ * An image's data checked once: the check reads every character (≈ 250 ms for a 72 MB sheet — measured), and every edit
+ * of the record (a move, a slot) carries the SAME string, so a string that passed is remembered (bounded; a string is
+ * immutable, so passing once is passing always).
+ */
+const checkedSrc = new Set<string>()
+const validSrc = (s: unknown): boolean => {
+  if (typeof s !== 'string') return false
+  if (checkedSrc.has(s)) return true
+  if (!(s.length <= IMAGE_LIMITS.maxSrcLength && IMAGE_SRC.test(s))) return false
+  if (checkedSrc.size >= 16) checkedSrc.clear()
+  checkedSrc.add(s)
+  return true
+}
+const isAffine = (t: any) => isObj(t) && [t.a, t.b, t.c, t.d, t.e, t.f].every(isNum) && t.a * t.d - t.b * t.c !== 0
+export const Image = createRecordType<ImageRecord>('image', {
+  scope: 'document',
+  validator: {
+    validate(r: any) {
+      check(typeof r.name === 'string', `image ${r.id} name`)
+      check(validSrc(r.src), `image ${r.id}: src must be an embedded PNG / JPEG / WebP (data:image/…;base64) within ${IMAGE_LIMITS.maxSrcLength} characters`)
+      check(Number.isInteger(r.width) && Number.isInteger(r.height) && r.width > 0 && r.height > 0 && r.width <= IMAGE_LIMITS.maxSide && r.height <= IMAGE_LIMITS.maxSide && r.width * r.height <= IMAGE_LIMITS.maxPixels, `image ${r.id}: size ${r.width} × ${r.height} is not a positive whole size within the limits`)
+      check(isAffine(r.transform), `image ${r.id}: transform must be finite and invertible`)
+      check(isNum(r.opacity) && r.opacity >= 0 && r.opacity <= 1, `image ${r.id} opacity`)
+      check(Array.isArray(r.slots), `image ${r.id} slots`)
+      const ns = new Set<number>()
+      for (const s of r.slots) {
+        check(isObj(s) && Number.isInteger(s.n) && s.n >= 0 && !ns.has(s.n) && typeof s.name === 'string' && isAffine(s.transform), `image ${r.id}: slot ${s?.n} (a unique number, a name, a finite invertible transform)`)
+        ns.add(s.n)
+      }
+      return r
+    },
+  },
+}).withDefaultProperties(() => ({ index: 'a0', opacity: 0.5, slots: [] }))
 
 export const Reference = createRecordType<ReferenceRecord>('reference', {
   scope: 'document',
@@ -489,6 +550,7 @@ export const schema = StoreSchema.create<DocRecord>(
     character: Character,
     visibility: Visibility,
     mask: Mask,
+    image: Image,
   },
   { migrations: [documentMigrations] },
 )
@@ -506,7 +568,7 @@ export type BaseReader = Pick<DocStore, 'get' | 'allRecords'>
 export type DocReader = BaseReader & Pick<DocStore, 'getStoreSnapshot' | 'serialize' | 'query'>
 export const createDocStore = () => new Store<DocRecord>({ schema, props: {} })
 
-const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, expressionParam: ExpressionParam, helperDomain: HelperDomain, character: Character, visibility: Visibility, mask: Mask } as const
+const recordTypes = { container: Container, curve: Curve, connection: Connection, fill: Fill, reference: Reference, forms: Forms, family: Family, preset: Preset, expressionParam: ExpressionParam, helperDomain: HelperDomain, character: Character, visibility: Visibility, mask: Mask, image: Image } as const
 /** Run the record validators (same ones the store uses) without writing. */
 export function validateRecord(r: DocRecord) {
   ;(recordTypes[r.typeName] as any).validate(r)

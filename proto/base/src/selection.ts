@@ -11,7 +11,7 @@
 // Project adaptations (marked): a reference instance is selected on its PLACEMENT side (the reference record, doc 18
 // §21.2); the top-level containers are the layers (Illustrator layers), picked from the layers panel, not the canvas.
 import { atom, type Atom } from '@tldraw/state'
-import { fillContains, hitStack, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
+import { fillContains, hitStack, imagePixelAt, itemCubics, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
 import { childrenOf, connectionsAt, fillsUsing, ownFillsOf, type Queryable, placedChildren } from './indexes'
 import { anchorKey } from './model'
 import { poseIdOf, type BaseReader, type DocRecord, type FillRecord, type MaskRecord, type Vec } from './schema'
@@ -107,12 +107,11 @@ export function unitsInRect(reader: Reader, ev: Evaluated, rect: Rect, enclosed 
   const outside = new Set<string>()
   const units: string[] = []
   for (const entry of ev.paint) {
-    const item = entry.item as EvalCurve | EvalFill
+    const item = entry.item
     if (!item.visible || item.locked) continue
     const u = unitOf(reader, placedOf(item.address))
     if (!units.includes(u)) units.push(u)
-    const cubics = entry.kind === 'curve' ? (item as EvalCurve).segments.map((s) => s.cubic) : (item as EvalFill).cubics
-    const pts = polyline(cubics)
+    const pts = polyline(itemCubics(entry))
     if (enclosed) {
       if (pts.length && pts.every((q) => inside(r, q))) touched.add(u)
       else outside.add(u)
@@ -121,7 +120,8 @@ export function unitsInRect(reader: Reader, ev: Evaluated, rect: Rect, enclosed 
     const hit =
       pts.some((q) => inside(r, q)) ||
       pts.some((q, i) => i > 0 && crosses(pts[i - 1], q, r)) ||
-      (entry.kind === 'fill' && fillContains(item as EvalFill, { x: r.x0, y: r.y0 }))
+      (entry.kind === 'fill' && fillContains(entry.item, { x: r.x0, y: r.y0 })) ||
+      (entry.kind === 'image' && !!imagePixelAt(entry.item, { x: r.x0, y: r.y0 }))
     if (hit) touched.add(u)
   }
   return units.filter((u) => touched.has(u) && !outside.has(u))
@@ -217,8 +217,7 @@ export function boundsOf(reader: Reader, ev: Evaluated, units: readonly string[]
   for (const entry of ev.paint) {
     if (!entry.item.visible) continue
     if (!units.some((u) => isInside(reader, placedOf(entry.item.address), u))) continue
-    const cubics = entry.kind === 'curve' ? entry.item.segments.map((s) => s.cubic) : entry.item.cubics
-    for (const q of polyline(cubics)) r = r ? { x0: Math.min(r.x0, q.x), y0: Math.min(r.y0, q.y), x1: Math.max(r.x1, q.x), y1: Math.max(r.y1, q.y) } : { x0: q.x, y0: q.y, x1: q.x, y1: q.y }
+    for (const q of polyline(itemCubics(entry))) r = r ? { x0: Math.min(r.x0, q.x), y0: Math.min(r.y0, q.y), x1: Math.max(r.x1, q.x), y1: Math.max(r.y1, q.y) } : { x0: q.x, y0: q.y, x1: q.x, y1: q.y }
   }
   return r
 }

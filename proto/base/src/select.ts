@@ -6,7 +6,7 @@ import type { BaseReader, DocRecord } from './schema'
 
 /** The top-level container a V-mode pick selects (one group per top-level container). */
 export function topContainerOfHit(reader: Pick<BaseReader, 'get'>, hit: Hit): string | undefined {
-  const start = hit.kind === 'fill' ? hit.address : hit.referenceId ?? hit.curveId
+  const start = hit.kind === 'fill' || hit.kind === 'image' ? hit.address : hit.referenceId ?? hit.curveId
   let rec = reader.get(start as any) as DocRecord | undefined
   let top: string | undefined
   while (rec && 'parentId' in rec && rec.parentId) {

@@ -73,7 +73,7 @@ export function drawingBounds(ev: Evaluated, margin = 4): Box | null {
     y1 = Math.max(y1, y)
   }
   for (const e of ev.paint) {
-    if (!e.item.visible) continue
+    if (!e.item.visible || e.kind === 'image') continue // reference images are not exported (doc 18 §31.3)
     if (e.kind === 'curve') strokeBox(e.item, grow)
     else
       for (const c of e.item.cubics) {
@@ -119,7 +119,7 @@ export function toSVG(ev: Evaluated, box: Box): string {
     return out
   }
   for (const e of ev.paint) {
-    if (!e.item.visible) continue
+    if (!e.item.visible || e.kind === 'image') continue // reference images are not exported (doc 18 §31.3)
     const masks = ev.masks?.get(e.item.address)
     if (e.kind === 'curve') {
       const c = e.item

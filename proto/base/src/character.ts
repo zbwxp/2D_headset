@@ -10,7 +10,7 @@
 // Scope (dot 1791312456 / 1791312539): fine-tune transfer only through helper domains at a preset's OWN key yaws
 // (none needed without fine-tune); takeovers only on end-of-direction ranges 0 → θₜ; node takeovers only on single-
 // connection nodes; one expression value (1) per parameter; visibility conflicts refused; weights must sum to 1.
-import { fillCubics, fromPaint, IDENTITY, type Cubic, type EvalCurve, type Evaluated } from './evaluate'
+import { fillCubics, fromPaint, IDENTITY, type Cubic, type EvalCurve, type Evaluated, type PaintInput } from './evaluate'
 import { presetFormsIdOf } from './forms'
 import { connectionsAtKeyed, helperDomainsOf, paramsOfFamily, visibilityOfCurve, type Queryable } from './indexes'
 import type { AbsoluteYawKey, Affine, BaseReader, FillRecord, ReferenceRecord, CharacterRecord, ConnectionRecord, DocRecord, ExpressionParamRecord, FamilyRecord, FormsRecord, HelperDomainRecord, PresetRecord, Shape, Vec, VisibilityRecord } from './schema'
@@ -413,10 +413,12 @@ export function asCharacter(store: BaseReader, base: Evaluated, played: { shapes
   }
   const byBase = new Map([...curves.values()].filter((c) => !c.referenceId).map((c) => [c.curveId as string, c]))
   return fromPaint(
-    base.paint.map((p) =>
-      p.kind === 'curve'
-        ? { kind: 'curve', item: curves.get(p.item.address)! }
-        : { kind: 'fill', item: { ...p.item, cubics: fillCubics((store.get(p.item.address as any) as FillRecord).boundary, (id) => byBase.get(id)) } },
+    base.paint.map((p): PaintInput =>
+      p.kind === 'image'
+        ? p // a reference image is not part of a character (doc 18 §31)
+        : p.kind === 'curve'
+          ? { kind: 'curve', item: curves.get(p.item.address)! }
+          : { kind: 'fill', item: { ...p.item, cubics: fillCubics((store.get(p.item.address as any) as FillRecord).boundary, (id) => byBase.get(id)) } },
     ),
     base.maskDefs,
   )

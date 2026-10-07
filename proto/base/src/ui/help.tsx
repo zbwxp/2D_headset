@@ -12,7 +12,7 @@ import type { Tool, Ui } from './panels'
 type Phase = 'idle' | 'pen' | 'marquee' | 'marquee-enclosed' | 'move' | 'transform' | 'drag'
 
 /** the hint line for a tool, how much is selected and the step in progress */
-export function hintLine(tool: Tool, phase: Phase, selected: number, anchors: number): string {
+export function hintLine(tool: Tool, phase: Phase, selected: number, anchors: number, pickMode: 'source' | 'screen' = 'source'): string {
   if (phase === 'marquee' || phase === 'marquee-enclosed')
     return `拖框中：${phase === 'marquee' ? '碰到就选' : '完全框进才选'} · 按 E 切换 · Shift 追加 · 松开完成`
   if (phase === 'move') return '移动中：Shift 限制在 45° · Esc 取消 · 松开完成'
@@ -38,6 +38,8 @@ export function hintLine(tool: Tool, phase: Phase, selected: number, anchors: nu
       return '点在锚点上 = 在那里剪断 · 点在线段上 = 在那里加点并剪断'
     case 'N':
       return '点锚点 = 变尖角（收起手柄）· 从锚点拖出 = 变平滑（拉出对称手柄）· 拖一个手柄 = 只动这一边'
+    case 'I':
+      return `取色 · 当前：${pickMode === 'source' ? '参考图原色（图片本来的像素，不受半透明影响）' : '画面显示色（屏幕上看到的颜色，不含选框、锚点）'} · Tab 切换 · 点一下 = 设为工具栏填充色（不改选中的对象）`
     case 'K':
       return '点在线围起来的区域里 = 用当前填充色上色：一条闭合线 = 它自己的填充，几条线 = 成为一个形状组 · 已上色的就改颜色 · 线要在锚点处相接'
   }
@@ -52,8 +54,9 @@ const TOOL_HELP: Record<Tool, { title: string; items: string[] }> = {
   C: { title: 'C 剪刀', items: ['点锚点：在那里把线剪成两条', '点线段：先加点再剪断，一次撤销'] },
   N: { title: '⇧C 转换锚点', items: ['点一下锚点：变成尖角（两边手柄收起）', '从锚点拖出：变成平滑点（拉出两边对称的手柄）', '拖一个手柄：只动这一边（两边分开）', 'A 工具里拖平滑点的手柄会两边一起转；按住 ⌥ 拖就只动一边'] },
   K: { title: 'K 填充', items: ['在线围起来的区域里点一下，用工具栏的填充色填上', '已经填过的区域点一下就换成当前颜色', '线要在锚点处相接（或在同一个位置）；只是交叉不算：在交点用 + 加点，或 ⌘J 连接端点', '一条闭合线自己围住的区域：颜色是这条线自己的填充（属性面板里「填充」可改色或设为无）', '几条线一起围住的区域：这些线成为一个「形状」组（已经在形状组里就用那个组），颜色是这个形状的面，画在线下面；选中形状，在属性里改色或清除', '清除 / 无 只去掉颜色，区域留着：线拉开以后也能在原处再点 K 上回颜色', '点到的是最前面画着的东西：前面有填充挡着，就只改它（锁着就拒绝），不会改到后面的', '线要在同一个图层 / 组里；分属两个形状组的线暂不支持'] },
+  I: { title: 'I 取色', items: ['两种模式，工具栏和提示行显示当前是哪一种，Tab 或工具栏按钮切换', '参考图原色：取点到的最上面那张参考图本来的像素颜色，不受半透明显示影响；参考图锁着也能取', '画面显示色：取屏幕上看到的颜色（遮挡、蒙版、透明度都算进去），不含选框、锚点、吸附线', '取到的颜色只设为工具栏的填充色，不会改选中的对象，也不算一步撤销'] },
 }
-const GENERAL = ['吸附 ⌘U：画点、拖锚点、移动时吸到别的锚点，或和它们水平 / 竖直对齐（粉色标记）', '⌘Z 撤销 · ⇧⌘Z 重做', '⌘S 保存 · ⌘O 打开 · 新建、导出 PNG / SVG 在工具栏', '⌘C / ⌘X / ⌘V 复制剪切粘贴（⇧⌘V 原位）', '空格拖动平移 · ⌘ + 滚轮缩放 · ⌘0 适合窗口', '双击图层名改名']
+const GENERAL = ['吸附 ⌘U：画点、拖锚点、移动时吸到别的锚点，或和它们水平 / 竖直对齐（粉色标记）', '⌘Z 撤销 · ⇧⌘Z 重做', '⌘S 保存 · ⌘O 打开 · 新建、导出 PNG / SVG、置入参考图在工具栏（也可以把图片拖到画布上）', '⌘C / ⌘X / ⌘V 复制剪切粘贴（⇧⌘V 原位）', '空格拖动平移 · ⌘ + 滚轮缩放 · ⌘0 适合窗口', '双击图层名改名']
 
 type HelpState = 'open' | 'collapsed' | 'closed'
 const KEY = 'contour.toolHelp'
@@ -81,7 +84,8 @@ export function HintLine({ ui }: { ui: Ui }) {
   const phase = useValue(ui.view.phase)
   const selected = useValue('selected count', () => ui.view.selection.get().length, [ui])
   const anchors = useValue('anchor count', () => ui.view.selection.getAnchors().length, [ui])
-  return <div id="hint">{hintLine(tool, phase, selected, anchors)}</div>
+  const pickMode = useValue(ui.view.pickMode)
+  return <div id="hint">{hintLine(tool, phase, selected, anchors, pickMode)}</div>
 }
 
 export function ToolHelp({ ui }: { ui: Ui }) {

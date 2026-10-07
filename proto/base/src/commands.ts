@@ -12,6 +12,7 @@ import { planMask, type MaskCommand } from './masks'
 import { planPaste, type PasteCommand } from './clipboard'
 import { planArrange, type ArrangeCommand } from './arrange'
 import { planShape, type ShapeCommand } from './shapes'
+import { LOCK_EXEMPT_IMAGE_COMMANDS, planImage, type ImageCommand } from './imageCommands'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
 import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within, placedChildren } from './indexes'
@@ -31,6 +32,7 @@ import {
   type BaseReader as DocStore,
   type FillRecord,
   type FormsRecord,
+  type ImageRecord,
   type PointDelta,
   type ReferenceRecord,
   type Vec,
@@ -76,7 +78,7 @@ export type Command =
    * The properties panel / layer rename (Illustrator / Figma): a record's name; a curve's stroke colour / width; a
    * fill's colour. One command, one undo step; only the given fields change; the usual lock rule (the record's place).
    */
-  | { type: 'setProps'; id: string; name?: string; stroke?: { color?: string; width?: number }; color?: string }
+  | { type: 'setProps'; id: string; name?: string; stroke?: { color?: string; width?: number }; color?: string; opacity?: number; transform?: Affine }
   /** Record (or replace) a curve's form at one angle: per-anchor offsets from the base drawing. */
   | { type: 'setPoseKey'; curveId: RecordId<CurveRecord>; yaw: number; offsets: Record<string, Vec> }
   /**
@@ -98,6 +100,8 @@ export type Command =
   | ArrangeCommand
   /** paint an enclosed area: its shape group gets the face (shapes.ts) */
   | ShapeCommand
+  /** reference images: place, position slots (imageCommands.ts) */
+  | ImageCommand
 
 /**
  * A plan's final state = the store with `puts` layered over it and `removals` taken out. One overlay:
@@ -400,6 +404,10 @@ function connectionLock(store: DocStore, r: DocRecord): Plan | null {
   return null
 }
 
+/** `next` differs from `old` only in the named fields */
+const onlyFields = (old: DocRecord, next: DocRecord, fields: string[]) =>
+  [...new Set([...Object.keys(old), ...Object.keys(next)])].every((k) => fields.includes(k) || JSON.stringify((old as any)[k]) === JSON.stringify((next as any)[k]))
+
 function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: Set<string>): Plan | null {
   for (const r of puts) {
     const old = store.get(r.id as any) as DocRecord | undefined
@@ -417,6 +425,7 @@ function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: S
     if (old.typeName !== r.typeName) return fail('INVALID', `${r.id} changes type`, [r.id])
     const ends = connectionLock(store, old) ?? connectionLock(store, r)
     if (ends) return ends
+    if (LOCK_EXEMPT_IMAGE_COMMANDS.has(cmd.type) && r.typeName === 'image' && old.typeName === 'image' && onlyFields(old, r, ['transform', 'slots'])) continue
     const places = new Set<string | null>()
     places.add(placeOf(store, old))
     places.add(placeOf(store, r))
@@ -502,6 +511,7 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const uniq = <T extends { id: string }>(xs: T[]) => [...new Map(xs.map((x) => [x.id, x])).values()]
       const curves: CurveRecord[] = []
       const refs: ReferenceRecord[] = []
+      const images: ImageRecord[] = []
       for (const id of cmd.ids) {
         const r = store.get(id as any) as DocRecord | undefined
         if (!r) return fail('NOT_FOUND', `no record ${id}`, [id])
@@ -515,18 +525,26 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
           // content via the parent index (no scan of the whole document); nested selections are visited once
           curves.push(...within(store, r.id, 'curve').map((x) => store.get(x) as CurveRecord))
           refs.push(...within(store, r.id, 'reference').map((x) => store.get(x) as ReferenceRecord))
+          images.push(...within(store, r.id, 'image').map((x) => store.get(x) as ImageRecord))
         } else if (r.typeName === 'curve') curves.push(r)
         else if (r.typeName === 'reference') refs.push(r)
+        else if (r.typeName === 'image') images.push(r)
         else if (r.typeName === 'fill') {
           for (const step of r.boundary) {
             if ('bridge' in step) continue
             const c = getAs(store, step.curveId, 'curve')
             if (c) curves.push(c)
           }
-        } else return fail('INVALID', `${id} is a ${r.typeName}: only containers, curves, fills and references transform`, [id])
+        } else return fail('INVALID', `${id} is a ${r.typeName}: only containers, curves, fills, references and images transform`, [id])
       }
       // References placed inside move with them: compose their placement transform.
       const movedRefs = uniq(refs).map((r) => ({ ...r, transform: compose(cmd.matrix, r.transform) }))
+      // reference images placed inside, or selected, move the same way: their placement composed (doc 18 §31)
+      const movedImages = uniq(images).map((r) => ({ ...r, transform: compose(cmd.matrix, r.transform) }))
+      for (const r of movedImages) {
+        const locker = lockedBy(store, r.parentId)
+        if (locker) return fail('LOCKED', `image ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
+      }
       for (const r of movedRefs) {
         const locker = lockedBy(store, r.parentId)
         if (locker) return fail('LOCKED', `reference ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
@@ -546,7 +564,7 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
         const a = (store.get(m.ref.curveId) as CurveRecord).anchors[m.ref.anchorId]
         moves.set(anchorKey(m.ref), { ref: m.ref, p: applyAffine(cmd.matrix, a.p) })
       }
-      return { ok: true, label: 'transformItems', puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
+      return { ok: true, label: 'transformItems', puts: [...writeAnchors(store, moves), ...movedRefs, ...movedImages], affected: [...moves.keys(), ...movedRefs.map((r) => r.id), ...movedImages.map((r) => r.id)] }
     }
     case 'createFill': {
       if (!getAs(store, cmd.parentId, 'container')) return notFound(store, cmd.parentId, 'container')
@@ -687,6 +705,16 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
         if (!(cmd.color === 'none' || hex(cmd.color))) return fail('INVALID', `fill colour must be #rgb, #rrggbb or none (got ${cmd.color})`, [cmd.id])
         next = { ...next, color: cmd.color }
       }
+      // a reference image (doc 18 §31): how it is shown, and its placement (the panel's X / Y / size / angle)
+      if (cmd.opacity !== undefined) {
+        if (r.typeName !== 'image') return fail('INVALID', `${r.typeName} has no opacity here`, [cmd.id])
+        if (!(Number.isFinite(cmd.opacity) && cmd.opacity >= 0 && cmd.opacity <= 1)) return fail('INVALID', `opacity must be 0–1 (got ${cmd.opacity})`, [cmd.id])
+        next = { ...next, opacity: cmd.opacity }
+      }
+      if (cmd.transform !== undefined) {
+        if (r.typeName !== 'image') return fail('INVALID', `${r.typeName}: set a placement through transformItems`, [cmd.id])
+        next = { ...next, transform: { ...cmd.transform } } // finite and invertible: the image validator
+      }
       return { ok: true, label: 'setProps', puts: [next], affected: [cmd.id] }
     }
     case 'insertPoint':
@@ -721,6 +749,12 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       return planArrange(store, cmd, ids)
     case 'paintRegion':
       return planShape(store, cmd, ids)
+    case 'placeImage':
+    case 'saveImageSlot':
+    case 'recallImageSlot':
+    case 'clearImageSlot':
+    case 'renameImageSlot':
+      return planImage(store, cmd, ids)
     case 'setMask':
       return planMask(store, cmd, ids)
     case 'deleteRecords': {

@@ -3,6 +3,8 @@
 // file), a file input / download otherwise. Conventions of every desktop editor: ⌘O / ⌘S / ⇧⌘S, the file name and an
 // unsaved marker in the title, a question before unsaved changes are thrown away (open, leaving the page).
 // The document counts as saved only once the write succeeded (Editor.markSaved with the revision that was written).
+import { checkImageRecords } from './imageInput'
+import type { DocRecord } from '../schema'
 import { atom } from '@tldraw/state'
 import { fileOpen, fileSave } from 'browser-fs-access'
 import type { Editor } from '../editor'
@@ -96,6 +98,12 @@ export class Files {
       snapshot = JSON.parse(await file.text())
     } catch (e) {
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
+      return false
+    }
+    // reference images in it pass the one image check (decoded, real size — doc 18 §31.5) before it is loaded
+    const bad = await checkImageRecords(Object.values((snapshot?.store ?? {}) as Record<string, DocRecord>))
+    if (bad) {
+      this.status(`打开失败：${bad}`)
       return false
     }
     // a NEWER open already loaded its document: this older one is dropped (a newer one that failed or was cancelled

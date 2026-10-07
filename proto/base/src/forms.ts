@@ -115,7 +115,7 @@ export function newRecordProblems(store: Get, r: DocRecord): Problem[] {
     r.sources.strokes.forEach((id, i) => need(`sources.strokes[${i}]`, id, 'curve'))
     for (const [i, t] of r.targets.entries()) {
       const x = store.get(t as any) as DocRecord | undefined
-      if (!x || !['curve', 'fill', 'container'].includes(x.typeName)) p(`targets[${i}]`, t, `${t} is not a curve, fill or container`)
+      if (!x || !['curve', 'fill', 'container', 'image'].includes(x.typeName)) p(`targets[${i}]`, t, `${t} is not a curve, fill, image or container`)
     }
   }
   if (r.typeName === 'helperDomain') need('presetId', r.presetId, 'preset')

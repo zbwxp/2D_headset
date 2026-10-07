@@ -68,7 +68,7 @@ describe('setMask', () => {
     }
     no(cmd({ sources: { fills: [], strokes: [] } }), /at least one source/)
     no(cmd({ sources: { fills: ['fill:nope'], strokes: [] } }), /fill:nope is not a fill/)
-    no(cmd({ targets: ['mask:x'] }), /not a curve, fill or container/)
+    no(cmd({ targets: ['mask:x'] }), /not a curve, fill, image or container/)
     no(cmd({ mode: 'sideways' }), /inside or outside/)
     expect(e.apply({ type: 'setContainerFlags', containerId: 'container:L2' as any, locked: true }).ok).toBe(true)
     const r = e.apply(cmd())

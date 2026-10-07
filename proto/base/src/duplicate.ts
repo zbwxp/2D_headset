@@ -15,7 +15,7 @@
 import type { RecordId } from '@tldraw/store'
 import { getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
-import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced } from './indexes'
+import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced, CONTENT_KINDS } from './indexes'
 import { paintKey } from './evaluate'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, type BaseReader, type BoundaryStep, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
@@ -43,7 +43,7 @@ export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCom
     sel.add(id)
     if (r.typeName === 'container') for (const c of containersWithin(store, r.id)) {
       sel.add(c)
-      for (const t of ['curve', 'fill', 'reference'] as const) for (const x of within(store, c, t)) sel.add(x)
+      for (const t of CONTENT_KINDS) for (const x of within(store, c, t)) sel.add(x)
     }
   }
   // a path's own fill goes with its path (doc 18 §30.18)
@@ -102,6 +102,7 @@ export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCom
       if (track) puts.push({ ...structuredClone(track), id: poseIdOf(id), curveId: id })
     } else if (r.typeName === 'fill')
       puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, index: index.get(r.id)!, ...(r.owner ? { owner: { kind: 'path' as const, curveId: to(r.owner.curveId) } } : {}), boundary: r.boundary.map((b) => (isBridge(b) ? { bridge: { from: { ...b.bridge.from, curveId: to(b.bridge.from.curveId) }, to: { ...b.bridge.to, curveId: to(b.bridge.to.curveId) } } } : { ...b, curveId: to(b.curveId) })) })
+    else if (r.typeName === 'image') puts.push({ ...structuredClone(r), id, parentId: top(r.parentId) as any, index: index.get(r.id)! })
     else if (r.typeName === 'reference') {
       const src = to(r.sourceId)
       // override keys name curves of the SOURCE: they follow to the copies only when the reference itself now places

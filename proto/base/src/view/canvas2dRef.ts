@@ -6,7 +6,8 @@
 // non-zero fill, no stroke on dots). Path2D objects are built straight from the evaluated cubics (no
 // SVG string) and cached per evaluated item, which is the same object while unchanged; every item is
 // still REPAINTED each frame, like renderAll. Not a cost floor (dot): a reference with the same output.
-import { FILL_RULE, inkStyle, type EvalCurve, type EvalFill, type Evaluated } from '../evaluate'
+import { FILL_RULE, inkStyle, type EvalCurve, type EvalFill, type Evaluated, imageCorners } from '../evaluate'
+import { drawImageWorld } from './images'
 import { paintMasked } from './masks'
 import { ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 
@@ -47,7 +48,7 @@ export class Canvas2DRef {
   }
 
   /** Repaint the whole frame. `vpt` is Fabric's viewport transform, `dpr` its retina scaling. */
-  draw(vpt: number[], dpr: number, ev: Evaluated, onions: Evaluated[], opts: { aids?: boolean } = {}) {
+  draw(vpt: number[], dpr: number, ev: Evaluated, onions: Evaluated[], opts: { aids?: boolean; images?: boolean } = {}) {
     // editor aids (anchor dots, locked lines in grey) — off for an export (the drawing as it is)
     const aids = opts.aids !== false
     const ctx = this.el.getContext('2d')!
@@ -66,6 +67,14 @@ export class Canvas2DRef {
       if (!p.item.visible) continue
       // an item under masks is painted through them (view/masks.ts), the same drawing otherwise
       const masks = ev.masks?.get(p.item.address)
+      if (p.kind === 'image') {
+        // a reference image (doc 18 §31): its pixels placed and shown at its opacity; an export leaves it out
+        if (opts.images === false) continue
+        const im = p.item
+        if (masks?.length) paintMasked(ctx, masks, imageCorners(im), 0, (l) => drawImageWorld(l, im))
+        else drawImageWorld(ctx, im)
+        continue
+      }
       if (p.kind === 'fill') {
         const f = p.item
         const draw = (l: CanvasRenderingContext2D) => {

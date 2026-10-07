@@ -14,9 +14,11 @@ import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor, Operation } from '../editor'
-import { cubicsToCommands, evaluate, FILL_RULE, hitStack, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
+import { cubicsToCommands, evaluate, FILL_RULE, hitStack, hitTest, imagePixelAt, inkStyle, itemCubics, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
+import { ImageObject, onImageReady, onWhite, pixelColor } from './images'
+import { checkImageRecords, readImageFile } from '../ui/imageInput'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
@@ -28,7 +30,7 @@ import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
 import { anchorKey, containerChain, linkedAnchors, lockedBy, type AnchorRef } from '../model'
 
-export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K' | 'N'
+export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K' | 'N' | 'I'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
 
 const toAffine = (m: TMat2D): Affine => ({ a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] })
@@ -91,6 +93,11 @@ export class FabricView {
 
   /** the colour the Live Paint Bucket (K) fills with — the toolbar's fill colour well */
   readonly fillColor = atom('fill colour', '#f3d9c4')
+  /**
+   * The colour picker's mode (I, doc 18 §31.3 steps 6–9), always shown and switched explicitly — never by what the click
+   * lands on (dot 1791365307): 'source' = the top shown reference image's own pixel; 'screen' = the drawing as rendered.
+   */
+  readonly pickMode = atom<'source' | 'screen'>('pick mode', 'source')
   /** the canvas zoom, for the toolbar (set on every render) */
   readonly zoom = atom('canvas zoom', 1)
   /** what the user is in the middle of (for the hint line; set on every render) */
@@ -175,6 +182,21 @@ export class FabricView {
     // Whatever Fabric does when a multi-selection ends, the document is the only truth: re-project.
     this.canvas.on('selection:cleared', () => {
       if (!this.projecting) queueMicrotask(() => this.render())
+    })
+    // a picture file dropped on the canvas is placed as a reference image (doc 18 §31.3 step 1)
+    this.canvas.wrapperEl.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+    })
+    this.canvas.wrapperEl.addEventListener('drop', (e) => {
+      const f = e.dataTransfer?.files?.[0]
+      if (!f) return
+      e.preventDefault()
+      void this.placeImageFile(f)
+    })
+    // a reference image finished decoding: paint it
+    onImageReady(() => {
+      this.render()
+      this.canvas.requestRenderAll()
     })
     // the canvas follows the selection and the document (panels change both)
     react('view follows selection / document', () => {
@@ -432,9 +454,11 @@ export class FabricView {
         const ownMasked = p.kind === 'fill' && p.ownInk.some((r) => ev.masks?.get(r.curve)?.length)
         const item = ev.masks?.get(p.item.address)?.length || ownMasked ? ({ masked: p.item, masks: ev.masks!.get(p.item.address), own: p.kind === 'fill' ? p.ownInk.map((r) => ev.masks!.get(r.curve)) : null } as any) : p.item
         want.push(
-          p.kind === 'fill'
-            ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }
-            : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
+          p.kind === 'image'
+            ? { key: `i:${p.item.address}`, item, make: () => [new ImageObject(p.item, ev.masks?.get(p.item.address))] }
+            : p.kind === 'fill'
+              ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }
+              : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
         )
       }
     if (this.mode !== 'V' && this.mode !== 'K') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
@@ -519,8 +543,8 @@ export class FabricView {
     const items = new Set(drawnOf(reader, ev, ids))
     for (const p of ev.paint) {
       if (!items.has(p.item.address)) continue
-      const cubics = p.kind === 'curve' ? p.item.segments.map((s) => s.cubic) : p.item.cubics
-      want.push({ key: `s:${p.item.address}`, item: p.item, make: () => [new Path(cubicsToCommands(cubics, p.kind === 'fill'), { fill: '', stroke: '#1e88e5', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false })] })
+      const cubics = itemCubics(p)
+      want.push({ key: `s:${p.item.address}`, item: p.item, make: () => [new Path(cubicsToCommands(cubics, p.kind !== 'curve'), { fill: '', stroke: '#1e88e5', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false })] })
     }
     // selected anchors: filled squares (Illustrator Direct Selection)
     const sa = this.selection.getAnchors()
@@ -606,6 +630,7 @@ export class FabricView {
     if (this.mode === 'P') return this.penDown(e)
     if (this.mode === '+' || this.mode === '-' || this.mode === 'C') return this.structureClick(e)
     if (this.mode === 'K') return this.bucket(this.canvas.getScenePoint(e))
+    if (this.mode === 'I') return this.pick(this.canvas.getScenePoint(e))
     if (this.mode === 'N') {
       // Convert Anchor Point (⇧C): click an anchor = corner (handles retracted); drag from it = smooth (symmetric
       // handles pulled out); drag a handle = move that handle alone (the pair is broken)
@@ -992,12 +1017,79 @@ export class FabricView {
     if (this.editor.documentEpoch !== epoch) return this.setStatus('粘贴：读取剪贴板时已经打开了别的文档，没有粘贴'), null
     const content = text ? parseContent(text) : null
     if (!content) return this.setStatus('剪贴板里没有可以粘贴的图形'), null
+    // reference images in it pass the one image check (decoded, real size) before anything is written (§31.5)
+    const bad = await checkImageRecords(content.records as DocRecord[])
+    if (this.editor.documentEpoch !== epoch) return this.setStatus('粘贴：检查图片时已经打开了别的文档，没有粘贴'), null
+    if (bad) return this.setStatus(`粘贴：${bad}`), null
     let offset = { x: 0, y: 0 }
     const centre = contentCentre(content)
     if (!inPlace && centre) offset = { x: round(centreOfView.x - centre.x), y: round(centreOfView.y - centre.y) }
     const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset, origin: this.editor.documentToken })
     if (r.ok && r.written) this.selection.set(r.affected.filter((id) => (this.editor.reader.get(id as any) as { parentId?: string } | undefined)?.parentId === layer))
     return r
+  }
+
+  /** show a prepared operation's preview of `cmd` (panels: a slider drag is one operation, committed on release) */
+  previewCommand(op: Operation, cmd: Command) {
+    const pv = op.preview(cmd)
+    if (pv.ok) {
+      const d = this.editor.derived
+      this.render(d.preview(pv.puts, d.previewChanges(pv.puts)))
+    }
+    return pv
+  }
+
+  // ---- reference images (doc 18 §31): place, pick colours ----
+  /**
+   * Place a picture file as a reference image (§31.3 step 1): read into embedded data and decoded (imageInput, the one
+   * check), then — if the document is still the same one — one placeImage: a new layer 「参考图」 below every layer, the
+   * picture at its own pixel size centred in the view, shrunk to fit it when larger. Cancelled, failed or a document
+   * switched meanwhile: nothing written (no layer, no undo step).
+   */
+  async placeImageFile(file: File) {
+    const epoch = this.editor.documentEpoch
+    const read = await readImageFile(file)
+    if (this.editor.documentEpoch !== epoch) return this.setStatus('置入参考图：读图时已经打开了别的文档，没有置入'), null
+    if ('error' in read) return this.setStatus(`置入参考图：${read.error}`), null
+    const z = this.canvas.getZoom()
+    const inv = util.invertTransform(this.canvas.viewportTransform)
+    const c = util.transformPoint(new Point(this.canvas.getWidth() / 2, this.canvas.getHeight() / 2), inv)
+    const s = Math.min(1, (0.9 * this.canvas.getWidth()) / z / read.width, (0.9 * this.canvas.getHeight()) / z / read.height)
+    const r = this.applyAndLog({ type: 'placeImage', name: read.name, src: read.src, width: read.width, height: read.height, transform: { a: s, b: 0, c: 0, d: s, e: c.x - (read.width * s) / 2, f: c.y - (read.height * s) / 2 } })
+    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    return r
+  }
+
+  /**
+   * The colour picker (I, §31.3 steps 6–9): sets ONLY the toolbar's fill colour — never the selected objects, never the
+   * document (no undo step, not dirty; K → I → K keeps the first area — dot 1791365307).
+   * - 'source': the top shown reference image at the point (locked ones too), its own pixel through its placement,
+   *   not its display opacity;
+   * - 'screen': the drawing as rendered there (reference images at their opacity, masks, everything in front), without
+   *   editor aids (selection, anchors, guides), at one device pixel of the current zoom, composited on white.
+   */
+  pick(p: Vec) {
+    const ev = this.editor.derived.evaluated()
+    let color: string | null = null
+    if (this.pickMode.get() === 'source') {
+      for (const e of [...ev.paint].reverse()) {
+        if (e.kind !== 'image' || !e.item.visible) continue
+        const px = imagePixelAt(e.item, p)
+        if (!px) continue
+        color = pixelColor(e.item.src, px.x, px.y)
+        break
+      }
+      if (!color) return this.setStatus('取色（参考图原色）：这里没有参考图 · 要取画面上的颜色，切到「画面显示色」'), null
+    } else {
+      const k = this.canvas.getZoom() * this.canvas.getRetinaScaling()
+      const el = document.createElement('canvas')
+      el.width = el.height = 1
+      new Canvas2DRef(el).draw([k, 0, 0, k, -p.x * k, -p.y * k], 1, ev, [], { aids: false })
+      color = onWhite(el.getContext('2d')!.getImageData(0, 0, 1, 1).data)
+    }
+    this.fillColor.set(color)
+    this.setStatus(`取色 ${color}（${this.pickMode.get() === 'source' ? '参考图原色' : '画面显示色'}）→ 工具栏填充色`)
+    return color
   }
 
   // ---- masks (Illustrator Object › Clipping Mask): ⌘7 Make, ⌥⌘7 Release; the panel switches mode / enabled ----
@@ -1075,7 +1167,7 @@ export class FabricView {
     const el = document.createElement('canvas')
     el.width = Math.max(1, Math.ceil(box.w * scale))
     el.height = Math.max(1, Math.ceil(box.h * scale))
-    new Canvas2DRef(el).draw([scale, 0, 0, scale, -box.x * scale, -box.y * scale], 1, ev, [], { aids: false })
+    new Canvas2DRef(el).draw([scale, 0, 0, scale, -box.x * scale, -box.y * scale], 1, ev, [], { aids: false, images: false })
     return new Promise((resolve) => el.toBlob((b) => resolve(b), 'image/png'))
   }
 

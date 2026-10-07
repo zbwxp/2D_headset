@@ -8,7 +8,8 @@ import type { Command } from '../commands'
 import type { Editor } from '../editor'
 import { childrenOf, ownFillsOf } from '../indexes'
 import { layerOf, masksOf } from '../selection'
-import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
+import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, ImageRecord, MaskRecord, ReferenceRecord } from '../schema'
+import { ImagePanel } from './imagePanel'
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
 import { layerRows, rangeOf, type LayerRow } from './layerTree'
 import type { Files } from './files'
@@ -18,7 +19,7 @@ export type Tool = ViewTool
 export type Ui = { editor: Editor; view: FabricView; tool: Atom<Tool>; zoom: Atom<number>; apply: (cmd: Command) => void; files: Files }
 export const createTool = () => atom<Tool>('tool', 'A')
 
-const KIND_LABEL: Record<string, string> = { container: '图层', curve: '线', fill: '填充', reference: '引用' }
+const KIND_LABEL: Record<string, string> = { container: '图层', curve: '线', fill: '填充', reference: '引用', image: '参考图' }
 
 export function Toolbar({ ui }: { ui: Ui }) {
   const { editor, view } = ui
@@ -41,6 +42,7 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button id="fileSaveAs" title="另存为 (⇧⌘S)" onClick={() => void ui.files.save(true)}>另存为</button>
         <button id="exportPng" title="导出 PNG（画面内容，2 倍，透明底）" onClick={() => void ui.files.exportAs('png', view)}>导出 PNG</button>
         <button id="exportSvg" title="导出 SVG（矢量）" onClick={() => void ui.files.exportAs('svg', view)}>SVG</button>
+        <PlaceImage ui={ui} />
         <span id="fileName" className="file" title={dirty ? '有未保存的修改' : '已保存'}>{dirty ? '● ' : ''}{fileName ?? '未命名'}</span>
       </div>
       <div className="group">
@@ -72,6 +74,10 @@ export function Toolbar({ ui }: { ui: Ui }) {
           K 填充
         </button>
         <FillColor ui={ui} />
+        <button id="modeI" className={tool === 'I' ? 'on' : ''} title="取色 (I)：点一下取颜色，设为工具栏填充色" onClick={() => setTool('I')}>
+          I 取色
+        </button>
+        <PickMode ui={ui} />
       </div>
       <div className="group">
         <button id="undo" disabled={!canUndo} title="撤销 (⌘Z)" onClick={() => (editor.undo(), view.selection.prune(editor.reader))}>
@@ -110,6 +116,39 @@ function SnapToggle({ ui }: { ui: Ui }) {
     <button id="snapToggle" className={on ? 'on' : ''} title="智能参考线 / 吸附 (⌘U)：拖动和画点时吸到别的锚点、和锚点对齐" onClick={() => ui.view.setSnap(!on)}>
       吸附
     </button>
+  )
+}
+
+/** 置入参考图 (doc 18 §31.3 step 1): a PNG / JPEG / WebP file; also by dropping it on the canvas */
+function PlaceImage({ ui }: { ui: Ui }) {
+  const input = useRef<HTMLInputElement>(null)
+  return (
+    <>
+      <button id="placeImage" title="置入参考图：选一张 PNG / JPEG / WebP（也可以直接把图片拖到画布上）。放进最下面新建的图层「参考图」，50% 显示" onClick={() => input.current?.click()}>置入参考图</button>
+      <input
+        ref={input}
+        id="placeImageFile"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = '' // the same file can be chosen again
+          if (f) void ui.view.placeImageFile(f)
+        }}
+      />
+    </>
+  )
+}
+
+/** the colour picker's mode, always visible (dot 1791365307): never switched by what the click lands on */
+function PickMode({ ui }: { ui: Ui }) {
+  const mode = useValue(ui.view.pickMode)
+  return (
+    <span className="seg" id="pickMode" title="取色模式（I 工具下按 Tab 切换）">
+      <button id="pickSource" className={mode === 'source' ? 'on' : ''} title="参考图原色：取参考图本来的像素颜色，不受半透明显示影响" onClick={() => ui.view.pickMode.set('source')}>原色</button>
+      <button id="pickScreen" className={mode === 'screen' ? 'on' : ''} title="画面显示色：取屏幕上看到的颜色（不含选框、锚点）" onClick={() => ui.view.pickMode.set('screen')}>画面</button>
+    </span>
   )
 }
 
@@ -376,6 +415,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
             </>
           ) : null}
           {r.typeName === 'fill' ? <tr><th>颜色</th><td><ColorInput prop="fillColor" value={(r as FillRecord).color} onCommit={(v) => ui.apply({ type: 'setProps', id: r.id, color: v })} /></td></tr> : null}
+          {r.typeName === 'image' ? <ImagePanel ui={ui} image={r as ImageRecord} /> : null}
           {r.typeName === 'reference' ? (
             <>
               <tr><th>源</th><td className="mono">{(r as ReferenceRecord).sourceId}</td></tr>

@@ -20,8 +20,10 @@ type Rec<T extends Type> = Extract<DocRecord, { typeName: T }>
  * The kinds of object a container holds in its paint order — the ONE list (doc 18 §31.4). Every place that walks a
  * container's children reads it; whether each place supports a kind is still decided (and tested) there.
  */
-export const PLACED_KINDS = ['container', 'curve', 'fill', 'reference'] as const
+export const PLACED_KINDS = ['container', 'curve', 'fill', 'reference', 'image'] as const
 export type PlacedKind = (typeof PLACED_KINDS)[number]
+/** the placed kinds that are not containers — what a container's content is made of */
+export const CONTENT_KINDS = PLACED_KINDS.filter((k): k is Exclude<PlacedKind, 'container'> => k !== 'container')
 export const isPlaced = (typeName: string): typeName is PlacedKind => (PLACED_KINDS as readonly string[]).includes(typeName)
 type KeyIndex = Computed<Map<string, Set<string>>>
 /** A reader with the store's incremental indexes (`query`), or without them (overlay / plain reader → scan). */
@@ -191,7 +193,7 @@ export function containersWithin(store: Queryable, containerId: ContainerRecord[
 export const placedChildren = (store: Queryable, parentId: string | null): string[] => PLACED_KINDS.flatMap((t) => childrenOf(store, parentId, t) as string[])
 
 /** Records of `type` placed at or below `containerId`, via the parent index (no full scan). */
-export const within = <T extends 'curve' | 'fill' | 'reference'>(store: Queryable, containerId: ContainerRecord['id'], type: T) =>
+export const within = <T extends Exclude<PlacedKind, 'container'>>(store: Queryable, containerId: ContainerRecord['id'], type: T) =>
   containersWithin(store, containerId).flatMap((c) => childrenOf(store, c, type))
 
 export type { CurveRecord }
