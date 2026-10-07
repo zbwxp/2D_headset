@@ -2119,6 +2119,8 @@ The rule holds. There are two distinct actions:
   - Binding a free curve's own two ends deletes it.
 - **Case 3 does not invalidate the loop.** It is kept as a special editing method, for tool consistency.
 
+> **Note (Q22):** the case 2 and case 3 derivations above silently assumed that only one curve is deleted. Under the general rule, the lemon and the θ are deleted entirely. Reopened in Q22.
+
 ### Claude (1791391716): one ambiguity in case 2
 
 - In a 2-segment loop, both s1 and s2 have A and B as their ends. "Bind A and B" alone cannot tell which segment to delete.
@@ -2261,3 +2263,42 @@ Understood. Following the same reasoning: every endpoint is the end of a specifi
 - 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
 - 2: decided. Move = copy or copy-then-delete; the result follows from the principle. Do not block; show consequences.
 - Curve-end question: **open**. It moves to the endpoint round (dot 1791392483). A point and "the end of a specific curve" still have to be distinguished at a shared endpoint with several lines, and this does not follow from the copy/delete decision. Claude withdrew "recorded unless bowen objects".
+
+## Q22: Binding A and B when several lines connect them, derived from the code
+
+**bowen** 1791392558, 1791392665:
+> 绑定线那个我没看懂。我们删除只能删除线， 能删除端点的只有绑定端点。你要问什么？
+> 如果我对这个情况不适配 那么我绑定端点后会出现什么情况？ 按代码来 你推演一下
+
+### Claude (1791392718): derivation, and a correction to Q20
+
+**Correction.** Q20's cases 2 and 3 silently assumed that only one line is deleted. That is already a special case.
+
+**v103 code as it is** (`7205381:src/domain/drawing/commands.ts:102-110`, binding A and B):
+1. Node B moves to A's position.
+2. Every curve end on B is rewritten to A, and node B is deleted.
+3. **No curve is deleted.** `clean()` only drops nodes no curve uses (`commands.ts:18`).
+
+So a lemon (upper and lower arc, both A→B) becomes two petals: both arcs become loops with both ends on A.
+
+**bowen's new rule applied with no special case:** after a bind, every curve whose two ends land on the same point is deleted.
+
+- **Lemon:** both arcs have ends A and B, so both are deleted. The whole lemon and its fill disappear.
+- **θ (Q20 case 3 was wrong):** the upper arc, lower arc and middle line all end at the circle points P and Q. Binding P and Q deletes all three, so the whole θ disappears.
+- **Loop of 3 or more segments:** only the collapsed segment ends on both points, so only it is deleted and the loop stays. Unchanged.
+- **Consequence:** under this rule a single-curve loop can never be made. Every loop has at least two curves.
+
+**If a bind acts on the clicked curve's end:** only that curve is deleted, and the others become single-curve loops. This gives the Q20 cases 2 and 3 results bowen confirmed, but it is an **added** rule, not a derived one.
+
+**Choice for bowen:**
+- **甲:** the general rule. Every curve whose two ends are bound to one point is deleted.
+  - The rule is simple.
+  - No single-curve loops can exist.
+  - Binding the θ middle line's ends deletes the whole θ.
+- **乙:** a bind deletes only the clicked curve.
+  - Single-curve loops and the θ special edit work.
+  - It needs one extra rule: "the clicked curve end decides".
+
+### Status
+
+Q20 cases 2 and 3 are reopened by this correction. Waiting for bowen: 甲 or 乙.
