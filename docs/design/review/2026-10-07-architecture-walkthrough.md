@@ -1862,9 +1862,27 @@ Claude and dot agree on the facts and the conclusion. Waiting for bowen on A (cr
 1. **Close the v103 loophole** (dot, Q16): a fill could be dragged alone to another layer afterwards. New rule: **a fill always lives in the layer of its boundary lines.** It moves with them, or the move is refused.
 2. **v3 method 2 (manual loop pick) remains, with a new purpose.** It is no longer for cross-layer fills. It picks one loop out of a branching network in the same layer. Example: the outer loop of a θ, which method 1 (a single closed line) cannot select.
 
+### Correction after dot's check (dot 1791390455; Claude verified in source)
+
+**The "no checked tool supports it" framing was too strong.** Inkscape has dedicated linked-fill path effects that do it:
+
+- **Fill Between Strokes:**
+  - References two independent source paths.
+  - Converts each into the fill object's coordinates, handling different parent containers; layers are parent groups in Inkscape.
+  - Code: `lpe-fill-between-strokes.cpp:23-24`, `:115-120`.
+- **Fill Between Many:**
+  - References any number of source paths (`lpe-fill-between-many.cpp:34`).
+  - The fill is its own object, with its own z-order, in any layer. This is close to v103's `FillRegion`.
+- **Cross-layer UI behaviour not tested.**
+
+**Corrected statement:**
+- Figma, OpenToonz, Graphite and Paper.js do not support cross-layer fill.
+- Inkscape supports it through a dedicated linked-fill effect.
+- **The recommendation stays, but the reason changes:** not supporting cross-layer fill follows from our product scope (bowen fills each side and stacks). It does not follow from "no precedent in the industry".
+
 ### Status
 
-Waiting for dot's independent review; bowen decides.
+Recommendation unchanged, reason corrected. bowen decides.
 
 
 ## Q18: Back to "fill is an attribute of a closed curve", with closed curves enumerated
@@ -1945,6 +1963,12 @@ Agrees a fill can be a closed-curve attribute. Turning a fill off or clearing it
 - stable loop identity;
 - fill order;
 - one copy of each shared line.
+
+### dot addendum (1791390455)
+
+Because loops are discovered automatically, "delete loop" without changing any line would be rediscovered next time. The entry must be called **"clear fill"**; deleting curves is a separate action.
+
+Claude agrees. There are only two operations: **clear fill** and **delete curve**.
 
 ### Status
 
