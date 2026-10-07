@@ -21,11 +21,11 @@ test('A→V hides B and drops its queued frame; V→A restores the identical B p
   await frames(page)
   const inV = await page.evaluate(() => {
     const v = (window as any).__contour.view
-    return { display: getComputedStyle(v.refCanvas).display, pixels: v.refCanvas.toDataURL(), groups: v.canvas.getObjects().filter((x: any) => x.type === 'group').length }
+    return { display: getComputedStyle(v.refCanvas).display, pixels: v.refCanvas.toDataURL(), drawn: v.canvas.getObjects().filter((x: any) => x.type === 'path').length }
   })
   expect(inV.display).toBe('none')
   expect(inV.pixels).toBe(queued.pixels) // no A frame drawn after the switch
-  expect(inV.groups).toBeGreaterThan(0)
+  expect(inV.drawn).toBeGreaterThan(0) // V is drawn by Fabric (the paint list as paths)
   await page.evaluate(() => {
     const c = (window as any).__contour
     c.editor.undo()

@@ -15,14 +15,19 @@
   "type": "module",
   "dependencies": {
     "@tldraw/state": "^5.5.2",
+    "@tldraw/state-react": "^5.5.2",
     "@tldraw/store": "^5.5.2",
     "@tldraw/utils": "^5.5.2",
     "bezier-js": "^6.1.4",
-    "fabric": "^7.4.0"
+    "fabric": "^7.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "fast-check": "^4.10.2",
     "jsdom": "^29.1.1",
     "typescript": "^7.0.2",

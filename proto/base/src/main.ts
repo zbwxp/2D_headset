@@ -8,6 +8,11 @@ import { FabricView } from './view/fabricView'
 import { runScopeA } from './bench'
 import { onionYaws, syntheticPoses, syntheticRecords } from './synthetic'
 import { paintCases } from './paintCases'
+import { createElement as h, Fragment } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Selection } from './selection'
+import { createTool, LayersPanel, PropertiesPanel, Toolbar, type Ui } from './ui/panels'
+import { installShortcuts } from './ui/shortcuts'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
@@ -22,21 +27,25 @@ if (params.has('case') && !paintCase) throw Error(`unknown case ${params.get('ca
 const editor = new Editor(paintCase ? paintCase.records() : bench ? benchRecords : exampleRecords())
 const api = createApi(editor)
 const statusEl = document.getElementById('status')!
-const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, editor, (s) => (statusEl.textContent = s))
+const selection = new Selection()
+const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, editor, (s) => (statusEl.textContent = s), selection)
 
-const $ = (id: string) => document.getElementById(id)!
-$('modeA').onclick = () => view.setMode('A')
-$('modeV').onclick = () => view.setMode('V')
-$('unlock').onclick = () => {
-  api.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
-  view.render()
+// editor skeleton (block 1): toolbar, layers and properties panels (React), Illustrator shortcuts
+const tool = createTool()
+const setTool = (t: 'V' | 'A') => (tool.set(t), view.setMode(t))
+const ui: Ui = {
+  editor,
+  view,
+  tool,
+  zoom: view.zoom,
+  apply: (cmd) => {
+    const r = api.apply(cmd)
+    statusEl.textContent = r.ok ? '' : `${r.error.code}: ${r.error.message}`
+  },
 }
-$('undo').onclick = () => (editor.undo(), view.render())
-$('redo').onclick = () => (editor.redo(), view.render())
-;($('src') as HTMLInputElement).onchange = (e) => (view.editSource = (e.target as HTMLInputElement).checked)
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') view.cancelGesture()
-})
+createRoot(document.getElementById('toolbar')!).render(h(Toolbar, { ui }))
+createRoot(document.getElementById('side')!).render(h(Fragment, null, h(LayersPanel, { ui }), h(PropertiesPanel, { ui })))
+installShortcuts(editor, view, setTool)
 
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
 // objects; measuring a mostly off-screen drawing would understate the real cost)
@@ -50,6 +59,6 @@ if (bench && onionCount) {
   view.render()
 }
 Object.assign(window, {
-  __contour: { editor, api, view, evaluate, hitTest, ids, counters, resetCounters, paintCase },
+  __contour: { editor, api, view, selection, setTool, evaluate, hitTest, ids, counters, resetCounters, paintCase },
   __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, n ? onionYaws(n) : [], samples) },
 })

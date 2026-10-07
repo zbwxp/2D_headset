@@ -367,8 +367,9 @@ export type Hit =
 
 /**
  * Hit test against the evaluated geometry (precision risk of route B is decided here, not by
- * Fabric's bounding-box hit test). A mode: anchors > handles > segments; V mode: segments > fills.
- * Locked or hidden objects are not hittable. Topmost (last painted) wins ties.
+ * Fabric's bounding-box hit test). A mode: anchors > handles (nearest) > the topmost drawn item; V mode: the topmost
+ * drawn item (`hitStack`, paint order — a line hidden under a fill in front is not picked: KF-4).
+ * Locked or hidden objects are not hittable.
  */
 export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; tolerance: number }): Hit | null {
   const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y)
@@ -390,20 +391,32 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
     const h = pick(handles.filter((x) => x.d <= opts.tolerance))
     if (h) return h
   }
-  const segs = top.flatMap((c) =>
-    c.segments.map((s) => {
-      const pr = new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p)
-      return { kind: 'segment' as const, address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: pr.t, d: pr.d }
-    }),
-  )
-  // a segment under a mask is not hittable where the mask hides it (picking follows what is drawn, §1.7)
-  const s = pick(segs.filter((x) => x.d <= opts.tolerance && visibleThroughMasks(ev, x.address.slice(0, x.address.lastIndexOf('/')), p)))
-  if (s) return s
+  return hitStack(ev, p, opts.tolerance)[0] ?? null
+}
+
+/**
+ * Everything drawn under `p`, FRONT to back in the paint order (doc 18 KF-4; Illustrator / Figma: a click picks the
+ * topmost object under the cursor, Cmd / Ctrl+click goes behind it): a line within `tolerance` of its ink where no
+ * mask hides it, a fill containing `p` where no mask hides it and not on its own visible ink (S2). One entry per drawn
+ * item (its nearest segment). Hidden and locked items are not hittable.
+ */
+export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit, { kind: 'segment' | 'fill' }>[] {
+  const out: Extract<Hit, { kind: 'segment' | 'fill' }>[] = []
   const byAddress = new Map(ev.curves.map((c) => [c.address, c]))
   for (const entry of [...ev.paint].reverse()) {
-    if (entry.kind !== 'fill') continue
+    if (!entry.item.visible || entry.item.locked) continue
+    if (entry.kind === 'curve') {
+      const c = entry.item
+      let best: Extract<Hit, { kind: 'segment' }> | null = null
+      for (const s of c.segments) {
+        const pr = new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p)
+        if (pr.d! <= tolerance && (!best || pr.d! < best.d)) best = { kind: 'segment', address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: pr.t!, d: pr.d! }
+      }
+      // a segment under a mask is not hittable where the mask hides it (picking follows what is drawn, §1.7)
+      if (best && visibleThroughMasks(ev, c.address, p)) out.push(best)
+      continue
+    }
     const f = entry.item
-    if (!f.visible || f.locked) continue
     if (!fillContains(f, p)) continue
     if (!visibleThroughMasks(ev, f.address, p)) continue
     // the same protected area as the drawing (S2): a point on the fill's own visible ink is not the
@@ -417,8 +430,8 @@ export function hitTest(ev: Evaluated, p: Vec, opts: { mode: 'A' | 'V'; toleranc
       if (!segs.some((s) => new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p).d! <= reach)) return false
       return inkContains(c, ref.segments, p)
     })
-    if (!onOwnInk) return { kind: 'fill', address: f.address, d: 0 }
+    if (!onOwnInk) out.push({ kind: 'fill', address: f.address, d: 0 })
   }
-  return null
+  return out
 }
 

@@ -9,7 +9,8 @@
 import { Canvas2DRef } from './canvas2dRef'
 import { childrenOf } from '../indexes'
 import { counters } from '../counters'
-import { ActiveSelection, Canvas, Circle, Group, Path, util, type FabricObject, type TMat2D } from 'fabric'
+import { Canvas, Circle, Path, Point, Rect, util, type FabricObject, type TMat2D } from 'fabric'
+import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor, Operation } from '../editor'
@@ -18,8 +19,9 @@ import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
-import { topContainerOfHit } from '../select'
+import { boundsOf, deletionSetOf, drawnOf, isInside, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
+import { lockedBy } from '../model'
 
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
 
@@ -36,7 +38,21 @@ export class FabricView {
   status = ''
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
   private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError } | null = null
-  private groupStart = new Map<FabricObject, TMat2D>()
+  /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
+  private vGesture:
+    | { kind: 'move'; start: Vec; op: Operation; ids: string[]; cmd?: Command; ok: boolean; error?: EditError }
+    | { kind: 'marquee'; start: Vec; now: Vec; additive: boolean; enclosed: boolean }
+    | { kind: 'box'; op: Operation; ids: string[]; start: TMat2D; cmd?: Command; ok: boolean; error?: EditError }
+    | null = null
+  /** the handle box of the selection (Fabric's controls: scale / rotate); its body is NOT a drag target */
+  private box: FabricObject | null = null
+  /** identity of the current box (selection + its drawn bounds): kept while a gesture previews, rebuilt otherwise */
+  private boxItem: { ids: readonly string[]; bounds: SelRect; locked: boolean } | null = null
+  /** the canvas zoom, for the toolbar (set on every render) */
+  readonly zoom = atom('canvas zoom', 1)
+  /** space held: the hand tool (pan) */
+  private spaceDown = false
+  private pan: { x: number; y: number } | null = null
   /** True while we re-project. Fabric fires `object:modified` again when we remove an object that
    *  is still the current transform target (endCurrentTransform → _finalizeCurrentTransform), which
    *  would write the same transform twice. Found by the e2e slice; see 15 §4 risk 1 of route B. */
@@ -61,8 +77,12 @@ export class FabricView {
     el: HTMLCanvasElement,
     readonly editor: Editor,
     private onStatus: (s: string) => void = () => {},
+    /** the editor's selection (shared with the panels); not part of the document, not an undo step */
+    readonly selection: Selection = new Selection(),
   ) {
-    this.canvas = new Canvas(el, { selection: true, preserveObjectStacking: true })
+    // Fabric's own marquee and object picking are off: selection is decided by OUR picking (selection.ts); Fabric draws
+    // and provides the handle box. Illustrator scaling: free by default, Shift keeps proportions.
+    this.canvas = new Canvas(el, { selection: false, preserveObjectStacking: true, uniformScaling: false, uniScaleKey: 'shiftKey' })
     this.canvas.setViewportTransform([3, 0, 0, 3, 150, 60])
     // Time the MAIN canvas render only: Fabric also fires after:render for the top layer (renderTop,
     // ctx = contextTop) — counting those doubled the renders and mis-timed them (found 2026-10-06).
@@ -86,20 +106,23 @@ export class FabricView {
         paintedInput = this.lastInputTs
       }
     })
-    // Fabric caches its target before 'mouse:down:before' fires, so we route V-mode targets in a
-    // capture-phase listener on Fabric's wrapper element (public `wrapperEl`), which runs first.
-    for (const type of ['pointerdown', 'mousedown'] as const) {
-      this.canvas.wrapperEl.addEventListener(type, (e) => this.routeVTarget(e as PointerEvent), { capture: true })
-    }
-    this.canvas.wrapperEl.addEventListener('pointermove', (e) => (this.lastInputTs = e.timeStamp), { capture: true })
+    // Fabric caches its target before 'mouse:down:before' fires, so V-mode picking runs in a capture-phase listener on
+    // Fabric's wrapper element (public `wrapperEl`), which runs first; the hand tool (space) stops the event there.
+    this.canvas.wrapperEl.addEventListener('pointerdown', (e) => this.onCapturedDown(e), { capture: true })
+    this.canvas.wrapperEl.addEventListener('pointermove', (e) => ((this.lastInputTs = e.timeStamp), this.onPanMove(e)), { capture: true })
+    window.addEventListener('pointerup', () => (this.pan = null))
+    this.canvas.wrapperEl.addEventListener('wheel', (e) => this.onWheel(e), { passive: false })
     this.canvas.on('mouse:down', (o) => this.onDown(o.e as PointerEvent))
     this.canvas.on('mouse:move', (o) => this.onMove(o.e as PointerEvent))
     this.canvas.on('mouse:up', () => this.onUp())
     this.canvas.on('object:modified', (o) => this.onModified(o.target as FabricObject))
-    this.canvas.on('before:transform', () => {
+    this.canvas.on('before:transform', (o) => {
       this.vTransforming = true
       this.vCancelled = false
+      const tr = (o as { transform?: { target?: FabricObject; corner?: string } }).transform
+      if (tr?.target && tr.target === this.box && tr.corner && this.boxItem) this.vGesture = { kind: 'box', op: this.editor.prepare(), ids: [...this.boxItem.ids], start: this.box.calcTransformMatrix(), ok: false }
     })
+    for (const ev of ['object:scaling', 'object:rotating', 'object:skewing'] as const) this.canvas.on(ev, (o) => this.onBoxChanging(o.target as FabricObject))
     this.canvas.on('mouse:up', () => {
       // a cancelled transform may end without object:modified (nothing changed): clear the flags
       if (this.vCancelled) queueMicrotask(() => ((this.vCancelled = false), (this.vTransforming = false)))
@@ -108,12 +131,20 @@ export class FabricView {
     this.canvas.on('selection:cleared', () => {
       if (!this.projecting) queueMicrotask(() => this.render())
     })
-    this.render()
+    // the canvas follows the selection and the document (panels change both)
+    react('view follows selection / document', () => {
+      this.selection.ids.get()
+      void this.editor.revision
+      unsafe__withoutCapture(() => {
+        if (!this.projecting && !this.drag && !this.vGesture) this.render()
+      })
+    })
   }
 
   setMode(mode: 'A' | 'V') {
     this.mode = mode
     this.canvas.discardActiveObject()
+    this.scene = null
     this.render()
   }
 
@@ -125,11 +156,23 @@ export class FabricView {
       this.render()
       return true
     }
+    const g = this.vGesture
+    if (g) {
+      // V-mode cancel: drop the preview by re-projecting the document. A Fabric transform still running on the handle
+      // box ends when the box is removed (rebuilt below); `vCancelled` makes us ignore its last object:modified.
+      if (g.kind !== 'marquee') g.op.cancel()
+      if (g.kind === 'box') this.vCancelled = true
+      this.vGesture = null
+      this.boxItem = null
+      this.scene = null
+      this.setStatus('已取消')
+      this.render()
+      return true
+    }
     if (this.vTransforming) {
-      // V-mode cancel: drop Fabric's in-progress transform by re-projecting the document. Fabric
-      // fires object:modified when the transform ends; `vCancelled` makes us ignore it.
       this.vCancelled = true
       this.setStatus('已取消')
+      this.scene = null
       this.render()
       return true
     }
@@ -155,6 +198,7 @@ export class FabricView {
       this.unappliedDepthOffsets = ignored
       this.unappliedContainerOpacity = opacity
       this.project(ev, onions)
+      if (this.zoom.get() !== this.canvas.getZoom()) this.zoom.set(this.canvas.getZoom())
       // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
       counters.canvasObjects += this.canvas.getObjects().length
     } finally {
@@ -305,169 +349,294 @@ export class FabricView {
         })
       return
     }
-    if (this.mode === 'A') {
-      // the scene this render should show, in z-order: onion yaws (editor aid, E1) → the core's ONE
-      // paint list (lines and fills interleaved, PAINT-ORDER.md) → anchor dots (editor aid, E1)
-      const want: { key: string; item: EvalCurve | EvalFill; make: () => FabricObject[] }[] = []
-      onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
-      for (const p of ev.paint)
-        if (p.item.visible) {
-          // a masked item depends on its sources' geometry too: compared by this evaluation's mask list
-          const item = ev.masks?.get(p.item.address)?.length ? ({ masked: p.item, masks: ev.masks.get(p.item.address) } as any) : p.item
-          want.push(
-            p.kind === 'fill'
-              ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }
-              : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
-          )
-        }
-      for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
-      const prev = this.scene
-      if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
-        // incremental: only entries whose evaluated item changed are touched
-        const renderOnAddRemove = this.canvas.renderOnAddRemove
-        this.canvas.renderOnAddRemove = false
-        let built = 0
-        let attachMs = 0
-        for (let i = 0; i < want.length; i++) {
-          const e = prev[i]
-          const w = want[i]
-          if (e.item === w.item) continue
-          if (w.key.startsWith('d:') && Object.keys((w.item as EvalCurve).anchors).length * 3 === e.objs.length) {
-            // anchor dots: move the existing circles (same objects, new positions)
-            const pts = Object.values((w.item as EvalCurve).anchors).flatMap((a) => [a.p, a.hIn, a.hOut])
-            e.objs.forEach((o, k) => {
-              o.set({ left: pts[k].x, top: pts[k].y })
-              o.setCoords()
-            })
-          } else {
-            const fresh = w.make()
-            built += fresh.length
-            const a0 = performance.now()
-            const objects = this.canvas.getObjects()
-            const at = objects.indexOf(e.objs[0])
-            this.canvas.remove(...e.objs)
-            this.canvas.insertAt(at, ...fresh)
-            attachMs += performance.now() - a0
-            e.objs = fresh
-          }
-          e.item = w.item
-        }
-        counters.fabricObjectsCreated += built
-        this.canvas.renderOnAddRemove = renderOnAddRemove
-        this.timing.buildObjects += performance.now() - t - attachMs
-        this.timing.attach += attachMs
-        this.canvas.requestRenderAll()
-        return
+    // the scene this render should show, in z-order: onion yaws (editor aid, E1) → the core's ONE paint list (lines and
+    // fills interleaved, PAINT-ORDER.md) → A: anchor dots (editor aid, E1); V: the selection's highlight, its handle
+    // box and the marquee (editor aids). A and V share the incremental scene.
+    const want: { key: string; item: unknown; make: () => FabricObject[] }[] = []
+    onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
+    for (const p of ev.paint)
+      if (p.item.visible) {
+        // a masked item depends on its sources' geometry too: compared by this evaluation's mask list
+        const item = ev.masks?.get(p.item.address)?.length ? ({ masked: p.item, masks: ev.masks.get(p.item.address) } as any) : p.item
+        want.push(
+          p.kind === 'fill'
+            ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }
+            : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
+        )
       }
-      // full build (first render, or membership / order changed)
-      const scene = want.map((w) => ({ key: w.key, item: w.item as unknown, objs: w.make() }))
-      const objs = scene.flatMap((e) => e.objs)
-      counters.fabricObjectsCreated += objs.length
-      this.timing.buildObjects += performance.now() - t
-      t = performance.now()
-      this.canvas.discardActiveObject()
-      this.canvas.remove(...this.canvas.getObjects())
-      this.canvas.add(...objs)
-      this.timing.attach += performance.now() - t
-      this.scene = scene
-      this.groupStart.clear()
+    if (this.mode === 'A') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
+    this.overlays(ev, want)
+    const prev = this.scene
+    if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
+      // incremental: only entries whose evaluated item changed are touched
+      const renderOnAddRemove = this.canvas.renderOnAddRemove
+      this.canvas.renderOnAddRemove = false
+      let built = 0
+      let attachMs = 0
+      for (let i = 0; i < want.length; i++) {
+        const e = prev[i]
+        const w = want[i]
+        if (e.item === w.item) continue
+        if (w.key.startsWith('d:') && Object.keys((w.item as EvalCurve).anchors).length * 3 === e.objs.length) {
+          // anchor dots: move the existing circles (same objects, new positions)
+          const pts = Object.values((w.item as EvalCurve).anchors).flatMap((a) => [a.p, a.hIn, a.hOut])
+          e.objs.forEach((o, k) => {
+            o.set({ left: pts[k].x, top: pts[k].y })
+            o.setCoords()
+          })
+        } else {
+          const fresh = w.make()
+          built += fresh.length
+          const a0 = performance.now()
+          const objects = this.canvas.getObjects()
+          const at = objects.indexOf(e.objs[0])
+          this.canvas.remove(...e.objs)
+          this.canvas.insertAt(at, ...fresh)
+          attachMs += performance.now() - a0
+          e.objs = fresh
+        }
+        e.item = w.item
+      }
+      counters.fabricObjectsCreated += built
+      this.canvas.renderOnAddRemove = renderOnAddRemove
+      this.timing.buildObjects += performance.now() - t - attachMs
+      this.timing.attach += attachMs
+      this.activateBox()
       this.canvas.requestRenderAll()
       return
     }
-
-    // V mode: always a full build (groups per top-level container own the transform box)
-    this.scene = null
-    const objs: FabricObject[] = []
-    const add = (...o: FabricObject[]) => {
-      counters.fabricObjectsCreated += o.length
-      objs.push(...o)
-    }
-    for (const o of onions) for (const c of o.curves.filter((c) => c.visible)) add(pathOfOnion(c))
-    this.groupStart.clear()
-    this.timing.buildObjects += performance.now() - t
-    t = performance.now()
-    // top-level containers from the parent index (no whole-table scan)
-    const tops = childrenOf(this.editor.reader, null, 'container').map((id) => this.editor.reader.get(id) as ContainerRecord)
-    this.timing.containerScan += performance.now() - t
-    t = performance.now()
-    // one group per top-level container holding ALL its painted items (lines, fills, reference
-    // instances, nested containers' items) in the core's paint order; the paint key starts with the
-    // top-level container's index, so groups follow each other in paint order too
-    const members = new Map<string, FabricObject[]>()
-    const lockedTop = new Set<string>()
-    for (const p of ev.paint) {
-      if (!p.item.visible) continue
-      const top = this.topOf(p.item.address)
-      if (!top) continue
-      if (!members.has(top)) members.set(top, [])
-      members.get(top)!.push(p.kind === 'fill' ? pathOfFill(p) : pathOf(p.item))
-      if (p.item.locked) lockedTop.add(top)
-    }
-    // groups in PAINT order (dot: they were added in creation order, so a top-level layer could cover
-    // one that the common order puts in front); a top-level container's items are contiguous in the
-    // paint list (its key component comes first), so first appearance = its place in the order
-    const byId = new Map(tops.map((k) => [k.id as string, k]))
-    for (const [kid, objsOfK] of members) {
-      const k = byId.get(kid)
-      if (!k || !objsOfK.length) continue
-      const locked = lockedTop.has(k.id)
-      const g = new Group(objsOfK, { selectable: !locked, evented: !locked, objectCaching: false })
-      ;(g as any).containerId = k.id
-      ;(g as any).lockedGroup = locked
-      this.groupStart.set(g, g.calcTransformMatrix())
-      counters.fabricObjectsCreated += objsOfK.length // the member paths inside the group
-      add(g)
-    }
+    // full build (first render, or membership / order changed)
+    const scene = want.map((w) => ({ key: w.key, item: w.item, objs: w.make() }))
+    const objs = scene.flatMap((e) => e.objs)
+    counters.fabricObjectsCreated += objs.length
     this.timing.buildObjects += performance.now() - t
     t = performance.now()
     this.canvas.discardActiveObject()
     this.canvas.remove(...this.canvas.getObjects())
     this.canvas.add(...objs)
     this.timing.attach += performance.now() - t
+    this.scene = scene
+    this.activateBox()
     this.canvas.requestRenderAll()
   }
 
-
-  /** Top-level container of a painted item (a reference instance belongs where the reference is). */
-  private topOf(address: string) {
-    const reader = this.editor.reader
-    let rec = reader.get(address.split('/')[0] as any) as { parentId: string | null } | undefined
-    let top: string | undefined
-    while (rec?.parentId) {
-      top = rec.parentId
-      rec = reader.get(rec.parentId as any) as { parentId: string | null } | undefined
-    }
-    return top
+  /** the handle box is Fabric's active object while it exists (Fabric draws its border and controls) */
+  private activateBox() {
+    const active = this.canvas.getActiveObject()
+    if (this.box && this.canvas.getObjects().includes(this.box)) {
+      if (active !== this.box) this.canvas.setActiveObject(this.box)
+    } else if (active) this.canvas.discardActiveObject()
   }
 
   /**
-   * V mode: decide the target with OUR hit test on the evaluated geometry (not Fabric's bounding
-   * boxes, which overlap between layers). Only the hit container's group stays `evented`, so
-   * Fabric's public target search lands on it. Groups already in the active selection stay evented.
+   * Editor aids over the drawing: the selected items' outlines (A and V), in V the handle box of the selection
+   * (Illustrator's bounding box: scale / rotate by its handles) and the marquee while dragging one.
    */
-  private routeVTarget(e: PointerEvent) {
-    if (this.mode !== 'V') return
-    const p = this.canvas.getScenePoint(e)
-    const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'V', tolerance: 6 / this.canvas.getZoom() })
-    const target = hit ? this.containerOfHit(hit) : undefined
-    const active = new Set(this.canvas.getActiveObjects())
-    for (const g of this.groupStart.keys()) {
-      const locked = (g as any).lockedGroup
-      g.evented = !locked && ((g as any).containerId === target || active.has(g))
+  private overlays(ev: Evaluated, want: { key: string; item: unknown; make: () => FabricObject[] }[]) {
+    const reader = this.editor.reader
+    const z = this.canvas.getZoom()
+    const ids = this.selection.get().filter((id) => reader.get(id as any))
+    const items = new Set(drawnOf(reader, ev, ids))
+    for (const p of ev.paint) {
+      if (!items.has(p.item.address)) continue
+      const cubics = p.kind === 'curve' ? p.item.segments.map((s) => s.cubic) : p.item.cubics
+      want.push({ key: `s:${p.item.address}`, item: p.item, make: () => [new Path(cubicsToCommands(cubics, p.kind === 'fill'), { fill: '', stroke: '#1e88e5', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false })] })
+    }
+    const g = this.vGesture
+    if (this.mode === 'V' && ids.length && !(g && g.kind !== 'marquee')) {
+      // outside a move / transform the box follows the document's geometry (not a preview)
+      const bounds = boundsOf(reader, this.editor.derived.evaluated(), ids)
+      const locked = ids.some((id) => this.isLocked(id))
+      const same = this.boxItem && bounds && this.boxItem.locked === locked && this.boxItem.ids.length === ids.length && this.boxItem.ids.every((x, i) => x === ids[i]) && (['x0', 'y0', 'x1', 'y1'] as const).every((k) => this.boxItem!.bounds[k] === bounds[k])
+      if (!same) this.boxItem = bounds ? { ids, bounds, locked } : null
+    } else if (this.mode !== 'V' || !ids.length) this.boxItem = null
+    if (this.mode === 'V' && this.boxItem) {
+      const bi = this.boxItem
+      want.push({ key: 'box', item: bi, make: () => [(this.box = this.makeBox(bi))] })
+    } else this.box = null
+    if (g?.kind === 'marquee') {
+      const r = { x0: Math.min(g.start.x, g.now.x), y0: Math.min(g.start.y, g.now.y), x1: Math.max(g.start.x, g.now.x), y1: Math.max(g.start.y, g.now.y) }
+      want.push({
+        key: 'marquee',
+        item: { ...r, enclosed: g.enclosed },
+        make: () => [new Rect({ left: r.x0, top: r.y0, width: r.x1 - r.x0, height: r.y1 - r.y0, originX: 'left', originY: 'top', fill: 'rgba(30,136,229,0.08)', stroke: '#1e88e5', strokeWidth: 1 / z, strokeDashArray: g.enclosed ? [4 / z, 3 / z] : undefined, selectable: false, evented: false, objectCaching: false })],
+      })
     }
   }
 
-  /** the placement side: a hit through a reference selects where the REFERENCE is (select.ts, doc 18 §21.2) */
-  private containerOfHit(hit: Hit): string | undefined {
-    return topContainerOfHit(this.editor.reader, hit)
+  private makeBox(bi: { bounds: SelRect; locked: boolean }) {
+    const b = bi.bounds
+    const w = b.x1 - b.x0, h = b.y1 - b.y0
+    // a straight horizontal / vertical line has no extent on one axis: that axis does not scale (Illustrator)
+    return new Rect({
+      left: b.x0, top: b.y0, width: w, height: h, originX: 'left', originY: 'top', fill: '', stroke: '', strokeWidth: 0,
+      selectable: true, evented: false, objectCaching: false, hasBorders: true, hasControls: !bi.locked,
+      lockMovementX: true, lockMovementY: true, lockScalingX: w < 1e-9, lockScalingY: h < 1e-9,
+      borderColor: '#1e88e5', cornerColor: '#ffffff', cornerStrokeColor: '#1e88e5', transparentCorners: false, cornerSize: 8,
+    })
+  }
+
+  /** a record is locked, or inside a locked container */
+  private isLocked(id: string) {
+    const r = this.editor.reader.get(id as any) as (DocRecord & { locked?: boolean; parentId?: string | null }) | undefined
+    if (!r) return false
+    if (r.typeName === 'container' && r.locked) return true
+    return !!lockedBy(this.editor.reader, ('parentId' in r ? r.parentId : null) as any)
   }
 
   // ---- A mode: our own hit test + preview, apply once on release ----
   private onDown(e: PointerEvent) {
-    if (this.mode !== 'A') return
+    if (this.mode !== 'A' || this.pan) return
     const p = this.canvas.getScenePoint(e)
     const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
+    // Direct Selection (Illustrator A): a click on a path selects that object itself, never its group
+    else if (hit) this.selection.set([hit.address.split('/')[0]])
+    else if (!e.shiftKey) this.selection.clear()
+  }
+
+  // ---- V mode (Illustrator Selection tool; selection.ts): our picking decides, Fabric only draws the handle box ----
+  private onCapturedDown(e: PointerEvent) {
+    // only presses on the drawing surface (Fabric's upper canvas) — not on the wrapper's edge, which Fabric never sees
+    if (e.target !== this.canvas.upperCanvasEl) return
+    if (this.spaceDown || e.button === 1) {
+      // the hand tool: space + drag (Illustrator / Figma), or the middle button
+      this.pan = { x: e.clientX, y: e.clientY }
+      e.stopPropagation()
+      e.preventDefault()
+      return
+    }
+    if (this.mode !== 'V' || e.button !== 0) return
+    const vp = this.canvas.getViewportPoint(e)
+    // Fabric's handles: the box is a Fabric target only while the press is on one of them (Fabric drops a target that
+    // is not `evented`); a press on its body or inside it is ours (move / marquee)
+    const onHandle = !!(this.box && this.boxItem && !this.boxItem.locked && this.box.findControl(vp, e.pointerType === 'touch'))
+    if (this.box) this.box.evented = onHandle
+    if (onHandle) return
+    const p = this.canvas.getScenePoint(e)
+    const reader = this.editor.reader
+    const now = this.selection.get()
+    const behind = e.metaKey || e.ctrlKey
+    const unit = pickAt(reader, this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), behind ? now : undefined)
+    if (unit) {
+      if (e.shiftKey) this.selection.toggle(unit)
+      else if (behind || !now.includes(unit)) this.selection.set([unit])
+      const ids = this.selection.get()
+      // the canvas has re-rendered for the new selection (react): the box is current
+      if (ids.includes(unit) && !this.boxItem?.locked) this.vGesture = { kind: 'move', start: { x: p.x, y: p.y }, op: this.editor.prepare(), ids: [...ids], ok: false }
+    } else {
+      if (!e.shiftKey) this.selection.clear()
+      this.vGesture = { kind: 'marquee', start: { x: p.x, y: p.y }, now: { x: p.x, y: p.y }, additive: e.shiftKey, enclosed: false }
+    }
+  }
+
+  /** E while dragging a marquee: switch between touching and enclosed (Illustrator) */
+  toggleMarqueeMode() {
+    const g = this.vGesture
+    if (g?.kind !== 'marquee') return false
+    g.enclosed = !g.enclosed
+    this.render()
+    return true
+  }
+
+  /** preview a V command inside the gesture's prepared operation (like the A drag) */
+  private previewV(g: { op: Operation; cmd?: Command; ok: boolean; error?: EditError }, cmd: Command) {
+    const pv = g.op.preview(cmd)
+    g.cmd = cmd
+    g.ok = pv.ok
+    g.error = pv.ok ? undefined : pv.error
+    if (pv.ok) {
+      this.setStatus('')
+      const d = this.editor.derived
+      const ch = d.previewChanges(pv.puts, pv.removals)
+      this.render(d.preview(pv.puts, ch), this.onion ? this.onion.yaws.map((y) => d.previewAtYaw(pv.puts, y, ch)) : [])
+    } else {
+      this.setStatus(`${pv.error.code}: ${pv.error.message}`)
+      this.render()
+    }
+  }
+
+  private onBoxChanging(target: FabricObject) {
+    const g = this.vGesture
+    if (target !== this.box || g?.kind !== 'box' || this.vCancelled) return
+    this.previewV(g, this.boxCommand(g))
+  }
+
+  private boxCommand(g: { ids: string[]; start: TMat2D }): Command {
+    const m = toAffine(util.multiplyTransformMatrices(this.box!.calcTransformMatrix(), util.invertTransform(g.start)).map(round) as TMat2D)
+    return { type: 'transformItems', ids: g.ids, matrix: m }
+  }
+
+  private finishV(g: { op: Operation; cmd?: Command; ok: boolean; error?: EditError }) {
+    const identity = g.cmd?.type === 'transformItems' && g.cmd.matrix.a === 1 && g.cmd.matrix.b === 0 && g.cmd.matrix.c === 0 && g.cmd.matrix.d === 1 && g.cmd.matrix.e === 0 && g.cmd.matrix.f === 0
+    if (!g.cmd || identity) return g.op.cancel()
+    if (g.ok) {
+      const r = g.op.commit(g.cmd)
+      this.log.push({ source: 'ui', cmd: g.cmd, ok: r.ok, written: r.written, error: r.ok ? undefined : r.error })
+      this.setStatus(r.ok ? '' : `${r.error.code}: ${r.error.message}`)
+    } else {
+      g.op.cancel()
+      this.log.push({ source: 'ui', cmd: g.cmd, ok: false, written: false, error: g.error })
+    }
+  }
+
+  private onPanMove(e: PointerEvent) {
+    if (!this.pan) return
+    this.canvas.relativePan(new Point(e.clientX - this.pan.x, e.clientY - this.pan.y))
+    this.pan = { x: e.clientX, y: e.clientY }
+    e.stopPropagation()
+    this.render()
+  }
+
+  /** wheel: scroll (Shift: sideways); Cmd / Ctrl + wheel and trackpad pinch: zoom at the cursor (Illustrator / Figma) */
+  private onWheel(e: WheelEvent) {
+    e.preventDefault()
+    if (e.ctrlKey || e.metaKey) {
+      const vp = this.canvas.getViewportPoint(e as unknown as PointerEvent)
+      this.zoomAt(vp, this.canvas.getZoom() * Math.pow(0.99, e.deltaY))
+      return
+    }
+    const sideways = e.shiftKey && !e.deltaX
+    this.canvas.relativePan(new Point(-(sideways ? e.deltaY : e.deltaX), -(sideways ? 0 : e.deltaY)))
+    this.render()
+  }
+
+  zoomAt(viewportPoint: { x: number; y: number }, zoom: number) {
+    this.canvas.zoomToPoint(new Point(viewportPoint.x, viewportPoint.y), Math.min(64, Math.max(0.05, zoom)))
+    this.scene = null // editor aids are drawn at a screen width
+    this.render()
+  }
+  /** Cmd + = / − : zoom around the centre of the canvas */
+  zoomBy(factor: number) {
+    this.zoomAt({ x: this.canvas.getWidth() / 2, y: this.canvas.getHeight() / 2 }, this.canvas.getZoom() * factor)
+  }
+  /** Cmd + 1: actual size (100 %) */
+  actualSize() {
+    this.zoomAt({ x: this.canvas.getWidth() / 2, y: this.canvas.getHeight() / 2 }, 1)
+  }
+  setSpace(down: boolean) {
+    this.spaceDown = down
+    this.canvas.wrapperEl.style.cursor = down ? 'grab' : ''
+    this.canvas.defaultCursor = down ? 'grab' : 'default'
+  }
+
+  /** arrow keys: move the selection by the keyboard increment (Illustrator: 1, Shift: 10) — one undo step each */
+  nudge(dx: number, dy: number) {
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length || this.vGesture || this.drag) return null
+    return this.applyAndLog({ type: 'transformItems', ids, matrix: { a: 1, b: 0, c: 0, d: 1, e: dx, f: dy } })
+  }
+  /** Delete / Backspace: remove the selection (selection.ts `deletionSetOf`); a refusal names what still depends */
+  deleteSelection() {
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length || this.vGesture || this.drag) return null
+    const r = this.applyAndLog({ type: 'deleteRecords', ids: deletionSetOf(this.editor.reader, ids) })
+    if (r.ok) this.selection.clear()
+    return r
+  }
+  /** Cmd + A: every visible, unlocked object (Illustrator Select All) */
+  selectAll() {
+    this.selection.set(allUnits(this.editor.reader, this.editor.derived.evaluated()))
   }
 
   /**
@@ -494,6 +663,33 @@ export class FabricView {
   }
 
   private onMove(e: PointerEvent) {
+    const g = this.vGesture
+    if (g?.kind === 'marquee') {
+      const p = this.canvas.getScenePoint(e)
+      g.now = { x: p.x, y: p.y }
+      this.render()
+      return
+    }
+    if (g?.kind === 'move') {
+      const p = this.canvas.getScenePoint(e)
+      let dx = p.x - g.start.x, dy = p.y - g.start.y
+      if (e.shiftKey) {
+        // Shift while moving: constrain to multiples of 45° (Illustrator)
+        const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy)
+        dx = len * Math.cos(a)
+        dy = len * Math.sin(a)
+      }
+      dx = round(dx)
+      dy = round(dy)
+      this.timing.moves++
+      this.previewV(g, { type: 'transformItems', ids: g.ids, matrix: { a: 1, b: 0, c: 0, d: 1, e: dx, f: dy } })
+      if (this.box && this.boxItem) {
+        this.box.set({ left: this.boxItem.bounds.x0 + dx, top: this.boxItem.bounds.y0 + dy })
+        this.box.setCoords()
+        this.canvas.requestRenderAll()
+      }
+      return
+    }
     if (!this.drag) return
     const p = this.canvas.getScenePoint(e)
     const delta = { x: round(p.x - this.drag.start.x), y: round(p.y - this.drag.start.y) }
@@ -535,6 +731,25 @@ export class FabricView {
   }
 
   private onUp() {
+    const g = this.vGesture
+    if (g?.kind === 'move') {
+      this.vGesture = null
+      this.finishV(g)
+      this.render()
+      return
+    }
+    if (g?.kind === 'marquee') {
+      this.vGesture = null
+      const z = this.canvas.getZoom()
+      // a click without a drag only deselects (done on press)
+      if (Math.abs(g.now.x - g.start.x) * z >= 2 || Math.abs(g.now.y - g.start.y) * z >= 2) {
+        const units = unitsInRect(this.editor.reader, this.editor.derived.evaluated(), { x0: g.start.x, y0: g.start.y, x1: g.now.x, y1: g.now.y }, g.enclosed)
+        if (g.additive) this.selection.add(units)
+        else this.selection.set(units)
+      }
+      this.render()
+      return
+    }
     const d = this.drag
     this.drag = null
     if (d?.rejected && !d.cmd) {
@@ -558,6 +773,7 @@ export class FabricView {
   }
 
   // ---- V mode: Fabric's transform box; we read the matrix change and apply it to the document ----
+  // ---- V mode: the handle box (Fabric's controls); we read its matrix change and apply it to the document ----
   private onModified(target: FabricObject) {
     if (this.projecting) {
       this.ignoredReentrantEvents++
@@ -569,26 +785,16 @@ export class FabricView {
       queueMicrotask(() => this.render())
       return
     }
-    const groups = target instanceof ActiveSelection ? (target.getObjects() as FabricObject[]) : [target]
-    const containerIds: string[] = []
-    let matrix: Affine | null = null
-    for (const g of groups) {
-      const start = this.groupStart.get(g)
-      const containerId = (g as any).containerId
-      if (!start || !containerId) continue
-      const now = g.calcTransformMatrix() // includes the ActiveSelection's own transform, if any
-      const m = toAffine(util.multiplyTransformMatrices(now, util.invertTransform(start)).map(round) as TMat2D)
-      // Every member of one selection shares the selection's transform; one command moves each anchor once.
-      if (matrix && Object.keys(m).some((k) => Math.abs((m as any)[k] - (matrix as any)[k]) > 1e-6)) {
-        this.setStatus('INVALID: selection members disagree on the transform')
-        queueMicrotask(() => this.render())
-        return
-      }
-      matrix = m
-      containerIds.push(containerId)
+    const g = this.vGesture
+    if (target === this.box && g?.kind === 'box') {
+      this.vGesture = null
+      g.cmd = this.boxCommand(g)
+      const pv = g.op.preview(g.cmd)
+      g.ok = pv.ok
+      g.error = pv.ok ? undefined : pv.error
+      this.finishV(g)
     }
-    if (matrix && containerIds.length === 1) this.applyAndLog({ type: 'transformContainer', containerId: containerIds[0] as any, matrix })
-    else if (matrix && containerIds.length > 1) this.applyAndLog({ type: 'transformContainers', containerIds: containerIds as any, matrix })
+    this.boxItem = null
     // Re-project only after Fabric has finished its own mouse-up bookkeeping.
     queueMicrotask(() => this.render())
   }

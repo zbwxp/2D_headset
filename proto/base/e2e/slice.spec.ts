@@ -114,17 +114,21 @@ test('cancel: Escape during a drag leaves no trace', async ({ page }) => {
   expect(await sceneIsPureProjection(page)).toBe(true)
 })
 
-test('V: non-uniform scale of L1 through Fabric controls equals the API command; linked b3 follows', async ({ page }) => {
+// V mode is the Illustrator Selection tool (selection.ts, editor skeleton block 1): a canvas click selects the object
+// (or the outermost group below its layer); a layer is selected from the layers panel. The selection's handle box is
+// Fabric's; moving by the body and the marquee are ours. Every gesture is one command, replayed through the API.
+
+test('V: non-uniform scale of layer L1 (selected in the layers panel) through the handle box equals the API command; linked b3 follows', async ({ page }) => {
   await open(page)
   await page.click('#unlock')
   await page.click('#modeV')
-  await page.mouse.click(...Object.values(await toPage(page, { x: 10, y: 60 })) as [number, number]) // select L1 group
+  await page.click('[data-id="container:L1"]') // the layers panel row
   const mr = await page.evaluate(() => {
     const c = (window as any).__contour
     const o = c.view.canvas.getActiveObject()
-    return o ? { x: o.oCoords.mr.x, y: o.oCoords.mr.y, id: o.containerId } : null
+    return o ? { x: o.oCoords.mr.x, y: o.oCoords.mr.y, sel: c.selection.get() } : null
   })
-  expect(mr?.id).toBe('container:L1')
+  expect(mr?.sel).toEqual(['container:L1'])
   const box = (await page.locator('canvas.upper-canvas').boundingBox())!
   await page.mouse.move(box.x + mr!.x, box.y + mr!.y)
   await page.mouse.down()
@@ -132,10 +136,12 @@ test('V: non-uniform scale of L1 through Fabric controls equals the API command;
   await page.mouse.up()
   const s = await state(page)
   const t = s.log.at(-1)
-  expect(t.cmd.type).toBe('transformContainer')
+  expect(t.cmd.type).toBe('transformItems')
+  expect(t.cmd.ids).toEqual(['container:L1'])
   expect(t.ok).toBe(true)
   expect(Math.abs(t.cmd.matrix.a - 1)).toBeGreaterThan(0.05) // non-uniform: x scaled
   expect(t.cmd.matrix.d).toBeCloseTo(1, 3) // y untouched
+  expect(s.undo).toEqual(['setContainerFlags', 'transformItems'])
   const unlock = { type: 'setContainerFlags', containerId: 'container:L2', locked: false }
   const r = await replayViaApi(page, [unlock])
   expect(r.doc).toBe(s.doc)
@@ -151,33 +157,33 @@ test('V: non-uniform scale of L1 through Fabric controls equals the API command;
   console.log(`[evidence] V scale: re-entrant object:modified ignored = ${reentrant}`)
 })
 
-test('V: ActiveSelection move of two groups = one undo step; ending the selection writes nothing', async ({ page }) => {
+test('V: click + Shift-click selects two objects; moving them by the body = one undo step; clicking empty space deselects and writes nothing', async ({ page }) => {
   await open(page)
   await page.click('#unlock')
   await page.click('#modeV')
-  const l1 = await toPage(page, { x: 10, y: 60 })
-  const l3 = await toPage(page, { x: -25, y: 35 })
-  await page.mouse.click(l1.x, l1.y)
+  const c1 = await toPage(page, { x: 10, y: 60 }) // on C1 (layer L1)
+  const e1 = await toPage(page, { x: -25, y: 35 }) // on E1 (layer L3)
+  await page.mouse.click(c1.x, c1.y)
   await page.keyboard.down('Shift')
-  await page.mouse.click(l3.x, l3.y)
+  await page.mouse.click(e1.x, e1.y)
   await page.keyboard.up('Shift')
-  const kind = await page.evaluate(() => (window as any).__contour.view.canvas.getActiveObject()?.type)
-  expect(kind).toBe('activeselection')
-  // drag the selection by its body
-  await page.mouse.move(l1.x, l1.y)
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual(['curve:C1', 'curve:E1'])
+  // drag the selection by one of its objects
+  await page.mouse.move(c1.x, c1.y)
   await page.mouse.down()
-  await page.mouse.move(l1.x + 30, l1.y + 15, { steps: 6 })
+  await page.mouse.move(c1.x + 30, c1.y + 15, { steps: 6 })
   await page.mouse.up()
   const afterMove = await state(page)
-  expect(afterMove.undo.at(-1)).toBe('transformContainers')
-  // end the multi-selection: Fabric bakes its transform into members; our document must not change
-  const empty = await toPage(page, { x: 140, y: 120 })
+  expect(afterMove.undo).toEqual(['setContainerFlags', 'transformItems'])
+  expect(afterMove.log.at(-1).cmd).toEqual({ type: 'transformItems', ids: ['curve:C1', 'curve:E1'], matrix: { a: 1, b: 0, c: 0, d: 1, e: 10, f: 5 } })
+  const empty = await toPage(page, { x: 140, y: 110 }) // inside the canvas, nothing drawn
   await page.mouse.click(empty.x, empty.y)
   const afterClear = await state(page)
   expect(afterClear.doc).toBe(afterMove.doc)
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual([])
   expect(await sceneIsPureProjection(page)).toBe(true)
-  const reentrant = await page.evaluate(() => (window as any).__contour.view.ignoredReentrantEvents)
-  console.log(`[evidence] ActiveSelection: re-entrant object:modified ignored = ${reentrant}`)
+  const r = await replayViaApi(page, [{ type: 'setContainerFlags', containerId: 'container:L2', locked: false }])
+  expect(r.doc).toBe(afterMove.doc)
   await page.click('#undo')
   const undone = await state(page)
   expect(undone.undo).toEqual(['setContainerFlags'])
@@ -185,7 +191,7 @@ test('V: ActiveSelection move of two groups = one undo step; ending the selectio
 
 // ---- dot's UI review cases (2026-10-07) ----
 
-test('V: moving a selection of CONNECTED layers L1+L2 moves each linked endpoint once', async ({ page }) => {
+test('V: moving a selection of CONNECTED objects C1 + C2 moves each linked endpoint once', async ({ page }) => {
   await open(page)
   await page.click('#unlock')
   await page.click('#modeV')
@@ -195,10 +201,7 @@ test('V: moving a selection of CONNECTED layers L1+L2 moves each linked endpoint
   await page.keyboard.down('Shift')
   await page.mouse.click(l2.x, l2.y)
   await page.keyboard.up('Shift')
-  expect(await page.evaluate(() => (window as any).__contour.view.canvas.getActiveObjects().map((o: any) => o.containerId).sort())).toEqual([
-    'container:L1',
-    'container:L2',
-  ])
+  expect(await page.evaluate(() => (window as any).__contour.selection.get())).toEqual(['curve:C1', 'curve:C2'])
   await page.mouse.move(l1.x, l1.y)
   await page.mouse.down()
   await page.mouse.move(l1.x + 15, l1.y + 7.5, { steps: 3 })
@@ -213,7 +216,7 @@ test('V: moving a selection of CONNECTED layers L1+L2 moves each linked endpoint
   expect(pts.b3).toEqual({ x: 70, y: 105 })
   expect(pts.b2).toEqual({ x: 90, y: 55 })
   const s = await state(page)
-  expect(s.undo).toEqual(['setContainerFlags', 'transformContainers'])
+  expect(s.undo).toEqual(['setContainerFlags', 'transformItems'])
   const r = await replayViaApi(page, [{ type: 'setContainerFlags', containerId: 'container:L2', locked: false }])
   expect(r.doc).toBe(s.doc)
   expect(await sceneIsPureProjection(page)).toBe(true)

@@ -58,6 +58,12 @@ export type Command =
   | { type: 'transformContainer'; containerId: RecordId<ContainerRecord>; matrix: Affine }
   /** Several containers under ONE selection transform: each anchor moves exactly once (dot: L1+L2 double move). */
   | { type: 'transformContainers'; containerIds: RecordId<ContainerRecord>[]; matrix: Affine }
+  /**
+   * The selection's transform (Illustrator Selection tool: move / scale / rotate the selected objects), baked into
+   * anchors like transformContainers. Items: containers (everything inside), curves, references (their placement), fills
+   * (a fill has no geometry of its own: its boundary curves move — project adaptation). Each anchor moves once.
+   */
+  | { type: 'transformItems'; ids: string[]; matrix: Affine }
   | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[] }
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
   /** Record (or replace) a curve's form at one angle: per-anchor offsets from the base drawing. */
@@ -384,6 +390,8 @@ function writeGuard(store: DocStore, cmd: Command, puts: DocRecord[], creates: S
   return null
 }
 
+const relabel = (p: Plan, label: string): Plan => (p.ok ? { ...p, label } : p)
+
 function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
   switch (cmd.type) {
     case 'moveAnchors': {
@@ -430,28 +438,47 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
     }
     case 'transformContainer':
       return planRaw(store, { type: 'transformContainers', containerIds: [cmd.containerId], matrix: cmd.matrix }, ids)
-    case 'transformContainers': {
-      // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
-      // (Illustrator behaviour) so the comparison can be made later with real numbers.
+    case 'transformContainers':
       if (!cmd.containerIds.length) return fail('INVALID', 'no containers', [])
       for (const id of cmd.containerIds) if (!getAs(store, id, 'container')) return notFound(store, id, 'container')
-      // Content of the containers via the parent index (no scan of the whole document); a container
-      // nested inside another selected one is visited once.
+      return relabel(planRaw(store, { type: 'transformItems', ids: cmd.containerIds, matrix: cmd.matrix }, ids), cmd.containerIds.length === 1 ? 'transformContainer' : 'transformContainers')
+    case 'transformItems': {
+      // Container transform is undecided (11 〔待定 5〕); this slice bakes it into anchors
+      // (Illustrator behaviour) so the comparison can be made later with real numbers.
+      if (!cmd.ids?.length) return fail('INVALID', 'nothing to transform', [])
+      if (!Object.values(cmd.matrix ?? {}).every(Number.isFinite) || Object.keys(cmd.matrix ?? {}).length !== 6) return fail('INVALID', 'matrix must be six finite numbers', cmd.ids)
       const uniq = <T extends { id: string }>(xs: T[]) => [...new Map(xs.map((x) => [x.id, x])).values()]
-      const curves = uniq(cmd.containerIds.flatMap((id) => within(store, id, 'curve')).map((id) => store.get(id) as CurveRecord))
-      // References placed inside the containers move with them: compose their placement transform.
-      const refs = uniq(cmd.containerIds.flatMap((id) => within(store, id, 'reference')).map((id) => store.get(id) as ReferenceRecord))
-      for (const r of refs) {
+      const curves: CurveRecord[] = []
+      const refs: ReferenceRecord[] = []
+      for (const id of cmd.ids) {
+        const r = store.get(id as any) as DocRecord | undefined
+        if (!r) return fail('NOT_FOUND', `no record ${id}`, [id])
+        if (r.typeName === 'container') {
+          // content via the parent index (no scan of the whole document); nested selections are visited once
+          curves.push(...within(store, r.id, 'curve').map((x) => store.get(x) as CurveRecord))
+          refs.push(...within(store, r.id, 'reference').map((x) => store.get(x) as ReferenceRecord))
+        } else if (r.typeName === 'curve') curves.push(r)
+        else if (r.typeName === 'reference') refs.push(r)
+        else if (r.typeName === 'fill') {
+          for (const step of r.boundary) {
+            if ('bridge' in step) continue
+            const c = getAs(store, step.curveId, 'curve')
+            if (c) curves.push(c)
+          }
+        } else return fail('INVALID', `${id} is a ${r.typeName}: only containers, curves, fills and references transform`, [id])
+      }
+      // References placed inside move with them: compose their placement transform.
+      const movedRefs = uniq(refs).map((r) => ({ ...r, transform: compose(cmd.matrix, r.transform) }))
+      for (const r of movedRefs) {
         const locker = lockedBy(store, r.parentId)
         if (locker) return fail('LOCKED', `reference ${r.id} is in locked container ${locker.id}`, [r.id, locker.id], [`unlock ${locker.id}`])
       }
-      const movedRefs = refs.map((r) => ({ ...r, transform: compose(cmd.matrix, r.transform) }))
-      const seeds: AnchorRef[] = curves.flatMap((c) => Object.keys(c.anchors).map((anchorId) => ({ curveId: c.id, anchorId })))
+      const seeds: AnchorRef[] = uniq(curves).flatMap((c) => Object.keys(c.anchors).map((anchorId) => ({ curveId: c.id, anchorId })))
       const moved = linkedAnchors(store, seeds)
       const locked = lockCheck(store, moved)
       if (locked) return locked
       const moves = new Map<string, { ref: AnchorRef; p: Vec; linear?: Affine }>()
-      // Anchors inside the container are transformed; anchors linked from outside follow their partner.
+      // Anchors of the items are transformed; anchors linked from outside follow their partner.
       for (const s of seeds) {
         const a = (store.get(s.curveId) as CurveRecord).anchors[s.anchorId]
         moves.set(anchorKey(s), { ref: s, p: applyAffine(cmd.matrix, a.p), linear: cmd.matrix })
@@ -461,8 +488,7 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
         const a = (store.get(m.ref.curveId) as CurveRecord).anchors[m.ref.anchorId]
         moves.set(anchorKey(m.ref), { ref: m.ref, p: applyAffine(cmd.matrix, a.p) })
       }
-      const label = cmd.containerIds.length === 1 ? 'transformContainer' : 'transformContainers'
-      return { ok: true, label, puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
+      return { ok: true, label: 'transformItems', puts: [...writeAnchors(store, moves), ...movedRefs], affected: [...moves.keys(), ...movedRefs.map((r) => r.id)] }
     }
     case 'createFill': {
       if (!getAs(store, cmd.parentId, 'container')) return notFound(store, cmd.parentId, 'container')

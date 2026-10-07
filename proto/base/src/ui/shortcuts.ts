@@ -1,0 +1,54 @@
+// Keyboard shortcuts of the editor skeleton — Illustrator defaults (Help › Keyboard shortcuts; macOS ⌘ = Ctrl
+// elsewhere): V / A tools, ⌘Z / ⇧⌘Z undo / redo (also Ctrl+Y), Delete / Backspace delete, ⌘A select all, ⇧⌘A
+// deselect, arrows nudge 1 (Shift: 10), ⌘+ / ⌘− zoom, ⌘0 fit, ⌘1 actual size, space = hand tool, E while dragging a
+// marquee = enclosed mode, Esc = cancel the gesture in progress. Keys typed into a form field are left alone.
+import type { Editor } from '../editor'
+import type { FabricView } from '../view/fabricView'
+
+export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 'V' | 'A') => void, target: Window = window) {
+  const typing = (e: KeyboardEvent) => {
+    const el = e.target as HTMLElement | null
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) && (el as HTMLInputElement).type !== 'checkbox'
+  }
+  const down = (e: KeyboardEvent) => {
+    if (typing(e)) return
+    const mod = e.metaKey || e.ctrlKey
+    const k = e.key
+    const done = () => e.preventDefault()
+    if (k === 'Escape') return view.cancelGesture() && done()
+    if (k === ' ') return view.setSpace(true), done()
+    if ((k === 'e' || k === 'E') && !mod) {
+      if (view.toggleMarqueeMode()) return done()
+    }
+    if (mod && (k === 'z' || k === 'Z')) {
+      if (e.shiftKey) editor.redo()
+      else editor.undo()
+      view.selection.prune(editor.reader)
+      return done()
+    }
+    if (mod && (k === 'y' || k === 'Y')) return editor.redo(), view.selection.prune(editor.reader), done()
+    if (mod && (k === 'a' || k === 'A')) {
+      if (e.shiftKey) view.selection.clear()
+      else view.selectAll()
+      return done()
+    }
+    if (mod && (k === '=' || k === '+')) return view.zoomBy(1.25), done()
+    if (mod && (k === '-' || k === '_')) return view.zoomBy(1 / 1.25), done()
+    if (mod && k === '0') return view.fitToContent(), done()
+    if (mod && k === '1') return view.actualSize(), done()
+    if (mod) return
+    if (k === 'v' || k === 'V') return setTool('V'), done()
+    if (k === 'a' || k === 'A') return setTool('A'), done()
+    if (k === 'Delete' || k === 'Backspace') return view.deleteSelection(), done()
+    const step = e.shiftKey ? 10 : 1
+    const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
+    if (arrows[k]) return view.nudge(...arrows[k]), done()
+  }
+  const up = (e: KeyboardEvent) => {
+    // space is the hand tool, never a click on the focused button
+    if (e.key === ' ' && !typing(e)) (view.setSpace(false), e.preventDefault())
+  }
+  target.addEventListener('keydown', down)
+  target.addEventListener('keyup', up)
+  return () => (target.removeEventListener('keydown', down), target.removeEventListener('keyup', up))
+}

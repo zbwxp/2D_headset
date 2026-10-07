@@ -3,25 +3,61 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Contour proto — route B slice</title>
+    <title>Contour proto — editor</title>
     <style>
-      body { font: 14px system-ui, sans-serif; margin: 12px; }
-      #bar button { margin-right: 6px; }
-      #status { color: #b00020; min-height: 1.4em; margin: 6px 0; }
-      #wrap { display: inline-block; outline: 1px solid #ccc; }
+      :root { --line: #d0d4da; --sel: #1e88e5; --sel-bg: #e3f0fc; --muted: #6b7280; --bg: #f6f7f9; }
+      * { box-sizing: border-box; }
+      body { font: 13px system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: #1f2328; }
+      #toolbar { border-bottom: 1px solid var(--line); background: #fff; }
+      .toolbar { display: flex; gap: 12px; align-items: center; padding: 6px 10px; flex-wrap: wrap; }
+      .toolbar .group { display: flex; gap: 4px; align-items: center; }
+      .toolbar .group + .group { border-left: 1px solid var(--line); padding-left: 12px; }
+      .toolbar .debug { margin-left: auto; color: var(--muted); }
+      button { font: inherit; padding: 3px 8px; border: 1px solid var(--line); background: #fff; border-radius: 4px; cursor: pointer; }
+      button.on { background: var(--sel); border-color: var(--sel); color: #fff; }
+      button:disabled { opacity: 0.4; cursor: default; }
+      .zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+      #main { display: flex; align-items: flex-start; gap: 0; }
+      #stage { padding: 10px; }
+      #wrap { display: inline-block; outline: 1px solid var(--line); background: #fff; }
+      #status { color: #b00020; min-height: 1.4em; margin: 6px 0; max-width: 640px; }
+      #side { width: 300px; min-height: calc(100vh - 42px); border-left: 1px solid var(--line); background: #fff; }
+      .panel { border-bottom: 1px solid var(--line); padding: 6px 0; }
+      .panel-title { font-weight: 600; padding: 2px 10px 6px; }
+      .rows { max-height: 46vh; overflow: auto; }
+      .row { display: flex; align-items: center; gap: 4px; height: 24px; padding-right: 6px; cursor: default; user-select: none; }
+      .row:hover { background: #f1f3f5; }
+      .row.sel { background: var(--sel-bg); }
+      .row.dim .name { color: var(--muted); }
+      .twisty { width: 12px; text-align: center; color: var(--muted); }
+      .kind { width: 12px; height: 12px; display: inline-block; border-radius: 2px; }
+      .k-container { border: 1.5px solid #6b7280; }
+      .k-curve { background: linear-gradient(135deg, transparent 44%, #374151 44%, #374151 56%, transparent 56%); }
+      .k-fill { background: #9ca3af; }
+      .k-reference { border: 1.5px dashed #6b7280; }
+      .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .flags { display: flex; gap: 2px; }
+      .flag { border: none; padding: 2px; background: transparent; color: #374151; line-height: 0; }
+      .props { padding: 6px 10px; }
+      .props table { border-collapse: collapse; width: 100%; }
+      .props th { text-align: left; font-weight: normal; color: var(--muted); padding: 2px 8px 2px 0; width: 64px; vertical-align: top; }
+      .props td { padding: 2px 0; word-break: break-all; }
+      .muted { color: var(--muted); padding: 2px 10px; }
+      .props .muted { padding: 2px 0; }
+      .small { font-size: 12px; margin-top: 6px; }
+      .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+      .swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid #0003; vertical-align: -1px; }
     </style>
   </head>
   <body>
-    <div id="bar">
-      <button id="modeA">A 直接选择</button>
-      <button id="modeV">V 整体选择</button>
-      <button id="unlock">解锁 L2</button>
-      <button id="undo">撤销</button>
-      <button id="redo">重做</button>
-      <label><input type="checkbox" id="src" /> 在引用里改源</label>
+    <div id="toolbar"></div>
+    <div id="main">
+      <div id="stage">
+        <div id="wrap"><canvas id="c" width="640" height="420"></canvas></div>
+        <div id="status"></div>
+      </div>
+      <div id="side"></div>
     </div>
-    <div id="status"></div>
-    <div id="wrap"><canvas id="c" width="640" height="420"></canvas></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -21,12 +21,9 @@ describe('KNOWN FAILURE', () => {
   // table `src/instanceLifecycle.ts` wired into `Derived` (doc 18 §26.1; experiment 15deba2 → ff25632, reviewed by
   // dot); dot's original scenario is now a normal test in test/kf3-lifecycle.test.ts ('product Derived').
 
-  // KF-4 (dot, review of S1): V-mode picking ignores paint order — segments always beat fills — so a line
-  // completely hidden under a fill in front is still picked. Picking must agree with what is visible
-  // (principle 4); picking hidden lines, if wanted, is an explicit mode. Fix after S2.
-  it.fails('KF-4 V-mode picking selects a line fully hidden under a fill in front', () => {
-    const e = new Editor(paintCases['P2-fill-layer-in-front'].records())
-    const hit = hitTest(e.derived.evaluated(), { x: 40, y: 30 }, { mode: 'V', tolerance: 2 })
-    expect(hit).toMatchObject({ kind: 'fill', address: 'fill:F' })
-  })
+  // KF-4 (dot, review of S1: V-mode picking ignored paint order — segments always beat fills) — FIXED in the editor
+  // skeleton block 1: picking walks the paint list front to back (`hitStack`); now e2e/selection.spec.ts. Note: this
+  // reproduction ran in node, where the fill test has no canvas and throws — it "reproduced" by throwing, not by
+  // picking the line; the replacement runs in Chromium.
+  it.todo('(no known failure open)')
 })
