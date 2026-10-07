@@ -20,12 +20,13 @@ import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
-import { getIndexAbove, type IndexKey } from '@tldraw/utils'
+import { getIndexAbove, getIndexBetween, type IndexKey } from '@tldraw/utils'
+import { faceAt, sameFill } from '../fills'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
 import { anchorKey, containerChain, lockedBy, type AnchorRef } from '../model'
 
-export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C'
+export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
 
 const toAffine = (m: TMat2D): Affine => ({ a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] })
@@ -54,6 +55,8 @@ export class FabricView {
   private box: FabricObject | null = null
   /** identity of the current box (selection + its drawn bounds): kept while a gesture previews, rebuilt otherwise */
   private boxItem: { ids: readonly string[]; bounds: SelRect; locked: boolean } | null = null
+  /** the colour the Live Paint Bucket (K) fills with — the toolbar's fill colour well */
+  readonly fillColor = atom('fill colour', '#f3d9c4')
   /** the canvas zoom, for the toolbar (set on every render) */
   readonly zoom = atom('canvas zoom', 1)
   /** what the user is in the middle of (for the hint line; set on every render) */
@@ -383,7 +386,7 @@ export class FabricView {
             : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
         )
       }
-    if (this.mode !== 'V') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
+    if (this.mode !== 'V' && this.mode !== 'K') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
     this.overlays(ev, want)
     const prev = this.scene
     if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
@@ -535,6 +538,7 @@ export class FabricView {
     if (this.pan || e.button !== 0) return
     if (this.mode === 'P') return this.penDown(e)
     if (this.mode === '+' || this.mode === '-' || this.mode === 'C') return this.structureClick(e)
+    if (this.mode === 'K') return this.bucket(this.canvas.getScenePoint(e))
     if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
     const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
@@ -759,6 +763,35 @@ export class FabricView {
       this.log.push({ source: 'ui', cmd: { type: 'insertPoint', curveId: seg.curveId, segmentId: seg.segmentId, u: seg.t }, ok: run.ok, written: run.ok && run.written, error: err ?? undefined })
       this.setStatus(err ? `${err.code ?? 'INVALID'}: ${err.message ?? String(err)}` : '')
     }
+  }
+
+  /**
+   * Live Paint Bucket (K, fills.ts): the area the lines enclose at the click gets a fill in the current fill colour;
+   * an area already filled gets the colour. The new fill goes into the container of the back-most boundary line, just
+   * below it (lines stay over their fill), and is selected.
+   */
+  bucket(p: Vec) {
+    const reader = this.editor.reader
+    const face = faceAt(reader, this.editor.derived.evaluated(), p)
+    if ('error' in face) return this.setStatus(face.error), null
+    const color = this.fillColor.get()
+    const existing = sameFill(reader, face.boundary)
+    if (existing) {
+      const r = this.applyAndLog({ type: 'setProps', id: existing, color })
+      if (r.ok) this.selection.set([existing])
+      return r
+    }
+    const ev = this.editor.derived.evaluated()
+    const order = ev.paint.map((x) => x.item.address)
+    const back = [...face.curves].sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]
+    const bc = reader.get(back as any) as CurveRecord
+    const sibs = (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(reader as any, bc.parentId, t).map((id) => (reader.get(id as any) as unknown as { index: string }).index)).sort()
+    const below = sibs.filter((i) => i < bc.index).at(-1) ?? null
+    // just below the back-most boundary line among its siblings (lines stay over their fill)
+    const index = getIndexBetween((below ?? null) as IndexKey | null, bc.index as IndexKey)
+    const r = this.applyAndLog({ type: 'createFill', parentId: bc.parentId, boundary: face.boundary, color, index })
+    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    return r
   }
 
   /** Delete Anchor Point: an inner anchor joins its neighbours keeping their handles (Illustrator); an end anchor is

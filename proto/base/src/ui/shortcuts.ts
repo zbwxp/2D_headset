@@ -12,7 +12,10 @@ import type { Files } from './files'
 export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: Tool) => void, files?: Files, target: Window = window) {
   const typing = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null
-    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) && (el as HTMLInputElement).type !== 'checkbox'
+    // text entry only: a checkbox / colour well / button keeps the shortcuts (they take no typed keys)
+    if (!el) return false
+    if (el.tagName === 'INPUT') return !['checkbox', 'color', 'radio', 'range', 'button', 'submit'].includes((el as HTMLInputElement).type)
+    return el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
   }
   const down = (e: KeyboardEvent) => {
     if (typing(e)) return
@@ -38,6 +41,7 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     if (mod && (k === 'v' || k === 'V')) return run(view.paste(e.shiftKey)), done()
     if (mod && (k === 's' || k === 'S') && files) return run(files.save(e.shiftKey)), done()
     if (mod && (k === 'o' || k === 'O') && files) return run(files.open()), done()
+    if (mod && (k === 'n' || k === 'N') && files) return run(files.newDocument()), done()
     if (mod && (k === 'z' || k === 'Z')) {
       if (e.shiftKey) editor.redo()
       else editor.undo()
@@ -59,6 +63,7 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     if (k === 'a' || k === 'A') return setTool('A'), done()
     if (k === 'p' || k === 'P') return setTool('P'), done()
     if (k === 'c' || k === 'C') return setTool('C'), done()
+    if (k === 'k' || k === 'K') return setTool('K'), done()
     if (k === '+' || k === '=') return setTool('+'), done()
     if (k === '-' || k === '_') return setTool('-'), done()
     if (k === 'Delete' || k === 'Backspace') return (view.selection.getAnchors().length ? view.deleteSelectedAnchors() : view.deleteSelection()), done()

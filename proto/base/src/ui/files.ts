@@ -7,6 +7,7 @@ import { atom } from '@tldraw/state'
 import { fileOpen, fileSave } from 'browser-fs-access'
 import type { Editor } from '../editor'
 import type { Selection } from '../selection'
+import { Container, schema } from '../schema'
 
 const EXT = '.contour.json'
 const TYPES = { description: 'Contour 文档', extensions: [EXT, '.json'], mimeTypes: ['application/json'] }
@@ -87,6 +88,21 @@ export class Files {
     this.selection.clear()
     this.handle = file.handle ?? null
     this.name.set(file.name)
+    this.status('')
+    return true
+  }
+
+  /**
+   * New (⌘N / 新建): an empty document with one layer, as every editor starts (Illustrator: 图层 1); unsaved changes are
+   * asked about first; no file yet (the next ⌘S asks where).
+   */
+  async newDocument(): Promise<boolean> {
+    if (this.editor.isDirty && !this.confirmDiscard()) return false
+    const layer = Container.create({ id: Container.createId(), name: '图层 1', index: 'a1' })
+    this.editor.load({ store: { [layer.id]: layer } as any, schema: schema.serialize() })
+    this.selection.clear()
+    this.handle = null
+    this.name.set(null)
     this.status('')
     return true
   }

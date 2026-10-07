@@ -34,6 +34,7 @@ export function Toolbar({ ui }: { ui: Ui }) {
   return (
     <div className="toolbar">
       <div className="group">
+        <button id="fileNew" title="新建空白文档 (⌘N；浏览器里 ⌘N 可能被拦截，用这个按钮)" onClick={() => void ui.files.newDocument()}>新建</button>
         <button id="fileOpen" title="打开 (⌘O)" onClick={() => void ui.files.open()}>打开</button>
         <button id="fileSave" title="保存 (⌘S)" onClick={() => void ui.files.save()}>保存</button>
         <button id="fileSaveAs" title="另存为 (⇧⌘S)" onClick={() => void ui.files.save(true)}>另存为</button>
@@ -61,6 +62,10 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button id="join" title="连接 (⌘J)：A 选两个端点 → 连接（同一条线则闭合）；V 选一条开放路径 → 闭合" onClick={() => view.join()}>
           连接
         </button>
+        <button id="modeK" className={tool === 'K' ? 'on' : ''} title="填充 (K)：在线围起来的区域里点一下填上颜色（Illustrator 实时上色工具）" onClick={() => setTool('K')}>
+          K 填充
+        </button>
+        <FillColor ui={ui} />
       </div>
       <div className="group">
         <button id="undo" disabled={!canUndo} title="撤销 (⌘Z)" onClick={() => (editor.undo(), view.selection.prune(editor.reader))}>
@@ -89,6 +94,12 @@ export function Toolbar({ ui }: { ui: Ui }) {
       </div>
     </div>
   )
+}
+
+/** the colour the K tool fills with (Illustrator: the fill swatch) */
+function FillColor({ ui }: { ui: Ui }) {
+  const c = useValue(ui.view.fillColor)
+  return <input id="fillColor" type="color" title="填充色（K 工具用）" value={c} onChange={(e) => ui.view.fillColor.set(e.target.value)} />
 }
 
 function Eye({ on }: { on: boolean }) {

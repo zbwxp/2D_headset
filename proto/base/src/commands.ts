@@ -66,7 +66,7 @@ export type Command =
    * (a fill has no geometry of its own: its boundary curves move — project adaptation). Each anchor moves once.
    */
   | { type: 'transformItems'; ids: string[]; matrix: Affine }
-  | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[] }
+  | { type: 'createFill'; id?: RecordId<FillRecord>; parentId: RecordId<ContainerRecord>; boundary: BoundaryStep[]; color?: string; index?: string }
   | { type: 'setContainerFlags'; containerId: RecordId<ContainerRecord>; locked?: boolean; visible?: boolean }
   /**
    * The properties panel / layer rename (Illustrator / Figma): a record's name; a curve's stroke colour / width; a
@@ -521,7 +521,9 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       }
       const gap = findGap(store, cmd.boundary)
       if (gap) return fail('FILL_NOT_CLOSED', `boundary is not closed between ${gap[0]} and ${gap[1]}`, gap, ['connect the two anchors', 'add a fill-only closing edge'])
-      const fill = Fill.create({ id: cmd.id ?? (ids.take('fill', () => Fill.createId()) as RecordId<FillRecord>), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary })
+      if (cmd.color !== undefined && !(typeof cmd.color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cmd.color))) return fail('INVALID', `fill colour must be #rgb or #rrggbb (got ${cmd.color})`, [cmd.parentId])
+      if (cmd.index !== undefined && (typeof cmd.index !== 'string' || !cmd.index)) return fail('INVALID', 'index must be a fractional index string', [cmd.parentId])
+      const fill = Fill.create({ id: cmd.id ?? (ids.take('fill', () => Fill.createId()) as RecordId<FillRecord>), name: '填充', parentId: cmd.parentId, boundary: cmd.boundary, ...(cmd.color ? { color: cmd.color } : {}), ...(cmd.index ? { index: cmd.index } : {}) })
       return { ok: true, label: 'createFill', puts: [fill], affected: [fill.id], creates: [fill.id] }
     }
     case 'setPoseKey': {

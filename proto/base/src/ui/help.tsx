@@ -36,6 +36,8 @@ export function hintLine(tool: Tool, phase: Phase, selected: number, anchors: nu
       return '点在锚点上 = 删除它（两边接上；端点连同线段删除）'
     case 'C':
       return '点在锚点上 = 在那里剪断 · 点在线段上 = 在那里加点并剪断'
+    case 'K':
+      return '点在线围起来的区域里 = 用当前填充色填上（已填的就改颜色）· 线要在锚点处相接'
   }
 }
 
@@ -46,8 +48,9 @@ const TOOL_HELP: Record<Tool, { title: string; items: string[] }> = {
   '+': { title: '+ 加点', items: ['点在线段上加一个锚点（形状不变）'] },
   '-': { title: '− 删点', items: ['点在锚点上删除它，两边连起来', '点端点会连同那一段一起删除'] },
   C: { title: 'C 剪刀', items: ['点锚点：在那里把线剪成两条', '点线段：先加点再剪断，一次撤销'] },
+  K: { title: 'K 填充', items: ['在线围起来的区域里点一下，用工具栏的填充色填上', '已经填过的区域点一下就换成当前颜色', '线要在锚点处相接（或在同一个位置）；只是交叉不算：在交点用 + 加点，或 ⌘J 连接端点', '新填充放在围住它的线下面，线照样显示'] },
 }
-const GENERAL = ['⌘Z 撤销 · ⇧⌘Z 重做', '⌘S 保存 · ⌘O 打开', '⌘C / ⌘X / ⌘V 复制剪切粘贴（⇧⌘V 原位）', '空格拖动平移 · ⌘ + 滚轮缩放 · ⌘0 适合窗口', '双击图层名改名']
+const GENERAL = ['⌘Z 撤销 · ⇧⌘Z 重做', '⌘S 保存 · ⌘O 打开 · 新建在工具栏', '⌘C / ⌘X / ⌘V 复制剪切粘贴（⇧⌘V 原位）', '空格拖动平移 · ⌘ + 滚轮缩放 · ⌘0 适合窗口', '双击图层名改名']
 
 type HelpState = 'open' | 'collapsed' | 'closed'
 const KEY = 'contour.toolHelp'
