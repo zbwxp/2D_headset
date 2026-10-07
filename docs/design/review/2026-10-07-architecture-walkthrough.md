@@ -2326,6 +2326,14 @@ So a lemon (upper and lower arc, both A→B) becomes two petals: both arcs becom
 
 ### Status
 
+### dot's qualification (1791392923)
+
+**Lines disappear because they connect the same pair of points, not because they shrank to nothing geometrically.**
+
+Only the minimal θ disappears entirely: each of its three lines is one Bézier running directly A–B. If the upper arc has a middle point C (A–C and C–B), binding B onto A turns it into A–C and C–A. Both segments still have distinct ends, so they survive as a loop.
+
+So "binding the θ middle line's ends deletes the whole θ" holds only when every line connects A and B directly.
+
 **Decided (甲).** Q20 cases 2 and 3 are superseded:
 - no single-curve loop exists;
-- binding the θ middle line's ends deletes the whole θ.
+- binding the ends of the middle line of a minimal θ (every line runs directly A–B) deletes the whole θ; arcs with intermediate points survive.
