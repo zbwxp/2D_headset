@@ -2125,10 +2125,10 @@ The rule holds. There are two distinct actions:
 
 > 2造成了单独bezier曲线成环的情况，这是我没想过的 也几乎不会用到 但是为了工具的一致性 我会认为这样成立 这也是唯一制作单线成环的方法。 3也不失效 这也作为一种特殊的编辑方法。基本上不会用但是为了工具一致性保留
 
-- **Case 2 holds.** The remaining single curve, with both ends on one point, is a closed curve and keeps its fill.
+- ~~**Case 2 holds.** The remaining single curve, with both ends on one point, is a closed curve and keeps its fill.~~ **Superseded by Q22:** binding deletes both curves, and no single-curve loop exists.
   - This is the only way to make a single-curve loop.
   - Binding a free curve's own two ends deletes it.
-- **Case 3 does not invalidate the loop.** It is kept as a special editing method, for tool consistency.
+- **Case 3 does not invalidate the loop.** It is kept as a special editing method, for tool consistency. **Narrowed by Q22:** this holds only when the arcs have intermediate points. In a minimal θ every line runs directly between the two points, so all of them are deleted.
 
 > **Note (Q22):** the case 2 and case 3 derivations above silently assumed that only one curve is deleted. **Superseded by Q22 (bowen 1791392871 chose 甲):** binding deletes every curve whose two ends land on one point. A 2-curve loop and the θ are deleted entirely, and no single-curve loop exists.
 
@@ -2151,7 +2151,7 @@ The rule holds. There are two distinct actions:
 
 ### Status
 
-Cases 2 and 3 decided by bowen. The curve-end question waits for bowen. The binding rule goes to the graph in the endpoint round.
+**Superseded by Q22** (bowen 1791392871, 甲). The curve-end question is dissolved, because binding acts on points and deletes every curve whose two ends land on one point. Binding rules are in the graph (`941bfeb`).
 
 
 ## Q21: Any attacks left on fill / loop / binding?
