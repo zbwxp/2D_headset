@@ -18,6 +18,8 @@ bowen asked (Slack 1791382158) for a new, separate record of the step-by-step ar
 
 ## Relationship graph (bowen 1791382746: "我相当于帮你们建立一个知识图谱/关系图谱类似的东西")
 
+> **Only write rows here when bowen asks** (bowen 1791382929: "这个还没让你写入关系图谱"). Q&A facts go in each Q entry, not in this table.
+
 How this section works:
 
 - **One row per relation:** subject, relation, object, source.
@@ -38,9 +40,6 @@ How this section works:
 | Shape group | owns | Faces (fills of enclosed areas) | current code | Q2/Q4 |
 | Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
-| v103 continuous / closed curve | corresponds to | New path (one record; ordered segments plus whether it is closed) | current code (comparison) | Q5 |
-| v103 group / layer | corresponds to | New container (group / layer) | current code (comparison) | Q5 |
-| Container | does not decide | How segments join into a line (that is the path's job) | current code | Q5 |
 | Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
 | Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
 
