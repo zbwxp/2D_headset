@@ -1564,3 +1564,49 @@ So each thing is changed in exactly one place.
 | **C. Behaviour inferred from user docs** | Illustrator Live Paint help, Figma help, Harmony drawing-tool docs |
 
 Tiers B and C are not internal implementations that have been verified.
+
+---
+
+## Q13: A concise fill-only proposal, drawing on these tools
+
+**bowen** 1791388512:
+> 这几家的方案你们能统筹出一个有关填充的简洁方案吗？只看填充
+
+### Claude's draft (1791388555; proposal, not in the graph)
+
+**1. What a fill is**
+
+- **Face** = one outer Loop + zero or more inner Loops (holes) + a paint.
+- **Loops are made only of Segments joined end to end at shared endpoints** (decided, bowen 1791386368).
+- **A Face references Segments, not coordinates** (VGC KeyFace, Figma region). Geometry moves and the fill follows. During a head-turn the topology does not change, so the fill follows automatically.
+
+**2. Creating**
+
+- **Paint bucket:** fills the **smallest region** containing the click. Independent loops inside it become holes automatically. This matches the VPaint / VGC paint bucket (Q12, tier A).
+- **Manual:** choose one or more Loops (bowen 1791386268).
+- **Overlap:** faces made by the bucket in one network never overlap. Manual faces may overlap; then **the later fill covers the earlier one**. "Larger covers smaller" is dropped for now; see Q9.
+
+**3. After edits**
+
+1. **A point is added on a boundary:** the Face updates its boundary in place and **keeps its colour** (VGC cut repair, tier A).
+2. **A boundary segment is deleted, or cut so the loop no longer closes:** **delete that fill.** Plain delete in VPaint / VGC does the same (tier A).
+3. **A line is added inside a filled region with both ends on the boundary:** **both halves inherit the colour.** VPaint `cutFace_` and VGC `cutGlueFace` do the same (tier A).
+4. **A line is deleted so two faces merge:**
+   - Same colour: merge directly.
+   - **Different colours: bowen decides.** Either delete both (bowen 1791386268), or the larger area wins (VGC, tier A; Illustrator, tier C).
+5. **Ambiguity is decided once, at commit when the hand lifts.** It is not checked during a drag.
+
+**4. Display**
+
+- **Seams are not handled for now** (trap = null, bowen 1791385308).
+
+### Decisions for bowen
+
+- **A.** Merging two faces of different colours: delete both, or the larger wins?
+- **B.** A manually chosen whole fill with a line added inside it: split into two as in item 3, or stay one piece because its outer ring has not changed?
+  - Faces made by the bucket split as in item 3.
+  - For manual whole fills, Claude leans towards **staying one piece**, so a whole-face gradient is not cut. bowen decides.
+
+### Status
+
+**Waiting for dot's independent review and bowen's two decisions.**
