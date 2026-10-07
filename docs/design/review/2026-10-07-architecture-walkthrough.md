@@ -1834,3 +1834,35 @@ The decisions for bowen are A and B.
 ### Status
 
 Claude and dot agree on the facts and the conclusion. Waiting for bowen on A (cross-layer rules) and B.
+
+## Q17: Should cross-layer fill be supported at all?
+
+**bowen** 1791389840:
+> OK 我想起来了 旧版跨图层填充靠的是两侧分别填充 然后叠放。那有没有可能跨图层填充就是不应该支持的？ 成熟方案有支持这个的吗？
+
+### Claude's independent judgement (1791389880)
+
+**Short answer:** none of the checked tools fills a single region whose boundary is assembled from lines in different layers. To fill across objects, they either merge the geometry into one object first, or fill each part separately.
+
+**What each tool does:**
+
+| Tool | Behaviour | Evidence |
+|---|---|---|
+| Figma | Regions exist only inside one vector node's network. Merge or flatten first. | public API `VectorNetwork.regions`, tier B |
+| OpenToonz | Regions are computed per vector image, and only strokes in the same group are intersected. | `tcomputeregions.cpp:2285` |
+| Graphite / Paper.js | One fill per item. Crossing paths need one compound path. | `CompoundPath.js:17-25` |
+| Synfig (closest) | The fill is its own Region layer whose spline is **linked** to the outline layer's spline. | `layermakebline.cpp:203-209` |
+| Illustrator Live Paint across layers | **Not checked.** | — |
+
+- **The Synfig limit:** the link covers one whole spline, not a loop assembled from pieces in several layers. Per-vertex linking could do it in theory, but no evidence was found that this is a normal workflow.
+- **Recommendation:** do not support cross-layer fill. bowen's v103 practice, filling each side separately and stacking, is the mature-tool practice. The overlap also avoids the seam problem (Q8).
+
+**If adopted:**
+
+1. **Close the v103 loophole** (dot, Q16): a fill could be dragged alone to another layer afterwards. New rule: **a fill always lives in the layer of its boundary lines.** It moves with them, or the move is refused.
+2. **v3 method 2 (manual loop pick) remains, with a new purpose.** It is no longer for cross-layer fills. It picks one loop out of a branching network in the same layer. Example: the outer loop of a θ, which method 1 (a single closed line) cannot select.
+
+### Status
+
+Waiting for dot's independent review; bowen decides.
+
