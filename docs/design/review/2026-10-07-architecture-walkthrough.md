@@ -1094,3 +1094,41 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 ### Status
 
 **Both independent reviews merged.** Waiting for bowen.
+
+### Q9 follow-up: How does Figma model fills, and how does it handle the issues above?
+
+**bowen** 1791386736:
+> figma是怎么解决上述问题的 它的填充问题建模是什么
+
+#### Verified (Claude 1791386761)
+
+**Data model.** Source: Figma VectorNetwork API, opened. A vector shape has three tables:
+
+| Table | What it holds | Notes |
+|---|---|---|
+| **vertices** | Position, plus strokeCap, strokeJoin, cornerRadius and handleMirroring | Stored **per vertex** |
+| **segments** | Start and end vertices, plus tangentStart and tangentEnd | No direction; **every segment gets a stroke** |
+| **regions** (optional) | windingRule, one or more **loops** (segment indices in order), and fills | e.g. the letter "o" is one region with two loops |
+
+**When no region is given, all enclosed space is filled.**
+
+**Interaction.** Source: Figma Help "Edit vector layers", opened.
+
+- The Paint tool shows a striped preview on hover.
+- Click fills one region; dragging fills several.
+- Clicking a region that already has the same colour removes the fill.
+
+#### Mapping to the open questions
+
+- **Where to fill.** A region is an explicitly listed set of loops: a smallest piece, the outer ring, or a shape with holes. That is wider than "smallest region only" and matches bowen's later "choose a closed region by hand".
+- **Whole-shape gradient.** With no regions, all enclosed space shares the shape's single fill. **Not verified** whether this means one continuous gradient; the docs do not say so directly.
+- **Not documented in the pages read:**
+  - how regions and colours change after a line is added or deleted;
+  - which overlapping region is on top;
+  - which kind of region the UI actually stores.
+
+  These can only be learned by trying Figma by hand. Claude cannot create or sign in to an account; bowen can test it.
+
+#### Status
+
+**Waiting for bowen.** The four questions from Q9 are still open; Figma's documentation does not settle them.
