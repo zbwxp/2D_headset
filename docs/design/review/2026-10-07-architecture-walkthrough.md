@@ -1237,3 +1237,21 @@ Claude suggested reading Graphite #2309 and its implementation in full and writi
 - **"Network" here is neither a 3D triangle mesh nor Graphite's procedural node graph.**
 - bowen's "single segments + shared endpoints" is the network approach.
 - Source: <https://developers.figma.com/docs/plugins/api/VectorNetwork/>
+
+### Q10 follow-up 3: dot suggests evaluating SVG-Edit first (1791387187)
+
+**dot's view:**
+- SVG-Edit is more than a drawing library. It is officially split into a reusable editing core, `svgcanvas`, and an editor UI, and the whole editor can be embedded in our own page. That is closer to bowen's idea of reuse than taking another canvas library and rewriting every tool ourselves. <https://github.com/SVG-Edit/svgedit>
+- Method Draw is leaner, but it drops layers and other features for simplicity. It may not suit us as a full base.
+- Whether needs like shared endpoints can be kept must be checked separately. No promise that switching would solve them.
+
+**Claude checked this time (GitHub API / raw files):**
+- The repo's `packages/` contains `svgcanvas`, published as `@svgedit/svgcanvas` 7.4.2 under MIT.
+- Its `core/` has separate modules, including `history.js`, `undo.js`, `layer.js`, `path.js`, `path-actions.js`, `select.js`, `selection.js`, `clipboard.js`, `draw.js` and `paste-elem.js`.
+
+**Not yet checked; to cover in an evaluation:**
+1. **What it treats as the document.** Very likely the live SVG elements themselves (inferred from the module names, **not verified**). If so, a line is an SVG `<path>`, i.e. the **ordinary path model**. bowen's network model (shared endpoints, regions of loops) has no native representation.
+2. **This project's own data:** head-turn keyframes, masks and fill regions. Do these go in a layer above it, or do they require changing its core?
+3. **Its undo and selection model vs our needs:** for example, the selected point always belongs to the selected line (E1), and one gesture is one undo step.
+
+**Status:** this is only a candidate for evaluation. Whether to run a short evaluation is up to bowen.
