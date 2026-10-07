@@ -658,9 +658,11 @@ Source: Figma Help "Edit vector layers", section "Add fills to closed regions", 
 
 **Not verified:** after dragging across both halves of a θ, is it stored as "one region with the outer ring" or "two regions"? The help page does not say.
 
-**Correction (dot 1791384395):** filling both halves in the same colour can look like one whole fill, but it is not necessarily one fill object. A gradient across the whole circle shows the difference.
+**Correction (dot 1791384395, 1791384478):** filling both halves in the same colour can look like one whole fill, but **whether it is one fill object is unverified**.
 
+- We have not confirmed how Figma stores the result after a drag across two regions, or how gradient coordinates work there. If the two regions share one gradient coordinate system, the result may still look continuous.
 - So "drag across both halves" **cannot be treated as** "fill the whole θ".
+- The thing to separate is **the identity and editing behaviour of a whole fill**. It cannot be inferred from appearance.
 - What Figma's interaction is worth borrowing: regions found automatically, with a hover preview before you click.
 - bowen's need, "one whole fill defined by the outer ring", stays a separate requirement to judge. It must not be quietly replaced by painting twice.
 
