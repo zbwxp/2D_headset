@@ -13,6 +13,8 @@ import { createRoot } from 'react-dom/client'
 import { Selection } from './selection'
 import { createTool, LayersPanel, PropertiesPanel, Toolbar, type Tool, type Ui } from './ui/panels'
 import { installShortcuts } from './ui/shortcuts'
+import { Files } from './ui/files'
+import { react } from '@tldraw/state'
 
 const params = new URLSearchParams(location.search)
 const bench = params.has('bench')
@@ -33,9 +35,14 @@ const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, e
 // editor skeleton (block 1): toolbar, layers and properties panels (React), Illustrator shortcuts
 const tool = createTool()
 const setTool = (t: Tool) => (tool.set(t), view.setMode(t))
+const files = new Files(editor, selection, (s) => (statusEl.textContent = s))
+files.guardUnload()
+// the title carries the file name and the unsaved marker (every desktop editor)
+react('title', () => (document.title = `${editor.isDirty ? '● ' : ''}${files.name.get() ?? '未命名'} — Contour`))
 const ui: Ui = {
   editor,
   view,
+  files,
   tool,
   zoom: view.zoom,
   apply: (cmd) => {
@@ -45,7 +52,7 @@ const ui: Ui = {
 }
 createRoot(document.getElementById('toolbar')!).render(h(Toolbar, { ui }))
 createRoot(document.getElementById('side')!).render(h(Fragment, null, h(LayersPanel, { ui }), h(PropertiesPanel, { ui })))
-installShortcuts(editor, view, setTool)
+installShortcuts(editor, view, setTool, files)
 
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen
 // objects; measuring a mostly off-screen drawing would understate the real cost)
@@ -59,6 +66,6 @@ if (bench && onionCount) {
   view.render()
 }
 Object.assign(window, {
-  __contour: { editor, api, view, selection, setTool, evaluate, hitTest, ids, counters, resetCounters, paintCase },
+  __contour: { editor, api, view, selection, setTool, files, evaluate, hitTest, ids, counters, resetCounters, paintCase },
   __bench: { scopeA: (n: number, samples = 48) => runScopeA(editor, n ? onionYaws(n) : [], samples) },
 })

@@ -2,12 +2,13 @@
 // elsewhere): V / A tools, ⌘Z / ⇧⌘Z undo / redo (also Ctrl+Y), Delete / Backspace delete, ⌘A select all, ⇧⌘A
 // deselect, arrows nudge 1 (Shift: 10), ⌘+ / ⌘− zoom, ⌘0 fit, ⌘1 actual size, space = hand tool, E while dragging a
 // marquee = enclosed mode, Esc = cancel the gesture in progress. Block 2: P Pen, + / = Add and − Delete Anchor Point,
-// C Scissors, ⌘J Join; while a pen path is drawn Enter / Esc end it and ⌘Z removes its last anchor. Keys typed into a
-// form field are left alone.
+// C Scissors, ⌘J Join; while a pen path is drawn Enter / Esc end it and ⌘Z removes its last anchor. Block 3: ⌘C / ⌘X /
+// ⌘V (centre of the view) / ⇧⌘V (in place), ⌘O / ⌘S / ⇧⌘S. Keys typed into a form field are left alone.
 import type { Editor } from '../editor'
 import type { FabricView, Tool } from '../view/fabricView'
+import type { Files } from './files'
 
-export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: Tool) => void, target: Window = window) {
+export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: Tool) => void, files?: Files, target: Window = window) {
   const typing = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null
     return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) && (el as HTMLInputElement).type !== 'checkbox'
@@ -25,6 +26,11 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     }
     if (mod && (k === 'z' || k === 'Z') && !e.shiftKey && view.penUndo()) return done()
     if (mod && (k === 'j' || k === 'J')) return view.join(), done()
+    if (mod && (k === 'c' || k === 'C')) return void view.copy(), done()
+    if (mod && (k === 'x' || k === 'X')) return void view.cut(), done()
+    if (mod && (k === 'v' || k === 'V')) return void view.paste(e.shiftKey), done()
+    if (mod && (k === 's' || k === 'S') && files) return void files.save(e.shiftKey), done()
+    if (mod && (k === 'o' || k === 'O') && files) return void files.open(), done()
     if (mod && (k === 'z' || k === 'Z')) {
       if (e.shiftKey) editor.redo()
       else editor.undo()

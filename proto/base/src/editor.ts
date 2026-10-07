@@ -330,6 +330,30 @@ export class Editor {
     return snap
   }
 
+  /** The file was written at `revision` (a save that can fail marks the document saved only when the write succeeds). */
+  markSaved(revision: number) {
+    this.#saved.set(revision)
+  }
+
+  /**
+   * Replace the document with a file's (tldraw `loadSnapshot` on the same store): checked exactly as `open` (migrations,
+   * validators, relation rules — nothing changes if it throws); history starts empty and the document is clean.
+   */
+  load(snapshot: StoreSnapshot<DocRecord>) {
+    Editor.open(snapshot) // throws `invalid document: …` before anything is touched
+    transaction(() => {
+      this.#generation++ // prepared operations started on the old document are stale
+      this.#store.loadStoreSnapshot(structuredClone(snapshot))
+      this.derived.reconcileInstances()
+      for (const r of this.#store.allRecords()) deepFreeze(r)
+      this.#undo.set([])
+      this.#redo.set([])
+      const revision = this.nextRevision++
+      this.#revision.set(revision)
+      this.#saved.set(revision)
+    })
+  }
+
   /** Migrate, validate records and structure; throw (nothing opened) if anything is wrong. */
   static open(snapshot: StoreSnapshot<DocRecord>) {
     const editor = new Editor()

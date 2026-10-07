@@ -24,8 +24,17 @@ export type DuplicateCommand = { type: 'duplicate'; ids: string[]; parentId?: Re
 const fail = (code: EditError['code'], message: string, objects: string[]): Plan => ({ ok: false, error: { code, message, objects, fixes: [] } })
 
 export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdSource): Plan {
+  return planCopyInto(store, store, cmd, ids, 'duplicate')
+}
+
+/**
+ * The copy itself, reading the originals from `src` and placing the copies into `dst` (the same store for duplicate;
+ * the clipboard content's own store for paste, clipboard.ts). Same rules either way.
+ */
+export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCommand, ids: IdSource, label: string): Plan {
+  const store = src
   if (!Array.isArray(cmd.ids) || !cmd.ids.length) return fail('INVALID', 'nothing to duplicate', [])
-  if (cmd.parentId && !getAs(store, cmd.parentId, 'container')) return fail('NOT_FOUND', `no container ${cmd.parentId}`, [String(cmd.parentId)])
+  if (cmd.parentId && !getAs(dst, cmd.parentId, 'container')) return fail('NOT_FOUND', `no container ${cmd.parentId}`, [String(cmd.parentId)])
   // the selection, closed under containment (a container brings everything inside it)
   const sel = new Set<string>()
   for (const id of cmd.ids) {
@@ -48,7 +57,7 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
     if (outside.length) return fail('INVALID', `fill ${f.id} reads ${outside.join(', ')}, which is not being duplicated: include it or leave the fill out`, [f.id, ...outside])
   }
   // one identity plan: the n-th original (in id order) gets the n-th new id of its type
-  const exists = (id: string) => !!store.get(id as any)
+  const exists = (id: string) => !!dst.get(id as any) || (src !== dst && !!src.get(id as any))
   const map = new Map<string, string>()
   for (const r of recs) {
     const id = ids.take(`dup:${r.typeName}`, () => {
@@ -71,7 +80,7 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
   for (const [parent, members] of groups) {
     const inCopy = !!parent && [...map.values()].includes(parent)
     // a new container's content starts empty; an existing destination: above its current topmost child
-    const topmost = inCopy ? null : store.allRecords().filter((x: any) => ['container', 'curve', 'fill', 'reference'].includes(x.typeName) && (x.parentId ?? null) === parent).map((x: any) => x.index as string).reduce<string | null>((m, i) => (m === null || i > m ? i : m), null)
+    const topmost = inCopy ? null : dst.allRecords().filter((x: any) => ['container', 'curve', 'fill', 'reference'].includes(x.typeName) && (x.parentId ?? null) === parent).map((x: any) => x.index as string).reduce<string | null>((m, i) => (m === null || i > m ? i : m), null)
     const order = members.map((r) => ({ r, key: paintKey(store, r) })).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     let fresh: IndexKey[]
     try {
@@ -118,5 +127,5 @@ export function planDuplicate(store: BaseReader, cmd: DuplicateCommand, ids: IdS
     puts.push({ ...cn, id: nid as any, ends: cn.ends.map((e) => ({ ...e, curveId: to(e.curveId) })) })
   }
   const creates = puts.map((r) => r.id as string)
-  return { ok: true, label: 'duplicate', puts, affected: creates, creates }
+  return { ok: true, label, puts, affected: creates, creates }
 }

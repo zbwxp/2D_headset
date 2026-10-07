@@ -10,9 +10,10 @@ import { layerOf } from '../selection'
 import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
 import { layerRows, rangeOf, type LayerRow } from './layerTree'
+import type { Files } from './files'
 
 export type Tool = ViewTool
-export type Ui = { editor: Editor; view: FabricView; tool: Atom<Tool>; zoom: Atom<number>; apply: (cmd: Command) => void }
+export type Ui = { editor: Editor; view: FabricView; tool: Atom<Tool>; zoom: Atom<number>; apply: (cmd: Command) => void; files: Files }
 export const createTool = () => atom<Tool>('tool', 'A')
 
 const KIND_LABEL: Record<string, string> = { container: '图层', curve: '线', fill: '填充', reference: '引用' }
@@ -27,8 +28,16 @@ export function Toolbar({ ui }: { ui: Ui }) {
     ui.tool.set(t)
     view.setMode(t)
   }
+  const fileName = useValue(ui.files.name)
+  const dirty = useValue('dirty', () => editor.isDirty, [editor])
   return (
     <div className="toolbar">
+      <div className="group">
+        <button id="fileOpen" title="打开 (⌘O)" onClick={() => void ui.files.open()}>打开</button>
+        <button id="fileSave" title="保存 (⌘S)" onClick={() => void ui.files.save()}>保存</button>
+        <button id="fileSaveAs" title="另存为 (⇧⌘S)" onClick={() => void ui.files.save(true)}>另存为</button>
+        <span id="fileName" className="file" title={dirty ? '有未保存的修改' : '已保存'}>{dirty ? '● ' : ''}{fileName ?? '未命名'}</span>
+      </div>
       <div className="group">
         <button id="modeV" className={tool === 'V' ? 'on' : ''} title="选择工具 (V)：点选对象 / 组，拖框选择，⌘ 点击选后面的对象" onClick={() => setTool('V')}>
           V 选择

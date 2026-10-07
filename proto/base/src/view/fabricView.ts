@@ -21,6 +21,7 @@ import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
 import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, type IndexKey } from '@tldraw/utils'
+import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
 import { anchorKey, lockedBy, type AnchorRef } from '../model'
 
@@ -745,6 +746,57 @@ export class FabricView {
     if (one?.typeName === 'curve' && !one.closed) return this.applyAndLog({ type: 'addClosingSegment', curveId: one.id })
     this.setStatus('INVALID: 连接：用 A 选中两个端点，或用 V 选中一条开放路径')
     return null
+  }
+
+  // ---- copy / paste (clipboard.ts): the system clipboard holds the content as JSON text (tldraw / Excalidraw), and a
+  // copy is also kept in the page so paste works where the browser does not grant clipboard reading ----
+  private clip: string | null = null
+
+  /** ⌘C: the selection's content to the clipboard; a refusal (a fill without its curves …) is said */
+  async copy() {
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length) return false
+    const c = contentOf(this.editor.reader, ids)
+    if ('error' in c) return this.setStatus(`${c.error.code}: ${c.error.message}`), false
+    this.clip = JSON.stringify(c)
+    try {
+      await navigator.clipboard?.writeText(this.clip)
+    } catch {
+      // not granted: the page copy above is enough inside this page
+    }
+    this.setStatus('')
+    return true
+  }
+  /** ⌘X: copy, then delete (the delete is the undo step) */
+  async cut() {
+    if (await this.copy()) this.deleteSelection()
+  }
+  /**
+   * ⌘V: at the centre of the view; ⇧⌘V (`inPlace`): where it was (Illustrator Paste / Paste in Place). Into the current
+   * layer, on top; the pasted objects become the selection.
+   */
+  async paste(inPlace = false) {
+    let text = this.clip
+    try {
+      const t = await navigator.clipboard?.readText()
+      if (t && parseContent(t)) text = t
+    } catch {
+      // not granted: the page copy
+    }
+    const content = text ? parseContent(text) : null
+    if (!content) return this.setStatus('剪贴板里没有可以粘贴的图形'), null
+    const layer = this.targetLayer()
+    if (typeof layer !== 'string') return this.setStatus(layer.error), null
+    let offset = { x: 0, y: 0 }
+    const centre = contentCentre(content)
+    if (!inPlace && centre) {
+      const inv = util.invertTransform(this.canvas.viewportTransform)
+      const v = util.transformPoint(new Point(this.canvas.getWidth() / 2, this.canvas.getHeight() / 2), inv)
+      offset = { x: round(v.x - centre.x), y: round(v.y - centre.y) }
+    }
+    const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset })
+    if (r.ok && r.written) this.selection.set(r.affected.filter((id) => (this.editor.reader.get(id as any) as { parentId?: string } | undefined)?.parentId === layer))
+    return r
   }
 
   /** remove a shared node (the properties panel's 断开连接) */
