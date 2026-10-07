@@ -230,37 +230,55 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
         if (!ep.curves.includes(c.id)) return fail('INVALID', `${ep.id} does not act on ${c.id} (its curves: ${ep.curves.join(', ')})`, [c.id, ep.id])
         if (!shapeOk(sh, c)) return fail('INVALID', `the target of ${c.id} must list exactly its anchors with finite control points`, [c.id])
       }
-      // linked ends: one shared point. Two given ends must agree; an end linked to a curve NOT given must stay where
-      // that curve has it in this state (else give that curve's target too) — never moved behind the author's back
+      // linked ends: one shared point (dot, review of 6eb9635 B2: the same as a preset key). Two given ends must agree;
+      // an end linked to a curve the parameter names but the author did not give moves WITH it — that curve gets its own
+      // keyframe here (its current state, the end moved onto this point, handles with it) in the same commit; an end
+      // linked to a curve the parameter does not move must stay where that curve has it (its neutral form)
       const no = needGrid()
       if (no) return no
       const keys = grid!.yaws.map((y, i) => ({ yaw: y, i }))
+      const fixAt = (cid: string) => K.exprFixes.find((x) => x.curveId === cid && x.yaw === cmd.yaw && x.param === ep.name)?.shape
       const stateOf = (cid: string): Shape | null => {
         const g = grid!.curves[cid]
         if (!g) return null
-        const list = ep.curves.includes(cid as any) ? (grid!.unplayable[ep.name] ? null : g.expr[ep.name]) : g.neutral
-        return list ? sampleShape(keys.map((k) => ({ yaw: k.yaw, shape: list[k.i] })), cmd.yaw) : null
+        if (ep.curves.includes(cid as any)) {
+          const own = fixAt(cid)
+          if (own) return own
+          if (grid!.unplayable[ep.name]) return null
+        }
+        const list = ep.curves.includes(cid as any) ? g.expr[ep.name] : g.neutral
+        return sampleShape(keys.map((k) => ({ yaw: k.yaw, shape: list[k.i] })), cmd.yaw)
       }
+      const out = new Map<string, Shape>(targets.map(([cid, sh]) => [cid, structuredClone(sh)]))
       for (const [cid, sh] of targets)
         for (const a of Object.keys(sh))
           for (const cnId of connectionsAt(store, anchorKey({ curveId: cid as RecordId<CurveRecord>, anchorId: a }))) {
             const cn = getAs(store, cnId, 'connection')!
             for (const e of cn.ends) {
-              if (e.curveId === cid) continue
-              const q = sh[a].p
+              if (e.curveId === cid || !fam.curves.includes(e.curveId)) continue
+              const n = sh[a].p
               const given = cmd.keyframes[e.curveId]
-              const other = given ? given[e.anchorId]?.p : stateOf(e.curveId)?.[e.anchorId]?.p
-              if (!other) continue // that curve has no state here yet (an unfinished draft): checked when it is drawn
-              if (other.x !== q.x || other.y !== q.y)
-                return fail('INVALID', given ? `the given ends of ${cn.id} differ: one shared point` : `${cid}#${a} is linked to ${e.curveId}#${e.anchorId} (${cn.id}): give ${e.curveId}'s target too, or keep the end where it is`, [cn.id, e.curveId])
+              if (given) {
+                const q = given[e.anchorId]?.p
+                if (q && (q.x !== n.x || q.y !== n.y)) return fail('INVALID', `the given ends of ${cn.id} differ: one shared point`, [cn.id, e.curveId])
+                continue
+              }
+              const current = out.get(e.curveId) ?? stateOf(e.curveId)
+              if (!current) continue // that curve has no state here yet (an unfinished draft): checked when it is drawn
+              const q = current[e.anchorId]
+              if (q.p.x === n.x && q.p.y === n.y) continue
+              if (!ep.curves.includes(e.curveId))
+                return fail('INVALID', `${cid}#${a} is linked to ${e.curveId}#${e.anchorId}, which ${ep.name} does not move: the end must stay at (${q.p.x}, ${q.p.y})`, [cn.id, e.curveId])
+              const dx = n.x - q.p.x, dy = n.y - q.p.y
+              out.set(e.curveId, { ...structuredClone(current), [e.anchorId]: { p: { ...n }, hIn: v(q.hIn.x + dx, q.hIn.y + dy), hOut: v(q.hOut.x + dx, q.hOut.y + dy) } })
             }
           }
       // replace by meaning — the same curve, parameter and yaw — whatever id an imported record has
       let fixes = [...K.exprFixes]
-      for (const [cid, sh] of targets) {
+      for (const [cid, sh] of out) {
         const same = (x: CharacterRecord['exprFixes'][number]) => x.curveId === cid && x.yaw === cmd.yaw && x.param === ep.name
         const prior = fixes.find(same)
-        fixes = [...fixes.filter((x) => !same(x)), { id: prior?.id ?? `exprFix:${cid}@${cmd.yaw}/${ep.name}`, curveId: cid as RecordId<CurveRecord>, param: ep.name, yaw: cmd.yaw, shape: structuredClone(sh) }]
+        fixes = [...fixes.filter((x) => !same(x)), { id: prior?.id ?? `exprFix:${cid}@${cmd.yaw}/${ep.name}`, curveId: cid as RecordId<CurveRecord>, param: ep.name, yaw: cmd.yaw, shape: sh }]
       }
       next = { ...K, exprFixes: fixes }
       break

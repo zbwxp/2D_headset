@@ -148,8 +148,12 @@ export type Takeover =
 export type ClearedLineBasis = { kind: 'clearedLine'; id: string }
 /** Where a node takeover's copied L came from when no line takeover provided it: the weighted helper domains (§24.2). */
 export type BlendBasis = { kind: 'blend'; yaw: number; weights: Record<string, number> }
-/** A character's own expression keyframe of one curve (its full shape at value 1 of `param`, at `yaw`). */
-export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; param: string; yaw: number; shape: Shape }
+/**
+ * A character's own expression keyframe of one curve (its full shape at value 1 of `param`, at `yaw`). `origin:
+ * 'converted'` = written by the schema-3 conversion to keep an old file's picture (the old rule's result), not drawn by
+ * the author; an author edit of that keyframe drops the mark.
+ */
+export type ExprFix = { id: string; curveId: RecordId<CurveRecord>; param: string; yaw: number; shape: Shape; origin?: 'converted' }
 /** A character: weights, front fine-tune (offsets over the preset blend), takeovers with frozen L, expression fixes. */
 export interface CharacterRecord extends BaseRecord<'character', RecordId<CharacterRecord>> {
   name: string
@@ -389,7 +393,7 @@ export const Character = createRecordType<CharacterRecord>('character', {
             `character ${r.id} takeover ${t.id}`,
           )
       }
-      for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && typeof f.param === 'string' && isNum(f.yaw) && isShape(f.shape), `character ${r.id} exprFix ${f?.id} (curveId, param, yaw, shape)`)
+      for (const f of r.exprFixes) check(isObj(f) && typeof f.id === 'string' && typeof f.curveId === 'string' && typeof f.param === 'string' && isNum(f.yaw) && isShape(f.shape) && (f.origin === undefined || f.origin === 'converted'), `character ${r.id} exprFix ${f?.id} (curveId, param, yaw, shape, origin)`)
       return r
     },
   },

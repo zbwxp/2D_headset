@@ -149,11 +149,27 @@ describe('§29 I-1: author keyframes → edit → play (two independent eyes)', 
     expect(graphProblems(e.reader)).toEqual([])
     const s = shapes(e, 0, { blinkL: 1 })
     expect(s['curve:upL'].a.p).toEqual(s['curve:loL'].c.p)
-    // (3) a character keyframe of the lower lid alone that moves the shared corner is refused unless the upper is given
+    // (3) a character keyframe of the lower lid alone that moves the shared corner: the upper lid's end moves with it
+    // in the same step (as for a preset key — dot, review of 6eb9635 B2); its other anchors, the other eye and the
+    // presets are untouched; one undo restores everything
     const c = shapes(e, 0, { blinkL: 1 })
-    const lift = { ...c['curve:loL'], d: { p: pt(10, 0.3), hIn: pt(9, 0.3), hOut: pt(11, 0.3) } } as Shape
-    const no = e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': lift } })
-    expect(no.ok === false && no.error.message).toMatch(/give curve:upL's target too/)
+    const lift = { ...c['curve:loL'], d: { p: pt(c['curve:loL'].d.p.x, c['curve:loL'].d.p.y + 0.3), hIn: pt(c['curve:loL'].d.hIn.x, c['curve:loL'].d.hIn.y + 0.3), hOut: pt(c['curve:loL'].d.hOut.x, c['curve:loL'].d.hOut.y + 0.3) } } as Shape
+    const beforeLift = JSON.stringify(e.reader.allRecords())
+    const presetsBefore = JSON.stringify(e.reader.allRecords().filter((r: any) => r.typeName === 'forms'))
+    const op3 = e.prepare()
+    expect(op3.preview({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': lift } }).ok).toBe(true)
+    expect(op3.commit().ok).toBe(true)
+    const s3 = shapes(e, 0, { blinkL: 1 })
+    expect(s3['curve:loL']).toEqual(lift)
+    const ub = c['curve:upL'].b
+    expect(s3['curve:upL']).toEqual({ ...c['curve:upL'], b: { p: lift.d.p, hIn: pt(ub.hIn.x + lift.d.p.x - ub.p.x, ub.hIn.y + lift.d.p.y - ub.p.y), hOut: pt(ub.hOut.x + lift.d.p.x - ub.p.x, ub.hOut.y + lift.d.p.y - ub.p.y) } })
+    for (const k of ['curve:upR', 'curve:loR']) expect(s3[k]).toEqual(c[k])
+    expect(JSON.stringify(e.reader.allRecords().filter((r: any) => r.typeName === 'forms'))).toBe(presetsBefore)
+    expect(e.undo()).toBe(true)
+    expect(JSON.stringify(e.reader.allRecords())).toBe(beforeLift)
+    // two given ends that disagree are refused
+    const no = e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': lift, 'curve:upL': c['curve:upL'] } })
+    expect(no.ok === false && no.error.message).toMatch(/the given ends of .* differ: one shared point/)
     const both = e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': lift, 'curve:upL': { ...c['curve:upL'], b: lift.d } } })
     expect(both.ok).toBe(true)
   })

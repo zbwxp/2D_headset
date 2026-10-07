@@ -126,7 +126,7 @@ describe('character commands on the sample', () => {
     expect(character(e).takeovers[0].L).toEqual(L)
   })
 
-  it('fixExpression stores the character’s own keyframe (a full shape) — on either lid; a moved shared end needs the other lid too; clearFix restores the presets’ keyframes', () => {
+  it('fixExpression stores the character’s own keyframe (a full shape) — on either lid; moving a shared end alone moves the linked lid with it in the same step; clearFix restores the presets’ keyframes', () => {
     const e = openRecords(eyePlain(converted()))
     const inherited = play(e, 45, 1)
     const now = inherited['curve:lid']
@@ -139,9 +139,16 @@ describe('character commands on the sample', () => {
     const lowShape: Shape = { ...low, n: { p: { x: low.n.p.x, y: low.n.p.y + 0.3 }, hIn: low.n.hIn, hOut: low.n.hOut } }
     apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lowerLid': lowShape } })
     expect(maxDiff(play(e, 45, 1)['curve:lowerLid'], lowShape)).toBeLessThan(1e-12)
-    // moving the shared corner of one lid alone is refused (one shared point); giving both moves both
+    // moving the shared corner of one lid alone moves the linked lid's end with it (one shared point, one step, one
+    // undo — dot, review of 6eb9635 B2); the rest of the linked lid is unchanged; two given ends must agree
     const lift = (sh: Shape, a: string) => ({ ...sh, [a]: { p: { x: sh[a].p.x, y: sh[a].p.y + 1 }, hIn: { x: sh[a].hIn.x, y: sh[a].hIn.y + 1 }, hOut: { x: sh[a].hOut.x, y: sh[a].hOut.y + 1 } } })
-    refused(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b') } }, /curve:lid#b is linked to curve:lowerLid#d .*give curve:lowerLid's target too/)
+    const beforeLift = JSON.stringify(e.save())
+    apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b') } })
+    expect(play(e, 45, 1)['curve:lowerLid']).toEqual(lift(lowShape, 'd'))
+    expect(play(e, 45, 1)['curve:lid'].b.p).toEqual(play(e, 45, 1)['curve:lowerLid'].d.p)
+    expect(e.undo()).toBe(true)
+    expect(JSON.stringify(e.save())).toBe(beforeLift)
+    refused(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b'), 'curve:lowerLid': lowShape } }, /the given ends of .* differ: one shared point/)
     apply(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:lid': lift(shape, 'b'), 'curve:lowerLid': lift(lowShape, 'd') } })
     expect(play(e, 45, 1)['curve:lid'].b.p).toEqual(play(e, 45, 1)['curve:lowerLid'].d.p)
     refused(e, { type: 'fixExpression', character: K, param: 'blink', yaw: 45, keyframes: { 'curve:strand': play(e, 45, 1)['curve:strand'] } }, /does not act on curve:strand/)

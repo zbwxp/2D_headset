@@ -105,19 +105,43 @@ export function convertRuleExpressions(store: Raw) {
     }
 
   // ---- characters: every expression fix → the character's old evaluated shape at that yaw ----
+  // A character whose rule curves (closed over connections) carry fine-tune or takeovers showed its OWN neutral data in
+  // the old closed eye (the rule copied the character's lower lid). The new evaluation never carries character data
+  // into an expression state (that is I-2), so such a character keeps its old picture as explicit keyframes of both
+  // rule curves, marked `origin: 'converted'` — the old result, not an author's fix (dot, review of 6eb9635 B1):
+  // - the moved curve at the old key yaws (presets' keys ∪ fixes): rule(source neutral) + the old correction
+  // - the source curve at every yaw of its old grid: its neutral form (piecewise linear between them, as before)
   const ctx = rawCtx(store)
+  const sampleRaw = <T extends { yaw: number }>(keys: T[], y: number, at: (k: T) => Shape): Shape => {
+    if (y <= keys[0].yaw) return at(keys[0])
+    const last = keys[keys.length - 1]
+    if (y >= last.yaw) return at(last)
+    const i = keys.findIndex((k) => k.yaw >= y)
+    if (keys[i].yaw === y) return at(keys[i])
+    const t = (y - keys[i - 1].yaw) / (keys[i].yaw - keys[i - 1].yaw)
+    const s0 = at(keys[i - 1]), s1 = at(keys[i])
+    return Object.fromEntries(Object.keys(s0).map((k) => [k, Object.fromEntries(H.map((h) => [h, { x: s0[k][h].x + (s1[k][h].x - s0[k][h].x) * t, y: s0[k][h].y + (s1[k][h].y - s0[k][h].y) * t }]))])) as Shape
+  }
+  const zero = (s: Shape): Shape => Object.fromEntries(Object.keys(s).map((k) => [k, { p: { x: 0, y: 0 }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }])) as Shape
   for (const K of Object.values(store) as Raw[]) {
-    if (K?.typeName !== 'character' || !K.exprFixes?.length) continue
-    const fixes = (K.exprFixes as Raw[]).map((x) => {
+    if (K?.typeName !== 'character') continue
+    const famRules = rules.filter((r) => r.familyId === K.familyId)
+    if (!famRules.length) continue
+    const fixes = ((K.exprFixes ?? []) as Raw[]).map((x) => {
       const param = Object.entries(x.state as Record<string, number>).find(([k, v]) => k !== 'yaw' && v === 1)?.[0]
       if (!param) throw new Error(`migration: ${K.id} fix ${x.id} names no expression parameter`)
       const rule = ruleFor(K.familyId, param)
       if (!rule) throw new Error(`migration: ${K.id} fix ${x.id}: no rule binds ${K.familyId} / ${param}`)
       return { x, param, rule, yaw: x.state.yaw as number }
     })
-    // only the curves the old evaluation read for these fixes: the rules' source curves and what is linked to them
-    // (an unrelated identity-only curve elsewhere in the family must not block the conversion)
-    const needed = linkedClosure(store, fixes.map((f) => f.rule.roles.lower as string))
+    const touches = (closure: Set<string>) =>
+      Object.entries((K.fineTune ?? {}) as Record<string, Record<string, Raw>>).some(([c, ft]) => closure.has(c) && Object.values(ft).some((d) => ['dp', 'dIn', 'dOut'].some((h) => d[h]?.x || d[h]?.y))) ||
+      ((K.takeovers ?? []) as Raw[]).some((t) => (t.kind === 'line' ? closure.has(t.curveId) : (store[t.connectionId]?.ends ?? []).some((e: Raw) => closure.has(e.curveId))))
+    const baked = famRules.filter((r) => touches(linkedClosure(store, [r.roles.upper, r.roles.lower])))
+    if (!fixes.length && !baked.length) continue
+    // only the curves the old evaluation read for these: the rules' curves and what is linked to them (an unrelated
+    // identity-only curve elsewhere in the family must not block the conversion)
+    const needed = linkedClosure(store, [...fixes.map((f) => f.rule.roles.lower as string), ...baked.flatMap((r) => [r.roles.upper as string, r.roles.lower as string])])
     const view: Ctx = {
       ...ctx,
       get: (id) => {
@@ -128,13 +152,53 @@ export function convertRuleExpressions(store: Raw) {
         return r
       },
     }
-    const prep = prepareCharacter(view, K.id, { neutralOnly: true, extraYaws: fixes.map((f) => f.yaw) })
-    if (!prep.ok) throw new Error(`migration: ${K.id} cannot be evaluated to convert its expression fixes: ${prep.problems.join('; ')}`)
-    const exprFixes = fixes.map(({ x, param, rule, yaw }) => {
-      const src = prep.grid.curves[rule.roles.lower]?.neutral[prep.grid.yaws.indexOf(yaw)]
-      if (!src) throw new Error(`migration: ${K.id} fix ${x.id}: no source shape at ${yaw}`)
-      return { id: x.id, curveId: x.curveId, param, yaw, shape: plusDiff(oldRule(rule, src), x.target, x.base) }
-    })
+    // the WHOLE old grid (the old play interpolated on it): every family curve's neutral and expression key yaws in a
+    // participating preset, every takeover yaw (and 0), every fix yaw — the view above only narrows what is evaluated
+    const parts = Object.entries((K.weights ?? {}) as Record<string, number>).filter(([, w]) => w !== 0)
+    const famCurves = (store[K.familyId]?.curves ?? []) as string[]
+    const oldYaws = [
+      ...parts.flatMap(([p]) => famCurves.flatMap((c) => {
+        const f = store[presetFormsIdOf(p, c)]
+        return [...((f?.yaw ?? []) as Raw[]), ...Object.values((f?.expr ?? {}) as Record<string, Raw[]>).flat()].map((k) => k.yaw as number)
+      })),
+      ...((K.takeovers ?? []) as Raw[]).flatMap((t) => [t.state.yaw as number, 0]),
+      ...fixes.map((f) => f.yaw),
+    ]
+    const prep = prepareCharacter(view, K.id, { neutralOnly: true, extraYaws: oldYaws })
+    if (!prep.ok) {
+      if (fixes.length) throw new Error(`migration: ${K.id} cannot be evaluated to convert its expression fixes: ${prep.problems.join('; ')}`)
+      continue // the old evaluation failed too: there was no picture to keep
+    }
+    const g = prep.grid
+    const neutralAt = (c: string, y: number) => {
+      const i = g.yaws.indexOf(y)
+      if (i < 0 || !g.curves[c]) throw new Error(`migration: ${K.id}: no ${c} neutral at ${y}`)
+      return g.curves[c].neutral[i]
+    }
+    const exprFixes: Raw[] = fixes.map(({ x, param, rule, yaw }) => ({ id: x.id, curveId: x.curveId, param, yaw, shape: plusDiff(oldRule(rule, neutralAt(rule.roles.lower, yaw)), x.target, x.base) }))
+    for (const rule of baked) {
+      const up = rule.roles.upper as string, lo = rule.roles.lower as string, param = rule.param as string
+      const own = (c: string, y: number) => exprFixes.some((f) => f.curveId === c && f.param === param && f.yaw === y)
+      const add = (c: string, y: number, shape: Shape) => {
+        if (!own(c, y)) exprFixes.push({ id: `exprFix:${c}@${y}/${param}`, curveId: c, param, yaw: y, shape, origin: 'converted' })
+      }
+      // the moved curve: the old key yaws and the old correction there (old step 6: author → target − base, rule → 0,
+      // each preset's correction track resampled and weighted)
+      const keyYaws = [...new Set([...parts.flatMap(([p]) => ((store[presetFormsIdOf(p, up)]?.expr?.[param] ?? []) as Raw[]).map((k) => k.yaw as number)), ...fixes.filter((f) => f.rule === rule).map((f) => f.yaw)])].sort((a, b) => a - b)
+      for (const y of keyYaws) {
+        const base = oldRule(rule, neutralAt(lo, y))
+        let corr = zero(base)
+        for (const [p, w] of parts) {
+          const keys = (store[presetFormsIdOf(p, up)]?.expr?.[param] ?? []) as (Raw & { yaw: number })[]
+          if (!keys.length) continue
+          const c = sampleRaw(keys, y, (k) => (k.kind === 'author' ? plusDiff(zero(base), k.target, k.base) : zero(base)))
+          corr = plusDiff(corr, Object.fromEntries(Object.entries(c).map(([k, q]) => [k, Object.fromEntries(H.map((h) => [h, { x: q[h].x * w, y: q[h].y * w }]))])) as Shape, zero(base))
+        }
+        add(up, y, plusDiff(base, corr, zero(base)))
+      }
+      // the source curve: its neutral form at every yaw of its old grid
+      for (const y of g.yaws) add(lo, y, structuredClone(neutralAt(lo, y)))
+    }
     puts.push({ ...K, exprFixes })
   }
 
