@@ -47,9 +47,9 @@ How this section works:
 | Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
 | Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
 | Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
-| Closed curve | disappears only when | One of its segments is deleted or disconnected ("clear fill" is not "delete loop") | confirmed | dot 1791390455; bowen 1791390987 (Q18) |
+| Closed curve | becomes invalid when | Its boundary can no longer form a closed loop (adding a point, splitting or replacing a segment while staying closed keeps it; "clear fill" is not "delete loop") | confirmed | dot 1791390455, 1791391113 (wording); bowen 1791390987 (Q18) |
 | Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
-| Continuous curve | is drawn as | Its fills first, then all its lines together (no line-over-line order within the group) | confirmed | bowen 1791390897 (Q18) |
+| Continuous curve | is drawn as | Its fills first, then all its lines together (lines within the group use a stable drawing order; no separate occlusion relation) | confirmed | bowen 1791390897 (Q18) |
 | Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
 | Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
 | Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
