@@ -1321,3 +1321,34 @@ Which to look into further is bowen's call.
 ### Status
 
 **Waiting for dot's independent judgement, then bowen decides.**
+
+### Q11 follow-up: Even if it is C++, porting it one-to-one to TS shouldn't be hard, so can the constraints be relaxed?
+
+**bowen** 1791387509:
+> 就算是c++ 你们一比一复刻一个ts版的应该也不难吧？因此限制范围可以放宽？
+
+#### Facts (Claude cloned dalboris/vpaint (`--depth 1`) and measured it)
+
+**Size:**
+
+| Part | Size |
+|---|---|
+| VPaint's own code (`src/VAC`) | about **57.7k lines** of C++ in 193 files |
+| Third-party code (`src/Third`, maths libraries and others) | about 136k lines; not ported |
+| Topology core (`src/VAC/VectorAnimationComplex`: points, edges, faces, cycles, in-betweens) | about **27.9k lines** in 81 files |
+
+**Dependencies:** 44 of the 81 core files reference Qt (`QObject` / `QWidget` / `#include <Q…>`). Drawing uses OpenGL.
+
+**Edge geometry is not a Bézier with handles.** `EdgeGeometry.h` defines `LinearSpline`, a polyline through sampled points used to store hand-drawn strokes. Bézier appears only in fitting (`SculptCurve.h` CubicBezierFitter / QuarticBezierFitter). **This differs from bowen's base unit:** two endpoints and two handles.
+
+#### Judgement (Claude 1791387555)
+
+- **Port cost:** it is not a line-by-line translation; the Qt and OpenGL dependencies have to be removed along the way. After porting, those tens of thousands of lines become **our own code** with no one else maintaining them, which runs against "don't reinvent the wheel". The geometry layer would also have to change to Bézier.
+- **What to borrow from VPaint is its topology design:** how points, edges and faces are organised, how cycles and faces remember their boundaries, and how topology changes during animation. Treat it as a design reference.
+- **Relax the constraints separately:**
+  1. **As a research reference** (reading the design): C++ is fine; relax.
+  2. **As the editing base we use directly:** prefer something that runs natively in a web page and is still maintained. Otherwise we are writing it ourselves again.
+
+#### Status
+
+**Waiting for dot's independent judgement and bowen's decision.**
