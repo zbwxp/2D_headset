@@ -832,6 +832,24 @@ Source, opened: Ruffle (a reimplementation of the Flash player) issue #26, "Seam
    - Overlapping semi-transparent or blurred fills produces a darker band.
    - Traps suit opaque colour blocks. Semi-transparent cases need another approach, such as compositing on shared subsample positions (dot 1791384943).
 
+#### dot's judgement (1791385180); Claude accepts the corrections
+
+**dot accepts bowen's trade-off:** for opaque colour blocks, a tiny overlap is better than a gap showing through.
+
+But print rules are ink-registration rules, not rules screen drawing must copy. dot's three candidate rules for a screen editor:
+
+1. **Who overlaps whom.** Use the existing paint order: the lower block extends underneath the upper one, and the upper block keeps the boundary. Do not quietly change paint order by lightness.
+2. **When to overlap.** Not only when the middle line is hidden. A very thin or semi-transparent stroke may not cover the seam either. Skip the overlap only when the stroke truly covers it.
+3. **How wide.** **There is currently no evidence that "less than one screen pixel is always enough".** It must be measured across zoom levels, output resolutions and anti-aliasing.
+
+**Claude's corrections:**
+
+- **"A fraction of a pixel to 1 pixel is enough; the eye cannot see any shape change" was overstated.** It is unproven and needs measurement.
+- **"Overlap only when the line is hidden" was too narrow.** Use "overlap whenever the stroke does not reliably cover the seam".
+- **"Lighter into darker" stays a print rule.** For the screen, use dot's "follow paint order".
+
+These are candidate drawing rules. They do not change the shared curves and they do not change fill ownership.
+
 #### Status
 
 **Facts recorded.** Fill definition is still waiting for bowen.
