@@ -1074,12 +1074,11 @@
 
 ### 21.1 选择是会话数据，地址要完整
 - 选择**不进文档**（tldraw：选择在会话 / 页面状态里，dot 1791304613 核）。**是否进撤销是我们的产品选择，不归给成熟来源**：tldraw 对选择另有一套不清空 redo 的历史处理，不能说成「tldraw 选择不参与撤销」（dot）。我们的提议：选择变化不单独占撤销步，撤销一次编辑时恢复该编辑前的选择——〔产品选择，待定；**不纳入本轮实施**（dot 1791304928）〕。
-  - **定（bowen 1791336689「看成熟方案」）：照 tldraw 做**。源码核对（tldraw v3.15.0）：
-    - `Editor.setSelectedShapes` 以 `history: 'record-preserveRedoStack'` 记录，含义是「进撤销栈、不清空重做栈」（`types/history-types.ts`）；
-    - 选择工具每次点选 / 加选 / 取消选择前调用 `markHistoryStoppingPoint`（`SelectTool/childStates/PointingShape.ts`）；
-    - `HistoryManager._undo` 撤到上一个停止点。
+  - **定（bowen 1791336689「看成熟方案」；dot 1791336895）：照 Inkscape 做**。两家成熟工具做法不同，选更贴近绘图软件的一家：
+    - **Inkscape 1.4.2**：选择工具点选时直接 `selection->set / toggle`，不调用 `DocumentUndo::done`；该文件里唯一的 `DocumentUndo::undo` 是拖动中按 Esc 取消（`src/ui/tools/select-tool.cpp`，约 140、588–620 行）。所以点选、框选不占撤销步；撤销修改时保留仍有效的当前选择，清掉已不存在的对象；不另外承诺恢复历史选区。
+    - **tldraw v3.15.0**（对照，未采用）：选择会进历史。`Editor.setSelectedShapes` 以 `record-preserveRedoStack` 记录（进撤销栈、不清空重做）；`PointingShape.ts` 点选前 `markHistoryStoppingPoint`；`HistoryManager._undo` 撤到上一个停止点。
 
-    所以：**每次点选是单独一步撤销**；选择变化**不清空重做**；撤销一次编辑时，选择也回到那一步的样子。原「不单独占撤销步」的提议作废。Figma / Illustrator 的做法未核，不作依据。实现等接界面时做。
+    两家做法不同，不能说成同一种。实现等接界面时做。
 - 一个选中项 = **地址**：容器 / 曲线 / 锚点 / 手柄，以及**经过哪个引用实例**（现有地址格式已有：`reference:R1/curve:E1`，`evaluate.ts:18`；命中结果带 `referenceId`，`evaluate.ts:290-292`）。
 - 祖先被选中时，子项从选择里**去重**（tldraw groups 的做法）。
 - Fabric 只提供交互（拖框、变换框），**不等于我们的框选语义已验证**（dot）。框选规则（全包含还是相交、是否穿透到引用里）**暂缓**（dot 1791304700）。
