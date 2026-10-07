@@ -1,7 +1,7 @@
-// KF-3 experiment (doc 18 §26.1 v3): reference-instance cache entries live exactly as long as their MEMBERSHIP —
+// KF-3 (doc 18 §26.1 v3; experiment 15deba2 → ff25632, reviewed by dot; used by `Derived` for its reference-instance
+// cache): reference-instance cache entries live exactly as long as their MEMBERSHIP —
 // reference exists, its source container exists, the curve exists, and the curve lies (through its parent chain)
 // inside that source.
-// Independent module: the product cache (`Derived.instances`) is not touched until this is reviewed.
 //
 // Mature reference: @tldraw/store `createCache` keys entries by the record's own atom in a WeakCache
 // (v5.5.2 dist-cjs/lib/Store.js:703-727), so an entry dies with its record. We need a countable table
@@ -19,8 +19,8 @@
 // memory measure (the shared budget is a separate count).
 import { unsafe__withoutCapture } from '@tldraw/state'
 import { AtomMap } from '@tldraw/store'
-import { referencesOf, within } from '../indexes'
-import type { ContainerRecord, CurveRecord, DocStore, ReferenceRecord } from '../schema'
+import { referencesOf, within } from './indexes'
+import type { ContainerRecord, CurveRecord, DocRecord, DocStore, ReferenceRecord } from './schema'
 
 export const lifecycleCounters = { membershipChecks: 0 }
 
@@ -77,7 +77,10 @@ export class InstanceTable<V> {
   }
   /** Full reconciliation — after `loadStoreSnapshot` (side effects were off), or as a fallback. */
   reconcile() {
-    for (const ref of unsafe__withoutCapture(() => [...this.#byRef.keys()])) this.#check(ref)
+    // never makes a caller (e.g. a computed list) depend on the membership reads done here
+    unsafe__withoutCapture(() => {
+      for (const ref of [...this.#byRef.keys()]) this.#check(ref)
+    })
   }
   dispose() {
     for (const d of this.#disposers.splice(0)) d()
@@ -104,7 +107,10 @@ export class InstanceTable<V> {
     const ref = this.store.get(refId as any) as ReferenceRecord | undefined
     // membership needs the reference AND its source container to exist: `within` starts from the id it is given even
     // when that record is gone, and would still collect the curves whose parentId points at it (dot, review of 15deba2)
-    if (!ref || !this.store.get(ref.sourceId as any)) return this.#drop(refId)
+    // only validated records are expected here; a source id that names a record of another type counts as missing
+    // (dot, review of ff25632: type guard)
+    const src = this.store.get(ref?.sourceId as any) as DocRecord | undefined
+    if (!ref || src?.typeName !== 'container') return this.#drop(refId)
     const members = new Set<string>(within(this.store, ref.sourceId, 'curve'))
     const kept = [...inner].filter(([c]) => members.has(c))
     if (kept.length === inner.size) return

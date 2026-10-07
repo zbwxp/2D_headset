@@ -1,9 +1,13 @@
 // KF-3 experiment (doc 18 §26.1 v3): instance entries follow membership, observable as soon as the write returns —
-// never by first reading the whole table. Independent module `src/experiments/instanceLifecycle.ts`.
+// never by first reading the whole table. Module `src/instanceLifecycle.ts` (was `src/experiments/`; moved when wired
+// into `Derived` — only this import path changed in the existing tests).
 import { transaction } from '@tldraw/state'
 import { reverseRecordsDiff } from '@tldraw/store'
 import { describe, expect, it } from 'vitest'
-import { InstanceTable, lifecycleCounters } from '../src/experiments/instanceLifecycle'
+import { counters } from '../src/counters'
+import { Derived } from '../src/derived'
+import { Editor } from '../src/editor'
+import { InstanceTable, lifecycleCounters } from '../src/instanceLifecycle'
 import { exampleRecords, ids } from '../src/fixture'
 import { Container, createDocStore, Curve, Reference, type DocRecord } from '../src/schema'
 
@@ -195,5 +199,83 @@ describe('KF-3 experiment: the source container must exist (dot, review of 15deb
     expect(t.size).toBe(0)
     s.put([source])
     expect(t.get(ids.R1, ids.E1)).not.toBe(old)
+  })
+})
+
+describe('KF-3 in the product Derived (dot, review of ff25632: controlled integration)', () => {
+  it('dot’s original KF-3 scenario: 20 raw put / read / remove cycles — 1 entry before any whole read, and after', () => {
+    const s = createDocStore()
+    s.put(exampleRecords())
+    const d = new Derived(s, s, { yawRetainedItems: 1 })
+    d.evaluated()
+    for (let i = 0; i < 20; i++) {
+      const r = ref(`dot${i}`)
+      s.put([r])
+      d.instance(r.id, ids.E1)
+      s.remove([r.id])
+      d.curve(ids.C1)
+    }
+    expect(d.instanceCacheSize).toBe(1)
+    d.evaluated()
+    expect(d.instanceCacheSize).toBe(1)
+  })
+
+  it('previews never write the table, and the committed list is unchanged by a preview', () => {
+    const e = new Editor(exampleRecords())
+    const before = e.derived.evaluated()
+    const n = e.derived.instanceCacheSize
+    const pv = e.preview({ type: 'moveOverride', referenceId: ids.R1, target: { curveId: ids.E1, anchorId: 'e1' }, delta: { x: 1, y: 2 } } as any)
+    expect(pv.ok).toBe(true)
+    if (pv.ok) e.derived.preview(pv.puts, e.derived.previewChanges(pv.puts, pv.removals))
+    const dup = e.preview({ type: 'duplicate', ids: [ids.R1] } as any)
+    if (dup.ok) e.derived.preview(dup.puts, e.derived.previewChanges(dup.puts, dup.removals))
+    expect(e.derived.instanceCacheSize).toBe(n)
+    expect(e.derived.evaluated()).toBe(before)
+  })
+
+  it('save → reopen: the reopened table matches; a rolled-back batch leaves no entry for the record it created', () => {
+    const e = new Editor(exampleRecords())
+    e.derived.evaluated()
+    const n = e.derived.instanceCacheSize
+    const again = Editor.open(JSON.parse(JSON.stringify(e.save())))
+    again.derived.evaluated()
+    expect(again.derived.instanceCacheSize).toBe(n)
+    expect(() =>
+      e.batch('rolled', () => {
+        const r = e.apply({ type: 'duplicate', ids: [ids.R1] } as any)
+        if (!r.ok) throw new Error('duplicate failed')
+        e.derived.instance(r.affected[0] as any, ids.E1)
+        expect(e.derived.instanceCacheSize).toBe(n + 1)
+        throw new Error('boom')
+      }),
+    ).toThrow('boom')
+    expect(e.derived.instanceCacheSize).toBe(n)
+    expect(e.reader.get(Reference.createId('R1~copy') as any)).toBeUndefined()
+  })
+
+  it('an edit to a curve no reference shows re-evaluates no instance; the angle budget is not touched by instance churn', () => {
+    const e = new Editor(exampleRecords().map((r) => (r.id === ids.L2 ? { ...r, locked: false } : r)))
+    e.derived.evaluated()
+    const evals = counters.instanceEvals
+    expect(e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 0, offsets: { a2: { x: 1, y: 1 } } }).ok).toBe(true)
+    e.derived.evaluated()
+    expect(counters.instanceEvals - evals).toBe(0)
+    const used = e.derived.yawRetainedItems.used
+    const r = e.apply({ type: 'duplicate', ids: [ids.R1] } as any)
+    expect(r.ok).toBe(true)
+    e.derived.evaluated()
+    e.undo()
+    e.derived.evaluated()
+    expect(e.derived.yawRetainedItems.used).toBe(used)
+  })
+
+  it('dispose unregisters the side effects of the product table', () => {
+    const s = createDocStore()
+    s.put(exampleRecords())
+    const d = new Derived(s, s)
+    d.instance(ids.R1, ids.E1)
+    d.dispose()
+    s.remove([ids.R1])
+    expect(d.instanceCacheSize).toBe(1)
   })
 })

@@ -341,6 +341,8 @@ export class Editor {
     try {
       // a copy: the stored records get frozen, the caller's snapshot must not
       editor.#store.loadStoreSnapshot(structuredClone(snapshot))
+      // a snapshot load runs with store side effects off: reconcile the reference-instance table (KF-3)
+      editor.derived.reconcileInstances()
       for (const r of editor.#store.allRecords()) deepFreeze(r)
       problems = graphProblems(editor.reader)
     } catch (e) {

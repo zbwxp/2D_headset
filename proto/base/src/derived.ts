@@ -16,6 +16,7 @@
 import { computed, type Computed } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { counters } from './counters'
+import { InstanceTable } from './instanceLifecycle'
 import { boundaryRefsOf, byKey, fillCubics, evalCurve, evaluate, fromPaint, IDENTITY, KEY_SEP, paintKey, type Cubic, type EvalCurve, type EvalFill, type Evaluated, type PaintInput } from './evaluate'
 import { fillsUsing, referencesOf, within } from './indexes'
 import { containerChain, effectivelyVisible, lockedBy } from './model'
@@ -220,8 +221,12 @@ export type PreviewChanges = { fallback: false; items: Map<string, EvalCurve | E
 export class Derived {
   private readonly curves
   private readonly fills
-  /** reference × source curve; document-sized (not evicted), pruned to current membership by `all` */
-  private readonly instances = new Map<string, Computed<EvalCurve>>()
+  /**
+   * reference × source curve; document-sized (not evicted). Entries live exactly as long as their membership,
+   * pruned by the store's synchronous side effects as each write returns and rolled back with the records
+   * (KF-3, doc 18 §26.1; `instanceLifecycle.ts`). `all` still reconciles as a fallback only.
+   */
+  private readonly instances: InstanceTable<Computed<EvalCurve>>
   /** The one limit on retained result items of all angle caches; not a byte budget. */
   readonly yawRetainedItems: SharedBudget
   private readonly all: Computed<Evaluated>
@@ -256,6 +261,12 @@ export class Derived {
     opts: { yawRetainedItems?: number } = {},
   ) {
     this.yawRetainedItems = new SharedBudget(opts.yawRetainedItems ?? 262_144, () => counters.yawEvictions++)
+    this.instances = new InstanceTable<Computed<EvalCurve>>(store, (r, c) =>
+      computed(`instance:${r.id}/${c.id}`, () => {
+        counters.instanceEvals++
+        return instanceItem(store, store.get(r.id) as ReferenceRecord, store.get(c.id) as CurveRecord)
+      }),
+    )
     this.characters = new KeyedComputedCache<Prepared>(
       this.yawRetainedItems,
       (id) =>
@@ -345,15 +356,13 @@ export class Derived {
     // The assembled list: maps the order to the CURRENT cached items. After a geometry change it
     // re-collects references to the cached items (the order is reused); nothing is sorted here.
     this.all = computed('evaluated', () => {
-      const used = new Set<string>()
       const paint: PaintInput[] = this.order.get().map((e) => {
         if (e.kind === 'fill') return { kind: 'fill', item: this.fill(e.address as FillRecord['id'])! }
         if (!e.refId) return { kind: 'curve', item: this.curve(e.address as CurveRecord['id'])! }
-        used.add(e.address)
         return { kind: 'curve', item: this.instance(e.refId, e.curveId!) }
       })
-      // prune instance entries no longer in the document (membership is document-sized)
-      for (const k of [...this.instances.keys()]) if (!used.has(k)) this.instances.delete(k)
+      // fallback only: the side effects already keep the table at current membership (KF-3)
+      this.instances.reconcile()
       counters.assembledItems += paint.length
       return fromPaint(paint)
     })
@@ -366,17 +375,7 @@ export class Derived {
     return this.fills.get(id)
   }
   instance(refId: ReferenceRecord['id'], curveId: CurveRecord['id']) {
-    const key = `${refId}/${curveId}`
-    let c = this.instances.get(key)
-    if (!c) {
-      const store = this.store
-      c = computed(`instance:${key}`, () => {
-        counters.instanceEvals++
-        return instanceItem(store, store.get(refId) as ReferenceRecord, store.get(curveId) as CurveRecord)
-      })
-      this.instances.set(key, c)
-    }
-    return c.get()
+    return this.instances.get(refId, curveId).get()
   }
   /** One curve (base address or `reference/curve` instance address) at `yaw`. Cached, bounded. */
   curveAt(address: string, yaw: number) {
@@ -437,8 +436,17 @@ export class Derived {
   evaluated(): Evaluated {
     return this.all.get()
   }
+  /** entries of the base reference-instance table (not a memory measure; the angle budget is a separate count) */
   get instanceCacheSize() {
     return this.instances.size
+  }
+  /** after a snapshot load (side effects were off) — and on request */
+  reconcileInstances() {
+    this.instances.reconcile()
+  }
+  /** unregister the store side effects (the Derived is no longer used) */
+  dispose() {
+    this.instances.dispose()
   }
 
   /**
