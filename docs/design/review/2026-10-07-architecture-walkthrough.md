@@ -2110,7 +2110,23 @@ The rule holds. There are two distinct actions:
 - The outer loop's two arcs still exist, so the loop stays valid and **keeps its fill**.
 - How it draws now that it passes through one point twice is "爱怎么填怎么填": no special handling, and no automatic deletion.
 
+### bowen's decision (1791391694)
+
+> 2造成了单独bezier曲线成环的情况，这是我没想过的 也几乎不会用到 但是为了工具的一致性 我会认为这样成立 这也是唯一制作单线成环的方法。 3也不失效 这也作为一种特殊的编辑方法。基本上不会用但是为了工具一致性保留
+
+- **Case 2 holds.** The remaining single curve, with both ends on one point, is a closed curve and keeps its fill.
+  - This is the only way to make a single-curve loop.
+  - Binding a free curve's own two ends deletes it.
+- **Case 3 does not invalidate the loop.** It is kept as a special editing method, for tool consistency.
+
+### Claude (1791391716): one ambiguity in case 2
+
+- In a 2-segment loop, both s1 and s2 have A and B as their ends. "Bind A and B" alone cannot tell which segment to delete.
+- v103 avoids this: an endpoint is `{curveId, end}`, a curve end rather than a point.
+- **Proposal:** binding acts on curve ends. Where several curves share a position, the end the user clicked decides which curve is meant.
+- **Status: waiting for bowen.**
+
 ### Status
 
-Only case 2 is left for bowen. The binding rule is not written to the graph yet; it belongs to the endpoint round.
+Cases 2 and 3 decided by bowen. The curve-end question waits for bowen. The binding rule goes to the graph in the endpoint round.
 
