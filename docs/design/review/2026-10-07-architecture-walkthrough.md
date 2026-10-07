@@ -1341,7 +1341,7 @@ Which to look into further is bowen's call.
 
 **Edge geometry is not a Bézier with handles.** `EdgeGeometry.h` defines `LinearSpline`, a polyline through sampled points used to store hand-drawn strokes. Bézier appears only in fitting (`SculptCurve.h` CubicBezierFitter / QuarticBezierFitter). **This differs from bowen's base unit:** two endpoints and two handles.
 
-#### Judgement (Claude 1791387555)
+#### Judgement (Claude 1791387583)
 
 - **Port cost:** it is not a line-by-line translation; the Qt and OpenGL dependencies have to be removed along the way. After porting, those tens of thousands of lines become **our own code** with no one else maintaining them, which runs against "don't reinvent the wheel". The geometry layer would also have to change to Bézier.
 - **What to borrow from VPaint is its topology design:** how points, edges and faces are organised, how cycles and faces remember their boundaries, and how topology changes during animation. Treat it as a design reference.
