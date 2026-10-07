@@ -38,6 +38,8 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button id="fileOpen" title="打开 (⌘O)" onClick={() => void ui.files.open()}>打开</button>
         <button id="fileSave" title="保存 (⌘S)" onClick={() => void ui.files.save()}>保存</button>
         <button id="fileSaveAs" title="另存为 (⇧⌘S)" onClick={() => void ui.files.save(true)}>另存为</button>
+        <button id="exportPng" title="导出 PNG（画面内容，2 倍，透明底）" onClick={() => void ui.files.exportAs('png', view)}>导出 PNG</button>
+        <button id="exportSvg" title="导出 SVG（矢量）" onClick={() => void ui.files.exportAs('svg', view)}>SVG</button>
         <span id="fileName" className="file" title={dirty ? '有未保存的修改' : '已保存'}>{dirty ? '● ' : ''}{fileName ?? '未命名'}</span>
       </div>
       <div className="group">

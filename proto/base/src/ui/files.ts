@@ -107,6 +107,25 @@ export class Files {
     return true
   }
 
+  /**
+   * Export (File › Export): the drawing as PNG (2× its size, transparent) or SVG — written as a separate file; the
+   * document's own file, name and saved state are untouched.
+   */
+  async exportAs(kind: 'png' | 'svg', view: { exportBlob: (kind: 'png' | 'svg') => Promise<Blob | null> }): Promise<boolean> {
+    const blob = await view.exportBlob(kind)
+    if (!blob) return this.status('导出：画面上没有可见的内容'), false
+    const base = (this.name.get() ?? '未命名').replace(/\.contour\.json$|\.json$/, '')
+    try {
+      await this.io.save(blob, { fileName: `${base}.${kind}`, extensions: [`.${kind}`], description: kind.toUpperCase(), mimeTypes: [kind === 'png' ? 'image/png' : 'image/svg+xml'] })
+      this.status('')
+      return true
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return false
+      this.status(`导出失败：${String((e as Error)?.message ?? e)}`)
+      return false
+    }
+  }
+
   /** leaving the page with unsaved changes asks first (beforeunload) */
   guardUnload(target: Window = window) {
     target.addEventListener('beforeunload', (e) => {

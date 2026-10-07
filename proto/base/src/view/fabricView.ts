@@ -23,6 +23,7 @@ import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, mas
 import { getIndexAbove, getIndexBetween, type IndexKey } from '@tldraw/utils'
 import { faceAt, outlineOf, sameFill } from '../fills'
 import { snapPoint, type Snap } from '../snap'
+import { drawingBounds, toSVG } from '../export'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
 import { anchorKey, containerChain, linkedAnchors, lockedBy, type AnchorRef } from '../model'
@@ -1064,6 +1065,19 @@ export class FabricView {
     const r = this.applyAndLog({ type: 'createContainer', parentId: null })
     if (r.ok && r.written) this.selection.set([r.affected[0]])
     return r
+  }
+
+  /** the drawing as an exported file (export.ts): PNG through the reference renderer without aids, 2×; or SVG */
+  async exportBlob(kind: 'png' | 'svg', scale = 2): Promise<Blob | null> {
+    const ev = this.editor.derived.evaluated()
+    const box = drawingBounds(ev)
+    if (!box) return null
+    if (kind === 'svg') return new Blob([toSVG(ev, box)], { type: 'image/svg+xml' })
+    const el = document.createElement('canvas')
+    el.width = Math.max(1, Math.ceil(box.w * scale))
+    el.height = Math.max(1, Math.ceil(box.h * scale))
+    new Canvas2DRef(el).draw([scale, 0, 0, scale, -box.x * scale, -box.y * scale], 1, ev, [], { aids: false })
+    return new Promise((resolve) => el.toBlob((b) => resolve(b), 'image/png'))
   }
 
   /** remove a shared node (the properties panel's 断开连接) */

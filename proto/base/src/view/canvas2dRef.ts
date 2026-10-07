@@ -47,7 +47,9 @@ export class Canvas2DRef {
   }
 
   /** Repaint the whole frame. `vpt` is Fabric's viewport transform, `dpr` its retina scaling. */
-  draw(vpt: number[], dpr: number, ev: Evaluated, onions: Evaluated[]) {
+  draw(vpt: number[], dpr: number, ev: Evaluated, onions: Evaluated[], opts: { aids?: boolean } = {}) {
+    // editor aids (anchor dots, locked lines in grey) — off for an export (the drawing as it is)
+    const aids = opts.aids !== false
     const ctx = this.el.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.el.width, this.el.height)
@@ -80,7 +82,7 @@ export class Canvas2DRef {
         const c = p.item
         const st = inkStyle(c)
         const draw = (l: CanvasRenderingContext2D) => {
-          l.strokeStyle = c.locked ? '#999' : c.stroke.color
+          l.strokeStyle = c.locked && aids ? '#999' : c.stroke.color
           l.lineWidth = st.width
           l.lineCap = st.cap
           l.lineJoin = st.join
@@ -98,6 +100,7 @@ export class Canvas2DRef {
       ctx.arc(x, y, r, 0, Math.PI * 2)
       ctx.fill()
     }
+    if (!aids) return
     for (const c of curves) {
       if (c.locked) continue
       for (const a of Object.values(c.anchors)) {
