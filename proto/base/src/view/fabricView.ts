@@ -797,9 +797,12 @@ export class FabricView {
   // copy is also kept in the page so paste works where the browser does not grant clipboard reading ----
   private clip: string | null = null
 
-  /** ⌘C: the selection's content to the clipboard; a refusal (a fill without its curves …) is said */
-  async copy() {
-    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+  /**
+   * ⌘C: the selection's content to the clipboard; a refusal (a fill without its curves …) is said. The content is taken
+   * when the copy STARTS (dot: asynchronous operations fix their objects at the start).
+   */
+  async copy(ids: readonly string[] = this.selection.get()) {
+    ids = ids.filter((id) => this.editor.reader.get(id as any))
     if (!ids.length) return false
     const c = contentOf(this.editor.reader, ids)
     if ('error' in c) return this.setStatus(`${c.error.code}: ${c.error.message}`), false
@@ -812,15 +815,33 @@ export class FabricView {
     this.setStatus('')
     return true
   }
-  /** ⌘X: copy, then delete (the delete is the undo step) */
+  /**
+   * ⌘X: copy, then delete (the delete is the undo step). The objects are the ones selected when the cut STARTED; the
+   * delete happens only if the document did not change while the clipboard was written (another document opened, any
+   * edit) — otherwise the copy stands, nothing is deleted, and the status says so (dot, review of 7538032).
+   */
   async cut() {
-    if (await this.copy()) this.deleteSelection()
+    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+    if (!ids.length) return null
+    const epoch = this.editor.documentEpoch, revision = this.editor.revision
+    if (!(await this.copy(ids))) return null
+    if (this.editor.documentEpoch !== epoch || this.editor.revision !== revision) {
+      this.setStatus('剪切：复制完成时文档已经变了，没有删除（内容已复制）')
+      return null
+    }
+    return this.deleteSelection(ids)
   }
   /**
    * ⌘V: at the centre of the view; ⇧⌘V (`inPlace`): where it was (Illustrator Paste / Paste in Place). Into the current
-   * layer, on top; the pasted objects become the selection.
+   * layer, on top; the pasted objects become the selection. The layer and the view are taken when the paste STARTS; a
+   * paste whose document was replaced meanwhile does nothing.
    */
   async paste(inPlace = false) {
+    const epoch = this.editor.documentEpoch
+    const layer = this.targetLayer()
+    if (typeof layer !== 'string') return this.setStatus(layer.error), null
+    const inv = util.invertTransform(this.canvas.viewportTransform)
+    const centreOfView = util.transformPoint(new Point(this.canvas.getWidth() / 2, this.canvas.getHeight() / 2), inv)
     let text = this.clip
     try {
       const t = await navigator.clipboard?.readText()
@@ -828,17 +849,12 @@ export class FabricView {
     } catch {
       // not granted: the page copy
     }
+    if (this.editor.documentEpoch !== epoch) return this.setStatus('粘贴：读取剪贴板时已经打开了别的文档，没有粘贴'), null
     const content = text ? parseContent(text) : null
     if (!content) return this.setStatus('剪贴板里没有可以粘贴的图形'), null
-    const layer = this.targetLayer()
-    if (typeof layer !== 'string') return this.setStatus(layer.error), null
     let offset = { x: 0, y: 0 }
     const centre = contentCentre(content)
-    if (!inPlace && centre) {
-      const inv = util.invertTransform(this.canvas.viewportTransform)
-      const v = util.transformPoint(new Point(this.canvas.getWidth() / 2, this.canvas.getHeight() / 2), inv)
-      offset = { x: round(v.x - centre.x), y: round(v.y - centre.y) }
-    }
+    if (!inPlace && centre) offset = { x: round(centreOfView.x - centre.x), y: round(centreOfView.y - centre.y) }
     const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset })
     if (r.ok && r.written) this.selection.set(r.affected.filter((id) => (this.editor.reader.get(id as any) as { parentId?: string } | undefined)?.parentId === layer))
     return r
@@ -1044,8 +1060,8 @@ export class FabricView {
     return this.applyAndLog({ type: 'transformItems', ids, matrix: { a: 1, b: 0, c: 0, d: 1, e: dx, f: dy } })
   }
   /** Delete / Backspace: remove the selection (selection.ts `deletionSetOf`); a refusal names what still depends */
-  deleteSelection() {
-    const ids = this.selection.get().filter((id) => this.editor.reader.get(id as any))
+  deleteSelection(of: readonly string[] = this.selection.get()) {
+    const ids = of.filter((id) => this.editor.reader.get(id as any))
     if (!ids.length || this.vGesture || this.drag) return null
     const r = this.applyAndLog({ type: 'deleteRecords', ids: deletionSetOf(this.editor.reader, ids) })
     if (r.ok) this.selection.clear()

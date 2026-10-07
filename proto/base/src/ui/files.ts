@@ -11,6 +11,9 @@ import type { Selection } from '../selection'
 const EXT = '.contour.json'
 const TYPES = { description: 'Contour 文档', extensions: [EXT, '.json'], mimeTypes: ['application/json'] }
 
+/** the file dialogs / writes (browser-fs-access); replaceable so a test can delay them */
+export type FileIo = { open: typeof fileOpen; save: typeof fileSave }
+
 export class Files {
   /** the open file's name (null = never saved) */
   readonly name = atom<string | null>('file name', null)
@@ -22,15 +25,23 @@ export class Files {
     private readonly status: (s: string) => void,
     /** asked before unsaved changes are discarded (window.confirm in the page) */
     private readonly confirmDiscard: () => boolean = () => window.confirm('当前文档有未保存的修改，确定放弃吗？'),
+    readonly io: FileIo = { open: fileOpen, save: fileSave },
   ) {}
 
   /** ⌘S (or ⇧⌘S = `as`): write the document; returns false when cancelled or failed (the document stays unsaved) */
   async save(as = false): Promise<boolean> {
+    // what is written and to which file are fixed when the save STARTS; if another document is opened before the write
+    // finishes, the finished save does not touch that document's name, file or saved state (dot, review of 7538032)
+    const epoch = this.editor.documentEpoch
     const revision = this.editor.revision
     const snapshot = this.editor.reader.getStoreSnapshot('document')
     const blob = new Blob([JSON.stringify(snapshot, null, 1)], { type: 'application/json' })
     try {
-      const handle = await fileSave(blob, { fileName: this.name.get() ?? `未命名${EXT}`, ...TYPES }, as ? null : this.handle)
+      const handle = await this.io.save(blob, { fileName: this.name.get() ?? `未命名${EXT}`, ...TYPES }, as ? null : this.handle)
+      if (this.editor.documentEpoch !== epoch) {
+        this.status('保存完成，但期间已打开另一个文档：当前文档的文件和保存状态没有改动')
+        return true
+      }
       if (handle) {
         this.handle = handle
         this.name.set(handle.name)
@@ -48,16 +59,27 @@ export class Files {
   /** ⌘O: read a file and replace the document (checked like any open; a bad file changes nothing and says why) */
   async open(): Promise<boolean> {
     if (this.editor.isDirty && !this.confirmDiscard()) return false
+    const asked = { epoch: this.editor.documentEpoch, revision: this.editor.revision }
     let file: File & { handle?: FileSystemFileHandle }
     try {
-      file = await fileOpen(TYPES)
+      file = await this.io.open(TYPES)
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return false
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
       return false
     }
+    let snapshot: any
     try {
-      this.editor.load(JSON.parse(await file.text()))
+      snapshot = JSON.parse(await file.text())
+    } catch (e) {
+      this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
+      return false
+    }
+    // edits made while the dialog was open are new unsaved changes: ask again (never discarded silently)
+    const changed = this.editor.documentEpoch !== asked.epoch || this.editor.revision !== asked.revision
+    if (changed && this.editor.isDirty && !this.confirmDiscard()) return false
+    try {
+      this.editor.load(snapshot)
     } catch (e) {
       this.status(`打开失败：${String((e as Error)?.message ?? e)}`)
       return false

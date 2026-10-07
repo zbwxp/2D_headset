@@ -330,6 +330,15 @@ export class Editor {
     return snap
   }
 
+  #documentEpoch = 0
+  /**
+   * Which document this is: +1 every time `load` replaces it. An asynchronous operation (save, cut, paste) records it
+   * when it starts and checks it when it finishes, so it never acts on a document opened in between.
+   */
+  get documentEpoch() {
+    return this.#documentEpoch
+  }
+
   /** The file was written at `revision` (a save that can fail marks the document saved only when the write succeeds). */
   markSaved(revision: number) {
     this.#saved.set(revision)
@@ -341,6 +350,7 @@ export class Editor {
    */
   load(snapshot: StoreSnapshot<DocRecord>) {
     Editor.open(snapshot) // throws `invalid document: …` before anything is touched
+    this.#documentEpoch++
     transaction(() => {
       this.#generation++ // prepared operations started on the old document are stale
       this.#store.loadStoreSnapshot(structuredClone(snapshot))
