@@ -2277,7 +2277,15 @@
 
 
 ### 30.19 多线面的普通流程（dot 1791354048：先把流程定清，不再改版本号；参照 Illustrator 实时上色组）
-Illustrator：「建立实时上色」把选中的路径放进一个实时上色组；面的颜色是这个组的外观；路径还是原来那些路径；V 选中的是整个组，直接选择工具改单条路径，面会跟着重新计算（<https://helpx.adobe.com/illustrator/using/live-paint-groups.html>）。
+Illustrator（About Live Paint，<https://helpx.adobe.com/illustrator/desktop/paint-and-fill/learn-painting-basics/about-live-paint.html>，已打开核对）：
+- 颜色挂在实时上色组的「面」和「边」上，不挂在定义它们的路径上（"Fill and paint attributes are attached to faces and edges of a Live Paint group, not to the actual paths"）；
+- 组里每条路径都可以照常编辑；改了路径，颜色会自动重新落到新形成的区域上；
+- 组里的路径被当作在同一个平面上，彼此没有前后；面由路径的交点划分出来。
+
+**和 Illustrator 的差别（标出）**：
+- 我们的面引用的是整段线段、在锚点处相接，不按交点自动划分；
+- 组里的曲线保留各自的先后顺序，不压平到同一个平面；
+- 面的颜色是记在组里的 `FillRecord`，而不是 Illustrator 那种重新计算出来的面。
 
 **例子：三条开放线 a、b、c 首尾相接，围成一个三角形**
 
