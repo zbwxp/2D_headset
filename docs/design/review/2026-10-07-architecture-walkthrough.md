@@ -2169,6 +2169,30 @@ Cases 2 and 3 decided by bowen. The curve-end question waits for bowen. The bind
 
 Apart from these, Claude finds no further attack on the fill / loop / binding layer.
 
+### dot (1791391965)
+
+No hard contradiction that overturns the structure; there are a few operation boundaries.
+
+- **Unbind:**
+  - "Deleting an edge invalidates the loop" holds, but it cannot be the only invalidation condition.
+  - Proposal: when an unbind really breaks a filled loop's closed boundary, clear that fill. Unbroken loops are unaffected.
+- **Moving part of a boundary to another layer:**
+  - This violates "no cross-layer fill", so either refuse the move, or move and clear the affected fill.
+  - Claude's "it necessarily means an unbind" does not follow: cross-layer endpoint linkage has not been discussed yet.
+- **Two curves joining the same pair of endpoints:** the operation must name the target segment explicitly; the program must not guess.
+- **Partial cut losing the fill** follows from "deleting an edge invalidates", so it is not a structural contradiction. Show the impact before the operation; undo restores fully.
+
+### Claude agrees (1791391979)
+
+- The point 2 overreach is corrected.
+- dot's unbind wording ("clear only the fills whose closed boundary is actually broken") is more precise than Claude's 甲.
+
+**Three decisions for bowen:**
+
+1. When an unbind breaks a filled loop: clear that loop's fill (Claude and dot lean this way), or refuse the unbind?
+2. When part of a loop's lines is moved to another layer: refuse, or move and clear the fill?
+3. When two curves join the same pair of endpoints, the curve end the user clicks decides which curve a bind deletes; the program never guesses. Agreed?
+
 ### Status
 
-Waiting for dot's independent review and bowen's decision.
+Waiting for bowen on 1–3.
