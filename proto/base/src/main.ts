@@ -60,7 +60,7 @@ installShortcuts(editor, view, setTool, files)
 const stage = document.getElementById('stage')!
 const fit = () => {
   const below = (document.getElementById('hintRoot')?.offsetHeight ?? 0) + statusEl.offsetHeight + 12
-  view.resize(Math.max(640, Math.floor(stage.clientWidth - 22)), Math.max(420, Math.floor(stage.clientHeight - 22 - below)))
+  view.resize(Math.max(640, Math.floor(stage.clientWidth - 20)), Math.max(420, Math.floor(stage.clientHeight - 20 - below)))
 }
 new ResizeObserver(fit).observe(stage)
 

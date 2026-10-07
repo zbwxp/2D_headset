@@ -22,3 +22,16 @@ test('a bigger window gives a bigger canvas (zoom / pan kept, the drawing at the
   expect((await size()).h).toBe(420)
   expect((await size()).vpt).toEqual([3, 0, 0, 3, 150, 60])
 })
+
+test('a narrow window keeps the side panel reachable: the stage narrows and scrolls its canvas (review of 63a0efc C4)', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 480 })
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour)
+  const l = await page.evaluate(() => {
+    const st = document.querySelector('#stage')!, side = document.querySelector('#side')!.getBoundingClientRect()
+    return { sideX: side.x, sideW: side.width, stageClient: st.clientWidth, stageScroll: st.scrollWidth }
+  })
+  expect(l.sideX + l.sideW).toBeLessThanOrEqual(641)
+  expect(l.sideW).toBeGreaterThan(100)
+  expect(l.stageScroll).toBeGreaterThan(l.stageClient)
+})

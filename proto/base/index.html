@@ -21,7 +21,10 @@
       .file { color: #374151; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
       #main { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; }
-      #stage { padding: 10px; flex: 1 1 auto; min-width: 662px; overflow: auto; }
+      /* the stage takes what the side panel leaves (basis 0: never sized by its own canvas — an auto basis let the
+         canvas hold the stage wide when the window shrank); a narrow window gets the narrow side panel, and below
+         that the stage scrolls its canvas — the panels stay reachable (review of 63a0efc C4) */
+      #stage { padding: 10px; flex: 1 1 0; min-width: 0; overflow: auto; }
       #wrap { display: inline-block; outline: 1px solid var(--line); background: #fff; }
       #hint { color: #4b5563; font-size: 12px; margin-top: 6px; max-width: 640px; min-height: 1.5em; line-height: 1.5; }
       .help .help-title { cursor: pointer; user-select: none; }
@@ -29,7 +32,8 @@
       .help-body ul { margin: 0 0 4px; padding-left: 18px; }
       .help-body li { margin: 2px 0; }
       #status { color: #b00020; min-height: 1.4em; margin: 6px 0; max-width: 640px; }
-      #side { flex: 0 1 300px; min-width: 140px; overflow-y: auto; border-left: 1px solid var(--line); background: #fff; }
+      #side { flex: 0 0 300px; min-width: 0; overflow-y: auto; border-left: 1px solid var(--line); background: #fff; }
+      @media (max-width: 960px) { #side { flex-basis: 140px; } }
       .panel { border-bottom: 1px solid var(--line); padding: 6px 0; }
       .panel-title { font-weight: 600; padding: 2px 10px 6px; }
       .rows { max-height: 46vh; overflow: auto; }

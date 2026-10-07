@@ -68,3 +68,28 @@ test('V: moving a selection snaps its grabbed anchor onto another anchor', async
   expect((await rec(page, 'curve:E1')).anchors.e1.p).toEqual({ x: 10, y: 60 })
   expect((await rec(page, 'curve:E1')).anchors.e2.p).toEqual({ x: 0, y: 90 }) // the whole line moved by (30, 40)
 })
+
+test('review of 63a0efc: an anchor a mask hides is no snap point; a moving reference does not snap to its own instance (alignment with other anchors still applies)', async ({ page }) => {
+  await page.goto('/?case=M1-mask-outside')
+  await page.waitForFunction(() => (window as any).__contour)
+  const r = await page.evaluate(async () => {
+    const { editor } = (window as any).__contour
+    const { snapPoint } = await import(/* @vite-ignore */ '/src/snap.ts' as string)
+    const ev = editor.derived.evaluated()
+    // C's start (40, 30) lies inside F, hidden by the outside mask: no point snap there (y may still align with C's
+    // visible end (80, 30))
+    return snapPoint(ev, { x: 41, y: 31 }, 2)
+  })
+  expect(r.kind).not.toBe('point')
+  expect(r.guides).toEqual({ y: 30 }) // alignment with the visible end (80, 30), not the hidden start
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour)
+  const s = await page.evaluate(async () => {
+    const { editor } = (window as any).__contour
+    const { snapPoint } = await import(/* @vite-ignore */ '/src/snap.ts' as string)
+    const ev = editor.derived.evaluated()
+    // R1's instance anchor (80, 20): with R1 moving, not a point target for itself
+    return snapPoint(ev, { x: 80.5, y: 20.5 }, 2, (_c: string, _a: string, ref?: string) => ref === 'reference:R1')
+  })
+  expect(s.kind).not.toBe('point')
+})

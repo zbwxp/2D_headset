@@ -78,7 +78,9 @@ export class FabricView {
   /** snap a world point (none when Smart Guides are off); `moving` = anchor keys that move with it */
   private snapAt(p: Vec, moving?: Set<string>): Snap {
     if (!this.snapOn.get()) return (this.snapHint = null), { p, kind: 'none', guides: {} }
-    const s = snapPoint(this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), (c, a) => !!moving?.has(`${c}#${a}`))
+    // an anchor key `curve#a` moving excludes that anchor everywhere it is drawn (its source and every instance of it);
+    // `ref:<id>` excludes every anchor a moving reference places
+    const s = snapPoint(this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), (c, a, r) => !!moving?.has(`${c}#${a}`) || (!!r && !!moving?.has(`ref:${r}`)))
     this.snapHint = s.kind === 'none' ? null : s
     return s
   }
@@ -1127,9 +1129,11 @@ export class FabricView {
         const mine = new Set(drawnOf(reader, ev, ids))
         const refs: AnchorRef[] = []
         let grab: Vec = { x: p.x, y: p.y }, best = 6 / this.canvas.getZoom()
+        const movingRefs: string[] = []
         for (const c of ev.curves.filter((x) => mine.has(x.address)))
           for (const a of Object.values(c.anchors)) {
             if (!c.referenceId) refs.push({ curveId: c.curveId, anchorId: a.id })
+            else movingRefs.push(`ref:${c.referenceId}`)
             const d = Math.hypot(a.p.x - p.x, a.p.y - p.y)
             if (d <= best) (best = d), (grab = { ...a.p })
           }
@@ -1138,7 +1142,9 @@ export class FabricView {
           const f = reader.get(id as any) as DocRecord | undefined
           if (f?.typeName === 'fill') for (const st of f.boundary) if (!('bridge' in st)) for (const aid of Object.keys((reader.get(st.curveId) as CurveRecord).anchors)) refs.push({ curveId: st.curveId, anchorId: aid })
         }
-        this.vGesture = { kind: 'move', start: { x: p.x, y: p.y }, op: this.editor.prepare(), ids: [...ids], ok: false, grab, moving: this.movingSet(refs) }
+        const moving = this.movingSet(refs)
+        for (const r of movingRefs) moving.add(r)
+        this.vGesture = { kind: 'move', start: { x: p.x, y: p.y }, op: this.editor.prepare(), ids: [...ids], ok: false, grab, moving }
       }
     } else {
       if (!e.shiftKey) this.selection.clear()
