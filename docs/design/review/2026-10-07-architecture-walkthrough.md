@@ -1255,3 +1255,31 @@ Claude suggested reading Graphite #2309 and its implementation in full and writi
 3. **Its undo and selection model vs our needs:** for example, the selected point always belongs to the selected line (E1), and one gesture is one undo step.
 
 **Status:** this is only a candidate for evaluation. Whether to run a short evaluation is up to bowen.
+
+### Q10 follow-up 4: VPaint / VGC (found by dot, 1791387306), and a correction
+
+**Correction:** Claude said (1791386966) that "for bowen's network model, the only open-source example is Graphite". **That is wrong.** VPaint / VGC fits that model more closely.
+
+**dot's view:**
+- VPaint's official description says connections between curves are kept during editing. A face created with the paint bucket remembers the lines that form its boundary, and the fill follows when that boundary changes.
+- VPaint and its successor VGC are better suited to studying the network and fill structure. SVG-Edit is better suited to evaluating direct reuse of general editing tools. **Keep these two directions separate.**
+- VPaint is a research prototype and VGC is still alpha. "The model fits" must not be stated as "it is mature and can replace ours directly".
+
+**Claude verified (GitHub API / README):**
+
+| Project | Licence | Stars | Last push | Description |
+|---|---|---|---|---|
+| **VPaint** <https://github.com/dalboris/vpaint> | Apache-2.0 | about 770 | 2024-07 | "Experimental vector graphics and 2D animation editor" |
+| **VGC** <https://github.com/vgc/vgc> | Apache-2.0 | about 340 | 2025-01 | |
+
+- **The VPaint README says** it is an "experimental prototype" built on the **Vector Graphics Complex (VGC)**, a technology from a research collaboration between Inria and the University of British Columbia.
+- The README shows demos named shared edges, glue, depth ordering and star split.
+- It states that it "is considered BETA, and always will", and that the team is developing **VGC Illustration / VGC Animation**.
+
+**Not verified:** Claude recalls papers on the Vector Graphics Complex and the Vector Animation Complex (Dalstein et al., around SIGGRAPH 2014 / 2015), whose subject is animating vector graphics while topology changes. **Not opened this time.** If true, they are closely related to this project's head-turn case (geometry moves while topology stays the same, or changes).
+
+**Status:** two kinds of reference, kept separate:
+- **Studying the model:** VPaint / VGC, Graphite #2309.
+- **Evaluating reuse of tools:** SVG-Edit.
+
+Which to look into further is bowen's call.
