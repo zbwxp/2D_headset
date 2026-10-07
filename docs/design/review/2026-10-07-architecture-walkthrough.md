@@ -2126,6 +2126,16 @@ The rule holds. There are two distinct actions:
 - **Proposal:** binding acts on curve ends. Where several curves share a position, the end the user clicked decides which curve is meant.
 - **Status: waiting for bowen.**
 
+### dot (1791391744)
+
+- **Explicitly supported editing results:**
+  - A closed loop may consist of a single segment (case 2).
+  - A closed loop may pass through the same endpoint twice (case 3).
+- **Implementation rule:**
+  - A bind removes only the collapsed segment.
+  - It must not rescan and delete other curves that have just become "both ends on one point". Doing so would destroy the confirmed single-segment loop and the θ special edit.
+- **The Q18 E row is not a reason to exclude such loops.** It covers geometric self-crossing caused by bad drawing or deformation, with no special handling. A loop that revisits a shared endpoint, as in case 3, is a supported result.
+
 ### Status
 
 Cases 2 and 3 decided by bowen. The curve-end question waits for bowen. The binding rule goes to the graph in the endpoint round.
