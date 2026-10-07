@@ -7,7 +7,7 @@
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
 import { Canvas2DRef } from './canvas2dRef'
-import { childrenOf } from '../indexes'
+import { childrenOf, within } from '../indexes'
 import { counters } from '../counters'
 import { Canvas, Circle, Path, Point, Rect, util, type FabricObject, type TMat2D } from 'fabric'
 import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
@@ -19,7 +19,7 @@ import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
-import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
+import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, type IndexKey } from '@tldraw/utils'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
@@ -842,6 +842,40 @@ export class FabricView {
     const r = this.applyAndLog({ type: 'pasteContent', content, parentId: layer as any, offset })
     if (r.ok && r.written) this.selection.set(r.affected.filter((id) => (this.editor.reader.get(id as any) as { parentId?: string } | undefined)?.parentId === layer))
     return r
+  }
+
+  // ---- masks (Illustrator Object › Clipping Mask): ⌘7 Make, ⌥⌘7 Release; the panel switches mode / enabled ----
+  /**
+   * ⌘7: of the selected objects the FRONT-most is the mask's source (a fill: its area; a line: its ink; a group: the
+   * fills and lines inside it), the others its targets, mode `inside` (a clipping mask). Adaptation (stated): the source
+   * stays visible — hide it yourself if wanted (a hidden source still masks, §1.7b).
+   */
+  makeMask() {
+    const reader = this.editor.reader
+    const ids = this.selection.get().filter((id) => reader.get(id as any))
+    if (ids.length < 2) return this.setStatus('INVALID: 建立蒙版需要选中至少两个对象：最上面的当蒙版，其余被蒙'), null
+    const ev = this.editor.derived.evaluated()
+    const order = ev.paint.map((p) => p.item.address)
+    const front = (id: string) => Math.max(-1, ...order.map((a, i) => (isInside(reader, a.split('/')[0], id) ? i : -1)))
+    const src = [...ids].sort((a, b) => front(b) - front(a))[0]
+    const r = reader.get(src as any) as DocRecord
+    const inside = (t: 'fill' | 'curve') => (r.typeName === 'container' ? within(reader as any, r.id as any, t) : r.typeName === t ? [r.id] : [])
+    const sources = { fills: inside('fill') as any[], strokes: inside('curve') as any[] }
+    if (!sources.fills.length && !sources.strokes.length) return this.setStatus(`INVALID: ${src} 不能当蒙版（需要填充或线）`), null
+    return this.applyAndLog({ type: 'setMask', name: `蒙版（${(r as { name?: string }).name ?? src}）`, sources, targets: ids.filter((id) => id !== src), mode: 'inside' })
+  }
+  /** ⌥⌘7: remove the masks the selection takes part in (as source or target) — one undo step */
+  releaseMask() {
+    const ids = new Set(this.selection.get())
+    const masks = this.editor.reader.allRecords().filter((m: any) => m.typeName === 'mask' && (m.targets.some((t: string) => ids.has(t)) || [...m.sources.fills, ...m.sources.strokes].some((x: string) => ids.has(x)))) as any[]
+    if (!masks.length) return this.setStatus('INVALID: 选中的对象没有参与蒙版'), null
+    return this.applyAndLog({ type: 'deleteRecords', ids: masks.map((m) => m.id) })
+  }
+  /** the panel: a mask's mode (正常 inside / 反转 outside) or enabled, the rest kept */
+  setMaskProps(id: string, change: { mode?: 'inside' | 'outside'; enabled?: boolean }) {
+    const m = this.editor.reader.get(id as any) as any
+    if (!m) return null
+    return this.applyAndLog({ type: 'setMask', id: m.id, name: m.name, sources: m.sources, targets: m.targets, mode: change.mode ?? m.mode, enabled: change.enabled ?? m.enabled })
   }
 
   /** remove a shared node (the properties panel's 断开连接) */

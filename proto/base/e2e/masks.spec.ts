@@ -129,3 +129,63 @@ test('M4: a line wholly masked away is not picked even when the pointer is just 
   expect(s).toMatchObject({ kind: 'segment', curveId: 'curve:C' })
   expect(s.d).toBeGreaterThan(2) // measured to its nearest VISIBLE point (x ≥ 60), not the hidden one under the pointer
 })
+
+// ---- the mask UI (Illustrator Clipping Mask: ⌘7 make, ⌥⌘7 release; the panel's mode / enabled) — doc 18 §30.5 ----
+test('UI: ⌘7 makes a mask from the selection (front-most = source, the rest targets, 正常); the panel inverts and disables it; ⌥⌘7 releases; each one undo step', async ({ page }) => {
+  await page.goto('/?case=P2-fill-layer-in-front') // L1 = [C (0,30)→(80,30)] behind L2 = [B, F (20..60)]
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#modeV'))
+  await page.click('#modeV')
+  const box = (await page.locator('canvas.upper-canvas').boundingBox())!
+  const P = (x: number, y: number) => ({ x: box.x + 20 + 3 * x, y: box.y + 20 + 3 * y })
+  const pixel = (x: number, y: number) =>
+    page.evaluate(([x, y]) => {
+      const { view } = (window as any).__contour
+      view.selection.clear()
+      view.render()
+      view.canvas.renderAll()
+      const [z, , , , e, f] = view.canvas.viewportTransform
+      const dpr = view.canvas.getRetinaScaling()
+      return Array.from(view.canvas.lowerCanvasEl.getContext('2d')!.getImageData(Math.floor((e + x * z) * dpr), Math.floor((f + y * z) * dpr), 1, 1).data)
+    }, [x, y])
+  const select = async () => {
+    const c = P(5, 30), f = P(40, 40)
+    await page.mouse.click(c.x, c.y)
+    await page.keyboard.down('Shift')
+    await page.mouse.click(f.x, f.y)
+    await page.keyboard.up('Shift')
+  }
+  expect(await pixel(5, 31)).toEqual([0, 0, 255, 255]) // C outside F: drawn
+  await select()
+  expect([...(await page.evaluate(() => (window as any).__contour.selection.get()))].sort()).toEqual(['curve:C', 'fill:F'])
+  await page.keyboard.press('ControlOrMeta+7')
+  const m = await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().find((r: any) => r.typeName === 'mask'))
+  expect(m).toMatchObject({ sources: { fills: ['fill:F'], strokes: [] }, targets: ['curve:C'], mode: 'inside', enabled: true })
+  expect(await pixel(5, 31)).toEqual([0, 0, 0, 0]) // clipped: C only inside F
+  // the panel (select C in the layers panel — on the canvas the clipped part is, rightly, not pickable): invert, disable
+  const selectC = () => page.click('[data-id="curve:C"]')
+  await selectC()
+  await page.locator(`#propsPanel [data-mask="${m.id}"] [data-mask-mode]`).selectOption('outside')
+  expect(await pixel(5, 31)).toEqual([0, 0, 255, 255])
+  await selectC()
+  await page.locator(`#propsPanel [data-mask="${m.id}"] [data-mask-mode]`).selectOption('inside')
+  await selectC()
+  await page.locator(`#propsPanel [data-mask="${m.id}"] [data-mask-enabled]`).uncheck()
+  expect(await pixel(5, 31)).toEqual([0, 0, 255, 255])
+  // release with ⌥⌘7 (C selected)
+  await selectC()
+  await page.keyboard.press('ControlOrMeta+Alt+7')
+  expect(await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'mask'))).toBe(false)
+  expect(await page.evaluate(() => (window as any).__contour.editor.history.undo)).toEqual(['createMask', 'setMask', 'setMask', 'setMask', 'deleteRecords'])
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ControlOrMeta+z')
+  expect(await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'mask'))).toBe(false)
+  expect(await pixel(5, 31)).toEqual([0, 0, 255, 255])
+})
+
+test('UI: ⌘7 with fewer than two objects, or a front object that cannot mask, says why and writes nothing', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#modeV'))
+  await page.click('[data-id="curve:E1"]')
+  await page.keyboard.press('ControlOrMeta+7')
+  await expect(page.locator('#status')).toContainText('至少两个对象')
+  expect(await page.evaluate(() => (window as any).__contour.editor.history.undo)).toEqual([])
+})

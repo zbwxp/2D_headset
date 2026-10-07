@@ -294,6 +294,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <div className="panel props" id="propsPanel">
         <div className="panel-title">属性</div>
         <div>已选 {recs.length} 个：{Object.entries(count).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join('，')}</div>
+        <div className="actions"><button id="makeMask" title="建立蒙版 (⌘7)：最上面的对象当蒙版，其余被蒙" onClick={() => view.makeMask()}>建立蒙版</button></div>
         <AnchorsSection ui={ui} />
       </div>
     )
@@ -334,7 +335,20 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
               <tr><th>变换</th><td className="mono">{Object.values((r as ReferenceRecord).transform).map(fmt).join(', ')}</td></tr>
             </>
           ) : null}
-          {usedBy.length ? <tr><th>蒙版</th><td>{usedBy.map((m) => `${m.name}（${m.targets.includes(r.id) ? '被遮' : '作为来源'}${m.enabled ? '' : '，已关闭'}）`).join('；')}</td></tr> : null}
+          {usedBy.map((m) => (
+            <tr key={m.id} data-mask={m.id}>
+              <th>蒙版</th>
+              <td className="inline wrap">
+                <span>{m.name}（{m.targets.includes(r.id) ? '被遮' : '来源'}）</span>
+                <select data-mask-mode value={m.mode} title="正常：只在区域里显示；反转：区域里不显示" onChange={(e) => view.setMaskProps(m.id, { mode: e.target.value as 'inside' | 'outside' })}>
+                  <option value="inside">正常</option>
+                  <option value="outside">反转</option>
+                </select>
+                <label><input type="checkbox" data-mask-enabled checked={m.enabled} onChange={(e) => view.setMaskProps(m.id, { enabled: e.target.checked })} /> 启用</label>
+                <button data-mask-release title="释放蒙版 (⌥⌘7)" onClick={() => ui.apply({ type: 'deleteRecords', ids: [m.id] })}>释放</button>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
       <AnchorsSection ui={ui} />

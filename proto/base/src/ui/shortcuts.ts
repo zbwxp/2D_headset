@@ -3,7 +3,8 @@
 // deselect, arrows nudge 1 (Shift: 10), ⌘+ / ⌘− zoom, ⌘0 fit, ⌘1 actual size, space = hand tool, E while dragging a
 // marquee = enclosed mode, Esc = cancel the gesture in progress. Block 2: P Pen, + / = Add and − Delete Anchor Point,
 // C Scissors, ⌘J Join; while a pen path is drawn Enter / Esc end it and ⌘Z removes its last anchor. Block 3: ⌘C / ⌘X /
-// ⌘V (centre of the view) / ⇧⌘V (in place), ⌘O / ⌘S / ⇧⌘S. Keys typed into a form field are left alone.
+// ⌘V (centre of the view) / ⇧⌘V (in place), ⌘O / ⌘S / ⇧⌘S; ⌘7 / ⌥⌘7 make / release a mask. Keys typed into a form
+// field are left alone.
 import type { Editor } from '../editor'
 import type { FabricView, Tool } from '../view/fabricView'
 import type { Files } from './files'
@@ -26,6 +27,7 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     }
     if (mod && (k === 'z' || k === 'Z') && !e.shiftKey && view.penUndo()) return done()
     if (mod && (k === 'j' || k === 'J')) return view.join(), done()
+    if (mod && e.code === 'Digit7') return (e.altKey ? view.releaseMask() : view.makeMask()), done()
     if (mod && (k === 'c' || k === 'C')) return void view.copy(), done()
     if (mod && (k === 'x' || k === 'X')) return void view.cut(), done()
     if (mod && (k === 'v' || k === 'V')) return void view.paste(e.shiftKey), done()
