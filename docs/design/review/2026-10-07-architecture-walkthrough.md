@@ -16,6 +16,33 @@ bowen asked (Slack 1791382158) for a new, separate record of the step-by-step ar
 
 ---
 
+## Relationship graph (bowen 1791382746: "我相当于帮你们建立一个知识图谱/关系图谱类似的东西")
+
+How this section works:
+
+- **One row per relation:** subject, relation, object, source.
+- **Updated alongside the questions below.**
+- **Status of each row:**
+  - **confirmed**: decided by bowen.
+  - **current code**: a fact at 4bc7cc2, not a decision.
+  - **open**: not decided.
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Reference-image module | manages | Reference collection (add / remove) | confirmed | bowen 1791382641 (Q3) |
+| View / snapshot | references | One image from the collection | confirmed (belongs to views for now) | bowen 1791382641 (Q3) |
+| Reference-image tool | is the UI for | Reference-image module | confirmed (module = responsibility boundary, tool = how it is operated) | dot 1791382710, bowen 1791382641 (Q3/Q4) |
+| Artwork layer | does not contain | Reference images | confirmed | bowen 1791382641 (Q3) |
+| Layer | contains | Groups (incl. shape groups), paths, references (instances) | current code | Q4 |
+| Path | owns | Its own fill (a closed path's fill) | current code | Q2/Q4 |
+| Shape group | owns | Faces (fills of enclosed areas) | current code | Q2/Q4 |
+| Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
+| Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
+| Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
+| Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
+
+---
+
 ## Q1: Can this be a closed module that only exposes an interface? (layers)
 
 **bowen** 1791381703 / 1791381805:
