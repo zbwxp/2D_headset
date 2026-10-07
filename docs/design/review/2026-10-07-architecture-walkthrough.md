@@ -47,7 +47,7 @@ How this section works:
 | Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
 | Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
 | Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
-| Closed curve | becomes invalid when | Its boundary can no longer form a closed loop (adding a point, splitting or replacing a segment while staying closed keeps it; "clear fill" is not "delete loop") | confirmed | dot 1791390455, 1791391113 (wording); bowen 1791390987 (Q18) |
+| Closed curve | becomes invalid when | Any of its enclosing curves is deleted; the fill disappears too. Adding a point (splitting a segment) is not a deletion and keeps the loop. To reduce points without losing the fill, bind adjacent endpoints. "Clear fill" is not "delete loop". | confirmed | bowen 1791391384 (Q20); dot 1791390455 |
 | Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
 | Continuous curve | is drawn as | Its fills first, then all its lines together (lines within the group use a stable drawing order; no separate occlusion relation) | confirmed | bowen 1791390897 (Q18) |
 | Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
@@ -2064,3 +2064,33 @@ Fill rows were written to the graph in `cb93586`.
 ### Status
 
 Waiting for bowen to choose which group to start with (asked in 1791391085).
+
+## Q20: When a loop becomes invalid, and reducing points by endpoint binding
+
+**bowen** 1791391384:
+> 环什么时候失效， 删掉合围曲线的任意一根就失效，填充也消失。你们的顾虑我懂 可能在脸上线条先加了点 后面又想删除 结果填充要重做。而正确的减少闭合曲线端点数量的方式是， 将闭合曲线上两个相邻端点合并（端点绑定） 这样就减少了端点数量还没破坏闭合区间 然后同一条bezier曲线两端端点绑定的动作就是删掉这条曲线（因为端点绑定会删除一个端点。按照旧版规则删除后绑定的那个端点
+
+The graph row "Closed curve becomes invalid when" is rewritten to bowen's wording (it replaces dot's 1791391113 wording).
+
+### Claude (1791391436)
+
+**v103 check:**
+
+- `connect` keeps the first-clicked endpoint's node. It moves the second endpoint's node onto it, rewrites references, and deletes the second node (`7205381:src/domain/drawing/commands.ts:102-110`). This matches bowen's "delete the later-bound endpoint".
+- **Difference:** binding the two ends of the **same** curve does not delete the curve in v103. The code leaves the curve with both ends on one node, a small loop. "Binding a curve's own two ends = deleting that curve" is a **new rule**. Claude finds it more reasonable than v103, and consistent with the goal of reducing points.
+
+**Cases derived from the rule (bowen to confirm):**
+
+1. **A loop of 3 segments**, binding one segment's two ends:
+   - That segment is deleted, and its neighbours' ends move to the kept point. Handles translate with them, so the shape changes only locally.
+   - 2 segments remain and the loop stays closed. **The fill is kept.**
+2. **A loop of 2 segments**, binding one segment's two ends: one curve remains, with both ends on one point. Does it still count as a closed curve that keeps its fill?
+3. **The θ middle line**, binding its two ends:
+   - The middle line is deleted, and its two circle points merge into one.
+   - The upper and lower loops stay closed and keep their fills.
+   - The outer loop becomes a figure-eight through one point twice. Per Q18 E that is a drawing error, so a fill on the outer loop becomes invalid?
+
+### Status
+
+Waiting for dot's independent review and bowen's answers on cases 2 and 3. The binding rule is not written to the graph yet; it belongs to the endpoint round.
+
