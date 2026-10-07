@@ -588,8 +588,20 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       // the offset each linked anchor receives: that of the named anchor it is connected to
       const want = new Map<string, Vec>()
       for (const n of named) for (const m of linkedAnchors(store, [n])) want.set(anchorKey(m.ref), cmd.offsets[n.anchorId])
-      const curveIds = [...new Set([curve.id as string, ...linked.map((m) => m.ref.curveId as string)])]
       const poseOf = (cid: string) => getAs(store, poseIdOf(cid), 'forms')
+      // every curve joined to this one through connections (any anchor, transitively) that has a head-turn track gets
+      // the same key yaws (KF-5, dot 1791362280): a connected point is then interpolated over the SAME keys with the
+      // SAME values at both ends — one evaluation, bit-identical, not a tolerance. A joined curve without a track is
+      // static (offset 0) and its partner's joined anchor is 0 at every key, so it needs none.
+      const joined = new Set<string>([curve.id])
+      for (const queue = [curve.id as string]; queue.length; ) {
+        const cid = queue.pop()!
+        const c = getAs(store, cid, 'curve')
+        if (!c) continue
+        for (const m of linkedAnchors(store, Object.keys(c.anchors).map((anchorId) => ({ curveId: c.id, anchorId }))))
+          if (!joined.has(m.ref.curveId)) (joined.add(m.ref.curveId), queue.push(m.ref.curveId))
+      }
+      const curveIds = [...new Set([curve.id as string, ...linked.map((m) => m.ref.curveId as string), ...[...joined].filter((cid) => cid !== curve.id && poseOf(cid))])]
       const yaws = new Set<number>([cmd.yaw])
       const keyYaws = (f: FormsRecord | undefined) => [...legacyKeys(f), ...legacy3Keys(f)].map((k) => k.yaw)
       if (linked.length > named.length || curveIds.length > 1) for (const cid of curveIds) for (const y of keyYaws(poseOf(cid))) yaws.add(y)

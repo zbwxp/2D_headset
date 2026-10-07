@@ -114,4 +114,50 @@ describe('undo, redo, reopen and the safety net', () => {
     saved.store[pose.id] = pose
     expect(() => Editor.open(saved)).toThrow(/ends separate at yaw 90/)
   })
+
+  it('KF-5 (gate properties-19, seed -457595632, 2026-10-07): a key on one curve gives every joined curve with a track the same key yaws — the joined point is the same number at every yaw, bit for bit', () => {
+    const e = new Editor(exampleRecords())
+    e.batch('kf5', () => {
+      e.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
+      e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a1: { x: 0, y: 0 } } })
+      e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: -90, offsets: { a1: { x: 0, y: 7 } } })
+    })
+    // a key on C2 alone, naming no anchor: C1 (joined through J0) gets the key yaw 0 too, shapes unchanged
+    const at = (y: number) => evaluateAtYaw(e.reader, y)
+    const before = [-90, 0, 90, 12.5].map(at)
+    expect(e.apply({ type: 'setPoseKey', curveId: ids.C2, yaw: 0, offsets: {} }).ok).toBe(true)
+    const yawsOf = (cid: string) => legacyKeys(e.reader.get(poseIdOf(cid) as any) as FormsRecord).map((k) => k.yaw)
+    expect(yawsOf(ids.C1)).toEqual(yawsOf(ids.C2))
+    const j0 = e.reader.allRecords().find((r) => r.id === 'connection:J0') as any
+    for (let y = -90; y <= 90; y += 0.5) {
+      const at = e.derived.atYaw(y)
+      const ps = j0.ends.map((end: any) => at.curves.find((c) => c.address === end.curveId)!.anchors[end.anchorId].p)
+      expect(ps[1], `@${y}`).toEqual(ps[0])
+    }
+    // the inserted keys carry the current interpolated values: at the key yaws nothing moved, bit for bit; between
+    // keys C1 is now computed over the shared keys — the same shape, its last float digit may differ (that is the fix)
+    const after = [-90, 0, 90, 12.5].map(at)
+    for (let k = 0; k < 3; k++) expect(after[k].curves).toEqual(before[k].curves)
+    for (const c of after[3].curves)
+      for (const [a, v] of Object.entries(c.anchors)) {
+        const was = before[3].curves.find((x) => x.address === c.address)!.anchors[a].p
+        expect(Math.abs(v.p.x - was.x) + Math.abs(v.p.y - was.y)).toBeLessThan(1e-12)
+      }
+  })
+
+  it('KF-5: the joined curve is in a locked layer — the key is refused as a whole (its track would change), nothing written', () => {
+    const e = new Editor(exampleRecords())
+    e.batch('setup', () => {
+      e.apply({ type: 'setContainerFlags', containerId: ids.L2, locked: false })
+      e.apply({ type: 'setPoseKey', curveId: ids.C1, yaw: 90, offsets: { a1: { x: 0, y: 0 } } })
+    })
+    const layerOf = (cid: string) => (e.reader.get(cid as any) as any).parentId
+    expect(layerOf(ids.C1)).not.toBe(layerOf(ids.C2)) // C1 in L1, C2 in L2 (fixture)
+    e.apply({ type: 'setContainerFlags', containerId: layerOf(ids.C1), locked: true })
+    const snap = JSON.stringify(e.reader.allRecords())
+    const r = e.apply({ type: 'setPoseKey', curveId: ids.C2, yaw: 0, offsets: {} })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.code).toBe('LOCKED')
+    expect(JSON.stringify(e.reader.allRecords())).toBe(snap)
+  })
 })
