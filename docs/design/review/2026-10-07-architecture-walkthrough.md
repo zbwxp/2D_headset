@@ -1191,3 +1191,40 @@ Claude suggested reading Graphite #2309 and its implementation in full and writi
 - **Lightweight open-source editors all use the path model.**
 - **Of bowen's network model,** the only open-source example is Graphite, and it is heavy (Q10).
 - **bowen's own v103 is a lightweight network-style implementation:** one record per segment, shared endpoints, pairwise joins.
+
+### Q10 follow-up 2: What is the ordinary path model, what is the network model, and how do they differ?
+
+**bowen** 1791387009:
+> 什么是普通路径 什么是网格模型？这俩区别是什么？
+
+#### Answer (Claude)
+
+**Naming:** Figma calls it a "vector network" and Graphite calls it a "vector mesh". They mean the same thing, called "network" below.
+
+**Ordinary path:** a line is a chain of points connected from start to end. Figma's blog compares it to a pen plotter: pen down, travel along, pen up.
+
+- Each point connects to at most the point before and the point after.
+- It can close into a closed path, and a closed path has its own fill.
+- **It has a natural direction and order,** so effects along the line are easy, for example thinning from thick to thin.
+- **It cannot have three lines meet at one point.** That has to be drawn as several paths whose ends touch, plus a separate connection.
+
+**Network:** points and segments are stored separately. Any two points can be joined, and **one point can have 3 or more segments**, like roads meeting at an intersection.
+
+- A fill is one or more loops enclosed by segments.
+- Moving a shared point moves every segment attached to it.
+- **There is no natural direction or order,** so effects along a line need a separately defined route (Q7 A4).
+
+**Examples:**
+
+| Shape | Path model | Network model |
+|---|---|---|
+| A Y-shaped strand of hair | Two or three lines with touching ends, plus a connection | Three segments sharing one point |
+| A θ | A circle plus a line: two separate objects, and the fill is not split | The arcs and the middle line share two points, giving two regions |
+
+**Which model each version uses:**
+
+| Version | Model |
+|---|---|
+| bowen's v103 | Close to a network: one record per segment, shared endpoints, pairwise joins |
+| The current new proto | Paths plus cross-path connection records: a hybrid |
+| bowen's knowledge-graph structure | A network |
