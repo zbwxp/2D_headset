@@ -1766,18 +1766,34 @@ dot is checking the same code independently (1791389316); its result goes here w
 - **C. "Closed" is judged by coordinates, not by whether the endpoints are connected.**
   - Ends that look joined but are off by a tiny amount are refused.
   - Ends that coincide by accident count as joined.
-- **D. Partial copy drops the fill silently.** Whether a partial cut leaves a fill pointing at removed curves is **not checked yet**.
+- **D. Partial copy drops the fill silently.** Partial cut: see the follow-up checks below.
 - **E. Fill shape depends on the stroke display computation.**
   - ARC joins borrow geometry from display routes (`resolvedFillGeometry.ts:13-60`).
   - So fill computation is coupled to the hide/show interval machinery, which was v103's performance bottleneck.
 - **F. Colours are only white, black and transparent, plus mist.** Skin and shadow need colour and gradients.
-- **G. Figure-eight:** whether a self-crossing closed line can be filled, and with which fill rule, is **not checked yet**.
+- **G. Figure-eight:** see the follow-up checks below.
 
 **What this means for v3:** v103 already shows that "own element + references its boundary segments + own slot in the layer order" works. v3 adds two things:
 - method 1, one-step fill of a single closed line;
 - cross-layer fills.
 
 The decisions for bowen are A and B.
+
+### Follow-up checks (Claude 1791389602)
+
+- **D, partial cut (worse than "silently dropped"):**
+  - A cut is copy-then-delete.
+  - The delete removes every fill that references a deleted curve. But the fill is not in the clipboard, because not all of its boundary was selected.
+  - So **after paste the fill is gone.** Only undo brings it back.
+  - Code: `clipboard.ts:12`, `:24`; `commands.ts:146`.
+- **Broken loop display:** the fill stays in the data but is **not drawn** (`PaintScene.tsx:60`). To the user, "deleted line" and "dragged apart" both look like the fill vanished; the difference is only whether the data survives.
+- **G, figure-eight:**
+  - Solid fills use the even-odd rule (`PaintScene.tsx:67`).
+  - A plain figure-eight fills both lobes.
+  - A line that loops twice over itself leaves the overlap as a hole.
+- **Picking (relevant to Q15 C):**
+  - Clicking a solid fill's area selects the fill itself, not the line (`PaintScene.tsx:67`).
+  - A transparent cutout can only be picked by its edge.
 
 ### Status
 
