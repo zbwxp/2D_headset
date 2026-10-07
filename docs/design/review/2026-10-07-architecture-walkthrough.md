@@ -1384,3 +1384,39 @@ Check whether SVG-Edit and other candidates can hold this boundary before choosi
 #### Status
 
 **Waiting for dot's independent judgement and bowen's decision.**
+
+### Q11 follow-up 2: Wrap the base's layers in our own outer layer
+
+**bowen** 1791387571:
+> 然后我的思路是 它的图层可以很原始 可以raster类似的， 但我们也构筑一个外图层， 它们图层建立了什么我们的外套图层立刻拿来然后给它加上各种属性。这样的把它当基座
+
+#### Facts
+
+**Mature precedent: Figma plugin API `setPluginData`.** Opened: <https://developers.figma.com/docs/plugins/api/properties/nodes-setplugindata/>
+
+- It lets a plugin store "custom information on any node or style, private to your plugin".
+- Each entry is at most 100 kB, and the data becomes unreadable if the plugin ID changes.
+
+#### Judgement (Claude 1791387650)
+
+**To confirm with bowen:** "primitive, raster-like layers" is read as "few features, we barely use its layer functions", not "the content is pixels". Lines must stay editable vectors, or dragging and adding points is impossible.
+
+**Two ways to build the outer layer:**
+
+| Approach | How it works | Trade-off |
+|---|---|---|
+| **1. Store attributes on the base's objects** (how Figma plugins do it) | The data travels with the object; copy and undo are handled by the base | **Least work.** Requires the base to allow custom data on objects. |
+| **2. Our own outer layer tree** (what bowen describes) | Each node maps to a base object by id | **Most freedom.** Every create, delete, copy and undo in the base must be synced immediately, or the two sides drift. |
+
+**Approach 2 must first decide who has the say.** Order, visibility and lock must not be editable in both places. Suggested split:
+
+- **The base does geometry editing only:** drawing lines, changing points, cutting.
+- **The outer layer owns organisation and attributes:** layers, groups, visibility, lock, head-turn data, fill rules. It tells the base what to show and what to lock.
+
+So each thing is changed in exactly one place.
+
+**Relation to the earlier judgement:** this matches dot's (1791387516) "the base does general editing, we own business data, an adapter in between". bowen's "outer layer" is that adapter in concrete form.
+
+#### Status
+
+**Waiting for bowen to confirm** the raster point and the split of authority.
