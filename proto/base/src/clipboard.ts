@@ -6,7 +6,7 @@
 import { Store, type RecordId, type SerializedSchema } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { planCopyInto } from './duplicate'
-import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within } from './indexes'
+import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced } from './indexes'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, schema, type BaseReader, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
@@ -31,7 +31,7 @@ export function contentOf(reader: BaseReader, ids: readonly string[], origin?: s
   const sel = new Set<string>()
   for (const id of ids) {
     const r = reader.get(id as any) as DocRecord | undefined
-    if (!r || !['container', 'curve', 'fill', 'reference'].includes(r.typeName)) return { error: { code: 'NOT_FOUND', message: `${id} is not a container, curve, fill or reference`, objects: [id], fixes: [] } }
+    if (!r || !isPlaced(r.typeName)) return { error: { code: 'NOT_FOUND', message: `${id} is not a container, curve, fill or reference`, objects: [id], fixes: [] } }
     sel.add(id)
     if (r.typeName === 'container')
       for (const c of containersWithin(reader, r.id)) {
@@ -130,7 +130,7 @@ export function planPaste(store: BaseReader, cmd: PasteCommand, ids: IdSource): 
   const reader = { get: src.get.bind(src), allRecords: src.allRecords.bind(src), getStoreSnapshot: src.getStoreSnapshot.bind(src), serialize: src.serialize.bind(src), query: src.query } as unknown as BaseReader
   const all = (src.allRecords() as DocRecord[]).filter((r) => r.typeName !== 'mask')
   const inContent = new Set(all.map((r) => r.id as string))
-  const roots = all.filter((r) => ['container', 'curve', 'fill', 'reference'].includes(r.typeName) && !inContent.has(((r as { parentId?: string | null }).parentId ?? '') as string)).map((r) => r.id as string)
+  const roots = all.filter((r) => isPlaced(r.typeName) && !inContent.has(((r as { parentId?: string | null }).parentId ?? '') as string)).map((r) => r.id as string)
   // a copied reference whose source was not copied: in the SAME document it keeps placing that source; elsewhere only
   // when this document's source is the same, record for record — never silently re-bound to a different one
   const sameDocument = !!content.origin && content.origin === cmd.origin

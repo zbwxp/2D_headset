@@ -15,6 +15,14 @@ import type { ConnectionRecord, ContainerRecord, CurveRecord, DocRecord, FamilyR
 
 type Type = DocRecord['typeName']
 type Rec<T extends Type> = Extract<DocRecord, { typeName: T }>
+
+/**
+ * The kinds of object a container holds in its paint order — the ONE list (doc 18 §31.4). Every place that walks a
+ * container's children reads it; whether each place supports a kind is still decided (and tested) there.
+ */
+export const PLACED_KINDS = ['container', 'curve', 'fill', 'reference'] as const
+export type PlacedKind = (typeof PLACED_KINDS)[number]
+export const isPlaced = (typeName: string): typeName is PlacedKind => (PLACED_KINDS as readonly string[]).includes(typeName)
 type KeyIndex = Computed<Map<string, Set<string>>>
 /** A reader with the store's incremental indexes (`query`), or without them (overlay / plain reader → scan). */
 export type Queryable = { query?: StoreQueries<DocRecord>; get: (id: any) => unknown; allRecords?: () => DocRecord[] }
@@ -82,7 +90,7 @@ const anchorKeyOf = (e: { curveId: string; anchorId: string }) => `${e.curveId}#
 
 type Indexes = {
   connectionsByAnchor: KeyIndex
-  childrenByParent: Record<'container' | 'curve' | 'fill' | 'reference', KeyIndex>
+  childrenByParent: Record<PlacedKind, KeyIndex>
   fillsByCurve: KeyIndex
   referencesBySource: KeyIndex
   familiesByCurve: KeyIndex
@@ -96,10 +104,10 @@ const cache = new WeakMap<object, Indexes>()
 export function indexesOf(store: Indexed): Indexes {
   let ix = cache.get(store.query)
   if (!ix) {
-    const byParent = <T extends 'container' | 'curve' | 'fill' | 'reference'>(t: T) => multiIndex(store, t, (r) => [String((r as { parentId: unknown }).parentId)])
+    const byParent = <T extends PlacedKind>(t: T) => multiIndex(store, t, (r) => [String((r as { parentId: unknown }).parentId)])
     ix = {
       connectionsByAnchor: multiIndex(store, 'connection', (c: ConnectionRecord) => c.ends.map(anchorKeyOf)),
-      childrenByParent: { container: byParent('container'), curve: byParent('curve'), fill: byParent('fill'), reference: byParent('reference') },
+      childrenByParent: Object.fromEntries(PLACED_KINDS.map((t) => [t, byParent(t)])) as Record<PlacedKind, KeyIndex>,
       // a fill depends on every curve its boundary reads: segment steps and both ends of each bridge
       fillsByCurve: multiIndex(store, 'fill', (f: FillRecord) => f.boundary.flatMap((b) => ('bridge' in b ? [b.bridge.from.curveId, b.bridge.to.curveId] : [b.curveId]) as string[])),
       referencesBySource: multiIndex(store, 'reference', (r: ReferenceRecord) => [r.sourceId as string]),
@@ -145,7 +153,7 @@ const indexed = (store: Queryable): store is Indexed => !!store.query
 
 export const connectionsAt = (store: Queryable, key: string) =>
   (indexed(store) ? lookup(indexesOf(store).connectionsByAnchor, key) : scan(store, 'connection').filter((c) => c.ends.some((e) => anchorKeyOf(e) === key)).map((c) => c.id)) as ConnectionRecord['id'][]
-export const childrenOf = <T extends 'container' | 'curve' | 'fill' | 'reference'>(store: Queryable, parentId: string | null, type: T) =>
+export const childrenOf = <T extends PlacedKind>(store: Queryable, parentId: string | null, type: T) =>
   (indexed(store)
     ? lookup(indexesOf(store).childrenByParent[type], String(parentId))
     : scan(store, type).filter((r) => String((r as { parentId: unknown }).parentId) === String(parentId)).map((r) => (r as { id: string }).id)) as Rec<T>['id'][]
@@ -178,6 +186,9 @@ export function containersWithin(store: Queryable, containerId: ContainerRecord[
   }
   return out
 }
+
+/** every child of a container (or the root), of every placed kind */
+export const placedChildren = (store: Queryable, parentId: string | null): string[] => PLACED_KINDS.flatMap((t) => childrenOf(store, parentId, t) as string[])
 
 /** Records of `type` placed at or below `containerId`, via the parent index (no full scan). */
 export const within = <T extends 'curve' | 'fill' | 'reference'>(store: Queryable, containerId: ContainerRecord['id'], type: T) =>

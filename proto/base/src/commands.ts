@@ -14,7 +14,7 @@ import { planArrange, type ArrangeCommand } from './arrange'
 import { planShape, type ShapeCommand } from './shapes'
 import { planStructure, type StructureCommand } from './structure'
 import { legacy3Keys, legacyKeys, offset3At, offsetAt } from './pose'
-import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within } from './indexes'
+import { childrenOf, connectionsAt, familiesOf, fillsUsing, referencesOf, within, placedChildren } from './indexes'
 import { actualKind, anchorKey, boundaryGap, overlayReader, getAs, isWithin, linkedAnchors, lockedBy, recordProblems, type AnchorRef } from './model'
 import {
   Container,
@@ -263,7 +263,7 @@ function dependantsOf(store: DocStore, id: string): string[] {
   if (!r) return []
   if (r.typeName === 'container')
     // and the records naming it (a mask target — dot, review of ce2736c M1: the early return skipped them)
-    return [...(['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store, r.id, t)), ...referencesOf(store, r.id), ...mentioning(store, r.id)]
+    return [...placedChildren(store, r.id), ...referencesOf(store, r.id), ...mentioning(store, r.id)]
   if (r.typeName === 'curve') {
     const out: string[] = [...fillsUsing(store, r.id)]
     for (const a of Object.keys(r.anchors)) out.push(...connectionsAt(store, anchorKey({ curveId: r.id, anchorId: a })))

@@ -10,7 +10,7 @@ import type { RecordId } from '@tldraw/store'
 import { getIndexAbove, getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
 import { paintKey } from './evaluate'
-import { childrenOf, referencesOf } from './indexes'
+import { childrenOf, referencesOf, PLACED_KINDS } from './indexes'
 import { getAs, lockedBy, overlayReader } from './model'
 import { Container, type BaseReader, type ContainerRecord, type DocRecord, type FillRecord } from './schema'
 
@@ -21,7 +21,7 @@ export type ArrangeCommand =
   | { type: 'createContainer'; id?: RecordId<ContainerRecord>; parentId: RecordId<ContainerRecord> | null; name?: string }
 
 type Item = DocRecord & { parentId: string | null; index: string }
-const KINDS = ['container', 'curve', 'fill', 'reference'] as const
+const KINDS = PLACED_KINDS
 const fail = (code: EditError['code'], message: string, objects: string[], fixes: string[] = []): Plan => ({ ok: false, error: { code, message, objects, fixes } })
 const byOrder = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 /** the ordered siblings; a path's own fill is not one (it is drawn with its path, doc 18 §30.18 — its index is unused) */

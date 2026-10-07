@@ -19,7 +19,7 @@ import type { EditError, IdSource, Plan } from './commands'
 import { placeAt } from './arrange'
 import { paintKey } from './evaluate'
 import { sameFill } from './fills'
-import { childrenOf } from './indexes'
+import { childrenOf, placedChildren } from './indexes'
 import { boundaryGap, getAs } from './model'
 import { Container, Fill, isBridge, validateRecord, type BaseReader, type BoundaryStep, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord } from './schema'
 
@@ -46,7 +46,7 @@ const byPaint = (store: BaseReader) => (a: DocRecord, b: DocRecord) => {
 }
 type Item = DocRecord & { parentId: string | null; index: string }
 const siblingsOf = (store: BaseReader, parent: string | null): Item[] =>
-  (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter((r) => r && !(r.typeName === 'fill' && r.owner))
+  placedChildren(store as any, parent).map((id) => store.get(id as any) as Item).filter((r) => r && !(r.typeName === 'fill' && r.owner))
 const byIndex = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 const indexJustBelow = (lower: string | null, index: string): string =>

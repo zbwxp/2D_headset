@@ -12,7 +12,7 @@
 // §21.2); the top-level containers are the layers (Illustrator layers), picked from the layers panel, not the canvas.
 import { atom, type Atom } from '@tldraw/state'
 import { fillContains, hitStack, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
-import { childrenOf, connectionsAt, fillsUsing, ownFillsOf, type Queryable } from './indexes'
+import { childrenOf, connectionsAt, fillsUsing, ownFillsOf, type Queryable, placedChildren } from './indexes'
 import { anchorKey } from './model'
 import { poseIdOf, type BaseReader, type DocRecord, type FillRecord, type MaskRecord, type Vec } from './schema'
 
@@ -197,7 +197,7 @@ export function deletionSetOf(reader: BaseReader, ids: readonly string[]): strin
     const r = reader.get(id as any) as DocRecord | undefined
     if (!r) return
     out.add(id)
-    if (r.typeName === 'container') for (const t of ['container', 'curve', 'fill', 'reference'] as const) childrenOf(q, r.id, t).forEach(visit)
+    if (r.typeName === 'container') placedChildren(q, r.id).forEach(visit)
     if (r.typeName === 'curve') {
       for (const a of Object.keys(r.anchors)) connectionsAt(q, anchorKey({ curveId: r.id, anchorId: a })).forEach((c) => out.add(c))
       if (reader.get(poseIdOf(r.id) as any)) out.add(poseIdOf(r.id))

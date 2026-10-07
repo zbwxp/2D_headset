@@ -2,6 +2,7 @@
 // UI does, so results, errors and undo are identical by construction. Read-only helpers never write.
 // Pattern: Figma plugins mutate only through the document API, one run = one undo step
 //   https://www.figma.com/plugin-docs/how-plugins-run/
+import { type PlacedKind } from './indexes'
 import type { Command, EditError } from './commands'
 import type { ApplyResult, Editor, EditWarning, OpResult } from './editor'
 import { all, effectivelyVisible, lockedBy } from './model'
@@ -9,7 +10,7 @@ import type { ConnectionRecord, ContainerRecord, CurveRecord, FillRecord, Refere
 
 export type InspectNode = {
   address: string
-  kind: 'container' | 'curve' | 'fill' | 'reference'
+  kind: PlacedKind
   name: string
   tags: string[]
   parent: string | null

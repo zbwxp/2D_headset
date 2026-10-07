@@ -1,10 +1,10 @@
 // The layers panel's model (editor skeleton block 1). Mature layout (Illustrator Layers panel / Figma layers list):
 // a tree of layers → groups → objects, the FRONT-most item at the TOP of each level (reverse paint order), each row
 // with its own visibility / lock. Here only containers carry visible / locked (schema), so only their rows toggle.
-import { childrenOf, type Queryable } from '../indexes'
+import { childrenOf, type Queryable, PLACED_KINDS, type PlacedKind } from '../indexes'
 import type { BaseReader, ContainerRecord, CurveRecord, FillRecord, ReferenceRecord } from '../schema'
 
-export type LayerKind = 'container' | 'curve' | 'fill' | 'reference'
+export type LayerKind = PlacedKind
 export type LayerRow = {
   id: string
   kind: LayerKind
@@ -21,7 +21,7 @@ export type LayerRow = {
 }
 
 type Item = ContainerRecord | CurveRecord | FillRecord | ReferenceRecord
-const KINDS: LayerKind[] = ['container', 'curve', 'fill', 'reference']
+const KINDS: readonly LayerKind[] = PLACED_KINDS
 
 /** children of a container (or the root), front first: the reverse of the paint order (index, then id) */
 export function childrenFrontFirst(reader: BaseReader, parentId: string | null): Item[] {

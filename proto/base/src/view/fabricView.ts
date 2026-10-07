@@ -7,7 +7,7 @@
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
 import { Canvas2DRef } from './canvas2dRef'
-import { childrenOf, ownFillsOf, within } from '../indexes'
+import { childrenOf, ownFillsOf, within, placedChildren } from '../indexes'
 import { counters } from '../counters'
 import { Canvas, Circle, Path, Point, Rect, util, type FabricObject, type TMat2D } from 'fabric'
 import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
@@ -756,7 +756,7 @@ export class FabricView {
     const anchors = Object.fromEntries(pen.anchors.map((a) => [a.id, a]))
     const segments = pen.anchors.slice(1).map((a, i) => ({ id: `s${i + 1}`, from: pen.anchors[i].id, to: a.id }))
     if (closed) segments.push({ id: `s${segments.length + 1}`, from: pen.anchors[pen.anchors.length - 1].id, to: pen.anchors[0].id })
-    const siblings = (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(this.editor.reader as any, layer, t).map((id) => (this.editor.reader.get(id as any) as unknown as { index: string }).index))
+    const siblings = placedChildren(this.editor.reader as any, layer).map((id) => (this.editor.reader.get(id as any) as unknown as { index: string }).index)
     const top = siblings.sort().at(-1) ?? null
     const r = this.applyAndLog({ type: 'createCurve', parentId: layer as any, index: getIndexAbove(top as IndexKey | null), anchors, segments, closed })
     if (r.ok && r.written) this.selection.set([r.affected[0]])
@@ -1054,7 +1054,7 @@ export class FabricView {
   ungroup() {
     const ids = this.selection.get().filter((id) => (this.editor.reader.get(id as any) as DocRecord | undefined)?.typeName === 'container')
     if (!ids.length) return this.setStatus('INVALID: 先选中一个组'), null
-    const kids = ids.flatMap((g) => (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(this.editor.reader as any, g, t)))
+    const kids = ids.flatMap((g) => placedChildren(this.editor.reader as any, g))
     const r = this.applyAndLog({ type: 'ungroup', ids })
     if (r.ok && r.written) this.selection.set(kids)
     return r

@@ -15,7 +15,7 @@
 import type { RecordId } from '@tldraw/store'
 import { getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
-import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within } from './indexes'
+import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced } from './indexes'
 import { paintKey } from './evaluate'
 import { anchorKey, getAs } from './model'
 import { isBridge, poseIdOf, type BaseReader, type BoundaryStep, type ConnectionRecord, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type FormsRecord, type ReferenceRecord } from './schema'
@@ -39,7 +39,7 @@ export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCom
   const sel = new Set<string>()
   for (const id of cmd.ids) {
     const r = store.get(id as any) as DocRecord | undefined
-    if (!r || !['container', 'curve', 'fill', 'reference'].includes(r.typeName)) return fail('NOT_FOUND', `${id} is not a container, curve, fill or reference`, [id])
+    if (!r || !isPlaced(r.typeName)) return fail('NOT_FOUND', `${id} is not a container, curve, fill or reference`, [id])
     sel.add(id)
     if (r.typeName === 'container') for (const c of containersWithin(store, r.id)) {
       sel.add(c)
@@ -82,7 +82,7 @@ export function planCopyInto(src: BaseReader, dst: BaseReader, cmd: DuplicateCom
   for (const [parent, members] of groups) {
     const inCopy = !!parent && [...map.values()].includes(parent)
     // a new container's content starts empty; an existing destination: above its current topmost child
-    const topmost = inCopy ? null : dst.allRecords().filter((x: any) => ['container', 'curve', 'fill', 'reference'].includes(x.typeName) && (x.parentId ?? null) === parent).map((x: any) => x.index as string).reduce<string | null>((m, i) => (m === null || i > m ? i : m), null)
+    const topmost = inCopy ? null : dst.allRecords().filter((x: any) => isPlaced(x.typeName) && (x.parentId ?? null) === parent).map((x: any) => x.index as string).reduce<string | null>((m, i) => (m === null || i > m ? i : m), null)
     const order = members.map((r) => ({ r, key: paintKey(store, r) })).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     let fresh: IndexKey[]
     try {
