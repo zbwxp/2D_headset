@@ -81,9 +81,22 @@ test('A: mouse drag of an anchor equals the same command through the API', async
   expect(await sceneIsPureProjection(page)).toBe(true)
 })
 
-test('A: handle drag via mouse equals API', async ({ page }) => {
+test('A: handle drag via mouse equals API — a2 is a smooth point (handles (0, −20) / (0, 20)), so both turn (setHandles)', async ({ page }) => {
   await open(page)
   await drag(page, { x: 10, y: 80 }, { x: 16, y: 80 }) // a2.out handle at (10, 80)
+  const s = await state(page)
+  expect(s.log[0].cmd).toMatchObject({ type: 'setHandles', hOut: { x: 6, y: 20 } })
+  const hIn = s.log[0].cmd.hIn
+  expect(Math.hypot(hIn.x, hIn.y)).toBeCloseTo(20, 2) // the other handle keeps its length, opposite direction
+  expect(hIn.x / hIn.y).toBeCloseTo(6 / 20, 2)
+  expect((await replayViaApi(page)).doc).toBe(s.doc)
+})
+
+test('A: Alt + handle drag moves that handle alone (moveHandle) — via mouse equals API', async ({ page }) => {
+  await open(page)
+  await page.keyboard.down('Alt')
+  await drag(page, { x: 10, y: 80 }, { x: 16, y: 80 })
+  await page.keyboard.up('Alt')
   const s = await state(page)
   expect(s.log[0].cmd).toMatchObject({ type: 'moveHandle', handle: 'out', delta: { x: 6, y: 0 } })
   expect((await replayViaApi(page)).doc).toBe(s.doc)
