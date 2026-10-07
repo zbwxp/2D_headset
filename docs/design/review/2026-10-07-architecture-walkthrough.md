@@ -2273,7 +2273,7 @@ Understood. Following the same reasoning: every endpoint is the end of a specifi
 - 1: decided (甲, as a natural result of the principle, not a special case).
 - 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
 - 2: decided. Move = copy or copy-then-delete; the result follows from the principle. Do not block; show consequences.
-- Curve-end question: **open**. It moves to the endpoint round (dot 1791392483). A point and "the end of a specific curve" still have to be distinguished at a shared endpoint with several lines, and this does not follow from the copy/delete decision. Claude withdrew "recorded unless bowen objects".
+- Curve-end question: **dissolved by Q22** (binding acts on points). Earlier status: open, moved to the endpoint round (dot 1791392483). A point and "the end of a specific curve" still have to be distinguished at a shared endpoint with several lines, and this does not follow from the copy/delete decision. Claude withdrew "recorded unless bowen objects".
 
 ## Q22: Binding A and B when several lines connect them, derived from the code
 
