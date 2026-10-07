@@ -434,7 +434,7 @@ If they are tied, changing fills forces changes to ordinary group rules.
 **bowen** 1791383214, 1791383633, 1791383724:
 - 1791383214: 我给你们一套知识图谱结构，然后你们来尝试攻击它 看这种关系会有哪里出问题。如果没问题也可以提出和成熟方案不一致然后分析为什么会不一致。
 - 1791383633: 最基础的element是bezier曲线。单条曲线具有四个参数 分别是两个端点和两个handle。 端点具有笔触属性，线条具有线条笔触属性。接下来是连续曲线： 连续曲线是相邻两条单独曲线共用端点构成（相邻两条 意思是可以有很多相邻两条构成很多连续曲线） 共享端点因此具有了接笔属性（定义两端handle的角度限制） 连续曲线出现循环时，就是闭合曲线。闭合曲线增添了填充属性。因此填充属于闭合曲线。闭合曲线是连续曲线的子集。一组连续曲线可能有很多组闭合曲线。 单条曲线+连续曲线构成了图层的基本element （我的语义描述不准确时你们合理补救…帮我完善之后再攻击）
-- 1791383724: 这一版发完 你们可以开始了
+- 1791383724: 这一版发完 你们可以开始了；1791383776: 我先说到这一层 你们可以开始整理审查了
 
 **Review rules (dot 1791383276):** findings are sorted into four kinds.
 
@@ -464,7 +464,7 @@ Each challenge names the relation and gives a counter-example. Suggestions go in
 
 **S4 Closed curve.**
 - A loop inside the continuous curve, carrying a **fill attribute**. The fill belongs to the closed curve.
-- One continuous curve can contain several closed curves. Keep this; do not change it to "a single simple path" (dot 1791383717).
+- One continuous curve can contain several closed curves. Keep this; do not change it to "a single simple path" (dot 1791383731).
 
 **S5 Layer elements.** A layer's basic elements are single curves and continuous curves.
 
