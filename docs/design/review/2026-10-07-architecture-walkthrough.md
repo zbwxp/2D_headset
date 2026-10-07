@@ -2348,3 +2348,61 @@ So "binding the θ middle line's ends deletes the whole θ" holds only when ever
 **Decided (甲).** Q20 cases 2 and 3 are superseded:
 - no single-curve loop exists;
 - binding the ends of the middle line of a minimal θ (every line runs directly A–B) deletes the whole θ; arcs with intermediate points survive.
+
+## Q23: One endpoint, many lines, derived from existing rules
+
+**bowen** 1791393203:
+> 这种推演才是我想要的。你们要不要试着这个方式推演一下一个端点多条线？
+
+### Claude's derivation (1791393260, addendum 1791393280)
+
+**Premises already in the graph:**
+1. A line has two endpoints and two handles; each handle belongs to its end.
+2. Endpoints have an end stroke; lines have a line stroke.
+3. A shared endpoint has a join that constrains the angles of the two sides' handles.
+4. Binding keeps the first point, deletes the later one, and re-attaches its lines.
+
+**Derivation:**
+
+1. **N lines at a point means N handles.**
+   - By premise 1, a handle belongs to "this end of this line", not to the point.
+   - Binding only changes which point a line end is attached to, so handles stay with their lines.
+   - An "endpoint" is therefore two layers:
+     - **the point:** a shared position;
+     - **the line ends:** one per line, each carrying its own handle.
+2. **Dragging the point** moves all N line ends and translates their handles (v103 `moveNode`).
+3. **Where the join lives.**
+   - Premise 3 is about "the angles of the two sides' handles", i.e. a relation between **two line ends**.
+   - With two lines this looks like a property of the point. With N lines it generalises to: **any two line ends at the same point may have a join**.
+   - A join belongs to a pair of line ends, not to the point.
+4. **A corner needs no record.** A corner means no angle constraint, i.e. no join between those two ends. Only "smooth" constraints need recording.
+5. **Dragging a handle.**
+   - A handle joined smoothly to the dragged one turns to the opposite direction. A third handle joined smoothly to that one turns as well.
+   - The constraint **propagates along smooth relations** with no extra rule. v103 already computes smooth components when dragging a handle (`moveHandle` → `drawingSmoothComponents`).
+   - **Result:** if A–B and A–C are both smooth, then B and C point the same way. This is a smooth fork, like a strand of hair splitting. It is geometrically valid, so under "do not block" it is allowed.
+   - **v103 did not allow it:** `connect` limits each line end to one join and refuses with "端点已与另一条曲线接笔".
+6. **End stroke.** By premise 2 it belongs to the line end, so N lines at one point each keep their own end stroke. Binding deletes only the point; end strokes on line ends remain.
+7. **Deleting a line** removes its line end and, naturally, the joins on that end.
+   - If no line remains, the point disappears.
+   - If one line remains, it becomes a free end.
+8. **Loops and fills are unaffected by joins.**
+   - Loops depend only on shared points (graph); joins only constrain angles.
+   - So a continuous curve is defined by shared points, not by joins.
+9. **No line is joined to itself.** Q22 rules out single-line loops, so a line's two ends never share a point.
+
+**Addendum: contradictory smooth cycles (1791393280).**
+- v103 builds smooth relations into components with a same/opposite sign per handle and reports "conflicting handle directions" (`7205381:src/domain/drawing/smoothHandleAuthoring.ts:7-19`).
+- **Example:** A–B smooth (opposite) and B–C smooth (opposite) imply A and C point the same way. Adding A–C smooth then demands opposite. Both cannot hold.
+- **General rule:** a cycle of an odd number of smooth relations is always contradictory; an even cycle is fine.
+- This is an impossibility that follows from the rules, not an added special case. "Do not block, show consequences" meets a consequence that cannot exist.
+- **bowen to decide:** refuse adding that relation, or allow it and mark the conflict in red?
+
+**For bowen to confirm (Claude's added assumptions):**
+- **Step 1:** handle and end stroke belong to the line end; position belongs to the point. Is that the right reading of "端点具有笔触属性"?
+- **Step 3:** a join is a relation between two line ends, not an attribute of the point.
+
+**Aside:** a smooth pair at a fork can later decide which branch a stroke follows (the "line group" item). Not expanded here.
+
+### Status
+
+Waiting for dot's independent derivation and bowen's confirmation of steps 1 and 3 and the odd-cycle decision.
