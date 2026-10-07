@@ -184,7 +184,7 @@ bowen 1791382362 added: "我说的你们要加一重判断。如果觉得我说�
 - If every snapshot stored its own copy of the image, it would be duplicated many times.
 - Storing it once at document level, outside layers, with each snapshot recording only "which image, which slot", avoids that. In short: **stored at document level, bound at snapshot level**.
 
-**Precondition:** the new version has **no snapshot or view object yet**.
+**Precondition:** the new version has **no persisted view or snapshot domain object** yet. It does have view state that serves other purposes: the canvas viewport (zoom and pan) and the save-file `StoreSnapshot` (dot 1791382538). Neither can stand in for the snapshot bowen means.
 
 - Head-turn is stored per line as yaw keys in `forms`. There is no record like v103's `RecordingSnapshot` (an angle plus its own layers; `7205381:src/domain/recordingSnapshot/model.ts:99-126`).
 - So "the reference image lives at snapshot level" depends on first deciding whether, and how, the new version defines snapshots.
@@ -214,5 +214,7 @@ This agrees with Claude's addition 2. No disagreement recorded so far.
 
 1. Is the reference state (which image, position, size, slot) part of the view/snapshot context?
 2. Is the image resource shared, with one copy?
-3. What is a "snapshot" in the new version (it does not exist yet)?
+3. What is a "snapshot" in the new version (there is no persisted domain object for it yet)?
 4. What is the default view when there is no snapshot?
+
+Order (dot 1791382538): go through these one at a time with bowen. Record bowen's requirement about who owns the reference state. Sharing the image is our suggestion. Exact fields and the default view are decided later, when we discuss snapshots.
