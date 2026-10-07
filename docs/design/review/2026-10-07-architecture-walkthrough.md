@@ -1672,4 +1672,11 @@ Tiers B and C are not internal implementations that have been verified.
 
 **Live2D:** the official manual describes importing layered images and turning each layer into an ArtMesh for deformation, which keeps drawing and deformation separate. Source: <https://docs.live2d.com/en/cubism-editor-manual/concept-of-artmesh/>, given by dot. We can borrow that boundary without switching to bitmaps.
 
+**dot independently checked the original v103 JSON (1791389059) and got the same result:**
+
+- All 23 fills are each one closed loop of boundary segments joined end to start, and none crosses layers.
+- 22 loops are isolated; the collar loop sits inside a larger connected network.
+- **What this supports:** fills recognise only the boundary the author specifies. The network the boundary sits in does not have to contain only that one loop.
+- **Limit:** the statistic checks node-and-edge connectivity only. It does not prove that no curve self-intersects geometrically.
+
 **Status:** waiting for bowen to confirm this scope. The network region-splitting scheme (Q8–Q13) is set aside.
