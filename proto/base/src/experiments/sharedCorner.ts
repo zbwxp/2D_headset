@@ -18,9 +18,11 @@
 // An EMPTY moved-role (upper) track is a missing closed state: refused, not "rule at every yaw" (§24 v2). A closed state
 // is created explicitly by `initClosedState` (generated rule keys, target = base); generated keys play like any other.
 // v3 (dot, review of 283826e): every public evaluation entry validates first (`validateEye`) and REFUSES stored data the
-// coordination would otherwise hide — an upper key (preset or character) that moves the shared corner by itself, and a
-// character whole-line fix that is not a two-line submission at the same yaws (def. 3) — instead of returning a
-// coordinated shape.
+// coordination would otherwise hide — an upper key (preset or character) that moves the shared corner by itself —
+// instead of returning a coordinated shape.
+// v4 (dot 1791340954; doc 18 §26.2 v6 order): a one-sided character edit is a normal operation. A character lower
+// override (line fix Δ or node fix) reaches the upper through the linear rule: upper = Σw completed preset uppers +
+// rule(Δ), Δ = character lower − Σw preset lowers; the upper's own extra corrections are kept.
 // Linked edits (§26.2 v3): the command gives FINAL targets; the common point comes from the given end; both given and
 // different → refused. Only the edited track gets a key at the edited yaw; no union is written into other tracks.
 import type { Shape } from '../schema'
@@ -95,17 +97,14 @@ export function storedCornerProblems(eye: Eye, pe: PresetEye, owner = 'preset'):
 }
 /**
  * The public validation boundary (dot, review of 283826e): what a character may play. Problems (refused, never
- * coordinated away): a weighted preset's or the character's upper key moving the shared corner by itself; a character
- * line fix that is not a two-line submission at the same yaws (def. 3 — a one-sided override would leave the other lid
- * not following). A missing closed state is reported separately (`MissingClosedState`).
+ * coordinated away): a weighted preset's or the character's upper key moving the shared corner by itself. A missing
+ * closed state is reported separately (`MissingClosedState`).
  */
 export function validateEye(eye: Eye, ch?: CharacterEye): string[] {
   const used = ch ? Object.entries(ch.weights).filter(([, w]) => w !== 0).map(([p]) => p) : Object.keys(eye.presets)
   const out = used.flatMap((p) => storedCornerProblems(eye, eye.presets[p], `preset ${p}`))
   if (ch) {
     out.push(...ch.lineFix.upper.filter((k) => movesCorner(eye, k)).map((k) => `character upper fix at ${k.yaw}° moves the shared corner by itself`))
-    const yl = ch.lineFix.lower.map((k) => k.yaw).sort((a, b) => a - b).join(), yu = ch.lineFix.upper.map((k) => k.yaw).sort((a, b) => a - b).join()
-    if (yl !== yu) out.push(`character line fixes must be two-line submissions at the same yaws (lower [${yl}], upper [${yu}])`)
   }
   return out
 }
@@ -142,14 +141,15 @@ export function characterUpper(eye: Eye, ch: CharacterEye, yaw: number): Shape {
   if (ch.lineFix.upper.length)
     // the character's own upper fix: its own keys, the rule on the character's final lower at those keys only
     own = sampleShape(ch.lineFix.upper, yaw, (k) => addS(rule(eye, characterLower(eye, ch, k.yaw)), subS(k.target, k.base)))!
-  else
-    // the weighted presets' COMPLETED upper tracks (dot, review of 5b76ee2 failure B: no rule on a union of keys)
-    own = Object.entries(ch.weights)
-      .filter(([, w]) => w !== 0)
-      .reduce<Shape | null>((acc, [p, w]) => {
-        const s = scale(presetUpperOwn(eye, eye.presets[p], yaw), w)
-        return acc ? addS(acc, s) : s
-      }, null)!
+  else {
+    // the weighted presets' COMPLETED upper tracks (dot, review of 5b76ee2 failure B: no rule on a union of keys) …
+    const parts = Object.entries(ch.weights).filter(([, w]) => w !== 0)
+    const mix = (f: (pe: PresetEye) => Shape) => parts.reduce<Shape | null>((acc, [p, w]) => (acc ? addS(acc, scale(f(eye.presets[p]), w)) : scale(f(eye.presets[p]), w)), null)!
+    // … plus the character's own lower deviation carried by the linear rule (v4: a one-sided lower edit reaches the
+    // upper; the upper's extra corrections stay). No rule is re-run on a shape: only the deviation is copied across.
+    const delta = subS(characterLower(eye, ch, yaw), mix((pe) => presetLower(pe, yaw)))
+    own = addS(mix((pe) => presetUpperOwn(eye, pe, yaw)), rule(eye, delta))
+  }
   return coordinate(eye, own, characterLower(eye, ch, yaw))
 }
 export const cornerGap = (eye: Eye, lower: Shape, upper: Shape) => {
@@ -216,18 +216,24 @@ export function characterCornerFix(eye: Eye, ch: CharacterEye, yaw: number, targ
   const base = characterNeutral(eye, ch, 'lower', yaw)[eye.corner.lower].p
   return { ...ch, nodeFix: [...ch.nodeFix.filter((k) => k.yaw !== yaw), { yaw, target: { ...target }, base: { ...base } }].sort((a, b) => a.yaw - b.yaw) }
 }
-export function characterLineFix(eye: Eye, ch: CharacterEye, yaw: number, given: { lower: Shape; upper: Shape }, opts: { replace?: boolean } = {}): { ok: true; ch: CharacterEye } | Refusal {
-  const cl = given.lower[eye.corner.lower].p, cu = given.upper[eye.corner.upper].p
-  if (cl.x !== cu.x || cl.y !== cu.y) return { ok: false, reason: 'the two given corners differ: one shared point' }
-  if (ch.nodeFix.length && !opts.replace) {
-    const at = characterLower(eye, ch, yaw)[eye.corner.lower].p
-    if (at.x !== cl.x || at.y !== cl.y) return { ok: false, reason: 'a node fix holds this corner at another position: clear it or replace it explicitly' }
-  }
-  const nl = characterNeutral(eye, ch, 'lower', yaw)
-  const lower = [...ch.lineFix.lower.filter((k) => k.yaw !== yaw), { yaw, target: given.lower, base: nl }]
-  const upper = [...ch.lineFix.upper.filter((k) => k.yaw !== yaw), { yaw, target: given.upper, base: rule(eye, given.lower) }]
-  // `replace` clears the whole node track (its other keys would still interpolate / clamp onto this yaw)
-  return { ok: true, ch: { ...ch, lineFix: { lower, upper }, nodeFix: opts.replace ? [] : ch.nodeFix } }
+/** A character's line fix in the closed state: either side or both (v4 — one-sided edits are normal). Final targets;
+ *  the common point comes from the given end(s) (both given and different → refused). The lower side owns the corner:
+ *  an upper-only edit that moves the corner writes a corner node fix (no lower line fix, def. 3). A corner disagreeing
+ *  with an existing node fix → refused unless `replace` (clears the whole node track). */
+export function characterLineFix(eye: Eye, ch: CharacterEye, yaw: number, given: { lower?: Shape; upper?: Shape }, opts: { replace?: boolean } = {}): { ok: true; ch: CharacterEye } | Refusal {
+  if (!given.lower && !given.upper) return { ok: false, reason: 'nothing given' }
+  const cl = given.lower?.[eye.corner.lower].p, cu = given.upper?.[eye.corner.upper].p
+  if (cl && cu && (cl.x !== cu.x || cl.y !== cu.y)) return { ok: false, reason: 'the two given corners differ: one shared point' }
+  const c = (cl ?? cu)!
+  const now = characterLower(eye, ch, yaw)[eye.corner.lower].p
+  const moves = now.x !== c.x || now.y !== c.y
+  if (moves && ch.nodeFix.length && !opts.replace) return { ok: false, reason: 'a node fix holds this corner at another position: clear it or replace it explicitly' }
+  let next: CharacterEye = { ...ch, nodeFix: opts.replace ? [] : ch.nodeFix, lineFix: { lower: [...ch.lineFix.lower], upper: [...ch.lineFix.upper] } }
+  const put = (keys: Key[], k: Key) => [...keys.filter((x) => x.yaw !== k.yaw), k].sort((x, y) => x.yaw - y.yaw)
+  if (given.lower) next = { ...next, lineFix: { ...next.lineFix, lower: put(next.lineFix.lower, { yaw, target: given.lower, base: characterNeutral(eye, ch, 'lower', yaw) }) } }
+  else if (moves) next = characterCornerFix(eye, next, yaw, c) // upper-only edit moving the corner: the corner only
+  if (given.upper) next = { ...next, lineFix: { ...next.lineFix, upper: put(next.lineFix.upper, { yaw, target: given.upper, base: rule(eye, characterLower(eye, next, yaw)) }) } }
+  return { ok: true, ch: next }
 }
 export const clearNodeFix = (ch: CharacterEye): CharacterEye => ({ ...ch, nodeFix: [] })
 

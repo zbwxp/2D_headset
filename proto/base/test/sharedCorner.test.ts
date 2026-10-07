@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   characterCornerFix, characterLineFix, characterLower, characterUpper, clearNodeFix, cornerGap, fillUnion, independent, initClosedState,
-  InvalidEyeData, moveAnchor, playEyes, presetLinkedEdit, presetLower, presetUpper, rule, storedCornerProblems, type CharacterEye, type Eye,
+  InvalidEyeData, moveAnchor, playEyes, presetLinkedEdit, presetLower, presetNeutral as presetNeutralOf, presetUpper, rule, storedCornerProblems, type CharacterEye, type Eye,
   type Key, type PresetEye,
 } from '../src/experiments/sharedCorner'
 import type { Shape } from '../src/schema'
@@ -228,7 +228,7 @@ describe('v3 (dot, review of 283826e): the public entries validate; explicit clo
     eye2.presets.Q.expr.upper = ruleKeys(eye2, eye2.presets.Q, [0, 90])
     expect(() => characterUpper(eye2, ch({ P: 0, Q: 1 }), 0)).not.toThrow()
   })
-  it('a stored character upper fix moving the shared corner, and a one-sided character line fix (def. 3), are refused at the entry', () => {
+  it('a stored character upper fix moving the shared corner is refused at the entry', () => {
     const eye = eyeOf({ P: preset() })
     const c0 = ch({ P: 1 })
     const r = characterLineFix(eye, c0, 0, { lower: characterLower(eye, c0, 0), upper: characterUpper(eye, c0, 0) })
@@ -236,9 +236,42 @@ describe('v3 (dot, review of 283826e): the public entries validate; explicit clo
     const bad = structuredClone(r.ch)
     bad.lineFix.upper[0].target.a.p = pt(0, 3)
     expect(() => characterUpper(eye, bad, 0)).toThrow(/character upper fix at 0° moves the shared corner/)
-    const oneSided = { ...structuredClone(r.ch), lineFix: { lower: structuredClone(r.ch.lineFix.lower), upper: [] } }
-    expect(() => characterLower(eye, oneSided, 0)).toThrow(/two-line submissions/)
-    expect(() => characterUpper(eye, oneSided, 0)).toThrow(/two-line submissions/)
+  })
+  it('v4 one-sided lower edit (dot’s numbers): preset lower mid 2, upper extra +3 → character lower mid 8 gives upper mid 11; the upper’s own details stay', () => {
+    const eye = eyeOf({ P: preset() })
+    const pe = eye.presets.P
+    // preset: lower mid n at 2; upper keys carry an extra +3 on m over rule(lower)
+    pe.expr.lower = [0, 90].map((y) => ({ yaw: y, target: { ...presetLower(pe, y), n: { ...presetLower(pe, y).n, p: pt(presetLower(pe, y).n.p.x, 2) } }, base: presetNeutralOf(pe, 'lower', y) }))
+    pe.expr.upper = [0, 90].map((y) => {
+      const r = rule(eye, presetLower(pe, y))
+      return { yaw: y, target: { ...r, m: { ...r.m, p: pt(r.m.p.x, r.m.p.y + 3) } }, base: r }
+    })
+    expect(presetUpper(eye, pe, 0).m.p.y).toBe(5)
+    const c0 = ch({ P: 1 })
+    const lower = characterLower(eye, c0, 0)
+    const r = characterLineFix(eye, c0, 0, { lower: { ...lower, n: { ...lower.n, p: pt(lower.n.p.x, 8) } } })
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.ch.lineFix.upper).toEqual([]) // nothing written on the upper
+    expect(characterLower(eye, r.ch, 0).n.p.y).toBe(8)
+    expect(characterUpper(eye, r.ch, 0).m.p.y).toBe(11)
+    for (const y of YAWS) {
+      // the single lower key clamps: +6 on the lower mid everywhere, carried to the upper mid; the corner never splits
+      expect(characterUpper(eye, r.ch, y).m.p.y).toBeCloseTo(presetUpper(eye, pe, y).m.p.y + 6, 12)
+      expect(cornerGap(eye, characterLower(eye, r.ch, y), characterUpper(eye, r.ch, y))).toBeCloseTo(0, 12)
+    }
+  })
+  it('v4 one-sided upper edit moving the corner: the lower corner follows through a corner node fix only (its interior unchanged); the upper target is reproduced', () => {
+    const eye = eyeOf({ P: preset() })
+    const c0 = ch({ P: 1 })
+    const up0 = characterUpper(eye, c0, 0)
+    const target = moveAnchor({ ...up0, m: { ...up0.m, p: pt(up0.m.p.x, up0.m.p.y + 1) } }, 'a', pt(0, 0.7))
+    const r = characterLineFix(eye, c0, 0, { upper: target })
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.ch.lineFix.lower).toEqual([])
+    expect(r.ch.nodeFix.map((k) => k.yaw)).toEqual([0])
+    expect(characterLower(eye, r.ch, 0).c.p).toEqual(pt(0, 0.7))
+    expect(characterLower(eye, r.ch, 0).n).toEqual(characterLower(eye, c0, 0).n)
+    expect(characterUpper(eye, r.ch, 0)).toEqual(target)
   })
   it('initClosedState: an empty upper is refused until initialised; generated keys (target = base) then play and edit normally; a second init is refused', () => {
     const eye = eyeOf({ P: preset() })
