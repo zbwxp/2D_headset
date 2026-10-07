@@ -2193,6 +2193,36 @@ No hard contradiction that overturns the structure; there are a few operation bo
 2. When part of a loop's lines is moved to another layer: refuse, or move and clear the fill?
 3. When two curves join the same pair of endpoints, the curve end the user clicks decides which curve a bind deletes; the program never guesses. Agreed?
 
+### bowen (1791392233)
+
+> 1选甲 这是原则决定的行为。2没看懂 举个例子。3. 绘制操作不存在剪切 要么复制完回来删除要么复制。录制间的剪切粘贴是我为了将线带着id转移过来。这个操作未来还需要捋顺。
+
+bowen's numbering follows Claude's first Q21 message (1791391895).
+
+- **1 (unbind): 甲.** Unbinding that breaks a loop clears that loop's fill, "by principle".
+- **2 (part of a loop to another layer):** bowen asked for an example.
+- **3 (cut): drawing has no cut.**
+  - There is only "copy", and "copy, then delete", which follows the delete rule.
+  - Cut-and-paste between recordings exists to carry lines over with their ids. It needs to be sorted out later.
+
+### Claude's example for 2 (1791392256)
+
+**Example:**
+- A face layer has a closed loop made of a cheek line, a jaw line and an ear line, filled with skin.
+- bowen selects only the jaw line and moves it to a "chin" layer.
+- The loop's three lines are now in two layers, so under "no cross-layer fill" the skin fill has no valid home.
+
+**Two ways to handle it:**
+- **Refuse:** "this line is part of a filled loop and cannot be moved alone". Move the whole loop, or clear the fill first.
+- **Move and clear:** the jaw line moves and the skin fill is cleared, as with delete and unbind.
+
+**Side question, left for later:** does the shared endpoint between the jaw and cheek lines break, or become a cross-layer link? This belongs to the cross-layer endpoint item.
+
+**Still pending:** for two curves joining the same pair of endpoints, the curve end the user clicks decides which curve a bind deletes.
+
 ### Status
 
-Waiting for bowen on 1–3.
+- 1: decided (甲).
+- 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
+- 2: waiting for bowen.
+- Curve-end question: waiting for bowen.
