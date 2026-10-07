@@ -189,3 +189,17 @@ test('UI: ⌘7 with fewer than two objects, or a front object that cannot mask, 
   await expect(page.locator('#status')).toContainText('至少两个对象')
   expect(await page.evaluate(() => (window as any).__contour.editor.history.undo)).toEqual([])
 })
+
+test('UI: a group made a mask source shows the mask when the group is selected, and ⌥⌘7 on the group releases it (review of 3ef87db M1)', async ({ page }) => {
+  await page.goto('/?case=P2-fill-layer-in-front')
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#layersPanel'))
+  await page.click('[data-id="curve:C"]')
+  await page.click('[data-id="container:L2"]', { modifiers: ['ControlOrMeta'] })
+  await page.keyboard.press('ControlOrMeta+7')
+  const m = await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().find((r: any) => r.typeName === 'mask'))
+  expect(m.sources.fills).toEqual(['fill:F'])
+  await page.click('[data-id="container:L2"]')
+  await expect(page.locator(`#propsPanel [data-mask="${m.id}"]`)).toContainText('来源')
+  await page.keyboard.press('ControlOrMeta+Alt+7')
+  expect(await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'mask'))).toBe(false)
+})

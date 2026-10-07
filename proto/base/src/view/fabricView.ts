@@ -19,11 +19,11 @@ import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
-import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
+import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, isInside, layerOf, masksOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
 import { getIndexAbove, type IndexKey } from '@tldraw/utils'
 import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
-import { anchorKey, lockedBy, type AnchorRef } from '../model'
+import { anchorKey, containerChain, lockedBy, type AnchorRef } from '../model'
 
 export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
@@ -677,7 +677,17 @@ export class FabricView {
   private finishContinuation(pen: { anchors: Anchor[]; from: { curveId: string; end: 'start' | 'end' } }, closed: boolean) {
     const [endDraft, ...drawn] = pen.anchors
     const outer = endDraft.hOut.x || endDraft.hOut.y ? endDraft.hOut : undefined
-    if (!drawn.length && !closed) return this.render(), null
+    if (!drawn.length && !closed && !outer) return this.render(), null
+    // the layer may have been hidden (or locked) while drawing: checked again when the path ends, as for a new path
+    // (review of 3ef87db S2)
+    const curve = this.editor.reader.get(pen.from.curveId as any) as CurveRecord | undefined
+    const chain = curve ? containerChain(this.editor.reader, curve.parentId) : []
+    const blocked = chain.find((k) => !k.visible || k.locked)
+    if (blocked) {
+      this.setStatus(`LOCKED: 图层「${blocked.name}」${blocked.locked ? '已锁定' : '已隐藏'}，不能在上面画`)
+      this.render()
+      return null
+    }
     // drawing order → curve order: appended as drawn at the end; before the first anchor (reversed, handles swapped) at the start
     const anchors = pen.from.end === 'end' ? drawn : [...drawn].reverse().map((a) => ({ ...a, hIn: a.hOut, hOut: a.hIn }))
     const cmd: Command = { type: 'extendCurve', curveId: pen.from.curveId as any, end: pen.from.end, anchors, ...(outer ? { endHandle: outer } : {}) }
@@ -687,7 +697,8 @@ export class FabricView {
       return r
     }
     const run = this.editor.batchRun('continuePath', () => {
-      if (drawn.length) {
+      // the end's dragged outer handle is kept also when closing straight away (review of 3ef87db S1)
+      if (drawn.length || outer) {
         const a = this.editor.apply(cmd)
         if (!a.ok) throw a.error
       }
@@ -892,8 +903,7 @@ export class FabricView {
   }
   /** ⌥⌘7: remove the masks the selection takes part in (as source or target) — one undo step */
   releaseMask() {
-    const ids = new Set(this.selection.get())
-    const masks = this.editor.reader.allRecords().filter((m: any) => m.typeName === 'mask' && (m.targets.some((t: string) => ids.has(t)) || [...m.sources.fills, ...m.sources.strokes].some((x: string) => ids.has(x)))) as any[]
+    const masks = [...new Map(this.selection.get().flatMap((id) => masksOf(this.editor.reader, id)).map((x) => [x.mask.id, x.mask])).values()]
     if (!masks.length) return this.setStatus('INVALID: 选中的对象没有参与蒙版'), null
     return this.applyAndLog({ type: 'deleteRecords', ids: masks.map((m) => m.id) })
   }

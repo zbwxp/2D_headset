@@ -14,7 +14,7 @@ import { atom, type Atom } from '@tldraw/state'
 import { fillContains, hitStack, type Cubic, type EvalCurve, type EvalFill, type Evaluated } from './evaluate'
 import { childrenOf, connectionsAt, type Queryable } from './indexes'
 import { anchorKey } from './model'
-import { poseIdOf, type BaseReader, type DocRecord, type Vec } from './schema'
+import { poseIdOf, type BaseReader, type DocRecord, type MaskRecord, type Vec } from './schema'
 
 type Reader = Pick<BaseReader, 'get'>
 const parentOf = (reader: Reader, id: string): string | null => {
@@ -233,4 +233,19 @@ export function drawnOf(reader: Reader, ev: Evaluated, units: readonly string[])
 export function anchorsInRect(ev: Evaluated, rect: Rect): string[] {
   const r = norm(rect)
   return ev.curves.filter((c) => c.visible && !c.locked && !c.referenceId).flatMap((c) => Object.values(c.anchors).filter((a) => inside(r, a.p)).map((a) => `${c.curveId}#${a.id}`))
+}
+
+/**
+ * The masks a record takes part in: as a source or target itself, through a container it is inside (a target layer /
+ * group), or — a selected container — through the sources / targets inside it (a group made a mask source is
+ * recorded as its fills and lines; review of 3ef87db M1). Role: 'target' when it is (in) a target, else 'source'.
+ */
+export function masksOf(reader: BaseReader, id: string): { mask: MaskRecord; role: 'target' | 'source' }[] {
+  const out: { mask: MaskRecord; role: 'target' | 'source' }[] = []
+  const touches = (x: string) => x === id || isInside(reader, x, id) || isInside(reader, id, x)
+  for (const m of reader.allRecords().filter((r): r is MaskRecord => r.typeName === 'mask')) {
+    if (m.targets.some(touches)) out.push({ mask: m, role: 'target' })
+    else if ([...m.sources.fills, ...m.sources.strokes].some(touches)) out.push({ mask: m, role: 'source' })
+  }
+  return out
 }

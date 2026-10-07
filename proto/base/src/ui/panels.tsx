@@ -6,7 +6,7 @@ import { useValue } from '@tldraw/state-react'
 import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react'
 import type { Command } from '../commands'
 import type { Editor } from '../editor'
-import { layerOf } from '../selection'
+import { layerOf, masksOf } from '../selection'
 import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
 import { layerRows, rangeOf, type LayerRow } from './layerTree'
@@ -313,7 +313,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
   const r = recs[0]
   const layer = layerOf(editor.reader, r.id)
   const layerName = layer ? (editor.reader.get(layer as any) as ContainerRecord | undefined)?.name : null
-  const usedBy = masks.filter((m) => m.targets.includes(r.id) || m.sources.fills.includes(r.id as any) || m.sources.strokes.includes(r.id as any))
+  const usedBy = masksOf(editor.reader, r.id).map((x) => ({ ...x.mask, role: x.role }))
   return (
     <div className="panel props" id="propsPanel">
       <div className="panel-title">属性</div>
@@ -350,7 +350,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
             <tr key={m.id} data-mask={m.id}>
               <th>蒙版</th>
               <td className="inline wrap">
-                <span>{m.name}（{m.targets.includes(r.id) ? '被遮' : '来源'}）</span>
+                <span>{m.name}（{m.role === 'target' ? '被遮' : '来源'}）</span>
                 <select data-mask-mode value={m.mode} title="正常：只在区域里显示；反转：区域里不显示" onChange={(e) => view.setMaskProps(m.id, { mode: e.target.value as 'inside' | 'outside' })}>
                   <option value="inside">正常</option>
                   <option value="outside">反转</option>

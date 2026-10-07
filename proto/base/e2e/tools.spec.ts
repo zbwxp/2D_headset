@@ -237,3 +237,26 @@ test('Pen on an END of an open path continues that path (one extendCurve); from 
   await page.keyboard.press('ControlOrMeta+z')
   expect(await doc(page)).toBe(before)
 })
+
+test('continuation (review of 3ef87db): a dragged outer handle is kept when closing straight away; a layer hidden while drawing is refused, nothing written', async ({ page }) => {
+  await open(page)
+  await page.keyboard.press('p')
+  // E1 runs (-20,20) → (-30,50); drag out of its end, then close onto the other end
+  await dragFrom(page, { x: -30, y: 50 }, { x: -24, y: 54 })
+  await click(page, { x: -20, y: 20 })
+  const e1 = await rec(page, 'curve:E1')
+  expect(e1.closed).toBe(true)
+  expect(e1.anchors.e2.hOut).toEqual({ x: 6, y: 4 })
+  expect((await undoLabels(page)).at(-1)).toBe('continuePath')
+  await page.keyboard.press('ControlOrMeta+z')
+  // hide the layer during a continuation: Enter refuses
+  await click(page, { x: -30, y: 50 })
+  await click(page, { x: -20, y: 70 })
+  await page.click('[data-id="container:L3"] [data-flag="visible"]')
+  const before = await doc(page)
+  const history = await undoLabels(page)
+  await page.keyboard.press('Enter')
+  expect(await doc(page)).toBe(before)
+  expect(await undoLabels(page)).toEqual(history)
+  expect(await page.evaluate(() => (window as any).__contour.view.status)).toMatch(/已隐藏/)
+})

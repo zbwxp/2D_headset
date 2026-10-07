@@ -489,7 +489,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       if (!c) return fail('NOT_FOUND', `no curve ${cmd.curveId}`, [String(cmd.curveId)])
       if (isClosedLoop(c)) return fail('INVALID', `${c.id} is closed: it has no end to continue from`, [c.id])
       if (cmd.end !== 'start' && cmd.end !== 'end') return fail('INVALID', `end must be start or end (got ${cmd.end})`, [c.id])
-      if (!Array.isArray(cmd.anchors) || !cmd.anchors.length) return fail('INVALID', 'no anchors to add', [c.id])
+      if (!Array.isArray(cmd.anchors) || (!cmd.anchors.length && !cmd.endHandle)) return fail('INVALID', 'no anchors to add', [c.id])
       const fin = (q: unknown) => !!q && Number.isFinite((q as Vec).x) && Number.isFinite((q as Vec).y)
       if (!cmd.anchors.every((a) => a && fin(a.p) && fin(a.hIn) && fin(a.hOut)) || (cmd.endHandle !== undefined && !fin(cmd.endHandle))) return fail('INVALID', 'anchors and handles must be finite', [c.id])
       const d = curveData(store, c)
