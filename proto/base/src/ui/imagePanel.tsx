@@ -11,7 +11,7 @@
 //   the slot. Both work while the layer is locked (the one stated lock exemption, imageCommands.ts).
 import { useValue } from '@tldraw/state-react'
 import { useEffect, useRef, useState } from 'react'
-import type { Operation } from '../editor'
+import type { Command } from '../commands'
 import type { Affine, ImageRecord } from '../schema'
 import type { Ui } from './panels'
 
@@ -44,8 +44,34 @@ export const withAngle = (img: ImageRecord, deg: number): Affine => {
 }
 
 /**
+ * A slider drag as one panel gesture (FabricView.beginPanelGesture): previewed while dragging, committed once on release
+ * — one undo step — and cancelled by Esc (nothing written, the slider put back). Review of 4a208bc D3 / D4.
+ */
+function useSliderGesture(ui: Ui, reset: () => void) {
+  // cancelled by Esc: the rest of this drag (until the pointer is released) does nothing — no new gesture starts
+  const cancelled = useRef(false)
+  const onCancel = () => ((cancelled.current = true), reset())
+  return {
+    start: () => {
+      cancelled.current = false
+      if (!ui.view.panelOperation()) ui.view.beginPanelGesture(onCancel)
+    },
+    move: (cmd: Command) => {
+      if (cancelled.current) return reset()
+      const op = ui.view.panelOperation() ?? ui.view.beginPanelGesture(onCancel)
+      ui.view.previewCommand(op, cmd)
+    },
+    end: () => {
+      if (cancelled.current) return void ((cancelled.current = false), reset())
+      ui.view.endPanelGesture()
+    },
+    active: () => !!ui.view.panelOperation() || cancelled.current,
+  }
+}
+
+/**
  * A number with a typed field and a slider centred on the current value. The slider's range is fixed when a drag starts
- * (centre ± `span`) and re-centred after it; the whole drag previews through one operation and commits once.
+ * (centre ± `span`) and re-centred after it; the whole drag is one gesture (useSliderGesture).
  */
 function NumberSlider(props: { ui: Ui; id: string; label: string; value: number; span: number; min?: number; max?: number; digits?: number; unit?: string; make: (v: number) => Affine; scale?: (v: number) => number; unscale?: (v: number) => number }) {
   const { ui, id, value, span } = props
@@ -54,12 +80,13 @@ function NumberSlider(props: { ui: Ui; id: string; label: string; value: number;
   const [text, setText] = useState(fmt(value, props.digits))
   const [range, setRange] = useState({ lo: toSlider(value) - span, hi: toSlider(value) + span })
   const [sv, setSv] = useState(toSlider(value))
-  const op = useRef<Operation | null>(null)
   const reverting = useRef(false) // Esc: put the value back — the blur that follows must not commit
-
+  const latest = useRef(value)
+  latest.current = value
+  const g = useSliderGesture(ui, () => setSv(toSlider(latest.current)))
   useEffect(() => {
     setText(fmt(value, props.digits))
-    if (!op.current) {
+    if (!g.active()) {
       setRange({ lo: toSlider(value) - span, hi: toSlider(value) + span })
       setSv(toSlider(value))
     }
@@ -70,15 +97,6 @@ function NumberSlider(props: { ui: Ui; id: string; label: string; value: number;
     const v = Number(text)
     if (!Number.isFinite(v) || fmt(v, props.digits) === fmt(value, props.digits)) return setText(fmt(value, props.digits))
     ui.apply({ type: 'setProps', id, transform: props.make(clamp(v)) })
-  }
-  const end = () => {
-    const o = op.current
-    op.current = null
-    if (o && o.state === 'open') {
-      const r = o.commit()
-      if (!r.ok && r.error) ui.view.showStatus(`${r.error.code}: ${r.error.message}`)
-    }
-    ui.view.render()
   }
   return (
     <tr data-placement={props.label}>
@@ -103,17 +121,53 @@ function NumberSlider(props: { ui: Ui; id: string; label: string; value: number;
           max={range.hi}
           step={(range.hi - range.lo) / 1000}
           value={sv}
-          onPointerDown={() => (op.current = ui.editor.prepare())}
+          onPointerDown={() => g.start()}
           onInput={(e) => {
             const v = Number((e.target as HTMLInputElement).value)
             setSv(v)
-            const o = (op.current ??= ui.editor.prepare())
-            ui.view.previewCommand(o, { type: 'setProps', id, transform: props.make(clamp(fromSlider(v))) })
+            g.move({ type: 'setProps', id, transform: props.make(clamp(fromSlider(v))) })
           }}
-          onPointerUp={end}
-          onKeyUp={(e) => e.key.startsWith('Arrow') && end()}
-          onBlur={() => op.current && end()}
+          onPointerUp={g.end}
+          onKeyUp={(e) => e.key.startsWith('Arrow') && g.end()}
+          onBlur={() => g.active() && g.end()}
         />
+      </td>
+    </tr>
+  )
+}
+
+/** opacity: a slider whose drag is one gesture too (review of 4a208bc D4: every movement was an undo step) */
+function OpacitySlider({ ui, image }: { ui: Ui; image: ImageRecord }) {
+  const pct = Math.round(image.opacity * 100)
+  const [v, setV] = useState(pct)
+  const latest = useRef(pct)
+  latest.current = pct
+  const g = useSliderGesture(ui, () => setV(latest.current))
+  useEffect(() => {
+    if (!g.active()) setV(pct)
+  }, [pct])
+  return (
+    <tr>
+      <th>不透明度</th>
+      <td className="inline">
+        <input
+          data-prop="image-opacity"
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={v}
+          onPointerDown={() => g.start()}
+          onInput={(e) => {
+            const n = Number((e.target as HTMLInputElement).value)
+            setV(n)
+            g.move({ type: 'setProps', id: image.id, opacity: n / 100 })
+          }}
+          onPointerUp={g.end}
+          onKeyUp={(e) => e.key.startsWith('Arrow') && g.end()}
+          onBlur={() => g.active() && g.end()}
+        />
+        <span>{v}%</span>
       </td>
     </tr>
   )
@@ -128,13 +182,7 @@ export function ImagePanel({ ui, image }: { ui: Ui; image: ImageRecord }) {
   const [renaming, setRenaming] = useState<number | null>(null)
   return (
     <>
-      <tr>
-        <th>不透明度</th>
-        <td className="inline">
-          <input data-prop="image-opacity" type="range" min={0} max={100} step={1} value={Math.round(image.opacity * 100)} onChange={(e) => ui.apply({ type: 'setProps', id: image.id, opacity: Number(e.target.value) / 100 })} />
-          <span>{Math.round(image.opacity * 100)}%</span>
-        </td>
-      </tr>
+      <OpacitySlider ui={ui} image={image} />
       <tr><th>原图</th><td>{image.width} × {image.height} px</td></tr>
       <NumberSlider ui={ui} id={image.id} label="X" value={p.x} span={view.w} make={(v) => withCentre(image, v, p.y)} />
       <NumberSlider ui={ui} id={image.id} label="Y" value={p.y} span={view.h} make={(v) => withCentre(image, p.x, v)} />

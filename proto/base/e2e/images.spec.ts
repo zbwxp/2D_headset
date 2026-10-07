@@ -47,7 +47,7 @@ test('置入: a file → a new layer 「参考图」 below every layer, at 50%, 
   await page.keyboard.press('Meta+z')
   // broken file: refused, said, nothing written
   await page.setInputFiles('#placeImageFile', FIX + 'not-an-image.png')
-  await expect(page.locator('#status')).toContainText('无法解码')
+  await expect(page.locator('#status')).toContainText(/文件头不符|无法解码/)
   expect(await records(page, 'image')).toEqual([])
   // a picture over the limits (16385 px wide): refused when decoded, nothing written
   await page.setInputFiles('#placeImageFile', FIX + 'too-wide.png')
@@ -444,4 +444,141 @@ test('a placement still decoding when another document is opened writes nothing 
   }, data)
   expect(out).toMatchObject({ images: 0, undo: 0 })
   expect(out.status).toContain('已经打开了别的文档')
+})
+
+test.describe('review of 4a208bc (dot 1791370600)', () => {
+  test('D1: a normal paste brings the image to the centre of the view with the rest; mixed content keeps its layout', async ({ page }) => {
+    await open(page)
+    const img = await place(page)
+    await page.evaluate((id) => (window as any).__contour.api.apply({ type: 'setProps', id, transform: { a: 1, b: 0, c: 0, d: 1, e: 10000 - 20, f: 5000 - 10 } }), img.id)
+    await page.evaluate((id) => (window as any).__contour.selection.set([id]), img.id)
+    await page.keyboard.press('Meta+c')
+    await page.keyboard.press('Meta+v')
+    await page.waitForFunction(() => (window as any).__contour.editor.reader.allRecords().filter((r: any) => r.typeName === 'image').length === 2)
+    const r = await page.evaluate(() => {
+      const { view, editor } = (window as any).__contour
+      const pasted = editor.reader.allRecords().filter((r: any) => r.typeName === 'image').find((r: any) => r.transform.e !== 10000 - 20)
+      const [z, , , , e, f] = view.canvas.viewportTransform
+      const centre = { x: (view.canvas.getWidth() / 2 - e) / z, y: (view.canvas.getHeight() / 2 - f) / z }
+      return { c: { x: pasted.transform.e + 20, y: pasted.transform.f + 10 }, centre }
+    })
+    expect(Math.abs(r.c.x - r.centre.x)).toBeLessThan(1)
+    expect(Math.abs(r.c.y - r.centre.y)).toBeLessThan(1)
+  })
+
+  test('D2: a truncated PNG and a GIF labelled PNG are refused at placing, reopening and pasting — nothing written', async ({ page }) => {
+    await open(page)
+    for (const f of ['bad-body.png', 'gif-as-png.png']) {
+      await page.setInputFiles('#placeImageFile', FIX + f)
+      await expect(page.locator('#status')).toContainText(f === 'bad-body.png' ? '截断' : '文件头不符')
+    }
+    expect(await records(page, 'image')).toEqual([])
+    // reopen a file holding the truncated PNG (declared 80 × 40, as its header says)
+    const bad = readFileSync(FIX + 'bad-body.png').toString('base64')
+    const opened = await page.evaluate(async (b64) => {
+      const { editor, files } = (window as any).__contour
+      const snap = editor.save()
+      const L = Object.values(snap.store).find((r: any) => r.typeName === 'container') as any
+      snap.store['image:bad'] = { typeName: 'image', id: 'image:bad', name: 'bad', parentId: L.id, index: 'a0', src: `data:image/png;base64,${b64}`, width: 80, height: 40, transform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, opacity: 0.5, slots: [] }
+      files.io.open = () => Promise.resolve(new File([JSON.stringify(snap)], 'bad.contour.json'))
+      const ok = await files.open()
+      return { ok, status: document.querySelector('#status')!.textContent, images: editor.reader.allRecords().filter((r: any) => r.typeName === 'image').length }
+    }, bad)
+    expect(opened).toMatchObject({ ok: false, images: 0 })
+    expect(opened.status).toContain('截断')
+    // paste content holding it
+    const pasted = await page.evaluate(async (b64) => {
+      const { view, editor } = (window as any).__contour
+      const content = { kind: 'contour.content/1', schema: editor.save().schema, records: [{ typeName: 'image', id: 'image:bad', name: 'bad', parentId: 'container:x', index: 'a0', src: `data:image/png;base64,${b64}`, width: 80, height: 40, transform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, opacity: 0.5, slots: [] }] }
+      view.clip = JSON.stringify(content)
+      try {
+        await navigator.clipboard.writeText('')
+      } catch {}
+      const steps = editor.history.undo.length
+      await view.paste()
+      return { status: document.querySelector('#status')!.textContent, images: editor.reader.allRecords().filter((r: any) => r.typeName === 'image').length, steps: editor.history.undo.length - steps }
+    }, bad)
+    expect(pasted.images).toBe(0)
+    expect(pasted.steps).toBe(0)
+  })
+
+  test('D3 / D4: Esc during a slider drag cancels it (nothing written, the slider put back); an opacity drag is one undo step', async ({ page }) => {
+    await open(page)
+    await place(page)
+    const t0 = (await image(page)).transform
+    const steps0 = (await undo(page)).length
+    const slider = page.locator('[data-placement="X"] input[type="range"]')
+    await slider.scrollIntoViewIfNeeded()
+    const b = (await slider.boundingBox())!
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(b.x + b.width * 0.7, b.y + b.height / 2, { steps: 5 })
+    await page.keyboard.press('Escape')
+    await page.mouse.move(b.x + b.width * 0.8, b.y + b.height / 2, { steps: 3 })
+    await page.mouse.up()
+    expect((await image(page)).transform).toEqual(t0)
+    expect((await undo(page)).length).toBe(steps0)
+    // opacity: one drag over 8 movements → one step
+    const op = page.locator('[data-prop="image-opacity"]')
+    await op.scrollIntoViewIfNeeded()
+    const ob = (await op.boundingBox())!
+    await page.mouse.move(ob.x + ob.width * 0.5, ob.y + ob.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(ob.x + ob.width * 0.9, ob.y + ob.height / 2, { steps: 8 })
+    await page.mouse.up()
+    expect((await image(page)).opacity).toBeGreaterThan(0.8)
+    expect((await undo(page)).length).toBe(steps0 + 1)
+  })
+
+  test('D5: decoded pictures are released when another document is opened', async ({ page }) => {
+    await open(page)
+    for (const f of ['ref-small.png', 'ref-matrix.png', 'generated.jpg']) {
+      await page.setInputFiles('#placeImageFile', FIX + f)
+      await expect(page.locator('#status')).toHaveText('')
+    }
+    await page.waitForFunction(() => (window as any).__contour.editor.reader.allRecords().filter((r: any) => r.typeName === 'image').length === 3)
+    const count = () => page.evaluate(async () => (await import(/* @vite-ignore */ '/src/view/images.ts' as string)).decodedCount())
+    expect(await count()).toBeGreaterThanOrEqual(3)
+    await page.click('#fileNew')
+    await page.waitForFunction(() => !(window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'image'))
+    await page.evaluate(() => (window as any).__contour.view.render())
+    expect(await count()).toBe(0)
+  })
+
+  test.describe('D6 at DPR 2', () => {
+    test.use({ deviceScaleFactor: 2 })
+    test('the screen-colour pick equals the canvas pixel the point falls in, also at fractional positions on edges', async ({ page }) => {
+      await open(page)
+      const img = await place(page)
+      const r = await page.evaluate((img) => {
+        const { view } = (window as any).__contour
+        view.setMode('V')
+        view.selection.clear()
+        view.canvas.setViewportTransform([3, 0, 0, 3, 180.3, 120.2])
+        view.render()
+        view.canvas.renderAll()
+        view.pickMode.set('screen')
+        const [z, , , , e, f] = view.canvas.viewportTransform
+        const dpr = view.canvas.getRetinaScaling()
+        const ctx = view.canvas.lowerCanvasEl.getContext('2d')!
+        const m = img.transform
+        const out: { want: string; got: string }[] = []
+        // points around the image's edges and its colour boundary (x = 20), at fractional positions
+        for (const [u, v] of [[0.1, 10.2], [-0.13, 5.4], [20.1, 10.2], [19.93, 3.3], [39.9, 7.7], [40.07, 12.1], [10.2, -0.09], [25.5, 19.95], [33.3, 20.04], [5.05, 0.02]]) {
+          const p = { x: m.a * u + m.c * v + m.e, y: m.b * u + m.d * v + m.f }
+          const px = Math.floor((p.x * z + e) * dpr), py = Math.floor((p.y * z + f) * dpr)
+          const d = ctx.getImageData(px, py, 1, 1).data
+          const a = d[3] / 255
+          const ch = (c: number) => Math.round(c * a + 255 * (1 - a))
+          const got = view.pick(p)
+          out.push({ want: [ch(d[0]), ch(d[1]), ch(d[2])].join(','), got: [1, 3, 5].map((i) => parseInt(got.slice(i, i + 2), 16)).join(',') })
+        }
+        return out
+      }, img)
+      for (const { want, got } of r) {
+        const w = want.split(',').map(Number), g = got.split(',').map(Number)
+        expect(w.every((x, i) => Math.abs(x - g[i]) <= 3), `canvas ${want} vs pick ${got}`).toBe(true)
+      }
+    })
+  })
 })

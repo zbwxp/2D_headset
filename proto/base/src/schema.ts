@@ -8,6 +8,7 @@
 //   https://github.com/tldraw/tldraw/blob/v5.5.2/packages/tlschema/src/records/TLBinding.ts
 import { BaseRecord, RecordId, Store, StoreSchema, createMigrationSequence, createRecordType } from '@tldraw/store'
 import { convertRuleExpressions } from './expressionMigration'
+import { declaredType, signatureProblem } from './imageData'
 
 export type Vec = { x: number; y: number }
 
@@ -320,6 +321,17 @@ const validSrc = (s: unknown): boolean => {
   if (typeof s !== 'string') return false
   if (checkedSrc.has(s)) return true
   if (!(s.length <= IMAGE_LIMITS.maxSrcLength && IMAGE_SRC.test(s))) return false
+  // the declared type is the file's own (review of 4a208bc D2: a GIF labelled image/png); the whole structure is
+  // checked where the bytes are read anyway (ui/imageInput: placing, reopening, pasting)
+  const type = declaredType(s)!
+  const body = s.slice(s.indexOf(',') + 1, s.indexOf(',') + 1 + 24)
+  let head: Uint8Array
+  try {
+    head = Uint8Array.from(atob(body.slice(0, body.length - (body.length % 4))), (c) => c.charCodeAt(0))
+  } catch {
+    return false
+  }
+  if (signatureProblem(type, head)) return false
   if (checkedSrc.size >= 16) checkedSrc.clear()
   checkedSrc.add(s)
   return true

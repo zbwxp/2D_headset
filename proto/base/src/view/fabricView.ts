@@ -17,7 +17,7 @@ import type { Editor, Operation } from '../editor'
 import { cubicsToCommands, evaluate, FILL_RULE, hitStack, hitTest, imagePixelAt, inkStyle, itemCubics, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
-import { ImageObject, onImageReady, onWhite, pixelColor } from './images'
+import { ImageObject, onImageReady, onWhite, pixelColor, pruneDecoded } from './images'
 import { checkImageRecords, readImageFile } from '../ui/imageInput'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
@@ -216,7 +216,41 @@ export class FabricView {
     this.render()
   }
 
+  /**
+   * A gesture started in a panel (a slider drag: one operation, previewed while dragging, committed once on release).
+   * Esc cancels it like a canvas gesture: nothing is written and the panel puts its control back (review of 4a208bc D3).
+   */
+  private panelGesture: { op: Operation; reset: () => void } | null = null
+  beginPanelGesture(reset: () => void): Operation {
+    if (this.panelGesture?.op.state === 'open') this.panelGesture.op.cancel()
+    this.panelGesture = { op: this.editor.prepare(), reset }
+    return this.panelGesture.op
+  }
+  /** release: commit the panel gesture's last preview (if it was not cancelled); one undo step */
+  endPanelGesture() {
+    const g = this.panelGesture
+    this.panelGesture = null
+    if (g && g.op.state === 'open') {
+      const r = g.op.commit()
+      if (!r.ok && r.error) this.setStatus(`${r.error.code}: ${r.error.message}`)
+    }
+    this.render()
+  }
+  /** the panel gesture under way (its operation), if any */
+  panelOperation(): Operation | null {
+    return this.panelGesture?.op.state === 'open' ? this.panelGesture.op : null
+  }
+
   cancelGesture() {
+    if (this.panelGesture) {
+      const g = this.panelGesture
+      this.panelGesture = null
+      g.op.cancel()
+      g.reset()
+      this.setStatus('已取消')
+      this.render()
+      return true
+    }
     if (this.drag) {
       this.drag.op.cancel()
       this.drag = null
@@ -257,8 +291,13 @@ export class FabricView {
     this.onStatus(s)
   }
 
+  private prunedEpoch = -1
   /** Re-project the document (or a preview of it) into Fabric objects. */
   render(ev: Evaluated = this.editor.derived.evaluated(), onions: Evaluated[] = this.onion ? this.onion.yaws.map((y) => this.editor.derived.atYaw(y)) : []) {
+    // decoded pictures follow the document: unused ones are released (4 spare within a document, none across documents)
+    const epoch = this.editor.documentEpoch
+    pruneDecoded(new Set((ev.images ?? []).map((i) => i.src)), epoch === this.prunedEpoch ? 4 : 0)
+    this.prunedEpoch = epoch
     this.projecting = true
     try {
       // depth offsets are stored but not applied yet (PAINT-ORDER.md D1): say so, never silently
@@ -1066,7 +1105,8 @@ export class FabricView {
    * - 'source': the top shown reference image at the point (locked ones too), its own pixel through its placement,
    *   not its display opacity;
    * - 'screen': the drawing as rendered there (reference images at their opacity, masks, everything in front), without
-   *   editor aids (selection, anchors, guides), at one device pixel of the current zoom, composited on white.
+   *   editor aids (selection, anchors, guides): the device pixel the point falls in, on the canvas's pixel grid,
+   *   composited on white.
    */
   pick(p: Vec) {
     const ev = this.editor.derived.evaluated()
@@ -1081,10 +1121,14 @@ export class FabricView {
       }
       if (!color) return this.setStatus('取色（参考图原色）：这里没有参考图 · 要取画面上的颜色，切到「画面显示色」'), null
     } else {
-      const k = this.canvas.getZoom() * this.canvas.getRetinaScaling()
+      // the device pixel the click falls in, on the canvas's own pixel grid (review of 4a208bc D6: a pixel centred on the
+      // exact point differed from the canvas at fractional positions) — rendered alone, without editor aids
+      const [z, , , , e, f] = this.canvas.viewportTransform
+      const dpr = this.canvas.getRetinaScaling()
+      const px = Math.floor((p.x * z + e) * dpr), py = Math.floor((p.y * z + f) * dpr)
       const el = document.createElement('canvas')
       el.width = el.height = 1
-      new Canvas2DRef(el).draw([k, 0, 0, k, -p.x * k, -p.y * k], 1, ev, [], { aids: false })
+      new Canvas2DRef(el).draw([z * dpr, 0, 0, z * dpr, e * dpr - px, f * dpr - py], 1, ev, [], { aids: false })
       color = onWhite(el.getContext('2d')!.getImageData(0, 0, 1, 1).data)
     }
     this.fillColor.set(color)

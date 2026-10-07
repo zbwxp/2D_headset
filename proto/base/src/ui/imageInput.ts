@@ -1,6 +1,7 @@
 // Reading reference images in (doc 18 §31.5): ONE check for placing, reopening and pasting. Only an embedded PNG / JPEG /
 // WebP within the limits is accepted (the record validator checks the data's form; here the browser decodes it and its
 // real pixel size must match and fit); a web URL or a temporary blob URL is never kept — a file is read into a data URL.
+import { declaredType, imageDataProblem } from '../imageData'
 import { IMAGE_LIMITS, IMAGE_SRC, type DocRecord, type ImageRecord } from '../schema'
 
 const TYPES = ['image/png', 'image/jpeg', 'image/webp']
@@ -9,6 +10,16 @@ const TYPES = ['image/png', 'image/jpeg', 'image/webp']
 export async function checkImageSrc(src: string, declared?: { width: number; height: number }): Promise<{ width: number; height: number } | { error: string }> {
   if (typeof src !== 'string' || !IMAGE_SRC.test(src)) return { error: '只支持嵌入的 PNG、JPEG、WebP 图片' }
   if (src.length > IMAGE_LIMITS.maxSrcLength) return { error: `图片数据太大（超过 ${Math.round(IMAGE_LIMITS.maxSrcLength / 1e6)} MB 字符）` }
+  // the bytes are a whole picture of the declared type — decoding alone accepts a truncated PNG and a disguised GIF
+  // (review of 4a208bc D2; imageData.ts)
+  let bytes: Uint8Array
+  try {
+    bytes = new Uint8Array(await (await fetch(src)).arrayBuffer())
+  } catch {
+    return { error: '图片数据读不出来' }
+  }
+  const broken = imageDataProblem(declaredType(src)!, bytes)
+  if (broken) return { error: broken }
   const img = new Image()
   img.src = src
   try {

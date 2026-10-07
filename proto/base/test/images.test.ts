@@ -251,3 +251,20 @@ describe('position slots (bowen 1791365335; dot 1791365450)', () => {
       expect(run(e, cmd).error?.code, cmd.type).toBe('LOCKED')
   })
 })
+
+describe('review of 4a208bc (dot 1791370600)', () => {
+  it('D1: a paste offset moves an image with the curves — its placement and its saved slots — keeping the layout', () => {
+    const e = doc()
+    const img = place(e, { layerId: 'container:A', transform: T(1, 10, 20) }).affected[0]
+    run(e, { type: 'saveImageSlot', id: img, n: 0 })
+    const content = contentOf(e.reader, ['container:A'])
+    const r = run(e, { type: 'pasteContent', content, parentId: 'container:B', offset: { x: 100, y: -50 } })
+    expect(r.ok).toBe(true)
+    const copy = e.reader.allRecords().find((x: any) => x.typeName === 'image' && x.id !== img) as any
+    expect(copy.transform).toEqual(T(1, 110, -30))
+    expect(copy.slots[0].transform).toEqual(T(1, 110, -30))
+    const sq = e.reader.allRecords().find((x: any) => x.typeName === 'curve' && x.id !== 'curve:sq') as any
+    expect(sq.anchors.a.p).toEqual({ x: 100, y: -50 }) // the square moved by the same offset
+  })
+})
+

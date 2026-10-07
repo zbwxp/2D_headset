@@ -18,7 +18,11 @@ export function onImageReady(fn: () => void): () => void {
 /** the decoded picture for `src`, or null while it decodes (or when it could not be decoded) */
 export function decoded(src: string): HTMLImageElement | null {
   const got = cache.get(src)
-  if (got instanceof HTMLImageElement) return got
+  if (got instanceof HTMLImageElement) {
+    cache.delete(src) // most recently used last (prune drops the oldest first)
+    cache.set(src, got)
+    return got
+  }
   if (got) return null
   cache.set(src, 'loading')
   const img = new Image()
@@ -33,6 +37,18 @@ export function decoded(src: string): HTMLImageElement | null {
     .catch(() => cache.set(src, 'failed'))
   return null
 }
+
+/**
+ * Release decoded pictures the document no longer uses (review of 4a208bc D5: the cache held every picture ever shown,
+ * across documents). Pictures in `keep` stay; of the others the `spare` most recently used stay too (an undo brings a
+ * deleted image back without decoding it again) — none when another document was opened.
+ */
+export function pruneDecoded(keep: ReadonlySet<string>, spare: number) {
+  const unused = [...cache.keys()].filter((s) => !keep.has(s))
+  for (const s of unused.slice(0, Math.max(0, unused.length - spare))) cache.delete(s)
+}
+/** how many pictures are held (decoded or decoding) — for tests */
+export const decodedCount = () => cache.size
 
 /** paint one image on `l` (current transform = world → device): its pixels through its placement, at its opacity */
 export function drawImageWorld(l: CanvasRenderingContext2D, i: EvalImage) {

@@ -7,8 +7,9 @@ import { Store, type RecordId, type SerializedSchema } from '@tldraw/store'
 import type { EditError, IdSource, Plan } from './commands'
 import { planCopyInto } from './duplicate'
 import { connectionsAt, containersWithin, familiesOf, ownFillsOf, within, isPlaced, CONTENT_KINDS } from './indexes'
+import { imageCorners } from './evaluate'
 import { anchorKey, getAs } from './model'
-import { isBridge, poseIdOf, schema, type BaseReader, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
+import { isBridge, poseIdOf, schema, type BaseReader, type ContainerRecord, type CurveRecord, type DocRecord, type FillRecord, type ImageRecord, type MaskRecord, type ReferenceRecord, type Vec } from './schema'
 
 export const CONTENT_KIND = 'contour/content'
 /**
@@ -104,10 +105,13 @@ export function parseContent(text: string): Content | null {
   }
 }
 
-/** The drawn bounds of a content's own geometry (curve anchors), for placing it at the centre of the view. */
+/** The drawn bounds of a content's own geometry (curve anchors, images' placed corners), for placing it at the centre of
+ *  the view (review of 4a208bc D1: an image alone was left where it was copied). */
 export function contentCentre(content: Content): Vec | null {
   // read defensively: the content is validated only when pasted (planPaste)
-  const pts = content.records.filter((r): r is CurveRecord => r?.typeName === 'curve' && !!r.anchors && typeof r.anchors === 'object').flatMap((c) => Object.values(c.anchors).filter((a) => Number.isFinite(a?.p?.x) && Number.isFinite(a?.p?.y)).map((a) => a.p))
+  const anchors = content.records.filter((r): r is CurveRecord => r?.typeName === 'curve' && !!r.anchors && typeof r.anchors === 'object').flatMap((c) => Object.values(c.anchors).map((a) => a?.p))
+  const corners = content.records.filter((r): r is ImageRecord => r?.typeName === 'image' && !!r.transform && Number.isFinite(r.width) && Number.isFinite(r.height)).flatMap((i) => imageCorners(i))
+  const pts = [...anchors, ...corners].filter((p): p is Vec => Number.isFinite(p?.x) && Number.isFinite(p?.y))
   if (!pts.length) return null
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
   return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }
@@ -166,6 +170,12 @@ export function planPaste(store: BaseReader, cmd: PasteCommand, ids: IdSource): 
   if (d.x || d.y)
     plan.puts = plan.puts.map((r) => {
       if (r.typeName === 'curve') return { ...r, anchors: Object.fromEntries(Object.entries(r.anchors).map(([k, a]) => [k, { ...a, p: { x: a.p.x + d.x, y: a.p.y + d.y } }])) }
+      // a pasted image moves with the rest (its placement, and its saved slots with it, so recalling one keeps the
+      // offset the paste gave — review of 4a208bc D1)
+      if (r.typeName === 'image') {
+        const mv = (t: ImageRecord['transform']) => ({ ...t, e: t.e + d.x, f: t.f + d.y })
+        return { ...r, transform: mv(r.transform), slots: r.slots.map((s) => ({ ...s, transform: mv(s.transform) })) }
+      }
       if (r.typeName === 'reference') {
         const t = (r as ReferenceRecord).transform
         // its instance moves by `offset` too: placing a pasted (moved) source, T' = move(d) ∘ T ∘ move(−d); placing a
