@@ -8,10 +8,10 @@ import type { Command } from '../commands'
 import type { Editor } from '../editor'
 import { layerOf } from '../selection'
 import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, ReferenceRecord } from '../schema'
-import type { FabricView } from '../view/fabricView'
+import type { FabricView, Tool as ViewTool } from '../view/fabricView'
 import { layerRows, rangeOf, type LayerRow } from './layerTree'
 
-export type Tool = 'V' | 'A'
+export type Tool = ViewTool
 export type Ui = { editor: Editor; view: FabricView; tool: Atom<Tool>; zoom: Atom<number>; apply: (cmd: Command) => void }
 export const createTool = () => atom<Tool>('tool', 'A')
 
@@ -33,8 +33,23 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button id="modeV" className={tool === 'V' ? 'on' : ''} title="选择工具 (V)：点选对象 / 组，拖框选择，⌘ 点击选后面的对象" onClick={() => setTool('V')}>
           V 选择
         </button>
-        <button id="modeA" className={tool === 'A' ? 'on' : ''} title="直接选择工具 (A)：拖锚点和手柄" onClick={() => setTool('A')}>
+        <button id="modeA" className={tool === 'A' ? 'on' : ''} title="直接选择工具 (A)：点选 / 框选锚点，拖锚点和手柄" onClick={() => setTool('A')}>
           A 直接选择
+        </button>
+        <button id="modeP" className={tool === 'P' ? 'on' : ''} title="钢笔 (P)：点 = 角点，拖 = 平滑点，点起点闭合，Enter / Esc 结束；在选中的路径上点 = 加点 / 删点" onClick={() => setTool('P')}>
+          P 钢笔
+        </button>
+        <button id="modeAdd" className={tool === '+' ? 'on' : ''} title="添加锚点 (+)：点在线段上" onClick={() => setTool('+')}>
+          + 加点
+        </button>
+        <button id="modeDel" className={tool === '-' ? 'on' : ''} title="删除锚点 (−)：点在锚点上，两边连起来" onClick={() => setTool('-')}>
+          − 删点
+        </button>
+        <button id="modeC" className={tool === 'C' ? 'on' : ''} title="剪刀 (C)：点在锚点或线段上剪断" onClick={() => setTool('C')}>
+          C 剪刀
+        </button>
+        <button id="join" title="连接 (⌘J)：A 选两个端点 → 连接（同一条线则闭合）；V 选一条开放路径 → 闭合" onClick={() => view.join()}>
+          连接
         </button>
       </div>
       <div className="group">
@@ -137,6 +152,48 @@ export function LayersPanel({ ui }: { ui: Ui }) {
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000)
 
+function AnchorsSection({ ui }: { ui: Ui }) {
+  const { editor, view } = ui
+  const info = useValue(
+    'selected anchors',
+    () => {
+      void editor.revision
+      return view.selection.getAnchors().flatMap((k) => {
+        const [c, a] = k.split('#')
+        const curve = editor.reader.get(c as any) as CurveRecord | undefined
+        const an = curve?.anchors[a]
+        if (!curve || !an) return []
+        const conns = editor.reader.allRecords().filter((r: any) => r.typeName === 'connection' && r.ends.some((e: any) => e.curveId === c && e.anchorId === a)) as any[]
+        const end = !curve.closed && (!curve.segments.some((s) => s.to === a) || !curve.segments.some((s) => s.from === a))
+        return [{ key: k, name: curve.name, p: an.p, end, conns: conns.map((x) => ({ id: x.id as string, with: x.ends.filter((e: any) => !(e.curveId === c && e.anchorId === a)).map((e: any) => `${(editor.reader.get(e.curveId) as any)?.name ?? e.curveId}#${e.anchorId}`) })) }]
+      })
+    },
+    [editor, view],
+  )
+  if (!info.length) return null
+  return (
+    <div className="anchors" id="anchorsSection">
+      <div className="sub">锚点（{info.length}）</div>
+      {info.map((a) => (
+        <div key={a.key} className="anchor-row" data-anchor={a.key}>
+          <span className="mono">{a.name}#{a.key.split('#')[1]}</span> ({fmt(a.p.x)}, {fmt(a.p.y)}){a.end ? ' 端点' : ''}
+          {a.conns.map((c) => (
+            <div key={c.id} className="conn">
+              连着 {c.with.join('、')} <button data-unbind={c.id} title="断开这个连接点（两边各留一个端点）" onClick={() => view.unbind(c.id)}>断开</button>
+            </div>
+          ))}
+        </div>
+      ))}
+      <div className="actions">
+        <button id="anchorDelete" title="删除锚点和它的线段 (Delete)" onClick={() => view.deleteSelectedAnchors()}>删除</button>
+        {info.length === 1 && !info[0].end ? <button id="anchorRemoveJoin" title="删除锚点，两边连起来（− 工具）" onClick={() => view.deleteAnchor(info[0].key.split('#')[0], info[0].key.split('#')[1])}>删点并接上</button> : null}
+        {info.length === 1 && !info[0].end ? <button id="anchorCut" title="在这个锚点剪断（C 工具）" onClick={() => ui.apply({ type: 'breakAt', curveId: info[0].key.split('#')[0] as any, anchorId: info[0].key.split('#')[1] })}>剪断</button> : null}
+        {info.length === 2 && info.every((a) => a.end) ? <button id="anchorJoin" title="连接两个端点 (⌘J)" onClick={() => view.join()}>连接</button> : null}
+      </div>
+    </div>
+  )
+}
+
 export function PropertiesPanel({ ui }: { ui: Ui }) {
   const { editor, view } = ui
   const info = useValue(
@@ -165,6 +222,7 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
       <div className="panel props" id="propsPanel">
         <div className="panel-title">属性</div>
         <div>已选 {recs.length} 个：{Object.entries(count).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join('，')}</div>
+        <AnchorsSection ui={ui} />
       </div>
     )
   }
@@ -203,7 +261,8 @@ export function PropertiesPanel({ ui }: { ui: Ui }) {
           {usedBy.length ? <tr><th>蒙版</th><td>{usedBy.map((m) => `${m.name}（${m.targets.includes(r.id) ? '被遮' : '作为来源'}${m.enabled ? '' : '，已关闭'}）`).join('；')}</td></tr> : null}
         </tbody>
       </table>
-      {r.typeName !== 'container' ? <div className="muted small">只读：这些属性的修改入口在下一块（钢笔与命令入口）。</div> : null}
+      <AnchorsSection ui={ui} />
+      {r.typeName !== 'container' ? <div className="muted small">描边 / 填充 / 引用这几项目前只读（属性编辑在后面的块）。</div> : null}
     </div>
   )
 }

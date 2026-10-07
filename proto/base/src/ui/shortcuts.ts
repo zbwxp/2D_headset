@@ -1,11 +1,13 @@
 // Keyboard shortcuts of the editor skeleton — Illustrator defaults (Help › Keyboard shortcuts; macOS ⌘ = Ctrl
 // elsewhere): V / A tools, ⌘Z / ⇧⌘Z undo / redo (also Ctrl+Y), Delete / Backspace delete, ⌘A select all, ⇧⌘A
 // deselect, arrows nudge 1 (Shift: 10), ⌘+ / ⌘− zoom, ⌘0 fit, ⌘1 actual size, space = hand tool, E while dragging a
-// marquee = enclosed mode, Esc = cancel the gesture in progress. Keys typed into a form field are left alone.
+// marquee = enclosed mode, Esc = cancel the gesture in progress. Block 2: P Pen, + / = Add and − Delete Anchor Point,
+// C Scissors, ⌘J Join; while a pen path is drawn Enter / Esc end it and ⌘Z removes its last anchor. Keys typed into a
+// form field are left alone.
 import type { Editor } from '../editor'
-import type { FabricView } from '../view/fabricView'
+import type { FabricView, Tool } from '../view/fabricView'
 
-export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 'V' | 'A') => void, target: Window = window) {
+export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: Tool) => void, target: Window = window) {
   const typing = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null
     return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) && (el as HTMLInputElement).type !== 'checkbox'
@@ -15,11 +17,14 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     const mod = e.metaKey || e.ctrlKey
     const k = e.key
     const done = () => e.preventDefault()
+    if ((k === 'Escape' || k === 'Enter') && view.pen) return view.finishPen(), done()
     if (k === 'Escape') return view.cancelGesture() && done()
     if (k === ' ') return view.setSpace(true), done()
     if ((k === 'e' || k === 'E') && !mod) {
       if (view.toggleMarqueeMode()) return done()
     }
+    if (mod && (k === 'z' || k === 'Z') && !e.shiftKey && view.penUndo()) return done()
+    if (mod && (k === 'j' || k === 'J')) return view.join(), done()
     if (mod && (k === 'z' || k === 'Z')) {
       if (e.shiftKey) editor.redo()
       else editor.undo()
@@ -39,7 +44,11 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     if (mod) return
     if (k === 'v' || k === 'V') return setTool('V'), done()
     if (k === 'a' || k === 'A') return setTool('A'), done()
-    if (k === 'Delete' || k === 'Backspace') return view.deleteSelection(), done()
+    if (k === 'p' || k === 'P') return setTool('P'), done()
+    if (k === 'c' || k === 'C') return setTool('C'), done()
+    if (k === '+' || k === '=') return setTool('+'), done()
+    if (k === '-' || k === '_') return setTool('-'), done()
+    if (k === 'Delete' || k === 'Backspace') return (view.selection.getAnchors().length ? view.deleteSelectedAnchors() : view.deleteSelection()), done()
     const step = e.shiftKey ? 10 : 1
     const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
     if (arrows[k]) return view.nudge(...arrows[k]), done()

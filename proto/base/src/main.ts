@@ -11,7 +11,7 @@ import { paintCases } from './paintCases'
 import { createElement as h, Fragment } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Selection } from './selection'
-import { createTool, LayersPanel, PropertiesPanel, Toolbar, type Ui } from './ui/panels'
+import { createTool, LayersPanel, PropertiesPanel, Toolbar, type Tool, type Ui } from './ui/panels'
 import { installShortcuts } from './ui/shortcuts'
 
 const params = new URLSearchParams(location.search)
@@ -32,7 +32,7 @@ const view = new FabricView(document.getElementById('c') as HTMLCanvasElement, e
 
 // editor skeleton (block 1): toolbar, layers and properties panels (React), Illustrator shortcuts
 const tool = createTool()
-const setTool = (t: 'V' | 'A') => (tool.set(t), view.setMode(t))
+const setTool = (t: Tool) => (tool.set(t), view.setMode(t))
 const ui: Ui = {
   editor,
   view,

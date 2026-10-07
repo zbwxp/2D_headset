@@ -14,22 +14,25 @@ import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
 import { Store } from '@tldraw/store'
 import type { Command, EditError } from '../commands'
 import type { Editor, Operation } from '../editor'
-import { cubicsToCommands, evaluate, FILL_RULE, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
+import { cubicsToCommands, evaluate, FILL_RULE, hitStack, hitTest, inkStyle, unappliedContainerOpacity, unappliedDepthOffsets, type EvalCurve, type EvalFill, type Evaluated, type Hit, type PaintItem } from '../evaluate'
 import { cubicsPath2D, ownInkPath2D, paintFillLeavingOwnInk } from './ownInk'
 import { MaskedPath } from './masks'
 import { OwnInkFill } from './ownInkFill'
 import { all } from '../model'
-import { boundsOf, deletionSetOf, drawnOf, isInside, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
-import { schema, type Affine, type ContainerRecord, type DocRecord, type Vec } from '../schema'
-import { lockedBy } from '../model'
+import { anchorsInRect, boundsOf, deletionSetOf, drawnOf, layerOf, pickAt, Selection, unitsInRect, allUnits, type Rect as SelRect } from '../selection'
+import { getIndexAbove, type IndexKey } from '@tldraw/utils'
+import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
+import { anchorKey, lockedBy, type AnchorRef } from '../model'
 
+export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
 
 const toAffine = (m: TMat2D): Affine => ({ a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] })
 
 export class FabricView {
   readonly canvas: Canvas
-  mode: 'A' | 'V' = 'A'
+  /** the tool: V Selection, A Direct Selection, P Pen, + Add / − Delete Anchor Point, C Scissors (Illustrator) */
+  mode: Tool = 'A'
   /** In A mode, editing an anchor seen through a reference writes an override unless this is true. */
   editSource = false
   readonly log: UiLogEntry[] = []
@@ -37,7 +40,9 @@ export class FabricView {
   readonly rejections: { address: string; error: EditError }[] = []
   status = ''
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError } | null = null
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[] } | null = null
+  /** the Pen tool's path being drawn (not in the document until it ends: one createCurve, one undo step) */
+  pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec } | null = null
   /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
   private vGesture:
     | { kind: 'move'; start: Vec; op: Operation; ids: string[]; cmd?: Command; ok: boolean; error?: EditError }
@@ -141,7 +146,8 @@ export class FabricView {
     })
   }
 
-  setMode(mode: 'A' | 'V') {
+  setMode(mode: Tool) {
+    if (this.pen) this.finishPen() // switching tools ends the path (Illustrator)
     this.mode = mode
     this.canvas.discardActiveObject()
     this.scene = null
@@ -366,7 +372,7 @@ export class FabricView {
             : { key: `c:${p.item.address}`, item, make: () => [pathOf(p.item)] },
         )
       }
-    if (this.mode === 'A') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
+    if (this.mode !== 'V') for (const c of curves.filter((c) => !c.locked)) want.push({ key: `d:${c.address}`, item: c, make: () => dotsOf(c) })
     this.overlays(ev, want)
     const prev = this.scene
     if (prev && prev.length === want.length && prev.every((e, i) => e.key === want[i].key)) {
@@ -444,6 +450,33 @@ export class FabricView {
       const cubics = p.kind === 'curve' ? p.item.segments.map((s) => s.cubic) : p.item.cubics
       want.push({ key: `s:${p.item.address}`, item: p.item, make: () => [new Path(cubicsToCommands(cubics, p.kind === 'fill'), { fill: '', stroke: '#1e88e5', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false })] })
     }
+    // selected anchors: filled squares (Illustrator Direct Selection)
+    const sa = this.selection.getAnchors()
+    if (sa.length) {
+      const byAddr = new Map(ev.curves.map((c) => [c.address, c]))
+      const pts = sa.flatMap((k) => {
+        const [c, a] = k.split('#')
+        const q = byAddr.get(c)?.anchors[a]?.p
+        return q ? [q] : []
+      })
+      want.push({ key: 'anchors', item: { pts, z }, make: () => pts.map((q) => new Rect({ left: q.x, top: q.y, width: 6 / z, height: 6 / z, originX: 'center', originY: 'center', fill: '#1e88e5', stroke: '', strokeWidth: 0, selectable: false, evented: false, objectCaching: false })) })
+    }
+    if (this.mode === 'P' && this.pen) {
+      const pen = this.pen
+      const cubics: [Vec, Vec, Vec, Vec][] = []
+      const abs = (a: Anchor, h: 'hIn' | 'hOut') => ({ x: a.p.x + a[h].x, y: a.p.y + a[h].y })
+      for (let i = 1; i < pen.anchors.length; i++) cubics.push([pen.anchors[i - 1].p, abs(pen.anchors[i - 1], 'hOut'), abs(pen.anchors[i], 'hIn'), pen.anchors[i].p])
+      const last = pen.anchors[pen.anchors.length - 1]
+      const objs = () => {
+        const out: FabricObject[] = []
+        if (cubics.length) out.push(new Path(cubicsToCommands(cubics), { fill: '', stroke: '#1e88e5', strokeWidth: 1.5 / z, selectable: false, evented: false, objectCaching: false }))
+        if (pen.hover && !pen.dragging) out.push(new Path(cubicsToCommands([[last.p, abs(last, 'hOut'), pen.hover, pen.hover]]), { fill: '', stroke: '#1e88e5', strokeWidth: 1 / z, strokeDashArray: [4 / z, 3 / z], selectable: false, evented: false, objectCaching: false }))
+        for (const a of pen.anchors) out.push(new Rect({ left: a.p.x, top: a.p.y, width: 5 / z, height: 5 / z, originX: 'center', originY: 'center', fill: '#fff', stroke: '#1e88e5', strokeWidth: 1 / z, selectable: false, evented: false, objectCaching: false }))
+        if (last.hOut.x || last.hOut.y) for (const h of ['hIn', 'hOut'] as const) out.push(dot(abs(last, h), '#1e88e5', 2 / z))
+        return out
+      }
+      want.push({ key: 'pen', item: { ...pen, anchors: [...pen.anchors] }, make: objs })
+    }
     const g = this.vGesture
     if (this.mode === 'V' && ids.length && !(g && g.kind !== 'marquee')) {
       // outside a move / transform the box follows the document's geometry (not a preview)
@@ -488,13 +521,235 @@ export class FabricView {
 
   // ---- A mode: our own hit test + preview, apply once on release ----
   private onDown(e: PointerEvent) {
-    if (this.mode !== 'A' || this.pan) return
+    if (this.pan || e.button !== 0) return
+    if (this.mode === 'P') return this.penDown(e)
+    if (this.mode === '+' || this.mode === '-' || this.mode === 'C') return this.structureClick(e)
+    if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
     const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
+    if (hit && hit.kind === 'anchor' && !hit.referenceId) {
+      // Direct Selection: click selects the anchor (Shift toggles); dragging a selected anchor moves every selected one
+      const key = anchorKey({ curveId: hit.curveId, anchorId: hit.anchorId })
+      const now = this.selection.getAnchors()
+      if (e.shiftKey) this.selection.setAnchors(now.includes(key) ? now.filter((k) => k !== key) : [...now, key])
+      else if (!now.includes(key)) this.selection.setAnchors([key])
+      const sel = this.selection.getAnchors()
+      this.selection.set([...new Set(sel.map((k) => k.split('#')[0]))])
+      if (sel.includes(key)) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false, targets: sel.map((k) => ({ curveId: k.split('#')[0] as any, anchorId: k.split('#')[1] })) }
+      return
+    }
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
     // Direct Selection (Illustrator A): a click on a path selects that object itself, never its group
-    else if (hit) this.selection.set([hit.address.split('/')[0]])
-    else if (!e.shiftKey) this.selection.clear()
+    else if (hit) {
+      this.selection.setAnchors([])
+      this.selection.set([hit.address.split('/')[0]])
+    } else {
+      // empty space: a marquee selects the anchors inside it (Direct Selection)
+      if (!e.shiftKey) this.selection.clear()
+      this.vGesture = { kind: 'marquee', start: { x: p.x, y: p.y }, now: { x: p.x, y: p.y }, additive: e.shiftKey, enclosed: false }
+    }
+  }
+
+  // ---- Pen (Illustrator P): click = corner anchor, drag = smooth anchor (symmetric handles), Shift = 45°; click the
+  // first anchor to close; Enter / Esc / another tool ends the path; ⌘Z while drawing removes the last anchor. Over
+  // the SELECTED path the pen adds an anchor on a segment and deletes an inner anchor (Illustrator's auto add / delete).
+  // Adaptation: the path enters the document when it ends (a curve needs one segment) — one createCurve, one undo step.
+  private penDown(e: PointerEvent) {
+    const z = this.canvas.getZoom()
+    let p: Vec = this.canvas.getScenePoint(e)
+    p = { x: round(p.x), y: round(p.y) }
+    const pen = this.pen
+    if (!pen) {
+      const ev = this.editor.derived.evaluated()
+      const selected = new Set([...this.selection.get(), ...this.selection.getAnchors().map((k) => k.split('#')[0])])
+      const hit = hitTest(ev, p, { mode: 'A', tolerance: 6 / z })
+      if (hit && (hit.kind === 'anchor' || hit.kind === 'segment') && !hit.referenceId && selected.has(hit.curveId)) {
+        if (hit.kind === 'segment') this.applyAndLog({ type: 'insertPoint', curveId: hit.curveId, segmentId: hit.segmentId, u: hit.t })
+        else this.deleteAnchor(hit.curveId, hit.anchorId)
+        return
+      }
+      this.pen = { anchors: [{ id: 'p1', p, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } }], dragging: true, closing: false }
+      this.render()
+      return
+    }
+    const first = pen.anchors[0]
+    if (pen.anchors.length >= 2 && Math.hypot(p.x - first.p.x, p.y - first.p.y) <= 6 / z) {
+      pen.closing = true
+      pen.dragging = true
+      return
+    }
+    const last = pen.anchors[pen.anchors.length - 1]
+    if (e.shiftKey) {
+      const dx = p.x - last.p.x, dy = p.y - last.p.y
+      const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy)
+      p = { x: round(last.p.x + len * Math.cos(a)), y: round(last.p.y + len * Math.sin(a)) }
+    }
+    pen.anchors.push({ id: `p${pen.anchors.length + 1}`, p, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    pen.dragging = true
+    this.render()
+  }
+
+  private penMove(e: PointerEvent) {
+    const pen = this.pen!
+    const p = this.canvas.getScenePoint(e)
+    if (!pen.dragging) {
+      pen.hover = { x: p.x, y: p.y }
+      this.render()
+      return
+    }
+    // dragging out the handles of the anchor just placed (or of the first anchor when closing): symmetric, smooth
+    const a = pen.closing ? pen.anchors[0] : pen.anchors[pen.anchors.length - 1]
+    let d = { x: round(p.x - a.p.x), y: round(p.y - a.p.y) }
+    if (Math.hypot(d.x, d.y) * this.canvas.getZoom() < 2) d = { x: 0, y: 0 }
+    a.hOut = d
+    a.hIn = { x: 0 - d.x, y: 0 - d.y } // 0 − x: never a negative zero in the data
+    this.render()
+  }
+
+  private penUp() {
+    const pen = this.pen
+    if (!pen) return
+    pen.dragging = false
+    if (pen.closing) this.finishPen(true)
+  }
+
+  /** ⌘Z while drawing: remove the last anchor (true = handled) */
+  penUndo() {
+    if (!this.pen) return false
+    this.pen.anchors.pop()
+    if (!this.pen.anchors.length) this.pen = null
+    this.render()
+    return true
+  }
+
+  /** end the path: two or more anchors become one curve in the target layer, on top of it, then selected */
+  finishPen(closed = false) {
+    const pen = this.pen
+    this.pen = null
+    if (!pen || pen.anchors.length < 2) return this.render(), null
+    const layer = this.targetLayer()
+    if (typeof layer !== 'string') {
+      this.setStatus(layer.error)
+      this.render()
+      return null
+    }
+    const anchors = Object.fromEntries(pen.anchors.map((a) => [a.id, a]))
+    const segments = pen.anchors.slice(1).map((a, i) => ({ id: `s${i + 1}`, from: pen.anchors[i].id, to: a.id }))
+    if (closed) segments.push({ id: `s${segments.length + 1}`, from: pen.anchors[pen.anchors.length - 1].id, to: pen.anchors[0].id })
+    const siblings = (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(this.editor.reader as any, layer, t).map((id) => (this.editor.reader.get(id as any) as unknown as { index: string }).index))
+    const top = siblings.sort().at(-1) ?? null
+    const r = this.applyAndLog({ type: 'createCurve', parentId: layer as any, index: getIndexAbove(top as IndexKey | null), anchors, segments, closed })
+    if (r.ok && r.written) this.selection.set([r.affected[0]])
+    this.render()
+    return r
+  }
+
+  /** where new drawing goes (Illustrator: the current layer): the layer of the selection, else the front-most layer */
+  targetLayer(): string | { error: string } {
+    const reader = this.editor.reader
+    const sel = this.selection.get()[0]
+    const top = sel ? (layerOf(reader, sel) ?? sel) : childrenOf(reader as any, null, 'container').map((id) => reader.get(id as any) as ContainerRecord).sort((a, b) => (a.index < b.index ? 1 : -1))[0]?.id
+    const rec = top ? (reader.get(top as any) as ContainerRecord | undefined) : undefined
+    if (!rec || rec.typeName !== 'container') return { error: 'INVALID: 没有可画入的图层（先新建或选中一个图层）' }
+    if (rec.locked || !rec.visible) return { error: `LOCKED: 图层「${rec.name}」${rec.locked ? '已锁定' : '已隐藏'}，不能在上面画` }
+    return rec.id
+  }
+
+  // ---- Add / Delete Anchor Point (+ / −) and Scissors (C): one click = one structure command (Illustrator) ----
+  private structureClick(e: PointerEvent) {
+    const ev = this.editor.derived.evaluated()
+    const p = this.canvas.getScenePoint(e)
+    const tol = 6 / this.canvas.getZoom()
+    const anchor = hitTest(ev, p, { mode: 'A', tolerance: tol })
+    const seg = hitStack(ev, p, tol).find((h) => h.kind === 'segment') as Extract<Hit, { kind: 'segment' }> | undefined
+    const viaRef = (h: { referenceId?: string } | undefined | null) => {
+      if (h?.referenceId) this.setStatus('INVALID: 引用里的线请在源上编辑（双击进入源，或用 A 勾选「在引用里改源」）')
+      return !!h?.referenceId
+    }
+    if (this.mode === '+') {
+      if (seg && !viaRef(seg)) this.applyAndLog({ type: 'insertPoint', curveId: seg.curveId, segmentId: seg.segmentId, u: seg.t })
+      return
+    }
+    if (this.mode === '-') {
+      if (anchor?.kind === 'anchor' && !viaRef(anchor)) this.deleteAnchor(anchor.curveId, anchor.anchorId)
+      return
+    }
+    // Scissors: at an anchor, split there; on a segment, add an anchor there and split at it (one undo step)
+    if (anchor?.kind === 'anchor') {
+      if (!viaRef(anchor)) this.applyAndLog({ type: 'breakAt', curveId: anchor.curveId, anchorId: anchor.anchorId })
+      return
+    }
+    if (seg && !viaRef(seg)) {
+      const run = this.editor.batchRun('scissors', () => {
+        const a = this.editor.apply({ type: 'insertPoint', curveId: seg.curveId, segmentId: seg.segmentId, u: seg.t })
+        if (!a.ok) throw a.error
+        const m = a.affected[1].split('#')[1]
+        const b = this.editor.apply({ type: 'breakAt', curveId: seg.curveId, anchorId: m })
+        if (!b.ok) throw b.error
+        return b
+      })
+      const err = !run.ok ? (run.thrown as EditError) : null
+      this.log.push({ source: 'ui', cmd: { type: 'insertPoint', curveId: seg.curveId, segmentId: seg.segmentId, u: seg.t }, ok: run.ok, written: run.ok && run.written, error: err ?? undefined })
+      this.setStatus(err ? `${err.code ?? 'INVALID'}: ${err.message ?? String(err)}` : '')
+    }
+  }
+
+  /** Delete Anchor Point: an inner anchor joins its neighbours keeping their handles (Illustrator); an end anchor is
+   *  removed with its segment */
+  deleteAnchor(curveId: string, anchorId: string) {
+    const c = this.editor.reader.get(curveId as any) as { segments: { from: string; to: string }[] } | undefined
+    if (!c) return null
+    const inner = c.segments.some((s) => s.to === anchorId) && c.segments.some((s) => s.from === anchorId)
+    return this.applyAndLog(inner ? { type: 'removeAnchorJoin', curveId: curveId as any, anchorId, mode: 'keepHandles' } : { type: 'deleteAnchorWithSegments', curveId: curveId as any, anchorId })
+  }
+
+  /** Delete with anchors selected (A): each anchor goes with its segments (Illustrator) — one undo step */
+  deleteSelectedAnchors() {
+    const keys = this.selection.getAnchors()
+    if (!keys.length) return null
+    const run = this.editor.batchRun('deleteAnchors', () => {
+      for (const k of keys) {
+        const [c, a] = k.split('#')
+        if (!(this.editor.reader.get(c as any) as any)?.anchors?.[a]) continue // gone with an earlier one
+        const r = this.editor.apply({ type: 'deleteAnchorWithSegments', curveId: c as any, anchorId: a })
+        if (!r.ok) throw r.error
+      }
+    })
+    const err = !run.ok ? (run.thrown as EditError) : null
+    this.setStatus(err ? `${err.code ?? 'INVALID'}: ${err.message ?? String(err)}` : '')
+    if (run.ok) this.selection.clear()
+    return run
+  }
+
+  /**
+   * Join (⌘J, Illustrator Object › Path › Join): two selected END anchors of one open path → close it (coincident: merge
+   * the ends into one anchor, else a closing segment); end anchors of two paths → connect them (one shared node at the
+   * midpoint: Average + Join — our `bind`); an open path selected with V → close it with a segment.
+   */
+  join() {
+    const reader = this.editor.reader
+    const keys = this.selection.getAnchors()
+    const isEnd = (c: CurveRecord, a: string) => !c.closed && (!c.segments.some((s) => s.to === a) || !c.segments.some((s) => s.from === a))
+    if (keys.length === 2) {
+      const [[ca, aa], [cb, ab]] = keys.map((k) => k.split('#'))
+      const A = reader.get(ca as any) as CurveRecord | undefined, B = reader.get(cb as any) as CurveRecord | undefined
+      if (!A || !B || !isEnd(A, aa) || !isEnd(B, ab)) return this.setStatus('INVALID: 连接需要选中两个端点'), null
+      if (ca === cb) {
+        const pa = A.anchors[aa].p, pb = A.anchors[ab].p
+        return this.applyAndLog(pa.x === pb.x && pa.y === pb.y ? { type: 'mergeEnds', curveId: A.id, keep: 'mid' } : { type: 'addClosingSegment', curveId: A.id })
+      }
+      return this.applyAndLog({ type: 'bind', a: { curveId: A.id, anchorId: aa }, b: { curveId: B.id, anchorId: ab }, keep: 'mid' })
+    }
+    const ids = this.selection.get()
+    const one = ids.length === 1 ? (reader.get(ids[0] as any) as CurveRecord | undefined) : undefined
+    if (one?.typeName === 'curve' && !one.closed) return this.applyAndLog({ type: 'addClosingSegment', curveId: one.id })
+    this.setStatus('INVALID: 连接：用 A 选中两个端点，或用 V 选中一条开放路径')
+    return null
+  }
+
+  /** remove a shared node (the properties panel's 断开连接) */
+  unbind(connectionId: string) {
+    return this.applyAndLog({ type: 'unbind', connectionId: connectionId as any })
   }
 
   // ---- V mode (Illustrator Selection tool; selection.ts): our picking decides, Fabric only draws the handle box ----
@@ -520,6 +775,7 @@ export class FabricView {
     const now = this.selection.get()
     const behind = e.metaKey || e.ctrlKey
     const unit = pickAt(reader, this.editor.derived.evaluated(), p, 6 / this.canvas.getZoom(), behind ? now : undefined)
+    this.selection.setAnchors([])
     if (unit) {
       if (e.shiftKey) this.selection.toggle(unit)
       else if (behind || !now.includes(unit)) this.selection.set([unit])
@@ -661,10 +917,11 @@ export class FabricView {
       return { type: 'moveHandle', target, handle: hit.handle, delta: local }
     }
     if (hit.referenceId && !this.editSource) return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: local }
-    return { type: 'moveAnchors', targets: [target], delta: local }
+    return { type: 'moveAnchors', targets: this.drag?.targets ?? [target], delta: local }
   }
 
   private onMove(e: PointerEvent) {
+    if (this.pen && this.mode === 'P') return this.penMove(e)
     const g = this.vGesture
     if (g?.kind === 'marquee') {
       const p = this.canvas.getScenePoint(e)
@@ -740,14 +997,22 @@ export class FabricView {
       this.render()
       return
     }
+    if (this.mode === 'P') return this.penUp()
     if (g?.kind === 'marquee') {
       this.vGesture = null
       const z = this.canvas.getZoom()
       // a click without a drag only deselects (done on press)
       if (Math.abs(g.now.x - g.start.x) * z >= 2 || Math.abs(g.now.y - g.start.y) * z >= 2) {
-        const units = unitsInRect(this.editor.reader, this.editor.derived.evaluated(), { x0: g.start.x, y0: g.start.y, x1: g.now.x, y1: g.now.y }, g.enclosed)
-        if (g.additive) this.selection.add(units)
-        else this.selection.set(units)
+        const rect = { x0: g.start.x, y0: g.start.y, x1: g.now.x, y1: g.now.y }
+        if (this.mode === 'A') {
+          const keys = anchorsInRect(this.editor.derived.evaluated(), rect)
+          this.selection.setAnchors(g.additive ? [...this.selection.getAnchors(), ...keys] : keys)
+          this.selection.set([...new Set(this.selection.getAnchors().map((k) => k.split('#')[0]))])
+        } else {
+          const units = unitsInRect(this.editor.reader, this.editor.derived.evaluated(), rect, g.enclosed)
+          if (g.additive) this.selection.add(units)
+          else this.selection.set(units)
+        }
       }
       this.render()
       return

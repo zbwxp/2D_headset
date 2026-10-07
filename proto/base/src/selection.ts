@@ -136,9 +136,21 @@ export function allUnits(reader: Reader, ev: Evaluated): string[] {
   return out
 }
 
-/** The selection: an ordered id list. Not part of the document and not an undo step (Inkscape / Illustrator). */
+/**
+ * The selection: an ordered id list, and the selected anchors (`curve:C#a`, Direct Selection). Not part of the document
+ * and not an undo step (Inkscape / Illustrator).
+ */
 export class Selection {
   readonly ids: Atom<readonly string[]> = atom('selection', [])
+  readonly anchors: Atom<readonly string[]> = atom('selected anchors', [])
+  getAnchors(): readonly string[] {
+    return this.anchors.get()
+  }
+  setAnchors(keys: readonly string[]) {
+    const next = [...new Set(keys)]
+    const now = this.anchors.get()
+    if (next.length !== now.length || next.some((x, i) => x !== now[i])) this.anchors.set(next)
+  }
   get(): readonly string[] {
     return this.ids.get()
   }
@@ -149,6 +161,7 @@ export class Selection {
   }
   clear() {
     this.set([])
+    this.setAnchors([])
   }
   /** Shift+click: add an unselected unit, remove a selected one */
   toggle(id: string) {
@@ -161,6 +174,10 @@ export class Selection {
   /** after undo / redo / any edit: keep the ids that still exist */
   prune(reader: Reader) {
     this.set(this.ids.get().filter((id) => reader.get(id as any)))
+    this.setAnchors(this.anchors.get().filter((k) => {
+      const [c, a] = k.split('#')
+      return !!(reader.get(c as any) as { anchors?: Record<string, unknown> } | undefined)?.anchors?.[a]
+    }))
   }
 }
 
@@ -210,4 +227,10 @@ export function isInside(reader: Reader, id: string, container: string): boolean
 /** The drawn items (paint addresses) a selection covers: a unit's items, or everything inside a selected container. */
 export function drawnOf(reader: Reader, ev: Evaluated, units: readonly string[]): string[] {
   return ev.paint.filter((e) => e.item.visible && units.some((u) => isInside(reader, placedOf(e.item.address), u))).map((e) => e.item.address)
+}
+
+/** Direct Selection marquee: the anchors (`curve:C#a`) of visible, unlocked, directly drawn curves inside the rectangle */
+export function anchorsInRect(ev: Evaluated, rect: Rect): string[] {
+  const r = norm(rect)
+  return ev.curves.filter((c) => c.visible && !c.locked && !c.referenceId).flatMap((c) => Object.values(c.anchors).filter((a) => inside(r, a.p)).map((a) => `${c.curveId}#${a.id}`))
 }

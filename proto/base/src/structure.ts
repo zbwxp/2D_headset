@@ -63,6 +63,8 @@ export type StructureCommand =
       id?: RecordId<CurveRecord>
       parentId: CurveRecord['parentId']
       name?: string
+      /** place among the siblings (fractional index); default: the record default */
+      index?: string
       anchors: Record<string, Anchor>
       segments: Segment[]
       closed?: boolean
@@ -597,7 +599,8 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       if ([...used].some((a) => !anchors[a]) || Object.keys(anchors).some((a) => !used.has(a))) return fail('INVALID', 'every segment end must be an anchor and every anchor on a segment', [id])
       const closed = !!cmd.closed
       if (closed !== (segs[segs.length - 1].to === segs[0].from)) return fail('INVALID', 'closed must match the chain (last segment ends at the first anchor)', [id])
-      const curve = Curve.create({ id, name: cmd.name ?? '线', parentId: cmd.parentId, anchors: structuredClone(anchors), segments: structuredClone(segs), closed })
+      if (cmd.index !== undefined && (typeof cmd.index !== 'string' || !cmd.index)) return fail('INVALID', 'index must be a fractional index string', [id])
+      const curve = Curve.create({ id, name: cmd.name ?? '线', parentId: cmd.parentId, ...(cmd.index ? { index: cmd.index } : {}), anchors: structuredClone(anchors), segments: structuredClone(segs), closed })
       const puts: DocRecord[] = [curve]
       const creates: string[] = [id]
       if (cmd.preset) {
