@@ -204,17 +204,30 @@ dot supports "reference state belongs to the view/snapshot context". dot does no
 
 This agrees with Claude's addition 2. No disagreement recorded so far.
 
-### Confirmed design
+### bowen's decision (1791382641)
 
-**None yet.** Recording rule (dot 1791382433): record the requirement first, then our independent judgements and reasons, and only then the confirmed design. Keep disagreements on record. Don't turn one sentence from bowen straight into fields.
+> 参考图暂时归视角 我们是在捋架构 不是要细化到怎么实现。然后参考图这也应该是个模块 里面应该有参考图集。这样就支持我不同的快照我引用图集里面的某张图当作参考。图集可以增添可删除。之后的捋到那里在说。我说这个架构上是不是把参考图归类为一个模块/工具了。
+
+### Confirmed design (architecture level only, no implementation detail)
+
+- **The reference image is its own module.** It holds a **reference collection**: images can be added to and removed from it.
+- **Reference images belong to views for now.** Different views or snapshots each **reference** one image from the collection as their reference.
+- **Ordinary artwork layers do not hold reference images.**
+- **Still open:** fields, slots, the default view, and what a "snapshot" is. These are decided when the walkthrough reaches snapshots ("之后的捋到那里在说").
+
+### Comparison with the current code (4bc7cc2)
+
+- **There is no "reference image module" yet.** A reference image is one of the 5 kinds that can be placed in a layer (indexes.ts:23).
+- **Its code is spread across several files, each handling one part:**
+  - record type: schema.ts `ImageRecord`
+  - commands: imageCommands.ts
+  - data checks: imageData.ts, ui/imageInput.ts
+  - decoding and drawing: view/images.ts
+  - panel: ui/imagePanel.tsx
+  - plus paint order and hit testing in evaluate.ts / derived.ts
+- **There is no collection.** Each image is its own record, and its slots live inside that image record.
+- **The decision above agrees with both independent judgements** (Claude and dot: store once, bind per view). No disagreement.
 
 ### Status
 
-**Open.** Waiting for bowen to confirm. The open points are:
-
-1. Is the reference state (which image, position, size, slot) part of the view/snapshot context?
-2. Is the image resource shared, with one copy?
-3. What is a "snapshot" in the new version (there is no persisted domain object for it yet)?
-4. What is the default view when there is no snapshot?
-
-Order (dot 1791382538): go through these one at a time with bowen. Record bowen's requirement about who owns the reference state. Sharing the image is our suggestion. Exact fields and the default view are decided later, when we discuss snapshots.
+**Architecture direction confirmed (bowen 1791382641).** Implementation details wait until the walkthrough reaches snapshots.
