@@ -1610,3 +1610,33 @@ Tiers B and C are not internal implementations that have been verified.
 ### Status
 
 **Waiting for dot's independent review and bowen's two decisions.**
+
+---
+
+## Q14: Will a face-making app ever hit these fill problems?
+
+**bowen** 1791388696:
+> 有没有一种可能 我们这个捏脸为主的软件根本就不会遇到这些情况和问题。我们主要的填充是皮肤和阴影 都是一层一层单独定义叠放上去的。像live2d从来不会有我们这些困扰。
+
+### Facts (Claude 1791388760)
+
+**Statistics from bowen's v103 「基础脸模·正面·v1」, all 23 fills.** Each fill's `boundary` is grouped by the `strokeName` of its segments, and each segment is mapped to its layer:
+
+- **All 23 fills are enclosed by exactly one closed stroke.** None uses two or more strokes.
+- **None crosses layers.**
+
+**So in this real drawing, every fill is a closed line's own fill, stacked layer by layer.** None of the problems from Q7–Q13 appears here: splitting a network into several regions, the θ shape, which colour wins on merge, and how a manual whole fill behaves after edits.
+
+**Live2D (Claude's understanding, official docs not opened, unverified):** parts are bitmaps cut from a PSD and mapped onto deforming meshes. Fill is pixels, so the vector region problem does not arise.
+
+### Judgement and suggestion
+
+- **Simplest fill scheme:**
+  - **Fill = an attribute of one closed line.** This matches the earlier "fill belongs to a closed curve" and memory "fill-is-attribute".
+  - **Skin and shadow are separate closed lines, stacked by layer order.**
+  - **A shadow sits on top of the skin, so there is no seam; trap is not needed.**
+  - The current proto already supports a closed line's own fill (owner = path).
+- **Two points still to watch:**
+  1. **Shadow edge and face outline.** A shadow often follows the face outline. Drawn as a separate closed line, it can misalign with the outline during a head-turn. v103 bound such lines with endpoint links (this face has 4 links). This is a **connection** question, not a fill question.
+  2. **Scope of the statistics.** Only this one front face was counted. Other drawings (hair, side face) were not.
+- **Suggestion:** settle fill first as "a closed line's own fill + layer stacking". Set the network region-splitting scheme (Q8–Q13) aside until it is actually needed. **Waiting for bowen.**
