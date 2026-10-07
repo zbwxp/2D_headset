@@ -7,7 +7,7 @@
 //   https://github.com/fabricjs/fabric.js/blob/9ccefc119b90fe74c6fd74c1da9837b14de92a40/packages/core/src/shapes/Group.ts
 // A-mode hits use OUR hit test on the evaluated geometry (src/evaluate.ts), not Fabric's bbox test.
 import { Canvas2DRef } from './canvas2dRef'
-import { childrenOf, within } from '../indexes'
+import { childrenOf, ownFillsOf, within } from '../indexes'
 import { counters } from '../counters'
 import { Canvas, Circle, Path, Point, Rect, util, type FabricObject, type TMat2D } from 'fabric'
 import { atom, react, unsafe__withoutCapture } from '@tldraw/state'
@@ -1015,10 +1015,15 @@ export class FabricView {
     const front = (id: string) => Math.max(-1, ...order.map((a, i) => (isInside(reader, a.split('/')[0], id) ? i : -1)))
     const src = [...ids].sort((a, b) => front(b) - front(a))[0]
     const r = reader.get(src as any) as DocRecord
+    // a selected whole path brings its own fill (doc 18 §30.18; dot 1791360107): as the source, its ink AND its filled
+    // area; as a target, its ink AND its fill. Only this UI expansion — a stored curve address still means its ink,
+    // a fill address its area (older files and the API keep that meaning)
+    const own = (id: string) => ((reader.get(id as any) as DocRecord | undefined)?.typeName === 'curve' ? ownFillsOf(reader as any, id) : [])
     const inside = (t: 'fill' | 'curve') => (r.typeName === 'container' ? within(reader as any, r.id as any, t) : r.typeName === t ? [r.id] : [])
-    const sources = { fills: inside('fill') as any[], strokes: inside('curve') as any[] }
+    const sources = { fills: [...inside('fill'), ...own(src)] as any[], strokes: inside('curve') as any[] }
     if (!sources.fills.length && !sources.strokes.length) return this.setStatus(`INVALID: ${src} 不能当蒙版（需要填充或线）`), null
-    return this.applyAndLog({ type: 'setMask', name: `蒙版（${(r as { name?: string }).name ?? src}）`, sources, targets: ids.filter((id) => id !== src), mode: 'inside' })
+    const targets = ids.filter((id) => id !== src).flatMap((id) => [id, ...own(id)])
+    return this.applyAndLog({ type: 'setMask', name: `蒙版（${(r as { name?: string }).name ?? src}）`, sources, targets, mode: 'inside' })
   }
   /** ⌥⌘7: remove the masks the selection takes part in (as source or target) — one undo step */
   releaseMask() {

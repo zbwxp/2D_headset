@@ -203,3 +203,53 @@ test('UI: a group made a mask source shows the mask when the group is selected, 
   await page.keyboard.press('ControlOrMeta+Alt+7')
   expect(await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'mask'))).toBe(false)
 })
+
+test("UI: ⌘7 on two whole paths with their own fills — the source brings its ink and its filled area, the target its ink and its fill (dot 1791360107)", async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#modeV'))
+  page.once('dialog', (d) => d.accept())
+  await page.click('#fileNew')
+  const ids = await page.evaluate(() => {
+    const { api, editor } = (window as any).__contour
+    const L = editor.reader.allRecords().find((r: any) => r.typeName === 'container').id
+    api.apply({ type: 'createContainer', id: 'container:S', parentId: null, name: 'S' }) // the source's own layer, in front
+    const a = (id: string, x: number, y: number) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+    const rect = (id: string, parent: string, x0: number, y0: number, x1: number, y1: number, color: string) => {
+      api.apply({ type: 'createCurve', id, parentId: parent, anchors: { a: a('a', x0, y0), b: a('b', x1, y0), c: a('c', x1, y1), d: a('d', x0, y1) }, segments: [{ id: 's1', from: 'a', to: 'b' }, { id: 's2', from: 'b', to: 'c' }, { id: 's3', from: 'c', to: 'd' }, { id: 's4', from: 'd', to: 'a' }], closed: true })
+      return api.apply({ type: 'paintRegion', boundary: ['s1', 's2', 's3', 's4'].map((s) => ({ curveId: id, segmentId: s, dir: 1 })), color }).affected[1] as string
+    }
+    const tf = rect('curve:T', L, 10, 10, 70, 50, '#ff0000')
+    const sf = rect('curve:SRC', 'container:S', 40, 20, 90, 60, '#0000ff')
+    return { tf, sf }
+  })
+  const pixel = (x: number, y: number) =>
+    page.evaluate(([x, y]) => {
+      const { view } = (window as any).__contour
+      view.selection.clear()
+      view.render()
+      view.canvas.renderAll()
+      const [z, , , , e, f] = view.canvas.viewportTransform
+      const dpr = view.canvas.getRetinaScaling()
+      return Array.from(view.canvas.lowerCanvasEl.getContext('2d')!.getImageData(Math.floor((e + x * z) * dpr), Math.floor((f + y * z) * dpr), 1, 1).data)
+    }, [x, y])
+  expect(await pixel(20, 30)).toEqual([255, 0, 0, 255]) // T's own fill, outside the source
+  // select both whole paths (layers panel) and ⌘7
+  await page.click('#modeV')
+  await page.click('[data-id="curve:SRC"]')
+  await page.click('[data-id="curve:T"]', { modifiers: ['Meta'] })
+  await page.keyboard.press('ControlOrMeta+7')
+  const m = await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().find((r: any) => r.typeName === 'mask'))
+  expect(m.sources).toEqual({ fills: [ids.sf], strokes: ['curve:SRC'] })
+  expect([...m.targets].sort()).toEqual(['curve:T', ids.tf].sort())
+  expect(await pixel(20, 30)).toEqual([0, 0, 0, 0]) // T's fill outside the source region: hidden now
+  // hide the source's layer (a hidden source still masks): inside its FILLED area, away from its ink, T shows
+  await page.evaluate(() => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:S', visible: false }))
+  expect(await pixel(55, 35)).toEqual([255, 0, 0, 255])
+  expect(await pixel(20, 30)).toEqual([0, 0, 0, 0])
+  // selecting the path shows the mask and ⌥⌘7 releases it
+  await page.click('[data-id="curve:T"]')
+  await expect(page.locator(`#propsPanel [data-mask="${m.id}"]`)).toHaveCount(1)
+  await page.keyboard.press('ControlOrMeta+Alt+7')
+  expect(await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().some((r: any) => r.typeName === 'mask'))).toBe(false)
+  expect(await pixel(20, 30)).toEqual([255, 0, 0, 255])
+})
