@@ -156,10 +156,18 @@ export class Selection {
   get(): readonly string[] {
     return this.ids.get()
   }
+  /**
+   * Replaces the selected objects. A selected anchor always belongs to a selected line: anchors of lines not in the
+   * new selection are deselected here, for every entry (layers list, V, ⌘A, paste, K, undo…) — Delete acts on what is
+   * shown selected, never on an anchor left over from an earlier pick (doc 18 §32.1, E1).
+   */
   set(ids: readonly string[]) {
     const next = [...new Set(ids)]
     const now = this.ids.get()
     if (next.length !== now.length || next.some((x, i) => x !== now[i])) this.ids.set(next)
+    const keep = new Set(next)
+    const anchors = this.anchors.get()
+    if (anchors.some((k) => !keep.has(k.split('#')[0]))) this.anchors.set(anchors.filter((k) => keep.has(k.split('#')[0])))
   }
   clear() {
     this.set([])
