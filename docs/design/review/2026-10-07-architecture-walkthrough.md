@@ -1420,3 +1420,57 @@ So each thing is changed in exactly one place.
 #### Status
 
 **Waiting for bowen to confirm** the raster point and the split of authority.
+
+---
+
+## Q12: How mature vector software designs points, lines and faces (open-source half, Claude)
+
+**bowen** 1791387658:
+> 行吧 那就这样 去成熟的矢量软件里去搜它们的点线面（填充）的设计框架
+
+**bowen** 1791387745:
+> 所以现在的目标是 搞一套点线面的知识图谱型框架即可
+
+### Method
+
+- **Division of work:** Claude covers the open-source projects whose source can be read. dot covers the closed-source ones from official docs (Figma, Illustrator, SWF, Harmony).
+- **Who did the reading:** three read-only agents read the source, and Claude spot-checked the key claims.
+- **Where the full text is:** `Codex/2026-10-06/task/vector-model-research/` (`opentoonz.md`, `vpaint-vgc.md`, `graphite-paperjs-synfig.md`).
+- **Evidence:** every claim cites file:line or is marked unverified. Several items marked "inferred from code" were not run.
+
+### Comparison table (five questions)
+
+| | **OpenToonz** (BSD, active) | **VPaint** (Apache, dormant) / **VGC** (Apache, alpha) | **Graphite** (MIT/Apache, active) | **Synfig** (GPL, active) | **Paper.js** (MIT, dormant) |
+|---|---|---|---|---|---|
+| **1. Points / lines** | Stroke = a chain of **quadratic** curves; **each control point has its own thickness**; strokes **cross each other** and do not share endpoints | **Vertex, edge and face are separate cells**; edge endpoints are shared vertices; 3 or more edges can meet. VPaint edges are sampled polylines; VGC edges are Catmull-Rom knots (converted to Bézier internally) | Points and segments are separate tables; segment endpoints are shared point indices; 3 or more can meet; **handles live on the segment**; stable u64 ids | A spline is an ordered list of vertices; vertices can be **linked** across layers (shared parameters, not a graph) | Path = ordered segments (anchor plus two handles); **3 lines cannot share a point** |
+| **2. Where fill attaches / who decides regions** | **Computed automatically** (intersections of all strokes in a group → smallest regions, holes allowed); colour **stored on the boundary edge pieces** | **A face is its own cell**: a list of cycles (holes allowed), its own colour; the paint bucket creates it **explicitly** (smallest planar cycle plus holes); faces may overlap and have a z-order | **Computed every time it is drawn** (loops of the shared-point graph; holes by winding); **one fill colour for the whole object**; per-region styling not done (#2309 open) | One region layer = one closed spline; no holes; fill and stroke share the same spline object | Fill is the path's or compound path's style, decided by the fill rule |
+| **3. Topology changes** | When a split crosses, colour passes **by maximum overlap of segment ranges on the same stroke** (inferred); on merge, colour taken **by walk order** (inferred) | Cutting an edge: the face **repairs its boundary in place**. Splitting a face: **both halves keep the colour**. Smart delete merges: VPaint **blends colours 50/50**, VGC **keeps the colour of the larger area**. Hard delete: **all faces touching the edge are removed** | Regions are recomputed from topology; no per-region identity to keep | Inserting or deleting a vertex affects every layer that shares that spline | Fill follows the path; splitting a path copies the style |
+| **4. Stroke attributes** | **Thickness per control point**; one style per stroke; caps and joins per stroke | VPaint: width per sample, colour per cell, joins are round-cap overlaps. VGC: width per knot (left/right independent), a join model exists but **multi-join is off by default** | Per object: width, cap, join, dashes; no per-segment width | **The most complete along-the-line width curve** (WidthPoint: position, width, tip shape) | Per object |
+| **5. Animation** | Inbetweening **pairs stroke by stroke and point by point, by index**; regions re-derived each frame | **VPaint: inbetween cells** (vertex / edge / face); **topology can change over time** (splits and merges between key frames). Fixed topology = 1:1 inbetweens (motionPaste); geometry interpolation is fairly simple (linear by arc length) | Stable ids allow fixed-topology motion; the keyframe timeline is still unfinished | **Every point position and width can be keyframed on its own**; points can **appear and disappear smoothly** over time | None (code-driven only); `interpolate` requires the same topology |
+
+### Observations relevant to bowen's structure
+
+- **"Segments + shared endpoints" (network):** found in VPaint/VGC and Graphite. OpenToonz uses crossing strokes; Synfig uses linked parameters; Paper.js cannot do it.
+- **"Fill on a closed loop / face, holes allowed":** VPaint/VGC are closest. **A face is an explicit object** whose boundary is a list of loops.
+- **"Fill only on the smallest region":** for VPaint/VGC this is **the paint bucket's default behaviour**; the data does not require it. **This matches bowen's later proposal: bucket defaults to the smallest region, boundaries can also be chosen by hand.**
+- **Merge ambiguity:**
+
+  | Tool | What happens on merge |
+  |---|---|
+  | VPaint | Blends 50/50 |
+  | VGC | Keeps the colour of the larger area |
+  | Illustrator Live Paint | Larger one spreads (Q9) |
+  | OpenToonz | Takes one by walk order |
+
+  **No tool found destroys both.** bowen's "ambiguity → delete" is stricter than all of them. That is a product choice, not something to correct.
+- **Head-turn with fixed topology:** VPaint's 1:1 inbetween cells are the closest model. Its interpolation is too simple for a rotating head; this project already has its own head-turn data (key shapes) to fill that gap.
+- **Width along the line:** Synfig's WidthPoint and OpenToonz's per-point thickness are both mature examples. These belong to the "stroke" level, deferred by bowen.
+
+### Status
+
+**The open-source half is done.** Waiting for dot's closed-source half. After that, the merged result becomes **a draft point-line-face graph framework for bowen**:
+
+- entities, relations and rules;
+- each relation marked decided / proposed / disputed, with sources.
+
+**Nothing is written into the formal graph.**
