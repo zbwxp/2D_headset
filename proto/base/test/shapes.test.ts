@@ -414,4 +414,25 @@ describe('siblings sharing an index (ties broken by id): a new group lands exact
     e.undo()
     expect(recs(e)).toBe(before)
   })
+  it('K on three lines among tied siblings: the shape group at the front-most line\'s place, a sibling below by id stays below', () => {
+    const e = new Editor([layer(), line('0', 90, 90, 95, 95, 'container:L', 'a0'), line('a', 0, 0, 10, 0, 'container:L', 'a0'), line('b', 10, 0, 5, 10, 'container:L', 'a0'), line('c', 5, 10, 0, 0, 'container:L', 'a0'), line('y', 70, 70, 80, 80, 'container:L', 'a0')])
+    const before = recs(e)
+    expect(paintOrder(e)).toEqual(['curve:0', 'curve:a', 'curve:b', 'curve:c', 'curve:y'])
+    const [, fid] = run(e, { type: 'paintRegion', boundary: face(e, 5, 3), color: '#ff0000' }).affected
+    expect(paintOrder(e)).toEqual(['curve:0', fid, 'curve:a', 'curve:b', 'curve:c', 'curve:y'])
+    e.undo()
+    expect(recs(e)).toBe(before)
+  })
+  it('a filled path cut into two among tied siblings: the shape group takes the path\'s place exactly', () => {
+    const e = new Editor([layer(), line('0', 90, 90, 95, 95, 'container:L', 'a0'), { ...square(), index: 'a0' } as DocRecord, line('zz', 70, 70, 80, 80, 'container:L', 'a0')])
+    const fid = run(e, { type: 'paintRegion', boundary: face(e, 5, 5), color: '#ff0000' }).affected[1]
+    run(e, { type: 'breakAt', curveId: 'curve:sq', anchorId: 'a' })
+    const before = recs(e)
+    expect(paintOrder(e)).toEqual(['curve:0', fid, 'curve:sq', 'curve:zz'])
+    expect(run(e, { type: 'breakAt', curveId: 'curve:sq', anchorId: 'c' }).ok).toBe(true)
+    const part = e.reader.allRecords().find((r) => r.typeName === 'curve' && r.id !== 'curve:sq' && r.id !== 'curve:0' && r.id !== 'curve:zz')!.id
+    expect(paintOrder(e)).toEqual(['curve:0', fid, 'curve:sq', part, 'curve:zz'])
+    e.undo()
+    expect(recs(e)).toBe(before)
+  })
 })

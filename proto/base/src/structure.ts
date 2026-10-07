@@ -476,7 +476,7 @@ function planStructureChecked(store: Store, cmd: StructureCommand, ids: IdSource
       const owned = newId ? ownFillsOf(store, c.id) : []
       if (newId && owned.length) {
         const latest = <T extends DocRecord>(id: string) => (puts.find((r) => r.id === id) ?? store.get(id as any)) as T
-        const conv = pathFillToShape(latest<CurveRecord>(c.id), latest<CurveRecord>(newId), owned.map((f) => latest<FillRecord>(f)), ids)
+        const conv = pathFillToShape(store, latest<CurveRecord>(c.id), latest<CurveRecord>(newId), owned.map((f) => latest<FillRecord>(f)), ids)
         for (const r of conv) {
           const i = puts.findIndex((x) => x.id === r.id)
           if (i >= 0) puts[i] = r

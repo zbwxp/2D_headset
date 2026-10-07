@@ -16,6 +16,7 @@
 import type { RecordId } from '@tldraw/store'
 import { getIndexAbove, getIndexBelow, getIndexBetween, getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
+import { placeAt } from './arrange'
 import { paintKey } from './evaluate'
 import { sameFill } from './fills'
 import { childrenOf } from './indexes'
@@ -48,8 +49,6 @@ const siblingsOf = (store: BaseReader, parent: string | null): Item[] =>
   (['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter((r) => r && !(r.typeName === 'fill' && r.owner))
 const byIndex = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
-const indexJustAbove = (index: string, upper: string | null): string =>
-  upper === null ? getIndexAbove(index as IndexKey) : index < upper ? getIndexBetween(index as IndexKey, upper as IndexKey) : index
 const indexJustBelow = (lower: string | null, index: string): string =>
   lower === null ? getIndexBelow(index as IndexKey) : lower < index ? getIndexBetween(lower as IndexKey, index as IndexKey) : index
 
@@ -128,10 +127,10 @@ export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): 
     // where ⌘G puts a group: the front-most line's place in its parent; the lines keep their order inside
     const members = [...curves].sort(byPaint(store))
     const front = members.at(-1)!
-    const above = siblingsOf(store, parent).sort(byIndex).find((r) => byIndex(r, front as Item) > 0 && !curveIds.includes(r.id))
+    const place = placeAt(store, parent, front, new Set(curveIds), 1)
     const id = (cmd.groupId ?? ids.take('container', () => Container.createId())) as RecordId<ContainerRecord>
-    group = Container.create({ id, name: '形状', parentId: parent as any, index: indexJustAbove(front.index, above?.index ?? null), shape: true })
-    puts.push(group)
+    group = Container.create({ id, name: '形状', parentId: parent as any, index: place.indices[0], shape: true })
+    puts.push(group, ...place.puts)
     creates.push(id)
     const fresh = getIndicesBetween(null, null, members.length)
     members.forEach((c, i) => puts.push({ ...c, parentId: id, index: fresh[i] }))
@@ -158,13 +157,17 @@ export function planShape(store: BaseReader, cmd: ShapeCommand, ids: IdSource): 
  * piece below the second, as they were drawn), and each own fill becomes a face of the group. breakAt passes its
  * planned pieces and the fills as planned (boundaries already re-pointed); returns the records to put instead.
  */
-export function pathFillToShape(first: CurveRecord, second: CurveRecord, owned: FillRecord[], ids: IdSource): DocRecord[] {
+export function pathFillToShape(store: BaseReader, first: CurveRecord, second: CurveRecord, owned: FillRecord[], ids: IdSource): DocRecord[] {
   const id = ids.take('container', () => Container.createId()) as RecordId<ContainerRecord>
-  const group = Container.create({ id, name: '形状', parentId: first.parentId, index: first.index, shape: true })
+  // the group takes the path's place exactly (placeAt: siblings sharing its index keep their order around it)
+  const original = store.get(first.id as any) as CurveRecord
+  const place = placeAt(store, original.parentId, original, new Set([original.id as string]), 1)
+  const group = Container.create({ id, name: '形状', parentId: first.parentId, index: place.indices[0], shape: true })
   const [a, b] = getIndicesBetween(null, null, 2)
   const faces = getIndicesBetween(null, a, owned.length)
   return [
     group,
+    ...place.puts,
     { ...first, parentId: id, index: a },
     { ...second, parentId: id, index: b },
     ...owned.map((f, i) => {
