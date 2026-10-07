@@ -62,6 +62,7 @@ export function installShortcuts(editor: Editor, view: FabricView, setTool: (t: 
     if (k === 'v' || k === 'V') return setTool('V'), done()
     if (k === 'a' || k === 'A') return setTool('A'), done()
     if (k === 'p' || k === 'P') return setTool('P'), done()
+    if ((k === 'c' || k === 'C') && e.shiftKey) return setTool('N'), done() // ⇧C Convert Anchor Point
     if (k === 'c' || k === 'C') return setTool('C'), done()
     if (k === 'k' || k === 'K') return setTool('K'), done()
     if (k === '+' || k === '=') return setTool('+'), done()

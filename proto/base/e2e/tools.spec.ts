@@ -260,3 +260,50 @@ test('continuation (review of 3ef87db): a dragged outer handle is kept when clos
   expect(await undoLabels(page)).toEqual(history)
   expect(await page.evaluate(() => (window as any).__contour.view.status)).toMatch(/已隐藏/)
 })
+
+test('handles: dragging a smooth point\'s handle turns the other with it (same line, its own length); ⌥ breaks them; ⇧C click = corner, drag out = smooth, drag a handle = that one only', async ({ page }) => {
+  await open(page)
+  await page.click('[data-id="container:L1"]')
+  await page.keyboard.press('p')
+  await click(page, { x: 100, y: 10 })
+  await dragFrom(page, { x: 120, y: 30 }, { x: 130, y: 30 }) // smooth: hOut (10, 0), hIn (−10, 0)
+  await click(page, { x: 140, y: 10 })
+  await page.keyboard.press('Enter')
+  const id = (await sel(page))[0]
+  await page.keyboard.press('a')
+  await dragFrom(page, { x: 130, y: 30 }, { x: 130, y: 40 }) // hOut → (10, 10)
+  let a = (await rec(page, id)).anchors.p2
+  expect(a.hOut).toEqual({ x: 10, y: 10 })
+  expect(a.hIn.x).toBeCloseTo(-7.071, 3)
+  expect(a.hIn.y).toBeCloseTo(-7.071, 3)
+  expect((await undoLabels(page)).at(-1)).toBe('setHandles')
+  // ⌥: only the dragged handle
+  const hInBefore = a.hIn
+  const h = await toPage(page, { x: 130, y: 40 }), h2 = await toPage(page, { x: 135, y: 40 })
+  await page.keyboard.down('Alt')
+  await page.mouse.move(h.x, h.y)
+  await page.mouse.down()
+  await page.mouse.move(h2.x, h2.y, { steps: 4 })
+  await page.mouse.up()
+  await page.keyboard.up('Alt')
+  a = (await rec(page, id)).anchors.p2
+  expect(a.hOut).toEqual({ x: 15, y: 10 })
+  expect(a.hIn).toEqual(hInBefore)
+  expect((await undoLabels(page)).at(-1)).toBe('moveHandle')
+  // ⇧C: click the anchor → corner
+  await page.keyboard.press('Shift+C')
+  await click(page, { x: 120, y: 30 })
+  a = (await rec(page, id)).anchors.p2
+  expect([a.hIn, a.hOut]).toEqual([{ x: 0, y: 0 }, { x: 0, y: 0 }])
+  // drag out of a corner anchor → symmetric handles
+  await dragFrom(page, { x: 140, y: 10 }, { x: 150, y: 16 })
+  a = (await rec(page, id)).anchors.p3
+  expect(a.hOut).toEqual({ x: 10, y: 6 })
+  expect(a.hIn).toEqual({ x: -10, y: -6 })
+  // drag one handle with ⇧C: that one only
+  await dragFrom(page, { x: 130, y: 4 }, { x: 128, y: 0 })
+  a = (await rec(page, id)).anchors.p3
+  expect(a.hIn).toEqual({ x: -12, y: -10 })
+  expect(a.hOut).toEqual({ x: 10, y: 6 })
+  expect((await undoLabels(page)).slice(-3)).toEqual(['setHandles', 'setHandles', 'moveHandle'])
+})

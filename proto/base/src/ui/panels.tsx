@@ -56,6 +56,9 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <button id="modeDel" className={tool === '-' ? 'on' : ''} title="删除锚点 (−)：点在锚点上，两边连起来" onClick={() => setTool('-')}>
           − 删点
         </button>
+        <button id="modeN" className={tool === 'N' ? 'on' : ''} title="转换锚点 (⇧C)：点锚点变尖角，从锚点拖出变平滑，拖手柄只动一边" onClick={() => setTool('N')}>
+          ⇧C 转换
+        </button>
         <button id="modeC" className={tool === 'C' ? 'on' : ''} title="剪刀 (C)：点在锚点或线段上剪断" onClick={() => setTool('C')}>
           C 剪刀
         </button>

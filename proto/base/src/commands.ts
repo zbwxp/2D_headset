@@ -56,6 +56,8 @@ export type EditError = {
 export type Command =
   | { type: 'moveAnchors'; targets: AnchorRef[]; delta: Vec }
   | { type: 'moveHandle'; target: AnchorRef; handle: 'in' | 'out'; delta: Vec }
+  /** both handles of one anchor at once (relative, as stored): a smooth point's handle drag, the Convert Anchor tool */
+  | { type: 'setHandles'; target: AnchorRef; hIn: Vec; hOut: Vec }
   | { type: 'moveOverride'; referenceId: RecordId<ReferenceRecord>; target: AnchorRef; delta: Vec }
   | { type: 'transformContainer'; containerId: RecordId<ContainerRecord>; matrix: Affine }
   /** Several containers under ONE selection transform: each anchor moves exactly once (dot: L1+L2 double move). */
@@ -428,6 +430,17 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       const key = cmd.handle === 'in' ? 'hIn' : 'hOut'
       next.anchors[a.id] = { ...a, [key]: add(a[key], cmd.delta) }
       return { ok: true, label: 'moveHandle', puts: [next], affected: [`${anchorKey(cmd.target)}.${key}`] }
+    }
+    case 'setHandles': {
+      const curve = getAs(store, cmd.target.curveId, 'curve')
+      const a = curve?.anchors[cmd.target.anchorId]
+      if (!curve || !a) return notFound(store, cmd.target.curveId, curve ? 'anchor' : 'curve', anchorKey(cmd.target))
+      if (![cmd.hIn, cmd.hOut].every((q) => q && Number.isFinite(q.x) && Number.isFinite(q.y))) return fail('INVALID', 'handles must be finite', [anchorKey(cmd.target)])
+      const locked = lockCheck(store, [{ ref: cmd.target }])
+      if (locked) return locked
+      const next = structuredClone(curve)
+      next.anchors[a.id] = { ...a, hIn: { ...cmd.hIn }, hOut: { ...cmd.hOut } }
+      return { ok: true, label: 'setHandles', puts: [next], affected: [`${anchorKey(cmd.target)}.hIn`, `${anchorKey(cmd.target)}.hOut`] }
     }
     case 'moveOverride': {
       const ref = getAs(store, cmd.referenceId, 'reference')

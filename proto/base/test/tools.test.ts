@@ -83,3 +83,17 @@ describe('extendCurve (the Pen continues an open path from an end)', () => {
     expect(closed.ok === false && closed.error.message).toMatch(/closed/)
   })
 })
+
+it('setHandles writes both handles of one anchor (one step); refused when locked or not finite', async () => {
+  const { isSmooth } = await import('../src/view/fabricView')
+  const e = new Editor(exampleRecords())
+  expect(e.apply({ type: 'setHandles', target: { curveId: ids.C1, anchorId: 'a2' }, hIn: { x: 0, y: -5 }, hOut: { x: 0, y: 5 } }).ok).toBe(true)
+  expect((e.reader.get(ids.C1) as any).anchors.a2).toMatchObject({ hIn: { x: 0, y: -5 }, hOut: { x: 0, y: 5 } })
+  expect(isSmooth((e.reader.get(ids.C1) as any).anchors.a2)).toBe(true)
+  expect(isSmooth({ hIn: { x: 0, y: -5 }, hOut: { x: 5, y: 0 } })).toBe(false)
+  expect(isSmooth({ hIn: { x: 0, y: 0 }, hOut: { x: 5, y: 0 } })).toBe(false)
+  const bad = e.apply({ type: 'setHandles', target: { curveId: ids.C1, anchorId: 'a2' }, hIn: { x: NaN, y: 0 }, hOut: { x: 0, y: 0 } })
+  expect(bad.ok === false && bad.error.code).toBe('INVALID')
+  const locked = e.apply({ type: 'setHandles', target: { curveId: ids.C2, anchorId: 'b2' }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+  expect(locked.ok === false && locked.error.code).toBe('LOCKED')
+})

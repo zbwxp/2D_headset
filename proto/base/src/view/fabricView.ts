@@ -26,7 +26,7 @@ import { contentCentre, contentOf, parseContent } from '../clipboard'
 import { schema, type Affine, type Anchor, type ContainerRecord, type CurveRecord, type DocRecord, type Vec } from '../schema'
 import { anchorKey, containerChain, lockedBy, type AnchorRef } from '../model'
 
-export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K'
+export type Tool = 'A' | 'V' | 'P' | '+' | '-' | 'C' | 'K' | 'N'
 export type UiLogEntry = { source: 'ui'; cmd: Command; ok: boolean; written: boolean; error?: EditError }
 
 const toAffine = (m: TMat2D): Affine => ({ a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] })
@@ -42,7 +42,7 @@ export class FabricView {
   readonly rejections: { address: string; error: EditError }[] = []
   status = ''
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[] } | null = null
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[]; smooth?: { hIn: Vec; hOut: Vec }; convert?: 'anchor' | 'handle' } | null = null
   /** the Pen tool's path being drawn (not in the document until it ends: one createCurve, one undo step) */
   pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec; from?: { curveId: string; end: 'start' | 'end'; other: Vec } } | null = null
   /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
@@ -539,6 +539,14 @@ export class FabricView {
     if (this.mode === 'P') return this.penDown(e)
     if (this.mode === '+' || this.mode === '-' || this.mode === 'C') return this.structureClick(e)
     if (this.mode === 'K') return this.bucket(this.canvas.getScenePoint(e))
+    if (this.mode === 'N') {
+      // Convert Anchor Point (⇧C): click an anchor = corner (handles retracted); drag from it = smooth (symmetric
+      // handles pulled out); drag a handle = move that handle alone (the pair is broken)
+      const p = this.canvas.getScenePoint(e)
+      const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
+      if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false, convert: hit.kind }
+      return
+    }
     if (this.mode !== 'A') return
     const p = this.canvas.getScenePoint(e)
     const hit = hitTest(this.editor.derived.evaluated(), p, { mode: 'A', tolerance: 6 / this.canvas.getZoom() })
@@ -553,7 +561,14 @@ export class FabricView {
       if (sel.includes(key)) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false, targets: sel.map((k) => ({ curveId: k.split('#')[0] as any, anchorId: k.split('#')[1] })) }
       return
     }
-    if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
+    if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) {
+      this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
+      // a smooth point's handle turns the other one with it (they stay in line); ⌥ breaks them (Illustrator)
+      if (hit.kind === 'handle' && !e.altKey) {
+        const a = (this.editor.reader.get(hit.curveId) as CurveRecord | undefined)?.anchors[hit.anchorId]
+        if (a && isSmooth(a)) this.drag.smooth = { hIn: { ...a.hIn }, hOut: { ...a.hOut } }
+      }
+    }
     // Direct Selection (Illustrator A): a click on a path selects that object itself, never its group
     else if (hit) {
       this.selection.setAnchors([])
@@ -1139,9 +1154,19 @@ export class FabricView {
       const inv = util.invertTransform([r.transform.a, r.transform.b, r.transform.c, r.transform.d, 0, 0])
       local = { x: round(inv[0] * delta.x + inv[2] * delta.y), y: round(inv[1] * delta.x + inv[3] * delta.y) }
     }
+    if ((hit.kind === 'handle' || this.drag?.convert) && hit.referenceId && !this.editSource)
+      return { error: { code: 'INVALID', message: 'handle overrides on a reference are not supported in this slice; tick 改源 to edit the source', objects: [hit.address], fixes: ['tick 改源'] } }
+    if (this.drag?.convert === 'anchor') return { type: 'setHandles', target, hIn: { x: 0 - local.x, y: 0 - local.y }, hOut: { ...local } }
     if (hit.kind === 'handle') {
-      if (hit.referenceId && !this.editSource)
-        return { error: { code: 'INVALID', message: 'handle overrides on a reference are not supported in this slice; tick 改源 to edit the source', objects: [hit.address], fixes: ['tick 改源'] } }
+      const sm = this.drag?.smooth
+      if (sm) {
+        // the dragged handle follows the pointer; the other keeps its length, pointing the opposite way
+        const key = hit.handle === 'in' ? 'hIn' : 'hOut', other = hit.handle === 'in' ? 'hOut' : 'hIn'
+        const moved = { x: round(sm[key].x + local.x), y: round(sm[key].y + local.y) }
+        const len = Math.hypot(moved.x, moved.y), keep = Math.hypot(sm[other].x, sm[other].y)
+        const opp = len > 1e-9 ? { x: round((0 - moved.x / len) * keep), y: round((0 - moved.y / len) * keep) } : { ...sm[other] }
+        return { type: 'setHandles', target, ...(key === 'hIn' ? { hIn: moved, hOut: opp } : { hIn: opp, hOut: moved }) } as Command
+      }
       return { type: 'moveHandle', target, handle: hit.handle, delta: local }
     }
     if (hit.referenceId && !this.editSource) return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: local }
@@ -1254,6 +1279,13 @@ export class FabricView {
       return
     }
     if (!d) return
+    if (!d.cmd && d.convert === 'anchor' && !d.hit.referenceId) {
+      d.op.cancel()
+      const a = (this.editor.reader.get(d.hit.curveId) as CurveRecord | undefined)?.anchors[d.hit.anchorId]
+      if (a && (a.hIn.x || a.hIn.y || a.hOut.x || a.hOut.y)) this.applyAndLog({ type: 'setHandles', target: { curveId: d.hit.curveId, anchorId: d.hit.anchorId }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+      this.render()
+      return
+    }
     if (!d.cmd) return d.op.cancel()
     if (d.ok) {
       // the operation plans once more and checks generation, locks and dependencies again; ends once
@@ -1304,6 +1336,13 @@ export class FabricView {
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000
+/** a smooth point: both handles out, in one straight line through the anchor (opposite directions, within 0.5°) */
+export function isSmooth(a: { hIn: Vec; hOut: Vec }) {
+  const li = Math.hypot(a.hIn.x, a.hIn.y), lo = Math.hypot(a.hOut.x, a.hOut.y)
+  if (li < 1e-9 || lo < 1e-9) return false
+  const cos = (a.hIn.x * a.hOut.x + a.hIn.y * a.hOut.y) / (li * lo)
+  return cos < -Math.cos((0.5 * Math.PI) / 180)
+}
 
 function dot(p: Vec, color: string, r: number) {
   // objectCaching off like every other scene object: Fabric's default per-object cache on 6,000 tiny
