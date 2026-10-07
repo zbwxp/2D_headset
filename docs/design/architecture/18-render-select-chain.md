@@ -2018,15 +2018,15 @@
 | --- | --- | --- |
 | 点选取画序最上层的可见对象（蒙版、填充让出自身线条照画面算）；修 KF-4 | Illustrator / Figma 点选；§1.7「点选跟随可见」 | 自实现（`hitStack` 沿同一份 paint 列表从前往后） |
 | V 的选择单位 = 图层下最外层的组，否则对象本身；引用选引用 | Illustrator Selection tool：「grouped objects are treated as a single unit」（helpx selecting-objects） | 借用流程；引用取放置侧是项目适配（§21.2） |
-| Shift 点击加 / 减；⌘ / Ctrl 点击选后面一层，到底不再往下 | Illustrator 选择后面的对象 | 借用流程 |
-| 空白处拖 = 框选，默认碰到就选；拖动中按 E 切换成完全包含；Shift 追加 | Illustrator：「The default marquee selection selects any object that is partially inside the marquee」，按 E 切 enclosed（helpx） | 自实现（路径采样 + 线段裁剪） |
+| Shift 点击加 / 减；⌘ / Ctrl 点击进入后方选择，每点一次往后一层，到底停住（不是单击必穿透，也不用 dblclick） | Illustrator 选择后面的对象 | 借用流程 |
+| 空白处拖 = 框选，默认碰到就选；拖动中按一次 E 切到完全包含，再按一次切回（不是全局模式，也不用一直按住）；Shift 追加 | Illustrator：「The default marquee selection selects any object that is partially inside the marquee」，按 E 切 enclosed（helpx） | 自实现（路径采样 + 线段裁剪） |
 | 拖选中对象 = 移动，Shift 约束 45°；变换框缩放（Shift 等比）/ 旋转 | Illustrator 默认 | Fabric 变换框（直接依赖）+ 我们的移动；写入 `transformItems` |
 | A 点击选对象本身（不按组）；锚点 / 手柄拖动不变 | Illustrator Direct Selection | 借用流程 |
 | 选择不进撤销；撤销 / 重做后剔除不存在的 id | Inkscape / Illustrator | 自实现（`Selection`，@tldraw/state atom） |
 | `transformItems`：容器（全部内容）、线、引用（组合放置变换）、填充 | 推广已有 transformContainers（结果相同，有测试） | 项目适配：填充自身没有几何，拖填充 = 移动它的边界线 |
 | 图层面板：树，最前的在最上；点选、⌘ 切换、Shift 连选；眼睛 / 锁 | Illustrator 图层面板 / Figma 图层列表 | React 19 + @tldraw/state-react（与产品同栈）；只有容器有显隐 / 锁字段，所以只有容器行有开关 |
 | 属性区：类型、名称、id、所在图层、容器显隐 / 锁（可改）；描边、填充、引用、蒙版（只读） | — | 只读项的修改入口在第 2 块 |
-| 快捷键：V / A、⌘Z / ⇧⌘Z（Ctrl+Y）、Delete / Backspace、⌘A / ⇧⌘A、方向键 1 / Shift 10、⌘+ / ⌘− / ⌘0 / ⌘1、空格抓手、Esc 取消手势 | Illustrator 默认快捷键 | 自实现（`src/ui/shortcuts.ts`） |
+| 快捷键：V / A、⌘Z / ⇧⌘Z（Ctrl+Y）、Delete / Backspace、⌘A / ⇧⌘A、方向键微移、⌘+ / ⌘− / ⌘0 / ⌘1、空格抓手、Esc 取消手势 | Illustrator 默认快捷键；方向键按设定步长、Shift 十倍——步长 1 / 10 是我们选的默认值，不是照搬 | 自实现（`src/ui/shortcuts.ts`） |
 | Delete：容器连内容、线连它的连接和转头轨道一起删；还有别的依赖（被它围成的填充、引用它的蒙版 / 引用）就拒绝并点名 | Illustrator 删除对象 | 连接 / 轨道随线删除是项目适配；其余交给 `deleteRecords` 的依赖检查 |
 | 画布：滚轮滚动（Shift 横向）、⌘ / Ctrl + 滚轮和捏合以光标为中心缩放、空格或中键拖动平移 | Illustrator / Figma | Fabric `zoomToPoint` / `relativePan`（直接依赖） |
 
@@ -2138,3 +2138,12 @@
   - ⌘G 后点一下就选中整个组，⇧⌘G 后选中子对象，各一步撤销；
   - ＋图层之后钢笔画进新图层。
 - **还没做**：在图层面板里拖动调顺序 / 换图层（Illustrator / Figma 都有），现在用排列快捷键代替。
+
+
+### 30.7 异步操作的保护（proto `95cc3b6`，dot 复验 7538032 提出）
+- 剪切、粘贴、保存、打开都是异步的，一律在**开始时**固定要操作的对象和文档身份（`Editor.documentEpoch`，每次打开文件 +1），完成时再核对：
+  - **剪切**：删的是开始时选中的对象。剪贴板写完前文档有任何变化就不删，内容照样已复制，并提示。不会删到之后的新选择；
+  - **保存**：保存未完成时又打开了别的文档，完成后不改那个文档的文件名、文件句柄和保存状态；
+  - **打开**：文件对话框开着期间又改了东西，就再问一次；取消就保留这些修改；
+  - **粘贴**：目标图层和视图在开始时确定。读剪贴板期间换了文档就不粘贴。
+- 验收：`e2e/async.spec.ts`，用延迟的剪贴板 / 文件对话框复现每一种竞争。剪切那条在修复前的代码上会失败（删到了新选择）。
