@@ -557,6 +557,48 @@ But if fill uses **enclosed regions found from geometry**, the regions can chang
 - **For A5:** add a **cross-layer link** relation, distinct from a shared endpoint (bowen's binding / linkage decision).
 - **For A3:** a rule for which wins between end stroke and join at a node. Suggestion: the join applies by default; an end stroke is used only when explicitly turned on.
 
+### dot's independent review (1791384045, summarised)
+
+**Conclusion:** the structure can be modelled as a **network of curves with shared endpoints**. dot found no hard contradiction that forces it to be overturned. What needs work is the meaning of some relations; there is no reason to switch back to our current path records.
+
+dot raised four points:
+
+1. **A loop existing is not the same as the user creating a fill.** Which loops actually carry a fill must be stated explicitly; a fill should not appear automatically for every loop found.
+   - dot **disagrees** with Claude's A1 being a "real contradiction". Outer ring red and upper half blue can resolve cleanly through paint order. What is missing is fill identity and an overlap rule; the structure is not logically impossible.
+2. **Joins at a branching node must say which pair of segments or handles they constrain.** Sharing a position does not mean every handle there constrains the others. Likewise, sharing an endpoint does not mean sharing its taper or width.
+3. **When the continuous structure is split, what happens to "this element"?** If the middle segment linking two parts is deleted, do they automatically become two continuous objects, or keep one identity? Either can be designed, but select, move, copy and undo behave differently. **Claude's review did not cover this.**
+4. **After topology changes, which loop does the fill follow?**
+   - Adding a point to a triangle edge should keep the fill.
+   - Cutting a link and rejoining it: does the old fill come back?
+   - Re-finding the current loops each time is not enough to remember which area the user filled.
+   - This is the same as Claude's A6.
+
+**Mature tools (as cited by dot):**
+- Figma VectorNetwork API: <https://developers.figma.com/docs/plugins/api/VectorNetwork/>
+- SVG painting order: <https://www.w3.org/TR/SVG2/render.html>
+
+### Claude checked dot's Figma source (opened and read)
+
+- **A vector network has three parts:** vertices, segments, and **regions**. A region lists one or more loops, each a sequence of segments, plus its own fills.
+- **With no regions,** all enclosed space is filled automatically. Once regions exist, they are stated explicitly.
+- A region can hold several loops, for example the inner and outer outline of the letter "o".
+- **Stroke cap, join style and handle mirroring are stored per vertex,** not per pair of segments.
+
+### Merged result (Claude accepts dot's corrections)
+
+- **A1 is reclassified from "real contradiction" to "gap: fill identity and overlap rule".**
+  - Claude's earlier claim that "there is no rule for which colour shows" was overstated. Overlapping fills are legal in SVG and resolve by paint order.
+  - Claude also withdraws its suggestion that "fill belongs to the minimal region". Figma states regions explicitly, each region references one or more loops, and the user decides which of them are filled. That matches bowen's "fill belongs to a closed curve" more closely than minimal regions do.
+- **dot's point 3 (identity after a split) is added as a gap.** Claude had missed it.
+- **A2 and A3** match dot's point 2: the scope of an attribute (which pair, whose taper) needs to be spelled out. Figma stores joins per vertex. Whether a T-shaped node needs a per-pair rule is left for bowen.
+- **A6 and dot's point 4 are the same thing:** after a topology change, which loop the fill follows.
+- **A4 (stroke route) and A5 (across layers)** are **deferred to the layers they belong to and not counted as defects**, because bowen has not reached those layers yet (dot).
+
+**No hard contradiction found.** Two things to settle with bowen first:
+
+1. Which loops become real fill objects, and how overlapping fills are ordered.
+2. Whether a continuous structure automatically splits and merges with its connectivity, and therefore how its identity changes.
+
 ### Status
 
-**Claude's independent review is done.** Waiting for dot's independent review, then merging. bowen decides what to adopt.
+**Both independent reviews are merged.** Waiting for bowen on the two items above. Nothing in bowen's graph has been changed.
