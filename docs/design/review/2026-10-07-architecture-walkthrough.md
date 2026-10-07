@@ -2426,6 +2426,27 @@ The result is essentially the same as Claude's. Key separation: **shared points 
 - **Point 2:** the aside overclaimed and is withdrawn. A smooth fork leaves two possible routes.
 - **End stroke:** already listed as a bowen confirmation (step 1).
 
+### bowen (1791393710)
+
+> 1没明白在问什么 2 接笔 线都共用端点了哪来两个线端的关系只能是端点的属性吧。3 这个最后讨论。
+
+- **2 decided:** the join is an attribute of the point.
+- **3 deferred to last.**
+- **1 needs rephrasing.**
+
+### Claude (1791393735)
+
+**Item 1 rephrased.** Three lines meet at P, such as hair forking into a trunk and two branches.
+- **Handles:** each line has its own handle at P (three handles), otherwise no corner is possible. Handles belong to lines. This part is settled.
+- **End stroke (taper and so on):** is there one end stroke for the whole point, shared by all three lines? Or does each line have its own at P (for example the trunk not tapering while both branches taper)?
+
+**Item 2 restated.** The join is the point's attribute. Its content is "which pairs of the lines at this point are smooth", for example "trunk and left branch smooth, right branch free".
+
+**Consequence of "point attribute" with binding:**
+- Binding deletes the later point. If the deleted point Q recorded "C and D smooth", that record disappears with Q. After C and D re-attach to P they are free and need re-setting.
+- The kept point P's own join records are unaffected.
+- **bowen to confirm:** is this intended, or should binding merge Q's joins into P?
+
 ### Status
 
 Waiting for bowen on three items:
