@@ -195,7 +195,7 @@ test('K never reaches through what is drawn in front (dot 1791359954): a blue fi
   }
 })
 
-test('dot 1791361223 ①: a front fill masked away at the click is not there — K colours what is drawn behind it, locked or not', async ({ page }) => {
+test('dot 1791361223 ① / 1791362995: a front fill masked away at the click — coloured or colourless — is not there; K colours what is drawn behind it, locked or not', async ({ page }) => {
   await open(page)
   await page.click('#fileNew')
   const L1 = (await records(page, 'container'))[0].id
@@ -220,11 +220,18 @@ test('dot 1791361223 ①: a front fill masked away at the click is not there —
   }, L1)
   const color = async (id: string) => (await records(page, 'fill')).find((f: any) => f.id === id)?.color
   await page.keyboard.press('k')
-  for (const [lock, c] of [[false, '#00aa00'], [true, '#aa00aa']] as const) {
-    await page.evaluate((l) => (window as any).__contour.api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: l }), lock)
-    await page.locator('#fillColor').fill(c)
-    await click(page, { x: 50, y: 40 })
-    expect(await color(ids.big)).toBe(c) // what is drawn there
-    expect(await color(ids.small)).toBe('#ff0000') // masked away there: not coloured, and (locked) not blocking
-  }
+  // the masked front fill coloured or colourless (dot 1791362995: the same mask test for both), unlocked or locked
+  for (const front of ['#ff0000', 'none'])
+    for (const [lock, c] of [[false, '#00aa00'], [true, '#aa00aa']] as const) {
+      await page.evaluate(([id, col, l]) => {
+        const { api } = (window as any).__contour
+        api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: false })
+        api.apply({ type: 'setProps', id, color: col })
+        api.apply({ type: 'setContainerFlags', containerId: 'container:F', locked: l })
+      }, [ids.small, front, lock] as const)
+      await page.locator('#fillColor').fill(c)
+      await click(page, { x: 50, y: 40 })
+      expect(await color(ids.big), `front ${front}, locked ${lock}`).toBe(c) // what is drawn there
+      expect(await color(ids.small), `front ${front}, locked ${lock}`).toBe(front) // masked away there: not coloured, not blocking
+    }
 })

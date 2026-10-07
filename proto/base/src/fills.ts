@@ -140,7 +140,8 @@ function walk(reader: BaseReader, curves: EvalCurve[], p: Vec | null): Face | { 
  * is drawn in front). Candidates, each at its place in the paint order:
  * - the drawn fills covering `p` (shown, coloured, not masked away there) — locked ones too: a locked fill in front
  *   still covers what is behind it (the write is then refused, nothing behind is changed);
- * - colourless areas (doc 18 §30.24) containing `p` in shown containers, at their own place;
+ * - colourless areas (doc 18 §30.24) containing `p` in shown containers and not masked away there, at their own
+ *   place;
  * - the area the lines enclose at `p` (`faceAt`) when no fill has that boundary yet: its new face sits just below its
  *   front-most line, so that line's place stands for it. An area that exists is a candidate only as that fill, at its
  *   own place and as drawn (masked away or hidden there → not a candidate).
@@ -161,7 +162,8 @@ export function bucketTarget(reader: BaseReader, ev: Evaluated, p: Vec): { bound
     if (!painted && !colourless) continue
     const pts = f.cubics.flatMap((c) => sampled(c as Cubic).slice(0, -1)) // the same sampled-outline test as the face search
     if (pts.length < 3 || !contains(pts, p)) continue
-    if (painted && !visibleThroughMasks(ev, f.address, p)) continue
+    // the same mask test for coloured and colourless areas (dot 1791362995): masked away at the click → not here
+    if (!visibleThroughMasks(ev, f.address, p)) continue
     offer(rec.boundary, rank.get(f.address))
   }
   // the area the lines enclose stands only for an area that does not exist yet: an existing one (any fill with that
