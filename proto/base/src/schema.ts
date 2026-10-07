@@ -12,7 +12,12 @@ import { convertRuleExpressions } from './expressionMigration'
 export type Vec = { x: number; y: number }
 
 /** A point with handles. Handles are stored relative to the point. */
-export type Anchor = { id: string; p: Vec; hIn: Vec; hOut: Vec }
+/**
+ * `type`: the point type the author chose — smooth (the handles turn together) or corner (each handle alone; Illustrator
+ * ⌥-drag / Convert Anchor). Absent = never chosen: inferred from the handles (in one line → smooth), as Inkscape infers a
+ * node type until one is set (release notes 0.42, Node tool). Optional: older files and new anchors carry none.
+ */
+export type Anchor = { id: string; p: Vec; hIn: Vec; hOut: Vec; type?: 'smooth' | 'corner' }
 /** One cubic Bézier between two anchors of the same curve — the smallest interpolation unit. */
 export type Segment = { id: string; from: string; to: string }
 
@@ -226,6 +231,7 @@ export const Curve = createRecordType<CurveRecord>('curve', {
     validate(r: any) {
       for (const a of Object.values(r.anchors) as Anchor[]) {
         check(isVec(a.p) && isVec(a.hIn) && isVec(a.hOut), `curve ${r.id} anchor ${a.id} not finite`)
+        check(a.type === undefined || a.type === 'smooth' || a.type === 'corner', `curve ${r.id} anchor ${a.id} type must be smooth or corner`)
       }
       const seen = new Set<string>()
       for (const s of r.segments as Segment[]) {

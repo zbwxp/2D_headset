@@ -44,7 +44,7 @@ export class FabricView {
   readonly rejections: { address: string; error: EditError }[] = []
   status = ''
   /** one drag = one prepared operation: fixed start generation and new ids, re-planned on every move */
-  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[]; smooth?: { hIn: Vec; hOut: Vec }; convert?: 'anchor' | 'handle'; origin?: Vec; moving?: Set<string> } | null = null
+  private drag: { hit: Extract<Hit, { kind: 'anchor' | 'handle' }>; start: Vec; op: Operation; cmd?: Command; ok: boolean; rejected?: EditError; error?: EditError; targets?: AnchorRef[]; smooth?: { hIn: Vec; hOut: Vec }; convert?: 'anchor' | 'handle'; origin?: Vec; moving?: Set<string>; breakPair?: boolean } | null = null
   /** the Pen tool's path being drawn (not in the document until it ends: one createCurve, one undo step) */
   pen: { anchors: Anchor[]; dragging: boolean; closing: boolean; hover?: Vec; from?: { curveId: string; end: 'start' | 'end'; other: Vec } } | null = null
   /** V-mode gestures (selection.ts): moving the selection by its body, a marquee, or Fabric's handle box */
@@ -629,9 +629,10 @@ export class FabricView {
     if (hit && (hit.kind === 'anchor' || hit.kind === 'handle')) {
       this.drag = { hit, start: { x: p.x, y: p.y }, op: this.editor.prepare(), ok: false }
       // a smooth point's handle turns the other one with it (they stay in line); ⌥ breaks them (Illustrator)
-      if (hit.kind === 'handle' && !e.altKey) {
+      if (hit.kind === 'handle') {
         const a = (this.editor.reader.get(hit.curveId) as CurveRecord | undefined)?.anchors[hit.anchorId]
-        if (a && isSmooth(a)) this.drag.smooth = { hIn: { ...a.hIn }, hOut: { ...a.hOut } }
+        if (e.altKey) this.drag.breakPair = true
+        else if (a && isSmooth(a)) this.drag.smooth = { hIn: { ...a.hIn }, hOut: { ...a.hOut } }
       }
     }
     // Direct Selection (Illustrator A): a click on a path selects that object itself, never its group
@@ -715,6 +716,9 @@ export class FabricView {
     if (Math.hypot(d.x, d.y) * this.canvas.getZoom() < 2) d = { x: 0, y: 0 }
     a.hOut = d
     a.hIn = { x: 0 - d.x, y: 0 - d.y } // 0 − x: never a negative zero in the data
+    // dragged out with the pen: a smooth point by choice (Illustrator); a plain click stays untyped (a corner)
+    if (d.x || d.y) a.type = 'smooth'
+    else delete a.type
     this.render()
   }
 
@@ -1267,7 +1271,7 @@ export class FabricView {
     }
     if ((hit.kind === 'handle' || this.drag?.convert) && hit.referenceId && !this.editSource)
       return { error: { code: 'INVALID', message: 'handle overrides on a reference are not supported in this slice; tick 改源 to edit the source', objects: [hit.address], fixes: ['tick 改源'] } }
-    if (this.drag?.convert === 'anchor') return { type: 'setHandles', target, hIn: { x: 0 - local.x, y: 0 - local.y }, hOut: { ...local } }
+    if (this.drag?.convert === 'anchor') return { type: 'setHandles', target, hIn: { x: 0 - local.x, y: 0 - local.y }, hOut: { ...local }, pointType: 'smooth' }
     if (hit.kind === 'handle') {
       const sm = this.drag?.smooth
       if (sm) {
@@ -1278,7 +1282,10 @@ export class FabricView {
         const opp = len > 1e-9 ? { x: round((0 - moved.x / len) * keep), y: round((0 - moved.y / len) * keep) } : { ...sm[other] }
         return { type: 'setHandles', target, ...(key === 'hIn' ? { hIn: moved, hOut: opp } : { hIn: opp, hOut: moved }) } as Command
       }
-      return { type: 'moveHandle', target, handle: hit.handle, delta: local }
+      // ⌥ (at the press or during the drag) or the Convert tool: this handle alone, and the point becomes a corner — kept
+      // until the author makes it smooth again (it is not re-inferred from the handles lining up)
+      const corner = this.drag?.breakPair || this.drag?.convert === 'handle'
+      return { type: 'moveHandle', target, handle: hit.handle, delta: local, ...(corner ? { pointType: 'corner' as const } : {}) }
     }
     if (hit.referenceId && !this.editSource) return { type: 'moveOverride', referenceId: hit.referenceId, target, delta: local }
     return { type: 'moveAnchors', targets: this.drag?.targets ?? [target], delta: local }
@@ -1319,6 +1326,11 @@ export class FabricView {
       return
     }
     if (!this.drag) return
+    if (e.altKey && this.drag.hit.kind === 'handle' && !this.drag.convert) {
+      // ⌥ pressed during a handle drag breaks the pair from then on (Illustrator)
+      this.drag.smooth = undefined
+      this.drag.breakPair = true
+    }
     const p = this.canvas.getScenePoint(e)
     let delta = { x: round(p.x - this.drag.start.x), y: round(p.y - this.drag.start.y) }
     // an anchor being dragged snaps onto other anchors / aligns with them (Smart Guides); handles do not snap
@@ -1415,7 +1427,7 @@ export class FabricView {
     if (!d.cmd && d.convert === 'anchor' && !d.hit.referenceId) {
       d.op.cancel()
       const a = (this.editor.reader.get(d.hit.curveId) as CurveRecord | undefined)?.anchors[d.hit.anchorId]
-      if (a && (a.hIn.x || a.hIn.y || a.hOut.x || a.hOut.y)) this.applyAndLog({ type: 'setHandles', target: { curveId: d.hit.curveId, anchorId: d.hit.anchorId }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 } })
+      if (a && (a.hIn.x || a.hIn.y || a.hOut.x || a.hOut.y || a.type !== 'corner')) this.applyAndLog({ type: 'setHandles', target: { curveId: d.hit.curveId, anchorId: d.hit.anchorId }, hIn: { x: 0, y: 0 }, hOut: { x: 0, y: 0 }, pointType: 'corner' })
       this.render()
       return
     }
@@ -1470,7 +1482,9 @@ export class FabricView {
 
 const round = (n: number) => Math.round(n * 1000) / 1000
 /** a smooth point: both handles out, in one straight line through the anchor (opposite directions, within 0.5°) */
-export function isSmooth(a: { hIn: Vec; hOut: Vec }) {
+export function isSmooth(a: { hIn: Vec; hOut: Vec; type?: 'smooth' | 'corner' }) {
+  // the author's choice wins; only a point never typed is inferred from its handles (review of b818183)
+  if (a.type) return a.type === 'smooth'
   const li = Math.hypot(a.hIn.x, a.hIn.y), lo = Math.hypot(a.hOut.x, a.hOut.y)
   if (li < 1e-9 || lo < 1e-9) return false
   const cos = (a.hIn.x * a.hOut.x + a.hIn.y * a.hOut.y) / (li * lo)

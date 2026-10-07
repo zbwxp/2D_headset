@@ -307,3 +307,44 @@ test('handles: dragging a smooth point\'s handle turns the other with it (same l
   expect(a.hOut).toEqual({ x: 10, y: 6 })
   expect((await undoLabels(page)).slice(-3)).toEqual(['setHandles', 'setHandles', 'moveHandle'])
 })
+
+test('point types (review of b818183): ⌥ splits a smooth point for good — a later plain drag, even with the handles in line again and after save / reopen, moves one handle; ⌥ pressed during a drag splits too; ⇧C sets the type', async ({ page }) => {
+  await open(page)
+  await page.keyboard.press('a')
+  // C1.a2 at (10, 60): handles (0, −20) / (0, 20), untyped → inferred smooth
+  const h = await toPage(page, { x: 10, y: 80 }), h2 = await toPage(page, { x: 10, y: 85 })
+  await page.keyboard.down('Alt')
+  await page.mouse.move(h.x, h.y)
+  await page.mouse.down()
+  await page.mouse.move(h2.x, h2.y, { steps: 3 }) // still in line with hIn
+  await page.mouse.up()
+  await page.keyboard.up('Alt')
+  let a = (await rec(page, 'curve:C1')).anchors.a2
+  expect(a).toMatchObject({ hIn: { x: 0, y: -20 }, hOut: { x: 0, y: 25 }, type: 'corner' })
+  // a plain drag now: one handle only
+  await dragFrom(page, { x: 10, y: 85 }, { x: 16, y: 85 })
+  a = (await rec(page, 'curve:C1')).anchors.a2
+  expect(a.hIn).toEqual({ x: 0, y: -20 })
+  expect(a.hOut).toEqual({ x: 6, y: 25 })
+  // kept through save / reopen
+  const file = await page.evaluate(() => JSON.stringify((window as any).__contour.editor.save()))
+  const reopened = await page.evaluate((f) => (window as any).__contour.editor.constructor.open(JSON.parse(f)).reader.get('curve:C1').anchors.a2.type, file)
+  expect(reopened).toBe('corner')
+  // ⌥ pressed DURING a drag of a smooth point's handle: from then on that handle alone
+  await page.keyboard.press('ControlOrMeta+z')
+  await page.keyboard.press('ControlOrMeta+z') // back to the untyped smooth a2
+  const s1 = await toPage(page, { x: 10, y: 80 }), s2 = await toPage(page, { x: 16, y: 80 })
+  await page.mouse.move(s1.x, s1.y)
+  await page.mouse.down()
+  await page.mouse.move((s1.x + s2.x) / 2, s1.y, { steps: 2 })
+  await page.keyboard.down('Alt')
+  await page.mouse.move(s2.x, s2.y, { steps: 2 })
+  await page.mouse.up()
+  await page.keyboard.up('Alt')
+  a = (await rec(page, 'curve:C1')).anchors.a2
+  expect(a).toMatchObject({ hIn: { x: 0, y: -20 }, hOut: { x: 6, y: 20 }, type: 'corner' })
+  // ⇧C drag out of the anchor → smooth by choice; the next plain handle drag turns both again
+  await page.keyboard.press('Shift+C')
+  await dragFrom(page, { x: 10, y: 60 }, { x: 10, y: 70 })
+  expect((await rec(page, 'curve:C1')).anchors.a2).toMatchObject({ hIn: { x: 0, y: -10 }, hOut: { x: 0, y: 10 }, type: 'smooth' })
+})
