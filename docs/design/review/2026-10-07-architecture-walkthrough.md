@@ -2220,9 +2220,23 @@ bowen's numbering follows Claude's first Q21 message (1791391895).
 
 **Still pending:** for two curves joining the same pair of endpoints, the curve end the user clicks decides which curve a bind deletes.
 
+### bowen (1791392314)
+
+> 让你选甲是我希望你按照原则把代码写出来 甲是自然出现的结果。而不是你设置一个corner case
+
+### Claude (1791392332): one principle, no special cases
+
+After each complete edit, a fill exists if and only if its loop still exists: its segments still connect end to end, close, and all lie in one layer.
+
+- **Delete, unbind, copy-then-delete:** no per-operation handling. The result follows from the principle.
+- **Binding** is one complete operation. The loop is still closed afterwards, so the fill stays.
+- **Adding a point** replaces the loop's reference to the split segment with the two new halves, so the loop still exists.
+- **Item 2 follows too:** moving part of a loop to another layer means the loop is no longer in one layer, so the fill is gone. No separate refusal rule is needed. A warning before the move would be UI only and would not change the rule.
+- **Asked bowen to confirm.**
+
 ### Status
 
-- 1: decided (甲).
+- 1: decided (甲, as a natural result of the principle, not a special case).
 - 3: decided (no cut in drawing; cross-recording cut-and-paste comes later).
 - 2: waiting for bowen.
 - Curve-end question: waiting for bowen.
