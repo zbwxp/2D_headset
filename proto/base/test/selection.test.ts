@@ -124,6 +124,21 @@ describe('transformItems (the Selection tool transform)', () => {
     e.undo()
     expect(JSON.stringify(e.reader.serialize('document'))).toBe(before)
   })
+  it('an item in a locked layer is refused even when what would move lies elsewhere (a fill whose boundary is in an unlocked layer — review of db4814c)', () => {
+    const e = new Editor(paintCases['P6-cross-layer'].records())
+    const fill = e.reader.allRecords().find((r: any) => r.typeName === 'fill') as any
+    e.apply({ type: 'setContainerFlags', containerId: fill.parentId, locked: true })
+    const before = JSON.stringify(e.reader.serialize('document'))
+    const r = e.apply({ type: 'transformItems', ids: [fill.id], matrix: { a: 1, b: 0, c: 0, d: 1, e: 10, f: 5 } })
+    expect(r.ok === false && r.error.code).toBe('LOCKED')
+    expect(r.ok === false && r.error.objects).toEqual([fill.id, fill.parentId])
+    expect(JSON.stringify(e.reader.serialize('document'))).toBe(before)
+    // a locked layer selected itself
+    const r2 = e.apply({ type: 'transformItems', ids: [fill.parentId], matrix: { a: 1, b: 0, c: 0, d: 1, e: 1, f: 0 } })
+    expect(r2.ok === false && r2.error.code).toBe('LOCKED')
+    e.apply({ type: 'setContainerFlags', containerId: fill.parentId, locked: false })
+    expect(e.apply({ type: 'transformItems', ids: [fill.id], matrix: { a: 1, b: 0, c: 0, d: 1, e: 10, f: 5 } }).ok).toBe(true)
+  })
   it('refuses what has no geometry to transform, a missing id, nothing, or a bad matrix', () => {
     const e = new Editor(exampleRecords())
     const no = (cmd: any, code: string) => {

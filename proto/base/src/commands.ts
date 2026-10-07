@@ -457,6 +457,12 @@ function planRaw(store: DocStore, cmd: Command, ids: IdSource): Plan {
       for (const id of cmd.ids) {
         const r = store.get(id as any) as DocRecord | undefined
         if (!r) return fail('NOT_FOUND', `no record ${id}`, [id])
+        // a selected item in a locked container (or a locked container itself) does not transform — also when what
+        // moves are records elsewhere (a fill's boundary curves: dot, review of db4814c)
+        if ('parentId' in r) {
+          const locker = r.typeName === 'container' && r.locked ? r : lockedBy(store, (r as { parentId: RecordId<ContainerRecord> | null }).parentId)
+          if (locker) return fail('LOCKED', `${id} is in locked container ${locker.id}`, [id, locker.id], [`unlock ${locker.id}`])
+        }
         if (r.typeName === 'container') {
           // content via the parent index (no scan of the whole document); nested selections are visited once
           curves.push(...within(store, r.id, 'curve').map((x) => store.get(x) as CurveRecord))

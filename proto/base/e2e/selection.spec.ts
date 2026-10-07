@@ -209,3 +209,17 @@ test('V: Shift while moving constrains to 45°; Esc cancels a move; the handle b
   expect(Math.abs(rot.matrix.b)).toBeGreaterThan(0.05) // rotated
   expect(await undoLabels(page)).toEqual(['transformItems', 'transformItems'])
 })
+
+test('a fill in a locked layer does not move by the keyboard even though its boundary lies in an unlocked layer (review of db4814c)', async ({ page }) => {
+  await open(page, '?case=P6-cross-layer')
+  await page.keyboard.press('v')
+  const fill = await page.evaluate(() => (window as any).__contour.editor.reader.allRecords().find((r: any) => r.typeName === 'fill'))
+  await page.click(`[data-id="${fill.parentId}"] [data-flag="locked"]`)
+  const before = await doc(page)
+  const history = await undoLabels(page)
+  await page.click(`[data-id="${fill.id}"]`)
+  await page.keyboard.press('ArrowRight')
+  expect(await doc(page)).toBe(before)
+  expect(await undoLabels(page)).toEqual(history)
+  expect(await page.evaluate(() => (window as any).__contour.view.status)).toMatch(/LOCKED/)
+})
