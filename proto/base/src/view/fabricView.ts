@@ -56,6 +56,8 @@ export class FabricView {
   private boxItem: { ids: readonly string[]; bounds: SelRect; locked: boolean } | null = null
   /** the canvas zoom, for the toolbar (set on every render) */
   readonly zoom = atom('canvas zoom', 1)
+  /** what the user is in the middle of (for the hint line; set on every render) */
+  readonly phase = atom<'idle' | 'pen' | 'marquee' | 'marquee-enclosed' | 'move' | 'transform' | 'drag'>('canvas phase', 'idle')
   /** space held: the hand tool (pan) */
   private spaceDown = false
   private pan: { x: number; y: number } | null = null
@@ -206,6 +208,9 @@ export class FabricView {
       this.unappliedContainerOpacity = opacity
       this.project(ev, onions)
       if (this.zoom.get() !== this.canvas.getZoom()) this.zoom.set(this.canvas.getZoom())
+      const g = this.vGesture
+      const phase = this.pen ? 'pen' : g?.kind === 'marquee' ? (g.enclosed ? 'marquee-enclosed' : 'marquee') : g?.kind === 'move' ? 'move' : g?.kind === 'box' ? 'transform' : this.drag ? 'drag' : 'idle'
+      if (this.phase.get() !== phase) this.phase.set(phase)
       // every render rebuilds the whole scene today: count what was rebuilt (dot: canvas rebuild counts)
       counters.canvasObjects += this.canvas.getObjects().length
     } finally {

@@ -7,7 +7,9 @@
     <style>
       :root { --line: #d0d4da; --sel: #1e88e5; --sel-bg: #e3f0fc; --muted: #6b7280; --bg: #f6f7f9; }
       * { box-sizing: border-box; }
-      body { font: 13px system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: #1f2328; }
+      /* an editor window: the page itself never scrolls; the side panel scrolls on its own */
+      html, body { height: 100%; overflow: hidden; }
+      body { font: 13px system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: #1f2328; display: flex; flex-direction: column; }
       #toolbar { border-bottom: 1px solid var(--line); background: #fff; }
       .toolbar { display: flex; gap: 12px; align-items: center; padding: 6px 10px; flex-wrap: wrap; }
       .toolbar .group { display: flex; gap: 4px; align-items: center; }
@@ -18,11 +20,16 @@
       button:disabled { opacity: 0.4; cursor: default; }
       .file { color: #374151; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
-      #main { display: flex; align-items: flex-start; gap: 0; }
-      #stage { padding: 10px; }
+      #main { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; }
+      #stage { padding: 10px; flex: 0 0 auto; overflow: auto; }
       #wrap { display: inline-block; outline: 1px solid var(--line); background: #fff; }
+      #hint { color: #4b5563; font-size: 12px; margin-top: 6px; max-width: 640px; min-height: 1.5em; line-height: 1.5; }
+      .help .help-title { cursor: pointer; user-select: none; }
+      .help-body { padding: 0 10px 4px; }
+      .help-body ul { margin: 0 0 4px; padding-left: 18px; }
+      .help-body li { margin: 2px 0; }
       #status { color: #b00020; min-height: 1.4em; margin: 6px 0; max-width: 640px; }
-      #side { width: 300px; min-height: calc(100vh - 42px); border-left: 1px solid var(--line); background: #fff; }
+      #side { flex: 0 1 300px; min-width: 140px; overflow-y: auto; border-left: 1px solid var(--line); background: #fff; }
       .panel { border-bottom: 1px solid var(--line); padding: 6px 0; }
       .panel-title { font-weight: 600; padding: 2px 10px 6px; }
       .rows { max-height: 46vh; overflow: auto; }
@@ -69,6 +76,7 @@
     <div id="main">
       <div id="stage">
         <div id="wrap"><canvas id="c" width="640" height="420"></canvas></div>
+        <div id="hintRoot"></div>
         <div id="status"></div>
       </div>
       <div id="side"></div>

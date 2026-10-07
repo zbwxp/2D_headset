@@ -14,6 +14,7 @@ import { Selection } from './selection'
 import { createTool, LayersPanel, PropertiesPanel, Toolbar, type Tool, type Ui } from './ui/panels'
 import { installShortcuts } from './ui/shortcuts'
 import { Files } from './ui/files'
+import { HintLine, ToolHelp } from './ui/help'
 import { react } from '@tldraw/state'
 
 const params = new URLSearchParams(location.search)
@@ -51,7 +52,8 @@ const ui: Ui = {
   },
 }
 createRoot(document.getElementById('toolbar')!).render(h(Toolbar, { ui }))
-createRoot(document.getElementById('side')!).render(h(Fragment, null, h(LayersPanel, { ui }), h(PropertiesPanel, { ui })))
+createRoot(document.getElementById('side')!).render(h(Fragment, null, h(ToolHelp, { ui }), h(LayersPanel, { ui }), h(PropertiesPanel, { ui })))
+createRoot(document.getElementById('hintRoot')!).render(h(HintLine, { ui }))
 installShortcuts(editor, view, setTool, files)
 
 // benchmark documents are fitted to the canvas, so every item is on screen (Fabric skips off-screen

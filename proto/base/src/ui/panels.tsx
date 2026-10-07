@@ -11,6 +11,7 @@ import type { ContainerRecord, CurveRecord, DocRecord, FillRecord, MaskRecord, R
 import type { FabricView, Tool as ViewTool } from '../view/fabricView'
 import { layerRows, rangeOf, type LayerRow } from './layerTree'
 import type { Files } from './files'
+import { HelpButton } from './help'
 
 export type Tool = ViewTool
 export type Ui = { editor: Editor; view: FabricView; tool: Atom<Tool>; zoom: Atom<number>; apply: (cmd: Command) => void; files: Files }
@@ -74,6 +75,9 @@ export function Toolbar({ ui }: { ui: Ui }) {
         <span className="zoom" id="zoomLabel">{Math.round(zoom * 100)}%</span>
         <button title="放大 (⌘+)" onClick={() => view.zoomBy(1.25)}>+</button>
         <button title="适合窗口 (⌘0)" onClick={() => view.fitToContent()}>适合</button>
+      </div>
+      <div className="group">
+        <HelpButton />
       </div>
       <div className="group debug">
         <button id="unlock" title="样例文档：解锁「阴影」图层" onClick={() => ui.apply({ type: 'setContainerFlags', containerId: 'container:L2' as any, locked: false })}>
