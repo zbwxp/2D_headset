@@ -1164,3 +1164,30 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 ### Status
 
 Claude suggested reading Graphite #2309 and its implementation in full and writing up a comparison. **Waiting for bowen to agree.**
+
+### Q10 follow-up: Are there lightweight open-source vector editors?
+
+**bowen** 1791386895:
+> 或者有矢量编辑轻量化的开源软件吗？
+
+#### Facts (Claude 1791386966; licence and activity from the GitHub API)
+
+**Lightweight browser editors.** Both use the **ordinary path model** (a line is a chain of segments joined end to end), not a network.
+
+| Editor | Licence | Stars | Last update | Notes |
+|---|---|---|---|---|
+| **SVG-Edit** <https://github.com/SVG-Edit/svgedit> | MIT | about 7.9k | 2026-08 | |
+| **Method Draw** <https://github.com/methodofaction/Method-Draw> | MIT | about 3k | 2024-05 | A trimmed-down fork of SVG-Edit |
+
+**Drawing libraries** (not editors):
+
+- **Paper.js:** paths are made of segments. GitHub does not detect its licence; the official site says MIT, which is **not verified**. Early design docs used it as a reference.
+- **Fabric.js** (MIT): the canvas library the proto uses now.
+
+**Not a fit:** Excalidraw and tldraw are whiteboard tools. They do not edit Bézier anchors and handles.
+
+#### Conclusion
+
+- **Lightweight open-source editors all use the path model.**
+- **Of bowen's network model,** the only open-source example is Graphite, and it is heavy (Q10).
+- **bowen's own v103 is a lightweight network-style implementation:** one record per segment, shared endpoints, pairwise joins.
