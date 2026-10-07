@@ -1537,3 +1537,27 @@
   - Live2D Glue 只作其他系统的对照；
   - 绑定那一刻取中点，不等于运行时一直按 50% 粘合；
   - 先前说「加权粘合会产生漂移」没有证据，撤回。
+
+### 26.5 核对：现有命令与数据里，哪些是「绑定」、哪些是「联动」（草稿，Claude 读源码，待 dot 核）
+**v103 的定义**（`7205381:src/domain/drawing/model.ts`）：
+- **绑定 = 共用节点**：`DrawingCurve.nodes: [string, string]` 引用文档里的 `DrawingNode`。几条曲线引用同一个节点就连成一笔，连通组由几何推出（`strokeName` 只是标签）。共用节点处的接头方式由 `TangentJoin`（SMOOTH / CUSP / ARC）决定。
+- **联动 = `EndpointLink`**：源码注释原文 "Position coupling only. Nodes, strokes, ink styles and layer ownership stay separate."；可选 `throughDisplay`（显示路线需显式开启）和 `joinBrush`。
+
+**proto 现状**（`61c6d6f`）：
+- **绑定（连成一笔）**：一条 `CurveRecord` 本身就是锚点 + 段的连续路径。拓扑命令都**只作用在同一条曲线内**：
+  - `insertPoint` / 删点；
+  - `breakAt`（剪开）；
+  - `addClosingSegment` / `removeClosingSegment`；
+  - `mergeEnds`（同一条曲线首尾并成一点、闭合）。
+
+  **缺口**：把**两条不同的曲线**接成一条连续曲线（Inkscape 在两条路径的端点间 Shift+J 的效果）**没有对应命令**。
+- **联动**：`ConnectionRecord`。注释原文 "Joins two or more anchors (possibly in different layers). Owned by the document, not a layer."；曲线各自保留、可以跨图层，只保证位置一致。这对应 v103 的 `EndpointLink`。
+- **命名混乱**：
+  - 建 connection 的命令叫 `bind`，实验 `joinOps.ts` 的注释还说它仿照 Inkscape Shift+J。但它的行为是**联动**（不合并路径）。
+  - `ConnectionRecord.geometricJoin: 'corner' | 'smooth'` 只在创建时写 `'corner'`，没有任何读取方（`structure.ts:579/719`）。也就是说，它把「接头平滑」这个属于连续曲线的属性挂在了联动上。
+
+**提议**（待 dot 核，不改代码）：
+1. 命令按 bowen 的词改清：现有 `bind` / `unbind` 改称**联动**（link / unlink）；
+2. 补「绑定」：把两条曲线在端点处接成一条 `CurveRecord`。同一容器内才允许（跨图层只能联动）。全预设、全状态同步，角色数据、引用、填充地址都要迁移或拒绝，按 §19 结构命令的规矩来。
+3. `geometricJoin` 从联动里移走：平滑与否属于连续曲线内部的节点类型，和 §17 的节点类型一起推迟到渲染。
+4. 眼尾：上下眼睑是两条曲线、各属一层，按定义是**联动**。§26.2 的表情覆盖在核清后按联动来定。上下眼睑要不要是一条连续曲线（绑定），是画法问题，不由我们假定。
