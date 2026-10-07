@@ -1049,12 +1049,48 @@ bowen wants gradient and Gaussian-blur fills in the stress test (1791378981).
 - **Good: same-colour seams.** A whole manual region is one fill, so there is no seam.
 - **Matches mature tools (verified):** the data matches Figma, where a region references any loops. The interaction matches Live Paint and Figma's Paint tool (default to the smallest region, with hover preview). Live Paint's double-click to select contiguous faces could serve as a quick way to select manually (verified fact; whether to use it is bowen's call).
 
+### dot's independent review (1791386558, summarised)
+
+**The proposal works** ("bucket defaults to the smallest region + boundary chosen by hand"). It mainly settles **where** to fill. It does not yet settle ownership, what happens after edits, or cover order.
+
+**The endpoint rule (bowen 1791386368) can be adopted.** It is this project's choice, not a rule shared by all vector tools.
+
+1. **Clearing both red and blue fills after they merge is fine.** dot reads it as "clear the ambiguous fills, do not delete the lines that enclose them". **dot opposes making "ambiguity → delete" an unconditional project-wide rule.**
+   - "The program cannot tell which line was meant" and "an existing fill became invalid through an edit" are different kinds of ambiguity.
+   - If the first case also deletes every candidate, a program uncertainty turns into damage to the drawing.
+   - It should be limited to objects **made invalid directly by this explicit operation**. When the target or the scope of the effect is unclear, **stop; do not widen the deletion**.
+2. **Mature tools allow decorative lines on a gradient within the same layer.** A gradient shape in an ordinary group and a separate stroke can coexist without splitting the fill.
+   - **A separate layer is not required.** bowen's rule (a line added inside the network splits faces; decorative lines go on another layer) can stand as a stricter rule, but it should not be described as what mature tools all do.
+   - **Splitting faces does not necessarily restart the gradient or blur.** Illustrator supports one gradient's coordinates shared across several objects. Source: <https://helpx.adobe.com/illustrator/desktop/paint-and-fill/create-and-edit-gradients/apply-gradients-across-multiple-objects.html>
+3. **A hidden bridge between the two circles can express the ring.** But the boundary goes out along the bridge and back along the same bridge, so **a boundary must be allowed to pass the same edge twice**.
+   - It cannot both allow this construction and require that a closed boundary never repeats an edge.
+   - Hiding the ink is not the same as deleting the bridge.
+4. **A hand-chosen boundary must say what it follows afterwards.**
+   - Example: fill the whole large circle by hand, then add a dividing line inside it. Does the fill stay with the outer ring, or split into two?
+   - If it stays with the outer ring, a whole-shape gradient is kept.
+   - If it splits automatically, hand selection only settles the first choice of area, not its wholeness later.
+   - **Which layer a cross-layer hand-chosen fill is drawn in, and whose lock and mask apply,** is decided at the layer-relations level.
+5. **Cover rules.** dot reads "larger covers smaller" as "a larger region filled later covers the earlier smaller ones", which reduces to time order.
+   - If bowen means "larger is always on top regardless of order", it conflicts with "later covers earlier".
+   - Example: large red first, small blue later. Which is on top? Needs a decision.
+   - Filling a whole shape as one block removes the seams inside it, not the seams between it and other neighbouring fills. trap stays null.
+
+### Merged result (Claude accepts dot's corrections and additions)
+
+- **Destructive delete (item 1).** Claude's question was "what counts as ambiguous". dot's stance is narrower and safer: delete only objects made invalid directly by an explicit operation; when the target or scope is unclear, stop. **Claude agrees.** This also fits "deleting a point is a serious action" (§32.6a).
+- **Lines on a gradient (item 2).** Claude's "no problem found" is kept. dot's addition is accepted: in mature tools a separate stroke object does not split the fill and gradient coordinates can be shared, so **"a new layer" is a stricter rule, not a necessity**.
+- **Bridge island (item 3).** dot's requirement is added: a boundary must be allowed to pass the same edge twice.
+- **New gap from dot (item 4):** after a hand-chosen fill, adding a dividing line inside it. Does the fill stay with the outer ring, or split? **Claude missed this.**
+- **Cover rules (item 5).** Claude and dot found the same conflict.
+- **Cross-layer.** Both agree to defer it to the layer-relations level.
+
+### Questions for bowen (after merging)
+
+1. **Scope of destructive delete.** Is it limited to fills made invalid directly by an explicit operation, with deletion stopped when the target is unclear (dot's proposal)?
+2. **Cover rules.** By time order only, or does "larger always on top" also apply?
+3. **A hand-chosen fill after an inner dividing line is added.** Does it stay with the outer ring as one whole fill, or split into two?
+4. **Which layer a cross-layer hand-chosen fill lives in.** Deferred to the layer-relations level.
+
 ### Status
 
-**Claude's independent review is done.** Waiting for dot's independent review and the merge.
-
-**Questions for bowen:**
-
-1. Under the destructive-delete rule, does merging two faces of the same colour count as ambiguous?
-2. Between "later covers earlier" and "larger covers smaller", which has priority?
-3. Which layer does a manual cross-layer fill live in?
+**Both independent reviews merged.** Waiting for bowen.
