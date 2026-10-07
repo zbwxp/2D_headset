@@ -11,7 +11,7 @@ import type { EditError, IdSource, Plan } from './commands'
 import { fitLinear } from './experiments/fineTuneTransfer'
 import { paramFor, presetExpr, presetFormsIdOf, presetNeutral } from './forms'
 import { connectionsAt } from './indexes'
-import { anchorKey, getAs, overlayReader } from './model'
+import { anchorKey, getAs, lockedBy, overlayReader } from './model'
 import {
   Visibility,
   type AbsoluteYawKey,
@@ -273,6 +273,13 @@ export function planCharacter(store: Store, cmd: CharacterCommand, _ids: IdSourc
               out.set(e.curveId, { ...structuredClone(current), [e.anchorId]: { p: { ...n }, hIn: v(q.hIn.x + dx, q.hIn.y + dy), hOut: v(q.hOut.x + dx, q.hOut.y + dy) } })
             }
           }
+      // a locked layer keeps its curves as they are, also in a character's expression states — given or moved along by the
+      // linkage (dot, review of 9c0cad2 L1: the character record has no place of its own, so the write guard cannot see it)
+      for (const cid of out.keys()) {
+        const c = getAs(store, cid, 'curve')
+        const locker = c && lockedBy(store, c.parentId)
+        if (locker) return fail('LOCKED', `${cid} is in locked container ${locker.id}${cmd.keyframes[cid] ? '' : ' (its keyframe would move with the shared corner)'}`, [cid, locker.id])
+      }
       // replace by meaning — the same curve, parameter and yaw — whatever id an imported record has
       let fixes = [...K.exprFixes]
       for (const [cid, sh] of out) {

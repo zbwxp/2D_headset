@@ -174,6 +174,29 @@ describe('§29 I-1: author keyframes → edit → play (two independent eyes)', 
     expect(both.ok).toBe(true)
   })
 
+  it('a locked layer keeps its lid: a single-side edit whose linkage would move the locked lid is refused LOCKED (no write, no history); so is a direct keyframe on it (dot, review of 9c0cad2 L1)', () => {
+    const rs = twoEyes()
+    rs.push({ typeName: 'container', id: 'container:locked', name: 'locked', parentId: null, index: 'a2', visible: true, locked: false, opacity: 1, tags: [] } as any)
+    ;(rs.find((r) => r.id === 'curve:upL') as any).parentId = 'container:locked'
+    const e = open(rs)
+    author(e)
+    expect(e.apply({ type: 'setContainerFlags', containerId: 'container:locked' as any, locked: true }).ok).toBe(true)
+    const c = shapes(e, 0, { blinkL: 1 })
+    const lift = { ...c['curve:loL'], d: { p: pt(c['curve:loL'].d.p.x, c['curve:loL'].d.p.y + 0.3), hIn: pt(c['curve:loL'].d.hIn.x, c['curve:loL'].d.hIn.y + 0.3), hOut: pt(c['curve:loL'].d.hOut.x, c['curve:loL'].d.hOut.y + 0.3) } } as Shape
+    const before = JSON.stringify(e.reader.allRecords())
+    const history = e.history.undo.length
+    const r = e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': lift } })
+    expect(r.ok === false && r.error.code).toBe('LOCKED')
+    expect(r.ok === false && r.error.objects).toEqual(['curve:upL', 'container:locked'])
+    expect(JSON.stringify(e.reader.allRecords())).toBe(before)
+    expect(e.history.undo.length).toBe(history)
+    const direct = e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:upL': c['curve:upL'] } })
+    expect(direct.ok === false && direct.error.code).toBe('LOCKED')
+    // an interior edit of the unlocked lid (no linkage) still works
+    const inner = { ...c['curve:loL'], n: { p: pt(c['curve:loL'].n.p.x, c['curve:loL'].n.p.y + 0.5), hIn: c['curve:loL'].n.hIn, hOut: c['curve:loL'].n.hOut } } as Shape
+    expect(e.apply({ type: 'fixExpression', character: K, param: 'blinkL', yaw: 0, keyframes: { 'curve:loL': inner } }).ok).toBe(true)
+  })
+
   it('saves and reopens (formal snapshot, JSON round trip) with the same playback', () => {
     const e = open(twoEyes())
     author(e)
