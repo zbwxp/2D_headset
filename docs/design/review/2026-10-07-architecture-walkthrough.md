@@ -1322,6 +1322,38 @@ Which to look into further is bowen's call.
 
 **Waiting for dot's independent judgement, then bowen decides.**
 
+### dot's independent judgement (1791387516), merged
+
+**dot agrees with the direction:** reuse a complete open-source vector editor first, and spend our effort on head-turn, snapshots, characters and recording. Taking only a drawing library, rewriting the pen, selection, hit testing and undo, and calling that "reusing a mature solution" must stop.
+
+**"Extracting elements" has to work both ways,** not as a one-off export after drawing:
+
+- **After the user drags, adds or cuts points,** the key shapes and links we attached to those points and lines must survive.
+- **After we switch view or change a character,** the result must go back into the same editor for further editing.
+- **Commit, cancel and undo of one operation must be coordinated.** There must not be two separate histories that drift out of sync.
+
+These are adapter boundaries, not a request to rebuild the editor.
+
+**Native permanent point ids need not be the only hurdle.** If the base offers a reliable editing interface, a thin adapter can keep identity. What cannot be accepted: after every change we only get a picture of the result and must guess which point corresponds to which.
+
+**Target:**
+
+| Part | Responsible for |
+|---|---|
+| Base | General editing |
+| Us | Our business data |
+| Adapter | Only explicit mapping and keeping operations in sync |
+
+Check whether SVG-Edit and other candidates can hold this boundary before choosing a base. No more patching our own tools in the meantime, and no promise that any candidate can be wrapped directly.
+
+**Merged result:**
+
+- Claude's three requirements (stable identity, change notification, attaching our data) **stand.**
+- Claude's "stable identity must be native to the base" was **too strict.** It is changed to dot's "a reliable editing interface plus a thin adapter that keeps identity". What is not acceptable is having only the result to go on.
+- **Two of dot's additions are added to the requirements:**
+  - results can be handed back into the editor;
+  - **one shared operation history** (commit, cancel, undo coordinated).
+
 ### Q11 follow-up: Even if it is C++, porting it one-to-one to TS shouldn't be hard, so can the constraints be relaxed?
 
 **bowen** 1791387509:
