@@ -1397,7 +1397,7 @@ Check whether SVG-Edit and other candidates can hold this boundary before choosi
 - It lets a plugin store "custom information on any node or style, private to your plugin".
 - Each entry is at most 100 kB, and the data becomes unreadable if the plugin ID changes.
 
-#### Judgement (Claude 1791387650)
+#### Judgement (Claude 1791387699)
 
 **To confirm with bowen:** "primitive, raster-like layers" is read as "few features, we barely use its layer functions", not "the content is pixels". Lines must stay editable vectors, or dragging and adding points is impossible.
 
