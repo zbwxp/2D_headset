@@ -1508,7 +1508,7 @@ So each thing is changed in exactly one place.
 | Fill region | VGC KeyFace (several cycles = holes, its own colour); Figma region |
 | Appearance style | VGC CellStyle (per cell); Graphite Appearance (per object); OpenToonz style per stroke plus fill on edges; Synfig WidthPoint |
 
-**No conflict found:** dot's six concepts **match** the VPaint / VGC cell model.
+**No conflict found** between dot's six concepts and the VPaint / VGC cell model. But **they do not correspond one to one** (dot 1791388488). These six are our own proposed concepts, not a mapping of any tool's implementation.
 
 **The one open-source exception:** OpenToonz and Graphite compute regions instead of storing them explicitly. dot's "explicit fill region" is closer to VGC and Figma.
 
@@ -1520,7 +1520,8 @@ So each thing is changed in exactly one place.
 |---|---|
 | **Point** | A position |
 | **Segment** | A cubic Bézier: two endpoint Points plus two handles. Handles belong to the segment (Graphite, Figma) |
-| **Join** | On a Point, which **pair** of Segments is smooth / corner / arc |
+| **Join constraint** (geometry) | On a Point, which **pair** of Segments' handles are constrained, and how: smooth (collinear), corner (independent), mirrored. v103's "arc join" (ARC + radius) trims the geometry, so it also belongs here |
+| **Corner appearance** (appearance) | How the stroke looks at a corner: miter / round / bevel. **It changes no geometry.** It belongs under Appearance |
 | **Loop** | An ordered sequence of directed Segments that closes, as a fill boundary |
 | **Face** | A fill region: one or more Loops, so holes are allowed, plus a fill colour |
 | **Appearance** | Line stroke (on a Segment or a route), end stroke (on a Point / segment end), fill style (on a Face) |
@@ -1531,7 +1532,8 @@ So each thing is changed in exactly one place.
 |---|---|
 | Segment —two ends are→ Point | decided |
 | A Point may be shared by several Segments | bowen's structure |
-| Join —belongs to→ Point and names a pair of Segments | proposed (Q7 A2) |
+| Join constraint —belongs to→ Point and names a pair of Segments | proposed (Q7 A2) |
+| Corner appearance —belongs to→ Appearance (per point or per pair) | proposed. **Kept separate from the join constraint** (dot 1791388488): a round join is not a change of the two Béziers into an arc, and a miter join is not a broken handle. Source: Figma VectorVertex defines `handleMirroring` (geometry) and `strokeJoin` (appearance) separately |
 | Loop —consists of→ Segments (direction matters) | proposed |
 | Face —is enclosed by→ one or more Loops | proposed (Q8 point 2) |
 | Fill —belongs to→ Face | decided |
