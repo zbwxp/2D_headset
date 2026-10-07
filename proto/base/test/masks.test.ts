@@ -92,3 +92,19 @@ describe('setMask', () => {
     expect(() => Editor.open({ store: Object.fromEntries(rs.map((r) => [r.id, r])), schema: (new Editor().save() as any).schema } as any)).toThrow(/invalid document: .*sources.fills\[0\].*fill:gone/)
   })
 })
+
+it('deleting a container a mask targets is refused and names the mask (dot, review of ce2736c M1: it was written and the file could not reopen)', () => {
+  for (const empty of [true, false]) {
+    const rs: any[] = paintCases['M1-mask-outside'].records()
+    rs.find((r) => r.typeName === 'mask').targets = ['container:L2']
+    if (empty) rs.splice(rs.findIndex((r) => r.id === 'curve:C'), 1)
+    const e = new Editor(rs)
+    const before = JSON.stringify(e.save())
+    const r = e.apply({ type: 'deleteRecords', ids: empty ? ['container:L2'] : ['container:L2', 'curve:C'] })
+    expect(r.ok === false && r.error.objects).toContain('mask:m')
+    expect(JSON.stringify(e.save())).toBe(before)
+    // removing the mask in the same command is fine, and the file reopens
+    expect(e.apply({ type: 'deleteRecords', ids: empty ? ['container:L2', 'mask:m'] : ['container:L2', 'curve:C', 'mask:m'] }).ok).toBe(true)
+    expect(() => Editor.open(JSON.parse(JSON.stringify(e.save())))).not.toThrow()
+  }
+})

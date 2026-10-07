@@ -275,7 +275,7 @@ export class FabricView {
       const masks = ev.masks?.get(f.address)
       if (masks?.length) {
         const fillPath = cubicsPath2D(f.cubics, true)
-        const own = p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) }))
+        const own = p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments), masks: ev.masks?.get(r.curve) }))
         return new MaskedPath(cubicsToCommands(f.cubics, true), masks, f.cubics.flat(), 0, (l) => {
           if (own.length) paintFillLeavingOwnInk(l, f, fillPath, own)
           else {
@@ -285,7 +285,7 @@ export class FabricView {
         })
       }
       if (!p.ownInk.length) return new Path(cubicsToCommands(f.cubics, true), { fill: f.color, fillRule: FILL_RULE, stroke: '', selectable: false, evented: false, objectCaching: false })
-      return new OwnInkFill(cubicsToCommands(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
+      return new OwnInkFill(cubicsToCommands(f.cubics, true), f, cubicsPath2D(f.cubics, true), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments), masks: ev.masks?.get(r.curve) })))
     }
     const pathOf = (c: EvalCurve) => {
       const st = inkStyle(c)
@@ -356,8 +356,10 @@ export class FabricView {
     onions.forEach((o, i) => o.curves.filter((c) => c.visible).forEach((c) => want.push({ key: `o${i}:${c.address}`, item: c, make: () => [pathOfOnion(c)] })))
     for (const p of ev.paint)
       if (p.item.visible) {
-        // a masked item depends on its sources' geometry too: compared by this evaluation's mask list
-        const item = ev.masks?.get(p.item.address)?.length ? ({ masked: p.item, masks: ev.masks.get(p.item.address) } as any) : p.item
+        // a masked item depends on its sources' geometry too (so does a fill whose own boundary stroke is masked: its
+        // cut follows that stroke's masks): compared by this evaluation's mask list
+        const ownMasked = p.kind === 'fill' && p.ownInk.some((r) => ev.masks?.get(r.curve)?.length)
+        const item = ev.masks?.get(p.item.address)?.length || ownMasked ? ({ masked: p.item, masks: ev.masks!.get(p.item.address), own: p.kind === 'fill' ? p.ownInk.map((r) => ev.masks!.get(r.curve)) : null } as any) : p.item
         want.push(
           p.kind === 'fill'
             ? { key: `f:${p.item.address}`, item, make: () => [pathOfFill(p)] }

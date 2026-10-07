@@ -23,7 +23,7 @@ const layer = (c: HTMLCanvasElement | null, W: number, H: number) => {
 }
 
 /** the region of one mask (world coordinates) drawn opaque on `l` */
-function paintRegion(l: CanvasRenderingContext2D, m: EvalMask) {
+export function paintRegion(l: CanvasRenderingContext2D, m: EvalMask) {
   l.fillStyle = '#000'
   l.strokeStyle = '#000'
   for (const f of m.fills) if (f.cubics.length) l.fill(cubicsPath2D(f.cubics, true), FILL_RULE)

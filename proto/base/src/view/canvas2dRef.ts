@@ -68,7 +68,7 @@ export class Canvas2DRef {
         const f = p.item
         const draw = (l: CanvasRenderingContext2D) => {
           if (p.ownInk.length)
-            paintFillLeavingOwnInk(l, f, this.fillPath(f), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments) })))
+            paintFillLeavingOwnInk(l, f, this.fillPath(f), p.ownInk.map((r) => ({ curve: byAddress.get(r.curve)!, path: ownInkPath2D(byAddress.get(r.curve)!, r.segments), masks: ev.masks?.get(r.curve) })))
           else {
             l.fillStyle = f.color
             l.fill(this.fillPath(f), FILL_RULE)

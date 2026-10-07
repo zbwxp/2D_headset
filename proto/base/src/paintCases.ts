@@ -333,4 +333,15 @@ export const paintCases: Record<string, PaintCase> = {
     records: () => [layer('L1', 'a1'), ...square(id('L1'), 'a2', 'a1'), layer('L2', 'a2'), line('C', id('L2'), 'a1', BLUE, 40, 30, 80, 30), { ...mask('outside', ['fill:F'], [], ['curve:C']), enabled: false } as DocRecord],
     expect: [{ at: { x: 50, y: 30 }, rgba: blue, what: 'inside F: drawn (mask off)' }],
   },
+  // M6 (dot, review of ce2736c M2): F's own boundary stroke is masked away inside F (outside mask, source F): that ink
+  // is not drawn, so F is not cut there either — F fills up to its own geometry; outside F the stroke still shows
+  'M6-mask-own-boundary': {
+    rule: 'M6 masked own boundary: the hidden half of B does not cut F',
+    records: () => [layer('L', 'a1'), ...square(id('L'), 'a2', 'a1', BLUE, 12), mask('outside', ['fill:F'], [], ['curve:F-boundary'])],
+    expect: [
+      { at: { x: 40, y: 11 }, rgba: red, what: "B's inner half is masked away: F shows there (not a hole)" },
+      { at: { x: 40, y: 9 }, rgba: blue, what: "B's outer half still drawn" },
+      { at: { x: 40, y: 15 }, rgba: red, what: 'F itself' },
+    ],
+  },
 }

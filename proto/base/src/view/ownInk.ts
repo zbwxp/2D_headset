@@ -7,8 +7,11 @@
 // Checked first on small pictures (ownink.html, e2e/own-ink-check.spec.ts): butt ends, mitres, the
 // mitre limit, curved joints, fractional pan / zoom, DPR 1 and 2. Known: the exact cut leaves a faint
 // see-through seam along the stroke's inner anti-aliased edge (alpha ≥ 0.75) — open with dot.
-import { cubicsPath2D, FILL_RULE, inkRuns, inkStyle, type EvalCurve, type EvalFill } from '../evaluate'
+import { cubicsPath2D, FILL_RULE, inkRuns, inkStyle, type EvalCurve, type EvalFill, type EvalMask } from '../evaluate'
+import { paintRegion } from './masks'
 export { cubicsPath2D }
+/** an own stroke of a fill; `masks` = the stroke's own masks: only its VISIBLE ink is left out (review of ce2736c M2) */
+export type OwnInk = { curve: EvalCurve; path: Path2D; masks?: EvalMask[] }
 
 /** The own ink of a fill on one curve: only the referenced segments, as the core's runs (`inkRuns`). */
 export function ownInkPath2D(c: EvalCurve, segmentIds: string[]) {
@@ -18,12 +21,22 @@ export function ownInkPath2D(c: EvalCurve, segmentIds: string[]) {
 }
 
 let scratch: HTMLCanvasElement | null = null
+let inkScratch: HTMLCanvasElement | null = null
+let maskScratch: HTMLCanvasElement | null = null
+const sized = (c: HTMLCanvasElement | null, W: number, H: number) => {
+  const l = c ?? document.createElement('canvas')
+  if (l.width < W || l.height < H) {
+    l.width = Math.max(l.width, W)
+    l.height = Math.max(l.height, H)
+  }
+  return l
+}
 
 /**
  * Paint `fill` on `ctx` (current transform = world → device) without the ink of `own`.
  * `fillPath` / `ownPaths` are in world coordinates.
  */
-export function paintFillLeavingOwnInk(ctx: CanvasRenderingContext2D, fill: EvalFill, fillPath: Path2D, own: { curve: EvalCurve; path: Path2D }[]) {
+export function paintFillLeavingOwnInk(ctx: CanvasRenderingContext2D, fill: EvalFill, fillPath: Path2D, own: OwnInk[]) {
   const m = ctx.getTransform()
   // device bounding box of the fill (control points bound the curve), padded for anti-aliasing; ink
   // outside the fill does not matter, so the box need not include stroke ends beyond the fill
@@ -59,15 +72,47 @@ export function paintFillLeavingOwnInk(ctx: CanvasRenderingContext2D, fill: Eval
   l.setTransform(m)
   l.fillStyle = fill.color
   l.fill(fillPath, FILL_RULE)
-  l.globalCompositeOperation = 'destination-out'
-  l.strokeStyle = '#000'
-  for (const o of own) {
+  const strokeInk = (t: CanvasRenderingContext2D, o: OwnInk) => {
     const st = inkStyle(o.curve)
-    l.lineWidth = st.width
-    l.lineCap = st.cap
-    l.lineJoin = st.join
-    l.miterLimit = st.miterLimit
-    l.stroke(o.path)
+    t.strokeStyle = '#000'
+    t.lineWidth = st.width
+    t.lineCap = st.cap
+    t.lineJoin = st.join
+    t.miterLimit = st.miterLimit
+    t.stroke(o.path)
+  }
+  l.globalCompositeOperation = 'destination-out'
+  for (const o of own) {
+    if (!o.masks?.length) {
+      strokeInk(l, o)
+      continue
+    }
+    // a masked own stroke: its ink is drawn in a layer of its own and masked exactly as when the stroke is drawn
+    // (view/masks.ts), and only that visible ink is taken out of the fill
+    inkScratch = sized(inkScratch, W, H)
+    maskScratch = sized(maskScratch, W, H)
+    const li = inkScratch.getContext('2d')!
+    const lm = maskScratch.getContext('2d')!
+    li.setTransform(1, 0, 0, 1, 0, 0)
+    li.globalCompositeOperation = 'source-over'
+    li.clearRect(bx, by, bw, bh)
+    li.setTransform(m)
+    strokeInk(li, o)
+    for (const mk of o.masks) {
+      lm.setTransform(1, 0, 0, 1, 0, 0)
+      lm.globalCompositeOperation = 'source-over'
+      lm.clearRect(bx, by, bw, bh)
+      lm.setTransform(m)
+      paintRegion(lm, mk)
+      li.setTransform(1, 0, 0, 1, 0, 0)
+      li.globalCompositeOperation = mk.mode === 'inside' ? 'destination-in' : 'destination-out'
+      li.drawImage(maskScratch, bx, by, bw, bh, bx, by, bw, bh)
+      li.globalCompositeOperation = 'source-over'
+    }
+    l.save()
+    l.setTransform(1, 0, 0, 1, 0, 0)
+    l.drawImage(inkScratch, bx, by, bw, bh, bx, by, bw, bh)
+    l.restore()
   }
   l.globalCompositeOperation = 'source-over'
   ctx.save()

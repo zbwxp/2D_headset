@@ -243,7 +243,8 @@ function dependantsOf(store: DocStore, id: string): string[] {
   const r = store.get(id as any) as DocRecord | undefined
   if (!r) return []
   if (r.typeName === 'container')
-    return [...(['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store, r.id, t)), ...referencesOf(store, r.id)]
+    // and the records naming it (a mask target — dot, review of ce2736c M1: the early return skipped them)
+    return [...(['container', 'curve', 'fill', 'reference'] as const).flatMap((t) => childrenOf(store, r.id, t)), ...referencesOf(store, r.id), ...mentioning(store, r.id)]
   if (r.typeName === 'curve') {
     const out: string[] = [...fillsUsing(store, r.id)]
     for (const a of Object.keys(r.anchors)) out.push(...connectionsAt(store, anchorKey({ curveId: r.id, anchorId: a })))

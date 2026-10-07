@@ -407,13 +407,25 @@ export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit,
     if (!entry.item.visible || entry.item.locked) continue
     if (entry.kind === 'curve') {
       const c = entry.item
+      const masked = !!ev.masks?.get(c.address)?.length
       let best: Extract<Hit, { kind: 'segment' }> | null = null
       for (const s of c.segments) {
-        const pr = new Bezier(...s.cubic.flatMap((v) => [v.x, v.y])).project(p)
-        if (pr.d! <= tolerance && (!best || pr.d! < best.d)) best = { kind: 'segment', address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: pr.t!, d: pr.d! }
+        const bz = new Bezier(...s.cubic.flatMap((v) => [v.x, v.y]))
+        const pr = bz.project(p)
+        if (pr.d! > tolerance) continue
+        // picking follows what is drawn (§1.7): under masks the line counts only where a VISIBLE point of it lies within
+        // the tolerance — the nearest point, else the nearest visible sample (dot, review of ce2736c M4: the pointer
+        // being outside the mask said nothing about the line near it)
+        let hit: { t: number; d: number } | null = !masked || visibleThroughMasks(ev, c.address, { x: pr.x, y: pr.y }) ? { t: pr.t!, d: pr.d! } : null
+        if (!hit)
+          for (let k = 0; k <= 64; k++) {
+            const q = bz.get(k / 64)
+            const d = Math.hypot(q.x - p.x, q.y - p.y)
+            if (d <= tolerance && (!hit || d < hit.d) && visibleThroughMasks(ev, c.address, q)) hit = { t: k / 64, d }
+          }
+        if (hit && (!best || hit.d < best.d)) best = { kind: 'segment', address: `${c.address}/${s.id}`, curveId: c.curveId, referenceId: c.referenceId, segmentId: s.id, t: hit.t, d: hit.d }
       }
-      // a segment under a mask is not hittable where the mask hides it (picking follows what is drawn, §1.7)
-      if (best && visibleThroughMasks(ev, c.address, p)) out.push(best)
+      if (best) out.push(best)
       continue
     }
     const f = entry.item
@@ -424,6 +436,8 @@ export function hitStack(ev: Evaluated, p: Vec, tolerance: number): Extract<Hit,
     // approximation (dot). A distance bound only skips the call where no ink can be.
     const onOwnInk = entry.ownInk.some((ref) => {
       const c = byAddress.get(ref.curve)!
+      // ink a mask hides is not drawn, so the fill is not cut there either (review of ce2736c M2)
+      if (!visibleThroughMasks(ev, ref.curve, p)) return false
       const st = inkStyle(c)
       const reach = (st.width / 2) * Math.max(1, st.miterLimit) // a mitre reaches at most miterLimit × half width
       const segs = c.segments.filter((s) => ref.segments.includes(s.id))
