@@ -158,8 +158,44 @@ From the user's point of view there are three levels:
 **Options for bowen** (listed only, not recommended or started):
 
 - **A. Keep it as now:** the image is an element inside a layer.
-- **B. Like v103:** the reference image lives outside the layer tree as its own document-level data, with its own visibility, lock, opacity and position slots. It is always drawn at the bottom, never takes part in fills, snapping, export or hit-testing, and layer code stays unaware of it. bowen's earlier requirements (wide adjustment range, slots, X/Y by field, slider and arrow keys; 1791365335) are unaffected either way.
+- **B. Like v103:** the reference image lives outside the layer tree as its own document-level data, with its own visibility, lock, opacity and position slots, and layer code stays unaware of it. It takes no part in K fill, snapping or export.
+  - **Correction (dot 1791382315):** "managed separately" does not mean "cannot be picked". Outside the layer tree it can still have its own drag, scale and selection entry. Both options are candidates only and are not recorded as bowen's decision.
+- bowen's earlier requirements (wide adjustment range, slots, X/Y by field, slider and arrow keys; 1791365335) are unaffected either way.
+
+### bowen's judgement (1791382313)
+
+> 参考图应该放的位置，很显然 它具有slot 而slot是和视觉/快照绑定的。因此它所在的层级应该是快照（不知道你们叫它什么）
+
+bowen 1791382362 added: "我说的你们要加一重判断。如果觉得我说的不对可以反驳"
+
+### Our review of it (Claude 1791382419)
+
+**Agree:** a reference image is an aid for working with views, not artwork, so it should not be an ordinary layer element. The current code already treats it as an exception: export, K fill and snapping all exclude it.
+
+**Addition 1: the slot-to-view link does not exist yet.**
+
+- In the new version a slot stores only its number, name and image transform (schema.ts `ImageRecord.slots`). It does not record which view it belongs to.
+- In v103 the recording-room reference had a set of states (slot, offset, scale, rotation, opacity), switched by hand with `activeStateId` (`7205381:src/domain/recording/reference.ts:6-48`). No binding to a snapshot or angle was found in the data. Whether the UI added one has not been checked.
+- So "a slot belongs to a view" is bowen's way of working: a 9- or 21-view matrix image where each cell is one view. It is a relation to **add**, not one that exists today.
+
+**Addition 2: separate where the image is stored from which snapshot uses it.**
+
+- One image such as full_source (1.7 MB) holds many views.
+- If every snapshot stored its own copy of the image, it would be duplicated many times.
+- Storing it once at document level, outside layers, with each snapshot recording only "which image, which slot", avoids that. In short: **stored at document level, bound at snapshot level**.
+
+**Precondition:** the new version has **no snapshot or view object yet**.
+
+- Head-turn is stored per line as yaw keys in `forms`. There is no record like v103's `RecordingSnapshot` (an angle plus its own layers; `7205381:src/domain/recordingSnapshot/model.ts:99-126`).
+- So "the reference image lives at snapshot level" depends on first deciding whether, and how, the new version defines snapshots.
+- Drawing at the default view without recording also needs a reference image.
 
 ### Status
 
-**Open.** Waiting for bowen.
+**Direction (bowen 1791382313):** reference images do not go in layers; they are bound to views or snapshots.
+
+**Still undecided:**
+
+- where the image is stored (document level, as proposed);
+- what a "snapshot" is in the new version;
+- the default-view case.
