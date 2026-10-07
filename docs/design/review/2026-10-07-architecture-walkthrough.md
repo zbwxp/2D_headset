@@ -733,3 +733,38 @@ These are batch 2 (interaction feel) items.
 #### Status
 
 **Waiting for bowen to decide how fill is defined** (minimal regions only, or whole fills defined by a chosen outer loop as well).
+
+### Q7 follow-up D: Different colours on each side with the middle line hidden: how do mature tools handle it? Is it supported at all?
+
+**bowen** 1791384758:
+> 那就算是异色隐藏中线 也可能出现极细的缝隙。那么成熟方案对异色中间隐藏线条是怎么处理的？还是说成熟方案根本不支持两边异色填充隐藏中间线？
+
+#### Facts (Claude 1791384824)
+
+**Different colours also leave a seam.** Each side covers about half of each boundary pixel, so after compositing, some background still shows through.
+
+**Mature tools do support it.** The classic case is **Flash (now Adobe Animate)**: colour blocks meeting directly, with no stroke between them.
+
+Source, opened: Ruffle (a reimplementation of the Flash player) issue #26, "Seams between fills in canvas renderer": <https://github.com/ruffle-rs/ruffle/issues/26>
+
+- The comparison image there shows **no seams in Flash's own player**, and seams on shared edges in Ruffle's Canvas backend.
+- The issue text says Flash "almost always generates non-overlapping paths". The "standard advice" in Canvas/SVG is to overlap paths, for example drawing the outline on top of the fill. Another option is to turn off anti-aliasing (`shape-rendering: crispEdges`).
+
+**Unverified (the SWF specification was not opened this time):** that Flash's data records which fill lies on the left and right of each edge, and that its renderer draws shared edges together.
+
+#### How mature tools handle it
+
+1. **Flash's approach:** the renderer knows two regions share an edge and draws them together. The data recording side fills for each edge is still unverified.
+2. **Overlap the shapes.** Draw the stroke over the fill, or tuck one region slightly under the other. This is the Canvas/SVG "standard advice". Per dot 1791384685, it has side effects with transparency, blur and similar cases.
+3. **Turn off anti-aliasing on that edge.** The seam goes away but the edge becomes jagged.
+4. **Use a renderer that avoids conflation artifacts** (vello and similar). High cost.
+
+#### Relation to this project
+
+- The current proto draws with Canvas2D and Fabric, which are the kind that show seams.
+- To get Flash-style seamless joins between different colours with the middle line hidden, the drawing layer has to handle shared edges specially. The data structure cannot fix it automatically.
+- **Which region lies on each side of an edge** is worth storing. This matches bowen's idea of a "shared boundary".
+
+#### Status
+
+**Facts recorded. dot's judgement can be added.** Fill definition is still waiting for bowen.
