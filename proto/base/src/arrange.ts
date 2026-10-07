@@ -7,11 +7,11 @@
 //   while a reference places it or a mask names it). A layer (top-level container) is not ungrouped.
 // - createContainer: a new layer (or group) on top of its parent.
 import type { RecordId } from '@tldraw/store'
-import { getIndexAbove, getIndexBetween, getIndicesBetween, type IndexKey } from '@tldraw/utils'
+import { getIndexAbove, getIndicesBetween, type IndexKey } from '@tldraw/utils'
 import type { EditError, IdSource, Plan } from './commands'
 import { paintKey } from './evaluate'
 import { childrenOf, referencesOf } from './indexes'
-import { getAs, lockedBy } from './model'
+import { getAs, lockedBy, overlayReader } from './model'
 import { Container, type BaseReader, type ContainerRecord, type DocRecord, type FillRecord } from './schema'
 
 export type ArrangeCommand =
@@ -27,6 +27,30 @@ const byOrder = (a: Item, b: Item) => (a.index < b.index ? -1 : a.index > b.inde
 /** the ordered siblings; a path's own fill is not one (it is drawn with its path, doc 18 §30.18 — its index is unused) */
 const siblings = (store: BaseReader, parent: string | null): Item[] =>
   KINDS.flatMap((t) => childrenOf(store as any, parent, t).map((id) => store.get(id as any) as Item)).filter((r) => r && !(r.typeName === 'fill' && r.owner)).sort(byOrder)
+/**
+ * `n` new indices for items taking `at`'s place in `parent` — just above it, below the next sibling that stays (`at`
+ * and `leaving` move away). Siblings may share an index (ties broken by id): when no index fits between, the parent's
+ * remaining children are renumbered in their current order and returned as `puts`, so the new items land exactly
+ * there — never left to an id tie-break (dot 1791361657).
+ */
+export function placeAt(store: BaseReader, parent: string | null, at: { id: string; index: string }, leaving: ReadonlySet<string>, n: number): { indices: string[]; puts: DocRecord[] } {
+  const sibs = siblings(store, parent)
+  const pos = sibs.findIndex((r) => r.id === at.id)
+  const above = sibs.slice(pos + 1).find((r) => !leaving.has(r.id))
+  if (!above) return { indices: getIndicesBetween(at.index as IndexKey, null, n), puts: [] }
+  if (at.index < above.index) return { indices: getIndicesBetween(at.index as IndexKey, above.index as IndexKey, n), puts: [] }
+  const order: (Item | null)[] = []
+  for (const r of sibs) {
+    if (r.id === at.id) order.push(...Array<null>(n).fill(null))
+    if (!leaving.has(r.id) && r.id !== at.id) order.push(r)
+  }
+  const fresh = getIndicesBetween(null, null, order.length)
+  const indices: string[] = []
+  const puts: DocRecord[] = []
+  order.forEach((r, i) => (r === null ? indices.push(fresh[i]) : r.index !== fresh[i] && puts.push({ ...r, index: fresh[i] } as DocRecord)))
+  return { indices, puts }
+}
+
 const isItem = (r: DocRecord | undefined): r is Item => !!r && (KINDS as readonly string[]).includes(r.typeName)
 
 /** the items, each refused when it (or its container chain) is locked; nested selections drop the inner one */
@@ -90,19 +114,19 @@ export function planArrange(store: BaseReader, cmd: ArrangeCommand, ids: IdSourc
     const front = [...items].sort((a, b) => (paintKey(store as any, a as any) < paintKey(store as any, b as any) ? -1 : 1)).at(-1)!
     const parent = front.parentId
     if (parent === null) return fail('INVALID', 'layers are not grouped (select objects inside layers)', items.map((r) => r.id))
-    const sibs = siblings(store, parent)
-    const above = sibs.find((r) => byOrder(r, front) > 0 && !items.some((x) => x.id === r.id))
+    const place = placeAt(store, parent, front, new Set(items.map((r) => r.id as string)), 1)
     const id = (cmd.id ?? ids.take('container', () => Container.createId())) as RecordId<ContainerRecord>
-    const group = Container.create({ id, name: cmd.name?.trim() || '组', parentId: parent as any, index: getIndexBetween(front.index as IndexKey, (above?.index ?? null) as IndexKey | null) })
+    const group = Container.create({ id, name: cmd.name?.trim() || '组', parentId: parent as any, index: place.indices[0] })
     const members = [...items].sort((a, b) => (paintKey(store as any, a as any) < paintKey(store as any, b as any) ? -1 : 1))
     const fresh = getIndicesBetween(null, null, members.length)
-    return { ok: true, label: 'group', puts: [group, ...members.map((r, i) => ({ ...r, parentId: id, index: fresh[i] }) as DocRecord)], affected: [id, ...members.map((r) => r.id as string)], creates: [id] }
+    return { ok: true, label: 'group', puts: [group, ...place.puts, ...members.map((r, i) => ({ ...r, parentId: id, index: fresh[i] }) as DocRecord)], affected: [id, ...members.map((r) => r.id as string)], creates: [id] }
   }
 
-  // ungroup
-  const puts: DocRecord[] = []
+  // ungroup — each group against the result of the ones before it (several in one parent: places stay exact)
+  const written = new Map<string, DocRecord>()
   const removals: string[] = []
   for (const g of items) {
+    const now = overlayReader(store, [...written.values()], [])
     if (g.typeName !== 'container') return fail('INVALID', `${g.id} is not a group`, [g.id])
     if (g.parentId === null) return fail('INVALID', `${g.id} is a layer: a layer is not ungrouped`, [g.id])
     // a shape group's faces are its own (Illustrator: a Live Paint group is not simply ungrouped, only released /
@@ -116,12 +140,13 @@ export function planArrange(store: BaseReader, cmd: ArrangeCommand, ids: IdSourc
     if (refs.length) return fail('BAD_REFERENCE', `${g.id} is placed by ${refs.join(', ')}: ungrouping would remove what they place`, [g.id, ...refs])
     const masks = store.allRecords().filter((m: any) => m.typeName === 'mask' && m.targets.includes(g.id)).map((m) => m.id as string)
     if (masks.length) return fail('BAD_REFERENCE', `${g.id} is a target of ${masks.join(', ')}: ungrouping would leave the mask without it`, [g.id, ...masks])
-    const kids = siblings(store, g.id).filter((k) => !faces.some((f) => f.id === k.id))
-    // the children take the group's place: between the group's index and the next sibling above it
-    const above = siblings(store, g.parentId).find((r) => byOrder(r, g) > 0)
-    const fresh = kids.length ? getIndicesBetween(g.index as IndexKey, (above?.index ?? null) as IndexKey | null, kids.length) : []
-    kids.forEach((k, i) => puts.push({ ...k, parentId: g.parentId, index: fresh[i] } as DocRecord))
+    const kids = siblings(now, g.id).filter((k) => !faces.some((f) => f.id === k.id))
+    // the children take the group's place: just above it, below the next sibling (placeAt: exact with shared indexes)
+    const place = placeAt(now, g.parentId, now.get(g.id as any) as Item, new Set([g.id as string]), kids.length)
+    for (const r of place.puts) written.set(r.id, r)
+    kids.forEach((k, i) => written.set(k.id, { ...k, parentId: g.parentId, index: place.indices[i] } as DocRecord))
     removals.push(g.id)
   }
+  const puts = [...written.values()].filter((r) => !removals.includes(r.id))
   return { ok: true, label: 'ungroup', puts, removals, affected: [...removals, ...puts.map((r) => r.id as string)] }
 }

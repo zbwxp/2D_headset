@@ -388,3 +388,30 @@ describe('K follows what is drawn (doc 18 §30.25; dot 1791359954): the front-mo
     expect(get(e, bf).color).toBe('#0000ff')
   })
 })
+
+describe('siblings sharing an index (ties broken by id): a new group lands exactly in place, the others keep their order, undo restores (dot 1791361657)', () => {
+  // every line at index a0: the paint order among them is by id
+  const tied = (...names: string[]) => names.map((n, i) => line(n, i * 20, 0, i * 20 + 10, 0, 'container:L', 'a0'))
+  it('⌘G of q and s among p q r s t: the group at s\'s place — p r [q s] t', () => {
+    const e = new Editor([layer(), ...tied('p', 'q', 'r', 's', 't')])
+    const before = recs(e)
+    expect(paintOrder(e)).toEqual(['curve:p', 'curve:q', 'curve:r', 'curve:s', 'curve:t'])
+    const g = run(e, { type: 'group', ids: ['curve:q', 'curve:s'] })
+    expect(g.ok).toBe(true)
+    expect(paintOrder(e)).toEqual(['curve:p', 'curve:r', 'curve:q', 'curve:s', 'curve:t'])
+    e.undo()
+    expect(recs(e)).toBe(before)
+  })
+  it('ungroup: the children take the group\'s place among siblings sharing its index', () => {
+    const G = Container.create({ id: 'container:G' as any, name: 'G', parentId: 'container:L' as any, index: 'a0' })
+    // by id: container:G < curve:p < curve:z — G's content is drawn first
+    const e = new Editor([layer(), G, line('x', 0, 0, 1, 0, 'container:G', 'a1'), line('y', 0, 1, 1, 1, 'container:G', 'a2'), ...tied('p', 'z')])
+    const order = paintOrder(e)
+    expect(order).toEqual(['curve:x', 'curve:y', 'curve:p', 'curve:z'])
+    const before = recs(e)
+    expect(run(e, { type: 'ungroup', ids: ['container:G'] }).ok).toBe(true)
+    expect(paintOrder(e)).toEqual(order)
+    e.undo()
+    expect(recs(e)).toBe(before)
+  })
+})
