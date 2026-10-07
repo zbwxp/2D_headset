@@ -765,6 +765,30 @@ Source, opened: Ruffle (a reimplementation of the Flash player) issue #26, "Seam
 - To get Flash-style seamless joins between different colours with the middle line hidden, the drawing layer has to handle shared edges specially. The data structure cannot fix it automatically.
 - **Which region lies on each side of an edge** is worth storing. This matches bowen's idea of a "shared boundary".
 
+#### dot's judgement (1791384943)
+
+**Different colours on each side with no stroke between them is allowed by mature formats.** The Adobe SWF specification explicitly allows an edge to use a different fill on each side with the stroke set to none.
+
+- Source: <https://open-flash.github.io/mirrors/swf-spec-19.pdf>, p. 128 of the body (opened by dot).
+- This **verifies** the item Claude had marked unverified: "Flash records the fill on each side of an edge".
+
+**One way to draw it without seams:** decide colour at the same set of subsample positions first, then composite pixels.
+
+- A pixel half in the red region and half in the blue region should come out as red mixed with blue, without extra background showing through.
+- This differs from "make each region a semi-transparent edge, then stack them twice".
+- Multisampling and supersampling are established techniques. They cost more computation and storage, but need no extra geometry points.
+- Further reading: <https://github.com/linebender/vello/issues/49>
+
+**So different colours cannot be fixed by "merging into one single-colour region".** They can be handled correctly at the shared boundary in the drawing layer.
+
+**Two limits on the conclusions:**
+
+- Not every mature renderer guarantees no seams.
+- **Flash's algorithm cannot be worked out from how its output looks.** Claude's earlier "Flash draws the two regions together" was an inference and is withdrawn as a statement of fact.
+
+**Confirmed:** the requirement is valid.
+**Still to verify:** which rendering implementation to use.
+
 #### Status
 
-**Facts recorded. dot's judgement can be added.** Fill definition is still waiting for bowen.
+**Facts and both judgements recorded.** Fill definition is still waiting for bowen.
