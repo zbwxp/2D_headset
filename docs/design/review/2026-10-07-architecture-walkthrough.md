@@ -684,3 +684,38 @@ These are batch 2 (interaction feel) items.
 #### Status
 
 **Waiting for bowen to decide how fill is defined.** Settle the data definition first; the interaction comes after.
+
+### Q7 follow-up C: Does Figma only fill minimal regions? If the middle line is hidden, how demanding is the seam?
+
+**bowen** 1791384504:
+> 我觉得它们的逻辑应该是只把"最小闭合区域"当作可填充的，也就是theta对于figma就不存在整体填充 而是分成两块填充。然后填充区域是在线的中间点。因此如果隐藏中间线条 那就严格严密填充了（如果填的是同一个颜色） 这样的实现会对接缝处的计算有很高要求吗？
+
+#### Facts and judgement (Claude 1791384585)
+
+**1. Does Figma only treat minimal regions as fillable?**
+
+- **In the UI, probably yes.** The help page says the Paint tool hovers over and clicks "closed regions", which reads as region by region. It is **not verified** that the UI only ever produces minimal regions.
+- **In the data, no.** The API lets a region use any loops.
+
+**2. Fill boundary along the middle of the line: correct.**
+
+- SVG and the current proto both compute the fill along the line's centre line. The stroke straddles the centre line, half inside and half outside.
+- So while the middle line is visible, its stroke covers the seam.
+
+**3. Hidden middle line, both regions in the same colour.**
+
+- **Geometric precision is not the problem.** Both regions share the same segment, so their boundary numbers are identical.
+- **Anti-aliasing is the problem.** Each region covers about half of each boundary pixel, and stacking the two gives about 75% instead of 100%. That leaves a faint light line, known as a **conflation artifact**.
+  - Source (opened): linebender/vello issue #49 <https://github.com/linebender/vello/issues/49>, quoting NVIDIA's "GPU-accelerated Path Rendering" §4.1.2: "Conflation is particularly noticeable when two opaque paths exactly seam at a shared boundary".
+  - The same issue notes that the HTML5 Canvas model appears to require each anti-aliased element to be composited separately. Our Fabric and Canvas2D renderers work that way.
+  - The proto already records a seam of the same kind: `view/ownInk.ts:8-9` notes that cutting a fill's own stroke leaves a faint see-through seam along the inner anti-aliased edge (alpha ≥ 0.75). That is between a fill and its own stroke, not between two adjacent fills, but the cause is the same.
+- **Common fixes:**
+  1. Keep the middle line visible so its stroke covers the seam.
+  2. Merge adjacent same-colour regions into one shape when drawing.
+  3. Expand each region slightly so they overlap.
+  4. Use a renderer that does not produce conflation artifacts (high cost).
+- **How this relates to bowen's need:** if "one whole fill defined by the outer ring" is supported, a θ is a single region and there is no seam at all. This is a technical reason in favour of supporting whole fills.
+
+#### Status
+
+**Waiting for bowen to decide how fill is defined** (minimal regions only, or whole fills defined by a chosen outer loop as well).
