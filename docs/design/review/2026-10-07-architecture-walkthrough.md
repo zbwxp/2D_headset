@@ -231,3 +231,47 @@ This agrees with Claude's addition 2. No disagreement recorded so far.
 ### Status
 
 **Architecture direction confirmed (bowen 1791382641).** Implementation details wait until the walkthrough reaches snapshots.
+
+---
+
+## Q4: With reference images out of layers, how many kinds of element remain in a layer?
+
+**bowen** 1791382709:
+> 好现在图层里面存的element有几种了？
+
+### Background (dot 1791382710)
+
+**Module vs tool:** "module" means the responsibility boundary; "tool" means how the user operates it. They are not either-or. The reference-image module manages the collection. A view or snapshot references one of its images. The reference-image tool is the UI entry for operating the module.
+
+### Facts (4bc7cc2; reference images already moved out of layers per Q3)
+
+**Storage level: 4 kinds remain.**
+
+| Kind | What it is | Notes |
+|---|---|---|
+| **container** | A group inside a layer | A shape group is also a container |
+| **curve** | A path; the main drawing object | |
+| **fill** | A filled area | Stored separately, but not a separate user element; see below |
+| **reference** | An instance: another container's content drawn again through a transform, e.g. a mirrored reference | Only sounds like 参考图 in Chinese; unrelated |
+
+More on fill:
+
+- A closed path's own fill belongs to that path.
+- The faces inside a shape group belong to the shape group.
+- The code still has a `createFill` command (commands.ts:569) that creates a standalone fill. The UI's K and 建立填充 (create fill) do not use it; only the API and old data do.
+
+More on reference:
+
+- **The UI cannot create a reference today.** References exist only in the sample document (fixture.ts:79). Copy and paste carry existing ones along.
+
+**User level: 3 things to manage.**
+
+1. groups (including shape groups)
+2. paths
+3. references
+
+Fills belong to a path or a shape group.
+
+### Status
+
+**Facts recorded.** Next item waits for bowen.
