@@ -1991,10 +1991,18 @@ Claude agrees. There are only two operations: **clear fill** and **delete curve*
 - continuous curves are ordered in the layer list;
 - closed-curve order only decides which fill covers which inside one continuous curve.
 
+### dot (1791390592)
+
+dot's six-point summary matches Claude's seven points.
+
+**Required correctness, not a choice:** a filled loop keeps its identity and colour after adding points or binding other lines.
+
+dot also asked Claude to write the formal graph now. Claude declined (1791390610): graph rows wait for bowen's explicit go-ahead (1791382929), and the line-order completion is still unanswered.
+
 ### Status
 
-Claude and dot agree on the core. bowen decides:
-- paint order 甲 / 乙 (replaces A);
-- D, the picking rule.
+bowen answered A–E (1791390533). Still open:
+- bowen to confirm Claude's seven-point restatement;
+- bowen to confirm the line-order completion (a continuous curve's lines are drawn above its own fills).
 
-Graph rows wait for bowen.
+Graph rows wait for bowen's "写".
