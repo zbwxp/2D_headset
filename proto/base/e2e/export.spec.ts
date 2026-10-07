@@ -48,3 +48,47 @@ test('the export buttons write separate files (download) and leave the document\
   expect(svg.suggestedFilename()).toBe('未命名.svg')
   await expect(page.locator('#fileName')).toHaveText('● 未命名') // still unsaved, no file name
 })
+
+test("E1 (dot 1791365700): a cubic whose top lies between samples — the exported PNG and SVG show it whole, a clear margin above the ink", async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => (window as any).__contour && document.querySelector('#exportPng'))
+  page.once('dialog', (d) => d.accept())
+  await page.click('#fileNew')
+  const rows = await page.evaluate(async () => {
+    const { api, view, editor } = (window as any).__contour
+    const L = editor.reader.allRecords().find((r: any) => r.typeName === 'container').id
+    const a = (id: string, x: number, y: number, hOut = { x: 0, y: 0 }) => ({ id, p: { x, y }, hIn: { x: 0, y: 0 }, hOut })
+    api.apply({ type: 'createCurve', id: 'curve:long', parentId: L, anchors: { p: a('p', -30, -10, { x: 0, y: -10000 }), q: a('q', 10, -10) }, segments: [{ id: 's', from: 'p', to: 'q' }] })
+    const load = (path: string) => import(/* @vite-ignore */ path)
+    const { drawingBounds } = await load('/src/export.ts')
+    const box = drawingBounds(editor.derived.evaluated())
+    const scale = 2
+    const out: Record<string, { inkRow: number; transparentRowsAbove: number }> = {}
+    for (const kind of ['png', 'svg']) {
+      const blob: Blob = await view.exportBlob(kind, scale)
+      const c = document.createElement('canvas')
+      c.width = Math.ceil(box.w * scale)
+      c.height = Math.ceil(box.h * scale)
+      const ctx = c.getContext('2d')!
+      if (kind === 'png') ctx.drawImage(await createImageBitmap(blob), 0, 0)
+      else {
+        const img = new Image()
+        img.src = URL.createObjectURL(blob)
+        await img.decode()
+        ctx.drawImage(img, 0, 0, c.width, c.height)
+      }
+      // the first row (from the top) holding any ink, and the rows above it that are wholly transparent
+      const data = ctx.getImageData(0, 0, c.width, Math.min(c.height, 60)).data
+      let inkRow = -1
+      for (let y = 0; y < Math.min(c.height, 60) && inkRow < 0; y++) for (let x = 0; x < c.width; x++) if (data[(y * c.width + x) * 4 + 3] > 0) { inkRow = y; break }
+      out[kind] = { inkRow, transparentRowsAbove: inkRow }
+    }
+    return { out, top: box.y, scale }
+  })
+  for (const kind of ['png', 'svg']) {
+    // the ink starts below a clear margin (4 units = 8 px at scale 2, minus anti-aliasing) — the top is not cut
+    expect(rows.out[kind].inkRow, kind).toBeGreaterThanOrEqual(6)
+  }
+  // the box starts above the exact top (-4454.444…, at t = 1/3) by the margin and the ink's half width (default stroke 2)
+  expect(rows.top).toBeCloseTo(-10 - 10000 * (4 / 9) - 2 / 3 / 2 - 4, 6)
+})

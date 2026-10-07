@@ -1,35 +1,81 @@
 // Export (editor skeleton, doc 18 §30.15): the drawing as a PNG or an SVG — Illustrator File › Export (PNG / SVG).
-// - the area: the drawing's bounds (every visible item's path, strokes padded by their ink), plus a margin; no
+// - the area: the drawing's bounds (every visible item's exact path bounds, strokes with their ink — `strokeBox`), plus a margin; no
 //   artboard yet (a document-level size is a separate item);
 // - PNG: drawn by the reference renderer B (view/canvas2dRef.ts — the same output as the screen: paint order, masks,
 //   a fill leaving its own lines' ink) without editor aids, on an offscreen canvas at `scale`, transparent background;
 // - SVG: the same paint list as paths in order; strokes as on screen (inkStyle: width, butt caps, mitre joins, limit
 //   4); a fill that leaves out its own lines' ink gets an SVG mask cutting those strokes; masks become SVG masks
 //   (inside: the region white; outside: everything white, the region black), several on one item nested (AND).
+import { Bezier } from 'bezier-js'
 import { inkRuns, inkStyle, type Cubic, type EvalCurve, type EvalFill, type EvalMask, type Evaluated } from './evaluate'
 import type { Vec } from './schema'
 
 export type Box = { x: number; y: number; w: number; h: number }
 
-const sample = (c: Cubic, n = 16): Vec[] =>
-  Array.from({ length: n + 1 }, (_, k) => {
-    const t = k / n, u = 1 - t
-    return { x: u * u * u * c[0].x + 3 * u * u * t * c[1].x + 3 * u * t * t * c[2].x + t * t * t * c[3].x, y: u * u * u * c[0].y + 3 * u * u * t * c[1].y + 3 * u * t * t * c[2].y + t * t * t * c[3].y }
-  })
+/** a cubic's exact bounds: its end points and the roots of its derivative (bezier-js `bbox`, not sampling) */
+const cubicBox = (c: Cubic) => new Bezier(c[0].x, c[0].y, c[1].x, c[1].y, c[2].x, c[2].y, c[3].x, c[3].y).bbox()
+const same = (a: Vec, b: Vec) => a.x === b.x && a.y === b.y
+const unit = (a: Vec, b: Vec): Vec | null => {
+  const d = Math.hypot(b.x - a.x, b.y - a.y)
+  return d > 0 ? { x: (b.x - a.x) / d, y: (b.y - a.y) / d } : null
+}
+/** the direction a cubic leaves its start / arrives at its end (the first control point that differs) */
+const startDir = (c: Cubic) => unit(c[0], [c[1], c[2], c[3]].find((q) => !same(q, c[0])) ?? c[3])
+const endDir = (c: Cubic) => unit([c[2], c[1], c[0]].find((q) => !same(q, c[3])) ?? c[0], c[3])
 
-/** the drawing's bounds: every visible item's path, strokes padded by half their ink (mitres by the limit), + margin */
+/**
+ * Where a stroke's ink reaches (review of 9291848, dot 1791365700: 16 samples missed a cubic's real extreme). Every point
+ * of a stroke lies within half the ink width of its centre line, except at a mitred join, where the ink reaches the
+ * miter tip. So: each cubic's EXACT bounds grown by half the ink width, plus the miter tip of every join inside a drawn
+ * run (`inkStyle`: butt caps, miter joins, limit 4 — a join beyond the limit is bevelled and stays within half the
+ * width). Exact where the curve's extreme is not an end (the tangent is then perpendicular to the axis); at a butt-capped
+ * end it may exceed the ink by up to half the width, never fall short.
+ */
+function strokeBox(c: EvalCurve, grow: (x: number, y: number) => void) {
+  const st = inkStyle(c)
+  const half = st.width / 2
+  for (const run of inkRuns(c, c.segments.map((s) => s.id))) {
+    for (const cub of run) {
+      const b = cubicBox(cub)
+      grow(b.x.min - half, b.y.min - half)
+      grow(b.x.max + half, b.y.max + half)
+    }
+    for (let i = 0; i + 1 < run.length; i++) {
+      const t1 = endDir(run[i]), t2 = startDir(run[i + 1])
+      if (!t1 || !t2) continue
+      const cos = t1.x * t2.x + t1.y * t2.y
+      if (cos >= 1 - 1e-12) continue // straight on: no corner
+      const ratio = 1 / Math.sqrt((1 + cos) / 2) // miter length / width = 1 / sin(θ / 2), θ the angle between the segments
+      if (!(ratio <= st.miterLimit)) continue // bevelled: within half the width
+      // the outer side: the normal of the incoming direction that points away from the outgoing one
+      const n1 = { x: -t1.y, y: t1.x }
+      const s = n1.x * t2.x + n1.y * t2.y > 0 ? -1 : 1
+      const a = { x: s * n1.x, y: s * n1.y }, b2 = { x: s * -t2.y, y: s * t2.x }
+      const u = unit({ x: 0, y: 0 }, { x: a.x + b2.x, y: a.y + b2.y })
+      if (!u) continue
+      const p = run[i][3]
+      grow(p.x + u.x * half * ratio, p.y + u.y * half * ratio)
+    }
+  }
+}
+
+/** the drawing's bounds: every visible item's exact path bounds — strokes with their ink (`strokeBox`) — plus a margin */
 export function drawingBounds(ev: Evaluated, margin = 4): Box | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  const grow = (x: number, y: number) => {
+    x0 = Math.min(x0, x)
+    y0 = Math.min(y0, y)
+    x1 = Math.max(x1, x)
+    y1 = Math.max(y1, y)
+  }
   for (const e of ev.paint) {
     if (!e.item.visible) continue
-    const cubics = e.kind === 'curve' ? e.item.segments.map((s) => s.cubic) : e.item.cubics
-    const pad = e.kind === 'curve' ? (inkStyle(e.item).width / 2) * inkStyle(e.item).miterLimit : 0
-    for (const c of cubics)
-      for (const q of sample(c)) {
-        x0 = Math.min(x0, q.x - pad)
-        y0 = Math.min(y0, q.y - pad)
-        x1 = Math.max(x1, q.x + pad)
-        y1 = Math.max(y1, q.y + pad)
+    if (e.kind === 'curve') strokeBox(e.item, grow)
+    else
+      for (const c of e.item.cubics) {
+        const b = cubicBox(c)
+        grow(b.x.min, b.y.min)
+        grow(b.x.max, b.y.max)
       }
   }
   if (!Number.isFinite(x0)) return null
