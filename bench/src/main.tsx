@@ -195,6 +195,8 @@ function App() {
     if (o && (o.x || o.y)) run(x => x.translate(o.x, o.y))
     setGhost(null)
   }
+  // a drag the browser cancels, or that loses capture without a release, ends like Esc: nothing is sent (dot 1791481384)
+  const cancelDrag = () => { drag.current = null; setGhost(null) }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -203,7 +205,7 @@ function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return
-      if (e.key === 'Escape') { setPending([]); setMsg(''); drag.current = null; setGhost(null) }
+      if (e.key === 'Escape') { setPending([]); setMsg(''); cancelDrag() }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { hist(e.shiftKey ? 'redo' : 'undo'); bump() }
       if (e.key === 'Delete' || e.key === 'Backspace') run(x => x.deleteSelection())
       const t: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
@@ -313,7 +315,7 @@ function App() {
           {msg || `tool ${tool} · layer ${layer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pending.length && tool !== 'pen' ? ' · pending ' + pending[0] : ''}`}
         </div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={e => { svg.current!.setPointerCapture(e.pointerId); onBackground(e) }} onPointerDownCapture={e => svg.current!.setPointerCapture(e.pointerId)} onPointerMove={onMove} onPointerUp={onUp} onLostPointerCapture={onUp} onWheel={onWheel}
+          onPointerDown={e => { svg.current!.setPointerCapture(e.pointerId); onBackground(e) }} onPointerDownCapture={e => svg.current!.setPointerCapture(e.pointerId)} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={cancelDrag} onLostPointerCapture={cancelDrag} onWheel={onWheel}
           onContextMenu={e => { e.preventDefault(); setPending([]) }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
