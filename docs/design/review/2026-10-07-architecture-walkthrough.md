@@ -82,7 +82,11 @@ How this section works:
 | Edit that would change a locked element | is | Refused whole. Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind changing a locked line's endpoints or connections. A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29) |
 | Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
 | Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
-| Layer new / delete / rename | is | To be discussed later | open | bowen 1791434101 (Q29 E) |
+| New layer | is | An empty ordered container: id, name, list position only (no state of its own; panel icons derive from its elements). A new document gets one empty layer by default; empty layers and zero layers are allowed. | confirmed | bowen 1791435000; dot 1791434801 (Q30) |
+| Layer name | is | Unique, and never empty | confirmed | bowen 1791435000 (Q30) |
+| Copy (layer, lines, groups) | makes | A new-identity copy of the chosen range. Relations inside the range attach to the copy; relations reaching outside, such as links to another layer, are not carried; the original is unchanged. | confirmed | dot 1791434801; bowen 1791435000, 1791435311 (Q30) |
+| Delete layer | is | A batch over its elements: unlocked ones are deleted and locked ones stay, and so does the layer while it holds anything. Links end only when their endpoint disappears; a join across a link that referenced a deleted line is cleared. | confirmed | bowen 1791435000; dot 1791435118 (Q30) |
+| Locked fill whose boundary is deleted | is | Gone with its loop (甲). Its lock covers colour and material, not its existence. | confirmed | bowen 1791435311 (Q30) |
 | Smooth join | is | A stiff spring pulling two handles toward a straight line. When angle constraints conflict with each other, the compromise is shown and nothing is refused. Stiffness is one global fixed value. *This does not override Q29: an edit that would turn a locked line's handle is refused.* | confirmed | bowen 1791421304, 1791421988 (Q23); bowen 1791434101 (Q29); dot 1791434562 |
 | 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
 | Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | confirmed | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
@@ -3259,3 +3263,5 @@ A layer that still carries locked contents stays (dot).
 **Decided:** names unique; copy rule; links not copied; delete as a batch keeping locked elements (and their layer); empty and zero layers allowed, with one empty layer by default; 甲.
 
 Asked bowen whether to write the graph rows.
+
+**bowen 1791435415:** "写进知识图谱吧". Q30 rows written; the 'Layer new / delete / rename: open' row is replaced.
