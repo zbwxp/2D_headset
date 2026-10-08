@@ -26,6 +26,24 @@ const layerIds = (d: Core) => s(d).layers.map(l => l.id)
 const fillFirst = (d: Core, color = 'red') => { const id = s(d).loops[0]!.id; d.edit(e => e.fill(id, color)); return id }
 
 describe('layers', () => {
+  it('0. a new document has one empty layer and nothing to undo; the bare model may hold zero layers (dot 1791459600)', () => {
+    const d = Core.newDocument()
+    expect(s(d).layers).toEqual([{ id: 'layer-1', name: 'Layer 1' }])
+    expect(s(d).lines).toEqual([])
+    expect(d.canUndo).toBe(false)
+    expect(new Core().snapshot().layers).toEqual([])
+    d.edit(e => e.deleteLayer('layer-1'))
+    expect(s(d).layers).toEqual([])
+  })
+
+  it('0b. the lock check is on the result: unlocking then editing in one edit is allowed; ending the edit locked with a change is refused', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.lineState('ab', { locked: true }))
+    d.edit(e => { e.lineState('ab', { locked: false }); e.lineStroke('ab', { width: 3, profile: 'uniform' }) })
+    expect(line(d, 'ab')!.stroke.width).toBe(3)
+    expect(() => d.edit(e => { e.lineStroke('bc', { width: 3, profile: 'uniform' }); e.lineState('bc', { locked: true }) })).toThrow(/Locked lines would change \(bc\)/)
+  })
+
   it('1. a new layer is empty, sits above the given layer, and needs a unique non-empty name', () => {
     const d = doc('A', 'C')
     d.edit(e => e.layer('B', 'Bee', 'A'))

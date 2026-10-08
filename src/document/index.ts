@@ -235,6 +235,18 @@ export class Core {
   private future: State[] = []
   private editing = false
 
+  /**
+   * A new document: one empty layer (bowen 1791435000). `new Core()` is the bare
+   * model, which may hold zero layers; this is the entry a "new document" uses.
+   * The default layer is part of the starting state, not an undo step.
+   */
+  static newDocument(layer: { id: Id; name: string } = { id: 'layer-1', name: 'Layer 1' }): Core {
+    const d = new Core()
+    d.edit(e => e.layer(layer.id, layer.name))
+    d.past = []
+    return d
+  }
+
   private idle(what: string) {
     if (this.editing) throw new Error(`${what} cannot run while an edit is in progress`)
   }

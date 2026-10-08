@@ -154,17 +154,18 @@ function invariants(d: Core): string[] {
 }
 
 /**
- * Q29: an edit never changes a locked line. Checked independently of the locks
- * module, on the raw curve only (end positions, handles, stroke); the lock may be
- * lifted only by a state change, which leaves the curve as it was.
+ * Q29: a published edit never changes a line that is locked in its result, and a
+ * locked line never disappears. Checked independently of the locks module, on the
+ * raw curve only (end positions, handles, stroke).
  */
 function lockedKept(before: Snapshot, after: Snapshot): string[] {
   const at = (s: Snapshot, id: string) => s.points.find(p => p.id === id)?.position
-  return before.lines.filter(l => l.state.locked).flatMap(l => {
-    const m = after.lines.find(x => x.id === l.id)
-    const raw = (s: Snapshot, x: typeof l) => JSON.stringify([at(s, x.a), at(s, x.b), x.ha, x.hb, x.stroke])
-    return m && raw(before, l) === raw(after, m) ? [] : [`locked line ${l.id} changed`]
-  })
+  const raw = (s: Snapshot, x: Snapshot['lines'][number]) => JSON.stringify([at(s, x.a), at(s, x.b), x.ha, x.hb, x.stroke])
+  const gone = before.lines.filter(l => l.state.locked && !after.lines.some(x => x.id === l.id)).map(l => `locked line ${l.id} disappeared`)
+  return [...gone, ...after.lines.filter(l => l.state.locked).flatMap(m => {
+    const l = before.lines.find(x => x.id === m.id)
+    return !l || raw(before, l) === raw(after, m) ? [] : [`locked line ${m.id} changed`]
+  })]
 }
 
 export const stats = { tried: {} as Record<string, number>, ok: {} as Record<string, number>, maxLoops: 0, maxFilled: 0 }

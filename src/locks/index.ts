@@ -10,8 +10,9 @@
 // - at each end, the end stroke that is actually drawn: the point's end stroke if
 //   the end is free (no other line, no link), nothing if it is shared. The
 //   free/shared flag itself is not compared.
-// A line that is gone (deleted, split, collapsed) has changed; a line made in this
-// edit (drawn, or copied with its lock) has no earlier content to protect.
+// The check is on the result: no line that is locked when the edit ends may differ
+// from before it, and a locked line may not disappear. Unlocking and then editing in
+// one edit is allowed (dot 1791459661: no extra two-step rule).
 import * as net from '../network'
 import * as joins from '../joins'
 import * as links from '../links'
@@ -46,12 +47,13 @@ const same = (a: Content, b: Content) =>
   near(a.curve, b.curve) && a.stroke.width === b.stroke.width && a.stroke.profile === b.stroke.profile && a.ends[0] === b.ends[0] && a.ends[1] === b.ends[1]
 
 /**
- * Locked lines whose protected content differs between two states. A line that
- * existed before counts if it is locked in either state, so locking and editing a
- * line, or unlocking and editing it, are separate edits.
+ * Lines locked in the result whose protected content differs from before the
+ * edit. A line that did not exist before (drawn, or copied with its lock) has no
+ * earlier content to protect; a line locked before and gone now has changed.
  */
 export function changed(before: View, after: View): Id[] {
-  const ids = new Set([...lockedLines(before), ...lockedLines(after)].filter(id => net.hasLine(before.network, id)))
+  const gone = lockedLines(before).filter(id => !net.hasLine(after.network, id))
+  const ids = new Set([...gone, ...lockedLines(after).filter(id => net.hasLine(before.network, id))])
   const a = contents(before, ids), b = contents(after, ids)
   return [...ids].filter(id => { const x = a.get(id), y = b.get(id); return !x || !y || !same(x, y) }).sort()
 }
