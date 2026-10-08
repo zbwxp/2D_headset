@@ -3133,3 +3133,21 @@ Agrees: B is a strategy choice, not derived.
 - State changes are undoable.
 - New, delete and rename layers are container management.
 
+### bowen's decisions on A–F (1791434101)
+
+> A拒绝，交互的表现是被锁定那条线上打个红叉表示这里有错误 然后红叉旁边出现一个锁头 表示是这里被锁定发生的错误。B也是拒绝然后出现对应的交互提示 C 锁定只锁自己和子集/属性，对于填充来说它能锁的就是填充颜色/材质。D 这个不是 锁定不会锁定父级，但是这种基本上算是误操作，就其他线都改宽度就被锁的线孤零零原本宽度 展示后果。E这个另说F 状态变更不进撤销。
+
+- **A:** refused. Interaction: a red cross on the locked line, with a lock icon beside it.
+- **B:** refused, with a matching interaction hint.
+- **C:** a lock covers the element itself, its subsets and its attributes. For a fill this means colour and material; the shape still follows the boundary.
+- **D:** a lock never locks the parent. A group stroke change applies to the unlocked lines; a locked line keeps its width, and the consequence is shown.
+- **E:** later.
+- **F:** state changes are not in undo.
+
+### Claude's consequences (1791434134), for bowen to confirm
+
+1. **D changes Q24 C** ("line stroke belongs to the whole continuous curve"). Width can now differ within a group, so the stroke lives on each line. A group stroke change, and binding's "unify to the first-clicked group", become batches over lines, and locked lines keep their width.
+2. **Locked elements can still change state.** Visibility and lock are state changes, not edits, so the lock does not block them; otherwise nothing could be unlocked.
+3. **F means undo restores edits only.** An element hidden after an edit stays hidden when that edit is undone.
+   - **Edge case for bowen:** undoing an edit that changed a line which is now locked — undo as usual, or refuse because of the lock?
+
