@@ -25,6 +25,25 @@ const nearestT = (c: readonly Vec[], at: Vec) => {
   return best
 }
 const path = (c: readonly Vec[]) => `M${c[0]!.x},${c[0]!.y} C${c[1]!.x},${c[1]!.y} ${c[2]!.x},${c[2]!.y} ${c[3]!.x},${c[3]!.y}`
+/** A ready scene for trying things: a left eye (smooth top and bottom, an arc corner, filled, named), a copy flipped to the right and mirror-linked. */
+function demo() {
+  const L = 'layer-1', p = (id: Id, x: number, y: number) => ({ id, layer: L, position: P(x, y) })
+  core.edit(e => { e.line('u1', p('a', -300, 0), p('b', -200, -60)); e.line('u2', 'b', p('c', -100, 0)); e.line('w1', 'c', p('d', -200, 40)); e.line('w2', 'd', 'a') })
+  core.edit(e => { e.join('b', 'u1', 'u2', { mode: 'smooth' }); e.join('d', 'w1', 'w2', { mode: 'smooth' }); e.join('a', 'u1', 'w2', { mode: 'arc', radius: 10 }) })
+  core.edit(e => e.fill(core.snapshot().loops[0]!.id, '#f2c94c'))
+  core.edit(e => { e.renameGroup(core.snapshot().groups[0]!.id, '左眼'); e.renameLine('u1', '左上眼睑外'); e.renameLine('u2', '左上眼睑内') })
+  core.edit(e => e.copyLayer(L, 'R'))
+  core.edit(e => { e.selectGroup('R/u1'); e.translate(400, 0); e.flip() })
+  const g = (line: Id) => core.snapshot().groups.find(x => x.lines.includes(line))!.id
+  core.edit(e => { e.mirrorLink([g('u1')], [g('R/u1')]); e.select([]) })
+}
+
+/** Ids in a refusal message shown with their names, e.g. "u1" → "u1「左上眼睑外」". */
+function withNames(m: string) {
+  const s = core.snapshot(), names = new Map<string, string>([...s.lines.map(l => [l.id, l.name] as const), ...s.groups.map(g => [g.id, g.name] as const)])
+  return m.replace(/[^\s(),"]+/g, w => (names.has(w) ? `${w}「${names.get(w)}」` : w))
+}
+
 type LogRow = { calls: string; result: string }
 const log: LogRow[] = []
 const hist = (k: 'undo' | 'redo') => { const ok = k === 'undo' ? core.canUndo : core.canRedo; core[k](); log.unshift({ calls: k + '()', result: ok ? 'ok' : 'ok (nothing to ' + k + ')' }) }
@@ -42,7 +61,7 @@ function App() {
   const [source, setSource] = useState<Id[]>([])
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   const svg = useRef<SVGSVGElement>(null)
-  const drag = useRef<null | { kind: 'move'; start: Vec } | { kind: 'pan'; start: Vec; box: typeof box }>(null)
+  const drag = useRef<null | { kind: 'move'; start: Vec; offset: Vec | null } | { kind: 'pan'; start: Vec; box: typeof box }>(null)
   const [ghost, setGhost] = useState<Vec | null>(null) // drag offset: drawn only, nothing sent to core until release
 
   const s = core.snapshot(), g = core.geometry()
@@ -53,7 +72,7 @@ function App() {
   const groupOf = (l: Id) => s.groups.find(gr => gr.lines.includes(l))!.id
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML, log }
+    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML, log, demo: () => { demo(); bump() } }
   })
 
   const run = (fn: (e: Editor) => void, quiet = false) => {
@@ -61,7 +80,7 @@ function App() {
     const calls: string[] = []
     const rec = (e: Editor) => new Proxy(e, { get: (t, k) => { const v = Reflect.get(t, k); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(k)}(${a.map(x => JSON.stringify(x)).join(', ')})`); return v.apply(t, a) } : v } })
     try { core.edit(e => fn(rec(e))); if (!quiet) setMsg(''); log.unshift({ calls: calls.join('; '), result: 'ok' }); return true }
-    catch (err) { const m = (err as Error).message; setMsg('✗ ' + m); log.unshift({ calls: calls.join('; '), result: '✗ ' + m }); return false }
+    catch (err) { const m = withNames((err as Error).message); setMsg('✗ ' + m); log.unshift({ calls: calls.join('; '), result: '✗ ' + m }); return false }
     finally { log.length = Math.min(log.length, 50); bump() }
   }
   const toDoc = (e: { clientX: number; clientY: number }) => {
@@ -69,7 +88,7 @@ function App() {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m)
     return P(p.x, p.y)
   }
-  const startMove = (at: Vec) => { drag.current = { kind: 'move', start: at }; setGhost(null) }
+  const startMove = (at: Vec) => { drag.current = { kind: 'move', start: at, offset: null }; setGhost(null) }
   const mode = (e: React.PointerEvent) => (e.shiftKey ? 'add' : e.altKey ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
 
   const onPoint = (e: React.PointerEvent, id: Id) => {
@@ -77,12 +96,7 @@ function App() {
     const at = toDoc(e)
     if (tool === 'A') { run(x => x.select([{ kind: 'point', id }], mode(e)), true); startMove(at); return }
     if (tool === 'pen') return penTo(id)
-    if (tool === 'join') {
-      const ls = s.lines.filter(l => l.a === id || l.b === id).map(l => l.id)
-      if (ls.length < 2) return setMsg('join: need two lines at this point')
-      if (e.altKey) return run(x => x.removeJoin(id, ls[0]!, ls[1]!))
-      return run(x => x.join(id, ls[0]!, ls[1]!, { mode: joinMode, ...(joinMode === 'arc' ? { radius } : {}) }))
-    }
+    if (tool === 'join') return setMsg('join: click the two lines (the second turns to the first)')
     if (tool === 'bind' || tool === 'merge' || tool === 'link') {
       if (!pending.length) { setPending([id]); setMsg(`${tool}: first point ${id}; click the second`); return }
       const [a] = pending; setPending([])
@@ -108,6 +122,15 @@ function App() {
     if (tool === 'unbind') {
       const l = line(id), pt = dist(pos(l.a), at) < dist(pos(l.b), at) ? l.a : l.b
       return run(x => x.unbind(pt, [id], nid('p')))
+    }
+    if (tool === 'join') {
+      // click order: the second-clicked line turns to the first (graph, design principle on symmetric relations)
+      if (!pending.length) { setPending([id]); setMsg(`join: first line ${line(id).name}; click the second`); return }
+      const first = pending[0]!; setPending([])
+      const l1 = line(first), l2 = line(id), pt = [l1.a, l1.b].find(p => p === l2.a || p === l2.b)
+      if (!pt || first === id) return setMsg('join: the two lines must share an end point')
+      if (e.altKey) return run(x => x.removeJoin(pt, first, id))
+      return run(x => x.join(pt, first, id, { mode: joinMode, ...(joinMode === 'arc' ? { radius } : {}) }))
     }
     if (tool === 'fill') return onBackground(e)
     if (tool === 'pen') return onBackground(e)
@@ -147,12 +170,15 @@ function App() {
     }
     // preview is a ghost drawn by the bench only; core is called once, on release (dot)
     const at = toDoc(e)
-    setGhost(P(at.x - d.start.x, at.y - d.start.y))
+    d.offset = P(at.x - d.start.x, at.y - d.start.y)
+    setGhost(d.offset)
   }
   const onUp = () => {
     const d = drag.current
     drag.current = null
-    if (d?.kind === 'move' && ghost && (ghost.x || ghost.y)) run(x => x.translate(ghost.x, ghost.y))
+    // the offset lives on the drag record, not in React state, so a fast release never reads a stale value
+    const o = d?.kind === 'move' ? d.offset : null
+    if (o && (o.x || o.y)) run(x => x.translate(o.x, o.y))
     setGhost(null)
   }
   const onWheel = (e: React.WheelEvent) => {
@@ -206,7 +232,7 @@ function App() {
         {tool === 'join' && <div>
           <select value={joinMode} onChange={e => setJoinMode(e.target.value as typeof joinMode)}><option>smooth</option><option>cusp</option><option>arc</option></select>
           {joinMode === 'arc' && <> r <input type="number" value={radius} style={{ width: 50 }} onChange={e => setRadius(+e.target.value)} /></>}
-          <div style={{ color: '#666' }}>alt-click: remove join</div>
+          <div style={{ color: '#666' }}>click two lines; alt on the second: remove join</div>
         </div>}
         {tool === 'fill' && <div><input type="color" value={color} onChange={e => setColor(e.target.value)} /> <span style={{ color: '#666' }}>shift-click: clear</span></div>}
         <b>Edit</b>
@@ -272,7 +298,7 @@ function App() {
           {msg || `tool ${tool} · layer ${layer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pending.length && tool !== 'pen' ? ' · pending ' + pending[0] : ''}`}
         </div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={onBackground} onPointerMove={onMove} onPointerUp={onUp} onWheel={onWheel}
+          onPointerDown={e => { svg.current!.setPointerCapture(e.pointerId); onBackground(e) }} onPointerDownCapture={e => svg.current!.setPointerCapture(e.pointerId)} onPointerMove={onMove} onPointerUp={onUp} onLostPointerCapture={onUp} onWheel={onWheel}
           onContextMenu={e => { e.preventDefault(); setPending([]) }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
@@ -317,4 +343,7 @@ function App() {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+// one root only: a hot update re-runs this file, and a second root would leave stale handlers behind
+const root = createRoot(document.getElementById('root')!)
+root.render(<App />)
+import.meta.hot?.dispose(() => root.unmount())
