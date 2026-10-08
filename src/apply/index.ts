@@ -145,6 +145,10 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     old: joins.rowsAt(d.joins, tp).filter(r => tgtLines.has(r.lines[0]) && tgtLines.has(r.lines[1])),
     add: joins.rowsAt(d.joins, sp).filter(r => m.lines.has(r.lines[0]) && m.lines.has(r.lines[1])),
   }))
+  // joins across an endpoint link inside the selection (dot, review of d5e2704)
+  const srcPts = new Set(m.points.keys()), tgtPts = new Set(m.points.values())
+  const linkJoinsOld = links.joins(d.links).filter(x => tgtPts.has(x.a) && tgtPts.has(x.b) && tgtLines.has(x.lines[0]) && tgtLines.has(x.lines[1]))
+  const linkJoinsNew = links.joins(d.links).filter(x => srcPts.has(x.a) && srcPts.has(x.b) && m.lines.has(x.lines[0]) && m.lines.has(x.lines[1]))
   const views = fills.discover(d.fills, n)
   const lineSet = (v: fills.LoopView) => JSON.stringify(v.route.map(u => u.line).sort())
   const byLines = new Map(views.map(v => [lineSet(v), v]))
@@ -158,7 +162,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     net.moveHandle(n, ch, to.to, 'a', to.reversed ? hb : ha)
     net.moveHandle(n, ch, to.to, 'b', to.reversed ? ha : hb)
     net.setLineStroke(n, to.to, line.stroke)
-    net.deferLineState(ch, to.to, line.state)
+    net.applyLineState(n, ch, to.to, line.state)
   }
   for (const { tp, stroke } of endData) {
     if (stroke) joins.setEndStroke(d.joins, n, tp, stroke)
@@ -170,6 +174,11 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
       joins.setJoin(d.joins, n, tp, m.lines.get(r.lines[0])!.to, m.lines.get(r.lines[1])!.to, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
     }
     net.touch(ch, tp)
+  }
+  for (const x of linkJoinsOld) links.removeJoin(d.links, x.a, x.b, x.lines[0], x.lines[1])
+  for (const x of linkJoinsNew) {
+    links.setJoin(d.links, n, m.points.get(x.a)!, m.points.get(x.b)!, m.lines.get(x.lines[0])!.to, m.lines.get(x.lines[1])!.to, { mode: x.mode })
+    net.touch(ch, m.points.get(x.a)!); net.touch(ch, m.points.get(x.b)!)
   }
   const lockedFills = fillData.filter(x => x.to?.locked).map(x => x.to!.id)
   if (lockedFills.length) throw new Error(`Locked target: fill ${lockedFills.join(', ')} is locked; apply refused`)
@@ -266,6 +275,71 @@ export function update(s: ApplyState, ch: net.Changes) {
   }
   S(s).pairs = next
   sortPairs(s)
+}
+
+// ---- paired execution: what each operation acts on (graph "Mirror link") ----------
+// Document only runs the operation on every item these plans list; the pairing rules
+// live here (dot, review of d5e2704).
+
+/** Suffix of the ids a paired operation gives the counterpart's new lines and points. */
+export const PRIME = '\u2032'
+
+/** A line and its live counterpart. */
+export function pairedLines(s: ApplyState, n: net.NetworkState, line: Id): Id[] {
+  const c = counterpartLine(s, line)
+  return c && net.hasLine(n, c.id) ? [line, c.id] : [line]
+}
+/** A point and its counterpart (a point that is its own counterpart, on the axis, once). */
+export function pairedPoints(s: ApplyState, n: net.NetworkState, point: Id): Id[] {
+  const c = counterpartPoint(s, n, point)
+  return c && c !== point ? [point, c] : [point]
+}
+/** A filled loop and the loop of its counterpart lines, when every boundary line has one. */
+export function pairedLoops(s: ApplyState, f: fills.FillsState, n: net.NetworkState, loop: Id): Id[] {
+  const views = fills.discover(f, n), v = views.find(x => x.id === loop)
+  if (!v) return [loop]
+  const mapped = v.route.map(u => counterpartLine(s, u.line)?.id)
+  if (mapped.some(x => !x)) return [loop]
+  const key = JSON.stringify([...mapped].sort())
+  const other = views.find(x => JSON.stringify(x.route.map(u => u.line).sort()) === key)
+  return other && other.id !== loop ? [loop, other.id] : [loop]
+}
+/**
+ * A two-point operation (bind, endpoint link) and its mirrored pair. Refused when only
+ * one point has a counterpart: what the other side should connect to is not defined
+ * (graph "Mirror link protects"). Two points that are each other's counterparts act once.
+ */
+export function pairedPointPairs(s: ApplyState, n: net.NetworkState, a: Id, b: Id): [Id, Id][] {
+  const ca = counterpartPoint(s, n, a), cb = counterpartPoint(s, n, b)
+  if (!ca && !cb) return [[a, b]]
+  if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
+  const same = (ca === a && cb === b) || (ca === b && cb === a)
+  return same ? [[a, b]] : [[a, b], [ca, cb]]
+}
+/** A join at a point and, when every part has a counterpart, its mirrored join. */
+export function pairedJoins(s: ApplyState, n: net.NetworkState, point: Id, l1: Id, l2: Id): [Id, Id, Id][] {
+  const cp = counterpartPoint(s, n, point), c1 = counterpartLine(s, l1), c2 = counterpartLine(s, l2)
+  return cp && c1 && c2 && cp !== point ? [[point, l1, l2], [cp, c1.id, c2.id]] : [[point, l1, l2]]
+}
+/** A join across a link and, when every part has a counterpart, its mirrored one. */
+export function pairedLinkJoins(s: ApplyState, n: net.NetworkState, a: Id, b: Id, la: Id, lb: Id): [Id, Id, Id, Id][] {
+  const pts = pairedPointPairs(s, n, a, b), ca = counterpartLine(s, la), cb = counterpartLine(s, lb)
+  return pts.length === 2 && ca && cb ? [[a, b, la, lb], [pts[1]![0], pts[1]![1], ca.id, cb.id]] : [[a, b, la, lb]]
+}
+/** A split and the counterpart's: at t, or 1 − t on a reversed pair with the pieces crossed; ids + ′. */
+export function pairedSplits(s: ApplyState, line: Id, t: number, mid: Id, first: Id, second: Id) {
+  const own = { line, t, mid, first, second }, c = counterpartLine(s, line)
+  if (!c) return [own]
+  return [own, c.reversed
+    ? { line: c.id, t: 1 - t, mid: mid + PRIME, first: second + PRIME, second: first + PRIME }
+    : { line: c.id, t, mid: mid + PRIME, first: first + PRIME, second: second + PRIME }]
+}
+/** An unbind and the counterpart's: the counterpart lines leave the counterpart point, to a point with id + ′. */
+export function pairedUnbinds(s: ApplyState, n: net.NetworkState, point: Id, lines: Id[], newPoint: Id) {
+  const own = { point, lines, newPoint }
+  const cp = counterpartPoint(s, n, point)
+  const cl = lines.flatMap(l => { const c = counterpartLine(s, l); return c ? [c.id] : [] })
+  return cp && cp !== point && cl.length ? [own, { point: cp, lines: cl, newPoint: newPoint + PRIME }] : [own]
 }
 
 /**

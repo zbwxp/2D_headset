@@ -119,9 +119,9 @@ export class Editor {
 
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
   lineState(line: Id, state: { visible?: boolean; locked?: boolean }) {
-    for (const id of this.withLine(line)) net.setLineState(this.s.network, id, state)
+    for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) net.changeLineState(this.s.network, this.tx.changes, id, state)
   }
-  fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { for (const id of this.withLoop(loop)) fills.setState(this.s.fills, id, state) }
+  fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { for (const id of this.loops(loop)) fills.setState(this.s.fills, id, state) }
   /** A batch over the group's own lines; its fills keep their own switch (bowen 1791433646). */
   groupState(group: Id, state: { visible?: boolean; locked?: boolean }) {
     for (const id of groups.get(this.s.groups, group).lines) this.lineState(id, state)
@@ -143,36 +143,22 @@ export class Editor {
   /** One-time snap of `moving` onto `target`; no lasting relation (bowen 1791424844). */
   mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.s.network, target).position }]) }
   moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
-  /** Under a mirror link the counterpart is split too, at t (or 1 − t on a reversed pair), with ids + ′. */
+  // Each operation below runs on every item apply's paired plan lists (graph "Mirror link").
   split(line: Id, t: number, mid: Id, first: Id, second: Id) {
-    const c = apply.counterpartLine(this.s.apply, line)
-    this.topology(ch => {
-      net.splitLine(this.s.network, ch, line, t, mid, first, second)
-      if (!c) return
-      if (c.reversed) net.splitLine(this.s.network, ch, c.id, 1 - t, mid + PRIME, second + PRIME, first + PRIME)
-      else net.splitLine(this.s.network, ch, c.id, t, mid + PRIME, first + PRIME, second + PRIME)
-    })
+    const ops = apply.pairedSplits(this.s.apply, line, t, mid, first, second)
+    this.topology(ch => { for (const o of ops) net.splitLine(this.s.network, ch, o.line, o.t, o.mid, o.first, o.second) })
   }
-  /** Under a mirror link the counterpart is deleted too (paired execution). */
   deleteLine(id: Id) {
-    const ids = this.withLine(id)
+    const ids = apply.pairedLines(this.s.apply, this.s.network, id)
     this.topology(ch => { for (const x of ids) net.deleteLine(this.s.network, ch, x) })
   }
   bind(keep: Id, remove: Id) {
-    const pair = this.pointPair(keep, remove)
-    this.topology(ch => {
-      net.bind(this.s.network, ch, keep, remove)
-      if (pair) net.bind(this.s.network, ch, pair[0], pair[1])
-    })
+    const pairs = apply.pairedPointPairs(this.s.apply, this.s.network, keep, remove)
+    this.topology(ch => { for (const [k, r] of pairs) net.bind(this.s.network, ch, k, r) })
   }
-  /** Under a mirror link the counterpart lines leave the counterpart point too, to a point with id + ′. */
   unbind(point: Id, lines: Id[], newPoint: Id) {
-    const cp = apply.counterpartPoint(this.s.apply, this.s.network, point)
-    const cl = lines.flatMap(l => { const c = apply.counterpartLine(this.s.apply, l); return c ? [c.id] : [] })
-    this.topology(ch => {
-      net.unbind(this.s.network, ch, point, lines, newPoint)
-      if (cp && cp !== point && cl.length) net.unbind(this.s.network, ch, cp, cl, newPoint + PRIME)
-    })
+    const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint)
+    this.topology(ch => { for (const o of ops) net.unbind(this.s.network, ch, o.point, o.lines, o.newPoint) })
   }
 
   // joins and end strokes (point attributes)
@@ -180,46 +166,42 @@ export class Editor {
   /** Under a mirror link a join among paired lines is set on the counterpart too (graph "Mirror link"). */
   join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) {
     const { state, changes } = this.tx
-    for (const [p, a, b] of this.joinPair(point, l1, l2)) {
+    for (const [p, a, b] of apply.pairedJoins(state.apply, state.network, point, l1, l2)) {
       joins.setJoin(state.joins, state.network, p, a, b, opts)
       net.touch(changes, p)
       if (opts.mode === 'smooth') net.hold(state.network, changes, a, net.line(state.network, a).a === p ? 'a' : 'b')
     }
   }
   removeJoin(point: Id, l1: Id, l2: Id) {
-    for (const [p, a, b] of this.joinPair(point, l1, l2)) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
+    for (const [p, a, b] of apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2)) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
   }
   endStroke(point: Id, stroke: joins.EndStroke) {
-    const cp = apply.counterpartPoint(this.s.apply, this.s.network, point)
-    for (const p of cp && cp !== point ? [point, cp] : [point]) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
+    for (const p of apply.pairedPoints(this.s.apply, this.s.network, point)) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
   }
 
   // links (cross-layer relation)
   link(a: Id, b: Id) {
-    const pair = this.pointPair(a, b)
-    this.move([links.link(this.s.links, this.s.network, a, b)])
-    if (pair) this.move([links.link(this.s.links, this.s.network, pair[0], pair[1])])
+    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) this.move([links.link(this.s.links, this.s.network, x, y)])
   }
   /** Removing a link is a constraint change at both points (dot 1791431139). */
   unlink(a: Id, b: Id) {
-    const pair = this.pointPair(a, b)
-    for (const [x, y] of pair ? [[a, b], pair] : [[a, b]]) { links.unlink(this.s.links, x!, y!); net.touch(this.tx.changes, x!); net.touch(this.tx.changes, y!) }
+    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) { links.unlink(this.s.links, x, y); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
   }
   /** Join across a link: la ends at a (clicked first), lb at b. Smooth: lb turns to la. */
   linkJoin(a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }) {
     const { state, changes } = this.tx
-    for (const [x, y, lx, ly] of this.linkJoinPair(a, b, la, lb)) {
+    for (const [x, y, lx, ly] of apply.pairedLinkJoins(state.apply, state.network, a, b, la, lb)) {
       const held = links.setJoin(state.links, state.network, x, y, lx, ly, opts)
       net.touch(changes, x); net.touch(changes, y)
       net.hold(state.network, changes, held.line, held.end)
     }
   }
   removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) {
-    for (const [x, y, lx, ly] of this.linkJoinPair(a, b, la, lb)) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
+    for (const [x, y, lx, ly] of apply.pairedLinkJoins(this.s.apply, this.s.network, a, b, la, lb)) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
   }
 
   // stroke: stored on each line (bowen 1791434322)
-  lineStroke(line: Id, stroke: net.Stroke) { for (const id of this.withLine(line)) net.setLineStroke(this.s.network, id, stroke) }
+  lineStroke(line: Id, stroke: net.Stroke) { for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) net.setLineStroke(this.s.network, id, stroke) }
   /** A group's width change is a batch over its unlocked lines (Q29 D). */
   stroke(group: Id, stroke: net.Stroke) {
     for (const id of groups.get(this.s.groups, group).lines) if (!net.line(this.s.network, id).state.locked) this.lineStroke(id, stroke)
@@ -243,8 +225,8 @@ export class Editor {
   }
 
   // fills (closed loops)
-  fill(loop: Id, color: string) { for (const id of this.withLoop(loop)) fills.fill(this.s.fills, this.s.network, id, color) }
-  clearFill(loop: Id) { for (const id of this.withLoop(loop)) fills.clearFill(this.s.fills, id) }
+  fill(loop: Id, color: string) { for (const id of this.loops(loop)) fills.fill(this.s.fills, this.s.network, id, color) }
+  clearFill(loop: Id) { for (const id of this.loops(loop)) fills.clearFill(this.s.fills, id) }
   fillVisible(loop: Id, visible: boolean) { this.fillState(loop, { visible }) }
   /** Move a fill to `index` among the fills of its own group. */
   reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, this.s.network, loop, index) }
@@ -289,39 +271,7 @@ export class Editor {
   /** Remove the mirror link of these lines; geometry stays. */
   unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
 
-  // paired execution (graph "Mirror link"): the counterparts an operation also acts on
-  private withLine(line: Id): Id[] {
-    const c = apply.counterpartLine(this.s.apply, line)
-    return c && net.hasLine(this.s.network, c.id) ? [line, c.id] : [line]
-  }
-  private withLoop(loop: Id): Id[] {
-    const n = this.s.network, views = fills.discover(this.s.fills, n), v = views.find(x => x.id === loop)
-    if (!v) return [loop]
-    const mapped = v.route.map(u => apply.counterpartLine(this.s.apply, u.line)?.id)
-    if (mapped.some(x => !x)) return [loop]
-    const key = JSON.stringify([...mapped].sort())
-    const other = views.find(x => JSON.stringify(x.route.map(u => u.line).sort()) === key)
-    return other && other.id !== loop ? [loop, other.id] : [loop]
-  }
-  /** The counterpart pair of a two-point operation; refused when only one point has a counterpart. */
-  private pointPair(a: Id, b: Id): [Id, Id] | undefined {
-    const n = this.s.network, ca = apply.counterpartPoint(this.s.apply, n, a), cb = apply.counterpartPoint(this.s.apply, n, b)
-    if (!ca && !cb) return undefined
-    if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
-    const same = (ca === a && cb === b) || (ca === b && cb === a)
-    return same ? undefined : [ca, cb]
-  }
-  /** A join across a link and, when every part has a counterpart, its mirrored one. */
-  private linkJoinPair(a: Id, b: Id, la: Id, lb: Id): [Id, Id, Id, Id][] {
-    const pair = this.pointPair(a, b), ca = apply.counterpartLine(this.s.apply, la), cb = apply.counterpartLine(this.s.apply, lb)
-    return pair && ca && cb ? [[a, b, la, lb], [pair[0], pair[1], ca.id, cb.id]] : [[a, b, la, lb]]
-  }
-  /** A join and, when every part has a counterpart, its mirrored join. */
-  private joinPair(point: Id, l1: Id, l2: Id): [Id, Id, Id][] {
-    const n = this.s.network
-    const cp = apply.counterpartPoint(this.s.apply, n, point), c1 = apply.counterpartLine(this.s.apply, l1), c2 = apply.counterpartLine(this.s.apply, l2)
-    return cp && c1 && c2 && cp !== point ? [[point, l1, l2], [cp, c1.id, c2.id]] : [[point, l1, l2]]
-  }
+  private loops(loop: Id): Id[] { return apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop) }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
   cancel(): never {
@@ -340,7 +290,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'withLine', 'withLoop', 'pointPair', 'joinPair', 'linkJoinPair'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -354,9 +304,6 @@ for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
     },
   })
 }
-
-/** Suffix of the ids a paired operation gives the counterpart's new lines and points. */
-const PRIME = '\u2032'
 
 export class Core {
   private state: State
@@ -486,6 +433,4 @@ function commit(s: State, ch: net.Changes, published: State) {
   editing.clean(s.selection, s.network, s.fills)
   const changed = locks.changed(published, s, ch)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
-  // element states an apply copies are written after the lock check (network.deferLineState)
-  net.applyLaterStates(s.network, ch)
 }

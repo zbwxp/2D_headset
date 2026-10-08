@@ -69,12 +69,16 @@ export interface Changes {
    * it scales the handle (t on the first piece's a end, 1 − t on the second's b end).
    */
   handleTips: { line: Id; end: End; tip: Vec; factor: number }[]
-  /** Element states an apply gives its targets, written after the lock check (see `deferLineState`). */
-  laterStates: { line: Id; state: ElementState }[]
+  /**
+   * Lines an apply locked in this edit (it copies the source's lock onto a target it
+   * also rewrites). The lock check does not count those locks as protection in this
+   * edit; an explicit lock change on the line afterwards removes it from this list.
+   */
+  appliedLocks: Id[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [], laterStates: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [], appliedLocks: [],
 })
 
 export const create = (): NetworkState =>
@@ -121,25 +125,26 @@ export function followReplacements(acc: Changes, op: Changes) {
     acc.handleTips = acc.handleTips.map(h => (h.line === r.line
       ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip, factor: h.factor * (h.end === 'a' ? r.t : 1 - r.t) }
       : h))
-    acc.laterStates = acc.laterStates.flatMap(x => (x.line === r.line ? r.pieces.map(line => ({ line, state: x.state })) : [x]))
+    acc.appliedLocks = acc.appliedLocks.flatMap(x => (x === r.line ? [...r.pieces] : [x]))
   }
 }
 
 /**
- * An apply copies the source's element state (visibility, lock) onto a target whose
- * content it also rewrites. The state is written after the commit's lock check, so
- * the check judges the target as it was: an unlocked target may be reshaped and then
- * carry the source's lock, while a locked target is refused by the apply itself
- * before anything is written (dot 1791473104: handled in the apply flow, not by
- * loosening the lock check for every edit).
+ * An apply writes the source's element state onto a target at once, so later
+ * commands in the same edit see it (dot, review of d5e2704). A lock it copies is
+ * recorded, so the commit's lock check judges the target by its protection before
+ * the apply (dot 1791473104: handled in the apply flow, not by loosening the lock
+ * check). A locked target is refused by the apply itself before anything is written.
  */
-export function deferLineState(ch: Changes, line: Id, state: ElementState) {
-  ch.laterStates = ch.laterStates.filter(x => x.line !== line)
-  ch.laterStates.push({ line, state: { visible: state.visible, locked: state.locked } })
+export function applyLineState(n: NetworkState, ch: Changes, line: Id, state: ElementState) {
+  const wasLocked = rawLine(n, line).state.locked
+  setLineState(n, line, state)
+  if (state.locked && !wasLocked && !ch.appliedLocks.includes(line)) ch.appliedLocks.push(line)
 }
-/** At commit, after the lock check: write the deferred states of lines that still exist. */
-export function applyLaterStates(n: NetworkState, ch: Changes) {
-  for (const x of ch.laterStates) if (hasLine(n, x.line)) setLineState(n, x.line, x.state)
+/** An explicit state change: a lock set this way is ordinary protection again. */
+export function changeLineState(n: NetworkState, ch: Changes, line: Id, state: Partial<ElementState>) {
+  setLineState(n, line, state)
+  if (state.locked !== undefined) ch.appliedLocks = ch.appliedLocks.filter(x => x !== line)
 }
 
 /**

@@ -116,6 +116,46 @@ describe('mirror apply', () => {
     expect(() => d.edit(e => e.mirrorApply(['s1', 's2'], ['t1', 't2']))).toThrow(/topology-mismatch/)
   })
 
+  it('A4b. later commands in the same edit see the state an apply wrote (dot, review of d5e2704)', () => {
+    const d = eyes()
+    d.edit(e => { sk(e).point('u1', 'A', P(20, 20)); sk(e).point('u2', 'A', P(24, 24)); sk(e).point('u3', 'A', P(28, 20))
+      sk(e).line('t1', 'u1', 'u2'); sk(e).line('t2', 'u2', 'u3'); sk(e).line('t3', 'u3', 'u1') })
+    d.edit(e => e.lineState('l1', { visible: false }))
+    d.edit(e => { e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']); e.lineState('r1', { visible: true }) })
+    expect(line(d, 'r1').state.visible).toBe(true)
+    // apply, then use the target as the source of a second apply in the same edit
+    const d2 = eyes()
+    d2.edit(e => { sk(e).point('u1', 'A', P(-30, 0)); sk(e).point('u2', 'A', P(-26, 4)); sk(e).point('u3', 'A', P(-22, 0))
+      sk(e).line('t1', 'u1', 'u2'); sk(e).line('t2', 'u2', 'u3'); sk(e).line('t3', 'u3', 'u1') })
+    d2.edit(e => e.lineState('l1', { locked: true, visible: false }))
+    d2.edit(e => { e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']); e.mirrorApply(['r1', 'r2', 'r3'], ['t1', 't2', 't3']) })
+    expect(line(d2, 'r1').state).toEqual({ visible: false, locked: true })
+    expect(s(d2).lines.filter(l => l.id.startsWith('t')).some(l => l.state.locked && !l.state.visible)).toBe(true)
+  })
+
+  it('A4c. joins across an endpoint link inside the selection are copied, and cleared when the source has none (dot, review of d5e2704)', () => {
+    const build = () => {
+      const d = new Core()
+      d.edit(e => {
+        e.layer('U'); e.layer('L')
+        sk(e).point('lu1', 'U', P(-10)); sk(e).point('lu2', 'U', P(-2)); sk(e).line('lu', 'lu1', 'lu2', { ha: P(2, 3), hb: P(-2, 3) })
+        sk(e).point('ll1', 'L', P(-10)); sk(e).point('ll2', 'L', P(-2)); sk(e).line('ll', 'll1', 'll2', { ha: P(2, -2), hb: P(-2, -2) })
+        sk(e).point('ru1', 'U', P(10)); sk(e).point('ru2', 'U', P(2)); sk(e).line('ru', 'ru1', 'ru2', { ha: P(-2, 3), hb: P(2, 3) })
+        sk(e).point('rl1', 'L', P(10)); sk(e).point('rl2', 'L', P(2)); sk(e).line('rl', 'rl1', 'rl2', { ha: P(-2, -2), hb: P(2, -2) })
+        e.link('lu1', 'll1'); e.link('ru1', 'rl1')
+      })
+      return d
+    }
+    const d = build()
+    d.edit(e => e.linkJoin('lu1', 'll1', 'lu', 'll', { mode: 'smooth' }))
+    d.edit(e => e.mirrorApply(['lu', 'll'], ['ru', 'rl']))
+    expect(s(d).linkJoins.map(j => [j.a, j.b].sort().join('|')).sort()).toEqual(['ll1|lu1', 'rl1|ru1'])
+    const d2 = build()
+    d2.edit(e => e.linkJoin('ru1', 'rl1', 'ru', 'rl', { mode: 'smooth' }))
+    d2.edit(e => e.mirrorApply(['lu', 'll'], ['ru', 'rl']))
+    expect(s(d2).linkJoins).toEqual([])
+  })
+
   it('A4. a locked target refuses the apply; a locked source applied onto an unlocked target gives a locked target', () => {
     const d = eyes()
     d.edit(e => e.lineState('r1', { locked: true }))
