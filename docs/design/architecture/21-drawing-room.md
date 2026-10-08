@@ -4,11 +4,28 @@ bowen 1791476705: build a minimal drawing room with two interfaces, one for AI a
 
 Base: the accepted `core/v1` (document model, editing and apply stage 1, at `0918892`). Interaction requirements: `docs/design/interaction-backlog.md` items 1–11.
 
-How "two interfaces" is read here (asked bowen 1791476749):
-- **People:** canvas, toolbar, layer panel; mouse and keyboard.
-- **AI:** a structured command and query interface, not a screen. Through it an agent draws, selects, transforms, applies, reads the document and gets a rendered image.
+**The two interfaces follow the version 2 decision** (`11-base-objects-and-layers.md` §6; bowen 1791476836: "the AI and human entries were already set in v2"). Version 1 is the original old version, version 2 the refactor, and this is version 3 (bowen 1791476857).
 
-**Both go through one command layer**, so every rule is written once.
+What carries over from v2 §6:
+- **Named operations:** every change is a named operation. Mouse gestures and the API call the same operations, pass the same checks and write the same history (Blender `bpy.ops` with `poll()`; Figma plugins, where one run is one undo step).
+- **The AI API** offers:
+  - `inspect`: the tree, with a stable address, a semantic name and semantic tags for every object, plus the selection;
+  - `find`: by name or tag; an ambiguous query returns every candidate; there is no guessing;
+  - `apply(list)`: one undo step;
+  - `preview(list)`: shows what would change, writing nothing;
+  - errors with a code, the object addresses, a reason, optional fixes, and whether anything was written (never, on failure);
+  - `diff(revA, revB)`;
+  - `render(view, marked objects)`;
+  - `explain(address)`, read-only.
+- **Debug interfaces only read**; they never bypass the normal write path.
+- **Links and locks apply alike to every entry.**
+- **Acceptance in pairs:** the same operation by mouse and by API gives the same document, the same errors and the same undo.
+
+**Gaps of the version 3 core against v2 §6, to fill before or inside the drawing room:**
+- semantic names and tags on objects: v3 lines, points and fills have ids only;
+- `diff` and `explain`;
+- the error shape: v3 refusals carry a code and a message; addresses, fixes and the "written" flag are to add;
+- `preview` in the core (§5).
 
 ## 1. Scope of the first drawing room
 
@@ -176,6 +193,7 @@ flowchart LR
 
 ## 7. Open, for bowen
 
-1. **How the AI interface is read** (asked 1791476749).
+1. ~~How the AI interface is read~~: answered, it is the v2 decision (bowen 1791476836).
+1b. **Semantic names and tags in v3:** do they enter the core now (needed by `inspect` and `find`), or after the first drawing room?
 2. **Stack for the human UI.** Proposal: TypeScript + Vite; React for the panels; Canvas 2D for the drawing and overlays; our own tool state machines, not Fabric. With Fabric, a second selection and transform state would compete with `core` (doc 07: one authority for authoring data).
 3. **Save / load in the first drawing room:** proposed in.
