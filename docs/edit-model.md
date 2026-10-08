@@ -28,24 +28,28 @@ Why this note exists (bowen 1791475302): most review rounds on editing and apply
 
 ## 2. Audit: each operation against the model
 
-| Operation | Reads geometry | Records intents | Status |
+Corrected after dot's review: unbind and copy-layer read geometry too, and the audit has *located* this class of reading problem; it does not claim that nothing else is left.
+
+| Operation | Reads geometry | Records intents | Reads from (after the settled-view fix) |
 |---|---|---|---|
-| `move` | no | targets | ok |
-| `moveHandle` | no | held (replaces an aimed tip) | ok |
-| `transform` / `translate` / `rotate` / `scale` | positions, handles | targets, aimed tips | **reads the unsettled draft** → read the settled view |
-| `flip` | the selection's centre | same as transform | **reads unsettled** → settled view |
-| `mergePosition` | the target point's position | target | **reads unsettled** → settled view |
-| `link` | the first point's position (the second moves onto it) | target | **reads unsettled** → settled view |
-| `split` | the line's curve (mid point and piece handles) | maps and scales intents | **reads unsettled** → split the settled curve |
-| `bind` / `unbind` / `deleteLine` | no | unbind's new points as targets | ok |
-| `mirrorApply` / `mirrorLink` | source and target controls | targets, held handles, applied locks | **reads unsettled** → settled view |
-| `lineState` / `fillState` / stroke / fill / join / end stroke | no | an explicit lock clears the applied-lock baseline | ok |
-| `select` / `selectGroup` | no | — | ok |
-| `deleteSelection` / `deleteLayer` / `copyLayer` / `moveGroup` | no geometry | as their parts | ok |
+| `move` | no | targets | — |
+| `moveHandle` | no | held (replaces an aimed tip) | — |
+| `transform` / `translate` / `rotate` / `scale` | positions, handles | targets, aimed tips | settled view |
+| `flip` | the selection's centre | same as transform | settled view |
+| `mergePosition` | the target point's position | target | settled view |
+| `link` | the first point's position | target | settled view |
+| `split` | the line's curve | maps and scales intents | settled view (the settled curve is cut) |
+| `unbind` | the point's position, the moved line's handle direction | new points as targets | settled view |
+| `copyLayer` | positions and handles of the copied lines | — | settled view |
+| `mirrorApply` / `mirrorLink` | source and target controls | targets, held handles, applied locks | settled view |
+| `bind` / `deleteLine` | no geometry | — | — |
+| `lineState` / `fillState` / stroke / fill / join / end stroke | no | an explicit lock clears the applied-lock baseline | — |
+| `select` / `selectGroup` | no | — | — |
+| `deleteSelection` / `deleteLayer` / `moveGroup` | no geometry | as their parts | — |
 
-**The one remaining gap:** six operations read the unsettled draft. If an earlier operation in the same edit left an intent that settling will change (a link average, a mirror counterpart, a spring), these operations compute from a position or handle that is not the one the edit will end with.
+**The settled view** (`document.view`) settles positions and handles on a scratch copy: links and mirror, aimed tips, mirrored handles, springs. It changes no topology (no auto-bind, no removal), so ids stay valid. It does not turn followed points into acted ones. It does not count old intents again. The reading operation writes back only what it changes itself.
 
-**Fix:** a single `settledView()` (positions and handles settled on a scratch copy, no topology changes). These operations read from it and write their results into the draft as usual.
+**Regression tests:** `test/settled-reads.test.ts` S1–S7, one minimal case with an explicit expected result for each read site. Each fails on the code before the fix. A one-edit result is not required to equal two separate edits in general: two edits settle in between, including automatic binds (dot).
 
 ## 3. Tests: the operation × combination matrix
 

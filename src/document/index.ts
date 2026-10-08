@@ -107,7 +107,8 @@ export class Editor {
     // lines in their groups' order, so the copied groups keep the same order
     const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
     let map: net.CopyMap = { points: new Map(), lines: new Map() }
-    this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf) })
+    const read = this.view().network
+    this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf, read) })
     joins.copy(s.joins, map)
     fills.copy(s.fills, map, idOf)
   }
@@ -149,12 +150,12 @@ export class Editor {
   line(id: Id, a: net.EndSpec, b: net.EndSpec, handles?: { ha: Vec; hb: Vec }) { this.topology(ch => net.addLine(this.s.network, ch, id, a, b, handles)) }
   move(targets: { id: Id; target: Vec }[]) { net.move(this.s.network, this.tx.changes, targets) }
   /** One-time snap of `moving` onto `target`; no lasting relation (bowen 1791424844). */
-  mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.s.network, target).position }]) }
+  mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.view().network, target).position }]) }
   moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
   // Each operation below runs on every item apply's paired plan lists (graph "Mirror link").
   split(line: Id, t: number, mid: Id, first: Id, second: Id) {
-    const ops = apply.pairedSplits(this.s.apply, line, t, mid, first, second)
-    this.topology(ch => { for (const o of ops) net.splitLine(this.s.network, ch, o.line, o.t, o.mid, o.first, o.second) })
+    const ops = apply.pairedSplits(this.s.apply, line, t, mid, first, second), read = this.view().network
+    this.topology(ch => { for (const o of ops) net.splitLine(this.s.network, ch, o.line, o.t, o.mid, o.first, o.second, read) })
   }
   deleteLine(id: Id) {
     const ids = apply.pairedLines(this.s.apply, this.s.network, id)
@@ -166,8 +167,8 @@ export class Editor {
     this.move(plan.settle.map(id => ({ id, target: net.point(this.s.network, id).position })))
   }
   unbind(point: Id, lines: Id[], newPoint: Id) {
-    const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint)
-    this.topology(ch => { for (const o of ops) net.unbind(this.s.network, ch, o.point, o.lines, o.newPoint) })
+    const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint), read = this.view().network
+    this.topology(ch => { for (const o of ops) net.unbind(this.s.network, ch, o.point, o.lines, o.newPoint, read) })
     // the unbind placed its new points; they go through the same position solve as any
     // other placed point (links, mirror), so a new point that is its own counterpart
     // lands on the axis (dot, review of 39b192a)
@@ -194,7 +195,8 @@ export class Editor {
 
   // links (cross-layer relation)
   link(a: Id, b: Id) {
-    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) this.move([links.link(this.s.links, this.s.network, x, y)])
+    const read = this.view().network
+    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) this.move([links.link(this.s.links, this.s.network, x, y, read)])
   }
   /** Removing a link is a constraint change at both points (dot 1791431139). */
   unlink(a: Id, b: Id) {
@@ -262,7 +264,7 @@ export class Editor {
   /** One geometric transform of what the selection expands to. */
   transform(m: editing.Affine) {
     const { state: s, changes } = this.tx
-    const plan = editing.transformPlan(s.selection, s.network, s.fills, m)
+    const plan = editing.transformPlan(s.selection, this.view().network, s.fills, m)
     net.move(s.network, changes, plan.moves)
     for (const h of plan.handles) net.aimHandle(s.network, changes, h.line, h.end, h.tip)
   }
@@ -270,7 +272,7 @@ export class Editor {
   rotate(centre: Vec, angle: number) { this.transform(editing.rotation(centre, angle)) }
   scale(centre: Vec, sx: number, sy: number) { this.transform(editing.scaling(centre, sx, sy)) }
   /** Flip in place about the selection's own centre (an edit; no copy, bowen 1791471111). */
-  flip() { this.transform(editing.scaling(editing.centre(this.s.selection, this.s.network, this.s.fills), -1, 1)) }
+  flip() { this.transform(editing.scaling(editing.centre(this.s.selection, this.view().network, this.s.fills), -1, 1)) }
   /** Delete the selected lines; without a selected line it is refused. */
   deleteSelection() {
     for (const id of editing.deletion(this.s.selection)) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
@@ -280,13 +282,13 @@ export class Editor {
   /** Mirror apply: reflect the source lines across the axis into different target lines (one step). */
   mirrorApply(source: Id[], target: Id[]) {
     const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
-    apply.mirrorApply(s.apply, s, changes, source, target)
+    apply.mirrorApply(s.apply, s, changes, source, target, this.view())
     this.afterApply(before)
   }
   /** Mirror link between whole first-level elements: a mirror apply, then the pairs are stored. */
   mirrorLink(sourceGroups: Id[], targetGroups: Id[]) {
     const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
-    apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups)
+    apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups, this.view())
     this.afterApply(before)
   }
   /** Remove the mirror link of these lines; geometry stays. */
@@ -308,6 +310,18 @@ export class Editor {
     const settled = { network: scratch.network, joins: scratch.joins, links: scratch.links }
     for (const id of fresh) appliedFrom.set(id, settled)
   }
+  /**
+   * The edit so far with positions and handles settled (links, mirror, aimed tips,
+   * mirrored handles, springs), on a scratch copy, for operations that read geometry
+   * (docs/edit-model.md §1.3). It changes no topology, so every id stays valid, and the
+   * draft and its intents are untouched: the reading operation writes back only its own
+   * changes (dot, review after 6aaaee6).
+   */
+  private view(): State {
+    const scratch = structuredClone(this.s), ch = structuredClone(this.tx.changes)
+    settlePositions(scratch, ch)
+    return scratch
+  }
   private loops(loop: Id): Id[] { return apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop) }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
@@ -327,7 +341,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -452,6 +466,14 @@ function commit(s: State, ch: net.Changes, published: State, appliedFrom: Readon
   settle(s, ch)
   const changed = locks.changed(published, s, ch, appliedFrom)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
+}
+
+/** Positions and handles only, for reading (no topology change): links and mirror, aimed tips, mirrored handles, springs. */
+function settlePositions(s: State, ch: net.Changes) {
+  net.setPositions(s.network, links.align(s.links, s.network, ch, { axis: apply.axis(s.apply), pairs: apply.pointPairs(s.apply, s.network) }))
+  net.resolveHandleTips(s.network, ch)
+  for (const h of apply.mirroredHandles(s.apply, s.network, ch)) net.moveHandle(s.network, ch, h.line, h.end, h.offset)
+  net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
 }
 
 /** The fixed pipeline up to (not including) the lock check: everything the edit's constraints settle. */

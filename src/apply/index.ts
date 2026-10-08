@@ -122,9 +122,10 @@ export interface Doc { network: net.NetworkState; joins: joins.JoinsState; links
  * so a point that corresponds to itself lands on the axis. Show/hide intervals are
  * not covered yet (no data model). Returns the correspondence used.
  */
-export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: readonly Id[], target: readonly Id[]): Match {
-  const n = d.network, ax = S(s).axis
-  const m = match(n, d.links, ax, source, target)
+export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: readonly Id[], target: readonly Id[], read: Doc = d): Match {
+  // geometry is read from `read` (the edit so far as settled, docs/edit-model.md); everything is written into `d`
+  const n = d.network, rn = read.network, ax = S(s).axis
+  const m = match(rn, read.links, ax, source, target)
   // A locked target refuses an apply (graph "Apply"), checked before anything is
   // written, so copying the source's unlocked state can never open it (dot, review of 070477e).
   const lockedLines = [...m.lines.values()].map(x => x.to).filter(id => net.line(n, id).state.locked)
@@ -132,13 +133,13 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
   const srcLines = [...m.lines.keys()], tgtLines = new Set([...m.lines.values()].map(x => x.to))
   const srcPoints = new Set(m.points.keys())
   // read everything from the source first, then write
-  const before = new Map([...m.points.keys(), ...m.points.values()].map(p => [p, net.point(n, p).position]))
+  const before = new Map([...m.points.keys(), ...m.points.values()].map(p => [p, net.point(rn, p).position]))
   const moves = [...m.points].map(([sp, tp]) => {
     const r = reflect(ax, before.get(sp)!)
     const target = srcPoints.has(tp) ? { x: (r.x + before.get(tp)!.x) / 2, y: (r.y + before.get(tp)!.y) / 2 } : r
     return { id: tp, target }
   })
-  const lineData = srcLines.map(id => ({ id, line: net.line(n, id), to: m.lines.get(id)! }))
+  const lineData = srcLines.map(id => ({ id, line: net.line(rn, id), to: m.lines.get(id)! }))
   const endData = [...m.points].map(([sp, tp]) => ({ tp, stroke: joins.endStroke(d.joins, sp) }))
   const joinRows = [...m.points].map(([sp, tp]) => ({
     tp,
@@ -205,13 +206,13 @@ export function groupLines(g: groups.GroupsState, ids: readonly Id[]): Id[] {
  * first-level elements and share none; a mirror apply, then the pairs are stored.
  * A line already in a mirror link cannot join a second one.
  */
-export function mirrorLink(s: ApplyState, d: Doc, g: groups.GroupsState, ch: net.Changes, sourceGroups: readonly Id[], targetGroups: readonly Id[]) {
+export function mirrorLink(s: ApplyState, d: Doc, g: groups.GroupsState, ch: net.Changes, sourceGroups: readonly Id[], targetGroups: readonly Id[], read: Doc = d) {
   if (sourceGroups.some(id => targetGroups.includes(id))) throw new Error('Mirror link: source and target must be different elements')
   const src = groupLines(g, sourceGroups), tgt = groupLines(g, targetGroups)
   const linked = new Set(S(s).pairs.flatMap(p => [p.a, p.b]))
   const already = [...src, ...tgt].filter(id => linked.has(id))
   if (already.length) throw new Error(`Mirror link: already mirror-linked (${already.join(', ')})`)
-  const m = mirrorApply(s, d, ch, src, tgt)
+  const m = mirrorApply(s, d, ch, src, tgt, read)
   for (const [a, { to, reversed }] of m.lines) S(s).pairs.push(a < to ? { a, b: to, reversed } : { a: to, b: a, reversed })
   sortPairs(s)
 }

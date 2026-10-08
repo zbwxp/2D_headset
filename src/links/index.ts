@@ -23,8 +23,9 @@ export const partners = (l: LinksState, point: Id): Id[] =>
   S(l).pairs.flatMap(p => (p.a === point ? [p.b] : p.b === point ? [p.a] : []))
 
 /** Create a link (a clicked first). Returns the move that puts b on a. */
-export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id): { id: Id; target: { x: number; y: number } } {
-  const pa = net.point(n, a), pb = net.point(n, b)
+/** `read`: where a's position is read from (the edit so far as settled, docs/edit-model.md). */
+export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id, read: net.NetworkState = n): { id: Id; target: { x: number; y: number } } {
+  const pa = net.point(read, a), pb = net.point(n, b)
   if (a === b) throw new Error('A link needs two points')
   if (pa.layer === pb.layer) throw new Error('Endpoint links are cross-layer only; bind within a layer')
   if (partners(l, a).includes(b)) throw new Error('Already linked')

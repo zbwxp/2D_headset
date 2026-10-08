@@ -509,14 +509,15 @@ export interface CopyMap { points: Map<Id, Id>; lines: Map<Id, Id> }
  * Copy lines (with their points, handles, state and stroke) into `layer`, using
  * `idOf` for every new point and line id.
  */
-export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id): CopyMap {
+/** `read`: where positions and handles are copied from (settled, docs/edit-model.md). */
+export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id, read: NetworkState = n): CopyMap {
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
   const map: CopyMap = { points: new Map(), lines: new Map() }
   for (const id of lineIds) {
-    const l = rawLine(n, id)
+    const l = rawLine(read, id)
     for (const p of [l.a, l.b]) if (!map.points.has(p)) {
       const np = idOf(p)
-      addPoint(n, np, layer, rawPoint(n, p).position)
+      addPoint(n, np, layer, rawPoint(read, p).position)
       map.points.set(p, np)
     }
     const nl = idOf(id)
@@ -623,13 +624,14 @@ export function setHandles(n: NetworkState, updates: { line: Id; end: End; offse
 }
 
 /** Split / add point: one line becomes two lines meeting at a new point. */
-export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, mid: Id, first: Id, second: Id) {
+/** `read`: where the curve is read from (the edit so far as settled, docs/edit-model.md); written into `n`. */
+export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, mid: Id, first: Id, second: Id, read: NetworkState = n) {
   if (!(t > 0 && t < 1)) throw new Error('Split parameter must be inside the line')
   if (first === second) throw new Error('The two pieces need different ids')
   const l = rawLine(n, lineId)
   claimLine(n, first)
   claimLine(n, second)
-  const [c1, c2] = split(curve(n, lineId), t)
+  const [c1, c2] = split(curve(read, lineId), t)
   addPoint(n, mid, rawPoint(n, l.a).layer, c1[3])
   const all = S(n).lines
   all.splice(all.indexOf(l), 1,
@@ -684,11 +686,12 @@ export function removeIsolated(n: NetworkState, ch: Changes) {
 }
 
 /** Unbind: the given lines leave `pointId` for a new point at the same position. */
-export function unbind(n: NetworkState, ch: Changes, pointId: Id, lineIds: Id[], newPoint: Id) {
-  const p = rawPoint(n, pointId)
+/** `read`: where the point's position and the lines' handles are read from (settled, docs/edit-model.md). */
+export function unbind(n: NetworkState, ch: Changes, pointId: Id, lineIds: Id[], newPoint: Id, read: NetworkState = n) {
+  const p = rawPoint(n, pointId), at0 = rawPoint(read, pointId).position
   const at = new Set(linesAt(n, pointId).map(e => e.line.id))
   if (!lineIds.length || lineIds.some(id => !at.has(id))) throw new Error(`Unbind: every line must end at ${pointId}`)
-  addPoint(n, newPoint, p.layer, p.position)
+  addPoint(n, newPoint, p.layer, at0)
   for (const id of lineIds) {
     const l = rawLine(n, id)
     if (l.a === pointId) l.a = newPoint
@@ -696,10 +699,10 @@ export function unbind(n: NetworkState, ch: Changes, pointId: Id, lineIds: Id[],
   }
   // Offset the split-off point so the two never coincide again (bowen 1791436858):
   // a short fixed distance back along the first moved line (a filled-in default).
-  const first = rawLine(n, lineIds[0]!), atA = first.a === newPoint
-  const other = rawPoint(n, atA ? first.b : first.a).position
-  const toward = length(atA ? first.ha : first.hb) > 1e-12 ? (atA ? first.ha : first.hb) : sub(other, p.position)
+  const first = rawLine(n, lineIds[0]!), atA = first.a === newPoint, seen = rawLine(read, lineIds[0]!)
+  const other = rawPoint(read, atA ? first.b : first.a).position
+  const toward = length(atA ? seen.ha : seen.hb) > 1e-12 ? (atA ? seen.ha : seen.hb) : sub(other, at0)
   const dir = length(toward) > 1e-12 ? scale(toward, 1 / length(toward)) : { x: 1, y: 0 }
-  rawPoint(n, newPoint).position = add(p.position, scale(dir, UNBIND_OFFSET))
+  rawPoint(n, newPoint).position = add(at0, scale(dir, UNBIND_OFFSET))
   ch.unbound.push({ point: pointId, newPoint, lines: [...lineIds] })
 }
