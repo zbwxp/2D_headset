@@ -10,7 +10,8 @@
 // - at each end, the end stroke that is actually drawn: the point's end stroke if
 //   the end is free (no other line, no link), nothing if it is shared. The
 //   free/shared flag itself is not compared;
-// - at each end point, the point's joins and the arcs drawn there. A join is an
+// - at each end point, the point's joins (same-point joins and joins across a link,
+//   dot 1791460421) and the arcs drawn there. A join is an
 //   attribute of the point and the point belongs to the locked line, so a locked
 //   line locks them too (bowen 1791459836). Binding another line onto the point
 //   adds no join and changes none, so it stays allowed.
@@ -46,7 +47,7 @@ function contents(v: View, ids: Set<Id>): Map<Id, Content> {
     const at = (x: { point: Id }) => x.point === l.a || x.point === l.b
     out.set(id, {
       curve: drawn.lines.get(id)!, stroke: l.stroke, ends: [drawnEnd(l.a), drawnEnd(l.b)],
-      joins: JSON.stringify(joins.rows(v.joins).filter(at)),
+      joins: JSON.stringify([joins.rows(v.joins).filter(at), links.joins(v.links).filter(x => at({ point: x.a }) || at({ point: x.b }))]),
       arcs: drawn.arcs.filter(at).map(a => ({ key: a.key, curve: a.curve })),
     })
   }

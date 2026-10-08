@@ -302,6 +302,17 @@ describe('line width and locks', () => {
     d.edit(e => e.join('c', 'bc', 'ca', { mode: 'cusp' }))
   })
 
+  it('29d. joins across a link at a locked line’s end are protected the same way (dot 1791460421)', () => {
+    const d = doc('A', 'B'); triangle(d, 'A'); triangle(d, 'B', 'q', P(20))
+    d.edit(e => e.link('a', 'qa'))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    expect(() => d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))).toThrow(/Locked/)
+    d.edit(e => e.lineState('ab', { locked: false }))
+    d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    expect(() => d.edit(e => e.removeLinkJoin('a', 'qa', 'ab', 'qab'))).toThrow(/Locked/)
+  })
+
   it('29a. an arc join that reshapes a locked line is refused', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
