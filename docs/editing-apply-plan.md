@@ -1,5 +1,7 @@
 # Editing and apply: plan and acceptance list (written before code)
 
+**Status:** Phase E (editing stage 1) at `cf894c6`, review fixes `0781e8d`, `a9cf86e`; lock rule `64f8973`; Phase A (apply) implemented with tests `test/apply.test.ts` (A1–A15).
+
 **Spec:** the Editing and Mirror tables of the graph in headset-design `docs/design/review/2026-10-07-architecture-walkthrough.md` (as of `0f6dae6`, reviewed by dot 1791471687). bowen 1791472976: two separate modules.
 
 **Order:**
@@ -60,7 +62,7 @@ Added after dot's review of 070477e:
 
 | Operation | Rule | Source |
 |---|---|---|
-| axis | A fixed document setting: `Core.newDocument({ axis })`, default 0. It is not an undoable edit, and it cannot move once mirror links exist (dot, review of 070477e). | "Symmetry axis" |
+| axis | A fixed document setting: `new Core({ axis })` / `Core.newDocument({ axis })`, default 0. There is no operation that moves it (dot, review of 070477e). | "Symmetry axis" |
 | `mirrorApply(source lines, target lines)` | The two sets must not overlap. Find the correspondence (below), then write into the target: reflected positions (as acted-on targets) and handles (held, orientation swapped on reversed pairs); stroke and element state; the end strokes of corresponding points; the join rows among corresponding lines at corresponding points; the fill colour and state of corresponding loops. The target keeps its ids, layer and outside links. A point in both sets receives both intents and they are averaged, so a self-corresponding point lands on the axis. | "Mirror apply", "Apply" |
 | correspondence | A bijection between source and target lines, each with an orientation, that preserves end-point sharing and endpoint links inside the selection. Each assignment is scored by the squared distance between the reflected source controls and the target controls, and the lowest score wins. Ties keep the first in a stable search order. No bijection gives `topology-mismatch`. | "Mirror correspondence" |
 | `mirrorLink(source groups, target groups)` | Each side is one or more whole first-level elements, and the sides are disjoint. The operation is a mirror apply followed by storing the pairs. | "Mirror link" |

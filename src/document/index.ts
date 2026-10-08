@@ -9,6 +9,7 @@ import * as fills from '../fills'
 import * as derived from '../derived'
 import * as locks from '../locks'
 import * as editing from '../editing'
+import * as apply from '../apply'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -21,10 +22,13 @@ interface State {
   fills: fills.FillsState
   /** A pre-edit, part of the state so it is undoable (bowen 1791465011). */
   selection: editing.SelectionState
+  /** The symmetry axis and the mirror-link pairs. */
+  apply: apply.ApplyState
 }
 
-const createState = (): State => ({
+const createState = (axis = 0): State => ({
   network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
+  apply: apply.create(axis),
 })
 
 export interface Snapshot {
@@ -40,6 +44,9 @@ export interface Snapshot {
   loops: (fills.LoopView & { group: Id })[]
   fillOrder: Id[]
   selection: editing.Unit[]
+  /** The document's vertical symmetry axis, x = axis. */
+  axis: number
+  mirrorPairs: apply.Pair[]
 }
 export type Geometry = derived.Geometry
 
@@ -105,13 +112,16 @@ export class Editor {
     const { state: s } = this.tx
     if (!net.hasLayer(s.network, id)) throw new Error(`No layer ${id}`)
     fills.clearUnlocked(s.fills, fills.inLayer(s.fills, s.network, id))
-    for (const l of this.linesIn(id)) if (!l.state.locked) this.deleteLine(l.id)
+    // a paired delete may already have removed a later line of this list
+    for (const l of this.linesIn(id)) if (!l.state.locked && net.hasLine(s.network, l.id)) this.deleteLine(l.id)
     this.topology(ch => { net.removeIsolated(s.network, ch); net.removeLayerIfEmpty(s.network, ch, id) })
   }
 
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
-  lineState(line: Id, state: { visible?: boolean; locked?: boolean }) { net.setLineState(this.s.network, line, state) }
-  fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { fills.setState(this.s.fills, loop, state) }
+  lineState(line: Id, state: { visible?: boolean; locked?: boolean }) {
+    for (const id of this.withLine(line)) net.setLineState(this.s.network, id, state)
+  }
+  fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { for (const id of this.withLoop(loop)) fills.setState(this.s.fills, id, state) }
   /** A batch over the group's own lines; its fills keep their own switch (bowen 1791433646). */
   groupState(group: Id, state: { visible?: boolean; locked?: boolean }) {
     for (const id of groups.get(this.s.groups, group).lines) this.lineState(id, state)
@@ -133,37 +143,83 @@ export class Editor {
   /** One-time snap of `moving` onto `target`; no lasting relation (bowen 1791424844). */
   mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.s.network, target).position }]) }
   moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
-  split(line: Id, t: number, mid: Id, first: Id, second: Id) { this.topology(ch => net.splitLine(this.s.network, ch, line, t, mid, first, second)) }
-  deleteLine(id: Id) { this.topology(ch => net.deleteLine(this.s.network, ch, id)) }
-  bind(keep: Id, remove: Id) { this.topology(ch => net.bind(this.s.network, ch, keep, remove)) }
-  unbind(point: Id, lines: Id[], newPoint: Id) { this.topology(ch => net.unbind(this.s.network, ch, point, lines, newPoint)) }
+  /** Under a mirror link the counterpart is split too, at t (or 1 − t on a reversed pair), with ids + ′. */
+  split(line: Id, t: number, mid: Id, first: Id, second: Id) {
+    const c = apply.counterpartLine(this.s.apply, line)
+    this.topology(ch => {
+      net.splitLine(this.s.network, ch, line, t, mid, first, second)
+      if (!c) return
+      if (c.reversed) net.splitLine(this.s.network, ch, c.id, 1 - t, mid + PRIME, second + PRIME, first + PRIME)
+      else net.splitLine(this.s.network, ch, c.id, t, mid + PRIME, first + PRIME, second + PRIME)
+    })
+  }
+  /** Under a mirror link the counterpart is deleted too (paired execution). */
+  deleteLine(id: Id) {
+    const ids = this.withLine(id)
+    this.topology(ch => { for (const x of ids) net.deleteLine(this.s.network, ch, x) })
+  }
+  bind(keep: Id, remove: Id) {
+    const pair = this.pointPair(keep, remove)
+    this.topology(ch => {
+      net.bind(this.s.network, ch, keep, remove)
+      if (pair) net.bind(this.s.network, ch, pair[0], pair[1])
+    })
+  }
+  /** Under a mirror link the counterpart lines leave the counterpart point too, to a point with id + ′. */
+  unbind(point: Id, lines: Id[], newPoint: Id) {
+    const cp = apply.counterpartPoint(this.s.apply, this.s.network, point)
+    const cl = lines.flatMap(l => { const c = apply.counterpartLine(this.s.apply, l); return c ? [c.id] : [] })
+    this.topology(ch => {
+      net.unbind(this.s.network, ch, point, lines, newPoint)
+      if (cp && cp !== point && cl.length) net.unbind(this.s.network, ch, cp, cl, newPoint + PRIME)
+    })
+  }
 
   // joins and end strokes (point attributes)
   /** Set a join between two lines at a point; l1 is clicked first. For smooth, l2 turns to l1 (bowen 1791428722). */
+  /** Under a mirror link a join among paired lines is set on the counterpart too (graph "Mirror link"). */
   join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) {
     const { state, changes } = this.tx
-    joins.setJoin(state.joins, state.network, point, l1, l2, opts)
-    net.touch(changes, point)
-    if (opts.mode === 'smooth') net.hold(state.network, changes, l1, net.line(state.network, l1).a === point ? 'a' : 'b')
+    for (const [p, a, b] of this.joinPair(point, l1, l2)) {
+      joins.setJoin(state.joins, state.network, p, a, b, opts)
+      net.touch(changes, p)
+      if (opts.mode === 'smooth') net.hold(state.network, changes, a, net.line(state.network, a).a === p ? 'a' : 'b')
+    }
   }
-  removeJoin(point: Id, l1: Id, l2: Id) { joins.removeJoin(this.s.joins, point, l1, l2); net.touch(this.tx.changes, point) }
-  endStroke(point: Id, stroke: joins.EndStroke) { joins.setEndStroke(this.s.joins, this.s.network, point, stroke) }
+  removeJoin(point: Id, l1: Id, l2: Id) {
+    for (const [p, a, b] of this.joinPair(point, l1, l2)) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
+  }
+  endStroke(point: Id, stroke: joins.EndStroke) {
+    const cp = apply.counterpartPoint(this.s.apply, this.s.network, point)
+    for (const p of cp && cp !== point ? [point, cp] : [point]) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
+  }
 
   // links (cross-layer relation)
-  link(a: Id, b: Id) { this.move([links.link(this.s.links, this.s.network, a, b)]) }
+  link(a: Id, b: Id) {
+    const pair = this.pointPair(a, b)
+    this.move([links.link(this.s.links, this.s.network, a, b)])
+    if (pair) this.move([links.link(this.s.links, this.s.network, pair[0], pair[1])])
+  }
   /** Removing a link is a constraint change at both points (dot 1791431139). */
-  unlink(a: Id, b: Id) { links.unlink(this.s.links, a, b); net.touch(this.tx.changes, a); net.touch(this.tx.changes, b) }
+  unlink(a: Id, b: Id) {
+    const pair = this.pointPair(a, b)
+    for (const [x, y] of pair ? [[a, b], pair] : [[a, b]]) { links.unlink(this.s.links, x!, y!); net.touch(this.tx.changes, x!); net.touch(this.tx.changes, y!) }
+  }
   /** Join across a link: la ends at a (clicked first), lb at b. Smooth: lb turns to la. */
   linkJoin(a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }) {
     const { state, changes } = this.tx
-    const held = links.setJoin(state.links, state.network, a, b, la, lb, opts)
-    net.touch(changes, a); net.touch(changes, b)
-    net.hold(state.network, changes, held.line, held.end)
+    for (const [x, y, lx, ly] of this.linkJoinPair(a, b, la, lb)) {
+      const held = links.setJoin(state.links, state.network, x, y, lx, ly, opts)
+      net.touch(changes, x); net.touch(changes, y)
+      net.hold(state.network, changes, held.line, held.end)
+    }
   }
-  removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) { links.removeJoin(this.s.links, a, b, la, lb); net.touch(this.tx.changes, a); net.touch(this.tx.changes, b) }
+  removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) {
+    for (const [x, y, lx, ly] of this.linkJoinPair(a, b, la, lb)) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
+  }
 
   // stroke: stored on each line (bowen 1791434322)
-  lineStroke(line: Id, stroke: net.Stroke) { net.setLineStroke(this.s.network, line, stroke) }
+  lineStroke(line: Id, stroke: net.Stroke) { for (const id of this.withLine(line)) net.setLineStroke(this.s.network, id, stroke) }
   /** A group's width change is a batch over its unlocked lines (Q29 D). */
   stroke(group: Id, stroke: net.Stroke) {
     for (const id of groups.get(this.s.groups, group).lines) if (!net.line(this.s.network, id).state.locked) this.lineStroke(id, stroke)
@@ -187,9 +243,9 @@ export class Editor {
   }
 
   // fills (closed loops)
-  fill(loop: Id, color: string) { fills.fill(this.s.fills, this.s.network, loop, color) }
-  clearFill(loop: Id) { fills.clearFill(this.s.fills, loop) }
-  fillVisible(loop: Id, visible: boolean) { fills.setVisible(this.s.fills, loop, visible) }
+  fill(loop: Id, color: string) { for (const id of this.withLoop(loop)) fills.fill(this.s.fills, this.s.network, id, color) }
+  clearFill(loop: Id) { for (const id of this.withLoop(loop)) fills.clearFill(this.s.fills, id) }
+  fillVisible(loop: Id, visible: boolean) { this.fillState(loop, { visible }) }
   /** Move a fill to `index` among the fills of its own group. */
   reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, this.s.network, loop, index) }
 
@@ -225,6 +281,48 @@ export class Editor {
     for (const id of editing.deletion(this.s.selection)) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
   }
 
+  // apply (graph: Editing "Apply", Mirror table)
+  /** Mirror apply: reflect the source lines across the axis into different target lines (one step). */
+  mirrorApply(source: Id[], target: Id[]) { const { state: s, changes } = this.tx; apply.mirrorApply(s.apply, s, changes, source, target) }
+  /** Mirror link between whole first-level elements: a mirror apply, then the pairs are stored. */
+  mirrorLink(sourceGroups: Id[], targetGroups: Id[]) { const { state: s, changes } = this.tx; apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups) }
+  /** Remove the mirror link of these lines; geometry stays. */
+  unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
+
+  // paired execution (graph "Mirror link"): the counterparts an operation also acts on
+  private withLine(line: Id): Id[] {
+    const c = apply.counterpartLine(this.s.apply, line)
+    return c && net.hasLine(this.s.network, c.id) ? [line, c.id] : [line]
+  }
+  private withLoop(loop: Id): Id[] {
+    const n = this.s.network, views = fills.discover(this.s.fills, n), v = views.find(x => x.id === loop)
+    if (!v) return [loop]
+    const mapped = v.route.map(u => apply.counterpartLine(this.s.apply, u.line)?.id)
+    if (mapped.some(x => !x)) return [loop]
+    const key = JSON.stringify([...mapped].sort())
+    const other = views.find(x => JSON.stringify(x.route.map(u => u.line).sort()) === key)
+    return other && other.id !== loop ? [loop, other.id] : [loop]
+  }
+  /** The counterpart pair of a two-point operation; refused when only one point has a counterpart. */
+  private pointPair(a: Id, b: Id): [Id, Id] | undefined {
+    const n = this.s.network, ca = apply.counterpartPoint(this.s.apply, n, a), cb = apply.counterpartPoint(this.s.apply, n, b)
+    if (!ca && !cb) return undefined
+    if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
+    const same = (ca === a && cb === b) || (ca === b && cb === a)
+    return same ? undefined : [ca, cb]
+  }
+  /** A join across a link and, when every part has a counterpart, its mirrored one. */
+  private linkJoinPair(a: Id, b: Id, la: Id, lb: Id): [Id, Id, Id, Id][] {
+    const pair = this.pointPair(a, b), ca = apply.counterpartLine(this.s.apply, la), cb = apply.counterpartLine(this.s.apply, lb)
+    return pair && ca && cb ? [[a, b, la, lb], [pair[0], pair[1], ca.id, cb.id]] : [[a, b, la, lb]]
+  }
+  /** A join and, when every part has a counterpart, its mirrored join. */
+  private joinPair(point: Id, l1: Id, l2: Id): [Id, Id, Id][] {
+    const n = this.s.network
+    const cp = apply.counterpartPoint(this.s.apply, n, point), c1 = apply.counterpartLine(this.s.apply, l1), c2 = apply.counterpartLine(this.s.apply, l2)
+    return cp && c1 && c2 && cp !== point ? [[point, l1, l2], [cp, c1.id, c2.id]] : [[point, l1, l2]]
+  }
+
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
   cancel(): never {
     const tx = this.tx
@@ -242,7 +340,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'withLine', 'withLoop', 'pointPair', 'joinPair', 'linkJoinPair'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -257,8 +355,13 @@ for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   })
 }
 
+/** Suffix of the ids a paired operation gives the counterpart's new lines and points. */
+const PRIME = '\u2032'
+
 export class Core {
-  private state: State = createState()
+  private state: State
+  /** `axis`: the document's vertical symmetry axis, a fixed setting (graph "Symmetry axis"). */
+  constructor(options: { axis?: number } = {}) { this.state = createState(options.axis) }
   private past: State[] = []
   private future: State[] = []
   private editing = false
@@ -268,8 +371,9 @@ export class Core {
    * model, which may hold zero layers; this is the entry a "new document" uses.
    * The default layer is part of the starting state, not an undo step.
    */
-  static newDocument(layer: { id: Id; name: string } = { id: 'layer-1', name: 'Layer 1' }): Core {
-    const d = new Core()
+  static newDocument(options: { layer?: { id: Id; name: string }; axis?: number } = {}): Core {
+    const layer = options.layer ?? { id: 'layer-1', name: 'Layer 1' }
+    const d = new Core({ axis: options.axis })
     d.edit(e => e.layer(layer.id, layer.name))
     d.past = []
     return d
@@ -331,6 +435,8 @@ export class Core {
       loops: fills.discover(s.fills, n).map(l => ({ ...l, group: groupOfLine.get(l.route[0]!.line)! })),
       fillOrder: fills.order(s.fills),
       selection: editing.units(s.selection),
+      axis: apply.axis(s.apply),
+      mirrorPairs: apply.pairs(s.apply),
     })
   }
 
@@ -348,6 +454,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   links.update(state.links, state.network, ch)
   fills.update(state.fills, ch)
   groups.reconcile(state.groups, state.network, ch)
+  apply.update(state.apply, ch)
   net.followReplacements(changes, ch)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
@@ -363,12 +470,14 @@ function commit(s: State, ch: net.Changes, published: State) {
   // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
   // removes at least one point, so it ends.
   for (;;) {
-    net.setPositions(s.network, links.align(s.links, s.network, ch))
+    net.setPositions(s.network, links.align(s.links, s.network, ch, { axis: apply.axis(s.apply), pairs: apply.pointPairs(s.apply, s.network) }))
     const pairs = net.overlaps(s.network, ch)
     if (!pairs.length) break
     for (const p of pairs) applyTopology(s, ch, c => net.bind(s.network, c, p.keep, p.remove))
     applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   }
+  // mirror-linked handles: a held handle gives its counterpart the reflected handle, held too
+  for (const h of apply.mirroredHandles(s.apply, s.network, ch)) net.moveHandle(s.network, ch, h.line, h.end, h.offset)
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())

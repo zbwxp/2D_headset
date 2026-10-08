@@ -60,6 +60,11 @@ export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stro
   S(j).endStrokes.push({ point, stroke: Object.fromEntries(Object.keys(stroke).sort().map(k => [k, stroke[k]])) as EndStroke })
 }
 
+/** Remove a point's end stroke (it then has none). */
+export function clearEndStroke(j: JoinsState, point: Id) {
+  S(j).endStrokes = S(j).endStrokes.filter(e => e.point !== point)
+}
+
 /** Copy the joins and end strokes of copied points. */
 export function copy(j: JoinsState, map: net.CopyMap) {
   for (const r of [...S(j).rows]) {

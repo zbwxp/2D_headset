@@ -23,12 +23,13 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
 | `locks` | nothing (computed) | A lock protects what a line owns alone, wherever the change comes from: its shape (end positions, handles), its stroke, and the end stroke at a free end. Joins and arcs at its end points are shared with its neighbours, so they are not under its lock. What goes with a deleted unlocked element is allowed. Lines made in this edit are not compared |
 | `editing` | the selection (part of the state, so undoable) | Selectable units (point, handle, line, fill; V = whole continuous curve). A geometric transform acts on what the selection expands to (a line = its two end points and two handles; a shared point once): points go to M·p, an expanded handle's tip goes to M·tip, every other handle keeps its offset. Flip = reflection about the selection's own centre. Delete removes selected lines only |
+| `apply` | the document's symmetry axis (fixed setting), mirror-link line pairs | Mirror apply: the correspondence (same topology, shared points and in-selection links as separate relations, least total change, stable tie-break), then reflected geometry and copied stroke, state, end strokes, joins, fill colour and state written into the target (ids kept; a locked target refuses). Mirror link: whole first-level elements on each side, disjoint; apply + stored pairs; pairs follow splits and end with deletes; counterparts for paired execution; mirrored held handles |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
 
 ```
-geometry ← network ← groups / joins / links / fills ← derived / locks / editing ← document
+geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply ← document
 ```
 
 ## Encapsulation (dot 1791427188)
@@ -58,7 +59,8 @@ geometry ← network ← groups / joins / links / fills ← derived / locks / ed
 1. Each operation is applied to a private copy of the state. The network reports what changed (lines replaced by a split, collapsed or deleted lines, merged or deleted points, directly moved points, held handles), and each attribute module updates its own references.
 2. Before commit, in a fixed order:
    0. `network.removeIsolated` (and the reference updates it triggers)
-   1. **Position loop**, until no two endpoints in one layer coincide: `links.align`, then bind each `network.overlaps` pair and remove isolated points (dot, after `f9c4109`)
+   1. **Position loop**, until no two endpoints in one layer coincide: `links.align` (endpoint links and mirror point pairs solved in one averaging step), then bind each `network.overlaps` pair and remove isolated points (dot, after `f9c4109`)
+   1b. `apply.mirroredHandles`: a held handle on a mirror-linked line gives its counterpart the reflected handle
    2. `joins.solve`
    3. `fills.validate`
    4. `groups.reconcile`
@@ -121,6 +123,11 @@ These are our own choices, not derived from bowen's principles. They wait for hi
     - a new layer is made by `layer(id, name?, above?)`; there is no separate `newLayer`;
     - the lock check protects a line locked both before and after an edit (content) and a line locked before it (existence); a lock switched within one edit does not protect in that edit, so a mirror apply can copy a lock onto the target it reshapes;
     - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.
+16. **Apply** (docs/editing-apply-plan.md):
+    - the counterpart's new ids in a paired split or unbind are the caller's ids + `′`;
+    - error codes `topology-mismatch`, `mirror-no-counterpart`, `select-lines-to-delete`, and "Locked target" for an apply;
+    - not decided, current code: a new line drawn onto a paired point is not paired; a join between a paired and an unpaired line is set on one side only;
+    - the correspondence search stops at `MATCH_STEP_LIMIT` (200 000 steps), an implementation bound.
 15. **Editing** (docs/editing-apply-plan.md):
     - a selected fill is not geometry: transforms and delete ignore it (what they should do with fills is not decided);
     - a selected line that is split leaves the selection (its pieces are not selected).

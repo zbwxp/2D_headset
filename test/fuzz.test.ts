@@ -37,6 +37,17 @@ function chooseOp(s: Snapshot, r: () => number, next: () => string): Op {
     if (k < 0.93) return { name: `deleteLayer ${layer}`, run: e => e.deleteLayer(layer) }
     return { name: `reorderLayer ${layer}`, run: e => e.reorderLayer(layer, Math.floor(r() * 3)) }
   }
+  // apply (docs/editing-apply-plan.md, Phase A)
+  if (r() < 0.06 && lines.length >= 2) {
+    const k = r(), ids = lines.map(l => l.id)
+    if (k < 0.4) {
+      const size = 1 + Math.floor(r() * Math.min(3, Math.floor(ids.length / 2)))
+      const shuffled = [...ids].sort(() => r() - 0.5), src = shuffled.slice(0, size), tgt = shuffled.slice(size, 2 * size)
+      return { name: `mirrorApply ${size}`, run: e => e.mirrorApply(src, tgt) }
+    }
+    if (k < 0.8) { const a = pick(s.groups), b = pick(s.groups); return { name: `mirrorLink ${a?.id} ${b?.id}`, run: e => e.mirrorLink([a?.id ?? '?'], [b?.id ?? '?']) } }
+    const l = pick(ids)!; return { name: `unmirror ${l}`, run: e => e.unmirror([l]) }
+  }
   // editing (docs/editing-apply-plan.md, Phase E)
   if (r() < 0.12) {
     const k = r()
@@ -159,6 +170,10 @@ function invariants(d: Core): string[] {
     if (first && loop.layer !== pointById.get(first.a)?.layer) bad.push(`loop ${loop.id} reports layer ${loop.layer}`)
   }
   for (const p of s.points) if (!s.layers.some(l => l.id === p.layer)) bad.push(`point ${p.id} in a missing layer`)
+  // mirror pairs reference existing lines, and a line is in at most one pair
+  const paired = s.mirrorPairs.flatMap(p => [p.a, p.b])
+  for (const id of paired) if (!lineById.has(id)) bad.push(`mirror pair holds a missing line ${id}`)
+  if (new Set(paired).size !== paired.length) bad.push('a line is in two mirror pairs')
   // the selection never points at something that no longer exists
   for (const u of s.selection) {
     const ok = u.kind === 'point' ? pointById.has(u.id) : u.kind === 'fill' ? s.fillOrder.includes(u.id) : lineById.has(u.kind === 'line' ? u.id : u.line)

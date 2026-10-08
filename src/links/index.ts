@@ -98,23 +98,47 @@ export function update(l: LinksState, n: net.NetworkState, ch: net.Changes) {
   S(l).joins = S(l).joins.filter(x => S(l).pairs.some(p => samePair(p, x.a, x.b)) && endAt(n, x.lines[0], x.a) && endAt(n, x.lines[1], x.b))
 }
 
-/** Positions that make every link group coincide. */
-export function align(l: LinksState, n: net.NetworkState, ch: net.Changes): { id: Id; position: { x: number; y: number } }[] {
-  const parent = new Map<Id, Id>()
-  const find = (x: Id): Id => { while (parent.get(x)! !== x) x = parent.get(x)!; return x }
-  for (const p of S(l).pairs) for (const x of [p.a, p.b]) if (!parent.has(x)) parent.set(x, x)
-  for (const p of S(l).pairs) { const ra = find(p.a), rb = find(p.b); if (ra !== rb) parent.set(rb, ra) }
-  const groups = new Map<Id, Id[]>()
-  for (const x of parent.keys()) { const r = find(x); groups.set(r, [...(groups.get(r) ?? []), x]) }
+/**
+ * Positions after link alignment. Endpoint links keep points coincident; mirror
+ * point pairs (from the apply module, optional) keep points reflected across the
+ * vertical axis x = `mirror.axis`. Both are solved in one step (dot 1791470434, the
+ * position part only): a group joins points through links (same frame) and mirror
+ * pairs (reflected frame); the targets of the points this edit acted on are taken
+ * into the group's frame and averaged, and every member gets the result in its own
+ * frame. A group that needs a point to equal its own reflection is placed on the
+ * axis. Groups with no acted-on member are left as they are.
+ */
+export function align(
+  l: LinksState, n: net.NetworkState, ch: net.Changes,
+  mirror?: { axis: number; pairs: { a: Id; b: Id }[] },
+): { id: Id; position: { x: number; y: number } }[] {
+  type Edge = { a: Id; b: Id; flip: boolean }
+  const edges: Edge[] = [...S(l).pairs.map(p => ({ a: p.a, b: p.b, flip: false })), ...(mirror?.pairs ?? []).map(p => ({ a: p.a, b: p.b, flip: true }))]
+  const next = new Map<Id, { to: Id; flip: boolean }[]>()
+  for (const e of edges) for (const [x, y] of [[e.a, e.b], [e.b, e.a]] as const) next.set(x, [...(next.get(x) ?? []), { to: y, flip: e.flip }])
+  const reflect = (p: { x: number; y: number }) => (mirror ? { x: 2 * mirror.axis - p.x, y: p.y } : p)
+  const parity = new Map<Id, boolean>()
   const out: { id: Id; position: { x: number; y: number } }[] = []
-  for (const members of groups.values()) {
-    const acted = ch.targets.filter(t => members.includes(t.point))
-    if (!acted.length) continue
-    const position = {
-      x: acted.reduce((s, t) => s + t.target.x, 0) / acted.length,
-      y: acted.reduce((s, t) => s + t.target.y, 0) / acted.length,
+  for (const start of [...next.keys()].sort()) {
+    if (parity.has(start)) continue
+    // walk the group; parity = whether a member is in the reflected frame of `start`
+    const members: Id[] = [], stack = [start]
+    let onAxis = false
+    parity.set(start, false)
+    while (stack.length) {
+      const x = stack.pop()!
+      members.push(x)
+      for (const { to, flip } of next.get(x)!) {
+        const want = parity.get(x)! !== flip
+        if (!parity.has(to)) { parity.set(to, want); stack.push(to) } else if (parity.get(to) !== want) onAxis = true
+      }
     }
-    for (const id of members) out.push({ id, position })
+    const acted = ch.targets.filter(t => parity.has(t.point) && members.includes(t.point))
+    if (!acted.length) continue
+    const inFrame = acted.map(t => (parity.get(t.point) ? reflect(t.target) : t.target))
+    const avg = { x: inFrame.reduce((s, p) => s + p.x, 0) / inFrame.length, y: inFrame.reduce((s, p) => s + p.y, 0) / inFrame.length }
+    const position = onAxis && mirror ? { x: mirror.axis, y: avg.y } : avg
+    for (const id of members) out.push({ id, position: parity.get(id) ? reflect(position) : position })
   }
   return out
 }
