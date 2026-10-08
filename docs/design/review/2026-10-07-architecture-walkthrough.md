@@ -2915,3 +2915,36 @@ Waiting for bowen:
 - arc join's place (it generates geometry);
 - ~~merge position as a one-time snap at the point level~~ **decided (bowen 1791424844):** "合并位置是一次编辑行为 端点联动才是修改了属性". Merge position is a one-time edit at the point level and creates no relation; a link modifies attributes;
 - deformation, mirror editing and show/hide intervals in the next layer.
+
+## Q27: Cusp and arc joins in the graph; fill follows the arc
+
+**bowen** 1791425164:
+> 尖点接笔我记得旧版设定可以完美嵌入现在的图谱里面吧？ 圆弧也同理 是一种会产生几何的接笔，唯一要注意的是圆弧接笔处的填充要跟随圆弧而不是原本的端点位置。（这里你们查一下知识图谱是否需要添加新原则） 3 合并位置 变形 镜像编辑都属于"编辑"这个层级 之后再说。显隐区间会属于连续曲线 这个之后再回来。
+
+### Claude (1791425203)
+
+**1. Cusp and arc fit directly.**
+- v103's join record is "a pair of line ends + a mode": `TangentJoin {a, b, mode: 'SMOOTH'|'CUSP'|'ARC', radius?}` (`7205381:src/domain/drawing/model.ts:68`). 仅绑定 means no record.
+- In graph terms, the point's join attribute is a table with one row per pair:
+  - **no record:** 仅绑定, drawn with a smooth (round) junction;
+  - **smooth:** spring;
+  - **cusp:** independent handles, drawn as a sharp outline;
+  - **arc:** generates arc geometry (with a radius).
+- **Graph row to amend:** "a corner means no record" (Claude's Q23 step 4) is inaccurate. It should read "仅绑定 = no record; cusp is a record whose effect is a sharp outline."
+
+**2. Fill following the arc needs a new principle.**
+- The graph only says "a loop references its boundary segments"; it does not say where the fill **shape** comes from.
+- **Proposed principle:** whether a loop exists depends only on shared points (topology). The fill shape uses the geometry derived after joins are applied, the same geometry the stroke is drawn with.
+- **Derived:**
+  - **Loop uses the arc's pair:** where a loop passes a point with an arc join and uses exactly that pair of lines, the fill boundary follows the arc, not the original endpoint.
+  - **Loop uses another pair** (at a fork): that loop stays a sharp corner through the original point.
+  - **v103 already does this:** fill boundaries borrow the arc geometry (`resolvedFillGeometry.ts:13-60`, Q16). But it uses a fill-specific borrowing path, the coupling in Q16 attack E. Under the principle, stroke and fill **read the same derived geometry** and do not compute separately.
+  - **Q23 step 8 narrowed:** "loops and fills are unaffected by joins" becomes "**whether a loop exists** is unaffected by joins".
+
+**3. Recorded:**
+- merge position, deformation and mirror editing belong to the "editing" level, later;
+- show/hide intervals belong to the continuous curve, later.
+
+### Status
+
+Waiting for dot's independent review. Graph changes (the row amendment and the new principle) wait for bowen's "写".
