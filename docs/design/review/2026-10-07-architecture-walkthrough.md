@@ -2891,6 +2891,23 @@ These are operation ownership, not one button per item.
     - cusp is a stroke attribute of the point;
     - arc is a geometry-generating join on the point, to be decided separately.
 
+### One-time edits vs persistent attributes (dot 1791424906, Claude 1791424925)
+
+dot: the table must mark one-time edit actions and persistent attributes separately.
+
+**One-time edits** change geometry or connectivity once, then are done.
+- Point: drag point, bind, unbind, merge position.
+- Single curve: pen, drag handle, split / add point, delete.
+- General: select, move, copy, undo.
+
+**Persistent attributes** are stored and keep acting afterwards, or decide display.
+- Point: join (spring smooth), end stroke.
+- Continuous curve: line stroke (width, profile), layer order.
+- Closed curve: fill (present, style, visibility), fill order.
+- Cross-layer: endpoint link, join across a link.
+
+**Only spring smooth and endpoint link actively change geometry after each operation.** The other attributes are only stored or only affect display. These two are where stress tests and acceptance cases are needed.
+
 ### Status
 
 Waiting for bowen:
