@@ -181,18 +181,22 @@ describe('graph rules added by Claude', () => {
     expect(() => d.edit(e => e.link('a', 'c'))).toThrow()
   })
 
-  it('deleting a line removes points left with no line; a link ends with its point and never re-links', () => {
+  it('delete removes the line only; a link ends when binding removes its point, and never re-links', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A'); e.layer('B')
       e.point('a', 'A', P(0)); e.point('b', 'A', P(10)); e.line('ab', 'a', 'b')
+      e.point('c', 'A', P(20)); e.line('bc', 'b', 'c')
       e.point('q', 'B', P(0)); e.link('q', 'b')
     })
-    expect(d.snapshot().links).toHaveLength(1)
     d.edit(e => e.deleteLine('ab'))
-    expect(d.snapshot().points.map(p => p.id)).toEqual(['q'])
+    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['a', 'b', 'c', 'q']) // endpoints stay
+    expect(d.snapshot().links).toHaveLength(1)
+    d.edit(e => e.bind('c', 'b')) // binding removes b
+    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['a', 'c', 'q'])
     expect(d.snapshot().links).toHaveLength(0)
-    expect(d.snapshot().points[0]!.links).toEqual([])
+    expect(d.snapshot().points.find(p => p.id === 'q')!.links).toEqual([])
+    expect(d.snapshot().points.find(p => p.id === 'c')!.links).toEqual([])
   })
 
   it('binding drops the removed point’s joins; the kept point’s joins stay', () => {

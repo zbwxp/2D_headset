@@ -211,20 +211,11 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second] })
 }
 
-function dropPointIfEmpty(n: NetworkState, ch: Changes, id: Id) {
-  if (!linesAt(n, id).length && hasPoint(n, id)) {
-    n.points = n.points.filter(p => p.id !== id)
-    ch.deletedPoints.push(id)
-  }
-}
-
-/** Delete removes lines only. A point left with no line disappears with it. */
+/** Delete removes lines only; endpoints are removed only by binding (graph, bowen 1791392558). */
 export function deleteLine(n: NetworkState, ch: Changes, id: Id) {
-  const l = line(n, id)
+  line(n, id)
   n.lines = n.lines.filter(x => x.id !== id)
   ch.deletedLines.push(id)
-  dropPointIfEmpty(n, ch, l.a)
-  dropPointIfEmpty(n, ch, l.b)
 }
 
 /**
@@ -249,7 +240,6 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   ch.collapsedLines.push(...collapsed)
   ch.deletedPoints.push(remove)
   ch.merged.push({ keep, remove })
-  if (collapsed.length) dropPointIfEmpty(n, ch, keep)
 }
 
 /** Unbind: the given lines leave `pointId` for a new point at the same position. */
@@ -264,5 +254,4 @@ export function unbind(n: NetworkState, ch: Changes, pointId: Id, lines: Id[], n
     else l.b = newPoint
   }
   ch.unbound.push({ point: pointId, newPoint, lines: [...lines] })
-  dropPointIfEmpty(n, ch, pointId)
 }

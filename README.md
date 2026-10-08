@@ -15,7 +15,7 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | Module | Owns (data) | Rules it owns |
 |---|---|---|
 | `geometry` | nothing | Cubic Bézier maths (wraps `bezier-js`), arc fillet, flattening, area, point in polygon |
-| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. Queries: lines at a point, connected groups, simple loops |
+| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete (lines only), **bind** (the only way a point is removed), unbind. Queries: lines at a point, connected groups, simple loops |
 | `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
 | `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
 | `links` | cross-layer endpoint links (one relation per pair) | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets |
@@ -42,12 +42,13 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 ## Conventions
 
 - Handles are offsets from their own point, so moving a point carries its handles.
+- **Open (asked bowen 1791427416):** should a point left with no line after a delete stay? Until bowen decides, it stays; only binding removes points.
 - Every order list is bottom-to-top: index 0 is drawn first.
 - **Smooth springs** use an angle-based energy, so 3 mutually smooth lines settle at 120° and 4 at 90°. A handle dragged in this edit is held. The stiffness is one global constant (bowen 1791421988).
 - **Not in v1:**
-  - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots.
-  - **Still to be written:**
-    - copy;
+  - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots, and cut-and-paste between recordings that keeps line ids (bowen 1791392233).
+  - **Implementation staged (not yet written):**
+    - copy in drawing;
     - joins across a link (stored on the link);
     - stroke rendering;
     - how a fill joins at a fork with an arc on another pair (left open, dot 1791425335). For now, such a fill keeps that line end untrimmed.
