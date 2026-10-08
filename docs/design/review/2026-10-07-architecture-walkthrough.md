@@ -3110,7 +3110,26 @@ Waiting for dot's review and bowen's decisions.
 - **E. New, delete and rename layer.** Are these allowed, and what kind of operation are they?
 - **F. Undo.** Do state changes go into undo history?
 
-### Status
+### dot's review (1791433808)
 
-bowen decided points 1–6. Attacks A–F wait for bowen; dot to review.
+- **Structure:** a unified `DrawableElement`. Lines and fills share identity, visibility and lock fields, and each keeps its own geometry. Layers and continuous curves organise and batch.
+- **Batches leave nothing behind:** hiding a layer sets its current members hidden. Later elements take their own default. A layer with some members shown and some hidden is valid, and the layer keeps no contradictory visibility of its own.
+- **A and D follow directly:** dragging a shared point, or changing a group's stroke, would change a locked member, so the whole edit is not committed.
+- **B is not a natural result:** treating the locked handle as a fixed pivot is one strategy and refusing the conflicting edit is another. The spring must not get special treatment silently.
+- **C is the important boundary:** does locking a fill also protect its shape that follows the boundary? bowen to confirm.
+- **Undo:** separating state changes from geometry edits does not exclude them from undo; the unified undo continues.
+- **New, delete and rename:** these are container and attribute management, with no new geometry rules.
+
+### Claude (1791433831)
+
+Agrees: B is a strategy choice, not derived.
+
+**Left for bowen:**
+- **B:** fixed pivot, or refuse.
+- **C:** lock only the fill's own attributes, or also its boundary.
+
+**Following the derivations unless bowen objects:**
+- A and D are refused whole.
+- State changes are undoable.
+- New, delete and rename layers are container management.
 
