@@ -10,16 +10,26 @@ type Id = net.Id
 export type JoinMode = 'smooth' | 'cusp' | 'arc'
 export interface JoinRow { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number }
 export interface EndStroke { taper?: number; [key: string]: number | string | undefined }
-export interface JoinsState { rows: JoinRow[]; endStrokes: { point: Id; stroke: EndStroke }[] }
+declare const opaque: unique symbol
+/** Opaque handle; read through rows / rowsAt / endStroke (copies). */
+export type JoinsState = { readonly [opaque]: 'joins' }
+interface Store { rows: JoinRow[]; endStrokes: { point: Id; stroke: EndStroke }[] }
+const S = (j: JoinsState) => j as unknown as Store
+const rowCopy = (r: JoinRow): JoinRow => ({ point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
 
 /** One global stiffness (bowen 1791421988). With only spring forces it scales energy, not the balance. */
 export const SMOOTH_STIFFNESS = 1
 
-export const create = (): JoinsState => ({ rows: [], endStrokes: [] })
+export const create = (): JoinsState => ({ rows: [], endStrokes: [] }) as Store as unknown as JoinsState
 const pair = (a: Id, b: Id): [Id, Id] => (a < b ? [a, b] : [b, a])
 const same = (r: JoinRow, point: Id, p: [Id, Id]) => r.point === point && r.lines[0] === p[0] && r.lines[1] === p[1]
 
-export const rowsAt = (j: JoinsState, point: Id) => j.rows.filter(r => r.point === point)
+export const rows = (j: JoinsState): JoinRow[] => S(j).rows.map(rowCopy)
+export const rowsAt = (j: JoinsState, point: Id): JoinRow[] => S(j).rows.filter(r => r.point === point).map(rowCopy)
+export function endStroke(j: JoinsState, point: Id): EndStroke | undefined {
+  const e = S(j).endStrokes.find(x => x.point === point)
+  return e ? { ...e.stroke } : undefined
+}
 
 export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id, opts: { mode: JoinMode; radius?: number }) {
   if (l1 === l2) throw new Error('A join needs two different lines')
@@ -27,32 +37,32 @@ export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l
   if (!at.has(l1) || !at.has(l2)) throw new Error(`Both lines must end at ${point}`)
   if (opts.mode === 'arc' && !(opts.radius && opts.radius > 0)) throw new Error('An arc join needs a positive radius')
   const p = pair(l1, l2)
-  j.rows = j.rows.filter(r => !same(r, point, p))
-  j.rows.push({ point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius } : {}) })
+  S(j).rows = S(j).rows.filter(r => !same(r, point, p))
+  S(j).rows.push({ point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius } : {}) })
 }
 
 export function removeJoin(j: JoinsState, point: Id, l1: Id, l2: Id) {
   const p = pair(l1, l2)
-  j.rows = j.rows.filter(r => !same(r, point, p))
+  S(j).rows = S(j).rows.filter(r => !same(r, point, p))
 }
 
 export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stroke: EndStroke) {
   net.point(n, point)
-  j.endStrokes = j.endStrokes.filter(e => e.point !== point)
-  j.endStrokes.push({ point, stroke: { ...stroke } })
+  S(j).endStrokes = S(j).endStrokes.filter(e => e.point !== point)
+  S(j).endStrokes.push({ point, stroke: { ...stroke } })
 }
 
 /** Keep references valid after one network operation. */
 export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
   for (const r of ch.replaced) {
-    for (const row of j.rows) {
+    for (const row of S(j).rows) {
       if (row.point === r.a) row.lines = pair(...row.lines.map(l => (l === r.line ? r.pieces[0] : l)) as [Id, Id])
       if (row.point === r.b) row.lines = pair(...row.lines.map(l => (l === r.line ? r.pieces[1] : l)) as [Id, Id])
     }
   }
   for (const u of ch.unbound) {
     const moved = new Set(u.lines)
-    j.rows = j.rows.flatMap(row => {
+    S(j).rows = S(j).rows.flatMap(row => {
       if (row.point !== u.point) return [row]
       const m = row.lines.filter(l => moved.has(l)).length
       return m === 0 ? [row] : m === 2 ? [{ ...row, point: u.newPoint }] : []
@@ -61,10 +71,10 @@ export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
   const gone = new Set([...ch.deletedLines, ...ch.collapsedLines])
   const deadPoints = new Set(ch.deletedPoints)
   // Q23: the removed point's joins are dropped with it (a deleted point).
-  j.rows = j.rows.filter(row => !deadPoints.has(row.point) && !row.lines.some(l => gone.has(l)))
-  j.endStrokes = j.endStrokes.filter(e => !deadPoints.has(e.point))
+  S(j).rows = S(j).rows.filter(row => !deadPoints.has(row.point) && !row.lines.some(l => gone.has(l)))
+  S(j).endStrokes = S(j).endStrokes.filter(e => !deadPoints.has(e.point))
   // Safety: every row's lines must still end at its point.
-  j.rows = j.rows.filter(row => {
+  S(j).rows = S(j).rows.filter(row => {
     if (!net.hasPoint(n, row.point)) return false
     const at = new Set(net.linesAt(n, row.point).map(e => e.line.id))
     return at.has(row.lines[0]) && at.has(row.lines[1])
@@ -80,7 +90,7 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
  */
 export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
   const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
-  const points = [...new Set(j.rows.filter(r => r.mode === 'smooth').map(r => r.point))]
+  const points = [...new Set(S(j).rows.filter(r => r.mode === 'smooth').map(r => r.point))]
   for (const p of points) {
     const ends = new Map(net.linesAt(n, p).map(e => [e.line.id, e]))
     const rows = rowsAt(j, p).filter(r => r.mode === 'smooth')

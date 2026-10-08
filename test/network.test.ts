@@ -35,7 +35,7 @@ describe('network', () => {
     net.splitLine(n, ch, 'h00', 0.5, 'm', 'h00a', 'h00b')
     expect(net.curve(n, 'h00a')[0]).toEqual(before[0])
     expect(net.curve(n, 'h00b')[3]).toEqual(before[3])
-    expect(n.lines.findIndex(l => l.id === 'h00a')).toBe(0)
+    expect(net.lines(n).findIndex(l => l.id === 'h00a')).toBe(0)
     expect(ch.replaced).toEqual([{ line: 'h00', a: 'p00', b: 'p10', mid: 'm', pieces: ['h00a', 'h00b'] }])
   })
 

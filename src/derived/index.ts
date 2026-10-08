@@ -34,7 +34,7 @@ interface Outline {
 
 export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsState): Geometry {
   const o = outline(n, j)
-  const lines = n.lines.map(l => ({ id: l.id, key: `line:${l.id}`, curve: o.drawn.get(l.id)! }))
+  const lines = net.lines(n).map(l => ({ id: l.id, key: `line:${l.id}`, curve: o.drawn.get(l.id)! }))
   const fillGeometry = fills.discover(f, n).filter(v => v.filled)
     .map(v => ({ id: v.id, color: v.color!, visible: v.visible!, parts: fillParts(o, v.route) }))
   return { lines, arcs: [...o.arcByKey.values()], fills: fillGeometry }
@@ -42,10 +42,10 @@ export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsS
 
 /** Trims and arcs from the arc joins; the drawn curve of every line. */
 function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
-  const full = new Map(n.lines.map(l => [l.id, net.curve(n, l.id)]))
-  const len = new Map(n.lines.map(l => [l.id, arcLength(full.get(l.id)!)]))
+  const full = new Map(net.lines(n).map(l => [l.id, net.curve(n, l.id)]))
+  const len = new Map(net.lines(n).map(l => [l.id, arcLength(full.get(l.id)!)]))
   const endAt = (line: Id, point: Id): net.End => (net.line(n, line).a === point ? 'a' : 'b')
-  const arcRows = j.rows.filter(r => r.mode === 'arc')
+  const arcRows = joins.rows(j).filter(r => r.mode === 'arc')
   // The trim at a line end is the largest arc radius there, at most 45% of the line.
   const trim = new Map<string, number>()
   for (const r of arcRows) for (const l of r.lines) {
@@ -56,7 +56,7 @@ function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
     const c = full.get(id)!, L = len.get(id)!
     return subCurve(c, ta > 0 ? tAtLength(c, ta) : 0, tb > 0 ? tAtLength(c, L - tb) : 1)
   }
-  const drawn = new Map(n.lines.map(l => [l.id, piece(l.id, trim.get(`${l.id}:a`) ?? 0, trim.get(`${l.id}:b`) ?? 0)]))
+  const drawn = new Map(net.lines(n).map(l => [l.id, piece(l.id, trim.get(`${l.id}:a`) ?? 0, trim.get(`${l.id}:b`) ?? 0)]))
   const endPoint = (id: Id, end: net.End) => (end === 'a' ? drawn.get(id)![0] : drawn.get(id)![3])
   const arcByKey = new Map(arcRows.map(r => {
     const [l1, l2] = r.lines

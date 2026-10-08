@@ -7,11 +7,16 @@ import * as net from '../network'
 
 type Id = net.Id
 
-export interface LinksState { pairs: { a: Id; b: Id }[] }
-export const create = (): LinksState => ({ pairs: [] })
+declare const opaque: unique symbol
+/** Opaque handle; read through pairs / partners (copies). */
+export type LinksState = { readonly [opaque]: 'links' }
+interface Store { pairs: { a: Id; b: Id }[] }
+const S = (l: LinksState) => l as unknown as Store
+export const create = (): LinksState => ({ pairs: [] }) as Store as unknown as LinksState
+export const pairs = (l: LinksState): { a: Id; b: Id }[] => S(l).pairs.map(p => ({ a: p.a, b: p.b }))
 
 export const partners = (l: LinksState, point: Id): Id[] =>
-  l.pairs.flatMap(p => (p.a === point ? [p.b] : p.b === point ? [p.a] : []))
+  S(l).pairs.flatMap(p => (p.a === point ? [p.b] : p.b === point ? [p.a] : []))
 
 /** Create a link (a clicked first). Returns the move that puts b on a. */
 export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id): { id: Id; target: { x: number; y: number } } {
@@ -19,26 +24,26 @@ export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id): { id: Id
   if (a === b) throw new Error('A link needs two points')
   if (pa.layer === pb.layer) throw new Error('Endpoint links are cross-layer only; bind within a layer')
   if (partners(l, a).includes(b)) throw new Error('Already linked')
-  l.pairs.push({ a, b })
+  S(l).pairs.push({ a, b })
   return { id: b, target: pa.position }
 }
 
 export function unlink(l: LinksState, a: Id, b: Id) {
-  l.pairs = l.pairs.filter(p => !((p.a === a && p.b === b) || (p.a === b && p.b === a)))
+  S(l).pairs = S(l).pairs.filter(p => !((p.a === a && p.b === b) || (p.a === b && p.b === a)))
 }
 
 /** A deleted point ends its links; the partner is never re-linked to another point. */
 export function update(l: LinksState, ch: net.Changes) {
   const dead = new Set(ch.deletedPoints)
-  l.pairs = l.pairs.filter(p => !dead.has(p.a) && !dead.has(p.b))
+  S(l).pairs = S(l).pairs.filter(p => !dead.has(p.a) && !dead.has(p.b))
 }
 
 /** Positions that make every link group coincide. */
 export function align(l: LinksState, n: net.NetworkState, ch: net.Changes): { id: Id; position: { x: number; y: number } }[] {
   const parent = new Map<Id, Id>()
   const find = (x: Id): Id => { while (parent.get(x)! !== x) x = parent.get(x)!; return x }
-  for (const p of l.pairs) for (const x of [p.a, p.b]) if (!parent.has(x)) parent.set(x, x)
-  for (const p of l.pairs) { const ra = find(p.a), rb = find(p.b); if (ra !== rb) parent.set(rb, ra) }
+  for (const p of S(l).pairs) for (const x of [p.a, p.b]) if (!parent.has(x)) parent.set(x, x)
+  for (const p of S(l).pairs) { const ra = find(p.a), rb = find(p.b); if (ra !== rb) parent.set(rb, ra) }
   const groups = new Map<Id, Id[]>()
   for (const x of parent.keys()) { const r = find(x); groups.set(r, [...(groups.get(r) ?? []), x]) }
   const out: { id: Id; position: { x: number; y: number } }[] = []

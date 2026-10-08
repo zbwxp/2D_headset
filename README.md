@@ -29,6 +29,15 @@ Dependency direction (lower never imports higher):
 geometry ← network ← groups / joins / links / fills ← derived ← document
 ```
 
+## Encapsulation (dot 1791427188)
+
+- **Opaque state:** every module's state is opaque to other modules (a branded type). Other modules read it only through query functions.
+- **Copies out:** queries return copies; network reads are frozen.
+- **Copies in:** inputs are copied before they are stored, and non-finite coordinates are refused.
+- **Tests:**
+  - `test/encapsulation.typecheck.ts` must fail to compile wherever outside code tries to write. `test/typecheck.test.ts` runs `tsc` inside `vitest run`, so this is part of the test suite.
+  - `test/encapsulation.test.ts` checks the same at runtime.
+
 ## The pipeline (every edit)
 
 1. Each operation is applied to a private copy of the state. The network reports what changed (lines replaced by a split, collapsed or deleted lines, merged or deleted points, directly moved points, held handles), and each attribute module updates its own references.

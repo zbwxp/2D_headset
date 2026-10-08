@@ -114,17 +114,17 @@ export class Core {
   snapshot(): Snapshot {
     const s = this.state, n = s.network
     return structuredClone({
-      layers: n.layers,
-      points: n.points.map(p => {
-        const end = s.joins.endStrokes.find(e => e.point === p.id)
-        return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end.stroke } : {}) }
+      layers: [...net.layers(n)],
+      points: net.points(n).map(p => {
+        const end = joins.endStroke(s.joins, p.id)
+        return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
       }),
-      lines: n.lines,
+      lines: net.lines(n).map(l => ({ ...l })),
       groups: groups.list(s.groups, n),
-      joins: s.joins.rows,
-      links: s.links.pairs,
+      joins: joins.rows(s.joins),
+      links: links.pairs(s.links),
       loops: fills.discover(s.fills, n),
-      fillOrder: s.fills.order,
+      fillOrder: fills.order(s.fills),
     })
   }
 
