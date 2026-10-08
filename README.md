@@ -82,6 +82,8 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
   - **Stiffness:** one global constant (bowen 1791421988).
 - **No special rule, code result accepted (bowen 1791428722):** fill order after two groups merge (fills keep their relative order); the order of several groups split off in one edit (each goes right after the original).
 - **Fill at a fork with an arc on another pair:** the code keeps the fill's line end untrimmed (the fill reaches the point). bowen accepts the code result: the case should hardly occur and indicates a drawing problem (bowen 1791431933).
+  - **Deferred, not implemented:** a "virtual point" on the arc for other lines and fills to reattach to (bowen 1791432211; unified rule: the point closest to the endpoint among the points all its arcs share).
+  - **bowen 1791432605:** keep the current code result. Where the outline breaks, it breaks; revisit if it looks bad in practice. It is a minor rule.
 - **Not in v1:**
   - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots, and cut-and-paste between recordings that keeps line ids (bowen 1791392233).
   - **Editing behaviour not discussed yet (bowen 1791430778):** copy.
