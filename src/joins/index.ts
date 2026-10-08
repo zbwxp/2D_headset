@@ -98,11 +98,11 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
  * Held handles (dragged in this edit, or the first-clicked side of a new join)
  * keep their direction.
  *
- * Physically each handle is also held by its own curve, a soft spring toward its
- * direction before the edit (bowen 1791429195). With the smooth springs far
- * stiffer, the result is the limit: first the smooth balance (coordinate
- * descent), then a group with no held handle is turned as a whole so that the
- * squared turning of its handles is least — it spreads but does not spin.
+ * Rule: smooth first, then least turning (bowen 1791429291). First the smooth
+ * balance (coordinate descent); then a group with no held handle is turned as a
+ * whole so the squared turning of its handles is least — it spreads but does not
+ * spin. This approximates bowen's picture of each handle also held by its own
+ * curve (1791429195); it is a chosen rule, not a claim of physical necessity.
  * Returns handle updates.
  */
 export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {

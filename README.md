@@ -73,7 +73,12 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
   - **Energy:** angle-based, so 3 mutually smooth lines settle at 120° and 4 at 90°.
   - **Where it runs:** only at the points an edit acted on, so an unrelated edit never turns anything.
   - **Held handles:** a handle dragged in this edit is held. When a smooth join is set, the first-clicked line is held and the second turns to it (bowen 1791428722).
-  - **Curve springs:** each handle is also held by its own curve, a soft spring toward its direction before the edit (bowen 1791429195). The code uses the limit where smooth springs are far stiffer: the smooth balance first, then a group with no held handle turns as a whole by the least total turning. So a free star spreads but never spins, and the result is unique.
+  - **Rule used: smooth first, then least turning** (approved, bowen 1791429291).
+    - First the smooth balance is solved.
+    - Then a group with no held handle turns as a whole, by the least total turning of its handles.
+    - So a free star spreads but never spins, and the internal order of records never changes the result.
+    - This approximates bowen's picture of each handle also held by its own curve (a soft spring, 1791429195). It is an implementation choice, not a claim that physics forces exactly this answer (dot 1791429386).
+    - Tests: `test/uniqueness.test.ts` covers drag-one-turns-all and storage-order independence.
   - **Stiffness:** one global constant (bowen 1791421988).
 - **No special rule, code result accepted (bowen 1791428722):** fill order after two groups merge (fills keep their relative order); the order of several groups split off in one edit (each goes right after the original).
 - **Not in v1:**
