@@ -3,12 +3,13 @@
 bowen 1791425592:
 > 首先把现有的图谱写成package（这是python的说法， ts啥的该怎么写你们自己知道） 就是现在所有的工具 概念都有它们各自的归属 那么就应该写进它们对应的package，以便后面的进行调用。代码要模块化，这样出逻辑问题也局限在模块内部
 
-**Status:** draft. No code until bowen signs off the direction. Per retro §9, this file is the checklist committed **before** the first code commit.
+**Status:** draft, revised after dot 1791425776: one-time edits moved into their owning modules, and `edits` replaced by a thin `commands` layer. No code until bowen signs off the direction. Per retro §9, this file is the checklist committed **before** the first code commit.
 
 Source of truth: the relationship graph in `docs/design/review/2026-10-07-architecture-walkthrough.md`, as of `5a6d95c`.
 
 ## 1. Rules for every package
 
+0. **"Package" here means a module boundary**, a folder with one entry file, all inside one npm package. Not every concept is a separate npm package (dot 1791425776).
 1. **Exposed interface only.**
    - Each package is one folder with one `index.ts`; outside code imports only from it.
    - A lint rule fails the build on deep imports.
@@ -22,8 +23,8 @@ Source of truth: the relationship graph in `docs/design/review/2026-10-07-archit
 | Package | Graph level | Owns (data) | Exposes (operations / queries) |
 |---|---|---|---|
 | `geometry` | (math base) | nothing | Bézier evaluate / split / bounds / nearest, arc fillet between two curves. Wraps `bezier-js`. |
-| `network` | point, line | points (position), lines (two point ids + two handles) | Queries:<br>- lines at a point;<br>- **connected groups** (continuous curves);<br>- **loops** (closed curves), found on demand. |
-| `edits` | point, line (one-time edits) | nothing (it transforms `network`) | Pen add line, drag point, drag handle, split / add point, delete line, **bind** (merge points; delete lines with both ends on one point), unbind, merge position (one-time snap), copy. |
+| `network` | point, line | points (position), lines (two point ids + two handles) | **Owns the one-time edits on points and lines:** add line (pen), drag point, drag handle, split / add point, delete line, **bind** (merge points; delete lines with both ends on one point), unbind, merge position (one-time snap), copy.<br>Queries:<br>- lines at a point;<br>- **connected groups** (continuous curves);<br>- **loops** (closed curves), found on demand. |
+| `commands` | (orchestration only) | nothing | One entry per user action. It calls the owning module's operation, then runs the pipeline (section 4). **It holds no rule logic of its own** (dot 1791425776). |
 | `joins` | point attribute | join table per point: rows of {line end A, line end B, mode smooth / cusp / arc, radius} | Set / clear a join; tool presets. **Solve smooth springs** (one global stiffness). |
 | `links` | cross-layer relation | link attribute on both points (partner id) | Create / remove a link (cross-layer only). **Realign**: average the targets of the directly acted-on points. Clear on partner deletion. |
 | `strokes` | point + continuous curve attributes | end stroke per point; line stroke (width, profile) per connected group | Set / get; unify to the first-clicked group on bind. |
@@ -48,10 +49,10 @@ joins   links   strokes   layers
              ↑
            fills
              ↑
-edits ── pipeline (section 4) ── history, selection
+commands ── pipeline (section 4) ── history, selection
 ```
 
-- `edits` may change `network` and call the pipeline. It never edits `fills` or `layers` directly; those react in the pipeline.
+- `commands` only orchestrates. The rules live in the owning modules: `network` (split, bind and so on), `joins`, `links`, `fills`, `layers`. `fills` and `layers` are never edited by another module directly; they react in the pipeline.
 - `derived` is the **only** place that computes the final outline, so strokes and fills can never disagree (dot 1791425290).
 
 ## 4. The edit pipeline (one place, fixed order)
