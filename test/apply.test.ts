@@ -166,6 +166,22 @@ describe('mirror apply', () => {
     expect(line(b, 'tgtA').state.locked).toBe(true)
   })
 
+  it('A4f. locked S applied onto T, T unlocked, locked U applied onto T again — one edit — gives a fresh baseline (dot, review of 05938ea)', () => {
+    const d = eyes()
+    d.edit(e => {
+      sk(e).point('u1', 'A', P(-30, 0)); sk(e).point('u2', 'A', P(-26, 6)); sk(e).point('u3', 'A', P(-22, 0))
+      sk(e).line('v1', 'u1', 'u2'); sk(e).line('v2', 'u2', 'u3'); sk(e).line('v3', 'u3', 'u1')
+    })
+    d.edit(e => { e.lineState('l1', { locked: true }); e.lineState('v1', { locked: true }) })
+    d.edit(e => {
+      e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3'])
+      e.lineState('r1', { locked: false })
+      e.mirrorApply(['v1', 'v2', 'v3'], ['r1', 'r2', 'r3'])
+    })
+    expect(line(d, 'r1').state.locked).toBe(true)
+    expect(close(point(d, 'q2').position, R(P(-26, 6)))).toBe(true)
+  })
+
   it('A4c. joins across an endpoint link inside the selection are copied, and cleared when the source has none (dot, review of d5e2704)', () => {
     const build = () => {
       const d = new Core()

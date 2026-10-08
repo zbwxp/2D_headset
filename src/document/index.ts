@@ -123,7 +123,11 @@ export class Editor {
 
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
   lineState(line: Id, state: { visible?: boolean; locked?: boolean }) {
-    for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) net.changeLineState(this.s.network, this.tx.changes, id, state)
+    for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) {
+      net.changeLineState(this.s.network, this.tx.changes, id, state)
+      // an explicit lock change ends a protection phase an apply started (dot, review of 05938ea)
+      if (state.locked !== undefined) this.tx.appliedFrom.delete(id)
+    }
   }
   fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { for (const id of this.loops(loop)) fills.setState(this.s.fills, id, state) }
   /** A batch over the group's own lines; its fills keep their own switch (bowen 1791433646). */
@@ -274,9 +278,17 @@ export class Editor {
 
   // apply (graph: Editing "Apply", Mirror table)
   /** Mirror apply: reflect the source lines across the axis into different target lines (one step). */
-  mirrorApply(source: Id[], target: Id[]) { const { state: s, changes } = this.tx; apply.mirrorApply(s.apply, s, changes, source, target); this.afterApply() }
+  mirrorApply(source: Id[], target: Id[]) {
+    const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
+    apply.mirrorApply(s.apply, s, changes, source, target)
+    this.afterApply(before)
+  }
   /** Mirror link between whole first-level elements: a mirror apply, then the pairs are stored. */
-  mirrorLink(sourceGroups: Id[], targetGroups: Id[]) { const { state: s, changes } = this.tx; apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups); this.afterApply() }
+  mirrorLink(sourceGroups: Id[], targetGroups: Id[]) {
+    const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
+    apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups)
+    this.afterApply(before)
+  }
   /** Remove the mirror link of these lines; geometry stays. */
   unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
 
@@ -286,9 +298,10 @@ export class Editor {
    * so the apply's own constraint results are allowed and only later changes count
    * (dot, reviews of 44c58b4 and d9e2247).
    */
-  private afterApply() {
+  private afterApply(before: ReadonlySet<Id>) {
     const { state: s, changes, appliedFrom } = this.tx
-    const fresh = changes.appliedLocks.filter(id => !appliedFrom.has(id))
+    // the lines this apply locked get a fresh baseline (a re-apply after an unlock starts a new one)
+    const fresh = changes.appliedLocks.filter(id => !before.has(id))
     if (!fresh.length) return
     const scratch = structuredClone(s), scratchChanges = structuredClone(changes)
     settle(scratch, scratchChanges)
