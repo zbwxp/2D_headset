@@ -3,6 +3,7 @@
 import { createRoot } from 'react-dom/client'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { Core, type Vec, type Snapshot, type Editor } from '../../src'
+import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 
 type Id = string
 type Tool = 'V' | 'A' | 'pen' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
@@ -44,6 +45,19 @@ function withNames(m: string) {
   return m.replace(/[^\s(),"]+/g, w => (names.has(w) ? `${w}「${names.get(w)}」` : w))
 }
 
+/** The v2 right eye (test fixture from 4bc7cc2), scaled ×1000 into bench units, one layer per stroke, with its corner links. Test data only, not a load feature. */
+function v2Eye() {
+  // the document axis is fixed at x = 0, so the eye is shifted to put its own axis there
+  const k = 1000, S = (v: Vec) => P(v.x * k, v.y * k), at = (v: Vec) => P((v.x - eyeFixture.axis) * k, v.y * k - 200), made = new Set<string>()
+  core.edit(e => {
+    for (const L of eyeFixture.layers) e.layer(L.id, L.name)
+    const end = (id: string, layer: string, v: Vec) => { if (made.has(id)) return id; made.add(id); return { id, layer, position: at(v) } }
+    for (const l of eyeFixture.lines) e.line(l.id, end(l.a, l.layer, l.pa), end(l.b, l.layer, l.pb), { ha: S(l.ha), hb: S(l.hb) })
+    for (const [a, b] of eyeFixture.links) e.link(a!, b!)
+    for (const l of eyeFixture.lines) e.renameLine(l.id, l.name)
+  })
+}
+
 type LogRow = { calls: string; result: string }
 const log: LogRow[] = []
 const hist = (k: 'undo' | 'redo') => { const ok = k === 'undo' ? core.canUndo : core.canRedo; core[k](); log.unshift({ calls: k + '()', result: ok ? 'ok' : 'ok (nothing to ' + k + ')' }) }
@@ -72,7 +86,7 @@ function App() {
   const groupOf = (l: Id) => s.groups.find(gr => gr.lines.includes(l))!.id
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML, log, demo: () => { demo(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML, log, demo: () => { demo(); bump() }, v2Eye: () => { v2Eye(); bump() } }
   })
 
   const run = (fn: (e: Editor) => void, quiet = false) => {
@@ -274,6 +288,7 @@ function App() {
           {B('Unmirror', () => run(x => x.unmirror(selLines)))}
         </div>
         <div style={{ color: '#666' }}>pairs: {s.mirrorPairs.length}</div>
+        <div style={{ display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch (err) { setMsg('✗ ' + (err as Error).message) } bump() })}{B('v2 right eye', () => { try { v2Eye() } catch (err) { setMsg('✗ ' + (err as Error).message) } bump() })}</div>
         <b>Layers (top first)</b>
         {B('+ New layer', () => { const id = nid('layer-'); run(x => x.layer(id, id)); setLayer(id) })}
         {[...s.layers].reverse().map((L, i, arr) => {
