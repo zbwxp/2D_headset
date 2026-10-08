@@ -53,23 +53,20 @@ flowchart BT
   core["core (existing)\ndocument, rules, undo, settle"]
   commands["commands\none command vocabulary → core.edit"]
   queries["queries\nread model, hit testing"]
-  tools["tools\ngesture state machines"]
+  interaction["interaction (closed, replaceable)\ntools, gestures, panels, shortcuts"]
   view["view\ncamera + drawing (pure)"]
-  uiHuman["ui-human\ncanvas host, toolbar, panels"]
   aiApi["ai-api\nexecute / query / render"]
   app["app shell\nwires the modules"]
   commands --> core
   queries --> core
-  tools --> commands
-  tools --> queries
+  interaction --> commands
+  interaction --> queries
+  interaction --> view
   view --> queries
-  uiHuman --> tools
-  uiHuman --> view
-  uiHuman --> commands
   aiApi --> commands
   aiApi --> queries
   aiApi --> view
-  app --> uiHuman
+  app --> interaction
   app --> aiApi
 ```
 
@@ -79,7 +76,7 @@ Arrows point to what a module uses. Lower modules never import higher ones; a bo
 
 ```mermaid
 flowchart LR
-  subgraph human["Human entry (ui-human)"]
+  subgraph human["Human entry: interaction (closed module)"]
     dom["DOM pointer / keys"] --> toolsN["tools\n(gesture state)"]
     panel["panels / shortcuts"]
   end
@@ -116,7 +113,7 @@ flowchart LR
 ```
 
 - **Two entries, one action interface.**
-  - People reach `commands` through `tools` (gestures) and panels.
+  - People reach `commands` through the `interaction` module (tools, gestures and panels).
   - The AI reaches the same `commands.execute` directly.
   - Neither entry calls `core` itself.
 - **The preview / commit boundary** is inside `commands`:
@@ -131,9 +128,8 @@ flowchart LR
 | `core` (exists) | the document, undo history, selection | every rule; one edit = one commit; refusals with codes | know about pixels, events or screens |
 | `commands` | the command vocabulary: plain, serialisable objects such as `{ type: 'rotate', centre, angle }` | runs a batch of commands as one `core.edit`; returns `{ ok }` or `{ error: { code, message, targets } }`; a preview runs the batch without publishing (needs `core.preview`, §5) | decide anything a rule decides (it only maps commands to Editor calls) |
 | `queries` | nothing | the read model for both interfaces: snapshot, geometry, bounds, **hit testing** (nearest point / handle / line, smallest loop) with a tolerance given by the caller | change anything |
-| `tools` | each tool's gesture state only | a state machine per tool (pen, V, A, split, bind, link, joins, merge position, fill, mirror apply, mirror link): pointer and keys in document coordinates → preview batches while dragging → one command batch on release; Esc cancels; snapping shows only in preview (backlog 4) | hold document data, or check rules itself |
+| `interaction` (closed, replaceable) | all human-side state: active tool, gesture state, panel state, shortcuts | everything a person touches: DOM events → tools (pen, V, A, split, bind, link, joins, merge position, fill, mirror apply, mirror link) → preview batches while dragging, one command batch on release; Esc cancels; snapping previews only (backlog 4); toolbar, layer panel, properties; shows refusals (backlog 2, 6, 11); hands `view` an overlay description to draw | rules; any route to `core` except `commands` / `queries`; keeping its own copy of document data |
 | `view` | the camera (pan / zoom) | draws geometry and overlays (selection, handles, axis, preview, red cross with lock or mirror mark) from snapshot + geometry + tool overlay; maps screen ↔ document | change state |
-| `ui-human` | panel state only (open panels, active tool) | turns DOM events into tool input; toolbar, layer panel, properties, shortcuts; shows refusals (backlog 2, 6, 11) | rules, geometry |
 | `ai-api` | nothing | `execute(commands)`, `query(...)`, `render(options) → image`; exposed for agents (e.g. on `window` for browser automation); same commands and error codes as people get | its own rules or shortcuts past `commands` |
 | `app` | the one `Core` instance | wires modules, nothing else | logic |
 
@@ -146,7 +142,7 @@ flowchart LR
    - replaying a human session's command log through `ai-api` reproduces the session.
 3. **One gesture = one edit.** Tools preview during a drag and commit once on release; Esc cancels and nothing changes (graph "Edit (one gesture)").
 4. **Views are pure.** Drawing reads state and never changes it. Display, hit testing and export use the same geometry (`core.geometry`).
-5. **Refusals are data.** A refusal carries a code (`Locked`, `select-lines-to-delete`, `mirror-no-counterpart`, `topology-mismatch` and so on). `ui-human` shows the matching mark; `ai-api` returns the same code.
+5. **Refusals are data.** A refusal carries a code (`Locked`, `select-lines-to-delete`, `mirror-no-counterpart`, `topology-mismatch` and so on). `interaction` shows the matching mark; `ai-api` returns the same code.
 6. **One selection.** The selection lives in `core` and is undoable. No module keeps its own copy.
 7. **One coordinate rule.** Tools and commands work in document coordinates; only `view`'s camera knows screen pixels. Hit tolerance and snap radius are UI parameters given in pixels and converted by the camera; they are not core rules.
 8. **Each module is independent.** One folder, one `index.ts`; imports only through it; dependency direction checked by a test; its own unit tests. Tools are tested with simulated pointer sequences, without a browser.
@@ -158,7 +154,7 @@ flowchart LR
 
 ## 4. A gesture, end to end
 
-1. pointer down → `ui-human` → `tools` (document coordinates from `view`'s camera).
+1. pointer down → `interaction` (document coordinates from `view`'s camera).
 2. While dragging: the tool builds a command batch → `commands.preview` → `view` draws the preview. Nothing is committed.
 3. pointer up → `commands.execute(batch)` → one `core.edit`, which settles, checks locks and commits. The result is either a new snapshot or a refusal.
 4. `view` redraws from the snapshot; a refusal shows its mark where it happened.
@@ -179,17 +175,40 @@ flowchart LR
 
 | Backlog | Module |
 |---|---|
-| 1 helper for short handles | `view` + `tools` (A) |
-| 2 red cross + lock on a lock refusal | `ui-human` + `view` |
-| 3 per-layer fill switch | `ui-human` (layer panel) → `commands` |
-| 4 snap only previews; bind on release | `tools` |
+| 1 helper for short handles | `view` + `interaction` |
+| 2 red cross + lock on a lock refusal | `interaction` + `view` |
+| 3 per-layer fill switch | `interaction` (layer panel) → `commands` |
+| 4 snap only previews; bind on release | `interaction` |
 | 5 paste offset | later (copy / paste is out of scope) |
-| 6 delete-on-points hint | `ui-human` + `view` |
+| 6 delete-on-points hint | `interaction` + `view` |
 | 7 drag feel | later (an add-on edit) |
-| 8 scaling defaults | `tools` (scale) |
-| 9 mirror-link creation flow | `tools` (mirror link) |
-| 10 mirror icon, axis display | `ui-human` + `view` |
-| 11 mirror red cross | `ui-human` + `view` |
+| 8 scaling defaults | defaults in `commands`; `interaction` only fills them in |
+| 9 mirror-link creation flow | `interaction` |
+| 10 mirror icon, axis display | `interaction` + `view` |
+| 11 mirror red cross | `interaction` + `view` |
+
+## 6a. Interaction is one closed, replaceable module (bowen 1791477519)
+
+Interaction has many scattered requirements but no unified principles yet. So it is built as **one closed module** whose inside may be rough for now. Later a principled interaction module replaces it **in one swap, losslessly**.
+
+What makes it replaceable:
+- **A fixed contract**, the only things it may use or produce:
+  - **in:**
+    - DOM events from the canvas element and its panel area;
+    - `queries` (read-only state, hit testing);
+    - the camera from `view`;
+  - **out:**
+    - `commands` (execute, preview, history; nothing else writes);
+    - an **overlay description**: plain data such as selection boxes, handles, the snap preview and refusal marks, which `view` draws;
+    - its own panel DOM.
+- **Nothing outside depends on its inside:** `core`, `commands`, `queries`, `view` and `ai-api` never import it. A boundary test enforces this.
+- **No meaning lives only in it:** every choice that changes a result is a command parameter with its default in `commands` (§6b). So swapping interaction changes how things feel, never what a given command does to the document.
+- **Contract tests**, which any interaction module must pass:
+  - scripted input sequences give the expected command batches;
+  - scripted input sequences give the expected overlay descriptions.
+  
+  The future principled module is accepted by the same tests, plus its own.
+- **The AI entry does not go through it,** so the AI side is untouched by the swap.
 
 ## 6b. Entry rules added after the attack (bowen 1791477114; Claude 1791477232; dot 1791477302)
 
