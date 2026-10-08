@@ -2520,10 +2520,46 @@ v103 `connect` unified the width and profile of both groups to the first group's
   - With equal weights and direction-only constraints, the symmetric balance is three outward handles 120° apart. The acute angle between the lines they lie on is 60°, which reconciles bowen's "60°".
   - A large k alone does not guarantee this in every case; other constraints change the result.
 
+### bowen (1791421988)
+
+> 60度是我说错了是120度奔驰车标。如果四条线就是90度（如果真的有人非要手动把四条线俩俩相平滑的话。然后老版我记得对于笔触的范围，各种工具default的接笔都有预设。这个你先调出来看一眼。旧版把两组统一成先点那组我倾向于保留 这种操作虽然可能不是理想的但至少没有歧义。然后几乎不会有在多条线交点用端点绑定来删点的情况，就算删也是两种操作先点多线交点再点其他，那么笔触都保留。反之那就是新的点接到了这个多线交点 那么就是按照预设。我记得旧版预设连续曲线就是仅绑定？（但是仅绑定的连续曲线是渲染时会给接上，所有连续曲线都不会有"断茬"） 弹簧硬度设一个全局固定值吧。未来实在需要也可以拓展。
+
+**Decided:**
+- Y with all pairs smooth → 120° (Mercedes star).
+- Spring stiffness is one global fixed value, extendable later.
+- **Keep v103's width unification on binding:** both groups take the first-clicked group's width. Not ideal, but unambiguous.
+
+### Claude (1791422060)
+
+**v103 join presets** (`7205381`):
+- **Pen:** a "继续接笔" option with 仅绑定 / 平滑接笔 / 尖点接笔. **The default is 仅绑定**, reset every time the pen is selected (`ui/drawing/session.ts`, `DrawingRoom.tsx:406`).
+- **Ellipse:** four segments joined **smooth** (`commands.ts:242`).
+- **Offset line → independent curves:** segments joined **smooth** (`paintCommands.ts:93`).
+- **Endpoint tools** (`ui/drawing/tools.ts`):
+  - **合并位置:** moves positions together only.
+  - **端点联动:** the ends move together; strokes, width and layers are kept (used across layers).
+  - **绑定端点:** one stroke, independent handles (= 仅绑定).
+  - **平滑接笔:** one stroke, handles opposite and collinear.
+  - **尖点接笔:** one stroke, a sharp corner is kept.
+  - **圆弧接笔:** one stroke, with an adjustable arc transition.
+  - The last four merge into one stroke, with width unified to the first-clicked group.
+- **Not verified:** the rendering difference between 仅绑定 and 尖点, and that 仅绑定 renders with no gap.
+
+**Inheritance on binding, as Claude restates bowen (to confirm):**
+- **Junction first, then another point:** the junction is kept with its joins and strokes. The newly attached line gets the current tool's preset.
+- **Another point first, then the junction:** by the rule the junction is the later point and is deleted, and its joins go with it. All lines re-attach to the first point and use the tool preset.
+- **In short:** the deleted point's join records are dropped; every new connection uses the tool preset.
+
+**Four lines, all pairs smooth, is not necessarily a 90° cross.**
+- With a spring measuring each pair's angular deviation from straight, the balance is the 90° cross.
+- With a direction-vector spring, any arrangement of "two straight opposite pairs at any angle" also balances, so the result depends on the starting position.
+- The formula is chosen later; the difference is noted here.
+
 ### Status
 
 - 2 decided (the join is a point attribute).
 - 1 decided (end stroke belongs to the point; shared points are continuous; special effects use show/hide intervals).
 - Open: line stroke per line or per connected group?
 - 3 (odd smooth cycle) decided: smooth is a stiff spring; conflicts show the compromise, nothing is refused.
-- Open: drop or carry the deleted point's joins on binding.
+- Proposed (to confirm): the deleted point's joins are dropped; new connections use the tool preset.
+- Decided: spring stiffness global and fixed; width unified to the first-clicked group on binding.
