@@ -162,7 +162,7 @@ describe('transforms act on what the selection expands to', () => {
     expect(() => d.edit(e => e.scale(P(0), 0, 1))).toThrow(/zero scale/)
   })
 
-  it('E13. a selected fill moves its boundary lines; deleting it clears the fill', () => {
+  it('E13. a fill can be selected; it is not geometry, so a transform leaves it and its lines alone, and delete refuses it', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A')
@@ -171,10 +171,10 @@ describe('transforms act on what the selection expands to', () => {
     })
     const loop = s(d).loops[0]!.id
     d.edit(e => e.fill(loop, 'red'))
-    d.edit(e => { e.select([{ kind: 'fill', id: loop }]); e.translate(1, 1) })
-    expect(point(d, 'c').position).toEqual(P(6, 11))
-    d.edit(e => e.deleteSelection())
-    expect(s(d).loops[0]!.color).toBeUndefined()
-    expect(s(d).lines).toHaveLength(3)
+    d.edit(e => e.select([{ kind: 'fill', id: loop }]))
+    d.edit(e => e.translate(1, 1))
+    expect(point(d, 'c').position).toEqual(P(5, 10))
+    expect(() => d.edit(e => e.deleteSelection())).toThrow(/select-lines-to-delete/)
   })
+
 })

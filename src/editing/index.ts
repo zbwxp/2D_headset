@@ -58,8 +58,9 @@ export function clean(s: SelectionState, n: net.NetworkState, f: fills.FillsStat
 
 /**
  * What a geometric transform acts on: a point is itself, a handle is itself, a line
- * is its two end points and two handles, a fill is its boundary lines. A shared
- * point counts once.
+ * is its two end points and two handles. A shared point counts once. A selected fill
+ * is not geometry and adds nothing: what transforming or deleting a fill selection
+ * should do is not decided (dot, review of 070477e).
  */
 export function expand(s: SelectionState, n: net.NetworkState, f: fills.FillsState): { points: Id[]; handles: { line: Id; end: net.End }[] } {
   const points = new Set<Id>(), handles = new Map<string, { line: Id; end: net.End }>()
@@ -68,12 +69,10 @@ export function expand(s: SelectionState, n: net.NetworkState, f: fills.FillsSta
     points.add(l.a); points.add(l.b)
     for (const end of ['a', 'b'] as const) handles.set(JSON.stringify([id, end]), { line: id, end })
   }
-  const loops = new Map(fills.discover(f, n).map(v => [v.id, v]))
   for (const u of S(s).units) {
     if (u.kind === 'point') points.add(u.id)
     else if (u.kind === 'handle') handles.set(JSON.stringify([u.line, u.end]), { line: u.line, end: u.end })
     else if (u.kind === 'line') addLine(u.id)
-    else for (const step of loops.get(u.id)?.route ?? []) addLine(step.line)
   }
   return { points: [...points].sort(), handles: [...handles.keys()].sort().map(k => handles.get(k)!) }
 }
@@ -118,7 +117,6 @@ export function transformPlan(s: SelectionState, n: net.NetworkState, f: fills.F
 export function centre(s: SelectionState, n: net.NetworkState, f: fills.FillsState): Vec {
   const { points } = expand(s, n, f)
   const lineIds = new Set(S(s).units.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
-  for (const u of S(s).units) if (u.kind === 'fill') for (const step of fills.discover(f, n).find(v => v.id === u.id)?.route ?? []) lineIds.add(step.line)
   const boxes = [...lineIds].map(id => bounds(net.curve(n, id) as Cubic))
   const pts = points.map(id => net.point(n, id).position)
   const xs = [...boxes.flatMap(b => [b.min.x, b.max.x]), ...pts.map(p => p.x)]
@@ -127,10 +125,9 @@ export function centre(s: SelectionState, n: net.NetworkState, f: fills.FillsSta
   return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }
 }
 
-/** Delete removes lines only (bowen 1791392558); fills selected are cleared. */
-export function deletion(s: SelectionState): { lines: Id[]; fills: Id[] } {
+/** Delete removes lines only (bowen 1791392558, 1791465011). */
+export function deletion(s: SelectionState): Id[] {
   const lines = S(s).units.flatMap(u => (u.kind === 'line' ? [u.id] : []))
-  const fillIds = S(s).units.flatMap(u => (u.kind === 'fill' ? [u.id] : []))
-  if (!lines.length && !fillIds.length) throw new Error('select-lines-to-delete: delete removes lines only; select lines to delete')
-  return { lines, fills: fillIds }
+  if (!lines.length) throw new Error('select-lines-to-delete: delete removes lines only; select lines to delete')
+  return lines
 }

@@ -220,11 +220,9 @@ export class Editor {
   scale(centre: Vec, sx: number, sy: number) { this.transform(editing.scaling(centre, sx, sy)) }
   /** Flip in place about the selection's own centre (an edit; no copy, bowen 1791471111). */
   flip() { this.transform(editing.scaling(editing.centre(this.s.selection, this.s.network, this.s.fills), -1, 1)) }
-  /** Delete the selected lines (and clear selected fills); points alone cannot be deleted. */
+  /** Delete the selected lines; without a selected line it is refused. */
   deleteSelection() {
-    const d = editing.deletion(this.s.selection)
-    for (const id of d.fills) this.clearFill(id)
-    for (const id of d.lines) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
+    for (const id of editing.deletion(this.s.selection)) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
   }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */

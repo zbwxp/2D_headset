@@ -6,10 +6,13 @@
 - Phase E, module `editing`: committed and pushed first, so dot can verify it.
 - Phase A, module `apply`.
 
-**Scope:**
+**Scope: this is stage 1 of the editing module, not all of it** (dot, review of 070477e):
 - One document.
-- Domain deformation (four corners, curved edges) is deferred: its handle fitting is an implementation choice that needs its own tests.
-- Copy and paste of selections is also deferred.
+- Not covered in stage 1:
+  - domain deformation (four corners, curved edges);
+  - copy and paste of selections;
+  - gesture preview: each `edit` is one complete operation, and several edits are never treated as one drag;
+  - show/hide intervals, whose data model is not implemented yet, so mirror apply does not carry them yet.
 
 ## Phase E — module `editing`
 
@@ -21,18 +24,21 @@
 | `selectGroup(line, mode)` (V) | Selects every line of the line's continuous curve, hidden ones included. | "Selectable units" |
 | at commit | Units whose target no longer exists are dropped in the same step. | "Selection" |
 | `expand(selection)` → points and handles | point → itself; handle → itself; line → its two end points and two handles; group → all of its lines; a shared point counts once | "Geometric transform acts on" |
-| `transform(affine)` | Points go to M·p as directly acted-on targets, so endpoint links average them as before. Expanded handles become linear(M)·offset and are held. Any other handle keeps its offset, so it moves with its point without turning. Joins are then solved by their own rules. | "Geometric transform acts on / keeps" |
+| `transform(affine)` | Points go to M·p as directly acted-on targets, so endpoint links average them as before. An expanded handle's tip goes to M·tip, its offset is measured from where its point ends up, and the handle is held. So a handle selected alone moves too (dot, review of 070477e). Any other handle keeps its offset, so it moves with its point without turning. Joins are then solved by their own rules. | "Geometric transform acts on / keeps" |
 | `translate`, `rotate(centre, angle)`, `scale(centre, sx, sy)` | Each is the affine above. Scale factors must be finite and non-zero. | same |
 | `flip()` | Reflects across the vertical line through the centre of the selection's curve bounds. It is an edit; no copy is made. | Mirror row "Mirror flip" |
 | `deleteSelection()` | Deletes the selected lines. If no line is selected (only points or handles), it is refused with code `select-lines-to-delete`. | "Delete with only end points selected" |
 
-**Filled in by us, to confirm (listed in the README):**
-- A selected fill expands to its boundary lines for transforms. A fill is an attribute of its loop, so moving it means moving its loop.
-- `deleteSelection` also clears selected fills.
+**Not decided, so not implemented** (dot, review of 070477e): what transforming or deleting a *fill* selection should do. A fill is selectable, but transforms and delete ignore it.
 
 **Unchanged:** `scale` never touches line width (bowen 1791471538). A transform acts on points and handles only.
 
 ### Acceptance (E)
+
+Added after dot's review of 070477e:
+- E14. A handle selected alone moves under translation.
+- E15. A handle selected alone rotates about an outside centre.
+- E16. A point and its own handle selected together are transformed once.
 
 1. Selecting, adding and removing are each one undo step; reselecting the same set adds no step.
 2. Deleting a line drops it from the selection in the same step, and undo restores both.
@@ -54,7 +60,7 @@
 
 | Operation | Rule | Source |
 |---|---|---|
-| `setAxis(x)` | An edit (one step); later applies and links use it. | "Symmetry axis" |
+| axis | A fixed document setting: `Core.newDocument({ axis })`, default 0. It is not an undoable edit, and it cannot move once mirror links exist (dot, review of 070477e). | "Symmetry axis" |
 | `mirrorApply(source lines, target lines)` | The two sets must not overlap. Find the correspondence (below), then write into the target: reflected positions (as acted-on targets) and handles (held, orientation swapped on reversed pairs); stroke and element state; the end strokes of corresponding points; the join rows among corresponding lines at corresponding points; the fill colour and state of corresponding loops. The target keeps its ids, layer and outside links. A point in both sets receives both intents and they are averaged, so a self-corresponding point lands on the axis. | "Mirror apply", "Apply" |
 | correspondence | A bijection between source and target lines, each with an orientation, that preserves end-point sharing and endpoint links inside the selection. Each assignment is scored by the squared distance between the reflected source controls and the target controls, and the lowest score wins. Ties keep the first in a stable search order. No bijection gives `topology-mismatch`. | "Mirror correspondence" |
 | `mirrorLink(source groups, target groups)` | Each side is one or more whole first-level elements, and the sides are disjoint. The operation is a mirror apply followed by storing the pairs. | "Mirror link" |
@@ -67,7 +73,8 @@
 **Filled in by us, to confirm:**
 - the counterpart id suffix `′`;
 - error codes `topology-mismatch`, `mirror-no-counterpart`, `select-lines-to-delete`;
-- the axis defaults to x = 0.
+- the axis defaults to x = 0;
+- new counterpart ids that would collide with an existing or recorded id refuse the whole operation (no overwrite, no half operation; dot).
 
 **Derived consequence to report to bowen:** `deleteLayer` deletes each unlocked line. Under a mirror link each of those deletes is paired, so deleting the left eye's layer also deletes the mirror-linked right eye, unless the right eye is locked, in which case the whole operation is refused.
 
@@ -90,4 +97,12 @@
 9. Binding a paired point to an outside unpaired point is refused with `mirror-no-counterpart`.
 10. A locked counterpart refuses a paired edit.
 11. `unmirror` keeps the current shapes; afterwards edits no longer pair.
-12. Fuzz: the existing invariants hold; mirror pairs always reference existing lines; after each commit every pair's points are mirrored where nothing else forbids it.
+12. Added after dot's review of 070477e:
+    - a locked source applied onto an unlocked target succeeds, and the target becomes locked;
+    - an already-locked target cannot be overwritten through the source's unlocked state;
+    - a third-party locked line that a mirror edit would move is still protected;
+    - matching tells "share one point" from "two points with an endpoint link";
+    - the chosen correspondence has the least total cost, not just each line nearest;
+    - paired execution never re-triggers itself: direct inputs and mirror-generated inputs are kept apart, so nothing is counted twice;
+    - a counterpart id collision refuses the whole operation.
+13. Fuzz: the existing invariants hold; mirror pairs always reference existing lines; after each commit every pair's points are mirrored where nothing else forbids it.

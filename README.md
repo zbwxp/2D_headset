@@ -22,7 +22,7 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `fills` | filled loops (identity, boundary lines, colour, element state) and fill order | A locked fill's colour cannot be changed or cleared; it may vanish when its loop breaks (Q30 甲).  Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
 | `locks` | nothing (computed) | A lock protects what a line owns alone, wherever the change comes from: its shape (end positions, handles), its stroke, and the end stroke at a free end. Joins and arcs at its end points are shared with its neighbours, so they are not under its lock. What goes with a deleted unlocked element is allowed. Lines made in this edit are not compared |
-| `editing` | the selection (part of the state, so undoable) | Selectable units (point, handle, line, fill; V = whole continuous curve). A geometric transform acts on what the selection expands to (a line = its two end points and two handles; a fill = its boundary lines; a shared point once): points go to M·p, those handles become linear(M)·offset, every other handle keeps its offset. Flip = reflection about the selection's own centre. Delete removes selected lines only |
+| `editing` | the selection (part of the state, so undoable) | Selectable units (point, handle, line, fill; V = whole continuous curve). A geometric transform acts on what the selection expands to (a line = its two end points and two handles; a shared point once): points go to M·p, an expanded handle's tip goes to M·tip, every other handle keeps its offset. Flip = reflection about the selection's own centre. Delete removes selected lines only |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
@@ -122,6 +122,5 @@ These are our own choices, not derived from bowen's principles. They wait for hi
     - the lock check is on the result: a line locked when the edit ends must be unchanged, and a line locked before may not disappear;
     - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.
 15. **Editing** (docs/editing-apply-plan.md):
-    - a selected fill expands to its boundary lines for transforms;
-    - `deleteSelection` also clears selected fills;
+    - a selected fill is not geometry: transforms and delete ignore it (what they should do with fills is not decided);
     - a selected line that is split leaves the selection (its pieces are not selected).
