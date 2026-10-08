@@ -147,6 +147,15 @@ export function curve(n: NetworkState, id: Id): Cubic {
   return [vecOut(a), vecOut(add(a, l.ha)), vecOut(add(b, l.hb)), vecOut(b)]
 }
 
+/** Absolute control points of every line, in line order (one pass; for bulk readers such as derived). */
+export function curves(n: NetworkState): Map<Id, Cubic> {
+  const pos = new Map(S(n).points.map(p => [p.id, p.position]))
+  return new Map(S(n).lines.map(l => {
+    const a = pos.get(l.a)!, b = pos.get(l.b)!
+    return [l.id, [vecOut(a), vecOut(add(a, l.ha)), vecOut(add(b, l.hb)), vecOut(b)] as Cubic]
+  }))
+}
+
 /** Continuous curves: lines connected through shared points, per layer, in line order. */
 export function components(n: NetworkState): { layer: Id; lines: Id[] }[] {
   const parent = new Map<Id, Id>()
@@ -161,10 +170,11 @@ export function components(n: NetworkState): { layer: Id; lines: Id[] }[] {
     const ra = find(l.a), rb = find(l.b)
     if (ra !== rb) parent.set(rb, ra)
   }
+  const layerOf = new Map(S(n).points.map(p => [p.id, p.layer]))
   const byRoot = new Map<Id, { layer: Id; lines: Id[] }>()
   for (const l of S(n).lines) {
     const r = find(l.a)
-    if (!byRoot.has(r)) byRoot.set(r, { layer: rawPoint(n, l.a).layer, lines: [] })
+    if (!byRoot.has(r)) byRoot.set(r, { layer: layerOf.get(l.a)!, lines: [] })
     byRoot.get(r)!.lines.push(l.id)
   }
   return [...byRoot.values()]

@@ -49,7 +49,7 @@ export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsS
 /** Trims and arcs from the arc joins; the drawn curve of every line. */
 function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
   const all = net.lines(n)
-  const full = new Map(all.map(l => [l.id, net.curve(n, l.id)]))
+  const full = net.curves(n)
   const len = new Map(all.map(l => [l.id, arcLength(full.get(l.id)!)]))
   const endAt = (line: Id, point: Id): net.End => (net.line(n, line).a === point ? 'a' : 'b')
   const arcRows = joins.rows(j).filter(r => r.mode === 'arc')
