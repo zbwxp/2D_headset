@@ -76,6 +76,22 @@ describe('reads see the edit so far as settled', () => {
     expect(close(line(d, 'ln').hb, P(-3, 0))).toBe(true)
   })
 
+  it('S9. reading is not an intent: a read for a merge stays what it was, later moves of the read point still win (dot 1791475696)', () => {
+    const d = fixture()
+    d.edit(e => { sk(e).point('x', 'C', P(20, 20)); sk(e).point('x2', 'C', P(25, 25)); sk(e).line('lx', 'x', 'x2') })
+    d.edit(e => { e.move([moveQ]); e.mergePosition('a', 'x'); e.move([{ id: 'q', target: P(0, 20) }]) })
+    expect(point(d, 'q')!.position).toEqual(P(0, 20))
+    expect(point(d, 'a')!.position).toEqual(P(0, 20))
+    expect(point(d, 'x')!.position).toEqual(P(0, 10))
+  })
+
+  it('S10. a read does not drop earlier intents: q to 10, then a moved +2 from its settled 10 → both average to 11 (dot 1791475696)', () => {
+    const d = fixture()
+    d.edit(e => { e.move([moveQ]); e.select([{ kind: 'point', id: 'a' }]); e.translate(0, 2) })
+    expect(point(d, 'a')!.position).toEqual(P(0, 11))
+    expect(point(d, 'q')!.position).toEqual(P(0, 11))
+  })
+
   it('S7. a mirror apply reflects the source as it settles', () => {
     const d = fixture()
     // the target is on C: a sits on the axis, so a target end reflected onto it in A would bind into it
