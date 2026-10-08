@@ -130,6 +130,9 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
         }
         for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) e.join('o', 'l' + i, 'l' + j, { mode: 'smooth' })
       })
+      // Creating each join turns its second line to its first (bowen 1791428722); the
+      // springs reach their balance the next time the point is edited with nothing held.
+      d.edit(e => e.move([{ id: 'o', target: P(0) }]))
       const angles = d.snapshot().lines.map(l => Math.atan2(l.ha.y, l.ha.x)).sort((a, b) => a - b)
       for (let i = 0; i < n; i++) {
         const delta = (angles[(i + 1) % n]! - angles[i]! + 2 * Math.PI) % (2 * Math.PI)
@@ -162,6 +165,28 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
 })
 
 describe('graph rules added by Claude', () => {
+  it('setting smooth turns the second-clicked line to the first; the first does not move (bowen 1791428722)', () => {
+    const d = graph([['ab', 'a', 'b'], ['bc', 'b', 'c']])
+    const before = d.snapshot().lines.find(l => l.id === 'ab')!.hb
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
+    const s = d.snapshot(), ab = s.lines.find(l => l.id === 'ab')!, bc = s.lines.find(l => l.id === 'bc')!
+    expect(ab.hb).toEqual(before)
+    expect(Math.atan2(bc.ha.y, bc.ha.x)).toBeCloseTo(Math.atan2(-before.y, -before.x), 9)
+  })
+
+  it('an unrelated edit never turns handles at another point', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('o', 'L', P(0))
+      for (let i = 0; i < 3; i++) { sk(e).point('p' + i, 'L', P(10 * Math.cos(i), 10 * Math.sin(i))); sk(e).line('l' + i, 'o', 'p' + i) }
+      for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) e.join('o', 'l' + i, 'l' + j, { mode: 'smooth' })
+      sk(e).point('x', 'L', P(50)); sk(e).point('y', 'L', P(60)); sk(e).line('xy', 'x', 'y')
+    })
+    const before = d.snapshot().lines.filter(l => l.id.startsWith('l'))
+    d.edit(e => e.move([{ id: 'x', target: P(55) }]))
+    expect(d.snapshot().lines.filter(l => l.id.startsWith('l'))).toEqual(before)
+  })
+
   it('a dragged handle is held: its smooth partner turns exactly opposite', () => {
     const d = graph([['ab', 'a', 'b'], ['bc', 'b', 'c']])
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))

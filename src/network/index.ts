@@ -46,10 +46,12 @@ export interface Changes {
   held: { line: Id; end: End }[]
   /** Lines whose group wins a merge (the first-clicked side), latest last. */
   prefer: { lines: Id[] }[]
+  /** Points whose attributes were edited in this edit (e.g. a join was set). */
+  touched: Id[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [],
 })
 
 export const create = (): NetworkState =>
@@ -62,6 +64,27 @@ function claimPoint(n: NetworkState, id: Id) {
 function claimLine(n: NetworkState, id: Id) {
   if (S(n).usedLines.includes(id)) throw new Error(`Line id ${id} was already used in this document; ids are never reused`)
   S(n).usedLines.push(id)
+}
+
+/** Mark a handle as held for this edit without moving it (the first-clicked side of a join, bowen 1791428722). */
+export function hold(n: NetworkState, ch: Changes, lineId: Id, end: End) {
+  rawLine(n, lineId)
+  if (!ch.held.some(h => h.line === lineId && h.end === end)) ch.held.push({ line: lineId, end })
+}
+
+/** Record that a point's attributes changed in this edit. */
+export function touch(ch: Changes, point: Id) {
+  if (!ch.touched.includes(point)) ch.touched.push(point)
+}
+
+/** Points this edit acted on: moved, touched, held handles' points, and points of topology changes. */
+export function affectedPoints(n: NetworkState, ch: Changes): Set<Id> {
+  const out = new Set<Id>([...ch.targets.map(t => t.point), ...ch.touched])
+  for (const h of ch.held) if (hasLine(n, h.line)) { const l = rawLine(n, h.line); out.add(h.end === 'a' ? l.a : l.b) }
+  for (const m of ch.merged) out.add(m.keep)
+  for (const r of ch.replaced) for (const p of [r.a, r.b, r.mid]) out.add(p)
+  for (const u of ch.unbound) { out.add(u.point); out.add(u.newPoint) }
+  return out
 }
 
 /**
@@ -255,7 +278,7 @@ export function moveHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, o
   const l = rawLine(n, lineId)
   if (end === 'a') l.ha = vecIn(offset)
   else l.hb = vecIn(offset)
-  if (!ch.held.some(h => h.line === lineId && h.end === end)) ch.held.push({ line: lineId, end })
+  hold(n, ch, lineId, end)
 }
 
 /** Handle updates computed by other modules (joins). */

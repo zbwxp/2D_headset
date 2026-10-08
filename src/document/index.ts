@@ -80,8 +80,14 @@ export class Editor {
   unbind(point: Id, lines: Id[], newPoint: Id) { this.topology(ch => net.unbind(this.s.network, ch, point, lines, newPoint)) }
 
   // joins and end strokes (point attributes)
-  join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) { joins.setJoin(this.s.joins, this.s.network, point, l1, l2, opts) }
-  removeJoin(point: Id, l1: Id, l2: Id) { joins.removeJoin(this.s.joins, point, l1, l2) }
+  /** Set a join between two lines at a point; l1 is clicked first. For smooth, l2 turns to l1 (bowen 1791428722). */
+  join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) {
+    const { state, changes } = this.tx
+    joins.setJoin(state.joins, state.network, point, l1, l2, opts)
+    net.touch(changes, point)
+    if (opts.mode === 'smooth') net.hold(state.network, changes, l1, net.line(state.network, l1).a === point ? 'a' : 'b')
+  }
+  removeJoin(point: Id, l1: Id, l2: Id) { joins.removeJoin(this.s.joins, point, l1, l2); net.touch(this.tx.changes, point) }
   endStroke(point: Id, stroke: joins.EndStroke) { joins.setEndStroke(this.s.joins, this.s.network, point, stroke) }
 
   // links (cross-layer relation)

@@ -88,12 +88,15 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
 /**
  * Smooth springs. Energy per smooth pair = (deviation of the two handle
- * directions from straight-opposite)², angles only, lengths kept. Handles dragged
- * in this edit are held. Solved by coordinate descent; returns handle updates.
+ * directions from straight-opposite)², angles only, lengths kept. Solved only at
+ * the points this edit acted on, so an unrelated edit never turns anything.
+ * Held handles (dragged in this edit, or the first-clicked side of a new join)
+ * keep their direction. Coordinate descent; returns handle updates.
  */
 export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
   const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
-  const points = [...new Set(S(j).rows.filter(r => r.mode === 'smooth').map(r => r.point))]
+  const affected = net.affectedPoints(n, ch)
+  const points = [...new Set(S(j).rows.filter(r => r.mode === 'smooth').map(r => r.point))].filter(p => affected.has(p))
   for (const p of points) {
     const ends = new Map(net.linesAt(n, p).map(e => [e.line.id, e]))
     const rows = rowsAt(j, p).filter(r => r.mode === 'smooth')

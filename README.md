@@ -66,7 +66,14 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 - Handles are offsets from their own point, so moving a point carries its handles.
 - **Loop enumeration** stops at `LOOP_LIMIT` (10 000) per document (bowen: a layer never holds very complex networks). Past that, unfilled loops beyond the limit are not offered.
 - Every order list is bottom-to-top: index 0 is drawn first.
-- **Smooth springs** use an angle-based energy, so 3 mutually smooth lines settle at 120° and 4 at 90°. A handle dragged in this edit is held. The stiffness is one global constant (bowen 1791421988).
+- **Units:** all coordinates and lengths are plain numbers in one dimensionless document unit (bowen 1791428722); the display maps units to pixels.
+  - An arc join's `radius` is the length trimmed back along each line from the point, in that unit (at most 45% of the line).
+- **Smooth springs:**
+  - **Energy:** angle-based, so 3 mutually smooth lines settle at 120° and 4 at 90°.
+  - **Where it runs:** only at the points an edit acted on, so an unrelated edit never turns anything.
+  - **Held handles:** a handle dragged in this edit is held. When a smooth join is set, the first-clicked line is held and the second turns to it (bowen 1791428722).
+  - **Stiffness:** one global constant (bowen 1791421988).
+- **No special rule, code result accepted (bowen 1791428722):** fill order after two groups merge (fills keep their relative order); the order of several groups split off in one edit (each goes right after the original).
 - **Not in v1:**
   - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots, and cut-and-paste between recordings that keeps line ids (bowen 1791392233).
   - **Implementation staged (not yet written):**
