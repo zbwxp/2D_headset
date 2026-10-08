@@ -36,12 +36,14 @@ describe('layers', () => {
     expect(s(d).layers).toEqual([])
   })
 
-  it('0b. the lock check is on the result: unlocking then editing in one edit is allowed; ending the edit locked with a change is refused', () => {
+  it('0b. a line whose lock switches within an edit is not protected in it: unlock-then-edit and edit-then-lock both work; locked throughout is protected', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
     d.edit(e => { e.lineState('ab', { locked: false }); e.lineStroke('ab', { width: 3, profile: 'uniform' }) })
     expect(line(d, 'ab')!.stroke.width).toBe(3)
-    expect(() => d.edit(e => { e.lineStroke('bc', { width: 3, profile: 'uniform' }); e.lineState('bc', { locked: true }) })).toThrow(/Locked lines would change \(bc\)/)
+    d.edit(e => { e.lineStroke('bc', { width: 3, profile: 'uniform' }); e.lineState('bc', { locked: true }) })
+    expect(line(d, 'bc')!.stroke.width).toBe(3)
+    expect(() => d.edit(e => e.lineStroke('bc', { width: 5, profile: 'uniform' }))).toThrow(/Locked lines would change \(bc\)/)
   })
 
   it('1. a new layer is empty, sits above the given layer, and needs a unique non-empty name', () => {
