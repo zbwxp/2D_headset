@@ -15,8 +15,12 @@
 | new `locks` module | Compares each locked element's **protected content** before and after an edit. | Q31 |
 | `network` | **No two endpoints in one layer may coincide.** At commit, exactly coincident endpoints in one layer are bound. The kept point is the one not directly acted on in this edit; if both or neither were acted on, the earlier-created one is kept. | Q31 |
 
-**Protected content checked by `locks`:**
-- **locked line:** absolute control points; width and profile; for each end, whether it is free or shared, plus the end stroke at that point.
+**Protected content checked by `locks`** (dot's correction, after `f9c4109`):
+- **locked line:**
+  - its final geometry as `derived` computes it, so an arc join that changes the drawn shape counts as a change;
+  - width and profile;
+  - for each end, the effective end stroke: the end stroke if the end is free, nothing if it is shared.
+  The free/shared flag itself is not compared. Only a real change in shape or in the stroke that is drawn counts.
 - **locked fill:** colour.
 
 A locked fill that vanished because its loop broke is allowed (Q30 甲).
@@ -45,12 +49,17 @@ A locked fill that vanished because its loop broke is allowed (Q30 甲).
 ## Commit pipeline (fixed order)
 
 1. **Isolated points:** remove them.
-2. **Overlap auto-bind:** bind coincident endpoints in each layer, repeating until there are none.
-3. **Links:** align them.
-4. **Smooth springs:** solve.
-5. **Fills:** validate.
-6. **Groups:** reconcile.
-7. **Locks:** check, comparing the published state with the draft; refuse the edit on any difference.
+2. **Position loop**, repeated until nothing changes (dot's correction, after `f9c4109`):
+   - overlap auto-bind: bind coincident endpoints in each layer;
+   - links: drop links between points now in one layer, then align the rest.
+   Link alignment can create a new coincidence in one layer, so one pass is not enough.
+   The published state therefore never has coincident endpoints in one layer.
+3. **Smooth springs:** solve. They turn handles only and never move points.
+4. **Fills:** validate.
+5. **Groups:** reconcile.
+6. **Locks:** compare the published state with the draft and refuse the edit on any difference.
+
+Every step reports its changes through `Changes`, so isolated points and stale relations left by a bind are cleaned in the same commit.
 
 ## Acceptance cases (tests first)
 
@@ -95,17 +104,19 @@ A locked fill that vanished because its loop broke is allowed (Q30 甲).
 **Moving a group**
 25. `moveGroup` to another layer keeps all ids. Fills and joins follow, and the group lands on top.
 26. `moveGroup` of a group containing a locked element is refused.
-27. Moving a group into its link partner's layer binds the linked points, and the link ends.
-28. Moving two linked groups to a third layer keeps the link.
+27. Moving a group into its link partner's layer binds the linked points, and the link ends. The same holds when two linked groups are both moved into one third layer.
+28. Moving two linked groups into two different other layers keeps the link.
 
 **Copy and paste with locks**
 29. Copying a locked group gives a locked copy.
 
+**Lock signature** (dot's correction, after `f9c4109`)
+29a. An arc join that changes a locked line's drawn shape is refused.
+29b. Binding onto a locked point is allowed when the locked line's protected content is unchanged.
+
 **Fuzz**
 30. The random edit invariants are extended: no two coincident endpoints in one layer; locked elements are never changed by a refused edit; layer names are unique.
 
-## Open (asked bowen 1791458383)
+## Decided: bind width
 
-Bind's "unify widths to the first-clicked group" no longer has a single value now that width lives on each line.
-- **Proposal 甲:** binding no longer touches widths.
-- **Until bowen answers:** implement 甲 behind a single function, so it is easy to change.
+bowen chose 甲 in reply to 1791458383: binding no longer touches widths, and each line keeps its own.
