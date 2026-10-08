@@ -64,7 +64,7 @@ How this section works:
 | Closed curve | has at least | Two lines (no loop is made of a single line) | confirmed (consequence of binding rule) | bowen 1791392871 (Q22) |
 | Loop passing through one point twice | is | Valid; keeps its fill (special edit kept for tool consistency) | confirmed | bowen 1791391694 (Q20); dot 1791392923 (Q22) |
 | Move to another layer | is | Copy, or copy then delete; not a separate operation | confirmed | bowen 1791392425 (Q21) |
-| Drawing | has no | Cut, only copy and copy-then-delete | confirmed | bowen 1791392233 (Q21) |
+| Drawing | has no | Cut, only copy and copy-then-delete. *Note:* a Bézier curve is endpoints plus a line, and its endpoints may be shared by other lines, so cut-and-paste that keeps the original ids is ill-defined. A cut that creates new ids is exactly copy + delete the original, both already well defined, so no separate cut tool is needed. Moving lines between recordings with their ids is a separate matter, decided later. | confirmed | bowen 1791392233 (Q21); note bowen 1791434615, wording Claude 1791434637, approved bowen 1791434679 |
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
 | Point | is | A shared position. Each line keeps its own end there, with its own handle; handles belong to lines. | confirmed | bowen 1791383633; Q23 |
 | End stroke (taper and so on) | belongs to | The point. Connected points have a continuous stroke, so tapers take effect only at free ends. Special effects at a junction use show/hide intervals. | confirmed | bowen 1791393850 (Q23) |
