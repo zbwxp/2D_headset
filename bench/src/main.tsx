@@ -226,6 +226,20 @@ function App() {
           <span>width <input type="number" value={width} style={{ width: 40 }} onChange={e => setWidth(+e.target.value)} /></span>
           {B('Set width', () => run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))))}
         </div>
+        <b>Names</b>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {B('Rename line', () => { if (selLines.length !== 1) return setMsg('select one line (A)'); const n = prompt('line name', line(selLines[0]!).name); if (n !== null) run(x => x.renameLine(selLines[0]!, n)) })}
+          {B('Rename curve', () => { if (!selLines.length) return setMsg('select a curve (V)'); const gid = groupOf(selLines[0]!); const n = prompt('curve name', s.groups.find(x => x.id === gid)!.name); if (n !== null) run(x => x.renameGroup(gid, n)) })}
+          <input placeholder="find by name" style={{ width: 110 }} onKeyDown={e => {
+            if (e.key !== 'Enter') return
+            const q = (e.target as HTMLInputElement).value
+            const l = s.lines.find(x => x.name === q), gr = s.groups.find(x => x.name === q)
+            if (l) run(x => x.select([{ kind: 'line', id: l.id }]), true)
+            else if (gr) run(x => x.selectGroup(gr.lines[0]!), true)
+            else setMsg(`no line or curve named "${q}"`)
+          }} />
+        </div>
+        {selLines.length > 0 && <div style={{ color: '#555' }}>{[...new Set(selLines.map(groupOf))].map(gid => { const gr = s.groups.find(x => x.id === gid)!; return <div key={gid}><b>{gr.name}</b>: {gr.lines.map(id => line(id).name).join(' · ')}</div> })}</div>}
         <b>Mirror (axis x = {s.axis})</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B(`Set source (${source.length})`, () => { setSource(selLines); setMsg(`mirror source: ${selLines.join(', ')}`) })}
