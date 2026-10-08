@@ -3308,6 +3308,29 @@ Asked bowen whether to write the graph rows.
 
 **Also:** fills and joins move with the group, ids unchanged. The group goes on top of the new layer (existing default).
 
+### dot (1791436109)
+
+- **Moving a whole group with its ids holds:** all shared endpoints go with the group. It is an identity-keeping move, not "copy with new ids, then delete".
+- **"The partner id still exists" is judged in the target snapshot,** not across the whole project. Otherwise example 2 would wrongly keep the link.
+- **Moving two groups together:** check relations after the whole batch has arrived, not after the first group. Relations left at the source are cleaned up together.
+- **A cannot be turned into a bind automatically** (dot's view): that merges endpoints and changes identity, beyond a group move.
+
+### bowen's decisions (1791436374)
+
+> A 这个按照原则应该是改成绑定。绑定是一次编辑行为合并到一起，然后判定在同一个图层内，同一个位置重叠了两个端点，因此删除后选中的端点。在A的情况 复制进来的是就出现的端点。（端点绑定的处理逻辑代码上可以不是这么写 但是行为逻辑是这个）B 有锁定的element 那么整组换图就不算整组，因此会被拒绝（剪切只能整组，复制可以复制） 粘贴行为属于编辑。复制属于状态。剪切属于编辑。因此被锁定的element可以被复制，然后被粘贴之前 锁定无法生效因此可以被粘贴。但是粘贴之后就带着锁定。 这一套够清晰吗？
+
+**A: becomes a bind** (this overrides dot's objection).
+- The two linked endpoints now overlap at one position in one layer, so binding applies: the existing endpoint stays and the pasted-in one counts as "selected later" and is removed.
+- The binding rules follow: lines re-attach; joins follow the binding rules; the link ends naturally because one end is gone; the two groups become one, in the existing group's slot.
+
+**B: cut and paste are edits; copy does not change the document.**
+- A group with a locked element is not a movable whole, so cut is refused.
+- Locked elements can be copied. The pasted copy has new ids and carries the lock.
+
+### Claude (1791436400): one point to confirm
+
+Does the automatic bind apply **only to linked endpoints**, or to **any two endpoints that happen to overlap** in one layer? Claude proposes linked only; otherwise unrelated lines whose ends coincide by chance would merge unnoticed.
+
 ### Status
 
-Waiting for bowen and dot.
+bowen decided A and B. Waiting on the auto-bind scope.
