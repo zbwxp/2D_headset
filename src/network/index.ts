@@ -36,7 +36,7 @@ export interface Changes {
   deletedLines: Id[]
   /** Lines removed by binding because both ends landed on one point. */
   collapsedLines: Id[]
-  /** Points removed (only binding removes points). */
+  /** Points removed: merged by binding, or isolated (no line). */
   deletedPoints: Id[]
   merged: { keep: Id; remove: Id }[]
   unbound: { point: Id; newPoint: Id; lines: Id[] }[]
@@ -272,7 +272,7 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second] })
 }
 
-/** Delete removes lines only; endpoints are removed only by binding (graph, bowen 1791392558). */
+/** Delete removes the line; an endpoint left with no line is removed at commit (removeIsolated). */
 export function deleteLine(n: NetworkState, ch: Changes, id: Id) {
   rawLine(n, id)
   S(n).lines = S(n).lines.filter(x => x.id !== id)
@@ -301,6 +301,19 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   ch.collapsedLines.push(...collapsed)
   ch.deletedPoints.push(remove)
   ch.merged.push({ keep, remove })
+}
+
+/**
+ * A point exists only as an endpoint of lines. A point is removed in exactly two
+ * ways: merged away by binding, or isolated (no line) — checked once per edit,
+ * however it became isolated (bowen 1791428195).
+ */
+export function removeIsolated(n: NetworkState, ch: Changes) {
+  const used = new Set(S(n).lines.flatMap(l => [l.a, l.b]))
+  const isolated = S(n).points.filter(p => !used.has(p.id)).map(p => p.id)
+  if (!isolated.length) return
+  S(n).points = S(n).points.filter(p => used.has(p.id))
+  ch.deletedPoints.push(...isolated)
 }
 
 /** Unbind: the given lines leave `pointId` for a new point at the same position. */

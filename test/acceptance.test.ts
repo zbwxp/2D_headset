@@ -89,27 +89,31 @@ describe('dot draft: binding, loops and fills', () => {
   })
 })
 
+// Points exist only as line ends (bowen 1791428195), so each linked point gets a short line.
 function linked() {
   const d = new Core()
   d.edit(e => {
     e.layer('A'); e.layer('B'); e.layer('C')
-    e.point('a', 'A', P(0)); e.point('b', 'B', P(10)); e.point('c', 'C', P(20))
+    for (const [id, layer, x] of [['a', 'A', 0], ['b', 'B', 10], ['c', 'C', 20]] as const) {
+      e.point(id, layer, P(x)); e.point(id + '2', layer, P(x, 5)); e.line(id + 'line', id, id + '2')
+    }
     e.link('a', 'b'); e.link('b', 'c')
   })
   return d
 }
+const linkedXs = (d: Core) => d.snapshot().points.filter(p => ['a', 'b', 'c'].includes(p.id)).map(p => p.position.x)
 
 describe('dot draft: links, smooth springs, arcs, groups', () => {
   it('links: one side follows; both acted-on targets average (an unchanged one included); a chain moves once', () => {
     const d = linked()
-    expect(d.snapshot().points.every(p => p.position.x === 0)).toBe(true) // second point moves to the first
+    expect(linkedXs(d)).toEqual([0, 0, 0]) // second point moves to the first
     d.edit(e => e.move([{ id: 'a', target: P(10) }]))
-    expect(d.snapshot().points.every(p => p.position.x === 10)).toBe(true)
+    expect(linkedXs(d)).toEqual([10, 10, 10])
     d.edit(e => e.move([{ id: 'a', target: P(10) }, { id: 'b', target: P(0) }, { id: 'b', target: P(0) }]))
-    expect(d.snapshot().points.every(p => p.position.x === 5)).toBe(true)
+    expect(linkedXs(d)).toEqual([5, 5, 5])
     expect(d.snapshot().links).toHaveLength(2)
     d.edit(e => e.move([{ id: 'a', target: P(15) }, { id: 'b', target: P(15) }]))
-    expect(d.snapshot().points.every(p => p.position.x === 15)).toBe(true)
+    expect(linkedXs(d)).toEqual([15, 15, 15])
   })
 
   for (const n of [3, 4]) {
@@ -175,28 +179,39 @@ describe('graph rules added by Claude', () => {
 
   it('bind and lines stay in one layer; links are cross-layer only', () => {
     const d = new Core()
-    d.edit(e => { e.layer('A'); e.layer('B'); e.point('a', 'A', P(0)); e.point('b', 'B', P(1)); e.point('c', 'A', P(2)) })
-    expect(() => d.edit(e => e.line('x', 'a', 'b'))).toThrow()
-    expect(() => d.edit(e => e.bind('a', 'b'))).toThrow()
-    expect(() => d.edit(e => e.link('a', 'c'))).toThrow()
+    d.edit(e => {
+      e.layer('A'); e.layer('B')
+      e.point('a', 'A', P(0)); e.point('a2', 'A', P(0, 5)); e.line('aa', 'a', 'a2')
+      e.point('c', 'A', P(2)); e.point('c2', 'A', P(2, 5)); e.line('cc', 'c', 'c2')
+      e.point('b', 'B', P(1)); e.point('b2', 'B', P(1, 5)); e.line('bb', 'b', 'b2')
+    })
+    expect(() => d.edit(e => e.line('x', 'a', 'b'))).toThrow(/cross layers/)
+    expect(() => d.edit(e => e.bind('a', 'b'))).toThrow(/within one layer/)
+    expect(() => d.edit(e => e.link('a', 'c'))).toThrow(/cross-layer only/)
   })
 
-  it('delete removes the line only; a link ends when binding removes its point, and never re-links', () => {
+  it('points are removed only when isolated or merged; a link ends with its point and never re-links', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A'); e.layer('B')
-      e.point('a', 'A', P(0)); e.point('b', 'A', P(10)); e.line('ab', 'a', 'b')
-      e.point('c', 'A', P(20)); e.line('bc', 'b', 'c')
-      e.point('q', 'B', P(0)); e.link('q', 'b')
+      e.point('a', 'A', P(0)); e.point('b', 'A', P(10)); e.point('c', 'A', P(20)); e.point('d', 'A', P(30))
+      e.line('ab', 'a', 'b'); e.line('bc', 'b', 'c'); e.line('cd', 'c', 'd')
+      e.point('q', 'B', P(0)); e.point('r', 'B', P(0, 5)); e.line('qr', 'q', 'r'); e.link('q', 'b')
     })
-    d.edit(e => e.deleteLine('ab'))
-    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['a', 'b', 'c', 'q']) // endpoints stay
+    d.edit(e => e.deleteLine('ab')) // a is isolated → removed (bowen 1791428195); b still has bc
+    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['b', 'c', 'd', 'q', 'r'])
     expect(d.snapshot().links).toHaveLength(1)
-    d.edit(e => e.bind('c', 'b')) // binding removes b
-    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['a', 'c', 'q'])
+    d.edit(e => e.bind('c', 'b')) // b merged away; bc collapses; c keeps cd
+    expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['c', 'd', 'q', 'r'])
     expect(d.snapshot().links).toHaveLength(0)
     expect(d.snapshot().points.find(p => p.id === 'q')!.links).toEqual([])
     expect(d.snapshot().points.find(p => p.id === 'c')!.links).toEqual([])
+  })
+
+  it('a point created without any line does not survive the edit', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); e.point('lonely', 'L', P(0)) })
+    expect(d.snapshot().points).toEqual([])
   })
 
   it('binding drops the removed point’s joins; the kept point’s joins stay', () => {

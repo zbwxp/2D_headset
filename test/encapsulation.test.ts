@@ -37,7 +37,7 @@ describe('network encapsulation', () => {
 
   it('a Core snapshot is detached from the document', () => {
     const d = new Core()
-    d.edit(e => { e.layer('L'); e.point('a', 'L', { x: 0, y: 0 }) })
+    d.edit(e => { e.layer('L'); e.point('a', 'L', { x: 0, y: 0 }); e.point('b', 'L', { x: 1, y: 0 }); e.line('ab', 'a', 'b') })
     const snap = d.snapshot()
     snap.points[0]!.position = { x: 5, y: 5 }
     expect(d.snapshot().points[0]!.position).toEqual({ x: 0, y: 0 })

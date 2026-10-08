@@ -63,14 +63,7 @@ export class Editor {
 
   private topology(op: (ch: net.Changes) => void) {
     const { state, changes } = this.tx
-    const ch = net.emptyChanges()
-    op(ch)
-    joins.update(state.joins, state.network, ch)
-    links.update(state.links, ch)
-    fills.update(state.fills, ch)
-    groups.reconcile(state.groups, state.network, ch)
-    net.followReplacements(changes, ch)
-    for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
+    applyTopology(state, changes, op)
   }
 
   // network: one-time edits
@@ -174,8 +167,21 @@ export class Core {
   pickLoop(at: Vec): Id | undefined { return derived.pickLoop(this.state.network, this.state.joins, this.state.fills, at) }
 }
 
-/** The fixed pipeline before publishing: links → smooth springs → fills → groups. */
+/** One network operation, then every attribute module updates its own references. */
+function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes) => void) {
+  const ch = net.emptyChanges()
+  op(ch)
+  joins.update(state.joins, state.network, ch)
+  links.update(state.links, ch)
+  fills.update(state.fills, ch)
+  groups.reconcile(state.groups, state.network, ch)
+  net.followReplacements(changes, ch)
+  for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
+}
+
+/** The fixed pipeline before publishing: isolated points → links → smooth springs → fills → groups. */
 function commit(s: State, ch: net.Changes) {
+  applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   net.setPositions(s.network, links.align(s.links, s.network, ch))
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch))
   fills.validate(s.fills, s.network)
