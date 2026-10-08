@@ -2967,6 +2967,19 @@ Waiting for bowen:
 
 **Claude accepts:** the fork bullet in Claude's 1791425203 derivation is withdrawn as a general rule.
 
+### bowen's wording (1791425361) and Claude's reply (1791425378)
+
+> 原则可以这样说吗？填充是跟随闭合曲线最终显示效果的外轮廓来定
+
+**Claude:** close, but "final displayed outer outline" can be read as the stroke's outer edge, which causes three problems:
+1. **Width:** a 4 px line's outer edge is 2 px outside the centreline, so the fill would spill 2 px outside the line.
+2. **Show/hide intervals:** hidden ink has no displayed outline there, so the fill would lose its boundary. That contradicts "hiding ink does not break loop or fill".
+3. **Taper:** the fill boundary would shrink inward where the line tapers.
+
+**Proposed wording:** the fill follows the closed curve's final **shape**, meaning the lines' centre path including shape-changing joins such as arcs. It does not follow stroke width, taper or show/hide intervals.
+
+Lines are drawn above fills, and the ink straddles the centreline, so it looks like "filled up to the line". **To confirm with bowen.**
+
 ### Status
 
 Claude and dot agree on the principle. The graph changes wait for bowen's "写":
