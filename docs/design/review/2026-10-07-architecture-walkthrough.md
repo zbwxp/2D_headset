@@ -2484,10 +2484,37 @@ v103 `connect` unified the width and profile of both groups to the first group's
 
 **Still open:** on binding, are the deleted point's joins dropped or carried over?
 
+### bowen (1791421304): smooth is a stiff spring
+
+> 首先是多个线共用端点然后平滑接笔的问题 我想的是平滑这个属性是一个弹性系数很大的量它使得两端的handle几乎保持平行（也可以稍微弯曲这是可以预见的） 当一个y字形俩俩互相平滑时（这种设计本来就是错的，不拒绝操作展示失误）那效果就是三个k作用变成了互为60度。如果这不是用户想要的他自己会取消不想要的组的平滑。
+
+**Decided:**
+- Smooth is a soft constraint, a very stiff spring pulling the two handles toward one straight line. It is not a hard rule.
+- A conflict is not refused; the compromise result is shown. This answers item 3 (odd smooth cycle).
+- The user removes unwanted smooth pairs.
+
+### Claude's derivation (1791421341)
+
+1. **Y with all three pairs smooth.**
+   - The springs balance with the three handles evenly spread, **120° apart**, so each pair is 60° short of straight. Claude reads bowen's "互为60度" this way; to confirm.
+   - Holding one handle still gives the same 120° spread.
+2. **Without a conflict a spring and a hard rule give the same result.**
+   - When dragging a handle, its smooth partner has no other force on it and turns fully straight.
+   - "Slight bending" only appears with another force: conflicting smooth pairs, or deformation (head-turn) pushing handles while the spring pulls back.
+   - **To confirm:** is the second the bending bowen foresees?
+3. **Differs from v103:** v103 used a hard projection and raised "conflicting handle directions" on contradiction (`7205381:src/domain/drawing/smoothHandleAuthoring.ts:16`). The new model solves for the spring balance.
+4. **Stiffness:** global and fixed, or per join? Claude suggests a global fixed large value for now.
+
+### bowen (1791421340) asked what is still open; Claude listed (1791421356)
+
+1. **Line stroke scope:** continuous only at the junction, or one width and profile for the whole connected group? v103 unified them on binding.
+2. **On binding:** are the deleted point's joins dropped or carried to the kept point?
+3. **Spring:** is "slight bending" about deformation, and is stiffness global for now?
+
 ### Status
 
 - 2 decided (the join is a point attribute).
 - 1 decided (end stroke belongs to the point; shared points are continuous; special effects use show/hide intervals).
 - Open: line stroke per line or per connected group?
-- 3 (odd smooth cycle) deferred to last.
+- 3 (odd smooth cycle) decided: smooth is a stiff spring; conflicts show the compromise, nothing is refused.
 - Open: drop or carry the deleted point's joins on binding.
