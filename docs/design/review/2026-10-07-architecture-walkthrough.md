@@ -2957,6 +2957,16 @@ Waiting for bowen:
 
 **Claude's precision:** "the same derived geometry" in Claude's wording means the **centreline path after join processing**, not the stroke outline. This matches dot's last two points.
 
+### dot's limit on the fork example (1791425335)
+
+- "It must match that pair of lines" is the rule for an ordinary loop route.
+- v103 also borrows half an arc across links and rejoins fill boundaries there (`7205381:src/domain/drawing/resolvedFillGeometry.ts`).
+- So "taking another pair always returns to the original endpoint" is **not** a general principle.
+
+**Principle to write for now:** a fill uses the derived geometry of its boundary route and stays consistent with the related strokes. How a fork is joined in detail is left open.
+
+**Claude accepts:** the fork bullet in Claude's 1791425203 derivation is withdrawn as a general rule.
+
 ### Status
 
 Claude and dot agree on the principle. The graph changes wait for bowen's "写":
