@@ -1,0 +1,47 @@
+# Point / line / face core (`core/v1`)
+
+A clean, history-free branch that turns the point / line / face relationship graph into code (bowen 1791425592, 1791425798).
+
+- **Spec:** the relationship graph in headset-design `docs/design/review/2026-10-07-architecture-walkthrough.md` (as of `5a6d95c`), and the package plan `docs/design/architecture/20-packages.md` (`633984e`).
+- **Nothing is copied** from v103 or the proto. Old code is only read for comparison; any borrowed algorithm is rewritten here and its source noted.
+- **No UI.** Pure data in, data out.
+- **Module list and acceptance tests** start from dot's draft (dot 1791426280; `Documents/Codex/2026-10-08/task/core-v1`, read-only).
+- **Who:** Claude writes; dot re-runs everything on its own machine and reviews the interfaces (bowen 1791426506).
+
+## Modules
+
+Each module is a folder with one `index.ts`. Code outside a module may import **only** that `index.ts`, and only in the allowed dependency direction. `test/boundaries.test.ts` fails on deep imports or wrong-direction imports.
+
+| Module | Owns (data) | Rules it owns |
+|---|---|---|
+| `geometry` | nothing | Cubic Bézier maths (wraps `bezier-js`), arc fillet, flattening, area, point in polygon |
+| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. Queries: lines at a point, connected groups, simple loops |
+| `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
+| `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
+| `links` | cross-layer endpoint links (one relation per pair) | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets |
+| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed walk in one layer; discover unfilled loops on demand |
+| `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins (arc trims and inserts). Lines and fills read the same result. Stroke width, taper and blur never change it |
+| `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
+
+Dependency direction (lower never imports higher):
+
+```
+geometry ← network ← groups / joins / links / fills ← derived ← document
+```
+
+## The pipeline (every edit)
+
+1. Each operation is applied to a private copy of the state. The network reports what changed (lines replaced by a split, collapsed or deleted lines, merged or deleted points, directly moved points, held handles), and each attribute module updates its own references.
+2. Before commit, in a fixed order:
+   1. `links.align`
+   2. `joins.solve`
+   3. `fills.validate`
+   4. `groups.reconcile`
+3. If anything throws, or the edit is cancelled, nothing is published. One edit is one undo step.
+
+## Conventions
+
+- Handles are offsets from their own point, so moving a point carries its handles.
+- Every order list is bottom-to-top: index 0 is drawn first.
+- **Smooth springs** use an angle-based energy, so 3 mutually smooth lines settle at 120° and 4 at 90°. A handle dragged in this edit is held. The stiffness is one global constant (bowen 1791421988).
+- **Not in v1** (bowen: later): copy, deformation, mirror editing, show/hide intervals, stroke rendering, views / snapshots, and how a fill joins at a fork with an arc on another pair (left open, dot 1791425335).
