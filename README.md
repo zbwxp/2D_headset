@@ -121,7 +121,7 @@ These are our own choices, not derived from bowen's principles. They wait for hi
     - the ids of a copied layer are `${new layer id}/${old id}`;
     - unbind offsets the new point by 0.5 along the first moved line's handle (or toward its other end);
     - a new layer is made by `layer(id, name?, above?)`; there is no separate `newLayer`;
-    - the lock check protects a line locked both before and after an edit (content) and a line locked before it (existence); a lock switched within one edit does not protect in that edit, so a mirror apply can copy a lock onto the target it reshapes;
+    - the lock check is on the result: a line locked when the edit ends must be unchanged, and a line locked before may not disappear;
     - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.
 16. **Apply** (docs/editing-apply-plan.md):
     - the counterpart's new ids in a paired split or unbind are the caller's ids + `′`;

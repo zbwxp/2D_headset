@@ -18,13 +18,8 @@
 //   vanish with its loop (Q30 甲);
 // - a group holding any locked element cannot be cut and pasted (document.moveGroup);
 // - batches (group width, layer delete) act on unlocked members only (document).
-// Protected in an edit: a line locked both before and after it (its content may not
-// change) and a line locked before it (it may not disappear). A line whose lock is
-// switched in the same edit is not protected in that edit, so unlocking then editing
-// and editing then locking both work — a mirror apply copies the source's lock onto
-// a target it also reshapes (dot 1791459661; review of 070477e). A line locked before
-// and gone after is refused even if it was unlocked first: once it is gone, its last
-// lock state cannot be seen.
+// The check is on the result: no line locked when the edit ends may differ from
+// before it, and a locked line may not disappear (dot 1791459661).
 import * as net from '../network'
 import * as joins from '../joins'
 import * as links from '../links'
@@ -68,13 +63,16 @@ function owned(v: View, id: Id, g: Gone): string | undefined {
 const lockedLines = (v: View) => net.lines(v.network).filter(l => l.state.locked).map(l => l.id)
 
 /**
- * Lines locked both before and after the edit whose own content differs, and lines
- * locked before the edit that are gone. `ch`: the lines the user deleted in this
- * edit, and the splits made in it.
+ * Lines locked in the result whose own content differs from before the edit. A
+ * line that did not exist before (drawn, or copied with its lock) has nothing
+ * earlier to protect; a line locked before and gone now has changed.
+ * `ch`: the lines the user deleted in this edit, and the splits made in it.
  */
 export function changed(before: View, after: View, ch: Pick<net.Changes, 'deletedLines' | 'replaced'>): Id[] {
-  const lockedAfter = new Set(lockedLines(after))
-  const ids = new Set(lockedLines(before).filter(id => !net.hasLine(after.network, id) || lockedAfter.has(id)))
+  const ids = new Set([
+    ...lockedLines(before).filter(id => !net.hasLine(after.network, id)),
+    ...lockedLines(after).filter(id => net.hasLine(before.network, id)),
+  ])
   const g = gone(after, ch), none: Gone = { line: () => false, partner: () => false }
   return [...ids].filter(id => { const x = owned(before, id, g), y = owned(after, id, none); return !x || !y || x !== y }).sort()
 }
