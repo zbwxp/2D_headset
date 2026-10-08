@@ -191,6 +191,12 @@ flowchart LR
 
 Interaction has many scattered requirements but no unified principles yet. So it is built as **one closed module** whose inside may be rough for now. Later a principled interaction module replaces it **in one swap, losslessly**.
 
+**The one principle for interaction at this stage (bowen 1791477615): interaction must not pollute any other module.** Everything below is how that is held:
+- the contract;
+- the boundary test;
+- the rule that no meaning lives only in interaction;
+- the contract tests.
+
 What makes it replaceable:
 - **A fixed contract**, the only things it may use or produce:
   - **in:**
