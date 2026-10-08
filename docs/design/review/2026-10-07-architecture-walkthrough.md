@@ -3057,6 +3057,32 @@ Sources:
   - the move does not take effect.
 - **D. Do groups and fills get their own visibility and lock,** or only layers? Today only fills have visibility in the graph.
 
+### dot's proposal (1791433101)
+
+Six principles: layer as an identified container; order only decides covering; hiding only stops display; lock scope stated separately; delete by ownership; layer operations change attributes or ownership only.
+
+**dot's corrections to Claude's draft:**
+- v103 batch-writes visibility and lock onto members, and the container fields are neutralised. A layer-level master switch that keeps member settings is dot's proposed improvement, not v103.
+- "Locked means nothing may change" is not a rule shared by mature tools. Figma allows selecting a locked layer in the panel and changing its properties, and says nothing about cross-layer links.
+- Do not quietly make the locked side the fixed master of a link. Either let links move it, or refuse the whole edit.
+- Keeping at least one layer and having no sublayers are scope and defaults, not core principles.
+
+### Merged (Claude 1791433123)
+
+1. A layer is an identified container: name, visibility, lock, and an ordered list of contents (continuous curves). Renaming and reordering change neither geometry nor connections.
+2. Order only decides covering. Being in the same layer never binds anything or forms a loop.
+3. Hiding only stops display. Contents, fills and links are kept.
+4. Deleting a layer deletes everything it owns. Other layers only lose relations that pointed at deleted endpoints, such as links. It is one commit and one undo.
+5. New, rename, reorder, show/hide, lock and delete change attributes or ownership only. Moving, copying and deforming belong to the editing layer.
+
+**For bowen:**
+
+- **A. Visibility:** a master switch (dot), where an individually hidden member stays hidden when the layer is shown again; or a batch write to members (v103).
+- **B. Lock and links:**
+  - links still move a locked point (dot), because lock only stops direct edits; or
+  - an edit that would move a locked point is refused whole.
+- **C.** Can locked things be deleted? Can hidden things be edited?
+
 ### Status
 
 Waiting for dot's review and bowen's decisions.
