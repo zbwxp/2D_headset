@@ -42,7 +42,7 @@ How this section works:
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
 | Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
 | Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
-| Fill | is an attribute of | Closed curve (show / hide / clear; no separate fill element) | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18) |
+| Fill | is an attribute of | Closed curve (show / hide / clear). *"No separate fill element" is superseded by Q29: a fill is an element (with line) carrying visibility and lock; it still belongs to its closed curve.* | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18); bowen 1791433646 (Q29); dot 1791434562 |
 | Fill | does not cross | Layers (cross-layer areas: fill each side and stack) | confirmed | bowen 1791389840, 1791390174 (Q17) |
 | Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
 | Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
@@ -83,7 +83,7 @@ How this section works:
 | Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
 | Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
 | Layer new / delete / rename | is | To be discussed later | open | bowen 1791434101 (Q29 E) |
-| Smooth join | is | A stiff spring pulling two handles toward a straight line. Conflicts show the compromise and are never refused. Stiffness is one global fixed value. | confirmed | bowen 1791421304, 1791421988 (Q23) |
+| Smooth join | is | A stiff spring pulling two handles toward a straight line. When angle constraints conflict with each other, the compromise is shown and nothing is refused. Stiffness is one global fixed value. *This does not override Q29: an edit that would turn a locked line's handle is refused.* | confirmed | bowen 1791421304, 1791421988 (Q23); bowen 1791434101 (Q29); dot 1791434562 |
 | 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
 | Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | confirmed | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
 | Endpoint binding | drops | The deleted point's join records. New connections use the tool's preset join. | confirmed (new rule, not v103) | bowen 1791423036 (Q23) |
