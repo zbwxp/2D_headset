@@ -28,6 +28,132 @@ How this section works:
   - **confirmed**: decided by bowen.
   - **current code**: a fact at 4bc7cc2, not a decision.
   - **open**: not decided.
+  - **superseded**: replaced by a later decision; kept in its own table at the end, not in force.
+- **Arranged by module** (bowen 1791463413): an index first, then one table per module.
+
+### Index by module (one line each; the rows are in the tables below)
+
+dot's summary (dot 1791463344), checked against the rows:
+- **Points and lines:** a point exists only as a line end; split, bind, unbind and delete each have one meaning; no two endpoints in one layer coincide; each line carries its own stroke.
+- **Continuous curves:** formed by shared end points; they keep their identity and order.
+- **Joins:** a relation between two line ends at a point; smooth is a spring, cusp and arc shape the junction.
+- **Endpoint links:** keep cross-layer endpoints together; symmetric after creation; computed from the points directly acted on.
+- **Closed curves and fills:** a closed route decides whether a loop exists; the derived outline decides its boundary.
+- **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
+- **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
+- **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
+
+Defaults and algorithm limits are not principles; they are listed in the core README (dot 1791463344).
+
+### Design principles
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Design principle | is | Do not block an action; show its consequences | confirmed | bowen 1791392425 (Q21) |
+| Design principle | is | A relation between peers is symmetric, with no hidden lead side or priority. Its creation may use the order of the clicks to set the starting state; afterwards, swapping the two sides never changes the result of any later operation. Scope: data whose order has meaning (layer order, a line's start and end) keeps its order. *Note (examples and implementation, not further rules):* an endpoint link moves the second-clicked point onto the first when created, and afterwards follows whichever points are directly acted on, never creation order, id order or layer order; a join turns the second-clicked line to the first when set, and is symmetric afterwards; such records are stored in one sorted form so that equal relations compare equal. | confirmed | bowen 1791461460, 1791461522, 1791462352, 1791462437; dot 1791462393 |
+
+### Points and lines (module `network`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Point | is | A shared position. Each line keeps its own end there, with its own handle; handles belong to lines. | confirmed | bowen 1791383633; Q23 |
+| Delete (user action) | removes | Lines only. | confirmed | bowen 1791392558 (Q22) |
+| Point | is removed when | It is isolated (no line attached), or merged away by binding. A point exists only as a line end. | confirmed | bowen 1791428195 |
+| Endpoint binding | merges | Two points into one. The first point is kept and the later-bound point is deleted; every line that ended there re-attaches to the kept point. | confirmed | bowen 1791391384 (Q20); v103 `commands.ts:102-110` |
+| Endpoint binding | deletes | Every line whose two ends land on the same point after the bind | confirmed | bowen 1791391384, 1791392871 (Q22) |
+| Endpoint binding | is | One complete edit. Loops still closed afterwards keep their fills; nearby shapes may change. | confirmed | bowen 1791391384; dot 1791391503 (Q20) |
+| Adding a point (split) | keeps | The loop; its reference is updated to the two halves | confirmed | bowen 1791391384 (Q20) |
+| Endpoints in one layer | never | Coincide. When an edit completes, two endpoints at exactly the same position in one layer are bound automatically (snapping makes positions exact). The snapped-over one counts as clicked later; without snapping, the earlier-created one is kept. | confirmed | bowen 1791436564, 1791436617, 1791458278 (Q31) |
+| Merge position within one layer | is | A bind (it follows from the overlap rule). Across layers it stays alignment only. | confirmed | bowen 1791458278 (Q31) |
+| Unbind | applies | An offset to the split-off point in the same operation (one undo step). Default (ours): a short fixed distance back along its line. | confirmed (offset); default filled in | bowen 1791436858; dot 1791436961 (Q31) |
+| Auto-bind | is judged | Only when an edit completes (mouse released), never mid-drag | confirmed | bowen 1791458278 (Q31; interaction backlog 4) |
+| Line stroke (width, profile) | is stored on | **Each line** (a future stroke may transition between lines of different widths). Changing a continuous curve's width is a batch over its lines; locked lines keep theirs. Binding does not change widths: each line keeps its own. *Supersedes Q24 C ('belongs to the continuous curve').* | confirmed | bowen 1791434322, 1791434101 (Q29); earlier bowen 1791424619; binding 甲 bowen 1791458425 |
+
+### Continuous curves (module `groups`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Continuous curve | is | Lines joined through shared end points; a single line is a one-line continuous curve. It lies in one layer, because binding is within a layer and links do not merge topology. Its identity and list position are kept through edits (row "Merged group"). | confirmed | bowen 1791383633, 1791433646; row "Endpoint link does not merge topology" |
+| Continuous curve | is drawn as | Its fills first, then all its lines together (lines within the group use a stable drawing order; no separate occlusion relation) | confirmed | bowen 1791390897 (Q18) |
+| Merged group (after binding two groups) | takes | The first-clicked group's list position, with the other group's content after it. When a group splits, the new group goes next to the original. | confirmed | bowen 1791424619 (Q24 B) |
+| First-level element (a whole continuous curve, or a standalone line) | can be | Cut and pasted keeping its ids, as an identity-keeping move. A line inside a continuous curve cannot be cut. | confirmed | bowen 1791435958; dot 1791436109 (Q31) |
+
+### Joins and end strokes (module `joins`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Join | is an attribute of | The point: a table with one row per pair of its lines, each with a mode. **Smooth** is a spring; **cusp** gives a sharp stroke outline; **arc** generates arc geometry with a radius. No row means 仅绑定, drawn as a continuous round junction. | confirmed | bowen 1791393710 (Q23), 1791425164 (Q27); v103 `model.ts:68` |
+| End stroke (taper and so on) | belongs to | The point. Connected points have a continuous stroke, so tapers take effect only at free ends. Special effects at a junction use show/hide intervals. | confirmed | bowen 1791393850 (Q23) |
+| Smooth join | is | A stiff spring pulling two handles toward a straight line. When angle constraints conflict with each other, the compromise is shown and nothing is refused. Stiffness is one global fixed value. *This does not override Q29: an edit that would turn a locked line's handle is refused.* | confirmed | bowen 1791421304, 1791421988 (Q23); bowen 1791434101 (Q29); dot 1791434562 |
+| 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
+| Endpoint binding | drops | The deleted point's join records. New connections use the tool's preset join. | confirmed (new rule, not v103) | bowen 1791423036 (Q23) |
+
+### Endpoint links (module `links`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Endpoint link | connects | Two points in **different layers** (cross-layer only). Both points are kept; each stores the other's id. | confirmed | bowen 1791424124 (Q25) |
+| Endpoint link | on creation | Moves the second-clicked point to the first | confirmed | bowen 1791424124 (Q25) |
+| Endpoint link | keeps points coincident by | After each operation, averaging the target positions of the points the operation directly acted on; the others follow. One side edited: the other follows. Both edited: midpoint. | confirmed | bowen 1791424124, 1791424255, 1791424388; dot 1791424385 (Q25) |
+| Endpoint link | ends when | Either point is deleted. Both copies are cleared, with no automatic re-linking. | confirmed | bowen 1791424124; dot 1791424173 (Q25) |
+| Join across a link | is stored in | Both link copies, as one relation (not two springs) | confirmed | bowen 1791424493; Claude 1791424509; dot 1791424556 |
+| Endpoint link | does not | Merge topology; cross-layer lines never form one closed loop | confirmed (consequence) | dot 1791424556 |
+| Endpoint link after a move | stays if | The partner endpoint id exists in the target, judged after the whole batch has moved. Otherwise it is deleted. | confirmed | bowen 1791435958; dot 1791436109 (Q31) |
+
+### Closed curves and fills (modules `fills`, `derived`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
+| Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
+| Closed curve | has at least | Two lines (no loop is made of a single line) | confirmed (consequence of binding rule) | bowen 1791392871 (Q22) |
+| Loop passing through one point twice | is | Valid; keeps its fill (special edit kept for tool consistency) | confirmed | bowen 1791391694 (Q20); dot 1791392923 (Q22) |
+| Closed curve | becomes invalid when | Its lines no longer connect end to end, close, and lie in one layer, checked after each complete edit. This covers deleting a line, unbinding, and copy-then-delete with no per-operation special case. The fill disappears with it. Adding a point keeps the loop. "Clear fill" is not "delete loop". | confirmed | bowen 1791391384 (Q20), 1791392314, 1791392425 (Q21); dot 1791390455 |
+| Fill | is an attribute of | Closed curve (show / hide / clear). *"No separate fill element" is superseded by Q29: a fill is an element (with line) carrying visibility and lock; it still belongs to its closed curve.* | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18); bowen 1791433646 (Q29); dot 1791434562 |
+| Fill | does not cross | Layers (cross-layer areas: fill each side and stack) | confirmed | bowen 1791389840, 1791390174 (Q17) |
+| Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
+| Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. How fill joins at forks is open. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27) |
+| Newly filled loop | is placed | At the top of its group by default | confirmed | bowen 1791424619 (Q24 D) |
+| Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
+| Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
+| Self-crossing figure-eight | is | A drawing / deformation error; no special fill handling | confirmed | bowen 1791390533 (Q18) |
+
+### Layers and elements
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Layer | is | An identified container with its own order. It holds continuous curves (a single line is a one-line continuous curve), which are ordered too. | confirmed | bowen 1791433646 (Q29) |
+| Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
+| Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
+| Element | is | A line or a fill. Visibility and lock live only on elements, in one element structure in code. | confirmed | bowen 1791433646 (Q29) |
+| Hidden element | is | Not pickable directly. Selecting its whole continuous curve (V) includes it, and then it can be processed. | confirmed | bowen 1791433646 (Q29) |
+| Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements. No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
+| Visibility, lock, order | are | State changes, not edits. A layer itself takes only state changes (visibility, lock, reorder). | confirmed | bowen 1791433646 (Q29) |
+| New layer | is | An empty ordered container: id, name, list position only (no state of its own; panel icons derive from its elements). A new document gets one empty layer by default; empty layers and zero layers are allowed. | confirmed | bowen 1791435000; dot 1791434801 (Q30) |
+| Layer name | is | Unique, and never empty | confirmed | bowen 1791435000 (Q30) |
+| Copy (layer, lines, groups) | makes | A new-identity copy of the chosen range; the original is unchanged. Point–line connections, joins and fill boundary references inside the range are remapped to the copy. **Endpoint links are never copied** (bowen: "联动不复制"), even when both ends are inside the range; this supersedes dot's earlier "copy A and B together keeps the link" example. | confirmed | bowen 1791435000, 1791435311; dot 1791434801, 1791435558 (Q30) |
+| Delete layer | is | A batch over its elements: unlocked ones are deleted and locked ones stay, and so does the layer while it holds anything. Links end only when their endpoint disappears; a join across a link that referenced a deleted line is cleared. | confirmed | bowen 1791435000; dot 1791435118 (Q30) |
+| Cut, paste / copy | are | Cut and paste are edits; copy does not change the document. A group with a locked element cannot be cut. Locked elements can be copied, and the pasted copy carries the lock. A paste may not bypass locks already in the target. | confirmed | bowen 1791436374; dot 1791436498 (Q31) |
+
+### Locks (module `locks`, plus checks at the operation)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Locked element | cannot be | Edited. Its state (visibility, lock) can still change. **A lock protects what the element owns alone, wherever a change comes from; what it shares with other elements is not under its lock.** A line owns its shape (the positions of its two end points and its two handles), its stroke and the end stroke at a free end; a fill owns its colour and material. Deleting an unlocked element stays allowed with whatever goes with it (row "Deleting an unlocked element"). *Note (examples, not further rules):* the joins, arcs and joins across a link at a locked line's end points are shared with its neighbour, so they may be set, changed or removed; when the neighbour deforms, an arc join is recomputed and stays tangent to both, and the locked line's drawn end may be trimmed differently. This is wanted: one line stays still while the other deforms and they still join smoothly. Still refused, because they change what the locked line owns: dragging a shared point, a smooth spring needing to turn its handle, a link pulling its end point, binding onto its free end so that its end stroke disappears. | confirmed | bowen 1791433646, 1791434322 (Q29); bowen 1791462692, 1791462918, 1791463043, 1791463183; dot 1791462969, 1791463090 |
+| Edit that would change a locked element | is | Refused whole. Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind that changes what a locked line owns (such as hiding the end stroke of its free end). A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29) |
+| Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
+| Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
+| Lock check | compares | Each locked element's protected content before and after the edit, that is what it owns alone (line: its shape, meaning end positions and handles, its stroke, and the end stroke at a free end; fill: colour and material); any difference refuses the edit. Allowed state changes are never blocked. | confirmed | bowen 1791436826; dot 1791436961 (Q31); bowen 1791462918 |
+| Locked fill whose boundary is deleted | is | Gone with its loop (甲). Its lock covers colour and material, not its existence. | confirmed | bowen 1791435311 (Q30) |
+| Deleting an unlocked element | is | Always allowed. Whatever depended on it goes with it in the same undo step, even where it touches a locked element: the joins (same-point or across a link) it shared with a locked line's point, a link whose endpoint disappears, a locked fill on its boundary. A lock only blocks edits: editing a locked element, editing something else so that a locked element changes, and deleting a locked element itself are still refused. A delete in the same edit does not let such an edit through. *Note (examples, not further rules):* when an arc join goes with a deleted neighbour, the locked line is drawn to its end point again; when a locked line's end turns free, its end stroke shows. | confirmed | bowen 1791460893 (甲), 1791461158; dot 1791460953, 1791461196 |
+
+### Undo and transactions (module `document`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Undo | covers | Every operation, edits and state changes alike: one complete operation (a batch included) is one step, undone in reverse time order | confirmed | bowen 1791434322; dot 1791434382 (Q29) |
+
+### Reference images and views (Q3)
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
@@ -35,82 +161,41 @@ How this section works:
 | View / snapshot | references | One image from the collection | confirmed (belongs to views for now) | bowen 1791382641 (Q3) |
 | Reference-image tool | is the UI for | Reference-image module | confirmed (module = responsibility boundary, tool = how it is operated) | dot 1791382710, bowen 1791382641 (Q3/Q4) |
 | Artwork layer | does not contain | Reference images | confirmed | bowen 1791382641 (Q3) |
+
+### Placed in later levels (placement only)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | confirmed (placement only) | bowen 1791424844, 1791425164 (Q26/Q27) |
+| Show/hide intervals | belong to | The continuous curve, discussed later | confirmed (placement only) | bowen 1791425164 (Q27) |
+
+### Open, or not separately confirmed by bowen
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
+| Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
+| Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
+| Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
+
+### Facts about the old code at 4bc7cc2 (not rules)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
 | Layer | contains | Groups (incl. shape groups), paths, references (instances) | current code | Q4 |
 | Path | owns | Its own fill (a closed path's fill) | current code (differs from confirmed Q18 rows) | Q2/Q4 |
 | Shape group | owns | Faces (fills of enclosed areas) | current code (differs from confirmed Q18 rows) | Q2/Q4 |
 | Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
-| Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
-| Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
-| Fill | is an attribute of | Closed curve (show / hide / clear). *"No separate fill element" is superseded by Q29: a fill is an element (with line) carrying visibility and lock; it still belongs to its closed curve.* | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18); bowen 1791433646 (Q29); dot 1791434562 |
-| Fill | does not cross | Layers (cross-layer areas: fill each side and stack) | confirmed | bowen 1791389840, 1791390174 (Q17) |
-| Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
-| Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
-| Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
-| Closed curve | becomes invalid when | Its lines no longer connect end to end, close, and lie in one layer, checked after each complete edit. This covers deleting a line, unbinding, and copy-then-delete with no per-operation special case. The fill disappears with it. Adding a point keeps the loop. "Clear fill" is not "delete loop". | confirmed | bowen 1791391384 (Q20), 1791392314, 1791392425 (Q21); dot 1791390455 |
-| Layer, and the elements in it | are | Ordered lists; closed-curve order = fill order | confirmed | bowen 1791390533 (Q18) |
-| Continuous curve | is drawn as | Its fills first, then all its lines together (lines within the group use a stable drawing order; no separate occlusion relation) | confirmed | bowen 1791390897 (Q18) |
-| Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
-| Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
-| Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
-| Self-crossing figure-eight | is | A drawing / deformation error; no special fill handling | confirmed | bowen 1791390533 (Q18) |
-| Design principle | is | Do not block an action; show its consequences | confirmed | bowen 1791392425 (Q21) |
-| Design principle | is | A relation between peers is symmetric, with no hidden lead side or priority. Its creation may use the order of the clicks to set the starting state; afterwards, swapping the two sides never changes the result of any later operation. Scope: data whose order has meaning (layer order, a line's start and end) keeps its order. *Note (examples and implementation, not further rules):* an endpoint link moves the second-clicked point onto the first when created, and afterwards follows whichever points are directly acted on, never creation order, id order or layer order; a join turns the second-clicked line to the first when set, and is symmetric afterwards; such records are stored in one sorted form so that equal relations compare equal. | confirmed | bowen 1791461460, 1791461522, 1791462352, 1791462437; dot 1791462393 |
-| Delete (user action) | removes | Lines only. | confirmed | bowen 1791392558 (Q22) |
-| Point | is removed when | It is isolated (no line attached), or merged away by binding. A point exists only as a line end. | confirmed | bowen 1791428195 |
-| Endpoint binding | merges | Two points into one. The first point is kept and the later-bound point is deleted; every line that ended there re-attaches to the kept point. | confirmed | bowen 1791391384 (Q20); v103 `commands.ts:102-110` |
-| Endpoint binding | deletes | Every line whose two ends land on the same point after the bind | confirmed | bowen 1791391384, 1791392871 (Q22) |
-| Endpoint binding | is | One complete edit. Loops still closed afterwards keep their fills; nearby shapes may change. | confirmed | bowen 1791391384; dot 1791391503 (Q20) |
-| Adding a point (split) | keeps | The loop; its reference is updated to the two halves | confirmed | bowen 1791391384 (Q20) |
-| Closed curve | has at least | Two lines (no loop is made of a single line) | confirmed (consequence of binding rule) | bowen 1791392871 (Q22) |
-| Loop passing through one point twice | is | Valid; keeps its fill (special edit kept for tool consistency) | confirmed | bowen 1791391694 (Q20); dot 1791392923 (Q22) |
-| Move to another layer | is | Copy, or copy then delete; not a separate operation | confirmed | bowen 1791392425 (Q21) |
-| Drawing | has no | Cut, only copy and copy-then-delete. *Note:* a Bézier curve is endpoints plus a line, and its endpoints may be shared by other lines, so cut-and-paste that keeps the original ids would need extra rules for splitting shared endpoints and migrating references; the drawing layer does not introduce them (refined per dot 1791434715: changing endpoint references does not by itself force a new line id, as binding shows). A cut that creates new ids is exactly copy + delete the original, both already well defined, so no separate cut tool is needed. Moving lines between recordings with their ids is a separate matter, decided later. | confirmed | bowen 1791392233 (Q21); note bowen 1791434615, wording Claude 1791434637, approved bowen 1791434679 |
-| Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
-| Point | is | A shared position. Each line keeps its own end there, with its own handle; handles belong to lines. | confirmed | bowen 1791383633; Q23 |
-| End stroke (taper and so on) | belongs to | The point. Connected points have a continuous stroke, so tapers take effect only at free ends. Special effects at a junction use show/hide intervals. | confirmed | bowen 1791393850 (Q23) |
-| Join | is an attribute of | The point: a table with one row per pair of its lines, each with a mode. **Smooth** is a spring; **cusp** gives a sharp stroke outline; **arc** generates arc geometry with a radius. No row means 仅绑定, drawn as a continuous round junction. | confirmed | bowen 1791393710 (Q23), 1791425164 (Q27); v103 `model.ts:68` |
-| Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. How fill joins at forks is open. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27) |
-| Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | confirmed (placement only) | bowen 1791424844, 1791425164 (Q26/Q27) |
-| Show/hide intervals | belong to | The continuous curve, discussed later | confirmed (placement only) | bowen 1791425164 (Q27) |
-| Layer | is | An identified container with its own order. It holds continuous curves (a single line is a one-line continuous curve), which are ordered too. | confirmed | bowen 1791433646 (Q29) |
-| Element | is | A line or a fill. Visibility and lock live only on elements, in one element structure in code. | confirmed | bowen 1791433646 (Q29) |
-| Hidden element | is | Not pickable directly. Selecting its whole continuous curve (V) includes it, and then it can be processed. | confirmed | bowen 1791433646 (Q29) |
-| Locked element | cannot be | Edited. Its state (visibility, lock) can still change. **A lock protects what the element owns alone, wherever a change comes from; what it shares with other elements is not under its lock.** A line owns its shape (the positions of its two end points and its two handles), its stroke and the end stroke at a free end; a fill owns its colour and material. Deleting an unlocked element stays allowed with whatever goes with it (row "Deleting an unlocked element"). *Note (examples, not further rules):* the joins, arcs and joins across a link at a locked line's end points are shared with its neighbour, so they may be set, changed or removed; when the neighbour deforms, an arc join is recomputed and stays tangent to both, and the locked line's drawn end may be trimmed differently. This is wanted: one line stays still while the other deforms and they still join smoothly. Still refused, because they change what the locked line owns: dragging a shared point, a smooth spring needing to turn its handle, a link pulling its end point, binding onto its free end so that its end stroke disappears. | confirmed | bowen 1791433646, 1791434322 (Q29); bowen 1791462692, 1791462918, 1791463043, 1791463183; dot 1791462969, 1791463090 |
-| Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements. No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
-| Visibility, lock, order | are | State changes, not edits. A layer itself takes only state changes (visibility, lock, reorder). | confirmed | bowen 1791433646 (Q29) |
-| Undo | covers | Every operation, edits and state changes alike: one complete operation (a batch included) is one step, undone in reverse time order | confirmed | bowen 1791434322; dot 1791434382 (Q29) |
-| Edit that would change a locked element | is | Refused whole. Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind that changes what a locked line owns (such as hiding the end stroke of its free end). A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29) |
-| Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
-| Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
-| New layer | is | An empty ordered container: id, name, list position only (no state of its own; panel icons derive from its elements). A new document gets one empty layer by default; empty layers and zero layers are allowed. | confirmed | bowen 1791435000; dot 1791434801 (Q30) |
-| Layer name | is | Unique, and never empty | confirmed | bowen 1791435000 (Q30) |
-| Copy (layer, lines, groups) | makes | A new-identity copy of the chosen range; the original is unchanged. Point–line connections, joins and fill boundary references inside the range are remapped to the copy. **Endpoint links are never copied** (bowen: "联动不复制"), even when both ends are inside the range; this supersedes dot's earlier "copy A and B together keeps the link" example. | confirmed | bowen 1791435000, 1791435311; dot 1791434801, 1791435558 (Q30) |
-| Delete layer | is | A batch over its elements: unlocked ones are deleted and locked ones stay, and so does the layer while it holds anything. Links end only when their endpoint disappears; a join across a link that referenced a deleted line is cleared. | confirmed | bowen 1791435000; dot 1791435118 (Q30) |
-| Locked fill whose boundary is deleted | is | Gone with its loop (甲). Its lock covers colour and material, not its existence. | confirmed | bowen 1791435311 (Q30) |
-| Deleting an unlocked element | is | Always allowed. Whatever depended on it goes with it in the same undo step, even where it touches a locked element: the joins (same-point or across a link) it shared with a locked line's point, a link whose endpoint disappears, a locked fill on its boundary. A lock only blocks edits: editing a locked element, editing something else so that a locked element changes, and deleting a locked element itself are still refused. A delete in the same edit does not let such an edit through. *Note (examples, not further rules):* when an arc join goes with a deleted neighbour, the locked line is drawn to its end point again; when a locked line's end turns free, its end stroke shows. | confirmed | bowen 1791460893 (甲), 1791461158; dot 1791460953, 1791461196 |
-| First-level element (a whole continuous curve, or a standalone line) | can be | Cut and pasted keeping its ids, as an identity-keeping move. A line inside a continuous curve cannot be cut. | confirmed | bowen 1791435958; dot 1791436109 (Q31) |
-| Endpoint link after a move | stays if | The partner endpoint id exists in the target, judged after the whole batch has moved. Otherwise it is deleted. | confirmed | bowen 1791435958; dot 1791436109 (Q31) |
-| Endpoints in one layer | never | Coincide. When an edit completes, two endpoints at exactly the same position in one layer are bound automatically (snapping makes positions exact). The snapped-over one counts as clicked later; without snapping, the earlier-created one is kept. | confirmed | bowen 1791436564, 1791436617, 1791458278 (Q31) |
-| Merge position within one layer | is | A bind (it follows from the overlap rule). Across layers it stays alignment only. | confirmed | bowen 1791458278 (Q31) |
-| Cut, paste / copy | are | Cut and paste are edits; copy does not change the document. A group with a locked element cannot be cut. Locked elements can be copied, and the pasted copy carries the lock. A paste may not bypass locks already in the target. | confirmed | bowen 1791436374; dot 1791436498 (Q31) |
-| Lock check | compares | Each locked element's protected content before and after the edit (line: geometry and stroke, including a free-end taper; fill: colour and material); any difference refuses the edit. Allowed state changes are never blocked. | confirmed | bowen 1791436826; dot 1791436961 (Q31) |
-| Unbind | applies | An offset to the split-off point in the same operation (one undo step). Default (ours): a short fixed distance back along its line. | confirmed (offset); default filled in | bowen 1791436858; dot 1791436961 (Q31) |
-| Auto-bind | is judged | Only when an edit completes (mouse released), never mid-drag | confirmed | bowen 1791458278 (Q31; interaction backlog 4) |
-| Smooth join | is | A stiff spring pulling two handles toward a straight line. When angle constraints conflict with each other, the compromise is shown and nothing is refused. Stiffness is one global fixed value. *This does not override Q29: an edit that would turn a locked line's handle is refused.* | confirmed | bowen 1791421304, 1791421988 (Q23); bowen 1791434101 (Q29); dot 1791434562 |
-| 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
-| Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | confirmed | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
-| Endpoint binding | drops | The deleted point's join records. New connections use the tool's preset join. | confirmed (new rule, not v103) | bowen 1791423036 (Q23) |
-| Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
-| Merged group (after binding two groups) | takes | The first-clicked group's list position, with the other group's content after it. When a group splits, the new group goes next to the original. | confirmed | bowen 1791424619 (Q24 B) |
-| Line stroke (width, profile) | is stored on | **Each line** (a future stroke may transition between lines of different widths). Changing a continuous curve's width is a batch over its lines; locked lines keep theirs. *Supersedes Q24 C ('belongs to the continuous curve').* | confirmed | bowen 1791434322, 1791434101 (Q29); earlier bowen 1791424619 |
-| Newly filled loop | is placed | At the top of its group by default | confirmed | bowen 1791424619 (Q24 D) |
-| Endpoint link | connects | Two points in **different layers** (cross-layer only). Both points are kept; each stores the other's id. | confirmed | bowen 1791424124 (Q25) |
-| Endpoint link | on creation | Moves the second-clicked point to the first | confirmed | bowen 1791424124 (Q25) |
-| Endpoint link | keeps points coincident by | After each operation, averaging the target positions of the points the operation directly acted on; the others follow. One side edited: the other follows. Both edited: midpoint. | confirmed | bowen 1791424124, 1791424255, 1791424388; dot 1791424385 (Q25) |
-| Endpoint link | ends when | Either point is deleted. Both copies are cleared, with no automatic re-linking. | confirmed | bowen 1791424124; dot 1791424173 (Q25) |
-| Join across a link | is stored in | Both link copies, as one relation (not two springs) | confirmed | bowen 1791424493; Claude 1791424509; dot 1791424556 |
-| Endpoint link | does not | Merge topology; cross-layer lines never form one closed loop | confirmed (consequence) | dot 1791424556 |
+
+### Superseded rows (kept for history, not in force)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Move to another layer | is | Copy, or copy then delete; not a separate operation | Superseded by "First-level element can be cut and pasted keeping its ids" and "Cut, paste / copy" (bowen 1791435958, 1791436374, Q31) | bowen 1791392425 (Q21) |
+| Drawing | has no | Cut, only copy and copy-then-delete. *Note:* a Bézier curve is endpoints plus a line, and its endpoints may be shared by other lines, so cut-and-paste that keeps the original ids would need extra rules for splitting shared endpoints and migrating references; the drawing layer does not introduce them (refined per dot 1791434715: changing endpoint references does not by itself force a new line id, as binding shows). A cut that creates new ids is exactly copy + delete the original, both already well defined, so no separate cut tool is needed. Moving lines between recordings with their ids is a separate matter, decided later. | Superseded by the same two rows (Q31): a whole continuous curve can be cut and pasted keeping its ids; a single line inside one still cannot | bowen 1791392233 (Q21); note bowen 1791434615, wording Claude 1791434637, approved bowen 1791434679 |
+| Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | Superseded for widths by bowen 1791458425 (甲): binding does not change widths (row "Line stroke"). Its lock sentence is covered by "Edit that would change a locked element" | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
+
 
 ---
 
