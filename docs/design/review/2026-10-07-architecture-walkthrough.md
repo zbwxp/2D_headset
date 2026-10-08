@@ -2511,6 +2511,15 @@ v103 `connect` unified the width and profile of both groups to the first group's
 2. **On binding:** are the deleted point's joins dropped or carried to the kept point?
 3. **Spring:** is "slight bending" about deformation, and is stiffness global for now?
 
+### dot (1791421412)
+
+- **Remaining:** attribute inheritance on binding. Does P keep only its own joins, or also take Q's still-valid joins (such as C–D smooth)?
+- **Line stroke scope** (whole-group width and profile) can wait for the stroke layer. Continuity at the junction is already decided.
+- **The soft constraint answers "what about conflicts":** allow the action and show the compromise. Stiffness value and adjustability need no detail now.
+- **Y qualification:**
+  - With equal weights and direction-only constraints, the symmetric balance is three outward handles 120° apart. The acute angle between the lines they lie on is 60°, which reconciles bowen's "60°".
+  - A large k alone does not guarantee this in every case; other constraints change the result.
+
 ### Status
 
 - 2 decided (the join is a point attribute).
