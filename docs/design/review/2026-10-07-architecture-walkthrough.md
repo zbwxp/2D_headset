@@ -2806,3 +2806,43 @@ Claude agrees; the rule above is to be read with this definition.
 
 **bowen 1791424619:** "bcd都可以". Q24 B, C and D are approved, and the Q23–Q25 graph rows are written (bowen had been told this approval would trigger writing them, 1791424509).
 
+
+## Q26: Tools by level, distilled from the graph
+
+**bowen** 1791424689:
+> 这样的知识图谱 你们提炼一下 目前有哪些工具，这些工具都归属于哪个层级（点？线？连续曲线？ 闭合曲线？）
+
+### Claude (1791424728)
+
+Sources: confirmed graph rows, plus the v103 toolbar (`7205381:src/ui/drawing/tools.ts`). "Decided" means it is in the graph; "v103, open" means v103 has it but the graph has not placed it.
+
+| Level | Tool | What it does | Status |
+|---|---|---|---|
+| Point | Drag point | All line ends at the point move; handles translate | decided |
+| Point | Bind endpoints | Two points become one; the later one is deleted; lines with both ends on one point are deleted | decided |
+| Point | Unbind | Splits a shared point; a broken loop loses its fill | decided |
+| Point | Join: smooth | A spring between two of the point's lines | decided |
+| Point | End stroke | Only takes effect at free ends (taper) | decided |
+| Point (cross-layer) | Endpoint link | Two points move together by averaging | decided |
+| Line | Pen | Draws lines; continuing uses the preset join, default 仅绑定 | decided (preset follows v103) |
+| Line | Drag handle | Smooth partners rotate with it | decided |
+| Line | Split / add point | One segment becomes two; the loop stays | decided |
+| Line | Delete | Lines only | decided |
+| Line | Copy | "Move to layer" = copy, or copy then delete | decided |
+| Continuous curve | Line stroke | Width and profile, one per group | decided |
+| Continuous curve | Order | Position in the layer list | decided |
+| Continuous curve | Ellipse | Four segments joined smooth | v103, open |
+| Closed curve | Fill (paint bucket) | Click fills the smallest loop; larger loops from the list | decided |
+| Closed curve | Clear / show-hide fill | Changes the fill only; never deletes a loop | decided |
+| Closed curve | Order | Which fill covers which within a group | decided |
+| Layer | New / delete / reorder | Layers and their elements are ordered lists | decided |
+
+**v103 tools with no place in the graph yet (for bowen):**
+
+1. **Cusp join, arc join.** The graph treats a corner as "no join record". But v103's cusp and arc change how the stroke is drawn at the junction: a sharp outline, or an arc transition (dot verified, 1791422170). They are junction stroke appearance, not geometric constraints. **Proposal:** treat them as a **stroke attribute of the point**, following "end stroke belongs to the point".
+2. **Merge position** (moves two points together without sharing them). Under current rules, the same layer uses bind and different layers use link, so this tool has no place. **Proposal:** remove it.
+3. **Corner / curved-edge deform, mirror editing, show/hide intervals.** These edit groups of elements and belong to the next layer (deformation and appearance), not to point / line / face.
+
+### Status
+
+Waiting for dot's independent check and bowen on 1–3.
