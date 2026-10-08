@@ -42,6 +42,8 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
 - **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
 - **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
+- **Editing:** one gesture is one edit; selection is a pre-edit and is undoable; transforms act on the points and handles a selection expands to and keep identity and connections; apply is a third kind of action.
+- **Mirror:** flip is an edit about the object's own centre; mirror apply copies a reflected source onto a different target across the one axis; a mirror link keeps two different objects paired, every change happening on both sides.
 
 Defaults and algorithm limits are not principles; they are listed in the core README (dot 1791463344).
 
@@ -154,6 +156,34 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 |---|---|---|---|---|
 | Undo | covers | Every operation, edits and state changes alike: one complete operation (a batch included) is one step, undone in reverse time order | confirmed | bowen 1791434322; dot 1791434382 (Q29) |
 
+### Editing (the editing layer, above the core modules)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Edit (one gesture) | is | One complete user action (press to release) is one edit and one undo step. Dragging only previews; releasing commits, and auto-binding is judged then; cancelling restores the original. | confirmed | bowen 1791458278; dot 1791458347 |
+| Selection | is | A pre-edit: a change of selection is one undoable step; a click that changes nothing adds no step. An edit clears any part of the selection it makes invalid, in the same step. | confirmed | bowen 1791465011; dot 1791465064 |
+| Selectable units | are | With A: a single segment, end point or handle. With V: a whole continuous curve, hidden members included. Fills. Hidden elements cannot be picked directly. Locked elements can be selected; an edit that would change them shows a red cross with a lock. | confirmed | v103 `ui/drawing/tools.ts`, `editGestures.ts` (7205381); bowen 1791464156; row "Hidden element" |
+| Geometric transform | acts on | The points and handles the selection expands to: a line is its two end points and two handles; a group is all of its lines; a shared point counts once. Move, rotate, scale and domain deformation are one kind of transform, with centre, angle, scale or field as parameters. | confirmed | dot 1791463963, 1791465219; bowen 1791464648, 1791466203 |
+| Geometric transform | keeps | Identity and connections: it never splits points, splits lines or changes ids. An unselected neighbour on a moved shared point follows it: its handle there moves with the point, keeping direction and length; joins are then solved by their own rules (a smooth join turns it by the spring). | confirmed | bowen 1791464648; dot 1791464744, 1791466332; row "Point" (handles belong to lines) |
+| Domain deformation (four corners, curved edges) | is | An edit: a geometric transform of the selection. Each line stays one Bézier curve (v103 fitted one cubic per line, `drawing/deform.ts:24`); subdividing for display only is allowed. How handles are fitted is an implementation choice. | confirmed | bowen 1791466203, 1791467027; dot 1791466332, 1791467174 |
+| Delete with only end points selected | is | Refused, because delete removes lines only: a red cross with an exclamation mark and the hint "select lines to delete". | confirmed | bowen 1791392558, 1791465011 |
+| Apply | is | A third kind of action, beside edit and state change: it writes chosen content of a source, transformed, into an existing, different target. The target keeps its ids; it is one operation and one undo step; it goes through the same commit checks as an edit; a locked target refuses it. | confirmed | bowen 1791470303, 1791470565, 1791470833, 1791471111; dot 1791470366, 1791470635 |
+
+### Mirror (flip, apply, link)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Symmetry axis | is | One vertical axis per drawing, fixed in document coordinates; panning and zooming change only the display. Mirror apply and mirror link use it; another axis needs another snapshot. | confirmed | bowen 1791468823; dot 1791468919 |
+| Mirror flip | is | An edit: the selection flips in place about its own centre (source and target are the same object). No copy is made; ids are kept. | confirmed | bowen 1791471111 |
+| Mirror apply (formerly "mirror editing") | is | An apply from a source to a different target. The source's geometry is reflected across the symmetry axis; its strokes, end strokes, joins, show/hide intervals, fill colour, visibility and lock are copied. The target's ids, layer and outside endpoint links are not touched. On a pair that runs in opposite directions, positions along the line map reversed. | confirmed | bowen 1791466203, 1791469902, 1791470014, 1791471111; dot 1791470095 |
+| Mirror correspondence | is | The matching of source to target lines: the same topology (shared end points and endpoint links inside the selection are checked as separate relations), with the least change to the target. Attributes are not used for matching. Ties: any one, chosen in a stable order. | confirmed | bowen 1791467027, 1791470303; dot 1791468386 |
+| Mirror link | is | A lasting relation between two different first-level elements: a mirror apply, then the line pairs are stored. Afterwards the sides are peers (design principle on symmetric relations), and every change on one side happens in pairs on the other: geometry, attributes, state, deleting and splitting lines, binding and endpoint links between paired points. "Source and target differ" is checked only at the apply; after matching end points bind on the axis and the sides become one group, the pairs stay linked. | confirmed | bowen 1791467027, 1791467698, 1791467947, 1791469452, 1791469902, 1791471258; dot 1791467995, 1791470366 |
+| Both sides of a mirror link edited at once | are | Combined: geometric targets are taken to one side and averaged (along the axis they move, across it they cancel). Colours, join modes, visibility and lock are synced through the pairs, not averaged. | confirmed | bowen 1791469452; dot 1791470095 |
+| Mirror link | protects | The correspondence, not exact symmetry: deviations caused by other constraints are shown. If the paired operation on the other side is blocked by an existing rule (such as a lock), or the operation reaches an object with no mirror counterpart, the whole operation is refused with a red cross and a mirror mark. | confirmed | bowen 1791467698, 1791468823, 1791471354; dot 1791469081, 1791470366 |
+| Mirror link | can be | Removed: only the relation goes; the current shapes and attributes stay. | confirmed | bowen 1791469452 |
+| The same mirror links built per layer or at once | give | The same later behaviour, provided they end up with the same set of pairs. | confirmed | bowen 1791467698; dot 1791467823, 1791470095 |
+| End points of a mirror pair reaching the axis | are | In one layer, bound automatically (overlap rule); across layers, left separate. There is one kind of mirror link only. | confirmed | bowen 1791467027; dot 1791467174 |
+
 ### Reference images and views (Q3)
 
 | Subject | Relation | Object | Status | Source |
@@ -167,7 +197,6 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
-| Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | confirmed (placement only) | bowen 1791424844, 1791425164 (Q26/Q27) |
 | Show/hide intervals | belong to | The continuous curve, discussed later | confirmed (placement only) | bowen 1791425164 (Q27) |
 
 ### Open, or not separately confirmed by bowen
@@ -193,6 +222,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
+| Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | Superseded: now decided in the Editing and Mirror tables (merge position: row "Merge position within one layer") | bowen 1791424844, 1791425164 (Q26/Q27) |
 | Move to another layer | is | Copy, or copy then delete; not a separate operation | Superseded by "First-level element can be cut and pasted keeping its ids" and "Cut, paste / copy" (bowen 1791435958, 1791436374, Q31) | bowen 1791392425 (Q21) |
 | Drawing | has no | Cut, only copy and copy-then-delete. *Note:* a Bézier curve is endpoints plus a line, and its endpoints may be shared by other lines, so cut-and-paste that keeps the original ids would need extra rules for splitting shared endpoints and migrating references; the drawing layer does not introduce them (refined per dot 1791434715: changing endpoint references does not by itself force a new line id, as binding shows). A cut that creates new ids is exactly copy + delete the original, both already well defined, so no separate cut tool is needed. Moving lines between recordings with their ids is a separate matter, decided later. | Superseded by the same two rows (Q31): a whole continuous curve can be cut and pasted keeping its ids; a single line inside one still cannot | bowen 1791392233 (Q21); note bowen 1791434615, wording Claude 1791434637, approved bowen 1791434679 |
 | Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | Superseded for widths by bowen 1791458425 (甲): binding does not change widths (row "Line stroke"). Its lock sentence is covered by "Edit that would change a locked element" | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
