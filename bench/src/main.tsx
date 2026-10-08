@@ -214,7 +214,7 @@ function App() {
   const centre = ps.length ? P((Math.min(...ps.map(p => p.x)) + Math.max(...ps.map(p => p.x))) / 2, (Math.min(...ps.map(p => p.y)) + Math.max(...ps.map(p => p.y))) / 2) : P(0, 0)
   const key = (u: Unit) => u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`
   const isSel = (u: Unit) => sel.some(v => key(v) === key(u))
-  const handleLines = new Set<Id>(tool === 'A' ? s.lines.filter(l => selLines.includes(l.id) || selPoints.has(l.a) || selPoints.has(l.b)).map(l => l.id) : [])
+  const handleLines = new Set<Id>(tool === 'A' ? s.lines.filter(l => l.state.visible && (selLines.includes(l.id) || selPoints.has(l.a) || selPoints.has(l.b))).map(l => l.id) : [])
   const px = box.w / 900 // ~one screen pixel in document units
 
   const B = (label: string, f: () => void, title?: string) => <button title={title} onClick={f}>{label}</button>
@@ -308,7 +308,8 @@ function App() {
             return <g key={G.id}>
               <path d={path(G.curve)} fill="none" stroke={on ? '#06f' : l.state.locked ? '#933' : '#111'} strokeWidth={l.stroke.width}
                 strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
-              <path d={path(G.curve)} fill="none" stroke="transparent" strokeWidth={10 * px} onPointerDown={e => onLine(e, G.id)} />
+              {/* a hidden line cannot be picked directly (graph "Hidden element"); V reaches it through its visible members (dot 1791480629) */}
+              {l.state.visible && <path d={path(G.curve)} fill="none" stroke="transparent" strokeWidth={10 * px} onPointerDown={e => onLine(e, G.id)} />}
             </g>
           })}
           {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
@@ -326,7 +327,7 @@ function App() {
             const ha = add(a, add(l.ha, handleSel.has(l.id + 'a') ? ghost : P(0, 0))), hb = add(b, add(l.hb, handleSel.has(l.id + 'b') ? ghost : P(0, 0)))
             return <path key={'g' + l.id} d={path([a, ha, hb, b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} pointerEvents="none" />
           })}
-          {tool !== 'V' && s.points.map(p => {
+          {tool !== 'V' && s.points.filter(p => s.lines.some(l => (l.a === p.id || l.b === p.id) && l.state.visible)).map(p => {
             const on = isSel({ kind: 'point', id: p.id }) || pending.includes(p.id)
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} onPointerDown={e => onPoint(e, p.id)} />
