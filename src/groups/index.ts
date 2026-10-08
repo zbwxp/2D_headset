@@ -51,6 +51,7 @@ export function setStroke(g: GroupsState, id: Id, stroke: Stroke) {
 }
 
 export function reorder(g: GroupsState, id: Id, index: number) {
+  if (!Number.isInteger(index)) throw new Error('Order index must be an integer')
   const group = raw(g, id), order = ensure(S(g).order, group.layer)
   order.splice(order.indexOf(id), 1)
   order.splice(Math.max(0, Math.min(index, order.length)), 0, id)

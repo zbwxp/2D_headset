@@ -48,6 +48,9 @@ export function removeJoin(j: JoinsState, point: Id, l1: Id, l2: Id) {
 
 export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stroke: EndStroke) {
   net.point(n, point)
+  for (const v of Object.values(stroke)) {
+    if (typeof v === 'number' ? !Number.isFinite(v) : typeof v !== 'string' && v !== undefined) throw new Error('End stroke values must be finite numbers or strings')
+  }
   S(j).endStrokes = S(j).endStrokes.filter(e => e.point !== point)
   S(j).endStrokes.push({ point, stroke: { ...stroke } })
 }

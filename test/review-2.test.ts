@@ -206,3 +206,14 @@ describe('second re-run (dot 1791427941)', () => {
     expect(d.snapshot()).toEqual(before)
   })
 })
+
+describe('input validation found by probing the public API', () => {
+  it('order indexes must be integers; end stroke values must be finite numbers or strings', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); e.point('a', 'L', P(0)); e.point('b', 'L', P(1)); e.line('ab', 'a', 'b') })
+    const g = d.snapshot().groups[0]!.id
+    expect(() => d.edit(e => e.reorderGroup(g, NaN))).toThrow(/integer/)
+    expect(() => d.edit(e => e.endStroke('a', { taper: Infinity }))).toThrow(/finite/)
+    expect(() => d.edit(e => e.endStroke('a', { taper: { deep: 1 } as unknown as number }))).toThrow(/finite/)
+  })
+})

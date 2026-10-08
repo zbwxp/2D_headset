@@ -63,6 +63,7 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 ## Conventions
 
 - Handles are offsets from their own point, so moving a point carries its handles.
+- **Loop enumeration** stops at `LOOP_LIMIT` (10 000) per document (bowen: a layer never holds very complex networks). Past that, unfilled loops beyond the limit are not offered.
 - **Open (asked bowen 1791427416):** should a point left with no line after a delete stay? Until bowen decides, it stays; only binding removes points.
 - Every order list is bottom-to-top: index 0 is drawn first.
 - **Smooth springs** use an angle-based energy, so 3 mutually smooth lines settle at 120° and 4 at 90°. A handle dragged in this edit is held. The stiffness is one global constant (bowen 1791421988).

@@ -59,6 +59,7 @@ export function setVisible(f: FillsState, id: Id, visible: boolean) { find(f, id
  * Fills of other groups keep their places (dot 1791427693).
  */
 export function reorder(f: FillsState, n: net.NetworkState, id: Id, index: number) {
+  if (!Number.isInteger(index)) throw new Error('Order index must be an integer')
   const loop = find(f, id)
   const comp = net.components(n).find(c => c.lines.includes(loop.lines[0]!))
   const inGroup = new Set(comp?.lines ?? [])
