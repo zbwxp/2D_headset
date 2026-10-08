@@ -2623,6 +2623,33 @@ The check is from source reading only; it does not guarantee that multi-branch o
 
 **Out of scope here:** head-turn and snapshots, show/hide intervals and mirror editing belong to the next layer. They are not gaps in point / line / face itself.
 
+### dot (1791423203)
+
+No hard contradiction that would overturn the point / line / face model. Two operations are not fully defined:
+
+1. **Order after merging groups.**
+   - Example: the order is A, B, C and binding joins A and C into one group. The group takes one list slot, so B cannot sit inside it.
+   - By "first-clicked wins", the merged group takes the first-clicked group's slot and the other group's content moves into it.
+   - This changes some occlusion, but the consequence is clear and can be shown.
+2. **"New connections use the preset": which handles get the join?**
+   - If the bind tool's preset is 仅绑定, there is no ambiguity: position is shared and nothing is smoothed.
+   - If a tool adds smooth, it must say which two lines. Merging two fork points cannot decide all pairings from the word "smooth".
+   - The soft constraint balances existing relations; it does not decide which relations to create.
+
+A (cross-layer link), C (stroke scope) and D (new fill position) are feature scope still to define, not model failures.
+
+### Claude (1791423219)
+
+Agrees: A, C and D are definitions to add, not overturns.
+
+**Point 2 already has an answer in v103:**
+- Clicking an endpoint selects one line's end (`Endpoint = {curveId, end}`).
+- The smooth tool creates a join between **the two clicked lines** (`connect(d,a,b,'SMOOTH')`, `7205381:src/domain/drawing/commands.ts:102`).
+- So:
+  - the click position decides which two points merge (Q22: binding acts on points);
+  - the clicked line end decides which pair of lines gets the preset join;
+  - other lines at the two fork points get no automatic join.
+
 ### Status
 
 Waiting for dot's independent review and bowen on A–D.
