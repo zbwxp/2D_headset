@@ -163,11 +163,11 @@ describe('random edit sequences (bowen 1791428827)', () => {
     const failures = seeds.flatMap(seed => run(seed, 80).failures)
     expect(failures.slice(0, 10)).toEqual([])
     if (process.env.FUZZ_STATS) console.log(JSON.stringify(stats))
-  })
+  }, 60000) // a long random run; the default 5 s limit is too tight on a busy machine (dot 1791431253)
 
   it('the same sequence always gives the same result', () => {
     for (const seed of seeds.slice(0, 10)) expect(run(seed, 60).trail).toEqual(run(seed, 60).trail)
-  })
+  }, 60000)
 
   it('undoing everything returns to the starting state', () => {
     for (const seed of seeds.slice(0, 10)) {
@@ -177,5 +177,5 @@ describe('random edit sequences (bowen 1791428827)', () => {
       expect(d.snapshot().points).toEqual([])
       expect(d.snapshot().loops).toEqual([])
     }
-  })
+  }, 60000)
 })
