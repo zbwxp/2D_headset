@@ -25,7 +25,9 @@ const nearestT = (c: readonly Vec[], at: Vec) => {
   return best
 }
 const path = (c: readonly Vec[]) => `M${c[0]!.x},${c[0]!.y} C${c[1]!.x},${c[1]!.y} ${c[2]!.x},${c[2]!.y} ${c[3]!.x},${c[3]!.y}`
-const sig = () => JSON.stringify(core.snapshot())
+type LogRow = { calls: string; result: string }
+const log: LogRow[] = []
+const hist = (k: 'undo' | 'redo') => { const ok = k === 'undo' ? core.canUndo : core.canRedo; core[k](); log.unshift({ calls: k + '()', result: ok ? 'ok' : 'ok (nothing to ' + k + ')' }) }
 
 function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
@@ -40,7 +42,8 @@ function App() {
   const [source, setSource] = useState<Id[]>([])
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   const svg = useRef<SVGSVGElement>(null)
-  const drag = useRef<null | { kind: 'move'; start: Vec; committed: boolean } | { kind: 'pan'; start: Vec; box: typeof box }>(null)
+  const drag = useRef<null | { kind: 'move'; start: Vec } | { kind: 'pan'; start: Vec; box: typeof box }>(null)
+  const [ghost, setGhost] = useState<Vec | null>(null) // drag offset: drawn only, nothing sent to core until release
 
   const s = core.snapshot(), g = core.geometry()
   const line = (id: Id) => s.lines.find(l => l.id === id)!
@@ -50,20 +53,23 @@ function App() {
   const groupOf = (l: Id) => s.groups.find(gr => gr.lines.includes(l))!.id
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML }
+    ;(window as unknown as { bench: unknown }).bench = { core, refresh: bump, svg: () => svg.current?.outerHTML, log }
   })
 
   const run = (fn: (e: Editor) => void, quiet = false) => {
-    try { core.edit(fn); if (!quiet) setMsg(''); return true }
-    catch (err) { setMsg('✗ ' + (err as Error).message); return false }
-    finally { bump() }
+    // every Editor call is logged with what core returned, so a bench mistake is not taken for a core one (dot)
+    const calls: string[] = []
+    const rec = (e: Editor) => new Proxy(e, { get: (t, k) => { const v = Reflect.get(t, k); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(k)}(${a.map(x => JSON.stringify(x)).join(', ')})`); return v.apply(t, a) } : v } })
+    try { core.edit(e => fn(rec(e))); if (!quiet) setMsg(''); log.unshift({ calls: calls.join('; '), result: 'ok' }); return true }
+    catch (err) { const m = (err as Error).message; setMsg('✗ ' + m); log.unshift({ calls: calls.join('; '), result: '✗ ' + m }); return false }
+    finally { log.length = Math.min(log.length, 50); bump() }
   }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const m = svg.current!.getScreenCTM()!.inverse()
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m)
     return P(p.x, p.y)
   }
-  const startMove = (at: Vec) => { drag.current = { kind: 'move', start: at, committed: false } }
+  const startMove = (at: Vec) => { drag.current = { kind: 'move', start: at }; setGhost(null) }
   const mode = (e: React.PointerEvent) => (e.shiftKey ? 'add' : e.altKey ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
 
   const onPoint = (e: React.PointerEvent, id: Id) => {
@@ -139,16 +145,16 @@ function App() {
       setBox({ ...d.box, x: d.box.x - (e.clientX - d.start.x) * k, y: d.box.y - (e.clientY - d.start.y) * k })
       return
     }
-    // dirty preview: undo the previous step of this drag, edit again
+    // preview is a ghost drawn by the bench only; core is called once, on release (dot)
     const at = toDoc(e)
-    if (d.committed) core.undo()
-    const before = sig()
-    try { core.edit(x => x.translate(at.x - d.start.x, at.y - d.start.y)); setMsg('') }
-    catch (err) { setMsg('✗ ' + (err as Error).message) }
-    d.committed = sig() !== before
-    bump()
+    setGhost(P(at.x - d.start.x, at.y - d.start.y))
   }
-  const onUp = () => { drag.current = null }
+  const onUp = () => {
+    const d = drag.current
+    drag.current = null
+    if (d?.kind === 'move' && ghost && (ghost.x || ghost.y)) run(x => x.translate(ghost.x, ghost.y))
+    setGhost(null)
+  }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -157,8 +163,8 @@ function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return
-      if (e.key === 'Escape') { setPending([]); setMsg('') }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.shiftKey ? core.redo() : core.undo(); bump() }
+      if (e.key === 'Escape') { setPending([]); setMsg(''); drag.current = null; setGhost(null) }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') { hist(e.shiftKey ? 'redo' : 'undo'); bump() }
       if (e.key === 'Delete' || e.key === 'Backspace') run(x => x.deleteSelection())
       const t: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
       if (!e.metaKey && !e.ctrlKey && t[e.key]) { setTool(t[e.key]!); setPending([]) }
@@ -174,6 +180,10 @@ function App() {
     if (u.kind === 'line') { selPoints.add(line(u.id).a); selPoints.add(line(u.id).b) }
     if (u.kind === 'handle') selPoints.add(line(u.line)[u.end])
   }
+  const handleSel = new Set(sel.filter(u => u.kind === 'handle').map(u => (u as { line: Id; end: string }).line + (u as { end: string }).end))
+  // points that are in selPoints only because a handle of theirs is selected (the point itself does not move)
+  const handleOnly = new Set<Id>()
+  for (const u of sel) if (u.kind === 'handle') { const pt = line(u.line)[u.end]; if (!sel.some(v => v.kind === 'point' && v.id === pt) && !sel.some(v => v.kind === 'line' && (line(v.id).a === pt || line(v.id).b === pt))) handleOnly.add(pt) }
   const ps = [...selPoints].map(pos)
   const centre = ps.length ? P((Math.min(...ps.map(p => p.x)) + Math.max(...ps.map(p => p.x))) / 2, (Math.min(...ps.map(p => p.y)) + Math.max(...ps.map(p => p.y))) / 2) : P(0, 0)
   const key = (u: Unit) => u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`
@@ -201,7 +211,7 @@ function App() {
         {tool === 'fill' && <div><input type="color" value={color} onChange={e => setColor(e.target.value)} /> <span style={{ color: '#666' }}>shift-click: clear</span></div>}
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {B('Undo', () => { core.undo(); bump() })}{B('Redo', () => { core.redo(); bump() })}
+          {B('Undo', () => { hist('undo'); bump() })}{B('Redo', () => { hist('redo'); bump() })}
           {B('Delete', () => run(x => x.deleteSelection()))}
           {B('Flip', () => run(x => x.flip()))}
           {B('Rot +15°', () => run(x => x.rotate(centre, Math.PI / 12)))}
@@ -248,7 +258,7 @@ function App() {
           {msg || `tool ${tool} · layer ${layer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pending.length && tool !== 'pen' ? ' · pending ' + pending[0] : ''}`}
         </div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={onBackground} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onWheel={onWheel}
+          onPointerDown={onBackground} onPointerMove={onMove} onPointerUp={onUp} onWheel={onWheel}
           onContextMenu={e => { e.preventDefault(); setPending([]) }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
@@ -270,14 +280,23 @@ function App() {
                 onPointerDown={e => onHandle(e, l.id, end)} />
             </g>
           }))}
+          {ghost && s.lines.filter(l => selPoints.has(l.a) || selPoints.has(l.b) || handleSel.has(l.id + 'a') || handleSel.has(l.id + 'b')).map(l => {
+            const mv = (id: Id) => (selPoints.has(id) && !handleOnly.has(id) ? add(pos(id), ghost) : pos(id))
+            const a = mv(l.a), b = mv(l.b)
+            const ha = add(a, add(l.ha, handleSel.has(l.id + 'a') ? ghost : P(0, 0))), hb = add(b, add(l.hb, handleSel.has(l.id + 'b') ? ghost : P(0, 0)))
+            return <path key={'g' + l.id} d={path([a, ha, hb, b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} pointerEvents="none" />
+          })}
           {tool !== 'V' && s.points.map(p => {
             const on = isSel({ kind: 'point', id: p.id }) || pending.includes(p.id)
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} onPointerDown={e => onPoint(e, p.id)} />
           })}
         </svg>
+        <div style={{ height: 120, overflow: 'auto', padding: '2px 8px', borderTop: '1px solid #ccc', font: '11px ui-monospace, monospace' }}>
+          {log.map((r, i) => <div key={log.length - i} style={{ color: r.result.startsWith('ok') ? '#333' : '#c00' }}>{r.result.startsWith('ok') ? '✓' : r.result} · {r.calls || '(no call)'}</div>)}
+        </div>
         <div style={{ padding: '2px 8px', color: '#888', borderTop: '1px solid #eee' }}>
-          wheel zoom · drag empty space (V/A) or alt-drag to pan · Esc / right-click ends pen · ⌘Z / ⇧⌘Z · Delete · window.bench = {'{ core, refresh, svg }'}
+          wheel zoom · drag empty space (V/A) or alt-drag to pan · Esc / right-click ends pen · ⌘Z / ⇧⌘Z · Delete · window.bench = {'{ core, refresh, svg, log }'}
         </div>
       </div>
     </div>
