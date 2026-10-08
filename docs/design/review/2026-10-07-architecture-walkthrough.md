@@ -2555,6 +2555,12 @@ v103 `connect` unified the width and profile of both groups to the first group's
 - With a direction-vector spring, any arrangement of "two straight opposite pairs at any angle" also balances, so the result depends on the starting position.
 - The formula is chosen later; the difference is noted here.
 
+### dot (1791422049)
+
+- Spring stiffness is recorded as global and fixed.
+- dot will check v103's actual defaults. The focus is whether "仅绑定" and the rendering that fills in the junction are two different layers of handling.
+- **Acceptance item:** an even 90° with four mutually smooth lines is the symmetric behaviour bowen wants. It is not the unique result of every high-k spring model. When the solver rule is chosen, this example must be in the acceptance tests; raising k alone does not count as implemented.
+
 ### Status
 
 - 2 decided (the join is a point attribute).
