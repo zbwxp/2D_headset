@@ -8,6 +8,7 @@ import * as links from '../links'
 import * as fills from '../fills'
 import * as derived from '../derived'
 import * as locks from '../locks'
+import * as editing from '../editing'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -18,9 +19,13 @@ interface State {
   joins: joins.JoinsState
   links: links.LinksState
   fills: fills.FillsState
+  /** A pre-edit, part of the state so it is undoable (bowen 1791465011). */
+  selection: editing.SelectionState
 }
 
-const createState = (): State => ({ network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create() })
+const createState = (): State => ({
+  network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
+})
 
 export interface Snapshot {
   /** Layers bottom → top. */
@@ -34,6 +39,7 @@ export interface Snapshot {
   /** Every closed curve, each tagged with the continuous curve (group) it belongs to. */
   loops: (fills.LoopView & { group: Id })[]
   fillOrder: Id[]
+  selection: editing.Unit[]
 }
 export type Geometry = derived.Geometry
 
@@ -197,6 +203,30 @@ export class Editor {
     return fills.discover(this.s.fills, this.s.network).filter(v => v.filled && v.route.every(u => set.has(u.line))).map(v => v.id)
   }
 
+  // editing (graph: Editing table)
+  /** Change the selection; one undoable step when it changes anything. */
+  select(units: editing.Unit[], mode: editing.Mode = 'replace') { editing.select(this.s.selection, this.s.network, this.s.fills, units, mode) }
+  /** V: select the whole continuous curve of a line. */
+  selectGroup(line: Id, mode: editing.Mode = 'replace') { this.select(editing.groupUnits(this.s.groups, this.s.network, line), mode) }
+  /** One geometric transform of what the selection expands to. */
+  transform(m: editing.Affine) {
+    const { state: s, changes } = this.tx
+    const plan = editing.transformPlan(s.selection, s.network, s.fills, m)
+    net.move(s.network, changes, plan.moves)
+    for (const h of plan.handles) net.moveHandle(s.network, changes, h.line, h.end, h.offset)
+  }
+  translate(dx: number, dy: number) { this.transform(editing.translation(dx, dy)) }
+  rotate(centre: Vec, angle: number) { this.transform(editing.rotation(centre, angle)) }
+  scale(centre: Vec, sx: number, sy: number) { this.transform(editing.scaling(centre, sx, sy)) }
+  /** Flip in place about the selection's own centre (an edit; no copy, bowen 1791471111). */
+  flip() { this.transform(editing.scaling(editing.centre(this.s.selection, this.s.network, this.s.fills), -1, 1)) }
+  /** Delete the selected lines (and clear selected fills); points alone cannot be deleted. */
+  deleteSelection() {
+    const d = editing.deletion(this.s.selection)
+    for (const id of d.fills) this.clearFill(id)
+    for (const id of d.lines) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
+  }
+
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
   cancel(): never {
     const tx = this.tx
@@ -302,6 +332,7 @@ export class Core {
       linkJoins: links.joins(s.links),
       loops: fills.discover(s.fills, n).map(l => ({ ...l, group: groupOfLine.get(l.route[0]!.line)! })),
       fillOrder: fills.order(s.fills),
+      selection: editing.units(s.selection),
     })
   }
 
@@ -343,6 +374,7 @@ function commit(s: State, ch: net.Changes, published: State) {
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
+  editing.clean(s.selection, s.network, s.fills)
   const changed = locks.changed(published, s, ch)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }

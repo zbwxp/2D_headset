@@ -37,6 +37,26 @@ function chooseOp(s: Snapshot, r: () => number, next: () => string): Op {
     if (k < 0.93) return { name: `deleteLayer ${layer}`, run: e => e.deleteLayer(layer) }
     return { name: `reorderLayer ${layer}`, run: e => e.reorderLayer(layer, Math.floor(r() * 3)) }
   }
+  // editing (docs/editing-apply-plan.md, Phase E)
+  if (r() < 0.12) {
+    const k = r()
+    if (k < 0.35) {
+      const pool = [
+        ...lines.map(l => ({ kind: 'line' as const, id: l.id })),
+        ...points.map(p => ({ kind: 'point' as const, id: p.id })),
+        ...lines.map(l => ({ kind: 'handle' as const, line: l.id, end: (r() < 0.5 ? 'a' : 'b') as 'a' | 'b' })),
+        ...s.loops.filter(x => x.color).map(x => ({ kind: 'fill' as const, id: x.id })),
+      ]
+      const units = pool.filter(() => r() < 0.3), mode = pick(['replace', 'add', 'remove'] as const)!
+      return { name: `select ${units.length}`, run: e => e.select(units, mode) }
+    }
+    if (k < 0.45) { const l = pick(lines); return { name: `selectGroup ${l?.id}`, run: e => e.selectGroup(l?.id ?? '?') } }
+    if (k < 0.65) { const dx = Math.round((r() - 0.5) * 10), dy = Math.round((r() - 0.5) * 10); return { name: 'translate', run: e => e.translate(dx, dy) } }
+    if (k < 0.75) { const c = pos(), a = (r() - 0.5) * 2; return { name: 'rotate', run: e => e.rotate(c, a) } }
+    if (k < 0.85) { const c = pos(), f = 0.5 + r(); return { name: 'scale', run: e => e.scale(c, f, f) } }
+    if (k < 0.92) return { name: 'flip', run: e => e.flip() }
+    return { name: 'deleteSelection', run: e => e.deleteSelection() }
+  }
   const roll = r()
   if (roll < 0.05) return { name: 'undo' }
   if (roll < 0.08) return { name: 'redo' }
@@ -139,6 +159,11 @@ function invariants(d: Core): string[] {
     if (first && loop.layer !== pointById.get(first.a)?.layer) bad.push(`loop ${loop.id} reports layer ${loop.layer}`)
   }
   for (const p of s.points) if (!s.layers.some(l => l.id === p.layer)) bad.push(`point ${p.id} in a missing layer`)
+  // the selection never points at something that no longer exists
+  for (const u of s.selection) {
+    const ok = u.kind === 'point' ? pointById.has(u.id) : u.kind === 'fill' ? s.fillOrder.includes(u.id) : lineById.has(u.kind === 'line' ? u.id : u.line)
+    if (!ok) bad.push(`selection holds a missing ${u.kind}`)
+  }
   const filled = s.loops.filter(l => l.color)
   if (JSON.stringify([...filled.map(l => l.id)].sort()) !== JSON.stringify([...s.fillOrder].sort())) bad.push('fill order and filled loops differ')
   for (const loop of s.loops) {
@@ -224,6 +249,7 @@ describe('random edit sequences (bowen 1791428827)', () => {
       expect(d.snapshot().lines).toEqual([])
       expect(d.snapshot().points).toEqual([])
       expect(d.snapshot().loops).toEqual([])
+      expect(d.snapshot().selection).toEqual([])
     }
   }, 60000)
 })

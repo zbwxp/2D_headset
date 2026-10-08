@@ -13,7 +13,8 @@ const ALLOWED: Record<string, string[]> = {
   fills: ['geometry', 'network'],
   derived: ['geometry', 'network', 'joins', 'fills'],
   locks: ['network', 'joins', 'links'],
-  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks'],
+  editing: ['geometry', 'network', 'groups', 'fills'],
+  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing'],
 }
 // External packages each module may use.
 const EXTERNAL: Record<string, string[]> = { geometry: ['bezier-js'] }

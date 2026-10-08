@@ -110,3 +110,23 @@ export function filletArc(p0: Vec, into: Vec, p3: Vec, out: Vec): Cubic {
   const h = (4 / 3) * Math.tan(turn / 4) * radius
   return [p0, add(p0, scale(t0, h)), sub(p3, scale(t3, h)), p3]
 }
+
+/** Exact axis-aligned bounds of a cubic: its end points and the extremes where the derivative is zero. */
+export function bounds(c: Cubic): { min: Vec; max: Vec } {
+  const ts = [0, 1]
+  for (const k of ['x', 'y'] as const) {
+    // derivative / 3 = a t² + b t + d, from the control points along one axis
+    const p0 = c[0][k], p1 = c[1][k], p2 = c[2][k], p3 = c[3][k]
+    const a = -p0 + 3 * p1 - 3 * p2 + p3, b = 2 * (p0 - 2 * p1 + p2), d = p1 - p0
+    if (Math.abs(a) < 1e-12) { if (Math.abs(b) > 1e-12) ts.push(-d / b) }
+    else {
+      const disc = b * b - 4 * a * d
+      if (disc >= 0) { const r = Math.sqrt(disc); ts.push((-b + r) / (2 * a), (-b - r) / (2 * a)) }
+    }
+  }
+  const pts = ts.filter(t => t >= 0 && t <= 1).map(t => evaluate(c, t))
+  return {
+    min: { x: Math.min(...pts.map(p => p.x)), y: Math.min(...pts.map(p => p.y)) },
+    max: { x: Math.max(...pts.map(p => p.x)), y: Math.max(...pts.map(p => p.y)) },
+  }
+}
