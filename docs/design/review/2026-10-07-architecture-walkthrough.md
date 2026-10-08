@@ -2587,5 +2587,43 @@ The check is from source reading only; it does not guarantee that multi-branch o
 - 1 decided (end stroke belongs to the point; shared points are continuous; special effects use show/hide intervals).
 - Open: line stroke per line or per connected group?
 - 3 (odd smooth cycle) decided: smooth is a stiff spring; conflicts show the compromise, nothing is refused.
-- Proposed new rule (not v103; to confirm): the deleted point's joins are dropped; new connections use the tool preset.
+- **Decided (bowen 1791423036):** the deleted point's joins are dropped; new connections use the tool preset. This is a new rule, not v103.
 - Decided: spring stiffness global and fixed; width unified to the first-clicked group on binding.
+
+## Q24: Anything left to attack in the point / line / face graph?
+
+**bowen** 1791423036:
+> 可以。那么现在点线面的知识图谱还有可以攻击的情况吗？
+
+("可以" approves the Q23 binding-inheritance rule.)
+
+### Claude (1791423093)
+
+**A. Cross-layer endpoint linking is not in the graph yet.**
+- Binding merges two points into one. Points cannot be shared across layers, so v103 used **端点联动**:
+  - two points kept, moving together;
+  - each side keeps its stroke, width and layer (`ui/drawing/tools.ts`).
+- v103 also allowed smooth joins on a link, rotating handles together across layers (`smoothHandleAuthoring.ts:8`).
+- **Derived from existing rules:**
+  - A link deletes no point, so the "lines with both ends on one point are deleted" rule does not apply.
+  - Loops do not cross layers, so fills are unaffected.
+  - Deleting a line on one side naturally removes the link.
+- **To confirm:** a link is its own relation in the graph (two points that move together), and spring smoothness can hang on it.
+
+**B. List order after binding two groups.**
+- v103 places the merged group at the first-clicked group's position, with the other group's items right after it (`commands.ts:114`). This is consistent with "width unified to the first-clicked group".
+- **Proposal for the reverse:** when deleting or unbinding splits a group, the new group goes right next to the original.
+
+**C. Line stroke ownership.**
+- v103 changes width for the whole connected stroke (`widthChange`, `commands.ts:135`) and unifies width on binding. So in practice the line stroke belongs to the continuous curve.
+- **Consequence:** different widths inside one group require a link instead of a bind.
+- **To confirm.**
+
+**D. (minor)** A newly filled loop goes on top within its group by default (later fill covers earlier).
+
+**Out of scope here:** head-turn and snapshots, show/hide intervals and mirror editing belong to the next layer. They are not gaps in point / line / face itself.
+
+### Status
+
+Waiting for dot's independent review and bowen on A–D.
+
