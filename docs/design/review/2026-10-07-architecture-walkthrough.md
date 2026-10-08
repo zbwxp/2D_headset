@@ -3247,6 +3247,15 @@ The core already works this way.
 
 A layer that still carries locked contents stays (dot).
 
+### bowen (1791435311) and Claude (1791435324)
+
+> 3联动不复制的原因是复制完联动还是指向原本两个线ID 而复制的线是新ID 联动会失效 接下来冲突按照原则推出来应该是甲对吧
+
+- **Why links are not copied:** links reference **endpoint ids**, not line ids, but the conclusion is the same. Copies get new endpoint ids, so the old link still points at the originals; relations outside the range are not carried.
+- **Conflict: 甲** follows from the principles. A fill exists only while its loop is closed, and per Q29 C the lock covers only the fill's own attributes. When the boundary lines are deleted, the locked fill vanishes with its loop.
+
 ### Status
 
-Waiting for bowen on 甲 or 乙.
+**Decided:** names unique; copy rule; links not copied; delete as a batch keeping locked elements (and their layer); empty and zero layers allowed, with one empty layer by default; 甲.
+
+Asked bowen whether to write the graph rows.
