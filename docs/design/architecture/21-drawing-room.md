@@ -168,10 +168,11 @@ flowchart LR
 
 - **`Core.preview(fn)`:** runs an edit on a private draft through settling *and the lock check*, and publishes nothing. It returns either the would-be snapshot and geometry, or exactly the refusal a commit would give.
   - **Fixed ids** (dot 1791477302; carried over from v2): repeated previews in one drag reuse the same new ids. Cancelling writes nothing. One gesture commits at most once.
-  - **No revision check:** people and AI never operate at the same time (bowen 1791477364). The design is for one actor at a time, taking turns on one document (dot 1791477408). Between a preview and its commit, only the same actor can change the document, and it can simply preview again. So `STALE_REVISION`, revision numbers, concurrent merging and separate selections or histories are not built.
+  - **One actor at a time:** people and AI never operate at the same time (bowen 1791477364), taking turns on one document (dot 1791477408). So there is no concurrent merging, no handling of both sides writing at once, and no separate selections or histories.
+  - **A preview expires on any change** (dot 1791477456): even with one actor, a preview can go stale, for example preview → undo, or preview → another command. Any committed edit, undo or redo invalidates every earlier preview. A preview returns a token, and committing *by that token* is refused with `preview-expired` once anything has changed. A plain `execute(batch)` (no token) simply runs on the current state. This is one change counter, not a version protocol.
   - **No late previews:** a preview runs synchronously, inside the pointer event that asked for it, so a result can never arrive after a later operation. If a preview ever becomes asynchronous, it carries its gesture's sequence number, and results from an older gesture are dropped (dot 1791477408).
 - **Structured refusals** (dot 1791477302): today most refusals are plain `Error`s carrying a message. They must become `{ code, message, objects: ids, written: false }`. This is explicit interface work in `core`. No entry may parse message text to guess which object gets the red cross.
-- ~~Revision number~~: not needed; people and AI take turns (bowen 1791477364).
+- **Change counter:** incremented by every committed edit, undo and redo. Used only so a preview can expire (dot 1791477456).
 - ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
 
 ## 6. Interaction backlog → module
