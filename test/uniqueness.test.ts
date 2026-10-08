@@ -53,9 +53,40 @@ describe('results do not depend on incidental order', () => {
   })
 })
 
-describe('open question for bowen', () => {
-  // With nothing held, mutually smooth lines settle at even angles but the whole star's rotation is
-  // not fixed by the rule; today it depends on solver order. Asked bowen 1791428957 (proposal: keep the
-  // average direction). Turned into a test once decided.
-  it.todo('smooth relaxation with nothing held: which overall rotation (bowen 1791428957)')
+describe('smooth springs with curve springs (bowen 1791429195)', () => {
+  function star(order: [number, number][]) {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('o', 'L', P(0))
+      ;[0, 1.9, 4.0].forEach((a, i) => { sk(e).point('p' + i, 'L', P(10 * Math.cos(a), 10 * Math.sin(a))); sk(e).line('l' + i, 'o', 'p' + i) })
+    })
+    d.edit(e => { for (const [i, j] of order) e.join('o', 'l' + i, 'l' + j, { mode: 'smooth' }) })
+    return d
+  }
+  const angles = (d: Core) => d.snapshot().lines.map(l => Math.atan2(l.ha.y, l.ha.x))
+  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+
+  it('with nothing held the star spreads to 120° without spinning: the mean turning is zero, so the result is unique', () => {
+    const results = ([[[0, 1], [0, 2], [1, 2]], [[0, 2], [0, 1], [1, 2]]] as [number, number][][]).map(order => {
+      const d = star(order), before = angles(d)
+      d.edit(e => e.move([{ id: 'o', target: P(0) }]))
+      const after = angles(d)
+      const mean = after.reduce((s, a, i) => s + wrap(a - before[i]!), 0) / after.length
+      expect(Math.abs(mean)).toBeLessThan(1e-9)
+      return after
+    })
+    results[1]!.forEach((a, i) => expect(a).toBeCloseTo(results[0]![i]!, 9))
+  })
+
+  it('turning one handle of a 120° star turns the whole star with it', () => {
+    const d = star([[0, 1], [0, 2], [1, 2]])
+    d.edit(e => e.move([{ id: 'o', target: P(0) }])) // settle at 120°
+    const h = d.snapshot().lines.find(l => l.id === 'l0')!.ha, len = Math.hypot(h.x, h.y)
+    const turned = Math.atan2(h.y, h.x) + 0.7
+    d.edit(e => e.moveHandle('l0', 'a', { x: len * Math.cos(turned), y: len * Math.sin(turned) }))
+    const a = angles(d)
+    expect(a[0]).toBeCloseTo(turned, 9)
+    expect(Math.abs(wrap(a[1]! - a[0]!))).toBeCloseTo(2 * Math.PI / 3, 6)
+    expect(Math.abs(wrap(a[2]! - a[0]!))).toBeCloseTo(2 * Math.PI / 3, 6)
+  })
 })

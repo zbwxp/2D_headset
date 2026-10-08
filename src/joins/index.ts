@@ -96,7 +96,14 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
  * directions from straight-opposite)², angles only, lengths kept. Solved only at
  * the points this edit acted on, so an unrelated edit never turns anything.
  * Held handles (dragged in this edit, or the first-clicked side of a new join)
- * keep their direction. Coordinate descent; returns handle updates.
+ * keep their direction.
+ *
+ * Physically each handle is also held by its own curve, a soft spring toward its
+ * direction before the edit (bowen 1791429195). With the smooth springs far
+ * stiffer, the result is the limit: first the smooth balance (coordinate
+ * descent), then a group with no held handle is turned as a whole so that the
+ * squared turning of its handles is least — it spreads but does not spin.
+ * Returns handle updates.
  */
 export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
   const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
@@ -108,6 +115,7 @@ export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { li
     const ids = [...new Set(rows.flatMap(r => r.lines))].filter(id => length(net.handle(ends.get(id)!.line, ends.get(id)!.end)) > 1e-9)
     if (ids.length < 2) continue
     const theta = new Map(ids.map(id => [id, angleOf(net.handle(ends.get(id)!.line, ends.get(id)!.end))]))
+    const before = new Map(theta)
     const held = new Set(ch.held.filter(h => ends.get(h.line)?.end === h.end).map(h => h.line))
     const neighbours = new Map(ids.map(id => [id, rows.filter(r => r.lines.includes(id)).map(r => (r.lines[0] === id ? r.lines[1] : r.lines[0])).filter(o => theta.has(o))]))
     const free = ids.filter(id => !held.has(id))
@@ -123,6 +131,12 @@ export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { li
       }
       if (change < 1e-13) break
     }
+    // Curve springs in the stiff-smooth limit: a group with nothing held keeps zero mean turning.
+    for (const group of smoothGroups(ids, neighbours)) {
+      if (group.some(id => held.has(id))) continue
+      const mean = group.reduce((s, id) => s + wrap(theta.get(id)! - before.get(id)!), 0) / group.length
+      for (const id of group) theta.set(id, theta.get(id)! - mean)
+    }
     for (const id of free) {
       const e = ends.get(id)!, h = net.handle(e.line, e.end)
       const next = fromAngle(theta.get(id)!, length(h))
@@ -131,3 +145,21 @@ export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { li
   }
   return out
 }
+
+/** Handles linked by smooth rows, as connected groups. */
+function smoothGroups(ids: Id[], neighbours: Map<Id, Id[]>): Id[][] {
+  const seen = new Set<Id>(), groups: Id[][] = []
+  for (const start of ids) {
+    if (seen.has(start)) continue
+    const group: Id[] = [], stack = [start]
+    seen.add(start)
+    while (stack.length) {
+      const id = stack.pop()!
+      group.push(id)
+      for (const o of neighbours.get(id) ?? []) if (!seen.has(o)) { seen.add(o); stack.push(o) }
+    }
+    groups.push(group)
+  }
+  return groups
+}
+
