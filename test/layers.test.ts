@@ -313,6 +313,15 @@ describe('line width and locks', () => {
     expect(() => d.edit(e => e.removeLinkJoin('a', 'qa', 'ab', 'qab'))).toThrow(/Locked/)
   })
 
+  it('29e. deleting an unlocked neighbour that shares a join with a locked line’s end is refused: the join would go (dot 1791460706)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    expect(() => d.edit(e => e.deleteLine('bc'))).toThrow(/Locked lines would change \(ab\)/)
+    expect(() => d.edit(e => e.deleteLayer('A'))).toThrow(/Locked/)
+    d.edit(e => e.deleteLine('ca')) // no join with ab at a
+  })
+
   it('29a. an arc join that reshapes a locked line is refused', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
