@@ -2768,3 +2768,22 @@ Claude agrees; the rule above is to be read with this definition.
 **Decided:**
 - rules 1–5 (bowen 1791424124);
 - the symmetric midpoint (bowen 1791424255), unified with rule 4 as "average of the moved points".
+
+### Wrap-up of point / line / face (bowen 1791424493, Claude 1791424509, dot 1791424556)
+
+**bowen:** point / line / face is complete. Linking and binding are unified for joins; one deletes a point, the other keeps both.
+
+**Claude:**
+- **Binding:** one point, and the join is stored on it.
+- **Linking:** two points, and the join across them is stored in the link attribute, which each side keeps a copy of (bowen's "two copies"). This settles Q25 attack 3.
+
+**dot:**
+- No hard contradiction remains in the current scope. Joins share one rule: position first, then handle angles.
+- **The topology differs:** binding shares one point; linking keeps two points, so cross-layer lines never become one closed loop.
+- **Implementation rule:** the two copies of a link or join express **one** relation. They must not be computed as two springs, which would double the stiffness.
+
+**Q24 still waiting for bowen:**
+- **B:** list position of the merged group.
+- **C:** line stroke belongs to the continuous curve. Links are cross-layer only, so within one layer a connected group has one width.
+- **D:** a newly filled loop goes to the top of its group.
+
