@@ -70,39 +70,69 @@ export function match(n: net.NetworkState, l: links.LinksState, ax: number, sour
     const order = reversed ? [3, 2, 1, 0] : [0, 1, 2, 3]
     return order.reduce((sum, k, i) => { const d = sub(cs[k]!, ct[i]!); return sum + d.x * d.x + d.y * d.y }, 0)
   }
+  // Pruning that keeps the exact least-change optimum (dot 1791480800, a 19-line eye):
+  // - source lines are visited along shared points, so each next line is mostly fixed by those before it;
+  // - a point may only map to one with the same number of selected lines and in-selection links;
+  // - a link is checked as soon as both its ends are mapped;
+  // - candidates are tried cheapest first, and a branch stops when its cost plus a lower
+  //   bound for the lines still open cannot beat the best found.
+  const deg = (ids: Id[]) => { const m = new Map<Id, number>(); for (const id of ids) for (const p of ends(id)) m.set(p, (m.get(p) ?? 0) + 1); return m }
+  const srcDeg = deg(src), tgtDeg = deg(tgt)
+  const partners = (keys: Set<string>) => {
+    const m = new Map<Id, Id[]>()
+    for (const k of keys) { const [a, b] = JSON.parse(k) as [Id, Id]; m.set(a, [...(m.get(a) ?? []), b]); m.set(b, [...(m.get(b) ?? []), a]) }
+    return m
+  }
+  const srcPartners = partners(srcLinks), tgtPartners = partners(tgtLinks)
+  const fits = (p: Id, q: Id) =>
+    srcDeg.get(p) === tgtDeg.get(q) && (srcPartners.get(p)?.length ?? 0) === (tgtPartners.get(q)?.length ?? 0) &&
+    (srcPartners.get(p) ?? []).every(r => { const mr = pointMap.get(r); return mr === undefined || tgtLinks.has(linkKey(q, mr)) })
+  // visiting order: along shared points, components in id order
+  const order: Id[] = [], seen = new Set<Id>()
+  for (const root of src) {
+    if (seen.has(root)) continue
+    const queue = [root]; seen.add(root)
+    while (queue.length) {
+      const id = queue.shift()!; order.push(id)
+      const at = new Set(ends(id))
+      for (const o of src) if (!seen.has(o) && ends(o).some(p => at.has(p))) { seen.add(o); queue.push(o) }
+    }
+  }
+  const costs = new Map(order.map(sid => [sid, tgt.flatMap(t => [false, true].map(reversed => ({ t, reversed, c: cost(sid, t, reversed) })))
+    .sort((x, y) => x.c - y.c || (x.t < y.t ? -1 : x.t > y.t ? 1 : 0) || Number(x.reversed) - Number(y.reversed))]))
+  const rest: number[] = new Array(order.length + 1).fill(0)
+  for (let i = order.length - 1; i >= 0; i--) rest[i] = rest[i + 1]! + costs.get(order[i]!)![0]!.c
   let best: { cost: number; lines: Map<Id, { to: Id; reversed: boolean }>; points: Map<Id, Id> } | undefined
   const lineMap = new Map<Id, { to: Id; reversed: boolean }>(), pointMap = new Map<Id, Id>(), usedPoints = new Map<Id, Id>(), usedLines = new Set<Id>()
   let steps = 0
   const linksHold = () => [...srcLinks].every(k => { const [a, b] = JSON.parse(k) as [Id, Id]; return tgtLinks.has(linkKey(pointMap.get(a)!, pointMap.get(b)!)) })
   const search = (i: number, sofar: number) => {
     if (++steps > MATCH_STEP_LIMIT) throw new Error('Mirror apply: the correspondence search is too large')
-    if (best && sofar >= best.cost) return // a later tie never replaces the first found
-    if (i === src.length) {
+    if (best && sofar + rest[i]! >= best.cost) return // a later tie never replaces the first found
+    if (i === order.length) {
       if (!linksHold()) return
       best = { cost: sofar, lines: new Map(lineMap), points: new Map(pointMap) }
       return
     }
-    const s = src[i]!, [sa, sb] = ends(s)
-    for (const t of tgt) {
+    const s = order[i]!, [sa, sb] = ends(s)
+    for (const { t, reversed, c } of costs.get(s)!) {
       if (usedLines.has(t)) continue
       const [ta, tb] = ends(t)
-      for (const reversed of [false, true]) {
-        const want: [Id, Id][] = reversed ? [[sa, tb], [sb, ta]] : [[sa, ta], [sb, tb]]
-        const added: Id[] = []
-        let ok = true
-        for (const [p, q] of want) {
-          const have = pointMap.get(p)
-          if (have !== undefined) { if (have !== q) ok = false; continue }
-          if (usedPoints.has(q)) { ok = false; continue }
-          pointMap.set(p, q); usedPoints.set(q, p); added.push(p)
-        }
-        if (ok) {
-          lineMap.set(s, { to: t, reversed }); usedLines.add(t)
-          search(i + 1, sofar + cost(s, t, reversed))
-          lineMap.delete(s); usedLines.delete(t)
-        }
-        for (const p of added) { usedPoints.delete(pointMap.get(p)!); pointMap.delete(p) }
+      const want: [Id, Id][] = reversed ? [[sa, tb], [sb, ta]] : [[sa, ta], [sb, tb]]
+      const added: Id[] = []
+      let ok = true
+      for (const [p, q] of want) {
+        const have = pointMap.get(p)
+        if (have !== undefined) { if (have !== q) ok = false; continue }
+        if (usedPoints.has(q) || !fits(p, q)) { ok = false; continue }
+        pointMap.set(p, q); usedPoints.set(q, p); added.push(p)
       }
+      if (ok) {
+        lineMap.set(s, { to: t, reversed }); usedLines.add(t)
+        search(i + 1, sofar + c)
+        lineMap.delete(s); usedLines.delete(t)
+      }
+      for (const p of added) { usedPoints.delete(pointMap.get(p)!); pointMap.delete(p) }
     }
   }
   search(0, 0)

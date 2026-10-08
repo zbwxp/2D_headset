@@ -78,7 +78,7 @@ Every step reports its changes through `Changes`, so isolated points and stale r
 8. With unlocked lines only, the layer is gone and its links end.
 9. With a locked line, the unlocked lines go and the locked line and the layer stay.
 10. A locked fill whose boundary lines are unlocked vanishes (甲).
-11. A deletion that would turn a locked line's shared end into a free end (making its taper appear) is refused (dot's cross-case).
+11. ~~A deletion that would turn a locked line's shared end into a free end (making its taper appear) is refused (dot's cross-case).~~ Superseded by bowen 1791460893 (甲): deleting an unlocked neighbour is allowed, and the locked line's end stroke then shows (graph row "Deleting an unlocked element"; dot 1791480882).
 
 **State changes and locks**
 12. Hiding a layer hides all its elements. Showing it again shows all of them (it is a batch, with no lasting layer state).
