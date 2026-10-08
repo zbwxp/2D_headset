@@ -55,7 +55,8 @@ How this section works:
 | Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
 | Self-crossing figure-eight | is | A drawing / deformation error; no special fill handling | confirmed | bowen 1791390533 (Q18) |
 | Design principle | is | Do not block an action; show its consequences | confirmed | bowen 1791392425 (Q21) |
-| Delete (user action) | removes | Lines only. An endpoint is removed only by binding. | confirmed | bowen 1791392558 (Q22) |
+| Delete (user action) | removes | Lines only. | confirmed | bowen 1791392558 (Q22) |
+| Point | is removed when | It is isolated (no line attached), or merged away by binding. A point exists only as a line end. | confirmed | bowen 1791428195 |
 | Endpoint binding | merges | Two points into one. The first point is kept and the later-bound point is deleted; every line that ended there re-attaches to the kept point. | confirmed | bowen 1791391384 (Q20); v103 `commands.ts:102-110` |
 | Endpoint binding | deletes | Every line whose two ends land on the same point after the bind | confirmed | bowen 1791391384, 1791392871 (Q22) |
 | Endpoint binding | is | One complete edit. Loops still closed afterwards keep their fills; nearby shapes may change. | confirmed | bowen 1791391384; dot 1791391503 (Q20) |
