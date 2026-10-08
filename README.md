@@ -88,3 +88,20 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
     - joins across a link (stored on the link);
     - stroke rendering;
     - how a fill joins at a fork with an arc on another pair (left open, dot 1791425335). For now, such a fill keeps that line end untrimmed.
+
+## Rules filled in by us, not by bowen (listed for bowen 1791429645)
+
+These are our own choices, not derived from bowen's principles. They wait for his review.
+
+1. **Default handles of a new line:** straight, 1/3 of the chord at each end.
+2. **Arc trims:** at most 45% of the line. Several arcs on one line end trim by the largest radius.
+3. **Arc shape:** a cubic approximation of a circular arc, tangent to both lines.
+4. **A new group goes on top of its layer's list.**
+5. **On a split,** the piece with the earliest-drawn line keeps the group id.
+6. **A pen line joining two groups** keeps the group of its first point (the bind rule extended to the pen).
+7. **On unbind,** a join moves with its lines if both moved; it is dropped if only one moved.
+8. **Smooth springs** change direction only, never handle length. Zero-length handles take no part.
+9. **Unfilled loops** are only the simple ones (no point visited twice). A loop through a point twice exists only as an already-filled loop.
+10. **Filling an already-filled loop** recolours it.
+11. **An edit that changes nothing** makes no undo step.
+12. **Default line stroke:** width 1, uniform (a placeholder).
