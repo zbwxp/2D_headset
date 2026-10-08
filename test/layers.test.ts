@@ -312,6 +312,22 @@ describe('overlapping endpoints in one layer (Q31)', () => {
     expect(line(d, 'xy')!.a).toBe('a')
     expect(s(d).links).toEqual([])
   })
+
+  it('23c. links align before overlaps bind: A→10 and B→15 average away from C at 10, so nothing binds (dot, after f9c4109)', () => {
+    const d = doc('A', 'B')
+    d.edit(e => {
+      sk(e).point('a', 'A', P(0)); sk(e).point('a2', 'A', P(0, 30)); sk(e).line('aa', 'a', 'a2')
+      sk(e).point('c', 'A', P(10)); sk(e).point('c2', 'A', P(10, -30)); sk(e).line('cc', 'c', 'c2')
+      sk(e).point('b', 'B', P(0)); sk(e).point('b2', 'B', P(0, 30)); sk(e).line('bb', 'b', 'b2')
+      e.link('a', 'b')
+    })
+    // a alone would land on c; the link average puts a and b at 15
+    d.edit(e => e.move([{ id: 'a', target: P(10) }, { id: 'b', target: P(20) }]))
+    expect(point(d, 'a')!.position).toEqual(P(15))
+    expect(point(d, 'c')!.position).toEqual(P(10))
+    expect(s(d).links).toEqual([{ a: 'a', b: 'b' }])
+    expect(s(d).groups).toHaveLength(3)
+  })
 })
 
 describe('unbind', () => {
