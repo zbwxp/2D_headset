@@ -401,6 +401,25 @@ describe('line width and locks', () => {
     // b turns free and its end stroke shows on ab: that is ab's own
     expect(() => d.edit(e => e.unbind('b', ['bc'], 'b2'))).toThrow(/Locked lines would change \(ab\)/)
   })
+  it('29m. a still locked line, a deforming neighbour, and an arc that keeps joining them smoothly (bowen 1791463043)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    const ab = line(d, 'ab')
+    d.edit(e => { e.move([{ id: 'c', target: P(14, 9) }]); e.moveHandle('bc', 'b', P(-2, 6)) })
+    expect(line(d, 'ab')).toEqual(ab)
+    const g = d.geometry(), arc = g.arcs[0]!.curve
+    const abEnd = g.lines.find(l => l.id === 'ab')!.curve, bcStart = g.lines.find(l => l.id === 'bc')!.curve
+    const close = (p: Vec, q: Vec) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6
+    const parallel = (u: Vec, v: Vec) => Math.abs(u.x * v.y - u.y * v.x) < 1e-6 * Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y)
+    const dir = (p: Vec, q: Vec) => ({ x: q.x - p.x, y: q.y - p.y })
+    // the arc starts where ab now stops and leaves along ab; it ends where bc starts and arrives along bc
+    expect(close(arc[0], abEnd[3])).toBe(true)
+    expect(close(arc[3], bcStart[0])).toBe(true)
+    expect(parallel(dir(arc[0], arc[1]), dir(abEnd[2], abEnd[3]))).toBe(true)
+    expect(parallel(dir(arc[2], arc[3]), dir(bcStart[0], bcStart[1]))).toBe(true)
+  })
+
   it('29a. an arc join at a locked line’s end may trim how it is drawn; its own curve stays (bowen 1791462918)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
