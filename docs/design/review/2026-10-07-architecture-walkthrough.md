@@ -65,6 +65,23 @@ How this section works:
 | Move to another layer | is | Copy, or copy then delete; not a separate operation | confirmed | bowen 1791392425 (Q21) |
 | Drawing | has no | Cut, only copy and copy-then-delete | confirmed | bowen 1791392233 (Q21) |
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
+| Point | is | A shared position. Each line keeps its own end there, with its own handle; handles belong to lines. | confirmed | bowen 1791383633; Q23 |
+| End stroke (taper and so on) | belongs to | The point. Connected points have a continuous stroke, so tapers take effect only at free ends. Special effects at a junction use show/hide intervals. | confirmed | bowen 1791393850 (Q23) |
+| Join | is an attribute of | The point. It records which pairs of the point's lines are smooth; a corner means no record. | confirmed | bowen 1791393710 (Q23) |
+| Smooth join | is | A stiff spring pulling two handles toward a straight line. Conflicts show the compromise and are never refused. Stiffness is one global fixed value. | confirmed | bowen 1791421304, 1791421988 (Q23) |
+| 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
+| Endpoint binding | sets | The width and profile of both groups to the first-clicked group's | confirmed | bowen 1791421988 (Q23) |
+| Endpoint binding | drops | The deleted point's join records. New connections use the tool's preset join. | confirmed (new rule, not v103) | bowen 1791423036 (Q23) |
+| Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
+| Merged group (after binding two groups) | takes | The first-clicked group's list position, with the other group's content after it. When a group splits, the new group goes next to the original. | confirmed | bowen 1791424619 (Q24 B) |
+| Line stroke (width, profile) | belongs to | The continuous curve (the whole connected group). Within one layer, a connected group has one width. | confirmed | bowen 1791424619 (Q24 C) |
+| Newly filled loop | is placed | At the top of its group by default | confirmed | bowen 1791424619 (Q24 D) |
+| Endpoint link | connects | Two points in **different layers** (cross-layer only). Both points are kept; each stores the other's id. | confirmed | bowen 1791424124 (Q25) |
+| Endpoint link | on creation | Moves the second-clicked point to the first | confirmed | bowen 1791424124 (Q25) |
+| Endpoint link | keeps points coincident by | After each operation, averaging the target positions of the points the operation directly acted on; the others follow. One side edited: the other follows. Both edited: midpoint. | confirmed | bowen 1791424124, 1791424255, 1791424388; dot 1791424385 (Q25) |
+| Endpoint link | ends when | Either point is deleted. Both copies are cleared, with no automatic re-linking. | confirmed | bowen 1791424124; dot 1791424173 (Q25) |
+| Join across a link | is stored in | Both link copies, as one relation (not two springs) | confirmed | bowen 1791424493; Claude 1791424509; dot 1791424556 |
+| Endpoint link | does not | Merge topology; cross-layer lines never form one closed loop | confirmed (consequence) | dot 1791424556 |
 
 ---
 
@@ -2786,4 +2803,6 @@ Claude agrees; the rule above is to be read with this definition.
 - **B:** list position of the merged group.
 - **C:** line stroke belongs to the continuous curve. Links are cross-layer only, so within one layer a connected group has one width.
 - **D:** a newly filled loop goes to the top of its group.
+
+**bowen 1791424619:** "bcd都可以". Q24 B, C and D are approved, and the Q23–Q25 graph rows are written (bowen had been told this approval would trigger writing them, 1791424509).
 
