@@ -157,8 +157,9 @@ export class Editor {
     this.topology(ch => { for (const x of ids) net.deleteLine(this.s.network, ch, x) })
   }
   bind(keep: Id, remove: Id) {
-    const pairs = apply.pairedBinds(this.s.apply, this.s.network, keep, remove)
-    this.topology(ch => { for (const [k, r] of pairs) net.bind(this.s.network, ch, k, r) })
+    const plan = apply.pairedBinds(this.s.apply, this.s.network, keep, remove)
+    this.topology(ch => { for (const [k, r] of plan.binds) net.bind(this.s.network, ch, k, r) })
+    this.move(plan.settle.map(id => ({ id, target: net.point(this.s.network, id).position })))
   }
   unbind(point: Id, lines: Id[], newPoint: Id) {
     const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint)

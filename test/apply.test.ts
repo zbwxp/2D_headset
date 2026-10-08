@@ -291,7 +291,7 @@ describe('mirror link', () => {
     expect(s(d).mirrorPairs).toHaveLength(1)
   })
 
-  it('A8c. binding away a point both sides share on the axis is refused explicitly, not with a stale id (dot, review of 1fa7462)', () => {
+  it('A8c. binding away a point both sides share on the axis merges it with both kept points into one point on the axis (bowen 1791474920, derived)', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A')
@@ -301,9 +301,30 @@ describe('mirror link', () => {
     d.edit(e => e.mirrorLink([groupOf(d, 'left')], [groupOf(d, 'right')]))
     d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
     const shared = line(d, 'left').b
-    expect(() => d.edit(e => e.bind('a', shared))).toThrow(/mirror-shared-point/)
-    // keeping the shared point is fine: each side binds its own point onto it
-    expect(s(d).lines).toHaveLength(2)
+    // left 'a' is the first-clicked (kept) point; its counterpart is 'c'
+    d.edit(e => e.bind('a', shared))
+    expect(point(d, shared)).toBeUndefined()
+    expect(point(d, 'c')).toBeUndefined()
+    // both lines had one end at a/c and the other at the shared point: they collapse and go
+    // (bind rule), and the merged point, left with no line, goes too (A8e checks the position)
+    expect(s(d).lines).toEqual([])
+    expect(s(d).points).toEqual([])
+  })
+
+  it('A8e. the merge of A8c keeps lines that do not collapse, mirrored around the merged point on the axis', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A')
+      sk(e).point('a', 'A', P(-10)); sk(e).point('b', 'A', P(-1, 2)); sk(e).point('t', 'A', P(-6, 9)); sk(e).line('left', 'a', 'b'); sk(e).line('lt', 'a', 't')
+      sk(e).point('c', 'A', P(10)); sk(e).point('dd', 'A', P(1, 2)); sk(e).point('u', 'A', P(6, 9)); sk(e).line('right', 'c', 'dd'); sk(e).line('ru', 'c', 'u')
+    })
+    d.edit(e => e.mirrorLink([groupOf(d, 'left')], [groupOf(d, 'right')]))
+    d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
+    d.edit(e => e.bind('a', line(d, 'left').b))
+    expect(s(d).lines.map(l => l.id).sort()).toEqual(['lt', 'ru'])
+    expect(line(d, 'lt').a).toBe('a'); expect(line(d, 'ru').a).toBe('a')
+    expect(point(d, 'a').position).toEqual(P(0, 0))
+    expect(point(d, 't').position).toEqual(R(point(d, 'u').position))
   })
 
   it('A8d. at an axis-shared point, a join between two left lines and the one between their right counterparts are different joins (dot, review of 1fa7462)', () => {

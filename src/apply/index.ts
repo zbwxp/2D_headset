@@ -321,18 +321,20 @@ export function pairedPointPairs(s: ApplyState, n: net.NetworkState, a: Id, b: I
   return same ? [[a, b]] : [[a, b], [ca, cb]]
 }
 /**
- * A bind and its mirrored bind. When the removed point is shared by both sides on the
- * axis and the two sides keep different points, the existing rules do not say how the
- * shared point's lines should split between the two kept points, so it is refused
- * explicitly instead of running one half on a point the other half has removed
- * (dot, review of 1fa7462; asked bowen).
+ * A bind and its mirrored bind, as point merges. Merges compose whatever their order,
+ * so when both binds remove the point the two sides share on the axis (M), the result
+ * is one point made of M, K and K′; the user's first-clicked K is kept, the mirrored
+ * half then binds K′ into K. That point is its own counterpart, so it is aimed at its
+ * current position and the mirror solve puts it on the axis; lines that end up with
+ * both ends on it go by the bind rule (bowen 1791474920: derived from the rules).
  */
-export function pairedBinds(s: ApplyState, n: net.NetworkState, keep: Id, remove: Id): [Id, Id][] {
+export function pairedBinds(s: ApplyState, n: net.NetworkState, keep: Id, remove: Id): { binds: [Id, Id][]; settle: Id[] } {
   const ops = pairedPointPairs(s, n, keep, remove)
   if (ops.length === 2 && ops[1]!.includes(remove)) {
-    throw new Error('mirror-shared-point: binding away a point both mirror sides share on the axis is not defined yet')
+    const other = ops[1]![0] === remove ? ops[1]![1] : ops[1]![0]
+    return { binds: [[keep, remove], [keep, other]], settle: [keep] }
   }
-  return ops
+  return { binds: ops, settle: [] }
 }
 
 /** A join at a point and, when every part has a counterpart, its mirrored join. */
