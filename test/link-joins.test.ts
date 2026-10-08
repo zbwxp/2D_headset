@@ -48,9 +48,9 @@ describe('smooth joins across a link', () => {
     expect(d.snapshot().linkJoins).toEqual([])
   })
 
-  it('only smooth across a link until bowen decides how cusp / arc across layers are drawn', () => {
+  it('cusp / arc across a link are not implemented yet (undecided, not forbidden)', () => {
     const d = setup()
-    expect(() => d.edit(e => e.linkJoin('a', 'b', 'la', 'lb', { mode: 'arc' as 'smooth' }))).toThrow(/Only smooth/)
+    expect(() => d.edit(e => e.linkJoin('a', 'b', 'la', 'lb', { mode: 'arc' as 'smooth' }))).toThrow(/Not implemented yet/)
     expect(() => d.edit(e => e.linkJoin('a', 'b', 'lb', 'la', { mode: 'smooth' }))).toThrow(/own linked point/)
   })
 })

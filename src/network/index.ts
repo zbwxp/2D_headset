@@ -196,12 +196,20 @@ export const LOOP_LIMIT = 10000
  * Used both to find closed curves and to check that a filled one still holds.
  */
 export function closedWalk(n: NetworkState, lineIds: readonly Id[]): LoopUse[] | null {
+  return walkWith(indexOf(n), lineIds)
+}
+
+interface Index { lineById: Map<Id, Mutable<Line>>; layerOf: Map<Id, Id> }
+const indexOf = (n: NetworkState): Index => ({
+  lineById: new Map(S(n).lines.map(l => [l.id, l])),
+  layerOf: new Map(S(n).points.map(p => [p.id, p.layer])),
+})
+
+function walkWith({ lineById, layerOf }: Index, lineIds: readonly Id[]): LoopUse[] | null {
   if (lineIds.length < 2 || new Set(lineIds).size !== lineIds.length) return null
-  const byId = new Map(S(n).lines.map(l => [l.id, l]))
-  const ls = lineIds.map(id => byId.get(id))
+  const ls = lineIds.map(id => lineById.get(id))
   if (ls.some(l => !l)) return null
   const lines = ls as Mutable<Line>[]
-  const layerOf = new Map(S(n).points.map(p => [p.id, p.layer]))
   if (new Set(lines.map(l => layerOf.get(l.a))).size !== 1) return null
   const degree = new Map<Id, number>()
   for (const l of lines) for (const p of [l.a, l.b]) degree.set(p, (degree.get(p) ?? 0) + 1)
@@ -240,12 +248,12 @@ export const BLOCK_COMBINATION_LIMIT = 1 << 16
  */
 export function closedLoops(n: NetworkState): FoundLoop[] {
   const found: FoundLoop[] = []
-  const lineById = new Map(S(n).lines.map(l => [l.id, l]))
+  const index = indexOf(n), lineById = index.lineById
   for (const comp of components(n)) {
     if (found.length >= LOOP_LIMIT) break
     const pieces: { block: number; lines: Id[]; points: Set<Id> }[] = []
     blocks(comp.lines.map(id => lineById.get(id)!)).forEach((block, bi) => {
-      for (const ids of blockLoops(n, block)) {
+      for (const ids of blockLoops(index, block)) {
         pieces.push({ block: bi, lines: ids, points: new Set(ids.flatMap(id => [lineById.get(id)!.a, lineById.get(id)!.b])) })
       }
     })
@@ -258,7 +266,7 @@ export function closedLoops(n: NetworkState): FoundLoop[] {
       if (seen.has(key) || found.length >= LOOP_LIMIT) return
       seen.add(key)
       queue.push(item)
-      found.push({ key, layer: comp.layer, route: closedWalk(n, item.lines)! })
+      found.push({ key, layer: comp.layer, route: walkWith(index, item.lines)! })
     }
     for (const p of pieces) add({ lines: p.lines, blocks: new Set([p.block]), points: p.points })
     // join pieces of other blocks at shared points (a curve through a cut point twice)
@@ -307,7 +315,7 @@ function blocks(lines: Mutable<Line>[]): Mutable<Line>[][] {
 }
 
 /** Connected even combinations of one block's fundamental cycles (each a closed curve). */
-function blockLoops(n: NetworkState, lines: Mutable<Line>[]): Id[][] {
+function blockLoops(index: Index, lines: Mutable<Line>[]): Id[][] {
   const adj = new Map<Id, { line: number; other: Id }[]>()
   lines.forEach((l, i) => {
     for (const [p, q] of [[l.a, l.b], [l.b, l.a]] as const) { if (!adj.has(p)) adj.set(p, []); adj.get(p)!.push({ line: i, other: q }) }
@@ -335,7 +343,7 @@ function blockLoops(n: NetworkState, lines: Mutable<Line>[]): Id[][] {
     const set = new Uint8Array(lines.length)
     for (let b = 0; b < cycles.length; b++) if (mask & (1 << b)) for (let i = 0; i < set.length; i++) set[i]! ^= cycles[b]![i]!
     const ids = lines.filter((_, i) => set[i]).map(l => l.id)
-    if (closedWalk(n, ids)) out.push(ids)
+    if (walkWith(index, ids)) out.push(ids)
   }
   return out
 }

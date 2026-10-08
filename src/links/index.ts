@@ -46,11 +46,12 @@ export function unlink(l: LinksState, a: Id, b: Id) {
 
 /**
  * Set a join across the link a–b between line la (ending at a, clicked first) and
- * line lb (ending at b). Only smooth for now: how a cusp or arc across layers is
- * drawn is not decided (asked bowen 1791430797).
+ * line lb (ending at b). Only smooth is implemented: cusp and arc across a link
+ * are not implemented yet, because how their geometry is shared between the two
+ * layers is undecided (asked bowen 1791430797). Not a product prohibition.
  */
 export function setJoin(l: LinksState, n: net.NetworkState, a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }): { line: Id; end: net.End } {
-  if (opts.mode !== 'smooth') throw new Error('Only smooth joins across a link for now (cusp / arc across layers not decided)')
+  if (opts.mode !== 'smooth') throw new Error('Not implemented yet: cusp and arc joins across a link (how they are drawn across layers is undecided)')
   if (!S(l).pairs.some(p => samePair(p, a, b))) throw new Error(`${a} and ${b} are not linked`)
   const ea = endAt(n, la, a), eb = endAt(n, lb, b)
   if (!ea || !eb) throw new Error('Each line must end at its own linked point')
