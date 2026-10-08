@@ -474,10 +474,6 @@ export function removeLayerIfEmpty(n: NetworkState, ch: Changes, id: Id): boolea
   return true
 }
 
-/** A unique name based on `base`: "base · 2", "base · 3", … */
-export function uniqueLayerName(n: NetworkState, base: string): string {
-  for (let k = 2; ; k++) { const name = `${base} · ${k}`; if (!S(n).layers.some(l => l.name === name)) return name }
-}
 
 /** Element state of a line (a state change; allowed on locked lines). */
 export function setLineState(n: NetworkState, id: Id, state: Partial<ElementState>) {

@@ -121,10 +121,10 @@ describe('copying a layer', () => {
     expect(() => d.geometry()).not.toThrow()
   })
 
-  it('7. the copy name is unique', () => {
+  it('7. the copy name is unique: "<name>副本", then 副本2 (graph "Names", bowen 1791478653)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => { e.copyLayer('A', 'A2'); e.copyLayer('A', 'A3') })
-    expect(s(d).layers.map(l => l.name)).toEqual(['A', 'A · 3', 'A · 2'])
+    expect(s(d).layers.map(l => l.name)).toEqual(['A', 'A副本2', 'A副本'])
   })
 
   it('29. copying a locked group gives a locked copy', () => {

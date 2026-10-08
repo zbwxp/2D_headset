@@ -10,6 +10,7 @@ import * as derived from '../derived'
 import * as locks from '../locks'
 import * as editing from '../editing'
 import * as apply from '../apply'
+import * as names from '../names'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -24,19 +25,21 @@ interface State {
   selection: editing.SelectionState
   /** The symmetry axis and the mirror-link pairs. */
   apply: apply.ApplyState
+  /** Names of continuous curves and lines (layer names live on the layer). */
+  names: names.NamesState
 }
 
 const createState = (axis = 0): State => ({
   network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
-  apply: apply.create(axis),
+  apply: apply.create(axis), names: names.create(),
 })
 
 export interface Snapshot {
   /** Layers bottom → top. */
   layers: net.Layer[]
   points: { id: Id; layer: Id; position: Vec; links: Id[]; endStroke?: joins.EndStroke }[]
-  lines: { id: Id; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
-  groups: groups.Group[]
+  lines: { id: Id; name: string; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
+  groups: (groups.Group & { name: string })[]
   joins: joins.JoinRow[]
   links: { a: Id; b: Id }[]
   linkJoins: links.LinkJoin[]
@@ -90,27 +93,40 @@ export class Editor {
   // layers (Q29, Q30)
   /** New empty layer, directly above `above` (or on top). The name defaults to the id and must be unique. */
   layer(id: Id, name?: string, above?: Id) { net.addLayer(this.s.network, id, name, above) }
-  renameLayer(id: Id, name: string) { net.renameLayer(this.s.network, id, name) }
+  renameLayer(id: Id, name: string) {
+    names.assertFree(this.s.names, this.s.network, name, `layer ${id}`)
+    net.renameLayer(this.s.network, id, name)
+  }
+  /** A locked line's name is something it owns alone (graph rows "Names", "Locked element"). */
+  renameLine(id: Id, name: string) {
+    if (net.line(this.s.network, id).state.locked) throw new Error(`Line ${id} is locked`)
+    names.rename(this.s.names, this.s.network, this.s.groups, 'line', id, name)
+  }
+  /** A group has no lock of its own (a lock does not lock the parent). */
+  renameGroup(id: Id, name: string) { names.rename(this.s.names, this.s.network, this.s.groups, 'group', id, name) }
   /** A state change: move a layer to `index` (bottom → top). */
   reorderLayer(id: Id, index: number) { net.reorderLayer(this.s.network, id, index) }
   /**
    * New-identity copy directly above the original (Q30). Every new id is
    * `${newId}/${old id}`. Joins, end strokes, fills and element states are copied;
-   * endpoint links never are. The name defaults to a unique "name · k".
+   * endpoint links never are. Names default to "<name>副本", then 副本2, … (graph "Names", note).
    */
   copyLayer(id: Id, newId: Id, name?: string) {
     const { state: s } = this.tx
     const base = net.layerRecords(s.network).find(l => l.id === id)
     if (!base) throw new Error(`No layer ${id}`)
-    net.addLayer(s.network, newId, name ?? net.uniqueLayerName(s.network, base.name), id)
+    if (name !== undefined) names.assertFree(s.names, s.network, name)
+    net.addLayer(s.network, newId, name ?? names.copyName(s.names, s.network, base.name), id)
     const idOf = (old: Id) => `${newId}/${old}`
     // lines in their groups' order, so the copied groups keep the same order
-    const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
+    const sourceGroups = groups.list(s.groups, s.network).filter(g => g.layer === id)
+    const lineIds = sourceGroups.flatMap(g => g.lines)
     let map: net.CopyMap = { points: new Map(), lines: new Map() }
     const read = this.view().network
     this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf, read) })
     joins.copy(s.joins, map)
     fills.copy(s.fills, map, idOf)
+    names.copy(s.names, s.network, s.groups, map.lines, sourceGroups)
   }
   /** Batch delete (Q30): unlocked lines and fills go; the layer goes once it holds nothing. */
   deleteLayer(id: Id) {
@@ -428,8 +444,8 @@ export class Core {
         const end = joins.endStroke(s.joins, p.id)
         return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
       }),
-      lines: net.lines(n).map(l => ({ ...l })),
-      groups: groupList,
+      lines: net.lines(n).map(l => ({ ...l, name: names.of(s.names, 'line', l.id)! })),
+      groups: groupList.map(g => ({ ...g, name: names.of(s.names, 'group', g.id)! })),
       joins: joins.rows(s.joins),
       links: links.pairs(s.links),
       linkJoins: links.joins(s.links),
@@ -456,6 +472,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   fills.update(state.fills, ch)
   groups.reconcile(state.groups, state.network, ch)
   apply.update(state.apply, ch)
+  names.follow(state.names, ch)
   net.followReplacements(changes, ch)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
@@ -467,6 +484,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
  */
 function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View> = new Map()) {
   settle(s, ch)
+  names.check(s.names, s.network)
   const changed = locks.changed(published, s, ch, appliedFrom)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }
@@ -499,5 +517,6 @@ function settle(s: State, ch: net.Changes) {
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
+  names.update(s.names, s.network, s.groups)
   editing.clean(s.selection, s.network, s.fills)
 }
