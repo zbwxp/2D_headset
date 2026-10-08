@@ -112,7 +112,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Fill | is an attribute of | Closed curve (show / hide / clear). *"No separate fill element" is superseded by Q29: a fill is an element (with line) carrying visibility and lock; it still belongs to its closed curve.* | confirmed | bowen 1791390174, 1791390533, 1791390987 (Q18); bowen 1791433646 (Q29); dot 1791434562 |
 | Fill | does not cross | Layers (cross-layer areas: fill each side and stack) | confirmed | bowen 1791389840, 1791390174 (Q17) |
 | Filled closed curve | keeps | Its identity and colour when points are added or other lines are bound to it | confirmed (required correctness) | dot 1791390408, 1791390592; bowen 1791390987 (Q18) |
-| Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. How fill joins at forks is open. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27) |
+| Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. At a fork where an arc sits on another pair of lines, the code result is kept: the fill's line end is not trimmed there; a "virtual point" on the arc is deferred. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27); fork: bowen 1791431933, 1791432605 |
 | Newly filled loop | is placed | At the top of its group by default | confirmed | bowen 1791424619 (Q24 D) |
 | Canvas click inside fills | selects | The smallest loop containing the point; larger loops are picked from the list | confirmed | bowen 1791390533 (Q18) |
 | Manual boundary picking for fill | is | Not needed | confirmed | bowen 1791390533 (Q18) |
@@ -127,7 +127,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Everything else in a layer | covers by | List order only (no separate occlusion analysis) | confirmed | bowen 1791390897 (Q18) |
 | Element | is | A line or a fill. Visibility and lock live only on elements, in one element structure in code. | confirmed | bowen 1791433646 (Q29) |
 | Hidden element | is | Not pickable directly. Selecting its whole continuous curve (V) includes it, and then it can be processed. | confirmed | bowen 1791433646 (Q29) |
-| Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements. No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
+| Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements: a layer's over its lines and fills; a continuous curve's over its lines only, not its fills (fills keep their own switch). No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
 | Visibility, lock, order | are | State changes, not edits. A layer itself takes only state changes (visibility, lock, reorder). | confirmed | bowen 1791433646 (Q29) |
 | New layer | is | An empty ordered container: id, name, list position only (no state of its own; panel icons derive from its elements). A new document gets one empty layer by default; empty layers and zero layers are allowed. | confirmed | bowen 1791435000; dot 1791434801 (Q30) |
 | Layer name | is | Unique, and never empty | confirmed | bowen 1791435000 (Q30) |
@@ -140,10 +140,10 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Locked element | cannot be | Edited. Its state (visibility, lock) can still change. **A lock protects what the element owns alone, wherever a change comes from; what it shares with other elements is not under its lock.** A line owns its shape (the positions of its two end points and its two handles), its stroke and the end stroke at a free end; a fill owns its colour and material. Deleting an unlocked element stays allowed with whatever goes with it (row "Deleting an unlocked element"). *Note (examples, not further rules):* the joins, arcs and joins across a link at a locked line's end points are shared with its neighbour, so they may be set, changed or removed; when the neighbour deforms, an arc join is recomputed and stays tangent to both, and the locked line's drawn end may be trimmed differently. This is wanted: one line stays still while the other deforms and they still join smoothly. Still refused, because they change what the locked line owns: dragging a shared point, a smooth spring needing to turn its handle, a link pulling its end point, binding onto its free end so that its end stroke disappears. | confirmed | bowen 1791433646, 1791434322 (Q29); bowen 1791462692, 1791462918, 1791463043, 1791463183; dot 1791462969, 1791463090 |
-| Edit that would change a locked element | is | Refused whole. Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind that changes what a locked line owns (such as hiding the end stroke of its free end). A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29) |
+| Edit that would change a locked element | is | Refused whole, when it changes what the element owns alone (row "Locked element"); what goes with a deleted unlocked element is allowed (row "Deleting an unlocked element"). Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind that changes what a locked line owns (such as hiding the end stroke of its free end). A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29); bowen 1791460893, 1791462918 |
 | Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
 | Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
-| Lock check | compares | Each locked element's protected content before and after the edit, that is what it owns alone (line: its shape, meaning end positions and handles, its stroke, and the end stroke at a free end; fill: colour and material); any difference refuses the edit. Allowed state changes are never blocked. | confirmed | bowen 1791436826; dot 1791436961 (Q31); bowen 1791462918 |
+| Lock check | compares | Each locked element's protected content before and after the edit, that is what it owns alone (line: its shape, meaning end positions and handles, its stroke, and the end stroke at a free end; fill: colour and material); any difference refuses the edit. Not compared: shared joins and arcs, and whatever goes with a deleted unlocked element. Allowed state changes are never blocked. | confirmed | bowen 1791436826; dot 1791436961 (Q31); bowen 1791460893, 1791462918 |
 | Locked fill whose boundary is deleted | is | Gone with its loop (甲). Its lock covers colour and material, not its existence. | confirmed | bowen 1791435311 (Q30) |
 | Deleting an unlocked element | is | Always allowed. Whatever depended on it goes with it in the same undo step, even where it touches a locked element: the joins (same-point or across a link) it shared with a locked line's point, a link whose endpoint disappears, a locked fill on its boundary. A lock only blocks edits: editing a locked element, editing something else so that a locked element changes, and deleting a locked element itself are still refused. A delete in the same edit does not let such an edit through. *Note (examples, not further rules):* when an arc join goes with a deleted neighbour, the locked line is drawn to its end point again; when a locked line's end turns free, its end stroke shows. | confirmed | bowen 1791460893 (甲), 1791461158; dot 1791460953, 1791461196 |
 
@@ -173,8 +173,6 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
-| Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
-| Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
 | Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
 
@@ -187,6 +185,8 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Shape group | owns | Faces (fills of enclosed areas) | current code (differs from confirmed Q18 rows) | Q2/Q4 |
 | Path | consists of | Bézier segments (between anchors; anchor = point + two handles) | current code | Q2 |
 | Reference (instance) | redraws | Another container's content, through a transform | current code | Q4 |
+| Layer module | exposes interface | (not defined; no dedicated interface today) | open | Q1 |
+| Snapshot / view | is | (no persisted domain object in the new version) | open | Q3 |
 
 ### Superseded rows (kept for history, not in force)
 
