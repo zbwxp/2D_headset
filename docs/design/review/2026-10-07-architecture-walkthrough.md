@@ -2991,3 +2991,22 @@ Claude and dot agree on the principle. The graph changes wait for bowen's "写":
 
 **bowen 1791425445:** "OK 这样改合理". The Q27 wording is approved and written to the graph: the join row is amended and the fill-boundary principle added. Claude had said this approval would trigger writing (1791425431).
 
+
+## Q28: Turn the graph into packages
+
+**bowen** 1791425592:
+> 首先把现有的图谱写成package（这是python的说法， ts啥的该怎么写你们自己知道） 就是现在所有的工具 概念都有它们各自的归属 那么就应该写进它们对应的package，以便后面的进行调用。代码要模块化，这样出逻辑问题也局限在模块内部
+
+### Claude (1791425683)
+
+The package plan is in `docs/design/architecture/20-packages.md` (`1034a4a`): packages, the one-way dependency direction, one fixed edit pipeline, and 16 acceptance cases written as tests first. No code before bowen signs off the direction.
+
+**For bowen:**
+1. **Where:**
+   - (a) a new clean set of packages next to the proto (recommended);
+   - (b) rewrite the proto model in place.
+2. **Is the package split right?**
+
+### Status
+
+Waiting for dot's independent review and bowen.
