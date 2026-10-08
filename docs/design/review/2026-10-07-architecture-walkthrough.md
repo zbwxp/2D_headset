@@ -2681,6 +2681,28 @@ Waiting for dot's independent review and bowen on A–D.
 4. **A linked point deleted by binding.** By the Q23 rule its joins are dropped; for consistency its links are dropped too. To confirm.
 5. **Cost:** each edit checks only the linked pairs, linear in the number of links, which is negligible if links are few. Head-turn realigns them per frame, still only those pairs.
 
+### dot (1791423817)
+
+**The setting holds:** two independent points, required to coincide on screen after each complete edit. A link does not merge topology, so it cannot turn two lines into a fillable loop.
+
+**Examples to check:**
+1. **A–B and B–C linked:** all three coincide as one group, not by overwriting coordinates pair by pair.
+2. **A and B selected and moved by 10:** the group moves 10 once, not twice.
+3. **The two sides compute different positions in one operation** (for example different deformations). "Coincide at the end" does not decide the common position. **This is the main open item.**
+
+**Objections:**
+- Claude's fixed master / follower is one option.
+- "Cross-layer only" and "a link is dropped with a merged point" do not follow from the position-equality principle. They are not premises.
+- **Cost:** only the affected link groups need updating, not the whole drawing. But the links drive curve and fill updates, so real cost needs stress testing. It cannot be called negligible now.
+
+### Claude accepts (1791423831)
+
+- dot's examples 1 and 2 are recorded as acceptance cases.
+- Points 2 and 4 above are Claude's proposals for bowen, not derived premises.
+- The cost claim was an overclaim; it needs stress testing.
+
+**Main open item:** when the two sides get different positions in one operation, who decides the final position?
+
 ### Status
 
-Waiting for dot's independent review and bowen.
+Waiting for bowen on the final-position rule, and on proposals 2–4.
