@@ -22,6 +22,9 @@ export const SMOOTH_STIFFNESS = 1
 
 export const create = (): JoinsState => ({ rows: [], endStrokes: [] }) as Store as unknown as JoinsState
 const pair = (a: Id, b: Id): [Id, Id] => (a < b ? [a, b] : [b, a])
+// Rows are kept in one canonical order, so the result never depends on the order joins were set.
+const rowKey = (r: JoinRow) => JSON.stringify([r.point, r.lines[0], r.lines[1]])
+const sortRows = (j: JoinsState) => { S(j).rows.sort((a, b) => (rowKey(a) < rowKey(b) ? -1 : rowKey(a) > rowKey(b) ? 1 : 0)) }
 const same = (r: JoinRow, point: Id, p: [Id, Id]) => r.point === point && r.lines[0] === p[0] && r.lines[1] === p[1]
 
 export const rows = (j: JoinsState): JoinRow[] => S(j).rows.map(rowCopy)
@@ -39,6 +42,7 @@ export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l
   const p = pair(l1, l2)
   S(j).rows = S(j).rows.filter(r => !same(r, point, p))
   S(j).rows.push({ point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius } : {}) })
+  sortRows(j)
 }
 
 export function removeJoin(j: JoinsState, point: Id, l1: Id, l2: Id) {
@@ -82,6 +86,7 @@ export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
     const at = new Set(net.linesAt(n, row.point).map(e => e.line.id))
     return at.has(row.lines[0]) && at.has(row.lines[1])
   })
+  sortRows(j)
 }
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
