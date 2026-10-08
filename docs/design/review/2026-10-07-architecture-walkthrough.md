@@ -3284,3 +3284,30 @@ Asked bowen whether to write the graph rows.
 - **Acceptance cross-case for implementation:** if deleting unlocked lines re-solves joins in a way that would change a kept locked line, the lock refusal still applies. Cleanup must not bypass a lock.
 - **Moving to another layer** follows the copy rule. Links of the endpoints left behind stay as long as those endpoint ids exist.
 
+
+## Q31: Cut-and-paste of first-level elements
+
+**bowen** 1791435958:
+> 线移到其他图层， 这个属于剪切粘贴， 这个我之前说不允许是不允许单独的线， 现在增添一条新原则。就是在图层下面的第一级element （连续曲线，和连续曲线并列的单独的线，）是可以剪切粘贴的。因为它们整组移动，所有连接端点和线都囊括因此不会有难以定义/需要拆分规则的情况。这种唯一需要考虑的端点联动，因为端点联动是端点属性，记录的是另外一个端点id 那么此时这个连续曲线移动的如果是在同一个快照（还没定义但是你懂这个意思）或者换句话说 如果移动时对应的端点id还在 那么端点联动属性就保留，如果没了就失效即删除。 实用案例 我单独把一个连续曲线（和另一个图层的连续曲线有联动端点） 复制到原快照新图层，联动端点保留， 我移动到新快照新图层（对应端点不存在）联动删除） 如果同时选择了两组图层/互相联动的两组连续曲线，剪切粘贴到新快照新图层，联动保留 （因为对应id还在）
+
+### Claude's restatement (1791435992)
+
+- **First-level elements can be cut and pasted with their ids:** a whole continuous curve, or a single line standing alone at that level. The whole group moves with all its points and lines, so no shared endpoint needs splitting.
+- **A line that is part of a continuous curve still cannot be cut.**
+- **Endpoint links:** a link records the partner endpoint's id. After the move, the link stays if the partner id still exists; otherwise it is invalid and deleted.
+
+**To confirm:** the first example says "复制" (copy) to a new layer in the same snapshot with the link kept. Claude reads it as cut (move). A copy has new endpoint ids, while the partner still records the original; that would also contradict "links are never copied". The three examples, read as cut:
+1. Cut to a new layer in the same snapshot: the partner exists, so the link stays.
+2. Cut to a new snapshot: the partner is absent, so the link is deleted.
+3. Two mutually linked groups cut together to a new snapshot: both ends exist, so the link stays.
+
+**Attacks:**
+- **A. Cut into the partner's own layer.** The two linked points end up in one layer, but links are cross-layer only. Does the link become invalid, turn into a bind, or is the move refused?
+- **B. Locked elements in the moved group.** Is moving between layers an edit? Can locked elements be moved?
+- **C. Across snapshots.** Snapshots are not defined yet, so examples 2 and 3 are recorded and will be made concrete then.
+
+**Also:** fills and joins move with the group, ids unchanged. The group goes on top of the new layer (existing default).
+
+### Status
+
+Waiting for bowen and dot.
