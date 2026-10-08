@@ -3089,3 +3089,28 @@ Six principles: layer as an identified container; order only decides covering; h
 ### Status
 
 Waiting for dot's review and bowen's decisions.
+
+### bowen's decision (1791433646)
+
+> 算了还是之前那样，之后你们来攻击。图层是有身份的容器 可以容纳单条曲线和连续曲线（单条曲线和连续曲线是平级的单条曲线是只有一条的连续曲线）然后它自身有顺序里面的element也有顺序。 之前说过element是线和填充 这些element（代码要把这些都写进element或者起个更好名字struct里面） 具有显隐属性 隐藏之后不可直接选中，但是可以通过按v本质上是选择连续曲线，这时候就可以被选中和处理）锁定之后不可更改。而图层的显隐锁定是对里面element的批处理。（连续曲线的显隐也是对它下面单独曲线的批处理）显隐和锁定不属于编辑，属于状态变更操作。而图层只能进行状态变更操作（显隐锁定 修改排序）
+
+**Claude's restatement (1791433686):**
+1. A layer is an identified, ordered container of continuous curves (a single line is a one-line continuous curve), and these are ordered too.
+2. **Element = line or fill.** Visibility and lock live only on elements, in one element structure in code.
+3. A hidden element cannot be picked directly. Selecting the whole continuous curve (V) includes it, and then it can be processed.
+4. A locked element cannot be changed.
+5. Layer visibility and lock are batch operations on its elements. A continuous curve's visibility is a batch over its lines. This is v103 behaviour.
+6. Visibility and lock are **state changes**, not edits. A layer itself only takes state changes: visibility, lock, reorder.
+
+**Claude's attacks (for bowen):**
+- **A. Shared endpoint with a locked line.** Dragging the point would deform the locked line. Refuse the whole drag? (v103 refused.)
+- **B. Smooth spring with a locked line.** The locked handle cannot turn, so it acts as held and the other side aligns. Derived, no refusal needed. Agree?
+- **C. Fill lock.** Does it cover only the fill's own attributes (colour, visibility, order), or forbid changing its boundary lines? Proposal: own attributes only; the shape follows the boundary.
+- **D. Group line stroke** (width, profile). Refuse if any line in the group is locked?
+- **E. New, delete and rename layer.** Are these allowed, and what kind of operation are they?
+- **F. Undo.** Do state changes go into undo history?
+
+### Status
+
+bowen decided points 1–6. Attacks A–F wait for bowen; dot to review.
+
