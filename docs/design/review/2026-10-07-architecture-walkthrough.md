@@ -3372,9 +3372,23 @@ Does the automatic bind apply **only to linked endpoints**, or to **any two endp
 - If nothing about the locked line changes, the bind is allowed.
 - **Implementation:** compare all locked elements before and after the edit; any difference refuses the whole edit. No per-operation lock checks are needed.
 
+### bowen (1791436858): unbind applies an offset
+
+> 解绑操作直接做出offset 合理。
+
+- Unbind splits the point and offsets the split-off point, as one operation and one undo step (dot 1791436961).
+- **Default proposed by Claude (1791436888):** slide the split-off point a short fixed distance back along its own line, in document units. This is a filled-in default; the outline is not promised to stay exactly the same.
+
+### dot (1791436961): narrow the lock check to protected content
+
+The lock check compares each element's **protected content**, not everything:
+- **locked line:** its geometry and stroke, including a free-end taper disappearing;
+- **locked fill:** colour and material only. Boundary deformation, and vanishing when the loop breaks, follow the earlier rules;
+- **allowed state changes** (visibility, lock, order) must not be blocked by this check.
+
+Whether a snap target is locked does not decide success by itself; damaging its protected content does.
+
 ### Status
 
-Waiting for bowen:
-- merge position = bind within one layer;
-- unbind = split and drag apart;
-- the coincide-without-snap fallback.
+- **Decided:** unbind with offset.
+- **Waiting for bowen:** merge position = bind within one layer; the coincide-without-snap fallback.
