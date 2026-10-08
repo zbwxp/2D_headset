@@ -3331,6 +3331,29 @@ Asked bowen whether to write the graph rows.
 
 Does the automatic bind apply **only to linked endpoints**, or to **any two endpoints that happen to overlap** in one layer? Claude proposes linked only; otherwise unrelated lines whose ends coincide by chance would merge unnoticed.
 
+### dot (1791436498)
+
+- **Order:** cut first checks the whole group is editable; copy may read locked elements; paste creates the new objects, then the carried lock takes effect.
+- **Boundary:** paste may only create a new locked copy. It must not bypass locks already in the target layer. A paste-triggered bind that would change an existing locked line is refused.
+- **No contradiction:** the move keeps ids, and the bind then removes the merged-away endpoint id by the binding rules.
+
+### bowen (1791436564): no overlapping endpoints in one layer
+
+> 不 在同一个图层， 如果两个端点被吸附在一起，那就自动绑定，这个很符合操作逻辑。同一图层内不应该有重叠的两个端点
+
+### Claude (1791436589): derivation
+
+**Rule:** no two endpoints in one layer may coincide. After an edit, any two endpoints in the same layer at exactly the same position are bound automatically. Snapping sets exactly equal coordinates; merely close does not count.
+
+1. A (cut into the partner's layer) is a special case of this rule.
+2. Dragging an endpoint onto another: the dragged one counts as "selected later" and is removed.
+3. Dragging one end of a line onto its other end: the line's ends land on one point, so it is deleted (Q22). Surprising, but derived.
+4. A bind that would change a locked line is refused whole (Q29 A).
+5. Linked points in different layers coincide but are not in one layer, so they are unaffected.
+6. Head-turn and interpolation are reads, not edits, so they never trigger auto-bind.
+
+**Not unique, for bowen:** both endpoints were moved in one edit and land on one position. Which is removed? Claude proposes: keep the earlier-created one.
+
 ### Status
 
-bowen decided A and B. Waiting on the auto-bind scope.
+Waiting for bowen on the both-moved case.
