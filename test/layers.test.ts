@@ -352,6 +352,33 @@ describe('overlapping endpoints in one layer (Q31)', () => {
   })
 })
 
+describe('later operations in one edit read where things are now (dot 1791459521)', () => {
+  it('moving a filled group to B and deleting the emptied A in one edit keeps the fill', () => {
+    const d = doc('A', 'B'); triangle(d, 'A')
+    const fill = fillFirst(d)
+    d.edit(e => { e.moveGroup(groupOf(d, 'ab').id, 'B'); e.deleteLayer('A') })
+    expect(layerIds(d)).toEqual(['B'])
+    expect(s(d).loops.find(l => l.id === fill)).toMatchObject({ layer: 'B', color: 'red' })
+  })
+
+  it('a fill copied in this edit is already in its new layer for the next operation', () => {
+    const d = doc('A'); triangle(d, 'A')
+    const fill = fillFirst(d)
+    d.edit(e => { e.copyLayer('A', 'A2'); e.layerFills('A2', { visible: false }) })
+    expect(s(d).loops.find(l => l.id === 'A2/' + fill)!.visible).toBe(false)
+    expect(s(d).loops.find(l => l.id === fill)!.visible).toBe(true)
+  })
+
+  it('a layer copied and deleted in one edit leaves nothing behind', () => {
+    const d = doc('A'); triangle(d, 'A')
+    fillFirst(d)
+    d.edit(e => { e.lineState('ab', { locked: true }); e.copyLayer('A', 'A2'); e.lineState('A2/ab', { locked: false }); e.deleteLayer('A2') })
+    expect(layerIds(d)).toEqual(['A'])
+    expect(s(d).loops).toHaveLength(1)
+    expect(s(d).fillOrder).toHaveLength(1)
+  })
+})
+
 describe('unbind', () => {
   it('24. unbind leaves the two points apart and does not rebind', () => {
     const d = doc('A'); triangle(d, 'A')

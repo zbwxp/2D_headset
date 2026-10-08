@@ -134,6 +134,10 @@ function invariants(d: Core): string[] {
   const places = s.points.map(p => JSON.stringify([p.layer, p.position.x, p.position.y]))
   if (new Set(places).size !== places.length) bad.push('two endpoints coincide in one layer')
   if (new Set(s.layers.map(l => l.name)).size !== s.layers.length) bad.push('layer names repeat')
+  for (const loop of s.loops) {
+    const first = lineById.get(loop.route[0]?.line ?? '')
+    if (first && loop.layer !== pointById.get(first.a)?.layer) bad.push(`loop ${loop.id} reports layer ${loop.layer}`)
+  }
   for (const p of s.points) if (!s.layers.some(l => l.id === p.layer)) bad.push(`point ${p.id} in a missing layer`)
   const filled = s.loops.filter(l => l.color)
   if (JSON.stringify([...filled.map(l => l.id)].sort()) !== JSON.stringify([...s.fillOrder].sort())) bad.push('fill order and filled loops differ')
@@ -173,7 +177,13 @@ function run(seed: number, steps: number) {
   d.edit(e => { e.layer('A'); e.layer('B') })
   const trail: string[] = [], failures: string[] = []
   for (let i = 0; i < steps; i++) {
-    const op = chooseOp(d.snapshot(), r, next)
+    let op = chooseOp(d.snapshot(), r, next)
+    // Sometimes several operations in one edit, so later ones must read the draft as
+    // it is now, not as it was published (dot 1791459521).
+    if ('run' in op && r() < 0.2) {
+      const ops = [op, chooseOp(d.snapshot(), r, next), chooseOp(d.snapshot(), r, next)].filter((x): x is Extract<Op, { run: unknown }> => 'run' in x)
+      op = { name: 'batch ' + ops.map(x => x.name).join(' + '), run: e => { for (const x of ops) x.run(e) } }
+    }
     const before = d.snapshot()
     try {
       stats.tried[op.name.split(' ')[0]!] = (stats.tried[op.name.split(' ')[0]!] ?? 0) + 1

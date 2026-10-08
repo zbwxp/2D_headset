@@ -3,11 +3,13 @@
 // splits and binds, and its fill disappears when the boundary is no longer one
 // closed walk in one layer (Q21: one principle, no per-operation special cases).
 // Fill order: bottom → top; a new fill goes on top (Q24 D).
+// A fill's layer is not stored: it is always read from its boundary lines, so every
+// later operation in the same edit sees where the fill really is (dot 1791459521).
 import * as net from '../network'
 
 type Id = net.Id
 
-export interface FilledLoop { id: Id; layer: Id; lines: Id[]; color: string; visible: boolean; locked: boolean }
+interface FilledLoop { id: Id; lines: Id[]; color: string; visible: boolean; locked: boolean }
 declare const opaque: unique symbol
 /** Opaque handle; read through discover / order (copies). */
 export type FillsState = { readonly [opaque]: 'fills' }
@@ -35,12 +37,12 @@ export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
   for (const found of net.closedLoops(n)) {
     const stored = filledByKey.get(found.key)
     if (stored) {
-      views.push({ id: stored.id, layer: stored.layer, route: found.route, filled: true, color: stored.color, visible: stored.visible, locked: stored.locked })
+      views.push({ id: stored.id, layer: found.layer, route: found.route, filled: true, color: stored.color, visible: stored.visible, locked: stored.locked })
       shown.add(stored.id)
     } else views.push({ id: found.key, layer: found.layer, route: found.route, filled: false })
   }
   // A filled loop beyond the enumeration limit is still listed.
-  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: l.layer, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible, locked: l.locked })
+  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: layerOf(n, l)!, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible, locked: l.locked })
   return views
 }
 
@@ -54,7 +56,7 @@ export function fill(f: FillsState, n: net.NetworkState, id: Id, color: string) 
   if (existing) { unlocked(existing).color = color; return }
   const found = net.closedLoops(n).find(l => l.key === id)
   if (!found) throw new Error(`No loop ${id}`)
-  S(f).loops.push({ id, layer: found.layer, lines: found.route.map(u => u.line), color, visible: true, locked: false })
+  S(f).loops.push({ id, lines: found.route.map(u => u.line), color, visible: true, locked: false })
   S(f).order.push(id)
 }
 
@@ -77,8 +79,14 @@ export function clearUnlocked(f: FillsState, ids: readonly Id[]) {
   drop(f, ids.filter(id => !find(f, id).locked))
 }
 
+/** The layer of a fill's boundary lines, read from the network now; none if no boundary line is left. */
+function layerOf(n: net.NetworkState, l: FilledLoop): Id | undefined {
+  const line = l.lines.find(x => net.hasLine(n, x))
+  return line === undefined ? undefined : net.layerOfLine(n, line)
+}
+
 /** Fill ids whose loops lie in a layer. */
-export const inLayer = (f: FillsState, layer: Id): Id[] => S(f).loops.filter(l => l.layer === layer).map(l => l.id)
+export const inLayer = (f: FillsState, n: net.NetworkState, layer: Id): Id[] => S(f).loops.filter(l => layerOf(n, l) === layer).map(l => l.id)
 
 /**
  * Copy fills whose every boundary line was copied (map old → new ids). New fill
@@ -90,7 +98,7 @@ export function copy(f: FillsState, map: net.CopyMap, idOf: (old: Id) => Id) {
     if (!l.lines.every(x => map.lines.has(x))) continue
     const id = idOf(l.id)
     if (S(f).loops.some(x => x.id === id)) throw new Error(`Fill ${id} already exists`)
-    S(f).loops.push({ ...l, id, layer: '', lines: l.lines.map(x => map.lines.get(x)!) })
+    S(f).loops.push({ ...l, id, lines: l.lines.map(x => map.lines.get(x)!) })
     S(f).order.push(id)
   }
 }
@@ -122,8 +130,6 @@ export function update(f: FillsState, ch: net.Changes) {
 
 /** Drop every fill whose boundary is no longer one closed walk in one layer. */
 export function validate(f: FillsState, n: net.NetworkState) {
-  // A loop that moved layer with its whole group follows it (bowen 1791435958).
-  for (const l of S(f).loops) if (l.lines.length && net.hasLine(n, l.lines[0]!)) l.layer = net.layerOfLine(n, l.lines[0]!)
   drop(f, S(f).loops.filter(l => !net.closedWalk(n, l.lines)).map(l => l.id))
 }
 

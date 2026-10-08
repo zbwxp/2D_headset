@@ -98,7 +98,7 @@ export class Editor {
   deleteLayer(id: Id) {
     const { state: s } = this.tx
     if (!net.hasLayer(s.network, id)) throw new Error(`No layer ${id}`)
-    fills.clearUnlocked(s.fills, fills.inLayer(s.fills, id))
+    fills.clearUnlocked(s.fills, fills.inLayer(s.fills, s.network, id))
     for (const l of this.linesIn(id)) if (!l.state.locked) this.deleteLine(l.id)
     this.topology(ch => { net.removeIsolated(s.network, ch); net.removeLayerIfEmpty(s.network, ch, id) })
   }
@@ -117,7 +117,7 @@ export class Editor {
   /** Fills only (backlog 3, dot 1791435501). */
   layerFills(layer: Id, state: { visible?: boolean; locked?: boolean }) {
     if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
-    for (const id of fills.inLayer(this.s.fills, layer)) this.fillState(id, state)
+    for (const id of fills.inLayer(this.s.fills, this.s.network, layer)) this.fillState(id, state)
   }
 
   // network: one-time edits
