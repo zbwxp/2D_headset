@@ -43,6 +43,7 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 - **Scope:** an `Editor` is valid only inside its own `edit`; afterwards every call throws.
 - **No re-entry:** `edit`, `undo` and `redo` are refused while an edit runs.
 - **Atomic:** the edit works on a private copy, published only after the pipeline succeeds. A throw or `cancel()` publishes nothing.
+- **Failures stick:** if any editor operation throws, the transaction is marked failed and closed. The edit then publishes nothing, even if the callback caught the error (dot 1791429209).
 
 ## Ids (dot 1791427637)
 

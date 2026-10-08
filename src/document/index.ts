@@ -43,14 +43,14 @@ class Cancelled extends Error {}
  *   succeeds; a throw or cancel publishes nothing;
  * - modules copy every input they store, so no caller object is shared with the state.
  */
-interface Transaction { open: boolean; cancelled: boolean; readonly state: State; readonly changes: net.Changes }
+interface Transaction { open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes }
 const transactions = new WeakMap<Editor, Transaction>()
 
 export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, state, changes: net.emptyChanges() })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges() })
     return e
   }
 
@@ -114,6 +114,29 @@ export class Editor {
   }
 }
 
+/**
+ * Atomicity for every public editor operation (dot 1791429209): if any operation
+ * throws, the transaction is marked failed and closed, so the edit publishes
+ * nothing even if the callback catches the error. One wrapper, applied to all
+ * public methods, instead of per-operation handling.
+ */
+for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
+  const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel'].includes(name)) continue
+  const original = d.value as (...args: unknown[]) => unknown
+  Object.defineProperty(Editor.prototype, name, {
+    ...d,
+    value(this: Editor, ...args: unknown[]) {
+      try { return original.apply(this, args) }
+      catch (err) {
+        const tx = transactions.get(this)
+        if (tx?.open) { tx.failed = true; tx.open = false }
+        throw err
+      }
+    },
+  })
+}
+
 export class Core {
   private state: State = createState()
   private past: State[] = []
@@ -138,6 +161,7 @@ export class Core {
         throw new Error('edit callbacks must be synchronous; nothing was published')
       }
       if (tx.cancelled) return
+      if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
       commit(draft, tx.changes)
     } catch (err) {
       if (err instanceof Cancelled) return

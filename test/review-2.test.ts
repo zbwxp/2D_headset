@@ -238,3 +238,25 @@ describe('third re-run (dot 1791428573)', () => {
     expect(cross(geo.derivative(arc, 1), P(1, 0))).toBeLessThan(1e-12)
   })
 })
+
+describe('atomic operations (dot 1791429209)', () => {
+  it('a failed operation caught by the callback still fails the whole edit', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(5)); sk(e).line('ab', 'a', 'b') })
+    const before = d.snapshot()
+    expect(() => d.edit(e => {
+      try { e.move([{ id: 'a', target: P(9, 9) }, { id: 'missing', target: P(1) }]) } catch { /* swallowed */ }
+    })).toThrow(/failed; nothing was published/)
+    expect(d.snapshot()).toEqual(before)
+  })
+
+  it('after a failed operation the editor refuses further calls', () => {
+    const d = new Core()
+    d.edit(e => e.layer('L'))
+    expect(() => d.edit(e => {
+      try { e.deleteLine('nope') } catch { /* swallowed */ }
+      e.layer('M')
+    })).toThrow(/finished edit/)
+    expect(d.snapshot().layers).toEqual(['L'])
+  })
+})
