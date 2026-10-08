@@ -72,13 +72,24 @@ How this section works:
 | Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. How fill joins at forks is open. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27) |
 | Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | confirmed (placement only) | bowen 1791424844, 1791425164 (Q26/Q27) |
 | Show/hide intervals | belong to | The continuous curve, discussed later | confirmed (placement only) | bowen 1791425164 (Q27) |
+| Layer | is | An identified container with its own order. It holds continuous curves (a single line is a one-line continuous curve), which are ordered too. | confirmed | bowen 1791433646 (Q29) |
+| Element | is | A line or a fill. Visibility and lock live only on elements, in one element structure in code. | confirmed | bowen 1791433646 (Q29) |
+| Hidden element | is | Not pickable directly. Selecting its whole continuous curve (V) includes it, and then it can be processed. | confirmed | bowen 1791433646 (Q29) |
+| Locked element | cannot be | Edited. Its state (visibility, lock) can still change. | confirmed | bowen 1791433646, 1791434322 (Q29) |
+| Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements. No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
+| Visibility, lock, order | are | State changes, not edits. A layer itself takes only state changes (visibility, lock, reorder). | confirmed | bowen 1791433646 (Q29) |
+| Undo | covers | Every operation, edits and state changes alike: one complete operation (a batch included) is one step, undone in reverse time order | confirmed | bowen 1791434322; dot 1791434382 (Q29) |
+| Edit that would change a locked element | is | Refused whole. Examples: dragging a shared point; a smooth spring needing to turn a locked handle; a bind changing a locked line's endpoints or connections. A red cross with a lock mark is shown (interaction backlog). | confirmed | bowen 1791434101; dot 1791434214 (Q29) |
+| Fill lock | covers | Its own attributes (colour, material). The shape still follows the boundary. | confirmed | bowen 1791434101 (Q29) |
+| Lock | does not lock | The parent. A group width change applies to the unlocked lines only. | confirmed | bowen 1791434101 (Q29) |
+| Layer new / delete / rename | is | To be discussed later | open | bowen 1791434101 (Q29 E) |
 | Smooth join | is | A stiff spring pulling two handles toward a straight line. Conflicts show the compromise and are never refused. Stiffness is one global fixed value. | confirmed | bowen 1791421304, 1791421988 (Q23) |
 | 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
-| Endpoint binding | sets | The width and profile of both groups to the first-clicked group's | confirmed | bowen 1791421988 (Q23) |
+| Endpoint binding | sets | The width and profile of both groups' lines to the first-clicked group's, as a batch: locked lines keep theirs. A bind that would change a locked line's endpoints or connections is refused. | confirmed | bowen 1791421988 (Q23), 1791434101; dot 1791434214 (Q29) |
 | Endpoint binding | drops | The deleted point's join records. New connections use the tool's preset join. | confirmed (new rule, not v103) | bowen 1791423036 (Q23) |
 | Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
 | Merged group (after binding two groups) | takes | The first-clicked group's list position, with the other group's content after it. When a group splits, the new group goes next to the original. | confirmed | bowen 1791424619 (Q24 B) |
-| Line stroke (width, profile) | belongs to | The continuous curve (the whole connected group). Within one layer, a connected group has one width. | confirmed | bowen 1791424619 (Q24 C) |
+| Line stroke (width, profile) | is stored on | **Each line** (a future stroke may transition between lines of different widths). Changing a continuous curve's width is a batch over its lines; locked lines keep theirs. *Supersedes Q24 C ('belongs to the continuous curve').* | confirmed | bowen 1791434322, 1791434101 (Q29); earlier bowen 1791424619 |
 | Newly filled loop | is placed | At the top of its group by default | confirmed | bowen 1791424619 (Q24 D) |
 | Endpoint link | connects | Two points in **different layers** (cross-layer only). Both points are kept; each stores the other's id. | confirmed | bowen 1791424124 (Q25) |
 | Endpoint link | on creation | Moves the second-clicked point to the first | confirmed | bowen 1791424124 (Q25) |
@@ -3184,3 +3195,4 @@ Agrees: B is a strategy choice, not derived.
 - Reordering needs no special case.
 - The core's undo already works this way.
 
+**bowen 1791434403:** "写进知识图谱里 先别实现". Graph rows written; no implementation until layer new / delete / rename are decided.
