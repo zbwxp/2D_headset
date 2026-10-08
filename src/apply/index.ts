@@ -279,7 +279,11 @@ export function update(s: ApplyState, ch: net.Changes) {
 
 // ---- paired execution: what each operation acts on (graph "Mirror link") ----------
 // Document only runs the operation on every item these plans list; the pairing rules
-// live here (dot, review of d5e2704).
+// live here (dot, review of d5e2704). The counterpart operation is dropped only when it
+// is the very same operation (same point and same lines), never just because the
+// point is its own counterpart: after two mirrored ends bind on the axis, the point is
+// shared but the two lines are still different (dot, review of 1fa7462).
+const sameOp = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y)
 
 /** Suffix of the ids a paired operation gives the counterpart's new lines and points. */
 export const PRIME = '\u2032'
@@ -319,12 +323,18 @@ export function pairedPointPairs(s: ApplyState, n: net.NetworkState, a: Id, b: I
 /** A join at a point and, when every part has a counterpart, its mirrored join. */
 export function pairedJoins(s: ApplyState, n: net.NetworkState, point: Id, l1: Id, l2: Id): [Id, Id, Id][] {
   const cp = counterpartPoint(s, n, point), c1 = counterpartLine(s, l1), c2 = counterpartLine(s, l2)
-  return cp && c1 && c2 && cp !== point ? [[point, l1, l2], [cp, c1.id, c2.id]] : [[point, l1, l2]]
+  if (!cp || !c1 || !c2) return [[point, l1, l2]]
+  const key = (p: Id, a: Id, b: Id) => [p, ...[a, b].sort()]
+  return sameOp(key(point, l1, l2), key(cp, c1.id, c2.id)) ? [[point, l1, l2]] : [[point, l1, l2], [cp, c1.id, c2.id]]
 }
 /** A join across a link and, when every part has a counterpart, its mirrored one. */
 export function pairedLinkJoins(s: ApplyState, n: net.NetworkState, a: Id, b: Id, la: Id, lb: Id): [Id, Id, Id, Id][] {
-  const pts = pairedPointPairs(s, n, a, b), ca = counterpartLine(s, la), cb = counterpartLine(s, lb)
-  return pts.length === 2 && ca && cb ? [[a, b, la, lb], [pts[1]![0], pts[1]![1], ca.id, cb.id]] : [[a, b, la, lb]]
+  const ca = counterpartPoint(s, n, a), cb = counterpartPoint(s, n, b), cla = counterpartLine(s, la), clb = counterpartLine(s, lb)
+  if (!ca && !cb) return [[a, b, la, lb]]
+  if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
+  if (!cla || !clb) return [[a, b, la, lb]]
+  const key = (x: Id, y: Id, lx: Id, ly: Id) => (x < y ? [x, y, lx, ly] : [y, x, ly, lx])
+  return sameOp(key(a, b, la, lb), key(ca, cb, cla.id, clb.id)) ? [[a, b, la, lb]] : [[a, b, la, lb], [ca, cb, cla.id, clb.id]]
 }
 /** A split and the counterpart's: at t, or 1 − t on a reversed pair with the pieces crossed; ids + ′. */
 export function pairedSplits(s: ApplyState, line: Id, t: number, mid: Id, first: Id, second: Id) {
@@ -338,8 +348,9 @@ export function pairedSplits(s: ApplyState, line: Id, t: number, mid: Id, first:
 export function pairedUnbinds(s: ApplyState, n: net.NetworkState, point: Id, lines: Id[], newPoint: Id) {
   const own = { point, lines, newPoint }
   const cp = counterpartPoint(s, n, point)
-  const cl = lines.flatMap(l => { const c = counterpartLine(s, l); return c ? [c.id] : [] })
-  return cp && cp !== point && cl.length ? [own, { point: cp, lines: cl, newPoint: newPoint + PRIME }] : [own]
+  // counterpart lines not already moved by this same unbind (on the axis the point is shared)
+  const cl = lines.flatMap(l => { const c = counterpartLine(s, l); return c && !lines.includes(c.id) ? [c.id] : [] })
+  return cp && cl.length ? [own, { point: cp, lines: cl, newPoint: newPoint + PRIME }] : [own]
 }
 
 /**

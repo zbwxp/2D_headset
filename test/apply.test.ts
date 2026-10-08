@@ -264,6 +264,24 @@ describe('mirror link', () => {
     expect(point(d, 'c').position).toEqual(P(12, 1))
   })
 
+  it('A8b. after mirrored ends bind on the axis, unbinding one line unbinds its counterpart too, to a new point ′ (dot, review of 1fa7462)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A')
+      sk(e).point('a', 'A', P(-10)); sk(e).point('b', 'A', P(-1, 2)); sk(e).line('left', 'a', 'b')
+      sk(e).point('c', 'A', P(10)); sk(e).point('dd', 'A', P(1, 2)); sk(e).line('right', 'c', 'dd')
+    })
+    d.edit(e => e.mirrorLink([groupOf(d, 'left')], [groupOf(d, 'right')]))
+    d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
+    const shared = line(d, 'left').b
+    expect(line(d, 'right').b).toBe(shared)
+    d.edit(e => e.unbind(shared, ['left'], 'n'))
+    expect(line(d, 'left').b).toBe('n')
+    expect(line(d, 'right').b).toBe('n′')
+    expect(point(d, 'n′').position).toEqual(R(point(d, 'n').position))
+    expect(s(d).mirrorPairs).toHaveLength(1)
+  })
+
   it('A9. binding or linking a paired point to an outside point without counterpart is refused', () => {
     const d = linked()
     d.edit(e => { sk(e).point('x', 'A', P(0, 20)); sk(e).point('y', 'A', P(0, 30)); sk(e).line('nose', 'x', 'y') })
