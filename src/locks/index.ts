@@ -68,13 +68,26 @@ const lockedLines = (v: View) => net.lines(v.network).filter(l => l.state.locked
  * earlier to protect; a line locked before and gone now has changed.
  * `ch`: the lines the user deleted in this edit, and the splits made in it.
  */
-export function changed(before: View, after: View, ch: Pick<net.Changes, 'deletedLines' | 'replaced' | 'appliedLocks'>): Id[] {
-  // a lock an apply copied in this edit is judged by the target's protection before it (net.applyLineState)
+export function changed(
+  before: View, after: View, ch: Pick<net.Changes, 'deletedLines' | 'replaced' | 'appliedLocks'>,
+  /** For a line an apply locked in this edit: the state right after that apply. */
+  appliedFrom: ReadonlyMap<Id, View> = new Map(),
+): Id[] {
+  // A lock an apply copied protects from the moment of that apply: only the apply's
+  // own change is let through, and the target's content is compared with the state
+  // right after it (net.applyLineState; dot, review of 44c58b4).
   const applied = new Set(ch.appliedLocks)
   const ids = new Set([
     ...lockedLines(before).filter(id => !net.hasLine(after.network, id)),
     ...lockedLines(after).filter(id => net.hasLine(before.network, id) && !applied.has(id)),
   ])
   const g = gone(after, ch), none: Gone = { line: () => false, partner: () => false }
-  return [...ids].filter(id => { const x = owned(before, id, g), y = owned(after, id, none); return !x || !y || x !== y }).sort()
+  const out = [...ids].filter(id => { const x = owned(before, id, g), y = owned(after, id, none); return !x || !y || x !== y })
+  for (const id of applied) {
+    const from = appliedFrom.get(id)
+    if (!from || !lockedLines(after).includes(id)) continue
+    const x = owned(from, id, g), y = owned(after, id, none)
+    if (!x || !y || x !== y) out.push(id)
+  }
+  return [...new Set(out)].sort()
 }

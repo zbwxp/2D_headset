@@ -60,14 +60,18 @@ class Cancelled extends Error {}
  *   succeeds; a throw or cancel publishes nothing;
  * - modules copy every input they store, so no caller object is shared with the state.
  */
-interface Transaction { open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes }
+interface Transaction {
+  open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes
+  /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
+  readonly appliedFrom: Map<Id, locks.View>
+}
 const transactions = new WeakMap<Editor, Transaction>()
 
 export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges() })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map() })
     return e
   }
 
@@ -265,12 +269,20 @@ export class Editor {
 
   // apply (graph: Editing "Apply", Mirror table)
   /** Mirror apply: reflect the source lines across the axis into different target lines (one step). */
-  mirrorApply(source: Id[], target: Id[]) { const { state: s, changes } = this.tx; apply.mirrorApply(s.apply, s, changes, source, target) }
+  mirrorApply(source: Id[], target: Id[]) { const { state: s, changes } = this.tx; apply.mirrorApply(s.apply, s, changes, source, target); this.afterApply() }
   /** Mirror link between whole first-level elements: a mirror apply, then the pairs are stored. */
-  mirrorLink(sourceGroups: Id[], targetGroups: Id[]) { const { state: s, changes } = this.tx; apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups) }
+  mirrorLink(sourceGroups: Id[], targetGroups: Id[]) { const { state: s, changes } = this.tx; apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups); this.afterApply() }
   /** Remove the mirror link of these lines; geometry stays. */
   unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
 
+  /** Keep the state right after an apply for every line it locked, so the lock protects from that moment. */
+  private afterApply() {
+    const { state: s, changes, appliedFrom } = this.tx
+    const fresh = changes.appliedLocks.filter(id => !appliedFrom.has(id))
+    if (!fresh.length) return
+    const copy = structuredClone({ network: s.network, joins: s.joins, links: s.links })
+    for (const id of fresh) appliedFrom.set(id, copy)
+  }
   private loops(loop: Id): Id[] { return apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop) }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
@@ -290,7 +302,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -345,7 +357,7 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      commit(draft, tx.changes, this.state)
+      commit(draft, tx.changes, this.state, tx.appliedFrom)
     } catch (err) {
       if (err instanceof Cancelled) return
       throw err
@@ -411,7 +423,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
  * isolated points → position loop (overlap bind, link alignment) → smooth springs
  * → fills → groups → locks.
  */
-function commit(s: State, ch: net.Changes, published: State) {
+function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View> = new Map()) {
   applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   // Link alignment can make new coincidences, and binding can end links, so repeat
   // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
@@ -431,6 +443,6 @@ function commit(s: State, ch: net.Changes, published: State) {
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
   editing.clean(s.selection, s.network, s.fills)
-  const changed = locks.changed(published, s, ch)
+  const changed = locks.changed(published, s, ch, appliedFrom)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }

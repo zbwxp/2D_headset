@@ -133,6 +133,15 @@ describe('mirror apply', () => {
     expect(s(d2).lines.filter(l => l.id.startsWith('t')).some(l => l.state.locked && !l.state.visible)).toBe(true)
   })
 
+  it('A4d. a lock an apply copied protects from that moment: moving the target later in the same edit is refused (dot, review of 44c58b4)', () => {
+    const d = eyes()
+    d.edit(e => e.lineState('l1', { locked: true }))
+    d.edit(e => e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3'])) // allowed: the apply itself
+    const d2 = eyes()
+    d2.edit(e => e.lineState('l1', { locked: true }))
+    expect(() => d2.edit(e => { e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']); e.move([{ id: 'q1', target: P(30, 30) }]) })).toThrow(/Locked lines would change \(r1\)/)
+  })
+
   it('A4c. joins across an endpoint link inside the selection are copied, and cleared when the source has none (dot, review of d5e2704)', () => {
     const build = () => {
       const d = new Core()
