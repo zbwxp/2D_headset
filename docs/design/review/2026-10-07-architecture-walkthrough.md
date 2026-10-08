@@ -3234,6 +3234,19 @@ A locked fill bounded by unlocked lines. Deleting the layer deletes those lines,
 
 Claude prefers 甲, consistent with Q29 C.
 
+### Link cleanup, precisely (dot 1791435118, Claude 1791435134)
+
+Links hang on **endpoints**, not lines. A link ends only when one of its points disappears, which happens only when a point is isolated or merged away by binding (graph).
+
+When a layer is deleted:
+- unlocked lines go;
+- an endpoint still attached to a kept locked line remains, and so does its link;
+- a join across a link that references a deleted line is cleared, and the link itself stays.
+
+The core already works this way.
+
+A layer that still carries locked contents stays (dot).
+
 ### Status
 
 Waiting for bowen on 甲 or 乙.
