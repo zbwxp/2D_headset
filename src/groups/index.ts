@@ -1,13 +1,12 @@
-// groups — identity of continuous curves, their order in each layer, and the
-// line stroke that belongs to the whole group (Q24 C). Membership itself is
-// derived from shared points (network.components); this module only keeps
-// identity, order and stroke stable through topology changes.
+// groups — identity of continuous curves and their order in each layer.
+// Membership is derived from shared points (network.components); this module only
+// keeps identity and order stable through topology changes. Line stroke lives on
+// each line (bowen 1791434322); a group's width change is a batch done by document.
 import * as net from '../network'
 
 type Id = net.Id
 
-export interface Stroke { width: number; profile: string }
-export interface Group { id: Id; layer: Id; lines: Id[]; stroke: Stroke }
+export interface Group { id: Id; layer: Id; lines: Id[] }
 
 declare const opaque: unique symbol
 /** Opaque handle; read through list / get (copies). */
@@ -28,7 +27,6 @@ function ensure(order: Order, layer: Id): Id[] {
   return entry.ids
 }
 
-export const DEFAULT_STROKE: Readonly<Stroke> = Object.freeze({ width: 1, profile: 'uniform' })
 export const create = (): GroupsState => ({ groups: [], order: [], next: 1 }) as Store as unknown as GroupsState
 
 function raw(g: GroupsState, id: Id): Group {
@@ -36,7 +34,7 @@ function raw(g: GroupsState, id: Id): Group {
   if (!group) throw new Error(`No group ${id}`)
   return group
 }
-const copy = (x: Group): Group => ({ id: x.id, layer: x.layer, lines: [...x.lines], stroke: { ...x.stroke } })
+const copy = (x: Group): Group => ({ id: x.id, layer: x.layer, lines: [...x.lines] })
 
 export const get = (g: GroupsState, id: Id): Group => copy(raw(g, id))
 
@@ -45,10 +43,6 @@ export function list(g: GroupsState, n: net.NetworkState): Group[] {
   return net.layers(n).flatMap(layer => idsOf(S(g).order, layer).map(id => copy(raw(g, id))))
 }
 
-export function setStroke(g: GroupsState, id: Id, stroke: Stroke) {
-  if (!(stroke.width > 0)) throw new Error('Stroke width must be positive')
-  raw(g, id).stroke = { width: stroke.width, profile: stroke.profile }
-}
 
 export function reorder(g: GroupsState, id: Id, index: number) {
   if (!Number.isInteger(index)) throw new Error('Order index must be an integer')
@@ -61,10 +55,10 @@ export function reorder(g: GroupsState, id: Id, index: number) {
  * Re-derive membership from the network and keep identities stable:
  * - a component touching no old group is a new group, on top of its layer;
  * - a component joining several old groups keeps the first-clicked side's group
- *   (its id, slot and stroke); the others are removed (Q23, Q24 B);
+ *   (its id and slot); the others are removed (Q23, Q24 B);
  * - an old group split into several components keeps its id on the component with
- *   its earliest surviving line; the others become new groups right after it,
- *   with the same stroke (Q24 B).
+ *   its earliest surviving line; the others become new groups right after it (Q24 B);
+ * - a group moved to another layer as a whole goes on top of that layer (Q31).
  */
 export function reconcile(g: GroupsState, n: net.NetworkState, ch: net.Changes) {
   const st = S(g)
@@ -80,16 +74,21 @@ export function reconcile(g: GroupsState, n: net.NetworkState, ch: net.Changes) 
   comps.forEach((comp, i) => {
     const w = winners[i]
     if (w && keeps.get(w) === i) {
-      groups.push({ ...old.get(w)!, layer: comp.layer, lines: comp.lines })
+      const before = old.get(w)!
+      if (before.layer !== comp.layer) {
+        for (const entry of order) entry.ids = entry.ids.filter(x => x !== w)
+        ensure(order, comp.layer).push(w)
+      }
+      groups.push({ id: w, layer: comp.layer, lines: comp.lines })
       return
     }
     const id = `g${st.next++}`
-    groups.push({ id, layer: comp.layer, lines: comp.lines, stroke: { ...(w ? old.get(w)!.stroke : DEFAULT_STROKE) } })
+    groups.push({ id, layer: comp.layer, lines: comp.lines })
     if (w) splitOffs.set(w, [...(splitOffs.get(w) ?? []), id])
     else ensure(order, comp.layer).push(id)
   })
   for (const [origin, ids] of splitOffs) {
-    const list = ensure(order, old.get(origin)!.layer)
+    const list = ensure(order, groups.find(x => x.id === origin)!.layer)
     list.splice(list.indexOf(origin) + 1, 0, ...ids)
   }
   st.groups = groups

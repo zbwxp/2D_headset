@@ -7,13 +7,13 @@ import * as net from '../network'
 
 type Id = net.Id
 
-export interface FilledLoop { id: Id; layer: Id; lines: Id[]; color: string; visible: boolean }
+export interface FilledLoop { id: Id; layer: Id; lines: Id[]; color: string; visible: boolean; locked: boolean }
 declare const opaque: unique symbol
 /** Opaque handle; read through discover / order (copies). */
 export type FillsState = { readonly [opaque]: 'fills' }
 interface Store { loops: FilledLoop[]; order: Id[] }
 const S = (f: FillsState) => f as unknown as Store
-export interface LoopView { id: Id; layer: Id; route: net.LoopUse[]; filled: boolean; color?: string; visible?: boolean }
+export interface LoopView { id: Id; layer: Id; route: net.LoopUse[]; filled: boolean; color?: string; visible?: boolean; locked?: boolean }
 
 export const create = (): FillsState => ({ loops: [], order: [] }) as Store as unknown as FillsState
 export const order = (f: FillsState): Id[] => [...S(f).order]
@@ -35,32 +35,65 @@ export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
   for (const found of net.closedLoops(n)) {
     const stored = filledByKey.get(found.key)
     if (stored) {
-      views.push({ id: stored.id, layer: stored.layer, route: found.route, filled: true, color: stored.color, visible: stored.visible })
+      views.push({ id: stored.id, layer: stored.layer, route: found.route, filled: true, color: stored.color, visible: stored.visible, locked: stored.locked })
       shown.add(stored.id)
     } else views.push({ id: found.key, layer: found.layer, route: found.route, filled: false })
   }
   // A filled loop beyond the enumeration limit is still listed.
-  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: l.layer, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible })
+  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: l.layer, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible, locked: l.locked })
   return views
 }
 
 /** Fill a loop (by id from discover). A new fill goes on top. */
+// A locked fill's colour is its protected content (Q29 C): changing or clearing it is
+// refused. Its fill may still vanish when its loop breaks (Q30 甲).
+const unlocked = (l: FilledLoop) => { if (l.locked) throw new Error(`Fill ${l.id} is locked`); return l }
+
 export function fill(f: FillsState, n: net.NetworkState, id: Id, color: string) {
   const existing = S(f).loops.find(l => l.id === id)
-  if (existing) { existing.color = color; return }
+  if (existing) { unlocked(existing).color = color; return }
   const found = net.closedLoops(n).find(l => l.key === id)
   if (!found) throw new Error(`No loop ${id}`)
-  S(f).loops.push({ id, layer: found.layer, lines: found.route.map(u => u.line), color, visible: true })
+  S(f).loops.push({ id, layer: found.layer, lines: found.route.map(u => u.line), color, visible: true, locked: false })
   S(f).order.push(id)
 }
 
 export function clearFill(f: FillsState, id: Id) {
-  find(f, id)
+  unlocked(find(f, id))
   S(f).loops = S(f).loops.filter(l => l.id !== id)
   S(f).order = S(f).order.filter(x => x !== id)
 }
 
-export function setVisible(f: FillsState, id: Id, visible: boolean) { find(f, id).visible = visible }
+/** Element state of a fill (a state change; allowed on locked fills). */
+export function setState(f: FillsState, id: Id, state: { visible?: boolean; locked?: boolean }) {
+  const l = find(f, id)
+  if (state.visible !== undefined) l.visible = state.visible
+  if (state.locked !== undefined) l.locked = state.locked
+}
+export const setVisible = (f: FillsState, id: Id, visible: boolean) => setState(f, id, { visible })
+
+/** Delete a fill as part of a batch (layer delete); locked fills are left alone. */
+export function clearUnlocked(f: FillsState, ids: readonly Id[]) {
+  drop(f, ids.filter(id => !find(f, id).locked))
+}
+
+/** Fill ids whose loops lie in a layer. */
+export const inLayer = (f: FillsState, layer: Id): Id[] => S(f).loops.filter(l => l.layer === layer).map(l => l.id)
+
+/**
+ * Copy fills whose every boundary line was copied (map old → new ids). New fill
+ * ids come from `idOf`; colour and state are kept; the copies go on top, in the
+ * originals' order.
+ */
+export function copy(f: FillsState, map: Map<Id, Id>, idOf: (old: Id) => Id) {
+  for (const l of S(f).order.map(id => find(f, id))) {
+    if (!l.lines.every(x => map.has(x))) continue
+    const id = idOf(l.id)
+    if (S(f).loops.some(x => x.id === id)) throw new Error(`Fill ${id} already exists`)
+    S(f).loops.push({ ...l, id, layer: '', lines: l.lines.map(x => map.get(x)!) })
+    S(f).order.push(id)
+  }
+}
 
 /**
  * Move a fill to `index` among the fills of its own continuous curve (bottom → top).
@@ -89,7 +122,9 @@ export function update(f: FillsState, ch: net.Changes) {
 
 /** Drop every fill whose boundary is no longer one closed walk in one layer. */
 export function validate(f: FillsState, n: net.NetworkState) {
-  drop(f, S(f).loops.filter(l => !net.closedWalk(n, l.lines) || l.lines.some(x => net.layerOfLine(n, x) !== l.layer)).map(l => l.id))
+  // A loop that moved layer with its whole group follows it (bowen 1791435958).
+  for (const l of S(f).loops) if (l.lines.length && net.hasLine(n, l.lines[0]!)) l.layer = net.layerOfLine(n, l.lines[0]!)
+  drop(f, S(f).loops.filter(l => !net.closedWalk(n, l.lines)).map(l => l.id))
 }
 
 function drop(f: FillsState, ids: Id[]) {

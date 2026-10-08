@@ -1,0 +1,57 @@
+// locks — a locked element cannot be edited (Q29, Q31). This module only compares
+// each locked line's protected content before and after an edit; document refuses
+// the whole edit on any difference. Locked fills protect their colour, which the
+// fills module refuses to change directly; a locked fill may vanish when its loop
+// breaks (Q30 甲), so fills need no comparison here.
+//
+// Protected content of a line (bowen 1791434101, dot after f9c4109):
+// - its drawn curve, as derived computes it (so an arc join that reshapes it counts);
+// - its stroke (width, profile);
+// - at each end, the end stroke that is actually drawn: the point's end stroke if
+//   the end is free (no other line, no link), nothing if it is shared. The
+//   free/shared flag itself is not compared.
+// A line that is gone (deleted, split, collapsed) has changed; a line made in this
+// edit (drawn, or copied with its lock) has no earlier content to protect.
+import * as net from '../network'
+import * as joins from '../joins'
+import * as links from '../links'
+import * as derived from '../derived'
+import type { Cubic } from '../geometry'
+
+type Id = net.Id
+
+export interface View { network: net.NetworkState; joins: joins.JoinsState; links: links.LinksState }
+interface Content { curve: Cubic; stroke: net.Stroke; ends: [string, string] }
+
+const lockedLines = (v: View) => net.lines(v.network).filter(l => l.state.locked).map(l => l.id)
+
+function contents(v: View, ids: Set<Id>): Map<Id, Content> {
+  const out = new Map<Id, Content>()
+  if (!ids.size) return out
+  const drawn = derived.drawnLines(v.network, v.joins)
+  const drawnEnd = (point: Id) => {
+    const free = net.linesAt(v.network, point).length === 1 && !links.partners(v.links, point).length
+    return JSON.stringify((free && joins.endStroke(v.joins, point)) || {})
+  }
+  for (const id of ids) {
+    if (!net.hasLine(v.network, id)) continue
+    const l = net.line(v.network, id)
+    out.set(id, { curve: drawn.get(id)!, stroke: l.stroke, ends: [drawnEnd(l.a), drawnEnd(l.b)] })
+  }
+  return out
+}
+
+const near = (a: Cubic, b: Cubic) => a.every((p, i) => Math.abs(p.x - b[i]!.x) < 1e-9 && Math.abs(p.y - b[i]!.y) < 1e-9)
+const same = (a: Content, b: Content) =>
+  near(a.curve, b.curve) && a.stroke.width === b.stroke.width && a.stroke.profile === b.stroke.profile && a.ends[0] === b.ends[0] && a.ends[1] === b.ends[1]
+
+/**
+ * Locked lines whose protected content differs between two states. A line that
+ * existed before counts if it is locked in either state, so locking and editing a
+ * line, or unlocking and editing it, are separate edits.
+ */
+export function changed(before: View, after: View): Id[] {
+  const ids = new Set([...lockedLines(before), ...lockedLines(after)].filter(id => net.hasLine(before.network, id)))
+  const a = contents(before, ids), b = contents(after, ids)
+  return [...ids].filter(id => { const x = a.get(id), y = b.get(id); return !x || !y || !same(x, y) }).sort()
+}

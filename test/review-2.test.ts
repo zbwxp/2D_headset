@@ -257,7 +257,7 @@ describe('atomic operations (dot 1791429209)', () => {
       try { e.deleteLine('nope') } catch { /* swallowed */ }
       e.layer('M')
     })).toThrow(/finished edit/)
-    expect(d.snapshot().layers).toEqual(['L'])
+    expect(d.snapshot().layers.map(l => l.id)).toEqual(['L'])
   })
 })
 

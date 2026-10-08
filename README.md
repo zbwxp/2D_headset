@@ -15,18 +15,19 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | Module | Owns (data) | Rules it owns |
 |---|---|---|
 | `geometry` | nothing | Cubic Bézier maths (wraps `bezier-js`), arc fillet, flattening, area, point in polygon |
-| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. A point exists only as a line end. It is **created only together with a line**: the pen's ends are existing points or new ones, and split and unbind make their points with their lines (bowen 1791428375). It is removed when merged by binding or when isolated (checked once per edit, bowen 1791428195). Queries: lines at a point, connected groups, and **closed curves** under one definition (`closedWalk`, `closedLoops`): connected, each line once, may pass a point twice |
-| `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
+| `network` | layers (id, unique name, order), points (position, layer), lines (two point ids + two handles, each relative to its point; element state `{visible, locked}`; own stroke) | Layer records: new, rename, reorder, remove when empty. **Overlaps:** which coincident endpoints in one layer bind, and which point is kept (Q31). Moving a whole group to another layer keeping ids; copying lines with new ids. One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. A point exists only as a line end. It is **created only together with a line**: the pen's ends are existing points or new ones, and split and unbind make their points with their lines (bowen 1791428375). It is removed when merged by binding or when isolated (checked once per edit, bowen 1791428195). Queries: lines at a point, connected groups, and **closed curves** under one definition (`closedWalk`, `closedLoops`): connected, each line once, may pass a point twice |
+| `groups` | continuous-curve identity, per-layer order of groups | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot; a split-off group goes right after the original; a group moved to another layer goes on top there. Stroke is on each line (bowen 1791434322) |
 | `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
 | `links` | cross-layer endpoint links (one relation per pair), and joins across a link | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets. **Joins across a link** are stored with the link as one relation; the smooth solver treats them like same-point joins (second-clicked turns to first). Only smooth is implemented. Cusp and arc across a link are **not implemented yet**, because how their geometry is shared between the two layers is undecided (asked bowen 1791430797); this is not a product prohibition |
-| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
+| `fills` | filled loops (identity, boundary lines, colour, element state) and fill order | A locked fill's colour cannot be changed or cleared; it may vanish when its loop breaks (Q30 甲).  Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
+| `locks` | nothing (computed) | Compares each locked line's protected content before and after an edit: its drawn curve (from `derived`), its stroke, and the end stroke drawn at each end (only a free end draws one). Lines made in this edit are not compared |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
 
 ```
-geometry ← network ← groups / joins / links / fills ← derived ← document
+geometry ← network ← groups / joins / links / fills ← derived ← locks ← document
 ```
 
 ## Encapsulation (dot 1791427188)
@@ -56,10 +57,11 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 1. Each operation is applied to a private copy of the state. The network reports what changed (lines replaced by a split, collapsed or deleted lines, merged or deleted points, directly moved points, held handles), and each attribute module updates its own references.
 2. Before commit, in a fixed order:
    0. `network.removeIsolated` (and the reference updates it triggers)
-   1. `links.align`
+   1. **Position loop**, until no two endpoints in one layer coincide: `links.align`, then bind each `network.overlaps` pair and remove isolated points (dot, after `f9c4109`)
    2. `joins.solve`
    3. `fills.validate`
    4. `groups.reconcile`
+   5. `locks.changed`: any locked line changed refuses the whole edit
 3. If anything throws, or the edit is cancelled, nothing is published. One edit is one undo step.
 
 ## Conventions
@@ -112,3 +114,10 @@ These are our own choices, not derived from bowen's principles. They wait for hi
     - at most 65 536 cycle combinations tried inside one block (biconnected part).
 
     These are implementation bounds, not graph rules (dot 1791429823, 1791430851). The search is split by blocks, so loops strung together by single lines cost only as much as the loops that exist.
+14. **Layer batch** (docs/layer-batch-plan.md):
+    - the ids of a copied layer are `${new layer id}/${old id}`;
+    - unbind offsets the new point by 0.5 along the first moved line's handle (or toward its other end);
+    - a group's state change covers its lines and the fills of its loops;
+    - a new layer is made by `layer(id, name?, above?)`; there is no separate `newLayer`;
+    - the lock check counts a line locked before or after the edit, so lock-and-edit or unlock-and-edit takes two edits;
+    - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.

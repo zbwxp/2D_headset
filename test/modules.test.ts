@@ -21,11 +21,12 @@ describe('groups: identity through merge and split', () => {
     expect(gx!.id).not.toBe(gy!.id)
   })
 
-  it('a hub split three ways: the earliest line keeps the id, the others follow it in order with its stroke', () => {
+  it('a hub split three ways: the earliest line keeps the id, the others follow it in order; every line keeps its own stroke', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('L'); sk(e).point('o', 'L', P(0))
-      for (let i = 1; i <= 3; i++) { sk(e).point('p' + i, 'L', P(i, i)); sk(e).line('l' + i, 'o', 'p' + i) }
+      // three directions: lines lying on top of each other would rebind after unbind (Q31)
+      for (let i = 1; i <= 3; i++) { sk(e).point('p' + i, 'L', P(i, i * i)); sk(e).line('l' + i, 'o', 'p' + i) }
       sk(e).point('q', 'L', P(9)); sk(e).point('r', 'L', P(10)); sk(e).line('top', 'q', 'r')
     })
     const [hub, top] = d.snapshot().groups
@@ -39,7 +40,7 @@ describe('groups: identity through merge and split', () => {
     expect(groups[3]!.lines).toEqual(['top'])
     expect(groups[0]!.id).toBe(hub!.id)
     expect(groups[3]!.id).toBe(top!.id)
-    expect(groups.slice(0, 3).every(g => g.stroke.width === 3)).toBe(true)
+    expect(d.snapshot().lines.filter(l => l.id !== 'top').every(l => l.stroke.width === 3)).toBe(true)
   })
 
   it('a group whose lines are all deleted leaves the order', () => {

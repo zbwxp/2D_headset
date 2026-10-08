@@ -6,12 +6,24 @@
 // Encapsulation (dot 1791427188): the state is opaque outside this module. Reads
 // return frozen copies; inputs are copied before they are stored. Only the
 // functions below change the network.
-import { type Vec, type Cubic, add, sub, split } from '../geometry'
+import { type Vec, type Cubic, add, sub, split, scale, length } from '../geometry'
 
 export type Id = string
 export type End = 'a' | 'b'
 export interface Point { readonly id: Id; readonly layer: Id; readonly position: Vec }
-export interface Line { readonly id: Id; readonly a: Id; readonly b: Id; readonly ha: Vec; readonly hb: Vec }
+/** The state every drawable element (line, fill) carries (bowen 1791433646). */
+export interface ElementState { readonly visible: boolean; readonly locked: boolean }
+/** A line's own stroke (bowen 1791434322: width lives on each line). */
+export interface Stroke { readonly width: number; readonly profile: string }
+export interface Line {
+  readonly id: Id; readonly a: Id; readonly b: Id; readonly ha: Vec; readonly hb: Vec
+  readonly state: ElementState; readonly stroke: Stroke
+}
+export interface Layer { readonly id: Id; readonly name: string }
+export const DEFAULT_STATE: ElementState = Object.freeze({ visible: true, locked: false })
+export const DEFAULT_STROKE: Stroke = Object.freeze({ width: 1, profile: 'uniform' })
+/** Default unbind offset, in document units (a filled-in default, bowen 1791436858). */
+export const UNBIND_OFFSET = 0.5
 
 declare const opaque: unique symbol
 /** Opaque handle to a network; read it through the query functions. */
@@ -19,7 +31,8 @@ export type NetworkState = { readonly [opaque]: 'network' }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 interface Store {
-  layers: Id[]
+  /** Bottom → top. */
+  layers: Mutable<Layer>[]
   points: Mutable<Point>[]
   lines: Mutable<Line>[]
   /** Every point / line id ever used in this document. Ids are never reused (dot 1791427637). */
@@ -48,10 +61,12 @@ export interface Changes {
   prefer: { lines: Id[] }[]
   /** Points whose attributes were edited in this edit (e.g. a join was set). */
   touched: Id[]
+  /** Points moved to another layer with their group (cut and paste) in this edit. */
+  relocated: Id[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [],
 })
 
 export const create = (): NetworkState =>
@@ -105,7 +120,10 @@ function vecIn(v: Vec): Vec {
 }
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
 const pointOut = (p: Point): Point => Object.freeze({ id: p.id, layer: p.layer, position: vecOut(p.position) })
-const lineOut = (l: Line): Line => Object.freeze({ id: l.id, a: l.a, b: l.b, ha: vecOut(l.ha), hb: vecOut(l.hb) })
+const lineOut = (l: Line): Line => Object.freeze({
+  id: l.id, a: l.a, b: l.b, ha: vecOut(l.ha), hb: vecOut(l.hb),
+  state: Object.freeze({ ...l.state }), stroke: Object.freeze({ ...l.stroke }),
+})
 
 function rawPoint(n: NetworkState, id: Id) {
   const p = S(n).points.find(p => p.id === id)
@@ -120,14 +138,16 @@ function rawLine(n: NetworkState, id: Id) {
 
 // ---- queries (all return copies) -----------------------------------------
 
-export const layers = (n: NetworkState): readonly Id[] => Object.freeze([...S(n).layers])
+/** Layer ids, bottom → top. */
+export const layers = (n: NetworkState): readonly Id[] => Object.freeze(S(n).layers.map(l => l.id))
+export const layerRecords = (n: NetworkState): readonly Layer[] => Object.freeze(S(n).layers.map(l => Object.freeze({ ...l })))
 export const points = (n: NetworkState): readonly Point[] => Object.freeze(S(n).points.map(pointOut))
 export const lines = (n: NetworkState): readonly Line[] => Object.freeze(S(n).lines.map(lineOut))
 export const point = (n: NetworkState, id: Id): Point => pointOut(rawPoint(n, id))
 export const line = (n: NetworkState, id: Id): Line => lineOut(rawLine(n, id))
 export const hasPoint = (n: NetworkState, id: Id) => S(n).points.some(p => p.id === id)
 export const hasLine = (n: NetworkState, id: Id) => S(n).lines.some(l => l.id === id)
-export const hasLayer = (n: NetworkState, id: Id) => S(n).layers.includes(id)
+export const hasLayer = (n: NetworkState, id: Id) => S(n).layers.some(l => l.id === id)
 export const layerOfLine = (n: NetworkState, id: Id): Id => rawPoint(n, rawLine(n, id).a).layer
 export const handle = (l: Line, end: End): Vec => (end === 'a' ? l.ha : l.hb)
 
@@ -350,8 +370,120 @@ function blockLoops(index: Index, lines: Mutable<Line>[]): Id[][] {
 
 // ---- one-time edits ------------------------------------------------------
 
-export function addLayer(n: NetworkState, id: Id) {
-  if (!S(n).layers.includes(id)) S(n).layers.push(id)
+function checkName(n: NetworkState, name: string, except?: Id) {
+  if (!name.trim()) throw new Error('A layer name cannot be empty')
+  if (S(n).layers.some(l => l.name === name && l.id !== except)) throw new Error(`Layer name "${name}" is already used`)
+}
+
+/** New empty layer, placed directly above `above` (or on top). Names are unique (bowen 1791435000). */
+export function addLayer(n: NetworkState, id: Id, name: string = id, above?: Id) {
+  if (hasLayer(n, id)) throw new Error(`Layer ${id} already exists`)
+  checkName(n, name)
+  const list = S(n).layers
+  const at = above === undefined ? list.length : list.findIndex(l => l.id === above) + 1
+  if (above !== undefined && at === 0) throw new Error(`No layer ${above}`)
+  list.splice(at, 0, { id, name })
+}
+
+export function renameLayer(n: NetworkState, id: Id, name: string) {
+  const layer = S(n).layers.find(l => l.id === id)
+  if (!layer) throw new Error(`No layer ${id}`)
+  checkName(n, name, id)
+  layer.name = name
+}
+
+/** Move a layer to `index` in the bottom → top list (a state change). */
+export function reorderLayer(n: NetworkState, id: Id, index: number) {
+  if (!Number.isInteger(index)) throw new Error('Order index must be an integer')
+  const list = S(n).layers, i = list.findIndex(l => l.id === id)
+  if (i < 0) throw new Error(`No layer ${id}`)
+  const [layer] = list.splice(i, 1)
+  list.splice(Math.max(0, Math.min(index, list.length)), 0, layer!)
+}
+
+/** Remove a layer that holds no line; its leftover (isolated) points go with it. */
+export function removeLayerIfEmpty(n: NetworkState, ch: Changes, id: Id): boolean {
+  if (S(n).lines.some(l => rawPoint(n, l.a).layer === id)) return false
+  const gone = S(n).points.filter(p => p.layer === id).map(p => p.id)
+  S(n).points = S(n).points.filter(p => p.layer !== id)
+  ch.deletedPoints.push(...gone)
+  S(n).layers = S(n).layers.filter(l => l.id !== id)
+  return true
+}
+
+/** A unique name based on `base`: "base · 2", "base · 3", … */
+export function uniqueLayerName(n: NetworkState, base: string): string {
+  for (let k = 2; ; k++) { const name = `${base} · ${k}`; if (!S(n).layers.some(l => l.name === name)) return name }
+}
+
+/** Element state of a line (a state change; allowed on locked lines). */
+export function setLineState(n: NetworkState, id: Id, state: Partial<ElementState>) {
+  const l = rawLine(n, id)
+  l.state = { visible: state.visible ?? l.state.visible, locked: state.locked ?? l.state.locked }
+}
+
+/** A line's own stroke (an edit). */
+export function setLineStroke(n: NetworkState, id: Id, stroke: Stroke) {
+  if (!(stroke.width > 0) || !Number.isFinite(stroke.width)) throw new Error('Stroke width must be a positive number')
+  rawLine(n, id).stroke = { width: stroke.width, profile: String(stroke.profile) }
+}
+
+/**
+ * Cut and paste a whole group to another layer, keeping every id (bowen 1791435958):
+ * all of its points (and so its lines) change layer together.
+ */
+export function moveLinesToLayer(n: NetworkState, ch: Changes, lineIds: readonly Id[], layer: Id) {
+  if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
+  const pts = new Set(lineIds.flatMap(id => { const l = rawLine(n, id); return [l.a, l.b] }))
+  for (const l of S(n).lines) if (!lineIds.includes(l.id) && (pts.has(l.a) || pts.has(l.b))) throw new Error('Only a whole continuous curve can be moved')
+  for (const id of pts) { rawPoint(n, id).layer = layer; if (!ch.relocated.includes(id)) ch.relocated.push(id) }
+}
+
+/**
+ * Copy lines (with their points, handles, state and stroke) into `layer`, using
+ * `idOf` for every new point and line id. Returns the mapping old → new.
+ */
+export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id): Map<Id, Id> {
+  if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
+  const map = new Map<Id, Id>()
+  for (const id of lineIds) {
+    const l = rawLine(n, id)
+    for (const p of [l.a, l.b]) if (!map.has(p)) {
+      const np = idOf(p)
+      addPoint(n, np, layer, rawPoint(n, p).position)
+      map.set(p, np)
+    }
+    const nl = idOf(id)
+    claimLine(n, nl)
+    S(n).lines.push({ id: nl, a: map.get(l.a)!, b: map.get(l.b)!, ha: { ...l.ha }, hb: { ...l.hb }, state: { ...l.state }, stroke: { ...l.stroke } })
+    map.set(id, nl)
+  }
+  return map
+}
+
+/**
+ * Coincident endpoints in one layer (bowen 1791436564: never allowed). For each
+ * set of points at exactly one position, which point is kept: the one this edit
+ * did not act on; if several or none were acted on, the earlier-created one
+ * (bowen 1791436617, 1791458278).
+ */
+export function overlaps(n: NetworkState, ch: Changes): { keep: Id; remove: Id }[] {
+  const acted = new Set([...ch.targets.map(t => t.point), ...ch.relocated])
+  const created = new Map(S(n).usedPoints.map((id, i) => [id, i]))
+  const byPlace = new Map<string, Id[]>()
+  for (const p of S(n).points) {
+    const key = JSON.stringify([p.layer, p.position.x, p.position.y])
+    byPlace.set(key, [...(byPlace.get(key) ?? []), p.id])
+  }
+  const out: { keep: Id; remove: Id }[] = []
+  for (const ids of byPlace.values()) {
+    if (ids.length < 2) continue
+    const order = [...ids].sort((x, y) => created.get(x)! - created.get(y)!)
+    const still = order.filter(id => !acted.has(id))
+    const keep = still.length === 1 ? still[0]! : order[0]!
+    for (const id of order) if (id !== keep) out.push({ keep, remove: id })
+  }
+  return out
 }
 
 /** Internal to this module: points are created only with lines (addLine, split, unbind). */
@@ -385,6 +517,7 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bS
     id, a, b,
     ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 },
     hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 },
+    state: { ...DEFAULT_STATE }, stroke: { ...DEFAULT_STROKE },
   })
 }
 
@@ -432,8 +565,8 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   addPoint(n, mid, rawPoint(n, l.a).layer, c1[3])
   const all = S(n).lines
   all.splice(all.indexOf(l), 1,
-    { id: first, a: l.a, b: mid, ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]) },
-    { id: second, a: mid, b: l.b, ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]) })
+    { id: first, a: l.a, b: mid, ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]), state: { ...l.state }, stroke: { ...l.stroke } },
+    { id: second, a: mid, b: l.b, ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]), state: { ...l.state }, stroke: { ...l.stroke } })
   ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second] })
 }
 
@@ -493,5 +626,12 @@ export function unbind(n: NetworkState, ch: Changes, pointId: Id, lineIds: Id[],
     if (l.a === pointId) l.a = newPoint
     else l.b = newPoint
   }
+  // Offset the split-off point so the two never coincide again (bowen 1791436858):
+  // a short fixed distance back along the first moved line (a filled-in default).
+  const first = rawLine(n, lineIds[0]!), atA = first.a === newPoint
+  const other = rawPoint(n, atA ? first.b : first.a).position
+  const toward = length(atA ? first.ha : first.hb) > 1e-12 ? (atA ? first.ha : first.hb) : sub(other, p.position)
+  const dir = length(toward) > 1e-12 ? scale(toward, 1 / length(toward)) : { x: 1, y: 0 }
+  rawPoint(n, newPoint).position = add(p.position, scale(dir, UNBIND_OFFSET))
   ch.unbound.push({ point: pointId, newPoint, lines: [...lineIds] })
 }

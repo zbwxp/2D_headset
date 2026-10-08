@@ -19,11 +19,25 @@ type Op = { name: string; run: (e: Editor) => void } | { name: 'undo' | 'redo' }
 /** Choose one operation from the current snapshot. Ids come from a counter so sequences replay exactly. */
 function chooseOp(s: Snapshot, r: () => number, next: () => string): Op {
   const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)]
-  const layers = ['A', 'B']
+  const layers = s.layers.map(l => l.id)
   const pos = (): Vec => ({ x: Math.round(r() * 40), y: Math.round(r() * 40) })
   const handle = (): Vec => ({ x: Math.round((r() - 0.5) * 20), y: Math.round((r() - 0.5) * 20) })
-  const roll = r()
   const lines = s.lines, points = s.points
+  // layer / element batch (docs/layer-batch-plan.md)
+  if (r() < 0.15 || !layers.length) {
+    const k = r(), layer = pick(layers) ?? '?', g = pick(s.groups), state = { [r() < 0.5 ? 'visible' : 'locked']: r() < 0.5 }
+    if (k < 0.12 || !layers.length) { const id = next(); return { name: `layer ${id}`, run: e => e.layer(id, pick(['n1', 'n2', id])!) } }
+    if (k < 0.24) { const l = pick(lines); return { name: `lineState ${l?.id}`, run: e => e.lineState(l?.id ?? '?', state) } }
+    if (k < 0.34) return { name: `groupState ${g?.id}`, run: e => e.groupState(g?.id ?? '?', state) }
+    if (k < 0.42) return { name: `layerState ${layer}`, run: e => e.layerState(layer, state) }
+    if (k < 0.50) { const f = pick(s.loops.filter(x => x.color)); return { name: `fillState ${f?.id}`, run: e => e.fillState(f?.id ?? '?', state) } }
+    if (k < 0.60) { const w = 1 + Math.floor(r() * 4); return { name: `stroke ${g?.id}`, run: e => e.stroke(g?.id ?? '?', { width: w, profile: 'uniform' }) } }
+    if (k < 0.75) { const to = pick(layers)!; return { name: `moveGroup ${g?.id} ${to}`, run: e => e.moveGroup(g?.id ?? '?', to) } }
+    if (k < 0.85) { const id = next(); return { name: `copyLayer ${layer} ${id}`, run: e => e.copyLayer(layer, id) } }
+    if (k < 0.93) return { name: `deleteLayer ${layer}`, run: e => e.deleteLayer(layer) }
+    return { name: `reorderLayer ${layer}`, run: e => e.reorderLayer(layer, Math.floor(r() * 3)) }
+  }
+  const roll = r()
   if (roll < 0.05) return { name: 'undo' }
   if (roll < 0.08) return { name: 'redo' }
   if (roll < 0.30 || lines.length < 3) {
@@ -116,6 +130,11 @@ function invariants(d: Core): string[] {
     if (!s.links.some(k => (k.a === j.a && k.b === j.b) || (k.a === j.b && k.b === j.a))) bad.push(`link join ${j.a}-${j.b} without its link`)
     if (!ends(j.lines[0], j.a) || !ends(j.lines[1], j.b)) bad.push(`link join ${j.a}-${j.b} is stale`)
   }
+  // Q31: no two endpoints in one layer coincide; Q30: layer names are unique
+  const places = s.points.map(p => JSON.stringify([p.layer, p.position.x, p.position.y]))
+  if (new Set(places).size !== places.length) bad.push('two endpoints coincide in one layer')
+  if (new Set(s.layers.map(l => l.name)).size !== s.layers.length) bad.push('layer names repeat')
+  for (const p of s.points) if (!s.layers.some(l => l.id === p.layer)) bad.push(`point ${p.id} in a missing layer`)
   const filled = s.loops.filter(l => l.color)
   if (JSON.stringify([...filled.map(l => l.id)].sort()) !== JSON.stringify([...s.fillOrder].sort())) bad.push('fill order and filled loops differ')
   for (const loop of s.loops) {
@@ -130,6 +149,20 @@ function invariants(d: Core): string[] {
   return [...new Set(bad)]
 }
 
+/**
+ * Q29: an edit never changes a locked line. Checked independently of the locks
+ * module, on the raw curve only (end positions, handles, stroke); the lock may be
+ * lifted only by a state change, which leaves the curve as it was.
+ */
+function lockedKept(before: Snapshot, after: Snapshot): string[] {
+  const at = (s: Snapshot, id: string) => s.points.find(p => p.id === id)?.position
+  return before.lines.filter(l => l.state.locked).flatMap(l => {
+    const m = after.lines.find(x => x.id === l.id)
+    const raw = (s: Snapshot, x: typeof l) => JSON.stringify([at(s, x.a), at(s, x.b), x.ha, x.hb, x.stroke])
+    return m && raw(before, l) === raw(after, m) ? [] : [`locked line ${l.id} changed`]
+  })
+}
+
 export const stats = { tried: {} as Record<string, number>, ok: {} as Record<string, number>, maxLoops: 0, maxFilled: 0 }
 
 /** Run a seeded sequence; returns the snapshots after each step and the invariant failures. */
@@ -141,11 +174,15 @@ function run(seed: number, steps: number) {
   const trail: string[] = [], failures: string[] = []
   for (let i = 0; i < steps; i++) {
     const op = chooseOp(d.snapshot(), r, next)
+    const before = d.snapshot()
     try {
       stats.tried[op.name.split(' ')[0]!] = (stats.tried[op.name.split(' ')[0]!] ?? 0) + 1
       if (op.name === 'undo') d.undo()
       else if (op.name === 'redo') d.redo()
-      else d.edit((op as { run: (e: Editor) => void }).run)
+      else {
+        d.edit((op as { run: (e: Editor) => void }).run)
+        for (const f of lockedKept(before, d.snapshot())) failures.push(`seed ${seed} step ${i} (${op.name}): ${f}`)
+      }
       stats.ok[op.name.split(' ')[0]!] = (stats.ok[op.name.split(' ')[0]!] ?? 0) + 1
     } catch { /* refused operations are fine; the state must stay valid */ }
     stats.maxLoops = Math.max(stats.maxLoops, d.snapshot().loops.length)

@@ -7,6 +7,7 @@ import * as joins from '../joins'
 import * as links from '../links'
 import * as fills from '../fills'
 import * as derived from '../derived'
+import * as locks from '../locks'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -22,9 +23,10 @@ interface State {
 const createState = (): State => ({ network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create() })
 
 export interface Snapshot {
-  layers: Id[]
+  /** Layers bottom → top. */
+  layers: net.Layer[]
   points: { id: Id; layer: Id; position: Vec; links: Id[]; endStroke?: joins.EndStroke }[]
-  lines: { id: Id; a: Id; b: Id; ha: Vec; hb: Vec }[]
+  lines: { id: Id; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
   groups: groups.Group[]
   joins: joins.JoinRow[]
   links: { a: Id; b: Id }[]
@@ -68,8 +70,59 @@ export class Editor {
     applyTopology(state, changes, op)
   }
 
+  // layers (Q29, Q30)
+  /** New empty layer, directly above `above` (or on top). The name defaults to the id and must be unique. */
+  layer(id: Id, name?: string, above?: Id) { net.addLayer(this.s.network, id, name, above) }
+  renameLayer(id: Id, name: string) { net.renameLayer(this.s.network, id, name) }
+  /** A state change: move a layer to `index` (bottom → top). */
+  reorderLayer(id: Id, index: number) { net.reorderLayer(this.s.network, id, index) }
+  /**
+   * New-identity copy directly above the original (Q30). Every new id is
+   * `${newId}/${old id}`. Joins, end strokes, fills and element states are copied;
+   * endpoint links never are. The name defaults to a unique "name · k".
+   */
+  copyLayer(id: Id, newId: Id, name?: string) {
+    const { state: s } = this.tx
+    const base = net.layerRecords(s.network).find(l => l.id === id)
+    if (!base) throw new Error(`No layer ${id}`)
+    net.addLayer(s.network, newId, name ?? net.uniqueLayerName(s.network, base.name), id)
+    const idOf = (old: Id) => `${newId}/${old}`
+    // lines in their groups' order, so the copied groups keep the same order
+    const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
+    let map = new Map<Id, Id>()
+    this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf) })
+    joins.copy(s.joins, map)
+    fills.copy(s.fills, map, idOf)
+  }
+  /** Batch delete (Q30): unlocked lines and fills go; the layer goes once it holds nothing. */
+  deleteLayer(id: Id) {
+    const { state: s } = this.tx
+    if (!net.hasLayer(s.network, id)) throw new Error(`No layer ${id}`)
+    fills.clearUnlocked(s.fills, fills.inLayer(s.fills, id))
+    for (const l of this.linesIn(id)) if (!l.state.locked) this.deleteLine(l.id)
+    this.topology(ch => { net.removeIsolated(s.network, ch); net.removeLayerIfEmpty(s.network, ch, id) })
+  }
+
+  // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
+  lineState(line: Id, state: { visible?: boolean; locked?: boolean }) { net.setLineState(this.s.network, line, state) }
+  fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { fills.setState(this.s.fills, loop, state) }
+  /** The group's lines and the fills of its loops. */
+  groupState(group: Id, state: { visible?: boolean; locked?: boolean }) {
+    const g = groups.get(this.s.groups, group)
+    for (const id of g.lines) this.lineState(id, state)
+    for (const id of this.fillsOf(g.lines)) this.fillState(id, state)
+  }
+  layerState(layer: Id, state: { visible?: boolean; locked?: boolean }) {
+    for (const l of this.linesIn(layer)) this.lineState(l.id, state)
+    this.layerFills(layer, state)
+  }
+  /** Fills only (backlog 3, dot 1791435501). */
+  layerFills(layer: Id, state: { visible?: boolean; locked?: boolean }) {
+    if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
+    for (const id of fills.inLayer(this.s.fills, layer)) this.fillState(id, state)
+  }
+
   // network: one-time edits
-  layer(id: Id) { net.addLayer(this.s.network, id) }
   /** Pen: each end is an existing point id, or { id, layer, position } for a new point made with the line. */
   line(id: Id, a: net.EndSpec, b: net.EndSpec, handles?: { ha: Vec; hb: Vec }) { this.topology(ch => net.addLine(this.s.network, ch, id, a, b, handles)) }
   move(targets: { id: Id; target: Vec }[]) { net.move(this.s.network, this.tx.changes, targets) }
@@ -105,9 +158,29 @@ export class Editor {
   }
   removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) { links.removeJoin(this.s.links, a, b, la, lb); net.touch(this.tx.changes, a); net.touch(this.tx.changes, b) }
 
+  // stroke: stored on each line (bowen 1791434322)
+  lineStroke(line: Id, stroke: net.Stroke) { net.setLineStroke(this.s.network, line, stroke) }
+  /** A group's width change is a batch over its unlocked lines (Q29 D). */
+  stroke(group: Id, stroke: net.Stroke) {
+    for (const id of groups.get(this.s.groups, group).lines) if (!net.line(this.s.network, id).state.locked) this.lineStroke(id, stroke)
+  }
+
   // groups (continuous curves)
-  stroke(group: Id, stroke: groups.Stroke) { groups.setStroke(this.s.groups, group, stroke) }
   reorderGroup(group: Id, index: number) { groups.reorder(this.s.groups, group, index) }
+  /**
+   * Cut and paste a whole group into another layer, keeping every id (Q31). Refused
+   * if any of its elements is locked. It lands on top of the target layer; links
+   * whose partner is still there stay, and coincident points in one layer bind.
+   */
+  moveGroup(group: Id, layer: Id) {
+    const { state: s } = this.tx
+    const g = groups.get(s.groups, group)
+    if (g.layer === layer) return
+    const locked = [...g.lines.filter(id => net.line(s.network, id).state.locked),
+      ...fills.discover(s.fills, s.network).filter(v => v.locked && this.fillsOf(g.lines).includes(v.id)).map(v => v.id)]
+    if (locked.length) throw new Error(`Group ${group} holds locked elements (${locked.join(', ')}); it cannot be cut`)
+    this.topology(ch => net.moveLinesToLayer(s.network, ch, g.lines, layer))
+  }
 
   // fills (closed loops)
   fill(loop: Id, color: string) { fills.fill(this.s.fills, this.s.network, loop, color) }
@@ -115,6 +188,16 @@ export class Editor {
   fillVisible(loop: Id, visible: boolean) { fills.setVisible(this.s.fills, loop, visible) }
   /** Move a fill to `index` among the fills of its own group. */
   reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, this.s.network, loop, index) }
+
+  private linesIn(layer: Id) {
+    if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
+    return net.lines(this.s.network).filter(l => net.layerOfLine(this.s.network, l.id) === layer)
+  }
+  /** Filled loops whose boundary lies in the given lines. */
+  private fillsOf(lineIds: readonly Id[]): Id[] {
+    const set = new Set(lineIds)
+    return fills.discover(this.s.fills, this.s.network).filter(v => v.filled && v.route.every(u => set.has(u.line))).map(v => v.id)
+  }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
   cancel(): never {
@@ -133,7 +216,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -173,7 +256,7 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      commit(draft, tx.changes)
+      commit(draft, tx.changes, this.state)
     } catch (err) {
       if (err instanceof Cancelled) return
       throw err
@@ -197,7 +280,7 @@ export class Core {
     const groupList = groups.list(s.groups, n)
     const groupOfLine = new Map(groupList.flatMap(g => g.lines.map(l => [l, g.id] as const)))
     return structuredClone({
-      layers: [...net.layers(n)],
+      layers: [...net.layerRecords(n)],
       points: net.points(n).map(p => {
         const end = joins.endStroke(s.joins, p.id)
         return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
@@ -230,11 +313,26 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
 
-/** The fixed pipeline before publishing: isolated points → links → smooth springs → fills → groups. */
-function commit(s: State, ch: net.Changes) {
+/**
+ * The fixed pipeline before publishing (docs/layer-batch-plan.md):
+ * isolated points → position loop (overlap bind, link alignment) → smooth springs
+ * → fills → groups → locks.
+ */
+function commit(s: State, ch: net.Changes, published: State) {
   applyTopology(s, ch, c => net.removeIsolated(s.network, c))
-  net.setPositions(s.network, links.align(s.links, s.network, ch))
+  // Link alignment can make new coincidences, and binding can end links, so repeat
+  // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
+  // removes at least one point, so it ends.
+  for (;;) {
+    net.setPositions(s.network, links.align(s.links, s.network, ch))
+    const pairs = net.overlaps(s.network, ch)
+    if (!pairs.length) break
+    for (const p of pairs) applyTopology(s, ch, c => net.bind(s.network, c, p.keep, p.remove))
+    applyTopology(s, ch, c => net.removeIsolated(s.network, c))
+  }
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
+  const changed = locks.changed(published, s)
+  if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }

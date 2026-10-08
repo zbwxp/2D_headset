@@ -152,15 +152,16 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
     expect(d.geometry()).toEqual(g)
   })
 
-  it('binding group A (first) to group C keeps A’s stroke and slot, with B unchanged', () => {
+  it('binding group A (first) to group C keeps A’s slot, with B unchanged; each line keeps its own width (bowen 甲, reply to 1791458383)', () => {
     const d = graph([['x', 'a', 'b'], ['y', 'c', 'd'], ['z', 'e', 'f']], { a: P(0), b: P(1), c: P(3), d: P(4), e: P(6), f: P(7) })
     const [a, b, c] = d.snapshot().groups
     d.edit(e => { e.stroke(a!.id, { width: 7, profile: 'first' }); e.stroke(c!.id, { width: 2, profile: 'last' }); e.bind('a', 'e') })
     const groups = d.snapshot().groups
     expect(groups).toHaveLength(2)
     expect(groups[0]!.id).toBe(a!.id)
-    expect(groups[0]!.stroke.width).toBe(7)
     expect(groups[1]!.id).toBe(b!.id)
+    const width = (id: string) => d.snapshot().lines.find(l => l.id === id)!.stroke.width
+    expect([width('x'), width('z')]).toEqual([7, 2])
   })
 })
 
@@ -222,7 +223,8 @@ describe('graph rules added by Claude', () => {
       e.layer('A'); e.layer('B')
       sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).point('c', 'A', P(20)); sk(e).point('d', 'A', P(30))
       sk(e).line('ab', 'a', 'b'); sk(e).line('bc', 'b', 'c'); sk(e).line('cd', 'c', 'd')
-      sk(e).point('q', 'B', P(0)); sk(e).point('r', 'B', P(0, 5)); sk(e).line('qr', 'q', 'r'); e.link('q', 'b')
+      // q sits on b, not on a: a link that pulled b onto a would bind them (Q31)
+      sk(e).point('q', 'B', P(10)); sk(e).point('r', 'B', P(10, 5)); sk(e).line('qr', 'q', 'r'); e.link('q', 'b')
     })
     d.edit(e => e.deleteLine('ab')) // a is isolated → removed (bowen 1791428195); b still has bc
     expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['b', 'c', 'd', 'q', 'r'])
@@ -254,7 +256,7 @@ describe('graph rules added by Claude', () => {
 
   it('a group split by unbinding: the new group goes right after the original', () => {
     const d = graph([['x', 'a', 'b'], ['y', 'b', 'c']], { a: P(0), b: P(1), c: P(2) })
-    d.edit(e => { e.layer('L'); sk(e).point('d', 'L', P(5)); sk(e).point('f', 'L', P(6)); sk(e).line('w', 'd', 'f') })
+    d.edit(e => { sk(e).point('d', 'L', P(5)); sk(e).point('f', 'L', P(6)); sk(e).line('w', 'd', 'f') })
     const [g1, g2] = d.snapshot().groups
     d.edit(e => e.unbind('b', ['y'], 'b2'))
     const groups = d.snapshot().groups
