@@ -101,7 +101,8 @@ These are our own choices, not derived from bowen's principles. They wait for hi
 6. **A pen line joining two groups** keeps the group of its first point (the bind rule extended to the pen).
 7. **On unbind,** a join moves with its lines if both moved; it is dropped if only one moved.
 8. **Smooth springs** change direction only, never handle length. Zero-length handles take no part.
-9. **Unfilled loops** are only the simple ones (no point visited twice). A loop through a point twice exists only as an already-filled loop.
+9. **Unfilled loops** are only the simple ones (no point visited twice). A loop through a point twice exists only as an already-filled loop. **Conflict found by dot (1791429823):** after its fill is cleared, such a loop vanishes and cannot be filled again, which contradicts "clear fill is not delete loop". Asked bowen (1791429850): 甲, one loop definition (closed path, each line at most once); or 乙, remember cleared loops.
 10. **Filling an already-filled loop** recolours it.
 11. **An edit that changes nothing** makes no undo step.
 12. **Default line stroke:** width 1, uniform (a placeholder).
+13. **Loop enumeration limit:** 10 000 per document. An implementation bound, not a graph rule (dot 1791429823).
