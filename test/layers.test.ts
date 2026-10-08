@@ -258,12 +258,14 @@ describe('line width and locks', () => {
     expect(point(d, 'c')!.position).toEqual(P(5, 12))
   })
 
-  it('17. a smooth spring that would turn a locked handle is refused; the other way round is allowed', () => {
+  it('17. a smooth spring that would turn a locked handle is refused', () => {
     const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
     d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.join('b', 'bc', 'ab', { mode: 'smooth' }))).toThrow(/Locked/)
-    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' })) // ab clicked first: held, bc turns
-    expect(s(d).joins).toHaveLength(1)
+    // dragging bc's handle at b would make the spring turn ab's handle
+    expect(() => d.edit(e => e.moveHandle('bc', 'a', P(-3, 3)))).toThrow(/Locked lines would change \(ab\)/)
+    // setting a join at a locked line's end is itself refused: the join is the point's, and the point is locked (bowen 1791459836)
+    expect(() => d.edit(e => e.join('a', 'ab', 'ca', { mode: 'smooth' }))).toThrow(/Locked/)
   })
 
   it('18 / 29b. binding onto a locked line’s shared end is allowed when nothing on it changes', () => {
@@ -284,6 +286,20 @@ describe('line width and locks', () => {
     expect(() => d.edit(e => e.bind('a', 'x'))).toThrow(/Locked lines would change \(ab\)/)
     d.edit(e => e.bind('b', 'x'))
     expect(line(d, 'xy')!.a).toBe('b')
+  })
+
+  it('29c. a locked line locks the joins and arcs at its end points (bowen 1791459836)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    // moving c reshapes bc, which bends the arc at b
+    expect(() => d.edit(e => e.move([{ id: 'c', target: P(5, 14) }]))).toThrow(/Locked lines would change \(ab\)/)
+    expect(() => d.edit(e => e.removeJoin('b', 'ab', 'bc'))).toThrow(/Locked/)
+    expect(() => d.edit(e => e.join('a', 'ab', 'ca', { mode: 'cusp' }))).toThrow(/Locked/)
+    // width and state of the neighbour are not part of the arc
+    d.edit(e => e.lineStroke('bc', { width: 5, profile: 'uniform' }))
+    // a join at c (not an end of ab) is free to change
+    d.edit(e => e.join('c', 'bc', 'ca', { mode: 'cusp' }))
   })
 
   it('29a. an arc join that reshapes a locked line is refused', () => {
