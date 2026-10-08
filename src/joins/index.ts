@@ -59,13 +59,13 @@ export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stro
   S(j).endStrokes.push({ point, stroke: { ...stroke } })
 }
 
-/** Copy the joins and end strokes of copied points (map old → new point and line ids). */
-export function copy(j: JoinsState, map: Map<Id, Id>) {
-  for (const r of S(j).rows) {
-    const point = map.get(r.point), l0 = map.get(r.lines[0]), l1 = map.get(r.lines[1])
+/** Copy the joins and end strokes of copied points. */
+export function copy(j: JoinsState, map: net.CopyMap) {
+  for (const r of [...S(j).rows]) {
+    const point = map.points.get(r.point), l0 = map.lines.get(r.lines[0]), l1 = map.lines.get(r.lines[1])
     if (point && l0 && l1) S(j).rows.push({ ...rowCopy(r), point, lines: pair(l0, l1) })
   }
-  for (const e of [...S(j).endStrokes]) { const point = map.get(e.point); if (point) S(j).endStrokes.push({ point, stroke: { ...e.stroke } }) }
+  for (const e of [...S(j).endStrokes]) { const point = map.points.get(e.point); if (point) S(j).endStrokes.push({ point, stroke: { ...e.stroke } }) }
   sortRows(j)
 }
 

@@ -89,7 +89,7 @@ export class Editor {
     const idOf = (old: Id) => `${newId}/${old}`
     // lines in their groups' order, so the copied groups keep the same order
     const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
-    let map = new Map<Id, Id>()
+    let map: net.CopyMap = { points: new Map(), lines: new Map() }
     this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf) })
     joins.copy(s.joins, map)
     fills.copy(s.fills, map, idOf)

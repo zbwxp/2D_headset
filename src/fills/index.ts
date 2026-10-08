@@ -85,12 +85,12 @@ export const inLayer = (f: FillsState, layer: Id): Id[] => S(f).loops.filter(l =
  * ids come from `idOf`; colour and state are kept; the copies go on top, in the
  * originals' order.
  */
-export function copy(f: FillsState, map: Map<Id, Id>, idOf: (old: Id) => Id) {
+export function copy(f: FillsState, map: net.CopyMap, idOf: (old: Id) => Id) {
   for (const l of S(f).order.map(id => find(f, id))) {
-    if (!l.lines.every(x => map.has(x))) continue
+    if (!l.lines.every(x => map.lines.has(x))) continue
     const id = idOf(l.id)
     if (S(f).loops.some(x => x.id === id)) throw new Error(`Fill ${id} already exists`)
-    S(f).loops.push({ ...l, id, layer: '', lines: l.lines.map(x => map.get(x)!) })
+    S(f).loops.push({ ...l, id, layer: '', lines: l.lines.map(x => map.lines.get(x)!) })
     S(f).order.push(id)
   }
 }

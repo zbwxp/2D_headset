@@ -89,6 +89,20 @@ describe('copying a layer', () => {
     expect(point(d, 'A2/a')!.links).toEqual([])
   })
 
+  it('4b. a line and a point with the same id are copied as two different things (dot 1791459462)', () => {
+    const d = doc('A')
+    d.edit(e => {
+      sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).line('p', 'a', 'b')
+      sk(e).point('p', 'A', P(20)); sk(e).point('c', 'A', P(30)); sk(e).line('q', 'p', 'c')
+      e.endStroke('p', { taper: 1 })
+    })
+    d.edit(e => e.copyLayer('A', 'Copy'))
+    expect(line(d, 'Copy/q')).toMatchObject({ a: 'Copy/p', b: 'Copy/c' })
+    expect(point(d, 'Copy/p')).toMatchObject({ position: P(20), endStroke: { taper: 1 } })
+    expect(line(d, 'Copy/p')).toMatchObject({ a: 'Copy/a', b: 'Copy/b' })
+    expect(() => d.geometry()).not.toThrow()
+  })
+
   it('7. the copy name is unique', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => { e.copyLayer('A', 'A2'); e.copyLayer('A', 'A3') })

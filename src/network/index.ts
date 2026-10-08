@@ -439,24 +439,27 @@ export function moveLinesToLayer(n: NetworkState, ch: Changes, lineIds: readonly
   for (const id of pts) { rawPoint(n, id).layer = layer; if (!ch.relocated.includes(id)) ch.relocated.push(id) }
 }
 
+/** Old → new ids of a copy. Point ids and line ids are separate ranges, so they have separate maps (dot 1791459462). */
+export interface CopyMap { points: Map<Id, Id>; lines: Map<Id, Id> }
+
 /**
  * Copy lines (with their points, handles, state and stroke) into `layer`, using
- * `idOf` for every new point and line id. Returns the mapping old → new.
+ * `idOf` for every new point and line id.
  */
-export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id): Map<Id, Id> {
+export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id): CopyMap {
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
-  const map = new Map<Id, Id>()
+  const map: CopyMap = { points: new Map(), lines: new Map() }
   for (const id of lineIds) {
     const l = rawLine(n, id)
-    for (const p of [l.a, l.b]) if (!map.has(p)) {
+    for (const p of [l.a, l.b]) if (!map.points.has(p)) {
       const np = idOf(p)
       addPoint(n, np, layer, rawPoint(n, p).position)
-      map.set(p, np)
+      map.points.set(p, np)
     }
     const nl = idOf(id)
     claimLine(n, nl)
-    S(n).lines.push({ id: nl, a: map.get(l.a)!, b: map.get(l.b)!, ha: { ...l.ha }, hb: { ...l.hb }, state: { ...l.state }, stroke: { ...l.stroke } })
-    map.set(id, nl)
+    S(n).lines.push({ id: nl, a: map.points.get(l.a)!, b: map.points.get(l.b)!, ha: { ...l.ha }, hb: { ...l.hb }, state: { ...l.state }, stroke: { ...l.stroke } })
+    map.lines.set(id, nl)
   }
   return map
 }
