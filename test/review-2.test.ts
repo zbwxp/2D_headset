@@ -195,3 +195,14 @@ describe('arc geometry (dot 1791427267)', () => {
     }
   })
 })
+
+describe('second re-run (dot 1791427941)', () => {
+  it('an async edit callback is refused and publishes nothing', async () => {
+    const d = new Core()
+    d.edit(e => e.layer('L'))
+    const before = d.snapshot()
+    expect(() => d.edit((async (e: Editor) => { e.point('a', 'L', P(0)); await Promise.resolve() }) as unknown as (e: Editor) => void)).toThrow(/synchronous/)
+    await Promise.resolve()
+    expect(d.snapshot()).toEqual(before)
+  })
+})

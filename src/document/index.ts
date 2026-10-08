@@ -127,7 +127,11 @@ export class Core {
     const e = Editor.open(draft)
     const tx = transactions.get(e)!
     try {
-      fn(e)
+      const result: unknown = fn(e)
+      if (result && typeof (result as { then?: unknown }).then === 'function') {
+        // An async callback would keep running after the edit closes (dot 1791427941).
+        throw new Error('edit callbacks must be synchronous; nothing was published')
+      }
       commit(draft, tx.changes)
     } catch (err) {
       if (err instanceof Cancelled) return

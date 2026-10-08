@@ -230,7 +230,7 @@ export function move(n: NetworkState, ch: Changes, targets: { id: Id; target: Ve
     rawPoint(n, id).position = t
     const i = ch.targets.findIndex(x => x.point === id)
     if (i >= 0) ch.targets.splice(i, 1)
-    ch.targets.push({ point: id, target: t })
+    ch.targets.push({ point: id, target: { x: t.x, y: t.y } }) // separate copy: no shared object with the state
   }
 }
 
