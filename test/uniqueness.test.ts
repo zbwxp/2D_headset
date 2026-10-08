@@ -90,3 +90,21 @@ describe('smooth springs with curve springs (bowen 1791429195)', () => {
     expect(Math.abs(wrap(a[2]! - a[0]!))).toBeCloseTo(2 * Math.PI / 3, 6)
   })
 })
+
+describe('zero-length handles (dot 1791431206)', () => {
+  it('two smooth pairs joined only through a zero-length handle are solved as separate groups', () => {
+    // At o: lines s0, z, s3; joins z–s0 and z–s3; z's handle at o has zero length, so it links nothing.
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('o', 'L', P(0))
+      sk(e).point('p0', 'L', P(10, 0)); sk(e).line('s0', 'o', 'p0')
+      sk(e).point('pz', 'L', P(0, 10)); sk(e).line('z', 'o', 'pz', { ha: P(0, 0), hb: P(0, -3) })
+      sk(e).point('p3', 'L', P(-7, 7)); sk(e).line('s3', 'o', 'p3')
+    })
+    d.edit(e => { e.join('o', 'z', 's0', { mode: 'smooth' }); e.join('o', 'z', 's3', { mode: 'smooth' }) })
+    const before = d.snapshot().lines.find(l => l.id === 's3')!.ha
+    d.edit(e => e.moveHandle('s0', 'a', P(0, 3)))
+    // s0 and s3 are not connected through any live constraint: s3 must not turn.
+    expect(d.snapshot().lines.find(l => l.id === 's3')!.ha).toEqual(before)
+  })
+})

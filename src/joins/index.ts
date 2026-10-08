@@ -131,9 +131,13 @@ export function solve(
   const affected = net.affectedPoints(n, ch)
   const heldKeys = new Set(ch.held.filter(h => lines.has(h.line)).map(h => key(h)))
   const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
-  for (const group of smoothGroups([...refs.keys()], neighbours)) {
-    if (!group.some(k => affected.has(pointOf(refs.get(k)!)))) continue // only where this edit acted
-    const ids = group.filter(k => length(handleOf(refs.get(k)!)) > 1e-9)
+  // Zero-length handles have no direction and take no part; groups are formed only
+  // from the constraints that actually take part (dot 1791431206).
+  const live = [...refs.keys()].filter(k => length(handleOf(refs.get(k)!)) > 1e-9)
+  const liveSet = new Set(live)
+  const liveNeighbours = new Map(live.map(k => [k, neighbours.get(k)!.filter(o => liveSet.has(o))]))
+  for (const ids of smoothGroups(live, liveNeighbours)) {
+    if (!ids.some(k => affected.has(pointOf(refs.get(k)!)))) continue // only where this edit acted
     if (ids.length < 2) continue
     const theta = new Map(ids.map(k => [k, angleOf(handleOf(refs.get(k)!))]))
     const before = new Map(theta)
@@ -141,7 +145,7 @@ export function solve(
     for (let sweep = 0; sweep < 2000; sweep++) {
       let change = 0
       for (const k of free) {
-        const nb = neighbours.get(k)!.filter(o => theta.has(o))
+        const nb = liveNeighbours.get(k)!
         if (!nb.length) continue
         const t = theta.get(k)!
         const step = nb.reduce((s, o) => s + wrap(theta.get(o)! + Math.PI - t), 0) / nb.length
