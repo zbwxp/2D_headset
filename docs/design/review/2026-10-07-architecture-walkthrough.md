@@ -3196,3 +3196,44 @@ Agrees: B is a strategy choice, not derived.
 - The core's undo already works this way.
 
 **bowen 1791434403:** "写进知识图谱里 先别实现". Graph rows written; no implementation until layer new / delete / rename are decided.
+
+## Q30: Layer management — new, rename, copy, delete
+
+**bowen** 1791434713:
+> 然后我们再来看图层的复制新建之类的操作。这个你们先简单给我一个原则的例子。我照着例子改。
+
+### Example given (Claude 1791434749, corrected by dot 1791434801 and Claude 1791434816)
+
+1. **New layer:** an empty ordered container with only an id, a name and a list position. Layers store no visibility or lock of their own; the panel icons are derived from the elements.
+2. **Rename:** changes only the name.
+3. **Copy** (dot's general rule): make a new-identity copy of the chosen range. Relations inside the range attach to the copy; relations reaching outside are not carried; the original is unchanged.
+   - Copying layer A only: links from A to another layer B are not carried to A′.
+   - Copying A and B together: the copies keep a link between A′ and B′.
+4. **Delete layer:** deletes the layer and its elements. Other layers only lose links to the deleted endpoints.
+5. **Reorder** is a state change and goes into undo.
+6. These operations change only the container or its membership, never geometry rules.
+
+### bowen (1791435000)
+
+> 2 名字不可重复 （语义同样重要）3 OK 联动不复制 4 是的删除只删除波及其他图层的联动，对应图层只把联动删掉（因为联动的线id没了）有锁定的话，按照锁定的原则难道不是只留下锁定的那一根线？ 5OK6OK 如果代码允许空图层那就不需要保留图层，但是default是给一个空图层。
+
+**Decided:**
+- **2:** layer names must be unique.
+- **3:** OK; links are not copied.
+- **4:** delete removes the links that reach other layers; those layers only lose the link.
+  - With locks, deleting a layer is a batch over its elements, as with D: unlocked elements are deleted and locked ones stay.
+  - The layer therefore stays while it still has contents.
+- **5, 6:** OK. Empty layers, and no layers at all, are allowed. A new document gets one empty layer by default.
+
+### Claude (1791435023): a conflict for bowen
+
+A locked fill bounded by unlocked lines. Deleting the layer deletes those lines, so the loop breaks and the locked fill would vanish.
+
+- **甲:** the lock covers only the fill's own attributes (per Q29 C), so the fill vanishes.
+- **乙:** the lock also protects the fill's existence, so its boundary lines stay too.
+
+Claude prefers 甲, consistent with Q29 C.
+
+### Status
+
+Waiting for bowen on 甲 or 乙.
