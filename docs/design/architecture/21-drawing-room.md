@@ -23,7 +23,8 @@ What carries over from v2 §6:
 
 **Scope rule (bowen 1791476920):** a feature whose principles are not settled in the v3 graph is not touched. Against v2 §6 this gives:
 - **In:** named operations shared by both entries; `apply` (one undo step); `preview`; errors with a code, a message and the object addresses; `render`; `inspect` returning ids and the structure.
-- **Not now (no v3 principles):** semantic names and tags (`inspect` gives no names; no `find`); `diff`; `explain`; save / load.
+- **Not now (no v3 principles):** semantic names and tags (no `find`); `diff`; `explain`; save / load.
+- Not doing semantic names does not hide what exists: layer names (new, rename) stay readable through `inspect` (dot).
 
 ## 1. Scope of the first drawing room
 
@@ -129,7 +130,8 @@ flowchart LR
 | `commands` | the command vocabulary: plain, serialisable objects such as `{ type: 'rotate', centre, angle }` | runs a batch of commands as one `core.edit`; returns `{ ok }` or `{ error: { code, message, targets } }`; a preview runs the batch without publishing (needs `core.preview`, §5) | decide anything a rule decides (it only maps commands to Editor calls) |
 | `queries` | nothing | the read model for both interfaces: snapshot, geometry, bounds, **hit testing** (nearest point / handle / line, smallest loop) with a tolerance given by the caller | change anything |
 | `interaction` (closed, replaceable) | all human-side state: active tool, gesture state, panel state, shortcuts | everything a person touches: DOM events → tools (pen, V, A, split, bind, link, joins, merge position, fill, mirror apply, mirror link) → preview batches while dragging, one command batch on release; Esc cancels; snapping previews only (backlog 4); toolbar, layer panel, properties; shows refusals (backlog 2, 6, 11); hands `view` an overlay description to draw | rules; any route to `core` except `commands` / `queries`; keeping its own copy of document data |
-| `view` | the camera (pan / zoom) | draws geometry and overlays (selection, handles, axis, preview, red cross with lock or mirror mark) from snapshot + geometry + tool overlay; maps screen ↔ document | change state |
+| `view` | the camera (pan / zoom) | defines the **overlay description** format in its public interface; builds a draw list from snapshot + geometry + overlay description; maps screen ↔ document; hands the draw list to the renderer | change state; import any interaction type (dot) |
+| `renderer` (closed, replaceable; §6c) | nothing | draw list → pixels (screen, or an image for `ai-api.render`) | hit testing; tool or event code; change state |
 | `ai-api` | nothing | `execute(commands)`, `query(...)`, `render(options) → image`; exposed for agents (e.g. on `window` for browser automation); same commands and error codes as people get | its own rules or shortcuts past `commands` |
 | `app` | the one `Core` instance | wires modules, nothing else | logic |
 
@@ -167,6 +169,7 @@ flowchart LR
   - **One actor at a time:** people and AI never operate at the same time (bowen 1791477364), taking turns on one document (dot 1791477408). So there is no concurrent merging, no handling of both sides writing at once, and no separate selections or histories.
   - **A preview expires on any change** (dot 1791477456): even with one actor, a preview can go stale, for example preview → undo, or preview → another command. Any committed edit, undo or redo invalidates every earlier preview. A preview returns a token, and committing *by that token* is refused with `preview-expired` once anything has changed. A plain `execute(batch)` (no token) simply runs on the current state. This is one change counter, not a version protocol.
   - **No late previews:** a preview runs synchronously, inside the pointer event that asked for it, so a result can never arrive after a later operation. If a preview ever becomes asynchronous, it carries its gesture's sequence number, and results from an older gesture are dropped (dot 1791477408).
+- **Edits with explicit targets** (dot): today `Editor.transform` / `translate` / `rotate` / `scale` / `flip` act on the current selection. The entry rule (§6b) needs the same operations with the targets as an argument, reusing `editing`'s plan. `commands` must not fake it by selecting, transforming and restoring the selection.
 - **Structured refusals** (dot 1791477302): today most refusals are plain `Error`s carrying a message. They must become `{ code, message, objects: ids, written: false }`. This is explicit interface work in `core`. No entry may parse message text to guess which object gets the red cross.
 - **Change counter:** incremented by every committed edit, undo and redo. Used only so a preview can expire (dot 1791477456).
 - ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
@@ -210,10 +213,9 @@ What makes it replaceable:
 - **Nothing outside depends on its inside:** `core`, `commands`, `queries`, `view` and `ai-api` never import it. A boundary test enforces this.
 - **No meaning lives only in it:** every choice that changes a result is a command parameter with its default in `commands` (§6b). So swapping interaction changes how things feel, never what a given command does to the document.
 - **Contract tests**, which any interaction module must pass:
-  - scripted input sequences give the expected command batches;
-  - scripted input sequences give the expected overlay descriptions.
-  
-  The future principled module is accepted by the same tests, plus its own.
+  - **fixed:** the interface and what an operation means. The same intent (for example "move this line to here") gives the same document and the same undo;
+  - **not fixed:** shortcuts, gesture steps, panel layout and how hints look. Each version tests these with its own interaction tests; a scripted mouse sequence or overlay from the old module is never a shared test, or it would lock the next interaction principles in (dot 1791477618);
+  - shared by every version: no route past the contract, cancel works, one commit per gesture, nothing left after unloading.
 - **The AI entry does not go through it,** so the AI side is untouched by the swap.
 - **It owns only transient state** (dot 1791477596): active tool, the step a drag has reached, the marquee, snap hints. Document data, the selection, links and the undo history stay in their own modules; interaction keeps no second copy.
 - **One implementation is chosen in `app`.** Old and new follow the same contract, and a swap changes only that line. There is no plugin marketplace and no hot-loading framework.
@@ -231,6 +233,15 @@ What makes it replaceable:
 - **Result-affecting choices are parameters:** for example, whether a scale also scales arc radii, or what a snap resolved to. Their defaults live in `commands`, shared by both entries. Tools keep only pure interaction settings: snap radius in pixels, hit tolerance.
 - **Same command, same behaviour:** paired acceptance compares the same targets, the same parameters and the same starting document, not button names.
 - **One id allocator:** new ids come from `commands` (or from the caller, explicitly), the same for both entries. Repeated previews of one gesture reuse their ids.
+
+## 6c. The renderer is one closed, replaceable module too (bowen, after 1791477652)
+
+React draws the page frame and the panels; it is not what gets replaced. The drawing surface (SVG or Canvas 2D) is the **renderer**, a display-only module under the same principle: **it must not pollute any other module.**
+- **In:** a draw list from `view` (curves, fills, overlay marks, all in screen coordinates). **Out:** pixels, on screen or as an image for `ai-api.render`.
+- It holds no state, makes no hit tests, and knows no tools or events. Hit testing is `queries`' geometry, so it does not depend on what draws.
+- Counter-example, v1 `src/ui/drawing/PaintScene.tsx:43-44`: the SVG drawing also renders transparent hit paths, lists tool names and handles `onPointerDown`. Drawing, hit testing and tools are tangled, so the renderer could not be swapped alone.
+- Shared tests: the same draw list gives the same picture within a pixel tolerance; nothing outside imports it (boundary test).
+- So SVG versus Canvas 2D becomes a choice of one module, reversible by a swap in `app`.
 
 ## 7. Open, for bowen
 
