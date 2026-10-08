@@ -2749,6 +2749,20 @@ Waiting for dot's independent review and bowen on A–D.
 
 No master / follower is needed.
 
+### dot's precision (1791424305, 1791424385)
+
+**"Moved points" means the points this operation directly acts on.** It does not mean points carried along by a link, and it does not mean points whose coordinates happened to change.
+
+- **Example:** both sides take part in a deformation. One side's result is still 0 and the other's is 10. The final position is 5. The first side is not excluded just because its coordinate did not change.
+- **How to compute:**
+  - use the target positions before link correction;
+  - work in one canvas coordinate system;
+  - count each point once.
+- **Result:** single-side follow, two-sided midpoint and many-sided average are one rule, independent of processing order.
+- **Example:** targets 10 and 20 end at 15. If only one side is edited to 10, the other follows to 10, with no halving against an unedited point.
+
+Claude agrees; the rule above is to be read with this definition.
+
 ### Status
 
 **Decided:**
