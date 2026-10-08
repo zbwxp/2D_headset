@@ -3151,3 +3151,21 @@ Agrees: B is a strategy choice, not derived.
 3. **F means undo restores edits only.** An element hidden after an edit stays hidden when that edit is undone.
    - **Edge case for bowen:** undoing an edit that changed a line which is now locked — undo as usual, or refuse because of the lock?
 
+### dot (1791434214) and Claude (1791434229)
+
+**Two base definitions change:**
+- Each line stores its own final width, and a group width change is a batch.
+- Visibility, lock and order states are separate from edit undo, so undoing a shape does not restore old states.
+
+**A/B versus D:**
+- D's legal targets are the unlocked members, all committed together.
+- A/B would change locked geometry, so the whole operation is refused. This is not "execute half and ignore the error".
+
+**Binding correction (Claude agrees):**
+- Binding is allowed only if the locked line's endpoints and connections are unaffected; then it only keeps its width.
+- If the locked line ends at the merged-away point, or its connections change, binding is refused per A.
+
+**Asked bowen:**
+- Is reordering also a state change outside undo?
+- Does that cover only layer order, or also the order of groups and fills inside a layer?
+
