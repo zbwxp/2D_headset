@@ -3011,3 +3011,52 @@ The package plan is in `docs/design/architecture/20-packages.md` (`1034a4a`): pa
 ### Status
 
 Waiting for dot's independent review and bowen.
+
+## Q29: Layers — a minimal set of principles
+
+**bowen** 1791432837:
+> 图层你们按照旧版以及成熟方案，给我总结出几条最小原则集 给我审阅。
+
+### Claude's draft (1791432979)
+
+Sources:
+- v103 = `7205381` code.
+- Illustrator and Figma = official help pages opened this session:
+  - helpx.adobe.com: Illustrator Layers overview / Lock or unlock layers / Hide or show layers / Delete layers;
+  - help.figma.com: Toggle visibility to hide layers / Lock and unlock layers.
+
+**Already decided (carried over):**
+
+1. A layer is an ordered list of continuous curves (groups). Layers themselves are an ordered list, and upper layers cover lower ones.
+2. Lines, closed curves and fills never cross layers. Only endpoint links do.
+3. Moving to another layer is copy + delete.
+
+**Proposed:**
+
+4. **A layer has three attributes: name, visibility, lock.** Order is its list position.
+   - v103 `DrawingLayer {id, name, visible, locked, items}` (`model.ts:64`).
+   - Illustrator and Figma both have visibility and lock toggles.
+5. **A layer's visibility and lock govern everything inside it.**
+   - Figma: locking a parent locks its children, and a child cannot be unlocked alone.
+   - v103: `layerChange` sets the state of every item (`commands.ts:21-25`).
+6. **Deleting a layer deletes its contents, then the layer.** At least one layer remains.
+   - v103 `deleteLayers` deletes the objects, then the layer.
+   - Illustrator: the delete icon is unavailable when the document has only one layer.
+7. **No sublayers.** Our groups are derived from shared endpoints, so nesting would only add concepts. This is Claude's proposal, with no source.
+
+**For bowen:**
+
+- **A. Can hidden things be edited?**
+  - Figma: a hidden layer cannot be selected on the canvas, but can be selected and changed in the Layers panel.
+  - v103: hidden objects cannot be modified, except deletion from the list.
+- **B. Can locked things be deleted?**
+  - v103: no.
+  - Figma's page says a locked layer cannot be selected or moved on the canvas, but can still be selected and changed in the panel. The page says nothing about deleting.
+- **C. Cross-layer link with a locked side.** When layer B is locked and the linked point in A moves:
+  - the locked side stays fixed and the other side aligns to it; or
+  - the move does not take effect.
+- **D. Do groups and fills get their own visibility and lock,** or only layers? Today only fills have visibility in the graph.
+
+### Status
+
+Waiting for dot's review and bowen's decisions.
