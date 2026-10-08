@@ -67,7 +67,10 @@ How this section works:
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
 | Point | is | A shared position. Each line keeps its own end there, with its own handle; handles belong to lines. | confirmed | bowen 1791383633; Q23 |
 | End stroke (taper and so on) | belongs to | The point. Connected points have a continuous stroke, so tapers take effect only at free ends. Special effects at a junction use show/hide intervals. | confirmed | bowen 1791393850 (Q23) |
-| Join | is an attribute of | The point. It records which pairs of the point's lines are smooth; a corner means no record. | confirmed | bowen 1791393710 (Q23) |
+| Join | is an attribute of | The point: a table with one row per pair of its lines, each with a mode. **Smooth** is a spring; **cusp** gives a sharp stroke outline; **arc** generates arc geometry with a radius. No row means 仅绑定, drawn as a continuous round junction. | confirmed | bowen 1791393710 (Q23), 1791425164 (Q27); v103 `model.ts:68` |
+| Fill boundary | follows | The closed curve's final geometric outline after joins and deformation (an arc join changes it). It does not follow stroke width, taper, blur or show/hide. Whether a loop exists depends only on connectivity. How fill joins at forks is open. | confirmed | bowen 1791425164, 1791425445; dot 1791425290, 1791425420 (Q27) |
+| Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | confirmed (placement only) | bowen 1791424844, 1791425164 (Q26/Q27) |
+| Show/hide intervals | belong to | The continuous curve, discussed later | confirmed (placement only) | bowen 1791425164 (Q27) |
 | Smooth join | is | A stiff spring pulling two handles toward a straight line. Conflicts show the compromise and are never refused. Stiffness is one global fixed value. | confirmed | bowen 1791421304, 1791421988 (Q23) |
 | 3 / 4 lines all mutually smooth | settle at | 120° / 90°. Acceptance cases: a large stiffness alone does not guarantee them. | confirmed | bowen 1791421988; dot 1791422049 (Q23) |
 | Endpoint binding | sets | The width and profile of both groups to the first-clicked group's | confirmed | bowen 1791421988 (Q23) |
@@ -2985,3 +2988,6 @@ Lines are drawn above fills, and the ink straddles the centreline, so it looks l
 Claude and dot agree on the principle. The graph changes wait for bowen's "写":
 - amend "corner means no record";
 - add the derived-geometry principle.
+
+**bowen 1791425445:** "OK 这样改合理". The Q27 wording is approved and written to the graph: the join row is amended and the fill-boundary principle added. Claude had said this approval would trigger writing (1791425431).
+
