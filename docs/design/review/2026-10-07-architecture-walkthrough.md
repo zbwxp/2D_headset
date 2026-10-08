@@ -2896,5 +2896,5 @@ These are operation ownership, not one button per item.
 Waiting for bowen:
 - cusp as a point stroke attribute;
 - arc join's place (it generates geometry);
-- merge position as a one-time snap at the point level;
+- ~~merge position as a one-time snap at the point level~~ **decided (bowen 1791424844):** "合并位置是一次编辑行为 端点联动才是修改了属性". Merge position is a one-time edit at the point level and creates no relation; a link modifies attributes;
 - deformation, mirror editing and show/hide intervals in the next layer.
