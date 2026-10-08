@@ -280,13 +280,20 @@ export class Editor {
   /** Remove the mirror link of these lines; geometry stays. */
   unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
 
-  /** Keep the state right after an apply for every line it locked, so the lock protects from that moment. */
+  /**
+   * For every line an apply locked: the state once the edit so far has been settled by
+   * the normal constraint pipeline (links, mirror, springs) — run on a scratch copy —
+   * so the apply's own constraint results are allowed and only later changes count
+   * (dot, reviews of 44c58b4 and d9e2247).
+   */
   private afterApply() {
     const { state: s, changes, appliedFrom } = this.tx
     const fresh = changes.appliedLocks.filter(id => !appliedFrom.has(id))
     if (!fresh.length) return
-    const copy = structuredClone({ network: s.network, joins: s.joins, links: s.links })
-    for (const id of fresh) appliedFrom.set(id, copy)
+    const scratch = structuredClone(s), scratchChanges = structuredClone(changes)
+    settle(scratch, scratchChanges)
+    const settled = { network: scratch.network, joins: scratch.joins, links: scratch.links }
+    for (const id of fresh) appliedFrom.set(id, settled)
   }
   private loops(loop: Id): Id[] { return apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop) }
 
@@ -429,6 +436,13 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
  * → fills → groups → locks.
  */
 function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View> = new Map()) {
+  settle(s, ch)
+  const changed = locks.changed(published, s, ch, appliedFrom)
+  if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
+}
+
+/** The fixed pipeline up to (not including) the lock check: everything the edit's constraints settle. */
+function settle(s: State, ch: net.Changes) {
   applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   // Link alignment can make new coincidences, and binding can end links, so repeat
   // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
@@ -448,6 +462,4 @@ function commit(s: State, ch: net.Changes, published: State, appliedFrom: Readon
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
   editing.clean(s.selection, s.network, s.fills)
-  const changed = locks.changed(published, s, ch, appliedFrom)
-  if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }

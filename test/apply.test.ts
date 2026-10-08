@@ -142,6 +142,30 @@ describe('mirror apply', () => {
     expect(() => d2.edit(e => { e.mirrorApply(['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']); e.move([{ id: 'q1', target: P(30, 30) }]) })).toThrow(/Locked lines would change \(r1\)/)
   })
 
+  it('A4e. an apply’s own constraint results are allowed with a locked source: linked target ends settle where the link puts them (dot, review of d9e2247)', () => {
+    const build = (lockSource: boolean) => {
+      const d = new Core()
+      d.edit(e => {
+        e.layer('A'); e.layer('B'); e.layer('C')
+        // sources in A and B; their ends reflect to x = 10 and x = 20
+        sk(e).point('s1', 'A', P(-10)); sk(e).point('sa', 'A', P(-10, -8)); sk(e).line('srcA', 'sa', 's1')
+        sk(e).point('s2', 'B', P(-20)); sk(e).point('sb', 'B', P(-20, -8)); sk(e).line('srcB', 'sb', 's2')
+        // targets in A and B, their ends joined through an outside point o in C
+        sk(e).point('t1', 'A', P(12, 1)); sk(e).point('ta', 'A', P(12, -7)); sk(e).line('tgtA', 'ta', 't1')
+        sk(e).point('t2', 'B', P(12, 1)); sk(e).point('tb', 'B', P(22, -7)); sk(e).line('tgtB', 'tb', 't2')
+        sk(e).point('o', 'C', P(12, 1)); sk(e).point('o2', 'C', P(0, 30)); sk(e).line('out', 'o', 'o2')
+        e.link('o', 't1'); e.link('o', 't2')
+      })
+      if (lockSource) d.edit(e => e.lineState('srcA', { locked: true }))
+      d.edit(e => e.mirrorApply(['srcA', 'srcB'], ['tgtA', 'tgtB']))
+      return d
+    }
+    const a = build(false), b = build(true)
+    expect(point(a, 't1').position.x).toBe(15) // the link averages the placed 10 and 20
+    expect(JSON.stringify(s(a).points)).toBe(JSON.stringify(s(b).points))
+    expect(line(b, 'tgtA').state.locked).toBe(true)
+  })
+
   it('A4c. joins across an endpoint link inside the selection are copied, and cleared when the source has none (dot, review of d5e2704)', () => {
     const build = () => {
       const d = new Core()
