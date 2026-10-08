@@ -196,6 +196,24 @@ describe('transforms act on what the selection expands to', () => {
     expect(line(d, 'ab').ha).toEqual(P(1, 1))
   })
 
+  it('E20. transform then split in one edit keeps the shape: the aimed handle goes with the split (dot, review of d5e2704)', () => {
+    const build = () => {
+      const d = new Core()
+      d.edit(e => { e.layer('A'); sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).line('ab', 'a', 'b', { ha: P(2, 4), hb: P(-3, 5) }) })
+      return d
+    }
+    const together = build(), apart = build()
+    together.edit(e => { e.select([{ kind: 'line', id: 'ab' }]); e.translate(0, 3); e.split('ab', 0.5, 'm', 'p1', 'p2') })
+    apart.edit(e => { e.select([{ kind: 'line', id: 'ab' }]); e.translate(0, 3) })
+    apart.edit(e => e.split('ab', 0.5, 'm', 'p1', 'p2'))
+    expect(close(line(together, 'p1').ha, P(1, 2))).toBe(true)
+    for (const id of ['p1', 'p2']) {
+      const x = line(together, id), y = line(apart, id)
+      expect(close(x.ha, y.ha) && close(x.hb, y.hb)).toBe(true)
+    }
+    expect(close(point(together, 'm').position, point(apart, 'm').position)).toBe(true)
+  })
+
   it('E12. a zero scale is refused', () => {
     const d = corner()
     d.edit(e => e.select([{ kind: 'line', id: 'ab' }]))

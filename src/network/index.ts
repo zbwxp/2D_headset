@@ -44,7 +44,7 @@ const S = (n: NetworkState) => n as unknown as Store
 /** What one edit did to the network; attribute modules update their own references from it. */
 export interface Changes {
   /** A split: `line` (a→b) became pieces[0] (a→mid) and pieces[1] (mid→b). */
-  replaced: { line: Id; a: Id; b: Id; mid: Id; pieces: [Id, Id] }[]
+  replaced: { line: Id; a: Id; b: Id; mid: Id; pieces: [Id, Id]; t: number }[]
   /** Lines the user deleted. */
   deletedLines: Id[]
   /** Lines removed by binding because both ends landed on one point. */
@@ -63,8 +63,12 @@ export interface Changes {
   touched: Id[]
   /** Points moved to another layer with their group (cut and paste) in this edit. */
   relocated: Id[]
-  /** Handles aimed at an absolute tip in this edit; their offsets are measured from the final point positions at commit. */
-  handleTips: { line: Id; end: End; tip: Vec }[]
+  /**
+   * Handles aimed at an absolute tip in this edit. At commit the offset is
+   * factor × (tip − the point's final position); a split scales the factor exactly as
+   * it scales the handle (t on the first piece's a end, 1 − t on the second's b end).
+   */
+  handleTips: { line: Id; end: End; tip: Vec; factor: number }[]
   /** Element states an apply gives its targets, written after the lock check (see `deferLineState`). */
   laterStates: { line: Id; state: ElementState }[]
 }
@@ -113,7 +117,10 @@ export function affectedPoints(n: NetworkState, ch: Changes): Set<Id> {
 export function followReplacements(acc: Changes, op: Changes) {
   for (const r of op.replaced) {
     acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end } : h))
-    acc.handleTips = acc.handleTips.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip } : h))
+    // the intent goes with the split geometry, not only with the ids (dot, review of d5e2704)
+    acc.handleTips = acc.handleTips.map(h => (h.line === r.line
+      ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip, factor: h.factor * (h.end === 'a' ? r.t : 1 - r.t) }
+      : h))
     acc.laterStates = acc.laterStates.flatMap(x => (x.line === r.line ? r.pieces.map(line => ({ line, state: x.state })) : [x]))
   }
 }
@@ -148,16 +155,16 @@ export function aimHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, ti
   if (end === 'a') l.ha = offset
   else l.hb = offset
   ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end))
-  ch.handleTips.push({ line: lineId, end, tip: { x: t.x, y: t.y } })
+  ch.handleTips.push({ line: lineId, end, tip: { x: t.x, y: t.y }, factor: 1 })
   hold(n, ch, lineId, end)
 }
 
-/** At commit, after positions are final: every aimed handle's offset = tip − its point's final position. */
+/** At commit, after positions are final: every aimed handle's offset = factor × (tip − its point's final position). */
 export function resolveHandleTips(n: NetworkState, ch: Changes) {
   for (const h of ch.handleTips) {
     if (!hasLine(n, h.line)) continue
     const l = rawLine(n, h.line), p = rawPoint(n, h.end === 'a' ? l.a : l.b).position
-    const offset = { x: h.tip.x - p.x, y: h.tip.y - p.y }
+    const offset = { x: h.factor * (h.tip.x - p.x), y: h.factor * (h.tip.y - p.y) }
     if (h.end === 'a') l.ha = offset
     else l.hb = offset
   }
@@ -623,7 +630,7 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   all.splice(all.indexOf(l), 1,
     { id: first, a: l.a, b: mid, ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]), state: { ...l.state }, stroke: { ...l.stroke } },
     { id: second, a: mid, b: l.b, ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]), state: { ...l.state }, stroke: { ...l.stroke } })
-  ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second] })
+  ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second], t })
 }
 
 /** Delete removes the line; an endpoint left with no line is removed at commit (removeIsolated). */

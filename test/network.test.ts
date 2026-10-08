@@ -42,7 +42,7 @@ describe('network', () => {
     expect(net.curve(n, 'h00a')[0]).toEqual(before[0])
     expect(net.curve(n, 'h00b')[3]).toEqual(before[3])
     expect(net.lines(n).findIndex(l => l.id === 'h00a')).toBe(0)
-    expect(ch.replaced).toEqual([{ line: 'h00', a: 'p00', b: 'p10', mid: 'm', pieces: ['h00a', 'h00b'] }])
+    expect(ch.replaced).toEqual([{ line: 'h00', a: 'p00', b: 'p10', mid: 'm', pieces: ['h00a', 'h00b'], t: 0.5 }])
   })
 
   it('components follow shared points', () => {
