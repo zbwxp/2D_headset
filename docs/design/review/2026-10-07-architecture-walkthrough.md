@@ -3169,3 +3169,18 @@ Agrees: B is a strategy choice, not derived.
 - Is reordering also a state change outside undo?
 - Does that cover only layer order, or also the order of groups and fills inside a layer?
 
+### bowen (1791434322) and Claude (1791434338)
+
+> 1 对的线宽要记在每一条线上 未来可能会有线条笔触就需要两条线不同线宽会做过渡。2对 锁定可以改状态不能编辑。3 我想了一下为了原则简洁 状态变更也进撤销 这样是不是就没有问题了？
+
+**Decided:**
+1. Width is stored on each line. A future stroke may transition between two lines of different widths.
+2. A locked element can change state but cannot be edited.
+3. **State changes go into undo too**, for a simpler principle. This replaces F.
+
+**Claude:**
+- Every operation, edit or state change, is one undo step, undone in reverse time order.
+- Undoing an edit on a line that was locked later is no conflict: the lock step is undone first.
+- Reordering needs no special case.
+- The core's undo already works this way.
+
