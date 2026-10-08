@@ -132,6 +132,30 @@ describe('transforms act on what the selection expands to', () => {
     expect(point(d, 'q').position).toEqual(P(10, -4))
   })
 
+  it('E14. a handle selected alone moves under translation; its point stays (dot, review of 070477e)', () => {
+    const d = corner()
+    const hb = line(d, 'ab').hb
+    d.edit(e => { e.select([{ kind: 'handle', line: 'ab', end: 'b' }]); e.translate(0, 2) })
+    expect(point(d, 'b').position).toEqual(P(10))
+    expect(close(line(d, 'ab').hb, { x: hb.x, y: hb.y + 2 })).toBe(true)
+  })
+
+  it('E15. a handle selected alone rotates about an outside centre as its tip does', () => {
+    const d = corner()
+    const before = line(d, 'ab').hb, tip = { x: 10 + before.x, y: before.y }
+    d.edit(e => { e.select([{ kind: 'handle', line: 'ab', end: 'b' }]); e.rotate(P(0), Math.PI / 2) })
+    // the tip turns a quarter about the origin; the point b stays at (10, 0)
+    expect(close({ x: 10 + line(d, 'ab').hb.x, y: line(d, 'ab').hb.y }, { x: -tip.y, y: tip.x })).toBe(true)
+  })
+
+  it('E16. a point and its own handle selected together are transformed once, not twice', () => {
+    const a = corner(), b = corner()
+    a.edit(e => { e.select([{ kind: 'point', id: 'b' }, { kind: 'handle', line: 'ab', end: 'b' }]); e.rotate(P(0), 0.3) })
+    b.edit(e => { e.select([{ kind: 'line', id: 'ab' }]); e.rotate(P(0), 0.3) })
+    expect(close(line(a, 'ab').hb, line(b, 'ab').hb)).toBe(true)
+    expect(close(point(a, 'b').position, point(b, 'b').position)).toBe(true)
+  })
+
   it('E12. a zero scale is refused', () => {
     const d = corner()
     d.edit(e => e.select([{ kind: 'line', id: 'ab' }]))

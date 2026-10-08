@@ -6,7 +6,7 @@
 import * as net from '../network'
 import * as groups from '../groups'
 import * as fills from '../fills'
-import { type Vec, type Cubic, bounds } from '../geometry'
+import { type Vec, type Cubic, add, sub, bounds } from '../geometry'
 
 type Id = net.Id
 
@@ -81,7 +81,6 @@ export function expand(s: SelectionState, n: net.NetworkState, f: fills.FillsSta
 /** x' = a·x + c·y + e, y' = b·x + d·y + f */
 export interface Affine { a: number; b: number; c: number; d: number; e: number; f: number }
 const apply = (m: Affine, p: Vec): Vec => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f })
-const linear = (m: Affine, v: Vec): Vec => ({ x: m.a * v.x + m.c * v.y, y: m.b * v.x + m.d * v.y })
 
 export const translation = (dx: number, dy: number): Affine => ({ a: 1, b: 0, c: 0, d: 1, e: dx, f: dy })
 export function rotation(centre: Vec, angle: number): Affine {
@@ -93,17 +92,25 @@ export function scaling(centre: Vec, sx: number, sy: number): Affine {
 }
 
 /**
- * The moves a transform makes: expanded points go to M·p, expanded handles become
- * linear(M)·offset. Every other handle keeps its offset, so it moves with its point
- * without turning (graph: "Geometric transform keeps"). Line width is untouched.
+ * The moves a transform makes: expanded points go to M·p. An expanded handle's tip
+ * (its absolute position) goes to M·tip, and its new offset is measured from where
+ * its point ends up, so a handle selected alone moves too (dot, review of 070477e).
+ * Every other handle keeps its offset, so it moves with its point without turning
+ * (graph: "Geometric transform keeps"). Line width is untouched.
  */
 export function transformPlan(s: SelectionState, n: net.NetworkState, f: fills.FillsState, m: Affine) {
   if (![m.a, m.b, m.c, m.d, m.e, m.f].every(Number.isFinite)) throw new Error('A transform needs finite numbers')
   if (Math.abs(m.a * m.d - m.b * m.c) < 1e-12) throw new Error('A transform must not collapse the selection (zero scale)')
   const { points, handles } = expand(s, n, f)
+  const moved = new Set(points)
+  const at = (id: Id) => net.point(n, id).position
+  const after = (id: Id) => (moved.has(id) ? apply(m, at(id)) : at(id))
   return {
-    moves: points.map(id => ({ id, target: apply(m, net.point(n, id).position) })),
-    handles: handles.map(h => ({ ...h, offset: linear(m, net.handle(net.line(n, h.line), h.end)) })),
+    moves: points.map(id => ({ id, target: apply(m, at(id)) })),
+    handles: handles.map(h => {
+      const l = net.line(n, h.line), p = h.end === 'a' ? l.a : l.b, tip = add(at(p), net.handle(l, h.end))
+      return { ...h, offset: sub(apply(m, tip), after(p)) }
+    }),
   }
 }
 
