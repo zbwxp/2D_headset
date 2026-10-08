@@ -209,6 +209,12 @@ What makes it replaceable:
   
   The future principled module is accepted by the same tests, plus its own.
 - **The AI entry does not go through it,** so the AI side is untouched by the swap.
+- **It owns only transient state** (dot 1791477596): active tool, the step a drag has reached, the marquee, snap hints. Document data, the selection, links and the undo history stay in their own modules; interaction keeps no second copy.
+- **One implementation is chosen in `app`.** Old and new follow the same contract, and a swap changes only that line. There is no plugin marketplace and no hot-loading framework.
+- **"Lossless" means** the document and its history are never lost. A half-finished drag is not carried across versions: before a swap it is finished or cancelled, and then the old module's event listeners are removed.
+- **The contract tests also cover cancelling:**
+  - the same intent through the old and the new module gives the same document and the same undo;
+  - a cancelled gesture leaves no preview behind and no half-applied change.
 
 ## 6b. Entry rules added after the attack (bowen 1791477114; Claude 1791477232; dot 1791477302)
 
