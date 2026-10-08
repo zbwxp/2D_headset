@@ -175,11 +175,12 @@ describe('deleting a layer', () => {
     expect(s(d).loops[0]!.color).toBeUndefined()
   })
 
-  it('11. a delete that turns a locked line’s shared end free, with an end stroke there, is refused', () => {
+  it('11. deleting is always allowed (bowen 1791460893 甲): a locked line whose shared end turns free shows its end stroke', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => { e.lineState('ab', { locked: true }); e.endStroke('b', { taper: 2 }) })
-    expect(() => d.edit(e => e.deleteLayer('A'))).toThrow(/Locked lines would change \(ab\)/)
-    expect(s(d).lines).toHaveLength(3)
+    d.edit(e => e.deleteLayer('A'))
+    expect(s(d).lines.map(l => l.id)).toEqual(['ab'])
+    expect(point(d, 'b')!.endStroke).toEqual({ taper: 2 })
   })
 })
 
@@ -313,13 +314,37 @@ describe('line width and locks', () => {
     expect(() => d.edit(e => e.removeLinkJoin('a', 'qa', 'ab', 'qab'))).toThrow(/Locked/)
   })
 
-  it('29e. deleting an unlocked neighbour that shares a join with a locked line’s end is refused: the join would go (dot 1791460706)', () => {
+  it('29e. deleting an unlocked neighbour is allowed; its joins with the locked line go with it (bowen 1791460893 甲)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }); e.join('a', 'ab', 'ca', { mode: 'smooth' }) })
+    d.edit(e => e.lineState('ab', { locked: true }))
+    const trimmed = d.geometry().lines.find(l => l.id === 'ab')!.curve
+    d.edit(e => e.deleteLine('bc'))
+    expect(s(d).joins.map(j => j.point)).toEqual(['a'])
+    expect(d.geometry().arcs).toEqual([])
+    // the arc's trim on ab is gone with the arc: ab is drawn to its end point again
+    expect(d.geometry().lines.find(l => l.id === 'ab')!.curve[3]).toEqual(P(10))
+    expect(trimmed[3]).not.toEqual(P(10))
+    d.edit(e => e.deleteLayer('A'))
+    expect(s(d).lines.map(l => l.id)).toEqual(['ab'])
+  })
+
+  it('29f. splitting an unlocked neighbour keeps the join on the piece and is allowed; deleting that piece is a delete', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
     d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.deleteLine('bc'))).toThrow(/Locked lines would change \(ab\)/)
-    expect(() => d.edit(e => e.deleteLayer('A'))).toThrow(/Locked/)
-    d.edit(e => e.deleteLine('ca')) // no join with ab at a
+    d.edit(e => e.split('bc', 0.5, 'm', 'bc1', 'bc2'))
+    expect(s(d).joins).toEqual([{ point: 'b', lines: ['ab', 'bc1'], mode: 'smooth' }])
+    d.edit(e => { e.split('ca', 0.5, 'n', 'ca1', 'ca2'); e.deleteLine('bc1') })
+    expect(s(d).joins).toEqual([])
+  })
+
+  it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    expect(() => d.edit(e => e.removeJoin('b', 'ab', 'bc'))).toThrow(/Locked/)
+    expect(() => d.edit(e => e.unbind('b', ['bc'], 'b2'))).toThrow(/Locked/)
   })
 
   it('29a. an arc join that reshapes a locked line is refused', () => {

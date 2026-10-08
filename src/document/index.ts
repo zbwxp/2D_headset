@@ -343,6 +343,6 @@ function commit(s: State, ch: net.Changes, published: State) {
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
-  const changed = locks.changed(published, s)
+  const changed = locks.changed(published, s, ch)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
 }

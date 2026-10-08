@@ -4,20 +4,24 @@
 // fills module refuses to change directly; a locked fill may vanish when its loop
 // breaks (Q30 甲), so fills need no comparison here.
 //
-// Protected content of a line (bowen 1791434101, dot after f9c4109):
-// - its drawn curve, as derived computes it (so an arc join that reshapes it counts);
+// Rule (bowen 1791460893, 甲): deleting is always allowed; a lock only blocks edits.
+// Whatever hung on a line the user deleted goes with it, even on a locked line's
+// point (its joins and arcs there, and the end stroke that shows once the end is
+// free). Any other change to a locked line's protected content refuses the edit.
+//
+// Protected content of a line (bowen 1791434101, 1791459836):
+// - its own curve: end points (ids and positions) and handles;
 // - its stroke (width, profile);
-// - at each end, the end stroke that is actually drawn: the point's end stroke if
-//   the end is free (no other line, no link), nothing if it is shared. The
-//   free/shared flag itself is not compared;
-// - at each end point, the point's joins (same-point joins and joins across a link,
-//   dot 1791460421) and the arcs drawn there. A join is an
-//   attribute of the point and the point belongs to the locked line, so a locked
-//   line locks them too (bowen 1791459836). Binding another line onto the point
-//   adds no join and changes none, so it stays allowed.
-// The check is on the result: no line that is locked when the edit ends may differ
-// from before it, and a locked line may not disappear. Unlocking and then editing in
-// one edit is allowed (dot 1791459661: no extra two-step rule).
+// - at each end, the end stroke that is drawn: the point's end stroke if the end
+//   is free (no other line, no link), nothing if it is shared;
+// - at each end point, the point's joins (same-point joins and joins across a
+//   link) and the arcs drawn there, read from derived. A join is an attribute of
+//   the point and the point belongs to the locked line. Binding another line onto
+//   the point adds no join, so it stays allowed.
+// The line's drawn (trimmed) curve follows from its own curve and the arc joins at
+// its ends, so it needs no separate comparison.
+// The check is on the result: no line locked when the edit ends may differ from
+// before it, and a locked line may not disappear (dot 1791459661).
 import * as net from '../network'
 import * as joins from '../joins'
 import * as links from '../links'
@@ -27,16 +31,24 @@ import type { Cubic } from '../geometry'
 type Id = net.Id
 
 export interface View { network: net.NetworkState; joins: joins.JoinsState; links: links.LinksState }
-interface Content { curve: Cubic; stroke: net.Stroke; ends: [string, string]; joins: string; arcs: { key: string; curve: Cubic }[] }
+interface Content { own: string; stroke: net.Stroke; ends: [string, string]; joins: string; arcs: { key: string; curve: Cubic }[] }
 
 const lockedLines = (v: View) => net.lines(v.network).filter(l => l.state.locked).map(l => l.id)
 
-function contents(v: View, ids: Set<Id>): Map<Id, Content> {
+/**
+ * Content of each line, leaving out whatever involves a line the user deleted.
+ * `name(line, point)` gives the line's name after the edit, so a neighbour that was
+ * only split is still the same neighbour (its piece at that point).
+ */
+function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, point: Id) => Id): Map<Id, Content> {
   const out = new Map<Id, Content>()
   if (!ids.size) return out
   const drawn = derived.drawn(v.network, v.joins)
-  const drawnEnd = (point: Id) => {
-    const free = net.linesAt(v.network, point).length === 1 && !links.partners(v.links, point).length
+  const live = (lines: readonly Id[]) => lines.every(x => !deleted.has(x))
+  const pair = (point: Id, lines: readonly Id[]) => lines.map(x => name(x, point)).sort() as [Id, Id]
+  const drawnEnd = (line: Id, point: Id) => {
+    const others = net.linesAt(v.network, point).filter(e => e.line.id !== line && !deleted.has(name(e.line.id, point)))
+    const free = !others.length && !links.partners(v.links, point).length
     // compared by content, not by the order of its keys (dot 1791459721)
     const stroke = (free && joins.endStroke(v.joins, point)) || {}
     return JSON.stringify(Object.keys(stroke).sort().map(k => [k, stroke[k]]))
@@ -45,10 +57,18 @@ function contents(v: View, ids: Set<Id>): Map<Id, Content> {
     if (!net.hasLine(v.network, id)) continue
     const l = net.line(v.network, id)
     const at = (x: { point: Id }) => x.point === l.a || x.point === l.b
+    const pos = (p: Id) => net.point(v.network, p).position
     out.set(id, {
-      curve: drawn.lines.get(id)!, stroke: l.stroke, ends: [drawnEnd(l.a), drawnEnd(l.b)],
-      joins: JSON.stringify([joins.rows(v.joins).filter(at), links.joins(v.links).filter(x => at({ point: x.a }) || at({ point: x.b }))]),
-      arcs: drawn.arcs.filter(at).map(a => ({ key: a.key, curve: a.curve })),
+      own: JSON.stringify([l.a, l.b, pos(l.a), pos(l.b), l.ha, l.hb]),
+      stroke: l.stroke, ends: [drawnEnd(id, l.a), drawnEnd(id, l.b)],
+      joins: JSON.stringify([
+        joins.rows(v.joins).filter(at).map(r => ({ ...r, lines: pair(r.point, r.lines) })).filter(r => live(r.lines))
+          .sort((x, y) => (JSON.stringify(x) < JSON.stringify(y) ? -1 : 1)),
+        links.joins(v.links).filter(x => at({ point: x.a }) || at({ point: x.b }))
+          .map(x => ({ ...x, lines: [name(x.lines[0], x.a), name(x.lines[1], x.b)] })).filter(x => live(x.lines)),
+      ]),
+      arcs: drawn.arcs.filter(at).map(a => ({ key: JSON.stringify([a.point, pair(a.point, a.lines)]), lines: pair(a.point, a.lines), curve: a.curve }))
+        .filter(a => live(a.lines)).sort((x, y) => (x.key < y.key ? -1 : 1)).map(a => ({ key: a.key, curve: a.curve })),
     })
   }
   return out
@@ -56,17 +76,26 @@ function contents(v: View, ids: Set<Id>): Map<Id, Content> {
 
 const near = (a: Cubic, b: Cubic) => a.every((p, i) => Math.abs(p.x - b[i]!.x) < 1e-9 && Math.abs(p.y - b[i]!.y) < 1e-9)
 const same = (a: Content, b: Content) =>
-  near(a.curve, b.curve) && a.stroke.width === b.stroke.width && a.stroke.profile === b.stroke.profile && a.ends[0] === b.ends[0] && a.ends[1] === b.ends[1] &&
+  a.own === b.own && a.stroke.width === b.stroke.width && a.stroke.profile === b.stroke.profile && a.ends[0] === b.ends[0] && a.ends[1] === b.ends[1] &&
   a.joins === b.joins && a.arcs.length === b.arcs.length && a.arcs.every((x, i) => x.key === b.arcs[i]!.key && near(x.curve, b.arcs[i]!.curve))
 
 /**
  * Lines locked in the result whose protected content differs from before the
  * edit. A line that did not exist before (drawn, or copied with its lock) has no
  * earlier content to protect; a line locked before and gone now has changed.
+ * `ch`: the lines the user deleted in this edit, and the splits made in it.
  */
-export function changed(before: View, after: View): Id[] {
+export function changed(before: View, after: View, ch: Pick<net.Changes, 'deletedLines' | 'replaced'>): Id[] {
   const gone = lockedLines(before).filter(id => !net.hasLine(after.network, id))
   const ids = new Set([...gone, ...lockedLines(after).filter(id => net.hasLine(before.network, id))])
-  const a = contents(before, ids), b = contents(after, ids)
+  const deleted = new Set(ch.deletedLines)
+  // follow splits: the piece of a split line that still ends at the point
+  const forward = (line: Id, point: Id): Id => {
+    for (let r = ch.replaced.find(x => x.line === line); r && (r.a === point || r.b === point); r = ch.replaced.find(x => x.line === line)) {
+      line = r.a === point ? r.pieces[0] : r.pieces[1]
+    }
+    return line
+  }
+  const a = contents(before, ids, deleted, forward), b = contents(after, ids, deleted, (line: Id) => line)
   return [...ids].filter(id => { const x = a.get(id), y = b.get(id); return !x || !y || !same(x, y) }).sort()
 }
