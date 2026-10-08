@@ -3077,10 +3077,13 @@ Six principles: layer as an identified container; order only decides covering; h
 
 **For bowen:**
 
-- **A. Visibility:** a master switch (dot), where an individually hidden member stays hidden when the layer is shown again; or a batch write to members (v103).
+- **A. Visibility:**
+  - a master switch (dot's proposal, new), where an individually hidden member stays hidden when the layer is shown again; or
+  - a batch write to members (**v103 behaviour**, `commands.ts:21-25`).
+  - Hidden and locked are kept separate: v103 treated hidden linked objects differently from one operation to another, so one rule should replace that (dot 1791433131).
 - **B. Lock and links:**
-  - links still move a locked point (dot), because lock only stops direct edits; or
-  - an edit that would move a locked point is refused whole.
+  - links still move a locked point. This is dot's proposal, and it **changes v103 semantics**: lock would only stop direct edits.
+  - an edit that would move a locked point is refused whole. **This is the v103 behaviour:** `followLinkedNodes` throws "联动端点所在曲线或图层已隐藏或锁定" for locked members, and for hidden ones unless `allowHidden` (`7205381:src/domain/drawing/endpointLinks.ts:16-25`, dot 1791433131, Claude verified).
 - **C.** Can locked things be deleted? Can hidden things be edited?
 
 ### Status
