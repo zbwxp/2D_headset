@@ -473,6 +473,8 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   groups.reconcile(state.groups, state.network, ch)
   apply.update(state.apply, ch)
   names.follow(state.names, ch)
+  // names keep up within the edit: what is gone frees its name at once, anything new is named at once (dot 1791479554)
+  names.update(state.names, state.network, state.groups)
   net.followReplacements(changes, ch)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }

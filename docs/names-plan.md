@@ -15,7 +15,7 @@ Graph section "Names" (headset-design `eb2748a`; bowen 1791478346, 1791478561, 1
 | Function | Does |
 |---|---|
 | `follow(st, ch)` | After each topology step: a split line's name moves to its first piece (the a end). Run in `applyTopology`. |
-| `update(st, n, g)` | At the end of settling:<br>• drop the names of lines and groups that no longer exist;<br>• give every unnamed line "曲线N", in line order;<br>• give every unnamed group "连续曲线N", in group order.<br>N is the next number whose name is free. |
+| `update(st, n, g)` | After every topology step and at the end of settling, so names keep up within one edit (dot 1791479554):<br>• drop the names of lines and groups that no longer exist;<br>• give every unnamed line "曲线N", in line order;<br>• give every unnamed group "连续曲线N", in group order.<br>N is the next number whose name is free. |
 | `rename(st, n, kind, id, name)` | Refuses an empty name. Refuses a name in use, saying which layer, curve or line holds it. |
 | `copy(st, n, g, lineMap)` | After a layer copy, every copied line and group is named "<original>副本", or "<original>副本k" with the smallest free k ≥ 2. |
 | `check(st, n)` | At commit: every name is unique and non-empty, or the edit is refused. This catches a layer renamed onto a curve name. |
@@ -43,4 +43,5 @@ Snapshot: each line and group carries `name`.
 7. Copy layer: the layer, its curves and its lines are named "<name>副本"; copying again gives "<name>副本2".
 8. Mirror apply leaves target names unchanged.
 9. A rename is one undo step; a refused rename publishes nothing.
+10b. Within one edit (dot 1791479554): delete line a, then rename b to a's old name; bind two groups, then rename the kept group to the absorbed one's name; draw a line and copy its layer: the copy is "曲线1副本" (and its group "连续曲线1副本").
 10. Boundary: `names` imports only `network` and `groups`; nothing but `document` imports `names`.

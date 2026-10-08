@@ -67,7 +67,7 @@ export function copyName(st: NamesState, n: net.NetworkState, base: string): str
   for (let k = 1; ; k++) { const name = base + COPY + (k > 1 ? k : ''); if (!used.has(name)) return name }
 }
 
-/** At the end of settling: names of what is gone are dropped; anything unnamed gets the next free default. */
+/** After every topology step and at the end of settling: names of what is gone are dropped; anything unnamed gets the next free default. */
 export function update(st: NamesState, n: net.NetworkState, g: groups.GroupsState) {
   const lines = net.lines(n).map(l => l.id), list = groups.list(g, n).map(x => x.id)
   S(st).line = S(st).line.filter(e => lines.includes(e[0]))

@@ -138,6 +138,35 @@ describe('names', () => {
     expect(() => d.edit(e => e.renameGroup('nope', 'n'))).toThrow(/No group nope/)
   })
 
+  it('10b-1. delete, then reuse the deleted line’s name in the same edit (dot 1791479554)', () => {
+    const d = doc(); chain(d)
+    d.edit(e => { e.renameLine('l1', '睫毛') })
+    d.edit(e => { e.deleteLine('l1'); e.renameLine('l2', '睫毛') })
+    expect(lineName(d, 'l2')).toBe('睫毛')
+  })
+
+  it('10b-2. bind two groups, then give the kept group the absorbed group’s name in the same edit (dot 1791479554)', () => {
+    const d = doc()
+    d.edit(e => {
+      sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(10)); sk(e).line('x', 'a', 'b')
+      sk(e).point('c', 'L', P(20)); sk(e).point('f', 'L', P(30)); sk(e).line('y', 'c', 'f')
+    })
+    const gx = groupOf(d, 'x').id, gy = groupOf(d, 'y').id
+    d.edit(e => { e.renameGroup(gx, '左耳'); e.renameGroup(gy, '右耳') })
+    d.edit(e => { e.bind('b', 'c'); e.renameGroup(gx, '右耳') })
+    expect(s(d).groups.map(g => g.name)).toEqual(['右耳'])
+  })
+
+  it('10b-3. a line drawn and its layer copied in one edit: the copies are "<default>副本" (dot 1791479554)', () => {
+    const d = doc()
+    d.edit(e => { sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(10)); sk(e).line('x', 'a', 'b'); e.copyLayer('L', 'C') })
+    expect(lineName(d, 'x')).toBe('曲线1')
+    expect(lineName(d, 'C/x')).toBe('曲线1副本')
+    expect(groupOf(d, 'x').name).toBe('连续曲线1')
+    expect(groupOf(d, 'C/x').name).toBe('连续曲线1副本')
+    unique(d)
+  })
+
   it('2. names stay unique through a mixed sequence, undo and redo included', () => {
     const d = doc(); chain(d); chain(d, 'L', 100, 'k')
     d.edit(e => e.copyLayer('L', 'C'))
