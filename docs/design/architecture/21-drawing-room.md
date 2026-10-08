@@ -63,6 +63,57 @@ flowchart BT
 
 Arrows point to what a module uses. Lower modules never import higher ones; a boundary test enforces this, as in `core`.
 
+### 2.1 Call paths: two entries, one action interface, preview vs commit, render read (dot 1791476784)
+
+```mermaid
+flowchart LR
+  subgraph human["Human entry (ui-human)"]
+    dom["DOM pointer / keys"] --> toolsN["tools\n(gesture state)"]
+    panel["panels / shortcuts"]
+  end
+  subgraph ai["AI entry (ai-api)"]
+    exec["execute(commands)"]
+    q["query(...)"]
+    rend["render(options)"]
+  end
+  subgraph actions["Shared action interface (commands)"]
+    preview["preview(batch)\nno publish"]
+    execute["execute(batch)\none core.edit"]
+  end
+  subgraph coreBox["core (rules, undo, selection)"]
+    draft["private draft\n+ settle"]
+    published["published state\n+ history"]
+  end
+  subgraph readPath["Render read path"]
+    queries2["queries\nsnapshot / geometry / hits"]
+    view2["view\ncamera + draw (pure)"]
+  end
+  toolsN -- "while dragging" --> preview
+  toolsN -- "on release" --> execute
+  panel --> execute
+  exec --> execute
+  preview --> draft
+  execute --> draft
+  draft -- "commit (settle, lock check)" --> published
+  draft -. "preview result, discarded" .-> view2
+  published --> queries2 --> view2
+  q --> queries2
+  rend --> view2
+  app["app shell: creates Core, wires entries to commands and view;\nno rules"] -.-> human
+  app -.-> ai
+```
+
+- **Two entries, one action interface.**
+  - People reach `commands` through `tools` (gestures) and panels.
+  - The AI reaches the same `commands.execute` directly.
+  - Neither entry calls `core` itself.
+- **The preview / commit boundary** is inside `commands`:
+  - `preview` runs a batch on a private draft and discards it;
+  - `execute` runs one `core.edit`, which settles, checks locks and publishes;
+  - only `execute` adds an undo step.
+- **The render read path** is the same for both: published state (or a preview result) → `queries` → `view`. `ai-api.render` uses the same `view`.
+- **`app`** only creates the `Core`, connects entries to `commands` and `view`, and owns nothing else.
+
 | Module | Owns | Does | Never does |
 |---|---|---|---|
 | `core` (exists) | the document, undo history, selection | every rule; one edit = one commit; refusals with codes | know about pixels, events or screens |
@@ -78,7 +129,10 @@ Arrows point to what a module uses. Lower modules never import higher ones; a bo
 ## 3. Design rules
 
 1. **Rules live only in `core`.** UI modules contain no domain checks ("is it locked", "can these bind"). They send commands and show what comes back: do not block, show consequences.
-2. **One command vocabulary for people and AI.** Every human action ends as commands. The AI sends the same commands. Test: replaying the command log of a human session through `ai-api` gives the identical document.
+2. **One command vocabulary for people and AI.** Every human action ends as commands, and the AI sends the same commands. Acceptance (dot 1791476784):
+   - the same action from the human entry and from the AI entry gives the identical document;
+   - it gives the identical undo behaviour: same steps, same restored states;
+   - replaying a human session's command log through `ai-api` reproduces the session.
 3. **One gesture = one edit.** Tools preview during a drag and commit once on release; Esc cancels and nothing changes (graph "Edit (one gesture)").
 4. **Views are pure.** Drawing reads state and never changes it. Display, hit testing and export use the same geometry (`core.geometry`).
 5. **Refusals are data.** A refusal carries a code (`Locked`, `select-lines-to-delete`, `mirror-no-counterpart`, `topology-mismatch` and so on). `ui-human` shows the matching mark; `ai-api` returns the same code.
