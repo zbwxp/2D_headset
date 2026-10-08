@@ -2703,6 +2703,25 @@ Waiting for dot's independent review and bowen on A–D.
 
 **Main open item:** when the two sides get different positions in one operation, who decides the final position?
 
+### bowen's decision (1791424124)
+
+> 设置联动时 后点的移动到先点的位置。然后这两个不同图层的端点各自保存这个联动属性。接下来移动任何一个单独图层，对于另一个图层的这个点来说 相当于被人拖拽了这个点（编辑行为） 联动只用于跨图层。因为联动属性存了两份，那么如果有一侧的点被删除，联动属性里与之联动的端点id消失 那么联动失效，另一侧联动属性也消失。如果id依旧存在 那就跟着联动id走。这样够清晰了吗？
+
+### Claude's restatement (1791424148)
+
+1. When a link is created, the second-clicked point moves to the first-clicked point's position.
+2. Each of the two points stores its own link attribute, holding the other's id.
+3. Links are cross-layer only.
+4. **The edited side decides.** When one side is moved (for example its layer is moved), the other side treats it as "someone dragged this point" and follows.
+5. **Deleting either point invalidates the link.** When one side's point is deleted, the partner id no longer exists, so the link is invalid and the other side's attribute is cleared too. While the id exists, the link follows it.
+   - So if binding deletes the linked point, the link disappears naturally.
+   - A link on the kept point survives.
+
+**One case not covered:** in one operation **both sides move by different amounts**, so both "drag" each other.
+- In normal editing this hardly occurs: selecting both and dragging moves them by the same amount, once.
+- It occurs in **head-turn and deformation**, where two layers deform differently and the linked points get different positions every frame.
+- **Proposal:** decide this in the head-turn / deformation layer, with "the first-clicked side at creation leads" as the default. Asked bowen whether to defer.
+
 ### Status
 
-Waiting for bowen on the final-position rule, and on proposals 2–4.
+Decided (bowen 1791424124): rules 1–5. Open: both sides moved differently in one operation; proposed to defer to the deformation layer.
