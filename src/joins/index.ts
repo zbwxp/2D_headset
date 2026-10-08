@@ -105,53 +105,71 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
  * curve (1791429195); it is a chosen rule, not a claim of physical necessity.
  * Returns handle updates.
  */
-export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
-  const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
+/** One handle: the end of a line. */
+export interface HandleRef { line: Id; end: net.End }
+
+export function solve(
+  j: JoinsState, n: net.NetworkState, ch: net.Changes,
+  /** Smooth pairs that are not on one point (joins across an endpoint link), from the links module. */
+  extra: { a: HandleRef; b: HandleRef }[] = [],
+): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
+  const lines = new Map(net.lines(n).map(l => [l.id, l]))
+  const key = (h: HandleRef) => JSON.stringify([h.line, h.end])
+  const refs = new Map<string, HandleRef>()
+  const neighbours = new Map<string, string[]>()
+  const connect = (a: HandleRef, b: HandleRef) => {
+    for (const h of [a, b]) { refs.set(key(h), h); if (!neighbours.has(key(h))) neighbours.set(key(h), []) }
+    neighbours.get(key(a))!.push(key(b)); neighbours.get(key(b))!.push(key(a))
+  }
+  for (const r of S(j).rows) if (r.mode === 'smooth') {
+    const ends = r.lines.map(l => ({ line: l, end: (lines.get(l)!.a === r.point ? 'a' : 'b') as net.End }))
+    connect(ends[0]!, ends[1]!)
+  }
+  for (const p of extra) connect(p.a, p.b)
+  const handleOf = (h: HandleRef) => net.handle(lines.get(h.line)!, h.end)
+  const pointOf = (h: HandleRef) => (h.end === 'a' ? lines.get(h.line)!.a : lines.get(h.line)!.b)
   const affected = net.affectedPoints(n, ch)
-  const points = [...new Set(S(j).rows.filter(r => r.mode === 'smooth').map(r => r.point))].filter(p => affected.has(p))
-  for (const p of points) {
-    const ends = new Map(net.linesAt(n, p).map(e => [e.line.id, e]))
-    const rows = rowsAt(j, p).filter(r => r.mode === 'smooth')
-    const ids = [...new Set(rows.flatMap(r => r.lines))].filter(id => length(net.handle(ends.get(id)!.line, ends.get(id)!.end)) > 1e-9)
+  const heldKeys = new Set(ch.held.filter(h => lines.has(h.line)).map(h => key(h)))
+  const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
+  for (const group of smoothGroups([...refs.keys()], neighbours)) {
+    if (!group.some(k => affected.has(pointOf(refs.get(k)!)))) continue // only where this edit acted
+    const ids = group.filter(k => length(handleOf(refs.get(k)!)) > 1e-9)
     if (ids.length < 2) continue
-    const theta = new Map(ids.map(id => [id, angleOf(net.handle(ends.get(id)!.line, ends.get(id)!.end))]))
+    const theta = new Map(ids.map(k => [k, angleOf(handleOf(refs.get(k)!))]))
     const before = new Map(theta)
-    const held = new Set(ch.held.filter(h => ends.get(h.line)?.end === h.end).map(h => h.line))
-    const neighbours = new Map(ids.map(id => [id, rows.filter(r => r.lines.includes(id)).map(r => (r.lines[0] === id ? r.lines[1] : r.lines[0])).filter(o => theta.has(o))]))
-    const free = ids.filter(id => !held.has(id))
+    const free = ids.filter(k => !heldKeys.has(k))
     for (let sweep = 0; sweep < 2000; sweep++) {
       let change = 0
-      for (const id of free) {
-        const nb = neighbours.get(id)!
+      for (const k of free) {
+        const nb = neighbours.get(k)!.filter(o => theta.has(o))
         if (!nb.length) continue
-        const t = theta.get(id)!
+        const t = theta.get(k)!
         const step = nb.reduce((s, o) => s + wrap(theta.get(o)! + Math.PI - t), 0) / nb.length
-        theta.set(id, t + step)
+        theta.set(k, t + step)
         change = Math.max(change, Math.abs(step))
       }
       if (change < 1e-13) break
     }
-    // Curve springs in the stiff-smooth limit: a group with nothing held keeps zero mean turning.
-    for (const group of smoothGroups(ids, neighbours)) {
-      if (group.some(id => held.has(id))) continue
-      const mean = group.reduce((s, id) => s + wrap(theta.get(id)! - before.get(id)!), 0) / group.length
-      for (const id of group) theta.set(id, theta.get(id)! - mean)
+    // Least turning: a group with nothing held keeps zero mean turning.
+    if (!ids.some(k => heldKeys.has(k))) {
+      const mean = ids.reduce((s, k) => s + wrap(theta.get(k)! - before.get(k)!), 0) / ids.length
+      for (const k of ids) theta.set(k, theta.get(k)! - mean)
     }
-    for (const id of free) {
-      const e = ends.get(id)!, h = net.handle(e.line, e.end)
-      const next = fromAngle(theta.get(id)!, length(h))
-      if (Math.abs(next.x - h.x) > 1e-12 || Math.abs(next.y - h.y) > 1e-12) out.push({ line: id, end: e.end, offset: next })
+    for (const k of free) {
+      const ref = refs.get(k)!, h = handleOf(ref)
+      const next = fromAngle(theta.get(k)!, length(h))
+      if (Math.abs(next.x - h.x) > 1e-12 || Math.abs(next.y - h.y) > 1e-12) out.push({ line: ref.line, end: ref.end, offset: next })
     }
   }
   return out
 }
 
 /** Handles linked by smooth rows, as connected groups. */
-function smoothGroups(ids: Id[], neighbours: Map<Id, Id[]>): Id[][] {
-  const seen = new Set<Id>(), groups: Id[][] = []
+function smoothGroups(ids: string[], neighbours: Map<string, string[]>): string[][] {
+  const seen = new Set<string>(), groups: string[][] = []
   for (const start of ids) {
     if (seen.has(start)) continue
-    const group: Id[] = [], stack = [start]
+    const group: string[] = [], stack = [start]
     seen.add(start)
     while (stack.length) {
       const id = stack.pop()!

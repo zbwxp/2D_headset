@@ -28,6 +28,7 @@ export interface Snapshot {
   groups: groups.Group[]
   joins: joins.JoinRow[]
   links: { a: Id; b: Id }[]
+  linkJoins: links.LinkJoin[]
   /** Every closed curve, each tagged with the continuous curve (group) it belongs to. */
   loops: (fills.LoopView & { group: Id })[]
   fillOrder: Id[]
@@ -94,6 +95,14 @@ export class Editor {
   // links (cross-layer relation)
   link(a: Id, b: Id) { this.move([links.link(this.s.links, this.s.network, a, b)]) }
   unlink(a: Id, b: Id) { links.unlink(this.s.links, a, b) }
+  /** Join across a link: la ends at a (clicked first), lb at b. Smooth: lb turns to la. */
+  linkJoin(a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }) {
+    const { state, changes } = this.tx
+    const held = links.setJoin(state.links, state.network, a, b, la, lb, opts)
+    net.touch(changes, a); net.touch(changes, b)
+    net.hold(state.network, changes, held.line, held.end)
+  }
+  removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) { links.removeJoin(this.s.links, a, b, la, lb); net.touch(this.tx.changes, a); net.touch(this.tx.changes, b) }
 
   // groups (continuous curves)
   stroke(group: Id, stroke: groups.Stroke) { groups.setStroke(this.s.groups, group, stroke) }
@@ -196,6 +205,7 @@ export class Core {
       groups: groupList,
       joins: joins.rows(s.joins),
       links: links.pairs(s.links),
+      linkJoins: links.joins(s.links),
       loops: fills.discover(s.fills, n).map(l => ({ ...l, group: groupOfLine.get(l.route[0]!.line)! })),
       fillOrder: fills.order(s.fills),
     })
@@ -212,7 +222,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   const ch = net.emptyChanges()
   op(ch)
   joins.update(state.joins, state.network, ch)
-  links.update(state.links, ch)
+  links.update(state.links, state.network, ch)
   fills.update(state.fills, ch)
   groups.reconcile(state.groups, state.network, ch)
   net.followReplacements(changes, ch)
@@ -223,7 +233,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
 function commit(s: State, ch: net.Changes) {
   applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   net.setPositions(s.network, links.align(s.links, s.network, ch))
-  net.setHandles(s.network, joins.solve(s.joins, s.network, ch))
+  net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
 }

@@ -54,6 +54,11 @@ function chooseOp(s: Snapshot, r: () => number, next: () => string): Op {
     const l1 = pick(at), l2 = pick(at.filter(x => x !== l1)), mode = pick(['smooth', 'cusp', 'arc'] as const)!
     return { name: `join ${p.id} ${mode}`, run: e => e.join(p.id, l1 ?? '?', l2 ?? '?', { mode, radius: mode === 'arc' ? 1 + r() * 3 : undefined }) }
   }
+  if (roll < 0.80 && s.links.length) {
+    const k = pick(s.links)!, at = (p: string) => lines.filter(l => l.a === p || l.b === p).map(l => l.id)
+    const la = pick(at(k.a)), lb = pick(at(k.b))
+    return { name: `linkJoin ${k.a} ${k.b}`, run: e => e.linkJoin(k.a, k.b, la ?? '?', lb ?? '?', { mode: 'smooth' }) }
+  }
   if (roll < 0.85) { const l = pick(s.loops); return { name: `fill ${l?.id}`, run: e => e.fill(l?.id ?? '?', pick(['red', 'blue'])!) } }
   if (roll < 0.88) { const l = pick(s.loops.filter(x => x.color)); return { name: `clear ${l?.id}`, run: e => e.clearFill(l?.id ?? '?') } }
   if (roll < 0.95) { const ps = points.filter(() => r() < 0.3).map(p => ({ id: p.id, target: pos() })); return { name: 'move', run: e => e.move(ps) } }
@@ -105,6 +110,11 @@ function invariants(d: Core): string[] {
       if (Math.abs(a.position.x - b.position.x) > 1e-9 || Math.abs(a.position.y - b.position.y) > 1e-9) bad.push(`link ${k.a}-${k.b} not coincident`)
       if (!a.links.includes(k.b) || !b.links.includes(k.a)) bad.push(`link ${k.a}-${k.b} not on both points`)
     }
+  }
+  for (const j of s.linkJoins) {
+    const ends = (line: string, p: string) => { const l = lineById.get(line); return !!l && (l.a === p || l.b === p) }
+    if (!s.links.some(k => (k.a === j.a && k.b === j.b) || (k.a === j.b && k.b === j.a))) bad.push(`link join ${j.a}-${j.b} without its link`)
+    if (!ends(j.lines[0], j.a) || !ends(j.lines[1], j.b)) bad.push(`link join ${j.a}-${j.b} is stale`)
   }
   const filled = s.loops.filter(l => l.color)
   if (JSON.stringify([...filled.map(l => l.id)].sort()) !== JSON.stringify([...s.fillOrder].sort())) bad.push('fill order and filled loops differ')

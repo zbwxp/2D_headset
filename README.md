@@ -18,7 +18,7 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. A point exists only as a line end. It is **created only together with a line**: the pen's ends are existing points or new ones, and split and unbind make their points with their lines (bowen 1791428375). It is removed when merged by binding or when isolated (checked once per edit, bowen 1791428195). Queries: lines at a point, connected groups, and **closed curves** under one definition (`closedWalk`, `closedLoops`): connected, each line once, may pass a point twice |
 | `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
 | `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
-| `links` | cross-layer endpoint links (one relation per pair) | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets |
+| `links` | cross-layer endpoint links (one relation per pair), and joins across a link | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets. **Joins across a link** are stored with the link as one relation; the smooth solver treats them like same-point joins (second-clicked turns to first). Only smooth for now: cusp and arc across layers wait for bowen (1791430797) |
 | `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
@@ -83,9 +83,8 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 - **No special rule, code result accepted (bowen 1791428722):** fill order after two groups merge (fills keep their relative order); the order of several groups split off in one edit (each goes right after the original).
 - **Not in v1:**
   - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots, and cut-and-paste between recordings that keeps line ids (bowen 1791392233).
+  - **Editing behaviour not discussed yet (bowen 1791430778):** copy.
   - **Implementation staged (not yet written):**
-    - copy in drawing;
-    - joins across a link (stored on the link);
     - stroke rendering;
     - how a fill joins at a fork with an arc on another pair (left open, dot 1791425335). For now, such a fill keeps that line end untrimmed.
 
