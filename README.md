@@ -81,12 +81,13 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
     - Tests: `test/uniqueness.test.ts` covers drag-one-turns-all and storage-order independence.
   - **Stiffness:** one global constant (bowen 1791421988).
 - **No special rule, code result accepted (bowen 1791428722):** fill order after two groups merge (fills keep their relative order); the order of several groups split off in one edit (each goes right after the original).
+- **Fill at a fork with an arc on another pair:** the code keeps the fill's line end untrimmed (the fill reaches the point). bowen accepts the code result: the case should hardly occur and indicates a drawing problem (bowen 1791431933).
 - **Not in v1:**
   - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots, and cut-and-paste between recordings that keeps line ids (bowen 1791392233).
   - **Editing behaviour not discussed yet (bowen 1791430778):** copy.
   - **Implementation staged (not yet written):**
     - stroke rendering;
-    - how a fill joins at a fork with an arc on another pair (left open, dot 1791425335). For now, such a fill keeps that line end untrimmed.
+
 
 ## Rules filled in by us, not by bowen (listed for bowen 1791429645)
 
