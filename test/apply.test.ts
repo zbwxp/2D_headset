@@ -297,6 +297,25 @@ describe('mirror link', () => {
     expect(s(d).lines).toHaveLength(2)
   })
 
+  it('A8d. at an axis-shared point, a join between two left lines and the one between their right counterparts are different joins (dot, review of 1fa7462)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A')
+      sk(e).point('a', 'A', P(-10)); sk(e).point('b', 'A', P(-1, 2)); sk(e).point('a2', 'A', P(-8, 6))
+      sk(e).line('l1', 'a', 'b'); sk(e).line('l2', 'a2', 'b')
+      sk(e).point('c', 'A', P(10)); sk(e).point('dd', 'A', P(1, 2)); sk(e).point('c2', 'A', P(8, 6))
+      sk(e).line('r1', 'c', 'dd'); sk(e).line('r2', 'c2', 'dd')
+    })
+    d.edit(e => e.mirrorLink([groupOf(d, 'l1')], [groupOf(d, 'r1')]))
+    d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
+    const m = line(d, 'l1').b
+    expect(line(d, 'r1').b).toBe(m)
+    d.edit(e => e.join(m, 'l1', 'l2', { mode: 'cusp' }))
+    expect(s(d).joins.filter(j => j.point === m).map(j => j.lines.join('|')).sort()).toEqual(['l1|l2', 'r1|r2'])
+    d.edit(e => e.removeJoin(m, 'l1', 'l2'))
+    expect(s(d).joins.filter(j => j.point === m)).toEqual([])
+  })
+
   it('A9. binding or linking a paired point to an outside point without counterpart is refused', () => {
     const d = linked()
     d.edit(e => { sk(e).point('x', 'A', P(0, 20)); sk(e).point('y', 'A', P(0, 30)); sk(e).line('nose', 'x', 'y') })
