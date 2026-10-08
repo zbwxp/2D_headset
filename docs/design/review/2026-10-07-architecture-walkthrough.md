@@ -2722,6 +2722,16 @@ Waiting for dot's independent review and bowen on A–D.
 - It occurs in **head-turn and deformation**, where two layers deform differently and the linked points get different positions every frame.
 - **Proposal:** decide this in the head-turn / deformation layer, with "the first-clicked side at creation leads" as the default. Asked bowen whether to defer.
 
+### dot (1791424173)
+
+**Agrees, with clarifications:**
+- **No permanent master.**
+  - The first click only decides the position when the link is created.
+  - Afterwards, whichever side the user moves drives the other side's endpoint, as if dragging that point. It does not move the other's whole layer.
+- **No automatic rebinding.** When the partner is deleted, the stale attribute is cleared; it never re-links to another point.
+- **One update for both copies.** The two copies describe one link and are updated together, without triggering each other or moving back and forth.
+- **Deferred:** both sides receiving different deformations is left to the deformation layer.
+
 ### Status
 
 Decided (bowen 1791424124): rules 1–5. Open: both sides moved differently in one operation; proposed to defer to the deformation layer.
