@@ -168,7 +168,8 @@ flowchart LR
 
 - **`Core.preview(fn)`:** runs an edit on a private draft through settling *and the lock check*, and publishes nothing. It returns either the would-be snapshot and geometry, or exactly the refusal a commit would give.
   - **Fixed ids** (dot 1791477302; carried over from v2): repeated previews in one drag reuse the same new ids. Cancelling writes nothing. One gesture commits at most once.
-  - **No revision check:** people and AI never operate at the same time (bowen 1791477364). Between a preview and its commit, only the same actor can change the document, and it can simply preview again. So `STALE_REVISION` and revision numbers are not needed.
+  - **No revision check:** people and AI never operate at the same time (bowen 1791477364). The design is for one actor at a time, taking turns on one document (dot 1791477408). Between a preview and its commit, only the same actor can change the document, and it can simply preview again. So `STALE_REVISION`, revision numbers, concurrent merging and separate selections or histories are not built.
+  - **No late previews:** a preview runs synchronously, inside the pointer event that asked for it, so a result can never arrive after a later operation. If a preview ever becomes asynchronous, it carries its gesture's sequence number, and results from an older gesture are dropped (dot 1791477408).
 - **Structured refusals** (dot 1791477302): today most refusals are plain `Error`s carrying a message. They must become `{ code, message, objects: ids, written: false }`. This is explicit interface work in `core`. No entry may parse message text to guess which object gets the red cross.
 - ~~Revision number~~: not needed; people and AI take turns (bowen 1791477364).
 - ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
