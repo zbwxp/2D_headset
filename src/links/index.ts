@@ -28,7 +28,10 @@ export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id): { id: Id
   if (a === b) throw new Error('A link needs two points')
   if (pa.layer === pb.layer) throw new Error('Endpoint links are cross-layer only; bind within a layer')
   if (partners(l, a).includes(b)) throw new Error('Already linked')
-  S(l).pairs.push({ a, b })
+  // A link is symmetric (bowen 1791461460): only creation has an order (b moves to a);
+  // the stored pair has one form, the smaller id first, and the list is sorted.
+  S(l).pairs.push(a < b ? { a, b } : { a: b, b: a })
+  S(l).pairs.sort((x, y) => (JSON.stringify([x.a, x.b]) < JSON.stringify([y.a, y.b]) ? -1 : 1))
   return { id: b, target: pa.position }
 }
 

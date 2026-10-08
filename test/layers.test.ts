@@ -103,7 +103,7 @@ describe('copying a layer', () => {
     const d = doc('A', 'B'); triangle(d, 'A'); triangle(d, 'B', 'q', P(20))
     d.edit(e => e.link('qa', 'a'))
     d.edit(e => e.copyLayer('A', 'A2'))
-    expect(s(d).links).toEqual([{ a: 'qa', b: 'a' }])
+    expect(s(d).links).toEqual([{ a: 'a', b: 'qa' }])
     expect(point(d, 'A2/a')!.links).toEqual([])
   })
 
@@ -384,6 +384,18 @@ describe('line width and locks', () => {
     })
   }
 
+  it('29l. a link is symmetric after creation: linking a–qa or qa–a gives the same document (bowen 1791461460)', () => {
+    const make = (first: string, second: string) => {
+      const d = doc('A', 'B'); triangle(d, 'A'); triangle(d, 'B', 'q', P(0))
+      d.edit(e => e.link(first, second)) // the two points already coincide, so creation moves nothing
+      // the join's own click order is its own creation (second turns to first), so it is the same in both
+      d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))
+      d.edit(e => e.move([{ id: 'a', target: P(2, 3) }]))
+      return JSON.stringify([s(d), d.geometry()])
+    }
+    expect(make('qa', 'a')).toBe(make('a', 'qa'))
+  })
+
   it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
@@ -580,6 +592,6 @@ describe('moving a group (cut and paste, Q31)', () => {
     const d = doc('A', 'B', 'C', 'D'); triangle(d, 'A'); triangle(d, 'B', 'q', P(20))
     d.edit(e => e.link('qa', 'a'))
     d.edit(e => { e.moveGroup(groupOf(d, 'ab').id, 'C'); e.moveGroup(groupOf(d, 'qab').id, 'D') })
-    expect(s(d).links).toEqual([{ a: 'qa', b: 'a' }])
+    expect(s(d).links).toEqual([{ a: 'a', b: 'qa' }])
   })
 })
