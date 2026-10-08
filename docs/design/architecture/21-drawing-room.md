@@ -162,11 +162,14 @@ flowchart LR
 2. While dragging: the tool builds a command batch → `commands.preview` → `view` draws the preview. Nothing is committed.
 3. pointer up → `commands.execute(batch)` → one `core.edit`, which settles, checks locks and commits. The result is either a new snapshot or a refusal.
 4. `view` redraws from the snapshot; a refusal shows its mark where it happened.
-5. Undo is `commands.execute([{ type: 'undo' }])`, the same for AI.
+5. **Undo / redo use the same entry but a separate branch** (dot 1791477302): `commands.history('undo' | 'redo')` runs *outside* any edit transaction, because `core` forbids undo inside an edit. It is never mixed into a command batch. There is one history for both entries, undone in time order (the Figma-plugin precedent: a plugin run is a step the user can undo).
 
 ## 5. What `core` needs first (small, in its own modules)
 
-- **`Core.preview(fn)`:** runs an edit on a private draft through settling, returns the would-be snapshot and geometry, and publishes nothing. It is the same transaction machinery, with no commit.
+- **`Core.preview(fn)`:** runs an edit on a private draft through settling *and the lock check*, and publishes nothing. It returns either the would-be snapshot and geometry, or exactly the refusal a commit would give.
+  - **Tied to a revision and fixed ids** (dot 1791477302; carried over from v2): a preview names the document revision it started from. Repeated previews in one drag reuse the same new ids. A commit may carry its revision and is refused with `STALE_REVISION` if the document changed since. Cancelling writes nothing. One gesture commits at most once.
+- **Structured refusals** (dot 1791477302): today most refusals are plain `Error`s carrying a message. They must become `{ code, message, objects: ids, written: false }`. This is explicit interface work in `core`. No entry may parse message text to guess which object gets the red cross.
+- **Revision number:** a counter on the published state, so previews and commits can name what they started from.
 - ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
 
 ## 6. Interaction backlog → module
@@ -184,6 +187,16 @@ flowchart LR
 | 9 mirror-link creation flow | `tools` (mirror link) |
 | 10 mirror icon, axis display | `ui-human` + `view` |
 | 11 mirror red cross | `ui-human` + `view` |
+
+## 6b. Entry rules added after the attack (bowen 1791477114; Claude 1791477232; dot 1791477302)
+
+- **Explicit targets:**
+  - Every operation names the objects it acts on.
+  - A human tool fills them in from the current selection. Changing the selection is a separate operation.
+  - The selection itself stays single and undoable. Explicit targets only spare an operation from changing it first; there is no AI-private selection or history.
+- **Result-affecting choices are parameters:** for example, whether a scale also scales arc radii, or what a snap resolved to. Their defaults live in `commands`, shared by both entries. Tools keep only pure interaction settings: snap radius in pixels, hit tolerance.
+- **Same command, same behaviour:** paired acceptance compares the same targets, the same parameters and the same starting document, not button names.
+- **One id allocator:** new ids come from `commands` (or from the caller, explicitly), the same for both entries. Repeated previews of one gesture reuse their ids.
 
 ## 7. Open, for bowen
 
