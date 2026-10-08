@@ -439,9 +439,10 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
 
 /** Delete removes the line; an endpoint left with no line is removed at commit (removeIsolated). */
 export function deleteLine(n: NetworkState, ch: Changes, id: Id) {
-  rawLine(n, id)
+  const l = rawLine(n, id)
   S(n).lines = S(n).lines.filter(x => x.id !== id)
   ch.deletedLines.push(id)
+  touch(ch, l.a); touch(ch, l.b) // constraints at its ends changed
 }
 
 /**

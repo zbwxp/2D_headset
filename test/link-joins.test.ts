@@ -54,3 +54,40 @@ describe('smooth joins across a link', () => {
     expect(() => d.edit(e => e.linkJoin('a', 'b', 'lb', 'la', { mode: 'smooth' }))).toThrow(/own linked point/)
   })
 })
+
+describe('constraint changes re-solve the affected parts (dot 1791431139)', () => {
+  function triangleOfLinks() {
+    const d = new Core()
+    d.edit(e => {
+      for (const [id, layer, ang] of [['a', 'A', 0], ['b', 'B', 2.1], ['c', 'C', 4.2]] as const) {
+        e.layer(layer); sk(e).point(id, layer, P(0)); sk(e).point(id + '1', layer, P(10 * Math.cos(ang), 10 * Math.sin(ang))); sk(e).line('l' + id, id, id + '1')
+      }
+      e.link('a', 'b'); e.link('b', 'c'); e.link('c', 'a')
+    })
+    d.edit(e => { e.linkJoin('a', 'b', 'la', 'lb', { mode: 'smooth' }); e.linkJoin('b', 'c', 'lb', 'lc', { mode: 'smooth' }); e.linkJoin('c', 'a', 'lc', 'la', { mode: 'smooth' }) })
+    d.edit(e => e.move([{ id: 'a', target: P(0) }])) // settle at 120°
+    return d
+  }
+  const ang = (d: Core, id: string) => { const h = d.snapshot().lines.find(l => l.id === id)!.ha; return Math.atan2(h.y, h.x) }
+  const gap = (x: number, y: number) => Math.abs(Math.atan2(Math.sin(x - y), Math.cos(x - y)))
+
+  it('unlinking re-solves at once: the two remaining pairs become straight', () => {
+    const d = triangleOfLinks()
+    expect(gap(ang(d, 'la'), ang(d, 'lb'))).toBeCloseTo(2 * Math.PI / 3, 6)
+    d.edit(e => e.unlink('a', 'b'))
+    expect(gap(ang(d, 'lb'), ang(d, 'lc'))).toBeCloseTo(Math.PI, 6)
+    expect(gap(ang(d, 'lc'), ang(d, 'la'))).toBeCloseTo(Math.PI, 6)
+  })
+
+  it('deleting a line of a smooth star re-solves the rest at once', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('o', 'L', P(0))
+      for (let i = 0; i < 3; i++) { sk(e).point('p' + i, 'L', P(10 * Math.cos(i * 2.1), 10 * Math.sin(i * 2.1))); sk(e).line('s' + i, 'o', 'p' + i) }
+      for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) e.join('o', 's' + i, 's' + j, { mode: 'smooth' })
+    })
+    d.edit(e => e.move([{ id: 'o', target: P(0) }]))
+    d.edit(e => e.deleteLine('s2'))
+    expect(gap(ang(d, 's0'), ang(d, 's1'))).toBeCloseTo(Math.PI, 6)
+  })
+})

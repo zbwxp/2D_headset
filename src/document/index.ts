@@ -94,7 +94,8 @@ export class Editor {
 
   // links (cross-layer relation)
   link(a: Id, b: Id) { this.move([links.link(this.s.links, this.s.network, a, b)]) }
-  unlink(a: Id, b: Id) { links.unlink(this.s.links, a, b) }
+  /** Removing a link is a constraint change at both points (dot 1791431139). */
+  unlink(a: Id, b: Id) { links.unlink(this.s.links, a, b); net.touch(this.tx.changes, a); net.touch(this.tx.changes, b) }
   /** Join across a link: la ends at a (clicked first), lb at b. Smooth: lb turns to la. */
   linkJoin(a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }) {
     const { state, changes } = this.tx

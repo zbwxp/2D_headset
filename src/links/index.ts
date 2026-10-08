@@ -78,6 +78,8 @@ export function smoothPairs(l: LinksState, n: net.NetworkState): { a: { line: Id
  */
 export function update(l: LinksState, n: net.NetworkState, ch: net.Changes) {
   const dead = new Set(ch.deletedPoints)
+  // a link that ends is a constraint change at the surviving partner (dot 1791431139)
+  for (const p of S(l).pairs) if (dead.has(p.a) || dead.has(p.b)) for (const x of [p.a, p.b]) if (!dead.has(x)) net.touch(ch, x)
   S(l).pairs = S(l).pairs.filter(p => !dead.has(p.a) && !dead.has(p.b))
   for (const r of ch.replaced) for (const x of S(l).joins) {
     x.lines = x.lines.map((line, i) => {
