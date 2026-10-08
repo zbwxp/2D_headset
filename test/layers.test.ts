@@ -370,6 +370,20 @@ describe('line width and locks', () => {
     expect(s(d).linkJoins).toEqual(before.linkJoins)
   })
 
+  for (const [first, second] of [['bc1', 'bc2'], ['aa1', 'aa2']]) {
+    it(`29k. splitting a neighbour with an arc at the locked end is judged by shape, not by how the new ids sort (${first}) (dot 1791461356)`, () => {
+      const d = doc('A'); triangle(d, 'A')
+      d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 1 }))
+      d.edit(e => e.lineState('ab', { locked: true }))
+      const arc = d.geometry().arcs[0]!.curve
+      // split far from b, so the arc keeps its shape (the trim on the piece stays the radius)
+      d.edit(e => e.split('bc', 0.8, 'm', first!, second!))
+      const now = d.geometry().arcs[0]!.curve
+      const same = (x: typeof arc, y: typeof arc) => x.every((p, i) => Math.abs(p.x - y[i]!.x) < 1e-9 && Math.abs(p.y - y[i]!.y) < 1e-9)
+      expect(same(now, arc) || same(now, [arc[3], arc[2], arc[1], arc[0]])).toBe(true)
+    })
+  }
+
   it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))

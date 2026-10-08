@@ -68,7 +68,12 @@ function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, poin
         links.joins(v.links).filter(x => at({ point: x.a }) || at({ point: x.b }))
           .map(x => ({ ...x, lines: [name(x.lines[0], x.a), name(x.lines[1], x.b)] })).filter(x => live(x.lines)),
       ]),
-      arcs: drawn.arcs.filter(at).map(a => ({ key: JSON.stringify([a.point, pair(a.point, a.lines)]), lines: pair(a.point, a.lines), curve: a.curve }))
+      // an arc is drawn from its first line to its second; after a split the names may
+      // sort the other way, so orient the curve by the pair as named now (dot 1791461356)
+      arcs: drawn.arcs.filter(at).map(a => {
+        const lines = pair(a.point, a.lines), flipped = name(a.lines[0], a.point) !== lines[0]
+        return { key: JSON.stringify([a.point, lines]), lines, curve: flipped ? ([a.curve[3], a.curve[2], a.curve[1], a.curve[0]] as Cubic) : a.curve }
+      })
         .filter(a => live(a.lines)).sort((x, y) => (x.key < y.key ? -1 : 1)).map(a => ({ key: a.key, curve: a.curve })),
     })
   }
