@@ -2843,6 +2843,58 @@ Sources: confirmed graph rows, plus the v103 toolbar (`7205381:src/ui/drawing/to
 2. **Merge position** (moves two points together without sharing them). Under current rules, the same layer uses bind and different layers use link, so this tool has no place. **Proposal:** remove it.
 3. **Corner / curved-edge deform, mirror editing, show/hide intervals.** These edit groups of elements and belong to the next layer (deformation and appearance), not to point / line / face.
 
+### dot's five categories (1791424826)
+
+These are operation ownership, not one button per item.
+
+1. **Point (position and connection):**
+   - drag a point (carries the attached line ends);
+   - bind / unbind;
+   - set or clear a join (spring smooth);
+   - adjust the end stroke.
+   - A join belongs to the point but acts on the handles of the lines attached there.
+2. **Single Bézier (geometry):**
+   - pen;
+   - drag the two handles;
+   - add a point / split (one curve → two curves and a new point);
+   - delete a curve.
+   - There is no "delete endpoint" tool; points are reduced by binding.
+3. **Continuous curve (group management):**
+   - group line stroke (width, profile);
+   - order in the layer;
+   - select, move and copy as a whole.
+   - Binding, deleting and unbinding change membership; this follows from connectivity.
+4. **Closed curve (fill management):**
+   - create a fill (canvas: smallest loop; list: larger loops);
+   - change style, show/hide, clear;
+   - loop order = fill order.
+   - Loops are auto-detected and keep no copy of their boundary. There is no "manual edge fill" and no "delete only the loop but keep its boundary".
+5. **Cross-layer endpoint link (relation editing):**
+   - create / remove a link;
+   - set a join across the link.
+   - It acts on two independent points; it belongs to no single curve or loop.
+
+**Cross-level general capabilities:** selection, move, copy and undo, not one set per level. Layers organise and order. Viewport, reference images and recording are not in this table.
+
+**Corrections:**
+- **"Merge position"** is a one-time alignment, a different purpose from a continuing link. The existence of bind and link does not mean it must be removed.
+- **Arc join** changes the derived display route, so it cannot be called "purely appearance" alongside cusp.
+
+### Claude accepts (1791424845)
+
+**Adopts dot's five categories.**
+
+- **Merge position:** "remove" was an overreach and is now open. In graph terms it is a drag-point with snapping, at the point level, creating no relation.
+- **Arc join:**
+  - v103 fill boundaries borrow the arc join's geometry (`resolvedFillGeometry.ts:13-60`, Q16), so arc changes derived shape, fill boundary included.
+  - **Revised open items:**
+    - cusp is a stroke attribute of the point;
+    - arc is a geometry-generating join on the point, to be decided separately.
+
 ### Status
 
-Waiting for dot's independent check and bowen on 1–3.
+Waiting for bowen:
+- cusp as a point stroke attribute;
+- arc join's place (it generates geometry);
+- merge position as a one-time snap at the point level;
+- deformation, mirror editing and show/hide intervals in the next layer.
