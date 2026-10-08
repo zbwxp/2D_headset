@@ -40,6 +40,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Endpoint links:** keep cross-layer endpoints together; symmetric after creation; computed from the points directly acted on.
 - **Closed curves and fills:** a closed route decides whether a loop exists; the derived outline decides its boundary.
 - **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
+- **Names:** layers, continuous curves and every line carry a name, points none; all names are unique.
 - **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
 - **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
 - **Editing:** one gesture is one edit; selection is a pre-edit and is undoable; transforms act on the points and handles a selection expands to and keep identity and connections; apply is a third kind of action.
@@ -133,7 +134,6 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Layer visibility / lock; continuous-curve visibility | are | Batch operations on their elements: a layer's over its lines and fills; a continuous curve's over its lines only, not its fills (fills keep their own switch). No lasting inherited state; mixed shown and hidden members are valid. | confirmed | bowen 1791433646; dot 1791433808 (Q29) |
 | Visibility, lock, order | are | State changes, not edits. A layer itself takes only state changes (visibility, lock, reorder). | confirmed | bowen 1791433646 (Q29) |
 | New layer | is | An empty ordered container: id, name, list position only (no state of its own; panel icons derive from its elements). A new document gets one empty layer by default; empty layers and zero layers are allowed. | confirmed | bowen 1791435000; dot 1791434801 (Q30) |
-| Layer name | is | Unique, and never empty | confirmed | bowen 1791435000 (Q30) |
 | Copy (layer, lines, groups) | makes | A new-identity copy of the chosen range; the original is unchanged. Point–line connections, joins and fill boundary references inside the range are remapped to the copy. **Endpoint links are never copied** (bowen: "联动不复制"), even when both ends are inside the range; this supersedes dot's earlier "copy A and B together keeps the link" example. | confirmed | bowen 1791435000, 1791435311; dot 1791434801, 1791435558 (Q30) |
 | Delete layer | is | A batch over its elements: unlocked ones are deleted and locked ones stay, and so does the layer while it holds anything. Links end only when their endpoint disappears; a join across a link that referenced a deleted line is cleared. | confirmed | bowen 1791435000; dot 1791435118 (Q30) |
 | Cut, paste / copy | are | Cut and paste are edits; copy does not change the document. A group with a locked element cannot be cut. Locked elements can be copied, and the pasted copy carries the lock. A paste may not bypass locks already in the target. | confirmed | bowen 1791436374; dot 1791436498 (Q31) |
@@ -184,6 +184,13 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | The same mirror links built per layer or at once | give | The same later behaviour, provided they end up with the same set of pairs. | confirmed | bowen 1791467698; dot 1791467823, 1791470095 |
 | End points of a mirror pair reaching the axis | are | In one layer, bound automatically (overlap rule); across layers, left separate. There is one kind of mirror link only. | confirmed | bowen 1791467027; dot 1791467174 |
 
+### Names
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Name | is carried by | Layers, continuous curves and every line (a Bézier curve, the smallest unit), so the parts being edited can be found by name, not only their containers. Points carry no name. *Note (defaults and implementation, not rules; bowen 1791478697: the rest of naming is not principle):* default names "连续曲线N" and "曲线N" with the next unused N; a copy is named "<name>副本", then "<name>副本2"…; a name follows identity: the group that keeps its identity keeps its name and a split-off group gets a default, a split line's piece at its start end keeps the name and the other piece gets a default, a mirror-apply target keeps its own names; tags are a UI matter for now. | confirmed | bowen 1791478346, 1791478561, 1791478586, 1791478598, 1791478653, 1791478697; dot 1791478538, 1791478664 |
+| Names | are | Unique across everything named (layers, continuous curves, lines), and never empty. A rename to a name in use is refused, naming the holder. Replaces the narrower row "Layer name". | confirmed | bowen 1791478346, 1791478697; earlier bowen 1791435000 (Q30) |
+
 ### Reference images and views (Q3)
 
 | Subject | Relation | Object | Status | Source |
@@ -222,6 +229,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
+| Layer name | is | Unique, and never empty | Superseded by the row "Names": uniqueness now covers every name (bowen 1791478346, 1791478697) | bowen 1791435000 (Q30) |
 | Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | Superseded: now decided in the Editing and Mirror tables (merge position: row "Merge position within one layer") | bowen 1791424844, 1791425164 (Q26/Q27) |
 | Move to another layer | is | Copy, or copy then delete; not a separate operation | Superseded by "First-level element can be cut and pasted keeping its ids" and "Cut, paste / copy" (bowen 1791435958, 1791436374, Q31) | bowen 1791392425 (Q21) |
 | Drawing | has no | Cut, only copy and copy-then-delete. *Note:* a Bézier curve is endpoints plus a line, and its endpoints may be shared by other lines, so cut-and-paste that keeps the original ids would need extra rules for splitting shared endpoints and migrating references; the drawing layer does not introduce them (refined per dot 1791434715: changing endpoint references does not by itself force a new line id, as binding shows). A cut that creates new ids is exactly copy + delete the original, both already well defined, so no separate cut tool is needed. Moving lines between recordings with their ids is a separate matter, decided later. | Superseded by the same two rows (Q31): a whole continuous curve can be cut and pasted keeping its ids; a single line inside one still cannot | bowen 1791392233 (Q21); note bowen 1791434615, wording Claude 1791434637, approved bowen 1791434679 |
