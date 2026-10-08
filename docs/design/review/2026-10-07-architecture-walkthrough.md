@@ -2732,6 +2732,25 @@ Waiting for dot's independent review and bowen on A–D.
 - **One update for both copies.** The two copies describe one link and are updated together, without triggering each other or moving back and forth.
 - **Deferred:** both sides receiving different deformations is left to the deformation layer.
 
+### bowen (1791424255)
+
+> 联动建立完就是对称的 那么如果遭遇两者都移动那么相对移动也是对称的（即都移动到中点）就好了。
+
+**Decided:** once created, a link is symmetric. If both sides move differently, both go to the midpoint.
+
+### Claude: one combined rule (1791424274)
+
+**Average the new positions of the points this operation moved; all other points in the link group follow to that position.**
+
+- **One side moved:** the average is that point, and the other follows. This equals "the edited side decides".
+- **Both moved by the same amount** (selected and dragged together): the average is the same position, and the group moves once (dot's acceptance case).
+- **Both moved differently** (for example different deformations in a head-turn): the midpoint, so each side yields half.
+- **A three-layer chain A–B–C:** the average of the moved points, the natural generalisation of the midpoint.
+
+No master / follower is needed.
+
 ### Status
 
-Decided (bowen 1791424124): rules 1–5. Open: both sides moved differently in one operation; proposed to defer to the deformation layer.
+**Decided:**
+- rules 1–5 (bowen 1791424124);
+- the symmetric midpoint (bowen 1791424255), unified with rule 4 as "average of the moved points".
