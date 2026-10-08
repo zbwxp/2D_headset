@@ -104,6 +104,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
+| Closed curve | is | A connected closed route that uses each of its lines exactly once and may pass the same point more than once. This one definition is used both to list the loops and to decide whether a fill is still valid. | confirmed | bowen 1791430259 (甲; recorded in the core README, rule 9); dot 1791463697 |
 | Closed curve | is a loop in | Continuous curve (all loops found automatically and listed) | confirmed | bowen 1791383633, 1791390174 (Q18) |
 | Closed curve | references | Its boundary segments (a segment may be listed under several loops; stored once, drawn once) | confirmed | bowen 1791390174; dot 1791390408 (Q18) |
 | Closed curve | has at least | Two lines (no loop is made of a single line) | confirmed (consequence of binding rule) | bowen 1791392871 (Q22) |
