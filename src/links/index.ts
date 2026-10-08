@@ -56,7 +56,11 @@ export function setJoin(l: LinksState, n: net.NetworkState, a: Id, b: Id, la: Id
   const ea = endAt(n, la, a), eb = endAt(n, lb, b)
   if (!ea || !eb) throw new Error('Each line must end at its own linked point')
   S(l).joins = S(l).joins.filter(x => !(samePair(x, a, b) && (x.a === a ? x.lines[0] === la && x.lines[1] === lb : x.lines[0] === lb && x.lines[1] === la)))
-  S(l).joins.push({ a, b, lines: [la, lb], mode: 'smooth' })
+  // One stored form for one relation (dot 1791461144): the smaller point id first, rows
+  // sorted, so setting A–B or B–A gives the same record. Which side was clicked first
+  // only decides which handle is held in this edit (returned).
+  S(l).joins.push(a < b ? { a, b, lines: [la, lb], mode: 'smooth' } : { a: b, b: a, lines: [lb, la], mode: 'smooth' })
+  S(l).joins.sort((x, y) => (JSON.stringify([x.a, x.b, x.lines]) < JSON.stringify([y.a, y.b, y.lines]) ? -1 : 1))
   return { line: la, end: ea }
 }
 

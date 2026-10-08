@@ -352,6 +352,24 @@ describe('line width and locks', () => {
     expect(line(d, 'ab')).toBeDefined()
   })
 
+  it('29i. a delete in the same edit does not let a direct edit of a locked line through (dot 1791461144)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    d.edit(e => e.lineState('ab', { locked: true }))
+    expect(() => d.edit(e => { e.deleteLine('bc'); e.moveHandle('ab', 'a', P(3, 3)) })).toThrow(/Locked lines would change \(ab\)/)
+    expect(() => d.edit(e => { e.deleteLine('bc'); e.move([{ id: 'a', target: P(-2) }]) })).toThrow(/Locked/)
+    expect(s(d).lines).toHaveLength(3)
+  })
+
+  it('29j. setting the same join across a link from the other side changes nothing (dot 1791461144)', () => {
+    const d = doc('A', 'B'); triangle(d, 'A'); triangle(d, 'B', 'q', P(20))
+    d.edit(e => e.link('a', 'qa'))
+    d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    const before = s(d)
+    d.edit(e => e.linkJoin('qa', 'a', 'qab', 'ab', { mode: 'smooth' }))
+    expect(s(d).linkJoins).toEqual(before.linkJoins)
+  })
+
   it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
