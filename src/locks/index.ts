@@ -40,7 +40,7 @@ const lockedLines = (v: View) => net.lines(v.network).filter(l => l.state.locked
  * `name(line, point)` gives the line's name after the edit, so a neighbour that was
  * only split is still the same neighbour (its piece at that point).
  */
-function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, point: Id) => Id): Map<Id, Content> {
+function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, point: Id) => Id, survives: (point: Id) => boolean): Map<Id, Content> {
   const out = new Map<Id, Content>()
   if (!ids.size) return out
   const drawn = derived.drawn(v.network, v.joins)
@@ -48,7 +48,8 @@ function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, poin
   const pair = (point: Id, lines: readonly Id[]) => lines.map(x => name(x, point)).sort() as [Id, Id]
   const drawnEnd = (line: Id, point: Id) => {
     const others = net.linesAt(v.network, point).filter(e => e.line.id !== line && !deleted.has(name(e.line.id, point)))
-    const free = !others.length && !links.partners(v.links, point).length
+    // a link ends only when its partner point disappears; that follows a delete too
+    const free = !others.length && !links.partners(v.links, point).filter(survives).length
     // compared by content, not by the order of its keys (dot 1791459721)
     const stroke = (free && joins.endStroke(v.joins, point)) || {}
     return JSON.stringify(Object.keys(stroke).sort().map(k => [k, stroke[k]]))
@@ -96,6 +97,7 @@ export function changed(before: View, after: View, ch: Pick<net.Changes, 'delete
     }
     return line
   }
-  const a = contents(before, ids, deleted, forward), b = contents(after, ids, deleted, (line: Id) => line)
+  const survives = (point: Id) => net.hasPoint(after.network, point)
+  const a = contents(before, ids, deleted, forward, survives), b = contents(after, ids, deleted, (line: Id) => line, survives)
   return [...ids].filter(id => { const x = a.get(id), y = b.get(id); return !x || !y || !same(x, y) }).sort()
 }

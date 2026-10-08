@@ -339,6 +339,19 @@ describe('line width and locks', () => {
     expect(s(d).joins).toEqual([])
   })
 
+  it('29h. deleting a linked partner’s line ends the link; the locked end turning free is allowed (bowen 1791460893 甲)', () => {
+    const d = doc('A', 'B')
+    d.edit(e => {
+      sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).line('ab', 'a', 'b')
+      sk(e).point('q', 'B', P(0)); sk(e).point('r', 'B', P(0, 10)); sk(e).line('qr', 'q', 'r')
+      e.link('a', 'q'); e.endStroke('a', { taper: 1 })
+    })
+    d.edit(e => e.lineState('ab', { locked: true }))
+    d.edit(e => e.deleteLine('qr'))
+    expect(s(d).links).toEqual([])
+    expect(line(d, 'ab')).toBeDefined()
+  })
+
   it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
