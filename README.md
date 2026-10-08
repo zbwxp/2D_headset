@@ -104,4 +104,8 @@ These are our own choices, not derived from bowen's principles. They wait for hi
 10. **Filling an already-filled loop** recolours it.
 11. **An edit that changes nothing** makes no undo step.
 12. **Default line stroke:** width 1, uniform (a placeholder).
-13. **Loop enumeration limit:** 10 000 per document. An implementation bound, not a graph rule (dot 1791429823).
+13. **Loop enumeration limits:**
+    - at most 10 000 loops per document;
+    - at most 65 536 cycle combinations tried inside one block (biconnected part).
+
+    These are implementation bounds, not graph rules (dot 1791429823, 1791430851). The search is split by blocks, so loops strung together by single lines cost only as much as the loops that exist.

@@ -41,7 +41,10 @@ interface Outline {
 export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsState): Geometry {
   const o = outline(n, j)
   const lines = net.lines(n).map(l => ({ id: l.id, key: `line:${l.id}`, curve: o.drawn.get(l.id)! }))
+  // Drawing order is the fill order (bottom → top), not the discovery order of the loop list (dot 1791430851).
+  const drawOrder = new Map(fills.order(f).map((id, i) => [id, i]))
   const fillGeometry = fills.discover(f, n).filter(v => v.filled)
+    .sort((a, b) => drawOrder.get(a.id)! - drawOrder.get(b.id)!)
     .map(v => ({ id: v.id, color: v.color!, visible: v.visible!, parts: loopParts(o, v.route) }))
   return { lines, arcs: [...o.arcByKey.values()], fills: fillGeometry }
 }

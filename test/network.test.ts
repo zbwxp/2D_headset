@@ -52,3 +52,34 @@ describe('network', () => {
     expect(net.components(n)).toHaveLength(1)
   })
 })
+
+describe('closed-curve search cost (dot 1791430851)', () => {
+  it('20 small loops strung together by single lines (59 lines): 20 loops, found quickly', () => {
+    const n = net.create(), ch = net.emptyChanges()
+    net.addLayer(n, 'L')
+    // loop i: two lines between p_i and q_i; consecutive loops joined by one line: 20·2 + 19 = 59 lines
+    const made = new Set<string>()
+    const end = (id: string, x: number, y: number): net.EndSpec => (made.has(id) ? id : (made.add(id), { id, layer: 'L', position: { x, y } }))
+    for (let i = 0; i < 20; i++) {
+      const x = i * 10
+      net.addLine(n, ch, `t${i}a`, end(`p${i}`, x, 0), end(`q${i}`, x + 3, 0))
+      net.addLine(n, ch, `t${i}b`, `p${i}`, `q${i}`, { ha: { x: 1, y: 2 }, hb: { x: -1, y: 2 } })
+      if (i > 0) net.addLine(n, ch, `bridge${i}`, `q${i - 1}`, `p${i}`)
+    }
+    expect(net.lines(n)).toHaveLength(59)
+    const t0 = performance.now()
+    const loops = net.closedLoops(n)
+    expect(loops).toHaveLength(20)
+    expect(performance.now() - t0).toBeLessThan(200)
+  })
+
+  it('two blocks sharing a point give their loops plus the curve through that point twice', () => {
+    const n = net.create(), ch = net.emptyChanges()
+    net.addLayer(n, 'L')
+    net.addLine(n, ch, 'x1', { id: 'c', layer: 'L', position: { x: 0, y: 0 } }, { id: 'u', layer: 'L', position: { x: 5, y: 5 } })
+    net.addLine(n, ch, 'x2', 'u', { id: 'w', layer: 'L', position: { x: 0, y: 8 } }); net.addLine(n, ch, 'x3', 'w', 'c')
+    net.addLine(n, ch, 'y1', 'c', { id: 'v', layer: 'L', position: { x: 5, y: -5 } })
+    net.addLine(n, ch, 'y2', 'v', { id: 'z', layer: 'L', position: { x: 0, y: -8 } }); net.addLine(n, ch, 'y3', 'z', 'c')
+    expect(net.closedLoops(n)).toHaveLength(3)
+  })
+})

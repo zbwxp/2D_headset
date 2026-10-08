@@ -260,3 +260,19 @@ describe('atomic operations (dot 1791429209)', () => {
     expect(d.snapshot().layers).toEqual(['L'])
   })
 })
+
+describe('discovery order and drawing order are separate (dot 1791430851)', () => {
+  it('geometry().fills follows the fill order, and reordering a fill reorders the geometry', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(10))
+      sk(e).line('x', 'a', 'b'); sk(e).line('y', 'a', 'b', { ha: P(3, 4), hb: P(-3, 4) }); sk(e).line('z', 'a', 'b', { ha: P(3, -4), hb: P(-3, -4) })
+    })
+    const [l1, l2] = d.snapshot().loops
+    d.edit(e => { e.fill(l2!.id, 'blue'); e.fill(l1!.id, 'red') }) // fill order: l2 then l1
+    expect(d.geometry().fills.map(f => f.id)).toEqual([l2!.id, l1!.id])
+    d.edit(e => e.reorderFill(l2!.id, 1))
+    expect(d.snapshot().fillOrder).toEqual([l1!.id, l2!.id])
+    expect(d.geometry().fills.map(f => f.id)).toEqual([l1!.id, l2!.id])
+  })
+})
