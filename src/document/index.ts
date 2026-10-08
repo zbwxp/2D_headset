@@ -35,28 +35,52 @@ export type Geometry = derived.Geometry
 
 class Cancelled extends Error {}
 
+/**
+ * Transaction lifecycle (dot 1791427515). One mechanism covers every case:
+ * - an Editor is valid only while its own edit is running; any later call throws;
+ * - while an edit runs, edit / undo / redo on the same document throw (no re-entry);
+ * - the edit works on a private copy that is published only after the pipeline
+ *   succeeds; a throw or cancel publishes nothing;
+ * - modules copy every input they store, so no caller object is shared with the state.
+ */
+interface Transaction { open: boolean; readonly state: State; readonly changes: net.Changes }
+const transactions = new WeakMap<Editor, Transaction>()
+
 export class Editor {
-  /** @internal */ readonly changes = net.emptyChanges()
-  constructor(private readonly s: State) {}
+  private constructor() {}
+  /** @internal */ static open(state: State): Editor {
+    const e = new Editor()
+    transactions.set(e, { open: true, state, changes: net.emptyChanges() })
+    return e
+  }
+
+  private get tx(): Transaction {
+    const tx = transactions.get(this)
+    if (!tx?.open) throw new Error('This editor belongs to a finished edit')
+    return tx
+  }
+  private get s(): State { return this.tx.state }
 
   private topology(op: (ch: net.Changes) => void) {
+    const { state, changes } = this.tx
     const ch = net.emptyChanges()
     op(ch)
-    joins.update(this.s.joins, this.s.network, ch)
-    links.update(this.s.links, ch)
-    fills.update(this.s.fills, ch)
-    groups.reconcile(this.s.groups, this.s.network, ch)
-    for (const k of Object.keys(ch) as (keyof net.Changes)[]) (this.changes[k] as unknown[]).push(...(ch[k] as unknown[]))
+    joins.update(state.joins, state.network, ch)
+    links.update(state.links, ch)
+    fills.update(state.fills, ch)
+    groups.reconcile(state.groups, state.network, ch)
+    net.followReplacements(changes, ch)
+    for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
   }
 
   // network: one-time edits
   layer(id: Id) { net.addLayer(this.s.network, id) }
   point(id: Id, layer: Id, position: Vec) { net.addPoint(this.s.network, id, layer, position) }
   line(id: Id, a: Id, b: Id, handles?: { ha: Vec; hb: Vec }) { this.topology(ch => net.addLine(this.s.network, ch, id, a, b, handles)) }
-  move(targets: { id: Id; target: Vec }[]) { net.move(this.s.network, this.changes, targets) }
+  move(targets: { id: Id; target: Vec }[]) { net.move(this.s.network, this.tx.changes, targets) }
   /** One-time snap of `moving` onto `target`; no lasting relation (bowen 1791424844). */
   mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.s.network, target).position }]) }
-  moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.changes, line, end, offset) }
+  moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
   split(line: Id, t: number, mid: Id, first: Id, second: Id) { this.topology(ch => net.splitLine(this.s.network, ch, line, t, mid, first, second)) }
   deleteLine(id: Id) { this.topology(ch => net.deleteLine(this.s.network, ch, id)) }
   bind(keep: Id, remove: Id) { this.topology(ch => net.bind(this.s.network, ch, keep, remove)) }
@@ -79,26 +103,38 @@ export class Editor {
   fill(loop: Id, color: string) { fills.fill(this.s.fills, this.s.network, loop, color) }
   clearFill(loop: Id) { fills.clearFill(this.s.fills, loop) }
   fillVisible(loop: Id, visible: boolean) { fills.setVisible(this.s.fills, loop, visible) }
-  reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, loop, index) }
+  /** Move a fill to `index` among the fills of its own group. */
+  reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, this.s.network, loop, index) }
 
-  cancel(): never { throw new Cancelled('cancelled') }
+  cancel(): never { this.tx; throw new Cancelled('cancelled') }
 }
 
 export class Core {
   private state: State = createState()
   private past: State[] = []
   private future: State[] = []
+  private editing = false
+
+  private idle(what: string) {
+    if (this.editing) throw new Error(`${what} cannot run while an edit is in progress`)
+  }
 
   /** One atomic edit. Throws (and changes nothing) if any step fails; cancel() discards silently. */
   edit(fn: (e: Editor) => void): void {
+    this.idle('edit')
+    this.editing = true
     const draft = structuredClone(this.state)
-    const e = new Editor(draft)
+    const e = Editor.open(draft)
+    const tx = transactions.get(e)!
     try {
       fn(e)
-      commit(draft, e.changes)
+      commit(draft, tx.changes)
     } catch (err) {
       if (err instanceof Cancelled) return
       throw err
+    } finally {
+      tx.open = false
+      this.editing = false
     }
     if (JSON.stringify(draft) === JSON.stringify(this.state)) return
     this.past.push(this.state)
@@ -106,8 +142,8 @@ export class Core {
     this.state = draft
   }
 
-  undo() { const s = this.past.pop(); if (s) { this.future.push(this.state); this.state = s } }
-  redo() { const s = this.future.pop(); if (s) { this.past.push(this.state); this.state = s } }
+  undo() { this.idle('undo'); const s = this.past.pop(); if (s) { this.future.push(this.state); this.state = s } }
+  redo() { this.idle('redo'); const s = this.future.pop(); if (s) { this.past.push(this.state); this.state = s } }
   get canUndo() { return this.past.length > 0 }
   get canRedo() { return this.future.length > 0 }
 

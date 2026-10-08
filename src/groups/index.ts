@@ -14,14 +14,22 @@ declare const opaque: unique symbol
 export type GroupsState = { readonly [opaque]: 'groups' }
 interface Store {
   groups: Group[]
-  /** Per layer, group ids bottom → top. */
-  order: Record<Id, Id[]>
+  /** Per layer, group ids bottom → top. An array of entries, not an object keyed by
+   *  layer id, so any string is a safe id (dot 1791427693: 'constructor'). */
+  order: Order
   next: number
 }
 const S = (g: GroupsState) => g as unknown as Store
+type Order = { layer: Id; ids: Id[] }[]
+const idsOf = (order: Order, layer: Id): Id[] => order.find(o => o.layer === layer)?.ids ?? []
+function ensure(order: Order, layer: Id): Id[] {
+  let entry = order.find(o => o.layer === layer)
+  if (!entry) { entry = { layer, ids: [] }; order.push(entry) }
+  return entry.ids
+}
 
 export const DEFAULT_STROKE: Readonly<Stroke> = Object.freeze({ width: 1, profile: 'uniform' })
-export const create = (): GroupsState => ({ groups: [], order: {}, next: 1 }) as Store as unknown as GroupsState
+export const create = (): GroupsState => ({ groups: [], order: [], next: 1 }) as Store as unknown as GroupsState
 
 function raw(g: GroupsState, id: Id): Group {
   const group = S(g).groups.find(x => x.id === id)
@@ -34,7 +42,7 @@ export const get = (g: GroupsState, id: Id): Group => copy(raw(g, id))
 
 /** Groups in drawing order: layers in network order, each bottom → top. */
 export function list(g: GroupsState, n: net.NetworkState): Group[] {
-  return net.layers(n).flatMap(layer => (S(g).order[layer] ?? []).map(id => copy(raw(g, id))))
+  return net.layers(n).flatMap(layer => idsOf(S(g).order, layer).map(id => copy(raw(g, id))))
 }
 
 export function setStroke(g: GroupsState, id: Id, stroke: Stroke) {
@@ -43,7 +51,7 @@ export function setStroke(g: GroupsState, id: Id, stroke: Stroke) {
 }
 
 export function reorder(g: GroupsState, id: Id, index: number) {
-  const group = raw(g, id), order = S(g).order[group.layer]!
+  const group = raw(g, id), order = ensure(S(g).order, group.layer)
   order.splice(order.indexOf(id), 1)
   order.splice(Math.max(0, Math.min(index, order.length)), 0, id)
 }
@@ -66,8 +74,7 @@ export function reconcile(g: GroupsState, n: net.NetworkState, ch: net.Changes) 
   const keeps = keeperComponents(n, comps, winners)
 
   const groups: Group[] = []
-  const order: Record<Id, Id[]> = {}
-  for (const layer of net.layers(n)) order[layer] = (st.order[layer] ?? []).filter(id => keeps.has(id))
+  const order: Order = net.layers(n).map(layer => ({ layer, ids: idsOf(st.order, layer).filter(id => keeps.has(id)) }))
   const splitOffs = new Map<Id, Id[]>() // origin → new ids, inserted right after the origin
   comps.forEach((comp, i) => {
     const w = winners[i]
@@ -78,10 +85,10 @@ export function reconcile(g: GroupsState, n: net.NetworkState, ch: net.Changes) 
     const id = `g${st.next++}`
     groups.push({ id, layer: comp.layer, lines: comp.lines, stroke: { ...(w ? old.get(w)!.stroke : DEFAULT_STROKE) } })
     if (w) splitOffs.set(w, [...(splitOffs.get(w) ?? []), id])
-    else (order[comp.layer] ??= []).push(id)
+    else ensure(order, comp.layer).push(id)
   })
   for (const [origin, ids] of splitOffs) {
-    const list = order[old.get(origin)!.layer]!
+    const list = ensure(order, old.get(origin)!.layer)
     list.splice(list.indexOf(origin) + 1, 0, ...ids)
   }
   st.groups = groups
@@ -107,7 +114,7 @@ function winnerOf(g: GroupsState, comp: { lines: Id[] }, owner: Map<Id, Id>, ch:
     const hit = ch.prefer[k]!.lines.map(l => owner.get(l)).find(o => o && candidates.includes(o))
     if (hit) return hit
   }
-  const slot = (id: Id) => { const x = raw(g, id); return (S(g).order[x.layer] ?? []).indexOf(id) }
+  const slot = (id: Id) => { const x = raw(g, id); return idsOf(S(g).order, x.layer).indexOf(id) }
   return [...candidates].sort((a, b) => slot(a) - slot(b))[0]
 }
 

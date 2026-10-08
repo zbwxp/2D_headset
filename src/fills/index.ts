@@ -54,10 +54,19 @@ export function clearFill(f: FillsState, id: Id) {
 
 export function setVisible(f: FillsState, id: Id, visible: boolean) { find(f, id).visible = visible }
 
-export function reorder(f: FillsState, id: Id, index: number) {
-  find(f, id)
-  S(f).order = S(f).order.filter(x => x !== id)
-  S(f).order.splice(Math.max(0, Math.min(index, S(f).order.length)), 0, id)
+/**
+ * Move a fill to `index` among the fills of its own continuous curve (bottom → top).
+ * Fills of other groups keep their places (dot 1791427693).
+ */
+export function reorder(f: FillsState, n: net.NetworkState, id: Id, index: number) {
+  const loop = find(f, id)
+  const comp = net.components(n).find(c => c.lines.includes(loop.lines[0]!))
+  const inGroup = new Set(comp?.lines ?? [])
+  const same = (x: Id) => find(f, x).lines.some(l => inGroup.has(l))
+  const slots = S(f).order.flatMap((x, i) => (same(x) ? [i] : []))
+  const members = slots.map(i => S(f).order[i]!).filter(x => x !== id)
+  members.splice(Math.max(0, Math.min(index, members.length)), 0, id)
+  slots.forEach((slot, k) => { S(f).order[slot] = members[k]! })
 }
 
 /** Keep boundary references after one network operation. */

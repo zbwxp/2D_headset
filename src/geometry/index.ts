@@ -81,8 +81,30 @@ export function pointInPolygon(p: Vec, poly: readonly Vec[]): boolean {
   return inside
 }
 
-/** Circle-like cubic from p0 to p3 that bends around the corner vertex. */
-export function cornerArc(p0: Vec, vertex: Vec, p3: Vec): Cubic {
-  const k = 0.5522847498307936
-  return [p0, lerp(p0, vertex, k), lerp(p3, vertex, k), p3]
+/** First derivative of the curve at t. */
+export function derivative(c: Cubic, t: number): Vec {
+  const [p0, p1, p2, p3] = c, u = 1 - t
+  const a = scale(sub(p1, p0), 3 * u * u), b = scale(sub(p2, p1), 6 * u * t), d = scale(sub(p3, p2), 3 * t * t)
+  return add(add(a, b), d)
+}
+
+export function normalize(v: Vec): Vec {
+  const l = length(v)
+  return l > 0 ? { x: v.x / l, y: v.y / l } : { x: 0, y: 0 }
+}
+
+/**
+ * Arc from p0 to p3, tangent to `into` at p0 (direction of travel arriving at p0)
+ * and to `out` at p3 (direction of travel leaving p3). For a symmetric corner this
+ * is the standard cubic approximation of a circular arc: handle length
+ * (4/3)·tan(θ/4)·R, with θ the turn angle and R = chord / (2·sin(θ/2)).
+ */
+export function filletArc(p0: Vec, into: Vec, p3: Vec, out: Vec): Cubic {
+  const t0 = normalize(into), t3 = normalize(out)
+  const turn = Math.acos(Math.max(-1, Math.min(1, t0.x * t3.x + t0.y * t3.y)))
+  const chord = length(sub(p3, p0))
+  if (turn < 1e-9 || chord < 1e-12) return [p0, lerp(p0, p3, 1 / 3), lerp(p0, p3, 2 / 3), p3]
+  const radius = chord / (2 * Math.sin(turn / 2))
+  const h = (4 / 3) * Math.tan(turn / 4) * radius
+  return [p0, add(p0, scale(t0, h)), sub(p3, scale(t3, h)), p3]
 }

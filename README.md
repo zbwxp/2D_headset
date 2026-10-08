@@ -19,8 +19,8 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
 | `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
 | `links` | cross-layer endpoint links (one relation per pair) | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets |
-| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed walk in one layer; discover unfilled loops on demand |
-| `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins (arc trims and inserts). Lines and fills read the same result. Stroke width, taper and blur never change it |
+| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed walk in one layer; discover unfilled loops on demand. Reordering is within the fill's own group |
+| `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
@@ -37,6 +37,18 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 - **Tests:**
   - `test/encapsulation.typecheck.ts` must fail to compile wherever outside code tries to write. `test/typecheck.test.ts` runs `tsc` inside `vitest run`, so this is part of the test suite.
   - `test/encapsulation.test.ts` checks the same at runtime.
+
+## Transactions (dot 1791427515)
+
+- **Scope:** an `Editor` is valid only inside its own `edit`; afterwards every call throws.
+- **No re-entry:** `edit`, `undo` and `redo` are refused while an edit runs.
+- **Atomic:** the edit works on a private copy, published only after the pipeline succeeds. A throw or `cancel()` publishes nothing.
+
+## Ids (dot 1791427637)
+
+- **Never reused:** point and line ids are never reused within a document, deleted ones included. So a filled loop's identity can never be taken over by a new loop.
+- **Boundary keys** use a JSON encoding, so no id can collide through a separator.
+- **Order** lists are arrays of entries, so any string is a safe id.
 
 ## The pipeline (every edit)
 

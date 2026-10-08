@@ -18,7 +18,14 @@ declare const opaque: unique symbol
 export type NetworkState = { readonly [opaque]: 'network' }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
-interface Store { layers: Id[]; points: Mutable<Point>[]; lines: Mutable<Line>[] }
+interface Store {
+  layers: Id[]
+  points: Mutable<Point>[]
+  lines: Mutable<Line>[]
+  /** Every point / line id ever used in this document. Ids are never reused (dot 1791427637). */
+  usedPoints: Id[]
+  usedLines: Id[]
+}
 const S = (n: NetworkState) => n as unknown as Store
 
 /** What one edit did to the network; attribute modules update their own references from it. */
@@ -45,7 +52,27 @@ export const emptyChanges = (): Changes => ({
   replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [],
 })
 
-export const create = (): NetworkState => ({ layers: [], points: [], lines: [] }) as Store as unknown as NetworkState
+export const create = (): NetworkState =>
+  ({ layers: [], points: [], lines: [], usedPoints: [], usedLines: [] }) as Store as unknown as NetworkState
+
+function claimPoint(n: NetworkState, id: Id) {
+  if (S(n).usedPoints.includes(id)) throw new Error(`Point id ${id} was already used in this document; ids are never reused`)
+  S(n).usedPoints.push(id)
+}
+function claimLine(n: NetworkState, id: Id) {
+  if (S(n).usedLines.includes(id)) throw new Error(`Line id ${id} was already used in this document; ids are never reused`)
+  S(n).usedLines.push(id)
+}
+
+/**
+ * Keep the edit's accumulated direct-action intent valid after one operation:
+ * a held handle on a split line now belongs to the matching piece (dot 1791427693).
+ */
+export function followReplacements(acc: Changes, op: Changes) {
+  for (const r of op.replaced) {
+    acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end } : h))
+  }
+}
 
 // ---- copies in and out ---------------------------------------------------
 
@@ -122,7 +149,8 @@ export function components(n: NetworkState): { layer: Id; lines: Id[] }[] {
 
 export interface LoopUse { line: Id; reversed: boolean }
 export interface FoundLoop { key: string; layer: Id; route: LoopUse[] }
-export const loopKey = (ids: Iterable<Id>) => 'loop:' + [...ids].sort().join('|')
+/** Boundary key of a set of lines (collision-free encoding). It is a query key, not a fill identity. */
+export const loopKey = (ids: Iterable<Id>) => 'loop:' + JSON.stringify([...ids].sort())
 
 /** Upper bound on enumerated loops (bowen: a layer never holds very complex networks). */
 export const LOOP_LIMIT = 10000
@@ -173,23 +201,25 @@ export function addLayer(n: NetworkState, id: Id) {
 }
 
 export function addPoint(n: NetworkState, id: Id, layer: Id, position: Vec) {
-  if (hasPoint(n, id)) throw new Error(`Point ${id} already exists`)
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
-  S(n).points.push({ id, layer, position: vecIn(position) })
+  const position_ = vecIn(position)
+  claimPoint(n, id)
+  S(n).points.push({ id, layer, position: position_ })
 }
 
 /** Pen: a new line from a to b (a is the first-clicked end). Default handles make a straight line. */
 export function addLine(n: NetworkState, ch: Changes, id: Id, a: Id, b: Id, handles?: { ha: Vec; hb: Vec }) {
-  if (hasLine(n, id)) throw new Error(`Line ${id} already exists`)
   if (a === b) throw new Error('A line needs two different points')
   const pa = rawPoint(n, a), pb = rawPoint(n, b)
   if (pa.layer !== pb.layer) throw new Error('A line cannot cross layers; use an endpoint link')
   const d = sub(pb.position, pa.position)
+  const hIn = handles ? { ha: vecIn(handles.ha), hb: vecIn(handles.hb) } : undefined
+  claimLine(n, id)
   ch.prefer.push({ lines: linesAt(n, a).map(e => e.line.id) })
   S(n).lines.push({
     id, a, b,
-    ha: handles ? vecIn(handles.ha) : { x: d.x / 3, y: d.y / 3 },
-    hb: handles ? vecIn(handles.hb) : { x: -d.x / 3, y: -d.y / 3 },
+    ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 },
+    hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 },
   })
 }
 
@@ -229,9 +259,10 @@ export function setHandles(n: NetworkState, updates: { line: Id; end: End; offse
 /** Split / add point: one line becomes two lines meeting at a new point. */
 export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, mid: Id, first: Id, second: Id) {
   if (!(t > 0 && t < 1)) throw new Error('Split parameter must be inside the line')
-  for (const id of [first, second]) if (hasLine(n, id)) throw new Error(`Line ${id} already exists`)
   if (first === second) throw new Error('The two pieces need different ids')
   const l = rawLine(n, lineId)
+  claimLine(n, first)
+  claimLine(n, second)
   const [c1, c2] = split(curve(n, lineId), t)
   addPoint(n, mid, rawPoint(n, l.a).layer, c1[3])
   const all = S(n).lines
