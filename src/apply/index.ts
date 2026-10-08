@@ -158,7 +158,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     net.moveHandle(n, ch, to.to, 'a', to.reversed ? hb : ha)
     net.moveHandle(n, ch, to.to, 'b', to.reversed ? ha : hb)
     net.setLineStroke(n, to.to, line.stroke)
-    net.setLineState(n, to.to, line.state)
+    net.deferLineState(ch, to.to, line.state)
   }
   for (const { tp, stroke } of endData) {
     if (stroke) joins.setEndStroke(d.joins, n, tp, stroke)

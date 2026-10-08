@@ -65,10 +65,12 @@ export interface Changes {
   relocated: Id[]
   /** Handles aimed at an absolute tip in this edit; their offsets are measured from the final point positions at commit. */
   handleTips: { line: Id; end: End; tip: Vec }[]
+  /** Element states an apply gives its targets, written after the lock check (see `deferLineState`). */
+  laterStates: { line: Id; state: ElementState }[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [], laterStates: [],
 })
 
 export const create = (): NetworkState =>
@@ -112,7 +114,25 @@ export function followReplacements(acc: Changes, op: Changes) {
   for (const r of op.replaced) {
     acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end } : h))
     acc.handleTips = acc.handleTips.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip } : h))
+    acc.laterStates = acc.laterStates.flatMap(x => (x.line === r.line ? r.pieces.map(line => ({ line, state: x.state })) : [x]))
   }
+}
+
+/**
+ * An apply copies the source's element state (visibility, lock) onto a target whose
+ * content it also rewrites. The state is written after the commit's lock check, so
+ * the check judges the target as it was: an unlocked target may be reshaped and then
+ * carry the source's lock, while a locked target is refused by the apply itself
+ * before anything is written (dot 1791473104: handled in the apply flow, not by
+ * loosening the lock check for every edit).
+ */
+export function deferLineState(ch: Changes, line: Id, state: ElementState) {
+  ch.laterStates = ch.laterStates.filter(x => x.line !== line)
+  ch.laterStates.push({ line, state: { visible: state.visible, locked: state.locked } })
+}
+/** At commit, after the lock check: write the deferred states of lines that still exist. */
+export function applyLaterStates(n: NetworkState, ch: Changes) {
+  for (const x of ch.laterStates) if (hasLine(n, x.line)) setLineState(n, x.line, x.state)
 }
 
 /**

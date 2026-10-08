@@ -486,4 +486,6 @@ function commit(s: State, ch: net.Changes, published: State) {
   editing.clean(s.selection, s.network, s.fills)
   const changed = locks.changed(published, s, ch)
   if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
+  // element states an apply copies are written after the lock check (network.deferLineState)
+  net.applyLaterStates(s.network, ch)
 }

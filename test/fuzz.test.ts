@@ -198,13 +198,15 @@ function invariants(d: Core): string[] {
  * locked line never disappears. Checked independently of the locks module, on the
  * raw curve only (end positions, handles, stroke).
  */
-function lockedKept(before: Snapshot, after: Snapshot): string[] {
+function lockedKept(before: Snapshot, after: Snapshot, isApply = false): string[] {
   const at = (s: Snapshot, id: string) => s.points.find(p => p.id === id)?.position
   const raw = (s: Snapshot, x: Snapshot['lines'][number]) => JSON.stringify([at(s, x.a), at(s, x.b), x.ha, x.hb, x.stroke])
   const gone = before.lines.filter(l => l.state.locked && !after.lines.some(x => x.id === l.id)).map(l => `locked line ${l.id} disappeared`)
+  // An apply writes the lock it copies after the lock check, so for an apply the
+  // protected lines are the ones locked before it (docs/editing-apply-plan.md).
   return [...gone, ...after.lines.filter(l => l.state.locked).flatMap(m => {
     const l = before.lines.find(x => x.id === m.id)
-    return !l || raw(before, l) === raw(after, m) ? [] : [`locked line ${m.id} changed`]
+    return !l || (isApply && !l.state.locked) || raw(before, l) === raw(after, m) ? [] : [`locked line ${m.id} changed`]
   })]
 }
 
@@ -232,7 +234,7 @@ function run(seed: number, steps: number) {
       else if (op.name === 'redo') d.redo()
       else {
         d.edit((op as { run: (e: Editor) => void }).run)
-        for (const f of lockedKept(before, d.snapshot())) failures.push(`seed ${seed} step ${i} (${op.name}): ${f}`)
+        for (const f of lockedKept(before, d.snapshot(), /mirror(Apply|Link)/.test(op.name))) failures.push(`seed ${seed} step ${i} (${op.name}): ${f}`)
       }
       stats.ok[op.name.split(' ')[0]!] = (stats.ok[op.name.split(' ')[0]!] ?? 0) + 1
     } catch { /* refused operations are fine; the state must stay valid */ }
