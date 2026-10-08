@@ -2561,11 +2561,31 @@ v103 `connect` unified the width and profile of both groups to the first group's
 - dot will check v103's actual defaults. The focus is whether "仅绑定" and the rendering that fills in the junction are two different layers of handling.
 - **Acceptance item:** an even 90° with four mutually smooth lines is the symmetric behaviour bowen wants. It is not the unique result of every high-k spring model. When the solver rule is chosen, this example must be in the acceptance tests; raising k alone does not count as implemented.
 
+### dot's v103 check (1791422170; source reading)
+
+**"仅绑定 also renders joined" is true, and it is two layers of handling:**
+
+1. **Geometry:** 仅绑定 merges the endpoints into one point but does not straighten the handles; corners are allowed.
+2. **Rendering:**
+   - Two connected segments are chained into one stroke path, with no separate end caps in between.
+   - A uniform stroke uses a round join; tapers and similar effects produce a continuous stroke outline.
+   - So "joined, no gap" does not require geometric smooth.
+   - Sources: `7205381:src/domain/drawing/strokes.ts`, `appearance.ts`.
+3. **The other modes:** 尖点 generates a sharp-corner stroke outline; 平滑 constrains handle direction. This is why v103 has these modes.
+
+The check is from source reading only; it does not guarantee that multi-branch or extreme-corner cases render without defects.
+
+**A difference from the restatement above:**
+- v103 join records reference curve ends, so deleting the merged point does not drop its joins wholesale.
+- v103 also clears tapers at the junction.
+- So "junction first keeps its settings, the reverse order uses presets" is a **new rule** to be stated explicitly, not v103 behaviour.
+- **Claude's note:** the restatement was framed as bowen's rule, not as v103. This is now explicit.
+
 ### Status
 
 - 2 decided (the join is a point attribute).
 - 1 decided (end stroke belongs to the point; shared points are continuous; special effects use show/hide intervals).
 - Open: line stroke per line or per connected group?
 - 3 (odd smooth cycle) decided: smooth is a stiff spring; conflicts show the compromise, nothing is refused.
-- Proposed (to confirm): the deleted point's joins are dropped; new connections use the tool preset.
+- Proposed new rule (not v103; to confirm): the deleted point's joins are dropped; new connections use the tool preset.
 - Decided: spring stiffness global and fixed; width unified to the first-clicked group on binding.
