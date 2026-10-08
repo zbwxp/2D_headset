@@ -2,14 +2,13 @@
 import { describe, it, expect } from 'vitest'
 import * as net from '../src/network'
 import { Core } from '../src'
+import { sk } from './sketch'
 
 function small() {
   const n = net.create(), ch = net.emptyChanges()
   net.addLayer(n, 'L')
   const pos = { x: 1, y: 2 }
-  net.addPoint(n, 'a', 'L', pos)
-  net.addPoint(n, 'b', 'L', { x: 5, y: 2 })
-  net.addLine(n, ch, 'ab', 'a', 'b')
+  net.addLine(n, ch, 'ab', { id: 'a', layer: 'L', position: pos }, { id: 'b', layer: 'L', position: { x: 5, y: 2 } })
   return { n, pos }
 }
 
@@ -32,12 +31,12 @@ describe('network encapsulation', () => {
 
   it('non-finite coordinates are refused', () => {
     const { n } = small()
-    expect(() => net.addPoint(n, 'c', 'L', { x: NaN, y: 0 })).toThrow()
+    expect(() => net.addLine(n, net.emptyChanges(), 'bc', 'b', { id: 'c', layer: 'L', position: { x: NaN, y: 0 } })).toThrow(/finite/)
   })
 
   it('a Core snapshot is detached from the document', () => {
     const d = new Core()
-    d.edit(e => { e.layer('L'); e.point('a', 'L', { x: 0, y: 0 }); e.point('b', 'L', { x: 1, y: 0 }); e.line('ab', 'a', 'b') })
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', { x: 0, y: 0 }); sk(e).point('b', 'L', { x: 1, y: 0 }); sk(e).line('ab', 'a', 'b') })
     const snap = d.snapshot()
     snap.points[0]!.position = { x: 5, y: 5 }
     expect(d.snapshot().points[0]!.position).toEqual({ x: 0, y: 0 })

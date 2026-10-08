@@ -6,10 +6,16 @@ function grid() {
   // 3×3 points, 12 lines: 13 simple loops (2×2 grid of cells)
   const n = net.create(), ch = net.emptyChanges()
   net.addLayer(n, 'L')
-  for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) net.addPoint(n, `p${x}${y}`, 'L', { x, y })
+  const made = new Set<string>()
+  const end = (x: number, y: number): net.EndSpec => {
+    const id = `p${x}${y}`
+    if (made.has(id)) return id
+    made.add(id)
+    return { id, layer: 'L', position: { x, y } }
+  }
   for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) {
-    if (x < 2) net.addLine(n, ch, `h${x}${y}`, `p${x}${y}`, `p${x + 1}${y}`)
-    if (y < 2) net.addLine(n, ch, `v${x}${y}`, `p${x}${y}`, `p${x}${y + 1}`)
+    if (x < 2) net.addLine(n, ch, `h${x}${y}`, end(x, y), end(x + 1, y))
+    if (y < 2) net.addLine(n, ch, `v${x}${y}`, end(x, y), end(x, y + 1))
   }
   return n
 }

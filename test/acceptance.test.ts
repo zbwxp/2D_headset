@@ -3,6 +3,7 @@
 // dot 1791426280); the rest are added from the relationship graph.
 import { describe, it, expect } from 'vitest'
 import { Core, type Vec } from '../src'
+import { sk } from './sketch'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 
@@ -10,8 +11,8 @@ function graph(edges: [string, string, string][], positions: Record<string, Vec>
   const d = new Core()
   d.edit(e => {
     e.layer('L')
-    for (const [id, p] of Object.entries(positions)) e.point(id, 'L', p)
-    for (const [id, a, b] of edges) e.line(id, a, b)
+    for (const [id, p] of Object.entries(positions)) sk(e).point(id, 'L', p)
+    for (const [id, a, b] of edges) sk(e).line(id, a, b)
   })
   return d
 }
@@ -60,7 +61,7 @@ describe('dot draft: binding, loops and fills', () => {
 
   it('a chord does not repartition the outer fill', () => {
     const d = tri(), id = paint(d)
-    d.edit(e => { e.split('ab', 0.5, 'm', 'am', 'mb'); e.line('mc', 'm', 'c') })
+    d.edit(e => { e.split('ab', 0.5, 'm', 'am', 'mb'); sk(e).line('mc', 'm', 'c') })
     expect(d.snapshot().loops).toHaveLength(3)
     expect(loop(d, id)?.color).toBe('red')
   })
@@ -84,7 +85,7 @@ describe('dot draft: binding, loops and fills', () => {
     const after = d.snapshot()
     d.edit(e => { e.deleteLine('bc'); e.cancel() })
     expect(d.snapshot()).toEqual(after)
-    expect(() => d.edit(e => { e.deleteLine('bc'); e.line('bad', 'missing', 'a') })).toThrow()
+    expect(() => d.edit(e => { e.deleteLine('bc'); sk(e).line('bad', 'missing', 'a') })).toThrow()
     expect(d.snapshot()).toEqual(after)
   })
 })
@@ -95,7 +96,7 @@ function linked() {
   d.edit(e => {
     e.layer('A'); e.layer('B'); e.layer('C')
     for (const [id, layer, x] of [['a', 'A', 0], ['b', 'B', 10], ['c', 'C', 20]] as const) {
-      e.point(id, layer, P(x)); e.point(id + '2', layer, P(x, 5)); e.line(id + 'line', id, id + '2')
+      sk(e).point(id, layer, P(x)); sk(e).point(id + '2', layer, P(x, 5)); sk(e).line(id + 'line', id, id + '2')
     }
     e.link('a', 'b'); e.link('b', 'c')
   })
@@ -120,12 +121,12 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
     it(`${n} mutually smooth lines settle evenly (${360 / n}°) with finite non-zero handles`, () => {
       const d = new Core()
       d.edit(e => {
-        e.layer('L'); e.point('o', 'L', P(0))
+        e.layer('L'); sk(e).point('o', 'L', P(0))
         for (let i = 0; i < n; i++) {
           // start off-symmetric so the solver has to work
           const a = 2 * Math.PI * i / n + (i === 1 ? 0.4 : 0)
-          e.point('p' + i, 'L', P(10 * Math.cos(a), 10 * Math.sin(a)))
-          e.line('l' + i, 'o', 'p' + i)
+          sk(e).point('p' + i, 'L', P(10 * Math.cos(a), 10 * Math.sin(a)))
+          sk(e).line('l' + i, 'o', 'p' + i)
         }
         for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) e.join('o', 'l' + i, 'l' + j, { mode: 'smooth' })
       })
@@ -181,11 +182,11 @@ describe('graph rules added by Claude', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A'); e.layer('B')
-      e.point('a', 'A', P(0)); e.point('a2', 'A', P(0, 5)); e.line('aa', 'a', 'a2')
-      e.point('c', 'A', P(2)); e.point('c2', 'A', P(2, 5)); e.line('cc', 'c', 'c2')
-      e.point('b', 'B', P(1)); e.point('b2', 'B', P(1, 5)); e.line('bb', 'b', 'b2')
+      sk(e).point('a', 'A', P(0)); sk(e).point('a2', 'A', P(0, 5)); sk(e).line('aa', 'a', 'a2')
+      sk(e).point('c', 'A', P(2)); sk(e).point('c2', 'A', P(2, 5)); sk(e).line('cc', 'c', 'c2')
+      sk(e).point('b', 'B', P(1)); sk(e).point('b2', 'B', P(1, 5)); sk(e).line('bb', 'b', 'b2')
     })
-    expect(() => d.edit(e => e.line('x', 'a', 'b'))).toThrow(/cross layers/)
+    expect(() => d.edit(e => sk(e).line('x', 'a', 'b'))).toThrow(/cross layers/)
     expect(() => d.edit(e => e.bind('a', 'b'))).toThrow(/within one layer/)
     expect(() => d.edit(e => e.link('a', 'c'))).toThrow(/cross-layer only/)
   })
@@ -194,9 +195,9 @@ describe('graph rules added by Claude', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('A'); e.layer('B')
-      e.point('a', 'A', P(0)); e.point('b', 'A', P(10)); e.point('c', 'A', P(20)); e.point('d', 'A', P(30))
-      e.line('ab', 'a', 'b'); e.line('bc', 'b', 'c'); e.line('cd', 'c', 'd')
-      e.point('q', 'B', P(0)); e.point('r', 'B', P(0, 5)); e.line('qr', 'q', 'r'); e.link('q', 'b')
+      sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).point('c', 'A', P(20)); sk(e).point('d', 'A', P(30))
+      sk(e).line('ab', 'a', 'b'); sk(e).line('bc', 'b', 'c'); sk(e).line('cd', 'c', 'd')
+      sk(e).point('q', 'B', P(0)); sk(e).point('r', 'B', P(0, 5)); sk(e).line('qr', 'q', 'r'); e.link('q', 'b')
     })
     d.edit(e => e.deleteLine('ab')) // a is isolated → removed (bowen 1791428195); b still has bc
     expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['b', 'c', 'd', 'q', 'r'])
@@ -206,12 +207,6 @@ describe('graph rules added by Claude', () => {
     expect(d.snapshot().links).toHaveLength(0)
     expect(d.snapshot().points.find(p => p.id === 'q')!.links).toEqual([])
     expect(d.snapshot().points.find(p => p.id === 'c')!.links).toEqual([])
-  })
-
-  it('a point created without any line does not survive the edit', () => {
-    const d = new Core()
-    d.edit(e => { e.layer('L'); e.point('lonely', 'L', P(0)) })
-    expect(d.snapshot().points).toEqual([])
   })
 
   it('binding drops the removed point’s joins; the kept point’s joins stay', () => {
@@ -234,7 +229,7 @@ describe('graph rules added by Claude', () => {
 
   it('a group split by unbinding: the new group goes right after the original', () => {
     const d = graph([['x', 'a', 'b'], ['y', 'b', 'c']], { a: P(0), b: P(1), c: P(2) })
-    d.edit(e => { e.layer('L'); e.point('d', 'L', P(5)); e.point('f', 'L', P(6)); e.line('w', 'd', 'f') })
+    d.edit(e => { e.layer('L'); sk(e).point('d', 'L', P(5)); sk(e).point('f', 'L', P(6)); sk(e).line('w', 'd', 'f') })
     const [g1, g2] = d.snapshot().groups
     d.edit(e => e.unbind('b', ['y'], 'b2'))
     const groups = d.snapshot().groups

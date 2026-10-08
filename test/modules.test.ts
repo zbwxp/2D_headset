@@ -1,6 +1,7 @@
 // Module-level checks for the two densest parts: group identity and fill outlines.
 import { describe, it, expect } from 'vitest'
 import { Core, type Vec } from '../src'
+import { sk } from './sketch'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 
@@ -9,11 +10,11 @@ describe('groups: identity through merge and split', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('L')
-      for (const [id, x] of [['a', 0], ['b', 1], ['c', 5], ['d', 6]] as const) e.point(id, 'L', P(x))
-      e.line('x', 'a', 'b'); e.line('y', 'c', 'd')
+      for (const [id, x] of [['a', 0], ['b', 1], ['c', 5], ['d', 6]] as const) sk(e).point(id, 'L', P(x))
+      sk(e).line('x', 'a', 'b'); sk(e).line('y', 'c', 'd')
     })
     const [gx, gy] = d.snapshot().groups
-    d.edit(e => e.line('bridge', 'c', 'b')) // first point c → y's group wins
+    d.edit(e => sk(e).line('bridge', 'c', 'b')) // first point c → y's group wins
     const groups = d.snapshot().groups
     expect(groups.map(g => g.id)).toEqual([gy!.id])
     expect(groups[0]!.lines.sort()).toEqual(['bridge', 'x', 'y'])
@@ -23,9 +24,9 @@ describe('groups: identity through merge and split', () => {
   it('a hub split three ways: the earliest line keeps the id, the others follow it in order with its stroke', () => {
     const d = new Core()
     d.edit(e => {
-      e.layer('L'); e.point('o', 'L', P(0))
-      for (let i = 1; i <= 3; i++) { e.point('p' + i, 'L', P(i, i)); e.line('l' + i, 'o', 'p' + i) }
-      e.point('q', 'L', P(9)); e.point('r', 'L', P(10)); e.line('top', 'q', 'r')
+      e.layer('L'); sk(e).point('o', 'L', P(0))
+      for (let i = 1; i <= 3; i++) { sk(e).point('p' + i, 'L', P(i, i)); sk(e).line('l' + i, 'o', 'p' + i) }
+      sk(e).point('q', 'L', P(9)); sk(e).point('r', 'L', P(10)); sk(e).line('top', 'q', 'r')
     })
     const [hub, top] = d.snapshot().groups
     d.edit(e => e.stroke(hub!.id, { width: 3, profile: 'x' }))
@@ -43,7 +44,7 @@ describe('groups: identity through merge and split', () => {
 
   it('a group whose lines are all deleted leaves the order', () => {
     const d = new Core()
-    d.edit(e => { e.layer('L'); e.point('a', 'L', P(0)); e.point('b', 'L', P(1)); e.line('x', 'a', 'b') })
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(1)); sk(e).line('x', 'a', 'b') })
     d.edit(e => e.deleteLine('x'))
     expect(d.snapshot().groups).toEqual([])
   })
@@ -55,8 +56,8 @@ describe('derived: fill outlines', () => {
     const d = new Core()
     d.edit(e => {
       e.layer('L')
-      e.point('a', 'L', P(0)); e.point('b', 'L', P(10)); e.point('c', 'L', P(10, 10)); e.point('d', 'L', P(0, 10))
-      e.line('ab', 'a', 'b'); e.line('bc', 'b', 'c'); e.line('cd', 'c', 'd'); e.line('da', 'd', 'a'); e.line('ac', 'a', 'c')
+      sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(10)); sk(e).point('c', 'L', P(10, 10)); sk(e).point('d', 'L', P(0, 10))
+      sk(e).line('ab', 'a', 'b'); sk(e).line('bc', 'b', 'c'); sk(e).line('cd', 'c', 'd'); sk(e).line('da', 'd', 'a'); sk(e).line('ac', 'a', 'c')
     })
     return d
   }

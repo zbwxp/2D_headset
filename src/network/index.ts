@@ -200,16 +200,27 @@ export function addLayer(n: NetworkState, id: Id) {
   if (!S(n).layers.includes(id)) S(n).layers.push(id)
 }
 
-export function addPoint(n: NetworkState, id: Id, layer: Id, position: Vec) {
+/** Internal to this module: points are created only with lines (addLine, split, unbind). */
+function addPoint(n: NetworkState, id: Id, layer: Id, position: Vec) {
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
   const position_ = vecIn(position)
   claimPoint(n, id)
   S(n).points.push({ id, layer, position: position_ })
 }
 
-/** Pen: a new line from a to b (a is the first-clicked end). Default handles make a straight line. */
-export function addLine(n: NetworkState, ch: Changes, id: Id, a: Id, b: Id, handles?: { ha: Vec; hb: Vec }) {
-  if (a === b) throw new Error('A line needs two different points')
+/** A line end: an existing point, or a new point created together with the line. */
+export type EndSpec = Id | { id: Id; layer: Id; position: Vec }
+
+/**
+ * Pen: a new line from a to b (a is the first-clicked end). Each end is an existing
+ * point or a new one created with the line — a point never exists without a line
+ * (bowen 1791428375). Default handles make a straight line.
+ */
+export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bSpec: EndSpec, handles?: { ha: Vec; hb: Vec }) {
+  const endId = (e: EndSpec) => (typeof e === 'string' ? e : e.id)
+  if (endId(aSpec) === endId(bSpec)) throw new Error('A line needs two different points')
+  for (const e of [aSpec, bSpec]) if (typeof e !== 'string') addPoint(n, e.id, e.layer, e.position)
+  const a = endId(aSpec), b = endId(bSpec)
   const pa = rawPoint(n, a), pb = rawPoint(n, b)
   if (pa.layer !== pb.layer) throw new Error('A line cannot cross layers; use an endpoint link')
   const d = sub(pb.position, pa.position)

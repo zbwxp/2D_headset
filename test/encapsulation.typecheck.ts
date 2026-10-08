@@ -5,6 +5,7 @@ import * as groups from '../src/groups'
 import * as joins from '../src/joins'
 import * as links from '../src/links'
 import * as fills from '../src/fills'
+import type { Editor } from '../src'
 
 const n = net.create()
 // @ts-expect-error the network state is opaque: no direct field access
@@ -23,3 +24,7 @@ joins.create().rows
 links.create().pairs
 // @ts-expect-error opaque fills state
 fills.create().loops
+// @ts-expect-error the public editor has no way to make a point without a line (bowen 1791428375)
+;(null as unknown as Editor).point('p', 'L', { x: 0, y: 0 })
+// @ts-expect-error points are created only by lines, split and unbind inside network
+net.addPoint(n, 'p', 'L', { x: 0, y: 0 })
