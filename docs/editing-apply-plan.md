@@ -78,7 +78,7 @@ Added after dot's review of 070477e:
 - the axis defaults to x = 0;
 - new counterpart ids that would collide with an existing or recorded id refuse the whole operation (no overwrite, no half operation; dot).
 
-**Derived consequence to report to bowen:** `deleteLayer` deletes each unlocked line. Under a mirror link each of those deletes is paired, so deleting the left eye's layer also deletes the mirror-linked right eye, unless the right eye is locked, in which case the whole operation is refused.
+**Derived consequence, accepted by bowen (1791474106):** `deleteLayer` deletes each unlocked line. Under a mirror link each of those deletes is paired, so deleting the left eye's layer also deletes the mirror-linked right eye, unless the right eye is locked, in which case the whole operation is refused.
 
 ### Acceptance (A)
 
