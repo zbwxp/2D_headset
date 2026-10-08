@@ -21,11 +21,9 @@ What carries over from v2 §6:
 - **Links and locks apply alike to every entry.**
 - **Acceptance in pairs:** the same operation by mouse and by API gives the same document, the same errors and the same undo.
 
-**Gaps of the version 3 core against v2 §6, to fill before or inside the drawing room:**
-- semantic names and tags on objects: v3 lines, points and fills have ids only;
-- `diff` and `explain`;
-- the error shape: v3 refusals carry a code and a message; addresses, fixes and the "written" flag are to add;
-- `preview` in the core (§5).
+**Scope rule (bowen 1791476920):** a feature whose principles are not settled in the v3 graph is not touched. Against v2 §6 this gives:
+- **In:** named operations shared by both entries; `apply` (one undo step); `preview`; errors with a code, a message and the object addresses; `render`; `inspect` returning ids and the structure.
+- **Not now (no v3 principles):** semantic names and tags (`inspect` gives no names; no `find`); `diff`; `explain`; save / load.
 
 ## 1. Scope of the first drawing room
 
@@ -38,10 +36,10 @@ What carries over from v2 §6:
 - paint bucket (fill), with fill visibility;
 - layer panel: new, rename, reorder, show / hide, lock, copy, delete;
 - mirror apply and mirror link, with the axis shown;
-- undo / redo;
-- save and load one document file.
+- undo / redo.
 
 **Out:**
+- anything without settled principles in the v3 graph (bowen 1791476920), including save / load, semantic names and tags, `diff` and `explain`;
 - domain deformation;
 - copy / paste of selections;
 - show / hide intervals;
@@ -57,13 +55,11 @@ flowchart BT
   queries["queries\nread model, hit testing"]
   tools["tools\ngesture state machines"]
   view["view\ncamera + drawing (pure)"]
-  persistence["persistence\nsave / load"]
   uiHuman["ui-human\ncanvas host, toolbar, panels"]
   aiApi["ai-api\nexecute / query / render"]
   app["app shell\nwires the modules"]
   commands --> core
   queries --> core
-  persistence --> core
   tools --> commands
   tools --> queries
   view --> queries
@@ -75,7 +71,6 @@ flowchart BT
   aiApi --> view
   app --> uiHuman
   app --> aiApi
-  app --> persistence
 ```
 
 Arrows point to what a module uses. Lower modules never import higher ones; a boundary test enforces this, as in `core`.
@@ -138,7 +133,6 @@ flowchart LR
 | `queries` | nothing | the read model for both interfaces: snapshot, geometry, bounds, **hit testing** (nearest point / handle / line, smallest loop) with a tolerance given by the caller | change anything |
 | `tools` | each tool's gesture state only | a state machine per tool (pen, V, A, split, bind, link, joins, merge position, fill, mirror apply, mirror link): pointer and keys in document coordinates → preview batches while dragging → one command batch on release; Esc cancels; snapping shows only in preview (backlog 4) | hold document data, or check rules itself |
 | `view` | the camera (pan / zoom) | draws geometry and overlays (selection, handles, axis, preview, red cross with lock or mirror mark) from snapshot + geometry + tool overlay; maps screen ↔ document | change state |
-| `persistence` | the file format | document → JSON → document (needs a core export / import, §5) | — |
 | `ui-human` | panel state only (open panels, active tool) | turns DOM events into tool input; toolbar, layer panel, properties, shortcuts; shows refusals (backlog 2, 6, 11) | rules, geometry |
 | `ai-api` | nothing | `execute(commands)`, `query(...)`, `render(options) → image`; exposed for agents (e.g. on `window` for browser automation); same commands and error codes as people get | its own rules or shortcuts past `commands` |
 | `app` | the one `Core` instance | wires modules, nothing else | logic |
@@ -173,7 +167,7 @@ flowchart LR
 ## 5. What `core` needs first (small, in its own modules)
 
 - **`Core.preview(fn)`:** runs an edit on a private draft through settling, returns the would-be snapshot and geometry, and publishes nothing. It is the same transaction machinery, with no commit.
-- **Export / import:** the document state to JSON and back, with a version number. Undo history is not saved.
+- ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
 
 ## 6. Interaction backlog → module
 
@@ -194,6 +188,6 @@ flowchart LR
 ## 7. Open, for bowen
 
 1. ~~How the AI interface is read~~: answered, it is the v2 decision (bowen 1791476836).
-1b. **Semantic names and tags in v3:** do they enter the core now (needed by `inspect` and `find`), or after the first drawing room?
+1b. ~~Semantic names and tags~~: not now; no v3 principles (bowen 1791476920).
 2. **Stack for the human UI.** Proposal: TypeScript + Vite; React for the panels; Canvas 2D for the drawing and overlays; our own tool state machines, not Fabric. With Fabric, a second selection and transform state would compete with `core` (doc 07: one authority for authoring data).
-3. **Save / load in the first drawing room:** proposed in.
+3. ~~Save / load~~: not touched (bowen 1791476920).
