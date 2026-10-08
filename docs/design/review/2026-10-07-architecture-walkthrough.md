@@ -3265,3 +3265,22 @@ A layer that still carries locked contents stays (dot).
 Asked bowen whether to write the graph rows.
 
 **bowen 1791435415:** "写进知识图谱吧". Q30 rows written; the 'Layer new / delete / rename: open' row is replaced.
+
+### Open points after writing Q30 (Claude 1791435451, dot 1791435501)
+
+**Claude asked bowen:**
+1. **Moving lines to another layer** = copy + delete. The copy carries no outside relations, so connections to the lines left behind break. A link ends only if its original endpoint becomes isolated.
+2. **A copied layer's name** must be unique, so an automatic name such as "脸 · 2".
+3. **The current layer** (where the pen draws) is UI state, not document content.
+
+**dot:**
+- No new structural gap in the layer core.
+- The unique copy name is a default; the current layer belongs to the interaction layer.
+- **Layer fill toggle:**
+  - it batches only the visibility of that layer's fill elements, never the lines;
+  - it works on locked fills, because it is a state change;
+  - one click is one undo step;
+  - the layer stores no fill-visibility attribute.
+- **Acceptance cross-case for implementation:** if deleting unlocked lines re-solves joins in a way that would change a kept locked line, the lock refusal still applies. Cleanup must not bypass a lock.
+- **Moving to another layer** follows the copy rule. Links of the endpoints left behind stay as long as those endpoint ids exist.
+
