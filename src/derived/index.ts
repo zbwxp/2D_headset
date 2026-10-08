@@ -49,12 +49,6 @@ export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsS
   return { lines, arcs: [...o.arcByKey.values()], fills: fillGeometry }
 }
 
-/** The drawn (trimmed) curve of every line and every arc, as they are drawn and as locks compare them. */
-export function drawn(n: net.NetworkState, j: joins.JoinsState): { lines: Map<Id, Cubic>; arcs: Geometry['arcs'] } {
-  const o = outline(n, j)
-  return { lines: o.drawn, arcs: [...o.arcByKey.values()] }
-}
-
 /** Trims and arcs from the arc joins; the drawn curve of every line. */
 function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
   const all = net.lines(n)

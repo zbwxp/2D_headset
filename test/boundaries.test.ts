@@ -12,7 +12,7 @@ const ALLOWED: Record<string, string[]> = {
   links: ['geometry', 'network'],
   fills: ['geometry', 'network'],
   derived: ['geometry', 'network', 'joins', 'fills'],
-  locks: ['geometry', 'network', 'joins', 'links', 'derived'],
+  locks: ['network', 'joins', 'links'],
   document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks'],
 }
 // External packages each module may use.

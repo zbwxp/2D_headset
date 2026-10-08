@@ -21,13 +21,13 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `links` | cross-layer endpoint links (one relation per pair), and joins across a link | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets. **Joins across a link** are stored with the link as one relation; the smooth solver treats them like same-point joins (second-clicked turns to first). Only smooth is implemented. Cusp and arc across a link are **not implemented yet**, because how their geometry is shared between the two layers is undecided (asked bowen 1791430797); this is not a product prohibition |
 | `fills` | filled loops (identity, boundary lines, colour, element state) and fill order | A locked fill's colour cannot be changed or cleared; it may vanish when its loop breaks (Q30 甲).  Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
-| `locks` | nothing (computed) | Compares each locked line's protected content before and after an edit: its drawn curve (from `derived`), its stroke, and the end stroke drawn at each end (only a free end draws one). Lines made in this edit are not compared |
+| `locks` | nothing (computed) | A lock protects what a line owns alone, wherever the change comes from: its shape (end positions, handles), its stroke, and the end stroke at a free end. Joins and arcs at its end points are shared with its neighbours, so they are not under its lock. What goes with a deleted unlocked element is allowed. Lines made in this edit are not compared |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
 
 ```
-geometry ← network ← groups / joins / links / fills ← derived ← locks ← document
+geometry ← network ← groups / joins / links / fills ← derived / locks ← document
 ```
 
 ## Encapsulation (dot 1791427188)

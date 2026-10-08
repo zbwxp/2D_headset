@@ -259,16 +259,16 @@ describe('line width and locks', () => {
     expect(point(d, 'c')!.position).toEqual(P(5, 12))
   })
 
-  it('17. a smooth spring that would turn a locked handle is refused', () => {
+  it('17. a smooth spring that would turn a locked handle is refused, even when the drag is on the neighbour (bowen 1791462918 甲)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
     d.edit(e => e.lineState('ab', { locked: true }))
-    // dragging bc's handle at b would make the spring turn ab's handle
+    // dragging bc's handle at b would make the spring turn ab's handle, which ab owns alone
     expect(() => d.edit(e => e.moveHandle('bc', 'a', P(-3, 3)))).toThrow(/Locked lines would change \(ab\)/)
-    // setting a join at a locked line's end is itself refused: the join is the point's, and the point is locked (bowen 1791459836)
-    expect(() => d.edit(e => e.join('a', 'ab', 'ca', { mode: 'smooth' }))).toThrow(/Locked/)
+    // a join with ab clicked first holds ab's handle; only ca turns, so ab is unchanged
+    d.edit(e => e.join('a', 'ab', 'ca', { mode: 'smooth' }))
+    expect(s(d).joins).toHaveLength(2)
   })
-
   it('18 / 29b. binding onto a locked line’s shared end is allowed when nothing on it changes', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => { sk(e).point('x', 'A', P(30)); sk(e).point('y', 'A', P(40)); sk(e).line('xy', 'x', 'y') })
@@ -289,31 +289,27 @@ describe('line width and locks', () => {
     expect(line(d, 'xy')!.a).toBe('b')
   })
 
-  it('29c. a locked line locks the joins and arcs at its end points (bowen 1791459836)', () => {
+  it('29c. joins and arcs at a locked line’s end are shared with the neighbour, so not under its lock (bowen 1791462692, 1791462918)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))
     d.edit(e => e.lineState('ab', { locked: true }))
-    // moving c reshapes bc, which bends the arc at b
-    expect(() => d.edit(e => e.move([{ id: 'c', target: P(5, 14) }]))).toThrow(/Locked lines would change \(ab\)/)
-    expect(() => d.edit(e => e.removeJoin('b', 'ab', 'bc'))).toThrow(/Locked/)
-    expect(() => d.edit(e => e.join('a', 'ab', 'ca', { mode: 'cusp' }))).toThrow(/Locked/)
-    // width and state of the neighbour are not part of the arc
-    d.edit(e => e.lineStroke('bc', { width: 5, profile: 'uniform' }))
-    // a join at c (not an end of ab) is free to change
-    d.edit(e => e.join('c', 'bc', 'ca', { mode: 'cusp' }))
+    const ab = line(d, 'ab')
+    // moving c reshapes bc and bends the arc at b; ab's own shape stays
+    d.edit(e => e.move([{ id: 'c', target: P(5, 14) }]))
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 3 }))
+    d.edit(e => e.removeJoin('b', 'ab', 'bc'))
+    d.edit(e => e.join('a', 'ab', 'ca', { mode: 'cusp' }))
+    expect(line(d, 'ab')).toEqual(ab)
   })
-
-  it('29d. joins across a link at a locked line’s end are protected the same way (dot 1791460421)', () => {
+  it('29d. joins across a link at a locked line’s end are shared too; a link pulling the locked end is refused', () => {
     const d = doc('A', 'B'); triangle(d, 'A'); triangle(d, 'B', 'q', P(20))
     d.edit(e => e.link('a', 'qa'))
     d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))).toThrow(/Locked/)
-    d.edit(e => e.lineState('ab', { locked: false }))
     d.edit(e => e.linkJoin('a', 'qa', 'ab', 'qab', { mode: 'smooth' }))
-    d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.removeLinkJoin('a', 'qa', 'ab', 'qab'))).toThrow(/Locked/)
+    d.edit(e => e.removeLinkJoin('a', 'qa', 'ab', 'qab'))
+    // dragging the linked partner pulls a, which is ab's own end position
+    expect(() => d.edit(e => e.move([{ id: 'qa', target: P(-3) }]))).toThrow(/Locked lines would change \(ab\)/)
   })
-
   it('29e. deleting an unlocked neighbour is allowed; its joins with the locked line go with it (bowen 1791460893 甲)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }); e.join('a', 'ab', 'ca', { mode: 'smooth' }) })
@@ -396,19 +392,22 @@ describe('line width and locks', () => {
     expect(make('qa', 'a')).toBe(make('a', 'qa'))
   })
 
-  it('29g. editing still is refused: removing the join, or unbinding the neighbour from the locked point', () => {
+  it('29g. unbinding a neighbour from a locked line’s point is allowed unless it uncovers an end stroke there', () => {
     const d = doc('A'); triangle(d, 'A')
-    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
     d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.removeJoin('b', 'ab', 'bc'))).toThrow(/Locked/)
-    expect(() => d.edit(e => e.unbind('b', ['bc'], 'b2'))).toThrow(/Locked/)
+    d.edit(e => e.unbind('b', ['bc'], 'b2'))
+    d.undo()
+    d.edit(e => e.endStroke('b', { taper: 2 }))
+    // b turns free and its end stroke shows on ab: that is ab's own
+    expect(() => d.edit(e => e.unbind('b', ['bc'], 'b2'))).toThrow(/Locked lines would change \(ab\)/)
   })
-
-  it('29a. an arc join that reshapes a locked line is refused', () => {
+  it('29a. an arc join at a locked line’s end may trim how it is drawn; its own curve stays (bowen 1791462918)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
-    expect(() => d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))).toThrow(/Locked/)
-    d.edit(e => e.join('c', 'bc', 'ca', { mode: 'arc', radius: 2 })) // not on ab
+    const ab = line(d, 'ab')
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))
+    expect(line(d, 'ab')).toEqual(ab)
+    expect(d.geometry().lines.find(l => l.id === 'ab')!.curve[3]).not.toEqual(P(10))
   })
 })
 
