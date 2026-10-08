@@ -235,3 +235,21 @@ describe('graph rules added by Claude', () => {
     expect(d.geometry().fills).toEqual(g.fills)
   })
 })
+
+describe('acceptance gaps from dot 1791427048', () => {
+  it('outer loop a→u→b→v→a with a middle line a→b: binding a and b keeps the outer loop (through a twice) with its id and colour', () => {
+    const d = graph([['au', 'a', 'u'], ['ub', 'u', 'b'], ['bv', 'b', 'v'], ['va', 'v', 'a'], ['mid', 'a', 'b']],
+      { a: P(0), u: P(5, 5), b: P(10), v: P(5, -5) })
+    const outer = d.snapshot().loops.find(l => l.route.length === 4)!.id
+    d.edit(e => e.fill(outer, 'red'))
+    d.edit(e => e.bind('a', 'b'))
+    const l = loop(d, outer)!
+    expect(l.color).toBe('red')
+    expect(l.route.map(u => u.line).sort()).toEqual(['au', 'bv', 'ub', 'va'])
+    expect(d.snapshot().lines.some(x => x.id === 'mid')).toBe(false)
+    // the walk passes the merged point twice: every step starts where the previous ended
+    const ends = l.route.map(u => { const x = d.snapshot().lines.find(y => y.id === u.line)!; return u.reversed ? [x.b, x.a] : [x.a, x.b] })
+    ends.forEach((e, i) => expect(e[1]).toBe(ends[(i + 1) % ends.length]![0]))
+    expect(ends.filter(e => e[0] === 'a')).toHaveLength(2)
+  })
+})
