@@ -1,0 +1,112 @@
+// joins — attributes of a point: the join table (one row per pair of lines at the
+// point, mode smooth / cusp / arc; no row = 仅绑定) and the end stroke (Q23, Q27).
+// Smooth is a stiff spring toward a straight line; conflicts settle at a
+// compromise and are never refused (bowen 1791421304).
+import * as net from '../network'
+import { angleOf, fromAngle, length } from '../geometry'
+
+type Id = net.Id
+
+export type JoinMode = 'smooth' | 'cusp' | 'arc'
+export interface JoinRow { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number }
+export interface EndStroke { taper?: number; [key: string]: number | string | undefined }
+export interface JoinsState { rows: JoinRow[]; endStrokes: { point: Id; stroke: EndStroke }[] }
+
+/** One global stiffness (bowen 1791421988). With only spring forces it scales energy, not the balance. */
+export const SMOOTH_STIFFNESS = 1
+
+export const create = (): JoinsState => ({ rows: [], endStrokes: [] })
+const pair = (a: Id, b: Id): [Id, Id] => (a < b ? [a, b] : [b, a])
+const same = (r: JoinRow, point: Id, p: [Id, Id]) => r.point === point && r.lines[0] === p[0] && r.lines[1] === p[1]
+
+export const rowsAt = (j: JoinsState, point: Id) => j.rows.filter(r => r.point === point)
+
+export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id, opts: { mode: JoinMode; radius?: number }) {
+  if (l1 === l2) throw new Error('A join needs two different lines')
+  const at = new Set(net.linesAt(n, point).map(e => e.line.id))
+  if (!at.has(l1) || !at.has(l2)) throw new Error(`Both lines must end at ${point}`)
+  if (opts.mode === 'arc' && !(opts.radius && opts.radius > 0)) throw new Error('An arc join needs a positive radius')
+  const p = pair(l1, l2)
+  j.rows = j.rows.filter(r => !same(r, point, p))
+  j.rows.push({ point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius } : {}) })
+}
+
+export function removeJoin(j: JoinsState, point: Id, l1: Id, l2: Id) {
+  const p = pair(l1, l2)
+  j.rows = j.rows.filter(r => !same(r, point, p))
+}
+
+export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stroke: EndStroke) {
+  net.point(n, point)
+  j.endStrokes = j.endStrokes.filter(e => e.point !== point)
+  j.endStrokes.push({ point, stroke: { ...stroke } })
+}
+
+/** Keep references valid after one network operation. */
+export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
+  for (const r of ch.replaced) {
+    for (const row of j.rows) {
+      if (row.point === r.a) row.lines = pair(...row.lines.map(l => (l === r.line ? r.pieces[0] : l)) as [Id, Id])
+      if (row.point === r.b) row.lines = pair(...row.lines.map(l => (l === r.line ? r.pieces[1] : l)) as [Id, Id])
+    }
+  }
+  for (const u of ch.unbound) {
+    const moved = new Set(u.lines)
+    j.rows = j.rows.flatMap(row => {
+      if (row.point !== u.point) return [row]
+      const m = row.lines.filter(l => moved.has(l)).length
+      return m === 0 ? [row] : m === 2 ? [{ ...row, point: u.newPoint }] : []
+    })
+  }
+  const gone = new Set([...ch.deletedLines, ...ch.collapsedLines])
+  const deadPoints = new Set(ch.deletedPoints)
+  // Q23: the removed point's joins are dropped with it (a deleted point).
+  j.rows = j.rows.filter(row => !deadPoints.has(row.point) && !row.lines.some(l => gone.has(l)))
+  j.endStrokes = j.endStrokes.filter(e => !deadPoints.has(e.point))
+  // Safety: every row's lines must still end at its point.
+  j.rows = j.rows.filter(row => {
+    if (!net.hasPoint(n, row.point)) return false
+    const at = new Set(net.linesAt(n, row.point).map(e => e.line.id))
+    return at.has(row.lines[0]) && at.has(row.lines[1])
+  })
+}
+
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+
+/**
+ * Smooth springs. Energy per smooth pair = (deviation of the two handle
+ * directions from straight-opposite)², angles only, lengths kept. Handles dragged
+ * in this edit are held. Solved by coordinate descent; returns handle updates.
+ */
+export function solve(j: JoinsState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: { x: number; y: number } }[] {
+  const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
+  const points = [...new Set(j.rows.filter(r => r.mode === 'smooth').map(r => r.point))]
+  for (const p of points) {
+    const ends = new Map(net.linesAt(n, p).map(e => [e.line.id, e]))
+    const rows = rowsAt(j, p).filter(r => r.mode === 'smooth')
+    const ids = [...new Set(rows.flatMap(r => r.lines))].filter(id => length(net.handle(ends.get(id)!.line, ends.get(id)!.end)) > 1e-9)
+    if (ids.length < 2) continue
+    const theta = new Map(ids.map(id => [id, angleOf(net.handle(ends.get(id)!.line, ends.get(id)!.end))]))
+    const held = new Set(ch.held.filter(h => ends.get(h.line)?.end === h.end).map(h => h.line))
+    const neighbours = new Map(ids.map(id => [id, rows.filter(r => r.lines.includes(id)).map(r => (r.lines[0] === id ? r.lines[1] : r.lines[0])).filter(o => theta.has(o))]))
+    const free = ids.filter(id => !held.has(id))
+    for (let sweep = 0; sweep < 2000; sweep++) {
+      let change = 0
+      for (const id of free) {
+        const nb = neighbours.get(id)!
+        if (!nb.length) continue
+        const t = theta.get(id)!
+        const step = nb.reduce((s, o) => s + wrap(theta.get(o)! + Math.PI - t), 0) / nb.length
+        theta.set(id, t + step)
+        change = Math.max(change, Math.abs(step))
+      }
+      if (change < 1e-13) break
+    }
+    for (const id of free) {
+      const e = ends.get(id)!, h = net.handle(e.line, e.end)
+      const next = fromAngle(theta.get(id)!, length(h))
+      if (Math.abs(next.x - h.x) > 1e-12 || Math.abs(next.y - h.y) > 1e-12) out.push({ line: id, end: e.end, offset: next })
+    }
+  }
+  return out
+}

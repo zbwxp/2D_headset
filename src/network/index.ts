@@ -25,8 +25,8 @@ export interface Changes {
   targets: { point: Id; target: Vec }[]
   /** Handles directly dragged in this edit. */
   held: { line: Id; end: End }[]
-  /** First-clicked points, in order (decides which group survives a merge). */
-  prefer: Id[]
+  /** Lines whose group wins a merge (the first-clicked side), latest last. */
+  prefer: { lines: Id[] }[]
 }
 
 export const emptyChanges = (): Changes => ({
@@ -156,12 +156,12 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, a: Id, b: Id, hand
   const pa = point(n, a), pb = point(n, b)
   if (pa.layer !== pb.layer) throw new Error('A line cannot cross layers; use an endpoint link')
   const d = sub(pb.position, pa.position)
+  ch.prefer.push({ lines: linesAt(n, a).map(e => e.line.id) })
   n.lines.push({
     id, a, b,
     ha: handles?.ha ?? { x: d.x / 3, y: d.y / 3 },
     hb: handles?.hb ?? { x: -d.x / 3, y: -d.y / 3 },
   })
-  ch.prefer.push(a)
 }
 
 /** Drag points to targets. These points count as directly acted on (last target per point wins). */
@@ -236,6 +236,7 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   if (keep === remove) throw new Error('Bind needs two different points')
   const pk = point(n, keep), pr = point(n, remove)
   if (pk.layer !== pr.layer) throw new Error('Binding is within one layer; use an endpoint link across layers')
+  ch.prefer.push({ lines: linesAt(n, keep).map(e => e.line.id) })
   const collapsed: Id[] = []
   for (const l of n.lines) {
     if (l.a !== remove && l.b !== remove) continue
@@ -248,7 +249,6 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   ch.collapsedLines.push(...collapsed)
   ch.deletedPoints.push(remove)
   ch.merged.push({ keep, remove })
-  ch.prefer.push(keep)
   if (collapsed.length) dropPointIfEmpty(n, ch, keep)
 }
 

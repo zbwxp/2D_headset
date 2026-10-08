@@ -44,4 +44,10 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 - Handles are offsets from their own point, so moving a point carries its handles.
 - Every order list is bottom-to-top: index 0 is drawn first.
 - **Smooth springs** use an angle-based energy, so 3 mutually smooth lines settle at 120° and 4 at 90°. A handle dragged in this edit is held. The stiffness is one global constant (bowen 1791421988).
-- **Not in v1** (bowen: later): copy, deformation, mirror editing, show/hide intervals, stroke rendering, views / snapshots, and how a fill joins at a fork with an arc on another pair (left open, dot 1791425335).
+- **Not in v1:**
+  - **Later by bowen:** deformation, mirror editing, show/hide intervals, views / snapshots.
+  - **Still to be written:**
+    - copy;
+    - joins across a link (stored on the link);
+    - stroke rendering;
+    - how a fill joins at a fork with an arc on another pair (left open, dot 1791425335). For now, such a fill keeps that line end untrimmed.
