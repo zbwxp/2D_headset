@@ -32,7 +32,9 @@ function contents(v: View, ids: Set<Id>): Map<Id, Content> {
   const drawn = derived.drawnLines(v.network, v.joins)
   const drawnEnd = (point: Id) => {
     const free = net.linesAt(v.network, point).length === 1 && !links.partners(v.links, point).length
-    return JSON.stringify((free && joins.endStroke(v.joins, point)) || {})
+    // compared by content, not by the order of its keys (dot 1791459721)
+    const stroke = (free && joins.endStroke(v.joins, point)) || {}
+    return JSON.stringify(Object.keys(stroke).sort().map(k => [k, stroke[k]]))
   }
   for (const id of ids) {
     if (!net.hasLine(v.network, id)) continue

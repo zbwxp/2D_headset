@@ -397,6 +397,27 @@ describe('later operations in one edit read where things are now (dot 1791459521
   })
 })
 
+describe('queries inside an edit see only valid loops (dot 1791459721)', () => {
+  it('a locked fill broken earlier in the same edit does not crash a later moveGroup; it vanishes at commit (甲)', () => {
+    const d = doc('A', 'B'); triangle(d, 'A')
+    const fill = fillFirst(d)
+    d.edit(e => e.fillState(fill, { locked: true }))
+    d.edit(e => { e.unbind('a', ['ab'], 'a2'); e.moveGroup(groupOf(d, 'ab').id, 'B') })
+    expect(s(d).loops).toEqual([])
+    expect(s(d).groups.map(g => g.layer)).toEqual(['B'])
+  })
+
+  it('an end stroke with the same values in another key order is not a change to a locked line', () => {
+    const d = doc('A')
+    d.edit(e => {
+      sk(e).point('a', 'A', P(0)); sk(e).point('b', 'A', P(10)); sk(e).line('ab', 'a', 'b')
+      e.endStroke('a', { taper: 1, shape: 'round' }); e.lineState('ab', { locked: true })
+    })
+    d.edit(e => e.endStroke('a', { shape: 'round', taper: 1 }))
+    expect(() => d.edit(e => e.endStroke('a', { shape: 'round', taper: 2 }))).toThrow(/Locked/)
+  })
+})
+
 describe('unbind', () => {
   it('24. unbind leaves the two points apart and does not rebind', () => {
     const d = doc('A'); triangle(d, 'A')

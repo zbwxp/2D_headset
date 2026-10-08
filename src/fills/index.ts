@@ -41,8 +41,14 @@ export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
       shown.add(stored.id)
     } else views.push({ id: found.key, layer: found.layer, route: found.route, filled: false })
   }
-  // A filled loop beyond the enumeration limit is still listed.
-  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: layerOf(n, l)!, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible, locked: l.locked })
+  // A filled loop beyond the enumeration limit is still listed. One whose boundary
+  // is not closed right now (broken earlier in this edit; dropped at commit) is not
+  // a closed curve, so it is not listed (dot 1791459721).
+  for (const l of S(f).loops) {
+    if (shown.has(l.id)) continue
+    const route = net.closedWalk(n, l.lines)
+    if (route) views.push({ id: l.id, layer: layerOf(n, l)!, route, filled: true, color: l.color, visible: l.visible, locked: l.locked })
+  }
   return views
 }
 
