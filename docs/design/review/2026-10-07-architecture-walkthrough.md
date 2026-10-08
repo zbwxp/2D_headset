@@ -3354,6 +3354,27 @@ Does the automatic bind apply **only to linked endpoints**, or to **any two endp
 
 **Not unique, for bowen:** both endpoints were moved in one edit and land on one position. Which is removed? Claude proposes: keep the earlier-created one.
 
+### bowen (1791436617), Claude (1791436634), dot (1791436701)
+
+- **bowen:** the side that is snapped over counts as clicked later. Dragging A onto B keeps B and merges A away.
+- **Claude:** when two points coincide without any snapping (for example after a future group scale or rotate), there is no snapped side. Proposal: keep the earlier-created one, or accept the code result.
+- **dot, two consequences** (asked bowen, Claude 1791436717):
+  1. **Merge position within one layer** now also binds, since the points coincide. Across layers it stays alignment only.
+  2. **Unbind** must end with the two points apart. Otherwise they rebind at commit. It becomes one operation: "split and drag apart".
+
+### bowen (1791436826): locks are judged by the result
+
+> 吸到锁定点上 对锁定点无影响 那么绑定就成立 如果代码里这个操作会影响锁定点 产生编辑操作就失败。例子 锁定点是一个线的末端 绑定后笔触会消失 那就拒绝 如果什么都没变就能绑定到锁定点
+
+**Claude (1791436845):**
+- The test is whether any locked element's final geometry or appearance differs from before the edit.
+- Example: a locked line's free end has a taper. Binding makes it a shared point, and shared points are continuous, so the taper disappears. That is a change, so the edit is refused.
+- If nothing about the locked line changes, the bind is allowed.
+- **Implementation:** compare all locked elements before and after the edit; any difference refuses the whole edit. No per-operation lock checks are needed.
+
 ### Status
 
-Waiting for bowen on the both-moved case.
+Waiting for bowen:
+- merge position = bind within one layer;
+- unbind = split and drag apart;
+- the coincide-without-snap fallback.
