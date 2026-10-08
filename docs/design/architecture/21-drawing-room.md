@@ -167,9 +167,10 @@ flowchart LR
 ## 5. What `core` needs first (small, in its own modules)
 
 - **`Core.preview(fn)`:** runs an edit on a private draft through settling *and the lock check*, and publishes nothing. It returns either the would-be snapshot and geometry, or exactly the refusal a commit would give.
-  - **Tied to a revision and fixed ids** (dot 1791477302; carried over from v2): a preview names the document revision it started from. Repeated previews in one drag reuse the same new ids. A commit may carry its revision and is refused with `STALE_REVISION` if the document changed since. Cancelling writes nothing. One gesture commits at most once.
+  - **Fixed ids** (dot 1791477302; carried over from v2): repeated previews in one drag reuse the same new ids. Cancelling writes nothing. One gesture commits at most once.
+  - **No revision check:** people and AI never operate at the same time (bowen 1791477364). Between a preview and its commit, only the same actor can change the document, and it can simply preview again. So `STALE_REVISION` and revision numbers are not needed.
 - **Structured refusals** (dot 1791477302): today most refusals are plain `Error`s carrying a message. They must become `{ code, message, objects: ids, written: false }`. This is explicit interface work in `core`. No entry may parse message text to guess which object gets the red cross.
-- **Revision number:** a counter on the published state, so previews and commits can name what they started from.
+- ~~Revision number~~: not needed; people and AI take turns (bowen 1791477364).
 - ~~Export / import~~: not now; save / load has no v3 principles (bowen 1791476920).
 
 ## 6. Interaction backlog → module
