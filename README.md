@@ -125,7 +125,7 @@ These are our own choices, not derived from bowen's principles. They wait for hi
     - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.
 16. **Apply** (docs/editing-apply-plan.md):
     - the counterpart's new ids in a paired split or unbind are the caller's ids + `′`;
-    - error codes `topology-mismatch`, `mirror-no-counterpart`, `select-lines-to-delete`, and "Locked target" for an apply;
+    - error codes `topology-mismatch`, `mirror-no-counterpart`, `mirror-shared-point` (asked bowen), `select-lines-to-delete`, and "Locked target" for an apply;
     - not decided, current code: a new line drawn onto a paired point is not paired; a join between a paired and an unpaired line is set on one side only;
     - the correspondence search stops at `MATCH_STEP_LIMIT` (200 000 steps), an implementation bound.
 15. **Editing** (docs/editing-apply-plan.md):

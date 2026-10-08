@@ -282,6 +282,21 @@ describe('mirror link', () => {
     expect(s(d).mirrorPairs).toHaveLength(1)
   })
 
+  it('A8c. binding away a point both sides share on the axis is refused explicitly, not with a stale id (dot, review of 1fa7462)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A')
+      sk(e).point('a', 'A', P(-10)); sk(e).point('b', 'A', P(-1, 2)); sk(e).line('left', 'a', 'b')
+      sk(e).point('c', 'A', P(10)); sk(e).point('dd', 'A', P(1, 2)); sk(e).line('right', 'c', 'dd')
+    })
+    d.edit(e => e.mirrorLink([groupOf(d, 'left')], [groupOf(d, 'right')]))
+    d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
+    const shared = line(d, 'left').b
+    expect(() => d.edit(e => e.bind('a', shared))).toThrow(/mirror-shared-point/)
+    // keeping the shared point is fine: each side binds its own point onto it
+    expect(s(d).lines).toHaveLength(2)
+  })
+
   it('A9. binding or linking a paired point to an outside point without counterpart is refused', () => {
     const d = linked()
     d.edit(e => { sk(e).point('x', 'A', P(0, 20)); sk(e).point('y', 'A', P(0, 30)); sk(e).line('nose', 'x', 'y') })

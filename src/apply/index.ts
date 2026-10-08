@@ -320,6 +320,21 @@ export function pairedPointPairs(s: ApplyState, n: net.NetworkState, a: Id, b: I
   const same = (ca === a && cb === b) || (ca === b && cb === a)
   return same ? [[a, b]] : [[a, b], [ca, cb]]
 }
+/**
+ * A bind and its mirrored bind. When the removed point is shared by both sides on the
+ * axis and the two sides keep different points, the existing rules do not say how the
+ * shared point's lines should split between the two kept points, so it is refused
+ * explicitly instead of running one half on a point the other half has removed
+ * (dot, review of 1fa7462; asked bowen).
+ */
+export function pairedBinds(s: ApplyState, n: net.NetworkState, keep: Id, remove: Id): [Id, Id][] {
+  const ops = pairedPointPairs(s, n, keep, remove)
+  if (ops.length === 2 && ops[1]!.includes(remove)) {
+    throw new Error('mirror-shared-point: binding away a point both mirror sides share on the axis is not defined yet')
+  }
+  return ops
+}
+
 /** A join at a point and, when every part has a counterpart, its mirrored join. */
 export function pairedJoins(s: ApplyState, n: net.NetworkState, point: Id, l1: Id, l2: Id): [Id, Id, Id][] {
   const cp = counterpartPoint(s, n, point), c1 = counterpartLine(s, l1), c2 = counterpartLine(s, l2)
