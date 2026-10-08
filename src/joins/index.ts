@@ -56,7 +56,8 @@ export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stro
     if (typeof v === 'number' ? !Number.isFinite(v) : typeof v !== 'string' && v !== undefined) throw new Error('End stroke values must be finite numbers or strings')
   }
   S(j).endStrokes = S(j).endStrokes.filter(e => e.point !== point)
-  S(j).endStrokes.push({ point, stroke: { ...stroke } })
+  // its parameters are unordered: stored with sorted keys, so one content has one form (bowen 1791461643)
+  S(j).endStrokes.push({ point, stroke: Object.fromEntries(Object.keys(stroke).sort().map(k => [k, stroke[k]])) as EndStroke })
 }
 
 /** Copy the joins and end strokes of copied points. */

@@ -50,9 +50,8 @@ function contents(v: View, ids: Set<Id>, deleted: Set<Id>, name: (line: Id, poin
     const others = net.linesAt(v.network, point).filter(e => e.line.id !== line && !deleted.has(name(e.line.id, point)))
     // a link ends only when its partner point disappears; that follows a delete too
     const free = !others.length && !links.partners(v.links, point).filter(survives).length
-    // compared by content, not by the order of its keys (dot 1791459721)
-    const stroke = (free && joins.endStroke(v.joins, point)) || {}
-    return JSON.stringify(Object.keys(stroke).sort().map(k => [k, stroke[k]]))
+    // joins stores an end stroke with sorted keys, so equal content compares equal (dot 1791459721)
+    return JSON.stringify((free && joins.endStroke(v.joins, point)) || {})
   }
   for (const id of ids) {
     if (!net.hasLine(v.network, id)) continue
