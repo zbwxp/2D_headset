@@ -2,6 +2,22 @@
 
 bowen 1791476705: build a minimal drawing room with two interfaces, one for AI and one for people. Its UI must be independent modules, and the drawing room is assembled from modules. **This file is the architecture and the rules; no code until bowen signs it off.**
 
+## 0. Reframe (bowen 1791477975) — this section overrides the rest of the file for now
+
+- **Parts that have a knowledge graph (the `core/v1` modules) must never be polluted.**
+  - The drawing room uses only `core`'s public entry; `core` never imports it.
+  - `core` is not changed for the drawing room's convenience. A gap the drawing room finds is a *finding*: it goes to bowen, then the graph, then `core`.
+- **Everything else is a test bench:** page, canvas, tools, AI entry and glue.
+  - It is built as simply and quickly as possible. Its only purpose is to test the graph modules and how they work together.
+  - No generality, tidiness or corner cases. Each part gets its own graph and a rewrite later, one at a time.
+  - It lives in `headset-core/bench/` with its own dependencies.
+- **Parked until those parts get their own graph:** §2–§6c below. That covers the commands layer, `Core.preview`, structured refusals, explicit-target edits, the interaction and renderer contracts, the replacement tests and the ten entry principles.
+- **Bench choices:**
+  - React + SVG, the fastest to write.
+  - Drag preview by undoing the previous step and editing again.
+  - The AI entry is the `Core` object exposed on the page, plus a function that exports the current picture.
+- **Bench scope:** what the current graph can test (§1 "In").
+
 Base: the accepted `core/v1` (document model, editing and apply stage 1, at `0918892`). Interaction requirements: `docs/design/interaction-backlog.md` items 1–11.
 
 **The two interfaces follow the version 2 decision** (`11-base-objects-and-layers.md` §6; bowen 1791476836: "the AI and human entries were already set in v2"). Version 1 is the original old version, version 2 the refactor, and this is version 3 (bowen 1791476857).
