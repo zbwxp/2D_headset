@@ -68,6 +68,14 @@ describe('reads see the edit so far as settled', () => {
     expect(close(point(d, 'a2')!.position, P(5, 20))).toBe(true)
   })
 
+  it('S8. a new line from an existing point gets default handles from where that point settles (dot)', () => {
+    const d = fixture()
+    d.edit(e => { e.move([moveQ]); e.line('ln', 'a', { id: 'z', layer: 'A', position: P(9, 10) }) })
+    // a settles to (0, 10): the chord to z (9, 10) is (9, 0), so the default handles are ±(3, 0)
+    expect(close(line(d, 'ln').ha, P(3, 0))).toBe(true)
+    expect(close(line(d, 'ln').hb, P(-3, 0))).toBe(true)
+  })
+
   it('S7. a mirror apply reflects the source as it settles', () => {
     const d = fixture()
     // the target is on C: a sits on the axis, so a target end reflected onto it in A would bind into it

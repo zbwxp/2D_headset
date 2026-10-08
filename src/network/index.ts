@@ -569,14 +569,16 @@ export type EndSpec = Id | { id: Id; layer: Id; position: Vec }
  * point or a new one created with the line — a point never exists without a line
  * (bowen 1791428375). Default handles make a straight line.
  */
-export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bSpec: EndSpec, handles?: { ha: Vec; hb: Vec }) {
+/** `read`: where an existing end point's position is read from for the default handles (settled, docs/edit-model.md). */
+export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bSpec: EndSpec, handles?: { ha: Vec; hb: Vec }, read: NetworkState = n) {
   const endId = (e: EndSpec) => (typeof e === 'string' ? e : e.id)
   if (endId(aSpec) === endId(bSpec)) throw new Error('A line needs two different points')
   for (const e of [aSpec, bSpec]) if (typeof e !== 'string') addPoint(n, e.id, e.layer, e.position)
   const a = endId(aSpec), b = endId(bSpec)
   const pa = rawPoint(n, a), pb = rawPoint(n, b)
   if (pa.layer !== pb.layer) throw new Error('A line cannot cross layers; use an endpoint link')
-  const d = sub(pb.position, pa.position)
+  const at = (spec: EndSpec, id: Id) => (typeof spec === 'string' ? rawPoint(read, id).position : rawPoint(n, id).position)
+  const d = sub(at(bSpec, b), at(aSpec, a))
   const hIn = handles ? { ha: vecIn(handles.ha), hb: vecIn(handles.hb) } : undefined
   claimLine(n, id)
   ch.prefer.push({ lines: linesAt(n, a).map(e => e.line.id) })

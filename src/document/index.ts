@@ -147,7 +147,10 @@ export class Editor {
 
   // network: one-time edits
   /** Pen: each end is an existing point id, or { id, layer, position } for a new point made with the line. */
-  line(id: Id, a: net.EndSpec, b: net.EndSpec, handles?: { ha: Vec; hb: Vec }) { this.topology(ch => net.addLine(this.s.network, ch, id, a, b, handles)) }
+  line(id: Id, a: net.EndSpec, b: net.EndSpec, handles?: { ha: Vec; hb: Vec }) {
+    const read = handles ? this.s.network : this.view().network
+    this.topology(ch => net.addLine(this.s.network, ch, id, a, b, handles, read))
+  }
   move(targets: { id: Id; target: Vec }[]) { net.move(this.s.network, this.tx.changes, targets) }
   /** One-time snap of `moving` onto `target`; no lasting relation (bowen 1791424844). */
   mergePosition(target: Id, moving: Id) { this.move([{ id: moving, target: net.point(this.view().network, target).position }]) }

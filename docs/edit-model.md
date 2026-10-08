@@ -28,7 +28,7 @@ Why this note exists (bowen 1791475302): most review rounds on editing and apply
 
 ## 2. Audit: each operation against the model
 
-Corrected after dot's review: unbind and copy-layer read geometry too, and the audit has *located* this class of reading problem; it does not claim that nothing else is left.
+Corrected after dot's reviews: unbind, copy-layer and the pen's default handles read geometry too. The audit is now by *function*, meaning every function that reads geometry to produce new geometry (dot 1791475660). Each such read is either part of settling, a pure output (derived), or uses the settled view. `network.aimHandle`'s provisional offset is recomputed from final positions at commit. The audit *locates* this class of problem; it does not claim that nothing else is left.
 
 | Operation | Reads geometry | Records intents | Reads from (after the settled-view fix) |
 |---|---|---|---|
@@ -42,6 +42,7 @@ Corrected after dot's review: unbind and copy-layer read geometry too, and the a
 | `unbind` | the point's position, the moved line's handle direction | new points as targets | settled view |
 | `copyLayer` | positions and handles of the copied lines | — | settled view |
 | `mirrorApply` / `mirrorLink` | source and target controls | targets, held handles, applied locks | settled view |
+| `line` (pen) | an existing end point's position, for default handles | — | settled view (dot 1791475660) |
 | `bind` / `deleteLine` | no geometry | — | — |
 | `lineState` / `fillState` / stroke / fill / join / end stroke | no | an explicit lock clears the applied-lock baseline | — |
 | `select` / `selectGroup` | no | — | — |
