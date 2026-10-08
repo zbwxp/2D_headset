@@ -156,6 +156,46 @@ describe('transforms act on what the selection expands to', () => {
     expect(close(point(a, 'b').position, point(b, 'b').position)).toBe(true)
   })
 
+  it('E17. a selected handle whose point a link moves keeps its absolute target: the tip moves once (dot, review of a9cf86e)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A'); e.layer('B')
+      sk(e).point('a', 'A', P(0)); sk(e).point('z', 'A', P(10)); sk(e).line('az', 'a', 'z', { ha: P(2, 0), hb: P(-2, 0) })
+      sk(e).point('q', 'B', P(0)); sk(e).point('w', 'B', P(0, -10)); sk(e).line('qw', 'q', 'w')
+      e.link('a', 'q')
+    })
+    d.edit(e => { e.select([{ kind: 'point', id: 'q' }, { kind: 'handle', line: 'az', end: 'a' }]); e.translate(0, 5) })
+    expect(point(d, 'a').position).toEqual(P(0, 5))
+    expect(close(line(d, 'az').ha, P(2, 0))).toBe(true) // tip (2, 5), not (2, 10)
+  })
+
+  it('E18. a selected point and handle whose final point position is averaged away: the handle keeps its absolute target, and a locked line is refused', () => {
+    const build = () => {
+      const d = new Core()
+      d.edit(e => {
+        e.layer('A'); e.layer('B')
+        sk(e).point('a', 'A', P(0)); sk(e).point('z', 'A', P(10)); sk(e).line('az', 'a', 'z', { ha: P(2, 0), hb: P(-2, 0) })
+        sk(e).point('q', 'B', P(0)); sk(e).point('w', 'B', P(0, -10)); sk(e).line('qw', 'q', 'w')
+        e.link('a', 'q')
+      })
+      return d
+    }
+    const d = build()
+    // a's line is moved up 5 while its linked partner q is moved down 5: the average leaves a in place
+    d.edit(e => { e.select([{ kind: 'point', id: 'a' }, { kind: 'handle', line: 'az', end: 'a' }]); e.translate(0, 5); e.move([{ id: 'q', target: P(0, -5) }]) })
+    expect(point(d, 'a').position).toEqual(P(0))
+    expect(close(line(d, 'az').ha, P(2, 5))).toBe(true) // the tip reached its target (2, 5)
+    const locked = build()
+    locked.edit(e => e.lineState('az', { locked: true }))
+    expect(() => locked.edit(e => { e.select([{ kind: 'point', id: 'a' }, { kind: 'handle', line: 'az', end: 'a' }]); e.translate(0, 5); e.move([{ id: 'q', target: P(0, -5) }]) })).toThrow(/Locked/)
+  })
+
+  it('E19. a handle dragged after a transform in the same edit keeps the drag', () => {
+    const d = corner()
+    d.edit(e => { e.select([{ kind: 'line', id: 'ab' }]); e.translate(0, 5); e.moveHandle('ab', 'a', P(1, 1)) })
+    expect(line(d, 'ab').ha).toEqual(P(1, 1))
+  })
+
   it('E12. a zero scale is refused', () => {
     const d = corner()
     d.edit(e => e.select([{ kind: 'line', id: 'ab' }]))

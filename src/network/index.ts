@@ -63,10 +63,12 @@ export interface Changes {
   touched: Id[]
   /** Points moved to another layer with their group (cut and paste) in this edit. */
   relocated: Id[]
+  /** Handles aimed at an absolute tip in this edit; their offsets are measured from the final point positions at commit. */
+  handleTips: { line: Id; end: End; tip: Vec }[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [],
 })
 
 export const create = (): NetworkState =>
@@ -109,6 +111,35 @@ export function affectedPoints(n: NetworkState, ch: Changes): Set<Id> {
 export function followReplacements(acc: Changes, op: Changes) {
   for (const r of op.replaced) {
     acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end } : h))
+    acc.handleTips = acc.handleTips.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip } : h))
+  }
+}
+
+/**
+ * Aim a handle at an absolute tip position (a geometric transform's handle intent).
+ * The offset is set from the point's current position now, and measured again from
+ * the point's final position at commit (`resolveHandleTips`), so a point that link
+ * or mirror alignment moves afterwards does not carry the tip a second time
+ * (dot, review of a9cf86e). The handle is held.
+ */
+export function aimHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, tip: Vec) {
+  const l = rawLine(n, lineId), t = vecIn(tip), p = rawPoint(n, end === 'a' ? l.a : l.b).position
+  const offset = { x: t.x - p.x, y: t.y - p.y }
+  if (end === 'a') l.ha = offset
+  else l.hb = offset
+  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end))
+  ch.handleTips.push({ line: lineId, end, tip: { x: t.x, y: t.y } })
+  hold(n, ch, lineId, end)
+}
+
+/** At commit, after positions are final: every aimed handle's offset = tip − its point's final position. */
+export function resolveHandleTips(n: NetworkState, ch: Changes) {
+  for (const h of ch.handleTips) {
+    if (!hasLine(n, h.line)) continue
+    const l = rawLine(n, h.line), p = rawPoint(n, h.end === 'a' ? l.a : l.b).position
+    const offset = { x: h.tip.x - p.x, y: h.tip.y - p.y }
+    if (h.end === 'a') l.ha = offset
+    else l.hb = offset
   }
 }
 
@@ -545,6 +576,8 @@ export function moveHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, o
   const l = rawLine(n, lineId)
   if (end === 'a') l.ha = vecIn(offset)
   else l.hb = vecIn(offset)
+  // a later direct drag replaces an earlier aimed tip of the same handle in this edit
+  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end))
   hold(n, ch, lineId, end)
 }
 

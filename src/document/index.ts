@@ -269,7 +269,7 @@ export class Editor {
     const { state: s, changes } = this.tx
     const plan = editing.transformPlan(s.selection, s.network, s.fills, m)
     net.move(s.network, changes, plan.moves)
-    for (const h of plan.handles) net.moveHandle(s.network, changes, h.line, h.end, h.offset)
+    for (const h of plan.handles) net.aimHandle(s.network, changes, h.line, h.end, h.tip)
   }
   translate(dx: number, dy: number) { this.transform(editing.translation(dx, dy)) }
   rotate(centre: Vec, angle: number) { this.transform(editing.rotation(centre, angle)) }
@@ -476,6 +476,8 @@ function commit(s: State, ch: net.Changes, published: State) {
     for (const p of pairs) applyTopology(s, ch, c => net.bind(s.network, c, p.keep, p.remove))
     applyTopology(s, ch, c => net.removeIsolated(s.network, c))
   }
+  // aimed handles take their offsets from the final point positions
+  net.resolveHandleTips(s.network, ch)
   // mirror-linked handles: a held handle gives its counterpart the reflected handle, held too
   for (const h of apply.mirroredHandles(s.apply, s.network, ch)) net.moveHandle(s.network, ch, h.line, h.end, h.offset)
   net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
