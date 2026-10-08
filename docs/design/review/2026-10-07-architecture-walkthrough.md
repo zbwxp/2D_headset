@@ -2945,6 +2945,20 @@ Waiting for bowen:
 - merge position, deformation and mirror editing belong to the "editing" level, later;
 - show/hide intervals belong to the continuous curve, later.
 
+### dot (1791425290)
+
+**Proposed principle (dot's wording):** a closed loop's identity and validity are decided by connectivity; the boundary actually used for filling is the geometry of that loop's route after join processing.
+
+- **Cusp** mainly changes the stroke corner's outer outline. It does not change the fill's structural boundary.
+- **Arc join** trims part of the curves near the original corner and adds an arc. A fill passing through that pair uses the arc and no longer reaches the original endpoint.
+- **Lines and fill reuse the same join geometry** so they cannot disagree.
+- **The fill does not follow** the ink's outer edge, tapers or show/hide intervals. Hiding a stretch of ink does not cut the fill boundary.
+- **Pairing check (v103 `derivedUses`, `7205381:src/domain/drawing/roundedJoin.ts`):** an arc applies according to which two lines the loop passes through at that point. Not every loop at a multi-line point is rounded.
+
+**Claude's precision:** "the same derived geometry" in Claude's wording means the **centreline path after join processing**, not the stroke outline. This matches dot's last two points.
+
 ### Status
 
-Waiting for dot's independent review. Graph changes (the row amendment and the new principle) wait for bowen's "写".
+Claude and dot agree on the principle. The graph changes wait for bowen's "写":
+- amend "corner means no record";
+- add the derived-geometry principle.
