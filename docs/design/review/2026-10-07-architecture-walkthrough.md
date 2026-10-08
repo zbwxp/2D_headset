@@ -2654,3 +2654,33 @@ Agrees: A, C and D are definitions to add, not overturns.
 
 Waiting for dot's independent review and bowen on A–D.
 
+
+## Q25: Endpoint linking as a continuing edit
+
+**bowen** 1791423700:
+> 端点联动是特殊情况。因为两端端点都存在，它相当于一种持续的编辑行为。即每一次操作结束之后，两个端点需要位置重合即可。而接笔是再次编辑两个端点对应的handle的。我暂时这样想 你们攻击一下看这种设定可不可以。可以预见这种操作应该比端点绑定更耗费计算资源。但这种情况应该不多。
+
+### Claude (1791423739)
+
+**Mostly holds.** v103 is close:
+- Creating a link keeps the first point and moves the second onto it (`7205381:src/domain/drawing/commands.ts:69-74`).
+- Dragging either point moves all linked points (`moveNode`, `commands.ts:61-66`).
+
+**Attacks:**
+
+1. **Who yields when restoring coincidence (main).**
+   - Direct dragging is fine; both points move together.
+   - But if another operation moves only one side (moving only layer B, deforming one side, or a head-turn deforming two layers differently), the points separate and one side must yield:
+     - **A yields:** moving layer B drags layer A's line end along.
+     - **B yields:** layer B moves, but its linked end is pulled back and that line bends.
+   - **Proposal:** "first-clicked wins". The first point is master and the second follows. If the user directly drags the follower, both move. v103 recording junctions also use master / follower (`src/domain/recording/model.ts:32`).
+2. **Linking within one layer?**
+   - Same-layer points can already be bound. A same-layer link would create coincident but unshared points, bypassing the binding rules (no loops, no stroke unification).
+   - **Proposal:** linking only across layers; same layer always binds. This matches bowen's earlier "bind within a layer, link across layers".
+3. **Where a join across a link lives.** Joins are point attributes, but a link has two points, so neither is symmetric. The natural home is **the link relation itself**.
+4. **A linked point deleted by binding.** By the Q23 rule its joins are dropped; for consistency its links are dropped too. To confirm.
+5. **Cost:** each edit checks only the linked pairs, linear in the number of links, which is negligible if links are few. Head-turn realigns them per frame, still only those pairs.
+
+### Status
+
+Waiting for dot's independent review and bowen.
