@@ -117,7 +117,6 @@ These are our own choices, not derived from bowen's principles. They wait for hi
 14. **Layer batch** (docs/layer-batch-plan.md):
     - the ids of a copied layer are `${new layer id}/${old id}`;
     - unbind offsets the new point by 0.5 along the first moved line's handle (or toward its other end);
-    - a group's state change covers its lines and the fills of its loops;
     - a new layer is made by `layer(id, name?, above?)`; there is no separate `newLayer`;
     - the lock check counts a line locked before or after the edit, so lock-and-edit or unlock-and-edit takes two edits;
     - a point pulled by a link counts as not acted on when choosing which overlapping point is kept.

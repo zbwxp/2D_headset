@@ -163,6 +163,14 @@ describe('state changes and locks', () => {
     expect(s(d).loops.find(l => l.id === fill)!.visible).toBe(true)
   })
 
+  it('12c. hiding a continuous curve is a batch over its lines only; its fills keep their own switch (bowen 1791433646)', () => {
+    const d = doc('A'); triangle(d, 'A')
+    const fill = fillFirst(d)
+    d.edit(e => e.groupState(groupOf(d, 'ab').id, { visible: false }))
+    expect(s(d).lines.every(l => !l.state.visible)).toBe(true)
+    expect(s(d).loops.find(l => l.id === fill)!.visible).toBe(true)
+  })
+
   it('12b. the fill toggle of a layer touches fills only', () => {
     const d = doc('A'); triangle(d, 'A')
     const fill = fillFirst(d)

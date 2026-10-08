@@ -106,11 +106,9 @@ export class Editor {
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
   lineState(line: Id, state: { visible?: boolean; locked?: boolean }) { net.setLineState(this.s.network, line, state) }
   fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { fills.setState(this.s.fills, loop, state) }
-  /** The group's lines and the fills of its loops. */
+  /** A batch over the group's own lines; its fills keep their own switch (bowen 1791433646). */
   groupState(group: Id, state: { visible?: boolean; locked?: boolean }) {
-    const g = groups.get(this.s.groups, group)
-    for (const id of g.lines) this.lineState(id, state)
-    for (const id of this.fillsOf(g.lines)) this.fillState(id, state)
+    for (const id of groups.get(this.s.groups, group).lines) this.lineState(id, state)
   }
   layerState(layer: Id, state: { visible?: boolean; locked?: boolean }) {
     for (const l of this.linesIn(layer)) this.lineState(l.id, state)
