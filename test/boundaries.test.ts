@@ -56,7 +56,10 @@ function rootRuntimeExports(text: string): string[] {
     if (ts.isExportDeclaration(st)) {
       if (st.isTypeOnly) continue
       if (!st.exportClause) { names.push('*'); continue }
+      if (ts.isNamespaceExport(st.exportClause)) { names.push(st.exportClause.name.text); continue }
       if (ts.isNamedExports(st.exportClause)) for (const el of st.exportClause.elements) if (!el.isTypeOnly) names.push(el.name.text)
+    } else if (ts.isExportAssignment(st)) {
+      names.push('default')
     } else if (ts.canHaveModifiers(st) && ts.getModifiers(st)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
       names.push(ts.isVariableStatement(st) ? 'variable' : (st as { name?: ts.Identifier }).name?.text ?? 'default')
     }
@@ -109,6 +112,9 @@ describe('module boundaries', () => {
     expect(rootRuntimeExports(root)).toEqual(['Core'])
     expect(rootRuntimeExports(`export * from './network'`)).toEqual(['*'])
     expect(rootRuntimeExports(`export { create } from './network'\nexport type { Vec } from './geometry'`)).toEqual(['create'])
+    expect(rootRuntimeExports(`export * as network from './network'`)).toEqual(['network'])
+    expect(rootRuntimeExports(`export default 42`)).toEqual(['default'])
+    expect(rootRuntimeExports(`export default class X {}`)).toEqual(['X'])
   })
 })
 

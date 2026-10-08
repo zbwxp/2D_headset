@@ -46,7 +46,7 @@ geometry ← network ← groups / joins / links / fills ← derived ← document
 
 ## Ids (dot 1791427637)
 
-- **Never reused:** point and line ids are never reused within a document, deleted ones included. So a filled loop's identity can never be taken over by a new loop.
+- **Not reused while their record exists:** a point or line id used in the current state, deleted ones included, cannot be used again, so a filled loop's identity can never be taken over by a new loop. Undoing an edit also undoes its id records, so an id freed by undo can be used again. This is safe because whatever referred to that id was undone with it (dot 1791428573).
 - **Boundary keys** use a JSON encoding, so no id can collide through a separator.
 - **Order** lists are arrays of entries, so any string is a safe id.
 

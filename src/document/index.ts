@@ -43,14 +43,14 @@ class Cancelled extends Error {}
  *   succeeds; a throw or cancel publishes nothing;
  * - modules copy every input they store, so no caller object is shared with the state.
  */
-interface Transaction { open: boolean; readonly state: State; readonly changes: net.Changes }
+interface Transaction { open: boolean; cancelled: boolean; readonly state: State; readonly changes: net.Changes }
 const transactions = new WeakMap<Editor, Transaction>()
 
 export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, state, changes: net.emptyChanges() })
+    transactions.set(e, { open: true, cancelled: false, state, changes: net.emptyChanges() })
     return e
   }
 
@@ -99,7 +99,13 @@ export class Editor {
   /** Move a fill to `index` among the fills of its own group. */
   reorderFill(loop: Id, index: number) { fills.reorder(this.s.fills, this.s.network, loop, index) }
 
-  cancel(): never { this.tx; throw new Cancelled('cancelled') }
+  /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
+  cancel(): never {
+    const tx = this.tx
+    tx.cancelled = true
+    tx.open = false
+    throw new Cancelled('cancelled')
+  }
 }
 
 export class Core {
@@ -125,6 +131,7 @@ export class Core {
         // An async callback would keep running after the edit closes (dot 1791427941).
         throw new Error('edit callbacks must be synchronous; nothing was published')
       }
+      if (tx.cancelled) return
       commit(draft, tx.changes)
     } catch (err) {
       if (err instanceof Cancelled) return

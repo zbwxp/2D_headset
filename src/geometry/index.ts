@@ -103,7 +103,9 @@ export function filletArc(p0: Vec, into: Vec, p3: Vec, out: Vec): Cubic {
   const t0 = normalize(into), t3 = normalize(out)
   const turn = Math.acos(Math.max(-1, Math.min(1, t0.x * t3.x + t0.y * t3.y)))
   const chord = length(sub(p3, p0))
-  if (turn < 1e-9 || chord < 1e-12) return [p0, lerp(p0, p3, 1 / 3), lerp(p0, p3, 2 / 3), p3]
+  if (chord < 1e-12) return [p0, p0, p3, p3]
+  // Parallel tangents (no turn): keep both ends tangent; the handle length is the θ → 0 limit, chord / 3 (dot 1791428573).
+  if (turn < 1e-9) return [p0, add(p0, scale(t0, chord / 3)), sub(p3, scale(t3, chord / 3)), p3]
   const radius = chord / (2 * Math.sin(turn / 2))
   const h = (4 / 3) * Math.tan(turn / 4) * radius
   return [p0, add(p0, scale(t0, h)), sub(p3, scale(t3, h)), p3]

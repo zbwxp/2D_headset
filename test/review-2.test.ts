@@ -218,3 +218,23 @@ describe('input validation found by probing the public API', () => {
     expect(() => d.edit(e => e.endStroke('a', { taper: { deep: 1 } as unknown as number }))).toThrow(/finite/)
   })
 })
+
+describe('third re-run (dot 1791428573)', () => {
+  it('a cancel caught by the callback still cancels the edit', () => {
+    const d = new Core()
+    d.edit(e => e.layer('L'))
+    const before = d.snapshot()
+    d.edit(e => {
+      sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(1)); sk(e).line('ab', 'a', 'b')
+      try { e.cancel() } catch { /* swallowed on purpose */ }
+    })
+    expect(d.snapshot()).toEqual(before)
+  })
+
+  it('an arc between parallel tangents with offset ends stays tangent at both ends', () => {
+    const arc = geo.filletArc(P(0, 0), P(1, 0), P(4, 2), P(1, 0))
+    const cross = (u: Vec, v: Vec) => { const a = geo.normalize(u), b = geo.normalize(v); return Math.abs(a.x * b.y - a.y * b.x) }
+    expect(cross(geo.derivative(arc, 0), P(1, 0))).toBeLessThan(1e-12)
+    expect(cross(geo.derivative(arc, 1), P(1, 0))).toBeLessThan(1e-12)
+  })
+})
