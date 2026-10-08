@@ -291,6 +291,22 @@ describe('mirror link', () => {
     expect(s(d).mirrorPairs).toHaveLength(1)
   })
 
+  it('A8f. unbinding both mirrored lines together from the axis point: the shared new point stays on the axis (dot, review of 39b192a)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A')
+      sk(e).point('a', 'A', P(-10)); sk(e).point('b', 'A', P(-1, 2)); sk(e).point('t', 'A', P(-3, 8)); sk(e).line('left', 'a', 'b'); sk(e).line('lt', 't', 'b')
+      sk(e).point('c', 'A', P(10)); sk(e).point('dd', 'A', P(1, 2)); sk(e).point('u', 'A', P(3, 8)); sk(e).line('right', 'c', 'dd'); sk(e).line('ru', 'u', 'dd')
+    })
+    d.edit(e => e.mirrorLink([groupOf(d, 'left')], [groupOf(d, 'right')]))
+    d.edit(e => e.move([{ id: 'b', target: P(0, 2) }]))
+    const m = line(d, 'left').b
+    d.edit(e => e.unbind(m, ['left', 'right'], 'n'))
+    expect(line(d, 'left').b).toBe('n'); expect(line(d, 'right').b).toBe('n')
+    expect(point(d, 'n').position.x).toBe(0)
+    expect(mirrored(d, [['left', 'right']])).toBe(true)
+  })
+
   it('A8c. binding away a point both sides share on the axis merges it with both kept points into one point on the axis (bowen 1791474920, derived)', () => {
     const d = new Core()
     d.edit(e => {

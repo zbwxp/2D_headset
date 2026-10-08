@@ -164,6 +164,10 @@ export class Editor {
   unbind(point: Id, lines: Id[], newPoint: Id) {
     const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint)
     this.topology(ch => { for (const o of ops) net.unbind(this.s.network, ch, o.point, o.lines, o.newPoint) })
+    // the unbind placed its new points; they go through the same position solve as any
+    // other placed point (links, mirror), so a new point that is its own counterpart
+    // lands on the axis (dot, review of 39b192a)
+    this.move(ops.map(o => ({ id: o.newPoint, target: net.point(this.s.network, o.newPoint).position })))
   }
 
   // joins and end strokes (point attributes)
