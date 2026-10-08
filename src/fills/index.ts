@@ -24,15 +24,23 @@ function find(f: FillsState, id: Id): FilledLoop {
   return l
 }
 
-/** All loops: filled ones (fill order), then unfilled simple loops (discovery order). */
+/**
+ * Every closed curve, in discovery order, filled or not — clearing a fill never
+ * hides a loop (bowen 1791430259). A filled loop keeps its stored id and colour.
+ */
 export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
-  const filled = S(f).order.map(id => find(f, id))
-  const filledKeys = new Set(filled.map(l => net.loopKey(l.lines)))
-  const views: LoopView[] = filled.map(l => ({ id: l.id, layer: l.layer, route: closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible }))
-  for (const found of net.simpleLoops(n)) {
-    if (filledKeys.has(found.key)) continue
-    views.push({ id: found.key, layer: found.layer, route: found.route, filled: false })
+  const filledByKey = new Map(S(f).loops.map(l => [net.loopKey(l.lines), l]))
+  const views: LoopView[] = []
+  const shown = new Set<Id>()
+  for (const found of net.closedLoops(n)) {
+    const stored = filledByKey.get(found.key)
+    if (stored) {
+      views.push({ id: stored.id, layer: stored.layer, route: found.route, filled: true, color: stored.color, visible: stored.visible })
+      shown.add(stored.id)
+    } else views.push({ id: found.key, layer: found.layer, route: found.route, filled: false })
   }
+  // A filled loop beyond the enumeration limit is still listed.
+  for (const l of S(f).loops) if (!shown.has(l.id)) views.push({ id: l.id, layer: l.layer, route: net.closedWalk(n, l.lines)!, filled: true, color: l.color, visible: l.visible })
   return views
 }
 
@@ -40,7 +48,7 @@ export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
 export function fill(f: FillsState, n: net.NetworkState, id: Id, color: string) {
   const existing = S(f).loops.find(l => l.id === id)
   if (existing) { existing.color = color; return }
-  const found = net.simpleLoops(n).find(l => l.key === id)
+  const found = net.closedLoops(n).find(l => l.key === id)
   if (!found) throw new Error(`No loop ${id}`)
   S(f).loops.push({ id, layer: found.layer, lines: found.route.map(u => u.line), color, visible: true })
   S(f).order.push(id)
@@ -81,7 +89,7 @@ export function update(f: FillsState, ch: net.Changes) {
 
 /** Drop every fill whose boundary is no longer one closed walk in one layer. */
 export function validate(f: FillsState, n: net.NetworkState) {
-  drop(f, S(f).loops.filter(l => !closedWalk(n, l.lines) || l.lines.some(x => net.layerOfLine(n, x) !== l.layer)).map(l => l.id))
+  drop(f, S(f).loops.filter(l => !net.closedWalk(n, l.lines) || l.lines.some(x => net.layerOfLine(n, x) !== l.layer)).map(l => l.id))
 }
 
 function drop(f: FillsState, ids: Id[]) {
@@ -89,35 +97,4 @@ function drop(f: FillsState, ids: Id[]) {
   const gone = new Set(ids)
   S(f).loops = S(f).loops.filter(l => !gone.has(l.id))
   S(f).order = S(f).order.filter(x => !gone.has(x))
-}
-
-/**
- * The lines as one closed walk using each line once (connected, every point of
- * even degree), ordered and oriented; null if they are not one. A walk may pass a
- * point twice (bowen 1791391694).
- */
-export function closedWalk(n: net.NetworkState, lines: Id[]): net.LoopUse[] | null {
-  if (lines.length < 2 || new Set(lines).size !== lines.length || lines.some(x => !net.hasLine(n, x))) return null
-  const ls = lines.map(id => net.line(n, id))
-  const degree = new Map<Id, number>()
-  for (const l of ls) for (const p of [l.a, l.b]) degree.set(p, (degree.get(p) ?? 0) + 1)
-  if ([...degree.values()].some(d => d % 2)) return null
-  // Hierholzer from the first line's start.
-  const unused = new Set(lines)
-  const stack: { point: Id; use?: net.LoopUse }[] = [{ point: ls[0]!.a }]
-  const out: net.LoopUse[] = []
-  while (stack.length) {
-    const top = stack[stack.length - 1]!
-    const next = ls.find(l => unused.has(l.id) && (l.a === top.point || l.b === top.point))
-    if (next) {
-      unused.delete(next.id)
-      const reversed = next.a !== top.point
-      stack.push({ point: reversed ? next.a : next.b, use: { line: next.id, reversed } })
-    } else {
-      const done = stack.pop()!
-      if (done.use) out.push(done.use)
-    }
-  }
-  if (unused.size) return null
-  return out.reverse()
 }

@@ -21,15 +21,15 @@ function grid() {
 }
 
 describe('network', () => {
-  it('finds all 13 simple loops of a 2×2 grid, each once', () => {
-    const loops = net.simpleLoops(grid())
-    expect(loops).toHaveLength(13)
-    expect(new Set(loops.map(l => l.key)).size).toBe(13)
+  it('finds every closed curve of a 2×2 grid once: 13 simple loops plus the 2 diagonal cell pairs meeting at the centre', () => {
+    const loops = net.closedLoops(grid())
+    expect(loops).toHaveLength(15)
+    expect(new Set(loops.map(l => l.key)).size).toBe(15)
   })
 
   it('a loop route is a closed walk: each step starts where the previous ended', () => {
     const n = grid()
-    for (const loop of net.simpleLoops(n)) {
+    for (const loop of net.closedLoops(n)) {
       const ends = loop.route.map(u => { const l = net.line(n, u.line); return u.reversed ? [l.b, l.a] : [l.a, l.b] })
       for (let i = 0; i < ends.length; i++) expect(ends[i]![1]).toBe(ends[(i + 1) % ends.length]![0])
     }

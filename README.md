@@ -15,11 +15,11 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | Module | Owns (data) | Rules it owns |
 |---|---|---|
 | `geometry` | nothing | Cubic Bézier maths (wraps `bezier-js`), arc fillet, flattening, area, point in polygon |
-| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. A point exists only as a line end. It is **created only together with a line**: the pen's ends are existing points or new ones, and split and unbind make their points with their lines (bowen 1791428375). It is removed when merged by binding or when isolated (checked once per edit, bowen 1791428195). Queries: lines at a point, connected groups, simple loops |
+| `network` | points (position, layer), lines (two point ids + two handles, each relative to its point) | One-time edits on points and lines: add, move, drag handle, split, delete, **bind**, unbind. A point exists only as a line end. It is **created only together with a line**: the pen's ends are existing points or new ones, and split and unbind make their points with their lines (bowen 1791428375). It is removed when merged by binding or when isolated (checked once per edit, bowen 1791428195). Queries: lines at a point, connected groups, and **closed curves** under one definition (`closedWalk`, `closedLoops`): connected, each line once, may pass a point twice |
 | `groups` | continuous-curve identity, per-layer order of groups, line stroke per group | Reconcile identity after topology changes; the merged group keeps the first-clicked group's slot and stroke; a split-off group goes right after the original |
 | `joins` | join table per point (pairs of lines with mode smooth / cusp / arc), end stroke per point | Clean rows on topology changes; **solve smooth springs** |
 | `links` | cross-layer endpoint links (one relation per pair) | Cross-layer only; on creation the second point moves to the first; **align** = average of the directly acted-on targets |
-| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed walk in one layer; discover unfilled loops on demand. Reordering is within the fill's own group |
+| `fills` | filled loops (identity, boundary lines, colour, visibility) and fill order | Keep identity through split and bind; drop a fill when its loop stops being one closed curve; list every closed curve (filled or not) in discovery order. Reordering is within the fill's own group |
 | `derived` | nothing (computed) | The **final geometric outline**: centre lines after joins. An arc trims both lines and inserts an arc tangent to both, using the real tangents at the trim points. Lines, fills and picking read the same result. Stroke width, taper and blur never change it. Loop size for picking adds the lobes of a loop that passes a point twice |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
@@ -101,7 +101,7 @@ These are our own choices, not derived from bowen's principles. They wait for hi
 6. **A pen line joining two groups** keeps the group of its first point (the bind rule extended to the pen).
 7. **On unbind,** a join moves with its lines if both moved; it is dropped if only one moved.
 8. **Smooth springs** change direction only, never handle length. Zero-length handles take no part.
-9. **Unfilled loops** are only the simple ones (no point visited twice). A loop through a point twice exists only as an already-filled loop. **Conflict found by dot (1791429823):** after its fill is cleared, such a loop vanishes and cannot be filled again, which contradicts "clear fill is not delete loop". Asked bowen (1791429850): 甲, one loop definition (closed path, each line at most once); or 乙, remember cleared loops.
+9. ~~Unfilled loops are only the simple ones.~~ **Resolved (bowen 1791430259, 甲):** one definition of a closed curve: a connected closed path using each of its lines once, which may pass a point twice. It is used both to find loops and to check fills, so every loop is listed whether filled or not.
 10. **Filling an already-filled loop** recolours it.
 11. **An edit that changes nothing** makes no undo step.
 12. **Default line stroke:** width 1, uniform (a placeholder).

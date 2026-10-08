@@ -28,7 +28,8 @@ export interface Snapshot {
   groups: groups.Group[]
   joins: joins.JoinRow[]
   links: { a: Id; b: Id }[]
-  loops: fills.LoopView[]
+  /** Every closed curve, each tagged with the continuous curve (group) it belongs to. */
+  loops: (fills.LoopView & { group: Id })[]
   fillOrder: Id[]
 }
 export type Geometry = derived.Geometry
@@ -183,6 +184,8 @@ export class Core {
 
   snapshot(): Snapshot {
     const s = this.state, n = s.network
+    const groupList = groups.list(s.groups, n)
+    const groupOfLine = new Map(groupList.flatMap(g => g.lines.map(l => [l, g.id] as const)))
     return structuredClone({
       layers: [...net.layers(n)],
       points: net.points(n).map(p => {
@@ -190,10 +193,10 @@ export class Core {
         return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
       }),
       lines: net.lines(n).map(l => ({ ...l })),
-      groups: groups.list(s.groups, n),
+      groups: groupList,
       joins: joins.rows(s.joins),
       links: links.pairs(s.links),
-      loops: fills.discover(s.fills, n),
+      loops: fills.discover(s.fills, n).map(l => ({ ...l, group: groupOfLine.get(l.route[0]!.line)! })),
       fillOrder: fills.order(s.fills),
     })
   }

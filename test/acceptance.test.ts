@@ -288,3 +288,30 @@ describe('acceptance gaps from dot 1791427048', () => {
     expect(ends.filter(e => e[0] === 'a')).toHaveLength(2)
   })
 })
+
+describe('one definition of a closed curve (bowen 1791430259, option 甲)', () => {
+  function bound() {
+    const d = graph([['au', 'a', 'u'], ['ub', 'u', 'b'], ['bv', 'b', 'v'], ['va', 'v', 'a'], ['mid', 'a', 'b']],
+      { a: P(0), u: P(5, 5), b: P(10), v: P(5, -5) })
+    const outer = d.snapshot().loops.find(l => l.route.length === 4 && !l.route.some(u => u.line === 'mid'))!.id
+    d.edit(e => e.fill(outer, 'red'))
+    d.edit(e => e.bind('a', 'b')) // the outer loop now passes a twice
+    return { d, outer }
+  }
+
+  it('a loop through a point twice stays listed after its fill is cleared, and can be filled again (dot 1791429823)', () => {
+    const { d, outer } = bound()
+    d.edit(e => e.clearFill(outer))
+    const again = d.snapshot().loops.find(l => l.route.length === 4)
+    expect(again).toBeDefined()
+    d.edit(e => e.fill(again!.id, 'blue'))
+    expect(d.snapshot().loops.find(l => l.id === again!.id)?.color).toBe('blue')
+  })
+
+  it('every loop is listed whether filled or not, tagged with its continuous curve', () => {
+    const { d } = bound()
+    const s = d.snapshot()
+    expect(s.loops).toHaveLength(3) // two lobes and the whole figure-eight
+    for (const l of s.loops) expect(s.groups.find(g => g.id === l.group)!.lines).toEqual(expect.arrayContaining(l.route.map(u => u.line)))
+  })
+})

@@ -185,46 +185,90 @@ export interface FoundLoop { key: string; layer: Id; route: LoopUse[] }
 /** Boundary key of a set of lines (collision-free encoding). It is a query key, not a fill identity. */
 export const loopKey = (ids: Iterable<Id>) => 'loop:' + JSON.stringify([...ids].sort())
 
-/** Upper bound on enumerated loops (bowen: a layer never holds very complex networks). */
+/** Upper bound on enumerated loops per document (an implementation bound; bowen: a layer never holds very complex networks). */
 export const LOOP_LIMIT = 10000
 
-/** Every simple loop (no point visited twice), per layer. Parallel lines form 2-line loops. */
-export function simpleLoops(n: NetworkState): FoundLoop[] {
-  const found = new Map<string, FoundLoop>()
-  const store = S(n)
-  const order = new Map(store.points.map((p, i) => [p.id, i]))
-  const adj = new Map<Id, { line: Id; other: Id; reversed: boolean }[]>()
-  for (const l of store.lines) {
-    if (!adj.has(l.a)) adj.set(l.a, [])
-    if (!adj.has(l.b)) adj.set(l.b, [])
-    adj.get(l.a)!.push({ line: l.id, other: l.b, reversed: false })
-    adj.get(l.b)!.push({ line: l.id, other: l.a, reversed: true })
-  }
-  for (const s of store.points) {
-    if (found.size >= LOOP_LIMIT) break
-    const start = order.get(s.id)!
-    const visited = new Set<Id>([s.id])
-    const path: LoopUse[] = []
-    const walk = (v: Id) => {
-      for (const e of adj.get(v) ?? []) {
-        if (found.size >= LOOP_LIMIT) return
-        if (path.some(u => u.line === e.line)) continue
-        if (e.other === s.id) {
-          const route = [...path, { line: e.line, reversed: e.reversed }]
-          const key = loopKey(route.map(u => u.line))
-          if (!found.has(key)) found.set(key, { key, layer: s.layer, route })
-        } else if (order.get(e.other)! > start && !visited.has(e.other)) {
-          visited.add(e.other)
-          path.push({ line: e.line, reversed: e.reversed })
-          walk(e.other)
-          path.pop()
-          visited.delete(e.other)
-        }
-      }
+/**
+ * The one definition of a closed curve (bowen 1791430259, option 甲): a closed path
+ * that uses each of its lines once, connected, in one layer — it may pass a point
+ * more than once. As an edge set this is a connected set of lines where every
+ * point has an even number of them. Returns an ordered, oriented route, or null.
+ * Used both to find closed curves and to check that a filled one still holds.
+ */
+export function closedWalk(n: NetworkState, lineIds: readonly Id[]): LoopUse[] | null {
+  if (lineIds.length < 2 || new Set(lineIds).size !== lineIds.length) return null
+  const byId = new Map(S(n).lines.map(l => [l.id, l]))
+  const ls = lineIds.map(id => byId.get(id))
+  if (ls.some(l => !l)) return null
+  const lines = ls as Mutable<Line>[]
+  const layerOf = new Map(S(n).points.map(p => [p.id, p.layer]))
+  if (new Set(lines.map(l => layerOf.get(l.a))).size !== 1) return null
+  const degree = new Map<Id, number>()
+  for (const l of lines) for (const p of [l.a, l.b]) degree.set(p, (degree.get(p) ?? 0) + 1)
+  if ([...degree.values()].some(d => d % 2)) return null
+  // Hierholzer from the first line's start; leftovers mean the lines are not connected.
+  const unused = new Set(lineIds)
+  const stack: { point: Id; use?: LoopUse }[] = [{ point: lines[0]!.a }]
+  const out: LoopUse[] = []
+  while (stack.length) {
+    const top = stack[stack.length - 1]!
+    const next = lines.find(l => unused.has(l.id) && (l.a === top.point || l.b === top.point))
+    if (next) {
+      unused.delete(next.id)
+      const reversed = next.a !== top.point
+      stack.push({ point: reversed ? next.a : next.b, use: { line: next.id, reversed } })
+    } else {
+      const done = stack.pop()!
+      if (done.use) out.push(done.use)
     }
-    walk(s.id)
   }
-  return [...found.values()]
+  return unused.size ? null : out.reverse()
+}
+
+/**
+ * Every closed curve of every continuous curve, in discovery order. Each one is a
+ * connected, non-empty combination of the component's fundamental cycles (the
+ * even-degree line sets), so all of them — simple or passing a point twice — are
+ * found, each once.
+ */
+export function closedLoops(n: NetworkState): FoundLoop[] {
+  const found: FoundLoop[] = []
+  const layerOf = new Map(S(n).points.map(p => [p.id, p.layer]))
+  for (const comp of components(n)) {
+    if (found.length >= LOOP_LIMIT) break
+    const lines = comp.lines.map(id => S(n).lines.find(l => l.id === id)!)
+    // spanning tree by BFS; each non-tree line closes one fundamental cycle
+    const adj = new Map<Id, { line: number; other: Id }[]>()
+    lines.forEach((l, i) => {
+      for (const [p, q] of [[l.a, l.b], [l.b, l.a]] as const) { if (!adj.has(p)) adj.set(p, []); adj.get(p)!.push({ line: i, other: q }) }
+    })
+    const root = lines[0]!.a
+    const parent = new Map<Id, { via: number; from: Id } | null>([[root, null]])
+    const queue = [root]
+    const inTree = new Set<number>()
+    while (queue.length) {
+      const v = queue.shift()!
+      for (const e of adj.get(v) ?? []) if (!parent.has(e.other)) { parent.set(e.other, { via: e.line, from: v }); inTree.add(e.line); queue.push(e.other) }
+    }
+    const pathToRoot = (v: Id) => { const out: number[] = []; for (let x = parent.get(v); x; x = parent.get(x.from)) out.push(x.via); return out }
+    const cycles: Uint8Array[] = []
+    lines.forEach((l, i) => {
+      if (inTree.has(i)) return
+      const c = new Uint8Array(lines.length)
+      c[i] = 1
+      for (const t of [...pathToRoot(l.a), ...pathToRoot(l.b)]) c[t]! ^= 1
+      cycles.push(c)
+    })
+    const k = cycles.length
+    for (let mask = 1; mask < 2 ** k && found.length < LOOP_LIMIT; mask++) {
+      const set = new Uint8Array(lines.length)
+      for (let b = 0; b < k; b++) if (mask & (1 << b)) for (let i = 0; i < set.length; i++) set[i]! ^= cycles[b]![i]!
+      const ids = lines.filter((_, i) => set[i]).map(l => l.id)
+      const route = closedWalk(n, ids)
+      if (route) found.push({ key: loopKey(ids), layer: layerOf.get(lines[0]!.a)!, route })
+    }
+  }
+  return found
 }
 
 // ---- one-time edits ------------------------------------------------------
