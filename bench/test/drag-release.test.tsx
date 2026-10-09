@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Core } from '../../src'
+import { Core, save } from '../../src'
 import { App } from '../src/app'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -35,7 +35,7 @@ async function setup() {
     bench().core.edit(e => e.line(`h${k}`, { id: `a${k}`, layer: 'layer-1', position: { x: 0, y: 200 * k } }, { id: `b${k}`, layer: 'layer-1', position: { x: 100, y: 200 * k } }))
     bench().ix.setTool('V'); bench().refresh()
   })
-  return { svg, k, root }
+  return { svg, k, root, host }
 }
 const at = (id: string) => bench().core.snapshot().points.find(p => p.id === id)!.position
 
@@ -377,5 +377,53 @@ describe('Z as in v1 (7205381; bowen 1791554424)', () => {
     expect(box(svg)[2]).toBeLessThan(b1[2]!)
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
     expect(box(svg)).toEqual(b1)
+  })
+})
+
+describe('a tool change or a successful open ends a pan or zoom; a failed open does not (dot 1791554909)', () => {
+  if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
+  const box = (svg: Element) => svg.getAttribute('viewBox')
+  async function openFile(host: HTMLElement, text: string) {
+    const input = host.querySelector('input[type=file]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([text], 'other.json')], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
+  }
+  const button = (host: HTMLElement, label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
+  /** Start a pan (right drag) or a Z zoom (left drag) and move once, so the view has changed. */
+  async function start(svg: Element, kind: 'pan' | 'zoom') {
+    if (kind === 'zoom') await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z' })) })
+    const before = box(svg)
+    await act(async () => {
+      if (kind === 'pan') { svg.dispatchEvent(pe('pointerdown', 700, -250, 2, 1, 2)); window.dispatchEvent(pe('pointermove', 650, -250, 2)) }
+      else { svg.dispatchEvent(pe('pointerdown', 300, 300, 1)); window.dispatchEvent(pe('pointermove', 300, 250, 1)) }
+    })
+    expect(box(svg)).not.toBe(before)
+    return before
+  }
+  const later = (svg: Element, kind: 'pan' | 'zoom') => act(async () => {
+    window.dispatchEvent(kind === 'pan' ? pe('pointermove', 500, -100, 2) : pe('pointermove', 300, 100, 1))
+  })
+  const switches: [string, (host: HTMLElement) => Promise<void>][] = [
+    ['a tool key', async () => { await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })) }) }],
+    ['a tool button', async host => { await act(async () => { button(host, 'A direct').click() }) }],
+    ['a successful open', async host => { const other = Core.newDocument(); await openFile(host, save(other)) }],
+  ]
+  for (const kind of ['pan', 'zoom'] as const) for (const [name, act1] of switches) {
+    it(`${kind}, then ${name}: the gesture ends, the view is back, later moves change nothing`, async () => {
+      const { svg, host } = await setup()
+      const before = await start(svg, kind)
+      await act1(host)
+      expect(box(svg)).toBe(before)
+      await later(svg, kind)
+      expect(box(svg)).toBe(before)
+    })
+  }
+  it('a failed open keeps the pan going', async () => {
+    const { svg, host } = await setup()
+    await start(svg, 'pan')
+    await openFile(host, 'not a drawing')
+    const mid = box(svg)
+    await later(svg, 'pan')
+    expect(box(svg)).not.toBe(mid)
   })
 })

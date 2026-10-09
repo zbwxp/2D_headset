@@ -202,6 +202,12 @@ export function App() {
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
   useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
+  /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
+  const chooseTool = (t: Tool | 'Z') => {
+    gesture.current?.cancel('a tool change')
+    setZoomTool(t === 'Z')
+    if (t !== 'Z') ix.setTool(t)
+  }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -213,11 +219,10 @@ export function App() {
       if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(t.tagName) || t.isContentEditable) return
       // one Esc cancels one thing: a gesture in progress if there is one, else interaction's innermost (dot 1791553129)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
-      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { setZoomTool(true); e.preventDefault(); return }
-      if (ix.key(e.key, mods(e))) {
-        e.preventDefault()
-        if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey) setZoomTool(false) // a tool key leaves Z
-      }
+      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { chooseTool('Z'); e.preventDefault(); return }
+      // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
+      if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && ix.key(e.key, mods(e))) { e.preventDefault(); chooseTool(ix.tool); return }
+      if (ix.key(e.key, mods(e))) e.preventDefault()
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -272,8 +277,8 @@ export function App() {
       <div style={{ width: 230, padding: 8, borderRight: '1px solid #ccc', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Tools</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => { setZoomTool(false); ix.setTool(t) }}>{label}</button> })}
-          <button style={{ fontWeight: zoomTool ? 700 : 400, background: zoomTool ? '#cde' : undefined }} onClick={() => setZoomTool(true)}>Zoom Z</button>
+          {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
+          <button style={{ fontWeight: zoomTool ? 700 : 400, background: zoomTool ? '#cde' : undefined }} onClick={() => chooseTool('Z')}>Zoom Z</button>
         </div>
         {ix.tool === 'join' && <div>
           <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>smooth</option><option>cusp</option><option>arc</option></select>
@@ -333,7 +338,9 @@ export function App() {
               if (!f) return
               // the drawing is replaced only if the file opens; only then does interaction hear of it
               try {
-                core = open(await f.text())
+                const next = open(await f.text())
+                gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
+                core = next
                 const ls = core.snapshot().layers; setLayer(ls[ls.length - 1]?.id ?? '')
                 ix.drawingChanged(); setDrawing(k => k + 1)
                 log.unshift({ calls: `open(${f.name})`, result: 'ok' })
