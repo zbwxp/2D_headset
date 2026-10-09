@@ -61,6 +61,21 @@ describe('save and open', () => {
     same(d, open(save(d)))
   })
 
+  it('1c. a link join across layers opens equal, and a reversed link join is refused (dot 1791512476)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A'); e.layer('B')
+      e.line('la', { id: 'a0', layer: 'A', position: P(0, 0) }, { id: 'a1', layer: 'A', position: P(10, 0) })
+      e.line('lb', { id: 'b0', layer: 'B', position: P(10, 0) }, { id: 'b1', layer: 'B', position: P(20, 5) })
+    })
+    d.edit(e => { e.link('a1', 'b0'); e.linkJoin('a1', 'b0', 'la', 'lb', { mode: 'smooth' }) })
+    const good = save(d)
+    same(d, open(good))
+    const x = JSON.parse(good), j = x.document.links.joins[0]
+    x.document.links.joins[0] = { a: j.b, b: j.a, lines: [j.lines[1], j.lines[0]], mode: j.mode }
+    expect(() => open(JSON.stringify(x))).toThrow(/links are not in their stored form/)
+  })
+
   it('2. the opened document works: empty history, the same edit gives the same result, new ids and names do not collide', () => {
     const d = eyes(), o = open(save(d))
     expect(o.canUndo).toBe(false)
@@ -109,6 +124,14 @@ describe('save and open', () => {
       ['a line mirror-paired with itself', edit(doc => { doc.apply.pairs[0].b = doc.apply.pairs[0].a }), /pairs a line with itself/],
       ['a join of a line with itself', edit(doc => { doc.joins.rows[0].lines[1] = doc.joins.rows[0].lines[0] }), /uses one line twice/],
       ['an end stroke on a missing point', edit(doc => { doc.joins.endStrokes.push({ point: 'gone', stroke: { taper: 1 } }) }), /end stroke \d+ is on a missing point/],
+      // restore writes through the normal writers and must give the stored form back (dot 1791512476)
+      ['an arc join without a radius', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'arc'); delete r.radius }), /arc join needs a positive radius/],
+      ['a cusp join carrying a radius', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'smooth'); r.mode = 'cusp'; r.radius = 3 }), /not in their stored form/],
+      ['a join with its line pair reversed', edit(doc => { const r = doc.joins.rows[0]; r.lines = [r.lines[1], r.lines[0]] }), /not in their stored form/],
+      ['one join stored in both orders', edit(doc => { const r = doc.joins.rows[0]; doc.joins.rows.push({ ...r, lines: [r.lines[1], r.lines[0]] }) }), /not in their stored form/],
+      ['a link pair reversed', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs[0] = { a: p.b, b: p.a } }), /links are not in their stored form/],
+      ['one link stored in both orders', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs.push({ a: p.b, b: p.a }) }), /Already linked/],
+      ['a mirror pair reversed', edit(doc => { const p = doc.apply.pairs[0]; doc.apply.pairs[0] = { a: p.b, b: p.a, reversed: p.reversed } }), /mirror pairs are not in their stored form/],
       ['linked points apart', edit(doc => { doc.network.points.find((x: any) => x.id === 'k').position = { x: -90, y: 3 } }), /linked points c and k are apart|linked points k and c are apart/],
     ]
     for (const [label, text, why] of cases) {

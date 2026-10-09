@@ -436,5 +436,9 @@ export function restore(v: unknown, n: net.NetworkState): ApplyState {
     return { a, b, reversed: d.bool(P.reversed, `mirror pair ${i} reversed`) }
   })
   d.unique(pairs.flatMap(p => [p.a, p.b]), 'mirror-paired line')
-  return { axis, pairs } as Store as unknown as ApplyState
+  // the one stored form the writers keep: the smaller id first, pairs sorted (dot 1791512476)
+  const st = { axis, pairs: pairs.map(p => (p.a < p.b ? { ...p } : { a: p.b, b: p.a, reversed: p.reversed })) } as Store as unknown as ApplyState
+  sortPairs(st)
+  if (JSON.stringify(S(st).pairs) !== JSON.stringify(pairs)) d.fail('mirror pairs are not in their stored form')
+  return st
 }

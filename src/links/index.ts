@@ -154,7 +154,6 @@ export function restore(v: unknown, n: net.NetworkState): LinksState {
     return { a, b }
   })
   const pk = (a: Id, b: Id) => JSON.stringify(a < b ? [a, b] : [b, a])
-  d.unique(pairs.map(p => pk(p.a, p.b)), 'link')
   const joins = d.arr(o.joins, 'link joins').map((x, i): LinkJoin => {
     const J = d.obj(x, `link join ${i}`), a = d.str(J.a, `link join ${i} a`), b = d.str(J.b, `link join ${i} b`)
     const ls = d.arr(J.lines, `link join ${i} lines`)
@@ -165,6 +164,12 @@ export function restore(v: unknown, n: net.NetworkState): LinksState {
     if (J.mode !== 'smooth') d.fail(`link join ${i} has an unknown mode`)
     return { a, b, lines: [la, lb], mode: 'smooth' }
   })
-  d.unique(joins.map(j => JSON.stringify([j.a, j.b, j.lines])), 'link join')
-  return { pairs, joins } as Store as unknown as LinksState
+  // written again through link / setJoin: their checks and their one stored form (dot 1791512476)
+  const st = create()
+  try {
+    for (const p of pairs) link(st, n, p.a, p.b)
+    for (const j of joins) setJoin(st, n, j.a, j.b, j.lines[0], j.lines[1], { mode: j.mode })
+  } catch (err) { d.fail(`links: ${(err as Error).message}`) }
+  if (JSON.stringify(S(st)) !== JSON.stringify({ pairs, joins })) d.fail('links are not in their stored form (a reversed pair or a repeat)')
+  return st
 }

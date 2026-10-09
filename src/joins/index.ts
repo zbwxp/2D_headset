@@ -218,7 +218,6 @@ export function restore(v: unknown, n: net.NetworkState): JoinsState {
     if (radius !== undefined && !(radius > 0)) d.fail(`join ${i} radius is not positive`)
     return { point, lines: [l0, l1], mode, ...(radius !== undefined ? { radius } : {}) }
   })
-  d.unique(rows.map(r => rowKey(r)), 'join')
   const endStrokes = d.arr(o.endStrokes, 'end strokes').map((x, i) => {
     const E = d.obj(x, `end stroke ${i}`), point = d.str(E.point, `end stroke ${i} point`)
     if (!net.hasPoint(n, point)) d.fail(`end stroke ${i} is on a missing point`)
@@ -226,6 +225,14 @@ export function restore(v: unknown, n: net.NetworkState): JoinsState {
     for (const [k, val] of Object.entries(stroke)) if (typeof val !== 'string') d.num(val, `end stroke ${i} ${k}`)
     return { point, stroke: stroke as EndStroke }
   })
-  d.unique(endStrokes.map(e => e.point), 'end stroke point')
-  return { rows, endStrokes } as Store as unknown as JoinsState
+  // Written again through the normal writers, so restoring shares their parameter checks and
+  // their one stored form; the result must equal the file, or the file holds a reversed pair,
+  // a repeat, or a value the writers would not accept (dot 1791512476).
+  const st = create()
+  try {
+    for (const r of rows) setJoin(st, n, r.point, r.lines[0], r.lines[1], { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
+    for (const e of endStrokes) setEndStroke(st, n, e.point, e.stroke)
+  } catch (err) { d.fail(`joins: ${(err as Error).message}`) }
+  if (JSON.stringify(S(st)) !== JSON.stringify({ rows, endStrokes })) d.fail('joins are not in their stored form (a reversed line pair, a repeat, or an extra value)')
+  return st
 }

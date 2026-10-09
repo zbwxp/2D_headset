@@ -36,6 +36,8 @@ Graph section "Save and open" (headset-design `977137f`; bowen 1791511525):
    - joins and links sit on lines that end at their points;
    - every line and group has exactly one name.
 
+   Where a module keeps one stored form (unordered pairs written smaller id first, sorted rows), `restore` writes the data again through the module's normal writers (`setJoin`, `setEndStroke`, `link`, link `setJoin`; the mirror pairs' sort). The result must equal the file, so restoring shares the writers' parameter checks. A reversed pair, a repeat or an extra value is refused (dot 1791512476).
+
    `document` calls them in dependency order. `archive` only handles the file envelope and holds no rules of its own.
 2. **Reads:** the reads the editor relies on run without error: snapshot, geometry, closed-loop discovery and the names check.
 3. **Ids and links:** no id is used twice, and endpoint-linked points coincide. A smooth join is a spring: where several pull on one handle the result is a compromise, so it is not checked (found by the fuzz round trip).
