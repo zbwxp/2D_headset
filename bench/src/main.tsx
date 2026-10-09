@@ -11,11 +11,13 @@ type Unit = Snapshot['selection'][number]
 
 let core = Core.newDocument({ axis: 0 })
 let seq = 0
-// new ids skip anything already in the document (an opened file may hold ids like these)
+// New ids carry a per-session prefix: an opened file may hold ids used by an earlier session,
+// including deleted ones that core still keeps reserved (dot 1791512144); existing ones are skipped too.
+const session = Date.now().toString(36)
 const nid = (p: string) => {
   const s = core.snapshot(), used = new Set([...s.points.map(x => x.id), ...s.lines.map(x => x.id), ...s.layers.map(x => x.id)])
   let id: string
-  do id = `${p}${++seq}`; while (used.has(id))
+  do id = `${p}${session}-${++seq}`; while (used.has(id))
   return id
 }
 const P = (x: number, y: number): Vec => ({ x, y })
@@ -85,6 +87,8 @@ function App() {
   const [ghost, setGhost] = useState<Vec | null>(null) // drag offset: drawn only, nothing sent to core until release
 
   const s = core.snapshot(), g = core.geometry()
+  // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
+  const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   const line = (id: Id) => s.lines.find(l => l.id === id)!
   const pos = (id: Id) => s.points.find(p => p.id === id)!.position
   const sel = s.selection
@@ -173,7 +177,7 @@ function App() {
       drag.current = { kind: 'pan', start: P(e.clientX, e.clientY), box }
       return
     }
-    if (tool === 'pen') return penTo({ id: nid('p'), layer, position: at })
+    if (tool === 'pen') return penTo({ id: nid('p'), layer: drawLayer, position: at })
     if (tool === 'fill') {
       const loop = core.pickLoop(at)
       if (!loop) return setMsg('fill: no closed curve here')
@@ -309,7 +313,12 @@ function App() {
               const f = e.target.files?.[0]; e.target.value = ''
               if (!f) return
               // the current drawing is replaced only if the file opens
-              try { core = open(await f.text()); setPending([]); setSource([]); setMsg(`opened ${f.name}`); log.unshift({ calls: `open(${f.name})`, result: 'ok' }) }
+              try {
+                core = open(await f.text()); setPending([]); setSource([])
+                // draw on the opened drawing's top layer (dot 1791512144); none if it has no layers
+                const ls = core.snapshot().layers; setLayer(ls[ls.length - 1]?.id ?? '')
+                setMsg(`opened ${f.name}`); log.unshift({ calls: `open(${f.name})`, result: 'ok' })
+              }
               catch (err) { setMsg('✗ ' + (err as Error).message); log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
               bump()
             }} />
@@ -321,7 +330,7 @@ function App() {
         {[...s.layers].reverse().map((L, i, arr) => {
           const index = arr.length - 1 - i, lines = s.lines.filter(l => s.points.find(p => p.id === l.a)!.layer === L.id)
           const allLocked = lines.length > 0 && lines.every(l => l.state.locked), allHidden = lines.length > 0 && lines.every(l => !l.state.visible)
-          return <div key={L.id} style={{ border: '1px solid #ddd', padding: 3, background: L.id === layer ? '#eef' : undefined }} onClick={() => setLayer(L.id)}>
+          return <div key={L.id} style={{ border: '1px solid #ddd', padding: 3, background: L.id === drawLayer ? '#eef' : undefined }} onClick={() => setLayer(L.id)}>
             <b>{L.name}</b> <span style={{ color: '#999' }}>{L.id} · {lines.length} lines</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
               {B('rename', () => { const n = prompt('name', L.name); if (n) run(x => x.renameLayer(L.id, n)) })}
@@ -337,7 +346,7 @@ function App() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: msg.startsWith('✗') ? '#c00' : '#333' }}>
-          {msg || `tool ${tool} · layer ${layer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pending.length && tool !== 'pen' ? ' · pending ' + pending[0] : ''}`}
+          {msg || `tool ${tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pending.length && tool !== 'pen' ? ' · pending ' + pending[0] : ''}`}
         </div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={e => { svg.current!.setPointerCapture(e.pointerId); onBackground(e) }} onPointerDownCapture={e => svg.current!.setPointerCapture(e.pointerId)} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={cancelDrag} onLostPointerCapture={cancelDrag} onWheel={onWheel}
