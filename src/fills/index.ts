@@ -55,7 +55,7 @@ export function discover(f: FillsState, n: net.NetworkState): LoopView[] {
 /** Fill a loop (by id from discover). A new fill goes on top. */
 // A locked fill's colour is its protected content (Q29 C): changing or clearing it is
 // refused. Its fill may still vanish when its loop breaks (Q30 甲).
-const unlocked = (l: FilledLoop) => { if (l.locked) throw new Error(`Fill ${l.id} is locked`); return l }
+const unlocked = (l: FilledLoop) => { if (l.locked) throw new net.Refusal('locked', `Fill ${l.id} is locked`, [{ kind: 'fill', id: l.id }]); return l }
 
 export function fill(f: FillsState, n: net.NetworkState, id: Id, color: string) {
   const existing = S(f).loops.find(l => l.id === id)

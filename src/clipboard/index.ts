@@ -23,7 +23,7 @@ export interface Parts { network: net.NetworkState; groups: groups.GroupsState; 
 /** The range as a clip: these lines (read from `d`) and everything inside them. */
 export function extract(d: Parts, lines: readonly Id[]): Clip {
   const ids = [...new Set(lines)]
-  if (!ids.length) throw new Error('select-lines-to-copy: copy takes lines; select lines to copy')
+  if (!ids.length) throw new net.Refusal('select-lines-to-copy', 'select-lines-to-copy: copy takes lines; select lines to copy')
   const network = net.linesData(d.network, ids)
   const lineSet = new Set(ids), pointSet = new Set(network.points.map(p => p.id))
   return structuredClone({

@@ -20,10 +20,10 @@ const DEFAULT: Record<Kind, string> = { line: '曲线', group: '连续曲线' }
 const COPY = '副本'
 
 /** Every name in use, with who holds it. */
-function holders(st: NamesState, n: net.NetworkState): Map<string, string> {
-  const m = new Map<string, string>()
-  for (const l of net.layerRecords(n)) m.set(l.name, `layer ${l.id}`)
-  for (const kind of ['group', 'line'] as const) for (const [id, name] of S(st)[kind]) m.set(name, `${kind} ${id}`)
+function holders(st: NamesState, n: net.NetworkState): Map<string, net.RefusalObject> {
+  const m = new Map<string, net.RefusalObject>()
+  for (const l of net.layerRecords(n)) m.set(l.name, { kind: 'layer', id: l.id })
+  for (const kind of ['group', 'line'] as const) for (const [id, name] of S(st)[kind]) m.set(name, { kind, id })
   return m
 }
 
@@ -41,7 +41,7 @@ function set(st: NamesState, kind: Kind, id: Id, name: string) {
 export function assertFree(st: NamesState, n: net.NetworkState, name: string, self?: string) {
   if (!name.trim()) throw new Error('A name cannot be empty')
   const holder = holders(st, n).get(name)
-  if (holder !== undefined && holder !== self) throw new Error(`Name "${name}" is already used by ${holder}`)
+  if (holder !== undefined && `${holder.kind} ${holder.id}` !== self) throw new net.Refusal('name-taken', `Name "${name}" is already used by ${holder.kind} ${holder.id}`, [holder])
 }
 
 /** Works on a line or group made earlier in the same edit too (defaults are given only at settling). */

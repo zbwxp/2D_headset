@@ -51,7 +51,7 @@ export function match(n: net.NetworkState, l: links.LinksState, ax: number, sour
   const src = [...new Set(source)].sort(), tgt = [...new Set(target)].sort()
   if (src.some(id => tgt.includes(id))) throw new Error('Mirror apply: source and target must be different lines')
   for (const id of [...src, ...tgt]) net.line(n, id)
-  const mismatch = () => new Error('topology-mismatch: source and target do not have the same structure')
+  const mismatch = () => new net.Refusal('topology-mismatch', 'topology-mismatch: source and target do not have the same structure', net.lineObjects(tgt))
   if (src.length !== tgt.length || !src.length) throw mismatch()
   const ends = (id: Id) => { const x = net.line(n, id); return [x.a, x.b] as const }
   const pointsOf = (ids: Id[]) => new Set(ids.flatMap(id => ends(id)))
@@ -159,7 +159,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
   // A locked target refuses an apply (graph "Apply"), checked before anything is
   // written, so copying the source's unlocked state can never open it (dot, review of 070477e).
   const lockedLines = [...m.lines.values()].map(x => x.to).filter(id => net.line(n, id).state.locked)
-  if (lockedLines.length) throw new Error(`Locked target: ${lockedLines.join(', ')} is locked; apply refused`)
+  if (lockedLines.length) throw new net.Refusal('locked', `Locked target: ${lockedLines.join(', ')} is locked; apply refused`, net.lineObjects(lockedLines))
   const srcLines = [...m.lines.keys()], tgtLines = new Set([...m.lines.values()].map(x => x.to))
   const srcPoints = new Set(m.points.keys())
   // read everything from the source first, then write
@@ -212,7 +212,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     net.touch(ch, m.points.get(x.a)!); net.touch(ch, m.points.get(x.b)!)
   }
   const lockedFills = fillData.filter(x => x.to?.locked).map(x => x.to!.id)
-  if (lockedFills.length) throw new Error(`Locked target: fill ${lockedFills.join(', ')} is locked; apply refused`)
+  if (lockedFills.length) throw new net.Refusal('locked', `Locked target: fill ${lockedFills.join(', ')} is locked; apply refused`, lockedFills.map(id => ({ kind: 'fill' as const, id })))
   for (const { from, to } of fillData) {
     if (!to) continue
     if (from.filled) {
@@ -347,7 +347,7 @@ export function pairedLoops(s: ApplyState, f: fills.FillsState, n: net.NetworkSt
 export function pairedPointPairs(s: ApplyState, n: net.NetworkState, a: Id, b: Id): [Id, Id][] {
   const ca = counterpartPoint(s, n, a), cb = counterpartPoint(s, n, b)
   if (!ca && !cb) return [[a, b]]
-  if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
+  if (!ca || !cb) throw new net.Refusal('mirror-no-counterpart', 'mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart', [{ kind: 'point', id: ca ? b : a }])
   const same = (ca === a && cb === b) || (ca === b && cb === a)
   return same ? [[a, b]] : [[a, b], [ca, cb]]
 }
@@ -379,7 +379,7 @@ export function pairedJoins(s: ApplyState, n: net.NetworkState, point: Id, l1: I
 export function pairedLinkJoins(s: ApplyState, n: net.NetworkState, a: Id, b: Id, la: Id, lb: Id): [Id, Id, Id, Id][] {
   const ca = counterpartPoint(s, n, a), cb = counterpartPoint(s, n, b), cla = counterpartLine(s, la), clb = counterpartLine(s, lb)
   if (!ca && !cb) return [[a, b, la, lb]]
-  if (!ca || !cb) throw new Error('mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart')
+  if (!ca || !cb) throw new net.Refusal('mirror-no-counterpart', 'mirror-no-counterpart: one point is mirror-linked and the other has no mirror counterpart', [{ kind: 'point', id: ca ? b : a }])
   if (!cla || !clb) return [[a, b, la, lb]]
   const key = (x: Id, y: Id, lx: Id, ly: Id) => (x < y ? [x, y, lx, ly] : [y, x, ly, lx])
   return sameOp(key(a, b, la, lb), key(ca, cb, cla.id, clb.id)) ? [[a, b, la, lb]] : [[a, b, la, lb], [ca, cb, cla.id, clb.id]]

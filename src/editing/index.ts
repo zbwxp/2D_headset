@@ -127,6 +127,6 @@ export function centre(s: SelectionState, n: net.NetworkState, f: fills.FillsSta
 /** Delete removes lines only (bowen 1791392558, 1791465011). */
 export function deletion(s: SelectionState): Id[] {
   const lines = S(s).units.flatMap(u => (u.kind === 'line' ? [u.id] : []))
-  if (!lines.length) throw new Error('select-lines-to-delete: delete removes lines only; select lines to delete')
+  if (!lines.length) throw new net.Refusal('select-lines-to-delete', 'select-lines-to-delete: delete removes lines only; select lines to delete')
   return lines
 }

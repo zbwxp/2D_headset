@@ -179,6 +179,28 @@ export function resolveHandleTips(n: NetworkState, ch: Changes) {
   }
 }
 
+// ---- refusals -----------------------------------------------------------------
+
+/** What a refusal is about: a kind and an id, so a point and a line sharing an id are never confused. */
+export interface RefusalObject { kind: 'point' | 'line' | 'group' | 'fill' | 'layer'; id: Id }
+
+/**
+ * A refusal the user is shown (doc 22 §3.3; docs/interaction-plan.md): a code and the
+ * objects involved, besides the message. Core gives the facts; how they are shown is
+ * the interaction's (errors as values). Nobody parses the message.
+ */
+export class Refusal extends Error {
+  readonly code: string
+  readonly objects: readonly RefusalObject[]
+  constructor(code: string, message: string, objects: readonly RefusalObject[] = []) {
+    super(message)
+    this.name = 'Refusal'
+    this.code = code
+    this.objects = Object.freeze(objects.map(o => Object.freeze({ kind: o.kind, id: o.id })))
+  }
+}
+export const lineObjects = (ids: readonly Id[]): RefusalObject[] => ids.map(id => ({ kind: 'line', id }))
+
 // ---- reading saved data (archive) -------------------------------------------
 
 /**

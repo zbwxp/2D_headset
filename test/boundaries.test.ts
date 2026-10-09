@@ -113,9 +113,9 @@ describe('module boundaries', () => {
     expect(problems).toEqual([])
   })
 
-  it('the package root exports only Core and the archive’s save / open as runtime values; everything else is types', () => {
+  it('the package root exports only Core, the archive’s save / open and the Refusal class as runtime values; everything else is types', () => {
     const root = readFileSync(join(SRC, 'index.ts'), 'utf8')
-    expect(rootRuntimeExports(root)).toEqual(['Core', 'save', 'open'])
+    expect(rootRuntimeExports(root)).toEqual(['Core', 'save', 'open', 'Refusal'])
     expect(rootRuntimeExports(`export * from './network'`)).toEqual(['*'])
     expect(rootRuntimeExports(`export { create } from './network'\nexport type { Vec } from './geometry'`)).toEqual(['create'])
     expect(rootRuntimeExports(`export * as network from './network'`)).toEqual(['network'])

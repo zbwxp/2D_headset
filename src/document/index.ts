@@ -100,7 +100,7 @@ export class Editor {
   }
   /** A locked line's name is something it owns alone (graph rows "Names", "Locked element"). */
   renameLine(id: Id, name: string) {
-    if (net.line(this.s.network, id).state.locked) throw new Error(`Line ${id} is locked`)
+    if (net.line(this.s.network, id).state.locked) throw new net.Refusal('locked', `Line ${id} is locked`, net.lineObjects([id]))
     names.rename(this.s.names, this.s.network, this.s.groups, 'line', id, name)
   }
   /** A group has no lock of its own (a lock does not lock the parent). */
@@ -272,9 +272,10 @@ export class Editor {
     const { state: s } = this.tx
     const g = groups.get(s.groups, group)
     if (g.layer === layer) return
-    const locked = [...g.lines.filter(id => net.line(s.network, id).state.locked),
-      ...fills.discover(s.fills, s.network).filter(v => v.locked && this.fillsOf(g.lines).includes(v.id)).map(v => v.id)]
-    if (locked.length) throw new Error(`Group ${group} holds locked elements (${locked.join(', ')}); it cannot be cut`)
+    const lockedLines = g.lines.filter(id => net.line(s.network, id).state.locked)
+    const lockedFills = fills.discover(s.fills, s.network).filter(v => v.locked && this.fillsOf(g.lines).includes(v.id)).map(v => v.id)
+    const locked = [...lockedLines, ...lockedFills]
+    if (locked.length) throw new net.Refusal('locked', `Group ${group} holds locked elements (${locked.join(', ')}); it cannot be cut`, [...net.lineObjects(lockedLines), ...lockedFills.map(id => ({ kind: 'fill' as const, id }))])
     this.topology(ch => net.moveLinesToLayer(s.network, ch, g.lines, layer))
   }
 
@@ -575,7 +576,7 @@ function commit(s: State, ch: net.Changes, published: State, appliedFrom: Readon
   settle(s, ch)
   names.check(s.names, s.network)
   const changed = locks.changed(published, s, ch, appliedFrom)
-  if (changed.length) throw new Error(`Locked lines would change (${changed.join(', ')}); nothing was published`)
+  if (changed.length) throw new net.Refusal('locked', `Locked lines would change (${changed.join(', ')}); nothing was published`, net.lineObjects(changed))
 }
 
 /** Positions and handles only, for reading (no topology change): links and mirror, aimed tips, mirrored handles, springs. */
