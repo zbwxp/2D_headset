@@ -39,7 +39,8 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     }
     return undefined
   }
-  const startDrag = (at: Vec) => { drag = { core: ctx.core(), start: at, units: ctx.snap().selection, offset: { x: 0, y: 0 } } }
+  // the press position is copied in, so a caller reusing its Vec never changes the offset (dot 1791544469)
+  const startDrag = (at: Vec) => { drag = { core: ctx.core(), start: { x: at.x, y: at.y }, units: ctx.snap().selection, offset: { x: 0, y: 0 } } }
 
   return {
     cancelLevel: 1,

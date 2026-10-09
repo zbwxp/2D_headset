@@ -15,7 +15,8 @@ export function pen(ctx: Ctx): Pen {
       const layer = ctx.env.layer()
       if (!layer) { ctx.feedback = note('no-layer', 'no layer to draw into'); return }
       const onPoint = ctx.hitPoint(at)
-      const spec = onPoint ?? { id: ctx.env.newId('p'), layer, position: at }
+      // positions are copied in: a caller reusing its Vec never moves a pending start (dot 1791544469)
+      const spec = onPoint ?? { id: ctx.env.newId('p'), layer, position: { x: at.x, y: at.y } }
       if (chain && !ctx.mine(chain)) chain = null
       if (!chain) { chain = { core: ctx.core(), from: spec }; return }
       const from = chain.from

@@ -342,3 +342,54 @@ describe('tools (each through core’s public operations)', () => {
     expect(d.snapshot().lines.some(l => l.id === 'm')).toBe(false)
   })
 })
+
+describe('review cases (dot 1791544469)', () => {
+  function mirrorScene() {
+    const d = new Core({ axis: 0 })
+    d.edit(e => {
+      e.layer('L')
+      e.line('s1', { id: 'a', layer: 'L', position: P(-40, 0) }, { id: 'b', layer: 'L', position: P(-20, 10) })
+      e.line('t1', { id: 'c', layer: 'L', position: P(20, 10) }, { id: 'e', layer: 'L', position: P(40, 0) })
+      e.line('t2', 'e', { id: 'f', layer: 'L', position: P(60, 30) })
+    })
+    return d
+  }
+
+  it('a mirror source that gains a member after it was picked is not widened: the link is refused and asks to pick again', () => {
+    const d = mirrorScene(), { ix } = setup(d)
+    d.edit(e => e.select([{ kind: 'line', id: 's1' }])); ix.setMirrorSource()
+    d.edit(e => e.line('s2', 'b', { id: 'g', layer: 'L', position: P(-5, 30) })) // s2 joins s1's curve
+    d.edit(e => e.selectGroup('t1')); const before = save(d)
+    ix.mirrorLink()
+    expect(ix.preview().refusal?.code).toBe('mirror-source-not-whole')
+    expect(save(d)).toBe(before)
+  })
+
+  it('a mirror target that is only part of a curve is refused, never filled up with the rest', () => {
+    const d = mirrorScene(), { ix } = setup(d)
+    d.edit(e => e.select([{ kind: 'line', id: 's1' }])); ix.setMirrorSource()
+    d.edit(e => e.select([{ kind: 'line', id: 't1' }])); const before = save(d)
+    ix.mirrorLink()
+    expect(ix.preview().refusal?.code).toBe('mirror-target-not-whole')
+    expect(save(d)).toBe(before)
+  })
+
+  it('the pen copies a position in: changing the caller’s Vec afterwards does not move the pending start', () => {
+    const { ix, core } = setup(), d = core()
+    const v = { x: 0, y: 300 }
+    ix.setTool('pen'); ix.pointerDown(v)
+    v.x = 999; v.y = 999
+    ix.pointerDown(P(50, 300))
+    const added = d.snapshot().lines.find(l => !['h', 'v', 'm'].includes(l.id))!
+    expect(d.snapshot().points.find(p => p.id === added.a)!.position).toEqual(P(0, 300))
+  })
+
+  it('a drag copies its press position in: changing the caller’s Vec afterwards does not change the offset', () => {
+    const { ix, core } = setup(), d = core()
+    const v = { x: 50, y: 0 }
+    ix.setTool('V'); ix.pointerDown(v)
+    v.x = -500
+    ix.pointerMove(P(60, 0)); ix.pointerUp(P(60, 0))
+    expect(pos(d, 'a')).toEqual(P(10, 0))
+  })
+})
