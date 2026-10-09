@@ -5,6 +5,7 @@ bowen's requirements from trying the bench, recorded as he gives them: in no ord
 | # | ts | bowen's words | Checked against the bench now |
 |---|---|---|---|
 | 1 | 1791550341 | 首先我调整handle的时候要能看到handle在动，现在移动handle只能看到线条在改变，看不到handle | Matches. Dragging a handle with A shows only the dashed preview of the line; the handle square stays where it was until release, then jumps (checked in the browser, 2026-10-09). |
+| 2 | 1791550416 | 然后我要一个视觉效果和adobe全家桶类似的图层，（在右手边，几个按钮和图层tagbar 图层视口 复刻一下） | Does not exist yet. The bench's layer list is in the left sidebar, under the tools: one plain box per layer with its name, id and line count, and a row of text buttons (rename ↑ ↓ hide/show lock/unlock fills off/on copy delete). There are no thumbnails, no eye or lock icons, and no Adobe-style panel on the right. |
 
 ## Found while checking (not bowen's requirements; facts only)
 
