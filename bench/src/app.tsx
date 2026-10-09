@@ -226,9 +226,12 @@ export function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      // keys typed into a form control are its own (dot 1791544530)
+      // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
+      // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
-      if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(t.tagName) || t.isContentEditable) return
+      const typing = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+        || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
+      if (typing) return
       // one Esc cancels one thing: a gesture in progress if there is one, else interaction's innermost (dot 1791553129)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { chooseTool('Z'); e.preventDefault(); return }
