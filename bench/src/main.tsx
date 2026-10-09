@@ -213,7 +213,7 @@ function App() {
   // a drag the browser cancels, or that loses capture without a release, ends like Esc: nothing is sent (dot 1791481384)
   const cancelDrag = () => { drag.current = null; setGhost(null) }
   const copySel = () => {
-    try { clip = core.copy(); pastes = 0; log.unshift({ calls: 'copy()', result: `ok (${clip.network.lines.length} lines)` }); setMsg(`copied ${clip.network.lines.length} lines`) }
+    try { clip = core.copy(); pastes = 0; cutGroups = []; log.unshift({ calls: 'copy()', result: `ok (${clip.network.lines.length} lines)` }); setMsg(`copied ${clip.network.lines.length} lines`) }
     catch (err) { setMsg('✗ ' + (err as Error).message); log.unshift({ calls: 'copy()', result: '✗ ' + (err as Error).message }) }
     bump()
   }
@@ -227,9 +227,10 @@ function App() {
   const pasteClip = () => {
     if (cutGroups.length) {
       const gs = cutGroups, lines = s.groups.filter(x => gs.includes(x.id)).flatMap(x => x.lines)
+      // a refused paste keeps the cut, so it can be tried again elsewhere (dot 1791514114)
       if (run(x => { for (const gid of gs) x.moveGroup(gid, drawLayer); x.select(lines.map(id => ({ kind: 'line' as const, id }))) })) {
         cutGroups = []; try { clip = core.copy(lines); pastes = 0 } catch { clip = null }
-      } else cutGroups = []
+      }
       return
     }
     if (!clip) return setMsg('nothing copied')
@@ -348,6 +349,8 @@ function App() {
               // the current drawing is replaced only if the file opens
               try {
                 core = open(await f.text()); setPending([]); setSource([])
+                // bench state of the old drawing ends with it (dot 1791514114); the clip is plain data and may still be pasted
+                cutGroups = []; pastes = 0; cancelDrag()
                 // draw on the opened drawing's top layer (dot 1791512144); none if it has no layers
                 const ls = core.snapshot().layers; setLayer(ls[ls.length - 1]?.id ?? '')
                 setMsg(`opened ${f.name}`); log.unshift({ calls: `open(${f.name})`, result: 'ok' })
