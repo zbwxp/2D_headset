@@ -42,6 +42,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
 - **Names:** layers, continuous curves and every line carry a name, points none; all names are unique.
 - **Save / open:** an independent module; what is saved opens whole and equal.
+- **Interaction:** state has one owner; an unfinished operation can be cancelled and commits atomically; its targets are explicit.
 - **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
 - **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
 - **Editing:** one gesture is one edit; selection is a pre-edit and is undoable; transforms act on the points and handles a selection expands to and keep identity and connections; apply is a third kind of action.
@@ -191,6 +192,16 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 |---|---|---|---|---|
 | Name | is carried by | Layers, continuous curves and every line (a Bézier curve, the smallest unit), so the parts being edited can be found by name, not only their containers. Points carry no name. *Note (defaults and implementation, not rules; bowen 1791478697: the rest of naming is not principle):* default names "连续曲线N" and "曲线N" with the next unused N; a copy is named "<name>副本", then "<name>副本2"…; a name follows identity: the group that keeps its identity keeps its name and a split-off group gets a default, a split line's piece at its start end keeps the name and the other piece gets a default, a mirror-apply target keeps its own names; tags are a UI matter for now. | confirmed | bowen 1791478346, 1791478561, 1791478586, 1791478598, 1791478653, 1791478697; dot 1791478538, 1791478664 |
 | Names | are | Unique across everything named (layers, continuous curves, lines), and never empty. A rename to a name in use is refused, naming the holder. Replaces the narrower row "Layer name". | confirmed | bowen 1791478346, 1791478697; earlier bowen 1791435000 (Q30) |
+
+### Interaction (start, preview, commit, cancel)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| State | has | One owner. The drawing, the selection and the undo history belong to core; the current tool and every unfinished operation (drag in progress, pending cut, the first click of a two-click tool, snap hints) belong to the interaction module. The drawing changes only through core's public operations. | confirmed | bowen 1791543087; dot 1791515113, 1791542415; Claude 1791515276 |
+| Unfinished operation | is | Cancellable, and committed atomically. Cancelling drops only what is not committed yet; only a successful commit makes an edit and one undo step; a failure leaves nothing half done. A preview never writes to the drawing or its history, and a commit still goes through every normal check; how exact a preview is is not fixed. *Note (examples from existing decisions):* a drag commits only on release, and Esc or a drag the browser cancels is a cancel; Esc cancels a drag without undoing the selection already committed before it; snapping shows only in the preview and binds on release; a refusal shows where it happened. | confirmed | bowen 1791543087; dot 1791515113, 1791542415 |
+| Unfinished operation | acts on | Explicit targets: which drawing and which objects it belongs to are fixed when it starts. Changing the selection or opening another drawing never applies it to other objects. *Note:* a pending cut survives a refused paste, so it can be retried, and ends when another drawing is opened. | confirmed | bowen 1791543087; dot 1791515113, 1791542415 |
+
+*Interaction defaults (common sense, not rules):* whether switching tools cancels an operation, right-click, which pending thing Esc cancels first, shortcuts, how previews / grey / red crosses look, the paste offset and drag feel.
 
 ### Save and open
 
