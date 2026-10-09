@@ -41,6 +41,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Closed curves and fills:** a closed route decides whether a loop exists; the derived outline decides its boundary.
 - **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
 - **Names:** layers, continuous curves and every line carry a name, points none; all names are unique.
+- **Save / open:** an independent module; what is saved opens whole and equal.
 - **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
 - **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
 - **Editing:** one gesture is one edit; selection is a pre-edit and is undoable; transforms act on the points and handles a selection expands to and keep identity and connections; apply is a third kind of action.
@@ -190,6 +191,12 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 |---|---|---|---|---|
 | Name | is carried by | Layers, continuous curves and every line (a Bézier curve, the smallest unit), so the parts being edited can be found by name, not only their containers. Points carry no name. *Note (defaults and implementation, not rules; bowen 1791478697: the rest of naming is not principle):* default names "连续曲线N" and "曲线N" with the next unused N; a copy is named "<name>副本", then "<name>副本2"…; a name follows identity: the group that keeps its identity keeps its name and a split-off group gets a default, a split line's piece at its start end keeps the name and the other piece gets a default, a mirror-apply target keeps its own names; tags are a UI matter for now. | confirmed | bowen 1791478346, 1791478561, 1791478586, 1791478598, 1791478653, 1791478697; dot 1791478538, 1791478664 |
 | Names | are | Unique across everything named (layers, continuous curves, lines), and never empty. A rename to a name in use is refused, naming the holder. Replaces the narrower row "Layer name". | confirmed | bowen 1791478346, 1791478697; earlier bowen 1791435000 (Q30) |
+
+### Save and open
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Save / open | is | An independent module: it only reads a document through the core's interface and makes a new one from a file; no other module depends on it. *Note (implementation choices, not rules; bowen 1791511525: save/open needs no principles of his beyond this):* scope for now is "a v3 drawing saved and opened whole" (dot 1791511131): the drawing is saved, the selection and undo history are not (as in common editors); after opening, ids, connections, mirror pairs, names and the picture equal what was saved; a file that cannot be opened leaves the current drawing untouched. Not now: switching ids to UUIDs, importing v1/v2 drawings, format migration. | confirmed | bowen 1791511525; dot 1791511131 |
 
 ### Reference images and views (Q3)
 
