@@ -65,14 +65,22 @@ export function clearEndStroke(j: JoinsState, point: Id) {
   S(j).endStrokes = S(j).endStrokes.filter(e => e.point !== point)
 }
 
-/** Copy the joins and end strokes of copied points. */
-export function copy(j: JoinsState, map: net.CopyMap) {
-  for (const r of [...S(j).rows]) {
-    const point = map.points.get(r.point), l0 = map.lines.get(r.lines[0]), l1 = map.lines.get(r.lines[1])
-    if (point && l0 && l1) S(j).rows.push({ ...rowCopy(r), point, lines: pair(l0, l1) })
+/** The joins and end strokes inside a copied range, as plain data. */
+export function rangeData(j: JoinsState, lines: ReadonlySet<Id>, points: ReadonlySet<Id>): { rows: JoinRow[]; endStrokes: { point: Id; stroke: EndStroke }[] } {
+  return {
+    rows: S(j).rows.filter(r => points.has(r.point) && lines.has(r.lines[0]) && lines.has(r.lines[1])).map(rowCopy),
+    endStrokes: S(j).endStrokes.filter(e => points.has(e.point)).map(e => ({ point: e.point, stroke: { ...e.stroke } })),
   }
-  for (const e of [...S(j).endStrokes]) { const point = map.points.get(e.point); if (point) S(j).endStrokes.push({ point, stroke: { ...e.stroke } }) }
-  sortRows(j)
+}
+
+/** Joins and end strokes from plain data, onto the copied points and lines of `map`. */
+export function insert(j: JoinsState, n: net.NetworkState, data: { rows: JoinRow[]; endStrokes: { point: Id; stroke: EndStroke }[] }, map: net.CopyMap) {
+  // through the normal writers, so a clip from outside gets the same checks and stored form
+  for (const r of data.rows) {
+    const point = map.points.get(r.point), l0 = map.lines.get(r.lines[0]), l1 = map.lines.get(r.lines[1])
+    if (point && l0 && l1) setJoin(j, n, point, l0, l1, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
+  }
+  for (const e of data.endStrokes) { const point = map.points.get(e.point); if (point) setEndStroke(j, n, point, e.stroke) }
 }
 
 /** Keep references valid after one network operation. */

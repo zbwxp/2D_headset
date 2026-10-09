@@ -11,6 +11,7 @@ import * as locks from '../locks'
 import * as editing from '../editing'
 import * as apply from '../apply'
 import * as names from '../names'
+import * as clipboard from '../clipboard'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -117,16 +118,27 @@ export class Editor {
     if (!base) throw new Error(`No layer ${id}`)
     if (name !== undefined) names.assertFree(s.names, s.network, name)
     net.addLayer(s.network, newId, name ?? names.copyName(s.names, s.network, base.name), id)
-    const idOf = (old: Id) => `${newId}/${old}`
-    // lines in their groups' order, so the copied groups keep the same order
-    const sourceGroups = groups.list(s.groups, s.network).filter(g => g.layer === id)
-    const lineIds = sourceGroups.flatMap(g => g.lines)
+    // a layer copy is a clip of all its lines (in their groups' order), pasted in place
+    const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
+    if (!lineIds.length) return
+    this.insertClip(clipboard.extract({ ...s, network: this.view().network }, lineIds), newId, { x: 0, y: 0 }, old => `${newId}/${old}`)
+  }
+  /**
+   * Paste (graph "Cut, paste / copy"; docs/clipboard-plan.md): the clip's lines, joins,
+   * end strokes and fills into `layer`, moved by `offset`, with new ids `<prefix>/<old id>`
+   * and names "<name>副本". Locks come along; coincident end points bind as usual. The
+   * pasted lines become the selection.
+   */
+  paste(clip: clipboard.Clip, layer: Id, offset: Vec, prefix: string) {
+    const map = this.insertClip(structuredClone(clip), layer, offset, old => `${prefix}/${old}`)
+    this.select([...map.lines.values()].map(id => ({ kind: 'line' as const, id })))
+  }
+  private insertClip(clip: clipboard.Clip, layer: Id, offset: Vec, idOf: (old: Id) => Id): net.CopyMap {
+    const { state: s } = this.tx
     let map: net.CopyMap = { points: new Map(), lines: new Map() }
-    const read = this.view().network
-    this.topology(() => { map = net.copyLines(s.network, lineIds, newId, idOf, read) })
-    joins.copy(s.joins, map)
-    fills.copy(s.fills, map, idOf)
-    names.copy(s.names, s.network, s.groups, map.lines, sourceGroups)
+    this.topology(() => { map = clipboard.insert(s, clip, layer, offset, idOf) })
+    clipboard.attach(s, clip, map, idOf)
+    return map
   }
   /** Batch delete (Q30): unlocked lines and fills go; the layer goes once it holds nothing. */
   deleteLayer(id: Id) {
@@ -360,7 +372,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -458,6 +470,17 @@ export class Core {
   }
 
   geometry(): Geometry { return structuredClone(derived.derive(this.state.network, this.state.joins, this.state.fills)) }
+
+  /**
+   * Copy (graph "Cut, paste / copy"): the lines given, or the selected lines, as a clip.
+   * Reads only: the document and its history do not change. Points or handles alone are
+   * refused, as delete refuses them.
+   */
+  copy(lines?: readonly Id[]): clipboard.Clip {
+    this.idle('copy')
+    const ids = lines ?? editing.units(this.state.selection).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    return clipboard.extract(this.state, ids)
+  }
 
   /** Canvas fill pick: the smallest loop containing the point. */
   pickLoop(at: Vec): Id | undefined { return derived.pickLoop(this.state.network, this.state.joins, this.state.fills, at) }

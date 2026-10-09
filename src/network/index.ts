@@ -563,20 +563,40 @@ export interface CopyMap { points: Map<Id, Id>; lines: Map<Id, Id> }
  * `idOf` for every new point and line id.
  */
 /** `read`: where positions and handles are copied from (settled, docs/edit-model.md). */
-export function copyLines(n: NetworkState, lineIds: readonly Id[], layer: Id, idOf: (old: Id) => Id, read: NetworkState = n): CopyMap {
-  if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
-  const map: CopyMap = { points: new Map(), lines: new Map() }
+/** Lines as plain data, with their end points: what a copy carries (docs/clipboard-plan.md). */
+export interface LinesData {
+  points: { id: Id; position: Vec }[]
+  lines: { id: Id; a: Id; b: Id; ha: Vec; hb: Vec; state: ElementState; stroke: Stroke }[]
+}
+
+/** The given lines and their end points as plain data (copies), read from `read`. */
+export function linesData(read: NetworkState, lineIds: readonly Id[]): LinesData {
+  const points = new Map<Id, Vec>(), lines: LinesData['lines'] = []
   for (const id of lineIds) {
     const l = rawLine(read, id)
-    for (const p of [l.a, l.b]) if (!map.points.has(p)) {
-      const np = idOf(p)
-      addPoint(n, np, layer, rawPoint(read, p).position)
-      map.points.set(p, np)
-    }
-    const nl = idOf(id)
+    for (const p of [l.a, l.b]) if (!points.has(p)) points.set(p, { ...rawPoint(read, p).position })
+    lines.push({ id: l.id, a: l.a, b: l.b, ha: { ...l.ha }, hb: { ...l.hb }, state: { ...l.state }, stroke: { ...l.stroke } })
+  }
+  return { points: [...points].map(([id, position]) => ({ id, position })), lines }
+}
+
+/** New points and lines in `layer` from plain data, with new ids from `idOf`, moved by `offset`. */
+export function insertLines(n: NetworkState, data: LinesData, layer: Id, idOf: (old: Id) => Id, offset: Vec = { x: 0, y: 0 }): CopyMap {
+  if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
+  const map: CopyMap = { points: new Map(), lines: new Map() }
+  for (const p of data.points) {
+    const np = idOf(p.id)
+    addPoint(n, np, layer, { x: p.position.x + offset.x, y: p.position.y + offset.y })
+    map.points.set(p.id, np)
+  }
+  for (const l of data.lines) {
+    const a = map.points.get(l.a), b = map.points.get(l.b)
+    if (!a || !b || a === b) throw new Error(`Line ${l.id} needs two of the given points`)
+    const nl = idOf(l.id)
     claimLine(n, nl)
-    S(n).lines.push({ id: nl, a: map.points.get(l.a)!, b: map.points.get(l.b)!, ha: { ...l.ha }, hb: { ...l.hb }, state: { ...l.state }, stroke: { ...l.stroke } })
-    map.lines.set(id, nl)
+    if (!(l.stroke.width > 0) || !Number.isFinite(l.stroke.width)) throw new Error('Stroke width must be a positive number')
+    S(n).lines.push({ id: nl, a, b, ha: vecIn(l.ha), hb: vecIn(l.hb), state: { visible: !!l.state.visible, locked: !!l.state.locked }, stroke: { width: l.stroke.width, profile: String(l.stroke.profile) } })
+    map.lines.set(l.id, nl)
   }
   return map
 }

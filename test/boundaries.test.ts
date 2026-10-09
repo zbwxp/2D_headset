@@ -16,7 +16,8 @@ const ALLOWED: Record<string, string[]> = {
   editing: ['geometry', 'network', 'groups', 'fills'],
   apply: ['geometry', 'network', 'groups', 'joins', 'links', 'fills'],
   names: ['network', 'groups'],
-  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names'],
+  clipboard: ['network', 'groups', 'joins', 'fills', 'names'],
+  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard'],
   archive: ['document'],
 }
 // External packages each module may use.

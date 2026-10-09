@@ -26,12 +26,13 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `apply` | the document's symmetry axis (fixed setting), mirror-link line pairs | Mirror apply: the correspondence (same topology, shared points and in-selection links as separate relations, least total change, stable tie-break), then reflected geometry and copied stroke, state, end strokes, joins (same-point and across a link inside the selection), fill colour and state written into the target (ids kept; a locked target refuses). Paired plans (`paired*`): what each operation acts on under a mirror link; `document` only runs them. Mirror link: whole first-level elements on each side, disjoint; apply + stored pairs; pairs follow splits and end with deletes; counterparts for paired execution; mirrored held handles |
 | `names` | names of continuous curves and lines (layer names stay on the layer) | Graph "Names": every name unique and non-empty, layers included; points unnamed. Notes (not rules): defaults 曲线N / 连续曲线N, copies "<name>副本", a split's first piece keeps the line's name, names follow group identity; checked at commit (docs/names-plan.md) |
 | `archive` | nothing | Graph "Save and open": an independent module. `save(core)` → text; `open(text)` → a new `Core` (selection and undo history are not saved). A file is checked before use: parts present, reads run, ids unique, linked points coincide, and settling again changes nothing; otherwise `open-failed` (docs/archive-plan.md) |
+| `clipboard` | nothing | Graph "Copy (layer, lines, groups)", "Cut, paste / copy": `extract` reads lines and what is inside them (joins, end strokes, fills, names) into a plain-data clip; `insert` / `attach` write a clip through each module's own insert with new ids. Endpoint links and mirror pairs are never part of a clip. Layer copy is extract + paste in place (docs/clipboard-plan.md) |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
 
 ```
-geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply / names ← document ← archive
+geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply / names ← clipboard ← document ← archive
 ```
 
 ## Encapsulation (dot 1791427188)

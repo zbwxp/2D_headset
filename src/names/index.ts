@@ -83,17 +83,26 @@ export function update(st: NamesState, n: net.NetworkState, g: groups.GroupsStat
   }
 }
 
-/** After a layer copy: every copied line and group is named after its original, "<name>副本" (then 副本2, …). */
-export function copy(st: NamesState, n: net.NetworkState, g: groups.GroupsState, lineMap: ReadonlyMap<Id, Id>, sourceGroups: readonly groups.Group[]) {
-  for (const [from, to] of lineMap) {
-    const name = of(st, 'line', from)
-    if (name !== undefined) set(st, 'line', to, copyName(st, n, name))
+/** Names of the given lines and of the groups entirely inside them, as plain data. */
+export function rangeData(st: NamesState, g: groups.GroupsState, n: net.NetworkState, lines: readonly Id[]): { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] } {
+  const set = new Set(lines)
+  return {
+    lines: lines.flatMap(id => { const name = of(st, 'line', id); return name === undefined ? [] : [[id, name] as [Id, string]] }),
+    groups: groups.list(g, n).filter(x => x.lines.every(l => set.has(l))).flatMap(x => { const name = of(st, 'group', x.id); return name === undefined ? [] : [{ name, lines: [...x.lines] }] }),
   }
+}
+
+/**
+ * After a copy: every copied line, and every group copied whole, is named after its
+ * original, "<name>副本" (then 副本2, …). A group copied in part keeps the default it gets.
+ */
+export function copyFrom(st: NamesState, n: net.NetworkState, g: groups.GroupsState, lineMap: ReadonlyMap<Id, Id>, data: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }) {
+  for (const [from, name] of data.lines) { const to = lineMap.get(from); if (to) set(st, 'line', to, copyName(st, n, name)) }
   const after = groups.list(g, n)
-  for (const src of sourceGroups) {
-    const name = of(st, 'group', src.id), first = lineMap.get(src.lines[0]!)
+  for (const src of data.groups) {
+    const first = lineMap.get(src.lines[0]!)
     const target = first && after.find(x => x.lines.includes(first))
-    if (name !== undefined && target) set(st, 'group', target.id, copyName(st, n, name))
+    if (target) set(st, 'group', target.id, copyName(st, n, src.name))
   }
 }
 

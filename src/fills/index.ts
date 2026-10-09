@@ -99,12 +99,22 @@ export const inLayer = (f: FillsState, n: net.NetworkState, layer: Id): Id[] => 
  * ids come from `idOf`; colour and state are kept; the copies go on top, in the
  * originals' order.
  */
-export function copy(f: FillsState, map: net.CopyMap, idOf: (old: Id) => Id) {
-  for (const l of S(f).order.map(id => find(f, id))) {
+/** Filled loops as plain data, in fill order. */
+export interface FillData { id: Id; lines: Id[]; color: string; visible: boolean; locked: boolean }
+
+/** The filled loops whose boundary lines are all in the range, in fill order. */
+export function rangeData(f: FillsState, lines: ReadonlySet<Id>): FillData[] {
+  return S(f).order.map(id => find(f, id)).filter(l => l.lines.every(x => lines.has(x))).map(l => ({ ...l, lines: [...l.lines] }))
+}
+
+/** Filled loops from plain data onto copied lines, on top of the fill order. */
+export function insert(f: FillsState, data: readonly FillData[], map: net.CopyMap, idOf: (old: Id) => Id) {
+  for (const l of data) {
     if (!l.lines.every(x => map.lines.has(x))) continue
     const id = idOf(l.id)
     if (S(f).loops.some(x => x.id === id)) throw new Error(`Fill ${id} already exists`)
-    S(f).loops.push({ ...l, id, lines: l.lines.map(x => map.lines.get(x)!) })
+    if (typeof l.color !== 'string') throw new Error(`Fill ${l.id} has no colour`)
+    S(f).loops.push({ id, lines: l.lines.map(x => map.lines.get(x)!), color: l.color, visible: !!l.visible, locked: !!l.locked })
     S(f).order.push(id)
   }
 }
