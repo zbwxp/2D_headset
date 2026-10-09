@@ -463,6 +463,51 @@ export class Core {
   pickLoop(at: Vec): Id | undefined { return derived.pickLoop(this.state.network, this.state.joins, this.state.fills, at) }
 }
 
+// ---- for the archive module only (not exported from the package root) -----------
+
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names'] as const
+
+/** The document as plain data, without the selection (docs/archive-plan.md). */
+export function exportState(core: Core): Record<string, unknown> {
+  const s = core['state']
+  return structuredClone(Object.fromEntries(PARTS.map(k => [k, s[k]])))
+}
+
+/**
+ * A new document from plain data, after checking it: every part present; the reads the
+ * editor relies on run; and the commit pipeline run again changes nothing (a saved document
+ * is always settled, so a difference means the data was edited or damaged).
+ */
+export function importState(data: unknown): Core {
+  if (!data || typeof data !== 'object') throw new Error('open-failed: no document')
+  const d = data as Record<string, unknown>
+  for (const k of PARTS) if (!d[k] || typeof d[k] !== 'object') throw new Error(`open-failed: missing ${k}`)
+  const state = { ...structuredClone(Object.fromEntries(PARTS.map(k => [k, d[k]]))), selection: editing.create() } as unknown as State
+  try {
+    const core = new Core()
+    core['state'] = state
+    const snap = core.snapshot(); core.geometry()
+    for (const [kind, ids] of [['layer', snap.layers.map(l => l.id)], ['point', snap.points.map(p => p.id)], ['line', snap.lines.map(l => l.id)], ['group', snap.groups.map(g => g.id)]] as const) {
+      if (new Set(ids).size !== ids.length) throw new Error(`a ${kind} id is used twice`)
+    }
+    names.check(state.names, state.network)
+    // what every commit leaves exactly true, checked directly: linked points coincide. (A smooth
+    // join is a spring: where several pull on one handle the result is a compromise, so it is not checked.)
+    const pos = new Map(snap.points.map(p => [p.id, p.position]))
+    for (const k of snap.links) {
+      const a = pos.get(k.a), b = pos.get(k.b)
+      if (!a || !b || Math.hypot(a.x - b.x, a.y - b.y) > 1e-9) throw new Error(`linked points ${k.a} and ${k.b} are apart`)
+    }
+    const again = structuredClone(state)
+    settle(again, net.emptyChanges())
+    if (JSON.stringify(again) !== JSON.stringify(state)) throw new Error('the drawing is not in a settled state')
+    return core
+  } catch (err) {
+    const m = (err as Error).message
+    throw new Error(m.startsWith('open-failed') ? m : `open-failed: ${m}`)
+  }
+}
+
 /** One network operation, then every attribute module updates its own references. */
 function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes) => void) {
   const ch = net.emptyChanges()

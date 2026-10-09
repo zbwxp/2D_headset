@@ -2,7 +2,7 @@
 // API, checking after every step that the result is valid, that the same sequence
 // always gives the same result, and that undoing everything returns to the start.
 import { describe, it, expect } from 'vitest'
-import { Core, type Vec, type Snapshot, type Editor } from '../src'
+import { Core, save, open, type Vec, type Snapshot, type Editor } from '../src'
 
 // Small deterministic PRNG (mulberry32).
 function rng(seed: number) {
@@ -213,7 +213,7 @@ function lockedKept(before: Snapshot, after: Snapshot, isApply = false): string[
 export const stats = { tried: {} as Record<string, number>, ok: {} as Record<string, number>, maxLoops: 0, maxFilled: 0 }
 
 /** Run a seeded sequence; returns the snapshots after each step and the invariant failures. */
-function run(seed: number, steps: number) {
+function run(seed: number, steps: number, each?: (d: Core) => void) {
   const d = new Core(), r = rng(seed)
   let counter = 0
   const next = () => `i${counter++}`
@@ -242,6 +242,7 @@ function run(seed: number, steps: number) {
     stats.maxFilled = Math.max(stats.maxFilled, d.snapshot().fillOrder.length)
     for (const f of invariants(d)) failures.push(`seed ${seed} step ${i} (${op.name}): ${f}`)
     trail.push(JSON.stringify([d.snapshot(), d.geometry()]))
+    each?.(d)
   }
   return { d, trail, failures }
 }
@@ -254,6 +255,18 @@ describe('random edit sequences (bowen 1791428827)', () => {
     expect(failures.slice(0, 10)).toEqual([])
     if (process.env.FUZZ_STATS) console.log(JSON.stringify(stats))
   }, 60000) // a long random run; the default 5 s limit is too tight on a busy machine (dot 1791431253)
+
+  it('every published state saves and opens equal (docs/archive-plan.md acceptance 1)', () => {
+    const problems: string[] = []
+    for (const seed of seeds.slice(0, 12)) run(seed, 60, d => {
+      try {
+        const o = open(save(d))
+        if (JSON.stringify({ ...o.snapshot(), selection: [] }) !== JSON.stringify({ ...d.snapshot(), selection: [] })) problems.push(`seed ${seed}: snapshot differs`)
+        if (JSON.stringify(o.geometry()) !== JSON.stringify(d.geometry())) problems.push(`seed ${seed}: geometry differs`)
+      } catch (err) { problems.push(`seed ${seed}: ${(err as Error).message}`) }
+    })
+    expect(problems.slice(0, 5)).toEqual([])
+  }, 60000)
 
   it('the same sequence always gives the same result', () => {
     for (const seed of seeds.slice(0, 10)) expect(run(seed, 60).trail).toEqual(run(seed, 60).trail)

@@ -30,7 +30,8 @@ Graph section "Save and open" (headset-design `977137f`; bowen 1791511525):
 
 1. **Shape:** every module's part is present and is an object.
 2. **Reads:** the reads the editor relies on run without error: snapshot, geometry, closed-loop discovery and the names check.
-3. **Settled:** running the commit pipeline again on a copy changes nothing. A saved document is always a settled one, so any difference means the file was edited or damaged.
+3. **Ids and links:** no id is used twice, and endpoint-linked points coincide. A smooth join is a spring: where several pull on one handle the result is a compromise, so it is not checked (found by the fuzz round trip).
+4. **Settled:** running the commit pipeline again on a copy changes nothing. A saved document is always a settled one, so any difference means the file was edited or damaged.
 
 Any failure gives `open-failed: <reason>`.
 
@@ -50,7 +51,7 @@ Any failure gives `open-failed: <reason>`.
    - a missing part;
    - a line pointing to a missing point;
    - a duplicate name;
-   - a point moved off its settled place (a smooth join no longer smooth, or linked points apart).
+   - linked points apart.
 4. **Boundary:**
    - `archive` imports only `document`, and nothing imports `archive`.
    - The package root exports `save` and `open`, but not `exportState` / `importState`.

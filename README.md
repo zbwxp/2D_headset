@@ -25,12 +25,13 @@ Each module is a folder with one `index.ts`. Code outside a module may import **
 | `editing` | the selection (part of the state, so undoable) | Selectable units (point, handle, line, fill; V = whole continuous curve). A geometric transform acts on what the selection expands to (a line = its two end points and two handles; a shared point once): points go to M·p, an expanded handle's tip goes to M·tip, every other handle keeps its offset. Flip = reflection about the selection's own centre. Delete removes selected lines only |
 | `apply` | the document's symmetry axis (fixed setting), mirror-link line pairs | Mirror apply: the correspondence (same topology, shared points and in-selection links as separate relations, least total change, stable tie-break), then reflected geometry and copied stroke, state, end strokes, joins (same-point and across a link inside the selection), fill colour and state written into the target (ids kept; a locked target refuses). Paired plans (`paired*`): what each operation acts on under a mirror link; `document` only runs them. Mirror link: whole first-level elements on each side, disjoint; apply + stored pairs; pairs follow splits and end with deletes; counterparts for paired execution; mirrored held handles |
 | `names` | names of continuous curves and lines (layer names stay on the layer) | Graph "Names": every name unique and non-empty, layers included; points unnamed. Notes (not rules): defaults 曲线N / 连续曲线N, copies "<name>副本", a split's first piece keeps the line's name, names follow group identity; checked at commit (docs/names-plan.md) |
+| `archive` | nothing | Graph "Save and open": an independent module. `save(core)` → text; `open(text)` → a new `Core` (selection and undo history are not saved). A file is checked before use: parts present, reads run, ids unique, linked points coincide, and settling again changes nothing; otherwise `open-failed` (docs/archive-plan.md) |
 | `document` | the whole state, undo / redo | One atomic transaction per edit and the fixed pipeline (below). A thin `Editor` that only calls module operations |
 
 Dependency direction (lower never imports higher):
 
 ```
-geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply / names ← document
+geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply / names ← document ← archive
 ```
 
 ## Encapsulation (dot 1791427188)

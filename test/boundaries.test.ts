@@ -17,6 +17,7 @@ const ALLOWED: Record<string, string[]> = {
   apply: ['geometry', 'network', 'groups', 'joins', 'links', 'fills'],
   names: ['network', 'groups'],
   document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names'],
+  archive: ['document'],
 }
 // External packages each module may use.
 const EXTERNAL: Record<string, string[]> = { geometry: ['bezier-js'] }
@@ -111,9 +112,9 @@ describe('module boundaries', () => {
     expect(problems).toEqual([])
   })
 
-  it('the package root exports exactly one runtime value, Core; everything else is types', () => {
+  it('the package root exports only Core and the archive’s save / open as runtime values; everything else is types', () => {
     const root = readFileSync(join(SRC, 'index.ts'), 'utf8')
-    expect(rootRuntimeExports(root)).toEqual(['Core'])
+    expect(rootRuntimeExports(root)).toEqual(['Core', 'save', 'open'])
     expect(rootRuntimeExports(`export * from './network'`)).toEqual(['*'])
     expect(rootRuntimeExports(`export { create } from './network'\nexport type { Vec } from './geometry'`)).toEqual(['create'])
     expect(rootRuntimeExports(`export * as network from './network'`)).toEqual(['network'])
