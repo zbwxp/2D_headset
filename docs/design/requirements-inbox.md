@@ -24,7 +24,38 @@ bowen's requirements from trying the bench, recorded as he gives them: in no ord
 | 18 | 1791555800 | 那就做图层复选吧。图层本来就会default选中至少一个图层， 为了让跨图层编辑方便，可以按shift复选图层那么被选中的图层就常亮 也就是可以一起av编辑。想取消复选随便单击任何一个单独图层就完事了。然后按照这个思路 bind点击的时候就应该只显示当前图层的端点，而merge就是所有端点。这就是区别。 split link unbind join fill之类的同理。然后shift复选是有shift和command的快捷键组合可以选择开头结尾一整组 单独增加单独减少（是怎么设置的来着我忘记了） | Does not exist yet: one current layer only, no multi-select; every tool reaches every visible layer except A's handles (#17). Plan: core/v1 `docs/layer-scope-plan.md` (`99db102`). Click / Shift range / Cmd toggle as on macOS (dot 1791555851, Apple's "Select items" guide). **Changed** at core/v1 `356d89d`, `83854f3`. |
 | 19 | 1791555918 | 对 这是一个原则 tools应该有与之搭配的图层focus | bowen names a principle. Recorded in the plan with dot's wording (1791555954); it goes into the graph only when bowen says "写". |
 | 20 | 1791556992 | z把command z撤销给占用了好像。然后我点击flip然后又想键盘v或者a但是被挡住了。我觉得这里可以定个原则 就是快捷键不被阻挡。如果按下快捷键相当于有了一步esc并且转到快捷键对应的tool | Matches. The bench ignored every key while a button had focus, and a clicked button keeps focus: after Flip, V / A did nothing; after the Zoom Z button, ⌘Z did nothing (Z itself never took ⌘Z). **Changed** at core/v1 `287da8f`: only text fields keep their keys. A tool key already ends a drag, a first pick and the pen chain, and switches tool; a pending cut and a mirror source stay (#18). bowen proposes "shortcuts are never blocked" as a principle; into the graph only when he says "写". |
+| 21 | 1791557559 | 然后图层的界面，首先把底下四个按钮放到"图层"两个字旁边 然后在图层旁边填充显示是批处理 它同时开关所有的图层（换一个图标）再加一个折叠的图标同时处理所有图层的折叠和摊开。然后我们的最小单位是曲线，所以图层里连续曲线要能继续摊开。详细见第一版。你照着第一版把需求提炼出来然后记下来。这都是之后要整合的内容。 | Recorded only, to integrate later (bowen). Today: the four buttons (fills, new, copy, delete) are in the bottom bar; the fills button acts on the current layer only; there is no fold-all; a layer opens to its continuous curves, but a continuous curve does not open to its lines. Extracted from v1 below (§ "Layers panel as in v1"). |
 
 ## Found while checking (not bowen's requirements; facts only)
 
 - A handle whose tip lies exactly on its own line (the default straight line's handles) cannot be picked with A. The line wins the tie, so pressing there selects the line. → bowen raised it as #4.
+
+## Layers panel as in v1 (for #21; bowen 1791557559)
+
+Source: 7205381 `src/ui/drawing/LayerPanel.tsx`. These are facts about v1, not decisions. Items marked *(no counterpart)* have no settled row in the graph today, so they are left out unless bowen asks.
+
+**Header row, next to the title "图层"** (v1 `sectionTools`). Every button acts on the selected layers when more than one is selected, and on all layers otherwise.
+- **Eye:** show / hide all layers. A partly shown set reads as "mixed". It sets the members in one batch, and each can still be changed alone afterwards.
+- **Fill toggle:** icon PaintBucket plus the word "填充". Shows / hides the fills of all layers. It is a temporary line-art view: each fill keeps its own display setting.
+- **Fold all:** icons ChevronsDownUp / ChevronsUpDown. Folds or unfolds all layers.
+- **New layer (+), copy, delete:** copy and delete act on the selected layers, else on the current one.
+
+**Below the header:** when layers are selected, a bar reading "N 个图层已选择" with an × that clears the layer selection.
+
+**Layer row:** fold chevron, then name. Click the name to select it; Shift selects a run and Cmd/Ctrl adds or removes one (the name's tooltip says so). Then eye and lock. They act on the layer's contents, or on every selected layer when this layer is one of them. Rows drag to reorder.
+
+**Inside a layer:**
+- **Continuous curve row** ("连续笔画 / 闭合笔画 · name", with its line count):
+  - It has its own fold chevron.
+  - Its eye and lock act on the whole curve.
+  - Clicking its name selects it.
+  - Unfolded, it lists its curves.
+  - A curve that is alone, unnamed and has no fill is shown directly as a curve row.
+- **Curve row:** name, then eye and lock. Clicking selects the curve. Rows drag to reorder within their continuous curve. Small tags show an arc join (red when invalid), and depth *(no counterpart)*.
+- **Fill row:** name, a tag (填充 / 透明挖空 / 雾化填充, red when invalid), eye, lock. 透明挖空 and 雾化 have *(no counterpart)*.
+- **Group row** ("组合 · n"): fold, eye, lock, holding continuous curves. *(no counterpart: core has layers, continuous curves and lines, no groups of curves)*.
+
+**Bottom section:** "N 个对象已选择", with cut (⌘X) and paste into the current layer (⌘V).
+
+**v1 only** *(no counterpart)*: snapshot sections with their own header and tools; layer order across snapshots; "从画稿恢复图层"; dragging a group onto + turns it into a layer.
+
