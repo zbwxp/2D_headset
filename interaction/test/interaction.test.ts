@@ -393,3 +393,16 @@ describe('review cases (dot 1791544469)', () => {
     expect(pos(d, 'a')).toEqual(P(10, 0))
   })
 })
+
+describe('review cases (dot 1791544530)', () => {
+  it('Delete during a drag deletes the lines and ends the drag: no preview refers to them, release commits nothing', () => {
+    const { ix, core } = setup(), d = core()
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerMove(P(60, 10))
+    ix.key('Delete')
+    expect(d.snapshot().lines.some(l => l.id === 'h')).toBe(false)
+    expect(ix.preview().drag).toBeUndefined()
+    const before = save(d)
+    ix.pointerUp(P(60, 10))
+    expect(save(d)).toBe(before)
+  })
+})

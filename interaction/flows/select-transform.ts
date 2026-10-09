@@ -70,6 +70,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     cancel() { if (!drag) return false; drag = null; return true },
     toolChanged() { drag = null }, // an interaction default: a tool change cancels a drag
     drawingChanged() { drag = null },
+    // the drawing changed under the drag (undo, or an edit such as Delete): the drag ends
     historyChanged() { drag = null },
     preview(p: Preview) { if (drag && ctx.mine(drag)) p.drag = { units: structuredClone(drag.units), offset: { ...drag.offset } } },
   }

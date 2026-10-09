@@ -53,6 +53,7 @@ export function createInteraction(env: Env): Interaction {
   const ctx = createCtx(env, { tool: () => tool, options: () => ({ ...opts }) })
   const st = selectTransform(ctx), pn = pen(ctx), sp = steps(ctx), mr = mirror(ctx), cb = clipboard(ctx)
   const flows: Flow[] = [st, pn, sp, mr, cb]
+  ctx.afterCommit = () => { for (const f of flows) f.historyChanged() }
   const listeners = new Set<() => void>()
   const changed = () => { for (const f of listeners) f() }
   /** Run one user action, then tell the listeners once. */

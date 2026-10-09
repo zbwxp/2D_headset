@@ -126,6 +126,8 @@ function App() {
   const mods = (e: { shiftKey: boolean; altKey: boolean; metaKey: boolean; ctrlKey: boolean }) => ({ shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey })
 
   const onDown = (e: React.PointerEvent) => {
+    // a right click goes straight to cancel (contextmenu), never into a tool first (dot 1791544530)
+    if (e.button === 2) return
     svg.current!.setPointerCapture(e.pointerId)
     if (e.button === 1 || !ix.pointerDown(toDoc(e), mods(e))) pan.current = { start: P(e.clientX, e.clientY), box }
   }
@@ -134,7 +136,7 @@ function App() {
     if (p) { const k = p.box.w / svg.current!.clientWidth; setBox({ ...p.box, x: p.box.x - (e.clientX - p.start.x) * k, y: p.box.y - (e.clientY - p.start.y) * k }); return }
     ix.pointerMove(toDoc(e))
   }
-  const onUp = (e: React.PointerEvent) => { if (pan.current) { pan.current = null; return } ix.pointerUp(toDoc(e)) }
+  const onUp = (e: React.PointerEvent) => { if (e.button === 2) return; if (pan.current) { pan.current = null; return } ix.pointerUp(toDoc(e)) }
   const onCancel = () => { pan.current = null; ix.pointerCancel() }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
@@ -142,7 +144,9 @@ function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return
+      // keys typed into a form control are its own (dot 1791544530)
+      const t = e.target as HTMLElement
+      if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(t.tagName) || t.isContentEditable) return
       if (ix.key(e.key, mods(e))) e.preventDefault()
     }
     window.addEventListener('keydown', key)
@@ -167,7 +171,10 @@ function App() {
     const d = pv.drag
     if (!d) return []
     const pts = new Set<Id>(), hs = new Set<string>(), lns = new Set<Id>()
-    for (const u of d.units) {
+    // the view never dereferences an id that is gone (dot 1791544530)
+    const has = (id: Id) => s.lines.some(l => l.id === id), hasPoint = (id: Id) => s.points.some(p => p.id === id)
+    const exists = (u: Unit) => (u.kind === 'point' ? hasPoint(u.id) : u.kind === 'line' ? has(u.id) : u.kind === 'handle' ? has(u.line) : true)
+    for (const u of d.units.filter(exists)) {
       if (u.kind === 'point') pts.add(u.id)
       if (u.kind === 'line') { lns.add(u.id); pts.add(line(u.id).a); pts.add(line(u.id).b) }
       if (u.kind === 'handle') hs.add(u.line + u.end)

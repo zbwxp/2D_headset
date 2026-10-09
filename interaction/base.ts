@@ -45,8 +45,14 @@ export interface Ctx {
   snap(): Snapshot
   /** True when the operation still belongs to the open drawing. */
   mine(op: Owned | null): boolean
-  /** One edit through core; a refusal becomes feedback, and nothing is left half done (core is atomic). */
+  /**
+   * One edit through core; a refusal becomes feedback, and nothing is left half done (core is
+   * atomic). After a successful edit every flow checks its unfinished operation again, as after
+   * an undo: an edit made here (a Delete during a drag) ends whatever it made invalid (dot 1791544530).
+   */
   commit(fn: (e: Editor) => void): boolean
+  /** Set by the assembly: what runs after each successful commit. */
+  afterCommit: () => void
   feedback: Feedback | undefined
   options(): Options
   tool(): Tool
@@ -74,9 +80,12 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
     snap: () => env.core().snapshot(),
     mine: op => !!op && op.core === env.core(),
     commit(fn) {
-      try { env.core().edit(fn); ctx.feedback = undefined; return true }
+      try { env.core().edit(fn); ctx.feedback = undefined }
       catch (err) { ctx.feedback = fromError(err); return false }
+      ctx.afterCommit()
+      return true
     },
+    afterCommit: () => {},
     feedback: undefined,
     options: state.options,
     tool: state.tool,
