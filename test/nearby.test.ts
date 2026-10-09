@@ -92,3 +92,30 @@ describe('nearby: the review cases (dot 1791543988)', () => {
     expect((hit as { t: number }).t).toBeCloseTo(0.75, 3)
   })
 })
+
+describe('nearest without sampling (dot 1791544487)', () => {
+  it('a narrow branch at a large scale with a small radius is found', () => {
+    const d = new Core()
+    // control points (-5100,-5700), (-9400,6300), (-6400,-5200), (-5100,1100); the query is the point at t = 0.395
+    d.edit(e => { e.layer('L'); e.line('q', { id: 'a', layer: 'L', position: P(-5100, -5700) }, { id: 'b', layer: 'L', position: P(-5100, 1100) }, { ha: P(-4300, 12000), hb: P(-1300, -6300) }) })
+    const hit = d.nearby(P(-7333.221375, 65.5513375), 0.01).find(x => x.kind === 'line')
+    expect(hit).toBeDefined()
+    expect(hit!.distance).toBeLessThan(1e-6)
+    expect((hit as { t: number }).t).toBeCloseTo(0.395, 6)
+  })
+})
+
+import { nearest, evaluate, type Cubic } from '../src/geometry'
+describe('nearest is never beaten by dense sampling', () => {
+  it('300 random cubics and points: the exact search is at least as near as 20 000 samples', () => {
+    let seed = 11
+    const r = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+    const v = (k: number) => ({ x: (r() - 0.5) * k, y: (r() - 0.5) * k })
+    for (let i = 0; i < 300; i++) {
+      const k = [1, 100, 10000][i % 3]!, c: Cubic = [v(k), v(k), v(k), v(k)], p = v(k)
+      let brute = Infinity
+      for (let j = 0; j <= 20000; j++) { const q = evaluate(c, j / 20000); brute = Math.min(brute, Math.hypot(q.x - p.x, q.y - p.y)) }
+      expect(nearest(c, p).distance).toBeLessThanOrEqual(brute + 1e-9 * k)
+    }
+  })
+})

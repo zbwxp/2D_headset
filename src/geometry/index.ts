@@ -131,25 +131,56 @@ export function bounds(c: Cubic): { min: Vec; max: Vec } {
   }
 }
 
+/** Value of a polynomial (coefficients from the highest power down) at t. */
+function poly(cs: readonly number[], t: number): number { let v = 0; for (const k of cs) v = v * t + k; return v }
+
 /**
- * The parameter and distance of the point on `c` nearest to `p`. Every local minimum of a
- * dense sampling is refined, not only the best sample, so a curve that bends back close to
- * itself never yields the wrong branch (dot 1791543988: found with a looping cubic).
+ * Every real root of a polynomial in [0, 1] (coefficients from the highest power down).
+ * The derivative's roots split [0, 1] into stretches where the polynomial only rises or
+ * only falls; each stretch with a sign change holds exactly one root, found by bisection.
+ * No sampling, so two roots close together are never merged (dot 1791544487).
+ */
+export function rootsIn01(cs: readonly number[]): number[] {
+  const scale = Math.max(...cs.map(Math.abs))
+  if (!(scale > 0)) return []
+  let k = 0
+  while (k < cs.length - 1 && Math.abs(cs[k]!) <= scale * 1e-15) k++
+  const c = cs.slice(k), n = c.length - 1
+  if (n <= 0) return []
+  if (n === 1) { const t = -c[1]! / c[0]!; return t >= 0 && t <= 1 ? [t] : [] }
+  const d = c.slice(0, n).map((x, i) => x * (n - i))
+  const stops = [0, ...rootsIn01(d), 1]
+  const out: number[] = []
+  for (let i = 0; i + 1 < stops.length; i++) {
+    let lo = stops[i]!, hi = stops[i + 1]!
+    const flo = poly(c, lo), fhi = poly(c, hi)
+    if (flo === 0) { out.push(lo); continue }
+    if (flo * fhi > 0) continue
+    for (let it = 0; it < 80 && hi - lo > 1e-16; it++) {
+      const m = (lo + hi) / 2, fm = poly(c, m)
+      if ((fm < 0) === (flo < 0)) lo = m; else hi = m
+    }
+    out.push((lo + hi) / 2)
+  }
+  if (poly(c, 1) === 0) out.push(1)
+  return out
+}
+
+/**
+ * The parameter and distance of the point on `c` nearest to `p`. The candidates are the two
+ * ends and every root of (B(t) − p)·B′(t), a quintic, found exactly in [0, 1]: no sampled
+ * guess, so a narrow branch next to another one is never missed (dot 1791543988, 1791544487).
  */
 export function nearest(c: Cubic, p: Vec): { t: number; distance: number } {
-  const N = 128, d = (t: number) => length(sub(evaluate(c, t), p))
-  const ds = Array.from({ length: N + 1 }, (_, i) => d(i / N))
-  let best = { t: 0, distance: ds[0]! }
-  for (let i = 0; i <= N; i++) {
-    const left = i === 0 ? Infinity : ds[i - 1]!, right = i === N ? Infinity : ds[i + 1]!
-    if (ds[i]! > left || ds[i]! > right) continue // not a local minimum of the samples
-    let lo = Math.max(0, (i - 1) / N), hi = Math.min(1, (i + 1) / N)
-    for (let k = 0; k < 50; k++) {
-      const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3
-      if (d(m1) < d(m2)) hi = m2; else lo = m1
-    }
-    const t = (lo + hi) / 2, x = Math.min(d(t), ds[i]!)
-    if (x < best.distance) best = { t: d(t) <= ds[i]! ? t : i / N, distance: x }
-  }
+  const [P0, P1, P2, P3] = c
+  const A = { x: -P0.x + 3 * P1.x - 3 * P2.x + P3.x, y: -P0.y + 3 * P1.y - 3 * P2.y + P3.y }
+  const B = { x: 3 * P0.x - 6 * P1.x + 3 * P2.x, y: 3 * P0.y - 6 * P1.y + 3 * P2.y }
+  const C = { x: -3 * P0.x + 3 * P1.x, y: -3 * P0.y + 3 * P1.y }
+  const E = { x: P0.x - p.x, y: P0.y - p.y }
+  const dot = (u: Vec, v: Vec) => u.x * v.x + u.y * v.y
+  // (A t³ + B t² + C t + E) · (3A t² + 2B t + C)
+  const roots = rootsIn01([3 * dot(A, A), 5 * dot(A, B), 4 * dot(A, C) + 2 * dot(B, B), 3 * dot(B, C) + 3 * dot(A, E), dot(C, C) + 2 * dot(B, E), dot(C, E)])
+  let best = { t: 0, distance: length(sub(evaluate(c, 0), p)) }
+  for (const t of [...roots, 1]) { const distance = length(sub(evaluate(c, t), p)); if (distance < best.distance) best = { t, distance } }
   return best
 }
