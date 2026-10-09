@@ -15,9 +15,14 @@ No code until dot has reviewed this list.
      - `mirror-no-counterpart`, `topology-mismatch`;
      - `name-taken`.
    - Every other error keeps its message, and nothing changes in what is refused.
-2. **Core: a read-only distance query** (doc 22 §3.1). `nearby(at, radius)` gives the points, handles and lines within `radius` of a document position, each with its distance. It changes nothing and holds no selection rules.
-3. **`interaction/` package.** It imports only core's public entry; core never imports it.
-4. **Bench:** its tool code is replaced by `interaction`. Panels, files, drawing and the camera stay in the bench.
+2. **Core: transforms with explicit targets** (dot 1791543296).
+   - `translate` / `rotate` / `scale` / `flip` take an optional list of units.
+   - Given, they act on exactly those units and expand them as the selection would: lines to their points and handles, shared points once. They reuse `editing`'s plan on a scratch selection.
+   - The real selection is neither read nor changed, so a drag commits on the targets it started with. It never selects the old objects again, moves them, and restores.
+   - Without the list, behaviour is as now.
+3. **Core: a read-only distance query** (doc 22 §3.1). `nearby(at, radius)` gives the points, handles and lines within `radius` of a document position, each with its distance. It changes nothing and holds no selection rules.
+4. **`interaction/` package.** It imports only core's public entry; core never imports it.
+5. **Bench:** its tool code is replaced by `interaction`. Panels, files, drawing and the camera stay in the bench.
 
 ## Interaction's interface (a sketch, to be confirmed by the tests)
 
@@ -46,7 +51,8 @@ Each test is a scripted input against a real `Core`, checking the core calls mad
 3. **Drag:**
    - press on a line with V selects its curve: one `select` edit;
    - moves change only the preview;
-   - release makes one `edit` with `translate`, and undo returns to after the selection.
+   - release makes one `edit` with `translate(dx, dy, units)` on the units the drag started with;
+   - undo returns to the state after the selection.
 4. **Esc during a drag:** no edit; the selection made at press stays (dot 1791543266).
 5. **Browser-cancelled drag or lost pointer:** the same as Esc.
 6. **A drag refused by a lock:**
@@ -67,7 +73,15 @@ Each test is a scripted input against a real `Core`, checking the core calls mad
    - selecting something else and then copying ends it, and a paste then pastes the copy;
    - a refused paste keeps it, and a retry after unlocking moves it;
    - `drawingChanged()` ends it.
-10. **A drag's target is the selection at its start.** A selection change from outside during the drag (a panel button) does not retarget the drag. The drag commits on its own targets or, if those are gone, is refused.
+10. **A drag's target is the selection at its start.**
+    - A selection change from outside during the drag (a panel button) does not retarget it: the drag commits on its own targets, through the explicit-target `translate`.
+    - Dragging A while the selection changes to B moves A and never B, and B stays selected (dot 1791543296).
+    - If its targets are gone, the drag is refused.
+
+17. **A two-click pick whose first object is gone** (deleted, or undone away) before the second click never binds anything else. The second click is refused, and the pick ends.
+    - `historyChanged` also ends a first pick or pen chain whose object no longer exists (dot 1791543296).
+18. **Opening another drawing that fails** keeps the current drawing and every unfinished operation on it. `drawingChanged` is called only after a successful open (dot 1791543296).
+19. **A repeated release** for one drag (pointerUp twice, or pointerUp then lost capture) commits once.
 
 **Lifecycle calls (doc 22 §3.5):**
 
