@@ -145,3 +145,20 @@ function drop(f: FillsState, ids: Id[]) {
   S(f).loops = S(f).loops.filter(l => !gone.has(l.id))
   S(f).order = S(f).order.filter(x => !gone.has(x))
 }
+
+/** Fills from saved data, checked: each filled loop on existing lines, with a colour and its state; the order lists each filled loop once. Whether a loop still closes is checked by settling. */
+export function restore(v: unknown, n: net.NetworkState): FillsState {
+  const d = net.data, o = d.obj(v, 'fills')
+  const loops = d.arr(o.loops, 'fills').map((x, i): FilledLoop => {
+    const L = d.obj(x, `fill ${i}`), id = d.str(L.id, `fill ${i} id`)
+    const lines = d.arr(L.lines, `fill ${id} lines`).map((l, k) => d.str(l, `fill ${id} line ${k}`))
+    if (!lines.length) d.fail(`fill ${id} has no lines`)
+    for (const l of lines) if (!net.hasLine(n, l)) d.fail(`fill ${id} uses a missing line ${l}`)
+    return { id, lines, color: d.str(L.color, `fill ${id} colour`), visible: d.bool(L.visible, `fill ${id} visible`), locked: d.bool(L.locked, `fill ${id} locked`) }
+  })
+  d.unique(loops.map(l => l.id), 'fill')
+  const order = d.arr(o.order, 'fill order').map((x, i) => d.str(x, `fill order ${i}`))
+  d.unique(order, 'fill in the order')
+  if (order.length !== loops.length || loops.some(l => !order.includes(l.id))) d.fail('the fill order does not list every fill once')
+  return { loops, order } as Store as unknown as FillsState
+}

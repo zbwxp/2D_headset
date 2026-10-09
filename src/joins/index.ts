@@ -201,3 +201,31 @@ function smoothGroups(ids: string[], neighbours: Map<string, string[]>): string[
   return groups
 }
 
+/** Joins from saved data, checked: each row on two different lines that both end at its point, a known mode, a positive radius for an arc; end strokes on existing points. */
+export function restore(v: unknown, n: net.NetworkState): JoinsState {
+  const d = net.data, o = d.obj(v, 'joins')
+  const rows = d.arr(o.rows, 'join rows').map((x, i): JoinRow => {
+    const R = d.obj(x, `join ${i}`), point = d.str(R.point, `join ${i} point`)
+    const ls = d.arr(R.lines, `join ${i} lines`)
+    if (ls.length !== 2) d.fail(`join ${i} does not have two lines`)
+    const l0 = d.str(ls[0], `join ${i} line`), l1 = d.str(ls[1], `join ${i} line`)
+    if (l0 === l1) d.fail(`join ${i} uses one line twice`)
+    for (const l of [l0, l1]) { if (!net.hasLine(n, l)) d.fail(`join ${i} uses a missing line ${l}`); const x2 = net.line(n, l); if (x2.a !== point && x2.b !== point) d.fail(`join ${i}: line ${l} does not end at ${point}`) }
+    const m = d.str(R.mode, `join ${i} mode`)
+    if (m !== 'smooth' && m !== 'cusp' && m !== 'arc') d.fail(`join ${i} has an unknown mode ${m}`)
+    const mode = m as JoinMode
+    const radius = R.radius === undefined ? undefined : d.num(R.radius, `join ${i} radius`)
+    if (radius !== undefined && !(radius > 0)) d.fail(`join ${i} radius is not positive`)
+    return { point, lines: [l0, l1], mode, ...(radius !== undefined ? { radius } : {}) }
+  })
+  d.unique(rows.map(r => rowKey(r)), 'join')
+  const endStrokes = d.arr(o.endStrokes, 'end strokes').map((x, i) => {
+    const E = d.obj(x, `end stroke ${i}`), point = d.str(E.point, `end stroke ${i} point`)
+    if (!net.hasPoint(n, point)) d.fail(`end stroke ${i} is on a missing point`)
+    const stroke = d.obj(E.stroke, `end stroke ${i} stroke`)
+    for (const [k, val] of Object.entries(stroke)) if (typeof val !== 'string') d.num(val, `end stroke ${i} ${k}`)
+    return { point, stroke: stroke as EndStroke }
+  })
+  d.unique(endStrokes.map(e => e.point), 'end stroke point')
+  return { rows, endStrokes } as Store as unknown as JoinsState
+}

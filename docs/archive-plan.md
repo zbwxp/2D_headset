@@ -28,7 +28,15 @@ Graph section "Save and open" (headset-design `977137f`; bowen 1791511525):
 
 ### How `importState` checks a file
 
-1. **Shape:** every module's part is present and is an object.
+1. **Each module restores its own part** (dot 1791512144): `network`, `groups`, `joins`, `links`, `fills`, `apply` and `names` each export `restore(data, …)`, which checks types and internal consistency and returns a copy. Examples:
+   - coordinates are finite numbers;
+   - ids are unique and marked as used;
+   - line ends exist in one layer;
+   - groups are exactly the connected curves, and the group counter is past every `g<k>`;
+   - joins and links sit on lines that end at their points;
+   - every line and group has exactly one name.
+
+   `document` calls them in dependency order. `archive` only handles the file envelope and holds no rules of its own.
 2. **Reads:** the reads the editor relies on run without error: snapshot, geometry, closed-loop discovery and the names check.
 3. **Ids and links:** no id is used twice, and endpoint-linked points coincide. A smooth join is a spring: where several pull on one handle the result is a compromise, so it is not checked (found by the fuzz round trip).
 4. **Settled:** running the commit pipeline again on a copy changes nothing. A saved document is always a settled one, so any difference means the file was edited or damaged.
@@ -51,7 +59,8 @@ Any failure gives `open-failed: <reason>`.
    - a missing part;
    - a line pointing to a missing point;
    - a duplicate name;
-   - linked points apart.
+   - linked points apart;
+   - data that reads fine but would break a later edit (dot 1791512144): missing or emptied `usedLines`, a group counter behind an existing group id, a coordinate that is text, a line across layers, a join or link on the wrong line, a fill or mirror pair on a missing line, a line without a name.
 4. **Boundary:**
    - `archive` imports only `document`, and nothing imports `archive`.
    - The package root exports `save` and `open`, but not `exportState` / `importState`.

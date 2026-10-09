@@ -175,6 +175,63 @@ export function resolveHandleTips(n: NetworkState, ch: Changes) {
   }
 }
 
+// ---- reading saved data (archive) -------------------------------------------
+
+/**
+ * Type checks for restoring saved data (docs/archive-plan.md): each module checks its own
+ * part with these, so a file that reads fine but would break a later edit is refused.
+ */
+function fail(what: string): never { throw new Error(`open-failed: ${what}`) }
+export const data = {
+  fail,
+  obj(v: unknown, what: string): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) fail(`${what} is not an object`); return v as Record<string, unknown> },
+  arr(v: unknown, what: string): unknown[] { if (!Array.isArray(v)) fail(`${what} is not a list`); return v },
+  str(v: unknown, what: string): string { if (typeof v !== 'string') fail(`${what} is not text`); return v },
+  num(v: unknown, what: string): number { if (typeof v !== 'number' || !Number.isFinite(v)) fail(`${what} is not a finite number`); return v },
+  bool(v: unknown, what: string): boolean { if (typeof v !== 'boolean') fail(`${what} is not true / false`); return v },
+  vec(v: unknown, what: string): Vec { const o = data.obj(v, what); return { x: data.num(o.x, `${what}.x`), y: data.num(o.y, `${what}.y`) } },
+  unique(ids: readonly string[], what: string) { const seen = new Set<string>(); for (const id of ids) { if (seen.has(id)) fail(`${what} ${id} appears twice`); seen.add(id) } },
+}
+
+/** The network from saved data, checked: types, unique ids, ends that exist in one layer, and ids marked as used. */
+export function restore(v: unknown): NetworkState {
+  const d = data, o = d.obj(v, 'network')
+  const layers = d.arr(o.layers, 'layers').map((x, i) => { const L = d.obj(x, `layer ${i}`); const name = d.str(L.name, `layer ${i} name`); if (!name.trim()) d.fail(`layer ${i} has an empty name`); return { id: d.str(L.id, `layer ${i} id`), name } })
+  d.unique(layers.map(l => l.id), 'layer')
+  const layerIds = new Set(layers.map(l => l.id))
+  const points = d.arr(o.points, 'points').map((x, i) => {
+    const P = d.obj(x, `point ${i}`), id = d.str(P.id, `point ${i} id`), layer = d.str(P.layer, `point ${id} layer`)
+    if (!layerIds.has(layer)) d.fail(`point ${id} is in a missing layer`)
+    return { id, layer, position: d.vec(P.position, `point ${id} position`) }
+  })
+  d.unique(points.map(p => p.id), 'point')
+  const layerOf = new Map(points.map(p => [p.id, p.layer]))
+  const lines = d.arr(o.lines, 'lines').map((x, i) => {
+    const L = d.obj(x, `line ${i}`), id = d.str(L.id, `line ${i} id`), a = d.str(L.a, `line ${id} a`), b = d.str(L.b, `line ${id} b`)
+    if (!layerOf.has(a) || !layerOf.has(b)) d.fail(`line ${id} ends at a missing point`)
+    if (a === b) d.fail(`line ${id} has both ends on one point`)
+    if (layerOf.get(a) !== layerOf.get(b)) d.fail(`line ${id} crosses layers`)
+    const st = d.obj(L.state, `line ${id} state`), sk = d.obj(L.stroke, `line ${id} stroke`)
+    const width = d.num(sk.width, `line ${id} stroke width`)
+    if (!(width > 0)) d.fail(`line ${id} has a stroke width that is not positive`)
+    return {
+      id, a, b, ha: d.vec(L.ha, `line ${id} ha`), hb: d.vec(L.hb, `line ${id} hb`),
+      state: { visible: d.bool(st.visible, `line ${id} visible`), locked: d.bool(st.locked, `line ${id} locked`) },
+      stroke: { width, profile: d.str(sk.profile, `line ${id} stroke profile`) },
+    }
+  })
+  d.unique(lines.map(l => l.id), 'line')
+  const ends = new Set(lines.flatMap(l => [l.a, l.b]))
+  for (const p of points) if (!ends.has(p.id)) d.fail(`point ${p.id} is not the end of any line`)
+  const usedPoints = d.arr(o.usedPoints, 'usedPoints').map((x, i) => d.str(x, `usedPoints ${i}`))
+  const usedLines = d.arr(o.usedLines, 'usedLines').map((x, i) => d.str(x, `usedLines ${i}`))
+  d.unique(usedPoints, 'used point id'); d.unique(usedLines, 'used line id')
+  const up = new Set(usedPoints), ul = new Set(usedLines)
+  for (const p of points) if (!up.has(p.id)) d.fail(`point ${p.id} is not marked as used`)
+  for (const l of lines) if (!ul.has(l.id)) d.fail(`line ${l.id} is not marked as used`)
+  return { layers, points, lines, usedPoints, usedLines } as Store as unknown as NetworkState
+}
+
 // ---- copies in and out ---------------------------------------------------
 
 function vecIn(v: Vec): Vec {

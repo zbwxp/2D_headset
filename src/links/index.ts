@@ -143,3 +143,28 @@ export function align(
   }
   return out
 }
+
+/** Links from saved data, checked: pairs of existing points in different layers, each pair once; link joins on an existing pair, each line ending at its point. */
+export function restore(v: unknown, n: net.NetworkState): LinksState {
+  const d = net.data, o = d.obj(v, 'links')
+  const pairs = d.arr(o.pairs, 'link pairs').map((x, i) => {
+    const P = d.obj(x, `link ${i}`), a = d.str(P.a, `link ${i} a`), b = d.str(P.b, `link ${i} b`)
+    if (!net.hasPoint(n, a) || !net.hasPoint(n, b)) d.fail(`link ${i} uses a missing point`)
+    if (net.point(n, a).layer === net.point(n, b).layer) d.fail(`link ${a}-${b} is inside one layer`)
+    return { a, b }
+  })
+  const pk = (a: Id, b: Id) => JSON.stringify(a < b ? [a, b] : [b, a])
+  d.unique(pairs.map(p => pk(p.a, p.b)), 'link')
+  const joins = d.arr(o.joins, 'link joins').map((x, i): LinkJoin => {
+    const J = d.obj(x, `link join ${i}`), a = d.str(J.a, `link join ${i} a`), b = d.str(J.b, `link join ${i} b`)
+    const ls = d.arr(J.lines, `link join ${i} lines`)
+    if (ls.length !== 2) d.fail(`link join ${i} does not have two lines`)
+    const la = d.str(ls[0], `link join ${i} line`), lb = d.str(ls[1], `link join ${i} line`)
+    if (!pairs.some(p => pk(p.a, p.b) === pk(a, b))) d.fail(`link join ${i} has no link ${a}-${b}`)
+    if (!endAt(n, la, a) || !endAt(n, lb, b)) d.fail(`link join ${i}: a line does not end at its point`)
+    if (J.mode !== 'smooth') d.fail(`link join ${i} has an unknown mode`)
+    return { a, b, lines: [la, lb], mode: 'smooth' }
+  })
+  d.unique(joins.map(j => JSON.stringify([j.a, j.b, j.lines])), 'link join')
+  return { pairs, joins } as Store as unknown as LinksState
+}

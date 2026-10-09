@@ -88,6 +88,18 @@ describe('save and open', () => {
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],
       ['a duplicate name', edit(doc => { doc.names.line[1][1] = doc.names.line[0][1] }), /open-failed: Name/],
+      // data that reads fine but would break a later edit (dot 1791512144)
+      ['usedLines missing', edit(doc => { delete doc.network.usedLines }), /usedLines is not a list/],
+      ['usedLines emptied (an existing line id could be drawn again)', edit(doc => { doc.network.usedLines = [] }), /is not marked as used/],
+      ['groups.next behind an existing g-id', edit(doc => { doc.groups.next = 1 }), /would make g1 again/],
+      ['a coordinate that is text', edit(doc => { doc.network.points[0].position.x = 'oops' }), /position.x is not a finite number/],
+      ['a line ending at a point of another layer', edit(doc => { const l = doc.network.lines.find((x: any) => x.id === 'k1'); l.a = 'a' }), /crosses layers/],
+      ['a group that is not one connected curve', edit(doc => { const g = doc.groups.groups; g[0].lines.push(g[1].lines.pop()) }), /open-failed/],
+      ['a join on a line that does not end at its point', edit(doc => { doc.joins.rows[0].lines[1] = 'w1' }), /does not end at/],
+      ['a link inside one layer', edit(doc => { doc.links.pairs[0].b = 'a' }), /inside one layer/],
+      ['a fill on a missing line', edit(doc => { doc.fills.loops[0].lines[0] = 'gone' }), /missing line gone/],
+      ['a mirror pair on a missing line', edit(doc => { doc.apply.pairs[0].a = 'gone' }), /mirror pair 0 uses a missing line/],
+      ['a line without a name', edit(doc => { doc.names.line.pop() }), /has no name/],
       ['linked points apart', edit(doc => { doc.network.points.find((x: any) => x.id === 'k').position = { x: -90, y: 3 } }), /linked points c and k are apart|linked points k and c are apart/],
     ]
     for (const [label, text, why] of cases) {

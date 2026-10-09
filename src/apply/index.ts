@@ -424,3 +424,17 @@ export function mirroredHandles(s: ApplyState, n: net.NetworkState, ch: net.Chan
   }
   return out
 }
+
+/** Mirror state from saved data, checked: a finite axis; pairs of two different existing lines, each line in at most one pair. */
+export function restore(v: unknown, n: net.NetworkState): ApplyState {
+  const d = net.data, o = d.obj(v, 'mirror')
+  const axis = d.num(o.axis, 'mirror axis')
+  const pairs = d.arr(o.pairs, 'mirror pairs').map((x, i): Pair => {
+    const P = d.obj(x, `mirror pair ${i}`), a = d.str(P.a, `mirror pair ${i} a`), b = d.str(P.b, `mirror pair ${i} b`)
+    if (a === b) d.fail(`mirror pair ${i} pairs a line with itself`)
+    if (!net.hasLine(n, a) || !net.hasLine(n, b)) d.fail(`mirror pair ${i} uses a missing line`)
+    return { a, b, reversed: d.bool(P.reversed, `mirror pair ${i} reversed`) }
+  })
+  d.unique(pairs.flatMap(p => [p.a, p.b]), 'mirror-paired line')
+  return { axis, pairs } as Store as unknown as ApplyState
+}

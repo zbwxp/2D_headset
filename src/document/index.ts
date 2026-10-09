@@ -474,23 +474,34 @@ export function exportState(core: Core): Record<string, unknown> {
 }
 
 /**
- * A new document from plain data, after checking it: every part present; the reads the
- * editor relies on run; and the commit pipeline run again changes nothing (a saved document
- * is always settled, so a difference means the data was edited or damaged).
+ * A new document from plain data, after checking it: each module restores its own part
+ * (types and internal consistency, e.g. ids marked as used, group counters); the reads the
+ * editor relies on run; linked points coincide; and the commit pipeline run again changes
+ * nothing (a saved document is always settled, so a difference means the data was edited
+ * or damaged). Nothing is published anywhere: the result is a new Core.
  */
 export function importState(data: unknown): Core {
   if (!data || typeof data !== 'object') throw new Error('open-failed: no document')
   const d = data as Record<string, unknown>
   for (const k of PARTS) if (!d[k] || typeof d[k] !== 'object') throw new Error(`open-failed: missing ${k}`)
-  const state = { ...structuredClone(Object.fromEntries(PARTS.map(k => [k, d[k]]))), selection: editing.create() } as unknown as State
+  // each module checks and copies its own part, in dependency order (dot 1791512144)
+  let state: State
+  try {
+    const network = net.restore(d.network)
+    const g = groups.restore(d.groups, network)
+    state = {
+      network, groups: g, joins: joins.restore(d.joins, network), links: links.restore(d.links, network),
+      fills: fills.restore(d.fills, network), apply: apply.restore(d.apply, network), names: names.restore(d.names, network, g),
+      selection: editing.create(),
+    }
+  } catch (err) {
+    const m = (err as Error).message
+    throw new Error(m.startsWith('open-failed') ? m : `open-failed: ${m}`)
+  }
   try {
     const core = new Core()
     core['state'] = state
     const snap = core.snapshot(); core.geometry()
-    for (const [kind, ids] of [['layer', snap.layers.map(l => l.id)], ['point', snap.points.map(p => p.id)], ['line', snap.lines.map(l => l.id)], ['group', snap.groups.map(g => g.id)]] as const) {
-      if (new Set(ids).size !== ids.length) throw new Error(`a ${kind} id is used twice`)
-    }
-    names.check(state.names, state.network)
     // what every commit leaves exactly true, checked directly: linked points coincide. (A smooth
     // join is a spring: where several pull on one handle the result is a compromise, so it is not checked.)
     const pos = new Map(snap.points.map(p => [p.id, p.position]))

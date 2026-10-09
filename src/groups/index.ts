@@ -130,3 +130,27 @@ function keeperComponents(n: net.NetworkState, comps: { lines: Id[] }[], winners
   })
   return keeps
 }
+
+/** Groups from saved data, checked: each line in exactly one group, a group = one connected curve of one layer, each group once in its layer's order, and `next` past every "g<k>" id. */
+export function restore(v: unknown, n: net.NetworkState): GroupsState {
+  const d = net.data, o = d.obj(v, 'groups')
+  const groups = d.arr(o.groups, 'groups').map((x, i) => {
+    const G = d.obj(x, `group ${i}`), id = d.str(G.id, `group ${i} id`)
+    return { id, layer: d.str(G.layer, `group ${id} layer`), lines: d.arr(G.lines, `group ${id} lines`).map((l, k) => d.str(l, `group ${id} line ${k}`)) }
+  })
+  d.unique(groups.map(g => g.id), 'group')
+  const key = (ids: readonly Id[]) => JSON.stringify([...ids].sort())
+  const comps = new Map(net.components(n).map(c => [key(c.lines), c.layer]))
+  if (comps.size !== groups.length) d.fail('the groups do not match the connected curves')
+  for (const g of groups) if (comps.get(key(g.lines)) !== g.layer) d.fail(`group ${g.id} is not one connected curve of layer ${g.layer}`)
+  const order = d.arr(o.order, 'group order').map((x, i) => { const E = d.obj(x, `group order ${i}`); return { layer: d.str(E.layer, `group order ${i} layer`), ids: d.arr(E.ids, `group order ${i} ids`).map((y, k) => d.str(y, `group order ${i} id ${k}`)) } })
+  d.unique(order.map(e => e.layer), 'group order layer')
+  const listed = order.flatMap(e => e.ids.map(id => ({ id, layer: e.layer })))
+  d.unique(listed.map(x => x.id), 'group in the order')
+  for (const g of groups) if (!listed.some(x => x.id === g.id && x.layer === g.layer)) d.fail(`group ${g.id} is not in its layer's order`)
+  if (listed.length !== groups.length) d.fail('the group order lists a missing group')
+  const next = d.num(o.next, 'groups next')
+  if (!Number.isInteger(next) || next < 1) d.fail('groups next is not a positive whole number')
+  for (const g of groups) { const m = /^g(\d+)$/.exec(g.id); if (m && Number(m[1]) >= next) d.fail(`groups next ${next} would make ${g.id} again`) }
+  return { groups, order, next } as Store as unknown as GroupsState
+}

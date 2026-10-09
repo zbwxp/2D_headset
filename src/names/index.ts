@@ -112,3 +112,22 @@ export function check(st: NamesState, n: net.NetworkState) {
     seen.set(name, who)
   }
 }
+
+/** Names from saved data, checked: every line and every group has exactly one name, and no name repeats (layers included). */
+export function restore(v: unknown, n: net.NetworkState, g: groups.GroupsState): NamesState {
+  const d = net.data, o = d.obj(v, 'names')
+  const entries = (kind: Kind, ids: Id[]) => {
+    const list = d.arr(o[kind], `${kind} names`).map((x, i): [Id, string] => {
+      const e = d.arr(x, `${kind} name ${i}`)
+      return [d.str(e[0], `${kind} name ${i} id`), d.str(e[1], `${kind} name ${i}`)]
+    })
+    d.unique(list.map(e => e[0]), `${kind} name for`)
+    const have = new Set(list.map(e => e[0]))
+    for (const id of ids) if (!have.has(id)) d.fail(`${kind} ${id} has no name`)
+    if (list.length !== ids.length) d.fail(`a ${kind} name belongs to a missing ${kind}`)
+    return list
+  }
+  const st = { line: entries('line', net.lines(n).map(l => l.id)), group: entries('group', groups.list(g, n).map(x => x.id)) } as Store as unknown as NamesState
+  try { check(st, n) } catch (err) { d.fail((err as Error).message) }
+  return st
+}
