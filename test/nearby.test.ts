@@ -53,3 +53,28 @@ describe('nearby', () => {
     expect(() => d.nearby(P(0, 0), -1)).toThrow()
   })
 })
+
+describe('nearby: the review cases (dot 1791543988)', () => {
+  it('a line that bends back near itself is found at a point on it (every sampled minimum is refined)', () => {
+    const d = new Core()
+    // absolute control points (-12,28), (-33,-71), (-43,20), (28,-20) as offsets
+    d.edit(e => { e.layer('L'); e.line('q', { id: 'a', layer: 'L', position: P(-12, 28) }, { id: 'b', layer: 'L', position: P(28, -20) }, { ha: P(-21, -99), hb: P(-71, 40) }) })
+    const hit = d.nearby(P(-24.99744140625, -16.492150390625), 0.1).find(x => x.kind === 'line')
+    expect(hit).toBeDefined()
+    expect(hit!.distance).toBeLessThan(1e-6)
+  })
+
+  it('a line’s t is on its own curve, so splitting there cuts where the click was, arc trim or not', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L')
+      e.line('h', { id: 'a', layer: 'L', position: P(0, 0) }, { id: 'b', layer: 'L', position: P(30, 0) })
+      e.line('v', 'b', { id: 'c', layer: 'L', position: P(30, 30) })
+    })
+    d.edit(e => e.join('b', 'h', 'v', { mode: 'arc', radius: 8 }))
+    const hit = d.nearby(P(11, 0), 0.5).find(x => x.kind === 'line')!
+    expect(hit.kind === 'line' && hit.t).toBeCloseTo(11 / 30, 6)
+    d.edit(e => e.split('h', (hit as { t: number }).t, 'm', 'h1', 'h2'))
+    expect(d.snapshot().points.find(p => p.id === 'm')!.position.x).toBeCloseTo(11, 6)
+  })
+})

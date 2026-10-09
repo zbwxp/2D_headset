@@ -9,7 +9,7 @@ import * as joins from '../joins'
 import * as fills from '../fills'
 import {
   type Cubic, type Vec, arcLength, tAtLength, subCurve, filletArc, derivative, scale,
-  flatten, polygonArea, pointInPolygon, nearest, length, add,
+  flatten, polygonArea, pointInPolygon, nearest, length, add, evaluate,
 } from '../geometry'
 
 type Id = net.Id
@@ -148,12 +148,13 @@ export function pickLoop(n: net.NetworkState, j: joins.JoinsState, f: fills.Fill
 export type Nearby =
   | { kind: 'point'; id: Id; distance: number; visible: boolean }
   | { kind: 'handle'; line: Id; end: net.End; distance: number; visible: boolean }
+  /** `t`: the parameter on the line's own (untrimmed) curve, the one `split` takes (dot 1791543988). */
   | { kind: 'line'; id: Id; distance: number; t: number; visible: boolean }
 
 /**
  * Everything within `radius` of `at`, nearest first (equal distances: points, then handles,
  * then lines): end points, handle tips, and lines
- * as drawn (an arc join's trim included; `t` is on the drawn piece). A read-only query
+ * as drawn (an arc join's trim included). A line's `t` is on its own curve, for `split`. A read-only query
  * of geometry core already owns; which kind a tool picks, the tolerance and the order
  * among candidates are the interaction's (dot 1791543266). A point is shown when one
  * of its lines is.
@@ -173,8 +174,13 @@ export function nearby(n: net.NetworkState, j: joins.JoinsState, at: Vec, radius
       const distance = length({ x: tip.x - at.x, y: tip.y - at.y })
       if (distance <= radius) out.push({ kind: 'handle', line: l.id, end, distance, visible: l.state.visible })
     }
-    const near = nearest(o.drawn.get(l.id)!, at)
-    if (near.distance <= radius) out.push({ kind: 'line', id: l.id, distance: near.distance, t: near.t, visible: l.state.visible })
+    // distance to the line as drawn; the parameter is read back on its own curve, so a tool
+    // can split there without knowing how an arc join trims it
+    const drawn = o.drawn.get(l.id)!, near = nearest(drawn, at)
+    if (near.distance <= radius) {
+      const t = nearest(net.curve(n, l.id) as Cubic, evaluate(drawn, near.t)).t
+      out.push({ kind: 'line', id: l.id, distance: near.distance, t, visible: l.state.visible })
+    }
   }
   return out.sort((x, y) => x.distance - y.distance)
 }

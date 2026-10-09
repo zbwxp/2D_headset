@@ -217,12 +217,10 @@ export function createInteraction(env: Env): Interaction {
   }
 
   function splitAt(at: Vec) {
-    const id = hitLine(at)
-    if (!id) return
-    const s = snap(), l = s.lines.find(x => x.id === id)!
-    const pa = s.points.find(p => p.id === l.a)!.position, pb = s.points.find(p => p.id === l.b)!.position
-    const c = [pa, { x: pa.x + l.ha.x, y: pa.y + l.ha.y }, { x: pb.x + l.hb.x, y: pb.y + l.hb.y }, pb]
-    commit(e => e.split(id, nearestT(c, at), env.newId('p'), env.newId('l'), env.newId('l')))
+    // core measures and gives the parameter on the line's own curve (arc trims included); interaction only picks
+    const h = visible(at).find(x => x.kind === 'line')
+    if (!h || h.kind !== 'line') return
+    commit(e => e.split(h.id, h.t, env.newId('p'), env.newId('l'), env.newId('l')))
   }
 
   function unbindAt(at: Vec) {
@@ -367,21 +365,4 @@ export function createInteraction(env: Env): Interaction {
     undo, redo, drawingChanged, historyChanged, preview,
     subscribe: f => { listeners.add(f); return () => listeners.delete(f) },
   }
-}
-
-/** The parameter on a cubic nearest to `at` (sampling, then refinement); for split. */
-function nearestT(c: readonly Vec[], at: Vec): number {
-  const ev = (t: number) => {
-    const u = 1 - t
-    return {
-      x: u * u * u * c[0]!.x + 3 * u * u * t * c[1]!.x + 3 * u * t * t * c[2]!.x + t * t * t * c[3]!.x,
-      y: u * u * u * c[0]!.y + 3 * u * u * t * c[1]!.y + 3 * u * t * t * c[2]!.y + t * t * t * c[3]!.y,
-    }
-  }
-  const d = (t: number) => { const p = ev(t); return Math.hypot(p.x - at.x, p.y - at.y) }
-  let best = 0.5, bd = Infinity
-  for (let i = 1; i < 64; i++) { const t = i / 64, x = d(t); if (x < bd) { bd = x; best = t } }
-  let lo = Math.max(0.001, best - 1 / 64), hi = Math.min(0.999, best + 1 / 64)
-  for (let k = 0; k < 40; k++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (d(m1) < d(m2)) hi = m2; else lo = m1 }
-  return (lo + hi) / 2
 }
