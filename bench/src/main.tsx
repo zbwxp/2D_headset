@@ -2,16 +2,22 @@
 // No quality bar. Uses core's public entry only; never change core for this file's sake.
 import { createRoot } from 'react-dom/client'
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, type Vec, type Snapshot, type Editor } from '../../src'
+import { Core, save, open, type Vec, type Snapshot, type Editor } from '../../src'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 
 type Id = string
 type Tool = 'V' | 'A' | 'pen' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
 type Unit = Snapshot['selection'][number]
 
-const core = Core.newDocument({ axis: 0 })
+let core = Core.newDocument({ axis: 0 })
 let seq = 0
-const nid = (p: string) => `${p}${++seq}`
+// new ids skip anything already in the document (an opened file may hold ids like these)
+const nid = (p: string) => {
+  const s = core.snapshot(), used = new Set([...s.points.map(x => x.id), ...s.lines.map(x => x.id), ...s.layers.map(x => x.id)])
+  let id: string
+  do id = `${p}${++seq}`; while (used.has(id))
+  return id
+}
 const P = (x: number, y: number): Vec => ({ x, y })
 const add = (a: Vec, b: Vec) => P(a.x + b.x, a.y + b.y)
 const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y)
@@ -290,6 +296,25 @@ function App() {
           {B('Unmirror', () => run(x => x.unmirror(selLines)))}
         </div>
         <div style={{ color: '#666' }}>pairs: {s.mirrorPairs.length}</div>
+        <b>File</b>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+          {B('Save', () => {
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(new Blob([save(core)], { type: 'application/json' }))
+            a.download = 'drawing.headset.json'; a.click(); URL.revokeObjectURL(a.href)
+            log.unshift({ calls: 'save()', result: 'ok' }); bump()
+          })}
+          <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }}>Open
+            <input type="file" accept=".json" style={{ display: 'none' }} onChange={async e => {
+              const f = e.target.files?.[0]; e.target.value = ''
+              if (!f) return
+              // the current drawing is replaced only if the file opens
+              try { core = open(await f.text()); setPending([]); setSource([]); setMsg(`opened ${f.name}`); log.unshift({ calls: `open(${f.name})`, result: 'ok' }) }
+              catch (err) { setMsg('✗ ' + (err as Error).message); log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
+              bump()
+            }} />
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch (err) { setMsg('✗ ' + (err as Error).message) } bump() })}{B('v2 right eye', () => { try { v2Eye() } catch (err) { setMsg('✗ ' + (err as Error).message) } bump() })}</div>
         <b>Layers (top first)</b>
         {B('+ New layer', () => { const id = nid('layer-'); run(x => x.layer(id, id)); setLayer(id) })}
