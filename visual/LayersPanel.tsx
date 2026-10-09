@@ -45,9 +45,12 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
   /**
    * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
    * only this; Shift = the run from the last row clicked to this one, among its siblings; Cmd / Ctrl =
-   * add or remove this one. It never changes which layers are selected.
+   * add or remove this one. Picking in a layer that is not selected adds that layer to the
+   * selected layers (bowen 1791558438: picking in the list is the surest way; an element pick
+   * adds its layer), and never takes one away.
    */
-  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent) => {
+  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent, layer: Id) => {
+    if (!selected.includes(layer)) select([...selected, layer], active)
     const at = rows.findIndex(r => r.id === id), from = rows.findIndex(r => r.id === rowAnchor)
     const units = (rs: typeof rows) => rs.flatMap(r => r.lines.map(l => ({ kind: 'line' as const, id: l })))
     if (e.shiftKey && from >= 0) { run(x => x.select(units(rows.slice(Math.min(from, at), Math.max(from, at) + 1)), 'replace')); return }
@@ -173,7 +176,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
                 <Thumb lines={gr.lines} />
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）"
-                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e)}>{gr.name}</span>
+                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id)}>{gr.name}</span>
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
                 <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
               </div>
@@ -184,7 +187,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                   <Icon d={EYE} on={l.state.visible} title={l.state.visible ? '隐藏线' : '显示线'} onClick={() => run(x => x.lineState(id, { visible: !l.state.visible }))} />
                   <Icon d={LOCK} on={l.state.locked} title={l.state.locked ? '解锁线' : '锁定线'} onClick={() => run(x => x.lineState(id, { locked: !l.state.locked }))} />
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }} title="点击选中这条线（Shift 连选 · Cmd 增减）"
-                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e)}>{l.name}</span>
+                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id)}>{l.name}</span>
                   <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽 · 两端（相接方式或开放端点的笔触）">w{l.stroke.width} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>

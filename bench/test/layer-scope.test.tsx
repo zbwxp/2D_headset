@@ -186,3 +186,16 @@ describe('panel rows pick curves and lines; the layer selection stays (bowen 179
     expect(scope()).toEqual(before)
   })
 })
+
+describe('picking an element in a layer that is not selected adds that layer (bowen 1791558438)', () => {
+  it('a curve row in an unselected layer: the curve is picked and shown, its layer joins the selected layers, the current stays', async () => {
+    const host = await setup()
+    await row(host, 'D')
+    const icon = (title: string) => [...host.querySelectorAll('svg title')].find(t => t.textContent === title)!.parentElement!
+    await act(async () => { icon('展开全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const curveOfB = ([...host.querySelectorAll('[title^="点击选中这条连续曲线"]')] as HTMLElement[])[2]! // D, C, B, A: B is third
+    await act(async () => { curveOfB.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(scope()).toEqual({ current: 'D', selected: ['B', 'D'] })
+    expect((bench().ix as unknown as { selection(): unknown[] }).selection()).toEqual([{ kind: 'line', id: 'lB' }])
+  })
+})
