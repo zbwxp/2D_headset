@@ -96,14 +96,26 @@ export function App() {
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   const svg = useRef<SVGSVGElement>(null)
   const pan = useRef<null | { start: Vec; box: typeof box }>(null)
-  const px = box.w / 900 // about one screen pixel in document units
+  // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
+  // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
+  const [size, setSize] = useState({ w: 900, h: 600 })
+  useEffect(() => {
+    const el = svg.current
+    if (!el) return
+    const measure = () => setSize({ w: el.clientWidth || 900, h: el.clientHeight || 600 })
+    measure()
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    ro?.observe(el)
+    return () => ro?.disconnect()
+  }, [])
+  const px = Math.max(box.w / size.w, box.h / size.h)
 
   const s = core.snapshot(), g = core.geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   const env = useRef({ layer: drawLayer, px })
   env.current = { layer: drawLayer, px }
-  const ix = useRef(createInteraction({ core: () => logged(core), newId: nid, layer: () => env.current.layer || undefined, tolerance: () => 8 * env.current.px })).current
+  const ix = useRef(createInteraction({ core: () => logged(core), newId: nid, layer: () => env.current.layer || undefined, pixel: () => env.current.px })).current
   useEffect(() => ix.subscribe(bump), [ix])
   const pv: Preview = ix.preview()
 

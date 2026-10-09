@@ -11,13 +11,22 @@ export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'un
 export interface Options { joinMode: 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
 export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean }
 
-/** What the app gives: the open drawing, a source of new ids, the layer to draw into, and the pick tolerance in document units. */
+/** What the app gives: the open drawing, a source of new ids, the layer to draw into, and the size of one screen pixel in document units (from the camera). */
 export interface Env {
   core: () => Core
   newId: (prefix: string) => Id
   layer: () => Id | undefined
-  tolerance: () => number
+  pixel: () => number
 }
+
+/**
+ * How near the pointer must be, in screen pixels (interaction defaults, common sense; not
+ * rules: bowen 1791551877, dot 1791551915). Points and handles get a wider reach than lines,
+ * and the reach does not change with zoom or window size.
+ */
+export const REACH = { point: 10, handle: 10, line: 8 } as const
+/** Among what is within reach: points first, then handles, then lines; nearest first within a kind. */
+const ORDER = { point: 0, handle: 1, line: 2 } as const
 
 /** What to show, as plain data (the view draws it). */
 export interface Preview {
@@ -56,7 +65,7 @@ export interface Ctx {
   feedback: Feedback | undefined
   options(): Options
   tool(): Tool
-  /** What is shown within the tolerance, nearest first. */
+  /** What is shown and within reach, points first, then handles, then lines (nearest first within each). */
   shown(at: Vec): ReturnType<Core['nearby']>
   hitPoint(at: Vec): Id | undefined
   hitLine(at: Vec): Id | undefined
@@ -89,7 +98,12 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
     feedback: undefined,
     options: state.options,
     tool: state.tool,
-    shown: at => env.core().nearby(at, env.tolerance()).filter(x => x.visible),
+    shown: at => {
+      const px = env.pixel()
+      return env.core().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
+        .filter(x => x.visible && x.distance <= REACH[x.kind] * px)
+        .sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.distance - b.distance)
+    },
     hitPoint: at => { const h = ctx.shown(at).find(x => x.kind === 'point'); return h && h.kind === 'point' ? h.id : undefined },
     hitLine: at => { const h = ctx.shown(at).find(x => x.kind === 'line'); return h && h.kind === 'line' ? h.id : undefined },
   }

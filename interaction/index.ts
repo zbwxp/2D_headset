@@ -16,6 +16,7 @@ import { mirror } from './flows/mirror'
 import { clipboard } from './flows/clipboard'
 
 export type { Env, Mods, Options, Preview, Tool } from './base'
+export { REACH } from './base'
 export type { Feedback } from './feedback'
 
 export interface Interaction {

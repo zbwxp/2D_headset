@@ -21,7 +21,7 @@ function drawing() {
 }
 function setup(d = drawing()) {
   let current = d, n = 0, layer = 'L'
-  const ix = createInteraction({ core: () => current, newId: p => `${p}${++n}`, layer: () => layer, tolerance: () => 3 })
+  const ix = createInteraction({ core: () => current, newId: p => `${p}${++n}`, layer: () => layer, pixel: () => 0.3 })
   return { ix, core: () => current, open: (c: Core) => { current = c; ix.drawingChanged() }, setLayer: (l: string) => { layer = l } }
 }
 /** What the history looks like from outside: can undo / redo, and the document one undo away. */
@@ -422,5 +422,45 @@ describe('one owner of feedback (dot 1791551067)', () => {
     try { d.edit(e => e.renameLayer('K', 'L')) } catch (err) { ix.outcome(err) }
     ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
     expect(ix.preview().refusal).toBeUndefined()
+  })
+})
+
+describe('reach and order (bowen 1791551877; dot 1791551915)', () => {
+  function straight(pixel: number) {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); e.line('s', { id: 'a', layer: 'L', position: P(0, 0) }, { id: 'b', layer: 'L', position: P(90, 0) }) })
+    // a pen line is straight: its handles lie on it, at (30, 0) and (60, 0)
+    const ix = createInteraction({ core: () => d, newId: p => p, layer: () => 'L', pixel: () => pixel })
+    return { d, ix }
+  }
+
+  it('a handle lying on its straight line is picked with A, at its tip or a little off it', () => {
+    const { d, ix } = straight(1)
+    d.edit(e => e.select([{ kind: 'line', id: 's' }])) // handles show for the selected line
+    ix.setTool('A')
+    ix.pointerDown(P(30, 0)); ix.pointerUp(P(30, 0))
+    expect(d.snapshot().selection).toEqual([{ kind: 'handle', line: 's', end: 'a' }])
+    d.edit(e => e.select([{ kind: 'line', id: 's' }]))
+    ix.pointerDown(P(33, 2)); ix.pointerUp(P(33, 2))
+    expect(d.snapshot().selection).toEqual([{ kind: 'handle', line: 's', end: 'a' }])
+  })
+
+  it('a press inside a point’s reach picks the point, even though the line is nearer', () => {
+    const { d, ix } = straight(1)
+    ix.setTool('A')
+    ix.pointerDown(P(6, 0.5)); ix.pointerUp(P(6, 0.5)) // 6 px from point a, 0.5 px from the line
+    expect(d.snapshot().selection).toEqual([{ kind: 'point', id: 'a' }])
+  })
+
+  it('the reach is in screen pixels: the same screen distance picks the same thing at any zoom', () => {
+    for (const pixel of [0.1, 1, 10]) {
+      const { d, ix } = straight(pixel)
+      ix.setTool('V')
+      ix.pointerDown(P(45, 7 * pixel)); ix.pointerUp(P(45, 7 * pixel)) // 7 screen px from the line: within 8
+      expect(d.snapshot().selection.length).toBe(1)
+      d.edit(e => e.select([]))
+      ix.pointerDown(P(45, 9 * pixel)); ix.pointerUp(P(45, 9 * pixel)) // 9 screen px: out of reach
+      expect(d.snapshot().selection).toEqual([])
+    }
   })
 })
