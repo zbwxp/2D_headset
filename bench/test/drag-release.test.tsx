@@ -208,3 +208,33 @@ describe('one way to end a gesture: stop the tracking and end the drag or pan (d
   })
 })
 
+
+describe('one right click or Esc cancels one thing (dot 1791553129)', () => {
+  type Ix = { cut(): void; preview(): { drag?: unknown; cut: unknown[] } }
+  const ix = () => (window as unknown as { bench: { ix: Ix } }).bench.ix
+  const rightClick = (svg: Element) => svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+  const esc = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  /** Cut the line (it turns grey, pending), then start dragging it. */
+  async function cutThenDrag() {
+    const s = await setup()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: `h${s.k}` }])); ix().cut() })
+    expect(ix().preview().cut.length).toBe(1)
+    await act(async () => {
+      s.svg.dispatchEvent(pe('pointerdown', 50, 200 * s.k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * s.k + 20, 1))
+    })
+    expect(ix().preview().drag).toBeTruthy()
+    return s
+  }
+  for (const [name, cancelOnce] of [['right click', (svg: Element) => rightClick(svg)], ['Esc', () => esc()]] as const) {
+    it(`cut, drag, ${name}: only the drag is cancelled, the pending cut stays; a second ${name} clears the cut`, async () => {
+      const { svg, k } = await cutThenDrag()
+      await act(async () => { cancelOnce(svg) })
+      expect([!!ix().preview().drag, ix().preview().cut.length]).toEqual([false, 1])
+      await act(async () => { window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0)) })
+      expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+      await act(async () => { cancelOnce(svg) })
+      expect(ix().preview().cut.length).toBe(0)
+    })
+  }
+})

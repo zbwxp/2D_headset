@@ -172,18 +172,16 @@ export function App() {
     }
     const release = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
     const cancelWith = (why: string) => { stop(); if (!panFrom) { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } }
-    const cancelSilently = () => { stop(); if (!panFrom) ix.pointerCancel() }
     const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
     const onBlur = () => cancelWith('leaving the window')
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') cancelSilently() } // Esc ends a pan too
     const stop = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release)
-      window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur); window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
       if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
     gesture.current = { id, cancel: cancelWith }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
-    window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur); window.addEventListener('keydown', onKey)
+    window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
   useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
   const onWheel = (e: React.WheelEvent) => {
@@ -195,6 +193,8 @@ export function App() {
       // keys typed into a form control are its own (dot 1791544530)
       const t = e.target as HTMLElement
       if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(t.tagName) || t.isContentEditable) return
+      // one Esc cancels one thing: a gesture in progress if there is one, else interaction's innermost (dot 1791553129)
+      if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (ix.key(e.key, mods(e))) e.preventDefault()
     }
     window.addEventListener('keydown', key)
@@ -326,7 +326,7 @@ export function App() {
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={onDown} onWheel={onWheel}
-          onContextMenu={e => { e.preventDefault(); gesture.current?.cancel('a right click'); ix.cancel() }}>
+          onContextMenu={e => { e.preventDefault(); if (gesture.current) gesture.current.cancel('a right click'); else ix.cancel() }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
