@@ -69,6 +69,8 @@ function v2Eye() {
 type LogRow = { calls: string; result: string }
 // the clipboard is the bench's, outside the document; each paste of the same clip goes one step further (backlog 5)
 let clip: Clip | null = null, pastes = 0
+// cut only greys whole curves (bowen); the next paste moves them with their ids (core moveGroup); Esc cancels
+let cutGroups: Id[] = []
 const STEP = 20
 const log: LogRow[] = []
 const hist = (k: 'undo' | 'redo') => { const ok = k === 'undo' ? core.canUndo : core.canRedo; core[k](); log.unshift({ calls: k + '()', result: ok ? 'ok' : 'ok (nothing to ' + k + ')' }) }
@@ -215,7 +217,21 @@ function App() {
     catch (err) { setMsg('✗ ' + (err as Error).message); log.unshift({ calls: 'copy()', result: '✗ ' + (err as Error).message }) }
     bump()
   }
+  const cutSel = () => {
+    const gs = [...new Set(selLines.map(groupOf))]
+    const partial = gs.filter(gid => !s.groups.find(x => x.id === gid)!.lines.every(l => selLines.includes(l)))
+    if (!gs.length || partial.length) return setMsg('cut takes whole curves: select them with V')
+    cutGroups = gs; clip = null
+    log.unshift({ calls: `cut ${gs.join(', ')}`, result: 'marked (grey) — paste moves them, Esc cancels' }); setMsg('cut: paste to move, Esc to cancel'); bump()
+  }
   const pasteClip = () => {
+    if (cutGroups.length) {
+      const gs = cutGroups, lines = s.groups.filter(x => gs.includes(x.id)).flatMap(x => x.lines)
+      if (run(x => { for (const gid of gs) x.moveGroup(gid, drawLayer); x.select(lines.map(id => ({ kind: 'line' as const, id }))) })) {
+        cutGroups = []; try { clip = core.copy(lines); pastes = 0 } catch { clip = null }
+      } else cutGroups = []
+      return
+    }
     if (!clip) return setMsg('nothing copied')
     const k = ++pastes, c = clip
     if (!run(x => x.paste(c, drawLayer, P(STEP * k, STEP * k), nid('c')))) pastes--
@@ -228,10 +244,11 @@ function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return
-      if (e.key === 'Escape') { setPending([]); setMsg(''); cancelDrag() }
+      if (e.key === 'Escape') { setPending([]); setMsg(''); cancelDrag(); if (cutGroups.length) { cutGroups = []; log.unshift({ calls: 'cut cancelled', result: 'ok' }); bump() } }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { hist(e.shiftKey ? 'redo' : 'undo'); bump() }
       if ((e.metaKey || e.ctrlKey) && e.key === 'c') { e.preventDefault(); copySel() }
       if ((e.metaKey || e.ctrlKey) && e.key === 'v') { e.preventDefault(); pasteClip() }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'x') { e.preventDefault(); cutSel() }
       if (e.key === 'Delete' || e.key === 'Backspace') run(x => x.deleteSelection())
       const t: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
       if (!e.metaKey && !e.ctrlKey && t[e.key]) { setTool(t[e.key]!); setPending([]) }
@@ -280,7 +297,7 @@ function App() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Undo', () => { hist('undo'); bump() })}{B('Redo', () => { hist('redo'); bump() })}
           {B('Delete', () => run(x => x.deleteSelection()))}
-          {B('Copy', copySel, '⌘C')}{B('Paste', pasteClip, '⌘V: into the current layer, offset a step further each time')}
+          {B('Cut', cutSel, '⌘X: grey until pasted; Esc cancels')}{B('Copy', copySel, '⌘C')}{B('Paste', pasteClip, '⌘V: into the current layer, offset a step further each time')}
           {B('Flip', () => run(x => x.flip()))}
           {B('Rot +15°', () => run(x => x.rotate(centre, Math.PI / 12)))}
           {B('×1.1', () => run(x => x.scale(centre, 1.1, 1.1)))}{B('×0.9', () => run(x => x.scale(centre, 0.9, 0.9)))}
@@ -369,11 +386,12 @@ function App() {
           onContextMenu={e => { e.preventDefault(); setPending([]) }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
-            fill={f.color} stroke={isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
+            fill={f.color} opacity={cutGroups.length && s.loops.find(l => l.id === f.id)?.route.every(u => cutGroups.includes(groupOf(u.line))) ? 0.35 : 1}
+            stroke={isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
           {g.lines.map(G => {
             const l = line(G.id), on = isSel({ kind: 'line', id: l.id }) || selLines.includes(l.id)
             return <g key={G.id}>
-              <path d={path(G.curve)} fill="none" stroke={on ? '#06f' : l.state.locked ? '#933' : '#111'} strokeWidth={l.stroke.width}
+              <path d={path(G.curve)} fill="none" stroke={cutGroups.includes(groupOf(l.id)) ? '#bbb' : on ? '#06f' : l.state.locked ? '#933' : '#111'} strokeWidth={l.stroke.width}
                 strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
               {/* a hidden line cannot be picked directly (graph "Hidden element"); V reaches it through its visible members (dot 1791480629) */}
               {l.state.visible && <path d={path(G.curve)} fill="none" stroke="transparent" strokeWidth={10 * px} onPointerDown={e => onLine(e, G.id)} />}
