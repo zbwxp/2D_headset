@@ -159,9 +159,11 @@ export class Editor {
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
   lineState(line: Id, state: { visible?: boolean; locked?: boolean }) {
     for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) {
+      const wasLocked = net.line(this.s.network, id).state.locked
       net.changeLineState(this.s.network, this.tx.changes, id, state)
-      // an explicit lock change ends a protection phase an apply started (dot, review of 05938ea)
-      if (state.locked !== undefined) this.tx.appliedFrom.delete(id)
+      // a real unlock ends a protection phase an apply or a paste started (dot, review of
+      // 05938ea); locking an already locked line keeps it (dot 1791514309)
+      if (state.locked === false && wasLocked) this.tx.appliedFrom.delete(id)
     }
   }
   fillState(loop: Id, state: { visible?: boolean; locked?: boolean }) { for (const id of this.loops(loop)) fills.setState(this.s.fills, id, state) }

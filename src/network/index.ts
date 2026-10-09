@@ -141,10 +141,14 @@ export function applyLineState(n: NetworkState, ch: Changes, line: Id, state: El
   setLineState(n, line, state)
   if (state.locked && !wasLocked && !ch.appliedLocks.includes(line)) ch.appliedLocks.push(line)
 }
-/** An explicit state change: a lock set this way is ordinary protection again. */
+/**
+ * An explicit state change. A real unlock ends the protection an apply or a paste started;
+ * locking a line that is already locked changes nothing (dot 1791514309).
+ */
 export function changeLineState(n: NetworkState, ch: Changes, line: Id, state: Partial<ElementState>) {
+  const wasLocked = rawLine(n, line).state.locked
   setLineState(n, line, state)
-  if (state.locked !== undefined) ch.appliedLocks = ch.appliedLocks.filter(x => x !== line)
+  if (state.locked === false && wasLocked) ch.appliedLocks = ch.appliedLocks.filter(x => x !== line)
 }
 
 /**

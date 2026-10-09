@@ -83,9 +83,12 @@ export function changed(
   ])
   const g = gone(after, ch), none: Gone = { line: () => false, partner: () => false }
   const out = [...ids].filter(id => { const x = owned(before, id, g), y = owned(after, id, none); return !x || !y || x !== y })
-  for (const id of applied) {
-    const from = appliedFrom.get(id)
-    if (!from || !lockedLines(after).includes(id)) continue
+  // Protected from the moment the lock arrived (an apply or a paste): it may not disappear
+  // afterwards, deleted or split, and its own content is compared with the state then.
+  // Only a real unlock in this edit ends that protection (dot 1791514309).
+  for (const [id, from] of appliedFrom) {
+    if (!net.hasLine(after.network, id)) { out.push(id); continue }
+    if (!lockedLines(after).includes(id)) continue
     const x = owned(from, id, g), y = owned(after, id, none)
     if (!x || !y || x !== y) out.push(id)
   }

@@ -71,8 +71,12 @@ Sorted as bowen asked (1791513310). Posted at Slack 1791513392.
    - if that bind would change a locked original, the paste is refused and nothing changes.
 5. **Locks carried:** a pasted locked line is locked afterwards, and a later edit that changes it is refused.
    - **From the moment of the paste** (dot 1791513520): in the same edit, a change after the paste is refused too. It uses the mechanism a lock copied by an apply already uses: `appliedLocks` with a baseline right after the paste.
+   - **What that covers** (dot 1791514309), for paste and apply alike:
+     - later deleting or splitting the line is refused, because it may not disappear;
+     - locking it again changes nothing, so the protection holds;
+     - only a real unlock ends the protection.
 6. **Other documents:** a clip from one document pastes into another; the clip is plain JSON.
-   - **A clip changed by the caller** (dot 1791513520) is refused whole, with nothing changed. Refused cases: a reference outside the clip, wrong types, a negative width, a bad join mode, an arc without a radius, a duplicate id. `clipboard.check` validates first, and the writers check the rest.
+   - **A clip changed by the caller** (dot 1791513520) is refused whole, with nothing changed. Refused cases: a reference outside the clip, wrong types, a negative width, a bad join mode, an arc without a radius, a duplicate id. `clipboard.check` validates first, and the writers check the rest. A fill whose lines are not a closed curve also refuses the paste: it is not dropped quietly (dot 1791514309).
 7. **One undo step:** one paste is one step; undo removes everything it added, and redo brings it back.
 8. **`copyLayer` unchanged:** all existing layer-copy tests still pass on the new shared path.
 9. **Round trip:** a document with pasted content saves and opens equal.

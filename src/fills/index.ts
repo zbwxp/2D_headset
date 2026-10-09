@@ -108,12 +108,15 @@ export function rangeData(f: FillsState, lines: ReadonlySet<Id>): FillData[] {
 }
 
 /** Filled loops from plain data onto copied lines, on top of the fill order. */
-export function insert(f: FillsState, data: readonly FillData[], map: net.CopyMap, idOf: (old: Id) => Id) {
+export function insert(f: FillsState, n: net.NetworkState, data: readonly FillData[], map: net.CopyMap, idOf: (old: Id) => Id) {
   for (const l of data) {
     if (!l.lines.every(x => map.lines.has(x))) continue
     const id = idOf(l.id)
     if (S(f).loops.some(x => x.id === id)) throw new Error(`Fill ${id} already exists`)
     if (typeof l.color !== 'string') throw new Error(`Fill ${l.id} has no colour`)
+    // the boundary must be a closed curve of the inserted lines: a bad clip is refused, not cleaned up later (dot 1791514309)
+    const mapped = l.lines.map(x => map.lines.get(x)!)
+    if (!net.closedLoops(n).some(found => found.key === net.loopKey(mapped))) throw new Error(`Fill ${l.id}: its lines are not a closed curve`)
     S(f).loops.push({ id, lines: l.lines.map(x => map.lines.get(x)!), color: l.color, visible: !!l.visible, locked: !!l.locked })
     S(f).order.push(id)
   }

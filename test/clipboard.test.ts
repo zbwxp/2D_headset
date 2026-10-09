@@ -132,6 +132,43 @@ describe('paste', () => {
     expect(line(d, 'p1/t').state.locked).toBe(true)
   })
 
+  describe('5c. protected from the paste on, whatever comes after in the same edit (dot 1791514309)', () => {
+    const setup = () => { const d = scene(); d.edit(e => e.lineState('t', { locked: true })); return { d, clip: d.copy(['t']) } }
+    const refused: [string, (e: any) => void][] = [
+      ['deleting it', e => e.deleteLine('p1/t')],
+      ['splitting it', e => e.split('p1/t', 0.5, 'm', 'q1', 'q2')],
+      ['locking it again, then moving it', e => { e.lineState('p1/t', { locked: true }); e.move([{ id: 'p1/e', target: P(0, 0) }]) }],
+    ]
+    for (const [label, after] of refused) it(`refused: ${label}`, () => {
+      const { d, clip } = setup(), before = json([s(d), d.geometry()])
+      expect(() => d.edit(e => { e.paste(clip, 'K', P(0, 300), 'p1'); after(e) })).toThrow(/Locked lines would change/)
+      expect(json([s(d), d.geometry()])).toBe(before)
+    })
+    it('allowed: a real unlock, then moving it', () => {
+      const { d, clip } = setup()
+      d.edit(e => { e.paste(clip, 'K', P(0, 300), 'p1'); e.lineState('p1/t', { locked: false }); e.move([{ id: 'p1/e', target: P(0, 0) }]) })
+      expect(pos(d, 'p1/e')).toEqual(P(0, 0))
+    })
+    it('the same holds for a lock a mirror apply copies: deleting the target later in the edit is refused', () => {
+      const d = new Core({ axis: 0 })
+      d.edit(e => {
+        e.layer('L')
+        e.line('src', { id: 's1', layer: 'L', position: P(-30, 0) }, { id: 's2', layer: 'L', position: P(-10, 5) })
+        e.line('tgt', { id: 't1', layer: 'L', position: P(12, 1) }, { id: 't2', layer: 'L', position: P(28, 2) })
+      })
+      d.edit(e => e.lineState('src', { locked: true }))
+      expect(() => d.edit(e => { e.mirrorApply(['src'], ['tgt']); e.deleteLine('tgt') })).toThrow(/Locked lines would change \(tgt\)/)
+    })
+  })
+
+  it('6d. a clip fill whose lines are not a closed curve refuses the paste, instead of being dropped (dot 1791514309)', () => {
+    const d = scene(), c = JSON.parse(JSON.stringify(d.copy([...eyeLines, 't'])))
+    c.fills[0].lines = ['t']
+    const before = json([s(d), d.geometry()])
+    expect(() => d.edit(e => e.paste(c, 'K', P(0, 300), 'p1'))).toThrow(/not a closed curve/)
+    expect(json([s(d), d.geometry()])).toBe(before)
+  })
+
   describe('6b. a clip changed by the caller is refused whole, through the checks (dot 1791513520)', () => {
     const d = scene(), good = JSON.stringify(d.copy([...eyeLines, 't']))
     const bad = (f: (c: any) => void) => { const c = JSON.parse(good); f(c); return c }

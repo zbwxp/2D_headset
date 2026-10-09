@@ -99,6 +99,6 @@ export function insert(d: Parts, clip: Clip, layer: Id, offset: { x: number; y: 
 }
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id) {
   joins.insert(d.joins, d.network, clip.joins, map)
-  fills.insert(d.fills, clip.fills, map, idOf)
+  fills.insert(d.fills, d.network, clip.fills, map, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
 }
