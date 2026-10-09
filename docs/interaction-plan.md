@@ -24,6 +24,33 @@ No code until dot has reviewed this list.
 4. **`interaction/` package.** It imports only core's public entry; core never imports it.
 5. **Bench:** its tool code is replaced by `interaction`. Panels, files, drawing and the camera stay in the bench.
 
+## Inside `interaction/` (bowen 1791543548; Claude 1791544248; dot 1791543638)
+
+One package, split by **shared mechanism + whole user flows**, not one-to-one with core. Core is split by data and rules; interaction is split by how a person gets one thing done. A mirror apply, for example, is one flow (pick the source, pick the target, confirm) that uses both selection and apply in core.
+
+**Shared, written once** (the three graph rows live here):
+- `base`:
+  - the unfinished-operation record: the Core it belongs to, the objects given so far;
+  - commit through core, so atomicity stays core's;
+  - cancel / end / failure;
+  - the lifecycle calls (tool, drawing, history, Esc);
+  - picking from `core.nearby` with tolerance and order;
+  - key dispatch.
+- `feedback`: turns a core `Refusal` into a description (code, message, objects; later a lock or mirror mark). Drawing it stays the view's.
+
+**Flows**, each holding only its own temporary state and giving its own preview data:
+- `select-transform`: V / A pick, drag, ghost;
+- `pen`;
+- `steps`: two-click and step-by-step operations (bind, merge position, link, join), plus one-click split / unbind / fill;
+- `mirror`: source → target → apply / link. Later two-step applies (double-eyelid offset, blink recording) join here;
+- `clipboard`: copy, cut (grey), paste.
+
+**Not here:**
+- save / open: encoding is `archive`, the file dialog is `app`;
+- one-shot state changes such as lock or hide: `app` panels call core directly.
+
+Directories with clear interfaces, no separate `package.json` each, until some part really needs to be reused alone.
+
 ## Interaction's interface (a sketch, to be confirmed by the tests)
 
 ```ts
