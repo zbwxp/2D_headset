@@ -44,10 +44,15 @@ describe('state owners (graph row 1)', () => {
     expect(ix.preview().drag?.units).toEqual([{ kind: 'line', id: 'h' }, { kind: 'line', id: 'v' }])
   })
 
-  it('2. interaction imports only the core package root, and core never imports interaction', () => {
-    const own = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8')
-    const specs = [...own.matchAll(/from '([^']+)'/g)].map(m => m[1])
-    expect(specs).toEqual(['../src'])
+  it('2. interaction imports only the core package root (and its own files), and core never imports interaction', () => {
+    const dir = join(__dirname, '..')
+    const own = readdirSync(dir, { recursive: true }).map(String).filter(f => f.endsWith('.ts') && !f.startsWith('test'))
+    expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/steps.ts', 'index.ts'])
+    for (const f of own) {
+      const specs = [...readFileSync(join(dir, f), 'utf8').matchAll(/from '([^']+)'/g)].map(m => m[1]!)
+      const root = f.includes('/') ? '../../src' : '../src'
+      expect(specs.filter(x => x !== root && !x.startsWith('./') && !(f.includes('/') && x.startsWith('../') && !x.startsWith('../../')))).toEqual([])
+    }
     const src = join(__dirname, '..', '..', 'src')
     const all = readdirSync(src, { recursive: true }).filter(f => String(f).endsWith('.ts')).map(f => readFileSync(join(src, String(f)), 'utf8'))
     expect(all.some(t => /interaction/.test(t.match(/from '[^']+'/g)?.join(' ') ?? ''))).toBe(false)
