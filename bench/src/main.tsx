@@ -7,7 +7,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { Core, save, open, type Vec, type Snapshot, type Editor } from '../../src'
 import { createInteraction, type Tool, type Preview } from '../../interaction'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
-import { LayersPanel } from './ui/LayersPanel'
+import { LayersPanel } from '../../visual'
 
 type Id = string
 type Unit = Snapshot['selection'][number]

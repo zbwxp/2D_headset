@@ -1,10 +1,10 @@
 // Layers panel in the look of Adobe's (bowen 1791550416, 1791550512): on the right, dark,
 // one row per layer with eye, lock, thumbnail, name and a tag bar; layers expand to their
 // continuous curves; rows drag to reorder; buttons along the bottom. Visual UI only: every
-// change is a one-shot core operation through `run` (doc 22 §3.5). No visual principles yet,
-// so this lives in the bench's ui folder until they exist.
+// change is a one-shot core operation through `run` (doc 22 §3.5). Part of the visual package
+// (docs/visual-plan.md); no visual principles yet.
 import { useState } from 'react'
-import type { Snapshot, Geometry, Editor, Vec } from '../../../src'
+import type { Snapshot, Geometry, Editor, Vec } from '../src'
 
 type Id = string
 const C = { bg: '#323232', row: '#3c3c3c', active: '#4b5f7c', text: '#ddd', dim: '#8a8a8a', line: '#262626', thumb: '#fff', icon: '#c8c8c8' }
