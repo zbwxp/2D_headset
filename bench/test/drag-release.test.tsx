@@ -71,3 +71,53 @@ describe('a drag’s release', () => {
     expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
   })
 })
+
+describe('a drag’s release: what must not commit (dot 1791552536)', () => {
+  it('another pointer’s release or move does nothing to this drag', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1, 1))
+      window.dispatchEvent(pe('pointerup', 90, 200 * k + 90, 0, 7))
+      window.dispatchEvent(pe('pointermove', 90, 200 * k + 90, 0, 7))
+    })
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+    await act(async () => { window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0, 1)) })
+    expect(at(`a${k}`)).toEqual({ x: 20, y: 200 * k + 30 })
+  })
+
+  it('after Esc, a later release or a move with no button held commits nothing', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      window.dispatchEvent(pe('pointermove', 65, 200 * k + 25, 0))
+      window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0))
+    })
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+  })
+
+  it('after leaving the window, a later release commits nothing', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+      window.dispatchEvent(new Event('blur'))
+      window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0))
+    })
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+  })
+
+  it('a new press ends the old gesture’s tracking: two drags in a row each commit once', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k, 1))
+      svg.dispatchEvent(pe('pointerdown', 60, 200 * k, 1)) // a second press before any release was seen
+      window.dispatchEvent(pe('pointerup', 70, 200 * k, 0))
+    })
+    // the first gesture's tracking was stopped by the second press, so one release makes one move
+    expect(at(`a${k}`)).toEqual({ x: 10, y: 200 * k })
+  })
+})

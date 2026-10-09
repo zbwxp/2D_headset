@@ -149,9 +149,11 @@ export function App() {
   // move that finds no button held (the up was missed); only pointercancel, Esc or leaving the
   // window cancels.
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
+  const gesture = useRef<null | (() => void)>(null) // stops the window tracking of the gesture in progress
   const onDown = (e: React.PointerEvent) => {
     // a right click goes straight to cancel (contextmenu), never into a tool first (dot 1791544530)
     if (e.button === 2) return
+    gesture.current?.() // an earlier gesture's listeners never outlive it (one gesture at a time)
     const id = e.pointerId
     const panFrom = e.button === 1 || !ix.pointerDown(toDoc(e), mods(e)) ? { start: P(e.clientX, e.clientY), box } : null
     const move = (ev: PointerEvent) => {
@@ -162,11 +164,14 @@ export function App() {
     }
     const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
     const cancel = (why: string) => () => { stop(); if (!panFrom && ix.preview().drag) note(`drag cancelled by ${why}`); if (!panFrom) ix.pointerCancel() }
-    const onCancel = cancel('pointercancel'), onBlur = cancel('leaving the window')
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancel('pointercancel')() }
+    const onBlur = cancel('leaving the window')
     const stop = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
+      if (gesture.current === stop) gesture.current = null
     }
+    gesture.current = stop
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
