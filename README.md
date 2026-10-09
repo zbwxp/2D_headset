@@ -35,6 +35,15 @@ Dependency direction (lower never imports higher):
 geometry ← network ← groups / joins / links / fills ← derived / locks / editing / apply / names ← clipboard ← document ← archive
 ```
 
+## Interaction package (`interaction/`)
+
+Not part of `src/`. It is the tools and every unfinished operation (graph "Interaction"; doc 22; `docs/interaction-plan.md`):
+- It imports only the package root, and `src/` never imports it.
+- It owns only temporary state: tool, drag, pending cut, picks, pen chain, mirror source, clip.
+- Every change goes through core's public operations as one edit.
+- `preview()` describes what to show, as plain data.
+- The app tells it about tool, drawing and history changes.
+
 ## Encapsulation (dot 1791427188)
 
 - **Opaque state:** every module's state is opaque to other modules (a branded type). Other modules read it only through query functions.
