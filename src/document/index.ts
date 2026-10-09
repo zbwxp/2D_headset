@@ -302,17 +302,32 @@ export class Editor {
   /** V: select the whole continuous curve of a line. */
   selectGroup(line: Id, mode: editing.Mode = 'replace') { this.select(editing.groupUnits(this.s.groups, this.s.network, line), mode) }
   /** One geometric transform of what the selection expands to. */
-  transform(m: editing.Affine) {
-    const { state: s, changes } = this.tx
-    const plan = editing.transformPlan(s.selection, this.view().network, s.fills, m)
+  /**
+   * A transform of the selection, or of `units` when given (docs/interaction-plan.md item 2;
+   * dot 1791543296): the units are expanded exactly as a selection would be, on a scratch
+   * selection, so the real selection is neither read nor changed. A drag commits this way
+   * on the targets it started with.
+   */
+  transform(m: editing.Affine, units?: readonly editing.Unit[]) {
+    const { state: s, changes } = this.tx, read = this.view().network
+    const plan = editing.transformPlan(this.targets(units, read), read, s.fills, m)
     net.move(s.network, changes, plan.moves)
     for (const h of plan.handles) net.aimHandle(s.network, changes, h.line, h.end, h.tip)
   }
-  translate(dx: number, dy: number) { this.transform(editing.translation(dx, dy)) }
-  rotate(centre: Vec, angle: number) { this.transform(editing.rotation(centre, angle)) }
-  scale(centre: Vec, sx: number, sy: number) { this.transform(editing.scaling(centre, sx, sy)) }
-  /** Flip in place about the selection's own centre (an edit; no copy, bowen 1791471111). */
-  flip() { this.transform(editing.scaling(editing.centre(this.s.selection, this.view().network, this.s.fills), -1, 1)) }
+  translate(dx: number, dy: number, units?: readonly editing.Unit[]) { this.transform(editing.translation(dx, dy), units) }
+  rotate(centre: Vec, angle: number, units?: readonly editing.Unit[]) { this.transform(editing.rotation(centre, angle), units) }
+  scale(centre: Vec, sx: number, sy: number, units?: readonly editing.Unit[]) { this.transform(editing.scaling(centre, sx, sy), units) }
+  /** Flip in place about its own centre (an edit; no copy, bowen 1791471111): of the selection, or of `units`. */
+  flip(units?: readonly editing.Unit[]) {
+    const read = this.view().network
+    this.transform(editing.scaling(editing.centre(this.targets(units, read), read, this.s.fills), -1, 1), units)
+  }
+  private targets(units: readonly editing.Unit[] | undefined, read: net.NetworkState): editing.SelectionState {
+    if (!units) return this.s.selection
+    const scratch = editing.create()
+    editing.select(scratch, read, this.s.fills, structuredClone([...units]), 'replace')
+    return scratch
+  }
   /** Delete the selected lines; without a selected line it is refused. */
   deleteSelection() {
     for (const id of editing.deletion(this.s.selection)) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
@@ -381,7 +396,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
