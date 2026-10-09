@@ -31,6 +31,7 @@ bowen's requirements from trying the bench, recorded as he gives them: in no ord
 | 25 | 1791558733 | 先紧急加个tool 就是按住鼠标拖动 就会出现矩形选框 然后从左上到右下是全部覆盖才选择 又上到左下是只要在内部就选中 这个focus是当前active图层 | **Changed** at core/v1 `1878857` (first in V / A), then `c333a8d` (its own tool S, see #27). Dragged right = lines wholly inside; dragged left = lines touched. Focus = the current layer. Shift adds, Alt removes, Esc drops. Core gets a read-only `linesInRect`. |
 | 26 | 1791558761 | 这个是最常用且明确的tool对吧 | Answered in Slack: yes. A box that selects by dragging is standard. The direction rule (right = wholly inside, left = touching) is CAD's window / crossing selection (from memory, not checked against docs). |
 | 27 | 1791558844 | 这个快捷键绑定成s select split先踢出去 | **Changed** at core/v1 `c333a8d`: S is the box tool and has the s key. Split keeps its button and has no key for now. With V / A, a press on nothing only clears again. |
+| 28 | 1791559014 | 不对这个根本不需要快捷键吧？ 目前有任何按住拖动鼠标的占用吗？除了z？ 那么在z之外 在空白处开始按住拖动就是矩形框选吧？ | Checked: a left drag from blank space was free in V / A (a press there only cleared) and in the step tools (a press on nothing did nothing). The pen uses every press (each makes a point), and Z zooms. **Changed** at core/v1 `1b2e249`: a drag from nothing is the box in every tool but the pen and Z. The S tool is gone, and s is split's key again. |
 
 ## Found while checking (not bowen's requirements; facts only)
 
