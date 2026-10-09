@@ -127,3 +127,33 @@ describe('the scope the selected layers give', () => {
     expect(scope()).toEqual({ current: 'Y', selected: ['Y'] })
   })
 })
+
+describe('the panel header and line rows (bowen 1791557559, 1791557998)', () => {
+  it('fills and fold act on every layer; a continuous curve opens to its lines, each showing width and both ends', async () => {
+    const host = await setup()
+    const icon = (title: string) => [...host.querySelectorAll('svg title')].find(t => t.textContent === title)!.parentElement!
+    const click = async (el: Element) => { await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })) }) }
+    // fills of two layers, then one click hides them all
+    await act(async () => {
+      bench().core.edit(e => {
+        for (const L of ['A', 'C']) { e.line(`t${L}`, `q${L}`, { id: `r${L}`, layer: L, position: { x: 50, y: 300 } }); e.line(`u${L}`, `r${L}`, `p${L}`) }
+      })
+      const loops = bench().core.snapshot().loops
+      bench().core.edit(e => loops.forEach(l => e.fill(l.id, 'red')))
+      bench().refresh()
+    })
+    expect(bench().core.snapshot().loops.filter(l => l.filled && l.visible)).toHaveLength(2)
+    await click(icon('隐藏全部图层的填充'))
+    expect(bench().core.snapshot().loops.filter(l => l.filled && l.visible)).toHaveLength(0)
+    // fold all: every layer opens, then closes
+    await click(icon('展开全部图层'))
+    expect(host.querySelectorAll('[title="点击选中这条连续曲线"]').length).toBe(4)
+    // a continuous curve opens to one row per line, with what is attached to it
+    await click(icon('展开到每条线'))
+    const rows = [...host.querySelectorAll('[data-line]')]
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows[0]!.textContent).toMatch(/w\d.* a:.* b:/)
+    await click(icon('收起全部图层'))
+    expect(host.querySelectorAll('[title="点击选中这条连续曲线"]').length).toBe(0)
+  })
+})
