@@ -34,7 +34,8 @@ bowen's requirements from trying the bench, recorded as he gives them: in no ord
 
 Source: 7205381 `src/ui/drawing/LayerPanel.tsx`. These are facts about v1, not decisions. Items marked *(no counterpart)* have no settled row in the graph today, so they are left out unless bowen asks.
 
-**Header row, next to the title "图层"** (v1 `sectionTools`). Every button acts on the selected layers when more than one is selected, and on all layers otherwise.
+**Header row, next to the title "图层"** (v1 `sectionTools`). In v1 every button acts on the selected layers as soon as **any** layer is selected (`scoped = batch.selected.length > 0`), and on all layers only when none is (dot 1791557710).
+- **This differs from bowen's #21:** he wants fill and fold to act on **all** layers. Today one layer is always selected, so copying v1 here would make the "all" buttons always act on the selection only. **bowen's #21 wins**; v1's scoping is recorded as a fact only.
 - **Eye:** show / hide all layers. A partly shown set reads as "mixed". It sets the members in one batch, and each can still be changed alone afterwards.
 - **Fill toggle:** icon PaintBucket plus the word "填充". Shows / hides the fills of all layers. It is a temporary line-art view: each fill keeps its own display setting.
 - **Fold all:** icons ChevronsDownUp / ChevronsUpDown. Folds or unfolds all layers.
