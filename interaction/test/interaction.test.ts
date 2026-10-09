@@ -19,10 +19,11 @@ function drawing() {
   })
   return d
 }
+/** Current layer L; every layer selected unless `setLayers` says otherwise (layer scope: docs/layer-scope-plan.md). */
 function setup(d = drawing()) {
-  let current = d, n = 0, layer = 'L'
-  const ix = createInteraction({ core: () => current, newId: p => `${p}${++n}`, layer: () => layer, pixel: () => 0.3 })
-  return { ix, core: () => current, open: (c: Core) => { current = c; ix.drawingChanged() }, setLayer: (l: string) => { layer = l } }
+  let current = d, n = 0, layer = 'L', selected: string[] | null = null
+  const ix = createInteraction({ core: () => current, newId: p => `${p}${++n}`, layer: () => layer, layers: () => selected ?? current.snapshot().layers.map(l => l.id), pixel: () => 0.3 })
+  return { ix, core: () => current, open: (c: Core) => { current = c; ix.drawingChanged() }, setLayer: (l: string) => { layer = l }, setLayers: (ls: string[]) => { selected = ls } }
 }
 /** What the history looks like from outside: can undo / redo, and the document one undo away. */
 function history(d: Core) {
@@ -465,7 +466,7 @@ describe('reach and order (bowen 1791551877; dot 1791551915)', () => {
   })
 })
 
-describe('A shows every handle of the current layer, and what is shown is what can be picked (bowen 1791553510, 1791553331)', () => {
+describe('A shows every handle of the selected layers, and what is shown is what can be picked (bowen 1791553510, 1791553331, 1791555800)', () => {
   const tip = (d: Core, line: string, end: 'a' | 'b') => {
     const l = d.snapshot().lines.find(x => x.id === line)!, p = pos(d, l[end]), h = end === 'a' ? l.ha : l.hb
     return P(p.x + h.x, p.y + h.y)
@@ -473,12 +474,15 @@ describe('A shows every handle of the current layer, and what is shown is what c
   const keys = (ix: Interaction) => ix.preview().handles.map(h => `${h.line}.${h.end}`).sort()
   const ALL = [['h', 'a'], ['h', 'b'], ['v', 'a'], ['v', 'b'], ['m', 'a'], ['m', 'b']] as const
 
-  it('with nothing selected: both handles of every visible line in the current layer, none of another layer', () => {
-    const { ix, setLayer } = setup()
+  it('with nothing selected: both handles of every visible line in the selected layers, none of another layer', () => {
+    const { ix, setLayers } = setup()
     ix.setTool('A')
+    setLayers(['L'])
     expect(keys(ix)).toEqual(['h.a', 'h.b', 'v.a', 'v.b'])
-    setLayer('K')
+    setLayers(['K'])
     expect(keys(ix)).toEqual(['m.a', 'm.b'])
+    setLayers(['L', 'K'])
+    expect(keys(ix)).toEqual(['h.a', 'h.b', 'm.a', 'm.b', 'v.a', 'v.b'])
   })
 
   it('V, or no current layer: no handles', () => {
@@ -492,7 +496,8 @@ describe('A shows every handle of the current layer, and what is shown is what c
   })
 
   it('a hidden line’s handles are not shown', () => {
-    const { ix, core } = setup()
+    const { ix, core, setLayers } = setup()
+    setLayers(['L'])
     core().edit(e => e.lineState('v', { visible: false }))
     ix.setTool('A')
     expect(keys(ix)).toEqual(['h.a', 'h.b'])
@@ -501,7 +506,8 @@ describe('A shows every handle of the current layer, and what is shown is what c
   for (const prior of ['nothing', 'line h', 'point c'] as const) {
     it(`with ${prior} selected: a press on a handle tip picks that handle exactly when it is shown`, () => {
       for (const [line, end] of ALL) {
-        const { ix, core } = setup()
+        const { ix, core, setLayers } = setup()
+        setLayers(['L'])
         const d = core()
         d.edit(e => e.select(prior === 'line h' ? [{ kind: 'line', id: 'h' }] : prior === 'point c' ? [{ kind: 'point', id: 'c' }] : []))
         ix.setTool('A')
@@ -529,5 +535,153 @@ describe('A shows every handle of the current layer, and what is shown is what c
     const at = tip(d, 's2', 'a')
     ix.pointerDown(at); ix.pointerUp(at)
     expect(sel(d)).toEqual(['h:s2.a'])
+  })
+})
+
+describe('layer scope: each tool reaches its layers, and shows exactly what it can hit (bowen 1791555800; docs/layer-scope-plan.md)', () => {
+  /** Every point, handle tip and line midpoint of the drawing, with what a press there should pick. */
+  function targets(d: Core) {
+    const s = d.snapshot(), pos = (id: string) => s.points.find(p => p.id === id)!.position
+    const out: { key: string; at: Vec }[] = []
+    for (const p of s.points) out.push({ key: `point:${p.id}`, at: p.position })
+    for (const l of s.lines) {
+      for (const end of ['a', 'b'] as const) { const p = pos(l[end]), h = end === 'a' ? l.ha : l.hb; out.push({ key: `h:${l.id}.${end}`, at: P(p.x + h.x, p.y + h.y) }) }
+      const a = pos(l.a), b = pos(l.b)
+      out.push({ key: `line:${l.id}`, at: P((a.x + b.x) / 2, (a.y + b.y) / 2) })
+    }
+    return out
+  }
+  const layerOfKey = (d: Core, key: string) => {
+    const s = d.snapshot(), pl = (id: string) => s.points.find(p => p.id === id)!.layer
+    const [kind, rest] = key.split(':') as [string, string]
+    if (kind === 'point') return pl(rest)
+    const line = kind === 'h' ? rest.split('.')[0]! : rest
+    return pl(s.lines.find(l => l.id === line)!.a)
+  }
+
+  for (const selected of [['L'], ['K'], ['L', 'K']]) {
+    it(`V and A with ${selected.join('+')} selected: a press picks only in those layers; A shows those layers' points and handles`, () => {
+      for (const tool of ['V', 'A'] as const) {
+        for (const t of targets(drawing())) {
+          const { ix, core, setLayers } = setup()
+          setLayers(selected)
+          ix.setTool(tool)
+          const shown = new Set([...ix.preview().points.map(p => `point:${p}`), ...ix.preview().handles.map(h => `h:${h.line}.${h.end}`)])
+          ix.pointerDown(t.at); ix.pointerUp(t.at)
+          const got = sel(core())
+          const inScope = selected.includes(layerOfKey(core(), t.key))
+          // out of scope: nothing picked; in scope: something of that layer is picked
+          expect([tool, t.key, got.length > 0]).toEqual([tool, t.key, inScope])
+          if (tool === 'A' && t.key.startsWith('h:')) expect([t.key, shown.has(t.key)]).toEqual([t.key, inScope])
+          if (tool === 'A' && t.key.startsWith('point:')) expect([t.key, shown.has(t.key)]).toEqual([t.key, inScope])
+        }
+      }
+    })
+  }
+
+  it('bind shows and hits only the selected layers’ points; merge and link reach every layer', () => {
+    const { ix, setLayers } = setup()
+    setLayers(['L'])
+    ix.setTool('bind')
+    expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c'])
+    ix.pointerDown(P(0, 200)) // x, in K
+    expect(ix.preview().pick).toBeUndefined()
+    for (const tool of ['merge', 'link'] as const) {
+      ix.setTool(tool)
+      expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c', 'x', 'y'])
+      ix.pointerDown(P(0, 200))
+      expect(ix.preview().pick).toEqual({ kind: 'point', id: 'x' })
+      ix.cancel()
+    }
+  })
+
+  it('link across layers still works with one layer selected (its scope is every layer)', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L'])
+    ix.setTool('link')
+    ix.pointerDown(P(0, 0)); ix.pointerDown(P(0, 200))
+    expect(core().snapshot().points.find(p => p.id === 'a')!.links).toEqual(['x'])
+  })
+
+  it('pen connects only to points of the current layer; on another layer’s point it starts a new point there', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L', 'K']) // pen's scope is the current layer, whatever is selected
+    ix.setTool('pen')
+    expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c'])
+    ix.pointerDown(P(100, 100)) // c, in L
+    ix.pointerDown(P(0, 200)) // x is in K: a new point in L at the same place
+    const s = core().snapshot(), line = s.lines.at(-1)! // the line the pen just made
+    expect(line.a).toBe('c')
+    expect(line.b).not.toBe('x')
+    expect(s.points.find(p => p.id === line.b)!.layer).toBe('L')
+  })
+
+  it('split, unbind and join reach only the selected layers', () => {
+    for (const tool of ['split', 'unbind'] as const) {
+      const { ix, core, setLayers } = setup()
+      setLayers(['L'])
+      ix.setTool(tool)
+      const before = JSON.stringify(core().snapshot().lines)
+      ix.pointerDown(P(50, 200)) // m, in K
+      expect([tool, JSON.stringify(core().snapshot().lines)]).toEqual([tool, before])
+      setLayers(['K'])
+      ix.pointerDown(P(50, 200))
+      expect([tool, JSON.stringify(core().snapshot().lines) !== before]).toEqual([tool, true])
+    }
+    const { ix, setLayers } = setup()
+    setLayers(['K'])
+    ix.setTool('join')
+    ix.pointerDown(P(50, 0)) // h, in L
+    expect(ix.preview().pick).toBeUndefined()
+  })
+
+  it('fill picks only loops in scope', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); e.layer('K')
+      e.line('t1', { id: 'u', layer: 'K', position: P(0, 0) }, { id: 'w', layer: 'K', position: P(40, 0) }); e.line('t2', 'w', { id: 'z', layer: 'K', position: P(20, 40) }); e.line('t3', 'z', 'u')
+    })
+    const { ix, setLayers } = setup(d)
+    setLayers(['L'])
+    ix.setTool('fill'); ix.pointerDown(P(20, 10))
+    expect(d.snapshot().loops.filter(l => l.filled)).toHaveLength(0)
+    setLayers(['K'])
+    ix.pointerDown(P(20, 10))
+    expect(d.snapshot().loops.filter(l => l.filled)).toHaveLength(1)
+  })
+
+  it('a hidden layer shows nothing and is hit by nothing, even when selected', () => {
+    const { ix, core, setLayers } = setup()
+    core().edit(e => e.layerState('K', { visible: false }))
+    setLayers(['K'])
+    ix.setTool('A')
+    expect([ix.preview().points, ix.preview().handles]).toEqual([[], []])
+    ix.pointerDown(P(0, 200)); ix.pointerUp(P(0, 200))
+    expect(sel(core())).toEqual([])
+  })
+
+  it('V across two selected layers, then mirror source and apply / link across layers (dot 1791555418)', () => {
+    const d = new Core({ axis: 0 })
+    d.edit(e => {
+      e.layer('U'); e.layer('D')
+      // upper lid in U, lower lid in D, both on the left; the right side is a copy to receive them
+      e.line('ul', { id: 'u1', layer: 'U', position: P(-60, 0) }, { id: 'u2', layer: 'U', position: P(-20, 0) })
+      e.line('dl', { id: 'd1', layer: 'D', position: P(-60, 20) }, { id: 'd2', layer: 'D', position: P(-20, 20) })
+      e.line('ur', { id: 'r1', layer: 'U', position: P(60, 5) }, { id: 'r2', layer: 'U', position: P(20, 5) })
+      e.line('dr', { id: 's1', layer: 'D', position: P(60, 25) }, { id: 's2', layer: 'D', position: P(20, 25) })
+    })
+    const { ix, setLayers } = setup(d)
+    setLayers(['U', 'D'])
+    ix.setTool('V')
+    ix.pointerDown(P(-40, 0)); ix.pointerUp(P(-40, 0))
+    ix.pointerDown(P(-40, 20), { shift: true }); ix.pointerUp(P(-40, 20))
+    expect(sel(d).sort()).toEqual(['line:dl', 'line:ul'])
+    ix.setMirrorSource()
+    ix.pointerDown(P(40, 5)); ix.pointerUp(P(40, 5))
+    ix.pointerDown(P(40, 25), { shift: true }); ix.pointerUp(P(40, 25))
+    ix.mirrorLink()
+    expect(ix.preview().refusal).toBeUndefined()
+    const at = (id: string) => d.snapshot().points.find(p => p.id === id)!.position
+    expect([at('r1'), at('s1')]).toEqual([P(60, 0), P(60, 20)])
   })
 })

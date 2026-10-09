@@ -58,7 +58,9 @@ export function steps(ctx: Ctx): Steps {
 
   function fillAt(at: Vec, mods: Mods) {
     const loop = ctx.core().pickLoop(at)
-    if (!loop) return
+    // only a loop in the tool's scope (docs/layer-scope-plan.md §2)
+    const s = ctx.snap(), first = s.loops.find(l => l.id === loop)?.route[0]?.line
+    if (!loop || !first || !ctx.inScope(ctx.layerOf(s).line(first))) return
     const color = ctx.options().color
     ctx.commit(e => (mods.shift ? e.clearFill(loop) : e.fill(loop, color)))
   }

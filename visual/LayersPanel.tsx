@@ -7,7 +7,7 @@ import { useState } from 'react'
 import type { Snapshot, Geometry, Editor, Vec } from '../src'
 
 type Id = string
-const C = { bg: '#323232', row: '#3c3c3c', active: '#4b5f7c', text: '#ddd', dim: '#8a8a8a', line: '#262626', thumb: '#fff', icon: '#c8c8c8' }
+const C = { bg: '#323232', row: '#3c3c3c', active: '#4b5f7c', selected: '#3f4b5c', text: '#ddd', dim: '#8a8a8a', line: '#262626', thumb: '#fff', icon: '#c8c8c8' }
 
 const Icon = ({ d, on = true, title, onClick }: { d: string; on?: boolean; title: string; onClick?: (e: React.MouseEvent) => void }) => (
   <svg width={16} height={16} viewBox="0 0 16 16" onClick={onClick} style={{ cursor: 'pointer', flex: 'none', opacity: on ? 1 : 0.25 }}>
@@ -26,14 +26,40 @@ const TWIRL_OPEN = 'M4 6 L8 10 L12 6', TWIRL_SHUT = 'M6 4 L10 8 L6 12'
 interface Props {
   s: Snapshot
   g: Geometry
+  /** The selected layers (at least one) and the current one among them (docs/layer-scope-plan.md §1). */
+  selected: Id[]
   active: Id
-  setActive: (id: Id) => void
+  select: (layers: Id[], current: Id) => void
   run: (fn: (e: Editor) => void) => boolean
   newLayerId: () => Id
 }
 
-export function LayersPanel({ s, g, active, setActive, run, newLayerId }: Props) {
+export function LayersPanel({ s, g, selected, active, select, run, newLayerId }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
+  const [anchor, setAnchor] = useState<Id | null>(null)
+  /**
+   * A row click, as on macOS (bowen 1791555800; dot 1791555851): a plain click selects only this
+   * layer; Shift selects the run from the anchor to it; Cmd (or Ctrl) adds or removes it. At least
+   * one layer stays selected. The anchor is the last row clicked without Shift; the clicked row
+   * becomes current, and a removed current hands over to the topmost layer still selected.
+   */
+  const click = (id: Id, e: React.MouseEvent) => {
+    const order = s.layers.map(l => l.id)
+    if (e.shiftKey) {
+      const from = order.indexOf(anchor && order.includes(anchor) ? anchor : active), to = order.indexOf(id)
+      select(order.slice(Math.min(from, to), Math.max(from, to) + 1), id)
+      return
+    }
+    setAnchor(id)
+    if (e.metaKey || e.ctrlKey) {
+      if (!selected.includes(id)) { select([...selected, id], id); return }
+      if (selected.length === 1) return
+      const rest = selected.filter(x => x !== id)
+      select(rest, id === active ? order.filter(x => rest.includes(x)).at(-1)! : active)
+      return
+    }
+    select([id], id)
+  }
   const [editing, setEditing] = useState<Id | null>(null)
   const [dragging, setDragging] = useState<Id | null>(null)
   const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
@@ -81,8 +107,10 @@ export function LayersPanel({ s, g, active, setActive, run, newLayerId }: Props)
             <div draggable onDragStart={() => setDragging(L.id)} onDragEnd={() => setDragging(null)}
               onDragOver={e => e.preventDefault()}
               onDrop={() => { if (dragging && dragging !== L.id) run(x => x.reorderLayer(dragging, s.layers.findIndex(l => l.id === L.id))); setDragging(null) }}
-              onClick={() => setActive(L.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: L.id === active ? C.active : C.row, borderBottom: `1px solid ${C.line}`, opacity: dragging === L.id ? 0.5 : 1 }}>
+              onClick={e => click(L.id, e)}
+              // selected rows stay lit; the current one is drawn stronger, with a bar on its left
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: L.id === active ? C.active : selected.includes(L.id) ? C.selected : C.row,
+                boxShadow: L.id === active ? 'inset 3px 0 0 #8fb4ff' : undefined, borderBottom: `1px solid ${C.line}`, opacity: dragging === L.id ? 0.5 : 1 }}>
               <Icon d={EYE} on={shown} title={shown ? '隐藏图层' : '显示图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { visible: !shown })) }} />
               <Icon d={LOCK} on={locked} title={locked ? '解锁图层' : '锁定图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { locked: !locked })) }} />
               <Icon d={isOpen ? TWIRL_OPEN : TWIRL_SHUT} title="展开" onClick={e => { e.stopPropagation(); setOpen(o => { const n = new Set(o); if (n.has(L.id)) n.delete(L.id); else n.add(L.id); return n }) }} />
@@ -117,7 +145,7 @@ export function LayersPanel({ s, g, active, setActive, run, newLayerId }: Props)
           const fillsShown = s.loops.some(l => l.filled && l.visible && linesIn(activeLayer.id).some(x => x.id === l.route[0]?.line))
           run(x => x.layerFills(activeLayer.id, { visible: !fillsShown }))
         }} />
-        <Icon d={PLUS} title="新建图层" onClick={() => { const id = newLayerId(); if (run(x => x.layer(id, id, active || undefined))) setActive(id) }} />
+        <Icon d={PLUS} title="新建图层" onClick={() => { const id = newLayerId(); if (run(x => x.layer(id, id, active || undefined))) select([id], id) }} />
         <Icon d={COPY} title="复制当前图层" onClick={() => { if (activeLayer) run(x => x.copyLayer(activeLayer.id, newLayerId())) }} />
         <Icon d={TRASH} title="删除当前图层" onClick={() => { if (activeLayer) run(x => x.deleteLayer(activeLayer.id)) }} />
       </div>

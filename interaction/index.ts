@@ -7,7 +7,7 @@
 // the history are core's, and every change goes through core's public operations as one
 // edit. Nothing here draws: `preview()` describes what to show, as plain data.
 import type { Vec } from '../src'
-import { createCtx, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
+import { createCtx, POINT_TOOLS, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
 import { fromError } from './feedback'
 import { selectTransform } from './flows/select-transform'
 import { pen } from './flows/pen'
@@ -16,7 +16,7 @@ import { mirror } from './flows/mirror'
 import { clipboard } from './flows/clipboard'
 
 export type { Env, Mods, Options, Preview, Tool } from './base'
-export { REACH } from './base'
+export { REACH, SCOPE, POINT_TOOLS } from './base'
 export type { Feedback } from './feedback'
 
 export interface Interaction {
@@ -127,7 +127,12 @@ export function createInteraction(env: Env): Interaction {
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
     preview() {
-      const p: Preview = { cut: [], mirrorSource: [], handles: [] }
+      const p: Preview = { cut: [], mirrorSource: [], handles: [], points: [] }
+      if (POINT_TOOLS.has(tool)) {
+        // a point is shown when one of its lines is (core's nearby), and when its layer is in scope
+        const s = ctx.snap(), shownPts = new Set(s.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b]))
+        p.points = s.points.filter(x => shownPts.has(x.id) && ctx.inScope(x.layer)).map(x => x.id)
+      }
       for (const f of flows) f.preview(p)
       if (ctx.feedback) p.refusal = structuredClone(ctx.feedback)
       return p

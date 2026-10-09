@@ -89,6 +89,7 @@ const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A di
 export function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
+  const [layers, setLayers] = useState<Id[]>(['layer-1']) // the selected layers (docs/layer-scope-plan.md §1)
   // Z is a view tool: the camera is the app's, so it lives here, not in interaction (bowen 1791554415)
   const [zoomTool, setZoomTool] = useState(false)
   const [width, setWidth] = useState(2)
@@ -114,11 +115,14 @@ export function App() {
   const s = core.snapshot(), g = core.geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
-  const env = useRef({ layer: drawLayer, px })
-  env.current = { layer: drawLayer, px }
-  const ix = useRef(createInteraction({ core: () => logged(core), newId: nid, layer: () => env.current.layer || undefined, pixel: () => env.current.px })).current
+  // the selected layers that still exist, always with the current one
+  const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
+  const env = useRef({ layer: drawLayer, layers: selLayers, px })
+  env.current = { layer: drawLayer, layers: selLayers, px }
+  const ix = useRef(createInteraction({ core: () => logged(core), newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px })).current
   useEffect(() => ix.subscribe(bump), [ix])
   const pv: Preview = ix.preview()
+  const pvPoints = new Set(pv.points) // the points interaction shows (and so can hit) for this tool
 
   const line = (id: Id) => s.lines.find(l => l.id === id)!
   const pos = (id: Id) => s.points.find(p => p.id === id)!.position
@@ -128,7 +132,7 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
@@ -137,6 +141,20 @@ export function App() {
     try { logged(core).edit(fn); ix.outcome(); return true }
     catch (err) { ix.outcome(err); return false }
     finally { bump() }
+  }
+  /**
+   * The panel changed the selected layers. Selected units outside the new V/A scope are
+   * deselected (one select edit, only when something is dropped), so nothing out of scope is
+   * operated on (docs/layer-scope-plan.md §3).
+   */
+  const selectLayers = (ids: Id[], current: Id) => {
+    const now = core.snapshot(), pl = new Map(now.points.map(p => [p.id, p.layer]))
+    const lineLayer = (l: Id) => pl.get(now.lines.find(x => x.id === l)?.a ?? '')
+    const layerOf = (u: (typeof now.selection)[number]) => u.kind === 'point' ? pl.get(u.id) : u.kind === 'line' ? lineLayer(u.id)
+      : u.kind === 'handle' ? lineLayer(u.line) : lineLayer(now.loops.find(l => l.id === u.id)?.route[0]?.line ?? '')
+    const keep = now.selection.filter(u => ids.includes(layerOf(u) ?? ''))
+    if (keep.length < now.selection.length) run(x => x.select(keep, 'replace'))
+    setLayers(ids); setLayer(current)
   }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
@@ -346,7 +364,7 @@ export function App() {
                 const next = open(await f.text())
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
-                const ls = core.snapshot().layers; setLayer(ls[ls.length - 1]?.id ?? '')
+                const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
                 log.unshift({ calls: `open(${f.name})`, result: 'ok' })
               } catch (err) { log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
@@ -382,7 +400,7 @@ export function App() {
               <rect x={h.x - 3 * px} y={h.y - 3 * px} width={6 * px} height={6 * px} fill={on ? '#06f' : '#fff'} stroke="#555" strokeWidth={px} />
             </g>
           })}
-          {ix.tool !== 'V' && s.points.filter(p => s.lines.some(l => (l.a === p.id || l.b === p.id) && l.state.visible)).map(p => {
+          {s.points.filter(p => pvPoints.has(p.id)).map(p => {
             const on = isSel({ kind: 'point', id: p.id }), picked = pv.pick?.kind === 'point' && pv.pick.id === p.id
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
@@ -399,7 +417,7 @@ export function App() {
           wheel or Z (drag up / down, click) zooms · right- or middle-drag pans · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
         </div>
       </div>
-      <LayersPanel key={drawing} s={s} g={g} active={drawLayer} setActive={setLayer} run={run} newLayerId={() => nid('layer-')} />
+      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} />
     </div>
   )
 }

@@ -11,13 +11,32 @@ export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'un
 export interface Options { joinMode: 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
 export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean }
 
-/** What the app gives: the open drawing, a source of new ids, the layer to draw into, and the size of one screen pixel in document units (from the camera). */
+/**
+ * What the app gives: the open drawing, a source of new ids, the current layer (new lines go
+ * there), the selected layers (at least the current one; omitted = only the current one), and
+ * the size of one screen pixel in document units (from the camera).
+ */
 export interface Env {
   core: () => Core
   newId: (prefix: string) => Id
   layer: () => Id | undefined
+  layers?: () => Id[]
   pixel: () => number
 }
+
+/**
+ * Which layers each tool reaches: what it shows as operable and what it can hit, one set
+ * (bowen 1791555800, 1791553331; docs/layer-scope-plan.md §2). Other layers stay drawn, as
+ * reference only. 'selected' = the selected layers, 'current' = the current layer, 'all' =
+ * every layer.
+ */
+export const SCOPE: Record<Tool, 'selected' | 'current' | 'all'> = {
+  V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected',
+  merge: 'all', link: 'all',
+  pen: 'current', // a new line goes into the current layer, and both ends of a line are in one layer
+}
+/** The tools that pick points, and so show them (bowen 1791555800: bind shows its points). */
+export const POINT_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['A', 'pen', 'bind', 'merge', 'link', 'unbind'])
 
 /**
  * How near the pointer must be, in screen pixels (interaction defaults, common sense; not
@@ -40,6 +59,8 @@ export interface Preview {
   pen?: { point: Id } | { at: Vec }
   /** The handles shown, and so pickable (A: every visible line of the current layer). */
   handles: { line: Id; end: 'a' | 'b' }[]
+  /** The points shown, and so pickable: those of the current tool's scope, for the tools that pick points. */
+  points: Id[]
   /** Lines picked as the mirror source. */
   mirrorSource: Id[]
   /** The last refusal: its code, message and objects (kind + id). */
@@ -67,7 +88,11 @@ export interface Ctx {
   feedback: Feedback | undefined
   options(): Options
   tool(): Tool
-  /** What is shown and within reach, points first, then handles, then lines (nearest first within each). */
+  /** Whether a layer is in the current tool's scope. */
+  inScope(layer: Id | undefined): boolean
+  /** The layer of each point and line. */
+  layerOf(s: Snapshot): { point: (id: Id) => Id | undefined; line: (id: Id) => Id | undefined }
+  /** What is shown and within reach, in the current tool's scope: points first, then handles, then lines (nearest first within each). */
   shown(at: Vec): ReturnType<Core['nearby']>
   hitPoint(at: Vec): Id | undefined
   hitLine(at: Vec): Id | undefined
@@ -100,10 +125,22 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
     feedback: undefined,
     options: state.options,
     tool: state.tool,
+    inScope: layer => {
+      const scope = SCOPE[state.tool()]
+      if (layer === undefined) return false
+      if (scope === 'all') return true
+      if (scope === 'current') return layer === env.layer()
+      return (env.layers?.() ?? [env.layer()]).includes(layer)
+    },
+    layerOf: s => {
+      const points = new Map(s.points.map(p => [p.id, p.layer])), lines = new Map(s.lines.map(l => [l.id, points.get(l.a)]))
+      return { point: id => points.get(id), line: id => lines.get(id) }
+    },
     shown: at => {
-      const px = env.pixel()
+      const px = env.pixel(), of = ctx.layerOf(ctx.snap())
+      const layer = (x: ReturnType<Core['nearby']>[number]) => (x.kind === 'point' ? of.point(x.id) : of.line(x.kind === 'line' ? x.id : x.line))
       return env.core().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
-        .filter(x => x.visible && x.distance <= REACH[x.kind] * px)
+        .filter(x => x.visible && x.distance <= REACH[x.kind] * px && ctx.inScope(layer(x)))
         .sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.distance - b.distance)
     },
     hitPoint: at => { const h = ctx.shown(at).find(x => x.kind === 'point'); return h && h.kind === 'point' ? h.id : undefined },

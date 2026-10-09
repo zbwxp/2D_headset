@@ -18,15 +18,14 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   const mode = (m: Mods) => (m.shift ? 'add' : m.alt ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
 
   /**
-   * The handles A shows: both handles of every visible line in the current layer (bowen
-   * 1791553510). One list, used both to draw and to pick: what is shown can be operated, and
-   * nothing else is hit (bowen 1791553331).
+   * The handles A shows: both handles of every visible line in its scope, the selected layers
+   * (bowen 1791553510, 1791555800). One list, used both to draw and to pick: what is shown can
+   * be operated, and nothing else is hit (bowen 1791553331).
    */
   function handlesShown(s: Snapshot): { line: Id; end: 'a' | 'b' }[] {
-    const layer = ctx.env.layer()
-    if (ctx.tool() !== 'A' || layer === undefined) return []
-    const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
-    return s.lines.filter(l => l.state.visible && layerOf.get(l.a) === layer)
+    if (ctx.tool() !== 'A') return []
+    const of = ctx.layerOf(s)
+    return s.lines.filter(l => l.state.visible && ctx.inScope(of.line(l.id)))
       .flatMap(l => [{ line: l.id, end: 'a' as const }, { line: l.id, end: 'b' as const }])
   }
   /** A: a point, else a shown handle, else a line; nearest first. */
