@@ -142,39 +142,47 @@ export function App() {
   }
   const mods = (e: { shiftKey: boolean; altKey: boolean; metaKey: boolean; ctrlKey: boolean }) => ({ shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey })
 
-  // A gesture (a tool's drag, or a pan) follows the pointer on the whole window until the button
-  // is up, instead of relying on pointer capture: lifting a trackpad while moving loses capture
-  // before any release reaches the canvas (inbox #7; bowen 1791552361: "drag cancelled by
-  // lostpointercapture before any release"). A release is the pointerup wherever it lands, or a
-  // move that finds no button held (the up was missed); only pointercancel, Esc or leaving the
-  // window cancels.
+  // A gesture (a tool's drag, or a pan) follows the pointer on the whole window, not pointer
+  // capture: bowen's log showed capture lost before any release reached the canvas, which ended
+  // the drag (inbox #7; bowen 1791552361; the root cause is not confirmed, dot 1791552536).
+  // One gesture at a time, tracked on the window from press to release (start, end and unmount
+  // in one place; dot 1791552536, 1791552771). It belongs to the pointer and the button that
+  // started it: other pointers are ignored, and it is released when that button is no longer
+  // held (its pointerup, or a move whose buttons lack it: the up was missed). pointercancel for
+  // that pointer, Esc and leaving the window cancel it; so does unmounting.
+  const gesture = useRef<null | { id: number; stop: () => void }>(null)
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
-  const gesture = useRef<null | (() => void)>(null) // stops the window tracking of the gesture in progress
+  const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const onDown = (e: React.PointerEvent) => {
     // a right click goes straight to cancel (contextmenu), never into a tool first (dot 1791544530)
     if (e.button === 2) return
-    gesture.current?.() // an earlier gesture's listeners never outlive it (one gesture at a time)
-    const id = e.pointerId
+    if (gesture.current) {
+      if (gesture.current.id !== e.pointerId) return // another pointer while a gesture runs: ignored
+      gesture.current.stop() // the same pointer pressed again: its earlier release was missed
+    }
+    const id = e.pointerId, bit = BUTTON_BIT[e.button] ?? 1
     const panFrom = e.button === 1 || !ix.pointerDown(toDoc(e), mods(e)) ? { start: P(e.clientX, e.clientY), box } : null
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
-      if (ev.buttons === 0) { if (!panFrom) note('release found by a move with no button held (pointerup missed)'); up(ev); return }
+      if ((ev.buttons & bit) === 0) { if (!panFrom) note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
       if (panFrom) { const k = panFrom.box.w / svg.current!.clientWidth; setBox({ ...panFrom.box, x: panFrom.box.x - (ev.clientX - panFrom.start.x) * k, y: panFrom.box.y - (ev.clientY - panFrom.start.y) * k }); return }
       ix.pointerMove(toDoc(ev))
     }
-    const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
-    const cancel = (why: string) => () => { stop(); if (!panFrom && ix.preview().drag) note(`drag cancelled by ${why}`); if (!panFrom) ix.pointerCancel() }
-    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancel('pointercancel')() }
-    const onBlur = cancel('leaving the window')
+    const release = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
+    const cancelWith = (why: string) => { stop(); if (!panFrom) { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } }
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
+    const onBlur = () => cancelWith('leaving the window')
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') stop() } // Esc ends a pan too; interaction drops a drag itself
     const stop = () => {
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
-      if (gesture.current === stop) gesture.current = null
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur); window.removeEventListener('keydown', onKey)
+      if (gesture.current?.stop === stop) gesture.current = null
     }
-    gesture.current = stop
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
+    gesture.current = { id, stop }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur); window.addEventListener('keydown', onKey)
   }
+  useEffect(() => () => gesture.current?.stop(), []) // unmounting ends any gesture's tracking
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))

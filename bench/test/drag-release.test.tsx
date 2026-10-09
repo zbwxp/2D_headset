@@ -25,7 +25,8 @@ function pe(type: string, x: number, y: number, buttons: number, pointerId = 1) 
 async function setup() {
   const k = ++n
   const host = document.createElement('div'); document.body.appendChild(host)
-  await act(async () => { createRoot(host).render(<App />) })
+  const root = createRoot(host)
+  await act(async () => { root.render(<App />) })
   const svg = host.querySelector('svg')!
   // jsdom has no layout: give the canvas an identity mapping, one screen pixel = one document unit
   ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
@@ -34,7 +35,7 @@ async function setup() {
     bench().core.edit(e => e.line(`h${k}`, { id: `a${k}`, layer: 'layer-1', position: { x: 0, y: 200 * k } }, { id: `b${k}`, layer: 'layer-1', position: { x: 100, y: 200 * k } }))
     bench().ix.setTool('V'); bench().refresh()
   })
-  return { svg, k }
+  return { svg, k, root }
 }
 const at = (id: string) => bench().core.snapshot().points.find(p => p.id === id)!.position
 
@@ -121,3 +122,58 @@ describe('a drag’s release: what must not commit (dot 1791552536)', () => {
     expect(at(`a${k}`)).toEqual({ x: 10, y: 200 * k })
   })
 })
+
+describe('window tracking: start, end and unmount in one place (dot 1791552771)', () => {
+  it('another pointer’s press during a drag is ignored; the drag still commits on its own release', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1, 1))
+      svg.dispatchEvent(pe('pointerdown', 300, 200 * k + 150, 1, 2)) // a second finger / pen
+      window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0, 1))
+    })
+    expect(at(`a${k}`)).toEqual({ x: 20, y: 200 * k + 30 })
+  })
+
+  it('Esc during a pan ends it: later moves do not pan', async () => {
+    const { svg } = await setup()
+    const vb = () => svg.getAttribute('viewBox')
+    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 1)) }) // empty space: a pan
+    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 1)) })
+    const panned = vb()
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      window.dispatchEvent(pe('pointermove', 600, -200, 1))
+    })
+    expect(vb()).toBe(panned)
+  })
+
+  it('a move without the starting button held is the release, even with another button down', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+      window.dispatchEvent(pe('pointermove', 62, 200 * k + 22, 2)) // left up, right down
+      window.dispatchEvent(pe('pointermove', 90, 200 * k + 90, 2))
+    })
+    expect(at(`a${k}`)).toEqual({ x: 12, y: 200 * k + 22 })
+  })
+
+  it('unmounting removes the window listeners: a later release does nothing', async () => {
+    const { svg, k, root } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+    })
+    const core = bench().core
+    await act(async () => { root.unmount() })
+    // a listener left behind would run on a gone canvas and throw inside the event
+    const errors: unknown[] = [], onError = (e: ErrorEvent) => { errors.push(e.error); e.preventDefault() }
+    window.addEventListener('error', onError)
+    await act(async () => { window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0)) })
+    window.removeEventListener('error', onError)
+    expect(errors).toEqual([])
+    expect(core.snapshot().points.find(p => p.id === `a${k}`)!.position).toEqual({ x: 0, y: 200 * k })
+  })
+})
+
