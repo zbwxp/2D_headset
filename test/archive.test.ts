@@ -76,6 +76,18 @@ describe('save and open', () => {
     expect(() => open(JSON.stringify(x))).toThrow(/links are not in their stored form/)
   })
 
+  it('1d. dot’s minimal case: ab and bc with a radius-2 arc join at b opens equal; reversed, doubled or radius-less it is refused (dot 1791512476)', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); e.line('ab', { id: 'a', layer: 'L', position: P(0, 0) }, { id: 'b', layer: 'L', position: P(10, 0) }); e.line('bc', 'b', { id: 'c', layer: 'L', position: P(15, 8) }) })
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))
+    const good = save(d)
+    same(d, open(good))
+    const variant = (f: (rows: any[]) => void) => { const x = JSON.parse(good); f(x.document.joins.rows); return JSON.stringify(x) }
+    expect(() => open(variant(r => { r[0].lines = ['bc', 'ab'] }))).toThrow(/not in their stored form/)
+    expect(() => open(variant(r => { r.push({ ...r[0], lines: ['bc', 'ab'] }) }))).toThrow(/not in their stored form/)
+    expect(() => open(variant(r => { delete r[0].radius }))).toThrow(/positive radius/)
+  })
+
   it('2. the opened document works: empty history, the same edit gives the same result, new ids and names do not collide', () => {
     const d = eyes(), o = open(save(d))
     expect(o.canUndo).toBe(false)
