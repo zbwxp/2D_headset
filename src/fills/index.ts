@@ -116,7 +116,7 @@ export function insert(f: FillsState, n: net.NetworkState, data: readonly FillDa
     if (typeof l.color !== 'string') throw new Error(`Fill ${l.id} has no colour`)
     // the boundary must be a closed curve of the inserted lines: a bad clip is refused, not cleaned up later (dot 1791514309)
     const mapped = l.lines.map(x => map.lines.get(x)!)
-    if (!net.closedLoops(n).some(found => found.key === net.loopKey(mapped))) throw new Error(`Fill ${l.id}: its lines are not a closed curve`)
+    if (!net.closedWalk(n, mapped)) throw new Error(`Fill ${l.id}: its lines are not a closed curve`) // the same test validate uses (dot 1791514536)
     S(f).loops.push({ id, lines: l.lines.map(x => map.lines.get(x)!), color: l.color, visible: !!l.visible, locked: !!l.locked })
     S(f).order.push(id)
   }
