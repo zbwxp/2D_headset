@@ -150,7 +150,9 @@ export function App() {
   // started it: other pointers are ignored, and it is released when that button is no longer
   // held (its pointerup, or a move whose buttons lack it: the up was missed). pointercancel for
   // that pointer, Esc and leaving the window cancel it; so does unmounting.
-  const gesture = useRef<null | { id: number; stop: () => void }>(null)
+  // `cancel` is the one way a gesture ends without a release: it stops the window tracking and
+  // ends the drag in interaction (a pan simply stops) — never only one of the two (dot 1791552803)
+  const gesture = useRef<null | { id: number; cancel: (why: string) => void }>(null)
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const onDown = (e: React.PointerEvent) => {
@@ -158,7 +160,7 @@ export function App() {
     if (e.button === 2) return
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return // another pointer while a gesture runs: ignored
-      gesture.current.stop() // the same pointer pressed again: its earlier release was missed
+      gesture.current.cancel('a new press of the same pointer') // its earlier release was missed
     }
     const id = e.pointerId, bit = BUTTON_BIT[e.button] ?? 1
     const panFrom = e.button === 1 || !ix.pointerDown(toDoc(e), mods(e)) ? { start: P(e.clientX, e.clientY), box } : null
@@ -170,19 +172,20 @@ export function App() {
     }
     const release = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
     const cancelWith = (why: string) => { stop(); if (!panFrom) { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } }
+    const cancelSilently = () => { stop(); if (!panFrom) ix.pointerCancel() }
     const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
     const onBlur = () => cancelWith('leaving the window')
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') stop() } // Esc ends a pan too; interaction drops a drag itself
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') cancelSilently() } // Esc ends a pan too
     const stop = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release)
       window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur); window.removeEventListener('keydown', onKey)
-      if (gesture.current?.stop === stop) gesture.current = null
+      if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
-    gesture.current = { id, stop }
+    gesture.current = { id, cancel: cancelWith }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur); window.addEventListener('keydown', onKey)
   }
-  useEffect(() => () => gesture.current?.stop(), []) // unmounting ends any gesture's tracking
+  useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -323,7 +326,7 @@ export function App() {
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={onDown} onWheel={onWheel}
-          onContextMenu={e => { e.preventDefault(); ix.cancel() }}>
+          onContextMenu={e => { e.preventDefault(); gesture.current?.cancel('a right click'); ix.cancel() }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}

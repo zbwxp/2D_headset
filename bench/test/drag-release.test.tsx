@@ -177,3 +177,34 @@ describe('window tracking: start, end and unmount in one place (dot 1791552771)'
   })
 })
 
+describe('one way to end a gesture: stop the tracking and end the drag or pan (dot 1791552803)', () => {
+  const ixOf = () => (window as unknown as { bench: { ix: { preview(): { drag?: unknown } } } }).bench.ix
+  it('a right click during a pan ends the pan: later moves do not pan', async () => {
+    const { svg } = await setup()
+    const vb = () => svg.getAttribute('viewBox')
+    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 1)) })
+    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 1)) })
+    const panned = vb()
+    await act(async () => {
+      svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+      window.dispatchEvent(pe('pointermove', 600, -200, 1))
+    })
+    expect(vb()).toBe(panned)
+  })
+
+  it('a middle-button pan started before the old drag ended clears the old drag: no ghost left, nothing moved', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+    })
+    expect(ixOf().preview().drag).toBeDefined()
+    const middle = new MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 0, button: 1, buttons: 4 })
+    Object.defineProperty(middle, 'pointerId', { value: 1 })
+    await act(async () => { svg.dispatchEvent(middle) })
+    expect(ixOf().preview().drag).toBeUndefined()
+    await act(async () => { window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0)) })
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+  })
+})
+
