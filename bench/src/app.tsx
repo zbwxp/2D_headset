@@ -89,6 +89,8 @@ const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A di
 export function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
+  // Z is a view tool: the camera is the app's, so it lives here, not in interaction (bowen 1791554415)
+  const [zoomTool, setZoomTool] = useState(false)
   const [width, setWidth] = useState(2)
   // changes with every drawing opened: the panel's own temporary state (a rename draft, a dragged
   // row) belongs to one drawing and ends with it (dot 1791551140)
@@ -152,26 +154,42 @@ export function App() {
   // that pointer, Esc and leaving the window cancel it; so does unmounting.
   // `cancel` is the one way a gesture ends without a release: it stops the window tracking and
   // ends the drag in interaction (a pan simply stops) — never only one of the two (dot 1791552803)
-  const gesture = useRef<null | { id: number; cancel: (why: string) => void }>(null)
+  // `right` marks a right-button pan, whose own release (unmoved) is the right click (bowen 1791554290)
+  const gesture = useRef<null | { id: number; right: boolean; cancel: (why: string) => void }>(null)
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
+  const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
   const onDown = (e: React.PointerEvent) => {
-    // a right click goes straight to cancel (contextmenu), never into a tool first (dot 1791544530)
-    if (e.button === 2) return
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return // another pointer while a gesture runs: ignored
       gesture.current.cancel('a new press of the same pointer') // its earlier release was missed
     }
-    const id = e.pointerId, bit = BUTTON_BIT[e.button] ?? 1
-    const panFrom = e.button === 1 || !ix.pointerDown(toDoc(e), mods(e)) ? { start: P(e.clientX, e.clientY), box } : null
+    const id = e.pointerId, bit = BUTTON_BIT[e.button] ?? 1, start = P(e.clientX, e.clientY), from = box, at = toDoc(e)
+    // what this press is (bowen 1791554290, 1791554415): right or middle drags the canvas, and an
+    // unmoved right press is the right click (cancel one level); with Z, the left button zooms;
+    // otherwise the tool gets the press, and a press that hits nothing only clears the selection
+    const kind = e.button === 1 || e.button === 2 ? 'pan' : zoomTool ? 'zoom' : ix.pointerDown(at, mods(e)) ? 'tool' : null
+    if (!kind) return
+    let moved = false
+    const zoomBy = (k: number) => setBox({ x: at.x - (at.x - from.x) * k, y: at.y - (at.y - from.y) * k, w: from.w * k, h: from.h * k })
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
-      if ((ev.buttons & bit) === 0) { if (!panFrom) note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
-      if (panFrom) { const k = panFrom.box.w / svg.current!.clientWidth; setBox({ ...panFrom.box, x: panFrom.box.x - (ev.clientX - panFrom.start.x) * k, y: panFrom.box.y - (ev.clientY - panFrom.start.y) * k }); return }
-      ix.pointerMove(toDoc(ev))
+      if ((ev.buttons & bit) === 0) { if (kind === 'tool') note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
+      if (kind === 'tool') { ix.pointerMove(toDoc(ev)); return }
+      moved ||= Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > CLICK
+      if (!moved) return
+      if (kind === 'pan') { const k = from.w / svg.current!.clientWidth; setBox({ ...from, x: from.x - (ev.clientX - start.x) * k, y: from.y - (ev.clientY - start.y) * k }) }
+      else zoomBy(Math.exp((ev.clientY - start.y) * 0.008)) // up zooms in, down zooms out (v1's rate)
     }
-    const release = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
-    const cancelWith = (why: string) => { stop(); if (!panFrom) { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } }
+    const release = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      stop()
+      if (kind === 'tool') ix.pointerUp(toDoc(ev))
+      else if (!moved && kind === 'zoom') zoomBy(ev.altKey || ev.ctrlKey ? 1.3 : 1 / 1.3) // a click zooms in ×1.3, Alt / Ctrl-click out (v1)
+      else if (!moved && e.button === 2) ix.cancel() // the right click
+    }
+    // a cancelled pan or zoom puts the view back where it started (v1: cancelViewport)
+    const cancelWith = (why: string) => { stop(); if (kind === 'tool') { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } else setBox(from) }
     const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
     const onBlur = () => cancelWith('leaving the window')
     const stop = () => {
@@ -179,7 +197,7 @@ export function App() {
       window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
       if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
-    gesture.current = { id, cancel: cancelWith }
+    gesture.current = { id, right: e.button === 2, cancel: cancelWith }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
@@ -195,7 +213,11 @@ export function App() {
       if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(t.tagName) || t.isContentEditable) return
       // one Esc cancels one thing: a gesture in progress if there is one, else interaction's innermost (dot 1791553129)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
-      if (ix.key(e.key, mods(e))) e.preventDefault()
+      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { setZoomTool(true); e.preventDefault(); return }
+      if (ix.key(e.key, mods(e))) {
+        e.preventDefault()
+        if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey) setZoomTool(false) // a tool key leaves Z
+      }
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -250,7 +272,8 @@ export function App() {
       <div style={{ width: 230, padding: 8, borderRight: '1px solid #ccc', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Tools</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {TOOLS.map(([t, label]) => <button key={t} style={{ fontWeight: ix.tool === t ? 700 : 400, background: ix.tool === t ? '#cde' : undefined }} onClick={() => ix.setTool(t)}>{label}</button>)}
+          {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => { setZoomTool(false); ix.setTool(t) }}>{label}</button> })}
+          <button style={{ fontWeight: zoomTool ? 700 : 400, background: zoomTool ? '#cde' : undefined }} onClick={() => setZoomTool(true)}>Zoom Z</button>
         </div>
         {ix.tool === 'join' && <div>
           <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>smooth</option><option>cusp</option><option>arc</option></select>
@@ -323,9 +346,11 @@ export function App() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
-        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={onDown} onWheel={onWheel}
-          onContextMenu={e => { e.preventDefault(); if (gesture.current) gesture.current.cancel('a right click'); else ix.cancel() }}>
+          // the right click itself is the unmoved right press (onDown); a right press during a left
+          // drag comes only as this event, and cancels that drag (one level)
+          onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
@@ -359,7 +384,7 @@ export function App() {
           {log.map((r, i) => <div key={log.length - i} style={{ color: r.result.startsWith('ok') ? '#333' : '#c00' }}>{r.result.startsWith('ok') ? '✓' : r.result} · {r.calls || '(no call)'}</div>)}
         </div>
         <div style={{ padding: '2px 8px', color: '#888', borderTop: '1px solid #eee' }}>
-          wheel zoom · drag empty space or middle-drag to pan · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
+          wheel or Z (drag up / down, click) zooms · right- or middle-drag pans · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
         </div>
       </div>
       <LayersPanel key={drawing} s={s} g={g} active={drawLayer} setActive={setLayer} run={run} newLayerId={() => nid('layer-')} />

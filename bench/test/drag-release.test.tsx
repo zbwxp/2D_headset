@@ -16,8 +16,8 @@ type B = { core: Core; ix: { setTool(t: string): void }; refresh(): void }
 const bench = () => (window as unknown as { bench: B }).bench
 
 /** A pointer event with the fields the bench reads (jsdom has no PointerEvent). */
-function pe(type: string, x: number, y: number, buttons: number, pointerId = 1) {
-  const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons })
+function pe(type: string, x: number, y: number, buttons: number, pointerId = 1, button = 0) {
+  const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button, buttons })
   Object.defineProperty(e, 'pointerId', { value: pointerId })
   return e
 }
@@ -135,17 +135,19 @@ describe('window tracking: start, end and unmount in one place (dot 1791552771)'
     expect(at(`a${k}`)).toEqual({ x: 20, y: 200 * k + 30 })
   })
 
-  it('Esc during a pan ends it: later moves do not pan', async () => {
+  it('Esc during a pan ends it and puts the view back (v1); later moves do not pan', async () => {
     const { svg } = await setup()
     const vb = () => svg.getAttribute('viewBox')
-    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 1)) }) // empty space: a pan
-    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 1)) })
+    const before = vb()
+    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 2, 1, 2)) }) // a right-drag pan (bowen 1791554290)
+    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 2)) })
     const panned = vb()
+    expect(panned).not.toBe(before)
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-      window.dispatchEvent(pe('pointermove', 600, -200, 1))
+      window.dispatchEvent(pe('pointermove', 600, -200, 2))
     })
-    expect(vb()).toBe(panned)
+    expect(vb()).toBe(before)
   })
 
   it('a move without the starting button held is the release, even with another button down', async () => {
@@ -179,17 +181,19 @@ describe('window tracking: start, end and unmount in one place (dot 1791552771)'
 
 describe('one way to end a gesture: stop the tracking and end the drag or pan (dot 1791552803)', () => {
   const ixOf = () => (window as unknown as { bench: { ix: { preview(): { drag?: unknown } } } }).bench.ix
-  it('a right click during a pan ends the pan: later moves do not pan', async () => {
+  it('a right click during a middle-button pan ends it and puts the view back (v1); later moves do not pan', async () => {
     const { svg } = await setup()
     const vb = () => svg.getAttribute('viewBox')
-    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 1)) })
-    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 1)) })
+    const before = vb()
+    await act(async () => { svg.dispatchEvent(pe('pointerdown', 700, -250, 4, 1, 1)) })
+    await act(async () => { window.dispatchEvent(pe('pointermove', 690, -250, 4)) })
     const panned = vb()
+    expect(panned).not.toBe(before)
     await act(async () => {
       svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
-      window.dispatchEvent(pe('pointermove', 600, -200, 1))
+      window.dispatchEvent(pe('pointermove', 600, -200, 4))
     })
-    expect(vb()).toBe(panned)
+    expect(vb()).toBe(before)
   })
 
   it('a middle-button pan started before the old drag ended clears the old drag: no ghost left, nothing moved', async () => {
@@ -212,7 +216,13 @@ describe('one way to end a gesture: stop the tracking and end the drag or pan (d
 describe('one right click or Esc cancels one thing (dot 1791553129)', () => {
   type Ix = { cut(): void; preview(): { drag?: unknown; cut: unknown[] } }
   const ix = () => (window as unknown as { bench: { ix: Ix } }).bench.ix
-  const rightClick = (svg: Element) => svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+  /** A right click as macOS sends it: press, contextmenu, release. During a left drag the press comes only as contextmenu. */
+  const rightClick = (svg: Element) => {
+    const during = !!ix().preview().drag
+    if (!during) svg.dispatchEvent(pe('pointerdown', 5, 5, 2, 1, 2))
+    svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+    if (!during) window.dispatchEvent(pe('pointerup', 5, 5, 0, 1, 2))
+  }
   const esc = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   /** Cut the line (it turns grey, pending), then start dragging it. */
   async function cutThenDrag() {
@@ -269,5 +279,103 @@ describe('A: the handles drawn are the handles that can be picked (bowen 1791553
       window.dispatchEvent(pe('pointerup', at.x, at.y, 0))
     })
     expect(bench().core.snapshot().selection).toEqual([{ kind: 'handle', line: id('s2'), end: 'a' }])
+  })
+})
+
+describe('the canvas: right-drag pans, Z zooms, a left press on blank space does neither (bowen 1791554290, 1791554415)', () => {
+  type Ix = { cut(): void; preview(): { cut: unknown[] } }
+  const ix = () => (window as unknown as { bench: { ix: Ix } }).bench.ix
+  const box = (svg: Element) => svg.getAttribute('viewBox')!.split(' ').map(Number)
+  const key = (k: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k }))
+
+  it('a left drag on blank space clears the selection and does not move the canvas', async () => {
+    const { svg, k } = await setup()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: `h${k}` }])) })
+    const before = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 700, -250, 1))
+      window.dispatchEvent(pe('pointermove', 600, -150, 1))
+      window.dispatchEvent(pe('pointerup', 600, -150, 0))
+    })
+    expect([box(svg), bench().core.snapshot().selection]).toEqual([before, []])
+  })
+
+  it('a right drag pans and cancels nothing; an unmoved right click cancels one level, in either event order', async () => {
+    const { svg, k } = await setup()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: `h${k}` }])); ix().cut() })
+    const before = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 700, -250, 2, 1, 2))
+      svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })) // macOS: on press
+      window.dispatchEvent(pe('pointermove', 650, -250, 2))
+      window.dispatchEvent(pe('pointerup', 650, -250, 0, 1, 2))
+    })
+    expect(box(svg)[0]).not.toBe(before[0])
+    expect(ix().preview().cut.length).toBe(1) // the pan cancelled nothing
+    await act(async () => { // Windows order: press, release, contextmenu; moved within the click distance
+      svg.dispatchEvent(pe('pointerdown', 700, -250, 2, 1, 2))
+      window.dispatchEvent(pe('pointermove', 701, -249, 2))
+      window.dispatchEvent(pe('pointerup', 701, -249, 0, 1, 2))
+      svg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+    })
+    expect(ix().preview().cut.length).toBe(0)
+  })
+
+  it('Z: drag up zooms in, drag down zooms out, a click zooms in ×1.3 (v1), each around the press; the drawing is untouched', async () => {
+    const { svg, k } = await setup()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: `h${k}` }])) })
+    const doc = bench().core.snapshot(), canUndo = bench().core.canUndo
+    await act(async () => { key('z') })
+    const zoom = async (dy: number) => {
+      await act(async () => {
+        svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1)) // on the line: with Z it is not picked
+        if (dy) window.dispatchEvent(pe('pointermove', 50, 200 * k + dy, 1))
+        window.dispatchEvent(pe('pointerup', 50, 200 * k + dy, 0))
+      })
+      return box(svg)
+    }
+    const b0 = box(svg), up = await zoom(-50), down = await zoom(100), click = await zoom(0)
+    expect(up[2]).toBeLessThan(b0[2])
+    expect(down[2]).toBeGreaterThan(up[2])
+    expect(click[2]).toBeCloseTo(down[2] / 1.3)
+    // around the press: the pressed document point keeps its place in the view box
+    const frac = (b: number[]) => [(50 - b[0]!) / b[2]!, (200 * k - b[1]!) / b[3]!]
+    expect(frac(click)[0]).toBeCloseTo(frac(down)[0]!); expect(frac(click)[1]).toBeCloseTo(frac(down)[1]!)
+    expect([bench().core.snapshot(), bench().core.canUndo]).toEqual([doc, canUndo])
+  })
+
+  it('a tool key leaves Z: the left button goes to the tool again', async () => {
+    const { svg, k } = await setup()
+    await act(async () => { key('z'); key('v') })
+    const before = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 50, 200 * k + 30, 1))
+      window.dispatchEvent(pe('pointerup', 50, 200 * k + 30, 0))
+    })
+    expect(box(svg)).toEqual(before)
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k + 30 })
+  })
+})
+
+describe('Z as in v1 (7205381; bowen 1791554424)', () => {
+  const box = (svg: Element) => svg.getAttribute('viewBox')!.split(' ').map(Number)
+  it('Alt-click zooms out ×1.3; Esc during a zoom drag puts the view back', async () => {
+    const { svg } = await setup()
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z' })) })
+    const b0 = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 300, 300, 1))
+      const up = pe('pointerup', 300, 300, 0); Object.defineProperty(up, 'altKey', { value: true }); window.dispatchEvent(up)
+    })
+    expect(box(svg)[2]).toBeCloseTo(b0[2]! * 1.3)
+    const b1 = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 300, 300, 1))
+      window.dispatchEvent(pe('pointermove', 300, 200, 1))
+    })
+    expect(box(svg)[2]).toBeLessThan(b1[2]!)
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+    expect(box(svg)).toEqual(b1)
   })
 })
