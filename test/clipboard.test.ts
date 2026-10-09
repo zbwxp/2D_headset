@@ -121,6 +121,44 @@ describe('paste', () => {
     expect(() => d.edit(e => e.move([{ id: 'p1/e', target: P(0, 0) }]))).toThrow(/Locked lines would change/)
   })
 
+  it('5b. a pasted lock protects from the moment of the paste: changing it later in the same edit is refused (dot 1791513520)', () => {
+    const d = scene()
+    d.edit(e => e.lineState('t', { locked: true }))
+    const clip = d.copy(['t']), before = json([s(d), d.geometry()])
+    expect(() => d.edit(e => { e.paste(clip, 'K', P(0, 300), 'p1'); e.move([{ id: 'p1/e', target: P(0, 0) }]) })).toThrow(/Locked lines would change \(p1\/t\)/)
+    expect(json([s(d), d.geometry()])).toBe(before)
+    // the paste alone in one edit is fine
+    d.edit(e => e.paste(clip, 'K', P(0, 300), 'p1'))
+    expect(line(d, 'p1/t').state.locked).toBe(true)
+  })
+
+  describe('6b. a clip changed by the caller is refused whole, through the checks (dot 1791513520)', () => {
+    const d = scene(), good = JSON.stringify(d.copy([...eyeLines, 't']))
+    const bad = (f: (c: any) => void) => { const c = JSON.parse(good); f(c); return c }
+    const cases: [string, any, RegExp][] = [
+      ['a line ending at a point outside the clip', bad(c => { c.network.lines[0].a = 'elsewhere' }), /needs two of the clip's points/],
+      ['a coordinate that is text', bad(c => { c.network.points[0].position.y = '3' }), /is not a finite number/],
+      ['a lock that is not true / false', bad(c => { c.network.lines[0].state.locked = 'yes' }), /is not true \/ false/],
+      ['a negative stroke width', bad(c => { c.network.lines[0].stroke.width = -2 }), /positive number/],
+      ['a join on a line outside the clip', bad(c => { c.joins.rows[0].lines[0] = 'k1' }), /points outside the clip/],
+      ['an arc join without a radius', bad(c => { delete c.joins.rows.find((r: any) => r.mode === 'arc').radius }), /positive radius/],
+      ['an unknown join mode', bad(c => { c.joins.rows[0].mode = 'wavy' }), /Unknown join mode wavy/],
+      ['a fill on a line outside the clip', bad(c => { c.fills[0].lines[0] = 'gone' }), /points outside the clip/],
+      ['a name for a line outside the clip', bad(c => { c.names.lines[0][0] = 'gone' }), /points outside the clip/],
+      ['a point id used twice', bad(c => { c.network.points.push({ ...c.network.points[0] }) }), /appears twice/],
+    ]
+    for (const [label, clip, why] of cases) it(label, () => {
+      const before = json([s(d), d.geometry(), d.canUndo])
+      expect(() => d.edit(e => e.paste(clip, 'K', P(0, 300), 'bad'))).toThrow(why)
+      expect(json([s(d), d.geometry(), d.canUndo])).toBe(before)
+    })
+  })
+
+  it('6c. the join writer refuses an unknown mode for every caller, not only a clip', () => {
+    const d = scene()
+    expect(() => d.edit(e => e.join('d', 'w1', 'w2', { mode: 'wavy' as never }))).toThrow(/Unknown join mode wavy/)
+  })
+
   it('6. a clip is plain data: from one document into another, through JSON', () => {
     const d = scene(), other = Core.newDocument()
     const clip = JSON.parse(JSON.stringify(d.copy(eyeLines)))

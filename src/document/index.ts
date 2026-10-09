@@ -130,7 +130,13 @@ export class Editor {
    * pasted lines become the selection.
    */
   paste(clip: clipboard.Clip, layer: Id, offset: Vec, prefix: string) {
-    const map = this.insertClip(structuredClone(clip), layer, offset, old => `${prefix}/${old}`)
+    const { changes } = this.tx, before = new Set(changes.appliedLocks)
+    const map = this.insertClip(clipboard.check(clip), layer, offset, old => `${prefix}/${old}`)
+    // a pasted lock protects from the moment of the paste, as a lock an apply copies does
+    // (net.applyLineState; dot 1791513520): later changes in this edit are compared with
+    // the state right after the paste
+    for (const id of map.lines.values()) if (net.line(this.s.network, id).state.locked) changes.appliedLocks.push(id)
+    this.afterApply(before)
     this.select([...map.lines.values()].map(id => ({ kind: 'line' as const, id })))
   }
   private insertClip(clip: clipboard.Clip, layer: Id, offset: Vec, idOf: (old: Id) => Id): net.CopyMap {

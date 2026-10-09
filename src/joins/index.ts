@@ -35,6 +35,7 @@ export function endStroke(j: JoinsState, point: Id): EndStroke | undefined {
 }
 
 export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id, opts: { mode: JoinMode; radius?: number }) {
+  if (opts.mode !== 'smooth' && opts.mode !== 'cusp' && opts.mode !== 'arc') throw new Error(`Unknown join mode ${String(opts.mode)}`)
   if (l1 === l2) throw new Error('A join needs two different lines')
   const at = new Set(net.linesAt(n, point).map(e => e.line.id))
   if (!at.has(l1) || !at.has(l2)) throw new Error(`Both lines must end at ${point}`)
