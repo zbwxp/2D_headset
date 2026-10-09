@@ -406,3 +406,21 @@ describe('review cases (dot 1791544530)', () => {
     expect(save(d)).toBe(before)
   })
 })
+
+describe('one owner of feedback (dot 1791551067)', () => {
+  it('the last action’s outcome is shown, whichever path it took: canvas, panel, canvas', () => {
+    const { ix, core } = setup(), d = core()
+    ix.key('Delete') // nothing selected
+    expect(ix.preview().refusal?.code).toBe('select-lines-to-delete')
+    // a panel rename onto a taken name, run by the app and reported
+    try { d.edit(e => e.renameLayer('K', 'L')) } catch (err) { ix.outcome(err) }
+    expect(ix.preview().refusal?.code).toBe('name-taken')
+    // a panel rename that works clears it
+    d.edit(e => e.renameLayer('K', 'K2')); ix.outcome()
+    expect(ix.preview().refusal).toBeUndefined()
+    // a panel refusal, then a canvas action that works: the old panel refusal is gone
+    try { d.edit(e => e.renameLayer('K', 'L')) } catch (err) { ix.outcome(err) }
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
+    expect(ix.preview().refusal).toBeUndefined()
+  })
+})

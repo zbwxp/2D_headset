@@ -8,6 +8,7 @@
 // edit. Nothing here draws: `preview()` describes what to show, as plain data.
 import type { Vec } from '../src'
 import { createCtx, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
+import { fromError } from './feedback'
 import { selectTransform } from './flows/select-transform'
 import { pen } from './flows/pen'
 import { steps } from './flows/steps'
@@ -41,6 +42,12 @@ export interface Interaction {
   /** The app tells interaction about changes it made elsewhere (doc 22 §3.5). */
   drawingChanged(): void
   historyChanged(): void
+  /**
+   * The outcome of a one-shot command the app ran on core (a panel button): a refusal to show,
+   * or nothing on success. Feedback has one owner, here, whichever path the last action took
+   * (dot 1791551067).
+   */
+  outcome(err?: unknown): void
   preview(): Preview
   subscribe(listener: () => void): () => void
 }
@@ -117,6 +124,7 @@ export function createInteraction(env: Env): Interaction {
     redo: () => act(redo),
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),
+    outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
     preview() {
       const p: Preview = { cut: [], mirrorSource: [] }
       for (const f of flows) f.preview(p)

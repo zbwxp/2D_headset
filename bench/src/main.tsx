@@ -91,7 +91,6 @@ function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
   const [width, setWidth] = useState(2)
-  const [panelMsg, setPanelMsg] = useState('') // a refusal from a panel command, shown like interaction's
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   const svg = useRef<SVGSVGElement>(null)
   const pan = useRef<null | { start: Vec; box: typeof box }>(null)
@@ -119,9 +118,10 @@ function App() {
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
   const run = (fn: (e: Editor) => void) => {
-    try { logged(core).edit(fn); setPanelMsg(''); return true }
-    catch (err) { setPanelMsg(withNames((err as Error).message)); return false }
-    finally { ix.historyChanged(); bump() }
+    // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
+    try { logged(core).edit(fn); ix.outcome(); return true }
+    catch (err) { ix.outcome(err); return false }
+    finally { bump() }
   }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
@@ -199,7 +199,7 @@ function App() {
   const cutLines = new Set(s.groups.filter(x => pv.cut.includes(x.id)).flatMap(x => x.lines))
 
   const B = (label: string, f: () => void, title?: string) => <button title={title} onClick={f}>{label}</button>
-  const status = pv.refusal ? '✗ ' + withNames(pv.refusal.message) : panelMsg ? '✗ ' + panelMsg
+  const status = pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : `tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
@@ -279,7 +279,7 @@ function App() {
         <div style={{ display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal || panelMsg ? '#c00' : '#333' }}>{status}</div>
+        <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel} onLostPointerCapture={onCancel} onWheel={onWheel}
           onContextMenu={e => { e.preventDefault(); ix.cancel() }}>
