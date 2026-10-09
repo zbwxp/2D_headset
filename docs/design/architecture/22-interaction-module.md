@@ -47,6 +47,56 @@ Each item goes in with its tests (scripted input → expected core calls / previ
 - copy replaces the clip and ends a pending cut;
 - paste offsets each repeat by one step.
 
+## 2b. The core operations interaction calls (public interface only; dot 1791543119)
+
+| Interaction does | Core calls |
+|---|---|
+| **Reads** (for picking, previews, panels) | `snapshot()` and `geometry()` |
+| | `pickLoop(at)` (fill) |
+| | `canUndo` / `canRedo` |
+| **Selects** (a pre-edit, one step) | `edit(e => e.select(units, mode))` |
+| | `edit(e => e.selectGroup(line, mode))` |
+| **Commits a drag** | `edit(e => e.translate(dx, dy))`, on the selection fixed at the drag's start |
+| **Pen** | `edit(e => e.line(id, a, b))` |
+| **Two-click tools** | `bind(keep, remove)` |
+| | `mergePosition(target, moving)` |
+| | `link(a, b)` |
+| | `join(point, l1, l2, opts)` |
+| | `removeJoin(…)` |
+| **One-click tools** | `split(line, t, …)` |
+| | `unbind(point, [line], id)` |
+| | `fill(loop, colour)` / `clearFill(loop)` |
+| **Buttons it owns** | `rotate`, `scale`, `flip` |
+| | `deleteSelection()` |
+| | `lineState`, `lineStroke` |
+| | `mirrorApply`, `mirrorLink`, `unmirror` |
+| **Clipboard** | `copy(lines?)` → a clip it holds |
+| | `edit(e => e.paste(clip, layer, offset, prefix))` |
+| | pending cut, then `edit(e => { for (g) e.moveGroup(g, layer) })` |
+| **History** | `undo()` / `redo()` (never inside an edit) |
+
+**Not interaction's:**
+- layer panel operations (`layer`, `renameLayer`, `reorderLayer`, `layerState`, `copyLayer`, `deleteLayer`): panels, in `app`;
+- `save` / `open`: files, in `app`.
+
+**Who owns what:**
+
+| State | Owner | Why |
+|---|---|---|
+| The drawing | core | graph row "State has one owner" |
+| The selection | core | graph row "State has one owner" |
+| The undo history | core | graph row "State has one owner" |
+| Current tool and tool options (join mode, arc radius, fill colour, width field) | interaction | belongs to the tool |
+| Drag in progress (start, offset, target selection) | interaction | an unfinished operation |
+| Pending cut (groups, drawing it belongs to) | interaction | an unfinished operation |
+| Two-click first pick | interaction | an unfinished operation |
+| Pen chain | interaction | an unfinished operation |
+| Snap hint | interaction | an unfinished operation |
+| Clipboard and its paste count | interaction | the clipboard is tied to copy / paste, which interaction drives |
+| Camera (pan, zoom) | view | display only |
+| Which drawing is open | app | not part of any drawing |
+| Mirror "source" picked for apply / link (bench's Set source) | interaction | the first step of a two-step operation |
+
 ## 3. Unclear: which package (for discussion with bowen)
 
 1. **Hit testing** (which point / handle / line is under the cursor).
