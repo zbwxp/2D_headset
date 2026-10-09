@@ -68,7 +68,7 @@ Each item goes in with its tests (scripted input → expected core calls / previ
 | | `fill(loop, colour)` / `clearFill(loop)` |
 | **Keys** | `deleteSelection()` (Delete), with the selection |
 | **Mirror apply / link** (a two-step pick) | `mirrorApply`, `mirrorLink` |
-| **One-shot buttons** (rotate / scale / flip, lock / hide / width, unmirror) | §3 question 5 decides whether these go through interaction or `app` |
+| **One-shot buttons** (rotate / scale / flip, lock / hide / width, unmirror) | none: they are `app` panels calling core directly (§3.5) |
 | **Clipboard** | `copy(lines?)` → a clip it holds |
 | | `edit(e => e.paste(clip, layer, offset, prefix))` |
 | | pending cut, then `edit(e => { for (g) e.moveGroup(g, layer) })` |
@@ -96,32 +96,34 @@ Each item goes in with its tests (scripted input → expected core calls / previ
 | Which drawing is open | app | not part of any drawing |
 | Mirror "source" picked for apply / link (bench's Set source) | interaction | the first step of a two-step operation |
 
-## 3. Unclear: which package (for discussion with bowen)
+## 3. Placement: settled by Claude and dot from the graph and the boundaries (dot 1791543266)
 
-1. **Hit testing** (which point / handle / line is under the cursor).
-   - *Option 1:* a read-only query next to core (geometry it already owns), used by interaction, view and the AI. The tolerance is given by the caller.
-   - *Option 2:* inside interaction.
-   - Today the bench lets SVG elements catch the pointer, which ties hit testing to the drawing code.
-   - Suggestion: option 1.
+bowen may overrule any of these. None needs a new principle.
+
+1. **Hit testing.**
+   - Distance from a document position to points, handles and curves is a read-only geometry query next to core.
+   - Which kind the current tool picks, the tolerance and the order among candidates belong to interaction.
+   - The mouse-selection rules stay out of core.
 2. **Ids for new objects.**
-   - Core asks the caller for every new id. Interaction then has to make ids, and ids are identity, which is core's.
-   - *Option 1:* core allocates when no id is given.
-   - *Option 2:* interaction keeps making them, with a session prefix as the bench does.
-   - Suggestion: option 1, a small core addition.
-3. **Where a refusal is shown.**
-   - A red cross needs to know which object was refused. Core's refusals are text today, and parsing text would put core's meaning inside interaction.
-   - *Option:* core refusals carry `{ code, objects }`.
-   - Suggestion: yes. This is a core interface addition, not a rule change.
-4. **Exact preview.**
-   - The graph does not fix how exact a preview is.
-   - The bench draws a rough ghost. An exact preview would need core to run an edit on a draft and return it without publishing.
-   - Suggestion: not now. Keep the rough ghost; add the core preview later if the ghost misleads.
-
-5. **One-shot commands from panels and buttons.** Examples: lock a line, rotate +15°, delete, lock a layer, copy a layer. They have no unfinished state, so the graph rows do not decide their package.
-   - *Option 1:* everything a person triggers goes through `interaction`, panels included, so one place maps intent to core calls.
-   - *Option 2:* only the tools, unfinished operations and keyboard / pointer input go through `interaction`; panels in `app` call core's public operations directly.
-   - §2b currently follows a mix: canvas-related buttons in interaction, the layer panel in app. That mix is not a rule.
-   - Suggestion: option 2. It keeps interaction to what the graph section is about.
+   - Callers keep supplying ids, as now; this does not make them owners of identity rules.
+   - `app` gives interaction an id generator (the bench's session-prefixed one).
+   - No change to core's identity handling in this round.
+3. **Refusals.**
+   - Core returns who refused and why: a code and the objects involved.
+   - Interaction decides how that is shown (red cross, lock or mirror mark).
+   - Nobody parses error text.
+   - This is a core interface addition, planned separately before interaction relies on it. Until then interaction shows the message as it is.
+4. **Preview.** The rough ghost stays; this fits the graph, which does not fix how exact a preview is.
+5. **One-shot panel commands** (lock a line, rotate, delete from a button, layer panel, files) stay in `app` and call core's public operations directly.
+   - The temporary-state rules must not spread into the panels. `interaction` exposes the moments that end temporary state, and `app` only calls them:
+     - `toolChanged(tool)`;
+     - `drawingChanged(core)` (opened or switched);
+     - `historyChanged()` (undo / redo from a button), which ends an in-progress drag and checks whether a pending cut's objects still exist;
+     - `cancel()` (Esc).
+   - The rules for each live in interaction.
+6. **Clipboard.**
+   - Copying and pasting content stays in core's `clipboard` module.
+   - Interaction only holds which clip it has, the pending cut and the paste count.
 
 ## 4. Process
 
