@@ -1,6 +1,8 @@
 // select-transform — V picks a whole curve, A a point, handle or line; pressing selects (a
 // pre-edit, one step), dragging only previews, release commits one translate on the units
-// the drag started with (explicit targets), Esc or a cancelled pointer drops it.
+// the drag started with (explicit targets), Esc or a cancelled pointer drops it. A press on
+// nothing starts a selection box (bowen 1791558733): dragged right, it takes the lines wholly
+// inside; dragged left, every line it touches; only in the tool's focus.
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
 
@@ -14,6 +16,20 @@ export interface SelectTransform extends Flow {
 
 export function selectTransform(ctx: Ctx): SelectTransform {
   let drag: { core: Core; start: Vec; units: Unit[]; offset: Vec } | null = null
+  let box: { core: Core; from: Vec; to: Vec; mods: Mods } | null = null
+  /** Commit what the box takes: lines of the focus (V: their whole curves), replacing, adding or removing as a click would. */
+  function boxUp(b: NonNullable<typeof box>, at: Vec) {
+    const px = ctx.env.pixel()
+    if (Math.hypot(at.x - b.from.x, at.y - b.from.y) <= 3 * px) { // a click on nothing: clear, as before
+      if (!b.mods.shift && !b.mods.alt && ctx.snap().selection.length) ctx.commit(e => e.select([], 'replace'))
+      return
+    }
+    const s = ctx.snap(), of = ctx.layerOf(s), visible = new Set(s.lines.filter(l => l.state.visible).map(l => l.id))
+    const lines = ctx.core().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && ctx.inScope(of.line(id)))
+    const ids = ctx.tool() === 'V' ? [...new Set(lines.flatMap(id => s.groups.find(g => g.lines.includes(id))?.lines ?? [id]))] : lines
+    if (!ids.length && (b.mods.shift || b.mods.alt)) return
+    ctx.commit(e => e.select(ids.map(id => ({ kind: 'line' as const, id })), mode(b.mods)))
+  }
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const mode = (m: Mods) => (m.shift ? 'add' : m.alt ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
 
@@ -43,12 +59,12 @@ export function selectTransform(ctx: Ctx): SelectTransform {
 
   return {
     cancelLevel: 1,
-    get dragging() { return !!drag },
+    get dragging() { return !!drag || !!box },
     pointerDown(at, mods) {
       const picked: Unit | undefined = ctx.tool() === 'V'
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
         : hitDirect(at)
-      if (!picked) { if (ctx.snap().selection.length) ctx.commit(e => e.select([], 'replace')); return false }
+      if (!picked) { box = { core: ctx.core(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods } }; return true }
       const already = ctx.selection().some(v => key(v) === key(picked))
       if (!already || mods.shift || mods.alt) {
         if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods)))
@@ -57,22 +73,29 @@ export function selectTransform(ctx: Ctx): SelectTransform {
       startDrag(at)
       return true
     },
-    pointerMove(at) { if (drag) drag.offset = { x: at.x - drag.start.x, y: at.y - drag.start.y } },
+    pointerMove(at) {
+      if (drag) drag.offset = { x: at.x - drag.start.x, y: at.y - drag.start.y }
+      if (box) box.to = { x: at.x, y: at.y }
+    },
     pointerUp(at) {
+      const b = box
+      box = null
+      if (b && ctx.mine(b)) boxUp(b, at)
       const d = drag
       drag = null // a repeated release finds nothing to commit (plan item 19)
       if (!d || !ctx.mine(d)) return // the drawing changed under the drag: it never lands elsewhere
       const offset = { x: at.x - d.start.x, y: at.y - d.start.y }
       if ((offset.x || offset.y) && d.units.length) ctx.commit(e => e.translate(offset.x, offset.y, d.units))
     },
-    pointerCancel() { drag = null },
-    cancel() { if (!drag) return false; drag = null; return true },
-    toolChanged() { drag = null }, // an interaction default: a tool change cancels a drag
-    drawingChanged() { drag = null },
+    pointerCancel() { drag = null; box = null },
+    cancel() { if (!drag && !box) return false; drag = null; box = null; return true },
+    toolChanged() { drag = null; box = null }, // an interaction default: a tool change cancels a drag
+    drawingChanged() { drag = null; box = null },
     // the drawing changed under the drag (undo, or an edit such as Delete): the drag ends
-    historyChanged() { drag = null },
+    historyChanged() { drag = null; box = null },
     preview(p: Preview) {
       if (drag && ctx.mine(drag)) p.drag = { units: structuredClone(drag.units), offset: { ...drag.offset } }
+      if (box && ctx.mine(box)) p.box = { from: { ...box.from }, to: { ...box.to }, whole: box.to.x >= box.from.x }
       p.handles = handlesShown(ctx.snap())
     },
   }

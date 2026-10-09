@@ -149,6 +149,33 @@ export function loopsAt(n: net.NetworkState, j: joins.JoinsState, f: fills.Fills
   return candidates.sort((a, b) => a.area - b.area).map(c => c.id)
 }
 
+/**
+ * The lines, as drawn, that a box from `a` to `b` takes: with `whole`, those lying entirely inside it;
+ * otherwise those it touches at all (read-only, like `nearby`; which lines a tool keeps is the
+ * interaction's). Curves are checked as fine polylines.
+ */
+export function linesInRect(n: net.NetworkState, j: joins.JoinsState, a: Vec, b: Vec, whole: boolean): Id[] {
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y)
+  const inside = (p: Vec) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1
+  // a segment meets the box (Liang–Barsky clip)
+  const meets = (p: Vec, q: Vec) => {
+    let t0 = 0, t1 = 1
+    const dx = q.x - p.x, dy = q.y - p.y
+    for (const [pk, qk] of [[-dx, p.x - x0], [dx, x1 - p.x], [-dy, p.y - y0], [dy, y1 - p.y]] as const) {
+      if (pk === 0) { if (qk < 0) return false; continue }
+      const r = qk / pk
+      if (pk < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r)
+      if (t0 > t1) return false
+    }
+    return true
+  }
+  const o = outline(n, j)
+  return net.lines(n).filter(l => {
+    const pts = flatten(o.drawn.get(l.id)!, 32)
+    return whole ? pts.every(inside) : pts.some((p, i) => i > 0 && meets(pts[i - 1]!, p))
+  }).map(l => l.id)
+}
+
 /** One thing near a position (doc 22 §3.1): what it is, how far, and whether it is shown. */
 export type Nearby =
   | { kind: 'point'; id: Id; distance: number; visible: boolean }

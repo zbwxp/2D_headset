@@ -51,6 +51,8 @@ const ORDER = { point: 0, handle: 1, line: 2 } as const
 export interface Preview {
   /** A drag in progress: the units it moves and the offset so far. */
   drag?: { units: Unit[]; offset: Vec }
+  /** A selection box being dragged: right = lines wholly inside (`whole`), left = lines it touches. */
+  box?: { from: Vec; to: Vec; whole: boolean }
   /** Groups of a pending cut, shown grey. */
   cut: Id[]
   /** A step-by-step tool's first pick. */

@@ -511,6 +511,8 @@ export class Core {
 
   /** Canvas fill pick: the smallest loop containing the point. */
   pickLoop(at: Vec): Id | undefined { return this.loopsAt(at)[0] }
+  /** The lines a box from `a` to `b` takes: wholly inside it (`whole`), or touched by it (read-only). */
+  linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return derived.linesInRect(this.state.network, this.state.joins, a, b, whole) }
   /** Every loop containing the point, smallest first (read-only; which one a tool takes is the interaction's, as with `nearby`). */
   loopsAt(at: Vec): Id[] { return derived.loopsAt(this.state.network, this.state.joins, this.state.fills, at) }
 }

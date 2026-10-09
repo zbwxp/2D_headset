@@ -732,3 +732,51 @@ describe('focus: the selection on the selected layers, and what survives a focus
     expect(d.snapshot().points.find(p => p.id === 'a')!.layer).toBe('K')
   })
 })
+
+describe('selection box (bowen 1791558733)', () => {
+  // drawing(): L has h a(0,0)–b(100,0) and v b–c(100,100); K has m x(0,200)–y(100,200)
+  const drag = (ix: Interaction, from: Vec, to: Vec, mods = {}) => { ix.pointerDown(from, mods); ix.pointerMove(to); ix.pointerUp(to) }
+
+  it('dragged right: only lines wholly inside; V takes their whole curves', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L', 'K'])
+    ix.setTool('A')
+    drag(ix, P(-10, -10), P(110, 50)) // h wholly inside, v only partly
+    expect(sel(core())).toEqual(['line:h'])
+    ix.setTool('V')
+    drag(ix, P(-10, -10), P(110, 50))
+    expect(sel(core()).sort()).toEqual(['line:h', 'line:v']) // h's curve is h + v
+  })
+
+  it('dragged left: every line it touches', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L', 'K'])
+    ix.setTool('A')
+    drag(ix, P(110, 50), P(90, 210)) // crosses v and m, nowhere near h
+    expect(sel(core()).sort()).toEqual(['line:m', 'line:v'])
+  })
+
+  it('only the focus: lines of a layer not selected are left out', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L'])
+    ix.setTool('A')
+    drag(ix, P(-10, -10), P(110, 210))
+    expect(sel(core()).sort()).toEqual(['line:h', 'line:v'])
+  })
+
+  it('Shift adds, Alt removes, a click on nothing clears, Esc drops the box', () => {
+    const { ix, core } = setup()
+    ix.setTool('A')
+    drag(ix, P(-10, -10), P(110, 50))
+    drag(ix, P(-10, 190), P(110, 210), { shift: true })
+    expect(sel(core()).sort()).toEqual(['line:h', 'line:m'])
+    drag(ix, P(-10, -10), P(110, 50), { alt: true })
+    expect(sel(core())).toEqual(['line:m'])
+    ix.pointerDown(P(-10, 190)); ix.pointerMove(P(110, 210))
+    expect(ix.preview().box).toEqual({ from: P(-10, 190), to: P(110, 210), whole: true })
+    ix.key('Escape'); ix.pointerUp(P(110, 210))
+    expect([ix.preview().box, sel(core())]).toEqual([undefined, ['line:m']])
+    ix.pointerDown(P(300, 300)); ix.pointerUp(P(300, 300))
+    expect(sel(core())).toEqual([])
+  })
+})
