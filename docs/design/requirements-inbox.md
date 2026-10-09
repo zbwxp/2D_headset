@@ -51,7 +51,7 @@ Source: 7205381 `src/ui/drawing/LayerPanel.tsx`. These are facts about v1, not d
   - Its eye and lock act on the whole curve.
   - Clicking its name selects it.
   - Unfolded, it lists its curves.
-  - A curve that is alone, unnamed and has no fill is shown directly as a curve row.
+  - A continuous curve of one line, with no name of its own (`strokeName`) and no fill, is shown directly as that line's curve row (v1 `renderItem`; dot 1791557776).
 - **Curve row:** name, then eye and lock. Clicking selects the curve. Rows drag to reorder within their continuous curve. Small tags show an arc join (red when invalid), and depth *(no counterpart)*.
 - **Fill row:** name, a tag (填充 / 透明挖空 / 雾化填充, red when invalid), eye, lock. 透明挖空 and 雾化 have *(no counterpart)*.
 - **Group row** ("组合 · n"): fold, eye, lock, holding continuous curves. *(no counterpart: core has layers, continuous curves and lines, no groups of curves)*.
