@@ -139,14 +139,14 @@ function walkArea(o: Outline, route: net.LoopUse[]): number {
   return Math.abs(polygonArea(polygon(loopParts(o, route))))
 }
 
-/** Canvas fill pick: the smallest loop containing the point, filled or not (bowen 1791390533). */
-export function pickLoop(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsState, at: Vec): Id | undefined {
+/** Every loop containing the point, filled or not, smallest first; the canvas fill pick takes the first in its scope (bowen 1791390533). */
+export function loopsAt(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsState, at: Vec): Id[] {
   const o = outline(n, j)
   const candidates: { id: Id; area: number }[] = []
   for (const v of fills.discover(f, n)) {
     if (pointInPolygon(at, polygon(loopParts(o, v.route)))) candidates.push({ id: v.id, area: walkArea(o, v.route) })
   }
-  return candidates.sort((a, b) => a.area - b.area)[0]?.id
+  return candidates.sort((a, b) => a.area - b.area).map(c => c.id)
 }
 
 /** One thing near a position (doc 22 §3.1): what it is, how far, and whether it is shown. */

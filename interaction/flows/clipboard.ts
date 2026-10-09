@@ -23,11 +23,11 @@ export function clipboard(ctx: Ctx): Clipboard {
   return {
     cancelLevel: 3,
     copy() {
-      try { clip = ctx.core().copy(); pastes = 0; pending = null; ctx.feedback = undefined }
+      try { clip = ctx.core().copy(ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))); pastes = 0; pending = null; ctx.feedback = undefined }
       catch (err) { ctx.feedback = fromError(err) }
     },
     cut() {
-      const s = ctx.snap(), lines = s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : []))
+      const s = ctx.snap(), lines = ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))
       const groups = s.groups.filter(g => g.lines.some(l => lines.includes(l)))
       if (!groups.length || groups.some(g => !g.lines.every(l => lines.includes(l)))) { ctx.feedback = note('cut-whole-curves', 'cut takes whole curves: select them with V'); return }
       pending = { core: ctx.core(), groups: groups.map(g => ({ id: g.id, lines: [...g.lines] })) }

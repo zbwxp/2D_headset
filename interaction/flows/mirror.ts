@@ -10,7 +10,7 @@ export interface Mirror extends Flow { setSource(): void; apply(link: boolean): 
 export function mirror(ctx: Ctx): Mirror {
   // the source keeps the lines picked and, for a link, the whole curves they were then
   let source: { core: Core; lines: Id[]; groups: { id: Id; lines: Id[] }[] } | null = null
-  const selectedLines = () => ctx.snap().selection.flatMap(u => (u.kind === 'line' ? [u.id] : []))
+  const selectedLines = () => ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))
   const sameSet = (a: readonly Id[], b: readonly Id[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
   /** The whole curves the lines make up, or null when they are not whole curves (never widened for the user; dot 1791544469). */
   function wholeGroups(lines: readonly Id[]): { id: Id; lines: Id[] }[] | null {

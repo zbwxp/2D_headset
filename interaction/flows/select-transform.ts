@@ -39,7 +39,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     return undefined
   }
   // the press position is copied in, so a caller reusing its Vec never changes the offset (dot 1791544469)
-  const startDrag = (at: Vec) => { drag = { core: ctx.core(), start: { x: at.x, y: at.y }, units: ctx.snap().selection, offset: { x: 0, y: 0 } } }
+  const startDrag = (at: Vec) => { drag = { core: ctx.core(), start: { x: at.x, y: at.y }, units: ctx.selection(), offset: { x: 0, y: 0 } } }
 
   return {
     cancelLevel: 1,
@@ -49,7 +49,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
         : hitDirect(at)
       if (!picked) { if (ctx.snap().selection.length) ctx.commit(e => e.select([], 'replace')); return false }
-      const already = ctx.snap().selection.some(v => key(v) === key(picked))
+      const already = ctx.selection().some(v => key(v) === key(picked))
       if (!already || mods.shift || mods.alt) {
         if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods)))
         else ctx.commit(e => e.select([picked], mode(mods)))

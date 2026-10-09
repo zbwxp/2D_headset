@@ -90,6 +90,11 @@ export interface Ctx {
   tool(): Tool
   /** Whether a layer is in the current tool's scope. */
   inScope(layer: Id | undefined): boolean
+  /**
+   * The selection units on the selected layers, the only ones anything acts on (docs/layer-scope-plan.md §3).
+   * Units on other layers stay in core's selection (an undo may bring them back) but are inert.
+   */
+  selection(): Unit[]
   /** The layer of each point and line. */
   layerOf(s: Snapshot): { point: (id: Id) => Id | undefined; line: (id: Id) => Id | undefined }
   /** What is shown and within reach, in the current tool's scope: points first, then handles, then lines (nearest first within each). */
@@ -131,6 +136,12 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
       if (scope === 'all') return true
       if (scope === 'current') return layer === env.layer()
       return (env.layers?.() ?? [env.layer()]).includes(layer)
+    },
+    selection: () => {
+      const s = ctx.snap(), of = ctx.layerOf(s), focus = env.layers?.() ?? [env.layer()]
+      const layer = (u: Unit) => u.kind === 'point' ? of.point(u.id) : u.kind === 'line' ? of.line(u.id)
+        : u.kind === 'handle' ? of.line(u.line) : of.line(s.loops.find(l => l.id === u.id)?.route[0]?.line ?? '')
+      return s.selection.filter(u => focus.includes(layer(u)))
     },
     layerOf: s => {
       const points = new Map(s.points.map(p => [p.id, p.layer])), lines = new Map(s.lines.map(l => [l.id, points.get(l.a)]))

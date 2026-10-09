@@ -6,7 +6,7 @@
 // clipboard. Each flow holds only its own temporary state; the drawing, the selection and
 // the history are core's, and every change goes through core's public operations as one
 // edit. Nothing here draws: `preview()` describes what to show, as plain data.
-import type { Vec } from '../src'
+import type { Snapshot, Vec } from '../src'
 import { createCtx, POINT_TOOLS, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
 import { fromError } from './feedback'
 import { selectTransform } from './flows/select-transform'
@@ -32,6 +32,8 @@ export interface Interaction {
   key(name: string, mods?: Mods): boolean
   cancel(): void
   deleteSelection(): void
+  /** The selection units on the selected layers: what is shown selected, and what anything acts on. */
+  selection(): Snapshot['selection']
   copy(): void
   cut(): void
   paste(): void
@@ -98,7 +100,7 @@ export function createInteraction(env: Env): Interaction {
       if (k === 'v') { cb.paste(); return true }
       return false
     }
-    if (k === 'delete' || k === 'backspace') { ctx.commit(e => e.deleteSelection()); return true }
+    if (k === 'delete' || k === 'backspace') { ctx.commit(e => e.deleteSelection(ctx.selection())); return true }
     if (KEY_TOOLS[k]) { setTool(KEY_TOOLS[k]!); return true }
     return false
   }
@@ -114,7 +116,8 @@ export function createInteraction(env: Env): Interaction {
     pointerCancel: () => act(() => st.pointerCancel()),
     key: (name, mods) => act(() => key(name, mods)),
     cancel: () => act(cancel),
-    deleteSelection: () => act(() => { ctx.commit(e => e.deleteSelection()) }),
+    deleteSelection: () => act(() => { ctx.commit(e => e.deleteSelection(ctx.selection())) }),
+    selection: () => structuredClone(ctx.selection()),
     copy: () => act(() => cb.copy()),
     cut: () => act(() => cb.cut()),
     paste: () => act(() => cb.paste()),

@@ -85,12 +85,38 @@ describe('the scope the selected layers give', () => {
     expect(host.querySelectorAll('svg circle').length).toBe(4)
   })
 
-  it('changing the selected layers deselects what is outside them, and keeps what is inside', async () => {
+  it('narrowing the selected layers leaves the selection elsewhere in core but inert: not shown, not acted on, no edit made', async () => {
     const host = await setup()
     await row(host, 'B'); await row(host, 'C', { metaKey: true })
     await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: 'lB' }, { kind: 'line', id: 'lC' }])); bench().refresh() })
+    const undoable = bench().core.canUndo
     await row(host, 'C')
-    expect(bench().core.snapshot().selection).toEqual([{ kind: 'line', id: 'lC' }])
+    expect(bench().core.snapshot().selection).toEqual([{ kind: 'line', id: 'lB' }, { kind: 'line', id: 'lC' }]) // no select edit
+    expect(bench().core.canUndo).toBe(undoable)
+    expect((bench().ix as unknown as { selection(): unknown[] }).selection()).toEqual([{ kind: 'line', id: 'lC' }])
+  })
+
+  it('A+B selected, focus narrowed to A, undo brings B back: drag, Delete, Flip, Rot, copy act on A only; redo stays (dot 1791556061)', async () => {
+    const host = await setup()
+    const core = () => bench().core, pos = (id: string) => core().snapshot().points.find(p => p.id === id)!.position
+    await row(host, 'A'); await row(host, 'B', { metaKey: true })
+    await act(async () => { core().edit(e => e.select([{ kind: 'line', id: 'lA' }, { kind: 'line', id: 'lB' }])); bench().refresh() })
+    // an edit, then undo it: narrowing the focus afterwards makes no edit of its own, so redo stays
+    await act(async () => { core().edit(e => e.translate(1, 0, [{ kind: 'line', id: 'lD' }])); core().undo(); bench().refresh() })
+    await row(host, 'A')
+    expect(core().canRedo).toBe(true)
+    const pB = pos('pB'), qB = pos('qB')
+    const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
+    await act(async () => { button('Flip').click() })
+    await act(async () => { button('Rot +15°').click() })
+    expect([pos('pB'), pos('qB')]).toEqual([pB, qB])
+    const ix = bench().ix as unknown as { copy(): void; paste(): void; deleteSelection(): void; setTool(t: string): void }
+    await act(async () => { ix.copy(); ix.paste() })
+    const pasted = core().snapshot().lines.filter(l => l.id.includes('/'))
+    expect(pasted.map(l => l.id.split('/').pop())).toEqual(['lA'])
+    await act(async () => { core().edit(e => e.select([{ kind: 'line', id: 'lA' }, { kind: 'line', id: 'lB' }])); ix.deleteSelection(); bench().refresh() })
+    expect(core().snapshot().lines.some(l => l.id === 'lB')).toBe(true)
+    expect(core().snapshot().lines.some(l => l.id === 'lA')).toBe(false)
   })
 
   it('opening another drawing resets to one selected layer, its top one', async () => {

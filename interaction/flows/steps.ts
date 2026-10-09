@@ -57,10 +57,11 @@ export function steps(ctx: Ctx): Steps {
   }
 
   function fillAt(at: Vec, mods: Mods) {
-    const loop = ctx.core().pickLoop(at)
-    // only a loop in the tool's scope (docs/layer-scope-plan.md §2)
-    const s = ctx.snap(), first = s.loops.find(l => l.id === loop)?.route[0]?.line
-    if (!loop || !first || !ctx.inScope(ctx.layerOf(s).line(first))) return
+    // the smallest loop in the tool's scope, chosen among all candidates (not the smallest overall, then
+    // dropped: a loop of another layer inside it must not hide it; dot 1791556061)
+    const s = ctx.snap(), of = ctx.layerOf(s)
+    const loop = ctx.core().loopsAt(at).find(id => ctx.inScope(of.line(s.loops.find(l => l.id === id)?.route[0]?.line ?? '')))
+    if (!loop) return
     const color = ctx.options().color
     ctx.commit(e => (mods.shift ? e.clearFill(loop) : e.fill(loop, color)))
   }

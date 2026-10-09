@@ -685,3 +685,50 @@ describe('layer scope: each tool reaches its layers, and shows exactly what it c
     expect([at('r1'), at('s1')]).toEqual([P(60, 0), P(60, 20)])
   })
 })
+
+describe('focus: the selection on the selected layers, and what survives a focus change (dot 1791556023, 1791556061, 1791556088)', () => {
+  it('a drag moves only the selection on the selected layers', () => {
+    const { ix, core, setLayers } = setup(), d = core()
+    d.edit(e => e.select([{ kind: 'line', id: 'h' }, { kind: 'line', id: 'm' }]))
+    setLayers(['L'])
+    expect(ix.selection()).toEqual([{ kind: 'line', id: 'h' }])
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 30))
+    expect([pos(d, 'a').y, pos(d, 'x').y]).toEqual([30, 200])
+  })
+
+  it('Delete and copy take only the selection on the selected layers; none there is refused', () => {
+    const { ix, core, setLayers } = setup(), d = core()
+    d.edit(e => e.select([{ kind: 'line', id: 'm' }]))
+    setLayers(['L'])
+    ix.deleteSelection()
+    expect([ix.preview().refusal?.code, d.snapshot().lines.some(l => l.id === 'm')]).toEqual(['select-lines-to-delete', true])
+    ix.copy()
+    expect(ix.preview().refusal?.code).toBe('select-lines-to-copy')
+  })
+
+  it('fill: a small loop of another layer inside a loop of the focus does not hide it', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); e.layer('K')
+      e.line('b1', { id: 'b1', layer: 'L', position: P(0, 0) }, { id: 'b2', layer: 'L', position: P(100, 0) }); e.line('b2', 'b2', { id: 'b3', layer: 'L', position: P(50, 100) }); e.line('b3', 'b3', 'b1')
+      e.line('s1', { id: 's1', layer: 'K', position: P(40, 20) }, { id: 's2', layer: 'K', position: P(60, 20) }); e.line('s2', 's2', { id: 's3', layer: 'K', position: P(50, 40) }); e.line('s3', 's3', 's1')
+    })
+    const { ix, setLayers } = setup(d)
+    setLayers(['L'])
+    ix.setTool('fill'); ix.pointerDown(P(50, 28)) // inside both: K's loop is the smaller
+    const filled = d.snapshot().loops.filter(l => l.filled)
+    expect(filled.map(l => l.route.map(u => u.line).sort())).toEqual([['b1', 'b2', 'b3']])
+  })
+
+  it('a mirror source and a pending cut stay through a focus change; the paste goes to the new current layer', () => {
+    const { ix, core, setLayers, setLayer } = setup(), d = core()
+    setLayers(['L'])
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
+    ix.setMirrorSource()
+    ix.cut()
+    setLayers(['K']); setLayer('K')
+    expect([ix.preview().mirrorSource.sort(), ix.preview().cut.length]).toEqual([['h', 'v'], 1])
+    ix.paste()
+    expect(d.snapshot().points.find(p => p.id === 'a')!.layer).toBe('K')
+  })
+})

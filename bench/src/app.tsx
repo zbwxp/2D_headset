@@ -126,7 +126,8 @@ export function App() {
 
   const line = (id: Id) => s.lines.find(l => l.id === id)!
   const pos = (id: Id) => s.points.find(p => p.id === id)!.position
-  const sel = s.selection
+  // only the selection on the selected layers is shown selected and acted on (docs/layer-scope-plan.md §3)
+  const sel = ix.selection()
   const selLines = sel.flatMap(u => (u.kind === 'line' ? [u.id] : []))
   const groupOf = (l: Id) => s.groups.find(gr => gr.lines.includes(l))?.id
   const opts = ix.options()
@@ -142,20 +143,8 @@ export function App() {
     catch (err) { ix.outcome(err); return false }
     finally { bump() }
   }
-  /**
-   * The panel changed the selected layers. Selected units outside the new V/A scope are
-   * deselected (one select edit, only when something is dropped), so nothing out of scope is
-   * operated on (docs/layer-scope-plan.md §3).
-   */
-  const selectLayers = (ids: Id[], current: Id) => {
-    const now = core.snapshot(), pl = new Map(now.points.map(p => [p.id, p.layer]))
-    const lineLayer = (l: Id) => pl.get(now.lines.find(x => x.id === l)?.a ?? '')
-    const layerOf = (u: (typeof now.selection)[number]) => u.kind === 'point' ? pl.get(u.id) : u.kind === 'line' ? lineLayer(u.id)
-      : u.kind === 'handle' ? lineLayer(u.line) : lineLayer(now.loops.find(l => l.id === u.id)?.route[0]?.line ?? '')
-    const keep = now.selection.filter(u => ids.includes(layerOf(u) ?? ''))
-    if (keep.length < now.selection.length) run(x => x.select(keep, 'replace'))
-    setLayers(ids); setLayer(current)
-  }
+  /** The panel changed the selected layers; the selection elsewhere simply goes inert (docs/layer-scope-plan.md §3). */
+  const selectLayers = (ids: Id[], current: Id) => { setLayers(ids); setLayer(current) }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
     return P(p.x, p.y)
@@ -314,9 +303,9 @@ export function App() {
           {B('Undo', () => ix.undo())}{B('Redo', () => ix.redo())}
           {B('Delete', () => ix.deleteSelection())}
           {B('Cut', () => ix.cut(), '⌘X: grey until pasted; Esc cancels')}{B('Copy', () => ix.copy(), '⌘C')}{B('Paste', () => ix.paste(), '⌘V: into the current layer')}
-          {B('Flip', () => run(x => x.flip()))}
-          {B('Rot +15°', () => run(x => x.rotate(centre, Math.PI / 12)))}
-          {B('×1.1', () => run(x => x.scale(centre, 1.1, 1.1)))}{B('×0.9', () => run(x => x.scale(centre, 0.9, 0.9)))}
+          {B('Flip', () => run(x => x.flip(sel)))}
+          {B('Rot +15°', () => run(x => x.rotate(centre, Math.PI / 12, sel)))}
+          {B('×1.1', () => run(x => x.scale(centre, 1.1, 1.1, sel)))}{B('×0.9', () => run(x => x.scale(centre, 0.9, 0.9, sel)))}
         </div>
         <b>Selected lines ({selLines.length})</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>

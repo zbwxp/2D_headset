@@ -328,9 +328,9 @@ export class Editor {
     editing.select(scratch, read, this.s.fills, structuredClone([...units]), 'replace')
     return scratch
   }
-  /** Delete the selected lines; without a selected line it is refused. */
-  deleteSelection() {
-    for (const id of editing.deletion(this.s.selection)) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
+  /** Delete the selected lines, or the lines among `units` (explicit targets, as the transforms take); without a line it is refused. */
+  deleteSelection(units?: readonly editing.Unit[]) {
+    for (const id of editing.deletion(this.targets(units, this.view().network))) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
   }
 
   // apply (graph: Editing "Apply", Mirror table)
@@ -510,7 +510,9 @@ export class Core {
   nearby(at: Vec, radius: number): derived.Nearby[] { return structuredClone(derived.nearby(this.state.network, this.state.joins, at, radius)) }
 
   /** Canvas fill pick: the smallest loop containing the point. */
-  pickLoop(at: Vec): Id | undefined { return derived.pickLoop(this.state.network, this.state.joins, this.state.fills, at) }
+  pickLoop(at: Vec): Id | undefined { return this.loopsAt(at)[0] }
+  /** Every loop containing the point, smallest first (read-only; which one a tool takes is the interaction's, as with `nearby`). */
+  loopsAt(at: Vec): Id[] { return derived.loopsAt(this.state.network, this.state.joins, this.state.fills, at) }
 }
 
 // ---- for the archive module only (not exported from the package root) -----------
