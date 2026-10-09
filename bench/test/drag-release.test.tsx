@@ -427,3 +427,44 @@ describe('a tool change or a successful open ends a pan or zoom; a failed open d
     expect(box(svg)).not.toBe(mid)
   })
 })
+
+describe('two more edges (dot 1791554963)', () => {
+  type Ix = { cut(): void; preview(): { drag?: unknown; cut: unknown[] } }
+  const ix = () => (window as unknown as { bench: { ix: Ix } }).bench.ix
+  const box = (svg: Element) => svg.getAttribute('viewBox')!.split(' ').map(Number)
+
+  it('pressing Z during a V drag ends the drag: the later release moves nothing', async () => {
+    const { svg, k } = await setup()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 50, 200 * k, 1))
+      window.dispatchEvent(pe('pointermove', 60, 200 * k + 20, 1))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z' }))
+    })
+    expect(ix().preview().drag).toBeUndefined()
+    await act(async () => { window.dispatchEvent(pe('pointerup', 70, 200 * k + 30, 0)) })
+    expect(at(`a${k}`)).toEqual({ x: 0, y: 200 * k })
+  })
+
+  it('a right press released far away with no move between is a pan, not the right click', async () => {
+    const { svg, k } = await setup()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: `h${k}` }])); ix().cut() })
+    const before = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 700, -250, 2, 1, 2))
+      window.dispatchEvent(pe('pointerup', 600, -250, 0, 1, 2))
+    })
+    expect(box(svg)[0]).not.toBe(before[0])
+    expect(ix().preview().cut.length).toBe(1)
+  })
+
+  it('a Z press released far up with no move between zooms by the drag, not the click step', async () => {
+    const { svg } = await setup()
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z' })) })
+    const before = box(svg)
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 300, 300, 1))
+      window.dispatchEvent(pe('pointerup', 300, 200, 0))
+    })
+    expect(box(svg)[2]).toBeCloseTo(before[2]! * Math.exp(-100 * 0.008))
+  })
+})

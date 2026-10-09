@@ -176,6 +176,10 @@ export function App() {
       if (ev.pointerId !== id) return
       if ((ev.buttons & bit) === 0) { if (kind === 'tool') note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
       if (kind === 'tool') { ix.pointerMove(toDoc(ev)); return }
+      follow(ev)
+    }
+    /** Pan or zoom to where the pointer is; also run on release, so a release far away with no move between is a drag, not a click (dot 1791554963). */
+    const follow = (ev: PointerEvent) => {
       moved ||= Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > CLICK
       if (!moved) return
       if (kind === 'pan') { const k = from.w / svg.current!.clientWidth; setBox({ ...from, x: from.x - (ev.clientX - start.x) * k, y: from.y - (ev.clientY - start.y) * k }) }
@@ -184,8 +188,9 @@ export function App() {
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       stop()
-      if (kind === 'tool') ix.pointerUp(toDoc(ev))
-      else if (!moved && kind === 'zoom') zoomBy(ev.altKey || ev.ctrlKey ? 1.3 : 1 / 1.3) // a click zooms in ×1.3, Alt / Ctrl-click out (v1)
+      if (kind === 'tool') { ix.pointerUp(toDoc(ev)); return }
+      follow(ev)
+      if (!moved && kind === 'zoom') zoomBy(ev.altKey || ev.ctrlKey ? 1.3 : 1 / 1.3) // a click zooms in ×1.3, Alt / Ctrl-click out (v1)
       else if (!moved && e.button === 2) ix.cancel() // the right click
     }
     // a cancelled pan or zoom puts the view back where it started (v1: cancelViewport)
