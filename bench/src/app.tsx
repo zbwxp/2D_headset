@@ -154,8 +154,19 @@ export function App() {
     if (p) { const k = p.box.w / svg.current!.clientWidth; setBox({ ...p.box, x: p.box.x - (e.clientX - p.start.x) * k, y: p.box.y - (e.clientY - p.start.y) * k }); return }
     ix.pointerMove(toDoc(e))
   }
-  const onUp = (e: React.PointerEvent) => { if (e.button === 2) return; if (pan.current) { pan.current = null; return } ix.pointerUp(toDoc(e)) }
-  const onCancel = () => { pan.current = null; ix.pointerCancel() }
+  // diagnostics for inbox #7 (a drag that shows its preview but never commits; bowen 1791552251,
+  // a trackpad lifted while moving): the log names whatever ended a drag without a release
+  const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
+  const onUp = (e: React.PointerEvent) => {
+    const dragging = !!ix.preview().drag
+    if (e.button === 2) { if (dragging) note(`pointerup ignored: button ${e.button}`); return }
+    if (pan.current) { pan.current = null; if (dragging) note('pointerup ended a pan, not the drag'); return }
+    ix.pointerUp(toDoc(e))
+  }
+  const onCancel = (e: React.PointerEvent) => {
+    if (ix.preview().drag) note(`drag cancelled by ${e.type} (buttons ${e.buttons}) before any release`)
+    pan.current = null; ix.pointerCancel()
+  }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
