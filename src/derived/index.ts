@@ -9,7 +9,7 @@ import * as joins from '../joins'
 import * as fills from '../fills'
 import {
   type Cubic, type Vec, arcLength, tAtLength, subCurve, filletArc, derivative, scale,
-  flatten, polygonArea, pointInPolygon, nearest, length, add, evaluate,
+  flatten, polygonArea, pointInPolygon, nearest, length, add,
 } from '../geometry'
 
 type Id = net.Id
@@ -35,6 +35,8 @@ interface Outline {
   piece: (line: Id, ta: number, tb: number) => Cubic
   /** The drawn (fully trimmed) curve of each line. */
   drawn: Map<Id, Cubic>
+  /** For each line, the parameter range [t0, t1] on its own curve that the drawn curve is cut from. */
+  range: Map<Id, [number, number]>
   arcByKey: Map<string, Geometry['arcs'][number]>
 }
 
@@ -72,7 +74,10 @@ function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
     const c = full.get(id)!, L = len.get(id)!
     return subCurve(c, ta > 0 ? tAtLength(c, ta) : 0, tb > 0 ? tAtLength(c, L - tb) : 1)
   }
-  const drawn = new Map(all.map(l => [l.id, piece(l.id, trim.get(endKey(l.id, 'a')) ?? 0, trim.get(endKey(l.id, 'b')) ?? 0)]))
+  // the drawn curve is cut from its own curve at [t0, t1]; that range is kept, so a position on
+  // the drawn curve maps back to the line's own parameter without searching again (dot 1791544391)
+  const range = new Map(all.map(l => [l.id, [tAt(l.id, 'a'), tAt(l.id, 'b')] as [number, number]]))
+  const drawn = new Map(all.map(l => { const [t0, t1] = range.get(l.id)!; return [l.id, subCurve(full.get(l.id)!, t0, t1)] }))
   // Direction of travel along a line toward (or away from) the given end, at its trim point.
   const towardEnd = (line: Id, end: net.End): Vec => {
     const d = derivative(full.get(line)!, tAt(line, end))
@@ -86,7 +91,7 @@ function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
     const key = arcKey(r.point, r.lines)
     return [key, { key, point: r.point, lines: r.lines, curve }] as const
   }))
-  return { n, trim, piece, drawn, arcByKey }
+  return { n, trim, piece, drawn, range, arcByKey }
 }
 
 /**
@@ -176,10 +181,10 @@ export function nearby(n: net.NetworkState, j: joins.JoinsState, at: Vec, radius
     }
     // distance to the line as drawn; the parameter is read back on its own curve, so a tool
     // can split there without knowing how an arc join trims it
-    const drawn = o.drawn.get(l.id)!, near = nearest(drawn, at)
+    const near = nearest(o.drawn.get(l.id)!, at)
     if (near.distance <= radius) {
-      const t = nearest(net.curve(n, l.id) as Cubic, evaluate(drawn, near.t)).t
-      out.push({ kind: 'line', id: l.id, distance: near.distance, t, visible: l.state.visible })
+      const [t0, t1] = o.range.get(l.id)!
+      out.push({ kind: 'line', id: l.id, distance: near.distance, t: t0 + near.t * (t1 - t0), visible: l.state.visible })
     }
   }
   return out.sort((x, y) => x.distance - y.distance)

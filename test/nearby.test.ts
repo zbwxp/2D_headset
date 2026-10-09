@@ -77,4 +77,18 @@ describe('nearby: the review cases (dot 1791543988)', () => {
     d.edit(e => e.split('h', (hit as { t: number }).t, 'm', 'h1', 'h2'))
     expect(d.snapshot().points.find(p => p.id === 'm')!.position.x).toBeCloseTo(11, 6)
   })
+
+  it('a line that passes one position twice keeps the branch that is drawn: t comes from the trim range, not a second search (dot 1791544391)', () => {
+    const d = new Core()
+    // control points (36,-18), (-28,26), (-28,-26), (36,18): through (0,0) at t = 0.25 and t = 0.75
+    d.edit(e => {
+      e.layer('L')
+      e.line('q', { id: 'a', layer: 'L', position: P(36, -18) }, { id: 'b', layer: 'L', position: P(36, 18) }, { ha: P(-64, 44), hb: P(-64, -44) })
+      e.line('r', 'a', { id: 'z', layer: 'L', position: P(90, -18) })
+    })
+    d.edit(e => e.join('a', 'q', 'r', { mode: 'arc', radius: 45 })) // trims q's start past t = 0.25
+    const hit = d.nearby(P(0, 0), 0.5).find(x => x.kind === 'line' && x.id === 'q')
+    expect(hit).toBeDefined()
+    expect((hit as { t: number }).t).toBeCloseTo(0.75, 3)
+  })
 })
