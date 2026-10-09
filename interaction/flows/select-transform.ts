@@ -1,8 +1,8 @@
 // select-transform — V picks a whole curve, A a point, handle or line; pressing selects (a
 // pre-edit, one step), dragging only previews, release commits one translate on the units
-// the drag started with (explicit targets), Esc or a cancelled pointer drops it. A press on
-// nothing starts a selection box (bowen 1791558733): dragged right, it takes the lines wholly
-// inside; dragged left, every line it touches; only in the tool's focus.
+// the drag started with (explicit targets), Esc or a cancelled pointer drops it. S is the
+// selection box (bowen 1791558733, 1791558844): dragged right, it takes the lines wholly inside;
+// dragged left, every line it touches; only in its focus, the current layer.
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
 
@@ -17,7 +17,7 @@ export interface SelectTransform extends Flow {
 export function selectTransform(ctx: Ctx): SelectTransform {
   let drag: { core: Core; start: Vec; units: Unit[]; offset: Vec } | null = null
   let box: { core: Core; from: Vec; to: Vec; mods: Mods } | null = null
-  /** Commit what the box takes: lines of the focus (V: their whole curves), replacing, adding or removing as a click would. */
+  /** Commit what the box takes: lines of the focus, replacing, adding or removing as a click would. */
   function boxUp(b: NonNullable<typeof box>, at: Vec) {
     const px = ctx.env.pixel()
     if (Math.hypot(at.x - b.from.x, at.y - b.from.y) <= 3 * px) { // a click on nothing: clear, as before
@@ -26,9 +26,8 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     }
     const s = ctx.snap(), of = ctx.layerOf(s), visible = new Set(s.lines.filter(l => l.state.visible).map(l => l.id))
     const lines = ctx.core().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && ctx.inScope(of.line(id)))
-    const ids = ctx.tool() === 'V' ? [...new Set(lines.flatMap(id => s.groups.find(g => g.lines.includes(id))?.lines ?? [id]))] : lines
-    if (!ids.length && (b.mods.shift || b.mods.alt)) return
-    ctx.commit(e => e.select(ids.map(id => ({ kind: 'line' as const, id })), mode(b.mods)))
+    if (!lines.length && (b.mods.shift || b.mods.alt)) return
+    ctx.commit(e => e.select(lines.map(id => ({ kind: 'line' as const, id })), mode(b.mods)))
   }
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const mode = (m: Mods) => (m.shift ? 'add' : m.alt ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
@@ -61,10 +60,11 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     cancelLevel: 1,
     get dragging() { return !!drag || !!box },
     pointerDown(at, mods) {
+      if (ctx.tool() === 'S') { box = { core: ctx.core(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods } }; return true }
       const picked: Unit | undefined = ctx.tool() === 'V'
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
         : hitDirect(at)
-      if (!picked) { box = { core: ctx.core(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods } }; return true }
+      if (!picked) { if (ctx.snap().selection.length) ctx.commit(e => e.select([], 'replace')); return false }
       const already = ctx.selection().some(v => key(v) === key(picked))
       if (!already || mods.shift || mods.alt) {
         if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods)))
