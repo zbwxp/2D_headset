@@ -95,7 +95,6 @@ export function App() {
   const [drawing, setDrawing] = useState(0)
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   const svg = useRef<SVGSVGElement>(null)
-  const pan = useRef<null | { start: Vec; box: typeof box }>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
   const [size, setSize] = useState({ w: 900, h: 600 })
@@ -143,29 +142,33 @@ export function App() {
   }
   const mods = (e: { shiftKey: boolean; altKey: boolean; metaKey: boolean; ctrlKey: boolean }) => ({ shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey })
 
+  // A gesture (a tool's drag, or a pan) follows the pointer on the whole window until the button
+  // is up, instead of relying on pointer capture: lifting a trackpad while moving loses capture
+  // before any release reaches the canvas (inbox #7; bowen 1791552361: "drag cancelled by
+  // lostpointercapture before any release"). A release is the pointerup wherever it lands, or a
+  // move that finds no button held (the up was missed); only pointercancel, Esc or leaving the
+  // window cancels.
+  const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const onDown = (e: React.PointerEvent) => {
     // a right click goes straight to cancel (contextmenu), never into a tool first (dot 1791544530)
     if (e.button === 2) return
-    svg.current!.setPointerCapture(e.pointerId)
-    if (e.button === 1 || !ix.pointerDown(toDoc(e), mods(e))) pan.current = { start: P(e.clientX, e.clientY), box }
-  }
-  const onMove = (e: React.PointerEvent) => {
-    const p = pan.current
-    if (p) { const k = p.box.w / svg.current!.clientWidth; setBox({ ...p.box, x: p.box.x - (e.clientX - p.start.x) * k, y: p.box.y - (e.clientY - p.start.y) * k }); return }
-    ix.pointerMove(toDoc(e))
-  }
-  // diagnostics for inbox #7 (a drag that shows its preview but never commits; bowen 1791552251,
-  // a trackpad lifted while moving): the log names whatever ended a drag without a release
-  const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
-  const onUp = (e: React.PointerEvent) => {
-    const dragging = !!ix.preview().drag
-    if (e.button === 2) { if (dragging) note(`pointerup ignored: button ${e.button}`); return }
-    if (pan.current) { pan.current = null; if (dragging) note('pointerup ended a pan, not the drag'); return }
-    ix.pointerUp(toDoc(e))
-  }
-  const onCancel = (e: React.PointerEvent) => {
-    if (ix.preview().drag) note(`drag cancelled by ${e.type} (buttons ${e.buttons}) before any release`)
-    pan.current = null; ix.pointerCancel()
+    const id = e.pointerId
+    const panFrom = e.button === 1 || !ix.pointerDown(toDoc(e), mods(e)) ? { start: P(e.clientX, e.clientY), box } : null
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      if (ev.buttons === 0) { if (!panFrom) note('release found by a move with no button held (pointerup missed)'); up(ev); return }
+      if (panFrom) { const k = panFrom.box.w / svg.current!.clientWidth; setBox({ ...panFrom.box, x: panFrom.box.x - (ev.clientX - panFrom.start.x) * k, y: panFrom.box.y - (ev.clientY - panFrom.start.y) * k }); return }
+      ix.pointerMove(toDoc(ev))
+    }
+    const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (!panFrom) ix.pointerUp(toDoc(ev)) }
+    const cancel = (why: string) => () => { stop(); if (!panFrom && ix.preview().drag) note(`drag cancelled by ${why}`); if (!panFrom) ix.pointerCancel() }
+    const onCancel = cancel('pointercancel'), onBlur = cancel('leaving the window')
+    const stop = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
@@ -306,7 +309,7 @@ export function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none' }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel} onLostPointerCapture={onCancel} onWheel={onWheel}
+          onPointerDown={onDown} onWheel={onWheel}
           onContextMenu={e => { e.preventDefault(); ix.cancel() }}>
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
