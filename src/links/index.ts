@@ -36,6 +36,9 @@ export function link(l: LinksState, n: net.NetworkState, a: Id, b: Id, read: net
   return { id: b, target: pa.position }
 }
 
+/** Link joins in their one stored order; kept by every writer and every reference update (dot 1791512672). */
+const sortJoins = (l: LinksState) => { S(l).joins.sort((x, y) => (JSON.stringify([x.a, x.b, x.lines]) < JSON.stringify([y.a, y.b, y.lines]) ? -1 : 1)) }
+
 const samePair = (x: { a: Id; b: Id }, a: Id, b: Id) => (x.a === a && x.b === b) || (x.a === b && x.b === a)
 const endAt = (n: net.NetworkState, line: Id, point: Id): net.End | undefined => {
   if (!net.hasLine(n, line)) return undefined
@@ -64,7 +67,7 @@ export function setJoin(l: LinksState, n: net.NetworkState, a: Id, b: Id, la: Id
   // sorted, so setting A–B or B–A gives the same record. Which side was clicked first
   // only decides which handle is held in this edit (returned).
   S(l).joins.push(a < b ? { a, b, lines: [la, lb], mode: 'smooth' } : { a: b, b: a, lines: [lb, la], mode: 'smooth' })
-  S(l).joins.sort((x, y) => (JSON.stringify([x.a, x.b, x.lines]) < JSON.stringify([y.a, y.b, y.lines]) ? -1 : 1))
+  sortJoins(l)
   return { line: la, end: ea }
 }
 
@@ -97,6 +100,8 @@ export function update(l: LinksState, n: net.NetworkState, ch: net.Changes) {
     }) as [Id, Id]
   }
   S(l).joins = S(l).joins.filter(x => S(l).pairs.some(p => samePair(p, x.a, x.b)) && endAt(n, x.lines[0], x.a) && endAt(n, x.lines[1], x.b))
+  // a split renames lines inside the records, so their stored order is restored here
+  sortJoins(l)
 }
 
 /**

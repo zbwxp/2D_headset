@@ -258,7 +258,7 @@ describe('random edit sequences (bowen 1791428827)', () => {
 
   it('every published state saves and opens equal (docs/archive-plan.md acceptance 1)', () => {
     const problems: string[] = []
-    for (const seed of seeds.slice(0, 12)) run(seed, 60, d => {
+    for (const seed of seeds) run(seed, 80, d => {
       try {
         const o = open(save(d))
         if (JSON.stringify({ ...o.snapshot(), selection: [] }) !== JSON.stringify({ ...d.snapshot(), selection: [] })) problems.push(`seed ${seed}: snapshot differs`)

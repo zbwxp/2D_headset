@@ -88,6 +88,21 @@ describe('save and open', () => {
     expect(() => open(variant(r => { delete r[0].radius }))).toThrow(/positive radius/)
   })
 
+  it('1e. a split that renames a line inside link joins keeps their stored order: saved and opened equal (dot 1791512672)', () => {
+    // one link a–b; two joins across it, [a1, k] and [b1, k]; splitting a1 renames it to z…, which sorts after b1
+    const d = new Core()
+    d.edit(e => {
+      e.layer('A'); e.layer('B')
+      e.line('a1', { id: 'p0', layer: 'A', position: P(0, 0) }, { id: 'a', layer: 'A', position: P(10, 0) })
+      e.line('b1', 'a', { id: 'p2', layer: 'A', position: P(20, -5) })
+      e.line('k', { id: 'b', layer: 'B', position: P(10, 0) }, { id: 'q', layer: 'B', position: P(10, 20) })
+    })
+    d.edit(e => { e.link('a', 'b'); e.linkJoin('a', 'b', 'a1', 'k', { mode: 'smooth' }); e.linkJoin('a', 'b', 'b1', 'k', { mode: 'smooth' }) })
+    d.edit(e => e.split('a1', 0.5, 'm', 'z1', 'z2'))
+    expect(d.snapshot().linkJoins.map(j => j.lines)).toEqual([['b1', 'k'], ['z2', 'k']])
+    same(d, open(save(d)))
+  })
+
   it('2. the opened document works: empty history, the same edit gives the same result, new ids and names do not collide', () => {
     const d = eyes(), o = open(save(d))
     expect(o.canUndo).toBe(false)
