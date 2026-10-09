@@ -733,29 +733,45 @@ describe('focus: the selection on the selected layers, and what survives a focus
   })
 })
 
-describe('S, the selection box (bowen 1791558733, 1791558844)', () => {
+describe('the selection box: a drag from nothing, in any tool but the pen (bowen 1791558733, 1791559014)', () => {
   // drawing(): L has h a(0,0)–b(100,0) and v b–c(100,100); K has m x(0,200)–y(100,200); current layer L
   const drag = (ix: Interaction, from: Vec, to: Vec, mods = {}) => { ix.pointerDown(from, mods); ix.pointerMove(to); ix.pointerUp(to) }
 
-  it('the s key; dragged right: only lines wholly inside', () => {
+  it('dragged right: only lines wholly inside; dragged left: every line touched', () => {
     const { ix, core } = setup()
-    ix.key('s')
-    expect(ix.tool).toBe('S')
+    ix.setTool('A')
     drag(ix, P(-10, -10), P(110, 50)) // h wholly inside, v only partly
     expect(sel(core())).toEqual(['line:h'])
-  })
-
-  it('dragged left: every line it touches', () => {
-    const { ix, core } = setup()
-    ix.setTool('S')
     drag(ix, P(110, 50), P(-10, -10)) // touches h and v
     expect(sel(core()).sort()).toEqual(['line:h', 'line:v'])
+  })
+
+  it('in V, A and the step tools alike; not in the pen, whose presses make points', () => {
+    for (const tool of ['V', 'A', 'bind', 'split', 'join', 'fill'] as const) {
+      const { ix, core } = setup()
+      ix.setTool(tool)
+      drag(ix, P(-10, -10), P(110, 50))
+      expect([tool, sel(core())]).toEqual([tool, ['line:h']])
+    }
+    const { ix, core } = setup()
+    ix.setTool('pen')
+    ix.pointerDown(P(-10, -10)); ix.pointerMove(P(110, 50)); ix.pointerUp(P(110, 50))
+    expect([sel(core()), ix.preview().box]).toEqual([[], undefined])
+  })
+
+  it('a press on something the tool takes is that tool’s, not a box', () => {
+    const { ix, core } = setup()
+    ix.setTool('bind')
+    ix.pointerDown(P(0, 0)) // point a
+    expect([ix.preview().pick, ix.preview().box]).toEqual([{ kind: 'point', id: 'a' }, undefined])
+    ix.pointerUp(P(0, 0))
+    expect(sel(core())).toEqual([])
   })
 
   it('its focus is the current layer only, whatever else is selected', () => {
     const { ix, core, setLayers, setLayer } = setup()
     setLayers(['L', 'K'])
-    ix.setTool('S')
+    ix.setTool('A')
     drag(ix, P(-10, -10), P(110, 210))
     expect(sel(core()).sort()).toEqual(['line:h', 'line:v'])
     setLayer('K')
@@ -763,11 +779,10 @@ describe('S, the selection box (bowen 1791558733, 1791558844)', () => {
     expect(sel(core())).toEqual(['line:m'])
   })
 
-  it('a press on a line still starts a box; Shift adds, Alt removes, a click clears, Esc drops the box', () => {
+  it('Shift adds, Alt removes, Esc drops the box; a click on nothing clears in V / A, does nothing in a step tool', () => {
     const { ix, core } = setup()
-    ix.setTool('S')
-    drag(ix, P(50, 0), P(-10, 10)) // starts on h: still a box, touching h
-    expect(sel(core())).toEqual(['line:h'])
+    ix.setTool('A')
+    drag(ix, P(-10, -10), P(110, 50))
     drag(ix, P(90, -10), P(110, 110), { shift: true })
     expect(sel(core()).sort()).toEqual(['line:h', 'line:v'])
     drag(ix, P(-10, -10), P(110, 50), { alt: true })
@@ -776,15 +791,11 @@ describe('S, the selection box (bowen 1791558733, 1791558844)', () => {
     expect(ix.preview().box).toEqual({ from: P(-10, -10), to: P(110, 50), whole: true })
     ix.key('Escape'); ix.pointerUp(P(110, 50))
     expect([ix.preview().box, sel(core())]).toEqual([undefined, ['line:v']])
+    ix.setTool('bind')
+    ix.pointerDown(P(300, 300)); ix.pointerUp(P(300, 300))
+    expect(sel(core())).toEqual(['line:v'])
+    ix.setTool('A')
     ix.pointerDown(P(300, 300)); ix.pointerUp(P(300, 300))
     expect(sel(core())).toEqual([])
-  })
-
-  it('with V or A a press on nothing only clears, as before', () => {
-    const { ix, core } = setup()
-    core().edit(e => e.select([{ kind: 'line', id: 'h' }]))
-    ix.setTool('V')
-    expect(ix.pointerDown(P(300, 300))).toBe(false)
-    expect([sel(core()), ix.preview().box]).toEqual([[], undefined])
   })
 })

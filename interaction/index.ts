@@ -55,8 +55,7 @@ export interface Interaction {
   subscribe(listener: () => void): () => void
 }
 
-// s is the selection box; split has no key for now (bowen 1791558844)
-const KEY_TOOLS: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'S', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
+const KEY_TOOLS: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
 
 export function createInteraction(env: Env): Interaction {
   let tool: Tool = 'pen'
@@ -85,9 +84,10 @@ export function createInteraction(env: Env): Interaction {
 
   function pointerDown(at: Vec, mods: Mods = {}): boolean {
     ctx.feedback = undefined
-    if (tool === 'V' || tool === 'A' || tool === 'S') return st.pointerDown(at, mods)
-    if (tool === 'pen') pn.click(at)
-    else sp.click(at, mods)
+    if (tool === 'V' || tool === 'A') return st.pointerDown(at, mods)
+    if (tool === 'pen') pn.click(at) // the pen uses every press, blank ones too: no selection box
+    // a step tool's press on nothing it takes starts a selection box (bowen 1791559014)
+    else if (!sp.click(at, mods)) st.startBox(at, mods, false)
     return true
   }
 

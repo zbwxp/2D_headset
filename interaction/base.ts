@@ -7,7 +7,7 @@ import { fromError, type Feedback } from './feedback'
 
 export type Id = string
 export type Unit = Snapshot['selection'][number]
-export type Tool = 'pen' | 'V' | 'A' | 'S' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
+export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
 export interface Options { joinMode: 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
 export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean }
 
@@ -34,7 +34,6 @@ export const SCOPE: Record<Tool, 'selected' | 'current' | 'all'> = {
   V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected',
   merge: 'all', link: 'all',
   pen: 'current', // a new line goes into the current layer, and both ends of a line are in one layer
-  S: 'current', // the selection box works in the current active layer (bowen 1791558733)
 }
 /** The tools that pick points, and so show them (bowen 1791555800: bind shows its points). */
 export const POINT_TOOLS: ReadonlySet<Tool> = new Set<Tool>(['A', 'pen', 'bind', 'merge', 'link', 'unbind'])
