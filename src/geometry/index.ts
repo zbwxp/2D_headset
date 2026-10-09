@@ -137,8 +137,8 @@ function poly(cs: readonly number[], t: number): number { let v = 0; for (const 
 /**
  * Every real root of a polynomial in [0, 1] (coefficients from the highest power down).
  * The derivative's roots split [0, 1] into stretches where the polynomial only rises or
- * only falls; each stretch with a sign change holds exactly one root, found by bisection.
- * No sampling, so two roots close together are never merged (dot 1791544487).
+ * only falls; each stretch with a sign change holds one root, found by bisection. No fixed
+ * sampling: two roots close together stay apart down to floating-point precision (dot 1791544487).
  */
 export function rootsIn01(cs: readonly number[]): number[] {
   const scale = Math.max(...cs.map(Math.abs))
@@ -168,8 +168,9 @@ export function rootsIn01(cs: readonly number[]): number[] {
 
 /**
  * The parameter and distance of the point on `c` nearest to `p`. The candidates are the two
- * ends and every root of (B(t) − p)·B′(t), a quintic, found exactly in [0, 1]: no sampled
- * guess, so a narrow branch next to another one is never missed (dot 1791543988, 1791544487).
+ * ends and the roots of (B(t) − p)·B′(t), a quintic, found numerically in [0, 1] (bisection on
+ * stretches where it only rises or falls): no sampled guess, so a narrow branch beside another
+ * is found within floating-point precision (dot 1791543988, 1791544487, 1791544965).
  */
 export function nearest(c: Cubic, p: Vec): { t: number; distance: number } {
   const [P0, P1, P2, P3] = c
