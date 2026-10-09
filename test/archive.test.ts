@@ -100,6 +100,15 @@ describe('save and open', () => {
       ['a fill on a missing line', edit(doc => { doc.fills.loops[0].lines[0] = 'gone' }), /missing line gone/],
       ['a mirror pair on a missing line', edit(doc => { doc.apply.pairs[0].a = 'gone' }), /mirror pair 0 uses a missing line/],
       ['a line without a name', edit(doc => { doc.names.line.pop() }), /has no name/],
+      // the rest of the same class (dot 1791512188): each module's own type, reference and relation checks
+      ['a negative line width', edit(doc => { doc.network.lines[0].stroke.width = -1 }), /stroke width that is not positive/],
+      ['a missing stroke', edit(doc => { delete doc.network.lines[0].stroke }), /stroke is not an object/],
+      ['an axis that is not a number', edit(doc => { doc.apply.axis = 'middle' }), /mirror axis is not a finite number/],
+      ['a point in a missing layer', edit(doc => { doc.network.points[0].layer = 'nowhere' }), /in a missing layer/],
+      ['an endpoint linked to itself', edit(doc => { doc.links.pairs[0].b = doc.links.pairs[0].a }), /inside one layer/],
+      ['a line mirror-paired with itself', edit(doc => { doc.apply.pairs[0].b = doc.apply.pairs[0].a }), /pairs a line with itself/],
+      ['a join of a line with itself', edit(doc => { doc.joins.rows[0].lines[1] = doc.joins.rows[0].lines[0] }), /uses one line twice/],
+      ['an end stroke on a missing point', edit(doc => { doc.joins.endStrokes.push({ point: 'gone', stroke: { taper: 1 } }) }), /end stroke \d+ is on a missing point/],
       ['linked points apart', edit(doc => { doc.network.points.find((x: any) => x.id === 'k').position = { x: -90, y: 3 } }), /linked points c and k are apart|linked points k and c are apart/],
     ]
     for (const [label, text, why] of cases) {
