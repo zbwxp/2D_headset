@@ -9,7 +9,7 @@ No code until dot has reviewed this list.
 ## Work, in order
 
 1. **Core: refusals carry a code and the objects** (doc 22 §3.3).
-   - A `Refusal` error class (`code`, `objects`, the message as now). It is thrown at the refusals interaction shows:
+   - A `Refusal` error class (`code`, `objects`, the message as now). Each object is `{ kind, id }` (point / line / group / fill / layer), so a point and a line that share an id are never confused (dot 1791543494). It is thrown at the refusals interaction shows:
      - `locked` (lock check, moveGroup / cut, locked fill colour);
      - `select-lines-to-delete`, `select-lines-to-copy`;
      - `mirror-no-counterpart`, `topology-mismatch`;
@@ -59,7 +59,8 @@ Each test is a scripted input against a real `Core`, checking the core calls mad
    - the drawing is unchanged;
    - the preview shows a refusal mark on the refused objects, taken from the `Refusal`'s `objects`;
    - the drag has ended.
-7. **Preview:** after any sequence of moves the drawing is unchanged; previews never write.
+7. **Preview:** after any sequence of moves the drawing is unchanged, and so is the history (`canUndo`, `canRedo`, and what one undo restores). Previews never write.
+   - Every cancel test checks the history the same way (dot 1791543494).
 
 **Explicit targets (graph row 3):**
 
@@ -81,6 +82,10 @@ Each test is a scripted input against a real `Core`, checking the core calls mad
 17. **A two-click pick whose first object is gone** (deleted, or undone away) before the second click never binds anything else. The second click is refused, and the pick ends.
     - `historyChanged` also ends a first pick or pen chain whose object no longer exists (dot 1791543296).
 18. **Opening another drawing that fails** keeps the current drawing and every unfinished operation on it. `drawingChanged` is called only after a successful open (dot 1791543296).
+20. **An operation belongs to one drawing object.**
+    - Every unfinished operation remembers the `Core` it started on and checks it before committing.
+    - After switching to another drawing that happens to use the same ids, an old operation never lands on the new drawing (dot 1791543494).
+21. **A pending cut whose groups changed members** (a bind or split since the cut) ends. It never takes the new members along. The interaction shows a hint to select again, as an interaction default (dot 1791543494).
 19. **A repeated release** for one drag (pointerUp twice, or pointerUp then lost capture) commits once.
 
 **Lifecycle calls (doc 22 §3.5):**
