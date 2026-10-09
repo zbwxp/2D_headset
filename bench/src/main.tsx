@@ -2,7 +2,7 @@
 // No quality bar. Uses core's public entry only; never change core for this file's sake.
 import { createRoot } from 'react-dom/client'
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, save, open, type Vec, type Snapshot, type Editor } from '../../src'
+import { Core, save, open, type Vec, type Snapshot, type Editor, type Clip } from '../../src'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 
 type Id = string
@@ -67,6 +67,9 @@ function v2Eye() {
 }
 
 type LogRow = { calls: string; result: string }
+// the clipboard is the bench's, outside the document; each paste of the same clip goes one step further (backlog 5)
+let clip: Clip | null = null, pastes = 0
+const STEP = 20
 const log: LogRow[] = []
 const hist = (k: 'undo' | 'redo') => { const ok = k === 'undo' ? core.canUndo : core.canRedo; core[k](); log.unshift({ calls: k + '()', result: ok ? 'ok' : 'ok (nothing to ' + k + ')' }) }
 
@@ -102,7 +105,7 @@ function App() {
   const run = (fn: (e: Editor) => void, quiet = false) => {
     // every Editor call is logged with what core returned, so a bench mistake is not taken for a core one (dot)
     const calls: string[] = []
-    const rec = (e: Editor) => new Proxy(e, { get: (t, k) => { const v = Reflect.get(t, k); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(k)}(${a.map(x => JSON.stringify(x)).join(', ')})`); return v.apply(t, a) } : v } })
+    const rec = (e: Editor) => new Proxy(e, { get: (t, k) => { const v = Reflect.get(t, k); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(k)}(${a.map(x => { const t = JSON.stringify(x) ?? String(x); return t.length > 80 ? t.slice(0, 77) + '…' : t }).join(', ')})`); return v.apply(t, a) } : v } })
     try { core.edit(e => fn(rec(e))); if (!quiet) setMsg(''); log.unshift({ calls: calls.join('; '), result: 'ok' }); return true }
     catch (err) { const m = withNames((err as Error).message); setMsg('✗ ' + m); log.unshift({ calls: calls.join('; '), result: '✗ ' + m }); return false }
     finally { log.length = Math.min(log.length, 50); bump() }
@@ -207,6 +210,16 @@ function App() {
   }
   // a drag the browser cancels, or that loses capture without a release, ends like Esc: nothing is sent (dot 1791481384)
   const cancelDrag = () => { drag.current = null; setGhost(null) }
+  const copySel = () => {
+    try { clip = core.copy(); pastes = 0; log.unshift({ calls: 'copy()', result: `ok (${clip.network.lines.length} lines)` }); setMsg(`copied ${clip.network.lines.length} lines`) }
+    catch (err) { setMsg('✗ ' + (err as Error).message); log.unshift({ calls: 'copy()', result: '✗ ' + (err as Error).message }) }
+    bump()
+  }
+  const pasteClip = () => {
+    if (!clip) return setMsg('nothing copied')
+    const k = ++pastes, c = clip
+    if (!run(x => x.paste(c, drawLayer, P(STEP * k, STEP * k), nid('c')))) pastes--
+  }
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -217,6 +230,8 @@ function App() {
       if ((e.target as HTMLElement).tagName === 'INPUT') return
       if (e.key === 'Escape') { setPending([]); setMsg(''); cancelDrag() }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { hist(e.shiftKey ? 'redo' : 'undo'); bump() }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c') { e.preventDefault(); copySel() }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v') { e.preventDefault(); pasteClip() }
       if (e.key === 'Delete' || e.key === 'Backspace') run(x => x.deleteSelection())
       const t: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
       if (!e.metaKey && !e.ctrlKey && t[e.key]) { setTool(t[e.key]!); setPending([]) }
@@ -265,6 +280,7 @@ function App() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Undo', () => { hist('undo'); bump() })}{B('Redo', () => { hist('redo'); bump() })}
           {B('Delete', () => run(x => x.deleteSelection()))}
+          {B('Copy', copySel, '⌘C')}{B('Paste', pasteClip, '⌘V: into the current layer, offset a step further each time')}
           {B('Flip', () => run(x => x.flip()))}
           {B('Rot +15°', () => run(x => x.rotate(centre, Math.PI / 12)))}
           {B('×1.1', () => run(x => x.scale(centre, 1.1, 1.1)))}{B('×0.9', () => run(x => x.scale(centre, 0.9, 0.9)))}
