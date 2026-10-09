@@ -44,6 +44,33 @@ Not part of `src/`. It is the tools and every unfinished operation (graph "Inter
 - `preview()` describes what to show, as plain data.
 - The app tells it about tool, drawing and history changes.
 
+## Engineering conventions (not product principles; bowen 1791545230, dot 1791545325)
+
+The code follows three principles, which are the graph's interaction rows read across the whole code:
+1. Each state and each rule has one owner.
+2. An operation's targets and intent are explicit; they are never silently replaced or widened.
+3. Anything not committed can be cancelled; a commit through core succeeds whole or is refused whole.
+
+How they are kept, in practice:
+- **One owner, in code:**
+  - a rule lives in one module (arc trimming in `derived`, the unfinished-operation lifecycle in `interaction/base`, the file envelope in `archive`);
+  - other modules read it through the public interface;
+  - geometry stays in core even when many tools use it.
+- **Copies across the boundary:** inputs are copied before they are stored (positions, clips, files); outputs are copies.
+- **Outside data** (a file, a clip) is checked by the module that owns it, through its normal writers. A module with one stored form restores through them and must give the data back unchanged.
+- **One stored form for an unordered relation** (links, joins, mirror pairs), kept by every writer and by every reference update.
+- **Facts, not presentation:** core returns facts (refusal code and objects; distances and parameters); presentation is decided outside.
+- **Numerical algorithms** state their precision and range, and their tests probe the edges (scale, near-coincident branches). Sampling is not wrong in itself, but its limits must be written and tested.
+
+**Before announcing a new entry point** (external data, a new UI path), check it against this list:
+- types;
+- references;
+- one stored form;
+- the relations it must keep (for example, a fill's lines close);
+- later operations in the same edit (locks, delete, split);
+- copies of what the caller passes;
+- a normal-flow round trip (for example, split, then save, then open).
+
 ## Encapsulation (dot 1791427188)
 
 - **Opaque state:** every module's state is opaque to other modules (a branded type). Other modules read it only through query functions.
