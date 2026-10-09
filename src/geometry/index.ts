@@ -130,3 +130,17 @@ export function bounds(c: Cubic): { min: Vec; max: Vec } {
     max: { x: Math.max(...pts.map(p => p.x)), y: Math.max(...pts.map(p => p.y)) },
   }
 }
+
+/** The parameter and distance of the point on `c` nearest to `p`: coarse samples, then a local refinement. */
+export function nearest(c: Cubic, p: Vec): { t: number; distance: number } {
+  const d = (t: number) => length(sub(evaluate(c, t), p))
+  let best = 0, bd = d(0)
+  for (let i = 1; i <= 64; i++) { const t = i / 64, x = d(t); if (x < bd) { bd = x; best = t } }
+  let lo = Math.max(0, best - 1 / 64), hi = Math.min(1, best + 1 / 64)
+  for (let k = 0; k < 40; k++) {
+    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3
+    if (d(m1) < d(m2)) hi = m2; else lo = m1
+  }
+  const t = (lo + hi) / 2, x = d(t)
+  return x < bd ? { t, distance: x } : { t: best, distance: bd }
+}

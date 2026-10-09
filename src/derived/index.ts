@@ -9,7 +9,7 @@ import * as joins from '../joins'
 import * as fills from '../fills'
 import {
   type Cubic, type Vec, arcLength, tAtLength, subCurve, filletArc, derivative, scale,
-  flatten, polygonArea, pointInPolygon,
+  flatten, polygonArea, pointInPolygon, nearest, length, add,
 } from '../geometry'
 
 type Id = net.Id
@@ -142,4 +142,39 @@ export function pickLoop(n: net.NetworkState, j: joins.JoinsState, f: fills.Fill
     if (pointInPolygon(at, polygon(loopParts(o, v.route)))) candidates.push({ id: v.id, area: walkArea(o, v.route) })
   }
   return candidates.sort((a, b) => a.area - b.area)[0]?.id
+}
+
+/** One thing near a position (doc 22 §3.1): what it is, how far, and whether it is shown. */
+export type Nearby =
+  | { kind: 'point'; id: Id; distance: number; visible: boolean }
+  | { kind: 'handle'; line: Id; end: net.End; distance: number; visible: boolean }
+  | { kind: 'line'; id: Id; distance: number; t: number; visible: boolean }
+
+/**
+ * Everything within `radius` of `at`, nearest first (equal distances: points, then handles,
+ * then lines): end points, handle tips, and lines
+ * as drawn (an arc join's trim included; `t` is on the drawn piece). A read-only query
+ * of geometry core already owns; which kind a tool picks, the tolerance and the order
+ * among candidates are the interaction's (dot 1791543266). A point is shown when one
+ * of its lines is.
+ */
+export function nearby(n: net.NetworkState, j: joins.JoinsState, at: Vec, radius: number): Nearby[] {
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y) || !(radius >= 0)) throw new Error('nearby needs a finite position and a radius ≥ 0')
+  const o = outline(n, j), out: Nearby[] = []
+  const lines = net.lines(n), shown = new Map<Id, boolean>()
+  for (const l of lines) for (const p of [l.a, l.b]) shown.set(p, (shown.get(p) ?? false) || l.state.visible)
+  for (const p of net.points(n)) {
+    const distance = length({ x: p.position.x - at.x, y: p.position.y - at.y })
+    if (distance <= radius) out.push({ kind: 'point', id: p.id, distance, visible: shown.get(p.id) ?? false })
+  }
+  for (const l of lines) {
+    for (const end of ['a', 'b'] as const) {
+      const tip = add(net.point(n, end === 'a' ? l.a : l.b).position, end === 'a' ? l.ha : l.hb)
+      const distance = length({ x: tip.x - at.x, y: tip.y - at.y })
+      if (distance <= radius) out.push({ kind: 'handle', line: l.id, end, distance, visible: l.state.visible })
+    }
+    const near = nearest(o.drawn.get(l.id)!, at)
+    if (near.distance <= radius) out.push({ kind: 'line', id: l.id, distance: near.distance, t: near.t, visible: l.state.visible })
+  }
+  return out.sort((x, y) => x.distance - y.distance)
 }

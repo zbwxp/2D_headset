@@ -506,6 +506,9 @@ export class Core {
     return clipboard.extract(this.state, ids)
   }
 
+  /** Everything within `radius` of `at`, nearest first (read-only; picking rules are the interaction's). */
+  nearby(at: Vec, radius: number): derived.Nearby[] { return structuredClone(derived.nearby(this.state.network, this.state.joins, at, radius)) }
+
   /** Canvas fill pick: the smallest loop containing the point. */
   pickLoop(at: Vec): Id | undefined { return derived.pickLoop(this.state.network, this.state.joins, this.state.fills, at) }
 }
