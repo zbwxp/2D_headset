@@ -377,6 +377,14 @@ export function App() {
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
             stroke={isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
+          {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line, and a dashed box around it all */}
+          {g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
+            strokeWidth={line(G.id).stroke.width + 8 * px} strokeLinecap="round" />)}
+          {selLines.length > 0 && ps.length > 1 && (() => {
+            const xs = ps.map(p => p.x), ys = ps.map(p => p.y), m = 8 * px
+            return <rect x={Math.min(...xs) - m} y={Math.min(...ys) - m} width={Math.max(...xs) - Math.min(...xs) + 2 * m} height={Math.max(...ys) - Math.min(...ys) + 2 * m}
+              fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${4 * px} ${3 * px}`} />
+          })()}
           {g.lines.map(G => {
             const l = line(G.id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
             const stroke = cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'

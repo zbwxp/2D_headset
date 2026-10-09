@@ -147,13 +147,42 @@ describe('the panel header and line rows (bowen 1791557559, 1791557998)', () => 
     expect(bench().core.snapshot().loops.filter(l => l.filled && l.visible)).toHaveLength(0)
     // fold all: every layer opens, then closes
     await click(icon('展开全部图层'))
-    expect(host.querySelectorAll('[title="点击选中这条连续曲线"]').length).toBe(4)
+    expect(host.querySelectorAll('[title^="点击选中这条连续曲线"]').length).toBe(4)
     // a continuous curve opens to one row per line, with what is attached to it
     await click(icon('展开到每条线'))
     const rows = [...host.querySelectorAll('[data-line]')]
     expect(rows.length).toBeGreaterThan(0)
     expect(rows[0]!.textContent).toMatch(/w\d.* a:.* b:/)
     await click(icon('收起全部图层'))
-    expect(host.querySelectorAll('[title="点击选中这条连续曲线"]').length).toBe(0)
+    expect(host.querySelectorAll('[title^="点击选中这条连续曲线"]').length).toBe(0)
+  })
+})
+
+describe('panel rows pick curves and lines; the layer selection stays (bowen 1791558186)', () => {
+  it('click, Cmd and Shift on curve rows select curves; layers selected do not change', async () => {
+    const host = await setup()
+    await act(async () => {
+      bench().core.edit(e => { e.line('lA2', { id: 'xA', layer: 'A', position: { x: 0, y: 500 } }, { id: 'yA', layer: 'A', position: { x: 50, y: 500 } }); e.line('lA3', { id: 'zA', layer: 'A', position: { x: 0, y: 600 } }, { id: 'wA', layer: 'A', position: { x: 50, y: 600 } }) })
+      bench().refresh()
+    })
+    await row(host, 'A')
+    const icon = (title: string) => [...host.querySelectorAll('svg title')].find(t => t.textContent === title)!.parentElement!
+    await act(async () => { icon('展开全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    // layer A is listed last (top layer first): its three curves are the last three rows
+    const curves = () => ([...host.querySelectorAll('[title^="点击选中这条连续曲线"]')] as HTMLElement[]).slice(-3)
+    const before = scope()
+    const lines = () => bench().core.snapshot().selection.map(u => ('id' in u ? u.id : '')).sort()
+    const names = curves().map(c => c.textContent)
+    const click = async (i: number, mods: { shiftKey?: boolean; metaKey?: boolean } = {}) => { await act(async () => { curves()[i]!.dispatchEvent(new MouseEvent('click', { bubbles: true, ...mods })) }) }
+    expect(names.length).toBe(3)
+    await click(0)
+    expect(lines()).toHaveLength(1)
+    await click(2, { metaKey: true })
+    expect(lines()).toHaveLength(2)
+    await click(2, { metaKey: true })
+    expect(lines()).toHaveLength(1)
+    await click(0); await click(2, { shiftKey: true })
+    expect(lines()).toHaveLength(3)
+    expect(scope()).toEqual(before)
   })
 })

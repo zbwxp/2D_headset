@@ -40,6 +40,22 @@ interface Props {
 export function LayersPanel({ s, g, selected, active, select, run, newLayerId }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
+  const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
+  const selLines = new Set(s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
+  /**
+   * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
+   * only this; Shift = the run from the last row clicked to this one, among its siblings; Cmd / Ctrl =
+   * add or remove this one. It never changes which layers are selected.
+   */
+  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent) => {
+    const at = rows.findIndex(r => r.id === id), from = rows.findIndex(r => r.id === rowAnchor)
+    const units = (rs: typeof rows) => rs.flatMap(r => r.lines.map(l => ({ kind: 'line' as const, id: l })))
+    if (e.shiftKey && from >= 0) { run(x => x.select(units(rows.slice(Math.min(from, at), Math.max(from, at) + 1)), 'replace')); return }
+    setRowAnchor(id)
+    const row = rows[at]!
+    if (e.metaKey || e.ctrlKey) { run(x => x.select(units([row]), row.lines.every(l => selLines.has(l)) ? 'remove' : 'add')); return }
+    run(x => x.select(units([row]), 'replace'))
+  }
   /**
    * A row click, as on macOS (bowen 1791555800; dot 1791555851): a plain click selects only this
    * layer; Shift selects the run from the anchor to it; Cmd (or Ctrl) adds or removes it. At least
@@ -156,8 +172,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 <Icon d={EYE} on={gShown} title={gShown ? '隐藏曲线' : '显示曲线'} onClick={() => run(x => x.groupState(gr.id, { visible: !gShown }))} />
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
                 <Thumb lines={gr.lines} />
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }} title="点击选中这条连续曲线"
-                  onClick={() => run(x => x.selectGroup(gr.lines[0]!))}>{gr.name}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）"
+                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e)}>{gr.name}</span>
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
                 <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
               </div>
@@ -167,8 +183,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 return <div key={id} data-line={id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 2px 52px', background: '#2e2e2e', borderBottom: `1px solid ${C.line}` }}>
                   <Icon d={EYE} on={l.state.visible} title={l.state.visible ? '隐藏线' : '显示线'} onClick={() => run(x => x.lineState(id, { visible: !l.state.visible }))} />
                   <Icon d={LOCK} on={l.state.locked} title={l.state.locked ? '解锁线' : '锁定线'} onClick={() => run(x => x.lineState(id, { locked: !l.state.locked }))} />
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }} title="点击选中这条线"
-                    onClick={() => run(x => x.select([{ kind: 'line', id }]))}>{l.name}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }} title="点击选中这条线（Shift 连选 · Cmd 增减）"
+                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e)}>{l.name}</span>
                   <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽 · 两端（相接方式或开放端点的笔触）">w{l.stroke.width} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>
