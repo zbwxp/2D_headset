@@ -17,21 +17,21 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const mode = (m: Mods) => (m.shift ? 'add' : m.alt ? 'remove' : 'replace') as 'add' | 'remove' | 'replace'
 
-  /** Handles are shown (and so pickable) on lines the selection touches. */
-  function handlesShown(s: Snapshot): Set<string> {
-    const pts = new Set<Id>(), lines = new Set<Id>()
-    for (const u of s.selection) {
-      if (u.kind === 'point') pts.add(u.id)
-      if (u.kind === 'line') lines.add(u.id)
-      if (u.kind === 'handle') lines.add(u.line)
-    }
-    const out = new Set<string>()
-    for (const l of s.lines) if (l.state.visible && (lines.has(l.id) || pts.has(l.a) || pts.has(l.b))) { out.add(`${l.id}:a`); out.add(`${l.id}:b`) }
-    return out
+  /**
+   * The handles A shows: both handles of every visible line in the current layer (bowen
+   * 1791553510). One list, used both to draw and to pick: what is shown can be operated, and
+   * nothing else is hit (bowen 1791553331).
+   */
+  function handlesShown(s: Snapshot): { line: Id; end: 'a' | 'b' }[] {
+    const layer = ctx.env.layer()
+    if (ctx.tool() !== 'A' || layer === undefined) return []
+    const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
+    return s.lines.filter(l => l.state.visible && layerOf.get(l.a) === layer)
+      .flatMap(l => [{ line: l.id, end: 'a' as const }, { line: l.id, end: 'b' as const }])
   }
-  /** A: a point, else a handle shown for the selection, else a line; nearest first. */
+  /** A: a point, else a shown handle, else a line; nearest first. */
   function hitDirect(at: Vec): Unit | undefined {
-    const shown = handlesShown(ctx.snap())
+    const shown = new Set(handlesShown(ctx.snap()).map(h => `${h.line}:${h.end}`))
     for (const h of ctx.shown(at)) {
       if (h.kind === 'point') return { kind: 'point', id: h.id }
       if (h.kind === 'handle' && shown.has(`${h.line}:${h.end}`)) return { kind: 'handle', line: h.line, end: h.end }
@@ -72,6 +72,9 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     drawingChanged() { drag = null },
     // the drawing changed under the drag (undo, or an edit such as Delete): the drag ends
     historyChanged() { drag = null },
-    preview(p: Preview) { if (drag && ctx.mine(drag)) p.drag = { units: structuredClone(drag.units), offset: { ...drag.offset } } },
+    preview(p: Preview) {
+      if (drag && ctx.mine(drag)) p.drag = { units: structuredClone(drag.units), offset: { ...drag.offset } }
+      p.handles = handlesShown(ctx.snap())
+    },
   }
 }

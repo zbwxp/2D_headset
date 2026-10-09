@@ -212,7 +212,6 @@ export function App() {
   const centre = ps.length ? P((Math.min(...ps.map(p => p.x)) + Math.max(...ps.map(p => p.x))) / 2, (Math.min(...ps.map(p => p.y)) + Math.max(...ps.map(p => p.y))) / 2) : P(0, 0)
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const isSel = (u: Unit) => sel.some(v => key(v) === key(u))
-  const handleLines = new Set<Id>(ix.tool === 'A' ? s.lines.filter(l => l.state.visible && (selLines.includes(l.id) || selPoints.has(l.a) || selPoints.has(l.b))).map(l => l.id) : [])
 
   // the drag ghost: the units the drag moves, drawn moved by its offset (a preview only)
   const ghostLines = (() => {
@@ -339,13 +338,13 @@ export function App() {
           })}
           {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
-          {s.lines.filter(l => handleLines.has(l.id)).flatMap(l => (['a', 'b'] as const).map(end => {
-            const p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: l.id, end })
-            return <g key={l.id + end}>
+          {pv.handles.map(({ line: id, end }) => {
+            const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })
+            return <g key={id + end}>
               <line x1={p.x} y1={p.y} x2={h.x} y2={h.y} stroke="#888" strokeWidth={px} />
               <rect x={h.x - 3 * px} y={h.y - 3 * px} width={6 * px} height={6 * px} fill={on ? '#06f' : '#fff'} stroke="#555" strokeWidth={px} />
             </g>
-          }))}
+          })}
           {ix.tool !== 'V' && s.points.filter(p => s.lines.some(l => (l.a === p.id || l.b === p.id) && l.state.visible)).map(p => {
             const on = isSel({ kind: 'point', id: p.id }), picked = pv.pick?.kind === 'point' && pv.pick.id === p.id
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}

@@ -38,6 +38,8 @@ export interface Preview {
   pick?: { kind: 'point' | 'line'; id: Id }
   /** The pen's last point, or the position of its first click before any line exists. */
   pen?: { point: Id } | { at: Vec }
+  /** The handles shown, and so pickable (A: every visible line of the current layer). */
+  handles: { line: Id; end: 'a' | 'b' }[]
   /** Lines picked as the mirror source. */
   mirrorSource: Id[]
   /** The last refusal: its code, message and objects (kind + id). */

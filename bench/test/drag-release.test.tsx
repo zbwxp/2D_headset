@@ -238,3 +238,36 @@ describe('one right click or Esc cancels one thing (dot 1791553129)', () => {
     })
   }
 })
+
+describe('A: the handles drawn are the handles that can be picked (bowen 1791553275, 1791553510)', () => {
+  type Ix = { preview(): { handles: { line: string; end: 'a' | 'b' }[] } }
+  const ix = () => (window as unknown as { bench: { ix: Ix } }).bench.ix
+  it('a four-sided curve, one side selected: every handle is drawn, and a neighbour’s drawn handle is picked', async () => {
+    const { svg, k } = await setup()
+    const y = 200 * k + 60, id = (s: string) => `${s}${k}`
+    await act(async () => {
+      bench().core.edit(e => {
+        const L = 'layer-1'
+        e.line(id('s1'), { id: id('p1'), layer: L, position: { x: 300, y } }, { id: id('p2'), layer: L, position: { x: 390, y } })
+        e.line(id('s2'), id('p2'), { id: id('p3'), layer: L, position: { x: 390, y: y + 90 } })
+        e.line(id('s3'), id('p3'), { id: id('p4'), layer: L, position: { x: 300, y: y + 90 } })
+        e.line(id('s4'), id('p4'), id('p1'))
+        e.select([{ kind: 'line', id: id('s1') }])
+      })
+      bench().ix.setTool('A'); bench().refresh()
+    })
+    const handles = ix().preview().handles
+    const visibleInLayer = bench().core.snapshot().lines.filter(l => l.state.visible).length // all on layer-1 here
+    expect(handles.length).toBe(2 * visibleInLayer)
+    // the view draws one square per shown handle, no more and no fewer
+    const squares = [...svg.querySelectorAll('rect')].filter(r => r.getAttribute('stroke') === '#555')
+    expect(squares.length).toBe(handles.length)
+    const s2 = bench().core.snapshot().lines.find(l => l.id === id('s2'))!
+    const at = { x: 390 + s2.ha.x, y: y + s2.ha.y }
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', at.x, at.y, 1))
+      window.dispatchEvent(pe('pointerup', at.x, at.y, 0))
+    })
+    expect(bench().core.snapshot().selection).toEqual([{ kind: 'handle', line: id('s2'), end: 'a' }])
+  })
+})

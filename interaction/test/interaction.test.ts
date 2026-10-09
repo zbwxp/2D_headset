@@ -464,3 +464,70 @@ describe('reach and order (bowen 1791551877; dot 1791551915)', () => {
     }
   })
 })
+
+describe('A shows every handle of the current layer, and what is shown is what can be picked (bowen 1791553510, 1791553331)', () => {
+  const tip = (d: Core, line: string, end: 'a' | 'b') => {
+    const l = d.snapshot().lines.find(x => x.id === line)!, p = pos(d, l[end]), h = end === 'a' ? l.ha : l.hb
+    return P(p.x + h.x, p.y + h.y)
+  }
+  const keys = (ix: Interaction) => ix.preview().handles.map(h => `${h.line}.${h.end}`).sort()
+  const ALL = [['h', 'a'], ['h', 'b'], ['v', 'a'], ['v', 'b'], ['m', 'a'], ['m', 'b']] as const
+
+  it('with nothing selected: both handles of every visible line in the current layer, none of another layer', () => {
+    const { ix, setLayer } = setup()
+    ix.setTool('A')
+    expect(keys(ix)).toEqual(['h.a', 'h.b', 'v.a', 'v.b'])
+    setLayer('K')
+    expect(keys(ix)).toEqual(['m.a', 'm.b'])
+  })
+
+  it('V, or no current layer: no handles', () => {
+    const d = drawing()
+    const ix = createInteraction({ core: () => d, newId: p => p, layer: () => undefined, pixel: () => 0.3 })
+    ix.setTool('A')
+    expect(ix.preview().handles).toEqual([])
+    const { ix: ix2 } = setup()
+    ix2.setTool('V')
+    expect(ix2.preview().handles).toEqual([])
+  })
+
+  it('a hidden line’s handles are not shown', () => {
+    const { ix, core } = setup()
+    core().edit(e => e.lineState('v', { visible: false }))
+    ix.setTool('A')
+    expect(keys(ix)).toEqual(['h.a', 'h.b'])
+  })
+
+  for (const prior of ['nothing', 'line h', 'point c'] as const) {
+    it(`with ${prior} selected: a press on a handle tip picks that handle exactly when it is shown`, () => {
+      for (const [line, end] of ALL) {
+        const { ix, core } = setup()
+        const d = core()
+        d.edit(e => e.select(prior === 'line h' ? [{ kind: 'line', id: 'h' }] : prior === 'point c' ? [{ kind: 'point', id: 'c' }] : []))
+        ix.setTool('A')
+        const shown = keys(ix).includes(`${line}.${end}`)
+        const at = tip(d, line, end)
+        ix.pointerDown(at); ix.pointerUp(at)
+        expect([line, end, sel(d).includes(`h:${line}.${end}`)]).toEqual([line, end, shown])
+      }
+    })
+  }
+
+  it('a closed four-sided curve, one side selected: a neighbour’s shown handle is picked, not the neighbour line (bowen 1791553275)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L')
+      e.line('s1', { id: 'p1', layer: 'L', position: P(0, 0) }, { id: 'p2', layer: 'L', position: P(90, 0) })
+      e.line('s2', 'p2', { id: 'p3', layer: 'L', position: P(90, 90) })
+      e.line('s3', 'p3', { id: 'p4', layer: 'L', position: P(0, 90) })
+      e.line('s4', 'p4', 'p1')
+    })
+    const { ix } = setup(d)
+    d.edit(e => e.select([{ kind: 'line', id: 's1' }]))
+    ix.setTool('A')
+    expect(keys(ix)).toEqual(['s1.a', 's1.b', 's2.a', 's2.b', 's3.a', 's3.b', 's4.a', 's4.b'])
+    const at = tip(d, 's2', 'a')
+    ix.pointerDown(at); ix.pointerUp(at)
+    expect(sel(d)).toEqual(['h:s2.a'])
+  })
+})

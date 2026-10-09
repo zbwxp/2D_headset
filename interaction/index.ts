@@ -127,7 +127,7 @@ export function createInteraction(env: Env): Interaction {
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
     preview() {
-      const p: Preview = { cut: [], mirrorSource: [] }
+      const p: Preview = { cut: [], mirrorSource: [], handles: [] }
       for (const f of flows) f.preview(p)
       if (ctx.feedback) p.refusal = structuredClone(ctx.feedback)
       return p
