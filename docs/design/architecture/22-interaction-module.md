@@ -66,10 +66,9 @@ Each item goes in with its tests (scripted input → expected core calls / previ
 | **One-click tools** | `split(line, t, …)` |
 | | `unbind(point, [line], id)` |
 | | `fill(loop, colour)` / `clearFill(loop)` |
-| **Buttons it owns** | `rotate`, `scale`, `flip` |
-| | `deleteSelection()` |
-| | `lineState`, `lineStroke` |
-| | `mirrorApply`, `mirrorLink`, `unmirror` |
+| **Keys** | `deleteSelection()` (Delete), with the selection |
+| **Mirror apply / link** (a two-step pick) | `mirrorApply`, `mirrorLink` |
+| **One-shot buttons** (rotate / scale / flip, lock / hide / width, unmirror) | §3 question 5 decides whether these go through interaction or `app` |
 | **Clipboard** | `copy(lines?)` → a clip it holds |
 | | `edit(e => e.paste(clip, layer, offset, prefix))` |
 | | pending cut, then `edit(e => { for (g) e.moveGroup(g, layer) })` |
@@ -117,6 +116,12 @@ Each item goes in with its tests (scripted input → expected core calls / previ
    - The graph does not fix how exact a preview is.
    - The bench draws a rough ghost. An exact preview would need core to run an edit on a draft and return it without publishing.
    - Suggestion: not now. Keep the rough ghost; add the core preview later if the ghost misleads.
+
+5. **One-shot commands from panels and buttons.** Examples: lock a line, rotate +15°, delete, lock a layer, copy a layer. They have no unfinished state, so the graph rows do not decide their package.
+   - *Option 1:* everything a person triggers goes through `interaction`, panels included, so one place maps intent to core calls.
+   - *Option 2:* only the tools, unfinished operations and keyboard / pointer input go through `interaction`; panels in `app` call core's public operations directly.
+   - §2b currently follows a mix: canvas-related buttons in interaction, the layer panel in app. That mix is not a rule.
+   - Suggestion: option 2. It keeps interaction to what the graph section is about.
 
 ## 4. Process
 
