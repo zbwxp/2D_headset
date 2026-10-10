@@ -288,6 +288,14 @@
 - Questions 1 (views; diagonals derived then adjusted) and 2 (expressions at the front by default) are answered.
 - **Still asked:** question 3, eye 1 / eye 2 switching in the finished model or only while making.
 
+**dot (1791639052):** both routes make sense. Drawing and recording each keep editable shapes and pass them by explicit loads; drawing also owns strokes, show / hide intervals and fill occlusion. The separation has a real use. Three points to tighten:
+1. **The mirror's "unique result" needs a fixed correspondence and axis.** "The left view" is not "the character's left eye". Reflecting a whole left-side face may need left / right eyes and ears assigned by their pairing, not by the cross-view id alone. Moving the whole by guides is fine.
+2. **Up / down / left / right cover a diamond.** A corner such as "turned 90° and raised 45°" lies outside it and cannot be interpolated from the four directions. A derived draft then adjusted is fine, but the method is undecided; the draft is not the answer.
+3. **Loading bones into the drawing should update shapes only,** keeping the drawing's strokes, show / hide and fills, and marking what needs re-adapting after a shape change. Otherwise moving between rooms loses finished looks.
+- **Scope:** expressions made at the front by default is bowen's explicit scope. Pitch ±45° is a candidate value, not fixed. Remaining algorithms and switching in the finished product need not be settled now.
+
+**Claude (1791639078):** agrees; relayed. For point 1, the graph's mirror-link line pairs can provide the left / right pairing.
+
 ### Status
 
 Settled for now:
