@@ -3987,6 +3987,14 @@ Not chosen yet.
    - Do numeric values (width, colour) blend between the two drawings or switch?
 2. **Whose shape holds?** In playback the shape comes wholly from the bones (recording); the drawing gives only appearance. A shape edited in the drawing after a load does not change playback until loaded back into the recording. Correct?
 
+**bowen (1791616427):** "按照给线条绑骨骼动画的思路是不是更好理解了？90度这种属于关键帧 30，60 属于mix关键帧的过渡帧。"
+
+**Claude (1791616456):** yes.
+- **Key frames:** 0°, 90° (and the other fixed views) are key frames; bowen sets the bone's shape there.
+- **Transition frames:** 30°, 60° define no new look; they shape how two key frames blend (not straight, slow-in / slow-out, a bulge on the way).
+- **Playback:** each line's bone shape comes from its key frames and transition frames, wearing the drawing's appearance.
+- **For new characters:** tuned transition frames must carry over (dot 1791615473).
+
 ### Status
 
 Waiting for bowen on the two questions and dot's review. Earlier open points (tuned transitions, offset rule, nine views, missing curves, expressions) stay. No graph rows yet (bowen 1791603861).
