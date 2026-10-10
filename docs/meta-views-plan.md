@@ -129,6 +129,12 @@ Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs p
   - the file holds the complete multi-view state;
   - every attribute is classified shared or per view (table below).
 
+**dot 1791649820, points for the comparison:**
+- **Write paths:** the network state is opaque outside `network`; reads return frozen copies (header, `network/index.ts:5-8`). So every geometry write also goes through network functions: move, setPositions, moveHandle, setHandles, aimHandle, resolveHandleTips, addLine, splitLine, unbind, bind, insertLines. To be confirmed by dot.
+- **Per-view settle can change shared topology:** a bind found in one view moves the kept point's lines in other views, which may create coincidences there. The loop must run over all changed views until none is found. It ends because each bind removes a point.
+
+**bowen 1791649821:** mirror apply is a batch edit, only a tool to speed up editing.
+
 **bowen 1791649795:** mirror apply happens only while editing the front view, never in other views. So mirror apply's shape part writes the front only. *Asked (Claude 1791649837):* (1) mirror link acts only at the front too? (2) the graph row "right-side views can be drafted from the left by mirror apply": withdrawn (甲), or a separate whole-view mirror draft (乙)?
 
 ### Which attributes are shared and which per view (to be decided item by item; dot 1791649729)
@@ -139,7 +145,7 @@ Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs p
 | Arc join radius | per view (it is geometry) | proposal |
 | Join mode (smooth / cusp / arc) | shared | proposal (a relation, like connections) |
 | Line names, groups, connections, links, closed-curve boundaries | shared | graph rows (structure synced across views); Q1 |
-| Show / hide intervals (along-line [start, end]) | per view: the ends are keyed per view and interpolated over angle | v103 behaviour (bowen 1791337313); no data model yet |
+| Show / hide intervals (along-line [start, end]) | per view: the ends are keyed per view and interpolated over angle | **v103 reference only, not a decided rule here** (bowen 1791337313; dot 1791649820); no data model yet |
 | Element visibility / lock (editing state) | shared | proposal: they are editing switches; per-view hiding is what the intervals are for |
 | Line width, end strokes (taper) | **ask bowen** | could change with foreshortening |
 | Drawing order (layers, groups, fills: who covers whom) | **ask bowen** | e.g. at 90° the far ear goes behind the head |
