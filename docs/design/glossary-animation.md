@@ -107,6 +107,21 @@
 > - "Connections shared by 线条 and 骨线" is withdrawn.
 > - **Settled now:** only what the objects are and what they are made of.
 
+**bowen (1791624350):** "在建立的过程中，我们并不是直接建立元线条，而是建立它的绘制曲线或者只建立了它的骨线， 那么此时后台就建立这个同名的元线条。然后我们就通过各种方式把元线条里面的（里面这些绘制线条，骨线，不同角度的骨线变换该叫什么？）信息给逐渐补齐"
+
+**Claude (1791624382):**
+- **No direct creation.** Drawing a curve or making a bone line creates a same-named 元线条 in the background, filled in over time. A 元线条 may be incomplete: drawing line only → it does not move; bone line only → it is not shown (as settled).
+- **Inner items, in bowen's words where possible:**
+  - **绘制线条:** the drawing-room line, its own shape + look;
+  - **骨线:** the recording-room line, its shape at the front (0, 0);
+  - **关键帧:** the 骨线's shape at another angle (bowen: "90 度属于关键帧");
+  - **过渡:** settings like 30° / 60° shaping the change between keys (bowen's 过渡帧);
+  - **动画:** all of a 骨线's keys + transitions. "Bone-line change at different angles" = the 骨线's 关键帧; together, the 骨线's 动画.
+- **Collective name for these, candidates:**
+  - 甲 组成部分 (plainest);
+  - 乙 成员 (fits bowen's class / struct analogy; recommended);
+  - 丙 面 (facets).
+
 ### Status
 
 Settled for now:
@@ -114,6 +129,7 @@ Settled for now:
 - **Continuous 元线条:** shown as a continuous curve in the drawing room.
 
 Open:
+- the collective name (组成部分 / 成员 / 面);
 - 画稿 vs 线稿;
 - connection / mounting rules (how far sharing goes).
 >
