@@ -4355,9 +4355,16 @@ Not chosen yet.
   - "Expression first, then angle" is Live2D's inner / outer relation. How exactly we compute it and in what order is decided later (dot 1791618616); fixed now only that both levels act.
   - If carried worried brows look wrong at some angle, add a "side × worried brows" combination fix in the expression level.
 
+**bowen (1791622727):** "行吧 这种按照表情叠加 这不至于工作量爆炸 反而是可以减少变形器组合的方法。只要不是角度+表情+微调就可以 微调这东西不能要，因为它是乘数递增的"
+
+**Claude (1791622752):** agrees: no "angle + expression + fine-tune" third level, since it multiplies. Asked which "fine-tune" is meant:
+- **甲, a full fine-tune layer:** every angle × every expression combination adjustable on its own. Multiplicative; **not done** (bowen's point).
+- **乙, sparse combination fixes:** a single extra sample only where a combination looks wrong (e.g. only "side × closed eye"); good combinations need none. Grows with problems found, not with the number of combinations. Lives in the expression level, not a third level.
+- **Recommended:** no 甲; keep 乙, off by default, added by hand when needed. Asked whether bowen excludes 乙 too.
+
 ### Status
 
-Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: whether sparse combination fixes (乙) stay; the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
