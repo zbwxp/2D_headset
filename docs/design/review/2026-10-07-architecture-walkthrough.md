@@ -4062,6 +4062,32 @@ Not chosen yet.
   1. Are the four levels (variant, expression layer, feature, character) right?
   2. Does an expression layer belong to a feature (usable by any variant with matching names) or to one variant?
 
+**dot (1791617326):** splitting by feature is right. The mess comes from calling both "one sample at one angle" and "the whole person's assembly" a snapshot. Separate those names first; four levels are not needed yet.
+1. **Part assets:** eye 1, eye 2, mouth 1… each with its own drawing set, *referencing* the recording set it uses. Recording sets can be shared, not copied into each part.
+2. **Motion assets:** head turn, blink, smile… recorded content that parts reference and combine. Dedicated motions serve one variant, shared ones serve compatible variants; no need to choose one kind.
+3. **Character assembly:** which part in each place (left eye = eye 2, mouth = mouth 1), which motions each carries, and their position, size, front / back order and personal adjustments.
+
+- **"Snapshot"** keeps one meaning: a sample of one state inside these assets. The assembly plan references them.
+- **Swapping eyes** changes only the eye entry.
+- **"Feature"** is for now a slot in the assembly, not another level of asset.
+
+**Stacking reference:** Live2D Blend Shape (docs.live2d.com/en/cubism-editor-manual/blend-shape/; checked by Claude). It "adds differences to the model geometry … without worrying about the number of parameter multiplications"; parameters 0 to 1.
+- It is not adding two absolute shapes.
+- For now we only fix that motions combine; the order is decided later.
+
+**Two of Claude's claims withdrawn:**
+- Matching names do not guarantee an expression fits; topology and correspondence must match too.
+- Different features are not automatically free of name clashes. An assembly must say which line of which part; "names unique inside each file" does not prevent clashes when combined.
+
+**Claude (1791617373):** agrees; asked bowen to confirm the split (part assets, motion assets, character assembly; snapshot = one sample).
+
 ### Status
 
-Waiting for bowen on the hierarchy and dot's review. The offset algorithm is to be validated by experiment (Claude / dot). Open: appearance between two drawings; tuned transitions through loads and generation; nine views, missing curves, expressions over angle. No graph rows yet (bowen 1791603861).
+Waiting for bowen on the split. The offset algorithm is to be validated by experiment (Claude / dot). Open:
+- appearance between two drawings;
+- tuned transitions through loads and generation;
+- combination order for stacked motions;
+- naming lines across parts in an assembly;
+- nine views, missing curves, expressions over angle.
+
+No graph rows yet (bowen 1791603861).
