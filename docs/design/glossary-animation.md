@@ -25,6 +25,23 @@
 > - **动态组件 (proposed by bowen):** a thing's lines + their bone lines + its angle animation + expression animations, as the smallest unit of animation (e.g. one eyebrow). This is object 3 above.
 > - **Claude (1791623529)** asks whether one 动态组件 is one line or may be several. An eye has upper lid, lower lid, double lid and pupil, which blink together. Claude leans to "may be several", so blinking and swapping in a kaomoji eye stay inside one component.
 >
+> **dot (1791623529):** naming is ours to propose, not handed back to bowen. Candidates: 画稿, 画稿集, 骨架 (one state's bone lines, the shape-only counterpart of a drawing), 动画 (angle / expression), 部件, 角色. Separates "one" from "a set"; drawings and skeletons correspond one to one.
+>
+> **Merged candidate list (Claude 1791623565; bowen's names first):**
+>
+> | Term | Meaning |
+> |---|---|
+> | 线条 / 曲线 | a line in the drawing room (bowen) |
+> | 骨线 | a shape-only line in the recording room, driving the same-named 线条 (bowen) |
+> | 画稿 | a static picture with its look (lines, widths, strokes, fills); a whole face or a part. Is bowen's 线稿 the same thing? Keep one? |
+> | 画稿集 | several drawings of the same content (e.g. one eye at several views) |
+> | 骨架 | the bone lines at one state: the drawing with only its shape. Drawings and skeletons correspond one to one. |
+> | 动画 | how a skeleton changes with parameters: key frames and transitions. Two kinds: 角度动画, 表情动画. |
+> | 动态组件 | (bowen; dot's 部件) a unit swapped whole = its drawing set + the animation it uses, e.g. a left eye, one eyebrow |
+> | 角色 | the whole person: dynamic components and animations combined |
+>
+> **Open:** may one 动态组件 hold several lines (an eye's lids, double lid, pupil)?
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
