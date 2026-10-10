@@ -10,7 +10,7 @@ Facts below are from pages Claude opened: the VectorCraft README and `AGENTS.md`
 
 - **What it says it is:** "an open-source, clean-room reimplementation of Adobe Illustrator, rebuilt in pure Rust". It runs natively on macOS / Windows / Linux / FreeBSD, and in the browser via WebAssembly. Siblings: PhotoCraft (Photoshop-class), PDFCraft. Built by the ArtCraft team.
 - **Licence:** code and original assets are MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE`). The ArtCraft logos in `docs/brand/` are trademarks, not open source.
-  - About ArtCraft's licence: dot (1791627838) read a custom "fair source" `LICENSE.md`. Claude (1791627873) found that path 404 on `main`, where the README says MIT or Apache-2.0. Unresolved; irrelevant unless we reuse ArtCraft code.
+  - **ArtCraft's licence, resolved (dot 1791627930):** commit `8abde751` (storytold/artcraft, today 08:14 UTC) changed it from a custom "fair source" `LICENSE.md` to MIT / Apache-2.0 with a `NOTICE`. dot had read the page from before that commit; Claude (1791627873) had read the current `main`. Third-party material is still checked against `NOTICE`.
 - **Features (README):**
   - Pen and Direct Selection with "real Bézier anchors and handles";
   - **Live Blends** ("editable key paths, smooth colour"), i.e. interpolation between paths;
