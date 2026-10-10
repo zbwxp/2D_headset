@@ -44,6 +44,14 @@
 >
 > **Open:** is 画稿 the same as bowen's 线稿, and which name stays?
 >
+> **bowen (1791623742):** "我先尝试说一套，你们再推敲 最小单位暂定动态组件 它counterpart就是画稿里面的线条， 它相当于线条带着它的动画。 接下它们可以组成连续曲线，可以放到图层里 这些和曲线是一样的，只不过动态组件指的是他的线条+骨线+动画这一系列平行的东西的组合。"
+> - **动态组件 (bowen):** one 线条 + its 骨线 + its 动画, side by side; the smallest unit. On the drawing side its counterpart is that 线条.
+> - **Same structure as drawings:** components join into continuous curves and go into layers.
+> - **Claude (1791623775):**
+>   - Swapping a feature = swapping a layer: an eye is a named layer of components (bowen 1791617222).
+>   - "Smile" is a parameter each component responds to on its own (mouth corner, cheek, lid), which gives dot's "one parameter moves many lines" with no cross-component animation.
+>   - **Asked:** is a 动态组件 stored, or the pair formed when mounted? Since faces may share bone lines and animation, Claude leans to: drawings store 线条, the recording room stores 骨线 + 动画, and they become 动态组件 when mounted by name, so shared animation is never copied.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
