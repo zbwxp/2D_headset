@@ -373,6 +373,15 @@ They are chosen independently (e.g. 1a + 2b).
 - Restated; reading of runtime shaping as 1a + 2a (live offset preview of every angle, per bowen 1791634995), for bowen to correct.
 - Offered graph rows for the whole framework, written on "写".
 
+**dot (1791640627):**
+- **Confirmed against bowen's words:** one room with modes; the shape being edited shows at once; explicit broadcast while making. These three can be recorded as decided.
+- **Wording:** views not yet made have no extra deformation, and after broadcast they still equal the new front. E.g. the front eye made bigger: the unmade side view also has the bigger eye, just without a side-turn shape yet.
+- **Not to be widened:** runtime live derivation of every angle has an earlier basis, but "every expression derived live too" is not newly confirmed.
+- **Broadcast's algorithm is still to be verified.** At least:
+  - broadcasting eye 2 does not affect eye 1;
+  - clicking broadcast again without new edits does not add the same offset twice.
+- **Enough for a requirements draft.** But "one room" does not decide whether the underlying data stores one shape for good, or which of the old two-way load entries remain in the new modes.
+
 ### Status
 
 Settled for now:
