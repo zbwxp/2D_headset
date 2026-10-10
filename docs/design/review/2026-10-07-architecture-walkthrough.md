@@ -4362,9 +4362,17 @@ Not chosen yet.
 - **乙, sparse combination fixes:** a single extra sample only where a combination looks wrong (e.g. only "side × closed eye"); good combinations need none. Grows with problems found, not with the number of combinations. Lives in the expression level, not a third level.
 - **Recommended:** no 甲; keep 乙, off by default, added by hand when needed. Asked whether bowen excludes 乙 too.
 
+**bowen (1791622843):** "乙其实也不想要。不过改成默认没有吧 如果实在需要，并且某个角度x表情有普遍性的微调需求 那么增加微调也并无不可。"
+
+**Decided (bowen 1791622843):**
+- no full fine-tune layer;
+- combination fixes **off by default**. Added only when truly needed and an angle × expression combination needs it generally; it goes in the expression level, never a third level.
+
+**Claude (1791622861)** asked: "general" read as "the motion itself is wrong at that combination, not one face", so the fix belongs to the motion and is shared, not made per character. Correct?
+
 ### Status
 
-Waiting for bowen: whether sparse combination fixes (乙) stay; the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the reading of "general"; the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
