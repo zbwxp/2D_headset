@@ -3844,6 +3844,35 @@ This is not one drawing per combination of angle frames and expression frames (L
 - a line with no deformer (stays still? warned?);
 - where show/hide intervals go (deformer or artwork).
 
+### Review 2: dot (1791606231)
+
+**The draft holds,** and is clearer than before: how a line changes with angle becomes a reusable asset; the artwork carries the look; names find which change applies.
+- **The simple case works fully.** The front line matches the reference line and runs the same way, so mounting it reads the curve's shape at each angle. An artwork without a double eyelid does not use that deformer.
+- **Four-corner warps** are only a tool for making these keys in bulk; they need not be saved as assets.
+
+**Three things to fill in:**
+1. **Names say which line maps to which, not which way it runs.** One "左下颌线" drawn ear → chin and another chin → ear cannot pair control points in order. Mounting must check direction. This does not overturn mounting by name.
+2. **A shaping offset belongs to this artwork's mount, not to the shared deformer.** If faces 甲 and 乙 share a set, widening 甲's jaw must not widen 乙's. Change the asset only to change the shared motion; for motion of one's own, make a new set (as bowen said).
+3. **How an offset follows the angle is the one big gap.**
+   - Four control points per angle do not uniquely say how a point beside the curve moves.
+   - "Along the curve's direction" is a direction, not an algorithm; choosing 丙 does not settle it.
+
+**Boundary:** once a region's warp is turned into per-curve keys, what is saved is how those lines change, not a spatial domain that can carry any new shape. This fits bowen's per-name mounting, but differs from the earlier idea that "any new set of lines is carried by the region".
+
+**Suggestion:**
+- Continue with this design, and discuss only offset inheritance.
+- No one-to-many mounting for split lines for now.
+- "Bindings first" is not automatically averaging; check against the existing constraint machinery.
+
+**Claude (1791606267):** agrees; withdraws "丙 settles it". Candidates for offset inheritance, each fully defined. Not chosen:
+- **A, unchanged:** add the offset on screen.
+- **B, follow the chord:** rotate and scale the offset as the deformer curve's chord (start → end) rotates and scales from 0° to the angle. Unique and simple; cannot show flattening.
+- **C, follow the best-fitting stretch:** the affine map that best takes the deformer's 0° control points to its control points at the angle (least squares over the four points), applied to the offset.
+  - Unique; shows perspective flattening.
+  - The same algorithm works for a batch (e.g. a whole ear's four-corner warp) by fitting over several curves.
+- **Any of them** can take manual correction keys at chosen angles.
+- **Offered:** a small experiment drawing A / B / C side by side on one jaw line before choosing.
+
 ### Status
 
-Waiting for bowen on the three questions, and for dot's review. No graph rows yet (bowen 1791603861).
+Waiting for bowen: direction-check and per-mount offsets (dot's points 1–2); whether to run the A / B / C experiment. No graph rows yet (bowen 1791603861).
