@@ -414,6 +414,17 @@ They are chosen independently (e.g. 1a + 2b).
 - **Meets dot's two safeguards (1791640627):** a repeated broadcast with no new edit pushes zero; eye 2's baseline is its own, so broadcasting it does not touch eye 1.
 - **Shown to the user only as a mark:** "edited, not yet broadcast".
 
+**dot (1791642640):** supports a hidden, saved baseline (a basis for computing, not a bone set to edit). Two additions:
+1. **Broadcast is atomic.** Updating other views, updating expressions and advancing the baseline succeed or roll back together, and undo together. Otherwise a break midway may skip a push or push the same change twice.
+2. **If angles and expressions can be broadcast separately,** each must remember which change it has received. Advancing one baseline on the angle broadcast would leave unprocessed expressions without their old baseline. One shared baseline is enough only if everything is always broadcast together.
+- **"Stored in the file" is not "nothing lost on a crash".** A completed save or an automatic recovery record is needed; current shapes, baseline and broadcast state are restored together.
+- **Still to verify:** whether one front baseline suffices depends on whether broadcast is split; how "current front − baseline" is applied to side views and expressions remains a rule to verify.
+
+**Claude (1791642667):**
+- Point 1 fits core's existing edit transaction (one edit = all or nothing, one undo).
+- An autosave / crash-recovery requirement may be recorded.
+- **Asked bowen:** are angles and expressions always broadcast together (one baseline per line), or separately (each keeps its own "received" mark)?
+
 ### Status
 
 Settled for now:
