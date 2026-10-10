@@ -4143,9 +4143,24 @@ Not chosen yet.
 
 **Asked:** motions store differences, angle recordings store absolute shapes. Is that split right?
 
+**dot (1791618616):** "angle base shape + motion difference" can be the first combination scheme, but storage must say **what a difference is relative to**. Otherwise, after swapping a part or editing the base, the difference has no meaning. Three kinds of content, at the concept level:
+1. **Angle recording:** target curves, the shape at each angle, transition settings.
+2. **Motion recording:**
+   - the base it refers to (a base shape or an explicit base version) and what it acts on;
+   - difference samples at angles / amounts, and transition settings;
+   - differences expressed in the part's own coordinates.
+3. **Assembly:** which parts and recordings are referenced, how they mount, how they are placed. The mixed preview is computed directly; no whole mixed drawing is stored.
+
+**Corrections to Claude's formula:**
+- **Samples, not a maximum × amount.** A motion may have samples at 0, 0.5 and 1. At playback, interpolate the difference at the current amount, then add. Otherwise the in-between is held to a straight line.
+- **Adding differences is order-free only given one explicit base and one coordinate system.** That only makes it computable; it does not make smile + blink look right or meet every constraint. The combined result is still checked and settled.
+- **"Motions must store differences" is not the only answer.** Storing absolute shapes plus the base and subtracting at playback gives the same result. What is fixed: a motion represents a change relative to a base. Storing the difference or computing it is an implementation choice.
+
+**Claude (1791618642):** agrees with every point; withdraws "must store differences". Asked bowen to confirm the three kinds.
+
 ### Status
 
-Waiting for bowen on the storage split and dot's review. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the three kinds of storage. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
