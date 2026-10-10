@@ -178,7 +178,7 @@ describe('paste', () => {
       ['a coordinate that is text', bad(c => { c.network.layers[0].points[0].position.y = '3' }), /is not a finite number/],
       ['a lock that is not true / false', bad(c => { c.network.lines[0].state.locked = 'yes' }), /is not true \/ false/],
       ['a negative stroke width', bad(c => { c.network.layers[0].lines[0].stroke.width = -2 }), /positive number/],
-      ['a clip without its source shape layer', bad(c => { c.network.source = 'view:90,0' }), /no shape layer view:90,0, its source/],
+      ['a clip without its source shape layer', bad(c => { c.network.source = 'view:9,9' }), /no shape layer view:9,9, its source/],
       ['a join on a line outside the clip', bad(c => { c.joins.rows[0].lines[0] = 'k1' }), /points outside the clip/],
       ['an arc join without a radius', bad(c => { delete c.joins.rows.find((r: any) => r.mode === 'arc').radius }), /positive radius/],
       ['an unknown join mode', bad(c => { c.joins.rows[0].mode = 'wavy' }), /Unknown join mode wavy/],

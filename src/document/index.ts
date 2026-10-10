@@ -32,8 +32,14 @@ interface State {
   names: names.NamesState
 }
 
+/** A drawing has its nine view layers from the start (graph "Views"; step 3, Claude 1791653309). */
+function viewedNetwork(): net.NetworkState {
+  const n = net.create({ key: views.FRONT, kind: 'view' })
+  for (const k of views.ALL) if (k !== views.FRONT) net.addShapeLayer(n, k, 'view', views.FRONT)
+  return n
+}
 const createState = (axis = 0): State => ({
-  network: net.create({ key: views.FRONT, kind: 'view' }), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
+  network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
   apply: apply.create(axis), names: names.create(),
 })
 
@@ -68,6 +74,8 @@ class Cancelled extends Error {}
  */
 interface Transaction {
   open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes
+  /** The shape layer this edit writes geometry into; `state.network` is bound to it during the edit. */
+  readonly layer: string
   /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
   readonly appliedFrom: Map<Id, locks.View>
 }
@@ -75,10 +83,18 @@ const transactions = new WeakMap<Editor, Transaction>()
 
 export class Editor {
   private constructor() {}
-  /** @internal */ static open(state: State): Editor {
+  /** @internal */ static open(state: State, layer: string): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map() })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer })
     return e
+  }
+  /**
+   * Mirror links act only at 0,0 (bowen 1791650323). In another view an operation that
+   * would act on a mirror pair is not defined yet, so it is refused (dot 1791653374).
+   */
+  private paired<T>(items: T[]): T[] {
+    if (this.tx.layer !== views.FRONT && items.length > 1) throw new net.Refusal('mirror-front-only', `mirror-front-only: mirror-linked lines are edited together only in the front view (this edit is in ${this.tx.layer})`)
+    return items
   }
 
   private get tx(): Transaction {
@@ -160,7 +176,7 @@ export class Editor {
 
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers
   lineState(line: Id, state: { visible?: boolean; locked?: boolean }) {
-    for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) {
+    for (const id of this.paired(apply.pairedLines(this.s.apply, this.s.network, line))) {
       const wasLocked = net.line(this.s.network, id).state.locked
       net.changeLineState(this.s.network, this.tx.changes, id, state)
       // a real unlock ends a protection phase an apply or a paste started (dot, review of
@@ -195,20 +211,21 @@ export class Editor {
   moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
   // Each operation below runs on every item apply's paired plan lists (graph "Mirror link").
   split(line: Id, t: number, mid: Id, first: Id, second: Id) {
-    const ops = apply.pairedSplits(this.s.apply, line, t, mid, first, second), read = this.view().network
+    const ops = this.paired(apply.pairedSplits(this.s.apply, line, t, mid, first, second)), read = this.view().network
     this.topology(ch => { for (const o of ops) net.splitLine(this.s.network, ch, o.line, o.t, o.mid, o.first, o.second, read) })
   }
   deleteLine(id: Id) {
-    const ids = apply.pairedLines(this.s.apply, this.s.network, id)
+    const ids = this.paired(apply.pairedLines(this.s.apply, this.s.network, id))
     this.topology(ch => { for (const x of ids) net.deleteLine(this.s.network, ch, x) })
   }
   bind(keep: Id, remove: Id) {
     const plan = apply.pairedBinds(this.s.apply, this.s.network, keep, remove)
+    this.paired(plan.binds)
     this.topology(ch => { for (const [k, r] of plan.binds) net.bind(this.s.network, ch, k, r) })
     this.move(plan.settle.map(id => ({ id, target: net.point(this.s.network, id).position })))
   }
   unbind(point: Id, lines: Id[], newPoint: Id) {
-    const ops = apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint), read = this.view().network
+    const ops = this.paired(apply.pairedUnbinds(this.s.apply, this.s.network, point, lines, newPoint)), read = this.view().network
     this.topology(ch => { for (const o of ops) net.unbind(this.s.network, ch, o.point, o.lines, o.newPoint, read) })
     // the unbind placed its new points; they go through the same position solve as any
     // other placed point (links, mirror), so a new point that is its own counterpart
@@ -221,43 +238,51 @@ export class Editor {
   /** Under a mirror link a join among paired lines is set on the counterpart too (graph "Mirror link"). */
   join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) {
     const { state, changes } = this.tx
-    for (const [p, a, b] of apply.pairedJoins(state.apply, state.network, point, l1, l2)) {
+    for (const [p, a, b] of this.paired(apply.pairedJoins(state.apply, state.network, point, l1, l2))) {
       joins.setJoin(state.joins, state.network, p, a, b, opts)
       net.touch(changes, p)
-      if (opts.mode === 'smooth') net.hold(state.network, changes, a, net.line(state.network, a).a === p ? 'a' : 'b')
+      // the first-clicked side is held in every view: the join is shared, so its springs settle in each view (dot 1791653374)
+      if (opts.mode === 'smooth') this.holdEverywhere(a, net.line(state.network, a).a === p ? 'a' : 'b')
     }
   }
   removeJoin(point: Id, l1: Id, l2: Id) {
-    for (const [p, a, b] of apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2)) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
+    for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
   }
   endStroke(point: Id, stroke: joins.EndStroke) {
-    for (const p of apply.pairedPoints(this.s.apply, this.s.network, point)) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
+    for (const p of this.paired(apply.pairedPoints(this.s.apply, this.s.network, point))) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
   }
 
   // links (cross-layer relation)
   link(a: Id, b: Id) {
     const read = this.view().network
-    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) this.move([links.link(this.s.links, this.s.network, x, y, read)])
+    for (const [x, y] of this.paired(apply.pairedPointPairs(this.s.apply, this.s.network, a, b))) {
+      this.move([links.link(this.s.links, this.s.network, x, y, read)])
+      // the second point is moved onto the first in every view (a default, Claude 1791653309)
+      for (const k of viewKeys(this.s)) if (k !== this.tx.layer) {
+        const h = net.of(this.s.network, k)
+        net.move(h, this.tx.changes, [{ id: y, target: net.point(h, x).position }])
+      }
+    }
   }
   /** Removing a link is a constraint change at both points (dot 1791431139). */
   unlink(a: Id, b: Id) {
-    for (const [x, y] of apply.pairedPointPairs(this.s.apply, this.s.network, a, b)) { links.unlink(this.s.links, x, y); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
+    for (const [x, y] of this.paired(apply.pairedPointPairs(this.s.apply, this.s.network, a, b))) { links.unlink(this.s.links, x, y); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
   }
   /** Join across a link: la ends at a (clicked first), lb at b. Smooth: lb turns to la. */
   linkJoin(a: Id, b: Id, la: Id, lb: Id, opts: { mode: 'smooth' }) {
     const { state, changes } = this.tx
-    for (const [x, y, lx, ly] of apply.pairedLinkJoins(state.apply, state.network, a, b, la, lb)) {
+    for (const [x, y, lx, ly] of this.paired(apply.pairedLinkJoins(state.apply, state.network, a, b, la, lb))) {
       const held = links.setJoin(state.links, state.network, x, y, lx, ly, opts)
       net.touch(changes, x); net.touch(changes, y)
-      net.hold(state.network, changes, held.line, held.end)
+      this.holdEverywhere(held.line, held.end)
     }
   }
   removeLinkJoin(a: Id, b: Id, la: Id, lb: Id) {
-    for (const [x, y, lx, ly] of apply.pairedLinkJoins(this.s.apply, this.s.network, a, b, la, lb)) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
+    for (const [x, y, lx, ly] of this.paired(apply.pairedLinkJoins(this.s.apply, this.s.network, a, b, la, lb))) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
   }
 
   // stroke: stored on each line (bowen 1791434322)
-  lineStroke(line: Id, stroke: net.Stroke) { for (const id of apply.pairedLines(this.s.apply, this.s.network, line)) net.setLineStroke(this.s.network, id, stroke) }
+  lineStroke(line: Id, stroke: net.Stroke) { for (const id of this.paired(apply.pairedLines(this.s.apply, this.s.network, line))) net.setLineStroke(this.s.network, id, stroke) }
   /** A group's width change is a batch over its unlocked lines (Q29 D). */
   stroke(group: Id, stroke: net.Stroke) {
     for (const id of groups.get(this.s.groups, group).lines) if (!net.line(this.s.network, id).state.locked) this.lineStroke(id, stroke)
@@ -338,18 +363,28 @@ export class Editor {
   // apply (graph: Editing "Apply", Mirror table)
   /** Mirror apply: reflect the source lines across the axis into different target lines (one step). */
   mirrorApply(source: Id[], target: Id[]) {
+    this.frontOnly('Mirror apply')
     const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
     apply.mirrorApply(s.apply, s, changes, source, target, this.view())
     this.afterApply(before)
   }
   /** Mirror link between whole first-level elements: a mirror apply, then the pairs are stored. */
   mirrorLink(sourceGroups: Id[], targetGroups: Id[]) {
+    this.frontOnly('A mirror link')
     const { state: s, changes } = this.tx, before = new Set(changes.appliedLocks)
     apply.mirrorLink(s.apply, s, s.groups, changes, sourceGroups, targetGroups, this.view())
     this.afterApply(before)
   }
   /** Remove the mirror link of these lines; geometry stays. */
-  unmirror(lines: Id[]) { apply.unmirror(this.s.apply, lines) }
+  unmirror(lines: Id[]) { this.frontOnly('Removing a mirror link'); apply.unmirror(this.s.apply, lines) }
+  /** A handle held in every view (a shared constraint's rule, not one view's drag). */
+  private holdEverywhere(line: Id, end: net.End) {
+    for (const k of viewKeys(this.s)) net.hold(net.of(this.s.network, k), this.tx.changes, line, end)
+  }
+  /** Mirror apply and mirror link are view-limited to 0,0 (bowen 1791649795, 1791650323). */
+  private frontOnly(what: string) {
+    if (this.tx.layer !== views.FRONT) throw new net.Refusal('mirror-front-only', `mirror-front-only: ${what} happens only in the front view`)
+  }
 
   /**
    * For every line an apply locked: the state once the edit so far has been settled by
@@ -363,8 +398,9 @@ export class Editor {
     const fresh = changes.appliedLocks.filter(id => !before.has(id))
     if (!fresh.length) return
     const scratch = structuredClone(s), scratchChanges = structuredClone(changes)
-    settle(scratch, scratchChanges)
-    const settled = { network: scratch.network, joins: scratch.joins, links: scratch.links }
+    // the same rules as the commit (dot 1791653374); mirror applies are front-only
+    settle(scratch, scratchChanges, this.tx.layer)
+    const settled = { network: net.of(scratch.network, views.FRONT), joins: scratch.joins, links: scratch.links }
     for (const id of fresh) appliedFrom.set(id, settled)
   }
   /**
@@ -376,10 +412,10 @@ export class Editor {
    */
   private view(): State {
     const scratch = structuredClone(this.s), ch = structuredClone(this.tx.changes)
-    settlePositions(scratch, ch)
+    settleLayerPositions(scratch, ch, this.tx.layer)
     return scratch
   }
-  private loops(loop: Id): Id[] { return apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop) }
+  private loops(loop: Id): Id[] { return this.paired(apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop)) }
 
   /** Cancel the edit. Recorded on the transaction, so it holds even if the callback catches the throw (dot 1791428573). */
   cancel(): never {
@@ -398,7 +434,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
@@ -438,12 +474,26 @@ export class Core {
     if (this.editing) throw new Error(`${what} cannot run while an edit is in progress`)
   }
 
-  /** One atomic edit. Throws (and changes nothing) if any step fails; cancel() discards silently. */
-  edit(fn: (e: Editor) => void): void {
+  /**
+   * One atomic edit in the front view: the single-view compatibility entry
+   * (docs/architecture-multiview.md §2, package 6). Multi-view code uses `editIn`.
+   */
+  edit(fn: (e: Editor) => void): void { this.editIn(views.FRONT, fn) }
+
+  /**
+   * One atomic edit whose geometry goes into `layer`, which must be a view of this
+   * document; nothing defaults it (dot 1791650999). Structure reaches every layer; the
+   * edited view is settled fully, every other view by positions only (Q2: auto-bind is
+   * judged only here). Throws (and changes nothing) if any step fails; cancel()
+   * discards silently.
+   */
+  editIn(layer: string, fn: (e: Editor) => void): void {
     this.idle('edit')
+    if (!viewKeys(this.state).includes(layer)) throw new net.Refusal('not-a-view', `not-a-view: ${String(layer)} is not a view of this document`)
     this.editing = true
     const draft = structuredClone(this.state)
-    const e = Editor.open(draft)
+    draft.network = net.of(draft.network, layer)
+    const e = Editor.open(draft, layer)
     const tx = transactions.get(e)!
     try {
       const result: unknown = fn(e)
@@ -453,7 +503,8 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      commit(draft, tx.changes, this.state, tx.appliedFrom)
+      commit(draft, tx.changes, this.state, tx.appliedFrom, layer)
+      draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
       if (err instanceof Cancelled) return
       throw err
@@ -472,8 +523,31 @@ export class Core {
   get canUndo() { return this.past.length > 0 }
   get canRedo() { return this.future.length > 0 }
 
+  /** The view layers of this document. */
+  views(): string[] { return viewKeys(this.state) }
+
+  /** Reads in one view (read-only; the current state each call). The methods below read the front. */
+  in(layer: string): LayerReader {
+    if (!viewKeys(this.state).includes(layer)) throw new net.Refusal('not-a-view', `not-a-view: ${String(layer)} is not a view of this document`)
+    return new LayerReader(() => this.state, layer, what => this.idle(what))
+  }
+
+  snapshot(): Snapshot { return this.in(views.FRONT).snapshot() }
+  geometry(): Geometry { return this.in(views.FRONT).geometry() }
+  copy(lines?: readonly Id[]): clipboard.Clip { return this.in(views.FRONT).copy(lines) }
+  nearby(at: Vec, radius: number): derived.Nearby[] { return this.in(views.FRONT).nearby(at, radius) }
+  pickLoop(at: Vec): Id | undefined { return this.in(views.FRONT).pickLoop(at) }
+  linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return this.in(views.FRONT).linesInRect(a, b, whole) }
+  loopsAt(at: Vec): Id[] { return this.in(views.FRONT).loopsAt(at) }
+}
+
+/** The document read in one view. */
+export class LayerReader {
+  /** @internal */ constructor(private readonly state: () => State, readonly layer: string, private readonly idle: (what: string) => void) {}
+  private get n() { return net.of(this.state().network, this.layer) }
+
   snapshot(): Snapshot {
-    const s = this.state, n = s.network
+    const s = this.state(), n = this.n
     const groupList = groups.list(s.groups, n)
     const groupOfLine = new Map(groupList.flatMap(g => g.lines.map(l => [l, g.id] as const)))
     return structuredClone({
@@ -495,28 +569,28 @@ export class Core {
     })
   }
 
-  geometry(): Geometry { return structuredClone(derived.derive(this.state.network, this.state.joins, this.state.fills)) }
+  geometry(): Geometry { const s = this.state(); return structuredClone(derived.derive(this.n, s.joins, s.fills)) }
 
   /**
-   * Copy (graph "Cut, paste / copy"): the lines given, or the selected lines, as a clip.
-   * Reads only: the document and its history do not change. Points or handles alone are
-   * refused, as delete refuses them.
+   * Copy (graph "Cut, paste / copy"): the lines given, or the selected lines, as a clip
+   * read in this view (with every layer's shapes). Reads only. Points or handles alone
+   * are refused, as delete refuses them.
    */
   copy(lines?: readonly Id[]): clipboard.Clip {
     this.idle('copy')
-    const ids = lines ?? editing.units(this.state.selection).flatMap(u => (u.kind === 'line' ? [u.id] : []))
-    return clipboard.extract(this.state, ids)
+    const s = this.state()
+    const ids = lines ?? editing.units(s.selection).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    return clipboard.extract({ ...s, network: this.n }, ids)
   }
 
   /** Everything within `radius` of `at`, nearest first (read-only; picking rules are the interaction's). */
-  nearby(at: Vec, radius: number): derived.Nearby[] { return structuredClone(derived.nearby(this.state.network, this.state.joins, at, radius)) }
-
+  nearby(at: Vec, radius: number): derived.Nearby[] { return structuredClone(derived.nearby(this.n, this.state().joins, at, radius)) }
   /** Canvas fill pick: the smallest loop containing the point. */
   pickLoop(at: Vec): Id | undefined { return this.loopsAt(at)[0] }
   /** The lines a box from `a` to `b` takes: wholly inside it (`whole`), or touched by it (read-only). */
-  linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return derived.linesInRect(this.state.network, this.state.joins, a, b, whole) }
+  linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return derived.linesInRect(this.n, this.state().joins, a, b, whole) }
   /** Every loop containing the point, smallest first (read-only; which one a tool takes is the interaction's, as with `nearby`). */
-  loopsAt(at: Vec): Id[] { return derived.loopsAt(this.state.network, this.state.joins, this.state.fills, at) }
+  loopsAt(at: Vec): Id[] { const s = this.state(); return derived.loopsAt(this.n, s.joins, s.fills, at) }
 }
 
 // ---- for the archive module only (not exported from the package root) -----------
@@ -560,13 +634,20 @@ export function importState(data: unknown): Core {
     const snap = core.snapshot(); core.geometry()
     // what every commit leaves exactly true, checked directly: linked points coincide. (A smooth
     // join is a spring: where several pull on one handle the result is a compromise, so it is not checked.)
-    const pos = new Map(snap.points.map(p => [p.id, p.position]))
-    for (const k of snap.links) {
-      const a = pos.get(k.a), b = pos.get(k.b)
-      if (!a || !b || Math.hypot(a.x - b.x, a.y - b.y) > 1e-9) throw new Error(`linked points ${k.a} and ${k.b} are apart`)
+    void snap
+    // in every view: linked points coincide, and settling the positions again changes
+    // nothing. No auto-bind anywhere: a chance coincidence in a view nobody edited is two
+    // points and stays so (Q2, bowen 1791650323; dot 1791650402).
+    for (const k of viewKeys(state)) {
+      const at = core.in(k).snapshot(), pos = new Map(at.points.map(p => [p.id, p.position]))
+      for (const l of at.links) {
+        const a = pos.get(l.a), b = pos.get(l.b)
+        if (!a || !b || Math.hypot(a.x - b.x, a.y - b.y) > 1e-9) throw new Error(`linked points ${l.a} and ${l.b} are apart in ${k}`)
+      }
     }
     const again = structuredClone(state)
-    settle(again, net.emptyChanges())
+    for (const k of viewKeys(again)) settleLayerPositions(again, net.emptyChanges(), k)
+    settleShared(again)
     if (JSON.stringify(again) !== JSON.stringify(state)) throw new Error('the drawing is not in a settled state')
     return core
   } catch (err) {
@@ -591,46 +672,89 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
 
+const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => l.kind === 'view').map(l => l.key)
+
 /**
- * The fixed pipeline before publishing (docs/layer-batch-plan.md):
- * isolated points → position loop (overlap bind, link alignment) → smooth springs
- * → fills → groups → locks.
+ * The fixed pipeline before publishing (docs/layer-batch-plan.md), per layer
+ * (docs/architecture-multiview.md §1; step 3, dot 1791653374):
+ * the edited view: isolated points → position loop (overlap bind, link alignment) →
+ * aimed tips → mirrored handles (front only) → smooth springs;
+ * every other view: positions only;
+ * then fills → groups → names → selection; then the mirror check off the front, names,
+ * locks (every view).
  */
-function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View> = new Map()) {
-  settle(s, ch)
-  names.check(s.names, s.network)
-  const changed = locks.changed(published, s, ch, appliedFrom)
-  if (changed.length) throw new net.Refusal('locked', `Locked lines would change (${changed.join(', ')}); nothing was published`, net.lineObjects(changed))
-}
-
-/** Positions and handles only, for reading (no topology change): links and mirror, aimed tips, mirrored handles, springs. */
-function settlePositions(s: State, ch: net.Changes) {
-  net.setPositions(s.network, links.align(s.links, s.network, ch, { axis: apply.axis(s.apply), pairs: apply.pointPairs(s.apply, s.network) }))
-  net.resolveHandleTips(s.network, ch)
-  for (const h of apply.mirroredHandles(s.apply, s.network, ch)) net.moveHandle(s.network, ch, h.line, h.end, h.offset)
-  net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
-}
-
-/** The fixed pipeline up to (not including) the lock check: everything the edit's constraints settle. */
-function settle(s: State, ch: net.Changes) {
-  applyTopology(s, ch, c => net.removeIsolated(s.network, c))
-  // Link alignment can make new coincidences, and binding can end links, so repeat
-  // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
-  // removes at least one point, so it ends.
-  for (;;) {
-    net.setPositions(s.network, links.align(s.links, s.network, ch, { axis: apply.axis(s.apply), pairs: apply.pointPairs(s.apply, s.network) }))
-    const pairs = net.overlaps(s.network, ch)
-    if (!pairs.length) break
-    for (const p of pairs) applyTopology(s, ch, c => net.bind(s.network, c, p.keep, p.remove))
-    applyTopology(s, ch, c => net.removeIsolated(s.network, c))
+function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string) {
+  settle(s, ch, layer)
+  // mirror links are front-only: off the front, any change to a mirror pair's lines,
+  // however it came (an explicit operation or an auto-bind), is not defined yet (dot 1791653374)
+  if (layer !== views.FRONT && mirrorStructure(published) !== mirrorStructure(s)) {
+    throw new net.Refusal('mirror-front-only', `mirror-front-only: this edit in ${layer} would change mirror-linked lines' structure`)
   }
-  // aimed handles take their offsets from the final point positions
-  net.resolveHandleTips(s.network, ch)
-  // mirror-linked handles: a held handle gives its counterpart the reflected handle, held too
-  for (const h of apply.mirroredHandles(s.apply, s.network, ch)) net.moveHandle(s.network, ch, h.line, h.end, h.offset)
-  net.setHandles(s.network, joins.solve(s.joins, s.network, ch, links.smoothPairs(s.links, s.network)))
+  names.check(s.names, s.network)
+  const changed = new Set<Id>()
+  for (const k of viewKeys(s)) {
+    const at = (x: State) => ({ network: net.of(x.network, k), joins: x.joins, links: x.links })
+    for (const id of locks.changed(at(published), at(s), ch, k === views.FRONT ? appliedFrom : new Map())) changed.add(id)
+  }
+  if (changed.size) { const ids = [...changed].sort(); throw new net.Refusal('locked', `Locked lines would change (${ids.join(', ')}); nothing was published`, net.lineObjects(ids)) }
+}
+
+/**
+ * The mirror pairs, their lines' end points and every line meeting there: what a
+ * structural change to a pair alters, including a bind onto a paired point (dot 1791653374).
+ */
+function mirrorStructure(s: State): string {
+  const n = s.network
+  const ends = (id: Id) => {
+    if (!net.hasLine(n, id)) return null
+    const l = net.line(n, id)
+    return [l.a, l.b].map(p => [p, net.linesAt(n, p).map(e => e.line.id).sort()])
+  }
+  return JSON.stringify(apply.pairs(s.apply).map(p => [p.a, p.b, ends(p.a), ends(p.b)]))
+}
+
+const mirrorOf = (s: State, n: net.NetworkState) => ({ axis: apply.axis(s.apply), pairs: apply.pointPairs(s.apply, n) })
+
+/**
+ * One layer, positions and handles only (no topology change): links (with mirror pairs
+ * only at the front), aimed tips, mirrored handles (front only), springs. The trial view,
+ * every other view at commit, and open all use it.
+ */
+function settleLayerPositions(s: State, ch: net.Changes, layer: string) {
+  const n = net.of(s.network, layer), front = layer === views.FRONT
+  net.setPositions(n, links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined))
+  net.resolveHandleTips(n, ch)
+  if (front) for (const h of apply.mirroredHandles(s.apply, n, ch)) net.moveHandle(n, ch, h.line, h.end, h.offset)
+  net.setHandles(n, joins.solve(s.joins, n, ch, links.smoothPairs(s.links, n)))
+}
+
+/** What follows the structure, once for all layers. */
+function settleShared(s: State) {
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
   names.update(s.names, s.network, s.groups)
   editing.clean(s.selection, s.network, s.fills)
+}
+
+/** The fixed pipeline up to (not including) the checks: everything the edit's constraints settle. */
+function settle(s: State, ch: net.Changes, layer: string) {
+  const n = net.of(s.network, layer), front = layer === views.FRONT
+  applyTopology(s, ch, c => net.removeIsolated(n, c))
+  // Link alignment can make new coincidences, and binding can end links, so repeat
+  // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
+  // removes at least one point, so it ends. Auto-bind is judged in the edited view only (Q2).
+  for (;;) {
+    net.setPositions(n, links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined))
+    const pairs = net.overlaps(n, ch)
+    if (!pairs.length) break
+    for (const p of pairs) applyTopology(s, ch, c => net.bind(n, c, p.keep, p.remove))
+    applyTopology(s, ch, c => net.removeIsolated(n, c))
+  }
+  // aimed handles take their offsets from the final point positions
+  net.resolveHandleTips(n, ch)
+  // mirror-linked handles: a held handle gives its counterpart the reflected handle, held too (front only)
+  if (front) for (const h of apply.mirroredHandles(s.apply, n, ch)) net.moveHandle(n, ch, h.line, h.end, h.offset)
+  net.setHandles(n, joins.solve(s.joins, n, ch, links.smoothPairs(s.links, n)))
+  for (const k of viewKeys(s)) if (k !== layer) settleLayerPositions(s, ch, k)
+  settleShared(s)
 }

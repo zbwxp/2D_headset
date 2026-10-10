@@ -406,9 +406,10 @@ export function pairedUnbinds(s: ApplyState, n: net.NetworkState, point: Id, lin
  * reflected offset (held too); if both are held, their reflected values are averaged.
  */
 export function mirroredHandles(s: ApplyState, n: net.NetworkState, ch: net.Changes): { line: Id; end: net.End; offset: Vec }[] {
-  const held = new Set(ch.held.map(h => JSON.stringify([h.line, h.end])))
+  const heldHere = net.heldIn(ch, n)
+  const held = new Set(heldHere.map(h => JSON.stringify([h.line, h.end])))
   const out: { line: Id; end: net.End; offset: Vec }[] = [], done = new Set<string>()
-  for (const h of ch.held) {
+  for (const h of heldHere) {
     if (!net.hasLine(n, h.line)) continue
     const c = counterpartEnd(s, h.line, h.end)
     if (!c || !net.hasLine(n, c.line)) continue

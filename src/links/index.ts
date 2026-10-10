@@ -139,7 +139,7 @@ export function align(
         if (!parity.has(to)) { parity.set(to, want); stack.push(to) } else if (parity.get(to) !== want) onAxis = true
       }
     }
-    const acted = ch.targets.filter(t => parity.has(t.point) && members.includes(t.point))
+    const acted = net.targetsIn(ch, n).filter(t => parity.has(t.point) && members.includes(t.point))
     if (!acted.length) continue
     const inFrame = acted.map(t => (parity.get(t.point) ? reflect(t.target) : t.target))
     const avg = { x: inFrame.reduce((s, p) => s + p.x, 0) / inFrame.length, y: inFrame.reduce((s, p) => s + p.y, 0) / inFrame.length }

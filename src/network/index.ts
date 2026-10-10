@@ -83,10 +83,14 @@ export interface Changes {
   deletedPoints: Id[]
   merged: { keep: Id; remove: Id }[]
   unbound: { point: Id; newPoint: Id; lines: Id[] }[]
-  /** Points directly acted on in this edit, with their raw targets. */
-  targets: { point: Id; target: Vec }[]
+  /**
+   * Points directly acted on in this edit, with their raw targets. Geometric intents
+   * (targets, held handles, aimed tips) belong to the shape layer they were made in
+   * (dot 1791650432): a reader takes those of its own layer (`targetsIn`, `heldIn`).
+   */
+  targets: { point: Id; target: Vec; layer: string }[]
   /** Handles directly dragged in this edit. */
-  held: { line: Id; end: End }[]
+  held: { line: Id; end: End; layer: string }[]
   /** Lines whose group wins a merge (the first-clicked side), latest last. */
   prefer: { lines: Id[] }[]
   /** Points whose attributes were edited in this edit (e.g. a join was set). */
@@ -98,7 +102,7 @@ export interface Changes {
    * factor × (tip − the point's final position); a split scales the factor exactly as
    * it scales the handle (t on the first piece's a end, 1 − t on the second's b end).
    */
-  handleTips: { line: Id; end: End; tip: Vec; factor: number }[]
+  handleTips: { line: Id; end: End; tip: Vec; factor: number; layer: string }[]
   /**
    * Lines an apply locked in this edit (it copies the source's lock onto a target it
    * also rewrites). The lock check does not count those locks as protection in this
@@ -144,10 +148,16 @@ function claimLine(n: NetworkState, id: Id) {
   S(n).usedLines.push(id)
 }
 
+/** The geometric intents of this edit that belong to the handle's layer. */
+export const targetsIn = (ch: Changes, n: NetworkState) => ch.targets.filter(t => t.layer === K(n))
+export const heldIn = (ch: Changes, n: NetworkState) => ch.held.filter(h => h.layer === K(n))
+const tipsIn = (ch: Changes, n: NetworkState) => ch.handleTips.filter(h => h.layer === K(n))
+
 /** Mark a handle as held for this edit without moving it (the first-clicked side of a join, bowen 1791428722). */
 export function hold(n: NetworkState, ch: Changes, lineId: Id, end: End) {
   rawLine(n, lineId)
-  if (!ch.held.some(h => h.line === lineId && h.end === end)) ch.held.push({ line: lineId, end })
+  const layer = K(n)
+  if (!ch.held.some(h => h.line === lineId && h.end === end && h.layer === layer)) ch.held.push({ line: lineId, end, layer })
 }
 
 /** Record that a point's attributes changed in this edit. */
@@ -157,8 +167,8 @@ export function touch(ch: Changes, point: Id) {
 
 /** Points this edit acted on: moved, touched, held handles' points, and points of topology changes. */
 export function affectedPoints(n: NetworkState, ch: Changes): Set<Id> {
-  const out = new Set<Id>([...ch.targets.map(t => t.point), ...ch.touched])
-  for (const h of ch.held) if (hasLine(n, h.line)) { const l = rawLine(n, h.line); out.add(h.end === 'a' ? l.a : l.b) }
+  const out = new Set<Id>([...targetsIn(ch, n).map(t => t.point), ...ch.touched])
+  for (const h of heldIn(ch, n)) if (hasLine(n, h.line)) { const l = rawLine(n, h.line); out.add(h.end === 'a' ? l.a : l.b) }
   for (const m of ch.merged) out.add(m.keep)
   for (const r of ch.replaced) for (const p of [r.a, r.b, r.mid]) out.add(p)
   for (const u of ch.unbound) { out.add(u.point); out.add(u.newPoint) }
@@ -171,10 +181,10 @@ export function affectedPoints(n: NetworkState, ch: Changes): Set<Id> {
  */
 export function followReplacements(acc: Changes, op: Changes) {
   for (const r of op.replaced) {
-    acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end } : h))
+    acc.held = acc.held.map(h => (h.line === r.line ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, layer: h.layer } : h))
     // the intent goes with the split geometry, not only with the ids (dot, review of d5e2704)
     acc.handleTips = acc.handleTips.map(h => (h.line === r.line
-      ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip, factor: h.factor * (h.end === 'a' ? r.t : 1 - r.t) }
+      ? { line: h.end === 'a' ? r.pieces[0] : r.pieces[1], end: h.end, tip: h.tip, factor: h.factor * (h.end === 'a' ? r.t : 1 - r.t), layer: h.layer }
       : h))
     acc.appliedLocks = acc.appliedLocks.flatMap(x => (x === r.line ? [...r.pieces] : [x]))
   }
@@ -212,14 +222,14 @@ export function changeLineState(n: NetworkState, ch: Changes, line: Id, state: P
 export function aimHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, tip: Vec) {
   const l = rawLine(n, lineId), t = vecIn(tip), p = pos(n, end === 'a' ? l.a : l.b)
   setH(n, lineId, end, { x: t.x - p.x, y: t.y - p.y })
-  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end))
-  ch.handleTips.push({ line: lineId, end, tip: { x: t.x, y: t.y }, factor: 1 })
+  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end && h.layer === K(n)))
+  ch.handleTips.push({ line: lineId, end, tip: { x: t.x, y: t.y }, factor: 1, layer: K(n) })
   hold(n, ch, lineId, end)
 }
 
 /** At commit, after positions are final: every aimed handle's offset = factor × (tip − its point's final position). */
 export function resolveHandleTips(n: NetworkState, ch: Changes) {
-  for (const h of ch.handleTips) {
+  for (const h of tipsIn(ch, n)) {
     if (!hasLine(n, h.line)) continue
     const l = rawLine(n, h.line), p = pos(n, h.end === 'a' ? l.a : l.b)
     setH(n, h.line, h.end, { x: h.factor * (h.tip.x - p.x), y: h.factor * (h.tip.y - p.y) })
@@ -709,7 +719,7 @@ export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer
  * (bowen 1791436617, 1791458278).
  */
 export function overlaps(n: NetworkState, ch: Changes): { keep: Id; remove: Id }[] {
-  const acted = new Set([...ch.targets.map(t => t.point), ...ch.relocated])
+  const acted = new Set([...targetsIn(ch, n).map(t => t.point), ...ch.relocated])
   const created = new Map(S(n).usedPoints.map((id, i) => [id, i]))
   const byPlace = new Map<string, Id[]>(), at = shapes.positions(SH(n), K(n))
   for (const p of S(n).points) {
@@ -778,9 +788,9 @@ export function move(n: NetworkState, ch: Changes, targets: { id: Id; target: Ve
     const t = vecIn(target)
     rawPoint(n, id)
     setPos(n, id, t)
-    const i = ch.targets.findIndex(x => x.point === id)
+    const i = ch.targets.findIndex(x => x.point === id && x.layer === K(n))
     if (i >= 0) ch.targets.splice(i, 1)
-    ch.targets.push({ point: id, target: { x: t.x, y: t.y } }) // separate copy: no shared object with the state
+    ch.targets.push({ point: id, target: { x: t.x, y: t.y }, layer: K(n) }) // separate copy: no shared object with the state
   }
 }
 
@@ -794,7 +804,7 @@ export function moveHandle(n: NetworkState, ch: Changes, lineId: Id, end: End, o
   rawLine(n, lineId)
   setH(n, lineId, end, vecIn(offset))
   // a later direct drag replaces an earlier aimed tip of the same handle in this edit
-  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end))
+  ch.handleTips = ch.handleTips.filter(h => !(h.line === lineId && h.end === end && h.layer === K(n)))
   hold(n, ch, lineId, end)
 }
 

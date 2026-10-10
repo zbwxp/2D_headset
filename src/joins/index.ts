@@ -154,7 +154,7 @@ export function solve(
   const handleOf = (h: HandleRef) => net.handle(lines.get(h.line)!, h.end)
   const pointOf = (h: HandleRef) => (h.end === 'a' ? lines.get(h.line)!.a : lines.get(h.line)!.b)
   const affected = net.affectedPoints(n, ch)
-  const heldKeys = new Set(ch.held.filter(h => lines.has(h.line)).map(h => key(h)))
+  const heldKeys = new Set(net.heldIn(ch, n).filter(h => lines.has(h.line)).map(h => key(h)))
   const out: { line: Id; end: net.End; offset: { x: number; y: number } }[] = []
   // Zero-length handles have no direction and take no part; groups are formed only
   // from the constraints that actually take part (dot 1791431206).
