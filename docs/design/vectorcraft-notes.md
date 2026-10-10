@@ -83,3 +83,8 @@ Claude 1791628397; repo pages opened unless marked.
   2. Does sharing survive split and undo?
   3. If not, roughly how much changes to hang our relation layer on its paths?
 - **Setup:** a separate folder clone, driven through its control channel. Rust toolchain present (cargo 1.89). None of our repositories touched.
+
+**dot (1791628621), acceptance for the experiment:**
+- Report "native in VectorCraft" separately from "relation layer we would add". A missing native shared end point does not by itself make it unfit.
+- This round judges integration difficulty and whether to continue; it does not yet say precisely how much work the whole project saves.
+- The toolchain requirement is VectorCraft's own, not kurbo's.
