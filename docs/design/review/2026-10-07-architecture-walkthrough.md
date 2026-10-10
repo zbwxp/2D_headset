@@ -3683,6 +3683,29 @@ This is not one drawing per combination of angle frames and expression frames (L
 - expression = a local sample;
 - fix = a local sample at one combination.
 
+### Judgement 2 on the example: dot (1791603483)
+
+- **Amounts are right for expressions, and a timeline is fine.** E.g. a blink takes the closure amount 0 → 1 → 0 over time while the angle goes 0° → 90°.
+  - At each moment, angle and closure together go to the model, which computes one picture.
+  - The timeline decides *when* things move; the shape samples decide *what it looks like* at that amount.
+- **The three-drawing example lacks a premise.**
+  - 0° open, 90° open and 0° closed do not uniquely give 90° closed.
+  - "Carry the front closing change along to the side" needs a deformation domain already defined. The open curve going from front to side does not uniquely say how the whole eye region deforms, still less how the closing follows.
+  - Three drawings can be a labour-saving start only with an explicit deformation rule, giving a default result that can be corrected.
+- **The clear baseline is four samples:** 0° open / closed, 90° open / closed.
+  - For 45° half closed, get 45° open and 45° closed, then interpolate between them.
+  - The value of a deformation domain is to **generate some of these samples** so bowen draws fewer. The missing drawing does not have one natural answer.
+- **bowen's v1 idea stays:** the whole face shares the angle and the features turn together.
+  - What is new: at one angle, the expression amount can also be controlled.
+  - Settle that first, then decide what is hand-drawn and what reuses deformation.
+
+**Claude (1791603509):** agrees. The example skipped the premise that the eye region's deformation from front to side is defined by an explicit rule, and without it the result is not unique. The four-sample baseline is the clear statement; deformation domains are an optional way to draw fewer samples.
+
 ### Status
 
-Waiting for bowen: does the example match his picture? Also open: confirm the overall goal (dot 1791601533) and the three jobs. No graph rows yet.
+Waiting for bowen to confirm:
+- the four-sample baseline (angle × expression amount, interpolated);
+- a timeline that only drives the amounts;
+- his whole-face angle samples kept.
+
+Hand-drawn vs reused-by-deformation comes after. No graph rows yet.
