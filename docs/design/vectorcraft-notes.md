@@ -88,3 +88,15 @@ Claude 1791628397; repo pages opened unless marked.
 - Report "native in VectorCraft" separately from "relation layer we would add". A missing native shared end point does not by itself make it unfit.
 - This round judges integration difficulty and whether to continue; it does not yet say precisely how much work the whole project saves.
 - The toolchain requirement is VectorCraft's own, not kurbo's.
+
+## Closed (bowen 1791633410)
+
+- **Decided by bowen:** no experiment and no Rust install; VectorCraft may itself be unsupervised AI code. Its own ROADMAP also lists interaction and stability as unverified.
+- **Outcome:** ideas only.
+- **Candidate principles for our interaction** (Claude 1791633440; into the graph only when bowen says "写"):
+  1. **Every user action is one named command, registered once** (name, shortcut, when enabled, what it does).
+     - Buttons, keys, menus and any outside control only call it.
+     - Tools with a process (drag, pen) only issue start / preview / commit / cancel.
+     - Answers: inbox #20 (shortcuts blocked by focused buttons); "what is a tool vs an edit"; each command testable alone.
+  2. **Module boundaries are checked by machine on every commit, not by memory.** Makes "graph modules are never polluted" automatic: core depends on neither interaction nor visual; interaction does not depend on visual.
+- **Already ours:** one edit = one undo step with whole rollback on error (graph); the UI reads state and acts through callbacks (visual package).
