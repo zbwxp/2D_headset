@@ -4370,9 +4370,15 @@ Not chosen yet.
 
 **Claude (1791622861)** asked: "general" read as "the motion itself is wrong at that combination, not one face", so the fix belongs to the motion and is shared, not made per character. Correct?
 
+**bowen (1791623025):** "对的。现在默认没有把 实在有了再打补丁。那么有关绘画+绘画骨骼动画*3模式的框架就定下来了对吧。这一套你们设计制定一套名词来定义他们先。现在线稿画稿快照画稿组录制间啥的太混乱了。"
+
+- **Confirmed:** "general" = the motion is wrong at that combination, so the patch belongs to the motion and is shared.
+- **Framework settled (bowen):** drawings + drawing bone animation, three modes.
+- **Glossary drafted:** `docs/design/glossary-animation.md` (`85f936a`); posted in Slack (Claude 1791623086). dot asked to review.
+
 ### Status
 
-Waiting for bowen: the reading of "general"; the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen and dot on the glossary; still open: the three kinds of storage (with motions spanning parts), the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
