@@ -2,6 +2,38 @@
 
 **Spec:** the graph tables "Models and 元组件", "Views", "Expressions", "Room, modes and broadcast", "Matching" and the changed row "Names", in headset-design `docs/design/review/2026-10-07-architecture-walkthrough.md` (written on bowen 1791648678, names 1791649036; commits f2e6d9f, f4292ae, cff966e). Process per the fill retrospective §9: this list is committed before the first code commit, dot reviews it once, bowen sees the plain summary, then code.
 
+## Packages (bowen 1791649203: many modules, not one; Claude 1791649255, for dot's attack)
+
+Dependencies point downward only.
+
+1. **Drawing core** (existing `core`, accepted): one view's points, lines, joins, links, fills, layers, locks, editing, apply, clipboard. Rules unchanged.
+2. **Meta structure** (new, horizontal): 元线条, 元组件, model.
+   - Type and name.
+   - Identity = 元组件 + name, kept through renames.
+   - Copying a 元组件.
+   - Model = a combination of 元组件.
+3. **Views** (new):
+   - the current view;
+   - syncing structural edits (add, delete, split, bind) across the nine views;
+   - shape edits in the current view only;
+   - diagonal drafts.
+4. **Broadcast** (new):
+   - the two front baselines;
+   - broadcast and fit;
+   - the "unbroadcast change" mark.
+5. **Expressions** (new): per-line 0 → 1 changes; combining expressions.
+6. **Interpolate** (new, independent, pure maths): nine view shapes + expression values → the shape at any yaw / pitch / expression. It knows nothing of editing or undo. Used by playback and, later, runtime.
+7. **Model file** (new, top): composes the above into one making file.
+   - The one undo history and the one save / open live here.
+   - One operation spanning several packages is one step.
+8. **Matching** (later).
+
+Existing interaction / visual / bench stay; the modes (draw / angle / expression / playback) live in interaction.
+
+**Open structural choice (for bowen):**
+- **甲 (recommended):** core stays single-view, untouched. The views package holds nine cores with the same ids. Structural edits run in all nine; shape edits in one. Topology equality is checked after every operation. A small core switch may be needed, e.g. auto-bind judged only in the edited view.
+- **乙:** split core into topology + per-view geometry. Data is stored once, but this rewrites the accepted core.
+
 ## Data: what changes in core
 
 - **Topology is shared by all nine views:** points, lines, which line ends at which point, joins (mode), endpoint links, closed curves and fills, groups, names, layer order, strokes, element state (visible / lock).
