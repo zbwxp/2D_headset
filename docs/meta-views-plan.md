@@ -93,8 +93,8 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
     - Opening a file must then not bind them either: the invariant "no two end points in one layer coincide" holds in the edited view at commit, not in every view.
   - 乙: coincidences in any view the edit changed, broadcast included. A broadcast that makes two side-view points coincide would bind them in all views.
     - Only under 乙: settle loops over all changed views, and newly affected views join the check. The number of binds is bounded (finite points, binds only remove), but that alone does not prove the result is independent of view order, nor that every lock and constraint check passes (dot 1791649915). An order rule and tests would be needed.
-- **Q3. Drawing order** (who covers whom): one order shared by all views, or per view (e.g. the far ear behind the head at 90°)? Asked 1791649801.
-- **Q4. Line width and end strokes:** shared, or per view and interpolated? Asked 1791649801.
+- **Q3. Drawing order: decided (bowen 1791650085).** Shared and synced, like adding / removing lines and layer order. Whether to allow per-view order is left for later.
+- **Q4. Line width and end strokes: decided (bowen 1791650085).** Per view, with a button that broadcasts them to the other views so they need not be set nine times. *To confirm:* the button copies the current view's values as they are (not as an offset).
 - **Q5. Mirror** (bowen 1791649795, 1791649821: mirror apply is a batch-editing tool, used only while editing the front). Asked 1791649837:
   - Does mirror link also act only at the front?
   - The graph row "right-side views can be drafted from the left by mirror apply": withdrawn (甲), or a separate whole-view mirror draft (乙)?
@@ -132,10 +132,10 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 | Arc radius | per view | per view | proposal (geometry) |
 | Element visibility / lock | shared | shared | proposal (editing switches) |
 | Show / hide intervals | — | — | *待定* (v103 keyed the ends per view; reference only, dot 1791649820; no data model yet) |
-| Line width, end strokes | — | — | *待定* (Q4) |
-| Drawing order (layers, groups, fills) | — | — | *待定* (Q3) |
+| Line width, end strokes | per view | per view; a button copies the current view's value to the other views | bowen 1791650085 (Q4); "copy as is" is Claude's reading, to confirm |
+| Drawing order (layers, groups, fills) | shared | shared (reordering in any view applies to all) | bowen 1791650085 (Q3); per-view order maybe later |
 | Fill colour | shared | shared | proposal |
-| Whether a fill shows in a view | — | — | follows Q1 and Q3; geometric validity per view |
+| Whether a fill shows in a view | — | — | follows Q1 (order shared, Q3); geometric validity per view |
 | Copy / paste | all views copied; paste offset in all views | — | proposal |
 | Cut and paste keeping ids | all views | — | existing row, per view |
 | Copy a whole 元组件 | all views + baselines; names kept | — | graph "Copying", "Names" |
