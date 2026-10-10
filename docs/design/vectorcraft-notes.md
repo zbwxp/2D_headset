@@ -41,3 +41,19 @@ Facts below are from pages Claude opened: the VectorCraft README and `AGENTS.md`
    - Not read yet; Rust / egui / WASM, so ideas, not code, unless ported with attribution under MIT / Apache.
 4. **An agent control channel** (every command over JSON / MCP) would let dot and Claude drive the real bench in checks, instead of jsdom alone.
 5. **The rules file** (inbox #30): theirs is the model to follow.
+
+## Bézier foundations (bowen 1791628328: "有没有更优秀的贝塞尔曲线基座的开源软件存在？最近用ai重写的")
+
+Claude 1791628397; repo pages opened unless marked.
+
+- **VectorCraft's own foundation.** Its curves come from **kurbo 0.13** and its rendering from **vello_cpu** (its `Cargo.toml`). Its own crates (`geom`, `pathops`, `doc`, `render`…) sit on top.
+- **kurbo** (github.com/linebender/kurbo):
+  - "A Rust 2D curves library" for curves and vector paths, focused on accuracy, with analytical solutions where practical (area by Green's theorem);
+  - "still in fairly early development"; "Licensed under either of" two licences (dual).
+  - Its README names similar crates: **lyon_geom** (many vector algorithms, focused on rendering), **flo_curves** ("good Bézier primitives, and seems tuned for animation"), **vek** (game engines).
+- **Graphite** (github.com/GraphiteEditor/Graphite): "a free, open source vector and raster graphics engine", node-based, aiming at real-time motion graphics; alpha. Licence not checked (Apache-2.0 from memory).
+- **JS (from memory, unchecked):** Paper.js, Pomax's bezier.js.
+- **For us:**
+  - Our core is TypeScript with its own curve maths (e.g. nearest point by quintic roots); these are mostly Rust.
+  - Use them to borrow algorithms and compare accuracy: kurbo's arc length / nearest point / offset; flo_curves' interpolation; VectorCraft's Live Blends correspondence.
+  - kurbo is a ready base if the core ever moves to Rust + WASM. No change proposed now.
