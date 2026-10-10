@@ -39,9 +39,10 @@ Format as in the graph: subject | relation | object | status | source.
 |---|---|---|---|---|
 | Editor | is | One room with modes (draw, angle, expression, playback). No loading between rooms. | decided | bowen 1791640535, 1791640911 |
 | Editing a view | shows | The new shape at once, while making and at runtime. | decided | bowen 1791640535 |
-| Broadcast | is | For fine-tuning a line that already has a hidden baseline: after editing the front, the other views (or expressions) are derived from the change between the current front and the matching baseline; then that baseline is set to the current front. Without broadcast, other views and expressions do not change. *Open for bowen:* when does a new line get its baseline? | decided; baseline start open | bowen 1791640535, 1791642539, 1791646999; Claude 1791642580; dot 1791645801 |
+| Broadcast | is | For fine-tuning a line that already has a hidden baseline: after editing the front, the other views (or expressions) are derived from the change between the current front and the matching baseline; then that baseline is set to the current front. Without broadcast, other views and expressions do not change. | decided | bowen 1791640535, 1791642539, 1791646999; Claude 1791642580; dot 1791645801 |
 | Broadcast derivation | is, for now | Adding "current front − baseline" to each target, point by point. | candidate (to be verified) | Claude 1791642580; dot 1791642640, 1791645801 |
 | Broadcast | is | One edit: all its writes and the baseline advance succeed or roll back together, as one undo step. | candidate | dot 1791642640 |
+| Broadcast baseline | is updated | Automatically: whenever a line's non-front view is adjusted by hand, its angle baseline becomes its current front (乙). Likewise, adjusting an expression by hand updates its expression baseline (candidate detail). Consequence: a front edit not yet broadcast is no longer pushed once a side view of that line is adjusted by hand; bowen broadcasts deliberately. | decided (乙); expression detail candidate | bowen 1791647215; Claude 1791647059 |
 | Broadcast baseline | is kept | Separately for angles and for expressions, saved in the making file. The runtime product does not carry these making records; publishing does not delete them from the making source. | decided | bowen 1791642767; dot 1791645801 |
 
 ### Matching
