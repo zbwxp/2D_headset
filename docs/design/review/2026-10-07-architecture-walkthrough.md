@@ -4288,6 +4288,19 @@ Not chosen yet.
 
 **Claude (1791620848):** agrees; withdraws "two levels are enough here".
 
+### bowen (1791622014): "ld的变形器难道是左右，开闭睁眼都放在一个coord上/一张贝塞尔网格上的吗？？"
+
+**Claude (1791622048):** two different "grids".
+1. **The grid in space:** a warp deformer is one Bézier lattice laid over the picture (e.g. 3 × 3 control points). Pulling it deforms what is inside. One deformer has one lattice.
+2. **The table in parameter space:** the lattice has a shape (key form) at each parameter value. A deformer with N parameters has an N-dimensional table of key forms.
+- So "two parameters" is not two lattices stacked. It is **one lattice with a shape at each combination** of the two parameters.
+- **The face-angle tutorial (checked):**
+  - each part's deformer gets 3 keys on Angle X, then 3 on Angle Y "using the same deformer";
+  - "Auto Generate 4 Corners" fills the diagonals;
+  - that one lattice then has 3 × 3 = 9 shapes. Playback interpolates the lattice from them at the current X, Y and deforms what is inside. Same idea as bowen's nine views.
+- **Eye open / close usually sits on an inner level** (the eye drawing itself or a lower deformer), carried by the angle level. From memory; the expressions chapter was not read. Putting it on the same deformer works too: X × Y × open = 3 × 3 × 2 = 18 shapes, which is why it is usually layered.
+- **For us:** the angle level = each line has a shape at the nine views; open / close is in the motion level, carried by the angle level.
+
 ### Status
 
 Waiting for bowen: two levels as a design constraint (verified later on real faces); the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
