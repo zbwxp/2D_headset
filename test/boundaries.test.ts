@@ -6,7 +6,9 @@ import ts from 'typescript'
 // Allowed module dependencies (README "Dependency direction").
 const ALLOWED: Record<string, string[]> = {
   geometry: [],
-  network: ['geometry'],
+  shapes: ['geometry'],
+  views: [],
+  network: ['geometry', 'shapes'],
   groups: ['geometry', 'network'],
   joins: ['geometry', 'network'],
   links: ['geometry', 'network'],
@@ -17,7 +19,7 @@ const ALLOWED: Record<string, string[]> = {
   apply: ['geometry', 'network', 'groups', 'joins', 'links', 'fills'],
   names: ['network', 'groups'],
   clipboard: ['network', 'groups', 'joins', 'fills', 'names'],
-  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard'],
+  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views'],
   archive: ['document'],
 }
 // External packages each module may use.

@@ -12,11 +12,13 @@ import * as editing from '../editing'
 import * as apply from '../apply'
 import * as names from '../names'
 import * as clipboard from '../clipboard'
+import * as views from '../views'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
 
 interface State {
+  /** Bound to the front view: the single-view compatibility entry (docs/architecture-multiview.md §2, package 6). */
   network: net.NetworkState
   groups: groups.GroupsState
   joins: joins.JoinsState
@@ -31,7 +33,7 @@ interface State {
 }
 
 const createState = (axis = 0): State => ({
-  network: net.create(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
+  network: net.create({ key: views.FRONT, kind: 'view' }), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
   apply: apply.create(axis), names: names.create(),
 })
 
@@ -524,7 +526,7 @@ const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names']
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
   const s = core['state']
-  return structuredClone(Object.fromEntries(PARTS.map(k => [k, s[k]])))
+  return structuredClone(Object.fromEntries(PARTS.map(k => [k, k === 'network' ? net.exportData(s.network) : s[k]])))
 }
 
 /**
@@ -541,7 +543,7 @@ export function importState(data: unknown): Core {
   // each module checks and copies its own part, in dependency order (dot 1791512144)
   let state: State
   try {
-    const network = net.restore(d.network)
+    const network = net.restore(d.network, views.FRONT)
     const g = groups.restore(d.groups, network)
     state = {
       network, groups: g, joins: joins.restore(d.joins, network), links: links.restore(d.links, network),

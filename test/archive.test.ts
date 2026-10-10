@@ -125,7 +125,9 @@ describe('save and open', () => {
     const cases: [string, string, RegExp][] = [
       ['not JSON', '{oops', /not JSON/],
       ['another format', JSON.stringify({ format: 'something', version: 1, document: {} }), /not a headset v3 drawing/],
-      ['another version', good.replace('"version":1', '"version":2'), /unsupported version 2/],
+      ['another version', good.replace('"version":2', '"version":3'), /unsupported version 3/],
+      // shape layers (docs/architecture-multiview.md): single-view version 1 files are not supported (bowen 1791651929)
+      ['a version 1 file', good.replace('"version":2', '"version":1'), /unsupported version 1/],
       ['a missing part', edit(doc => { delete doc.links }), /missing links/],
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],
@@ -134,7 +136,13 @@ describe('save and open', () => {
       ['usedLines missing', edit(doc => { delete doc.network.usedLines }), /usedLines is not a list/],
       ['usedLines emptied (an existing line id could be drawn again)', edit(doc => { doc.network.usedLines = [] }), /is not marked as used/],
       ['groups.next behind an existing g-id', edit(doc => { doc.groups.next = 1 }), /would make g1 again/],
-      ['a coordinate that is text', edit(doc => { doc.network.points[0].position.x = 'oops' }), /position.x is not a finite number/],
+      ['a coordinate that is text', edit(doc => { const L = doc.network.shapes.layers[0]; L.points[Object.keys(L.points)[0]!].x = 'oops' }), /\.x is not a finite number/],
+      ['no shape layers', edit(doc => { delete doc.network.shapes }), /shapes is not an object/],
+      ['a shape layer without a point', edit(doc => { const L = doc.network.shapes.layers[0]; delete L.points[Object.keys(L.points)[0]!] }), /has no position for point/],
+      ['a shape layer with a point that does not exist', edit(doc => { doc.network.shapes.layers[0].points.ghost = { x: 0, y: 0 } }), /positions for points that do not exist/],
+      ['a shape layer without a line', edit(doc => { const L = doc.network.shapes.layers[0]; delete L.lines[Object.keys(L.lines)[0]!] }), /has no shape for line/],
+      ['a shape layer of an unknown kind', edit(doc => { doc.network.shapes.layers[0].kind = 'magic' }), /unknown kind/],
+      ['no front view layer', edit(doc => { doc.network.shapes.layers[0].key = 'view:90,0' }), /no shape layer view:0,0/],
       ['a line ending at a point of another layer', edit(doc => { const l = doc.network.lines.find((x: any) => x.id === 'k1'); l.a = 'a' }), /crosses layers/],
       ['a group that is not one connected curve', edit(doc => { const g = doc.groups.groups; g[0].lines.push(g[1].lines.pop()) }), /open-failed/],
       ['a join on a line that does not end at its point', edit(doc => { doc.joins.rows[0].lines[1] = 'w1' }), /does not end at/],
@@ -143,8 +151,8 @@ describe('save and open', () => {
       ['a mirror pair on a missing line', edit(doc => { doc.apply.pairs[0].a = 'gone' }), /mirror pair 0 uses a missing line/],
       ['a line without a name', edit(doc => { doc.names.line.pop() }), /has no name/],
       // the rest of the same class (dot 1791512188): each module's own type, reference and relation checks
-      ['a negative line width', edit(doc => { doc.network.lines[0].stroke.width = -1 }), /stroke width that is not positive/],
-      ['a missing stroke', edit(doc => { delete doc.network.lines[0].stroke }), /stroke is not an object/],
+      ['a negative line width', edit(doc => { const L = doc.network.shapes.layers[0]; L.lines[Object.keys(L.lines)[0]!].stroke.width = -1 }), /stroke width that is not positive/],
+      ['a missing stroke', edit(doc => { const L = doc.network.shapes.layers[0]; delete L.lines[Object.keys(L.lines)[0]!].stroke }), /stroke in view:0,0 is not an object/],
       ['an axis that is not a number', edit(doc => { doc.apply.axis = 'middle' }), /mirror axis is not a finite number/],
       ['a point in a missing layer', edit(doc => { doc.network.points[0].layer = 'nowhere' }), /in a missing layer/],
       ['an endpoint linked to itself', edit(doc => { doc.links.pairs[0].b = doc.links.pairs[0].a }), /inside one layer/],
@@ -159,7 +167,7 @@ describe('save and open', () => {
       ['a link pair reversed', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs[0] = { a: p.b, b: p.a } }), /links are not in their stored form/],
       ['one link stored in both orders', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs.push({ a: p.b, b: p.a }) }), /Already linked/],
       ['a mirror pair reversed', edit(doc => { const p = doc.apply.pairs[0]; doc.apply.pairs[0] = { a: p.b, b: p.a, reversed: p.reversed } }), /mirror pairs are not in their stored form/],
-      ['linked points apart', edit(doc => { doc.network.points.find((x: any) => x.id === 'k').position = { x: -90, y: 3 } }), /linked points c and k are apart|linked points k and c are apart/],
+      ['linked points apart', edit(doc => { doc.network.shapes.layers[0].points.k = { x: -90, y: 3 } }), /linked points c and k are apart|linked points k and c are apart/],
     ]
     for (const [label, text, why] of cases) {
       it(label, () => {

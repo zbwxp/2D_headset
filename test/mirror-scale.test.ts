@@ -101,7 +101,7 @@ describe('the pruned search finds the exact least-change correspondence', () => 
     let seed = 7
     const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
     for (let k = 0; k < 40; k++) {
-      const n = net.create(), l = links.create(), ch = net.emptyChanges()
+      const n = net.create({ key: 'view:0,0', kind: 'view' }), l = links.create(), ch = net.emptyChanges()
       net.addLayer(n, 'S'); net.addLayer(n, 'T'); net.addLayer(n, 'U')
       const size = 2 + Math.floor(rnd() * 4), closed = rnd() < 0.5
       const make = (side: string, layer: string, sign: number) => {

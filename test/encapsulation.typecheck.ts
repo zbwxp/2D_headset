@@ -7,7 +7,7 @@ import * as links from '../src/links'
 import * as fills from '../src/fills'
 import type { Editor } from '../src'
 
-const n = net.create()
+const n = net.create({ key: 'view:0,0', kind: 'view' })
 // @ts-expect-error the network state is opaque: no direct field access
 n.points.push()
 // @ts-expect-error read results are readonly

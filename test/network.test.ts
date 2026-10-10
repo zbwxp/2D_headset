@@ -4,7 +4,7 @@ import * as net from '../src/network'
 
 function grid() {
   // 3×3 points, 12 lines: 13 simple loops (2×2 grid of cells)
-  const n = net.create(), ch = net.emptyChanges()
+  const n = net.create({ key: 'view:0,0', kind: 'view' }), ch = net.emptyChanges()
   net.addLayer(n, 'L')
   const made = new Set<string>()
   const end = (x: number, y: number): net.EndSpec => {
@@ -55,7 +55,7 @@ describe('network', () => {
 
 describe('closed-curve search cost (dot 1791430851)', () => {
   it('20 small loops strung together by single lines (59 lines): 20 loops, found quickly', () => {
-    const n = net.create(), ch = net.emptyChanges()
+    const n = net.create({ key: 'view:0,0', kind: 'view' }), ch = net.emptyChanges()
     net.addLayer(n, 'L')
     // loop i: two lines between p_i and q_i; consecutive loops joined by one line: 20·2 + 19 = 59 lines
     const made = new Set<string>()
@@ -74,7 +74,7 @@ describe('closed-curve search cost (dot 1791430851)', () => {
   })
 
   it('two blocks sharing a point give their loops plus the curve through that point twice', () => {
-    const n = net.create(), ch = net.emptyChanges()
+    const n = net.create({ key: 'view:0,0', kind: 'view' }), ch = net.emptyChanges()
     net.addLayer(n, 'L')
     net.addLine(n, ch, 'x1', { id: 'c', layer: 'L', position: { x: 0, y: 0 } }, { id: 'u', layer: 'L', position: { x: 5, y: 5 } })
     net.addLine(n, ch, 'x2', 'u', { id: 'w', layer: 'L', position: { x: 0, y: 8 } }); net.addLine(n, ch, 'x3', 'w', 'c')

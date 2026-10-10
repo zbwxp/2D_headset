@@ -5,7 +5,8 @@
 import { exportState, importState, type Core } from '../document'
 
 export const FORMAT = 'headset-v3-drawing'
-export const VERSION = 1
+/** 2: shape layers (docs/architecture-multiview.md); version 1 files are not supported (bowen 1791651929). */
+export const VERSION = 2
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

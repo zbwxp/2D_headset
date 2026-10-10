@@ -5,7 +5,7 @@ import { Core } from '../src'
 import { sk } from './sketch'
 
 function small() {
-  const n = net.create(), ch = net.emptyChanges()
+  const n = net.create({ key: 'view:0,0', kind: 'view' }), ch = net.emptyChanges()
   net.addLayer(n, 'L')
   const pos = { x: 1, y: 2 }
   net.addLine(n, ch, 'ab', { id: 'a', layer: 'L', position: pos }, { id: 'b', layer: 'L', position: { x: 5, y: 2 } })
