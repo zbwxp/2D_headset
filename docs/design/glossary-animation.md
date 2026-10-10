@@ -1,5 +1,12 @@
 # Terms: drawings and bone animation (proposal for bowen 1791623025)
 
+> **v1 rejected (bowen 1791623305: "claude这份名词选择很糟糕").**
+> - It replaced bowen's own words and coined new ones.
+> - It was too long.
+> - It added topics he did not ask about.
+>
+> v2 (Claude 1791623330) keeps bowen's words (画稿, 画稿集, 骨骼动画, 关键帧 / 过渡帧, 绘制间 / 录制间 with 角度录制 / 表情录制 / 混合预览) and only resolves the one word with two meanings (快照). Waiting for bowen's specifics. v1 below, kept for history.
+
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
 
 ## The terms
