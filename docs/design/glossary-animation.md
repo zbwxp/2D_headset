@@ -410,7 +410,7 @@ They are chosen independently (e.g. 1a + 2b).
 - **What it is:** the front shape at the last broadcast. Broadcast starts only from the front, so one shape, not nine.
 - **On broadcast:** push "current front − baseline" to other views and expressions, then set the baseline to the current front.
 - **Saved with the data,** so after a disconnect, close or crash the baseline is still there and broadcast still works.
-- **Copying eye 1 to eye 2 copies the baseline as it is** (corrected per dot 1791642599; Claude 1791642610). Eye 2's other views are copied from eye 1 and match eye 1's *baseline*, not necessarily its current front. So eye 2 carries the same unbroadcast change and broadcasts it later. Setting eye 2's baseline to the current front would silently swallow that change.
+- **Copying eye 1 to eye 2 copies the baseline as it is** (corrected per dot 1791642599; Claude 1791642620). Eye 2's other views are copied from eye 1 and match eye 1's *baseline*, not necessarily its current front. So eye 2 carries the same unbroadcast change and broadcasts it later. Setting eye 2's baseline to the current front would silently swallow that change.
 - **Meets dot's two safeguards (1791640627):** a repeated broadcast with no new edit pushes zero; eye 2's baseline is its own, so broadcasting it does not touch eye 1.
 - **Shown to the user only as a mark:** "edited, not yet broadcast".
 
