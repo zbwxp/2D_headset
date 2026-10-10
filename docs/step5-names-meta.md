@@ -28,9 +28,11 @@
    - A clip carries no reliable source 元组件: its source is a view, two documents may both have a layer id "L", and one copy may span several layers (dot 1791655027). So nothing is guessed from the source.
    - The rule looks only at the target layer: each pasted line and each wholly pasted curve keeps its name if that name is free there, else gets "<name>副本" (then 副本2…).
    - Pasting back into the layer it came from therefore still gives 副本 (the originals hold the names), as the graph row says. Into a layer where the name is free, it is kept.
+   - Example (dot 1791655111): copy a line, then delete or rename the original; pasting back into the same layer then keeps the original name, since it is free again. This is not "a same-layer paste always gets 副本".
    - **The defaults given while pasting never push out a name that could be kept** (dot 1791655027): `copyFrom` first clears the temporary defaults of every pasted line and curve, assigns the kept names, then the 副本 names, and only then fills defaults for anything still unnamed.
-6. **Cut and paste keeping ids** (`moveGroup`): the moved lines and curve keep their names.
-   - If any of those names is taken in the target layer, the move is refused (`name-taken`), not renamed silently. The check runs **before** the move and any merge.
+6. **Cut and paste keeping ids** (`moveGroup`): names are decided by the target layer, like a paste (dot 1791655253, replacing the earlier "refuse"). With per-layer defaults every layer has "曲线1", so refusing would make normal cut and paste fail.
+   - Ids and every view's data stay. The move, any needed rename and a later merge are one edit and one undo step.
+   - The names free in the target are reserved for the whole moving batch first; then the movers whose names are taken get "<name>副本…", so a 副本 name never takes a name a later mover could keep. Lines and the curve are checked together. The plan is made before the move and any merge.
    - If the move then makes end points coincide and curves merge, the existing merge survival rules decide which curve id and name survive. Curve ids are not promised to stay (dot 1791655027).
 7. **Type** (`meta`).
    - A layer's type is a string; "" means none (*proposal*).

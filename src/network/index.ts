@@ -587,7 +587,9 @@ function blockLoops(index: Index, lines: TLine[]): Id[][] {
 
 function checkName(n: NetworkState, name: string, except?: Id) {
   if (!name.trim()) throw new Error('A layer name cannot be empty')
-  if (S(n).layers.some(l => l.name === name && l.id !== except)) throw new Error(`Layer name "${name}" is already used`)
+  const holder = S(n).layers.find(l => l.name === name && l.id !== except)
+  // a refusal with its holder, as for line and curve names (names.assertFreeIn)
+  if (holder) throw new Refusal('name-taken', `Layer name "${name}" is already used by layer ${holder.id}`, [{ kind: 'layer', id: holder.id }])
 }
 
 /** New empty layer, placed directly above `above` (or on top). Names are unique (bowen 1791435000). */

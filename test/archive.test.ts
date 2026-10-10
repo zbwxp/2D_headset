@@ -114,8 +114,9 @@ describe('save and open', () => {
     // a new line makes a new group: its id and default names are new in both
     for (const x of [d, o]) x.edit(e => e.line('n1', { id: 'n', layer: 'K', position: P(0, 200) }, { id: 'n2', layer: 'K', position: P(50, 200) }))
     same(d, o)
-    const s = o.snapshot(), names = [...s.layers.map(l => l.name), ...s.groups.map(g => g.name), ...s.lines.map(l => l.name)]
-    expect(new Set(names).size).toBe(names.length)
+    // names are unique by scope (step 5): layers; and per layer, curves and lines together
+    const s = o.snapshot(), layerOf = new Map(s.points.map(p => [p.id, p.layer]))
+    for (const names of [s.layers.map(l => l.name), ...s.layers.map(L => [...s.groups.filter(g => g.layer === L.id).map(g => g.name), ...s.lines.filter(l => layerOf.get(l.a) === L.id).map(l => l.name)])]) expect(new Set(names).size).toBe(names.length)
     expect(new Set(s.groups.map(g => g.id)).size).toBe(s.groups.length)
     o.undo()
     expect(o.snapshot().lines.find(l => l.id === 'n1')).toBeUndefined()

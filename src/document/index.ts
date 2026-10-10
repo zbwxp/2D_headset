@@ -13,6 +13,7 @@ import * as apply from '../apply'
 import * as names from '../names'
 import * as clipboard from '../clipboard'
 import * as views from '../views'
+import * as meta from '../meta'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -30,6 +31,8 @@ interface State {
   apply: apply.ApplyState
   /** Names of continuous curves and lines (layer names live on the layer). */
   names: names.NamesState
+  /** The 元组件 types of the layers (step 5): part of the one state, no store of its own. */
+  meta: meta.MetaState
 }
 
 /** A drawing has its nine view layers from the start (graph "Views"; step 3, Claude 1791653309). */
@@ -40,12 +43,12 @@ function viewedNetwork(): net.NetworkState {
 }
 const createState = (axis = 0): State => ({
   network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
-  apply: apply.create(axis), names: names.create(),
+  apply: apply.create(axis), names: names.create(), meta: meta.create(),
 })
 
 export interface Snapshot {
-  /** Layers bottom → top. */
-  layers: net.Layer[]
+  /** Layers bottom → top; `type` is the 元组件 type when it has one. */
+  layers: (net.Layer & { type?: string })[]
   points: { id: Id; layer: Id; position: Vec; links: Id[]; endStroke?: joins.EndStroke }[]
   lines: { id: Id; name: string; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
   groups: (groups.Group & { name: string })[]
@@ -112,10 +115,8 @@ export class Editor {
   // layers (Q29, Q30)
   /** New empty layer, directly above `above` (or on top). The name defaults to the id and must be unique. */
   layer(id: Id, name?: string, above?: Id) { net.addLayer(this.s.network, id, name, above) }
-  renameLayer(id: Id, name: string) {
-    names.assertFree(this.s.names, this.s.network, name, `layer ${id}`)
-    net.renameLayer(this.s.network, id, name)
-  }
+  /** Layer names are unique among layers (network checks); they never collide with line or curve names. */
+  renameLayer(id: Id, name: string) { net.renameLayer(this.s.network, id, name) }
   /** A locked line's name is something it owns alone (graph rows "Names", "Locked element"). */
   renameLine(id: Id, name: string) {
     if (net.line(this.s.network, id).state.locked) throw new net.Refusal('locked', `Line ${id} is locked`, net.lineObjects([id]))
@@ -123,6 +124,8 @@ export class Editor {
   }
   /** A group has no lock of its own (a lock does not lock the parent). */
   renameGroup(id: Id, name: string) { names.rename(this.s.names, this.s.network, this.s.groups, 'group', id, name) }
+  /** The layer's 元组件 type (an edit; "" for none). */
+  layerType(id: Id, type: string) { meta.setType(this.s.meta, this.s.network, id, type) }
   /** A state change: move a layer to `index` (bottom → top). */
   reorderLayer(id: Id, index: number) { net.reorderLayer(this.s.network, id, index) }
   /**
@@ -134,8 +137,9 @@ export class Editor {
     const { state: s } = this.tx
     const base = net.layerRecords(s.network).find(l => l.id === id)
     if (!base) throw new Error(`No layer ${id}`)
-    if (name !== undefined) names.assertFree(s.names, s.network, name)
-    net.addLayer(s.network, newId, name ?? names.copyName(s.names, s.network, base.name), id)
+    net.addLayer(s.network, newId, name ?? names.layerCopyName(s.network, base.name), id)
+    // a copy of the 元组件 keeps its type (meta) and, in a new layer, every inner name (names.copyFrom)
+    meta.copyType(s.meta, s.network, id, newId)
     // a layer copy is a clip of all its lines (in their groups' order), pasted in place
     const lineIds = groups.list(s.groups, s.network).filter(g => g.layer === id).flatMap(g => g.lines)
     if (!lineIds.length) return
@@ -304,7 +308,12 @@ export class Editor {
     const lockedFills = fills.discover(s.fills, s.network).filter(v => v.locked && this.fillsOf(g.lines).includes(v.id)).map(v => v.id)
     const locked = [...lockedLines, ...lockedFills]
     if (locked.length) throw new net.Refusal('locked', `Group ${group} holds locked elements (${locked.join(', ')}); it cannot be cut`, [...net.lineObjects(lockedLines), ...lockedFills.map(id => ({ kind: 'fill' as const, id }))])
+    if (!net.hasLayer(s.network, layer)) throw new Error(`No layer ${layer}`)
+    // names: kept where free in the target layer, else "<name>副本…", planned before the move
+    // and any merge, applied in the same edit (dot 1791655253)
+    const plan = names.planMove(s.names, s.network, s.groups, group, g.lines, layer)
     this.topology(ch => net.moveLinesToLayer(s.network, ch, g.lines, layer))
+    names.applyPlan(s.names, plan)
   }
 
   // fills (closed loops)
@@ -543,6 +552,8 @@ export class Core {
   pickLoop(at: Vec): Id | undefined { return this.in(views.FRONT).pickLoop(at) }
   linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return this.in(views.FRONT).linesInRect(a, b, whole) }
   loopsAt(at: Vec): Id[] { return this.in(views.FRONT).loopsAt(at) }
+  /** The 元线条 named `name` in layer `layer`: its line id, or undefined. */
+  lineByName(layer: Id, name: string): Id | undefined { return meta.lineByName(this.state.network, this.state.names, layer, name) }
 }
 
 /** The document read in one view. */
@@ -555,7 +566,7 @@ export class LayerReader {
     const groupList = groups.list(s.groups, n)
     const groupOfLine = new Map(groupList.flatMap(g => g.lines.map(l => [l, g.id] as const)))
     return structuredClone({
-      layers: [...net.layerRecords(n)],
+      layers: net.layerRecords(n).map(l => { const type = meta.typeOf(s.meta, l.id); return { ...l, ...(type ? { type } : {}) } }),
       points: net.points(n).map(p => {
         const end = joins.endStroke(s.joins, n, p.id)
         return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
@@ -599,7 +610,7 @@ export class LayerReader {
 
 // ---- for the archive module only (not exported from the package root) -----------
 
-const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names'] as const
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta'] as const
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
@@ -626,6 +637,7 @@ export function importState(data: unknown): Core {
     state = {
       network, groups: g, joins: joins.restore(d.joins, network), links: links.restore(d.links, network),
       fills: fills.restore(d.fills, network), apply: apply.restore(d.apply, network), names: names.restore(d.names, network, g),
+      meta: meta.restore(d.meta, network),
       selection: editing.create(),
     }
   } catch (err) {
@@ -694,7 +706,7 @@ function commit(s: State, ch: net.Changes, published: State, appliedFrom: Readon
   if (layer !== views.FRONT && mirrorStructure(published) !== mirrorStructure(s)) {
     throw new net.Refusal('mirror-front-only', `mirror-front-only: this edit in ${layer} would change mirror-linked lines' structure`)
   }
-  names.check(s.names, s.network)
+  names.check(s.names, s.network, s.groups)
   const changed = new Set<Id>()
   for (const k of viewKeys(s)) {
     const at = (x: State) => ({ network: net.of(x.network, k), joins: x.joins, links: x.links })
@@ -736,6 +748,7 @@ function settleLayerPositions(s: State, ch: net.Changes, layer: string) {
 
 /** What follows the structure, once for all layers. */
 function settleShared(s: State) {
+  meta.follow(s.meta, s.network)
   fills.validate(s.fills, s.network)
   groups.reconcile(s.groups, s.network, net.emptyChanges())
   names.update(s.names, s.network, s.groups)

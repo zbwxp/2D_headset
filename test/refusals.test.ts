@@ -85,7 +85,8 @@ describe('refusals', () => {
   it('a name in use: name-taken, its holder as kind + id', () => {
     const d = scene()
     d.edit(e => e.renameLine('l1', '睫毛'))
-    const r = refusal(() => d.edit(e => e.renameLayer('K', '睫毛')))
+    // names are unique within their layer (step 5): l2 shares l1's layer
+    const r = refusal(() => d.edit(e => e.renameLine('l2', '睫毛')))
     expect([r.code, objs(r)]).toEqual(['name-taken', ['line:l1']])
   })
 

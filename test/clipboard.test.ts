@@ -78,20 +78,27 @@ describe('paste', () => {
     expect(s(d).selection.map(u => (u as { id: string }).id).sort()).toEqual([...eyeLines, 't'].map(id).sort())
   })
 
-  it('3. new ids each time; names "<name>副本", then 副本2; a curve copied in part gets a default name', () => {
+  it('3. new ids each time; names decided by the target layer: kept where free, else "<name>副本", then 副本2; a curve copied in part gets a default name', () => {
     const d = scene()
     const clip = d.copy(eyeLines)
     d.edit(e => e.paste(clip, 'K', P(0, 300), 'p1'))
     d.edit(e => e.paste(clip, 'K', P(0, 600), 'p2'))
-    expect(line(d, 'p1/u1').name).toBe('上眼睑外副本')
-    expect(line(d, 'p2/u1').name).toBe('上眼睑外副本2')
+    d.edit(e => e.paste(clip, 'L', P(0, 900), 'p4'))
+    // another layer: the names are free there the first time (docs/step5-names-meta.md rule 5)
+    expect(line(d, 'p1/u1').name).toBe('上眼睑外')
+    expect(line(d, 'p2/u1').name).toBe('上眼睑外副本')
+    // back into the layer it came from: the originals hold the names
+    expect(line(d, 'p4/u1').name).toBe('上眼睑外副本')
     const group = (l: string) => s(d).groups.find(x => x.lines.includes(l))!
-    expect(group('p1/u1').name).toBe('左眼副本')
-    expect(group('p2/u1').name).toBe('左眼副本2')
-    { const clip = d.copy(['u1', 'u2']); d.edit(e => e.paste(clip, 'K', P(0, 900), 'p3')) }
+    expect(group('p1/u1').name).toBe('左眼')
+    expect(group('p2/u1').name).toBe('左眼副本')
+    { const clip = d.copy(['u1', 'u2']); d.edit(e => e.paste(clip, 'K', P(0, 1200), 'p3')) }
     expect(group('p3/u1').name).toMatch(/^连续曲线\d+$/)
-    const names = [...s(d).layers.map(l => l.name), ...s(d).groups.map(g => g.name), ...s(d).lines.map(l => l.name)]
-    expect(new Set(names).size).toBe(names.length)
+    const snap = s(d), layerOf = new Map(snap.points.map(p => [p.id, p.layer]))
+    for (const L of snap.layers) {
+      const names = [...snap.groups.filter(g => g.layer === L.id).map(g => g.name), ...snap.lines.filter(l => layerOf.get(l.a) === L.id).map(l => l.name)]
+      expect(new Set(names).size).toBe(names.length)
+    }
   })
 
   it('4a. pasted with no offset onto the original’s own layer: every end point binds, and the originals stay', () => {

@@ -1,4 +1,7 @@
-// Names (graph "Names", design eb2748a; docs/names-plan.md acceptance 1–10).
+// Names (graph "Names", design eb2748a; docs/names-plan.md acceptance 1–10). Scope since
+// step 5 (docs/step5-names-meta.md; bowen 1791649036 甲, 1791651929; dot 1791655027):
+// layer names unique among layers; line and curve names unique together within their
+// layer; defaults numbered within the layer. Tests 1, 2, 5, 7 and 10b-3 changed with it.
 import { describe, it, expect } from 'vitest'
 import { Core, type Vec } from '../src'
 import { sk } from './sketch'
@@ -7,8 +10,13 @@ const P = (x: number, y = 0): Vec => ({ x, y })
 const s = (d: Core) => d.snapshot()
 const lineName = (d: Core, id: string) => s(d).lines.find(l => l.id === id)!.name
 const groupOf = (d: Core, line: string) => s(d).groups.find(g => g.lines.includes(line))!
-const allNames = (d: Core) => [...s(d).layers.map(l => l.name), ...s(d).groups.map(g => g.name), ...s(d).lines.map(l => l.name)]
-const unique = (d: Core) => { const n = allNames(d); expect(new Set(n).size).toBe(n.length); expect(n.every(x => x.trim())).toBe(true) }
+/** Names by scope: the layers; and, per layer, its curves and lines together. */
+const scopes = (d: Core) => {
+  const snap = s(d), layerOfPoint = new Map(snap.points.map(p => [p.id, p.layer]))
+  const lineLayer = new Map(snap.lines.map(l => [l.id, layerOfPoint.get(l.a)!]))
+  return [snap.layers.map(l => l.name), ...snap.layers.map(L => [...snap.groups.filter(g => g.layer === L.id).map(g => g.name), ...snap.lines.filter(l => lineLayer.get(l.id) === L.id).map(l => l.name)])]
+}
+const unique = (d: Core) => { for (const n of scopes(d)) { expect(new Set(n).size).toBe(n.length); expect(n.every(x => x.trim())).toBe(true) } }
 
 /** A chain a–b–c–d of three lines l1, l2, l3 in layer L. */
 function chain(d: Core, L = 'L', x = 0, p = '') {
@@ -20,12 +28,16 @@ function chain(d: Core, L = 'L', x = 0, p = '') {
 function doc() { const d = new Core(); d.edit(e => e.layer('L', 'L')); return d }
 
 describe('names', () => {
-  it('1. new lines and curves get the next free defaults, skipping any name in use', () => {
+  it('1. new lines and curves get the smallest free default within their layer, skipping names in use there only', () => {
     const d = doc()
-    d.edit(e => e.layer('M', '曲线2'))
+    d.edit(e => { e.layer('M', '曲线2'); sk(e).point('p', 'L', P(0, 50)); sk(e).point('q', 'L', P(10, 50)); sk(e).line('x', 'p', 'q'); e.renameLine('x', '曲线2') })
     chain(d)
+    // a layer named 曲线2 does not take the name from lines; the line named 曲线2 in L does
     expect(['l1', 'l2', 'l3'].map(id => lineName(d, id))).toEqual(['曲线1', '曲线3', '曲线4'])
-    expect(groupOf(d, 'l1').name).toBe('连续曲线1')
+    expect(groupOf(d, 'l1').name).toBe('连续曲线2')
+    // another layer starts its own numbering
+    chain(d, 'M', 0, 'k')
+    expect(['kl1', 'kl2', 'kl3'].map(id => lineName(d, id))).toEqual(['曲线1', '曲线2', '曲线3'])
     unique(d)
   })
 
@@ -66,13 +78,16 @@ describe('names', () => {
     const d = doc(); chain(d)
     const g = groupOf(d, 'l1').id
     expect(() => d.edit(e => e.renameLine('l1', ' '))).toThrow(/empty/)
-    expect(() => d.edit(e => e.renameLine('l1', 'L'))).toThrow(/layer L/)
     expect(() => d.edit(e => e.renameLine('l1', '曲线2'))).toThrow(/line l2/)
+    // a line and a curve in one layer share one occupancy check (dot 1791655027)
     expect(() => d.edit(e => e.renameGroup(g, '曲线3'))).toThrow(/line l3/)
-    expect(() => d.edit(e => e.renameLayer('L', '连续曲线1'))).toThrow(new RegExp(`group ${g}`))
-    expect(() => d.edit(e => e.layer('N', '曲线1'))).toThrow(/Name "曲线1"/)
+    expect(() => d.edit(e => e.layer('N', 'L'))).toThrow(/Layer name "L" is already used/)
     d.edit(e => e.renameLine('l1', '曲线1')) // its own name: allowed, no change
     expect(lineName(d, 'l1')).toBe('曲线1')
+    // different scopes never collide: a line may share a layer's name, and the other way round
+    d.edit(e => { e.renameLine('l1', 'L'); e.renameLayer('L', '连续曲线1'); e.layer('N', '曲线2') })
+    expect(lineName(d, 'l1')).toBe('L')
+    unique(d)
   })
 
   it('6. a locked line refuses rename; a group whose lines are all locked, and its layer, can be renamed', () => {
@@ -85,7 +100,7 @@ describe('names', () => {
     expect(s(d).layers[0]!.name).toBe('脸')
   })
 
-  it('7. copy layer: the layer, its curves and its lines become "<name>副本", then 副本2', () => {
+  it('7. copy layer (a 元组件): the layer becomes "<name>副本", then 副本2; its curves and lines keep their names', () => {
     const d = doc(); chain(d)
     const g = groupOf(d, 'l1').id
     d.edit(e => { e.renameGroup(g, '左耳'); e.renameLine('l2', '耳垂') })
@@ -93,13 +108,13 @@ describe('names', () => {
     d.edit(e => e.copyLayer('L', 'C2'))
     expect(s(d).layers.find(l => l.id === 'C1')!.name).toBe('L副本')
     expect(s(d).layers.find(l => l.id === 'C2')!.name).toBe('L副本2')
-    expect(lineName(d, 'C1/l2')).toBe('耳垂副本')
-    expect(lineName(d, 'C2/l2')).toBe('耳垂副本2')
-    expect(groupOf(d, 'C1/l1').name).toBe('左耳副本')
-    expect(groupOf(d, 'C2/l1').name).toBe('左耳副本2')
+    expect(lineName(d, 'C1/l2')).toBe('耳垂')
+    expect(lineName(d, 'C2/l2')).toBe('耳垂')
+    expect(groupOf(d, 'C1/l1').name).toBe('左耳')
+    expect(groupOf(d, 'C2/l1').name).toBe('左耳')
     unique(d)
-    // an explicit copy name is checked too
-    expect(() => d.edit(e => e.copyLayer('L', 'C3', '耳垂'))).toThrow(/line l2/)
+    // an explicit copy name is checked among layers
+    expect(() => d.edit(e => e.copyLayer('L', 'C3', 'L副本'))).toThrow(/Layer name "L副本" is already used/)
   })
 
   it('8. mirror apply keeps the target’s names', () => {
@@ -157,13 +172,13 @@ describe('names', () => {
     expect(s(d).groups.map(g => g.name)).toEqual(['右耳'])
   })
 
-  it('10b-3. a line drawn and its layer copied in one edit: the copies are "<default>副本" (dot 1791479554)', () => {
+  it('10b-3. a line drawn and its layer copied in one edit: the copy keeps the (default) names in its new layer (dot 1791479554)', () => {
     const d = doc()
     d.edit(e => { sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(10)); sk(e).line('x', 'a', 'b'); e.copyLayer('L', 'C') })
     expect(lineName(d, 'x')).toBe('曲线1')
-    expect(lineName(d, 'C/x')).toBe('曲线1副本')
+    expect(lineName(d, 'C/x')).toBe('曲线1')
     expect(groupOf(d, 'x').name).toBe('连续曲线1')
-    expect(groupOf(d, 'C/x').name).toBe('连续曲线1副本')
+    expect(groupOf(d, 'C/x').name).toBe('连续曲线1')
     unique(d)
   })
 
