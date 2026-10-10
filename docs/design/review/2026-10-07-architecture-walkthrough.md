@@ -4212,9 +4212,28 @@ Not chosen yet.
 - Withdraws "0 is neutral" (true for ARKit only), "must add differences" and "pupil = separate part".
 - Withdraws "a motion asset names the kind of part it fits": a motion says which lines it affects, across parts; each line may be affected by several motions.
 
+### bowen (1791619505)
+
+> 我们这个做出来最理想情况就是要直接能适配绝大多数直播软件。你说一个笑设是好几个系统叠加那么是我们需要定义这几个组件的笑是什么还是说笑是这几个组件提供一个deform0-1的值？就是笑是预设的还是面捕会有参数进来控制deform？（嘴张的大小眼睛开闭大小）是vtuber人做出惊讶就能跟随惊讶还是要按一个惊讶按钮才会惊讶？
+
+**Claude (1791619555).** VTube Studio README checked: expressions are `.exp3.json` files holding parameter values, toggled by hotkeys (`ToggleExpression`), with a fade of 0–2 s; the README recommends activating them through hotkeys.
+
+1. **Following the face** (continuous values from tracking):
+   - Mouth open, each eye's opening, smile amount, brow raise: tracking gives an amount each frame and the model follows; no button.
+   - **What a smile looks like is the model's**: the artist draws what the mouth corners, cheeks and lids look like at 1. **How much** comes from tracking. So parts give 0–1 changes and tracking sets the amount; what 1 looks like is drawn by us.
+   - **Surprise** has no single tracking value. It is brows up + eyes wide + mouth open, all tracked; a model with those dials follows a surprised face by itself.
+2. **Buttons** (hotkey expressions):
+   - for what tracking cannot measure, or exaggerated anime effects: tears, blush, star eyes, kaomoji eyes;
+   - in VTube Studio, an expression file with parameter values, toggled with a fade;
+   - for us, a button can set dials and also **swap parts** (one key → kaomoji eyes), which joins bowen's earliest "swap features".
+- **"Work with most streaming software", to check (from memory, unverified):**
+  - apps like VTube Studio load Live2D models only, so our vector model cannot be loaded there;
+  - the usual route would be our own player taking tracking input and sending its picture to OBS-type software (window capture, browser source, virtual camera).
+  - Asked whether to verify.
+
 ### Status
 
-Waiting for bowen on the three kinds of storage (with motions spanning parts) and on the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials; whether to verify the streaming-compatibility route. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
