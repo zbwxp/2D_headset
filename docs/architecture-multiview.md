@@ -125,17 +125,34 @@ Each line: what acts → which layers change → which settle runs.
 16. **Save, reopen, continue.** Every layer is saved. Open checks without new auto-bind; a chance coincidence in a side view stays two points. Broadcast after reopening gives the same result.
 17. **Undo of anything above.** The whole state is one draft, so every layer goes back together.
 
-## 3a. Interpolation between views is adjustable (bowen 1791650951, 1791651008)
+## 3a. Interpolation between views is adjustable (bowen 1791650951, 1791651008, 1791651097, 1791651109)
 
-New requirement:
+**Requirement:**
 - Between two views (e.g. 0 → 90), the change need not be linear.
-- At any position, not only 30° or 60°, bowen can move there and adjust the in-between.
+- bowen moves to any angle, not only 30° or 60°, and adjusts it there.
+- 0,0 never moves.
+- If needed, the 90° side may move minimally, which changes that view.
 
-So `evaluate` takes, besides the nine views, **in-between adjustments at any angle** on a segment. *Open for bowen (Claude, asked):* is an adjustment only timing, or also shape?
-- **甲 timing:** every point still travels the straight path between the two views, but faster or slower (an easing curve per segment).
-- **乙 shape:** an extra in-between key: a shape at that angle, so points may leave the straight path (e.g. a nose that bulges at 40°).
+**What v103 did** (7205381: `src/domain/recordingSnapshot/surfaceTargets.ts`, `surfaceBasisFallback.ts`; dot 1791338157, 1791338275):
+- **No new geometric key; a response curve instead.**
+  - On each segment, every node and every handle vector has, **per axis (x, y)**, a response curve: progress along the segment → how close to the far view.
+  - Linear = no knots.
+  - Editing at an intermediate angle: drag to the wanted shape. Per node / handle / axis, the closest weights are solved (`solveClosestBarycentricWeights`) and stored as a knot at that progress (`edgeResponses`; triangles: interior samples).
+- **Fallback when an axis cannot move** (`SURFACE_AXIS_UNAVAILABLE`: the two views have the same coordinate on that axis):
+  - The "bounded basis adjustment" keeps the 0° view fixed and moves the ±90° view minimally, within a trust radius (`SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS`).
+  - It is a coupled correction draft, to be saved or discarded.
+  - It is supported only on the edge 0° → cardinal ±90°.
+- **Arc radius and join / brush changes** are refused in a response correction ("edit … in a saved snapshot basis first").
 
-If 乙: an in-between key is one more shape layer (`key:<id>` at an angle), and Rule A carries it through every structural change for free. If 甲: per-segment curves are plain data owned by `animation`, read by `evaluate`. Either fits §1.
+**In this framework** (to confirm with bowen, asked 1791651207):
+- **Response curves** are animation data owned by `animation` (package 4); `evaluate` reads them. They are not shape layers.
+- **Editing at an in-between angle** is an edit:
+  - it solves response knots;
+  - where an axis is unavailable, it moves the 90° view layer minimally;
+  - it goes through the lock check;
+  - it is one undo step.
+- **Structural changes need a rule for response curves** (*open*): a split's new point, a bind's kept point, a new line (linear by default?).
+- **Grid** (*open*): v103 triangulated the angle domain (edges + triangles); §2 says bilinear over the 3 × 3 grid. Which one, and where response curves live (edges only, or interiors too), is decided before stage 3.
 
 ## 3b. Build constraints (dot 1791650999, written for the withdrawn §5a; they apply here)
 
