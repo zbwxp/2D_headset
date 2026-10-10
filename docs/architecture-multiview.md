@@ -183,7 +183,7 @@ Each flow: what acts → which layers change → which settle runs.
 - **Locks** (bowen 1791651929: "代码写到哪就到哪"; he is considering removing them): no new lock design. The existing comparison runs per layer as far as it falls out of the framework; no extra rules or dedicated tests beyond keeping today's behaviour.
 - **Undo cost:** guarantee whole rollback first; then measure time and memory with real line counts, expression counts and undo depth. No promise, and no new history system up front.
 
-## 5. Build constraints and the first step (dot 1791650999)
+## 5. Build constraints and the first step (dot 1791650999; step 1 approved by dot 1791652021)
 
 1. **No intermediate version loses data.** Saving and the clipboard carry every layer before any multi-view editing entry is public. The old entry never silently saves only the front.
 2. **No second state:** every package's data lives in the one document state.
@@ -237,7 +237,9 @@ No multi-view save or copy is exposed in this step. Expressions, broadcast and t
 
 Defaults (§7 list below) were not objected to; they stay defaults.
 
-## 7a. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
+## 7a. (History) Unified decision list sent to bowen — superseded by §7 (Claude, with dot 1791651485, 1791651503)
+
+*Kept as history; §7 holds bowen's answers.*
 
 **Authoritative version: dot 1791651534** (sent at the same time; it carries a recommendation per item, and Claude 1791651576 agrees with all six).
 - Its recommendations:
@@ -247,7 +249,7 @@ Defaults (§7 list below) were not objected to; they stay defaults.
   4. keep the mirror draft as a one-off batch tool, with no lasting link (it may wait);
   5. curve names unique within their 元组件;
   6. import old files as new nine-view documents, without overwriting; or refuse clearly.
-- Its default list adds "no auto-bind when editing expression shapes". Claude adds "new lines and split-off points start with linear response".
+- Its default list adds "no auto-bind when editing expression shapes". Claude's added "split-off points start linear" is not adopted (dot 1791652021); it waits for stage 3.
 
 **For bowen to choose:**
 1. 90° minimal move in an in-between correction: a draft to save or discard (甲, v103), or applied at once and undoable (乙).
@@ -264,6 +266,6 @@ Defaults (§7 list below) were not objected to; they stay defaults.
 - paste: all views, the same offset;
 - arc radius per view;
 - visibility / lock, fill colour and join mode shared;
-- new lines and split-off points start with linear response.
+- ~~new lines and split-off points start with linear response~~ — not adopted (dot 1791652021: it may distort tuned in-betweens); decided in stage 3 with the response inheritance rules.
 
 **Ours to verify:** the angle-domain scheme, the expression carry algorithm, response-curve inheritance, expression paste mapping, measured undo cost.
