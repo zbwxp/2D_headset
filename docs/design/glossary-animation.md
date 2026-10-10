@@ -425,6 +425,8 @@ They are chosen independently (e.g. 1a + 2b).
 - An autosave / crash-recovery requirement may be recorded.
 - **Asked bowen:** are angles and expressions always broadcast together (one baseline per line), or separately (each keeps its own "received" mark)?
 
+**dot (1791642685):** wiring broadcast to the existing edit transaction is right. But "a failed edit rolls back" and "the file is whole after a process crash" are verified separately; passing the first does not guarantee the second. A one-step broadcast in the UI also needs saving and recovery to keep the whole state consistent.
+
 ### Status
 
 Settled for now:
