@@ -97,6 +97,26 @@
 >
 > **Asked:** connections (which line joins which, which continuous curve) belong to the 元线条 level, shared by 线条 and 骨线, defined once. So "线条 joined, 骨线 apart" cannot happen. A check is needed only when mounting another drawing.
 >
+> **dot (1791624142):**
+> - **The model:** 元线条 is the whole object; 线条, 骨线 and 动画 are its parts. A continuous 元线条 is a whole object too, shown in the drawing room as a continuous curve. The semantic name says which line it stands for.
+> - **The 线条 holds its own curve shape as well as its look,** not only width and strokes; otherwise it cannot carry a shaped face's difference from the bone line.
+> - **Shared connections are a reasonable candidate, not a consequence of the naming.** Especially with shared animation, one face changing its connections must not change bone lines other faces use. How far sharing goes is left to the connection / mounting rules; no forced sync now.
+>
+> **Claude (1791624168):** accepts both.
+> - The 线条 = its own shape + its look (width, strokes, fills…).
+> - "Connections shared by 线条 and 骨线" is withdrawn.
+> - **Settled now:** only what the objects are and what they are made of.
+
+### Status
+
+Settled for now:
+- **元线条:** whole object, identified by its semantic name; parts 线条 (own shape + look, drawing room), 骨线 (shape) and 动画 (how the 骨线 changes), the last two in the recording room.
+- **Continuous 元线条:** shown as a continuous curve in the drawing room.
+
+Open:
+- 画稿 vs 线稿;
+- connection / mounting rules (how far sharing goes).
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
