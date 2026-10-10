@@ -3632,6 +3632,33 @@ v1's snapshot model: `docs/design/snapshot-v1-facts.md` (7205381; corrected per 
   - v1's retired rigs kept only warp grids and show/hide per key, never line geometry. Recording v2 has deformation residuals (`docs/design/snapshot-v1-facts.md` §1, §3).
   - Live2D deformers (warp, rotation) carry their layers, with parameter key forms on the deformers (from memory, not checked).
 
+### Judgement 2 on the layering: dot (1791602343)
+
+**The direction holds.** Its core, in one sentence: swap how a feature is drawn, reuse its motion as far as possible, and still fix its own lines by angle. But three steps were fixed too early:
+
+- **Inheriting a domain does not make the new part fit.** A kaomoji eye can be carried by the head turn, but that does not let it copy the old eye's blink.
+- **Not all of the head turn has to go into domains.** Curves bowen sets by hand per angle stay; domains take the part that is worth sharing.
+- **Not derivable yet:** "an artwork is a part" (one artwork may hold several parts), and "deform first, then add corrections" (where corrections go is decided later).
+
+Keep three **jobs** for now:
+- what is drawn;
+- reusable deformation;
+- shape samples per state.
+
+How they combine into artworks and snapshots is derived later from bowen's workflow. No packages or data structures yet.
+
+**Reference, checked:** Live2D, "Keyforms (Parent-Child Hierarchy Movement)" (docs.live2d.com/en/cubism-editor-manual/keyform-parent-chilid-relation/; dot found it, Claude opened it).
+- Parents carry children; each level has its own parameter key forms.
+- Its eyebrow example spreads the movements over the drawable object and its deformers: 3 + 3 + 9 = 15 patterns instead of 3 × 3 × 9 = 81.
+- It recommends up to two parameters per object.
+- Relevant to the later question of how angle and expression combine.
+
+**Claude (1791602387):** agrees with all three corrections, and withdraws the "artwork = part" and "correction last" statements.
+
 ### Status
 
-Waiting for bowen to confirm the layering (domain = motion, part = what is drawn, snapshot = samples of both), after the overall goal (dot 1791601533). The 甲 / 乙 choice is deferred. No graph rows yet.
+Waiting for bowen to confirm:
+1. the overall goal (dot 1791601533);
+2. the three jobs: what is drawn, reusable deformation, shape samples.
+
+Then derive artworks and snapshots from his workflow. No graph rows yet.
