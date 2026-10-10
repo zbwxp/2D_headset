@@ -296,6 +296,10 @@
 
 **Claude (1791639078):** agrees; relayed. For point 1, the graph's mirror-link line pairs can provide the left / right pairing.
 
+**dot (1791639097), wording:**
+- Reusing mirror-link line pairs for the cross-view apply is a **candidate**. Their completeness and meaning must be checked, and a one-off apply does not mean a lasting link.
+- "Loading bones updates shapes only, keeping the look" is **dot's suggestion**, recorded as a rule only once bowen confirms.
+
 ### Status
 
 Settled for now:
