@@ -404,6 +404,16 @@ They are chosen independently (e.g. 1a + 2b).
 
 **Claude (1791640998):** agrees and withdraws all three points. Question 3 (骨线) needs no answer.
 
+**bowen (1791642539):** "有没有可能骨线其实需要隐式储存， 否则如果我复制了眼睛2 然后在那里调整的过程中，掉线了 那么我岂不是就失去了眼睛2调整前的骨线 也就不知道怎么算offset广播到其他视角了？"
+
+**Claude (1791642580), proposed:** yes, it must be stored **in the file**, not only in memory. Each 元线条 keeps a hidden **broadcast baseline**:
+- **What it is:** the front shape at the last broadcast. Broadcast starts only from the front, so one shape, not nine.
+- **On broadcast:** push "current front − baseline" to other views and expressions, then set the baseline to the current front.
+- **Saved with the data,** so after a disconnect, close or crash the baseline is still there and broadcast still works.
+- **Copying eye 1 to eye 2 copies the baseline;** eye 2's baseline is the front at copy time.
+- **Meets dot's two safeguards (1791640627):** a repeated broadcast with no new edit pushes zero; eye 2's baseline is its own, so broadcasting it does not touch eye 1.
+- **Shown to the user only as a mark:** "edited, not yet broadcast".
+
 ### Status
 
 Settled for now:
