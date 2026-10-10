@@ -368,6 +368,16 @@ export class Editor {
     editing.select(scratch, read, this.s.fills, structuredClone([...units]), 'replace')
     return scratch
   }
+  /**
+   * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
+   * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
+   * Without a line it is refused, as delete is.
+   */
+  broadcastStroke(units?: readonly editing.Unit[]) {
+    const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    if (!lines.length) throw new net.Refusal('select-lines-to-broadcast', 'select-lines-to-broadcast: the stroke broadcast takes lines; select lines')
+    views.broadcastStroke(this.s.network, this.s.joins, lines)
+  }
   /** Delete the selected lines, or the lines among `units` (explicit targets, as the transforms take); without a line it is refused. */
   deleteSelection(units?: readonly editing.Unit[]) {
     for (const id of editing.deletion(this.targets(units, this.view().network))) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
@@ -765,9 +775,13 @@ function settle(s: State, ch: net.Changes, layer: string) {
   // Link alignment can make new coincidences, and binding can end links, so repeat
   // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
   // removes at least one point, so it ends. Auto-bind is judged in the edited view only (Q2).
+  // what this edit made, moved or aligned in this view: only coincidences among these bind (dot 1791655825)
+  const made = new Set<Id>([...net.targetsIn(ch, n).map(t => t.point), ...ch.relocated, ...ch.addedPoints])
   for (;;) {
-    net.setPositions(n, links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined))
-    const pairs = net.overlaps(n, ch)
+    const aligned = links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined)
+    for (const p of aligned) made.add(p.id)
+    net.setPositions(n, aligned)
+    const pairs = net.overlaps(n, ch, made)
     if (!pairs.length) break
     for (const p of pairs) applyTopology(s, ch, c => net.bind(n, c, p.keep, p.remove))
     applyTopology(s, ch, c => net.removeIsolated(n, c))
