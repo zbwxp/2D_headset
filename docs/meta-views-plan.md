@@ -140,6 +140,46 @@ What this means for each candidate (to be checked by dot):
 
 Each stage: code, run every listed flow myself including after-states, push, dot reviews once, one batch of fixes.
 
+## 5a. Stage 1 tasks (chosen: shared topology + per-view data; bowen 1791650828, dot 1791650432)
+
+**Where things live:**
+- **New module `views`:** the nine view keys (`yaw,pitch`), `FRONT = '0,0'`. Constants only.
+- **`network`:**
+  - stores position, handles and stroke per view;
+  - `net.inView(n, view)` returns a handle bound to **this state and this view**; accessors and geometry writes act through it, and there is no global current view;
+  - structural records stay shared.
+- **`joins`:** arc radius and end strokes per view; join mode shared.
+- **New module `meta`** (元结构): layer type; 元线条 lookup by (layer, name); copying a whole 元组件 keeps names. Depends on network and names; nothing in the core depends on it.
+- **`names`:** line names unique within their layer; continuous-curve names too (待确认); layer names unique in the document.
+- **`document`:**
+  - `Core.edit(fn, { view })` (default 0,0);
+  - settle: the full loop in the edited view; positions only (links, springs, tips) in every other changed view, with no auto-bind;
+  - locks compared in every view;
+  - `snapshot(view)`, `geometry(view)`, `nearby(view, …)` and friends;
+  - stroke broadcast `broadcastStroke(lines)`, a batch edit.
+- **`locks`:** each view's protected content (shape, stroke, end strokes).
+- **`clipboard`:** clips carry all views.
+- **`archive`:** the new format; a single-view v3 file opens with all views equal (proposal).
+- **interaction / bench:** the current view, held by interaction and given explicitly to each edit; a 3 × 3 view picker; drawing shows the current view.
+
+**Commits, in order, each with tests, pushed for dot:**
+1. `views` + per-view storage in `network`, with the view-bound handle. Behaviour unchanged when only 0,0 is used: all existing tests pass.
+2. Structural operations per view:
+   - a new line is copied to all views;
+   - split at the same t in each view;
+   - a bind keeps the first-clicked point's position in each view;
+   - unbind takes the old position + the same offset in each view;
+   - insertLines / moveLinesToLayer cover all views.
+
+   `Changes` gets per-view geometric intents.
+3. `document`: edit in a view; per-view settle; locks per view; reads per view; `afterApply` uses the same rule; open checks structure, references and each view's state, with no new auto-bind.
+4. `joins` radius and end strokes per view; stroke per view; stroke broadcast.
+5. `names` scope and `meta` (layer type, lookup, component copy keeping names).
+6. `clipboard` and `archive` carry all views.
+7. interaction / bench: current view and the view picker.
+
+**Acceptance for stage 1:** flows 1–4 and 9–15 in §8 (flow 9 without baselines; flow 5 for names only), plus every existing test.
+
 ## 6. Operations and attributes per view
 
 | Operation / attribute | Current view | Other views | Status |
