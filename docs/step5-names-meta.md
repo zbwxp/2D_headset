@@ -1,6 +1,6 @@
 # Step 5: name scope and meta (plan before code)
 
-**Status:** for dot's check (dot 1791654857 asked for rules and read / write paths first). Nothing is coded until dot has checked it.
+**Status:** checked by dot 1791655027 with three corrections, now in the rules below (rules 1, 3, 5, 6, and the wording of 2). Coding starts with them.
 
 **Decided inputs:**
 - Graph row "Names" (bowen 1791649036, 甲): layer (元组件) names are unique in the document; line names are unique within their layer; copying a whole layer keeps the names inside it; a copy inside the same layer still gets "<name>副本".
@@ -14,20 +14,24 @@
 
 1. **Scope.**
    - Layer names: unique among layers, non-empty.
-   - Line names and continuous-curve names: unique within their layer, non-empty.
-   - Different scopes do not collide: a line may share a name with a layer, or with a line in another layer.
+   - Inside one layer, line names and continuous-curve names share **one** occupancy check, as the old rule did, only narrowed to the layer: a line and a curve in one layer may not share a name (dot 1791655027).
+   - Across layers, and between a layer's own name and the names inside it, there is no collision.
 2. **Rename keeps identity.**
    - A line is identified internally by its id. A rename changes only the name, so its nine views, its expressions (later) and every reference stay attached.
-   - The 元线条 identity (layer, name) follows the rename.
-3. **Default names.** "曲线N" / "连续曲线N", where N is the next number free **within the layer** (*proposal*; it was document-wide).
+   - The **lookup key** (layer, name) follows the rename; the object's identity stays its id (dot 1791655027).
+3. **Default names.** "曲线N" / "连续曲线N", where N is the **smallest free positive integer within the layer** (dot 1791655027; it was document-wide).
 4. **Copy a whole layer (元组件).**
    - The new layer's name is "<name>副本" (then 副本2…; layer names are document-wide).
    - Every line and continuous curve inside keeps its name.
    - Its type is copied.
-5. **Copy / paste lines.**
-   - Into the **same** layer: the copies get "<name>副本" (then 副本2…), as now.
-   - Into **another** layer: a name free there is kept; a name taken there gets "<name>副本…" (*proposal*).
-6. **Cut and paste keeping ids** (`moveGroup`): the moved lines and curve keep their names. If any of those names is taken in the target layer, the move is refused (`name-taken`). It is not renamed silently, since the case is not defined.
+5. **Copy / paste lines: decided by the target layer only.**
+   - A clip carries no reliable source 元组件: its source is a view, two documents may both have a layer id "L", and one copy may span several layers (dot 1791655027). So nothing is guessed from the source.
+   - The rule looks only at the target layer: each pasted line and each wholly pasted curve keeps its name if that name is free there, else gets "<name>副本" (then 副本2…).
+   - Pasting back into the layer it came from therefore still gives 副本 (the originals hold the names), as the graph row says. Into a layer where the name is free, it is kept.
+   - **The defaults given while pasting never push out a name that could be kept** (dot 1791655027): `copyFrom` first clears the temporary defaults of every pasted line and curve, assigns the kept names, then the 副本 names, and only then fills defaults for anything still unnamed.
+6. **Cut and paste keeping ids** (`moveGroup`): the moved lines and curve keep their names.
+   - If any of those names is taken in the target layer, the move is refused (`name-taken`), not renamed silently. The check runs **before** the move and any merge.
+   - If the move then makes end points coincide and curves merge, the existing merge survival rules decide which curve id and name survive. Curve ids are not promised to stay (dot 1791655027).
 7. **Type** (`meta`).
    - A layer's type is a string; "" means none (*proposal*).
    - Setting it is an edit: one undo step, no geometry.
