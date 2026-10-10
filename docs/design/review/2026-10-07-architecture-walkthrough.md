@@ -4158,9 +4158,23 @@ Not chosen yet.
 
 **Claude (1791618642):** agrees with every point; withdraws "must store differences". Asked bowen to confirm the three kinds.
 
+### bowen (1791618706): how streaming software describes the interface
+
+> 这个应该在那些直播软件里有非常规范的接口描述吧？这个你们查一下。
+
+**Claude (1791618813):** facts in `docs/design/streaming-interface-facts.md` (`bfdad48`), from Live2D's Standard Parameter List, ARKit's blend shapes and VTube Studio's public API (each page opened).
+- **Live2D parameters:** each has an id, min, default, max and the meaning of +. Angles ±30 by default (±45 allowed); eye open 0–1 (default 1); mouth form −1–1; mouth open 0–1. "Eyes and mouth: 0 closed, 1 open."
+- **ARKit:** 52 coefficients, each 0 (neutral) to 1 (maximum); head angle comes separately.
+- **VTube Studio:** tracking input parameters {name, value, min, max, default}; the user maps them to the model's Live2D parameters. Plugins inject values (id, value, optional weight) at least once a second.
+- **For us (for discussion):**
+  1. Our dials are model parameters (id, min, default, max, direction); use Live2D's standard ids and ranges where they fit.
+  2. Mapping tracker values to dials lives outside the model.
+  3. ARKit's "relative to neutral, 0–1" matches "a motion is a change relative to a base".
+  4. The model's boundary is a parameter list plus "give values, get a picture".
+
 ### Status
 
-Waiting for bowen on the three kinds of storage. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the three kinds of storage, and on the parameter-list boundary; dot's review. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
