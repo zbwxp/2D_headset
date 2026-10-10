@@ -3706,6 +3706,20 @@ This is not one drawing per combination of angle frames and expression frames (L
 - A deformation domain need not only make first drafts. It can carry parts live at every turn, which is what reusing motion after swapping a feature needs.
 - What to confirm is that **angle and expression together decide the picture**, not that four drawings are required.
 
+### bowen (1791603596)
+
+> 也就是说 还是角度是基础，而表情/更换式捏脸永远是依附于角度的。因此角度是最基础框架
+
+**Claude (1791603614):** agrees, with one clarification:
+- "Attached to angle" means an expression or a swapped part must hold over the whole angle range, and the same expression may look different at the front and at the side.
+- At one angle, the expression amount still varies on its own.
+
+**Proposed graph row** (written only when bowen says "写"):
+
+| Subject | Relation | Object | Source |
+|---|---|---|---|
+| Angle | is | The most basic framework: the whole face turns by angle; expressions and swapped parts are defined over the whole angle range, attached to angle; at one angle, expression amounts still vary on their own. | bowen 1791603596 |
+
 ### Status
 
-Waiting for bowen to confirm one thing: angle and expression amounts together decide the picture (a timeline only drives the amounts; his whole-face angle samples stay). How many samples are drawn, and what deformation carries, come after. No graph rows yet.
+Waiting for bowen ("写" or changes) and dot's check of the wording.
