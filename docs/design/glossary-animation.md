@@ -316,6 +316,25 @@
   - new identities on copy; the old baseline kept while deriving; "expression needs adapting" marks.
 - **Offered:** draft graph rows for the whole framework (元线条, 元组件, model, rooms, nine views, expressions, offsets, publishing), written only when bowen says "写".
 
+**bowen (1791640004):** "捏自己的脸那是runtime的事情可能的设计是直接复制一个预设模型 然后想换什么换什么。2 骨线 绘制互相load 是赋予 传递的只有4参数的信息也就是更改形状 其他的不做。（骨线里面应该也load填充和遮挡顺序，用来方便看效果。） 因此我其实有个疑问 就是如果只有笔触端点 链接笔触和显隐区间（还没定义）有区别 那么我真的需要区分绘制录制两个房间吗？（感官上觉得元曲线的信息太多，一个绘制间可能信息量过于爆炸，但是仔细一想好像没有什么区分的必要？ld人家也没区分。"
+- **Decided (bowen):**
+  - shaping one's own face is runtime; a likely design is copying a preset model and swapping freely;
+  - load between 骨线 and drawing is an apply carrying only the 4 shape parameters (the bone side also shows fills and occlusion order, for viewing).
+- **Asked by bowen:** are two rooms really needed?
+
+**Claude (1791640048):**
+- **Analysis:**
+  - The two sides differ only in look (strokes, end strokes, linked strokes, show / hide intervals); both hold a shape per line per view.
+  - In a published model there are no offsets, so drawing and bone shapes coincide at every key: two copies are redundant.
+  - Two shapes only earn their keep when several faces share one bone set with offsets; bowen's "copy a preset model" replaces that sharing with copying.
+- **甲 (recommended): one room.**
+  - Each 元线条 has one shape per view, with its look on the same line.
+  - Modes: look, angle, expression, playback.
+  - "Derive offset" becomes an operation: after editing the front, choose "carry to other views" by the rule, or edit the front only.
+  - Information load is handled by modes and display toggles (e.g. hide strokes while adjusting angles). Live2D also uses one editor with modes (from memory).
+- **乙: keep two rooms.** Keeps "one bone set shared by many faces" possible, at the cost of loading two shapes back and forth (out-of-sync risk).
+- dot's boundaries still apply (keep old values while deriving; mark expressions not adapted).
+
 ### Status
 
 Settled for now:
