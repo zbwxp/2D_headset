@@ -4312,9 +4312,21 @@ Not chosen yet.
   - Motion level = the inner (open / close, smile…), carried by the angle level.
   - The eyebrow's third level (position) is the assembly's move / scale for us.
 
+**bowen (1791622232):** "所以也就最多两层 角度选择层和表情层是吧？"
+
+**Claude (1791622251):** yes, our design takes at most two levels.
+- **Angle level:** each line's shape at the nine views, interpolated between.
+- **Expression level:** blink, mouth open, smile… all combine here, carried by the angle level; combination fixes also live here.
+- **Position, size and rotation** belong to the assembly, not a level.
+- **Notes:**
+  1. This is our own constraint; Live2D itself is not limited to two (the eyebrow uses three).
+  2. Whether two levels reach every effect is verified later on real faces (dot 1791620824). The number of levels is limited, not the number of expressions.
+
+**Decided (bowen 1791622232):** at most two levels, angle and expression (graph row only when bowen says "写").
+
 ### Status
 
-Waiting for bowen: two levels as a design constraint (verified later on real faces); the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
