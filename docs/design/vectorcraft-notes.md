@@ -57,3 +57,14 @@ Claude 1791628397; repo pages opened unless marked.
   - Our core is TypeScript with its own curve maths (e.g. nearest point by quintic roots); these are mostly Rust.
   - Use them to borrow algorithms and compare accuracy: kurbo's arc length / nearest point / offset; flo_curves' interpolation; VectorCraft's Live Blends correspondence.
   - kurbo is a ready base if the core ever moves to Rust + WASM. No change proposed now.
+
+## As a possible editor base (dot 1791628473, 1791628510; Claude 1791628493)
+
+- **Withdrawn:** Claude's "Rust, so ideas only". VectorCraft is MIT / Apache (forkable) and already builds to WebAssembly, so it is a real candidate base.
+- **Key check (Claude):** does its document model hold our *network* (shared end points, bindings, joins, end-point and mirror links, fills on closed loops; graph) or only Illustrator-style *paths*?
+- **dot:** don't presume. Even if it does not hold networks natively, our relation layer might stay ours while reusing its path geometry and editing. dot maps the layer boundaries first, then the cost of adapting; no "replace everything" from a feature list alone.
+- **Possible outcomes, for bowen once dot's check is in:**
+  1. replace with it;
+  2. keep our relation layer, reuse its geometry and editing;
+  3. its interface and rendering with our core;
+  4. ideas only.
