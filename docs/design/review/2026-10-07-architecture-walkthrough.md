@@ -3873,6 +3873,17 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **Any of them** can take manual correction keys at chosen angles.
 - **Offered:** a small experiment drawing A / B / C side by side on one jaw line before choosing.
 
+**dot (1791606294), accepted by Claude (1791606317):** A / B / C stay as experiment candidates, but "C is unique and simple" is withdrawn.
+- **Straight line:** a default straight line has four collinear control points. How it changes along the line is visible; how much to scale across it has no information. More than one transform fits.
+- **Closed curve:** B has no direction or scale when start and end coincide (zero chord).
+- **C is not perspective:** C (an affine fit) rotates, scales and shears, but is not a four-corner perspective. Fitting one line and fitting a whole ear may differ.
+- **The experiment must include ugly cases.** At least:
+  1. a curved jaw line;
+  2. a straight line;
+  3. a closed curve;
+  4. a group (an ear), per line vs as a group.
+- **Each algorithm must state in advance** how it fills missing information and how it handles degenerate cases. It must not assume the original curve already gives them.
+
 ### Status
 
-Waiting for bowen: direction-check and per-mount offsets (dot's points 1–2); whether to run the A / B / C experiment. No graph rows yet (bowen 1791603861).
+Waiting for bowen: direction-check and per-mount offsets (dot's points 1–2); whether to run the experiment (plan first). No graph rows yet (bowen 1791603861).
