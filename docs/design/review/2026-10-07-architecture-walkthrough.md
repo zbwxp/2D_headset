@@ -3995,6 +3995,27 @@ Not chosen yet.
 - **Playback:** each line's bone shape comes from its key frames and transition frames, wearing the drawing's appearance.
 - **For new characters:** tuned transition frames must carry over (dot 1791615473).
 
+**dot (1791616483):**
+- **The bone model is clear.** Bones give how a curve's shape changes with angle; the drawing gives the lines actually shown and their look.
+- **Load is a one-off, active sync, not a live link.** By bowen's definition it updates same-named lines and adds missing ones. It does not delete a target line just because the source lacks it.
+- **Key shapes vs transitions.**
+  - 90° etc. are key positions where bowen sets the shape directly.
+  - 30° / 60° control how key shapes blend; they need not become extra full drawings.
+  - So the earlier "regenerating loses transitions" becomes: updating key shapes and transition settings are two things, and loading some lines must not clear tuned blends.
+- **Claude's question 1** (when the double eyelid vanishes between 0° and 90°) is indeed open. Width and colour need not be opened now.
+  - Correction: the existing show/hide interval is a range of positions **along the curve**, not a range of angles.
+  - How its ends change with angle is the link between the two.
+- **Claude's question 2:** don't decide for bowen whether a shape edited in the drawing shows in playback. "Load is not live" and "whether playback carries the drawing's offset from its bone" are two separate things. Keep it open.
+
+**Claude (1791616511):** agrees; corrects option 乙 of question 1 to "the interval's ends, along the curve, change with angle so that the line closes to nothing at the chosen angle". Question 2 stays open.
+
 ### Status
 
-Waiting for bowen on the two questions and dot's review. Earlier open points (tuned transitions, offset rule, nine views, missing curves, expressions) stay. No graph rows yet (bowen 1791603861).
+Waiting for bowen to continue his workflow. Open:
+- appearance between two drawings (when a line vanishes);
+- whether playback carries the drawing's offset;
+- tuned transitions kept through loads;
+- the offset rule;
+- nine views, missing curves, expressions.
+
+No graph rows yet (bowen 1791603861).
