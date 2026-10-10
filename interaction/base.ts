@@ -18,6 +18,8 @@ export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean }
  */
 export interface Env {
   core: () => Core
+  /** The current view (multi-view step 7): every read and every commit is in it. Required, no default. */
+  view: () => string
   newId: (prefix: string) => Id
   layer: () => Id | undefined
   layers?: () => Id[]
@@ -69,16 +71,28 @@ export interface Preview {
   refusal?: Feedback
 }
 
-/** Every unfinished operation records the Core it started on (explicit targets; dot 1791543494). */
-export interface Owned { core: Core }
+/**
+ * Every unfinished operation records the Core it started on (explicit targets; dot 1791543494)
+ * and, when it belongs to one view (a drag, picks, the pen chain, the mirror source), that view
+ * too (step 7; dot 1791656400). A pending cut belongs to its Core only.
+ */
+export interface Owned { core: Core; view: string }
+export interface CoreOwned { core: Core }
+type Reader = ReturnType<Core['in']>
 
 /** The shared context a flow works with. */
 export interface Ctx {
   readonly env: Env
   core(): Core
+  /** Reads in the current view. */
+  reader(): Reader
   snap(): Snapshot
-  /** True when the operation still belongs to the open drawing. */
+  /** The owner of an operation that starts now: this Core and the current view. */
+  owned(): Owned
+  /** True when the operation still belongs to the open drawing and the current view. */
   mine(op: Owned | null): boolean
+  /** True when the operation still belongs to the open drawing (a pending cut: any view). */
+  mineCore(op: CoreOwned | null): boolean
   /**
    * One edit through core; a refusal becomes feedback, and nothing is left half done (core is
    * atomic). After a successful edit every flow checks its unfinished operation again, as after
@@ -120,10 +134,13 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
   const ctx: Ctx = {
     env,
     core: () => env.core(),
-    snap: () => env.core().snapshot(),
-    mine: op => !!op && op.core === env.core(),
+    reader: () => env.core().in(env.view()),
+    snap: () => env.core().in(env.view()).snapshot(),
+    owned: () => ({ core: env.core(), view: env.view() }),
+    mine: op => !!op && op.core === env.core() && op.view === env.view(),
+    mineCore: op => !!op && op.core === env.core(),
     commit(fn) {
-      try { env.core().edit(fn); ctx.feedback = undefined }
+      try { env.core().editIn(env.view(), fn); ctx.feedback = undefined }
       catch (err) { ctx.feedback = fromError(err); return false }
       ctx.afterCommit()
       return true
@@ -152,7 +169,7 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
     shown: at => {
       const px = env.pixel(), of = ctx.layerOf(ctx.snap())
       const layer = (x: ReturnType<Core['nearby']>[number]) => (x.kind === 'point' ? of.point(x.id) : of.line(x.kind === 'line' ? x.id : x.line))
-      return env.core().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
+      return ctx.reader().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
         .filter(x => x.visible && x.distance <= REACH[x.kind] * px && ctx.inScope(layer(x)))
         .sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.distance - b.distance)
     },

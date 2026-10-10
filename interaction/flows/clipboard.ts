@@ -23,7 +23,7 @@ export function clipboard(ctx: Ctx): Clipboard {
   return {
     cancelLevel: 3,
     copy() {
-      try { clip = ctx.core().copy(ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))); pastes = 0; pending = null; ctx.feedback = undefined }
+      try { clip = ctx.reader().copy(ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))); pastes = 0; pending = null; ctx.feedback = undefined }
       catch (err) { ctx.feedback = fromError(err) }
     },
     cut() {
@@ -38,13 +38,13 @@ export function clipboard(ctx: Ctx): Clipboard {
       if (!layer) { ctx.feedback = note('no-layer', 'no layer to paste into'); return }
       if (pending) {
         const c = pending
-        if (!ctx.mine(c)) { pending = null; return }
+        if (!ctx.mineCore(c)) { pending = null; return }
         if (!intact(c)) { pending = null; ctx.feedback = note('cut-changed', 'the cut curves changed; select them again', c.groups.map(g => ({ kind: 'group' as const, id: g.id }))); return }
         const lines = c.groups.flatMap(g => g.lines)
         // a refused paste keeps the cut for another try (plan item 9)
         if (ctx.commit(e => { for (const g of c.groups) e.moveGroup(g.id, layer); e.select(lines.map(id => ({ kind: 'line' as const, id }))) })) {
           pending = null
-          try { clip = ctx.core().copy(lines); pastes = 0 } catch { clip = null }
+          try { clip = ctx.reader().copy(lines); pastes = 0 } catch { clip = null }
         }
         return
       }
@@ -56,6 +56,6 @@ export function clipboard(ctx: Ctx): Clipboard {
     toolChanged() { /* the pending cut belongs to the clipboard, not to a tool: it stays */ },
     drawingChanged() { pending = null; pastes = 0 /* the clip is plain data: it stays */ },
     historyChanged() { if (pending && !intact(pending)) pending = null },
-    preview(p: Preview) { p.cut = pending && ctx.mine(pending) ? pending.groups.map(g => g.id) : [] },
+    preview(p: Preview) { p.cut = pending && ctx.mineCore(pending) ? pending.groups.map(g => g.id) : [] },
   }
 }

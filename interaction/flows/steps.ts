@@ -9,12 +9,12 @@ import { note } from '../feedback'
 export interface Steps extends Flow { click(at: Vec, mods: Mods): boolean }
 
 export function steps(ctx: Ctx): Steps {
-  let pick: { core: Core; kind: 'point' | 'line'; id: Id } | null = null
+  let pick: { core: Core; view: string; kind: 'point' | 'line'; id: Id } | null = null
 
   function twoPoints(at: Vec): boolean {
     const id = ctx.hitPoint(at)
     if (!id) return false
-    if (!pick || !ctx.mine(pick) || pick.kind !== 'point') { pick = { core: ctx.core(), kind: 'point', id }; return true }
+    if (!pick || !ctx.mine(pick) || pick.kind !== 'point') { pick = { ...ctx.owned(), kind: 'point', id }; return true }
     const first = pick.id
     pick = null
     // the first pick must still be there; nothing else stands in for it (plan item 17)
@@ -29,7 +29,7 @@ export function steps(ctx: Ctx): Steps {
   function twoLines(at: Vec, mods: Mods): boolean {
     const id = ctx.hitLine(at)
     if (!id) return false
-    if (!pick || !ctx.mine(pick) || pick.kind !== 'line') { pick = { core: ctx.core(), kind: 'line', id }; return true }
+    if (!pick || !ctx.mine(pick) || pick.kind !== 'line') { pick = { ...ctx.owned(), kind: 'line', id }; return true }
     const first = pick.id
     pick = null
     const s = ctx.snap(), l1 = s.lines.find(l => l.id === first), l2 = s.lines.find(l => l.id === id)
@@ -65,7 +65,7 @@ export function steps(ctx: Ctx): Steps {
     // the smallest loop in the tool's scope, chosen among all candidates (not the smallest overall, then
     // dropped: a loop of another layer inside it must not hide it; dot 1791556061)
     const s = ctx.snap(), of = ctx.layerOf(s)
-    const loop = ctx.core().loopsAt(at).find(id => ctx.inScope(of.line(s.loops.find(l => l.id === id)?.route[0]?.line ?? '')))
+    const loop = ctx.reader().loopsAt(at).find(id => ctx.inScope(of.line(s.loops.find(l => l.id === id)?.route[0]?.line ?? '')))
     if (!loop) return false
     const color = ctx.options().color
     ctx.commit(e => (mods.shift ? e.clearFill(loop) : e.fill(loop, color)))

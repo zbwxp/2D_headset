@@ -18,8 +18,8 @@ export interface SelectTransform extends Flow {
 }
 
 export function selectTransform(ctx: Ctx): SelectTransform {
-  let drag: { core: Core; start: Vec; units: Unit[]; offset: Vec } | null = null
-  let box: { core: Core; from: Vec; to: Vec; mods: Mods; clear: boolean } | null = null
+  let drag: { core: Core; view: string; start: Vec; units: Unit[]; offset: Vec } | null = null
+  let box: { core: Core; view: string; from: Vec; to: Vec; mods: Mods; clear: boolean } | null = null
   /** Commit what the box takes: lines of the focus, replacing, adding or removing as a click would. */
   function boxUp(b: NonNullable<typeof box>, at: Vec) {
     const px = ctx.env.pixel()
@@ -29,7 +29,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     }
     // the box's focus is the current layer, whatever the tool (bowen 1791558733)
     const s = ctx.snap(), of = ctx.layerOf(s), visible = new Set(s.lines.filter(l => l.state.visible).map(l => l.id))
-    const lines = ctx.core().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && of.line(id) === ctx.env.layer())
+    const lines = ctx.reader().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && of.line(id) === ctx.env.layer())
     if (!lines.length && (b.mods.shift || b.mods.alt)) return
     ctx.commit(e => e.select(lines.map(id => ({ kind: 'line' as const, id })), mode(b.mods)))
   }
@@ -58,12 +58,12 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     return undefined
   }
   // the press position is copied in, so a caller reusing its Vec never changes the offset (dot 1791544469)
-  const startDrag = (at: Vec) => { drag = { core: ctx.core(), start: { x: at.x, y: at.y }, units: ctx.selection(), offset: { x: 0, y: 0 } } }
+  const startDrag = (at: Vec) => { drag = { ...ctx.owned(), start: { x: at.x, y: at.y }, units: ctx.selection(), offset: { x: 0, y: 0 } } }
 
   return {
     cancelLevel: 1,
     get dragging() { return !!drag || !!box },
-    startBox(at, mods, clear) { box = { core: ctx.core(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
+    startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
     pointerDown(at, mods) {
       const picked: Unit | undefined = ctx.tool() === 'V'
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()

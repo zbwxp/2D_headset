@@ -8,7 +8,7 @@ import { note } from '../feedback'
 export interface Pen extends Flow { click(at: Vec): void }
 
 export function pen(ctx: Ctx): Pen {
-  let chain: { core: Core; from: Id | { id: Id; layer: Id; position: Vec } } | null = null
+  let chain: { core: Core; view: string; from: Id | { id: Id; layer: Id; position: Vec } } | null = null
   return {
     cancelLevel: 2,
     click(at) {
@@ -18,10 +18,10 @@ export function pen(ctx: Ctx): Pen {
       // positions are copied in: a caller reusing its Vec never moves a pending start (dot 1791544469)
       const spec = onPoint ?? { id: ctx.env.newId('p'), layer, position: { x: at.x, y: at.y } }
       if (chain && !ctx.mine(chain)) chain = null
-      if (!chain) { chain = { core: ctx.core(), from: spec }; return }
+      if (!chain) { chain = { ...ctx.owned(), from: spec }; return }
       const from = chain.from
-      if (typeof from === 'string' && !ctx.snap().points.some(p => p.id === from)) { chain = { core: ctx.core(), from: spec }; return }
-      if (ctx.commit(e => e.line(ctx.env.newId('l'), from, spec))) chain = { core: ctx.core(), from: typeof spec === 'string' ? spec : spec.id }
+      if (typeof from === 'string' && !ctx.snap().points.some(p => p.id === from)) { chain = { ...ctx.owned(), from: spec }; return }
+      if (ctx.commit(e => e.line(ctx.env.newId('l'), from, spec))) chain = { ...ctx.owned(), from: typeof spec === 'string' ? spec : spec.id }
     },
     cancel() { if (!chain) return false; chain = null; return true },
     toolChanged() { chain = null },

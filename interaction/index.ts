@@ -42,6 +42,14 @@ export interface Interaction {
   mirrorLink(): void
   undo(): void
   redo(): void
+  /** Stroke broadcast (step 6): the selected lines' strokes, as in the current view, to every other view. */
+  broadcastStroke(): void
+  /**
+   * The app switched the current view (step 7): what belongs to one view ends (a drag, picks,
+   * the pen chain, the mirror source); the selection, the clipboard and a pending cut stay.
+   * Not an edit.
+   */
+  viewChanged(): void
   /** The app tells interaction about changes it made elsewhere (doc 22 §3.5). */
   drawingChanged(): void
   historyChanged(): void
@@ -127,6 +135,8 @@ export function createInteraction(env: Env): Interaction {
     mirrorLink: () => act(() => mr.apply(true)),
     undo: () => act(undo),
     redo: () => act(redo),
+    broadcastStroke: () => act(() => { ctx.commit(e => e.broadcastStroke(ctx.selection())) }),
+    viewChanged: () => act(() => { for (const f of flows) if (f.cancelLevel < 3) f.cancel(); ctx.feedback = undefined }),
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),

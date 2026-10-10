@@ -22,7 +22,7 @@ function drawing() {
 /** Current layer L; every layer selected unless `setLayers` says otherwise (layer scope: docs/layer-scope-plan.md). */
 function setup(d = drawing()) {
   let current = d, n = 0, layer = 'L', selected: string[] | null = null
-  const ix = createInteraction({ core: () => current, newId: p => `${p}${++n}`, layer: () => layer, layers: () => selected ?? current.snapshot().layers.map(l => l.id), pixel: () => 0.3 })
+  const ix = createInteraction({ view: () => 'view:0,0', core: () => current, newId: p => `${p}${++n}`, layer: () => layer, layers: () => selected ?? current.snapshot().layers.map(l => l.id), pixel: () => 0.3 })
   return { ix, core: () => current, open: (c: Core) => { current = c; ix.drawingChanged() }, setLayer: (l: string) => { layer = l }, setLayers: (ls: string[]) => { selected = ls } }
 }
 /** What the history looks like from outside: can undo / redo, and the document one undo away. */
@@ -63,7 +63,7 @@ describe('state owners (graph row 1)', () => {
 describe('cancellable, atomic commit (graph row 2)', () => {
   it('3. a V drag: one select at press, preview only while moving, one translate on release; undo goes back to the selection', () => {
     const { ix, core } = setup(), d = core()
-    const edit = vi.spyOn(d, 'edit')
+    const edit = vi.spyOn(d, 'editIn') // interaction commits in its current view (step 7)
     ix.setTool('V')
     ix.pointerDown(P(50, 0))
     expect(edit).toHaveBeenCalledTimes(1)
@@ -125,7 +125,7 @@ describe('cancellable, atomic commit (graph row 2)', () => {
   it('19. a repeated release commits once', () => {
     const { ix, core } = setup(), d = core()
     ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerMove(P(60, 0))
-    const edit = vi.spyOn(d, 'edit')
+    const edit = vi.spyOn(d, 'editIn') // interaction commits in its current view (step 7)
     ix.pointerUp(P(60, 0)); ix.pointerUp(P(60, 0)); ix.pointerCancel()
     expect(edit).toHaveBeenCalledTimes(1)
     expect(pos(d, 'a')).toEqual(P(10, 0))
@@ -273,7 +273,7 @@ describe('clipboard', () => {
     const { ix, core, setLayer } = setup(), d = core()
     ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0)); ix.cut()
     setLayer('K')
-    const edit = vi.spyOn(d, 'edit')
+    const edit = vi.spyOn(d, 'editIn') // interaction commits in its current view (step 7)
     ix.paste()
     expect(edit).toHaveBeenCalledTimes(1)
     expect(['a', 'b', 'c'].map(id => d.snapshot().points.find(p => p.id === id)!.layer)).toEqual(['K', 'K', 'K'])
@@ -431,7 +431,7 @@ describe('reach and order (bowen 1791551877; dot 1791551915)', () => {
     const d = new Core()
     d.edit(e => { e.layer('L'); e.line('s', { id: 'a', layer: 'L', position: P(0, 0) }, { id: 'b', layer: 'L', position: P(90, 0) }) })
     // a pen line is straight: its handles lie on it, at (30, 0) and (60, 0)
-    const ix = createInteraction({ core: () => d, newId: p => p, layer: () => 'L', pixel: () => pixel })
+    const ix = createInteraction({ view: () => 'view:0,0', core: () => d, newId: p => p, layer: () => 'L', pixel: () => pixel })
     return { d, ix }
   }
 
@@ -487,7 +487,7 @@ describe('A shows every handle of the selected layers, and what is shown is what
 
   it('V, or no current layer: no handles', () => {
     const d = drawing()
-    const ix = createInteraction({ core: () => d, newId: p => p, layer: () => undefined, pixel: () => 0.3 })
+    const ix = createInteraction({ view: () => 'view:0,0', core: () => d, newId: p => p, layer: () => undefined, pixel: () => 0.3 })
     ix.setTool('A')
     expect(ix.preview().handles).toEqual([])
     const { ix: ix2 } = setup()

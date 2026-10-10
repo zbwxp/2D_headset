@@ -43,11 +43,13 @@ function logged(c: Core): Core {
   if (w) return w
   w = new Proxy(c, {
     get(t, k) {
-      if (k === 'edit') return (fn: (e: Editor) => void) => {
+      if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
+        const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
         const calls: string[] = []
         const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(n)}(${a.map(short).join(', ')})`); return v.apply(x, a) } : v } })
-        try { t.edit(e => fn(rec(e))); log.unshift({ calls: calls.join('; '), result: 'ok' }) }
-        catch (err) { log.unshift({ calls: calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
+        const head = view === 'view:0,0' ? '' : `[${view}] `
+        try { t.editIn(view, e => fn(rec(e))); log.unshift({ calls: head + calls.join('; '), result: 'ok' }) }
+        catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
         finally { log.length = Math.min(log.length, 50) }
       }
       if (k === 'undo' || k === 'redo') return () => { const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
@@ -97,6 +99,8 @@ export function App() {
   // row) belongs to one drawing and ends with it (dot 1791551140)
   const [drawing, setDrawing] = useState(0)
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
+  // the current view (multi-view step 7): every read and every edit is in it; the app holds it
+  const [view, setView] = useState('view:0,0')
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -112,14 +116,15 @@ export function App() {
   }, [])
   const px = Math.max(box.w / size.w, box.h / size.h)
 
-  const s = core.snapshot(), g = core.geometry()
+  const shown = core.views().includes(view) ? view : 'view:0,0'
+  const s = core.in(shown).snapshot(), g = core.in(shown).geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
   const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
-  const env = useRef({ layer: drawLayer, layers: selLayers, px })
-  env.current = { layer: drawLayer, layers: selLayers, px }
-  const ix = useRef(createInteraction({ core: () => logged(core), newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px })).current
+  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: shown })
+  env.current = { layer: drawLayer, layers: selLayers, px, view: shown }
+  const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px })).current
   useEffect(() => ix.subscribe(bump), [ix])
   const pv: Preview = ix.preview()
   const pvPoints = new Set(pv.points) // the points interaction shows (and so can hit) for this tool
@@ -133,13 +138,13 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
   const run = (fn: (e: Editor) => void) => {
     // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
-    try { logged(core).edit(fn); ix.outcome(); return true }
+    try { logged(core).editIn(env.current.view, fn); ix.outcome(); return true }
     catch (err) { ix.outcome(err); return false }
     finally { bump() }
   }
@@ -214,6 +219,12 @@ export function App() {
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
   }
   useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
+  /** A view change ends any gesture and what interaction holds for one view (step 7); not an edit. */
+  const chooseView = (k: string) => {
+    gesture.current?.cancel('a view change')
+    env.current = { ...env.current, view: k }
+    setView(k); ix.viewChanged()
+  }
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
@@ -285,7 +296,7 @@ export function App() {
 
   const B = (label: string, f: () => void, title?: string) => <button title={title} onClick={f}>{label}</button>
   const status = pv.refusal ? '✗ ' + withNames(pv.refusal.message)
-    : `tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
+    : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -301,6 +312,14 @@ export function App() {
           <div style={{ color: '#666' }}>click two lines; alt on the second: remove join</div>
         </div>}
         {ix.tool === 'fill' && <div><input type="color" value={opts.color} onChange={e => ix.setOptions({ color: e.target.value })} /> <span style={{ color: '#666' }}>shift-click: clear</span></div>}
+        <b>View</b>
+        {/* the nine views (step 7): columns yaw −90 / 0 / +90, rows pitch +45 / 0 / −45 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
+          {[45, 0, -45].flatMap(pitch => [-90, 0, 90].map(yaw => {
+            const k = `view:${yaw},${pitch}`, on = k === shown
+            return <button key={k} data-view={k} title={k} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseView(k)}>{yaw},{pitch}</button>
+          }))}
+        </div>
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Undo', () => ix.undo())}{B('Redo', () => ix.redo())}
@@ -318,6 +337,7 @@ export function App() {
           {B('Show all', () => run(x => s.lines.filter(l => !l.state.visible).forEach(l => x.lineState(l.id, { visible: true }))))}
           <span>width <input type="number" value={width} style={{ width: 40 }} onChange={e => setWidth(+e.target.value)} /></span>
           {B('Set width', () => run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))))}
+          {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
         <b>Names</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>

@@ -43,6 +43,7 @@ geometry ← shapes ← network ← groups / joins / links / fills ← derived /
 Not part of `src/`. It is the tools and every unfinished operation (graph "Interaction"; doc 22; `docs/interaction-plan.md`):
 - It imports only the package root, and `src/` never imports it.
 - It owns only temporary state: tool, drag, pending cut, picks, pen chain, mirror source, clip.
+- Multi-view (step 7, docs/step7-view-picker.md): the app gives the current view (`env.view()`, required). Every read goes through `core.in(view)` and every commit through `core.editIn(view, …)`. A drag, picks, the pen chain and the mirror source belong to a Core and a view; a pending cut to its Core only. `viewChanged()` ends what belongs to one view and keeps the selection, the clip and a pending cut; it is not an edit. An edit of only selections and stroke broadcasts changes no position or topology (core).
 - Every change goes through core's public operations as one edit.
 - `preview()` describes what to show, as plain data.
 - The app tells it about tool, drawing and history changes.

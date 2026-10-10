@@ -533,10 +533,10 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      // an edit that only broadcasts strokes (and selects) changes no position or topology: it
-      // skips the settling that does, and keeps every other check (dot 1791655898). Any other
-      // operation in the same edit gets the full flow.
-      const strokesOnly = tx.ops.has('broadcastStroke') && [...tx.ops].every(o => o === 'broadcastStroke' || o === 'select')
+      // an edit that only selects or broadcasts strokes changes no position or topology: it skips
+      // the settling that does, and keeps every other check (dot 1791655898, 1791656400). Any
+      // other operation in the same edit gets the full flow; the auto-bind rule is unchanged.
+      const strokesOnly = tx.ops.size > 0 && [...tx.ops].every(o => KEEPS_GEOMETRY.has(o))
       commit(draft, tx.changes, this.state, tx.appliedFrom, layer, strokesOnly)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
@@ -709,6 +709,8 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
 
+/** Editor operations that change no position or topology (an edit of only these skips that settling). */
+const KEEPS_GEOMETRY: ReadonlySet<string> = new Set(['select', 'selectGroup', 'broadcastStroke'])
 const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => l.kind === 'view').map(l => l.key)
 
 /**
