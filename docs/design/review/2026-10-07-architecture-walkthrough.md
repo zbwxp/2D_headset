@@ -3963,11 +3963,30 @@ Recorded only; waiting for bowen's next message before replying.
 - 乙: the new recording set inherits the old one's transition settings.
 Not chosen yet.
 
+### bowen, the practical workflow (1791616377)
+
+> 现在你们理解我初步需求了，然后我说的实际可能操作（刚才是理想的操作） 现实是我画了一个正脸1，然后去录制间load，然后转化成正脸录制快照（绘制快照和录制快照的名字也要一一对应，比如正脸 左侧90之类的）。现在我只有正脸1以及录制1（0，0）。然后我在绘制间绘制一个侧脸鼻子那一条线加个封闭填充保存成"右90"快照。然后去录制间 转到-90，0（左右正负你懂就行就是match的位置） 然后建立"右90"快照，然后从录制快照0，0把里面的线都复制到右90 然后再从绘制快照右90里面把那根侧脸线 load进来。这时候右90有0，0的线以及右90load进来的线。然后我在右90把五官摆好该被填充遮挡的遮挡，该透视变形的透视变形。这样我在录制右90第一次把侧脸给画好了。此时我可以去绘制间右90， 将录制右90 load进来。load的定义是按曲线为单位 同名曲线四参数改为loader的参数（就是被load的画稿的参数会被loader参数覆盖） 没有同名的曲线直接复制进来。load是编辑行为。 这样我就第一次获得了画稿右90。然后我可能看着画稿觉得有条双眼皮线多余，我就把它删除了。那么在录制右90这根线不必有任何变动，只是播片的时候不在出现这条曲线而已。相当于录制间的线是骨骼，绘制间的线负责appearance。如果绘制间有多余线条（录制间没有和它同名的线）那么播片的时候这个线就不动（因为没骨骼） 如果录制间有多余的线条 那么播片时候它就不出现（因为没定义appearance）。相当于我给每条曲线制定了一套曲线name对应的骨骼动画。你可以这样理解。播片的意思是我在角度coord里面随意拖动，让画面产生动画。
+
+**Claude (1791616429), restated:**
+1. **Names correspond.** Drawing snapshots and recording snapshots correspond by name (正脸, 右90…), and curves by name.
+2. **Load is one edit** (undoable), curve by curve:
+   - a same-named curve takes the loaded one's four control points;
+   - a curve with no namesake is copied in.
+   - It works both ways: recording ← drawing (bring in the side line), drawing ← recording (first drawing 右90).
+3. **Recording curves are bones; drawing curves are appearance.**
+   - In playback (dragging in the angle plane), each curve finds its bone animation by name.
+   - A drawing curve with no bone does not move; a bone with no drawing curve does not show.
+   - Deleting the double eyelid in drawing 右90 needs no change in recording 右90.
+- **Reference:** skeleton + skin tools, e.g. Spine's skins (one skeleton, images attached by name; from memory, not checked).
+- **Fits "swap a feature, reuse the motion":** the appearance changes, the bones stay.
+
+**Asked:**
+1. **Between two drawings, whose appearance holds?** The front has a double eyelid; 右90 deleted it. From 0° to 90°, when does it vanish?
+   - 甲: switch at halfway (45°);
+   - 乙: a show/hide interval whose end bowen sets (graph: intervals belong to the continuous curve; later).
+   - Do numeric values (width, colour) blend between the two drawings or switch?
+2. **Whose shape holds?** In playback the shape comes wholly from the bones (recording); the drawing gives only appearance. A shape edited in the drawing after a load does not change playback until loaded back into the recording. Correct?
+
 ### Status
 
-Settled for now: the jobs of the drawing set (key angles) and the recording set (transitions). Open:
-- the step keeping tuned transitions (甲 / 乙);
-- the offset rule (definite, repeatable);
-- nine views, missing curves, expressions (later).
-
-No graph rows yet (bowen 1791603861).
+Waiting for bowen on the two questions and dot's review. Earlier open points (tuned transitions, offset rule, nine views, missing curves, expressions) stay. No graph rows yet (bowen 1791603861).
