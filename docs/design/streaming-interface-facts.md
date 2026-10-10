@@ -55,11 +55,22 @@ Source: github.com/DenchiSoft/VTubeStudio (README).
   - API values override webcam / phone tracking while they keep coming.
   - A parameter must be re-sent at least once a second, otherwise it is "lost" and returns to its previous controller or its default.
 
-## What this suggests for us (Claude's reading; for discussion)
+## Corrections (dot 1791618872, accepted by Claude 1791618890)
+
+- **Live2D's table is a model-parameter convention** (meanings, ranges, defaults). It is not a model file format or a communication protocol. Using the same names does **not** let existing streaming software drive our models directly.
+- **`InjectParameterDataRequest` feeds data into VTube Studio** to drive models inside VTS. VTS does not send data to our vector model. Connecting our player needs an adapter.
+- **The sensible boundary:** face-tracking source → parameter adapter → model playback.
+  - The adapter converts names, directions, ranges and calibration.
+  - It can be our own separate module; it need not live in streaming software.
+  - The model knows only its own parameters (angle, eye open, smile…).
+- **A streaming interface only says "the eye is this much closed now".** It does not say how motion assets are stored or stacked. It helps define the outside interface, not the storage questions.
+- **Widening angles from ±30 to ±90** does not make tracked angle values map one-to-one onto ours.
+
+## What this suggests for us (Claude's first reading, as corrected above)
 
 1. **Expose dials like Live2D's.** Our dials (angle, blink, smile…) correspond to model parameters: id, min, default, max, direction.
-   - Using Live2D's standard ids and ranges where they fit would let existing drivers feed us.
+   - Live2D's standard ids and ranges are a useful naming reference. Reaching existing software still needs an adapter (see the corrections above).
    - Our ±90° yaw / pitch is a wider range of the same kind; Live2D itself allows widening.
-2. **Keep the mapping outside the model.** VTube Studio maps tracking input to model parameters in the app, not in the model. A face tracker (ARKit's 52 values, 0 = neutral) or an animation only supplies numbers.
+2. **Keep the mapping outside the model**, in an adapter (ours or another app's). VTube Studio maps tracking input to model parameters in the app, not in the model. A face tracker (ARKit's 52 values, 0 = neutral) or an animation only supplies numbers.
 3. **ARKit's values match our motion meaning.** They are relative to neutral (0) and run to the maximum (1), which matches "a motion is a change relative to a base".
 4. **The boundary of the model is a parameter list plus "give values, get a picture".** Everything inside (angle recordings, motion recordings, assembly) is ours.
