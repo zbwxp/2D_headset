@@ -100,6 +100,28 @@ More found by dot (1791649657):
 
 Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs per-view geometry; 3 needs an outer owner. Derived-id rules (copy `newId/old`, paste prefix, paired splits) must be applied identically (dot 1791649528).
 
+### Cost comparison (Claude 1791649709 promised; for dot)
+
+**Fact used below:** outside `network`, every module reads geometry through network's accessors: `net.point`, `net.line`, `net.curve(s)`, `net.points`, `net.lines`. Direct `.position` / `.ha` / `.hb` reads are on records those accessors return. Count of accessor calls by module: apply 10, derived 10, document 12, editing 5, joins 3, links 3, locks 3, names 2, groups 1. So a per-view geometry can be served by network alone ("current view geometry accessor", dot 1791649422).
+
+| Item | Nine 画稿 (same ids) | Shared topology, per-view geometry inside `network` |
+|---|---|---|
+| Geometry per view | nine full states | network stores position / handles per view; accessors return the active view's; other modules unchanged |
+| Structural decision once (whole settle loop, mirror correspondence) | record every structural change of the edited view's settle until stable, then replay in eight with given ids and their own auto-bind off | made once on the shared topology, applied to all views by construction; nothing to replay |
+| Per-view shape for structural ops | replay computes it (split at t, bind keep position, unbind offset, new line copy) | the same rules inside network's split / bind / unbind / addLine, once per view |
+| Non-geometric shared state (names, groups, order, selection, fills, joins, links, mirror pairs, change record) | kept equal in nine copies, or moved out to one copy (then core changes anyway) | stored once |
+| Mirror apply: shape vs attributes | split: shape per view, attributes synced to eight | shape in the active view; attributes are shared state already |
+| One transaction, one undo | outer layer over nine `Core.edit` histories; new interface | one `Core.edit` already covers everything (whole-state draft, past / future) |
+| Settle in other views (broadcast, paste, new line) | run per changed copy, with auto-bind decisions coordinated | run settle positions per changed view; a coincidence found in any changed view binds in the shared topology once |
+| Lock check | across nine copies | `locks.changed` compares every view (a loop) |
+| Save / reopen | nine states + equality check; auto-bind rule identical at open | one state; open runs settle for each view with the same rule |
+| Topology-equality check | needed every step | not needed (one topology) |
+| Main risk | divergence; replay of a non-replayable change record | network module grows; every geometry write must name its view |
+
+**Claude's reading:** shared topology with the geometry accessor in `network` looks cheaper. Its changes concentrate in `network` (per-view storage, active view, per-view rules in addLine / split / bind / unbind / insertLines), plus loops over views in `document` (settle, import) and `locks`. Nine 画稿 adds three systems: replay, synced shared state, outer history. For dot to check before bowen decides.
+
+**Rule this needs (both approaches), for bowen with Q1:** "no two end points in one layer coincide" holds in every view; a coincidence found in any view an edit changed binds in all views.
+
 ## Data: what changes in core
 
 - **Topology is shared by all nine views:** points, lines, which line ends at which point, joins (mode), endpoint links, closed curves and fills, groups, names, layer order, strokes, element state (visible / lock).
