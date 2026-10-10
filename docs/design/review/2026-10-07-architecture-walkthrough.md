@@ -3805,6 +3805,45 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **Our solid advantage:** after a swap, the part's outline, end points and widths are directly editable, so fitting is fixed more directly.
 - **Open requirement:** to reuse motion cheaply, the new part's **key positions** (e.g. eye corners, the top of the upper lid) must correspond to the old part's. Who sets them and how is decided later.
 
+### bowen's principle draft (1791606116)
+
+> 那我做出一个照比一版二版有区别的原则雏形 你们审议一下。就是我们也引入变形器/变形域的概念，变形器也成为像图层一样的资产。额 首先是画稿的概念 画稿相当于psd文件。一个ps可以同时打开多个psd文件吧？ 我们也可以存储打开多个画稿。 然后说变形器，变形器不再和线的特定id绑定 而是和名字绑定 比如"左下颌线变形器"。变形器的本质是一条default 贝塞尔曲线，它记录在0，0 角度的四参数， 0，90 角度四参数 这就是 此变形器的0-90段的关键帧， 它也可以在30，60或者任何0，90的位置再打帧这些都隶属当前这个变形器。而所谓变形域，实际上是对一堆变形器进行批处理编辑得到的。变形器的变形是受控的。比如耳朵一堆线条它们可能0-90只需要统一的四角透视变形即可，耳朵里面轮廓线的绑定，圆滑，保证里面都是bezier线条这些优先级都高于变形器。然后储存的时候其实没有变形域的概念 而是一个一个独立变形器，至于这种整体透视形变是否按照批处理方式来interpolate更高效就不知道了，事实上 我觉得应该在录制间仿照绘制间图层，搞出一套变形器图层。  0，0 位置的变形器就exactly是绘制的正脸，只是不需要有线宽，端点笔触之类的与外观相关的属性。然后变形器图层，录制好0度90度之后（它们本质也是贝塞尔曲线，因此初始画变形器和画图层线条是一模一样的）取一副和它exactly相似的正脸线稿，线条名字一一对应，apply变形器，那么这套线稿就直接可以在0-90度interpolate变形了，这也就是default模型脸。然后对模型进行捏脸（微调线条）那么放到变形器里，变形器记录的是捏脸相对变形器的offset，然后进行0-90 带着offset进行interpolate。此时如果想要微调，那么就是一套针对新捏脸的新变形器（也就是变形器也有一套一套画稿/快照） 表情也同理。你们看看这样设计如何？ 就是画稿和变形器分开 依靠名字决定apply/赋予/挂载关系。如果默认变形器效果理想就多个画稿/捏脸共用变形器，如果觉得不理想就新建一套变形器（新建的名字还是那些，只是调整变形器bezier线条的参数。） 然后变形器线条一般会多于画稿线条 这样没有可以apply线的就不显示（不是所有画稿都有双眼皮之类的）
+
+### Review: Claude (1791606172)
+
+**Restated, for bowen to confirm:**
+1. **Artwork:** like a PSD file; several can be stored and open at once.
+2. **Deformer:** an asset at the level of a layer, mounted **by name** (e.g. "左下颌线"), not by line id.
+   - It is one default Bézier curve, keyed over angle.
+   - Each key holds its 4 control points (start, two handles, end): at 0°, at 90°, and at any angle in between.
+3. **Deformation domain:** not stored; it is batch editing of a set of deformers. The artwork's own constraints (bindings, smoothness) rank above deformers.
+4. **Deformer layers in the recording room:**
+   - The 0° key is exactly the drawn front face, without appearance (width, end strokes).
+   - Drawing deformers is drawing lines.
+5. **Workflow:**
+   - draw deformers at 0° and 90°;
+   - mount a front line drawing whose names match one to one: it interpolates over 0–90°, the default model face;
+   - shaping a face (adjusting lines) stores each line's offset from its deformer, carried along the interpolation;
+   - when the default is not good enough, make a new deformer set with the same names and adjusted curves. Expressions likewise.
+6. **More deformers than lines:** deformers usually outnumber the artwork's lines; one with no matching line shows nothing (not every artwork has a double eyelid).
+
+**Strengths:**
+- It separates what is drawn (artwork) from how it moves (deformers), with a simple reuse rule: mount by name.
+- It fits settled rows. Every line is named and names are unique (graph, Names), so the name match is one to one. That answers "how key positions of old and new parts correspond" (dot 1791604856) by naming.
+- Deformers are drawn with the existing editor. A deformer set at one angle is a drawing without appearance; 0–90° interpolates such drawings by name.
+
+**For bowen to decide (most important first):**
+1. **How the offset is carried.** A jaw widened by 5 at the front: what is it at 90°?
+   - 甲: add it unchanged on screen (simple, skews at large angles);
+   - 乙: add it along the deformer curve's own direction, so it turns and shrinks with the curve;
+   - 丙: 乙 by default, with manual correction keys at angles bowen picks. Claude recommends 丙.
+2. **Names that do not match.** One artwork's jaw is one line, another's is two. Mount deformers per continuous curve, or let a line mount on a stretch of a deformer curve?
+3. **Shared end points.** Two lines meet at a point, each with its own deformer and offset, so the point is pulled two ways. Average under "bindings first", or require the deformer layer to bind there too?
+
+**Later:**
+- a line with no deformer (stays still? warned?);
+- where show/hide intervals go (deformer or artwork).
+
 ### Status
 
-Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above. Open: key-position correspondence between swapped parts.
+Waiting for bowen on the three questions, and for dot's review. No graph rows yet (bowen 1791603861).
