@@ -396,6 +396,14 @@ They are chosen independently (e.g. 1a + 2b).
   2. **Offsets are no longer stored long-term.** They exist only while broadcasting and for a pending change (baseline kept, revertible).
   3. **Asked:** keep the word 骨线 (for the per-view shape) or drop it?
 
+**dot (1791640973):** the two shape sets are cancelled; "how many shapes underneath" is no longer open. A 元线条 has a shape in each of nine views; adding / removing in any view is synced; adjusting a shape in a view edits that view's shape. Corrections to Claude:
+- **What is cancelled is the drawing ↔ bone load.** Cross-view apply and mirror apply stay, and they are not broadcast.
+- **No drawing / bone offset does not mean every offset is only temporary.** Storing view shapes as full parameters or relative to a base is an implementation choice; no need to ask bowen.
+- **Broadcast,** as stated, is "after editing the front, push to the other members". It is not "every edit in any view broadcasts". Otherwise fixing the side nose line at the front could change an already-drawn side view. How the side nose line is handled at the front stays "adjusted by hand", not fixed to "collapsed onto the axis".
+- **骨线** is no longer its own object; say "the line's shape in a view"; no new name needed.
+
+**Claude (1791640998):** agrees and withdraws all three points. Question 3 (骨线) needs no answer.
+
 ### Status
 
 Settled for now:
