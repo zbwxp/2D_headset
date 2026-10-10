@@ -122,14 +122,29 @@
   - 乙 成员 (fits bowen's class / struct analogy; recommended);
   - 丙 面 (facets).
 
+**dot (1791624530):**
+- "成员" for the inner items, matching the class / struct analogy. A 元线条 may start with one member and fill in later.
+- **骨线** is the driving curve, not limited to the front one.
+- **Keys correspond to parameter values, not times.** E.g. "the 骨线 at 90°" is a key frame; "how it goes from 0° to 90°" is the transition; together they are the angle animation. Expression animations likewise.
+
+**bowen (1791624530):** "嗯那就叫成员吧…… 然后这个元线条 它只是"横向"组织起各种成员的容器，它本身并不是很高级的框架层级。与他这个横向相对应的是纵向-连续线条，图层，图层组合，线条联动 这些都是"纵向"概念。这个你们看我说清楚没有？"
+
+**Decided (bowen):** the inner items are called **成员**.
+
+**Claude (1791624556):** clear. Two directions:
+- **Horizontal:** one line's members side by side in a 元线条 (绘制线条, 骨线, 动画). The 元线条 is only the container, not a high framework level.
+- **Vertical:** how lines are organised among themselves (continuous lines, layers, layer combinations, line links such as end-point links and mirror links).
+- Horizontal answers "what members does this line have"; vertical answers "how do these lines make a face". Neither replaces the other.
+- dot's corrections are accepted (骨线 not only the front one; keys at parameter values).
+
 ### Status
 
 Settled for now:
-- **元线条:** whole object, identified by its semantic name; parts 线条 (own shape + look, drawing room), 骨线 (shape) and 动画 (how the 骨线 changes), the last two in the recording room.
+- **元线条:** a horizontal container of one line's **成员**, identified by its semantic name: 绘制线条 (own shape + look, drawing room), 骨线 (the driving curve) and 动画 (key frames at parameter values + transitions). The last two are in the recording room. Created automatically when its first member is made; members are filled in over time.
+- **Vertical concepts** (continuous lines, layers, layer combinations, line links) organise lines among themselves.
 - **Continuous 元线条:** shown as a continuous curve in the drawing room.
 
 Open:
-- the collective name (组成部分 / 成员 / 面);
 - 画稿 vs 线稿;
 - connection / mounting rules (how far sharing goes).
 >
