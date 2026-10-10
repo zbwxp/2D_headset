@@ -3917,6 +3917,12 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **乙, by drawing the 90° shape by hand:** only the shape is kept, so a rule for deriving the transform from the two shapes is needed (the A / B / C experiment).
 - **丙, both:** store the transform where one was used; derive by 乙's rule where drawn or adjusted by hand.
 
+### bowen, a workflow (1791614654; he said a clearer message follows)
+
+> 或者描述另外一个流程。我绘制好绘制稿正脸，然后将绘制稿load进录制间，然后"转化成录制快照" 那么这个绘制稿就四参数原位置不动，笔触之类的删除，成为录制快照0，0度的定义。然后我再去这个录制快照去设置它的90，0 度的录制快照，我把五官位置摆到相应位置，并且从另外一个绘制稿里load进来一个侧脸口鼻侧线的稿，都摆好，此时回到0，0 这个侧脸口鼻线原封不动，然后我们改变它的形状，把它压成对称轴位置一条线。那么我们就有了0，0所有线位置， 90，0所有线位置 那么我们这个录制快照的0-90就做好了。（其他方向的同理） 一套录制快照包含其中的bezier变形器以及各个角度这些变形器（本质就是线条）的形态。  到此为止我们设置了在0，0 上没有offset的一一match的正脸画稿以及对应的录制快照。 那么接下来我将正脸画稿复制一份，然后在新的画稿上把脸颊加胖，眼睛鼻子调整。我就获得了正脸捏脸2画稿。然后进入录制间 选择录制快照1 然后将正脸捏脸2 load进去。此时录制间里同时存在部分重叠的两套画稿 一个是绘制画稿，一个是录制画稿。我可以选择将录制快照赋予绘制画稿， 那样正脸0，0 就计算了画稿与变形器之间的offset，然后赋予之后，相当于给画稿2 生成了一套新的变形器即录制快照2。  然后按我现在说的为准。就是一组绘制画稿就是一个捏脸，一个捏脸最终对应一套录制快照就是一套变形器。这是成品阶段。成品的绘制稿正脸和录制正脸都是重合的了也就没有offset概念了。这里有个中间态，就是刚有新捏脸但是还没有对应的录制快照时候， 这时候给它apply一个拓扑最接近的录制快照，然后和录制快照间的offset来推断它各个角度的效果。等等 我下一条消息会说的更清晰。
+
+Recorded only; waiting for bowen's next message before replying.
+
 ### Status
 
-Waiting for bowen: how 90° deformer drawings are made (甲 / 乙 / 丙); the second kind of shaping. No graph rows yet (bowen 1791603861).
+Waiting for bowen's follow-up (1791614654 announced it). No graph rows yet (bowen 1791603861).
