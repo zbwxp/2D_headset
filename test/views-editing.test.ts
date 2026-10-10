@@ -185,6 +185,20 @@ describe('mirror links act at 0,0 only', () => {
   })
 })
 
+describe('arc radii and end strokes are still shared storage (dot 1791653388)', () => {
+  it('setting them from a side view is refused and writes nothing; from the front it works; other join modes are shared and allowed', () => {
+    const d = doc()
+    d.edit(e => e.line('bc', 'b', { id: 'c', layer: 'L', position: P(20, 10) }))
+    const before = all(d)
+    expect(() => d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))).toThrow(/per-view-storage-pending/)
+    expect(() => d.editIn(SIDE, e => e.endStroke('a', { taper: 1 }))).toThrow(/per-view-storage-pending/)
+    expect(all(d)).toBe(before)
+    d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'cusp' }))
+    d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }); e.endStroke('a', { taper: 1 }) })
+    expect(d.snapshot().joins.find(r => r.point === 'b')!.mode).toBe('arc')
+  })
+})
+
 describe('open checks every view', () => {
   it('a file whose linked points are apart in a side view is refused', () => {
     const d = doc()

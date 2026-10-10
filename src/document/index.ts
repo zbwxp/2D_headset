@@ -237,6 +237,7 @@ export class Editor {
   /** Set a join between two lines at a point; l1 is clicked first. For smooth, l2 turns to l1 (bowen 1791428722). */
   /** Under a mirror link a join among paired lines is set on the counterpart too (graph "Mirror link"). */
   join(point: Id, l1: Id, l2: Id, opts: { mode: joins.JoinMode; radius?: number }) {
+    if (opts.mode === 'arc') this.sharedStorage('An arc radius')
     const { state, changes } = this.tx
     for (const [p, a, b] of this.paired(apply.pairedJoins(state.apply, state.network, point, l1, l2))) {
       joins.setJoin(state.joins, state.network, p, a, b, opts)
@@ -249,6 +250,7 @@ export class Editor {
     for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
   }
   endStroke(point: Id, stroke: joins.EndStroke) {
+    this.sharedStorage('An end stroke')
     for (const p of this.paired(apply.pairedPoints(this.s.apply, this.s.network, point))) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
   }
 
@@ -377,6 +379,14 @@ export class Editor {
   }
   /** Remove the mirror link of these lines; geometry stays. */
   unmirror(lines: Id[]) { this.frontOnly('Removing a mirror link'); apply.unmirror(this.s.apply, lines) }
+  /**
+   * Arc radii and end strokes are still stored once for all views (joins); they move to
+   * per-view storage in a later step. Until then, writing them from another view would
+   * look like a side-view change but change every view, so it is refused (dot 1791653388).
+   */
+  private sharedStorage(what: string) {
+    if (this.tx.layer !== views.FRONT) throw new net.Refusal('per-view-storage-pending', `per-view-storage-pending: ${what} is not stored per view yet; set it in the front view`)
+  }
   /** A handle held in every view (a shared constraint's rule, not one view's drag). */
   private holdEverywhere(line: Id, end: net.End) {
     for (const k of viewKeys(this.s)) net.hold(net.of(this.s.network, k), this.tx.changes, line, end)
@@ -434,7 +444,7 @@ export class Editor {
  */
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere', 'sharedStorage'].includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
