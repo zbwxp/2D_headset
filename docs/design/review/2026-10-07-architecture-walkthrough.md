@@ -4027,6 +4027,18 @@ Not chosen yet.
 - A face that looks wrong at some angles is "fixed" into its own bones (offset → 0, i.e. 甲), per bowen's earlier flow.
 - Storage is low, reuse high, with a way out. The offset rule starts simple and is judged by how much fixing it needs.
 
+**dot (1791616727):** leans to 乙 as the goal. Its value is doing and maintaining fewer duplicate motions ("shape different faces, share motion"), not just storing less.
+- **Boundaries:**
+  - 甲 only guarantees a match at key frames. In between it still interpolates and needs checking; it is not "nothing inferred".
+  - 乙 can treat zero offset as 甲, but "offsets allowed" is not enough: the software needs a definite carrying rule. That algorithm is ours to research and validate; bowen should not keep choosing maths.
+- **Unified flow:**
+  1. mount shared bones, shape the face, preview;
+  2. if it looks right, keep sharing;
+  3. if not, generate a dedicated recording set and fix it, keeping the original transitions. Do not store only a few key angles and claim playback is unchanged.
+- **Direction:** "support sharing + allow dedicated fixes". The offset algorithm is validated separately and does not hold up the drawing / recording architecture.
+
+**Claude (1791616750):** agrees; withdraws "甲 has no inference" (only key frames coincide). Asked bowen to confirm the direction.
+
 ### Status
 
-Waiting for bowen: 甲 or 乙; dot's review. Open: appearance between two drawings; tuned transitions kept through loads; the offset rule; nine views, missing curves, expressions. No graph rows yet (bowen 1791603861).
+Waiting for bowen to confirm "support sharing + allow dedicated fixes". The offset algorithm is to be validated by experiment (Claude / dot). Open: appearance between two drawings; tuned transitions through loads and generation; nine views, missing curves, expressions. No graph rows yet (bowen 1791603861).
