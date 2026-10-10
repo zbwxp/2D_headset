@@ -515,3 +515,13 @@ bowen asked for one set of terms for the "drawing + bone animation, three modes"
 | 动作资产 | 表情动画 |
 | 部件资产 | 部件 |
 | 组装方案 | 角色 |
+
+**dot (1791644938, 1791644993):** candidate ranking, yes; but "looks alike" ≠ "animation transfers by offset".
+1. Normalise position and overall size only. Keep aspect ratio and corner tilt; rotation alignment would equate up-slanted and down-slanted eyes.
+2. Score parts separately (corners, upper lid, lower lid, then double lid, pupil); a single mean hides key differences.
+3. Estimate which control points move, and how far, only where reliable correspondence exists.
+4. Show the top few for bowen to pick. Geometric distance only suggests "probably less work".
+- **Roles:** Procrustes aligns points that already correspond (SciPy docs); Chamfer compares point sets but builds no one-to-one correspondence (PyTorch3D source). Retrieval across different names or counts works, but transferring animation needs a further step.
+- **v1:** draw target → closest presets → copy one → edit toward the target. Auto-fit and turn / blink adaptation later. It shares some methods with runtime retrieval but is not the same solved tool.
+
+**Claude (1791645031):** withdrew three points: rotation in alignment; "preview the found eye on the sketch at every angle by offset"; "the same tool". v1 as dot proposes, posted to bowen.
