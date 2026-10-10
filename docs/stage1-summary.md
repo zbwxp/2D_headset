@@ -16,7 +16,7 @@
 - **Auto-bind only in the edited view** (Q2).
   - A chance coincidence in another view stays two points, also through save / open.
   - An edit that only selects or broadcasts strokes moves nothing.
-- **Mirror apply / link only at 0,0.** Off the front, anything that would act on a mirror pair is refused (`mirror-front-only`).
+- **Mirror apply / link only at 0,0.** Off the front, mirror operations, edits that act on both sides of a pair, and edits that change a mirror pair's structure are refused (`mirror-front-only`). A paired line can still be reshaped on its own in a side view; it simply does not mirror (dot 1791657827).
 - **Stroke broadcast:** the selected lines' width, profile and end tapers, from the current view to the others.
 - **Names:**
   - layer names are unique in the document; line and curve names are unique within their layer;
