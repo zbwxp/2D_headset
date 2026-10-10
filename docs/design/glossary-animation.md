@@ -197,6 +197,28 @@
 - **For bowen:** should default names take part in cross-drawing correspondence? Claude suggests no: only semantic names correspond.
 - The two rules (instances under one name; what each edit writes and what follows, including how joins settle) remain open.
 
+**bowen (1791634995):** "然后还是说回我们的元线条那一部分。抱歉我第三次让你们重复一下 元线条的横向和纵向那个框架你们攻击了之后有什么问题来着？ 有关命名， 我限制一下元线条的作用范围是一套"模型" 即一套元线条组成的可以播放角度 表情动画的 是一套模型。因此 一个捏脸就可以建立一套模型， 一套模型可以共用好几组元线条组成的眼睛 五官之类的。元线条可以组成元组件。元组件并没有框架上的意义，而是语义上 眼睛，耳朵，嘴1 咧嘴笑嘴2 虎牙嘴3 这种 三套元组件里面都可以有元上唇，但它们分别属于不一样的元组件 就可以区分成完全不相干的不同组件。而一个模型可以由嘴2 眼睛1 耳朵1 构成的。 嘴1嘴3可能互相复制粘贴元线条（不是剪切粘贴）这个是复用元线条的骨线表情效果之类的，复制不会被阻拦（也没原则会阻拦）。 这是建立整个捏脸器的过程。而在使用捏脸器runtime时， 它会是对一个模型的绘制线条捏脸， 捏完之后，后天会搜索和当前捏脸拓扑结构最相似的元组件集合，组成新模型，并且根据offset推导出新的绘制线条，反向更新骨线，进而更新成新模型。（捏脸会提供不同预设，而每一次捏脸，在没捏完的时候 是时时靠offset来推每个角度绘制线（也就是有个捏脸中间态 此时依靠offset做播片）一旦固定了捏脸 就记录成新的模型。（制作捏脸器时很多脸模型的建立过程估计也差不多，只是制作时多了可以反复微调绘制线，骨线的过程。） 在制作过程中会不断出现利用offset算新骨线，修改骨线，骨线反推绘制线，绘制线引导骨线的过程。也就是offset这个东西和计算 只有在模型发布时（模型调整稳定后）才会真正元线条统一，其他时候可能都是互相带着offset的。我这个需求描述你们尝试理解一下。"
+
+**Claude (1791635050).**
+- **Attack results repeated:**
+  1. instances under one name;
+  2. which data each edit writes and what follows.
+  - Pending: default names; how 骨线 and 绘制线条 joins settle.
+- **Understanding of bowen's description:**
+  - **模型 (model):** a set of 元线条 that plays angle and expression animation; one shaping can make one model.
+  - **元组件 (meta-component):** a semantic group of 元线条 with no framework meaning (eye 1, ear 1, mouth 1, wide-smile mouth 2, fang mouth 3). Same-named 元线条 in different components (元上唇 in mouth 1 and mouth 3) are unrelated.
+  - **A model is a choice of components** (mouth 2 + eye 1 + ear 1). Several models may share one component.
+  - **Reuse by copying:** copy (not cut) 元线条 between components, bringing their 骨线 and expressions. A copy is a new 元线条; nothing blocks it.
+  - **Runtime shaping:**
+    - The user edits a model's 绘制线条. Until fixed, offsets drive every angle (an intermediate state, played via offsets).
+    - Once fixed, the back end finds the topologically closest set of components, derives new 绘制线条 from the offsets, updates the 骨线 back, and records a new model.
+  - **Offsets** exist only during making and shaping; they unify on publishing a model.
+- **This settles attack 1:** a 元线条's identity = its 元组件 + its name. Default names only count inside their own component.
+- **Asked:**
+  1. On publishing, are shaped components **copied** (originals untouched, since other models may use them) or **changed in place**? Claude recommends copying; this answers attack 2 for shared components.
+  2. "Topologically closest": first the same 元线条 names and connections, then the smallest shape difference? (May be refined later.)
+  3. Is identity = 元组件 + name right?
+
 ### Status
 
 Settled for now:
