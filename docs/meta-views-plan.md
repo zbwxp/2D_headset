@@ -129,6 +129,8 @@ Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs p
   - the file holds the complete multi-view state;
   - every attribute is classified shared or per view (table below).
 
+**bowen 1791649795:** mirror apply happens only while editing the front view, never in other views. So mirror apply's shape part writes the front only. *Asked (Claude 1791649837):* (1) mirror link acts only at the front too? (2) the graph row "right-side views can be drafted from the left by mirror apply": withdrawn (甲), or a separate whole-view mirror draft (乙)?
+
 ### Which attributes are shared and which per view (to be decided item by item; dot 1791649729)
 
 | Attribute | Proposal | Basis / status |
