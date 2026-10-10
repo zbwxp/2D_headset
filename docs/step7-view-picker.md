@@ -58,3 +58,8 @@
   - the picker shows nine views and switches;
   - the canvas shows the side view's geometry after a side-view drag;
   - the broadcast button makes the front equal the side for the selected line.
+
+## Open items found during step 7 (not regressions of this step)
+
+- **Bench Open request order** (dot 1791656976): `Open` reads files asynchronously with no ordering check. An earlier, slower read can replace a document opened later. Separate to-do; not fixed in this round.
+- **Auto-bind scope** (dot 1791655898): whether auto-bind in general should consider only what an edit touched is a separate later proposal. Steps 6–7 only keep selection-only and broadcast-only edits from settling.
