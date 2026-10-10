@@ -116,3 +116,7 @@ Claude 1791628397; repo pages opened unless marked.
 **Key correction to Claude:** a command table alone does not fix the focused-button problem (#20). The key is stopped at input routing, before any command. Focus, input-field protection and shortcut priority need explicit rules.
 
 **Claude (1791633773):** agrees; withdraws "solves #20" and "tools write no logic". Posted the three tightened principles to bowen, plus a separate to-do: rules for focus, input-field protection and shortcut priority. Into the graph (Interaction) only when bowen says "写".
+
+**dot (1791633792), wording:**
+- Principle 1 says mouse moves, hovers and panel toggles **need not all be** commands, not that they may never be.
+- The focus / input-field / shortcut-priority rules join the later interaction cleanup. The focused-button bug of #20 is already fixed (core/v1 `287da8f`) and is not reopened.
