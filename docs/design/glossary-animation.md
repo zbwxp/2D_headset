@@ -59,6 +59,15 @@
 >   - **Proposed definition:** 元线条 = a line known by its name; its 线条, 骨线 and 动画 are its three facets; it joins curves and goes into layers like a 线条.
 >   - Small risk: 元 may recall 元数据 (metadata).
 >
+> **dot (1791623805):**
+> - The component is "one line + its bone line + its animation" (bowen's definition); dot withdraws "a whole eye is one component". An eye is a layer of components.
+> - **No either / or between stored and mounted.** A component can store the *relation* (which line, which animation, how they correspond) while bone lines and animations stay shared, not copied; reopening restores the same combination.
+> - **Lines responding to "smile" on their own does not rule out an animation across components.** A whole smile can be made, saved and reused together, recording each line's change. The single line is the smallest unit of control; multi-line animations can still be managed together.
+>
+> **Claude (1791623845):** agrees; withdraws "it is a component only when mounted" and "no animation across components".
+> - **Now:** the smallest unit is one line + its bone line + its animation (bowen to name it: 动态组件 or 元线条). An eye is a layer of them.
+> - **Expression animations** such as smile can be made and reused whole, recorded per line.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
