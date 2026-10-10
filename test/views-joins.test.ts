@@ -82,10 +82,10 @@ describe('structural changes carry each view\'s values', () => {
     const d = corner()
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 1 }))
     d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 3 }))
-    // ab → pieces "zz1" (a…m) and "aa2" (m…b): at b the row becomes [aa2, bc], sorted differently
-    d.edit(e => e.split('ab', 0.5, 'm', 'zz1', 'aa2'))
+    // ab → pieces "aa1" (a…m) and "zz2" (m…b): the row at b was [ab, bc] and becomes [bc, zz2] (dot 1791654767)
+    d.edit(e => e.split('ab', 0.5, 'm', 'aa1', 'zz2'))
     const row = d.snapshot().joins.find(r => r.point === 'b')!
-    expect(row.lines).toEqual(['aa2', 'bc'])
+    expect(row.lines).toEqual(['bc', 'zz2'])
     expect(radiusAt(d, FRONT, 'b')).toBe(1)
     expect(radiusAt(d, SIDE, 'b')).toBe(3)
   })
@@ -135,6 +135,13 @@ describe('copy / paste and save / open carry every view\'s values', () => {
     expect(radiusAt(d, SIDE, 'p/b')).toBe(3)
     expect(endAt(d, FRONT, 'p/a')).toEqual({ taper: 1 })
     expect(endAt(d, SIDE, 'p/a')).toEqual({ taper: 3 })
+  })
+
+  it('an end stroke with integer-like parameter names is set, saved and opened (dot 1791654767)', () => {
+    const d = corner()
+    d.editIn(SIDE, e => e.endStroke('a', { '2': 1, '10': 2, taper: 3 }))
+    const again = open(save(d))
+    expect(endAt(again, SIDE, 'a')).toEqual({ '2': 1, '10': 2, taper: 3 })
   })
 
   it('save and open keep every view\'s radii and end strokes', () => {

@@ -213,9 +213,12 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
     const radius: Record<string, number> = {}, end: Record<string, Record<string, number | string>> = {}
     for (const k of Object.keys(R)) { const r = num(R[k], `radius ${k} in ${L.key}`); if (!(r > 0)) fail(`radius ${k} in ${L.key} is not above zero`); put(radius, k, r) }
     for (const k of Object.keys(E)) {
-      const e = obj(E[k], `end stroke ${k} in ${L.key}`), kept: Record<string, number | string> = {}
-      for (const f of Object.keys(e)) { const x = e[f]; if (typeof x !== 'string') num(x, `end stroke ${k} ${f} in ${L.key}`); put(kept, f, x as number | string) }
-      if (JSON.stringify(Object.keys(kept)) !== JSON.stringify(Object.keys(kept).sort())) fail(`end stroke ${k} in ${L.key} is not in its stored form`)
+      const e = obj(E[k], `end stroke ${k} in ${L.key}`)
+      for (const f of Object.keys(e)) { const x = e[f]; if (typeof x !== 'string') num(x, `end stroke ${k} ${f} in ${L.key}`) }
+      // compared with the writer's own normal form, not with a sort: integer-like keys
+      // enumerate in numeric order whatever the insertion order (dot 1791654767)
+      const kept = slotIn('end', e) as Record<string, number | string>
+      if (JSON.stringify(kept) !== JSON.stringify(e)) fail(`end stroke ${k} in ${L.key} is not in its stored form`)
       put(end, k, kept)
     }
     return { key: L.key, kind: L.kind as LayerKind, points, lines, radius, end }
