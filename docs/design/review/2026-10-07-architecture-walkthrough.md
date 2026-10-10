@@ -3948,6 +3948,26 @@ Recorded only; waiting for bowen's next message before replying.
 2. Must every drawing in a set hold the same named curves (e.g. the side nose line in the front drawing too, collapsed onto the axis), or may some angles lack a curve?
 3. Expressions: drawn at every angle, or the front only and the rest inferred? (Later.)
 
+**dot (1791615473):** supports the split.
+- The drawing set holds "what the key angles look like"; the recording set holds "how it goes in between".
+- **Lower pressure on the offset rule:** drafts may be inaccurate and get fixed. The rule must still be definite and repeatable; whether it saves work depends on how much fixing it needs.
+- **Reuse needs one more step.**
+  - Transitions tuned at 30° / 60° in the old recording set must go somewhere when a new character is generated and converted.
+  - Generating only nine drawings and re-interpolating linearly loses them.
+  - Either generate the in-between samples too, or inherit the transition settings. This step stays in the flow.
+- **Correction to Claude:** "the final model never has offsets" is not bowen's wording. More precisely: by this flow a new character can be fixed into its own drawing set and recording set, no longer depending on the old model's offsets. Whether to keep the generation source is undecided.
+- **The three questions** (nine views, missing curves, expressions) need not be answered now.
+
+**Claude (1791615495):** agrees and withdraws "never has offsets". To bowen: the step that keeps tuned transitions is part of the flow:
+- 甲: generate the in-between samples (30°, 60°…) too;
+- 乙: the new recording set inherits the old one's transition settings.
+Not chosen yet.
+
 ### Status
 
-Waiting for bowen on the three questions and dot's review. No graph rows yet (bowen 1791603861).
+Settled for now: the jobs of the drawing set (key angles) and the recording set (transitions). Open:
+- the step keeping tuned transitions (甲 / 乙);
+- the offset rule (definite, repeatable);
+- nine views, missing curves, expressions (later).
+
+No graph rows yet (bowen 1791603861).
