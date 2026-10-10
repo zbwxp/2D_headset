@@ -3884,6 +3884,30 @@ This is not one drawing per combination of angle frames and expression frames (L
   4. a group (an ear), per line vs as a group.
 - **Each algorithm must state in advance** how it fills missing information and how it handles degenerate cases. It must not assume the original curve already gives them.
 
+### bowen (1791613625)
+
+> 首先名字对上实际上怎么挂载，这个就和赋予的机制比较像了，最小变动的相同拓扑即可。然后捏脸分成两种 一种是share变形器，只在0，0时候提供正脸这时候正脸有个offset（四参数都有） 也就是和变形器有offset o_abcd 然后变形器自己有abcd_0 还有90度的abcd_90。那么它们之间原本是有一个变换关系，offset在90的时候就把o_abcd也应用这种相同的变换关系即可。 这其实就是对offset赋予（赋予在知识图谱里弱相关那一项的原则）如果捏脸后的画稿被赋予了一组变形器稿（画图的简称画稿或者绘制快照， 变形器在不同角度的搞称为录制快照） 也就是说捏脸后的绘制快照赋予录制快照之后如果整体视觉检查合理那么就可以出品了。如果不够那就调整录制快照，相当于产生了一份新的录制快照。
+
+**Claude (1791613677):**
+
+1. **Mounting = apply** (graph row "Apply": a source's content, transformed, is written into an existing different target; the target keeps its ids; one step, one undo).
+   - Only the same topology can mount; mirror apply already refuses a topology mismatch.
+   - Direction is chosen by least change: try both orientations, take the one that moves least. This settles dot's direction point.
+2. **Terms** (bowen):
+   - drawing snapshot (绘制快照, 画稿) = what is drawn;
+   - recording snapshot (录制快照) = a deformer set at its angles.
+   - **Flow:** a shaped drawing snapshot is given a recording snapshot; if it looks right, it ships; if not, the recording snapshot is adjusted, which makes a new one. This matches dot's "the offset belongs to the mount; for motion of one's own, a new set".
+   - **Asked:** is the second kind of shaping "use one's own new recording snapshot"?
+3. **"The same transform relation" has more than one reading.**
+   - Read as each point *moved*, it leaves an offset unchanged (an offset is a difference): candidate A.
+   - What changes an offset is the turning / scaling / flattening part. It is computable for a curved line, but for a straight line (the default) or a closed one the flattening across the line has no information (dot 1791606294).
+   - A definition plus a rule for missing information is needed.
+   - Proposed: the A / B / C experiment on a curved line, a straight line, a closed line and a whole ear, plan first.
+
 ### Status
 
-Waiting for bowen: direction-check and per-mount offsets (dot's points 1–2); whether to run the experiment (plan first). No graph rows yet (bowen 1791603861).
+Waiting for bowen:
+- the second kind of shaping;
+- whether to run the experiment (plan first).
+
+No graph rows yet (bowen 1791603861).
