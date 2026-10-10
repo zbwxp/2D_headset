@@ -537,3 +537,8 @@ bowen asked for one set of terms for the "drawing + bone animation, three modes"
   - **Line count differs:** an extra or missing line has no basis in the other views; draw it by hand or delete it.
 - **Flow:** draw the 0,0 eye with standard names → best match in the type → load its hidden shape → derive the views → fix by hand.
 - **Asked:** record "layer type + standard line names" as a candidate principle? Into the graph only on "写".
+
+**bowen (1791645279, decided):** "元组件需要类型和名字".
+- A 元组件 (a layer) has a type (眼睛) and a name (眼睛1, 圆眼1).
+- Matching searches within one type.
+- "A type carries standard line names" is still a candidate for bowen.
