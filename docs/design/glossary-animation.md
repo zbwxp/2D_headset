@@ -19,6 +19,12 @@
 >
 > **Places and operations** (drawing room, recording room and its three modes; load, mount, play) are not objects and keep bowen's existing words for now.
 >
+> **bowen (1791623503):** "绘画的原本叫曲线，线条，线稿这没歧义 录制间的为了区别于线条就叫成骨线。同理，首先动画最小单位是什么？ 从控制对象来说最小的是线条+对应骨线比如一根眉毛， 但是这一根眉毛+它的角度+表情+混合播片的动画整体是 一个最小单位 这个取个名字，动态组件？"
+> - **Drawing side:** 曲线 / 线条 / 线稿, unchanged (no ambiguity).
+> - **Recording side:** 骨线.
+> - **动态组件 (proposed by bowen):** a thing's lines + their bone lines + its angle animation + expression animations, as the smallest unit of animation (e.g. one eyebrow). This is object 3 above.
+> - **Claude (1791623529)** asks whether one 动态组件 is one line or may be several. An eye has upper lid, lower lid, double lid and pupil, which blink together. Claude leans to "may be several", so blinking and swapping in a kaomoji eye stay inside one component.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
