@@ -4252,9 +4252,18 @@ Not chosen yet.
 - **Nesting depth of deformers:** no limit stated in the pages read. The eyebrow example has three levels: the object for shape, a deformer for angle, one for position. Each carries its own parameters and is carried by the one above.
 - So not "stack at most twice", but "one or two parameters per level; more variation, one more level": 3 + 3 + 9 = 15 shapes instead of 3 × 3 × 9 = 81.
 
+**dot (1791619976):** not "at most twice". The official "usually two" is the number of parameters bound to one object / deformer (more parameters, more key-form combinations; three allowed if needed), not a two-level limit on parent / child deformers. Three separate things:
+- nested deformers, each level handling part of the change;
+- several parameters on one deformer, one shape controlled by angle and expression together;
+- Blend Shape, a separate difference-adding mechanism.
+- **"Two" is not our design limit.** Claude's "no fixed limit on levels" overstates: the page refutes a two-level limit, but is no guarantee for unlimited levels (or their cost).
+- **Expressions:** an expression value arriving on its own does not make the expression's shape independent of angle. A mode for editing motions on their own is reasonable, and side face + closed eye can still have samples of its own.
+
+**Claude (1791619997):** agrees; withdraws "no fixed limit" and "expression motions independent of angle" (what is separate is the editing mode, not the shape's independence from angle).
+
 ### Status
 
-Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials; dot's check of the Live2D reading. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
