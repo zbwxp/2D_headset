@@ -382,6 +382,20 @@ They are chosen independently (e.g. 1a + 2b).
   - clicking broadcast again without new edits does not add the same offset twice.
 - **Enough for a requirements draft.** But "one room" does not decide whether the underlying data stores one shape for good, or which of the old two-way load entries remain in the new modes.
 
+**bowen (1791640911):** "什么叫底层永久只存一份形状？ 还有现在绘制和录制合并了就不分绘制线和骨线了。而是我们这个软件层面上，就是多视角编辑软件 绘制一个视觉自带9个视觉。在任意视角里增减线条都会同步增减。（并不一定在0，0增减。我可以在90度绘制侧鼻线，在0，0调整即可 反正侧鼻线肯定是占一个图层元组件都是相互独立的。"
+
+**Decided (bowen 1791640911):**
+- **No separate drawing lines and bone lines.** The software is a multi-view editor: drawing one view comes with nine.
+- **A 元线条 has one shape per view (nine),** plus its look (strokes, show / hide, fills) and its expressions.
+- **Lines can be added or removed in any view, synced across all nine.** E.g. a side nose line drawn at 90°, then adjusted at 0,0 (collapsed onto the axis). It lives in its own layer (元组件), independent of others.
+
+**Claude (1791640941):**
+- **"One shape" meant:** one shape per view, or two (drawing + bone, with an offset between). bowen answered: one.
+- **Consequences:**
+  1. **No more "load"** between rooms. What remains is **broadcast**: after editing a view, explicitly push the change to other views and expressions by offset.
+  2. **Offsets are no longer stored long-term.** They exist only while broadcasting and for a pending change (baseline kept, revertible).
+  3. **Asked:** keep the word 骨线 (for the per-view shape) or drop it?
+
 ### Status
 
 Settled for now:
