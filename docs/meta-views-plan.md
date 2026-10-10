@@ -34,6 +34,37 @@ Existing interaction / visual / bench stay; the modes (draw / angle / expression
 - **甲 (recommended):** core stays single-view, untouched. The views package holds nine cores with the same ids. Structural edits run in all nine; shape edits in one. Topology equality is checked after every operation. A small core switch may be needed, e.g. auto-bind judged only in the edited view.
 - **乙:** split core into topology + per-view geometry. Data is stored once, but this rewrites the accepted core.
 
+### Revised boundaries (dot 1791649350; Claude 1791649403)
+
+Packages:
+1. drawing core (single view);
+2. meta structure (元线条 / 元组件 / model, type, names, cross-view correspondence; no playback);
+3. multi-view editing (decides which views an operation affects; produces and applies one consistent structural change; each view computes its own shape);
+4. animation making (angle data, expression data, two front baselines, broadcast / fit);
+5. evaluation / interpolation (pure);
+6. document and edit transaction (commit, rollback, undo across everything);
+7. file read / write (separate, depends on the document interface).
+
+Matching joins later. Interaction holds the current mode and current view.
+
+Boundaries:
+- The edited view runs in a revocable trial state. The nine views and the meta structure are committed once.
+- What is unified is targets, ids and relation decisions, not copied coordinates; split, merge and links may need each view's shape recomputed.
+- Whether binds, locks and fills must be equal in all nine views is a behaviour question (Q1) decided first.
+
+**Facts about the current core (da31397):**
+1. Ids are given by the caller (line, split, unbind, copyLayer, paste). ✔
+2. No outer transaction: each Core commits and keeps undo itself (`document/index.ts:440`); no trial-only entry, no formal state hand-back (only archive's exportState / importState). Needs an interface.
+3. `net.Changes` records splits (with t), deletions, merges, unbinds, relocations; not new lines, joins, links, fills or names.
+4. Auto-bind (`net.overlaps`, `network/index.ts:636`) scans every point on every commit: replay in another view would bind that view's chance coincidences. Needs a switch or a scope.
+5. Names scope (bowen 1791649036) and layer type change core anyway; "core untouched" is withdrawn.
+
+Rough cost:
+- **Nine cores:** core gains interfaces (trial / outer transaction, auto-bind scope, complete change record); complexity sits in the multi-view package.
+- **Shared topology:** nearly every module that reads positions (links, springs, fill outlines, lock comparison, transforms, mirror, clipboard) takes a view parameter.
+
+Claude leans to nine cores pending dot.
+
 ## Data: what changes in core
 
 - **Topology is shared by all nine views:** points, lines, which line ends at which point, joins (mode), endpoint links, closed curves and fills, groups, names, layer order, strokes, element state (visible / lock).
@@ -106,7 +137,8 @@ From dot (1791645801, 1791647948) and the worked examples:
 
 ## Questions for bowen (visual results; recommendations marked)
 
-- **Q1. Binding when the two points are apart in other views.** In view 90 two end points are bound (merged); at the front they are 2 cm apart. After binding, what does the front show?
+- **Q1 (widened, 1791649403). Binding when the two points are apart in other views.** 甲 bind in all nine (front: merged at the first-clicked point; relations and fills always equal in all views); 乙 bind only in the edited view (relations may differ per view; a fill may exist in some views only).
+- *Earlier wording:* In view 90 two end points are bound (merged); at the front they are 2 cm apart. After binding, what does the front show?
   - 甲 (recommended): in every view the merged point sits where the **first-clicked** point is in that view (the existing rule "the first point is kept"). Lines that ended at the other point jump to it in the other views; shown, not blocked.
   - 乙: in each other view, the midpoint of the two.
 - The other *proposed* rows above are our filled-in defaults; bowen is asked only if he disagrees.
