@@ -28,7 +28,11 @@
    - Can it express a *shared* end point, or only two coinciding anchors (or a joined path)?
    - Does that survive the split and the undos?
    - **Identity, not only pictures** (dot 1791628937, point 2): after each step, export the document and record each end point's identity / references and the connections between paths. Two points with equal coordinates moving together must not be taken for a native shared end point.
-   - **Model commands vs real dragging:** label each step as either a command that edits the model directly, or a simulated pointer gesture on a tool (if the control channel offers tool events). Only the latter counts as "dragging verified".
+   - **Three levels, labelled on every step** (dot 1791628937, 1791628993):
+     1. **model command:** a command that edits the model directly;
+     2. **simulated pointer:** a pointer gesture on a tool through the control channel, if offered. It verifies the tool's gesture path;
+     3. **real mouse:** a person dragging in the app.
+     Only level 3 is "real dragging verified"; level 2 is reported as "tool gesture path verified".
 4. **Report**, in `docs/design/vectorcraft-eval-report.md`:
    - **Native** (what VectorCraft already does) apart from **the relation layer we would add** (bindings, end-point / mirror links, 骨线, angle / expression animation), with the touch points and rough size of that layer;
    - which of the four outcomes the evidence supports (replace; keep our relation layer on its geometry and editing; its UI and rendering on our core; ideas only);
