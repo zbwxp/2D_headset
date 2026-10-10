@@ -94,6 +94,8 @@ More found by dot (1791649657):
 - **Mirror apply also copies look and state** (stroke, lock / visibility, end strokes, joins, fill state; `apply/index.ts:195-222`). Its shape part is per view, its attribute part is shared; the two must be split.
 - **Opening a file runs settle too** and requires that nothing changes (`document/index.ts:566-568`). The auto-bind rule must be the same in editing and in open, or a reopened view could merge chance coincidences and refuse the file.
 
+- **Settle is a loop** (align → find coincidences → bind → clean up → align again; binding can end links and change the next round; `document/index.ts:614-624`). "Decide once" must record every structural change up to the stable end, not only the first coincident pairs (dot 1791649668).
+
 **A cost comparison must include, for both approaches:** the structural-decision interface, non-geometric shared state, the one transaction, and save / reopen. Comparing "nine copies vs one topology" alone misses the main work.
 
 Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs per-view geometry; 3 needs an outer owner. Derived-id rules (copy `newId/old`, paste prefix, paired splits) must be applied identically (dot 1791649528).
