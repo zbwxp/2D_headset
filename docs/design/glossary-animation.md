@@ -35,12 +35,14 @@
 > | 骨线 | a shape-only line in the recording room, driving the same-named 线条 (bowen) |
 > | 画稿 | a static picture with its look (lines, widths, strokes, fills); a whole face or a part. Is bowen's 线稿 the same thing? Keep one? |
 > | 画稿集 | several drawings of the same content (e.g. one eye at several views) |
-> | 骨架 | the bone lines at one state: the drawing with only its shape. Drawings and skeletons correspond one to one. |
+> | 骨架 | the bone lines at one state: the drawing with only its shape. ~~Drawings and skeletons correspond one to one.~~ (withdrawn, dot 1791623594: several drawings may share an animation; a line may have no bone line) |
 > | 动画 | how a skeleton changes with parameters: key frames and transitions. Two kinds: 角度动画, 表情动画. |
 > | 动态组件 | (bowen; dot's 部件) a unit swapped whole = its drawing set + the animation it uses, e.g. a left eye, one eyebrow |
 > | 角色 | the whole person: dynamic components and animations combined |
 >
-> **Open:** may one 动态组件 hold several lines (an eye's lids, double lid, pupil)?
+> **dot (1791623594):** 动态组件 fits. One line or several, both: a single line is the finest control; a whole eye may wrap several lines in one component for swapping. Mixed playback is their combined result, not a third stored animation.
+>
+> **Open:** is 画稿 the same as bowen's 线稿, and which name stays?
 >
 > v1 below, kept for history.
 
