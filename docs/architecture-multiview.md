@@ -73,12 +73,14 @@ Dependencies point downward only; `test/boundaries.test.ts` is extended to enfor
   - fit: `base := front`;
   - the "unbroadcast change" mark: `front ≠ base`;
   - a new line's baselines start equal to its front.
+- **Also owns (stage 3):** response curves per point / handle / axis on each segment (§3a).
+- **Interface for structural changes:** `animation.follow(state, record)` is called by the document pipeline **in the same edit**, with the complete structural record from `topology` (as `groups`, `fills` and `names` update their references today). It keeps expression definitions and response curves consistent: a split's new point, a bind's kept point, deleted lines. The per-curve rule (e.g. a split takes the curve at the same t) is decided before stage 3; the interface exists from stage 1 so nothing is retrofitted.
 - **Depends on:** views, shapes.
 
 **Package 5 — evaluation** (`evaluate/`, a separate package like `interaction/`, stage 3):
 - **Interface:** pure, `evaluate(model, { yaw, pitch, expressions }) → shapes`.
 - **Input:** structure + view layers + expression layers as plain data, in a type the package defines itself.
-- **Angle:** piecewise bilinear over the 3 × 3 grid.
+- **Angle:** *candidate:* piecewise bilinear over the 3 × 3 grid. v103 triangulated the domain; decided before stage 3 (§3a), with the response curves.
 - **Expressions:** the difference `expr:<id> − front`, carried by the angle level. *Open: the carry algorithm; verified by experiment.*
 - **Depends on:** `geometry` only. Used by playback and, later, runtime.
 
