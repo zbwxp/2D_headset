@@ -3726,6 +3726,25 @@ This is not one drawing per combination of angle frames and expression frames (L
 |---|---|---|---|
 | Angle | is | The base framework: the whole face shares one angle framework; expressions and swapped parts must fit it; at one angle an expression still varies on its own. *Note:* fitting may come from interpolation, inherited deformation or hand-drawn fixes. It does not require a drawing at every angle, and it does not fix whether the head turns before the expression is computed. | bowen 1791603596; wording dot 1791603641 |
 
+### bowen (1791603861)
+
+> OK 先继续讨论 你们上下文够长不用现在进图谱。那么从操作心智来讲，我们应该主要的轴就是角度轴对吧？然后对于空间来说 yaw pitch+ rotate是不是可以定义任意角度任意位置相机了？还差一个远近但是我们是2d 远近可以用放大缩小代替了吧？
+
+(Not into the graph yet.)
+
+**Claude (1791603887):**
+
+- **Main axis.** Yes: the angle is the main axis of what is drawn and turned; expressions are the second kind of control, attached to it.
+- **A camera on a head has 6 degrees of freedom:** yaw, pitch, roll, plus moving left/right, up/down, near/far.
+  - **Only yaw and pitch need hand-drawn samples.** Turning reveals new picture (a side face, the underside of the chin); only drawing and interpolation can give it.
+  - **The other four are pure 2D transforms of the whole picture:** roll = rotate in the plane; left/right and up/down = move; near/far = scale. So "distance by zooming" holds.
+- **The one cost is perspective strength.** A real close camera exaggerates perspective (bigger nose, narrower face edges); scaling does not.
+  - The hand-drawn angle samples bake in perspective for one default distance.
+  - Usually enough for avatars and streaming; deferred.
+- **Notes for later:**
+  - With a single head, turning the camera and turning the head are the same, up to sign. With a body and neck they part.
+  - Yaw × pitch is a 2D plane; samples are points in it, interpolated across the plane. v1's recorder triangulates (yaw, pitch) and adds pitch ±90 placeholders (`snapshot-v1-facts.md` §3–4).
+
 ### Status
 
-Waiting for bowen ("写" or changes).
+Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
