@@ -231,6 +231,16 @@ No multi-view save or copy is exposed in this step. Expressions, broadcast and t
 
 ## 7. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
 
+**Authoritative version: dot 1791651534** (sent at the same time; it carries a recommendation per item, and Claude 1791651556 agrees with all six).
+- Its recommendations:
+  1. preview, then save the response curves and the 90° change together; cancelling reverts both;
+  2. keep the old expression targets, marked "to adapt"; fit does not repair them;
+  3. lock protects every view and expression; fit is allowed and undoable;
+  4. keep the mirror draft as a one-off batch tool, with no lasting link (it may wait);
+  5. curve names unique within their 元组件;
+  6. import old files as new nine-view documents, without overwriting; or refuse clearly.
+- Its default list adds "no auto-bind when editing expression shapes". Claude adds "new lines and split-off points start with linear response".
+
 **For bowen to choose:**
 1. 90° minimal move in an in-between correction: a draft to save or discard (甲, v103), or applied at once and undoable (乙).
 2. Expression preview before broadcast (§4 examples): acceptable, or should expressions follow the front automatically?
