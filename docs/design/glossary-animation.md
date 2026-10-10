@@ -525,3 +525,15 @@ bowen asked for one set of terms for the "drawing + bone animation, three modes"
 - **v1:** draw target → closest presets → copy one → edit toward the target. Auto-fit and turn / blink adaptation later. It shares some methods with runtime retrieval but is not the same solved tool.
 
 **Claude (1791645031):** withdrew three points: rotation in alignment; "preview the found eye on the sketch at every angle by offset"; "the same tool". v1 as dot proposes, posted to bowen.
+
+**bowen (1791645259):** "这个需求实际上不涉及框架 或者说 图层需要有个类型，和名字。类型是眼睛 名字是眼睛1， 圆眼1 之类的。这样是不是就可以了 绘制完一个0，0的眼睛去类型里面找最佳匹配 然后load最佳眼型的隐藏骨线，进行多视角推导？"
+
+**Claude (1791645293):** yes. The only framework addition is a layer **type** (eye); names (眼睛1, 圆眼1) stay as they are.
+- **Matching:** only within the same type.
+- **Deriving the other views:** take the best match's other views, plus an offset. The offset is the new 0,0 front minus the match's hidden front. This is the same algorithm as broadcast.
+- **The one condition: the new eye's lines must pair with the match's lines.**
+  - **Line to line:** by name. The type could carry standard line names (upper lid, lower lid, corners…) to name lines with when drawing.
+  - **Point to point:** same-named lines may have different point counts. Resample both by proportion along the line, then subtract. This is an inference and needs an experiment.
+  - **Line count differs:** an extra or missing line has no basis in the other views; draw it by hand or delete it.
+- **Flow:** draw the 0,0 eye with standard names → best match in the type → load its hidden shape → derive the views → fix by hand.
+- **Asked:** record "layer type + standard line names" as a candidate principle? Into the graph only on "写".
