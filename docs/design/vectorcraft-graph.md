@@ -30,7 +30,7 @@
 | Anchor | is owned by | exactly one SubPath, stored by value, with no id | path.rs:183-189 |
 | Anchor reference | is | a position `(subpath index, anchor index)` inside one node | crates/doc/src/selection.rs:9-10 |
 | A point shared by two paths (graph, network, weld, constraint) | not found in this check | searched "topology", "network", "weld", "shared anchor", "glue", "connector", "constraint", "coincident", "planar" in doc, geom, engine/cmd, tools | — |
-| `path.join` (two paths) | merges | path B's open subpath into path A's (reversed as needed; requested ends, else the nearest pair); B is deleted, A keeps its id; ends within 1e-6 collapse into one anchor, else a straight segment joins them | engine/src/cmd/path.rs:286-370 |
+| `path.join` (two paths) | merges | the **first open subpath** of node B into the first open subpath of node A (reversed as needed; requested ends, else the nearest pair). Ends within 1e-6 collapse into one anchor. Otherwise the anchors are appended, so the new segment uses the existing end handles and **may be curved**, not straight. **The whole node B is deleted**: its other subpaths are not carried over. A keeps its id. | engine/src/cmd/path.rs:331-370 (corrected per dot 1791629225) |
 | `path.join` (one path) | closes | its open subpath | path.rs:308-324 |
 | Pen tool | joins | onto another path's open end through `path.join` | crates/tools/src/pen.rs:178-183 |
 | `path.average` | moves | selected anchors (across paths) to their mean: coinciding, not linked | engine/src/cmd/path.rs:388-417 |
@@ -86,7 +86,7 @@
 |---|---|---|---|
 | History entry | stores | label, a whole-document snapshot (`Arc<Document>`), the selection; limit 500 | engine/src/lib.rs:61-75 |
 | Structural sharing | is | children as `Arc<Node>`, copied on write along the path | node.rs:493; doc/lib.rs:813-820 |
-| One edit | is | a closure on a copy-on-write document → one undo step. On error (including a post-edit sanity check) the document and selection roll back | engine/lib.rs:1189-1240 |
+| One edit | is | a closure on a copy-on-write document → one undo step. On error (including a post-edit sanity check) the document and selection roll back. **Previews during an interaction are merged** (they are not separate steps) | engine/lib.rs:1189-1240, 1268-1338 |
 | Guard | catches | a panic in a command, restores the document, and reports an internal error | engine/lib.rs:1163-1187; engine/src/guard.rs:14-23 |
 | Batch over MCP | is | one undo step per step, not atomic | crates/mcp/src/tools.rs:96-105 |
 
@@ -97,9 +97,9 @@
 | Selection | is | objects, plus selected anchors per path `(si, ai)` | selection.rs:12-36 |
 | Handles and segments | are not | stored in the selection (handles are tool state; a clicked segment selects its two anchors) | crates/tools/src/direct.rs:1-23, 229-246 |
 | Transforms | are | commands (`object.transform`, move, rotate, scale, reflect, shear) on a subtree | engine/cmd/object.rs:22-65; node.rs:832-869 |
-| Scissors | opens / splits | a closed path at the point / an open path into two nodes | engine/cmd/draw2.rs:849-905 |
+| Scissors | opens / splits | a closed subpath is opened **inside the same node**; an open path with **one** subpath splits into two nodes (a new sibling); with **several** subpaths, both pieces stay in the same node | engine/cmd/draw2.rs:879-904 (corrected per dot 1791629225) |
 | Delete anchors | opens / drops | a closed subpath at the anchor / subpaths under 2 anchors, empty nodes | engine path.rs:447-479 |
-| Other objects | are not | touched by these edits (no propagation found in this check) | same functions |
+| Other objects | get | no shared-end-point coupling from these edits. The single edit entry still refreshes dependent content (masks, text wrap, threads…) | same functions; engine/lib.rs:1197-1215 (corrected per dot 1791629225) |
 
 ## 10. Interaction
 
@@ -129,10 +129,10 @@
 
 | Subject | Relation | Object | Evidence |
 |---|---|---|---|
-| Blend | pairs | subpaths by index (a missing one becomes a point at the other's centre) | crates/doc/src/blend.rs:377-425 |
-| Blend | matches anchors by | explicit start anchors if clicked; reversing a closed subpath if windings differ; splitting the longest segment at t = 0.5 until counts match; for closed subpaths, the cyclic shift with the least summed squared distance | blend.rs:300-375, 401-420 |
+| Blend | pairs | subpaths by index; a missing subpath becomes a point at the centre of **its own whole path's bounding box** | crates/doc/src/blend.rs:377-425 (corrected per dot 1791629225) |
+| Blend | matches anchors by | explicit start anchors if clicked; reversing a closed subpath if windings differ; splitting the segment with the longest **chord** (straight end-to-end distance, not arc length) at t = 0.5 until counts match. For closed subpaths, both are **centred and scaled by their bounding boxes**, then the cyclic shift with the least summed squared distance is sought: exhaustively up to 512 anchors, above that a strided search plus a local refine, **not guaranteed to be the global minimum** | blend.rs:300-375 (`grow`, `best_rotation`; corrected per dot 1791629225) |
 | Blend | interpolates | `p`, `h_in`, `h_out` linearly; `kind` switches at t = 0.5 | blend.rs:322-324 |
-| Envelope | maps | content bounds to [0,1]² and onto a warp, a mesh (Catmull-Rom grid or bicubic patches) or a Coons patch from a top path, splitting each segment (up to 64 pieces by fidelity) and mapping control points | crates/doc/src/live.rs:398-442, 1109-1157, 1570-1592 |
+| Envelope | maps | content bounds to [0,1]² and onto a warp, a mesh (Catmull-Rom grid or bicubic patches) or a Coons patch from a top path, splitting each segment (up to 64 pieces by fidelity) and mapping control points. **The curve mapping is an approximation** | crates/doc/src/live.rs:398-442, 1109-1157, 1570-1592 |
 
 ## 14. Layering of crates
 
@@ -144,9 +144,13 @@
 ## The key question, from source reading
 
 1. **Two paths do not share an anchor in the stored model.** An anchor is a value inside one subpath, with no id, referenced only by position (`path.rs` 183–189; `selection.rs` 9–10).
-2. **"Join" merges two open paths into one path object** and deletes the second; coinciding ends collapse into one anchor (`engine/src/cmd/path.rs` 340–366).
+2. **"Join" merges the first open subpaths of two path objects into one** and deletes the whole second node; coinciding ends collapse into one anchor (`engine/src/cmd/path.rs` 331–370).
 3. **Average and Cut only make anchors coincide,** as independent copies.
 4. **No network, weld or constraint structure was found** in this check. Live Paint's planar map is derived and stored as plain paths.
 5. **Smooth / corner is per anchor inside one subpath;** stroke joins are paint attributes.
+
+**Conclusion (dot 1791629225):** used unchanged, it cannot meet our network-relation needs. Whether keeping our relation layer and reusing its geometry and editing pays off is for the experiment. Source findings do not replace running it.
+
+**Review:** dot 1791629225 confirmed the core finding (no cross-path anchor identity in the stored model) and corrected six descriptions (join, blend chord and alignment, missing subpaths, scissors, "other objects", preview merging, envelope approximation). Claude re-checked join, `grow`, `best_rotation` and scissors in the source and applied all corrections.
 
 To be confirmed by running (flow test) once the toolchain is available.
