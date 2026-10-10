@@ -1,226 +1,235 @@
-# Multi-view architecture (draft for dot's attack, before any code)
+# Multi-view architecture (before any code)
 
-**Why this file exists:** bowen 1791650867 / 1791650882 — "现在还不能说代码框架可以建立起来了吧？要坚持住别再最关键的地方变成屎山了". My first stage-1 split (`meta-views-plan.md` §5a, e47c4bd) put the nine views into the existing `network` module, which already owns the most; that is withdrawn (Claude 1791650945). This file defines the packages, what data each owns, their interfaces and dependency direction, and walks every stage's flows on paper, so stage 1's data serves stages 2–4 without being torn up.
+**Why this file exists:** bowen 1791650867 / 1791650882 — "现在还不能说代码框架可以建立起来了吧？要坚持住别再最关键的地方变成屎山了". The first stage-1 split (`meta-views-plan.md` §5a) put the nine views into `network`, which already owns the most; it is withdrawn (Claude 1791650945). This file defines the packages, what each owns, the interfaces and dependency direction, and walks every stage's flows on paper.
 
-**Decided inputs:** graph tables "Models and 元组件" … "Matching" and row "Names" (headset-design); bowen 1791650085 (order shared, stroke per view + broadcast), 1791650171 / 1791650206 (stroke broadcast = assignment, a batch edit), 1791650323 (Q1 bind in all views, Q2 auto-bind judged only in the edited view, mirror at 0,0 only), 1791650828 (shared topology + per-view data). Items marked *proposal* are our filled-in defaults; *open* items are not coded.
+**Status:** consolidated after dot's attacks 1791651293 and 1791651394. Only the current text counts; no later section corrects an earlier one. Its history is in git and the Slack thread.
 
-## 1. The one idea: structure once, shapes in layers
+**Labels:**
+- **decided:** bowen's words, cited.
+- *framework choice:* our implementation choice; changeable, and shown to bowen through examples.
+- *proposal:* a filled-in default bowen has seen and not objected to.
+- *open:* not coded. It belongs to the stage named, and no shared mechanism decides it silently (dot 1791651394).
 
-Split the drawing into two kinds of data:
+**Decided inputs:**
+- graph tables "Models and 元组件" … "Matching" and row "Names" (headset-design);
+- bowen 1791650085 (drawing order shared; stroke per view, with a broadcast button);
+- bowen 1791650171 / 1791650206 (stroke broadcast is a plain assignment and a batch edit);
+- bowen 1791650323 (binds in all views; auto-bind judged only in the edited view; mirror at 0,0 only);
+- bowen 1791650828 (shared topology + per-view data);
+- bowen 1791651097 + the rules of 2026-10-03/04 (§6).
 
-- **Structure (one copy):** layers, points, lines, which line ends at which point, element state, joins (mode), links, fills, continuous curves, names, order, mirror pairs.
-- **Shapes (several copies, called shape layers / 形状层):** for every point its position, for every line its two handles and its stroke, for every point its end stroke, for every arc join its radius.
+## 1. The idea: structure once, shapes in layers
 
-Shape layers, each covering the whole structure:
+- **Structure (one copy):** layers, points, lines, which line ends at which point, element state, join modes, links, fills, continuous curves, names, order, mirror pairs.
+- **Shape layers (several copies):** for every point its position; for every line its two handles and its stroke; for every point its end stroke; for every arc join its radius.
 
-| Shape layer | What it is | Stage |
-|---|---|---|
-| `view:Y,P` × 9 | the shape in each of the nine views | 1 |
-| `base:angle` | hidden front baseline for angle broadcast | 2 |
-| `base:expr` | hidden front baseline for expression broadcast | 4 |
-| `expr:<id>` | an expression's "1" shape, made at the front | 4 |
+Every shape layer has a **kind**, stored with it in `shapes`. Shared code acts on kinds, never on layer names (dot 1791651293):
 
-**Rule A (structure → every shape layer):** each structural change is decided once, on the structure, and then updates **every** shape layer by one fixed rule:
-- a new line is copied from the layer it was drawn in;
-- a split uses the same t in each layer;
-- a bind keeps the first-clicked point's position in each layer (Q1);
-- an unbind takes the old position + the same offset;
-- a delete removes the line's entries;
-- a paste writes the clip's layers, plus the offset.
+| Kind | Layers | Edited by the user | Settle after a change | Checked at open |
+|---|---|---|---|---|
+| `view` | `view:Y,P` × 9 (stage 1) | yes | full settle (with auto-bind) **only when it is the edit's target**; otherwise positions only (links, springs, tips) | structure, references, links coincide, positions-only settle changes nothing |
+| `expression` | `expr:<id>` (stage 4) | yes | positions only; **never auto-bind**, even as the target (closing a mouth may make lip ends meet; binding them would change the whole model) | as `view` |
+| `record` | `base:angle` (stage 2), `base:expr` (stage 4) | no | none: records are not drawings | id, data and reference integrity only |
 
-Because baselines and expressions are shape layers too, they follow splits, binds and pastes with no extra code.
+**Structural changes reach every layer through one shared mechanism.**
+- A structural change is decided once, on the structure, and applied to each layer **in the same edit**.
+- Rules that are the same for every kind:
+  - **delete:** removes the entries;
+  - **split:** re-expresses each layer's curve at the same t (*proposal*). A record layer keeps its old values re-expressed; it is never updated to the current front.
+  - **bind:** each layer keeps the first-clicked point's position (decided, Q1);
+  - **unbind:** each layer gets the old position + the same offset (*proposal*).
+- **What differs by role is handled by the owner of that role, not by `shapes`:**
+  - how a new line initialises each layer: views copy the drawn shape; records start equal to the front; an expression layer gets the line only if the line joins that expression;
+  - expression membership;
+  - how a paste maps expressions (§4, *open*).
 
-**Rule B (single-view algorithms stay single-view):**
-- Springs, link alignment, overlap detection, outlines and picking, transforms, mirror correspondence and the lock comparison keep working on "the structure + one shape layer".
-- They are not told that there are nine views.
+**Single-view algorithms stay single-view:** springs, link alignment, overlap detection, outlines and picking, transforms, mirror correspondence and the lock comparison work on "structure + one shape layer". They are not told how many layers exist.
 
 ## 2. Packages and modules
 
-Dependencies point downward only; `test/boundaries.test.ts` is extended to enforce them.
+Dependencies point downward only; `test/boundaries.test.ts` enforces them.
 
-**Package 1 — drawing core** (`src/`, single-view algorithms):
+```
+geometry ← topology ← shapes ← network (façade) ← groups / joins / links / fills ← derived / locks / editing / apply / names ← clipboard
+meta      ← topology, names
+views     ← network, shapes        (acts on layer kinds; does not know animation's layers)
+animation ← views, shapes
+document  ← all of the above;   archive ← document
+evaluate  ← geometry only           (separate package, like interaction/)
+```
 
-| Module | Owns | Change from today |
-|---|---|---|
-| `geometry` | nothing | unchanged |
-| `topology` *(new, split out of `network`)* | layers (id, name, order), points (id, layer), lines (id, a, b, element state), used ids | the structural half of today's `network`: add / split / delete / bind / unbind / move-to-layer / insert, isolated removal, linesAt / components / closedWalk / closedLoops. Each operation returns a **complete structural record** (also new lines and inserts; dot 1791649528: today's `Changes` is partial). |
-| `shapes` *(new)* | shape layers: position per point, handles + stroke per line, end stroke per point, radius per arc join | Storage, plus Rule A: how each structural record updates every layer. Knows nothing of views, baselines or expressions: a layer is just a key. |
-| `network` *(becomes a façade)* | nothing of its own | `net.of(state, layer)` → a handle bound to **this state and this layer** (dot 1791649915: no global switch). Today's read API (`point`, `line`, `curve(s)`, `points`, `lines`) and geometry writes (`move`, `moveHandle`, `aimHandle`, `setPositions`, `setHandles`) act on that layer; structural calls go to `topology`, then `shapes` applies Rule A. Geometric intents (targets, held handles, tips) are recorded **per layer** (dot 1791650432). |
-| `groups`, `joins`, `links`, `fills`, `derived`, `locks`, `editing`, `apply`, `names`, `clipboard` | as today | They take a layer-bound handle where they read geometry. `joins` keeps modes; radius and end strokes move to `shapes`. `locks` compares one layer; the caller loops. `clipboard` carries every layer. `names`: line (and, to confirm, group) names unique within their layer. |
+**Package 1 — drawing core** (`src/`)
+- **`topology`** (new, the structural half of today's `network`):
+  - **Owns:** layers (id, name, order), points (id, layer), lines (id, a, b, element state), used ids.
+  - **Operations:** add, split, delete, bind, unbind, move to layer, insert, isolated removal; plus linesAt / components / closedWalk / closedLoops.
+  - **Each operation returns a complete structural record,** new lines and inserts included (today's `Changes` is partial; dot 1791649528).
+- **`shapes`** (new):
+  - **Owns:** the shape layers and their kinds.
+  - **Applies** a structural record to every layer by the kind-independent rules of §1.
+  - **Knows nothing** of views, baselines or expressions beyond the kind.
+- **`network`** (becomes a thin façade):
+  - `net.of(state, layer)` gives a handle bound to **this state and this layer**. There is no global current view (dot 1791649915).
+  - Today's reads and geometry writes act on that layer.
+  - A structural call changes `topology` and `shapes` together, in the edit's draft, never one now and the other later (dot 1791651293).
+  - Geometric intents (targets, held handles, tips) are recorded per layer (dot 1791650432).
+- **`groups`, `joins`, `links`, `fills`, `derived`, `locks`, `editing`, `apply`, `names`, `clipboard`:**
+  - they take a layer-bound handle where they read geometry;
+  - `joins` keeps the modes; radius and end strokes move to `shapes`;
+  - `locks` compares one layer, and the caller loops;
+  - `clipboard` carries every layer;
+  - `names`: line names unique within their layer; continuous-curve names likewise (*open* until bowen confirms).
 
-**Package 2 — meta structure** (`src/meta`, new):
-- **Owns the rules, not a second state** (dot 1791650999): types, names and copy results live in the one document state, under the same undo, rollback and save. `meta` keeps its part of that state, opaque like every module, and has no store outside the document transaction.
-- **Its state:** the 元组件 type of each layer.
+**Package 2 — meta structure** (`src/meta`)
+- **Its part of the document state:** each layer's 元组件 type. No store outside the document transaction (dot 1791650999).
 - **Rules:**
-  - 元线条 identity = (layer, line name), kept through renames since ids do not change;
+  - 元线条 identity = (layer, line name), kept through renames;
   - lookup by identity;
-  - copying a whole 元组件 keeps the line names.
-- **Depends on:** topology, names. Nothing in package 1 depends on it.
+  - copying a whole 元组件 keeps its line names.
 
-**Package 3 — multi-view editing** (`src/views`, new):
-- **Owns:** the nine view keys and the front (`0,0`); which shape layer an edit writes; which layers an edit changed (from the per-layer intents and Rule A).
-- **Settle orchestration:**
-  - the **full** settle (with auto-bind, Q2) only on the edited layer;
-  - **positions-only** settle (links, springs, tips) on every other changed view or expression layer;
-  - none on baseline layers, which are records.
-- **Also:** stroke broadcast (assign one layer's stroke values to the other views for chosen lines). Diagonal draft (stage 2: front + (yaw view − front) + (pitch view − front), written into a corner view).
-- **Depends on:** network façade, shapes.
+**Package 3 — multi-view editing** (`src/views`)
+- **Owns:** the nine view keys and the front (`0,0`).
+- **Settle orchestration by kind** (the table in §1): which layers an edit changed, from the per-layer intents and the structural record.
+- **Stroke broadcast** (stage 1): assigns the edited view's stroke to the other views for the chosen lines; a batch edit.
+- **Diagonal draft** (stage 2): `front + (yaw view − front) + (pitch view − front)` written into a corner view.
 
-**Package 4 — animation making** (`src/animation`, new; stage 2 and 4):
-- **Owns:** expression definitions (id, name, lines). The meaning of `base:*` and `expr:*` layers.
+**Package 4 — animation making** (`src/animation`)
+- **Its part of the document state:**
+  - expression definitions (id, name, explicit list of participating lines);
+  - which layers are its records and expressions;
+  - response curves (stage 3, §6).
 - **Rules:**
-  - broadcast to views / expressions: `target += front − base`, then `base := front`;
-  - fit: `base := front`;
-  - the "unbroadcast change" mark: `front ≠ base`;
-  - a new line's baselines start equal to its front.
-- **Also owns (stage 3):** response curves per point / handle / axis on each segment (§3a).
-- **Interface for structural changes:** `animation.follow(state, record)` is called by the document pipeline **in the same edit**, with the complete structural record from `topology` (as `groups`, `fills` and `names` update their references today). It keeps expression definitions and response curves consistent: a split's new point, a bind's kept point, deleted lines. The per-curve rule (e.g. a split takes the curve at the same t) is decided before stage 3; the interface exists from stage 1 so nothing is retrofitted.
-- **Depends on:** views, shapes.
+  - broadcast (stage 2 / 4): `target += front − base` for the chosen lines, then `base := front`. Differences are read from the pre-edit state; a shared end point moves once; baselines are updated together at the end (dot 1791651293).
+  - fit: `base := front`.
+  - "unbroadcast change" mark: `front ≠ base`.
+  - initialising its layers for a new line.
+- **`animation.follow(state, record)`:** called by the document pipeline in the same edit, with the structural record. It keeps definitions, memberships and response curves consistent. Its per-curve rules are *open* until stage 3, but the interface exists from stage 1.
 
-**Package 5 — evaluation** (`evaluate/`, a separate package like `interaction/`, stage 3):
-- **Interface:** pure, `evaluate(model, { yaw, pitch, expressions }) → shapes`.
-- **Input:** structure + view layers + expression layers as plain data, in a type the package defines itself.
-- **Angle:** *candidate:* piecewise bilinear over the 3 × 3 grid. v103 triangulated the domain; decided before stage 3 (§3a), with the response curves.
-- **Expressions:** the difference `expr:<id> − front`, carried by the angle level. *Open: the carry algorithm; verified by experiment.*
-- **Depends on:** `geometry` only. Used by playback and, later, runtime.
+**Package 5 — evaluation** (`evaluate/`)
+- **Interface:** pure, `evaluate(model, { yaw, pitch, expressions }) → shapes`. Its input is plain data, in a type it defines itself.
+- **Angle:** the interpolation scheme is *open*: v103 triangulated the domain; piecewise bilinear over the 3 × 3 grid is a candidate. Response curves are applied as in §6. Decided before stage 3.
+- **Expressions:** their difference from the front, carried by the angle level. The carry algorithm is *open* and verified by experiment.
 
-**Package 6 — document and edit transaction** (`src/document`):
+**Package 6 — document and edit transaction** (`src/document`)
 - **Owns:** the whole state (topology, shapes, groups, joins, links, fills, selection, apply, names, meta, animation) and undo / redo.
-- **`Core.edit(fn, { layer })`:** the edit's target layer, explicit and given by interaction. **No default** (dot 1791650999): a multi-view call without a layer is refused, never silently the front. The old single-view entry used by today's tests is a separate, isolated compatibility layer that names `view:0,0` itself.
-- **Pipeline:** structural ops → Rule A; `views` settle orchestration; names check; lock check for every view and expression layer (not baselines); publish; one undo step.
+- **`Core.edit(fn, { layer })`:**
+  - the target layer is explicit, given by interaction;
+  - a multi-view call without a layer is refused;
+  - the old single-view entry that today's tests use is a separate, isolated compatibility layer that names `view:0,0` itself (dot 1791650999).
+- **Pipeline:**
+  1. structural changes (`topology` + `shapes`);
+  2. `animation.follow`;
+  3. settle by kind (`views`);
+  4. names check;
+  5. lock check on every `view` and `expression` layer;
+  6. publish: one undo step.
+- `afterApply`'s scratch settle uses the same orchestration.
 - **Reads per layer:** `snapshot(layer)`, `geometry(layer)`, `nearby(layer, …)`.
-- **`afterApply`'s scratch settle** uses the same orchestration.
 
 **Package 7 — file** (`src/archive`):
-- Saves structure + every layer.
-- Open checks structure, references and each layer's state (links coincide, positions-only settle changes nothing). It triggers **no new auto-bind** (Q2; dot 1791650402).
+- Saves structure and every layer.
+- Open checks each layer by its kind (§1 table). It triggers no new auto-bind (Q2; dot 1791650402).
 
-**Outside `src/`:** `interaction/` holds the current mode and current layer (view or expression), and passes the layer to every edit. `visual/` and `bench/` are throwaway glue.
+**Outside `src/`:** `interaction/` holds the current mode and current layer and passes the layer to each edit. `visual/` and `bench/` are throwaway glue.
 
-```
-geometry ← topology ← shapes ← network(façade) ← groups/joins/links/fills ← derived/locks/editing/apply/names ← clipboard
-meta      ← topology, names            (rules + its part of the document state)
-views     ← network, shapes            (knows layer KINDS, not animation's layer names)
-animation ← views, shapes
-document  ← all of the above;  archive ← document
-evaluate  ← geometry only
-```
+**Today's `network` (809 lines)** becomes `topology` + `shapes` + a thin façade. Its rules do not change; its tests rerun through the compatibility entry on `view:0,0`.
 
-**What happens to today's `network` (809 lines):** it is split into `topology` (structure), `shapes` (layered geometry) and a thin façade. Its rules do not change; its tests are kept and rerun through the façade on `view:0,0`.
+## 3. Flows on paper
 
-## 3. Flows on paper (all stages)
+Each flow: what acts → which layers change → which settle runs.
 
-Each line: what acts → which layers change → which settle runs.
+1. **Draw a line in view 90,0** (stage 1):
+   - structure: a new line;
+   - views get the drawn shape;
+   - full settle on `view:90,0` (a snapped end binds; each layer keeps the first point);
+   - positions-only on the other views;
+   - locks checked in every view.
+2. **Drag a point at the front:** the intent is on `view:0,0` only; full settle there; other layers untouched.
+3. **Split in a side view:** every layer re-expressed at the same t; no drawing changes.
+4. **Bind in a side view:** in each layer the kept point keeps its position, and the removed point's lines end there with their handle offsets kept. Positions-only settle in the other views.
+5. **Delete:** entries leave every layer. Undo restores the whole state.
+6. **Paste** (the clip carries every layer): every layer + offset; full settle on the target layer, positions-only elsewhere. Expressions in a clip: §4.
+7. **Copy a whole 元组件:** as 6, and `meta` keeps the names and type.
+8. **Stroke broadcast** (stage 1): one edit; a locked line refuses it.
+9. **Mirror apply at 0,0:** runs on `view:0,0`. Its paired splits / deletes are structural and reach every layer. The stroke and end strokes it copies are front values.
+10. **Angle broadcast** (stage 2):
+    - `animation` updates the views ≠ front and `base:angle`;
+    - positions-only settle on the changed views;
+    - the lock check covers every view;
+    - repeating with no new change moves nothing.
+11. **Fit** (stage 2): only `base:angle`; the picture is unchanged and the offset becomes zero; undo restores the offset.
+12. **Diagonal draft** (stage 2): written into a corner view, positions-only settle there.
+13. **Expression** (stage 4):
+    - the definition lists its lines; the layer starts equal to the front for them;
+    - editing it is positions-only, with no auto-bind;
+    - structural changes come only from explicit operations.
+14. **Expression broadcast** (stage 4): updates the expression layers and `base:expr`. Angle and expression baselines never clear each other.
+15. **In-between correction** (stage 3, §6): solve response knots; where needed, move the 90° view minimally; a lock check; one undo step.
+16. **Playback** (stage 3 / 4): `evaluate`.
+17. **Save, reopen, continue:** each layer is checked by kind; a chance coincidence in a side view stays two points; a broadcast after reopening gives the same result.
+18. **Undo of any of these:** the whole state is one draft, so every layer goes back together.
 
-1. **Draw a line in view 90,0 (stage 1).** `topology.addLine` → Rule A copies the drawn geometry into every layer. Full settle on `view:90,0` (an end snapped onto a point binds; Rule A keeps the first point per layer). Positions-only settle on the other views. Locks: every view.
-2. **Drag a point at the front.** The geometric intent is on `view:0,0` only. Full settle there. Other layers are untouched.
-3. **Split in a side view.** `topology.split` → Rule A: the same t in every layer. No view's drawing changes.
-4. **Manual bind in a side view (Q1).** `topology.bind` → in each layer the kept point keeps its position, and the removed point's lines now end there (their handles keep their offsets). Positions-only settle in the other views (springs at that point).
-5. **Delete in any view.** `topology.delete` → entries leave every layer. Undo restores the whole state.
-6. **Paste** (clip carries every layer). Insert writes every layer + offset. Full settle on the edited layer, positions-only on the others.
-7. **Copy a whole 元组件.** As 6, plus `meta` keeps names and type.
-8. **Stroke broadcast (stage 1).** `views` assigns the edited view's stroke to the other views for the chosen lines. One edit; a locked line refuses it.
-9. **Mirror apply at 0,0.** `apply` runs on `view:0,0`. Its paired splits / deletes go through `topology` → Rule A reaches every layer. The stroke and end strokes it copies are front-layer values. Join modes and fill state are structure.
-10. **Angle broadcast (stage 2).** `animation`: for the chosen lines' points and handles, every view ≠ front `+= front − base:angle`, then `base:angle := front`. Positions-only settle on the changed views. The lock check refuses if a locked line would change in any view. Repeating with no new change moves nothing.
-11. **Fit (stage 2).** `base:angle := front` for the chosen lines. Views do not change. Undo restores the pending offset.
-12. **Diagonal draft (stage 2).** `views` writes `front + (yaw view − front) + (pitch view − front)` into a corner view. Positions-only settle there.
-13. **Make an expression (stage 4).** Create a definition (with an explicit list of participating lines) → its `expr:<id>` layer starts equal to the front for those lines. Editing it is `Core.edit(fn, { layer: 'expr:<id>' })`: **positions-only** settle, no auto-bind (dot 1791651293: closing a mouth may make lip ends coincide; binding them would change the whole model). Structural changes need an explicit operation.
-14. **Expression broadcast (stage 4).** Every expression layer `+= front − base:expr`, then `base:expr := front`. Angle and expression baselines never clear each other.
-15. **Playback (stage 3, 4).** `evaluate(model, params)`: the angle interpolation of the view layers, plus the expression differences carried by the angle level (carry algorithm *open*).
-16. **Save, reopen, continue.** Every layer is saved. Open checks without new auto-bind; a chance coincidence in a side view stays two points. Broadcast after reopening gives the same result.
-17. **Undo of anything above.** The whole state is one draft, so every layer goes back together.
+## 4. Open, by stage (not decided by shared mechanisms)
 
-## 3a. Interpolation between views is adjustable (bowen 1791650951, 1791651008, 1791651097, 1791651109)
+- **Stage 3:**
+  - the angle-domain scheme and where response curves live;
+  - the response-curve rule on split / bind / new line (§6).
+- **Stage 4:**
+  - **Expression carry algorithm** (experiment).
+  - **Pasting expressions:** a clip carries expression definitions. A target that lacks the expression, or has a different one under the same id, needs a mapping rule. Data in an expression layer is not membership: the definition's list is.
+  - **Expression preview** (*framework choice*): expression layers store absolute shapes, so "expression − front" changes as soon as the front is edited, before any broadcast (dot 1791651394). Examples for acceptance, to show bowen:
+    1. The front eye is enlarged, not broadcast. Blink plays from the new, larger open eye to the old, smaller closed eye; the eye shows the "unbroadcast change" mark.
+    2. After fit: the preview is the same as in example 1, and the mark is cleared.
+    3. After expression broadcast: the closed eye has received the same enlargement, and blink is consistent again.
+- **Locks** (*proposal*):
+  - the shape and stroke of `view` and `expression` layers are protected;
+  - a fit on a locked line is allowed, since it changes only a record;
+  - the check covers unselected locked lines affected through shared end points and links, per layer.
+- **Undo cost:** guarantee whole rollback first; then measure time and memory with real line counts, expression counts and undo depth. No promise, and no new history system up front.
 
-**Requirement:**
-- Between two views (e.g. 0 → 90), the change need not be linear.
-- bowen moves to any angle, not only 30° or 60°, and adjusts it there.
-- 0,0 never moves.
-- If needed, the 90° side may move minimally, which changes that view.
+## 5. Build constraints and the first step (dot 1791650999)
 
-**What v103 did** (7205381: `src/domain/recordingSnapshot/surfaceTargets.ts`, `surfaceBasisFallback.ts`; dot 1791338157, 1791338275):
-- **No new geometric key; a response curve instead.**
-  - On each segment, every node and every handle vector has, **per axis (x, y)**, a response curve: progress along the segment → how close to the far view.
-  - Linear = no knots.
-  - Editing at an intermediate angle: drag to the wanted shape. Per node / handle / axis, the closest weights are solved (`solveClosestBarycentricWeights`) and stored as a knot at that progress (`edgeResponses`; triangles: interior samples).
-- **Fallback when an axis cannot move** (`SURFACE_AXIS_UNAVAILABLE`: the two views have the same coordinate on that axis):
-  - The "bounded basis adjustment" keeps the 0° view fixed and moves the ±90° view minimally, within a trust radius (`SNAPSHOT_BASIS_RESPONSE_TRUST_RADIUS`).
-  - It is a coupled correction draft, to be saved or discarded.
-  - It is supported only on the edge 0° → cardinal ±90°.
-- **Arc radius and join / brush changes** are refused in a response correction ("edit … in a saved snapshot basis first").
+1. **No intermediate version loses data.** Saving and the clipboard carry every layer before any multi-view editing entry is public. The old entry never silently saves only the front.
+2. **No second state:** every package's data lives in the one document state.
+3. **Every new interface names its layer.** The 0,0 compatibility entry is isolated.
+4. **Proposals are named before each step.** Lifting old single-view files is a separate decision. Tests of intentionally changed rules (name scope, no auto-bind at open) are updated explicitly; "existing tests pass" covers unchanged rules only.
 
-**bowen's rules from 2026-10-03/04, found by dot (1791651254):**
-- 30° / 60° are back-solved correction frames, not separate snapshots.
-- 0° never moves.
-- Keep 90° fixed and adjust the response first. Only if the target is still unreachable may 90° move, minimally.
-- Moving end points is penalised more than moving handles: a weighting, not a ban.
-
-The new request (1791651008) extends the correction position to any angle. So this is "edit at an in-between angle → back-solve the response, and the end views allowed to change". It is **not** "store one more in-between shape" (dot 1791651182).
-
-**In this framework** (to confirm with bowen, asked 1791651207):
-- **Response curves** are animation data owned by `animation` (package 4); `evaluate` reads them. They are not shape layers.
-- **Editing at an in-between angle** is an edit:
-  - it solves response knots;
-  - where an axis is unavailable, it moves the 90° view layer minimally;
-  - it goes through the lock check;
-  - it is one undo step.
-- **Structural changes need a rule for response curves** (*open*): a split's new point, a bind's kept point, a new line (linear by default?).
-- **Grid** (*open*): v103 triangulated the angle domain (edges + triangles); §2 says bilinear over the 3 × 3 grid. Which one, and where response curves live (edges only, or interiors too), is decided before stage 3.
-
-## 3b. Build constraints (dot 1791650999, written for the withdrawn §5a; they apply here)
-
-1. **No intermediate version loses data.** Saving and the clipboard must carry every layer by the time any multi-view editing entry is public. Until then, no multi-view public entry, and the old entry never silently saves only the front.
-2. **No second state:** see `meta` above.
-3. **Every new interface names its layer;** the 0,0 compatibility entry is isolated, and trial, read and lock comparison are bound to a state and a layer.
-4. **Proposals and acceptance are aligned:**
-   - which proposals are adopted (split at the same t, unbind offset, per-view arc radius…) is stated before each step;
-   - lifting old single-view files to nine views is a separate compatibility decision, not part of step 1;
-   - "existing tests pass" means unchanged rules do not regress, and tests of intentionally changed rules (name scope, no auto-bind at open) are updated explicitly.
-
-**First step, if this framework passes:**
+**Step 1, to be reviewed on its own** (dot 1791651394):
 - view definitions;
-- isolated layered storage (`shapes`);
+- `shapes` with layer kinds;
 - the state + layer bound accessor.
 
-Tests for it:
+Tests:
 - the old front regression;
-- different layers never share data;
-- different documents and trial copies never share data;
+- layers never share data;
+- documents and trial copies never share data;
 - a failed edit rolls back whole.
 
-No multi-view save or copy behaviour is exposed in this step. Passing step 1 does not accept the later steps.
+No multi-view save or copy is exposed in this step. Expressions, broadcast and the in-between correction stay in their own stages.
 
-## 3c. Corrections from dot's attack (1791651293)
+## 6. In-between correction (bowen 1791650951, 1791651008, 1791651097; rules of 2026-10-03/04 found by dot 1791651254)
 
-1. **One transaction:** structure and shapes change only inside the same edit; no caller changes topology and fills in shapes later. The façade does both in the edit's draft.
-2. **Layer kinds, not layer names:** `shapes` stores each layer's **kind**:
-   - `view`: editable, full settle when edited, positions-only otherwise;
-   - `expression`: editable, positions-only, never auto-bind;
-   - `record`: baselines; no settle; only id, data and reference integrity are checked.
+**Decided:**
+- Between two views the change can be made non-linear, at any angle bowen moves to (not only 30° / 60°).
+- The corrections are back-solved, not separate snapshots.
+- 0° never moves.
+- First keep 90° fixed and adjust the response. Only if the target is still unreachable may 90° move, minimally.
+- End points are penalised more than handles: a weighting, not a ban.
 
-   `views` orchestrates by kind and never knows animation's layer names. The dependency graph above is redrawn to the real dependencies.
-3. **Rule A on record layers:** a split re-expresses the old baseline at the same t. It never updates it to the current front. Archive checks record layers for integrity, not by settling.
-4. **Clipboard and expressions** (stage 4, *open*):
-   - a clip carries expression definitions;
-   - pasting into a document that lacks the expression, or has a different one under the same id, needs a mapping rule;
-   - having data in an expression layer does not mean a line takes part: participation is the definition's explicit list.
-5. **Locks** stay a *proposal* (shape and stroke protected; fit on a locked line allowed). The check covers unselected locked lines affected through shared end points and links, as today's whole-state comparison does, per layer.
-6. **Expression preview:**
-   - Expression layers are absolute shapes; without broadcast they do not change (the decided rule).
-   - So after a front edit, "expression − front" changes even before broadcast.
-   - Acceptance tests the preview after a front edit, after fit and after broadcast, not only the stored values.
-7. **Undo cost:** first guarantee whole rollback; then measure time and memory with real line, expression and undo-depth counts. No promise, and no new history system up front.
-8. **Broadcast on shared end points:** two chosen lines sharing an end point move it once. All differences are read from the pre-edit state, and the baselines are updated together at the end.
+**v103 for reference** (7205381, `src/domain/recordingSnapshot/surfaceTargets.ts`, `surfaceBasisFallback.ts`):
+- per node and per handle vector, per axis, a response curve on each segment (knots at the edited progress; interior samples in triangles), solved by `solveClosestBarycentricWeights`;
+- when an axis cannot move (`SURFACE_AXIS_UNAVAILABLE`), a bounded adjustment moves the ±90° view within a trust radius, as a coupled draft. It was supported only on edges 0° → cardinal ±90°;
+- arc radius and join changes are refused in a correction.
 
-## 4. What this needs from dot's attack
+**In this framework:**
+- Response curves are `animation` data; `evaluate` reads them.
+- A correction is an edit: knots are solved; where needed, the 90° view layer moves minimally; a lock check; one undo step.
 
-1. Is the `topology` / `shapes` / façade split right, or is a façade over two stores itself a hidden coupling?
-2. Is Rule A complete? Are there structural changes whose per-layer rule is not mechanical: arc joins at a bind, links whose partner is removed, insert with offset on baseline layers?
-3. Lock scope: views and expression layers are protected; baselines are not (fit on a locked line is allowed). *Proposal.*
-4. Expression layers get a full settle when edited and positions-only after structural changes. Is that consistent with the view layers?
-5. Undo cost: the whole state is cloned per edit, now with about 9–12 layers. Acceptable for one character, or not?
+**Open until stage 3:**
+- the per-curve rules in `animation.follow`;
+- the angle-domain scheme;
+- whether the 90° adjustment stays a "save or discard" draft.
 
-## 5. Still open for bowen (not blocking this framework)
+## 7. Still open for bowen (not blocking)
 
 - The right-side mirror draft row.
 - Continuous-curve name scope.
