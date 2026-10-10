@@ -187,6 +187,16 @@
   - Separate joins for 骨线 and 绘制线条 need not crack, given a drawing-side settling rule.
   - Whole expressions across lines are vertical organisation and links.
 
+**dot (1791627788):** the main conclusion matches (keep the framework; add "telling instances apart" and "which data an edit writes and affects"). Two items are not settled:
+- **"Default names take no part in cross-drawing correspondence"** is a proposed safeguard, not yet confirmed by bowen.
+- **Joins** have a feasible direction only, not a solution. How drawing-side constraints settle together with animation results must be stated.
+- **"Semantically one 元线条" is not "merged into one data object".** So this need not reverse v1's identity principle; Claude's "deliberately reverses" overstated it.
+- dot has not independently checked the ArtCraft research; it is Claude's alone.
+
+**Claude (1791627810):** accepts all.
+- **For bowen:** should default names take part in cross-drawing correspondence? Claude suggests no: only semantic names correspond.
+- The two rules (instances under one name; what each edit writes and what follows, including how joins settle) remain open.
+
 ### Status
 
 Settled for now:
@@ -195,6 +205,8 @@ Settled for now:
 - **Continuous 元线条:** shown as a continuous curve in the drawing room.
 
 Open:
+- whether default names take part in cross-drawing correspondence (Claude suggests no);
+- the two rules (instances under one name; what each edit writes and what follows, including how joins settle);
 - 画稿 vs 线稿;
 - connection / mounting rules (how far sharing goes).
 >
