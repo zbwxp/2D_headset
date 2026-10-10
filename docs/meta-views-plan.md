@@ -31,6 +31,42 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
 - **A. Nine 画稿 with the same ids.** One drawing per view; structural decisions made once in the edited view and applied to the other eight.
 - **B. Shared topology, per-view geometry.** One drawing whose points and handles have a position per view; modules read a view's geometry through network's accessors. The accessor names **which state and which view** explicitly; there is no process-wide "current view" switch, so trial, undo comparisons and lock baselines never read different views (dot 1791649915).
 
+### After bowen's answers (Q1–Q4, bowen 1791650085, 1791650171, 1791650206, 1791650323)
+
+**Per view:**
+- point position;
+- handles;
+- arc radius;
+- line width / profile;
+- end strokes.
+
+**Shared by all views:**
+- connections, binds, endpoint links, closed-curve boundary references;
+- join mode;
+- names, continuous curves, order (layers, groups, fills);
+- fills (colour, state);
+- visibility / lock;
+- mirror pairs;
+- selection.
+
+**Auto-bind:** judged only in the edited view; open checks positions without auto-bind. **Mirror apply / link:** at 0,0 only. **Stroke broadcast:** a plain assignment, a batch edit.
+
+What this means for each candidate (to be checked by dot):
+- **A. Nine 画稿.** All shared items above must stay equal in nine copies after every edit.
+  - Structural decisions are made in the edited copy and replayed in eight, with their auto-bind off.
+  - The mirror runs only in the front copy, but its paired structural edits (paired split / delete) must reach all copies.
+  - An outer transaction and undo over nine histories.
+  - Open: positions checked without auto-bind in every copy.
+- **B. Shared topology.**
+  - `network` stores position, handles and stroke per view.
+  - `joins` stores arc radius and end strokes per view.
+  - Accessors name the state and the view; `Changes` separates structural records (shared) from targets and handle tips (edited view).
+  - Settle runs: the full loop in the edited view; positions only (links, springs, tips) in other changed views, without auto-bind.
+  - The lock check compares each view's protected content (shape, stroke, end strokes).
+  - The clipboard carries all views.
+  - `afterApply`, commit and open use the same rule.
+  - Mirror apply / link read and write the 0,0 view.
+
 ### Facts about the current core (da31397), checked by dot 1791649528
 
 1. Ids are given by the caller (line, split, unbind, copyLayer, paste).
