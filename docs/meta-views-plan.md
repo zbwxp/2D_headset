@@ -81,7 +81,7 @@ Claude leans to nine cores pending dot.
    - (a) **Decided from geometry; must be made once, in the edited view, then applied to all:**
      - auto-bind of coincident end points in one layer (`net.overlaps` + bind loop in `settle`, `document/index.ts:611-623`);
      - the mirror-apply / mirror-link correspondence, a least-change search on control points (`apply/index.ts:64-72`).
-   - (b) **Decided from topology only; deterministic, so equal everywhere if the topology is equal:**
+   - (b) **Not decided from geometry; equal everywhere only if all non-geometric state and this edit's change record are equal** (topology, name use, group state and order, selection, prefer / owner records; dot 1791649593, 1791649657):
      - removing isolated points;
      - group reconcile (`groups.reconcile`, components + edit preferences);
      - fill validity (`fills.validate`, `net.closedWalk`: connectivity only);
@@ -89,6 +89,12 @@ Claude leans to nine cores pending dot.
      - selection clean-up;
      - dropping joins on a removed point.
 3. **Commit and history:** `Core.edit` (draft clone, `commit` = settle + names check + lock check, then past / future; `document/index.ts:440-469`), the Editor transaction lifecycle, archive export / import. No outer-transaction entry.
+
+More found by dot (1791649657):
+- **Mirror apply also copies look and state** (stroke, lock / visibility, end strokes, joins, fill state; `apply/index.ts:195-222`). Its shape part is per view, its attribute part is shared; the two must be split.
+- **Opening a file runs settle too** and requires that nothing changes (`document/index.ts:566-568`). The auto-bind rule must be the same in editing and in open, or a reopened view could merge chance coincidences and refuse the file.
+
+**A cost comparison must include, for both approaches:** the structural-decision interface, non-geometric shared state, the one transaction, and save / reopen. Comparing "nine copies vs one topology" alone misses the main work.
 
 Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs per-view geometry; 3 needs an outer owner. Derived-id rules (copy `newId/old`, paste prefix, paired splits) must be applied identically (dot 1791649528).
 
