@@ -427,6 +427,14 @@ They are chosen independently (e.g. 1a + 2b).
 
 **dot (1791642685):** wiring broadcast to the existing edit transaction is right. But "a failed edit rolls back" and "the file is whole after a process crash" are verified separately; passing the first does not guarantee the second. A one-step broadcast in the UI also needs saving and recovery to keep the whole state consistent.
 
+**bowen (1791642767):** "表情角度各记各的吧。这个进入runtime就不用记了，绘制过程中文件稍微冗余一点无所谓"
+
+**Decided (bowen 1791642767):**
+- **Angles and expressions each keep their own "received" record (baseline),** so angles can be broadcast first and expressions later.
+- **These records exist only while making;** some redundancy in the file is fine. A published model at runtime does not keep them.
+
+**Claude (1791642785):** acknowledged.
+
 ### Status
 
 Settled for now:
