@@ -68,6 +68,14 @@
 > - **Now:** the smallest unit is one line + its bone line + its animation (bowen to name it: 动态组件 or 元线条). An eye is a layer of them.
 > - **Expression animations** such as smile can be made and reused whole, recorded per line.
 >
+> **dot (1791623839):** prefers 元线条 (it keeps "line-level" in mind). Definition: 元线条 = one line's complete animatable unit, bringing together its drawn 线条, its 骨线 and its 动画. Drawing edits the 线条; recording edits the 骨线 and its changes; the whole is managed as a 元线条.
+> - **Correction to Claude:** "a line known by its name" is not the core definition. The name is how lines are matched; same-named lines in different drawings are not thereby one object. That belongs in the mounting rules.
+>
+> **bowen (1791623853):** "也就是我们的绘制间画稿实际上只是制作了元线条的一部分即绘制线条"
+>
+> **Claude (1791623871):** yes. The drawing room makes one facet (the 线条, its look); the recording room makes the other two (the 骨线 and its 动画). Adopts dot's definition; withdraws the name-based one.
+> - **Definition (proposed):** **元线条** = one line's complete animatable unit, bringing together its **线条** (edited in the drawing room) and its **骨线** and **动画** (edited in the recording room). It joins continuous curves and goes into layers like a 线条.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
