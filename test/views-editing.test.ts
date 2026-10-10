@@ -199,6 +199,38 @@ describe('arc radii and end strokes are still shared storage (dot 1791653388)', 
   })
 })
 
+describe('the trial reads of an edit are settled in every view (dot 1791653958)', () => {
+  it('1. a smooth join then a split in one front edit: every view splits its settled curve', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('ab', { id: 'a', layer: 'L', position: P(0) }, { id: 'b', layer: 'L', position: P(10) }); e.line('bc', 'b', { id: 'c', layer: 'L', position: P(10, 10) }) })
+    d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'smooth' }); e.split('bc', 0.5, 'm', 'p1', 'p2') })
+    const front = at(d, FRONT, 'm')!
+    expect(front.x).toBeCloseTo(11.25, 9); expect(front.y).toBeCloseTo(3.75, 9)
+    for (const k of d.views()) { expect(at(d, k, 'm')!.x).toBeCloseTo(front.x, 9); expect(at(d, k, 'm')!.y).toBeCloseTo(front.y, 9) }
+  })
+
+  it('2. two links in one edit: the second reads the first one\'s settled result in every view', () => {
+    const d = Core.newDocument({ layer: { id: 'A', name: 'A' } })
+    d.edit(e => {
+      e.layer('B', 'B'); e.layer('X', 'X'); e.layer('C', 'C')
+      e.line('a1', { id: 'a', layer: 'A', position: P(0) }, { id: 'a2', layer: 'A', position: P(0, 30) })
+      e.line('b1', { id: 'b', layer: 'B', position: P(0, 1) }, { id: 'b2', layer: 'B', position: P(0, 40) })
+      e.line('x1', { id: 'x', layer: 'X', position: P(10) }, { id: 'x2', layer: 'X', position: P(10, 50) })
+      e.line('c1', { id: 'c', layer: 'C', position: P(20) }, { id: 'c2', layer: 'C', position: P(20, 60) })
+    })
+    d.edit(e => e.link('a', 'b'))
+    d.edit(e => { e.link('x', 'a'); e.link('b', 'c') })
+    for (const k of d.views()) for (const id of ['a', 'b', 'c', 'x']) expect(at(d, k, id)).toEqual(P(10))
+  })
+
+  it('3. a locked line pasted in a side view is protected in that view for the rest of the edit', () => {
+    const d = doc()
+    d.edit(e => e.lineState('ab', { locked: true }))
+    const clip = d.copy(['ab'])
+    expect(() => d.editIn(SIDE, e => { e.paste(clip, 'L', P(0, 50), 'p'); e.move([{ id: 'p/a', target: P(-9, 99) }]) })).toThrow(/Locked lines would change \(p\/ab\)/)
+  })
+})
+
 describe('open checks every view', () => {
   it('a file whose linked points are apart in a side view is refused', () => {
     const d = doc()

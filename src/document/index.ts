@@ -259,10 +259,10 @@ export class Editor {
     const read = this.view().network
     for (const [x, y] of this.paired(apply.pairedPointPairs(this.s.apply, this.s.network, a, b))) {
       this.move([links.link(this.s.links, this.s.network, x, y, read)])
-      // the second point is moved onto the first in every view (a default, Claude 1791653309)
+      // the second point is moved onto the first in every view (a default, Claude 1791653309),
+      // read from the edit's settled trial in that view (dot 1791653958)
       for (const k of viewKeys(this.s)) if (k !== this.tx.layer) {
-        const h = net.of(this.s.network, k)
-        net.move(h, this.tx.changes, [{ id: y, target: net.point(h, x).position }])
+        net.move(net.of(this.s.network, k), this.tx.changes, [{ id: y, target: net.point(net.of(read, k), x).position }])
       }
     }
   }
@@ -410,7 +410,7 @@ export class Editor {
     const scratch = structuredClone(s), scratchChanges = structuredClone(changes)
     // the same rules as the commit (dot 1791653374); mirror applies are front-only
     settle(scratch, scratchChanges, this.tx.layer)
-    const settled = { network: net.of(scratch.network, views.FRONT), joins: scratch.joins, links: scratch.links }
+    const settled = { network: scratch.network, joins: scratch.joins, links: scratch.links } // every view; the check reads each
     for (const id of fresh) appliedFrom.set(id, settled)
   }
   /**
@@ -422,7 +422,10 @@ export class Editor {
    */
   private view(): State {
     const scratch = structuredClone(this.s), ch = structuredClone(this.tx.changes)
-    settleLayerPositions(scratch, ch, this.tx.layer)
+    // every view, positions only and no auto-bind: later operations read every view
+    // (a split re-expresses each view's curve; a link reads each view's first point), so
+    // each must be read as the commit would settle it (dot 1791653958)
+    for (const k of viewKeys(scratch)) settleLayerPositions(scratch, ch, k)
     return scratch
   }
   private loops(loop: Id): Id[] { return this.paired(apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop)) }
@@ -704,7 +707,9 @@ function commit(s: State, ch: net.Changes, published: State, appliedFrom: Readon
   const changed = new Set<Id>()
   for (const k of viewKeys(s)) {
     const at = (x: State) => ({ network: net.of(x.network, k), joins: x.joins, links: x.links })
-    for (const id of locks.changed(at(published), at(s), ch, k === views.FRONT ? appliedFrom : new Map())) changed.add(id)
+    // a lock that arrived with an apply or a paste is judged from that moment, in each view (dot 1791653958)
+    const from = new Map([...appliedFrom].map(([id, v]) => [id, { ...v, network: net.of(v.network, k) }]))
+    for (const id of locks.changed(at(published), at(s), ch, from)) changed.add(id)
   }
   if (changed.size) { const ids = [...changed].sort(); throw new net.Refusal('locked', `Locked lines would change (${ids.join(', ')}); nothing was published`, net.lineObjects(ids)) }
 }
