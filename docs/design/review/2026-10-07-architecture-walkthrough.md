@@ -3701,11 +3701,11 @@ This is not one drawing per combination of angle frames and expression frames (L
 
 **Claude (1791603509):** agrees. The example skipped the premise that the eye region's deformation from front to side is defined by an explicit rule, and without it the result is not unique. The four-sample baseline is the clear statement; deformation domains are an optional way to draw fewer samples.
 
+**dot, refining (1791603540):**
+- The four drawings only make "one angle axis + one expression" clear, assuming clear correspondence and that interpolation. They do not require drawing every combination.
+- A deformation domain need not only make first drafts. It can carry parts live at every turn, which is what reusing motion after swapping a feature needs.
+- What to confirm is that **angle and expression together decide the picture**, not that four drawings are required.
+
 ### Status
 
-Waiting for bowen to confirm:
-- the four-sample baseline (angle × expression amount, interpolated);
-- a timeline that only drives the amounts;
-- his whole-face angle samples kept.
-
-Hand-drawn vs reused-by-deformation comes after. No graph rows yet.
+Waiting for bowen to confirm one thing: angle and expression amounts together decide the picture (a timeline only drives the amounts; his whole-face angle samples stay). How many samples are drawn, and what deformation carries, come after. No graph rows yet.
