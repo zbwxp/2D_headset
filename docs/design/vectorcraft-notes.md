@@ -115,4 +115,4 @@ Claude 1791628397; repo pages opened unless marked.
 
 **Key correction to Claude:** a command table alone does not fix the focused-button problem (#20). The key is stopped at input routing, before any command. Focus, input-field protection and shortcut priority need explicit rules.
 
-**Claude (1791633770):** agrees; withdraws "solves #20" and "tools write no logic". Posted the three tightened principles to bowen, plus a separate to-do: rules for focus, input-field protection and shortcut priority. Into the graph (Interaction) only when bowen says "写".
+**Claude (1791633773):** agrees; withdraws "solves #20" and "tools write no logic". Posted the three tightened principles to bowen, plus a separate to-do: rules for focus, input-field protection and shortcut priority. Into the graph (Interaction) only when bowen says "写".
