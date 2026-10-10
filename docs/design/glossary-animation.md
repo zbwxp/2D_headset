@@ -5,7 +5,21 @@
 > - It was too long.
 > - It added topics he did not ask about.
 >
-> v2 (Claude 1791623330) keeps bowen's words (画稿, 画稿集, 骨骼动画, 关键帧 / 过渡帧, 绘制间 / 录制间 with 角度录制 / 表情录制 / 混合预览) and only resolves the one word with two meanings (快照). bowen 1791623335: the only term worth keeping is **骨线** (the shape-only lines in the recording room). Waiting for bowen's specifics. v1 below, kept for history.
+> v2 (Claude 1791623330) keeps bowen's words (画稿, 画稿集, 骨骼动画, 关键帧 / 过渡帧, 绘制间 / 录制间 with 角度录制 / 表情录制 / 混合预览) and only resolves the one word with two meanings (快照). bowen 1791623335: the only term worth keeping is **骨线** (the shape-only lines in the recording room).
+
+> dot 1791623427: v1 mixed naming with design decisions (it limited a drawing to "one part at one key view", fixed angle animation to nine views, and wrote a computation order into "playback"). Names must not decide design. Don't assume bowen wants only the old names either. First separate the objects, then name them.
+>
+> Claude 1791623454 agrees and withdraws "just use bowen's old words". **Confirmed term:** 骨线 = the lines in the recording room that carry shape changes and drive the same-named lines of a drawing.
+>
+> **Objects to name (bowen to name them, or merge any that are one thing):**
+> 1. a static picture (look only: lines, widths, strokes, fills; no motion);
+> 2. a set of changes (bone-line shapes at parameter values plus transitions; motion only, no look);
+> 3. a swappable feature (e.g. "left eye 2": static pictures paired with the changes they use; swapped whole);
+> 4. the whole person's combination (which feature in each place, which changes, placement).
+>
+> **Places and operations** (drawing room, recording room and its three modes; load, mount, play) are not objects and keep bowen's existing words for now.
+>
+> v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
 
