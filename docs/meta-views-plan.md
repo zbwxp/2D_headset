@@ -65,6 +65,33 @@ Rough cost:
 
 Claude leans to nine cores pending dot.
 
+### Core's three boundaries (dot 1791649528 asked for them; Claude's reading of da31397)
+
+1. **Geometry computation** (positions and handles only; no topology change):
+   - links.align (`links`);
+   - springs, joins.solve (`joins`);
+   - aimed handle tips (`net.resolveHandleTips`);
+   - mirrored handles (`apply.mirroredHandles`);
+   - outlines, picking, loopsAt (`derived`);
+   - transform plans (`editing.transformPlan`);
+   - the shape part of the lock comparison (`locks.changed`).
+
+   Can run per view in either approach.
+2. **Automatic structural decisions:**
+   - (a) **Decided from geometry; must be made once, in the edited view, then applied to all:**
+     - auto-bind of coincident end points in one layer (`net.overlaps` + bind loop in `settle`, `document/index.ts:611-623`);
+     - the mirror-apply / mirror-link correspondence, a least-change search on control points (`apply/index.ts:64-72`).
+   - (b) **Decided from topology only; deterministic, so equal everywhere if the topology is equal:**
+     - removing isolated points;
+     - group reconcile (`groups.reconcile`, components + edit preferences);
+     - fill validity (`fills.validate`, `net.closedWalk`: connectivity only);
+     - default names (`names.update`);
+     - selection clean-up;
+     - dropping joins on a removed point.
+3. **Commit and history:** `Core.edit` (draft clone, `commit` = settle + names check + lock check, then past / future; `document/index.ts:440-469`), the Editor transaction lifecycle, archive export / import. No outer-transaction entry.
+
+Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs per-view geometry; 3 needs an outer owner. Derived-id rules (copy `newId/old`, paste prefix, paired splits) must be applied identically (dot 1791649528).
+
 ## Data: what changes in core
 
 - **Topology is shared by all nine views:** points, lines, which line ends at which point, joins (mode), endpoint links, closed curves and fills, groups, names, layer order, strokes, element state (visible / lock).
@@ -137,7 +164,7 @@ From dot (1791645801, 1791647948) and the worked examples:
 
 ## Questions for bowen (visual results; recommendations marked)
 
-- **Q1 (widened, 1791649403). Binding when the two points are apart in other views.** 甲 bind in all nine (front: merged at the first-clicked point; connections and closed curves equal in all views; whether a fill shows may still differ per view, dot 1791649422); 乙 bind only in the edited view (relations may differ per view; a fill may exist in some views only).
+- **Q1 (widened, 1791649403). Binding when the two points are apart in other views.** 甲 bind in all nine (front: merged at the first-clicked point; connections and closed-curve boundary references shared by all views (a loop may collapse or self-cross in some view; display and geometric validity are checked separately, dot 1791649528); whether a fill shows may still differ per view, dot 1791649422); 乙 bind only in the edited view (relations may differ per view; a fill may exist in some views only).
 - *Earlier wording:* In view 90 two end points are bound (merged); at the front they are 2 cm apart. After binding, what does the front show?
   - 甲 (recommended): in every view the merged point sits where the **first-clicked** point is in that view (the existing rule "the first point is kept"). Lines that ended at the other point jump to it in the other views; shown, not blocked.
   - 乙: in each other view, the midpoint of the two.
