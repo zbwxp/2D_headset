@@ -3904,10 +3904,19 @@ This is not one drawing per combination of angle frames and expression frames (L
    - A definition plus a rule for missing information is needed.
    - Proposed: the A / B / C experiment on a curved line, a straight line, a closed line and a whole ear, plan first.
 
+**dot (1791614169):** checked the graph's "Apply" and its code.
+- **Correspondence:** same topology, least change can be reused; no new mounting rule is needed.
+- **What is missing:** mirror apply knows its transform (reflection) first, then uses it for positions and offsets. A 0° and a 90° recording snapshot give only the curves before and after, not the transform. The existing apply has no way to derive a transform from two shapes. This holds for curved lines too, not only degenerate straight ones.
+- **The question that matters:** does a recording snapshot store shapes only, or also the transform that made them?
+  - If the transform used to make 90° is kept, offsets reuse it.
+  - If only shapes are kept, a rule for getting a transform from shapes is needed.
+- **Terms, per bowen's words:** a deformer drawing at one angle is *one* recording snapshot; several angles make *a set*.
+
+**Claude (1791614200):** agrees; corrects the term. Asks bowen how he makes the 90° deformer drawing:
+- **甲, by a transform** (e.g. a four-corner perspective box over the whole ear): store that transform in the recording snapshot; offsets reuse it, uniquely.
+- **乙, by drawing the 90° shape by hand:** only the shape is kept, so a rule for deriving the transform from the two shapes is needed (the A / B / C experiment).
+- **丙, both:** store the transform where one was used; derive by 乙's rule where drawn or adjusted by hand.
+
 ### Status
 
-Waiting for bowen:
-- the second kind of shaping;
-- whether to run the experiment (plan first).
-
-No graph rows yet (bowen 1791603861).
+Waiting for bowen: how 90° deformer drawings are made (甲 / 乙 / 丙); the second kind of shaping. No graph rows yet (bowen 1791603861).
