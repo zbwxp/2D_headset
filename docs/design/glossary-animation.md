@@ -300,6 +300,22 @@
 - Reusing mirror-link line pairs for the cross-view apply is a **candidate**. Their completeness and meaning must be checked, and a one-off apply does not mean a lasting link.
 - "Loading bones updates shapes only, keeping the look" is **dot's suggestion**, recorded as a rule only once bowen confirms.
 
+**bowen (1791639688):** "45度角上的视觉，可以用简单的形变相加（就是a向量+b向量等于其对角线向量）。然后一个模型里面 眼睛鼻子嘴有123456好几种预设，如果都画好 那接下来就是runtime的ui设计的事情了。尤其对那种变化特别大的眼睛形状 直接跳变捏脸（像脸萌那样选择脸 所以这个不是什么架构上的问题。还有什么不清楚的"
+- **Diagonals:** the change at a diagonal = the yaw change + the pitch change (vector sum). A draft by addition, then adjusted.
+- **Several presets per feature in a model** (eyes / nose / mouth 1–6): choosing among them is runtime UI (jump selection, like 脸萌), not architecture. This answers Claude's question 3.
+
+**Claude (1791639726):**
+- **Waiting for bowen:**
+  1. shaping one's face publishes a new version, shared originals untouched (our proposal);
+  2. loading bones into drawings updates shapes only (dot's suggestion);
+  3. (minor) 线稿 vs 画稿.
+- **Ours to verify:**
+  - carrying / fixing offsets so publishing does not change the face;
+  - the topologically-closest search without sudden change;
+  - how joins settle between 骨线 and 绘制线条;
+  - new identities on copy; the old baseline kept while deriving; "expression needs adapting" marks.
+- **Offered:** draft graph rows for the whole framework (元线条, 元组件, model, rooms, nine views, expressions, offsets, publishing), written only when bowen says "写".
+
 ### Status
 
 Settled for now:
