@@ -3,3 +3,4 @@
 // only through callbacks the app provides; it imports core's types and React, never the
 // interaction package, and only the app imports it. No visual principles yet.
 export { LayersPanel } from './LayersPanel'
+export { PropertiesPanel } from './PropertiesPanel'

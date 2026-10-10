@@ -199,3 +199,28 @@ describe('picking an element in a layer that is not selected adds that layer (bo
     expect((bench().ix as unknown as { selection(): unknown[] }).selection()).toEqual([{ kind: 'line', id: 'lB' }])
   })
 })
+
+describe('the properties panel shows the unit last clicked in the list (bowen 1791599608)', () => {
+  it('a layer, a continuous curve, a line; it folds', async () => {
+    const host = await setup()
+    const props = () => host.querySelector('[data-testid="properties"]')?.textContent ?? ''
+    const header = () => [...host.querySelectorAll('div')].find(d => d.title === '收起属性' || d.title === '展开属性')!
+    expect(header().textContent).toContain('图层 · D') // the current layer before any click
+    await row(host, 'B')
+    expect(header().textContent).toContain('图层 · B')
+    expect(props()).toContain('连续曲线1')
+    const icon = (title: string) => [...host.querySelectorAll('svg title')].find(t => t.textContent === title)!.parentElement!
+    await act(async () => { icon('展开全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const curveOfB = ([...host.querySelectorAll('[title^="点击选中这条连续曲线"]')] as HTMLElement[])[2]!
+    await act(async () => { curveOfB.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(header().textContent).toContain('连续曲线 · ')
+    await act(async () => { icon('展开到每条线').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const lineRow = host.querySelector('[title^="点击选中这条线"]') as HTMLElement
+    await act(async () => { lineRow.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(header().textContent).toContain('线 · ')
+    expect(props()).toMatch(/起点 a.*开放.*终点 b.*开放/)
+    expect(props()).toContain('更多属性（待定）')
+    await act(async () => { header().dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(host.querySelector('[data-testid="properties"]')).toBeNull()
+  })
+})

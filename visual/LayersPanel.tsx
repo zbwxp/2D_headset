@@ -5,6 +5,7 @@
 // (docs/visual-plan.md); no visual principles yet.
 import { useState } from 'react'
 import type { Snapshot, Geometry, Editor, Vec } from '../src'
+import { PropertiesPanel, type Subject } from './PropertiesPanel'
 
 type Id = string
 const C = { bg: '#323232', row: '#3c3c3c', active: '#4b5f7c', selected: '#3f4b5c', text: '#ddd', dim: '#8a8a8a', line: '#262626', thumb: '#fff', icon: '#c8c8c8' }
@@ -41,6 +42,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
   const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
+  // the unit whose properties show below: the last layer, curve or line clicked (bowen 1791599608)
+  const [subject, setSubject] = useState<Subject | null>(null)
   const selLines = new Set(s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
   /**
    * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
@@ -49,7 +52,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
    * selected layers (bowen 1791558438: picking in the list is the surest way; an element pick
    * adds its layer), and never takes one away.
    */
-  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent, layer: Id) => {
+  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent, layer: Id, kind: 'group' | 'line') => {
+    setSubject({ kind, id })
     if (!selected.includes(layer)) select([...selected, layer], active)
     const at = rows.findIndex(r => r.id === id), from = rows.findIndex(r => r.id === rowAnchor)
     const units = (rs: typeof rows) => rs.flatMap(r => r.lines.map(l => ({ kind: 'line' as const, id: l })))
@@ -66,6 +70,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
    * becomes current, and a removed current hands over to the topmost layer still selected.
    */
   const click = (id: Id, e: React.MouseEvent) => {
+    setSubject({ kind: 'layer', id })
     const order = s.layers.map(l => l.id)
     if (e.shiftKey) {
       const from = order.indexOf(anchor && order.includes(anchor) ? anchor : active), to = order.indexOf(id)
@@ -176,7 +181,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
                 <Thumb lines={gr.lines} />
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）"
-                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id)}>{gr.name}</span>
+                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id, 'group')}>{gr.name}</span>
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
                 <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
               </div>
@@ -187,7 +192,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                   <Icon d={EYE} on={l.state.visible} title={l.state.visible ? '隐藏线' : '显示线'} onClick={() => run(x => x.lineState(id, { visible: !l.state.visible }))} />
                   <Icon d={LOCK} on={l.state.locked} title={l.state.locked ? '解锁线' : '锁定线'} onClick={() => run(x => x.lineState(id, { locked: !l.state.locked }))} />
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }} title="点击选中这条线（Shift 连选 · Cmd 增减）"
-                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id)}>{l.name}</span>
+                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id, 'line')}>{l.name}</span>
                   <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽 · 两端（相接方式或开放端点的笔触）">w{l.stroke.width} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>
@@ -197,6 +202,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
           </div>
         })}
       </div>
+      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} />
     </div>
   )
 }
