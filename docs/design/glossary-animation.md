@@ -137,6 +137,25 @@
 - Horizontal answers "what members does this line have"; vertical answers "how do these lines make a face". Neither replaces the other.
 - dot's corrections are accepted (骨线 not only the front one; keys at parameter values).
 
+**bowen (1791624638):** "元线条按照名称组成了横向， 原本的连续曲线 图层之类的是纵向，这个一套算是一个框架设计原则。你们攻击一下看看"
+
+**Claude's attack (1791624683), most serious first:**
+1. **Default names mismatch.**
+   - Every line has a name; unnamed ones get defaults ("曲线 4"). Two unrelated drawings each with a "曲线 4" would match by name and take each other's bone line and animation.
+   - v1's principles said the opposite: "不能根据名称……自动把两个不同成员认作同一个成员" (editor-snapshot-recording-principles.md:42). This is a deliberate reversal and should say why.
+   - **Proposed:** only *semantic* names (ones bowen gives, like 左上眼睑) take part in matching; default-named lines do not match, and count as "no 元线条 yet".
+2. **Who owns the vertical structure.** 绘制线条 have joins (shared end points, continuous curves); 骨线 need joins too, or a jaw and a chin bone move apart and the seam opens.
+   - A vertical structure on each side may disagree (drawing joined, bones apart).
+   - One structure at the 元线条 level clashes with sharing (dot 1791624142): one face changing joins would change others'.
+   - The principle does not settle this; it needs its own rule.
+3. **A member kind may have several copies in one 元线条.** "左上眼睑" holds the front drawing's line, the side drawing's line, character 2's line…; bone lines may be one shared and several own. Horizontal is not "one 线条 + one 骨线 + one 动画". What tells copies apart (character, view)?
+4. **Renaming and splitting cross the horizontal.**
+   - Renaming a line moves it to another 元线条 and detaches its bone line and animation: follow, or detach?
+   - Splitting a 绘制线条 must split its 骨线 and 动画 too, or correspondence breaks. v1 passed parent splits down by position (facts doc).
+5. **Where a whole expression set lives.** A whole "smile" (dot 1791623805) spans many 元线条. It is neither horizontal (one line's members) nor vertical (how lines are organised); perhaps a third direction, organised by parameter.
+
+1 and 2 first. dot asked to add attacks.
+
 ### Status
 
 Settled for now:
