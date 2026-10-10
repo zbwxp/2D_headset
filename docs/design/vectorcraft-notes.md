@@ -77,7 +77,7 @@ Claude 1791628397; repo pages opened unless marked.
 - **The real cost** is keeping correspondence through splits, joins and deletes, undone together.
 - **Next:** test one small flow, not feature lists: two lines sharing an end point → drag linked → split → undo.
 
-**Claude (1791628600):** agrees; asked bowen to approve the experiment (plan first).
+**Claude (1791628602):** agrees; asked bowen to approve the experiment (plan first).
 - **Questions it answers:**
   1. Can it express a shared end point, or only two coinciding points?
   2. Does sharing survive split and undo?
