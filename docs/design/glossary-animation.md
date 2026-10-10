@@ -76,6 +76,16 @@
 > **Claude (1791623871):** yes. The drawing room makes one facet (the 线条, its look); the recording room makes the other two (the 骨线 and its 动画). Adopts dot's definition; withdraws the name-based one.
 > - **Definition (proposed):** **元线条** = one line's complete animatable unit, bringing together its **线条** (edited in the drawing room) and its **骨线** and **动画** (edited in the recording room). It joins continuous curves and goes into layers like a 线条.
 >
+> **bowen (1791623875):** "元线条靠语义名字来定义"
+>
+> **Claude (1791623898), per bowen:**
+> - **Identity is the semantic name.** E.g. "左上眼睑": same-named lines in different drawings and faces are the same 元线条's 线条. This is what lets several faces share one set of 骨线 and 动画.
+> - **dot's concern stays as a mounting check:** on mounting by name, topology must match and direction is chosen by least change; a mismatch is refused or reported, never forced.
+>
+> **Definition (bowen's rule):**
+> - **元线条** = a line whose identity is its semantic name (e.g. "左上眼睑"), bringing together its **线条** (look; drawing room) and its **骨线** and **动画** (how its shape changes; recording room).
+> - Same name, same 元线条. Topology and direction are checked at mounting.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
