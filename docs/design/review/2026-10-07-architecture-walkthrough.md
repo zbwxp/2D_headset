@@ -4338,6 +4338,13 @@ Not chosen yet.
   - Live2D avoids multiplication with more levels; we avoid it by storing each expression's change separately and combining them. Still 3 + 3 + 9 samples, no extra levels.
   - Bad combinations get a combination fix.
 
+**bowen (1791622482):** "眉毛会边紧缩边下垂？这是什么表情？"
+
+**Claude (1791622509):** yes, common: worried / aggrieved / troubled brows (八字眉; 困り眉 in anime). Brows knit toward the middle while their outer ends slope down.
+- **Live2D directions** (standard list and eyebrow page): brow form −1 draws the brows together; brow angle negative = anger (V shape), +1 = outer ends slope down.
+- **Combinations:** knit + angle negative = angry; knit + angle positive = worried / aggrieved; no knit + slope down = innocent / tired. Which combination reads as which mood is everyday knowledge; the directions are official.
+- **Why shape and tilt are separate motions:** the same knit with a different tilt is a different mood, so each must turn on its own.
+
 ### Status
 
 Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
