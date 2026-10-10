@@ -229,7 +229,7 @@
 - **Identity:** the owning component tells mouth 1 from mouth 3. When one component is shared by several models, the shared original must be told apart from the copy in use. A same-name collision on copying may be disambiguated automatically or mapped; copying is not forbidden.
 - How offsets are carried and fixed is ours to verify; bowen chooses no maths now.
 
-**Claude (1791635149):** agrees (withdraws "reuse only by copying"); posted the three requirements to bowen. Requirement 3 is the default for Claude's question 1 unless bowen objects. Asked which part of the flow bowen wants next.
+**Claude (1791635149):** agrees (withdraws "reuse only by copying"); posted the three requirements to bowen. Requirement 3 was offered as the default for Claude's question 1. **Corrected (dot 1791635168):** it stays a proposal until bowen confirms; silence is not agreement. "Publishing does not change the face" is an acceptance target, not yet shown possible. Asked which part of the flow bowen wants next.
 
 ### Status
 
