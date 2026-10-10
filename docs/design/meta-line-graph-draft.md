@@ -43,8 +43,8 @@ Format as in the graph: subject | relation | object | status | source.
 | Broadcast derivation | is, for now | Adding "current front − baseline" to each target, point by point. | candidate (to be verified) | Claude 1791642580; dot 1791642640, 1791645801 |
 | Broadcast | is | One edit: all its writes and the baseline advance succeed or roll back together, as one undo step. | candidate | dot 1791642640 |
 | Broadcast baseline | is changed | **Only by broadcast or fit.** Only the front keeps a hidden baseline; in every other view the shape itself is the bone. Hand-adjusting another view never touches the baseline. *Supersedes 乙 / 乙' (bowen 1791647215; Claude 1791647298).* With dot's example (1791647282: front enlarged, left corner touched up, then broadcast), the left also receives the enlargement and is fixed again by hand, or undone. | decided | bowen 1791647843; Claude 1791647876 |
-| Fit | is | A new operation at the front: set the baseline to the current front without pushing anything. Used when every view has been adjusted by hand (including a new line's views). | decided | bowen 1791647843 |
-| Broadcast baseline | is kept | Separately for angles and for expressions, saved in the making file. The runtime product does not carry these making records; publishing does not delete them from the making source. *Open (Claude 1791647876):* under the front-only rule, keep two front baselines (angle, expression) with broadcast / fit acting on either (甲, recommended), or merge them into one (乙)? | decided; front-only split open | bowen 1791642767; dot 1791645801 |
+| Fit | is | A new operation at the front: set the baseline to the current front without pushing anything. Used when every view has been adjusted by hand (including a new line's views). It explicitly drops the pending change; one undo step. | decided | bowen 1791647843 |
+| Broadcast baseline | is kept | As **two front baselines**, one for angles and one for expressions, saved in the making file. Broadcast or fit on angles never clears the expression one, and vice versa (follows bowen 1791642767; no new choice needed). The runtime product does not carry these making records; publishing does not delete them from the making source. | decided | bowen 1791642767, 1791647843; dot 1791645801, 1791647948 |
 
 ### Matching
 
@@ -67,7 +67,8 @@ Format as in the graph: subject | relation | object | status | source.
 - copy a 元组件 that has an unbroadcast edit;
 - broadcast angles and expressions separately;
 - repeated broadcast, and undo;
-- save, reopen, continue broadcasting.
+- save, reopen, continue broadcasting;
+- fit: the picture does not change and the matching offset becomes zero; undoing fit restores the pending offset (dot 1791647948).
 
 Core flows may go in stages; matching and auto-fit experiments do not block the editor.
 
