@@ -43,6 +43,11 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
 8. The network state is opaque outside `network`, and reads return frozen copies (`network/index.ts:5-8`). Outside it, geometry is read through `net.point`, `net.line`, `net.curve(s)`, `net.points`, `net.lines`. Calls by module: apply 10, derived 10, document 12, editing 5, joins 3, links 3, locks 3, names 2, groups 1. Writes go through network functions; the main ones are move, setPositions, moveHandle, setHandles, aimHandle, resolveHandleTips, addLine, splitLine, unbind, bind, insertLines (direction checked by dot 1791649915; not yet an exhaustive enumeration of exports).
 9. Names scope (bowen 1791649036) and layer type need core changes in either candidate.
 
+**Interface changes candidate B needs beyond `network`** (dot 1791649873; "other modules unchanged" withdrawn):
+- **`Changes` mixes scopes:** structural records (splits, merges, deletions) are shared, but target positions and absolute handle tips belong to the edited view. They cannot be handed unchanged to nine views; the scopes must be separated.
+- **Clipboard format** holds one position and handle set; copying all views needs a format and routing change.
+- **`Editor.afterApply`** runs settle on a scratch copy to compute lock baselines; it must follow the same multi-view rule as commit and open.
+
 ### Core's three boundaries (Claude's reading; dot 1791649593)
 
 1. **Geometry computation:** link alignment, springs, aimed handles, mirrored handles, outlines / picking, transform plans, and the shape part of the lock comparison.
