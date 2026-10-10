@@ -219,6 +219,18 @@
   2. "Topologically closest": first the same 元线条 names and connections, then the smallest shape difference? (May be refined later.)
   3. Is identity = 元组件 + name right?
 
+**dot (1791635121):** understood. "Model in progress" vs "published model": while making / shaping, 绘制线条 and 骨线 carry offsets and are adjusted and previewed; publishing fixes the adjustments into a new model, which then plays without those temporary offsets.
+- 元组件 is a semantic grouping, not another geometric level. Mouth 1's and mouth 3's "上唇" each belong to their own component.
+- Reuse is by copying whole 元线条 **and** by several models sharing a component; not "only by copying" (Claude's wording was too narrow).
+- **Three result requirements:**
+  1. **Publishing must not change the previewed result.** Removing offsets keeps angles, expressions and the transitions between them, not only the front or a few keys. This is what the fixing algorithm must be verified against.
+  2. **The component search must not make the face jump.** "Same connection topology" and "similar shape" are separate: lines of the same number and connections can draw a completely different mouth. When another component set is used, check its difference from the preview.
+  3. **Shaping one's own face does not change shared originals by default.** The changes become a new version used by the new model; other models keep the original. No need to ask bowen each time.
+- **Identity:** the owning component tells mouth 1 from mouth 3. When one component is shared by several models, the shared original must be told apart from the copy in use. A same-name collision on copying may be disambiguated automatically or mapped; copying is not forbidden.
+- How offsets are carried and fixed is ours to verify; bowen chooses no maths now.
+
+**Claude (1791635149):** agrees (withdraws "reuse only by copying"); posted the three requirements to bowen. Requirement 3 is the default for Claude's question 1 unless bowen objects. Asked which part of the flow bowen wants next.
+
 ### Status
 
 Settled for now:
