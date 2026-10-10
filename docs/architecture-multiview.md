@@ -231,7 +231,7 @@ No multi-view save or copy is exposed in this step. Expressions, broadcast and t
 
 ## 7. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
 
-**Authoritative version: dot 1791651534** (sent at the same time; it carries a recommendation per item, and Claude 1791651556 agrees with all six).
+**Authoritative version: dot 1791651534** (sent at the same time; it carries a recommendation per item, and Claude 1791651576 agrees with all six).
 - Its recommendations:
   1. preview, then save the response curves and the 90° change together; cancelling reverts both;
   2. keep the old expression targets, marked "to adapt"; fit does not repair them;
