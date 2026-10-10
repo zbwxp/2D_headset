@@ -3589,6 +3589,24 @@ v1's snapshot model: `docs/design/snapshot-v1-facts.md` (7205381; corrected per 
 2. **What a key shape stores:** every line's position, or only what changes?
 3. **A line that truly appears only at some angles:** is hiding enough?
 
+### Judgement 2: dot (1791601533)
+
+**Don't choose 甲 / 乙 yet, and don't make "one set of connections" a hard condition.** Split the goal into three parts:
+
+1. **Who the character is:** the shaped face persists. Turning, smiling and blinking are still this face, which is more than "editing the current picture".
+2. **What the character is doing now:** facing, smile amount, each eye's closure, all able to change at once. An animation or face tracking only keeps giving these values.
+3. **What picture those values give:** edited shapes serve as samples; states in between are computed, and **bad combinations can be corrected** (e.g. side face + eyes closed). Getting turning and blinking right separately does not make them look right together.
+
+- A **snapshot**, for now, is "an editable shape sample". **Recording** says which values each sample stands for and how states in between change. This is a split of jobs, not yet a count of data objects.
+- **Correction to Claude:** interpolation needs explicit correspondence. It does not need every artwork to share one topology. A shared structure is an optional simplification; separate artworks with explicitly kept correspondence also work.
+- **Hiding** only covers "this line is not visible now". It does not cover changed connections or front / back occlusion.
+- **Overall goal, proposed:** shape a character; with a few shape samples, control it turning and making expressions within an agreed range; when a combination looks bad, fix it locally without redrawing every combination.
+
+**Claude (1791601562):** agrees.
+- "One topology" was a recommended simplification, not a requirement; it moves to the options.
+- Correcting combinations locally is a requirement Claude missed.
+- Occlusion and connection changes are open questions.
+
 ### Status
 
-Waiting for bowen: 甲, 乙, or neither; dot asked for an independent judgement. No graph rows yet.
+Waiting for bowen to confirm the overall goal and the three parts. The 甲 / 乙 choice is deferred. No graph rows yet.
