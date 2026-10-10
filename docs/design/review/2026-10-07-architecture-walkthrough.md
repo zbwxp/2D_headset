@@ -4039,6 +4039,29 @@ Not chosen yet.
 
 **Claude (1791616750):** agrees; withdraws "甲 has no inference" (only key frames coincide). Asked bowen to confirm the direction.
 
+### bowen (1791617222): confirmed; next, the hierarchy
+
+> 认可 就是offset可以带着， 不过为了叙述方便接下来都默认offset会被处理好 也就是叙述按照没有offset来叙述。那么 这个系统还需要： 之前说的是一个捏脸是一套画稿， 但是这其实不利于解耦，实际上一个五官/一个带名字图层 是一个画稿组-录制快照组 基本单位。这样才能有脸部组合的效果，也不至于说只改一套眼睛带有新骨骼动画的眼睛就要其他的全复制保存一份。但是这样一来这个层级就有点乱了。虽说储存的信息是精确的。我们可能有眼睛1 眼睛2 对应录制眼睛1 录制眼睛2 然后这些都存在同一套快照里面。换句话说 快照的定义可能不是当前的画稿完整状态，而是一个组装间。眼睛可以选择1234……… 嘴可以选择1234 眼睛表情也是1234 （眼睛表情和眼睛叠加好像又多了一层。ld的方案应该是表情和眼睛的变形器是可以叠加的对吧？ 也就是我们骨骼动画是要支持叠加的。那么快照/画稿这个层级得怎么设计？
+
+**Confirmed (bowen):** "support sharing + allow dedicated fixes"; from now on offsets are assumed handled.
+
+**Claude (1791617277):**
+- **Stacking: yes.** Live2D stacks in two ways:
+  - parent-child deformers (the parent carries angle, the child carries expression; the eyebrow page above);
+  - "blend shape parameters", an additive parameter type listed on the template page (checked). How they add is from memory.
+  - For us: angle bone animation underneath, expression bone animation stacked on top; expressions too mount by line name.
+- **Proposed hierarchy, bottom up:**
+  1. **Variant** (the smallest unit; bowen's "one feature = one drawing group + recording group"): e.g. "left eye 1" = its drawings at the key angles + its angle bone animation (recording set). "Left eye 2" is another variant.
+  2. **Expression layer:** stacked bones on a feature, driven by an expression dial (e.g. "left eye – blink 1", "mouth – smile 1"). It mounts by line name, so it works only on variants whose line names match. A kaomoji eye has other names and needs its own blink (dot 1791602343).
+  3. **Feature** (a named slot): left eye, right eye, mouth, jaw, hair…; each holds several variants and expression layers to choose from.
+  4. **Character** (assembly): a choice list (left eye: 2, mouth: 1, blink: 1, smile: 3…). bowen's "the snapshot becomes an assembly room": it stores choices, not a whole drawing.
+- **Names stay unique:**
+  - each variant is its own file, unique within;
+  - an assembly takes one variant per feature, and different features' lines already differ, so no clash.
+- **Asked:**
+  1. Are the four levels (variant, expression layer, feature, character) right?
+  2. Does an expression layer belong to a feature (usable by any variant with matching names) or to one variant?
+
 ### Status
 
-Waiting for bowen to confirm "support sharing + allow dedicated fixes". The offset algorithm is to be validated by experiment (Claude / dot). Open: appearance between two drawings; tuned transitions through loads and generation; nine views, missing curves, expressions. No graph rows yet (bowen 1791603861).
+Waiting for bowen on the hierarchy and dot's review. The offset algorithm is to be validated by experiment (Claude / dot). Open: appearance between two drawings; tuned transitions through loads and generation; nine views, missing curves, expressions over angle. No graph rows yet (bowen 1791603861).
