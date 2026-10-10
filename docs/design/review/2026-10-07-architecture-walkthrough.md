@@ -4101,13 +4101,28 @@ Not chosen yet.
    - **The mixed state cannot be playback-only** (bowen's instinct): "side face + closed eye" is fixed exactly there. In 乙 a fix is a key set with several dials off their defaults, so the mixed state is editable without a room of its own.
    - **甲: three rooms** (angle, motion, mixing). The most literal, but one face moves among three places.
 
+**dot (1791617787):** by definition there are three kinds of work (edit angle, edit motion, check the mix), not three rooms. One recording room, three modes, sharing the canvas and the playback computation:
+- **Angle mode:** edits the angle recording of an explicitly chosen part.
+- **Motion mode:** edits an explicitly chosen motion, previewed at the current angle.
+- **Mixed preview:** drag angle, blink, smile… together to see the result; may be read-only for now.
+
+**Correction to Claude:** "whichever expression dial is off 0 decides which motion is edited" fails.
+- With blink and smile both on, dragging an eye corner could mean editing blink, smile, or only their combination.
+- Dial values say what is being looked at, not who owns the change. Editing needs an explicitly chosen target.
+- So the mixed preview can be read-only: on finding a problem, select the asset to fix and keep the current mix as reference.
+- Saving combination fixes, and who owns them, is decided when needed; no extra level now.
+- **Also:** the original 0,0 drawing is a sample of the character's default state; the assembly at 0,0 with motions at defaults should show that face. A standalone drawing need not first mount "motion asset 1" to exist.
+
+**Claude (1791617814):** agrees; withdraws the dial-decides-target rule and the "drawing = part 1 + motion 1 + assembly 1" wording. Asked bowen about one room with three modes.
+
 ### Status
 
-Waiting for bowen on 甲 / 乙 and on the split (dot 1791617326, with angle moved to the part asset); dot's review. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on one room / three modes. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - stacking order;
 - naming lines across parts;
+- where combination fixes live;
 - nine views, missing curves, expressions over angle.
 
 No graph rows yet (bowen 1791603861).
