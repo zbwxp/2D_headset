@@ -258,6 +258,20 @@
   2. Are expressions defined at the front only and carried to other angles by the angle level (no side-view expressions by default)?
   3. Is the eye 1 / eye 2 switch a model option (hotkey or shaping choice) or only show / hide while making?
 
+**dot (1791637961):** the flow is clear.
+- **Key new definition:** the nine views are one line's different shapes, not nine unrelated lines. Adding / deleting is synced, shapes are adjusted per view, and copying / hiding a whole eye covers every view.
+- **The flow:** draw front → load angle bones → make the turn → make expressions → mixed preview. Eye 2 reuses eye 1's whole set, then adapts angles and expressions, and finally loads the checked bone shapes back into the drawings.
+- **Three boundaries:**
+  1. **"One id across views" only ties lines within one eye set.** Eye 2 copied from eye 1 needs new, independent identities, or editing eye 2 may change eye 1. Whether a drawing line and its bone share an id is not decided by this statement.
+  2. **Keep the old bone baseline until the offset is derived.** "Load the new eye, then derive" must not overwrite the old baseline first, or the difference cannot be computed. One user operation; old values kept internally; commit after deriving.
+  3. **Mark expressions not yet adapted.** After the angles change (or lines are added / deleted) and before expressions are adapted, show "expression needs adapting". Old expressions must not look synced.
+- **Corrections to Claude:**
+  - "Expression 0 point = front" does not imply expressions can only be made at the front (Claude's question 2 stays a question).
+  - Duplicating into nine is initialisation, not nine correct views.
+- **This makes "which data an edit writes and how it spreads" concrete.** The algorithms still need verifying.
+
+**Claude (1791637989):** agrees; relayed the three boundaries to bowen. The three questions (nine views, expressions at the front only?, eye switching) are still open.
+
 ### Status
 
 Settled for now:
