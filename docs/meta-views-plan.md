@@ -132,7 +132,7 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 | Arc radius | per view | per view | proposal (geometry) |
 | Element visibility / lock | shared | shared | proposal (editing switches) |
 | Show / hide intervals | — | — | *待定* (v103 keyed the ends per view; reference only, dot 1791649820; no data model yet) |
-| Line width, end strokes | per view | per view; a button copies the current view's value to the other views | bowen 1791650085, 1791650171 (Q4): the button is a plain assignment |
+| Line width, end strokes | per view | per view; a button copies the current view's value to the other views | bowen 1791650085, 1791650171, 1791650206 (Q4): the button is a plain assignment, a batch edit (one undo step; a locked line refuses it) |
 | Drawing order (layers, groups, fills) | shared | shared (reordering in any view applies to all) | bowen 1791650085 (Q3); per-view order maybe later |
 | Fill colour | shared | shared | proposal |
 | Whether a fill shows in a view | — | — | follows Q1 (order shared, Q3); geometric validity per view |
