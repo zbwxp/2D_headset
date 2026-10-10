@@ -177,6 +177,9 @@ export class Editor {
     // a paired delete may already have removed a later line of this list
     for (const l of this.linesIn(id)) if (!l.state.locked && net.hasLine(s.network, l.id)) this.deleteLine(l.id)
     this.topology(ch => { net.removeIsolated(s.network, ch); net.removeLayerIfEmpty(s.network, ch, id) })
+    // a layer really removed takes its type at once, so a layer made again with the same id
+    // in this edit starts without one (dot 1791655586)
+    meta.follow(s.meta, s.network)
   }
 
   // element state (Q29): a state change, allowed on locked elements; batches for groups and layers

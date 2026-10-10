@@ -81,6 +81,27 @@ describe('paste names are decided by the target layer', () => {
   })
 })
 
+describe('repro (dot 1791655586)', () => {
+  it('1. a curve copied in part: its temporary default never takes a pasted line\'s own name', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.layer('E', 'E'); e.line('ab', { id: 'a', layer: 'L', position: P(0) }, { id: 'b', layer: 'L', position: P(10) }); e.line('bc', 'b', { id: 'c', layer: 'L', position: P(20) }) })
+    d.edit(e => { e.renameGroup(groupOf(d, 'ab').id, 'G'); e.renameLine('ab', '连续曲线1') })
+    const clip = d.copy(['ab'])
+    d.edit(e => e.paste(clip, 'E', P(0, 50), 'p'))
+    expect(lineName(d, 'p/ab')).toBe('连续曲线1')
+    expect(groupOf(d, 'p/ab').name).toBe('连续曲线2')
+  })
+
+  it('2. a layer deleted and made again with the same id in one edit has no type', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.layer('X', 'X'); e.layerType('X', '眼睛') })
+    d.edit(e => { e.deleteLayer('X'); e.layer('X', '新名字') })
+    expect(d.snapshot().layers.find(l => l.id === 'X')!.type).toBeUndefined()
+    d.undo()
+    expect(d.snapshot().layers.find(l => l.id === 'X')!.type).toBe('眼睛')
+  })
+})
+
 describe('moving a curve to another layer (cut and paste keeping ids)', () => {
   it('default names that collide get 副本; ids and every view stay; one undo restores all (dot 1791655253)', () => {
     const d = doc()

@@ -152,8 +152,12 @@ export function copyFrom(st: NamesState, n: net.NetworkState, g: groups.GroupsSt
     const target = first && after.find(x => x.lines.includes(first))
     if (target && target.lines.every(l => copied.has(l))) wanted.push({ kind: 'group', id: target.id, layer: target.layer, name: src.name })
   }
-  // clear the temporaries of exactly what is renamed here
-  for (const w of wanted) S(st)[w.kind] = S(st)[w.kind].filter(e => e[0] !== w.id)
+  // clear the temporary names of everything that is purely pasted — every new line and every
+  // curve made only of new lines, wanted here or not — so no temporary default takes a name
+  // that could be kept; names of existing objects stay (dot 1791655586)
+  const fresh = new Set(after.filter(x => x.lines.every(l => copied.has(l))).map(x => x.id))
+  S(st).line = S(st).line.filter(e => !copied.has(e[0]))
+  S(st).group = S(st).group.filter(e => !fresh.has(e[0]))
   const usedIn = (layer: Id) => holdersIn(st, n, g, layer)
   const late: typeof wanted = []
   for (const w of wanted) { if (usedIn(w.layer).has(w.name)) late.push(w); else set(st, w.kind, w.id, w.name) }
