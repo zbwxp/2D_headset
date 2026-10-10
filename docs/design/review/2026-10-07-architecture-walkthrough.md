@@ -4345,6 +4345,16 @@ Not chosen yet.
 - **Combinations:** knit + angle negative = angry; knit + angle positive = worried / aggrieved; no knit + slope down = innocent / tired. Which combination reads as which mood is everyday knowledge; the directions are official.
 - **Why shape and tilt are separate motions:** the same knit with a different tilt is a different mood, so each must turn on its own.
 
+**bowen (1791622598):** "那这算是表情叠加？ 然后再叠正常的角度转换？"
+
+**Claude (1791622617):** yes, exactly the two levels.
+- **In the expression level:** "knit" and "slope down" stack into worried brows.
+- **Then the angle level carries them:** at a 45° head turn, the worried brows turn and foreshorten with it.
+- **Example:** a worried streamer turns right. Tracking gives brow form −0.8, brow angle +0.7, yaw 45°. The expression level makes the worried brows; the angle level carries them to their 45° place and shape.
+- **Notes:**
+  - "Expression first, then angle" is Live2D's inner / outer relation. How exactly we compute it and in what order is decided later (dot 1791618616); fixed now only that both levels act.
+  - If carried worried brows look wrong at some angle, add a "side × worried brows" combination fix in the expression level.
+
 ### Status
 
 Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
