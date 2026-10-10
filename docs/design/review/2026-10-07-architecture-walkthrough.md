@@ -4324,6 +4324,20 @@ Not chosen yet.
 
 **Decided (bowen 1791622232):** at most two levels, angle and expression (graph row only when bowen says "写").
 
+**bowen (1791622360):** "ld眉毛三层具体说一下它是为了满足什么需求才叠了三层？"
+
+**Claude (1791622393).** From the eyebrow page (checked): eyebrows matter for expressions and move in many ways, namely "deformation", "angle" and "vertical and horizontal movement".
+- **The levels:**
+  1. the brow drawable: "Brow L Form" (−1 drawn together, +1 mountain shape);
+  2. a warp deformer: "Brow L Angle", the brow's own tilt (angry / sad);
+  3. a further deformer: "Brow L X / Y", moving the brows inward / up.
+- **Why:** on the drawable alone, every combination is drawn: 3 × 3 × 9 = 81. Spread over three levels, 3 + 3 + 9 = 15. The page's advice: up to two parameters per object; other movements go to other deformers.
+- **Correction:** all three are **expressions**. "Brow angle" is the brow's tilt, not head angle; "position" is raising / drawing the brows together, not assembly placement. Claude's earlier "the third level is the assembly's move / scale for us" (1791622192, 1791622251) is withdrawn. Head angle sits outside these three.
+- **For our two levels:**
+  - Brow form, tilt and raise all belong to the **expression level**, as three separate expression motions that are combined.
+  - Live2D avoids multiplication with more levels; we avoid it by storing each expression's change separately and combining them. Still 3 + 3 + 9 samples, no extra levels.
+  - Bad combinations get a combination fix.
+
 ### Status
 
 Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
