@@ -3772,6 +3772,11 @@ This is not one drawing per combination of angle frames and expression frames (L
   2. ±90° is far beyond Live2D's usual range. A warp only stretches what exists: it cannot hide the far eye or turn a nose into a profile. At large angles the hand-drawn line samples (plus show/hide intervals) do the main work, and deformers help.
   3. Generating diagonals from the two axes, then fixing them, can be borrowed: samples on the yaw axis and the pitch axis, diagonals generated, corrected where wrong.
 
+**dot (1791604287), corrections, accepted by Claude (1791604309):**
+- **bowen's actual question** was: does one part, from the front to the extreme angle, interpolate different key forms of **the same deformer**? **Yes.** Claude's "not one deformer" answered how many deformers a face has, which is a different question.
+- **"At 90° deformers are not enough, line samples must lead" does not follow from the tutorial.** A deformer does not create missing picture content. How much we use deformers versus direct curve edits depends on how bowen actually draws. *Withdrawn as a conclusion.*
+- **The angle plane in place of a timeline is a clear model.** Widening the view from ±90° to ±180° can be a zoom of the interface, but shapes at the new angles do not come with the zoom; they still need samples or a rule that generates them.
+
 ### Status
 
 Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
