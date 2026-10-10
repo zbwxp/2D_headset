@@ -47,6 +47,11 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Undo and transactions:** one operation succeeds or is cancelled whole, and is undone as one step.
 - **Editing:** one gesture is one edit; selection is a pre-edit and is undoable; transforms act on the points and handles a selection expands to and keep identity and connections; apply is a third kind of action.
 - **Mirror:** flip is an edit about the object's own centre; mirror apply copies a reflected source onto a different target across the one axis; a mirror link keeps two different objects paired, every change happening on both sides.
+- **Models and 元组件:** a model combines 元组件; a 元组件 is a typed, named layer; a 元线条 is its component + name, kept through renames, with a shape in each of nine views.
+- **Views:** a line added in any view appears in all nine at the same place and is adapted per view; nothing follows the front.
+- **Expressions:** two levels (angle, expression); expressions start from the front; combination fixes off by default.
+- **Room and broadcast:** one room with modes; only the front keeps hidden baselines (angle, expression); broadcast pushes the front's change everywhere, fit drops it; each is one undoable edit.
+- **Matching:** within one type, ranked, user picks.
 
 Defaults and algorithm limits are not principles; they are listed in the core README (dot 1791463344).
 
@@ -212,6 +217,53 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 |---|---|---|---|---|
 | Save / open | is | An independent module: it only reads a document through the core's interface and makes a new one from a file; no other module depends on it. *Note (implementation choices, not rules; bowen 1791511525: save/open needs no principles of his beyond this):* scope for now is "a v3 drawing saved and opened whole" (dot 1791511131): the drawing is saved, the selection and undo history are not (as in common editors); after opening, ids, connections, mirror pairs, names and the picture equal what was saved; a file that cannot be opened leaves the current drawing untouched. Not now: switching ids to UUIDs, importing v1/v2 drawings, format migration. | confirmed | bowen 1791511525; dot 1791511131 |
 
+### Models and 元组件 (written on bowen 1791648678; draft `docs/design/meta-line-graph-draft.md`)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Model | is | A combination of 元组件 that plays angle and expression animation (e.g. mouth 2 + eye 1 + ear 1). Several models may share a 元组件. Choosing among a feature's presets (eye 1–6) is runtime UI, not architecture. | confirmed | bowen 1791634995, 1791639688 |
+| 元组件 | is | A layer, with a **type** (眼睛) and a **name** (眼睛1, 圆眼1). It is a semantic group, not another geometric level. | confirmed | bowen 1791634995, 1791637819, 1791645279 |
+| 元线条 | is identified by | Its 元组件 + its name. The same name in different 元组件 means unrelated lines. *Conflicts with row "Names" (names unique across everything); open for bowen, see "Open" table.* | confirmed | bowen 1791623875, 1791634995 |
+| Renaming a 元线条 | keeps | The same line: its nine views, expressions and existing references stay connected. Only copying makes an independent new object. How ids are stored is an implementation choice. | confirmed | bowen 1791648678; dot 1791645801 |
+| 元线条 | has | One shape in each of the nine views, plus its look (strokes, show / hide intervals, fills) and its expressions. It is created automatically when drawn. There are no separate drawing lines and bone lines. | confirmed | bowen 1791624350, 1791640911 |
+| Copying 元线条 or a 元组件 | makes | New identities: editing the copy never changes the original. Every view and the expressions are copied as they are. | confirmed | bowen 1791634995, 1791640535; dot 1791637961 |
+
+### Views
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Views | are | Nine: yaw −90 / 0 / +90 × pitch −45 / 0 / +45. Between views the shape is interpolated. | confirmed (nine); pitch ±45 open (candidate value) | bowen 1791637819, 1791638945; dot 1791639052 |
+| Adding a line | in any view | Adds it in all nine views **at the same position** (a copy of the drawn shape); each view is then adapted by hand, view by view. Diagonal views may be generated. Deleting a line deletes it in all nine. Editing a shape changes only the view being edited. | confirmed | bowen 1791637819, 1791640911, 1791646999 |
+| A new line | inherits | No deformation, and no view follows the front. An optional editing helper may apply a nearby line's deformation to it, only to initialise the other views; each view is still adjusted. | confirmed | bowen 1791646999 |
+| Diagonal view | is drafted as | The front + the yaw change + the pitch change (vector sum), then adjusted by hand. | confirmed (draft method) | bowen 1791639688; dot 1791639052 |
+| Right-side views | can be drafted | From the left by a one-off mirror apply (row "Mirror apply"); they are not bound to the left afterwards. A lasting link is a separate choice (row "Mirror link"). | confirmed | bowen 1791638945; dot 1791639052, 1791645801 |
+
+### Expressions
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Levels | are | At most two: the angle level (nine views) and the expression level. Expressions combine with each other and are carried by the angle level. | confirmed | bowen 1791622232, 1791622727 |
+| Expression | is | A 0 → 1 change of chosen lines. Its 0 is always the 0,0 front; it is made at the front by default. | confirmed | bowen 1791637819, 1791638945 |
+| Combination fix (angle × expression) | is | Off by default. Added by hand only when a combination is generally wrong; it belongs to the motion (shared, not per character) and lives in the expression level, never a third level. | confirmed | bowen 1791622843, 1791623025 |
+
+### Room, modes and broadcast
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Editor | is | One room with modes (draw, angle, expression, playback). No loading between rooms. | confirmed | bowen 1791640535, 1791640911 |
+| Editing a view | shows | The new shape at once, while making and at runtime. | confirmed | bowen 1791640535 |
+| Hidden baseline (隐式骨线) | is kept | **Only at the front**, as two copies: one for angles, one for expressions. In every other view the shape itself is the bone. Saved in the making file; the runtime product does not carry it, and publishing does not delete it from the making source. | confirmed | bowen 1791642539, 1791642767, 1791647843; dot 1791645801, 1791647948 |
+| Broadcast | is | An explicit batch edit, for fine-tuning: it applies the change between the current front and the matching baseline to every other view (or every expression), hand-adjusted ones included, then sets that baseline to the current front (offset zero). Without broadcast, other views and expressions do not change. | confirmed | bowen 1791640535, 1791642539, 1791647843; dot 1791647948 |
+| Fit | is | An explicit edit at the front: set the matching baseline to the current front without changing any other view, dropping the pending change. Used when every view has been adjusted by hand (including a new line's views). | confirmed | bowen 1791647843; dot 1791647948 |
+| Baseline | is changed | Only by broadcast or fit. Hand-adjusting another view never touches it. | confirmed | bowen 1791647843 |
+| Broadcast, fit | are | One edit each: all their writes succeed or roll back together, as one undo step. Undoing fit restores the pending offset. | confirmed (follows row "Undo") | dot 1791642640, 1791647948; row "Undo" |
+
+### Matching
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Finding the closest 元组件 | searches | Only within the same type; the user picks from ranked candidates. A score suggests "probably less work", not "fewest edits". | confirmed | bowen 1791645259, 1791645279; dot 1791644993 |
+
 ### Reference images and views (Q3)
 
 | Subject | Relation | Object | Status | Source |
@@ -232,6 +284,12 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
+| Names vs 元线条 identity | conflict | Row "Names" makes every name unique across everything, and a copy is renamed "<name>副本". Row "元线条 is identified by" lets the same line name exist in different 元组件 (元上唇 in mouth 1 and mouth 3), and matching pairs lines by name. To decide: line names unique within their 元组件 only (layer names still unique), or keep global uniqueness. | open | Claude, on writing the rows |
+| Broadcast derivation | is, for now | Adding "current front − baseline" to each target, point by point | open (candidate, to verify by experiment) | Claude 1791642580; dot 1791642640, 1791645801 |
+| Copying 元线条 or a 元组件 | copies | Its baselines as they are, so an unbroadcast change is carried to the copy | open (candidate) | dot 1791642599; Claude 1791642620 |
+| Mirror drafting of the right side | pairs | Left and right lines possibly by reusing mirror-link pairs | open (candidate, to check) | dot 1791639097 |
+| Matching rank | is | Shape after normalising position and overall size (aspect ratio and corner tilt kept), parts scored separately | open (candidate) | dot 1791644993 |
+| Deriving views from a match | is | A broadcast from the match's baseline: its other views + (new front − its baseline front); needs every new line paired with one of the match's, and which front (shown or baseline) is compared is settled by experiment | open (candidate) | bowen 1791645259; Claude 1791645293; dot 1791645801 |
 | Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
 
 ### Facts about the old code at 4bc7cc2 (not rules)

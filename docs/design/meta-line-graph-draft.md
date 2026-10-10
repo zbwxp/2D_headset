@@ -1,6 +1,6 @@
 # Draft graph rows: 元线条, views, expressions, broadcast (for bowen 1791645593)
 
-**Revised after dot 1791645801.** **Status:** candidate rows, **not in the graph**. They are written into the walkthrough graph only when bowen says "写". dot attacks them first. The discussion behind each row is in `glossary-animation.md` and the walkthrough (Q32).
+**Written into the graph on bowen 1791648678** (walkthrough, tables "Models and 元组件" to "Matching"; candidates in its "Open" table). This file is kept as the draft history. They are written into the walkthrough graph only when bowen says "写". dot attacks them first. The discussion behind each row is in `glossary-animation.md` and the walkthrough (Q32).
 
 Format as in the graph: subject | relation | object | status | source.
 
