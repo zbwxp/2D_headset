@@ -3655,10 +3655,34 @@ How they combine into artworks and snapshots is derived later from bowen's workf
 
 **Claude (1791602387):** agrees with all three corrections, and withdraws the "artwork = part" and "correction last" statements.
 
+### bowen's question (1791603164)
+
+> 我没懂你们的提议 之前一稿 我的想法是因为整个脸+五官是整体旋转的，因此它们录制角度时就只能是整体移动 因此制定了0度90度画稿/快照的概念。你的意思是只有一张画稿，每个零件/图层 放在画稿上 然后像flash的帧一样，它们有一套共用帧系统但是这个帧是角度帧，然后如果是表情那么各自表情应该还有个根据t的时间动作帧？然后怎么把各自的动作镇和角度帧结合在一起？
+
+### Claude's answer, with an example (1791603197)
+
+**An expression is a dial, like the angle, not frames in time.**
+- The dials: angle 0°…90°, blink 0 (open)…1 (closed), smile 0…1.
+- Every drawing is "the look with the dials at certain values".
+- Time comes from outside: an animation or face tracking gives the dial values for each moment.
+
+**Example, three drawings:**
+1. 0°, whole face, eyes open;
+2. 90°, whole face, eyes open. These two are v1's 0° / 90° artworks, turning as a whole.
+3. 0°, only the closed eye.
+
+**Computing 45°, half blinked:**
+- **Angle:** interpolate 1 and 2 to a 45° face; the eye is carried to its 45° place and shape.
+- **Blink:** the difference between 3 and 1 ("closing the eye") is added at half strength to the carried eye.
+- **Fix:** if 90° + closed looks wrong, draw only "the closed eye at 90°" as a correction.
+
+This is not one drawing per combination of angle frames and expression frames (Live2D's eyebrow example: 81 vs 15). The angle moves the whole face; each expression draws only its own change; the two stack; bad combinations get a local fix. "Reusable deformation" is the "eye carried to 45°" step: a swapped kaomoji eye is carried the same way, but its blink is drawn anew.
+
+**Proposed for confirmation:**
+- artwork = a whole-face sample such as 0° / 90°;
+- expression = a local sample;
+- fix = a local sample at one combination.
+
 ### Status
 
-Waiting for bowen to confirm:
-1. the overall goal (dot 1791601533);
-2. the three jobs: what is drawn, reusable deformation, shape samples.
-
-Then derive artworks and snapshots from his workflow. No graph rows yet.
+Waiting for bowen: does the example match his picture? Also open: confirm the overall goal (dot 1791601533) and the three jobs. No graph rows yet.
