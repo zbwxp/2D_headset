@@ -55,7 +55,7 @@ Source: github.com/DenchiSoft/VTubeStudio (README).
   - API values override webcam / phone tracking while they keep coming.
   - A parameter must be re-sent at least once a second, otherwise it is "lost" and returns to its previous controller or its default.
 
-## Corrections (dot 1791618872, accepted by Claude 1791618890)
+## Corrections (dot 1791618872, accepted by Claude 1791618906)
 
 - **Live2D's table is a model-parameter convention** (meanings, ranges, defaults). It is not a model file format or a communication protocol. Using the same names does **not** let existing streaming software drive our models directly.
 - **`InjectParameterDataRequest` feeds data into VTube Studio** to drive models inside VTS. VTS does not send data to our vector model. Connecting our player needs an adapter.

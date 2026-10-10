@@ -4172,9 +4172,15 @@ Not chosen yet.
   3. ARKit's "relative to neutral, 0–1" matches "a motion is a change relative to a base".
   4. The model's boundary is a parameter list plus "give values, get a picture".
 
+**dot (1791618872), accepted by Claude (1791618906):**
+- Live2D's table is a model-parameter convention, not a file format or protocol. VTube Studio's inject request feeds data *into* VTS, not to us.
+- **Boundary:** face-tracking source → parameter adapter (names, directions, ranges, calibration; may be our own module) → model playback. The model knows only its own parameters.
+- The streaming interface does not decide internal storage. ±90° does not map one-to-one onto tracked angles.
+- Facts doc corrected (`aff2f77`).
+
 ### Status
 
-Waiting for bowen on the three kinds of storage, and on the parameter-list boundary; dot's review. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the three kinds of storage; dot's review. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
