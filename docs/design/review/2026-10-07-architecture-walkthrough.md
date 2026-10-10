@@ -4261,9 +4261,26 @@ Not chosen yet.
 
 **Claude (1791619997):** agrees; withdraws "no fixed limit" and "expression motions independent of angle" (what is separate is the editing mode, not the shape's independence from angle).
 
+### bowen (1791620748)
+
+> 一个变形器能挂几个参数？是什么意思举个例子，然后我希望不要挂两层以上 原因是捏脸不好适配 我希望两层就能达到理想效果就不用再叠了
+
+**Claude (1791620783):** example, one line "左上眼皮".
+- **One parameter** (eye open): 2 drawings (open 1, closed 0), interpolated.
+- **Two parameters on the same shape** (left–right angle and eye open): every combination needs a shape: 0° open, 0° closed, 90° open, 90° closed = 4. With 3 points each, 3 × 3 = 9.
+- **Three** (+ smile): 2 × 2 × 2 = 8; with 3 points each, 27. That is why Live2D recommends two per deformer, three at most: on one shape, counts **multiply**.
+- **One more level instead:** the lower level carries only open / close (2), the upper only angle (2), and the upper carries the lower. Counts **add**: 2 + 2 = 4. The cost: "closed at 90°" is inferred, not drawn; if it is wrong, add one combination fix.
+
+**Two levels are enough here (proposed):**
+- **Level 1, angle:** yaw and pitch (bowen's nine views).
+- **Level 2, expressions:** blink, mouth open, smile…, each with its amount, carried by level 1.
+- **Live2D's eyebrow uses three** (shape, angle, position). Our "position / size" is the assembly's move / scale of a whole part, with no drawn samples, so it is not a level.
+- **A combination fix** (side face + closed eye) is a recording on two dials inside level 2, not a new level.
+- **To decide:** at most two levels (angle, expression); position and size in the assembly; combination fixes in the expression level. Shaping a face then fits only these two.
+
 ### Status
 
-Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the two-level rule; the three kinds of storage (with motions spanning parts); the starting dials; dot's review. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
