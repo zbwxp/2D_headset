@@ -4301,6 +4301,17 @@ Not chosen yet.
 - **Eye open / close usually sits on an inner level** (the eye drawing itself or a lower deformer), carried by the angle level. From memory; the expressions chapter was not read. Putting it on the same deformer works too: X × Y × open = 3 × 3 × 2 = 18 shapes, which is why it is usually layered.
 - **For us:** the angle level = each line has a shape at the nine views; open / close is in the motion level, carried by the angle level.
 
+**bowen (1791622162):** "OK那这么说ld相当于只叠了一层是吧？ 对照我们的这个 它是把左右角度+眼睛开合放到一个贝塞尔网格上进行操作？ 它没有两层贝塞尔网格叠加的用法吗？"
+
+**Claude (1791622192):** no; Live2D stacks levels. The previous message was about one level, where left–right and up–down angle share one lattice. Between levels, lattices stack. Two official examples (checked):
+- **Hair** (face-angle tutorial): a new deformer is made around the earlier sway deformer and set as its parent ("Set as Parent of Selected Object"). The outer lattice carries the face angle, the inner the sway: two Bézier lattices stacked.
+- **Eyebrow:** the drawable itself carries "Brow L Form", a warp deformer outside it "Brow L Angle", and one further out "Brow L Position". Three levels, inner carried by outer.
+- **An eye usually:** outer = the eye's warp deformer (one lattice, angle X / Y, 3 × 3 key forms); inner = the eye drawing, open / close, carried by the outer. Placement for the eye is from memory; the eyebrow split is on the official page.
+- **For us:** matches bowen's two levels.
+  - Angle level = Live2D's outer lattice (each line has a shape at the nine views).
+  - Motion level = the inner (open / close, smile…), carried by the angle level.
+  - The eyebrow's third level (position) is the assembly's move / scale for us.
+
 ### Status
 
 Waiting for bowen: two levels as a design constraint (verified later on real faces); the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
