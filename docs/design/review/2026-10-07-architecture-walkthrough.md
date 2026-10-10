@@ -4081,13 +4081,33 @@ Not chosen yet.
 
 **Claude (1791617373):** agrees; asked bowen to confirm the split (part assets, motion assets, character assembly; snapshot = one sample).
 
+### bowen (1791617694)
+
+> 那么我们最初的0，0 画稿 实际上是部件资产1， 动作资产1  组合方案1 的效果对吧？  然后这几个层级有这样的需求。部件资产需要有9视图，或者说9视图以及它带动的任意角度的播片。这个需要在录制间处理。动作资产需要有0-1的动作，这个也需要播片来判断效果，然后才是角度+动作。那么合理的操作应该是有三个录制间？ 角度录制， 动作录制，混合间 三个吗？如果不考虑便利性纯粹从定义角度是不是需要三间？ 然后要怎么简化。（比如最后一个混合间实际上不支持编辑了只能播片（但这是最接近成品的房间好像并不能省略
+
+**Claude (1791617741):**
+1. **The original 0,0 drawing:** yes. It is part asset 1's sample at angle (0,0); assembly 1 seen at angle 0 with every expression at 0 shows exactly it.
+   - Aligning a term: bowen puts angle (the nine views) with the part asset, and motion assets are the 0–1 expressions. dot (1791617326) had listed "head turn" under motion assets. Recorded per bowen: **angle goes with the part; motion assets are expressions.**
+2. **By definition there are three things to edit:**
+   - angle samples (the part asset's nine views; dials yaw, pitch);
+   - expression samples (motion assets; 0–1 amounts);
+   - the assembly.
+   Three things are not three rooms; rooms are interface.
+   - **乙 (recommended): one recording room with a row of dials** (yaw, pitch, blink, smile…).
+     - Dragging any dial plays.
+     - Editing always edits the frame at the current dial values. All expression dials at 0 edits an angle sample (the part asset). Any expression dial not at 0 edits that expression's sample at the current angle (the motion asset).
+     - The assembly is a side panel.
+     - Live2D works this way: one editor with a parameter palette; select a parameter, add keys; deformation and expressions on one canvas (its tutorial does this).
+   - **The mixed state cannot be playback-only** (bowen's instinct): "side face + closed eye" is fixed exactly there. In 乙 a fix is a key set with several dials off their defaults, so the mixed state is editable without a room of its own.
+   - **甲: three rooms** (angle, motion, mixing). The most literal, but one face moves among three places.
+
 ### Status
 
-Waiting for bowen on the split. The offset algorithm is to be validated by experiment (Claude / dot). Open:
+Waiting for bowen on 甲 / 乙 and on the split (dot 1791617326, with angle moved to the part asset); dot's review. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
-- tuned transitions through loads and generation;
-- combination order for stacked motions;
-- naming lines across parts in an assembly;
+- tuned transitions;
+- stacking order;
+- naming lines across parts;
 - nine views, missing curves, expressions over angle.
 
 No graph rows yet (bowen 1791603861).
