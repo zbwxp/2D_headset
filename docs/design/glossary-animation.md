@@ -360,6 +360,19 @@ They can be chosen independently (one room may still hold two shape layers). The
 
 They are chosen independently (e.g. 1a + 2b).
 
+**bowen (1791640535):** "在runtime肯定是立刻用新形状显示 在模型制作时，应该也是希望立刻新形状。那么就一套多种模式吧。在我完成了一个既准模型之后，我想增添新眼睛，那么我复制眼睛命名为眼睛2 然后把眼睛1隐藏 然后开始专注修改眼睛2。然后0，0正脸相当于元线条修改，修改正脸的眼睛 其他视角的就都计算offset并且修改。（可以修改完成后点击广播到其他成员再广播 制作模型期间不用实时修改） 然后如果模型还没建立 相当于其他成员/视角的变形器为0 因此和0，0一样保持不变。"
+
+**Decided (bowen 1791640535):**
+- **One room, several modes** (no separate drawing / recording rooms).
+- **The view being edited shows the new shape at once** (1a), both while making and at runtime.
+- **While making a model,** other views and expressions update when he clicks "broadcast" after editing (2b), not live.
+- **Adding an eye:** copy eye 1 as eye 2, hide eye 1, edit eye 2. Editing the 0,0 front edits the 元线条 itself; broadcasting carries the change to other views by offset.
+- **Before other views exist,** their deformation is 0, so they stay equal to the front.
+
+**Claude (1791640564):**
+- Restated; reading of runtime shaping as 1a + 2a (live offset preview of every angle, per bowen 1791634995), for bowen to correct.
+- Offered graph rows for the whole framework, written on "写".
+
 ### Status
 
 Settled for now:
