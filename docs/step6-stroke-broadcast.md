@@ -1,6 +1,6 @@
 # Step 6: stroke broadcast (plan before code)
 
-**Status:** for dot's check (dot 1791655678 asked for rules and read / write paths). Nothing is coded until dot has checked it.
+**Status:** checked by dot 1791655825 with two corrections (rules 1 and 4 below, and the auto-bind scope); coding starts with them.
 
 **Decided input:**
 - bowen 1791650085: line width and stroke may differ per view; a button broadcasts them to the other views, so they need not be set nine times.
@@ -11,12 +11,17 @@ It is separate from the shape broadcast (offsets, baselines; stage 2).
 
 ## Rules
 
-1. **What is copied.** For each chosen line, the edited view's values are assigned to every other **view** layer. Expression and record layers are not written; their owners decide later.
-   - its stroke (width, profile);
-   - the end strokes at its two end points (*proposal*: bowen's "笔触" read as including the tapers). A point with no end stroke in the edited view clears it in the others, since an assignment makes them equal.
+1. **What is copied: the chosen lines' own strokes, plus the end strokes at their end points** (dot 1791655825). The edited view's values are assigned to every other **view** layer; expression and record layers are not written, since their owners decide later.
+   - Each chosen line's own stroke (width, profile).
+   - The end strokes at the chosen lines' end points, written **once per point** (deduplicated), *proposal*: bowen's "笔触" read as including the tapers. A point with no end stroke in the edited view clears it in the others, since an assignment makes them equal.
+   - An end point may be shared with an unchosen line. That line's own width and profile stay, but the shared point's end stroke is assigned like any other: no promise that shared point attributes stay.
+   - All source values are read before any write; the source view is not written.
 2. **Not copied:** shapes (positions, handles), arc radii (*proposal*: a radius is a join's geometry, not 笔触), join modes, links, fills.
 3. **Which lines:** the selected lines, or explicit `units` (as transforms and delete take them). Points or handles alone, or nothing, are refused (`select-lines-to-broadcast`), as delete refuses them.
-4. **One edit:** one undo step. The usual commit runs, so a locked line whose stroke or free-end end stroke would change in any view refuses the whole edit (locks per view, existing comparison). Nothing is settled differently, since no geometry changes.
+4. **One edit:** one undo step, through the usual commit. A locked line whose stroke or free-end end stroke would change in any view refuses the whole edit (locks per view, existing comparison).
+   - **Auto-bind scope** (dot 1791655825: "the commit doesn't change geometry" was wrong). Until now the edited view's settle bound *every* coincident pair in that view, including legal coincidences left by edits in other views (Q2). So switching to that view only to broadcast strokes would have bound them.
+   - Auto-bind now considers only coincidences that **this edit made** in the edited view: a coincident set binds only if it holds a point this edit created, moved directly, relocated, or that link alignment moved in this settle. An old legal coincidence nobody touched stays two points.
+   - A broadcast therefore binds nothing. A move or structural operation in the same edit still gets its full settle.
 5. **Mirror:** no pairing. It writes only the chosen lines in other views; a mirror link (front only) is not involved.
 6. **Where:** module `views` (package 3), called by a thin `Editor.broadcastStroke(units?)`. `views` then depends on `network` and `joins`.
 
@@ -44,3 +49,5 @@ It is separate from the shape broadcast (offsets, baselines; stage 2).
 - A locked line refuses the whole broadcast and writes nothing.
 - Nothing selected, or points only, is refused.
 - An end stroke absent in the edited view is cleared elsewhere.
+- A shared end point is written once.
+- In a view with a legal coincidence (made from another view): a stroke broadcast keeps the two points and their connections. A move of an unrelated point there keeps them too; a move of one of the two points in that view binds them.
