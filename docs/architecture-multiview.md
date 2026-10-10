@@ -229,7 +229,23 @@ No multi-view save or copy is exposed in this step. Expressions, broadcast and t
 - the angle-domain scheme;
 - whether the 90° adjustment stays a "save or discard" draft.
 
-## 7. Still open for bowen (not blocking)
+## 7. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
 
-- The right-side mirror draft row.
-- Continuous-curve name scope.
+**For bowen to choose:**
+1. 90° minimal move in an in-between correction: a draft to save or discard (甲, v103), or applied at once and undoable (乙).
+2. Expression preview before broadcast (§4 examples): acceptable, or should expressions follow the front automatically?
+3. Locks: shape and stroke protected in every view and expression (broadcast included); fit allowed on a locked line.
+4. Right-side mirror draft: withdrawn, or a separate whole-view flip tool.
+5. Continuous-curve names unique within their 元组件.
+6. Old single-view files: lifted to nine equal views, or unsupported.
+
+**Defaults** (not confirmed by bowen; used unless he objects):
+- split at the same t in every layer;
+- unbind: old position + the same offset;
+- link creation in every view;
+- paste: all views, the same offset;
+- arc radius per view;
+- visibility / lock, fill colour and join mode shared;
+- new lines and split-off points start with linear response.
+
+**Ours to verify:** the angle-domain scheme, the expression carry algorithm, response-curve inheritance, expression paste mapping, measured undo cost.
