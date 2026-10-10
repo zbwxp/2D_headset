@@ -49,7 +49,8 @@ Dependencies point downward only; `test/boundaries.test.ts` is extended to enfor
 | `groups`, `joins`, `links`, `fills`, `derived`, `locks`, `editing`, `apply`, `names`, `clipboard` | as today | They take a layer-bound handle where they read geometry. `joins` keeps modes; radius and end strokes move to `shapes`. `locks` compares one layer; the caller loops. `clipboard` carries every layer. `names`: line (and, to confirm, group) names unique within their layer. |
 
 **Package 2 — meta structure** (`src/meta`, new):
-- **Owns:** the 元组件 type of each layer.
+- **Owns the rules, not a second state** (dot 1791650999): types, names and copy results live in the one document state, under the same undo, rollback and save. `meta` keeps its part of that state, opaque like every module, and has no store outside the document transaction.
+- **Its state:** the 元组件 type of each layer.
 - **Rules:**
   - 元线条 identity = (layer, line name), kept through renames since ids do not change;
   - lookup by identity;
@@ -83,7 +84,7 @@ Dependencies point downward only; `test/boundaries.test.ts` is extended to enfor
 
 **Package 6 — document and edit transaction** (`src/document`):
 - **Owns:** the whole state (topology, shapes, groups, joins, links, fills, selection, apply, names, meta, animation) and undo / redo.
-- **`Core.edit(fn, { layer })`:** the edit's target layer, explicit and given by interaction (default `view:0,0`).
+- **`Core.edit(fn, { layer })`:** the edit's target layer, explicit and given by interaction. **No default** (dot 1791650999): a multi-view call without a layer is refused, never silently the front. The old single-view entry used by today's tests is a separate, isolated compatibility layer that names `view:0,0` itself.
 - **Pipeline:** structural ops → Rule A; `views` settle orchestration; names check; lock check for every view and expression layer (not baselines); publish; one undo step.
 - **Reads per layer:** `snapshot(layer)`, `geometry(layer)`, `nearby(layer, …)`.
 - **`afterApply`'s scratch settle** uses the same orchestration.
@@ -123,6 +124,41 @@ Each line: what acts → which layers change → which settle runs.
 15. **Playback (stage 3, 4).** `evaluate(model, params)`: the angle interpolation of the view layers, plus the expression differences carried by the angle level (carry algorithm *open*).
 16. **Save, reopen, continue.** Every layer is saved. Open checks without new auto-bind; a chance coincidence in a side view stays two points. Broadcast after reopening gives the same result.
 17. **Undo of anything above.** The whole state is one draft, so every layer goes back together.
+
+## 3a. Interpolation between views is adjustable (bowen 1791650951, 1791651008)
+
+New requirement:
+- Between two views (e.g. 0 → 90), the change need not be linear.
+- At any position, not only 30° or 60°, bowen can move there and adjust the in-between.
+
+So `evaluate` takes, besides the nine views, **in-between adjustments at any angle** on a segment. *Open for bowen (Claude, asked):* is an adjustment only timing, or also shape?
+- **甲 timing:** every point still travels the straight path between the two views, but faster or slower (an easing curve per segment).
+- **乙 shape:** an extra in-between key: a shape at that angle, so points may leave the straight path (e.g. a nose that bulges at 40°).
+
+If 乙: an in-between key is one more shape layer (`key:<id>` at an angle), and Rule A carries it through every structural change for free. If 甲: per-segment curves are plain data owned by `animation`, read by `evaluate`. Either fits §1.
+
+## 3b. Build constraints (dot 1791650999, written for the withdrawn §5a; they apply here)
+
+1. **No intermediate version loses data.** Saving and the clipboard must carry every layer by the time any multi-view editing entry is public. Until then, no multi-view public entry, and the old entry never silently saves only the front.
+2. **No second state:** see `meta` above.
+3. **Every new interface names its layer;** the 0,0 compatibility entry is isolated, and trial, read and lock comparison are bound to a state and a layer.
+4. **Proposals and acceptance are aligned:**
+   - which proposals are adopted (split at the same t, unbind offset, per-view arc radius…) is stated before each step;
+   - lifting old single-view files to nine views is a separate compatibility decision, not part of step 1;
+   - "existing tests pass" means unchanged rules do not regress, and tests of intentionally changed rules (name scope, no auto-bind at open) are updated explicitly.
+
+**First step, if this framework passes:**
+- view definitions;
+- isolated layered storage (`shapes`);
+- the state + layer bound accessor.
+
+Tests for it:
+- the old front regression;
+- different layers never share data;
+- different documents and trial copies never share data;
+- a failed edit rolls back whole.
+
+No multi-view save or copy behaviour is exposed in this step. Passing step 1 does not accept the later steps.
 
 ## 4. What this needs from dot's attack
 
