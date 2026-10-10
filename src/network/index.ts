@@ -644,8 +644,8 @@ export interface LinesData {
   lines: { id: Id; a: Id; b: Id; state: ElementState }[]
   /** The shape layer the copy was read in (one of `layers`). */
   source: string
-  /** The points' and lines' shapes in every shape layer of the copied drawing. */
-  layers: { key: string; points: { id: Id; position: Vec }[]; lines: { id: Id; ha: Vec; hb: Vec; stroke: Stroke }[] }[]
+  /** The points' and lines' shapes in every shape layer of the copied drawing, with the layer's kind. */
+  layers: { key: string; kind: shapes.LayerKind; points: { id: Id; position: Vec }[]; lines: { id: Id; ha: Vec; hb: Vec; stroke: Stroke }[] }[]
 }
 
 /** The given lines and their end points as plain data (copies), read from `read` and from every layer of its drawing. */
@@ -661,7 +661,7 @@ export function linesData(read: NetworkState, lineIds: readonly Id[]): LinesData
     points: pointIds.map(id => ({ id })),
     lines: ids.map(id => { const l = rawLine(read, id); return { id, a: l.a, b: l.b, state: { ...l.state } } }),
     source: K(read),
-    layers: keys(read).map(key => ({ key, ...layerData(of(read, key)) })),
+    layers: shapes.layers(SH(read)).map(({ key, kind }) => ({ key, kind, ...layerData(of(read, key)) })),
   }
 }
 

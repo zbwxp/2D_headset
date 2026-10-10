@@ -173,6 +173,21 @@ describe('insert (paste) on several layers', () => {
     expect(JSON.stringify(net.exportData(dst))).toBe(before)
   })
 
+  it('a paste refuses a clip whose layers would be left over: an expression or record layer, or a view the drawing lacks (dot 1791653018)', () => {
+    const clipOf = (n: net.NetworkState) => ({ network: net.linesData(n, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } })
+    const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
+    const target = () => { const t = net.create(FRONT); net.addLayer(t, 'M'); return t }
+    // the clip carries a record layer; the drawing has only views
+    expect(() => clipboard.insert(parts(target()), net.emptyChanges(), clipOf(threeLayers()), 'M', { x: 0, y: 0 }, id => `x/${id}`)).toThrow(/paste-layer-unmatched: the copy's shape layer\(s\) view:90,0, base:angle/)
+    // the clip carries a view the drawing lacks
+    expect(() => clipboard.insert(parts(target()), net.emptyChanges(), clipOf(threeLayers(VIEWS3)), 'M', { x: 0, y: 0 }, id => `x/${id}`)).toThrow(/paste-layer-unmatched/)
+    // the same views on both sides: pasted
+    const t = target(); net.addShapeLayer(t, SIDE, 'view', views.FRONT); net.addShapeLayer(t, TOP, 'view', views.FRONT)
+    const map = clipboard.insert(parts(t), net.emptyChanges(), clipOf(threeLayers(VIEWS3)), 'M', { x: 0, y: 0 }, id => `x/${id}`)
+    expect([...map.lines.values()]).toEqual(['x/l1'])
+    expect(net.point(net.of(t, SIDE), 'x/a').position).toEqual({ x: 2, y: 3 })
+  })
+
   it('a document paste maps view layers by the same key only; a record layer, or a view layer the clip lacks, is refused', () => {
     const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } }
     const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
@@ -196,6 +211,7 @@ describe('insert (paste) on several layers', () => {
     expect(bad(c => { c.network.layers.push(structuredClone(c.network.layers[0])) })).toThrow(/appears twice/)
     expect(bad(c => { delete c.network.source })).toThrow(/source layer is not text/)
     expect(bad(c => { c.network.layers[0].lines[0].stroke.width = 'wide' })).toThrow(/stroke width is not a finite number/)
+    expect(bad(c => { c.network.layers[0].kind = 'magic' })).toThrow(/unknown kind/)
   })
 })
 

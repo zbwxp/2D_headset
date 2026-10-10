@@ -58,6 +58,8 @@ export function check(v: unknown): Clip {
   const source = d.str(nw.source, 'clip source layer')
   const layers = d.arr(nw.layers, 'clip shape layers').map((x, i) => {
     const L = d.obj(x, `clip shape layer ${i}`), key = d.str(L.key, `clip shape layer ${i} key`)
+    const kind = d.str(L.kind, `clip shape layer ${key} kind`) as 'view' | 'expression' | 'record'
+    if (!['view', 'expression', 'record'].includes(kind)) d.fail(`clip shape layer ${key} has an unknown kind`)
     const lp = d.arr(L.points, `clip shape layer ${key} points`).map((y, k) => { const P = d.obj(y, `clip shape layer ${key} point ${k}`); return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`) } })
     const ll = d.arr(L.lines, `clip shape layer ${key} lines`).map((y, k) => {
       const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`), sk = d.obj(S.stroke, `clip shape layer ${key} line ${id} stroke`)
@@ -66,7 +68,7 @@ export function check(v: unknown): Clip {
     d.unique(lp.map(p => p.id), `clip shape layer ${key} point`); d.unique(ll.map(l => l.id), `clip shape layer ${key} line`)
     if (lp.length !== pointIds.size || lp.some(p => !pointIds.has(p.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's points`)
     if (ll.length !== lineIds.size || ll.some(l => !lineIds.has(l.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's lines`)
-    return { key, points: lp, lines: ll }
+    return { key, kind, points: lp, lines: ll }
   })
   d.unique(layers.map(L => L.key), 'clip shape layer')
   if (!layers.some(L => L.key === source)) d.fail(`the clip has no shape layer ${source}, its source`)
@@ -109,15 +111,23 @@ export function check(v: unknown): Clip {
 /**
  * The correspondence a paste uses: each view layer of the drawing takes the clip's view
  * layer of the same key. Any other layer (expression, record), or a view layer the clip
- * lacks, has none, so the paste is refused; those owners decide their own mapping later
- * (dot 1791652760).
+ * lacks, has none (dot 1791652760); those owners decide their own mapping later.
  */
 export function viewLayerMap(d: Parts, clip: Clip): Map<string, string> {
-  const inClip = new Set(clip.network.layers.map(L => L.key))
-  return new Map(net.shapeLayers(d.network).filter(l => l.kind === 'view' && inClip.has(l.key)).map(l => [l.key, l.key]))
+  const views = new Set(clip.network.layers.filter(L => L.kind === 'view').map(L => L.key))
+  return new Map(net.shapeLayers(d.network).filter(l => l.kind === 'view' && views.has(l.key)).map(l => [l.key, l.key]))
 }
+/**
+ * A paste needs a correspondence both ways: every drawing layer has a clip layer
+ * (network checks it), and every clip layer is used — a clip layer left over (an
+ * expression or record layer, or a view the drawing lacks) is refused, never dropped
+ * (dot 1791653018).
+ */
 export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): net.CopyMap {
-  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset, viewLayerMap(d, clip))
+  const map = viewLayerMap(d, clip), used = new Set(map.values())
+  const left = clip.network.layers.filter(L => !used.has(L.key)).map(L => L.key)
+  if (left.length) throw new net.Refusal('paste-layer-unmatched', `paste-layer-unmatched: the copy's shape layer(s) ${left.join(', ')} have no place in this drawing`)
+  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset, map)
 }
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id) {
   joins.insert(d.joins, d.network, clip.joins, map)
