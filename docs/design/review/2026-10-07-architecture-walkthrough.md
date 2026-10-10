@@ -4231,9 +4231,23 @@ Not chosen yet.
   - the usual route would be our own player taking tracking input and sending its picture to OBS-type software (window capture, browser source, virtual camera).
   - Asked whether to verify.
 
+### bowen (1791619891)
+
+> 怎么直通直播不重要。从直播的软件搜到的接口能佐证我们确实需要表情录制这个单独的录制模式对吧？（我们一版最后只推进到了角度录制）然后从ld的经验看它们实际上也是只有角度变形器和表情变形器。它们还有角度+表情叠加修正的变形器吗？没有了吧？也就是变形器最多叠加的情况吧
+
+**Claude (1791619930):**
+1. **Expression recording as its own mode: yes, the evidence supports it.**
+   - Tracked blink, mouth open and smile come independently of head angle, "relative to neutral", mostly per side. The model needs expression motions made on their own to take them.
+   - Hotkey expressions (VTube Studio expression files) set the model's expression parameters, so they too need them to exist.
+2. **Live2D has no separate "correction deformer", but combination fixes exist**, through one object on two parameters (pages checked above):
+   - The eyebrow page recommends up to two parameters per object, three if needed, not four or more. With two parameters, shapes are set at their combinations (e.g. side angle × eye closed), which is the combination fix itself.
+   - The face-angle tutorial: after keying Angle X and Angle Y, the diagonals are generated with "Auto Generate 4 Corners", then adjusted by hand.
+   - Stacking has no fixed depth: deformers nest (the eyebrow example: object + two deformers). Blend Shape "adds differences" without parameter multiplication, another way to stack.
+- **For us:** a combination fix is no new kind of thing. It is a recording on two dials, with samples at some combinations (e.g. side × closed eye). It is the same mechanism as the yaw × pitch diagonals: computed first, fixed by hand if bad.
+
 ### Status
 
-Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials; whether to verify the streaming-compatibility route. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials; dot's check of the Live2D reading. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
