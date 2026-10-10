@@ -4278,9 +4278,19 @@ Not chosen yet.
 - **A combination fix** (side face + closed eye) is a recording on two dials inside level 2, not a new level.
 - **To decide:** at most two levels (angle, expression); position and size in the assembly; combination fixes in the expression level. Shaping a face then fits only these two.
 
+**dot (1791620824):**
+- **"How many parameters a deformer carries"** = how many dials decide its shape together. An eyelid looking at yaw, pitch and closure carries three and can still be one deformer.
+- **bowen's "at most two levels" is a good design constraint:** angle one level, motion one level. Blink, smile… combine inside the motion level; no new outer level per motion.
+- **Correction to Claude:** "two levels already reach the ideal" cannot be promised.
+  - Two levels reduce nesting, not combination complexity. A fix for "side face, head up, eyes closed, smiling" may depend on four dials at once.
+  - In the motion level it is still two levels, but the fix data does not vanish.
+- **Conclusion:** hold to two levels; reach the look with in-level samples and combination fixes; verify later on real faces. The limit is on nesting depth, not on the number of motions.
+
+**Claude (1791620848):** agrees; withdraws "two levels are enough here".
+
 ### Status
 
-Waiting for bowen: the two-level rule; the three kinds of storage (with motions spanning parts); the starting dials; dot's review. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen: two levels as a design constraint (verified later on real faces); the three kinds of storage (with motions spanning parts); the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
