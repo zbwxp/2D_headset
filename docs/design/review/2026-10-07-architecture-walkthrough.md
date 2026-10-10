@@ -4178,9 +4178,27 @@ Not chosen yet.
 - The streaming interface does not decide internal storage. ±90° does not map one-to-one onto tracked angles.
 - Facts doc corrected (`aff2f77`).
 
+### bowen (1791619270): "从面捕参数能反推出什么先说一下"
+
+**Claude (1791619310).** Basis: the ARKit and VTube Studio pages read above; points from memory are marked.
+1. **Which dials the model needs at least:**
+   - **head:** left / right, up / down, tilt (tilt = rotating the whole picture, no samples);
+   - **eyes:** each eye's closure *separately*, squint, wide; **gaze** (look up / down / left / right), so the pupil moves inside the eye as a part of its own;
+   - **brows:** inner up, outer up, down, each side;
+   - **mouth:** jaw open, smile per corner, frown per corner, pucker / O shape, press…;
+   - **cheek puff, tongue.**
+   - ARKit: a simple cartoon can use only jaw open and the two blinks, so start small.
+2. **Left and right are driven separately.** Almost every coefficient has two sides (one-eye blinks, crooked smiles). Authoring may use mirror link (graph); playback has a dial per side.
+3. **Everything is relative to neutral:** 0 neutral, 1 maximum. Every angle needs a neutral state (the angle recording); motions are changes on it. This matches Q32.
+4. **Many at once:** a smile moves several coefficients together, so stacking is the normal case. That is why motions must add.
+5. **Real time:** a new set of values every frame (tens per second, from memory), one picture per frame.
+6. **Angles are not one to one:** a front camera loses the face at strong turns (from memory). Tracked angles may span less than our ±90; the adapter scales or maps them.
+7. **What tracking cannot give:** what this face looks like, and how a motion looks at the side. Our samples give those.
+- **Suggested starting dials** (after Live2D's standard list): head left–right, head up–down, left eye open, right eye open, mouth open, mouth smile, gaze left–right, gaze up–down.
+
 ### Status
 
-Waiting for bowen on the three kinds of storage; dot's review. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the three kinds of storage and on the starting dials; dot's review. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
