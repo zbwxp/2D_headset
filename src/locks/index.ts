@@ -54,7 +54,7 @@ function owned(v: View, id: Id, g: Gone): string | undefined {
   const freeEnd = (point: Id) => {
     const others = net.linesAt(v.network, point).filter(e => e.line.id !== id && !g.line(e.line.id, point))
     const free = !others.length && !links.partners(v.links, point).filter(p => !g.partner(p)).length
-    return free ? joins.endStroke(v.joins, point) ?? {} : {}
+    return free ? joins.endStroke(v.joins, v.network, point) ?? {} : {}
   }
   const pos = (p: Id) => net.point(v.network, p).position
   return JSON.stringify([pos(l.a), pos(l.b), l.ha, l.hb, l.stroke, freeEnd(l.a), freeEnd(l.b)])

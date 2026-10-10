@@ -57,7 +57,7 @@ function outline(n: net.NetworkState, j: joins.JoinsState): Outline {
   const full = net.curves(n)
   const len = new Map(all.map(l => [l.id, arcLength(full.get(l.id)!)]))
   const endAt = (line: Id, point: Id): net.End => (net.line(n, line).a === point ? 'a' : 'b')
-  const arcRows = joins.rows(j).filter(r => r.mode === 'arc')
+  const arcRows = joins.rows(j, n).filter(r => r.mode === 'arc')
   // The trim at a line end is the largest arc radius there, at most 45% of the line.
   const trim = new Map<string, number>()
   for (const r of arcRows) for (const l of r.lines) {

@@ -170,11 +170,12 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     return { id: tp, target }
   })
   const lineData = srcLines.map(id => ({ id, line: net.line(rn, id), to: m.lines.get(id)! }))
-  const endData = [...m.points].map(([sp, tp]) => ({ tp, stroke: joins.endStroke(d.joins, sp) }))
+  // radii and end strokes are per view: an apply (front only) reads and writes the front's (step 4)
+  const endData = [...m.points].map(([sp, tp]) => ({ tp, stroke: joins.endStroke(d.joins, n, sp) }))
   const joinRows = [...m.points].map(([sp, tp]) => ({
     tp,
-    old: joins.rowsAt(d.joins, tp).filter(r => tgtLines.has(r.lines[0]) && tgtLines.has(r.lines[1])),
-    add: joins.rowsAt(d.joins, sp).filter(r => m.lines.has(r.lines[0]) && m.lines.has(r.lines[1])),
+    old: joins.rowsAt(d.joins, n, tp).filter(r => tgtLines.has(r.lines[0]) && tgtLines.has(r.lines[1])),
+    add: joins.rowsAt(d.joins, n, sp).filter(r => m.lines.has(r.lines[0]) && m.lines.has(r.lines[1])),
   }))
   // joins across an endpoint link inside the selection (dot, review of d5e2704)
   const srcPts = new Set(m.points.keys()), tgtPts = new Set(m.points.values())
@@ -197,13 +198,14 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
   }
   for (const { tp, stroke } of endData) {
     if (stroke) joins.setEndStroke(d.joins, n, tp, stroke)
-    else joins.clearEndStroke(d.joins, tp)
+    else joins.clearEndStroke(d.joins, n, tp)
   }
   for (const { tp, old, add: rows } of joinRows) {
-    for (const r of old) joins.removeJoin(d.joins, tp, r.lines[0], r.lines[1])
-    for (const r of rows) {
-      joins.setJoin(d.joins, n, tp, m.lines.get(r.lines[0])!.to, m.lines.get(r.lines[1])!.to, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
-    }
+    // a row that stays keeps the other views' radii; only rows really gone are removed (dot 1791654260)
+    const next = rows.map(r => ({ r, l0: m.lines.get(r.lines[0])!.to, l1: m.lines.get(r.lines[1])!.to }))
+    const stays = new Set(next.map(x => joins.rowKey(tp, x.l0, x.l1)))
+    for (const r of old) if (!stays.has(joins.rowKey(tp, r.lines[0], r.lines[1]))) joins.removeJoin(d.joins, n, tp, r.lines[0], r.lines[1])
+    for (const { r, l0, l1 } of next) joins.setJoin(d.joins, n, tp, l0, l1, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
     net.touch(ch, tp)
   }
   for (const x of linkJoinsOld) links.removeJoin(d.links, x.a, x.b, x.lines[0], x.lines[1])

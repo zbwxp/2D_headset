@@ -185,20 +185,6 @@ describe('mirror links act at 0,0 only', () => {
   })
 })
 
-describe('arc radii and end strokes are still shared storage (dot 1791653388)', () => {
-  it('setting them from a side view is refused and writes nothing; from the front it works; other join modes are shared and allowed', () => {
-    const d = doc()
-    d.edit(e => e.line('bc', 'b', { id: 'c', layer: 'L', position: P(20, 10) }))
-    const before = all(d)
-    expect(() => d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }))).toThrow(/per-view-storage-pending/)
-    expect(() => d.editIn(SIDE, e => e.endStroke('a', { taper: 1 }))).toThrow(/per-view-storage-pending/)
-    expect(all(d)).toBe(before)
-    d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'cusp' }))
-    d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }); e.endStroke('a', { taper: 1 }) })
-    expect(d.snapshot().joins.find(r => r.point === 'b')!.mode).toBe('arc')
-  })
-})
-
 describe('the trial reads of an edit are settled in every view (dot 1791653958)', () => {
   it('1. a smooth join then a split in one front edit: every view splits its settled curve', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })

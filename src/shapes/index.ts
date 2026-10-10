@@ -23,11 +23,17 @@ declare const opaque: unique symbol
 export type ShapesState = { readonly [opaque]: 'shapes' }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
+/** Per-layer values keyed by their owner (joins: a radius under its join row's key, an end stroke under its point). */
+export type Slot = 'radius' | 'end'
+export type EndValue = Readonly<Record<string, number | string>>
 interface LayerData {
   key: string
   kind: LayerKind
   points: Record<Id, Vec>
   lines: Record<Id, { ha: Vec; hb: Vec; stroke: Mutable<Stroke> }>
+  /** Values owned by other modules, stored per layer (step 4, dot 1791654260): shapes only stores them. */
+  radius: Record<string, number>
+  end: Record<string, Record<string, number | string>>
 }
 interface Store { layers: LayerData[] }
 const S = (s: ShapesState) => s as unknown as Store
@@ -59,7 +65,7 @@ function layer(s: ShapesState, key: string): LayerData {
 /** A drawing's shapes with one empty first layer. */
 export function create(first: LayerInfo): ShapesState {
   if (typeof first.key !== 'string' || !first.key) throw new Error('A shape layer needs a key')
-  return { layers: [{ key: first.key, kind: kindIn(first.kind), points: {}, lines: {} }] } as Store as unknown as ShapesState
+  return { layers: [{ key: first.key, kind: kindIn(first.kind), points: {}, lines: {}, radius: {}, end: {} }] } as Store as unknown as ShapesState
 }
 
 /** A new layer holding a copy of `from` (every point and line has a shape in every layer). */
@@ -67,7 +73,7 @@ export function addLayer(s: ShapesState, key: string, kind: LayerKind, from: str
   if (typeof key !== 'string' || !key) throw new Error('A shape layer needs a key')
   if (S(s).layers.some(l => l.key === key)) throw new Error(`Shape layer ${key} already exists`)
   const src = layer(s, from)
-  S(s).layers.push({ key, kind: kindIn(kind), points: structuredClone(src.points), lines: structuredClone(src.lines) })
+  S(s).layers.push({ key, kind: kindIn(kind), points: structuredClone(src.points), lines: structuredClone(src.lines), radius: structuredClone(src.radius), end: structuredClone(src.end) })
 }
 
 export const layers = (s: ShapesState): readonly LayerInfo[] => Object.freeze(S(s).layers.map(l => Object.freeze({ key: l.key, kind: l.kind })))
@@ -108,6 +114,41 @@ export function setStroke(s: ShapesState, key: string, id: Id, stroke: Stroke) {
   if (!l) throw new Error(`No line ${id} in shape layer ${key}`)
   l.stroke = strokeIn(stroke)
 }
+
+// ---- per-layer values owned by other modules -----------------------------------
+
+function slotIn(slot: Slot, v: unknown): number | Record<string, number | string> {
+  if (slot === 'radius') {
+    if (typeof v !== 'number' || !Number.isFinite(v) || !(v > 0)) throw new Error('A radius must be a finite number above zero')
+    return v
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('An end stroke must be an object')
+  const o = v as Record<string, unknown>, out: Record<string, number | string> = {}
+  for (const k of Object.keys(o).sort()) {
+    const x = o[k]
+    if (x === undefined) continue
+    if (typeof x === 'number' ? !Number.isFinite(x) : typeof x !== 'string') throw new Error('End stroke values must be finite numbers or strings')
+    put(out, k, x)
+  }
+  return out
+}
+const slotOut = (v: number | Record<string, number | string>) => (typeof v === 'number' ? v : Object.freeze({ ...v }))
+
+/** A value in one layer, or undefined. */
+export function slotGet(s: ShapesState, key: string, slot: Slot, id: string): number | EndValue | undefined {
+  const v = own(layer(s, key)[slot] as Record<string, number | Record<string, number | string>>, id)
+  return v === undefined ? undefined : slotOut(v)
+}
+/** Write a value in one layer (copied in; end strokes stored with sorted keys, one form per content). */
+export function slotSet(s: ShapesState, key: string, slot: Slot, id: string, v: number | EndValue) {
+  put(layer(s, key)[slot] as Record<string, unknown>, id, slotIn(slot, v))
+}
+/** Remove a value from one layer. */
+export function slotDropIn(s: ShapesState, key: string, slot: Slot, id: string) { drop(layer(s, key)[slot], id) }
+/** Remove a value from every layer. */
+export function slotDrop(s: ShapesState, slot: Slot, id: string) { for (const L of S(s).layers) drop(L[slot], id) }
+/** Every key holding a value in one layer. */
+export const slotKeys = (s: ShapesState, key: string, slot: Slot): string[] => Object.keys(layer(s, key)[slot])
 
 // ---- structure follows (called by network only) ----------------------------
 
@@ -167,7 +208,17 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
     }
     if (Object.keys(P).length !== ids.points.length) fail(`shape layer ${L.key} has positions for points that do not exist`)
     if (Object.keys(Ls).length !== ids.lines.length) fail(`shape layer ${L.key} has shapes for lines that do not exist`)
-    return { key: L.key, kind: L.kind as LayerKind, points, lines }
+    // values of other modules: types here; their keys are checked by their owners (joins)
+    const R = obj(L.radius, `shape layer ${L.key} radius`), E = obj(L.end, `shape layer ${L.key} end strokes`)
+    const radius: Record<string, number> = {}, end: Record<string, Record<string, number | string>> = {}
+    for (const k of Object.keys(R)) { const r = num(R[k], `radius ${k} in ${L.key}`); if (!(r > 0)) fail(`radius ${k} in ${L.key} is not above zero`); put(radius, k, r) }
+    for (const k of Object.keys(E)) {
+      const e = obj(E[k], `end stroke ${k} in ${L.key}`), kept: Record<string, number | string> = {}
+      for (const f of Object.keys(e)) { const x = e[f]; if (typeof x !== 'string') num(x, `end stroke ${k} ${f} in ${L.key}`); put(kept, f, x as number | string) }
+      if (JSON.stringify(Object.keys(kept)) !== JSON.stringify(Object.keys(kept).sort())) fail(`end stroke ${k} in ${L.key} is not in its stored form`)
+      put(end, k, kept)
+    }
+    return { key: L.key, kind: L.kind as LayerKind, points, lines, radius, end }
   })
   return { layers } as Store as unknown as ShapesState
 }

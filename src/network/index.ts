@@ -136,6 +136,18 @@ export const boundLayer = (n: NetworkState): string => K(n)
 export const shapeLayers = (n: NetworkState): readonly shapes.LayerInfo[] => shapes.layers(SH(n))
 /** A new shape layer holding a copy of `from`. */
 export function addShapeLayer(n: NetworkState, key: string, kind: shapes.LayerKind, from: string) { shapes.addLayer(SH(n), key, kind, from) }
+/**
+ * Per-layer values owned by other modules (joins: arc radii, end strokes), stored in the
+ * shape layers (step 4). Keys and references are their owner's; these only read and
+ * write the bound layer, or drop a value from every layer.
+ */
+export type Slot = shapes.Slot
+export const slot = (n: NetworkState, s: Slot, key: string) => shapes.slotGet(SH(n), K(n), s, key)
+export const setSlot = (n: NetworkState, s: Slot, key: string, v: number | shapes.EndValue) => shapes.slotSet(SH(n), K(n), s, key, v)
+export const dropSlotHere = (n: NetworkState, s: Slot, key: string) => shapes.slotDropIn(SH(n), K(n), s, key)
+export const dropSlot = (n: NetworkState, s: Slot, key: string) => shapes.slotDrop(SH(n), s, key)
+export const slotKeys = (n: NetworkState, s: Slot) => shapes.slotKeys(SH(n), K(n), s)
+
 /** Every shape layer key of the drawing. */
 const keys = (n: NetworkState) => shapes.layers(SH(n)).map(l => l.key)
 

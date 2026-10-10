@@ -180,7 +180,7 @@ describe('paste', () => {
       ['a negative stroke width', bad(c => { c.network.layers[0].lines[0].stroke.width = -2 }), /positive number/],
       ['a clip without its source shape layer', bad(c => { c.network.source = 'view:9,9' }), /no shape layer view:9,9, its source/],
       ['a join on a line outside the clip', bad(c => { c.joins.rows[0].lines[0] = 'k1' }), /points outside the clip/],
-      ['an arc join without a radius', bad(c => { delete c.joins.rows.find((r: any) => r.mode === 'arc').radius }), /positive radius/],
+      ['an arc join without a radius in one view', bad(c => { c.joins.layers[4].radii.pop() }), /positive radius/],
       ['an unknown join mode', bad(c => { c.joins.rows[0].mode = 'wavy' }), /Unknown join mode wavy/],
       ['a fill on a line outside the clip', bad(c => { c.fills[0].lines[0] = 'gone' }), /points outside the clip/],
       ['a name for a line outside the clip', bad(c => { c.names.lines[0][0] = 'gone' }), /points outside the clip/],

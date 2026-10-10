@@ -13,7 +13,8 @@ type Id = net.Id
 
 export interface Clip {
   network: net.LinesData
-  joins: { rows: joins.JoinRow[]; endStrokes: { point: Id; stroke: joins.EndStroke }[] }
+  /** Join modes once; every shape layer's radii and end strokes (step 4). */
+  joins: joins.RangeData
   fills: fills.FillData[]
   names: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }
 }
@@ -28,7 +29,7 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
   const lineSet = new Set(ids), pointSet = new Set(network.points.map(p => p.id))
   return structuredClone({
     network,
-    joins: joins.rangeData(d.joins, lineSet, pointSet),
+    joins: joins.rangeData(d.joins, d.network, lineSet, pointSet),
     fills: fills.rangeData(d.fills, lineSet),
     names: names.rangeData(d.names, d.groups, d.network, ids),
   })
@@ -73,17 +74,31 @@ export function check(v: unknown): Clip {
   d.unique(layers.map(L => L.key), 'clip shape layer')
   if (!layers.some(L => L.key === source)) d.fail(`the clip has no shape layer ${source}, its source`)
   const jo = d.obj(o.joins, 'clip joins')
-  const rows = d.arr(jo.rows, 'clip join rows').map((x, i) => {
+  const rowsIn = (v: unknown, what: string) => d.arr(v, what)
+  const rows = rowsIn(jo.rows, 'clip join rows').map((x, i) => {
     const R = d.obj(x, `clip join ${i}`), ls = d.arr(R.lines, `clip join ${i} lines`)
-    const row = { point: d.str(R.point, `clip join ${i} point`), lines: [d.str(ls[0], `clip join ${i} line`), d.str(ls[1], `clip join ${i} line`)] as [Id, Id], mode: d.str(R.mode, `clip join ${i} mode`) as joins.JoinMode, ...(R.radius !== undefined ? { radius: d.num(R.radius, `clip join ${i} radius`) } : {}) }
+    const row = { point: d.str(R.point, `clip join ${i} point`), lines: [d.str(ls[0], `clip join ${i} line`), d.str(ls[1], `clip join ${i} line`)] as [Id, Id], mode: d.str(R.mode, `clip join ${i} mode`) as joins.JoinMode }
+    if (row.mode !== 'smooth' && row.mode !== 'cusp' && row.mode !== 'arc') throw new Error(`Unknown join mode ${String(row.mode)}`)
     if (ls.length !== 2 || !pointIds.has(row.point) || !lineIds.has(row.lines[0]) || !lineIds.has(row.lines[1])) d.fail(`clip join ${i} points outside the clip`)
     return row
   })
-  const endStrokes = d.arr(jo.endStrokes, 'clip end strokes').map((x, i) => {
-    const E = d.obj(x, `clip end stroke ${i}`), point = d.str(E.point, `clip end stroke ${i} point`)
-    if (!pointIds.has(point)) d.fail(`clip end stroke ${i} points outside the clip`)
-    return { point, stroke: d.obj(E.stroke, `clip end stroke ${i} stroke`) as joins.EndStroke }
+  // every shape layer of the copy carries its own radii and end strokes (dot 1791654154)
+  const joinLayers = d.arr(jo.layers, 'clip join layers').map((x, i) => {
+    const L = d.obj(x, `clip join layer ${i}`), key = d.str(L.key, `clip join layer ${i} key`)
+    const radii = d.arr(L.radii, `clip radii in ${key}`).map((y, k) => {
+      const R = d.obj(y, `clip radius ${k} in ${key}`), ls = d.arr(R.lines, `clip radius ${k} lines in ${key}`)
+      const r = { point: d.str(R.point, `clip radius ${k} point in ${key}`), lines: [d.str(ls[0], `clip radius ${k} line in ${key}`), d.str(ls[1], `clip radius ${k} line in ${key}`)] as [Id, Id], radius: d.num(R.radius, `clip radius ${k} in ${key}`) }
+      if (!rows.some(row => row.mode === 'arc' && row.point === r.point && row.lines[0] === r.lines[0] && row.lines[1] === r.lines[1])) d.fail(`clip radius ${k} in ${key} belongs to no arc join of the clip`)
+      return r
+    })
+    const endStrokes = d.arr(L.endStrokes, `clip end strokes in ${key}`).map((y, k) => {
+      const E = d.obj(y, `clip end stroke ${k} in ${key}`), point = d.str(E.point, `clip end stroke ${k} point in ${key}`)
+      if (!pointIds.has(point)) d.fail(`clip end stroke ${k} in ${key} points outside the clip`)
+      return { point, stroke: d.obj(E.stroke, `clip end stroke ${k} stroke in ${key}`) as joins.EndStroke }
+    })
+    return { key, radii, endStrokes }
   })
+  if (JSON.stringify(joinLayers.map(L => L.key).sort()) !== JSON.stringify(layers.map(L => L.key).sort())) d.fail("the clip's join layers do not match its shape layers")
   const fillsData = d.arr(o.fills, 'clip fills').map((x, i) => {
     const F = d.obj(x, `clip fill ${i}`), ls = d.arr(F.lines, `clip fill ${i} lines`).map((l, k) => d.str(l, `clip fill ${i} line ${k}`))
     if (!ls.length || ls.some(l => !lineIds.has(l))) d.fail(`clip fill ${i} points outside the clip`)
@@ -100,7 +115,7 @@ export function check(v: unknown): Clip {
     if (!ls.length || ls.some(l => !lineIds.has(l))) d.fail(`clip group name ${i} points outside the clip`)
     return { name: d.str(G.name, `clip group name ${i}`), lines: ls }
   })
-  return { network: { points, lines, source, layers }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames } }
+  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames } }
 }
 
 /**
@@ -123,14 +138,15 @@ export function viewLayerMap(d: Parts, clip: Clip): Map<string, string> {
  * expression or record layer, or a view the drawing lacks) is refused, never dropped
  * (dot 1791653018).
  */
-export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): net.CopyMap {
-  const map = viewLayerMap(d, clip), used = new Set(map.values())
+export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): { map: net.CopyMap; layers: Map<string, string> } {
+  const layers = viewLayerMap(d, clip), used = new Set(layers.values())
   const left = clip.network.layers.filter(L => !used.has(L.key)).map(L => L.key)
   if (left.length) throw new net.Refusal('paste-layer-unmatched', `paste-layer-unmatched: the copy's shape layer(s) ${left.join(', ')} have no place in this drawing`)
-  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset, map)
+  return { map: net.insertLines(d.network, ch, clip.network, layer, idOf, offset, layers), layers }
 }
-export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id) {
-  joins.insert(d.joins, d.network, clip.joins, map)
+/** Joins, fills and names after `insert`, with the same layer correspondence (dot 1791654260). */
+export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id, layers: ReadonlyMap<string, string>) {
+  joins.insert(d.joins, d.network, clip.joins, map, layers)
   fills.insert(d.fills, d.network, clip.fills, map, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
 }

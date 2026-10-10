@@ -85,7 +85,9 @@ describe('save and open', () => {
     const variant = (f: (rows: any[]) => void) => { const x = JSON.parse(good); f(x.document.joins.rows); return JSON.stringify(x) }
     expect(() => open(variant(r => { r[0].lines = ['bc', 'ab'] }))).toThrow(/not in their stored form/)
     expect(() => open(variant(r => { r.push({ ...r[0], lines: ['bc', 'ab'] }) }))).toThrow(/not in their stored form/)
-    expect(() => open(variant(r => { delete r[0].radius }))).toThrow(/positive radius/)
+    // radii are per view (step 4): a missing one in any view is refused
+    const noRadius = JSON.parse(good); const L = noRadius.document.network.shapes.layers[3]; for (const k of Object.keys(L.radius)) delete L.radius[k]
+    expect(() => open(JSON.stringify(noRadius))).toThrow(/has no radius in view:/)
   })
 
   it('1e. a split that renames a line inside link joins keeps their stored order: saved and opened equal (dot 1791512672)', () => {
@@ -159,10 +161,13 @@ describe('save and open', () => {
       ['an endpoint linked to itself', edit(doc => { doc.links.pairs[0].b = doc.links.pairs[0].a }), /inside one layer/],
       ['a line mirror-paired with itself', edit(doc => { doc.apply.pairs[0].b = doc.apply.pairs[0].a }), /pairs a line with itself/],
       ['a join of a line with itself', edit(doc => { doc.joins.rows[0].lines[1] = doc.joins.rows[0].lines[0] }), /uses one line twice/],
-      ['an end stroke on a missing point', edit(doc => { doc.joins.endStrokes.push({ point: 'gone', stroke: { taper: 1 } }) }), /end stroke \d+ is on a missing point/],
+      ['an end stroke on a missing point', edit(doc => { doc.network.shapes.layers[2].end.gone = { taper: 1 } }), /end stroke in view:[-\d,]+ is on a missing point gone/],
       // restore writes through the normal writers and must give the stored form back (dot 1791512476)
-      ['an arc join without a radius', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'arc'); delete r.radius }), /arc join needs a positive radius/],
-      ['a cusp join carrying a radius', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'smooth'); r.mode = 'cusp'; r.radius = 3 }), /not in their stored form/],
+      // radii and end strokes are per view (step 4, dot 1791654260)
+      ['an arc join without a radius in one view', edit(doc => { const L = doc.network.shapes.layers[5]; delete L.radius[Object.keys(L.radius)[0]!] }), /has no radius in view:/],
+      ['a radius that belongs to no arc join', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'smooth'); r.mode = 'cusp'; doc.network.shapes.layers[0].radius[JSON.stringify([r.point, ...r.lines])] = 3 }), /belongs to no arc join/],
+      ['a radius that is not above zero', edit(doc => { const L = doc.network.shapes.layers[1]; L.radius[Object.keys(L.radius)[0]!] = 0 }), /is not above zero/],
+      ['a join row carrying a radius (radii live in the views)', edit(doc => { doc.joins.rows[0].radius = 3 }), /carries an extra value/],
       ['a join with its line pair reversed', edit(doc => { const r = doc.joins.rows[0]; r.lines = [r.lines[1], r.lines[0]] }), /not in their stored form/],
       ['one join stored in both orders', edit(doc => { const r = doc.joins.rows[0]; doc.joins.rows.push({ ...r, lines: [r.lines[1], r.lines[0]] }) }), /not in their stored form/],
       ['a link pair reversed', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs[0] = { a: p.b, b: p.a } }), /links are not in their stored form/],

@@ -174,7 +174,7 @@ describe('insert (paste) on several layers', () => {
   })
 
   it('a paste refuses a clip whose layers would be left over: an expression or record layer, or a view the drawing lacks (dot 1791653018)', () => {
-    const clipOf = (n: net.NetworkState) => ({ network: net.linesData(n, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } })
+    const clipOf = (n: net.NetworkState) => ({ network: net.linesData(n, ['l1']), joins: { rows: [], layers: [] }, fills: [], names: { lines: [], groups: [] } })
     const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
     const target = () => { const t = net.create(FRONT); net.addLayer(t, 'M'); return t }
     // the clip carries a record layer; the drawing has only views
@@ -183,13 +183,13 @@ describe('insert (paste) on several layers', () => {
     expect(() => clipboard.insert(parts(target()), net.emptyChanges(), clipOf(threeLayers(VIEWS3)), 'M', { x: 0, y: 0 }, id => `x/${id}`)).toThrow(/paste-layer-unmatched/)
     // the same views on both sides: pasted
     const t = target(); net.addShapeLayer(t, SIDE, 'view', views.FRONT); net.addShapeLayer(t, TOP, 'view', views.FRONT)
-    const map = clipboard.insert(parts(t), net.emptyChanges(), clipOf(threeLayers(VIEWS3)), 'M', { x: 0, y: 0 }, id => `x/${id}`)
+    const { map } = clipboard.insert(parts(t), net.emptyChanges(), clipOf(threeLayers(VIEWS3)), 'M', { x: 0, y: 0 }, id => `x/${id}`)
     expect([...map.lines.values()]).toEqual(['x/l1'])
     expect(net.point(net.of(t, SIDE), 'x/a').position).toEqual({ x: 2, y: 3 })
   })
 
   it('a document paste maps view layers by the same key only; a record layer, or a view layer the clip lacks, is refused', () => {
-    const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } }
+    const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], layers: [] }, fills: [], names: { lines: [], groups: [] } }
     const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
     const viewsOnly = net.create(FRONT); net.addShapeLayer(viewsOnly, SIDE, 'view', views.FRONT)
     expect([...clipboard.viewLayerMap(parts(viewsOnly), clip)]).toEqual([[views.FRONT, views.FRONT], [SIDE, SIDE]])
