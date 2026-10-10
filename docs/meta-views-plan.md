@@ -33,39 +33,28 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
 
 ### After bowen's answers (Q1–Q4, bowen 1791650085, 1791650171, 1791650206, 1791650323)
 
-**Per view:**
-- point position;
-- handles;
-- arc radius;
-- line width / profile;
-- end strokes.
+**Per view, decided:** point position, handles (graph); line width / profile and end strokes (bowen 1791650085).
+**Per view, proposal:** arc radius.
+**Shared, decided:** connections, binds (Q1), closed-curve boundary references, order of layers / groups / fills (Q3), names, continuous curves.
+**Shared, proposal:** join mode, endpoint links, fill colour and state, visibility / lock, mirror pairs, selection.
 
-**Shared by all views:**
-- connections, binds, endpoint links, closed-curve boundary references;
-- join mode;
-- names, continuous curves, order (layers, groups, fills);
-- fills (colour, state);
-- visibility / lock;
-- mirror pairs;
-- selection.
-
-**Auto-bind:** judged only in the edited view; open checks positions without auto-bind. **Mirror apply / link:** at 0,0 only. **Stroke broadcast:** a plain assignment, a batch edit.
+**Auto-bind:** judged only in the edited view. **Open:** checks structure, references and every view's state; triggers no new auto-bind (dot 1791650432). **Mirror apply / link:** their shape effect is at 0,0 only; paired splits or deletes they cause are structural and reach every view. **Stroke broadcast:** a plain assignment, a batch edit.
 
 What this means for each candidate (to be checked by dot):
 - **A. Nine 画稿.** All shared items above must stay equal in nine copies after every edit.
   - Structural decisions are made in the edited copy and replayed in eight, with their auto-bind off.
   - The mirror runs only in the front copy, but its paired structural edits (paired split / delete) must reach all copies.
   - An outer transaction and undo over nine histories.
-  - Open: positions checked without auto-bind in every copy.
+  - Open: structure, references and each copy's state checked; no new auto-bind.
 - **B. Shared topology.**
   - `network` stores position, handles and stroke per view.
   - `joins` stores arc radius and end strokes per view.
-  - Accessors name the state and the view; `Changes` separates structural records (shared) from targets and handle tips (edited view).
+  - Accessors name the state and the view. `Changes` separates structural records (shared) from geometric intents (targets, handle tips) **per affected view**: a drag affects one view, a broadcast or paste several (dot 1791650432).
   - Settle runs: the full loop in the edited view; positions only (links, springs, tips) in other changed views, without auto-bind.
   - The lock check compares each view's protected content (shape, stroke, end strokes).
   - The clipboard carries all views.
-  - `afterApply`, commit and open use the same rule.
-  - Mirror apply / link read and write the 0,0 view.
+  - `afterApply` and commit use the same rule; open checks structure, references and each view's state without new auto-bind.
+  - Mirror apply / link: shape effects read and write the 0,0 view; paired structural edits act on the shared topology, so every view.
 
 ### Facts about the current core (da31397), checked by dot 1791649528
 
@@ -101,10 +90,10 @@ What this means for each candidate (to be checked by dot):
 | Per-view shape for structural ops (split at t, bind, unbind, new line copy) | in the replay | inside network's split / bind / unbind / addLine, per view |
 | Non-geometric state (names, groups, order, selection, fills, joins, links, mirror pairs, change record) | kept equal in nine copies, or moved to one copy | stored once |
 | One transaction, one undo | outer layer over nine histories; new core interface | the existing whole-state `Core.edit` |
-| Settle after edits that change other views (broadcast, paste, new line) | per changed copy, auto-bind coordinated | per changed view; a bind there changes the shared topology (scope 待定, §4 Q2) |
+| Settle after edits that change other views (broadcast, paste, new line) | per changed copy, positions only, auto-bind off | per changed view, positions only (links, springs, tips); auto-bind only in the edited view (Q2) |
 | Lock check | across nine copies | over every view |
 | Mirror apply | shape part split from attribute part | the same split |
-| Save / reopen | nine states; same auto-bind rule at open | one state; settle per view at open with the same rule |
+| Save / reopen | nine states; open checks structure, references, each copy's state; no new auto-bind | one state; open checks structure, references, each view's state; no new auto-bind |
 | Topology-equality check | every step | not needed |
 | Main risk | divergence; replaying a partial record | `network` grows; every geometry write names its view |
 
@@ -185,7 +174,7 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 - **Locks:** a locked line protects its shape in all views. A broadcast or paste that would change a locked line in any view is refused whole (graph "Apply": a locked target refuses).
 - **Selection:** by id; it survives switching views.
 - **Undo:** one history for all views; switching views is not a step.
-- **Save / open:** every view, layer types, baselines; reopening gives equal geometry in every view; the auto-bind rule at open equals the one in editing.
+- **Save / open:** every view, layer types, baselines; reopening gives equal geometry in every view. Open checks structure, references and each view's state, and triggers no new auto-bind.
 
 ## 8. Flows to run (including after-states)
 
@@ -206,6 +195,9 @@ From dot (1791645801, 1791647948) and the worked examples:
 10. **Locked line:** editing it in any view is refused; a broadcast touching it is refused whole.
 11. **Endpoint link across layers:** dragging one end in view X keeps both together in X; other views are unchanged.
 12. **Fuzz:** random edits in random views keep every invariant in every view.
+13. **Chance coincidence in another view** (dot 1791650432): two separate points coincide in a side view after a broadcast; save and reopen; they are still separate and the file opens.
+14. **Paired split at the front:** a mirror-linked split at 0,0 leaves the structure equal in all nine views.
+15. **Stroke broadcast:** after assigning one view's width to all views, one undo restores each view's former, different values.
 
 ## Not in this plan
 
