@@ -1,6 +1,6 @@
 # Step 4: arc radius and end strokes per view (plan before code)
 
-**Status:** for dot's check (Claude 1791654131; scope narrowed by dot 1791654154). Nothing is coded until dot has checked it.
+**Status:** checked by dot 1791654260 with four additions (below); coding starts with them.
 
 ## Rules
 
@@ -19,6 +19,24 @@
 4. **Structural changes.** When a join row is re-keyed or removed by a split or a bind, every layer's radius follows (re-key or remove). When a point is removed, every layer's end stroke for it is removed.
 5. **Mirror apply** (front only) copies the front's radius and end strokes into the front.
 6. **Copy / paste** carry each layer's own radii and end strokes (clip shape layers), never only the source layer's (dot 1791654154). Pasting uses the same layer correspondence as the shapes (step 2).
+
+## Additions (dot 1791654260)
+
+1. **Mirror apply** no longer removes all target joins and then rebuilds them.
+   - An arc row that still exists afterwards keeps the other views' radii; only the front's value is written.
+   - A row is removed only when it is really gone, or no longer an arc.
+2. **Structural changes**, unbind included, keep exactly the keep / move / drop decisions of `joins.update`; each layer's value follows its row.
+   - A bind still drops the removed point's joins; they are never moved to the kept point.
+   - A split that changes the order of a row's two lines re-keys it.
+3. **Keys and references belong to `joins`; `shapes` only stores values.** Open checks:
+   - radii that dangle or are missing;
+   - end strokes on points that do not exist;
+   - radii must be finite and above zero.
+
+   "Open does not settle" applies only to these attributes; step 3's checks of view positions and links stay.
+4. **Clipboard `attach` / `joins.insert`** get the same layer correspondence as the shapes insert, so attributes are written in every layer, not only the current one.
+
+**Acceptance:** different values per view, covering mirror keeping other views' radii, unbind, split re-keying, copy / paste, and save / reopen.
 
 ## Read paths
 
