@@ -77,7 +77,7 @@ evaluate  ← geometry only           (separate package, like interaction/)
   - `joins` keeps the modes; radius and end strokes move to `shapes`;
   - `locks` compares one layer, and the caller loops;
   - `clipboard` carries every layer;
-  - `names`: line names unique within their layer; continuous-curve names likewise (*open* until bowen confirms).
+  - `names`: line names unique within their layer; continuous-curve names likewise (decided, bowen 1791651929); layer names unique in the document.
 
 **Package 2 — meta structure** (`src/meta`)
 - **Its part of the document state:** each layer's 元组件 type. No store outside the document transaction (dot 1791650999).
@@ -176,14 +176,11 @@ Each flow: what acts → which layers change → which settle runs.
 - **Stage 4:**
   - **Expression carry algorithm** (experiment).
   - **Pasting expressions:** a clip carries expression definitions. A target that lacks the expression, or has a different one under the same id, needs a mapping rule. Data in an expression layer is not membership: the definition's list is.
-  - **Expression preview** (*framework choice*): expression layers store absolute shapes, so "expression − front" changes as soon as the front is edited, before any broadcast (dot 1791651394). Examples for acceptance, to show bowen:
+  - **Expression preview** (decided effect, bowen 1791651929: expressions and angles are separate, so it shows "not broadcast"; absolute storage is our framework choice): "expression − front" changes as soon as the front is edited, before any broadcast (dot 1791651394). Examples for acceptance:
     1. The front eye is enlarged, not broadcast. Blink plays from the new, larger open eye to the old, smaller closed eye; the eye shows the "unbroadcast change" mark.
     2. After fit: the preview is the same as in example 1, and the mark is cleared.
     3. After expression broadcast: the closed eye has received the same enlargement, and blink is consistent again.
-- **Locks** (*proposal*):
-  - the shape and stroke of `view` and `expression` layers are protected;
-  - a fit on a locked line is allowed, since it changes only a record;
-  - the check covers unselected locked lines affected through shared end points and links, per layer.
+- **Locks** (bowen 1791651929: "代码写到哪就到哪"; he is considering removing them): no new lock design. The existing comparison runs per layer as far as it falls out of the framework; no extra rules or dedicated tests beyond keeping today's behaviour.
 - **Undo cost:** guarantee whole rollback first; then measure time and memory with real line counts, expression counts and undo depth. No promise, and no new history system up front.
 
 ## 5. Build constraints and the first step (dot 1791650999)
@@ -227,9 +224,20 @@ No multi-view save or copy is exposed in this step. Expressions, broadcast and t
 **Open until stage 3:**
 - the per-curve rules in `animation.follow`;
 - the angle-domain scheme;
-- whether the 90° adjustment stays a "save or discard" draft.
+- (decided, bowen 1791651929 乙) the 90° adjustment takes effect at once; undo reverts it with the response change in one step.
 
-## 7. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
+## 7. bowen's answers (1791651929)
+
+1. **乙:** the 90° minimal move in an in-between correction takes effect at once and is undone with undo (no save / discard draft).
+2. **Expressions and angles are separate,** so before an expression broadcast the expression keeps its old target and shows "not broadcast" (the §4 examples stand).
+3. **Locks:** "代码写到哪就到哪"; bowen is considering deleting the lock feature. So no new lock design: the existing check is applied per layer only as far as it falls out of the framework, with no extra rules or tests beyond keeping today's behaviour.
+4. **Right-side mirror draft:** withdrawn.
+5. **Continuous-curve names:** unique only within their 元组件 / layer.
+6. **Old single-view files:** not supported (bowen redraws).
+
+Defaults (§7 list below) were not objected to; they stay defaults.
+
+## 7a. Unified decision list sent to bowen (Claude, with dot 1791651485, 1791651503)
 
 **Authoritative version: dot 1791651534** (sent at the same time; it carries a recommendation per item, and Claude 1791651576 agrees with all six).
 - Its recommendations:
