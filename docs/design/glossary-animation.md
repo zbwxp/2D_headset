@@ -367,7 +367,7 @@ They are chosen independently (e.g. 1a + 2b).
 - **The view being edited shows the new shape at once** (1a), both while making and at runtime.
 - **While making a model,** other views and expressions update when he clicks "broadcast" after editing (2b), not live.
 - **Adding an eye:** copy eye 1 as eye 2, hide eye 1, edit eye 2. Editing the 0,0 front edits the 元线条 itself; broadcasting carries the change to other views by offset.
-- **Before other views exist,** their deformation is 0, so they stay equal to the front.
+- **Before other views exist,** their deformation **relative to the front** is 0. When the front changes, their final shape follows it and equals the new front (corrected per dot 1791640582; Claude's "broadcast does not change them" was wrong).
 
 **Claude (1791640564):**
 - Restated; reading of runtime shaping as 1a + 2a (live offset preview of every angle, per bowen 1791634995), for bowen to correct.
