@@ -50,7 +50,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Models and 元组件:** a model combines 元组件; a 元组件 is a typed, named layer; a 元线条 is its component + name, kept through renames, with a shape in each of nine views.
 - **Views:** a line added in any view appears in all nine at the same place and is adapted per view; nothing follows the front.
 - **Expressions:** two levels (angle, expression); expressions start from the front; combination fixes off by default.
-- **Room and broadcast:** one room with modes; only the front keeps hidden baselines (angle, expression); broadcast pushes the front's change everywhere, fit drops it; each is one undoable edit.
+- **Room and broadcast:** one room with modes; only the front keeps hidden baselines (angle, expression); broadcast applies the front's change to the chosen angles or expressions and updates only the matching baseline; fit drops it; each is one undoable edit.
 - **Matching:** within one type, ranked, user picks.
 
 Defaults and algorithm limits are not principles; they are listed in the core README (dot 1791463344).
@@ -225,7 +225,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | 元组件 | is | A layer, with a **type** (眼睛) and a **name** (眼睛1, 圆眼1). It is a semantic group, not another geometric level. | confirmed | bowen 1791634995, 1791637819, 1791645279 |
 | 元线条 | is identified by | Its 元组件 + its name. The same name in different 元组件 means unrelated lines. | confirmed | bowen 1791623875, 1791634995 |
 | Renaming a 元线条 | keeps | The same line: its nine views, expressions and existing references stay connected. Only copying makes an independent new object. How ids are stored is an implementation choice. | confirmed | bowen 1791648678; dot 1791645801 |
-| 元线条 | has | One shape in each of the nine views, plus its look (strokes, show / hide intervals, fills) and its expressions. It is created automatically when drawn. There are no separate drawing lines and bone lines. | confirmed | bowen 1791624350, 1791640911 |
+| 元线条 | has | One shape in each of the nine views, plus its look (strokes, show / hide intervals) and its expressions. It takes part in fill boundaries; fills still belong to closed curves (rows "Fill", "Closed curve references"). It is created automatically when drawn. There are no separate drawing lines and bone lines. | confirmed | bowen 1791624350, 1791640911 |
 | Copying 元线条 or a 元组件 | makes | New identities: editing the copy never changes the original. Every view and the expressions are copied as they are. | confirmed | bowen 1791634995, 1791640535; dot 1791637961 |
 
 ### Views
@@ -288,6 +288,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Copying 元线条 or a 元组件 | copies | Its baselines as they are, so an unbroadcast change is carried to the copy | open (candidate) | dot 1791642599; Claude 1791642620 |
 | Mirror drafting of the right side | pairs | Left and right lines possibly by reusing mirror-link pairs | open (candidate, to check) | dot 1791639097 |
 | Matching rank | is | Shape after normalising position and overall size (aspect ratio and corner tilt kept), parts scored separately | open (candidate) | dot 1791644993 |
+| Pairing lines for matching | is | By the same line name within the type (allowed now that line names are per 元组件) | open (candidate) | Claude 1791645293; dot 1791649046 |
 | Deriving views from a match | is | A broadcast from the match's baseline: its other views + (new front − its baseline front); needs every new line paired with one of the match's, and which front (shown or baseline) is compared is settled by experiment | open (candidate) | bowen 1791645259; Claude 1791645293; dot 1791645801 |
 | Preset join | applies to | The two clicked lines only; other lines at the points get none | derived from v103 `connect(a,b)`; agreed by Claude and dot, not separately confirmed | Claude 1791423219, dot 1791423203 (Q24) |
 
