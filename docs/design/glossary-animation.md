@@ -52,6 +52,13 @@
 >   - "Smile" is a parameter each component responds to on its own (mouth corner, cheek, lid), which gives dot's "one parameter moves many lines" with no cross-component animation.
 >   - **Asked:** is a 动态组件 stored, or the pair formed when mounted? Since faces may share bone lines and animation, Claude leans to: drawings store 线条, the recording room stores 骨线 + 动画, and they become 动态组件 when mounted by name, so shared animation is never copied.
 >
+> **bowen (1791623796):** "所以这样讲动态组件不够明确 取名元线条？这类名字更贴切？"
+> - **Claude (1791623817):** 元线条 fits better.
+>   - It is line-level (组件 suggests something eye-sized).
+>   - 元 reads as "the line itself": one name, three facets: 线条 (look, in the drawing), 骨线 (shape, in the recording room), 动画 (change). Mounting by name mounts this identity.
+>   - **Proposed definition:** 元线条 = a line known by its name; its 线条, 骨线 and 动画 are its three facets; it joins curves and goes into layers like a 线条.
+>   - Small risk: 元 may recall 元数据 (metadata).
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
