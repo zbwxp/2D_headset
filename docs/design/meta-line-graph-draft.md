@@ -20,8 +20,8 @@ Format as in the graph: subject | relation | object | status | source.
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Views | are | Nine: yaw −90 / 0 / +90 × pitch −45 / 0 / +45 (pitch ±45 is a candidate value). Between views the shape is interpolated. | decided (nine); pitch candidate | bowen 1791637819, 1791638945; dot 1791639052 |
-| Adding or deleting a line | in any view | Adds or deletes it in all nine. Editing a shape changes only the view being edited. | decided | bowen 1791637819, 1791640911 |
-| A line's view not yet made | equals | That line's current front, at once, also before any broadcast; broadcast pushes only to views the line has been made in. "Made" is judged **per line in each view** (a new line in a finished model has no model yet: it counts as made only in the view it was drawn in, and its other views follow the front. Drawn in a non-front view, its front starts as a copy of that shape and is adjusted by hand; dot 1791646368). "Made" is a stored mark, never inferred from "shape equals the front" (dot 1791645873). | decided (甲 + A) | bowen 1791640535, 1791646151, 1791646291; dot 1791640627, 1791645873, 1791646368 |
+| Adding a line | in any view | Adds it in all nine views **at the same position** (a copy of the drawn shape); each view is then adapted by hand, view by view. Diagonal views may be generated. Deleting a line deletes it in all nine. Editing a shape changes only the view being edited. | decided | bowen 1791637819, 1791640911, 1791646999 |
+| A new line | inherits | No deformation, and no view follows the front. *Supersedes 甲 + A (bowen 1791646291) and "an unmade view equals the front" (1791640535).* An optional editing helper may apply a nearby line's deformation to it, only to initialise the other views; each view is still adjusted. | decided | bowen 1791646999 |
 | Diagonal view | is drafted as | The front + the yaw change + the pitch change (vector sum), then adjusted by hand. | decided (draft method) | bowen 1791639688; dot 1791639052 |
 | Right-side views | can be drafted | From the left by a one-off mirror apply (graph row "Mirror apply"); they are not bound to the left afterwards. A lasting link is a separate choice (row "Mirror link"). The left / right pairing may reuse mirror-link pairs (candidate, to be checked). | decided (mirror apply as a draft); pairing candidate | bowen 1791638945; dot 1791639052, 1791639097, 1791645801 |
 
@@ -39,7 +39,7 @@ Format as in the graph: subject | relation | object | status | source.
 |---|---|---|---|---|
 | Editor | is | One room with modes (draw, angle, expression, playback). No loading between rooms. | decided | bowen 1791640535, 1791640911 |
 | Editing a view | shows | The new shape at once, while making and at runtime. | decided | bowen 1791640535 |
-| Broadcast | is | An explicit action after editing the front. The other views (or expressions) are derived from the change between the current front and the matching baseline; then that baseline is set to the current front. Without broadcast, views and expressions that have their own shapes do not change. | decided | bowen 1791640535, 1791642539; Claude 1791642580; dot 1791645801 |
+| Broadcast | is | For fine-tuning a line that already has a hidden baseline: after editing the front, the other views (or expressions) are derived from the change between the current front and the matching baseline; then that baseline is set to the current front. Without broadcast, other views and expressions do not change. *Open for bowen:* when does a new line get its baseline? | decided; baseline start open | bowen 1791640535, 1791642539, 1791646999; Claude 1791642580; dot 1791645801 |
 | Broadcast derivation | is, for now | Adding "current front − baseline" to each target, point by point. | candidate (to be verified) | Claude 1791642580; dot 1791642640, 1791645801 |
 | Broadcast | is | One edit: all its writes and the baseline advance succeed or roll back together, as one undo step. | candidate | dot 1791642640 |
 | Broadcast baseline | is kept | Separately for angles and for expressions, saved in the making file. The runtime product does not carry these making records; publishing does not delete them from the making source. | decided | bowen 1791642767; dot 1791645801 |
@@ -68,3 +68,18 @@ Format as in the graph: subject | relation | object | status | source.
 - save, reopen, continue broadcasting.
 
 Core flows may go in stages; matching and auto-fit experiments do not block the editor.
+
+### Worked examples (bowen 1791646670, corrected by bowen 1791646999)
+
+*Claude's version (1791646691), where unmade views followed the front, is superseded.*
+
+1. **No finished model yet; 0,0 exists; a side nose line is drawn at 90,0.**
+   - It appears in all nine views at the drawn position.
+   - Each view is adapted by hand; diagonals may be generated.
+   - Nothing follows the front.
+2. **A finished model; a 双眼皮 is added in the eye layer's top view.**
+   - The same applies: it appears in all nine views at the same position, and each view is adapted.
+   - Optionally, initialise the other views from a nearby line's deformation (e.g. the upper lid).
+   - **Expressions:** it is not in the blink yet; add it by hand, or show "expression needs adapting".
+
+**Broadcast is only for fine-tuning** a line that already has a hidden baseline: edit its front, then broadcast.
