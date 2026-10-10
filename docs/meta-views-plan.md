@@ -29,7 +29,7 @@ Matching joins later. Interaction holds the current mode and the current view an
 Both are still compared. Which is cheaper is **not** claimed here (dot 1791649845). The comparison waits for the 待定 answers in §4 and §6, which change it.
 
 - **A. Nine 画稿 with the same ids.** One drawing per view; structural decisions made once in the edited view and applied to the other eight.
-- **B. Shared topology, per-view geometry.** One drawing whose points and handles have a position per view; modules read the active view's geometry through network's accessors.
+- **B. Shared topology, per-view geometry.** One drawing whose points and handles have a position per view; modules read a view's geometry through network's accessors. The accessor names **which state and which view** explicitly; there is no process-wide "current view" switch, so trial, undo comparisons and lock baselines never read different views (dot 1791649915).
 
 ### Facts about the current core (da31397), checked by dot 1791649528
 
@@ -40,7 +40,7 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
 5. Settle is a loop: align → find coincidences → bind → clean up → align again; binding can end links and change the next round (`document/index.ts:614-624`).
 6. Opening a file runs settle and requires that nothing changes (`document/index.ts:566-568`).
 7. Mirror apply copies look and state as well as shape: stroke, lock / visibility, end strokes, joins, fill state (`apply/index.ts:195-222`).
-8. The network state is opaque outside `network`, and reads return frozen copies (`network/index.ts:5-8`). Outside it, geometry is read through `net.point`, `net.line`, `net.curve(s)`, `net.points`, `net.lines`. Calls by module: apply 10, derived 10, document 12, editing 5, joins 3, links 3, locks 3, names 2, groups 1. Writes go through network functions (move, setPositions, moveHandle, setHandles, aimHandle, resolveHandleTips, addLine, splitLine, unbind, bind, insertLines). *To be confirmed by dot.*
+8. The network state is opaque outside `network`, and reads return frozen copies (`network/index.ts:5-8`). Outside it, geometry is read through `net.point`, `net.line`, `net.curve(s)`, `net.points`, `net.lines`. Calls by module: apply 10, derived 10, document 12, editing 5, joins 3, links 3, locks 3, names 2, groups 1. Writes go through network functions; the main ones are move, setPositions, moveHandle, setHandles, aimHandle, resolveHandleTips, addLine, splitLine, unbind, bind, insertLines (direction checked by dot 1791649915; not yet an exhaustive enumeration of exports).
 9. Names scope (bowen 1791649036) and layer type need core changes in either candidate.
 
 ### Core's three boundaries (Claude's reading; dot 1791649593)
@@ -87,6 +87,7 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
     - Coincidences caused in other views (by broadcast, or by a bind moving lines there) are left alone.
     - Opening a file must then not bind them either: the invariant "no two end points in one layer coincide" holds in the edited view at commit, not in every view.
   - 乙: coincidences in any view the edit changed, broadcast included. A broadcast that makes two side-view points coincide would bind them in all views.
+    - Only under 乙: settle loops over all changed views, and newly affected views join the check. The number of binds is bounded (finite points, binds only remove), but that alone does not prove the result is independent of view order, nor that every lock and constraint check passes (dot 1791649915). An order rule and tests would be needed.
 - **Q3. Drawing order** (who covers whom): one order shared by all views, or per view (e.g. the far ear behind the head at 90°)? Asked 1791649801.
 - **Q4. Line width and end strokes:** shared, or per view and interpolated? Asked 1791649801.
 - **Q5. Mirror** (bowen 1791649795, 1791649821: mirror apply is a batch-editing tool, used only while editing the front). Asked 1791649837:
