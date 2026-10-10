@@ -3754,6 +3754,24 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **"Turning the camera = turning the head up to sign" is not a rule.** Rotation about several axes depends on the axes and their order.
 - **Define first:** the character's yaw and pitch relative to the viewing direction; in-plane rotation sits outside, separately.
 
+### bowen (1791604197)
+
+> 那就是用flash做对比，flash用时间做轴 我们的录制间，起始就是yaw0 pitch0 然后左右180上下180（但是先做到90，这里交互默认90未来可以有个全角度缩放 将这个coord变成180区域） 然后像ld 的思路就是先把要转的最大角度定好ld通常是30度，也有做成90的高级版 我们通常起步就是90度。然后ld在极限角度和0度之间的形变是不是只靠同一个变形器在不同位置插帧？
+
+**Claude (1791604250).** Live2D's tutorial, checked: "5. Adding XY Facial Movement" (docs.live2d.com/en/cubism-editor-tutorials/xy/).
+
+- **The axis.** Flash's axis is time; the recording room's is an angle plane centred on yaw 0 / pitch 0. Start at ±90°, later zoomable to ±180°.
+- **Not one deformer.**
+  - **One warp deformer per part:** outline, each eye, nose, mouth, each brow, each ear, each piece of hair. The tutorial says this creates parallax and a 3D feel; it advises against one deformer for the whole face.
+  - **Three keys per axis per deformer** (left / centre / right on Angle X; the same on Angle Y). Each key is shaped by hand "with the perspective in mind", narrower at the back and wider at the front. Angles in between interpolate.
+  - **Diagonals are not drawn.** "Auto Generate 4 Corners" makes them from the X and Y keys; then they are adjusted.
+  - **Expressions sit on the drawn objects inside the deformers** (e.g. the brow's own shape), and angle on the deformers, so expressions are carried by angle. Done on the objects alone, a brow would need 3 × 3 × 3 = 27 shapes.
+  - **Not on this page, so unchecked:** the "usually ±30°" range, and the interpolation curve.
+- **For us:**
+  1. "Each part its own deformer, keyed by angle" is the mature form of "reusable deformation". Swapping a feature swaps what is inside; the deformer and its angle keys stay.
+  2. ±90° is far beyond Live2D's usual range. A warp only stretches what exists: it cannot hide the far eye or turn a nose into a profile. At large angles the hand-drawn line samples (plus show/hide intervals) do the main work, and deformers help.
+  3. Generating diagonals from the two axes, then fixing them, can be borrowed: samples on the yaw axis and the pitch axis, diagonals generated, corrected where wrong.
+
 ### Status
 
 Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
