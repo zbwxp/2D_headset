@@ -3607,6 +3607,31 @@ v1's snapshot model: `docs/design/snapshot-v1-facts.md` (7205381; corrected per 
 - Correcting combinations locally is a requirement Claude missed.
 - Occlusion and connection changes are open questions.
 
+### bowen's requirement, continued (1791602251)
+
+> 捏脸或者表情有时候会涉及到更换五官，它不完全是3d mesh的完全共用一套mesh 而是可能比如把正常眼睛变成颜文字那种变换。然后要保证更换的表情也能继承之前的变形域 （ld的概念）这样尽可能复用转头这个"动作"。换句话说我是靠一堆贝塞尔曲线随角度变化的"函数"来定义了一个2d转头模型， 然后我想让它有3d模型类似的效果。而这么做的原因是 3d首先线条定义不清晰，二是3d如果想要真实模拟2d动画的透视那么它的mesh也是需要随着角度移动的，然后这种移动在2d动画里因为是人手绘的原因 往往是恰巧符合2d interpolate而不是3d 网格空间变动 因此直接选择制作2d 模型。
+
+**Added requirements** (Claude 1791602287; to be confirmed):
+
+7. **Swap parts:** a feature can be replaced whole (a normal eye becomes a kaomoji eye). The old and new lines have no correspondence.
+8. **Reuse motion:** the new part inherits its region's deformation domain, so the head turn needs no redrawing for it.
+9. **Hand-drawn precision:** where it matters, a line's shape at each angle is still drawn by hand. The domain only carries things along.
+
+**Background (bowen):** why 2D, not 3D.
+- In 3D, lines are not clearly defined.
+- A 3D mesh imitating 2D animation's perspective would itself have to move with the angle.
+- That hand-drawn movement happens to fit 2D interpolation, not 3D mesh motion.
+
+**Derived layering, proposed** (Claude 1791602287):
+- **Deformation domain:** the motion. A region whose shape changes with the controls (angle, expression); what is inside is carried along. The head turn lives here and is reused.
+- **Part:** what is drawn. A set of lines (an eye, a brow, a mouth), attached to a domain, swappable whole.
+- **Snapshot (sample):** a shape recorded at given control values. It is of a domain, or a part's own correction on top (where the domain does not carry it right; dot's "local fix").
+- **Evaluation:** control values → each domain interpolates its shape → carries its parts → adds the parts' own corrections.
+- **What this means for 画稿 / 快照:** "artwork" = a part's lines (swapping a part = swapping its artwork); "snapshot" = a sample of a domain or a part at given control values.
+- **References:**
+  - v1's retired rigs kept only warp grids and show/hide per key, never line geometry. Recording v2 has deformation residuals (`docs/design/snapshot-v1-facts.md` §1, §3).
+  - Live2D deformers (warp, rotation) carry their layers, with parameter key forms on the deformers (from memory, not checked).
+
 ### Status
 
-Waiting for bowen to confirm the overall goal and the three parts. The 甲 / 乙 choice is deferred. No graph rows yet.
+Waiting for bowen to confirm the layering (domain = motion, part = what is drawn, snapshot = samples of both), after the overall goal (dot 1791601533). The 甲 / 乙 choice is deferred. No graph rows yet.
