@@ -352,6 +352,14 @@ They can be chosen independently (one room may still hold two shape layers). The
 - A: preview at once, revertible;
 - B: the original plays until applied.
 
+**dot (1791640164):** "preview the new shape at once" does not mean every angle and expression has been derived; whether the change spreads to them is a separate rule. Don't bind the two.
+
+**Claude (1791640186)** splits the question for bowen:
+1. **The view being edited:** (1a) shows the new shape at once, revertible; or (1b) takes effect after confirming.
+2. **Other angles and expressions:** (2a) derived live while editing; or (2b) only when he explicitly chooses "derive", unchanged until then.
+
+They are chosen independently (e.g. 1a + 2b).
+
 ### Status
 
 Settled for now:
