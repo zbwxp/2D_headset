@@ -84,10 +84,10 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
 
 ## 4. Questions for bowen
 
-- **Q1. Two points are bound in a side view but are apart in the front view.**
+- **Q1: decided 甲 (bowen 1791650323), bound in all views.** Two points are bound in a side view but are apart in the front view.
   - 甲: bound in all nine views. In each other view the merged point sits where the first-clicked point is (existing rule "the first point is kept"); lines that ended at the other point move to it. Connections and closed-curve boundary references are shared by all views. A loop may collapse or self-cross in some view, so display and geometric validity are checked per view (dot 1791649528).
   - 乙: bound only in that view. Connections may differ per view; a closed curve may exist in some views only.
-- **Q2. Which coincidences trigger auto-bind** (dot 1791649845: two different behaviours).
+- **Q2: decided 甲 (bowen 1791650323: coincidence is defined exactly, so chance contact in other views is very unlikely; ignore it).** Only the view being edited is judged. Opening a file then checks positions without auto-bind, so a coincidence left in another view does not refuse the file. Which coincidences trigger auto-bind (dot 1791649845: two different behaviours):
   - 甲: only coincidences in the view the user is editing.
     - Coincidences caused in other views (by broadcast, or by a bind moving lines there) are left alone.
     - Opening a file must then not bind them either: the invariant "no two end points in one layer coincide" holds in the edited view at commit, not in every view.
@@ -95,8 +95,8 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
     - Only under 乙: settle loops over all changed views, and newly affected views join the check. The number of binds is bounded (finite points, binds only remove), but that alone does not prove the result is independent of view order, nor that every lock and constraint check passes (dot 1791649915). An order rule and tests would be needed.
 - **Q3. Drawing order: decided (bowen 1791650085).** Shared and synced, like adding / removing lines and layer order. Whether to allow per-view order is left for later.
 - **Q4. Line width and end strokes: decided (bowen 1791650085).** Per view, with a button that broadcasts them to the other views so they need not be set nine times. The button is a plain assignment of the current view's values (bowen 1791650171), unlike shape broadcast's offset.
-- **Q5. Mirror** (bowen 1791649795, 1791649821: mirror apply is a batch-editing tool, used only while editing the front). Asked 1791649837:
-  - Does mirror link also act only at the front?
+- **Q5. Mirror** (bowen 1791649795, 1791649821, 1791650323: mirror apply is a batch-editing tool; mirror apply and mirror link act only at 0,0, a view-limited operation). Still open from 1791649837:
+  - ~~Does mirror link also act only at the front?~~ Yes (bowen 1791650323).
   - The graph row "right-side views can be drafted from the left by mirror apply": withdrawn (甲), or a separate whole-view mirror draft (乙)?
 
 ## 5. Stages
@@ -123,8 +123,8 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 | Move / rotate / scale / deform; drag a point or handle | changed | unchanged | graph "Adding a line" |
 | Delete lines | deleted | deleted | graph |
 | Split a line at t | split at t | split at the same t | proposal |
-| Bind two points | merged | Q1 | *待定* |
-| Auto-bind | Q2 | Q2 | *待定* |
+| Bind two points | merged | merged; the merged point sits where the first-clicked point is in that view | bowen 1791650323 (Q1 甲) |
+| Auto-bind | judged here only | follows the bind; their own coincidences are ignored | bowen 1791650323 (Q2 甲) |
 | Unbind | new point + offset | new point at the old position + the same offset | proposal |
 | Endpoint link: create | second point moved to the first | the same, in every view | proposal |
 | Endpoint link: keep together | averaging the points acted on, in each changed view | — | existing rule, per view |
@@ -140,7 +140,7 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 | Cut and paste keeping ids | all views | — | existing row, per view |
 | Copy a whole 元组件 | all views + baselines; names kept | — | graph "Copying", "Names" |
 | Mirror flip | current view only | unchanged | proposal (a shape edit) |
-| Mirror apply / mirror link | front only | — | bowen 1791649795; link *待定* (Q5) |
+| Mirror apply / mirror link | at 0,0 only (view-limited) | — | bowen 1791649795, 1791650323 |
 | Broadcast (stage 2) | — (front is the source) | + (front − angle baseline) on every chosen line; then baseline = front | graph "Broadcast" |
 | Fit (stage 2) | angle baseline = front | unchanged | graph "Fit" |
 
