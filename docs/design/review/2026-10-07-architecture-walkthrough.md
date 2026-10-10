@@ -3720,6 +3720,12 @@ This is not one drawing per combination of angle frames and expression frames (L
 |---|---|---|---|
 | Angle | is | The most basic framework: the whole face turns by angle; expressions and swapped parts are defined over the whole angle range, attached to angle; at one angle, expression amounts still vary on their own. | bowen 1791603596 |
 
+**dot (1791603641), shorter wording, adopted by Claude:**
+
+| Subject | Relation | Object | Source |
+|---|---|---|---|
+| Angle | is | The base framework: the whole face shares one angle framework; expressions and swapped parts must fit it; at one angle an expression still varies on its own. *Note:* fitting may come from interpolation, inherited deformation or hand-drawn fixes. It does not require a drawing at every angle, and it does not fix whether the head turns before the expression is computed. | bowen 1791603596; wording dot 1791603641 |
+
 ### Status
 
-Waiting for bowen ("写" or changes) and dot's check of the wording.
+Waiting for bowen ("写" or changes).
