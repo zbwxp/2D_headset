@@ -272,6 +272,22 @@
 
 **Claude (1791637989):** agrees; relayed the three boundaries to bowen. The three questions (nine views, expressions at the front only?, eye switching) are still open.
 
+**bowen (1791638945):**
+- **Expressions are made at the front by default;** other angles later if needed.
+- **Process:**
+  - Draw the front; generate nine copies (all front at first).
+  - **For a side:** either pose the side lines in the drawing room, then load front and side into recording; or load the front into recording, pose the side there, then load the bones into the drawing's side view.
+  - **The right side** comes from the left: apply the left to the right (one-to-one, a unique result), then mirror. Perhaps move the whole so both offsets match (viewport guides). Then load the bones at the right side; until then they stay the initial 0,0 bones.
+  - **The plane:** yaw ±90; pitch perhaps ±45, so the coordinate starts at yaw 90, pitch 45.
+  - **Diagonal (four-corner) faces** are derived from the yaw and pitch bones, adjusted, then loaded into the drawings. Together: a region of up / down / left / right and diagonal turns.
+- **Why drawing and recording are separate:** drawing owns strokes, show / hide intervals and fill occlusion; recording bones only interpolate. Could be one, but separate is clearer.
+
+**Claude (1791638981):**
+- Restated as above.
+- The left → right step is the graph's existing **mirror apply** (source reflected onto a same-structured target).
+- Questions 1 (views; diagonals derived then adjusted) and 2 (expressions at the front by default) are answered.
+- **Still asked:** question 3, eye 1 / eye 2 switching in the finished model or only while making.
+
 ### Status
 
 Settled for now:
