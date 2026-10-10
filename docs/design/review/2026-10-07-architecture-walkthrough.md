@@ -4196,9 +4196,25 @@ Not chosen yet.
 7. **What tracking cannot give:** what this face looks like, and how a motion looks at the side. Our samples give those.
 - **Suggested starting dials** (after Live2D's standard list): head left–right, head up–down, left eye open, right eye open, mouth open, mouth smile, gaze left–right, gaze up–down.
 
+**dot (1791619346):** face-tracking parameters tell us most about the model's **control abilities**, not how many asset levels it needs.
+1. **Regions, not the whole face:** left eye, right eye, mouth controlled separately (one-eye blink, smiling while opening the mouth).
+2. **Many parameters on one picture:** angle, gaze, eye open, mouth shape act together; a later one must not overwrite the earlier result.
+3. **Each parameter has an explicit meaning, range, default and direction.** Not all are "0 = neutral": Live2D's eye open defaults to 1 (open) and mouth form has negatives.
+4. **A subset is fine:** the model may support only part; the adapter maps. Not every tracked parameter becomes a motion asset.
+
+**Claude went too far twice:**
+- "Many at once" gives "must combine", not "must add differences". Adding is an option; constraints and look after combining still need handling.
+- "Gaze moves on its own" gives "the pupil geometry is controlled independently", not necessarily a separate file or part asset.
+
+**Most important:** one parameter can move many lines, even several parts; one line can be moved by several parameters. A smile moves the mouth corners, cheeks and eyelids. So motions and parts should not be one to one.
+
+**Claude (1791619370):** agrees.
+- Withdraws "0 is neutral" (true for ARKit only), "must add differences" and "pupil = separate part".
+- Withdraws "a motion asset names the kind of part it fits": a motion says which lines it affects, across parts; each line may be affected by several motions.
+
 ### Status
 
-Waiting for bowen on the three kinds of storage and on the starting dials; dot's review. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the three kinds of storage (with motions spanning parts) and on the starting dials. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
 - naming lines across parts;
