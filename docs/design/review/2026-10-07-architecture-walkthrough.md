@@ -4115,12 +4115,39 @@ Not chosen yet.
 
 **Claude (1791617814):** agrees; withdraws the dial-decides-target rule and the "drawing = part 1 + motion 1 + assembly 1" wording. Asked bowen about one room with three modes.
 
+### bowen (1791618528)
+
+> OK就是确实需要三种录制模式对吧？ 那么也就是对应的有三种播放模式，背后三套/两套存储。然后针对这种 a+b可组合的动画结构得设计怎样的存储方案
+
+**Claude (1791618572):**
+- **Playback is one computation.** The three modes only choose what is switched on: angle only; one motion at the current angle; everything.
+- **Storage is two kinds of animation plus an assembly list.** The mix stores nothing until combination fixes are needed.
+
+**Proposed storage, at the concept level (no data structures yet):**
+1. **Part asset** (e.g. left eye 2):
+   - drawing set: drawings at the key views, holding the look (lines, widths, fills);
+   - angle recording: each line's shape (4 control points), by name, at the key angles, plus the transition settings between keys. **Absolute shapes.**
+2. **Motion asset** (e.g. blink 1):
+   - bound to a dial (blink amount 0–1) and to the kind of part it fits;
+   - each line stores **how much it differs from rest** while doing the motion: a **difference**, not an absolute shape;
+   - differences may be keyed at a few angles (front and side may differ) and interpolated.
+3. **Assembly:** per slot, which part and which motions; position, size, rotation, front / back order; the character's adjustments.
+
+**Why motions store differences** (the key to combining a + b):
+- At playback, each line = the angle recording's shape at the current angle + blink difference × blink amount + smile difference × smile amount + …, then placed by the assembly and given the drawing's look.
+- Sums of differences do not depend on order; any combination needs no pre-drawing.
+- With absolute shapes, two motions at once would have no rule for which wins.
+- **References:**
+  - Live2D Blend Shape "adds differences to the model geometry" (checked).
+  - A "combination correction difference", active only when both dials are on, is common in 3D (from memory). It is bowen's "side face + closed eye" local fix; added when needed.
+
+**Asked:** motions store differences, angle recordings store absolute shapes. Is that split right?
+
 ### Status
 
-Waiting for bowen on one room / three modes. The offset algorithm is to be validated by experiment. Open:
+Waiting for bowen on the storage split and dot's review. The offset algorithm is to be validated by experiment. Open:
 - appearance between two drawings;
 - tuned transitions;
-- stacking order;
 - naming lines across parts;
 - where combination fixes live;
 - nine views, missing curves, expressions over angle.
