@@ -3777,6 +3777,16 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **"At 90° deformers are not enough, line samples must lead" does not follow from the tutorial.** A deformer does not create missing picture content. How much we use deformers versus direct curve edits depends on how bowen actually draws. *Withdrawn as a conclusion.*
 - **The angle plane in place of a timeline is a clear model.** Widening the view from ±90° to ±180° can be a zoom of the interface, but shapes at the new angles do not come with the zoom; they still need samples or a rule that generates them.
 
+### bowen (1791604551)
+
+> 那其实ld那一套的框架理论上是可以捏脸或者复用的，因为它有变形器可以继承， 但是真的是因为raster定义问题 尤其是它那个pixel的脸线，除非画师画的都要follow exact rule否则虽然有手调好的变形器 但就是没法适配
+
+**Claude (1791604578)** agrees: this is why we go vector. Live2D internals below are from memory; the tutorial only confirms that drawn objects are ArtMeshes carried by deformers.
+- **Live2D stretches pictures.** A deformer moves mesh vertices and the pixels follow. A different drawing under the same warp gets its lines thickened, thinned or skewed.
+- **A deformer is tuned to the drawing it was made for.** The tutorial: "the four inner control points surround the eye". A swapped eye of another size or place falls outside that fit.
+- **Vector differs.** Deformation moves curve points and handles. Width is the line's own property (graph: width on each line), redrawn every time, so stretching does not change line weight.
+- **Vector does not solve everything.** A swapped part much bigger, smaller or elsewhere than the old one may still not fit the inherited deformation (dot 1791602343). It needs fitting the domain to the part's actual place, or a local hand fix.
+
 ### Status
 
 Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
