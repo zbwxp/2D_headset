@@ -118,6 +118,32 @@ Consequence for either approach: only 2(a) needs a "decide once" path; 1 needs p
 | Topology-equality check | needed every step | not needed (one topology) |
 | Main risk | divergence; replay of a non-replayable change record | network module grows; every geometry write must name its view |
 
+**Split per dot 1791649729** ("saved sync" apart from "behaviour still to change"):
+
+- **Saved by shared topology** (no longer needed): replaying structural changes in eight copies; keeping names, groups, order, selection, fills, joins, links and mirror pairs equal in nine copies; an outer history over nine histories; the topology-equality check.
+- **Still to change in both approaches:**
+  - settle depends on connections *and* each view's geometry, so it runs per changed view;
+  - auto-bind's rule (which views' coincidences count) is the same in editing and in open;
+  - the lock check covers every view;
+  - mirror apply is split into a per-view shape part and its attribute part;
+  - the file holds the complete multi-view state;
+  - every attribute is classified shared or per view (table below).
+
+### Which attributes are shared and which per view (to be decided item by item; dot 1791649729)
+
+| Attribute | Proposal | Basis / status |
+|---|---|---|
+| Point position, handles | per view | graph row "元线条 has one shape in each view" |
+| Arc join radius | per view (it is geometry) | proposal |
+| Join mode (smooth / cusp / arc) | shared | proposal (a relation, like connections) |
+| Line names, groups, connections, links, closed-curve boundaries | shared | graph rows (structure synced across views); Q1 |
+| Show / hide intervals (along-line [start, end]) | per view: the ends are keyed per view and interpolated over angle | v103 behaviour (bowen 1791337313); no data model yet |
+| Element visibility / lock (editing state) | shared | proposal: they are editing switches; per-view hiding is what the intervals are for |
+| Line width, end strokes (taper) | **ask bowen** | could change with foreshortening |
+| Drawing order (layers, groups, fills: who covers whom) | **ask bowen** | e.g. at 90° the far ear goes behind the head |
+| Fill colour | shared | proposal |
+| Whether a fill shows in a view | follows the order / interval answers; geometric validity checked per view | dot 1791649422, 1791649528 |
+
 **Claude's reading:** shared topology with the geometry accessor in `network` looks cheaper. Its changes concentrate in `network` (per-view storage, active view, per-view rules in addLine / split / bind / unbind / insertLines), plus loops over views in `document` (settle, import) and `locks`. Nine 画稿 adds three systems: replay, synced shared state, outer history. For dot to check before bowen decides.
 
 **Rule this needs (both approaches), for bowen with Q1:** "no two end points in one layer coincide" holds in every view; a coincidence found in any view an edit changed binds in all views.
