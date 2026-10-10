@@ -106,8 +106,18 @@ export function check(v: unknown): Clip {
  * Run inside a topology step; joins, fills and names follow with `attach` after it, when
  * the new lines have their groups.
  */
+/**
+ * The correspondence a paste uses: each view layer of the drawing takes the clip's view
+ * layer of the same key. Any other layer (expression, record), or a view layer the clip
+ * lacks, has none, so the paste is refused; those owners decide their own mapping later
+ * (dot 1791652760).
+ */
+export function viewLayerMap(d: Parts, clip: Clip): Map<string, string> {
+  const inClip = new Set(clip.network.layers.map(L => L.key))
+  return new Map(net.shapeLayers(d.network).filter(l => l.kind === 'view' && inClip.has(l.key)).map(l => [l.key, l.key]))
+}
 export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): net.CopyMap {
-  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset)
+  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset, viewLayerMap(d, clip))
 }
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id) {
   joins.insert(d.joins, d.network, clip.joins, map)

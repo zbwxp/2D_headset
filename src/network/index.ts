@@ -15,11 +15,14 @@
 // front view; that is the single-view compatibility entry (dot 1791650999).
 //
 // A structural change is decided once, here, and reaches every shape layer in the same
-// call (architecture §1; step 2, Claude 1791652727): a new line has the drawn shape in
-// every layer; a split re-expresses each layer's own curve at the same t; an unbind puts
-// the new point at each layer's old position + one offset; a bind keeps each layer's
-// position of the kept point; deletes leave every layer; an insert takes each layer's
-// shape from the clip (or the clip's source layer).
+// call (architecture §1; step 2, Claude 1791652727, narrowed by dot 1791652760): a split
+// re-expresses each layer's own curve at the same t; an unbind puts the new point at each
+// layer's old position + one offset; a bind keeps each layer's position of the kept
+// point; deletes leave every layer. These rules are the same for every kind. What differs
+// by role is not decided here: a new line gets the drawn shape in view layers only, and
+// is refused while the drawing has expression or record layers (their owners initialise
+// them); an insert takes each target layer from the clip layer the caller names for it,
+// and is refused if any target layer has none.
 import { type Vec, type Cubic, add, sub, split, scale, length } from '../geometry'
 import * as shapes from '../shapes'
 
@@ -664,17 +667,20 @@ export function linesData(read: NetworkState, lineIds: readonly Id[]): LinesData
 
 /**
  * New points and lines in `layer` from plain data, with new ids from `idOf`, moved by
- * `offset` in every shape layer. Each target layer takes its shapes from the clip's layer
- * of the same key; a layer the clip lacks takes the clip's source layer (a proposal,
- * Claude 1791652727). Clip layers the drawing does not have are ignored.
+ * `offset` in every shape layer. `layerMap` names, for every shape layer of the drawing,
+ * the copy's layer its shapes come from: the caller decides the correspondence, and a
+ * drawing layer without one refuses the insert (dot 1791652760: no silent fill-in or drop).
  */
-export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer: Id, idOf: (old: Id) => Id, offset: Vec = { x: 0, y: 0 }): CopyMap {
+export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer: Id, idOf: (old: Id) => Id, offset: Vec, layerMap: ReadonlyMap<string, string>): CopyMap {
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
   const off = vecIn(offset)
   const byKey = new Map(data.layers.map(L => [L.key, L]))
-  const src = byKey.get(data.source)
-  if (!src) throw new Error(`The copy has no shape layer ${data.source}`)
-  const from = (key: string) => byKey.get(key) ?? src
+  const plan = new Map(keys(n).map(key => {
+    const k = layerMap.get(key), L = k === undefined ? undefined : byKey.get(k)
+    if (!L) throw new Refusal('paste-layer-unmatched', `paste-layer-unmatched: shape layer ${key} has no matching layer in the copy`)
+    return [key, L] as const
+  }))
+  const from = (key: string) => plan.get(key)!
   const pointAt = (key: string, id: Id) => { const p = from(key).points.find(x => x.id === id); if (!p) throw new Error(`The copy has no shape for point ${id} in ${key}`); return p.position }
   const shapeAt = (key: string, id: Id) => { const l = from(key).lines.find(x => x.id === id); if (!l) throw new Error(`The copy has no shape for line ${id} in ${key}`); return l }
   const map: CopyMap = { points: new Map(), lines: new Map() }
@@ -746,6 +752,10 @@ export type EndSpec = Id | { id: Id; layer: Id; position: Vec }
 export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bSpec: EndSpec, handles?: { ha: Vec; hb: Vec }, read: NetworkState = n) {
   const endId = (e: EndSpec) => (typeof e === 'string' ? e : e.id)
   if (endId(aSpec) === endId(bSpec)) throw new Error('A line needs two different points')
+  // only view layers take the drawn shape; expression and record layers are initialised
+  // by their owners, so until those exist a new line is refused there (dot 1791652760)
+  const roles = shapes.layers(SH(n)).filter(l => l.kind !== 'view')
+  if (roles.length) throw new Refusal('new-line-needs-owner', `new-line-needs-owner: the ${roles.map(l => l.key).join(', ')} layer(s) need their owner to give a new line its shape`)
   for (const e of [aSpec, bSpec]) if (typeof e !== 'string') addPoint(n, ch, e.id, e.layer, e.position)
   const a = endId(aSpec), b = endId(bSpec)
   const pa = rawPoint(n, a), pb = rawPoint(n, b)
@@ -755,7 +765,7 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bS
   const hIn = handles ? { ha: vecIn(handles.ha), hb: vecIn(handles.hb) } : undefined
   claimLine(n, id)
   ch.prefer.push({ lines: linesAt(n, a).map(e => e.line.id) })
-  // the drawn shape in every layer (architecture §1): the handles as drawn, the default stroke
+  // the drawn shape in every view layer (architecture §1): the handles as drawn, the default stroke
   const shape = { ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 }, hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 }, stroke: DEFAULT_STROKE }
   for (const key of keys(n)) shapes.putLine(SH(n), key, id, shape)
   S(n).lines.push({ id, a, b, state: { ...DEFAULT_STATE } })

@@ -4,7 +4,8 @@
 // - split: each layer splits its own curve at the same t (proposal)
 // - unbind: each layer's old position + one offset measured in the bound layer (proposal)
 // - bind / delete / isolated points: every layer
-// - insert (paste): each layer from the clip's same-key layer, else its source layer (proposal)
+// - insert (paste): each layer from the clip layer the caller names for it; none → refused
+// - pen: view layers only; refused while expression or record layers exist (dot 1791652760)
 // The record of added points and lines is complete.
 import { describe, it, expect } from 'vitest'
 import * as net from '../src/network'
@@ -16,15 +17,15 @@ const FRONT = { key: views.FRONT, kind: 'view' as const }
 const SIDE = 'view:90,0', TOP = 'view:0,45'
 type Data = { shapes: { layers: { key: string }[] } }
 
-/** Lines a–b–c in layer L, with three shape layers whose geometry differs. */
-function threeLayers() {
+/** Lines a–b–c in layer L, with three shape layers whose geometry differs (one of them a record). */
+function threeLayers(third: { key: string; kind: 'view' | 'record' } = { key: 'base:angle', kind: 'record' }) {
   const n = net.create(FRONT), ch = net.emptyChanges()
   net.addLayer(n, 'L')
   net.addLine(n, ch, 'l1', { id: 'a', layer: 'L', position: { x: 0, y: 0 } }, { id: 'b', layer: 'L', position: { x: 10, y: 0 } })
   net.addLine(n, ch, 'l2', 'b', { id: 'c', layer: 'L', position: { x: 20, y: 5 } })
   net.addShapeLayer(n, SIDE, 'view', views.FRONT)
-  net.addShapeLayer(n, 'base:angle', 'record', views.FRONT)
-  const side = net.of(n, SIDE), base = net.of(n, 'base:angle'), c = net.emptyChanges()
+  net.addShapeLayer(n, third.key, third.kind, views.FRONT)
+  const side = net.of(n, SIDE), base = net.of(n, third.key), c = net.emptyChanges()
   net.move(side, c, [{ id: 'a', target: { x: 2, y: 3 } }, { id: 'b', target: { x: 7, y: -4 } }, { id: 'c', target: { x: 9, y: 9 } }])
   net.moveHandle(side, c, 'l1', 'a', { x: 1, y: 5 })
   net.setLineStroke(side, 'l1', { width: 3, profile: 'uniform' })
@@ -47,9 +48,17 @@ const layers = (n: net.NetworkState) => net.shapeLayers(n).map(l => l.key)
 /** Every layer holds exactly the structure's points and lines (the saved form checks it). */
 const covered = (n: net.NetworkState) => expect(() => net.restore(net.exportData(n), views.FRONT)).not.toThrow()
 
+const VIEWS3 = { key: TOP, kind: 'view' as const }
+
 describe('pen on several layers', () => {
-  it('a new line has the drawn shape in every layer; an existing end keeps each layer\'s position', () => {
-    const n = threeLayers(), side = net.of(n, SIDE), ch = net.emptyChanges()
+  it('while expression or record layers exist, a new line is refused (their owners initialise them)', () => {
+    const n = threeLayers(), before = JSON.stringify(net.exportData(n))
+    expect(() => net.addLine(n, net.emptyChanges(), 'l3', 'c', { id: 'd', layer: 'L', position: { x: 1, y: 1 } })).toThrow(/new-line-needs-owner: the base:angle layer/)
+    expect(JSON.stringify(net.exportData(n))).toBe(before)
+  })
+
+  it('a new line has the drawn shape in every view layer; an existing end keeps each layer\'s position', () => {
+    const n = threeLayers(VIEWS3), side = net.of(n, SIDE), ch = net.emptyChanges()
     net.addLine(side, ch, 'l3', 'c', { id: 'd', layer: 'L', position: { x: 30, y: 30 } }, { ha: { x: 1, y: 0 }, hb: { x: 0, y: 1 } })
     for (const key of layers(n)) {
       const h = net.of(n, key)
@@ -66,7 +75,7 @@ describe('pen on several layers', () => {
   })
 
   it('default handles are measured in the layer the line is drawn in', () => {
-    const n = threeLayers(), side = net.of(n, SIDE)
+    const n = threeLayers(VIEWS3), side = net.of(n, SIDE)
     net.addLine(side, net.emptyChanges(), 'l3', 'c', { id: 'd', layer: 'L', position: { x: 12, y: 9 } })
     // from c (9, 9) in the side layer to d (12, 9): a straight line there
     for (const key of layers(n)) expect(net.line(net.of(n, key), 'l3').ha).toEqual({ x: 1, y: 0 })
@@ -130,7 +139,7 @@ describe('bind and delete on several layers', () => {
 })
 
 describe('insert (paste) on several layers', () => {
-  it('each target layer takes the clip\'s same-key layer, else the clip\'s source layer; extra clip layers are ignored; the offset applies everywhere', () => {
+  it('each drawing layer takes the copy layer the caller names; the offset applies everywhere', () => {
     const src = threeLayers()
     const data = net.linesData(net.of(src, SIDE), ['l1'])
     expect(data.source).toBe(SIDE)
@@ -140,18 +149,39 @@ describe('insert (paste) on several layers', () => {
     net.addShapeLayer(dst, SIDE, 'view', views.FRONT)
     net.addShapeLayer(dst, TOP, 'view', views.FRONT)
     const ch = net.emptyChanges()
-    const map = net.insertLines(dst, ch, data, 'M', id => `x/${id}`, { x: 100, y: 0 })
+    const map = net.insertLines(dst, ch, data, 'M', id => `x/${id}`, { x: 100, y: 0 }, new Map([[views.FRONT, views.FRONT], [SIDE, SIDE], [TOP, SIDE]]))
     expect([...map.lines.values()]).toEqual(['x/l1'])
     const at = (key: string, id: string) => net.point(net.of(dst, key), id).position
-    expect(at(views.FRONT, 'x/a')).toEqual({ x: 100, y: 0 })          // the clip's front
-    expect(at(SIDE, 'x/a')).toEqual({ x: 102, y: 3 })                 // the clip's side
-    expect(at(TOP, 'x/a')).toEqual({ x: 102, y: 3 })                  // missing in the clip: its source (side)
+    expect(at(views.FRONT, 'x/a')).toEqual({ x: 100, y: 0 })
+    expect(at(SIDE, 'x/a')).toEqual({ x: 102, y: 3 })
+    expect(at(TOP, 'x/a')).toEqual({ x: 102, y: 3 })                  // as the caller named: TOP ← SIDE
     expect(net.line(net.of(dst, TOP), 'x/l1').ha).toEqual({ x: 1, y: 5 })
-    expect(net.line(net.of(dst, TOP), 'x/l1').stroke.width).toBe(3)
     expect(net.line(dst, 'x/l1').stroke.width).toBe(1)
     expect(ch.addedPoints.sort()).toEqual(['x/a', 'x/b'])
     expect(ch.addedLines).toEqual(['x/l1'])
     covered(dst)
+  })
+
+  it('a drawing layer with no named copy layer refuses the insert, before anything is written', () => {
+    const src = threeLayers(), data = net.linesData(src, ['l1'])
+    const dst = net.create(FRONT)
+    net.addLayer(dst, 'M')
+    net.addShapeLayer(dst, TOP, 'view', views.FRONT)
+    const before = JSON.stringify(net.exportData(dst))
+    expect(() => net.insertLines(dst, net.emptyChanges(), data, 'M', id => `x/${id}`, { x: 0, y: 0 }, new Map([[views.FRONT, views.FRONT]]))).toThrow(/paste-layer-unmatched: shape layer view:0,45/)
+    expect(() => net.insertLines(dst, net.emptyChanges(), data, 'M', id => `x/${id}`, { x: 0, y: 0 }, new Map([[views.FRONT, views.FRONT], [TOP, 'view:-90,0']]))).toThrow(/paste-layer-unmatched/)
+    expect(JSON.stringify(net.exportData(dst))).toBe(before)
+  })
+
+  it('a document paste maps view layers by the same key only; a record layer, or a view layer the clip lacks, is refused', () => {
+    const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } }
+    const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
+    const viewsOnly = net.create(FRONT); net.addShapeLayer(viewsOnly, SIDE, 'view', views.FRONT)
+    expect([...clipboard.viewLayerMap(parts(viewsOnly), clip)]).toEqual([[views.FRONT, views.FRONT], [SIDE, SIDE]])
+    const withRecord = net.create(FRONT); net.addShapeLayer(withRecord, 'base:angle', 'record', views.FRONT)
+    expect([...clipboard.viewLayerMap(parts(withRecord), clip)]).toEqual([[views.FRONT, views.FRONT]])
+    const lacking = net.create(FRONT); net.addShapeLayer(lacking, TOP, 'view', views.FRONT)
+    expect([...clipboard.viewLayerMap(parts(lacking), clip)]).toEqual([[views.FRONT, views.FRONT]])
   })
 
   it('a clip is checked: each shape layer must hold exactly its points and lines', () => {
@@ -192,7 +222,7 @@ describe('random structural edits on three layers', () => {
     let seed = 7
     const rnd = () => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed / 2 ** 31 }
     for (let run = 0; run < 25; run++) {
-      const n = threeLayers()
+      const n = threeLayers(VIEWS3)
       let k = 0
       for (let step = 0; step < 30; step++) {
         const ls = net.lines(n), ps = net.points(n)
