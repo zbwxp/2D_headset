@@ -100,3 +100,19 @@ Claude 1791628397; repo pages opened unless marked.
      - Answers: inbox #20 (shortcuts blocked by focused buttons); "what is a tool vs an edit"; each command testable alone.
   2. **Module boundaries are checked by machine on every commit, not by memory.** Makes "graph modules are never polluted" automatic: core depends on neither interaction nor visual; interaction does not depend on visual.
 - **Already ours:** one edit = one undo step with whole rollback on error (graph); the UI reads state and acts through callbacks (visual package).
+
+**dot (1791633744): keep both, tighter, so no big framework grows.**
+1. **One execution rule per operation, shared by every entry.** Delete, flip, switch tool…: buttons, menus and shortcuts share one logic and one "when enabled". Mouse moves, hovers and panel toggles are not commands; not every command enters the document's undo.
+2. **Tools handle the interaction process; the existing edit transactions change data.**
+   - Tools still hold hit-testing and gesture logic.
+   - Drags go begin / preview / commit / cancel into the existing undo and rollback.
+   - One-step actions (delete) are not forced into four phases.
+   - No second history system.
+3. **Module boundaries checked automatically; behaviour guarded by tests.**
+   - core depends on neither interaction nor visual; interaction does not depend on visual.
+   - The check covers aliases, re-exports and indirect dependencies, and runs in the shared pre-commit gate (CI), not only local hooks.
+   - Cancel restoring, previews not polluting undo, etc. stay behaviour tests; a passing dependency check does not replace them.
+
+**Key correction to Claude:** a command table alone does not fix the focused-button problem (#20). The key is stopped at input routing, before any command. Focus, input-field protection and shortcut priority need explicit rules.
+
+**Claude (1791633770):** agrees; withdraws "solves #20" and "tools write no logic". Posted the three tightened principles to bowen, plus a separate to-do: rules for focus, input-field protection and shortcut priority. Into the graph (Interaction) only when bowen says "写".
