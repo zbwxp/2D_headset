@@ -68,3 +68,18 @@ Claude 1791628397; repo pages opened unless marked.
   2. keep our relation layer, reuse its geometry and editing;
   3. its interface and rendering with our core;
   4. ideas only.
+
+**dot (1791628569):** recommends making VectorCraft a **formal base candidate**.
+- It already has a whole editor (pen / anchors and handles, snapping, layers, undo, path booleans, import / export) with engine and UI apart.
+- WASM does not mean an interface for our TypeScript exists.
+- Its own ROADMAP still lists interaction, stability and performance as to be verified; not shown more reliable than our core.
+- Its paths are anchor chains (`crates/geom/src/path.rs`); no shared-end-point network seen. Curve operations, path operations and rendering may still be reused, with our relations kept.
+- **The real cost** is keeping correspondence through splits, joins and deletes, undone together.
+- **Next:** test one small flow, not feature lists: two lines sharing an end point → drag linked → split → undo.
+
+**Claude (1791628600):** agrees; asked bowen to approve the experiment (plan first).
+- **Questions it answers:**
+  1. Can it express a shared end point, or only two coinciding points?
+  2. Does sharing survive split and undo?
+  3. If not, roughly how much changes to hang our relation layer on its paths?
+- **Setup:** a separate folder clone, driven through its control channel. Rust toolchain present (cargo 1.89). None of our repositories touched.
