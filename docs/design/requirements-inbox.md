@@ -32,6 +32,7 @@ bowen's requirements from trying the bench, recorded as he gives them: in no ord
 | 26 | 1791558761 | 这个是最常用且明确的tool对吧 | Answered in Slack: yes. A box that selects by dragging is standard. The direction rule (right = wholly inside, left = touching) is CAD's window / crossing selection (from memory, not checked against docs). |
 | 27 | 1791558844 | 这个快捷键绑定成s select split先踢出去 | **Changed** at core/v1 `c333a8d`: S is the box tool and has the s key. Split keeps its button and has no key for now. With V / A, a press on nothing only clears again. |
 | 28 | 1791559014 | 不对这个根本不需要快捷键吧？ 目前有任何按住拖动鼠标的占用吗？除了z？ 那么在z之外 在空白处开始按住拖动就是矩形框选吧？ | Checked: a left drag from blank space was free in V / A (a press there only cleared) and in the step tools (a press on nothing did nothing). The pen uses every press (each makes a point), and Z zooms. **Changed** at core/v1 `1b2e249`: a drag from nothing is the box in every tool but the pen and Z. The S tool is gone, and s is split's key again. |
+| 29 | 1791599608 | OK现在需要的是给图层，连续曲线 和下面的单独曲线都挂载属性，点击对应的单位在右侧下方应该有个可以折叠的属性，现在还没有那么多属性这里也放个占位。如果不知道什么意思参考一版。 | Did not exist. v1 has a foldable "属性" panel under the layers (7205381 `src/ui/drawing/DrawingPropertiesPanel.tsx`; curve, endpoint and selection controls). **Changed** at core/v1 `da31397`: a foldable 属性 panel under the layers list, for the layer / continuous curve / line last clicked in the list (default: the current layer). Read-only, with the placeholder "更多属性（待定）". |
 
 ## Found while checking (not bowen's requirements; facts only)
 
