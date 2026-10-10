@@ -3546,3 +3546,49 @@ Whether a snap target is locked does not decide success by itself; damaging its 
 - **Waiting for bowen:** merge position = bind within one layer; the coincide-without-snap fallback.
 
 **bowen 1791458278:** agrees to merge position = bind within one layer, and to keeping the earlier-created point without snapping. Auto-bind is judged only when an edit completes. Q31 graph rows written; implementation in core/v1 approved.
+
+## Q32: Snapshots — what they are, derived from the end goal
+
+### bowen's requirement (1791601425)
+
+> 我现在对快照的概念也不清晰 我甚至无法决定快照要不要分成画稿和快照两种。我先说需求 我们终极是要做一个捏脸器 并且捏好之后可以上下左右旋转并且待着正在运动的表情旋转。（边笑边转头边眨眼，可以接入直播间绑定的那种。） 能够确定的是我们的实现方式是不同角度，或者表情的不同阶段之间用bezier曲线的interpolate 也就是类似flash的方式实现。因此我需要你们参考版一再参考我这个终极需求，先把需求捋清，然后反推为了实现它 这个快照/画稿/关键帧什么的应该是什么需求。从笼统概括的大方向开始。
+
+### Facts
+
+v1's snapshot model: `docs/design/snapshot-v1-facts.md` (7205381; corrected per dot 1791600814).
+
+### Requirements, as user-observable effects (Claude 1791601473; to be confirmed by bowen)
+
+1. **Shape:** the user draws and adjusts a face (the line editor).
+2. **Turn:** the face turns continuously up / down / left / right within a range; every angle in between has a picture.
+3. **Expressions:** smile, blink, mouth open… each has an amount (0 to 1); several hold at once.
+4. **Combine:** any angle with any mix of expressions at the same time, changing continuously over time.
+5. **Drive:** the amounts come from an animation, or live from face tracking (one set of numbers per frame).
+6. **Means:** Bézier interpolation between hand-drawn states, like a Flash shape tween; no 3D.
+
+### Derived conditions (Claude 1791601473)
+
+- **One set of lines:** interpolation needs the same line to be recognisable in every state. So a face has one set of lines and connections. Angles and expressions are different *shapes* of those lines: point and handle positions, plus which parts are shown.
+- **Angle and expression are the same kind of thing:** each is a continuous control (angle left–right, angle up–down, left eye closed, smile…). A state is "what the lines look like with every control at given values".
+- **Lines unseen at some angles** use show/hide intervals (graph, Q27). The line stays a member and keeps interpolating; v1 kept "hidden" and "missing" apart (facts §3).
+- **Live driving:** a set of control values must give a picture quickly.
+
+### Direction (two options; Claude recommends 甲)
+
+- **甲, one artwork plus key shapes.**
+  - The artwork is the single set of lines and connections.
+  - A key shape ("snapshot") is the shape of those lines at one set of control values; in-between states interpolate neighbouring key shapes.
+  - Reference: Live2D works this way (parameters, key forms at parameter values, angle and expression mixed). From memory, not checked against its docs.
+- **乙, one independent artwork per angle / expression, matched by id.**
+  - This is v1's artwork library: free drawing per state, even with different lines.
+  - Matching is fragile: v1 needs the same curve id and end node ids. Flash's shape tween matches independent shapes automatically and often needs hints (from memory).
+
+### Next questions, once the direction is chosen
+
+1. **How angle and expressions combine:** one drawn state per combination (a grid), or angle shape plus expression changes? An expression looks different at the side than at the front.
+2. **What a key shape stores:** every line's position, or only what changes?
+3. **A line that truly appears only at some angles:** is hiding enough?
+
+### Status
+
+Waiting for bowen: 甲, 乙, or neither; dot asked for an independent judgement. No graph rows yet.
