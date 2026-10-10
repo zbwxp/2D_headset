@@ -86,6 +86,17 @@
 > - **元线条** = a line whose identity is its semantic name (e.g. "左上眼睑"), bringing together its **线条** (look; drawing room) and its **骨线** and **动画** (how its shape changes; recording room).
 > - Same name, same 元线条. Topology and direction are checked at mounting.
 >
+> **bowen (1791624091):** "而最终的可以捏脸的成品是由元线条组成的成品。元线条可以连续构成连续元线条，对应绘制间里面就是连续曲线， 懂我意思吗？这个就有点像元线条是class/strut 线条/曲线是它的一个module/item"
+>
+> **Claude (1791624114):** restated as a class with fields:
+> - 线条: the look (width, strokes, fills…), edited in the drawing room;
+> - 骨线: the shape;
+> - 动画: how the shape changes with angle and expression.
+>
+> 元线条 join into **continuous 元线条** (the counterpart of continuous curves), then layers; the finished, shapeable face is made of 元线条. The drawing room shows only the "look" side of this structure.
+>
+> **Asked:** connections (which line joins which, which continuous curve) belong to the 元线条 level, shared by 线条 and 骨线, defined once. So "线条 joined, 骨线 apart" cannot happen. A check is needed only when mounting another drawing.
+>
 > v1 below, kept for history.
 
 bowen asked for one set of terms for the "drawing + bone animation, three modes" framework (Q32), because 线稿 / 画稿 / 快照 / 画稿组 / 录制间 had become confusing. One meaning per term; each retired word maps to its replacement. Proposal by Claude; to be reviewed by dot and decided by bowen.
