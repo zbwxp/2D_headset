@@ -3923,6 +3923,31 @@ This is not one drawing per combination of angle frames and expression frames (L
 
 Recorded only; waiting for bowen's next message before replying.
 
+### bowen, the clearer workflow (1791615378)
+
+> 这样 理想中，画稿也分oc组。一个oc组是正脸，侧脸 上扬 俯视各个角度的画稿都存在的画稿集（画稿集里面线条id可以不一样但是不同角度的画，的曲线名字要一样）。画稿集里面甚至有表情 张嘴动作之类的。然后录制快照是一个锁头角度的每个90度线条对应画稿集里面的画。也就是画稿集里面定义了9轴视图这种。一个完整的画稿集直接转到录制快照里，当场就能产出一个录制快照了。（-90-90 上下pitch都对应好位置的名字曲线） 这样一套画稿集和录制快照的关系是画稿集定义了每个固定角度的视觉效果 相当于关键帧 录制集是补帧工具，还可以在比如30，60度对于补帧原本的线性过渡做一些曲线设定） 然后这一套对应的"标准脸"就是我们的base 模型。 接下来描述新模型的制作过程。新模型需要新的捏脸。原则上我可以重画一套绘画稿，但是为了最大程度复用，我也可以在原本绘画稿（复制品）上调整比如眼睛下巴之类的曲线参数） 此时我只有正脸的调整了，我的绘制集也只有正脸。那么我把这一个正脸load进之前的录制快照1里面 给正脸2赋予录制快照1。那么此时借助offset的计算，我能直接推断出正脸2根据offset的绘制集其他角度画稿（注意这个时候不一定准确，可以调） 我根据正脸2+录制快照1 获得了正脸2+正脸2的其他角度绘制集。然后我如果认可这个绘制集，我再把绘制集load进录制间，点转化成录制快照。就获得了录制快照2。 这个流程会不会更清晰一点我的工作流和需求？
+
+**Claude (1791615426), restated:**
+1. **Drawing set (画稿集), one per character:** a drawing per fixed angle (front, side, up, down…), possibly expressions too. Line ids may differ between drawings; a curve's **name** is the same at every angle.
+2. **Drawing set = key frames; recording snapshot set = in-betweening.**
+   - A complete drawing set converts at once into a recording set, matching same-named curves across angles.
+   - The recording set can also shape the in-between transitions (e.g. at 30°, 60°).
+3. **Standard face:** drawing set + recording set = the base model.
+4. **A new character:**
+   - copy the front and adjust it, then apply recording set 1 to front 2;
+   - offsets infer front 2's drawings at the other angles, as drafts to adjust;
+   - accepted, they are drawing set 2; converted, recording set 2.
+
+**Consequence:**
+- Offsets only *generate first drafts* that bowen reviews and edits.
+- The finished model is always drawing set + recording set, with no offsets in it.
+- So the offset rule need not be perfect: start with the simplest, and hand edits fix bad drafts. The A / B / C experiment can wait.
+
+**Asked:**
+1. Is the "9-axis view" yaw {−90, 0, 90} × pitch {−90, 0, 90}, nine drawings? Are the diagonals hand-drawn or generated, then adjusted (as Live2D)?
+2. Must every drawing in a set hold the same named curves (e.g. the side nose line in the front drawing too, collapsed onto the axis), or may some angles lack a curve?
+3. Expressions: drawn at every angle, or the front only and the rest inferred? (Later.)
+
 ### Status
 
-Waiting for bowen's follow-up (1791614654 announced it). No graph rows yet (bowen 1791603861).
+Waiting for bowen on the three questions and dot's review. No graph rows yet (bowen 1791603861).
