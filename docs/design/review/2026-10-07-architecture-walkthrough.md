@@ -40,7 +40,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Endpoint links:** keep cross-layer endpoints together; symmetric after creation; computed from the points directly acted on.
 - **Closed curves and fills:** a closed route decides whether a loop exists; the derived outline decides its boundary.
 - **Layers:** identified, ordered containers; visibility and lock are batches over their elements.
-- **Names:** layers, continuous curves and every line carry a name, points none; all names are unique.
+- **Names:** layers, continuous curves and every line carry a name, points none; layer names are unique, names inside a layer unique within it.
 - **Save / open:** an independent module; what is saved opens whole and equal.
 - **Interaction:** state has one owner; an unfinished operation can be cancelled and commits atomically; its targets are explicit.
 - **Locks:** protect what an element owns alone; shared joins may change; what goes with a deleted unlocked element is allowed.
@@ -196,7 +196,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Name | is carried by | Layers, continuous curves and every line (a Bézier curve, the smallest unit), so the parts being edited can be found by name, not only their containers. Points carry no name. *Note (defaults and implementation, not rules; bowen 1791478697: the rest of naming is not principle):* default names "连续曲线N" and "曲线N" with the next unused N; a copy is named "<name>副本", then "<name>副本2"…; a name follows identity: the group that keeps its identity keeps its name and a split-off group gets a default, a split line's piece at its start end keeps the name and the other piece gets a default, a mirror-apply target keeps its own names; tags are a UI matter for now. | confirmed | bowen 1791478346, 1791478561, 1791478586, 1791478598, 1791478653, 1791478697; dot 1791478538, 1791478664 |
-| Names | are | Unique across everything named (layers, continuous curves, lines), and never empty. A rename to a name in use is refused, naming the holder. Replaces the narrower row "Layer name". | confirmed | bowen 1791478346, 1791478697; earlier bowen 1791435000 (Q30) |
+| Names | are | Never empty. **Layer (元组件) names are unique across the document; names of continuous curves and lines are unique within their layer** (the same line name may exist in different 元组件). A rename to a name in use in that scope is refused, naming the holder. Copying a whole layer keeps the names inside it; a copy inside the same layer still gets "<name>副本". *Continuous curves are put in the same scope as lines by Claude for consistency (bowen named lines only); to be confirmed.* | confirmed (scope of curve names to confirm) | bowen 1791649036 (甲, Claude 1791648945); earlier bowen 1791478346, 1791478697 |
 
 ### Interaction (start, preview, commit, cancel)
 
@@ -223,7 +223,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 |---|---|---|---|---|
 | Model | is | A combination of 元组件 that plays angle and expression animation (e.g. mouth 2 + eye 1 + ear 1). Several models may share a 元组件. Choosing among a feature's presets (eye 1–6) is runtime UI, not architecture. | confirmed | bowen 1791634995, 1791639688 |
 | 元组件 | is | A layer, with a **type** (眼睛) and a **name** (眼睛1, 圆眼1). It is a semantic group, not another geometric level. | confirmed | bowen 1791634995, 1791637819, 1791645279 |
-| 元线条 | is identified by | Its 元组件 + its name. The same name in different 元组件 means unrelated lines. *Conflicts with row "Names" (names unique across everything); open for bowen, see "Open" table.* | confirmed | bowen 1791623875, 1791634995 |
+| 元线条 | is identified by | Its 元组件 + its name. The same name in different 元组件 means unrelated lines. | confirmed | bowen 1791623875, 1791634995 |
 | Renaming a 元线条 | keeps | The same line: its nine views, expressions and existing references stay connected. Only copying makes an independent new object. How ids are stored is an implementation choice. | confirmed | bowen 1791648678; dot 1791645801 |
 | 元线条 | has | One shape in each of the nine views, plus its look (strokes, show / hide intervals, fills) and its expressions. It is created automatically when drawn. There are no separate drawing lines and bone lines. | confirmed | bowen 1791624350, 1791640911 |
 | Copying 元线条 or a 元组件 | makes | New identities: editing the copy never changes the original. Every view and the expressions are copied as they are. | confirmed | bowen 1791634995, 1791640535; dot 1791637961 |
@@ -284,7 +284,6 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Cut-and-paste between recordings (keeps line ids) | is | To be sorted out later | open | bowen 1791392233 (Q21) |
-| Names vs 元线条 identity | conflict | Row "Names" makes every name unique across everything, and a copy is renamed "<name>副本". Row "元线条 is identified by" lets the same line name exist in different 元组件 (元上唇 in mouth 1 and mouth 3), and matching pairs lines by name. To decide: line names unique within their 元组件 only (layer names still unique), or keep global uniqueness. | open | Claude, on writing the rows |
 | Broadcast derivation | is, for now | Adding "current front − baseline" to each target, point by point | open (candidate, to verify by experiment) | Claude 1791642580; dot 1791642640, 1791645801 |
 | Copying 元线条 or a 元组件 | copies | Its baselines as they are, so an unbroadcast change is carried to the copy | open (candidate) | dot 1791642599; Claude 1791642620 |
 | Mirror drafting of the right side | pairs | Left and right lines possibly by reusing mirror-link pairs | open (candidate, to check) | dot 1791639097 |
@@ -308,6 +307,7 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
+| Names | are | Unique across everything named (layers, continuous curves, lines), and never empty. A rename to a name in use is refused, naming the holder. | Superseded by the row "Names" (bowen 1791649036): line names are unique within their 元组件 | bowen 1791478346, 1791478697 |
 | Layer name | is | Unique, and never empty | Superseded by the row "Names": uniqueness now covers every name (bowen 1791478346, 1791478697) | bowen 1791435000 (Q30) |
 | Merge position, deformation, mirror editing | belong to | The "editing" level, discussed later | Superseded: now decided in the Editing and Mirror tables (merge position: row "Merge position within one layer") | bowen 1791424844, 1791425164 (Q26/Q27) |
 | Move to another layer | is | Copy, or copy then delete; not a separate operation | Superseded by "First-level element can be cut and pasted keeping its ids" and "Cut, paste / copy" (bowen 1791435958, 1791436374, Q31) | bowen 1791392425 (Q21) |
