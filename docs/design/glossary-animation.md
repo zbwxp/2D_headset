@@ -335,6 +335,13 @@
 - **乙: keep two rooms.** Keeps "one bone set shared by many faces" possible, at the cost of loading two shapes back and forth (out-of-sync risk).
 - dot's boundaries still apply (keep old values while deriving; mark expressions not adapted).
 
+**dot (1791640067):** disagrees that "the second shape has no reason to exist". Copying a preset does not cancel sharing, and a mergeable finished model does not mean making needs only one shape.
+
+**Claude (1791640082):** withdraws that claim. Two separate questions:
+- **rooms:** one room with modes, or two;
+- **data:** one shape per view, or two (drawing shape + bone shape, possibly offset).
+They can be chosen independently (one room may still hold two shape layers). The recommendation is on hold until dot's analysis.
+
 ### Status
 
 Settled for now:
