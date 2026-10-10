@@ -4009,13 +4009,24 @@ Not chosen yet.
 
 **Claude (1791616511):** agrees; corrects option 乙 of question 1 to "the interval's ends, along the curve, change with angle so that the line closes to nothing at the chosen angle". Question 2 stays open.
 
+### bowen (1791616653)
+
+> 按照线是线的骨骼动画来理解，有两种方案，一种是关键帧处，画面和骨骼必须严格重合， 另一种是画面和骨骼可以有offset， 骨骼怎么动 带着offset算 都是软件内置行为会帮忙处理。前者会造成存粹的内容会比较多一个捏脸就要一套骨骼动画，后者可以至少骨骼动画一对多。
+
+**Claude (1791616680)** compares the two:
+- **甲, picture and bones coincide exactly at key frames.**
+  - Simple: playback is exactly what was drawn, with nothing inferred.
+  - Every face needs a whole bone animation, so more is stored, and a small face change means regenerating bones.
+- **乙, picture may be offset from the bones; the software carries the offset.**
+  - One bone animation serves many faces.
+  - It needs the offset rule (the open gap), and the other angles are approximations.
+
+**Recommends 乙:**
+- 乙 includes 甲 (zero offset).
+- By default, offsets are allowed and bones are shared.
+- A face that looks wrong at some angles is "fixed" into its own bones (offset → 0, i.e. 甲), per bowen's earlier flow.
+- Storage is low, reuse high, with a way out. The offset rule starts simple and is judged by how much fixing it needs.
+
 ### Status
 
-Waiting for bowen to continue his workflow. Open:
-- appearance between two drawings (when a line vanishes);
-- whether playback carries the drawing's offset;
-- tuned transitions kept through loads;
-- the offset rule;
-- nine views, missing curves, expressions.
-
-No graph rows yet (bowen 1791603861).
+Waiting for bowen: 甲 or 乙; dot's review. Open: appearance between two drawings; tuned transitions kept through loads; the offset rule; nine views, missing curves, expressions. No graph rows yet (bowen 1791603861).
