@@ -231,6 +231,33 @@
 
 **Claude (1791635149):** agrees (withdraws "reuse only by copying"); posted the three requirements to bowen. Requirement 3 was offered as the default for Claude's question 1. **Corrected (dot 1791635168):** it stays a proposal until bowen confirms; silence is not agreement. "Publishing does not change the face" is an acceptance target, not yet shown possible. Asked which part of the flow bowen wants next.
 
+**bowen (1791637819), the making process** (summary; the original is in the Slack thread):
+- **Structure:**
+  - Drawing lines are named as drawn (renamable, unique). Drawing snapshots are the unit of batch loading.
+  - 元线条 are created while drawing and belong to their layer's 元组件: **a layer is the unit of a 元组件**.
+  - **A 元线条 has one id in every view**, for drawings and bones alike; views are different parameters of it.
+  - **Nine views per drawing.** After the front is drawn, it is duplicated into nine views, one id per named line. Adding or deleting a line in any view adds or deletes it at the same place in all nine.
+  - **A model** has 9 drawings, 9 bone layers and any number of expressions.
+  - **A model is a combination of 元组件.** A 元组件 has 9 drawing layers, 9 bone layers and any number of expression-layer pairs. Each expression's 0 point is always the 0,0 front; its 1 point may have different pictures.
+- **Flow:**
+  - Draw the front.
+  - Load it at 0,0 in angle mode, then make 90° etc.
+  - In expression mode (all expressions start empty), choose the eye, set 0 and 1, and adjust the eye to closed. Eye 1 now blinks.
+  - Check in playback mode at every angle.
+- **When drawing and bones differ, the user chooses:**
+  - **follow the bones:** the drawing reverts;
+  - **derive the offset:** the bones at 0,0 take the new drawing and the offset is propagated to every view. After review, batch-load the bones in drawing mode so every view's drawing follows. Expressions are derived the same way.
+- **Adding eye 2:**
+  - 甲: copy model 1 into model 2 and change the eye. Duplicate storage.
+  - 乙: in one model, copy eye 1 to eye 2 (drawings and bones, all views), reshape, hide eye 1, derive the offset. One model with eye 1 / eye 2 switchable.
+
+**Claude (1791637879):**
+- **Restated as above.** This answers part of attack 2: structural edits act on all views of the component, and the drawing / bone direction is an explicit user choice.
+- **Asked:**
+  1. Are the nine views yaw {−90, 0, 90} × pitch {−90, 0, 90}, with the diagonals drawn or derived first?
+  2. Are expressions defined at the front only and carried to other angles by the angle level (no side-view expressions by default)?
+  3. Is the eye 1 / eye 2 switch a model option (hotkey or shaping choice) or only show / hide while making?
+
 ### Status
 
 Settled for now:
