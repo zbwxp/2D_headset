@@ -93,7 +93,7 @@ Claude 1791628397; repo pages opened unless marked.
 
 - **Decided by bowen:** no experiment and no Rust install; VectorCraft may itself be unsupervised AI code. Its own ROADMAP also lists interaction and stability as unverified.
 - **Outcome:** ideas only.
-- **Candidate principles for our interaction** (Claude 1791633440; into the graph only when bowen says "写"):
+- **Candidate principles for our interaction** (Claude 1791633438; into the graph only when bowen says "写"):
   1. **Every user action is one named command, registered once** (name, shortcut, when enabled, what it does).
      - Buttons, keys, menus and any outside control only call it.
      - Tools with a process (drag, pen) only issue start / preview / commit / cancel.
