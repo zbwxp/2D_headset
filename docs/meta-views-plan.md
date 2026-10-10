@@ -94,7 +94,7 @@ Both are still compared. Which is cheaper is **not** claimed here (dot 179164984
   - 乙: coincidences in any view the edit changed, broadcast included. A broadcast that makes two side-view points coincide would bind them in all views.
     - Only under 乙: settle loops over all changed views, and newly affected views join the check. The number of binds is bounded (finite points, binds only remove), but that alone does not prove the result is independent of view order, nor that every lock and constraint check passes (dot 1791649915). An order rule and tests would be needed.
 - **Q3. Drawing order: decided (bowen 1791650085).** Shared and synced, like adding / removing lines and layer order. Whether to allow per-view order is left for later.
-- **Q4. Line width and end strokes: decided (bowen 1791650085).** Per view, with a button that broadcasts them to the other views so they need not be set nine times. *To confirm:* the button copies the current view's values as they are (not as an offset).
+- **Q4. Line width and end strokes: decided (bowen 1791650085).** Per view, with a button that broadcasts them to the other views so they need not be set nine times. The button is a plain assignment of the current view's values (bowen 1791650171), unlike shape broadcast's offset.
 - **Q5. Mirror** (bowen 1791649795, 1791649821: mirror apply is a batch-editing tool, used only while editing the front). Asked 1791649837:
   - Does mirror link also act only at the front?
   - The graph row "right-side views can be drafted from the left by mirror apply": withdrawn (甲), or a separate whole-view mirror draft (乙)?
@@ -132,7 +132,7 @@ Each stage: code, run every listed flow myself including after-states, push, dot
 | Arc radius | per view | per view | proposal (geometry) |
 | Element visibility / lock | shared | shared | proposal (editing switches) |
 | Show / hide intervals | — | — | *待定* (v103 keyed the ends per view; reference only, dot 1791649820; no data model yet) |
-| Line width, end strokes | per view | per view; a button copies the current view's value to the other views | bowen 1791650085 (Q4); "copy as is" is Claude's reading, to confirm |
+| Line width, end strokes | per view | per view; a button copies the current view's value to the other views | bowen 1791650085, 1791650171 (Q4): the button is a plain assignment |
 | Drawing order (layers, groups, fills) | shared | shared (reordering in any view applies to all) | bowen 1791650085 (Q3); per-view order maybe later |
 | Fill colour | shared | shared | proposal |
 | Whether a fill shows in a view | — | — | follows Q1 (order shared, Q3); geometric validity per view |
