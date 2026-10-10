@@ -144,6 +144,14 @@ Each line: what acts → which layers change → which settle runs.
   - It is supported only on the edge 0° → cardinal ±90°.
 - **Arc radius and join / brush changes** are refused in a response correction ("edit … in a saved snapshot basis first").
 
+**bowen's rules from 2026-10-03/04, found by dot (1791651254):**
+- 30° / 60° are back-solved correction frames, not separate snapshots.
+- 0° never moves.
+- Keep 90° fixed and adjust the response first. Only if the target is still unreachable may 90° move, minimally.
+- Moving end points is penalised more than moving handles: a weighting, not a ban.
+
+The new request (1791651008) extends the correction position to any angle. So this is "edit at an in-between angle → back-solve the response, and the end views allowed to change". It is **not** "store one more in-between shape" (dot 1791651182).
+
 **In this framework** (to confirm with bowen, asked 1791651207):
 - **Response curves** are animation data owned by `animation` (package 4); `evaluate` reads them. They are not shape layers.
 - **Editing at an in-between angle** is an edit:
