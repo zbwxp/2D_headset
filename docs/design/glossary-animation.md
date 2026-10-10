@@ -342,6 +342,16 @@
 - **data:** one shape per view, or two (drawing shape + bone shape, possibly offset).
 They can be chosen independently (one room may still hold two shape layers). The recommendation is on hold until dot's analysis.
 
+**dot (1791640119):**
+- **One editing room with modes is fine.** Drawing shows look tools, angle shows view and shape tools, expression shows expression states, playback hides editing. Fills and occlusion still preview together. These differences do not need two rooms.
+- **Do not merge away "an unconfirmed reshape" and "the original animation baseline".** One room can keep "original baseline + this pending change", updated on acceptance; two permanent independent shape sets are not required. Only if bowen needs two shape sets edited independently long-term and applied to each other at any time, keep two working copies.
+- A published model can store without duplicates; that does not decide whether making keeps drafts.
+- **The one experience question for bowen:** after enlarging an eye, should playback preview the change at once (revertible to the baseline), or keep playing the original until he explicitly applies the new shape?
+
+**Claude (1791640145):** agrees; relayed, asking bowen to choose:
+- A: preview at once, revertible;
+- B: the original plays until applied.
+
 ### Status
 
 Settled for now:
