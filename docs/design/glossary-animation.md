@@ -156,6 +156,23 @@
 
 1 and 2 first. dot asked to add attacks.
 
+**dot (1791624722):** the principle holds (horizontal = one line's members, vertical = relations between lines). What fails easily is "which data does one edit change".
+1. **Scope of a name.** Two faces' "左上眼睑" share a meaning, but editing 甲 must not change 乙. Semantic correspondence must be told apart from the data each instance actually uses; default-name collisions are the same issue.
+2. **Who owns an edit.** Dragging an eye corner could change the 绘制线条, the angle animation or an expression animation. The container does not answer this; editing modes must name the target explicitly, and shared content must not change by accident.
+3. **Propagation of structural changes.** What do splitting, deleting and renaming affect (members, views, references)? These rules are needed. In particular, splitting one face's line must not split an animation all faces share.
+
+**Corrections to Claude:**
+- A default-named line still gets its 元线条 (the auto-creation flow). It just has no cross-asset semantic correspondence yet; "no 元线条 yet" is withdrawn.
+- 骨线 and 绘制线条 not sharing joins does not have to crack: drawing-side join constraints can guarantee the result, given a stated settling rule.
+- A whole smile across lines is organisation between lines (vertical) and links; no third direction.
+- **Conclusion:** no reason to overturn the framework.
+
+**Claude (1791624748):** accepts all three corrections. Two rules to add:
+1. **Telling instances apart under one name.** Each face's own data is separate; default names take no part in semantic correspondence.
+2. **For each kind of edit, which data it writes and what follows.**
+   - Editing writes to an explicitly chosen target; shared data is never changed by the way.
+   - Splitting, deleting and renaming state which members, views and references follow. Splitting one face's line never splits a shared animation.
+
 ### Status
 
 Settled for now:
