@@ -173,6 +173,20 @@
    - Editing writes to an explicitly chosen target; shared data is never changed by the way.
    - Splitting, deleting and renaming state which members, views and references follow. Splitting one face's line never splits a shared animation.
 
+**Restated for bowen (Claude 1791627260), after dot's corrections:**
+- **The framework holds.**
+  - Horizontal: one line's members by name in a 元线条.
+  - Vertical: relations between lines (continuous curves, layers, layer combinations, line links).
+- **Two rules to add:**
+  1. **Instances under one name.** Each face's actual data is separate; default names create 元线条 but take no part in cross-drawing semantic correspondence. This deliberately reverses v1's "no automatic matching by name", relying on bowen's semantic names.
+  2. **For each edit, which data it writes and what follows.**
+     - The target is explicit; shared data is never changed by the way.
+     - Splitting, deleting and renaming state which members, views and references follow.
+     - Splitting one face's line never splits a shared animation.
+- **Resolved:**
+  - Separate joins for 骨线 and 绘制线条 need not crack, given a drawing-side settling rule.
+  - Whole expressions across lines are vertical organisation and links.
+
 ### Status
 
 Settled for now:
