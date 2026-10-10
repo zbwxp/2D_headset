@@ -97,8 +97,11 @@ Dependencies point downward only; `test/boundaries.test.ts` is extended to enfor
 
 ```
 geometry ← topology ← shapes ← network(façade) ← groups/joins/links/fills ← derived/locks/editing/apply/names ← clipboard
-        ← views ← animation ← meta(names, topology) ← document ← archive
-evaluate: geometry only
+meta      ← topology, names            (rules + its part of the document state)
+views     ← network, shapes            (knows layer KINDS, not animation's layer names)
+animation ← views, shapes
+document  ← all of the above;  archive ← document
+evaluate  ← geometry only
 ```
 
 **What happens to today's `network` (809 lines):** it is split into `topology` (structure), `shapes` (layered geometry) and a thin façade. Its rules do not change; its tests are kept and rerun through the façade on `view:0,0`.
@@ -119,7 +122,7 @@ Each line: what acts → which layers change → which settle runs.
 10. **Angle broadcast (stage 2).** `animation`: for the chosen lines' points and handles, every view ≠ front `+= front − base:angle`, then `base:angle := front`. Positions-only settle on the changed views. The lock check refuses if a locked line would change in any view. Repeating with no new change moves nothing.
 11. **Fit (stage 2).** `base:angle := front` for the chosen lines. Views do not change. Undo restores the pending offset.
 12. **Diagonal draft (stage 2).** `views` writes `front + (yaw view − front) + (pitch view − front)` into a corner view. Positions-only settle there.
-13. **Make an expression (stage 4).** Create a definition → its `expr:<id>` layer starts equal to the front for its lines. Editing it is `Core.edit(fn, { layer: 'expr:<id>' })`: a full settle there (auto-bind there too, since it is the edited layer).
+13. **Make an expression (stage 4).** Create a definition (with an explicit list of participating lines) → its `expr:<id>` layer starts equal to the front for those lines. Editing it is `Core.edit(fn, { layer: 'expr:<id>' })`: **positions-only** settle, no auto-bind (dot 1791651293: closing a mouth may make lip ends coincide; binding them would change the whole model). Structural changes need an explicit operation.
 14. **Expression broadcast (stage 4).** Every expression layer `+= front − base:expr`, then `base:expr := front`. Angle and expression baselines never clear each other.
 15. **Playback (stage 3, 4).** `evaluate(model, params)`: the angle interpolation of the view layers, plus the expression differences carried by the angle level (carry algorithm *open*).
 16. **Save, reopen, continue.** Every layer is saved. Open checks without new auto-bind; a chance coincidence in a side view stays two points. Broadcast after reopening gives the same result.
@@ -184,6 +187,28 @@ Tests for it:
 - a failed edit rolls back whole.
 
 No multi-view save or copy behaviour is exposed in this step. Passing step 1 does not accept the later steps.
+
+## 3c. Corrections from dot's attack (1791651293)
+
+1. **One transaction:** structure and shapes change only inside the same edit; no caller changes topology and fills in shapes later. The façade does both in the edit's draft.
+2. **Layer kinds, not layer names:** `shapes` stores each layer's **kind**:
+   - `view`: editable, full settle when edited, positions-only otherwise;
+   - `expression`: editable, positions-only, never auto-bind;
+   - `record`: baselines; no settle; only id, data and reference integrity are checked.
+
+   `views` orchestrates by kind and never knows animation's layer names. The dependency graph above is redrawn to the real dependencies.
+3. **Rule A on record layers:** a split re-expresses the old baseline at the same t. It never updates it to the current front. Archive checks record layers for integrity, not by settling.
+4. **Clipboard and expressions** (stage 4, *open*):
+   - a clip carries expression definitions;
+   - pasting into a document that lacks the expression, or has a different one under the same id, needs a mapping rule;
+   - having data in an expression layer does not mean a line takes part: participation is the definition's explicit list.
+5. **Locks** stay a *proposal* (shape and stroke protected; fit on a locked line allowed). The check covers unselected locked lines affected through shared end points and links, as today's whole-state comparison does, per layer.
+6. **Expression preview:**
+   - Expression layers are absolute shapes; without broadcast they do not change (the decided rule).
+   - So after a front edit, "expression − front" changes even before broadcast.
+   - Acceptance tests the preview after a front edit, after fit and after broadcast, not only the stored values.
+7. **Undo cost:** first guarantee whole rollback; then measure time and memory with real line, expression and undo-depth counts. No promise, and no new history system up front.
+8. **Broadcast on shared end points:** two chosen lines sharing an end point move it once. All differences are read from the pre-edit state, and the baselines are updated together at the end.
 
 ## 4. What this needs from dot's attack
 
