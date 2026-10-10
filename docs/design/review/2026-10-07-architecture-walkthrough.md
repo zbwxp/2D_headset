@@ -4245,6 +4245,13 @@ Not chosen yet.
    - Stacking has no fixed depth: deformers nest (the eyebrow example: object + two deformers). Blend Shape "adds differences" without parameter multiplication, another way to stack.
 - **For us:** a combination fix is no new kind of thing. It is a recording on two dials, with samples at some combinations (e.g. side × closed eye). It is the same mechanism as the yaw × pitch diagonals: computed first, fixed by hand if bad.
 
+**bowen (1791619918):** "变形器最多叠加两次？ld的情况"
+
+**Claude (1791619956):** two different "twos".
+- **Parameters per object:** usually up to two, three if needed, not four or more (eyebrow page, checked). E.g. an eye object on both angle and open / close needs shapes at their combinations.
+- **Nesting depth of deformers:** no limit stated in the pages read. The eyebrow example has three levels: the object for shape, a deformer for angle, one for position. Each carries its own parameters and is carried by the one above.
+- So not "stack at most twice", but "one or two parameters per level; more variation, one more level": 3 + 3 + 9 = 15 shapes instead of 3 × 3 × 9 = 81.
+
 ### Status
 
 Waiting for bowen: the three kinds of storage (with motions spanning parts); the starting dials; dot's check of the Live2D reading. No graph rows yet. The offset algorithm is to be validated by experiment. Open:
