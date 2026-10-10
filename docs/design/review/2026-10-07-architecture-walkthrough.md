@@ -3745,6 +3745,15 @@ This is not one drawing per combination of angle frames and expression frames (L
   - With a single head, turning the camera and turning the head are the same, up to sign. With a body and neck they part.
   - Yaw × pitch is a 2D plane; samples are points in it, interpolated across the plane. v1's recorder triangulates (yaw, pitch) and adds pitch ±90 placeholders (`snapshot-v1-facts.md` §3–4).
 
+**dot (1791603932), corrections, accepted by Claude (1791603957):**
+- **Name it right.** Split it as: yaw and pitch = which direction the face is seen from, defined by angle samples; in-plane rotation = rotate the picture in 2D; size and position = scale and move. Call this "viewing direction + placement on screen", not a full arbitrary camera.
+- **"The other four are pure 2D transforms" needs a premise:** we choose not to simulate perspective from changing the camera position.
+  - A real camera moving sideways shifts the nose and the ears by different amounts, because their depths differ.
+  - Coming closer is not just scaling up; perspective projection depends on depth (scratchapixel, "perspective projection").
+  - So distance-by-scaling is an optional product simplification, compatible with the 2D route.
+- **"Turning the camera = turning the head up to sign" is not a rule.** Rotation about several axes depends on the axes and their order.
+- **Define first:** the character's yaw and pitch relative to the viewing direction; in-plane rotation sits outside, separately.
+
 ### Status
 
 Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
