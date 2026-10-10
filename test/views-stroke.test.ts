@@ -64,7 +64,7 @@ describe('stroke broadcast', () => {
   })
 })
 
-describe('auto-bind only binds coincidences this edit made (dot 1791655825)', () => {
+describe('a stroke-broadcast-only edit settles no position or topology (dot 1791655898)', () => {
   /** A legal coincidence in the side view: c drawn in the front where b is in the side view. */
   function coincident() {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
@@ -76,24 +76,26 @@ describe('auto-bind only binds coincidences this edit made (dot 1791655825)', ()
   }
   const ids = (d: Core) => d.in(SIDE).snapshot().points.map(p => p.id).sort()
 
-  it('a stroke broadcast in that view keeps the two points and their connections', () => {
+  it('a broadcast (with a selection) in that view keeps the two points and their connections', () => {
     const d = coincident()
-    d.editIn(SIDE, e => e.broadcastStroke([{ kind: 'line', id: 'ab' }]))
+    d.editIn(SIDE, e => { e.select([{ kind: 'line', id: 'ab' }]); e.broadcastStroke() })
     expect(ids(d)).toEqual(['a', 'b', 'c', 'e', 'f', 'g'])
     expect(d.in(SIDE).snapshot().lines.find(l => l.id === 'cd')!.a).toBe('c')
   })
 
-  it('moving an unrelated point there keeps them; moving one of the two there binds them', () => {
-    const d = coincident()
-    d.editIn(SIDE, e => e.move([{ id: 'f', target: P(1, 81) }]))
-    expect(ids(d)).toEqual(['a', 'b', 'c', 'e', 'f', 'g'])
-    d.editIn(SIDE, e => e.move([{ id: 'c', target: P(50, 50) }]))
-    expect(ids(d)).toEqual(['a', 'b', 'e', 'f', 'g'])
-  })
-
-  it('a broadcast together with a move in one edit: the move still binds what it made', () => {
+  it('a broadcast together with a move in one edit: the full flow runs as before', () => {
     const d = coincident()
     d.editIn(SIDE, e => { e.broadcastStroke([{ kind: 'line', id: 'ab' }]); e.move([{ id: 'g', target: d.in(SIDE).snapshot().points.find(p => p.id === 'e')!.position }]) })
-    expect(ids(d)).toEqual(['a', 'b', 'c', 'e', 'f'])
+    // the move's coincidence binds; the existing rule (scan the edited view) applies as before
+    expect(ids(d)).not.toContain('g')
+  })
+
+  it('a refused broadcast-only edit (a locked line) still goes through the lock check and writes nothing', () => {
+    const d = coincident()
+    d.editIn(UP, e => e.lineStroke('ab', { width: 6, profile: 'uniform' }))
+    d.edit(e => e.lineState('ab', { locked: true }))
+    const before = all(d)
+    expect(() => d.editIn(UP, e => e.broadcastStroke([{ kind: 'line', id: 'ab' }]))).toThrow(/Locked lines would change \(ab\)/)
+    expect(all(d)).toBe(before)
   })
 })

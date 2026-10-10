@@ -79,6 +79,8 @@ interface Transaction {
   open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes
   /** The shape layer this edit writes geometry into; `state.network` is bound to it during the edit. */
   readonly layer: string
+  /** The Editor operations this edit ran (for the stroke-broadcast-only commit). */
+  readonly ops: Set<string>
   /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
   readonly appliedFrom: Map<Id, locks.View>
 }
@@ -88,7 +90,7 @@ export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State, layer: string): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, ops: new Set() })
     return e
   }
   /**
@@ -465,6 +467,8 @@ for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   Object.defineProperty(Editor.prototype, name, {
     ...d,
     value(this: Editor, ...args: unknown[]) {
+      const open = transactions.get(this)
+      if (open?.open) open.ops.add(name)
       try { return original.apply(this, args) }
       catch (err) {
         const tx = transactions.get(this)
@@ -529,7 +533,11 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      commit(draft, tx.changes, this.state, tx.appliedFrom, layer)
+      // an edit that only broadcasts strokes (and selects) changes no position or topology: it
+      // skips the settling that does, and keeps every other check (dot 1791655898). Any other
+      // operation in the same edit gets the full flow.
+      const strokesOnly = tx.ops.has('broadcastStroke') && [...tx.ops].every(o => o === 'broadcastStroke' || o === 'select')
+      commit(draft, tx.changes, this.state, tx.appliedFrom, layer, strokesOnly)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
       if (err instanceof Cancelled) return
@@ -712,8 +720,9 @@ const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => 
  * then fills → groups → names → selection; then the mirror check off the front, names,
  * locks (every view).
  */
-function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string) {
-  settle(s, ch, layer)
+function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, strokesOnly = false) {
+  if (strokesOnly) settleShared(s)
+  else settle(s, ch, layer)
   // mirror links are front-only: off the front, any change to a mirror pair's lines,
   // however it came (an explicit operation or an auto-bind), is not defined yet (dot 1791653374)
   if (layer !== views.FRONT && mirrorStructure(published) !== mirrorStructure(s)) {
@@ -775,13 +784,9 @@ function settle(s: State, ch: net.Changes, layer: string) {
   // Link alignment can make new coincidences, and binding can end links, so repeat
   // until no two endpoints in one layer coincide (dot, after f9c4109). Each pass
   // removes at least one point, so it ends. Auto-bind is judged in the edited view only (Q2).
-  // what this edit made, moved or aligned in this view: only coincidences among these bind (dot 1791655825)
-  const made = new Set<Id>([...net.targetsIn(ch, n).map(t => t.point), ...ch.relocated, ...ch.addedPoints])
   for (;;) {
-    const aligned = links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined)
-    for (const p of aligned) made.add(p.id)
-    net.setPositions(n, aligned)
-    const pairs = net.overlaps(n, ch, made)
+    net.setPositions(n, links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined))
+    const pairs = net.overlaps(n, ch)
     if (!pairs.length) break
     for (const p of pairs) applyTopology(s, ch, c => net.bind(n, c, p.keep, p.remove))
     applyTopology(s, ch, c => net.removeIsolated(n, c))

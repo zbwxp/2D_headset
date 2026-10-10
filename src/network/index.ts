@@ -731,12 +731,8 @@ export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer
  * set of points at exactly one position, which point is kept: the one this edit
  * did not act on; if several or none were acted on, the earlier-created one
  * (bowen 1791436617, 1791458278).
- *
- * Only sets holding a point in `made` count: points this edit made, moved or aligned
- * in this layer. A legal coincidence left by edits in other views, which nobody touched
- * here, stays two points (Q2; dot 1791655825).
  */
-export function overlaps(n: NetworkState, ch: Changes, made: ReadonlySet<Id>): { keep: Id; remove: Id }[] {
+export function overlaps(n: NetworkState, ch: Changes): { keep: Id; remove: Id }[] {
   const acted = new Set([...targetsIn(ch, n).map(t => t.point), ...ch.relocated])
   const created = new Map(S(n).usedPoints.map((id, i) => [id, i]))
   const byPlace = new Map<string, Id[]>(), at = shapes.positions(SH(n), K(n))
@@ -746,7 +742,7 @@ export function overlaps(n: NetworkState, ch: Changes, made: ReadonlySet<Id>): {
   }
   const out: { keep: Id; remove: Id }[] = []
   for (const ids of byPlace.values()) {
-    if (ids.length < 2 || !ids.some(id => made.has(id))) continue
+    if (ids.length < 2) continue
     const order = [...ids].sort((x, y) => created.get(x)! - created.get(y)!)
     const still = order.filter(id => !acted.has(id))
     const keep = still.length === 1 ? still[0]! : order[0]!

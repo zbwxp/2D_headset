@@ -19,9 +19,9 @@ It is separate from the shape broadcast (offsets, baselines; stage 2).
 2. **Not copied:** shapes (positions, handles), arc radii (*proposal*: a radius is a join's geometry, not 笔触), join modes, links, fills.
 3. **Which lines:** the selected lines, or explicit `units` (as transforms and delete take them). Points or handles alone, or nothing, are refused (`select-lines-to-broadcast`), as delete refuses them.
 4. **One edit:** one undo step, through the usual commit. A locked line whose stroke or free-end end stroke would change in any view refuses the whole edit (locks per view, existing comparison).
-   - **Auto-bind scope** (dot 1791655825: "the commit doesn't change geometry" was wrong). Until now the edited view's settle bound *every* coincident pair in that view, including legal coincidences left by edits in other views (Q2). So switching to that view only to broadcast strokes would have bound them.
-   - Auto-bind now considers only coincidences that **this edit made** in the edited view: a coincident set binds only if it holds a point this edit created, moved directly, relocated, or that link alignment moved in this settle. An old legal coincidence nobody touched stays two points.
-   - A broadcast therefore binds nothing. A move or structural operation in the same edit still gets its full settle.
+   - **An edit that only broadcasts strokes** (and selects) changes no position or topology, so it skips the settling that does: no auto-bind, no position solve. It keeps the same commit, checks, locks and undo (dot 1791655898). A legal coincidence left by edits in other views therefore stays.
+   - Any other operation in the same edit gets the full flow as before. The test is "only broadcasts", never "a broadcast happened".
+   - Whether auto-bind in general should only consider what an edit touched is **a separate later proposal**, not part of this step. Q2 decided only which view counts (dot 1791655898). An earlier version of this plan (579fec4) and commit 5f99f0a changed it globally; that is withdrawn.
 5. **Mirror:** no pairing. It writes only the chosen lines in other views; a mirror link (front only) is not involved.
 6. **Where:** module `views` (package 3), called by a thin `Editor.broadcastStroke(units?)`. `views` then depends on `network` and `joins`.
 
@@ -50,4 +50,4 @@ It is separate from the shape broadcast (offsets, baselines; stage 2).
 - Nothing selected, or points only, is refused.
 - An end stroke absent in the edited view is cleared elsewhere.
 - A shared end point is written once.
-- In a view with a legal coincidence (made from another view): a stroke broadcast keeps the two points and their connections. A move of an unrelated point there keeps them too; a move of one of the two points in that view binds them.
+- In a view with a legal coincidence (made from another view): a broadcast-only edit keeps the two points and their connections. A broadcast with a move in the same edit runs the full flow as before. A refused broadcast-only edit still goes through the lock check.
