@@ -140,7 +140,11 @@ What this means for each candidate (to be checked by dot):
 
 Each stage: code, run every listed flow myself including after-states, push, dot reviews once, one batch of fixes.
 
-## 5a. Stage 1 tasks (chosen: shared topology + per-view data; bowen 1791650828, dot 1791650432)
+## 5a. Stage 1 tasks — WITHDRAWN (Claude 1791650945; bowen 1791650867, 1791650882)
+
+*Superseded by `docs/architecture-multiview.md`: it put the nine views into `network`. Kept only as history.*
+
+### (withdrawn) Stage 1 tasks (chosen: shared topology + per-view data; bowen 1791650828, dot 1791650432)
 
 **Where things live:**
 - **New module `views`:** the nine view keys (`yaw,pitch`), `FRONT = '0,0'`. Constants only.
