@@ -61,7 +61,7 @@ Boundaries:
 
 Rough cost:
 - **Nine cores:** core gains interfaces (trial / outer transaction, auto-bind scope, complete change record); complexity sits in the multi-view package.
-- **Shared topology:** nearly every module that reads positions (links, springs, fill outlines, lock comparison, transforms, mirror, clipboard) takes a view parameter.
+- **Shared topology:** the modules that read positions (links, springs, fill outlines, lock comparison, transforms, mirror, clipboard) need the view's geometry, either as a parameter or through one "current view geometry" accessor that reuses the existing algorithms (dot 1791649422). Cost not fixed yet.
 
 Claude leans to nine cores pending dot.
 
@@ -137,7 +137,7 @@ From dot (1791645801, 1791647948) and the worked examples:
 
 ## Questions for bowen (visual results; recommendations marked)
 
-- **Q1 (widened, 1791649403). Binding when the two points are apart in other views.** 甲 bind in all nine (front: merged at the first-clicked point; relations and fills always equal in all views); 乙 bind only in the edited view (relations may differ per view; a fill may exist in some views only).
+- **Q1 (widened, 1791649403). Binding when the two points are apart in other views.** 甲 bind in all nine (front: merged at the first-clicked point; connections and closed curves equal in all views; whether a fill shows may still differ per view, dot 1791649422); 乙 bind only in the edited view (relations may differ per view; a fill may exist in some views only).
 - *Earlier wording:* In view 90 two end points are bound (merged); at the front they are 2 cm apart. After binding, what does the front show?
   - 甲 (recommended): in every view the merged point sits where the **first-clicked** point is in that view (the existing rule "the first point is kept"). Lines that ended at the other point jump to it in the other views; shown, not blocked.
   - 乙: in each other view, the midpoint of the two.
