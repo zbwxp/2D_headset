@@ -3787,6 +3787,24 @@ This is not one drawing per combination of angle frames and expression frames (L
 - **Vector differs.** Deformation moves curve points and handles. Width is the line's own property (graph: width on each line), redrawn every time, so stretching does not change line weight.
 - **Vector does not solve everything.** A swapped part much bigger, smaller or elsewhere than the old one may still not fit the inherited deformation (dot 1791602343). It needs fitting the domain to the part's actual place, or a local hand fix.
 
+**dot (1791604856):** agrees that Live2D's deformation framework is reusable, but not that the difficulty is all down to pixels, nor that drawings must match exactly. Two separate problems:
+- **Line quality.**
+  - Pixel lines deform with the picture and can thicken or thin.
+  - We keep curve shape and width apart and redraw lines after deformation, which suits fine line-art shaping better.
+  - The advantage rests on our width rule; not every vector deformation has it.
+- **Motion fit.**
+  - The old eye's corners and lids sit elsewhere than the new eye's, so the old blink may not close.
+  - This is a correspondence / binding problem and remains with vectors.
+
+**Reference, checked by Claude:** Live2D "How to Apply Model Templates" (docs.live2d.com/en/cubism-editor-manual/applying-the-model-template/).
+- Applying a template brings "parts, deformer structure, and parameter keyforms".
+- First the template is aligned (move / scale / rotate, then adjustment parameters), and ArtMeshes are mapped, automatically or by hand.
+- Accuracy improves by matching the shapes, or drawing with the template as a guide image. Exact sameness is not required.
+
+**Claude (1791604902):** agrees.
+- **Our solid advantage:** after a swap, the part's outline, end points and widths are directly editable, so fitting is fixed more directly.
+- **Open requirement:** to reuse motion cheaply, the new part's **key positions** (e.g. eye corners, the top of the upper lid) must correspond to the old part's. Who sets them and how is decided later.
+
 ### Status
 
-Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above.
+Discussion continues (bowen: no graph rows for now). Candidate row on the angle framework kept above. Open: key-position correspondence between swapped parts.
