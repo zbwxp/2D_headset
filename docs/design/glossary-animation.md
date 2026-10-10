@@ -435,6 +435,18 @@ They are chosen independently (e.g. 1a + 2b).
 
 **Claude (1791642785):** acknowledged.
 
+**bowen (1791644874):** "然后有种情况是比如我想绘制一种眼型，但是我不知道现存的哪个离它最近/改动最小。这有任何方法进行match吗？"
+
+**Claude (1791644920):** yes; the same tool as runtime's "topologically closest component" search.
+1. **Same names and connections** (e.g. a copied eye then changed): "least change" is directly computable. Mount the new eye on each existing component, align position and size, and sum the per-point differences. The smallest offset is the closest. It is the same quantity broadcast computes.
+2. **Different names or line counts** (a freehand sketch with default names): compare shape only.
+   - Sample both outlines evenly into points.
+   - Align them (move, scale, rotate if needed).
+   - Measure the mean distance.
+   - Known methods: Procrustes alignment, Chamfer distance (from memory, unchecked).
+- **In use:** sketch → list the closest few eye components with a score → preview any one mounted on the sketch at every angle → copy the chosen one as a new component and refine. Coarse by shape (no names needed), then exact change size among same-topology candidates.
+- **Offered:** a small experiment on existing eye data to check the ranking.
+
 ### Status
 
 Settled for now:
