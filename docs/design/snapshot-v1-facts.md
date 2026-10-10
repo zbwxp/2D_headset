@@ -24,6 +24,7 @@ These are facts about the old code, to be used in the snapshot questions of the 
 - **Contents:** one whole drawing document (src/domain/drawing/snapshots.ts:7-19; model.ts:70): layers, curves, nodes, fills, joins, groups, show/hide intervals, endpoint links, mirror axis, and its own background image transform.
 - **No angle:** "Authored drawing poses, deliberately independent of Recording view angles/placement" (snapshots.ts:6). There is no yaw, pitch or placement field (docs/v01239-drawing-snapshots.md:18-20, 28).
 - **Saving is a copy, never a live link** (snapshots.ts:51).
+  - *Corrected (dot 1791600814):* recording still reads the **live** source. The drawing being edited, or its stashed working copy, wins over the saved checkpoint: "The active working drawing wins over its saved checkpoint" (src/domain/recordingScene/sources.ts:4-11). So recording does not wait for another save.
   - Unsaved edits to an artwork are kept in `drawingWorkingCopies[artworkId]` while you switch away (snapshots.ts:37-44).
   - The unnamed canvas is `$working`; its first save "promotes" it to a real id (src/app/drawingWorkingCopies.ts:24-35).
 
@@ -31,6 +32,10 @@ These are facts about the old code, to be used in the snapshot questions of the 
 
 - **Artworks are independent copies.** They keep curve, node and interval ids "以便未来对应", but do not sync topology (docs/v01239:18, 22): "不能假定任意两份快照天然可插值".
 - **Recording v2 scopes ids per artwork:** `original:<len>:<artworkId>:<rawId>` (src/domain/recordingSnapshot/sources.ts:17-22). So the same raw id in two artworks is two different members.
+- *Corrected (dot 1791600814):* correspondence does **not** need one artwork to reference the other; both may reference the same source. What recording checks, per curve, is listed below (src/domain/recordingSnapshot/snapshotCoverage.ts:44-65). The same name, the same shape, or only the same curve id is not enough.
+  - every snapshot at those angles has the same **curve id**;
+  - the curve has the same **two end node ids** (`nodes[0]`, `nodes[1]`);
+  - those nodes exist in each of them.
 - **Correspondence is by stable id, never by name, look or nearest position** (docs/architecture/editor-snapshot-recording-principles.md:42).
 - **Layer reference:** `{kind:'reference', baseSnapshotId, baseLayerId, membership?}` (recordingSnapshot/model.ts:30-37). It follows the base live.
   - Local edits add or exclude members, or override their order.
@@ -74,7 +79,7 @@ These are facts about the old code, to be used in the snapshot questions of the 
 
 ## Open questions a redesign must answer (from the survey)
 
-1. **Correspondence across hand-drawn artworks.** Front and side never correspond unless one references the other. Is correspondence authored, or read from ids?
+1. **Correspondence across hand-drawn artworks.** In v1 it needs the same curve id, the same end node ids and the nodes present, which in practice means a shared source (corrected per dot 1791600814). Is correspondence authored, or read from ids?
 2. **Where the angle lives.** In v1 it moved from snapshot to pose to keyform to Recorder vertex. One owner is needed.
 3. **Live reference vs copy.** Working copy, checkpoint and source snapshot overlap.
 4. **Show/hide intervals over angle.** v1 tried four schemes. Which is canonical, and how does SHOW turn into HIDE?
