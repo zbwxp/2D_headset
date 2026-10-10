@@ -42,22 +42,34 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
 export function check(v: unknown): Clip {
   const d = net.data, o = d.obj(v, 'clip')
   const nw = d.obj(o.network, 'clip lines')
-  const points = d.arr(nw.points, 'clip points').map((x, i) => { const P = d.obj(x, `clip point ${i}`); return { id: d.str(P.id, `clip point ${i} id`), position: d.vec(P.position, `clip point ${i} position`) } })
+  const points = d.arr(nw.points, 'clip points').map((x, i) => { const P = d.obj(x, `clip point ${i}`); return { id: d.str(P.id, `clip point ${i} id`) } })
   d.unique(points.map(p => p.id), 'clip point')
   const pointIds = new Set(points.map(p => p.id))
   const lines = d.arr(nw.lines, 'clip lines').map((x, i) => {
     const L = d.obj(x, `clip line ${i}`), id = d.str(L.id, `clip line ${i} id`), a = d.str(L.a, `clip line ${id} a`), b = d.str(L.b, `clip line ${id} b`)
     if (!pointIds.has(a) || !pointIds.has(b) || a === b) d.fail(`clip line ${id} needs two of the clip's points`)
-    const st = d.obj(L.state, `clip line ${id} state`), sk = d.obj(L.stroke, `clip line ${id} stroke`)
-    return {
-      id, a, b, ha: d.vec(L.ha, `clip line ${id} ha`), hb: d.vec(L.hb, `clip line ${id} hb`),
-      state: { visible: d.bool(st.visible, `clip line ${id} visible`), locked: d.bool(st.locked, `clip line ${id} locked`) },
-      stroke: { width: d.num(sk.width, `clip line ${id} stroke width`), profile: d.str(sk.profile, `clip line ${id} stroke profile`) },
-    }
+    const st = d.obj(L.state, `clip line ${id} state`)
+    return { id, a, b, state: { visible: d.bool(st.visible, `clip line ${id} visible`), locked: d.bool(st.locked, `clip line ${id} locked`) } }
   })
   if (!lines.length) d.fail('the clip has no lines')
   d.unique(lines.map(l => l.id), 'clip line')
   const lineIds = new Set(lines.map(l => l.id))
+  // every shape layer of the copied drawing: exactly the clip's points and lines (architecture §1)
+  const source = d.str(nw.source, 'clip source layer')
+  const layers = d.arr(nw.layers, 'clip shape layers').map((x, i) => {
+    const L = d.obj(x, `clip shape layer ${i}`), key = d.str(L.key, `clip shape layer ${i} key`)
+    const lp = d.arr(L.points, `clip shape layer ${key} points`).map((y, k) => { const P = d.obj(y, `clip shape layer ${key} point ${k}`); return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`) } })
+    const ll = d.arr(L.lines, `clip shape layer ${key} lines`).map((y, k) => {
+      const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`), sk = d.obj(S.stroke, `clip shape layer ${key} line ${id} stroke`)
+      return { id, ha: d.vec(S.ha, `clip shape layer ${key} line ${id} ha`), hb: d.vec(S.hb, `clip shape layer ${key} line ${id} hb`), stroke: { width: d.num(sk.width, `clip shape layer ${key} line ${id} stroke width`), profile: d.str(sk.profile, `clip shape layer ${key} line ${id} stroke profile`) } }
+    })
+    d.unique(lp.map(p => p.id), `clip shape layer ${key} point`); d.unique(ll.map(l => l.id), `clip shape layer ${key} line`)
+    if (lp.length !== pointIds.size || lp.some(p => !pointIds.has(p.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's points`)
+    if (ll.length !== lineIds.size || ll.some(l => !lineIds.has(l.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's lines`)
+    return { key, points: lp, lines: ll }
+  })
+  d.unique(layers.map(L => L.key), 'clip shape layer')
+  if (!layers.some(L => L.key === source)) d.fail(`the clip has no shape layer ${source}, its source`)
   const jo = d.obj(o.joins, 'clip joins')
   const rows = d.arr(jo.rows, 'clip join rows').map((x, i) => {
     const R = d.obj(x, `clip join ${i}`), ls = d.arr(R.lines, `clip join ${i} lines`)
@@ -86,7 +98,7 @@ export function check(v: unknown): Clip {
     if (!ls.length || ls.some(l => !lineIds.has(l))) d.fail(`clip group name ${i} points outside the clip`)
     return { name: d.str(G.name, `clip group name ${i}`), lines: ls }
   })
-  return { network: { points, lines }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames } }
+  return { network: { points, lines, source, layers }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames } }
 }
 
 /**
@@ -94,8 +106,8 @@ export function check(v: unknown): Clip {
  * Run inside a topology step; joins, fills and names follow with `attach` after it, when
  * the new lines have their groups.
  */
-export function insert(d: Parts, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): net.CopyMap {
-  return net.insertLines(d.network, clip.network, layer, idOf, offset)
+export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): net.CopyMap {
+  return net.insertLines(d.network, ch, clip.network, layer, idOf, offset)
 }
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id) {
   joins.insert(d.joins, d.network, clip.joins, map)

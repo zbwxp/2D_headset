@@ -144,7 +144,7 @@ export class Editor {
   private insertClip(clip: clipboard.Clip, layer: Id, offset: Vec, idOf: (old: Id) => Id): net.CopyMap {
     const { state: s } = this.tx
     let map: net.CopyMap = { points: new Map(), lines: new Map() }
-    this.topology(() => { map = clipboard.insert(s, clip, layer, offset, idOf) })
+    this.topology(ch => { map = clipboard.insert(s, ch, clip, layer, offset, idOf) })
     clipboard.attach(s, clip, map, idOf)
     return map
   }

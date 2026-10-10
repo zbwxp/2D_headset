@@ -174,9 +174,11 @@ describe('paste', () => {
     const bad = (f: (c: any) => void) => { const c = JSON.parse(good); f(c); return c }
     const cases: [string, any, RegExp][] = [
       ['a line ending at a point outside the clip', bad(c => { c.network.lines[0].a = 'elsewhere' }), /needs two of the clip's points/],
-      ['a coordinate that is text', bad(c => { c.network.points[0].position.y = '3' }), /is not a finite number/],
+      // shapes are only in the clip's shape layers (architecture §1; step 2)
+      ['a coordinate that is text', bad(c => { c.network.layers[0].points[0].position.y = '3' }), /is not a finite number/],
       ['a lock that is not true / false', bad(c => { c.network.lines[0].state.locked = 'yes' }), /is not true \/ false/],
-      ['a negative stroke width', bad(c => { c.network.lines[0].stroke.width = -2 }), /positive number/],
+      ['a negative stroke width', bad(c => { c.network.layers[0].lines[0].stroke.width = -2 }), /positive number/],
+      ['a clip without its source shape layer', bad(c => { c.network.source = 'view:90,0' }), /no shape layer view:90,0, its source/],
       ['a join on a line outside the clip', bad(c => { c.joins.rows[0].lines[0] = 'k1' }), /points outside the clip/],
       ['an arc join without a radius', bad(c => { delete c.joins.rows.find((r: any) => r.mode === 'arc').radius }), /positive radius/],
       ['an unknown join mode', bad(c => { c.joins.rows[0].mode = 'wavy' }), /Unknown join mode wavy/],

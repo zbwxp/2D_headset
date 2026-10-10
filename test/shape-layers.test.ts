@@ -69,7 +69,7 @@ describe('shape layers never share data', () => {
     expect(net.points(net.of(again, 'base:angle')).map(p => p.id).sort()).toEqual(['a', 'b'])
   })
 
-  it('a bind removes the merged point and collapsed lines from every layer', () => {
+  it('a bind removes the merged point from every layer', () => {
     const n = drawing(), ch = net.emptyChanges()
     net.addShapeLayer(n, 'view:90,0', 'view', views.FRONT)
     net.bind(n, ch, 'a', 'c')
@@ -78,13 +78,16 @@ describe('shape layers never share data', () => {
     expect(() => net.restore(net.exportData(n), views.FRONT)).not.toThrow()
   })
 
-  it('stage 1: structural changes that create geometry wait for stage 2 when there are several layers', () => {
+  it('a bind of the two ends of one line collapses that line in every layer (dot 1791652671)', () => {
     const n = drawing(), ch = net.emptyChanges()
     net.addShapeLayer(n, 'view:90,0', 'view', views.FRONT)
-    expect(() => net.addLine(n, ch, 'l3', 'c', { id: 'd', layer: 'L', position: { x: 30, y: 0 } })).toThrow(/stage 2/)
-    expect(() => net.splitLine(n, ch, 'l1', 0.5, 'm', 'p1', 'p2')).toThrow(/stage 2/)
-    expect(() => net.unbind(n, ch, 'b', ['l2'], 'b2')).toThrow(/stage 2/)
-    expect(() => net.insertLines(n, net.linesData(n, ['l1']), 'L', id => `x/${id}`)).toThrow(/stage 2/)
+    net.bind(n, ch, 'a', 'b')
+    expect(ch.collapsedLines).toEqual(['l1'])
+    for (const h of [n, net.of(n, 'view:90,0')]) {
+      expect(net.lines(h).map(l => l.id)).toEqual(['l2'])
+      expect(net.points(h).map(p => p.id).sort()).toEqual(['a', 'c'])
+    }
+    expect(() => net.restore(net.exportData(n), views.FRONT)).not.toThrow()
   })
 
   it('a handle names its layer explicitly: unknown layers and duplicate or unknown kinds are refused', () => {
