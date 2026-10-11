@@ -44,7 +44,7 @@ Each SVG cursor has a CSS keyword fallback (`crosshair` for the pen and the buck
 
 **What a press does decides the cursor** (dot 1791710244): the canvas names what a press would do, in the order it routes presses: `restoring` (no press taken), `playback` (drags the pose), `movePicture` (moves the reference picture), otherwise the tool (`Z` or interaction's tool). The first three have no row and show the arrow; no new icons.
 
-**The bench asks it** for the canvas: `cursor: cursorFor(zoomTool ? 'Z' : ix.tool, pressed)`, where `pressed` is true from a left press that the tool took on the canvas until its release or cancel (the gesture the bench already tracks). Panning with the middle or right button is unchanged. A new tool gets a cursor by adding one row to the table; without a row it shows the arrow.
+**The bench asks it** for the canvas: `cursor: cursorFor(pressTakenBy, pressed)` (`pressTakenBy` as above), where `pressed` is true from a left press that the tool took on the canvas until its release or cancel (the gesture the bench already tracks). Panning with the middle or right button is unchanged. A new tool gets a cursor by adding one row to the table; without a row it shows the arrow.
 
 **Tests:** the table (each tool, pressed and not, an unknown tool → `default`); the bench canvas shows the pen / bucket cursor after choosing Pen / Fill, `grab` for A and V, `grabbing` while a press with A or V is held and `grab` again after release or cancel, the arrow for Split. Feature-off check: the bench test fails if the canvas does not ask `cursorFor`. Checked once in a real browser (the cursor images load, hotspots in the right place).
 
