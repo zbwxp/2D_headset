@@ -78,9 +78,11 @@ describe('the pose', () => {
     for (const pose of [{ yaw: 91, pitch: 0 }, { yaw: 0, pitch: -46 }, { yaw: NaN, pitch: 0 }, { yaw: Infinity, pitch: 0 }]) expect(code(() => d.edit(e => e.correct(pose, t)))).toBe('pose-out-of-range')
   })
 
-  it('a pose read as a view by evaluate is a view here too: a pitch so small that |pitch| / 45 is 0 is the yaw-0 view', () => {
-    const d = base()
-    expect(code(() => d.edit(e => e.correct({ yaw: 0, pitch: 5e-324 }, { points: [{ id: 'b', position: P(1, 1) }] })))).toBe('correction-at-view')
+  it('the pose is read by u = |yaw| / 90 and v = |pitch| / 45 only: |pitch| / 45 = 0 is the yaw-0 view; v > 0 is inside a cell even where the bilinear weights underflow to two views (dot 1791693222)', () => {
+    const d = base(), t = { points: [{ id: 'b', position: P(1, 1) }] }
+    expect(code(() => d.edit(e => e.correct({ yaw: 0, pitch: 5e-324 }, t)))).toBe('correction-at-view')
+    // yaw 45, pitch MIN_VALUE · 45: v = MIN_VALUE > 0, while (1 − u)·v and u·v underflow to 0
+    expect(code(() => d.edit(e => e.correct({ yaw: 45, pitch: Number.MIN_VALUE * 45 }, t)))).toBe('correction-off-edge')
   })
 })
 
@@ -126,6 +128,17 @@ describe('per control and axis', () => {
     d.edit(e => e.line('zw', { id: 'z', layer: 'L', position: P(0, 50) }, { id: 'w', layer: 'L', position: P(5, 60) }))
     d.editIn(SIDE, e => e.move([{ id: 'z', target: P(5e-324, 50) }]))
     expect(code(() => d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'z', position: P(1e308, 50) }] })))).toBe('correction-not-finite')
+  })
+
+  it('a finite knot whose blend overflows at the pose (A = 1e308, B = 1.1e308, q = −1e308): correction-not-finite naming the control, never a bare pose error (dot 1791693222)', () => {
+    const d = base()
+    d.edit(e => e.line('zw', { id: 'z', layer: 'L', position: P(1e308, 50) }, { id: 'w', layer: 'L', position: P(5, 60) }))
+    d.editIn(SIDE, e => e.move([{ id: 'z', target: P(1.1e308, 50) }]))
+    const before = save(d)
+    let err: unknown
+    try { d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'z', position: P(-1e308, 50) }] })) } catch (x) { err = x }
+    expect([(err as Refusal).code, (err as Refusal).objects, (err as Error).message]).toEqual(['correction-not-finite', [{ kind: 'point', id: 'z' }], expect.stringMatching(/point z, axis x, on view:0,0>view:90,0/)])
+    expect(save(d)).toBe(before)
   })
 
   it('256 knots and one more: correction-too-many-knots; at an existing knot\'s t it replaces and goes through', () => {

@@ -390,6 +390,9 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     const w = (q[axis] / sc - A / sc) / (B / sc - A / sc)
     if (!Number.isFinite(w)) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: the views are too close for this target`, objectsOf(c))
     const knots = [...(knotsOf(s, c, edge.key, axis) ?? []).filter(k => k[0] !== t), [t, w] as Knot].sort((x, y) => x[0] - y[0])
+    // the value the pose would show must be a number too: a finite knot can still overflow the blend
+    // (A = 1e308, B = 1.1e308, q = −1e308 gives w = −20), refused here, naming the control (dot 1791693222)
+    if (!Number.isFinite(edgeValue(knots, t, A, B))) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: the target cannot be shown at this pose without overflow`, objectsOf(c))
     if (knots.length > MAX_KNOTS) throw new net.Refusal('correction-too-many-knots', `correction-too-many-knots: ${nameOf(c)}, axis ${axis}, on ${edge.key} would have ${knots.length} knots (at most ${MAX_KNOTS})`, objectsOf(c))
     writes.push({ control: c, axis, knots })
   }

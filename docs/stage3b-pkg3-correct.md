@@ -2,7 +2,7 @@
 
 **Status:** rules accepted by dot 1791691453 as this package's acceptance basis. The edges-only scope is confirmed by bowen 1791692031. **Coded** (for dot's check): `animation.correct` / `animation.edgeAt` (`src/animation/index.ts`), `Editor.correct` (`src/document/index.ts`), the declaration in `src/document/effects.ts`; tests in `test/correct.test.ts` and the `correct` case of `test/effects.test.ts`. Earlier: for dot's check (dot 1791691047).
 
-**How the code reads the pose:** as `evaluate` does, u = |yaw| / 90 and v = |pitch| / 45, so a pose `evaluate` shows as a view is a view here (e.g. pitch 5e-324 gives v = 0: the yaw-0 view, `correction-at-view`). The edge is the one whose two views are the only ones with weight at that pose.
+**How the code reads the pose:** by u = |yaw| / 90 and v = |pitch| / 45 only, as `evaluate` computes them: u and v both 0 or 1 is a view, one of them 0 or 1 is an edge, neither is inside a cell. So pitch 5e-324 gives v = 0: the yaw-0 view (`correction-at-view`). The bilinear weights are not used to place the pose: at yaw 45, pitch MIN_VALUE · 45, v > 0 while the weights of the pitch views underflow to 0; the pose is inside a cell and refused (`correction-off-edge`), never moved onto the edge (dot 1791693222).
 
 **What the tests cannot reach, and how it was checked:** the three guards of the final check (a control outside the target set changed, a handle outside it changed, a protected knot lost) cannot fire after a correct solve. They were checked by pairs of mutations (2026-10-11): a solve broken to write a foreign handle, a foreign point, or to drop the old knots is refused with the matching `correction-not-reproduced` message; with that guard switched off the broken result goes through. Every other rule has a test that fails when the rule is removed (15 single mutations).
 
@@ -53,7 +53,7 @@ A and B are the control's values on that axis in the edge's inner and outer view
 1. **Already met:** `q === p` (exact, the value the pose already shows): nothing is written for this axis, and no view moves (dot 1791687532).
 2. **Reachable by the response:** `B ≠ A`.
    - **The knot value is solved without intermediate overflow** (dot 1791691300): with s = max(|A|, |B|, |q|), `w = (q/s − A/s) / (B/s − A/s)`. Example: A = −1e308, B = 1e308, q = 0 gives w = 0.5, which `evaluate` turns into exactly 0. A plain `(q − A)/(B − A)` overflows to 0 there, and the case must not be reported as unreachable or as a tiny span.
-   - If w is not finite, the correction is refused (`correction-not-finite`).
+   - If w is not finite, or the value the pose would show with it is not finite (a finite knot can overflow the blend), the correction is refused (`correction-not-finite`, naming the control; dot 1791693222).
    - Whether w really reaches q is decided by the final check (§5), never by this formula.
    - Otherwise the knot `[t, w]` is inserted, replacing a knot at exactly t. Every other knot stays, so every protected target on this edge keeps its coordinate.
    - More than 256 knots refuses (`correction-too-many-knots`).
@@ -122,6 +122,7 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
   - a correction at the same t replaces the knot;
   - equal views and a dragged axis → `correction-axis-fixed`;
   - a tiny span giving a non-finite w → `correction-not-finite`;
+  - a finite w whose blend overflows at the pose (A = 1e308, B = 1.1e308, q = −1e308, w = −20) → `correction-not-finite` naming the control, checked before the write; no bare `pose-not-finite` error (dot 1791693222);
   - 256 + 1 → `correction-too-many-knots`.
 - **Handles:** a handle vector target, both ends.
 - **Numbers** (dot 1791691300):
