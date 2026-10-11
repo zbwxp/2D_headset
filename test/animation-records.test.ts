@@ -41,6 +41,15 @@ describe('the angle baseline record layer', () => {
     expect(b.lines.bc!.ha).toEqual(layerOf(d, SIDE).lines.bc!.ha)
   })
 
+  it('a front spring that turns a new line\'s handle leaves the baseline at its initial value (dot 1791680315, 1791680726)', () => {
+    const d = doc()
+    // drawn from b, then a smooth join with ab clicked first: the spring turns bc's handle at b
+    d.edit(e => { e.line('bc', 'b', { id: 'c', layer: 'L', position: P(10, 10) }); e.join('b', 'ab', 'bc', { mode: 'smooth' }) })
+    const drawn = { x: 0, y: 10 / 3 }, f = front(d).lines.bc!.ha
+    expect(base(d).lines.bc!.ha).toEqual(drawn)
+    expect(Math.hypot(f.x - drawn.x, f.y - drawn.y)).toBeGreaterThan(1e-6) // so the new line has its own pending change
+  })
+
   it('a split re-expresses the baseline at the same t; it is never set to the current front', () => {
     const d = doc()
     d.edit(e => e.move([{ id: 'b', target: P(20, 20) }]))
@@ -103,5 +112,7 @@ describe('open checks the baseline for integrity only', () => {
     // only an owner grants copyNew: a file cannot give it to another layer (dot 1791680650)
     expect(() => open(edit(d, ls => { const v = ls.find(l => l.key === 'view:90,0')!; ls.push({ ...structuredClone(v), key: 'expr:smile', kind: 'expression', copyNew: true }) }))).toThrow(/expr:smile claims copyNew but has no owner/)
     expect(() => open(edit(d, ls => { const v = ls.find(l => l.key === 'view:90,0')!; ls.push({ ...structuredClone(v), key: 'base:other', kind: 'record', copyNew: true }) }))).toThrow(/base:other claims copyNew but has no owner/)
+    // dot 1791680726's exact case: base:angle copied as expression:unknown, copyNew kept
+    expect(() => open(edit(d, ls => { const b = ls.find(l => l.key === 'base:angle')!; ls.push({ ...structuredClone(b), key: 'expression:unknown', kind: 'expression' }) }))).toThrow(/expression:unknown claims copyNew but has no owner/)
   })
 })
