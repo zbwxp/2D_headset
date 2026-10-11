@@ -34,7 +34,11 @@
 ## 4. The read-only gate: widened for `correct` only
 
 Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 1791683911, 1791686247). Package 5 changes exactly this:
-- **An edit is allowed in playback, but every Editor call inside it must be `correct`.** The logged Editor proxy throws `read-only-playback` on any other call, so the edit fails and publishes nothing. One `correct` per edit (core's `alone` rule refuses two anyway).
+- **An edit is allowed in playback only if it calls `correct` exactly once and nothing else** (dot 1791696773). Checked at the level of the whole edit, not only per call:
+  - the logged Editor proxy throws `read-only-playback` on any other call, **and remembers it**: the callback may catch that throw and go on, so the throw alone does not fail the edit (it happens outside core's operations, so core does not mark the transaction failed);
+  - the wrapper counts the `correct` calls;
+  - when the callback returns, before control goes back to core, the wrapper throws `read-only-playback` if a forbidden call was seen or the count is not exactly 1. A throw from the callback makes core publish nothing.
+  - **An empty edit is refused too:** core settles an empty edit fully, which may bind points that coincide legitimately; "no other call" is not enough.
 - **Undo and redo stay refused in playback** — today's behaviour, kept unless bowen decides otherwise (§7.1, pending). Unlocking them would let a playback undo remove an edit made before playback.
 - **Every other path stays as today:** tool keys return early while posing; the editing panels and Open are in disabled fieldsets; the canvas's editing press is not attached; the interaction module is not called during playback at all.
 - The gate stays per App (its own `posing` ref and wrapper).
@@ -65,7 +69,13 @@ Each success test is also run with its feature switched off and must fail then (
 - **A move case:** a point equal in front and side dragged at yaw 45 → the side view's point moved (read after leaving playback).
 - **Not on a line:** at a view and inside a cell, a press starts no drag and no edit; the status says why.
 - **Refusal:** a locked line's point dragged → `locked` in red in the status, a cross on the line, nothing published, the cross gone after the next press.
-- **The gate:** during playback, with the drag gesture present: tool keys, ⌘Z / ⇧⌘Z, the panel's buttons and Open still write nothing (the existing playback tests kept); an edit calling `move` through the wrapper in playback → `read-only-playback`, nothing published; an edit calling only `correct` → allowed.
+- **The gate, through the wrapper's real calls** (a test hook `window.bench.edit` runs a callback through the App's own logged wrapper; dot 1791696773: not only disabled buttons):
+  - `correct`, then a forbidden call whose throw the callback catches, then return → nothing published;
+  - the reverse order (a caught forbidden call, then `correct`) → nothing published;
+  - an empty edit → refused, nothing settled or published (a fixture with two coincident points in one layer that a full settle would bind);
+  - two `correct` calls → refused;
+  - exactly one `correct` → published;
+  - and as today: tool keys, ⌘Z / ⇧⌘Z, the panel's buttons and Open write nothing during playback (the existing playback tests kept).
 - **Cancel flows:** each row of §5's table → no edit, the log unchanged, no window listener left (pointermove after the cancel does nothing).
 - **Per App:** two Apps, one in playback dragging, the other editing → the other's edits unaffected; unmounting the posing App cancels its drag.
 
