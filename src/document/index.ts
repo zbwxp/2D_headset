@@ -14,6 +14,7 @@ import * as names from '../names'
 import * as clipboard from '../clipboard'
 import * as views from '../views'
 import * as meta from '../meta'
+import * as animation from '../animation'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -39,6 +40,7 @@ interface State {
 function viewedNetwork(): net.NetworkState {
   const n = net.create({ key: views.FRONT, kind: 'view' })
   for (const k of views.ALL) if (k !== views.FRONT) net.addShapeLayer(n, k, 'view', views.FRONT)
+  animation.addRecords(n) // the angle baseline (stage 2)
   return n
 }
 const createState = (axis = 0): State => ({
@@ -654,6 +656,7 @@ export function importState(data: unknown): Core {
   let state: State
   try {
     const network = net.restore(d.network, views.FRONT)
+    animation.checkRecords(network)
     const g = groups.restore(d.groups, network)
     state = {
       network, groups: g, joins: joins.restore(d.joins, network), links: links.restore(d.links, network),

@@ -16,7 +16,13 @@ export type LayerKind = 'view' | 'expression' | 'record'
 export const KINDS: readonly LayerKind[] = Object.freeze(['view', 'expression', 'record'])
 export interface Stroke { readonly width: number; readonly profile: string }
 export interface LineShape { readonly ha: Vec; readonly hb: Vec; readonly stroke: Stroke }
-export interface LayerInfo { readonly key: string; readonly kind: LayerKind }
+/**
+ * `copyNew`: a non-view layer whose owner has declared that new geometry (a new line's new
+ * points and handles, a new arc's radius) takes the drawn values there, as in a view; and
+ * that a paste takes the clip's same-key layer, else the clip's front (stage 2; the owner
+ * is animation). Without it, such geometry is refused on that layer.
+ */
+export interface LayerInfo { readonly key: string; readonly kind: LayerKind; readonly copyNew?: boolean }
 
 declare const opaque: unique symbol
 /** Opaque handle to the shape layers of one drawing. */
@@ -29,6 +35,7 @@ export type EndValue = Readonly<Record<string, number | string>>
 interface LayerData {
   key: string
   kind: LayerKind
+  copyNew: boolean
   points: Record<Id, Vec>
   lines: Record<Id, { ha: Vec; hb: Vec; stroke: Mutable<Stroke> }>
   /** Values owned by other modules, stored per layer (step 4, dot 1791654260): shapes only stores them. */
@@ -65,18 +72,20 @@ function layer(s: ShapesState, key: string): LayerData {
 /** A drawing's shapes with one empty first layer. */
 export function create(first: LayerInfo): ShapesState {
   if (typeof first.key !== 'string' || !first.key) throw new Error('A shape layer needs a key')
-  return { layers: [{ key: first.key, kind: kindIn(first.kind), points: {}, lines: {}, radius: {}, end: {} }] } as Store as unknown as ShapesState
+  return { layers: [{ key: first.key, kind: kindIn(first.kind), copyNew: false, points: {}, lines: {}, radius: {}, end: {} }] } as Store as unknown as ShapesState
 }
 
 /** A new layer holding a copy of `from` (every point and line has a shape in every layer). */
-export function addLayer(s: ShapesState, key: string, kind: LayerKind, from: string) {
+export function addLayer(s: ShapesState, key: string, kind: LayerKind, from: string, copyNew = false) {
   if (typeof key !== 'string' || !key) throw new Error('A shape layer needs a key')
   if (S(s).layers.some(l => l.key === key)) throw new Error(`Shape layer ${key} already exists`)
   const src = layer(s, from)
-  S(s).layers.push({ key, kind: kindIn(kind), points: structuredClone(src.points), lines: structuredClone(src.lines), radius: structuredClone(src.radius), end: structuredClone(src.end) })
+  S(s).layers.push({ key, kind: kindIn(kind), copyNew: kind !== 'view' && copyNew === true, points: structuredClone(src.points), lines: structuredClone(src.lines), radius: structuredClone(src.radius), end: structuredClone(src.end) })
 }
 
-export const layers = (s: ShapesState): readonly LayerInfo[] => Object.freeze(S(s).layers.map(l => Object.freeze({ key: l.key, kind: l.kind })))
+export const layers = (s: ShapesState): readonly LayerInfo[] => Object.freeze(S(s).layers.map(l => Object.freeze({ key: l.key, kind: l.kind, ...(l.copyNew ? { copyNew: true } : {}) })))
+/** Layers that take new geometry as drawn: every view, and the non-view layers whose owner declared it. */
+export const takesNew = (l: LayerInfo) => l.kind === 'view' || l.copyNew === true
 export const hasLayer = (s: ShapesState, key: string) => S(s).layers.some(l => l.key === key)
 export const kind = (s: ShapesState, key: string): LayerKind => layer(s, key).kind
 
@@ -221,7 +230,10 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
       if (JSON.stringify(kept) !== JSON.stringify(e)) fail(`end stroke ${k} in ${L.key} is not in its stored form`)
       put(end, k, kept)
     }
-    return { key: L.key, kind: L.kind as LayerKind, points, lines, radius, end }
+    if (L.copyNew !== undefined && typeof L.copyNew !== 'boolean') fail(`shape layer ${L.key} copyNew is not true / false`)
+    const copyNew = L.copyNew === true
+    if (copyNew && L.kind === 'view') fail(`shape layer ${L.key} is a view marked copyNew`)
+    return { key: L.key, kind: L.kind as LayerKind, copyNew, points, lines, radius, end }
   })
   return { layers } as Store as unknown as ShapesState
 }

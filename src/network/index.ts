@@ -134,8 +134,8 @@ export function of(n: NetworkState, layer: string): NetworkState {
 export const boundLayer = (n: NetworkState): string => K(n)
 /** The drawing's shape layers. */
 export const shapeLayers = (n: NetworkState): readonly shapes.LayerInfo[] => shapes.layers(SH(n))
-/** A new shape layer holding a copy of `from`. */
-export function addShapeLayer(n: NetworkState, key: string, kind: shapes.LayerKind, from: string) { shapes.addLayer(SH(n), key, kind, from) }
+/** A new shape layer holding a copy of `from`; `copyNew` is the owner's declaration (shapes.LayerInfo). */
+export function addShapeLayer(n: NetworkState, key: string, kind: shapes.LayerKind, from: string, copyNew = false) { shapes.addLayer(SH(n), key, kind, from, copyNew) }
 /**
  * Per-layer values owned by other modules (joins: arc radii, end strokes), stored in the
  * shape layers (step 4). Keys and references are their owner's; these only read and
@@ -776,9 +776,11 @@ export type EndSpec = Id | { id: Id; layer: Id; position: Vec }
 export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bSpec: EndSpec, handles?: { ha: Vec; hb: Vec }, read: NetworkState = n) {
   const endId = (e: EndSpec) => (typeof e === 'string' ? e : e.id)
   if (endId(aSpec) === endId(bSpec)) throw new Error('A line needs two different points')
-  // only view layers take the drawn shape; expression and record layers are initialised
-  // by their owners, so until those exist a new line is refused there (dot 1791652760)
-  const roles = shapes.layers(SH(n)).filter(l => l.kind !== 'view')
+  // view layers take the drawn shape, and so do non-view layers whose owner declared it
+  // (copyNew; stage 2: animation's angle baseline). Any other non-view layer refuses a new
+  // line until its owner gives it a rule (dot 1791652760). Only what is new is written: an
+  // existing end point keeps its values in every layer (dot 1791680195).
+  const roles = shapes.layers(SH(n)).filter(l => !shapes.takesNew(l))
   if (roles.length) throw new Refusal('new-line-needs-owner', `new-line-needs-owner: the ${roles.map(l => l.key).join(', ')} layer(s) need their owner to give a new line its shape`)
   for (const e of [aSpec, bSpec]) if (typeof e !== 'string') addPoint(n, ch, e.id, e.layer, e.position)
   const a = endId(aSpec), b = endId(bSpec)

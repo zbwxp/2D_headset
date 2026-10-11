@@ -8,6 +8,7 @@ import * as groups from '../groups'
 import * as joins from '../joins'
 import * as fills from '../fills'
 import * as names from '../names'
+import * as views from '../views'
 
 type Id = net.Id
 
@@ -124,13 +125,22 @@ export function check(v: unknown): Clip {
  * the new lines have their groups.
  */
 /**
- * The correspondence a paste uses: each view layer of the drawing takes the clip's view
- * layer of the same key. Any other layer (expression, record), or a view layer the clip
- * lacks, has none (dot 1791652760); those owners decide their own mapping later.
+ * The correspondence a paste uses (dot 1791652760): each view layer of the drawing takes
+ * the clip's view layer of the same key. A non-view layer whose owner declared copyNew
+ * (stage 2: the angle baseline) takes the clip's layer of the same key and kind, else the
+ * clip's front, so its baseline starts equal to the front. Any other layer, or a view the
+ * clip lacks, has none, and the paste is refused.
  */
 export function viewLayerMap(d: Parts, clip: Clip): Map<string, string> {
-  const views = new Set(clip.network.layers.filter(L => L.kind === 'view').map(L => L.key))
-  return new Map(net.shapeLayers(d.network).filter(l => l.kind === 'view' && views.has(l.key)).map(l => [l.key, l.key]))
+  const inClip = new Map(clip.network.layers.map(L => [L.key, L.kind]))
+  const out = new Map<string, string>()
+  for (const l of net.shapeLayers(d.network)) {
+    if (l.kind === 'view') { if (inClip.get(l.key) === 'view') out.set(l.key, l.key); continue }
+    if (!l.copyNew) continue
+    if (inClip.get(l.key) === l.kind) out.set(l.key, l.key)
+    else if (inClip.get(views.FRONT) === 'view') out.set(l.key, views.FRONT)
+  }
+  return out
 }
 /**
  * A paste needs a correspondence both ways: every drawing layer has a clip layer
@@ -140,6 +150,7 @@ export function viewLayerMap(d: Parts, clip: Clip): Map<string, string> {
  */
 export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset: { x: number; y: number }, idOf: (old: Id) => Id): { map: net.CopyMap; layers: Map<string, string> } {
   const layers = viewLayerMap(d, clip), used = new Set(layers.values())
+  // every clip layer is used: a target layer that maps to it by its own key (a view, or an owned record layer)
   const left = clip.network.layers.filter(L => !used.has(L.key)).map(L => L.key)
   if (left.length) throw new net.Refusal('paste-layer-unmatched', `paste-layer-unmatched: the copy's shape layer(s) ${left.join(', ')} have no place in this drawing`)
   return { map: net.insertLines(d.network, ch, clip.network, layer, idOf, offset, layers), layers }

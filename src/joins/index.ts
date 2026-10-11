@@ -67,7 +67,7 @@ export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l
   if (opts.mode === 'arc' && !(typeof opts.radius === 'number' && Number.isFinite(opts.radius) && opts.radius > 0)) throw new Error('An arc join needs a positive radius')
   const p = pair(l1, l2), key = rowKey(point, l1, l2), all = layersOf(n)
   if (opts.mode === 'arc') {
-    const owned = all.filter(l => l.kind !== 'view').map(l => l.key)
+    const owned = all.filter(l => l.kind !== 'view' && !l.copyNew).map(l => l.key)
     if (owned.length) throw new net.Refusal('arc-needs-owner', `arc-needs-owner: the ${owned.join(', ')} layer(s) need their owner to give an arc its radius`)
   }
   S(j).rows = S(j).rows.filter(r => !same(r, point, p))
