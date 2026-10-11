@@ -31,7 +31,7 @@
 | 2 | responses as data, evaluate with responses, follow, clip, file v4, links | 744b1b9, 31c532a, 7496dc7 | 7496dc7 (dot 1791691047) |
 | 3 | `correct` on a line, response only | a4329a1, 1bed3ff, d6502dc | d6502dc (dot 1791693873) |
 | — | `coordinates-not-finite` | 385707a | 385707a (dot 1791695246) |
-| 4 | the outer view's minimal move; ledger rows 13, 14 | 2e42f60, ed63549, 302b35c | 302b35c (dot 1791696516) |
+| 4 | the outer view's move (a per-axis cost candidate, checked); ledger rows 13, 14 | 2e42f60, ed63549, 302b35c | 302b35c (dot 1791696516) |
 | 5 | bench: dragging points during playback; `correctionEdge` | e2a7496, f1ed222, 1420d46, abece54 | abece54 (dot 1791698328) |
 
 Tests at the end: root 750, bench 90, interaction 75; both type checks. dot re-ran all of them independently at each acceptance, with its own regressions (31, 50 and 27 cases for packages 3, 4 and 5).
