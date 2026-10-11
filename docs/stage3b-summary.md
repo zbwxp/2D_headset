@@ -1,6 +1,6 @@
 # Stage 3b summary: in-between correction on the lines (accepted by dot 1791698328)
 
-**Scope** (bowen 1791692031, "那就先做线上修正吧"): corrections at angles **on the lines between neighbouring views**. A drag there changes the in-between curve of that line (the response) and, where the response cannot reach, moves the outer view minimally. The bench can drag points during playback.
+**Scope** (bowen 1791692031, "那就先做线上修正吧"): corrections at angles **on the lines between neighbouring views**. A drag there changes the in-between curve of that line (the response) and, where the response cannot reach, moves the outer view by a candidate found from a per-control, per-axis cost and then checked against the constraints. That is not the smallest move of the whole correction under all its constraints, and a refused candidate does not prove that no other move would work (dot 1791694376, 1791698489). The bench can drag points during playback.
 
 **Not delivered** (dot 1791698328):
 - **Corrections inside a cell** (yaw and pitch both between views): refused (`correction-off-edge`). Candidates for later: bowen's "yaw handles x, pitch handles y" (1791691812), v103's local interior samples (open item 6 of `docs/stage3b-correction-plan.md`).
@@ -12,10 +12,10 @@
 
 - **Responses** (`animation`): per control (a point's position or one handle vector), per edge, per axis, a piecewise-linear curve through (0, 0), its knots, (1, 1). Each knot is a correction the user made at that angle: a protected target. Carried through structural edits (`follow`), paste and copy layer, the file (archive version 4), and links (linked points hold identical sets; a link merges them by the union of knots, refused if they differ).
 - **`evaluate` with responses:** per control and axis, the responded weights in the pose's quadrant; `onEdge` is the same blend on an edge (one summation step); `PoseNotFinite` is a typed error.
-- **Operations declare their effects** (`src/document/effects.ts`, ledger row 1 closed): what each operation reads, which layers its intents and writes may reach, its settle; the transaction checks and merges them; an undeclared operation fails its edit.
+- **Operations declare their effects** (`src/document/effects.ts`, ledger row 1 closed): what each operation reads, which layers its intents and writes may reach, its settle; the transaction merges them, and an undeclared operation fails its edit. At run time only the declarations and the layers of the geometric intents are checked; direct writes without intents are verified by one test per operation, not by complete write tracking (dot 1791689059, 1791698489).
 - **`Editor.correct(pose, targets)`:**
   - only on a line (`edgeAt`: u = |yaw| / 90, v = |pitch| / 45); the target set is the given points with their link components, plus the given handles; locks are checked on the whole set;
-  - per axis: already met → nothing; views differ → a knot on the response (overflow-free inverse); views equal on an edge from the front → the outer view moves by the minimal-move cost (end points 16, handles 1, response change 0.005, scale = the drawing's extent; v103's constants), solved in a scaled form; views equal elsewhere → `correction-axis-fixed`;
+  - per axis: already met → nothing; views differ → a knot on the response (overflow-free inverse); views equal on an edge from the front → the outer view moves by the candidate of a per-control, per-axis cost (end points 16, handles 1, response change 0.005, scale = the drawing's extent; v103's constants), solved in a scaled form; views equal elsewhere → `correction-axis-fixed`;
   - old knots on the outer view's edges are re-solved against its settled values; linked members' final response sets must be identical (`correction-link-differs`);
   - the final check runs on the settled trial against the draft on entry, per axis (`correction-not-reproduced`), plus `correction-not-finite`, `correction-breaks-target`, `correction-too-many-knots`;
   - stands alone in its edit (only selections and stroke broadcasts beside it); one undo step.
