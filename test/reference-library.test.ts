@@ -123,6 +123,15 @@ describe('the one conversion, version 5 → 6 (bowen 1791726456)', () => {
     expect(all(c).map(r => [r.id, r.width, r.height, r.width * r.scale, r.height * r.scale])).toEqual([['big', 100, 50, 100, 50], ['small', 30, 90, 30, 90]])
   })
 
+  it('long image ids (no limit in version 5) open: the first image\'s id kept whole as the entry id, only its shown name cut to 100; a later image of the same content with a long id reuses it (dot 1791727284)', () => {
+    const d = doc(), long1 = 'a'.repeat(101), long2 = 'b'.repeat(250)
+    d.editIn('view:0,0', e => e.placeReference(img(long1, 'view:0,0')))
+    d.editIn('view:90,0', e => e.placeReference(img(long2, 'view:90,0')))
+    const c = open(asV5(save(d)))
+    expect(c.library()).toMatchObject([{ id: long1, name: 'a'.repeat(100), placements: 2, views: 2 }])
+    expect(all(c).map(r => [r.id.length, r.asset === long1])).toEqual([[101, true], [250, true]])
+  })
+
   it('a version-5 file that fails today\'s checks still fails; a version-5 image naming an asset is refused; version 4 stays refused', () => {
     const d = doc()
     d.edit(e => e.placeReference(img('r1', 'view:0,0')))
