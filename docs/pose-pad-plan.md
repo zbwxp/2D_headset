@@ -17,7 +17,9 @@ Asked by bowen 1791727397: playback keeps its yaw and pitch sliders, and gains a
 
 - **Press** anywhere on the grid: the pose jumps there. **Drag**: the pose follows the pointer. Values are whole degrees (as the sliders), clamped to the limits; a pointer dragged outside the grid holds the nearest edge value.
 - Each new value goes through the bench's existing `changePose` — the same path as the sliders: it ends a playback correction drag first (dot 1791696847) and writes nothing to the drawing.
+- **One update for a pose that takes effect** (dot 1791727663): today `changePose` does not set the number fields' text and the slider sets it separately. A pose that takes effect — from the pad, a slider, a valid typed number, entering playback — is set in one place that sets the pose *and* both fields' text, so pad, sliders and fields always agree. A field being typed into keeps its own text while it is not a valid angle (`""`, `"-"`): such text changes nothing, as now.
 - The drag belongs to the pointer and button that started it and is tracked on the window (as the canvas gestures are, since pointer capture proved unreliable on bowen's trackpad): it ends on that pointer's release, on a move without that button held, on pointercancel, on leaving the window, and when the pad goes (leaving playback, unmount) — its window listeners removed every time. A second pointer meanwhile is ignored.
+- **The pad's drag and the canvas's gestures cancel each other** (dot 1791727663): the pad's drag takes the bench's one gesture slot (`gesture.current`), so a pad press cancels a running canvas gesture (a correction drag, a pan, a zoom drag) and a canvas press cancels a running pad drag, each through its one cancel path; Esc, a right click, a new press of the same pointer, leaving playback and unmounting cancel it too. A late move or release of a cancelled drag changes nothing. Window listeners are checked by type, callback and capture (dot 1791718017).
 - No keyboard control (not asked; the fields remain for exact values).
 
 ## Viewport tools in playback (bowen 1791727452)
@@ -27,9 +29,10 @@ bowen: Zoom is a viewport tool and must work in playback. **Rule, for every mode
 Today in playback: the wheel zooms; the right- and middle-button pan does not (the playback press takes the left button only and ignores the rest); **Z** (key and button) is disabled with the editing tools.
 
 - The viewport tools — Zoom (Z key, Zoom Z button), the wheel, right- and middle-button pan, a right click that cancels — act in playback exactly as in editing, through the same code.
-- The Zoom Z button moves out of the editing tools' disabled group into its own **View** group, always enabled; the Z key is handled before playback's "no shortcut writes" check. In playback, the tool keys that write stay inert, as now.
+- The Zoom Z button moves out of the editing tools' disabled group into its own **View** group, always enabled; the Z key is handled before playback's "no shortcut writes" check — but **after** the typing check (a field or an input method keeps its keys) and only as a plain Z: ⌘Z / Ctrl-Z stays undo, never zoom (dot 1791727663). In playback and while restoring, the tool keys and everything that writes stay inert, as now: the write gate is unchanged, and the viewport path is the only one these modes open.
+- **Leaving Zoom** (dot 1791727663): today Z only turns zoom on and playback disables the other tool keys, so there would be no way back to the correction drag. Pressing **Z** again, or the **Zoom Z** button again, turns zoom off (a toggle), in every mode; in editing, choosing another tool also turns it off, as now.
 - In playback with Z on, a left press zooms (click in, Alt-click out, drag up / down), as in editing; with Z off, a left press is playback's correction drag, as now. The cursor follows: `zoom-in` with Z on, the arrow otherwise (the cursor table's order puts Z before playback).
-- Tests: in playback, Z key and button turn zoom on; a left press with Z zooms and writes nothing; a right-button drag pans and writes nothing; Z off, a left press on a line still starts a correction; the cursor shows `zoom-in` with Z in playback. Feature-off: with playback's presses not routed to the viewport tools, the tests fail.
+- Tests: in playback, Z key and button toggle zoom on and off; ⌘Z is not zoom; Z typed in a field is not zoom; a left press with Z zooms, a right-button drag pans, the wheel zooms — each leaving **the drawing's text, the undo history and the autosave write count unchanged** (dot 1791727663); Z off again, a left press on a line starts a correction; the cursor shows `zoom-in` with Z in playback; while restoring, Z and pan act on the view only and no editing tool can be reached. Feature-off: with playback's presses not routed to the viewport tools, the tests fail.
 
 ## Not now
 
@@ -38,7 +41,7 @@ Today in playback: the wheel zooms; the right- and middle-button pan does not (t
 ## Tests
 
 - Package (DOM): a press at a position gives the expected whole-degree pose (corners → ±90 / ±45, centre → 0,0; top = +45, left = −90); a drag reports each move; outside the grid clamps; the handle follows `yaw` / `pitch` given; release / a move without the button / pointercancel / blur / unmount end it, the window's pointer listeners counted by type, callback and capture (dot 1791718017) back to none; a second pointer ignored.
-- Bench: in playback, a drag on the pad changes the pose shown (the sliders and fields follow, the drawing's text unchanged); a press on the pad during a playback correction drag cancels that drag (as a slider change does); leaving playback during a pad drag leaves no listeners and no pose. Feature-off: without the pad's `onChange` wired, the bench test fails.
+- Bench: in playback, a drag on the pad changes the pose shown — sliders and fields follow (and a slider or a typed number moves the pad's handle), the drawing's text unchanged; a field holding `-` changes nothing until valid; a pad press during a correction drag cancels it, and a canvas press during a pad drag cancels that; Esc, a right click, a new press of the same pointer, leaving playback and unmounting each end a pad drag, a late move or release changes nothing, no window listeners left. Feature-off: without the pad's `onChange` wired, the bench test fails.
 
 ## Order
 
