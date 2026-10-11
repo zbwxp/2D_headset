@@ -161,7 +161,7 @@ The tests walk each row, including a component whose first-made point is deleted
 | Field | Values | Meaning |
 |---|---|---|
 | reads | `draft` / `settled-trial`, possibly depending on the call's arguments | which version it reads: the edit's draft as written, or the scratch copy with every view's positions settled (`this.view()`). A declaration may be a function of the arguments: `line` reads the draft when handles are given and the settled trial otherwise (dot 1791687873). No operation reads the published state: broadcast, fit and the draft read the **draft's geometry**, which the allowed companions (selections, stroke broadcasts) leave unchanged. A selection before them is read from the current draft, as written |
-| writes | geometry layers (`edited` / `other-views` / `none`), structure (yes / no), records, animation | where it writes |
+| writes | intent layers, shape layers, structure (yes / no), records, shared parts | where it writes. Layer ranges are resolved to **concrete layer ids** at the call, from the edited layer: `edited` = that view; `all-views` = the nine; `non-front` = the eight views other than 0,0 (shape broadcast); `others` = the eight views other than the edited one (stroke broadcast); `corners` = the four corner views (draft). No range stands for "everything except broadcast" (dot 1791688005) |
 | autoStructure | `edited-view` / `none` | whether the commit may auto-bind in the edited view because of it |
 | settle | `full` / `non-front-positions` / `none` | which position settling it needs |
 | alone | yes / no | whether it must stand alone in its edit |
@@ -190,7 +190,7 @@ The tests walk each row, including a component whose first-made point is deleted
 | `full`: edited view fully (auto-bind there), other views by positions | every other operation, *including* renames (`renameLayer`, `renameLine`, `renameGroup`), `layerType`, visibility and lock states (`lineState`, `fillState`, `groupState`, `layerState`, `layerFills`), `lineStroke`, `stroke`, `endStroke`, fill colour and order, layer order, joins and links, transforms, mirror operations, `deleteSelection`; and **an empty edit** (no calls) |
 
 - **Reads today:**
-  - `settled-trial`: `copyLayer`, `line`, `mergePosition`, `split`, `unbind`, `link`, `transform` (and through it `translate`, `rotate`, `scale`), `flip`, `deleteSelection`, `mirrorApply`, `mirrorLink`;
+  - `settled-trial`: `copyLayer`, `line` **without handles** (with handles it reads the `draft`), `mergePosition`, `split`, `unbind`, `link`, `transform` (and through it `translate`, `rotate`, `scale`), `flip`, `deleteSelection`, `mirrorApply`, `mirrorLink`;
   - `draft`, geometry equal to the published state by the alone rule: `broadcastShape`, `draftCorners`, `fit`;
   - every other operation reads the `draft`.
 - **Nested calls** (e.g. `paste` calls `select`, `stroke` calls `lineStroke`) are recorded as calls too, as today, and merged the same way.
@@ -200,7 +200,7 @@ The tests walk each row, including a component whose first-made point is deleted
   - every existing test passes unchanged;
   - a test enumerates every Editor method and requires a declaration;
   - an undeclared method fails the edit even when the callback catches;
-  - an operation that writes outside its declaration is refused;
+  - a geometric intent outside the declared layers is refused;
   - a draft in a corner view does not auto-bind.
 
 **Package 1 scope (revised for dot):**
