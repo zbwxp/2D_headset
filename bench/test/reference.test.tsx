@@ -124,4 +124,28 @@ describe('reference pictures in the bench', () => {
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
     expect(status()).not.toContain('could not be drawn')
   })
+
+  it('after placing and editing a picture, the Pen still draws (bowen 1791703582)', async () => {
+    const t = await setup()
+    await t.choose(); await t.decode()
+    const id = bench().core.in('view:0,0').references().at(-1)!.id
+    const field = t.host.querySelector(`[data-ref="${id}"] [data-field="x"]`) as HTMLInputElement
+    await act(async () => {
+      field.focus()
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, '50')
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    const svg = t.host.querySelector('svg')!
+    ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
+    Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
+    await act(async () => { t.button('Pen P').click() })
+    const before = bench().core.snapshot().lines.length
+    const click = async (x: number, y: number) => {
+      const pe = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 1 }); return e }
+      await act(async () => { svg.dispatchEvent(pe('pointerdown', 1)); window.dispatchEvent(pe('pointerup', 0)) })
+    }
+    await click(-150, -150); await click(-100, -120)
+    expect(bench().core.snapshot().lines.length).toBe(before + 1)
+  })
 })
