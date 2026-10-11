@@ -1,6 +1,8 @@
 # Stage 3b, package 5: dragging during playback in the bench — the interaction flow, before code
 
-**Status:** accepted for coding by dot 1791696958 (point dragging; undo in playback and handles stay pending bowen, §7). `correctionEdge` approved as a pure query with core's own rule. Packages 3 and 4 are accepted (`d6502dc`, `302b35c`).
+**Status:** accepted for coding by dot 1791696958 (point dragging; undo in playback and handles stay pending bowen, §7). `correctionEdge` approved as a pure query with core's own rule.
+
+**Coded** (for dot's check): `correctionEdge` in `src/animation/index.ts`, exported from `src/index.ts` (test `test/correction-edge.test.ts`: it answers what `correct` does at the same pose); the bench in `bench/src/app.tsx` (the gate in `loggedFor`, `onPoseDown`, `changePose` / `typePose`, Esc first, the cross-App cancel in the editing gesture, the status, ghost and refusal marks, `window.bench.edit` for tests); tests `bench/test/playback-drag.test.tsx`. Checked by 16 single mutations and a feature-off run (no commit on release): each makes at least one test fail. Packages 3 and 4 are accepted (`d6502dc`, `302b35c`).
 
 **What this is:** the bench is throwaway glue (bowen 1791477975: graph parts pristine, glue fastest). This package adds one gesture to playback: drag a point (or a handle) at the pose shown, and on release make one `correct` edit. All rules stay in core; the bench only picks, previews, calls and shows the result. Quick pass (bowen 1791556525): build the ask minimally, fix only use-breaking bugs, record edge cases.
 

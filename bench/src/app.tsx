@@ -3,8 +3,8 @@
 // "Interaction", doc 22); one-shot panel commands call core's public operations and then
 // tell interaction (doc 22 §3.5). Uses core's public entry only.
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, save, open, type Vec, type Snapshot, type Editor } from '../../src'
-import { createInteraction, type Tool, type Preview } from '../../interaction'
+import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor } from '../../src'
+import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
 
@@ -38,9 +38,13 @@ function withNames(m: string) {
 }
 /**
  * The open Core seen through a logging wrapper, one per App and Core (so interaction's identity
- * checks hold). `readOnly` is that App's playback: while it is on, every edit / undo / redo
- * through the wrapper is refused, so no path of that App can write (stage 3a; dot 1791683911,
- * 1791686247: the flag and the wrapper belong to the App instance, not the module).
+ * checks hold). `readOnly` is that App's playback (stage 3a; dot 1791683911, 1791686247: the flag
+ * and the wrapper belong to the App instance, not the module). While it is on, undo and redo are
+ * refused, and an edit is allowed only if it calls `correct` exactly once and nothing else (stage
+ * 3b package 5; dot 1791696773, 1791696847): a forbidden call throws and is remembered even if the
+ * callback catches it; when the callback returns, before control goes back to core, a forbidden
+ * call or a count other than one fails the edit; the callback's own result is returned unchanged,
+ * so core still refuses an async callback.
  */
 function loggedFor(readOnly: () => boolean): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
@@ -51,11 +55,28 @@ function loggedFor(readOnly: () => boolean): (c: Core) => Core {
       get(t, k) {
         if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
           const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
-          if (readOnly()) { log.unshift({ calls: `${k}(…)`, result: '✗ read only during playback' }); throw new Error('read-only-playback: nothing is written during playback') }
+          const playback = readOnly()
           const calls: string[] = []
-          const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(n)}(${a.map(short).join(', ')})`); return v.apply(x, a) } : v } })
+          let corrects = 0, forbidden: string | undefined
+          const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
+            calls.push(`${String(n)}(${a.map(short).join(', ')})`)
+            if (playback) {
+              if (n !== 'correct') { forbidden ??= String(n); throw new Error(`read-only-playback: ${String(n)} is not allowed during playback (only one correct)`) }
+              corrects++
+            }
+            return v.apply(x, a)
+          } : v } })
           const head = view === 'view:0,0' ? '' : `[${view}] `
-          try { t.editIn(view, e => fn(rec(e))); log.unshift({ calls: head + calls.join('; '), result: 'ok' }) }
+          try {
+            t.editIn(view, e => {
+              const result: unknown = fn(rec(e))
+              if (playback && (forbidden !== undefined || corrects !== 1)) {
+                throw new Error(`read-only-playback: during playback an edit must call correct exactly once and nothing else (${forbidden !== undefined ? `it called ${forbidden}` : `it called correct ${corrects} times`})`)
+              }
+              return result as void
+            })
+            log.unshift({ calls: head + calls.join('; '), result: 'ok' })
+          }
           catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
           finally { log.length = Math.min(log.length, 50) }
         }
@@ -113,6 +134,12 @@ export function App() {
   // read started before one is dropped), `openSeq` counts Opens (only the latest may open)
   const [pose, setPose] = useState<null | { yaw: number; pitch: number }>(null)
   const poseGen = useRef(0), openSeq = useRef(0)
+  // stage 3b package 5: a playback drag's refusal, shown until the next press, pose change or
+  // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
+  // fields' own text, kept apart from the pose (dot 1791696847)
+  const [corrRefusal, setCorrRefusal] = useState<null | { message: string; objects: readonly { kind: string; id: string }[] }>(null)
+  const [corrGhost, setCorrGhost] = useState<null | { id: Id; to: Vec }>(null)
+  const [poseText, setPoseText] = useState({ yaw: '0', pitch: '0' })
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -159,7 +186,7 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, edit: (fn: (e: Editor) => void) => logged(core).edit(fn), demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
@@ -230,14 +257,76 @@ export function App() {
     const cancelWith = (why: string) => { stop(); if (kind === 'tool') { if (ix.preview().drag) note(`drag cancelled by ${why}`); ix.pointerCancel() } else setBox(from) }
     const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
     const onBlur = () => cancelWith('leaving the window')
+    // a new press of the same pointer anywhere on the page, another App included, ends this gesture:
+    // its window listeners would otherwise still act on that press's release (dot 1791696828)
+    const onOtherDown = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('a new press of the same pointer') }
     const stop = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release)
       window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
+      window.removeEventListener('pointerdown', onOtherDown, true)
       if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
     gesture.current = { id, right: e.button === 2, cancel: cancelWith }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
+    window.addEventListener('pointerdown', onOtherDown, true)
+  }
+  /**
+   * A drag during playback (stage 3b package 5, docs/stage3b-pkg5-bench-drag.md): only on a line,
+   * a visible point within reach; the press binds the drawing, the pose, the point and its start
+   * (dot 1791696808); the target is the start plus the pointer's displacement; on release one
+   * `correct` edit, unless the drawing changed meanwhile. The same one gesture slot and cancel path.
+   */
+  const onPoseDown = (e: React.PointerEvent) => {
+    if (gesture.current) {
+      if (gesture.current.id !== e.pointerId) return
+      gesture.current.cancel('a new press of the same pointer')
+    }
+    setCorrRefusal(null)
+    if (e.button !== 0 || !pose || !posed || posed instanceof Error || !('edge' in correctionEdge(pose))) return
+    const at = toDoc(e), snap = posed.snapshot()
+    // a point is picked only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
+    const visible = new Set(snap.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b]))
+    const hit = snap.points.filter(p => visible.has(p.id)).map(p => ({ p, d: Math.hypot(p.position.x - at.x, p.position.y - at.y) }))
+      .filter(x => x.d <= REACH.point * px).sort((a, b) => a.d - b.d)[0]
+    if (!hit) return
+    const bound = { core, text: save(core), pose: { ...pose }, id: hit.p.id, start: hit.p.position, from: at }
+    const id = e.pointerId, pressed = P(e.clientX, e.clientY)
+    let moved = false, done = false
+    const target = (ev: PointerEvent) => { const now = toDoc(ev); return P(bound.start.x + now.x - bound.from.x, bound.start.y + now.y - bound.from.y) }
+    const travel = (ev: PointerEvent) => { moved ||= Math.hypot(ev.clientX - pressed.x, ev.clientY - pressed.y) > CLICK }
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      if ((ev.buttons & 1) === 0) { release(ev); return }
+      travel(ev)
+      if (moved) setCorrGhost({ id: bound.id, to: target(ev) })
+    }
+    const release = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      travel(ev)
+      stop()
+      if (!moved) return
+      if (core !== bound.core || save(core) !== bound.text) { note('playback drag cancelled: the drawing changed during the drag'); bump(); return }
+      try { logged(core).edit(x => x.correct(bound.pose, { points: [{ id: bound.id, position: target(ev) }] })) }
+      catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
+      bump()
+    }
+    const cancelWith = (why: string) => { if (done) return; stop(); note(`playback drag cancelled by ${why}`); bump() }
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
+    const onOtherDown = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('a new press of the same pointer') }
+    const onBlur = () => cancelWith('leaving the window')
+    const onMenu = () => cancelWith('a right click')
+    const listeners: [string, (ev: PointerEvent) => void][] = [['pointermove', move], ['pointerup', release], ['pointercancel', onCancel], ['blur', onBlur], ['contextmenu', onMenu]]
+    const stop = () => {
+      done = true
+      for (const [t, f] of listeners) window.removeEventListener(t, f as EventListener)
+      window.removeEventListener('pointerdown', onOtherDown, true)
+      setCorrGhost(null)
+      if (gesture.current?.cancel === cancelWith) gesture.current = null
+    }
+    gesture.current = { id, right: false, cancel: cancelWith }
+    for (const [t, f] of listeners) window.addEventListener(t, f as EventListener)
+    window.addEventListener('pointerdown', onOtherDown, true)
   }
   useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
   /** A view change ends any gesture and what interaction holds for one view (step 7); not an edit. */
@@ -255,9 +344,19 @@ export function App() {
     ix.cancelAll()
     posing.current = true; poseGen.current++
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
-    setPose({ yaw: yaw!, pitch: pitch! })
+    setPose({ yaw: yaw!, pitch: pitch! }); setPoseText({ yaw: String(yaw), pitch: String(pitch) }); setCorrRefusal(null)
   }
-  const stopPose = () => { posing.current = false; setPose(null) }
+  const stopPose = () => { gesture.current?.cancel('leaving playback'); posing.current = false; setPose(null); setCorrRefusal(null) }
+  /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
+  const changePose = (next: { yaw: number; pitch: number }) => { gesture.current?.cancel('a pose change'); setCorrRefusal(null); setPose(next) }
+  const LIMITS = { yaw: 90, pitch: 45 } as const
+  /** A number field's text, and the pose only when it parses to a finite angle in range; "", "-" and the like change nothing. */
+  const typePose = (axis: 'yaw' | 'pitch', text: string) => {
+    setPoseText(t => ({ ...t, [axis]: text }))
+    const v = Number(text)
+    if (pose && text.trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] && v !== pose[axis]) changePose({ ...pose, [axis]: v })
+  }
+  const poseTextValid = (axis: 'yaw' | 'pitch') => { const v = Number(poseText[axis]); return poseText[axis].trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] }
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
@@ -270,7 +369,9 @@ export function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      // playback first, before the typing check: a focused slider must not pass keys on (dot 1791683911)
+      // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
+      if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
+      // playback next, before the typing check: a focused slider must not pass keys on (dot 1791683911)
       if (posing.current) return
       // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
       // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
@@ -278,8 +379,7 @@ export function App() {
       const typing = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       if (typing) return
-      // one Esc cancels one thing: a gesture in progress if there is one, else interaction's innermost (dot 1791553129)
-      if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
+      // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { chooseTool('Z'); e.preventDefault(); return }
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
       if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && ix.key(e.key, mods(e))) { e.preventDefault(); chooseTool(ix.tool); return }
@@ -321,7 +421,7 @@ export function App() {
     })
   })()
   // the refusal mark: a red cross on each object it names
-  const refusalAt = (pv.refusal?.objects ?? []).flatMap(o => {
+  const refusalAt = ((pose ? corrRefusal : pv.refusal)?.objects ?? []).flatMap(o => {
     if (o.kind === 'point') { const p = s.points.find(x => x.id === o.id); return p ? [p.position] : [] }
     if (o.kind === 'line') { const c = g.lines.find(x => x.id === o.id); return c ? [mid(c.curve)] : [] }
     if (o.kind === 'group') { const gr = s.groups.find(x => x.id === o.id); const c = gr && g.lines.find(x => x.id === gr.lines[0]); return c ? [mid(c.curve)] : [] }
@@ -330,7 +430,11 @@ export function App() {
   const cutLines = new Set(s.groups.filter(x => pv.cut.includes(x.id)).flatMap(x => x.lines))
 
   const B = (label: string, f: () => void, title?: string) => <button title={title} onClick={f}>{label}</button>
-  const status = pose ? `playback yaw ${pose.yaw}, pitch ${pose.pitch} · read only${posed instanceof Error ? ' · ✗ ' + posed.message : ''} · appearance from the dominant view, joins as blended (placeholders)`
+  // where the pose lies for a correction, by core's own rule (correctionEdge; dot 1791696958)
+  const where = pose ? correctionEdge(pose) : null
+  const onLine = !!where && 'edge' in where
+  const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
+    : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${!where ? '' : 'edge' in where ? `on the line ${where.inner} → ${where.outer} at t = ${+where.t.toFixed(3)} · drag a point to correct` : where.code === 'correction-at-view' ? 'at a view · read only (edit the view itself)' : where.code === 'correction-off-edge' ? 'inside a cell · read only (this round corrects on lines only)' : '✗ ' + where.message}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
@@ -342,8 +446,10 @@ export function App() {
         <div data-testid="playback" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {pose ? <>
             <button onClick={stopPose}>Leave playback</button>
-            <label>yaw {pose.yaw} <input type="range" data-testid="yaw" min={-90} max={90} step={1} value={pose.yaw} onChange={e => setPose({ ...pose, yaw: +e.target.value })} /></label>
-            <label>pitch {pose.pitch} <input type="range" data-testid="pitch" min={-45} max={45} step={1} value={pose.pitch} onChange={e => setPose({ ...pose, pitch: +e.target.value })} /></label>
+            {(['yaw', 'pitch'] as const).map(axis => <label key={axis}>{axis} {pose[axis]}
+              <input type="range" data-testid={axis} min={-LIMITS[axis]} max={LIMITS[axis]} step={1} value={pose[axis]} onChange={e => { const v = +e.target.value; setPoseText(t => ({ ...t, [axis]: String(v) })); changePose({ ...pose, [axis]: v }) }} />
+              <input data-testid={`${axis}-text`} value={poseText[axis]} style={{ width: 64, borderColor: poseTextValid(axis) ? undefined : '#c00' }} onChange={e => typePose(axis, e.target.value)} />
+            </label>)}
           </> : <button onClick={startPose}>Playback</button>}
         </div>
         <fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -451,9 +557,9 @@ export function App() {
         <div style={{ display: 'flex', gap: 3 }}><fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</fieldset></div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
+        <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={pose ? undefined : onDown} onWheel={onWheel}
+          onPointerDown={pose ? onPoseDown : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
@@ -483,6 +589,13 @@ export function App() {
           {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
+          {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
+          {pose && onLine && (() => { const vis = new Set(s.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b])); return s.points.filter(p => vis.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />) })()}
+          {pose && corrGhost && s.lines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {
+            const mv = (id: Id) => (id === corrGhost.id ? corrGhost.to : pos(id)), a = mv(l.a), b = mv(l.b)
+            return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
+          })}
+          {pose && corrGhost && <circle data-ghost-point={corrGhost.id} cx={corrGhost.to.x} cy={corrGhost.to.y} r={4 * px} fill="#06f" />}
           {!pose && ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {!pose && pv.handles.map(({ line: id, end }) => {
             const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })
@@ -497,7 +610,7 @@ export function App() {
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
           {!pose && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
-          {!pose && refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
+          {refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
             <line x1={p.x - 6 * px} y1={p.y - 6 * px} x2={p.x + 6 * px} y2={p.y + 6 * px} /><line x1={p.x - 6 * px} y1={p.y + 6 * px} x2={p.x + 6 * px} y2={p.y - 6 * px} />
           </g>)}
         </svg>

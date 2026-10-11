@@ -118,9 +118,10 @@ describe('module boundaries', () => {
     expect(problems).toEqual([])
   })
 
-  it('the package root exports only Core, the archive’s save / open and the Refusal class as runtime values; everything else is types', () => {
+  it('the package root exports only Core, the archive’s save / open, the Refusal class and the pure query correctionEdge as runtime values; everything else is types', () => {
     const root = readFileSync(join(SRC, 'index.ts'), 'utf8')
-    expect(rootRuntimeExports(root)).toEqual(['Core', 'save', 'open', 'Refusal'])
+    // correctionEdge: a pure query added in stage 3b package 5, approved by dot 1791696958
+    expect(rootRuntimeExports(root)).toEqual(['Core', 'save', 'open', 'Refusal', 'correctionEdge'])
     expect(rootRuntimeExports(`export * from './network'`)).toEqual(['*'])
     expect(rootRuntimeExports(`export { create } from './network'\nexport type { Vec } from './geometry'`)).toEqual(['create'])
     expect(rootRuntimeExports(`export * as network from './network'`)).toEqual(['network'])

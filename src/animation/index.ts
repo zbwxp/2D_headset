@@ -306,6 +306,21 @@ export function edgeAt(pose: evaluate.Pose): { edge: views.Edge; t: number } {
   return { edge: views.EDGES.find(e => e.inner === inner && e.outer === outer)!, t }
 }
 
+/**
+ * Where a pose lies for a correction, by `edgeAt`'s own rule, as a pure query (stage 3b package 5,
+ * for the bench; dot 1791696958): the edge and the progress t, or the refusal a correction there
+ * would give. Nothing is read or written besides the pose.
+ */
+export function correctionEdge(pose: evaluate.Pose): { edge: string; inner: string; outer: string; t: number } | { code: string; message: string } {
+  try {
+    const { edge, t } = edgeAt(pose)
+    return { edge: edge.key, inner: edge.inner, outer: edge.outer, t }
+  } catch (err) {
+    if (err instanceof net.Refusal) return { code: err.code, message: err.message }
+    throw err
+  }
+}
+
 function knotsOf(s: RStore, c: Control, edge: string, axis: 'x' | 'y'): Knot[] | undefined {
   const rec = c.kind === 'point' ? own(s.points, c.id) : own(s.handles, c.line)?.[c.end]
   return rec ? own(rec, edge)?.[axis] : undefined

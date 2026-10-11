@@ -2,6 +2,7 @@
 export { Core } from './document'
 export { save, open } from './archive'
 export { Refusal } from './network'
+export { correctionEdge } from './animation'
 export type { RefusalObject } from './network'
 export type { Editor, Snapshot, Geometry, PoseReader } from './document'
 export type { Pose } from './evaluate'
