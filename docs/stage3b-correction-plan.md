@@ -143,7 +143,7 @@ One rule set, used by every path that changes structure, auto-bind included (dot
 |---|---|
 | new line | only the **new** points and the new line's handles start without responses (linear); an **existing** end point the line borrows keeps its responses (the same boundary as `base:angle`; dot 1791687776) |
 | delete a line | its handles' responses go; its end points' go with the points when they go |
-| bind (explicit or auto-bind) | the kept point keeps its own set; the removed point's set goes (step-2 rule: bind keeps the first point). If the removed point was linked, the kept point joins that link component, and the component must end with equal sets. If the two sets differ in behaviour (compared as for links), the bind is refused (`bind-responses-differ`), auto-bind included (the edit is refused, not silently merged) |
+| bind (explicit or auto-bind) | follows the existing result (dot 1791687873): the removed point is a deleted point, and `links.update` drops its links, so the kept point does **not** join the removed point's link component. The kept point keeps its own set; the removed point's set goes with it, as its position does. No new constraint and no response check |
 | unbind | the new point copies the old point's set |
 | split | refused when the split line's end points or handles have responses (`split-has-responses`): exact carrying is not possible with this data, and a copied curve must not pose as shape-preserving (dot 1791687532) |
 | link | allowed only when the two points' sets **behave** the same; otherwise refused (`link-responses-differ`), so a second point's tuned in-betweens are never overwritten silently (dot 1791687776). "The same" is judged by behaviour: no response and an explicit linear one (knots on the diagonal) are equal; two sets are compared as functions at the union of their knots. A "reset to the first point's" operation, if wanted later, is defined separately |
@@ -160,7 +160,7 @@ The tests walk each row, including a component whose first-made point is deleted
 
 | Field | Values | Meaning |
 |---|---|---|
-| reads | `draft` / `settled-trial` | which version it reads: the edit's draft as written, or the scratch copy with every view's positions settled (`this.view()`). No operation reads the published state directly: the stage-2 operations read the draft, whose *geometry* equals the published state only because the alone rule lets nothing but selections and stroke broadcasts run before them (dot 1791687776 asked to check this; corrected here) |
+| reads | `draft` / `settled-trial`, possibly depending on the call's arguments | which version it reads: the edit's draft as written, or the scratch copy with every view's positions settled (`this.view()`). A declaration may be a function of the arguments: `line` reads the draft when handles are given and the settled trial otherwise (dot 1791687873). No operation reads the published state: broadcast, fit and the draft read the **draft's geometry**, which the allowed companions (selections, stroke broadcasts) leave unchanged. A selection before them is read from the current draft, as written |
 | writes | geometry layers (`edited` / `other-views` / `none`), structure (yes / no), records, animation | where it writes |
 | autoStructure | `edited-view` / `none` | whether the commit may auto-bind in the edited view because of it |
 | settle | `full` / `non-front-positions` / `none` | which position settling it needs |
@@ -168,7 +168,12 @@ The tests walk each row, including a component whose first-made point is deleted
 
 **The transaction:**
 - **checks each call when it is made**, inside the method wrapper, which already marks the whole edit failed even if the callback catches the throw. An operation with no declaration throws `undeclared-operation`, so the edit fails and nothing written before it is published (dot 1791687563);
-- **checks the actual writes at commit by content, not by intents:** geometric intents do not cover every write. Strokes (`net.setLineStroke`), per-layer radius and end-stroke slots (`net.setSlot`), and `base:angle` (`net.setPositions` / `setHandles` in `animation`) are written without intents. So the commit compares each shape layer, the records and the `animation` state of the draft with the published state. The set that actually changed must be within the union of what the calls declared, structural operations declaring every layer. Otherwise the edit is refused (`undeclared-write`). Cost: one comparison per layer per commit;
+- **checks the geometric intents at commit, and only claims that** (a limited guarantee, dot 1791687873, 1791687901):
+  - the layers that hold this edit's geometric intents (`targets`, `held`, `handleTips` carry their layer) must be within the union of the calls' declared geometry layers, else `undeclared-write`;
+  - the check runs on the intents the operations recorded, **before** the commit's settle. What the settle then changes (auto-bind, springs, links, mirror at the front, positions in other views) is authorised by the merged `autoStructure` / `settle` rules, not by the operation's write declaration, and is never refused by it;
+  - it does **not** cover writes made without intents: lines added or split write every layer's shapes directly; fit and broadcast write `base:angle` directly; strokes, radii and end strokes are written as slots. The commit does not claim to detect these. A write cancelled out within the edit leaves no net change and is not claimed detected either;
+  - those direct writes are covered by **tests, one per operation**: run the operation alone in a small document and compare the state just before the commit's settle with the published state. The changed shape layers, records and shared parts must match the declaration;
+- *(withdrawn: the first idea of comparing all content at commit, c87aa89. It mixed direct writes with settle effects, dot 1791687901.)*
 - **merges explicitly:**
   - `autoStructure`: any call with `edited-view` → auto-bind in the edited view;
   - `settle`: `full` if any call needs it, else `non-front-positions` if any, else `none`;
@@ -197,6 +202,26 @@ The tests walk each row, including a component whose first-made point is deleted
   - an undeclared method fails the edit even when the callback catches;
   - an operation that writes outside its declaration is refused;
   - a draft in a corner view does not auto-bind.
+
+**Package 1 scope (revised for dot):**
+- **In:**
+  - the declaration table for every Editor operation, five fields, `reads` possibly a function of the arguments;
+  - the wrapper check at call time (`undeclared-operation` fails the whole edit even if caught);
+  - the merge into today's three settle modes, reproducing them exactly, the alone rule included;
+  - the intent-scope check before the settle (`undeclared-write`, intents only);
+  - removing the dead `ops` field (ledger row 4).
+- **Tests:**
+  - every existing test unchanged;
+  - an enumeration test (every Editor method declared);
+  - an undeclared method fails the edit even when the callback catches;
+  - an intent outside the declaration is refused (through a test-only narrowed declaration);
+  - a draft run in a corner view neither auto-binds nor fully settles;
+  - one direct-write test per operation, comparing pre-settle state with the published state against the declaration;
+  - a nested call (`paste` → `select`) merges as today.
+- **Out:**
+  - responses, `correct`, the 90° move;
+  - any change to which edits auto-bind (ledger row 7);
+  - a full write-tracking system.
 
 **`correct` declares:**
 - reads the `draft` (its geometry equals the published state: it stands alone);
