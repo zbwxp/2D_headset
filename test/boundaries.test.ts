@@ -22,6 +22,7 @@ const ALLOWED: Record<string, string[]> = {
   animation: ['geometry', 'network', 'views', 'links'],
   clipboard: ['network', 'groups', 'joins', 'fills', 'names', 'views'],
   document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation'],
+  evaluate: ['geometry'],
   archive: ['document'],
 }
 // External packages each module may use.
