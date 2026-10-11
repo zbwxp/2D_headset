@@ -107,6 +107,59 @@ describe('the background picture by keyboard (Move picture on)', () => {
   })
 })
 
+describe('the same input rules for the picture and the selection (dot 1791734673)', () => {
+  it('⌘ + arrow moves neither the picture nor the selection', async () => {
+    const t = await setup()
+    await t.activate()
+    const before = save(bench().core)
+    await act(async () => { down('ArrowRight', { metaKey: true }) }); await act(async () => { up('ArrowRight') })
+    await t.moveMode(false)
+    await act(async () => { down('a') }); await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, t.y, 1)); window.dispatchEvent(pe('pointerup', 0, t.y, 0)) })
+    const selected = save(bench().core)
+    await act(async () => { down('ArrowRight', { metaKey: true }) }); await act(async () => { up('ArrowRight') })
+    expect([JSON.parse(before).document.reference, save(bench().core)]).toEqual([JSON.parse(selected).document.reference, selected])
+  })
+
+  it('arrows on a focused slider are the slider\'s: they move neither the picture nor the selection', async () => {
+    const t = await setup()
+    await t.activate()
+    const slider = t.host.querySelector(`[data-ref="${t.id}"] [data-slider="angle"]`) as HTMLInputElement
+    const before = save(bench().core)
+    await act(async () => { slider.focus() })
+    await act(async () => { down('ArrowRight', {}, slider) }); await act(async () => { up('ArrowRight', slider) })
+    expect(save(bench().core)).toBe(before)
+    await t.moveMode(false)
+    await act(async () => { down('a') }); await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, t.y, 1)); window.dispatchEvent(pe('pointerup', 0, t.y, 0)) })
+    const selected = save(bench().core)
+    await act(async () => { slider.focus() })
+    await act(async () => { down('ArrowLeft', {}, slider) }); await act(async () => { up('ArrowLeft', slider) })
+    expect(save(bench().core)).toBe(selected)
+  })
+
+  it('⌘Z or Ctrl + Z during a key run ends the run only: nothing earlier is undone, the late release moves nothing — the picture and the selection alike', async () => {
+    const t = await setup()
+    await t.activate()
+    await act(async () => { down('ArrowUp') }); await act(async () => { up('ArrowUp') }) // an earlier move, committed
+    for (const mod of [{ metaKey: true }, { ctrlKey: true }]) {
+      const before = save(bench().core)
+      await act(async () => { down('ArrowRight') })
+      await act(async () => { down('z', mod) })
+      await act(async () => { up('ArrowRight') })
+      expect(save(bench().core)).toBe(before)
+    }
+    const before = save(bench().core) // the Undo button during a picture run: the same
+    await act(async () => { down('ArrowRight') }); await act(async () => { t.button('Undo').click() }); await act(async () => { up('ArrowRight') })
+    expect(save(bench().core)).toBe(before)
+    await t.moveMode(false)
+    await act(async () => { down('a') }); await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, t.y, 1)); window.dispatchEvent(pe('pointerup', 0, t.y, 0)) })
+    const selected = save(bench().core)
+    await act(async () => { down('ArrowRight') }); await act(async () => { down('z', { metaKey: true }) }); await act(async () => { up('ArrowRight') })
+    expect(save(bench().core)).toBe(selected)
+    await act(async () => { down('ArrowRight') }); await act(async () => { t.button('Undo').click() }); await act(async () => { up('ArrowRight') })
+    expect(save(bench().core)).toBe(selected)
+  })
+})
+
 describe('the selection by keyboard (V / A)', () => {
   it('A on a line, a held arrow: one translate, one undo step; autosave writes only after the release; Ctrl + Z still undoes', async () => {
     const t = await setup()

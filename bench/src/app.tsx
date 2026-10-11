@@ -532,6 +532,7 @@ export function App() {
    */
   keyHooks.current.nudge = (e: KeyboardEvent) => {
     if (!moveRef || !isArrow(e.key)) return false
+    if (e.metaKey && !e.ctrlKey) return false // ⌘ + arrow is not a move, as for the selection (dot 1791734673)
     e.preventDefault()
     if (gesture.current && gesture.current.id !== KEYS) return true // a drag runs: one session at a time
     if (!picMover.running && previewNow.current) return true // a panel preview is open
@@ -659,6 +660,11 @@ export function App() {
       const typing = e.isComposing || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       if (typing) return
+      // an arrow on any focused field or slider is that control's own (a slider steps with it), never a move;
+      // a key run already running still ends only by its own paths (dot 1791734673)
+      if (isArrow(e.key) && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
+      // undo / redo during a key run (the selection's or the picture's) end the run, write nothing and undo nothing earlier (dot 1791734673)
+      if (gesture.current?.id === KEYS && e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey)) { gesture.current.cancel(e.shiftKey ? 'redo' : 'undo'); e.preventDefault(); return }
       // a plain Z is the viewport's zoom, in every mode (bowen 1791727452); ⌘Z / Ctrl-Z stays undo
       // a key held down repeats: only its first press toggles (dot 1791731833)
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { if (!e.repeat) toggleZoom(); e.preventDefault(); return }
@@ -784,7 +790,7 @@ export function App() {
         </div>
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {B('Undo', () => ix.undo())}{B('Redo', () => ix.redo())}
+          {B('Undo', () => (gesture.current?.id === KEYS ? gesture.current.cancel('undo') : ix.undo()))}{B('Redo', () => (gesture.current?.id === KEYS ? gesture.current.cancel('redo') : ix.redo()))}
           {B('Delete', () => ix.deleteSelection())}
           {B('Cut', () => ix.cut(), '⌘X: grey until pasted; Esc cancels')}{B('Copy', () => ix.copy(), '⌘C')}{B('Paste', () => ix.paste(), '⌘V: into the current layer')}
           {B('Flip', () => run(x => x.flip(sel)))}
