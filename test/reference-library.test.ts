@@ -62,6 +62,16 @@ describe('the library', () => {
     expect(code(() => d.edit(e => e.removeAsset('nope')))).toBe('reference-unknown')
   })
 
+  it('an image removed, then another content placed under the same image id: a new entry with a fresh id, the old one kept (dot 1791727297)', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('r1', 'view:0,0')))
+    d.edit(e => e.removeReference('r1'))
+    d.edit(e => e.placeReference(img('r1', 'view:0,0', { src: WEBP })))
+    expect(d.library().map(a => [a.id, a.src === WEBP, a.placements])).toEqual([['r1', false, 0], ['r1~2', true, 1]])
+    expect(d.in('view:0,0').references()[0]).toMatchObject({ id: 'r1', asset: 'r1~2', src: WEBP })
+    expect(open(save(d)).library().map(a => a.id)).toEqual(['r1', 'r1~2'])
+  })
+
   it('renameAsset: a string of at most 100 characters; an unused entry survives save → open', () => {
     const d = doc()
     d.edit(e => e.addAsset({ id: 'sheet', name: 'a', src: PNG, width: 3, height: 3 }))

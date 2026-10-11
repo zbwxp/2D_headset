@@ -35,7 +35,7 @@ function drawing(src = PNG) {
   d.editIn('view:0,0', e => e.placeReference(at(`p${k}`, 'view:0,0')))
   d.editIn('view:-90,0', e => e.placeReference(at(`q${k}`, 'view:-90,0', false)))
   d.editIn('view:90,0', e => e.placeReference(at(`r${k}`, 'view:90,0')))
-  d.edit(e => e.addAsset({ id: `spare${k}`, name: 'spare', src: WEBP, width: 2, height: 2 }))
+  d.edit(e => e.addAsset({ id: `spare${k}`, name: 'spare', src: WEBP, width: 4000, height: 3000 })) // larger than the view: fitting shrinks it
   return { d, k, sheet: `p${k}`, spare: `spare${k}` }
 }
 async function mount() {
@@ -76,12 +76,15 @@ describe('the library list', () => {
     expect(lib().map(a => a.id)).toEqual([sheet, spare])
   })
 
-  it('放到当前视角 places that picture into the view shown, by asset, one undo step', async () => {
+  it('放到当前视角 places that picture into the view shown, by asset, centred and fitted as Place… fits, one undo step', async () => {
     const t = await mount(), { d, spare } = drawing()
     await t.openDoc(d)
     await act(async () => { bench().chooseView('view:0,45') })
     await act(async () => { t.button('放到当前视角', t.row(spare)).click() })
-    expect(bench().core.in('view:0,45').references()).toMatchObject([{ asset: spare, src: WEBP, width: 2, height: 2 }])
+    // the view's middle, fitted as Place… fits: at most 1, at most 90 % of the view's width and height
+    const box = (t.svg.getAttribute('viewBox') ?? '').split(' ').map(Number), k = Math.min(1, 0.9 * box[2]! / 4000, 0.9 * box[3]! / 3000)
+    expect(k).toBeLessThan(1)
+    expect(bench().core.in('view:0,45').references()).toMatchObject([{ asset: spare, src: WEBP, width: 4000, height: 3000, scale: k, x: box[0]! + box[2]! / 2, y: box[1]! + box[3]! / 2, angle: 0 }])
     await act(async () => { t.button('Undo').click() })
     expect(bench().core.in('view:0,45').references()).toEqual([])
   })

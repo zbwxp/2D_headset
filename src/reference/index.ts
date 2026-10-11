@@ -161,7 +161,11 @@ export function place(s: ReferenceState, image: unknown) {
     // a picture placed by its content: into the library (or the identical entry), its id this image's id kept
     // whole; only the shown name is cut to the name limit (an image id has no length limit; dot 1791727284)
     const placed = checkPlacement(i, '', w as number, h as number) // its own values first: nothing is added for a refused image
-    asset = addAsset(s, { id: placed.id, name: placed.id.slice(0, LIMITS.assetName), src: i.src, width: w, height: h })
+    // a new entry's id starts from the image's id and steps past an entry left with that id (a removed image's
+    // picture stays in the library): the two kinds of id are not tied together (dot 1791727297)
+    let id = placed.id
+    if (!S(s).library.some(x => x.src === i.src)) for (let k = 2; S(s).library.some(x => x.id === id); k++) id = `${placed.id}~${k}`
+    asset = addAsset(s, { id, name: placed.id.slice(0, LIMITS.assetName), src: i.src, width: w, height: h })
   } else {
     if (typeof i.asset !== 'string' || !i.asset) refuse('reference-bad-value', 'asset must be a non-empty string')
     const entry = S(s).library.find(x => x.id === i.asset)
