@@ -30,6 +30,7 @@
     "../visual",
     "../rename",
     "../cursor",
-    "../pose-pad"
+    "../pose-pad",
+    "../name-labels"
   ]
 }

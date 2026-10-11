@@ -11,6 +11,7 @@ import { LayersPanel } from '../../visual'
 import { Rename } from '../../rename'
 import { cursorFor } from '../../cursor'
 import { PosePad } from '../../pose-pad'
+import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -142,6 +143,9 @@ export function App() {
   const [layers, setLayers] = useState<Id[]>(['layer-1']) // the selected layers (docs/layer-scope-plan.md §1)
   // Z is a view tool: the camera is the app's, so it lives here, not in interaction (bowen 1791554415)
   const [zoomTool, setZoomTool] = useState(false)
+  // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
+  // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
+  const [labelKind, setLabelKind] = useState<LabelKind>('line')
   const [width, setWidth] = useState(2)
   // changes with every drawing opened: the panel's own temporary state (a rename draft, a dragged
   // row) belongs to one drawing and ends with it (dot 1791551140)
@@ -373,6 +377,8 @@ export function App() {
     // unmoved right press is the right click (cancel one level); with Z, the left button zooms;
     // otherwise the tool gets the press, and a press that hits nothing only clears the selection
     const kind = e.button === 1 || e.button === 2 ? 'pan' : zoomTool ? 'zoom' : ix.pointerDown(at, mods(e)) ? 'tool' : null
+    // A or V took the press and started no box: it hit something, so the labels follow the tool (a line already selected included)
+    if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && !ix.preview().box) setLabelKind(ix.tool === 'A' ? 'line' : 'curve')
     if (!kind) return
     let moved = false
     const zoomBy = (k: number) => setBox({ x: at.x - (at.x - from.x) * k, y: at.y - (at.y - from.y) * k, w: from.w * k, h: from.h * k })
@@ -823,8 +829,8 @@ export function App() {
           <input placeholder="find by name" style={{ width: 110 }} onKeyDown={e => {
             if (e.key !== 'Enter') return
             const q = (e.target as HTMLInputElement).value, l = s.lines.find(x => x.name === q), gr = s.groups.find(x => x.name === q)
-            if (l) run(x => x.select([{ kind: 'line', id: l.id }]))
-            else if (gr) run(x => x.selectGroup(gr.lines[0]!))
+            if (l) { setLabelKind('line'); run(x => x.select([{ kind: 'line', id: l.id }])) }
+            else if (gr) { setLabelKind('curve'); run(x => x.selectGroup(gr.lines[0]!)) }
           }} />
         </div>
         {selLines.length > 0 && <div style={{ color: '#555' }}>{[...new Set(selLines.map(groupOf))].map(gid => { const gr = s.groups.find(x => x.id === gid); return gr ? <div key={gid}><b>{gr.name}</b>: {gr.lines.map(id => line(id).name).join(' · ')}</div> : null })}</div>}
@@ -944,6 +950,9 @@ export function App() {
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
           {!pose && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
+          {/* the selected lines' or curves' names (name-labels/): the scoped selection, never taking a press, not in playback */}
+          {!pose && labelsFor(g.lines.map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines })), selLines, labelKind).map(lb =>
+            <text key={lb.key} data-label={lb.key} x={lb.at.x + 6 * px} y={lb.at.y - 6 * px} fontSize={12 * px} fill="#123" stroke="#fff" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none" style={{ userSelect: 'none' }}>{lb.text}</text>)}
           {refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
             <line x1={p.x - 6 * px} y1={p.y - 6 * px} x2={p.x + 6 * px} y2={p.y + 6 * px} /><line x1={p.x - 6 * px} y1={p.y + 6 * px} x2={p.x + 6 * px} y2={p.y - 6 * px} />
           </g>)}
@@ -955,7 +964,7 @@ export function App() {
           wheel or Z (drag up / down, click) zooms · right- or middle-drag pans · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
         </div>
       </div>
-      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} />
+      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind} />
     </div>
   )
 }

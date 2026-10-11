@@ -37,9 +37,11 @@ interface Props {
   select: (layers: Id[], current: Id) => void
   run: (fn: (e: Editor) => void) => boolean
   newLayerId: () => Id
+  /** A line row or a curve row was clicked (the app's name labels follow it; docs/name-labels-plan.md). */
+  onPick?: (kind: 'line' | 'curve') => void
 }
 
-export function LayersPanel({ s, g, selected, active, select, run, newLayerId }: Props) {
+export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
   const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
@@ -55,6 +57,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
    */
   const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent, layer: Id, kind: 'group' | 'line') => {
     setSubject({ kind, id })
+    onPick?.(kind === 'group' ? 'curve' : 'line')
     if (!selected.includes(layer)) select([...selected, layer], active)
     const at = rows.findIndex(r => r.id === id), from = rows.findIndex(r => r.id === rowAnchor)
     const units = (rs: typeof rows) => rs.flatMap(r => r.lines.map(l => ({ kind: 'line' as const, id: l })))
