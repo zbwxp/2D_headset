@@ -16,11 +16,12 @@ import * as views from '../views'
 import * as meta from '../meta'
 import * as animation from '../animation'
 import * as evaluate from '../evaluate'
+import { EFFECTS, merge, resolve } from './effects'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
 
-interface State {
+export interface State {
   /** Bound to the front view: the single-view compatibility entry (docs/architecture-multiview.md §2, package 6). */
   network: net.NetworkState
   groups: groups.GroupsState
@@ -82,8 +83,6 @@ interface Transaction {
   open: boolean; cancelled: boolean; failed: boolean; readonly state: State; readonly changes: net.Changes
   /** The shape layer this edit writes geometry into; `state.network` is bound to it during the edit. */
   readonly layer: string
-  /** The Editor operations this edit ran (for the stroke-broadcast-only commit). */
-  readonly ops: Set<string>
   /** Every Editor call, in order, repeats included (stage 2 counts calls, dot 1791680403). */
   readonly calls: string[]
   /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
@@ -95,7 +94,7 @@ export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State, layer: string): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, ops: new Set(), calls: [] })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, calls: [] })
     return e
   }
   /**
@@ -488,16 +487,23 @@ export class Editor {
  * nothing even if the callback catches the error. One wrapper, applied to all
  * public methods, instead of per-operation handling.
  */
+/** @internal Editor members that are not operations (helpers and cancel): not wrapped, not declared. */
+export const UNWRAPPED: readonly string[] = ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere']
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
-  if (!d || typeof d.value !== 'function' || ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere'].includes(name)) continue
+  if (!d || typeof d.value !== 'function' || UNWRAPPED.includes(name)) continue
   const original = d.value as (...args: unknown[]) => unknown
   Object.defineProperty(Editor.prototype, name, {
     ...d,
     value(this: Editor, ...args: unknown[]) {
       const open = transactions.get(this)
-      if (open?.open) { open.ops.add(name); open.calls.push(name) }
-      try { return original.apply(this, args) }
+      if (open?.open) open.calls.push(name)
+      try {
+        // every operation declares its effects (ledger row 1); an undeclared one fails the whole
+        // edit, even if the callback catches the throw (the catch below marks the edit failed)
+        if (!EFFECTS[name]) throw new net.Refusal('undeclared-operation', `undeclared-operation: ${name} has no declaration of its effects; nothing was published`)
+        return original.apply(this, args)
+      }
       catch (err) {
         const tx = transactions.get(this)
         if (tx?.open) { tx.failed = true; tx.open = false }
@@ -561,16 +567,19 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
-      // an edit that only selects or broadcasts strokes changes no position or topology: it skips
-      // the settling that does, and keeps every other check (dot 1791655898, 1791656400). Any
-      // other operation in the same edit gets the full flow; the auto-bind rule is unchanged.
-      // stage 2 rule 0 (dot 1791680149, 1791680403): broadcast, fit and the diagonal draft stand
-      // alone: one call, with only selections and stroke broadcasts beside it, counted by calls
-      const stage2 = tx.calls.filter(c => STAGE2.has(c))
-      if (stage2.length > 1 || (stage2.length && tx.calls.some(c => !STAGE2.has(c) && !KEEPS_GEOMETRY.has(c)))) {
-        throw new net.Refusal('stage2-alone', `stage2-alone: ${stage2.join(', ')} stands alone in its edit (only selections and stroke broadcasts beside it); nothing was published`)
+      // the calls' declarations decide the commit (ledger row 1; src/document/effects.ts): only
+      // selections and stroke broadcasts beside them skip settling (dot 1791655898, 1791656400);
+      // broadcast, fit and the draft stand alone, counted by calls (dot 1791680149, 1791680403)
+      const { mode, alone, refuse } = merge(tx.calls)
+      if (refuse) {
+        throw new net.Refusal('stage2-alone', `stage2-alone: ${alone.join(', ')} stands alone in its edit (only selections and stroke broadcasts beside it); nothing was published`)
       }
-      const mode: CommitMode = tx.calls.length && tx.calls.every(c => KEEPS_GEOMETRY.has(c)) ? 'keeps' : stage2.length ? 'views' : 'full'
+      // the geometric intents must be in layers the calls declared; checked before the settle,
+      // whose own effects (auto-bind, springs, links) its rules authorise (dot 1791687873, 1791687901)
+      const all = viewKeys(draft), allowed = new Set(tx.calls.flatMap(c => resolve(EFFECTS[c]!.intents, layer, all)))
+      const outside = [...new Set([...tx.changes.targets, ...tx.changes.held, ...tx.changes.handleTips].map(i => i.layer))].filter(k => !allowed.has(k)).sort()
+      if (outside.length) throw new net.Refusal('undeclared-write', `undeclared-write: this edit's geometric intents reach ${outside.join(', ')}, outside what ${[...new Set(tx.calls)].join(', ')} declared; nothing was published`)
+      beforeSettle?.(structuredClone({ layer, calls: [...tx.calls], mode, draft, published: this.state, changes: tx.changes }))
       commit(draft, tx.changes, this.state, tx.appliedFrom, layer, mode)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
@@ -813,16 +822,22 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }
 
-/** Editor operations that change no position or topology (an edit of only these skips that settling). */
-const KEEPS_GEOMETRY: ReadonlySet<string> = new Set(['select', 'selectGroup', 'broadcastStroke', 'fit'])
-/** Stage 2 operations that stand alone in their edit (docs/stage2-plan.md rule 0). */
-const STAGE2: ReadonlySet<string> = new Set(['broadcastShape', 'fit', 'draftCorners'])
 /**
- * How a commit settles: 'full' as ever; 'keeps' (only selections, stroke broadcasts, fit):
- * no position or topology settling; 'views' (a shape broadcast or a draft): the front is not
- * settled, every other view by positions only (stage 2 rule 0).
+ * @internal A test seam (stage 3b package 1): sees a copy of each edit just before its commit
+ * settles (the calls, the merged mode, the draft as the operations wrote it, the published state,
+ * the recorded intents). It changes nothing; the per-operation write tests read it.
  */
-type CommitMode = 'full' | 'keeps' | 'views'
+export interface BeforeSettle { layer: string; calls: string[]; mode: CommitMode; draft: State; published: State; changes: net.Changes }
+let beforeSettle: ((x: BeforeSettle) => void) | undefined
+export function observeBeforeSettle(f: (x: BeforeSettle) => void): () => void { const prev = beforeSettle; beforeSettle = f; return () => { beforeSettle = prev } }
+
+/**
+ * How a commit settles, merged from the calls' declarations (effects.ts): 'full' as ever;
+ * 'keeps' (only selections, stroke broadcasts, fit): no position or topology settling; 'views'
+ * (a shape broadcast or a draft): the front is not settled, every other view by positions only
+ * (stage 2 rule 0).
+ */
+export type CommitMode = 'full' | 'keeps' | 'views'
 const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => l.kind === 'view').map(l => l.key)
 
 /**

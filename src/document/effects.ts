@@ -1,0 +1,132 @@
+// effects — what each Editor operation declares (ledger row 1; docs/stage3b-correction-plan.md §6,
+// dot 1791687532, 1791687563, 1791687873, 1791687901, 1791688005). The transaction checks a call
+// against this table when it is made, merges the calls' declarations into one commit, and checks
+// the edit's geometric intents against them before the settle. Package 1 changes no behaviour:
+// the table reproduces the three settle modes that the name lists chose before.
+import * as views from '../views'
+
+/** A range of shape layers, resolved to concrete layer keys from the edited view. */
+export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners'
+/** The shared parts of the state an operation may write directly (structure = layers, points, lines, ids). */
+export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta'
+export type Reads = 'draft' | 'settled-trial'
+
+export interface Effect {
+  /** Which version it reads: the edit's draft as written, or the settled trial (`view()`); may depend on the arguments. */
+  readonly reads: Reads | ((args: readonly unknown[]) => Reads)
+  /** The layers its geometric intents (targets, held handles, aimed tips) may be in: checked before the settle. */
+  readonly intents: Range
+  /** The view layers it writes directly (positions, handles, strokes, radii, end strokes): checked by tests. */
+  readonly shapes: Range
+  /** Whether it writes the angle baseline record directly: checked by tests. */
+  readonly records: boolean
+  /** The shared parts it writes directly: checked by tests. */
+  readonly shared: readonly Shared[]
+  /** Whether the commit may auto-bind in the edited view because of it. */
+  readonly autoStructure: boolean
+  /** The position settling it needs. */
+  readonly settle: 'full' | 'non-front-positions' | 'none'
+  /** Whether it stands alone in its edit (only settle-free companions beside it). */
+  readonly alone: boolean
+}
+
+/** The layer keys a range stands for, in a document with `all` view layers, edited in `edited`. */
+export function resolve(range: Range, edited: string, all: readonly string[]): string[] {
+  switch (range) {
+    case 'none': return []
+    case 'edited': return [edited]
+    case 'all-views': return [...all]
+    case 'non-front': return all.filter(k => k !== views.FRONT)
+    case 'others': return all.filter(k => k !== edited)
+    case 'corners': return views.CORNERS.map(c => c.key)
+  }
+}
+
+/** A structural change runs through `applyTopology`, which lets every attribute module follow it, so any of these may change. */
+const STRUCTURAL: readonly Shared[] = ['structure', 'groups', 'joins', 'links', 'fills', 'apply', 'names']
+/** An ordinary edit: full settle (auto-bind in the edited view), not alone. */
+const full = (e: Partial<Effect> & Pick<Effect, 'reads'>): Effect =>
+  ({ intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: true, settle: 'full', alone: false, ...e })
+const trialWithout = (handlesAt: number) => (args: readonly unknown[]): Reads => (args[handlesAt] ? 'draft' : 'settled-trial')
+
+/** Every Editor operation's declaration. A call to an operation missing here fails its edit (`undeclared-operation`). */
+export const EFFECTS: Record<string, Effect> = {
+  // layers, names, types
+  layer: full({ reads: 'draft', shared: ['structure'] }),
+  renameLayer: full({ reads: 'draft', shared: ['structure'] }),
+  renameLine: full({ reads: 'draft', shared: ['names'] }),
+  renameGroup: full({ reads: 'draft', shared: ['names'] }),
+  layerType: full({ reads: 'draft', shared: ['meta'] }),
+  reorderLayer: full({ reads: 'draft', shared: ['structure'] }),
+  copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
+  // paste selects what it pasted (its nested select)
+  paste: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'selection'] }),
+  deleteLayer: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
+  // states
+  lineState: full({ reads: 'draft', shared: ['structure'] }),
+  fillState: full({ reads: 'draft', shared: ['fills'] }),
+  groupState: full({ reads: 'draft', shared: ['structure'] }),
+  layerState: full({ reads: 'draft', shared: ['structure', 'fills'] }),
+  layerFills: full({ reads: 'draft', shared: ['fills'] }),
+  // network
+  line: full({ reads: trialWithout(3), shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  move: full({ reads: 'draft', intents: 'edited', shapes: 'edited' }),
+  mergePosition: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  moveHandle: full({ reads: 'draft', intents: 'edited', shapes: 'edited' }),
+  split: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  deleteLine: full({ reads: 'draft', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  bind: full({ reads: 'draft', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  unbind: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  // joins: a smooth join holds its first-clicked handle in every view; an arc gives views without a radius one
+  join: full({ reads: 'draft', intents: 'all-views', shapes: 'all-views', records: true, shared: ['joins'] }),
+  removeJoin: full({ reads: 'draft', shapes: 'all-views', records: true, shared: ['joins'] }),
+  endStroke: full({ reads: 'draft', shapes: 'edited', shared: [] }),
+  // links: a link moves the second point onto the first in every view
+  link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links'] }),
+  unlink: full({ reads: 'draft', shared: ['links'] }),
+  linkJoin: full({ reads: 'draft', intents: 'all-views', shared: ['links'] }),
+  removeLinkJoin: full({ reads: 'draft', shared: ['links'] }),
+  // strokes, groups, fills
+  lineStroke: full({ reads: 'draft', shapes: 'edited' }),
+  stroke: full({ reads: 'draft', shapes: 'edited' }),
+  reorderGroup: full({ reads: 'draft', shared: ['groups'] }),
+  moveGroup: full({ reads: 'draft', shared: STRUCTURAL }),
+  fill: full({ reads: 'draft', shared: ['fills'] }),
+  clearFill: full({ reads: 'draft', shared: ['fills'] }),
+  fillVisible: full({ reads: 'draft', shared: ['fills'] }),
+  reorderFill: full({ reads: 'draft', shared: ['fills'] }),
+  // selection and transforms
+  select: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false },
+  selectGroup: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false },
+  transform: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  translate: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  rotate: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  scale: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  flip: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
+  deleteSelection: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  // stage 2: read the draft's geometry, which their settle-free companions leave unchanged
+  broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
+  draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
+  fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
+  broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false },
+  // mirror (front only, so the edited view is the front)
+  mirrorApply: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited', shared: ['structure', 'apply'] }),
+  mirrorLink: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited', shared: ['structure', 'apply'] }),
+  unmirror: full({ reads: 'draft', shared: ['apply'] }),
+}
+
+/** The commit an edit's calls ask for: the three settle modes of stage 2, merged from the declarations. */
+export type Mode = 'full' | 'keeps' | 'views'
+export function merge(calls: readonly string[]): { mode: Mode; alone: string[]; refuse?: string } {
+  const decl = calls.map(c => EFFECTS[c]!)
+  const alone = calls.filter((_, i) => decl[i]!.alone)
+  // an alone operation allows only settle-free companions beside it (selections, stroke broadcasts)
+  if (alone.length > 1 || (alone.length && decl.some(d => !d.alone && d.settle !== 'none'))) return { mode: 'full', alone, refuse: 'stage2-alone' }
+  const mode: Mode = !calls.length ? 'full'
+    : decl.every(d => d.settle === 'none') ? 'keeps'
+    : decl.some(d => d.settle === 'full') ? 'full' : 'views'
+  // package 1 reproduces today's modes, where auto-bind goes with the full settle and nothing else
+  const autoStructure = !calls.length || decl.some(d => d.autoStructure)
+  if (autoStructure !== (mode === 'full')) throw new Error(`unsupported-merge: auto-structure ${autoStructure} with mode ${mode} (${calls.join(', ')})`)
+  return { mode, alone }
+}

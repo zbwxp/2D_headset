@@ -69,8 +69,9 @@ export const CORNERS: readonly { key: string; yaw: string; pitch: string }[] = O
  * Diagonal draft (graph "Diagonal view"; bowen 1791639688; docs/stage2-plan.md rule 6): for
  * the chosen lines, each corner view gets front + (yaw view − front) + (pitch view − front),
  * per point (once) and per handle vector, read from the draft. Only the four corners change,
- * written through each corner's own move / moveHandle so its links and springs settle there;
- * values already equal are not written. The baseline is not touched.
+ * written through each corner's own move / moveHandle so its links and springs settle there.
+ * Per corner, all or nothing: a corner already equal everywhere gets no write; otherwise every
+ * chosen point and handle is written, so all are held (dot 1791681518). The baseline is not touched.
  */
 export function draftCorners(n: net.NetworkState, ch: net.Changes, lines: readonly net.Id[]) {
   const front = net.of(n, FRONT)
