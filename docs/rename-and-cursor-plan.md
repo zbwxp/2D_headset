@@ -1,5 +1,7 @@
 # Rename by double-click, and tool cursors — rules before code
 
+**Accepted for this round by bowen 1791710084** ("那先放行"), on dot's source review (dot 1791709451; rename §1 only; §2 cursor is handed in now), Claude's test runs and bowen's own use; dot's independent execution is blocked by its backend (dot 1791709918) and will be run later — not recorded as passed.
+
 **§2 coded** (for dot's check, after §1): `cursor/index.ts` (no imports), the bench canvas asks `cursorFor`; tests `cursor/test/cursor.test.ts` (5), `bench/test/cursor.test.tsx` (5). Checked in Chrome on port 5199: the computed cursor is the image (not the fallback) for Pen and Fill and both images decode at 24 × 24; V shows grab, grabbing while a press on a point is held, grab after release.
 
 **§1 coded** (for dot's check): `rename/index.tsx`, used in `visual/LayersPanel.tsx` (layer, curve, line rows) and the bench's slot names; the Rename line / Rename curve buttons removed. Tests `bench/test/rename.test.tsx` (16), `rename/test/boundary.test.ts`; in `bench/test/reference-move.test.tsx` the slot test renames by double-click and a new test opens a drawing during a slot edit. Checked in Chrome on port 5199: double-click a curve name, type, Enter renames; Esc cancels; letters typed in the field do not switch tools.
