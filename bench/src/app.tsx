@@ -3,7 +3,7 @@
 // "Interaction", doc 22); one-shot panel commands call core's public operations and then
 // tell interaction (doc 22 §3.5). Uses core's public entry only.
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type ReferenceImage, type ReferenceProps, type ReferenceSlot } from '../../src'
+import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type ReferenceImage, type ReferenceProps, type ReferenceSlot, type AssetUse } from '../../src'
 import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
 import { createAutosave, indexedDbStore, type Autosave, type Store } from '../../autosave'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
@@ -284,19 +284,47 @@ export function App() {
     run(x => x.setReference(p.id, p.props))
   }
   const cancelPreview = () => { previewNow.current = null; setRefPreview(null) }
-  /** Mirror ⇆ (§9): what is seen, flipped left-right about the picture's centre — flipped toggled, angle
-   *  negated. A gesture still running (a picture drag) is cancelled by its one cancel path, its window
-   *  listeners and its ghost with it (dot 1791717672); a panel preview still open ends by its one ending
-   *  (written if unchanged underneath). The values are then read from the document, so a late move, blur
-   *  or pointerup of either finds nothing to draw or write (dot 1791717133). The button is bound to the
-   *  drawing, the counter and the picture (id and source) it was drawn for: if they no longer hold (another
-   *  drawing opened, here or by another App), the whole action is dropped (dot 1791717696). */
-  const mirrorRef = (b: RefBind) => {
-    if (!refNow(b)) { note('Mirror dropped: the picture is no longer the one shown'); bump(); return }
-    gesture.current?.cancel('Mirror')
+  /**
+   * The one ending of a control acting on a picture (§10; dot 1791725888, ledger row 16): (1) the binding made
+   * when the control was drawn — drawing, counter, picture id and source — must still find that picture,
+   * otherwise the whole action is dropped (dot 1791717696); (2) a running gesture is cancelled by its one
+   * cancel path, listeners and ghost with it (dot 1791717672); (3) a panel preview ends by its one ending,
+   * written if unchanged underneath; (4) the picture is read again and the action done with those values
+   * (so a previewed angle, then 存, saves the angle just written; dot 1791717133).
+   */
+  const refAct = (b: RefBind, what: string, act: (r: ReferenceImage) => void) => {
+    if (!refNow(b)) { note(`${what} dropped: the picture is no longer the one shown`); bump(); return }
+    gesture.current?.cancel(what)
     commitPreview()
     const r = refNow(b)
-    if (r) run(x => x.setReference(r.id, { flipped: !r.flipped, angle: 0 - r.angle }))
+    if (r) act(r)
+  }
+  /** Mirror ⇆ (§9): what is seen, flipped left-right about the picture's centre — flipped toggled, angle negated. */
+  const mirrorRef = (b: RefBind) => refAct(b, 'Mirror', r => run(x => x.setReference(r.id, { flipped: !r.flipped, angle: 0 - r.angle })))
+  /** A library picture as a control drew it (§10): the same drawing and counter, the entry with the same id and content. */
+  const libNow = (b: RefBind) => (b.core === core && b.gen === refGen.current ? core.library().find(a => a.id === b.id && a.src === b.src) : undefined)
+  /** The same one ending for a library control, bound to its entry. */
+  const libAct = (b: RefBind, what: string, act: (a: AssetUse) => void) => {
+    if (!libNow(b)) { note(`${what} dropped: the library picture is no longer the one shown`); bump(); return }
+    gesture.current?.cancel(what)
+    commitPreview()
+    const a = libNow(b)
+    if (a) act(a)
+  }
+  /** A picture file read and decoded, then handed on only if this App's counter and the drawing still hold (§7.1). */
+  const readPicture = (f: File, done: (pic: { src: string; width: number; height: number }) => void) => {
+    const start = { gen: refGen.current, core, text: save(core) }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = String(reader.result), pic = new Image()
+      pic.onload = () => {
+        if (start.gen !== refGen.current || start.core !== core || save(core) !== start.text) { note(`picture ${f.name} dropped: the drawing, view or mode changed while it was read`); bump(); return }
+        done({ src, width: pic.width, height: pic.height })
+      }
+      pic.onerror = () => { note(`picture ${f.name} not added: it does not decode`); bump() }
+      pic.src = src
+    }
+    reader.readAsDataURL(f)
   }
   const run = (fn: (e: Editor) => void) => {
     // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
@@ -697,29 +725,23 @@ export function App() {
           <label>Place… <input type="file" data-testid="ref-file" accept="image/png,image/jpeg,image/webp" onChange={e => {
             const f = e.target.files?.[0]; e.target.value = ''
             if (!f) return
-            // bound at the start: this App's counter, the drawing and the view (§7.1)
-            const start = { gen: refGen.current, core, text: save(core), view: shown, box }
-            const reader = new FileReader()
-            reader.onload = () => {
-              const src = String(reader.result), pic = new Image()
-              pic.onload = () => {
-                if (start.gen !== refGen.current || start.core !== core || save(core) !== start.text) { note(`reference ${f.name} dropped: the drawing, view or mode changed while it was read`); bump(); return }
-                const k = Math.min(1, 0.9 * start.box.w / pic.width, 0.9 * start.box.h / pic.height)
-                run(x => x.placeReference({ id: nid('ref-'), view: start.view, src, width: pic.width, height: pic.height, x: start.box.x + start.box.w / 2, y: start.box.y + start.box.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true }))
-              }
-              pic.onerror = () => { note(`reference ${f.name} not placed: the picture does not decode`); bump() }
-              pic.src = src
-            }
-            reader.readAsDataURL(f)
+            // bound at the start: the view and the box it is placed into (§7.1); into the library (or the identical entry), then placed
+            const view = shown, at = box
+            readPicture(f, pic => {
+              const k = Math.min(1, 0.9 * at.w / pic.width, 0.9 * at.h / pic.height)
+              run(x => { const asset = x.addAsset({ id: nid('asset-'), name: f.name.slice(0, 100), ...pic }); x.placeReference({ id: nid('ref-'), view, asset, width: pic.width, height: pic.height, x: at.x + at.w / 2, y: at.y + at.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true }) })
+            })
           }} /></label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
           {core.in(shown).references().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
             const active = refNow(activeRef)?.id === r.id
             const RANGE = { x: [box.x, box.x + box.w, 1], y: [box.y, box.y + box.h, 1], scale: [-3, 2, 0.01], angle: [-180, 180, 1], opacity: [0, 1, 0.01] } as const
-            const writeSlots = (slots: ReferenceSlot[]) => run(x => x.setReference(r.id, { slots }))
+            // every control below acts through the one ending, bound to this picture as drawn (dot 1791725888)
+            const bound: RefBind = { core, gen: refGen.current, id: r.id, src: r.src }
+            const slotsOf = (what: string, next: (now: ReferenceImage) => ReferenceSlot[] | null) => refAct(bound, what, now => { const slots = next(now); if (slots) run(x => x.setReference(now.id, { slots })) })
             return <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, outline: active ? '1px solid #2a7fff' : undefined }}>
-            <input type="checkbox" checked={r.visible} onChange={e => run(x => x.setReference(r.id, { visible: e.target.checked }))} />
+            <input type="checkbox" checked={r.visible} onChange={e => { const v = e.target.checked; refAct(bound, 'visibility', now => run(x => x.setReference(now.id, { visible: v }))) }} />
             {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => {
               const [lo, hi, step] = RANGE[k], toSlider = (v: number) => (k === 'scale' ? Math.log10(v) : v), fromSlider = (v: number) => (k === 'scale' ? 10 ** v : v)
               return <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>{k}
@@ -731,18 +753,38 @@ export function App() {
                   onChange={e => previewRef(r, { [k]: fromSlider(Number(e.target.value)) })} onPointerUp={commitPreview} onKeyUp={commitPreview} onBlur={commitPreview} />
               </label>
             })}
-            {B('Mirror ⇆', ((bound: RefBind) => () => mirrorRef(bound))({ core, gen: refGen.current, id: r.id, src: r.src }))}
-            {B('Remove', () => run(x => x.removeReference(r.id)))}
+            {B('Mirror ⇆', () => mirrorRef(bound))}
+            {B('Remove', () => refAct(bound, 'Remove', now => run(x => x.removeReference(now.id))))}
             <div data-slots={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, width: '100%' }}>
               {r.slots.map((sl, k) => <span key={k} data-slot={k} style={{ border: '1px solid #ccc', padding: '0 3px' }}>
-                <Rename key={drawing} name={sl.name || `slot ${k + 1}`} style={{ fontWeight: 700, flex: 'none' }} fieldStyle={{ width: 70 }} onRename={n => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, name: n.slice(0, 100) } : x)))} />
-                <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: { x: r.x, y: r.y, scale: r.scale, angle: r.angle } } : x)))}>存</button>
-                <button disabled={!sl.placement} onClick={() => sl.placement && run(x => x.setReference(r.id, { ...sl.placement! }))}>调出</button>
-                <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: null } : x)))}>×</button>
+                <Rename key={drawing} name={sl.name || `slot ${k + 1}`} style={{ fontWeight: 700, flex: 'none' }} fieldStyle={{ width: 70 }} onRename={n => slotsOf('slot rename', now => (k < now.slots.length ? now.slots.map((x, j) => (j === k ? { ...x, name: n.slice(0, 100) } : x)) : null))} />
+                <button onClick={() => slotsOf('存', now => (k < now.slots.length ? now.slots.map((x, j) => (j === k ? { ...x, placement: { x: now.x, y: now.y, scale: now.scale, angle: now.angle } } : x)) : null))}>存</button>
+                <button disabled={!sl.placement} onClick={() => refAct(bound, '调出', now => { const p = now.slots[k]?.placement; if (p) run(x => x.setReference(now.id, { ...p })) })}>调出</button>
+                <button onClick={() => slotsOf('slot ×', now => (k < now.slots.length ? now.slots.map((x, j) => (j === k ? { ...x, placement: null } : x)) : null))}>×</button>
               </span>)}
-              <button onClick={() => writeSlots([...r.slots, { name: '', placement: null }])}>＋ 加一格</button>
+              <button onClick={() => slotsOf('＋ 加一格', now => [...now.slots, { name: '', placement: null }])}>＋ 加一格</button>
             </div>
           </div>
+          })}
+        </div>
+        <b>Library</b>
+        {/* each picture's content once (§10; bowen 1791725516): placed into a view by its button, removed only when no view shows it */}
+        <div data-testid="library" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <label>＋ 加图片 <input type="file" data-testid="lib-file" accept="image/png,image/jpeg,image/webp" onChange={e => {
+            const f = e.target.files?.[0]; e.target.value = ''
+            if (!f) return
+            readPicture(f, pic => run(x => { x.addAsset({ id: nid('asset-'), name: f.name.slice(0, 100), ...pic }) }))
+          }} /></label>
+          {core.library().map(a => {
+            const lb: RefBind = { core, gen: refGen.current, id: a.id, src: a.src }
+            const k = Math.min(1, 0.9 * box.w / a.width, 0.9 * box.h / a.height)
+            return <div key={a.id} data-asset={a.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <img src={a.src} alt="" style={{ width: 40, height: 28, objectFit: 'contain', background: '#eee', flex: 'none' }} />
+              <Rename key={drawing} name={a.name} style={{ flex: 1 }} fieldStyle={{ width: 90 }} onRename={n => libAct(lb, 'library rename', now => run(x => x.renameAsset(now.id, n.slice(0, 100))))} />
+              <span data-uses="" style={{ color: '#666', flex: 'none' }} title="placements · views">{a.placements} · {a.views}v</span>
+              <button onClick={() => libAct(lb, '放到当前视角', now => run(x => x.placeReference({ id: nid('ref-'), view: shown, asset: now.id, x: box.x + box.w / 2, y: box.y + box.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true })))}>放到当前视角</button>
+              <button disabled={a.placements > 0} title={a.placements > 0 ? `shown by ${a.placements} placement(s) in ${a.views} view(s)` : 'remove from the library'} onClick={() => libAct(lb, 'library ×', now => run(x => x.removeAsset(now.id)))}>×</button>
+            </div>
           })}
         </div>
         <b>Names</b>

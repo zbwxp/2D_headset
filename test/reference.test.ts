@@ -82,9 +82,9 @@ describe('reference pictures', () => {
     d.edit(e => e.placeReference(img('r1')))
     const text = save(d)
     expect(open(text).in('view:0,0').references()).toEqual(d.in('view:0,0').references())
-    const bad = JSON.parse(text); bad.document.reference.images[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
+    const bad = JSON.parse(text); bad.document.reference.library[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
     expect(() => open(JSON.stringify(bad))).toThrow(/open-failed: reference: reference-bad-image/)
-    expect(() => open(text.replace('"version":5', '"version":4'))).toThrow(/unsupported version 4/)
+    expect(() => open(text.replace('"version":6', '"version":4'))).toThrow(/unsupported version 4/)
     const pasted = doc()
     pasted.edit(e => e.paste(d.copy(['ab']), 'L', { x: 100, y: 0 }, 'p'))
     expect(pasted.in('view:0,0').references()).toEqual([])

@@ -25,7 +25,8 @@ Graph section "Save and open" (headset-design `977137f`; bowen 1791511525):
 | 2 | shape layers, nine views (multi-view stage 1, `docs/architecture-multiview.md`) | refused since version 3 (dot 1791680650): it has no angle baseline |
 | 3 | plus animation's owned record layer `base:angle` (stage 2, `docs/stage2-plan.md`); `copyNew` appears only on the layers animation owns | refused since version 4 (decided: no old-format compatibility) |
 | 4 | plus the in-between responses, `animation` (stage 3b package 2, `docs/stage3b-pkg2-responses.md`) | current |
-| 5 | plus reference pictures (`reference`, `docs/reference-images-plan.md`) | current; version 4 refused (no old-format compatibility) |
+| 5 | plus reference pictures (`reference`, `docs/reference-images-plan.md`) | converted once to 6 when opened — the one exception, for version 5 only (bowen 1791726456: "可以 仅此一次 一般不需要支持前代"); version 4 refused |
+| 6 | reference pictures in a library: each picture's content once, each placement names it (`docs/reference-images-plan.md` §10) | current |
 
 Files saved by the stage-1 bench (version 2) do not open. Lifting them, e.g. adding a baseline equal to the front, would be a separate compatibility decision; it is not made.
 

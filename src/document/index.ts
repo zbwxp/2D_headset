@@ -428,6 +428,10 @@ export class Editor {
   placeReference(image: reference.ReferenceInput) { reference.place(this.s.reference, image) }
   setReference(id: Id, props: reference.ReferenceProps) { reference.set(this.s.reference, id, props) }
   removeReference(id: Id) { reference.remove(this.s.reference, id) }
+  /** The picture library (§10): add (an identical content returns the entry already there), rename, remove (refused while shown). */
+  addAsset(asset: reference.Asset): string { return reference.addAsset(this.s.reference, asset) }
+  renameAsset(id: Id, name: string) { reference.renameAsset(this.s.reference, id, name) }
+  removeAsset(id: Id) { reference.removeAsset(this.s.reference, id) }
   /**
    * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
    * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
@@ -644,6 +648,7 @@ export class Core {
   }
 
   snapshot(): Snapshot { return this.in(views.FRONT).snapshot() }
+  library(): reference.AssetUse[] { return this.in(views.FRONT).library() }
   geometry(): Geometry { return this.in(views.FRONT).geometry() }
   copy(lines?: readonly Id[]): clipboard.Clip { return this.in(views.FRONT).copy(lines) }
   nearby(at: Vec, radius: number): derived.Nearby[] { return this.in(views.FRONT).nearby(at, radius) }
@@ -714,6 +719,8 @@ export class LayerReader {
   geometry(): Geometry { const s = this.state(); return structuredClone(derived.derive(this.n, s.joins, s.fills)) }
   /** The reference pictures of this view (copies). */
   references(): reference.ReferenceImage[] { return reference.list(this.state().reference, this.layer) }
+  /** The whole document's picture library, placed or not, each with its use (copies; the same in every view). */
+  library(): reference.AssetUse[] { return reference.library(this.state().reference) }
 
   /**
    * Copy (graph "Cut, paste / copy"): the lines given, or the selected lines, as a clip
@@ -740,6 +747,17 @@ export class LayerReader {
 // ---- for the archive module only (not exported from the package root) -----------
 
 const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation', 'reference'] as const
+
+/**
+ * Version 5's document with its reference pictures converted to the library form (the one conversion, for
+ * version 5 only; bowen 1791726456). Nothing else differs between 5 and 6; `importState` checks the result.
+ */
+export function fromV5(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object') return doc
+  const d = doc as Record<string, unknown>
+  if (!d.reference || typeof d.reference !== 'object') return doc // missing: refused by importState as for any file
+  return { ...d, reference: reference.fromV5(d.reference) }
+}
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {

@@ -122,6 +122,9 @@ export const EFFECTS: Record<string, Effect> = {
   placeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
   setReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
   removeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  addAsset: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  renameAsset: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  removeAsset: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
   // stage 3b packages 3 and 4: knots on the responses; on an edge from the front, the outer view may
   // move (one of the front's four neighbours; that at most one changes is the final check's, not
   // this table's). The final check reads the settled trial (docs/stage3b-pkg4-move.md §8)

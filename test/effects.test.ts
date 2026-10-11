@@ -134,6 +134,9 @@ const CASES: Case[] = [
   { op: 'placeReference', args: () => [refImage('r1')] },
   { op: 'setReference', args: () => ['r1', { opacity: 0.9 }], setup: d => d.edit(e => e.placeReference(refImage('r1'))) },
   { op: 'removeReference', args: () => ['r1'], setup: d => d.edit(e => e.placeReference(refImage('r1'))) },
+  { op: 'addAsset', args: () => [{ id: 'a1', name: 'sheet', src: PNG, width: 1, height: 1 }] },
+  { op: 'renameAsset', args: () => ['a1', 'front sheet'], setup: d => d.edit(e => e.addAsset({ id: 'a1', name: 'sheet', src: PNG, width: 1, height: 1 })) },
+  { op: 'removeAsset', args: () => ['a1'], setup: d => d.edit(e => e.addAsset({ id: 'a1', name: 'sheet', src: PNG, width: 1, height: 1 })) },
   { op: 'mirrorApply', args: () => [['qr'], ['st']], views: [FRONT] },
   { op: 'mirrorApply', args: () => [['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']], views: [FRONT], note: 'arc set and removed, fill copied', setup: mirrorScene },
   { op: 'mirrorApply', args: () => [['la', 'lb'], ['ra', 'rb']], views: [FRONT], note: 'link join copied', setup: mirrorScene },
@@ -267,7 +270,7 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     return m
   }
   it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)

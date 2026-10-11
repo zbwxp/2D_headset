@@ -2,8 +2,7 @@
 // independent module; docs/archive-plan.md). The drawing is saved; the selection and the
 // undo history are not. Opening makes a new document, so a refused file never touches
 // the current one.
-import { exportState, importState, type Core } from '../document'
-
+import { exportState, importState, fromV5, type Core } from '../document'
 export const FORMAT = 'headset-v3-drawing'
 /**
  * Format versions (docs/archive-plan.md "Format versions"); older ones are refused, with no migration:
@@ -11,9 +10,11 @@ export const FORMAT = 'headset-v3-drawing'
  * - 2: shape layers, nine views (stage 1); not supported since 3 (dot 1791680650).
  * - 3: plus animation's owned record layer `base:angle` (stage 2); `copyNew` only on owned layers; not supported since 4.
  * - 4: plus the in-between responses (`animation`, stage 3b package 2); not supported since 5.
- * - 5: plus reference pictures (`reference`, docs/reference-images-plan.md).
+ * - 5: plus reference pictures (`reference`, docs/reference-images-plan.md); converted once to 6 when opened —
+ *   the one exception, for version 5 only (bowen 1791726456: "可以 仅此一次 一般不需要支持前代").
+ * - 6: reference pictures in a library, each picture's content once (docs/reference-images-plan.md §10).
  */
-export const VERSION = 5
+export const VERSION = 6
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })
@@ -24,6 +25,7 @@ export function open(text: string): Core {
   try { file = JSON.parse(text) } catch { throw new Error('open-failed: not a drawing file (not JSON)') }
   const f = file as { format?: unknown; version?: unknown; document?: unknown } | null
   if (!f || f.format !== FORMAT) throw new Error('open-failed: not a headset v3 drawing')
+  if (f.version === 5) return importState(fromV5(f.document))
   if (f.version !== VERSION) throw new Error(`open-failed: unsupported version ${String(f.version)}`)
   return importState(f.document)
 }

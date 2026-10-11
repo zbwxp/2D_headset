@@ -118,7 +118,9 @@ describe('reference pictures in the bench', () => {
     expect(status()).toContain(`reference picture ${id} could not be drawn`)
     // another drawing with the same id and a different (good) picture
     const file = JSON.parse(save(bench().core))
-    file.document.reference.images.find((i: { id: string }) => i.id === id).src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggh=='
+    // (version 6: the picture's content is its library entry's)
+    const asset = file.document.reference.images.find((i: { id: string }) => i.id === id).asset
+    file.document.reference.library.find((a: { id: string }) => a.id === asset).src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggh=='
     const input = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'd.json', { type: 'application/json' })], configurable: true })
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
