@@ -1,6 +1,6 @@
 # Stage 3b, package 4: the outer view's minimal move — rules before code
 
-**Status:** first draft for dot's check (asked by dot 1791693873). No code until dot accepts it. Package 3 is accepted at `d6502dc` (dot 1791693873).
+**Status:** first draft for dot's check (asked by dot 1791693873), amended by a self-review (§10) while dot reviews `8fcf3f6`. No code until dot accepts it. Package 3 is accepted at `d6502dc` (dot 1791693873).
 
 **Ledger check** (`docs/consolidation-ledger.md`): rows 13 and 14 are triggered by this package; their handling is §7. No other row is triggered.
 
@@ -32,12 +32,13 @@ For one control and axis in the move case, with c = q − A (≠ 0), r = r(t) (i
   - λ = 0.005: the price of changing the response.
   - S = the larger of the x and y extents of all point positions in the front and O, at least 1e-6: the move is measured relative to the drawing's size, so scaling the drawing does not change the answer.
   - k, λ and the floor of S are v103's values (`boundedBasisInverse.ts` at 7205381: `SNAPSHOT_BASIS_NODE_PENALTY = 16`, `SNAPSHOT_BASIS_RESPONSE_PENALTY = .005`; `surfaceBasisFallback.ts` `basisScale`, floor 1e-6). They are tuning constants, kept in one place.
-- **The minimum exists and is unique:**
+- **What is solved, and what is not claimed** (dot 1791694376): the cost of one control and axis (its move plus its response change) is minimised, and that best candidate is then checked (§4, §5). It is **not** a minimum over the whole correction: old knots, links and springs are checked after the solve, not part of it. A refused candidate does not prove that no other move would work; it is refused, not searched around.
+- **The per-axis minimum exists:**
   - f → ∞ as w → 0 (the move grows without bound) and as |w| → ∞ (the response change grows without bound). This is the real minimum dot asked for (dot 1791687563): the response is not free, so the move cannot tend to 0.
   - Setting f′(w) = 0 gives w³ (w − r) = K, with K = k c² / (λ S²) > 0.
   - On w > 0, f decreases then increases, with exactly one stationary point: the root w₊ of w³(w − r) = K on w > max(r, 0) (there w³(w − r) increases from 0 to ∞).
   - On w < 0, likewise exactly one: the root w₋ on w < min(r, 0) (there w³(w − r) decreases from ∞ to 0 as w rises).
-  - The answer is the cheaper of w₊ and w₋; a tie goes to w₊. With r ≥ 0, f(a) ≤ f(−a) for every a > 0, so w₊ always wins (tie only at r = 0). So O moves in the direction of the drag, unless the control was earlier corrected to swing behind the front at t (r < 0).
+  - The candidate is the cheaper of w₊ and w₋. With r ≥ 0, f(a) ≤ f(−a) for every a > 0, so w₊ is never worse. At r = 0 the two cost the same: two optima, and taking w₊ is a deterministic choice, not uniqueness. So O moves in the direction of the drag, unless the control was earlier corrected to swing behind the front at t (r < 0).
   - Each root is found by bisection on a bracket where w³(w − r) − K changes sign, until the bracket cannot shrink: deterministic, no tolerance chosen by hand.
 - **What v103 had that this drops, and why:**
   - its sampled-curve rows (the change of each implicated curve at 9 samples), which couple a curve's points and handles into one non-convex problem solved by coordinate descent, a local solve with no uniqueness claim (v103's own comment). Without them every control and axis is solved alone and the answer is unique, which the tests can pin down;
@@ -56,8 +57,9 @@ For one control and axis in the move case, with c = q − A (≠ 0), r = r(t) (i
 
 Moving O changes what a kept knot produces on every edge with O as an end: front → O, and O → each corner next to it. So, for each moved control and axis:
 
-- **On front → O:** every other knot of that axis had value A (A === B); it is re-solved to keep A: [t_k, 0].
+- **On front → O:** every other knot of that axis is re-solved by the same formula as below, keeping the value it showed. That value is A only up to rounding ((1 − w_k)·A + w_k·A ≠ A in about 29% of random cases), so it is not replaced by [t_k, 0]; the re-solve gives a value near 0.
 - **On O → corner:** each knot is re-solved to keep its value v (read at its recorded t, before the move): w′ = (v − B′)/(C − B′), C the corner's value, with package 3's overflow-free form.
+- **B′ here is O's value as the settle leaves it**, not as written: three or more linked members go to the average of their targets, which can differ from B′ by rounding (about 17% of random cases for three equal targets). So the order is: write the moves, settle the trial, read O's settled values, then re-solve the protected knots against them and write the knots (§10).
   - If C === B′: when v === B′ the knot is still met and stays as it is; otherwise the whole correction is refused (`correction-breaks-target`, naming the control, edge and t; dot 1791687776).
   - A non-finite w′, or a non-finite value with it, refuses (`correction-not-finite`).
 - **Unchanged:** knots of controls that did not move, and every knot on edges without O. Controls without knots on O's edges get a new in-between shape there: that is O moving, which the decided rule allows.
@@ -72,10 +74,10 @@ Run on the settled trial (the draft as the commit will settle it), so springs an
 | at the pose: each control in the target set, each axis | its target, within 1e-9 · max(1, \|q\|) |
 | at the pose: every other control | its value before, exactly |
 | in O: every control not moved by §3 | its value before, exactly (a spring or link that moved anything else refuses) |
-| in O: each moved control and axis | B′, exactly as written |
+| in O: each moved control and axis | B′ within 1e-9 · max(1, \|B′\|) (the settle may average linked members) |
 | every knot on front → O and on O → corners | its value at its recorded t: exactly when not re-solved; within 1e-9 · max(1, \|v\|) when re-solved |
 | every knot on every other edge | unchanged (nothing there is written) |
-| the front, the other views, `base:angle`, structure | unchanged (declarations and tests) |
+| every view other than O, `base:angle`, structure | exactly as published (compared on the settled trial; dot 1791694376) |
 
 Anything else refuses the whole edit (`correction-not-reproduced`, naming the control). One undo step reverts the knots and O.
 
@@ -90,7 +92,7 @@ Anything else refuses the whole edit (`correction-not-reproduced`, naming the co
 | I3 linked members hold identical response sets | `link` (exact), `correct` (exact) | exact (`canon`) | links are not pasted | `correct` is alone | package 3's check on the sets as they would be written (`correction-link-differs`) |
 | I4 linked members coincide in each view | exact only for groups the edit acted on (`links.align`) | within 1e-9 | — | not aligned until the settle | members a hair apart get different c, so different w: refused by I3's check, never written apart. O's move aligns them exactly. |
 | I5 every view is settled (settling again changes nothing) | front fully, others by positions | exact (settle-again check) | — | `correct` is alone | the 'views' settle changes nothing outside O; checked in §5 |
-| I6 the front and the corners never move | — | — | — | — | declared (§8); `undeclared-write` guards it; tested |
+| I6 only O changes among the views; the front, the corners, the other three neighbours and `base:angle` stay | — | — | — | — | the final check compares them with the published state exactly (§5) and tests cover it. `undeclared-write` only checks the geometric intents the operation left, and `front-neighbours` allows any of four views, so it does not guarantee this (dot 1791694376); the guarantee is the one package 1 limited it to |
 
 ### 6b. Every throw on the operation's path
 
@@ -137,7 +139,7 @@ Anything else refuses the whole edit (`correction-not-reproduced`, naming the co
 
 `correct` changes from package 3's to:
 - reads `settled-trial` (the final check reads the settled trial; A, B and r are read from the draft, which equals the published geometry since it stands alone);
-- intents and shapes: a new range `front-neighbours`, the four views next to the front ((±90, 0), (0, ±45)): the only views O can be. One of them at most is written;
+- intents and shapes: a new range `front-neighbours`, the four views next to the front ((±90, 0), (0, ±45)): the only views O can be. That at most one of them changes is not something the declaration checks; the final check (§5) does;
 - records `false`; shared `animation`;
 - `autoStructure: false`, `settle: 'non-front-positions'` (the 'views' mode), alone.
 
@@ -149,3 +151,12 @@ A correction that moves nothing still runs the 'views' settle, which changes not
 - No move for edges that do not start at the front, and no corner move.
 - No smooth-join re-alignment at the pose (slot B).
 - Corrections inside a cell (later, open item 6 of the plan).
+
+## 10. Self-review while dot reviews `8fcf3f6`
+
+Found by attacking the plan on dot's three questions (dot 1791694328); §4 and §5 above are amended accordingly.
+
+1. **Where "minimal" holds** (and "unique" does not: at r = 0 there are two optima, dot 1791694376): per control and axis, over w ≠ 0, with nothing else in the cost. It is not a minimum over the whole correction: the protected knots (§4) are checked after the solve, not part of the minimisation. So if the chosen B′ lands exactly on a corner value C where an old target differs, the correction is refused (`correction-breaks-target`) although a slightly different w would have kept it. This happens only when B′ === C exactly; it is refused, not searched around. Linked members are solved once each; members whose c differs (I4) are refused by I3's check, so a component never has two answers.
+2. **The front → O knots** are re-solved by the general formula from the value `onEdge` recorded, not set to 0 (§4). dot's example (1791694396): A = B = 1 and an old knot r = 1e16 show 0, not 1; setting it to 0 would show 1 and lose the target. The re-solve gives exactly 0 only when the recorded value is exactly A.
+3. **Settled values:** the protected knots are re-solved against O's settled values, and the moved controls in O are checked within tolerance (§4, §5). Order inside `correct`: checks and solve from the draft → write O's moves → settle the trial → re-solve the protected knots from the trial's O → write all knots → settle the trial again → final check. Both trials are the same pure function of the draft (`view()`), and the commit's 'views' settle gives the same O. The knots do not change positions, so the second trial's O equals the first's.
+4. **What the trial settles that the commit does not:** `view()` settles every view by positions, the front included; the commit's 'views' mode does not settle the front. They agree because the front is unchanged and already settled (I5, exact at every entry). The final check compares the front before and after exactly, so a difference would refuse rather than pass silently.
