@@ -40,6 +40,7 @@
      - each handle by `net.moveHandle` with its old vector + its difference, which records it as held in that layer.
 
      No handle tips exist in such an edit (rule 0). An unchosen line sharing a moved point follows at that end with its handle vector kept, then springs settle it as after any move.
+   - **Zero differences write nothing** (dot 1791680326): a point whose `d` is 0, or a handle whose difference is 0, gets no `move` / `moveHandle` (which would mark it held and could turn an unchosen smooth neighbour). If every difference is 0, the broadcast writes nothing, runs no settling in the targets and adds no undo step.
    - **Then** `base:angle := front` for exactly those points and handles.
    - **Strokes, radii and end strokes are not touched;** the stroke broadcast is separate (step 6).
    - **One edit.** Only the views it wrote are settled, by positions only (links, springs); the front is not settled (rule 0). A locked line that would change in any view refuses the whole broadcast.
@@ -81,6 +82,7 @@
 - Stage boundary: broadcast / fit / draft together with a move or a structural edit, or with each other, is refused whole; with selections or a stroke broadcast, it is allowed.
 - Links: broadcasting one of two linked lines alone is refused. Both together move both by the same difference in every view, consume both baselines, and a second broadcast moves nothing ("two separate broadcasts of two linked lines" from dot 1791680195 → the first is refused).
 - Springs: a broadcast of one line whose end has a smooth join with an unchosen line settles that join in each target view.
+- Zero difference (dot 1791680326): a target view keeps a non-aligned smooth join whose two handles were both held when set; after a fit at the front, broadcasting one of those lines changes no view and adds no undo step.
 - **Broadcast:**
   - moving a front point then broadcasting moves it by the same difference in all eight other views, hand-adjusted ones included;
   - a second broadcast moves nothing;
