@@ -1,9 +1,9 @@
 # Stage 3b, package 3: the correction on an edge (`correct`) — rules and read / write flow
 
-**Status:** rules accepted by dot 1791691453 as this package's acceptance basis (rule review only; the code is not written). Coding waits for bowen's confirmation of the edges-only scope. Earlier: for dot's check (dot 1791691047).
+**Status:** rules accepted by dot 1791691453 as this package's acceptance basis. The edges-only scope is confirmed by bowen 1791692031; the code follows these rules. Earlier: for dot's check (dot 1791691047).
 
 **Scope and what is not claimed:**
-- **On the edges between neighbouring views only.** bowen has not yet confirmed that this round is edges only (asked 1791687531, 1791688562). Package 3 builds the edge case, which is needed in any answer. It does **not** deliver corrections "at any angle": inside a cell nothing can be corrected directly yet.
+- **On the edges between neighbouring views only**, confirmed by bowen 1791692031. Package 3 builds the edge case, which is needed in any answer. It does **not** deliver corrections "at any angle": inside a cell nothing can be corrected directly yet.
 - **No view moves.** Anything a response alone cannot reach is refused (`correction-axis-fixed`). The outer view's minimal move is package 4, after its cost is argued (open item 4 of `docs/stage3b-correction-plan.md`).
 - **No bench or interaction** (package 5).
 - **Smooth joins are not re-aligned at the pose** (slot B stays a placeholder).

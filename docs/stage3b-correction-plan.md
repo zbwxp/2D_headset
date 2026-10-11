@@ -1,6 +1,6 @@
 # Stage 3b: in-between correction (插帧) — direction and rules, before code
 
-**Status:** second draft, after dot 1791687457, 1791687532, 1791687563. One scope question goes to bowen (§1); the rules (§2–§7) are proposals for dot's check. Nothing is coded until both pass.
+**Status:** second draft, after dot 1791687457, 1791687532, 1791687563. The scope (§1) is confirmed by bowen 1791692031: edges only this round.
 
 **Ledger check** (`docs/consolidation-ledger.md`):
 - **Row 1 is triggered:** a correction is a new edit whose settling is neither "full" nor any stage-2 mode. 3b consolidates it first (§6): operations declare their effects, the transaction checks and merges them, a missing declaration is an error.
@@ -49,11 +49,12 @@ Corrected after dot 1791687457: two of the three first-draft questions re-asked 
 
   The algorithm that meets this goal, and the range it can reach, are ours to argue (§4a, open item 4). The first draft's "keep the response, move 90° by whatever is needed" is withdrawn: it does not minimise the move and is not the decided goal.
 
-**The one question for bowen: a narrower scope for this round.**
+**The scope of this round: confirmed by bowen 1791692031 ("那就先做线上修正吧").**
 - bowen decided that corrections are made "at any angle bowen moves to".
-- **Proposal for 3b:** open corrections only on the lines between two neighbouring views (e.g. yaw 30 pitch 0, yaw 90 pitch 20), which covers the 30° / 60° cases.
-- **Not in 3b:** corrections inside a cell (e.g. yaw 30 pitch 20). There the drawing follows from the four lines around it, but it cannot be corrected directly yet.
-- This narrows a decided requirement, so it needs bowen's yes. It is not a reinterpretation of "any angle".
+- **3b:** corrections only on the lines between two neighbouring views (e.g. yaw 30 pitch 0, yaw 90 pitch 20), which covers the 30° / 60° cases.
+- **Not in 3b:** corrections inside a cell (e.g. yaw 30 pitch 20). There the drawing follows from the four lines around it (the in-cell rhythm is the two edges' responses blended by the other angle), but it cannot be corrected directly yet.
+- This narrows the decided requirement for this round only (asked 1791687531, 1791688562, 1791691700; confirmed 1791692031). Corrections inside a cell stay a requirement for later (open item 6).
+- **Candidate rule for later, from bowen 1791691812** (asked as a question, not decided): yaw handles x and pitch handles y, so a drag inside a cell changes one number per axis. Its catches, as answered in 1791691951: which edge's response to change (both changes the edge line too); a control whose x does not change with yaw cannot be dragged sideways; a turn while tilted also moves points up and down on screen. To be compared with v103's local interior samples (`:291-302`) when the in-cell rule is designed.
 
 ## 2. The data: responses (owner `animation`; dot 1791687563)
 
@@ -241,4 +242,5 @@ The tests walk each row, including a component whose first-made point is deleted
    - **2:** responses as data, `follow`, archive 4, evaluate with responses;
    - **3:** `correct` on edges, steps 1–2, with the full final check;
    - **4:** the 90° minimal move (after item 4);
-   - **5:** bench: drag at a pose in playback (after bowen's scope answer).
+   - **5:** bench: drag at a pose in playback (on edges, per bowen 1791692031).
+6. **Corrections inside a cell** (later, not 3b): the spread rule. Candidates: bowen's yaw-for-x / pitch-for-y (1791691812), v103's local interior samples. Not designed until bowen asks for it.
