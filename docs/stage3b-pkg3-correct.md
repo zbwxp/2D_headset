@@ -68,7 +68,9 @@ A target in the **target set** (§1a) on a locked line is refused (`locked`, nam
 
 ## 5. The final check
 
-The correction is solved, the knots are written to the draft's `animation`, and then the draft is evaluated at the pose and at every protected target on that edge. No view moves in package 3, so there is nothing to settle.
+The correction is solved, the knots are written to the draft's `animation`, and then checked. No view moves in package 3, so there is nothing to settle.
+- **The dragged position** is checked by evaluating the draft at the actual pose (`evaluate`), as the user sees it.
+- **The protected targets** are checked directly at each knot's **recorded progress t**, for its own control and axis, with the edge evaluation `(1 − r(t))·A + r(t)·B` (the same `respond` and blend `evaluate` uses on an edge). They are never checked through a pose: t → angle → t is not an exact round trip (0.79 · 90 / 90 = 0.7900000000000001), and a point a hair off the knot moves when a neighbouring knot is added (dot 1791691388). No tolerance is widened to hide that.
 
 | Control | Must hold |
 |---|---|
@@ -116,7 +118,7 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
   - 256 + 1 → `correction-too-many-knots`.
 - **Handles:** a handle vector target, both ends.
 - **Numbers** (dot 1791691300):
-  - A = −1e308, B = 1e308, q = 0 → w = 0.5, and the pose shows exactly 0;
+  - A = −1e308, B = 1e308, at t = 0.25 (where the pose shows −5e307, so the solve really runs), q = 0 → w = 0.5, and the pose shows exactly 0 (dot 1791691388);
   - A = −1e12, B = 1e12, q = 1e-5 → `correction-not-reproduced` (the drag cannot be represented), the state unchanged;
   - the tolerance follows the target: a small q is held to a small absolute error even next to huge view coordinates.
 - **Links:**
@@ -126,7 +128,9 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
   - conflicting targets → `correction-link-conflict`;
   - a point not reached and the handle vectors not given stay exactly as they were.
 - **Locks:** a target on a locked line, through a point and through a handle → `locked`.
-- **Final check:** other controls unchanged at the pose; every protected target on the edge unchanged.
+- **Final check:**
+  - other controls unchanged at the pose; every protected target on the edge unchanged;
+  - a non-dyadic knot kept exactly: A = 0, B = 1, an existing knot [0.79, 0], then a correction adding [0.9, 0.25]. The old target at t = 0.79 is checked at its recorded t and passes exactly; checked through a pose it would have drifted (dot 1791691388).
 - **Transaction:**
   - alone (with a move → `stage2-alone`; with a select → allowed);
   - one undo step restores the responses;
