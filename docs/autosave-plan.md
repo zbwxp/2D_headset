@@ -1,8 +1,11 @@
 # Autosave — rules before code
 
-**Status:** for dot's check, with every point of dot 1791703953, 1791704170 and 1791704242 merged (asked by bowen 1791703721, "自动保存你做一下吧", and 1791703731, "单独package就行 未来要重构的").
+**Coded** (for dot's check): package `autosave/` (`createAutosave`, `indexedDbStore`, tests `autosave/test/autosave.test.ts`); the bench (`bench/src/app.tsx`: the `locked` write mode while restoring, the restore effect, every logged write and every render ask to save, the status line under File, the leave-page prompt), tests `bench/test/autosave.test.tsx`.
+**Verified in a real browser** (Chrome, a separate dev server on port 5199 so its IndexedDB is not bowen's): a write through the bench lands in IndexedDB; a reload restores it ("autosave: restored the saved drawing"); a `put` whose request succeeds but whose transaction is then aborted shows "✗ autosave: not saved (write aborted)" and leaves the stored copy unchanged, and the next write after that saves. Not exercised in a real browser: the leave-page prompt (covered by a DOM test) and a real quota failure.
 
-**Why:** a refresh of the bench loses everything not saved by hand (bowen 1791703292). With hot updates off (`9e408c9`, verified by dot 1791703953) new code arrives only on a refresh, so a refresh must not lose work.
+**Status:** accepted for coding by dot 1791704319, with every point of dot 1791703953, 1791704170 and 1791704242 merged (asked by bowen 1791703721, "自动保存你做一下吧", and 1791703731, "单独package就行 未来要重构的").
+
+**Why:** a refresh of the bench loses everything not saved by hand (bowen 1791703292). With hot updates off (`9e408c9`, verified by dot 1791703953) new code arrives only on a refresh. Autosave keeps **the last completed save** across a refresh; a change not yet written when the page goes is not promised (§3), so the leave-page prompt stays while unsaved (dot 1791704319).
 
 ## 1. What it is
 

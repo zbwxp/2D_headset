@@ -5,6 +5,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type ReferenceImage, type ReferenceProps, type ReferenceSlot } from '../../src'
 import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
+import { createAutosave, indexedDbStore, type Autosave, type Store } from '../../autosave'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
 
@@ -51,7 +52,9 @@ function withNames(m: string) {
  * call or a count other than one fails the edit; the callback's own result is returned unchanged,
  * so core still refuses an async callback.
  */
-function loggedFor(readOnly: () => boolean): (c: Core) => Core {
+/** The App's write mode: editing, playback (one correct per edit), or locked (restoring the autosaved drawing: nothing writes). */
+type WriteMode = 'edit' | 'playback' | 'locked'
+function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
   return c => {
     let w = wrappers.get(c)
@@ -60,7 +63,9 @@ function loggedFor(readOnly: () => boolean): (c: Core) => Core {
       get(t, k) {
         if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
           const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
-          const playback = readOnly()
+          const m = mode()
+          if (m === 'locked') { log.unshift({ calls: `${k}(…)`, result: '✗ restoring the autosaved drawing' }); throw new Error('restoring: nothing is written until the autosaved drawing is restored') }
+          const playback = m === 'playback'
           const calls: string[] = []
           let corrects = 0, forbidden: string | undefined
           const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
@@ -83,11 +88,12 @@ function loggedFor(readOnly: () => boolean): (c: Core) => Core {
               return result as void
             })
             log.unshift({ calls: head + calls.join('; '), result: 'ok' })
+            afterWrite() // every write through the wrapper reaches autosave, rendered or not
           }
           catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
           finally { log.length = Math.min(log.length, 50) }
         }
-        if (k === 'undo' || k === 'redo') return () => { if (readOnly()) { log.unshift({ calls: `${k}()`, result: '✗ read only during playback' }); return } const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
+        if (k === 'undo' || k === 'redo') return () => { if (mode() !== 'edit') { log.unshift({ calls: `${k}()`, result: mode() === 'locked' ? '✗ restoring the autosaved drawing' : '✗ read only during playback' }); return } const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }); afterWrite() }
         const v = Reflect.get(t, k, t)
         return typeof v === 'function' ? v.bind(t) : v
       },
@@ -124,6 +130,9 @@ function v2Eye() {
 
 const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split S'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F']]
 
+/** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
+const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
+
 export function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
@@ -151,6 +160,11 @@ export function App() {
   // entering or leaving playback, an Open and unmounting; a picture read keeps it and writes only if unchanged
   const refGen = useRef(0)
   useEffect(() => () => { refGen.current++ }, [])
+  // autosave (docs/autosave-plan.md): restoring locks every write entry until the stored drawing is back
+  const store = useRef(autosaveStore()).current
+  const [restoring, setRestoring] = useState(!!store)
+  const restoringNow = useRef(!!store)
+  const saver = useRef<Autosave | null>(null)
   // pictures that failed to draw (a stored picture that does not decode): shown in the status, nothing else changes
   // bound to the drawing and the picture's source, not the id alone: a good picture with the same id in another drawing is not marked (dot 1791703225)
   const [refBroken, setRefBroken] = useState<{ core: Core; id: string; src: string }[]>([])
@@ -165,7 +179,7 @@ export function App() {
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
-  const logged = useRef(loggedFor(() => posing.current)).current
+  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => saver.current?.want())).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -203,6 +217,35 @@ export function App() {
   env.current = { layer: drawLayer, layers: selLayers, px, view: shown }
   const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px })).current
   useEffect(() => ix.subscribe(bump), [ix])
+  // autosave: restore first (an Open of the stored text), then save every change in order; a late
+  // restore after unmount applies nothing (the package checks its owner)
+  useEffect(() => {
+    if (!store) return
+    const a = createAutosave(store, {
+      apply: text => {
+        const next = open(text)
+        core = next
+        const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''
+        setLayer(top); setLayers([top]); refGen.current++
+        ix.drawingChanged(); setDrawing(k => k + 1)
+        log.unshift({ calls: 'autosave: restored the saved drawing', result: 'ok' })
+      },
+      current: () => save(core),
+      changed: () => bump(),
+    })
+    saver.current = a
+    let live = true
+    void a.start().then(() => { if (!live) return; restoringNow.current = false; setRestoring(false); bump() })
+    return () => { live = false; a.dispose(); saver.current = null }
+  }, [])
+  // every render may follow a change: autosave compares the text and writes only a new one
+  useEffect(() => { saver.current?.want() })
+  // leaving or refreshing while unsaved asks first (only the last completed save is kept)
+  useEffect(() => {
+    const ask = (e: BeforeUnloadEvent) => { if (saver.current?.unsaved()) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [])
   const pv: Preview = ix.preview()
   const pvPoints = new Set(pv.points) // the points interaction shows (and so can hit) for this tool
 
@@ -494,6 +537,7 @@ export function App() {
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       // playback next, before the typing check: a focused slider must not pass keys on (dot 1791683911)
+      if (restoringNow.current) return // restoring: no shortcut writes (dot 1791704242)
       if (posing.current) return
       // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
       // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
@@ -577,7 +621,7 @@ export function App() {
             </label>)}
           </> : <button onClick={startPose}>Playback</button>}
         </div>
-        <fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Tools</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
@@ -697,6 +741,13 @@ export function App() {
         <div style={{ color: '#666' }}>pairs: {s.mirrorPairs.length}</div>
         </fieldset>
         <b>File</b>
+        <div data-testid="autosave" style={{ color: saver.current?.status().state === 'failed' || saver.current?.status().state === 'off' ? '#c00' : '#666' }}>{(() => {
+          const st = saver.current?.status()
+          if (!store) return 'autosave: off (no browser storage)'
+          if (!st || st.state === 'restoring') return 'autosave: restoring…'
+          const head = st.state === 'saved' ? 'autosave: saved' : st.state === 'saving' ? 'autosave: saving…' : st.state === 'failed' ? `✗ autosave: not saved (${st.error})` : `✗ autosave off: ${st.error}`
+          return st.notice ? `${head} · ${st.notice}` : head
+        })()}</div>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {B('Save', () => {
             const a = document.createElement('a')
@@ -704,7 +755,7 @@ export function App() {
             a.download = 'drawing.headset.json'; a.click(); URL.revokeObjectURL(a.href)
             log.unshift({ calls: 'save()', result: 'ok' }); bump()
           })}
-          <fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0 }}>
+          <fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0 }}>
           <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }}>Open
             <input type="file" data-testid="open" accept=".json" style={{ display: 'none' }} onChange={async e => {
               const f = e.target.files?.[0]; e.target.value = ''
@@ -732,12 +783,12 @@ export function App() {
           </label>
           </fieldset>
         </div>
-        <div style={{ display: 'flex', gap: 3 }}><fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</fieldset></div>
+        <div style={{ display: 'flex', gap: 3 }}><fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</fieldset></div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
+          onPointerDown={restoring ? undefined : pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
