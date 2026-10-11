@@ -33,8 +33,8 @@
 - **One stage-2 operation per edit** (`stage2-alone`). An edit may hold one broadcast, fit or draft, plus only selections and stroke broadcasts. Anything else in the same edit refuses the whole edit. This is a stated boundary of this stage, not a silent reordering.
 - **Complete link scope.**
   - Broadcast and fit refuse a chosen point whose link partner is not an end of a chosen line (`broadcast-link-incomplete`, `fit-link-incomplete`, naming the partner).
-  - Linked points with different pending changes refuse a broadcast (`broadcast-link-mismatch`).
-  - *Known consequence:* creating a link moves the second point in every view but not in the baseline. The two lines then show as pending, and both sides need a fit together before a broadcast. Changing this is a separate discussion.
+  - Linked points with different pending changes refuse a **shape broadcast** (`broadcast-link-mismatch`). This does not limit fit: fit is the way to realign the baselines (dot 1791682283).
+  - *Known consequence:* creating a link moves the second point in every view but not in the baseline. A line shows as pending only if its front then differs from its baseline. A broadcast is refused only if the two sides' differences are not equal; a fit of both sides together realigns them. Changing this is a separate discussion.
 - **Archive format 3 does not read format 2** (or 1). There is no automatic migration; bowen redraws (decision 6).
 - **Broadcast only from the front** (`broadcast-from-front`). Strokes, radii and end strokes are not part of the shape broadcast.
 - **The expression baseline** is not built (stage 4).
