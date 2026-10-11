@@ -62,4 +62,41 @@ describe('diagonal draft', () => {
     d.undo()
     expect(JSON.stringify(d.views().map(k => d.in(k).snapshot()))).toBe(before)
   })
+
+  it('two smooth lines drafted together: every chosen handle keeps the drafted value, and a repeat changes nothing (dot 1791681518)', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('ab', { id: 'a', layer: 'L', position: P(-10) }, { id: 'b', layer: 'L', position: P(0) }); e.line('bc', 'b', { id: 'c', layer: 'L', position: P(10) }) })
+    d.edit(e => { e.moveHandle('ab', 'b', P(-1, 0)); e.moveHandle('bc', 'a', P(1, 0)) })
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
+    d.editIn('view:90,0', e => { e.moveHandle('bc', 'a', P(1, 1)); e.moveHandle('ab', 'b', P(-2, -2)) })
+    d.editIn('view:0,45', e => { e.moveHandle('bc', 'a', P(1, -1)); e.moveHandle('ab', 'b', P(-3, 3)) })
+    const corner = 'view:90,45'
+    d.editIn(corner, e => { e.moveHandle('bc', 'a', P(1, 0)); e.moveHandle('ab', 'b', P(-1, 0)) }) // the corner starts as the front
+    expect([lineIn(d, corner, 'bc').ha, lineIn(d, corner, 'ab').hb]).toEqual([P(1, 0), P(-1, 0)])
+    d.edit(e => e.draftCorners(sel('ab', 'bc')))
+    expect(lineIn(d, corner, 'bc').ha).toEqual(P(1, 0))
+    expect(lineIn(d, corner, 'ab').hb).toEqual(P(-4, 1))
+    const once = JSON.stringify(d.views().map(k => d.in(k).snapshot()))
+    let steps = 0; while (d.canUndo) { d.undo(); steps++ } ; for (let i = 0; i < steps; i++) d.redo()
+    for (let r = 0; r < 3; r++) d.edit(e => e.draftCorners(sel('ab', 'bc')))
+    let after = 0; while (d.canUndo) { d.undo(); after++ } ; for (let i = 0; i < after; i++) d.redo()
+    expect([after, JSON.stringify(d.views().map(k => d.in(k).snapshot()))]).toEqual([steps, once])
+  })
+
+  it('a corner already equal to the draft gets no write, so an unchosen non-aligned smooth neighbour there stays (dot 1791681518)', () => {
+    const d = doc(), corner = 'view:90,45'
+    d.edit(e => e.line('bc', 'b', { id: 'c', layer: 'L', position: P(20, 5) }))
+    // the corner b where the draft puts it, and a non-aligned smooth join there (both handles held when set)
+    d.editIn(corner, e => { e.move([{ id: 'b', target: P(6, -3) }]); e.join('b', 'ab', 'bc', { mode: 'smooth' }); e.moveHandle('ab', 'a', P(1, 2)); e.moveHandle('ab', 'b', P(-2, 5)); e.moveHandle('bc', 'a', P(4, 4)) })
+    expect([lineIn(d, corner, 'ab').hb, lineIn(d, corner, 'bc').ha]).toEqual([P(-2, 5), P(4, 4)])
+    for (const k of [FRONT, 'view:90,0', 'view:0,45']) d.editIn(k, e => e.moveHandle('ab', 'b', P(-2, 5)))
+    const before = JSON.stringify(d.in(corner).snapshot())
+    let steps = 0; while (d.canUndo) { d.undo(); steps++ } ; for (let i = 0; i < steps; i++) d.redo()
+    d.edit(e => e.draftCorners(sel('ab')))
+    expect(JSON.stringify(d.in(corner).snapshot())).toBe(before)
+    expect(lineIn(d, corner, 'bc').ha).toEqual(P(4, 4))
+    let after = 0; while (d.canUndo) { d.undo(); after++ } ; for (let i = 0; i < after; i++) d.redo()
+    expect(after).toBe(steps + 1) // the other three corners did change
+  })
 })
+

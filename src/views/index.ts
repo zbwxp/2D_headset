@@ -64,13 +64,17 @@ export function draftCorners(n: net.NetworkState, ch: net.Changes, lines: readon
   const plans = CORNERS.map(c => {
     const y = net.of(n, c.yaw), pt = net.of(n, c.pitch), to = net.of(n, c.key)
     const sum = (f: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => add(f, add(sub(a, f), sub(b, f)))
-    const moves = points.map(p => ({ id: p, target: sum(pos(front, p), pos(y, p), pos(pt, p)) })).filter(m => { const now = pos(to, m.id); return now.x !== m.target.x || now.y !== m.target.y })
+    const moves = points.map(p => ({ id: p, target: sum(pos(front, p), pos(y, p), pos(pt, p)) }))
     const handles = ids.flatMap(id => (['a', 'b'] as const).map(end => ({ id, end, v: sum(hv(front, id, end), hv(y, id, end), hv(pt, id, end)) })))
-      .filter(h => { const now = hv(to, h.id, h.end); return now.x !== h.v.x || now.y !== h.v.y })
-    return { to, moves, handles }
+    const differs = (a: { x: number; y: number }, b: { x: number; y: number }) => a.x !== b.x || a.y !== b.y
+    // a corner already equal everywhere is left alone; otherwise every chosen point and handle is
+    // written, so all of them are held at settling, equal ones included (dot 1791681518)
+    const due = moves.some(m => differs(pos(to, m.id), m.target)) || handles.some(h => differs(hv(to, h.id, h.end), h.v))
+    return { to, due, moves, handles }
   })
-  for (const { to, moves, handles } of plans) {
-    if (moves.length) net.move(to, ch, moves)
+  for (const { to, due, moves, handles } of plans) {
+    if (!due) continue
+    net.move(to, ch, moves)
     for (const h of handles) net.moveHandle(to, ch, h.id, h.end, h.v)
   }
 }

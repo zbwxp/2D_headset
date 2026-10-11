@@ -51,6 +51,7 @@
    - For the chosen lines, each corner view (±90, ±45) gets `front + (yaw view − front) + (pitch view − front)`, per point and per handle.
    - It is an explicit edit that overwrites those corners' shapes for those lines (they are then adjusted by hand).
    - It writes through `net.move` / `net.moveHandle` on each corner's handle, so each corner records its own targets and held handles (dot 1791680195). Positions-only settle there; a locked line refuses.
+   - **Per corner, all or nothing** (dot 1791681518). A corner whose chosen points and handles already all equal the formula gets no write. Otherwise **every** chosen point and handle there is written, equal ones included, so all are held at settling and a spring cannot turn a handle that happened to be right already.
    - It stands alone in its edit (rule 0), so no earlier target or tip in the same edit can overwrite the draft at settling.
    - The baseline is not touched.
 
@@ -92,7 +93,7 @@
   - it is refused off the front, and refused for a locked line in any view.
 - **Fit:** the picture is unchanged, the mark clears, and undo brings back the pending difference.
 - **Records:** a split re-expresses the baseline (no change appears); copy / paste carries the baseline as is; save / open keeps it.
-- **Draft:** the corner equals front + yaw change + pitch change; other views and the baseline are unchanged.
+- **Draft:** the corner equals front + yaw change + pitch change; other views and the baseline are unchanged. Two smooth lines drafted together keep the exact formula at their join, and repeating the draft changes nothing more (dot 1791681518). A corner already equal gets no write, so an unchosen non-aligned smooth neighbour there stays.
 - **Mark:** lists exactly the lines whose front differs from the baseline.
 
 ## Not in stage 2
