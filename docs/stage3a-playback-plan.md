@@ -38,24 +38,16 @@
    - **On the axes** (u = 0 or v = 0) it is the plain linear blend of two views. At a view it is exactly that view.
    - **A corner exactly as drafted** (C = Y + P − F) gives `F + u(Y−F) + v(P−F)`: yaw and pitch changes add independently. A hand-adjusted corner bends the middle of the cell towards it.
    - **Across quadrant borders, including 0°,** numeric values are continuous (C0) but not smooth (C1), as v103: the speed of change can have a kink there (dot 1791683851). Continuous does not mean the turning speed is smooth.
-3. **What is blended, per element:**
-   - **point positions:** absolute 2D, by rule 2;
-   - **handles:** as vectors from their point (as broadcast and draft treat them), by rule 2; the tip is point + vector;
-   - **arc radius:** a number present in every view for an arc row (step 4 gives every view a radius when an arc is made), by rule 2;
-   - **end strokes:** see rule 3a;
-   - **line width:** a number, by rule 2 (*question 2*);
-   - **stroke profile** and anything else discrete: from the dominant view, i.e. the largest weight; ties go to the front, then the yaw view, then the pitch view (*question 2*);
+3. **What is blended (geometry), per element, by rule 2:**
+   - **point positions:** absolute 2D;
+   - **handles:** as vectors from their point (as broadcast and draft treat them); the tip is point + vector;
+   - **arc radius:** a number present in every view for an arc row (step 4 gives every view a radius when an arc is made);
    - **shared structure** (connections, names, order, fills, join modes, visibility, links): one copy, not blended.
 4. **Links stay together.** Linked points coincide in every view after settling, and rule 2 uses the same weights for both, so they coincide at every pose. No extra step.
-5. **Smooth joins** (*question 1*): the plain vector blend of two aligned handle pairs is in general not exactly aligned between views. Proposal: **no correction in 3a, as an explicit experiment, not a solution** (dot 1791684152). The blend is exact at every view and has no hidden rule, but the size of the bend is **not yet measured**: with handles near zero length, or views that differ a lot, it can be clearly visible. 3a reports the measured bends with examples; the smooth transition between views stays an open question until bowen decides on that report.
+5. **Two slots, filled later** (bowen 1791684302: «这些都是交互和渲染的问题 留出slot即可之后再添加»). How appearance changes between views and how smooth joins are treated are interaction / rendering questions. 3a decides neither: it gives each a named place in `evaluate`, a pure function with a fixed signature, and fills it with a **placeholder** that invents nothing. Filling a slot later changes only that function.
+   - **Slot A, appearance at a pose:** `appearance(views, weights) → per line width and profile, per point end stroke`. *Placeholder:* everything from the **dominant view** (the largest weight; ties go to the front, then the yaw view, then the pitch view), the end stroke as a whole, present or absent as there. Nothing is blended, and a missing value is never turned into 0. The questions bowen deferred (width growing gradually or switching, a taper drawn in some views only) are answered by filling this slot; dot's requirements for any future rule stand (no silent 0 for a missing value, no number assumed to be a length; dot 1791683897).
+   - **Slot B, joins after the blend:** `afterBlend(posed, joins) → posed`. *Placeholder:* nothing changes. The plain vector blend of two aligned smooth pairs is in general not aligned between views, and the bend has **not been measured**; it can be clearly visible with very short handles or views that differ a lot (dot 1791684152). Leaving it is the placeholder, not a solution: smooth transitions stay open until this slot is filled.
 6. **Non-linear progress (place for 3b).** In 3a, u and v are used as they are (linear). 3b will add response curves that change the weights; `evaluate`'s input type will gain them then. 3a defines nothing about their keying, so it decides nothing for 3b.
-
-3a. **End strokes, key by key** (dot 1791683897). An end stroke is an open dictionary `{ taper?: number; [key]: number | string }` per point per view, and a view may have none. Only views with weight > 0 at the pose ("contributing views") are looked at.
-   - **A key with the same value in every contributing view** (any type): that value.
-   - **`taper`, a number in every contributing view:** blended by rule 2. It is the only key this plan treats as continuous; no other number is assumed to be a length or blendable.
-   - **Everything else:** the key is taken from the **dominant view** as a whole: present with its value if the dominant view has it, absent if not. This covers: a key missing in some contributing view, a type mismatch, different strings, and different values of any key other than `taper`. A missing value is never treated as 0.
-   - So a taper drawn only at the front appears or disappears at the halfway angle, never fades through 0. Whether bowen wants it to grow gradually instead is part of question 2.
-   - No combination is refused: every case above has one defined result. A new key that should blend has to be added to this rule by name.
 
 ## From pose values to drawn geometry (dot 1791683897)
 
@@ -129,21 +121,20 @@ Nothing is written; there is no draft and no undo step.
 
 - **At each of the nine views,** `atPose` equals that view **in both parameters and drawn geometry**: `atPose(v).snapshot()` = `in(v).snapshot()` and `atPose(v).geometry()` = `in(v).geometry()`, exactly. The test drawing has at least one arc join (radius different per view) and one fill (dot 1791683897).
 - **Between views, geometry follows the posed parameters:** at a non-view pose, `geometry()` equals `derived.derive` run on a layer holding exactly `evaluate`'s parameters; an arc's trim and a fill's boundary move with the pose (they differ from every key view's).
-- **End strokes, each case of rule 3a:** equal in all → kept; `taper` in all → blended; missing in one, type mismatch, different strings, an unknown number that differs → the dominant view's, key present or absent with it; never 0 by default.
+- **Slot A placeholder:** at a pose, every line's width and profile and every point's end stroke equal the dominant view's (an end stroke absent there is absent at the pose, even if other views have one); ties resolve as stated.
+- **Slot B placeholder:** the posed handles are exactly the blended vectors (nothing re-aligned).
 - **On an axis** (e.g. yaw 30, pitch 0), every value is the linear blend of the two views on it; the other views have no effect (changing them changes nothing there).
 - **Bilinear:**
   - in a cell, with hand-chosen corners, the value equals the formula;
   - with a corner exactly as drafted, `F + u(Y−F) + v(P−F)`.
-- **Continuity of numeric values only:** positions, handle vectors, radii, end strokes and width just either side of a quadrant border, 0° included (yaw ±ε, pitch ±ε), differ by O(ε). Discrete values (the profile from the dominant view) are expected to jump and are not part of this test (dot 1791683851).
+- **Continuity of blended geometry only:** positions, handle vectors and radii just either side of a quadrant border, 0° included (yaw ±ε, pitch ±ε), differ by O(ε). Appearance from slot A's placeholder is expected to jump and is not part of this test (dot 1791683851).
 - **Speed kink, measured:** the one-sided rates of change at 0° and at the pitch-0 border are reported for the bench demo drawings (not pass / fail).
 - **Links:** two linked points coincide at sampled poses.
-- **Discrete values:** the profile at a pose is the dominant view's; ties resolve as stated.
 - **Refusals:** yaw 91, pitch −46, NaN → `pose-out-of-range`.
 - **Purity:**
   - `atPose` changes nothing: the saved file, undo history and every view snapshot are equal before and after; the scratch layer never appears in `views()` or in a save;
   - `evaluate` given the same model twice returns equal results;
   - the model is a copy: changing it after `model()` does not change the document.
-- **Smooth-join measure** (not a pass / fail; the experiment of rule 5): over a pose grid, the bend angle at every smooth join, reported as the largest and typical values with the worst examples drawn. Cases include handles near zero length and views that differ strongly at the join. The report goes to bowen; it does not close the question.
 - **Bench:**
   - the sliders draw the pose; at a grid angle the drawing equals that view;
   - **entering playback during a drag, then a late pointer release:** nothing is committed, no undo step, the drag's preview is gone (dot 1791683911);
@@ -155,9 +146,8 @@ Nothing is written; there is no draft and no undo step.
 
 ## Questions
 
-1. **Smooth joins between views** (rule 5): leave the plain blend (proposal), or re-align after the blend as v103 did (`simplexGeometry.ts:228`)? Re-aligning needs a rule for which side gives the direction; our views may also hold deliberately non-aligned smooth joins (both handles held), which a re-alignment would change.
-2. **Width and profile between views** (rule 3): blend width as a number and take the profile from the dominant view (proposal), or take both from the dominant view as v103 did (`docs/architecture/fill-depth.md:24`)? This is a visual-intent question for bowen: a width that changes between views, should it grow gradually or switch at the halfway angle? The same question covers a taper drawn in some views only (rule 3a: it switches at the halfway angle).
-3. **Scheme** (rule 2): bilinear (proposal) or v103's triangles. dot's check of the reasoning.
+1. ~~Smooth joins between views~~ and 2. ~~width / taper between views~~: bowen 1791684302, interaction and rendering, left as slots B and A (rule 5), filled later.
+3. **Scheme** (rule 2): bilinear (proposal; dot 1791683851 leans to it) or v103's triangles.
 
 ## Not in 3a
 
