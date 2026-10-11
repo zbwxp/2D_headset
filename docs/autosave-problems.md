@@ -31,6 +31,11 @@ Asked by dot 1791706102 (three-strikes rule, bowen 1791652114). Code commits `f4
 | writing B, a second instance dropped in between | lands | waits, restores B |
 | writing B, a second instance still waiting in `start` | lands / fails | waits for the first; restores B / is handed B |
 | C failed, a second instance never started | — | is handed C through the second |
+| autosave off (read failed), then D drawn | — | keeps D, stays off with the reason; reads and writes nothing |
+| autosave off (backup failed), then D drawn, a second instance never started | — | same, through the second; the unreadable save untouched |
+| autosave off, nothing drawn since | — | starts normally (reads, restores) |
+
+5. **A fourth commit, same root** (dot 1791706297): with autosave off, the drawing is never "wanted", so nothing drawn after it went off was handed over, and a new instance could restore the old disk over it. Handing it over as a failed text would be wrong too: it would be written, bypassing "a failed read or backup never overwrites the saved drawing". It is now handed over with the reason, and the new instance stays off. The case table above was still built from the queue's states and missed the off state; the rows now include it.
 
 ## What changes
 

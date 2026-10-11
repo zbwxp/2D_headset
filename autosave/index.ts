@@ -77,7 +77,9 @@ export const CURRENT = 'current'
 // one takes no new saves once replaced, and a newest text it failed to write is handed to the next. So
 // the store is never read before a pending newer text lands, and never used by two instances at once.
 let owner: object | null = null
-let previous: { idle(): Promise<void>; leftover(): string | undefined } = { idle: () => Promise.resolve(), leftover: () => undefined }
+/** What an instance hands to the next: a newest text not on disk; with `off`, autosave was off (why, and the text when it went off), so it must not be written either. */
+interface Leftover { readonly text: string; readonly off?: { readonly why: string; readonly base: string } }
+let previous: { idle(): Promise<void>; leftover(): Leftover | undefined } = { idle: () => Promise.resolve(), leftover: () => undefined }
 
 export function createAutosave(store: Store, o: Options): Autosave {
   const me = {}
@@ -97,8 +99,14 @@ export function createAutosave(store: Store, o: Options): Autosave {
   const idle = async () => { await before.idle(); if (!quiet()) await new Promise<void>(r => { idleWaiters.push(r) }) }
   /** A store operation counted by the barrier. */
   const op = async <T>(f: () => Promise<T>): Promise<T> => { ops++; try { return await f() } finally { ops--; wake() } }
-  /** What this instance asked for but could not write, handed on; an instance that never asked passes its predecessor's on. */
-  const leftover = (): string | undefined => (wanted === undefined ? before.leftover() : !writing && wanted !== disk ? wanted : undefined)
+  /** What this instance could not write, handed on: with autosave off, anything drawn since it went off, with
+   *  the reason (dot 1791706297); otherwise the newest text asked for and not landed. An instance that never
+   *  asked passes its predecessor's on. */
+  const leftover = (): Leftover | undefined => {
+    if (state === 'off') return offBase !== undefined && o.current() !== offBase ? { text: o.current(), off: { why: error ?? 'autosave is off', base: offBase } } : undefined
+    if (wanted === undefined) return before.leftover()
+    return !writing && wanted !== disk ? { text: wanted } : undefined
+  }
   previous = { idle, leftover }
   const accepting = () => !disposed && owner === me
   const notify = () => { if (!disposed) o.changed() }
@@ -138,11 +146,21 @@ export function createAutosave(store: Store, o: Options): Autosave {
     async start() {
       await before.idle() // the previous instance's newest text lands first (dot 1791705181)
       if (!accepting()) return // unmounted or replaced: a late restore changes nothing
-      // its newest text failed to land: the disk holds an older one, so restoring would lose it. It is
-      // handed over instead: kept as the drawing, unsaved, and written by this queue (dot 1791705517)
+      // its newest text did not land: the disk holds an older one, so restoring would lose it. It is
+      // handed over instead: kept as the drawing, unsaved (dot 1791705517)
       const handed = before.leftover()
+      if (handed?.off) {
+        // autosave was off (the saved drawing could not be read, or not backed up): what was drawn since is
+        // kept, and stays off for the same reason; nothing is read or written (dot 1791706297)
+        if (o.current() !== handed.text) o.apply(handed.text)
+        offBase = handed.off.base; state = 'off'; error = handed.off.why
+        notice = 'the previous page\'s drawing is kept; autosave stays off, use Save'
+        notify()
+        return
+      }
       if (handed !== undefined) {
-        if (o.current() !== handed) o.apply(handed)
+        // its newest text failed to write: kept, and written again by this queue
+        if (o.current() !== handed.text) o.apply(handed.text)
         notice = 'the previous page\'s last change was not saved yet; it is kept and saved again'
         state = 'saved'; notify()
         wanted = o.current()

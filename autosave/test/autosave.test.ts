@@ -261,6 +261,44 @@ describe('one handover barrier through the whole chain (dot 1791705686)', () => 
     expect([third.d.applied, s.writes.map(w => w.value), y.unsaved()]).toEqual([['C'], ['C'], true])
   })
 
+  it('autosave off after a failed read, then drawing D, then a new instance: D is kept, autosave stays off with the reason, nothing is read or written (dot 1791706297)', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }); s.failRead('blocked')
+    let reads = 0
+    const store: Store = { get: k => { reads++; return s.store.get(k) }, put: (k, v) => s.store.put(k, v) }
+    const first = drawing('start'), a = createAutosave(store, first.options)
+    await a.start()
+    first.d.text = 'D'; a.want(); a.dispose()
+    const second = drawing(), b = createAutosave(store, second.options)
+    await b.start(); await tick()
+    expect([reads, second.d.applied, b.status().state, b.status().error, b.unsaved(), s.writes.length]).toEqual([1, ['D'], 'off', expect.stringMatching(/blocked/), true, 0])
+    second.d.text = 'E'; b.want(); await tick()
+    expect(s.writes.length).toBe(0) // still off: never written automatically
+  })
+
+  it('autosave off after a failed backup, then drawing D, handed through an instance that never started: D kept, off, the unreadable save untouched and not backed up again', async () => {
+    const s = slowStore({ [CURRENT]: 'bad file' }), first = drawing('new')
+    const a = createAutosave(s.store, first.options)
+    const started = a.start(); await tick()
+    s.writes.shift()!.fail('quota'); await started
+    first.d.text = 'D'; a.want()
+    createAutosave(s.store, drawing().options).dispose()
+    const third = drawing(), c = createAutosave(s.store, third.options)
+    await c.start(); await tick()
+    expect([third.d.applied, c.status().state, c.status().error, c.unsaved(), s.writes.length, s.data[CURRENT]]).toEqual([['D'], 'off', expect.stringMatching(/could not be backed up/), true, 0, 'bad file'])
+  })
+
+  it('autosave off with nothing drawn since: the next instance starts normally (reads, and restores what it can)', async () => {
+    let fail = true
+    const data: Record<string, string> = { [CURRENT]: 'A' }
+    const store: Store = { async get(k) { if (fail) throw new Error('blocked'); return data[k] }, async put(k, v) { data[k] = v } }
+    const a = createAutosave(store, drawing('start').options)
+    await a.start(); a.dispose()
+    fail = false
+    const second = drawing(), b = createAutosave(store, second.options)
+    await b.start()
+    expect([second.d.applied, b.status().state]).toEqual([['A'], 'saved'])
+  })
+
   it('the old instance\'s restore read in flight: the new one reads only after it returns, and the old one applies nothing', async () => {
     const s = slowStore({ [CURRENT]: 'A' }), release = s.holdRead()
     let reads = 0
