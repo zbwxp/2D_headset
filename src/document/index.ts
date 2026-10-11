@@ -385,6 +385,12 @@ export class Editor {
     if (!lines.length) throw new net.Refusal('select-lines-to-broadcast', 'select-lines-to-broadcast: the broadcast takes lines; select lines')
     animation.broadcast(this.s.network, this.s.links, this.tx.changes, lines)
   }
+  /** Diagonal draft (stage 2 rule 6): the four corner views of the chosen lines from the front, yaw and pitch views; it stands alone in its edit. */
+  draftCorners(units?: readonly editing.Unit[]) {
+    const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    if (!lines.length) throw new net.Refusal('select-lines-to-draft', 'select-lines-to-draft: the diagonal draft takes lines; select lines')
+    views.draftCorners(this.s.network, this.tx.changes, lines)
+  }
   /** Fit (stage 2 rule 4): the chosen lines' baseline takes the front; no view changes; it stands alone in its edit. */
   fit(units?: readonly editing.Unit[]) {
     const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))

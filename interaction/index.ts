@@ -44,6 +44,12 @@ export interface Interaction {
   redo(): void
   /** Stroke broadcast (step 6): the selected lines' strokes, as in the current view, to every other view. */
   broadcastStroke(): void
+  /** Shape broadcast (stage 2): the selected lines' pending change from the front to every other view (front view only). */
+  broadcastShape(): void
+  /** Fit (stage 2): the selected lines' baseline takes the front; no view changes. */
+  fit(): void
+  /** Diagonal draft (stage 2): the selected lines' four corner views from the front, yaw and pitch views. */
+  draftCorners(): void
   /**
    * The app switched the current view (step 7): what belongs to one view ends (a drag, picks,
    * the pen chain, the mirror source); the selection, the clipboard and a pending cut stay.
@@ -136,6 +142,9 @@ export function createInteraction(env: Env): Interaction {
     undo: () => act(undo),
     redo: () => act(redo),
     broadcastStroke: () => act(() => { ctx.commit(e => e.broadcastStroke(ctx.selection())) }),
+    broadcastShape: () => act(() => { ctx.commit(e => e.broadcastShape(ctx.selection())) }),
+    fit: () => act(() => { ctx.commit(e => e.fit(ctx.selection())) }),
+    draftCorners: () => act(() => { ctx.commit(e => e.draftCorners(ctx.selection())) }),
     viewChanged: () => act(() => { for (const f of flows) if (f.cancelLevel < 3) f.cancel(); ctx.feedback = undefined }),
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),

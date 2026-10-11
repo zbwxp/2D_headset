@@ -153,3 +153,40 @@ describe('a selection-only edit changes only the selection (dot 1791656400)', ()
     expect(core().in(SIDE).snapshot().lines.find(l => l.id === 'cd')!.a).toBe('q')
   })
 })
+
+describe('stage 2 actions (shape broadcast, fit, draft) and their refusals', () => {
+  it('shape broadcast from the front clears the pending change; off the front it is refused with its reason', () => {
+    const { ix, core, setView } = setup()
+    ix.setTool('A'); ix.pointerDown(P(0, 0)); ix.pointerMove(P(0, 10)); ix.pointerUp(P(0, 10)) // a moved at the front: pending
+    expect(core().pendingLines()).toContain('ab')
+    ix.setTool('V'); ix.pointerDown(P(50, 5)); ix.pointerUp(P(50, 5))
+    setView(SIDE)
+    ix.broadcastShape()
+    expect(ix.preview().refusal?.code).toBe('broadcast-from-front')
+    setView(FRONT)
+    ix.broadcastShape()
+    expect(ix.preview().refusal).toBeUndefined()
+    expect(core().pendingLines()).not.toContain('ab')
+    expect(at(core(), SIDE, 'a')).toEqual(P(0, 10))
+  })
+
+  it('an incomplete link scope is refused, naming the partner, so the panel can say why', () => {
+    const d = drawing()
+    d.edit(e => { e.line('qr', { id: 'q', layer: 'K', position: P(0, 0) }, { id: 'r', layer: 'K', position: P(-50, -50) }); e.link('a', 'q') })
+    const { ix } = setup(d)
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
+    ix.fit()
+    expect(ix.preview().refusal?.code).toBe('fit-link-incomplete')
+    expect(ix.preview().refusal?.message).toContain('q')
+  })
+
+  it('fit and the corner draft run on the selection', () => {
+    const { ix, core } = setup()
+    ix.setTool('A'); ix.pointerDown(P(0, 0)); ix.pointerMove(P(0, 10)); ix.pointerUp(P(0, 10))
+    ix.setTool('V'); ix.pointerDown(P(50, 5)); ix.pointerUp(P(50, 5))
+    ix.fit()
+    expect(core().pendingLines()).not.toContain('ab')
+    ix.draftCorners()
+    expect(ix.preview().refusal).toBeUndefined()
+  })
+})

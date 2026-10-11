@@ -4,6 +4,7 @@
 // is `view:<yaw>,<pitch>`. And operations across views: the stroke broadcast.
 import * as net from '../network'
 import * as joins from '../joins'
+import { add, sub } from '../geometry'
 
 export type Yaw = -90 | 0 | 90
 export type Pitch = -45 | 0 | 45
@@ -39,5 +40,37 @@ export function broadcastStroke(from: net.NetworkState, j: joins.JoinsState, lin
     const to = net.of(from, key)
     for (const [id, stroke] of strokes) net.setLineStroke(to, id, stroke)
     for (const [p, e] of ends) { if (e) joins.setEndStroke(j, to, p, e); else joins.clearEndStroke(j, to, p) }
+  }
+}
+
+/** The four corner views (yaw ±90 × pitch ±45) with the yaw and pitch views each is drafted from. */
+export const CORNERS: readonly { key: string; yaw: string; pitch: string }[] = Object.freeze(
+  ([-90, 90] as const).flatMap(y => ([-45, 45] as const).map(p => Object.freeze({ key: key(y, p), yaw: key(y, 0), pitch: key(0, p) }))))
+
+/**
+ * Diagonal draft (graph "Diagonal view"; bowen 1791639688; docs/stage2-plan.md rule 6): for
+ * the chosen lines, each corner view gets front + (yaw view − front) + (pitch view − front),
+ * per point (once) and per handle vector, read from the draft. Only the four corners change,
+ * written through each corner's own move / moveHandle so its links and springs settle there;
+ * values already equal are not written. The baseline is not touched.
+ */
+export function draftCorners(n: net.NetworkState, ch: net.Changes, lines: readonly net.Id[]) {
+  const front = net.of(n, FRONT)
+  const ids = [...new Set(lines)]
+  const points = [...new Set(ids.flatMap(id => { const l = net.line(front, id); return [l.a, l.b] }))]
+  const pos = (h: net.NetworkState, p: net.Id) => net.point(h, p).position
+  const hv = (h: net.NetworkState, id: net.Id, end: 'a' | 'b') => net.handle(net.line(h, id), end)
+  // every value read before anything is written
+  const plans = CORNERS.map(c => {
+    const y = net.of(n, c.yaw), pt = net.of(n, c.pitch), to = net.of(n, c.key)
+    const sum = (f: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => add(f, add(sub(a, f), sub(b, f)))
+    const moves = points.map(p => ({ id: p, target: sum(pos(front, p), pos(y, p), pos(pt, p)) })).filter(m => { const now = pos(to, m.id); return now.x !== m.target.x || now.y !== m.target.y })
+    const handles = ids.flatMap(id => (['a', 'b'] as const).map(end => ({ id, end, v: sum(hv(front, id, end), hv(y, id, end), hv(pt, id, end)) })))
+      .filter(h => { const now = hv(to, h.id, h.end); return now.x !== h.v.x || now.y !== h.v.y })
+    return { to, moves, handles }
+  })
+  for (const { to, moves, handles } of plans) {
+    if (moves.length) net.move(to, ch, moves)
+    for (const h of handles) net.moveHandle(to, ch, h.id, h.end, h.v)
   }
 }

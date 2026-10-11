@@ -117,6 +117,8 @@ export function App() {
   const px = Math.max(box.w / size.w, box.h / size.h)
 
   const shown = core.views().includes(view) ? view : 'view:0,0'
+  // lines whose front differs from the angle baseline (stage 2): marked on the canvas
+  const pending = core.pendingLines()
   const s = core.in(shown).snapshot(), g = core.in(shown).geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
@@ -339,6 +341,13 @@ export function App() {
           {B('Set width', () => run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))))}
           {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
+        {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
+        <b>Angle (shapes) · pending {pending.length}</b>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {B('Broadcast shape', () => ix.broadcastShape(), 'front view only: the selected lines\' change since the last broadcast → every other view')}
+          {B('Fit', () => ix.fit(), 'accept the selected lines\' front as the baseline; no view changes')}
+          {B('Draft corners', () => ix.draftCorners(), 'the four corner views of the selected lines = front + yaw change + pitch change')}
+        </div>
         <b>Names</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Rename line', () => { if (selLines.length !== 1) return; const n = prompt('line name', line(selLines[0]!).name); if (n !== null) run(x => x.renameLine(selLines[0]!, n)) })}
@@ -416,6 +425,8 @@ export function App() {
               strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
           })}
           {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
+          {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
+          {g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {pv.handles.map(({ line: id, end }) => {
             const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })

@@ -69,4 +69,24 @@ describe('the view picker', () => {
     await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent === 'Broadcast stroke')!.click() })
     for (const v of bench().core.views()) expect(bench().core.in(v).snapshot().lines.find(l => l.id === `v${k}`)!.stroke.width).toBe(6)
   })
+
+  it('the pending mark shows after a front move; "Broadcast shape" (separate from "Broadcast stroke") sends it to the other views and clears it', async () => {
+    const { svg, k, host } = await setup()
+    const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
+    expect(button('Broadcast stroke')).toBeDefined()
+    await act(async () => {
+      svg.dispatchEvent(pe('pointerdown', 0, 300 * k, 1))
+      window.dispatchEvent(pe('pointermove', 0, 300 * k + 10, 1))
+      window.dispatchEvent(pe('pointerup', 0, 300 * k + 10, 0))
+    })
+    expect(host.querySelector(`[data-pending="v${k}"]`)).not.toBeNull()
+    await act(async () => {
+      bench().ix.setTool('V'); bench().refresh()
+      svg.dispatchEvent(pe('pointerdown', 50, 300 * k + 5, 1)); window.dispatchEvent(pe('pointerup', 50, 300 * k + 5, 0))
+    })
+    await act(async () => { button('Broadcast shape').click() })
+    expect(host.querySelector(`[data-pending="v${k}"]`)).toBeNull()
+    expect(at('view:90,0', `p${k}`)).toEqual({ x: 0, y: 300 * k + 10 })
+  })
 })
+

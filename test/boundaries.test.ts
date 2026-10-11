@@ -7,7 +7,7 @@ import ts from 'typescript'
 const ALLOWED: Record<string, string[]> = {
   geometry: [],
   shapes: ['geometry'],
-  views: ['network', 'joins'],
+  views: ['geometry', 'network', 'joins'],
   network: ['geometry', 'shapes'],
   groups: ['geometry', 'network'],
   joins: ['geometry', 'network'],
