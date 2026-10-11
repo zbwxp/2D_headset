@@ -54,3 +54,17 @@ Kept to v2's level that matters here, without its full PNG chunk walk ("roughly 
 ## 6. Not now
 
 Dragging on the canvas, masks, position slots, the colour picker, images in playback, images shared by all views (all possible later, bowen 1791701099).
+
+## 8. Second round: live adjusting, moving on the canvas, position slots (bowen 1791702887)
+
+**Asked:** the panel's settings shown on the canvas as they change; a mode to grab the picture with the cursor or nudge it with the arrow keys; v2's position slots. Understanding posted to bowen 1791703246; built at the "usable first" bar (bowen 1791701099).
+
+1. **Live adjusting (bench only):** x, y, scale, angle and opacity get sliders beside the number fields. While a slider is dragged or a field is typed in, the picture is drawn from a **preview** held by the bench (no core call); release, Enter or leaving the field commits **one** `setReference`, one undo step (as v2's slider: one drag, one step); Esc reverts the preview. The preview is bound to the drawing and the picture's source (as §7.1 and the error state) and dropped on any change of drawing, view or mode.
+2. **Move mode (bench only):** a **Move picture** toggle in the Reference panel, off by default, off in playback.
+   - On: a press on a visible picture of the current view (inside its rotated rectangle; topmost first) starts a drag; the picture is previewed at its start + the pointer's displacement; the release commits one `setReference` (x, y). The press binds the frame's drawing (as the playback drag, `docs/stage3b-pkg5-problems.md` §2); a changed drawing at the release writes nothing. The one gesture slot and its cancel paths apply (Esc, right click, pointercancel, blur, another press of the same pointer in any App, view change, unmount).
+   - The last picture pressed (or chosen in the panel) is the **active** one; the arrow keys nudge it by 1 drawing unit (Shift: 10), one undo step per key, before interaction's own arrow-key handling and after the typing guard (a focused field keeps its arrows).
+   - Lines, points and fills are not picked while the mode is on; turning it off returns presses to the current tool.
+3. **Position slots (core):** each picture gets `slots`, a list of at most 1000 `{ name, placement }`, placement `{ x, y, scale, angle } | null` (v2's 存 / 调出 / × / rename / 加一格).
+   - Written through `setReference(id, { slots })` (checked as a whole: names strings ≤ 100 characters, placements as §3's numbers); **save** writes the current placement into a slot, **recall** writes a slot's placement into x, y, scale, angle; each one undo step.
+   - **File:** `slots` is part of version 5. A version-5 file without `slots` (saved before this, today) opens with none: a default inside the same version, not a migration (bowen may already have files; dot to confirm).
+4. **Tests:** a slider drag previews without writing and commits one step, Esc writes nothing; a canvas drag in move mode moves only the picture, one step, and each cancel path writes nothing (late pointerup included); arrow keys nudge the active picture, not the selection, and not while a field is focused; slots save, recall, rename, clear, undo, survive a file, refuse bad slots; a version-5 file without slots opens.
