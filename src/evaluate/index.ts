@@ -113,7 +113,14 @@ function responded(model: Model, pose: Pose): ScalarWeights {
   const views = [at(0, 0), at(Y, 0), at(0, P), at(Y, P)]
   return (control, axis, what) => {
     if (!control) return undefined
-    const k = (e: string) => { const kn = own(control, e)?.[axis]; if (kn) check(kn, `${what} on ${e}, axis ${axis}`); return kn }
+    // missing (no own edge, no own axis) is linear; present but broken is refused, never read as missing
+    const k = (e: string): Knots | undefined => {
+      if (!Object.hasOwn(control, e)) return undefined
+      const axes: unknown = control[e]
+      if (!isRecord(axes)) throw new Error(`model-incomplete: malformed response of ${what} on ${e}`)
+      if (!Object.hasOwn(axes, axis)) return undefined
+      try { return checkKnots(axes[axis], `${what} on ${e}, axis ${axis}`) } catch (err) { throw new Error(`model-incomplete: malformed response of ${(err as Error).message}`) }
+    }
     const rb = k(bottom), rt = k(top), sl = k(left), sr = k(right)
     if (!rb && !rt && !sl && !sr) return undefined
     // every response is pinned at 0 and 1, so u = 0 gives u' = 0 and u = 1 gives (1 − v)·1 + v·1,
@@ -124,14 +131,35 @@ function responded(model: Model, pose: Pose): ScalarWeights {
   }
 }
 const own = <T>(rec: Readonly<Record<string, T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)
-/** A malformed response in the model is refused, never read as something else. */
-function check(knots: Knots, what: string) {
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+export const MAX_KNOTS = 256
+/**
+ * The one check of a knot list, for the model here and for a clip or a file (animation): a
+ * list, at most 256 knots, every index present (an empty slot of a sparse list is an error,
+ * not skipped), each knot two finite numbers, progress strictly increasing inside (0, 1).
+ * A copy; throws naming `what` (dot 1791690497).
+ */
+export function checkKnots(v: unknown, what: string): [number, number][] {
+  if (!Array.isArray(v)) throw new Error(`${what}: knots must be a list`)
+  if (v.length > MAX_KNOTS) throw new Error(`${what}: more than ${MAX_KNOTS} knots`)
+  const out: [number, number][] = []
   let last = 0
-  if (!Array.isArray(knots)) throw new Error(`model-incomplete: malformed response of ${what}`)
-  for (const kn of knots) {
-    if (!Array.isArray(kn) || kn.length !== 2 || !Number.isFinite(kn[0]) || !Number.isFinite(kn[1]) || !(kn[0] > last && kn[0] < 1)) throw new Error(`model-incomplete: malformed response of ${what}`)
+  for (let i = 0; i < v.length; i++) {
+    if (!Object.hasOwn(v, i)) throw new Error(`${what}: knot ${i} is missing (an empty slot)`)
+    const kn: unknown = v[i]
+    if (!Array.isArray(kn) || kn.length !== 2 || !Object.hasOwn(kn, 0) || !Object.hasOwn(kn, 1) || typeof kn[0] !== 'number' || typeof kn[1] !== 'number' || !Number.isFinite(kn[0]) || !Number.isFinite(kn[1])) throw new Error(`${what}: knot ${i} must be two finite numbers`)
+    if (!(kn[0] > last && kn[0] < 1)) throw new Error(`${what}: knot progress must increase strictly inside (0, 1)`)
     last = kn[0]
+    out.push([kn[0], kn[1]])
   }
+  return out
+}
+/** A control's responses read from the model: absent → undefined; present but not an object → refused. */
+function control(rec: unknown, id: string, what: string): ControlResponses | undefined {
+  if (!isRecord(rec) || !Object.hasOwn(rec, id)) return undefined
+  const c = rec[id]
+  if (!isRecord(c)) throw new Error(`model-incomplete: malformed responses of ${what}`)
+  return c as ControlResponses
 }
 /** One response at progress t: piecewise linear through (0,0), the knots, (1,1). */
 export function respond(knots: Knots | undefined, t: number): number {
@@ -163,10 +191,10 @@ function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Respo
   const vec = (get: (v: ViewShape) => Vec | undefined, what: string, control?: ControlResponses): Vec =>
     ({ x: num(v => get(v)?.x, what, scalar(control, 'x', what) ?? ws), y: num(v => get(v)?.y, what, scalar(control, 'y', what) ?? ws) })
   return {
-    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => own(v.points, p), `position of ${p}`, responses && own(responses.points, p))])),
+    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => own(v.points, p), `position of ${p}`, control(responses?.points, p, `position of ${p}`))])),
     lines: Object.fromEntries(keys(v => v.lines).map(l => [l, {
-      ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`, responses && own(responses.handles, l)?.a),
-      hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`, responses && own(responses.handles, l)?.b),
+      ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`, control(control(responses?.handles, l, `handles of ${l}`), 'a', `handle a of ${l}`)),
+      hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`, control(control(responses?.handles, l, `handles of ${l}`), 'b', `handle b of ${l}`)),
     }])),
     radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => own(v.radii, k), `radius of ${k}`)])),
   }

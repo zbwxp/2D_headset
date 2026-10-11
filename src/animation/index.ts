@@ -8,7 +8,7 @@ import * as net from '../network'
 import * as views from '../views'
 import * as links from '../links'
 import { add, sub, type Vec } from '../geometry'
-import { respond } from '../evaluate'
+import { respond, checkKnots, MAX_KNOTS } from '../evaluate'
 
 type Id = net.Id
 
@@ -131,7 +131,6 @@ const R = (a: ResponsesState) => a as unknown as RStore
 const own = <T>(rec: Readonly<Rec<T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)
 const put = <T>(rec: Rec<T>, k: string, v: T) => { Object.defineProperty(rec, k, { value: v, enumerable: true, writable: true, configurable: true }) }
 const AXES = ['x', 'y'] as const
-export const MAX_KNOTS = 256
 
 export const createResponses = (): ResponsesState => ({ points: {}, handles: {} }) as RStore as unknown as ResponsesState
 
@@ -149,16 +148,8 @@ function checkControl(v: unknown, what: string): Rec<{ x?: Knot[]; y?: Knot[] }>
     const axes: { x?: Knot[]; y?: Knot[] } = {}
     for (const k of Object.keys(ax)) {
       if (k !== 'x' && k !== 'y') throw new Error(`${what} on ${edge}: unknown axis ${JSON.stringify(k)}`)
-      const list = (ax as Rec<unknown>)[k]
-      if (!Array.isArray(list)) throw new Error(`${what} on ${edge} ${k}: knots must be a list`)
-      if (list.length > MAX_KNOTS) throw new Error(`${what} on ${edge} ${k}: more than ${MAX_KNOTS} knots`)
-      let last = 0
-      const knots = list.map((kn, i) => {
-        if (!Array.isArray(kn) || kn.length !== 2 || typeof kn[0] !== 'number' || typeof kn[1] !== 'number' || !Number.isFinite(kn[0]) || !Number.isFinite(kn[1])) throw new Error(`${what} on ${edge} ${k}: knot ${i} must be two finite numbers`)
-        if (!(kn[0] > last && kn[0] < 1)) throw new Error(`${what} on ${edge} ${k}: knot progress must increase strictly inside (0, 1)`)
-        last = kn[0]
-        return [kn[0], kn[1]] as Knot
-      })
+      // the one knot check, index by index (no empty slot skipped), shared with evaluate (dot 1791690497)
+      const knots = checkKnots((ax as Rec<unknown>)[k], `${what} on ${edge} ${k}`)
       if (knots.length) axes[k] = knots
     }
     if (axes.x || axes.y) put(out, edge, axes)
@@ -176,7 +167,8 @@ export function checkResponses(v: unknown, points: ReadonlySet<Id>, lines: Reado
   const o = v as Rec<unknown>
   const out: RStore = { points: {}, handles: {} }
   const ps = own(o, 'points'), hs = own(o, 'handles')
-  if (!ps || typeof ps !== 'object' || !hs || typeof hs !== 'object') throw new Error(`${what}: points and handles are required`)
+  // objects, not lists: an empty list is a format error, never read as "no responses" (dot 1791690497)
+  if (!ps || typeof ps !== 'object' || Array.isArray(ps) || !hs || typeof hs !== 'object' || Array.isArray(hs)) throw new Error(`${what}: points and handles must be objects`)
   for (const id of Object.keys(ps)) {
     if (!points.has(id)) throw new Error(`${what}: no point ${JSON.stringify(id)}`)
     const c = checkControl((ps as Rec<unknown>)[id], `${what} of point ${id}`)

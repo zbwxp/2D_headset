@@ -343,3 +343,48 @@ describe('the clip and the file', () => {
     for (const [f, why] of cases) expect(() => edited(base(), f)).toThrow(why)
   })
 })
+
+describe('bad response data: missing is linear, present but broken is refused, at both entries (dot 1791690497)', () => {
+  it('a file or a clip whose points or handles are lists, not objects, is refused (an empty list is not "no responses")', () => {
+    expect(() => edited(base(), doc => { doc.animation.points = [] as never })).toThrow(/open-failed: animation: points and handles must be objects/)
+    expect(() => edited(base(), doc => { doc.animation.handles = [] as never })).toThrow(/points and handles must be objects/)
+    const d = base(), clip = d.copy(['ab']) as unknown as { animation: Record<string, unknown> }
+    clip.animation.points = []
+    let err: unknown
+    try { d.edit(e => e.paste(clip as never, 'L', P(0, 50), 'p')) } catch (x) { err = x }
+    expect((err as Refusal).code).toBe('clip-invalid')
+  })
+
+  it('a sparse knot list (an empty slot) is refused in a clip, not skipped; a null knot in a file likewise', () => {
+    const d = base(), clip = d.copy(['ab']) as unknown as { animation: { points: Record<string, unknown> } }
+    clip.animation.points = { b: { [E_FS]: { x: new Array(1) } } }
+    let err: unknown
+    try { d.edit(e => e.paste(clip as never, 'L', P(0, 50), 'p')) } catch (x) { err = x }
+    expect((err as Refusal).code).toBe('clip-invalid')
+    expect((err as Error).message).toMatch(/knot 0 is missing \(an empty slot\)/)
+    expect(() => edited(base(), doc => pointR(doc, 'b', E_FS, { x: [null as unknown as [number, number]] }))).toThrow(/knot 0 must be two finite numbers/)
+    expect(() => edited(base(), doc => pointR(doc, 'b', E_FS, { x: [[0.5] as unknown as [number, number]] }))).toThrow(/knot 0 must be two finite numbers/)
+  })
+
+  it('evaluate: a broken control, axes or knot list is refused; a missing one, or an inherited axis, is linear', () => {
+    const views = [-90, 0, 90].flatMap(yaw => [-45, 0, 45].map(pitch => ({ yaw, pitch, points: { p: P(yaw, pitch) }, lines: { l: { ha: P(1, yaw), hb: P(-1, pitch), stroke: { width: 1, profile: 'u' } } }, radii: {}, ends: {} })))
+    const run = (responses: unknown) => evaluate({ views, responses: responses as Model['responses'] }, { yaw: 30, pitch: 0 })
+    const plain = run(undefined)
+    for (const [bad, why] of [
+      [{ points: { p: null }, handles: {} }, /malformed responses of position of p/],
+      [{ points: { p: { '0,0>90,0': null } }, handles: {} }, /malformed response of position of p on 0,0>90,0/],
+      [{ points: { p: { '0,0>90,0': { x: null } } }, handles: {} }, /knots must be a list/],
+      [{ points: { p: { '0,0>90,0': { x: 0 } } }, handles: {} }, /knots must be a list/],
+      [{ points: { p: { '0,0>90,0': { x: {} } } }, handles: {} }, /knots must be a list/],
+      [{ points: { p: { '0,0>90,0': { x: new Array(1) } } }, handles: {} }, /knot 0 is missing/],
+      [{ points: { p: { '0,0>90,0': { x: Array.from({ length: 257 }, (_, i) => [(i + 1) / 300, 0]) } } }, handles: {} }, /more than 256 knots/],
+      [{ points: {}, handles: { l: [] } }, /malformed responses of handles of l/],
+      [{ points: {}, handles: { l: { a: 7 } } }, /malformed responses of handle a of l/],
+    ] as const) expect(() => run(bad)).toThrow(why)
+    // missing parts and an axis only inherited (not own) are linear: the same numbers as no responses
+    for (const missing of [{ points: {}, handles: {} }, { points: { p: {} }, handles: { l: {} } }, { points: { p: { '0,0>90,0': Object.create({ x: [[0.5, 0.9]] }) } }, handles: {} }, { points: { p: Object.create({ '0,0>90,0': { x: [[0.5, 0.9]] } }) }, handles: {} }]) {
+      expect(run(missing).points.p).toEqual(plain.points.p)
+    }
+  })
+})
+
