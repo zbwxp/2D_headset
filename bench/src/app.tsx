@@ -13,6 +13,10 @@ type Unit = Snapshot['selection'][number]
 
 let core = Core.newDocument({ axis: 0 })
 let seq = 0
+// playback (stage 3a, docs/stage3a-playback-plan.md): while on, the bench writes nothing. The
+// panels are disabled and the keys stopped, and every edit / undo / redo through the logged
+// Core is refused here too, so no path can write (dot 1791683911).
+let posing = false
 // New ids carry a per-session prefix: an opened file may hold ids used by an earlier session,
 // including deleted ones that core still keeps reserved (dot 1791512144); existing ones are skipped too.
 const session = Date.now().toString(36)
@@ -45,6 +49,7 @@ function logged(c: Core): Core {
     get(t, k) {
       if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
         const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
+        if (posing) { log.unshift({ calls: `${k}(…)`, result: '✗ read only during playback' }); throw new Error('read-only-playback: nothing is written during playback') }
         const calls: string[] = []
         const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(n)}(${a.map(short).join(', ')})`); return v.apply(x, a) } : v } })
         const head = view === 'view:0,0' ? '' : `[${view}] `
@@ -52,7 +57,7 @@ function logged(c: Core): Core {
         catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
         finally { log.length = Math.min(log.length, 50) }
       }
-      if (k === 'undo' || k === 'redo') return () => { const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
+      if (k === 'undo' || k === 'redo') return () => { if (posing) { log.unshift({ calls: `${k}()`, result: '✗ read only during playback' }); return } const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
       const v = Reflect.get(t, k, t)
       return typeof v === 'function' ? v.bind(t) : v
     },
@@ -101,6 +106,14 @@ export function App() {
   const [box, setBox] = useState({ x: -400, y: -300, w: 800, h: 600 })
   // the current view (multi-view step 7): every read and every edit is in it; the app holds it
   const [view, setView] = useState('view:0,0')
+  // playback (stage 3a): the pose shown, or null when editing; `poseGen` counts entries (a file
+  // read started before one is dropped), `openSeq` counts Opens (only the latest may open)
+  const [pose, setPose] = useState<null | { yaw: number; pitch: number }>(null)
+  const poseGen = useRef(0), openSeq = useRef(0)
+  // the module-level flag the logged Core reads follows this App's state on every render, so it
+  // can never outlive the state it stands for (a remount starts editing again)
+  posing = pose !== null
+  useEffect(() => () => { posing = false }, [])
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -119,7 +132,10 @@ export function App() {
   const shown = core.views().includes(view) ? view : 'view:0,0'
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
   const pending = core.pendingLines()
-  const s = core.in(shown).snapshot(), g = core.in(shown).geometry()
+  // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
+  const posed = (() => { try { return pose ? core.atPose(pose) : null } catch (err) { return err as Error } })()
+  const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
+  const s = reader.snapshot(), g = reader.geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
@@ -140,7 +156,7 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
@@ -227,6 +243,18 @@ export function App() {
     env.current = { ...env.current, view: k }
     setView(k); ix.viewChanged()
   }
+  /**
+   * Playback (stage 3a): entering ends any gesture (its window listeners go with it) and every
+   * unfinished operation in interaction, at every level; then nothing writes until leaving.
+   */
+  const startPose = () => {
+    gesture.current?.cancel('entering playback')
+    ix.cancelAll()
+    posing = true; poseGen.current++
+    const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
+    setPose({ yaw: yaw!, pitch: pitch! })
+  }
+  const stopPose = () => { posing = false; setPose(null) }
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
@@ -239,6 +267,8 @@ export function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      // playback first, before the typing check: a focused slider must not pass keys on (dot 1791683911)
+      if (posing) return
       // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
       // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
@@ -297,12 +327,23 @@ export function App() {
   const cutLines = new Set(s.groups.filter(x => pv.cut.includes(x.id)).flatMap(x => x.lines))
 
   const B = (label: string, f: () => void, title?: string) => <button title={title} onClick={f}>{label}</button>
-  const status = pv.refusal ? '✗ ' + withNames(pv.refusal.message)
+  const status = pose ? `playback yaw ${pose.yaw}, pitch ${pose.pitch} · read only${posed instanceof Error ? ' · ✗ ' + posed.message : ''} · appearance from the dominant view, joins as blended (placeholders)`
+    : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
       <div style={{ width: 230, padding: 8, borderRight: '1px solid #ccc', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* playback (stage 3a): a pose between the views, read only; everything that writes below is disabled meanwhile */}
+        <b>Playback</b>
+        <div data-testid="playback" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {pose ? <>
+            <button onClick={stopPose}>Leave playback</button>
+            <label>yaw {pose.yaw} <input type="range" data-testid="yaw" min={-90} max={90} step={1} value={pose.yaw} onChange={e => setPose({ ...pose, yaw: +e.target.value })} /></label>
+            <label>pitch {pose.pitch} <input type="range" data-testid="pitch" min={-45} max={45} step={1} value={pose.pitch} onChange={e => setPose({ ...pose, pitch: +e.target.value })} /></label>
+          </> : <button onClick={startPose}>Playback</button>}
+        </div>
+        <fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Tools</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
@@ -368,6 +409,7 @@ export function App() {
           {B('Unmirror', () => run(x => x.unmirror(selLines)))}
         </div>
         <div style={{ color: '#666' }}>pairs: {s.mirrorPairs.length}</div>
+        </fieldset>
         <b>File</b>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {B('Save', () => {
@@ -376,13 +418,22 @@ export function App() {
             a.download = 'drawing.headset.json'; a.click(); URL.revokeObjectURL(a.href)
             log.unshift({ calls: 'save()', result: 'ok' }); bump()
           })}
+          <fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0 }}>
           <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }}>Open
-            <input type="file" accept=".json" style={{ display: 'none' }} onChange={async e => {
+            <input type="file" data-testid="open" accept=".json" style={{ display: 'none' }} onChange={async e => {
               const f = e.target.files?.[0]; e.target.value = ''
               if (!f) return
+              // a read returns later: it may open only if it is still the latest Open and playback has
+              // not been entered since (ledger row 8; dot 1791684079)
+              const mine = ++openSeq.current, gen = poseGen.current
               // the drawing is replaced only if the file opens; only then does interaction hear of it
               try {
-                const next = open(await f.text())
+                const text = await f.text()
+                if (mine !== openSeq.current || gen !== poseGen.current || posing) {
+                  log.unshift({ calls: `open(${f.name})`, result: `✗ dropped: ${mine !== openSeq.current ? 'a later Open was started' : 'playback was entered meanwhile'}` })
+                  bump(); return
+                }
+                const next = open(text)
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
@@ -392,13 +443,14 @@ export function App() {
               bump()
             }} />
           </label>
+          </fieldset>
         </div>
-        <div style={{ display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</div>
+        <div style={{ display: 'flex', gap: 3 }}><fieldset disabled={!!pose} style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</fieldset></div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: pv.refusal ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={onDown} onWheel={onWheel}
+          onPointerDown={pose ? undefined : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
@@ -407,13 +459,13 @@ export function App() {
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
             stroke={isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
           {/* the selection box (bowen 1791558733): solid blue = wholly inside (dragged right), dashed green = touching (dragged left) */}
-          {pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
+          {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
             fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
             strokeDasharray={pv.box.whole ? undefined : `${5 * px} ${3 * px}`} />}
           {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line, and a dashed box around it all */}
-          {g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
+          {!pose && g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
             strokeWidth={line(G.id).stroke.width + 8 * px} strokeLinecap="round" />)}
-          {selLines.length > 0 && ps.length > 1 && (() => {
+          {!pose && selLines.length > 0 && ps.length > 1 && (() => {
             const xs = ps.map(p => p.x), ys = ps.map(p => p.y), m = 8 * px
             return <rect x={Math.min(...xs) - m} y={Math.min(...ys) - m} width={Math.max(...xs) - Math.min(...xs) + 2 * m} height={Math.max(...ys) - Math.min(...ys) + 2 * m}
               fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${4 * px} ${3 * px}`} />
@@ -426,22 +478,22 @@ export function App() {
           })}
           {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
-          {g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
-          {ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
-          {pv.handles.map(({ line: id, end }) => {
+          {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
+          {!pose && ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {!pose && pv.handles.map(({ line: id, end }) => {
             const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })
             return <g key={id + end}>
               <line x1={p.x} y1={p.y} x2={h.x} y2={h.y} stroke="#888" strokeWidth={px} />
               <rect x={h.x - 3 * px} y={h.y - 3 * px} width={6 * px} height={6 * px} fill={on ? '#06f' : '#fff'} stroke="#555" strokeWidth={px} />
             </g>
           })}
-          {s.points.filter(p => pvPoints.has(p.id)).map(p => {
+          {!pose && s.points.filter(p => pvPoints.has(p.id)).map(p => {
             const on = isSel({ kind: 'point', id: p.id }), picked = pv.pick?.kind === 'point' && pv.pick.id === p.id
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
-          {pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
-          {refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
+          {!pose && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
+          {!pose && refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
             <line x1={p.x - 6 * px} y1={p.y - 6 * px} x2={p.x + 6 * px} y2={p.y + 6 * px} /><line x1={p.x - 6 * px} y1={p.y + 6 * px} x2={p.x + 6 * px} y2={p.y - 6 * px} />
           </g>)}
         </svg>

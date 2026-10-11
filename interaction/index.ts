@@ -56,6 +56,8 @@ export interface Interaction {
    * Not an edit.
    */
   viewChanged(): void
+  /** Ends every unfinished operation at every level, the pending cut included (bench playback, stage 3a). Not an edit. */
+  cancelAll(): void
   /** The app tells interaction about changes it made elsewhere (doc 22 §3.5). */
   drawingChanged(): void
   historyChanged(): void
@@ -146,6 +148,7 @@ export function createInteraction(env: Env): Interaction {
     fit: () => act(() => { ctx.commit(e => e.fit(ctx.selection())) }),
     draftCorners: () => act(() => { ctx.commit(e => e.draftCorners(ctx.selection())) }),
     viewChanged: () => act(() => { for (const f of flows) if (f.cancelLevel < 3) f.cancel(); ctx.feedback = undefined }),
+    cancelAll: () => act(() => { for (const f of flows) f.cancel(); ctx.feedback = undefined }),
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),

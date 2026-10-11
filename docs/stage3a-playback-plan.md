@@ -93,6 +93,7 @@ Playback promises to change nothing, so every write entry is closed while it is 
   - **a file read already in flight** (dot 1791684079; ledger row 8, triggered here): disabling Open does not stop a read started before playback from returning during it. Each Open takes a request number and records the bench's mode at the start. When the read returns, it replaces the document only if it is still the latest request **and** playback has not been entered since; otherwise it is dropped (a status message says so). This also closes ledger row 8's original case, an earlier slow read replacing a later one.
 - **Leaving:** the view picker shows the last chosen view; editing works as before; no gesture, selection change or undo step came from playback.
 - **Not touched:** the edit transaction. These are read-only promises kept by the bench, as dot noted.
+- **As built (package 3):** the guards are layered, each tested on its own: the panels sit in disabled fieldsets (Save and the playback controls outside); the key handler stops first; the canvas takes no press; and the logged Core the bench and interaction write through refuses every edit, undo and redo while posing, the one choke point for the layers panel's icon commands. The read-only flag follows the App's own state on every render. Interaction gained `cancelAll()` (every level, the pending cut included; not an edit).
 
 
 ## Read entries (ledger row 6, reviewed once here)

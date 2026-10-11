@@ -190,3 +190,36 @@ describe('stage 2 actions (shape broadcast, fit, draft) and their refusals', () 
     expect(ix.preview().refusal).toBeUndefined()
   })
 })
+
+describe('cancelAll (bench playback, stage 3a)', () => {
+  it('ends a drag (nothing committed), the pen chain, a pick, the mirror source and a pending cut; keeps the selection; is not an edit', () => {
+    const { ix, core } = setup()
+    const edit = vi.spyOn(core(), 'editIn')
+    /** cancelAll itself makes no edit (the clicks around it may: a click selects). */
+    const cancelAll = () => { const n = edit.mock.calls.length; ix.cancelAll(); expect(edit.mock.calls.length).toBe(n) }
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
+    const selected = ix.selection()
+    ix.cut(); ix.setMirrorSource()
+    expect(ix.preview().cut.length).toBe(1)
+    expect(ix.preview().mirrorSource.length).toBeGreaterThan(0)
+    cancelAll()
+    expect([ix.preview().cut, ix.preview().mirrorSource]).toEqual([[], []])
+    expect(ix.selection()).toEqual(selected)
+    ix.setTool('A'); ix.pointerDown(P(100, 0)); ix.pointerMove(P(120, 0))
+    expect(ix.preview().drag).toBeDefined()
+    cancelAll()
+    const n = edit.mock.calls.length
+    ix.pointerUp(P(120, 0)) // the late release commits nothing
+    expect(edit.mock.calls.length).toBe(n)
+    expect(ix.preview().drag).toBeUndefined()
+    expect(at(core(), FRONT, 'b')).toEqual(P(100))
+    ix.setTool('pen'); ix.pointerDown(P(300, 300)); ix.pointerUp(P(300, 300))
+    expect(ix.preview().pen).toBeDefined()
+    cancelAll()
+    expect(ix.preview().pen).toBeUndefined()
+    ix.setTool('bind'); ix.pointerDown(P(0, 0)); ix.pointerUp(P(0, 0))
+    expect(ix.preview().pick).toBeDefined()
+    cancelAll()
+    expect(ix.preview().pick).toBeUndefined()
+  })
+})
