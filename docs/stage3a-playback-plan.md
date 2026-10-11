@@ -1,6 +1,6 @@
 # Stage 3a: angle playback and interpolation, read only (plan before code)
 
-**Status:** first draft, for dot's check (dot 1791682947: playback / interpolation reviewed on its own, separate from the in-between correction, which changes data and comes as stage 3b). Nothing is coded until this passes.
+**Status:** direction accepted by dot 1791684410 (packages: evaluate + slots; model / atPose; minimal bench). Earlier: first draft, for dot's check (dot 1791682947: playback / interpolation reviewed on its own, separate from the in-between correction, which changes data and comes as stage 3b). Nothing is coded until this passes.
 
 **Ledger check** (`docs/consolidation-ledger.md`):
 - Row 1 (commit settling by name lists) is not triggered: playback writes nothing.
@@ -32,7 +32,7 @@
 ## Rules
 
 1. **Pose.** `pose = { yaw, pitch }` in degrees, yaw ∈ [−90, 90], pitch ∈ [−45, 45]. Outside is refused (`pose-out-of-range`), never clamped (as v103).
-2. **Scheme: bilinear in each quadrant** (*proposal*, the architecture's candidate). For a pose in the quadrant with corners front F, yaw view Y, pitch view P, corner C, with u = |yaw| / 90 and v = |pitch| / 45:
+2. **Scheme: bilinear in each quadrant** (decided for the current 3 × 3 grid, dot 1791684410; one workable scheme, not claimed to be the only right one; turning speed is not promised to be smooth). For a pose in the quadrant with corners front F, yaw view Y, pitch view P, corner C, with u = |yaw| / 90 and v = |pitch| / 45:
    `value = (1−u)(1−v)·F + u(1−v)·Y + (1−u)v·P + uv·C`
    - **Why bilinear rather than v103's triangles** (wording corrected, dot 1791683851): a triangle using its three vertices is simply its definition; the whole mesh still passes exactly through all nine views, so no drawing is lost. Bilinear's advantages here are two: there is no diagonal to choose, and an unadjusted (drafted) corner gives back exactly yaw change + pitch change.
    - **On the axes** (u = 0 or v = 0) it is the plain linear blend of two views. At a view it is exactly that view.
@@ -44,7 +44,7 @@
    - **arc radius:** a number present in every view for an arc row (step 4 gives every view a radius when an arc is made);
    - **shared structure** (connections, names, order, fills, join modes, visibility, links): one copy, not blended.
 4. **Links stay together.** Linked points coincide in every view after settling, and rule 2 uses the same weights for both, so they coincide at every pose. No extra step.
-5. **Two slots, filled later** (bowen 1791684302: «这些都是交互和渲染的问题 留出slot即可之后再添加»). How appearance changes between views and how smooth joins are treated are interaction / rendering questions. 3a decides neither: it gives each a named place in `evaluate`, a pure function with a fixed signature, and fills it with a **placeholder** that invents nothing. Filling a slot later changes only that function.
+5. **Two slots, filled later** (bowen 1791684302: «这些都是交互和渲染的问题 留出slot即可之后再添加»). How appearance changes between views and how smooth joins are treated are interaction / rendering questions. 3a decides neither: it gives each a named place in `evaluate`, a pure function with a fixed signature, and fills it with a **placeholder** that invents nothing. Filling a slot later is meant to stay local to that function, but its inputs may have to grow; that is not guaranteed to touch only one function (dot 1791684410).
    - **Slot A, appearance at a pose:** `appearance(views, weights) → per line width and profile, per point end stroke`. *Placeholder:* everything from the **dominant view** (the largest weight; ties go to the front, then the yaw view, then the pitch view), the end stroke as a whole, present or absent as there. Nothing is blended, and a missing value is never turned into 0. The questions bowen deferred (width growing gradually or switching, a taper drawn in some views only) are answered by filling this slot; dot's requirements for any future rule stand (no silent 0 for a missing value, no number assumed to be a length; dot 1791683897).
    - **Slot B, joins after the blend:** `afterBlend(posed, joins) → posed`. *Placeholder:* nothing changes. The plain vector blend of two aligned smooth pairs is in general not aligned between views, and the bend has **not been measured**; it can be clearly visible with very short handles or views that differ a lot (dot 1791684152). Leaving it is the placeholder, not a solution: smooth transitions stay open until this slot is filled.
 6. **Non-linear progress (place for 3b).** In 3a, u and v are used as they are (linear). 3b will add response curves that change the weights; `evaluate`'s input type will gain them then. 3a defines nothing about their keying, so it decides nothing for 3b.
@@ -123,7 +123,7 @@ Nothing is written; there is no draft and no undo step.
 - **Between views, geometry follows the posed parameters:** at a non-view pose, `geometry()` equals `derived.derive` run on a layer holding exactly `evaluate`'s parameters; an arc's trim and a fill's boundary move with the pose (they differ from every key view's).
 - **Slot A placeholder:** at a pose, every line's width and profile and every point's end stroke equal the dominant view's (an end stroke absent there is absent at the pose, even if other views have one); ties resolve as stated.
 - **Slot B placeholder:** the posed handles are exactly the blended vectors (nothing re-aligned).
-- **On an axis** (e.g. yaw 30, pitch 0), every value is the linear blend of the two views on it; the other views have no effect (changing them changes nothing there).
+- **On an axis** (e.g. yaw 30, pitch 0), every **geometric** value (positions, handle vectors, radii) is the linear blend of the two views on it; the other views have no effect on them (changing them changes nothing there). Appearance comes from slot A and is not linear (dot 1791684410).
 - **Bilinear:**
   - in a cell, with hand-chosen corners, the value equals the formula;
   - with a corner exactly as drafted, `F + u(Y−F) + v(P−F)`.
@@ -147,7 +147,7 @@ Nothing is written; there is no draft and no undo step.
 ## Questions
 
 1. ~~Smooth joins between views~~ and 2. ~~width / taper between views~~: bowen 1791684302, interaction and rendering, left as slots B and A (rule 5), filled later.
-3. **Scheme** (rule 2): bilinear (proposal; dot 1791683851 leans to it) or v103's triangles.
+3. ~~Scheme~~: bilinear, dot 1791684410.
 
 ## Not in 3a
 
