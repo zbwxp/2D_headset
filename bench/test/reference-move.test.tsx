@@ -285,8 +285,10 @@ describe('mirror a picture left-right (§9)', () => {
     await t.moveMode(true)
     const live = new Map<string, Set<unknown>>()
     const add = window.addEventListener, remove = window.removeEventListener
-    window.addEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { if (/^pointer/.test(type)) { if (!live.has(type)) live.set(type, new Set()); live.get(type)!.add(f) } return add.call(this, type, f as EventListener, o as boolean) } as typeof window.addEventListener
-    window.removeEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { live.get(type)?.delete(f); return remove.call(this, type, f as EventListener, o as boolean) } as typeof window.removeEventListener
+    // a listener is its type, its callback and its capture flag (dot 1791718017): a removal with another capture flag removes nothing
+    const keyOf = (type: string, o: unknown) => `${type}|${typeof o === 'boolean' ? o : !!(o as { capture?: boolean } | undefined)?.capture}`
+    window.addEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { if (/^pointer/.test(type)) { const k = keyOf(type, o); if (!live.has(k)) live.set(k, new Set()); live.get(k)!.add(f) } return add.call(this, type, f as EventListener, o as boolean) } as typeof window.addEventListener
+    window.removeEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { live.get(keyOf(type, o))?.delete(f); return remove.call(this, type, f as EventListener, o as boolean) } as typeof window.removeEventListener
     try {
       const x0 = t.drawnX()
       await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, 0, 1)); window.dispatchEvent(pe('pointermove', 30, 0, 1)) })
