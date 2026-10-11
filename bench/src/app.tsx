@@ -30,7 +30,12 @@ const mid = (c: readonly Vec[]) => P((c[0]!.x + 3 * c[1]!.x + 3 * c[2]!.x + c[3]
 // ---- the log: every edit's Editor calls and what core returned -------------------------
 type LogRow = { calls: string; result: string }
 const log: LogRow[] = []
-const short = (x: unknown) => { const t = JSON.stringify(x) ?? String(x); return t.length > 80 ? t.slice(0, 77) + '…' : t }
+/** A call argument for the log; never throws (a circular or unprintable argument is shown as such; dot 1791697642). */
+const short = (x: unknown) => {
+  let t: string
+  try { t = JSON.stringify(x) ?? String(x) } catch { t = '‹unprintable›' }
+  return t.length > 80 ? t.slice(0, 77) + '…' : t
+}
 /** Ids in a message shown with their names, e.g. "u1" → "u1「左上眼睑外」". */
 function withNames(m: string) {
   const s = core.snapshot(), names = new Map<string, string>([...s.lines.map(l => [l.id, l.name] as const), ...s.groups.map(g => [g.id, g.name] as const)])
@@ -59,9 +64,11 @@ function loggedFor(readOnly: () => boolean): (c: Core) => Core {
           const calls: string[] = []
           let corrects = 0, forbidden: string | undefined
           const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
+            // the gate first, then the log: nothing before the gate may throw (dot 1791697642)
+            if (playback && n !== 'correct') forbidden ??= String(n)
             calls.push(`${String(n)}(${a.map(short).join(', ')})`)
             if (playback) {
-              if (n !== 'correct') { forbidden ??= String(n); throw new Error(`read-only-playback: ${String(n)} is not allowed during playback (only one correct)`) }
+              if (n !== 'correct') throw new Error(`read-only-playback: ${String(n)} is not allowed during playback (only one correct)`)
               corrects++
             }
             return v.apply(x, a)
@@ -164,6 +171,10 @@ export function App() {
   const pending = core.pendingLines()
   // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
   const posed = (() => { try { return pose ? core.atPose(pose) : null } catch (err) { return err as Error } })()
+  // the drawing this frame shows, bound with it during playback: a press on a frame drawn before
+  // another App changed the shared drawing must not start a correction (dot 1791697642)
+  const frame = useRef<{ core: Core; text: string } | null>(null)
+  frame.current = pose ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
   const s = reader.snapshot(), g = reader.geometry()
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
@@ -284,13 +295,15 @@ export function App() {
     }
     setCorrRefusal(null)
     if (e.button !== 0 || !pose || !posed || posed instanceof Error || !('edge' in correctionEdge(pose))) return
+    const shownFrom = frame.current
+    if (!shownFrom || shownFrom.core !== core || shownFrom.text !== save(core)) { note('playback press ignored: the drawing changed since this frame was drawn; redrawn'); bump(); return }
     const at = toDoc(e), snap = posed.snapshot()
     // a point is picked only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
     const visible = new Set(snap.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b]))
     const hit = snap.points.filter(p => visible.has(p.id)).map(p => ({ p, d: Math.hypot(p.position.x - at.x, p.position.y - at.y) }))
       .filter(x => x.d <= REACH.point * px).sort((a, b) => a.d - b.d)[0]
     if (!hit) return
-    const bound = { core, text: save(core), pose: { ...pose }, id: hit.p.id, start: hit.p.position, from: at }
+    const bound = { core: shownFrom.core, text: shownFrom.text, pose: { ...pose }, id: hit.p.id, start: hit.p.position, from: at }
     const id = e.pointerId, pressed = P(e.clientX, e.clientY)
     let moved = false, done = false
     const target = (ev: PointerEvent) => { const now = toDoc(ev); return P(bound.start.x + now.x - bound.from.x, bound.start.y + now.y - bound.from.y) }

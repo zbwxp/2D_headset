@@ -166,6 +166,19 @@ describe('the gate, through the App\'s own wrapper (dot 1791696773, 1791696847)'
     expect(save(bench().core)).toBe(before)
   })
 
+  it('a forbidden call whose argument cannot be logged (circular), caught, then correct: nothing published; a correct with an unprintable argument is logged as such and runs (dot 1791697642)', async () => {
+    const t = await setup(), q = `q${t.k}`
+    await t.play(45, 0)
+    const before = save(bench().core)
+    const cyclic: Record<string, unknown> = { id: q, target: { x: 0, y: 0 } }; cyclic.self = cyclic
+    expect(() => bench().edit(e => { try { e.move([cyclic as never]) } catch { /* caught */ } e.correct(pose, { points: [{ id: q, position: { x: 90, y: 300 * t.k + 3 } }] }) })).toThrow(/read-only-playback.*it called move/)
+    expect(save(bench().core)).toBe(before)
+    const odd: Record<string, unknown> = { points: [{ id: q, position: { x: 90, y: 300 * t.k + 3 } }] }; odd.self = odd
+    bench().edit(e => e.correct(pose, odd as never))
+    expect(save(bench().core)).not.toBe(before)
+    expect(bench().log[0]!.calls).toContain('‹unprintable›')
+  })
+
   it('an empty edit is refused before core settles it: two coincident points of one layer from a file stay two', async () => {
     const t = await setup({ seed: false })
     const d = Core.newDocument({ layer: { id: 'layer-1', name: 'L' } })
@@ -253,6 +266,20 @@ describe('number fields keep typing apart from the pose (dot 1791696847)', () =>
 })
 
 describe('two Apps on the page share the drawing', () => {
+  it('a press on a frame drawn before the drawing changed starts nothing and redraws; the next press works (dot 1791697642)', async () => {
+    const t = await setup()
+    await t.play(45, 0)
+    const start = t.posed(`q${t.k}`)
+    // the shared drawing changes without this App redrawing
+    bench().core.edit(e => e.line(`z${t.k}`, { id: `z1${t.k}`, layer: 'layer-1', position: { x: 600, y: 0 } }, { id: `z2${t.k}`, layer: 'layer-1', position: { x: 640, y: 0 } }))
+    const changed = save(bench().core)
+    await t.drag(start, { x: 20, y: 0 })
+    expect(save(bench().core)).toBe(changed)
+    expect(bench().log[0]!.calls).toContain('the drawing changed since this frame was drawn')
+    await t.drag(t.posed(`q${t.k}`), { x: 20, y: 0 })
+    expect(save(bench().core)).not.toBe(changed)
+  })
+
   it('the same pointer pressed in the other App cancels this App\'s drag; its late release writes nothing for it', async () => {
     const a = await setup()
     await a.play(45, 0)
