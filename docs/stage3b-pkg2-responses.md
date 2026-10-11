@@ -69,10 +69,14 @@ Knot = [progress, value]
 - **`split`** (and each mirror-paired split) is refused when the split line's handles or its end points have any response (`split-has-responses`, naming the line). A split with no responses goes through unchanged.
 - **`link`** (and each paired link) is refused when the two points' responses do not behave the same (`link-responses-differ`, naming both points).
 
-**Insert (`paste`, `copyLayer`):**
-- the clip gains an `animation` part: the entries of the clip's points and lines, extracted by `animation.extract` when the clip is made (read from the published state, like the rest of the clip);
-- `insertClip` maps them to the new ids with the copy map (`animation.insert`);
-- a clip without that part (an old clip object) inserts no responses.
+**Insert (`paste`, `copyLayer`; dot 1791689360):**
+- **The clip gains an `animation` part:** the entries of exactly the clip's points and lines, extracted by `animation.extract`. It is read from the same version as the rest of the clip, and the two copy entries differ:
+  - `Core.copy` (the clipboard) reads the **published** state;
+  - `copyLayer` inside an edit reads the **draft's** attributes, `animation` included, with geometry from the settled trial, as it does today. So a response a point inherited earlier in the same edit (e.g. unbind, then copy the layer) is carried.
+- **`clipboard.check` validates and returns the part,** through `animation.checkClipData` (clipboard gains a dependency on animation). Today's `check` rebuilds a whitelisted object, so an unchecked field would be dropped silently.
+  - a clip **without** the part is an old clip and inserts no responses;
+  - a clip **with** the part is checked in full: every id is one of the clip's points or lines; edge keys valid; knots valid; own properties only. Anything wrong refuses the paste (`clip-invalid`, naming what). It is never read as "no responses".
+- **`insertClip` writes them to the new ids through the actual copy map** (`animation.insert`). A partial copy carries only what was copied.
 
 **No user operation writes knots in this package.** `correct` (package 3) is the first. Until then responses come only from an opened file or a pasted clip.
 
@@ -106,8 +110,10 @@ Knot = [progress, value]
 | evaluate | `Core.model()`: the published state's views and `animation`, a copy | nothing | `atPose`, playback |
 | follow | the edit's structural record | the draft's `animation` | inside each structural operation (`applyTopology`) |
 | split / link checks | the draft's `animation` (as written so far in the edit) | nothing (refuse or go on) | in the operation |
-| copy (clip) | the published state's `animation` for the clip's ids | the clip | `copy` |
-| insert | the clip | the draft's `animation` | `paste`, `copyLayer` |
+| copy to the clipboard (`Core.copy`) | the **published** state's `animation`, for the clip's ids | the clip | `copy` |
+| copy a layer (`copyLayer`, in an edit) | the **draft's** `animation` as written so far in the edit (geometry from the settled trial, attributes from the draft, as today) | the clip, then the draft | in the operation |
+| clip check | the clip's `animation` part | the checked clip (`clipboard.check` returns it) | `paste` |
+| insert | the checked clip | the draft's `animation`, through the actual copy map | `paste`, `copyLayer` |
 | save / open | the published `animation` / the file | the file / a new Core | archive |
 | undo / redo | the state stack | — | as every part |
 
@@ -130,7 +136,12 @@ Knot = [progress, value]
 - **Refusals:**
   - `split-has-responses` (ends, handles, a paired split) and a split without responses going through;
   - `link-responses-differ`, and a link between identity and explicit-linear responses going through.
-- **Insert:** paste and copy-layer carry responses to the new ids; a clip without the part inserts none.
+- **Insert:**
+  - paste and copy-layer carry responses to the new ids, partial copies only what was copied;
+  - unbind then copy-layer in one edit carries the inherited response;
+  - a clip without the part inserts none;
+  - a clip whose part has an unknown id, a bad edge, a bad knot or an inherited-name key refuses the paste (`clip-invalid`);
+  - `clipboard.check` returns the part (a clip round-tripped through JSON keeps its responses).
 - **Archive:** save / open round trip; format 3 refused; each `open` refusal (unknown id, edge, bad knot order, out of (0, 1), non-finite, 257 knots, an inherited-name key, linked points that differ).
 - **Declarations:** the per-operation write test with responses present; no undeclared `animation` write.
 - **Undo:** an edit that changes responses (a delete) is undone with everything else.
