@@ -4,6 +4,7 @@
 // nothing, in any tool but the pen, starts a selection box (bowen 1791558733, 1791559014):
 // dragged right, it takes the lines wholly inside; dragged left, every line it touches; only in
 // its focus, the current layer.
+import { createMover, type Target } from '../../move'
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
 
@@ -16,11 +17,32 @@ export interface SelectTransform extends Flow {
   startBox(at: Vec, mods: Mods, clear: boolean): void
   /** What the last V / A press picked, or null (a box). */
   readonly lastPress: Unit['kind'] | null
+  /** An arrow key with V / A and a selection: a step of the selection's key run (move/); true if taken. */
+  keyDown(key: string, mods: Mods): boolean
+  /** An arrow key released: the key run commits when no arrow is held. */
+  keyUp(key: string): void
+  /** What move session runs: a drag of the selection, a key run, or nothing. */
+  readonly moving: 'drag' | 'keys' | null
   readonly dragging: boolean
 }
 
 export function selectTransform(ctx: Ctx): SelectTransform {
-  let drag: { core: Core; view: string; start: Vec; units: Unit[]; offset: Vec } | null = null
+  // moving the selection is a move/ session (docs/move-plan.md): a drag or a key run, one at a time; what is
+  // shown meanwhile is `moving` (the units taken at begin, the offset so far); one translate at the end
+  const mover = createMover()
+  let moving: { core: Core; view: string; units: Unit[]; offset: Vec } | null = null
+  /** The selection as a move target: taken at begin (drawing, view, units), re-checked at commit (dot 1791733489). */
+  const selectionTarget = (): Target | undefined => {
+    const units = ctx.selection()
+    if (!units.length) return undefined
+    const owned = ctx.owned()
+    return {
+      begin: () => { moving = { ...owned, units, offset: { x: 0, y: 0 } }; return true },
+      preview: o => { if (moving) moving.offset = { x: o.x, y: o.y } },
+      commit: o => { moving = null; if (ctx.mine(owned)) ctx.commit(e => e.translate(o.x, o.y, units)) },
+      cancel: () => { moving = null },
+    }
+  }
   let box: { core: Core; view: string; from: Vec; to: Vec; mods: Mods; clear: boolean } | null = null
   /** Commit what the box takes: lines of the focus, replacing, adding or removing as a click would. */
   function boxUp(b: NonNullable<typeof box>, at: Vec) {
@@ -60,14 +82,21 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     return undefined
   }
   // the press position is copied in, so a caller reusing its Vec never changes the offset (dot 1791544469)
-  const startDrag = (at: Vec) => { drag = { ...ctx.owned(), start: { x: at.x, y: at.y }, units: ctx.selection(), offset: { x: 0, y: 0 } } }
+  const startDrag = (at: Vec) => { const t = selectionTarget(); if (t) mover.press(t, { x: at.x, y: at.y }) }
+  const stop = () => { mover.cancel(); box = null }
 
   /** What the last A / V press picked (a box or nothing: null); read by the app's name labels (docs/name-labels-plan.md). */
   let lastPress: Unit['kind'] | null = null
   return {
     get lastPress() { return lastPress },
+    get moving() { return mover.running },
     cancelLevel: 1,
-    get dragging() { return !!drag || !!box },
+    get dragging() { return !!mover.running || !!box },
+    keyDown(key, mods) {
+      if (ctx.tool() !== 'V' && ctx.tool() !== 'A') return false
+      return mover.keyDown(selectionTarget, { key, repeat: mods.repeat, shift: mods.shift, alt: mods.alt, ctrl: mods.ctrl })
+    },
+    keyUp(key) { mover.keyUp(key) },
     startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
     pointerDown(at, mods) {
       lastPress = null
@@ -85,27 +114,24 @@ export function selectTransform(ctx: Ctx): SelectTransform {
       return true
     },
     pointerMove(at) {
-      if (drag) drag.offset = { x: at.x - drag.start.x, y: at.y - drag.start.y }
+      if (mover.running === 'drag') mover.drag(at)
       if (box) box.to = { x: at.x, y: at.y }
     },
     pointerUp(at) {
       const b = box
       box = null
       if (b && ctx.mine(b)) boxUp(b, at)
-      const d = drag
-      drag = null // a repeated release finds nothing to commit (plan item 19)
-      if (!d || !ctx.mine(d)) return // the drawing changed under the drag: it never lands elsewhere
-      const offset = { x: at.x - d.start.x, y: at.y - d.start.y }
-      if ((offset.x || offset.y) && d.units.length) ctx.commit(e => e.translate(offset.x, offset.y, d.units))
+      // a repeated release finds nothing to commit (plan item 19); the target re-checks the drawing (it never lands elsewhere)
+      if (mover.running === 'drag') mover.release(at)
     },
-    pointerCancel() { drag = null; box = null },
-    cancel() { if (!drag && !box) return false; drag = null; box = null; return true },
-    toolChanged() { drag = null; box = null }, // an interaction default: a tool change cancels a drag
-    drawingChanged() { drag = null; box = null },
-    // the drawing changed under the drag (undo, or an edit such as Delete): the drag ends
-    historyChanged() { drag = null; box = null },
+    pointerCancel() { stop() },
+    cancel() { if (!mover.running && !box) return false; stop(); return true },
+    toolChanged() { stop() }, // an interaction default: a tool change cancels a drag or a key run
+    drawingChanged() { stop() },
+    // the drawing changed under the move (undo, redo, a selection change, an edit such as Delete): it ends
+    historyChanged() { stop() },
     preview(p: Preview) {
-      if (drag && ctx.mine(drag)) p.drag = { units: structuredClone(drag.units), offset: { ...drag.offset } }
+      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset } }
       if (box && ctx.mine(box)) p.box = { from: { ...box.from }, to: { ...box.to }, whole: box.to.x >= box.from.x }
       p.handles = handlesShown(ctx.snap())
     },

@@ -9,6 +9,7 @@
 import type { Snapshot, Vec } from '../src'
 import { createCtx, POINT_TOOLS, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
 import { fromError } from './feedback'
+import { isArrow } from '../move'
 import { selectTransform } from './flows/select-transform'
 import { pen } from './flows/pen'
 import { steps } from './flows/steps'
@@ -73,6 +74,10 @@ export interface Interaction {
    * (it started a box). Read only; the app's name labels switch on a line only (dot 1791732824).
    */
   lastPress(): 'line' | 'point' | 'handle' | 'fill' | null
+  /** An arrow key released (always given, even from a field): a key run of the selection commits when no arrow is held. */
+  keyUp(name: string): void
+  /** What move session runs: a drag of the selection, a key run, or nothing (docs/move-plan.md). */
+  moving(): 'drag' | 'keys' | null
   subscribe(listener: () => void): () => void
 }
 
@@ -100,8 +105,10 @@ export function createInteraction(env: Env): Interaction {
   }
   function setTool(t: Tool) { tool = t; for (const f of flows) f.toolChanged(); ctx.feedback = undefined }
   function historyChanged() { for (const f of flows) f.historyChanged() }
-  function undo() { if (!st.dragging) { env.core().undo(); historyChanged() } }
-  function redo() { if (!st.dragging) { env.core().redo(); historyChanged() } }
+  // during a key run, undo / redo end the run and write nothing — it was never committed, so nothing earlier is
+  // undone with it (docs/move-plan.md; dot 1791733489); during a mouse drag they wait, as before
+  function undo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging) { env.core().undo(); historyChanged() } }
+  function redo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging) { env.core().redo(); historyChanged() } }
 
   function pointerDown(at: Vec, mods: Mods = {}): boolean {
     ctx.feedback = undefined
@@ -115,6 +122,8 @@ export function createInteraction(env: Env): Interaction {
   function key(name: string, mods: Mods = {}): boolean {
     const k = name.toLowerCase()
     if (k === 'escape') { cancel(); return true }
+    // arrows move the selection with V / A (docs/move-plan.md): Ctrl + arrow is the slow move, ⌘ + arrow is not a move
+    if (isArrow(name)) return mods.meta && !mods.ctrl ? false : st.keyDown(name, mods)
     if (mods.meta) {
       if (k === 'z') { mods.shift ? redo() : undo(); return true }
       if (k === 'c') { cb.copy(); return true }
@@ -158,6 +167,8 @@ export function createInteraction(env: Env): Interaction {
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
     lastPress: () => st.lastPress,
+    keyUp: name => act(() => st.keyUp(name)),
+    moving: () => st.moving,
     preview() {
       const p: Preview = { cut: [], mirrorSource: [], handles: [], points: [] }
       if (POINT_TOOLS.has(tool)) {

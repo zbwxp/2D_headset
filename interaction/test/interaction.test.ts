@@ -45,14 +45,16 @@ describe('state owners (graph row 1)', () => {
     expect(ix.preview().drag?.units).toEqual([{ kind: 'line', id: 'h' }, { kind: 'line', id: 'v' }])
   })
 
-  it('2. interaction imports only the core package root (and its own files), and core never imports interaction', () => {
+  it('2. interaction imports only the core package root and the move package root (and its own files), and core never imports interaction', () => {
     const dir = join(__dirname, '..')
     const own = readdirSync(dir, { recursive: true }).map(String).filter(f => f.endsWith('.ts') && !f.startsWith('test'))
     expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/steps.ts', 'index.ts'])
     for (const f of own) {
       const specs = [...readFileSync(join(dir, f), 'utf8').matchAll(/from '([^']+)'/g)].map(m => m[1]!)
       const root = f.includes('/') ? '../../src' : '../src'
-      expect(specs.filter(x => x !== root && !x.startsWith('./') && !(f.includes('/') && x.startsWith('../') && !x.startsWith('../../')))).toEqual([])
+      // and the move package's root (docs/move-plan.md; dot 1791733489): it imports nothing and knows nothing of core
+      const move = f.includes('/') ? '../../move' : '../move'
+      expect(specs.filter(x => x !== root && x !== move && !x.startsWith('./') && !(f.includes('/') && x.startsWith('../') && !x.startsWith('../../')))).toEqual([])
     }
     const src = join(__dirname, '..', '..', 'src')
     const all = readdirSync(src, { recursive: true }).filter(f => String(f).endsWith('.ts')).map(f => readFileSync(join(src, String(f)), 'utf8'))
@@ -811,5 +813,74 @@ describe('what the last V / A press picked (docs/name-labels-plan.md; dot 179173
     expect(press(P(50, 0))).toBe('line')
     expect(press(P(0, 0))).toBe('point')
     expect(press(P(500, 500))).toBeNull()
+  })
+})
+
+describe('moving the selection with arrow keys (docs/move-plan.md; dot 1791733489)', () => {
+  const at = (d: Core, id: string) => d.snapshot().points.find(p => p.id === id)!.position
+  function selected(tool: 'A' | 'V' = 'V') {
+    const s = setup()
+    s.ix.setTool(tool)
+    s.ix.pointerDown(P(50, 0)); s.ix.pointerUp(P(50, 0)) // V: the curve h–v; A: the line h
+    return s
+  }
+  it('a held run is one translate and one undo step, written only on the last release; the preview shows it meanwhile', () => {
+    const { ix, core } = selected()
+    const before = save(core())
+    ix.key('ArrowRight'); ix.key('ArrowRight', { repeat: true }); ix.key('ArrowDown', { repeat: false })
+    expect([save(core()), ix.preview().drag?.offset]).toEqual([before, { x: 2, y: 1 }])
+    ix.keyUp('ArrowRight')
+    expect(save(core())).toBe(before)
+    ix.keyUp('ArrowDown')
+    expect(at(core(), 'a')).toEqual(P(2, 1))
+    core().undo()
+    expect(save(core())).toBe(before) // one undo step takes the whole run back
+  })
+  it('steps: 1, Shift 10, Option 0.1, Ctrl 0.1; ⌘ + arrow is not a move', () => {
+    const { ix, core } = selected()
+    const run = (mods: Record<string, boolean>) => { const x0 = at(core(), 'a').x; ix.key('ArrowRight', mods); ix.keyUp('ArrowRight'); return Math.round((at(core(), 'a').x - x0) * 1e9) / 1e9 }
+    expect([run({}), run({ shift: true }), run({ alt: true }), run({ meta: true, ctrl: true })]).toEqual([1, 10, 0.1, 0.1])
+    expect(ix.key('ArrowRight', { meta: true })).toBe(false)
+  })
+  it('no selection, or a tool other than V / A: arrows are not taken and change nothing', () => {
+    const { ix, core } = setup()
+    ix.setTool('V')
+    expect(ix.key('ArrowRight')).toBe(false)
+    const s2 = selected(); s2.ix.setTool('pen')
+    const before = save(s2.core())
+    expect(s2.ix.key('ArrowRight')).toBe(false)
+    s2.ix.keyUp('ArrowRight')
+    expect([save(s2.core()), save(core())].length).toBe(2)
+    expect(save(s2.core())).toBe(before)
+  })
+  it('an undo, a selection change or a tool change during a run ends it: the late release writes nothing', () => {
+    for (const end of ['undo', 'select', 'tool'] as const) {
+      const { ix, core } = selected()
+      ix.key('ArrowLeft')
+      const beforeRun = save(core())
+      if (end === 'undo') { ix.undo(); expect(save(core())).toBe(beforeRun) } // the run ends; nothing earlier is undone
+      if (end === 'select') { ix.pointerDown(P(0, 200)); ix.pointerUp(P(0, 200)) }
+      if (end === 'tool') ix.setTool('A')
+      const now = save(core())
+      expect([end, ix.moving()]).toEqual([end, null])
+      ix.keyUp('ArrowLeft')
+      expect([end, save(core())]).toEqual([end, now])
+    }
+  })
+  it('the click that selected keeps its own history entry: two undos to go back before it', () => {
+    const s = setup()
+    const start = save(s.core())
+    s.ix.setTool('V'); s.ix.pointerDown(P(50, 0)); s.ix.pointerUp(P(50, 0))
+    const afterClick = save(s.core())
+    s.ix.key('ArrowUp'); s.ix.keyUp('ArrowUp')
+    s.core().undo()
+    expect(save(s.core())).toBe(afterClick)
+    s.core().undo()
+    expect(save(s.core())).toBe(start)
+  })
+  it('the selection is taken at the start: a run moves what was selected then', () => {
+    const { ix, core } = selected('A')
+    ix.key('ArrowRight'); ix.keyUp('ArrowRight')
+    expect([at(core(), 'a'), at(core(), 'b'), at(core(), 'c')]).toEqual([P(1, 0), P(101, 0), P(100, 100)])
   })
 })

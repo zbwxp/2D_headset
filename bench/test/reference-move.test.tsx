@@ -119,7 +119,10 @@ describe('Move picture (§8.2, §8a.2, §8a.3)', () => {
     await act(async () => { key('ArrowRight') }) // no active picture yet
     expect(save(bench().core)).toBe(before)
     await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, 0, 1)); window.dispatchEvent(pe('pointerup', 0, 0, 0)) }) // press: active, unmoved
+    // a key run commits when the last arrow is released (docs/move-plan.md)
     await act(async () => { key('ArrowRight'); key('ArrowDown', window, true) })
+    expect([t.pic().x, t.pic().y]).toEqual([0, 0])
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight' })); window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown' })) })
     expect([t.pic().x, t.pic().y]).toEqual([1, 10])
     expect(JSON.stringify(bench().core.snapshot().points)).toBe(points)
     const now = save(bench().core)

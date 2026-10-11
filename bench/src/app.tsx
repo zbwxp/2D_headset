@@ -12,6 +12,7 @@ import { Rename } from '../../rename'
 import { cursorFor } from '../../cursor'
 import { PosePad } from '../../pose-pad'
 import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
+import { createMover, isArrow, type Target } from '../../move'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -182,7 +183,22 @@ export function App() {
   const previewNow = useRef(refPreview)
   const [moveRef, setMoveRef] = useState(false)
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
-  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean }>({})
+  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void }>({})
+  // moving by keyboard (docs/move-plan.md): the picture's sessions run here, the selection's in interaction;
+  // a key run holds the one gesture slot as `KEYS`, so a canvas press meanwhile is ignored and every cancel path ends it
+  const KEYS = -1
+  const picMover = useRef(createMover()).current
+  const holdKeys = () => {
+    if (gesture.current) return
+    const cancel = (why: string) => {
+      if (gesture.current?.cancel === cancel) gesture.current = null
+      if (ix.moving() === 'keys') ix.cancel(); else picMover.cancel()
+      note(`key move cancelled by ${why}`); bump()
+    }
+    gesture.current = { id: KEYS, right: false, cancel }
+  }
+  // after every render: a key run that has ended (committed, or ended inside interaction by an undo or a selection change) gives the slot back
+  useEffect(() => { if (gesture.current?.id === KEYS && ix.moving() !== 'keys' && picMover.running !== 'keys') gesture.current = null })
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -338,7 +354,7 @@ export function App() {
     finally { bump() }
   }
   /** The panel changed the selected layers; the selection elsewhere simply goes inert (docs/layer-scope-plan.md §3). */
-  const selectLayers = (ids: Id[], current: Id) => { setLayers(ids); setLayer(current) }
+  const selectLayers = (ids: Id[], current: Id) => { if (gesture.current?.id === KEYS) gesture.current.cancel('a layer scope change'); setLayers(ids); setLayer(current) }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
     return P(p.x, p.y)
@@ -456,23 +472,24 @@ export function App() {
     cancelPreview()
     const id = e.pointerId, pressed = P(e.clientX, e.clientY)
     let moved = false, done = false
-    const target = (ev: PointerEvent) => { const now = toDoc(ev); return { x: hit.x + now.x - at.x, y: hit.y + now.y - at.y } }
+    // the drag is a move/ session (docs/move-plan.md): its offset the pointer's displacement, one setReference at the end;
+    // it commits only if the whole drawing is still the frame pressed on (as before)
+    picMover.press(pictureTarget(hit, bind, () => core === shownFrom.core && save(core) === shownFrom.text, 'picture move cancelled: the drawing changed during the drag'), at)
     const travel = (ev: PointerEvent) => { moved ||= Math.hypot(ev.clientX - pressed.x, ev.clientY - pressed.y) > CLICK }
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if ((ev.buttons & 1) === 0) { release(ev); return }
       travel(ev)
-      if (moved) { const next = { ...bind, base: hit, props: target(ev) }; previewNow.current = next; setRefPreview(next) }
+      if (moved) picMover.drag(toDoc(ev))
     }
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       travel(ev)
       stop()
-      if (!moved) return
-      if (core !== shownFrom.core || save(core) !== shownFrom.text) { note('picture move cancelled: the drawing changed during the drag'); bump(); return }
-      run(x => x.setReference(hit.id, target(ev)))
+      if (!moved) { picMover.cancel(); return } // a click only makes the picture active
+      picMover.release(toDoc(ev))
     }
-    const cancelWith = (why: string) => { if (done) return; stop(); note(`picture move cancelled by ${why}`); bump() }
+    const cancelWith = (why: string) => { if (done) return; picMover.cancel(); stop(); note(`picture move cancelled by ${why}`); bump() }
     const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
     const onOtherDown = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('a new press of the same pointer') }
     const onBlur = () => cancelWith('leaving the window')
@@ -489,17 +506,42 @@ export function App() {
     for (const [t, f] of listeners) window.addEventListener(t, f as EventListener)
     window.addEventListener('pointerdown', onOtherDown, true)
   }
-  /** Arrow keys while Move picture is on (§8.2, §8a.2): they nudge the active picture and never reach lines. */
+  /**
+   * The picture as a move target (docs/move-plan.md): bound to the picture as drawn; the preview is start +
+   * offset, never written; one setReference at the end, only if `still()` holds and the picture is the one
+   * bound and unchanged underneath (§8a), else dropped with `why`.
+   */
+  function pictureTarget(r: ReferenceImage, bind: RefBind, still: () => boolean, why: string): Target {
+    const at = (o: { x: number; y: number }) => ({ x: r.x + o.x, y: r.y + o.y })
+    const clear = () => { previewNow.current = null; setRefPreview(null) }
+    return {
+      begin: () => true,
+      preview: o => { const next = { ...bind, base: r, props: at(o) }; previewNow.current = next; setRefPreview(next) },
+      commit: o => {
+        clear()
+        const now = refNow(bind)
+        if (!still() || !now || !sameBase(now, r)) { note(why); bump(); return }
+        run(x => x.setReference(r.id, at(o)))
+      },
+      cancel: clear,
+    }
+  }
+  /**
+   * Arrow keys while Move picture is on (§8.2, §8a.2): a key run on the active picture — Shift ×10, Option or
+   * Ctrl ×0.1, one undo step for the whole run (bowen 1791733125, 1791733775) — never reaching lines.
+   */
   keyHooks.current.nudge = (e: KeyboardEvent) => {
-    if (!moveRef || !e.key.startsWith('Arrow')) return false
+    if (!moveRef || !isArrow(e.key)) return false
     e.preventDefault()
-    if (gesture.current || previewNow.current) return true
-    const r = refNow(activeRef)
-    if (!r) return true
-    const step = e.shiftKey ? 10 : 1, d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key as 'ArrowLeft']
-    if (d) run(x => x.setReference(r.id, { x: r.x + d[0]!, y: r.y + d[1]! }))
+    if (gesture.current && gesture.current.id !== KEYS) return true // a drag runs: one session at a time
+    if (!picMover.running && previewNow.current) return true // a panel preview is open
+    picMover.keyDown(() => { const r = refNow(activeRef); return r ? pictureTarget(r, { core, gen: refGen.current, id: r.id, src: r.src }, () => true, 'picture move dropped: the picture changed underneath') : undefined },
+      { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey })
+    if (picMover.running === 'keys') holdKeys()
     return true
   }
+  /** The selection's arrows (with V / A): interaction runs them; the bench gives the run the one gesture slot. */
+  keyHooks.current.afterArrow = () => { if (ix.moving() === 'keys') holdKeys() }
   const onPoseDown = (e: React.PointerEvent) => {
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return
@@ -624,13 +666,22 @@ export function App() {
       if (restoringNow.current) return
       if (posing.current) return
       if (keyHooks.current.nudge?.(e)) return
+      if (isArrow(e.key) && gesture.current && gesture.current.id !== KEYS) { e.preventDefault(); return } // a drag runs: one session at a time
       // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
       if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && ix.key(e.key, mods(e))) { e.preventDefault(); chooseTool(ix.tool); return }
-      if (ix.key(e.key, mods(e))) e.preventDefault()
+      if (ix.key(e.key, { ...mods(e), ctrl: e.ctrlKey, repeat: e.repeat })) { e.preventDefault(); if (isArrow(e.key)) keyHooks.current.afterArrow?.() }
     }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
+    // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
+    const up = (e: KeyboardEvent) => { if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key) }
+    // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
+    const blur = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('leaving the window') }
+    const focus = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null
+      if (gesture.current?.id === KEYS && t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) gesture.current.cancel('focus moving to a field')
+    }
+    window.addEventListener('keydown', key); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('focusin', focus)
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('focusin', focus) }
   }, [ix])
 
   // what the selection touches, for the rotate / scale buttons and the A handles

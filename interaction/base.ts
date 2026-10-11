@@ -9,7 +9,8 @@ export type Id = string
 export type Unit = Snapshot['selection'][number]
 export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
 export interface Options { joinMode: 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
-export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean }
+/** `meta`: ⌘ or Ctrl, for the shortcuts; `ctrl` alone and `repeat` (a held key) are read by moving with arrow keys only. */
+export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean; repeat?: boolean }
 
 /**
  * What the app gives: the open drawing, a source of new ids, the current layer (new lines go
