@@ -194,4 +194,76 @@ describe('failure and autosave off (dot 1791705120)', () => {
     s.writes.shift()!.done(); await tick()
     expect(a.status()).toEqual({ state: 'saved' })
   })
+
+  it('handover after the old queue failed on C: the disk still holds B, so nothing is restored; C is kept and written again (dot 1791705517)', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+    const a = createAutosave(s.store, first.options)
+    await a.start()
+    first.d.text = 'B'; a.want(); await tick()
+    first.d.text = 'C'; a.want()
+    a.dispose()
+    s.writes.shift()!.done(); await tick() // B lands
+    s.writes.shift()!.fail('quota'); await tick() // C fails: the disk holds B
+    const second = drawing('C'), b = createAutosave(s.store, second.options) // the page's drawing still holds C
+    await b.start(); await tick()
+    expect(second.d.applied).toEqual([]) // B was not restored over C
+    expect([s.writes.map(w => w.value), b.unsaved(), b.status().notice]).toEqual([['C'], true, expect.stringMatching(/not saved yet/)])
+    s.writes.shift()!.done(); await tick()
+    expect([s.data[CURRENT], b.status().state]).toEqual(['C', 'saved'])
+  })
+})
+
+describe('one handover barrier through the whole chain (dot 1791705686)', () => {
+  it('three instances: one mounted and dropped in between does not let the third read before the first one\'s B lands', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+    const a = createAutosave(s.store, first.options)
+    await a.start()
+    first.d.text = 'B'; a.want(); await tick() // B in flight
+    const x = createAutosave(s.store, drawing().options)
+    void x.start(); x.dispose() // mounted and unmounted at once
+    const third = drawing(), y = createAutosave(s.store, third.options)
+    const started = y.start(); await tick(); await tick()
+    expect(third.d.applied).toEqual([])
+    s.writes.shift()!.done(); await started; await tick()
+    expect([third.d.applied, s.writes.length, s.data[CURRENT]]).toEqual([['B'], 0, 'B'])
+  })
+
+  it('a failed C is handed over through an instance that never started', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+    const a = createAutosave(s.store, first.options)
+    await a.start()
+    first.d.text = 'C'; a.want(); await tick()
+    s.writes.shift()!.fail('quota'); await tick()
+    createAutosave(s.store, drawing().options).dispose()
+    const third = drawing(), y = createAutosave(s.store, third.options)
+    await y.start(); await tick()
+    expect([third.d.applied, s.writes.map(w => w.value), y.unsaved()]).toEqual([['C'], ['C'], true])
+  })
+
+  it('the old instance\'s restore read in flight: the new one reads only after it returns, and the old one applies nothing', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), release = s.holdRead()
+    let reads = 0
+    const store: Store = { get: k => { reads++; return s.store.get(k) }, put: (k, v) => s.store.put(k, v) }
+    const first = drawing(), a = createAutosave(store, first.options)
+    void a.start(); await tick()
+    const second = drawing(), b = createAutosave(store, second.options)
+    const started = b.start(); await tick(); await tick()
+    expect(reads).toBe(1)
+    release(); await started; await tick()
+    expect([reads, first.d.applied, second.d.applied, s.writes.length]).toEqual([2, [], ['A'], 0])
+  })
+
+  it('the old instance\'s backup in flight: the new one neither reads nor writes until it lands, and the old one does nothing after', async () => {
+    const s = slowStore({ [CURRENT]: 'bad file' }), first = drawing('new')
+    const a = createAutosave(s.store, first.options)
+    void a.start(); await tick()
+    expect(s.writes.map(w => w.key)).toEqual(['unreadable-42']) // a's backup in flight
+    const second = drawing('new'), b = createAutosave(s.store, second.options)
+    const started = b.start(); await tick(); await tick()
+    expect(s.writes.length).toBe(1)
+    s.writes.shift()!.done(); await tick()
+    expect(s.writes.map(w => w.key)).toEqual(['unreadable-42']) // only now b's own backup; a wrote no CURRENT
+    s.writes.shift()!.done(); await started; await tick()
+    expect([s.writes.map(w => [w.key, w.value]), a.status().state]).toEqual([[[CURRENT, 'new']], 'restoring'])
+  })
 })

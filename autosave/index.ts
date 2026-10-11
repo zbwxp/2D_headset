@@ -72,24 +72,34 @@ export interface Autosave {
 
 export const CURRENT = 'current'
 
-// one writer per page (dot 1791704242, 1791705088, 1791705181): a new instance waits until the previous
-// one's queue has drained (its newest text written, or failed) before it reads or writes; the previous
-// one takes no new saves once replaced. So the store is never read before a pending newer text lands,
-// and never written by two instances at once.
+// one writer per page (dot 1791704242, 1791705088, 1791705181, 1791705686): a new instance waits until
+// every earlier one is idle (its read, backup and queue all ended) before it reads or writes; an earlier
+// one takes no new saves once replaced, and a newest text it failed to write is handed to the next. So
+// the store is never read before a pending newer text lands, and never used by two instances at once.
 let owner: object | null = null
-let previousIdle: () => Promise<void> = () => Promise.resolve()
+let previous: { idle(): Promise<void>; leftover(): string | undefined } = { idle: () => Promise.resolve(), leftover: () => undefined }
 
 export function createAutosave(store: Store, o: Options): Autosave {
   const me = {}
-  const before = previousIdle
+  const before = previous
   owner = me
   let state: State = 'restoring', error: string | undefined, notice: string | undefined
   let disposed = false, writing = false
   /** The text last durably written; the newest text asked for; with autosave off, the text when it went off. */
   let disk: string | undefined, wanted: string | undefined, offBase: string | undefined
+  // one handover barrier for every store operation (restore read, backup, saves), chained through all
+  // predecessors: an instance is idle when its predecessor is, and it has nothing in flight and nothing
+  // left to write (dot 1791705686)
+  let ops = 0
   let idleWaiters: (() => void)[] = []
-  const idle = () => (!writing && (wanted === undefined || wanted === disk || error !== undefined) ? Promise.resolve() : new Promise<void>(r => { idleWaiters.push(r) }))
-  previousIdle = idle
+  const quiet = () => ops === 0 && !writing && (wanted === undefined || wanted === disk || state === 'failed')
+  const wake = () => { if (quiet()) { const w = idleWaiters; idleWaiters = []; for (const r of w) r() } }
+  const idle = async () => { await before.idle(); if (!quiet()) await new Promise<void>(r => { idleWaiters.push(r) }) }
+  /** A store operation counted by the barrier. */
+  const op = async <T>(f: () => Promise<T>): Promise<T> => { ops++; try { return await f() } finally { ops--; wake() } }
+  /** What this instance asked for but could not write, handed on; an instance that never asked passes its predecessor's on. */
+  const leftover = (): string | undefined => (wanted === undefined ? before.leftover() : !writing && wanted !== disk ? wanted : undefined)
+  previous = { idle, leftover }
   const accepting = () => !disposed && owner === me
   const notify = () => { if (!disposed) o.changed() }
   const set = (s: State, e?: string) => { if (s === state && e === error) return; state = s; error = e; notify() }
@@ -106,7 +116,7 @@ export function createAutosave(store: Store, o: Options): Autosave {
       const text = wanted
       writing = true; settle()
       try {
-        await store.put(CURRENT, text)
+        await op(() => store.put(CURRENT, text))
         disk = text
         error = undefined
       } catch (err) {
@@ -120,23 +130,34 @@ export function createAutosave(store: Store, o: Options): Autosave {
     }
     writing = false
     settle()
-    if (!writing) { const w = idleWaiters; idleWaiters = []; for (const r of w) r() }
+    wake()
   }
   const off = (why: string) => { if (accepting()) { offBase = o.current(); state = 'off'; error = why; notify() } }
 
   return {
     async start() {
-      await before() // the previous instance's newest text lands first (dot 1791705181)
+      await before.idle() // the previous instance's newest text lands first (dot 1791705181)
       if (!accepting()) return // unmounted or replaced: a late restore changes nothing
+      // its newest text failed to land: the disk holds an older one, so restoring would lose it. It is
+      // handed over instead: kept as the drawing, unsaved, and written by this queue (dot 1791705517)
+      const handed = before.leftover()
+      if (handed !== undefined) {
+        if (o.current() !== handed) o.apply(handed)
+        notice = 'the previous page\'s last change was not saved yet; it is kept and saved again'
+        state = 'saved'; notify()
+        wanted = o.current()
+        void pump()
+        return
+      }
       let stored: string | undefined
-      try { stored = await store.get(CURRENT) } catch (err) { off(`could not read the saved drawing: ${(err as Error)?.message ?? err}`); return }
+      try { stored = await op(() => store.get(CURRENT)) } catch (err) { off(`could not read the saved drawing: ${(err as Error)?.message ?? err}`); return }
       if (!accepting()) return
       if (stored !== undefined) {
         try { o.apply(stored); disk = stored }
         catch (err) {
           // never overwritten silently: backed up first; if the backup fails, autosave stays off
           const key = `unreadable-${(o.now ?? Date.now)()}`
-          try { await store.put(key, stored) } catch (e) { off(`the saved drawing does not open and could not be backed up: ${(e as Error)?.message ?? e}`); return }
+          try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing does not open and could not be backed up: ${(e as Error)?.message ?? e}`); return }
           if (!accepting()) return
           notice = `the saved drawing did not open (${(err as Error)?.message ?? err}); it was kept as ${key}`
         }
@@ -166,4 +187,4 @@ export function createAutosave(store: Store, o: Options): Autosave {
 }
 
 /** @internal for tests: forget the page's writer. */
-export function resetPage() { owner = null; previousIdle = () => Promise.resolve() }
+export function resetPage() { owner = null; previous = { idle: () => Promise.resolve(), leftover: () => undefined } }
