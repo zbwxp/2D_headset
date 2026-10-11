@@ -8,10 +8,10 @@ const files = (dir: string, ext: RegExp) => readdirSync(join(root, dir), { recur
 const specs = (path: string) => [...readFileSync(path, 'utf8').matchAll(/from '([^']+)'/g)].map(m => m[1]!)
 
 describe('visual package boundary', () => {
-  it('imports only core’s package root (as types), React, or its own files', () => {
+  it('imports only core’s package root (as types), React, the rename package, or its own files', () => {
     for (const f of files('visual', /\.(ts|tsx)$/)) {
       const text = readFileSync(join(root, 'visual', f), 'utf8')
-      for (const s of specs(join(root, 'visual', f))) expect(s === '../src' || s === 'react' || s.startsWith('./'), `${f}: ${s}`).toBe(true)
+      for (const s of specs(join(root, 'visual', f))) expect(s === '../src' || s === 'react' || s === '../rename' || s.startsWith('./'), `${f}: ${s}`).toBe(true)
       for (const line of text.split('\n').filter(l => l.includes("from '../src'"))) expect(line.startsWith('import type'), `${f}: ${line}`).toBe(true)
     }
   })

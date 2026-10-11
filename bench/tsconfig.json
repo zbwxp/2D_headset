@@ -27,6 +27,7 @@
     "../src/geometry/bezier-js.d.ts",
     "../test/fixtures/*.json",
     "../interaction",
-    "../visual"
+    "../visual",
+    "../rename"
   ]
 }

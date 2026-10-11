@@ -1,5 +1,7 @@
 # Rename by double-click, and tool cursors — rules before code
 
+**§1 coded** (for dot's check): `rename/index.tsx`, used in `visual/LayersPanel.tsx` (layer, curve, line rows) and the bench's slot names; the Rename line / Rename curve buttons removed. Tests `bench/test/rename.test.tsx` (16), `rename/test/boundary.test.ts`; in `bench/test/reference-move.test.tsx` the slot test renames by double-click and a new test opens a drawing during a slot edit. Checked in Chrome on port 5199: double-click a curve name, type, Enter renames; Esc cancels; letters typed in the field do not switch tools.
+
 Asked by bowen 1791708333: (1) curves and lines are renamed by double-click like layers, with renaming pulled out into a small package others call; (2) Pen, Fill, A and V change the cursor (pen, paint bucket, hand; the hand grabs while pressed), in its own package that every tool asks, falling back to the default arrow.
 
 ## 1. `rename/` — one way to rename a name shown in a list
@@ -12,6 +14,7 @@ Asked by bowen 1791708333: (1) curves and lines are renamed by double-click like
 - It never decides whether a name is allowed: it calls `onRename(newName)`, and the caller passes it to core (a taken or empty name is refused by core and shown in the status line, as layers do now).
 - A click on the name still reaches the row (selection works as before); only the double-click edits.
 - It knows nothing of core, layers or lines: it imports React only.
+- **Boundaries** (dot 1791708548): with an input method, the Enter that picks a word does not commit; keys typed in the field never reach the tool shortcuts; Enter then a blur commits once, Esc then a blur commits nothing. An edit belongs to the name it started from: if that name changes under it (an undo), the field closes and the edit is dropped; if the row goes (the object deleted, another drawing opened: the layers panel and each slot name are remounted per drawing), nothing is written, so an old edit never reaches the same id in another drawing. Core's refusals are shown as before.
 
 **Used by:** the layer row, the continuous-curve row and the line row in the layers panel (`visual/`), and the slot name in the bench's reference panel. The bench's **Rename curve** / **Rename line** buttons and every `prompt` used for renaming are removed: one way only.
 

@@ -162,12 +162,25 @@ describe('position slots in the panel (§8.3)', () => {
     await act(async () => { setValue(t.field('x'), '-60'); key('Enter', t.field('x')) })
     await act(async () => { t.button('调出', slots()).click() })
     expect(t.pic().x).toBe(25)
-    const realPrompt = window.prompt; window.prompt = () => '正面'
-    await act(async () => { slots().querySelector('b')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
-    window.prompt = realPrompt
+    await act(async () => { slots().querySelector('[data-name]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+    await act(async () => { const f = slots().querySelector('[data-rename]') as HTMLInputElement; setValue(f, ' 正面 '); key('Enter', f) })
     expect(t.pic().slots[0]!.name).toBe('正面')
     await act(async () => { t.button('×', slots()).click() })
     expect(t.pic().slots[0]!.placement).toBeNull()
     expect(t.button('调出', slots()).disabled).toBe(true)
+  })
+
+  it('a slot name being edited when the same drawing is opened again: the edit is dropped, nothing written to the slot of that id (dot 1791708548)', async () => {
+    const t = await setup()
+    const slots = () => t.host.querySelector(`[data-slots="${t.id}"]`)!
+    await act(async () => { t.button('＋ 加一格', slots()).click() })
+    await act(async () => { slots().querySelector('[data-name]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+    const f = slots().querySelector('[data-rename]') as HTMLInputElement
+    await act(async () => { setValue(f, 'stale') })
+    const open = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(open, 'files', { value: [new File([save(bench().core)], 'same.json')], configurable: true })
+    await act(async () => { open.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    await act(async () => { key('Enter', f); f.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+    expect([slots().querySelector('[data-rename]'), t.pic().slots[0]!.name]).toEqual([null, ''])
   })
 })

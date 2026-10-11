@@ -8,6 +8,7 @@ import { createInteraction, REACH, type Tool, type Preview } from '../../interac
 import { createAutosave, indexedDbStore, type Autosave, type Store } from '../../autosave'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
+import { Rename } from '../../rename'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -709,7 +710,7 @@ export function App() {
             {B('Remove', () => run(x => x.removeReference(r.id)))}
             <div data-slots={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, width: '100%' }}>
               {r.slots.map((sl, k) => <span key={k} data-slot={k} style={{ border: '1px solid #ccc', padding: '0 3px' }}>
-                <b title="double-click to rename" onDoubleClick={() => { const n = prompt('slot name', sl.name); if (n !== null) writeSlots(r.slots.map((x, j) => (j === k ? { ...x, name: n.slice(0, 100) } : x))) }}>{sl.name || `slot ${k + 1}`}</b>
+                <Rename key={drawing} name={sl.name || `slot ${k + 1}`} style={{ fontWeight: 700, flex: 'none' }} fieldStyle={{ width: 70 }} onRename={n => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, name: n.slice(0, 100) } : x)))} />
                 <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: { x: r.x, y: r.y, scale: r.scale, angle: r.angle } } : x)))}>存</button>
                 <button disabled={!sl.placement} onClick={() => sl.placement && run(x => x.setReference(r.id, { ...sl.placement! }))}>调出</button>
                 <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: null } : x)))}>×</button>
@@ -721,8 +722,7 @@ export function App() {
         </div>
         <b>Names</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {B('Rename line', () => { if (selLines.length !== 1) return; const n = prompt('line name', line(selLines[0]!).name); if (n !== null) run(x => x.renameLine(selLines[0]!, n)) })}
-          {B('Rename curve', () => { const gid = selLines[0] && groupOf(selLines[0]); if (!gid) return; const n = prompt('curve name', s.groups.find(x => x.id === gid)!.name); if (n !== null) run(x => x.renameGroup(gid, n)) })}
+          {/* renaming is by double-click on the name in the layers panel (rename/, bowen 1791708333) */}
           <input placeholder="find by name" style={{ width: 110 }} onKeyDown={e => {
             if (e.key !== 'Enter') return
             const q = (e.target as HTMLInputElement).value, l = s.lines.find(x => x.name === q), gr = s.groups.find(x => x.name === q)

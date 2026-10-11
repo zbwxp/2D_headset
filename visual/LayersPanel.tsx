@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import type { Snapshot, Geometry, Editor, Vec } from '../src'
 import { PropertiesPanel, type Subject } from './PropertiesPanel'
+import { Rename } from '../rename'
 
 type Id = string
 const C = { bg: '#323232', row: '#3c3c3c', active: '#4b5f7c', selected: '#3f4b5c', text: '#ddd', dim: '#8a8a8a', line: '#262626', thumb: '#fff', icon: '#c8c8c8' }
@@ -87,7 +88,6 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
     }
     select([id], id)
   }
-  const [editing, setEditing] = useState<Id | null>(null)
   const [dragging, setDragging] = useState<Id | null>(null)
   const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
   const linesIn = (layer: Id) => s.lines.filter(l => layerOf.get(l.a) === layer)
@@ -110,13 +110,9 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
   }
 
   const all = (ids: Id[], f: (id: Id) => boolean) => ids.length > 0 && ids.every(f)
-  // Enter or leaving the field commits once; a taken or empty name is refused by core and shown in the status line
-  const rename = (id: Id, old: string, value: string) => {
-    if (editing !== id) return
-    setEditing(null)
-    const n = value.trim()
-    if (n && n !== old) run(x => x.renameLayer(id, n))
-  }
+  // every name is renamed one way, by double-click (rename/, bowen 1791708333); a taken name is refused by
+  // core and shown in the status line
+  const field = { background: '#1e1e1e', color: C.text, border: '1px solid #666' }
   const layers = [...s.layers].reverse() // top first, as Adobe lists them
   const activeLayer = s.layers.find(l => l.id === active)
   const fillsShown = s.loops.some(l => l.filled && l.visible)
@@ -163,11 +159,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
               <Icon d={LOCK} on={locked} title={locked ? '解锁图层' : '锁定图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { locked: !locked })) }} />
               <Icon d={isOpen ? TWIRL_OPEN : TWIRL_SHUT} title="展开" onClick={e => { e.stopPropagation(); toggle(L.id) }} />
               <Thumb lines={ids} />
-              {editing === L.id
-                ? <input autoFocus defaultValue={L.name} style={{ flex: 1, minWidth: 0, background: '#1e1e1e', color: C.text, border: '1px solid #666' }}
-                  onBlur={e => rename(L.id, L.name, e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') rename(L.id, L.name, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditing(null) }} />
-                : <span onDoubleClick={() => setEditing(L.id)} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="双击改名">{L.name}</span>}
+              <Rename name={L.name} fieldStyle={field} onRename={n => run(x => x.renameLayer(L.id, n))} />
               {mirrored && <Icon d={MIRROR} title="含镜像联动" />}
               <span style={{ color: C.dim, flex: 'none' }}>{lines.length}</span>
             </div>
@@ -180,8 +172,9 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 <Icon d={EYE} on={gShown} title={gShown ? '隐藏曲线' : '显示曲线'} onClick={() => run(x => x.groupState(gr.id, { visible: !gShown }))} />
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
                 <Thumb lines={gr.lines} />
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）"
-                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id, 'group')}>{gr.name}</span>
+                <Rename name={gr.name} fieldStyle={field} onRename={n => run(x => x.renameGroup(gr.id, n))} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）· 双击改名"
+                  style={{ cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }}
+                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id, 'group')} />
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
                 <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
               </div>
@@ -191,8 +184,9 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId }:
                 return <div key={id} data-line={id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 2px 52px', background: '#2e2e2e', borderBottom: `1px solid ${C.line}` }}>
                   <Icon d={EYE} on={l.state.visible} title={l.state.visible ? '隐藏线' : '显示线'} onClick={() => run(x => x.lineState(id, { visible: !l.state.visible }))} />
                   <Icon d={LOCK} on={l.state.locked} title={l.state.locked ? '解锁线' : '锁定线'} onClick={() => run(x => x.lineState(id, { locked: !l.state.locked }))} />
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }} title="点击选中这条线（Shift 连选 · Cmd 增减）"
-                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id, 'line')}>{l.name}</span>
+                  <Rename name={l.name} fieldStyle={field} onRename={n => run(x => x.renameLine(id, n))} title="点击选中这条线（Shift 连选 · Cmd 增减）· 双击改名"
+                    style={{ cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }}
+                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id, 'line')} />
                   <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽 · 两端（相接方式或开放端点的笔触）">w{l.stroke.width} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>
