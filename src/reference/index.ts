@@ -49,9 +49,10 @@ export function check(v: unknown): ReferenceImage {
   if (typeof i.id !== 'string' || !i.id) refuse('reference-bad-value', 'id must be a non-empty string')
   if (typeof i.view !== 'string' || !views.isView(i.view)) refuse('reference-bad-value', `${JSON.stringify(i.view)} is not a view`)
   const src = i.src
-  const m = typeof src === 'string' ? /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]{16})/.exec(src) : null
-  if (typeof src !== 'string' || !m || src.length > LIMITS.srcLength) refuse('reference-bad-image', 'the picture must be a PNG, JPEG or WebP data URL within the size limit')
-  const bytes = [...atob(m![2]!)].map(c => c.charCodeAt(0))
+  // the whole payload is base64, padding included (dot), not only its first characters
+  const m = typeof src === 'string' && src.length <= LIMITS.srcLength ? /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]{16}[A-Za-z0-9+/]*={0,2})$/.exec(src) : null
+  if (typeof src !== 'string' || !m || m[2]!.length % 4 !== 0) refuse('reference-bad-image', 'the picture must be a PNG, JPEG or WebP data URL within the size limit')
+  const bytes = [...atob(m![2]!.slice(0, 16))].map(c => c.charCodeAt(0))
   if (!TYPES[m![1]!]!(bytes)) refuse('reference-bad-image', `the picture's bytes are not a ${m![1]} file`)
   const side = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= LIMITS.side
   if (!side(i.width) || !side(i.height) || (i.width as number) * (i.height as number) > LIMITS.side ** 2) refuse('reference-bad-size', `width and height must be whole pixels, 1–${LIMITS.side}`)

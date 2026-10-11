@@ -544,7 +544,7 @@ export function App() {
           }} /></label>
           {core.in(shown).references().map(r => <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <input type="checkbox" checked={r.visible} onChange={e => run(x => x.setReference(r.id, { visible: e.target.checked }))} />
-            {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => <label key={k}>{k} <input type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
+            {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => <label key={k}>{k} <input key={`${r.id}:${k}:${r[k]}`} data-field={k} type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
               onKeyDown={e => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if ((e.target as HTMLInputElement).value.trim() !== '' && Number.isFinite(v)) run(x => x.setReference(r.id, { [k]: v })) } }} /></label>)}
             {B('Remove', () => run(x => x.removeReference(r.id)))}
           </div>)}

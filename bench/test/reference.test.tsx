@@ -11,6 +11,7 @@ import { App } from '../src/app'
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
+if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 // jsdom decodes no picture: a stub whose decoding the test finishes (or fails) when it chooses
 const pending: { done(w: number, h: number): void; fail(): void }[] = []
@@ -80,5 +81,31 @@ describe('reference pictures in the bench', () => {
     await u.choose()
     await act(async () => { pending.shift()!.fail() })
     expect(save(bench().core)).toBe(before)
+  })
+
+  it('the number fields follow the document: edit → undo → redo, and a file with the same id but other values (dot 1791701767)', async () => {
+    const t = await setup()
+    await t.choose(); await t.decode()
+    const id = bench().core.in('view:0,0').references().at(-1)!.id
+    const field = (k: string) => t.host.querySelector(`[data-ref="${id}"] [data-field="${k}"]`) as HTMLInputElement
+    const x0 = field('x').value
+    await act(async () => {
+      const el = field('x')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '123')
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(field('x').value).toBe('123')
+    await act(async () => { t.button('Undo').click() })
+    expect(field('x').value).toBe(x0)
+    await act(async () => { t.button('Redo').click() })
+    expect(field('x').value).toBe('123')
+    // a file whose picture has the same id and another x
+    const file = JSON.parse(save(bench().core))
+    file.document.reference.images.find((i: { id: string }) => i.id === id).x = 7
+    const input = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'd.json', { type: 'application/json' })], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    expect(field('x').value).toBe('7')
   })
 })

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { Core, save, open, Refusal, type ReferenceImage } from '../src'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD'
+const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
 const WEBP = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=='
 const img = (id: string, more: Partial<ReferenceImage> = {}): ReferenceImage => ({ id, view: 'view:0,0', src: PNG, width: 1, height: 1, x: 0, y: 0, scale: 10, angle: 0, opacity: 0.5, visible: true, ...more })
 const code = (f: () => void) => { try { f() } catch (x) { return x instanceof Refusal ? x.code : (x as Error).message } return 'no refusal' }
@@ -35,8 +35,9 @@ describe('reference pictures', () => {
     d.edit(e => e.placeReference(img('ok', { src: WEBP })))
     const cases: [Partial<ReferenceImage>, string][] = [
       [{ src: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }, 'reference-bad-image'],
-      [{ src: 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD' }, 'reference-bad-image'],
+      [{ src: 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD=' }, 'reference-bad-image'],
       [{ src: 'https://example.com/a.png' }, 'reference-bad-image'],
+      [{ src: 'data:image/png;base64,iVBORw0KGgoAAAAN%%%' }, 'reference-bad-image'], [{ src: 'data:image/png;base64,iVBORw0KGgoAAAANS' }, 'reference-bad-image'],
       [{ width: 16385 }, 'reference-bad-size'], [{ width: 0 }, 'reference-bad-size'], [{ height: 1.5 }, 'reference-bad-size'],
       [{ x: NaN }, 'reference-bad-value'], [{ scale: 0 }, 'reference-bad-value'], [{ opacity: 1.5 }, 'reference-bad-value'],
       [{ width: 16384, scale: 1.7e308 }, 'reference-bad-value'], [{ view: 'view:45,0' }, 'reference-bad-value'],
@@ -81,7 +82,7 @@ describe('reference pictures', () => {
     d.edit(e => e.placeReference(img('r1')))
     const text = save(d)
     expect(open(text).in('view:0,0').references()).toEqual(d.in('view:0,0').references())
-    const bad = JSON.parse(text); bad.document.reference.images[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD'
+    const bad = JSON.parse(text); bad.document.reference.images[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
     expect(() => open(JSON.stringify(bad))).toThrow(/open-failed: reference: reference-bad-image/)
     expect(() => open(text.replace('"version":5', '"version":4'))).toThrow(/unsupported version 4/)
     const pasted = doc()
