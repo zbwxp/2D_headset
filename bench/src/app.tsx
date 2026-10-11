@@ -9,6 +9,7 @@ import { createAutosave, indexedDbStore, type Autosave, type Store } from '../..
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
 import { Rename } from '../../rename'
+import { cursorFor } from '../../cursor'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -309,6 +310,9 @@ export function App() {
   // ends the drag in interaction (a pan simply stops) — never only one of the two (dot 1791552803)
   // `right` marks a right-button pan, whose own release (unmoved) is the right click (bowen 1791554290)
   const gesture = useRef<null | { id: number; right: boolean; cancel: (why: string) => void }>(null)
+  // a press the tool took is held: the canvas cursor asks cursor/ with it (A / V grab). Set where the
+  // gesture starts, cleared in its one `stop` (release, cancel, blur, tool change, playback) (dot 1791708548)
+  const [pressed, setPressed] = useState(false)
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -354,12 +358,14 @@ export function App() {
     // its window listeners would otherwise still act on that press's release (dot 1791696828)
     const onOtherDown = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('a new press of the same pointer') }
     const stop = () => {
+      setPressed(false)
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release)
       window.removeEventListener('pointercancel', onCancel); window.removeEventListener('blur', onBlur)
       window.removeEventListener('pointerdown', onOtherDown, true)
       if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
     gesture.current = { id, right: e.button === 2, cancel: cancelWith }
+    if (kind === 'tool') setPressed(true)
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', release)
     window.addEventListener('pointercancel', onCancel); window.addEventListener('blur', onBlur)
     window.addEventListener('pointerdown', onOtherDown, true)
@@ -787,7 +793,7 @@ export function App() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
-        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: pose ? 'default' : cursorFor(zoomTool ? 'Z' : ix.tool, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={restoring ? undefined : pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)

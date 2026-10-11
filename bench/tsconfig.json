@@ -28,6 +28,7 @@
     "../test/fixtures/*.json",
     "../interaction",
     "../visual",
-    "../rename"
+    "../rename",
+    "../cursor"
   ]
 }

@@ -1,5 +1,7 @@
 # Rename by double-click, and tool cursors — rules before code
 
+**§2 coded** (for dot's check, after §1): `cursor/index.ts` (no imports), the bench canvas asks `cursorFor`; tests `cursor/test/cursor.test.ts` (5), `bench/test/cursor.test.tsx` (5). Checked in Chrome on port 5199: the computed cursor is the image (not the fallback) for Pen and Fill and both images decode at 24 × 24; V shows grab, grabbing while a press on a point is held, grab after release.
+
 **§1 coded** (for dot's check): `rename/index.tsx`, used in `visual/LayersPanel.tsx` (layer, curve, line rows) and the bench's slot names; the Rename line / Rename curve buttons removed. Tests `bench/test/rename.test.tsx` (16), `rename/test/boundary.test.ts`; in `bench/test/reference-move.test.tsx` the slot test renames by double-click and a new test opens a drawing during a slot edit. Checked in Chrome on port 5199: double-click a curve name, type, Enter renames; Esc cancels; letters typed in the field do not switch tools.
 
 Asked by bowen 1791708333: (1) curves and lines are renamed by double-click like layers, with renaming pulled out into a small package others call; (2) Pen, Fill, A and V change the cursor (pen, paint bucket, hand; the hand grabs while pressed), in its own package that every tool asks, falling back to the default arrow.
@@ -36,6 +38,8 @@ Asked by bowen 1791708333: (1) curves and lines are renamed by double-click like
 
 Each SVG cursor has a CSS keyword fallback (`crosshair` for the pen and the bucket), so a browser that refuses the image still shows something.
 
+**Boundaries** (dot 1791708548): the grab is set where a gesture the tool took starts and cleared in the gesture's one `stop` (release, pointercancel, Esc, leaving the window, a new press, a tool change, entering playback, unmount), so it never sticks; in playback the canvas shows the arrow whatever tool was left on.
+
 **The bench asks it** for the canvas: `cursor: cursorFor(zoomTool ? 'Z' : ix.tool, pressed)`, where `pressed` is true from a left press that the tool took on the canvas until its release or cancel (the gesture the bench already tracks). Panning with the middle or right button is unchanged. A new tool gets a cursor by adding one row to the table; without a row it shows the arrow.
 
 **Tests:** the table (each tool, pressed and not, an unknown tool → `default`); the bench canvas shows the pen / bucket cursor after choosing Pen / Fill, `grab` for A and V, `grabbing` while a press with A or V is held and `grab` again after release or cancel, the arrow for Split. Feature-off check: the bench test fails if the canvas does not ask `cursorFor`. Checked once in a real browser (the cursor images load, hotspots in the right place).
@@ -44,6 +48,7 @@ Each SVG cursor has a CSS keyword fallback (`crosshair` for the pen and the buck
 
 - Cursors over handles or points (hover feedback), and cursors for the middle/right-button pan: not asked.
 - Icons on the tool buttons: not asked (the buttons keep their text).
+- With **Move picture** on, a press moves the reference picture, but the canvas keeps the tool's cursor (e.g. the pen). Not asked; recorded for bowen.
 
 ## Order
 
