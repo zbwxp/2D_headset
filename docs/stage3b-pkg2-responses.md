@@ -1,12 +1,12 @@
 # Stage 3b, package 2: responses as data, evaluate with responses — final rules, read and write paths
 
-**Status:** for dot's check (dot 1791689059: the final rules and read / write paths of the response data and its evaluation, before code). Nothing is coded until this passes.
+**Status:** accepted for coding by dot 1791689721 (scope as below). Earlier: for dot's check (dot 1791689059: the final rules and read / write paths of the response data and its evaluation, before code). Nothing is coded until this passes.
 
 **Not in this package:**
 - the correction itself (`correct`, package 3);
 - the outer view's minimal move (package 4, method still open);
 - the bench (package 5);
-- the scope question to bowen (corrections only on edges) does not affect this package: the data and its evaluation are the same either way.
+- this package provides the foundation of **edge** responses. It does not promise that corrections inside cells, if bowen wants them later, will need no extension of the data (dot 1791689721).
 
 **Ledger check:**
 - **Row 5 is triggered:** this package changes the clip, which carries responses. So the clipboard's duplicated list of layer kinds is replaced by `shapes.KINDS` here.
@@ -139,7 +139,7 @@ Fields as `net.Changes` names them (dot 1791689396):
 - **Data:** one content, one form (empty parts not stored; knots on the diagonal kept); the link merge's equality check at the union of knots (missing = identity; exact, no tolerance).
 - **Evaluate:**
   - no responses → bit-for-bit 3a at sampled poses;
-  - every one of the 12 edges: a response there acts exactly on its edge and on the two cells beside it;
+  - every one of the 12 edges: a response there acts exactly on its edge and on the cells beside it, two for an inner edge (pitch 0 row, yaw 0 column) and one for an outer edge (pitch ±45 rows, yaw ±90 columns) (dot 1791689721);
   - extrapolation: values 10 and 20, response −0.5 → 5 (a negative weight kept); a response above 1 likewise;
   - appearance (slot A) and radii use the geometric weights, unchanged by responses;
   - at the nine views exact with responses present;
