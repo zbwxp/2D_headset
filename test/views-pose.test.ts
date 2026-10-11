@@ -83,8 +83,26 @@ describe('atPose: parameters and drawn geometry', () => {
     expect(d.atPose({ yaw: -80, pitch: 40 }).snapshot().points.find(p => p.id === 'c')!.endStroke).toEqual({ taper: 1 })
     expect(d.atPose({ yaw: -10, pitch: 5 }).snapshot().points.find(p => p.id === 'c')!.endStroke).toBeUndefined()
   })
-})
 
+  it('points and lines named like inherited properties (constructor, toString) keep "no end stroke" at all nine views (dot 1791685237)', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('toString', { id: 'constructor', layer: 'L', position: P(0) }, { id: 'toString', layer: 'L', position: P(10) })
+      e.line('constructor', 'toString', { id: 'hasOwnProperty', layer: 'L', position: P(10, 10) })
+    })
+    d.edit(e => e.join('toString', 'toString', 'constructor', { mode: 'arc', radius: 2 }))
+    d.editIn('view:90,45', e => e.move([{ id: 'hasOwnProperty', target: P(12, 9) }]))
+    const before = save(d)
+    for (const k of d.views()) {
+      const s = d.atPose(angle(k)).snapshot()
+      expect(s).toEqual(d.in(k).snapshot())
+      for (const id of ['constructor', 'toString', 'hasOwnProperty']) expect(s.points.find(p => p.id === id)!.endStroke).toBeUndefined()
+      expect(d.atPose(angle(k)).geometry()).toEqual(d.in(k).geometry())
+    }
+    expect(d.atPose({ yaw: 45, pitch: 22.5 }).snapshot().points.every(p => p.endStroke === undefined)).toBe(true)
+    expect(save(d)).toBe(before)
+  })
+})
 describe('atPose: read only', () => {
   it('changes nothing: the saved file and the undo history are the same; the scratch layer is never a view', () => {
     const d = doc()

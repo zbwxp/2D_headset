@@ -784,10 +784,12 @@ function posedState(s: State, posed: evaluate.Posed): { state: State; layer: str
   net.setHandles(n, Object.entries(posed.lines).flatMap(([line, l]) => [{ line, end: 'a' as const, offset: l.ha }, { line, end: 'b' as const, offset: l.hb }]))
   for (const [id, l] of Object.entries(posed.lines)) net.setLineStroke(n, id, l.stroke)
   for (const r of joins.rows(c.joins, n)) {
-    if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], posed.radii[joins.rowKey(r.point, r.lines[0], r.lines[1])]!)
+    const key = joins.rowKey(r.point, r.lines[0], r.lines[1])
+    if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], Object.hasOwn(posed.radii, key) ? posed.radii[key]! : NaN)
   }
   for (const p of net.points(n)) {
-    const e = posed.ends[p.id]
+    // own properties only: a point may be called `constructor` or `toString` (dot 1791685237)
+    const e = Object.hasOwn(posed.ends, p.id) ? posed.ends[p.id] : undefined
     if (e) joins.setEndStroke(c.joins, n, p.id, e)
     else joins.clearEndStroke(c.joins, n, p.id)
   }
