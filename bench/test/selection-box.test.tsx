@@ -150,5 +150,23 @@ describe('the selection box in the bench', () => {
     await act(async () => { t.svg.dispatchEvent(btn('pointerup', 300, t.Y + 300, 0)) })
     expect(t.svg.style.cursor).not.toBe('nwse-resize') // the test's screen = drawing: the pointer is far from the corner now
   })
+
+  it('a middle-button pan that carries the corner with the pointer: after the release the cursor is still the corner\'s (dot 1791738032)', async () => {
+    const t = await setup()
+    const g = globalThis as { DOMPoint?: unknown }, kept = g.DOMPoint
+    let pan = 0 // the view's shift: the drawing moves with the pointer
+    class Shifted { constructor(public x = 0, public y = 0) {} matrixTransform() { return { x: this.x - pan, y: this.y - pan } } }
+    g.DOMPoint = Shifted
+    try {
+      await act(async () => { t.svg.dispatchEvent(pe('pointermove', 100, t.Y + 100, 0)) })
+      expect(t.svg.style.cursor).toBe('nwse-resize')
+      const btn = (type: string, x: number, y: number, buttons: number) => { const e = pe(type, x, y, buttons); Object.defineProperty(e, 'button', { value: 1 }); return e }
+      await act(async () => { t.svg.dispatchEvent(btn('pointerdown', 100, t.Y + 100, 4)) })
+      pan = 200 // as the pan moves the view, the corner stays under the pointer
+      await act(async () => { t.svg.dispatchEvent(btn('pointermove', 300, t.Y + 300, 4)) })
+      await act(async () => { t.svg.dispatchEvent(btn('pointerup', 300, t.Y + 300, 0)) })
+      expect(t.svg.style.cursor).toBe('nwse-resize')
+    } finally { g.DOMPoint = kept }
+  })
 })
 
