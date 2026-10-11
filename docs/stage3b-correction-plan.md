@@ -160,7 +160,7 @@ The tests walk each row, including a component whose first-made point is deleted
 
 | Field | Values | Meaning |
 |---|---|---|
-| reads | `draft` / `settled-trial` / `published` | which version it reads: the edit's draft as written; the scratch copy with every view's positions settled (`this.view()`); or the published state (which equals the draft only when the operation stands alone) |
+| reads | `draft` / `settled-trial` | which version it reads: the edit's draft as written, or the scratch copy with every view's positions settled (`this.view()`). No operation reads the published state directly: the stage-2 operations read the draft, whose *geometry* equals the published state only because the alone rule lets nothing but selections and stroke broadcasts run before them (dot 1791687776 asked to check this; corrected here) |
 | writes | geometry layers (`edited` / `other-views` / `none`), structure (yes / no), records, animation | where it writes |
 | autoStructure | `edited-view` / `none` | whether the commit may auto-bind in the edited view because of it |
 | settle | `full` / `non-front-positions` / `none` | which position settling it needs |
@@ -168,7 +168,7 @@ The tests walk each row, including a component whose first-made point is deleted
 
 **The transaction:**
 - **checks each call when it is made**, inside the method wrapper, which already marks the whole edit failed even if the callback catches the throw. An operation with no declaration throws `undeclared-operation`, so the edit fails and nothing written before it is published (dot 1791687563);
-- **checks the actual writes at commit:** the layers that hold geometric intents (`targets`, `held`, `handleTips` carry their layer) must be within what the calls declared. Otherwise the edit is refused (`undeclared-write`);
+- **checks the actual writes at commit by content, not by intents:** geometric intents do not cover every write. Strokes (`net.setLineStroke`), per-layer radius and end-stroke slots (`net.setSlot`), and `base:angle` (`net.setPositions` / `setHandles` in `animation`) are written without intents. So the commit compares each shape layer, the records and the `animation` state of the draft with the published state. The set that actually changed must be within the union of what the calls declared, structural operations declaring every layer. Otherwise the edit is refused (`undeclared-write`). Cost: one comparison per layer per commit;
 - **merges explicitly:**
   - `autoStructure`: any call with `edited-view` → auto-bind in the edited view;
   - `settle`: `full` if any call needs it, else `non-front-positions` if any, else `none`;
@@ -186,7 +186,7 @@ The tests walk each row, including a component whose first-made point is deleted
 
 - **Reads today:**
   - `settled-trial`: `copyLayer`, `line`, `mergePosition`, `split`, `unbind`, `link`, `transform` (and through it `translate`, `rotate`, `scale`), `flip`, `deleteSelection`, `mirrorApply`, `mirrorLink`;
-  - `published` (equal to the draft by the alone rule): `broadcastShape`, `draftCorners`, `fit`;
+  - `draft`, geometry equal to the published state by the alone rule: `broadcastShape`, `draftCorners`, `fit`;
   - every other operation reads the `draft`.
 - **Nested calls** (e.g. `paste` calls `select`, `stroke` calls `lineStroke`) are recorded as calls too, as today, and merged the same way.
 - **Unchanged on purpose:** a stroke edit or a rename still triggers the full settle, and an empty edit still does, auto-bind included. Changing that is a separate proposal (ledger row 7), not part of this package (dot 1791687532).
@@ -199,7 +199,7 @@ The tests walk each row, including a component whose first-made point is deleted
   - a draft in a corner view does not auto-bind.
 
 **`correct` declares:**
-- reads `published` (it stands alone);
+- reads the `draft` (its geometry equals the published state: it stands alone);
 - writes animation, and geometry in at most one outer view, chosen at run time and checked against the actual intents;
 - `autoStructure: none`;
 - `settle`: positions in the layer it wrote only (a new value, `written-positions`);
