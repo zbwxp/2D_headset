@@ -2,6 +2,8 @@
 
 Asked by bowen 1791733125 (a box after selecting: scale, rotate, width or height alone; grab the whole selection anywhere in it); the feel confirmed by bowen 1791734097: corners scale proportionally, edge midpoints stretch one axis, **rotation by a small handle above the box (PowerPoint style)**, Option scales about the centre, Shift rotates in 15° steps. Package 1 (`docs/move-plan.md`, accepted dot 1791734961) gave the move sessions; this package adds the box. Later stages stay tracked there (the playback correction and the view's pan by keyboard).
 
+**2a coded** (for dot's check): `Core.preview(layer, fn)` and `editIn` now share one private pipeline (`runEdit`); `LayerReader.selectionBounds(units)`. Tests `test/preview.test.ts` (11). Cost on bowen's drawing (`111.json`, 9 views, a scale of its 4 face lines, 60 runs): median 1.09 ms, p90 1.82 ms, max 4.18 ms per preview.
+
 ## Order (dot 1791735431)
 
 **2a, core first:** `selectionBounds` and `preview` with their tests, handed in alone and checked before any box UI (the transaction change is not mixed with the interaction). **2b:** the box UI on top.

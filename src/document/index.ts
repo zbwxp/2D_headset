@@ -18,7 +18,7 @@ import * as animation from '../animation'
 import * as reference from '../reference'
 import * as evaluate from '../evaluate'
 import { EFFECTS, merge, resolve } from './effects'
-import type { Vec } from '../geometry'
+import { bounds as curveBounds, type Vec } from '../geometry'
 
 type Id = net.Id
 
@@ -587,6 +587,28 @@ export class Core {
    * discards silently.
    */
   editIn(layer: string, fn: (e: Editor) => void): void {
+    const draft = this.runEdit(layer, fn)
+    if (!draft || JSON.stringify(draft) === JSON.stringify(this.state)) return
+    this.past.push(this.state)
+    this.future = []
+    this.state = draft
+  }
+
+  /**
+   * What `editIn(layer, fn)` would publish, read only (docs/selection-box-plan.md §3; dot 1791735216,
+   * 1791735431): the very same pipeline on a copy — its refusals, its settle, links, mirrors and springs —
+   * returned as a reader of that copy. The document, its history and anything watching it are untouched;
+   * the reader is the preview's own (a later edit never changes it). Throws as the edit would throw (never a
+   * reader of an earlier success); null for a cancelled edit.
+   */
+  preview(layer: string, fn: (e: Editor) => void): LayerReader | null {
+    const draft = this.runEdit(layer, fn)
+    if (!draft) return null
+    return new LayerReader(() => draft, layer, () => {})
+  }
+
+  /** The one edit pipeline: a copy of the state, the callback, the checks, the settle; the result, or null if cancelled. */
+  private runEdit(layer: string, fn: (e: Editor) => void): State | null {
     this.idle('edit')
     if (!viewKeys(this.state).includes(layer)) throw new net.Refusal('not-a-view', `not-a-view: ${String(layer)} is not a view of this document`)
     this.editing = true
@@ -600,7 +622,7 @@ export class Core {
         // An async callback would keep running after the edit closes (dot 1791427941).
         throw new Error('edit callbacks must be synchronous; nothing was published')
       }
-      if (tx.cancelled) return
+      if (tx.cancelled) return null
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
       // the callback has returned: the Editor closes before anything else runs, the test observer
       // included, so an Editor kept from the callback can no longer write (dot 1791688692)
@@ -621,16 +643,13 @@ export class Core {
       commit(draft, tx.changes, this.state, tx.appliedFrom, layer, mode)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
-      if (err instanceof Cancelled) return
+      if (err instanceof Cancelled) return null
       throw err
     } finally {
       tx.open = false
       this.editing = false
     }
-    if (JSON.stringify(draft) === JSON.stringify(this.state)) return
-    this.past.push(this.state)
-    this.future = []
-    this.state = draft
+    return draft
   }
 
   undo() { this.idle('undo'); const s = this.past.pop(); if (s) { this.future.push(this.state); this.state = s } }
@@ -717,6 +736,33 @@ export class LayerReader {
   }
 
   geometry(): Geometry { const s = this.state(); return structuredClone(derived.derive(this.n, s.joins, s.fills)) }
+  /**
+   * The exact bounds, in this view, of what the units are (docs/selection-box-plan.md §1; dot 1791735431):
+   * a line by its curve's extremes (not its control points), a point by its position, a handle selected
+   * explicitly by its tip, a fill by its loop's curves. A line's own handles never count. Units naming
+   * nothing here are skipped; null when nothing is left.
+   */
+  selectionBounds(units: readonly editing.Unit[]): { min: Vec; max: Vec } | null {
+    const s = this.state(), n = this.n
+    const lineIds = new Set(net.lines(n).map(l => l.id)), pointIds = new Set(net.points(n).map(p => p.id))
+    const pts: Vec[] = []
+    const curve = (id: Id) => { const b = curveBounds(net.curve(n, id) as [Vec, Vec, Vec, Vec]); pts.push(b.min, b.max) }
+    for (const u of units) {
+      if (u.kind === 'line') { if (lineIds.has(u.id)) curve(u.id) }
+      else if (u.kind === 'point') { if (pointIds.has(u.id)) pts.push(net.point(n, u.id).position) }
+      else if (u.kind === 'handle') {
+        if (!lineIds.has(u.line)) continue
+        const l = net.line(n, u.line), at = net.point(n, u.end === 'a' ? l.a : l.b).position, h = net.handle(l, u.end)
+        pts.push({ x: at.x + h.x, y: at.y + h.y })
+      } else if (u.kind === 'fill') {
+        const loop = fills.discover(s.fills, n).find(l => l.id === u.id)
+        for (const r of loop?.route ?? []) curve(r.line)
+      }
+    }
+    if (!pts.length) return null
+    return { min: { x: Math.min(...pts.map(p => p.x)), y: Math.min(...pts.map(p => p.y)) }, max: { x: Math.max(...pts.map(p => p.x)), y: Math.max(...pts.map(p => p.y)) } }
+  }
+
   /** The reference pictures of this view (copies). */
   references(): reference.ReferenceImage[] { return reference.list(this.state().reference, this.layer) }
   /** The whole document's picture library, placed or not, each with its use (copies; the same in every view). */
