@@ -20,14 +20,17 @@
 
 - **Points:** every point of the posed drawing (`PoseReader.snapshot().points`) within `REACH.point · px` of the press (interaction's `REACH`, 10 screen px, so the reach matches editing), nearest first.
 - **Handles (pending bowen, §7.2; not a confirmed rule):** if bowen agrees, the handle tips of the posed drawing (point + vector, non-zero vectors only) within `REACH.handle · px`, drawn as small squares only during playback on a line. Within reach, a point wins over a handle at equal distance (as interaction's A tool).
-- **Locked or hidden lines:** picked as usual; core refuses locked ones (`locked`), so the refusal is the one source of the rule.
+- **Hidden controls are not picked** (dot 1791696808): a point only if at least one line ending at it is visible (a hidden layer is its lines hidden; layers carry no visibility of their own). Among visible controls the nearest wins, so a hidden one never covers a visible one.
+- **Locked and visible:** picked as usual; core refuses it (`locked`), so the refusal is the one source of the rule.
 - **Linked points:** picking one is enough; core expands the link component. The ghost (§3) shows only the picked point; the others follow on commit.
 - **One control per drag.** No multi-selection in playback (selection marks stay hidden there, dot 1791686247).
 
 ## 3. Preview and commit
 
+- **What a press binds** (dot 1791696808): the drawing (the `core` object and its saved text, `save(core)`), the pose, the picked control, and its position at the pose at the press. The target is that position plus the pointer's displacement since the press, so a press off the point's centre does not make the point jump to the pointer.
 - **During the drag:** a ghost only, no core call. The picked point drawn at the pointer, and the lines ending there redrawn with that end moved (as the editing ghost does); for a handle, its line with that handle moved. The posed drawing underneath is unchanged.
-- **On release:** one edit, `core.edit(e => e.correct(pose, { points: [{ id, position }] }))` (or `handles: [{ line, end, vector }]`), through the App's logged wrapper. An unmoved press (≤ `CLICK` screen px) commits nothing.
+- **On release, first a check:** if the `core` object or its saved text is not what the press bound (another App on the page edited, undid or opened a file meanwhile; they share the module's `core`), the drag is cancelled with a note in the log (`drag cancelled: the drawing changed during the drag`) and nothing is written. Not only leaving playback cancels it.
+- **Then one edit:** `core.edit(e => e.correct(pose, { points: [{ id, position }] }))` (or `handles: [{ line, end, vector }]`), through the App's logged wrapper. An unmoved press (≤ `CLICK` screen px) commits nothing.
 - **After a commit:** the pose stays; the drawing is re-read with `atPose`, so the corrected angle shows the target and the views that moved (package 4) show in the nine-view panel after leaving playback. The log shows the call and `ok` or the refusal.
 - **Undo (pending bowen, §7.1; not a confirmed rule):** proposed to stay refused in playback (§4); leaving playback and pressing ⌘Z undoes the whole correction in one step (knots and any moved view).
 
@@ -55,6 +58,7 @@ Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 
 | a slider or number field changes the pose | drag cancelled first, then the pose changes (a target belongs to one pose) |
 | Leave playback | drag cancelled, then playback left |
 | the App unmounts | drag cancelled |
+| the drawing changed since the press (another App's edit, undo, redo or Open) | detected at release: drag cancelled, nothing written |
 | release | one `correct` edit (§3) |
 
 - The drag uses the bench's existing single gesture slot (`gesture.current`, one cancel path; dot 1791552803), so a playback drag and any other gesture never coexist.
@@ -68,6 +72,9 @@ Each success test is also run with its feature switched off and must fail then (
 - **Handle (only if bowen agrees to §7.2):** drag a handle tip → `correct` with `handles`; the posed handle at the target.
 - **A move case:** a point equal in front and side dragged at yaw 45 → the side view's point moved (read after leaving playback).
 - **Not on a line:** at a view and inside a cell, a press starts no drag and no edit; the status says why.
+- **Off-centre press:** a press 6 screen px from the point and a 20-px drag → the target is the point's position + 20 px, not the pointer.
+- **Hidden and covered:** a point on a hidden line next to a visible one, pressed nearer the hidden one → the visible one is picked; a point whose lines are all hidden (a hidden layer) is never picked.
+- **The drawing changes during the drag:** a second App on the page edits (and, separately, opens a file) between press and release → the release writes nothing, the log says why; the other App's change stands.
 - **Refusal:** a locked line's point dragged → `locked` in red in the status, a cross on the line, nothing published, the cross gone after the next press.
 - **The gate, through the wrapper's real calls** (a test hook `window.bench.edit` runs a callback through the App's own logged wrapper; dot 1791696773: not only disabled buttons):
   - `correct`, then a forbidden call whose throw the callback catches, then return → nothing published;
