@@ -4,16 +4,17 @@ Asked by bowen 1791731823: selecting a line — with **A** on the canvas, or by 
 
 ## What decides line or curve names
 
-The selection itself is only a list of lines (V selects every line of a curve), so a curve of one line selected with V and the same line selected with A are the same selection. bowen's rule is about **how** it was selected, so the bench records that with the selection:
+The selection itself is only a list of lines (V selects every line of a curve), so a curve of one line selected with V and the same line selected with A are the same selection. bowen's rule is about **how** it was selected, so the bench keeps one **current display kind** (dot 1791732110):
 
-- **line names** after: a press with A on the canvas; a click on a line row in the layers panel; finding a line by name.
-- **curve names** after: a press with V on the canvas; a click on a continuous-curve row in the layers panel; finding a curve by name.
-- Any other change of the selection (undo, redo, a marquee, an Open, a paste, a delete) keeps the last kind; it starts as line names.
+- It becomes **line** when a press with **A** actually hits a line, when a line row is clicked in the layers panel, or when a line is found by name; it becomes **curve** when a press with **V** actually hits a line, when a curve row is clicked, or when a curve is found by name. A press on a line already selected still sets the kind (the selection may not change, the kind does).
+- A press that hits nothing (it starts a marquee, or clears the selection) does **not** change the kind; neither does any viewport gesture (Zoom, wheel, pan), undo, redo, Open, paste or delete. It starts as line.
+- **This is one kind for the whole display, not a record per object** — a stated trade-off: after A selects X, V selects Y and an undo returns to X, X is labelled with its curve's name; a mixed multi-selection is labelled all with the last kind. The selection behaviour of A and V themselves is unchanged.
 
 ## What is shown
 
+- **Which selection:** the labels read the selection **in the current scope** (`ix.selection()`: the selected units within the current layers), not the raw selection, which may still hold lines outside the scope (dot 1791732110).
 - **Line names:** one label per selected line, at the middle of the line (its curve at t = ½), offset a little up-right so it does not cover the stroke.
-- **Curve names:** one label per continuous curve that has a selected line, at the middle of its middle line (in the curve's line order).
+- **Curve names:** one label per continuous curve that has a selected line, at the middle of its middle line: with the curve's lines in their stored order (`groups[].lines`), the line at index ⌊(n − 1) / 2⌋ — the single middle one for an odd count, the earlier of the two middle ones for an even count (dot 1791732110).
 - Text at a constant screen size (as the handles are, scaled by the view), dark with a white outline so it reads over a reference picture; it never takes a press (no pointer events), so picking is unchanged.
 - Shown in the view being edited, for the lines drawn there; not in playback (nothing is selected there for editing).
 
@@ -28,4 +29,4 @@ The selection itself is only a list of lines (V selects every line of a curve), 
 ## Tests
 
 - Package: line kind → one label per selected line, at its middle; curve kind → one per curve touched, at its middle line's middle, its name; a curve of one line gives the line's name with line kind and the curve's name with curve kind; nothing selected → none; a selected id with no line → ignored.
-- Bench: A press on a line → its name shown beside it; V press → the curve's name; a click on a line row / a curve row in the layers panel → line / curve name; the label element takes no pointer events (a press where it is drawn still picks the line under it); in playback no labels; renaming a line updates its label. Feature-off: without the bench recording the kind, the V test fails.
+- Bench: A press on a line → its name shown beside it; V press → the curve's name; A then V on the same, already selected line switches the label; a press on empty space (marquee) keeps the kind; a viewport gesture keeps it; a line outside the current layers, still in the raw selection, gets no label; A on X, V on Y, undo → X with its curve's name (the stated trade-off); a mixed selection takes the last kind; a curve of 4 lines labels its 2nd line's middle; a click on a line row / a curve row in the layers panel → line / curve name; the label element takes no pointer events (a press where it is drawn still picks the line under it); in playback no labels; renaming a line updates its label. Feature-off: without the bench recording the kind, the V test fails; reading the raw selection instead of the scoped one, the scope test fails.
