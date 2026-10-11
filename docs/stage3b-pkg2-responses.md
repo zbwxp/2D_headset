@@ -35,8 +35,13 @@ Knot = [progress, value]
   - at most 256 knots.
 - **Controls:** a point (its position), or one end of a line (its handle vector). Arc radii have no responses; they blend linearly, as in v103.
 - **One content, one form:** empty axis lists, empty edges and empty controls are not stored. A control without an entry is linear.
-- **"Same behaviour"** (for links, dot 1791687776): two responses of one edge and axis are the same when, evaluated at the union of their knot progresses, every value is equal within 1e-12. A missing response is the identity. So an explicit linear one (knots on the diagonal) equals a missing one.
-- **Invariant:** linked points (a link component) have the same behaviour on every edge and axis.
+- **Ids are ordinary keys** (dot 1791689396), as in `shapes`: entries live in own-property records, read with `hasOwn` and written with `defineProperty`. So any legal id, `constructor`, `toString` and `__proto__` included, works; what is refused is *reading an inherited property*, never a name.
+- **"Same behaviour"** (only to *accept* a link, dot 1791687776): two responses of one edge and axis behave the same when, evaluated at the union of their knot progresses, every value is equal within 1e-12. A missing response is the identity, so an explicit linear one (knots on the diagonal) equals a missing one. Response values are progress (dimensionless).
+- **Invariant: linked points hold *identical* stored response sets** (dot 1791689396). An approximate comparison is not transitive (A ≈ B and B ≈ C within 1e-12 does not give A ≈ C), and a tiny difference times a large coordinate span becomes a visible gap. So:
+  - **on a link** that is accepted, every point of the second point's link component takes an **exact copy** of the first point's component's set (the first component's members are already identical). This matches positions: a link moves the second point onto the first. The discarded differences are within the 1e-12 acceptance, not tuning;
+  - linked points in every view coincide exactly (links settle them to one position), and their sets are identical, so `evaluate` gives them bit-identical results at every pose;
+  - **`correct`** (package 3) writes the same knots to every member of a component;
+  - **`open`** requires linked points' stored sets to be exactly equal (in normal form), and refuses otherwise.
 
 ## 2. Evaluate with responses (`evaluate`)
 
@@ -48,26 +53,31 @@ Knot = [progress, value]
   - bottom / top are the yaw edges at pitch 0 and at the quadrant's pitch; left / right are the pitch edges at yaw 0 and at the quadrant's yaw.
 - **A control with no response on any of its four edges** takes 3a's code path, so its numbers are bit-for-bit those of 3a.
 - **Exactness:** at a view, u and v are 0 or 1 and each r is pinned there, so the view comes back exactly. On an edge (v = 0 or u = 0) the formula is exactly that edge's response. Neighbouring cells share their edges, so the result is continuous; responses may extrapolate; nothing promises a good-looking shape (dot 1791687563).
-- **Weights for the slots:** slot A (appearance) still uses the geometric weights (dominant view), as v103 kept membership on the geometric weights.
+- **Negative and above-one weights are kept** (dot 1791689396). With responses, u' and v' can leave [0, 1] (extrapolation), so a scalar's four weights can be negative or exceed 1. 3a's "keep weights > 0" filter does not apply to responded scalars: only weights exactly 0 are skipped (so a view stays exact). Example: on an edge with values 10 and 20 and a response value −0.5, the result is 5.
+- **Weights for the slots and radii:** slot A (appearance) and arc radii still use the geometric weights (non-negative; the dominant view), as v103 kept membership on the geometric weights.
 - **Refused:** a malformed response in the model (`model-incomplete`, naming the control, edge and axis), checked with own properties as in package 1 of 3a.
 
 ## 3. Responses through structural edits (`animation.follow`, the `follow` hook of the architecture)
 
 `follow(animation, network, record)` runs inside `applyTopology`, after each network operation, like every other attribute module. It also runs for auto-bind, so one rule set covers every path (dot 1791687563).
 
-| Structural record | Responses |
+Fields as `net.Changes` names them (dot 1791689396):
+
+| Record field | Responses |
 |---|---|
 | `deletedPoints` (delete, bind's removed point, auto-bind, isolated points) | the point's entry goes |
 | `deletedLines`, `collapsedLines` | the line's handle entries go |
-| `merged` (bind, auto-bind) | nothing more: the kept point keeps its own; the removed point is a deleted point (dot 1791687873: links follow the same deletion) |
-| `unbound` | the new point gets a copy of the old point's entry |
-| `created` (pen, split, unbind, insert) | new points and new lines start with no entry; a borrowed existing end point keeps its own (dot 1791687776) |
+| `merged` (bind, auto-bind) | nothing more: the kept point keeps its own; the removed point is in `deletedPoints` (dot 1791687873: links follow the same deletion) |
+| `unbound` `{ point, newPoint }` | the new point gets a copy of the old point's entry |
+| `addedPoints`, `addedLines` (pen, split, unbind, insert) | **nothing is written.** "No response" is the absence of an entry, so a new point or line simply has none, and nothing clears what another rule wrote. Unbind records its new point in both `addedPoints` and `unbound`, and the copy from `unbound` stays. A borrowed existing end point is not in `addedPoints` and keeps its own |
 | `relocated` (move to another layer) | ids unchanged: entries unchanged |
 | `replaced` (split) | cannot happen with responses: refused before it (below) |
 
+**Order inside one record:** deletions, then `unbound` copies. `added*` writes nothing, so its place does not matter. Inserted entries (paste, copy layer) come from the clip through `animation.insert`, not from `follow`.
+
 **Checked before the operation, in the operation (`document`):**
 - **`split`** (and each mirror-paired split) is refused when the split line's handles or its end points have any response (`split-has-responses`, naming the line). A split with no responses goes through unchanged.
-- **`link`** (and each paired link) is refused when the two points' responses do not behave the same (`link-responses-differ`, naming both points).
+- **`link`** (and each paired link) is refused when the two points' components' sets do not behave the same (`link-responses-differ`, naming both points). When accepted, the second component takes an exact copy of the first's (§1).
 
 **Insert (`paste`, `copyLayer`; dot 1791689360):**
 - **The clip gains an `animation` part:** the entries of exactly the clip's points and lines, extracted by `animation.extract`. It is read from the same version as the rest of the clip, and the two copy entries differ:
@@ -122,12 +132,16 @@ Knot = [progress, value]
 - **Data:** normal form; "same behaviour" (missing = identity = explicit diagonal; unequal by a knot; equal with different knot sets that evaluate the same).
 - **Evaluate:**
   - no responses → bit-for-bit 3a at sampled poses;
+  - every one of the 12 edges: a response there acts exactly on its edge and on the two cells beside it;
+  - extrapolation: values 10 and 20, response −0.5 → 5 (a negative weight kept); a response above 1 likewise;
+  - appearance (slot A) and radii use the geometric weights, unchanged by responses;
   - at the nine views exact with responses present;
   - on an edge: exactly that edge's response;
   - inside a cell: the u' / v' formula;
   - continuity across cells and across 0° with responses;
   - a malformed response refused;
   - a response on one control changes no other control.
+- **Ids:** points and lines named `constructor`, `toString` and `__proto__` carry responses through every path (store, follow, clip, file), and an inherited name is never read as a response.
 - **Follow,** one test per row of §3, each through a real operation:
   - delete a point, a line, a layer, the selection;
   - bind, and auto-bind (by a move in the edited view);
@@ -135,14 +149,17 @@ Knot = [progress, value]
   - move to another layer (kept).
 - **Refusals:**
   - `split-has-responses` (ends, handles, a paired split) and a split without responses going through;
-  - `link-responses-differ`, and a link between identity and explicit-linear responses going through.
+  - `link-responses-differ`, and a link between identity and explicit-linear responses going through;
+  - after an accepted link, every member of the second component holds a set identical to the first's, and linked points evaluate bit-identically at sampled poses;
+  - a chain A–B then B–C whose neighbours each differ by under 1e-12 ends with all three identical (no drift);
+  - a file whose linked points' sets differ at all is refused at open.
 - **Insert:**
   - paste and copy-layer carry responses to the new ids, partial copies only what was copied;
   - unbind then copy-layer in one edit carries the inherited response;
   - a clip without the part inserts none;
-  - a clip whose part has an unknown id, a bad edge, a bad knot or an inherited-name key refuses the paste (`clip-invalid`);
+  - a clip whose part has an id that is not one of the clip's points or lines, a bad edge or a bad knot refuses the paste (`clip-invalid`). A key named `constructor` is refused only when no such point or line is in the clip; a clip id with that name is carried;
   - `clipboard.check` returns the part (a clip round-tripped through JSON keeps its responses).
-- **Archive:** save / open round trip; format 3 refused; each `open` refusal (unknown id, edge, bad knot order, out of (0, 1), non-finite, 257 knots, an inherited-name key, linked points that differ).
+- **Archive:** save / open round trip; format 3 refused; each `open` refusal (unknown id, edge, bad knot order, out of (0, 1), non-finite, 257 knots, linked points that differ). A key named `constructor` with no such point is an unknown id; a real point named `constructor` opens.
 - **Declarations:** the per-operation write test with responses present; no undeclared `animation` write.
 - **Undo:** an edit that changes responses (a delete) is undone with everything else.
 - **Ledger row 5:** the clipboard uses `shapes.KINDS`.
