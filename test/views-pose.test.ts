@@ -171,3 +171,19 @@ describe('joins.setRadiusHere (the scratch layer\'s radius writer)', () => {
   })
 })
 
+describe('open checks the nine views (dot 1791685305)', () => {
+  type L = { key: string; kind: string }
+  const edited = (f: (layers: L[], joinLayers: L[] | undefined) => void) => {
+    const file = JSON.parse(save(doc()))
+    f(file.document.network.shapes.layers, file.document.joins.layers)
+    return JSON.stringify(file)
+  }
+  it('a file missing a view, with a view renamed, or with an extra view layer is refused; extra expression or record layers are not', () => {
+    expect(() => open(edited(ls => { ls.splice(ls.findIndex(l => l.key === 'view:90,45'), 1) }))).toThrow(/open-failed: the view layers must be the nine views; missing view:90,45/)
+    expect(() => open(edited(ls => { ls.find(l => l.key === 'view:-90,0')!.key = 'side' }))).toThrow(/missing view:-90,0; not a view key: side/)
+    expect(() => open(edited(ls => { ls.find(l => l.key === 'view:0,45')!.key = 'view:30,0' }))).toThrow(/missing view:0,45; not a view key: view:30,0/)
+    expect(() => open(edited(ls => { ls.push({ ...structuredClone(ls.find(l => l.key === 'view:90,0')!), key: 'view:extra' }) }))).toThrow(/not a view key: view:extra/)
+    expect(() => open(edited(ls => { ls.push({ ...structuredClone(ls.find(l => l.key === 'view:90,0')!), key: 'pose', kind: 'expression' }) }))).not.toThrow()
+  })
+})
+

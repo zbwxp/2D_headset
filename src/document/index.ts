@@ -711,6 +711,7 @@ export function importState(data: unknown): Core {
   let state: State
   try {
     const network = net.restore(d.network, views.FRONT)
+    views.checkViews(network)
     animation.checkRecords(network)
     const g = groups.restore(d.groups, network)
     state = {

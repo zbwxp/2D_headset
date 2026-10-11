@@ -20,6 +20,18 @@ export const FRONT = key(0, 0)
 /** All nine view keys, yaw-major. */
 export const ALL: readonly string[] = Object.freeze(YAWS.flatMap(y => PITCHES.map(p => key(y, p))))
 export const isView = (k: string) => ALL.includes(k)
+/**
+ * Open's integrity check (dot 1791685305): the view layers of a file are exactly the nine view
+ * keys, none missing, none extra, none renamed. Layers of other kinds are not limited here.
+ */
+export function checkViews(n: net.NetworkState) {
+  const have = net.shapeLayers(n).filter(l => l.kind === 'view').map(l => l.key)
+  const missing = ALL.filter(k => !have.includes(k)), extra = have.filter(k => !ALL.includes(k))
+  if (missing.length || extra.length) {
+    throw new Error(`open-failed: the view layers must be the nine views${missing.length ? `; missing ${missing.join(', ')}` : ''}${extra.length ? `; not a view key: ${extra.join(', ')}` : ''}`)
+  }
+}
+
 /** The yaw and pitch of a view key (stage 3a: the angles evaluate places the views at). */
 export function angle(k: string): { yaw: Yaw; pitch: Pitch } {
   const i = ALL.indexOf(k)
