@@ -19,7 +19,7 @@
 ## 2. Picking a point or a handle
 
 - **Points:** every point of the posed drawing (`PoseReader.snapshot().points`) within `REACH.point · px` of the press (interaction's `REACH`, 10 screen px, so the reach matches editing), nearest first.
-- **Handles:** the handle tips of the posed drawing (point + vector, non-zero vectors only) within `REACH.handle · px`, drawn as small squares only during playback on a line. Within reach, a point wins over a handle at equal distance (as interaction's A tool).
+- **Handles (pending bowen, §7.2; not a confirmed rule):** if bowen agrees, the handle tips of the posed drawing (point + vector, non-zero vectors only) within `REACH.handle · px`, drawn as small squares only during playback on a line. Within reach, a point wins over a handle at equal distance (as interaction's A tool).
 - **Locked or hidden lines:** picked as usual; core refuses locked ones (`locked`), so the refusal is the one source of the rule.
 - **Linked points:** picking one is enough; core expands the link component. The ghost (§3) shows only the picked point; the others follow on commit.
 - **One control per drag.** No multi-selection in playback (selection marks stay hidden there, dot 1791686247).
@@ -29,13 +29,13 @@
 - **During the drag:** a ghost only, no core call. The picked point drawn at the pointer, and the lines ending there redrawn with that end moved (as the editing ghost does); for a handle, its line with that handle moved. The posed drawing underneath is unchanged.
 - **On release:** one edit, `core.edit(e => e.correct(pose, { points: [{ id, position }] }))` (or `handles: [{ line, end, vector }]`), through the App's logged wrapper. An unmoved press (≤ `CLICK` screen px) commits nothing.
 - **After a commit:** the pose stays; the drawing is re-read with `atPose`, so the corrected angle shows the target and the views that moved (package 4) show in the nine-view panel after leaving playback. The log shows the call and `ok` or the refusal.
-- **Undo:** stays refused in playback (§4); leaving playback and pressing ⌘Z undoes the whole correction in one step (knots and any moved view).
+- **Undo (pending bowen, §7.1; not a confirmed rule):** proposed to stay refused in playback (§4); leaving playback and pressing ⌘Z undoes the whole correction in one step (knots and any moved view).
 
 ## 4. The read-only gate: widened for `correct` only
 
 Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 1791683911, 1791686247). Package 5 changes exactly this:
 - **An edit is allowed in playback, but every Editor call inside it must be `correct`.** The logged Editor proxy throws `read-only-playback` on any other call, so the edit fails and publishes nothing. One `correct` per edit (core's `alone` rule refuses two anyway).
-- **Undo and redo stay refused in playback.** Unlocking them would let a playback undo remove an edit made before playback.
+- **Undo and redo stay refused in playback** — today's behaviour, kept unless bowen decides otherwise (§7.1, pending). Unlocking them would let a playback undo remove an edit made before playback.
 - **Every other path stays as today:** tool keys return early while posing; the editing panels and Open are in disabled fieldsets; the canvas's editing press is not attached; the interaction module is not called during playback at all.
 - The gate stays per App (its own `posing` ref and wrapper).
 
@@ -61,7 +61,7 @@ Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 
 Each success test is also run with its feature switched off and must fail then (`docs/stage3b-pkg4-body-problems.md` rule 3).
 
 - **On a line:** drag a point at yaw 45 → one `correct` edit in the log, the posed point at the target, one undo step after leaving playback. Feature off (no commit on release) → fails.
-- **Handle:** drag a handle tip → `correct` with `handles`; the posed handle at the target.
+- **Handle (only if bowen agrees to §7.2):** drag a handle tip → `correct` with `handles`; the posed handle at the target.
 - **A move case:** a point equal in front and side dragged at yaw 45 → the side view's point moved (read after leaving playback).
 - **Not on a line:** at a view and inside a cell, a press starts no drag and no edit; the status says why.
 - **Refusal:** a locked line's point dragged → `locked` in red in the status, a cross on the line, nothing published, the cross gone after the next press.
@@ -69,7 +69,9 @@ Each success test is also run with its feature switched off and must fail then (
 - **Cancel flows:** each row of §5's table → no edit, the log unchanged, no window listener left (pointermove after the cancel does nothing).
 - **Per App:** two Apps, one in playback dragging, the other editing → the other's edits unaffected; unmounting the posing App cancels its drag.
 
-## 7. Questions for bowen (with my recommendation; the plan builds the recommendation unless he says otherwise)
+## 7. Questions for bowen — pending, not rules (asked 1791696687; dot 1791696734)
+
+Neither is treated as decided. Until bowen answers: undo and redo keep today's behaviour (refused in playback, nothing new is unlocked), and handle dragging is not built; points only.
 
 1. **Undo inside playback:** recommended *no* this round (⌘Z works after leaving playback). Allowing it safely needs "undo only corrections made in this playback", which is a design of its own.
 2. **Handles in playback:** recommended *shown and draggable only on a line*, as small squares, since `correct` supports them. The alternative is points only, fewer marks on the drawing.
