@@ -9,9 +9,9 @@ Three-strikes rule (bowen 1791652114). Commits `6bd30e3` (feature), `36ab5cc`, `
 
 ## Why it happened
 
-I added a new entry point (a button) and checked it against the preview rules in the plan, not against the existing list of entry points and the rules they already follow. The bench has three such rules for anything that writes a picture: bind to `{ core, gen, id, src }` at render, cancel a running gesture, end a panel preview. I applied one of three.
+I added a new entry point (a button) and checked it against the preview rules in the plan only. Three checks apply to a new control that writes a picture: bind to `{ core, gen, id, src }` at render (as the fields, sliders and drag do), cancel a running gesture, end a panel preview. I applied one of three. These are checks for a new entry, not a guarantee the panel already gives: Remove, the visibility checkbox and the slot buttons still write by `r.id` directly (dot 1791717929) — recorded as `docs/consolidation-ledger.md` row 16, not changed in this package.
 
 ## What changes
 
-1. A new write entry in the bench is checked against all three rules above before hand-in, and the hand-in lists each with its test.
+1. A new control that writes a picture is checked against the three checks above before hand-in, and the hand-in lists each with its test.
 2. Before adding any button that acts on an item of a list, grep how the neighbouring controls of that item bind it (here `RefBind`), and use the same binding.
