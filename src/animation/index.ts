@@ -343,15 +343,15 @@ const above = (z: number, rho: number) => z !== 0 && Math.sign(z) * ((z - rho) -
 const phi = (z: number, rho: number) => 1 / z / z + (z - rho) * (z - rho)
 
 /**
- * The scaled root (§2): on the branch of ρ's sign (ρ = 0 and −0 positive), the z with
+ * The scaled root (§2): on the branch given by `positive` (the sign of the original r, which the
+ * scaling can lose: a strictly negative r may scale to −0; dot 1791696097), the z with
  * z³(z − ρ) = 1, by halving a width-2 bracket from its inner end (test fails) to its outer end
  * (test holds) until the ends are adjacent doubles; then the end with the smaller φ, ties to the
  * end nearer ρ, then to the larger |z|. Undefined only if ρ is not finite or the bracket is invalid
  * (which the plan shows cannot happen for a finite ρ).
  */
-export function solveScaled(rho: number): number | undefined {
+export function solveScaled(rho: number, positive: boolean): number | undefined {
   if (!Number.isFinite(rho)) return undefined
-  const positive = !(rho < 0)
   let inner = positive ? Math.max(rho, 0) : Math.min(rho, 0)
   let outer = positive ? inner + 2 : inner - 2
   if (inner === outer) return inner
@@ -377,7 +377,8 @@ export function solveMove(c: number, r: number, k: number, S: number): number | 
   const sa = Math.sqrt(a)
   if (!(sa > 0)) return undefined
   const rho = r / sa
-  const z = solveScaled(rho)
+  // the branch follows r itself: r > 0 or r = ±0 positive, r < 0 negative, even when r / √a rounds to −0
+  const z = solveScaled(rho, !(r < 0))
   if (z === undefined) return undefined
   // the response that should stay is kept as it is, never rebuilt through the scaling (dot 1791694943)
   const w = z === rho ? r : sa * z

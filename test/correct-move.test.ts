@@ -123,7 +123,7 @@ describe('the solver (fixed inputs, reproducible; dot 1791694778, 1791694943)', 
   const phi = (z: number, rho: number) => 1 / z / z + (z - rho) * (z - rho)
 
   it('ρ = r = 2⁵³ with √a = 1: the candidate is r, and its cost is compared with r + 2\'s', () => {
-    const rho = 2 ** 53, z = solveScaled(rho)!
+    const rho = 2 ** 53, z = solveScaled(rho, true)!
     expect(z).toBe(rho)
     expect(phi(z, rho)).toBeLessThan(phi(rho + 2, rho))
     expect(phi(rho + 2, rho)).toBeGreaterThan(3.9)
@@ -134,6 +134,12 @@ describe('the solver (fixed inputs, reproducible; dot 1791694778, 1791694943)', 
     expect(solveMove(3, 0, 16, 1)!).toBeGreaterThan(0)
     expect(solveMove(3, -0, 16, 1)!).toBeGreaterThan(0)
     expect(solveMove(-3, 0.5, 16, 1)!).toBeGreaterThan(0) // the drag's sign is in c / w, not in w
+  })
+
+  it('r itself −0 takes the positive branch; a strictly negative r whose scaled ρ rounds to −0 still takes the negative one (dot 1791696097)', () => {
+    expect(Object.is(-Number.MIN_VALUE / Math.sqrt(Math.sqrt(16 / MOVE_COST.response)), -0)).toBe(true)
+    expect(solveMove(1, -Number.MIN_VALUE, 16, 1)!).toBeLessThan(0)
+    expect(solveMove(1, -0, 16, 1)!).toBeGreaterThan(0)
   })
 
   it('K would underflow (c = 1e-200, S = 1, r = 0): a finite move; a overflows: no solution; |ρ| > 2⁵³: w = r exactly', () => {
@@ -148,7 +154,7 @@ describe('the solver (fixed inputs, reproducible; dot 1791694778, 1791694943)', 
     const grid = [0, -0, 5e-324, -5e-324, 1e-300, -1e-300, 1e-16, -1e-16, 1.0678e-16, 0.5, -0.5, 1, -1, 3, -3, 1e15, -1e15, 2 ** 53, -(2 ** 53), 2 ** 60, 1e300, -1e300, 1.7e308, -1.7e308,
       ...Array.from({ length: 61 }, (_, i) => 10 ** (i - 30)), ...Array.from({ length: 61 }, (_, i) => -(10 ** (i - 30)))]
     for (const rho of grid) {
-      const z = solveScaled(rho)
+      const z = solveScaled(rho, !(rho < 0))
       expect([rho, z !== undefined && z !== 0]).toEqual([rho, true])
       if (Math.abs(z!) < 1e70 && Math.abs(z!) > 1e-70 && Math.abs(rho) < 1e15) expect([rho, Math.abs(z! ** 3 * (z! - rho) - 1) < 1e-12 * Math.max(1, Math.abs(z!) ** 4)]).toEqual([rho, true])
     }
