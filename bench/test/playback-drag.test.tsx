@@ -139,6 +139,20 @@ describe('where a drag can start', () => {
   })
 })
 
+describe('the ghost follows the visibility rule (dot 1791697776)', () => {
+  it('a point ending a visible and a hidden line: while dragging, only the visible line has a ghost', async () => {
+    const t = await setup(), k = t.k
+    await act(async () => {
+      bench().core.edit(e => e.line(`hq${k}`, `q${k}`, { id: `hh${k}`, layer: 'layer-1', position: { x: 150, y: 300 * k + 50 } }))
+      bench().core.edit(e => e.lineState(`hq${k}`, { visible: false }))
+    })
+    await t.play(45, 0)
+    await t.drag(t.posed(`q${k}`), { x: 20, y: 10 }, false)
+    const ghosts = [...t.svg.querySelectorAll('[data-ghost]')].map(g => g.getAttribute('data-ghost'))
+    expect(ghosts).toEqual([`v${k}`])
+  })
+})
+
 describe('refusals', () => {
   it('a locked line\'s point: locked in red in the status, a cross on the line, nothing published; the next press clears it', async () => {
     const t = await setup()
@@ -224,10 +238,15 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
     const added = vi.spyOn(window, 'addEventListener'), removed = vi.spyOn(window, 'removeEventListener')
     await t.drag(start, { x: 20, y: 10 }, false)
     expect(t.svg.querySelector('[data-ghost-point]')).not.toBeNull()
+    // the drag's own window listeners, each as (type, callback, capture)
+    const types = ['pointermove', 'pointerup', 'pointercancel', 'blur', 'contextmenu', 'pointerdown']
+    const capture = (o: unknown) => (typeof o === 'boolean' ? o : !!(o as { capture?: boolean } | undefined)?.capture)
+    const mine = added.mock.calls.filter(c => types.includes(c[0] as string)).map(c => ({ type: c[0], fn: c[1], capture: capture(c[2]) }))
     await way.act(t)
     await t.lateUp({ x: start.x + 20, y: start.y + 10 })
-    const count = (spy: typeof added) => spy.mock.calls.filter(c => ['pointermove', 'pointerup', 'pointercancel', 'blur', 'contextmenu', 'pointerdown'].includes(c[0] as string)).length
-    expect([way.name, save(bench().core) === before, count(added), count(removed) >= count(added), t.svg.querySelector('[data-ghost-point]')]).toEqual([way.name, true, 6, true, null])
+    // every listener the drag added is removed: matched one by one on type, the same callback and capture (dot 1791697776)
+    const left = mine.filter(a => !removed.mock.calls.some(r => r[0] === a.type && r[1] === a.fn && capture(r[2]) === a.capture))
+    expect([way.name, save(bench().core) === before, mine.length, left.map(a => a.type), t.svg.querySelector('[data-ghost-point]')]).toEqual([way.name, true, 6, [], null])
     added.mockRestore(); removed.mockRestore()
   })
 

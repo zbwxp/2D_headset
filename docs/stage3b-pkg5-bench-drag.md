@@ -96,7 +96,7 @@ Each success test is also run with its feature switched off and must fail then (
   - an async callback that calls `correct` once → refused by core's synchronous check, nothing published;
   - exactly one `correct` → published;
   - and as today: tool keys, ⌘Z / ⇧⌘Z, the panel's buttons and Open write nothing during playback (the existing playback tests kept).
-- **Cancel flows:** each row of §5's table, plus Esc with a number field focused, a right click outside the canvas, and another pointer's move / up / cancel (which must not end the drag) → no edit, the log unchanged. After every cancel a late `pointerup` of the original pointer is delivered and commits nothing; window listeners are counted (each `addEventListener` matched by a `removeEventListener`), not only checked by a pointermove that changes nothing.
+- **Cancel flows:** each row of §5's table, plus Esc with a number field focused, a right click outside the canvas, and another pointer's move / up / cancel (which must not end the drag) → no new edit committed (a cancel may write a diagnostic row in the log; dot 1791697776). After every cancel a late `pointerup` of the original pointer is delivered and commits nothing; window listeners are counted (each `addEventListener` matched by a `removeEventListener`), not only checked by a pointermove that changes nothing.
 - **Per App:** two Apps, one in playback dragging, the other editing → the other's edits unaffected; unmounting the posing App cancels its drag.
 
 ## 7. Questions for bowen — pending, not rules (asked 1791696687; dot 1791696734)

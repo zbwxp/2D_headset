@@ -604,7 +604,7 @@ export function App() {
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
           {pose && onLine && (() => { const vis = new Set(s.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b])); return s.points.filter(p => vis.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />) })()}
-          {pose && corrGhost && s.lines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {
+          {pose && corrGhost && s.lines.filter(l => l.state.visible && (l.a === corrGhost.id || l.b === corrGhost.id)).map(l => {
             const mv = (id: Id) => (id === corrGhost.id ? corrGhost.to : pos(id)), a = mv(l.a), b = mv(l.b)
             return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
           })}
