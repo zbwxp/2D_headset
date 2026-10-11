@@ -1,7 +1,7 @@
 // The canvas cursor asks cursor/ (bowen 1791708333; docs/rename-and-cursor-plan.md §2; dot 1791708548):
 // Pen and Fill show their pictures, A and V a hand that grabs while a press is held; the grab ends on
 // every end of the gesture (release, Esc, leaving the window, a tool change, playback, unmount);
-// playback shows the arrow whatever tool was left on.
+// playback, Move picture and restoring show the arrow whatever tool was left on (dot 1791710244).
 import { describe, it, expect, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -88,6 +88,21 @@ describe('the canvas cursor', () => {
     expect(t.cursor()).toBe('default')
     await act(async () => { t.button('Leave playback').click() })
     expect(t.cursor()).toBe('grab')
+  })
+
+  it('Move picture on: a press moves the picture, so not the Pen — the arrow; off again, the Pen (dot 1791710244)', async () => {
+    const t = await setup()
+    await t.tool('p')
+    expect(t.cursor()).toContain('data:image/svg+xml')
+    const box = () => t.host.querySelector('[data-testid="move-picture"]') as HTMLInputElement
+    await act(async () => { box().click() })
+    expect([box().checked, t.cursor()]).toEqual([true, 'default'])
+    await t.tool('v') // a tool key while Move picture is on: still the picture's press
+    expect(t.cursor()).toBe('default')
+    await act(async () => { box().click() })
+    expect([box().checked, t.cursor()]).toEqual([false, 'grab'])
+    await t.tool('p')
+    expect(t.cursor()).toContain('data:image/svg+xml')
   })
 
   it('unmounting during a grab leaves nothing behind: a new App shows the open hand', async () => {

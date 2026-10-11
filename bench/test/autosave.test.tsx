@@ -53,6 +53,8 @@ describe('autosave in the bench', () => {
     const st = storedDrawing(), m = memoryStore(st.text)
     const t = await mount(m.store)
     expect(t.status()).toBe('autosave: restoring…')
+    const cursor = () => (t.host.querySelector('[data-testid="canvas"]') as SVGSVGElement).style.cursor
+    expect(cursor()).toBe('default') // the canvas takes no press while restoring: the arrow, not the Pen (dot 1791710244)
     expect(() => bench().edit(e => e.line('x', { id: 'x1', layer: 'layer-1', position: { x: 1, y: 1 } }, { id: 'x2', layer: 'layer-1', position: { x: 9, y: 9 } }))).toThrow(/restoring/)
     const before = save(bench().core)
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true })) })
@@ -65,6 +67,7 @@ describe('autosave in the bench', () => {
     expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
     expect(t.status()).toBe('autosave: saved')
     expect(m.writes).toEqual([]) // the restored text is already on disk
+    expect(cursor()).toContain('data:image/svg+xml') // the Pen again
   })
 
   it('a restore returning after the App unmounted applies nothing', async () => {

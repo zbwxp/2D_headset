@@ -313,6 +313,10 @@ export function App() {
   // a press the tool took is held: the canvas cursor asks cursor/ with it (A / V grab). Set where the
   // gesture starts, cleared in its one `stop` (release, cancel, blur, tool change, playback) (dot 1791708548)
   const [pressed, setPressed] = useState(false)
+  // what a press on the canvas does, named for the cursor table in the same order as the canvas routes
+  // the press: restoring takes none, playback drags the pose, Move picture moves the picture, otherwise
+  // the tool; the first three have no row in cursor/ and show the arrow (dot 1791710244)
+  const pressTakenBy = restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : zoomTool ? 'Z' : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -793,7 +797,7 @@ export function App() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
-        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: pose ? 'default' : cursorFor(zoomTool ? 'Z' : ix.tool, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+        <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={restoring ? undefined : pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
