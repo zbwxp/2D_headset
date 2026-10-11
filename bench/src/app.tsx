@@ -177,6 +177,9 @@ export function App() {
   frame.current = pose ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
   const s = reader.snapshot(), g = reader.geometry()
+  // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
+  // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
+  const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
@@ -297,10 +300,10 @@ export function App() {
     if (e.button !== 0 || !pose || !posed || posed instanceof Error || !('edge' in correctionEdge(pose))) return
     const shownFrom = frame.current
     if (!shownFrom || shownFrom.core !== core || shownFrom.text !== save(core)) { note('playback press ignored: the drawing changed since this frame was drawn; redrawn'); bump(); return }
-    const at = toDoc(e), snap = posed.snapshot()
-    // a point is picked only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
-    const visible = new Set(snap.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b]))
-    const hit = snap.points.filter(p => visible.has(p.id)).map(p => ({ p, d: Math.hypot(p.position.x - at.x, p.position.y - at.y) }))
+    // picked from this frame (the one just checked as current), by the frame's one visibility rule:
+    // a point only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
+    const at = toDoc(e)
+    const hit = s.points.filter(p => shownEnds.has(p.id)).map(p => ({ p, d: Math.hypot(p.position.x - at.x, p.position.y - at.y) }))
       .filter(x => x.d <= REACH.point * px).sort((a, b) => a.d - b.d)[0]
     if (!hit) return
     const bound = { core: shownFrom.core, text: shownFrom.text, pose: { ...pose }, id: hit.p.id, start: hit.p.position, from: at }
@@ -603,8 +606,8 @@ export function App() {
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
-          {pose && onLine && (() => { const vis = new Set(s.lines.filter(l => l.state.visible).flatMap(l => [l.a, l.b])); return s.points.filter(p => vis.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />) })()}
-          {pose && corrGhost && s.lines.filter(l => l.state.visible && (l.a === corrGhost.id || l.b === corrGhost.id)).map(l => {
+          {pose && onLine && (() => s.points.filter(p => shownEnds.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />))()}
+          {pose && corrGhost && shownLines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {
             const mv = (id: Id) => (id === corrGhost.id ? corrGhost.to : pos(id)), a = mv(l.a), b = mv(l.b)
             return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
           })}
