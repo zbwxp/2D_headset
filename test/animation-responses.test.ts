@@ -272,9 +272,11 @@ describe('refusals: split and link', () => {
   })
 
   it('a merge of more than 256 knots is refused', () => {
-    const many = (off: number): Knots => Array.from({ length: 200 }, (_, i) => [(i + off) / 401, (i + off) / 401] as [number, number])
-    const d = pair(doc => { pointR(doc, 'a', E_FS, { x: many(1) }); pointR(doc, 'q', E_FS, { x: many(201) }) })
-    expect(() => d.edit(e => e.link('a', 'q'))).toThrow(/link-responses-too-many: linking a and q would give 400 knots/)
+    // diagonal knots at odd and at even multiples of 1/512: each side is exact at the other's knots
+    // (midpoints of dyadic neighbours), so the merge is accepted as equal and only the count refuses
+    const at = (first: number, count: number): Knots => Array.from({ length: count }, (_, i) => [(first + 2 * i) / 512, (first + 2 * i) / 512] as [number, number])
+    const d = pair(doc => { pointR(doc, 'a', E_FS, { x: at(1, 256) }); pointR(doc, 'q', E_FS, { x: at(2, 255) }) })
+    expect(() => d.edit(e => e.link('a', 'q'))).toThrow(/link-responses-too-many: linking a and q would give 511 knots/)
   })
 
   it('a file whose linked points hold different responses is refused', () => {
@@ -385,6 +387,28 @@ describe('bad response data: missing is linear, present but broken is refused, a
     for (const missing of [{ points: {}, handles: {} }, { points: { p: {} }, handles: { l: {} } }, { points: { p: { '0,0>90,0': Object.create({ x: [[0.5, 0.9]] }) } }, handles: {} }, { points: { p: Object.create({ '0,0>90,0': { x: [[0.5, 0.9]] } }) }, handles: {} }]) {
       expect(run(missing).points.p).toEqual(plain.points.p)
     }
+  })
+})
+
+describe('extreme finite values (dot 1791690525)', () => {
+  const views = [-90, 0, 90].flatMap(yaw => [-45, 0, 45].map(pitch => ({ yaw, pitch, points: { p: P(10 + yaw / 9, 5 + pitch / 9) }, lines: {}, radii: {}, ends: {} })))
+  const run = (responses: unknown, pose: { yaw: number; pitch: number }) => evaluate({ views, responses: responses as Model['responses'] }, pose)
+  it('interpolation does not overflow: knots 1e308 and −1e308 give 0 halfway between them', async () => {
+    const { respond } = await import('../src/evaluate')
+    expect(respond([[0.25, 1e308], [0.75, -1e308]], 0.5)).toBe(0)
+    expect(Number.isFinite(respond([[0.5, 1.7e308]], 0.9))).toBe(true)
+  })
+
+  it('a response on an edge the pose is not on cannot reach the result, however extreme', () => {
+    const top = { points: { p: { '0,45>90,45': { x: [[0.5, 1e308]] }, '90,0>90,45': { x: [[0.5, -1e308]] } } }, handles: {} }
+    for (const pose of [{ yaw: 45, pitch: 0 }, { yaw: 0, pitch: 20 }]) expect(run(top, pose).points.p).toEqual(run(undefined, pose).points.p)
+  })
+
+  it('finite responses that would give a non-finite position are refused, never published as Infinity or NaN', () => {
+    const huge = { points: { p: { '0,0>90,0': { x: [[0.5, 1e308]] } } }, handles: {} }
+    expect(() => run(huge, { yaw: 45, pitch: 0 })).toThrow(/pose-not-finite: position of p is not a finite number at this pose/)
+    const weights = { points: { p: { '0,0>90,0': { x: [[0.5, 1e200]] }, '0,0>0,45': { x: [[0.5, 1e200]] } } }, handles: {} }
+    expect(() => run(weights, { yaw: 45, pitch: 22.5 })).toThrow(/pose-not-finite/)
   })
 })
 

@@ -124,7 +124,10 @@ function responded(model: Model, pose: Pose): ScalarWeights {
     const rb = k(bottom), rt = k(top), sl = k(left), sr = k(right)
     if (!rb && !rt && !sl && !sr) return undefined
     // every response is pinned at 0 and 1, so u = 0 gives u' = 0 and u = 1 gives (1 − v)·1 + v·1,
-    // which rounds to exactly 1 (the error of 1 − v is at most half an ulp of 1): views stay exact
+    // which rounds to exactly 1 (the error of 1 − v is at most half an ulp of 1): views stay exact.
+    // A response is always finite (a convex combination of finite knots), so an edge the pose is
+    // not on enters with weight 0 and adds exactly 0 (dot 1791690525); a result that still comes
+    // out non-finite is refused where the scalar is summed
     const u2 = (1 - v) * respond(rb, u) + v * respond(rt, u)
     const v2 = (1 - u) * respond(sl, v) + u * respond(sr, v)
     return [(1 - u2) * (1 - v2), u2 * (1 - v2), (1 - u2) * v2, u2 * v2].map((weight, i) => ({ view: views[i]!, weight })).filter(w => w.weight !== 0)
@@ -161,15 +164,21 @@ function control(rec: unknown, id: string, what: string): ControlResponses | und
   if (!isRecord(c)) throw new Error(`model-incomplete: malformed responses of ${what}`)
   return c as ControlResponses
 }
-/** One response at progress t: piecewise linear through (0,0), the knots, (1,1). */
+/**
+ * One response at progress t: piecewise linear through (0,0), the knots, (1,1). Interpolated as
+ * the convex combination v0·(1 − s) + v·s, never v0 + s·(v − v0): the difference of two finite
+ * extreme values can overflow (1e308 and −1e308), the combination of finite values cannot, so a
+ * finite response is finite everywhere (dot 1791690525).
+ */
 export function respond(knots: Knots | undefined, t: number): number {
   if (!knots?.length || t === 0 || t === 1) return t
   let p0 = 0, v0 = 0
   for (const [p, v] of knots) {
-    if (t <= p) return t === p ? v : v0 + ((t - p0) * (v - v0)) / (p - p0)
+    if (t <= p) return t === p ? v : v0 * (1 - (t - p0) / (p - p0)) + v * ((t - p0) / (p - p0))
     p0 = p; v0 = v
   }
-  return v0 + ((t - p0) * (1 - v0)) / (1 - p0)
+  const s = (t - p0) / (1 - p0)
+  return v0 * (1 - s) + s
 }
 
 function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Responses): Geometry {
@@ -185,6 +194,8 @@ function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Respo
       if (x === undefined) throw new Error(`model-incomplete: no ${what} in view ${w.view.yaw},${w.view.pitch}`)
       s = s === undefined ? w.weight * x : s + w.weight * x
     }
+    // finite views and finite responses must not silently give a non-finite drawing (dot 1791690525)
+    if (!Number.isFinite(s)) throw new Error(`pose-not-finite: ${what} is not a finite number at this pose`)
     return s!
   }
   // a control with a response on one of the quadrant's edges blends that axis with its own weights
