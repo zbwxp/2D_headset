@@ -139,6 +139,19 @@ describe('the viewport tools in every mode (bowen 1791727452; dot 1791727663)', 
     expect(on()).toBe(true)
   })
 
+  it('a second pointer pressing the pad during a middle-button pan by pointer 1 is ignored: the pan is kept, the pose unchanged (dot 1791731959)', async () => {
+    const t = await setup()
+    await t.play(45, 0)
+    const box = t.viewBox(), at = t.padAt(-45, 30)
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 10, 10, 4, { button: 1 })); window.dispatchEvent(pe('pointermove', 70, 40, 4, { button: 1 })) })
+    const panned = t.viewBox()
+    expect(panned).not.toBe(box)
+    await act(async () => { t.pad().dispatchEvent(pe('pointerdown', at.x, at.y, 1, { id: 2 })) })
+    expect([t.viewBox(), bench().pose()]).toEqual([panned, { yaw: 45, pitch: 0 }])
+    await act(async () => { window.dispatchEvent(pe('pointerup', 70, 40, 0, { button: 1 })) })
+    expect(t.viewBox()).toBe(panned)
+  })
+
   it('a second pointer pressing the pad while a correction drag runs is ignored: the correction goes on and commits (dot 1791731833)', async () => {
     const t = await setup(), q = `q${t.k}`
     await t.play(45, 0)
