@@ -15,7 +15,17 @@ Graph section "Save and open" (headset-design `977137f`; bowen 1791511525):
   - This matches common editors, where a reopened file starts a fresh undo history.
 - **After opening, everything equals what was saved:** the snapshot (selection apart) and the geometry.
 - **A file that cannot be opened is refused whole:** opening builds a new document and returns it, so the current one is never touched.
-- **Format:** `{ format: "headset-v3-drawing", version: 1, document: … }`. Any other format or version is refused, because there is no migration yet.
+- **Format:** `{ format: "headset-v3-drawing", version: N, document: … }`. Any other format or version is refused, because there is no migration yet.
+
+### Format versions
+
+| Version | Content | Status |
+|---|---|---|
+| 1 | single view | refused (bowen 1791651929: old files are redrawn) |
+| 2 | shape layers, nine views (multi-view stage 1, `docs/architecture-multiview.md`) | refused since version 3 (dot 1791680650): it has no angle baseline |
+| 3 | plus animation's owned record layer `base:angle` (stage 2, `docs/stage2-plan.md`); `copyNew` appears only on the layers animation owns | current |
+
+Files saved by the stage-1 bench (version 2) do not open. Lifting them, e.g. adding a baseline equal to the front, would be a separate compatibility decision; it is not made.
 
 ## Module
 

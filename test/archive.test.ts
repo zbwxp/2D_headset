@@ -128,9 +128,10 @@ describe('save and open', () => {
     const cases: [string, string, RegExp][] = [
       ['not JSON', '{oops', /not JSON/],
       ['another format', JSON.stringify({ format: 'something', version: 1, document: {} }), /not a headset v3 drawing/],
-      ['another version', good.replace('"version":2', '"version":3'), /unsupported version 3/],
-      // shape layers (docs/architecture-multiview.md): single-view version 1 files are not supported (bowen 1791651929)
-      ['a version 1 file', good.replace('"version":2', '"version":1'), /unsupported version 1/],
+      ['another version', good.replace('"version":3', '"version":4'), /unsupported version 4/],
+      // format versions (docs/archive-plan.md): 1 single view (bowen 1791651929); 2 stage 1, no angle baseline (dot 1791680650)
+      ['a version 1 file', good.replace('"version":3', '"version":1'), /unsupported version 1/],
+      ['a version 2 file (stage 1)', good.replace('"version":3', '"version":2'), /unsupported version 2/],
       ['a missing part', edit(doc => { delete doc.links }), /missing links/],
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],

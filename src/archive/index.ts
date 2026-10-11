@@ -5,8 +5,13 @@
 import { exportState, importState, type Core } from '../document'
 
 export const FORMAT = 'headset-v3-drawing'
-/** 2: shape layers (docs/architecture-multiview.md); version 1 files are not supported (bowen 1791651929). */
-export const VERSION = 2
+/**
+ * Format versions (docs/archive-plan.md "Format versions"); older ones are refused, with no migration:
+ * - 1: single view; not supported (bowen 1791651929).
+ * - 2: shape layers, nine views (stage 1); not supported since 3 (dot 1791680650).
+ * - 3: plus animation's owned record layer `base:angle` (stage 2); `copyNew` only on owned layers.
+ */
+export const VERSION = 3
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

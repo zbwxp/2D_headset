@@ -100,5 +100,8 @@ describe('open checks the baseline for integrity only', () => {
     expect(() => open(edit(d, ls => { ls.splice(ls.findIndex(l => l.key === 'base:angle'), 1) }))).toThrow(/no record layer base:angle/)
     expect(() => open(edit(d, ls => { delete ls.find(l => l.key === 'base:angle')!.copyNew }))).toThrow(/not an owned record layer/)
     expect(() => open(edit(d, ls => { delete ls.find(l => l.key === 'base:angle')!.points.b }))).toThrow(/has no position for point b/)
+    // only an owner grants copyNew: a file cannot give it to another layer (dot 1791680650)
+    expect(() => open(edit(d, ls => { const v = ls.find(l => l.key === 'view:90,0')!; ls.push({ ...structuredClone(v), key: 'expr:smile', kind: 'expression', copyNew: true }) }))).toThrow(/expr:smile claims copyNew but has no owner/)
+    expect(() => open(edit(d, ls => { const v = ls.find(l => l.key === 'view:90,0')!; ls.push({ ...structuredClone(v), key: 'base:other', kind: 'record', copyNew: true }) }))).toThrow(/base:other claims copyNew but has no owner/)
   })
 })

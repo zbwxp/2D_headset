@@ -15,9 +15,14 @@ export const RECORDS: readonly string[] = Object.freeze([ANGLE])
 /** Give a drawing its angle baseline: a record layer equal to the front (nothing pending). */
 export function addRecords(n: net.NetworkState) { net.addShapeLayer(n, ANGLE, 'record', views.FRONT, true) }
 
-/** At open: the drawing has this module's record layers, of kind record and owned (copyNew). */
+/**
+ * At open: the drawing has this module's record layers, of kind record and owned (copyNew);
+ * and no other layer claims copyNew. The flag is saved, but only an owner may grant it, so a
+ * file cannot mark an unknown layer copyNew and bypass "no owner rule yet: refused" (dot 1791680650).
+ */
 export function checkRecords(n: net.NetworkState) {
   const layers = net.shapeLayers(n)
+  for (const l of layers) if (l.copyNew && !RECORDS.includes(l.key)) throw new Error(`open-failed: shape layer ${l.key} claims copyNew but has no owner that grants it`)
   for (const key of RECORDS) {
     const l = layers.find(x => x.key === key)
     if (!l) throw new Error(`open-failed: there is no record layer ${key} (a file from before stage 2)`)
