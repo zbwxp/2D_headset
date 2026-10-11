@@ -15,6 +15,7 @@ import * as clipboard from '../clipboard'
 import * as views from '../views'
 import * as meta from '../meta'
 import * as animation from '../animation'
+import * as evaluate from '../evaluate'
 import type { Vec } from '../geometry'
 
 type Id = net.Id
@@ -610,6 +611,27 @@ export class Core {
   pendingLines(): Id[] { return animation.pending(this.state.network) }
   /** The 元线条 named `name` in layer `layer`: its line id, or undefined. */
   lineByName(layer: Id, name: string): Id | undefined { return meta.lineByName(this.state.network, this.state.names, layer, name) }
+
+  /** The nine views as plain data for `evaluate` (stage 3a), read from the published state; a copy. */
+  model(): evaluate.Model { return modelOf(this.state) }
+
+  /**
+   * The drawing at a head angle, read only (docs/stage3a-playback-plan.md): `evaluate` gives the
+   * parameters, which are written into a scratch layer of a private copy, and read there by the
+   * same code as any view, so arcs and fills come from `derived`. Nothing is published.
+   */
+  atPose(pose: evaluate.Pose): PoseReader {
+    if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
+    const { state, layer } = posedState(this.state, evaluate.evaluate(modelOf(this.state), pose))
+    return new PoseReader(new LayerReader(() => state, layer, what => this.idle(what)))
+  }
+}
+
+/** The drawing at one pose: its parameters and its drawn geometry only; no editing reads. */
+export class PoseReader {
+  /** @internal */ constructor(private readonly reader: LayerReader) {}
+  snapshot(): Snapshot { return this.reader.snapshot() }
+  geometry(): Geometry { return this.reader.geometry() }
 }
 
 /** The document read in one view. */
@@ -727,6 +749,49 @@ export function importState(data: unknown): Core {
     const m = (err as Error).message
     throw new Error(m.startsWith('open-failed') ? m : `open-failed: ${m}`)
   }
+}
+
+/** The views of a state as `evaluate` input: per view its angle, positions, handle vectors, strokes, arc radii and end strokes. */
+function modelOf(s: State): evaluate.Model {
+  return structuredClone({
+    views: viewKeys(s).map(k => {
+      const n = net.of(s.network, k)
+      return {
+        ...views.angle(k),
+        points: Object.fromEntries(net.points(n).map(p => [p.id, p.position])),
+        lines: Object.fromEntries(net.lines(n).map(l => [l.id, { ha: l.ha, hb: l.hb, stroke: l.stroke }])),
+        radii: Object.fromEntries(joins.rows(s.joins, n).flatMap(r => (r.radius === undefined ? [] : [[joins.rowKey(r.point, r.lines[0], r.lines[1]), r.radius]]))),
+        // stored end strokes hold no undefined values (setEndStroke drops them); the type allows them, evaluate's does not
+        ends: Object.fromEntries(net.points(n).flatMap(p => { const e = joins.endStroke(s.joins, n, p.id); return e ? [[p.id, Object.fromEntries(Object.entries(e).filter((kv): kv is [string, number | string] => kv[1] !== undefined))]] : [] })),
+      }
+    }),
+  })
+}
+
+/**
+ * A private copy of `s` with a scratch shape layer holding `posed` (stage 3a read path). The
+ * layer key is free in the copy (`pose`, `pose~1`, …; dot 1791684079). Every value is written,
+ * end strokes set or cleared, so nothing copied from the front is left standing. No settling.
+ */
+function posedState(s: State, posed: evaluate.Posed): { state: State; layer: string } {
+  const c = structuredClone(s)
+  const taken = new Set(net.shapeLayers(c.network).map(l => l.key))
+  let layer = 'pose'
+  for (let i = 1; taken.has(layer); i++) layer = `pose~${i}`
+  net.addShapeLayer(c.network, layer, 'view', views.FRONT)
+  const n = net.of(c.network, layer)
+  net.setPositions(n, Object.entries(posed.points).map(([id, position]) => ({ id, position })))
+  net.setHandles(n, Object.entries(posed.lines).flatMap(([line, l]) => [{ line, end: 'a' as const, offset: l.ha }, { line, end: 'b' as const, offset: l.hb }]))
+  for (const [id, l] of Object.entries(posed.lines)) net.setLineStroke(n, id, l.stroke)
+  for (const r of joins.rows(c.joins, n)) {
+    if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], posed.radii[joins.rowKey(r.point, r.lines[0], r.lines[1])]!)
+  }
+  for (const p of net.points(n)) {
+    const e = posed.ends[p.id]
+    if (e) joins.setEndStroke(c.joins, n, p.id, e)
+    else joins.clearEndStroke(c.joins, n, p.id)
+  }
+  return { state: c, layer }
 }
 
 /** One network operation, then every attribute module updates its own references. */

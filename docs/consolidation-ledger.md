@@ -22,6 +22,7 @@ bowen 1791683116: «你们把这个事情记下来 之后写代码哪里不够�
 | 7 | auto-bind scope | Auto-bind considers every coincidence in the edited view, not only what the edit touched. Only selection-only and broadcast-only edits skip it. | Separate proposal, before any feature where an unrelated coincidence would bind by surprise. | dot 1791655898; `docs/step7-view-picker.md` |
 | 8 | bench `Open` | File reads are asynchronous with no ordering check: a slower earlier read can replace a later one. Bench glue, not a graph module. | Next bench change to Open/Save. | dot 1791656976; `docs/step7-view-picker.md` |
 | 9 | `evaluate` slots A (appearance at a pose) and B (joins after the blend) | Placeholders, not answers: appearance switches at the dominant view (width, profile, end strokes jump there); smooth joins are left as blended, bend not measured. | When bowen takes up playback interaction / rendering, or before playback is treated as finished. Filling a slot may need its inputs extended. Not closed by 3a: a temporary checking bench is not finished playback interaction / rendering (dot 1791684410). | bowen 1791684302; dot 1791684152; `docs/stage3a-playback-plan.md` rule 5 |
+| 10 | `joins.EndStroke` type | The type allows `undefined` values, but `setEndStroke` drops them, so stored and read end strokes never hold one. Readers that need the exact type have to filter (`document` `modelOf`, stage 3a). | Next change to end strokes, or the next reader that has to filter. | found 2026-10-11 in stage 3a package 2 |
 
 ## Closed
 

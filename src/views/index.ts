@@ -20,6 +20,12 @@ export const FRONT = key(0, 0)
 /** All nine view keys, yaw-major. */
 export const ALL: readonly string[] = Object.freeze(YAWS.flatMap(y => PITCHES.map(p => key(y, p))))
 export const isView = (k: string) => ALL.includes(k)
+/** The yaw and pitch of a view key (stage 3a: the angles evaluate places the views at). */
+export function angle(k: string): { yaw: Yaw; pitch: Pitch } {
+  const i = ALL.indexOf(k)
+  if (i < 0) throw new Error(`Not a view key: ${String(k)}`)
+  return { yaw: YAWS[Math.floor(i / PITCHES.length)]!, pitch: PITCHES[i % PITCHES.length]! }
+}
 
 /**
  * Stroke broadcast (bowen 1791650085, 1791650171, 1791650206; docs/step6-stroke-broadcast.md,

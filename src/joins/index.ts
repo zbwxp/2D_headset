@@ -79,6 +79,17 @@ export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l
   } else net.dropSlot(n, 'radius', key)
 }
 
+/**
+ * An arc row's radius in the handle's layer only; no other layer, no row change (stage 3a: a
+ * scratch layer takes its posed radius). The row must exist and be an arc.
+ */
+export function setRadiusHere(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id, radius: number) {
+  const p = pair(l1, l2)
+  if (!S(j).rows.some(r => same(r, point, p) && r.mode === 'arc')) throw new Error(`No arc join at ${point} between ${l1} and ${l2}`)
+  if (!(Number.isFinite(radius) && radius > 0)) throw new Error('An arc join needs a positive radius')
+  net.setSlot(n, 'radius', rowKey(point, l1, l2), radius)
+}
+
 /** Remove a join: the row, and its radius in every layer. */
 export function removeJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id) {
   const p = pair(l1, l2)
